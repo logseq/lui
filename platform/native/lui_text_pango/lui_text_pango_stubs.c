@@ -127,6 +127,56 @@ static value lui_font_wrap(PangoFont *font, PangoFontDescription *shape_desc)
 static PangoFontMap *lui_map = NULL;
 static PangoContext *lui_ctx = NULL;
 
+/* The engine's underline style rides through itemization as a custom
+   attribute: its values (0 none, 1 single, 2 thick, 9 double) are not
+   PangoUnderline values, and Pango validates underline attributes
+   while laying out. A registered type keeps the int opaque, splits
+   items at underline boundaries like any other attribute, and reports
+   it back through item extra_attrs. */
+typedef struct {
+  PangoAttribute attr;
+  int value;
+} LuiIntAttr;
+
+static PangoAttrClass lui_under_klass;
+
+static PangoAttribute *lui_int_attr_copy(const PangoAttribute *a)
+{
+  LuiIntAttr *n = g_new(LuiIntAttr, 1);
+  *n = *(const LuiIntAttr *)a;
+  return (PangoAttribute *)n;
+}
+
+static void lui_int_attr_destroy(PangoAttribute *a)
+{
+  g_free(a);
+}
+
+static gboolean lui_int_attr_equal(const PangoAttribute *a,
+                                   const PangoAttribute *b)
+{
+  return ((const LuiIntAttr *)a)->value == ((const LuiIntAttr *)b)->value;
+}
+
+static void lui_under_klass_init(void)
+{
+  if (lui_under_klass.type != 0) return;
+  lui_under_klass.type = pango_attr_type_register("lui-underline");
+  lui_under_klass.copy = lui_int_attr_copy;
+  lui_under_klass.destroy = lui_int_attr_destroy;
+  lui_under_klass.equal = lui_int_attr_equal;
+}
+
+static PangoAttribute *lui_under_new(int value, guint start, guint end)
+{
+  LuiIntAttr *a = g_new(LuiIntAttr, 1);
+  a->attr.klass = &lui_under_klass;
+  a->attr.start_index = start;
+  a->attr.end_index = end;
+  a->value = value;
+  return (PangoAttribute *)a;
+}
+
 static void lui_ensure(void)
 {
   if (lui_ctx != NULL) return;
@@ -137,6 +187,7 @@ static void lui_ensure(void)
   lui_ctx = pango_font_map_create_context(lui_map);
   if (lui_ctx == NULL)
     caml_failwith("lui_text_pango: cannot create a context");
+  lui_under_klass_init();
   /* Grayscale antialiasing (what a coverage mask wants), metrics hinted
      to whole pixels, and glyph positions kept fractional so shaping and
      rasterizing can place pens inside a pixel. */
@@ -422,15 +473,24 @@ CAMLprim value lui_pango_family(value vfont)
 
 /* One shaped run: font, direction and positioned glyphs. The returned
    value is a record/block:
-   (font, start_byte, stop_byte, rtl, glyph array)
-   where a glyph is (id, x, y_from_baseline, advance, cluster_byte). */
-static value lui_shape_run(PangoGlyphItem *gi, int base, gint *pen)
+   (font, start_byte, stop_byte, rtl, glyph array, color option, under)
+   where a glyph is (id, x, y_from_baseline, advance, cluster_byte).
+
+   [ell_cluster] is the byte offset the ellipsis token's glyphs report:
+   -1 outside truncation. Span styling (color, underline) surfaces from
+   the item's extra_attrs — itemization splits items at every attribute
+   boundary, so one run carries exactly one effective value of each. */
+static value lui_shape_run(PangoGlyphItem *gi, int base, gint *pen,
+                           int ell_cluster)
 {
   CAMLparam0();
   CAMLlocal5(vrun, vglyphs, vg, vfont, tmp);
+  CAMLlocal1(vcolor);
   PangoItem *item = gi->item;
   PangoGlyphString *gs = gi->glyphs;
   int ng = gs->num_glyphs;
+  int ellipsis =
+    (item->analysis.flags & PANGO_ANALYSIS_FLAG_IS_ELLIPSIS) != 0;
 
   g_object_ref(item->analysis.font);
   vfont = lui_font_wrap(item->analysis.font, NULL);
@@ -438,6 +498,8 @@ static value lui_shape_run(PangoGlyphItem *gi, int base, gint *pen)
   vglyphs = caml_alloc((mlsize_t)ng, 0);
   for (int j = 0; j < ng; j++) {
     PangoGlyphInfo *g = &gs->glyphs[j];
+    int cluster = item->offset + gs->log_clusters[j] + base;
+    if (ellipsis && ell_cluster >= 0) cluster = ell_cluster;
     vg = caml_alloc(5, 0);
     Store_field(vg, 0, Val_int(g->glyph));
     /* The pen runs over the line's runs in visual order; offsets are
@@ -451,18 +513,46 @@ static value lui_shape_run(PangoGlyphItem *gi, int base, gint *pen)
     Store_field(vg, 3,
                 caml_copy_double(g->geometry.width
                                  / (double)PANGO_SCALE));
-    Store_field(vg, 4,
-                Val_int(item->offset + gs->log_clusters[j] + base));
+    Store_field(vg, 4, Val_int(cluster));
     Store_field(vglyphs, j, vg);
     *pen += g->geometry.width;
   }
 
-  vrun = caml_alloc(5, 0);
+  /* Per-range ink color and underline, when a span set them: the run's
+     item carries the attributes of its range in extra_attrs. The
+     color packs back to 0xRRGGBBAA; Pango channels are the 8-bit
+     value replicated across 16 bits, so the top byte is the channel. */
+  vcolor = Val_int(0);
+  int under = 0;
+  int r = -1, g = 0, b = 0, a = 255;
+  for (GSList *l = item->analysis.extra_attrs; l != NULL; l = l->next) {
+    PangoAttribute *at = (PangoAttribute *)l->data;
+    if (at->klass->type == PANGO_ATTR_FOREGROUND) {
+      PangoAttrColor *c = (PangoAttrColor *)at;
+      r = c->color.red >> 8;
+      g = c->color.green >> 8;
+      b = c->color.blue >> 8;
+    } else if (at->klass->type == PANGO_ATTR_FOREGROUND_ALPHA) {
+      a = ((PangoAttrInt *)at)->value >> 8;
+    } else if (at->klass == &lui_under_klass) {
+      under = ((LuiIntAttr *)at)->value;
+    }
+  }
+  if (r >= 0) {
+    intnat packed = ((intnat)r << 24) | ((intnat)g << 16)
+                    | ((intnat)b << 8) | (intnat)a;
+    vcolor = caml_alloc(1, 0);
+    Store_field(vcolor, 0, Val_int(packed));
+  }
+
+  vrun = caml_alloc(7, 0);
   Store_field(vrun, 0, vfont);
   Store_field(vrun, 1, Val_int(item->offset + base));
   Store_field(vrun, 2, Val_int(item->offset + item->length + base));
   Store_field(vrun, 3, Val_bool((item->analysis.level & 1) != 0));
   Store_field(vrun, 4, vglyphs);
+  Store_field(vrun, 5, vcolor);
+  Store_field(vrun, 6, Val_int(under));
   tmp = vrun;
   CAMLreturn(tmp);
 }
@@ -498,47 +588,20 @@ static void lui_line_height(PangoLayoutLine *ll, struct lui_font *base,
   *desc = d;
 }
 
-/* shape : font -> utf8 -> width -> rtl -> base -> line array
-   A line is (start_byte, stop_byte, width, ascent, descent, leading,
-   run array). Offsets are bytes into the OCaml string: Pango indexes
-   UTF-8 by bytes too, so no code-unit mapping is needed. */
-CAMLprim value lui_pango_shape(value vfont, value vstr, value vwidth,
-                               value vrtl, value vbase)
+/* Emit the line records for every line of a laid-out paragraph:
+   (start_byte, stop_byte, width, ascent, descent, leading, run array).
+   Offsets are bytes into the OCaml string: Pango indexes UTF-8 by
+   bytes too, so no code-unit mapping is needed. [ell_cluster] is the
+   byte offset the ellipsis token's glyphs report, -1 outside
+   truncation. */
+static value lui_emit_lines(PangoLayout *layout, int base,
+                            int ell_cluster, struct lui_font *basef)
 {
-  CAMLparam5(vfont, vstr, vwidth, vrtl, vbase);
+  CAMLparam0();
   CAMLlocal5(vlines, vline, vruns, vcons, vempty);
-  struct lui_font *h = Lui_font_val(vfont);
-  int base = Int_val(vbase);
-  double width = Double_val(vwidth);
-  int rtl = Bool_val(vrtl);
-  const char *text = (const char *)Bytes_val(vstr);
-  int len = (int)caml_string_length(vstr);
   int nlines = 0;
 
   vlines = Val_int(0); /* boxed list of finished lines, last first */
-
-  if (len == 0) {
-    vempty = caml_alloc(0, 0);
-    CAMLreturn(vempty);
-  }
-  lui_ensure();
-
-  pango_context_set_base_dir(
-    lui_ctx, rtl ? PANGO_DIRECTION_RTL : PANGO_DIRECTION_LTR);
-  PangoLayout *layout = pango_layout_new(lui_ctx);
-  if (layout == NULL) caml_failwith("lui_text_pango: no layout");
-  pango_layout_set_auto_dir(layout, FALSE);
-  pango_layout_set_font_description(layout, h->desc);
-  pango_layout_set_text(layout, text, len);
-  if (width > 0.) {
-    /* Round up to whole Pango units: truncating can make the box a
-       thousandth of a point narrower than the text measured within
-       it. */
-    double w = ceil(width * PANGO_SCALE);
-    if (w > (double)G_MAXINT) w = (double)G_MAXINT;
-    pango_layout_set_width(layout, (int)w);
-    pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
-  }
 
   int n = pango_layout_get_line_count(layout);
   for (int i = 0; i < n; i++) {
@@ -550,7 +613,7 @@ CAMLprim value lui_pango_shape(value vfont, value vstr, value vwidth,
     gint height = 0;
     pango_layout_line_get_height(ll, &height);
     double asc, desc;
-    lui_line_height(ll, h, &asc, &desc);
+    lui_line_height(ll, basef, &asc, &desc);
     double leading =
       (double)height / PANGO_SCALE - asc - desc;
     if (leading < 0.) leading = 0.;
@@ -562,7 +625,8 @@ CAMLprim value lui_pango_shape(value vfont, value vstr, value vwidth,
     int ri = 0;
     for (GSList *r = ll->runs; r != NULL; r = r->next) {
       Store_field(vruns, ri,
-                  lui_shape_run((PangoGlyphItem *)r->data, base, &pen));
+                  lui_shape_run((PangoGlyphItem *)r->data, base, &pen,
+                                ell_cluster));
       ri++;
     }
 
@@ -582,9 +646,9 @@ CAMLprim value lui_pango_shape(value vfont, value vstr, value vwidth,
     vlines = vcons;
     nlines++;
   }
-  g_object_unref(layout);
 
-  /* The list is reversed (last line first); unpack it in order. */
+  /* The list is reversed (last line first); unpack it in order. The
+     cells stay rooted through vlines while the array fills. */
   vempty = caml_alloc((mlsize_t)nlines, 0);
   {
     value cur = vlines;
@@ -594,6 +658,222 @@ CAMLprim value lui_pango_shape(value vfont, value vstr, value vwidth,
     }
   }
   CAMLreturn(vempty);
+}
+
+/* A layout for [text] in the base font's direction at [width] (0 means
+   no wrapping): the setup every shaping entry point shares. */
+static PangoLayout *lui_layout_of(struct lui_font *h, const char *text,
+                                  int len, double width, int rtl)
+{
+  pango_context_set_base_dir(
+    lui_ctx, rtl ? PANGO_DIRECTION_RTL : PANGO_DIRECTION_LTR);
+  PangoLayout *layout = pango_layout_new(lui_ctx);
+  if (layout == NULL) caml_failwith("lui_text_pango: no layout");
+  pango_layout_set_auto_dir(layout, FALSE);
+  pango_layout_set_font_description(layout, h->desc);
+  pango_layout_set_text(layout, text, len);
+  if (width > 0.) {
+    /* Round up to whole Pango units: truncating can make the box a
+       thousandth of a point narrower than the text measured within
+       it. */
+    double w = ceil(width * PANGO_SCALE);
+    if (w > (double)G_MAXINT) w = (double)G_MAXINT;
+    pango_layout_set_width(layout, (int)w);
+    pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
+  }
+  return layout;
+}
+
+/* shape : font -> utf8 -> width -> rtl -> base -> line array */
+CAMLprim value lui_pango_shape(value vfont, value vstr, value vwidth,
+                               value vrtl, value vbase)
+{
+  CAMLparam5(vfont, vstr, vwidth, vrtl, vbase);
+  CAMLlocal1(vempty);
+  struct lui_font *h = Lui_font_val(vfont);
+  int base = Int_val(vbase);
+  double width = Double_val(vwidth);
+  int rtl = Bool_val(vrtl);
+  const char *text = (const char *)Bytes_val(vstr);
+  int len = (int)caml_string_length(vstr);
+
+  if (len == 0) {
+    vempty = caml_alloc(0, 0);
+    CAMLreturn(vempty);
+  }
+  lui_ensure();
+
+  PangoLayout *layout = lui_layout_of(h, text, len, width, rtl);
+  vempty = lui_emit_lines(layout, base, -1, h);
+  g_object_unref(layout);
+  CAMLreturn(vempty);
+}
+
+/* shape_spans : font -> utf8 -> width -> rtl -> base -> span_attr array
+   -> line array. A span_attr is
+   (start_byte, stop_byte, font option, color option, kern, under);
+   ranges are byte offsets into the segment string. The layout's own
+   font description is the base; each span's attributes go on its
+   range in the attr list. */
+CAMLprim value lui_pango_shape_spans(value vfont, value vstr,
+                                     value vwidth, value vrtl,
+                                     value vbase, value vspans)
+{
+  CAMLparam5(vfont, vstr, vwidth, vrtl, vbase);
+  CAMLxparam1(vspans);
+  CAMLlocal1(vempty);
+  struct lui_font *h = Lui_font_val(vfont);
+  int base = Int_val(vbase);
+  double width = Double_val(vwidth);
+  int rtl = Bool_val(vrtl);
+  const char *text = (const char *)Bytes_val(vstr);
+  int len = (int)caml_string_length(vstr);
+
+  if (len == 0) {
+    vempty = caml_alloc(0, 0);
+    CAMLreturn(vempty);
+  }
+  lui_ensure();
+
+  PangoLayout *layout = lui_layout_of(h, text, len, width, rtl);
+
+  /* Per-range attributes: the byte ranges index the segment's UTF-8
+     directly, which is what Pango attributes consume. */
+  PangoAttrList *attrs = pango_attr_list_new();
+  mlsize_t nspans = Wosize_val(vspans);
+  for (mlsize_t i = 0; i < nspans; i++) {
+    value vspan = Field(vspans, i);
+    guint a = (guint)Long_val(Field(vspan, 0));
+    guint b = (guint)Long_val(Field(vspan, 1));
+    if (b <= a) continue;
+
+    value vf = Field(vspan, 2);
+    if (vf != Val_int(0)) {
+      struct lui_font *sf = Lui_font_val(Field(vf, 0));
+      PangoAttribute *at = pango_attr_font_desc_new(sf->desc);
+      at->start_index = a;
+      at->end_index = b;
+      pango_attr_list_insert(attrs, at);
+    }
+    value vc = Field(vspan, 3);
+    if (vc != Val_int(0)) {
+      intnat c = Long_val(Field(vc, 0));
+      /* Pango color channels carry the 8-bit value in the top byte
+         of a 16-bit channel. Alpha is its own attribute. */
+      PangoAttribute *at = pango_attr_foreground_new(
+        (guint16)(((c >> 24) & 0xFF) * 257),
+        (guint16)(((c >> 16) & 0xFF) * 257),
+        (guint16)(((c >> 8) & 0xFF) * 257));
+      at->start_index = a;
+      at->end_index = b;
+      pango_attr_list_insert(attrs, at);
+      PangoAttribute *aa = pango_attr_foreground_alpha_new(
+        (guint16)((c & 0xFF) * 257));
+      aa->start_index = a;
+      aa->end_index = b;
+      pango_attr_list_insert(attrs, aa);
+    }
+    double kern = Double_val(Field(vspan, 4));
+    if (kern != 0.) {
+      PangoAttribute *at = pango_attr_letter_spacing_new(
+        (int)lround(kern * PANGO_SCALE));
+      at->start_index = a;
+      at->end_index = b;
+      pango_attr_list_insert(attrs, at);
+    }
+    int under = (int)Long_val(Field(vspan, 5));
+    if (under != 0) {
+      pango_attr_list_insert(attrs, lui_under_new(under, a, b));
+    }
+  }
+  pango_layout_set_attributes(layout, attrs);
+  pango_attr_list_unref(attrs);
+
+  vempty = lui_emit_lines(layout, base, -1, h);
+  g_object_unref(layout);
+  CAMLreturn(vempty);
+}
+
+CAMLprim value lui_pango_shape_spans_byte(value *argv, int argn)
+{
+  (void)argn;
+  return lui_pango_shape_spans(argv[0], argv[1], argv[2], argv[3],
+                               argv[4], argv[5]);
+}
+
+/* graphemes : string -> int array — the byte offsets where grapheme
+   clusters start or end, ending at the string's length. Pango's log
+   attrs flag exactly the grapheme-cluster boundaries
+   (is_cursor_position): combining marks, emoji ZWJ chains, regional
+   indicator pairs and Hangul syllables stay whole. */
+CAMLprim value lui_pango_graphemes(value vstr)
+{
+  CAMLparam1(vstr);
+  CAMLlocal1(vbounds);
+  const char *text = (const char *)Bytes_val(vstr);
+  int len = (int)caml_string_length(vstr);
+  lui_ensure();
+
+  /* Buffer one attr per byte: at most that many characters decode,
+     and pango_get_log_attrs writes one attr per character plus a
+     sentinel. */
+  PangoLogAttr *attrs =
+    g_new0(PangoLogAttr, (gsize)len + 1);
+  if (attrs == NULL) caml_failwith("lui_text_pango: out of memory");
+  int nch = (int)g_utf8_strlen(text, (gssize)len);
+  if (nch < 0 || nch > len) nch = len;
+  pango_get_log_attrs(text, len, -1, NULL, attrs, nch + 1);
+
+  /* Char i's is_cursor_position marks a boundary before it, so the
+     positions are the byte offsets of flagged chars plus [len] — the
+     trailing entry flags the boundary at the string's end. */
+  int *bounds = malloc(sizeof(int) * ((size_t)nch + 1));
+  if (bounds == NULL) {
+    g_free(attrs);
+    caml_failwith("lui_text_pango: out of memory");
+  }
+  int k = 0;
+  const char *p = text;
+  for (int i = 0; i <= nch; i++) {
+    if (attrs[i].is_cursor_position)
+      bounds[k++] = (int)(p - text);
+    if (i < nch) p = g_utf8_next_char(p);
+  }
+  g_free(attrs);
+
+  vbounds = caml_alloc((mlsize_t)k, 0);
+  for (int i = 0; i < k; i++)
+    Store_field(vbounds, i, Val_int(bounds[i]));
+  free(bounds);
+  CAMLreturn(vbounds);
+}
+
+/* truncate : font -> utf8 -> width -> mode -> rtl -> line array
+   mode 0 end, 1 start, 2 middle; the ellipsis token's glyphs report a
+   cluster clamped to the string's end. */
+CAMLprim value lui_pango_truncate(value vfont, value vstr, value vwidth,
+                                  value vmode, value vrtl)
+{
+  CAMLparam5(vfont, vstr, vwidth, vmode, vrtl);
+  CAMLlocal1(vout);
+  struct lui_font *h = Lui_font_val(vfont);
+  int len = (int)caml_string_length(vstr);
+  const char *text = (const char *)Bytes_val(vstr);
+  double width = Double_val(vwidth);
+  int mode = (int)Long_val(vmode);
+  int rtl = Bool_val(vrtl);
+
+  lui_ensure();
+
+  PangoLayout *layout = lui_layout_of(h, text, len, width, rtl);
+  PangoEllipsizeMode em = PANGO_ELLIPSIZE_END;
+  if (mode == 1) em = PANGO_ELLIPSIZE_START;
+  else if (mode == 2) em = PANGO_ELLIPSIZE_MIDDLE;
+  pango_layout_set_ellipsize(layout, em);
+
+  vout = lui_emit_lines(layout, 0, len, h);
+  g_object_unref(layout);
+  CAMLreturn(vout);
 }
 
 /* ---------------------------------------------------------- rasterize */
@@ -765,6 +1045,17 @@ CAMLprim value lui_pango_shape(value a, value b, value c, value d, value e) {
   (void)a; (void)b; (void)c; (void)d; (void)e; return unsupported(); }
 CAMLprim value lui_pango_rasterize(value a, value b, value c, value d,
                                    value e) {
+  (void)a; (void)b; (void)c; (void)d; (void)e; return unsupported(); }
+CAMLprim value lui_pango_shape_spans(value a, value b, value c,
+                                     value d, value e, value f) {
+  (void)a; (void)b; (void)c; (void)d; (void)e; (void)f;
+  return unsupported(); }
+CAMLprim value lui_pango_shape_spans_byte(value *argv, int argn) {
+  (void)argv; (void)argn; return unsupported(); }
+CAMLprim value lui_pango_graphemes(value a) {
+  (void)a; return unsupported(); }
+CAMLprim value lui_pango_truncate(value a, value b, value c, value d,
+                                  value e) {
   (void)a; (void)b; (void)c; (void)d; (void)e; return unsupported(); }
 
 #endif /* __linux__ */
