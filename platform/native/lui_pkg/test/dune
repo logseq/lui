@@ -1,0 +1,4 @@
+(test
+ (name lui_pkg_test)
+ (modules lui_pkg_test)
+ (libraries alcotest lui_pkg unix yojson))
