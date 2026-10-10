@@ -1,0 +1,14 @@
+(rule
+ (deps lui_ax_objc.m)
+ (action (copy %{deps} lui_ax_objc.c)))
+
+(library
+ (name lui_ax)
+ (modules lui_ax)
+ (foreign_stubs
+  (language c)
+  (names lui_ax_objc)
+  (flags (:standard -x objective-c -fobjc-arc)))
+ (c_library_flags
+  (:standard -framework AppKit))
+ (libraries lui_a11y))

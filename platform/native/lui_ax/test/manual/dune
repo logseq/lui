@@ -1,0 +1,13 @@
+(rule
+ (deps glue_objc.m)
+ (action (copy %{deps} glue_objc.c)))
+
+(executable
+ (name main)
+ (modules main)
+ (enabled_if (= %{system} macosx))
+ (foreign_stubs
+  (language c)
+  (names glue_objc)
+  (flags (:standard -x objective-c -fobjc-arc)))
+ (libraries lui lui_store lui_a11y lui_ax))
