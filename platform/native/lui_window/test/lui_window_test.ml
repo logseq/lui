@@ -53,6 +53,15 @@ let test_parse_args () =
   Alcotest.(check int) "width" 800 cfg.width;
   Alcotest.(check int) "height" 600 cfg.height;
   Alcotest.(check (option int)) "frames" (Some 5) cfg.headless_frames;
+  Alcotest.(check (list string)) "no drop files" [] cfg.drop_files;
+  (match
+     parse_args
+       [ "--drop-file"; "/tmp/a"; "--drop-file"; "/tmp/b" ]
+   with
+   | Ok c ->
+     Alcotest.(check (list string)) "drop files"
+       [ "/tmp/b"; "/tmp/a" ] c.drop_files
+   | Error m -> Alcotest.fail m);
   Alcotest.(check bool) "bad flag" true
     (Result.is_error (parse_args [ "--bogus" ]));
   Alcotest.(check bool) "missing value" true
@@ -542,6 +551,8 @@ let test_scroll () =
   let ui = Ui.create () in
   Ui.set_scroll_cap ui 2 80.;
   Alcotest.(check (float 0.001)) "cap" 80. (Ui.scroll_cap ui 2);
+  Alcotest.(check (float 0.001)) "x cap starts 0" 0.
+    (Ui.scroll_cap_x ui 2);
   Alcotest.(check (float 0.001)) "starts at 0" 0. (Ui.scroll_offset ui 2);
   (* park the pointer inside the scroll container, then wheel down *)
   ignore (Ui.handle ui s rects (Input.Move (10., 10.)));
@@ -557,6 +568,65 @@ let test_scroll () =
   (* shrinking the cap clamps the live offset too *)
   Ui.set_scroll_cap ui 2 30.;
   Alcotest.(check (float 0.001)) "cap shrink" 0. (Ui.scroll_offset ui 2)
+
+let test_wheel_x () =
+  (* a scroll container with horizontal range: wheel-x deltas and
+     shift+wheel move the x offset; the y offset is untouched *)
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Scroll);
+        CreateNode (3, Row); CreateNode (4, Text);
+        InsertChild (1, 2, 0); InsertChild (2, 3, 0);
+        InsertChild (3, 4, 0);
+        SetProp (4, TextValue, StringValue "wide") ]
+  in
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:100 ~height:100 ~scale:1.
+    ~measure:Layout.default_measure;
+  let ui = Ui.create () in
+  Ui.set_scroll_cap_x ui 2 90.;
+  Ui.set_scroll_cap ui 2 80.;
+  ignore (Ui.handle ui s rects (Input.Move (10., 10.)));
+  (* a horizontal wheel delta scrolls right, clamped to the x cap *)
+  ignore (Ui.handle ui s rects (Input.Wheel (1., 0.)));
+  Alcotest.(check (float 0.001)) "wheel-x" 44. (Ui.scroll_offset_x ui 2);
+  Alcotest.(check (float 0.001)) "y untouched" 0. (Ui.scroll_offset ui 2);
+  (* shift+wheel turns the vertical delta horizontal *)
+  ignore
+    (Ui.handle ui s rects
+       (Input.Wheel_mods
+          (0., -1., { Input.mods_none with Input.shift = true })));
+  Alcotest.(check (float 0.001)) "shift+wheel-x" 88.
+    (Ui.scroll_offset_x ui 2);
+  Alcotest.(check (float 0.001)) "still no y" 0. (Ui.scroll_offset ui 2);
+  (* the next x move clamps at the cap *)
+  ignore (Ui.handle ui s rects (Input.Wheel (1., 0.)));
+  Alcotest.(check (float 0.001)) "clamped" 90. (Ui.scroll_offset_x ui 2);
+  (* a plain vertical wheel still scrolls y *)
+  ignore (Ui.handle ui s rects (Input.Wheel (0., -1.)));
+  Alcotest.(check (float 0.001)) "y scrolls" 44. (Ui.scroll_offset ui 2);
+  (* shrinking the x cap clamps the live x offset too *)
+  Ui.set_scroll_cap_x ui 2 40.;
+  Alcotest.(check (float 0.001)) "cap shrink" 40.
+    (Ui.scroll_offset_x ui 2);
+  (* scroll_to / scroll_by take an axis *)
+  ignore (Ui.scroll_to ~axis:Ui.X ui s 2 10.);
+  Alcotest.(check (float 0.001)) "scroll_to x" 10.
+    (Ui.scroll_offset_x ui 2);
+  ignore (Ui.scroll_by ~axis:Ui.X ui s 2 5.);
+  Alcotest.(check (float 0.001)) "scroll_by x" 15.
+    (Ui.scroll_offset_x ui 2);
+  (* scroll_show reveals horizontally clipped nodes too *)
+  Ui.set_content_rect ui
+    (fun id ->
+       match id with
+       | 2 -> rect 0. 0. 100. 100.
+       | 4 -> rect 200. 0. 100. 20.
+       | _ -> Rects.zero);
+  Ui.set_scroll_cap_x ui 2 300.;
+  ignore (Ui.scroll_show ui s 4);
+  Alcotest.(check (float 0.001)) "x reveal" 200.
+    (Ui.scroll_offset_x ui 2)
 
 (* ---------- demo dispatch flow ---------- *)
 
@@ -714,6 +784,46 @@ let main_exe () =
   | Some p -> p
   | None -> Alcotest.fail "main.exe not found next to the test binary"
 
+let test_headless_drop () =
+  let exe = main_exe () in
+  let run () =
+    let ic =
+      Unix.open_process_in
+        (Printf.sprintf
+           "%s --headless 6 --drop-file /tmp/dropped.txt"
+           (Filename.quote exe))
+    in
+    let out = read_all ic in
+    match Unix.close_process_in ic with
+    | Unix.WEXITED 0 -> out
+    | _ -> Alcotest.failf "main.exe failed: %s" out
+  in
+  let checksum_of out =
+    match
+      List.find_opt
+        (fun l ->
+          try
+            ignore (Str.search_forward (Str.regexp "checksum=") l 0);
+            true
+          with Not_found -> false)
+        (String.split_on_char '\n' out)
+    with
+    | Some l -> l
+    | None -> Alcotest.failf "no checksum line in:\n%s" out
+  in
+  let out1 = run () and out2 = run () in
+  (* the synthetic drop lands on the demo's file well *)
+  Alcotest.(check bool) "drop landed" true
+    (try
+       ignore
+         (Str.search_forward
+            (Str.regexp "drop: payload=file:/tmp/dropped.txt") out1 0);
+       true
+     with Not_found -> false);
+  (* deterministic: the same synthetic drop produces the same frames *)
+  Alcotest.(check string) "deterministic" (checksum_of out1)
+    (checksum_of out2)
+
 let test_headless_checksum () =
   let exe = main_exe () in
   let run () =
@@ -750,7 +860,7 @@ let test_headless_checksum () =
   (* the recorded value pins the demo's initial scene: any render-path
      change shows up here *)
   Alcotest.(check string) "golden"
-    "headless done: frames=6 checksum=e521097a2982d115" c1
+    "headless done: frames=6 checksum=8a9177b35a06f949" c1
 
 (* ---------- widget-layer interactions ---------- *)
 
@@ -861,22 +971,22 @@ let test_static_select () =
        (Input.Button_down (r.x +. 2., r.y +. 2., Input.Left, 2,
           Input.mods_none)));
   (match Ui.sel_text ui with
-   | Some (3, 0, 5) -> ()
+   | Some (3, 0, 3, 5) -> ()
    | a -> Alcotest.failf "word sel: %s"
             (match a with
-             | Some (i, x, y) ->
-               Printf.sprintf "(%d,%d,%d)" i x y
+             | Some (i, x, y, z) ->
+               Printf.sprintf "(%d,%d,%d,%d)" i x y z
              | None -> "none"));
   (* drag-select extends the range to the drop point *)
   ignore
     (Ui.handle ui s rects
        (Input.Move (r.x +. 90., r.y +. 2.)));
   (match Ui.sel_text ui with
-   | Some (3, 0, e) when e > 5 -> ()
+   | Some (3, 0, 3, e) when e > 5 -> ()
    | a -> Alcotest.failf "drag extend: %s"
             (match a with
-             | Some (i, x, y) ->
-               Printf.sprintf "(%d,%d,%d)" i x y
+             | Some (i, x, y, z) ->
+               Printf.sprintf "(%d,%d,%d,%d)" i x y z
              | None -> "none"));
   ignore
     (Ui.handle ui s rects
@@ -890,6 +1000,87 @@ let test_static_select () =
      Alcotest.(check bool) "copied slice" true
        (String.length t > 5 && String.sub t 0 5 = "hello")
    | _ -> Alcotest.fail "expected copy of selection")
+
+(* Column with three selectable text siblings (3, 5, 6) separated by
+   a non-selectable line (4) — the bound the cross-node selection
+   tests below exercise. *)
+let sel_sibs_store () =
+  let da id =
+    SetProp
+      (id, DataAttrs,
+        StringValue
+          (Lui_protocol.data_attrs_encode
+             [ ("data-user-select", "text") ]))
+  in
+  store_of
+    [ CreateNode (1, Root); CreateNode (2, Column);
+      CreateNode (3, Text); CreateNode (4, Text);
+      CreateNode (5, Text); CreateNode (6, Text);
+      InsertChild (1, 2, 0); InsertChild (2, 3, 0);
+      InsertChild (2, 4, 1); InsertChild (2, 5, 2);
+      InsertChild (2, 6, 3);
+      SetProp (3, TextValue, StringValue "alpha line");
+      SetProp (4, TextValue, StringValue "plain line");
+      SetProp (5, TextValue, StringValue "beta line");
+      SetProp (6, TextValue, StringValue "gamma line");
+      da 3; da 5; da 6 ]
+
+let copy_of ui s rects =
+  match
+    Ui.handle ui s rects (key ~mods:meta (Input.Other 6))
+  with
+  | [ Clipboard_write t ] -> t
+  | _ -> Alcotest.fail "expected copy of selection"
+
+let test_sel_siblings () =
+  let s = sel_sibs_store () in
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:200 ~height:200 ~scale:1.
+    ~measure:Layout.default_measure;
+  let ui = Ui.create () in
+  let r3 = Rects.get rects 3 and r5 = Rects.get rects 5
+  and r6 = Rects.get rects 6 in
+  (* press at the left edge of node 3, then drag down onto node 5 *)
+  ignore
+    (Ui.handle ui s rects
+       (Input.Button_down (r3.x +. 2., r3.y +. 2., Input.Left, 1,
+          Input.mods_none)));
+  ignore
+    (Ui.handle ui s rects
+       (Input.Move (r5.x +. 24., r5.y +. 2.)));
+  (match Ui.sel_text ui with
+   | Some (3, a, 5, f) when a < 4 && f > 0 -> ()
+   | a -> Alcotest.failf "cross-node sel: %s"
+            (match a with
+             | Some (i, x, y, z) ->
+               Printf.sprintf "(%d,%d,%d,%d)" i x y z
+             | None -> "none"));
+  ignore
+    (Ui.handle ui s rects
+       (Input.Button_up (r5.x +. 24., r5.y +. 2., Input.Left,
+          Input.mods_none)));
+  (* the copy joins endpoints in document order across the sibling
+     boundary — the non-selectable node 4 never enters it *)
+  let copied = copy_of ui s rects in
+  Alcotest.(check bool) "doc order" true
+    (String.length copied > 12
+     && String.sub copied 0 10 = "alpha line"
+     && copied.[String.length "alpha line"] = '\n');
+  (* Cmd+A spans every selectable sibling of the container *)
+  ignore
+    (Ui.handle ui s rects (key ~mods:meta (Input.Other 4)));
+  Alcotest.(check string) "select-all" "alpha line\nbeta line\ngamma line"
+    (copy_of ui s rects);
+  (* a drag below the last sibling clamps to its end *)
+  ignore
+    (Ui.handle ui s rects
+       (Input.Button_down (r3.x +. 2., r3.y +. 2., Input.Left, 1,
+          Input.mods_none)));
+  ignore
+    (Ui.handle ui s rects
+       (Input.Move (r6.x +. 5., r6.y +. r6.h +. 40.)));
+  Alcotest.(check string) "clamp end" "alpha line\nbeta line\ngamma line"
+    (copy_of ui s rects)
 
 let test_tab_activation () =
   let s, rects = ui_store_fresh () in
@@ -1097,11 +1288,76 @@ let test_drag_drop () =
        (Input.Button_up
           (r4.x +. 5., r4.y +. 5., Input.Left, Input.mods_none)));
   (match Ui.last_drop ui with
-   | Some (4, "row-payload") -> ()
+   | Some (4, "row-payload", 1) -> ()
    | a -> Alcotest.failf "drop: %s"
             (match a with
-             | Some (i, p) -> Printf.sprintf "(%d,%s)" i p
+             | Some (i, p, n) -> Printf.sprintf "(%d,%s,%d)" i p n
              | None -> "none"))
+
+let test_file_drop () =
+  (* an OS file drop lands on the deepest node whose accept list
+     matches the namespaced payload; non-matching targets stay empty *)
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Column);
+        CreateNode (3, Text); CreateNode (4, Text);
+        InsertChild (1, 2, 0); InsertChild (2, 3, 0);
+        InsertChild (2, 4, 1);
+        SetProp (3, TextValue, StringValue "os drops here");
+        SetProp
+          (3, DataAttrs,
+            StringValue
+              (Lui_protocol.data_attrs_encode
+                 [ ("data-drop-target", "true");
+                   ("data-drop-accept", "file:,text:") ]));
+        SetProp (4, TextValue, StringValue "rows here");
+        SetProp
+          (4, DataAttrs,
+            StringValue
+              (Lui_protocol.data_attrs_encode
+                 [ ("data-drop-target", "true");
+                   ("data-drop-accept", "row-") ])) ]
+  in
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:200 ~height:100 ~scale:1.
+    ~measure:Layout.default_measure;
+  let ui = Ui.create () in
+  let r3 = Rects.get rects 3 and r4 = Rects.get rects 4 in
+  (* pointer parked on the file well: the path arrives namespaced *)
+  ignore
+    (Ui.handle ui s rects
+       (Input.Move (r3.x +. 5., r3.y +. 2.)));
+  ignore (Ui.handle ui s rects (Input.Drop_file "/tmp/a.png"));
+  (match Ui.last_drop ui with
+   | Some (3, "file:/tmp/a.png", 1) -> ()
+   | a -> Alcotest.failf "file drop: %s"
+            (match a with
+             | Some (i, p, n) -> Printf.sprintf "(%d,%s,%d)" i p n
+             | None -> "none"));
+  (* a repeated identical drop still bumps the serial *)
+  ignore (Ui.handle ui s rects (Input.Drop_file "/tmp/a.png"));
+  Alcotest.(check bool) "serial bumps" true
+    (match Ui.last_drop ui with
+     | Some (3, "file:/tmp/a.png", 2) -> true
+     | _ -> false);
+  (* the row-only well rejects a file payload — no new drop *)
+  ignore
+    (Ui.handle ui s rects
+       (Input.Move (r4.x +. 5., r4.y +. 2.)));
+  ignore (Ui.handle ui s rects (Input.Drop_file "/tmp/b.png"));
+  Alcotest.(check bool) "no accept" true
+    (match Ui.last_drop ui with
+     | Some (3, "file:/tmp/a.png", 2) -> true
+     | _ -> false);
+  (* dropped text uses the "text:" namespace *)
+  ignore
+    (Ui.handle ui s rects
+       (Input.Move (r3.x +. 5., r3.y +. 2.)));
+  ignore (Ui.handle ui s rects (Input.Drop_text "hello"));
+  Alcotest.(check bool) "text drop" true
+    (match Ui.last_drop ui with
+     | Some (3, "text:hello", 3) -> true
+     | _ -> false)
 
 let test_overlay_close () =
   let s =
@@ -1241,12 +1497,14 @@ let () =
       ( "checksum",
         [ Alcotest.test_case "ops" `Quick test_checksum ] );
       ( "scroll",
-        [ Alcotest.test_case "wheel" `Quick test_scroll ] );
+        [ Alcotest.test_case "wheel" `Quick test_scroll;
+          Alcotest.test_case "wheel-x" `Quick test_wheel_x ] );
       ( "demo",
         [ Alcotest.test_case "dispatch flow" `Quick test_demo_dispatch ] );
       ( "selection",
         [ Alcotest.test_case "shift+all" `Quick test_sel_shift_and_all;
-          Alcotest.test_case "static text" `Quick test_static_select ] );
+          Alcotest.test_case "static text" `Quick test_static_select;
+          Alcotest.test_case "siblings" `Quick test_sel_siblings ] );
       ( "clipboard",
         [ Alcotest.test_case "cut/copy/paste" `Quick test_clipboard_cycle;
           Alcotest.test_case "undo/redo" `Quick test_undo_redo ] );
@@ -1257,11 +1515,13 @@ let () =
         [ Alcotest.test_case "typeahead" `Quick test_list_typeahead;
           Alcotest.test_case "scroll request" `Quick test_scroll_request ] );
       ( "dnd",
-        [ Alcotest.test_case "drag drop" `Quick test_drag_drop ] );
+        [ Alcotest.test_case "drag drop" `Quick test_drag_drop;
+          Alcotest.test_case "file drop" `Quick test_file_drop ] );
       ( "overlay",
         [ Alcotest.test_case "modal+esc" `Quick test_overlay_close;
           Alcotest.test_case "light dismiss" `Quick test_light_dismiss;
           Alcotest.test_case "appear once" `Quick test_appear_once;
           Alcotest.test_case "autofocus" `Quick test_autofocus ] );
       ( "headless",
-        [ Alcotest.test_case "checksum" `Quick test_headless_checksum ] ) ]
+        [ Alcotest.test_case "checksum" `Quick test_headless_checksum;
+          Alcotest.test_case "drop-file" `Quick test_headless_drop ] ) ]

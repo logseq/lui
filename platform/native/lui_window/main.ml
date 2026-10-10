@@ -4,7 +4,7 @@
    through Lui_window.Ui into Lui_app.dispatch_event and presents
    frames via SDL_GL_SwapWindow.
 
-   Flags: --width N --height N --headless N. *)
+   Flags: --width N --height N --headless N --drop-file PATH. *)
 
 open Lui_window
 open Lui_window_demo
@@ -85,9 +85,21 @@ let input_of_event e =
            mods_of_keymod (Sdl.get_mod_state ()) ))
   | `Mouse_wheel ->
     Some
-      (Wheel
+      (Wheel_mods
          ( float (Sdl.Event.get e Sdl.Event.mouse_wheel_x),
-           float (Sdl.Event.get e Sdl.Event.mouse_wheel_y) ))
+           float (Sdl.Event.get e Sdl.Event.mouse_wheel_y),
+           mods_of_keymod (Sdl.get_mod_state ()) ))
+  | `Drop_file ->
+    (* SDL_DROPFILE: the payload string must be freed once read *)
+    let s = Sdl.Event.drop_file_file e in
+    Sdl.Event.drop_file_free e;
+    (match s with Some f -> Some (Drop_file f) | None -> None)
+  | `Drop_text ->
+    (* SDL_DROPTEXT: the dragged text rides the same field *)
+    let s = Sdl.Event.drop_file_file e in
+    Sdl.Event.drop_file_free e;
+    (match s with Some t -> Some (Drop_text t) | None -> None)
+  | `Drop_begin | `Drop_complete -> None
   | _ -> None
 
 type stats = {
@@ -317,26 +329,34 @@ let () =
     | None -> Rects.zero
   in
   let scroll_shift_of id =
-    let rec sum aid acc =
+    let rec sum aid (sx, sy) =
       match Lui_store.parent (store_of ()) aid with
-      | Some p -> sum p (acc +. Ui.scroll_offset ui p)
-      | None -> acc
+      | Some p ->
+        sum p
+          (sx +. Ui.scroll_offset_x ui p, sy +. Ui.scroll_offset ui p)
+      | None -> (sx, sy)
     in
-    sum id 0.
+    sum id (0., 0.)
   in
   let shifted_rect id =
     let r = engine_rect id in
-    { r with Lui_scene.y = r.Lui_scene.y -. scroll_shift_of id }
+    let sx, sy = scroll_shift_of id in
+    { r with
+      Lui_scene.x = r.Lui_scene.x -. sx;
+      Lui_scene.y = r.Lui_scene.y -. sy }
   in
-  let content_top_bottom id =
+  let content_box id =
     List.fold_left
-      (fun (top, bot) d ->
-         if d = id then (top, bot)
+      (fun (l, t, rgt, b) d ->
+         if d = id then (l, t, rgt, b)
          else
            let r = engine_rect d in
-           (Float.min top r.Lui_scene.y,
-            Float.max bot (r.Lui_scene.y +. r.Lui_scene.h)))
-      (Float.max_float, Float.min_float)
+           (Float.min l r.Lui_scene.x,
+            Float.min t r.Lui_scene.y,
+            Float.max rgt (r.Lui_scene.x +. r.Lui_scene.w),
+            Float.max b (r.Lui_scene.y +. r.Lui_scene.h)))
+      (Float.max_float, Float.max_float,
+       Float.min_float, Float.min_float)
       (Lui_store.preorder ~root:id (store_of ()))
   in
   let rect_intersect a b =
@@ -368,7 +388,7 @@ let () =
              if cap <= 0.001 then None
              else
                let cr = engine_rect id in
-               let top, bot = content_top_bottom id in
+               let _, top, _, bot = content_box id in
                let content = Float.max (bot -. top) 0.001 in
                Some
                  Lui_paint.
@@ -444,16 +464,16 @@ let () =
   (* Populate the hit-test mirror from the layout engine: each node's
      shifted rect clipped to its scrollable ancestors' viewports (so
      scrolled-off content can't be hit), then each scroll container's
-     range from its unshifted content extent. Runs after every repaint
-     while the engine is fresh. *)
+     range on both axes from its unshifted content extent. Runs after
+     every repaint while the engine is fresh. *)
   let populate_rects () =
     Hashtbl.reset rects;
     List.iter
       (fun id ->
          let base = engine_rect id in
-         let rec walk aid (shift, clip) =
+         let rec walk aid ((sx, sy), clip) =
            match Lui_store.parent store aid with
-           | None -> (shift, clip)
+           | None -> ((sx, sy), clip)
            | Some p ->
              let clip =
                if Ui.scrollable store p then
@@ -463,19 +483,27 @@ let () =
                  | _ -> clip
                else clip
              in
-             walk p (shift +. Ui.scroll_offset ui p, clip)
+             walk p
+               ((sx +. Ui.scroll_offset_x ui p,
+                 sy +. Ui.scroll_offset ui p), clip)
          in
-         let shift, clip = walk id (0., base) in
-         let r = { base with Lui_scene.y = base.Lui_scene.y -. shift } in
+         let (sx, sy), clip = walk id ((0., 0.), base) in
+         let r =
+           { base with
+             Lui_scene.x = base.Lui_scene.x -. sx;
+             Lui_scene.y = base.Lui_scene.y -. sy }
+         in
          Hashtbl.replace rects id (rect_intersect r clip))
       (Lui_store.preorder store);
     List.iter
       (fun id ->
          if Ui.scrollable store id then
            let cr = engine_rect id in
-           let top, bot = content_top_bottom id in
+           let l, t, rgt, b = content_box id in
            Ui.set_scroll_cap ui id
-             (Float.max 0. (bot -. top -. cr.Lui_scene.h)))
+             (Float.max 0. (b -. t -. cr.Lui_scene.h));
+           Ui.set_scroll_cap_x ui id
+             (Float.max 0. (rgt -. l -. cr.Lui_scene.w)))
       (Lui_store.preorder store)
   in
   let backend =
@@ -649,6 +677,43 @@ let () =
       else go := false
     done
   in
+  (* Synthetic OS drops (--drop-file): on frame 1 each path lands on
+     the deepest target accepting its namespaced payload — found by
+     scanning the store rather than hard-coding a hit point, so the
+     injection follows wherever the demo puts its drop well. *)
+  let inject_drops () =
+    List.iter
+      (fun path ->
+         let payload = "file:" ^ path in
+         match
+           List.find_opt
+             (fun id -> Ui.drop_accepts store id payload)
+             (Lui_store.preorder store)
+         with
+         | Some id ->
+           let r = Rects.get rects id in
+           let s = !scale_cell in
+           let cx = (r.Lui_scene.x +. r.Lui_scene.w /. 2.) /. s
+           and cy = (r.Lui_scene.y +. r.Lui_scene.h /. 2.) /. s in
+           apply_actions
+             (Ui.handle ui store rects (Input.Move (cx, cy)));
+           apply_actions
+             (Ui.handle ui store rects (Input.Drop_file path))
+         | None -> log "drop: no target accepts %s" payload)
+      (List.rev cfg.drop_files)
+  in
+  (* Drops are host-local: the app learns of them through this poll,
+     which forwards each new (target, payload, serial) triple into the
+     demo model once. *)
+  let drop_seen = ref 0 in
+  let poll_drop () =
+    match Ui.last_drop ui with
+    | Some (_, payload, seq) when seq <> !drop_seen ->
+      drop_seen := seq;
+      log "drop: payload=%s" payload;
+      ignore (Lui_app.send app (Demo_app.Dropped payload))
+    | _ -> ()
+  in
   let frames_target = cfg.headless_frames in
   let checksum = Checksum.create () in
   let st = { frames = 0; acc_ms = 0.; min_ms = 1e9; max_ms = 0. } in
@@ -715,6 +780,10 @@ let () =
   while continue () do
     let t0 = perf_s () in
     drain_events ();
+    (* Synthetic drop injection fires once rects exist (frame 0
+       populated them): the pointer is moved onto the well first,
+       matching where a real SDL drop would land. *)
+    if headless && !frame = 1 then inject_drops ();
     (* Patches queued by dispatched events land in the store here;
        the repaint below picks them up through the layout sync. *)
     ignore (Lui_app.flush app);
@@ -722,6 +791,7 @@ let () =
        completions, visible-range reports, modal focus save/restore. *)
     apply_actions (Ui.store_changed ui store);
     poll_driver ();
+    poll_drop ();
     (* Report the caret once per frame: while a composition is open
        the state machine emits Ime_rect on movement so the candidate
        window tracks the caret; idle, the rect is only remembered. *)

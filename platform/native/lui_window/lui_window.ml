@@ -12,9 +12,15 @@ type config = {
   width : int;
   height : int;
   headless_frames : int option;
+  drop_files : string list;
+      (** [--drop-file PATH] repeat flag: synthetic OS file drops the
+          headless driver injects on frame 1 (at the deepest target
+          accepting the ["file:"] payload) — exercises the SDL_DROPFILE
+          channel without a real OS drag. *)
 }
 
-let default_config = { width = 960; height = 640; headless_frames = None }
+let default_config =
+  { width = 960; height = 640; headless_frames = None; drop_files = [] }
 
 let parse_args argv =
   let rec loop cfg = function
@@ -30,7 +36,9 @@ let parse_args argv =
       (match int_of_string_opt v with
        | Some n when n > 0 -> loop { cfg with headless_frames = Some n } tl
        | _ -> Error ("invalid --headless " ^ v))
-    | ("--width" | "--height" | "--headless") :: [] ->
+    | "--drop-file" :: v :: tl ->
+      loop { cfg with drop_files = v :: cfg.drop_files } tl
+    | ("--width" | "--height" | "--headless" | "--drop-file") :: [] ->
       Error "missing value for flag"
     | arg :: _ -> Error ("unknown argument " ^ arg)
     | [] -> Ok cfg
@@ -98,6 +106,18 @@ module Input = struct
             pure module *)
     | Resize of int * int
     | Wheel of float * float
+        (** dx dy — SDL convention: +y scrolls content up *)
+    | Wheel_mods of float * float * mods
+        (** wheel deltas with the modifier state at dispatch — Shift
+            turns the vertical delta horizontal *)
+    | Drop_file of string
+        (** OS file drop (SDL_DROPFILE). Lands at the last pointer
+            position — SDL drop events carry no coordinates. The
+            payload offered to matching drop targets is
+            ["file:" ^ path], so [data-drop-accept="file:"] selects
+            it. *)
+    | Drop_text of string
+        (** OS text drop (SDL_DROPTEXT); payload ["text:" ^ s]. *)
     | Quit_input
 
   (* SDL_Scancode integer constants, kept in this module (not the
@@ -432,20 +452,25 @@ module Ui = struct
     mutable ime : Lui_ime.state;
     mutable dirty : bool;
     (* Scroll: offset and max offset (device px) per scroll container
-       id. The driver computes caps from the layout engine's content
-       extents each frame; wheel deltas scroll the deepest scrollable
+       id, per axis — scroll_off/scroll_cap track y, *_x track x. The
+       driver computes caps from the layout engine's content extents
+       each frame; wheel deltas scroll the deepest scrollable
        ancestor under the pointer. *)
     scroll_off : (int, float) Hashtbl.t;
     scroll_cap : (int, float) Hashtbl.t;
+    scroll_off_x : (int, float) Hashtbl.t;
+    scroll_cap_x : (int, float) Hashtbl.t;
     (* Last pointer position in logical px — the wheel's implicit
        target since SDL mouse-wheel events carry no coordinates. *)
     mutable last_x : float;
     mutable last_y : float;
     (* Editable selection: byte offsets into [shadow]; [anchor = caret]
        is the collapsed caret. Static user-select=text nodes keep a
-       node-local selection so they never steal field focus. *)
+       focus-independent selection: (anchor node, anchor byte, focus
+       node, focus byte) — the focus endpoint may sit on a sibling
+       text node of the anchor's container (cross-node selection). *)
     mutable sel_anchor : int;
-    mutable sel_text : (int * int * int) option;
+    mutable sel_text : (int * int * int * int) option;
     (* Keyboard-driven focus (Tab) vs pointer-driven — the ring state
        paints via the existing focus-shadow channel. *)
     mutable focus_visible : bool;
@@ -465,12 +490,15 @@ module Ui = struct
     mutable sel_drag : int;
     (* data-attrs drag/drop: grabbed source (threshold pending), live
        (source, payload) session, the accepting target under the
-       pointer, and the last completed drop. The wire carries no drop
+       pointer, the last completed drop as (target, payload, serial),
+       and the serial counter — the driver polls the serial to notice
+       repeat drops of an identical payload. The wire carries no drop
        event — this is host-local by design (gaps.md TODO). *)
     mutable drag_src : int;
     mutable drag : (int * string) option;
     mutable drop_target : int;
-    mutable last_drop : (int * string) option;
+    mutable last_drop : (int * string * int) option;
+    mutable drop_seq : int;
     (* Overlay tracking: topmost overlay-kind id, its modality, and the
        focus a modal surface saved and restores on close. *)
     mutable overlay_id : int;
@@ -496,12 +524,14 @@ module Ui = struct
       press_detail = 0; focused = 0; caret = 0; shadow = "";
       ime = Lui_ime.initial; dirty = true;
       scroll_off = Hashtbl.create 8; scroll_cap = Hashtbl.create 8;
+      scroll_off_x = Hashtbl.create 8; scroll_cap_x = Hashtbl.create 8;
       last_x = 0.; last_y = 0.;
       sel_anchor = 0; sel_text = None; focus_visible = false;
       undo = []; redo = [];
       list_scope = 0; hl_item = 0; typeahead = "";
       down_x = 0.; down_y = 0.; sel_drag = 0;
       drag_src = 0; drag = None; drop_target = 0; last_drop = None;
+      drop_seq = 0;
       overlay_id = 0; overlay_modal = false; saved_focus = 0;
       autofocus_done = false;
       seen = Hashtbl.create 64;
@@ -539,21 +569,39 @@ module Ui = struct
         | "scroll" | "auto" -> true
         | _ -> false)
 
-  let scroll_offset t id =
-    Option.value ~default:0. (Hashtbl.find_opt t.scroll_off id)
+  (* Scroll axes: y is the established vertical path; x adds
+     horizontal range for wheel-x / shift+wheel and horizontal
+     reveal. *)
+  type axis = X | Y
 
-  let scroll_cap t id =
-    Option.value ~default:0. (Hashtbl.find_opt t.scroll_cap id)
+  let scroll_tbls t = function
+    | Y -> (t.scroll_off, t.scroll_cap)
+    | X -> (t.scroll_off_x, t.scroll_cap_x)
 
-  let set_scroll_cap t id cap =
-    Hashtbl.replace t.scroll_cap id cap;
+  let scroll_offset_axis t axis id =
+    Option.value ~default:0.
+      (Hashtbl.find_opt (fst (scroll_tbls t axis)) id)
+
+  let scroll_cap_axis t axis id =
+    Option.value ~default:0.
+      (Hashtbl.find_opt (snd (scroll_tbls t axis)) id)
+
+  let set_scroll_cap_axis t axis id cap =
+    Hashtbl.replace (snd (scroll_tbls t axis)) id cap;
     (* A shrinking cap (content removed, window grown) clamps any
        offset it left dangling past the new range. *)
-    let off = scroll_offset t id in
+    let off = scroll_offset_axis t axis id in
     if off > cap then begin
-      Hashtbl.replace t.scroll_off id cap;
+      Hashtbl.replace (fst (scroll_tbls t axis)) id cap;
       t.dirty <- true
     end
+
+  let scroll_offset t = scroll_offset_axis t Y
+  let scroll_cap t = scroll_cap_axis t Y
+  let set_scroll_cap t = set_scroll_cap_axis t Y
+  let scroll_offset_x t = scroll_offset_axis t X
+  let scroll_cap_x t = scroll_cap_axis t X
+  let set_scroll_cap_x t = set_scroll_cap_axis t X
 
   let text_of store id = string_prop store id "text"
 
@@ -783,6 +831,102 @@ module Ui = struct
     string_prop store id "user-select" = "text"
     || data_attr store id "data-user-select" = Some "text"
 
+  let index_of id items =
+    let rec go i = function
+      | a :: _ when a = id -> Some i
+      | _ :: tl -> go (i + 1) tl
+      | [] -> None
+    in
+    go 0 items
+
+  (* Selectable text nodes under [id]'s parent, in child order — the
+     bound a cross-node selection may span. Siblings that do not opt
+     into selection simply stay outside the range. *)
+  let sel_siblings store id =
+    match Lui_store.parent store id with
+    | None -> []
+    | Some p ->
+      List.filter
+        (fun c -> selectable_text store c)
+        (Lui_store.child_ids store p)
+
+  (* The focus endpoint a drag at [(x,y)] (device px) extends to.
+     The selection stays inside the anchor's container: the pointer
+     maps onto the sibling band by y — inside a node to its byte
+     offset, above the first sibling to its start, below the last to
+     its end, inside a gap to the start of the next sibling. *)
+  let sel_extend t store rects anchor ~x ~y =
+    let rec go last = function
+      | [] ->
+        (match last with
+         | Some l ->
+           Some (l, String.length (text_of store l))
+         | None -> None)
+      | id :: tl ->
+        let r = Rects.get rects id in
+        if rect_empty r then go last tl
+        else if y <= r.Lui_scene.y +. r.h then
+          let off =
+            if y < r.Lui_scene.y then 0
+            else
+              offset_at_point t store rects id ~x ~y
+                (text_of store id)
+          in
+          Some (id, off)
+        else go (Some id) tl
+    in
+    go None (sel_siblings store anchor)
+
+  (* The selected text in document order: a same-node selection takes
+     the usual substring; a spanning selection takes the start
+     endpoint's suffix, every whole middle sibling and the end
+     endpoint's prefix, joined with newlines. Endpoints in different
+     containers (out of bound) yield nothing. *)
+  let sel_text_string t store =
+    match t.sel_text with
+    | None -> None
+    | Some (an, ao, fn, fo) ->
+      if an = fn then begin
+        let s = text_of store an in
+        let lo = min ao fo
+        and hi = min (max ao fo) (String.length s) in
+        if hi > lo then Some (String.sub s lo (hi - lo)) else None
+      end else
+        (match
+           (Lui_store.parent store an, Lui_store.parent store fn)
+         with
+         | Some pa, Some pf when pa = pf ->
+           let sibs = sel_siblings store an in
+           (match index_of an sibs, index_of fn sibs with
+            | Some ai, Some fi ->
+              let lo_i, hi_i = min ai fi, max ai fi in
+              (* ordered endpoints: (start off, end off) *)
+              let s_lo, s_hi =
+                if ai <= fi then (ao, fo) else (fo, ao)
+              in
+              let parts =
+                List.mapi
+                  (fun i id ->
+                     if i < lo_i || i > hi_i then None
+                     else
+                       let s = text_of store id in
+                       let len = String.length s in
+                       if i = lo_i then
+                         let o = min s_lo len in
+                         Some (String.sub s o (len - o))
+                       else if i = hi_i then
+                         Some (String.sub s 0 (min s_hi len))
+                       else Some s)
+                  sibs
+              in
+              let s =
+                String.concat "\n"
+                  (List.filter_map Fun.id parts)
+              in
+              if s = "" then None else Some s
+            | _ -> None)
+         | _ -> None)
+
   (* The focused node is editable only while it admits TextChanged. *)
   let editable t store =
     t.focused <> 0
@@ -827,11 +971,8 @@ module Ui = struct
   (* Selected text the accelerators act on: a live static selection
      first, else the focused node's range. *)
   let active_sel_text t store =
-    match t.sel_text with
-    | Some (nid, a, b) ->
-      let s = string_prop store nid "text" in
-      let lo = min a b and hi = min (max a b) (String.length s) in
-      if hi > lo then Some (String.sub s lo (hi - lo)) else None
+    match sel_text_string t store with
+    | Some s -> Some s
     | None ->
       if editable t store then
         let lo, hi = sel_range t in
@@ -880,19 +1021,22 @@ module Ui = struct
            [ Dispatch (VisibleRange (id, f, l)) ])
     else []
 
-  let scroll_set t store id off =
-    let cap = scroll_cap t id in
+  let scroll_set ?(axis = Y) t store id off =
+    let cap = scroll_cap_axis t axis id in
     let off' = Float.max 0. (Float.min cap off) in
-    if Float.abs (off' -. scroll_offset t id) > 0.001 then begin
-      Hashtbl.replace t.scroll_off id off';
+    if Float.abs (off' -. scroll_offset_axis t axis id) > 0.001
+    then begin
+      Hashtbl.replace (fst (scroll_tbls t axis)) id off';
       t.dirty <- true
     end;
-    report_vrange t store id
+    (* VisibleRange is a row concept — reported on y moves only. *)
+    if axis = Y then report_vrange t store id else []
 
-  let scroll_to t store id off = scroll_set t store id off
+  let scroll_to ?(axis = Y) t store id off =
+    scroll_set ~axis t store id off
 
-  let scroll_by t store id d =
-    scroll_set t store id (scroll_offset t id +. d)
+  let scroll_by ?(axis = Y) t store id d =
+    scroll_set ~axis t store id (scroll_offset_axis t axis id +. d)
 
   (* Nearest scrollable ancestor-or-self of [id]. *)
   let scroll_ancestor store id =
@@ -905,7 +1049,8 @@ module Ui = struct
     in
     go id
 
-  (* Reveal [id] inside its nearest scrollable ancestor. *)
+  (* Reveal [id] inside its nearest scrollable ancestor — minimal
+     reveal on both axes (a clipped column scrolls horizontally too). *)
   let scroll_show t store id =
     match scroll_ancestor store id with
     | None -> []
@@ -913,15 +1058,19 @@ module Ui = struct
       let ar = t.content_rect a and nr = t.content_rect id in
       if rect_empty ar || rect_empty nr then []
       else begin
-        let top = nr.Lui_scene.y -. ar.Lui_scene.y in
-        let bot = top +. nr.Lui_scene.h in
-        let off = scroll_offset t a in
-        let off' =
-          if top < off then top
-          else if bot > off +. ar.Lui_scene.h then bot -. ar.Lui_scene.h
+        let reveal lo hi off view =
+          if lo < off then lo
+          else if hi > off +. view then hi -. view
           else off
         in
-        scroll_set t store a off'
+        let top = nr.Lui_scene.y -. ar.Lui_scene.y in
+        let left = nr.Lui_scene.x -. ar.Lui_scene.x in
+        scroll_set ~axis:Y t store a
+          (reveal top (top +. nr.Lui_scene.h)
+             (scroll_offset t a) ar.Lui_scene.h)
+        @ scroll_set ~axis:X t store a
+            (reveal left (left +. nr.Lui_scene.w)
+               (scroll_offset_x t a) ar.Lui_scene.w)
       end
 
   (* scroll-anchor aligned reveal for scroll-target requests. *)
@@ -953,14 +1102,6 @@ module Ui = struct
       List.filter
         (fun id -> kind_name store id = "list-item")
         (Lui_store.preorder ~root:t.list_scope store)
-
-  let index_of id items =
-    let rec go i = function
-      | a :: _ when a = id -> Some i
-      | _ :: tl -> go (i + 1) tl
-      | [] -> None
-    in
-    go 0 items
 
   (* Highlight [items.(i)] and scroll it into view. *)
   let hl_index t store items i =
@@ -1008,6 +1149,13 @@ module Ui = struct
            && String.length payload >= String.length p
            && String.sub payload 0 (String.length p) = p)
         (String.split_on_char ',' acc)
+
+  (* Record a completed drop and bump the serial — the driver polls
+     the serial so a repeat drop of the same payload is not lost. *)
+  let record_drop t id payload =
+    t.drop_seq <- t.drop_seq + 1;
+    t.last_drop <- Some (id, payload, t.drop_seq);
+    t.dirty <- true
 
   (* ---- focusables + keyboard activation -------------------------------- *)
 
@@ -1415,6 +1563,66 @@ module Ui = struct
 
   let primary mods = mods.Input.ctrl || mods.Input.meta
 
+  (* Wheel deltas scroll the deepest scrollable ancestor under the
+     pointer per axis — a +x delta scrolls right, a +y delta scrolls
+     content up (SDL convention), and Shift turns the vertical delta
+     horizontal (the desktop's wheel-x gesture). Each axis applies to
+     the first container on the hit path with range on that axis, so
+     an unscrollable-x container does not swallow a horizontal delta
+     for a deeper one. *)
+  let wheel t store rects dx dy mods =
+    let ix = dx +. if mods.Input.shift then -. dy else 0. in
+    let iy = if mods.Input.shift then 0. else -. dy in
+    if ix = 0. && iy = 0. then []
+    else begin
+      let path =
+        hit_path store rects
+          ~x:(t.last_x *. t.scale) ~y:(t.last_y *. t.scale)
+      in
+      let scroll_axis axis intent =
+        if intent = 0. then []
+        else
+          match
+            List.find_opt
+              (fun id ->
+                 scrollable store id
+                 && scroll_cap_axis t axis id > 0.001)
+              path
+          with
+          | Some id ->
+            let cap = scroll_cap_axis t axis id in
+            let off = scroll_offset_axis t axis id in
+            let off' =
+              Float.max 0.
+                (Float.min cap (off +. intent *. 44. *. t.scale))
+            in
+            if off' <> off then begin
+              Hashtbl.replace (fst (scroll_tbls t axis)) id off';
+              t.dirty <- true
+            end;
+            []
+          | None -> []
+      in
+      scroll_axis X ix @ scroll_axis Y iy
+    end
+
+  (* OS-side drops (SDL_DROPFILE/DROPTEXT): land at the pointer's
+     last position on the deepest matching target. File drops offer
+     the payload ["file:" ^ path] and text drops ["text:" ^ s] — the
+     namespacing lets data-drop-accept prefixes distinguish them from
+     internal drags. Recorded into [last_drop] like an internal
+     drag — the wire carries no drop event. *)
+  let os_drop t store rects payload =
+    let path =
+      hit_path store rects
+        ~x:(t.last_x *. t.scale) ~y:(t.last_y *. t.scale)
+    in
+    match
+      List.find_opt (fun id -> drop_accepts store id payload) path
+    with
+    | Some id -> record_drop t id payload; []
+    | None -> []
+
   let handle t store rects input =
     let pre = sync t store in
     pre
@@ -1462,16 +1670,16 @@ module Ui = struct
         t.dirty <- true;
         []
       end else if t.sel_drag <> 0 then begin
-        (* drag-select: extend the selection over the glyphs under
-           the pointer *)
+        (* drag-select: extend the focus endpoint across the
+           selectable siblings of the anchor's container (a drag into
+           a neighbouring text node selects across both) *)
         let id = t.sel_drag in
         (match t.sel_text with
-         | Some (nid, a, _) when nid = id ->
-           let off =
-             offset_at_point t store rects id ~x:dx ~y:dy
-               (text_of store id)
-           in
-           t.sel_text <- Some (id, a, off)
+         | Some (an, a, _, _) ->
+           (match sel_extend t store rects an ~x:dx ~y:dy with
+            | Some (nid, off) ->
+              t.sel_text <- Some (an, a, nid, off)
+            | None -> ())
          | _ when id = t.focused ->
            t.caret <-
              offset_at_point t store rects id ~x:dx ~y:dy t.shadow
@@ -1571,12 +1779,21 @@ module Ui = struct
                let text = text_of store id in
                let off =
                  offset_at_point t store rects id ~x:dx ~y:dy text in
-               let a, b =
-                 if clicks >= 3 then line_bounds text off
-                 else if clicks = 2 then word_bounds text off
-                 else (off, off)
-               in
-               t.sel_text <- Some (id, a, b); t.sel_drag <- id
+               (match mods.shift, t.sel_text with
+                | true, Some (an, ao, _, _)
+                  when Lui_store.parent store an
+                       = Lui_store.parent store id ->
+                  (* shift-click extends the recorded anchor onto a
+                     sibling text node *)
+                  t.sel_text <- Some (an, ao, id, off)
+                | _ ->
+                  let a, b =
+                    if clicks >= 3 then line_bounds text off
+                    else if clicks = 2 then word_bounds text off
+                    else (off, off)
+                  in
+                  t.sel_text <- Some (id, a, id, b));
+               t.sel_drag <- id
              | `none ->
                t.sel_drag <- 0;
                if not mods.shift then t.sel_text <- None);
@@ -1656,7 +1873,7 @@ module Ui = struct
             the click it rode on is consumed *)
          (match t.drag with
           | Some (_, payload) when t.drop_target <> 0 ->
-            t.last_drop <- Some (t.drop_target, payload)
+            record_drop t t.drop_target payload
           | _ -> ());
          t.drag <- None;
          t.drag_src <- 0;
@@ -1744,19 +1961,32 @@ module Ui = struct
                    [ Focus_changed 0 ]
                  end else [ Quit ]))
          | Input.Other 4 when prim ->
-           (* A: select all — editable range or the static selection's
-              node *)
+           (* A: select all — editable range, or every selectable
+              sibling in the static selection's container *)
            (match editable t store, t.sel_text with
             | true, _ ->
               t.sel_anchor <- 0;
               t.caret <- String.length t.shadow;
               t.dirty <- true;
               []
-            | false, Some (nid, _, _) ->
-              t.sel_text <-
-                Some (nid, 0, String.length (text_of store nid));
-              t.dirty <- true;
-              []
+            | false, Some (an, _, _, _) ->
+              (match sel_siblings store an with
+               | first :: _ ->
+                 let last =
+                   List.nth (sel_siblings store an)
+                     (List.length (sel_siblings store an) - 1)
+                 in
+                 t.sel_text <-
+                   Some
+                     (first, 0, last,
+                      String.length (text_of store last));
+                 t.dirty <- true;
+                 []
+               | [] ->
+                 t.sel_text <-
+                   Some (an, 0, an, String.length (text_of store an));
+                 t.dirty <- true;
+                 [])
             | _ -> [])
          | Input.Other 6 when prim ->
            (* C: copy the active selection *)
@@ -1801,32 +2031,14 @@ module Ui = struct
            else list_key t store key mods)
       end
     | Input.Resize (w, h) -> [ Resize_host (w, h) ]
-    | Input.Wheel (_dx, dy) ->
-      (* Scroll the deepest scrollable ancestor under the pointer that
-         actually has range. SDL reports +y for scroll-away
-         (content up); offset grows with -dy, scaled to device px. *)
-      let path =
-        hit_path store rects
-          ~x:(t.last_x *. t.scale) ~y:(t.last_y *. t.scale)
-      in
-      (match
-         List.find_opt
-           (fun id -> scrollable store id && scroll_cap t id > 0.001)
-           path
-       with
-       | Some id ->
-         let cap = scroll_cap t id in
-         let off = scroll_offset t id in
-         let off' =
-           Float.max 0.
-             (Float.min cap (off -. (dy *. 44. *. t.scale)))
-         in
-         if off' <> off then begin
-           Hashtbl.replace t.scroll_off id off';
-           t.dirty <- true
-         end;
-         []
-       | None -> [])
+    | Input.Wheel (dx, dy) ->
+      wheel t store rects dx dy Input.mods_none
+    | Input.Wheel_mods (dx, dy, mods) ->
+      wheel t store rects dx dy mods
+    | Input.Drop_file path ->
+      os_drop t store rects ("file:" ^ path)
+    | Input.Drop_text s ->
+      os_drop t store rects ("text:" ^ s)
     | Input.Quit_input -> [ Quit ])
 
   let state_of t store id =
