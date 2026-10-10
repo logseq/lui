@@ -228,6 +228,40 @@ type property =
   | PopupX
   | PopupY
   | AvailableHeight
+  | FontSize
+  | FontWeight
+  | LineHeight
+  | LetterSpacing
+  | Position
+  | Inset
+  | InsetTop
+  | InsetRight
+  | InsetBottom
+  | InsetLeft
+  | ZIndex
+  | WhiteSpace
+  | TextOverflow
+  | Overflow
+  | UserSelect
+  | Cursor
+  | Shadow
+  | HoverBackground
+  | HoverOpacity
+  | HoverShadow
+  | PressedBackground
+  | PressedOpacity
+  | PressedShadow
+  | FocusShadow
+  | SelectedBackground
+  | SelectedShadow
+  | SelectedHoverShadow
+  | DisabledOpacity
+  | WidthViewport
+  | HeightViewport
+  | MinWidthViewport
+  | MaxWidthViewport
+  | MinHeightViewport
+  | MaxHeightViewport
 
 module Property_map : Map.S with type key = property
 

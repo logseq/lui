@@ -208,6 +208,40 @@ enum LUIProperty: String, Decodable, Hashable {
     case popupX = "x"
     case popupY = "y"
     case availableHeight = "available-height"
+    case fontSize = "font-size"
+    case fontWeight = "font-weight"
+    case lineHeight = "line-height"
+    case letterSpacing = "letter-spacing"
+    case position = "position"
+    case inset = "inset"
+    case insetTop = "inset-top"
+    case insetRight = "inset-right"
+    case insetBottom = "inset-bottom"
+    case insetLeft = "inset-left"
+    case zIndex = "z-index"
+    case whiteSpace = "white-space"
+    case textOverflow = "text-overflow"
+    case overflow = "overflow"
+    case userSelect = "user-select"
+    case cursor = "cursor"
+    case shadow = "shadow"
+    case hoverBackground = "hover-background"
+    case hoverOpacity = "hover-opacity"
+    case hoverShadow = "hover-shadow"
+    case pressedBackground = "pressed-background"
+    case pressedOpacity = "pressed-opacity"
+    case pressedShadow = "pressed-shadow"
+    case focusShadow = "focus-shadow"
+    case selectedBackground = "selected-background"
+    case selectedShadow = "selected-shadow"
+    case selectedHoverShadow = "selected-hover-shadow"
+    case disabledOpacity = "disabled-opacity"
+    case widthViewport = "width-viewport"
+    case heightViewport = "height-viewport"
+    case minWidthViewport = "min-width-viewport"
+    case maxWidthViewport = "max-width-viewport"
+    case minHeightViewport = "min-height-viewport"
+    case maxHeightViewport = "max-height-viewport"
 }
 
 enum LUISchemaMatrix {
@@ -229,7 +263,7 @@ enum LUISchemaMatrix {
         .swipeAction: [.text, .icon, .variant, .edge, .enabled, .background, .pressEnabled, .pointerEnabled],
         .filePicker: [.request, .types, .multiple, .source, .completion, .pickerAccept, .pickerDirectory, .enabled, .appearEnabled, .pointerEnabled],
         .filePreview: [.path, .pointerEnabled],
-        .kbd: [.text, .styleClass, .dataAttrs, .pointerEnabled],
+        .kbd: [.text, .styleClass, .dataAttrs, .pointerEnabled, .fontSize, .fontWeight, .lineHeight, .letterSpacing, .whiteSpace, .textOverflow, .userSelect, .cursor, .shadow, .hoverBackground, .hoverOpacity, .hoverShadow, .pressedBackground, .pressedOpacity, .pressedShadow, .focusShadow, .selectedBackground, .selectedShadow, .selectedHoverShadow, .disabledOpacity],
     ]
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [

@@ -411,6 +411,61 @@ let min_width context node width = int_property context node MinWidth width
 let max_width context node width = int_property context node MaxWidth width
 let min_height context node height = int_property context node MinHeight height
 let max_height context node height = int_property context node MaxHeight height
+let font_size context node size = string_property context node FontSize size
+let font_weight context node weight = int_property context node FontWeight weight
+let line_height context node height = string_property context node LineHeight height
+let letter_spacing context node spacing =
+  float_property context node LetterSpacing spacing
+let position context node value = string_property context node Position value
+let inset context node inset = float_property context node Inset inset
+let inset_top context node inset = float_property context node InsetTop inset
+let inset_right context node inset =
+  float_property context node InsetRight inset
+let inset_bottom context node inset =
+  float_property context node InsetBottom inset
+let inset_left context node inset = float_property context node InsetLeft inset
+let z_index context node index = int_property context node ZIndex index
+let white_space context node value = string_property context node WhiteSpace value
+let text_overflow context node value =
+  string_property context node TextOverflow value
+let overflow context node value = string_property context node Overflow value
+let user_select context node value = string_property context node UserSelect value
+let cursor context node value = string_property context node Cursor value
+let shadow context node value = string_property context node Shadow value
+let hover_background context node color =
+  string_property context node HoverBackground color
+let hover_opacity context node opacity =
+  float_property context node HoverOpacity opacity
+let hover_shadow context node value =
+  string_property context node HoverShadow value
+let pressed_background context node color =
+  string_property context node PressedBackground color
+let pressed_opacity context node opacity =
+  float_property context node PressedOpacity opacity
+let pressed_shadow context node value =
+  string_property context node PressedShadow value
+let focus_shadow context node value =
+  string_property context node FocusShadow value
+let selected_background context node color =
+  string_property context node SelectedBackground color
+let selected_shadow context node value =
+  string_property context node SelectedShadow value
+let selected_hover_shadow context node value =
+  string_property context node SelectedHoverShadow value
+let disabled_opacity context node opacity =
+  float_property context node DisabledOpacity opacity
+let width_viewport context node width =
+  float_property context node WidthViewport width
+let height_viewport context node height =
+  float_property context node HeightViewport height
+let min_width_viewport context node width =
+  float_property context node MinWidthViewport width
+let max_width_viewport context node width =
+  float_property context node MaxWidthViewport width
+let min_height_viewport context node height =
+  float_property context node MinHeightViewport height
+let max_height_viewport context node height =
+  float_property context node MaxHeightViewport height
 let container_relative_frame context node axes =
   string_property context node ContainerRelativeFrameValue axes
 let container_relative_frame_inset context node inset =

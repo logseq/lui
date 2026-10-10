@@ -46,7 +46,10 @@ let () =
   const masks = category => lines.filter(s => s.startsWith(category + ' ')).map(s => {
     const [, name, ...bits] = s.split(' ');
     const mask = bits.reduce((mask, bit, index) => bit === '1' ? mask | (1n << BigInt(index)) : mask, 0n);
-    return `        NodeKind::${name} => 0x${mask.toString(16)},`;
+    // Kind/property vocabularies outgrew a single u128 — emit (lo, hi).
+    const lo = mask & ((1n << 128n) - 1n);
+    const hi = mask >> 128n;
+    return `        NodeKind::${name} => (0x${lo.toString(16)}, 0x${hi.toString(16)}),`;
   }).join('\n');
   const enums = lines.filter(s => s.startsWith('string ')).map(s => {
     const [, name, mode, ...values] = s.split(' ');
@@ -58,25 +61,30 @@ let () =
 // Do not edit by hand. Enum order follows schema/components.json.
 use crate::wire_schema::{NodeKind, Property};
 
-pub(crate) fn property_supported(kind: NodeKind, property: Property) -> bool {
-    let mask: u128 = match kind {
-${masks('kind')}
-    };
-    mask & (1_u128 << property as u32) != 0
+fn mask_test(mask: (u128, u128), bit: u32) -> bool {
+    let value = if bit < 128 { mask.0 & (1_u128 << bit) } else { mask.1 & (1_u128 << (bit - 128)) };
+    value != 0
 }
 
-fn child_mask(parent: NodeKind) -> u128 {
+pub(crate) fn property_supported(kind: NodeKind, property: Property) -> bool {
+    let mask: (u128, u128) = match kind {
+${masks('kind')}
+    };
+    mask_test(mask, property as u32)
+}
+
+fn child_mask(parent: NodeKind) -> (u128, u128) {
     match parent {
 ${masks('child')}
     }
 }
 
 pub(crate) fn container_supported(kind: NodeKind) -> bool {
-    child_mask(kind) != 0
+    child_mask(kind) != (0, 0)
 }
 
 pub(crate) fn child_supported(parent: NodeKind, child: NodeKind) -> bool {
-    child_mask(parent) & (1_u128 << child as u32) != 0
+    mask_test(child_mask(parent), child as u32)
 }
 
 pub(crate) fn context_menu_host(kind: NodeKind) -> bool {

@@ -1455,6 +1455,176 @@
       "lg": "AvailableHeight",
       "wire": "available-height",
       "swift": "availableHeight"
+    },
+    {
+      "lg": "FontSize",
+      "wire": "font-size",
+      "swift": "fontSize"
+    },
+    {
+      "lg": "FontWeight",
+      "wire": "font-weight",
+      "swift": "fontWeight"
+    },
+    {
+      "lg": "LineHeight",
+      "wire": "line-height",
+      "swift": "lineHeight"
+    },
+    {
+      "lg": "LetterSpacing",
+      "wire": "letter-spacing",
+      "swift": "letterSpacing"
+    },
+    {
+      "lg": "Position",
+      "wire": "position",
+      "swift": "position"
+    },
+    {
+      "lg": "Inset",
+      "wire": "inset",
+      "swift": "inset"
+    },
+    {
+      "lg": "InsetTop",
+      "wire": "inset-top",
+      "swift": "insetTop"
+    },
+    {
+      "lg": "InsetRight",
+      "wire": "inset-right",
+      "swift": "insetRight"
+    },
+    {
+      "lg": "InsetBottom",
+      "wire": "inset-bottom",
+      "swift": "insetBottom"
+    },
+    {
+      "lg": "InsetLeft",
+      "wire": "inset-left",
+      "swift": "insetLeft"
+    },
+    {
+      "lg": "ZIndex",
+      "wire": "z-index",
+      "swift": "zIndex"
+    },
+    {
+      "lg": "WhiteSpace",
+      "wire": "white-space",
+      "swift": "whiteSpace"
+    },
+    {
+      "lg": "TextOverflow",
+      "wire": "text-overflow",
+      "swift": "textOverflow"
+    },
+    {
+      "lg": "Overflow",
+      "wire": "overflow",
+      "swift": "overflow"
+    },
+    {
+      "lg": "UserSelect",
+      "wire": "user-select",
+      "swift": "userSelect"
+    },
+    {
+      "lg": "Cursor",
+      "wire": "cursor",
+      "swift": "cursor"
+    },
+    {
+      "lg": "Shadow",
+      "wire": "shadow",
+      "swift": "shadow"
+    },
+    {
+      "lg": "HoverBackground",
+      "wire": "hover-background",
+      "swift": "hoverBackground"
+    },
+    {
+      "lg": "HoverOpacity",
+      "wire": "hover-opacity",
+      "swift": "hoverOpacity"
+    },
+    {
+      "lg": "HoverShadow",
+      "wire": "hover-shadow",
+      "swift": "hoverShadow"
+    },
+    {
+      "lg": "PressedBackground",
+      "wire": "pressed-background",
+      "swift": "pressedBackground"
+    },
+    {
+      "lg": "PressedOpacity",
+      "wire": "pressed-opacity",
+      "swift": "pressedOpacity"
+    },
+    {
+      "lg": "PressedShadow",
+      "wire": "pressed-shadow",
+      "swift": "pressedShadow"
+    },
+    {
+      "lg": "FocusShadow",
+      "wire": "focus-shadow",
+      "swift": "focusShadow"
+    },
+    {
+      "lg": "SelectedBackground",
+      "wire": "selected-background",
+      "swift": "selectedBackground"
+    },
+    {
+      "lg": "SelectedShadow",
+      "wire": "selected-shadow",
+      "swift": "selectedShadow"
+    },
+    {
+      "lg": "SelectedHoverShadow",
+      "wire": "selected-hover-shadow",
+      "swift": "selectedHoverShadow"
+    },
+    {
+      "lg": "DisabledOpacity",
+      "wire": "disabled-opacity",
+      "swift": "disabledOpacity"
+    },
+    {
+      "lg": "WidthViewport",
+      "wire": "width-viewport",
+      "swift": "widthViewport"
+    },
+    {
+      "lg": "HeightViewport",
+      "wire": "height-viewport",
+      "swift": "heightViewport"
+    },
+    {
+      "lg": "MinWidthViewport",
+      "wire": "min-width-viewport",
+      "swift": "minWidthViewport"
+    },
+    {
+      "lg": "MaxWidthViewport",
+      "wire": "max-width-viewport",
+      "swift": "maxWidthViewport"
+    },
+    {
+      "lg": "MinHeightViewport",
+      "wire": "min-height-viewport",
+      "swift": "minHeightViewport"
+    },
+    {
+      "lg": "MaxHeightViewport",
+      "wire": "max-height-viewport",
+      "swift": "maxHeightViewport"
     }
   ],
   "events": [
@@ -1748,7 +1918,27 @@
       "text",
       "style-class",
       "data-attrs",
-      "pointer-enabled"
+      "pointer-enabled",
+      "font-size",
+      "font-weight",
+      "line-height",
+      "letter-spacing",
+      "white-space",
+      "text-overflow",
+      "user-select",
+      "cursor",
+      "shadow",
+      "hover-background",
+      "hover-opacity",
+      "hover-shadow",
+      "pressed-background",
+      "pressed-opacity",
+      "pressed-shadow",
+      "focus-shadow",
+      "selected-background",
+      "selected-shadow",
+      "selected-hover-shadow",
+      "disabled-opacity"
     ]
   },
   "kindExtraProperties": {

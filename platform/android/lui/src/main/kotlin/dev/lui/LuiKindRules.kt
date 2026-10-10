@@ -17,6 +17,54 @@ internal object LuiKindRules {
 
     fun isModalSurface(kind: LuiNodeKind): Boolean = kind in modalSurfaceKinds
 
+    // Kinds carrying typography/selectability — the foreground set minus
+    // purely graphical kinds whose `size` prop governs their metrics.
+    fun isTextAppearanceKind(kind: LuiNodeKind): Boolean =
+        kind == LuiNodeKind.edgeInset ||
+            kind == LuiNodeKind.overlay ||
+            kind == LuiNodeKind.viewThatFits ||
+            kind == LuiNodeKind.text ||
+            kind == LuiNodeKind.heading ||
+            kind == LuiNodeKind.paragraph ||
+            kind == LuiNodeKind.label ||
+            isButtonKind(kind) ||
+            isTextControl(kind) ||
+            kind == LuiNodeKind.checkbox ||
+            kind == LuiNodeKind.toggle ||
+            kind == LuiNodeKind.radio ||
+            kind == LuiNodeKind.slider ||
+            kind == LuiNodeKind.numberStepper ||
+            kind == LuiNodeKind.select ||
+            kind == LuiNodeKind.dropdownMenu ||
+            kind == LuiNodeKind.menuItem ||
+            kind == LuiNodeKind.menuTrigger ||
+            kind == LuiNodeKind.listItem ||
+            kind == LuiNodeKind.tableCell ||
+            kind == LuiNodeKind.resizable ||
+            kind == LuiNodeKind.split ||
+            kind == LuiNodeKind.alert ||
+            kind == LuiNodeKind.bubble ||
+            kind == LuiNodeKind.statusBar ||
+            kind == LuiNodeKind.link
+
+    fun isTextFlowKind(kind: LuiNodeKind): Boolean =
+        kind == LuiNodeKind.text ||
+            kind == LuiNodeKind.heading ||
+            kind == LuiNodeKind.paragraph ||
+            kind == LuiNodeKind.label ||
+            kind == LuiNodeKind.button ||
+            kind == LuiNodeKind.toggleButton ||
+            kind == LuiNodeKind.menuItem ||
+            kind == LuiNodeKind.listItem ||
+            kind == LuiNodeKind.tableCell ||
+            kind == LuiNodeKind.alert ||
+            kind == LuiNodeKind.bubble ||
+            kind == LuiNodeKind.statusBar ||
+            kind == LuiNodeKind.link
+
+    fun isPositionedKind(kind: LuiNodeKind): Boolean =
+        kind != LuiNodeKind.root && kind != LuiNodeKind.tooltip && !isModalSurface(kind)
+
     fun isOverlaySurface(kind: LuiNodeKind): Boolean = kind in overlaySurfaceKinds
 
     fun isButtonKind(kind: LuiNodeKind): Boolean =
@@ -740,6 +788,55 @@ internal object LuiKindRules {
                 value.intValue?.let { it >= 0 } == true && kind == LuiNodeKind.list
             "scroll-animated", "track-visible-range" ->
                 value is LuiWireValue.Bool && kind == LuiNodeKind.list
+            "font-size", "line-height" ->
+                value is LuiWireValue.Str &&
+                    value.stringValue?.isNotBlank() == true &&
+                    isTextAppearanceKind(kind)
+            "font-weight" ->
+                value.intValue?.let { it in 1..1000 } == true &&
+                    isTextAppearanceKind(kind)
+            "letter-spacing" ->
+                value.numberValue?.isFinite() == true && isTextAppearanceKind(kind)
+            "user-select" ->
+                value.stringValue in setOf("none", "text") && isTextAppearanceKind(kind)
+            "white-space" ->
+                value.stringValue in setOf("normal", "nowrap") && isTextFlowKind(kind)
+            "text-overflow" ->
+                value.stringValue in setOf("clip", "ellipsis") && isTextFlowKind(kind)
+            "overflow" ->
+                value.stringValue in setOf("visible", "hidden", "auto") &&
+                    canContainChildren(kind) &&
+                    kind != LuiNodeKind.scroll &&
+                    kind != LuiNodeKind.list &&
+                    kind != LuiNodeKind.virtualList &&
+                    kind != LuiNodeKind.tooltip
+            "position" ->
+                value.stringValue in setOf("static", "relative", "absolute", "fixed") &&
+                    isPositionedKind(kind)
+            "inset", "inset-top", "inset-right", "inset-bottom", "inset-left" ->
+                value.numberValue?.isFinite() == true && isPositionedKind(kind)
+            "z-index" -> value is LuiWireValue.IntValue && isPositionedKind(kind)
+            "cursor" ->
+                value.stringValue in setOf("default", "pointer", "text") &&
+                    kind != LuiNodeKind.root
+            "shadow" ->
+                value is LuiWireValue.Str &&
+                    value.stringValue?.isNotBlank() == true &&
+                    kind != LuiNodeKind.tooltip &&
+                    !isModalSurface(kind)
+            "hover-background", "pressed-background", "selected-background",
+            "hover-shadow", "pressed-shadow", "focus-shadow", "selected-shadow",
+            "selected-hover-shadow" ->
+                value is LuiWireValue.Str &&
+                    value.stringValue?.isNotBlank() == true &&
+                    isPositionedKind(kind)
+            "hover-opacity", "pressed-opacity", "disabled-opacity" ->
+                value.numberValue?.let { it.isFinite() && it >= 0 && it <= 1 } == true &&
+                    isPositionedKind(kind)
+            "width-viewport", "height-viewport", "min-width-viewport",
+            "max-width-viewport", "min-height-viewport", "max-height-viewport" ->
+                value.numberValue?.let { it.isFinite() && it > 0 && it <= 1 } == true &&
+                    kind != LuiNodeKind.tooltip
             else -> false
         }
     }

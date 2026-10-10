@@ -431,7 +431,7 @@ fn container(
             .cursor_pointer()
             .on_click(press_handler(view, node.id));
     }
-    let mut element = style::all(element, node, cx.theme());
+    let mut element = style::all_interactive(element, node, cx.theme());
     // `data-window-titlebar` marks the container as the platform titlebar
     // region: dragging uncovered areas moves the window and a double-click
     // zooms it (hosts opt in via a transparent/merged titlebar).
@@ -622,7 +622,7 @@ fn tab_button(
             .cursor_pointer()
             .on_click(press_handler(view, node.id));
     }
-    let element = style::all(element, node, cx.theme());
+    let element = style::all_interactive(element, node, cx.theme());
     element.into_any_element()
 }
 
@@ -825,7 +825,7 @@ fn text_element(
             .cursor_pointer()
             .on_click(press_handler(view, node.id));
     }
-    element = style::all(element, node, cx.theme());
+    element = style::all_interactive(element, node, cx.theme());
     element.into_any_element()
 }
 
@@ -1318,7 +1318,7 @@ fn stacked(
             .child(child)
             .into_any_element()
     }));
-    style::all(element, node, cx.theme()).into_any_element()
+    style::all_interactive(element, node, cx.theme()).into_any_element()
 }
 
 /// Full-window backdrop that swallows outside clicks into `Dismiss`.

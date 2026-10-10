@@ -180,6 +180,44 @@ let web_color_value color =
   else if List.mem color semantic_color_names then "var(--color-" ^ color ^ ")"
   else color
 
+(* Shadow wire values embed a color that may be a semantic token; resolve
+   bare identifier tokens to the corresponding --color-* CSS var exactly
+   like [web_color_value]. Tokens inside parentheses (rgb/oklch/var/
+   color-mix arguments) are left untouched, and already-resolved var
+   references pass through. *)
+let web_shadow_value shadow =
+  let buf = Buffer.create (String.length shadow + 16) in
+  let word = Buffer.create 16 in
+  let depth = ref 0 in
+  let flush () =
+    if Buffer.length word > 0 then begin
+      let token = Buffer.contents word in
+      Buffer.clear word;
+      if List.mem token semantic_color_names then
+        Buffer.add_string buf ("var(--color-" ^ token ^ ")")
+      else Buffer.add_string buf token
+    end
+  in
+  String.iter
+    (fun c ->
+      if !depth > 0 then begin
+        Buffer.add_char buf c;
+        if c = '(' then incr depth else if c = ')' then decr depth
+      end
+      else
+        match c with
+        | '(' ->
+            incr depth;
+            flush ();
+            Buffer.add_char buf c
+        | 'a' .. 'z' | 'A' .. 'Z' | '-' -> Buffer.add_char word c
+        | c ->
+            flush ();
+            Buffer.add_char buf c)
+    shadow;
+  flush ();
+  Buffer.contents buf
+
 (* Which element actually receives children for a given node kind. Several
    components keep their content in a wrapper child (dropdown menu surface,
    split panes, modal layers, accordion panels). *)
