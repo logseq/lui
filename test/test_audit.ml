@@ -30,7 +30,7 @@ let keyed_states () =
   Alcotest.(check (list int)) "reordered nodes" [Lui_dynamic.keyed_node rows 2; Lui_dynamic.keyed_node rows 1]
     (Lui_runtime.children app parent);
   Signal.set source [1]; ignore (Lui_runtime.flush app);
-  Alcotest.(check bool) "removed row state disposed" true !(second_scope.Signal.disposed_scope);
+  Alcotest.(check bool) "removed row state disposed" true (Signal.scope_is_disposed second_scope);
   Signal.set source [1; 2]; ignore (Lui_runtime.flush app);
   let fresh, _ = Hashtbl.find states 2 in
   Alcotest.(check bool) "reinsertion has fresh state" false (fresh == second);
@@ -77,7 +77,7 @@ let backend_failure () =
 
 let subscription_failure () =
   let cancelled = ref 0 in
-  let subscription = { Signal.disposed = ref false; cancel = (fun () -> incr cancelled) } in
+  let subscription = Signal.make_subscription (fun () -> incr cancelled) in
   let coordinator = Lui_subscriptions.create () in
   let spec key start = { Lui_subscriptions.subscription_key = key;
     subscription_fingerprint = "v1"; start_subscription = start } in
@@ -166,7 +166,7 @@ let reload_mount_failure () =
   Alcotest.(check bool) "reload rejected" true
     (match status with Lui_hot_reload.ReloadRejected _ -> true | _ -> false);
   Alcotest.(check int) "mount failure happens before host commit" 1 !calls;
-  Alcotest.(check bool) "old scope remains mounted" true (!(old.Signal.mounted) && not !(old.disposed_scope));
+  Alcotest.(check bool) "old scope remains mounted" true (Signal.active old);
   Alcotest.(check bool) "scope reference remains valid" true (!(state.reload_view_scope) == old);
   let request = Lui_app.request_reload app in
   ignore (Lui_app.reload_view app request "valid" "contract" (view "valid") 0);
@@ -181,7 +181,7 @@ let reload_commit_failure () =
   Alcotest.(check bool) "unknown commit requests restart" true
     (match status with Lui_hot_reload.ReloadRestartRequired (_, "host commit uncertain") -> true | _ -> false);
   let state = Option.get app.Lui_app.app_reload_state in
-  Alcotest.(check bool) "current scope is live" false !(!(state.reload_view_scope).Signal.disposed_scope);
+  Alcotest.(check bool) "current scope is live" false (Signal.scope_is_disposed !(state.reload_view_scope));
   throwing := false;
   let request = Lui_app.request_reload app in
   let status = Lui_app.reload_view app request "old" "contract" (view "old") 0 in
@@ -362,7 +362,7 @@ let review_keyed_candidate_failure hook_failure =
   Alcotest.(check int) "unpublished nodes removed" 2 (Lui_runtime.mounted_count app);
   Alcotest.(check (list int)) "published rows retained" old (Lui_runtime.children app parent);
   List.iter (fun scope -> Alcotest.(check bool) "candidate scope disposed" true
-    !(scope.Signal.disposed_scope)) !scopes;
+    (Signal.scope_is_disposed scope)) !scopes;
   Signal.set source [1; 4]; ignore (Lui_runtime.flush app);
   Alcotest.(check int) "later publication succeeds without leaked nodes" 3 (Lui_runtime.mounted_count app)
 
@@ -440,9 +440,9 @@ let review_subscription_retirement () =
   let cancelled = ref [] in
   let spec version fail = {Lui_subscriptions.subscription_key = "one";
     subscription_fingerprint = version; start_subscription = (fun () ->
-      {Signal.disposed = ref false; cancel = (fun () ->
+      Signal.make_subscription (fun () ->
         cancelled := version :: !cancelled;
-        if fail then failwith "retirement failed")})} in
+        if fail then failwith "retirement failed"))} in
   ignore (Lui_subscriptions.reconcile coordinator 1 [spec "old" true]);
   check_failure "retirement error reported" (attempt (fun () ->
     ignore (Lui_subscriptions.reconcile coordinator 2 [spec "new" false])));

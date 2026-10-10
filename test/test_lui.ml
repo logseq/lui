@@ -3640,13 +3640,13 @@ let test_navigation_entry_state () =
   Signal.set first_state 7; Signal.set second_state 9; drive_flush s;
   navigation_send s (Path.pop b);
   Alcotest.(check int) "covered local state preserved" 7 (Signal.get_state first_state);
-  Alcotest.(check bool) "covered entry state scope active" true (not !(first_scope.Signal.disposed_scope));
-  Alcotest.(check bool) "outgoing state lives during transition" true (not !(second_scope.Signal.disposed_scope));
+  Alcotest.(check bool) "covered entry state scope active" true (not (Signal.scope_is_disposed first_scope));
+  Alcotest.(check bool) "outgoing state lives during transition" true (not (Signal.scope_is_disposed second_scope));
   navigation_event s (navigation_revision s) "settled" 1;
-  Alcotest.(check bool) "only removed entry state disposed" false (not !(second_scope.Signal.disposed_scope));
-  Alcotest.(check bool) "remaining entry state still active" true (not !(first_scope.Signal.disposed_scope));
+  Alcotest.(check bool) "only removed entry state disposed" false (not (Signal.scope_is_disposed second_scope));
+  Alcotest.(check bool) "remaining entry state still active" true (not (Signal.scope_is_disposed first_scope));
   drive_dispose s;
-  Alcotest.(check bool) "owner teardown disposes surviving state" false (not !(first_scope.Signal.disposed_scope))
+  Alcotest.(check bool) "owner teardown disposes surviving state" false (not (Signal.scope_is_disposed first_scope))
 
 
 (* .drive scenarios: the same selector/event DSL the CLI drives over FFI,
