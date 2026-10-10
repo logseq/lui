@@ -1,0 +1,4 @@
+(library
+ (name lui_layout)
+ (modules lui_layout)
+ (libraries lui lui_store lui_scene lui_paint lui_flex))
