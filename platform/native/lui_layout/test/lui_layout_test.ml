@@ -9,6 +9,8 @@ let apply t ops = Lui_store.apply_batch t (batch ops)
 
 let no_measure _id _w _h = None
 
+let no_measure4 _id _text _w _h = None
+
 let place f id = (f id).Lui_paint.p_rect
 
 let eps = 0.01
@@ -162,15 +164,92 @@ let test_rebuild_after_mutation () =
   check_some_rect "new node" 0. 0. 200. 30. (Lui_layout.rect t 6);
   check_some_rect "old sibling shifted" 0. 30. 200. 20. (Lui_layout.rect t 4)
 
+(* Grid cells subtract the gap share: columns=2 + gap 10 in a 200-wide
+   frame gives two 95-wide cells per row, not one. *)
+let test_grid_gap_fits_columns () =
+  let store = Lui_store.create () in
+  apply store
+    [ CreateNode (1, Root); CreateNode (2, Grid);
+      CreateNode (3, Text); CreateNode (4, Text);
+      CreateNode (5, Text); CreateNode (6, Text);
+      InsertChild (1, 2, 0); InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+      InsertChild (2, 5, 2); InsertChild (2, 6, 3);
+      SetProp (2, GridColumns, IntValue 2);
+      SetProp (2, Gap, IntValue 10);
+      SetProp (3, HeightValue, IntValue 10);
+      SetProp (4, HeightValue, IntValue 10);
+      SetProp (5, HeightValue, IntValue 10);
+      SetProp (6, HeightValue, IntValue 10) ];
+  let p = Lui_layout.run store ~measure:no_measure ~width:200. ~height:100. in
+  check_rect "cell1" 0. 0. 95. 10. (place p 3);
+  check_rect "cell2" 105. 0. 95. 10. (place p 4);
+  check_rect "cell3" 0. 20. 95. 10. (place p 5);
+  check_rect "cell4" 105. 20. 95. 10. (place p 6)
+
+(* Content taller than the offered frame grows the frame instead of
+   being compressed or cut; content_extent reports it. *)
+let test_frame_grows_to_content () =
+  let store = Lui_store.create () in
+  apply store
+    [ CreateNode (1, Root); CreateNode (2, Column);
+      CreateNode (3, Text); CreateNode (4, Text); CreateNode (5, Text);
+      InsertChild (1, 2, 0); InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+      InsertChild (2, 5, 2);
+      SetProp (3, HeightValue, IntValue 100);
+      SetProp (4, HeightValue, IntValue 100);
+      SetProp (5, HeightValue, IntValue 100) ];
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~measure:no_measure4 ~width:200. ~height:100. t store;
+  check_some_rect "third row uncut" 0. 200. 200. 100. (Lui_layout.rect t 5);
+  let ew, eh = Lui_layout.content_extent t in
+  check (float eps) "extent w" 200. ew;
+  check (float eps) "extent h" 300. eh
+
+(* A popup-family node with no positioning props centers in its
+   containing block; explicit insets still win. *)
+let test_popup_default_centered () =
+  let store = Lui_store.create () in
+  apply store
+    [ CreateNode (1, Root); CreateNode (2, Column);
+      CreateNode (3, Dialog); CreateNode (4, Dialog);
+      InsertChild (1, 2, 0); InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+      SetProp (2, WidthValue, IntValue 200);
+      SetProp (2, HeightValue, IntValue 100);
+      SetProp (3, WidthValue, IntValue 40);
+      SetProp (3, HeightValue, IntValue 20);
+      SetProp (4, Position, StringValue "absolute");
+      SetProp (4, InsetLeft, FloatValue 5.);
+      SetProp (4, InsetTop, FloatValue 6.);
+      SetProp (4, WidthValue, IntValue 40);
+      SetProp (4, HeightValue, IntValue 20) ];
+  let p = Lui_layout.run store ~measure:no_measure ~width:200. ~height:100. in
+  check_rect "default centered" 80. 40. 40. 20. (place p 3);
+  check_rect "explicit inset" 5. 6. 40. 20. (place p 4)
+
+(* A store-root popup centers in the offered frame extent. *)
+let test_root_popup_centered_in_frame () =
+  let store = Lui_store.create () in
+  apply store
+    [ CreateNode (1, Root); CreateNode (2, Dialog);
+      InsertChild (1, 2, 0);
+      SetProp (2, WidthValue, IntValue 50);
+      SetProp (2, HeightValue, IntValue 30) ];
+  let p = Lui_layout.run store ~measure:no_measure ~width:200. ~height:100. in
+  check_rect "root popup" 75. 35. 50. 30. (place p 2)
+
 let () =
   run "lui_layout"
     [ ("layout",
        [ test_case "column padding/gap" `Quick test_column_padding_gap;
          test_case "grid wraps" `Quick test_grid_wraps;
+         test_case "grid gap fits" `Quick test_grid_gap_fits_columns;
          test_case "absolute inset" `Quick test_absolute_inset;
          test_case "text measured" `Quick test_text_measured;
          test_case "percent size" `Quick test_percent_size;
          test_case "column in row" `Quick test_nested_column_in_row;
          test_case "run placements" `Quick test_run_placements;
          test_case "display none" `Quick test_display_none_absent;
-         test_case "rebuild" `Quick test_rebuild_after_mutation ]) ]
+         test_case "rebuild" `Quick test_rebuild_after_mutation;
+         test_case "frame grows" `Quick test_frame_grows_to_content;
+         test_case "popup centered" `Quick test_popup_default_centered;
+         test_case "root popup" `Quick test_root_popup_centered_in_frame ]) ]

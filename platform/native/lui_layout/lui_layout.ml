@@ -15,12 +15,14 @@ type t = {
   mutable root : Lui_flex.node option;
   nodes : (int, Lui_flex.node) Hashtbl.t; (* store id → flex node *)
   rects : (int, Lui_scene.rect) Hashtbl.t;
+  mutable extent : float * float; (* frame extent the last layout used *)
 }
 
 let create () =
   { root = None;
     nodes = Hashtbl.create 64;
-    rects = Hashtbl.create 64 }
+    rects = Hashtbl.create 64;
+    extent = (0., 0.) }
 
 (* ---------- wire value access ---------- *)
 
@@ -162,6 +164,20 @@ let zstack_kind = function
 let scroll_kind = function
   | "scroll" | "list" | "virtual-list" -> true
   | _ -> false
+
+let has_prop store id name = Lui_store.prop store id name <> None
+
+(* Popup-family kinds with no positioning inputs at all land on the
+   deterministic default: centered in the containing block. A bare
+   [position] prop gives no placement (auto edges resolve to the
+   parent's origin), so it does not count as positioning input. *)
+let popup_needs_default store id kind =
+  popup_kind kind
+  && not
+       (List.exists (has_prop store id)
+          [ "inset"; "inset-top"; "inset-right"; "inset-bottom";
+            "inset-left"; "x"; "y"; "anchor"; "anchor-alignment";
+            "anchor-offset" ])
 
 (* ---------- style translation ---------- *)
 
@@ -379,6 +395,9 @@ type ctx = {
   vh : float;
   tm : text_measure;
   nodes : (int, Lui_flex.node) Hashtbl.t; (* store id → flex node *)
+  applied : (int, Lui_flex.style) Hashtbl.t; (* store id → applied style *)
+  grids : (Lui_flex.node * Lui_flex.style * float) list ref;
+  popups : (Lui_flex.node * int) list ref; (* flex node, store id *)
 }
 
 (* [build] expands a store node into flex nodes — a singleton list for
@@ -405,6 +424,14 @@ let rec build ctx store ~pkind ~pid ~index id : Lui_flex.node list =
     in
     let node = Lui_flex.create ~style ?measure:m kids in
     Hashtbl.replace ctx.nodes id node;
+    Hashtbl.replace ctx.applied id style;
+    (if kind = "grid" then
+       match pnum store id "columns" with
+       | Some n when n > 0. ->
+         ctx.grids := (node, style, n) :: !(ctx.grids)
+       | _ -> ());
+    (if popup_needs_default store id kind then
+       ctx.popups := (node, id) :: !(ctx.popups));
     [ node ]
 
 and build_seq ctx store ~pkind ~pid ~first ids : Lui_flex.node list =
@@ -415,6 +442,134 @@ and build_seq ctx store ~pkind ~pid ~first ids : Lui_flex.node list =
       counter := !counter + List.length ns;
       ns)
     ids
+
+(* ---------- two-pass refinement ----------
+
+   Two contracts the engine cannot express in a single pass get patched
+   here after the first layout, then the layout is re-run:
+
+   - Grid cells: [flex_basis] can be a percent of the row but cannot
+     subtract the gap share, so [columns = n] with a [gap] overflows
+     the line and wraps early. The real basis is
+     [(inner_width - (n-1) * gap) / n], computed once the grid's own
+     width is known.
+   - Popup surfaces: an absolute child has no centering primitive, so a
+     popup-family node with no positioning props (no [position],
+     [inset*], [x]/[y] or [anchor]) would land at its parent's origin.
+     The default is centered in the containing block — the flex
+     parent's border box, or the offered frame for a store-root popup. *)
+
+(* Resolve a length against an owner dimension; non-absolute specs
+   count as zero for the purposes of these patches. *)
+let len_px ~owner (l : Lui_flex.length) : float =
+  match l with
+  | Pt v -> v
+  | Percent p -> owner *. p /. 100.
+  | _ -> 0.
+
+(* One named edge of an [edges] record, following the engine's cascade:
+   named side > axis shorthand (horizontal/vertical) > all. *)
+let edge_px ~owner named axis (e : Lui_flex.edges) : float =
+  let defined (l : Lui_flex.length) =
+    match l with Unset | Auto -> false | _ -> true
+  in
+  if defined named then len_px ~owner named
+  else if defined axis then len_px ~owner axis
+  else len_px ~owner e.all
+
+(* Reverse lookup: store id that produced [fnode] (physical equality —
+   the mirror is rebuilt per sync and discarded right after). *)
+let store_id_of_flex ctx fnode =
+  let found = ref None in
+  Hashtbl.iter
+    (fun sid n -> if !found = None && n == fnode then found := Some sid)
+    ctx.nodes;
+  !found
+
+(* Pin every flex child of a [columns = n] grid to its real share of
+   the row so [n] cells plus [(n-1)] gaps fit one line. *)
+let refine_grids ctx =
+  List.iter
+    (fun (gnode, (gstyle : Lui_flex.style), ncols) ->
+      let gr = Lui_flex.absolute_layout gnode in
+      let pl = edge_px ~owner:gr.w gstyle.padding.left gstyle.padding.horizontal gstyle.padding in
+      let pr = edge_px ~owner:gr.w gstyle.padding.right gstyle.padding.horizontal gstyle.padding in
+      let bl = edge_px ~owner:gr.w gstyle.border.left gstyle.border.horizontal gstyle.border in
+      let br = edge_px ~owner:gr.w gstyle.border.right gstyle.border.horizontal gstyle.border in
+      let inner_w = Float.max 0. (gr.w -. pl -. pr -. bl -. br) in
+      let gap = len_px ~owner:inner_w gstyle.column_gap in
+      (* The tiny epsilon guards the wrap test against float rounding
+         pushing the last cell onto the next line. *)
+      let basis =
+        Float.max 0. ((inner_w -. (ncols -. 1.) *. gap) /. ncols -. 0.001)
+      in
+      List.iter
+        (fun c ->
+          match store_id_of_flex ctx c with
+          | Some sid -> (
+            match Hashtbl.find_opt ctx.applied sid with
+            | Some s ->
+              Lui_flex.set_style c { s with flex_basis = Pt basis }
+            | None -> ())
+          | None -> ())
+        (Lui_flex.children gnode))
+    !(ctx.grids)
+
+(* Center each default-placed popup in its containing block by giving
+   its spec concrete [left]/[top] offsets. Position edges resolve
+   against the parent's padding box (offset + border + margin lands at
+   the child's layout position), so the center of the border box is
+   [parent.w/2 - border - margin]. *)
+let refine_popups ctx =
+  List.iter
+    (fun (pnode, sid) ->
+      match Lui_flex.parent pnode with
+      | None -> ()
+      | Some parent -> (
+        let pr, pstyle_opt =
+          match store_id_of_flex ctx parent with
+          | Some psid ->
+            ( Lui_flex.absolute_layout parent,
+              Hashtbl.find_opt ctx.applied psid )
+          | None ->
+            (* The frame root is no store node's containing block —
+               default to the offered frame, not the grown extent. *)
+            ( { Lui_flex.x = 0.; y = 0.; w = ctx.vw; h = ctx.vh },
+              None )
+        in
+        let bor_l, bor_t =
+          match pstyle_opt with
+          | Some (ps : Lui_flex.style) ->
+            ( edge_px ~owner:pr.w ps.border.left ps.border.horizontal ps.border,
+              edge_px ~owner:pr.h ps.border.top ps.border.vertical ps.border )
+          | None -> (0., 0.)
+        in
+        match Hashtbl.find_opt ctx.applied sid with
+        | None -> ()
+        | Some (pstyle : Lui_flex.style) ->
+          let ml =
+            edge_px ~owner:pr.w pstyle.margin.left pstyle.margin.horizontal pstyle.margin
+          and mt =
+            edge_px ~owner:pr.w pstyle.margin.top pstyle.margin.vertical pstyle.margin
+          in
+          let prp = Lui_flex.absolute_layout pnode in
+          let left = ((pr.w -. prp.w) /. 2.) -. bor_l -. ml in
+          let top = ((pr.h -. prp.h) /. 2.) -. bor_t -. mt in
+          Lui_flex.set_style pnode
+            { pstyle with
+              position =
+                { pstyle.position with left = Pt left; top = Pt top } }))
+    !(ctx.popups)
+
+(* Union of the frame children's absolute rect edges — the extent the
+   laid-out content actually occupies. *)
+let extent_of root : float * float =
+  List.fold_left
+    (fun (mx, my) c ->
+      let r = Lui_flex.absolute_layout c in
+      (Float.max mx (r.x +. r.w), Float.max my (r.y +. r.h)))
+    (0., 0.)
+    (Lui_flex.children root)
 
 (* ---------- layout ---------- *)
 
@@ -427,32 +582,54 @@ let collect (t : t) =
     (fun id n -> Hashtbl.replace t.rects id (scene_rect (Lui_flex.absolute_layout n)))
     t.nodes
 
+(* The frame style for one offered extent. *)
+let frame_style_for width (height : Lui_flex.length) =
+  { Lui_flex.default_style with
+    flex_direction = Column; width = Pt width; height }
+
+(* One layout that honours the frame contract. The offered extent is a
+   floor: a first pass measured with an unbounded height reports the
+   content's natural extent — a definite offered height (or frame spec)
+   would cap every child's measured size, hiding overflow — and the
+   final pass runs at [max (offered, content)]. Returns the used
+   extent. *)
+let layout_frame root ~width ~height : float * float =
+  Lui_flex.set_style root (frame_style_for width Unset);
+  Lui_flex.compute_layout root ~width ~height:undefined ();
+  let ex, ey = extent_of root in
+  let ew, eh = (Float.max width ex, Float.max height ey) in
+  Lui_flex.set_style root (frame_style_for ew (Pt eh));
+  Lui_flex.compute_layout root ~width:ew ~height:eh ();
+  (ew, eh)
+
 let compute t ~width ~height =
   match t.root with
   | None -> ()
   | Some root ->
-    Lui_flex.compute_layout root ~width ~height ();
+    t.extent <- layout_frame root ~width ~height;
     collect t
 
 let sync ?(scale = 1.) ?(measure = (fun _ _ _ _ -> None)) ~width ~height (t : t) store =
   Hashtbl.reset t.nodes;
   let ctx =
-    { scale; vw = width; vh = height; tm = measure; nodes = t.nodes }
+    { scale; vw = width; vh = height; tm = measure; nodes = t.nodes;
+      applied = Hashtbl.create 64; grids = ref []; popups = ref [] }
   in
   let kids =
     build_seq ctx store ~pkind:"frame" ~pid:(-1) ~first:0
       (Lui_store.root_ids store)
   in
-  let frame_style =
-    { Lui_flex.default_style with
-      flex_direction = Column;
-      width = Pt width;
-      height = Pt height }
-  in
-  let root = Lui_flex.create ~style:frame_style kids in
+  let root = Lui_flex.create ~style:(frame_style_for width (Pt height)) kids in
   t.root <- Some root;
-  Lui_flex.compute_layout root ~width ~height ();
+  let ew, eh = layout_frame root ~width ~height in
+  refine_grids ctx;
+  refine_popups ctx;
+  (if !(ctx.grids) <> [] || !(ctx.popups) <> [] then
+     Lui_flex.compute_layout root ~width:ew ~height:eh ());
+  t.extent <- (ew, eh);
   collect t
+
+let content_extent (t : t) = t.extent
 
 let layout_hook (t : t) id =
   match Hashtbl.find_opt t.rects id with
