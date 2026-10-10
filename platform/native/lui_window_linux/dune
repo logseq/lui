@@ -1,0 +1,50 @@
+(library
+ (name lui_window_linux)
+ (modules lui_linux demo_app lui_window_text)
+ (libraries
+  lui_window
+  lui
+  lui_store
+  lui_scene
+  lui_paint
+  lui_host
+  lui_ime
+  lui_a11y
+  lui_ax_linux
+  lui_shell_linux
+  lui_text_pango
+  lui_raster
+  lui_blit
+  lui_gl
+  lui_vulkan
+  tsdl
+  ocaml-signal
+  unix)
+ (preprocess (pps lui_ppx))
+ (wrapped false)
+ (enabled_if (= %{system} linux)))
+
+(executable
+ (name main)
+ (modules main)
+ (libraries
+  lui_window_linux
+  lui_window
+  lui
+  lui_store
+  lui_scene
+  lui_paint
+  lui_host
+  lui_ime
+  lui_a11y
+  lui_ax_linux
+  lui_shell_linux
+  lui_text_pango
+  lui_raster
+  lui_blit
+  lui_gl
+  lui_vulkan
+  tsdl
+  ocaml-signal
+  unix)
+ (enabled_if (= %{system} linux)))
