@@ -1,0 +1,27 @@
+(library
+ (name lui_vulkan)
+ (modules lui_vulkan shader_sources)
+ (libraries lui_scene lui_gpu)
+ (foreign_stubs
+  (language c)
+  (names lui_vulkan_stubs))
+ (c_library_flags (:standard -ldl)))
+
+(executable
+ (name embed)
+ (modules embed))
+
+(rule
+ (target shader_sources.ml)
+ (deps shader/scene.vert.spv shader/scene.frag.spv
+  shader/scene_dual.frag.spv shader/pass.vert.spv shader/down.frag.spv
+  shader/blur.frag.spv shader/common.glsl shader/effect_head.glsl
+  shader/effect_tail.glsl)
+ (action
+  (with-stdout-to %{target}
+   (run %{exe:embed.exe} vert_spv shader/scene.vert.spv frag_spv
+    shader/scene.frag.spv dual_frag_spv shader/scene_dual.frag.spv
+    pass_vert_spv shader/pass.vert.spv down_frag_spv
+    shader/down.frag.spv blur_frag_spv shader/blur.frag.spv common_src
+    shader/common.glsl effect_head_src shader/effect_head.glsl
+    effect_tail_src shader/effect_tail.glsl))))

@@ -1,0 +1,12 @@
+(test
+ (name lui_vulkan_test)
+ (modules lui_vulkan_test)
+ (enabled_if (= %{system} linux))
+ (libraries
+  lui_vulkan
+  lui_parity
+  lui_raster_testkit
+  lui_raster
+  lui_gpu
+  lui_scene
+  alcotest))
