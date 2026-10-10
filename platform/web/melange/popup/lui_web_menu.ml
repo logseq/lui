@@ -964,9 +964,14 @@ let attach_dropdown_events renderer node _dropdown_node =
         (match owner with
          | Some parent ->
              (match Store.node renderer.web_store parent with
-              | Some parent_node when Store.menu_item_row parent_node ->
-                  Some (Lazy.force parent_node.platform_node)
-              | _ -> None)
+              | Some _ ->
+                  (* the trigger is the dropdown's anchor element — the
+                     sibling it positions against. Registering it keeps
+                     a re-press on the trigger owned by the layer, so a
+                     second click toggles closed instead of an outside
+                     dismiss immediately followed by reopen *)
+                  Some (Lui_web_nodes.dropdown_anchor_node renderer node)
+              | None -> None)
          | None -> None)
   in
   ignore
