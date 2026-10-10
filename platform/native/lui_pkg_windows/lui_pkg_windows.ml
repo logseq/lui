@@ -767,9 +767,14 @@ module Bundle = struct
       missing "executable %s" spec.executable
     else L.Ok ()
 
-  let write spec ~dir =
+  let write ?(arch = win_arch ()) spec ~dir =
     outcome_bind (validate spec) @@ fun () ->
-    let arch = win_arch () in
+    let arch =
+      match arch with
+      | "x86_64" | "amd64" -> "x64"
+      | "aarch64" -> "arm64"
+      | a -> a
+    in
     let root = Filename.concat dir (portable_dir_name spec ~arch) in
     P.Fs.rm_rf root;
     P.Fs.mkdir_p root;
@@ -1170,7 +1175,7 @@ let manifest spec = Private.Manifest.app_xml spec
 let appx_manifest spec ~arch = Private.Manifest.appx_xml spec ~arch
 let nsis_script spec ~src ~out ~arch =
   Private.Nsis.script spec ~src ~out ~arch
-let bundle spec ~dir = Private.Bundle.write spec ~dir
+let bundle ?arch spec ~dir = Private.Bundle.write ?arch spec ~dir
 let sign spec bundle = Private.Sign.sign spec bundle
 
 let package ?(fmt = Zip) ?arch spec bundle ~dir =
