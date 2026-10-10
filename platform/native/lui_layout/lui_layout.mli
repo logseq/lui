@@ -11,6 +11,24 @@
    position/inset props, [p_rect] is the emitted scene rect; the
    children of a node are resolved against that same absolute rect).
 
+   Contracts beyond the bare flex engine:
+
+   - Grid cells: a [grid] node with [columns = n] lays out [n] cells
+     per row, each sized [(inner_width - (n-1) * gap) / n] so the cells
+     and the gaps between them fit the row exactly (a plain percent
+     basis cannot subtract the gap share and would wrap early).
+   - Popup surfaces: popup-family kinds ([dialog], [drawer], [sheet],
+     [tooltip], [toast], [dropdown-menu], [context-menu], [popover],
+     [alert]) placed with no positioning input at all — no [position],
+     [inset*], [x]/[y] or [anchor] prop — default to centered in the
+     containing block: the flex parent's border box, or the offered
+     frame extent for a store-root popup.
+   - Frame extent: the offered [width]/[height] are a floor, not a
+     cap. When the laid-out content is taller or wider than the
+     offered frame, the frame grows to the content instead of the
+     content being compressed or cut; {!content_extent} reports the
+     extent the last layout actually used.
+
    Only new files live in this directory; nothing else is touched. *)
 
 (** Text measure function the host injects: [id text offered_w
@@ -54,7 +72,9 @@ val measure_of :
     [width]x[height] device-px frame. Root-level nodes that are not
     popup surfaces get [flex_grow = 1] so they fill the frame;
     [display:none] nodes are skipped entirely and [display:contents]
-    nodes lift their children into the parent flow. *)
+    nodes lift their children into the parent flow. [height] (and
+    [width]) is a minimum: content that does not fit the offered
+    extent grows the frame — see {!content_extent}. *)
 
 val sync :
   ?scale:float -> ?measure:text_measure ->
@@ -63,9 +83,19 @@ val sync :
 (** [compute t ~width ~height] re-runs layout on the current mirror —
     the cheap path when only the frame size changed. [*-viewport]
     props keep the resolution from the last {!sync}; call {!sync} on
-    resize when any node uses them. *)
+    resize when any node uses them — and likewise when a grid or
+    default-placed popup is present, since their pinned offsets were
+    computed against the last sync's frame extent. *)
 
 val compute : t -> width:float -> height:float -> unit
+
+(** [content_extent t] is the frame extent the last layout actually
+    used — never smaller than the size passed to {!sync} or {!compute},
+    larger when the content needed it. Hosts that present the whole
+    content (e.g. a rasterizer sizing its target) size their output to
+    this. *)
+
+val content_extent : t -> float * float
 
 (** [layout_hook t id] is the [Lui_paint.hooks.layout] implementation:
     the node's computed rect in frame device px, [p_override = None].

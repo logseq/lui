@@ -731,15 +731,13 @@ let () =
 
 (* ---------- cell shell ---------- *)
 
-(* A cell is a fixed-size labelled card; rows place [columns] of them
-   side by side — deterministic (no wrap) unlike a wrapping grid whose
-     basis+gap arithmetic can overflow the line. *)
-let cell_w = 274.
-
+(* A cell is a fixed-height labelled card; the section grid assigns
+   [columns] of them per row (grid cells get their width from the grid
+   basis, not a width prop). *)
 let wrap_cell c =
   n Column
     ~props:
-      [ (WidthValue, fv cell_w); (HeightValue, fv 116.);
+      [ (HeightValue, fv 116.);
         (PaddingValue, fv 6.); (Gap, fv 4.);
         (BackgroundValue, sv "#ffffff"); (CornerRadius, fv 6.);
         (BorderWidth, fv 1.); (BorderColorValue, sv "#dfe3e8");
@@ -792,40 +790,23 @@ let build_gallery () =
   List.iter (fun c -> Hashtbl.replace by_name c.cname c) cells;
   let columns = 4 in
   let gap = 10. in
-  let chunk ns =
-    let rec go acc ns =
-      match ns with
-      | [] -> List.rev acc
-      | _ ->
-        let rec take k acc ns =
-          match k, ns with
-          | 0, _ | _, [] -> (List.rev acc, ns)
-          | k, x :: tl -> take (k - 1) (x :: acc) tl
-        in
-        let row, rest = take columns [] ns in
-        go (row :: acc) rest
-    in
-    go [] ns
-  in
   let sections =
     List.map
       (fun (title, names) ->
-        let rows =
-          List.map
-            (fun row ->
-              n Row ~props:[ (Gap, fv gap); (HeightValue, fv 116.) ]
-                ~kids:
-                  (List.map
-                     (fun nm -> wrap_cell (Hashtbl.find by_name nm))
-                     row)
-                ())
-            (chunk names)
+        let grid =
+          n Grid
+            ~props:[ (GridColumns, iv columns); (Gap, fv gap) ]
+            ~kids:
+              (List.map
+                 (fun nm -> wrap_cell (Hashtbl.find by_name nm))
+                 names)
+            ()
         in
         n Column ~props:[ (Gap, fv 8.) ]
           ~kids:
-            (n Text ~props:(sized ~h:16. [ (TextValue, sv title);
-                                           (FontWeight, iv 700); (ForegroundValue, sv "#334155") ]) ()
-             :: rows)
+            [ n Text ~props:(sized ~h:16. [ (TextValue, sv title);
+                                            (FontWeight, iv 700); (ForegroundValue, sv "#334155") ]) ();
+              grid ]
           ())
       categories
   in
