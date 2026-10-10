@@ -62,7 +62,9 @@ let rec drop t id =
     (match node.parent with
      | Some pid -> (
        match Hashtbl.find_opt t.nodes pid with
-       | Some p -> p.children <- List.filter (fun c -> c <> id) p.children
+       | Some p ->
+         p.children <- List.filter (fun c -> c <> id) p.children;
+         mark_dirty t pid
        | None -> ())
      | None -> ());
     Hashtbl.remove t.nodes id;

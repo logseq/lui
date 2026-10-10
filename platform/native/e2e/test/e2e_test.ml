@@ -334,12 +334,9 @@ let test_move_remove_drop () =
   check (list int) "after drop" [ 3; 2; 8 ] (Lui_store.child_ids store 1);
   let dirty = Lui_store.drain_dirty store in
   check bool "dropped id dirty" true (List.mem 5 dirty);
-  (* DEVIATION (reported, not fixed here): the .mli says a drop marks
-     the removed id AND its old parent dirty, but drop only marks the
-     removed ids — the parent whose children list changed is not
-     marked. An incremental repainter draining dirty ids would miss
-     the parent's structural change. *)
-  check bool "old parent not dirty (deviation)" false (List.mem 1 dirty);
+  (* The .mli says a drop marks the removed id AND its old parent
+     dirty — fixed after e2e flagged the gap. *)
+  check bool "old parent dirty" true (List.mem 1 dirty);
   let ops = E2e_harness.repaint h in
   check int "no shadow now" 0 (List.length (ops_named "shadow" ops))
 

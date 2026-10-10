@@ -51,7 +51,10 @@ let test_drop_subtree () =
   apply t [ DropNode 2 ];
   check int "nodes" 1 (Lui_store.node_count t);
   check (list int) "children" [] (Lui_store.child_ids t 1);
-  check bool "gone" false (Lui_store.mem t 3)
+  check bool "gone" false (Lui_store.mem t 3);
+  let dirty = Lui_store.drain_dirty t in
+  check bool "drop marks removed id" true (List.mem 2 dirty);
+  check bool "drop marks old parent" true (List.mem 1 dirty)
 
 let test_props () =
   let t = Lui_store.create () in
