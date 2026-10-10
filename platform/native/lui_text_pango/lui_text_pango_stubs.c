@@ -7,6 +7,8 @@
    fallbacks, Pango itemizes and shapes paragraphs (through HarfBuzz) and
    breaks lines, and cairo rasterizes glyphs into image surfaces. */
 
+#if defined(__linux__)
+
 #include <pango/pangocairo.h>
 #include <pango/pangofc-font.h>
 #include <fontconfig/fontconfig.h>
@@ -731,3 +733,38 @@ CAMLprim value lui_pango_rasterize(value vfont, value vid, value vscale,
   Store_field(vres, 0, vtup);
   CAMLreturn(vres);
 }
+
+#else /* !__linux__ */
+
+/* The library stays buildable on every platform so cross-platform
+   consumers and platform-gated tests resolve cleanly; any call on an
+   unsupported platform fails immediately. */
+#include <caml/mlvalues.h>
+#include <caml/fail.h>
+
+static value unsupported(void) {
+  caml_failwith("lui_text_pango: this backend requires Linux");
+  return Val_unit;
+}
+
+CAMLprim value lui_pango_named(value a, value b, value c, value d) {
+  (void)a; (void)b; (void)c; (void)d; return unsupported(); }
+CAMLprim value lui_pango_system(value a, value b, value c, value d) {
+  (void)a; (void)b; (void)c; (void)d; return unsupported(); }
+CAMLprim value lui_pango_cascade(value a, value b, value c, value d) {
+  (void)a; (void)b; (void)c; (void)d; return unsupported(); }
+CAMLprim value lui_pango_fallback(value a, value b) {
+  (void)a; (void)b; return unsupported(); }
+CAMLprim value lui_pango_metrics(value a) {
+  (void)a; return unsupported(); }
+CAMLprim value lui_pango_is_color(value a) {
+  (void)a; return unsupported(); }
+CAMLprim value lui_pango_family(value a) {
+  (void)a; return unsupported(); }
+CAMLprim value lui_pango_shape(value a, value b, value c, value d, value e) {
+  (void)a; (void)b; (void)c; (void)d; (void)e; return unsupported(); }
+CAMLprim value lui_pango_rasterize(value a, value b, value c, value d,
+                                   value e) {
+  (void)a; (void)b; (void)c; (void)d; (void)e; return unsupported(); }
+
+#endif /* __linux__ */

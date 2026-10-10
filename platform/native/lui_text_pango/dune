@@ -1,7 +1,6 @@
 (library
  (name lui_text_pango)
  (modules lui_text_pango)
- (enabled_if (= %{system} linux))
  (foreign_stubs
   (language c)
   (names lui_text_pango_stubs)
@@ -20,4 +19,4 @@
  (action
   (with-stdout-to %{target}
    (bash
-    "printf '(%s)' \"$(pkg-config --libs pangocairo pangoft2 fontconfig)\""))))
+    "printf '(%s)' \"$(pkg-config --libs pangocairo pangoft2 fontconfig 2>/dev/null)\""))))
