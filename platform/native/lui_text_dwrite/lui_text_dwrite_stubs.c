@@ -705,11 +705,14 @@ CAMLprim value lui_dwrite_family(value vfont)
 /* -------------------------------------------------------- run collect */
 
 /* One shaped run handed to the renderer: font face, direction and
-   positioned glyphs, all copied. */
+   positioned glyphs, all copied. [rcolor] holds the drawing effect's
+   0xRRGGBBAA color or -1 for none; [under] the span's underline. */
 struct lui_run {
   IDWriteFontFace *face; /* a full reference */
   float em_size;
   int rtl;
+  long long rcolor; /* wider than int: 0xRRGGBBAA can top INT32_MAX */
+  int under;
   UINT32 pos, n;
   UINT32 nglyphs;
   UINT16 *glyphs;
@@ -735,8 +738,55 @@ static void lui_runs_clear(void)
   lui_nruns = 0;
 }
 
+/* What SetDrawingEffect hands each glyph run: the span's resolved
+   color and underline so the OCaml [run] record can carry them. The
+   layout splits runs where this object changes, so one effect spans
+   exactly the text range it was set on. */
+typedef struct lui_effect {
+  IUnknownVtbl *vtbl;
+  long long rcolor; /* 0xRRGGBBAA, or -1 for no color override */
+  int under;
+} lui_effect;
+
+static HRESULT STDMETHODCALLTYPE eff_qi(IUnknown *This, REFIID iid,
+                                        void **out)
+{
+  if (IsEqualIID(iid, &IID_IUnknown)) {
+    *out = This;
+    return S_OK;
+  }
+  *out = NULL;
+  return E_NOINTERFACE;
+}
+static ULONG STDMETHODCALLTYPE eff_addref(IUnknown *This)
+{
+  (void)This;
+  return 1;
+}
+static ULONG STDMETHODCALLTYPE eff_release(IUnknown *This)
+{
+  (void)This;
+  return 1;
+}
+static const IUnknownVtbl lui_effect_vtbl = {
+  eff_qi, eff_addref, eff_release
+};
+
+/* The UTF-16 unit index of the character containing byte [b]: the
+   last [index] entry at or before it (index[nunits] = length). */
+static int lui_u16_of_byte(const int *index, int nunits, int b)
+{
+  int lo = 0, hi = nunits;
+  while (lo < hi) {
+    int mid = (lo + hi + 1) / 2;
+    if (index[mid] <= b) lo = mid; else hi = mid - 1;
+  }
+  return lo;
+}
+
 static void lui_collect(const DWRITE_GLYPH_RUN *run,
-                        const DWRITE_GLYPH_RUN_DESCRIPTION *desc)
+                        const DWRITE_GLYPH_RUN_DESCRIPTION *desc,
+                        IUnknown *effect)
 {
   if (lui_nruns == lui_capruns) {
     int cap = lui_capruns ? lui_capruns * 2 : 16;
@@ -754,6 +804,13 @@ static void lui_collect(const DWRITE_GLYPH_RUN *run,
   r->rtl = (run->bidiLevel & 1) != 0;
   r->pos = desc != NULL ? desc->textPosition : 0;
   r->n = desc != NULL ? desc->stringLength : 0;
+  r->rcolor = -1;
+  r->under = 0;
+  if (effect != NULL) {
+    const lui_effect *e = (const lui_effect *)effect;
+    r->rcolor = e->rcolor;
+    r->under = e->under;
+  }
   UINT32 ng = run->glyphCount;
   r->nglyphs = ng;
   if (ng > 0) {
@@ -832,8 +889,8 @@ static HRESULT STDMETHODCALLTYPE ren_draw(
   DWRITE_MEASURING_MODE mode, const DWRITE_GLYPH_RUN *run,
   const DWRITE_GLYPH_RUN_DESCRIPTION *desc, IUnknown *effect)
 {
-  (void)This; (void)ctx; (void)x; (void)y; (void)mode; (void)effect;
-  lui_collect(run, desc);
+  (void)This; (void)ctx; (void)x; (void)y; (void)mode;
+  lui_collect(run, desc, effect);
   return S_OK;
 }
 static HRESULT STDMETHODCALLTYPE ren_underline(
@@ -895,7 +952,8 @@ static void lui_first_glyphs(const struct lui_run *r, UINT32 *first)
 
 /* One shaped run: font, direction and positioned glyphs. The returned
    value is a record/block:
-   (font, start_byte, stop_byte, rtl, glyph array)
+   (font, start_byte, stop_byte, rtl, glyph array, color option,
+   underline)
    where a glyph is (id, x, y_from_baseline, advance, cluster_byte).
    [x] is the run's origin, on the right for a right-to-left run. */
 static value lui_shape_run(struct lui_run *r, float x,
@@ -941,64 +999,38 @@ static value lui_shape_run(struct lui_run *r, float x,
   if (p0 > (UINT32)nunits) p0 = (UINT32)nunits;
   if (p1 > (UINT32)nunits) p1 = (UINT32)nunits;
 
-  vrun = caml_alloc(5, 0);
+  vrun = caml_alloc(7, 0);
   Store_field(vrun, 0, vfont);
   Store_field(vrun, 1, Val_int(index[p0] + base));
   Store_field(vrun, 2, Val_int(index[p1] + base));
   Store_field(vrun, 3, Val_bool(r->rtl));
   Store_field(vrun, 4, vglyphs);
+  if (r->rcolor >= 0) {
+    tmp = caml_alloc(1, 0);
+    Store_field(tmp, 0, Val_int((intnat)r->rcolor));
+    Store_field(vrun, 5, tmp);
+  } else {
+    Store_field(vrun, 5, Val_int(0));
+  }
+  Store_field(vrun, 6, Val_int(r->under));
   tmp = vrun;
   CAMLreturn(tmp);
 }
 
-/* shape : font -> utf8 -> width -> rtl -> base -> line array
-   A line is (start_byte, stop_byte, width, ascent, descent, leading,
-   run array). Offsets are bytes into the OCaml string. */
-CAMLprim value lui_dwrite_shape(value vfont, value vstr, value vwidth,
-                                value vrtl, value vbase)
+/* The OCaml line array of an itemized [layout]: Draw collects the
+   glyph runs, then each run joins the line holding its text position
+   with its hit-tested origin. All offsets become bytes through the
+   same [index] map UTF-8->UTF-16 conversion built (+[base]).
+   It releases neither the layout nor [index]/[utext]: callers keep
+   ownership. */
+static value lui_lines_of_layout(struct lui_font *h,
+                                 IDWriteTextLayout *layout,
+                                 const int *index, int nunits,
+                                 int base)
 {
-  CAMLparam5(vfont, vstr, vwidth, vrtl, vbase);
+  CAMLparam0();
   CAMLlocal5(vlines, vline, vruns, vcons, vempty);
-  struct lui_font *h = Lui_font_val(vfont);
-  int base = Int_val(vbase);
-  double width = Double_val(vwidth);
-  int rtl = Bool_val(vrtl);
-  const char *text = (const char *)Bytes_val(vstr);
-  int len = (int)caml_string_length(vstr);
-
-  if (len == 0) {
-    vempty = caml_alloc(0, 0);
-    CAMLreturn(vempty);
-  }
-  lui_ensure();
-
-  int *index = NULL;
-  int nunits = 0;
-  WCHAR *utext = lui_text_utf16(text, len, &index, &nunits);
-  if (utext == NULL)
-    caml_failwith("lui_text_dwrite: out of memory");
-
-  IDWriteTextLayout *layout = NULL;
-  FLOAT maxw = width > 0. ? (FLOAT)width : 16777216.f;
-  HRESULT hr = IDWriteFactory_CreateTextLayout(
-    lui_factory, utext, (UINT32)nunits, h->format, maxw, 16777216.f,
-    &layout);
-  if (FAILED(hr) || layout == NULL) {
-    free(utext); free(index);
-    caml_failwith("lui_text_dwrite: no layout");
-  }
-  IDWriteTextLayout_SetWordWrapping(
-    layout, width > 0. ? DWRITE_WORD_WRAPPING_WRAP
-                       : DWRITE_WORD_WRAPPING_NO_WRAP);
-  if (rtl) {
-    /* Trailing alignment keeps the lines at the left, as left-to-right
-       lines are. */
-    IDWriteTextLayout_SetReadingDirection(
-      layout, DWRITE_READING_DIRECTION_RIGHT_TO_LEFT);
-    IDWriteTextLayout_SetTextAlignment(
-      layout, DWRITE_TEXT_ALIGNMENT_TRAILING);
-  }
-
+  HRESULT hr;
   UINT32 nlines = 0;
   DWRITE_LINE_METRICS *metrics = NULL;
   hr = IDWriteTextLayout_GetLineMetrics(layout, NULL, 0, &nlines);
@@ -1120,9 +1152,6 @@ CAMLprim value lui_dwrite_shape(value vfont, value vstr, value vwidth,
   }
 
   lui_runs_clear();
-  IDWriteTextLayout_Release(layout);
-  free(utext);
-  free(index);
   free(metrics);
   free(ends);
   free(rl); free(rx); free(rt); free(rnr);
@@ -1137,6 +1166,198 @@ CAMLprim value lui_dwrite_shape(value vfont, value vstr, value vwidth,
     }
   }
   CAMLreturn(vempty);
+}
+
+/* shape : font -> utf8 -> width -> rtl -> base -> line array
+   A line is (start_byte, stop_byte, width, ascent, descent, leading,
+   run array). Offsets are bytes into the OCaml string. */
+CAMLprim value lui_dwrite_shape(value vfont, value vstr, value vwidth,
+                                value vrtl, value vbase)
+{
+  CAMLparam5(vfont, vstr, vwidth, vrtl, vbase);
+  CAMLlocal2(vempty, vres);
+  struct lui_font *h = Lui_font_val(vfont);
+  int base = Int_val(vbase);
+  double width = Double_val(vwidth);
+  int rtl = Bool_val(vrtl);
+  const char *text = (const char *)Bytes_val(vstr);
+  int len = (int)caml_string_length(vstr);
+
+  if (len == 0) {
+    vempty = caml_alloc(0, 0);
+    CAMLreturn(vempty);
+  }
+  lui_ensure();
+
+  int *index = NULL;
+  int nunits = 0;
+  WCHAR *utext = lui_text_utf16(text, len, &index, &nunits);
+  if (utext == NULL)
+    caml_failwith("lui_text_dwrite: out of memory");
+
+  IDWriteTextLayout *layout = NULL;
+  FLOAT maxw = width > 0. ? (FLOAT)width : 16777216.f;
+  HRESULT hr = IDWriteFactory_CreateTextLayout(
+    lui_factory, utext, (UINT32)nunits, h->format, maxw, 16777216.f,
+    &layout);
+  if (FAILED(hr) || layout == NULL) {
+    free(utext); free(index);
+    caml_failwith("lui_text_dwrite: no layout");
+  }
+  IDWriteTextLayout_SetWordWrapping(
+    layout, width > 0. ? DWRITE_WORD_WRAPPING_WRAP
+                       : DWRITE_WORD_WRAPPING_NO_WRAP);
+  if (rtl) {
+    /* Trailing alignment keeps the lines at the left, as left-to-right
+       lines are. */
+    IDWriteTextLayout_SetReadingDirection(
+      layout, DWRITE_READING_DIRECTION_RIGHT_TO_LEFT);
+    IDWriteTextLayout_SetTextAlignment(
+      layout, DWRITE_TEXT_ALIGNMENT_TRAILING);
+  }
+
+  vres = lui_lines_of_layout(h, layout, index, nunits, base);
+  IDWriteTextLayout_Release(layout);
+  free(utext);
+  free(index);
+  CAMLreturn(vres);
+}
+
+/* shape_spans : font -> utf8 -> width -> rtl -> base -> span_attr array
+   -> line array
+
+   Each span is (start_byte, stop_byte, font option, color option,
+   kern, underline) — ranges in BYTES relative to the segment [base]
+   counts from, the same convention [shape] uses. Byte ranges reach the
+   layout as UTF-16 unit ranges through the same [index] map: the unit
+   of the character each bound falls on, so a span clipped mid-
+   character covers that whole character (matching the OCaml layer's
+   own clip-to-codepoint).
+
+   Attributes go on the layout: family/size/weight/style/stretch from
+   the span's font, SetUnderline for underline, SetCharacterSpacing
+   (trailing advance) for kern, and always a SetDrawingEffect object
+   holding the resolved color + underline so collected glyph runs both
+   split at span edges and know their [rcolor]/[under]. */
+CAMLprim value lui_dwrite_shape_spans(value vfont, value vstr,
+                                      value vwidth, value vrtl,
+                                      value vbase, value vspans)
+{
+  CAMLparam5(vfont, vstr, vwidth, vrtl, vbase);
+  CAMLxparam1(vspans);
+  CAMLlocal2(vempty, vres);
+  struct lui_font *h = Lui_font_val(vfont);
+  int base = Int_val(vbase);
+  double width = Double_val(vwidth);
+  int rtl = Bool_val(vrtl);
+  const char *text = (const char *)Bytes_val(vstr);
+  int len = (int)caml_string_length(vstr);
+
+  if (len == 0) {
+    vempty = caml_alloc(0, 0);
+    CAMLreturn(vempty);
+  }
+  lui_ensure();
+
+  int *index = NULL;
+  int nunits = 0;
+  WCHAR *utext = lui_text_utf16(text, len, &index, &nunits);
+  if (utext == NULL)
+    caml_failwith("lui_text_dwrite: out of memory");
+
+  IDWriteTextLayout *layout = NULL;
+  FLOAT maxw = width > 0. ? (FLOAT)width : 16777216.f;
+  HRESULT hr = IDWriteFactory_CreateTextLayout(
+    lui_factory, utext, (UINT32)nunits, h->format, maxw, 16777216.f,
+    &layout);
+  if (FAILED(hr) || layout == NULL) {
+    free(utext); free(index);
+    caml_failwith("lui_text_dwrite: no layout");
+  }
+  IDWriteTextLayout_SetWordWrapping(
+    layout, width > 0. ? DWRITE_WORD_WRAPPING_WRAP
+                       : DWRITE_WORD_WRAPPING_NO_WRAP);
+  if (rtl) {
+    IDWriteTextLayout_SetReadingDirection(
+      layout, DWRITE_READING_DIRECTION_RIGHT_TO_LEFT);
+    IDWriteTextLayout_SetTextAlignment(
+      layout, DWRITE_TEXT_ALIGNMENT_TRAILING);
+  }
+
+  mlsize_t nsp = Wosize_val(vspans);
+  lui_effect *effects = calloc((size_t)(nsp ? nsp : 1),
+                               sizeof(*effects));
+  if (effects == NULL) {
+    IDWriteTextLayout_Release(layout);
+    free(utext); free(index);
+    caml_failwith("lui_text_dwrite: out of memory");
+  }
+
+  /* Per-range character spacing (kern) lives on IDWriteTextLayout1;
+     fetch it once, only when a span asks for it. */
+  IDWriteTextLayout1 *layout1 = NULL;
+  for (mlsize_t i = 0; i < nsp; i++) {
+    value sp = Field(vspans, i);
+    int bs = Int_val(Field(sp, 0));
+    int be = Int_val(Field(sp, 1));
+    int us = lui_u16_of_byte(index, nunits, bs);
+    int ue = lui_u16_of_byte(index, nunits, be);
+    if (us > ue) { int t = us; us = ue; ue = t; }
+    if (us < 0) us = 0;
+    if (ue > nunits) ue = nunits;
+    if (us >= ue) continue;
+    DWRITE_TEXT_RANGE rng = { (UINT32)us, (UINT32)(ue - us) };
+
+    long long rcolor = -1;
+    int under = Int_val(Field(sp, 5));
+    double kern = Double_val(Field(sp, 4));
+    if (Field(sp, 3) != Val_int(0)) {
+      /* Long_val, not Int_val: packed RGBA can top 32 bits and
+         Int_val truncates to C int on this platform. */
+      rcolor = (long long)Long_val(Field(Field(sp, 3), 0));
+    }
+    if (Field(sp, 2) != Val_int(0)) {
+      struct lui_font *hf = Lui_font_val(Field(Field(sp, 2), 0));
+      if (hf->family != NULL)
+        IDWriteTextLayout_SetFontFamilyName(layout, hf->family, rng);
+      IDWriteTextLayout_SetFontWeight(
+        layout, (DWRITE_FONT_WEIGHT)hf->weight, rng);
+      IDWriteTextLayout_SetFontStyle(
+        layout, (DWRITE_FONT_STYLE)hf->style, rng);
+      IDWriteTextLayout_SetFontStretch(
+        layout, (DWRITE_FONT_STRETCH)hf->stretch, rng);
+      IDWriteTextLayout_SetFontSize(layout, (FLOAT)hf->size, rng);
+    }
+    if (under != 0)
+      IDWriteTextLayout_SetUnderline(layout, TRUE, rng);
+    if (kern != 0.) {
+      if (layout1 == NULL)
+        IDWriteTextLayout_QueryInterface(
+          layout, &IID_IDWriteTextLayout1, (void **)&layout1);
+      if (layout1 != NULL)
+        IDWriteTextLayout1_SetCharacterSpacing(
+          layout1, 0.f, (FLOAT)kern, 0.f, rng);
+    }
+
+    effects[i].vtbl = (IUnknownVtbl *)&lui_effect_vtbl;
+    effects[i].rcolor = rcolor;
+    effects[i].under = under;
+    IDWriteTextLayout_SetDrawingEffect(
+      layout, (IUnknown *)&effects[i], rng);
+  }
+
+  vres = lui_lines_of_layout(h, layout, index, nunits, base);
+  IDWriteTextLayout_Release(layout);
+  if (layout1 != NULL) IDWriteTextLayout1_Release(layout1);
+  free(utext); free(index); free(effects);
+  CAMLreturn(vres);
+}
+
+CAMLprim value lui_dwrite_shape_spans_byte(value *argv, int argn)
+{
+  (void)argn;
+  return lui_dwrite_shape_spans(argv[0], argv[1], argv[2], argv[3],
+                                argv[4], argv[5]);
 }
 
 /* ---------------------------------------------------------- rasterize */
@@ -1480,5 +1701,11 @@ CAMLprim value lui_dwrite_shape(value a, value b, value c, value d,
 CAMLprim value lui_dwrite_rasterize(value a, value b, value c, value d,
                                     value e) {
   (void)a; (void)b; (void)c; (void)d; (void)e; return unsupported(); }
+CAMLprim value lui_dwrite_shape_spans(value a, value b, value c,
+                                      value d, value e, value f) {
+  (void)a; (void)b; (void)c; (void)d; (void)e; (void)f;
+  return unsupported(); }
+CAMLprim value lui_dwrite_shape_spans_byte(value *argv, int argn) {
+  (void)argv; (void)argn; return unsupported(); }
 
 #endif /* _WIN32 */
