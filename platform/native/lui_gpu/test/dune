@@ -1,0 +1,4 @@
+(test
+ (name lui_gpu_test)
+ (modules lui_gpu_test)
+ (libraries lui_gpu lui_scene alcotest))
