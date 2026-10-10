@@ -229,12 +229,227 @@ let test_damage_bands () =
       (Bytes.equal (bytes_of (Lui_raster.Renderer.image r)) (bytes_of full))
   done
 
+(* ---------- pixel-level semantics ---------- *)
+
+let px_of img x y =
+  let i = y * img.Lui_raster.Image.stride + 4 * x in
+  (Char.code (Bytes.get img.Lui_raster.Image.pix (i + 2)),
+   Char.code (Bytes.get img.Lui_raster.Image.pix (i + 1)),
+   Char.code (Bytes.get img.Lui_raster.Image.pix i),
+   Char.code (Bytes.get img.Lui_raster.Image.pix (i + 3)))
+
+let gray_of img x y = let (r, _, _, _) = px_of img x y in r
+
+(* A shadow whose casting rect occludes its middle still paints its
+   blur outside that rect. *)
+let test_shadow_outside_cast () =
+  let cast = rect 24. 16. 16. 32. in
+  let s =
+    scene ~w:64 ~h:64 ~clear:white
+      [ ishadow ~cast ~blur:8. cast (color 0 0 0 255) ]
+  in
+  let img = Lui_raster.render ~scene:s () in
+  Alcotest.(check int) "inside cast stays clear" 255 (gray_of img 32 32);
+  Alcotest.(check bool) "shadow shows outside" true
+    (gray_of img 42 32 < 235);
+  Alcotest.(check int) "far away clear" 255 (gray_of img 4 4)
+
+(* Along a row through the middle of a sharp-cornered box the shadow
+   profile is the Gaussian-blurred step: alpha(d) = 0.5 * erfc(d*k)
+   with k = sqrt(0.5)/sigma, sigma = blur/2 — the same profile the GPU
+   evaluator's shader uses. *)
+let test_shadow_formula () =
+  let s =
+    scene ~w:96 ~h:64 ~clear:white
+      [ ishadow ~blur:8. (rect 20. 12. 24. 40.) (color 0 0 0 255) ]
+  in
+  let img = Lui_raster.render ~scene:s () in
+  (* sigma = blur/2 = 4; k spreads the profile. *)
+  let k = sqrt 0.5 /. 4. in
+  (* erfc via Abramowitz-Stegun 7.1.26 for erf. *)
+  let erfc x =
+    let erf x =
+      let t = 1. /. (1. +. 0.3275911 *. Float.abs x) in
+      let poly =
+        t *. (0.254829592 +. t *. (-0.284496736 +. t *. (1.421413741
+          +. t *. (-1.453152027 +. t *. 1.061405429))))
+      in
+      (if x < 0. then -1. else 1.) *. (1. -. poly *. exp (-.x *. x))
+    in
+    1. -. erf x
+  in
+  let y = 32 in
+  (* The box's right edge is at x=44; each pixel's d is x+0.5-44. *)
+  List.iter
+    (fun x ->
+      let d = float x +. 0.5 -. 44. in
+      let want = 255. *. (1. -. 0.5 *. erfc (d *. k)) in
+      let got = gray_of img x y in
+      Alcotest.(check bool)
+        (Printf.sprintf "x=%d d=%g want %g got %d" x d want got)
+        true (Float.abs (float got -. want) <= 4.))
+    [ 44; 46; 48; 50; 52; 56; 60 ]
+
+(* An inset shadow concentrates inside the cast rect and leaves both
+   the hole's interior and the outside untouched. *)
+let test_inset_shadow_pixels () =
+  let cast = rect 16. 16. 32. 32. and hole = rect 22. 22. 20. 20. in
+  let s =
+    scene ~w:64 ~h:64 ~clear:white
+      [ ishadow ~inset:true ~cast ~blur:8. hole (color 0 0 0 255) ]
+  in
+  let img = Lui_raster.render ~scene:s () in
+  Alcotest.(check bool) "shadow inside cast" true
+    (gray_of img 19 32 < 245);
+  Alcotest.(check bool) "hole interior clear" true
+    (gray_of img 32 32 > 245);
+  Alcotest.(check int) "outside cast clear" 255 (gray_of img 8 32)
+
+(* Sub-pixel-thin fills get coverage proportional to the fraction of
+   the pixel they cover. *)
+let test_thin_line_coverage () =
+  let s =
+    scene ~w:64 ~h:64 ~clear:white
+      [ ifill (rect 8. 8.0 48. 0.5) (color 0 0 0 255);
+        ifill (rect 8. 24.0 48. 0.25) (color 0 0 0 255);
+        ifill (rect 8. 40.0 48. 1.) (color 0 0 0 255) ]
+  in
+  let img = Lui_raster.render ~scene:s () in
+  let check name want x y =
+    Alcotest.(check bool)
+      (Printf.sprintf "%s: want %d got %d" name want (gray_of img x y))
+      true (abs (gray_of img x y - want) <= 4)
+  in
+  check "half px" 128 32 8;
+  check "quarter px" 191 32 24;
+  check "full px" 0 32 40
+
+(* The opaque mask path blends every mask byte by integer math that
+   matches the floating-point blend: out = src*m + dst*(255-m) over
+   255, alpha accumulates to full. Exhaustive over mask values at a
+   spread of destinations. *)
+let test_opaque_mask_coverage () =
+  let mask_atlas = Atlas.create ~bpp:1 ~w:64 ~h:16 in
+  let (u0, v0) =
+    match Atlas.alloc_transient mask_atlas 32 8 with
+    | Some p -> p
+    | None -> Alcotest.fail "atlas alloc failed"
+  in
+  let table = Bytes.init 256 Char.chr in
+  Atlas.put mask_atlas ~x:u0 ~y:v0 ~w:32 ~h:8 ~src:table ~stride:32;
+  let glyphs =
+    List.init 256 (fun i ->
+        glyph ~x:(float (i mod 16) *. 4.) ~y:(float (i / 16) *. 4.)
+          ~w:1. ~h:1. ~u:(u0 + i mod 32) ~v:(v0 + i / 32) ~uw:1 ~vh:1
+          (color 0 0 0 255))
+  in
+  List.iter
+    (fun dst ->
+      let s =
+        scene ~w:64 ~h:64 ~clear:(color dst dst dst 255)
+          ~mask:mask_atlas ~glyphs [ iglyphs 0 256 ]
+      in
+      let img = Lui_raster.render ~scene:s () in
+      for m = 0 to 255 do
+        let (r, _, _, a) = px_of img ((m mod 16) * 4) ((m / 16) * 4) in
+        let want = float dst *. float (255 - m) /. 255. in
+        if Float.abs (float r -. want) > 2. || a <> 255 then
+          Alcotest.failf "dst %d mask %d: got (%d,a=%d) want ~%.1f" dst m
+            r a want
+      done)
+    [ 0; 36; 73; 109; 146; 182; 219; 255 ]
+
+(* Oklab gradient math checked against the published matrices, computed
+   independently here. sRGB <-> Oklab must round-trip at the endpoints
+   and the interior must follow the Oklab interpolation, not the sRGB
+   one. *)
+module Ref_oklab = struct
+  let to_linear c =
+    if c <= 0.04045 then c /. 12.92 else ((c +. 0.055) /. 1.055) ** 2.4
+  let to_srgb c =
+    if c <= 0.0031308 then 12.92 *. c
+    else 1.055 *. (c ** (1. /. 2.4)) -. 0.055
+  let oklab (r, g, b) =
+    let r = to_linear r and g = to_linear g and b = to_linear b in
+    let l = Float.cbrt (0.4122214708 *. r +. 0.5363325363 *. g
+                        +. 0.0514459929 *. b) in
+    let m = Float.cbrt (0.2119034982 *. r +. 0.6806995451 *. g
+                        +. 0.1073969566 *. b) in
+    let s = Float.cbrt (0.0883024619 *. r +. 0.2817188376 *. g
+                        +. 0.6299787005 *. b) in
+    (0.2104542553 *. l +. 0.7936177850 *. m -. 0.0040720468 *. s,
+     1.9779984951 *. l -. 2.4285922050 *. m +. 0.4505937099 *. s,
+     0.0259040371 *. l +. 0.7827717662 *. m -. 0.8086757660 *. s)
+  let from_oklab (la, aa, ab) =
+    let l = la +. 0.3963377774 *. aa +. 0.2158037573 *. ab in
+    let m = la -. 0.1055613458 *. aa -. 0.0638541728 *. ab in
+    let s = la -. 0.0894841775 *. aa -. 1.2914855480 *. ab in
+    let l = l ** 3. and m = m ** 3. and s = s ** 3. in
+    (to_srgb (4.0767416621 *. l -. 3.3077115913 *. m +. 0.2309699292 *. s),
+     to_srgb (-1.2684380046 *. l +. 2.6097574011 *. m -. 0.3413193965 *. s),
+     to_srgb (-0.0041960863 *. l -. 0.7034186147 *. m +. 1.7076147010 *. s))
+  let mix (r1, g1, b1) (r2, g2, b2) t =
+    let (l1, a1, b1_) = oklab (r1, g1, b1)
+    and (l2, a2, b2_) = oklab (r2, g2, b2) in
+    from_oklab
+      (l1 *. (1. -. t) +. l2 *. t,
+       a1 *. (1. -. t) +. a2 *. t,
+       b1_ *. (1. -. t) +. b2_ *. t)
+end
+
+let test_oklab_gradient () =
+  let s =
+    scene ~w:64 ~h:64 ~clear:white
+      [ ifill ~paint:Oklab ~c2:(color 255 255 255 255)
+          ~g:(0., 0., 64., 0.) (rect 0. 0. 64. 8.) (color 0 0 0 255);
+        ifill ~paint:Oklab ~c2:(color 0 0 255 255) ~g:(0., 0., 64., 0.)
+          (rect 0. 16. 64. 8.) (color 255 0 0 255) ]
+  in
+  let img = Lui_raster.render ~scene:s () in
+  (* black -> white in Oklab: midpoint L=0.5 -> srgb ~99, not the
+     ~186 the sRGB mix gives. *)
+  let mid = gray_of img 32 4 in
+  Alcotest.(check bool)
+    (Printf.sprintf "oklab midpoint %d" mid) true
+    (abs (mid - 99) <= 4);
+  (* Endpoints round-trip to the byte. *)
+  Alcotest.(check bool) "t=0 black" true (gray_of img 0 4 <= 2);
+  Alcotest.(check bool) "t=1 white" true (gray_of img 63 4 >= 252);
+  (* red -> blue: every sampled pixel matches the reference Oklab mix
+     within a few bytes. *)
+  List.iter
+    (fun x ->
+      let t = (float x +. 0.5) /. 64. in
+      let (er, eg, eb) =
+        Ref_oklab.mix (1., 0., 0.) (0., 0., 1.) t
+      in
+      let (r, g, b, _) = px_of img x 20 in
+      List.iter
+        (fun (name, got, want) ->
+          Alcotest.(check bool)
+            (Printf.sprintf "x=%d %s: got %d want %d" x name got want)
+            true (abs (got - want) <= 4))
+        [ ("r", r, int_of_float (Float.round (er *. 255.)));
+          ("g", g, int_of_float (Float.round (eg *. 255.)));
+          ("b", b, int_of_float (Float.round (eb *. 255.))) ])
+    [ 8; 16; 24; 32; 40; 48; 56 ]
+
 let () =
   Alcotest.run "lui_raster"
     [ ( "goldens", [ Alcotest.test_case "reference scenes" `Slow test_golden ] );
       ( "semantics",
         [ Alcotest.test_case "pixel checks" `Quick test_pixel_checks;
-          Alcotest.test_case "bands draw as one" `Slow test_bands ] );
+          Alcotest.test_case "bands draw as one" `Slow test_bands;
+          Alcotest.test_case "shadow outside cast" `Quick
+            test_shadow_outside_cast;
+          Alcotest.test_case "shadow formula" `Quick test_shadow_formula;
+          Alcotest.test_case "inset shadow pixels" `Quick
+            test_inset_shadow_pixels;
+          Alcotest.test_case "thin line coverage" `Quick
+            test_thin_line_coverage;
+          Alcotest.test_case "opaque mask coverage" `Quick
+            test_opaque_mask_coverage;
+          Alcotest.test_case "oklab gradient" `Quick test_oklab_gradient ] );
       ( "damage",
         [ Alcotest.test_case "redraws what changed" `Slow test_damage_redraws_plain;
           Alcotest.test_case "redraws effects" `Slow test_damage_redraws_effects;
