@@ -1,0 +1,19 @@
+(test
+ (name lui_window_linux_test)
+ (modules lui_window_linux_test)
+ (libraries
+  lui_window_linux
+  lui_window
+  lui
+  lui_store
+  lui_scene
+  lui_paint
+  lui_host
+  lui_ime
+  lui_a11y
+  lui_ax_linux
+  lui_shell_linux
+  lui_raster
+  ocaml-signal
+  alcotest)
+ (enabled_if (= %{system} linux)))
