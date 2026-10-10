@@ -546,11 +546,21 @@ let dropdown_anchor_node renderer node =
                   in
                   let children = W.Element.children container in
                   let length = W.HtmlCollection.length children in
-                  if length > 0 then
-                    (match W.HtmlCollection.item (length - 1) children with
-                     | Some anchor -> anchor
-                     | None -> container)
-                  else container
+                  (* the dropdown/popover node renders inline as the
+                     container's last child — it must never anchor to
+                     itself, or layer ownership misfiles the trigger's
+                     presses as outside (dismiss-then-reopen on the
+                     same click). Take the last non-self child. *)
+                  let own = Lazy.force current.platform_node in
+                  let rec pick index =
+                    if index < 0 then container
+                    else
+                      match W.HtmlCollection.item index children with
+                      | Some el
+                          when not (W.Element.isSameNode el own) -> el
+                      | _ -> pick (index - 1)
+                  in
+                  pick (length - 1)
             | None -> invalid_arg "dropdown parent is unavailable")
        | None -> invalid_arg "dropdown requires an anchor parent")
   | None -> invalid_arg "unknown dropdown node"

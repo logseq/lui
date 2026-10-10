@@ -1661,11 +1661,24 @@ let mount_popover renderer node =
           Some (Lui_web_nodes.dropdown_anchor_node renderer node)
         else if cover then None
         else
-          let document = W.Document.unsafeAsHtmlDocument renderer.web_document in
-          match W.HtmlDocument.activeElement document, W.HtmlDocument.body document with
-          | Some active, Some body when not (W.Element.isSameNode
-              (W.Element.asNode active) body) -> Some active
-          | _ -> None
+          (* press fires on pointerdown, before the browser's default
+             action moves focus onto the invoking element — so the
+             element under the current pointerdown (capture-phase
+             tracked) is the real trigger; keyboard/programmatic opens
+             fall back to the focused element *)
+          (match Lui_web_layers.down_target renderer.web_layers with
+           | Some _ as target -> target
+           | None ->
+               let document =
+                 W.Document.unsafeAsHtmlDocument renderer.web_document
+               in
+               (match W.HtmlDocument.activeElement document,
+                      W.HtmlDocument.body document with
+                | Some active, Some body
+                  when not (W.Element.isSameNode
+                              (W.Element.asNode active) body) ->
+                    Some active
+                | _ -> None))
       in
       Lui_web_layers.reconcile_trigger renderer.web_layers
         renderer.web_document node trigger;
