@@ -24,6 +24,10 @@ layout(location = 7) in vec4 aUV;        // texture rectangle, normalized, borde
 layout(location = 8) in vec4 aClip;      // the innermost clip rectangle
 layout(location = 9) in vec4 aClipRadii;
 layout(location = 10) in vec4 aParams;   // kind, dashed or grayscale, sigma or paint, opacity
+layout(location = 11) in vec4 aClip2;    // the clip containing the innermost one
+layout(location = 12) in vec4 aClip2Radii;
+layout(location = 13) in vec4 aClip3;    // the clip containing that one
+layout(location = 14) in vec4 aClip3Radii;
 
 uniform vec2 uSize;
 
@@ -38,13 +42,17 @@ flat out vec4 vGrad;
 flat out vec4 vWidths;
 flat out vec4 vClip;
 flat out vec4 vClipRadii;
+flat out vec4 vClip2;
+flat out vec4 vClip2Radii;
+flat out vec4 vClip3;
+flat out vec4 vClip3Radii;
 flat out vec4 vParams;
 
 void main() {
 	vec2 corner = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1));
 	vec4 r = aRect;
 	float kind = aParams.x;
-	if (kind < 0.5 || kind > 5.5) { // fills and effects
+	if (kind < 0.5 || (kind > 3.5 && kind < 4.5) || kind > 5.5) { // fills, images and effects
 		r = vec4(r.xy - 1.0, r.zw + 2.0);
 	} else if (kind < 1.5) {
 		float e = 3.0 * aParams.z + 1.0;
@@ -52,7 +60,10 @@ void main() {
 	}
 	vec2 p = r.xy + corner * r.zw;
 	gl_Position = vec4(p / uSize * vec2(2.0, -2.0) + vec2(-1.0, 1.0), 0.0, 1.0);
-	vPoint = vec4(p, mix(aUV.xy, aUV.zw, corner));
+	// The texture coordinate of the pixel, relative to the op's
+	// rectangle, so expanded quads keep it where it was.
+	vec2 uv = aUV.xy + (p - aRect.xy) / aRect.zw * (aUV.zw - aUV.xy);
+	vPoint = vec4(p, uv);
 	vRect = aRect;
 	vRadii = aRadii;
 	vInner = aInner;
@@ -63,6 +74,10 @@ void main() {
 	vWidths = aUV;
 	vClip = aClip;
 	vClipRadii = aClipRadii;
+	vClip2 = aClip2;
+	vClip2Radii = aClip2Radii;
+	vClip3 = aClip3;
+	vClip3Radii = aClip3Radii;
 	vParams = aParams;
 }
 
@@ -81,6 +96,10 @@ flat in vec4 vGrad;
 flat in vec4 vWidths;
 flat in vec4 vClip;
 flat in vec4 vClipRadii;
+flat in vec4 vClip2;
+flat in vec4 vClip2Radii;
+flat in vec4 vClip3;
+flat in vec4 vClip3Radii;
 flat in vec4 vParams;
 
 uniform sampler2D uMask;
@@ -106,10 +125,94 @@ float sdRoundRect(vec2 p, vec4 rect, vec4 radii) {
 
 float coverage(float d) { return clamp(0.5 - d, 0.0, 1.0); }
 
+// Continuous corners bend gradually from further out than quarter
+// circles, as the CPU renderer computes them: the curve leaves the
+// edges cont_extent times the radius from the corner, blended toward
+// the quarter circle of the clamped radius by how short the sides are.
+const float contExtent = 1.528665;
+
+// The corner of radius r's value at u inside its vertical edge and v
+// inside its horizontal one, a signed distance positive outside, as the
+// CPU renderer's corner_dist computes it: the distance l of the point's
+// place a in the curve's box to its edge, through the quartic P of the
+// ratio rho of a's smaller coordinate to its larger, blended toward the
+// quarter circle f2 by the sides' clamp factors (ccx, ccy).
+float cornerDist(float u, float v, float r, float rh, float rv, vec2 size) {
+	float ce = contExtent * r;
+	float ccx = clamp((contExtent - size.x / (r + rh)) / (contExtent - 1.0), 0.0, 1.0);
+	float ccy = clamp((contExtent - size.y / (r + rv)) / (contExtent - 1.0), 0.0, 1.0);
+	float ceff = ce + (r - ce) * max(ccx, ccy);
+	float ax = max(0.0, 1.0 - u / ce);
+	float ay = max(0.0, 1.0 - v / ce);
+	float l = length(vec2(ax, ay));
+	float hi = max(ax, ay);
+	float rho = hi > 0.0 ? min(min(ax, ay) / hi, 1.0) : 0.0;
+	float pl = (((-0.926054 * rho + 3.15601) * rho - 3.64122) * rho + 1.26803) * rho + 0.268531;
+	float f1 = l + 1.0 - 1.0 / (1.0 - rho * rho * min(l, 1.0) * pl);
+	vec2 q = max(vec2(0.0), vec2(ax, ay) * contExtent - (contExtent - 1.0));
+	float f2 = length(q) * 0.654166 + 0.345834;
+	// The clamp along the edge the point is nearer to, blended across
+	// the diagonal.
+	float s = ay > ax ? 1.0 : -1.0;
+	float w = clamp(0.5 - s + s * rho, 0.0, 1.0);
+	float f = mix(f1 + (f2 - f1) * ccx, f1 + (f2 - f1) * ccy, w);
+	return min(max(ceff - u, ceff - v), 0.0) + ce * (f - 1.0);
+}
+
+// The value one corner adds to the shape at u, v inside its edges,
+// -1e9 where its curve does not reach, as cont_dist's loop computes.
+float contCorner(float u, float v, float r, float rh, float rv, vec2 size, out bool curved) {
+	float ce = contExtent * r;
+	if (r <= 0.0 || u >= ce || v >= ce) return -1e9;
+	curved = true;
+	return cornerDist(u, v, r, rh, rv, size);
+}
+
+// The continuous-cornered shape's value at p: the largest of its
+// corners' and the rectangle's signed distances; curved is set where a
+// corner's curve reaches p, as the CPU renderer's cont_dist computes.
+float contDist(vec2 p, vec4 rect, vec4 radii, out bool curved) {
+	float left = p.x - rect.x;
+	float right = rect.x + rect.z - p.x;
+	float top = p.y - rect.y;
+	float bottom = rect.y + rect.w - p.y;
+	float d = max(max(-left, -right), max(-top, -bottom));
+	vec4 ar = abs(radii);
+	curved = false;
+	d = max(d, contCorner(left, top, ar.x, ar.y, ar.w, rect.zw, curved));
+	d = max(d, contCorner(right, top, ar.y, ar.x, ar.z, rect.zw, curved));
+	d = max(d, contCorner(right, bottom, ar.z, ar.w, ar.y, rect.zw, curved));
+	d = max(d, contCorner(left, bottom, ar.w, ar.z, ar.x, rect.zw, curved));
+	return d;
+}
+
+// Coverage with continuous corners: away from their curves, the area
+// of the pixel inside the rectangle; near them, the shape's value over
+// the sum of its derivatives, as the CPU renderer's cont_coverage
+// computes it.
+float contCoverage(vec2 p, vec4 rect, vec4 radii) {
+	bool curved;
+	float d = contDist(p, rect, radii, curved);
+	if (!curved) {
+		vec2 c = clamp(min(rect.xy + rect.zw, p + 0.5) - max(rect.xy, p - 0.5), 0.0, 1.0);
+		return c.x * c.y;
+	}
+	if (abs(d) > 2.0) return d < 0.0 ? 1.0 : 0.0;
+	float h = 1.0 / 16.0;
+	bool cu;
+	float dx = contDist(p + vec2(h, 0.0), rect, radii, cu);
+	float dy = contDist(p + vec2(0.0, h), rect, radii, cu);
+	return clamp(0.5 - d * h / max(abs(dx - d) + abs(dy - d), 1e-6), 0.0, 1.0);
+}
+
 // rectCoverage returns how much of the pixel at p a rounded rectangle
 // covers: by the distance to its edge near rounded corners, and exactly,
-// the area of the pixel inside it, near square ones.
+// the area of the pixel inside it, near square ones. Negative radii
+// mark continuous corners, which the whole shape takes.
 float rectCoverage(vec2 p, vec4 rect, vec4 radii) {
+	if (min(min(radii.x, radii.y), min(radii.z, radii.w)) < 0.0) {
+		return contCoverage(p, rect, radii);
+	}
 	vec2 q = p - rect.xy - rect.zw * 0.5;
 	float r = q.x < 0.0 ? (q.y < 0.0 ? radii.x : radii.w) : (q.y < 0.0 ? radii.y : radii.z);
 	if (r > 0.0) {
@@ -117,6 +220,16 @@ float rectCoverage(vec2 p, vec4 rect, vec4 radii) {
 	}
 	vec2 c = clamp(min(rect.xy + rect.zw, p + 0.5) - max(rect.xy, p - 0.5), 0.0, 1.0);
 	return c.x * c.y;
+}
+
+// clipCoverage is how much of the pixel at p the clip stack lets
+// through: the product of the three innermost clips' coverages, as the
+// CPU renderer multiplies all of its clips'. (Deeper clips cut by
+// their scissor bounds only.)
+float clipCoverage(vec2 p) {
+	return rectCoverage(p, vClip, vClipRadii)
+		* rectCoverage(p, vClip2, vClip2Radii)
+		* rectCoverage(p, vClip3, vClip3Radii);
 }
 
 vec4 premul(vec4 c) { return vec4(c.rgb * c.a, c.a); }
@@ -320,7 +433,12 @@ void main() {
 	} else if (kind < 3.5) {
 		res = texture(uColor, tex) * vColor.a;
 	} else if (kind < 4.5) {
-		res = texture(uImage, tex) * rectCoverage(p, vRect, vRadii);
+		// The bilinear sample at tex, its taps clamped to the source
+		// rectangle's texels, which vInner holds, as the CPU renderer
+		// clamps them.
+		vec2 sz = vec2(textureSize(uImage, 0));
+		vec2 t = clamp(tex * sz - 0.5, vInner.xy, vInner.zw);
+		res = texture(uImage, (t + 0.5) / sz) * rectCoverage(p, vRect, vRadii);
 		if (vParams.y > 0.5) {
 			res.rgb = vec3(dot(res.rgb, vec3(0.2126, 0.7152, 0.0722)));
 		}
@@ -328,7 +446,7 @@ void main() {
 		vec4 c = paint(p, vParams.z, vRect, vColor, vColor2, vGrad);
 		vec3 straight = unpremul(c);
 		vec3 a = subpixelCoverage(texture(uColor, tex).rgb, straight, vInner.x, vInner.y, vRadii);
-		vec3 w = a * c.a * rectCoverage(p, vClip, vClipRadii) * vParams.w;
+		vec3 w = a * c.a * clipCoverage(p) * vParams.w;
 		float wa = (w.r + w.g + w.b) / 3.0;
 #ifdef DUAL
 		fragColor = vec4(straight * w, wa);
@@ -338,8 +456,7 @@ void main() {
 #endif
 		return;
 	}
-	float clip = rectCoverage(p, vClip, vClipRadii);
-	fragColor = res * clip * vParams.w;
+	fragColor = res * clipCoverage(p) * vParams.w;
 #ifdef DUAL
 	fragAlpha = fragColor.aaaa;
 #endif

@@ -418,14 +418,17 @@ let test_float32_packing () =
       color2 = (17., 18., 19., 20.); border = (21., 22., 23., 24.);
       grad = (25., 26., 27., 28.); uv = (29., 30., 31., 32.);
       clip = (33., 34., 35., 36.); clip_radii = (37., 38., 39., 40.);
-      params = (41., 42., 43., 44.) }
+      params = (41., 42., 43., 44.);
+      clip2 = (45., 46., 47., 48.); clip2_radii = (49., 50., 51., 52.);
+      clip3 = (53., 54., 55., 56.); clip3_radii = (57., 58., 59., 60.) }
   in
   let a = G.to_float32_array inst in
-  check int "stride" 44 G.instance_floats;
-  check int "len" 44 (Array.length a);
+  check int "stride" 60 G.instance_floats;
+  check int "len" 60 (Array.length a);
   check (float 0.) "field order" 41. a.(40);
   check (float 0.) "radii start" 5. a.(4);
   check (float 0.) "params end" 44. a.(43);
+  check (float 0.) "clip3 end" 60. a.(59);
   (* float32 rounding at the boundary. *)
   check (float 0.) "f32 rounding" 0.100000001490116119384765625 a.(0)
 

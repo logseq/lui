@@ -36,12 +36,12 @@ let clip_op r : op =
 (* {1 Instance packing} *)
 
 let test_pack_offsets () =
-  Alcotest.(check int) "attribute count" 11 Lui_gl.attribute_count;
-  Alcotest.(check int) "instance bytes" 176 Lui_gl.instance_bytes;
+  Alcotest.(check int) "attribute count" 15 Lui_gl.attribute_count;
+  Alcotest.(check int) "instance bytes" 240 Lui_gl.instance_bytes;
   Alcotest.(check int) "attr 0 of first" 0 (Lui_gl.attribute_offset 0 0);
   Alcotest.(check int) "attr 10 of first" 160 (Lui_gl.attribute_offset 0 10);
-  Alcotest.(check int) "attr 0 of second" 176 (Lui_gl.attribute_offset 1 0);
-  Alcotest.(check int) "attr 3 of second" 224 (Lui_gl.attribute_offset 1 3)
+  Alcotest.(check int) "attr 0 of second" 240 (Lui_gl.attribute_offset 1 0);
+  Alcotest.(check int) "attr 3 of second" 288 (Lui_gl.attribute_offset 1 3)
 
 let test_pack_batches () =
   let s = make_scene ~w:64 ~h:64 in
@@ -49,7 +49,7 @@ let test_pack_batches () =
   let batches = Lui_gpu.build s in
   let pack = Lui_gl.pack_batches batches in
   Alcotest.(check int) "one batch" 1 (List.length batches);
-  Alcotest.(check int) "one instance" 44
+  Alcotest.(check int) "one instance" 60
     (Bigarray.Array1.dim pack.data);
   let st, n = pack.spans.(0) in
   Alcotest.(check int) "start" 0 st;

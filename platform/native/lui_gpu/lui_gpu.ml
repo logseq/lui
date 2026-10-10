@@ -48,7 +48,10 @@ type f4 = float * float * float * float
    Color2, Border and Grad, and in UV where its backdrop's area starts
    in the frame and its size in texels.
 
-   Clip and Clip_radii are the innermost clip, which the shader cuts.
+   Clip and Clip_radii are the innermost clip; Clip2 and Clip3 the two
+   containing it, the everything rectangle where the stack is
+   shallower; the shader multiplies their coverages. Deeper clips cut
+   by their scissor bounds only.
 
    Params is the kind (0 fill, 1 shadow, 2 mask glyph, 3 color glyph,
    4 image, 5 subpixel glyph, 6 effect); 1 for a dashed border, a
@@ -68,7 +71,17 @@ type instance = {
   clip : f4;
   clip_radii : f4;
   params : f4;
+  clip2 : f4;
+  clip2_radii : f4;
+  clip3 : f4;
+  clip3_radii : f4;
 }
+
+(* The clip fields of an instance stamped later: the everything
+   rectangle, zero radii, which covers every pixel. *)
+let no_clip = (-1e6, -1e6, 2e6, 2e6)
+
+let no_clip_radii = (0., 0., 0., 0.)
 
 (* Instance kinds, selected by [params0]. *)
 let kind_fill = 0.
@@ -80,7 +93,7 @@ let kind_subpixel_glyph = 5.
 let kind_effect = 6.
 
 (* Floats in the packed layout of one instance. *)
-let instance_floats = 44
+let instance_floats = 60
 
 (* Scissor: a scissor rectangle in device pixels. *)
 type scissor = { left : int; top : int; right : int; bottom : int }
@@ -165,9 +178,10 @@ let shadow_sigma blur =
   let sigma = blur /. 2. in
   if sigma < 0.5 then 0. else sigma
 
-(* One clip of the clip stack: the innermost clip's rect and fitted
-   radii go to the shader's clip fields; the intersection of all the
-   stack's clip rectangles, bounds, becomes the scissor rectangle. *)
+(* One clip of the clip stack: the three innermost clips' rectangles
+   and fitted radii go to the shader's clip fields; the intersection
+   of all the stack's clip rectangles, bounds, becomes the scissor
+   rectangle. *)
 type clip_frame = {
   cf_rect : rect;
   cf_radii : f4;
@@ -231,15 +245,30 @@ let build ?(wide = false) (s : t) : batch list =
       else wc.wborder
     | _ -> straight c
   in
+  (* with_clip stamps an instance with the innermost three clips of
+     the stack: the shader multiplies their coverages, as the CPU
+     renderer multiplies all of its clips'; deeper clips, when any,
+     cut by their scissor bounds only. *)
+  let with_clip inst =
+    let of_frame cf = (f4_of_rect cf.cf_rect, cf.cf_radii) in
+    let pad = (f4_of_rect everything, (0., 0., 0., 0.)) in
+    let rec take n = function
+      | cf :: tl when n > 0 -> of_frame cf :: take (n - 1) tl
+      | _ -> []
+    in
+    match take 3 !stack @ [ pad; pad; pad ] with
+    | (c1, r1) :: (c2, r2) :: (c3, r3) :: _ ->
+      { inst with clip = c1; clip_radii = r1; clip2 = c2;
+                  clip2_radii = r2; clip3 = c3; clip3_radii = r3 }
+    | _ -> assert false
+  in
   (* add appends an instance within the current clip, starting a batch
      when the scissor rectangle or the image changes, or after an
      effect's or a hole batch. *)
   let add inst img =
     let cur = top () in
     if not (scissor_empty cur.cf_scissor) then (
-      let inst =
-        { inst with clip = f4_of_rect cur.cf_rect; clip_radii = cur.cf_radii }
-      in
+      let inst = with_clip inst in
       let wb =
         match !open_batch with
         | None -> start { w_scissor = cur.cf_scissor; w_image = img;
@@ -292,9 +321,12 @@ let build ?(wide = false) (s : t) : batch list =
             radii = corners ed.edrect ed.edradii ed.edcontinuous;
             inner = p.(0); color = p.(1); color2 = p.(2); border = p.(3);
             grad = p.(4); uv;
-            clip = f4_of_rect cur.cf_rect; clip_radii = cur.cf_radii;
-            params = (kind_effect, 0., down, opacity ed.edopacity) }
+            clip = no_clip; clip_radii = no_clip_radii;
+            params = (kind_effect, 0., down, opacity ed.edopacity);
+            clip2 = no_clip; clip2_radii = no_clip_radii;
+            clip3 = no_clip; clip3_radii = no_clip_radii }
         in
+        let inst = with_clip inst in
         ignore
           (start { w_scissor = cur.cf_scissor; w_image = None;
                    w_fx = Some eff.ee; w_backdrop = backdrop;
@@ -306,13 +338,16 @@ let build ?(wide = false) (s : t) : batch list =
     let cur = top () in
     if not (scissor_empty cur.cf_scissor) then
       let inst =
-        { rect = f4_of_rect ho.hrect;
-          radii = corners ho.hrect ho.hradii ho.hcontinuous;
-          inner = (0., 0., 0., 0.); color = (0., 0., 0., 1.);
-          color2 = (0., 0., 0., 0.); border = (0., 0., 0., 0.);
-          grad = (0., 0., 0., 0.); uv = (0., 0., 0., 0.);
-          clip = f4_of_rect cur.cf_rect; clip_radii = cur.cf_radii;
-          params = (kind_fill, 0., paint_code Solid, opacity ho.hopacity) }
+        with_clip
+          { rect = f4_of_rect ho.hrect;
+            radii = corners ho.hrect ho.hradii ho.hcontinuous;
+            inner = (0., 0., 0., 0.); color = (0., 0., 0., 1.);
+            color2 = (0., 0., 0., 0.); border = (0., 0., 0., 0.);
+            grad = (0., 0., 0., 0.); uv = (0., 0., 0., 0.);
+            clip = no_clip; clip_radii = no_clip_radii;
+            params = (kind_fill, 0., paint_code Solid, opacity ho.hopacity);
+            clip2 = no_clip; clip2_radii = no_clip_radii;
+            clip3 = no_clip; clip3_radii = no_clip_radii }
       in
       let wb =
         match !open_batch with
@@ -355,10 +390,12 @@ let build ?(wide = false) (s : t) : batch list =
               color2 = wide_col w Lui_scene.wide_color2 f.fcolor2;
               border = wide_col w Lui_scene.wide_border f.fborder_color;
               grad = f.fgradient; uv = bw;
-              clip = (0., 0., 0., 0.); clip_radii = (0., 0., 0., 0.);
+              clip = no_clip; clip_radii = no_clip_radii;
               params =
                 (kind_fill, (if f.fdashed then 1. else 0.),
-                 paint_code f.fpaint, opacity f.fopacity) }
+                 paint_code f.fpaint, opacity f.fopacity);
+              clip2 = no_clip; clip2_radii = no_clip_radii;
+              clip3 = no_clip; clip3_radii = no_clip_radii }
             None)
       | Shadow sh -> (
         if sh.sinset then (
@@ -372,9 +409,11 @@ let build ?(wide = false) (s : t) : batch list =
                 color = wide_col (wide_of sh.swide) Lui_scene.wide_color sh.scolor;
                 color2 = (0., 0., 0., 0.); border = (0., 0., 0., 0.);
                 grad = (0., 0., 0., 0.); uv = (0., 0., 0., 0.);
-                clip = (0., 0., 0., 0.); clip_radii = (0., 0., 0., 0.);
+                clip = no_clip; clip_radii = no_clip_radii;
                 params =
-                  (kind_shadow, 1., shadow_sigma sh.sblur, opacity sh.sopacity) }
+                  (kind_shadow, 1., shadow_sigma sh.sblur, opacity sh.sopacity);
+                clip2 = no_clip; clip2_radii = no_clip_radii;
+                clip3 = no_clip; clip3_radii = no_clip_radii }
             in
             let inst =
               if rect_empty sh.srect then inst
@@ -391,9 +430,11 @@ let build ?(wide = false) (s : t) : batch list =
               color = wide_col (wide_of sh.swide) Lui_scene.wide_color sh.scolor;
               color2 = (0., 0., 0., 0.); border = (0., 0., 0., 0.);
               grad = (0., 0., 0., 0.); uv = (0., 0., 0., 0.);
-              clip = (0., 0., 0., 0.); clip_radii = (0., 0., 0., 0.);
+              clip = no_clip; clip_radii = no_clip_radii;
               params =
-                (kind_shadow, 0., shadow_sigma sh.sblur, opacity sh.sopacity) }
+                (kind_shadow, 0., shadow_sigma sh.sblur, opacity sh.sopacity);
+              clip2 = no_clip; clip2_radii = no_clip_radii;
+              clip3 = no_clip; clip3_radii = no_clip_radii }
           in
           let inst =
             if rect_empty sh.scast then inst
@@ -430,8 +471,10 @@ let build ?(wide = false) (s : t) : batch list =
               border = (0., 0., 0., 0.); grad = (0., 0., 0., 0.);
               uv = (float gl.gu /. aw, float gl.gv /. ah,
                     float (gl.gu + gl.guw) /. aw, float (gl.gv + gl.gvh) /. ah);
-              clip = (0., 0., 0., 0.); clip_radii = (0., 0., 0., 0.);
-              params = (kind, 0., 0., 1.) }
+              clip = no_clip; clip_radii = no_clip_radii;
+              params = (kind, 0., 0., 1.);
+              clip2 = no_clip; clip2_radii = no_clip_radii;
+              clip3 = no_clip; clip3_radii = no_clip_radii }
           in
           let inst =
             match wide_of gl.gwide with
@@ -449,21 +492,35 @@ let build ?(wide = false) (s : t) : batch list =
         done
       | Image io ->
         let img = io.iimage in
-        if not (rect_empty io.irect2) && img.iw > 0 && img.ih > 0 then (
+        if not (rect_empty io.irect2 || rect_empty io.isrc) && img.iw > 0
+           && img.ih > 0
+        then (
           let iw = float img.iw and ih = float img.ih in
+          (* The texels bilinear taps may read, as the CPU renderer
+             clamps them: the source rectangle's, inside the image. *)
+          let inner =
+            ( float (int_of_float io.isrc.x),
+              float (int_of_float io.isrc.y),
+              float (min (int_of_float (Float.ceil (io.isrc.x +. io.isrc.w)) - 1)
+                       (img.iw - 1)),
+              float (min (int_of_float (Float.ceil (io.isrc.y +. io.isrc.h)) - 1)
+                       (img.ih - 1)) )
+          in
           add
             { rect = f4_of_rect io.irect2;
               radii = corners io.irect2 io.iradii io.icontinuous;
-              inner = (0., 0., 0., 0.); color = (0., 0., 0., 0.);
+              inner; color = (0., 0., 0., 0.);
               color2 = (0., 0., 0., 0.); border = (0., 0., 0., 0.);
               grad = (0., 0., 0., 0.);
               uv = (io.isrc.x /. iw, io.isrc.y /. ih,
                     (io.isrc.x +. io.isrc.w) /. iw,
                     (io.isrc.y +. io.isrc.h) /. ih);
-              clip = (0., 0., 0., 0.); clip_radii = (0., 0., 0., 0.);
+              clip = no_clip; clip_radii = no_clip_radii;
               params =
                 (kind_image, (if io.igrayscale then 1. else 0.), 0.,
-                 opacity io.iopacity) }
+                 opacity io.iopacity);
+              clip2 = no_clip; clip2_radii = no_clip_radii;
+              clip3 = no_clip; clip3_radii = no_clip_radii }
             (Some img))
       | Effect ed ->
         if not (rect_empty ed.edrect) && ed.edindex >= 0
@@ -476,7 +533,7 @@ let build ?(wide = false) (s : t) : batch list =
 
 (* The packed layout of one instance for the instance buffer: rect,
    radii, inner, color, color2, border, grad, uv, clip, clip_radii,
-   params, rounded to float32. *)
+   params, clip2, clip2_radii, clip3, clip3_radii, rounded to float32. *)
 let to_float32_array (i : instance) : float array =
   let b = Bigarray.(Array1.create float32 c_layout instance_floats) in
   let k = ref 0 in
@@ -489,7 +546,8 @@ let to_float32_array (i : instance) : float array =
   in
   put i.rect; put i.radii; put i.inner; put i.color; put i.color2;
   put i.border; put i.grad; put i.uv; put i.clip; put i.clip_radii;
-  put i.params;
+  put i.params; put i.clip2; put i.clip2_radii; put i.clip3;
+  put i.clip3_radii;
   Array.init instance_floats (fun j -> Bigarray.Array1.get b j)
 
 let shader_source = Shader_source.source
