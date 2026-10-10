@@ -272,6 +272,55 @@ let test_run_font_matches () =
       Alcotest.(check bool) "run font" true (r.font = sys))
     (Array.to_list lines.(0).runs)
 
+let ink_sum b =
+  let n = ref 0 in
+  for i = 0 to Bytes.length b.pixels - 1 do
+    n := !n + Bytes.get_uint8 b.pixels i
+  done;
+  !n
+
+(* The shade parameter darkens or lightens a glyph's mask, and font
+   weight changes the same glyph's mask: thin stays lighter than bold. *)
+let test_glyph_shades () =
+  let f = create ~families:[ "Helvetica" ] ~size:32. () in
+  let id = glyph_id_of f 'A' in
+  match rasterize ~shade:1. f id, rasterize ~shade:0.3 f id with
+  | Some full, Some faint ->
+    Alcotest.(check bool) "shade changes mask" false
+      (Bytes.to_string full.pixels = Bytes.to_string faint.pixels);
+    Alcotest.(check bool) "darker shade more ink" true
+      (ink_sum full > ink_sum faint)
+  | _ -> Alcotest.fail "expected bitmaps"
+
+(* Thin and bold cuts of one family produce different masks for the
+   same glyph — thick strokes cover more pixels. *)
+let test_glyph_thick () =
+  let thin = create ~families:[ "Helvetica" ] ~weight:100 ~size:32. () in
+  let bold = create ~families:[ "Helvetica" ] ~weight:700 ~size:32. () in
+  match
+    ( rasterize thin (glyph_id_of thin 'A'),
+      rasterize bold (glyph_id_of bold 'A') )
+  with
+  | Some t, Some b ->
+    Alcotest.(check bool) "weight changes mask" false
+      (Bytes.to_string t.pixels = Bytes.to_string b.pixels);
+    Alcotest.(check bool) "bold more ink" true (ink_sum b > ink_sum t)
+  | _ -> Alcotest.fail "expected bitmaps"
+
+(* Fonts of many sizes report their own size and keep sensible,
+   non-decreasing line metrics. *)
+let test_fonts_many_sizes () =
+  let prev = ref 0. in
+  List.iter
+    (fun s ->
+      let f = create ~families:[ "Helvetica" ] ~size:s () in
+      Alcotest.(check bool) "size" true (near (size f) s);
+      let m = metrics f in
+      Alcotest.(check bool) "line height grows" true
+        (m.line_height >= !prev);
+      prev := m.line_height)
+    [ 8.; 10.; 12.; 14.; 18.; 24.; 36.; 48. ]
+
 let () =
   let open Alcotest in
   run "lui_text"
@@ -302,4 +351,8 @@ let () =
           test_case "scale" `Quick test_rasterize_scale;
           test_case "invalid" `Quick test_rasterize_invalid;
           test_case "positions" `Quick test_subpixel_positions;
-          test_case "baseline" `Quick test_baseline ] ) ]
+          test_case "baseline" `Quick test_baseline ] );
+      ( "glyphs",
+        [ test_case "shades" `Quick test_glyph_shades;
+          test_case "thick" `Quick test_glyph_thick;
+          test_case "many sizes" `Quick test_fonts_many_sizes ] ) ]

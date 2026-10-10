@@ -1,0 +1,5 @@
+(test
+ (name input_test)
+ (modules input_test)
+ (libraries lui_e2e lui lui_store lui_scene lui_host lui_window lui_ime
+   lui_a11y alcotest))
