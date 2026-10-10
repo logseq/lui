@@ -1,0 +1,3 @@
+(test
+ (name lui_flex_test)
+ (libraries lui_flex alcotest))
