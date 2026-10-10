@@ -1,0 +1,14 @@
+(library
+ (name lui_shell_windows)
+ (modules lui_shell_windows)
+ (foreign_stubs
+  (language c)
+  (names lui_shell_windows_stubs))
+ (c_library_flags (:standard (:include c_libs.sexp))))
+
+(rule
+ (target c_libs.sexp)
+ (action
+  (with-stdout-to %{target}
+   (bash
+    "case '%{system}' in mingw*|cygwin*) printf '(-luser32 -lshell32 -lole32 -ladvapi32 -lgdi32 -luuid)';; *) printf '()';; esac"))))
