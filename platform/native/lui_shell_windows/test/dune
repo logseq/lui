@@ -1,0 +1,10 @@
+(test
+ (name lui_shell_windows_test)
+ (modules lui_shell_windows_test)
+ (libraries lui_shell_windows alcotest))
+
+(test
+ (name lui_shell_windows_win_test)
+ (modules lui_shell_windows_win_test)
+ (enabled_if (= %{system} mingw64))
+ (libraries lui_shell_windows alcotest unix))
