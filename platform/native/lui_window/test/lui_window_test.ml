@@ -352,6 +352,96 @@ let test_disabled_gate () =
   Alcotest.(check int) "no actions" 0 (List.length acts);
   Alcotest.(check int) "no press" 0 (Ui.pressed ui)
 
+(* ---------- IME composition through Ui ---------- *)
+
+let test_ime_editing_not_dispatched () =
+  let s, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  ignore
+    (Ui.handle ui s rects
+       (Input.Button_down (5., 40., Input.Left, 1, Input.mods_none)));
+  (* text_editing marks text for display only — nothing dispatches *)
+  let acts = Ui.handle ui s rects (Input.Text_editing ("ni", 1, 0)) in
+  Alcotest.(check int) "no dispatch" 0 (List.length acts);
+  Alcotest.(check string) "marked" "ni" (Ui.marked ui);
+  let acts = Ui.handle ui s rects (Input.Text_editing ("nih", 3, 0)) in
+  Alcotest.(check int) "still none" 0 (List.length acts);
+  Alcotest.(check string) "marked grows" "nih" (Ui.marked ui);
+  (* commit goes through the real input path: TextChanged with the
+     committed text spliced at the caret *)
+  let acts = Ui.handle ui s rects (Input.Text_input "hao") in
+  (match press_actions acts with
+   | [ TextChanged (4, "hao") ] -> ()
+   | _ -> Alcotest.fail "expected TextChanged hao");
+  Alcotest.(check string) "marked cleared" "" (Ui.marked ui)
+
+let test_ime_keys_suppressed_while_composing () =
+  let s, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  ignore
+    (Ui.handle ui s rects
+       (Input.Button_down (5., 40., Input.Left, 1, Input.mods_none)));
+  ignore (Ui.handle ui s rects (Input.Text_editing ("ni", 2, 0)));
+  (* key edits are gated while marked text is on screen *)
+  let acts =
+    Ui.handle ui s rects
+      (Input.Key_down (Input.Backspace, Input.mods_none, false))
+  in
+  Alcotest.(check int) "backspace gated" 0 (List.length acts);
+  let acts =
+    Ui.handle ui s rects
+      (Input.Key_down (Input.Return, Input.mods_none, false))
+  in
+  Alcotest.(check int) "return gated" 0 (List.length acts);
+  (* after commit they work again *)
+  ignore (Ui.handle ui s rects (Input.Text_input "x"));
+  let acts =
+    Ui.handle ui s rects
+      (Input.Key_down (Input.Backspace, Input.mods_none, false))
+  in
+  (match press_actions acts with
+   | [ TextChanged (4, "") ] -> ()
+   | _ -> Alcotest.fail "expected TextChanged \"\" after commit")
+
+let test_ime_cancel_on_focus_move () =
+  let s, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  ignore
+    (Ui.handle ui s rects
+       (Input.Button_down (5., 40., Input.Left, 1, Input.mods_none)));
+  ignore (Ui.handle ui s rects (Input.Text_editing ("ni", 2, 0)));
+  Alcotest.(check bool) "composing" true
+    (Lui_ime.composing (Ui.ime ui));
+  (* click on the button blurs the field: composition cancels *)
+  ignore
+    (Ui.handle ui s rects
+       (Input.Button_down (5., 10., Input.Left, 1, Input.mods_none)));
+  Alcotest.(check string) "marked dropped" "" (Ui.marked ui);
+  Alcotest.(check bool) "not composing" false
+    (Lui_ime.composing (Ui.ime ui))
+
+let test_ime_candidate_rect () =
+  let s, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  ignore
+    (Ui.handle ui s rects
+       (Input.Button_down (5., 40., Input.Left, 1, Input.mods_none)));
+  let cr = Lui_scene.rect 20. 36. 2. 32. in
+  (* caret moves while idle produce no candidate action *)
+  let acts = Ui.handle ui s rects (Input.Caret cr) in
+  Alcotest.(check int) "idle silent" 0 (List.length acts);
+  (* composing start emits Ime_rect through the begin *)
+  ignore (Ui.handle ui s rects (Input.Text_editing ("n", 1, 0)));
+  let cr2 = Lui_scene.rect 36. 36. 2. 32. in
+  let acts = Ui.handle ui s rects (Input.Caret cr2) in
+  (match acts with
+   | [ Ime_rect r ] ->
+     Alcotest.(check (float 0.01)) "x" 36. r.Lui_scene.x
+   | _ -> Alcotest.fail "expected Ime_rect");
+  (* same rect again: dedup *)
+  let acts = Ui.handle ui s rects (Input.Caret cr2) in
+  Alcotest.(check int) "dedup" 0 (List.length acts)
+
 (* ---------- resize scale math ---------- *)
 
 let test_resize_scale () =
@@ -444,6 +534,15 @@ let () =
           Alcotest.test_case "hover detail" `Quick test_hover_detail;
           Alcotest.test_case "context menu" `Quick test_context_menu;
           Alcotest.test_case "disabled gate" `Quick test_disabled_gate ] );
+      ( "ime",
+        [ Alcotest.test_case "editing not dispatched" `Quick
+            test_ime_editing_not_dispatched;
+          Alcotest.test_case "keys suppressed" `Quick
+            test_ime_keys_suppressed_while_composing;
+          Alcotest.test_case "cancel on blur" `Quick
+            test_ime_cancel_on_focus_move;
+          Alcotest.test_case "candidate rect" `Quick
+            test_ime_candidate_rect ] );
       ( "resize",
         [ Alcotest.test_case "scale" `Quick test_resize_scale ] );
       ( "pacing",

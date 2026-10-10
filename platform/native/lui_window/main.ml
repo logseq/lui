@@ -54,6 +54,12 @@ let input_of_event e =
            Sdl.Event.get e Sdl.Event.keyboard_repeat <> 0 ))
   | `Text_input ->
     Some (Text_input (Sdl.Event.get e Sdl.Event.text_input_text))
+  | `Text_editing ->
+    Some
+      (Text_editing
+         ( Sdl.Event.get e Sdl.Event.text_editing_text,
+           Sdl.Event.get e Sdl.Event.text_editing_start,
+           Sdl.Event.get e Sdl.Event.text_editing_length ))
   | `Mouse_motion ->
     Some
       (Move
@@ -209,10 +215,11 @@ let () =
   let rects = Rects.create () in
   let ui = Ui.create () in
   Ui.set_scale ui scale;
+  let scale_cell = ref scale in
   let text_engine =
     Lui_window_text.create
       ~scene:(fun () -> Lui_host.scene (Option.get !host_cell))
-      ~scale:(fun () -> (Option.get !host_cell).Lui_host.scale)
+      ~scale:(fun () -> !scale_cell)
       ~store:(fun () -> Lui_host.store (Option.get !host_cell))
   in
   let hooks =
@@ -226,7 +233,60 @@ let () =
              | Some h -> Ui.state_of ui (Lui_host.store h) id
              | None -> Lui_paint.state_neutral);
         scroll_of = (fun _ -> None);
-        text_ops = (fun id r fg s -> Lui_window_text.text_ops text_engine id r fg s);
+        text_ops =
+          (fun id r fg s ->
+             let ops = Lui_window_text.text_ops text_engine id r fg s in
+             let marked = Ui.marked ui in
+             if marked = "" || id <> Ui.focused ui then ops
+             else begin
+               (* Composition overlay: marked text drawn underlined at
+                  the caret of the focused field. It is paint-only —
+                  never dispatched — and cleared the moment the
+                  composition commits or cancels. When the node's
+                  text prop is empty [s] is the placeholder: drop its
+                  glyphs so the marked string paints alone. *)
+               let caret =
+                 min (Ui.caret ui) (String.length (Ui.shadow ui))
+               in
+               let ops =
+                 let has_text =
+                   match !host_cell with
+                   | Some h -> (
+                     match
+                       Lui_store.prop (Lui_host.store h) id "text"
+                     with
+                     | Some (Lui_protocol.StringValue v) -> v <> ""
+                     | _ -> false)
+                   | None -> false
+                 in
+                 if has_text then ops else []
+               in
+               let dx, _ =
+                 Lui_window_text.measure_text text_engine id
+                   (String.sub (Ui.shadow ui) 0 caret)
+               in
+               let mw, mh =
+                 Lui_window_text.measure_text text_engine id marked
+               in
+               let underline =
+                 Lui_scene.Fill
+                   { frect =
+                       Lui_scene.rect
+                         (r.Lui_scene.x +. dx)
+                         (r.Lui_scene.y
+                          +. (r.Lui_scene.h +. mh) /. 2. -. 2.)
+                         mw 2.;
+                     fradii = (0., 0., 0., 0.); fcontinuous = false;
+                     fcolor = fg; fpaint = Lui_scene.Solid; fcolor2 = fg;
+                     fgradient = (0., 0., 0., 0.);
+                     fborder = (0., 0., 0., 0.);
+                     fborder_color = Lui_scene.color 0 0 0 0;
+                     fdashed = false; fwide = 0; fopacity = 1. }
+               in
+               let mr = { r with Lui_scene.x = r.Lui_scene.x +. dx } in
+               ops @ [ underline ]
+                 @ Lui_window_text.text_ops text_engine id mr fg marked
+             end);
         image_of = (fun _ -> None);
         shadow_of = (fun _ -> None) }
   in
@@ -234,7 +294,6 @@ let () =
   host_cell := Some host;
   let store = Lui_host.store host in
   let win_w = ref cfg.width and win_h = ref cfg.height in
-  let scale_cell = ref scale in
   let refresh_layout () =
     Layout.refresh store rects ~width:!win_w ~height:!win_h
       ~scale:!scale_cell ~measure:Lui_window_text.measure
@@ -258,6 +317,46 @@ let () =
      Sdl.start_text_input ()
    | None -> ());
   let quit = ref false in
+  (* SDL_SetTextInputRect works in window (logical) pixels. *)
+  let set_ime_rect (r : Lui_scene.rect) =
+    let s = !scale_cell in
+    Sdl.set_text_input_rect
+      (Some
+         (Sdl.Rect.create
+            ~x:(int_of_float (r.Lui_scene.x /. s))
+            ~y:(int_of_float (r.Lui_scene.y /. s))
+            ~w:(max 1 (int_of_float (r.Lui_scene.w /. s)))
+            ~h:(max 1 (int_of_float (r.Lui_scene.h /. s)))))
+  in
+  (* Caret rect of the focused field, device px: the node's layout
+     rect shifted to the caret column — horizontal padding plus the
+     width of the text up to the caret. This is the candidate-window
+     anchor while composing. *)
+  let caret_rect () =
+    let id = Ui.focused ui in
+    let r = Rects.get rects id in
+    if Lui_scene.rect_empty r then r
+    else begin
+      let s = !scale_cell in
+      let pad =
+        match Lui_store.prop store id "padding-horizontal" with
+        | Some (Lui_protocol.IntValue n) -> float n *. s
+        | Some (Lui_protocol.FloatValue f) -> f *. s
+        | _ ->
+          (match Lui_store.prop store id "padding" with
+           | Some (Lui_protocol.IntValue n) -> float n *. s
+           | Some (Lui_protocol.FloatValue f) -> f *. s
+           | _ -> 0.)
+      in
+      let text = Ui.shadow ui in
+      let prefix =
+        String.sub text 0 (min (Ui.caret ui) (String.length text))
+      in
+      let dx, _ = Lui_window_text.measure_text text_engine id prefix in
+      Lui_scene.rect (r.Lui_scene.x +. pad +. dx) r.Lui_scene.y 2.
+        r.Lui_scene.h
+    end
+  in
   let apply_actions = List.iter (function
     | Dispatch ev ->
       (try ignore (Lui_app.dispatch_event app ev)
@@ -273,16 +372,9 @@ let () =
       if id = 0 then Sdl.stop_text_input ()
       else begin
         Sdl.start_text_input ();
-        let r = Rects.get rects id in
-        let s = !scale_cell in
-        Sdl.set_text_input_rect
-          (Some
-             (Sdl.Rect.create
-                ~x:(int_of_float (r.Lui_scene.x /. s))
-                ~y:(int_of_float (r.Lui_scene.y /. s))
-                ~w:(int_of_float (r.Lui_scene.w /. s))
-                ~h:(int_of_float (r.Lui_scene.h /. s))))
+        set_ime_rect (Rects.get rects id)
       end
+    | Ime_rect r -> set_ime_rect r
     | Quit -> quit := true)
   in
   let e = Sdl.Event.create () in
@@ -321,6 +413,12 @@ let () =
     (* Patches queued by dispatched events land in the store here;
        layout must see them before the next paint or hit test. *)
     if Lui_app.flush app then refresh_layout ();
+    (* Report the caret once per frame: while a composition is open
+       the state machine emits Ime_rect on movement so the candidate
+       window tracks the caret; idle, the rect is only remembered. *)
+    if Ui.focused ui <> 0 then
+      apply_actions
+        (Ui.handle ui store rects (Input.Caret (caret_rect ())));
     (* Headless proves the loop: force a repaint every iteration so
        the frame counter and checksum actually run. *)
     let dirty = headless || Ui.want_frame ui host in
