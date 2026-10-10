@@ -1,0 +1,4 @@
+(library
+ (name lui_host)
+ (modules lui_host)
+ (libraries lui lui_store lui_scene lui_paint))

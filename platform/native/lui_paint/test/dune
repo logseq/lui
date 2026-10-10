@@ -1,0 +1,4 @@
+(test
+ (name lui_paint_test)
+ (modules lui_paint_test)
+ (libraries lui_paint lui_store lui_scene lui alcotest))
