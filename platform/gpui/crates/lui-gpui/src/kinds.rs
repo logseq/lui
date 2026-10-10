@@ -1617,6 +1617,9 @@ fn menu_box(
         .shadow(cx.theme().shadow_tokens().lg);
     let min_width = node.float_prop(Property::MinWidth).unwrap_or(160.).max(0.);
     element = element.min_w(px(min_width as f32));
+    if let Some(gap) = node.float_prop(Property::Gap) {
+        element = element.gap(px(gap.max(0.) as f32));
+    }
     element.children(view.child_elements(node, cx))
 }
 
@@ -3946,10 +3949,13 @@ fn popover(
         // size and collapses to 0x0 — size the layer to the viewport
         // explicitly like `overlay_modal` does.
         let viewport = window.viewport_size();
-        let content = v_flex()
-            .w(viewport.width)
-            .h(viewport.height)
-            .children(view.child_elements(node, cx));
+        let mut content = v_flex().w(viewport.width).h(viewport.height);
+        // `gap` spaces the cover popover's children like it does on the
+        // web's `.lui-popover` flex column.
+        if let Some(gap) = node.float_prop(Property::Gap) {
+            content = content.gap(px(gap.max(0.) as f32));
+        }
+        let content = content.children(view.child_elements(node, cx));
         view.shared
             .borrow_mut()
             .push_overlay(node.id, OverlayEntry::Node);

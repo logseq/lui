@@ -1116,6 +1116,7 @@ let common_property_supported kind property =
     || kind = ListContainer
     || kind = VirtualList
     || kind = DropdownMenu
+    || kind = Popover
     || kind = TableRow
     || kind = Tree
     || kind = Scroll

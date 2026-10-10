@@ -995,7 +995,8 @@ struct LUIRetainedTree {
             kind == .row || kind == .column || kind == .grid || kind == .list ||
                 kind == .virtualList || kind == .scroll || kind == .card ||
                 kind == .panel || kind == .box ||
-                kind == .dropdownMenu || isHorizontalGroup(kind) || kind == .split
+                kind == .dropdownMenu || kind == .popover ||
+                isHorizontalGroup(kind) || kind == .split
                 || kind == .tableRow || kind == .tree || kind == .edgeInset
         case .placeholder:
             isTextEntry(kind) || kind == .select

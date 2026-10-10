@@ -862,6 +862,24 @@ mod tests {
     }
 
     #[test]
+    fn popover_accepts_gap_prop() {
+        // Popover lays out children like the other popup containers —
+        // `gap` is admitted on the kind (same as `dropdown-menu`), so a
+        // set-prop must apply instead of failing validation.
+        let mut store = Store::default();
+        apply_json(
+            &mut store,
+            r#"{"generation": 1, "ops": [
+                {"op": "create-node", "id": 1, "kind": "root"},
+                {"op": "create-node", "id": 2, "kind": "popover"},
+                {"op": "insert-child", "parent": 1, "child": 2, "index": 0},
+                {"op": "set-prop", "id": 2, "property": "gap", "value": 8}
+            ]}"#,
+        );
+        assert_eq!(store.node(2).unwrap().float_prop(Property::Gap), Some(8.0));
+    }
+
+    #[test]
     fn prop_updates_overwrite_and_remove() {
         let mut store = Store::default();
         apply_json(
