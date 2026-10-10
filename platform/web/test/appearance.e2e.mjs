@@ -105,7 +105,7 @@ test("typed appearance props land as styles and state channels", async () => {
     hoverBg: "var(--color-accent)",
     hoverOpacity: "0.9",
     hoverShadow: "0 2px 4px rgba(0,0,0,0.2)",
-    pressedBg: "var(--color-muted)",
+    pressedBg: "var(--color-primary)",
     pressedOpacity: "0.8",
     pressedShadow: "inset 0 0 0 1px var(--color-primary)",
     focusShadow: "0 0 0 2px var(--color-ring)",
@@ -128,7 +128,7 @@ test("typed appearance props land as styles and state channels", async () => {
       opacity: style.opacity,
     }
   }), {
-    background: "oklch(0.95 0 0)", // --color-accent, resolved through var()
+    background: "oklch(0.97 0 0)", // --color-accent, resolved through var()
     shadow: "rgba(0, 0, 0, 0.2) 0px 2px 4px",
     opacity: "0.9",
   })

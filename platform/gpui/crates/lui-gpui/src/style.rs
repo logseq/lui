@@ -579,7 +579,7 @@ fn appearance<E: Styled>(mut element: E, node: &NodeSnapshot, theme: &Theme) -> 
         };
     }
     if let Some(value) = node.string_prop(Property::Shadow) {
-        element.style().box_shadow = wire_shadows(value, theme);
+        element.style().box_shadow = Some(wire_shadows(value, theme));
     }
     // Viewport-relative sizing: fractions of the live viewport dimensions.
     let (vw, vh) = *VIEWPORT.read().expect("viewport lock poisoned");
@@ -612,7 +612,7 @@ fn appearance<E: Styled>(mut element: E, node: &NodeSnapshot, theme: &Theme) -> 
             element = element.bg(bg);
         }
         if let Some(value) = node.string_prop(Property::SelectedShadow) {
-            element.style().box_shadow = wire_shadows(value, theme);
+            element.style().box_shadow = Some(wire_shadows(value, theme));
         }
     }
     if !node.enabled() {
@@ -658,9 +658,9 @@ pub fn interactive<E: StatefulInteractiveElement>(
                 style.opacity = Some(opacity);
             }
             if let Some(shadow) = selected_hover_shadow.clone().filter(|_| selected) {
-                style.box_shadow = shadow;
+                style.box_shadow = Some(shadow);
             } else if let Some(shadow) = hover_shadow.clone() {
-                style.box_shadow = shadow;
+                style.box_shadow = Some(shadow);
             }
             style
         });
@@ -682,7 +682,7 @@ pub fn interactive<E: StatefulInteractiveElement>(
                 style.opacity = Some(opacity);
             }
             if let Some(shadow) = pressed_shadow.clone() {
-                style.box_shadow = shadow;
+                style.box_shadow = Some(shadow);
             }
             style
         });
@@ -692,7 +692,7 @@ pub fn interactive<E: StatefulInteractiveElement>(
         .map(|value| wire_shadows(value, theme));
     if let Some(focus_shadow) = focus_shadow {
         element = element.focus_visible(move |mut style: StyleRefinement| {
-            style.box_shadow = focus_shadow.clone();
+            style.box_shadow = Some(focus_shadow.clone());
             style
         });
     }

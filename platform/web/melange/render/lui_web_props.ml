@@ -950,27 +950,27 @@ and apply_secondary_property renderer node kind dom_node property value =
   | UserSelect, StringValue value -> set_style dom_node "user-select" value
   | Cursor, StringValue value -> set_style dom_node "cursor" value
   | Shadow, StringValue shadow ->
-      set_style dom_node "--lui-shadow" shadow
+      set_style dom_node "--lui-shadow" (Util.web_shadow_value shadow)
   | HoverBackground, StringValue color ->
       set_style dom_node "--lui-hover-bg" (Util.web_color_value color)
   | HoverOpacity, FloatValue opacity ->
       set_style dom_node "--lui-hover-opacity" (Js.Float.toString opacity)
   | HoverShadow, StringValue shadow ->
-      set_style dom_node "--lui-hover-shadow" shadow
+      set_style dom_node "--lui-hover-shadow" (Util.web_shadow_value shadow)
   | PressedBackground, StringValue color ->
       set_style dom_node "--lui-pressed-bg" (Util.web_color_value color)
   | PressedOpacity, FloatValue opacity ->
       set_style dom_node "--lui-pressed-opacity" (Js.Float.toString opacity)
   | PressedShadow, StringValue shadow ->
-      set_style dom_node "--lui-pressed-shadow" shadow
+      set_style dom_node "--lui-pressed-shadow" (Util.web_shadow_value shadow)
   | FocusShadow, StringValue shadow ->
-      set_style dom_node "--lui-focus-shadow" shadow
+      set_style dom_node "--lui-focus-shadow" (Util.web_shadow_value shadow)
   | SelectedBackground, StringValue color ->
       set_style dom_node "--lui-selected-bg" (Util.web_color_value color)
   | SelectedShadow, StringValue shadow ->
-      set_style dom_node "--lui-selected-shadow" shadow
+      set_style dom_node "--lui-selected-shadow" (Util.web_shadow_value shadow)
   | SelectedHoverShadow, StringValue shadow ->
-      set_style dom_node "--lui-selected-hover-shadow" shadow
+      set_style dom_node "--lui-selected-hover-shadow" (Util.web_shadow_value shadow)
   | DisabledOpacity, FloatValue opacity ->
       set_style dom_node "--lui-disabled-opacity" (Js.Float.toString opacity)
   | WidthViewport, FloatValue width ->
