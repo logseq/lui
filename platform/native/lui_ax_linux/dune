@@ -1,0 +1,9 @@
+(library
+ (name lui_ax_linux)
+ (modules lui_ax_linux)
+ (libraries lui_a11y lui_store unix)
+ (foreign_stubs
+  (language c)
+  (names lui_ax_linux_stubs)
+  (flags -O2 -fPIC))
+ (c_library_flags -ldl))
