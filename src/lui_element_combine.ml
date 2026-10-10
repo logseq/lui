@@ -212,24 +212,35 @@ let composer
      | Some on_send ->
       [ composer_send_button context ?send_icon send_disabled_signal on_send ]
    in
+  let controls =
+    if actions = [] && send_button = [] then []
+    else
+      let action_strip =
+        if actions = [] then [ spacer ~grow:1.0 [] ]
+        else
+          [ scroll ~orientation:`horizontal ~grow:1.0 ~min_width:0 ~height:44
+              ~style_class:"composer-actions"
+              ~accessibility_identifier:"scroll.composer.actions"
+              [ row ~gap:8 ~cross:`center actions ] ]
+      in
+      [ row ~gap:8 ~min_height:44 ~cross:`center
+          ~accessibility_identifier:"row.composer.controls"
+          (action_strip @ send_button) ]
+  in
    let capsule =
      column
        ?key ?accessibility_identifier
        ~style_class:"composer-surface"
-       ~min_height:58 ~gap:0
+       ~min_height:58 ~gap:8
        ~padding_horizontal:16
        ~padding_vertical:8
        ~background:"glass"
        ~corner_radius:24
-       (attachment_strip
+       ([ row ~cross:`end_
+            ~accessibility_identifier:"row.composer.input" [ field ] ]
+        @ attachment_strip
         @ Option.to_list feedback
-        @ [ row
-              ~gap:8 ~min_height:44 ~cross:`end_
-              ~accessibility_identifier:"row.composer.controls"
-              (actions
-               @ [ field ]
-               @ send_button)
-          ])
+        @ controls)
    in
    (match on_press with
     | None -> capsule

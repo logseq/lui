@@ -3118,6 +3118,7 @@ let test_composer_feedback_above_actions () =
       ~view:(fun _context _model _send ->
         Lui_element_combine.composer ~placeholder:"Synthetic draft"
           ~feedback:(Lui_elements.text ~value:"Synthetic camera unavailable" [])
+          ~on_send:(fun _ -> ())
           ())
       ()
   in
@@ -3155,7 +3156,7 @@ let test_composer_feedback_above_actions () =
      | _ -> false);
   drive_dispose s
 
-let test_composer_inline_input_and_cards () =
+let test_composer_separate_input_and_cards () =
   let s =
     drive_mount ~initial:() ~reducer:(fun model _ -> model)
       ~view:(fun _context _model _send ->
@@ -3176,9 +3177,14 @@ let test_composer_inline_input_and_cards () =
   let field = drive_node s (Drive.Model.Kind "textarea") in
   let add = drive_node s (labelled "Add attachment") in
   let send = drive_node s (labelled "Send") in
-  Alcotest.(check bool) "add, input and send share the controls row" true
-    (field.Drive.Model.parent = add.Drive.Model.parent
-     && field.Drive.Model.parent = send.Drive.Model.parent);
+  let input_row = match field.Drive.Model.parent with
+    | Some id -> Option.get (Hashtbl.find_opt (drive_tree s).Drive.Model.nodes id)
+    | None -> Alcotest.fail "input row missing" in
+  Alcotest.(check (list string)) "input owns its whole row" ["textarea"]
+    (drive_kind_names s input_row);
+  Alcotest.(check bool) "actions never compete with input width" true
+    (field.Drive.Model.parent <> add.Drive.Model.parent
+     && field.Drive.Model.parent <> send.Drive.Model.parent);
   let image = drive_node s (Drive.Model.Kind "file-image") in
   Alcotest.(check bool) "MIME image fills a square thumbnail" true
     (drive_prop s image "width" = Some (Lui_protocol.IntValue 120)
@@ -3197,7 +3203,51 @@ let test_composer_inline_input_and_cards () =
   let strip = drive_node s (Drive.Model.Kind "scroll") in
   Alcotest.(check bool) "attachments stay horizontally scrollable" true
     (drive_prop s strip "orientation" = Some (Lui_protocol.StringValue "horizontal"));
+  let surface = match input_row.Drive.Model.parent with
+    | Some id -> Option.get (Hashtbl.find_opt (drive_tree s).Drive.Model.nodes id)
+    | None -> Alcotest.fail "composer surface missing" in
+  let index id = Option.get (List.find_index ((=) id) surface.Drive.Model.children) in
+  Alcotest.(check bool) "input precedes attachments and controls" true
+    (index input_row.Drive.Model.id < index strip.Drive.Model.id);
   drive_dispose s
+
+let test_composer_editing_with_busy_action_row () =
+  List.iter (fun initial ->
+    let edits = ref [] and sends = ref 0 and discards = ref 0 and adds = ref 0 in
+    let s = drive_mount ~initial:() ~reducer:(fun model _ -> model)
+      ~view:(fun _context _model _send ->
+        Lui_element_combine.composer ~placeholder:"New thought…"
+          ~text:initial
+          ~on_input:(fun event -> match event with
+            | Lui_protocol.TextChanged (_, text) -> edits := text :: !edits
+            | _ -> ())
+          ~actions:(List.init 5 (fun n -> Lui_elements.button
+            ~width:44 ~height:44 ~label:("Action " ^ string_of_int n)
+            ~on_press:(fun _ -> if n = 0 then incr adds else if n = 4 then incr discards) []))
+          ~on_send:(fun _ -> incr sends) ()) () in
+    let field = drive_node s (Drive.Model.Kind "textarea") in
+    let input_row = match field.Drive.Model.parent with
+      | Some id -> Option.get (Hashtbl.find_opt (drive_tree s).Drive.Model.nodes id)
+      | None -> Alcotest.fail "input row missing" in
+    Alcotest.(check (list string)) "five actions leave input alone" ["textarea"]
+      (drive_kind_names s input_row);
+    let action_strip = drive_node s (Drive.Model.Prop
+      ("accessibility-identifier", Lui_protocol.StringValue "scroll.composer.actions")) in
+    Alcotest.(check bool) "narrow screens can scroll actions without moving input or send" true
+      (drive_prop s action_strip "orientation" = Some (Lui_protocol.StringValue "horizontal")
+       && drive_prop s action_strip "min-width" = Some (Lui_protocol.IntValue 0));
+    let edited = initial ^ "\n中文新行" in
+    Drive.Session.text_changed s field.Drive.Model.id edited;
+    Alcotest.(check (list string)) "multiline Unicode edit reaches owner" [edited] !edits;
+    let next_field = drive_node s (Drive.Model.Kind "textarea") in
+    Alcotest.(check int) "editing retains native field identity" field.Drive.Model.id next_field.Drive.Model.id;
+    drive_press s (Drive.Model.Prop ("accessibility-label", Lui_protocol.StringValue "Action 0"));
+    drive_press s (Drive.Model.Prop ("accessibility-label", Lui_protocol.StringValue "Action 4"));
+    drive_press s (Drive.Model.Prop ("accessibility-label", Lui_protocol.StringValue "Send"));
+    Alcotest.(check (list int)) "attachment, cancel and send still dispatch" [1; 1; 1] [!adds; !discards; !sends];
+    drive_dispose s)
+    [""; "Single line"; "First\nSecond\nThird"; "中文输入，随宽度自动换行。";
+     String.make 800 'x'; String.concat "\n" (List.init 30 (fun n -> string_of_int n))]
 
 let test_picked_files_batch () =
   let decode json = match Lui_picked_files.decode json with
@@ -3539,7 +3589,8 @@ let () =
           Alcotest.test_case "composer content sizing" `Quick test_composer_content_sizing;
           Alcotest.test_case "composer attachment preview and removal" `Quick test_composer_attachment_preview_and_remove;
           Alcotest.test_case "composer feedback above actions" `Quick test_composer_feedback_above_actions;
-          Alcotest.test_case "composer inline input and square cards" `Quick test_composer_inline_input_and_cards;
+          Alcotest.test_case "composer separate input and square cards" `Quick test_composer_separate_input_and_cards;
+          Alcotest.test_case "composer editing with busy action row" `Quick test_composer_editing_with_busy_action_row;
           Alcotest.test_case "ordered picked file batches" `Quick test_picked_files_batch;
           Alcotest.test_case "gallery composer batches" `Quick test_gallery_composer_batches;
           Alcotest.test_case "lifecycle" `Quick test_app_lifecycle;
