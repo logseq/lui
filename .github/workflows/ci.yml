@@ -267,9 +267,19 @@ jobs:
               # copying only the SDL files is not enough.
               SHIM_DIR="$PWD/pc-shim"
               mkdir -p "$SHIM_DIR"
-              CYG_PKGCFG="$CYGROOT/bin/pkg-config"
-              [ -x "$CYG_PKGCFG" ] || CYG_PKGCFG="$CYGROOT/bin/pkg-config.exe"
-              printf '#!/bin/sh\nexec "%s" "$@"\n' "$CYG_PKGCFG" > "$SHIM_DIR/pkg-config"
+              CYG_PKGCFG=
+              for p in "$CYGROOT/bin/pkg-config" "$CYGROOT/usr/bin/pkg-config" \
+                       "$CYGROOT/bin/pkg-config.exe" "$CYGROOT/usr/bin/pkg-config.exe"; do
+                [ -x "$p" ] && CYG_PKGCFG="$p" && break
+              done
+              [ -n "$CYG_PKGCFG" ] || { echo "no bundled cygwin pkg-config under $CYGROOT"; exit 1; }
+              # The wrapper runs both under this MSYS step (where the
+              # bundled cygwin mounts C: as /c/) and inside opam's own
+              # Cygwin build env (where it is /cygdrive/c/) — resolve
+              # the target through cygpath at exec time so either
+              # spelling works.
+              printf '#!/bin/sh\nexec "$(cygpath -u '"'"'%s'"'"')" "$@"\n' \
+                "$(cygpath -w "$CYG_PKGCFG")" > "$SHIM_DIR/pkg-config"
               chmod +x "$SHIM_DIR/pkg-config"
               export PATH="$SHIM_DIR:$PATH"
               # Seed into both plausible roots: the bundled Cygwin's
