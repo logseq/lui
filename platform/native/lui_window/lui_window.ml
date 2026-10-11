@@ -710,6 +710,17 @@ module Ui = struct
 
   (* ---- overlays (popover/dialog/menu/sheet/toast) ----------------- *)
 
+  (* data-* attributes — declared ahead of the overlay rules, which
+     consult the layer-host marker. *)
+  let data_attrs store id =
+    match Lui_store.prop store id "data-attrs" with
+    | Some (StringValue s) ->
+      (try Lui_protocol.data_attrs_decode s with _ -> [])
+    | _ -> []
+
+  let data_attr store id name =
+    List.assoc_opt name (data_attrs store id)
+
   let overlay_class store id =
     match kind_name store id with
     | "dialog" | "sheet" -> `modal
@@ -760,6 +771,17 @@ module Ui = struct
   let close_menu t =
     if t.open_menu <> 0 then begin t.open_menu <- 0; t.dirty <- true end
 
+  (* Overlay-layer hosts (the [data-overlay-layer] marker) are
+     permanent containers that lift popup children into the floating
+     layer — e.g. an app's shared popover stack mount. They stay in
+     the overlay list so Escape and modal bookkeeping still see the
+     layer, but a press outside must not Dismiss them: with nothing
+     presented they would swallow every outside press (and the Escape
+     fallthrough) for their children. *)
+  let overlay_dismissible store id =
+    event_supported store id (Dismiss id)
+    && data_attr store id "data-overlay-layer" <> Some "true"
+
   let top_overlay t store =
     List.fold_left
       (fun acc id ->
@@ -767,8 +789,7 @@ module Ui = struct
          | `none -> acc
          | _ when trigger_owned store id && id <> t.open_menu -> acc
          | cls ->
-           Some (id, cls = `modal,
-                 event_supported store id (Dismiss id)))
+           Some (id, cls = `modal, overlay_dismissible store id))
       None (Lui_store.preorder store)
 
   let inside_ov store ov path =
@@ -862,15 +883,6 @@ module Ui = struct
     base 0 0 lines + boundary_at_x t store id line lx
 
   (* ---- drag & drop (data-attrs) -------------------------------------- *)
-
-  let data_attrs store id =
-    match Lui_store.prop store id "data-attrs" with
-    | Some (StringValue s) ->
-      (try Lui_protocol.data_attrs_decode s with _ -> [])
-    | _ -> []
-
-  let data_attr store id name =
-    List.assoc_opt name (data_attrs store id)
 
   (* A text node opts into host-side selection via the wire
      "user-select" prop, or — on vocabularies that lack it — the
@@ -2050,10 +2062,7 @@ module Ui = struct
                else
               match top_overlay t store with
                | Some (oid, _, true) -> [ Dispatch (Dismiss oid) ]
-               | Some (oid, _, false)
-                 when event_supported store oid (Dismiss oid) ->
-                 [ Dispatch (Dismiss oid) ]
-               | Some (_, _, false) -> []
+               | Some _ -> []
                | None ->
                  if t.focused <> 0 then begin
                    set_focused t store 0;
