@@ -252,6 +252,12 @@ static void lui_wv_mac_create(LuiWv *w, value vhost, double x, double y,
   del = [[LuiWvDelegate alloc] init];
   del.core = w->core;
   cfg = [[WKWebViewConfiguration alloc] init];
+  /* Local pages must fetch their own sibling assets: a file:// entry
+     (or an Html source on a file:// base) cannot load ./app.js or
+     ./icons otherwise — WKWebView refuses file subresource and module
+     loads without this preference, which mygo sets for the same
+     reason. */
+  [cfg.preferences setValue:@YES forKey:@"allowFileAccessFromFileURLs"];
   [cfg.userContentController addScriptMessageHandler:del name:@"lui_wv"];
   web = [[WKWebView alloc] initWithFrame:clip.bounds configuration:cfg];
   web.navigationDelegate = del;
