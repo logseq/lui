@@ -1397,11 +1397,36 @@ static struct custom_operations video_ops = {
 
 static int ffplay_ok(void) { return prog_exists("ffplay"); }
 
+/* SDL symbols resolve even on hosts with no audio device (CI runners),
+   so probe an actual open once — the same attempt player_open_dev makes
+   per playback. */
+static int sdl_audio_out_ok(void)
+{
+  static int state = 0;
+  if (state) return state > 0;
+  state = -1;
+  if (sdl_resolve() != 1 ||
+      p_SDL_InitSubSystem(LUI_SDL_INIT_AUDIO) != 0)
+    return 0;
+  LUI_SdlSpec want;
+  memset(&want, 0, sizeof(want));
+  want.freq = 44100;
+  want.format = LUI_AUDIO_F32;
+  want.channels = 1;
+  want.samples = 4096;
+  want.callback = NULL;
+  LUI_SdlDev dev =
+      p_SDL_OpenAudioDevice(NULL, 0, &want, NULL, LUI_SDL_ALLOW_ANY);
+  if (dev) p_SDL_CloseAudioDevice(dev);
+  state = dev ? 1 : -1;
+  return state > 0;
+}
+
 CAMLprim value lui_media_audio_available(value unit)
 {
   CAMLparam1(unit);
   int dec = (snd_resolve() == 1) || prog_exists("ffmpeg");
-  int out = (sdl_resolve() == 1) || ffplay_ok();
+  int out = sdl_audio_out_ok() || ffplay_ok();
   CAMLreturn(Val_bool(dec && out));
 }
 

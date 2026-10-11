@@ -239,7 +239,15 @@ let test_render_smoke () =
 
 (* ---- plugin service ----------------------------------------------- *)
 
+(* plugin:terminal's spawn builds a Terminal.t, whose renderer adapts
+   the CoreText Lui_text backend — its stubs raise on other platforms. *)
+let text_backend_ok () =
+  match (try Some (Lui_text.create ~size:12. ()) with _ -> None) with
+  | Some _ -> true
+  | None -> false
+
 let test_service () =
+  if not (text_backend_ok ()) then () else
   (match Lui_plugin.use [ Lui_plugin_terminal.plugin ] with
    | Ok () -> ()
    | Error e -> Alcotest.fail e);
