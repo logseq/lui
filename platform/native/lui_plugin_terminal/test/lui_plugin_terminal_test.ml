@@ -237,6 +237,54 @@ let test_render_smoke () =
   Alcotest.(check bool) "has fills" true (nfills >= 2);
   Alcotest.(check bool) "has glyph op" true (nglyphs >= 1)
 
+(* ---- plugin service ----------------------------------------------- *)
+
+let test_service () =
+  (match Lui_plugin.use [ Lui_plugin_terminal.plugin ] with
+   | Ok () -> ()
+   | Error e -> Alcotest.fail e);
+  Fun.protect ~finally:Lui_plugin.reset @@ fun () ->
+  let call m p =
+    match Lui_plugin.call ~service:"plugin:terminal" ~method_:m p with
+    | Ok s -> Yojson.Safe.from_string s
+    | Error e -> Alcotest.fail e
+  in
+  let open Yojson.Safe.Util in
+  let json l = Yojson.Safe.to_string (`Assoc l) in
+  let cat = if Sys.file_exists "/bin/cat" then "/bin/cat" else "cat" in
+  let id =
+    call "spawn"
+      (json [ ("argv", `List [ `String cat ]);
+              ("cols", `Int 10); ("rows", `Int 5) ])
+    |> member "id" |> to_int
+  in
+  Alcotest.(check bool) "id nonneg" true (id >= 0);
+  ignore
+    (call "write"
+       (json [ ("id", `Int id); ("data", `String "hi\n") ]));
+  let rec wait n =
+    if n <= 0 then Alcotest.fail "service: no echo";
+    let j =
+      call "read_events" (json [ ("id", `Int id) ])
+    in
+    if j |> member "cursor" |> member "y" |> to_int >= 1 then j
+    else (Unix.sleepf 0.02; wait (n - 1))
+  in
+  let j = wait 200 in
+  Alcotest.(check bool) "alive" true (j |> member "alive" |> to_bool);
+  Alcotest.(check bool) "not exited" true (j |> member "exit" |> to_option to_int = None);
+  ignore
+    (call "resize" (json [ ("id", `Int id);
+                           ("cols", `Int 40); ("rows", `Int 8) ]));
+  let j = call "read_events" (json [ ("id", `Int id) ]) in
+  Alcotest.(check int) "cols" 40 (j |> member "cols" |> to_int);
+  Alcotest.(check int) "rows" 8 (j |> member "rows" |> to_int);
+  ignore (call "close" (json [ ("id", `Int id) ]));
+  match Lui_plugin.call ~service:"plugin:terminal" ~method_:"read_events"
+          (json [ ("id", `Int id) ]) with
+  | Error _ -> ()
+  | Ok _ -> Alcotest.fail "close did not remove terminal"
+
 (* ------------------------------------------------------------ *)
 
 let () =
@@ -267,4 +315,8 @@ let () =
     "render", [
       Alcotest.test_case "smoke ops" `Quick test_render_smoke;
     ];
+    "service", [
+      Alcotest.test_case "spawn/write/events" `Slow test_service;
+    ];
   ]
+
