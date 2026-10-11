@@ -342,6 +342,14 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
       | Some "lg" | Some "large" -> (Unset, Pt (44. *. scale))
       | Some _ -> (Unset, Pt (40. *. scale))
       | None -> (Unset, Unset))
+    | "icon" -> (
+      (* A bare icon's [size] picks its glyph box like the web's
+         ti-size utilities (sm→14², lg→20², default 16²). *)
+      match pstr store id "size" with
+      | Some "sm" | Some "small" -> (Pt (14. *. scale), Pt (14. *. scale))
+      | Some "lg" | Some "large" -> (Pt (20. *. scale), Pt (20. *. scale))
+      | Some _ -> (Pt (16. *. scale), Pt (16. *. scale))
+      | None -> (Unset, Unset))
     | _ -> (Unset, Unset)
   in
   let style =

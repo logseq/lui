@@ -1985,6 +1985,7 @@ and layout_node_impl
                 +. get_margin_axis !current_relative_child Row;
               child_width_mode := Measure_exactly;
               if is_defined available_inner_cross_dim
+                 && not is_node_flex_wrap
                  && not (is_style_dim_defined !current_relative_child Column)
                  && height_measure_mode = Measure_exactly
                  && get_align_item node !current_relative_child = Align_stretch
@@ -2012,6 +2013,7 @@ and layout_node_impl
                 +. get_margin_axis !current_relative_child Column;
               child_height_mode := Measure_exactly;
               if is_defined available_inner_cross_dim
+                 && not is_node_flex_wrap
                  && not (is_style_dim_defined !current_relative_child Row)
                  && width_measure_mode = Measure_exactly
                  && get_align_item node !current_relative_child = Align_stretch
@@ -2180,7 +2182,14 @@ and layout_node_impl
                 +. between_main_dim
                 +. get_margin_axis !child main_axis
                 +. (!child).layout.computed_flex_basis;
-              cross_dim := available_inner_cross_dim
+              (* A wrapping container's line cross is the line's largest
+                 item cross; only single-line containers inherit the
+                 definite container cross. *)
+              cross_dim :=
+                if is_node_flex_wrap then
+                  fmaxf !cross_dim
+                    (get_dim_with_margin !child cross_axis)
+                else available_inner_cross_dim
             end
             else begin
               (* The main dimension is the sum of the items' dimensions
@@ -2225,7 +2234,6 @@ and layout_node_impl
           bound_axis node cross_axis
             (!cross_dim +. padding_and_border_axis_cross)
           -. padding_and_border_axis_cross;
-
         (* STEP 7: CROSS-AXIS ALIGNMENT. Skipped on measurement-only
            passes. *)
         (if perform_layout then
