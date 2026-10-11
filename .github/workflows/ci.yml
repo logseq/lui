@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # feat/ml-backend is temporary: lets CI exercise the native backend on
+    # this branch's pushes until it lands on main.
+    branches: [main, feat/ml-backend]
   pull_request:
 
 permissions:
@@ -33,6 +35,19 @@ jobs:
         run: |
           echo "DUNE_CACHE=enabled" >> "$GITHUB_ENV"
           echo "DUNE_CACHE_TRANSPORT=direct" >> "$GITHUB_ENV"
+      - name: Install native platform dependencies
+        run: |
+          # platform/native joins @runtest on this branch: SDL2/SDL2_ttf
+          # satisfy conf-sdl2(-ttf) for tsdl, the Pango/fontconfig headers
+          # build lui_text_pango's stubs, and the dbus/GTK/appindicator
+          # runtime libs are dlopen'd by the ax/shell stubs.
+          sudo apt-get update
+          sudo apt-get install -y \
+            libsdl2-dev libsdl2-ttf-dev \
+            libpango1.0-dev libcairo2-dev libfontconfig-dev \
+            libdbus-1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            mesa-vulkan-drivers fonts-liberation fonts-noto-cjk
+          opam install -y tsdl tsdl-ttf tgls imagelib
       - name: Schema tests
         run: node --test tooling/test/*.mjs
       - name: GPUI protocol parity
@@ -170,3 +185,74 @@ jobs:
           scope: compiler
       - name: GC stress the native pointer bridge
         run: opam exec -- sh platform/native/stress/run.sh
+
+  native-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-lui-ocaml
+      - name: Cache dune
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/dune
+          key: dune-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+          restore-keys: |
+            dune-${{ runner.os }}-${{ github.job }}-
+            dune-${{ runner.os }}-
+      - name: Enable dune cache
+        run: |
+          echo "DUNE_CACHE=enabled" >> "$GITHUB_ENV"
+          echo "DUNE_CACHE_TRANSPORT=direct" >> "$GITHUB_ENV"
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          # Same dep set as the ocaml-tests job: SDL2 >= 2.0.22 satisfies
+          # tsdl (ubuntu-latest ships 2.30, so apt beats a source build),
+          # Pango/fontconfig headers build lui_text_pango, and the rest are
+          # runtime libs the ax/shell/vulkan stubs dlopen.
+          sudo apt-get update
+          sudo apt-get install -y \
+            libsdl2-dev libsdl2-ttf-dev \
+            libpango1.0-dev libcairo2-dev libfontconfig-dev \
+            libdbus-1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            mesa-vulkan-drivers fonts-liberation fonts-noto-cjk
+          pkg-config --modversion sdl2 SDL2_ttf
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install sdl2 sdl2_ttf pkgconf
+      - name: Install OCaml native dependencies
+        # tsdl provides the SDL2 bindings (lui_blit, lui_window*, spike,
+        # lui_gl/parity tests), tgls the GL3 bindings (lui_gl), imagelib the
+        # PNG/JPEG codecs (lui_image, lui_gallery). alcotest is already in
+        # the locked deps but listed for the non-composite Windows path.
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            # On mingw, tsdl/tsdl-ttf resolve SDL2 through conf-sdl2(-ttf):
+            # opam depext drops the Cygwin mingw64 SDL2 packages into opam's
+            # bundled Cygwin sysroot during install, but pkgconf.exe only
+            # sees their .pc files with a Windows-style PKG_CONFIG_PATH —
+            # hence the retry. 'ocaml=5.5.1' stops the solver downgrading
+            # the compiler (seen on the mingw repo without it).
+            SYSROOT="$(cygpath -u "$(opam var root)")/.cygwin/root/usr/x86_64-w64-mingw32/sys-root/mingw"
+            if ! opam install -y 'ocaml=5.5.1' tsdl tsdl-ttf tgls imagelib alcotest; then
+              export PKG_CONFIG_PATH="$(cygpath -w "$SYSROOT/lib/pkgconfig")"
+              opam install -y 'ocaml=5.5.1' tsdl tsdl-ttf tgls imagelib alcotest
+            fi
+            # SDL2.dll must be on PATH for the tests that call Sdl.init.
+            echo "$(cygpath -w "$SYSROOT/bin")" >> "$GITHUB_PATH"
+          else
+            opam install -y tsdl tsdl-ttf tgls imagelib alcotest
+          fi
+      - name: Build platform/native
+        run: opam exec -- dune build platform/native/
+        shell: bash
+      - name: Test platform/native
+        # Tests skip what the runner cannot provide: no display -> GL/parity
+        # skip, no dbus -> ax/shell skip, no lavapipe -> vulkan skip.
+        run: opam exec -- dune runtest platform/native/ -f
+        shell: bash
