@@ -48,6 +48,7 @@ module Args = struct
     k_alg : key_alg;
     k_force : bool;
   }
+  type sign_spec = { s_key : string; s_in : string }
   type command =
     | Init of init_spec
     | Dev of dev_spec
@@ -55,6 +56,7 @@ module Args = struct
     | Package of package_spec
     | Doctor
     | Keygen of keygen_spec
+    | Sign of sign_spec
     | Version
     | Help of string option
 
@@ -240,8 +242,19 @@ module Args = struct
                    k_alg;
                    k_force = get_flag fl "force" })))
 
+  let parse_sign args =
+    match scan ~flags:[] ~params:[ "key"; "in" ] args with
+    | Error e -> Error e
+    | Ok (_, pa, pos) -> (
+      match pos with
+      | _ :: _ -> Error "sign takes no positional arguments"
+      | [] -> (
+        match (get_param pa "key", get_param pa "in") with
+        | Some s_key, Some s_in -> Ok (Sign { s_key; s_in })
+        | _ -> Error "sign needs --key <priv.pem> and --in <file>"))
+
   let known = [ "init"; "dev"; "build"; "package"; "doctor"; "keygen";
-                "version"; "help" ]
+                "sign"; "version"; "help" ]
 
   let usage_of = function
     | "init" ->
@@ -289,7 +302,15 @@ module Args = struct
         "lui keygen [--dir DIR] [--name NAME] [--alg ed25519|rsa] [--force]\n\
         \  Generate an update-signing key pair with openssl (Ed25519 by\n\
         \  default). Keys go to the per-user config dir unless --dir is\n\
-        \  given; existing keys are kept unless --force."
+        \  given; existing keys are kept unless --force. For Ed25519 it\n\
+        \  also prints the raw pubkey (hex) the update feed wants."
+    | "sign" ->
+      Some
+        "lui sign --key PRIV.pem --in FILE\n\
+        \  Ed25519-sign FILE's raw bytes with an Ed25519 PKCS8 PEM key\n\
+        \  (as `lui keygen` writes) and print the signature and pubkey\n\
+        \  in hex and base64 — the manifest \"signature\"/\"pubkey\"\n\
+        \  values for the update feed."
     | "version" -> Some "lui version\n  Print the cli version."
     | "help" -> Some "lui help [command]\n  Show the overview or one command's usage."
     | _ -> None
@@ -303,7 +324,7 @@ module Args = struct
               | Some u -> "  " ^ String.sub u 0 (String.index u '\n') ^ "\n"
               | None -> "")
            [ "init"; "dev"; "build"; "package"; "doctor"; "keygen";
-             "version"; "help" ])
+             "sign"; "version"; "help" ])
     in
     fmt "lui %s — developer tool for LUI native apps\n\nusage: lui <command> [options]\n\n%s\nRun `lui help <command>` for a command's options."
       version cmds
@@ -334,6 +355,7 @@ module Args = struct
             | [] -> Ok Doctor
             | _ -> Error "doctor takes no arguments")
          | "keygen" -> parse_keygen rest
+         | "sign" -> parse_sign rest
          | _ -> Error (fmt "unhandled command %S" c))
     | c :: _ -> Error (fmt "unknown command %S (try `lui help`)" c)
 end
@@ -1048,6 +1070,61 @@ module Doctor = struct
   let run () = report ()
 end
 
+(* {1 Sign} *)
+
+module Sign = struct
+  (* The raw key material of an Ed25519 PKCS8/SPKI blob is always its
+     last 32 bytes; the rest is fixed ASN.1 framing around the
+     1.3.101.112 OID (06 03 2b 65 70). *)
+  let oid_ed25519 = "\x06\x03\x2b\x65\x70"
+
+  let der_of_pem path =
+    let s = Fs.read_file path in
+    let body =
+      String.split_on_char '\n' s
+      |> List.filter (fun l ->
+             String.length l > 0 && l.[0] <> '-' && l.[0] <> '\r')
+      |> String.concat ""
+    in
+    match Lui_ed25519.decode_base64 body with
+    | Some der when String.length der >= 32 -> Some der
+    | _ -> None
+
+  let is_ed25519 der =
+    let ol = String.length oid_ed25519 and dl = String.length der in
+    let rec go i =
+      i + ol <= dl
+      && (String.sub der i ol = oid_ed25519 || go (i + 1))
+    in
+    go 0
+
+  let raw32 der = String.sub der (String.length der - 32) 32
+
+  let run (s : Args.sign_spec) =
+    match der_of_pem s.s_key with
+    | None -> err "lui sign: %s is not a PEM key" s.s_key; 1
+    | Some der ->
+      if not (is_ed25519 der) then begin
+        err "lui sign: %s is not an Ed25519 key" s.s_key;
+        1
+      end
+      else
+        let sk = raw32 der in
+        let msg = Fs.read_file s.s_in in
+        (match Lui_ed25519.sign ~sk ~msg with
+         | None -> err "lui sign: bad seed in %s" s.s_key; 1
+         | Some sig_ ->
+           log "signature (hex):    %s" (Lui_ed25519.encode_hex sig_);
+           log "signature (base64): %s" (Lui_ed25519.encode_base64 sig_);
+           (match Lui_ed25519.public_key ~sk with
+            | Some pk ->
+              log "pubkey (hex):       %s" (Lui_ed25519.encode_hex pk);
+              log "pubkey (base64):    %s"
+                (Lui_ed25519.encode_base64 pk)
+            | None -> ());
+           0)
+end
+
 (* {1 Keygen} *)
 
 module Keygen = struct
@@ -1108,13 +1185,26 @@ module Keygen = struct
           log "private key: %s   (signs update manifests — keep it secret)" priv;
           log "public key:  %s" pub;
           log "";
-          log "wire it into the update feed (platform/native/lui_updater):";
-          log "  sign each artifact's sha256 digest:";
-          log "    printf %%s <sha256-hex> | openssl pkeyutl -sign \\";
-          log "      -inkey %s -rawin | openssl base64 > artifact.sig" priv;
-          log "  set the base64 text as \"signature\" on the artifact in";
-          log "  <channel>.json; verify on-device through Lui_updater's";
-          log "  verify_sig hook against this public key.";
+          (match s.k_alg with
+           | Args.Ed25519 -> (
+             match Sign.der_of_pem pub with
+             | Some der when Sign.is_ed25519 der ->
+               let pk_hex = Lui_ed25519.encode_hex (Sign.raw32 der) in
+               log "pubkey (hex):  %s" pk_hex;
+               log "";
+               log "wire it into the update feed (platform/native/lui_updater):";
+               log "  hand the pubkey to install/download as [pk], or export it:";
+               log "    LUI_UPDATE_PUBKEY=%s" pk_hex;
+               log "  sign each artifact's raw bytes:";
+               log "    lui sign --key %s --in <artifact>" priv;
+               log "  set the printed signature as \"signature\" on the";
+               log "  artifact in <channel>.json."
+             | _ ->
+               log "wire it into the update feed: publish the raw";
+               log "pubkey and sign artifacts with `lui sign`.")
+           | Rsa ->
+             log "note: Lui_updater verifies Ed25519 signatures;";
+             log "regenerate with --alg ed25519 for the update feed.");
           0
         end
       end
@@ -1136,6 +1226,7 @@ let main argv =
      | Package s -> Package.run s
      | Doctor -> Doctor.run ()
      | Keygen s -> Keygen.run s
+     | Sign s -> Sign.run s
      | Version -> log "lui %s" version; 0
      | Help None -> print_string (Args.usage ^ "\n"); 0
      | Help (Some c) ->

@@ -1,0 +1,3 @@
+(library
+ (name lui_ed25519)
+ (modules lui_ed25519))

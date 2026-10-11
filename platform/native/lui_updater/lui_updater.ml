@@ -331,9 +331,49 @@ let plan i ~current =
   | None -> Full i.archive
 
 (* ------------------------------------------------------------------ *)
-(* Download: size + sha256 always, signature via the injected hook. *)
+(* Download: size + sha256 always; a signature, when the artifact
+   carries one, via the injected hook (tests) or the Ed25519 verifier
+   keyed by [?pk] / [LUI_UPDATE_PUBKEY] / the manifest's [pubkey]. *)
 
-let download ?(fetch = curl_fetcher ()) ?verify_sig ?progress a ~dest =
+let pubkey_env = "LUI_UPDATE_PUBKEY"
+
+let resolve_pubkey pk =
+  match pk with
+  | Some _ -> pk
+  | None -> Sys.getenv_opt pubkey_env
+
+(* Streams [path] through the verifier: the signature is over the raw
+   artifact bytes, not the digest hex. *)
+let ed25519_verify_file ~pk ~signature ~path =
+  match
+    ( Lui_ed25519.decode_key pk,
+      Lui_ed25519.decode_signature signature )
+  with
+  | Some pk_bin, Some sig_bin -> (
+    match Lui_ed25519.verify_begin ~pk:pk_bin ~signature:sig_bin with
+    | None -> false
+    | Some p -> (
+      try
+        let ic = open_in_bin path in
+        let buf = Bytes.create (1 lsl 20) in
+        (try
+           let rec feed () =
+             let n = input ic buf 0 (Bytes.length buf) in
+             if n > 0 then begin
+               Lui_ed25519.verify_feed p buf 0 n;
+               feed ()
+             end
+           in
+           feed ();
+           close_in ic
+         with e ->
+           close_in_noerr ic;
+           raise e);
+        Lui_ed25519.verify_finish p
+      with _ -> false))
+  | _ -> false
+
+let download ?(fetch = curl_fetcher ()) ?verify_sig ?pk ?progress a ~dest =
   if a.size <= 0 || a.size > max_package then error "invalid size %d" a.size
   else if not (url_allowed a.url) then error "refusing to fetch %s" a.url
   else begin
@@ -348,13 +388,28 @@ let download ?(fetch = curl_fetcher ()) ?verify_sig ?progress a ~dest =
         if String.compare sum a.sha256 <> 0 then
           error "downloaded file has sha256 %s, want %s" sum a.sha256
         else
+          let ok () =
+            Option.iter (fun p -> p ~received:a.size ~total:a.size)
+              progress;
+            Stdlib.Ok ()
+          in
           match (a.signature, verify_sig) with
-          | Some sig_, Some verify
-            when not (verify ~sha256:sum ~signature:sig_) ->
-            error "signature check failed for %s" a.url
-          | _ ->
-            Option.iter (fun p -> p ~received:a.size ~total:a.size) progress;
-            Stdlib.Ok ())
+          | Some sig_, Some verify ->
+            if verify ~sha256:sum ~signature:sig_ then ok ()
+            else error "signature check failed for %s" a.url
+          | Some sig_, None -> (
+            match resolve_pubkey pk with
+            | None ->
+              error
+                "%s carries a signature but no Ed25519 public key is \
+                 configured to check it (a [pk] argument, \
+                 LUI_UPDATE_PUBKEY, or the manifest's pubkey field)"
+                a.url
+            | Some key ->
+              if ed25519_verify_file ~pk:key ~signature:sig_ ~path:dest
+              then ok ()
+              else error "signature check failed for %s" a.url)
+          | None, _ -> ok ())
   end
 
 (* ------------------------------------------------------------------ *)
@@ -573,8 +628,8 @@ let install_target_of ~exe =
 
 (* ------------------------------------------------------- orchestration *)
 
-let install ?fetch ?verify ?verify_sig ?progress ?on_state ?stage_dir f
-    ~bundle ~exe =
+let install ?fetch ?verify ?verify_sig ?pk ?progress ?on_state ?stage_dir
+    f ~bundle ~exe =
   let fetch =
     match fetch with
     | Some fc -> fc
@@ -606,7 +661,7 @@ let install ?fetch ?verify ?verify_sig ?progress ?on_state ?stage_dir f
       let a = match pl with Full a -> a | Delta d -> d.artifact in
       emit (Downloading { received = 0; total = a.size });
       let pkg = Filename.concat work "pkg" in
-      match download ~fetch ?verify_sig ?progress a ~dest:pkg with
+      match download ~fetch ?verify_sig ?pk ?progress a ~dest:pkg with
       | Stdlib.Error m -> Stdlib.Error m
       | Stdlib.Ok () ->
         apply ?verify ~info:i ~plan:pl ~package:pkg ~bundle ~stage_dir ()
@@ -640,11 +695,11 @@ let install ?fetch ?verify ?verify_sig ?progress ?on_state ?stage_dir f
       | Full _ -> finish (Stdlib.Error m)
       | Delta _ -> finish (run (Full i.archive))))
 
-let install_and_relaunch ?fetch ?verify ?verify_sig ?progress ?on_state
-    ?stage_dir f ~bundle ~exe ~args =
+let install_and_relaunch ?fetch ?verify ?verify_sig ?pk ?progress
+    ?on_state ?stage_dir f ~bundle ~exe ~args =
   match
-    install ?fetch ?verify ?verify_sig ?progress ?on_state ?stage_dir f
-      ~bundle ~exe
+    install ?fetch ?verify ?verify_sig ?pk ?progress ?on_state ?stage_dir
+      f ~bundle ~exe
   with
   | Installed { exe; _ } ->
     ignore (spawn_detached exe args);

@@ -67,6 +67,11 @@ module Args : sig
     k_force : bool;
   }
 
+  type sign_spec = {
+    s_key : string;   (** an Ed25519 PKCS8 PEM private key *)
+    s_in : string;    (** the file whose raw bytes to sign *)
+  }
+
   type command =
     | Init of init_spec
     | Dev of dev_spec
@@ -74,6 +79,7 @@ module Args : sig
     | Package of package_spec
     | Doctor
     | Keygen of keygen_spec
+    | Sign of sign_spec
     | Version
     | Help of string option  (** command name to detail, or the overview *)
 

@@ -1,4 +1,4 @@
 (library
  (name lui_updater)
  (modules lui_updater)
- (libraries unix yojson lui_pkg))
+ (libraries unix yojson lui_pkg lui_ed25519))
