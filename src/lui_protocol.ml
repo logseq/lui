@@ -876,6 +876,7 @@ let common_property_supported kind property =
     || kind = Button
     || kind = MenuItem
     || kind = ListItem
+    || kind = Popover
     || horizontal_container kind
   | GrowValue ->
     kind <> Avatar && (not (modal_surface kind)) && kind <> Tooltip
