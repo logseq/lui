@@ -381,8 +381,9 @@ jobs:
             # --confirm-level=unsafe-yes to run brew, and aborts otherwise).
             export PKG_CONFIG_PATH="/opt/homebrew/opt/libffi/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
             opam install -y --assume-depexts tsdl tsdl-ttf tgls imagelib alcotest
-            # Same soft-failed top-up story as the Windows branch.
-            opam install . --deps-only --with-test -y --locked --assume-depexts
+            # Same soft-failed top-up story as the Windows branch. Unlocked:
+            # the lock file lags deps added after it was written.
+            opam install . --deps-only --with-test -y --assume-depexts
           else
             opam install -y tsdl tsdl-ttf tgls imagelib alcotest
           fi
