@@ -716,19 +716,6 @@ module Ui = struct
 
   (* Topmost overlay = last overlay-kind node in paint (preorder)
      order; returns (id, modal, dismiss-admitted). *)
-  let top_overlay store =
-    List.fold_left
-      (fun acc id ->
-         match overlay_class (kind_name store id) with
-         | `none -> acc
-         | cls ->
-           Some (id, cls = `modal,
-                 event_supported store id (Dismiss id)))
-      None (Lui_store.preorder store)
-
-  let inside_ov store ov path =
-    List.exists (fun i -> i = ov || is_desc store i ov) path
-
   (* Host-owned menu tracking: menu panels declared under a
      [menu-trigger] stay hidden until the trigger toggles them — the
      view does not re-render for menu state. *)
@@ -752,6 +739,21 @@ module Ui = struct
 
   let close_menu t =
     if t.open_menu <> 0 then begin t.open_menu <- 0; t.dirty <- true end
+
+  let top_overlay t store =
+    List.fold_left
+      (fun acc id ->
+         match overlay_class (kind_name store id) with
+         | `none -> acc
+         | _ when trigger_owned store id && id <> t.open_menu -> acc
+         | cls ->
+           Some (id, cls = `modal,
+                 event_supported store id (Dismiss id)))
+      None (Lui_store.preorder store)
+
+  let inside_ov store ov path =
+    List.exists (fun i -> i = ov || is_desc store i ov) path
+
 
   (* ---- text selection math ---------------------------------------- *)
 
@@ -1196,9 +1198,9 @@ module Ui = struct
       true
     | _ -> false
 
-  let focusables store =
+  let focusables t store =
     let scope =
-      match top_overlay store with
+      match top_overlay t store with
       | Some (ov, true, _) -> Some ov  (* modal focus trap *)
       | _ -> None
     in
@@ -1212,8 +1214,8 @@ module Ui = struct
          | Some ov -> id = ov || is_desc store id ov)
       (Lui_store.preorder store)
 
-  let step_focusable store cur dir =
-    let ids = focusables store in
+  let step_focusable t store cur dir =
+    let ids = focusables t store in
     match ids with
     | [] -> 0
     | _ ->
@@ -1292,7 +1294,7 @@ module Ui = struct
     end;
     if t.saved_focus <> 0 && not (Lui_store.mem store t.saved_focus)
     then t.saved_focus <- 0;
-    let ov = top_overlay store in
+    let ov = top_overlay t store in
     let ov_id, ov_modal =
       match ov with
       | Some (id, m, _) -> (id, m)
@@ -1747,13 +1749,20 @@ module Ui = struct
          let path = hit_path store rects ~x:dx ~y:dy in
          t.down_x <- x; t.down_y <- y;
          t.typeahead <- "";
-         (* Press outside the open menu closes it host-side. *)
-         (if t.open_menu <> 0 && not (inside_ov store t.open_menu path)
+         (* Press outside the open menu closes it host-side — the
+            owning trigger counts as inside so a second click toggles
+            rather than close-then-reopen. *)
+         (if t.open_menu <> 0
+            && not
+                 (inside_ov store t.open_menu path
+                  || List.exists
+                       (fun i -> Lui_store.parent store t.open_menu = Some i)
+                       path)
           then close_menu t);
          (* Overlay semantics: a press outside the top overlay light-
             dismisses it when its kind admits Dismiss; a modal surface
             swallows the press entirely (focus trap). *)
-         let ov = top_overlay store in
+         let ov = top_overlay t store in
          let inside =
            match ov with
            | None -> true
@@ -1946,16 +1955,23 @@ module Ui = struct
                      (PressDetail (n, detail_of store n x y mods 0)) ]
                else []
              in
-             (* A menu trigger toggles its owned panel; activating a
-                node inside the open panel closes it after the press. *)
-             (if kind_name store n = "menu-trigger" then
-                (match menu_panel store n with
-                 | Some m ->
-                   t.open_menu <- (if t.open_menu = m then 0 else m);
-                   t.dirty <- true
-                 | None -> ())
-              else if t.open_menu <> 0 && is_desc store n t.open_menu
-              then close_menu t);
+             (* A click landing anywhere on a menu trigger toggles its
+                owned panel (the trigger itself may not be pressable);
+                activating a node inside the open panel closes it after
+                the press. *)
+             (match
+                List.find_opt
+                  (fun i -> kind_name store i = "menu-trigger") path
+              with
+              | Some trig -> (
+                match menu_panel store trig with
+                | Some m ->
+                  t.open_menu <- (if t.open_menu = m then 0 else m);
+                  t.dirty <- true
+                | None -> ())
+              | None ->
+                if t.open_menu <> 0 && is_desc store n t.open_menu
+                then close_menu t);
              pd @ primary_press store n
            end else []
          in
@@ -1993,8 +2009,11 @@ module Ui = struct
             | None ->
               (if t.open_menu <> 0 then (close_menu t; [])
                else
-              match top_overlay store with
+              match top_overlay t store with
                | Some (oid, _, true) -> [ Dispatch (Dismiss oid) ]
+               | Some (oid, _, false)
+                 when event_supported store oid (Dismiss oid) ->
+                 [ Dispatch (Dismiss oid) ]
                | Some (_, _, false) -> []
                | None ->
                  if t.focused <> 0 then begin
@@ -2061,7 +2080,7 @@ module Ui = struct
             | _ -> [])
          | Input.Tab ->
            let dir = if mods.Input.shift then -1 else 1 in
-           let next = step_focusable store t.focused dir in
+           let next = step_focusable t store t.focused dir in
            if next <> 0 && next <> t.focused then begin
              set_focused ~kbd:true t store next;
              Focus_changed next :: scroll_show t store next

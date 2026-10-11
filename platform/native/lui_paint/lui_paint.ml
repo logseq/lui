@@ -1514,17 +1514,23 @@ let default_chrome ctx store id st kind r rs alpha =
     and py = Float.max (pad_of "padding-vertical") (pad_of "padding") in
     let title_x = r.x +. px +. 4. *. s and title_y = r.y +. py +. 6. *. s in
     let title_w = Float.max 0. (r.w -. 2. *. (px +. 4. *. s)) in
-    (match kind with
-     | "sheet" ->
-       [ fill ~continuous:true
-           (rect (r.x +. ((r.w -. 36. *. s) /. 2.)) (r.y +. 6. *. s)
-              (36. *. s) (4. *. s))
-           (2. *. s, 2. *. s, 2. *. s, 2. *. s)
-           ~paint:Solid ~c1:(col_surface_pressed ctx)
-           ~c2:(col_surface_pressed ctx) ~grad:(0., 0., 0., 0.)
-           ~border:(0., 0., 0., 0.) ~bcolor:(color 0 0 0 0)
-           ~dashed:false ~alpha:1. ]
-     | _ -> [])
+    (* Surface first, chrome ink on top — the fill must not cover the
+       title block. *)
+    shadow_pair rad [ (0., 2., 8., 31); (0., 10., 30., 76) ]
+    @ (if bg_styled then [] else [ face (col_popover ctx) rad zb zc ~dashed:false ])
+    @ (if border_styled || bg_styled then []
+       else [ face zc rad bw1 (col_border ctx) ~dashed:false ])
+    @ (match kind with
+       | "sheet" ->
+         [ fill ~continuous:true
+             (rect (r.x +. ((r.w -. 36. *. s) /. 2.)) (r.y +. 6. *. s)
+                (36. *. s) (4. *. s))
+             (2. *. s, 2. *. s, 2. *. s, 2. *. s)
+             ~paint:Solid ~c1:(col_surface_pressed ctx)
+             ~c2:(col_surface_pressed ctx) ~grad:(0., 0., 0., 0.)
+             ~border:(0., 0., 0., 0.) ~bcolor:(color 0 0 0 0)
+             ~dashed:false ~alpha:1. ]
+       | _ -> [])
     @ (match pstr store id "text" with
        | Some t when t <> "" ->
          ctx.hooks.text_ops id
@@ -1537,10 +1543,6 @@ let default_chrome ctx store id st kind r rs alpha =
            (rect title_x (title_y +. 24. *. s) title_w (14. *. s))
            (col_muted_fg ctx) d
        | _ -> [])
-    @ shadow_pair rad [ (0., 2., 8., 31); (0., 10., 30., 76) ]
-    @ (if bg_styled then [] else [ face (col_popover ctx) rad zb zc ~dashed:false ])
-    @ (if border_styled || bg_styled then []
-       else [ face zc rad bw1 (col_border ctx) ~dashed:false ])
   | "tooltip" | "toast" | "alert" | "bubble" ->
     let rad = rad (5. *. s) in
     shadow_pair rad [ (0., 1., 2., 26); (0., 2., 8., 51) ]
@@ -1594,6 +1596,15 @@ let default_text_fg ctx store id kind st rs =
     | "swipe-action" ->
       if bg_styled then text_fg ctx store id else col_accent_text ctx
     | "tooltip" | "toast" | "alert" | "bubble" -> col_inverse_fg ctx
+    | "text" | "label" | "heading" | "paragraph" -> (
+      (* Ink children painted on an inverse surface take on-surface
+         ink (e.g. a toast's label child). *)
+      match Lui_store.parent store id with
+      | Some p -> (
+        match Lui_store.kind store p with
+        | "tooltip" | "toast" | "alert" | "bubble" -> col_inverse_fg ctx
+        | _ -> text_fg ctx store id)
+      | None -> text_fg ctx store id)
     | "list-section-header" | "list-section-footer" -> col_muted_fg ctx
     | _ -> text_fg ctx store id)
 

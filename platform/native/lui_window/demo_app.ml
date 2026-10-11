@@ -727,7 +727,7 @@ let popups model_s send =
            menu_item ~text:"close" ~foreground:"#989eb2"
              ~on_press:(press send (Close P_menu)) [] ]);
     open_ ~test:(fun m -> m.ctx_open)
-      (context_menu
+      (context_menu ~on_dismiss:(press send (Close P_ctx))
          [ menu_item ~text:"context: first" ~foreground:"#e4e6ee"
              ~on_press:(press send (Close P_ctx)) [];
            menu_item ~text:"context: second" ~foreground:"#e4e6ee"
@@ -743,8 +743,7 @@ let popups model_s send =
     open_ ~test:(fun m -> m.toast_open)
       (toast ~duration:2500 ~label:"saved"
          ~on_dismiss:(press send (Close P_toast))
-         [ text ~value:"toast — auto-dismisses" ~foreground:"#e4e6ee"
-             ~font_size:"12" [] ]) ]
+         [ text ~value:"toast — auto-dismisses" ~font_size:"12" [] ]) ]
 
 let view _ctx model_s send : t =
   column ~grow:1. ~gap:0 ~background:"#161720"

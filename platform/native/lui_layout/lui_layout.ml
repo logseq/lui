@@ -593,7 +593,7 @@ let anchor_rect_of ctx store id pr =
   | Some x, Some y -> { Lui_flex.x = pr.x +. x; y = pr.y +. y; w = 0.; h = 0. }
   | _ -> pr
 
-let anchored_xy ctx store sid ar pr (prp : Lui_flex.rect) =
+let anchored_xy ctx store sid ar (prp : Lui_flex.rect) =
   let s = ctx.scale in
   let offset = Option.value ~default:4. (pnum store sid "anchor-offset") *. s in
   let side =
@@ -628,9 +628,11 @@ let anchored_xy ctx store sid ar pr (prp : Lui_flex.rect) =
       | _ -> ar.y
   in
   let x, y = if vertical then (cross, main) else (main, cross) in
-  (* Clamp inside the containing block so the popup stays on-screen. *)
-  ( Float.max pr.x (Float.min x (pr.x +. pr.w -. prp.w)),
-    Float.max pr.y (Float.min y (pr.y +. pr.h -. prp.h)) )
+  (* Clamp inside the viewport so the popup stays on-screen — the
+     containing block may be smaller than the panel (a menu
+     trigger). *)
+  ( Float.max 0. (Float.min x (Float.max 0. (ctx.vw -. prp.w))),
+    Float.max 0. (Float.min y (Float.max 0. (ctx.vh -. prp.h))) )
 
 (* Center each default-placed popup in its containing block by giving
    its spec concrete [left]/[top] offsets. Position edges resolve
@@ -672,6 +674,10 @@ let refine_popups ctx =
           let prp = Lui_flex.absolute_layout pnode in
           let anchored =
             List.exists (has_prop ctx.store sid) [ "x"; "y"; "anchor" ]
+            || (* trigger-owned menu panels anchor below their trigger *)
+               (match Lui_store.parent ctx.store sid with
+                | Some p -> Lui_store.kind ctx.store p = "menu-trigger"
+                | None -> false)
           in
           if (not anchored) && popup_has_edges ctx.store sid then ()
           else
@@ -680,7 +686,7 @@ let refine_popups ctx =
               let ax, ay =
                 anchored_xy ctx ctx.store sid
                   (anchor_rect_of ctx ctx.store sid pr)
-                  pr prp
+                  prp
               in
               (ax -. pr.x -. bor_l -. ml, ay -. pr.y -. bor_t -. mt)
             else

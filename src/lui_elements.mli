@@ -2756,7 +2756,8 @@ val context_menu :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?disabled:bool -> ?disabled_signal:bool Signal.signal -> t list -> t
+  ?disabled:bool -> ?disabled_signal:bool Signal.signal ->
+  ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
 val menu_trigger :
   ?key:string ->
   ?accessibility_identifier:string ->
