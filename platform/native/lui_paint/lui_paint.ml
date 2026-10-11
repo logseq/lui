@@ -1495,17 +1495,61 @@ let default_chrome ctx store id st kind r rs alpha =
   | "button" | "toggle-button" | "toggle" | "menu-trigger"
   | "number-stepper" ->
     let rad = rad (6. *. s) in
-    (if bg_styled then []
-     else
-       let face_c =
-         if st.disabled then col_surface ctx
-         else if st.pressed || (st.selected && kind <> "button") then
-           col_surface_pressed ctx
-         else if st.hovered then col_surface_hover ctx
-         else col_surface ctx
-       in
-       [ face face_c rad zb zc ~dashed:false ])
-    @ (if border_styled || bg_styled then []
+    (* variant contract mirrors the web stylesheet (.lui-button
+       [data-variant]) and apple's LUIButtonVisualPolicy: ghost/text and
+       icon-only default buttons are borderless and transparent until
+       interacted with; outline keeps only the border; filled variants
+       paint a colored face. *)
+    let variant = Option.value ~default:"default" (pstr store id "variant") in
+    let icon_only =
+      pstr store id "icon" <> None
+      && pstr store id "text" = None
+      && Lui_store.child_ids store id = []
+    in
+    let borderless =
+      variant = "ghost" || variant = "text"
+      || (variant = "default" && icon_only)
+    in
+    let base_face =
+      match variant with
+      | "primary" -> Some (col_accent ctx)
+      | "destructive" -> Some (col_danger ctx)
+      | "secondary" -> Some (col_secondary ctx)
+      | _ when borderless -> None
+      | _ -> Some (col_surface ctx)
+    in
+    let face_ops =
+      if bg_styled then []
+      else
+        match base_face with
+        | Some base ->
+          let face_c =
+            if st.disabled then base
+            else if st.pressed || (st.selected && kind <> "button") then (
+              match variant with
+              | "primary" -> col_accent_hover ctx
+              | "secondary" | "destructive" -> base
+              | _ -> col_surface_pressed ctx)
+            else if st.hovered then (
+              match variant with
+              | "primary" -> col_accent_hover ctx
+              | "secondary" -> col_surface_hover ctx
+              | _ -> base)
+            else base
+          in
+          [ face face_c rad zb zc ~dashed:false ]
+        | None ->
+          if st.disabled then []
+          else if st.pressed || st.selected then
+            [ face (col_surface_pressed ctx) rad zb zc ~dashed:false ]
+          else if st.hovered then
+            [ face (col_surface_hover ctx) rad zb zc ~dashed:false ]
+          else []
+    in
+    face_ops
+    @ (if border_styled || bg_styled || borderless
+          || List.mem variant [ "primary"; "destructive"; "secondary" ]
+       then []
        else [ face zc rad bw1 (col_control_border ctx) ~dashed:false ])
     @ control_icon_ops ctx store id r alpha
   | "text-field" | "secure-field" | "input" | "search-field" | "textarea"
