@@ -215,6 +215,8 @@ val font_size : ui_context -> int -> string -> unit
 val font_weight : ui_context -> int -> int -> unit
 val line_height : ui_context -> int -> string -> unit
 val letter_spacing : ui_context -> int -> float -> unit
+val font_family : ui_context -> int -> string -> unit
+val text_decoration : ui_context -> int -> string -> unit
 val position : ui_context -> int -> string -> unit
 val inset : ui_context -> int -> float -> unit
 val inset_top : ui_context -> int -> float -> unit
@@ -225,12 +227,16 @@ val z_index : ui_context -> int -> int -> unit
 val white_space : ui_context -> int -> string -> unit
 val text_overflow : ui_context -> int -> string -> unit
 val overflow : ui_context -> int -> string -> unit
+val flex_wrap : ui_context -> int -> string -> unit
+val list_style : ui_context -> int -> string -> unit
 val user_select : ui_context -> int -> string -> unit
 val cursor : ui_context -> int -> string -> unit
 val shadow : ui_context -> int -> string -> unit
 val hover_background : ui_context -> int -> string -> unit
 val hover_opacity : ui_context -> int -> float -> unit
 val hover_shadow : ui_context -> int -> string -> unit
+val hover_foreground : ui_context -> int -> string -> unit
+val hover_border : ui_context -> int -> string -> unit
 val pressed_background : ui_context -> int -> string -> unit
 val pressed_opacity : ui_context -> int -> float -> unit
 val pressed_shadow : ui_context -> int -> string -> unit

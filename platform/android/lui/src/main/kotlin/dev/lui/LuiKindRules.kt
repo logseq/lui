@@ -575,10 +575,23 @@ internal object LuiKindRules {
                 value.numberValue?.let { it >= 0 && it <= 1 } == true &&
                     canContainChildren(kind)
             "display" ->
-                value.stringValue == "contents" &&
+                value.stringValue in setOf(
+                    "contents", "none", "inline-flex", "block", "inline",
+                    "inline-block",
+                ) &&
                     (kind == LuiNodeKind.box ||
                         kind == LuiNodeKind.column ||
                         kind == LuiNodeKind.row)
+            "flex-wrap" ->
+                value.stringValue in setOf("nowrap", "wrap") &&
+                    (kind == LuiNodeKind.box ||
+                        kind == LuiNodeKind.column ||
+                        kind == LuiNodeKind.row)
+            "list-style" ->
+                value.stringValue in setOf("none", "disc", "decimal") &&
+                    (kind == LuiNodeKind.list ||
+                        kind == LuiNodeKind.virtualList ||
+                        kind == LuiNodeKind.listItem)
             "tooltip", "tooltip-keys" ->
                 value is LuiWireValue.Str &&
                     (kind == LuiNodeKind.button ||
@@ -796,9 +809,13 @@ internal object LuiKindRules {
                 value.intValue?.let { it >= 0 } == true && kind == LuiNodeKind.list
             "scroll-animated", "track-visible-range" ->
                 value is LuiWireValue.Bool && kind == LuiNodeKind.list
-            "font-size", "line-height" ->
+            "font-size", "line-height", "font-family" ->
                 value is LuiWireValue.Str &&
                     value.stringValue?.isNotBlank() == true &&
+                    isTextAppearanceKind(kind)
+            "text-decoration" ->
+                value is LuiWireValue.Str &&
+                    textDecorationSupported(value.stringValue) &&
                     isTextAppearanceKind(kind)
             "font-weight" ->
                 value.intValue?.let { it in 1..1000 } == true &&
@@ -819,7 +836,9 @@ internal object LuiKindRules {
                     kind != LuiNodeKind.virtualList &&
                     kind != LuiNodeKind.tooltip
             "position" ->
-                value.stringValue in setOf("static", "relative", "absolute", "fixed") &&
+                value.stringValue in setOf(
+                    "static", "relative", "absolute", "fixed", "sticky",
+                ) &&
                     isPositionedKind(kind)
             "inset", "inset-top", "inset-right", "inset-bottom", "inset-left" ->
                 value.numberValue?.isFinite() == true && isPositionedKind(kind)
@@ -833,6 +852,7 @@ internal object LuiKindRules {
                     kind != LuiNodeKind.tooltip &&
                     !isModalSurface(kind)
             "hover-background", "pressed-background", "selected-background",
+            "hover-foreground", "hover-border",
             "hover-shadow", "pressed-shadow", "focus-shadow", "selected-shadow",
             "selected-hover-shadow" ->
                 value is LuiWireValue.Str &&
@@ -847,5 +867,16 @@ internal object LuiKindRules {
                     kind != LuiNodeKind.tooltip
             else -> false
         }
+    }
+
+    // `text-decoration` accepts "none" alone, or a space-separated
+    // combination of underline/overline/line-through (mirrors the OCaml
+    // `text_decoration_supported`).
+    private fun textDecorationSupported(value: String?): Boolean {
+        val tokens = value?.split(' ')?.filter { it.isNotBlank() } ?: return false
+        if (tokens == listOf("none")) return true
+        return tokens.isNotEmpty() &&
+            "none" !in tokens &&
+            tokens.all { it in setOf("underline", "line-through", "overline") }
     }
 }

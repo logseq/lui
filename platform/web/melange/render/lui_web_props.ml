@@ -865,6 +865,11 @@ and apply_secondary_property renderer node kind dom_node property value =
   | Opacity, FloatValue value ->
       set_style dom_node "opacity" (Js.Float.toString value)
   | DisplayValue, StringValue value -> set_style dom_node "display" value
+  | FontFamily, StringValue value -> set_style dom_node "font-family" value
+  | TextDecoration, StringValue value ->
+      set_style dom_node "text-decoration" value
+  | ListStyle, StringValue value -> set_style dom_node "list-style" value
+  | FlexWrap, StringValue value -> set_style dom_node "flex-wrap" value
   | TooltipText, StringValue value ->
       W.Element.setAttribute "data-tooltip" value dom_node
   | TooltipKeys, StringValue value ->
@@ -969,6 +974,10 @@ and apply_secondary_property renderer node kind dom_node property value =
       set_style dom_node "--lui-shadow" (Util.web_shadow_value shadow)
   | HoverBackground, StringValue color ->
       set_style dom_node "--lui-hover-bg" (Util.web_color_value color)
+  | HoverForeground, StringValue color ->
+      set_style dom_node "--lui-hover-fg" (Util.web_color_value color)
+  | HoverBorder, StringValue color ->
+      set_style dom_node "--lui-hover-border" (Util.web_color_value color)
   | HoverOpacity, FloatValue opacity ->
       set_style dom_node "--lui-hover-opacity" (Js.Float.toString opacity)
   | HoverShadow, StringValue shadow ->
@@ -1099,6 +1108,10 @@ let remove_property renderer node kind dom_node property =
            end
        | Opacity -> set_style dom_node "opacity" ""
        | DisplayValue -> set_style dom_node "display" ""
+       | FontFamily -> set_style dom_node "font-family" ""
+       | TextDecoration -> set_style dom_node "text-decoration" ""
+       | ListStyle -> set_style dom_node "list-style" ""
+       | FlexWrap -> set_style dom_node "flex-wrap" ""
        | TooltipText -> W.Element.removeAttribute "data-tooltip" dom_node
        | TooltipKeys -> W.Element.removeAttribute "data-tooltip-keys" dom_node
        | InputType -> W.Element.removeAttribute "type" dom_node
@@ -1160,6 +1173,8 @@ let remove_property renderer node kind dom_node property =
        | Cursor -> set_style dom_node "cursor" ""
        | Shadow -> set_style dom_node "--lui-shadow" ""
        | HoverBackground -> set_style dom_node "--lui-hover-bg" ""
+       | HoverForeground -> set_style dom_node "--lui-hover-fg" ""
+       | HoverBorder -> set_style dom_node "--lui-hover-border" ""
        | HoverOpacity -> set_style dom_node "--lui-hover-opacity" ""
        | HoverShadow -> set_style dom_node "--lui-hover-shadow" ""
        | PressedBackground -> set_style dom_node "--lui-pressed-bg" ""

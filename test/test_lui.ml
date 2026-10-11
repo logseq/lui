@@ -2256,6 +2256,29 @@ let test_vocab_batch2 () =
     (property_value_supported DisplayValue (StringValue "contents"));
   Alcotest.(check bool) "grid rejected" false
     (property_value_supported DisplayValue (StringValue "grid"));
+  List.iter
+    (fun value ->
+       Alcotest.(check bool)
+         (Printf.sprintf "display %s accepted" value)
+         true
+         (property_value_supported DisplayValue (StringValue value)))
+    [ "none"; "inline-flex"; "block"; "inline"; "inline-block" ];
+  Alcotest.(check bool) "display rejected on text" false
+    (property_supported Text DisplayValue);
+  Alcotest.(check bool) "flex-wrap on row" true
+    (property_supported Row FlexWrap);
+  Alcotest.(check bool) "flex-wrap on column" true
+    (property_supported Column FlexWrap);
+  Alcotest.(check bool) "flex-wrap on box" true
+    (property_supported Box FlexWrap);
+  Alcotest.(check bool) "flex-wrap rejected on list" false
+    (property_supported ListContainer FlexWrap);
+  Alcotest.(check bool) "flex-wrap wrap" true
+    (property_value_supported FlexWrap (StringValue "wrap"));
+  Alcotest.(check bool) "flex-wrap nowrap" true
+    (property_value_supported FlexWrap (StringValue "nowrap"));
+  Alcotest.(check bool) "flex-wrap rejects wrap-reverse" false
+    (property_value_supported FlexWrap (StringValue "wrap-reverse"));
   (* ~tooltip/~shortcut_hint *)
   Alcotest.(check bool) "tooltip on button" true
     (property_supported Button TooltipText);
@@ -2422,8 +2445,66 @@ let test_visual_appearance_props () =
     (property_value_supported LetterSpacing (FloatValue nan));
   Alcotest.(check bool) "position enum" true
     (property_value_supported Position (StringValue "absolute"));
-  Alcotest.(check bool) "position rejects sticky" false
+  Alcotest.(check bool) "position accepts sticky" true
     (property_value_supported Position (StringValue "sticky"));
+  Alcotest.(check bool) "position rejects junk" false
+    (property_value_supported Position (StringValue "float"));
+  (* ~font_family / ~text_decoration: typography props, same kind set as
+     font-size (incl. the restrictive kbd kind via its matrix entry). *)
+  Alcotest.(check bool) "font-family on text" true
+    (property_supported Text FontFamily);
+  Alcotest.(check bool) "font-family on row" true
+    (property_supported Row FontFamily);
+  Alcotest.(check bool) "font-family on kbd" true
+    (property_supported Kbd FontFamily);
+  Alcotest.(check bool) "font-family rejected on icon" false
+    (property_supported Icon FontFamily);
+  Alcotest.(check bool) "font-family non-blank" true
+    (property_value_supported FontFamily (StringValue "IBM Plex Mono"));
+  Alcotest.(check bool) "font-family rejects blank" false
+    (property_value_supported FontFamily (StringValue "  "));
+  Alcotest.(check bool) "text-decoration on text" true
+    (property_supported Text TextDecoration);
+  Alcotest.(check bool) "text-decoration on kbd" true
+    (property_supported Kbd TextDecoration);
+  Alcotest.(check bool) "text-decoration underline" true
+    (property_value_supported TextDecoration (StringValue "underline"));
+  Alcotest.(check bool) "text-decoration none" true
+    (property_value_supported TextDecoration (StringValue "none"));
+  Alcotest.(check bool) "text-decoration combination" true
+    (property_value_supported TextDecoration
+       (StringValue "underline line-through"));
+  Alcotest.(check bool) "text-decoration none+underline rejected" false
+    (property_value_supported TextDecoration
+       (StringValue "none underline"));
+  Alcotest.(check bool) "text-decoration junk rejected" false
+    (property_value_supported TextDecoration (StringValue "wavy"));
+  (* ~list_marker on list-ish kinds *)
+  Alcotest.(check bool) "list-style on list" true
+    (property_supported ListContainer ListStyle);
+  Alcotest.(check bool) "list-style on virtual-list" true
+    (property_supported VirtualList ListStyle);
+  Alcotest.(check bool) "list-style on list-item" true
+    (property_supported ListItem ListStyle);
+  Alcotest.(check bool) "list-style rejected on row" false
+    (property_supported Row ListStyle);
+  Alcotest.(check bool) "list-style disc" true
+    (property_value_supported ListStyle (StringValue "disc"));
+  Alcotest.(check bool) "list-style rejects circle" false
+    (property_value_supported ListStyle (StringValue "circle"));
+  (* hover foreground/border state channels ride the hover-* admission *)
+  Alcotest.(check bool) "hover-foreground on text" true
+    (property_supported Text HoverForeground);
+  Alcotest.(check bool) "hover-border on row" true
+    (property_supported Row HoverBorder);
+  Alcotest.(check bool) "hover-foreground rejected on root" false
+    (property_supported Root HoverForeground);
+  Alcotest.(check bool) "hover-border rejected on tooltip" false
+    (property_supported Tooltip HoverBorder);
+  Alcotest.(check bool) "hover-foreground non-blank" true
+    (property_value_supported HoverForeground (StringValue "white"));
+  Alcotest.(check bool) "hover-border non-blank" true
+    (property_value_supported HoverBorder (StringValue "blue-500"));
   Alcotest.(check bool) "inset finite" true
     (property_value_supported Inset (FloatValue 0.0));
   Alcotest.(check bool) "inset non-finite rejected" false

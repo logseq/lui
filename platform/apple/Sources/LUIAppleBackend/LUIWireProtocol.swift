@@ -300,7 +300,8 @@ enum LUIWireValue: Decodable, Equatable {
             return value.isFinite && value >= 0 && value <= 1
         case .display:
             guard let value = stringValue else { return false }
-            return value == "contents"
+            return ["contents", "none", "inline-flex", "block", "inline",
+                    "inline-block"].contains(value)
         case .tooltip, .tooltipKeys, .pickerAccept:
             return stringValue != nil
         case .inputType:
@@ -310,9 +311,19 @@ enum LUIWireValue: Decodable, Equatable {
             return boolValue != nil
         case .fontSize, .lineHeight, .shadow, .hoverBackground, .pressedBackground,
              .selectedBackground, .hoverShadow, .pressedShadow, .focusShadow,
-             .selectedShadow, .selectedHoverShadow:
+             .selectedShadow, .selectedHoverShadow, .fontFamily,
+             .hoverForeground, .hoverBorder:
             guard let value = stringValue else { return false }
             return !value.trimmingCharacters(in: .whitespaces).isEmpty
+        case .textDecoration:
+            guard let value = stringValue else { return false }
+            return Self.textDecorationSupported(value)
+        case .listStyle:
+            guard let value = stringValue else { return false }
+            return ["none", "disc", "decimal"].contains(value)
+        case .flexWrap:
+            guard let value = stringValue else { return false }
+            return value == "nowrap" || value == "wrap"
         case .fontWeight:
             guard let value = intValue else { return false }
             return value >= 1 && value <= 1000
@@ -321,7 +332,8 @@ enum LUIWireValue: Decodable, Equatable {
             return value.isFinite
         case .position:
             guard let value = stringValue else { return false }
-            return ["static", "relative", "absolute", "fixed"].contains(value)
+            return ["static", "relative", "absolute", "fixed", "sticky"]
+                .contains(value)
         case .zIndex:
             return intValue != nil
         case .whiteSpace:
@@ -355,6 +367,18 @@ enum LUIWireValue: Decodable, Equatable {
         }
     }
 
+
+    /// `text-decoration` accepts "none" alone, or a space-separated
+    /// combination of underline/overline/line-through (mirrors the OCaml
+    /// `text_decoration_supported`).
+    private static func textDecorationSupported(_ value: String) -> Bool {
+        let tokens = value.split(separator: " ").map(String.init)
+        if tokens == ["none"] { return true }
+        return !tokens.isEmpty && !tokens.contains("none")
+            && tokens.allSatisfy {
+                ["underline", "line-through", "overline"].contains($0)
+            }
+    }
 
     private static let mainAlignments: Set<String> = [
         "start", "center", "end", "space_between",
@@ -1092,7 +1116,9 @@ struct LUIRetainedTree {
         case .url: kind == .link || kind == .image
         case .target: kind == .link
         case .opacity: canContainChildren(kind)
-        case .display: kind == .box || kind == .column || kind == .row
+        case .display, .flexWrap: kind == .box || kind == .column || kind == .row
+        case .listStyle:
+            kind == .list || kind == .virtualList || kind == .listItem
         case .tooltip, .tooltipKeys:
             kind == .button || kind == .icon || kind == .menuItem
         case .inputType: kind == .input
@@ -1106,7 +1132,8 @@ struct LUIRetainedTree {
         case .alignment: kind != .root
         // Typography carries a foreground — same kinds as `.foreground`
         // minus purely graphical kinds whose `size` prop governs metrics.
-        case .fontSize, .fontWeight, .lineHeight, .letterSpacing, .userSelect:
+        case .fontSize, .fontWeight, .lineHeight, .letterSpacing, .userSelect,
+             .fontFamily, .textDecoration:
             kind == .row || kind == .column || kind == .grid || kind == .box ||
                 kind == .panel || kind == .card || kind == .stack ||
                 kind == .scroll || kind == .avatar ||
@@ -1136,6 +1163,7 @@ struct LUIRetainedTree {
         case .cursor: kind != .root
         case .shadow: kind != .tooltip && !isModalSurface(kind)
         case .hoverBackground, .hoverOpacity, .hoverShadow,
+             .hoverForeground, .hoverBorder,
              .pressedBackground, .pressedOpacity, .pressedShadow,
              .focusShadow, .selectedBackground, .selectedShadow,
              .selectedHoverShadow, .disabledOpacity:
