@@ -1800,9 +1800,13 @@ let set_prop application node property value =
   let kind = require_standard_node_kind application node in
   if not (property_supported kind property) then
     invalid_arg
-      (Printf.sprintf "property is unsupported by node kind: kind=%s prop=%s"
+      (Printf.sprintf
+         "property is unsupported by node kind: kind=%s prop=%s node=%d key=%s"
          (Lui_wire_schema.node_kind_name kind)
-         (Lui_wire_schema.property_name property));
+         (Lui_wire_schema.property_name property) node
+         (Option.value
+           (Hashtbl.find_opt application.runtime_reload_keys node)
+           ~default:"-"));
   if not (property_value_supported_for_kind kind property value) then
     invalid_arg
       (Printf.sprintf "invalid property value: kind=%s prop=%s value=%s"
