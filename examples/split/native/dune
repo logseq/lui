@@ -10,6 +10,7 @@
  (target liblui_split.dylib)
  (deps
   ../../../platform/native/lui_ocaml_bridge.c
+  ../../../platform/native/lui_caml_dispatch.h
   split_bridge.cmxa
   ../split_app.cmxa
   ../../../src/lui.cmxa)
