@@ -8,7 +8,22 @@
  (foreign_stubs
   (language c)
   (names lui_ax_objc)
-  (flags (:standard -x objective-c -fobjc-arc)))
- (c_library_flags
-  (:standard -framework AppKit))
+  (flags (:standard (:include c_flags.sexp))))
+ (c_library_flags (:standard (:include c_libs.sexp)))
  (libraries lui_a11y))
+
+; The stubs are plain C off macOS but must be compiled as Objective-C
+; with ARC on macOS to reach AppKit; the framework only exists there.
+(rule
+ (target c_flags.sexp)
+ (action
+  (with-stdout-to %{target}
+   (bash
+    "if [ \"$(uname -s)\" = Darwin ]; then printf '(-x objective-c -fobjc-arc)'; else printf '()'; fi"))))
+
+(rule
+ (target c_libs.sexp)
+ (action
+  (with-stdout-to %{target}
+   (bash
+    "if [ \"$(uname -s)\" = Darwin ]; then printf '(-framework AppKit)'; else printf '()'; fi"))))

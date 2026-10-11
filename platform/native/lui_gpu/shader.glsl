@@ -161,7 +161,10 @@ float cornerDist(float u, float v, float r, float rh, float rv, vec2 size) {
 
 // The value one corner adds to the shape at u, v inside its edges,
 // -1e9 where its curve does not reach, as cont_dist's loop computes.
-float contCorner(float u, float v, float r, float rh, float rv, vec2 size, out bool curved) {
+// curved is inout, not out: the early return must leave the caller's
+// accumulated flag alone, while an out parameter would copy back an
+// undefined value on every path.
+float contCorner(float u, float v, float r, float rh, float rv, vec2 size, inout bool curved) {
 	float ce = contExtent * r;
 	if (r <= 0.0 || u >= ce || v >= ce) return -1e9;
 	curved = true;
