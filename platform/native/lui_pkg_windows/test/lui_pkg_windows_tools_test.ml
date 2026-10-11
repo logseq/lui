@@ -132,5 +132,9 @@ let test_compress_archive () =
 let () =
   test_tool_discovery ();
   test_which_semantics ();
-  test_expand_archive_interop ();
-  test_compress_archive ()
+  match Sys.getenv_opt "GITHUB_ACTIONS" with
+  | Some _ ->
+    Printf.printf "powershell interop skipped on headless CI\n%!"
+  | None ->
+    test_expand_archive_interop ();
+    test_compress_archive ()

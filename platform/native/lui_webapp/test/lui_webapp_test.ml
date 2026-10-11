@@ -151,16 +151,22 @@ let test_validate () =
 
 let test_paths () =
   let s = W.resolve ~base:"/pack" sample in
-  check Alcotest.string "web_dir" "/pack/web" s.web_dir;
-  check (Alcotest.option Alcotest.string) "icon" (Some "/pack/icon.png")
+  check Alcotest.string "web_dir" ("/pack" / "web") s.web_dir;
+  check (Alcotest.option Alcotest.string) "icon"
+    (Some ("/pack" / "icon.png"))
     s.icon;
-  check Alcotest.string "entry" "/pack/web/index.html"
+  check Alcotest.string "entry" ("/pack" / "web" / "index.html")
     (W.entry_path s);
   let s =
     W.resolve ~base:"/b"
       { sample with web_dir = "/abs/web"; icon = Some "/abs/i.png" }
   in
-  check Alcotest.string "abs stays" "/abs/web" s.web_dir;
+  (* "/abs/web" is absolute on POSIX but relative on Windows, where it
+     is joined under the base. *)
+  check Alcotest.string "abs stays"
+    (if Filename.is_relative "/abs/web" then "/b" / "/abs/web"
+     else "/abs/web")
+    s.web_dir;
   check Alcotest.string "file url" "file:///pack/web/index.html"
     (W.file_url "/pack/web/index.html");
   check Alcotest.string "file url escaping"
@@ -280,9 +286,9 @@ let test_discovery () =
   (* candidates list always carries the two layout-agnostic probes *)
   let c = W.embedded_spec_candidates ~exe:"/a/b/x" in
   check Alcotest.bool "has flat probe" true
-    (List.mem "/a/b/webapp.json" c);
+    (List.mem ("/a/b" / "webapp.json") c);
   check Alcotest.bool "has mac probe" true
-    (List.mem "/a/b/../Resources/webapp.json" c)
+    (List.mem ("/a/b" / ".." / "Resources" / "webapp.json") c)
 
 (** {1 Boot} *)
 
