@@ -389,6 +389,7 @@ jobs:
           # Windows while the wWinMain link failure is being diagnosed.
           if [ "$RUNNER_OS" = "Windows" ]; then export OCAMLPARAM='verbose=1,_'; fi
           opam exec -- dune build platform/native/
+        shell: bash
       - name: Test platform/native
         # Tests skip what the runner cannot provide: no display -> GL/parity
         # skip, no dbus -> ax/shell skip, no lavapipe -> vulkan skip.
