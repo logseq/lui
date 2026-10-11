@@ -251,7 +251,7 @@ jobs:
               # conf-mingw-w64-sdl2* installed while the restored Cygwin
               # sysroot lacks the SDL2 payloads, so `opam install` skips
               # their depext. Force the Cygwin packages back in.
-              opam depext -y conf-mingw-w64-sdl2 conf-mingw-w64-sdl2-ttf || true
+              opam depext -y tsdl tsdl-ttf || true
               # tsdl's build shells out to bare `pkg-config`, but the
               # mingw sysroot .pc dir is outside Cygwin pkgconf's default
               # search path, and env vars can't bridge the roots from Git
