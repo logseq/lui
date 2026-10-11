@@ -1,0 +1,4 @@
+(test
+ (name lui_plugin_test)
+ (modules lui_plugin_test)
+ (libraries alcotest yojson lui_plugin))

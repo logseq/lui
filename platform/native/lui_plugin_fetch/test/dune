@@ -1,0 +1,9 @@
+(test
+ (name lui_plugin_fetch_test)
+ (modules lui_plugin_fetch_test)
+ (libraries alcotest unix yojson lui_plugin lui_plugin_fetch)
+ (deps fetch_test_server.py)
+ (enabled_if
+  (or
+   (= %{system} linux)
+   (= %{system} macosx))))

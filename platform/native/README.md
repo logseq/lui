@@ -80,6 +80,14 @@ Release chain + verification:
 | `lui_gallery` | all-85-kind visual suite → PNG cells + manifest |
 | `coverage` | test-coverage audit + gaps ledger |
 
+Plugins (JSON-in/JSON-out services under the `plugin:<name>` namespace):
+
+| dir | role |
+|---|---|
+| `lui_plugin` | plugin registry: named services, setup/teardown, dispatch |
+| `lui_plugin_fetch` | HTTP client plugin over dlopen'ed libcurl (`plugin:fetch`) |
+| `lui_plugin_websocket` | WebSocket client plugin, pure OCaml RFC 6455 (`plugin:websocket`) |
+
 ## Build & test
 
 ```sh
