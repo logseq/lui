@@ -1,0 +1,27 @@
+{
+  "name": "input-follows-focus",
+  "app": "menu",
+  "steps": [
+    { "click": { "kind": "textarea" } },
+    {
+      "expect-ui": {
+        "focused": { "kind": "textarea" }
+      }
+    },
+    { "expect-events": "*" },
+    { "input": "typed" },
+    {
+      "expect-events": [
+        { "kind": "text-changed", "node": "*", "text": "typed" }
+      ]
+    },
+    {
+      "expect-store": {
+        "nodes": [
+          { "id": { "kind": "textarea" },
+            "props": { "text": "typed" } }
+        ]
+      }
+    }
+  ]
+}

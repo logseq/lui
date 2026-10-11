@@ -1,0 +1,23 @@
+{
+  "name": "text-changed-draft",
+  "app": "e2e",
+  "steps": [
+    { "click": { "kind": "text-field" } },
+    { "expect-focused": { "kind": "text-field" } },
+    { "expect-events": "*" },
+    { "input": "new" },
+    {
+      "expect-events": [
+        { "kind": "text-changed", "node": "*", "text": "new" }
+      ]
+    },
+    {
+      "expect-store": {
+        "nodes": [
+          { "id": { "kind": "text" },
+            "props": { "text": "items=2 draft=new" } }
+        ]
+      }
+    }
+  ]
+}
