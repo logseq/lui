@@ -1,0 +1,4 @@
+(library
+ (name lui_pkg_webapp)
+ (modules lui_pkg_webapp)
+ (libraries lui_pkg lui_pkg_linux lui_pkg_windows lui_webapp unix yojson))
