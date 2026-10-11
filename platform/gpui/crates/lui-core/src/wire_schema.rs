@@ -509,6 +509,7 @@ pub enum Property {
     FlexWrap,
     HoverForeground,
     HoverBorder,
+    Transition,
 }
 
 impl Property {
@@ -676,6 +677,7 @@ impl Property {
             "flex-wrap" => Some(Property::FlexWrap),
             "hover-foreground" => Some(Property::HoverForeground),
             "hover-border" => Some(Property::HoverBorder),
+            "transition" => Some(Property::Transition),
             _ => None,
         }
     }
@@ -844,6 +846,7 @@ impl Property {
             Property::FlexWrap => "flex-wrap",
             Property::HoverForeground => "hover-foreground",
             Property::HoverBorder => "hover-border",
+            Property::Transition => "transition",
         }
     }
 }
@@ -1007,6 +1010,7 @@ pub fn kind_property_matrix(kind: NodeKind) -> Option<&'static [Property]> {
             Property::SelectedShadow,
             Property::SelectedHoverShadow,
             Property::DisabledOpacity,
+            Property::Transition,
         ]),
         _ => None,
     }

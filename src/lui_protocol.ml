@@ -277,6 +277,7 @@ type property =
   | FlexWrap
   | HoverForeground
   | HoverBorder
+  | Transition
 
 module Property_map =
   Map.Make
@@ -1171,6 +1172,11 @@ let common_property_supported kind property =
     (* Interactive-state appearance channels; no-op on hosts that do not
        resolve interaction states. *)
     kind <> Root && kind <> Tooltip && not (modal_surface kind)
+  | Transition ->
+    (* CSS transition shorthand; web-only visual sugar — other hosts
+       apply state changes instantly. Same admission as the state
+       channels above. *)
+    kind <> Root && kind <> Tooltip && not (modal_surface kind)
   | WidthViewport | HeightViewport | MinWidthViewport | MaxWidthViewport
   | MinHeightViewport | MaxHeightViewport -> kind <> Tooltip
 
@@ -1260,6 +1266,7 @@ let property_supported kind property =
       || property = PressedShadow || property = FocusShadow
       || property = SelectedBackground || property = SelectedShadow
       || property = SelectedHoverShadow || property = DisabledOpacity
+      || property = Transition
     | SwipeAction ->
       List.mem
         property
@@ -1280,6 +1287,124 @@ let property_supported kind property =
 
 let is_finite value =
   value = value && value <> infinity && value <> neg_infinity
+
+(* CSS identifier shape: [-_a-zA-Z][-_a-zA-Z0-9]*, where a leading '-'
+   must be followed by another '-', a letter or '_' (covers custom
+   properties like --foo and the `all`/`none` keywords). *)
+let css_ident_supported value =
+  let len = String.length value in
+  if len = 0 then false
+  else
+    let alpha c =
+      (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_'
+    in
+    let head_ok =
+      alpha value.[0]
+      || (value.[0] = '-' && len > 1 && (alpha value.[1] || value.[1] = '-'))
+    in
+    head_ok
+    &&
+    let rec tail i =
+      i = len
+      ||
+      (let c = value.[i] in
+       (alpha c || (c >= '0' && c <= '9') || c = '-')
+       && tail (i + 1))
+    in
+    tail 1
+
+(* CSS <time> token: a non-negative number with an `s`/`ms` unit;
+   a bare `0` is also valid. *)
+let css_time_supported token =
+  if token = "0" then true
+  else
+    let len = String.length token in
+    let cut =
+      if len > 2 && String.sub token (len - 2) 2 = "ms" then 2
+      else if len > 1 && token.[len - 1] = 's' then 1
+      else 0
+    in
+    cut <> 0
+    &&
+    (match float_of_string_opt (String.sub token 0 (len - cut)) with
+     | Some number -> number >= 0.0 && is_finite number
+     | None -> false)
+
+(* Whitespace-separated tokens of a transition segment; parentheses keep
+   functional easing argument lists (e.g. cubic-bezier(0.4, 0, 0.2, 1))
+   inside a single token. *)
+let css_tokens value =
+  let len = String.length value in
+  let is_ws c = c = ' ' || c = '\t' || c = '\n' || c = '\r' in
+  let rec take i depth acc =
+    if i = len then List.rev acc
+    else if is_ws value.[i] && depth = 0 then take (i + 1) depth acc
+    else
+      let j = ref i in
+      let d = ref depth in
+      while
+        !j < len
+        && not (is_ws value.[!j] && !d = 0)
+      do
+        if value.[!j] = '(' then incr d
+        else if value.[!j] = ')' && !d > 0 then decr d;
+        incr j
+      done;
+      take !j !d (String.sub value i (!j - i) :: acc)
+  in
+  take 0 0 []
+
+(* [transition] accepts a comma-separated list of
+   "<property> <duration> [<easing>] [<delay>]" segments — literally the
+   CSS shorthand, which the web backend emits verbatim. Validated
+   minimally: every segment needs a property identifier plus at least
+   one <time>; extra tokens must be easing-shaped (identifier or
+   identifier(args)). Commas inside easing parens do not split segments. *)
+let transition_supported value =
+  let segment_supported segment =
+    match css_tokens segment with
+    | property :: rest when rest <> [] ->
+      css_ident_supported property
+      && (let times =
+            List.filter (fun token -> css_time_supported token) rest
+          in
+          List.length times >= 1 && List.length times <= 2
+          && List.for_all
+               (fun token ->
+                  css_time_supported token
+                  ||
+                  (match String.index_opt token '(' with
+                   | Some open_paren ->
+                     (* functional easing: ident(arg-list) ending in ')' *)
+                     let len = String.length token in
+                     open_paren > 0
+                     && len > open_paren + 2
+                     && token.[len - 1] = ')'
+                     && css_ident_supported
+                          (String.sub token 0 open_paren)
+                     && String.sub token (open_paren + 1)
+                          (len - open_paren - 2)
+                          <> ""
+                   | None -> css_ident_supported token))
+               rest)
+    | _ -> false
+  in
+  String.trim value <> ""
+  &&
+  let rec split_segments start depth acc i =
+    if i = String.length value then
+      List.rev (String.sub value start (i - start) :: acc)
+    else
+      let c = value.[i] in
+      if c = '(' then split_segments start (depth + 1) acc (i + 1)
+      else if c = ')' then split_segments start (max 0 (depth - 1)) acc (i + 1)
+      else if c = ',' && depth = 0 then
+        split_segments (i + 1) depth
+          (String.sub value start (i - start) :: acc)
+          (i + 1)
+      else split_segments start depth acc (i + 1)
+  in
+  List.for_all segment_supported (split_segments 0 0 [] 0)
 
 (* [text-decoration] accepts "none" alone, or a space-separated
    combination of underline/overline/line-through. *)
@@ -1452,6 +1577,7 @@ let property_value_supported property value =
   | FlexWrap, StringValue value -> List.mem value [ "nowrap"; "wrap" ]
   | HoverForeground, StringValue value | HoverBorder, StringValue value ->
     String.trim value <> ""
+  | Transition, StringValue value -> transition_supported value
   | ZIndex, IntValue _ -> true
   | WhiteSpace, StringValue value -> List.mem value [ "normal"; "nowrap" ]
   | TextOverflow, StringValue value -> List.mem value [ "clip"; "ellipsis" ]

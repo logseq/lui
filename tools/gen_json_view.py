@@ -63,8 +63,9 @@ SKIP_ARG_TYPES = {
     '(string * string) list',  # data_attrs: DOM-attribute pairs
     'Lui_ui.theme_mode',
     'display', 'element_tag', 'file_picker_source',
-    'file_picker_token', 'float * float', 'image_fit', 'image_loading',
-    'input_kind', 'link_target', 'list_style', 'popover_role',
+    'file_picker_token', 'flex_wrap', 'float * float', 'image_fit',
+    'image_loading', 'input_kind', 'link_target', 'list_marker',
+    'list_style', 'popover_role',
     'referrer_policy', 'scroll_anchor', 'separator_visibility',
     'swipe_action_el list', 'swipe_edge', 't',
 }

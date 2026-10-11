@@ -870,6 +870,7 @@ and apply_secondary_property renderer node kind dom_node property value =
       set_style dom_node "text-decoration" value
   | ListStyle, StringValue value -> set_style dom_node "list-style" value
   | FlexWrap, StringValue value -> set_style dom_node "flex-wrap" value
+  | Transition, StringValue value -> set_style dom_node "transition" value
   | TooltipText, StringValue value ->
       W.Element.setAttribute "data-tooltip" value dom_node
   | TooltipKeys, StringValue value ->
@@ -1112,6 +1113,7 @@ let remove_property renderer node kind dom_node property =
        | TextDecoration -> set_style dom_node "text-decoration" ""
        | ListStyle -> set_style dom_node "list-style" ""
        | FlexWrap -> set_style dom_node "flex-wrap" ""
+       | Transition -> set_style dom_node "transition" ""
        | TooltipText -> W.Element.removeAttribute "data-tooltip" dom_node
        | TooltipKeys -> W.Element.removeAttribute "data-tooltip-keys" dom_node
        | InputType -> W.Element.removeAttribute "type" dom_node

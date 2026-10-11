@@ -1690,6 +1690,11 @@
       "lg": "HoverBorder",
       "wire": "hover-border",
       "swift": "hoverBorder"
+    },
+    {
+      "lg": "Transition",
+      "wire": "transition",
+      "swift": "transition"
     }
   ],
   "events": [
@@ -2012,7 +2017,8 @@
       "selected-background",
       "selected-shadow",
       "selected-hover-shadow",
-      "disabled-opacity"
+      "disabled-opacity",
+      "transition"
     ]
   },
   "kindExtraProperties": {

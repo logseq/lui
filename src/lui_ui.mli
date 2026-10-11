@@ -228,6 +228,7 @@ val white_space : ui_context -> int -> string -> unit
 val text_overflow : ui_context -> int -> string -> unit
 val overflow : ui_context -> int -> string -> unit
 val flex_wrap : ui_context -> int -> string -> unit
+val transition : ui_context -> int -> string -> unit
 val list_style : ui_context -> int -> string -> unit
 val user_select : ui_context -> int -> string -> unit
 val cursor : ui_context -> int -> string -> unit

@@ -2505,6 +2505,44 @@ let test_visual_appearance_props () =
     (property_value_supported HoverForeground (StringValue "white"));
   Alcotest.(check bool) "hover-border non-blank" true
     (property_value_supported HoverBorder (StringValue "blue-500"));
+  (* ~transition: CSS shorthand string, same admission as the state
+     channels above (incl. the restrictive kbd kind). *)
+  Alcotest.(check bool) "transition on text" true
+    (property_supported Text Transition);
+  Alcotest.(check bool) "transition on row" true
+    (property_supported Row Transition);
+  Alcotest.(check bool) "transition on kbd" true
+    (property_supported Kbd Transition);
+  Alcotest.(check bool) "transition rejected on root" false
+    (property_supported Root Transition);
+  Alcotest.(check bool) "transition rejected on tooltip" false
+    (property_supported Tooltip Transition);
+  Alcotest.(check bool) "transition rejected on dialog" false
+    (property_supported Dialog Transition);
+  Alcotest.(check bool) "transition simple" true
+    (property_value_supported Transition (StringValue "opacity 0.15s ease"));
+  Alcotest.(check bool) "transition with delay" true
+    (property_value_supported Transition
+       (StringValue "transform 0.2s ease-in-out 0.05s"));
+  Alcotest.(check bool) "transition cubic-bezier commas" true
+    (property_value_supported Transition
+       (StringValue "opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1)"));
+  Alcotest.(check bool) "transition list" true
+    (property_value_supported Transition
+       (StringValue "background-color 0.15s ease, border-color 0.15s ease"));
+  Alcotest.(check bool) "transition ms unit" true
+    (property_value_supported Transition (StringValue "opacity 150ms ease"));
+  Alcotest.(check bool) "transition empty rejected" false
+    (property_value_supported Transition (StringValue ""));
+  Alcotest.(check bool) "transition no duration rejected" false
+    (property_value_supported Transition (StringValue "opacity ease"));
+  Alcotest.(check bool) "transition junk property rejected" false
+    (property_value_supported Transition (StringValue "0opacity 0.15s"));
+  Alcotest.(check bool) "transition junk token rejected" false
+    (property_value_supported Transition
+       (StringValue "opacity 0.15s red()"));
+  Alcotest.(check bool) "transition trailing comma rejected" false
+    (property_value_supported Transition (StringValue "opacity 0.15s ease,"));
   Alcotest.(check bool) "inset finite" true
     (property_value_supported Inset (FloatValue 0.0));
   Alcotest.(check bool) "inset non-finite rejected" false
