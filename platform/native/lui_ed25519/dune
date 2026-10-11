@@ -1,4 +1,5 @@
 (library
  (name lui_ed25519)
  (public_name lui.ed25519)
- (modules lui_ed25519))
+ (modules lui_ed25519)
+ (libraries mirage-crypto-ec digestif))

@@ -1,5 +1,4 @@
-(** Lui_ed25519 — Ed25519 signature verification (RFC 8032) in pure
-    OCaml.
+(** Lui_ed25519 — Ed25519 signature verification (RFC 8032).
 
     Used by the self-update client ({!Lui_updater}) to authenticate
     release artifacts: a feed publishes a public key, each artifact a
@@ -7,13 +6,12 @@
     question — did the holder of the matching secret key sign exactly
     these bytes.
 
-    Zero external dependencies: SHA-512 and the curve arithmetic are
-    implemented directly below, the latter following the public-domain
-    TweetNaCl reference algorithm (radix-2^16 field elements, extended
-    twisted-Edwards point ops) so the wire format matches every other
-    Ed25519 implementation. {!verify} is what production code calls;
-    {!public_key} and {!sign} exist for tests, tooling, and key
-    ceremonies. *)
+    The cryptography is delegated to {!Mirage_crypto_ec.Ed25519}, a
+    maintained implementation built on fiat-crypto generated field
+    code, and SHA-512 to {!Digestif}; this module adds the hex/base64
+    text encodings feeds use and a chunked-feed verify front end.
+    {!verify} is what production code calls; {!public_key} and {!sign}
+    exist for tests, tooling, and key ceremonies. *)
 
 val verify : pk:string -> signature:string -> msg:string -> bool
 (** Whether [signature] is a valid Ed25519 signature of [msg] under the
@@ -24,8 +22,10 @@ val verify : pk:string -> signature:string -> msg:string -> bool
 (** {1 Streaming verify}
 
     The same check over a message fed in chunks — for callers
-    authenticating a large artifact without holding it in memory.
-    [verify pk sig msg] is [begin + feed msg + finish]. *)
+    authenticating a large artifact as it is read. [verify pk sig msg]
+    is [begin + feed msg + finish]. The underlying verify is
+    whole-message, so a [pending] buffers the fed bytes until
+    {!verify_finish}. *)
 
 type pending
 (** An in-progress verification. *)
@@ -68,8 +68,8 @@ val decode_base64 : string -> string option
     for bad characters, bad padding, or bad length. *)
 
 val sha512 : string -> string
-(** The 64-byte SHA-512 digest — exposed mainly for known-answer tests
-    and to keep the hashing primitive inspectable on its own. *)
+(** The 64-byte SHA-512 digest ({!Digestif.SHA512}) — exposed mainly
+    for known-answer tests. *)
 
 (** {1 Keys and signing}
 
