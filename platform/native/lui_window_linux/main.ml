@@ -14,8 +14,9 @@
    Moved/display events, keep --windows N + the headless tests. Near-
    mechanical: only the renderer-ladder entries differ.
 
-   Renderer ladder (env LUI_GPU): default -> Lui_gl on the window's GL
-   context; "vulkan" -> Lui_vulkan offscreen + readback + Lui_blit;
+   Renderer ladder (env LUI_GPU): default -> Lui_vulkan offscreen +
+   readback + Lui_blit, then Lui_gl on the window's GL context, then
+   CPU; "gl"|"opengl" -> Lui_gl then CPU (Vulkan skipped);
    "0"|"cpu" -> Lui_raster + Lui_blit. Every failed rung falls to the
    next, ending at a no-op loop renderer — the process never crashes
    for want of a GPU or display.
