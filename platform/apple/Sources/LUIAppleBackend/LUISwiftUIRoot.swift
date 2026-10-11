@@ -7772,24 +7772,52 @@ struct LUISplitFractionState: Equatable {
 }
 
 private struct LUISplitView: View {
+    // Fractions at or below this share render the first pane as collapsed
+    // (the model can't express literal zero — values <= 0 normalize to the
+    // unset default — so a collapsed dock reads as a hairline fraction).
+    private static let collapsedFraction: Double = 0.0001
+    // At or above this share the second pane is effectively gone; a
+    // NavigationSplitView can never hide its detail column, so the split
+    // permanently falls back to the manual layout (one-way latch — a split
+    // that collapses its second pane is a right-dock shape NavSplit can't
+    // render in any state).
+    private static let detailCollapseFraction: Double = 0.98
+
     let model: LUINodeModel
     let backend: LUIAppleBackend
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.luiInsideScroll) private var insideScroll
     @State private var fractionState: LUISplitFractionState
     @State private var dragStartFraction: Double?
-    #if os(iOS)
-    @State private var columnVisibility = NavigationSplitViewVisibility.doubleColumn
+    @State private var columnVisibility: NavigationSplitViewVisibility
+    @State private var navSplitEligible: Bool
+    #if os(macOS)
+    // On macOS the column uses the fixed `width:` overload (the `ideal:`
+    // overload only takes effect when the column appears, so model pushes
+    // while visible would never apply). `appliedWidth` is the rendered width
+    // in points — driven by the model fraction on appearance and on model
+    // pushes, and by the split's own divider handle while the user drags.
+    // Holding it in points (rather than deriving it as fraction * width on
+    // every layout) is what keeps the sidebar at an absolute width while the
+    // window resizes, matching the docked-sidebar idiom of `prominentDetail`.
+    @State private var appliedWidth: CGFloat?
+    @State private var lastAvailable: CGFloat = 0
     #endif
 
     init(model: LUINodeModel, backend: LUIAppleBackend) {
         self.model = model
         self.backend = backend
+        let initialFraction = model.splitResizeOrigin ?? model.splitFraction
         _fractionState = State(
-            initialValue: LUISplitFractionState(
-                sourceFraction: model.splitResizeOrigin ?? model.splitFraction
-            )
+            initialValue: LUISplitFractionState(sourceFraction: initialFraction)
         )
+        _columnVisibility = State(
+            initialValue:
+                initialFraction <= Self.collapsedFraction
+                ? .detailOnly : .doubleColumn
+        )
+        _navSplitEligible = State(
+            initialValue: initialFraction < Self.detailCollapseFraction)
     }
 
     var body: some View {
@@ -7798,28 +7826,53 @@ private struct LUISplitView: View {
             .onChange(of: model.splitFraction) { _, value in
                 reconcile(sourceFraction: value)
             }
+            .onChange(of: columnVisibility) { _, visibility in
+                if visibility == .detailOnly,
+                   fractionState.fraction > Self.collapsedFraction {
+                    // The column was collapsed through chrome (toolbar
+                    // toggle / pressure); report the hairline fraction so
+                    // the model sees the same collapsed state a drag to
+                    // zero would have produced.
+                    try? backend.performValueChange(
+                        node: model.id,
+                        value: Self.collapsedFraction
+                    )
+                    return
+                }
+                #if os(macOS)
+                // A chrome-driven reopen while the model still reports the
+                // collapsed fraction reports the rendered width so the
+                // model learns the user reopened the column. The chrome
+                // toggle commits `.all` rather than `.doubleColumn`.
+                if visibility != .detailOnly,
+                   fractionState.fraction <= Self.collapsedFraction,
+                   let appliedWidth, lastAvailable > 0 {
+                    try? backend.performValueChange(
+                        node: model.id,
+                        value: Double(appliedWidth / lastAvailable)
+                    )
+                }
+                #endif
+            }
     }
 
     @ViewBuilder
     private var splitContent: some View {
-        #if os(iOS)
         // NavigationSplitView owns a ScrollView; nested inside scrolling
         // content it fails to lay out, so the manual layout renders instead.
         if insideScroll {
             manualSplit
+        } else if navSplitEligible {
+            // The split renders as a NavigationSplitView so the divider,
+            // collapse behavior, and column chrome are system-provided. The
+            // model fraction maps onto the sidebar column's ideal width.
+            navSplit
         } else {
-            // On iOS the split renders as a NavigationSplitView so the divider,
-            // collapse behavior, and column chrome are system-provided. The model
-            // fraction maps onto the sidebar column's ideal width.
-            iOSSplit
+            manualSplit
         }
-        #else
-        manualSplit
-        #endif
     }
 
-    #if os(iOS)
-    private var iOSSplit: some View {
+    private var navSplit: some View {
         let firstID = model.children.first
         let secondID = model.children.dropFirst().first
         let firstModel = firstID.flatMap(backend.model(id:))
@@ -7831,13 +7884,16 @@ private struct LUISplitView: View {
                         LUIAnyNodeView(nodeID: firstID, backend: backend).equatable()
                     }
                 }
+                #if os(iOS)
                 .background {
                     // NavigationSplitView exposes no drag callback; observe the
                     // rendered column width so user resizes still emit the
                     // declared value-change event.
                     GeometryReader { columnGeometry in
                         Color.clear.onChange(of: columnGeometry.size.width) { _, width in
-                            guard width > 0, geometry.size.width > 0 else { return }
+                            guard width > 0, geometry.size.width > 0,
+                                  columnVisibility != .detailOnly
+                            else { return }
                             let fraction = Double(width / geometry.size.width)
                             guard abs(fraction - fractionState.fraction) > 0.005 else {
                                 return
@@ -7860,14 +7916,136 @@ private struct LUISplitView: View {
                         max(geometry.size.width - CGFloat($0), 0)
                     }
                 )
+                #else
+                // Fixed column width: `ideal:` never re-applies after the
+                // column first appears, so model-driven width changes would
+                // silently drop. The fixed overload applies on every update;
+                // the split's own divider handle keeps it draggable.
+                .navigationSplitViewColumnWidth(
+                    appliedWidth ?? sidebarWidth(
+                        available: geometry.size.width,
+                        firstModel: firstModel,
+                        secondModel: secondModel
+                    )
+                )
+                #endif
             } detail: {
                 if let secondID {
-                    LUIAnyNodeView(nodeID: secondID, backend: backend).equatable()
+                    ZStack(alignment: .leading) {
+                        LUIAnyNodeView(nodeID: secondID, backend: backend).equatable()
+                        #if os(macOS)
+                        // The fixed column width has no draggable divider and
+                        // the native divider strip swallows pointer events, so
+                        // the split reuses its manual divider handle along the
+                        // detail's leading edge, giving drags the same
+                        // clamping and value-change semantics as manualSplit.
+                        if columnVisibility != .detailOnly {
+                            dividerHandle(
+                                firstWidth:
+                                    appliedWidth ?? sidebarWidth(
+                                        available: geometry.size.width,
+                                        firstModel: firstModel,
+                                        secondModel: secondModel
+                                    ),
+                                available: geometry.size.width,
+                                firstModel: firstModel,
+                                secondModel: secondModel
+                            )
+                        }
+                        #endif
+                    }
                 }
             }
+            #if os(macOS)
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.width
+            } action: { width in
+                guard width > 0 else { return }
+                lastAvailable = width
+                if appliedWidth == nil {
+                    appliedWidth = sidebarWidth(
+                        available: width,
+                        firstModel: firstModel,
+                        secondModel: secondModel
+                    )
+                }
+            }
+            // On macOS the detail stays prominent so a docked sidebar keeps
+            // its width while the window resizes and collapses first under
+            // space pressure; iOS keeps the established balanced style.
+            .navigationSplitViewStyle(.prominentDetail)
+            #else
             .navigationSplitViewStyle(.balanced)
+            #endif
         }
     }
+
+    #if os(macOS)
+    private func dividerHandle(
+        firstWidth: CGFloat,
+        available: CGFloat,
+        firstModel: LUINodeModel?,
+        secondModel: LUINodeModel?
+    ) -> some View {
+        Color.clear
+            .frame(width: 20)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        let start = dragStartFraction ?? fractionState.fraction
+                        dragStartFraction = start
+                        updateFraction(
+                            start + Double(value.translation.width / max(available, 1)),
+                            available: available,
+                            firstMinimum: firstModel?.surfaceMinWidth ?? 0,
+                            secondMinimum: secondModel?.surfaceMinWidth ?? 0
+                        )
+                    }
+                    .onEnded { _ in dragStartFraction = nil }
+            )
+            .focusable()
+            .onKeyPress(.leftArrow) {
+                adjust(
+                    by: -0.05,
+                    available: available,
+                    firstMinimum: firstModel?.surfaceMinWidth ?? 0,
+                    secondMinimum: secondModel?.surfaceMinWidth ?? 0
+                )
+            }
+            .onKeyPress(.rightArrow) {
+                adjust(
+                    by: 0.05,
+                    available: available,
+                    firstMinimum: firstModel?.surfaceMinWidth ?? 0,
+                    secondMinimum: secondModel?.surfaceMinWidth ?? 0
+                )
+            }
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.resizeLeftRight.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            .accessibilityElement()
+            .accessibilityLabel(
+                Text("\(model.property(.accessibilityLabel)?.stringValue ?? "Split") divider")
+            )
+            .accessibilityValue(
+                Text("\(Int((firstWidth / max(available, 1) * 100).rounded()))%")
+            )
+            .accessibilityAdjustableAction { direction in
+                _ = adjust(
+                    by: direction == .increment ? 0.05 : -0.05,
+                    available: available,
+                    firstMinimum: firstModel?.surfaceMinWidth ?? 0,
+                    secondMinimum: secondModel?.surfaceMinWidth ?? 0
+                )
+            }
+    }
+    #endif
 
     private func sidebarWidth(
         available: CGFloat,
@@ -7882,7 +8060,6 @@ private struct LUISplitView: View {
         )
         return available * CGFloat(fraction)
     }
-    #endif
 
     private var manualSplit: some View {
         GeometryReader { geometry in
@@ -7977,8 +8154,42 @@ private struct LUISplitView: View {
     }
 
     private func reconcile(sourceFraction: Double) {
+        let previousFraction = fractionState.fraction
         withAnimation(splitAnimation) {
             fractionState.reconcile(sourceFraction: sourceFraction)
+            if fractionState.fraction >= Self.detailCollapseFraction {
+                navSplitEligible = false
+            } else {
+                columnVisibility =
+                    fractionState.fraction <= Self.collapsedFraction
+                    ? .detailOnly : .doubleColumn
+            }
+            #if os(macOS)
+            // A model push that changed the rendered fraction moves the
+            // fixed-width column; a source that only caught up to the
+            // rendered fraction leaves the user's position alone. Collapsing
+            // keeps the open width so a chrome-driven reopen restores it.
+            if fractionState.fraction != previousFraction,
+               fractionState.fraction > Self.collapsedFraction,
+               lastAvailable > 0
+            {
+                appliedWidth = lastAvailable
+                    * CGFloat(
+                        LUISplitGeometry.effectiveFraction(
+                            value: fractionState.fraction,
+                            available: Double(lastAvailable),
+                            firstMinimum: Double(
+                                model.children.first.flatMap(backend.model(id:))?
+                                    .surfaceMinWidth ?? 0
+                            ),
+                            secondMinimum: Double(
+                                model.children.dropFirst().first.flatMap(backend.model(id:))?
+                                    .surfaceMinWidth ?? 0
+                            )
+                        )
+                    )
+            }
+            #endif
         }
     }
 
@@ -8010,6 +8221,9 @@ private struct LUISplitView: View {
             secondMinimum: Double(secondMinimum)
         )
         fractionState.applyUserFraction(effective)
+        #if os(macOS)
+        appliedWidth = available * CGFloat(effective)
+        #endif
         try? backend.performValueChange(node: model.id, value: effective)
     }
 }
