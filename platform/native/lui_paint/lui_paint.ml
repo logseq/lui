@@ -640,8 +640,8 @@ let default_palette : (string * color) list =
     ("inverse", color 24 24 27 255);
     ("inverse-foreground", color 255 255 255 255);
     (* Modal popup backdrop — the dim a dialog or sheet paints over
-       the content it covers. *)
-    ("scrim", color 0 0 0 102) ]
+       the content it covers (web .lui-modal-backdrop = black at 50%). *)
+    ("scrim", color 0 0 0 128) ]
 
 let theme ctx name =
   match ctx.hooks.color_of name with
@@ -1547,13 +1547,20 @@ let default_chrome ctx store id st kind r rs alpha =
     @ (if border_styled || bg_styled then []
        else [ face zc rad bw1 (col_control_border ctx) ~dashed:true ])
   | "popover" | "dropdown-menu" | "menu" | "context-menu" ->
-    let rad = rad (8. *. s) in
-    shadow_pair rad [ (0., 1., 3., 26); (0., 6., 20., 41) ]
+    (* Web .ui__popover-content: rounded-md 6px + shadow-md. *)
+    let rad = rad (6. *. s) in
+    shadow_pair rad [ (0., 4., 6., 26); (0., 2., 4., 26) ]
     @ (if bg_styled then [] else [ face (col_popover ctx) rad zb zc ~dashed:false ])
     @ (if border_styled || bg_styled then []
        else [ face zc rad bw1 (col_border ctx) ~dashed:false ])
   | "dialog" | "sheet" | "drawer" | "modal" ->
-    let rad = rad (10. *. s) in
+    (* Web .lui-dialog card: rounded-lg 8px + shadow-lg. A sheet pins
+       the right edge: only its left corners round (radius-xl 12px). *)
+    let rad =
+      if kind = "sheet" && not (prop_set store id "corner-radius")
+      then (12. *. s, 0., 0., 12. *. s)
+      else rad (8. *. s)
+    in
     (* A modal surface dims the content it covers. An in-flow drawer
        pane (carries [selected]) is not modal and gets no scrim. *)
     let scrim =
@@ -1580,20 +1587,13 @@ let default_chrome ctx store id st kind r rs alpha =
     let title_y = r.y +. py +. grabber in
     (* Surface first, chrome ink on top — the fill must not cover the
        title block. *)
-    shadow_pair rad [ (0., 2., 8., 31); (0., 10., 30., 76) ]
+    shadow_pair rad [ (0., 10., 15., 26); (0., 4., 6., 26) ]
     @ (if bg_styled then [] else [ face (col_popover ctx) rad zb zc ~dashed:false ])
     @ (if border_styled || bg_styled then []
        else [ face zc rad bw1 (col_border ctx) ~dashed:false ])
     @ (match kind with
-       | "sheet" ->
-         [ fill ~continuous:true
-             (rect (r.x +. ((r.w -. 36. *. s) /. 2.)) (r.y +. py +. 4. *. s)
-                (36. *. s) (4. *. s))
-             (2. *. s, 2. *. s, 2. *. s, 2. *. s)
-             ~paint:Solid ~c1:(col_surface_pressed ctx)
-             ~c2:(col_surface_pressed ctx) ~grad:(0., 0., 0., 0.)
-             ~border:(0., 0., 0., 0.) ~bcolor:(color 0 0 0 0)
-             ~dashed:false ~alpha:1. ]
+       (* The grabber handle only exists on phone-form-factor sheets;
+          a right-edge desktop sheet paints none. *)
        | _ -> [])
     @ (* The chrome zone clips its own ink: a wrapped description must
          not spill into the children below it. *)
@@ -1615,7 +1615,14 @@ let default_chrome ctx store id st kind r rs alpha =
             (col_muted_fg ctx) d
         | _ -> [])
      @ [ Pop_clip ])
-  | "tooltip" | "toast" | "alert" | "bubble" ->
+  | "toast" ->
+    (* Web .lui-toast: card surface + border + radius-lg + shadow-lg. *)
+    let rad = rad (8. *. s) in
+    shadow_pair rad [ (0., 10., 15., 26); (0., 4., 6., 26) ]
+    @ (if bg_styled then [] else [ face (theme ctx "card") rad zb zc ~dashed:false ])
+    @ (if border_styled || bg_styled then []
+       else [ face zc rad bw1 (col_border ctx) ~dashed:false ])
+  | "tooltip" | "alert" | "bubble" ->
     let rad = rad (5. *. s) in
     shadow_pair rad [ (0., 1., 2., 26); (0., 2., 8., 51) ]
     @ (if bg_styled then [] else [ face (col_inverse ctx) rad zb zc ~dashed:false ])
@@ -1667,7 +1674,7 @@ let default_text_fg ctx store id kind st rs =
       if st.selected then text_fg ctx store id else col_muted_fg ctx
     | "swipe-action" ->
       if bg_styled then text_fg ctx store id else col_accent_text ctx
-    | "tooltip" | "toast" | "alert" | "bubble" ->
+    | "tooltip" | "alert" | "bubble" ->
       if bg_styled then text_fg ctx store id else col_inverse_fg ctx
     | "text" | "label" | "heading" | "paragraph" -> (
       (* Ink children painted on an inverse surface take on-surface
@@ -1676,7 +1683,7 @@ let default_text_fg ctx store id kind st rs =
       match Lui_store.parent store id with
       | Some p -> (
         match Lui_store.kind store p with
-        | "tooltip" | "toast" | "alert" | "bubble" ->
+        | "tooltip" | "alert" | "bubble" ->
           if bg_styled || prop_set store p "background" then
             text_fg ctx store id
           else col_inverse_fg ctx
