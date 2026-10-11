@@ -1,0 +1,4 @@
+(library
+ (name lui_svg)
+ (modules lui_svg)
+ (libraries lui_scene))
