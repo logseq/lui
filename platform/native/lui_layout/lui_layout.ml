@@ -305,6 +305,21 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
       | _ -> Unset)
     | l -> l
   in
+  (* The [size] component contract supplies intrinsic dimensions when
+     the view leaves them unset — the same mapping the web stylesheet
+     applies (.lui-button[data-size]: icon→40², sm→36h, lg→44h,
+     default→40h). *)
+  let size_w, size_h =
+    match kind with
+    | "button" | "toggle-button" -> (
+      match pstr store id "size" with
+      | Some "icon" -> (Pt (40. *. scale), Pt (40. *. scale))
+      | Some "sm" | Some "small" -> (Unset, Pt (36. *. scale))
+      | Some "lg" | Some "large" -> (Unset, Pt (44. *. scale))
+      | Some _ -> (Unset, Pt (40. *. scale))
+      | None -> (Unset, Unset))
+    | _ -> (Unset, Unset)
+  in
   let style =
     { d with
       flex_direction = direction_of ~store ~id kind;
@@ -327,11 +342,13 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
       flex_grow = grow;
       width =
         (match viewport_len ~viewport store id ~name:"width-viewport" ~horizontal:true with
-         | Unset -> lp "width"
+         | Unset -> (
+           match lp "width" with Unset -> size_w | l -> l)
          | l -> l);
       height =
         (match viewport_len ~viewport store id ~name:"height-viewport" ~horizontal:false with
-         | Unset -> lp "height"
+         | Unset -> (
+           match lp "height" with Unset -> size_h | l -> l)
          | l -> l);
       min_width =
         (match viewport_len ~viewport store id ~name:"min-width-viewport" ~horizontal:true with

@@ -1292,6 +1292,31 @@ let image_ops ctx store id r alpha radii =
         { irect2 = dst; iradii = radii; icontinuous = false; iimage = img;
           isrc; igrayscale = false; iopacity = alpha } ]
 
+(* A control carrying an [icon] prop and no children renders its
+   glyph centered — the web stylesheet's .lui-icon[data-size="icon"]
+   18px box inside the control's own rect. *)
+let control_icon_ops ctx store id r alpha =
+  match ctx.hooks.image_of id with
+  | None -> []
+  | Some img -> (
+    match Lui_store.child_ids store id with
+    | _ :: _ -> []
+    | [] ->
+      let s = ctx.scale in
+      let size = Float.min (18. *. s) (Float.min r.w r.h) in
+      if size <= 0. then []
+      else
+        let dst =
+          rect (r.x +. ((r.w -. size) /. 2.))
+            (r.y +. ((r.h -. size) /. 2.)) size size
+        in
+        [ Image
+            { irect2 = dst; iradii = (0., 0., 0., 0.);
+              icontinuous = false; iimage = img;
+              isrc =
+                { x = 0.; y = 0.; w = float img.iw; h = float img.ih };
+              igrayscale = false; iopacity = alpha } ])
+
 (* vertical scrollbar thumb inside a scroll container's clip. *)
 let scrollbar_ops ctx store id r alpha =
   match ctx.hooks.scroll_of id with
@@ -1482,6 +1507,7 @@ let default_chrome ctx store id st kind r rs alpha =
        [ face face_c rad zb zc ~dashed:false ])
     @ (if border_styled || bg_styled then []
        else [ face zc rad bw1 (col_control_border ctx) ~dashed:false ])
+    @ control_icon_ops ctx store id r alpha
   | "text-field" | "secure-field" | "input" | "search-field" | "textarea"
   | "select" | "combobox" ->
     let rad = rad (6. *. s) in
