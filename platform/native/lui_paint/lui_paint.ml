@@ -1341,7 +1341,7 @@ let control_icon_ops ctx store id r alpha =
    centered slot from [control_icon_ops]. *)
 let labeled_content_ops ctx store id r alpha ~fg ~placeholder_ok =
   match ctx.hooks.image_of id, Lui_store.child_ids store id with
-  | Some _, [] -> (
+  | Some img0, [] -> (
     let has_label =
       (match pstr store id "text" with
        | Some t -> t <> ""
@@ -1381,7 +1381,7 @@ let labeled_content_ops ctx store id r alpha ~fg ~placeholder_ok =
             ctx.hooks.image_in id (rect 0. 0. (size /. s) (size /. s))
           with
           | Some i -> i
-          | None -> img
+          | None -> img0
         in
         Image
           { irect2 = dst; iradii = (0., 0., 0., 0.);
