@@ -1,0 +1,5 @@
+(library
+ (name lui_plugin_updater_ui)
+ (modules strings translations session view plugin)
+ (libraries lui lui_updater lui_pkg unix ocaml-signal)
+ (preprocess (pps lui_ppx)))

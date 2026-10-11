@@ -1,0 +1,13 @@
+(test
+ (name lui_plugin_updater_ui_test)
+ (modules lui_plugin_updater_ui_test)
+ (libraries
+  alcotest
+  lui_plugin_updater_ui
+  lui
+  lui_updater
+  lui_pkg
+  lui_store
+  ocaml-signal
+  unix)
+ (preprocess (pps lui_ppx)))
