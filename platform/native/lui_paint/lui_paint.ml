@@ -1515,10 +1515,14 @@ let default_chrome ctx store id st kind r rs alpha =
     @ (if border_styled || bg_styled then []
        else [ face zc rad bw1 (col_border ctx) ~dashed:false ])
   | "kbd" ->
-    let rad = rad (4. *. s) in
+    (* Keycap: flat top and sides, a doubled bottom edge reads as the
+       key's lip. *)
+    let rad = rad (5. *. s) in
     (if bg_styled then [] else [ face (col_surface ctx) rad zb zc ~dashed:false ])
     @ (if border_styled || bg_styled then []
-       else [ face zc rad bw1 (col_control_border ctx) ~dashed:false ])
+       else
+         [ face zc rad (1. *. s, 1. *. s, 2. *. s, 1. *. s)
+             (col_control_border ctx) ~dashed:false ])
   | _ -> []
 
 (* Foreground color per kind and state when no foreground prop is set:

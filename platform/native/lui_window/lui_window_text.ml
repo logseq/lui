@@ -80,7 +80,13 @@ let selected_tab_trigger store id =
 
 let font_of store id =
   let size =
-    Option.value ~default:14. (num_prop store id "font-size")
+    match num_prop store id "font-size" with
+    | Some v -> v
+    | None -> (
+      (* Keycaps set smaller type than the surrounding copy. *)
+      match Lui_store.kind store id with
+      | "kbd" -> 12.
+      | _ -> 14.)
   in
   let weight =
     match Lui_store.int_prop store id "font-weight" with
