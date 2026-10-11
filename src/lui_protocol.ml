@@ -512,6 +512,7 @@ let event_supported kind event =
     | Sheet
     | FilePreview
     | FilePicker
+    | ContextMenu
     | Popover -> true
     | _ -> false)
   | DoublePress _ -> kind = ListItem
