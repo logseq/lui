@@ -98,9 +98,9 @@ One cell per exercised state; every standard kind appears at least once. `ops` =
 | cells/c92_root.png | root | 0 | frame root box |
 | cells/c93_tooltip.png | tooltip | 3 | hint bubble |
 | cells/c94_popover.png | popover | 4 | anchored card |
-| cells/c95_dialog.png | dialog | 4 | modal surface |
-| cells/c96_drawer.png | drawer | 4 | side drawer |
-| cells/c97_sheet.png | sheet | 5 | bottom sheet |
+| cells/c95_dialog.png | dialog | 7 | modal surface |
+| cells/c96_drawer.png | drawer | 7 | side drawer |
+| cells/c97_sheet.png | sheet | 8 | bottom sheet |
 | cells/c98_toast.png | toast | 3 | notification pill |
 | cells/c99_dropdown_menu.png | dropdown-menu | 4 | open menu |
 | cells/c100_context_menu.png | context-menu | 4 | right-click menu |

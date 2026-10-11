@@ -435,11 +435,16 @@ let adjust ~pkind ~pid ~index store id (style : Lui_flex.style) : Lui_flex.style
         if id = first then (
           match pnum store pid "value" with
           | Some v ->
+            (* Panes clip like the web resizer: a collapsed track
+               hides its content instead of letting it leak into the
+               sibling pane, and min-width:0 lets the track actually
+               reach the fraction instead of its content's floor. *)
             { style with
-              flex_basis = Lui_flex.Percent (v *. 100.); flex_grow = 0. }
+              flex_basis = Lui_flex.Percent (v *. 100.); flex_grow = 0.;
+              min_width = Pt 0.; overflow = Hidden }
           | None -> style)
         else if id = second then
-          { style with flex_grow = 1. }
+          { style with flex_grow = 1.; min_width = Pt 0.; overflow = Hidden }
         else style
       | _ -> style
     else style
