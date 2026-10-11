@@ -1,0 +1,20 @@
+(library
+ (name lui_gamepad)
+ (modules lui_gamepad lui_gamepad_core lui_gamepad_sdl
+   lui_gamepad_xinput)
+ (libraries lui_window)
+ (foreign_stubs
+  (language c)
+  (names lui_gamepad_stubs)
+  (flags -O2 -fPIC))
+ (c_library_flags (:standard (:include c_libs.sexp))))
+
+;; SDL2 is dlopen'ed by the stub at run time; only Linux still needs
+;; libdl for that (dlopen lives in libSystem on macOS, and Windows
+;; uses LoadLibrary for the XInput path).
+(rule
+ (target c_libs.sexp)
+ (action
+  (with-stdout-to %{target}
+   (bash
+    "case '%{system}' in linux) printf '(-ldl)';; *) printf '()';; esac"))))
