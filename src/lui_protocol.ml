@@ -917,7 +917,10 @@ let common_property_supported kind property =
     | _ -> false)
   | WidthValue | HeightValue -> kind <> Tooltip
   | MinWidth | MaxWidth | MinHeight | MaxHeight ->
-    (not (modal_surface kind)) && kind <> Tooltip
+    (* Dialogs carry px clamps alongside viewport fractions (e.g.
+       width:90vw + max-width:1246px); the host caps the default dialog
+       size only when the view did not set an explicit clamp. *)
+    kind = Dialog || ((not (modal_surface kind)) && kind <> Tooltip)
   | ContainerRelativeFrameValue | ContainerRelativeFrameInset ->
     kind <> Root && not (modal_surface kind)
   (* Position hint honored on [overlay] children and on [overlay] itself;
