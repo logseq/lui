@@ -192,8 +192,13 @@ let () =
     check_parity (Printf.sprintf "fuzz%d" i) s
   done;
 
-  (* The swapchain path on a hidden window, when a desktop exists. *)
-  (match Lui_d3d11.create_window ~w:96 ~h:64 with
+  (* The swapchain path on a hidden window needs an interactive desktop;
+     headless CI sessions have a display adapter but presents/fences on a
+     window never serviced by a real desktop stall indefinitely. *)
+  (match Sys.getenv_opt "GITHUB_ACTIONS" with
+   | Some _ -> ()
+   | None ->
+    (match Lui_d3d11.create_window ~w:96 ~h:64 with
    | hwnd ->
      (match Lui_d3d11.init_hwnd hwnd ~w:96 ~h:64 with
       | Error m ->
@@ -211,7 +216,7 @@ let () =
           (Lui_raster.render ~scene:s ()).Lui_raster.Image.pix in
         let diffs, maxd, _ = stats gpu cpu in
         Printf.printf "%-20s diffs=%d max=%d\n%!" "hwnd" diffs maxd;
-        if diffs > 0 then incr failures));
+        if diffs > 0 then incr failures)));
 
   Lui_d3d11.release dev;
   if !failures > 0 then
