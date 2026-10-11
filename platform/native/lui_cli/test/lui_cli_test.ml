@@ -247,10 +247,22 @@ let test_scaffold () =
   C.Fs.rm_rf dir
 
 (* The generated tree must actually build: `dune build` it inside the
-   scaffolded temp dir. *)
+   scaffolded temp dir. The scaffold links `lui` and `ocaml-signal` as
+   public libraries, so it only builds where they are installed into the
+   switch — e.g. `opam install .` after a clone. A plain deps-only
+   switch (what `dune build @runtest` runs under in CI) cannot resolve
+   them, and the build itself is skipped there. *)
+let lib_installed pkg =
+  match C.Proc.which "ocamlfind" with
+  | None -> false
+  | Some _ -> (C.Proc.run "ocamlfind" [ "query"; pkg ]).status = 0
+
 let test_scaffold_builds () =
   match C.Proc.which "dune" with
   | None -> () (* no toolchain in this context — nothing to verify *)
+  | Some _
+    when not (lib_installed "lui" && lib_installed "ocaml-signal") ->
+    () (* scaffold needs `lui` and `ocaml-signal` installed *)
   | Some _ ->
     let dir = Filename.concat (C.Fs.temp_dir ~prefix:"lui-cli-test-" ()) "app" in
     ignore (expect_ok (C.Init.scaffold ~dir ~name:None ~force:false));

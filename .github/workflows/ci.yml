@@ -239,26 +239,39 @@ jobs:
             # On mingw, tsdl/tsdl-ttf resolve SDL2 through conf-sdl2(-ttf):
             # opam depext drops the Cygwin mingw64 SDL2 packages into
             # opam's bundled Cygwin sysroot during install. But tsdl's own
-            # build shells out to bare `pkg-config`, and the bundled Cygwin
-            # pkgconf's default search path does not include the mingw
-            # sysroot .pc dir. PKG_CONFIG_PATH can't express that dir to a
-            # Cygwin pkgconf either — it parses the variable with POSIX ':'
-            # separators, which splits any drive-letter path. The fix is to
-            # copy the .pc files into the Cygwin root's own
-            # /usr/lib/pkgconfig, which IS on pkgconf's default path, and
-            # retry. 'ocaml=5.5.1' stops the solver downgrading the
-            # compiler on the mingw repo.
+            # build shells out to bare `pkg-config`, and the default Cygwin
+            # pkgconf never sees the mingw sysroot .pc dir — and can't be
+            # pointed at it from Git Bash (PKG_CONFIG_PATH is parsed with
+            # POSIX ':' separators; .pc copies land under the wrong root).
+            # The retry installs a pkg-config shim resolved to the
+            # x86_64-w64-mingw32 pkg-config symlink, which is pkgconf with
+            # the mingw sysroot baked into its default search path —
+            # --exists below proves it can see sdl2 before we retry.
+            # 'ocaml=5.5.1' stops the solver downgrading the compiler.
             if ! opam install -y 'ocaml=5.5.1' tsdl tsdl-ttf tgls imagelib alcotest; then
-              CYGROOT="$(cygpath -u "$(opam var root)")/.cygwin/root"
-              SRC_PC="$CYGROOT/usr/x86_64-w64-mingw32/sys-root/mingw/lib/pkgconfig"
-              [ -d "$SRC_PC" ] || SRC_PC="$(dirname "$(find "$CYGROOT" -name 'sdl2.pc' | head -1)")"
-              [ -f "$SRC_PC/sdl2.pc" ] || {
-                echo "sdl2.pc not found under $CYGROOT — depext did not deliver SDL2:"
-                find "$CYGROOT" -name '*.pc' 2>/dev/null | head -20
+              CYGBIN="$(cygpath -u "$(opam var root)")/.cygwin/root/bin"
+              MINGW_PKGCFG="$(ls "$CYGBIN"/x86_64-w64-mingw32-pkg-config* 2>/dev/null | head -1)"
+              [ -n "$MINGW_PKGCFG" ] || {
+                echo "no x86_64-w64-mingw32-pkg-config under $CYGBIN:"
+                ls "$CYGBIN" | grep -i pkg || true
                 exit 1
               }
-              mkdir -p "$CYGROOT/usr/lib/pkgconfig"
-              cp "$SRC_PC"/*.pc "$CYGROOT/usr/lib/pkgconfig/"
+              SHIM_DIR="$RUNNER_TEMP/pc-shim"
+              mkdir -p "$SHIM_DIR"
+              # Wrapper script (not a copy): keeps argv[0] as the mingw
+              # name, so pkgconf's argv[0]-derived personality still
+              # engages whether the real file is a symlink or a variant
+              # binary.
+              printf '#!/bin/sh\nexec "%s" "$@"\n' "$MINGW_PKGCFG" > "$SHIM_DIR/pkg-config"
+              chmod +x "$SHIM_DIR/pkg-config"
+              export PATH="$SHIM_DIR:$PATH"
+              pkg-config --exists sdl2 SDL2_ttf || {
+                echo "mingw pkg-config still cannot resolve sdl2 — pc_path:"
+                pkg-config --variable pc_path pkg-config || true
+                exit 1
+              }
+              # Keep the shim on PATH for the later dune build/test steps.
+              echo "$(cygpath -w "$SHIM_DIR")" >> "$GITHUB_PATH"
               opam install -y 'ocaml=5.5.1' tsdl tsdl-ttf tgls imagelib alcotest
             fi
             # SDL2.dll must be on PATH for the tests that call Sdl.init.
