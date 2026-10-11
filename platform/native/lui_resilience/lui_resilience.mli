@@ -2,25 +2,29 @@
     backend.
 
     {b Crash reporter.} [install ~app_name ~renderer ()] enables
-    [Printexc.record_backtrace] and registers handlers for the fatal
-    signals (SIGSEGV, SIGBUS, SIGILL, SIGABRT, SIGFPE). On a fatal
-    signal the handler writes a crash file — timestamp, app and
-    renderer identity, OS/OCaml versions, the OCaml backtrace and the
-    last lifecycle lines recorded through {!log} — then re-raises the
-    signal so the process still dies with its real cause (core dumps
-    and debuggers are unaffected). The next launch picks the report up
-    through {!pending_crash_report}; {!mark_report_handled} clears it
-    once the app has shown its relaunch UX or uploaded it.
+    [Printexc.record_backtrace] and returns a reporter handle. Fatal
+    signal handlers (SIGSEGV, SIGBUS, SIGILL, SIGABRT, SIGFPE) are
+    {b opt-in}: pass [~enable_signals:true] or set [LUI_CRASH_SIGNALS=1].
+    Without that, callers can still use {!write_crash_report} /
+    {!log} for caught exceptions. On a handled fatal signal the handler
+    writes a crash file — timestamp, app and renderer identity,
+    OS/OCaml versions, the OCaml backtrace and the last lifecycle lines
+    recorded through {!log} — then re-raises the signal so the process
+    still dies with its real cause (core dumps and debuggers are
+    unaffected). The next launch picks the report up through
+    {!pending_crash_report}; {!mark_report_handled} clears it once the
+    app has shown its relaunch UX or uploaded it.
 
-    The handler is {b best-effort}: OCaml code is not async-signal-safe,
-    so the file write can itself fail or fault — it is wrapped so the
-    original signal always wins. The report path is computed once at
-    install time and the ring buffer is preallocated, keeping the work
-    done inside the handler as small as possible.
+    The handler is {b best-effort only}: OCaml code is not
+    async-signal-safe, so the file write can hang or double-fault — it
+    is wrapped so the original signal always wins, but this must not be
+    treated as reliable crash telemetry. The report path is computed
+    once at install time and the ring buffer is preallocated, keeping
+    the work done inside the handler as small as possible.
 
     {b Recovery seam.} {!Recovery} is the policy half of renderer-loss
     recovery: the platform ladder (macOS Metal>GL>CPU, Windows
-    D3D11>GL>CPU, Linux GL>Vulkan>CPU) previously fell back only at
+    D3D11>GL>CPU, Linux Vulkan>GL>CPU) previously fell back only at
     creation time. Drivers keep a [Recovery.t] next to their renderer
     cell; when the active backend reports loss (SDL reset events, a
     device-removed error, a render exception) [lost] hands back the
@@ -30,9 +34,12 @@
 type t
 (** A crash-reporter installation. *)
 
-val install : ?dir:string -> app_name:string -> renderer:string -> unit -> t
-(** [install ~app_name ~renderer ()] registers the crash handlers and
-    returns the reporter handle. [dir] is where crash files are written
+val install :
+  ?dir:string -> ?enable_signals:bool -> app_name:string -> renderer:string ->
+  unit -> t
+(** [install ~app_name ~renderer ()] returns the reporter handle.
+    Signal handlers install only when [~enable_signals] is true or
+    [LUI_CRASH_SIGNALS=1]. [dir] is where crash files are written
     (default: a per-app directory under the OS temp dir). *)
 
 val set_renderer : t -> string -> unit

@@ -142,8 +142,9 @@ let () =
   in
   let headless = Option.is_some cfg.headless_frames in
   if headless then Unix.putenv "SDL_VIDEODRIVER" "dummy";
-  (* Renderer selection on Linux: GL by default, Vulkan offscreen on
-     request, CPU on LUI_GPU=0|cpu, then the no-op loop renderer. *)
+  (* Renderer selection on Linux: Vulkan offscreen+blit by default,
+     then GL, then CPU on LUI_GPU=0|cpu (or after demotion), then the
+     no-op loop renderer. LUI_GPU=gl|opengl skips Vulkan. *)
   let env = try Sys.getenv "LUI_GPU" with Not_found -> "" in
   let ladder =
     if headless && env = "" then [ Lui_linux.Noop ]

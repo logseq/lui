@@ -24,7 +24,7 @@ missing API/channel) and keep the source scenario as the spec.
 - P2 15/160 covered: shader source determinism, GL upload planning, atlas
   padding, glyph weight tests, font registration/family/many-sizes, bitmap
   upload/cache update, open-url handlers.
-- Open 425 (all TODO-annotated): ~30 lui_svg rows (module does not exist),
+- Open 425 (all TODO-annotated): ~30 lui_svg scenario rows (module exists — see `lui_svg/` + its alcotest suite; checklist rows below still track reference-scenario names not yet 1:1 mapped),
   ~15 gamut/wide-codec rows (private to lui_scene, no exported API), ~90
   widget-layer e2e rows needing lui_window/lui_gallery support — lui_window
   now carries headless-tested channels for text selection (caret/range,
@@ -40,6 +40,15 @@ missing API/channel) and keep the source scenario as the spec.
   cache APIs, ~30 list/table/grid rows, shell-lifecycle and accel rows
   (lui_shell*), real-GPU rows (only the gated real-GL pattern applies),
   decode paths absent from lui_image (webp/halve/exif/gray).
+
+## SVG status (2026-10-11)
+
+`platform/native/lui_svg/` ships a decoder + rasterizer (~2.6k LOC) with an
+alcotest suite (fills, paths, transforms, gradients, clip, opacity, display,
+errors). The checklist rows below still use the reference scenario names from
+COVERAGE.md; several are already covered in spirit by `lui_svg_test.ml` and
+should be checked off as the suite is mapped 1:1. The older "module does not
+exist" wording was stale.
 
 ## P0 — correctness-critical
 
@@ -82,29 +91,29 @@ missing API/channel) and keep the source scenario as the spec.
 - [ ] `test_gamut_map_odd_input` — lui_paint — covers TestMapOddInput (internal/gamut) — TODO: gamut/wide codec is private to lui_scene (no exported API); needs an export or pixel-level scenario
 - [ ] `test_gamut_map_extremes` — lui_paint — covers TestMapExtremes (internal/gamut) — TODO: gamut/wide codec is private to lui_scene (no exported API); needs an export or pixel-level scenario
 - [x] `test_text_coverage` — lui_native — covers TestTextCoverage (internal/scene) — ✓ lui_scene 'correction curve'
-- [ ] `test_svg_fill` — lui_svg (new) — covers TestFill (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_path_syntax` — lui_svg (new) — covers TestPathSyntax (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_arcs` — lui_svg (new) — covers TestArcs (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_fill_rule` — lui_svg (new) — covers TestFillRule (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_stroke_caps` — lui_svg (new) — covers TestStrokeCaps (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_stroke_joins` — lui_svg (new) — covers TestStrokeJoins (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_dashes` — lui_svg (new) — covers TestDashes (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_transforms` — lui_svg (new) — covers TestTransforms (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_current_color` — lui_svg (new) — covers TestCurrentColor (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_colors` — lui_svg (new) — covers TestColors (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_linear_gradient` — lui_svg (new) — covers TestLinearGradient (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_radial_gradient` — lui_svg (new) — covers TestRadialGradient (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_group_opacity` — lui_svg (new) — covers TestGroupOpacity (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_clip_path` — lui_svg (new) — covers TestClipPath (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_mask` — lui_svg (new) — covers TestMask (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_style_sheets` — lui_svg (new) — covers TestStyleSheets (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_use` — lui_svg (new) — covers TestUse (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_display_visibility` — lui_svg (new) — covers TestDisplayAndVisibility (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_size_aspect` — lui_svg (new) — covers TestSizeAndAspect (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_old_editors` — lui_svg (new) — covers TestOldEditors (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_errors` — lui_svg (new) — covers TestErrors (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_icons` — lui_svg (new) — covers TestIcons (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_uses_current_color` — lui_svg (new) — covers TestUsesCurrentColor (internal/svg) — TODO: no lui_svg module exists yet; land it with the decoder
+- [ ] `test_svg_fill` — lui_svg (new) — covers TestFill (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_path_syntax` — lui_svg (new) — covers TestPathSyntax (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_arcs` — lui_svg (new) — covers TestArcs (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_fill_rule` — lui_svg (new) — covers TestFillRule (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_stroke_caps` — lui_svg (new) — covers TestStrokeCaps (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_stroke_joins` — lui_svg (new) — covers TestStrokeJoins (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_dashes` — lui_svg (new) — covers TestDashes (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_transforms` — lui_svg (new) — covers TestTransforms (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_current_color` — lui_svg (new) — covers TestCurrentColor (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_colors` — lui_svg (new) — covers TestColors (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_linear_gradient` — lui_svg (new) — covers TestLinearGradient (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_radial_gradient` — lui_svg (new) — covers TestRadialGradient (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_group_opacity` — lui_svg (new) — covers TestGroupOpacity (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_clip_path` — lui_svg (new) — covers TestClipPath (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_mask` — lui_svg (new) — covers TestMask (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_style_sheets` — lui_svg (new) — covers TestStyleSheets (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_use` — lui_svg (new) — covers TestUse (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_display_visibility` — lui_svg (new) — covers TestDisplayAndVisibility (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_size_aspect` — lui_svg (new) — covers TestSizeAndAspect (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_old_editors` — lui_svg (new) — covers TestOldEditors (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_errors` — lui_svg (new) — covers TestErrors (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_icons` — lui_svg (new) — covers TestIcons (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_uses_current_color` — lui_svg (new) — covers TestUsesCurrentColor (internal/svg) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
 - [ ] `test_caret_positions` — lui_text — covers TestCarets (internal/text) — TODO: no caret/span/feature/buffer/cache API in lui_text yet
 - [ ] `test_truncation` — lui_text — covers TestTruncation (internal/text) — TODO: no caret/span/feature/buffer/cache API in lui_text yet
 - [x] `test_atlas_make_room` — lui_scene ~partial~ — covers TestMakeRoom (internal/text) — ✓ lui_scene 'make room'
@@ -298,13 +307,13 @@ missing API/channel) and keep the source scenario as the spec.
 - [ ] `test_scroll_both` — e2e — covers TestScrollBoth (ui/style_test.go) — TODO: vertical scroll exists in lui_window; horizontal-axis scroll missing
 - [ ] `test_scrollbar_insets` — e2e ~partial~ — covers TestScrollbarInsets (ui/style_test.go) — TODO: scrollbar widget/insets missing in lui_window (scroll offsets exist)
 - [ ] `test_scroll_content_shrinks` — e2e — covers TestScrollContentShrinks (ui/style_test.go) — TODO: scroll exists in lui_window; content-shrink layout semantics remain
-- [ ] `test_icon_text_color` — lui_svg (new) — covers TestIconTakesTheTextColorAndSize (ui/svg_test.go) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_icon_draws_once` — lui_svg (new) — covers TestIconDrawsItsShapeOnce (ui/svg_test.go) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_image_of_svg` — lui_svg (new) — covers TestImageOfAnSVG (ui/svg_test.go) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_picture_color` — lui_svg (new) — covers TestPictureFollowsTheTextColor (ui/svg_test.go) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_icons_a11y` — lui_svg (new) — covers TestIconsInAccessibility (ui/svg_test.go) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_painter_svg` — lui_svg (new) — covers TestPainterDrawsSVGs (ui/svg_test.go) — TODO: no lui_svg module exists yet; land it with the decoder
-- [ ] `test_svg_parse_errors` — lui_svg (new) — covers TestParseSVGErrors (ui/svg_test.go) — TODO: no lui_svg module exists yet; land it with the decoder
+- [ ] `test_icon_text_color` — lui_svg (new) — covers TestIconTakesTheTextColorAndSize (ui/svg_test.go) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_icon_draws_once` — lui_svg (new) — covers TestIconDrawsItsShapeOnce (ui/svg_test.go) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_image_of_svg` — lui_svg (new) — covers TestImageOfAnSVG (ui/svg_test.go) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_picture_color` — lui_svg (new) — covers TestPictureFollowsTheTextColor (ui/svg_test.go) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_icons_a11y` — lui_svg (new) — covers TestIconsInAccessibility (ui/svg_test.go) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_painter_svg` — lui_svg (new) — covers TestPainterDrawsSVGs (ui/svg_test.go) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
+- [ ] `test_svg_parse_errors` — lui_svg (new) — covers TestParseSVGErrors (ui/svg_test.go) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
 - [ ] `test_text_buffer_edits` — lui_text — covers TestTextBufferRandomEditsAndSnapshots (text buffer (`ui/text_buffer_test.go`, `ui/text_buffer_bench_test.go`)) — TODO: no caret/span/feature/buffer/cache API in lui_text yet
 - [ ] `test_text_buffer_ranges` — lui_text — covers TestTextBufferNativeRangesMalformedAndZero (text buffer (`ui/text_buffer_test.go`, `ui/text_buffer_bench_test.go`)) — TODO: no caret/span/feature/buffer/cache API in lui_text yet
 - [ ] `test_text_buffer_chunks` — lui_text — covers TestTextBufferOwnsBoundedChunks (text buffer (`ui/text_buffer_test.go`, `ui/text_buffer_bench_test.go`)) — TODO: no caret/span/feature/buffer/cache API in lui_text yet
@@ -531,7 +540,7 @@ missing API/channel) and keep the source scenario as the spec.
 - [ ] `test_transition_list_resize` — e2e — covers TestTransitionResizesAList (ui/transition_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_recycled_state` — e2e — covers TestRecycledStateIsFresh (ui/ui_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_theme_accent_oklch` — lui_paint — covers TestThemeAccentTakesOklch (ui/widecolor_test.go) — TODO: gamut/wide codec is private to lui_scene (no exported API); needs an export or pixel-level scenario
-- [ ] `test_picture_wide` — lui_svg (new) — covers TestPictureOfAWideColor (ui/widecolor_test.go) — TODO: no lui_svg module exists yet; land it with the decoder
+- [ ] `test_picture_wide` — lui_svg (new) — covers TestPictureOfAWideColor (ui/widecolor_test.go) — TODO: map to covering lui_svg alcotest case (module+decoder exist)
 - [ ] `test_wide_frames_gpu` — lui_gpu ~partial~ — covers TestWideFramesOnGPU (ui/widecolor_test.go) — TODO: gamut/wide codec is private to lui_scene (no exported API); needs an export or pixel-level scenario
 - [ ] `test_split` — e2e — covers TestSplit (ui/widgets_more_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
 - [ ] `test_split_vertical` — e2e — covers TestSplitVertical (ui/widgets_more_test.go) — TODO: widget-layer scenario needs support in lui_window/lui_gallery (out of scope)
