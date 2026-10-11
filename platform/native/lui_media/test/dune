@@ -1,0 +1,5 @@
+(test
+ (name lui_media_test)
+ (modules lui_media_test)
+ (libraries lui_media lui_scene lui_raster lui_plugin unix yojson
+   alcotest))
