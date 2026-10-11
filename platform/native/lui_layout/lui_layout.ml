@@ -300,6 +300,8 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
       | "button-group" | "toggle-group" | "breadcrumb" -> Pt (4. *. scale)
       | "input-group-actions" -> Pt (6. *. scale)
       | "pagination" -> Pt (2. *. scale)
+      | "dialog" | "sheet" -> Pt (16. *. scale)
+      | "popover" | "alert" -> Pt (8. *. scale)
       | _ -> Unset)
     | l -> l
   in
