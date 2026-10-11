@@ -706,3 +706,179 @@ let scroll_edge ~scene ?(radii = (0., 0., 0., 0.)) ?(continuous = false)
     let y = if bottom then rc.y -. h else rc.y +. rc.h in
     emit_fill scene (rect rc.x y rc.w h) line_c
   end
+
+(* {1 The plugin service}
+
+   The ["plugin:glass"] service of the {!Lui_plugin} registry: each
+   method runs the helper of the same name on a scratch scene and
+   answers with the ops and effect slots it emitted, as JSON, so a
+   host replays them against its own scene. The arguments are the
+   helper's: [rect] and [radii] as [x,y,w,h] and [tl,tr,br,bl] arrays
+   (a bare number for a uniform radius), [tint] and [bg] as [r,g,b,a]
+   byte arrays, a tone's [color] as straight-sRGB floats, and the rest
+   ([scale], [grow], [style], [dark], [interactive], [continuous],
+   [radius], [mask], [tone], [hard], [bottom]) by name. *)
+
+let num = function
+  | `Int i -> float i
+  | `Float f -> f
+  | `Intlit s -> (
+    try float_of_string s with _ -> invalid_arg "number expected")
+  | _ -> invalid_arg "number expected"
+
+let jnum j name = num (Yojson.Safe.Util.member name j)
+
+let onum j name d =
+  match Yojson.Safe.Util.member name j with `Null -> d | v -> num v
+
+let obool j name d =
+  match Yojson.Safe.Util.member name j with `Bool b -> b | _ -> d
+
+let jrect j =
+  match Yojson.Safe.Util.to_list j with
+  | [ x; y; w; h ] -> rect (num x) (num y) (num w) (num h)
+  | _ -> invalid_arg "rect wants [x, y, w, h]"
+
+let jrects j = jrect (Yojson.Safe.Util.member "rect" j)
+
+let jradii j =
+  match Yojson.Safe.Util.member "radii" j with
+  | `Null -> (0., 0., 0., 0.)
+  | `List [ a; b; c; d ] -> (num a, num b, num c, num d)
+  | v ->
+    let r = num v in
+    (r, r, r, r)
+
+let i8 v = fmin (fmax (int_of_float (num v)) 0) 255
+
+let jcolor4 j =
+  match Yojson.Safe.Util.to_list j with
+  | [ r; g; b; a ] -> color (i8 r) (i8 g) (i8 b) (i8 a)
+  | _ -> invalid_arg "color wants [r, g, b, a]"
+
+(* The emitted scene as {"ops": [...], "effects": [...]}: ops in paint
+   order, an effect op naming its slot by index. *)
+let ops_json (s : t) =
+  let f4 (a, b, c, d) = `List [ `Float a; `Float b; `Float c; `Float d ] in
+  let rj (r : rect) =
+    `List [ `Float r.x; `Float r.y; `Float r.w; `Float r.h ]
+  in
+  let cj (c : color) = `List [ `Int c.r; `Int c.g; `Int c.b; `Int c.a ] in
+  let pj = function
+    | Solid -> "solid"
+    | Linear -> "linear"
+    | Oklab -> "oklab"
+    | Stripes -> "stripes"
+  in
+  let op_json = function
+    | Fill f ->
+      Some
+        (`Assoc
+           [ ("op", `String "fill"); ("rect", rj f.frect);
+             ("radii", f4 f.fradii); ("continuous", `Bool f.fcontinuous);
+             ("color", cj f.fcolor); ("paint", `String (pj f.fpaint));
+             ("color2", cj f.fcolor2); ("gradient", f4 f.fgradient) ])
+    | Effect e ->
+      Some
+        (`Assoc
+           [ ("op", `String "effect"); ("rect", rj e.edrect);
+             ("radii", f4 e.edradii); ("continuous", `Bool e.edcontinuous);
+             ("effect", `Int e.edindex); ("opacity", `Float e.edopacity) ])
+    | _ -> None
+  in
+  let fx_json eo =
+    `Assoc
+      [ ("name", `String eo.ee.ename); ("eblur", `Float eo.eblur);
+        ("params", `List (List.map f4 (Array.to_list eo.eparams))) ]
+  in
+  `Assoc
+    [ ("ops", `List (List.filter_map op_json s.ops));
+      ("effects", `List (List.map fx_json s.effects)) ]
+
+let scratch () =
+  create
+    ~mask_atlas:(Atlas.create ~bpp:1 ~w:8 ~h:8)
+    ~color_atlas:(Atlas.create ~bpp:4 ~w:8 ~h:8)
+
+let answer f payload =
+  try
+    let j = Yojson.Safe.from_string payload in
+    let s = scratch () in
+    f j s;
+    Ok (Yojson.Safe.to_string (ops_json s))
+  with e -> Error (Printexc.to_string e)
+
+let material_call payload =
+  answer
+    (fun j s ->
+      let m =
+        material
+          ~style:
+            (match Yojson.Safe.Util.member "style" j with
+            | `String "clear" -> Clear
+            | _ -> Regular)
+          ~tint:
+            (match Yojson.Safe.Util.member "tint" j with
+            | `Null -> transparent
+            | v -> jcolor4 v)
+          ~interactive:(obool j "interactive" false)
+          ~dark:(obool j "dark" false)
+          ()
+      in
+      glass ~scene:s ~radii:(jradii j)
+        ~continuous:(obool j "continuous" false)
+        ~scale:(onum j "scale" s.scale)
+        ~grow:(onum j "grow" 0.) (jrects j) m)
+    payload
+
+let blur_call payload =
+  answer
+    (fun j s ->
+      let mask =
+        match Yojson.Safe.Util.member "mask" j with
+        | `Null -> None
+        | m ->
+          Some
+            (fade ~from:(jnum m "from") ~to_:(jnum m "to")
+               ~angle:(onum m "angle" 180.) ~start:(onum m "start" 0.)
+               ~stop:(onum m "stop" 1.) ())
+      in
+      let tone =
+        match Yojson.Safe.Util.member "tone" j with
+        | `Null -> None
+        | t ->
+          let c =
+            match Yojson.Safe.Util.member "color" t with
+            | `List [ r; g; b ] -> (num r, num g, num b)
+            | _ -> (0., 0., 0.)
+          in
+          Some
+            { tsat = onum t "saturation" 0.; toff = onum t "offset" 0.;
+              tmix = onum t "mix" 0.; tcolor = c }
+      in
+      blur ~scene:s ~radii:(jradii j)
+        ~continuous:(obool j "continuous" false) ?mask ?tone
+        ~radius:(jnum j "radius") (jrects j))
+    payload
+
+let scroll_edge_call payload =
+  answer
+    (fun j s ->
+      let bg =
+        match Yojson.Safe.Util.member "bg" j with
+        | `Null -> transparent
+        | v -> jcolor4 v
+      in
+      scroll_edge ~scene:s ~radii:(jradii j)
+        ~continuous:(obool j "continuous" false)
+        ~scale:(onum j "scale" s.scale)
+        ~hard:(obool j "hard" false)
+        ~bottom:(obool j "bottom" false) ~bg
+        ~dark:(obool j "dark" false)
+        (jrects j))
+    payload
+
+let plugin : Lui_plugin.t =
+  Lui_plugin.v "glass"
+    [ ("material", material_call); ("blur", blur_call);
+      ("scroll_edge", scroll_edge_call) ]

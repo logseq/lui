@@ -17,9 +17,11 @@
 
     The helpers are usable two ways: directly against a {!Lui_scene.t}
     under construction (they append to [scene.ops] and [scene.effects]),
-    and from the plugin-service path once the plugin registry lands —
-    the exported {!Lui_plugin_glass.glass_fx}/{!Lui_plugin_glass.blur_fx}
-    records and the param layout below are the contract either way:
+    and as the ["plugin:glass"] service of the {!Lui_plugin} registry
+    ({!plugin} below), which answers with the ops the helpers emit as
+    JSON for a host to replay. The exported
+    {!Lui_plugin_glass.glass_fx}/{!Lui_plugin_glass.blur_fx} records and
+    the param layout below are the contract either way:
 
     - glass: [p0] = (bezel, refraction, rim, rim_width), [p1] = tint as
       straight sRGB floats, [p2] = (low, high, curve, saturation),
@@ -31,8 +33,9 @@
     Wire-level note: {!Lui_paint} has no free prop slot for materials
     (the only extension prop it reads today is [border-style]; data
     attrs belong to the host), so no mapping was added there — the
-    materials are exposed through this module's API, and any future
-    protocol prop should map to the same param layout. *)
+    materials are exposed through this module's API and the
+    ["plugin:glass"] service, and any future protocol prop should map
+    to the same param layout. *)
 
 open Lui_scene
 
@@ -175,3 +178,18 @@ val glass_normal :
 val luminance : float * float * float -> float
 val toned : float * float * float -> float -> float -> float * float * float
 val backdrop_sample4 : backdrop_image -> float -> float -> float * float * float * float
+
+(** {1 The plugin service} *)
+
+val plugin : Lui_plugin.t
+(** The ["plugin:glass"] service descriptor: methods ["material"],
+    ["blur"] and ["scroll_edge"], each running the OCaml helper of the
+    same name and answering with the ops it emitted. Arguments are the
+    helper's, as a JSON object — [rect] and [radii] as [x,y,w,h] and
+    [tl,tr,br,bl] arrays (a bare number for a uniform radius), [tint]
+    and [bg] as [r,g,b,a] byte arrays, a tone's [color] as straight
+    sRGB floats, the rest by name — and the answer is
+    [{"ops": [fill|effect op objects in paint order], "effects":
+    [{name, eblur, params}]}], an effect op's ["effect"] being its slot
+    index into ["effects"]. A host replays the doc against its own
+    scene; the param layout above is the effect contract. *)

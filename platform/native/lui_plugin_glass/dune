@@ -1,4 +1,4 @@
 (library
  (name lui_plugin_glass)
  (modules lui_plugin_glass)
- (libraries lui_scene))
+ (libraries lui_scene lui_plugin yojson))
