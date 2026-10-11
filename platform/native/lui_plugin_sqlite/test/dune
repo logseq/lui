@@ -1,0 +1,4 @@
+(test
+ (name lui_plugin_sqlite_test)
+ (modules lui_plugin_sqlite_test)
+ (libraries lui_plugin_sqlite yojson alcotest))
