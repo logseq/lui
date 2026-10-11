@@ -1550,18 +1550,26 @@ let default_chrome ctx store id st kind r rs alpha =
              ~border:(0., 0., 0., 0.) ~bcolor:(color 0 0 0 0)
              ~dashed:false ~alpha:1. ]
        | _ -> [])
-    @ (match pstr store id "text" with
-       | Some t when t <> "" ->
-         ctx.hooks.text_ops id
-           (rect r.x title_y r.w (26. *. s))
-           (text_fg ctx store id) t
-       | _ -> [])
-    @ (match pstr store id "description" with
-       | Some d when d <> "" ->
-         ctx.hooks.text_ops id
-           (rect r.x (title_y +. 26. *. s) r.w (15. *. s))
-           (col_muted_fg ctx) d
-       | _ -> [])
+    @ (* The chrome zone clips its own ink: a wrapped description must
+         not spill into the children below it. *)
+    (let zone =
+       rect r.x (r.y +. py) r.w ((grabber +. 41.) *. s)
+     in
+     Push_clip
+       { crect = zone; cradii = (0., 0., 0., 0.); ccontinuous = false }
+     :: (match pstr store id "text" with
+        | Some t when t <> "" ->
+          ctx.hooks.text_ops id
+            (rect r.x title_y r.w (26. *. s))
+            (text_fg ctx store id) t
+        | _ -> [])
+     @ (match pstr store id "description" with
+        | Some d when d <> "" ->
+          ctx.hooks.text_ops id
+            (rect r.x (title_y +. 26. *. s) r.w (15. *. s))
+            (col_muted_fg ctx) d
+        | _ -> [])
+     @ [ Pop_clip ])
   | "tooltip" | "toast" | "alert" | "bubble" ->
     let rad = rad (5. *. s) in
     shadow_pair rad [ (0., 1., 2., 26); (0., 2., 8., 51) ]

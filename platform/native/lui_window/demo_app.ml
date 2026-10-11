@@ -704,7 +704,7 @@ let popups model_s send =
       (* modal surfaces (dialog/drawer/sheet) own their chrome —
          background/border/radius props are rejected by the schema *)
       (dialog ~text:"native dialog"
-         ~description:"a retained-mode dialog painted by the scene"
+         ~description:"painted by the retained scene"
          ~padding:16 ~width:320
          ~on_dismiss:(press send (Close P_dialog))
          [ text
