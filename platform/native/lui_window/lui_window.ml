@@ -503,6 +503,7 @@ module Ui = struct
        focus a modal surface saved and restores on close. *)
     mutable overlay_id : int;
     mutable overlay_modal : bool;
+    mutable open_menu : int; (* trigger-owned menu panel currently open *)
     mutable saved_focus : int;
     (* autofocus is honored once, at mount, when nothing is focused. *)
     mutable autofocus_done : bool;
@@ -532,7 +533,8 @@ module Ui = struct
       down_x = 0.; down_y = 0.; sel_drag = 0;
       drag_src = 0; drag = None; drop_target = 0; last_drop = None;
       drop_seq = 0;
-      overlay_id = 0; overlay_modal = false; saved_focus = 0;
+      overlay_id = 0; overlay_modal = false; open_menu = 0;
+      saved_focus = 0;
       autofocus_done = false;
       seen = Hashtbl.create 64;
       scroll_token = Hashtbl.create 8; vrange = Hashtbl.create 8;
@@ -726,6 +728,30 @@ module Ui = struct
 
   let inside_ov store ov path =
     List.exists (fun i -> i = ov || is_desc store i ov) path
+
+  (* Host-owned menu tracking: menu panels declared under a
+     [menu-trigger] stay hidden until the trigger toggles them — the
+     view does not re-render for menu state. *)
+  let menu_panel_kind store id =
+    match kind_name store id with
+    | "dropdown-menu" | "context-menu" -> true
+    | _ -> false
+
+  let trigger_owned store id =
+    menu_panel_kind store id
+    && (match Lui_store.parent store id with
+       | Some p -> kind_name store p = "menu-trigger"
+       | None -> false)
+
+  let menu_panel store id =
+    List.find_opt (trigger_owned store) (Lui_store.child_ids store id)
+
+  let hidden t store id = trigger_owned store id && id <> t.open_menu
+
+  let open_menu t = t.open_menu
+
+  let close_menu t =
+    if t.open_menu <> 0 then begin t.open_menu <- 0; t.dirty <- true end
 
   (* ---- text selection math ---------------------------------------- *)
 
@@ -1721,6 +1747,9 @@ module Ui = struct
          let path = hit_path store rects ~x:dx ~y:dy in
          t.down_x <- x; t.down_y <- y;
          t.typeahead <- "";
+         (* Press outside the open menu closes it host-side. *)
+         (if t.open_menu <> 0 && not (inside_ov store t.open_menu path)
+          then close_menu t);
          (* Overlay semantics: a press outside the top overlay light-
             dismisses it when its kind admits Dismiss; a modal surface
             swallows the press entirely (focus trap). *)
@@ -1917,6 +1946,16 @@ module Ui = struct
                      (PressDetail (n, detail_of store n x y mods 0)) ]
                else []
              in
+             (* A menu trigger toggles its owned panel; activating a
+                node inside the open panel closes it after the press. *)
+             (if kind_name store n = "menu-trigger" then
+                (match menu_panel store n with
+                 | Some m ->
+                   t.open_menu <- (if t.open_menu = m then 0 else m);
+                   t.dirty <- true
+                 | None -> ())
+              else if t.open_menu <> 0 && is_desc store n t.open_menu
+              then close_menu t);
              pd @ primary_press store n
            end else []
          in
@@ -1952,7 +1991,9 @@ module Ui = struct
               t.dirty <- true;
               []
             | None ->
-              (match top_overlay store with
+              (if t.open_menu <> 0 then (close_menu t; [])
+               else
+              match top_overlay store with
                | Some (oid, _, true) -> [ Dispatch (Dismiss oid) ]
                | Some (_, _, false) -> []
                | None ->

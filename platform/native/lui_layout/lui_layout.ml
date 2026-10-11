@@ -114,6 +114,41 @@ let padding_edges ~scale store id : Lui_flex.edges =
     horizontal = length_prop ~scale store id "padding-horizontal";
     vertical = length_prop ~scale store id "padding-vertical" }
 
+(* Modal surfaces reserve the top zone their title chrome paints
+   (26px title, 15px description; sheets get a 12px grabber lane).
+   The reserve stacks on top of any view-set top padding. *)
+let title_pad ~scale store id kind (e : Lui_flex.edges) : Lui_flex.edges =
+  match kind with
+  | "dialog" | "sheet" ->
+    let nonempty name =
+      match Lui_store.prop store id name with
+      | Some (StringValue s) -> s <> ""
+      | _ -> false
+    in
+    let extra =
+      (if nonempty "text" then 26. else 0.)
+      +. (if nonempty "description" then 15. else 0.)
+      +. (if kind = "sheet" then 12. else 0.)
+    in
+    let extra = extra *. scale in
+    if extra <= 0. then e
+    else
+      let add l =
+        match l with
+        | Lui_flex.Pt v -> Lui_flex.Pt (v +. extra)
+        | _ -> Lui_flex.Pt extra
+      in
+      let top =
+        match e.top with
+        | Lui_flex.Unset -> (
+          match e.vertical with
+          | Lui_flex.Unset -> e.all
+          | v -> v)
+        | v -> v
+      in
+      { e with top = add top }
+  | _ -> e
+
 (* inset / inset-top|right|bottom|left → position edges, per-side
    fallback to the uniform prop (same resolution as paint). *)
 let inset_edges ~scale store id : Lui_flex.edges =
@@ -167,17 +202,16 @@ let scroll_kind = function
 
 let has_prop store id name = Lui_store.prop store id name <> None
 
-(* Popup-family kinds with no positioning inputs at all land on the
-   deterministic default: centered in the containing block. A bare
-   [position] prop gives no placement (auto edges resolve to the
-   parent's origin), so it does not count as positioning input. *)
-let popup_needs_default store id kind =
-  popup_kind kind
-  && not
-       (List.exists (has_prop store id)
-          [ "inset"; "inset-top"; "inset-right"; "inset-bottom";
-            "inset-left"; "x"; "y"; "anchor"; "anchor-alignment";
-            "anchor-offset" ])
+(* Popups carrying explicit inset/position edges keep them; everything
+   else in the family goes through [refine_popups]: anchor props place
+   relative to their anchor box, the rest center in the containing
+   block (a bare [position] prop gives no placement — auto edges
+   resolve to the parent's origin — so it does not count as
+   positioning input). *)
+let popup_has_edges store id =
+  List.exists (has_prop store id)
+    [ "position"; "inset"; "inset-top"; "inset-right"; "inset-bottom";
+      "inset-left" ]
 
 (* ---------- style translation ---------- *)
 
@@ -309,7 +343,7 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
         (match viewport_len ~viewport store id ~name:"max-height-viewport" ~horizontal:false with
          | Unset -> lp "max-height"
          | l -> l);
-      padding = padding_edges ~scale store id;
+      padding = title_pad ~scale store id kind (padding_edges ~scale store id);
       position;
       row_gap =
         (match lp "row-gap" with Unset -> gap | l -> l);
@@ -399,14 +433,19 @@ let ordered_child_ids store id kind : int list =
 let display_none store id = pstr store id "display" = Some "none"
 let display_contents store id = pstr store id "display" = Some "contents"
 
-(* The string a text leaf measures: [text], else [placeholder]. *)
+(* The string a text leaf measures: [text], else [placeholder], else
+   [title] (bottom-tab and timeline items carry their label on the
+   latter). *)
 let text_of store id =
   match Lui_store.prop store id "text" with
   | Some (StringValue s) when s <> "" -> Some s
   | _ -> (
     match Lui_store.prop store id "placeholder" with
     | Some (StringValue s) when s <> "" -> Some s
-    | _ -> None)
+    | _ -> (
+      match Lui_store.prop store id "title" with
+      | Some (StringValue s) when s <> "" -> Some s
+      | _ -> None))
 
 let measure_of (tm : text_measure) ~id ~text : Lui_flex.measure =
   fun _node ~width ~width_mode:_ ~height ~height_mode:_ ->
@@ -419,6 +458,8 @@ type ctx = {
   vw : float;
   vh : float;
   tm : text_measure;
+  hidden : int -> bool; (* host-owned transient visibility (menus) *)
+  store : Lui_store.t;
   nodes : (int, Lui_flex.node) Hashtbl.t; (* store id → flex node *)
   applied : (int, Lui_flex.style) Hashtbl.t; (* store id → applied style *)
   grids : (Lui_flex.node * Lui_flex.style * float) list ref;
@@ -429,7 +470,7 @@ type ctx = {
    normal kinds, [] for display:none, and the lifted children for
    display:contents. [index] is the flattened sibling position. *)
 let rec build ctx store ~pkind ~pid ~index id : Lui_flex.node list =
-  if display_none store id then []
+  if display_none store id || ctx.hidden id then []
   else if display_contents store id then
     build_seq ctx store ~pkind ~pid ~first:index (Lui_store.child_ids store id)
   else
@@ -455,8 +496,7 @@ let rec build ctx store ~pkind ~pid ~index id : Lui_flex.node list =
        | Some n when n > 0. ->
          ctx.grids := (node, style, n) :: !(ctx.grids)
        | _ -> ());
-    (if popup_needs_default store id kind then
-       ctx.popups := (node, id) :: !(ctx.popups));
+    (if popup_kind kind then ctx.popups := (node, id) :: !(ctx.popups));
     [ node ]
 
 and build_seq ctx store ~pkind ~pid ~first ids : Lui_flex.node list =
@@ -540,6 +580,58 @@ let refine_grids ctx =
         (Lui_flex.children gnode))
     !(ctx.grids)
 
+(* Popup anchoring: [x]/[y] supply an anchor point (a zero-size anchor
+   box inside the parent); bare [anchor] uses the parent rect as the
+   anchor box, like the web backend's element anchoring. [anchor]
+   names the preferred side (below default), [anchor-alignment] the
+   cross-axis alignment (start default), [anchor-offset] the gap
+   (4px default). *)
+let anchor_rect_of ctx store id pr =
+  let s = ctx.scale in
+  let f name = Option.map (fun v -> v *. s) (pnum store id name) in
+  match (f "x", f "y") with
+  | Some x, Some y -> { Lui_flex.x = pr.x +. x; y = pr.y +. y; w = 0.; h = 0. }
+  | _ -> pr
+
+let anchored_xy ctx store sid ar pr (prp : Lui_flex.rect) =
+  let s = ctx.scale in
+  let offset = Option.value ~default:4. (pnum store sid "anchor-offset") *. s in
+  let side =
+    match pstr store sid "anchor" with
+    | Some ("above" | "left" | "right" as v) -> v
+    | _ -> "below"
+  in
+  let alignment =
+    match pstr store sid "anchor-alignment" with
+    | Some ("center" | "middle") -> "middle"
+    | Some "end" -> "end"
+    | _ -> "start"
+  in
+  let vertical = side = "above" || side = "below" in
+  let main =
+    match side with
+    | "above" -> ar.y -. offset -. prp.h
+    | "left" -> ar.x -. offset -. prp.w
+    | "right" -> ar.x +. ar.w +. offset
+    | _ -> ar.y +. ar.h +. offset
+  in
+  let cross =
+    if vertical then
+      match alignment with
+      | "middle" -> ar.x +. ((ar.w -. prp.w) /. 2.)
+      | "end" -> ar.x +. ar.w -. prp.w
+      | _ -> ar.x
+    else
+      match alignment with
+      | "middle" -> ar.y +. ((ar.h -. prp.h) /. 2.)
+      | "end" -> ar.y +. ar.h -. prp.h
+      | _ -> ar.y
+  in
+  let x, y = if vertical then (cross, main) else (main, cross) in
+  (* Clamp inside the containing block so the popup stays on-screen. *)
+  ( Float.max pr.x (Float.min x (pr.x +. pr.w -. prp.w)),
+    Float.max pr.y (Float.min y (pr.y +. pr.h -. prp.h)) )
+
 (* Center each default-placed popup in its containing block by giving
    its spec concrete [left]/[top] offsets. Position edges resolve
    against the parent's padding box (offset + border + margin lands at
@@ -578,8 +670,23 @@ let refine_popups ctx =
             edge_px ~owner:pr.w pstyle.margin.top pstyle.margin.vertical pstyle.margin
           in
           let prp = Lui_flex.absolute_layout pnode in
-          let left = ((pr.w -. prp.w) /. 2.) -. bor_l -. ml in
-          let top = ((pr.h -. prp.h) /. 2.) -. bor_t -. mt in
+          let anchored =
+            List.exists (has_prop ctx.store sid) [ "x"; "y"; "anchor" ]
+          in
+          if (not anchored) && popup_has_edges ctx.store sid then ()
+          else
+          let left, top =
+            if anchored then
+              let ax, ay =
+                anchored_xy ctx ctx.store sid
+                  (anchor_rect_of ctx ctx.store sid pr)
+                  pr prp
+              in
+              (ax -. pr.x -. bor_l -. ml, ay -. pr.y -. bor_t -. mt)
+            else
+              ( ((pr.w -. prp.w) /. 2.) -. bor_l -. ml,
+                ((pr.h -. prp.h) /. 2.) -. bor_t -. mt )
+          in
           Lui_flex.set_style pnode
             { pstyle with
               position =
@@ -634,10 +741,12 @@ let compute t ~width ~height =
     t.extent <- layout_frame root ~width ~height;
     collect t
 
-let sync ?(scale = 1.) ?(measure = (fun _ _ _ _ -> None)) ~width ~height (t : t) store =
+let sync ?(scale = 1.) ?(measure = (fun _ _ _ _ -> None))
+    ?(hidden = fun _ -> false) ~width ~height (t : t) store =
   Hashtbl.reset t.nodes;
   let ctx =
-    { scale; vw = width; vh = height; tm = measure; nodes = t.nodes;
+    { scale; vw = width; vh = height; tm = measure; hidden; store;
+      nodes = t.nodes;
       applied = Hashtbl.create 64; grids = ref []; popups = ref [] }
   in
   let kids =
@@ -663,8 +772,8 @@ let layout_hook (t : t) id =
 
 let rect (t : t) id = Hashtbl.find_opt t.rects id
 
-let run ?(scale = 1.) store ~measure ~width ~height =
+let run ?(scale = 1.) ?hidden store ~measure ~width ~height =
   let t = create () in
   sync ~scale ~measure:(fun id _text w h -> measure id w h)
-    ~width ~height t store;
+    ~width ~height ?hidden t store;
   layout_hook t

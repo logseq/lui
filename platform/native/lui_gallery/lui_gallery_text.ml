@@ -91,6 +91,7 @@ let font_of store id =
       match Lui_store.kind store id with
       | "heading" -> 700
       | "tab" | "button" when selected_tab_trigger store id -> 600
+      | "dialog" | "sheet" -> 600
       | _ -> 400)
   in
   Lui_text.system ~weight ~italic:false ~size ()

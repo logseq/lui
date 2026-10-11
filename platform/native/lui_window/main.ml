@@ -468,6 +468,9 @@ let () =
   in
   host_cell := Some host;
   let store = Lui_host.store host in
+  (* Trigger-owned menu panels stay hidden until opened; the predicate
+     reads the interaction state's mutable open-menu slot each sync. *)
+  Lui_host.set_hidden host (Some (fun id -> Ui.hidden ui store id));
   let win_w = ref cfg.width and win_h = ref cfg.height in
   (* Populate the hit-test mirror from the layout engine: each node's
      shifted rect clipped to its scrollable ancestors' viewports (so

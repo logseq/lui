@@ -988,8 +988,15 @@ let text_ops ?fg ctx store id r alpha ~placeholder_ok =
       if placeholder_ok then
         match pstr store id "placeholder" with
         | Some s when s <> "" -> Some (s, col_muted_fg ctx)
-        | _ -> None
-      else None
+        | _ -> (
+          (* bottom-tab and timeline items label through [title]. *)
+          match pstr store id "title" with
+          | Some s when s <> "" -> Some (s, fg)
+          | _ -> None)
+      else (
+        match pstr store id "title" with
+        | Some s when s <> "" -> Some (s, fg)
+        | _ -> None)
   in
   match s with
   | Some (s, fg) -> scale_ops alpha (ctx.hooks.text_ops id r fg s)
@@ -1499,7 +1506,38 @@ let default_chrome ctx store id st kind r rs alpha =
        else [ face zc rad bw1 (col_border ctx) ~dashed:false ])
   | "dialog" | "sheet" | "drawer" | "modal" ->
     let rad = rad (10. *. s) in
-    shadow_pair rad [ (0., 2., 8., 31); (0., 10., 30., 76) ]
+    (* Platform title chrome per the dialog/sheet contract: the title
+       and description paint inside the top zone the layout reserved;
+       sheets also carry a grabber pill. *)
+    let pad_of n = Option.value ~default:0. (pnum store id n) *. s in
+    let px = Float.max (pad_of "padding-horizontal") (pad_of "padding")
+    and py = Float.max (pad_of "padding-vertical") (pad_of "padding") in
+    let title_x = r.x +. px +. 4. *. s and title_y = r.y +. py +. 6. *. s in
+    let title_w = Float.max 0. (r.w -. 2. *. (px +. 4. *. s)) in
+    (match kind with
+     | "sheet" ->
+       [ fill ~continuous:true
+           (rect (r.x +. ((r.w -. 36. *. s) /. 2.)) (r.y +. 6. *. s)
+              (36. *. s) (4. *. s))
+           (2. *. s, 2. *. s, 2. *. s, 2. *. s)
+           ~paint:Solid ~c1:(col_surface_pressed ctx)
+           ~c2:(col_surface_pressed ctx) ~grad:(0., 0., 0., 0.)
+           ~border:(0., 0., 0., 0.) ~bcolor:(color 0 0 0 0)
+           ~dashed:false ~alpha:1. ]
+     | _ -> [])
+    @ (match pstr store id "text" with
+       | Some t when t <> "" ->
+         ctx.hooks.text_ops id
+           (rect title_x title_y title_w (20. *. s))
+           (text_fg ctx store id) t
+       | _ -> [])
+    @ (match pstr store id "description" with
+       | Some d when d <> "" ->
+         ctx.hooks.text_ops id
+           (rect title_x (title_y +. 24. *. s) title_w (14. *. s))
+           (col_muted_fg ctx) d
+       | _ -> [])
+    @ shadow_pair rad [ (0., 2., 8., 31); (0., 10., 30., 76) ]
     @ (if bg_styled then [] else [ face (col_popover ctx) rad zb zc ~dashed:false ])
     @ (if border_styled || bg_styled then []
        else [ face zc rad bw1 (col_border ctx) ~dashed:false ])

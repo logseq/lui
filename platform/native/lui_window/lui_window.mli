@@ -247,6 +247,14 @@ module Ui : sig
   (** Topmost overlay-kind node currently tracked (0 = none). *)
   val overlay_top : t -> int
 
+  val open_menu : t -> int
+  (** The trigger-owned menu panel currently open, 0 when none. *)
+
+  val hidden : t -> Lui_store.t -> int -> bool
+  (** Host-owned transient visibility: true for menu panels declared
+      under a [menu-trigger] that are not the open one. Wire to
+      {!Lui_host.set_hidden} — the predicate reads live state. *)
+
   (** Driver hooks: glyph measurement for caret/selection math, and
       unshifted (content-space) rects for [scroll_show]/visible-range.
       Deterministic defaults keep tests text-engine free. *)
