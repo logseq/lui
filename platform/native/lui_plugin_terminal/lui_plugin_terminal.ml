@@ -174,3 +174,224 @@ let handle_input t ev =
   | _ -> false
 
 let has_selection t = G.has_selection (Vt.grid t.vt)
+
+(* ---- plugin service ------------------------------------------------
+   The ["plugin:terminal"] service of the {!Lui_plugin} registry:
+   JSON-in/JSON-out terminals keyed by integer id.
+
+   Methods (payloads are JSON objects):
+
+     spawn {"argv"?: string[], "cwd"?: string, "env"?: string[],
+            "cols"?: int, "rows"?: int, "max_scrollback"?: int,
+            "font_size"?: number, "scale"?: number,
+            "families"?: string[]}  ->  {"id": n}
+           Absent [argv] defaults to the user's shell ([$SHELL] or
+           [/bin/sh]).  [env] is honoured on Windows only; unix
+           children inherit the process environment.  An empty [cwd]
+           inherits the host's working directory.
+     write {"id": n, "data": string} | {"id": n, "data64": base64}
+           ->  {}
+     read_events {"id": n}
+           ->  {"alive": bool, "exit": int|null, "actions": [a],
+                "cursor": {"x": n, "y": n, "visible": bool,
+                           "style": int, "blink": bool},
+                "cols": n, "rows": n, "scrollback": n}
+           Pumps the terminal: flushes queued input, drains child
+           output into the grid, and reports the raised actions.
+     resize {"id": n, "cols": int, "rows": int}  ->  {}
+     close  {"id": n}  ->  {}                                    *)
+
+module Service = struct
+  open Yojson.Safe.Util
+
+  let terms : (int, t) Hashtbl.t = Hashtbl.create 4
+  let next = ref 0
+
+  let find j =
+    match member "id" j with
+    | `Int n -> (
+      match Hashtbl.find_opt terms n with
+      | Some t -> Ok t
+      | None -> Error (Printf.sprintf "terminal: no terminal %d" n))
+    | _ -> Error "terminal: \"id\" must be an integer"
+
+  let member_str j k =
+    match member k j with `String s -> Some s | _ -> None
+
+  let member_strs j k =
+    match member k j with
+    | `List l -> List.filter_map (function `String s -> Some s | _ -> None) l
+    | _ -> []
+
+  let member_int j k ~default =
+    match member k j with `Int n -> n | _ -> default
+
+  let member_float j k ~default =
+    match member k j with
+    | `Float f -> f
+    | `Int n -> float_of_int n
+    | _ -> default
+
+  let b64_decode s =
+    let inv = Array.make 256 (-1) in
+    String.iteri
+      (fun i c -> inv.(Char.code c) <- i)
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let n = String.length s in
+    let b = Buffer.create (n / 4 * 3) in
+    let i = ref 0 in
+    (try
+       while !i < n do
+         let v j =
+           let c = s.[!i + j] in
+           if c = '=' then -1
+           else (
+             let d = inv.(Char.code c) in
+             if d < 0 then raise Exit;
+             d)
+         in
+         let a, b_, c, d = v 0, v 1, v 2, v 3 in
+         if a < 0 || b_ < 0 then raise Exit;
+         Buffer.add_char b (Char.chr ((a lsl 2) lor (b_ lsr 4)));
+         if c >= 0 then
+           Buffer.add_char b (Char.chr (((b_ land 15) lsl 4) lor (c lsr 2)));
+         if d >= 0 && c >= 0 then
+           Buffer.add_char b (Char.chr (((c land 3) lsl 6) lor d));
+         i := !i + 4
+       done;
+       Ok (Buffer.contents b)
+     with Exit -> Error "terminal: invalid base64")
+    [@@coverage off]
+
+  let hex (c : Lui_scene.color) =
+    Printf.sprintf "#%02x%02x%02x%02x" c.r c.g c.b c.a
+
+  let action_json = function
+    | Vt.Title (k, s) ->
+      `Assoc [ ("type", `String "title"); ("kind", `Int k);
+               ("title", `String s) ]
+    | Vt.Pwd s -> `Assoc [ ("type", `String "pwd"); ("path", `String s) ]
+    | Vt.Bell -> `Assoc [ ("type", `String "bell") ]
+    | Vt.Clipboard s ->
+      `Assoc [ ("type", `String "clipboard"); ("text", `String s) ]
+    | Vt.Reply s ->
+      `Assoc [ ("type", `String "reply"); ("text", `String s) ]
+    | Vt.Palette_set (i, c) ->
+      `Assoc [ ("type", `String "palette"); ("index", `Int i);
+               ("color", `String (hex c)) ]
+    | Vt.Ink_set c ->
+      `Assoc [ ("type", `String "ink"); ("color", `String (hex c)) ]
+    | Vt.Paper_set c ->
+      `Assoc [ ("type", `String "paper"); ("color", `String (hex c)) ]
+    | Vt.Cursor_ink_set c ->
+      `Assoc [ ("type", `String "cursor_ink"); ("color", `String (hex c)) ]
+
+  let ok j = Ok (Yojson.Safe.to_string j)
+  let obj () = `Assoc []
+
+  let of_json f payload =
+    match (try Ok (Yojson.Safe.from_string payload)
+           with Yojson.Json_error e -> Error e) with
+    | Error e -> Error ("terminal: invalid JSON: " ^ e)
+    | Ok (`Assoc _ as j) -> f j
+    | Ok _ -> Error "terminal: service input must be a JSON object"
+
+  let svc_spawn =
+    of_json @@ fun j ->
+      let argv =
+        match member_strs j "argv" with
+        | [] ->
+          [| (match Sys.getenv_opt "SHELL" with
+              | Some s when s <> "" -> s
+              | _ -> "/bin/sh") |]
+        | l -> Array.of_list l
+      in
+      let cwd = Option.value (member_str j "cwd") ~default:"" in
+      let env = Array.of_list (member_strs j "env") in
+      let t =
+        create
+          ~cols:(member_int j "cols" ~default:80)
+          ~rows:(member_int j "rows" ~default:24)
+          ~max_scrollback:(member_int j "max_scrollback" ~default:10_000)
+          ~font_size:(member_float j "font_size" ~default:13.)
+          ~scale:(member_float j "scale" ~default:2.)
+          ?families:(match member_strs j "families" with
+                     | [] -> None
+                     | l -> Some l)
+          ()
+      in
+      match (try Ok (spawn t ~argv ~env ~cwd)
+             with Failure e -> Error e) with
+      | Error e -> Error e
+      | Ok () ->
+        let id = !next in
+        incr next;
+        Hashtbl.replace terms id t;
+        ok (`Assoc [ ("id", `Int id) ])
+
+  let svc_write =
+    of_json @@ fun j ->
+      match find j with
+      | Error _ as e -> e
+      | Ok t -> (
+        match member_str j "data",
+              (match member "data64" j with
+               | `String s -> b64_decode s
+               | _ -> Error "") with
+        | Some s, _ -> write t s; ok (obj ())
+        | None, Ok s -> write t s; ok (obj ())
+        | None, Error _ -> Error "terminal: \"data\" or \"data64\" required")
+
+  let svc_read_events =
+    of_json @@ fun j ->
+      match find j with
+      | Error _ as e -> e
+      | Ok t ->
+        let actions = List.map action_json (pump t) in
+        let g = Vt.grid t.vt in
+        let cx, cy = G.cursor g in
+        let style, blink = G.cursor_style g in
+        ok (`Assoc [ ("alive", `Bool (pty_alive t));
+                     ("exit",
+                      (match pty_poll t with
+                       | Some c -> `Int c
+                       | None -> `Null));
+                     ("actions", `List actions);
+                     ("cursor",
+                      `Assoc [ ("x", `Int cx); ("y", `Int cy);
+                               ("visible", `Bool (G.mode_cursor_visible g));
+                               ("style", `Int style);
+                               ("blink", `Bool blink) ]);
+                     ("cols", `Int (G.cols g));
+                     ("rows", `Int (G.rows g));
+                     ("scrollback", `Int (G.sb_len g)) ])
+
+  let svc_resize =
+    of_json @@ fun j ->
+      match find j with
+      | Error _ as e -> e
+      | Ok t ->
+        resize t ~cols:(member_int j "cols" ~default:(G.cols (grid t)))
+                 ~rows:(member_int j "rows" ~default:(G.rows (grid t)));
+        ok (obj ())
+
+  let svc_close =
+    of_json @@ fun j ->
+      match find j with
+      | Error _ as e -> e
+      | Ok t ->
+        close_pty t;
+        Hashtbl.remove terms
+          (match member "id" j with `Int n -> n | _ -> -1);
+        ok (obj ())
+
+  let reset () =
+    Hashtbl.iter (fun _ t -> close_pty t) terms;
+    Hashtbl.clear terms
+end
+
+let plugin : Lui_plugin.t =
+  Lui_plugin.v "terminal" ~teardown:Service.reset
+    [ ("spawn", Service.svc_spawn); ("write", Service.svc_write);
+      ("read_events", Service.svc_read_events);
+      ("resize", Service.svc_resize); ("close", Service.svc_close) ]

@@ -3,7 +3,7 @@
  (modules lui_plugin_terminal terminal_wcwidth terminal_attrs
    terminal_grid terminal_vt terminal_pty terminal_keys terminal_links
    terminal_render)
- (libraries lui_scene lui_text lui_window str)
+ (libraries lui_scene lui_text lui_window lui_plugin yojson str)
  (foreign_stubs
   (language c)
   (names terminal_pty_stubs)

@@ -62,3 +62,12 @@ val scroll_view : t -> int -> unit
 val link_at : t -> row:int -> col:int -> L.hit option
 val link_uri : t -> int -> string
 val hover_link : t -> int -> unit
+
+(** {1 The plugin service} *)
+
+val plugin : Lui_plugin.t
+(** The ["plugin:terminal"] service descriptor: methods ["spawn"],
+    ["write"], ["read_events"], ["resize"] and ["close"], each taking
+    a JSON object and returning a JSON object.  Terminals are keyed by
+    the integer ["id"] that ["spawn"] returns.  Register with
+    [Lui_plugin.use \[plugin\]]. *)
