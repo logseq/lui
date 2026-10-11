@@ -72,7 +72,7 @@ let sdl_window (window : window) title =
          ~h:window.min_height);
     Ok win
 
-let web_view win (window : window) entry_file =
+let web_view win (window : window) source =
   try
     let host =
       Lui_webview.host_of_sdl_window (Sdl.unsafe_ptr_of_window win)
@@ -81,19 +81,14 @@ let web_view win (window : window) entry_file =
       (Lui_webview.create host
          (Lui_webview.rect 0. 0. (Float.of_int window.width)
             (Float.of_int window.height))
-         (Lui_webview.opts (Lui_webview.File entry_file)))
+         (Lui_webview.opts source))
   with Failure e -> Error e
 
-let run ~(window : window) ~title ~entry_file ~on_message ~on_ready =
-  let entry_file =
-    if Filename.is_relative entry_file then
-      Filename.concat (Sys.getcwd ()) entry_file
-    else entry_file
-  in
+let run ~(window : window) ~title ~source ~on_message ~on_ready =
   match sdl_window window title with
   | Error e -> Error e
   | Ok win ->
-    (match web_view win window entry_file with
+    (match web_view win window source with
      | Error e ->
        Sdl.destroy_window win;
        Sdl.quit ();

@@ -240,6 +240,24 @@ let file_url path =
     path;
   Buffer.contents b
 
+(* Reading the entry here keeps its decoding under our control: a
+   file:// load leaves encoding to engine sniffing, which misreads
+   UTF-8 pages that omit <meta charset> (the classic mojibake of CJK
+   and emoji pages). Valid UTF-8 — the encoding web specs and tooling
+   standardize on — becomes an [Html] source with a file:// base so
+   sibling assets still resolve; anything else falls back to [File]
+   and the engine's own detection for legacy encodings. *)
+let entry_source entry_file =
+  match (try Ok (Fs.read_file entry_file) with Sys_error e -> Error e)
+  with
+  | Error e -> Error e
+  | Ok bytes ->
+    if String.is_valid_utf_8 bytes then
+      Ok
+        (Lui_webview.Html
+           (bytes, file_url (Filename.dirname entry_file) ^ "/"))
+    else Ok (Lui_webview.File entry_file)
+
 (** {1 Webview provider} *)
 
 module type WEBVIEW = sig
@@ -367,18 +385,20 @@ let boot ?base ?(webview : (module WEBVIEW) option)
                 why)
        in
        if native_shell && Lui_webapp_sdl.available () then
-         match
-           let (w : window) = prep.prep_spec.window in
-           Lui_webapp_sdl.run
-             ~window:
-               { Lui_webapp_sdl.width = w.width; height = w.height;
-                 resizable = w.resizable; min_width = w.min_width;
-                 min_height = w.min_height }
-             ~title:prep.prep_spec.name ~entry_file:prep.entry_file
-             ~on_message ~on_ready
-         with
-         | Ok () -> ()
-         | Error e -> browser_or_fail ("native shell: " ^ e)
+         match entry_source prep.entry_file with
+         | Error e -> browser_or_fail ("entry: " ^ e)
+         | Ok source ->
+           (match
+              let (w : window) = prep.prep_spec.window in
+              Lui_webapp_sdl.run
+                ~window:
+                  { Lui_webapp_sdl.width = w.width; height = w.height;
+                    resizable = w.resizable; min_width = w.min_width;
+                    min_height = w.min_height }
+                ~title:prep.prep_spec.name ~source ~on_message ~on_ready
+            with
+            | Ok () -> ()
+            | Error e -> browser_or_fail ("native shell: " ^ e))
        else
          browser_or_fail "no webview backend installed")
 
