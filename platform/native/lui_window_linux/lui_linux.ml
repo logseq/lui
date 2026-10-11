@@ -6,11 +6,12 @@
 open Lui_protocol
 
 (* The renderer ladder. [LUI_GPU=0|cpu] renders on the CPU
-   ([Lui_raster]) and presents through [Lui_blit]; [LUI_GPU=vulkan]
-   renders offscreen through [Lui_vulkan], reads the frame back and
-   presents through [Lui_blit] — its present path is offscreen-only,
-   so the blit texture is the window's share of the GPU. Anything else
-   tries a GL 3.3 core context on the SDL window feeding [Lui_gl].
+   ([Lui_raster]) and presents through [Lui_blit]. The default prefers
+   [Lui_vulkan] — offscreen render, frame read back and presented
+   through [Lui_blit] (its present path is offscreen-only, so the
+   blit texture is the window's share of the GPU) — then a GL 3.3
+   core context on the SDL window feeding [Lui_gl], then the CPU
+   rung. [LUI_GPU=gl|opengl] skips Vulkan explicitly.
 
    Every rung can still fail at init (no display, no driver, no
    context): the driver walks the list left to right and always ends
@@ -20,8 +21,8 @@ type renderer_rung = Cpu | Vulkan | Gl | Noop
 let ladder ~env =
   match env with
   | "0" | "cpu" -> [ Cpu; Noop ]
-  | "vulkan" -> [ Vulkan; Gl; Noop ]
-  | _ -> [ Gl; Noop ]
+  | "gl" | "opengl" -> [ Gl; Cpu; Noop ]
+  | _ -> [ Vulkan; Gl; Cpu; Noop ]
 
 (* The last-resort renderer: consumes the scene, produces a correctly
    sized zeroed frame, and proves the loop paces, checks and exits

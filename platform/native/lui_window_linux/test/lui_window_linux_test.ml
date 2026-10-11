@@ -52,8 +52,10 @@ let press_actions acts =
 (* ---------- renderer ladder ---------- *)
 
 let test_ladder () =
-  Alcotest.(check bool) "default gl" true
-    (Lui_linux.ladder ~env:"" = [ Lui_linux.Gl; Lui_linux.Noop ]);
+  Alcotest.(check bool) "default vulkan" true
+    (Lui_linux.ladder ~env:""
+     = [ Lui_linux.Vulkan; Lui_linux.Gl; Lui_linux.Cpu;
+         Lui_linux.Noop ]);
   Alcotest.(check bool) "cpu" true
     (Lui_linux.ladder ~env:"cpu"
      = [ Lui_linux.Cpu; Lui_linux.Noop ]);
@@ -61,7 +63,14 @@ let test_ladder () =
     (Lui_linux.ladder ~env:"0" = [ Lui_linux.Cpu; Lui_linux.Noop ]);
   Alcotest.(check bool) "vulkan" true
     (Lui_linux.ladder ~env:"vulkan"
-     = [ Lui_linux.Vulkan; Lui_linux.Gl; Lui_linux.Noop ]);
+     = [ Lui_linux.Vulkan; Lui_linux.Gl; Lui_linux.Cpu;
+         Lui_linux.Noop ]);
+  Alcotest.(check bool) "gl skips vulkan" true
+    (Lui_linux.ladder ~env:"gl"
+     = [ Lui_linux.Gl; Lui_linux.Cpu; Lui_linux.Noop ]);
+  Alcotest.(check bool) "opengl skips vulkan" true
+    (Lui_linux.ladder ~env:"opengl"
+     = [ Lui_linux.Gl; Lui_linux.Cpu; Lui_linux.Noop ]);
   (* the no-op renderer returns a correctly sized zeroed frame *)
   let scene =
     Lui_scene.create ~mask_atlas:(Atlas.create ~bpp:1 ~w:8 ~h:8)
