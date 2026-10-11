@@ -1,0 +1,9 @@
+; Standalone placement demo: opens an SDL window, embeds a WKWebView,
+; moves it programmatically across layout rects and captures it to a
+; PNG. Mirrors the lui_ax/test/manual pattern — run it by hand:
+;   dune exec platform/native/lui_webview/test/manual/wv_demo.exe -- out.png
+(executable
+ (name wv_demo)
+ (modules wv_demo)
+ (libraries lui_webview tsdl unix)
+ (enabled_if (= %{system} macosx)))

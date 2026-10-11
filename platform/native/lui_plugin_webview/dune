@@ -1,0 +1,4 @@
+(library
+ (name lui_plugin_webview)
+ (modules lui_plugin_webview)
+ (libraries yojson lui_plugin lui_webview unix))
