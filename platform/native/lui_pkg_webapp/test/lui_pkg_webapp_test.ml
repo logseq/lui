@@ -181,10 +181,13 @@ let test_macos_e2e () =
       (W.find_embedded_spec ~exe)
   end
 
-(* open -W: the app runs the real launcher, which finds webapp.json,
-   prepares the file:// entry URL and — no webview backend in this
-   build — opens it in the default browser, then exits. A prompt exit
-   proves the packaged bundle is launchable end to end. *)
+(* Launchability: the packaged exe is the real launcher — it finds
+   webapp.json, prepares the entry, and boots the SDL + WKWebView
+   shell, which stays running until the window closes. A process that
+   is still alive after the boot grace period proves the window and
+   the web view came up; a clean exit proves the documented browser
+   fallback fired (headless / no engine). A nonzero exit is a launch
+   failure. *)
 let test_macos_launch () =
   if on_macos () then begin
     match launcher_exe () with
@@ -197,13 +200,37 @@ let test_macos_launch () =
         expect_ok
           (X.bundle_macos ~spec:s ~shell_exe:launcher ~dir:root ())
       in
-      check Alcotest.int "open -W returns" 0
-        (sh0
-           (Printf.sprintf
-              "open -W '%s' & opid=$!; n=0; while kill -0 $opid \
-               2>/dev/null && [ $n -lt 60 ]; do sleep 1; n=$((n+1)); \
-               done; kill $opid 2>/dev/null; wait $opid"
-              prod.app))
+      let exe = prod.app / "Contents/MacOS/WebApp" in
+      let log = root / "launch.log" in
+      let out =
+        Unix.openfile log [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC ]
+          0o644
+      in
+      let pid = Unix.create_process exe [| exe |] Unix.stdin out out in
+      Unix.close out;
+      let deadline = Unix.gettimeofday () +. 8.0 in
+      let rec poll () =
+        match Unix.waitpid [ Unix.WNOHANG ] pid with
+        | 0, _ ->
+          if Unix.gettimeofday () < deadline then begin
+            Unix.sleepf 0.2;
+            poll ()
+          end
+          else `Running
+        | _, Unix.WEXITED 0 -> `Clean_exit
+        | _, Unix.WEXITED n -> `Died (Printf.sprintf "exit %d" n)
+        | _, Unix.WSIGNALED n -> `Died (Printf.sprintf "signal %d" n)
+        | _, Unix.WSTOPPED n -> `Died (Printf.sprintf "stopped %d" n)
+      in
+      (match poll () with
+       | `Running ->
+         Unix.kill pid Sys.sigkill;
+         ignore (Unix.waitpid [] pid)
+       | `Clean_exit -> ()
+       | `Died m ->
+         Alcotest.fail
+           (Printf.sprintf "launch failed (%s): %s" m
+              (P.Fs.read_file log)))
   end
 
 (** {1 Linux AppDir + tarball} *)

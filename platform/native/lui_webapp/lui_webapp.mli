@@ -12,13 +12,18 @@
     the webview backend exposes) and the window lifecycle, then blocks
     until the window closes.
 
+    {b The default backend is {!Lui_webview}.} On platforms where it
+    reports a usable engine (WKWebView on macOS, WebView2 on Windows,
+    WebKitGTK on Linux) {!Lui_webapp_sdl.run} opens an SDL window whose
+    whole client area is the native web view and runs the shell loop.
+
     {b The webview is pluggable.} {!set_webview} installs a provider
-    implementing {!WEBVIEW} — the contract the native webview backend
-    (WKWebView on macOS, WebView2 on Windows, WebKitGTK on Linux)
-    fulfills. When no provider is installed {!boot} degrades: it opens
-    the entry's [file://] URL in the system default browser and reports
-    the degradation on stderr. When even that fallback cannot run —
-    no webview and no browser opener — [boot] raises [Failure] with a
+    implementing {!WEBVIEW} — a seam for tests and custom hosts that
+    need a different shell. When neither a provider nor the native
+    engine is available {!boot} degrades: it opens the entry's
+    [file://] URL in the system default browser and reports the
+    degradation on stderr. When even that fallback cannot run — no
+    webview and no browser opener — [boot] raises [Failure] with a
     clear message. *)
 
 (** {1 Specification} *)
@@ -113,10 +118,11 @@ val file_url : string -> string
 
 (** {1 The webview provider contract}
 
-    The surface a native webview backend implements. A window [t]
-    shows one page; [run] drives the platform event loop until the
-    window closes. All functions may report errors through their
-    [result]s instead of raising. *)
+    The surface a custom webview backend implements — a seam for tests
+    and hosts that do not use the built-in {!Lui_webview}/SDL shell.
+    A window [t] shows one page; [run] drives the platform event loop
+    until the window closes. All functions may report errors through
+    their [result]s instead of raising. *)
 
 module type WEBVIEW = sig
   type t
@@ -146,6 +152,13 @@ val set_webview : (module WEBVIEW) option -> unit
 
 val webview : unit -> (module WEBVIEW) option
 
+module Sdl_shell : module type of Lui_webapp_sdl
+(** The built-in SDL + {!Lui_webview} shell: {!Sdl_shell.available}
+    probes whether the platform engine can create a view and
+    {!Sdl_shell.run} opens the window and blocks until it closes.
+    {!boot} drives it when no {!WEBVIEW} provider is installed;
+    callers that manage their own spec flow can use it directly. *)
+
 (** {1 Boot} *)
 
 type prepared = {
@@ -166,6 +179,7 @@ val open_in_browser : string -> (unit, string) result
 val boot :
   ?base:string ->
   ?webview:(module WEBVIEW) ->
+  ?native_shell:bool ->
   ?fallback_browser:bool ->
   ?on_message:(string -> unit) ->
   ?on_ready:(eval:(string -> unit) -> unit) ->
@@ -177,11 +191,22 @@ val boot :
       entry URL, registers [?on_message] as the JS → native message
       hook, hands the eval channel to [?on_ready], and runs the event
       loop until the window closes;
-    - without one and [fallback_browser] (default [true]): opens the
+    - otherwise when the native engine is available
+      ({!Lui_webapp_sdl.available}) and [native_shell] (default
+      [true]): opens an SDL window whose whole content is the platform
+      web view loading the entry file, with [?on_message] on the
+      [window.webkit.messageHandlers.lui_wv] channel and [?on_ready]
+      handed the eval channel after the first load finishes;
+    - otherwise with [fallback_browser] (default [true]): opens the
       entry URL in the default browser and reports the degradation on
-      stderr;
-    - without one and [~fallback_browser:false], or when the browser
-      cannot be opened: raises [Failure] with the reason. *)
+      stderr — also the outcome when the native shell itself reports
+      [Error] (no display, engine failed to load the entry);
+    - otherwise with [~fallback_browser:false], or when the browser
+      cannot be opened: raises [Failure] with the reason.
+
+    [native_shell:false] bypasses the built-in SDL/{!Lui_webview}
+    shell entirely — the degrade check callers use to reach only
+    custom providers or the browser. *)
 
 (** {1 Packaged-spec discovery}
 

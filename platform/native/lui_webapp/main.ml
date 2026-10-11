@@ -4,6 +4,7 @@
      webapp [WEBAPP_JSON]     boot a spec file
      webapp --spec PATH       same, explicit flag
      webapp --no-browser      fail instead of the browser fallback
+     webapp --browser         skip the native shell, open the browser
      webapp --print-url       print the resolved entry URL and exit
      webapp --help
 
@@ -16,12 +17,13 @@ let usage () =
   Printf.printf
     "webapp — run a webapp spec in a native webview shell\n\
      usage: %s [--spec WEBAPP_JSON | WEBAPP_JSON] [--no-browser] \
-     [--print-url] [--help]\n"
+     [--browser] [--print-url] [--help]\n"
     Sys.argv.(0)
 
 type args = {
   spec_path : string option;
   no_browser : bool;
+  force_browser : bool;
   print_url : bool;
 }
 
@@ -32,6 +34,7 @@ let parse argv =
       match argv.(i) with
       | "--help" | "-h" -> Error `Help
       | "--no-browser" -> go { acc with no_browser = true } (i + 1)
+      | "--browser" -> go { acc with force_browser = true } (i + 1)
       | "--print-url" -> go { acc with print_url = true } (i + 1)
       | "--spec" ->
         if i + 1 >= Array.length argv then
@@ -44,7 +47,10 @@ let parse argv =
          | Some _ -> Error (`Msg ("extra argument " ^ s))
          | None -> go { acc with spec_path = Some s } (i + 1))
   in
-  go { spec_path = None; no_browser = false; print_url = false } 1
+  go
+    { spec_path = None; no_browser = false; force_browser = false;
+      print_url = false }
+    1
 
 let find_spec args =
   match args.spec_path with
@@ -87,6 +93,12 @@ let () =
              exit 2
            | Ok prep ->
              if args.print_url then print_endline prep.url
+             else if args.force_browser then
+               (match Lui_webapp.open_in_browser prep.url with
+                | Ok () -> ()
+                | Error m ->
+                  prerr_endline ("webapp: " ^ m);
+                  exit 2)
              else
                Lui_webapp.boot ~base
                  ~fallback_browser:(not args.no_browser)
