@@ -253,7 +253,7 @@ let direction_of ~store ~id kind : Lui_flex.flex_direction =
     | "row" | "grid" | "button-group" | "toggle-group"
     | "input-group-actions" | "table-row" | "tabs" | "bottom-tabs"
     | "toolbar" | "swipe-actions" | "stepper" | "breadcrumb"
-    | "pagination" | "split" | "drawer" -> Row
+    | "pagination" | "split" | "drawer" | "link" -> Row
     | "edge-inset" -> (
       match pstr store id "edge" with
       | Some ("leading" | "trailing") -> Row
