@@ -1327,6 +1327,56 @@ let control_icon_ops ctx store id r alpha =
                 { x = 0.; y = 0.; w = float img.iw; h = float img.ih };
               igrayscale = false; iopacity = alpha } ])
 
+(* Labeled chrome carrying an [icon] prop and no children paints the
+   glyph in a side slot — on the web the icon is a flex child sitting
+   before ("leading", default) or after ("trailing") the label, so the
+   label's rect steps aside by the icon zone (glyph + 6px gap). The
+   text engine still applies the kind's own pad inside the shrunken
+   rect, keeping the same visual gap. Icon-only nodes keep the
+   centered slot from [control_icon_ops]. *)
+let labeled_content_ops ctx store id r alpha ~fg ~placeholder_ok =
+  match ctx.hooks.image_of id, Lui_store.child_ids store id with
+  | Some img, [] -> (
+    let has_label =
+      (match pstr store id "text" with
+       | Some t -> t <> ""
+       | None -> false)
+      ||
+      match pstr store id "title" with
+      | Some t -> t <> ""
+      | None -> false
+    in
+    if not has_label then control_icon_ops ctx store id r alpha
+    else
+      let s = ctx.scale in
+      let size = Float.min (16. *. s) (Float.max 0. (r.h -. 2.)) in
+      if size <= 0. then []
+      else
+        let tp = text_placement_of store id in
+        let pad = tp.tp_pad_x *. s in
+        let gap = 6. *. s in
+        let trailing = pstr store id "icon-placement" = Some "trailing" in
+        let ix =
+          if trailing then r.x +. r.w -. pad -. size else r.x +. pad
+        in
+        let dst = rect ix (r.y +. ((r.h -. size) /. 2.)) size size in
+        let text_r =
+          if trailing then
+            { r with w = Float.max 0. ((ix -. r.x) +. pad -. gap) }
+          else
+            { r with
+              x = r.x +. size +. gap;
+              w = Float.max 0. (r.w -. size -. gap) }
+        in
+        Image
+          { irect2 = dst; iradii = (0., 0., 0., 0.);
+            icontinuous = false; iimage = img;
+            isrc =
+              { x = 0.; y = 0.; w = float img.iw; h = float img.ih };
+            igrayscale = false; iopacity = alpha }
+        :: text_ops ~fg ctx store id text_r alpha ~placeholder_ok)
+  | _ -> text_ops ~fg ctx store id r alpha ~placeholder_ok
+
 (* vertical scrollbar thumb inside a scroll container's clip. *)
 let scrollbar_ops ctx store id r alpha =
   match ctx.hooks.scroll_of id with
@@ -1932,7 +1982,7 @@ let rec paint_own ctx store id st kind r rs alpha =
         | _ -> box_ops ctx store id rs r alpha))
     | "text" | "label" | "heading" | "paragraph" | "br" | "link" | "kbd" ->
       box_ops ctx store id rs r alpha
-      @ text_ops ~fg ctx store id r alpha ~placeholder_ok:false
+      @ labeled_content_ops ctx store id r alpha ~fg ~placeholder_ok:false
     | "text-field" | "secure-field" | "input" | "search-field" | "textarea"
     | "select" | "combobox" ->
       box_ops ctx store id rs r alpha
@@ -1941,9 +1991,9 @@ let rec paint_own ctx store id st kind r rs alpha =
     | "bottom-tab" | "list-item" | "swipe-action" | "file-picker" | "step"
     | "list-section-header" | "list-section-footer" | "tab" | "table-cell" ->
       (* labeled chrome: box decoration plus the label through the text
-         engine *)
+         engine; an icon prop takes a side slot *)
       box_ops ctx store id rs r alpha
-      @ text_ops ~fg ctx store id r alpha ~placeholder_ok:false
+      @ labeled_content_ops ctx store id r alpha ~fg ~placeholder_ok:false
     | kind -> (
       match String.index_opt kind ':' with
       | Some _ when String.length kind > 10 && String.sub kind 0 10 = "extension:" -> (
