@@ -697,5 +697,7 @@ CAMLprim value lww_perf_s(value a)
 { (void)a; return lww_unsupported(); }
 CAMLprim value lww_delay_ms(value a)
 { (void)a; return lww_unsupported(); }
+CAMLprim value lww_send_wm_getobject(value a, value b, value c)
+{ (void)a; (void)b; (void)c; return lww_unsupported(); }
 
 #endif /* _WIN32 */
