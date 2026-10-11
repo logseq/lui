@@ -1,0 +1,6 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <rect x="2" y="2" width="20" height="20" fill="#e0e0e0"/>
+  <text x="12" y="14" font-size="10">ignored</text>
+  <text x="6" y="20"><tspan>also ignored</tspan></text>
+  <circle cx="12" cy="12" r="3" fill="#333333"/>
+</svg>
