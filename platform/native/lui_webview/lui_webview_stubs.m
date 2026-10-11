@@ -1507,7 +1507,7 @@ static double lui_win_zoom(LuiWv *w)
 
 static void lui_win_set_ua(LuiWv *w, const char *ua)
 {
-  lui_obj_t *settings = NULL;
+  void *settings = NULL;
   void *s2 = NULL;
   wchar_t *s;
   LUI_CALL1(w->wv, LUI_WV_GET_SETTINGS, lui_hresult,
