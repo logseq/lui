@@ -951,6 +951,7 @@ let text_placement_of store id =
     | "tooltip" | "toast" -> (Ta_center, 8., 4., false)
     | "alert" | "bubble" -> (Ta_start, 10., 6., false)
     | "menu-item" -> (Ta_start, 10., 5., false)
+    | "table-cell" | "table-row" -> (Ta_start, 10., 6., false)
     | "step" -> (Ta_center, 8., 4., false)
     | "list-item" -> (Ta_start, 12., 6., false)
     | "text-field" | "secure-field" | "input" | "search-field"
@@ -1310,6 +1311,32 @@ let focusable = function
   | "checkbox" | "radio" | "switch" | "slider" | "number-stepper" -> true
   | _ -> false
 
+(* Contextual role a direct child takes inside a group container: the
+   group contracts restyle unstyled children — segments in button and
+   toggle groups, tab triggers in a tabs strip, melted field chrome in
+   an input-group composer. Styled children keep the look the view
+   asked for. *)
+type child_role = Role_none | Role_segment | Role_tab | Role_composer
+
+let child_role_of store id kind unstyled =
+  if not unstyled then Role_none
+  else
+    match Lui_store.parent store id with
+    | None -> Role_none
+    | Some pid -> (
+      match Lui_store.kind store pid with
+      | "button-group" | "toggle-group" -> (
+        match kind with
+        | "button" | "toggle-button" -> Role_segment
+        | _ -> Role_none)
+      | "tabs" -> if kind = "button" then Role_tab else Role_none
+      | "input-group" -> (
+        match kind with
+        | "text-field" | "secure-field" | "input" | "search-field"
+        | "textarea" | "select" | "combobox" -> Role_composer
+        | _ -> Role_none)
+      | _ -> Role_none)
+
 (* Default surface treatment for kinds that arrive unstyled. Every
    aspect (fill, border, radius, shadow) defers to an explicit prop;
    when nothing is set the token palette supplies the whole look. *)
@@ -1327,6 +1354,22 @@ let default_chrome ctx store id st kind r rs alpha =
     fill ~continuous:true r (corners r rad false) ~paint:Solid ~c1:bg
       ~c2:bg ~grad:(0., 0., 0., 0.) ~border:bw ~bcolor ~dashed ~alpha
   in
+  let hairline x y w =
+    fill (rect x y w (Float.max 1. (1. *. s))) (0., 0., 0., 0.)
+      ~paint:Solid ~c1:(col_border ctx) ~c2:(col_border ctx)
+      ~grad:(0., 0., 0., 0.) ~border:zb ~bcolor:zc ~dashed:false ~alpha
+  in
+  let child_role =
+    child_role_of store id kind (not (bg_styled || border_styled))
+  in
+  let last_sibling =
+    match Lui_store.parent store id with
+    | Some pid -> (
+      match List.rev (Lui_store.child_ids store pid) with
+      | last :: _ -> last = id
+      | [] -> true)
+    | None -> true
+  in
   (* ambient + key shadow pair under floating surfaces *)
   let shadow_pair rad specs =
     match rs.rs_shadow with
@@ -1341,6 +1384,60 @@ let default_chrome ctx store id st kind r rs alpha =
         specs
   in
   match kind with
+  | "button" | "toggle-button" when child_role = Role_segment ->
+    (* One segment of a shared track: only state lifts a face —
+       selection a pressed pill, hover a subtle wash. *)
+    let i = 2. *. s in
+    let ri = rect (r.x +. i) (r.y +. i) (Float.max 0. (r.w -. (2. *. i)))
+        (Float.max 0. (r.h -. (2. *. i)))
+    in
+    let ri_r = corners ri (rad (4. *. s)) false in
+    if st.selected || st.pressed then
+      [ fill ~continuous:true ri ri_r ~paint:Solid
+          ~c1:(col_surface_pressed ctx) ~c2:(col_surface_pressed ctx)
+          ~grad:(0., 0., 0., 0.) ~border:zb ~bcolor:zc ~dashed:false ~alpha ]
+    else if st.hovered then
+      [ fill ~continuous:true ri ri_r ~paint:Solid
+          ~c1:(col_surface_hover ctx) ~c2:(col_surface_hover ctx)
+          ~grad:(0., 0., 0., 0.) ~border:zb ~bcolor:zc ~dashed:false ~alpha ]
+    else []
+  | "button" when child_role = Role_tab ->
+    (* A trigger in the tab strip: no face, the accent underline marks
+       choice. *)
+    if st.selected then
+      let h = 2. *. s and i = 6. *. s in
+      [ fill
+          (rect (r.x +. i) (r.y +. r.h -. h)
+             (Float.max 0. (r.w -. (2. *. i))) h)
+          (0., 0., 0., 0.) ~paint:Solid ~c1:(col_accent ctx)
+          ~c2:(col_accent ctx) ~grad:(0., 0., 0., 0.) ~border:zb ~bcolor:zc
+          ~dashed:false ~alpha ]
+    else []
+  | "text-field" | "secure-field" | "input" | "search-field"
+  | "textarea" | "select" | "combobox"
+    when child_role = Role_composer ->
+    []
+  | "button-group" | "toggle-group" | "input-group" ->
+    (* The shared track every segment lives in. *)
+    let rad = rad (6. *. s) in
+    (if bg_styled then [] else [ face (col_surface ctx) rad zb zc ~dashed:false ])
+    @ (if border_styled || bg_styled then []
+       else [ face zc rad bw1 (col_control_border ctx) ~dashed:false ])
+  | "bottom-tabs" ->
+    (if bg_styled then [] else [ face (col_surface ctx) (rad 0.) zb zc ~dashed:false ])
+    @ [ hairline r.x r.y r.w ]
+  | "toolbar" ->
+    (if bg_styled then [] else [ face (col_surface ctx) (rad 0.) zb zc ~dashed:false ])
+    @ [ hairline r.x (r.y +. r.h -. Float.max 1. (1. *. s)) r.w ]
+  | "table-row" ->
+    (if bg_styled then []
+     else if st.selected then
+       [ face (col_accent ctx) (rad 0.) zb zc ~dashed:false ]
+     else if st.hovered then
+       [ face (col_surface_hover ctx) (rad 0.) zb zc ~dashed:false ]
+     else [])
+    (* The final row has no divider. *)
+    @ (if last_sibling then [] else [ hairline r.x (r.y +. r.h -. 1.) r.w ])
   | "button" | "toggle-button" | "toggle" | "menu-trigger"
   | "number-stepper" ->
     let rad = rad (6. *. s) in
@@ -1437,10 +1534,23 @@ let default_text_fg ctx store id kind st rs =
     | "link" -> col_accent ctx
     | "menu-item" when st.hovered || st.focused ->
       if bg_styled then text_fg ctx store id else col_accent_text ctx
-    | "list-item" when st.selected ->
+    | "list-item" | "table-row" when st.selected ->
       if bg_styled then text_fg ctx store id else col_accent_text ctx
-    | "bottom-tab" | "tab" ->
+    | "tab" ->
+      (* Top-strip tabs mark choice with darker, heavier ink + the
+         accent underline; the mobile tab bar keeps accent ink. *)
+      if st.selected then text_fg ctx store id else col_muted_fg ctx
+    | "bottom-tab" ->
       if st.selected then col_accent ctx else col_muted_fg ctx
+    | "button"
+      when child_role_of store id kind
+             (not
+                (bg_styled
+                || prop_set store id "border-width"
+                || prop_set store id "border-color"))
+           = Role_tab ->
+      (* Tab triggers mute until selected. *)
+      if st.selected then text_fg ctx store id else col_muted_fg ctx
     | "swipe-action" ->
       if bg_styled then text_fg ctx store id else col_accent_text ctx
     | "tooltip" | "toast" | "alert" | "bubble" -> col_inverse_fg ctx
@@ -1599,7 +1709,7 @@ let rec paint_own ctx store id st kind r rs alpha =
       @ text_ops ~fg ctx store id r alpha ~placeholder_ok:true
     | "button" | "toggle-button" | "toggle" | "menu-item" | "menu-trigger"
     | "bottom-tab" | "list-item" | "swipe-action" | "file-picker" | "step"
-    | "list-section-header" | "list-section-footer" | "tab" ->
+    | "list-section-header" | "list-section-footer" | "tab" | "table-cell" ->
       (* labeled chrome: box decoration plus the label through the text
          engine *)
       box_ops ctx store id rs r alpha

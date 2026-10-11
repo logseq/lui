@@ -512,45 +512,40 @@ let cells : cell list =
                                 (SelectedBackground, sv "#dbeafe") ]) ());
     cell "tabs" "tabs" "tab strip"
       (n Tabs ~props:(sized ~h:30. [])
-         ~kids:[ n Row ~props:(sized ~h:26. [ (Gap, fv 4.) ])
-                   ~kids:[ chrome MenuItem "General" [ (BackgroundValue, sv "#dbeafe"); (CornerRadius, fv 4.) ];
-                           chrome MenuItem "Account" [];
-                           chrome MenuItem "About" [] ] () ] ~cov:true ());
+         ~kids:[ n Button ~props:(sized ~h:24. [ (TextValue, sv "General"); (Selected, bv true) ]) ();
+                 n Button ~props:(sized ~h:24. [ (TextValue, sv "Account") ]) ();
+                 n Button ~props:(sized ~h:24. [ (TextValue, sv "About") ]) () ]
+         ~cov:true ());
     cell "bottom_tabs" "bottom-tabs" "tab bar"
-      (n BottomTabs ~props:(sized ~h:30. [ (BackgroundValue, sv "#f8fafc");
-                                           (BorderWidth, fv 1.); (BorderColorValue, sv "#e2e8f0") ])
-         ~kids:[ n Row ~props:(sized ~h:26. [ (Gap, fv 2.) ])
-                   ~kids:[ n BottomTab ~props:(sized ~h:24. [ (TextValue, sv "Home"); (Selected, bv true);
-                                                             (SelectedBackground, sv "#e0e7ff") ]) ();
-                           n BottomTab ~props:(sized ~h:24. [ (TextValue, sv "Search") ]) ();
-                           n BottomTab ~props:(sized ~h:24. [ (TextValue, sv "Settings") ]) () ] () ]
+      (n BottomTabs ~props:(sized ~h:30. [])
+         ~kids:[ n BottomTab ~props:(sized ~h:24. [ (TextValue, sv "Home"); (Selected, bv true) ]) ();
+                 n BottomTab ~props:(sized ~h:24. [ (TextValue, sv "Search") ]) ();
+                 n BottomTab ~props:(sized ~h:24. [ (TextValue, sv "Settings") ]) () ]
          ~cov:true ());
     cell "button_group" "button-group" "segmented cluster"
-      (n ButtonGroup ~props:(sized ~h:30. [])
-         ~kids:[ n Row ~props:(sized ~h:26. [ (Gap, fv 0.) ])
-                   ~kids:[ chrome Button "Left" bordered;
-                           chrome Button "Center" (bordered @ [ (BackgroundValue, sv "#2563eb"); (ForegroundValue, sv "#ffffff") ]);
-                           chrome Button "Right" bordered ] () ] ~cov:true ());
-    cell "toggle_group" "toggle-group" "format toggles"
-      (n ToggleGroup ~props:(sized ~h:30. [])
-         ~kids:[ n Row ~props:(sized ~h:26. [ (Gap, fv 4.) ])
-                   ~kids:[ n ToggleButton ~st:selected
-                             ~props:(sized ~h:24. [ (TextValue, sv "B"); (SelectedBackground, sv "#dbeafe");
-                                                    (BorderWidth, fv 1.); (BorderColorValue, sv "#94a3b8") ]) ();
-                           chrome ToggleButton "I" [ (BorderWidth, fv 1.); (BorderColorValue, sv "#94a3b8") ];
-                           chrome ToggleButton "U" [ (BorderWidth, fv 1.); (BorderColorValue, sv "#94a3b8") ] ] () ]
+      (n ButtonGroup ~props:(sized ~h:28. [])
+         ~kids:[ n Button ~props:(sized ~h:24. [ (TextValue, sv "Left") ]) ();
+                 n Button ~props:(sized ~h:24. [ (TextValue, sv "Center"); (Selected, bv true) ]) ();
+                 n Button ~props:(sized ~h:24. [ (TextValue, sv "Right") ]) () ]
          ~cov:true ());
-    cell "input_group" "input-group" "field + action"
-      (n InputGroup ~props:(sized ~h:32. [])
-         ~kids:[ n Row ~props:(sized ~h:30. [ (Gap, fv 4.) ])
-                   ~kids:[ n TextField ~props:(sized ~h:28. ([ (PlaceholderValue, sv "email") ] @ bordered
-                                              @ [ (GrowValue, fv 1.) ])) ();
-                           n InputGroupActions
-                             ~kids:[ chrome Button "Go" primary_btn ] () ] () ] ~cov:true ());
+    cell "toggle_group" "toggle-group" "format toggles"
+      (n ToggleGroup ~props:(sized ~h:28. [])
+         ~kids:[ n ToggleButton ~props:(sized ~h:24. [ (TextValue, sv "B"); (Selected, bv true) ]) ();
+                 n ToggleButton ~props:(sized ~h:24. [ (TextValue, sv "I") ]) ();
+                 n ToggleButton ~props:(sized ~h:24. [ (TextValue, sv "U") ]) () ]
+         ~cov:true ());
+    cell "input_group" "input-group" "composer"
+      (n InputGroup ~props:(sized ~h:56. [])
+         ~kids:[ n Textarea ~props:(sized ~h:26. [ (PlaceholderValue, sv "Write a reply") ]) ();
+                 n InputGroupActions
+                   ~kids:[ n Button ~props:(sized ~h:22. [ (TextValue, sv "Attach") ]) ();
+                           n Button ~props:(sized ~h:22. ([ (TextValue, sv "Send") ] @ primary_btn)) () ] () ]
+         ~cov:true ());
     cell "input_group_actions" "input-group-actions" "action pair"
-      (n InputGroupActions ~props:(sized ~h:30. [])
-         ~kids:[ n Row ~props:(sized ~h:26. [ (Gap, fv 4.) ])
-                   ~kids:[ chrome Button "X" bordered; chrome Button "OK" primary_btn ] () ] ~cov:true ());
+      (n InputGroupActions ~props:(sized ~h:26. [])
+         ~kids:[ n Button ~props:(sized ~h:22. [ (TextValue, sv "Cancel") ]) ();
+                 n Button ~props:(sized ~h:22. ([ (TextValue, sv "OK") ] @ primary_btn)) () ]
+         ~cov:true ());
     cell "radio_group" "radio-group" "option set"
       (n RadioGroup ~props:(sized ~h:56. [ (Gap, fv 4.) ])
          ~kids:[ n Radio ~props:(sized ~h:16. [ (Checked, bv true); (TextValue, sv "Daily") ]) ();
@@ -605,37 +600,30 @@ let cells : cell list =
                    ~kids:[ txt "v"; txt "Details" ] ();
                  txt "Expanded body copy" ] ~cov:true ());
     cell "table" "table" "2x2 grid"
-      (n Table ~props:(sized ~h:52. [ (Gap, fv 0.) ])
+      (n Table ~props:(sized ~h:52. [])
          ~kids:[ n TableRow ~props:(sized ~h:24. [])
-                   ~kids:[ n Row ~props:(sized ~h:22. [ (Gap, fv 2.) ])
-                             ~kids:[ n TableCell ~props:(sized ~h:20. [ (BackgroundValue, sv "#f1f5f9");
-                                                                         (BorderWidth, fv 1.); (BorderColorValue, sv "#cbd5e1") ])
-                                       ~kids:[ txt "Name" ] ();
-                                     n TableCell ~props:(sized ~h:20. [ (BackgroundValue, sv "#f1f5f9");
-                                                                         (BorderWidth, fv 1.); (BorderColorValue, sv "#cbd5e1") ])
-                                       ~kids:[ txt "Value" ] () ] () ] ();
+                   ~kids:[ n TableCell ~props:(sized ~h:22. [ (TextValue, sv "Name"); (FontWeight, iv 600);
+                                                              (ForegroundValue, sv "#64748b") ]) ();
+                           n TableCell ~props:(sized ~h:22. [ (TextValue, sv "Value"); (FontWeight, iv 600);
+                                                              (ForegroundValue, sv "#64748b") ]) () ] ();
                  n TableRow ~props:(sized ~h:24. [])
-                   ~kids:[ n Row ~props:(sized ~h:22. [ (Gap, fv 2.) ])
-                             ~kids:[ n TableCell ~props:(sized ~h:20. [ (BorderWidth, fv 1.); (BorderColorValue, sv "#cbd5e1") ])
-                                       ~kids:[ txt "alpha" ] ();
-                                     n TableCell ~props:(sized ~h:20. [ (BorderWidth, fv 1.); (BorderColorValue, sv "#cbd5e1") ])
-                                       ~kids:[ txt "1.0" ] () ] () ] () ] ~cov:true ());
+                   ~kids:[ n TableCell ~props:(sized ~h:22. [ (TextValue, sv "alpha") ]) ();
+                           n TableCell ~props:(sized ~h:22. [ (TextValue, sv "1.0") ]) () ] () ] ~cov:true ());
     cell "table_row" "table-row" "one row"
       (n TableRow ~cov:true ~props:(sized ~h:26. [])
-         ~kids:[ n Row ~props:(sized ~h:24. [ (Gap, fv 2.) ])
-                   ~kids:[ n TableCell ~props:(sized ~h:22. bordered) ~kids:[ txt "cell" ] ();
-                           n TableCell ~props:(sized ~h:22. bordered) ~kids:[ txt "cell" ] () ] () ] ());
+         ~kids:[ n TableCell ~props:(sized ~h:22. [ (TextValue, sv "cell") ]) ();
+                 n TableCell ~props:(sized ~h:22. [ (TextValue, sv "cell") ]) () ] ());
     cell "table_cell" "table-cell" "one cell"
-      (n TableCell ~cov:true ~props:(sized ~h:24. bordered) ~kids:[ txt "Cell" ] ());
+      (n TableCell ~cov:true ~props:(sized ~h:24. [ (TextValue, sv "Cell") ]) ());
     cell "tree" "tree" "indented rows"
       (n Tree ~props:(sized ~h:56. [ (Gap, fv 2.) ])
          ~kids:[ txt "v src"; txt "  v app"; txt "    - main.ml" ] ~cov:true ());
     cell "toolbar" "toolbar" "tool row"
-      (n Toolbar ~props:(sized ~h:30. [ (BackgroundValue, sv "#f8fafc");
-                                        (BorderWidth, fv 1.); (BorderColorValue, sv "#e2e8f0") ])
-         ~kids:[ n Row ~props:(sized ~h:24. [ (Gap, fv 4.); (PaddingValue, fv 2.) ])
-                   ~kids:[ chrome Button "B" bordered; chrome Button "I" bordered;
-                           chrome Button "U" bordered; txt "tools" ] () ] ~cov:true ());
+      (n Toolbar ~props:(sized ~h:30. [ (Gap, fv 4.) ])
+         ~kids:[ n Button ~props:(sized ~h:22. [ (TextValue, sv "B") ]) ();
+                 n Button ~props:(sized ~h:22. [ (TextValue, sv "I") ]) ();
+                 n Button ~props:(sized ~h:22. [ (TextValue, sv "U") ]) ();
+                 txt "tools" ] ~cov:true ());
     cell "status_bar" "status-bar" "status row"
       (n StatusBar ~props:(sized ~h:22. [ (BackgroundValue, sv "#0f172a") ])
          ~kids:[ n Row ~props:(sized ~h:18. [ (Gap, fv 4.); (PaddingValue, fv 2.) ])
