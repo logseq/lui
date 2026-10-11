@@ -182,13 +182,15 @@ let slot_of t run_font gid sub shade scale scene =
   | None ->
     let n = Lui_text.subpixel_positions ~scale run_font in
     let dx = if n <= 1 then 0. else float sub /. float n in
-    let colored = Lui_text.is_color run_font in
     let slot =
       match
         Lui_text.rasterize ~scale ~dx
           ~shade:(float shade /. 8.) run_font gid
       with
       | Some b when b.Lui_text.w > 0 && b.Lui_text.h > 0 ->
+        (* The bitmap's own format decides the atlas: a color font can
+           still rasterize a monochrome glyph (coverage mask). *)
+        let colored = b.Lui_text.color in
         let atlas =
           if colored then scene.color_atlas else scene.mask_atlas
         in
