@@ -1,0 +1,5 @@
+(test
+ (name lui_plugin_terminal_test)
+ (modules lui_plugin_terminal_test)
+ (libraries lui_plugin_terminal lui_scene lui_text lui_window alcotest
+  unix str))
