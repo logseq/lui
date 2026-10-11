@@ -89,13 +89,19 @@ let () =
   let d3d_state = ref None in
   let present_last = ref None in
   (* The ladder walk returns the renderer plus the live [Lui_d3d11.t]
-     (when a D3D11 rung won) so shutdown can release the device. *)
-  let renderer, d3d_live =
+     (when a D3D11 rung won) so shutdown can release the device.
+     [remaining] keeps the rungs below the active one so a runtime
+     demotion can re-walk the tail. *)
+  let remaining = ref [] in
+  let renderer, d3d_live, walk =
     let rec walk = function
       | [] ->
+        remaining := [];
         warn "all renderer rungs failed; using no-op loop renderer";
         (Lui_window_windows.noop_renderer, None)
-      | rung :: rest -> (
+      | rung :: rest ->
+        remaining := rest;
+        (
         match rung with
         | Lui_window_windows.Cpu -> (
           (* CPU rung: Lui_raster renders the scene; StretchDIBits
@@ -188,9 +194,38 @@ let () =
         | Lui_window_windows.Noop ->
           (Lui_window_windows.noop_renderer, None))
     in
-    walk rungs
+    let r, d = walk rungs in (r, d, walk)
   in
   d3d_state := d3d_live;
+
+  (* Runtime backend-loss recovery: a device-removed or any render
+     exception demotes the active rung to the next ladder entry. The
+     scene store is untouched, so the next repaint re-uploads a full
+     scene — identical pixels on the CPU path by the parity
+     contract. *)
+  let renderer_cell = ref renderer in
+  let demote reason =
+    warn "renderer %s lost (%s); stepping down the ladder"
+      (!renderer_cell).Lui_host.name reason;
+    (match !d3d_state with
+     | Some d -> Lui_d3d11.release d; d3d_state := None
+     | None -> ());
+    present_last := None;
+    let r, d = walk !remaining in
+    renderer_cell := r;
+    d3d_state := d
+  in
+  (* The host owns a stable record whose render delegates to the live
+     rung, so a demote needs no host rebuild. *)
+  let renderer_live =
+    { Lui_host.name = "lui (resilient)";
+      render =
+        (fun s ->
+           try (!renderer_cell).Lui_host.render s
+           with exn ->
+             demote (Printexc.to_string exn);
+             (!renderer_cell).Lui_host.render s) }
+  in
 
   (* Wiring: mutable cells so the paint hooks can reach the host,
      scene and scale that only exist after Lui_host.create. *)
@@ -273,7 +308,10 @@ let () =
         image_of = (fun _ -> None);
         shadow_of = (fun _ -> None) }
   in
-  let host = Lui_host.create ~hooks ~renderer ~width:dw ~height:dh ~scale () in
+  let host =
+    Lui_host.create ~hooks ~renderer:renderer_live ~width:dw ~height:dh
+      ~scale ()
+  in
   host_cell := Some host;
   let store = Lui_host.store host in
   let win_w = ref cfg.width and win_h = ref cfg.height in
@@ -374,7 +412,8 @@ let () =
       (* The renderer badge: static here, updated with fps once a
          second further down. *)
       ignore
-        (Lui_app.send app (Demo_app.Badge renderer.Lui_host.name));
+        (Lui_app.send app
+           (Demo_app.Badge (!renderer_cell).Lui_host.name));
       Some item
     end
   in
@@ -525,7 +564,7 @@ he caret column — horizontal padding plus the
       if req_hit "clipboard" m.Demo_app.req_clipboard then begin
         let s =
           Printf.sprintf "lui_window_windows %dx%d renderer=%s frames=%d"
-            dw dh renderer.Lui_host.name !frame in
+            dw dh (!renderer_cell).Lui_host.name !frame in
         log "shell clipboard: wrote %d chars (ok=%b)"
           (String.length s) (Lui_shell_windows.clipboard_write s)
       end;
@@ -555,7 +594,7 @@ he caret column — horizontal padding plus the
         | None -> true)
   in
   log "lui_window_windows: %dx%d drawable (scale %.2f), renderer=%s%s"
-    dw dh scale renderer.Lui_host.name
+    dw dh scale (!renderer_cell).Lui_host.name
     (if headless then " [headless]" else "");
   while continue () do
     let t0 = perf_s () in
@@ -598,13 +637,13 @@ he caret column — horizontal padding plus the
           if st.frames > 0 && st.acc_ms > 0. then
             1000. /. (st.acc_ms /. float st.frames)
           else 0. in
-        stats_report st renderer.Lui_host.name;
+        stats_report st (!renderer_cell).Lui_host.name;
         if not headless then
           ignore
             (Lui_app.send app
                (Demo_app.Badge
                   (Printf.sprintf "%s — %.0f fps"
-                     renderer.Lui_host.name fps)))
+                     (!renderer_cell).Lui_host.name fps)))
       end
     end;
     (* The semantic tree tracks the store every iteration — cheap
@@ -623,7 +662,7 @@ he caret column — horizontal padding plus the
       else Lui_win32.delay_ms 4
     end
   done;
-  stats_report st renderer.Lui_host.name;
+  stats_report st (!renderer_cell).Lui_host.name;
   log "a11y: %d nodes" (Lui_a11y.node_count a11y);
   (match frames_target with
    | Some _ ->

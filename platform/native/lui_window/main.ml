@@ -304,6 +304,106 @@ let () =
                  (s.Lui_scene.width * s.Lui_scene.height * 4)) },
         false, None )
   in
+  (* Runtime backend-loss recovery. Creation already walks the
+     Metal>GL>CPU ladder; an SDL render-target/device reset event
+     (0x2000/0x2001) or a render exception now demotes the active rung
+     at runtime. The scene store is untouched, so the next repaint
+     re-uploads a full scene to the new backend — identical pixels on
+     the CPU path by the parity contract. *)
+  let renderer_cell = ref renderer and gl_live_cell = ref gl_live in
+  let blit_cell = ref blit and gctx_cell = ref gctx in
+  let cpu_renderer b =
+    let rr = Lui_raster.Renderer.create () in
+    { Lui_host.name = "lui_raster+blit";
+      render =
+        (fun s ->
+           let dirty = Lui_raster.Renderer.render rr s in
+           let img = Lui_raster.Renderer.image rr in
+           let stride = img.Lui_raster.Image.stride / 4 in
+           if Lui_raster.Renderer.whole rr || dirty = [] then
+             ignore
+               (Lui_blit.update b ~pix:img.Lui_raster.Image.pix ~stride)
+           else
+             List.iter
+               (fun (r : Lui_scene.irect) ->
+                  ignore
+                    (Lui_blit.update_region b ~x0:r.x0 ~y0:r.y0 ~x1:r.x1
+                       ~y1:r.y1 ~pix:img.Lui_raster.Image.pix ~stride))
+               dirty;
+           Lui_blit.present b;
+           img.Lui_raster.Image.pix) }
+  in
+  let noop_renderer =
+    { Lui_host.name = "noop";
+      render =
+        (fun s ->
+           Bytes.create (s.Lui_scene.width * s.Lui_scene.height * 4)) }
+  in
+  let rec demote reason =
+    let dead = !renderer_cell.Lui_host.name in
+    (* A rung change may need a differently-flagged window (CPU blits
+       cannot target an opengl window); the old context dies before
+       its window. The cell moves to noop first so a failing next
+       rung still terminates the walk. *)
+    warn "renderer %s lost (%s); stepping down the ladder" dead reason;
+    renderer_cell := noop_renderer;
+    (match !gctx_cell with
+     | Some c -> Sdl.gl_delete_context c; gctx_cell := None
+     | None -> ());
+    let next_gl = dead = "lui_metal" in
+    if dead <> "noop" then begin
+      Sdl.destroy_window !win;
+      win :=
+        sdl_ok
+          (Sdl.create_window "lui_window" ~w:cfg.width ~h:cfg.height
+             (flags next_gl))
+    end;
+    if next_gl then
+      match Sdl.gl_create_context !win with
+      | Ok c -> (
+        sdl_ok (Sdl.gl_make_current !win c);
+        match Lui_gl.init () with
+        | Ok gl ->
+          gctx_cell := Some c;
+          gl_live_cell := true;
+          renderer_cell :=
+            { Lui_host.name = "lui_gl";
+              render =
+                (fun s ->
+                   Lui_gl.render gl s;
+                   Bytes.empty) };
+          log "renderer: lui_gl (recovered)"
+        | Error msg ->
+          warn "lui_gl.init failed: %s" msg;
+          demote "gl init failed")
+      | Error (`Msg m) ->
+        warn "gl_create_context failed: %s" m;
+        demote "gl context failed"
+    else if dead = "lui_gl" || dead = "lui_raster+blit" then begin
+      gl_live_cell := false;
+      let dw, dh = drawable () in
+      match Lui_blit.create !win ~w:dw ~h:dh with
+      | Ok b ->
+        blit_cell := Some b;
+        renderer_cell := cpu_renderer b;
+        log "renderer: lui_raster+blit (recovered)"
+      | Error m ->
+        warn "lui_blit.create failed: %s" m;
+        demote "blit create failed"
+    end
+  in
+  (* The host owns a stable record whose render delegates to the live
+     rung, so a demote needs no host rebuild. A render exception is
+     treated as backend loss: demote, then replay the frame once. *)
+  let renderer_live =
+    { Lui_host.name = "lui (resilient)";
+      render =
+        (fun s ->
+           try (!renderer_cell).Lui_host.render s
+           with exn ->
+             demote (Printexc.to_string exn);
+             (!renderer_cell).Lui_host.render s) }
+  in
   (* Wiring: mutable cells so the paint hooks can reach the host,
      scene and scale that only exist after Lui_host.create. *)
   let host_cell = ref None in
@@ -472,7 +572,7 @@ let () =
         let s = text_engine.scale () in
         Some
           (w +. (2. *. tp.tp_pad_x *. s), h +. (2. *. tp.tp_pad_y *. s)))
-      ~renderer ~width:dw ~height:dh ~scale ()
+      ~renderer:renderer_live ~width:dw ~height:dh ~scale ()
   in
   host_cell := Some host;
   let store = Lui_host.store host in
@@ -596,7 +696,8 @@ let () =
     (* The renderer badge: static here, updated with fps once a
        second further down. *)
     ignore
-      (Lui_app.send app (Demo_app.Badge renderer.Lui_host.name))
+      (Lui_app.send app
+         (Demo_app.Badge (!renderer_cell).Lui_host.name))
   end;
   (* SDL_SetTextInputRect works in window (logical) pixels. *)
   let set_ime_rect (r : Lui_scene.rect) =
@@ -649,7 +750,7 @@ let () =
        | None -> ())
     | Resize_host _ ->
       let dw, dh = drawable () in
-      (match blit with
+      (match !blit_cell with
        | Some b ->
          if
            (match Lui_blit.resize b ~w:dw ~h:dh with
@@ -683,6 +784,12 @@ let () =
     let go = ref true in
     while !go do
       if Sdl.poll_event (Some e) then
+        let typ = Sdl.Event.get e Sdl.Event.typ in
+        (* SDL_RENDER_TARGETS_RESET / SDL_RENDER_DEVICE_RESET: the
+           backend lost its resources — recover down the ladder. *)
+        if typ = 0x2000 || typ = 0x2001 then
+          demote "SDL render-target/device reset"
+        else
         match input_of_event e with
         | Some (Input.Resize (w, h)) ->
           win_w := w;
@@ -759,7 +866,7 @@ let () =
       if req_hit "clipboard" m.Demo_app.req_clipboard then begin
         let s =
           Printf.sprintf "lui_window %dx%d renderer=%s frames=%d"
-            dw dh renderer.Lui_host.name !frame in
+            dw dh (!renderer_cell).Lui_host.name !frame in
         log "shell clipboard: wrote %d chars (ok=%b)"
           (String.length s) (Lui_shell.clipboard_write s)
       end;
@@ -793,7 +900,7 @@ let () =
         | None -> true)
   in
   log "lui_window: %dx%d drawable (scale %.2f), renderer=%s%s"
-    dw dh scale renderer.Lui_host.name
+    dw dh scale (!renderer_cell).Lui_host.name
     (if headless then " [headless]" else "");
   while continue () do
     let t0 = perf_s () in
@@ -823,11 +930,11 @@ let () =
       ignore (Lui_host.repaint host);
       populate_rects ();
       ignore (Lui_a11y.sync a11y);
-      if gl_live then Sdl.gl_swap_window !win;
+      if !gl_live_cell then Sdl.gl_swap_window !win;
       Ui.frame_done ui;
       incr frame;
       Checksum.add_scene checksum (Lui_host.scene host);
-      if headless && not gl_live then
+      if headless && not !gl_live_cell then
         log "frame=%d ops=%d" !frame
           (List.length (Lui_host.scene host).Lui_scene.ops);
       stats_update st ((perf_s () -. t0) *. 1000.);
@@ -839,13 +946,13 @@ let () =
           if st.frames > 0 && st.acc_ms > 0. then
             1000. /. (st.acc_ms /. float st.frames)
           else 0. in
-        stats_report st renderer.Lui_host.name;
+        stats_report st (!renderer_cell).Lui_host.name;
         if not headless then
           ignore
             (Lui_app.send app
                (Demo_app.Badge
                   (Printf.sprintf "%s — %.0f fps"
-                     renderer.Lui_host.name fps)))
+                     (!renderer_cell).Lui_host.name fps)))
       end
     end;
     (* No vsync under the dummy driver and possibly none elsewhere:
@@ -860,7 +967,7 @@ let () =
       else if not dirty then Sdl.delay 4l
     end
   done;
-  stats_report st renderer.Lui_host.name;
+  stats_report st (!renderer_cell).Lui_host.name;
   log "a11y: %d nodes" (Lui_a11y.node_count a11y);
   (match frames_target with
    | Some _ ->
@@ -868,7 +975,7 @@ let () =
        (Checksum.value checksum)
    | None -> ());
   ignore (Lui_app.dispose app);
-  (match gctx with
+  (match !gctx_cell with
    | Some c -> Sdl.gl_delete_context c
    | None -> ());
   Sdl.destroy_window !win;
