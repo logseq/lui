@@ -507,26 +507,32 @@ let register_press context node handler =
   ignore (on_event context node is_press handler)
 
 let register_long_press context node handler =
+  enable context node PointerEnabled;
   require_event_supported context node (LongPress node) "long-press";
   ignore (on_event context node is_long_press handler)
 
 let register_double_press context node handler =
+  enable context node PointerEnabled;
   require_event_supported context node (DoublePress node) "double-press";
   ignore (on_event context node is_double_press handler)
 
 let register_change context node handler =
+  enable context node PointerEnabled;
   require_event_supported context node (Change node) "change";
   ignore (on_event context node is_change handler)
 
 let register_input context node handler =
+  enable context node PointerEnabled;
   require_event_supported context node (TextChanged (node, "")) "input";
   ignore (on_event context node is_input handler)
 
 let register_submit context node handler =
+  enable context node PointerEnabled;
   require_event_supported context node (Submit node) "submit";
   ignore (on_event context node is_submit handler)
 
 let register_toggle context node handler =
+  enable context node PointerEnabled;
   require_event_supported context node (ToggleChanged (node, false)) "toggle";
   ignore (on_event context node is_toggle handler)
 
@@ -552,11 +558,13 @@ let register_resize context node handler =
   ignore (on_event context node is_resize handler)
 
 let register_scroll_completed context node handler =
+  enable context node PointerEnabled;
   require_event_supported context node (ScrollCompleted (node, 0, ""))
     "scroll-completed";
   ignore (on_event context node is_scroll_completed handler)
 
 let register_visible_range context node handler =
+  enable context node PointerEnabled;
   require_event_supported context node (VisibleRange (node, 0, 0))
     "visible-range";
   ignore (on_event context node is_visible_range handler)
