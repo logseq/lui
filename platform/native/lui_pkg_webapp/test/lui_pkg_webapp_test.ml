@@ -267,6 +267,8 @@ let test_linux_e2e () =
      W.find_embedded_spec ~exe:(appdir / "usr/bin/webapp")
    with
    | Some p ->
+     (* Paths from find_embedded_spec use the host separator. *)
+     let p = String.map (fun c -> if c = '\\' then '/' else c) p in
      check Alcotest.bool "share spec" true
        (contains p "share/webapp/webapp.json")
    | None -> Alcotest.fail "no spec found in AppDir");
