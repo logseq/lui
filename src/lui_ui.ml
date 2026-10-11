@@ -447,6 +447,8 @@ let text_overflow context node value =
   string_property context node TextOverflow value
 let overflow context node value = string_property context node Overflow value
 let flex_wrap context node value = string_property context node FlexWrap value
+let transition context node value =
+  string_property context node Transition value
 let list_style context node value =
   string_property context node ListStyle value
 let user_select context node value = string_property context node UserSelect value

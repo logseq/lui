@@ -627,6 +627,10 @@ fn appearance<E: Styled>(mut element: E, node: &NodeSnapshot, theme: &Theme) -> 
     if let Some(value) = node.float_prop(Property::MaxHeightViewport) {
         element = element.max_h(px(value as f32 * vh));
     }
+    // `transition` is web-only visual sugar: gpui has no CSS transition
+    // engine and no lerp path for the pointer-gated channels, so hover and
+    // pressed style merges still apply instantly. The value is validated
+    // at the wire boundary but intentionally never read here.
     // `selected`/`enabled` are snapshot booleans — their channels apply
     // statically here; the pointer-gated channels (`selected-hover-shadow`,
     // `hover-*`, `pressed-*`, `focus-shadow`) attach in `interactive`.

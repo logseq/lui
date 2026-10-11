@@ -320,7 +320,8 @@ val apply_universal :
   data_attrs_signal:(string * string) list Signal.signal option ->
   on_appear:(Lui_protocol.event -> unit) option ->
   on_pointer_enter:(Lui_protocol.event -> unit) option ->
-  on_pointer_leave:(Lui_protocol.event -> unit) option -> unit
+  on_pointer_leave:(Lui_protocol.event -> unit) option ->
+  transition:string option -> unit
 val row :
   ?key:string ->
   ?gap:int ->
@@ -364,7 +365,8 @@ val row :
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?display:display ->
-  ?flex_wrap:flex_wrap -> t list -> t
+  ?flex_wrap:flex_wrap ->
+  ?transition:string -> t list -> t
 val column :
   ?key:string ->
   ?gap:int ->
@@ -411,7 +413,8 @@ val column :
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?display:display ->
-  ?flex_wrap:flex_wrap -> t list -> t
+  ?flex_wrap:flex_wrap ->
+  ?transition:string -> t list -> t
 val grid :
   ?key:string ->
   ?gap:int ->
@@ -454,7 +457,7 @@ val grid :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
-  t list -> t
+  ?transition:string -> t list -> t
 val stack :
   ?key:string ->
   ?gap:int ->
@@ -497,7 +500,7 @@ val stack :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
-  t list -> t
+  ?transition:string -> t list -> t
 
 (** [edge_inset ~edge \[content; pinned; ...\]] pins every child after the
     first to [edge] while [content] fills the view and scrolls beneath
@@ -551,7 +554,7 @@ val edge_inset :
   ?visible_signal:bool Signal.signal ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
-  t list -> t
+  ?transition:string -> t list -> t
 
 (** [overlay \[base; overlay_child; ...\]] renders the children after the
     first floating over [base] without affecting its layout. Each overlay
@@ -600,7 +603,7 @@ val overlay :
   ?alignment:alignment ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
-  t list -> t
+  ?transition:string -> t list -> t
 
 (** [align a child] sets [child]'s [alignment] hint, honored when [child]
     is mounted as an [overlay] child — e.g.
@@ -652,7 +655,7 @@ val view_that_fits :
   ?orientation:orientation ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
-  t list -> t
+  ?transition:string -> t list -> t
 val panel :
   ?key:string ->
   ?gap:int ->
@@ -695,7 +698,7 @@ val panel :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
-  t list -> t
+  ?transition:string -> t list -> t
 val card :
   ?key:string ->
   ?gap:int ->
@@ -738,7 +741,7 @@ val card :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
-  t list -> t
+  ?transition:string -> t list -> t
 val alert :
   ?key:string ->
   ?gap:int ->
@@ -784,7 +787,7 @@ val alert :
   ?variant:variant -> ?text_alignment:text_alignment -> ?label:string ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
-  t list -> t
+  ?transition:string -> t list -> t
 val bubble :
   ?key:string ->
   ?gap:int ->
@@ -830,7 +833,7 @@ val bubble :
   ?variant:variant -> ?label:string ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
-  t list -> t
+  ?transition:string -> t list -> t
 val box :
   ?key:string ->
   ?gap:int ->
@@ -874,7 +877,8 @@ val box :
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?display:display ->
-  ?flex_wrap:flex_wrap -> t list -> t
+  ?flex_wrap:flex_wrap ->
+  ?transition:string -> t list -> t
 val scroll :
   ?key:string ->
   ?gap:int ->
@@ -918,7 +922,7 @@ val scroll :
   ?orientation:orientation ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
-  t list -> t
+  ?transition:string -> t list -> t
 val list :
   ?key:string ->
   ?gap:int ->
@@ -972,7 +976,7 @@ val list :
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?list_marker:list_marker ->
-  t list -> t
+  ?transition:string -> t list -> t
 val virtual_list :
   ?key:string ->
   ?gap:int ->
@@ -1016,7 +1020,7 @@ val virtual_list :
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?list_marker:list_marker ->
-  t list -> t
+  ?transition:string -> t list -> t
 val tabs :
   ?key:string ->
   ?gap:int ->
@@ -1057,7 +1061,8 @@ val tabs :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?label:string -> ?orientation:orientation -> t list -> t
+  ?label:string -> ?orientation:orientation ->
+  ?transition:string -> t list -> t
 val bottom_tabs :
   ?key:string ->
   ?gap:int ->
@@ -1189,7 +1194,8 @@ val button_group :
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> ?label:string -> t list -> t
+  ?on_pointer_leave:(Lui_protocol.event -> unit) -> ?label:string ->
+  ?transition:string -> t list -> t
 val toggle_group :
   ?key:string ->
   ?gap:int ->
@@ -1229,7 +1235,8 @@ val toggle_group :
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> ?label:string -> t list -> t
+  ?on_pointer_leave:(Lui_protocol.event -> unit) -> ?label:string ->
+  ?transition:string -> t list -> t
 val breadcrumb :
   ?key:string ->
   ?gap:int ->
@@ -1269,7 +1276,8 @@ val breadcrumb :
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> ?label:string -> t list -> t
+  ?on_pointer_leave:(Lui_protocol.event -> unit) -> ?label:string ->
+  ?transition:string -> t list -> t
 val pagination :
   ?key:string ->
   ?gap:int ->
@@ -1309,7 +1317,8 @@ val pagination :
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> ?label:string -> t list -> t
+  ?on_pointer_leave:(Lui_protocol.event -> unit) -> ?label:string ->
+  ?transition:string -> t list -> t
 val table :
   ?key:string ->
   ?gap:int ->
@@ -1349,7 +1358,8 @@ val table :
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> table_row_el list -> t
+  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?transition:string -> table_row_el list -> t
 val table_row :
   ?key:string ->
   ?gap:int ->
@@ -1390,7 +1400,8 @@ val table_row :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?selected:bool -> ?selected_signal:bool Signal.signal -> table_cell_el list -> table_row_el
+  ?selected:bool -> ?selected_signal:bool Signal.signal ->
+  ?transition:string -> table_cell_el list -> table_row_el
 val table_cell :
   ?key:string ->
   ?gap:int ->
@@ -1439,7 +1450,8 @@ val table_cell :
   ?on_press_detail:(Lui_protocol.event -> unit) ->
   ?on_pointer_down:(Lui_protocol.event -> unit) ->
   ?on_pointer_up:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> table_cell_el
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t list -> table_cell_el
 val tree :
   ?key:string ->
   ?gap:int ->
@@ -1491,7 +1503,8 @@ val tree :
   ?on_press_detail:(Lui_protocol.event -> unit) ->
   ?on_pointer_down:(Lui_protocol.event -> unit) ->
   ?on_pointer_up:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t list -> t
 val resizable :
   ?key:string ->
   ?gap:int ->
@@ -1532,7 +1545,8 @@ val resizable :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?label:string -> ?resizable_width:int -> t list -> t
+  ?label:string -> ?resizable_width:int ->
+  ?transition:string -> t list -> t
 val split :
   ?key:string ->
   ?gap:int ->
@@ -1578,7 +1592,8 @@ val split :
   ?resize_duration:int ->
   ?resize_easing:resize_easing ->
   ?resize_origin:float ->
-  ?label:string -> ?on_resize:(Lui_protocol.event -> unit) -> t -> t -> t
+  ?label:string -> ?on_resize:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t -> t -> t
 val drawer :
   ?key:string ->
   ?gap:int ->
@@ -1665,7 +1680,8 @@ val status_bar :
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?value:string ->
-  ?value_signal:string Signal.signal -> ?text_alignment:text_alignment -> nothing list -> t
+  ?value_signal:string Signal.signal -> ?text_alignment:text_alignment ->
+  ?transition:string -> nothing list -> t
 val spacer :
   ?key:string ->
   ?gap:int ->
@@ -1705,7 +1721,8 @@ val spacer :
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> nothing list -> t
+  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?transition:string -> nothing list -> t
 val spinner :
   ?key:string ->
   ?gap:int ->
@@ -1745,7 +1762,8 @@ val spinner :
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> ?size:control_size -> nothing list -> t
+  ?on_pointer_leave:(Lui_protocol.event -> unit) -> ?size:control_size ->
+  ?transition:string -> nothing list -> t
 val icon :
   ?key:string ->
   ?gap:int ->
@@ -1793,7 +1811,7 @@ val icon :
   ?tooltip_signal:string Signal.signal ->
   ?shortcut_hint:string ->
   ?shortcut_hint_signal:string Signal.signal ->
-  nothing list -> t
+  ?transition:string -> nothing list -> t
 val text :
   ?key:string ->
   ?gap:int ->
@@ -1851,7 +1869,8 @@ val text :
   ?on_press_detail:(Lui_protocol.event -> unit) ->
   ?on_pointer_down:(Lui_protocol.event -> unit) ->
   ?on_pointer_up:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t list -> t
 val heading :
   ?key:string ->
   ?gap:int ->
@@ -1904,7 +1923,7 @@ val heading :
   ?white_space:string ->
   ?text_overflow:string ->
   ?overflow:string ->
-  nothing list -> t
+  ?transition:string -> nothing list -> t
 val paragraph :
   ?key:string ->
   ?gap:int ->
@@ -1956,7 +1975,7 @@ val paragraph :
   ?white_space:string ->
   ?text_overflow:string ->
   ?overflow:string ->
-  nothing list -> t
+  ?transition:string -> nothing list -> t
 val label :
   ?key:string ->
   ?gap:int ->
@@ -2008,7 +2027,7 @@ val label :
   ?white_space:string ->
   ?text_overflow:string ->
   ?overflow:string ->
-  nothing list -> t
+  ?transition:string -> nothing list -> t
 val kbd :
   ?key:string ->
   ?gap:int ->
@@ -2049,7 +2068,8 @@ val kbd :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?value:string -> ?value_signal:string Signal.signal -> nothing list -> t
+  ?value:string -> ?value_signal:string Signal.signal ->
+  ?transition:string -> nothing list -> t
 val button :
   ?key:string ->
   ?gap:int ->
@@ -2113,7 +2133,7 @@ val button :
   ?tooltip_signal:string Signal.signal ->
   ?shortcut_hint:string ->
   ?shortcut_hint_signal:string Signal.signal ->
-  t list -> t
+  ?transition:string -> t list -> t
 val toggle_button :
   ?key:string ->
   ?gap:int ->
@@ -2172,7 +2192,8 @@ val toggle_button :
   ?on_press:(Lui_protocol.event -> unit) ->
   ?on_toggle:(Lui_protocol.event -> unit) ->
   ?on_long_press:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t list -> t
 val checkbox :
   ?key:string ->
   ?gap:int ->
@@ -2221,7 +2242,8 @@ val checkbox :
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_toggle:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t list -> t
 val switch_ :
   ?key:string ->
   ?gap:int ->
@@ -2270,7 +2292,8 @@ val switch_ :
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_toggle:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t list -> t
 val toggle :
   ?key:string ->
   ?gap:int ->
@@ -2319,7 +2342,8 @@ val toggle :
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_toggle:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t list -> t
 val radio_group :
   ?key:string ->
   ?gap:int ->
@@ -2359,7 +2383,8 @@ val radio_group :
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> ?label:string -> radio_el list -> t
+  ?on_pointer_leave:(Lui_protocol.event -> unit) -> ?label:string ->
+  ?transition:string -> radio_el list -> t
 val radio :
   ?key:string ->
   ?gap:int ->
@@ -2414,7 +2439,8 @@ val radio :
   ?on_press_detail:(Lui_protocol.event -> unit) ->
   ?on_pointer_down:(Lui_protocol.event -> unit) ->
   ?on_pointer_up:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> radio_el
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t list -> radio_el
 val slider :
   ?key:string ->
   ?gap:int ->
@@ -2461,7 +2487,8 @@ val slider :
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_change:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t list -> t
 val number_stepper :
   ?key:string ->
   ?gap:int ->
@@ -2513,7 +2540,8 @@ val number_stepper :
   ?enabled:bool ->
   ?enabled_signal:bool Signal.signal ->
   ?on_value_changed:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t list -> t
 val progress :
   ?key:string ->
   ?gap:int ->
@@ -2554,7 +2582,8 @@ val progress :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?value:float -> ?value_signal:float Signal.signal -> nothing list -> t
+  ?value:float -> ?value_signal:float Signal.signal ->
+  ?transition:string -> nothing list -> t
 val divider :
   ?key:string ->
   ?gap:int ->
@@ -2595,7 +2624,8 @@ val divider :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?orientation:orientation -> nothing list -> t
+  ?orientation:orientation ->
+  ?transition:string -> nothing list -> t
 val separator :
   ?key:string ->
   ?gap:int ->
@@ -2636,7 +2666,8 @@ val separator :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?orientation:orientation -> nothing list -> t
+  ?orientation:orientation ->
+  ?transition:string -> nothing list -> t
 
 (** Line-break leaf: emits `<br>` on web; a no-op on native backends. *)
 val br :
@@ -2678,7 +2709,8 @@ val br :
   ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) -> nothing list -> t
+  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?transition:string -> nothing list -> t
 val text_field :
   ?key:string ->
   ?gap:int ->
@@ -2729,7 +2761,8 @@ val text_field :
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t list -> t
 val secure_field :
   ?key:string ->
   ?gap:int ->
@@ -2780,7 +2813,8 @@ val secure_field :
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t list -> t
 val input :
   ?key:string ->
   ?gap:int ->
@@ -2832,7 +2866,8 @@ val input :
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) ->
-  ?kind:input_kind -> t list -> t
+  ?kind:input_kind ->
+  ?transition:string -> t list -> t
 val search_field :
   ?key:string ->
   ?gap:int ->
@@ -2883,7 +2918,8 @@ val search_field :
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t list -> t
 val textarea :
   ?key:string ->
   ?gap:int ->
@@ -2934,7 +2970,8 @@ val textarea :
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t list -> t
 val input_group :
   ?key:string ->
   ?gap:int ->
@@ -3068,7 +3105,8 @@ val select :
   ?on_press_detail:(Lui_protocol.event -> unit) ->
   ?on_pointer_down:(Lui_protocol.event -> unit) ->
   ?on_pointer_up:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t list -> t
 val combobox :
   ?key:string ->
   ?gap:int ->
@@ -3121,7 +3159,8 @@ val combobox :
   ?on_press_detail:(Lui_protocol.event -> unit) ->
   ?on_pointer_down:(Lui_protocol.event -> unit) ->
   ?on_pointer_up:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t list -> t
 
 (** Menu surface mounted in the popup portal. Anchoring is either implicit
     — the element under the menu's retained parent ([~anchor],
@@ -3177,7 +3216,8 @@ val dropdown_menu :
   ?on_press:(Lui_protocol.event -> unit) ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
-  ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_dismiss:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t list -> t
 val context_menu :
   ?key:string ->
   ?gap:int ->
@@ -3581,7 +3621,7 @@ val popover :
   ?available_height_signal:float Signal.signal ->
   ?role:popover_role ->
   ?on_dismiss:(Lui_protocol.event -> unit) ->
-  t list -> t
+  ?transition:string -> t list -> t
 val toolbar :
   ?key:string ->
   ?gap:int ->
@@ -3738,7 +3778,7 @@ val menu_item :
   ?tooltip_signal:string Signal.signal ->
   ?shortcut_hint:string ->
   ?shortcut_hint_signal:string Signal.signal ->
-  t list -> t
+  ?transition:string -> t list -> t
 val list_item :
   ?key:string ->
   ?gap:int ->
@@ -3804,7 +3844,8 @@ val list_item :
   ?on_pointer_down:(Lui_protocol.event -> unit) ->
   ?on_pointer_up:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) ->
-  ?list_marker:list_marker -> t list -> t
+  ?list_marker:list_marker ->
+  ?transition:string -> t list -> t
 
 (** A named group of rows inside a {!list}: [~header]/[~footer] take any
     element and mount it in a dedicated slot node, [~key] sets both the
@@ -3878,7 +3919,8 @@ val avatar :
   ?image_signal:int Signal.signal ->
   ?source_x:float ->
   ?source_y:float ->
-  ?source_width:float -> ?source_height:float -> ?label:string -> nothing list -> t
+  ?source_width:float -> ?source_height:float -> ?label:string ->
+  ?transition:string -> nothing list -> t
 val image :
   ?key:string ->
   ?gap:int ->
@@ -3929,7 +3971,8 @@ val image :
   ?on_load:(Lui_protocol.event -> unit) ->
   ?source_x:float ->
   ?source_y:float ->
-  ?source_width:float -> ?source_height:float -> ?label:string -> nothing list -> t
+  ?source_width:float -> ?source_height:float -> ?label:string ->
+  ?transition:string -> nothing list -> t
 val media_surface :
   ?key:string ->
   ?gap:int ->
@@ -3971,7 +4014,8 @@ val media_surface :
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?surface:int ->
-  ?surface_signal:int Signal.signal -> ?label:string -> nothing list -> t
+  ?surface_signal:int Signal.signal -> ?label:string ->
+  ?transition:string -> nothing list -> t
 val link :
   ?key:string ->
   ?gap:int ->
@@ -4021,7 +4065,8 @@ val link :
   ?icon_signal:icon Signal.signal ->
   ?icon_placement:icon_placement ->
   ?label:string ->
-  ?disabled:bool -> ?disabled_signal:bool Signal.signal -> t list -> t
+  ?disabled:bool -> ?disabled_signal:bool Signal.signal ->
+  ?transition:string -> t list -> t
 
 (** Local file image. Fit preserves the whole image by default; fill crops to
     its frame while preserving the original aspect ratio. *)
@@ -4073,7 +4118,8 @@ val file_image :
   ?on_press:(Lui_protocol.event -> unit) ->
   ?on_press_detail:(Lui_protocol.event -> unit) ->
   ?on_pointer_down:(Lui_protocol.event -> unit) ->
-  ?on_pointer_up:(Lui_protocol.event -> unit) -> nothing list -> t
+  ?on_pointer_up:(Lui_protocol.event -> unit) ->
+  ?transition:string -> nothing list -> t
 val file_preview :
   ?key:string ->
   ?path:string ->

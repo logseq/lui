@@ -275,6 +275,7 @@ type property =
   | FlexWrap
   | HoverForeground
   | HoverBorder
+  | Transition
 
 module Property_map : Map.S with type key = property
 
