@@ -26,6 +26,7 @@ module type LAYOUT_ENGINE = sig
 
   val sync :
     ?scale:float -> ?measure:text_measure -> ?hidden:(int -> bool) ->
+    ?ctx_anchor:(float * float) ->
     width:float -> height:float -> t -> Lui_store.t -> unit
 
   val layout_hook : t -> int -> Lui_paint.placement
@@ -38,6 +39,7 @@ end
 type layout_state = {
   lsync :
     scale:float -> measure:text_measure -> hidden:(int -> bool) ->
+    ctx_anchor:(float * float) option ->
     width:float -> height:float -> Lui_store.t -> unit;
   lhook : int -> Lui_paint.placement;
   lrect : int -> rect option;
@@ -55,6 +57,9 @@ type t = {
   mutable scale : float;
   mutable dirty : bool; (* repaint requested since last present *)
   mutable hidden : int -> bool; (* host-owned transient visibility *)
+  (* Pointer point an unanchored context-menu opens at — a thunk so the
+     accessor reads the live position each repaint. *)
+  mutable ctx_anchor : unit -> (float * float) option;
 }
 
 let no_measure _id _text _offered_w _offered_h = None
@@ -67,8 +72,9 @@ let create ~hooks ?layout ?(measure = no_measure) ~renderer ~width ~height ~scal
       let engine = L.create () in
       Some
         { lsync =
-            (fun ~scale ~measure ~hidden ~width ~height store ->
-              L.sync ~scale ~measure ~hidden ~width ~height engine store);
+            (fun ~scale ~measure ~hidden ~ctx_anchor ~width ~height store ->
+              L.sync ~scale ~measure ~hidden ?ctx_anchor ~width ~height
+                engine store);
           lhook = L.layout_hook engine;
           lrect = L.rect engine }
   in
@@ -77,7 +83,8 @@ let create ~hooks ?layout ?(measure = no_measure) ~renderer ~width ~height ~scal
   { store = Lui_store.create ();
     scene = Lui_scene.create ~mask_atlas ~color_atlas;
     hooks; layout; measure; renderer; width; height; scale;
-    dirty = false; hidden = (fun _ -> false) }
+    dirty = false; hidden = (fun _ -> false);
+    ctx_anchor = (fun () -> None) }
 
 let store h = h.store
 let scene h = h.scene
@@ -86,6 +93,10 @@ let wants_repaint h = h.dirty
 let set_hidden h pred =
   h.hidden <- (match pred with Some p -> p | None -> fun _ -> false);
   h.dirty <- true
+
+let set_ctx_anchor h accessor =
+  h.ctx_anchor <-
+    (match accessor with Some f -> f | None -> fun () -> None)
 
 let apply_batch h (batch : Lui_protocol.patch_batch) =
   Lui_store.apply_batch h.store batch;
@@ -106,6 +117,7 @@ let repaint h =
          paints) and the current frame size — layout is the single
          place that resolves both. *)
       l.lsync ~scale:h.scale ~measure:h.measure ~hidden:h.hidden
+        ~ctx_anchor:(h.ctx_anchor ())
         ~width:(float_of_int h.width) ~height:(float_of_int h.height)
         h.store;
       (* The engine hook yields to an explicitly supplied

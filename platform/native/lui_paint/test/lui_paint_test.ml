@@ -390,11 +390,12 @@ let test_popup_xy () =
       SetProp (1, PopupY, FloatValue 40.);
       SetProp (1, BackgroundValue, StringValue "#ff0000") ];
   let s = paint_with (hooks ()) t () in
-  (* token chrome paints first (popover shadow), then the node's own
-     styled background at the popup offset *)
+  (* Popup x/y are anchor inputs the layout engine resolves into the
+     node's rect — paint must not re-apply them over the layout
+     result (the default hook reports (0,0 100x40)). *)
   match List.rev s.ops with
   | Fill f :: _ ->
-    check bool "popup" true (f.frect.x = 30. && f.frect.y = 40.)
+    check bool "popup" true (f.frect.x = 0. && f.frect.y = 0.)
   | _ -> fail "expected popup fill"
 
 let test_layout_override () =

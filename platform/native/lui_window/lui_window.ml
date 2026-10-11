@@ -744,6 +744,10 @@ module Ui = struct
 
   let open_menu t = t.open_menu
 
+  (* Last pointer position in logical px — the point an unanchored
+     context-menu opens at. *)
+  let pointer t = (t.last_x, t.last_y)
+
   let close_menu t =
     if t.open_menu <> 0 then begin t.open_menu <- 0; t.dirty <- true end
 
@@ -2188,7 +2192,8 @@ module Theme = struct
       ("selection", color 59 130 246 102);
       ("scrollbar-thumb", color 255 255 255 89);
       ("inverse", color 244 244 245 255);
-      ("inverse-foreground", color 24 24 27 255) ]
+      ("inverse-foreground", color 24 24 27 255);
+      ("scrim", color 0 0 0 128) ]
 
   let color_of_hex s =
     let n = String.length s in

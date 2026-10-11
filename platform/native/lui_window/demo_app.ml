@@ -525,7 +525,17 @@ let section_overlays model_s send =
       row ~gap:8
         [ ghost_btn send "dialog" (Open P_dialog);
           ghost_btn send "popover" (Open P_popover);
-          ghost_btn send "dropdown" (Open P_menu);
+          (* The menu composite owns its open state host-side — the
+             panel anchors under the trigger like the File menu. *)
+          menu ~text:"dropdown"
+            ~on_dismiss:(press send (Close P_menu))
+            [ menu_item ~text:"profile" ~icon:`settings
+                ~foreground:"#e4e6ee"
+                ~on_press:(press send (Close P_menu)) [];
+              menu_item ~text:"notify" ~icon:`copy ~foreground:"#e4e6ee"
+                ~on_press:(press send Req_notify) [];
+              menu_item ~text:"close" ~foreground:"#989eb2"
+                ~on_press:(press send (Close P_menu)) [] ];
           ghost_btn send "sheet" (Open P_sheet);
           ghost_btn send "toast" (Open P_toast) ];
       box ~padding:4 ~background:"#1b1c28" ~corner_radius:8
@@ -708,24 +718,13 @@ let popups model_s send =
                  ~foreground:"#ffffff" ~corner_radius:6
                  ~on_press:(press send (Close P_dialog)) [] ] ]);
     open_ ~test:(fun m -> m.popover_open)
-      (popover ~at:(160., 260.) ~anchor:`below ~background:"#262743"
+      (popover ~at:(110., 102.) ~anchor:`below ~background:"#262743"
          ~foreground:"#e4e6ee" ~border_color:"#4c74f6" ~border_width:1
          ~corner_radius:10 ~padding:12
          ~on_dismiss:(press send (Close P_popover))
-         [ text ~value:"popover — anchored by the layout insets"
+         [ text ~value:"popover — anchored below its trigger"
              ~foreground:"#e4e6ee" ~font_size:"12" [];
            ghost_btn send "close" (Close P_popover) ]);
-    open_ ~test:(fun m -> m.menu_open)
-      (dropdown_menu ~on_dismiss:(press send (Close P_menu))
-         ~background:"#262743" ~border_color:"#383b4c" ~border_width:1
-         ~corner_radius:8 ~padding:4
-         [ menu_item ~text:"profile" ~icon:`settings
-             ~foreground:"#e4e6ee"
-             ~on_press:(press send (Close P_menu)) [];
-           menu_item ~text:"notify" ~icon:`copy ~foreground:"#e4e6ee"
-             ~on_press:(press send Req_notify) [];
-           menu_item ~text:"close" ~foreground:"#989eb2"
-             ~on_press:(press send (Close P_menu)) [] ]);
     open_ ~test:(fun m -> m.ctx_open)
       (context_menu ~on_dismiss:(press send (Close P_ctx))
          [ menu_item ~text:"context: first" ~foreground:"#e4e6ee"

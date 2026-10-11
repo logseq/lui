@@ -55,7 +55,8 @@ let light_tokens : (string * color) list =
     ("scrollbar-thumb", color 0 0 0 82);
     (* inverse surfaces: tooltips and toasts flip the polarity. *)
     ("inverse", color 24 24 27 255);
-    ("inverse-foreground", color 255 255 255 255) ]
+    ("inverse-foreground", color 255 255 255 255);
+    ("scrim", color 0 0 0 102) ]
 
 let dark_tokens : (string * color) list =
   [ ("background", color 24 24 27 255);
@@ -89,7 +90,8 @@ let dark_tokens : (string * color) list =
     ("selection", color 59 130 246 102);
     ("scrollbar-thumb", color 255 255 255 89);
     ("inverse", color 244 244 245 255);
-    ("inverse-foreground", color 24 24 27 255) ]
+    ("inverse-foreground", color 24 24 27 255);
+    ("scrim", color 0 0 0 128) ]
 
 let tokens = function Light -> light_tokens | Dark -> dark_tokens
 
