@@ -1,5 +1,6 @@
 (library
  (name lui_ax_windows)
+ (public_name lui.ax_windows)
  (modules lui_ax_windows)
  (libraries lui_a11y)
  (foreign_stubs

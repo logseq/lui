@@ -1,5 +1,6 @@
 (library
  (name lui_shell_linux)
+ (public_name lui.shell_linux)
  (modules lui_shell_linux)
  (libraries unix)
  (foreign_stubs

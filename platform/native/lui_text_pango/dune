@@ -1,5 +1,6 @@
 (library
  (name lui_text_pango)
+ (public_name lui.text_pango)
  (modules lui_text_pango)
  (foreign_stubs
   (language c)

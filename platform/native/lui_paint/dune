@@ -1,4 +1,5 @@
 (library
  (name lui_paint)
+ (public_name lui.paint)
  (modules lui_paint)
  (libraries lui_store lui_scene))

@@ -25,6 +25,7 @@ depends: [
   "tsdl-ttf"
   "imagelib"
   "tgls"
+  "cmdliner"
   "alcotest" {with-test}
   "odoc" {with-doc}
 ]

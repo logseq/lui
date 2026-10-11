@@ -4,6 +4,7 @@
 
 (library
  (name lui_ax)
+ (public_name lui.ax)
  (modules lui_ax)
  (foreign_stubs
   (language c)

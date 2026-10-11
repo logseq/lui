@@ -4,6 +4,7 @@
 
 (library
  (name lui_metal)
+ (public_name lui.metal)
  (modules lui_metal metal_source)
  (libraries lui_scene lui_gpu)
  (foreign_stubs

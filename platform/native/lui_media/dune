@@ -8,6 +8,7 @@
 
 (library
  (name lui_media)
+ (public_name lui.media)
  (modules lui_media)
  (libraries lui_scene lui_plugin unix yojson)
  (foreign_stubs

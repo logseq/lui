@@ -25,4 +25,5 @@
   tsdl-ttf
   imagelib
   tgls
+  cmdliner
   (alcotest :with-test)))

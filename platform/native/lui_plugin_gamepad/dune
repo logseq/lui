@@ -1,4 +1,5 @@
 (library
  (name lui_plugin_gamepad)
+ (public_name lui.plugin_gamepad)
  (modules lui_plugin_gamepad)
  (libraries yojson lui_plugin lui_gamepad))
