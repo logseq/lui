@@ -8,39 +8,39 @@ One cell per exercised state; every standard kind appears at least once. `ops` =
 | cells/c02_heading.png | heading | 0 | bold heading text |
 | cells/c03_paragraph.png | paragraph | 0 | body text |
 | cells/c04_label.png | label | 0 | field label |
-| cells/c05_kbd.png | kbd | 0 | keyboard hint chip |
+| cells/c05_kbd.png | kbd | 2 | keyboard hint chip |
 | cells/c06_link.png | link | 0 | anchor text |
 | cells/c07_br.png | br | 0 | line break between runs |
-| cells/c08_button.png | button | 0 | normal |
-| cells/c09_button_hover.png | button | 0 | hovered |
-| cells/c10_button_pressed.png | button | 0 | pressed |
-| cells/c11_button_disabled.png | button | 0 | disabled |
-| cells/c12_toggle_button.png | toggle-button | 0 | selected |
-| cells/c13_toggle.png | toggle | 0 | selected toggle chip |
+| cells/c08_button.png | button | 2 | normal |
+| cells/c09_button_hover.png | button | 2 | hovered |
+| cells/c10_button_pressed.png | button | 2 | pressed |
+| cells/c11_button_disabled.png | button | 2 | disabled |
+| cells/c12_toggle_button.png | toggle-button | 2 | selected |
+| cells/c13_toggle.png | toggle | 2 | selected toggle chip |
 | cells/c14_menu_item.png | menu-item | 0 | hovered item |
-| cells/c15_menu_trigger.png | menu-trigger | 0 | menu trigger button |
+| cells/c15_menu_trigger.png | menu-trigger | 2 | menu trigger button |
 | cells/c16_bottom_tab.png | bottom-tab | 0 | selected tab |
-| cells/c17_swipe_action.png | swipe-action | 0 | destructive swipe |
-| cells/c18_file_picker.png | file-picker | 0 | dashed drop target |
+| cells/c17_swipe_action.png | swipe-action | 1 | destructive swipe |
+| cells/c18_file_picker.png | file-picker | 2 | dashed drop target |
 | cells/c19_list_section_header.png | list-section-header | 0 | section label |
 | cells/c20_list_section_footer.png | list-section-footer | 0 | section footnote |
-| cells/c21_text_field.png | text-field | 0 | filled value |
-| cells/c22_text_field_ph.png | text-field | 0 | placeholder |
-| cells/c23_text_field_focus.png | text-field | 0 | focus ring |
-| cells/c24_secure_field.png | secure-field | 0 | masked secret |
-| cells/c25_input.png | input | 0 | bare input |
-| cells/c26_search_field.png | search-field | 0 | placeholder |
-| cells/c27_textarea.png | textarea | 0 | multiline body |
-| cells/c28_select.png | select | 0 | closed select |
-| cells/c29_combobox.png | combobox | 0 | editable combo |
-| cells/c30_number_stepper.png | number-stepper | 0 | stepper cluster |
+| cells/c21_text_field.png | text-field | 2 | filled value |
+| cells/c22_text_field_ph.png | text-field | 2 | placeholder |
+| cells/c23_text_field_focus.png | text-field | 2 | focus ring |
+| cells/c24_secure_field.png | secure-field | 2 | masked secret |
+| cells/c25_input.png | input | 2 | bare input |
+| cells/c26_search_field.png | search-field | 2 | placeholder |
+| cells/c27_textarea.png | textarea | 2 | multiline body |
+| cells/c28_select.png | select | 2 | closed select |
+| cells/c29_combobox.png | combobox | 2 | editable combo |
+| cells/c30_number_stepper.png | number-stepper | 2 | stepper cluster |
 | cells/c31_checkbox_on.png | checkbox | 1 | checked |
 | cells/c32_checkbox_off.png | checkbox | 1 | unchecked |
 | cells/c33_radio_on.png | radio | 1 | checked |
 | cells/c34_radio_off.png | radio | 1 | unchecked |
-| cells/c35_switch_on.png | switch | 2 | checked |
-| cells/c36_switch_off.png | switch | 2 | unchecked |
-| cells/c37_slider.png | slider | 3 | 40 percent |
+| cells/c35_switch_on.png | switch | 3 | checked |
+| cells/c36_switch_off.png | switch | 3 | unchecked |
+| cells/c37_slider.png | slider | 5 | 40 percent |
 | cells/c38_progress.png | progress | 2 | 65 percent |
 | cells/c39_spinner.png | spinner | 3 | ring |
 | cells/c40_divider_h.png | divider | 1 | horizontal rule |
@@ -61,10 +61,10 @@ One cell per exercised state; every standard kind appears at least once. `ops` =
 | cells/c55_overlay.png | overlay | 0 | badge corner |
 | cells/c56_view_that_fits.png | view-that-fits | 0 | fit box |
 | cells/c57_panel.png | panel | 0 | titled surface |
-| cells/c58_card.png | card | 0 | elevated card |
-| cells/c59_bubble.png | bubble | 0 | chat bubble |
+| cells/c58_card.png | card | 4 | elevated card |
+| cells/c59_bubble.png | bubble | 3 | chat bubble |
 | cells/c60_box.png | box | 0 | framed box |
-| cells/c61_alert.png | alert | 0 | alert banner |
+| cells/c61_alert.png | alert | 3 | alert banner |
 | cells/c62_resizable.png | resizable | 0 | grip edge |
 | cells/c63_split.png | split | 0 | two panes |
 | cells/c64_scroll.png | scroll | 2 | clipped + thumb |
@@ -96,14 +96,14 @@ One cell per exercised state; every standard kind appears at least once. `ops` =
 | cells/c90_status_bar.png | status-bar | 0 | status row |
 | cells/c91_spacer.png | spacer | 0 | expanding gap |
 | cells/c92_root.png | root | 0 | frame root box |
-| cells/c93_tooltip.png | tooltip | 0 | hint bubble |
-| cells/c94_popover.png | popover | 0 | anchored card |
-| cells/c95_dialog.png | dialog | 0 | modal surface |
-| cells/c96_drawer.png | drawer | 0 | side drawer |
-| cells/c97_sheet.png | sheet | 0 | bottom sheet |
-| cells/c98_toast.png | toast | 0 | notification pill |
-| cells/c99_dropdown_menu.png | dropdown-menu | 0 | open menu |
-| cells/c100_context_menu.png | context-menu | 0 | right-click menu |
+| cells/c93_tooltip.png | tooltip | 3 | hint bubble |
+| cells/c94_popover.png | popover | 4 | anchored card |
+| cells/c95_dialog.png | dialog | 4 | modal surface |
+| cells/c96_drawer.png | drawer | 4 | side drawer |
+| cells/c97_sheet.png | sheet | 4 | bottom sheet |
+| cells/c98_toast.png | toast | 3 | notification pill |
+| cells/c99_dropdown_menu.png | dropdown-menu | 4 | open menu |
+| cells/c100_context_menu.png | context-menu | 4 | right-click menu |
 | cells/c101_deco_gradient.png | box | 0 | linear gradient |
 | cells/c102_deco_oklab.png | box | 0 | oklab gradient |
 | cells/c103_deco_stripes.png | box | 0 | stripe fill |
@@ -117,8 +117,8 @@ One cell per exercised state; every standard kind appears at least once. `ops` =
 | cells/c111_deco_zindex.png | box | 0 | z-index order |
 | cells/c112_ext_spark.png | extension:lui_gallery.spark | -1 | custom renderer + hole |
 
-## Kinds emitting no ops unadorned (78)
+## Kinds emitting no ops unadorned (52)
 
-`root`, `row`, `column`, `grid`, `stack`, `edge-inset`, `overlay`, `view-that-fits`, `panel`, `card`, `alert`, `bubble`, `box`, `text`, `heading`, `paragraph`, `label`, `button`, `toggle-button`, `toggle`, `radio-group`, `number-stepper`, `text-field`, `secure-field`, `input`, `search-field`, `textarea`, `tabs`, `bottom-tabs`, `bottom-tab`, `button-group`, `toggle-group`, `spacer`, `icon`, `select`, `combobox`, `dropdown-menu`, `context-menu`, `menu-item`, `menu-trigger`, `list-item`, `avatar`, `image`, `media-surface`, `stepper`, `step`, `timeline`, `timeline-item`, `input-group`, `input-group-actions`, `breadcrumb`, `pagination`, `accordion`, `table`, `table-row`, `table-cell`, `tree`, `resizable`, `split`, `dialog`, `drawer`, `sheet`, `tooltip`, `toast`, `toolbar`, `status-bar`, `list-section`, `list-section-header`, `list-section-footer`, `swipe-actions`, `swipe-action`, `file-picker`, `kbd`, `link`, `file-image`, `file-preview`, `br`, `popover`
+`root`, `row`, `column`, `grid`, `stack`, `edge-inset`, `overlay`, `view-that-fits`, `panel`, `box`, `text`, `heading`, `paragraph`, `label`, `radio-group`, `tabs`, `bottom-tabs`, `bottom-tab`, `button-group`, `toggle-group`, `spacer`, `icon`, `menu-item`, `list-item`, `avatar`, `image`, `media-surface`, `stepper`, `step`, `timeline`, `timeline-item`, `input-group`, `input-group-actions`, `breadcrumb`, `pagination`, `accordion`, `table`, `table-row`, `table-cell`, `tree`, `resizable`, `split`, `toolbar`, `status-bar`, `list-section`, `list-section-header`, `list-section-footer`, `swipe-actions`, `link`, `file-image`, `file-preview`, `br`
 
 Kinds absent from the catalog: none — every `all_node_kinds` entry is exercised by at least one cell.

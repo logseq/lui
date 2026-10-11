@@ -2060,27 +2060,49 @@ end
 module Theme = struct
   let color = color
 
+  (* Dark token table — mirrors the canonical dark tokens in
+     platform/native/lui_theme; the lui_theme test cross-checks it. *)
   let palette =
-    [ ("background", color 22 23 32 255);
-      ("foreground", color 228 230 238 255);
-      ("card", color 30 31 44 255);
-      ("card-foreground", color 228 230 238 255);
-      ("popover", color 30 31 44 255);
-      ("popover-foreground", color 228 230 238 255);
-      ("primary", color 76 116 246 255);
+    [ ("background", color 24 24 27 255);
+      ("foreground", color 244 244 245 255);
+      ("text", color 244 244 245 255);
+      ("text-muted", color 161 161 170 255);
+      ("card", color 39 39 42 255);
+      ("card-foreground", color 244 244 245 255);
+      ("popover", color 39 39 42 255);
+      ("popover-foreground", color 244 244 245 255);
+      ("surface", color 39 39 42 255);
+      ("surface-hover", color 50 50 54 255);
+      ("surface-pressed", color 60 60 65 255);
+      ("primary", color 59 130 246 255);
       ("primary-foreground", color 255 255 255 255);
-      ("secondary", color 44 46 62 255);
-      ("secondary-foreground", color 228 230 238 255);
-      ("muted", color 44 46 62 255);
-      ("muted-foreground", color 152 158 178 255);
-      ("accent", color 52 55 74 255);
-      ("accent-foreground", color 228 230 238 255);
+      ("secondary", color 39 39 42 255);
+      ("secondary-foreground", color 244 244 245 255);
+      ("muted", color 39 39 42 255);
+      ("muted-foreground", color 161 161 170 255);
+      ("accent", color 59 130 246 255);
+      ("accent-hover", color 96 165 250 255);
+      ("accent-pressed", color 37 99 235 255);
+      ("accent-text", color 255 255 255 255);
+      ("accent-foreground", color 255 255 255 255);
+      (* the surface-gray the old "accent" name meant; apps wanting the
+         shadcn hover surface use this. *)
+      ("accent-surface", color 50 50 54 255);
       ("destructive", color 239 68 68 255);
       ("destructive-foreground", color 255 255 255 255);
-      ("border", color 56 59 76 255);
-      ("input", color 40 42 58 255);
-      ("ring", color 76 116 246 255);
-      ("selection", color 76 116 246 90) ]
+      ("danger", color 239 68 68 255);
+      ("warning", color 245 158 11 255);
+      ("success", color 34 197 94 255);
+      ("border", color 63 63 70 255);
+      ("control-border", color 108 108 114 255);
+      ("switch-track", color 91 91 97 255);
+      ("input", color 63 63 70 255);
+      ("ring", color 96 165 250 153);
+      ("focus", color 96 165 250 153);
+      ("selection", color 59 130 246 102);
+      ("scrollbar-thumb", color 255 255 255 89);
+      ("inverse", color 244 244 245 255);
+      ("inverse-foreground", color 24 24 27 255) ]
 
   let color_of_hex s =
     let n = String.length s in

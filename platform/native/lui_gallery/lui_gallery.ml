@@ -106,16 +106,48 @@ let emit root =
 
 (* Fixed theme-name table; hex/rgb values parse inside the paint pass
    itself, so only abstract names need resolving here. *)
-let color_of = function
-  | "primary" -> Some (color 37 99 235 255)
-  | "primary-foreground" -> Some (color 255 255 255 255)
-  | "secondary" -> Some (color 229 231 235 255)
-  | "accent" -> Some (color 124 58 237 255)
-  | "page" -> Some (color 244 246 248 255)
-  | "ink" -> Some (color 17 24 39 255)
-  | "muted" -> Some (color 107 114 128 255)
-  | "danger" -> Some (color 220 38 38 255)
-  | _ -> None
+(* Light token table — mirrors the canonical light tokens in
+   platform/native/lui_theme; the lui_theme test cross-checks it so the
+   gallery renders the same defaults any light host would. *)
+let tokens =
+  [ ("background", color 255 255 255 255);
+    ("foreground", color 24 24 27 255);
+    ("text", color 24 24 27 255);
+    ("text-muted", color 110 110 119 255);
+    ("muted-foreground", color 110 110 119 255);
+    ("muted", color 244 244 245 255);
+    ("surface", color 244 244 245 255);
+    ("surface-hover", color 233 233 236 255);
+    ("surface-pressed", color 221 221 225 255);
+    ("popover", color 255 255 255 255);
+    ("card", color 255 255 255 255);
+    ("border", color 217 217 222 255);
+    ("input", color 217 217 222 255);
+    ("control-border", color 169 170 174 255);
+    ("switch-track", color 188 188 193 255);
+    ("accent", color 37 99 235 255);
+    ("accent-hover", color 29 78 216 255);
+    ("accent-pressed", color 30 64 175 255);
+    ("accent-text", color 255 255 255 255);
+    ("primary", color 37 99 235 255);
+    ("primary-foreground", color 255 255 255 255);
+    ("secondary", color 244 244 245 255);
+    ("danger", color 220 38 38 255);
+    ("destructive", color 220 38 38 255);
+    ("warning", color 217 119 6 255);
+    ("success", color 22 163 74 255);
+    ("focus", color 37 99 235 140);
+    ("ring", color 37 99 235 140);
+    ("selection", color 37 99 235 64);
+    ("scrollbar-thumb", color 0 0 0 82);
+    ("inverse", color 24 24 27 255);
+    ("inverse-foreground", color 255 255 255 255);
+    (* gallery page furniture *)
+    ("page", color 244 246 248 255);
+    ("ink", color 24 24 27 255);
+    ("violet", color 124 58 237 255) ]
+
+let color_of name = List.assoc_opt name tokens
 
 let fill1 x y w h c =
   Fill
