@@ -170,11 +170,13 @@ let () =
   (* Walk the ladder: each rung either yields a renderer or warns and
      the next rung gets its chance. GL needs the opengl-flagged
      window — when an earlier rung fails into the Gl rung the window
-     is recreated with the flag. *)
-  let renderer, gl_live, blit, vk_state, gctx =
-    let blit_cell = ref None in
-    let vk_cell = ref None in
-    let gctx_cell = ref None in
+     is recreated with the flag. [remaining] keeps the rungs below
+     the active one so a runtime demotion can re-walk the tail. *)
+  let blit_cell = ref None in
+  let vk_cell = ref None in
+  let gctx_cell = ref None in
+  let remaining = ref [] in
+  let renderer, gl_live, attempt =
     let mk_blit () =
       let dw, dh =
         match Sdl.gl_get_drawable_size !win with
@@ -191,10 +193,14 @@ let () =
     in
     let rec attempt = function
       | [] ->
+        remaining := [];
         warn "all renderers unavailable; using no-op loop renderer";
         (Lui_linux.noop_renderer, false)
-      | Lui_linux.Noop :: _ -> (Lui_linux.noop_renderer, false)
+      | Lui_linux.Noop :: _ ->
+        remaining := [];
+        (Lui_linux.noop_renderer, false)
       | Lui_linux.Cpu :: rest ->
+        remaining := rest;
         (match mk_blit () with
          | None -> attempt rest
          | Some b ->
@@ -222,6 +228,7 @@ let () =
                     img.Lui_raster.Image.pix) },
              false ))
       | Lui_linux.Vulkan :: rest ->
+        remaining := rest;
         let dw, dh =
           match Sdl.gl_get_drawable_size !win with
           | 0, 0 -> (cfg.width, cfg.height)
@@ -286,6 +293,7 @@ let () =
                           (s.Lui_scene.width * s.Lui_scene.height * 4))) },
              false ))
       | Lui_linux.Gl :: rest ->
+        remaining := rest;
         if headless then begin
           (* The dummy driver has no GL to give. *)
           attempt rest
@@ -328,11 +336,53 @@ let () =
                        ~h:cfg.height (flags false));
                 attempt rest))
     in
-    let renderer, gl_live = attempt ladder in
-    (renderer, gl_live, !blit_cell, vk_cell, !gctx_cell)
+    let r, g = attempt ladder in
+    (r, g, attempt)
+  in
+  let vk_state = vk_cell in
+  (* Runtime backend-loss recovery. An SDL render-target/device reset
+     event (0x2000/0x2001) or a render exception demotes the active
+     rung to the next ladder entry — the window is re-flagged for the
+     new rung, stale GL/Vulkan/blit resources released first. The
+     scene store is untouched, so the next repaint re-uploads a full
+     scene — identical pixels on the CPU path by the parity
+     contract. *)
+  let renderer_cell = ref renderer and gl_live_cell = ref gl_live in
+  let demote reason =
+    warn "renderer %s lost (%s); stepping down the ladder"
+      (!renderer_cell).Lui_host.name reason;
+    (match !gctx_cell with
+     | Some c -> Sdl.gl_delete_context c; gctx_cell := None
+     | None -> ());
+    (match !vk_cell with
+     | Some v -> Lui_vulkan.release v; vk_cell := None
+     | None -> ());
+    blit_cell := None;
+    let next_gl =
+      match !remaining with Lui_linux.Gl :: _ -> true | _ -> false
+    in
+    Sdl.destroy_window !win;
+    win :=
+      sdl_ok
+        (Sdl.create_window "lui_window_linux" ~w:cfg.width ~h:cfg.height
+           (flags (next_gl && not headless)));
+    let r, g = attempt !remaining in
+    renderer_cell := r;
+    gl_live_cell := g
+  in
+  (* The host owns a stable record whose render delegates to the live
+     rung, so a demote needs no host rebuild. *)
+  let renderer_live =
+    { Lui_host.name = "lui (resilient)";
+      render =
+        (fun s ->
+           try (!renderer_cell).Lui_host.render s
+           with exn ->
+             demote (Printexc.to_string exn);
+             (!renderer_cell).Lui_host.render s) }
   in
   let vsync =
-    match gctx with
+    match !gctx_cell with
     | Some _ -> (match Sdl.gl_set_swap_interval 1 with
         | Ok () -> not headless
         | Error _ -> false)
@@ -428,7 +478,10 @@ let () =
         image_of = (fun _ -> None);
         shadow_of = (fun _ -> None) }
   in
-  let host = Lui_host.create ~hooks ~renderer ~width:dw ~height:dh ~scale () in
+  let host =
+    Lui_host.create ~hooks ~renderer:renderer_live ~width:dw ~height:dh
+      ~scale ()
+  in
   host_cell := Some host;
   let store = Lui_host.store host in
   let win_w = ref cfg.width and win_h = ref cfg.height in
@@ -514,7 +567,7 @@ let () =
        | None -> ())
     | Resize_host _ ->
       let dw, dh = drawable () in
-      (match blit with
+      (match !blit_cell with
        | Some b ->
          if
            (match Lui_blit.resize b ~w:dw ~h:dh with
@@ -624,6 +677,12 @@ let () =
     let go = ref true in
     while !go do
       if Sdl.poll_event (Some e) then
+        let typ = Sdl.Event.get e Sdl.Event.typ in
+        (* SDL_RENDER_TARGETS_RESET / SDL_RENDER_DEVICE_RESET: the
+           backend lost its resources — recover down the ladder. *)
+        if typ = 0x2000 || typ = 0x2001 then
+          demote "SDL render-target/device reset"
+        else
         match input_of_event e with
         | Some (Input.Resize (w, h)) ->
           win_w := w;
@@ -647,7 +706,7 @@ let () =
         | None -> true)
   in
   log "lui_window_linux: %dx%d drawable (scale %.2f), renderer=%s%s"
-    dw dh scale renderer.Lui_host.name
+    dw dh scale (!renderer_cell).Lui_host.name
     (if headless then " [headless]" else "");
   while continue () do
     let t0 = perf_s () in
@@ -676,15 +735,16 @@ let () =
     let dirty = headless || Ui.want_frame ui host in
     if dirty then begin
       ignore (Lui_host.repaint host);
-      if gl_live then Sdl.gl_swap_window !win;
+      if !gl_live_cell then Sdl.gl_swap_window !win;
       Ui.frame_done ui;
       incr frame;
       Checksum.add_scene checksum (Lui_host.scene host);
-      if headless && not gl_live then
+      if headless && not !gl_live_cell then
         log "frame=%d ops=%d" !frame
           (List.length (Lui_host.scene host).Lui_scene.ops);
       stats_update st ((perf_s () -. t0) *. 1000.);
-      if !frame mod 60 = 0 then stats_report st renderer.Lui_host.name
+      if !frame mod 60 = 0 then
+        stats_report st (!renderer_cell).Lui_host.name
     end;
     (* No vsync under the dummy driver and possibly none elsewhere:
        pace the loop explicitly. An idle iteration (no repaint) also
@@ -698,7 +758,7 @@ let () =
       else if not dirty then Sdl.delay 4l
     end
   done;
-  stats_report st renderer.Lui_host.name;
+  stats_report st (!renderer_cell).Lui_host.name;
   (match frames_target with
    | Some _ ->
      log "headless done: frames=%d checksum=%016Lx" !frame
@@ -710,7 +770,7 @@ let () =
   (match !vk_state with
    | Some v -> Lui_vulkan.release v
    | None -> ());
-  (match gctx with
+  (match !gctx_cell with
    | Some c -> Sdl.gl_delete_context c
    | None -> ());
   Sdl.destroy_window !win;
