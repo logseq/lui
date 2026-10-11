@@ -34,20 +34,20 @@
     (Linux/Windows layout) it holds the files of the app directory.
 
     {b Integrity.} Every download is checked against its published size
-    and SHA-256. A feed served over HTTPS plus a correct digest is the
-    baseline. Three extension points tighten it: an artifact's optional
-    [signature] — a hex or base64 Ed25519 signature (RFC 8032) over the
-    raw artifact bytes — is verified by {!Lui_ed25519} against the
-    public key given as [pk] or exported as [LUI_UPDATE_PUBKEY] (the
-    argument wins); [verify_sig] replaces all of that with an injected
-    checker for tests; and [verify] inspects the fully staged tree
-    before the swap (e.g. [codesign --verify] or an mtree manifest). A
-    signed artifact with no key available fails the download — signing
-    is opt-in per artifact, never silently skipped.
+    and SHA-256. {b Signatures are required by default}: an artifact
+    without [signature] is refused unless [~allow_unsigned] is passed or
+    [LUI_UPDATE_ALLOW_UNSIGNED=1] is set. When a signature is present it
+    is verified by {!Lui_ed25519} against the public key given as [pk] or
+    exported as [LUI_UPDATE_PUBKEY] (the argument wins); [verify_sig]
+    replaces all of that with an injected checker for tests; and
+    [verify] inspects the fully staged tree before the swap (e.g.
+    [codesign --verify] or an mtree manifest). A signed artifact with no
+    key available fails the download.
 
     {b Schemes.} [https:] always; [http:] only to loopback hosts (local
-    servers); [file:] for local mirrors and tests. Everything else is
-    refused before a fetcher runs, and [https] responses may only
+    servers); [file:] only when [~allow_file] is passed or
+    [LUI_UPDATE_ALLOW_FILE=1] is set (local mirrors and tests). Everything
+    else is refused before a fetcher runs, and [https] responses may only
     redirect to [https]. No raw HTTP dependency: fetching goes through
     an injected {!fetcher} that defaults to a [curl] subprocess with
     hardened flags, so tests serve canned bytes or local files.
@@ -164,15 +164,17 @@ type fetcher = {
         human-readable reason *)
 }
 
-val curl_fetcher : ?user_agent:string -> unit -> fetcher
+val curl_fetcher :
+  ?user_agent:string -> ?allow_file:bool -> unit -> fetcher
 (** The default fetcher: a [curl] subprocess
     [curl -fsSL --proto-redir =https -o dest url] with connect and total
     timeouts. Reports no incremental progress — [progress] callbacks get
-    the start and end marks. *)
+    the start and end marks. [allow_file] opts into [file://] URLs. *)
 
-val url_allowed : string -> bool
-(** Whether the scheme policy lets a URL be fetched: [https], loopback
-    [http], or [file]. *)
+val url_allowed : ?allow_file:bool -> string -> bool
+(** Whether the scheme policy lets a URL be fetched: [https] and loopback
+    [http] always; [file] only with [~allow_file] or
+    [LUI_UPDATE_ALLOW_FILE=1]. *)
 
 val user_agent : feed -> string
 (** ["Lui_updater/1 <app_name>/<version>"], sent as the fetcher's
@@ -188,10 +190,12 @@ val manifest_of_string : string -> (update_info, string) result
     ([url], positive [size], 64-hex [sha256]). Malformed delta entries
     are skipped; a missing top field fails the whole manifest. *)
 
-val check : ?fetch:fetcher -> feed -> (update_info option, string) result
+val check :
+  ?fetch:fetcher -> ?allow_file:bool -> feed ->
+  (update_info option, string) result
 (** Fetches [feed_url], parses the manifest and returns [Some info]
     when its version is newer than [feed.version], [None] when the app
-    is up to date. *)
+    is up to date. [~allow_file] opts into [file://] feed URLs. *)
 
 (** {1 Plan} *)
 
@@ -211,18 +215,21 @@ val download :
   ?fetch:fetcher ->
   ?verify_sig:(sha256:string -> signature:string -> bool) ->
   ?pk:string ->
+  ?allow_unsigned:bool ->
+  ?allow_file:bool ->
   ?progress:(received:int -> total:int -> unit) ->
   artifact -> dest:string -> (unit, string) result
 (** Downloads [artifact] to [dest] and verifies size and SHA-256.
     Bounds: [0 < size <= max_package].
 
-    When the artifact carries a [signature], it must also pass: with
-    [verify_sig] given, that injected checker decides (the test seam);
-    otherwise the signature is verified as an Ed25519 signature over
-    the raw file bytes against the key from [pk] or the
-    [LUI_UPDATE_PUBKEY] environment variable — a signed artifact with
-    no key, an undecodable key or signature, or a signature that does
-    not match all fail the download. *)
+    Unsigned artifacts (no [signature]) are refused unless
+    [~allow_unsigned] or [LUI_UPDATE_ALLOW_UNSIGNED=1]. When a signature
+    is present it must pass: with [verify_sig] given, that injected
+    checker decides (the test seam); otherwise the signature is verified
+    as an Ed25519 signature over the raw file bytes against the key from
+    [pk] or [LUI_UPDATE_PUBKEY] — a signed artifact with no key, an
+    undecodable key or signature, or a signature that does not match all
+    fail the download. [~allow_file] opts into [file://] artifact URLs. *)
 
 (** {1 Apply and swap} *)
 
@@ -284,6 +291,8 @@ val install :
   ?verify:(string -> unit Lui_pkg.outcome) ->
   ?verify_sig:(sha256:string -> signature:string -> bool) ->
   ?pk:string ->
+  ?allow_unsigned:bool ->
+  ?allow_file:bool ->
   ?progress:(received:int -> total:int -> unit) ->
   ?on_state:(state -> unit) ->
   ?stage_dir:string ->
@@ -293,13 +302,16 @@ val install :
     full archive once (the new download restarts progress). [exe] is
     the executable's path inside the bundle (["Contents/MacOS/x"] on
     macOS, ["x"] for a directory install), reported so the caller can
-    relaunch it. [on_state] observes the {!state} transitions. *)
+    relaunch it. [on_state] observes the {!state} transitions.
+    [~allow_unsigned] / [~allow_file] forward to {!download}/{!check}. *)
 
 val install_and_relaunch :
   ?fetch:fetcher ->
   ?verify:(string -> unit Lui_pkg.outcome) ->
   ?verify_sig:(sha256:string -> signature:string -> bool) ->
   ?pk:string ->
+  ?allow_unsigned:bool ->
+  ?allow_file:bool ->
   ?progress:(received:int -> total:int -> unit) ->
   ?on_state:(state -> unit) ->
   ?stage_dir:string ->

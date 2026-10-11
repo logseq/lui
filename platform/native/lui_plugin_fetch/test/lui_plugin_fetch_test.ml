@@ -175,6 +175,19 @@ let test_transport_error () =
   check int "status 0" 0 status;
   check bool "error populated" true (error <> "")
 
+
+let test_url_policy () =
+  let allowed = F.Private.url_allowed in
+  check bool "https" true (allowed "https://example.com/a");
+  check bool "http loopback" true (allowed "http://127.0.0.1:9/x");
+  check bool "file default" false (allowed "file:///tmp/x");
+  check bool "file opt-in" true (allowed ~allow_private:true "file:///tmp/x");
+  check bool "rfc1918" false (allowed "http://192.168.1.1/");
+  check bool "rfc1918 opt-in" true
+    (allowed ~allow_private:true "http://192.168.1.1/");
+  check bool "link-local" false (allowed "http://169.254.169.254/");
+  check bool "ftp" false (allowed "ftp://example.com/x")
+
 let test_bad_args () =
   match request {|{"method":"GET"}|} with
   | Error _ -> ()
@@ -185,25 +198,30 @@ let () =
   (match P.use [ F.plugin ] with
    | Ok () -> ()
    | Error e -> Alcotest.fail e);
+  let policy =
+    [ ("policy", [ Alcotest.test_case "url allowlist" `Quick test_url_policy ]) ]
+  in
   if F.available () then
     Alcotest.run "lui_plugin_fetch"
-      [
-        ( "loopback",
-          [
-            Alcotest.test_case "get" `Quick (with_server test_get);
-            Alcotest.test_case "post echo" `Quick
-              (with_server test_post_echo);
-            Alcotest.test_case "redirect" `Quick (with_server test_redirect);
-            Alcotest.test_case "no redirect" `Quick
-              (with_server test_no_redirect);
-            Alcotest.test_case "status passthrough" `Quick
-              (with_server test_status_passthrough);
-            Alcotest.test_case "transport error" `Quick test_transport_error;
-            Alcotest.test_case "bad args" `Quick test_bad_args;
-          ] );
-      ]
+      (policy
+      @ [
+          ( "loopback",
+            [
+              Alcotest.test_case "get" `Quick (with_server test_get);
+              Alcotest.test_case "post echo" `Quick
+                (with_server test_post_echo);
+              Alcotest.test_case "redirect" `Quick (with_server test_redirect);
+              Alcotest.test_case "no redirect" `Quick
+                (with_server test_no_redirect);
+              Alcotest.test_case "status passthrough" `Quick
+                (with_server test_status_passthrough);
+              Alcotest.test_case "transport error" `Quick test_transport_error;
+              Alcotest.test_case "bad args" `Quick test_bad_args;
+            ] );
+        ])
   else begin
     Printf.printf "libcurl unavailable, e2e skipped\n%!";
     Alcotest.run "lui_plugin_fetch"
-      [ ("skip", [ Alcotest.test_case "no libcurl" `Quick (fun () -> ()) ]) ]
+      (policy
+      @ [ ("skip", [ Alcotest.test_case "no libcurl" `Quick (fun () -> ()) ]) ])
   end

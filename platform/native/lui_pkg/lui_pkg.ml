@@ -210,7 +210,11 @@ module Fs = struct
 
   let temp_dir ?(prefix = "lui_pkg-") ?(parent = Filename.get_temp_dir_name ()) () =
     let rec try_one n =
-      let d = fmt "%s%s%d-%d" parent prefix (Unix.getpid ()) n in
+      (* Filename.concat so a parent of "/tmp" does not become "/tmplui-…". *)
+      let d =
+        Filename.concat parent
+          (fmt "%s%d-%d" prefix (Unix.getpid ()) n)
+      in
       match kind_of d with
       | Absent ->
         Unix.mkdir d 0o700;

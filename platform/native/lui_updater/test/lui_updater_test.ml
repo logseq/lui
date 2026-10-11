@@ -11,6 +11,25 @@ module U = Lui_updater
 module L = Lui_pkg
 module P = Lui_pkg.Private
 
+(* Dev/test feeds are unsigned file:// mirrors; production defaults
+   refuse both. These wrappers opt in for the suite. *)
+let install_dev ?fetch ?verify ?verify_sig ?pk ?progress ?on_state ?stage_dir
+    f ~bundle ~exe =
+  U.install ?fetch ?verify ?verify_sig ?pk ?progress ?on_state ?stage_dir
+    ~allow_unsigned:true ~allow_file:true f ~bundle ~exe
+
+let check_dev ?fetch f = U.check ?fetch ~allow_file:true f
+
+let download_dev ?fetch ?verify_sig ?pk ?progress a ~dest =
+  U.download ?fetch ?verify_sig ?pk ?progress ~allow_unsigned:true
+    ~allow_file:true a ~dest
+
+let install_and_relaunch_dev ?fetch ?verify ?verify_sig ?pk ?progress
+    ?on_state ?stage_dir f ~bundle ~exe ~args =
+  U.install_and_relaunch ?fetch ?verify ?verify_sig ?pk ?progress
+    ?on_state ?stage_dir ~allow_unsigned:true ~allow_file:true f ~bundle
+    ~exe ~args
+
 let check = Alcotest.check
 let string = Alcotest.string
 let int = Alcotest.int
@@ -313,7 +332,9 @@ let test_state_machine () =
 
 let test_url_policy () =
   check bool "https" true (U.url_allowed "https://a.com/u.json");
-  check bool "file" true (U.url_allowed "file:///tmp/u.json");
+  check bool "file default" false (U.url_allowed "file:///tmp/u.json");
+  check bool "file opt-in" true
+    (U.url_allowed ~allow_file:true "file:///tmp/u.json");
   check bool "http loopback" true
     (U.url_allowed "http://127.0.0.1:8000/u.json");
   check bool "http localhost" true
@@ -347,13 +368,13 @@ let test_check_injected () =
   write (Filename.concat dir "stable.json")
     (manifest ~version:"2.0" ~archive:a ~deltas:[]);
   let f = feed_of dir ~version:"1.0" in
-  (match U.check ~fetch:file_fetcher f with
+  (match check_dev ~fetch:file_fetcher f with
    | Stdlib.Ok (Some i) -> check string "newer" "2.0" i.U.version
    | _ -> Alcotest.fail "check should find 2.0");
-  (match U.check ~fetch:file_fetcher { f with U.version = "2.0" } with
+  (match check_dev ~fetch:file_fetcher { f with U.version = "2.0" } with
    | Stdlib.Ok None -> ()
    | _ -> Alcotest.fail "same version should be up to date");
-  (match U.check ~fetch:file_fetcher { f with U.version = "3.0" } with
+  (match check_dev ~fetch:file_fetcher { f with U.version = "3.0" } with
    | Stdlib.Ok None -> ()
    | _ -> Alcotest.fail "older feed should be up to date")
 
@@ -382,7 +403,7 @@ let test_delta_install () =
   let states = ref [] in
   let f = feed_of feed_dir ~version:"1.0" in
   let report =
-    U.install ~fetch:file_fetcher
+    install_dev ~fetch:file_fetcher
       ~on_state:(fun s -> states := s :: !states)
       f ~bundle:target ~exe:"Contents/MacOS/myapp"
   in
@@ -423,7 +444,7 @@ let test_full_install () =
   let base, old_app, _new_app, feed_dir = fixture ~with_delta:false in
   let target = installed_copy (Filename.concat base "live") old_app in
   let f = feed_of feed_dir ~version:"1.0" in
-  match U.install ~fetch:file_fetcher f ~bundle:target
+  match install_dev ~fetch:file_fetcher f ~bundle:target
           ~exe:"Contents/MacOS/myapp" with
   | U.Installed { version; _ } ->
     check string "version" "2.0" version;
@@ -443,7 +464,7 @@ let test_delta_fallback () =
   let f = feed_of feed_dir ~version:"1.0" in
   let progress_seen = ref 0 in
   (match
-     U.install ~fetch:file_fetcher
+     install_dev ~fetch:file_fetcher
        ~progress:(fun ~received:_ ~total:_ -> incr progress_seen)
        f ~bundle:target ~exe:"Contents/MacOS/myapp"
    with
@@ -460,7 +481,7 @@ let test_curl_file_fetch () =
   let base, old_app, _new_app, feed_dir = fixture ~with_delta:true in
   let target = installed_copy (Filename.concat base "live") old_app in
   let f = feed_of feed_dir ~version:"1.0" in
-  match U.install f ~bundle:target ~exe:"Contents/MacOS/myapp" with
+  match install_dev f ~bundle:target ~exe:"Contents/MacOS/myapp" with
   | U.Installed { version; _ } ->
     check string "version" "2.0" version;
     check string "now runs 2.0" "2.0" (read_plist_version target)
@@ -510,7 +531,7 @@ let test_signed_install () =
   (* good signature + explicit key → installs *)
   write_manifest (signed_artifact pkg);
   let target = installed_copy (Filename.concat base "live") old_app in
-  (match U.install ~fetch:file_fetcher ~pk:pk_hex f ~bundle:target ~exe
+  (match install_dev ~fetch:file_fetcher ~pk:pk_hex f ~bundle:target ~exe
    with
    | U.Installed { version; _ } ->
      check string "signed version" "2.0" version
@@ -528,7 +549,7 @@ let test_signed_install () =
   in
   write_manifest a2;
   let target2 = installed_copy (Filename.concat base "live2") old_app in
-  (match U.install ~fetch:file_fetcher ~pk:pk_hex f ~bundle:target2 ~exe
+  (match install_dev ~fetch:file_fetcher ~pk:pk_hex f ~bundle:target2 ~exe
    with
    | U.Install_failed m ->
      check bool "tampered rejected" true
@@ -538,7 +559,7 @@ let test_signed_install () =
   write_manifest (signed_artifact pkg);
   let target3 = installed_copy (Filename.concat base "live3") old_app in
   (match
-     U.install ~fetch:file_fetcher ~pk:wrong_pk_hex f ~bundle:target3
+     install_dev ~fetch:file_fetcher ~pk:wrong_pk_hex f ~bundle:target3
        ~exe
    with
    | U.Install_failed m ->
@@ -547,7 +568,7 @@ let test_signed_install () =
    | _ -> Alcotest.fail "wrong key installed");
   (* a signed artifact with no key anywhere is a hard error *)
   let dl = Filename.concat base "dl.pkg" in
-  (match U.download ~fetch:file_fetcher (signed_artifact pkg) ~dest:dl
+  (match download_dev ~fetch:file_fetcher (signed_artifact pkg) ~dest:dl
    with
    | Error m ->
      check bool "no key rejected" true
@@ -555,7 +576,7 @@ let test_signed_install () =
    | Stdlib.Ok () -> Alcotest.fail "signed artifact unchecked");
   (* the injected hook still wins, for tests *)
   (match
-     U.download ~fetch:file_fetcher
+     download_dev ~fetch:file_fetcher
        ~verify_sig:(fun ~sha256:_ ~signature:_ -> true)
        {
          (artifact_of_file pkg (file_url pkg)) with
@@ -568,7 +589,7 @@ let test_signed_install () =
   (* the explicit key beats the environment *)
   Unix.putenv "LUI_UPDATE_PUBKEY" pk_hex;
   (match
-     U.download ~fetch:file_fetcher ~pk:wrong_pk_hex
+     download_dev ~fetch:file_fetcher ~pk:wrong_pk_hex
        (signed_artifact pkg) ~dest:dl
    with
    | Error m ->
@@ -576,7 +597,7 @@ let test_signed_install () =
        (contains m "signature check failed")
    | Stdlib.Ok () -> Alcotest.fail "env beat explicit key");
   (* LUI_UPDATE_PUBKEY alone supplies the key *)
-  (match U.download ~fetch:file_fetcher (signed_artifact pkg) ~dest:dl
+  (match download_dev ~fetch:file_fetcher (signed_artifact pkg) ~dest:dl
    with
    | Stdlib.Ok () -> ()
    | Error m -> Alcotest.failf "env key rejected: %s" m)
@@ -620,7 +641,7 @@ let test_http_loopback () =
   check bool "server up" true up;
   let f = { (feed_of feed_dir ~version:"1.0") with
             U.base_url = Printf.sprintf "http://127.0.0.1:%d" port } in
-  (match U.install f ~bundle:target ~exe:"Contents/MacOS/myapp" with
+  (match install_dev f ~bundle:target ~exe:"Contents/MacOS/myapp" with
    | U.Installed { version; _ } -> check string "version" "2.0" version
    | U.Up_to_date -> Alcotest.fail "expected install"
    | U.Install_failed m -> Alcotest.failf "install failed: %s" m);
@@ -646,7 +667,7 @@ let test_install_and_relaunch () =
     if pid = 0 then begin
       (* child: install_and_relaunch exits 0 on success *)
       (match
-         U.install_and_relaunch ~fetch:file_fetcher f ~bundle:target
+         install_and_relaunch_dev ~fetch:file_fetcher f ~bundle:target
            ~exe ~args:[]
        with
        | U.Installed _ -> exit 1 (* unreachable: it exits itself *)
@@ -670,6 +691,47 @@ let test_install_and_relaunch () =
     check string "swapped to 2.0" "2.0" (read_plist_version target)
   end
 
+
+let test_unsigned_refused () =
+  let dir = tmp_dir () in
+  let pkg = Filename.concat dir "pkg.bin" in
+  write pkg "hello-upd";
+  let a = artifact_of_file pkg (file_url pkg) in
+  let dl = Filename.concat dir "out" in
+  match U.download ~fetch:file_fetcher ~allow_file:true a ~dest:dl with
+  | Error m ->
+    check bool "unsigned refused" true
+      (let n = String.length m in
+       let needle = "unsigned artifact refused" in
+       let nl = String.length needle in
+       let rec go i =
+         i + nl <= n && (String.sub m i nl = needle || go (i + 1))
+       in
+       go 0)
+  | Stdlib.Ok () -> Alcotest.fail "unsigned artifact accepted"
+
+let test_file_refused () =
+  check bool "file blocked" false (U.url_allowed "file:///tmp/x");
+  let dir = tmp_dir () in
+  let pkg = Filename.concat dir "pkg.bin" in
+  write pkg "hello-upd";
+  let a =
+    { (artifact_of_file pkg (file_url pkg)) with
+      U.signature = Some "deadbeef" }
+  in
+  let dl = Filename.concat dir "out" in
+  match U.download ~fetch:file_fetcher a ~dest:dl with
+  | Error m ->
+    check bool "file refused" true
+      (let n = String.length m in
+       let needle = "refusing to fetch" in
+       let nl = String.length needle in
+       let rec go i =
+         i + nl <= n && (String.sub m i nl = needle || go (i + 1))
+       in
+       go 0)
+  | Stdlib.Ok () -> Alcotest.fail "file:// accepted without opt-in"
+
 let () =
   Alcotest.run "lui_updater"
     [
@@ -681,6 +743,8 @@ let () =
           Alcotest.test_case "plan delta-first" `Quick test_plan;
           Alcotest.test_case "state machine" `Quick test_state_machine;
           Alcotest.test_case "url policy" `Quick test_url_policy;
+          Alcotest.test_case "unsigned refused" `Quick test_unsigned_refused;
+          Alcotest.test_case "file:// refused" `Quick test_file_refused;
           Alcotest.test_case "next_check" `Quick test_next_check;
           Alcotest.test_case "check (injected)" `Quick test_check_injected;
           Alcotest.test_case "install_target" `Quick test_install_target;
