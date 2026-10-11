@@ -242,8 +242,13 @@ let pcm_of_result (ok, err, frames, rate, ch, data) =
       { pcm_rate = rate; pcm_channels = ch; pcm_frames = frames;
         pcm_data = Bytes.of_string data }
 
-let decode path = pcm_of_result (c_decode path false)
-let decode_bytes b = pcm_of_result (c_decode b true)
+let decode_of f arg =
+  (* Stubs raise on platforms without a media backend; the API contract
+     is graceful errors, so translate the raise into [Error]. *)
+  try pcm_of_result (f arg) with Failure m -> Error m
+
+let decode path = decode_of (fun b -> c_decode b false) path
+let decode_bytes b = decode_of (fun b -> c_decode b true) b
 
 (* ------------------------------------------------------------------ *)
 (* Video                                                               *)
