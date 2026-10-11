@@ -1388,13 +1388,6 @@ static struct custom_operations player_ops = {
   custom_fixed_length_default
 };
 
-static struct custom_operations video_ops = {
-  "lui_media.video", custom_finalize_default, custom_compare_default,
-  custom_hash_default, custom_serialize_default,
-  custom_deserialize_default, custom_compare_ext_default,
-  custom_fixed_length_default
-};
-
 static int ffplay_ok(void) { return prog_exists("ffplay"); }
 
 /* SDL symbols resolve even on hosts with no audio device (CI runners),
@@ -1528,9 +1521,12 @@ CAMLprim value lui_media_player_load(value v, value vsrc, value vis_data)
              (long)getpid());
     int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (fd >= 0) {
-      write(fd, String_val(vsrc), caml_string_length(vsrc));
+      ssize_t nw = write(fd, String_val(vsrc), caml_string_length(vsrc));
       close(fd);
-      p->src_tmp = strdup(tmp);
+      /* A truncated temp file must not be offered to the ffplay
+         fallback, so only keep the path on a complete write. */
+      if (nw == (ssize_t)caml_string_length(vsrc))
+        p->src_tmp = strdup(tmp);
     }
     p->src_path = NULL;
   }
