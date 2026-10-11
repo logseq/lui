@@ -972,7 +972,10 @@ let text_placement_of store id =
     | "bottom-tab" | "tab" -> (Ta_center, 12., 5., false)
     | "tooltip" | "toast" -> (Ta_center, 8., 4., false)
     | "alert" | "bubble" -> (Ta_start, 10., 6., false)
-    | "menu-item" -> (Ta_start, 8., 6., false)
+    | "menu-item" ->
+      (* icon slot [x+8, x+26] + 4px gap shifts the label — the web
+         stylesheet's icon+gap-1 inside px-2 *)
+      (Ta_start, (if pstr store id "icon" = None then 8. else 30.), 6., false)
     | "table-cell" | "table-row" -> (Ta_start, 10., 6., false)
     | "step" -> (Ta_center, 8., 4., false)
     | "list-item" -> (Ta_start, 12., 6., false)
@@ -1307,8 +1310,15 @@ let control_icon_ops ctx store id r alpha =
       if size <= 0. then []
       else
         let dst =
-          rect (r.x +. ((r.w -. size) /. 2.))
-            (r.y +. ((r.h -. size) /. 2.)) size size
+          match Lui_store.kind store id with
+          | "menu-item" ->
+            (* leading icon slot: 8px in, vertically centered —
+               .lui-menu-item's icon span *)
+            rect (r.x +. (8. *. s))
+              (r.y +. ((r.h -. size) /. 2.)) size size
+          | _ ->
+            rect (r.x +. ((r.w -. size) /. 2.))
+              (r.y +. ((r.h -. size) /. 2.)) size size
         in
         [ Image
             { irect2 = dst; iradii = (0., 0., 0., 0.);
@@ -1564,8 +1574,9 @@ let default_chrome ctx store id st kind r rs alpha =
            in
            face zc rad bw1 bc ~dashed:false ])
   | "menu-item" ->
-    if bg_styled || (not st.hovered && not st.focused) then []
-    else [ face (col_accent ctx) (rad (6. *. s)) zb zc ~dashed:false ]
+    (if bg_styled || (not st.hovered && not st.focused) then []
+     else [ face (col_accent ctx) (rad (6. *. s)) zb zc ~dashed:false ])
+    @ control_icon_ops ctx store id r alpha
   | "list-item" ->
     if bg_styled then []
     else if st.selected then
