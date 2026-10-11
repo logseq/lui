@@ -483,13 +483,35 @@ let rec build ctx store ~pkind ~pid ~index id : Lui_flex.node list =
       |> adjust ~pkind ~pid ~index store id
     in
     let kind = Lui_store.kind store id in
-    let kids =
-      build_seq ctx store ~pkind:kind ~pid:id ~first:0
-        (ordered_child_ids store id kind)
+    let cids = ordered_child_ids store id kind in
+    let kids = build_seq ctx store ~pkind:kind ~pid:id ~first:0 cids in
+    let text = text_of store id in
+    let style =
+      (* A node whose built children are all popup surfaces (e.g. a
+         menu trigger) still sizes to its own label — the popups are
+         out of flow and contribute nothing. *)
+      match (kids, text) with
+      | _ :: _, Some t
+        when List.for_all
+               (fun cid -> popup_kind (Lui_store.kind store cid))
+               cids -> (
+        match ctx.tm id t ctx.vw ctx.vh with
+        | Some (tw, th) ->
+          { style with
+            min_width =
+              (match (style.width, style.min_width) with
+               | Unset, Unset -> Pt tw
+               | _, l -> l);
+            min_height =
+              (match (style.height, style.min_height) with
+               | Unset, Unset -> Pt th
+               | _, l -> l) }
+        | None -> style)
+      | _ -> style
     in
     let m =
-      match (kids, text_of store id) with
-      | [], Some text -> Some (measure_of ctx.tm ~id ~text)
+      match (kids, text) with
+      | [], Some t -> Some (measure_of ctx.tm ~id ~text:t)
       | _ -> None
     in
     let node = Lui_flex.create ~style ?measure:m kids in

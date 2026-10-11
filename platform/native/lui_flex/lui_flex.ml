@@ -1523,8 +1523,11 @@ and absolute_layout_child
     (* When the main size is indefinite and the child's inline axis is
        parallel to it, size with an undefined main size and at-most on
        the cross axis. *)
+    (* A non-positive offer cannot bound anything — content-size the
+       child instead, or fixed_size_set_measured_dimensions skips the
+       child's subtree and reports 0x0. *)
     if (not is_main_axis_row) && is_undefined !child_width
-       && width_mode <> Measure_undefined
+       && width_mode <> Measure_undefined && width > zero
     then begin
       child_width := width;
       child_width_mode := Measure_at_most
