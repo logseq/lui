@@ -985,8 +985,9 @@ static value lui_gtk_capture(LuiWv *w)
 #elif defined(_WIN32)
 /* ========= Windows: WebView2 via LoadLibrary + minimal COM =========== */
 
-/* Minimal Win32 declarations — <windows.h> is not required; these
-   match the platform ABI. */
+/* Minimal Win32 declarations — needed only when SDL_syswm.h did not
+   already pull in <windows.h>; otherwise the real protos apply (and
+   windows.h macros like LoadLibraryW->LoadLibraryExW keep working). */
 
 typedef long lui_hresult;
 typedef unsigned long lui_ulong;
@@ -994,6 +995,7 @@ typedef void *lui_com;
 
 #define LUI_STDCALL __stdcall
 
+#ifndef WINAPI
 extern __declspec(dllimport) void *LUI_STDCALL LoadLibraryW(
     const wchar_t *);
 extern __declspec(dllimport) void *LUI_STDCALL GetProcAddress(
@@ -1017,6 +1019,7 @@ extern __declspec(dllimport) int LUI_STDCALL GlobalUnlock(void *);
 extern __declspec(dllimport) long LUI_STDCALL CreateStreamOnHGlobal(
     void *, int, void **);
 extern __declspec(dllimport) void LUI_STDCALL CoTaskMemFree(void *);
+#endif /* !WINAPI — no real Win32 headers in this TU */
 
 typedef struct {
   void *hwnd;
@@ -1168,9 +1171,9 @@ static void lui_win_pump_until(volatile int *flag)
   int ticks = 10000;
   while (!*flag && ticks-- > 0) {
     lui_msg_t m;
-    if (PeekMessageW(&m, NULL, 0, 0, 1 /*PM_REMOVE*/)) {
-      TranslateMessage(&m);
-      DispatchMessageW(&m);
+    if (PeekMessageW((void *)&m, NULL, 0, 0, 1 /*PM_REMOVE*/)) {
+      TranslateMessage((const void *)&m);
+      DispatchMessageW((const void *)&m);
     } else {
       Sleep(1);
     }
@@ -1180,9 +1183,9 @@ static void lui_win_pump_until(volatile int *flag)
 static void lui_win_pump(void)
 {
   lui_msg_t m;
-  while (PeekMessageW(&m, NULL, 0, 0, 1)) {
-    TranslateMessage(&m);
-    DispatchMessageW(&m);
+  while (PeekMessageW((void *)&m, NULL, 0, 0, 1)) {
+    TranslateMessage((const void *)&m);
+    DispatchMessageW((const void *)&m);
   }
 }
 
@@ -1344,7 +1347,7 @@ static void *lui_wv2_loader(void)
   tried = 1;
   lib = LoadLibraryW(L"WebView2Loader.dll");
   if (lib != NULL)
-    proc = GetProcAddress(lib,
+    proc = (void *)GetProcAddress(lib,
                           "CreateCoreWebView2EnvironmentWithOptions");
   return proc;
 }
@@ -1577,7 +1580,7 @@ static value lui_win_capture(LuiWv *w)
   unsigned long n;
   lui_h_t *h;
   s = caml_copy_string("");
-  if (CreateStreamOnHGlobal(NULL, 1, &stm) != 0 || stm == NULL)
+  if (CreateStreamOnHGlobal(NULL, 1, (void *)&stm) != 0 || stm == NULL)
     CAMLreturn(s);
   w->core->cap_done = 0;
   w->core->cap_fail = 0;
@@ -1602,9 +1605,9 @@ static value lui_win_capture(LuiWv *w)
 static void lui_win_pump_once(void)
 {
   lui_msg_t m;
-  if (PeekMessageW(&m, NULL, 0, 0, 1)) {
-    TranslateMessage(&m);
-    DispatchMessageW(&m);
+  if (PeekMessageW((void *)&m, NULL, 0, 0, 1)) {
+    TranslateMessage((const void *)&m);
+    DispatchMessageW((const void *)&m);
   } else {
     Sleep(1);
   }
