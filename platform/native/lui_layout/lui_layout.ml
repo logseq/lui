@@ -426,6 +426,25 @@ let adjust ~pkind ~pid ~index store id (style : Lui_flex.style) : Lui_flex.style
     else style
   in
   let style =
+    if pkind = "split" then
+      (* The split kind's ~value is the first pane's fraction of the
+         track — the same contract gpui's h_resizable renders. The
+         second pane grows into the remainder; the gap is the divider. *)
+      match Lui_store.child_ids store pid with
+      | first :: second :: _ ->
+        if id = first then (
+          match pnum store pid "value" with
+          | Some v ->
+            { style with
+              flex_basis = Lui_flex.Percent (v *. 100.); flex_grow = 0. }
+          | None -> style)
+        else if id = second then
+          { style with flex_grow = 1. }
+        else style
+      | _ -> style
+    else style
+  in
+  let style =
     if pkind = "edge-inset" then
       (* The first store child is the scrollable content; CSS gives it
          flex:1 while pinned siblings group at the named edge. *)
