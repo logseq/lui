@@ -910,6 +910,7 @@ let common_property_supported kind property =
     | Text | Heading | Paragraph | Label | Button | ToggleButton | TextField
     | SecureField | Input | SearchField | Textarea | Checkbox | Toggle | Radio
     | Slider | NumberStepper | Select | Combobox | DropdownMenu | MenuItem
+    | Popover
     | ListItem | TableCell | Resizable | Split | Alert | Bubble | StatusBar
     | Link -> true
     | _ -> false)
