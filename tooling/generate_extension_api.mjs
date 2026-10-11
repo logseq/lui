@@ -33,7 +33,7 @@
 //
 // kind: "string" | "bool" | "int" | "float"
 // os: "generic" | "web" | "macos" | "ios" | "android" | "linux" | "windows"
-// host: "generic" | "web" | "swiftui" | "gpui"
+// host: "generic" | "web" | "swiftui" | "kotlin"
 //
 // Usage: node tooling/generate_extension_api.mjs --schema <file.json> \
 //        --out <Module.ml> [--mli <Module.mli>]
@@ -65,7 +65,7 @@ const osNames = {
 
 const hostNames = {
   generic: 'GenericHost', web: 'WebHost', swiftui: 'SwiftUIHost',
-  kotlin: 'KotlinHost', gpui: 'GPUIHost',
+  kotlin: 'KotlinHost',
 };
 
 const munge = (name) => name.replace(/-/g, '_');

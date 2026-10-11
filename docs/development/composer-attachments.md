@@ -45,7 +45,7 @@ scope checks prevent stale cleanup tasks from deleting current files. Remove,
 Send and scope disposal release demo-owned files. Abrupt process termination
 cleanup is best effort; the actor never deletes another instance's directory.
 
-Web, Android and GPUI do not currently implement the same native picker
+Web and Android do not currently implement the same native picker
 contract. Their Gallery import actions are disabled with an explanation;
 host applications can provide their own picker actions and ordered model.
 Shared card/layout primitives and the public result model remain portable.

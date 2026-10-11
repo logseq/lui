@@ -427,8 +427,8 @@ let adjust ~pkind ~pid ~index store id (style : Lui_flex.style) : Lui_flex.style
   let style =
     if pkind = "split" then
       (* The split kind's ~value is the first pane's fraction of the
-         track — the same contract gpui's h_resizable renders. The
-         second pane grows into the remainder; the gap is the divider. *)
+         track. The second pane grows into the remainder; the gap is
+         the divider. *)
       match Lui_store.child_ids store pid with
       | first :: second :: _ ->
         if id = first then (

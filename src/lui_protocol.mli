@@ -105,7 +105,6 @@ type host_kind =
   | WebHost
   | SwiftUIHost
   | KotlinHost
-  | GPUIHost
 
 type platform_profile = {
   profile_os : operating_system;

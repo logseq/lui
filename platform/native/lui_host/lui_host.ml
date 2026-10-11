@@ -127,8 +127,8 @@ let repaint h =
       else h.hooks
   in
   (* The window clear follows the app theme's "background" token —
-     what the web paints on <body> and gpui puts behind the root view.
-     Regions the tree does not cover must not flash the raw framebuffer. *)
+     what the web paints on <body>. Regions the tree does not cover
+     must not flash the raw framebuffer. *)
   let clear =
     match hooks.color_of "background" with
     | Some c -> c

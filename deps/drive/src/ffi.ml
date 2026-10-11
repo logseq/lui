@@ -38,7 +38,6 @@ let host_code = function
   | WebHost -> 1
   | SwiftUIHost -> 2
   | KotlinHost -> 4
-  | GPUIHost -> 6
   | _ -> 0
 
 let wire_json = function
