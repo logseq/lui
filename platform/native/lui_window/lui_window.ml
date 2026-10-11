@@ -672,8 +672,19 @@ module Ui = struct
       (fun s id -> event_supported s id (ev_text id))
 
   let press_target store path =
-    select_activation store path
-      (fun s id -> event_supported s id (ev_press id))
+    (* DOM click semantics: the activation lands on the deepest
+       ancestor that opted into press handling ("press-enabled" is
+       what [register_press] sets), not on a passive leaf — bare
+       text/box kinds admit Press unconditionally and would otherwise
+       swallow the click before it reaches the pressable wrapper. *)
+    match
+      select_activation store path
+        (fun s id -> Lui_store.bool_prop s id "press-enabled")
+    with
+    | Some id -> Some id
+    | None ->
+      select_activation store path
+        (fun s id -> event_supported s id (ev_press id))
 
   let detail_target store path make =
     pick store path (fun s id ->
