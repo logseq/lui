@@ -458,5 +458,9 @@ let () =
         [ Alcotest.test_case "arg errors" `Quick test_cli_errors;
           Alcotest.test_case "print url" `Quick test_cli_print_url ] );
       ( "browser",
-        [ Alcotest.test_case "browser open" `Quick test_browser_open ]
-        ) ]
+        match Sys.getenv_opt "GITHUB_ACTIONS" with
+        | Some _ ->
+          (* open_in_browser spawns the OS browser; on headless CI
+             sessions that blocks for minutes. *)
+          []
+        | None -> [ Alcotest.test_case "browser open" `Quick test_browser_open ] ) ]
