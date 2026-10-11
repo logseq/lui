@@ -103,6 +103,28 @@ let test_ops_on_missing_are_ignored () =
       DropNode 99 ];
   check int "still empty" 0 (Lui_store.node_count t)
 
+(* Recreate must drop the previous subtree: otherwise children of the
+   old node stay in the table with parent=Some id while the replacement
+   starts empty. *)
+let test_create_replaces_drops_subtree () =
+  let t = Lui_store.create () in
+  apply t
+    [ CreateNode (1, Column); CreateNode (2, Row); CreateNode (3, Text);
+      InsertChild (1, 2, 0); InsertChild (2, 3, 0) ];
+  check int "before" 3 (Lui_store.node_count t);
+  apply t [ CreateNode (1, Stack) ];
+  check int "after recreate" 1 (Lui_store.node_count t);
+  check bool "old child gone" false (Lui_store.mem t 2);
+  check bool "old grandchild gone" false (Lui_store.mem t 3);
+  check string "kind replaced" "stack" (Lui_store.kind t 1);
+  check (list int) "no children" [] (Lui_store.child_ids t 1);
+  (* same for CreateExtension *)
+  apply t
+    [ CreateNode (10, Column); CreateNode (11, Text); InsertChild (10, 11, 0) ];
+  apply t [ CreateExtension (10, "chart", "fp") ];
+  check bool "ext child gone" false (Lui_store.mem t 11);
+  check string "ext kind" "extension:chart" (Lui_store.kind t 10)
+
 let () =
   run "lui_store"
     [ ("tree",
@@ -111,6 +133,8 @@ let () =
          test_case "move" `Quick test_move_child;
          test_case "move across parents" `Quick test_move_across_parents;
          test_case "drop subtree" `Quick test_drop_subtree;
+         test_case "recreate drops subtree" `Quick
+           test_create_replaces_drops_subtree;
          test_case "roots" `Quick test_root_ids ]);
       ("props",
        [ test_case "set/remove" `Quick test_props;

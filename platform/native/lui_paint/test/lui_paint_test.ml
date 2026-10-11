@@ -313,6 +313,31 @@ let test_opacity_multiply () =
   | [ Fill f ] -> check bool "quarter" true (f.fopacity = 0.25)
   | _ -> fail "expected one Fill op"
 
+
+let test_viewport_cull () =
+  (* Two stacked columns: only the on-screen one should emit a Fill. *)
+  let t = store () in
+  apply t
+    [ Lui_protocol.CreateNode (1, Column);
+      CreateNode (2, Column); CreateNode (3, Column);
+      SetProp (2, BackgroundValue, StringValue "#ff0000");
+      SetProp (3, BackgroundValue, StringValue "#00ff00");
+      InsertChild (1, 2, 0); InsertChild (1, 3, 1) ];
+  let layout = function
+    | 1 -> Lui_paint.placement_of_rect (rect 0. 0. 100. 200.)
+    | 2 -> Lui_paint.placement_of_rect (rect 0. 0. 100. 40.)
+    | 3 -> Lui_paint.placement_of_rect (rect 0. 500. 100. 40.) (* offscreen *)
+    | _ -> Lui_paint.placement_of_rect (rect 0. 0. 0. 0.)
+  in
+  let s = paint_with (hooks ~layout ()) t ~width:200 ~height:200 () in
+  let fills =
+    List.filter_map (function Lui_scene.Fill f -> Some f | _ -> None) s.ops
+  in
+  check int "one on-screen fill" 1 (List.length fills);
+  match fills with
+  | [ f ] -> check int "red on-screen" 255 f.fcolor.r
+  | _ -> fail "expected the on-screen fill only"
+
 let test_zindex () =
   let t = store () in
   apply t
@@ -592,6 +617,7 @@ let () =
          test_case "disabled opacity" `Quick test_disabled_opacity ]);
       ("compositing",
        [ test_case "opacity multiply" `Quick test_opacity_multiply;
+         test_case "viewport cull" `Quick test_viewport_cull;
          test_case "z-index" `Quick test_zindex;
          test_case "display contents" `Quick test_display_contents ]);
       ("placement",

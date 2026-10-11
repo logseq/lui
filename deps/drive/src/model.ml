@@ -92,8 +92,12 @@ let insert_child t parent child index =
 
 let apply_op t = function
   | CreateNode (id, k) ->
+    (* Match lui_store: recreate drops the old subtree so children are
+       not left orphaned under a replaced id. *)
+    if Hashtbl.mem t.nodes id then drop t id;
     Hashtbl.replace t.nodes id (new_node id (Lui_wire_schema.node_kind_name k))
   | CreateExtension (id, identifier, _fp) ->
+    if Hashtbl.mem t.nodes id then drop t id;
     Hashtbl.replace t.nodes id (new_node id ("extension:" ^ identifier))
   | DropNode id -> drop t id
   | DetachSubtree id -> drop t id
@@ -146,8 +150,11 @@ let apply_wire_op t (json : Yojson.Safe.t) =
     | None -> ()
   in
   match str "op" with
-  | "create-node" -> Hashtbl.replace t.nodes id (new_node id (str "kind"))
+  | "create-node" ->
+    if Hashtbl.mem t.nodes id then drop t id;
+    Hashtbl.replace t.nodes id (new_node id (str "kind"))
   | "create-extension" ->
+    if Hashtbl.mem t.nodes id then drop t id;
     Hashtbl.replace t.nodes id (new_node id ("extension:" ^ str "identifier"))
   | "drop-node" -> drop t id
   | "detach-subtree" -> drop t id
