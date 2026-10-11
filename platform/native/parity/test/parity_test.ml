@@ -44,7 +44,28 @@ let sdl_gl_context () =
           Sdl.destroy_window win;
           Sdl.quit ();
           None
-        | Ok () -> Some (win, ctx))))
+        | Ok () ->
+          (* Without a GPU driver WGL silently falls back to the GDI
+             software rasterizer (GL 1.1): context creation succeeds
+             but the driver reports an unusably old version. *)
+          let gl3 =
+            match Gl.get_string Gl.version with
+            | Some v -> (
+              match String.split_on_char '.' v with
+              | m :: _ -> (
+                match int_of_string_opt m with
+                | Some n -> n >= 3
+                | None -> false)
+              | [] -> false)
+            | None -> false
+          in
+          if not gl3 then begin
+            Sdl.gl_delete_context ctx;
+            Sdl.destroy_window win;
+            Sdl.quit ();
+            None
+          end
+          else Some (win, ctx))))
 
 let release_gl (win, ctx) =
   Tsdl.Sdl.gl_delete_context ctx;

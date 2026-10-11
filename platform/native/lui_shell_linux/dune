@@ -6,4 +6,14 @@
   (language c)
   (names lui_shell_linux_stubs)
   (flags -O2 -fPIC))
- (c_library_flags -ldl))
+ (c_library_flags (:standard (:include c_libs.sexp))))
+
+;; libdl only exists on Linux; other platforms resolve symbols
+;; differently (LoadLibrary on Windows, libSystem on macOS) and the
+;; stub's fallback branch needs no library.
+(rule
+ (target c_libs.sexp)
+ (action
+  (with-stdout-to %{target}
+   (bash
+    "case '%{system}' in linux) printf '(-ldl)';; *) printf '()';; esac"))))

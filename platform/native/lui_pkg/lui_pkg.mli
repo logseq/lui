@@ -235,6 +235,9 @@ module Private : sig
   module Proc : sig
     type ran = { status : int; stdout : string; stderr : string }
 
+    (** The platform null device: [NUL] on Windows, [/dev/null] elsewhere. *)
+    val devnull : string
+
     val run : ?stdin:string -> string -> string list -> ran
     val which : string -> string option
     val check : string -> string list -> (ran, failure) result

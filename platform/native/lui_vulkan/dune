@@ -5,7 +5,17 @@
  (foreign_stubs
   (language c)
   (names lui_vulkan_stubs))
- (c_library_flags (:standard -ldl)))
+ (c_library_flags (:standard (:include c_libs.sexp))))
+
+;; libdl only exists on Linux; elsewhere the loader resolves symbols
+;; differently (LoadLibrary on Windows, libSystem on macOS) and the
+;; stub's fallback branch needs no library.
+(rule
+ (target c_libs.sexp)
+ (action
+  (with-stdout-to %{target}
+   (bash
+    "case '%{system}' in linux) printf '(-ldl)';; *) printf '()';; esac"))))
 
 (executable
  (name embed)

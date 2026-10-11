@@ -1,4 +1,4 @@
 (test
  (name lui_gl_test)
  (modules lui_gl_test)
- (libraries lui_gl lui_gpu lui_scene tsdl alcotest))
+ (libraries lui_gl lui_gpu lui_scene tsdl tgls.tgl3 alcotest))

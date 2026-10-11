@@ -533,10 +533,11 @@ let test_delta_e2e () =
     (L.apply_delta ~delta:out ~from:"1.0" ~to_:"1.1" ~old_dir:old_d
        ~new_dir:rebuilt);
   same_tree new_d rebuilt;
-  (* modes ride along *)
-  check bool "exec mode" true
-    (((Unix.stat (Filename.concat rebuilt "run.sh")).Unix.st_perm land 0o111)
-     <> 0);
+  (* modes ride along; Windows has no executable permission bit *)
+  if not Sys.win32 then
+    check bool "exec mode" true
+      (((Unix.stat (Filename.concat rebuilt "run.sh")).Unix.st_perm land 0o111)
+       <> 0);
   (* applying onto an existing dir is refused *)
   (match
      L.apply_delta ~delta:out ~from:"1.0" ~to_:"1.1" ~old_dir:old_d

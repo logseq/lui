@@ -168,7 +168,9 @@ module Fs = struct
       let entries = try Sys.readdir here with Sys_error _ -> [||] in
       Array.iter
         (fun name ->
-           let r = if rel = "" then name else Filename.concat rel name in
+           (* Manifest relative paths are a wire format: always '/',
+              never the host separator. *)
+           let r = if rel = "" then name else rel ^ "/" ^ name in
            let k = kind_of (Filename.concat root r) in
            out := (r, k) :: !out;
            if k = Dir then go r)
@@ -223,10 +225,15 @@ end
 module Proc = struct
   type ran = { status : int; stdout : string; stderr : string }
 
+  (** The platform null device: [NUL] on Windows, [/dev/null] elsewhere. *)
+  let devnull = if Sys.win32 then "NUL" else "/dev/null"
+
   (** Runs [prog args], capturing stdout and stderr into temp files so a
       chatty child cannot deadlock on a full pipe. The parent's PATH is
       searched (create_process goes through execvp). *)
-  let run ?(stdin = "/dev/null") prog args =
+  let run ?(stdin = devnull) prog args =
+    (* Callers may still pass a literal "/dev/null"; translate it. *)
+    let stdin = if stdin = "/dev/null" then devnull else stdin in
     let dir = Fs.temp_dir ~prefix:"lui_pkg-proc-" () in
     let out_p = Filename.concat dir "out"
     and err_p = Filename.concat dir "err" in
