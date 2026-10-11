@@ -251,9 +251,18 @@ let hit_path store rects ~x ~y =
         | Some ("hidden" | "clip" | "auto" | "scroll") -> true
         | _ -> false)
   in
-  let rec walk id path clip_r =
+  (* pointer-enabled=false makes a subtree hit-transparent like the web
+     pointer-events:none: descendants inherit it and only an explicit
+     pointer-enabled=true opts a node back in (registering pointer
+     handlers sets that prop). *)
+  let rec walk id path clip_r pointer_on =
     if not (visible id) then path
     else
+      let on =
+        match Lui_store.prop store id "pointer-enabled" with
+        | Some (BoolValue v) -> v
+        | _ -> pointer_on
+      in
       let r = Rects.get rects id in
       let clipped =
         match clip_r with
@@ -261,7 +270,7 @@ let hit_path store rects ~x ~y =
         | None -> r
       in
       let path =
-        if not (rect_empty clipped) && rect_contains clipped x y
+        if on && not (rect_empty clipped) && rect_contains clipped x y
         then id :: path
         else path
       in
@@ -274,13 +283,13 @@ let hit_path store rects ~x ~y =
       (* Children paint after their parent, so prepending while walking
          leaves the node visited last — visually topmost — at the head. *)
       List.fold_left
-        (fun acc c -> walk c acc child_clip)
+        (fun acc c -> walk c acc child_clip on)
         path (Lui_store.child_ids store id)
   in
   (* The head is the node visited last in paint order: visually
      topmost. *)
   List.fold_left
-    (fun acc id -> walk id acc None)
+    (fun acc id -> walk id acc None true)
     [] (Lui_store.root_ids store)
 
 let hit store rects ~x ~y =
