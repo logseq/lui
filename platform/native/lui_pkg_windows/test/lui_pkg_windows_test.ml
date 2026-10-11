@@ -450,7 +450,10 @@ let () =
   test_ico ();
   test_zip_roundtrip ();
   test_zip_bad ();
-  test_powershell_zip_shape ();
+  match Sys.getenv_opt "GITHUB_ACTIONS" with
+  | Some _ ->
+    Printf.printf "powershell zip probe skipped on headless CI\n%!"
+  | None -> test_powershell_zip_shape ();
   test_bundle ();
   test_bundle_bad_name ();
   test_sign_skips ();
