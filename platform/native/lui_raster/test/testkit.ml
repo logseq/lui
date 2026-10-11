@@ -76,7 +76,7 @@ let test_fx =
   { ename = "testfx"; ebackdrop = false; eglsl = "";
     epixels = (fun () ->
       { begin_effect = (fun _ _ _ -> ());
-        color_at = (fun x y _ -> (x /. 100., y /. 80., 0.6)) }) }
+        color_at = (fun x y _ -> (x /. 100., y /. 80., 0.6, 1.)) }) }
 
 let dim_fx =
   { ename = "dim"; ebackdrop = true; eglsl = "";
@@ -86,8 +86,8 @@ let dim_fx =
           match b with
           | Some b ->
             let r, g, bl = backdrop_sample b x y in
-            (r *. 0.5, g *. 0.5, bl *. 0.5)
-          | None -> (0., 0., 0.)) }) }
+            (r *. 0.5, g *. 0.5, bl *. 0.5, 1.)
+          | None -> (0., 0., 0., 0.)) }) }
 
 let lens_fx =
   { ename = "lens"; ebackdrop = true; eglsl = "";
@@ -105,8 +105,8 @@ let lens_fx =
             let c0, c1, c2 = backdrop_sample b (x +. d) y in
             let t0, t1, t2, t3 = !op.(1) in
             (c0 +. (t0 -. c0) *. t3, c1 +. (t1 -. c1) *. t3,
-             c2 +. (t2 -. c2) *. t3)
-          | None -> (0., 0., 0.)) }) }
+             c2 +. (t2 -. c2) *. t3, 1.)
+          | None -> (0., 0., 0., 0.)) }) }
 
 let tint_fx =
   { ename = "tint"; ebackdrop = false; eglsl = "";
@@ -115,7 +115,7 @@ let tint_fx =
       { begin_effect = (fun e _ _ -> op := e.eparams);
         color_at = (fun _ _ _ ->
           let t0, t1, t2, t3 = !op.(1) in
-          (t0 *. t3, t1 *. t3, t2 *. t3)) }) }
+          (t0 *. t3, t1 *. t3, t2 *. t3, 1.)) }) }
 
 (* ---------- the golden scenes ---------- *)
 

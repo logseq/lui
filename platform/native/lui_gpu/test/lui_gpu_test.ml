@@ -241,7 +241,7 @@ let dummy_fx ename ebackdrop =
     epixels =
       (fun () ->
         { begin_effect = (fun _ _ _ -> ());
-          color_at = (fun _ _ _ -> (0., 0., 0.)) }) }
+          color_at = (fun _ _ _ -> (0., 0., 0., 0.)) }) }
 
 let test_effect_backdrop () =
   let s = scene () in

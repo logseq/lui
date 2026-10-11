@@ -1123,15 +1123,15 @@ let r_effect r (op : effect_draw) px b =
         let cov = if x < ol || x >= oh || not round then cov *. coverage box px0 py else cov in
         let cov = if x < cl || x >= ch then cov *. clip_coverage r x y else cov in
         if cov > 0. then begin
-          let cr, cg, cb = px.color_at px0 py b in
+          let cr, cg, cb, ca = px.color_at px0 py b in
           let i = y * r.dst.Image.stride + 4 * x in
-          if cov >= 1. then begin
+          if cov >= 1. && ca >= 1. then begin
             Bytes.set r.dst.Image.pix i (Char.chr (to8 cb));
             Bytes.set r.dst.Image.pix (i + 1) (Char.chr (to8 cg));
             Bytes.set r.dst.Image.pix (i + 2) (Char.chr (to8 cr));
             Bytes.set r.dst.Image.pix (i + 3) '\255'
           end
-          else blend r.dst.Image.pix i (cr, cg, cb, 1.) cov
+          else blend r.dst.Image.pix i (cr, cg, cb, ca) cov
         end
       done
     done

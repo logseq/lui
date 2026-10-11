@@ -1,0 +1,4 @@
+(library
+ (name lui_parity_glass)
+ (modules parity_glass)
+ (libraries lui_scene lui_raster_testkit lui_parity lui_plugin_glass))

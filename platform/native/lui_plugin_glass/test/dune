@@ -1,0 +1,5 @@
+(test
+ (name lui_plugin_glass_test)
+ (modules lui_plugin_glass_test)
+ (libraries lui_plugin_glass lui_scene lui_raster lui_raster_testkit
+   alcotest))
