@@ -660,15 +660,11 @@ let () =
        handlers on this thread. No-op offline. *)
     ignore (Lui_shell_linux.pump ());
     (* Accessibility: fold the frame's dirty store ids into the
-       semantic tree and answer pending AT calls. The queued events
-       are drained rather than flushed: the c_emit_* stubs behind
-       [flush] take >5 arguments through a bytecode-shaped signature,
-       which crashes when called from native code on a live transport.
-       Draining keeps the queue bounded and incoming AT actions still
-       work; offline the same path is a plain no-op. *)
+       semantic tree and answer pending AT calls; offline both sides
+       are plain no-ops. *)
     Lui_ax_linux.sync ax;
     ignore (Lui_ax_linux.dispatch ax);
-    ignore (Lui_ax_linux.drain_events ax);
+    ignore (Lui_ax_linux.flush ax);
     (* Report the caret once per frame: while a composition is open
        the state machine emits Ime_rect on movement so the candidate
        window tracks the caret; idle, the rect is only remembered. *)
