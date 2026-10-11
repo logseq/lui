@@ -128,7 +128,6 @@ let title_pad ~scale store id kind (e : Lui_flex.edges) : Lui_flex.edges =
     let extra =
       (if nonempty "text" then 26. else 0.)
       +. (if nonempty "description" then 15. else 0.)
-      +. (if kind = "sheet" then 12. else 0.)
     in
     let extra = extra *. scale in
     if extra <= 0. then e
@@ -712,6 +711,9 @@ let anchored_xy ctx store sid ar (prp : Lui_flex.rect) =
    the child's layout position), so the center of the border box is
    [parent.w/2 - border - margin]. *)
 let refine_popups ctx =
+  (* Bottom y of the last placed toast per containing block, so a
+     viewport's toasts stack downward like the web viewport. *)
+  let toast_next = Hashtbl.create 2 in
   List.iter
     (fun (pnode, sid) ->
       match Lui_flex.parent pnode with
@@ -728,7 +730,7 @@ let refine_popups ctx =
             ( { Lui_flex.x = 0.; y = 0.; w = ctx.vw; h = ctx.vh },
               None )
         in
-        let bor_l, bor_t, bor_r, bor_b =
+        let bor_l, bor_t, bor_r, _bor_b =
           match pstyle_opt with
           | Some (ps : Lui_flex.style) ->
             ( edge_px ~owner:pr.w ps.border.left ps.border.horizontal ps.border,
@@ -783,10 +785,9 @@ let refine_popups ctx =
             edge_px ~owner:pr.w pstyle.margin.top pstyle.margin.vertical pstyle.margin
           and mr =
             edge_px ~owner:pr.w pstyle.margin.right pstyle.margin.horizontal pstyle.margin
-          and mb =
+          and _mb =
             edge_px ~owner:pr.h pstyle.margin.bottom pstyle.margin.vertical pstyle.margin
           in
-          let prp = Lui_flex.absolute_layout pnode in
           let anchored =
             List.exists (has_prop ctx.store sid) [ "x"; "y"; "anchor" ]
             || (* trigger-owned menu panels anchor below their trigger *)
@@ -797,6 +798,27 @@ let refine_popups ctx =
           if (not anchored) && popup_has_edges ctx.store sid then ()
           else
           let kind = Lui_store.kind ctx.store sid in
+          (* Web overlay caps: .lui-toast-viewport is 22.5rem wide,
+             .lui-dialog is min(42rem, 100vw-2rem) (48rem ≥1024px). *)
+          (match kind with
+           | "toast" ->
+             let w = Float.min (360. *. ctx.scale) ctx.vw in
+             Lui_flex.set_style pnode
+               { pstyle with max_width = Pt w };
+             Lui_flex.compute_layout pnode ~width:Lui_flex.undefined
+               ~height:Lui_flex.undefined ()
+           | "dialog" | "modal" ->
+             let rem = if ctx.vw >= 1024. *. ctx.scale then 768. else 672. in
+             let w =
+               Float.min (rem *. ctx.scale)
+                 (ctx.vw -. (32. *. ctx.scale))
+             in
+             Lui_flex.set_style pnode
+               { pstyle with max_width = Pt w };
+             Lui_flex.compute_layout pnode ~width:Lui_flex.undefined
+               ~height:Lui_flex.undefined ()
+           | _ -> ());
+          let prp = Lui_flex.absolute_layout pnode in
           (* Placement targets live in the containing block [cb] but the
              position edges resolve against the flex parent's padding
              box — express them as offsets from that origin. *)
@@ -817,7 +839,7 @@ let refine_popups ctx =
               (* Unanchored popups take their platform placement —
                  the web stylesheet's fixed rules: a context menu
                  opens at the pointer, sheets pin the right edge on
-                 wide screens, toasts sit in the bottom-right toast
+                 wide screens, toasts stack under the top-right toast
                  viewport, everything else centers. *)
               match kind with
               | "context-menu" -> (
@@ -830,8 +852,21 @@ let refine_popups ctx =
               | "sheet" ->
                 (cbx +. cb.w -. prp.w -. bor_r -. mr, cby -. bor_t -. mt)
               | "toast" ->
-                ( cbx +. cb.w -. prp.w -. (16. *. ctx.scale) -. bor_r -. mr,
-                  cby +. cb.h -. prp.h -. (16. *. ctx.scale) -. bor_b -. mb )
+                (* Web .lui-toast-viewport: top:3rem right:1rem
+                   (2rem when vw ≥ 500px), stacking downward. *)
+                let top_m = 48. *. ctx.scale
+                and right_m =
+                  (if ctx.vw >= 500. *. ctx.scale then 32. else 16.)
+                  *. ctx.scale
+                in
+                let y =
+                  match Hashtbl.find_opt toast_next (cb.x, cb.y) with
+                  | Some next -> next
+                  | None -> cby +. top_m
+                in
+                Hashtbl.replace toast_next (cb.x, cb.y)
+                  (y +. prp.h +. (8. *. ctx.scale));
+                (cbx +. cb.w -. prp.w -. right_m -. bor_r -. mr, y)
               | _ -> center
           in
           (* Pin the viewport-measured box as explicit dimensions —
@@ -853,7 +888,9 @@ let refine_popups ctx =
               height;
               position =
                 { pstyle.position with left = Pt left; top = Pt top } }))
-    !(ctx.popups)
+    (* Mount order: the list is prepended during build; oldest first so
+       a toast stack grows downward like the web viewport. *)
+    (List.rev !(ctx.popups))
 
 (* Union of the frame children's absolute rect edges — the extent the
    laid-out content actually occupies. *)

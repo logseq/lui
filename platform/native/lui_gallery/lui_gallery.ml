@@ -142,7 +142,7 @@ let tokens =
     ("scrollbar-thumb", color 0 0 0 82);
     ("inverse", color 24 24 27 255);
     ("inverse-foreground", color 255 255 255 255);
-    ("scrim", color 0 0 0 102);
+    ("scrim", color 0 0 0 128);
     (* gallery page furniture *)
     ("page", color 244 246 248 255);
     ("ink", color 24 24 27 255);
