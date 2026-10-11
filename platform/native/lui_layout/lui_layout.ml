@@ -834,15 +834,23 @@ let refine_popups ctx =
              Lui_flex.compute_layout pnode ~width:Lui_flex.undefined
                ~height:Lui_flex.undefined ()
            | "dialog" | "modal" ->
-             let rem = if ctx.vw >= 1024. *. ctx.scale then 768. else 672. in
-             let w =
-               Float.min (rem *. ctx.scale)
-                 (ctx.vw -. (32. *. ctx.scale))
-             in
-             Lui_flex.set_style pnode
-               { pstyle with max_width = Pt w };
-             Lui_flex.compute_layout pnode ~width:Lui_flex.undefined
-               ~height:Lui_flex.undefined ()
+             (* Web default cap applies only when the view did not set an
+                explicit max-width/max-width-viewport — typed clamps like
+                plugins-dashboard's 1246px take precedence. *)
+             (match pstyle.max_width with
+              | Unset ->
+                let rem =
+                  if ctx.vw >= 1024. *. ctx.scale then 768. else 672.
+                in
+                let w =
+                  Float.min (rem *. ctx.scale)
+                    (ctx.vw -. (32. *. ctx.scale))
+                in
+                Lui_flex.set_style pnode
+                  { pstyle with max_width = Pt w };
+                Lui_flex.compute_layout pnode ~width:Lui_flex.undefined
+                  ~height:Lui_flex.undefined ()
+              | _ -> ())
            | _ -> ());
           let prp = Lui_flex.absolute_layout pnode in
           (* Placement targets live in the containing block [cb] but the
