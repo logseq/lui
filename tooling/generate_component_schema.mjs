@@ -125,7 +125,6 @@ type host_kind =
   | WebHost
   | SwiftUIHost
   | KotlinHost
-  | GPUIHost
 
 type platform_profile = {
   profile_os : operating_system;
@@ -414,128 +413,12 @@ ${extraEntries}
 `;
 }
 
-function renderRust(schema) {
-  const kindLg = new Map(schema.nodeKinds.map(({ wire, lg }) => [wire, lg]));
-  const propLg = new Map(schema.properties.map(({ wire, lg }) => [wire, lg]));
-  const nodeKinds = schema.nodeKinds.map(({ lg }) => `    ${lg},`).join('\n');
-  const kindWireCases = schema.nodeKinds
-    .map(({ lg, wire }) => `            "${wire}" => Some(NodeKind::${lg}),`)
-    .join('\n');
-  const kindNameCases = schema.nodeKinds
-    .map(({ lg, wire }) => `            NodeKind::${lg} => "${wire}",`)
-    .join('\n');
-  const containerCases = schema.nodeKinds
-    .filter(({ container }) => container)
-    .map(({ lg }) => `NodeKind::${lg}`)
-    .join('\n                | ');
-  // Emit rustfmt-clean output: keep match arms at 8-space indent and wrap
-  // property arrays only when the single line would exceed 100 columns.
-  const wrapList = (prefix, items, closer) => {
-    const inline = `${prefix}[${items.join(', ')}]${closer}`;
-    if (inline.length <= 100) return inline;
-    const body = items.map((item) => `            ${item},`).join('\n');
-    return `${prefix}[\n${body}\n        ]${closer}`;
-  };
-  const properties = schema.properties.map(({ lg }) => `    ${lg},`).join('\n');
-  const propertyWireCases = schema.properties
-    .map(({ lg, wire }) => `            "${wire}" => Some(Property::${lg}),`)
-    .join('\n');
-  const propertyNameCases = schema.properties
-    .map(({ lg, wire }) => `            Property::${lg} => "${wire}",`)
-    .join('\n');
-  const matrixArms = Object.entries(schema.kindProperties ?? {})
-    .map(([kindWire, propWires]) =>
-      wrapList(
-        `        NodeKind::${kindLg.get(kindWire)} => Some(&`,
-        propWires.map((w) => `Property::${propLg.get(w)}`),
-        '),',
-      ))
-    .join('\n');
-  const extraArms = Object.entries(schema.kindExtraProperties ?? {})
-    .map(([kindWire, propWires]) =>
-      wrapList(
-        `        NodeKind::${kindLg.get(kindWire)} => &`,
-        propWires.map((w) => `Property::${propLg.get(w)}`),
-        ',',
-      ))
-    .join('\n');
-  return `${generatedHeader('//')}#[allow(clippy::match_same_arms)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum NodeKind {
-${nodeKinds}
-}
-
-impl NodeKind {
-    pub fn from_wire(name: &str) -> Option<NodeKind> {
-        match name {
-${kindWireCases}
-            _ => None,
-        }
-    }
-
-    pub fn wire_name(self) -> &'static str {
-        match self {
-${kindNameCases}
-        }
-    }
-
-    pub fn is_container(self) -> bool {
-        matches!(
-            self,
-            ${containerCases}
-        )
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Property {
-${properties}
-}
-
-impl Property {
-    pub fn from_wire(name: &str) -> Option<Property> {
-        match name {
-${propertyWireCases}
-            _ => None,
-        }
-    }
-
-    pub fn wire_name(self) -> &'static str {
-        match self {
-${propertyNameCases}
-        }
-    }
-}
-
-/// Mirrors schema/components.json kindProperties: kinds listed here admit
-/// ONLY the given kind-specific props (plus the shared/common set), instead of
-/// the default "common set" behaviour for unlisted kinds. \`None\` means the
-/// kind follows the common-property rules in the backend.
-pub fn kind_property_matrix(kind: NodeKind) -> Option<&'static [Property]> {
-    match kind {
-${matrixArms}
-        _ => None,
-    }
-}
-
-/// Mirrors schema/components.json kindExtraProperties: additional props
-/// admitted on top of the kind's normal set.
-pub fn kind_extra_properties(kind: NodeKind) -> &'static [Property] {
-    match kind {
-${extraArms}
-        _ => &[],
-    }
-}
-`;
-}
-
 function artifacts(schema) {
   return new Map([
     ['src/lui_protocol.mli', renderProtocolSignature(schema)],
     ['src/lui_wire_schema.ml', renderOCamlWire(schema)],
     ['src/lui_wire_schema.mli', renderOCamlWireSignature()],
     ['platform/apple/Sources/LUIAppleBackend/LUIWireSchema.swift', renderSwift(schema)],
-    ['platform/gpui/crates/lui-core/src/wire_schema.rs', renderRust(schema)],
     ['platform/android/lui/src/main/kotlin/dev/lui/LuiWireSchema.kt', renderKotlin(schema)],
   ]);
 }

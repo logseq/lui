@@ -1608,13 +1608,13 @@ let gallery_schema identifier =
 
 let test_fingerprint_format () =
   Alcotest.(check string) "apple-map fingerprint"
-    "lui-extension-v1|9:apple-map|profiles:ios/swiftui,linux/gpui,macos/gpui,macos/swiftui,windows/gpui|standard-children:0|children:16:apple-map-marker|properties:14:latitude-delta:float:required:none,15:longitude-delta:float:required:none,8:latitude:float:required:none,9:longitude:float:required:none|events:"
+    "lui-extension-v1|9:apple-map|profiles:ios/swiftui,macos/swiftui|standard-children:0|children:16:apple-map-marker|properties:14:latitude-delta:float:required:none,15:longitude-delta:float:required:none,8:latitude:float:required:none,9:longitude:float:required:none|events:"
     (Lui_extension.fingerprint (gallery_schema "apple-map"));
   Alcotest.(check string) "marker fingerprint"
-    "lui-extension-v1|16:apple-map-marker|profiles:ios/swiftui,linux/gpui,macos/gpui,macos/swiftui,windows/gpui|standard-children:0|children:|properties:5:title:string:required:none,8:latitude:float:required:none,9:longitude:float:required:none|events:"
+    "lui-extension-v1|16:apple-map-marker|profiles:ios/swiftui,macos/swiftui|standard-children:0|children:|properties:5:title:string:required:none,8:latitude:float:required:none,9:longitude:float:required:none|events:"
     (Lui_extension.fingerprint (gallery_schema "apple-map-marker"));
   Alcotest.(check string) "tweak fingerprint"
-    "lui-tweak-v1|14:gallery-accent|profiles:android/kotlin,ios/swiftui,linux/gpui,macos/gpui,macos/swiftui,web/web,windows/gpui|properties:"
+    "lui-tweak-v1|14:gallery-accent|profiles:android/kotlin,ios/swiftui,macos/swiftui,web/web|properties:"
     (Lui_extension.tweak_fingerprint (gallery_schema "gallery-accent"))
 
 let test_host_literals_in_sync () =
@@ -1657,7 +1657,7 @@ let test_drift_is_caught () =
    | _ -> Alcotest.fail "expected exactly one undeclared identifier");
   (* Single-quoted literals are extracted the same way. *)
   let quoted_source =
-    "fingerprint: 'lui-extension-v1|9:apple-map|profiles:ios/swiftui,linux/gpui,macos/gpui,macos/swiftui,windows/gpui|standard-children:1|children:16:apple-map-marker|properties:14:latitude-delta:float:required:none,15:longitude-delta:float:required:none,8:latitude:float:required:none,9:longitude:float:required:none|events:'"
+    "fingerprint: 'lui-extension-v1|9:apple-map|profiles:ios/swiftui,macos/swiftui|standard-children:1|children:16:apple-map-marker|properties:14:latitude-delta:float:required:none,15:longitude-delta:float:required:none,8:latitude:float:required:none,9:longitude:float:required:none|events:'"
   in
   match Lui_extension_check.check_registry registry quoted_source with
   | [ Lui_extension_check.Drifted { declaration; expected } ] ->
@@ -2968,16 +2968,16 @@ let split_fingerprint identifier =
 
 let test_split_fingerprints () =
   Alcotest.(check string) "split-view fingerprint"
-    "lui-extension-v1|10:split-view|profiles:android/kotlin,ios/swiftui,linux/gpui,macos/gpui,macos/swiftui,web/web,windows/gpui|standard-children:0|children:12:split-branch,10:split-pane|properties:17:divider-thickness:float:optional:none,24:accessibility-identifier:string:optional:none,9:animation:bool:optional:none|events:"
+    "lui-extension-v1|10:split-view|profiles:android/kotlin,ios/swiftui,macos/swiftui,web/web|standard-children:0|children:12:split-branch,10:split-pane|properties:17:divider-thickness:float:optional:none,24:accessibility-identifier:string:optional:none,9:animation:bool:optional:none|events:"
     (split_fingerprint "split-view");
   Alcotest.(check string) "split-branch fingerprint"
-    "lui-extension-v1|12:split-branch|profiles:android/kotlin,ios/swiftui,linux/gpui,macos/gpui,macos/swiftui,web/web,windows/gpui|standard-children:0|children:12:split-branch,10:split-pane|properties:11:orientation:string:required:none,5:ratio:float:required:none|events:13:ratio-changed[5:ratio:float:required]"
+    "lui-extension-v1|12:split-branch|profiles:android/kotlin,ios/swiftui,macos/swiftui,web/web|standard-children:0|children:12:split-branch,10:split-pane|properties:11:orientation:string:required:none,5:ratio:float:required:none|events:13:ratio-changed[5:ratio:float:required]"
     (split_fingerprint "split-branch");
   Alcotest.(check string) "split-pane fingerprint"
-    "lui-extension-v1|10:split-pane|profiles:android/kotlin,ios/swiftui,linux/gpui,macos/gpui,macos/swiftui,web/web,windows/gpui|standard-children:0|children:9:split-tab|properties:24:accessibility-identifier:string:optional:none,7:focused:bool:optional:none,7:pane-id:string:required:none,8:selected:string:optional:none|events:10:split-drop[3:tab:string:required,4:edge:string:required,9:from-pane:string:required],10:tab-closed[3:tab:string:required],11:pane-closed[],12:pane-focused[],12:tab-selected[3:tab:string:required],15:split-requested[11:orientation:string:required],8:navigate[9:direction:string:required],9:tab-moved[3:tab:string:required,5:index:int:required,9:from-pane:string:required]"
+    "lui-extension-v1|10:split-pane|profiles:android/kotlin,ios/swiftui,macos/swiftui,web/web|standard-children:0|children:9:split-tab|properties:24:accessibility-identifier:string:optional:none,7:focused:bool:optional:none,7:pane-id:string:required:none,8:selected:string:optional:none|events:10:split-drop[3:tab:string:required,4:edge:string:required,9:from-pane:string:required],10:tab-closed[3:tab:string:required],11:pane-closed[],12:pane-focused[],12:tab-selected[3:tab:string:required],15:split-requested[11:orientation:string:required],8:navigate[9:direction:string:required],9:tab-moved[3:tab:string:required,5:index:int:required,9:from-pane:string:required]"
     (split_fingerprint "split-pane");
   Alcotest.(check string) "split-tab fingerprint"
-    "lui-extension-v1|9:split-tab|profiles:android/kotlin,ios/swiftui,linux/gpui,macos/gpui,macos/swiftui,web/web,windows/gpui|standard-children:1|children:|properties:24:accessibility-identifier:string:optional:none,4:icon:string:optional:none,5:dirty:bool:optional:none,5:title:string:required:none,6:tab-id:string:required:none,8:closable:bool:optional:none|events:"
+    "lui-extension-v1|9:split-tab|profiles:android/kotlin,ios/swiftui,macos/swiftui,web/web|standard-children:1|children:|properties:24:accessibility-identifier:string:optional:none,4:icon:string:optional:none,5:dirty:bool:optional:none,5:title:string:required:none,6:tab-id:string:required:none,8:closable:bool:optional:none|events:"
     (split_fingerprint "split-tab")
 
 (* Every host source that carries lui-extension-v1 literals is checked so
@@ -3717,7 +3717,7 @@ let test_navigation_fallback () =
   Alcotest.(check int) "fallback programmatic path does not echo" 1 !callbacks;
   drive_dispose s)
     [generic_profile (); profile WebOS WebHost;
-     profile LinuxOS GPUIHost; profile WindowsOS GPUIHost]
+     profile LinuxOS GenericHost; profile WindowsOS GenericHost]
 
 let test_navigation_queued_stale () =
   let s, _, _, _, _, callbacks, _ = navigation_fixture () in

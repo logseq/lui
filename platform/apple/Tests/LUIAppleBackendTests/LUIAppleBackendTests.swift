@@ -1155,7 +1155,7 @@ struct LUISwiftUIBackendTests {
     @Test("menu-trigger requires a label, a dropdown-menu child, and rejects extra children")
     func menuTriggerValidation() throws {
         let backend = LUIAppleBackend()
-        // icon-only without an accessibility label is allowed (matches gpui semantics)
+        // icon-only without an accessibility label is allowed
         try backend.apply(json: """
         {"generation":1,"ops":[
           {"op":"create-node","id":1,"kind":"row"},
@@ -1230,7 +1230,7 @@ struct LUISwiftUIBackendTests {
         #expect(toolbar.model(id: 1)?.children == [2])
     }
 
-    @Test("menu-item and button accept content children (gpui parity)")
+    @Test("menu-item and button accept content children")
     func interactiveLeavesAcceptContentChildren() throws {
         let backend = LUIAppleBackend()
         try backend.apply(json: """

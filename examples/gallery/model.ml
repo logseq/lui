@@ -33,8 +33,6 @@ type t = {
   composer_source : Lui_elements.file_picker_source;
   composer_feedback : string;
   split_panes : Lui_split.Model.t;
-  gpui_rating : int;
-  gpui_color : string;
 }
 
 let gallery_split_state =
@@ -102,8 +100,6 @@ type action =
   | ComposerRemove of string
   | ComposerSend
   | SplitPanes of Lui_split.Model.action
-  | GpuiRate of int
-  | GpuiPickColor of string
 
 let initial =
   {
@@ -138,8 +134,6 @@ let initial =
     composer_source = `files;
     composer_feedback = "";
     split_panes = gallery_split_state;
-    gpui_rating = 3;
-    gpui_color = "#3b82f6";
   }
 
 let update model action =
@@ -229,8 +223,6 @@ let update model action =
     { model with composer_files = []; field_value = ""; composer_feedback = "" }
   | SplitPanes action ->
     { model with split_panes = Lui_split.Model.update model.split_panes action }
-  | GpuiRate rating -> { model with gpui_rating = rating }
-  | GpuiPickColor color -> { model with gpui_color = color }
 
 let progress_label model =
   Printf.sprintf "Progress fraction: %.1f" model.progress
@@ -320,7 +312,3 @@ let split_fraction model = model.split_fraction
 let combine_dialog_open model = model.combine_dialog_open
 let combine_sheet_open model = model.combine_sheet_open
 let combine_menu_open model = model.combine_menu_open
-
-let gpui_rating model = model.gpui_rating
-
-let gpui_color model = model.gpui_color

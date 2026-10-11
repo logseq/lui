@@ -6,9 +6,9 @@ Date: 2026-10-09. Reviewed revision: `91aecb52a1cba2faaf23aac1d64a0bd1cb6549e7`.
 
 The current branch was fast-forwarded to latest `origin/main` before this review. The pinned opam source repositories were refreshed: `ocaml-signal` at `868c1459f865b4ba3b227eb440dba40f1c812899`, and `drive` at `1e1653d5bdd0810e89d9e3a32b2e0ea2811c1cf5`. Vendored `deps/drive/src` matches that upstream revision except for its intentional local Dune packaging declaration; its source metadata was corrected. No implementation or Dune files were edited.
 
-This review covers the retained OCaml runtime, reactive ownership and reconciliation, PPX/property bindings, patch stores and renderer paths in Web, Apple, Android, and GPUI, subscriptions, bridge lifecycle, and performance qualification. GPUI execution covered `lui-core`; its interactive renderer was inspected statically. Android composition and Activity lifecycle were inspected in source and compiled Compose bytecode, without an emulator lifecycle run. Apple list identity was inspected in source, without Instruments or a live focus/scroll regression run.
+This review covers the retained OCaml runtime, reactive ownership and reconciliation, PPX/property bindings, patch stores and renderer paths in Web, Apple, and Android, subscriptions, bridge lifecycle, and performance qualification. Android composition and Activity lifecycle were inspected in source and compiled Compose bytecode, without an emulator lifecycle run. Apple list identity was inspected in source, without Instruments or a live focus/scroll regression run.
 
-There are **22 actionable findings**, followed by three structural simplification opportunities. P1 means a correctness failure in normal feature use, persistent resource growth, or an important scaling failure; P2 means a narrower failure path or a lower-priority improvement. Evidence is explicitly marked. Standalone probes are in [review-probes/2026-10-09](/Users/tiensonqin/Codes/projects/lui/docs/agent-guide/review-probes/2026-10-09/run.py).
+There are **21 actionable findings**, followed by two structural simplification opportunities. P1 means a correctness failure in normal feature use, persistent resource growth, or an important scaling failure; P2 means a narrower failure path or a lower-priority improvement. Evidence is explicitly marked. Standalone probes are in [review-probes/2026-10-09](/Users/tiensonqin/Codes/projects/lui/docs/agent-guide/review-probes/2026-10-09/run.py).
 
 ## Findings: reactive runtime and ownership
 
@@ -170,9 +170,9 @@ Location: [LuiStore.kt:90](/Users/tiensonqin/Codes/projects/lui/platform/android
 
 ### F16 — P2: wide child collections still contain quadratic paths
 
-Location: [lui_web_store.ml:25](/Users/tiensonqin/Codes/projects/lui/platform/web/melange/core/lui_web_store.ml:25), [lui_web_store.ml:271](/Users/tiensonqin/Codes/projects/lui/platform/web/melange/core/lui_web_store.ml:271), [lui_runtime.ml:663](/Users/tiensonqin/Codes/projects/lui/src/lui_runtime.ml:663), [GPUI store.rs:435](/Users/tiensonqin/Codes/projects/lui/platform/gpui/crates/lui-core/src/store.rs:435).
+Location: [lui_web_store.ml:25](/Users/tiensonqin/Codes/projects/lui/platform/web/melange/core/lui_web_store.ml:25), [lui_web_store.ml:271](/Users/tiensonqin/Codes/projects/lui/platform/web/melange/core/lui_web_store.ml:271), [lui_runtime.ml:663](/Users/tiensonqin/Codes/projects/lui/src/lui_runtime.ml:663).
 
-Web child lists use repeated length, indexing, splitting, and append. Appending all children to one parent is quadratic. Runtime child diff shifts array positions for each move; a full reversal is quadratic. GPUI `Vec` position searches/removal/insertion also become quadratic for many moves. The balanced `Lui_sequence` implementation and keyed prefix-sum lookup do not fix these downstream paths.
+Web child lists use repeated length, indexing, splitting, and append. Appending all children to one parent is quadratic. Runtime child diff shifts array positions for each move; a full reversal is quadratic. The balanced `Lui_sequence` implementation and keyed prefix-sum lookup do not fix these downstream paths.
 
 **Measured Web store-only initial flat list mount:** 1,000 / 4,000 / 8,000 rows took 9.86 / 57.94 / 221.64 ms. These are cold one-run samples; the asymptotic conclusion follows from the repeated traversal/append in source.
 
@@ -220,32 +220,20 @@ Location: [lui_web_dom_ext.ml:106](/Users/tiensonqin/Codes/projects/lui/platform
 
 **Fix:** represent absence separately and preserve both boolean values. Add an extension event fixture for checked → unchecked transitions.
 
-### F21 — P2: GPUI store accepts patches rejected by canonical validators
-
-Location: [store.rs:280](/Users/tiensonqin/Codes/projects/lui/platform/gpui/crates/lui-core/src/store.rs:280), child attachment around line 435, [extension.rs](/Users/tiensonqin/Codes/projects/lui/platform/gpui/crates/lui-core/src/extension.rs).
-
-GPUI resolves property names but does not validate standard property kind/value rules before insertion. Child attachment checks broad child acceptance without the complete parent/child constraints. Its extension registry is less descriptive than the fingerprinted typed extension contract. Existing core tests even use trees/operations other hosts reject, so store tests can pass despite protocol drift.
-
-**Source-confirmed:** invalid property-kind/value combinations and illegal child pairings can enter the GPUI mirror. Normal OCaml-generated traffic is usually validated earlier, which narrows the exposure; imperative or externally supplied batches still cross this boundary.
-
-**Fix:** generate value/relationship constraints from shared schema and run the same accept/reject fixtures on every store. Keep explicit host capability differences separate from accidental validation differences.
-
 ### F22 — P2: both checked-in performance entry points fail before measuring
 
-Location: [qualify_runtime.sh:35](/Users/tiensonqin/Codes/projects/lui/tooling/performance/qualify_runtime.sh:35), [store_patch_bench.rs:46](/Users/tiensonqin/Codes/projects/lui/platform/gpui/crates/lui-core/examples/store_patch_bench.rs:46).
+Location: [qualify_runtime.sh:35](/Users/tiensonqin/Codes/projects/lui/tooling/performance/qualify_runtime.sh:35).
 
-The qualification script builds a missing `test/lui_runtime_native.exe` and selects an obsolete `lui.benchmark-test` group. The GPUI store benchmark applies generation 2 five times during warmup, violating contiguous generation rules on the second iteration.
+The qualification script builds a missing `test/lui_runtime_native.exe` and selects an obsolete `lui.benchmark-test` group.
 
-**Executed:** Dune reports it does not know how to build the target; the Rust release benchmark panics on repeated generation 2. Thus these tools currently provide no performance budget protection.
+**Executed:** Dune reports it does not know how to build the target. Thus this tool currently provides no performance budget protection.
 
-**Fix:** point qualification at a real benchmark executable/group, increment warmup generations, and exercise both entry points in CI. Include host-store single-property scaling, flat mounting, keyed reorder, and repeated branch mount/dispose workloads. Do not encode these one-run review timings as fixed cross-machine budgets.
+**Fix:** point qualification at a real benchmark executable/group, increment warmup generations, and exercise it in CI. Include host-store single-property scaling, flat mounting, keyed reorder, and repeated branch mount/dispose workloads. Do not encode these one-run review timings as fixed cross-machine budgets.
 
 ## Complexity that can be simplified
 
 1. **Runtime state and transactions:** `lui_runtime.ml` maintains many parallel mutable tables, count refs, aliases, and mutable segment records without an abstract module boundary. Snapshot, rollback, reload, resync, and reconciliation must each remember the same invariants. Introduce a small transaction journal shared by these paths, and an `.mli` exposing operations rather than mutable internals. Consolidate per-node state incrementally where it actually reduces duplicated bookkeeping. This directly addresses F02/F03/F13; avoid replacing the entire runtime at once.
 2. **Renderer decomposition:** `LUISwiftUIRoot.swift` is about 8,000 lines; Android node rendering and Web popup/menu code are similarly broad. Existing policy modules show a workable direction. Extract component families with clear state/identity ownership and keep patch application separate from component behavior. Do not indiscriminately remove type erasure or add abstraction layers without evidence of benefit.
-3. **Product-specific GPUI behavior:** hardcoded Logseq extension names and special rendering branches in `lui-gpui/src/extension.rs`, `root.rs`, and `kinds.rs` couple the generic host to one application. Move those adapters to registered extension/provider modules. Maintain the shared host contract in core and keep application-specific interactions at the extension boundary.
-
 ## Verification
 
 All existing suites executed during this review passed:

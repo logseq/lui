@@ -8,18 +8,6 @@
       {
         "os": "ios",
         "host": "swiftui"
-      },
-      {
-        "os": "macos",
-        "host": "gpui"
-      },
-      {
-        "os": "linux",
-        "host": "gpui"
-      },
-      {
-        "os": "windows",
-        "host": "gpui"
       }
     ],
     "all": [
@@ -34,18 +22,6 @@
       {
         "os": "web",
         "host": "web"
-      },
-      {
-        "os": "macos",
-        "host": "gpui"
-      },
-      {
-        "os": "linux",
-        "host": "gpui"
-      },
-      {
-        "os": "windows",
-        "host": "gpui"
       },
       {
         "os": "android",
@@ -66,18 +42,6 @@
         "host": "web"
       },
       {
-        "os": "macos",
-        "host": "gpui"
-      },
-      {
-        "os": "linux",
-        "host": "gpui"
-      },
-      {
-        "os": "windows",
-        "host": "gpui"
-      },
-      {
         "os": "android",
         "host": "kotlin"
       }
@@ -86,32 +50,6 @@
       {
         "os": "web",
         "host": "web"
-      },
-      {
-        "os": "macos",
-        "host": "gpui"
-      },
-      {
-        "os": "linux",
-        "host": "gpui"
-      },
-      {
-        "os": "windows",
-        "host": "gpui"
-      }
-    ],
-    "gpui": [
-      {
-        "os": "macos",
-        "host": "gpui"
-      },
-      {
-        "os": "linux",
-        "host": "gpui"
-      },
-      {
-        "os": "windows",
-        "host": "gpui"
       }
     ],
     "web-and-kotlin": [
@@ -511,165 +449,6 @@
         },
         {
           "name": "closable",
-          "kind": "bool"
-        },
-        {
-          "name": "accessibility-identifier",
-          "kind": "string"
-        }
-      ],
-      "events": []
-    },
-    {
-      "identifier": "gpui-rating",
-      "profiles": "gpui",
-      "standardChildren": false,
-      "children": [],
-      "properties": [
-        {
-          "name": "value",
-          "kind": "int",
-          "required": true
-        },
-        {
-          "name": "max",
-          "kind": "int"
-        },
-        {
-          "name": "accessibility-identifier",
-          "kind": "string"
-        }
-      ],
-      "events": [
-        {
-          "name": "change",
-          "fields": [
-            {
-              "name": "value",
-              "kind": "int",
-              "required": true
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "identifier": "gpui-color-picker",
-      "profiles": "gpui",
-      "standardChildren": false,
-      "children": [],
-      "properties": [
-        {
-          "name": "value",
-          "kind": "string"
-        },
-        {
-          "name": "accessibility-identifier",
-          "kind": "string"
-        }
-      ],
-      "events": [
-        {
-          "name": "change",
-          "fields": [
-            {
-              "name": "color",
-              "kind": "string",
-              "required": true
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "identifier": "gpui-empty",
-      "profiles": "gpui",
-      "standardChildren": true,
-      "children": [],
-      "properties": [
-        {
-          "name": "title",
-          "kind": "string",
-          "required": true
-        },
-        {
-          "name": "description",
-          "kind": "string"
-        },
-        {
-          "name": "accessibility-identifier",
-          "kind": "string"
-        }
-      ],
-      "events": []
-    },
-    {
-      "identifier": "gpui-tag",
-      "profiles": "gpui",
-      "standardChildren": false,
-      "children": [],
-      "properties": [
-        {
-          "name": "text",
-          "kind": "string",
-          "required": true
-        },
-        {
-          "name": "variant",
-          "kind": "string"
-        },
-        {
-          "name": "accessibility-identifier",
-          "kind": "string"
-        }
-      ],
-      "events": []
-    },
-    {
-      "identifier": "gpui-chart-bar",
-      "profiles": "gpui",
-      "standardChildren": false,
-      "children": [],
-      "properties": [
-        {
-          "name": "name",
-          "kind": "string",
-          "required": true
-        },
-        {
-          "name": "data",
-          "kind": "string",
-          "required": true
-        },
-        {
-          "name": "accessibility-identifier",
-          "kind": "string"
-        }
-      ],
-      "events": []
-    },
-    {
-      "identifier": "gpui-table",
-      "profiles": "gpui",
-      "standardChildren": false,
-      "children": [],
-      "properties": [
-        {
-          "name": "columns",
-          "kind": "string",
-          "required": true
-        },
-        {
-          "name": "rows",
-          "kind": "string",
-          "required": true
-        },
-        {
-          "name": "bordered",
-          "kind": "bool"
-        },
-        {
-          "name": "stripe",
           "kind": "bool"
         },
         {

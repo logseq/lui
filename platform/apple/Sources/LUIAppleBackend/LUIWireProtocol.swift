@@ -972,7 +972,7 @@ struct LUIRetainedTree {
                 throw invalid("toolbar accepts only interactive controls and dividers")
             }
             // Interactive leaf hosts (button, menu-item, ...) accept context-menu
-            // metadata and content children (text/icon/etc., matching gpui), but
+            // metadata and content children (text/icon/etc.), but
             // never nested menu containers — submenus are not supported.
             if Self.isContextMenuLeafHost(parentNode.kind),
                childNode.kind == .dropdownMenu || childNode.kind == .menuTrigger {
@@ -1405,8 +1405,7 @@ struct LUIRetainedTree {
                 let label = node.properties[.accessibilityLabel]?.stringValue ?? ""
                 let icon = node.properties[.icon]?.stringValue ?? ""
                 // Content may arrive as child nodes (text/label/icon) rather than
-                // properties — those children provide the accessible name,
-                // matching gpui toleration.
+                // properties — those children provide the accessible name.
                 let hasNamedChild = hasNamedChild(node)
                 guard !text.isEmpty || !label.isEmpty || !icon.isEmpty || hasNamedChild else {
                     throw invalid("button requires an accessible name")

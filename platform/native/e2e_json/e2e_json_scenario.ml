@@ -4,8 +4,7 @@
    through a list of steps — patch application, pointer input, text
    input, IME composition, scrolling, drops, and explicit event
    dispatch — and asserts on the recorded event stream, the store, and
-   the captured frame, mirroring the gpui sibling backend's scenario
-   DSL. Writing a new e2e test is adding a JSON file. *)
+   the captured frame. Writing a new e2e test is adding a JSON file. *)
 
 open Lui_scene
 open Lui_protocol
@@ -50,9 +49,9 @@ let jstr_list name j =
 
 (* ---------- subset matching ----------
 
-   Mirrors the gpui harness: "*" accepts anything, "~x" is
-   string-contains, {"$gt"|"$lt"|"$ge"|"$le": n} compares numbers, and
-   objects match recursively by subset. *)
+   "*" accepts anything, "~x" is string-contains,
+   {"$gt"|"$lt"|"$ge"|"$le": n} compares numbers, and objects match
+   recursively by subset. *)
 
 let str_contains hay needle =
   let lh = String.length hay and ln = String.length needle in
