@@ -597,7 +597,20 @@ let rec build ctx store ~pkind ~pid ~index id : Lui_flex.node list =
     in
     let m =
       match (kids, text) with
-      | [], Some t -> Some (measure_of ctx.tm ~id ~text:t)
+      | [], Some t -> (
+        match Lui_store.prop store id "icon" with
+        | Some (StringValue s) when s <> "" ->
+          (* labeled_content_ops paints a 16px icon slot + 6px gap —
+             reserve them so the label doesn't overflow the chrome *)
+          let icon_extra = 22. *. ctx.scale in
+          Some
+            (fun node ~width ~width_mode ~height ~height_mode ->
+              let d =
+                measure_of ctx.tm ~id ~text:t node ~width ~width_mode
+                  ~height ~height_mode
+              in
+              { d with Lui_flex.width = d.Lui_flex.width +. icon_extra })
+        | _ -> Some (measure_of ctx.tm ~id ~text:t))
       | _ -> None
     in
     let node = Lui_flex.create ~style ?measure:m kids in
