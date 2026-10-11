@@ -78,8 +78,9 @@ static char *join_argv(value vargv) {
   return s;
 }
 
-/* Build the "K=V\0..\0" environment block. */
-static char *join_env(value venv) {
+/* Build the "K=V\0..\0" environment block; *outlen is its byte
+   length including the terminating double NUL. */
+static char *join_env(value venv, size_t *outlen) {
   mlsize_t n = Wosize_val(venv), i;
   size_t len = 1;
   char *s, *p;
@@ -94,6 +95,7 @@ static char *join_env(value venv) {
     *p++ = 0;
   }
   *p = 0;
+  *outlen = (size_t)(p - s) + 1;
   return s;
 }
 
@@ -106,7 +108,8 @@ CAMLprim value lui_term_pty_spawn(value vargv, value venv, value vcwd,
   STARTUPINFOEXW si;
   PROCESS_INFORMATION pi;
   SIZE_T alen;
-  wchar_t *wcmd, *wcwd;
+  size_t envlen = 0;
+  wchar_t *wcmd, *wcwd, *wenv;
   int ok = 0;
 
   if (!resolve_conpty()) caml_failwith("pty: ConPTY unavailable");
@@ -138,7 +141,7 @@ CAMLprim value lui_term_pty_spawn(value vargv, value venv, value vcwd,
   CloseHandle(out_w); out_w = NULL;
 
   cmd = join_argv(vargv);
-  env = join_env(venv);
+  env = join_env(venv, &envlen);
   if (!cmd || !env) goto fail;
 
   memset(&si, 0, sizeof(si));
@@ -153,32 +156,37 @@ CAMLprim value lui_term_pty_spawn(value vargv, value venv, value vcwd,
                                  p->hpc, sizeof(p->hpc), NULL, NULL))
     goto fail_si;
 
-  /* command line and cwd to UTF-16 */
+  /* command line, cwd and env block to UTF-16; the env block keeps
+     its per-entry NULs and the final double NUL. */
   {
     int cl = MultiByteToWideChar(CP_UTF8, 0, cmd, -1, NULL, 0);
     int wl = MultiByteToWideChar(CP_UTF8, 0, String_val(vcwd), -1, NULL, 0);
+    int el = MultiByteToWideChar(CP_UTF8, 0, env, (int)envlen, NULL, 0);
     wcmd = (wchar_t *)malloc(cl * sizeof(wchar_t));
     wcwd = (wchar_t *)malloc(wl * sizeof(wchar_t));
+    wenv = (wchar_t *)malloc(el * sizeof(wchar_t));
+    if (!wcmd || !wcwd || !wenv) { free(wcmd); free(wcwd); free(wenv); goto fail; }
     MultiByteToWideChar(CP_UTF8, 0, cmd, -1, wcmd, cl);
     MultiByteToWideChar(CP_UTF8, 0, String_val(vcwd), -1, wcwd, wl);
+    MultiByteToWideChar(CP_UTF8, 0, env, (int)envlen, wenv, el);
   }
   memset(&pi, 0, sizeof(pi));
   if (!CreateProcessW(NULL, wcmd, NULL, NULL, FALSE,
                       EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
-                      env, wcwd, &si.StartupInfo, &pi))
+                      wenv, wcwd, &si.StartupInfo, &pi))
     goto fail_w;
 
   p->hproc = pi.hProcess;
   CloseHandle(pi.hThread);
   p->in_w = in_w;
   p->out_r = out_r;
-  free(wcmd); free(wcwd); free(cmd); free(env);
+  free(wcmd); free(wcwd); free(wenv); free(cmd); free(env);
   DeleteProcThreadAttributeList(si.lpAttributeList);
   free(si.lpAttributeList);
   CAMLreturn(caml_copy_nativeint((intnat)p));
 
 fail_w:
-  free(wcmd); free(wcwd);
+  free(wcmd); free(wcwd); free(wenv);
 fail_si:
   DeleteProcThreadAttributeList(si.lpAttributeList);
   free(si.lpAttributeList);
