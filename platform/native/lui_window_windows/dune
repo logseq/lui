@@ -1,0 +1,52 @@
+(library
+ (name lui_window_windows)
+ (modules lui_win32 lui_window_windows lui_window_text demo_app)
+ (libraries
+  lui_window
+  lui
+  lui_store
+  lui_scene
+  lui_paint
+  lui_host
+  lui_ime
+  lui_a11y
+  lui_ax_windows
+  lui_shell_windows
+  lui_text_dwrite
+  lui_raster
+  lui_d3d11)
+ (foreign_stubs
+  (language c)
+  (names lui_window_windows_stubs))
+ (c_library_flags (:standard (:include c_libs.sexp)))
+ (preprocess (pps lui_ppx))
+ (wrapped false))
+
+(executable
+ (name main)
+ (modules main)
+ (libraries
+  lui_window_windows
+  lui_window
+  lui
+  lui_store
+  lui_scene
+  lui_paint
+  lui_host
+  lui_ime
+  lui_a11y
+  lui_ax_windows
+  lui_shell_windows
+  lui_text_dwrite
+  lui_raster
+  lui_d3d11))
+
+(rule
+ (target c_libs.sexp)
+ (action
+  (with-stdout-to %{target}
+   (bash
+    "case '%{system}' in mingw*|cygwin*) printf '(-luser32 -lgdi32 -limm32)';; *) printf '()';; esac"))))
+
+;; The host lib/executable compile everywhere (all Win32 calls are
+;; failwith-stubbed off-platform); only the test stays mingw64-gated.
