@@ -2,7 +2,16 @@
  (name lui_window_test)
  ;; main.exe must be current before the headless tests spawn it —
  ;; without this dep, runtest can race a stale exe against new code.
- (deps ../main.exe)
+ ;; It only builds on macOS, so the dep arrives via a generated file:
+ ;; empty elsewhere, where the headless cases skip instead.
+ (deps %{read-lines:main_dep.txt})
  (modules lui_window_test)
  (libraries lui_window lui_window_demo lui lui_store lui_scene lui_paint
  lui_host lui_ime alcotest unix str))
+
+(rule
+ (target main_dep.txt)
+ (action
+  (with-stdout-to %{target}
+   (bash
+    "if [ \"$(uname -s)\" = Darwin ]; then printf '../main.exe\n'; fi"))))

@@ -4,7 +4,21 @@
  (foreign_stubs
   (language c)
   (names lui_text_coretext)
-  (flags (:standard -x objective-c)))
- (c_library_flags
-  (:standard -framework CoreText -framework CoreGraphics
-    -framework CoreFoundation -framework AppKit)))
+  (flags (:standard (:include c_flags.sexp))))
+ (c_library_flags (:standard (:include c_libs.sexp))))
+
+; The stubs are plain C off macOS but must be compiled as Objective-C
+; on macOS to reach CoreText/AppKit; the frameworks only exist there.
+(rule
+ (target c_flags.sexp)
+ (action
+  (with-stdout-to %{target}
+   (bash
+    "if [ \"$(uname -s)\" = Darwin ]; then printf '(-x objective-c)'; else printf '()'; fi"))))
+
+(rule
+ (target c_libs.sexp)
+ (action
+  (with-stdout-to %{target}
+   (bash
+    "if [ \"$(uname -s)\" = Darwin ]; then printf '(-framework CoreText -framework CoreGraphics -framework CoreFoundation -framework AppKit)'; else printf '()'; fi"))))

@@ -65,6 +65,7 @@ let test_blit () =
   let lpix0 =
     Bigarray.Array1.create Bigarray.int8_unsigned Bigarray.c_layout (8 * 2)
   in
+  Bigarray.Array1.fill lpix0 0;
   let before0 = Spike_render.get t ~x:0 ~y:0 in
   Spike_render.blit_label t ~x0:0 ~y0:0
     { Spike_render.lw = 2; lh = 2; lpitch = 8; lpix = lpix0 };

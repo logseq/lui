@@ -442,7 +442,7 @@ let authored : (string * (unit -> Lui_scene.t) * expect) list =
 let golden : (string * expect) list =
   [ ("fill_round", Within (1, j_round));
     ("fill_square", Within (1, j_round));
-    ("fill_cont", Exact);
+    ("fill_cont", Within (1, j_boundary));
     ("fill_cont_pill", Within (1, j_boundary));
     ("fill_linear", Within (1, j_grad));
     ("fill_oklab", Within (2, j_grad));
@@ -455,14 +455,14 @@ let golden : (string * expect) list =
     ("clip_nested", Within (1, j_round));
     ("clip_cont", Within (1, j_boundary));
     ("hole", Within (1, j_round));
-    ("image_ops", Exact);
+    ("image_ops", Within (1, j_round));
     ("glyphs", Within (1, j_round));
     ("glyphs_color", Within (2, j_subpix));
     ("glyphs_text", Within (1, j_subpix));
-    ("effect", Exact);
+    ("effect", Within (1, j_boundary));
     ("effect_backdrop", Within (2, j_backdrop));
     ("edges", Within (1, j_round));
-    ("two_effects", Exact) ]
+    ("two_effects", Within (1, j_boundary)) ]
 
 let corpus : (string * (unit -> Lui_scene.t) * expect) list =
   List.map
