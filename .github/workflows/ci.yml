@@ -354,6 +354,11 @@ jobs:
                 pkg-config --modversion sdl2 SDL2_ttf || true
                 exit 1
               }
+              echo "=== resolved sdl2 pc ==="
+              pkg-config --libs sdl2
+              pkg-config --libs-only-l sdl2
+              pkg-config --variable=prefix sdl2
+              grep -H "Libs" "$SYSROOT_MINGW/lib/pkgconfig"/{sdl2,SDL2}.pc 2>/dev/null || true
               # A cache-restored switch may already carry tsdl baked with
               # the unstripped Libs — rebuild so the new flags take.
               opam reinstall -y tsdl tsdl-ttf 2>/dev/null || true
@@ -379,8 +384,11 @@ jobs:
             opam install -y tsdl tsdl-ttf tgls imagelib alcotest
           fi
       - name: Build platform/native
-        run: opam exec -- dune build platform/native/
-        shell: bash
+        run: |
+          # OCAMLPARAM verbose prints the exact linker invocation on
+          # Windows while the wWinMain link failure is being diagnosed.
+          if [ "$RUNNER_OS" = "Windows" ]; then export OCAMLPARAM='verbose=1,_'; fi
+          opam exec -- dune build platform/native/
       - name: Test platform/native
         # Tests skip what the runner cannot provide: no display -> GL/parity
         # skip, no dbus -> ax/shell skip, no lavapipe -> vulkan skip.
