@@ -12,7 +12,9 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # feat/ml-backend: cancel stale push runs too — upstream lands commits
+  # every few minutes, so a serialized queue just jams behind the oldest.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/feat/ml-backend' }}
 
 jobs:
   ocaml-tests:
