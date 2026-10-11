@@ -1,0 +1,5 @@
+(executable
+ (name lui)
+ (public_name lui)
+ (modules lui)
+ (libraries lui_cli unix))

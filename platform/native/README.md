@@ -74,7 +74,10 @@ Release chain + verification:
 | dir | role |
 |---|---|
 | `lui_pkg` | .app bundle → codesign → notarize → DMG → bsdiff delta + CLI |
+| `lui_pkg_linux` | AppDir → tar/deb/AppImage packaging on Linux |
+| `lui_pkg_windows` | portable dir → zip/MSIX/NSIS packaging on Windows |
 | `lui_updater` | update feed → delta-first download → staged apply → relaunch |
+| `lui_cli` | `lui` developer CLI: init/dev/build/package/doctor/keygen |
 | `parity` | CPU↔GPU pixel-parity suite (46 scenes + damage + corpus) |
 | `e2e` | headless end-to-end pipeline tests (patch → pixels) |
 | `lui_gallery` | all-85-kind visual suite → PNG cells + manifest |
