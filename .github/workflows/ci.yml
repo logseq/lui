@@ -250,15 +250,21 @@ jobs:
               # On a cache-restored run the switch can already list
               # conf-mingw-w64-sdl2* installed while the restored Cygwin
               # sysroot lacks the SDL2 payloads, so `opam install` skips
-              # their depext. Force the Cygwin packages back in.
-              opam depext -y tsdl tsdl-ttf || true
+              # their depext. Reinstalling the conf packages re-runs it
+              # (plain `opam depext` is not a command on this opam).
+              if [ ! -f "$SYSROOT_MINGW/lib/pkgconfig/sdl2.pc" ]; then
+                opam reinstall -y conf-mingw-w64-sdl2-x86_64 \
+                  conf-mingw-w64-sdl2-ttf-x86_64 || true
+              fi
               # tsdl's build shells out to bare `pkg-config`, but the
               # mingw sysroot .pc dir is outside Cygwin pkgconf's default
               # search path, and env vars can't bridge the roots from Git
               # Bash (PKG_CONFIG_PATH splits on ':' and mangles drive
               # letters). Shadow pkg-config with a wrapper resolved to
-              # the bundled Cygwin pkgconf and seed the SDL .pc files
-              # into its baked-in /usr/lib/pkgconfig instead.
+              # the bundled Cygwin pkgconf and seed every sysroot .pc
+              # into its baked-in /usr/lib/pkgconfig instead — SDL2_ttf's
+              # Requires chain needs freetype2/libpng/zlib too, so
+              # copying only the SDL files is not enough.
               SHIM_DIR="$PWD/pc-shim"
               mkdir -p "$SHIM_DIR"
               CYG_PKGCFG="$CYGROOT/bin/pkg-config"
@@ -267,7 +273,7 @@ jobs:
               chmod +x "$SHIM_DIR/pkg-config"
               export PATH="$SHIM_DIR:$PATH"
               mkdir -p "$CYGROOT/usr/lib/pkgconfig"
-              cp -f "$SYSROOT_MINGW"/lib/pkgconfig/{sdl2,SDL2,sdl2_ttf,SDL2_ttf}.pc \
+              cp -f "$SYSROOT_MINGW"/lib/pkgconfig/*.pc \
                 "$CYGROOT/usr/lib/pkgconfig/" 2>/dev/null || true
               pkg-config --exists sdl2 SDL2_ttf || {
                 echo "pkg-config still cannot resolve sdl2 — sysroot .pc files:"
@@ -293,17 +299,20 @@ jobs:
               # Overlay headers, import libs and runtime DLLs over the
               # 2.0.7/2.0.14 files the depext installed — but NOT the
               # tarballs' .pc files (their prefix is written for a Linux
-              # cross sysroot, unusable here). Keep cygwin's .pc files,
-              # whose prefix already resolves under the mingw pkgconf
-              # personality, and refresh only their versions.
+              # cross sysroot, unusable here). Keep cygwin's .pc files —
+              # their prefix resolves under this root — and refresh only
+              # the version fields, in both .pc locations.
               cp -rf "$DEV_TMP"/SDL2-2.32.4/x86_64-w64-mingw32/{bin,include} "$SYSROOT_MINGW/"
               cp -rf "$DEV_TMP"/SDL2_ttf-2.24.0/x86_64-w64-mingw32/{bin,include} "$SYSROOT_MINGW/"
               (cd "$DEV_TMP"/SDL2-2.32.4/x86_64-w64-mingw32/lib \
                 && find . -mindepth 1 -maxdepth 1 ! -name pkgconfig -exec cp -rf {} "$SYSROOT_MINGW/lib/" \;)
               (cd "$DEV_TMP"/SDL2_ttf-2.24.0/x86_64-w64-mingw32/lib \
                 && find . -mindepth 1 -maxdepth 1 ! -name pkgconfig -exec cp -rf {} "$SYSROOT_MINGW/lib/" \;)
-              sed -i 's/^Version:.*/Version: 2.32.4/' "$SYSROOT_MINGW"/lib/pkgconfig/{sdl2,SDL2}.pc 2>/dev/null || true
-              sed -i 's/^Version:.*/Version: 2.24.0/' "$SYSROOT_MINGW"/lib/pkgconfig/{sdl2_ttf,SDL2_ttf}.pc 2>/dev/null || true
+              for d in "$SYSROOT_MINGW/lib/pkgconfig" \
+                       "$CYGROOT/usr/lib/pkgconfig"; do
+                sed -i 's/^Version:.*/Version: 2.32.4/' "$d"/{sdl2,SDL2}.pc 2>/dev/null || true
+                sed -i 's/^Version:.*/Version: 2.24.0/' "$d"/{sdl2_ttf,SDL2_ttf}.pc 2>/dev/null || true
+              done
               pkg-config --exists 'sdl2 >= 2.0.22' 'SDL2_ttf >= 2.0.18' || {
                 echo "SDL overlay did not take — versions now seen:"
                 pkg-config --modversion sdl2 SDL2_ttf || true
