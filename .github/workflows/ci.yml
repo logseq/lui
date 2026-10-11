@@ -342,11 +342,12 @@ jobs:
                 sed -i 's/^Version:.*/Version: 2.32.4/' "$d"/{sdl2,SDL2}.pc 2>/dev/null || true
                 sed -i 's/^Version:.*/Version: 2.24.0/' "$d"/{sdl2_ttf,SDL2_ttf}.pc 2>/dev/null || true
                 # tsdl bakes `pkg-config --libs sdl2` into its cmxa cclib.
+                # The conventional mingw flags break OCaml links:
                 # -mwindows selects the GUI CRT (wants wWinMain) while
-                # OCaml exes export main, and -lSDL2main's trampoline
-                # wants SDL_main — both leave executables un-linkable,
-                # so keep console-subsystem flags only.
-                sed -i -e 's/-lSDL2main//g' -e 's/-mwindows//g' \
+                # OCaml exes export main/wmain, -lSDL2main's trampoline
+                # wants SDL_main, and -lmingw32 drags in ucrtexewin.o
+                # whose wmain calls wWinMain. Keep -lSDL2 only.
+                sed -i -e 's/-lSDL2main//g' -e 's/-mwindows//g' -e 's/-lmingw32//g' \
                   "$d"/{sdl2,SDL2,sdl2_ttf,SDL2_ttf}.pc 2>/dev/null || true
               done
               pkg-config --exists 'sdl2 >= 2.0.22' 'SDL2_ttf >= 2.0.18' || {
