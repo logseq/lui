@@ -1013,7 +1013,9 @@ let common_property_supported kind property =
   | ChangeEnabled -> kind = Radio || tree_row_kind kind
   | ToggleEnabled -> kind = Radio || kind = Drawer || tree_row_kind kind
   | PressEnabled ->
-    kind = Text
+    kind = Button
+    || kind = ToggleButton
+    || kind = Text
     || kind = Row
     || kind = Column
     || kind = Box
