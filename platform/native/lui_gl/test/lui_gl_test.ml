@@ -222,7 +222,7 @@ let gl_scene ~w ~h =
       epixels =
         (fun () ->
           { begin_effect = (fun _ _ _ -> ());
-            color_at = (fun _ _ _ -> (0., 0., 0.)) }) }
+            color_at = (fun _ _ _ -> (0., 0., 0., 0.5)) }) }
   in
   s.effects <- [ { ee = fx; eblur = 4.;
                    eparams = [| (0., 0., 0., 0.); (0., 0., 0., 0.);

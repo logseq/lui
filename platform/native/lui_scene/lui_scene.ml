@@ -93,10 +93,13 @@ type wide_colors = {
 let wide_color = 1 and wide_color2 = 2 and wide_border = 4
 
 (* Effects: custom drawing with a GLSL shader plus a CPU twin that must
-   produce the same pixels. *)
+   produce the same pixels. color_at is the premultiplied RGBA the twin
+   draws: an effect may return less than full alpha so that what was
+   behind shows through where it fades, as the shaders' out alpha does. *)
 type effect_pixels = {
   begin_effect : effect_op -> rect -> float * float * float * float -> unit;
-  color_at : float -> float -> backdrop_image option -> float * float * float;
+  color_at :
+    float -> float -> backdrop_image option -> float * float * float * float;
 }
 
 and fx = {
