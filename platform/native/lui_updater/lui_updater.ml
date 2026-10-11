@@ -187,9 +187,23 @@ let url_host url =
      | None -> host)
   | _ -> ""
 
-let url_allowed url =
+(* Production defaults refuse file://. Tests and local mirrors pass
+   [~allow_file:true] or set LUI_UPDATE_ALLOW_FILE=1. *)
+let allow_file_env () =
+  match Sys.getenv_opt "LUI_UPDATE_ALLOW_FILE" with
+  | Some ("1" | "true" | "yes" | "YES" | "TRUE") -> true
+  | _ -> false
+
+let allow_unsigned_env () =
+  match Sys.getenv_opt "LUI_UPDATE_ALLOW_UNSIGNED" with
+  | Some ("1" | "true" | "yes" | "YES" | "TRUE") -> true
+  | _ -> false
+
+let url_allowed ?(allow_file = false) url =
+  let allow_file = allow_file || allow_file_env () in
   match url_scheme url with
-  | "https" | "file" -> true
+  | "https" -> true
+  | "file" -> allow_file
   | "http" -> is_loopback (url_host url)
   | _ -> false
 
@@ -199,11 +213,12 @@ let user_agent f = fmt "Lui_updater/1 %s/%s" f.app_name f.version
    redirects (to https only), bounded connect and total time. The
    downloaded file is verified afterwards, so partial bodies can never
    stand in for real content. *)
-let curl_fetcher ?(user_agent = "Lui_updater/1") () =
+let curl_fetcher ?(user_agent = "Lui_updater/1") ?(allow_file = false) () =
   {
     get =
       (fun ~url ~dest ->
-        if not (url_allowed url) then error "refusing to fetch %s" url
+        if not (url_allowed ~allow_file url) then
+          error "refusing to fetch %s" url
         else
           match
             P.Proc.check "curl"
@@ -300,14 +315,14 @@ let manifest_of_string s =
         Stdlib.Ok { version; notes; date; archive; deltas }
   with Yojson.Json_error m -> error "manifest is not valid JSON: %s" m
 
-let check ?fetch f =
+let check ?fetch ?(allow_file = false) f =
   let fetch =
     match fetch with
     | Some fc -> fc
-    | None -> curl_fetcher ~user_agent:(user_agent f) ()
+    | None -> curl_fetcher ~user_agent:(user_agent f) ~allow_file ()
   in
   let url = feed_url f in
-  if not (url_allowed url) then error "refusing to fetch %s" url
+  if not (url_allowed ~allow_file url) then error "refusing to fetch %s" url
   else
     match fetch_text fetch url with
     | Stdlib.Error m -> Stdlib.Error m
@@ -331,9 +346,10 @@ let plan i ~current =
   | None -> Full i.archive
 
 (* ------------------------------------------------------------------ *)
-(* Download: size + sha256 always; a signature, when the artifact
-   carries one, via the injected hook (tests) or the Ed25519 verifier
-   keyed by [?pk] / [LUI_UPDATE_PUBKEY] / the manifest's [pubkey]. *)
+(* Download: size + sha256 always; signature required unless
+   [~allow_unsigned] / LUI_UPDATE_ALLOW_UNSIGNED. When a signature is
+   present it is checked via the injected hook (tests) or Ed25519
+   keyed by [?pk] / [LUI_UPDATE_PUBKEY]. *)
 
 let pubkey_env = "LUI_UPDATE_PUBKEY"
 
@@ -373,9 +389,12 @@ let ed25519_verify_file ~pk ~signature ~path =
       with _ -> false))
   | _ -> false
 
-let download ?(fetch = curl_fetcher ()) ?verify_sig ?pk ?progress a ~dest =
+let download ?(fetch = curl_fetcher ()) ?verify_sig ?pk
+    ?(allow_unsigned = false) ?(allow_file = false) ?progress a ~dest =
+  let allow_unsigned = allow_unsigned || allow_unsigned_env () in
   if a.size <= 0 || a.size > max_package then error "invalid size %d" a.size
-  else if not (url_allowed a.url) then error "refusing to fetch %s" a.url
+  else if not (url_allowed ~allow_file a.url) then
+    error "refusing to fetch %s" a.url
   else begin
     Option.iter (fun p -> p ~received:0 ~total:a.size) progress;
     match fetch.get ~url:a.url ~dest with
@@ -409,7 +428,12 @@ let download ?(fetch = curl_fetcher ()) ?verify_sig ?pk ?progress a ~dest =
               if ed25519_verify_file ~pk:key ~signature:sig_ ~path:dest
               then ok ()
               else error "signature check failed for %s" a.url)
-          | None, _ -> ok ())
+          | None, _ ->
+            if allow_unsigned then ok ()
+            else
+              error
+                "unsigned artifact refused for %s (pass                  ~allow_unsigned or set LUI_UPDATE_ALLOW_UNSIGNED=1)"
+                a.url)
   end
 
 (* ------------------------------------------------------------------ *)
@@ -628,12 +652,12 @@ let install_target_of ~exe =
 
 (* ------------------------------------------------------- orchestration *)
 
-let install ?fetch ?verify ?verify_sig ?pk ?progress ?on_state ?stage_dir
-    f ~bundle ~exe =
+let install ?fetch ?verify ?verify_sig ?pk ?(allow_unsigned = false)
+    ?(allow_file = false) ?progress ?on_state ?stage_dir f ~bundle ~exe =
   let fetch =
     match fetch with
     | Some fc -> fc
-    | None -> curl_fetcher ~user_agent:(user_agent f) ()
+    | None -> curl_fetcher ~user_agent:(user_agent f) ~allow_file ()
   in
   let emit st = Option.iter (fun g -> g st) on_state in
   let fail m =
@@ -642,7 +666,7 @@ let install ?fetch ?verify ?verify_sig ?pk ?progress ?on_state ?stage_dir
   in
   let stage_dir = Option.value stage_dir ~default:(stage_dir_of bundle) in
   emit Checking;
-  match check ~fetch f with
+  match check ~fetch ~allow_file f with
   | Error m -> fail m
   | Stdlib.Ok None ->
     emit Idle;
@@ -661,7 +685,10 @@ let install ?fetch ?verify ?verify_sig ?pk ?progress ?on_state ?stage_dir
       let a = match pl with Full a -> a | Delta d -> d.artifact in
       emit (Downloading { received = 0; total = a.size });
       let pkg = Filename.concat work "pkg" in
-      match download ~fetch ?verify_sig ?pk ?progress a ~dest:pkg with
+      match
+        download ~fetch ?verify_sig ?pk ~allow_unsigned ~allow_file
+          ?progress a ~dest:pkg
+      with
       | Stdlib.Error m -> Stdlib.Error m
       | Stdlib.Ok () ->
         apply ?verify ~info:i ~plan:pl ~package:pkg ~bundle ~stage_dir ()
@@ -695,11 +722,12 @@ let install ?fetch ?verify ?verify_sig ?pk ?progress ?on_state ?stage_dir
       | Full _ -> finish (Stdlib.Error m)
       | Delta _ -> finish (run (Full i.archive))))
 
-let install_and_relaunch ?fetch ?verify ?verify_sig ?pk ?progress
-    ?on_state ?stage_dir f ~bundle ~exe ~args =
+let install_and_relaunch ?fetch ?verify ?verify_sig ?pk
+    ?(allow_unsigned = false) ?(allow_file = false) ?progress ?on_state
+    ?stage_dir f ~bundle ~exe ~args =
   match
-    install ?fetch ?verify ?verify_sig ?pk ?progress ?on_state ?stage_dir
-      f ~bundle ~exe
+    install ?fetch ?verify ?verify_sig ?pk ~allow_unsigned ~allow_file
+      ?progress ?on_state ?stage_dir f ~bundle ~exe
   with
   | Installed { exe; _ } ->
     ignore (spawn_detached exe args);

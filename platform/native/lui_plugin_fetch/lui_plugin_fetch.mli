@@ -8,12 +8,19 @@
     - ["request"]: argument object
       [{ "url": string, "method"?: string, "headers"?: object | pairs,
          "body"?: string, "body_base64"?: string,
-         "redirect"?: bool | int, "timeout_ms"?: int }]
+         "redirect"?: bool | int, "timeout_ms"?: int,
+         "allow_private"?: bool }]
       returns
       [{ "status": int, "headers": [[name, value], ...],
          "body_base64": string, "error": string }].
       Transport failures are reported in-band with [status] 0 and a
-      non-empty [error]; malformed arguments produce an [Error]. *)
+      non-empty [error]; malformed arguments produce an [Error].
+
+    URLs are filtered before libcurl runs: only [http]/[https] to
+    non-private hosts (plus loopback) are accepted by default;
+    [file://], RFC1918, link-local and *.local need
+    ["allow_private": true]. Response bodies are hard-capped at 32 MiB
+    in the C stub. *)
 
 type request = {
   url : string;
@@ -23,6 +30,9 @@ type request = {
   follow_redirects : bool;
   max_redirects : int;
   timeout_ms : int;       (** 0 = no timeout. *)
+  allow_private : bool;
+    (** Opt-in for [file://], RFC1918, link-local and *.local hosts.
+        Loopback is always allowed. Default [false]. *)
 }
 
 type response = {
@@ -53,4 +63,5 @@ module Private : sig
   val parse_headers : string -> (string * string) list
   val b64_encode : string -> string
   val b64_decode : string -> (string, string) result
+  val url_allowed : ?allow_private:bool -> string -> bool
 end

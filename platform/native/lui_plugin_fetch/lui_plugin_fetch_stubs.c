@@ -109,21 +109,31 @@ CAMLprim value lui_fetch_available(value unit)
 
 /* ---- Response accumulators ---- */
 
+/* Hard cap on response body / header accumulators (32 MiB). */
+#define LUI_FETCH_MAX_BODY (32u * 1024u * 1024u)
+
 struct buf {
   char *p;
   size_t len;
   size_t cap;
+  size_t max; /* refuse to grow past this */
   int oom;
+  int too_big;
 };
 
 static size_t buf_cb(char *ptr, size_t size, size_t nmemb, void *ud)
 {
   struct buf *b = (struct buf *)ud;
   size_t n = size * nmemb;
-  if (b->oom) return 0;
+  if (b->oom || b->too_big) return 0;
+  if (b->max && b->len + n > b->max) {
+    b->too_big = 1;
+    return 0; /* aborts the transfer with CURLE_WRITE_ERROR */
+  }
   if (b->len + n > b->cap) {
     size_t cap = b->cap ? b->cap : 8192;
     while (cap < b->len + n) cap *= 2;
+    if (b->max && cap > b->max) cap = b->max;
     char *q = (char *)realloc(b->p, cap);
     if (!q) {
       b->oom = 1;
@@ -154,7 +164,7 @@ static value perform_impl(value v_url, value v_method, value v_headers,
 {
   CAMLparam5(v_url, v_method, v_headers, v_body, v_follow);
   CAMLxparam2(v_maxredirs, v_timeout);
-  CAMLlocal3(v_err, v_hraw, v_resp);
+  CAMLlocal4(v_err, v_hraw, v_resp, v_body_out);
 
   if (curl_resolve() != 1)
     caml_failwith("lui_plugin_fetch: libcurl not available");
@@ -164,8 +174,8 @@ static value perform_impl(value v_url, value v_method, value v_headers,
 
   char errbuf[256];
   errbuf[0] = '\0';
-  struct buf body = {0, 0, 0, 0};
-  struct buf heads = {0, 0, 0, 0};
+  struct buf body = {0, 0, 0, LUI_FETCH_MAX_BODY, 0, 0};
+  struct buf heads = {0, 0, 0, LUI_FETCH_MAX_BODY, 0, 0};
 
   p_curl_easy_setopt(c, LUI_CURLOPT_ERRORBUFFER, errbuf);
   p_curl_easy_setopt(c, LUI_CURLOPT_URL, String_val(v_url));
@@ -206,9 +216,11 @@ static value perform_impl(value v_url, value v_method, value v_headers,
   p_curl_easy_cleanup(c);
   if (hl) p_curl_slist_free_all(hl);
 
-  int ok = (rc == 0 && !body.oom && !heads.oom);
+  int ok = (rc == 0 && !body.oom && !heads.oom && !body.too_big && !heads.too_big);
   if (body.oom || heads.oom) {
     v_err = caml_copy_string("lui_plugin_fetch: out of memory");
+  } else if (body.too_big || heads.too_big) {
+    v_err = caml_copy_string("lui_plugin_fetch: response exceeds 32 MiB cap");
   } else if (rc != 0) {
     const char *m = errbuf[0] ? errbuf : p_curl_easy_strerror(rc);
     v_err = caml_copy_string(m);
@@ -217,8 +229,10 @@ static value perform_impl(value v_url, value v_method, value v_headers,
   }
   v_hraw = take_buf(&heads);
 
-  /* Body ownership moves into the tuple on success only. */
-  value v_body_out = take_buf(&body);
+  /* Body ownership moves into the tuple on success only.
+     v_body_out is a CAMLlocal so the subsequent caml_alloc_tuple
+     cannot leave it unrooted across a GC. */
+  v_body_out = take_buf(&body);
 
   v_resp = caml_alloc_tuple(5);
   Store_field(v_resp, 0, Val_bool(ok));

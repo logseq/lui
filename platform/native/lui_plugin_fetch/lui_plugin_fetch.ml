@@ -17,6 +17,9 @@ type request = {
   follow_redirects : bool;
   max_redirects : int;
   timeout_ms : int;
+  allow_private : bool;
+    (** When false (default), refuse file:// and RFC1918 / link-local
+        hosts. Loopback remains allowed so local tests work. *)
 }
 
 type response = {
@@ -36,7 +39,94 @@ let request url =
     follow_redirects = true;
     max_redirects = 20;
     timeout_ms = 30_000;
+    allow_private = false;
   }
+
+(* ---- URL policy (scheme + host) ---- *)
+
+let url_scheme url =
+  match String.index_opt url ':' with
+  | None -> ""
+  | Some i -> String.lowercase_ascii (String.sub url 0 i)
+
+let url_host url =
+  match String.index_opt url ':' with
+  | None -> ""
+  | Some i ->
+    let rest = String.sub url (i + 1) (String.length url - i - 1) in
+    if String.length rest < 2 || rest.[0] <> '/' || rest.[1] <> '/' then ""
+    else
+      let auth = String.sub rest 2 (String.length rest - 2) in
+      let hostport =
+        match String.index_opt auth '/' with
+        | Some j -> String.sub auth 0 j
+        | None -> auth
+      in
+      (* strip userinfo *)
+      let hostport =
+        match String.rindex_opt hostport '@' with
+        | Some at -> String.sub hostport (at + 1) (String.length hostport - at - 1)
+        | None -> hostport
+      in
+      (* strip port; keep [v6] brackets *)
+      if hostport <> "" && hostport.[0] = '[' then
+        match String.index_opt hostport ']' with
+        | Some j -> String.sub hostport 0 (j + 1)
+        | None -> hostport
+      else
+        match String.index_opt hostport ':' with
+        | Some k -> String.sub hostport 0 k
+        | None -> hostport
+
+let is_loopback host =
+  let h = String.lowercase_ascii host in
+  h = "localhost" || h = "127.0.0.1" || h = "::1" || h = "[::1]"
+
+let parse_ipv4 host =
+  match String.split_on_char '.' host with
+  | [ a; b; c; d ] -> (
+    try
+      let a, b, c, d =
+        (int_of_string a, int_of_string b, int_of_string c, int_of_string d)
+      in
+      if
+        List.for_all (fun x -> x >= 0 && x <= 255) [ a; b; c; d ]
+      then Some (a, b, c, d)
+      else None
+    with _ -> None)
+  | _ -> None
+
+let is_private_or_link_local host =
+  let h = String.lowercase_ascii host in
+  if h = "" then true
+  else if String.starts_with ~prefix:"fe80:" h || h = "[fe80" || String.starts_with ~prefix:"[fe80:" h
+  then true
+  else
+    match parse_ipv4 h with
+    | Some (10, _, _, _) -> true
+    | Some (192, 168, _, _) -> true
+    | Some (172, b, _, _) when b >= 16 && b <= 31 -> true
+    | Some (169, 254, _, _) -> true
+    | Some (127, _, _, _) -> false (* loopback handled separately *)
+    | Some (0, _, _, _) -> true
+    | Some (100, b, _, _) when b >= 64 && b <= 127 -> true (* CGNAT *)
+    | _ ->
+      (* Hostnames that look like .local / .internal stay blocked unless
+         allow_private — callers targeting LAN by name must opt in. *)
+      String.ends_with ~suffix:".local" h
+      || String.ends_with ~suffix:".internal" h
+      || String.ends_with ~suffix:".lan" h
+
+let url_allowed ?(allow_private = false) url =
+  match url_scheme url with
+  | "https" | "http" ->
+    let host = url_host url in
+    if host = "" then false
+    else if is_loopback host then true
+    else if allow_private then true
+    else not (is_private_or_link_local host)
+  | "file" -> allow_private (* file:// only with the private/opt-in flag *)
+  | _ -> false
 
 (* libcurl's header callback concatenates status lines and headers for
    every hop; only the last response's headers are reported. *)
@@ -64,16 +154,19 @@ let parse_headers raw =
   go [] [] (String.split_on_char '\n' raw)
 
 let perform (r : request) =
-  let hdrs =
-    Array.of_list (List.map (fun (k, v) -> k ^ ": " ^ v) r.headers)
-  in
-  let ok, status, err, raw_headers, body =
-    c_perform r.url r.meth hdrs r.body
-      (if r.follow_redirects then 1 else 0)
-      r.max_redirects r.timeout_ms
-  in
-  if not ok then Error (if err = "" then "request failed" else err)
-  else Ok { status; headers = parse_headers raw_headers; body }
+  if not (url_allowed ~allow_private:r.allow_private r.url) then
+    Error ("refusing to fetch " ^ r.url)
+  else
+    let hdrs =
+      Array.of_list (List.map (fun (k, v) -> k ^ ": " ^ v) r.headers)
+    in
+    let ok, status, err, raw_headers, body =
+      c_perform r.url r.meth hdrs r.body
+        (if r.follow_redirects then 1 else 0)
+        r.max_redirects r.timeout_ms
+    in
+    if not ok then Error (if err = "" then "request failed" else err)
+    else Ok { status; headers = parse_headers raw_headers; body }
 
 (* ---- base64 ---- *)
 
@@ -184,7 +277,23 @@ let request_of_yojson j =
       | `Null -> 30_000
       | _ -> raise (Invalid_argument "\"timeout_ms\" must be int")
     in
-    Ok { url; meth; headers; body; follow_redirects; max_redirects; timeout_ms }
+    let allow_private =
+      match j |> member "allow_private" with
+      | `Bool b -> b
+      | `Null -> false
+      | _ -> raise (Invalid_argument "\"allow_private\" must be bool")
+    in
+    Ok
+      {
+        url;
+        meth;
+        headers;
+        body;
+        follow_redirects;
+        max_redirects;
+        timeout_ms;
+        allow_private;
+      }
   with
   | Invalid_argument e -> Error e
   | Yojson.Json_error e -> Error e
@@ -229,4 +338,5 @@ module Private = struct
   let parse_headers = parse_headers
   let b64_encode = b64_encode
   let b64_decode = b64_decode
+  let url_allowed = url_allowed
 end
