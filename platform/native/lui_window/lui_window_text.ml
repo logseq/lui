@@ -193,13 +193,22 @@ let text_ops t id r fg s =
   let scale = t.scale () in
   let store = t.store () in
   let font = font_of store id in
-  let lines = Lui_text.shape font s in
   (* Horizontal placement: the shared placement table decides the kind's
      alignment and content inset; props win over it. *)
   let tp = Lui_paint.text_placement_of store id in
   let pad = tp.tp_pad_x *. scale in
   let x0 = r.x +. pad in
   let w' = Float.max 0. (r.w -. (2. *. pad)) in
+  (* Flowing text wraps at its padded width so a long line never spills
+     into the node's inset; labeled controls keep a single line. *)
+  let wrap_w =
+    match Lui_store.kind store id with
+    | "text" | "paragraph" | "heading" | "dialog" | "sheet" | "drawer"
+    | "popover" | "alert" ->
+      w' /. scale
+    | _ -> 0.
+  in
+  let lines = Lui_text.shape font s ~width:wrap_w in
   (* Vertical centering inside the node's rect, device pixels. *)
   let text_h =
     Array.fold_left
