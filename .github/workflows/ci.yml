@@ -223,7 +223,11 @@ jobs:
           pkg-config --modversion sdl2 SDL2_ttf
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
-        run: brew install sdl2 sdl2_ttf pkgconf
+        # libffi too: opam's depext needs --confirm-level=unsafe-yes to run
+        # brew itself, so system deps are all installed here and opam runs
+        # with --assume-depexts below. Note the 'sdl2' formula is an alias
+        # for sdl2-compat, which still provides sdl2.pc for conf-sdl2.
+        run: brew install sdl2 sdl2_ttf libffi pkgconf
       - name: Install OCaml native dependencies
         # tsdl provides the SDL2 bindings (lui_blit, lui_window*, spike,
         # lui_gl/parity tests), tgls the GL3 bindings (lui_gl), imagelib the
@@ -259,6 +263,12 @@ jobs:
             fi
             # SDL2.dll must be on PATH for the tests that call Sdl.init.
             echo "$(cygpath -w "$SYSROOT/bin")" >> "$GITHUB_PATH"
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            # Keg-only libffi is not on pkgconf's default path. System deps
+            # are brewed above, so skip depext (it would need
+            # --confirm-level=unsafe-yes to run brew, and aborts otherwise).
+            export PKG_CONFIG_PATH="/opt/homebrew/opt/libffi/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+            opam install -y --assume-depexts tsdl tsdl-ttf tgls imagelib alcotest
           else
             opam install -y tsdl tsdl-ttf tgls imagelib alcotest
           fi

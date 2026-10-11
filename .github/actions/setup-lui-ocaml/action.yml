@@ -20,7 +20,10 @@ runs:
         path: |
           ~/.opam
           _opam
-        key: lui-ocaml-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.epoch.outputs.image }}-5.5.1-${{ inputs.scope }}-${{ hashFiles('*.opam*', 'dune-project') }}-${{ steps.epoch.outputs.week }}
+        # v2: v1 cached ~/.opam for Windows while opam's real default root
+        # there is C:\.opam — v1's Windows entry restores an uninitialised
+        # root. The Pin step below keeps the root inside the cached path.
+        key: lui-ocaml-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.epoch.outputs.image }}-5.5.1-${{ inputs.scope }}-${{ hashFiles('*.opam*', 'dune-project') }}-${{ steps.epoch.outputs.week }}
     - name: Activate cached opam
       if: steps.environment.outputs.cache-hit == 'true'
       shell: bash
@@ -28,6 +31,15 @@ runs:
         echo "$GITHUB_WORKSPACE/_opam/.ci/bin" >> "$GITHUB_PATH"
         echo "OPAMROOT=$HOME/.opam" >> "$GITHUB_ENV"
         echo "OPAMYES=true" >> "$GITHUB_ENV"
+    # On Windows, opam's built-in default root is C:\.opam — outside the
+    # cached ~/.opam, which would leave every cache-hit run with an
+    # uninitialised root. Pin the root inside the cached path on the
+    # cache-miss run so init, deps, and later restores all agree. This
+    # also keeps the bundled Cygwin sysroot (<root>/.cygwin) cached.
+    - name: Pin opam root to the cached path (Windows)
+      if: steps.environment.outputs.cache-hit != 'true' && runner.os == 'Windows'
+      shell: bash
+      run: echo "OPAMROOT=$HOME/.opam" >> "$GITHUB_ENV"
     - uses: ocaml/setup-ocaml@v3
       if: steps.environment.outputs.cache-hit != 'true'
       with:
