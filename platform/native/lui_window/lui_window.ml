@@ -678,7 +678,7 @@ module Ui = struct
       then [ Dispatch e ] else []
     in
     match kind_name store id with
-    | "toggle-button" | "toggle" ->
+    | "toggle-button" | "toggle" | "drawer" ->
       dispatch (ToggleChanged (id, not (bool_prop store id "selected")))
     | "checkbox" | "switch" ->
       dispatch (ToggleChanged (id, not (bool_prop store id "checked")))
@@ -1979,7 +1979,26 @@ module Ui = struct
               | None ->
                 if t.open_menu <> 0 && is_desc store n t.open_menu
                 then close_menu t);
-             pd @ primary_press store n
+             (* A toggle-only container owns the click even when a
+                kind-pressable child (a bare text/box admits Press)
+                was the deepest target — the container bubbles up. *)
+             let toggle_acts =
+               match
+                 List.find_opt
+                   (fun i ->
+                     i <> n
+                     && kind_name store i = "drawer"
+                     && bool_prop store i "toggle-enabled"
+                     && event_supported store i
+                          (ToggleChanged (i, true)))
+                   path
+               with
+               | Some d ->
+                 [ Dispatch
+                     (ToggleChanged (d, not (bool_prop store d "selected"))) ]
+               | None -> []
+             in
+             pd @ primary_press store n @ toggle_acts
            end else []
          in
          t.pressed <- 0;
