@@ -1,5 +1,6 @@
 (library
  (name lui_d3d11)
+ (public_name lui.d3d11)
  (modules lui_d3d11 hlsl_source)
  (libraries lui_scene lui_gpu)
  (foreign_stubs

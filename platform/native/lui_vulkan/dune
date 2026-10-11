@@ -1,5 +1,6 @@
 (library
  (name lui_vulkan)
+ (public_name lui.vulkan)
  (modules lui_vulkan shader_sources)
  (libraries lui_scene lui_gpu)
  (foreign_stubs

@@ -1,5 +1,6 @@
 (library
  (name lui_window_windows)
+ (public_name lui.window_windows)
  (modules lui_win32 lui_window_windows lui_window_text demo_app)
  (libraries
   lui_window

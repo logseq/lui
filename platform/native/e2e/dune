@@ -1,5 +1,6 @@
 (library
  (name lui_e2e)
+ (public_name lui.e2e)
  (modules e2e_harness e2e_app)
  (libraries lui lui_store lui_scene lui_paint lui_layout lui_host ocaml-signal)
  (preprocess (pps lui_ppx)))

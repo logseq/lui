@@ -1,5 +1,6 @@
 (library
  (name lui_plugin_terminal)
+ (public_name lui.plugin_terminal)
  (modules lui_plugin_terminal terminal_wcwidth terminal_attrs
    terminal_grid terminal_vt terminal_pty terminal_keys terminal_links
    terminal_render)

@@ -1,5 +1,6 @@
 (library
  (name lui_text)
+ (public_name lui.text)
  (modules lui_text)
  (foreign_stubs
   (language c)

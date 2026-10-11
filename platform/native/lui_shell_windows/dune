@@ -1,5 +1,6 @@
 (library
  (name lui_shell_windows)
+ (public_name lui.shell_windows)
  (modules lui_shell_windows)
  (foreign_stubs
   (language c)

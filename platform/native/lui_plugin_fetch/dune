@@ -1,5 +1,6 @@
 (library
  (name lui_plugin_fetch)
+ (public_name lui.plugin_fetch)
  (modules lui_plugin_fetch)
  (libraries yojson lui_plugin)
  (foreign_stubs

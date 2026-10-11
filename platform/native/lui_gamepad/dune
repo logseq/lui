@@ -1,5 +1,6 @@
 (library
  (name lui_gamepad)
+ (public_name lui.gamepad)
  (modules lui_gamepad lui_gamepad_core lui_gamepad_sdl
    lui_gamepad_xinput)
  (libraries lui_window)

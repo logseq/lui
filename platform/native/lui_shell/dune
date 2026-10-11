@@ -1,5 +1,6 @@
 (library
  (name lui_shell)
+ (public_name lui.shell)
  (modules lui_shell)
  (foreign_stubs
   (language c)

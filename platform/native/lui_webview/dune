@@ -4,6 +4,7 @@
 
 (library
  (name lui_webview)
+ (public_name lui.webview)
  (modules lui_webview)
  (foreign_stubs
   (language c)

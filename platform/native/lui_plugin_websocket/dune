@@ -1,4 +1,5 @@
 (library
  (name lui_plugin_websocket)
+ (public_name lui.plugin_websocket)
  (modules lui_plugin_websocket)
  (libraries unix yojson lui_plugin))

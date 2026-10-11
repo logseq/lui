@@ -1,5 +1,6 @@
 (library
  (name lui_text_dwrite)
+ (public_name lui.text_dwrite)
  (modules lui_text_dwrite)
  (foreign_stubs
   (language c)

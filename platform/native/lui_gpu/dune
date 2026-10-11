@@ -1,5 +1,6 @@
 (library
  (name lui_gpu)
+ (public_name lui.gpu)
  (modules lui_gpu shader_source)
  (libraries lui_scene))
 

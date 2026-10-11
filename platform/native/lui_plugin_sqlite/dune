@@ -1,5 +1,6 @@
 (library
  (name lui_plugin_sqlite)
+ (public_name lui.plugin_sqlite)
  (modules lui_plugin_sqlite)
  (libraries yojson)
  (foreign_stubs

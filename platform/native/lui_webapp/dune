@@ -1,5 +1,6 @@
 (library
  (name lui_webapp)
+ (public_name lui.webapp)
  (modules lui_webapp lui_webapp_sdl)
  (libraries unix yojson lui_pkg tsdl lui_webview))
 
