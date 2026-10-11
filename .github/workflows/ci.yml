@@ -238,30 +238,31 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then
             # On mingw, tsdl/tsdl-ttf resolve SDL2 through conf-sdl2(-ttf):
             # opam depext drops the Cygwin mingw64 SDL2 packages into
-            # opam's bundled Cygwin sysroot during install. But pkgconf.exe
-            # maps PKG_CONFIG_PATH against Git's MSYS root, not the opam
-            # Cygwin root — pointing it at the sysroot still misses sdl2.pc.
-            # The working recipe copies the .pc files into a plain Windows
-            # dir and exports PKG_CONFIG_PATH in Windows form (verified on
-            # the dev box). 'ocaml=5.5.1' stops the solver downgrading the
+            # opam's bundled Cygwin sysroot during install. But tsdl's own
+            # build shells out to bare `pkg-config`, and the bundled Cygwin
+            # pkgconf's default search path does not include the mingw
+            # sysroot .pc dir. PKG_CONFIG_PATH can't express that dir to a
+            # Cygwin pkgconf either — it parses the variable with POSIX ':'
+            # separators, which splits any drive-letter path. The fix is to
+            # copy the .pc files into the Cygwin root's own
+            # /usr/lib/pkgconfig, which IS on pkgconf's default path, and
+            # retry. 'ocaml=5.5.1' stops the solver downgrading the
             # compiler on the mingw repo.
             if ! opam install -y 'ocaml=5.5.1' tsdl tsdl-ttf tgls imagelib alcotest; then
-              OPAMROOT="$(opam var root)"
-              SYSROOT="$(cygpath -u "$OPAMROOT")/.cygwin/root/usr/x86_64-w64-mingw32/sys-root/mingw"
-              SRC_PC="$SYSROOT/lib/pkgconfig"
-              [ -d "$SRC_PC" ] || SRC_PC="$(dirname "$(find "$(cygpath -u "$OPAMROOT")/.cygwin" -name 'sdl2.pc' | head -1)")"
+              CYGROOT="$(cygpath -u "$(opam var root)")/.cygwin/root"
+              SRC_PC="$CYGROOT/usr/x86_64-w64-mingw32/sys-root/mingw/lib/pkgconfig"
+              [ -d "$SRC_PC" ] || SRC_PC="$(dirname "$(find "$CYGROOT" -name 'sdl2.pc' | head -1)")"
               [ -f "$SRC_PC/sdl2.pc" ] || {
-                echo "sdl2.pc not found under $OPAMROOT/.cygwin — depext did not deliver SDL2:"
-                find "$(cygpath -u "$OPAMROOT")" -name '*.pc' 2>/dev/null | head -20
+                echo "sdl2.pc not found under $CYGROOT — depext did not deliver SDL2:"
+                find "$CYGROOT" -name '*.pc' 2>/dev/null | head -20
                 exit 1
               }
-              DST_PC="$(cygpath -u "$OPAMROOT")/sdl-pc"
-              mkdir -p "$DST_PC"
-              cp "$SRC_PC"/*.pc "$DST_PC"/
-              export PKG_CONFIG_PATH="$(cygpath -w "$DST_PC")"
+              mkdir -p "$CYGROOT/usr/lib/pkgconfig"
+              cp "$SRC_PC"/*.pc "$CYGROOT/usr/lib/pkgconfig/"
               opam install -y 'ocaml=5.5.1' tsdl tsdl-ttf tgls imagelib alcotest
             fi
             # SDL2.dll must be on PATH for the tests that call Sdl.init.
+            SYSROOT="$(cygpath -u "$(opam var root)")/.cygwin/root/usr/x86_64-w64-mingw32/sys-root/mingw"
             echo "$(cygpath -w "$SYSROOT/bin")" >> "$GITHUB_PATH"
           elif [ "$RUNNER_OS" = "macOS" ]; then
             # Keg-only libffi is not on pkgconf's default path. System deps
