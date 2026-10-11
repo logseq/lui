@@ -29,6 +29,10 @@ struct Inst {
 	float4 clip : CLIP;        // the innermost clip rectangle
 	float4 clipRadii : CLIPR;
 	float4 params : PARAMS;    // kind, dashed or grayscale, sigma or paint, opacity
+	float4 clip2 : CLIPB;      // the clip containing the innermost one
+	float4 clip2Radii : CLIPBR;
+	float4 clip3 : CLIPC;      // the clip containing that one
+	float4 clip3Radii : CLIPCR;
 };
 
 struct VSOut {
@@ -45,6 +49,10 @@ struct VSOut {
 	nointerpolation float4 clip : CLIP;
 	nointerpolation float4 clipRadii : CLIPR;
 	nointerpolation float4 params : PARAMS;
+	nointerpolation float4 clip2 : CLIPB;
+	nointerpolation float4 clip2Radii : CLIPBR;
+	nointerpolation float4 clip3 : CLIPC;
+	nointerpolation float4 clip3Radii : CLIPCR;
 };
 
 Texture2D maskTex : register(t0);
@@ -201,7 +209,21 @@ VSOut vs(uint vid : SV_VertexID, Inst i) {
 	o.clip = i.clip;
 	o.clipRadii = i.clipRadii;
 	o.params = i.params;
+	o.clip2 = i.clip2;
+	o.clip2Radii = i.clip2Radii;
+	o.clip3 = i.clip3;
+	o.clip3Radii = i.clip3Radii;
 	return o;
+}
+
+// clipCoverage is how much of the pixel at p the clip stack lets
+// through: the product of the three innermost clips' coverages, as the
+// CPU renderer multiplies all of its clips'. (Deeper clips cut by
+// their scissor bounds only.)
+float clipCoverage(float2 p, VSOut i) {
+	return rectCoverage(p, i.clip, i.clipRadii)
+	     * rectCoverage(p, i.clip2, i.clip2Radii)
+	     * rectCoverage(p, i.clip3, i.clip3Radii);
 }
 
 // textCoverage corrects the coverage a of a glyph of straight color c as
@@ -430,13 +452,13 @@ PSOut ps(VSOut i) {
 		float4 c = paint(p, i.params.z, i.rect, i.color, i.color2, i.grad);
 		float3 straight = unpremul(c);
 		float3 a = subpixelCoverage(colorTex.Sample(samp, tex).rgb, straight, i.inner.x, i.inner.y, i.radii);
-		float3 w = a * c.a * rectCoverage(p, i.clip, i.clipRadii) * i.params.w;
+		float3 w = a * c.a * clipCoverage(p, i) * i.params.w;
 		float wa = (w.r + w.g + w.b) / 3.0;
 		o.color = float4(straight * w, wa);
 		o.alpha = float4(w, wa);
 		return o;
 	}
-	float clip = rectCoverage(p, i.clip, i.clipRadii);
+	float clip = clipCoverage(p, i);
 	o.color = res * clip * i.params.w;
 	o.alpha = o.color.aaaa;
 	return o;

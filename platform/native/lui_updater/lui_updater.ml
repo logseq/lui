@@ -541,7 +541,7 @@ type install_report =
    and the pid is never waited on, so the child is reparented once the
    caller exits. *)
 let spawn_detached path args =
-  let devnull = Unix.openfile "/dev/null" [ Unix.O_RDWR ] 0 in
+  let devnull = Unix.openfile P.Proc.devnull [ Unix.O_RDWR ] 0 in
   let pid =
     Unix.create_process path
       (Array.of_list (path :: args))

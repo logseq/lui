@@ -223,18 +223,20 @@ static int mkrtv(lctx *c, ltex *t) {
   return 0;
 }
 
-/* The eleven float4 instance attributes, in the order the shader's
-   Inst struct lists them. */
+/* The fifteen float4 instance attributes, in the order the shader's
+   Inst struct lists them (Lui_gpu's packed layout). */
 static int makelayout(lctx *c, ID3DBlob *vsb) {
   static const char *names[] = {
     "RECT", "RADII", "INNER", "COLOR", "COLOR", "COLOR",
-    "GRAD", "UV", "CLIP", "CLIPR", "PARAMS"
+    "GRAD", "UV", "CLIP", "CLIPR", "PARAMS",
+    "CLIPB", "CLIPBR", "CLIPC", "CLIPCR"
   };
-  static const UINT idx[] = { 0, 0, 0, 0, 1, 2, 0, 0, 0, 0, 0 };
-  D3D11_INPUT_ELEMENT_DESC el[11];
+  static const UINT idx[] = { 0, 0, 0, 0, 1, 2, 0, 0, 0, 0, 0,
+                            0, 0, 0, 0 };
+  D3D11_INPUT_ELEMENT_DESC el[15];
   HRESULT hr;
   int i;
-  for (i = 0; i < 11; i++) {
+  for (i = 0; i < 15; i++) {
     el[i].SemanticName = names[i];
     el[i].SemanticIndex = idx[i];
     el[i].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
@@ -244,7 +246,7 @@ static int makelayout(lctx *c, ID3DBlob *vsb) {
     el[i].InstanceDataStepRate = 1;
   }
   hr = ID3D11Device_CreateInputLayout(
-      c->dev, el, 11, ID3D10Blob_GetBufferPointer(vsb),
+      c->dev, el, 15, ID3D10Blob_GetBufferPointer(vsb),
       ID3D10Blob_GetBufferSize(vsb), &c->layout);
   if (FAILED(hr)) {
     set_err(c, "CreateInputLayout", hr);
@@ -253,7 +255,7 @@ static int makelayout(lctx *c, ID3DBlob *vsb) {
   return 0;
 }
 
-/* The instance buffer feeds the eleven attributes; draws point it at
+/* The instance buffer feeds the fifteen attributes; draws point it at
    their batch's instances. It grows on demand, mapped for writing. */
 static int grow_inst(lctx *c, int count) {
   D3D11_BUFFER_DESC d;
@@ -262,7 +264,7 @@ static int grow_inst(lctx *c, int count) {
   while (cap < count) cap += cap / 2;
   if (c->inst) ID3D11Buffer_Release(c->inst);
   memset(&d, 0, sizeof d);
-  d.ByteWidth = (UINT)(cap * 176);
+  d.ByteWidth = (UINT)(cap * 240);
   d.Usage = D3D11_USAGE_DYNAMIC;
   d.BindFlags = D3D11_BIND_VERTEX_BUFFER;
   d.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
@@ -459,7 +461,7 @@ static void bind_pipe(lctx *c, int w, int h, int with_bd) {
   D3D11_VIEWPORT vp;
   ID3D11ShaderResourceView *srvs[4];
   FLOAT globals[4];
-  UINT stride = 176, off = 0;
+  UINT stride = 240, off = 0;
   ID3D11Buffer *bufs[1];
   memset(&vp, 0, sizeof vp);
   vp.Width = (FLOAT)w;
@@ -623,7 +625,7 @@ CAMLprim value lui_d3d11_instances(value vc, value vba) {
   ID3D11DeviceContext_Unmap(c->ic, (ID3D11Resource *)c->inst, 0);
   {
     /* Rebind: growth may have replaced the buffer. */
-    UINT stride = 176, off = 0;
+    UINT stride = 240, off = 0;
     ID3D11Buffer *bufs[1];
     bufs[0] = c->inst;
     ID3D11DeviceContext_IASetVertexBuffers(c->ic, 0, 1, bufs,

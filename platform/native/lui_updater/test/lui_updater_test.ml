@@ -399,11 +399,13 @@ let test_delta_install () =
   check string "new payload" "resources of MyApp 2.0 — bigger payload\n"
     (P.Fs.read_file (Filename.concat target "Contents/Resources/data.txt"));
   check bool "stage cleaned" false (P.Fs.exists (target ^ ".update"));
-  check bool "exe bit" true
-    (((Unix.stat (Filename.concat target "Contents/MacOS/myapp")).Unix
-      .st_perm
-      land 0o111)
-     <> 0);
+  (* Windows has no executable permission bit *)
+  if not Sys.win32 then
+    check bool "exe bit" true
+      (((Unix.stat (Filename.concat target "Contents/MacOS/myapp")).Unix
+        .st_perm
+        land 0o111)
+       <> 0);
   (* the state walk observed the full pipeline *)
   check bool "saw checking" true
     (List.exists (fun s -> s = U.Checking) !states);
@@ -478,10 +480,11 @@ let test_http_loopback () =
     | _ -> 18765
   in
   Unix.close sock;
-  let devnull = Unix.openfile "/dev/null" [ Unix.O_RDWR ] 0 in
+  let devnull = Unix.openfile P.Proc.devnull [ Unix.O_RDWR ] 0 in
+  let python = if Sys.win32 then "python" else "python3" in
   let pid =
-    Unix.create_process "python3"
-      [| "python3"; "-m"; "http.server"; string_of_int port;
+    Unix.create_process python
+      [| python; "-m"; "http.server"; string_of_int port;
          "--bind"; "127.0.0.1"; "-d"; feed_dir |]
       devnull devnull devnull
   in
@@ -489,7 +492,7 @@ let test_http_loopback () =
   let rec wait n =
     let r =
       P.Proc.run "curl"
-        [ "-fsS"; "-o"; "/dev/null";
+        [ "-fsS"; "-o"; P.Proc.devnull;
           Printf.sprintf "http://127.0.0.1:%d/stable.json" port ]
     in
     if r.status = 0 then true
@@ -508,8 +511,12 @@ let test_http_loopback () =
    | U.Up_to_date -> Alcotest.fail "expected install"
    | U.Install_failed m -> Alcotest.failf "install failed: %s" m);
   check string "now runs 2.0" "2.0" (read_plist_version target);
-  Unix.kill pid Sys.sigterm;
-  ignore (Unix.waitpid [] pid)
+  if Sys.win32 then
+    (* No Unix.kill on Windows; taskkill is the closest equivalent. *)
+    ignore (P.Proc.run "taskkill" [ "/F"; "/PID"; string_of_int pid ])
+  else (
+    Unix.kill pid Sys.sigterm;
+    ignore (Unix.waitpid [] pid))
 
 (* the relaunch half: install_and_relaunch in a forked child exits 0
    and the NEW bundle's executable runs (it records its own path). *)

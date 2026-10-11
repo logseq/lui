@@ -12,11 +12,11 @@
  (action
   (with-stdout-to %{target}
    (bash
-    "printf '(%s)' \"$(pkg-config --cflags pangocairo pangoft2 fontconfig)\""))))
+    "case '%{system}' in linux) printf '(%s)' \"$(pkg-config --cflags pangocairo pangoft2 fontconfig 2>/dev/null)\";; *) printf '()';; esac"))))
 
 (rule
  (target c_libs.sexp)
  (action
   (with-stdout-to %{target}
    (bash
-    "printf '(%s)' \"$(pkg-config --libs pangocairo pangoft2 fontconfig 2>/dev/null)\""))))
+    "case '%{system}' in linux) printf '(%s)' \"$(pkg-config --libs pangocairo pangoft2 fontconfig 2>/dev/null)\";; *) printf '()';; esac"))))
