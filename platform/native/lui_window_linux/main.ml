@@ -485,6 +485,7 @@ let () =
                  @ Lui_window_text.text_ops text_engine id mr fg marked
              end);
         image_of = (fun _ -> None);
+        image_in = (fun _ _ -> None);
         shadow_of = (fun _ -> None) }
   in
   let host =

@@ -85,6 +85,7 @@ let create ?(width = frame_w) ?(height = frame_h) () =
           | _ -> None);
       text_ops = stub_text_ops;
       image_of = (fun _id -> Some test_image);
+      image_in = (fun _id _ -> Some test_image);
       shadow_of =
         (fun name ->
           match name with
