@@ -1,0 +1,19 @@
+(library
+ (name lui_plugin_sqlite)
+ (modules lui_plugin_sqlite)
+ (libraries yojson)
+ (foreign_stubs
+  (language c)
+  (names lui_plugin_sqlite_stubs)
+  (flags -O2 -fPIC))
+ (c_library_flags (:standard (:include c_libs.sexp))))
+
+;; libdl/pthread only exist on POSIX; other platforms resolve the
+;; SQLite library differently (LoadLibrary on Windows) and need no
+;; extra library.
+(rule
+ (target c_libs.sexp)
+ (action
+  (with-stdout-to %{target}
+   (bash
+    "case '%{system}' in linux) printf '(-ldl -lpthread)';; *) printf '()';; esac"))))
