@@ -186,11 +186,13 @@ let slot_of t font gid sub shade scale scene =
   | None ->
     let n = t.eng.subpixel ~scale font in
     let dx = if n <= 1 then 0. else float sub /. float n in
-    let colored = t.eng.is_color font in
     let slot =
       match t.eng.rasterize ~scale ~dx ~shade:(float shade /. 8.) font gid
       with
       | Some b when b.bw > 0 && b.bh > 0 ->
+        (* The bitmap's own format decides the atlas: a color font can
+           still rasterize a monochrome glyph (coverage mask). *)
+        let colored = b.bcolor in
         let atlas =
           if colored then scene.Lui_scene.color_atlas
           else scene.Lui_scene.mask_atlas
