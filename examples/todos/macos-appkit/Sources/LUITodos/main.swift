@@ -15,6 +15,10 @@ private typealias PickedFunction =
     @convention(c) (Int64, UnsafePointer<CChar>?, Int32) -> Int32
 private typealias ToggleChangedFunction = @convention(c) (Int64, Int32) -> Int32
 private typealias SliderChangedFunction = @convention(c) (Int64, Double) -> Int32
+private typealias PointerDetailFunction =
+    @convention(c) (
+        Int64, Double, Double, Int32, Int32, UnsafePointer<CChar>?
+    ) -> Int32
 private typealias ExtensionEventFunction =
     @convention(c) (Int64, UnsafePointer<CChar>?, UnsafePointer<CChar>?,
                     UnsafePointer<CChar>?) -> Int32
@@ -45,6 +49,12 @@ private final class NativeTodosRuntime {
     private let toggleChangedFunction: ToggleChangedFunction
     private let radioChangedFunction: NodeFunction
     private let sliderChangedFunction: SliderChangedFunction
+    private let pressDetailFunction: PointerDetailFunction
+    private let pointerDownFunction: PointerDetailFunction
+    private let pointerUpFunction: PointerDetailFunction
+    private let pointerEnterFunction: NodeFunction
+    private let pointerLeaveFunction: NodeFunction
+    private let contextMenuPressFunction: PointerDetailFunction
     private let extensionEventFunction: ExtensionEventFunction
 
     init(path: String) throws {
@@ -65,6 +75,12 @@ private final class NativeTodosRuntime {
         toggleChangedFunction = try Self.load("lui_ocaml_toggle_changed", from: handle)
         radioChangedFunction = try Self.load("lui_ocaml_radio_changed", from: handle)
         sliderChangedFunction = try Self.load("lui_ocaml_slider_changed", from: handle)
+        pressDetailFunction = try Self.load("lui_ocaml_press_detail", from: handle)
+        pointerDownFunction = try Self.load("lui_ocaml_pointer_down", from: handle)
+        pointerUpFunction = try Self.load("lui_ocaml_pointer_up", from: handle)
+        pointerEnterFunction = try Self.load("lui_ocaml_pointer_enter", from: handle)
+        pointerLeaveFunction = try Self.load("lui_ocaml_pointer_leave", from: handle)
+        contextMenuPressFunction = try Self.load("lui_ocaml_context_menu_press", from: handle)
         extensionEventFunction = try Self.load("lui_ocaml_extension_event", from: handle)
     }
 
@@ -122,6 +138,40 @@ private final class NativeTodosRuntime {
 
     func sliderChanged(node: Int, value: Double) {
         _ = sliderChangedFunction(Int64(node), value)
+    }
+
+    func pointerDetail(
+        _ function: PointerDetailFunction, node: Int,
+        x: Double, y: Double, modifiers: Int, button: Int, targetClass: String
+    ) {
+        targetClass.withCString { source in
+            _ = function(
+                Int64(node), x, y, Int32(modifiers), Int32(button), source)
+        }
+    }
+
+    func pressDetail(node: Int, x: Double, y: Double, modifiers: Int, button: Int, targetClass: String) {
+        pointerDetail(pressDetailFunction, node: node, x: x, y: y,
+                      modifiers: modifiers, button: button, targetClass: targetClass)
+    }
+
+    func pointerDown(node: Int, x: Double, y: Double, modifiers: Int, button: Int, targetClass: String) {
+        pointerDetail(pointerDownFunction, node: node, x: x, y: y,
+                      modifiers: modifiers, button: button, targetClass: targetClass)
+    }
+
+    func pointerUp(node: Int, x: Double, y: Double, modifiers: Int, button: Int, targetClass: String) {
+        pointerDetail(pointerUpFunction, node: node, x: x, y: y,
+                      modifiers: modifiers, button: button, targetClass: targetClass)
+    }
+
+    func pointerEnter(node: Int) { _ = pointerEnterFunction(Int64(node)) }
+
+    func pointerLeave(node: Int) { _ = pointerLeaveFunction(Int64(node)) }
+
+    func contextMenuPress(node: Int, x: Double, y: Double, modifiers: Int, button: Int, targetClass: String) {
+        pointerDetail(contextMenuPressFunction, node: node, x: x, y: y,
+                      modifiers: modifiers, button: button, targetClass: targetClass)
     }
 
     func extensionEvent(
@@ -210,6 +260,26 @@ private final class TodosHost: NSObject, NSApplicationDelegate, NSWindowDelegate
                     self?.runtime?.picked(node: node, payload: payload)
                 case let .doublePress(node):
                     self?.runtime?.doublePress(node: node)
+                case let .pressDetail(node, x, y, modifiers, button, targetClass):
+                    self?.runtime?.pressDetail(
+                        node: node, x: x, y: y, modifiers: modifiers,
+                        button: button, targetClass: targetClass)
+                case let .pointerDown(node, x, y, modifiers, button, targetClass):
+                    self?.runtime?.pointerDown(
+                        node: node, x: x, y: y, modifiers: modifiers,
+                        button: button, targetClass: targetClass)
+                case let .pointerUp(node, x, y, modifiers, button, targetClass):
+                    self?.runtime?.pointerUp(
+                        node: node, x: x, y: y, modifiers: modifiers,
+                        button: button, targetClass: targetClass)
+                case let .pointerEnter(node):
+                    self?.runtime?.pointerEnter(node: node)
+                case let .pointerLeave(node):
+                    self?.runtime?.pointerLeave(node: node)
+                case let .contextMenuPress(node, x, y, modifiers, button, targetClass):
+                    self?.runtime?.contextMenuPress(
+                        node: node, x: x, y: y, modifiers: modifiers,
+                        button: button, targetClass: targetClass)
                 case let .`extension`(node, identifier, name, values):
                     self?.runtime?.extensionEvent(
                         node: node, identifier: identifier,
