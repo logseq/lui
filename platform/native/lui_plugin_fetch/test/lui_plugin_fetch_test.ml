@@ -69,8 +69,15 @@ let with_server f () =
     if not (server_ready port) then Alcotest.fail "server did not start";
     Fun.protect
       ~finally:(fun () ->
-        (try Unix.kill pid Sys.sigterm with _ -> ());
-        ignore (Unix.waitpid [] pid))
+        (* Unix.kill cannot deliver SIGTERM on Windows; taskkill is the
+           equivalent (same approach as lui_updater_test). *)
+        if Sys.win32 then
+          ignore
+            (Sys.command
+               ("taskkill /F /PID " ^ string_of_int pid))
+        else (
+          Unix.kill pid Sys.sigterm;
+          ignore (Unix.waitpid [] pid)))
       (fun () -> f (Printf.sprintf "http://127.0.0.1:%d" port))
 
 (* ---- service calls through the plugin registry ---- *)
