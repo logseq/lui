@@ -1,0 +1,12 @@
+(library
+ (name lui_webapp)
+ (modules lui_webapp)
+ (libraries unix yojson lui_pkg))
+
+; The packaged app's launcher: installed as the bundle's main
+; executable by lui_pkg_webapp, it discovers webapp.json beside itself
+; and boots the spec.
+(executable
+ (name main)
+ (modules main)
+ (libraries lui_webapp unix))

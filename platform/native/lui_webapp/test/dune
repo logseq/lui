@@ -1,0 +1,4 @@
+(test
+ (name lui_webapp_test)
+ (modules lui_webapp_test)
+ (libraries alcotest lui_webapp lui_pkg unix yojson))
