@@ -341,12 +341,22 @@ jobs:
                        "/usr/share/pkgconfig"; do
                 sed -i 's/^Version:.*/Version: 2.32.4/' "$d"/{sdl2,SDL2}.pc 2>/dev/null || true
                 sed -i 's/^Version:.*/Version: 2.24.0/' "$d"/{sdl2_ttf,SDL2_ttf}.pc 2>/dev/null || true
+                # tsdl bakes `pkg-config --libs sdl2` into its cmxa cclib.
+                # -mwindows selects the GUI CRT (wants wWinMain) while
+                # OCaml exes export main, and -lSDL2main's trampoline
+                # wants SDL_main — both leave executables un-linkable,
+                # so keep console-subsystem flags only.
+                sed -i -e 's/-lSDL2main//g' -e 's/-mwindows//g' \
+                  "$d"/{sdl2,SDL2,sdl2_ttf,SDL2_ttf}.pc 2>/dev/null || true
               done
               pkg-config --exists 'sdl2 >= 2.0.22' 'SDL2_ttf >= 2.0.18' || {
                 echo "SDL overlay did not take — versions now seen:"
                 pkg-config --modversion sdl2 SDL2_ttf || true
                 exit 1
               }
+              # A cache-restored switch may already carry tsdl baked with
+              # the unstripped Libs — rebuild so the new flags take.
+              opam reinstall -y tsdl tsdl-ttf 2>/dev/null || true
 
               opam install -y 'ocaml=5.5.1' tsdl tsdl-ttf tgls imagelib alcotest
             fi
