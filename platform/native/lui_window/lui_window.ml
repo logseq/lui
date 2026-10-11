@@ -2333,14 +2333,62 @@ module Theme = struct
         Some (color r g b (Option.value a ~default:255))
       | _ -> None
     in
-    let pre =
-      if body "rgba(" then Some "rgba("
-      else if body "rgb(" then Some "rgb("
+    (* CSS hsl()/hsla() — comma-separated (hsla(10, 78%, 54%, 0.9)) and
+       modern space/slash forms; hue in degrees, s/l percents. *)
+    let pct_num t =
+      let n = String.length t in
+      if n > 0 && t.[n - 1] = '%' then
+        float_of_string_opt (String.sub t 0 (n - 1))
       else None
+    in
+    let hsl_emit comps a =
+      let hue t =
+        let t =
+          if String.ends_with ~suffix:"deg" t then
+            String.sub t 0 (String.length t - 3)
+          else t
+        in
+        float_of_string_opt t
+      in
+      match comps with
+      | [ h; s; l ] -> (
+        match hue h, pct_num s, pct_num l with
+        | Some h, Some s, Some l ->
+          let h =
+            let h = Float.rem h 360. in
+            if h < 0. then h +. 360. else h
+          in
+          let s = Float.max 0. (Float.min 1. (s /. 100.)) in
+          let l = Float.max 0. (Float.min 1. (l /. 100.)) in
+          let c = (1. -. Float.abs (2. *. l -. 1.)) *. s in
+          let hp = h /. 60. in
+          let x = c *. (1. -. Float.abs (Float.rem hp 2. -. 1.)) in
+          let r1, g1, b1 =
+            if hp < 1. then (c, x, 0.)
+            else if hp < 2. then (x, c, 0.)
+            else if hp < 3. then (0., c, x)
+            else if hp < 4. then (0., x, c)
+            else if hp < 5. then (x, 0., c)
+            else (c, 0., x)
+          in
+          let m = l -. (c /. 2.) in
+          let ch v = int_of_float (Float.round ((v +. m) *. 255.)) in
+          Some
+            (color (ch r1) (ch g1) (ch b1) (Option.value a ~default:255))
+        | _ -> None)
+      | _ -> None
+    in
+    let pre, is_hsl =
+      if body "hsla(" then (Some "hsla(", true)
+      else if body "hsl(" then (Some "hsl(", true)
+      else if body "rgba(" then (Some "rgba(", false)
+      else if body "rgb(" then (Some "rgb(", false)
+      else (None, false)
     in
     match pre with
     | None -> None
     | Some p -> (
+      let emit = if is_hsl then hsl_emit else emit in
       let inner = inner p in
       match split ',' inner with
       | [ a; b; c ] -> emit [ a; b; c ] None
