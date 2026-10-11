@@ -1,10 +1,19 @@
-(* SDL window driver: creates a GL 3.3 core window, wires Lui_host
-   with Lui_gl as the renderer (a no-op loop renderer when GL is
-   unavailable — e.g. the dummy video driver), feeds SDL events
-   through Lui_window.Ui into Lui_app.dispatch_event and presents
-   frames via SDL_GL_SwapWindow.
+(* SDL window driver: creates the renderer ladder (Metal > GL 3.3
+   core > CPU blit > no-op loop renderer), wires each window into its
+   own Lui_host + Lui_app surface, routes SDL events to the right
+   window by SDL windowID, and presents frames per window.
 
-   Flags: --width N --height N --headless N --drop-file PATH. *)
+   Multi-window model (see Lui_window.Multi for the rationale): each
+   top-level window is an independent surface — its own host, app,
+   interaction state, renderer and a11y tree. The registry below maps
+   SDL windowID -> surface; events that carry a windowID dispatch
+   there, global events (quit, display hotplug) apply process-wide.
+   A window crossing monitors or a display change re-queries that
+   window's drawable size, recomputes the backing scale and marks the
+   surface dirty so the next frame re-lays out.
+
+   Flags: --width N --height N --headless N --windows N
+   --drop-file PATH. *)
 
 open Lui_window
 open Lui_window_demo
@@ -29,7 +38,10 @@ let mods_of_keymod km =
       alt = km land Sdl.Kmod.alt <> 0;
       meta = km land Sdl.Kmod.gui <> 0 }
 
-(* One SDL event → at most one backend-neutral input. *)
+(* One SDL event → at most one backend-neutral input. Window and
+   display events are handled (and routed) in [handle_window_event] /
+   [drain_events] before this is called, so the Window_event arm here
+   only sees events that survived routing. *)
 let input_of_event e =
   let open Input in
   match Sdl.Event.enum (Sdl.Event.get e Sdl.Event.typ) with
@@ -127,54 +139,435 @@ let stats_report st renderer_name =
     st.max_ms <- 0.
   end
 
-let () =
-  let cfg =
-    match parse_args (List.tl (Array.to_list Sys.argv)) with
-    | Ok c -> c
-    | Error msg ->
-      warn "%s\nusage: lui_window [--width N] [--height N] [--headless N]"
-        msg;
-      exit 2
-  in
-  let headless = Option.is_some cfg.headless_frames in
-  if headless then Unix.putenv "SDL_VIDEODRIVER" "dummy";
-  (* Renderer selection on macOS: Metal is preferred, GL on request
-     (LUI_GPU=gl|opengl) or as fallback, CPU on LUI_GPU=0|cpu. *)
-  let env = try Sys.getenv "LUI_GPU" with Not_found -> "" in
-  let use_cpu = env = "0" || env = "cpu" in
-  let prefer_metal =
-    not headless && not use_cpu && env <> "gl" && env <> "opengl"
-  in
-  sdl_ok (Sdl.init Sdl.Init.(video + events));
-  (* GL context requirements from lui_gl.mli: OpenGL 3.3 core,
-     double-buffered. Attributes are hints — SDL may refuse or
-     substitute, in which case Lui_gl.init fails and the no-op
-     renderer exercises the loop instead. *)
-  sdl_ok (Sdl.gl_set_attribute Sdl.Gl.context_major_version 3);
-  sdl_ok (Sdl.gl_set_attribute Sdl.Gl.context_minor_version 3);
-  sdl_ok
-    (Sdl.gl_set_attribute Sdl.Gl.context_profile_mask
-       Sdl.Gl.context_profile_core);
-  sdl_ok (Sdl.gl_set_attribute Sdl.Gl.doublebuffer 1);
-  (* The dummy video driver refuses an OpenGL window entirely, the
-     CPU path does not need one, and Metal attaches its own layer to
-     a plain window — the opengl flag is only set when a GL context
-     will actually be created. *)
-  let flags gl =
-    let base = Sdl.Window.(resizable + allow_highdpi + shown) in
-    if gl then Sdl.Window.(base + opengl) else base
-  in
+(* ---------- driver state per window ---------- *)
+
+(* Everything the loop needs per window beyond the pure state kept in
+   [Multi.surface]: the OS window/context/renderer handles and the
+   closures the pipeline built during setup (populate / caret_rect
+   capture the pre-host cells, so they live here). The backend pieces
+   are cells because a renderer demote swaps them live: it drops the
+   GL context, recreates the window (which also re-keys the surface —
+   [Multi.rekey]) and installs the next rung's renderer. *)
+type drv = {
+  mutable sdl : Sdl.window;
+  gctx_cell : Sdl.gl_context option ref;
+  gl_live_cell : bool ref;
+  vsync : bool;
+  blit_cell : Lui_blit.t option ref;
+  metal : Lui_metal.t option;
+  renderer_cell : Lui_host.renderer ref;
+  app : (Demo_app.model, Demo_app.action) Lui_app.reducer_app;
+  a11y : Lui_a11y.t;
+  mutable drop_seen : int;
+  mutable toast_since : float option;
+  reqs_seen : (string, int) Hashtbl.t;
+  checksum : Checksum.t;
+  mutable frame : int;
+  stats : stats;
+  idx : int;                   (* registry/log index, 0-based *)
+  populate : unit -> unit;     (* hit-test mirror refresh *)
+  caret_rect : unit -> Lui_scene.rect;
+}
+
+type surf = drv Multi.surface
+
+(* Process-wide driver state: the window registry, the quit flag and
+   the parsed config/loop targets (set once in main before any window
+   is created). *)
+let windows : drv Multi.t = Multi.create ()
+let quit = ref false
+let cfg = ref default_config
+let headless = ref false
+let use_cpu = ref false
+let prefer_metal = ref false
+let frames_target : int option ref = ref None
+let iter_no = ref 0
+(* Model actions the macOS shell layer queues out-of-band (menu-bar
+   icon menu): the event drain sends them into the focused window's
+   app on the next frame, same as pointer input. *)
+let pending : Demo_app.action Queue.t = Queue.create ()
+
+(* ---------- per-window helpers ---------- *)
+
+let drawable (s : surf) =
+  (* Under the dummy driver this may report 0x0; fall back to the
+     logical size so layout still gets a sane extent. *)
+  match Sdl.gl_get_drawable_size s.driver.sdl with
+  | 0, 0 -> (s.Multi.logical_w, s.Multi.logical_h)
+  | d -> d
+
+(* SDL_SetTextInputRect works in window (logical) pixels; the surface's
+   backing scale converts the device-px rect. *)
+let set_ime_rect (s : surf) (r : Lui_scene.rect) =
+  let sc = Multi.scale s in
+  Sdl.set_text_input_rect
+    (Some
+       (Sdl.Rect.create
+          ~x:(int_of_float (r.Lui_scene.x /. sc))
+          ~y:(int_of_float (r.Lui_scene.y /. sc))
+          ~w:(max 1 (int_of_float (r.Lui_scene.w /. sc)))
+          ~h:(max 1 (int_of_float (r.Lui_scene.h /. sc)))))
+
+(* Re-read a window's drawable size and backing scale: on [Moved] the
+   window may have crossed onto a monitor with a different scale, on
+   display events anything may have changed. Cheap and idempotent —
+   [apply_drawable] only acts when the values differ. *)
+let refresh_scale (s : surf) =
+  (match Sdl.get_window_display_index s.driver.sdl with
+   | Ok di when di <> s.Multi.display -> s.Multi.display <- di
+   | _ -> ());
+  let dw, dh = drawable s in
+  if Multi.apply_drawable s ~dw ~dh then
+    log "win=%d: drawable %dx%d scale %.2f (display %d)" s.driver.idx
+      dw dh (Multi.scale s) s.Multi.display
+
+(* The window holding a text field's focus, for the process-global
+   IME candidate window; prefers the OS-focused window. *)
+let focused_field () =
+  match Multi.find_focused windows with
+  | Some w when Ui.focused w.Multi.ui <> 0 -> Some w
+  | _ ->
+    let hit = ref None in
+    Multi.iter windows (fun w ->
+        if !hit = None && Ui.focused w.Multi.ui <> 0 then hit := Some w);
+    !hit
+
+let rec apply_actions (s : surf) acts =
+  let d = s.driver in
+  List.iter
+    (function
+      | Dispatch ev ->
+        (try ignore (Lui_app.dispatch_event d.app ev)
+         with Invalid_argument msg ->
+           warn "dispatch rejected event: %s" msg)
+      | Clipboard_write text ->
+        if not !headless then ignore (Lui_shell.clipboard_write text)
+      | Paste_request ->
+        (* clipboard I/O is a driver concern: read + feed back as
+           Input.Paste into the same window (interactive only —
+           headless never types Cmd-V) *)
+        (match if !headless then None else Lui_shell.clipboard_read () with
+         | Some text ->
+           apply_actions s (Multi.dispatch s (Input.Paste text))
+         | None -> ())
+      | Resize_host _ ->
+        let dw, dh = drawable s in
+        (match !(d.blit_cell) with
+         | Some b ->
+           (match Lui_blit.resize b ~w:dw ~h:dh with
+            | Ok () -> ()
+            | Error m -> warn "blit resize: %s" m)
+         | None -> ());
+        ignore (Multi.apply_drawable s ~dw ~dh)
+      | Focus_changed id ->
+        ignore
+          (if id = 0 then Lui_a11y.clear_focused d.a11y
+           else Lui_a11y.set_focused d.a11y id);
+        (* IME is process-global: input stays on while ANY window
+           holds a field; the candidate window anchors on that
+           window's rect. *)
+        (match focused_field () with
+         | Some w ->
+           Sdl.start_text_input ();
+           set_ime_rect w (Rects.get w.Multi.rects (Ui.focused w.Multi.ui))
+         | None -> Sdl.stop_text_input ())
+      | Ime_rect r -> set_ime_rect s r
+      | Quit -> quit := true)
+    acts
+
+(* Public window ops: open/close/focus — the [open_window] path lives
+   further down since it needs the full pipeline setup. *)
+let close_window id =
+  match Multi.unregister windows id with
+  | None -> ()
+  | Some s ->
+    ignore (Lui_app.dispose s.driver.app);
+    (match !(s.driver.gctx_cell) with
+     | Some c -> Sdl.gl_delete_context c
+     | None -> ());
+    (match s.driver.metal with
+     | Some m -> Lui_metal.release m
+     | None -> ());
+    Sdl.destroy_window s.driver.sdl;
+    log "win=%d closed (%d left)" s.driver.idx (Multi.count windows);
+    if Multi.count windows = 0 then quit := true
+
+let focus_window id =
+  match Multi.find windows id with
+  | Some s ->
+    Sdl.raise_window s.driver.sdl;
+    Multi.set_focused windows id
+  | None -> ()
+
+(* Scale query for a window id: [Option.map Multi.scale
+   (Multi.find windows id)] — the surface-level accessor is
+   {!Multi.scale}. *)
+
+(* Synthetic OS drops (--drop-file): on frame 1 each path lands on
+   the deepest target accepting its namespaced payload — found by
+   scanning the store rather than hard-coding a hit point, so the
+   injection follows wherever the demo puts its drop well. *)
+let inject_drops (s : surf) =
+  let store = Lui_host.store s.host in
+  List.iter
+    (fun path ->
+       let payload = "file:" ^ path in
+       match
+         List.find_opt
+           (fun id -> Ui.drop_accepts store id payload)
+           (Lui_store.preorder store)
+       with
+       | Some id ->
+         let r = Rects.get s.Multi.rects id in
+         let sc = Multi.scale s in
+         let cx = (r.Lui_scene.x +. r.Lui_scene.w /. 2.) /. sc
+         and cy = (r.Lui_scene.y +. r.Lui_scene.h /. 2.) /. sc in
+         apply_actions s
+           (Multi.dispatch s (Input.Move (cx, cy)));
+         apply_actions s
+           (Multi.dispatch s (Input.Drop_file path))
+       | None -> log "drop: no target accepts %s" payload)
+    (List.rev !cfg.drop_files)
+
+(* Drops are host-local: the app learns of them through this poll,
+   which forwards each new (target, payload, serial) triple into the
+   demo model once. *)
+let poll_drop (s : surf) =
+  match Ui.last_drop s.Multi.ui with
+  | Some (_, payload, seq) when seq <> s.driver.drop_seen ->
+    s.driver.drop_seen <- seq;
+    log "drop: payload=%s" payload;
+    ignore (Lui_app.send s.driver.app (Demo_app.Dropped payload))
+  | _ -> ()
+
+(* Side effects the demo requests through the model: a counter bump
+   means the driver runs the shell call once, outside the
+   deterministic store. Interactive only — headless frames never
+   produce requests, keeping the checksum stable. *)
+let poll_driver (s : surf) =
+  let d = s.driver in
+  if not !headless then begin
+    let m = Lui_app.model d.app in
+    let req_hit name n =
+      let seen =
+        Option.value ~default:0 (Hashtbl.find_opt d.reqs_seen name)
+      in
+      if n > seen then begin Hashtbl.replace d.reqs_seen name n; true end
+      else false
+    in
+    if req_hit "notify" m.Demo_app.req_notify then begin
+      let posted, detail =
+        Lui_shell.notify ~id:"demo" ~title:"lui_window"
+          ~body:"notification from the native demo" () in
+      log "shell notify: posted=%b (%s)" posted detail
+    end;
+    if req_hit "clipboard" m.Demo_app.req_clipboard then begin
+      let text =
+        Printf.sprintf "lui_window %dx%d renderer=%s frames=%d"
+          s.Multi.drawable_w s.Multi.drawable_h
+          (!(d.renderer_cell)).Lui_host.name
+          d.frame in
+      log "shell clipboard: wrote %d chars (ok=%b)" (String.length text)
+        (Lui_shell.clipboard_write text)
+    end;
+    if req_hit "a11y" m.Demo_app.req_a11y then begin
+      let names =
+        List.map
+          (fun n -> Lui_a11y.role_name n.Lui_a11y.role)
+          (Lui_a11y.flatten d.a11y) in
+      log "a11y: %d nodes — %s" (Lui_a11y.node_count d.a11y)
+        (String.concat ", " names)
+    end;
+    Lui_shell.set_dock_badge
+      (match m.Demo_app.items with
+       | [] -> None
+       | l -> Some (string_of_int (List.length l)));
+    (* The toast's [duration] prop is informational on this backend;
+       the driver owns the clock and dismisses after 2.5 s. *)
+    (match m.Demo_app.toast_open, d.toast_since with
+     | true, None -> d.toast_since <- Some (perf_s ())
+     | true, Some t0 when perf_s () -. t0 > 2.5 ->
+       ignore (Lui_app.send d.app (Demo_app.Close Demo_app.P_toast));
+       d.toast_since <- None
+     | false, _ -> d.toast_since <- None
+     | _ -> ())
+  end
+
+(* One frame for one window: flush queued patches, run store-driven
+   effects, poll model-driven side effects, refresh the IME anchor,
+   repaint when dirty. Returns whether a repaint happened. *)
+let tick (s : surf) ~t0 =
+  let d = s.driver in
+  let store = Lui_host.store s.host in
+  ignore (Lui_app.flush d.app);
+  apply_actions s (Ui.store_changed s.ui store);
+  poll_driver s;
+  poll_drop s;
+  (* Report the caret once per frame: while a composition is open
+     the state machine emits Ime_rect on movement so the candidate
+     window tracks the caret; idle, the rect is only remembered. *)
+  if Ui.focused s.Multi.ui <> 0 then
+    apply_actions s (Multi.dispatch s (Input.Caret (d.caret_rect ())));
+  (* Headless proves the loop: force a repaint every iteration so
+     the frame counter and checksum actually run. *)
+  let dirty = !headless || Ui.want_frame s.ui s.host in
+  if dirty then begin
+    ignore (Lui_host.repaint s.host);
+    d.populate ();
+    ignore (Lui_a11y.sync d.a11y);
+    if !(d.gl_live_cell) then begin
+      (match !(d.gctx_cell) with
+       | Some c -> ignore (Sdl.gl_make_current d.sdl c)
+       | None -> ());
+      Sdl.gl_swap_window d.sdl
+    end;
+    Ui.frame_done s.ui;
+    d.frame <- d.frame + 1;
+    Checksum.add_scene d.checksum (Lui_host.scene s.host);
+    if !headless && not !(d.gl_live_cell) then
+      log "win=%d frame=%d ops=%d" d.idx d.frame
+        (List.length (Lui_host.scene s.host).Lui_scene.ops);
+    stats_update d.stats ((perf_s () -. t0) *. 1000.);
+    if d.frame mod 60 = 0 then begin
+      (* FPS for the badge rides the same ~1 s window as the stats
+         log; headless never sends it, keeping the initial badge
+         (empty) deterministic for the checksum. *)
+      let fps =
+        if d.stats.frames > 0 && d.stats.acc_ms > 0. then
+          1000. /. (d.stats.acc_ms /. float d.stats.frames)
+        else 0. in
+      stats_report d.stats (!(d.renderer_cell)).Lui_host.name;
+      if not !headless then
+        ignore
+          (Lui_app.send d.app
+             (Demo_app.Badge
+                (Printf.sprintf "%s — %.0f fps"
+                   (!(d.renderer_cell)).Lui_host.name fps)))
+    end
+  end;
+  dirty
+
+
+(* ---------- window creation ---------- *)
+
+let flags_for gl =
+  let base = Sdl.Window.(resizable + allow_highdpi + shown) in
+  if gl then Sdl.Window.(base + opengl) else base
+
+(* ---------- runtime backend-loss recovery ---------- *)
+
+(* A rung that reports frames without touching a GPU; the demote walk
+   ends here so recovery always terminates. *)
+let noop_renderer =
+  { Lui_host.name = "noop";
+    render =
+      (fun s ->
+         Bytes.create (s.Lui_scene.width * s.Lui_scene.height * 4)) }
+
+let gl_renderer gl =
+  { Lui_host.name = "lui_gl";
+    render = (fun s -> Lui_gl.render gl s; Bytes.empty) }
+
+(* CPU rung: Lui_raster renders the scene, Lui_blit uploads the damaged
+   rects (or the whole frame) to the window texture. *)
+let cpu_renderer b =
+  let rr = Lui_raster.Renderer.create () in
+  { Lui_host.name = "lui_raster+blit";
+    render =
+      (fun s ->
+         let dirty = Lui_raster.Renderer.render rr s in
+         let img = Lui_raster.Renderer.image rr in
+         let stride = img.Lui_raster.Image.stride / 4 in
+         if Lui_raster.Renderer.whole rr || dirty = [] then
+           ignore
+             (Lui_blit.update b ~pix:img.Lui_raster.Image.pix ~stride)
+         else
+           List.iter
+             (fun (r : Lui_scene.irect) ->
+                ignore
+                  (Lui_blit.update_region b ~x0:r.x0 ~y0:r.y0 ~x1:r.x1
+                     ~y1:r.y1 ~pix:img.Lui_raster.Image.pix ~stride))
+             dirty;
+         Lui_blit.present b;
+         img.Lui_raster.Image.pix) }
+
+(* Creation walks the Metal>GL>CPU ladder once; an SDL render-target/
+   device reset event (0x2000/0x2001) or a render exception demotes the
+   surface's active rung at runtime. The scene store is untouched, so
+   the next repaint re-uploads a full scene to the new backend. A rung
+   change may need a differently-flagged window (CPU blits cannot
+   target an opengl window): the old window is destroyed and the new
+   one mints a fresh windowID, so the surface is re-keyed in the
+   registry — focus, iteration order and event routing all follow. *)
+let rec demote (s : surf) reason =
+  let d = s.driver in
+  let dead = !(d.renderer_cell).Lui_host.name in
+  (* The cell moves to noop first so a failing next rung still
+     terminates the walk. *)
+  warn "win=%d: renderer %s lost (%s); stepping down the ladder" d.idx
+    dead reason;
+  d.renderer_cell := noop_renderer;
+  (match !(d.gctx_cell) with
+   | Some c ->
+     Sdl.gl_delete_context c;
+     d.gctx_cell := None
+   | None -> ());
+  let next_gl = dead = "lui_metal" in
+  if dead <> "noop" then begin
+    Sdl.destroy_window d.sdl;
+    d.sdl <-
+      sdl_ok
+        (Sdl.create_window "lui_window" ~w:!cfg.width ~h:!cfg.height
+           (flags_for next_gl));
+    ignore (Multi.rekey windows s.Multi.id (Sdl.get_window_id d.sdl))
+  end;
+  if next_gl then
+    match Sdl.gl_create_context d.sdl with
+    | Ok c -> (
+      sdl_ok (Sdl.gl_make_current d.sdl c);
+      match Lui_gl.init () with
+      | Ok gl ->
+        d.gctx_cell := Some c;
+        d.gl_live_cell := true;
+        d.renderer_cell := gl_renderer gl;
+        log "win=%d: renderer lui_gl (recovered)" d.idx
+      | Error msg ->
+        warn "lui_gl.init failed: %s" msg;
+        demote s "gl init failed")
+    | Error (`Msg m) ->
+      warn "gl_create_context failed: %s" m;
+      demote s "gl context failed"
+  else if dead = "lui_gl" || dead = "lui_raster+blit" then begin
+    d.gl_live_cell := false;
+    let dw, dh = drawable s in
+    match Lui_blit.create d.sdl ~w:dw ~h:dh with
+    | Ok b ->
+      d.blit_cell := Some b;
+      d.renderer_cell := cpu_renderer b;
+      log "win=%d: renderer lui_raster+blit (recovered)" d.idx
+    | Error m ->
+      warn "lui_blit.create failed: %s" m;
+      demote s "blit create failed"
+  end
+
+(* Builds one surface end to end: SDL window, renderer ladder, host
+   hooks/text engine, app, a11y — the same wiring the single-window
+   driver did, now per window, then registers it by SDL windowID.
+   [idx] is the log/demo index; window [idx] 0 is primary (autofocus,
+   synthetic drops). *)
+let open_window ~title ~idx =
+  let gl_flag = not !headless && not !use_cpu && not !prefer_metal in
   let win =
     ref
       (sdl_ok
-         (Sdl.create_window "lui_window" ~w:cfg.width ~h:cfg.height
-            (flags (not headless && not use_cpu && not prefer_metal))))
+         (Sdl.create_window title ~w:!cfg.width ~h:!cfg.height
+            (flags_for gl_flag)))
   in
   (* Metal attempt — before any GL context. On failure the plain
      window is replaced by an opengl-flagged one and the GL path
      continues below. *)
   let metal =
-    match prefer_metal with
+    match !prefer_metal with
     | false -> None
     | true -> (
       match Lui_metal.init_window (Sdl.unsafe_ptr_of_window !win) with
@@ -184,20 +577,20 @@ let () =
         Sdl.destroy_window !win;
         win :=
           sdl_ok
-            (Sdl.create_window "lui_window" ~w:cfg.width ~h:cfg.height
-               (flags true));
+            (Sdl.create_window title ~w:!cfg.width ~h:!cfg.height
+               (flags_for true));
         None)
   in
   (* The dummy driver cannot create a GL context at all; a real
      window without one is useless, so only headless continues. *)
   let gctx =
-    if use_cpu || Option.is_some metal then None
+    if !use_cpu || Option.is_some metal then None
     else match Sdl.gl_create_context !win with
     | Ok c ->
       sdl_ok (Sdl.gl_make_current !win c);
       Some c
     | Error (`Msg m) ->
-      if headless then begin
+      if !headless then begin
         warn "gl_create_context failed (expected headless): %s" m;
         None
       end
@@ -206,19 +599,17 @@ let () =
   let vsync =
     match gctx with
     | Some _ -> (match Sdl.gl_set_swap_interval 1 with
-        | Ok () -> not headless
+        | Ok () -> not !headless
         | Error _ -> false)
     | None -> false
   in
-  let drawable () =
-    (* Under the dummy driver this may report 0x0; fall back to the
-       window size so layout still gets a sane extent. *)
-    match Sdl.gl_get_drawable_size !win with
-    | 0, 0 -> (cfg.width, cfg.height)
+  let drawable_of w =
+    match Sdl.gl_get_drawable_size w with
+    | 0, 0 -> (!cfg.width, !cfg.height)
     | d -> d
   in
-  let dw, dh = drawable () in
-  let scale = Float.max 0.01 (float dw /. float cfg.width) in
+  let dw, dh = drawable_of !win in
+  let scale = Float.max 0.01 (float dw /. float !cfg.width) in
   let renderer, gl_live, blit =
     match metal with
     | Some m ->
@@ -234,51 +625,17 @@ let () =
                Bytes.empty) },
         false, None )
     | None ->
-    if use_cpu then begin
-      (* CPU path: Lui_raster renders the scene; Lui_blit uploads the
-         damaged rects (or the whole frame) to the window texture. *)
+    if !use_cpu then begin
       match Lui_blit.create !win ~w:dw ~h:dh with
       | Error m ->
         warn "lui_blit.create failed: %s" m;
-        ( { Lui_host.name = "noop";
-            render =
-              (fun s ->
-                 Bytes.create
-                   (s.Lui_scene.width * s.Lui_scene.height * 4)) },
-          false, None )
-      | Ok b ->
-        let rr = Lui_raster.Renderer.create () in
-        ( { Lui_host.name = "lui_raster+blit";
-            render =
-              (fun s ->
-                 let dirty = Lui_raster.Renderer.render rr s in
-                 let img = Lui_raster.Renderer.image rr in
-                 let stride = img.Lui_raster.Image.stride / 4 in
-                 if Lui_raster.Renderer.whole rr || dirty = [] then
-                   ignore
-                     (Lui_blit.update b ~pix:img.Lui_raster.Image.pix
-                        ~stride)
-                 else
-                   List.iter
-                     (fun (r : Lui_scene.irect) ->
-                        ignore
-                          (Lui_blit.update_region b ~x0:r.x0 ~y0:r.y0
-                             ~x1:r.x1 ~y1:r.y1
-                             ~pix:img.Lui_raster.Image.pix ~stride))
-                     dirty;
-                 Lui_blit.present b;
-                 img.Lui_raster.Image.pix) },
-          false, Some b )
+        (noop_renderer, false, None)
+      | Ok b -> (cpu_renderer b, false, Some b)
     end
     else match gctx with
     | None ->
       warn "no GL context; using no-op loop renderer";
-      ( { Lui_host.name = "noop";
-          render =
-            (fun s ->
-               Bytes.create
-                 (s.Lui_scene.width * s.Lui_scene.height * 4)) },
-        false, None )
+      (noop_renderer, false, None)
     | Some _ ->
     match Lui_gl.init () with
     | Ok gl ->
@@ -286,123 +643,32 @@ let () =
         (match Sdl.gl_get_attribute Sdl.Gl.context_major_version with
          | Ok v -> Printf.sprintf "%d.x" v
          | Error _ -> "?");
-      (* read_frame is a full glReadPixels round-trip — only for
-         capture/checksum paths, never inside the paint loop. *)
-      ( { Lui_host.name = "lui_gl";
-          render =
-            (fun s ->
-               Lui_gl.render gl s;
-               Bytes.empty) },
-        true, None )
+      (gl_renderer gl, true, None)
     | Error msg ->
       warn "lui_gl.init failed: %s" msg;
       warn "falling back to no-op loop renderer";
-      ( { Lui_host.name = "noop";
-          render =
-            (fun s ->
-               Bytes.create
-                 (s.Lui_scene.width * s.Lui_scene.height * 4)) },
-        false, None )
+      (noop_renderer, false, None)
   in
-  (* Runtime backend-loss recovery. Creation already walks the
-     Metal>GL>CPU ladder; an SDL render-target/device reset event
-     (0x2000/0x2001) or a render exception now demotes the active rung
-     at runtime. The scene store is untouched, so the next repaint
-     re-uploads a full scene to the new backend — identical pixels on
-     the CPU path by the parity contract. *)
-  let renderer_cell = ref renderer and gl_live_cell = ref gl_live in
-  let blit_cell = ref blit and gctx_cell = ref gctx in
-  let cpu_renderer b =
-    let rr = Lui_raster.Renderer.create () in
-    { Lui_host.name = "lui_raster+blit";
-      render =
-        (fun s ->
-           let dirty = Lui_raster.Renderer.render rr s in
-           let img = Lui_raster.Renderer.image rr in
-           let stride = img.Lui_raster.Image.stride / 4 in
-           if Lui_raster.Renderer.whole rr || dirty = [] then
-             ignore
-               (Lui_blit.update b ~pix:img.Lui_raster.Image.pix ~stride)
-           else
-             List.iter
-               (fun (r : Lui_scene.irect) ->
-                  ignore
-                    (Lui_blit.update_region b ~x0:r.x0 ~y0:r.y0 ~x1:r.x1
-                       ~y1:r.y1 ~pix:img.Lui_raster.Image.pix ~stride))
-               dirty;
-           Lui_blit.present b;
-           img.Lui_raster.Image.pix) }
-  in
-  let noop_renderer =
-    { Lui_host.name = "noop";
-      render =
-        (fun s ->
-           Bytes.create (s.Lui_scene.width * s.Lui_scene.height * 4)) }
-  in
-  let rec demote reason =
-    let dead = !renderer_cell.Lui_host.name in
-    (* A rung change may need a differently-flagged window (CPU blits
-       cannot target an opengl window); the old context dies before
-       its window. The cell moves to noop first so a failing next
-       rung still terminates the walk. *)
-    warn "renderer %s lost (%s); stepping down the ladder" dead reason;
-    renderer_cell := noop_renderer;
-    (match !gctx_cell with
-     | Some c -> Sdl.gl_delete_context c; gctx_cell := None
-     | None -> ());
-    let next_gl = dead = "lui_metal" in
-    if dead <> "noop" then begin
-      Sdl.destroy_window !win;
-      win :=
-        sdl_ok
-          (Sdl.create_window "lui_window" ~w:cfg.width ~h:cfg.height
-             (flags next_gl))
-    end;
-    if next_gl then
-      match Sdl.gl_create_context !win with
-      | Ok c -> (
-        sdl_ok (Sdl.gl_make_current !win c);
-        match Lui_gl.init () with
-        | Ok gl ->
-          gctx_cell := Some c;
-          gl_live_cell := true;
-          renderer_cell :=
-            { Lui_host.name = "lui_gl";
-              render =
-                (fun s ->
-                   Lui_gl.render gl s;
-                   Bytes.empty) };
-          log "renderer: lui_gl (recovered)"
-        | Error msg ->
-          warn "lui_gl.init failed: %s" msg;
-          demote "gl init failed")
-      | Error (`Msg m) ->
-        warn "gl_create_context failed: %s" m;
-        demote "gl context failed"
-    else if dead = "lui_gl" || dead = "lui_raster+blit" then begin
-      gl_live_cell := false;
-      let dw, dh = drawable () in
-      match Lui_blit.create !win ~w:dw ~h:dh with
-      | Ok b ->
-        blit_cell := Some b;
-        renderer_cell := cpu_renderer b;
-        log "renderer: lui_raster+blit (recovered)"
-      | Error m ->
-        warn "lui_blit.create failed: %s" m;
-        demote "blit create failed"
-    end
-  in
-  (* The host owns a stable record whose render delegates to the live
-     rung, so a demote needs no host rebuild. A render exception is
-     treated as backend loss: demote, then replay the frame once. *)
+  (* The host owns a stable renderer record whose render delegates to
+     the live rung cell, so a demote needs no host rebuild. A render
+     exception is treated as backend loss: demote, then replay the
+     frame once. [surf_cell] exists because the demote path needs the
+     registered surface while [renderer_live] is built before it. *)
+  let renderer_cell = ref renderer
+  and gl_live_cell = ref gl_live
+  and blit_cell = ref blit
+  and gctx_cell = ref gctx in
+  let surf_cell = ref (None : surf option) in
   let renderer_live =
     { Lui_host.name = "lui (resilient)";
       render =
-        (fun s ->
-           try (!renderer_cell).Lui_host.render s
+        (fun scene ->
+           try (!(renderer_cell)).Lui_host.render scene
            with exn ->
-             demote (Printexc.to_string exn);
-             (!renderer_cell).Lui_host.render s) }
+             (match !surf_cell with
+              | Some s -> demote s (Printexc.to_string exn)
+              | None -> raise exn);
+             (!(renderer_cell)).Lui_host.render scene) }
   in
   (* Wiring: mutable cells so the paint hooks can reach the host,
      scene and scale that only exist after Lui_host.create. *)
@@ -583,13 +849,12 @@ let () =
      the live position each repaint. *)
   Lui_host.set_ctx_anchor host
     (Some (fun () -> Some (Ui.pointer ui)));
-  let win_w = ref cfg.width and win_h = ref cfg.height in
   (* Populate the hit-test mirror from the layout engine: each node's
      shifted rect clipped to its scrollable ancestors' viewports (so
      scrolled-off content can't be hit), then each scroll container's
      range on both axes from its unshifted content extent. Runs after
      every repaint while the engine is fresh. *)
-  let populate_rects () =
+  let populate () =
     Hashtbl.reset rects;
     List.iter
       (fun id ->
@@ -636,10 +901,22 @@ let () =
   let app = Demo_app.create backend in
   ignore (Lui_app.start app);
   ignore (Lui_app.flush app);
+  (* A second window should not look like a clone: cycle each extra
+     window onto a different demo tab (deterministic, so the headless
+     checksum stays stable). *)
+  if idx > 0 then
+    ignore
+      (Lui_app.send app
+         (Demo_app.Tab
+            (match idx mod 4 with
+             | 0 -> Demo_app.Lists
+             | 1 -> Demo_app.Overlays
+             | 2 -> Demo_app.Deco
+             | _ -> Demo_app.Controls)));
   (* Priming paint: syncs the flex engine and renders once so the
      hit-test mirror and scroll caps below see real rects. *)
   ignore (Lui_host.repaint host);
-  populate_rects ();
+  populate ();
   (* Ui driver hooks: real glyph measurement for caret/selection math,
      unshifted engine rects for scroll_show/visible-range. *)
   Ui.set_measure ui
@@ -648,68 +925,6 @@ let () =
   (* The a11y forest mirrors the store: synced after every repaint,
      focused along with the Ui focus, dumped on request and at quit. *)
   let a11y = Lui_a11y.of_store store in
-  (* Hand focus to the first autofocus field, if any. *)
-  (match
-     List.find_opt
-       (fun id -> bool_prop store id "autofocus")
-       (Lui_store.preorder store)
-   with
-   | Some id ->
-     Ui.set_focused ui store id;
-     Sdl.start_text_input ()
-   | None -> ());
-  let quit = ref false in
-  (* Shell integration — a menu-bar status item with a real AppKit
-     menu, plus the notify/clipboard calls the driver fires on model
-     requests. Interactive only: none of it is safe or wanted under
-     the dummy driver, and skipping it keeps the headless checksum
-     deterministic. *)
-  let pending : Demo_app.action Queue.t = Queue.create () in
-  if not headless then begin
-    Lui_shell.set_app_name "lui_window";
-    ignore (Lui_shell.set_window_title "lui_window — native demo");
-    let item = Lui_shell.status_item_create ~tag:1 () in
-    Lui_shell.status_item_set_title item "LUI";
-    let spec label id =
-      Lui_shell.Item
-        { Lui_shell.label = label; Lui_shell.id = id;
-          enabled = true; checked = false } in
-    Lui_shell.status_item_set_menu item
-      (Some
-         (Lui_shell.menu ~title:"lui_window"
-            [ spec "show toast" 1;
-              spec "notify" 2;
-              spec "copy stats" 3;
-              spec "dump a11y" 4;
-              Lui_shell.Separator;
-              spec "quit" 9 ]));
-    Lui_shell.set_menu_handler
-      (Some
-         (fun id ->
-            match id with
-            | 1 -> Queue.add (Demo_app.Open Demo_app.P_toast) pending
-            | 2 -> Queue.add Demo_app.Req_notify pending
-            | 3 -> Queue.add Demo_app.Req_clipboard pending
-            | 4 -> Queue.add Demo_app.Req_a11y pending
-            | 9 -> quit := true
-            | _ -> ()));
-    (* The renderer badge: static here, updated with fps once a
-       second further down. *)
-    ignore
-      (Lui_app.send app
-         (Demo_app.Badge (!renderer_cell).Lui_host.name))
-  end;
-  (* SDL_SetTextInputRect works in window (logical) pixels. *)
-  let set_ime_rect (r : Lui_scene.rect) =
-    let s = !scale_cell in
-    Sdl.set_text_input_rect
-      (Some
-         (Sdl.Rect.create
-            ~x:(int_of_float (r.Lui_scene.x /. s))
-            ~y:(int_of_float (r.Lui_scene.y /. s))
-            ~w:(max 1 (int_of_float (r.Lui_scene.w /. s)))
-            ~h:(max 1 (int_of_float (r.Lui_scene.h /. s)))))
-  in
   (* Caret rect of the focused field, device px: the node's layout
      rect shifted to the caret column — horizontal padding plus the
      width of the text up to the caret. This is the candidate-window
@@ -734,249 +949,273 @@ let () =
         r.Lui_scene.h
     end
   in
-  let rec apply_actions acts = List.iter (function
-    | Dispatch ev ->
-      (try ignore (Lui_app.dispatch_event app ev)
-       with Invalid_argument msg ->
-         warn "dispatch rejected event: %s" msg)
-    | Clipboard_write s ->
-      if not headless then ignore (Lui_shell.clipboard_write s)
-    | Paste_request ->
-      (* clipboard I/O is a driver concern: read + feed back as
-         Input.Paste (interactive only — headless never types Cmd-V) *)
-      (match if headless then None else Lui_shell.clipboard_read () with
-       | Some s ->
-         apply_actions (Ui.handle ui store rects (Input.Paste s))
-       | None -> ())
-    | Resize_host _ ->
-      let dw, dh = drawable () in
-      (match !blit_cell with
-       | Some b ->
-         if
-           (match Lui_blit.resize b ~w:dw ~h:dh with
-            | Ok () -> false
-            | Error m -> warn "blit resize: %s" m; true)
-         then ();
-       | None -> ());
-      scale_cell := float dw /. float (max 1 !win_w);
-      Ui.set_scale ui !scale_cell;
-      Lui_host.resize host ~width:dw ~height:dh ~scale:!scale_cell
-    | Focus_changed id ->
-      ignore
-        (if id = 0 then Lui_a11y.clear_focused a11y
-         else Lui_a11y.set_focused a11y id);
-      if id = 0 then Sdl.stop_text_input ()
-      else begin
-        Sdl.start_text_input ();
-        set_ime_rect (Rects.get rects id)
+  (* Hand focus to the first autofocus field — primary window only,
+     secondary windows start unfocused. *)
+  if idx = 0 then
+    (match
+       List.find_opt
+         (fun id -> bool_prop store id "autofocus")
+         (Lui_store.preorder store)
+     with
+     | Some id ->
+       Ui.set_focused ui store id;
+       Sdl.start_text_input ()
+     | None -> ());
+  let id = Sdl.get_window_id !win in
+  let d =
+    { sdl = !win; gctx_cell; gl_live_cell; vsync; blit_cell; metal;
+      renderer_cell; app; a11y; drop_seen = 0; toast_since = None;
+      reqs_seen = Hashtbl.create 8; checksum = Checksum.create ();
+      frame = 0;
+      stats = { frames = 0; acc_ms = 0.; min_ms = 1e9; max_ms = 0. };
+      idx; populate; caret_rect }
+  in
+  let s =
+    Multi.make_surface ~id ~host ~driver:d ~ui ~rects ~scale_cell
+      ~w:!cfg.width ~h:!cfg.height
+  in
+  Multi.register windows s;
+  surf_cell := Some s;
+  (match Sdl.get_window_display_index !win with
+   | Ok di -> s.Multi.display <- di
+   | Error _ -> ());
+  log "lui_window[%d]: %dx%d drawable (scale %.2f), renderer=%s%s"
+    idx dw dh scale (!(renderer_cell)).Lui_host.name
+    (if !headless then " [headless]" else "");
+  (* The renderer badge: static here, updated with fps once a second
+     in the loop. *)
+  if not !headless then
+    ignore
+      (Lui_app.send app
+         (Demo_app.Badge (!(renderer_cell)).Lui_host.name));
+  s
+
+(* ---------- event routing ---------- *)
+
+(* The SDL windowID an event belongs to; None = process-global. *)
+let window_id_of e =
+  match Sdl.Event.enum (Sdl.Event.get e Sdl.Event.typ) with
+  | `Key_down | `Key_up -> Some (Sdl.Event.get e Sdl.Event.keyboard_window_id)
+  | `Text_input -> Some (Sdl.Event.get e Sdl.Event.text_input_window_id)
+  | `Text_editing ->
+    Some (Sdl.Event.get e Sdl.Event.text_editing_window_id)
+  | `Mouse_motion ->
+    Some (Sdl.Event.get e Sdl.Event.mouse_motion_window_id)
+  | `Mouse_button_down | `Mouse_button_up ->
+    Some (Sdl.Event.get e Sdl.Event.mouse_button_window_id)
+  | `Mouse_wheel -> Some (Sdl.Event.get e Sdl.Event.mouse_wheel_window_id)
+  | `Drop_file | `Drop_text | `Drop_begin | `Drop_complete ->
+    Some (Sdl.Event.get e Sdl.Event.drop_window_id)
+  | `Window_event -> Some (Sdl.Event.get e Sdl.Event.window_window_id)
+  | _ -> None
+
+(* Window lifecycle, routed by windowID: logical resize feeds the
+   window's Ui (which emits Resize_host, applied against the real
+   drawable), moves re-query the backing scale (monitor crossing),
+   focus updates the registry's focused window, close destroys just
+   that surface. *)
+let handle_window_event e =
+  let id = Sdl.Event.get e Sdl.Event.window_window_id in
+  match Multi.find windows id with
+  | None -> ()
+  | Some s ->
+    (match
+       Sdl.Event.window_event_enum
+         (Sdl.Event.get e Sdl.Event.window_event_id)
+     with
+     | `Resized | `Size_changed ->
+       let w = Int32.to_int (Sdl.Event.get e Sdl.Event.window_data1)
+       and h = Int32.to_int (Sdl.Event.get e Sdl.Event.window_data2) in
+       Multi.apply_logical_size s ~w ~h;
+       apply_actions s (Multi.dispatch s (Input.Resize (w, h)))
+     | `Moved -> refresh_scale s
+     | `Close -> close_window id
+     | `Focus_gained -> Multi.set_focused windows id
+     | `Focus_lost ->
+       if Multi.focused windows = id then Multi.clear_focus windows
+     | `Take_focus -> focus_window id
+     | _ -> ())
+
+let drain_events e =
+  (* Shell-queued model actions go to the focused window (falling back
+     to the first, e.g. headless where no focus events arrive). *)
+  (match Multi.find_focused windows with
+   | Some s ->
+     Queue.iter (fun a -> ignore (Lui_app.send s.driver.app a)) pending
+   | None -> ());
+  Queue.clear pending;
+  let go = ref true in
+  while !go do
+    if Sdl.poll_event (Some e) then begin
+      let typ = Sdl.Event.get e Sdl.Event.typ in
+      (* SDL_RENDER_TARGETS_RESET / SDL_RENDER_DEVICE_RESET: the GPU
+         device is shared across windows, so a reset demotes every
+         surface down the ladder. *)
+      if typ = 0x2000 || typ = 0x2001 then
+        Multi.iter windows (fun s -> demote s "SDL render reset")
+      else
+      match Sdl.Event.enum typ with
+      | `Quit -> quit := true
+      | `Window_event -> handle_window_event e
+      | `Display_event ->
+        (* Hotplug / mode change: re-query every window's drawable —
+           cheap, and only windows that actually changed respond. *)
+        Multi.iter windows refresh_scale
+      | _ ->
+        let target =
+          match window_id_of e with
+          | Some id -> Multi.find windows id
+          | None -> Multi.find_focused windows
+        in
+        (match target, input_of_event e with
+         | Some s, Some input ->
+           apply_actions s (Multi.dispatch s input)
+         | _ -> ())
       end
-    | Ime_rect r -> set_ime_rect r
-    | Quit -> quit := true)
-    acts
-  in
+    else go := false
+  done
+
+(* ---------- shell integration (interactive, process-wide) ---------- *)
+
+let setup_shell () =
+  Lui_shell.set_app_name "lui_window";
+  ignore (Lui_shell.set_window_title "lui_window — native demo");
+  let item = Lui_shell.status_item_create ~tag:1 () in
+  Lui_shell.status_item_set_title item "LUI";
+  let spec label id =
+    Lui_shell.Item
+      { Lui_shell.label = label; Lui_shell.id = id;
+        enabled = true; checked = false } in
+  Lui_shell.status_item_set_menu item
+    (Some
+       (Lui_shell.menu ~title:"lui_window"
+          [ spec "show toast" 1;
+            spec "notify" 2;
+            spec "copy stats" 3;
+            spec "dump a11y" 4;
+            Lui_shell.Separator;
+            spec "quit" 9 ]));
+  Lui_shell.set_menu_handler
+    (Some
+       (fun id ->
+          match id with
+          | 1 -> Queue.add (Demo_app.Open Demo_app.P_toast) pending
+          | 2 -> Queue.add Demo_app.Req_notify pending
+          | 3 -> Queue.add Demo_app.Req_clipboard pending
+          | 4 -> Queue.add Demo_app.Req_a11y pending
+          | 9 -> quit := true
+          | _ -> ()))
+
+(* ---------- main ---------- *)
+
+let () =
+  match parse_args (List.tl (Array.to_list Sys.argv)) with
+  | Error msg ->
+    warn "%s\nusage: lui_window [--width N] [--height N] [--headless N] [--windows N] [--drop-file PATH]"
+      msg;
+    exit 2
+  | Ok c ->
+  cfg := c;
+  headless := Option.is_some c.headless_frames;
+  if !headless then Unix.putenv "SDL_VIDEODRIVER" "dummy";
+  (* Renderer selection on macOS: Metal is preferred, GL on request
+     (LUI_GPU=gl|opengl) or as fallback, CPU on LUI_GPU=0|cpu. *)
+  let env = try Sys.getenv "LUI_GPU" with Not_found -> "" in
+  use_cpu := env = "0" || env = "cpu";
+  prefer_metal :=
+    not !headless && not !use_cpu && env <> "gl" && env <> "opengl";
+  sdl_ok (Sdl.init Sdl.Init.(video + events));
+  (* GL context requirements from lui_gl.mli: OpenGL 3.3 core,
+     double-buffered. Attributes are hints — SDL may refuse or
+     substitute, in which case Lui_gl.init fails and the no-op
+     renderer exercises the loop instead. *)
+  sdl_ok (Sdl.gl_set_attribute Sdl.Gl.context_major_version 3);
+  sdl_ok (Sdl.gl_set_attribute Sdl.Gl.context_minor_version 3);
+  sdl_ok
+    (Sdl.gl_set_attribute Sdl.Gl.context_profile_mask
+       Sdl.Gl.context_profile_core);
+  sdl_ok (Sdl.gl_set_attribute Sdl.Gl.doublebuffer 1);
+  (* The dummy video driver refuses an OpenGL window entirely, the
+     CPU path does not need one, and Metal attaches its own layer to
+     a plain window — the opengl flag is only set when a GL context
+     will actually be created. *)
+  for i = 0 to c.windows - 1 do
+    ignore
+      (open_window
+         ~title:(if i = 0 then "lui_window"
+                 else Printf.sprintf "lui_window %d" (i + 1))
+         ~idx:i)
+  done;
+  if not !headless then setup_shell ();
+  frames_target := c.headless_frames;
   let e = Sdl.Event.create () in
-  (* Model actions the macOS shell layer queues out-of-band (menu-bar
-     icon menu): the event drain sends them into the app on the next
-     frame, same as pointer input. *)
-  let drain_events () =
-    Queue.iter (fun a -> ignore (Lui_app.send app a)) pending;
-    Queue.clear pending;
-    let go = ref true in
-    while !go do
-      if Sdl.poll_event (Some e) then
-        let typ = Sdl.Event.get e Sdl.Event.typ in
-        (* SDL_RENDER_TARGETS_RESET / SDL_RENDER_DEVICE_RESET: the
-           backend lost its resources — recover down the ladder. *)
-        if typ = 0x2000 || typ = 0x2001 then
-          demote "SDL render-target/device reset"
-        else
-        match input_of_event e with
-        | Some (Input.Resize (w, h)) ->
-          win_w := w;
-          win_h := h;
-          apply_actions
-            (Ui.handle ui store rects (Input.Resize (w, h)))
-        | Some input ->
-          apply_actions (Ui.handle ui store rects input)
-        | None -> ()
-      else go := false
-    done
-  in
-  (* Synthetic OS drops (--drop-file): on frame 1 each path lands on
-     the deepest target accepting its namespaced payload — found by
-     scanning the store rather than hard-coding a hit point, so the
-     injection follows wherever the demo puts its drop well. *)
-  let inject_drops () =
-    List.iter
-      (fun path ->
-         let payload = "file:" ^ path in
-         match
-           List.find_opt
-             (fun id -> Ui.drop_accepts store id payload)
-             (Lui_store.preorder store)
-         with
-         | Some id ->
-           let r = Rects.get rects id in
-           let s = !scale_cell in
-           let cx = (r.Lui_scene.x +. r.Lui_scene.w /. 2.) /. s
-           and cy = (r.Lui_scene.y +. r.Lui_scene.h /. 2.) /. s in
-           apply_actions
-             (Ui.handle ui store rects (Input.Move (cx, cy)));
-           apply_actions
-             (Ui.handle ui store rects (Input.Drop_file path))
-         | None -> log "drop: no target accepts %s" payload)
-      (List.rev cfg.drop_files)
-  in
-  (* Drops are host-local: the app learns of them through this poll,
-     which forwards each new (target, payload, serial) triple into the
-     demo model once. *)
-  let drop_seen = ref 0 in
-  let poll_drop () =
-    match Ui.last_drop ui with
-    | Some (_, payload, seq) when seq <> !drop_seen ->
-      drop_seen := seq;
-      log "drop: payload=%s" payload;
-      ignore (Lui_app.send app (Demo_app.Dropped payload))
-    | _ -> ()
-  in
-  let frames_target = cfg.headless_frames in
-  let checksum = Checksum.create () in
-  let st = { frames = 0; acc_ms = 0.; min_ms = 1e9; max_ms = 0. } in
-  let frame = ref 0 in
-  (* Side effects the demo requests through the model: a counter bump
-     means the driver runs the shell call once, outside the
-     deterministic store. Interactive only — headless frames never
-     produce requests, keeping the checksum stable. *)
-  let reqs_seen = Hashtbl.create 8 in
-  let req_hit name n =
-    let seen = Option.value ~default:0 (Hashtbl.find_opt reqs_seen name) in
-    if n > seen then (Hashtbl.replace reqs_seen name n; true)
-    else false
-  in
-  let toast_since = ref None in
-  let poll_driver () =
-    if not headless then begin
-      let m = Lui_app.model app in
-      if req_hit "notify" m.Demo_app.req_notify then begin
-        let posted, detail =
-          Lui_shell.notify ~id:"demo" ~title:"lui_window"
-            ~body:"notification from the native demo" () in
-        log "shell notify: posted=%b (%s)" posted detail
-      end;
-      if req_hit "clipboard" m.Demo_app.req_clipboard then begin
-        let s =
-          Printf.sprintf "lui_window %dx%d renderer=%s frames=%d"
-            dw dh (!renderer_cell).Lui_host.name !frame in
-        log "shell clipboard: wrote %d chars (ok=%b)"
-          (String.length s) (Lui_shell.clipboard_write s)
-      end;
-      if req_hit "a11y" m.Demo_app.req_a11y then begin
-        let names =
-          List.map
-            (fun n -> Lui_a11y.role_name n.Lui_a11y.role)
-            (Lui_a11y.flatten a11y) in
-        log "a11y: %d nodes — %s" (Lui_a11y.node_count a11y)
-          (String.concat ", " names)
-      end;
-      Lui_shell.set_dock_badge
-        (match m.Demo_app.items with
-         | [] -> None
-         | l -> Some (string_of_int (List.length l)));
-      (* The toast's [duration] prop is informational on this backend;
-         the driver owns the clock and dismisses after 2.5 s. *)
-      (match m.Demo_app.toast_open, !toast_since with
-       | true, None -> toast_since := Some (perf_s ())
-       | true, Some t0 when perf_s () -. t0 > 2.5 ->
-         ignore (Lui_app.send app (Demo_app.Close Demo_app.P_toast));
-         toast_since := None
-       | false, _ -> toast_since := None
-       | _ -> ())
-    end
-  in
   let continue () =
     (not !quit)
-    && (match frames_target with
-        | Some n -> !frame < n
-        | None -> true)
+    && (match !frames_target with
+        | Some n ->
+          (* Run until the slowest window reached the target. *)
+          let m = ref max_int in
+          Multi.iter windows (fun s -> m := min !m s.driver.frame);
+          !m < n
+        | None -> Multi.count windows > 0)
   in
-  log "lui_window: %dx%d drawable (scale %.2f), renderer=%s%s"
-    dw dh scale (!renderer_cell).Lui_host.name
-    (if headless then " [headless]" else "");
   while continue () do
     let t0 = perf_s () in
-    drain_events ();
-    (* Synthetic drop injection fires once rects exist (frame 0
+    drain_events e;
+    (* Synthetic drop injection fires once rects exist (iteration 1
        populated them): the pointer is moved onto the well first,
-       matching where a real SDL drop would land. *)
-    if headless && !frame = 1 then inject_drops ();
-    (* Patches queued by dispatched events land in the store here;
-       the repaint below picks them up through the layout sync. *)
-    ignore (Lui_app.flush app);
-    (* Store-driven effects: Appear lifecycle events, scroll-target
-       completions, visible-range reports, modal focus save/restore. *)
-    apply_actions (Ui.store_changed ui store);
-    poll_driver ();
-    poll_drop ();
-    (* Report the caret once per frame: while a composition is open
-       the state machine emits Ime_rect on movement so the candidate
-       window tracks the caret; idle, the rect is only remembered. *)
-    if Ui.focused ui <> 0 then
-      apply_actions
-        (Ui.handle ui store rects (Input.Caret (caret_rect ())));
-    (* Headless proves the loop: force a repaint every iteration so
-       the frame counter and checksum actually run. *)
-    let dirty = headless || Ui.want_frame ui host in
-    if dirty then begin
-      ignore (Lui_host.repaint host);
-      populate_rects ();
-      ignore (Lui_a11y.sync a11y);
-      if !gl_live_cell then Sdl.gl_swap_window !win;
-      Ui.frame_done ui;
-      incr frame;
-      Checksum.add_scene checksum (Lui_host.scene host);
-      if headless && not !gl_live_cell then
-        log "frame=%d ops=%d" !frame
-          (List.length (Lui_host.scene host).Lui_scene.ops);
-      stats_update st ((perf_s () -. t0) *. 1000.);
-      if !frame mod 60 = 0 then begin
-        (* FPS for the badge rides the same ~1 s window as the stats
-           log; headless never sends it, keeping the initial badge
-           (empty) deterministic for the checksum. *)
-        let fps =
-          if st.frames > 0 && st.acc_ms > 0. then
-            1000. /. (st.acc_ms /. float st.frames)
-          else 0. in
-        stats_report st (!renderer_cell).Lui_host.name;
-        if not headless then
-          ignore
-            (Lui_app.send app
-               (Demo_app.Badge
-                  (Printf.sprintf "%s — %.0f fps"
-                     (!renderer_cell).Lui_host.name fps)))
-      end
+       matching where a real SDL drop would land. Multi-window runs
+       additionally route a Tab into the LAST window — a deterministic
+       input that proves per-window routing and diverges its scene. *)
+    if !headless && !iter_no = 1 then begin
+      (match Multi.first windows with
+       | Some s -> inject_drops s
+       | None -> ());
+      if c.windows > 1 then
+        match Multi.last windows with
+        | Some s ->
+          apply_actions s
+            (Multi.dispatch s
+               (Input.Key_down (Input.Tab, Input.mods_none, false)))
+        | None -> ()
     end;
+    let dirty_any = ref false in
+    Multi.iter windows (fun s -> if tick s ~t0 then dirty_any := true);
+    incr iter_no;
     (* No vsync under the dummy driver and possibly none elsewhere:
        pace the loop explicitly. An idle iteration (no repaint) also
        sleeps briefly so the poll loop does not spin at 100% CPU. *)
-    if not headless then begin
-      if dirty && not vsync then begin
+    if not !headless then begin
+      let any_vsync = Multi.any windows (fun s -> s.driver.vsync) in
+      if !dirty_any && not any_vsync then begin
         let remaining = 16.6 -. ((perf_s () -. t0) *. 1000.) in
         if remaining > 0.5 then
           Sdl.delay (Int32.of_int (int_of_float remaining))
       end
-      else if not dirty then Sdl.delay 4l
+      else if not !dirty_any then Sdl.delay 4l
     end
   done;
-  stats_report st (!renderer_cell).Lui_host.name;
-  log "a11y: %d nodes" (Lui_a11y.node_count a11y);
-  (match frames_target with
+  Multi.iter windows (fun s ->
+      stats_report s.driver.stats
+        (!(s.driver.renderer_cell)).Lui_host.name;
+      log "win=%d a11y: %d nodes" s.driver.idx
+        (Lui_a11y.node_count s.driver.a11y));
+  (match !frames_target with
    | Some _ ->
-     log "headless done: frames=%d checksum=%016Lx" !frame
-       (Checksum.value checksum)
+     if c.windows = 1 then
+       (match Multi.first windows with
+        | Some s ->
+          log "headless done: frames=%d checksum=%016Lx" s.driver.frame
+            (Checksum.value s.driver.checksum)
+        | None -> ())
+     else
+       Multi.iter windows (fun s ->
+           log "win=%d done: frames=%d checksum=%016Lx" s.driver.idx
+             s.driver.frame (Checksum.value s.driver.checksum))
    | None -> ());
-  ignore (Lui_app.dispose app);
-  (match !gctx_cell with
-   | Some c -> Sdl.gl_delete_context c
-   | None -> ());
-  Sdl.destroy_window !win;
+  (* Tear down every surface, then SDL. Collect the ids first since
+     [close_window] mutates the registry while iterating. *)
+  let ids = ref [] in
+  Multi.iter windows (fun s -> ids := s.Multi.id :: !ids);
+  List.iter close_window !ids;
   Sdl.quit ()

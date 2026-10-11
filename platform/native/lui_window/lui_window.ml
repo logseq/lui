@@ -17,10 +17,14 @@ type config = {
           headless driver injects on frame 1 (at the deepest target
           accepting the ["file:"] payload) — exercises the SDL_DROPFILE
           channel without a real OS drag. *)
+  windows : int;
+      (** [--windows N]: number of top-level windows the driver opens,
+          each an independent surface (1–8). Default 1. *)
 }
 
 let default_config =
-  { width = 960; height = 640; headless_frames = None; drop_files = [] }
+  { width = 960; height = 640; headless_frames = None; drop_files = [];
+    windows = 1 }
 
 let parse_args argv =
   let rec loop cfg = function
@@ -38,7 +42,12 @@ let parse_args argv =
        | _ -> Error ("invalid --headless " ^ v))
     | "--drop-file" :: v :: tl ->
       loop { cfg with drop_files = v :: cfg.drop_files } tl
-    | ("--width" | "--height" | "--headless" | "--drop-file") :: [] ->
+    | "--windows" :: v :: tl ->
+      (match int_of_string_opt v with
+       | Some n when n > 0 && n <= 8 -> loop { cfg with windows = n } tl
+       | _ -> Error "invalid --windows (expected 1-8)")
+    | ("--width" | "--height" | "--headless" | "--drop-file"
+      | "--windows") :: [] ->
       Error "missing value for flag"
     | arg :: _ -> Error ("unknown argument " ^ arg)
     | [] -> Ok cfg
@@ -2326,4 +2335,159 @@ module Checksum = struct
       s.glyphs
 
   let value t = t.hash
+end
+
+module Multi = struct
+  (* Multi-window manager: a registry of independent surfaces. Each
+     surface owns a full pipeline — host (store, layout, scene,
+     renderer), interaction state ([Ui.t]) and hit-test mirror —
+     so windows never share app state and every window can render a
+     different view onto the same app kind. The driver payload ['d]
+     keeps this layer backend-free: the SDL driver stores its OS
+     window handle/context there, tests store [unit].
+
+     Window-model decision (documented here since it shapes the whole
+     design): N independent surfaces was picked over one shared store
+     rendered into several windows or a wire-level window node.
+     Reasons:
+       - The wire protocol has no window/subtree kind; adding one
+         would change shared modules and every consumer, not just
+         this host.
+       - [Lui_host] fuses store + layout + scene per surface; a
+         shared store across windows would need scene fan-out in
+         host, while independent hosts need zero core changes.
+       - Independent surfaces give per-window checksums, apps and
+         a11y trees for free, and closing a window tears down just
+         its own pipeline.
+     Cost: N windows can't show live views of one model (each has
+     its own app instance). For the desktop backend that is the
+     intended semantic anyway. *)
+
+  type 'd surface = {
+    mutable id : int;        (** Registry key; the SDL driver uses
+                                 [SDL_GetWindowID], tests use any int.
+                                 Mutable because a backend demote
+                                 recreates the OS window, which mints
+                                 a fresh id — see [rekey]. *)
+    host : Lui_host.t;
+    ui : Ui.t;
+    rects : Rects.t;
+    driver : 'd;
+    mutable logical_w : int; (** Window size in logical units, as
+                                 reported by resize events. *)
+    mutable logical_h : int;
+    mutable drawable_w : int; (** Backing pixels last applied. *)
+    mutable drawable_h : int;
+    scale_cell : float ref;  (** Backing scale drawable/logical; shared
+                                 with the hooks/text engine of this
+                                 surface's host. *)
+    mutable display : int;   (** Display index last seen (-1 unknown);
+                                 managed by the driver for monitor
+                                 crossing detection. *)
+  }
+
+  type 'd t = {
+    wins : (int, 'd surface) Hashtbl.t;
+    mutable order : int list;  (** Registration order: deterministic
+                                   iteration for tests/headless. *)
+    mutable focused_id : int;  (** 0 = no window focused *)
+  }
+
+  let create () = { wins = Hashtbl.create 8; order = []; focused_id = 0 }
+
+  let make_surface ~id ~host ~driver ~ui ~rects ~scale_cell ~w ~h =
+    { id; host; ui; rects; driver;
+      logical_w = w; logical_h = h;
+      drawable_w = int_of_float (float w *. !scale_cell);
+      drawable_h = int_of_float (float h *. !scale_cell);
+      scale_cell; display = -1 }
+
+  let register t s =
+    Hashtbl.replace t.wins s.id s;
+    if not (List.mem s.id t.order) then t.order <- t.order @ [ s.id ]
+
+  let unregister t id =
+    match Hashtbl.find_opt t.wins id with
+    | Some s ->
+      Hashtbl.remove t.wins id;
+      t.order <- List.filter (fun i -> i <> id) t.order;
+      if t.focused_id = id then t.focused_id <- 0;
+      Some s
+    | None -> None
+
+  (* The OS window was recreated under a new id (e.g. a renderer demote
+     replaces the SDL window): re-key the surface without disturbing
+     registration order or the focused-window slot. *)
+  let rekey t old_id new_id =
+    match Hashtbl.find_opt t.wins old_id with
+    | None -> false
+    | Some s ->
+      Hashtbl.remove t.wins old_id;
+      s.id <- new_id;
+      Hashtbl.replace t.wins new_id s;
+      t.order <-
+        List.map (fun i -> if i = old_id then new_id else i) t.order;
+      if t.focused_id = old_id then t.focused_id <- new_id;
+      true
+
+  let find t id = Hashtbl.find_opt t.wins id
+  let count t = List.length t.order
+  let iter t f =
+    List.iter
+      (fun id -> match Hashtbl.find_opt t.wins id with
+         | Some s -> f s
+         | None -> ())
+      t.order
+  let focused t = t.focused_id
+  let set_focused t id =
+    t.focused_id <- id
+
+  let clear_focus t = t.focused_id <- 0
+
+  let find_focused t =
+    match Hashtbl.find_opt t.wins t.focused_id with
+    | Some s -> Some s
+    | None -> (match t.order with
+        | id :: _ -> Hashtbl.find_opt t.wins id
+        | [] -> None)
+
+  let first t =
+    match t.order with
+    | id :: _ -> Hashtbl.find_opt t.wins id
+    | [] -> None
+
+  let last t =
+    match List.rev t.order with
+    | id :: _ -> Hashtbl.find_opt t.wins id
+    | [] -> None
+
+  let any t p =
+    let hit = ref false in
+    iter t (fun s -> if p s then hit := true);
+    !hit
+
+  let dispatch s input = Ui.handle s.ui (Lui_host.store s.host) s.rects input
+
+  let drawable_scale dw w =
+    Float.max 0.01 (float dw /. float (max 1 w))
+
+  let apply_logical_size s ~w ~h =
+    s.logical_w <- w;
+    s.logical_h <- h
+
+  let apply_drawable s ~dw ~dh =
+    let ns = drawable_scale dw s.logical_w in
+    if dw = s.drawable_w && dh = s.drawable_h
+       && abs_float (ns -. !(s.scale_cell)) < 0.0001
+    then false
+    else begin
+      s.drawable_w <- dw;
+      s.drawable_h <- dh;
+      s.scale_cell := ns;
+      Ui.set_scale s.ui ns;
+      Lui_host.resize s.host ~width:dw ~height:dh ~scale:ns;
+      true
+    end
+
+  let scale s = !(s.scale_cell)
 end

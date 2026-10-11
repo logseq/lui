@@ -17,25 +17,26 @@ let store_of ops =
 
 (* root 1: column 2 → button 3 (pointer-enabled), text-field 4,
    list-item 5, row 6 → button 7 *)
-let demo_store () =
-  store_of
-    [ CreateNode (1, Root);
-      CreateNode (2, Column);
-      CreateNode (3, Button);
-      CreateNode (4, TextField);
-      CreateNode (5, ListItem);
-      CreateNode (6, Row);
-      CreateNode (7, Button);
-      InsertChild (1, 2, 0);
-      InsertChild (2, 3, 0);
-      InsertChild (2, 4, 1);
-      InsertChild (2, 5, 2);
-      InsertChild (2, 6, 3);
-      InsertChild (6, 7, 0);
-      SetProp (2, Gap, IntValue 4);
-      SetProp (3, PointerEnabled, BoolValue true);
-      SetProp (4, TextValue, StringValue "");
-      SetProp (5, TextValue, StringValue "item") ]
+let demo_ops =
+  [ CreateNode (1, Root);
+    CreateNode (2, Column);
+    CreateNode (3, Button);
+    CreateNode (4, TextField);
+    CreateNode (5, ListItem);
+    CreateNode (6, Row);
+    CreateNode (7, Button);
+    InsertChild (1, 2, 0);
+    InsertChild (2, 3, 0);
+    InsertChild (2, 4, 1);
+    InsertChild (2, 5, 2);
+    InsertChild (2, 6, 3);
+    InsertChild (6, 7, 0);
+    SetProp (2, Gap, IntValue 4);
+    SetProp (3, PointerEnabled, BoolValue true);
+    SetProp (4, TextValue, StringValue "");
+    SetProp (5, TextValue, StringValue "item") ]
+
+let demo_store () = store_of demo_ops
 
 let host_stub () =
   Lui_host.create ~hooks:Lui_paint.default_hooks
@@ -865,6 +866,174 @@ let test_headless_checksum () =
   Alcotest.(check string) "golden"
     "headless done: frames=6 checksum=3e4def9631ef43ad" c1
 
+(* ---------- multi-window ---------- *)
+
+(* A surface on the pure registry: a host (real store/layout/paint,
+   no-op renderer) plus the demo ops so hit tests have targets — the
+   same shape the SDL driver builds per window, minus the OS handle. *)
+let surf_of ~id ~w ~h ~scale =
+  let host = host_stub () in
+  let store = Lui_host.store host in
+  Lui_store.apply_batch store { generation = 1; ops = demo_ops };
+  let rects = Rects.create () in
+  Layout.refresh store rects ~width:w ~height:h ~scale
+    ~measure:Layout.default_measure;
+  Multi.make_surface ~id ~host ~driver:() ~ui:(Ui.create ()) ~rects
+    ~scale_cell:(ref scale) ~w ~h
+
+let test_multi_registry () =
+  let t = Multi.create () in
+  let s1 = surf_of ~id:11 ~w:200 ~h:200 ~scale:1. in
+  let s2 = surf_of ~id:22 ~w:200 ~h:200 ~scale:1. in
+  Multi.register t s1;
+  Multi.register t s2;
+  Alcotest.(check int) "count" 2 (Multi.count t);
+  Alcotest.(check bool) "find" true
+    (match Multi.find t 22 with Some w -> w == s2 | None -> false);
+  Alcotest.(check bool) "first/last" true
+    (match Multi.first t, Multi.last t with
+     | Some a, Some b -> a == s1 && b == s2
+     | _ -> false);
+  Multi.set_focused t 22;
+  Alcotest.(check int) "focused" 22 (Multi.focused t);
+  Alcotest.(check bool) "find_focused" true
+    (match Multi.find_focused t with Some w -> w == s2 | None -> false);
+  (* rekey (driver recreates an OS window under a fresh id): the key
+     moves but order and focus follow the surface. *)
+  Alcotest.(check bool) "rekey" true (Multi.rekey t 22 99);
+  Alcotest.(check bool) "old key gone" true (Multi.find t 22 = None);
+  Alcotest.(check bool) "new key" true
+    (match Multi.find t 99 with Some w -> w == s2 | None -> false);
+  Alcotest.(check int) "focus followed" 99 (Multi.focused t);
+  Alcotest.(check bool) "order kept" true
+    (match Multi.last t with Some w -> w == s2 | None -> false);
+  Alcotest.(check bool) "rekey unknown" false (Multi.rekey t 22 55);
+  ignore (Multi.unregister t 99);
+  s2.Multi.id <- 22;
+  Multi.register t s2;
+  Multi.set_focused t 22;
+  (* unregistering the focused window clears focus; find_focused then
+     falls back to the first registered *)
+  ignore (Multi.unregister t 22);
+  Alcotest.(check int) "focus cleared" 0 (Multi.focused t);
+  Alcotest.(check bool) "fallback first" true
+    (match Multi.find_focused t with Some w -> w == s1 | None -> false);
+  Alcotest.(check int) "count after close" 1 (Multi.count t)
+
+(* The routing contract the SDL driver relies on: dispatching into one
+   window's Ui never leaks state into another's — each surface keeps
+   independent focus/caret/interaction state. *)
+let test_multi_dispatch_independence () =
+  let s1 = surf_of ~id:1 ~w:200 ~h:200 ~scale:1. in
+  let s2 = surf_of ~id:2 ~w:200 ~h:200 ~scale:1. in
+  ignore
+    (Multi.dispatch s1
+       (Input.Button_down (5., 40., Input.Left, 1, Input.mods_none)));
+  Alcotest.(check int) "s1 field focused" 4 (Ui.focused s1.ui);
+  Alcotest.(check int) "s2 untouched" 0 (Ui.focused s2.ui);
+  ignore (Multi.dispatch s1 (Input.Text_input "ab"));
+  Alcotest.(check int) "s1 caret" 2 (Ui.caret s1.ui);
+  (* the same press on s2 now hits ITS field: identical coordinates,
+     independent routing *)
+  ignore
+    (Multi.dispatch s2
+       (Input.Button_down (5., 40., Input.Left, 1, Input.mods_none)));
+  Alcotest.(check int) "s2 field focused" 4 (Ui.focused s2.ui);
+  Alcotest.(check int) "s2 caret empty" 0 (Ui.caret s2.ui);
+  Alcotest.(check int) "s1 caret kept" 2 (Ui.caret s1.ui)
+
+(* Logical resize → Resize_host action → drawable apply: the driver's
+   chain for both window resizes and monitor-crossing scale changes. *)
+let test_multi_resize_and_scale () =
+  let s = surf_of ~id:1 ~w:200 ~h:200 ~scale:1. in
+  (* scale math the driver uses everywhere *)
+  Alcotest.(check bool) "2x" true
+    (abs_float (Multi.drawable_scale 1920 960 -. 2.) < 1e-6);
+  Alcotest.(check bool) "floor" true
+    (abs_float (Multi.drawable_scale 0 960 -. 0.01) < 1e-6);
+  (* unchanged drawable is a no-op — display events re-query all
+     windows but only changed ones do work *)
+  Alcotest.(check bool) "no-op" false
+    (Multi.apply_drawable s ~dw:200 ~dh:200);
+  (* moving to a Retina monitor: same logical size, double drawable *)
+  Alcotest.(check bool) "retina change" true
+    (Multi.apply_drawable s ~dw:400 ~dh:400);
+  Alcotest.(check bool) "scale 2" true
+    (abs_float (Multi.scale s -. 2.) < 1e-6);
+  (* resize marks the host dirty; the next repaint lays out at the
+     new device size — the scale-change relayout *)
+  ignore (Lui_host.repaint s.host);
+  Alcotest.(check int) "scene resized" 400
+    (Lui_host.scene s.host).Lui_scene.width;
+  (* logical resize arrives as a Ui action on the owning window only *)
+  Multi.apply_logical_size s ~w:300 ~h:250;
+  (match Multi.dispatch s (Input.Resize (300, 250)) with
+   | [ Resize_host (300, 250) ] -> ()
+   | a ->
+     Alcotest.failf "expected [Resize_host], got %d actions"
+       (List.length a))
+
+let test_parse_windows () =
+  (match parse_args [ "--windows"; "3" ] with
+   | Ok c -> Alcotest.(check int) "windows" 3 c.windows
+   | Error m -> Alcotest.fail m);
+  (match parse_args [ "--windows"; "0" ] with
+   | Error _ -> ()
+   | Ok _ -> Alcotest.fail "windows 0 accepted");
+  (match parse_args [ "--windows"; "9" ] with
+   | Error _ -> ()
+   | Ok _ -> Alcotest.fail "windows 9 accepted");
+  (match parse_args [ "--windows" ] with
+   | Error _ -> ()
+   | Ok _ -> Alcotest.fail "missing value accepted")
+
+(* Two real windows under the dummy driver: independent surfaces get
+   independent frames and checksums; window 0's scene is byte-identical
+   to the single-window golden, proving window 1's routed input (a Tab
+   injected at frame 1) never leaked across. *)
+let win_done_lines out =
+  List.filter
+    (fun l ->
+       try
+         ignore
+           (Str.search_forward
+              (Str.regexp "win=[0-9]+ done: frames=[0-9]+ checksum=") l 0);
+         true
+       with Not_found -> false)
+    (String.split_on_char '\n' out)
+
+let checksum_value l =
+  try
+    ignore
+      (Str.search_forward
+         (Str.regexp "checksum=\\([0-9a-f]+\\)") l 0);
+    Str.matched_group 1 l
+  with Not_found -> Alcotest.failf "no checksum in %s" l
+
+let test_headless_multi () =
+  with_main_exe @@ fun exe ->
+  let run () =
+    let ic =
+      Unix.open_process_in
+        (Printf.sprintf "%s --headless 6 --windows 2"
+           (Filename.quote exe))
+    in
+    let out = read_all ic in
+    match Unix.close_process_in ic with
+    | Unix.WEXITED 0 -> out
+    | _ -> Alcotest.failf "main.exe failed: %s" out
+  in
+  let out1 = run () and out2 = run () in
+  (match win_done_lines out1 with
+   | [ w0; w1 ] ->
+     Alcotest.(check string) "win0 golden" "3e4def9631ef43ad"
+       (checksum_value w0);
+     Alcotest.(check bool) "independent checksums" true
+       (checksum_value w0 <> checksum_value w1)
+   | _ -> Alcotest.failf "expected two win= lines in:\n%s" out1);
+  Alcotest.(check (list string)) "deterministic" (win_done_lines out1)
+    (win_done_lines out2)
+
 (* ---------- widget-layer interactions ---------- *)
 
 let key ?(mods = Input.mods_none) k =
@@ -1525,6 +1694,14 @@ let () =
           Alcotest.test_case "light dismiss" `Quick test_light_dismiss;
           Alcotest.test_case "appear once" `Quick test_appear_once;
           Alcotest.test_case "autofocus" `Quick test_autofocus ] );
+      ( "multi-window",
+        [ Alcotest.test_case "registry" `Quick test_multi_registry;
+          Alcotest.test_case "dispatch" `Quick
+            test_multi_dispatch_independence;
+          Alcotest.test_case "resize+scale" `Quick
+            test_multi_resize_and_scale;
+          Alcotest.test_case "windows flag" `Quick test_parse_windows ] );
       ( "headless",
         [ Alcotest.test_case "checksum" `Quick test_headless_checksum;
-          Alcotest.test_case "drop-file" `Quick test_headless_drop ] ) ]
+          Alcotest.test_case "drop-file" `Quick test_headless_drop;
+          Alcotest.test_case "two windows" `Quick test_headless_multi ] ) ]

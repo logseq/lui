@@ -18,13 +18,16 @@ type config = {
       (** [--drop-file PATH] repeat flag: synthetic OS file drops the
           headless driver injects on frame 1 (at the deepest target
           accepting the ["file:"] payload). *)
+  windows : int;
+      (** [--windows N] (1–8): number of top-level windows the driver
+          opens; each is an independent surface. *)
 }
 
 val default_config : config
 
 (** Parse driver arguments (already stripped of argv\[0\]).
     Recognises [--width N], [--height N], [--headless N],
-    [--drop-file PATH]. *)
+    [--drop-file PATH], [--windows N]. *)
 val parse_args : string list -> (config, string) result
 
 (** Backend-neutral input events. [main.ml] translates SDL events into
@@ -388,4 +391,117 @@ module Checksum : sig
   val create : unit -> t
   val add_scene : t -> Lui_scene.t -> unit
   val value : t -> int64
+end
+
+(** Multi-window manager: a registry of independent surfaces.
+
+    Each surface owns a full pipeline — {!Lui_host} (store, layout,
+    scene, renderer), per-window interaction state ({!Ui.t}) and the
+    hit-test mirror — so windows never share app state and every
+    window can render an independent view. The driver payload ['d]
+    keeps this layer backend-free: the SDL driver stores its OS
+    window handle/context there, tests store [unit].
+
+    Window-model decision: N independent surfaces, not one store
+    rendered into several windows and not a wire-level window node.
+    The wire protocol has no window kind (adding one would change
+    shared modules); {!Lui_host} fuses store+layout+scene per
+    surface, so independent hosts need zero core changes, give
+    per-window checksums/a11y for free, and close cleanly one at a
+    time. Cost: windows cannot show live views of one model — for a
+    desktop backend each window owning its app instance is the
+    intended semantic. *)
+module Multi : sig
+  type 'd surface = {
+    mutable id : int;
+        (** Registry key; the SDL driver uses [SDL_GetWindowID].
+            Mutable because a backend demote recreates the OS window,
+            which mints a fresh id — see [rekey]. *)
+    host : Lui_host.t;
+    ui : Ui.t;
+    rects : Rects.t;
+    driver : 'd;
+    mutable logical_w : int;
+        (** Window size in logical units, from resize events. *)
+    mutable logical_h : int;
+    mutable drawable_w : int;
+        (** Backing pixels last applied. *)
+    mutable drawable_h : int;
+    scale_cell : float ref;
+        (** Backing scale drawable/logical. Kept as a ref so the
+            hooks and text engine created before the surface can
+            share it. *)
+    mutable display : int;
+        (** Display index last seen (-1 unknown); the driver updates
+            it to detect monitor crossings. *)
+  }
+
+  type 'd t
+  (** Registry of surfaces, iterated in registration order. *)
+
+  val create : unit -> 'd t
+
+  val make_surface :
+    id:int -> host:Lui_host.t -> driver:'d -> ui:Ui.t ->
+    rects:Rects.t -> scale_cell:float ref -> w:int -> h:int ->
+    'd surface
+  (** [ui], [rects] and [scale_cell] come from the caller rather than
+      being allocated here because a window's paint hooks and text
+      engine must capture them before the host — and therefore the
+      surface — exists. The initial drawable is [w, h] × [!scale_cell]. *)
+
+  val register : 'd t -> 'd surface -> unit
+  val unregister : 'd t -> int -> 'd surface option
+  (** [unregister] also clears focus if the removed window had it. *)
+
+  val rekey : 'd t -> int -> int -> bool
+  (** [rekey t old_id new_id] moves a surface's registry key — used
+      when the driver recreates the OS window under a new id
+      (renderer demote). Keeps registration order and the focused
+      window. Returns [false] when [old_id] is unknown. *)
+
+  val find : 'd t -> int -> 'd surface option
+  val count : 'd t -> int
+  val iter : 'd t -> ('d surface -> unit) -> unit
+  (** Deterministic registration-order iteration. *)
+
+  val focused : 'd t -> int
+  (** Window id last reported focused; 0 = none. *)
+
+  val set_focused : 'd t -> int -> unit
+
+  val clear_focus : 'd t -> unit
+
+  val find_focused : 'd t -> 'd surface option
+  (** The focused surface, or the first registered when focus is
+      unset (e.g. headless, where no focus events arrive). *)
+
+  val first : 'd t -> 'd surface option
+  val last : 'd t -> 'd surface option
+  (** First / last registered in registration order. *)
+
+  val any : 'd t -> ('d surface -> bool) -> bool
+  (** [any t p]: some registered surface satisfies [p]. *)
+
+  val dispatch : 'd surface -> Input.t -> action list
+  (** Feed an input event through one window's [Ui.handle]. Event
+      routing by OS window id happens in the driver; this is the
+      per-window half of it. *)
+
+  val drawable_scale : int -> int -> float
+  (** [drawable_scale dw w]: backing scale from drawable and logical
+      widths, clamped to ≥ 0.01. *)
+
+  val apply_logical_size : 'd surface -> w:int -> h:int -> unit
+  (** Record a logical (window-pixel) resize reported by the window
+      system. *)
+
+  val apply_drawable : 'd surface -> dw:int -> dh:int -> bool
+  (** Apply a new drawable size: recompute the backing scale, push it
+      into [Ui] and resize the host (marks the surface dirty so the
+      next frame re-lays out). Returns [true] when something actually
+      changed — the driver uses this for display-hotplug and
+      monitor-crossing re-queries, where most calls are no-ops. *)
+
+  val scale : 'd surface -> float
 end

@@ -8,6 +8,13 @@
    forwards WM_GETOBJECT to the bridge — see the stubs) and hosts
    the desktop shell through [Lui_shell_windows].
 
+   TODO multi-window: this driver is single-window. Port per
+   platform/native/MULTIWINDOW.md — the pure Lui_window.Multi registry
+   works unchanged: key surfaces by HWND, WndProc already receives
+   the window handle for routing, WM_DPICHANGED feeds
+   apply_drawable, WM_SETFOCUS/WM_KILLFOCUS drive the focused-window
+   slot, WM_CLOSE unregisters and tears down one surface.
+
    Renderer ladder (see [Lui_window_windows.ladder]): the default
    tries [Lui_d3d11] on the window's HWND (a real DXGI swapchain),
    then a [Lui_d3d11] offscreen target whose frames are read back

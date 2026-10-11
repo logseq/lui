@@ -7,6 +7,13 @@
    the desktop shell through Lui_shell_linux and presents frames by the
    renderer's own path.
 
+   TODO multi-window: this driver is single-window. Port the macOS
+   recipe (see platform/native/MULTIWINDOW.md): the pure
+   Lui_window.Multi registry already works here — wrap window creation
+   in open_window, route SDL events by windowID, re-query scale on
+   Moved/display events, keep --windows N + the headless tests. Near-
+   mechanical: only the renderer-ladder entries differ.
+
    Renderer ladder (env LUI_GPU): default -> Lui_gl on the window's GL
    context; "vulkan" -> Lui_vulkan offscreen + readback + Lui_blit;
    "0"|"cpu" -> Lui_raster + Lui_blit. Every failed rung falls to the
