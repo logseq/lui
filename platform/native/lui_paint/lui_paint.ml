@@ -1926,14 +1926,17 @@ and paint_node ctx store scene id parent_r alpha =
       && (not (rect_empty r))
       && rect_empty (rect_intersect r ctx.viewport)
     in
-    if misses_viewport then ()
+    (* display:contents generates no box, so its opacity and chrome do
+       not apply — children paint with the parent's alpha and clip. *)
+    let alpha =
+      if contents then alpha
+      else alpha *. rs.rs_opacity *. disabled_alpha store id st
+    in
+    (* An alpha-0 subtree emits no ops at all: the raster treats an op
+       opacity of 0 as "unset" (opaque), so invisible nodes must be
+       culled here rather than painted at opacity 0. *)
+    if misses_viewport || alpha <= 0. then ()
     else begin
-      (* display:contents generates no box, so its opacity and chrome do
-         not apply — children paint with the parent's alpha and clip. *)
-      let alpha =
-        if contents then alpha
-        else alpha *. rs.rs_opacity *. disabled_alpha store id st
-      in
       let clip =
         (not contents) && clips kind store id
         && ((not (rect_empty r))
