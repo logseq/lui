@@ -242,7 +242,7 @@ let hit_path store rects ~x ~y =
      scrolls, carries an overflow prop, or is a split pane. *)
   let node_clips id =
     (match Lui_store.kind store id with
-     | Some "scroll" | Some "list" | Some "virtual-list" -> true
+     | "scroll" | "list" | "virtual-list" -> true
      | _ -> false)
     || (match Lui_store.parent store id with
         | Some pid -> Lui_store.kind store pid = "split"
