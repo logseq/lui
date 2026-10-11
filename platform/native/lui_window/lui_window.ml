@@ -701,8 +701,15 @@ module Ui = struct
 
   (* ---- overlays (popover/dialog/menu/sheet/toast) ----------------- *)
 
-  let overlay_class = function
-    | "dialog" | "sheet" | "drawer" -> `modal
+  let overlay_class store id =
+    match kind_name store id with
+    | "dialog" | "sheet" -> `modal
+    | "drawer" -> (
+      (* [selected] marks the inline pane control, not a presented
+         modal — those mount without the prop. *)
+      match Lui_store.prop store id "selected" with
+      | Some _ -> `none
+      | None -> `modal)
     | "popover" | "dropdown-menu" | "context-menu" | "toast" -> `light
     | _ -> `none
 
@@ -743,7 +750,7 @@ module Ui = struct
   let top_overlay t store =
     List.fold_left
       (fun acc id ->
-         match overlay_class (kind_name store id) with
+         match overlay_class store id with
          | `none -> acc
          | _ when trigger_owned store id && id <> t.open_menu -> acc
          | cls ->

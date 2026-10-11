@@ -229,7 +229,7 @@ let direction_of ~store ~id kind : Lui_flex.flex_direction =
     | "row" | "grid" | "button-group" | "toggle-group"
     | "input-group-actions" | "table-row" | "tabs" | "bottom-tabs"
     | "toolbar" | "swipe-actions" | "stepper" | "breadcrumb"
-    | "pagination" | "split" -> Row
+    | "pagination" | "split" | "drawer" -> Row
     | "edge-inset" -> (
       match pstr store id "edge" with
       | Some ("leading" | "trailing") -> Row
@@ -280,7 +280,11 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
     | Some ("absolute" | "fixed") ->
       (Lui_flex.Absolute, inset_edges ~scale store id)
     | _ ->
-      if popup_kind kind then (Absolute, Lui_flex.edges_auto)
+      (* A drawer carrying [selected] is the inline pane control —
+         in-flow split, not a presented popup. *)
+      if popup_kind kind
+         && not (kind = "drawer" && has_prop store id "selected")
+      then (Absolute, Lui_flex.edges_auto)
       else (Relative, Lui_flex.edges_auto)
   in
   let grow =
@@ -496,7 +500,9 @@ let rec build ctx store ~pkind ~pid ~index id : Lui_flex.node list =
        | Some n when n > 0. ->
          ctx.grids := (node, style, n) :: !(ctx.grids)
        | _ -> ());
-    (if popup_kind kind then ctx.popups := (node, id) :: !(ctx.popups));
+    (if popup_kind kind
+        && not (kind = "drawer" && has_prop store id "selected")
+     then ctx.popups := (node, id) :: !(ctx.popups));
     [ node ]
 
 and build_seq ctx store ~pkind ~pid ~first ids : Lui_flex.node list =
