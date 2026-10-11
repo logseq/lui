@@ -22,16 +22,16 @@ val available : unit -> bool
 val run :
   window:window ->
   title:string ->
-  entry_file:string ->
+  source:Lui_webview.source ->
   on_message:(string -> unit) ->
   on_ready:(eval:(string -> unit) -> unit) ->
   (unit, string) result
-(** [run ~window ~title ~entry_file ~on_message ~on_ready] opens a
-    native window sized by [window], attaches a web view covering the
-    whole client area, and loads [entry_file] via
-    [loadFileURL:allowingReadAccessToURL:] (the view can read the
-    entry's directory, so sibling assets resolve). Blocks until the
-    window closes, then tears everything down and returns [Ok ()].
+(** [run ~window ~title ~source ~on_message ~on_ready] opens a native
+    window sized by [window], attaches a web view covering the whole
+    client area, and loads [source] — the entry prepared by
+    {!Lui_webapp.entry_source} so its decoding is already decided.
+    Blocks until the window closes, then tears everything down and
+    returns [Ok ()].
 
     The JS → native bridge is the same channel the webview exposes:
     page code posts through

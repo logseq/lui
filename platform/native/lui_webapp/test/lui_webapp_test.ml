@@ -58,6 +58,15 @@ let sample_json =
   "permissions": {"file_access": true, "remote_content": true,
                   "dev_tools": true}}|}
 
+let has_prefix s p =
+  String.length s >= String.length p
+  && String.sub s 0 (String.length p) = p
+
+let contains s sub =
+  let n = String.length sub and h = String.length s in
+  let rec go i = i + n <= h && (String.sub s i n = sub || go (i + 1)) in
+  h >= n && go 0
+
 (** {1 Spec JSON} *)
 
 let test_roundtrip () =
@@ -178,6 +187,38 @@ let test_prepare () =
   ignore
     (expect_err (W.prepare ~base:root { sample with app_id = "" }))
 
+(** {1 Entry source} *)
+
+let test_entry_source () =
+  let root = tmp_dir () in
+  (* UTF-8 with CJK + emoji and no charset meta: the bytes must reach
+     the page verbatim as an Html source, so the engine decodes UTF-8
+     instead of sniffing Latin-1 *)
+  let utf8_page =
+    "<h1>lui_webapp 冒烟 — 中文 🎉</h1><p>… — em dash</p>"
+  in
+  let f = root / "index.html" in
+  P.Fs.write_file f utf8_page;
+  (match W.entry_source f with
+   | Ok (Lui_webview.Html (html, base)) ->
+     check Alcotest.string "utf-8 verbatim" utf8_page html;
+     check Alcotest.bool "base is dir file url" true
+       (has_prefix base "file://" && String.get base (String.length base - 1) = '/'
+        && contains base "index.html" = false);
+   | Ok _ -> Alcotest.fail "utf-8 entry must load as Html"
+   | Error e -> Alcotest.fail e);
+  (* non-UTF-8 keeps the File source — engine sniffing handles legacy
+     encodings *)
+  let legacy = root / "legacy.html" in
+  P.Fs.write_file legacy "<h1>\xff\xfe old</h1>";
+  (match W.entry_source legacy with
+   | Ok (Lui_webview.File p) ->
+     check Alcotest.string "file path" legacy p
+   | Ok _ -> Alcotest.fail "non-utf-8 entry must keep File source"
+   | Error e -> Alcotest.fail e);
+  ignore
+    (expect_err (W.entry_source (root / "does-not-exist.html")))
+
 (** {1 Spec files} *)
 
 let test_spec_io () =
@@ -270,15 +311,6 @@ module Fake = struct
   let run () = events := !events @ [ "run" ]
   let close () = events := !events @ [ "close!" ]
 end
-
-let has_prefix s p =
-  String.length s >= String.length p
-  && String.sub s 0 (String.length p) = p
-
-let contains s sub =
-  let n = String.length sub and h = String.length s in
-  let rec go i = i + n <= h && (String.sub s i n = sub || go (i + 1)) in
-  h >= n && go 0
 
 let test_boot_webview () =
   let root = tmp_dir () in
@@ -403,6 +435,9 @@ let () =
             test_paths ] );
       ( "prepare",
         [ Alcotest.test_case "prepare" `Quick test_prepare ] );
+      ( "entry source",
+        [ Alcotest.test_case "utf-8/legacy/missing" `Quick
+            test_entry_source ] );
       ( "spec file",
         [ Alcotest.test_case "read/write" `Quick test_spec_io ] );
       ( "discovery",

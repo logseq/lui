@@ -116,6 +116,19 @@ val file_url : string -> string
 (** [file_url path] builds the [file://] URL for an absolute path —
     forward slashes, percent-escaped bytes outside the URL-safe set. *)
 
+val entry_source : string -> (Lui_webview.source, string) result
+(** [entry_source entry_file] decides how the native shell loads the
+    entry page — the step that makes text encoding deterministic.
+
+    A [File] load leaves decoding to engine sniffing, which misreads
+    UTF-8 pages without <meta charset> (mojibake on CJK and emoji).
+    When the entry reads as valid UTF-8 — the encoding web tooling
+    standardizes on — the shell loads it as {!Lui_webview.Html} with a
+    [file://] base URL of the entry's directory so sibling assets
+    still resolve; non-UTF-8 files keep the [File] source so the
+    engine's own detection handles legacy encodings. [Error] when the
+    file cannot be read. *)
+
 (** {1 The webview provider contract}
 
     The surface a custom webview backend implements — a seam for tests

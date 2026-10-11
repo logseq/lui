@@ -194,7 +194,12 @@ let test_macos_launch () =
     | None -> () (* main.exe not part of this build run *)
     | Some launcher ->
       let root = tmp_dir () in
-      let web = write_web root () in
+      (* CJK + emoji with no charset meta — the entry must still
+         render as UTF-8 inside the packaged app *)
+      let web =
+        write_web root
+          ~index:"<h1>WebApp 冒烟 中文 🎉</h1><p>UTF-8, no meta</p>" ()
+      in
       let s = webapp ~web_dir:web () in
       let prod =
         expect_ok
