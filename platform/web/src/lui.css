@@ -119,6 +119,8 @@ body {
    descendant (e.g. a highlighted row's inset shadow on its children). */
 @property --lui-shadow { syntax: "*"; inherits: false; }
 @property --lui-hover-bg { syntax: "*"; inherits: false; }
+@property --lui-hover-fg { syntax: "*"; inherits: false; }
+@property --lui-hover-border { syntax: "*"; inherits: false; }
 @property --lui-hover-shadow { syntax: "*"; inherits: false; }
 @property --lui-hover-opacity { syntax: "*"; inherits: false; }
 @property --lui-pressed-bg { syntax: "*"; inherits: false; }
@@ -146,6 +148,8 @@ body {
 
   :where([class*="lui-"]:hover) {
     background-color: var(--lui-hover-bg, revert-layer);
+    color: var(--lui-hover-fg, revert-layer);
+    border-color: var(--lui-hover-border, revert-layer);
     box-shadow: var(--lui-hover-shadow, var(--lui-shadow, revert-layer));
     opacity: var(--lui-hover-opacity, revert-layer);
   }

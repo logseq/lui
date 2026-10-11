@@ -932,6 +932,41 @@
       "swift": "paddingVertical"
     },
     {
+      "lg": "MarginValue",
+      "wire": "margin",
+      "swift": "margin"
+    },
+    {
+      "lg": "MarginHorizontal",
+      "wire": "margin-horizontal",
+      "swift": "marginHorizontal"
+    },
+    {
+      "lg": "MarginVertical",
+      "wire": "margin-vertical",
+      "swift": "marginVertical"
+    },
+    {
+      "lg": "MarginTop",
+      "wire": "margin-top",
+      "swift": "marginTop"
+    },
+    {
+      "lg": "MarginRight",
+      "wire": "margin-right",
+      "swift": "marginRight"
+    },
+    {
+      "lg": "MarginBottom",
+      "wire": "margin-bottom",
+      "swift": "marginBottom"
+    },
+    {
+      "lg": "MarginLeft",
+      "wire": "margin-left",
+      "swift": "marginLeft"
+    },
+    {
       "lg": "BackgroundValue",
       "wire": "background",
       "swift": "background"
@@ -1625,6 +1660,41 @@
       "lg": "MaxHeightViewport",
       "wire": "max-height-viewport",
       "swift": "maxHeightViewport"
+    },
+    {
+      "lg": "FontFamily",
+      "wire": "font-family",
+      "swift": "fontFamily"
+    },
+    {
+      "lg": "TextDecoration",
+      "wire": "text-decoration",
+      "swift": "textDecoration"
+    },
+    {
+      "lg": "ListStyle",
+      "wire": "list-style",
+      "swift": "listStyle"
+    },
+    {
+      "lg": "FlexWrap",
+      "wire": "flex-wrap",
+      "swift": "flexWrap"
+    },
+    {
+      "lg": "HoverForeground",
+      "wire": "hover-foreground",
+      "swift": "hoverForeground"
+    },
+    {
+      "lg": "HoverBorder",
+      "wire": "hover-border",
+      "swift": "hoverBorder"
+    },
+    {
+      "lg": "Transition",
+      "wire": "transition",
+      "swift": "transition"
     }
   ],
   "events": [
@@ -1831,7 +1901,14 @@
       "pointer-enabled",
       "padding",
       "padding-horizontal",
-      "padding-vertical"
+      "padding-vertical",
+      "margin",
+      "margin-horizontal",
+      "margin-vertical",
+      "margin-top",
+      "margin-right",
+      "margin-bottom",
+      "margin-left"
     ],
     "toolbar": [
 
@@ -1923,6 +2000,8 @@
       "font-weight",
       "line-height",
       "letter-spacing",
+      "font-family",
+      "text-decoration",
       "white-space",
       "text-overflow",
       "user-select",
@@ -1938,7 +2017,8 @@
       "selected-background",
       "selected-shadow",
       "selected-hover-shadow",
-      "disabled-opacity"
+      "disabled-opacity",
+      "transition"
     ]
   },
   "kindExtraProperties": {

@@ -3303,6 +3303,7 @@ private struct LUIToolbarGroupAnchor: View {
                     navItemView(at: index)
                 }
             }
+            .sharedBackgroundVisibility(navContainsMenu ? .hidden : .automatic)
         } else {
             if segments.count > 0 { segment(at: 0) }
             if segments.count > 1 { segment(at: 1) }
@@ -3326,7 +3327,9 @@ private struct LUIToolbarGroupAnchor: View {
             ToolbarItem(placement: placement) {
                 segmentView(at: index)
             }
-            .sharedBackgroundVisibility(segmentOwnsCapsule(at: index) ? .hidden : .automatic)
+            .sharedBackgroundVisibility(
+                segmentOwnsCapsule(at: index) || segmentContainsMenu(at: index) ? .hidden : .automatic
+            )
         }
     }
 
@@ -3342,43 +3345,91 @@ private struct LUIToolbarGroupAnchor: View {
                 itemIdentity(LUIAnyNodeView(nodeID: childID, backend: backend).equatable(), at: index)
                     .environment(\.luiInHoistedToolbar, true),
                 childID)
+                .modifier(LUIToolbarMenuCapsule(
+                    enabled: containsMenu(childID) && !ownsCapsule(childID)
+                ))
         case let .scrollCapsule(childIDs):
             // scroll-leading: the leading controls live in a horizontally
             // scrolling fused capsule so a pinned trailing sibling stays
             // reachable when the content overflows the bar.
             ScrollView(.horizontal, showsIndicators: false) {
-                ControlGroup {
-                    ForEach(childIDs, id: \.self) { childID in
-                        itemIdentity(
-                            LUIAnyNodeView(nodeID: childID, backend: backend).equatable(),
-                            at: index,
-                            firstChild: childID == childIDs.first
-                        )
-                        .environment(\.luiInHoistedToolbar, true)
-                        .environment(\.luiInFusedCapsule, true)
-                        .modifier(LUIToolbarTooltip(childID: childID, backend: backend))
-                    }
-                }
+                capsuleView(childIDs, at: index)
             }
         case let .capsule(childIDs):
             // Consecutive interactive children fuse into one toolbar item so
             // the platform draws its shared capsule.
-            ControlGroup {
-                ForEach(childIDs, id: \.self) { childID in
-                    // A capsule renders one bar item per child, so the
-                    // identifier rides only the first — applying it to the
-                    // group would stamp the id onto every child.
-                    itemIdentity(
-                        LUIAnyNodeView(nodeID: childID, backend: backend).equatable(),
-                        at: index,
-                        firstChild: childID == childIDs.first
-                    )
-                    .environment(\.luiInHoistedToolbar, true)
-                    .environment(\.luiInFusedCapsule, true)
-                    .modifier(LUIToolbarTooltip(childID: childID, backend: backend))
-                }
-            }
+            capsuleView(childIDs, at: index)
         }
+    }
+
+    @ViewBuilder
+    private func capsuleView(_ childIDs: [Int], at index: Int) -> some View {
+        if childIDs.contains(where: containsMenu) {
+            // The shared toolbar background clips a native Menu's hit cell.
+            // Own one glass capsule without the compact ControlGroup host.
+            HStack(spacing: 0) { capsuleChildren(childIDs, at: index) }
+                .modifier(LUIToolbarMenuCapsule(enabled: true))
+        } else {
+            ControlGroup { capsuleChildren(childIDs, at: index) }
+        }
+    }
+
+    private func capsuleChildren(_ childIDs: [Int], at index: Int) -> some View {
+        ForEach(childIDs, id: \.self) { childID in
+            itemIdentity(
+                LUIAnyNodeView(nodeID: childID, backend: backend).equatable(),
+                at: index,
+                firstChild: childID == childIDs.first
+            )
+            .environment(\.luiInHoistedToolbar, true)
+            .environment(\.luiInFusedCapsule, true)
+            .modifier(LUIToolbarTooltip(childID: childID, backend: backend))
+        }
+    }
+
+    private func segmentContainsMenu(at index: Int) -> Bool {
+        switch segments[index] {
+        case .spacer: false
+        case let .bare(childID): containsMenu(childID)
+        case let .capsule(childIDs), let .scrollCapsule(childIDs):
+            childIDs.contains(where: containsMenu)
+        }
+    }
+
+    private var navContainsMenu: Bool {
+        navItems.contains { item in
+            if case let .child(childID) = item { return containsMenu(childID) }
+            return false
+        }
+    }
+
+    private func isInteractiveNavigationCell(_ childID: Int) -> Bool {
+        if containsMenu(childID) { return true }
+        switch backend.model(id: childID)?.kind {
+        case .button, .toggleButton, .toggleGroup, .checkbox, .switchControl,
+             .toggle, .radioGroup, .select, .combobox, .menuItem,
+             .menuTrigger, .textField, .secureField, .input, .searchField:
+            return true
+        default:
+            return false
+        }
+    }
+
+    // Recognize the public Menu cell and button-group composition only.
+    // Menus nested in unrelated views do not change their toolbar owner.
+    private func containsMenu(_ childID: Int) -> Bool {
+        #if os(iOS)
+        guard let child = backend.model(id: childID) else { return false }
+        switch child.kind {
+        case .menuTrigger: return true
+        case .box where child.children.count == 1:
+            return containsMenu(child.children[0])
+        case .buttonGroup: return child.children.contains(where: containsMenu)
+        default: return false
+        }
+        #else
+        return false
+        #endif
     }
 
     private func segmentOwnsCapsule(at index: Int) -> Bool {
@@ -3424,6 +3475,10 @@ private struct LUIToolbarGroupAnchor: View {
                 .equatable()
                 .environment(\.luiInHoistedToolbar, true)
                 .modifier(LUIToolbarTooltip(childID: childID, backend: backend))
+                .modifier(LUIToolbarMenuCapsule(
+                    enabled: navContainsMenu && !ownsCapsule(childID)
+                        && isInteractiveNavigationCell(childID)
+                ))
             if index == navIdentityIndex,
                let identifier = model.accessibilityIdentifier(in: backend) {
                 view
@@ -3526,6 +3581,20 @@ private struct LUIToolbarGroupAnchor: View {
         }
         flush()
         return result
+    }
+}
+
+@available(iOS 26.0, macOS 26.0, *)
+private struct LUIToolbarMenuCapsule: ViewModifier {
+    let enabled: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if enabled {
+            content.glassEffect(.regular.interactive(), in: Capsule())
+        } else {
+            content
+        }
     }
 }
 
@@ -4382,6 +4451,7 @@ private struct LUIMenuItemView: View {
 private struct LUIMenuTriggerView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @Environment(\.luiInHoistedToolbar) private var inHoistedToolbar
 
     private var menu: LUINodeModel? {
         model.children
@@ -4410,7 +4480,37 @@ private struct LUIMenuTriggerView: View {
         !model.buttonIconName.isEmpty && model.text.isEmpty
     }
 
+    // A single-child box is the public Menu sizing cell. Its constraints
+    // must reach the native label; sizing only the wrapper leaves a smaller
+    // toolbar button inside it. Do not inherit unrelated ancestor bounds.
+    private var sizingCell: LUINodeModel? {
+        guard let parentID = model.parent,
+              let parent = backend.model(id: parentID),
+              parent.kind == .box, parent.children == [model.id]
+        else { return nil }
+        return parent
+    }
+
+    private func minimumExtent(fixed: Int?, minimum: Int?, maximum: Int?) -> CGFloat? {
+        if let minimum { return CGFloat(minimum) }
+        return fixed == nil && maximum == nil ? 44 : nil
+    }
+
     var body: some View {
+        #if os(iOS)
+        if inHoistedToolbar {
+            // The toolbar owns the glass capsule; keep the native Menu's
+            // button label at its declared size inside that capsule.
+            menuControl.menuStyle(.button).buttonStyle(.plain)
+        } else {
+            menuControl
+        }
+        #else
+        menuControl
+        #endif
+    }
+
+    private var menuControl: some View {
         Menu {
             if let menu {
                 LUINativeMenuActions(model: menu, backend: backend)
@@ -4442,6 +4542,26 @@ private struct LUIMenuTriggerView: View {
                 maxWidth: capsuleCell && iconOnly ? .infinity : nil,
                 maxHeight: capsuleCell ? .infinity : nil
             )
+            #if os(iOS)
+            .frame(
+                width: sizingCell?.surfaceWidth.map(CGFloat.init),
+                height: sizingCell?.surfaceHeight.map(CGFloat.init)
+            )
+            .frame(
+                minWidth: minimumExtent(
+                    fixed: sizingCell?.surfaceWidth,
+                    minimum: sizingCell?.surfaceMinWidth,
+                    maximum: sizingCell?.surfaceMaxWidth
+                ),
+                maxWidth: sizingCell?.surfaceMaxWidth.map(CGFloat.init),
+                minHeight: minimumExtent(
+                    fixed: sizingCell?.surfaceHeight,
+                    minimum: sizingCell?.surfaceMinHeight,
+                    maximum: sizingCell?.surfaceMaxHeight
+                ),
+                maxHeight: sizingCell?.surfaceMaxHeight.map(CGFloat.init)
+            )
+            #endif
             .contentShape(Rectangle())
         }
         .disabled(!model.isEnabled)
@@ -5118,20 +5238,7 @@ private struct LUIButtonView: View {
     }
 
     var body: some View {
-        styledButton
-            .controlSize(controlSize)
-            .frame(
-                maxWidth: LUIButtonVisualPolicy.fillsAvailableWidth(
-                    grow: model.property(.grow)?.doubleValue
-                ) ? .infinity : nil,
-                alignment: LUIButtonVisualPolicy.labelAlignment(
-                    textAlignment: model.property(.textAlignment)?.stringValue
-                )
-            )
-            .frame(
-                width: buttonWidth,
-                height: buttonHeight
-            )
+        sizedButton
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(verbatim: model.accessibilityLabel(in: backend)
                 ?? (model.text.isEmpty ? model.buttonIconName : model.text)))
@@ -5179,6 +5286,50 @@ private struct LUIButtonView: View {
     }
 
     @ViewBuilder
+    private var sizedButton: some View {
+        let control = styledButton
+            .controlSize(controlSize)
+            .frame(
+                maxWidth: LUIButtonVisualPolicy.fillsAvailableWidth(
+                    grow: model.property(.grow)?.doubleValue
+                ) ? .infinity : nil,
+                alignment: LUIButtonVisualPolicy.labelAlignment(
+                    textAlignment: model.property(.textAlignment)?.stringValue
+                )
+            )
+            .frame(
+                width: buttonWidth,
+                height: buttonHeight
+            )
+        if usesDefaultTouchCell {
+            control
+                // Reserve space after native styling so its padding does not enlarge chrome.
+                // A minimum keeps Dynamic Type intrinsic height unconstrained.
+                .frame(
+                    minWidth: minimumControlExtent(
+                        fixed: model.surfaceWidth,
+                        minimum: model.surfaceMinWidth,
+                        maximum: model.surfaceMaxWidth
+                    ),
+                    maxWidth: model.surfaceMaxWidth.map(CGFloat.init),
+                    minHeight: minimumControlExtent(
+                        fixed: model.surfaceHeight,
+                        minimum: model.surfaceMinHeight,
+                        maximum: model.surfaceMaxHeight
+                    ),
+                    maxHeight: model.surfaceMaxHeight.map(CGFloat.init)
+                )
+                .contentShape(Rectangle())
+                .modifier(LUIOptionalClipModifier(
+                    cornerRadius: 0,
+                    clipsContent: model.surfaceMaxWidth != nil || model.surfaceMaxHeight != nil
+                ))
+        } else {
+            control
+        }
+    }
+
+    @ViewBuilder
     private var styledButton: some View {
         if isTabTrigger {
             button
@@ -5217,7 +5368,7 @@ private struct LUIButtonView: View {
             ) {
                 button.buttonStyle(.borderless)
             } else if LUINavigationFormRowPolicy.usesAutomaticButtonStyle(
-                isNativeFormRow: isNativeFormRow,
+                isNativeFormRow: usesNativeWholeFormRow,
                 variant: model.buttonVariant
             ) {
                 button.foregroundStyle(.tint)
@@ -5337,9 +5488,17 @@ private struct LUIButtonView: View {
     }
 
     private var iconExtent: CGFloat {
-        min(LUIButtonVisualPolicy.iconExtent(buttonSize: model.buttonSize),
+        let visualExtent: CGFloat = usesDefaultTouchCell && isIconOnly && model.buttonSize == "default"
+            ? 20 : LUIButtonVisualPolicy.iconExtent(buttonSize: model.buttonSize)
+        let maximumWidth = usesDefaultTouchCell ? model.surfaceMaxWidth.map(CGFloat.init) : nil
+        let maximumHeight = usesDefaultTouchCell ? model.surfaceMaxHeight.map(CGFloat.init) : nil
+        return min(
+            visualExtent,
             buttonWidth ?? .greatestFiniteMagnitude,
-            buttonHeight ?? .greatestFiniteMagnitude)
+            buttonHeight ?? .greatestFiniteMagnitude,
+            maximumWidth ?? .greatestFiniteMagnitude,
+            maximumHeight ?? .greatestFiniteMagnitude
+        )
     }
 
     private var controlSize: ControlSize {
@@ -5359,9 +5518,12 @@ private struct LUIButtonView: View {
     }
 
     private var buttonWidth: CGFloat? {
+        // Explicit bounds own this axis, including size=icon. Do not retain
+        // its fixed fallback width underneath a caller's smaller hit cell.
+        let hasWidthBounds = model.surfaceMinWidth != nil || model.surfaceMaxWidth != nil
         let width = LUIButtonVisualPolicy.resolvedExtent(
             explicit: model.surfaceWidth,
-            fallback: LUIButtonVisualPolicy.defaultWidth(
+            fallback: usesDefaultTouchCell && hasWidthBounds ? nil : LUIButtonVisualPolicy.defaultWidth(
                 buttonSize: model.buttonSize,
                 usesMinimumTouchTarget: usesMinimumTouchTarget
             )
@@ -5371,6 +5533,32 @@ private struct LUIButtonView: View {
 
     private var isIconOnly: Bool {
         !model.buttonIconName.isEmpty && model.text.isEmpty
+    }
+
+    private var usesDefaultTouchCell: Bool {
+        usesMinimumTouchTarget && !inHoistedToolbar && !usesNativeWholeFormRow
+    }
+
+    // Only a direct default Form button uses the native automatic whole-row action.
+    // Explicit variants and nested controls need independent touch cells.
+    private var usesNativeWholeFormRow: Bool {
+        guard usesMinimumTouchTarget else { return isNativeFormRow }
+        guard LUINavigationFormRowPolicy.usesAutomaticButtonStyle(
+            isNativeFormRow: isNativeFormRow,
+            variant: model.buttonVariant
+        ), let parentID = model.parent,
+              let parent = backend.model(id: parentID) else { return false }
+        return LUINavigationFormSheetPolicy.isForm(
+            parent.property(.styleClass)?.stringValue
+        )
+    }
+
+    /// Explicit per-axis constraints opt out of the default 44pt minimum.
+    /// Small control size changes visual chrome, not the reserved hit cell.
+    private func minimumControlExtent(fixed: Int?, minimum: Int?, maximum: Int?) -> CGFloat? {
+        guard usesDefaultTouchCell else { return nil }
+        if let minimum { return CGFloat(minimum) }
+        return fixed == nil && maximum == nil ? 44 : nil
     }
 
     /// Hoisted icon-only controls keep the platform's 44pt bar-item hit target:
@@ -7449,6 +7637,38 @@ private struct LUISurfaceModifier: ViewModifier {
                 cornerRadius: radius,
                 clipsContent: clipsContent && !clipsInsideGlass
             ))
+            // Margin is space outside the visual box: outer padding applied
+            // after background/border/shadow/clip. leading/trailing stand in
+            // for left/right — identical in LTR and mirrored in RTL.
+            .padding(.top, marginTop)
+            .padding(.leading, marginLeading)
+            .padding(.bottom, marginBottom)
+            .padding(.trailing, marginTrailing)
+    }
+
+    /// CSS-style margin resolution: side ?? axis ?? shorthand ?? 0.
+    private var marginTop: CGFloat {
+        let base = model.property(.margin)?.intValue ?? 0
+        let vertical = model.property(.marginVertical)?.intValue ?? base
+        return CGFloat(model.property(.marginTop)?.intValue ?? vertical)
+    }
+
+    private var marginBottom: CGFloat {
+        let base = model.property(.margin)?.intValue ?? 0
+        let vertical = model.property(.marginVertical)?.intValue ?? base
+        return CGFloat(model.property(.marginBottom)?.intValue ?? vertical)
+    }
+
+    private var marginLeading: CGFloat {
+        let base = model.property(.margin)?.intValue ?? 0
+        let horizontal = model.property(.marginHorizontal)?.intValue ?? base
+        return CGFloat(model.property(.marginLeft)?.intValue ?? horizontal)
+    }
+
+    private var marginTrailing: CGFloat {
+        let base = model.property(.margin)?.intValue ?? 0
+        let horizontal = model.property(.marginHorizontal)?.intValue ?? base
+        return CGFloat(model.property(.marginRight)?.intValue ?? horizontal)
     }
 
     private func foregroundColor(_ name: String?) -> Color? {

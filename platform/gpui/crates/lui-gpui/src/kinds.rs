@@ -3195,6 +3195,11 @@ pub fn render_node(
             return div().into_any_element();
         }
     }
+    // The typed `display` prop gets the same treatment: "none" removes the
+    // node from layout entirely (not `invisible()`, which keeps the space).
+    if matches!(node.string_prop(Property::DisplayValue), Some("none")) {
+        return div().into_any_element();
+    }
     match kind {
         // Containers -----------------------------------------------------
         NodeKind::Root => {

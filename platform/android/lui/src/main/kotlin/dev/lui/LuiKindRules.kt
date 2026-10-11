@@ -575,10 +575,23 @@ internal object LuiKindRules {
                 value.numberValue?.let { it >= 0 && it <= 1 } == true &&
                     canContainChildren(kind)
             "display" ->
-                value.stringValue == "contents" &&
+                value.stringValue in setOf(
+                    "contents", "none", "inline-flex", "block", "inline",
+                    "inline-block",
+                ) &&
                     (kind == LuiNodeKind.box ||
                         kind == LuiNodeKind.column ||
                         kind == LuiNodeKind.row)
+            "flex-wrap" ->
+                value.stringValue in setOf("nowrap", "wrap") &&
+                    (kind == LuiNodeKind.box ||
+                        kind == LuiNodeKind.column ||
+                        kind == LuiNodeKind.row)
+            "list-style" ->
+                value.stringValue in setOf("none", "disc", "decimal") &&
+                    (kind == LuiNodeKind.list ||
+                        kind == LuiNodeKind.virtualList ||
+                        kind == LuiNodeKind.listItem)
             "tooltip", "tooltip-keys" ->
                 value is LuiWireValue.Str &&
                     (kind == LuiNodeKind.button ||
@@ -646,6 +659,12 @@ internal object LuiKindRules {
                         isHorizontalGroupKind(kind))
             "padding" ->
                 value is LuiWireValue.IntValue &&
+                    kind != LuiNodeKind.avatar &&
+                    kind != LuiNodeKind.tooltip
+            // margins may be negative — collapsing adjacent space is legitimate
+            "margin", "margin-horizontal", "margin-vertical",
+            "margin-top", "margin-right", "margin-bottom", "margin-left" ->
+                value.intValue != null &&
                     kind != LuiNodeKind.avatar &&
                     kind != LuiNodeKind.tooltip
             "padding-horizontal", "padding-vertical" ->
@@ -790,9 +809,13 @@ internal object LuiKindRules {
                 value.intValue?.let { it >= 0 } == true && kind == LuiNodeKind.list
             "scroll-animated", "track-visible-range" ->
                 value is LuiWireValue.Bool && kind == LuiNodeKind.list
-            "font-size", "line-height" ->
+            "font-size", "line-height", "font-family" ->
                 value is LuiWireValue.Str &&
                     value.stringValue?.isNotBlank() == true &&
+                    isTextAppearanceKind(kind)
+            "text-decoration" ->
+                value is LuiWireValue.Str &&
+                    textDecorationSupported(value.stringValue) &&
                     isTextAppearanceKind(kind)
             "font-weight" ->
                 value.intValue?.let { it in 1..1000 } == true &&
@@ -813,7 +836,9 @@ internal object LuiKindRules {
                     kind != LuiNodeKind.virtualList &&
                     kind != LuiNodeKind.tooltip
             "position" ->
-                value.stringValue in setOf("static", "relative", "absolute", "fixed") &&
+                value.stringValue in setOf(
+                    "static", "relative", "absolute", "fixed", "sticky",
+                ) &&
                     isPositionedKind(kind)
             "inset", "inset-top", "inset-right", "inset-bottom", "inset-left" ->
                 value.numberValue?.isFinite() == true && isPositionedKind(kind)
@@ -827,6 +852,7 @@ internal object LuiKindRules {
                     kind != LuiNodeKind.tooltip &&
                     !isModalSurface(kind)
             "hover-background", "pressed-background", "selected-background",
+            "hover-foreground", "hover-border",
             "hover-shadow", "pressed-shadow", "focus-shadow", "selected-shadow",
             "selected-hover-shadow" ->
                 value is LuiWireValue.Str &&
@@ -835,11 +861,117 @@ internal object LuiKindRules {
             "hover-opacity", "pressed-opacity", "disabled-opacity" ->
                 value.numberValue?.let { it.isFinite() && it >= 0 && it <= 1 } == true &&
                     isPositionedKind(kind)
+            "transition" ->
+                value is LuiWireValue.Str &&
+                    transitionSupported(value.stringValue) &&
+                    isPositionedKind(kind)
             "width-viewport", "height-viewport", "min-width-viewport",
             "max-width-viewport", "min-height-viewport", "max-height-viewport" ->
                 value.numberValue?.let { it.isFinite() && it > 0 && it <= 1 } == true &&
                     kind != LuiNodeKind.tooltip
             else -> false
         }
+    }
+
+    // `transition` accepts a comma-separated list of
+    // "<property> <duration> [<easing>] [<delay>]" segments — literally the
+    // CSS shorthand, which the web backend emits verbatim; this host
+    // applies state changes instantly, so the value is admission-checked
+    // but never rendered. Commas inside easing parens do not split
+    // segments. Mirrors `Lui_protocol.transition_supported`.
+    private fun transitionSupported(value: String?): Boolean {
+        if (value.isNullOrBlank()) return false
+        var depth = 0
+        val segments = mutableListOf<String>()
+        var current = StringBuilder()
+        for (c in value) {
+            if (c == '(') depth += 1 else if (c == ')') depth = (depth - 1).coerceAtLeast(0)
+            if (c == ',' && depth == 0) {
+                segments.add(current.toString())
+                current = StringBuilder()
+            } else {
+                current.append(c)
+            }
+        }
+        segments.add(current.toString())
+        return segments.all { segment ->
+            val tokens = cssTokens(segment)
+            val property = tokens.firstOrNull()
+            if (property == null || tokens.size < 2 || !cssIdentSupported(property)) {
+                false
+            } else {
+                val rest = tokens.drop(1)
+                val times = rest.count { cssTimeSupported(it) }
+                times in 1..2 &&
+                    rest.all { token ->
+                        cssTimeSupported(token) || run {
+                            val open = token.indexOf('(')
+                            if (open > 0 && token.length > open + 2 && token.endsWith(')')) {
+                                cssIdentSupported(token.substring(0, open)) &&
+                                    token.substring(open + 1, token.length - 1).isNotEmpty()
+                            } else {
+                                cssIdentSupported(token)
+                            }
+                        }
+                    }
+            }
+        }
+    }
+
+    // CSS <ident>: `[-_a-zA-Z][-_a-zA-Z0-9]*` — a leading `-` needs a
+    // letter, `_` or `-` next.
+    private fun cssIdentSupported(value: String): Boolean {
+        if (value.isEmpty()) return false
+        val alpha = { c: Char -> c in 'a'..'z' || c in 'A'..'Z' || c == '_' }
+        val headOk =
+            alpha(value[0]) ||
+                (value[0] == '-' && value.length > 1 && (alpha(value[1]) || value[1] == '-'))
+        return headOk && value.drop(1).all { alpha(it) || it.isDigit() || it == '-' }
+    }
+
+    // CSS <time>: a non-negative number with an `s`/`ms` unit; a bare `0`
+    // is also valid.
+    private fun cssTimeSupported(token: String): Boolean {
+        if (token == "0") return true
+        val cut =
+            when {
+                token.length > 2 && token.endsWith("ms") -> 2
+                token.length > 1 && token.endsWith("s") -> 1
+                else -> return false
+            }
+        val number = token.dropLast(cut).toDoubleOrNull() ?: return false
+        return number >= 0 && number.isFinite()
+    }
+
+    // Whitespace-separated tokens of a transition segment; parentheses
+    // keep functional easing argument lists inside a single token.
+    private fun cssTokens(value: String): List<String> {
+        val tokens = mutableListOf<String>()
+        var depth = 0
+        var current = StringBuilder()
+        for (c in value) {
+            if ((c == ' ' || c == '\t' || c == '\n' || c == '\r') && depth == 0) {
+                if (current.isNotEmpty()) {
+                    tokens.add(current.toString())
+                    current = StringBuilder()
+                }
+                continue
+            }
+            if (c == '(') depth += 1 else if (c == ')' && depth > 0) depth -= 1
+            current.append(c)
+        }
+        if (current.isNotEmpty()) tokens.add(current.toString())
+        return tokens
+    }
+
+    // `text-decoration` accepts "none" alone, or a space-separated
+    // combination of underline/overline/line-through (mirrors the OCaml
+    // `text_decoration_supported`).
+    private fun textDecorationSupported(value: String?): Boolean {
+        val tokens = value?.split(' ')?.filter { it.isNotBlank() } ?: return false
+        if (tokens == listOf("none")) return true
+        return tokens.isNotEmpty() &&
+            "none" !in tokens &&
+            tokens.all { it in setOf("underline", "line-through", "overline") }
     }
 }

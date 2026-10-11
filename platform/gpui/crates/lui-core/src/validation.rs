@@ -18,6 +18,121 @@ fn slug(value: &str) -> bool {
         })
 }
 
+// CSS <ident>: `[-_a-zA-Z][-_a-zA-Z0-9]*` — a leading `-` needs a letter,
+// `_` or `-` next. Mirrors `Lui_protocol.css_ident_supported`.
+fn css_ident_supported(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.is_empty() {
+        return false;
+    }
+    let alpha = |c: u8| c.is_ascii_alphabetic() || c == b'_';
+    let head_ok = alpha(bytes[0])
+        || (bytes[0] == b'-' && bytes.len() > 1 && (alpha(bytes[1]) || bytes[1] == b'-'));
+    head_ok
+        && bytes[1..]
+            .iter()
+            .all(|&c| alpha(c) || c.is_ascii_digit() || c == b'-')
+}
+
+// CSS <time>: a non-negative number with an `s`/`ms` unit; a bare `0` is
+// also valid.
+fn css_time_supported(token: &str) -> bool {
+    if token == "0" {
+        return true;
+    }
+    let cut = if token.len() > 2 && token.ends_with("ms") {
+        2
+    } else if token.len() > 1 && token.ends_with('s') {
+        1
+    } else {
+        0
+    };
+    cut != 0
+        && token[..token.len() - cut]
+            .parse::<f64>()
+            .is_ok_and(|n| n >= 0.0 && n.is_finite())
+}
+
+// Whitespace-separated tokens of a transition segment; parentheses keep
+// functional easing argument lists (e.g. cubic-bezier(0.4, 0, 0.2, 1))
+// inside a single token.
+fn css_tokens(value: &str) -> Vec<&str> {
+    let bytes = value.as_bytes();
+    let is_ws = |c: u8| matches!(c, b' ' | b'\t' | b'\n' | b'\r');
+    let mut tokens = Vec::new();
+    let mut depth = 0u32;
+    let mut i = 0;
+    while i < bytes.len() {
+        if is_ws(bytes[i]) && depth == 0 {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < bytes.len() && !(is_ws(bytes[i]) && depth == 0) {
+            if bytes[i] == b'(' {
+                depth += 1;
+            } else if bytes[i] == b')' && depth > 0 {
+                depth -= 1;
+            }
+            i += 1;
+        }
+        tokens.push(&value[start..i]);
+    }
+    tokens
+}
+
+// `transition` accepts a comma-separated list of
+// "<property> <duration> [<easing>] [<delay>]" segments — literally the
+// CSS shorthand, which the web backend emits verbatim; this host applies
+// state changes instantly, so the value is admission-checked but never
+// rendered. Commas inside easing parens do not split segments.
+// Mirrors `Lui_protocol.transition_supported`.
+fn transition_supported(value: &str) -> bool {
+    if value.trim().is_empty() {
+        return false;
+    }
+    let bytes = value.as_bytes();
+    let mut depth = 0u32;
+    let mut start = 0;
+    let mut segments = Vec::new();
+    for i in 0..bytes.len() {
+        match bytes[i] {
+            b'(' => depth += 1,
+            b')' => depth = depth.saturating_sub(1),
+            b',' if depth == 0 => {
+                segments.push(&value[start..i]);
+                start = i + 1;
+            }
+            _ => (),
+        }
+    }
+    segments.push(&value[start..]);
+    segments.iter().all(|segment| {
+        let tokens = css_tokens(segment);
+        let Some((property, rest)) = tokens.split_first() else {
+            return false;
+        };
+        if rest.is_empty() || !css_ident_supported(property) {
+            return false;
+        }
+        let times = rest.iter().filter(|t| css_time_supported(t)).count();
+        (1..=2).contains(&times)
+            && rest.iter().all(|&token| {
+                css_time_supported(token)
+                    || match token.find('(') {
+                        Some(open) => {
+                            open > 0
+                                && token.len() > open + 2
+                                && token.ends_with(')')
+                                && css_ident_supported(&token[..open])
+                                && !token[open + 1..token.len() - 1].is_empty()
+                        }
+                        None => css_ident_supported(token),
+                    }
+            })
+    })
+}
+
 fn attrs(value: &str) -> bool {
     value.is_empty()
         || value.split('\u{1e}').all(|record| {
@@ -45,6 +160,7 @@ pub(crate) fn property(kind: K, property: P, value: Option<&Value>) -> Result<()
                     || value.strip_prefix("app:").is_some_and(slug)
             }
             P::DataAttrs => attrs(value),
+            P::Transition => transition_supported(value),
             P::PickerRequest | P::PickerCompletion => true,
             P::RoleValue if kind == K::Popover => value == "menu",
             P::SizeValue if kind == K::TableCell => {
@@ -88,7 +204,18 @@ pub(crate) fn property(kind: K, property: P, value: Option<&Value>) -> Result<()
                 | P::Visible
         ),
         Value::Int(number) => match property {
-            P::PaddingValue | P::PickerRequest | P::PickerCompletion | P::ZIndex => true,
+            // margins may be negative — collapsing adjacent space is legitimate
+            P::PaddingValue
+            | P::PickerRequest
+            | P::PickerCompletion
+            | P::ZIndex
+            | P::MarginValue
+            | P::MarginHorizontal
+            | P::MarginVertical
+            | P::MarginTop
+            | P::MarginRight
+            | P::MarginBottom
+            | P::MarginLeft => true,
             P::HeadingLevel => (1..=6).contains(number),
             P::FontWeight => (1..=1000).contains(number),
             P::TooltipDelay | P::DurationValue => (0..=i32::MAX as i64).contains(number),

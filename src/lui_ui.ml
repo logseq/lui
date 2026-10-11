@@ -400,6 +400,19 @@ let padding_horizontal context node padding =
   int_property context node PaddingHorizontal padding
 let padding_vertical context node padding =
   int_property context node PaddingVertical padding
+let margin context node margin = int_property context node MarginValue margin
+let margin_horizontal context node margin =
+  int_property context node MarginHorizontal margin
+let margin_vertical context node margin =
+  int_property context node MarginVertical margin
+let margin_top context node margin =
+  int_property context node MarginTop margin
+let margin_right context node margin =
+  int_property context node MarginRight margin
+let margin_bottom context node margin =
+  int_property context node MarginBottom margin
+let margin_left context node margin =
+  int_property context node MarginLeft margin
 let background context node color = string_property context node BackgroundValue color
 let foreground context node color = string_property context node ForegroundValue color
 let border_color context node color = string_property context node BorderColorValue color
@@ -416,6 +429,10 @@ let font_weight context node weight = int_property context node FontWeight weigh
 let line_height context node height = string_property context node LineHeight height
 let letter_spacing context node spacing =
   float_property context node LetterSpacing spacing
+let font_family context node value =
+  string_property context node FontFamily value
+let text_decoration context node value =
+  string_property context node TextDecoration value
 let position context node value = string_property context node Position value
 let inset context node inset = float_property context node Inset inset
 let inset_top context node inset = float_property context node InsetTop inset
@@ -429,6 +446,11 @@ let white_space context node value = string_property context node WhiteSpace val
 let text_overflow context node value =
   string_property context node TextOverflow value
 let overflow context node value = string_property context node Overflow value
+let flex_wrap context node value = string_property context node FlexWrap value
+let transition context node value =
+  string_property context node Transition value
+let list_style context node value =
+  string_property context node ListStyle value
 let user_select context node value = string_property context node UserSelect value
 let cursor context node value = string_property context node Cursor value
 let shadow context node value = string_property context node Shadow value
@@ -438,6 +460,10 @@ let hover_opacity context node opacity =
   float_property context node HoverOpacity opacity
 let hover_shadow context node value =
   string_property context node HoverShadow value
+let hover_foreground context node color =
+  string_property context node HoverForeground color
+let hover_border context node color =
+  string_property context node HoverBorder color
 let pressed_background context node color =
   string_property context node PressedBackground color
 let pressed_opacity context node opacity =

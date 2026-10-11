@@ -119,6 +119,26 @@ internal fun Modifier.luiChrome(node: LuiNode): Modifier {
     val minHeight = node.prop("min-height")?.intValue ?: 0
     val maxHeight = node.prop("max-height")?.intValue ?: Int.MAX_VALUE
     var modifier: Modifier = this
+    // Margin = space outside the visual box: applied first so background,
+    // border and clip stay inside it. Compose PaddingValues can't go
+    // negative — negative margins are clamped to 0 (nearest supported form;
+    // collapsing space is unexpressible on this backend). start/end stand in
+    // for left/right — identical in LTR and mirrored in RTL.
+    val marginBase = node.prop("margin")?.intValue ?: 0
+    val marginH = node.prop("margin-horizontal")?.intValue ?: marginBase
+    val marginV = node.prop("margin-vertical")?.intValue ?: marginBase
+    val marginTop = maxOf(0, node.prop("margin-top")?.intValue ?: marginV)
+    val marginBottom = maxOf(0, node.prop("margin-bottom")?.intValue ?: marginV)
+    val marginStart = maxOf(0, node.prop("margin-left")?.intValue ?: marginH)
+    val marginEnd = maxOf(0, node.prop("margin-right")?.intValue ?: marginH)
+    if (marginTop > 0 || marginBottom > 0 || marginStart > 0 || marginEnd > 0) {
+        modifier = modifier.padding(
+            start = marginStart.dp,
+            top = marginTop.dp,
+            end = marginEnd.dp,
+            bottom = marginBottom.dp,
+        )
+    }
     if (width != null) modifier = modifier.width(width.dp)
     if (height != null) modifier = modifier.height(height.dp)
     if (minWidth > 0 || maxWidth != Int.MAX_VALUE || minHeight > 0 || maxHeight != Int.MAX_VALUE) {

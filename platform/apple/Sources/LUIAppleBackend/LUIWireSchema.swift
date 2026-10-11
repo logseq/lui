@@ -103,6 +103,13 @@ enum LUIProperty: String, Decodable, Hashable {
     case padding = "padding"
     case paddingHorizontal = "padding-horizontal"
     case paddingVertical = "padding-vertical"
+    case margin = "margin"
+    case marginHorizontal = "margin-horizontal"
+    case marginVertical = "margin-vertical"
+    case marginTop = "margin-top"
+    case marginRight = "margin-right"
+    case marginBottom = "margin-bottom"
+    case marginLeft = "margin-left"
     case background = "background"
     case foreground = "foreground"
     case borderColor = "border-color"
@@ -242,6 +249,13 @@ enum LUIProperty: String, Decodable, Hashable {
     case maxWidthViewport = "max-width-viewport"
     case minHeightViewport = "min-height-viewport"
     case maxHeightViewport = "max-height-viewport"
+    case fontFamily = "font-family"
+    case textDecoration = "text-decoration"
+    case listStyle = "list-style"
+    case flexWrap = "flex-wrap"
+    case hoverForeground = "hover-foreground"
+    case hoverBorder = "hover-border"
+    case transition = "transition"
 }
 
 enum LUISchemaMatrix {
@@ -253,7 +267,7 @@ enum LUISchemaMatrix {
         .timelineItem: [.title, .description, .meta, .indicator, .icon, .variant, .connector, .selected, .pressEnabled, .pointerEnabled],
         .inputGroup: [.accessibilityLabel, .width, .height, .minWidth, .grow, .pointerEnabled],
         .inputGroupActions: [.gap, .pointerEnabled],
-        .toast: [.duration, .accessibilityLabel, .styleClass, .dataAttrs, .pointerEnabled, .padding, .paddingHorizontal, .paddingVertical],
+        .toast: [.duration, .accessibilityLabel, .styleClass, .dataAttrs, .pointerEnabled, .padding, .paddingHorizontal, .paddingVertical, .margin, .marginHorizontal, .marginVertical, .marginTop, .marginRight, .marginBottom, .marginLeft],
         .toolbar: [.orientation, .accessibilityLabel, .gap, .styleClass, .dataAttrs, .placement, .pointerEnabled],
         .bottomTabs: [.accessibilityLabel, .styleClass, .dataAttrs, .grow, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight, .pointerEnabled],
         .bottomTab: [.title, .icon, .selected, .enabled, .pressEnabled, .pointerEnabled],
@@ -263,7 +277,7 @@ enum LUISchemaMatrix {
         .swipeAction: [.text, .icon, .variant, .edge, .enabled, .background, .pressEnabled, .pointerEnabled],
         .filePicker: [.request, .types, .multiple, .source, .completion, .pickerAccept, .pickerDirectory, .enabled, .appearEnabled, .pointerEnabled],
         .filePreview: [.path, .pointerEnabled],
-        .kbd: [.text, .styleClass, .dataAttrs, .pointerEnabled, .fontSize, .fontWeight, .lineHeight, .letterSpacing, .whiteSpace, .textOverflow, .userSelect, .cursor, .shadow, .hoverBackground, .hoverOpacity, .hoverShadow, .pressedBackground, .pressedOpacity, .pressedShadow, .focusShadow, .selectedBackground, .selectedShadow, .selectedHoverShadow, .disabledOpacity],
+        .kbd: [.text, .styleClass, .dataAttrs, .pointerEnabled, .fontSize, .fontWeight, .lineHeight, .letterSpacing, .fontFamily, .textDecoration, .whiteSpace, .textOverflow, .userSelect, .cursor, .shadow, .hoverBackground, .hoverOpacity, .hoverShadow, .pressedBackground, .pressedOpacity, .pressedShadow, .focusShadow, .selectedBackground, .selectedShadow, .selectedHoverShadow, .disabledOpacity, .transition],
     ]
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [

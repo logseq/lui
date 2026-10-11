@@ -123,6 +123,13 @@ type property =
   | PaddingValue
   | PaddingHorizontal
   | PaddingVertical
+  | MarginValue
+  | MarginHorizontal
+  | MarginVertical
+  | MarginTop
+  | MarginRight
+  | MarginBottom
+  | MarginLeft
   | BackgroundValue
   | ForegroundValue
   | BorderColorValue
@@ -262,6 +269,13 @@ type property =
   | MaxWidthViewport
   | MinHeightViewport
   | MaxHeightViewport
+  | FontFamily
+  | TextDecoration
+  | ListStyle
+  | FlexWrap
+  | HoverForeground
+  | HoverBorder
+  | Transition
 
 module Property_map : Map.S with type key = property
 

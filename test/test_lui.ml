@@ -2256,6 +2256,29 @@ let test_vocab_batch2 () =
     (property_value_supported DisplayValue (StringValue "contents"));
   Alcotest.(check bool) "grid rejected" false
     (property_value_supported DisplayValue (StringValue "grid"));
+  List.iter
+    (fun value ->
+       Alcotest.(check bool)
+         (Printf.sprintf "display %s accepted" value)
+         true
+         (property_value_supported DisplayValue (StringValue value)))
+    [ "none"; "inline-flex"; "block"; "inline"; "inline-block" ];
+  Alcotest.(check bool) "display rejected on text" false
+    (property_supported Text DisplayValue);
+  Alcotest.(check bool) "flex-wrap on row" true
+    (property_supported Row FlexWrap);
+  Alcotest.(check bool) "flex-wrap on column" true
+    (property_supported Column FlexWrap);
+  Alcotest.(check bool) "flex-wrap on box" true
+    (property_supported Box FlexWrap);
+  Alcotest.(check bool) "flex-wrap rejected on list" false
+    (property_supported ListContainer FlexWrap);
+  Alcotest.(check bool) "flex-wrap wrap" true
+    (property_value_supported FlexWrap (StringValue "wrap"));
+  Alcotest.(check bool) "flex-wrap nowrap" true
+    (property_value_supported FlexWrap (StringValue "nowrap"));
+  Alcotest.(check bool) "flex-wrap rejects wrap-reverse" false
+    (property_value_supported FlexWrap (StringValue "wrap-reverse"));
   (* ~tooltip/~shortcut_hint *)
   Alcotest.(check bool) "tooltip on button" true
     (property_supported Button TooltipText);
@@ -2422,8 +2445,104 @@ let test_visual_appearance_props () =
     (property_value_supported LetterSpacing (FloatValue nan));
   Alcotest.(check bool) "position enum" true
     (property_value_supported Position (StringValue "absolute"));
-  Alcotest.(check bool) "position rejects sticky" false
+  Alcotest.(check bool) "position accepts sticky" true
     (property_value_supported Position (StringValue "sticky"));
+  Alcotest.(check bool) "position rejects junk" false
+    (property_value_supported Position (StringValue "float"));
+  (* ~font_family / ~text_decoration: typography props, same kind set as
+     font-size (incl. the restrictive kbd kind via its matrix entry). *)
+  Alcotest.(check bool) "font-family on text" true
+    (property_supported Text FontFamily);
+  Alcotest.(check bool) "font-family on row" true
+    (property_supported Row FontFamily);
+  Alcotest.(check bool) "font-family on kbd" true
+    (property_supported Kbd FontFamily);
+  Alcotest.(check bool) "font-family rejected on icon" false
+    (property_supported Icon FontFamily);
+  Alcotest.(check bool) "font-family non-blank" true
+    (property_value_supported FontFamily (StringValue "IBM Plex Mono"));
+  Alcotest.(check bool) "font-family rejects blank" false
+    (property_value_supported FontFamily (StringValue "  "));
+  Alcotest.(check bool) "text-decoration on text" true
+    (property_supported Text TextDecoration);
+  Alcotest.(check bool) "text-decoration on kbd" true
+    (property_supported Kbd TextDecoration);
+  Alcotest.(check bool) "text-decoration underline" true
+    (property_value_supported TextDecoration (StringValue "underline"));
+  Alcotest.(check bool) "text-decoration none" true
+    (property_value_supported TextDecoration (StringValue "none"));
+  Alcotest.(check bool) "text-decoration combination" true
+    (property_value_supported TextDecoration
+       (StringValue "underline line-through"));
+  Alcotest.(check bool) "text-decoration none+underline rejected" false
+    (property_value_supported TextDecoration
+       (StringValue "none underline"));
+  Alcotest.(check bool) "text-decoration junk rejected" false
+    (property_value_supported TextDecoration (StringValue "wavy"));
+  (* ~list_marker on list-ish kinds *)
+  Alcotest.(check bool) "list-style on list" true
+    (property_supported ListContainer ListStyle);
+  Alcotest.(check bool) "list-style on virtual-list" true
+    (property_supported VirtualList ListStyle);
+  Alcotest.(check bool) "list-style on list-item" true
+    (property_supported ListItem ListStyle);
+  Alcotest.(check bool) "list-style rejected on row" false
+    (property_supported Row ListStyle);
+  Alcotest.(check bool) "list-style disc" true
+    (property_value_supported ListStyle (StringValue "disc"));
+  Alcotest.(check bool) "list-style rejects circle" false
+    (property_value_supported ListStyle (StringValue "circle"));
+  (* hover foreground/border state channels ride the hover-* admission *)
+  Alcotest.(check bool) "hover-foreground on text" true
+    (property_supported Text HoverForeground);
+  Alcotest.(check bool) "hover-border on row" true
+    (property_supported Row HoverBorder);
+  Alcotest.(check bool) "hover-foreground rejected on root" false
+    (property_supported Root HoverForeground);
+  Alcotest.(check bool) "hover-border rejected on tooltip" false
+    (property_supported Tooltip HoverBorder);
+  Alcotest.(check bool) "hover-foreground non-blank" true
+    (property_value_supported HoverForeground (StringValue "white"));
+  Alcotest.(check bool) "hover-border non-blank" true
+    (property_value_supported HoverBorder (StringValue "blue-500"));
+  (* ~transition: CSS shorthand string, same admission as the state
+     channels above (incl. the restrictive kbd kind). *)
+  Alcotest.(check bool) "transition on text" true
+    (property_supported Text Transition);
+  Alcotest.(check bool) "transition on row" true
+    (property_supported Row Transition);
+  Alcotest.(check bool) "transition on kbd" true
+    (property_supported Kbd Transition);
+  Alcotest.(check bool) "transition rejected on root" false
+    (property_supported Root Transition);
+  Alcotest.(check bool) "transition rejected on tooltip" false
+    (property_supported Tooltip Transition);
+  Alcotest.(check bool) "transition rejected on dialog" false
+    (property_supported Dialog Transition);
+  Alcotest.(check bool) "transition simple" true
+    (property_value_supported Transition (StringValue "opacity 0.15s ease"));
+  Alcotest.(check bool) "transition with delay" true
+    (property_value_supported Transition
+       (StringValue "transform 0.2s ease-in-out 0.05s"));
+  Alcotest.(check bool) "transition cubic-bezier commas" true
+    (property_value_supported Transition
+       (StringValue "opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1)"));
+  Alcotest.(check bool) "transition list" true
+    (property_value_supported Transition
+       (StringValue "background-color 0.15s ease, border-color 0.15s ease"));
+  Alcotest.(check bool) "transition ms unit" true
+    (property_value_supported Transition (StringValue "opacity 150ms ease"));
+  Alcotest.(check bool) "transition empty rejected" false
+    (property_value_supported Transition (StringValue ""));
+  Alcotest.(check bool) "transition no duration rejected" false
+    (property_value_supported Transition (StringValue "opacity ease"));
+  Alcotest.(check bool) "transition junk property rejected" false
+    (property_value_supported Transition (StringValue "0opacity 0.15s"));
+  Alcotest.(check bool) "transition junk token rejected" false
+    (property_value_supported Transition
+       (StringValue "opacity 0.15s red()"));
+  Alcotest.(check bool) "transition trailing comma rejected" false
+    (property_value_supported Transition (StringValue "opacity 0.15s ease,"));
   Alcotest.(check bool) "inset finite" true
     (property_value_supported Inset (FloatValue 0.0));
   Alcotest.(check bool) "inset non-finite rejected" false
@@ -3682,6 +3801,52 @@ let test_drive_scenarios () =
   run_drive_scenario "counter.drive"
     (drive_mount ~initial:0 ~reducer:counter_reducer ~view:counter_view ())
 
+let test_margin_props () =
+  let open Lui_protocol in
+  let margins =
+    [ MarginValue; MarginHorizontal; MarginVertical; MarginTop;
+      MarginRight; MarginBottom; MarginLeft ]
+  in
+  List.iter
+    (fun property ->
+       Alcotest.(check bool) "margin on box" true
+         (property_supported Box property);
+       Alcotest.(check bool) "margin not on avatar" false
+         (property_supported Avatar property);
+       Alcotest.(check bool) "margin not on tooltip" false
+         (property_supported Tooltip property);
+       Alcotest.(check bool) "margin on toast" true
+         (property_supported Toast property);
+       (* margins may be negative — collapsing adjacent space *)
+       Alcotest.(check bool) "margin accepts negative" true
+         (property_value_supported property (IntValue (-8)));
+       Alcotest.(check bool) "margin rejects string" false
+         (property_value_supported property (StringValue "8")))
+    margins
+
+let test_margin_wire_props () =
+  let s =
+    drive_mount ~initial:()
+      ~reducer:(fun model _action -> model)
+      ~view:(fun _context _model_source _send ->
+         Lui_elements.column ~margin:4 ~margin_horizontal:8
+           ~margin_vertical:12 ~margin_top:1 ~margin_right:2 ~margin_bottom:3
+           ~margin_left:(-4)
+           [ Lui_elements.text ~value:"x" [] ])
+      ()
+  in
+  let column = drive_node s (Drive.Model.Kind "column") in
+  let check name value =
+    Alcotest.(check bool) name true (drive_prop s column name = Some value)
+  in
+  check "margin" (Lui_protocol.IntValue 4);
+  check "margin-horizontal" (Lui_protocol.IntValue 8);
+  check "margin-vertical" (Lui_protocol.IntValue 12);
+  check "margin-top" (Lui_protocol.IntValue 1);
+  check "margin-right" (Lui_protocol.IntValue 2);
+  check "margin-bottom" (Lui_protocol.IntValue 3);
+  check "margin-left" (Lui_protocol.IntValue (-4))
+
 let test_toast_padding () =
   let open Lui_protocol in
   List.iter (fun property ->
@@ -3731,6 +3896,8 @@ let () =
         ] );
       ( "protocol",
         [
+          Alcotest.test_case "margin prop family" `Quick test_margin_props;
+          Alcotest.test_case "margin wire props" `Quick test_margin_wire_props;
           Alcotest.test_case "toast padding" `Quick test_toast_padding;
           Alcotest.test_case "helpers" `Quick test_protocol_helpers;
           Alcotest.test_case "menu-trigger rules" `Quick

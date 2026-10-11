@@ -277,7 +277,9 @@ enum LUIWireValue: Decodable, Equatable {
         case .alignment:
             guard let value = stringValue else { return false }
             return Self.overlayAlignments.contains(value)
-        case .gap, .padding:
+        case .gap, .padding,
+             .margin, .marginHorizontal, .marginVertical,
+             .marginTop, .marginRight, .marginBottom, .marginLeft:
             return intValue != nil
         case .alt:
             return stringValue != nil
@@ -298,7 +300,8 @@ enum LUIWireValue: Decodable, Equatable {
             return value.isFinite && value >= 0 && value <= 1
         case .display:
             guard let value = stringValue else { return false }
-            return value == "contents"
+            return ["contents", "none", "inline-flex", "block", "inline",
+                    "inline-block"].contains(value)
         case .tooltip, .tooltipKeys, .pickerAccept:
             return stringValue != nil
         case .inputType:
@@ -308,9 +311,22 @@ enum LUIWireValue: Decodable, Equatable {
             return boolValue != nil
         case .fontSize, .lineHeight, .shadow, .hoverBackground, .pressedBackground,
              .selectedBackground, .hoverShadow, .pressedShadow, .focusShadow,
-             .selectedShadow, .selectedHoverShadow:
+             .selectedShadow, .selectedHoverShadow, .fontFamily,
+             .hoverForeground, .hoverBorder:
             guard let value = stringValue else { return false }
             return !value.trimmingCharacters(in: .whitespaces).isEmpty
+        case .textDecoration:
+            guard let value = stringValue else { return false }
+            return Self.textDecorationSupported(value)
+        case .listStyle:
+            guard let value = stringValue else { return false }
+            return ["none", "disc", "decimal"].contains(value)
+        case .flexWrap:
+            guard let value = stringValue else { return false }
+            return value == "nowrap" || value == "wrap"
+        case .transition:
+            guard let value = stringValue else { return false }
+            return Self.transitionSupported(value)
         case .fontWeight:
             guard let value = intValue else { return false }
             return value >= 1 && value <= 1000
@@ -319,7 +335,8 @@ enum LUIWireValue: Decodable, Equatable {
             return value.isFinite
         case .position:
             guard let value = stringValue else { return false }
-            return ["static", "relative", "absolute", "fixed"].contains(value)
+            return ["static", "relative", "absolute", "fixed", "sticky"]
+                .contains(value)
         case .zIndex:
             return intValue != nil
         case .whiteSpace:
@@ -353,6 +370,114 @@ enum LUIWireValue: Decodable, Equatable {
         }
     }
 
+
+    /// `text-decoration` accepts "none" alone, or a space-separated
+    /// combination of underline/overline/line-through (mirrors the OCaml
+    /// `text_decoration_supported`).
+    private static func textDecorationSupported(_ value: String) -> Bool {
+        let tokens = value.split(separator: " ").map(String.init)
+        if tokens == ["none"] { return true }
+        return !tokens.isEmpty && !tokens.contains("none")
+            && tokens.allSatisfy {
+                ["underline", "line-through", "overline"].contains($0)
+            }
+    }
+
+    /// `transition` accepts a comma-separated list of
+    /// "<property> <duration> [<easing>] [<delay>]" segments — literally the
+    /// CSS shorthand, which the web backend emits verbatim; this host
+    /// applies state changes instantly, so the value is admission-checked
+    /// but never rendered. Commas inside easing parens do not split
+    /// segments. Mirrors `Lui_protocol.transition_supported`.
+    private static func transitionSupported(_ value: String) -> Bool {
+        if value.trimmingCharacters(in: .whitespaces).isEmpty { return false }
+        var depth = 0
+        var segments: [String] = []
+        var current = ""
+        for c in value {
+            if c == "(" { depth += 1 }
+            else if c == ")" { depth = max(0, depth - 1) }
+            if c == "," && depth == 0 {
+                segments.append(current)
+                current = ""
+            } else {
+                current.append(c)
+            }
+        }
+        segments.append(current)
+        return segments.allSatisfy { segment in
+            let tokens = cssTokens(segment)
+            guard let property = tokens.first, tokens.count > 1,
+                  cssIdentSupported(property) else { return false }
+            let rest = tokens.dropFirst()
+            let times = rest.filter { cssTimeSupported($0) }.count
+            guard times >= 1 && times <= 2 else { return false }
+            return rest.allSatisfy { token in
+                if cssTimeSupported(token) { return true }
+                if let open = token.firstIndex(of: "(") {
+                    guard open != token.startIndex, token.hasSuffix(")") else {
+                        return false
+                    }
+                    let name = String(token[..<open])
+                    let args = String(token[token.index(after: open)..<token.index(before: token.endIndex)])
+                    return cssIdentSupported(name) && !args.isEmpty
+                }
+                return cssIdentSupported(token)
+            }
+        }
+    }
+
+    /// CSS <ident>: `[-_a-zA-Z][-_a-zA-Z0-9]*` — a leading `-` needs a
+    /// letter, `_` or `-` next.
+    private static func cssIdentSupported(_ value: String) -> Bool {
+        guard let first = value.first else { return false }
+        let headOK = isCssAlpha(first)
+            || (first == "-" && value.count > 1 && {
+                let second = value[value.index(after: value.startIndex)]
+                return isCssAlpha(second) || second == "-"
+            }())
+        return headOK && value.dropFirst().allSatisfy {
+            isCssAlpha($0) || $0.isNumber || $0 == "-"
+        }
+    }
+
+    private static func isCssAlpha(_ c: Character) -> Bool {
+        (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || c == "_"
+    }
+
+    /// CSS <time>: a non-negative number with an `s`/`ms` unit; a bare `0`
+    /// is also valid.
+    private static func cssTimeSupported(_ token: String) -> Bool {
+        if token == "0" { return true }
+        let cut: Int
+        if token.count > 2 && token.hasSuffix("ms") { cut = 2 }
+        else if token.count > 1 && token.hasSuffix("s") { cut = 1 }
+        else { return false }
+        guard let number = Double(token.dropLast(cut)) else { return false }
+        return number >= 0 && number.isFinite
+    }
+
+    /// Whitespace-separated tokens of a transition segment; parentheses
+    /// keep functional easing argument lists inside a single token.
+    private static func cssTokens(_ value: String) -> [String] {
+        var tokens: [String] = []
+        var depth = 0
+        var current = ""
+        for c in value {
+            if (c == " " || c == "\t" || c == "\n" || c == "\r") && depth == 0 {
+                if !current.isEmpty {
+                    tokens.append(current)
+                    current = ""
+                }
+                continue
+            }
+            if c == "(" { depth += 1 }
+            else if c == ")" && depth > 0 { depth -= 1 }
+            current.append(c)
+        }
+        if !current.isEmpty { tokens.append(current) }
+        return tokens
+    }
 
     private static let mainAlignments: Set<String> = [
         "start", "center", "end", "space_between",
@@ -944,7 +1069,9 @@ struct LUIRetainedTree {
                 isHorizontalGroup(kind)
         case .grow: kind != .avatar && kind != .tooltip && !isModalSurface(kind)
         case .columns: kind == .grid
-        case .padding, .paddingHorizontal, .paddingVertical:
+        case .padding, .paddingHorizontal, .paddingVertical,
+             .margin, .marginHorizontal, .marginVertical,
+             .marginTop, .marginRight, .marginBottom, .marginLeft:
             kind != .avatar && kind != .tooltip
         case .width, .height: kind != .tooltip
         case .styleClass, .dataAttrs:
@@ -1088,7 +1215,9 @@ struct LUIRetainedTree {
         case .url: kind == .link || kind == .image
         case .target: kind == .link
         case .opacity: canContainChildren(kind)
-        case .display: kind == .box || kind == .column || kind == .row
+        case .display, .flexWrap: kind == .box || kind == .column || kind == .row
+        case .listStyle:
+            kind == .list || kind == .virtualList || kind == .listItem
         case .tooltip, .tooltipKeys:
             kind == .button || kind == .icon || kind == .menuItem
         case .inputType: kind == .input
@@ -1102,7 +1231,8 @@ struct LUIRetainedTree {
         case .alignment: kind != .root
         // Typography carries a foreground — same kinds as `.foreground`
         // minus purely graphical kinds whose `size` prop governs metrics.
-        case .fontSize, .fontWeight, .lineHeight, .letterSpacing, .userSelect:
+        case .fontSize, .fontWeight, .lineHeight, .letterSpacing, .userSelect,
+             .fontFamily, .textDecoration:
             kind == .row || kind == .column || kind == .grid || kind == .box ||
                 kind == .panel || kind == .card || kind == .stack ||
                 kind == .scroll || kind == .avatar ||
@@ -1132,9 +1262,10 @@ struct LUIRetainedTree {
         case .cursor: kind != .root
         case .shadow: kind != .tooltip && !isModalSurface(kind)
         case .hoverBackground, .hoverOpacity, .hoverShadow,
+             .hoverForeground, .hoverBorder,
              .pressedBackground, .pressedOpacity, .pressedShadow,
              .focusShadow, .selectedBackground, .selectedShadow,
-             .selectedHoverShadow, .disabledOpacity:
+             .selectedHoverShadow, .disabledOpacity, .transition:
             kind != .root && kind != .tooltip && !isModalSurface(kind)
         case .widthViewport, .heightViewport, .minWidthViewport, .maxWidthViewport,
              .minHeightViewport, .maxHeightViewport:

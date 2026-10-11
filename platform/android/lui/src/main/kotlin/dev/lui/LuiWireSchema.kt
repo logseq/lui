@@ -110,6 +110,13 @@ enum class LuiProperty(val wireName: String) {
     padding("padding"),
     paddingHorizontal("padding-horizontal"),
     paddingVertical("padding-vertical"),
+    margin("margin"),
+    marginHorizontal("margin-horizontal"),
+    marginVertical("margin-vertical"),
+    marginTop("margin-top"),
+    marginRight("margin-right"),
+    marginBottom("margin-bottom"),
+    marginLeft("margin-left"),
     background("background"),
     foreground("foreground"),
     borderColor("border-color"),
@@ -249,6 +256,13 @@ enum class LuiProperty(val wireName: String) {
     maxWidthViewport("max-width-viewport"),
     minHeightViewport("min-height-viewport"),
     maxHeightViewport("max-height-viewport"),
+    fontFamily("font-family"),
+    textDecoration("text-decoration"),
+    listStyle("list-style"),
+    flexWrap("flex-wrap"),
+    hoverForeground("hover-foreground"),
+    hoverBorder("hover-border"),
+    transition("transition"),
     ;
 
     companion object {
@@ -273,7 +287,7 @@ object LuiSchemaMatrix {
         LuiNodeKind.timelineItem to setOf(LuiProperty.title, LuiProperty.description, LuiProperty.meta, LuiProperty.indicator, LuiProperty.icon, LuiProperty.variant, LuiProperty.connector, LuiProperty.selected, LuiProperty.pressEnabled, LuiProperty.pointerEnabled),
         LuiNodeKind.inputGroup to setOf(LuiProperty.accessibilityLabel, LuiProperty.width, LuiProperty.height, LuiProperty.minWidth, LuiProperty.grow, LuiProperty.pointerEnabled),
         LuiNodeKind.inputGroupActions to setOf(LuiProperty.gap, LuiProperty.pointerEnabled),
-        LuiNodeKind.toast to setOf(LuiProperty.duration, LuiProperty.accessibilityLabel, LuiProperty.styleClass, LuiProperty.dataAttrs, LuiProperty.pointerEnabled, LuiProperty.padding, LuiProperty.paddingHorizontal, LuiProperty.paddingVertical),
+        LuiNodeKind.toast to setOf(LuiProperty.duration, LuiProperty.accessibilityLabel, LuiProperty.styleClass, LuiProperty.dataAttrs, LuiProperty.pointerEnabled, LuiProperty.padding, LuiProperty.paddingHorizontal, LuiProperty.paddingVertical, LuiProperty.margin, LuiProperty.marginHorizontal, LuiProperty.marginVertical, LuiProperty.marginTop, LuiProperty.marginRight, LuiProperty.marginBottom, LuiProperty.marginLeft),
         LuiNodeKind.toolbar to setOf(LuiProperty.orientation, LuiProperty.accessibilityLabel, LuiProperty.gap, LuiProperty.styleClass, LuiProperty.dataAttrs, LuiProperty.placement, LuiProperty.pointerEnabled),
         LuiNodeKind.bottomTabs to setOf(LuiProperty.accessibilityLabel, LuiProperty.styleClass, LuiProperty.dataAttrs, LuiProperty.grow, LuiProperty.width, LuiProperty.height, LuiProperty.minWidth, LuiProperty.maxWidth, LuiProperty.minHeight, LuiProperty.maxHeight, LuiProperty.pointerEnabled),
         LuiNodeKind.bottomTab to setOf(LuiProperty.title, LuiProperty.icon, LuiProperty.selected, LuiProperty.enabled, LuiProperty.pressEnabled, LuiProperty.pointerEnabled),
@@ -283,7 +297,7 @@ object LuiSchemaMatrix {
         LuiNodeKind.swipeAction to setOf(LuiProperty.text, LuiProperty.icon, LuiProperty.variant, LuiProperty.edge, LuiProperty.enabled, LuiProperty.background, LuiProperty.pressEnabled, LuiProperty.pointerEnabled),
         LuiNodeKind.filePicker to setOf(LuiProperty.request, LuiProperty.types, LuiProperty.multiple, LuiProperty.source, LuiProperty.completion, LuiProperty.pickerAccept, LuiProperty.pickerDirectory, LuiProperty.enabled, LuiProperty.appearEnabled, LuiProperty.pointerEnabled),
         LuiNodeKind.filePreview to setOf(LuiProperty.path, LuiProperty.pointerEnabled),
-        LuiNodeKind.kbd to setOf(LuiProperty.text, LuiProperty.styleClass, LuiProperty.dataAttrs, LuiProperty.pointerEnabled, LuiProperty.fontSize, LuiProperty.fontWeight, LuiProperty.lineHeight, LuiProperty.letterSpacing, LuiProperty.whiteSpace, LuiProperty.textOverflow, LuiProperty.userSelect, LuiProperty.cursor, LuiProperty.shadow, LuiProperty.hoverBackground, LuiProperty.hoverOpacity, LuiProperty.hoverShadow, LuiProperty.pressedBackground, LuiProperty.pressedOpacity, LuiProperty.pressedShadow, LuiProperty.focusShadow, LuiProperty.selectedBackground, LuiProperty.selectedShadow, LuiProperty.selectedHoverShadow, LuiProperty.disabledOpacity),
+        LuiNodeKind.kbd to setOf(LuiProperty.text, LuiProperty.styleClass, LuiProperty.dataAttrs, LuiProperty.pointerEnabled, LuiProperty.fontSize, LuiProperty.fontWeight, LuiProperty.lineHeight, LuiProperty.letterSpacing, LuiProperty.fontFamily, LuiProperty.textDecoration, LuiProperty.whiteSpace, LuiProperty.textOverflow, LuiProperty.userSelect, LuiProperty.cursor, LuiProperty.shadow, LuiProperty.hoverBackground, LuiProperty.hoverOpacity, LuiProperty.hoverShadow, LuiProperty.pressedBackground, LuiProperty.pressedOpacity, LuiProperty.pressedShadow, LuiProperty.focusShadow, LuiProperty.selectedBackground, LuiProperty.selectedShadow, LuiProperty.selectedHoverShadow, LuiProperty.disabledOpacity, LuiProperty.transition),
     )
 
     val extra: Map<LuiNodeKind, Set<LuiProperty>> = mapOf(
