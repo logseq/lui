@@ -17,6 +17,12 @@
 
    On every other platform each entry point raises Failure. */
 
+/* glibc only exposes RTLD_DEFAULT (and dladdr, etc.) when _GNU_SOURCE is
+   defined before the first libc header; other libcs declare it always. */
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE
+#endif
+
 #if defined(_WIN32)
 #define LUI_GP_WIN 1
 #elif defined(__APPLE__) || defined(__linux__) || defined(__unix__)

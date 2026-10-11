@@ -1636,14 +1636,19 @@ let default_text_fg ctx store id kind st rs =
       if st.selected then text_fg ctx store id else col_muted_fg ctx
     | "swipe-action" ->
       if bg_styled then text_fg ctx store id else col_accent_text ctx
-    | "tooltip" | "toast" | "alert" | "bubble" -> col_inverse_fg ctx
+    | "tooltip" | "toast" | "alert" | "bubble" ->
+      if bg_styled then text_fg ctx store id else col_inverse_fg ctx
     | "text" | "label" | "heading" | "paragraph" -> (
       (* Ink children painted on an inverse surface take on-surface
-         ink (e.g. a toast's label child). *)
+         ink (e.g. a toast's label child) unless the view styled the
+         surface's own background. *)
       match Lui_store.parent store id with
       | Some p -> (
         match Lui_store.kind store p with
-        | "tooltip" | "toast" | "alert" | "bubble" -> col_inverse_fg ctx
+        | "tooltip" | "toast" | "alert" | "bubble" ->
+          if bg_styled || prop_set store p "background" then
+            text_fg ctx store id
+          else col_inverse_fg ctx
         | _ -> text_fg ctx store id)
       | None -> text_fg ctx store id)
     | "list-section-header" | "list-section-footer" -> col_muted_fg ctx
