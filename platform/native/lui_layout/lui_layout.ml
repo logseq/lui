@@ -798,13 +798,26 @@ let refine_popups ctx =
           if (not anchored) && popup_has_edges ctx.store sid then ()
           else
           let kind = Lui_store.kind ctx.store sid in
-          (* Web .lui-toast-viewport caps toast width at 22.5rem. *)
-          (if kind = "toast" then
+          (* Web overlay caps: .lui-toast-viewport is 22.5rem wide,
+             .lui-dialog is min(42rem, 100vw-2rem) (48rem ≥1024px). *)
+          (match kind with
+           | "toast" ->
              let w = Float.min (360. *. ctx.scale) ctx.vw in
              Lui_flex.set_style pnode
                { pstyle with max_width = Pt w };
              Lui_flex.compute_layout pnode ~width:Lui_flex.undefined
-               ~height:Lui_flex.undefined ());
+               ~height:Lui_flex.undefined ()
+           | "dialog" | "modal" ->
+             let rem = if ctx.vw >= 1024. *. ctx.scale then 768. else 672. in
+             let w =
+               Float.min (rem *. ctx.scale)
+                 (ctx.vw -. (32. *. ctx.scale))
+             in
+             Lui_flex.set_style pnode
+               { pstyle with max_width = Pt w };
+             Lui_flex.compute_layout pnode ~width:Lui_flex.undefined
+               ~height:Lui_flex.undefined ()
+           | _ -> ());
           let prp = Lui_flex.absolute_layout pnode in
           (* Placement targets live in the containing block [cb] but the
              position edges resolve against the flex parent's padding
@@ -875,7 +888,9 @@ let refine_popups ctx =
               height;
               position =
                 { pstyle.position with left = Pt left; top = Pt top } }))
-    !(ctx.popups)
+    (* Mount order: the list is prepended during build; oldest first so
+       a toast stack grows downward like the web viewport. *)
+    (List.rev !(ctx.popups))
 
 (* Union of the frame children's absolute rect edges — the extent the
    laid-out content actually occupies. *)
