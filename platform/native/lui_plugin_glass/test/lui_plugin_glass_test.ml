@@ -355,6 +355,96 @@ let test_blur_twin () =
   let low = byte_at img w 50 55 in
   Alcotest.(check int) "bottom clear" (fst3 bg) (low 0)
 
+(* ---------- the plugin service ---------- *)
+
+let to_num = function
+  | `Int i -> float i
+  | `Float f -> f
+  | `Intlit s -> float_of_string s
+  | _ -> Alcotest.fail "not a number"
+
+let jlist j name = Yojson.Safe.Util.(member name j |> to_list)
+let jfloats j = List.map to_num (Yojson.Safe.Util.to_list j)
+let jmember n j = Yojson.Safe.Util.member n j
+
+let call method_ payload =
+  match Lui_plugin.call ~service:"plugin:glass" ~method_ payload with
+  | Error e -> Alcotest.fail e
+  | Ok out -> Yojson.Safe.from_string out
+
+(* The service must answer with the same op doc the OCaml helper
+   emits: same rect, same effect params. *)
+let check_effect_op j eo er radii =
+  let ops = jlist j "ops" in
+  Alcotest.(check int) "one op" 1 (List.length ops);
+  let fxs = jlist j "effects" in
+  Alcotest.(check int) "one effect" 1 (List.length fxs);
+  Alcotest.(check string) "fx name" eo.ee.ename
+    (match jmember "name" (List.hd fxs) with
+     | `String n -> n
+     | _ -> Alcotest.fail "no name");
+  let ps = jlist (List.hd fxs) "params" in
+  Alcotest.(check int) "five params" 5 (List.length ps);
+  List.iteri
+    (fun i pj ->
+      let got = jfloats pj in
+      let (a, b, c, d) = eo.eparams.(i) in
+      match got with
+      | [ ga; gb; gc; gd ] ->
+        checkf "p a" a ga; checkf "p b" b gb;
+        checkf "p c" c gc; checkf "p d" d gd
+      | _ -> Alcotest.fail "bad param")
+    ps;
+  let op = List.hd ops in
+  (match jmember "rect" op with
+   | `List [ x; y; w; h ] ->
+     checkf "rect x" er.x (to_num x);
+     checkf "rect y" er.y (to_num y);
+     checkf "rect w" er.w (to_num w);
+     checkf "rect h" er.h (to_num h)
+   | _ -> Alcotest.fail "bad rect");
+  (match jmember "radii" op with
+   | `List [ a; b; c; d ] ->
+     let (ta, tb, tc, td) = radii in
+     checkf "radii tl" ta (to_num a);
+     checkf "radii tr" tb (to_num b);
+     checkf "radii br" tc (to_num c);
+     checkf "radii bl" td (to_num d)
+   | _ -> Alcotest.fail "bad radii")
+
+let test_service () =
+  (match Lui_plugin.use [ G.plugin ] with
+   | Ok () -> ()
+   | Error e -> Alcotest.fail e);
+  (* material round-trip: the JSON doc equals the standalone emit *)
+  let j =
+    call "material"
+      {|{"rect":[20,10,60,40],"radii":[8,8,8,8],"interactive":true,"grow":1}|}
+  in
+  let s = Tk.scene ~w:100 ~h:60 [] in
+  G.glass ~scene:s ~radii:(Tk.radii 8.) ~grow:1.
+    (rect 20. 10. 60. 40.)
+    (G.material ~interactive:true ());
+  check_effect_op j (List.hd s.effects) (rect 18.9 9.55 62.2 40.9)
+    (Tk.radii 8.45);
+  (* blur round-trip *)
+  let j =
+    call "blur"
+      {|{"rect":[0,0,100,50],"radius":8,"mask":{"from":1,"to":0,"angle":180}}|}
+  in
+  Alcotest.(check bool) "masked levels" true
+    (List.length (jlist j "effects") >= 3);
+  (* scroll_edge: the gradient fill shows through the doc *)
+  let j =
+    call "scroll_edge" {|{"rect":[0,0,100,74],"bg":[250,250,250,255]}|}
+  in
+  (match jlist j "ops" with
+   | [ f ] ->
+     Alcotest.(check string) "fill" "fill"
+       (match jmember "op" f with `String k -> k | _ -> "")
+   | _ -> Alcotest.fail "expected one fill");
+  Lui_plugin.reset ()
+
 let () =
   Alcotest.run "lui_plugin_glass"
     [ ( "math",
@@ -371,4 +461,5 @@ let () =
           Alcotest.test_case "scroll edge" `Quick test_scroll_edge ] );
       ( "twin",
         [ Alcotest.test_case "glass" `Quick test_glass_twin;
-          Alcotest.test_case "blur" `Quick test_blur_twin ] ) ]
+          Alcotest.test_case "blur" `Quick test_blur_twin ] );
+      ("service", [ Alcotest.test_case "round-trip" `Quick test_service ]) ]
