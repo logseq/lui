@@ -270,7 +270,11 @@ let hit_path store rects ~x ~y =
         | None -> r
       in
       let path =
-        if on && not (rect_empty clipped) && rect_contains clipped x y
+        (* spacers are layout voids — they paint nothing and must never
+           be the hit target (a full-window spacer in an overlay layer
+           would otherwise swallow every DOM event). *)
+        if on && Lui_store.kind store id <> "spacer"
+           && not (rect_empty clipped) && rect_contains clipped x y
         then id :: path
         else path
       in
