@@ -73,8 +73,13 @@ let rec parse_len s =
       | None -> None
     else None
   else
-    try Some (float_of_string (String.sub s 0 stop))
-    with _ -> None
+    let unit =
+      match String.sub s stop (n - stop) |> String.trim with
+      | "rem" | "em" -> 16.
+      | _ -> 1.
+    in
+    (try Some (float_of_string (String.sub s 0 stop) *. unit)
+     with _ -> None)
 
 let num_prop store id name =
   match Lui_store.prop store id name with
