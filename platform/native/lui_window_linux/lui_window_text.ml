@@ -85,7 +85,7 @@ let rec parse_len s =
       | _ -> 1.
     in
     (try Some (float_of_string (String.sub s 0 stop) *. unit)
-    with _ -> None
+     with _ -> None)
 
 let num_prop store id name =
   match Lui_store.prop store id name with
