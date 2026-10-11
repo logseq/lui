@@ -237,6 +237,43 @@ let test_root_popup_centered_in_frame () =
   let p = Lui_layout.run store ~measure:no_measure ~width:200. ~height:100. in
   check_rect "root popup" 75. 35. 50. 30. (place p 2)
 
+(* A menu-trigger's dropdown panel: hidden until opened, then anchored
+   below the trigger with its items stacked inside. *)
+let test_menu_panel () =
+  let store = Lui_store.create () in
+  apply store
+    [ CreateNode (1, Root); CreateNode (2, Toolbar);
+      CreateNode (3, MenuTrigger); CreateNode (4, DropdownMenu);
+      CreateNode (5, MenuItem); CreateNode (6, MenuItem);
+      CreateNode (7, MenuItem);
+      InsertChild (1, 2, 0); InsertChild (2, 3, 0);
+      InsertChild (3, 4, 0);
+      InsertChild (4, 5, 0); InsertChild (4, 6, 1);
+      InsertChild (4, 7, 2);
+      SetProp (3, TextValue, StringValue "File");
+      SetProp (3, HeightValue, IntValue 20);
+      SetProp (5, TextValue, StringValue "open");
+      SetProp (6, TextValue, StringValue "new item");
+      SetProp (7, TextValue, StringValue "close") ];
+  let open_ = ref 0 in
+  let h id =
+    (match Lui_store.kind store id with
+     | "dropdown-menu" | "context-menu" -> (
+       match Lui_store.parent store id with
+       | Some p -> Lui_store.kind store p = "menu-trigger" && id <> !open_
+       | None -> false)
+     | _ -> false)
+  in
+  let p = Lui_layout.run ~hidden:h store ~measure:no_measure ~width:200. ~height:100. in
+  check (float eps) "panel hidden" 0. (place p 4).w;
+  open_ := 4;
+  let p = Lui_layout.run ~hidden:h store ~measure:(fun _ _ _ -> Some (30., 10.)) ~width:200. ~height:100. in
+  let trig = place p 3 and panel = place p 4 in
+  (* anchored default: side below, 4pt offset *)
+  check (float eps) "panel below" (trig.y +. trig.h +. 4.) panel.y;
+  check_rect "item1" panel.x panel.y panel.w 10. (place p 5);
+  check_rect "item3" panel.x (panel.y +. 20.) panel.w 10. (place p 7)
+
 let () =
   run "lui_layout"
     [ ("layout",
@@ -252,4 +289,5 @@ let () =
          test_case "rebuild" `Quick test_rebuild_after_mutation;
          test_case "frame grows" `Quick test_frame_grows_to_content;
          test_case "popup centered" `Quick test_popup_default_centered;
-         test_case "root popup" `Quick test_root_popup_centered_in_frame ]) ]
+         test_case "root popup" `Quick test_root_popup_centered_in_frame;
+         test_case "menu panel" `Quick test_menu_panel ]) ]
