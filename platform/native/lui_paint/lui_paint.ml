@@ -1523,14 +1523,16 @@ let default_chrome ctx store id st kind r rs alpha =
             ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha:1. ]
     in
     scrim
-    @ (* Platform title chrome per the dialog/sheet contract: the title
-       and description paint inside the top zone the layout reserved;
-       sheets also carry a grabber pill. *)
+    @ (* Platform title chrome paints inside the top zone the layout
+       reserved — title_pad gives a 26pt title lane and a 15pt
+       description lane (+12pt grabber lane on sheets), stacked on the
+       view's top padding. The ink rects hand the whole width to the
+       text engine so its placement table applies the same horizontal
+       padding the content uses — re-insetting here would double it. *)
     let pad_of n = Option.value ~default:0. (pnum store id n) *. s in
-    let px = Float.max (pad_of "padding-horizontal") (pad_of "padding")
-    and py = Float.max (pad_of "padding-vertical") (pad_of "padding") in
-    let title_x = r.x +. px +. 4. *. s and title_y = r.y +. py +. 6. *. s in
-    let title_w = Float.max 0. (r.w -. 2. *. (px +. 4. *. s)) in
+    let py = Float.max (pad_of "padding-vertical") (pad_of "padding") in
+    let grabber = if kind = "sheet" then 12. *. s else 0. in
+    let title_y = r.y +. py +. grabber in
     (* Surface first, chrome ink on top — the fill must not cover the
        title block. *)
     shadow_pair rad [ (0., 2., 8., 31); (0., 10., 30., 76) ]
@@ -1540,7 +1542,7 @@ let default_chrome ctx store id st kind r rs alpha =
     @ (match kind with
        | "sheet" ->
          [ fill ~continuous:true
-             (rect (r.x +. ((r.w -. 36. *. s) /. 2.)) (r.y +. 6. *. s)
+             (rect (r.x +. ((r.w -. 36. *. s) /. 2.)) (r.y +. py +. 4. *. s)
                 (36. *. s) (4. *. s))
              (2. *. s, 2. *. s, 2. *. s, 2. *. s)
              ~paint:Solid ~c1:(col_surface_pressed ctx)
@@ -1551,13 +1553,13 @@ let default_chrome ctx store id st kind r rs alpha =
     @ (match pstr store id "text" with
        | Some t when t <> "" ->
          ctx.hooks.text_ops id
-           (rect title_x title_y title_w (20. *. s))
+           (rect r.x title_y r.w (26. *. s))
            (text_fg ctx store id) t
        | _ -> [])
     @ (match pstr store id "description" with
        | Some d when d <> "" ->
          ctx.hooks.text_ops id
-           (rect title_x (title_y +. 24. *. s) title_w (14. *. s))
+           (rect r.x (title_y +. 26. *. s) r.w (15. *. s))
            (col_muted_fg ctx) d
        | _ -> [])
   | "tooltip" | "toast" | "alert" | "bubble" ->
