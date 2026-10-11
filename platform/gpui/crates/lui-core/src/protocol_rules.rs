@@ -96,7 +96,7 @@ pub(crate) fn property_supported(kind: NodeKind, property: Property) -> bool {
         NodeKind::FileImage => (0xc00007680000000000240003bfffffa0, 0x70ffffe1f),
         NodeKind::FilePreview => (0x308000000000000000100000000, 0x0),
         NodeKind::Br => (0xc000070000000000002000033ffbffa0, 0x70ffffe1f),
-        NodeKind::Popover => (0xc38107000000c11c002000033ffbffa4, 0x70ffffe9f),
+        NodeKind::Popover => (0xc38107000000c11c002000033fffffa4, 0x70ffffe9f),
     };
     mask_test(mask, property as u32)
 }
