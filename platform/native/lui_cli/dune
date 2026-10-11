@@ -1,0 +1,4 @@
+(library
+ (name lui_cli)
+ (modules lui_cli)
+ (libraries lui_pkg lui_pkg_linux lui_pkg_windows lui_updater unix))
