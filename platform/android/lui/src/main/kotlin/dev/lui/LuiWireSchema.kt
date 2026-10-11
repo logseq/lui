@@ -256,6 +256,12 @@ enum class LuiProperty(val wireName: String) {
     maxWidthViewport("max-width-viewport"),
     minHeightViewport("min-height-viewport"),
     maxHeightViewport("max-height-viewport"),
+    fontFamily("font-family"),
+    textDecoration("text-decoration"),
+    listStyle("list-style"),
+    flexWrap("flex-wrap"),
+    hoverForeground("hover-foreground"),
+    hoverBorder("hover-border"),
     ;
 
     companion object {
@@ -290,7 +296,7 @@ object LuiSchemaMatrix {
         LuiNodeKind.swipeAction to setOf(LuiProperty.text, LuiProperty.icon, LuiProperty.variant, LuiProperty.edge, LuiProperty.enabled, LuiProperty.background, LuiProperty.pressEnabled, LuiProperty.pointerEnabled),
         LuiNodeKind.filePicker to setOf(LuiProperty.request, LuiProperty.types, LuiProperty.multiple, LuiProperty.source, LuiProperty.completion, LuiProperty.pickerAccept, LuiProperty.pickerDirectory, LuiProperty.enabled, LuiProperty.appearEnabled, LuiProperty.pointerEnabled),
         LuiNodeKind.filePreview to setOf(LuiProperty.path, LuiProperty.pointerEnabled),
-        LuiNodeKind.kbd to setOf(LuiProperty.text, LuiProperty.styleClass, LuiProperty.dataAttrs, LuiProperty.pointerEnabled, LuiProperty.fontSize, LuiProperty.fontWeight, LuiProperty.lineHeight, LuiProperty.letterSpacing, LuiProperty.whiteSpace, LuiProperty.textOverflow, LuiProperty.userSelect, LuiProperty.cursor, LuiProperty.shadow, LuiProperty.hoverBackground, LuiProperty.hoverOpacity, LuiProperty.hoverShadow, LuiProperty.pressedBackground, LuiProperty.pressedOpacity, LuiProperty.pressedShadow, LuiProperty.focusShadow, LuiProperty.selectedBackground, LuiProperty.selectedShadow, LuiProperty.selectedHoverShadow, LuiProperty.disabledOpacity),
+        LuiNodeKind.kbd to setOf(LuiProperty.text, LuiProperty.styleClass, LuiProperty.dataAttrs, LuiProperty.pointerEnabled, LuiProperty.fontSize, LuiProperty.fontWeight, LuiProperty.lineHeight, LuiProperty.letterSpacing, LuiProperty.fontFamily, LuiProperty.textDecoration, LuiProperty.whiteSpace, LuiProperty.textOverflow, LuiProperty.userSelect, LuiProperty.cursor, LuiProperty.shadow, LuiProperty.hoverBackground, LuiProperty.hoverOpacity, LuiProperty.hoverShadow, LuiProperty.pressedBackground, LuiProperty.pressedOpacity, LuiProperty.pressedShadow, LuiProperty.focusShadow, LuiProperty.selectedBackground, LuiProperty.selectedShadow, LuiProperty.selectedHoverShadow, LuiProperty.disabledOpacity),
     )
 
     val extra: Map<LuiNodeKind, Set<LuiProperty>> = mapOf(

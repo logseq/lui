@@ -249,6 +249,12 @@ enum LUIProperty: String, Decodable, Hashable {
     case maxWidthViewport = "max-width-viewport"
     case minHeightViewport = "min-height-viewport"
     case maxHeightViewport = "max-height-viewport"
+    case fontFamily = "font-family"
+    case textDecoration = "text-decoration"
+    case listStyle = "list-style"
+    case flexWrap = "flex-wrap"
+    case hoverForeground = "hover-foreground"
+    case hoverBorder = "hover-border"
 }
 
 enum LUISchemaMatrix {
@@ -270,7 +276,7 @@ enum LUISchemaMatrix {
         .swipeAction: [.text, .icon, .variant, .edge, .enabled, .background, .pressEnabled, .pointerEnabled],
         .filePicker: [.request, .types, .multiple, .source, .completion, .pickerAccept, .pickerDirectory, .enabled, .appearEnabled, .pointerEnabled],
         .filePreview: [.path, .pointerEnabled],
-        .kbd: [.text, .styleClass, .dataAttrs, .pointerEnabled, .fontSize, .fontWeight, .lineHeight, .letterSpacing, .whiteSpace, .textOverflow, .userSelect, .cursor, .shadow, .hoverBackground, .hoverOpacity, .hoverShadow, .pressedBackground, .pressedOpacity, .pressedShadow, .focusShadow, .selectedBackground, .selectedShadow, .selectedHoverShadow, .disabledOpacity],
+        .kbd: [.text, .styleClass, .dataAttrs, .pointerEnabled, .fontSize, .fontWeight, .lineHeight, .letterSpacing, .fontFamily, .textDecoration, .whiteSpace, .textOverflow, .userSelect, .cursor, .shadow, .hoverBackground, .hoverOpacity, .hoverShadow, .pressedBackground, .pressedOpacity, .pressedShadow, .focusShadow, .selectedBackground, .selectedShadow, .selectedHoverShadow, .disabledOpacity],
     ]
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [

@@ -269,6 +269,12 @@ type property =
   | MaxWidthViewport
   | MinHeightViewport
   | MaxHeightViewport
+  | FontFamily
+  | TextDecoration
+  | ListStyle
+  | FlexWrap
+  | HoverForeground
+  | HoverBorder
 
 module Property_map : Map.S with type key = property
 

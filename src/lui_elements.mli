@@ -47,6 +47,11 @@ type frame_axes =
 type resize_easing = [ `linear | `standard | `emphasized | `spring ]
 type role = [ `treeitem | `navigation | `navigation_heading ]
 type list_style = [ `plain | `inset | `inset_grouped ]
+
+(** CSS [list-style] marker for [list]/[virtual_list]/[list_item] —
+    distinct from [list_style], the SwiftUI-style container appearance
+    passed as [~style]. *)
+type list_marker = [ `none | `disc | `decimal ]
 type scroll_anchor = [ `top | `center | `bottom ]
 type separator_visibility = [ `visible | `hidden ]
 
@@ -57,7 +62,10 @@ type referrer_policy =
 
 type link_target = [ `self_ | `blank ]
 
-type display = [ `contents ]
+type display =
+  [ `contents | `none | `block | `inline | `inline_block | `inline_flex ]
+
+type flex_wrap = [ `nowrap | `wrap ]
 type input_kind = [ `text | `color ]
 type popover_role = [ `menu ]
 type swipe_edge = [ `leading | `trailing ]
@@ -355,7 +363,8 @@ val row :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
-  ?display:display -> t list -> t
+  ?display:display ->
+  ?flex_wrap:flex_wrap -> t list -> t
 val column :
   ?key:string ->
   ?gap:int ->
@@ -401,7 +410,8 @@ val column :
   ?on_pointer_up:(Lui_protocol.event -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
-  ?display:display -> t list -> t
+  ?display:display ->
+  ?flex_wrap:flex_wrap -> t list -> t
 val grid :
   ?key:string ->
   ?gap:int ->
@@ -863,7 +873,8 @@ val box :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
-  ?display:display -> t list -> t
+  ?display:display ->
+  ?flex_wrap:flex_wrap -> t list -> t
 val scroll :
   ?key:string ->
   ?gap:int ->
@@ -960,6 +971,7 @@ val list :
   ?on_visible_range:(Lui_protocol.event -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
+  ?list_marker:list_marker ->
   t list -> t
 val virtual_list :
   ?key:string ->
@@ -1003,6 +1015,7 @@ val virtual_list :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
+  ?list_marker:list_marker ->
   t list -> t
 val tabs :
   ?key:string ->
@@ -1829,6 +1842,8 @@ val text :
   ?font_weight:int ->
   ?line_height:string ->
   ?letter_spacing:float ->
+  ?font_family:string ->
+  ?text_decoration:string ->
   ?white_space:string ->
   ?text_overflow:string ->
   ?overflow:string ->
@@ -1884,6 +1899,8 @@ val heading :
   ?font_weight:int ->
   ?line_height:string ->
   ?letter_spacing:float ->
+  ?font_family:string ->
+  ?text_decoration:string ->
   ?white_space:string ->
   ?text_overflow:string ->
   ?overflow:string ->
@@ -1934,6 +1951,8 @@ val paragraph :
   ?font_weight:int ->
   ?line_height:string ->
   ?letter_spacing:float ->
+  ?font_family:string ->
+  ?text_decoration:string ->
   ?white_space:string ->
   ?text_overflow:string ->
   ?overflow:string ->
@@ -1984,6 +2003,8 @@ val label :
   ?font_weight:int ->
   ?line_height:string ->
   ?letter_spacing:float ->
+  ?font_family:string ->
+  ?text_decoration:string ->
   ?white_space:string ->
   ?text_overflow:string ->
   ?overflow:string ->
@@ -3782,7 +3803,8 @@ val list_item :
   ?on_press_detail:(Lui_protocol.event -> unit) ->
   ?on_pointer_down:(Lui_protocol.event -> unit) ->
   ?on_pointer_up:(Lui_protocol.event -> unit) ->
-  ?on_context_menu:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_context_menu:(Lui_protocol.event -> unit) ->
+  ?list_marker:list_marker -> t list -> t
 
 (** A named group of rows inside a {!list}: [~header]/[~footer] take any
     element and mount it in a dedicated slot node, [~key] sets both the

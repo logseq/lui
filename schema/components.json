@@ -1660,6 +1660,36 @@
       "lg": "MaxHeightViewport",
       "wire": "max-height-viewport",
       "swift": "maxHeightViewport"
+    },
+    {
+      "lg": "FontFamily",
+      "wire": "font-family",
+      "swift": "fontFamily"
+    },
+    {
+      "lg": "TextDecoration",
+      "wire": "text-decoration",
+      "swift": "textDecoration"
+    },
+    {
+      "lg": "ListStyle",
+      "wire": "list-style",
+      "swift": "listStyle"
+    },
+    {
+      "lg": "FlexWrap",
+      "wire": "flex-wrap",
+      "swift": "flexWrap"
+    },
+    {
+      "lg": "HoverForeground",
+      "wire": "hover-foreground",
+      "swift": "hoverForeground"
+    },
+    {
+      "lg": "HoverBorder",
+      "wire": "hover-border",
+      "swift": "hoverBorder"
     }
   ],
   "events": [
@@ -1965,6 +1995,8 @@
       "font-weight",
       "line-height",
       "letter-spacing",
+      "font-family",
+      "text-decoration",
       "white-space",
       "text-overflow",
       "user-select",

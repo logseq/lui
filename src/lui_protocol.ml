@@ -271,6 +271,12 @@ type property =
   | MaxWidthViewport
   | MinHeightViewport
   | MaxHeightViewport
+  | FontFamily
+  | TextDecoration
+  | ListStyle
+  | FlexWrap
+  | HoverForeground
+  | HoverBorder
 
 module Property_map =
   Map.Make
@@ -890,7 +896,8 @@ let common_property_supported kind property =
     | ListItem | TableCell | Resizable | Split | Alert | Bubble | StatusBar
     | Link | FileImage -> true
     | _ -> false)
-  | FontSize | FontWeight | LineHeight | LetterSpacing | UserSelect ->
+  | FontSize | FontWeight | LineHeight | LetterSpacing | FontFamily
+  | TextDecoration | UserSelect ->
     (* Text styling inherits; admitted on the same kinds that accept a
        foreground color minus purely graphical kinds whose [size] governs
        their metrics (icon, spinner, file-image). *)
@@ -1110,7 +1117,9 @@ let common_property_supported kind property =
   | UrlValue -> kind = Link || kind = Image
   | TargetValue -> kind = Link
   | Opacity -> can_contain_children kind
-  | DisplayValue -> kind = Box || kind = Column || kind = Row
+  | DisplayValue | FlexWrap -> kind = Box || kind = Column || kind = Row
+  | ListStyle ->
+    kind = ListContainer || kind = VirtualList || kind = ListItem
   | TooltipText | TooltipKeys -> kind = Button || kind = Icon || kind = MenuItem
   | InputType -> kind = Input
   | AltValue | LoadingValue | ReferrerPolicy -> kind = Image
@@ -1155,7 +1164,8 @@ let common_property_supported kind property =
     kind <> Root && kind <> Tooltip && not (modal_surface kind)
   | Cursor -> kind <> Root
   | Shadow -> (not (modal_surface kind)) && kind <> Tooltip
-  | HoverBackground | HoverOpacity | HoverShadow | PressedBackground
+  | HoverBackground | HoverOpacity | HoverShadow | HoverForeground
+  | HoverBorder | PressedBackground
   | PressedOpacity | PressedShadow | FocusShadow | SelectedBackground
   | SelectedShadow | SelectedHoverShadow | DisabledOpacity ->
     (* Interactive-state appearance channels; no-op on hosts that do not
@@ -1241,7 +1251,8 @@ let property_supported kind property =
       property = TextValue || property = StyleClass
       || property = PointerEnabled || property = DataAttrs
       || property = FontSize || property = FontWeight || property = LineHeight
-      || property = LetterSpacing || property = WhiteSpace
+      || property = LetterSpacing || property = FontFamily
+      || property = TextDecoration || property = WhiteSpace
       || property = TextOverflow || property = UserSelect || property = Cursor
       || property = Shadow || property = HoverBackground
       || property = HoverOpacity || property = HoverShadow
@@ -1269,6 +1280,22 @@ let property_supported kind property =
 
 let is_finite value =
   value = value && value <> infinity && value <> neg_infinity
+
+(* [text-decoration] accepts "none" alone, or a space-separated
+   combination of underline/overline/line-through. *)
+let text_decoration_supported value =
+  let tokens =
+    String.split_on_char ' ' value
+    |> List.filter (fun token -> String.trim token <> "")
+  in
+  match tokens with
+  | [ "none" ] -> true
+  | _ ->
+    tokens <> []
+    && (not (List.mem "none" tokens))
+    && List.for_all
+         (fun token -> List.mem token [ "underline"; "line-through"; "overline" ])
+         tokens
 
 let property_value_supported property value =
   match (property, value) with
@@ -1392,7 +1419,9 @@ let property_value_supported property value =
     || value = "unsafe-url"
   | TargetValue, StringValue value -> value = "_self" || value = "_blank"
   | Opacity, FloatValue value -> is_finite value && value >= 0.0 && value <= 1.0
-  | DisplayValue, StringValue value -> value = "contents"
+  | DisplayValue, StringValue value ->
+    List.mem value
+      [ "contents"; "none"; "inline-flex"; "block"; "inline"; "inline-block" ]
   | TooltipText, StringValue _ | TooltipKeys, StringValue _ -> true
   | InputType, StringValue value -> value = "text" || value = "color"
   | PickerAccept, StringValue _ -> true
@@ -1415,7 +1444,14 @@ let property_value_supported property value =
   | InsetBottom, FloatValue value | InsetLeft, FloatValue value ->
     is_finite value
   | Position, StringValue value ->
-    List.mem value [ "static"; "relative"; "absolute"; "fixed" ]
+    List.mem value [ "static"; "relative"; "absolute"; "fixed"; "sticky" ]
+  | FontFamily, StringValue value -> String.trim value <> ""
+  | TextDecoration, StringValue value -> text_decoration_supported value
+  | ListStyle, StringValue value ->
+    List.mem value [ "none"; "disc"; "decimal" ]
+  | FlexWrap, StringValue value -> List.mem value [ "nowrap"; "wrap" ]
+  | HoverForeground, StringValue value | HoverBorder, StringValue value ->
+    String.trim value <> ""
   | ZIndex, IntValue _ -> true
   | WhiteSpace, StringValue value -> List.mem value [ "normal"; "nowrap" ]
   | TextOverflow, StringValue value -> List.mem value [ "clip"; "ellipsis" ]

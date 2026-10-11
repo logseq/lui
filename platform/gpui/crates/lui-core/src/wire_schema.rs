@@ -503,6 +503,12 @@ pub enum Property {
     MaxWidthViewport,
     MinHeightViewport,
     MaxHeightViewport,
+    FontFamily,
+    TextDecoration,
+    ListStyle,
+    FlexWrap,
+    HoverForeground,
+    HoverBorder,
 }
 
 impl Property {
@@ -664,6 +670,12 @@ impl Property {
             "max-width-viewport" => Some(Property::MaxWidthViewport),
             "min-height-viewport" => Some(Property::MinHeightViewport),
             "max-height-viewport" => Some(Property::MaxHeightViewport),
+            "font-family" => Some(Property::FontFamily),
+            "text-decoration" => Some(Property::TextDecoration),
+            "list-style" => Some(Property::ListStyle),
+            "flex-wrap" => Some(Property::FlexWrap),
+            "hover-foreground" => Some(Property::HoverForeground),
+            "hover-border" => Some(Property::HoverBorder),
             _ => None,
         }
     }
@@ -826,6 +838,12 @@ impl Property {
             Property::MaxWidthViewport => "max-width-viewport",
             Property::MinHeightViewport => "min-height-viewport",
             Property::MaxHeightViewport => "max-height-viewport",
+            Property::FontFamily => "font-family",
+            Property::TextDecoration => "text-decoration",
+            Property::ListStyle => "list-style",
+            Property::FlexWrap => "flex-wrap",
+            Property::HoverForeground => "hover-foreground",
+            Property::HoverBorder => "hover-border",
         }
     }
 }
@@ -971,6 +989,8 @@ pub fn kind_property_matrix(kind: NodeKind) -> Option<&'static [Property]> {
             Property::FontWeight,
             Property::LineHeight,
             Property::LetterSpacing,
+            Property::FontFamily,
+            Property::TextDecoration,
             Property::WhiteSpace,
             Property::TextOverflow,
             Property::UserSelect,

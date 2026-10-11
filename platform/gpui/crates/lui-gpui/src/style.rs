@@ -533,6 +533,32 @@ fn appearance<E: Styled>(mut element: E, node: &NodeSnapshot, theme: &Theme) -> 
     {
         element = element.line_height(value);
     }
+    if let Some(value) = node.string_prop(Property::FontFamily) {
+        // gpui resolves the name against its font stack and falls back
+        // to the default family when the name is unknown.
+        element = element.font_family(value);
+    }
+    if let Some(value) = node.string_prop(Property::TextDecoration) {
+        for token in value.split_whitespace() {
+            element = match token {
+                "underline" => element.underline(),
+                "line-through" => element.line_through(),
+                "none" => element.text_decoration_none(),
+                // TextDecoration has no overline flag.
+                _ => element,
+            };
+        }
+    }
+    if let Some(value) = node.string_prop(Property::DisplayValue) {
+        // `none` never reaches here: `render_node` returns an empty div.
+        // Taffy has no inline-level layout, so inline/inline-block degrade
+        // to block; `contents` keeps the element's own layout kind.
+        element = match value {
+            "inline-flex" => element.flex(),
+            "block" | "inline" | "inline-block" => element.block(),
+            _ => element,
+        };
+    }
     if let Some(value) = node.string_prop(Property::Position) {
         element = apply_decl(element, "position", value, theme);
     }
@@ -637,6 +663,12 @@ pub fn interactive<E: StatefulInteractiveElement>(
         .string_prop(Property::HoverBackground)
         .and_then(|token| color_themed(token, theme))
         .map(Into::into);
+    let hover_fg = node
+        .string_prop(Property::HoverForeground)
+        .and_then(|token| color_themed(token, theme));
+    let hover_border = node
+        .string_prop(Property::HoverBorder)
+        .and_then(|token| color_themed(token, theme));
     let hover_opacity = node.float_prop(Property::HoverOpacity).map(|v| v as f32);
     let hover_shadow = node
         .string_prop(Property::HoverShadow)
@@ -646,6 +678,8 @@ pub fn interactive<E: StatefulInteractiveElement>(
         .string_prop(Property::SelectedHoverShadow)
         .map(|value| wire_shadows(value, theme));
     if hover_bg.is_some()
+        || hover_fg.is_some()
+        || hover_border.is_some()
         || hover_opacity.is_some()
         || hover_shadow.is_some()
         || selected_hover_shadow.is_some()
@@ -653,6 +687,12 @@ pub fn interactive<E: StatefulInteractiveElement>(
         element = element.hover(move |mut style: StyleRefinement| {
             if let Some(bg) = hover_bg {
                 style.background = Some(bg);
+            }
+            if let Some(fg) = hover_fg {
+                style.text.color = Some(fg);
+            }
+            if let Some(border) = hover_border {
+                style.border_color = Some(border);
             }
             if let Some(opacity) = hover_opacity {
                 style.opacity = Some(opacity);
@@ -761,6 +801,13 @@ pub fn layout<E: Styled>(element: E, node: &NodeSnapshot) -> E {
             "baseline" => element.items_baseline(),
             "stretch" => element.items_stretch(),
             _ => element.items_center(),
+        };
+    }
+    if let Some(wrap) = node.string_prop(Property::FlexWrap) {
+        element = match wrap {
+            "wrap" => element.flex_wrap(),
+            "nowrap" => element.flex_nowrap(),
+            _ => element,
         };
     }
     element
@@ -1307,7 +1354,12 @@ fn apply_decl<E: Styled>(mut element: E, prop: &str, value: &str, theme: &Theme)
                 // Taffy has no viewport-anchored `fixed`; nearest-positioned-
                 // ancestor semantics mean overlay ancestors must be
                 // window-sized layers (the app registers those classes).
-                "fixed" | "sticky" => element.absolute(),
+                "fixed" => element.absolute(),
+                // Taffy also has no scroll-anchored `sticky`: keep the
+                // element in flow with `relative` so `inset-*` offsets
+                // still apply (nearest semantic — `absolute` would pull
+                // e.g. a sticky table column out of the row).
+                "sticky" => element.relative(),
                 _ => element,
             },
             "inset" => match box_len_edges(value) {
