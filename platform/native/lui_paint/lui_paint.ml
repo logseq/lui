@@ -563,18 +563,72 @@ let resolve_style store id st =
 (* ---------- fills ---------- *)
 
 (* Theme tokens with sRGB fallbacks when the host resolver doesn't know
-   them, so control chrome still draws. *)
-let theme ctx name fallback =
+   them, so control chrome still draws. [default_palette] mirrors the
+   canonical light tokens kept in lui_theme; the lui_theme test asserts
+   the two tables agree so fallbacks can't drift. *)
+let default_palette : (string * color) list =
+  [ ("background", color 255 255 255 255);
+    ("foreground", color 24 24 27 255);
+    ("text", color 24 24 27 255);
+    ("text-muted", color 110 110 119 255);
+    ("muted-foreground", color 110 110 119 255);
+    ("muted", color 244 244 245 255);
+    ("surface", color 244 244 245 255);
+    ("surface-hover", color 233 233 236 255);
+    ("surface-pressed", color 221 221 225 255);
+    ("popover", color 255 255 255 255);
+    ("card", color 255 255 255 255);
+    ("border", color 217 217 222 255);
+    ("input", color 217 217 222 255);
+    ("control-border", color 169 170 174 255);
+    ("switch-track", color 188 188 193 255);
+    ("accent", color 37 99 235 255);
+    ("accent-hover", color 29 78 216 255);
+    ("accent-pressed", color 30 64 175 255);
+    ("accent-text", color 255 255 255 255);
+    ("primary", color 37 99 235 255);
+    ("primary-foreground", color 255 255 255 255);
+    ("secondary", color 244 244 245 255);
+    ("danger", color 220 38 38 255);
+    ("destructive", color 220 38 38 255);
+    ("warning", color 217 119 6 255);
+    ("success", color 22 163 74 255);
+    ("focus", color 37 99 235 140);
+    ("ring", color 37 99 235 140);
+    ("selection", color 37 99 235 64);
+    ("scrollbar-thumb", color 0 0 0 82);
+    ("inverse", color 24 24 27 255);
+    ("inverse-foreground", color 255 255 255 255) ]
+
+let theme ctx name =
   match ctx.hooks.color_of name with
   | Some c -> c
-  | None -> fallback
+  | None -> (
+    match List.assoc_opt name default_palette with
+    | Some c -> c
+    | None -> color 0 0 0 0)
 
-let col_primary ctx = theme ctx "primary" (color 37 99 235 255)
-let col_primary_fg ctx = theme ctx "primary-foreground" (color 255 255 255 255)
-let col_secondary ctx = theme ctx "secondary" (color 229 231 235 255)
-let col_border ctx = theme ctx "border" (color 209 213 219 255)
-let col_background ctx = theme ctx "background" (color 255 255 255 255)
-let col_muted_fg ctx = theme ctx "muted-foreground" (color 107 114 128 255)
+let col_primary ctx = theme ctx "primary"
+let col_primary_fg ctx = theme ctx "primary-foreground"
+let col_secondary ctx = theme ctx "secondary"
+let col_border ctx = theme ctx "border"
+let col_background ctx = theme ctx "background"
+let col_muted_fg ctx = theme ctx "muted-foreground"
+let col_surface ctx = theme ctx "surface"
+let col_surface_hover ctx = theme ctx "surface-hover"
+let col_surface_pressed ctx = theme ctx "surface-pressed"
+let col_accent ctx = theme ctx "accent"
+let col_accent_hover ctx = theme ctx "accent-hover"
+let col_accent_text ctx = theme ctx "accent-text"
+let col_control_border ctx = theme ctx "control-border"
+let col_switch_track ctx = theme ctx "switch-track"
+let col_focus ctx = theme ctx "focus"
+let col_scrollbar ctx = theme ctx "scrollbar-thumb"
+let col_danger ctx = theme ctx "danger"
+let col_popover ctx = theme ctx "popover"
+let col_inverse ctx = theme ctx "inverse"
+let col_inverse_fg ctx = theme ctx "inverse-foreground"
+let col_muted ctx = theme ctx "muted"
 
 (* CSS gradient direction → unit-space gradient line endpoints.
    [deg] is the CSS angle: 0 points up, 90 right, clockwise. *)
@@ -648,10 +702,11 @@ let paint_of hooks s =
         | Some c -> Some (Solid, c, c, (0., 0., 0., 0.))
         | None -> None)))
 
-(* One fill op; callers assemble the record fields they need. *)
-let fill frect fradii ~paint ~c1 ~c2 ~grad ~border ~bcolor ~dashed ~alpha =
+(* One fill op; callers assemble the record fields they need.
+   [continuous] draws the radii as squircle corners. *)
+let fill ?(continuous = false) frect fradii ~paint ~c1 ~c2 ~grad ~border ~bcolor ~dashed ~alpha =
   Fill
-    { frect; fradii; fcontinuous = false; fcolor = c1; fpaint = paint;
+    { frect; fradii; fcontinuous = continuous; fcolor = c1; fpaint = paint;
       fcolor2 = c2; fgradient = grad; fborder = border;
       fborder_color = bcolor; fdashed = dashed; fwide = 0;
       fopacity = alpha }
@@ -811,7 +866,7 @@ let box_ops ctx store id rs r alpha =
 let text_fg ctx store id =
   match pcolor ctx.hooks store id "foreground" with
   | Some c -> c
-  | None -> theme ctx "foreground" (color 0 0 0 255)
+  | None -> theme ctx "foreground"
 
 (* Leading-edge square used by checkbox and radio. *)
 let leading_box ctx r side_logical =
@@ -847,10 +902,13 @@ let frac_of store id =
 
 (* ---------- kind visuals ---------- *)
 
-let text_ops ctx store id r alpha ~placeholder_ok =
+let text_ops ?fg ctx store id r alpha ~placeholder_ok =
+  let fg =
+    match fg with Some c -> c | None -> text_fg ctx store id
+  in
   let s =
     match pstr store id "text" with
-    | Some s when s <> "" -> Some (s, text_fg ctx store id)
+    | Some s when s <> "" -> Some (s, fg)
     | _ ->
       if placeholder_ok then
         match pstr store id "placeholder" with
@@ -895,52 +953,56 @@ let progress_ops ctx store id rs r alpha =
   let track_c =
     match pcolor ctx.hooks store id "background" with
     | Some c -> c
-    | None -> col_secondary ctx
+    | None -> col_border ctx
   in
   let fill_c =
     match pcolor ctx.hooks store id "foreground" with
     | Some c -> c
-    | None -> col_primary ctx
+    | None -> col_accent ctx
   in
   let half = r.h /. 2. in
   box_ops ctx store id rs r alpha
-  @ [ fill r (corners r (half, half, half, half) false) ~paint:Solid
+  @ [ fill ~continuous:true r (corners r (half, half, half, half) false) ~paint:Solid
         ~c1:track_c ~c2:track_c ~grad:(0., 0., 0., 0.)
         ~border:(0., 0., 0., 0.) ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha;
-      fill (rect r.x r.y (r.w *. frac) r.h)
+      fill ~continuous:true (rect r.x r.y (r.w *. frac) r.h)
         (corners r (half, half, half, half) false) ~paint:Solid ~c1:fill_c
         ~c2:fill_c ~grad:(0., 0., 0., 0.) ~border:(0., 0., 0., 0.)
         ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha ]
 
-(* checkbox: leading square; border when unchecked, filled + check
-   glyph through the text hook when checked. *)
-let checkbox_ops ctx store id rs r alpha =
+(* checkbox: leading square; neutral-bordered page box when
+   unchecked (accent edge on hover), accent fill + check glyph through
+   the text hook when checked. *)
+let checkbox_ops ctx store id st rs r alpha =
   let s = ctx.scale in
   let b = leading_box ctx r 16. in
   let checked = pbool store id "checked" in
   let accent =
     match pcolor ctx.hooks store id "border-color" with
     | Some c -> c
-    | None -> col_primary ctx
+    | None -> col_accent ctx
   in
   let rad = chrome_radii ctx store id (4. *. s) in
   let chrome =
     if checked then
-      fill b (corners b rad false) ~paint:Solid ~c1:accent ~c2:accent
+      fill ~continuous:true b (corners b rad false) ~paint:Solid ~c1:accent ~c2:accent
         ~grad:(0., 0., 0., 0.) ~border:(0., 0., 0., 0.)
         ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha
       :: scale_ops alpha
-           (ctx.hooks.text_ops id b (col_primary_fg ctx) "\xe2\x9c\x93")
+           (ctx.hooks.text_ops id b (col_accent_text ctx) "\xe2\x9c\x93")
     else
-      [ fill b (corners b rad false) ~paint:Solid ~c1:(color 0 0 0 0)
-          ~c2:(color 0 0 0 0) ~grad:(0., 0., 0., 0.)
-          ~border:(1. *. s, 1. *. s, 1. *. s, 1. *. s) ~bcolor:accent
+      [ let edge = if st.hovered then accent else col_control_border ctx in
+        fill ~continuous:true b (corners b rad false) ~paint:Solid
+          ~c1:(col_background ctx) ~c2:(col_background ctx)
+          ~grad:(0., 0., 0., 0.)
+          ~border:(1. *. s, 1. *. s, 1. *. s, 1. *. s) ~bcolor:edge
           ~dashed:false ~alpha ]
   in
   box_ops ctx store id rs r alpha @ chrome @ label_after ctx store id r b 8. alpha
 
-(* radio: leading circle; ring border unchecked, disc ring checked. *)
-let radio_ops ctx store id rs r alpha =
+(* radio: leading circle; neutral-bordered page disc unchecked
+   (accent edge on hover), accent ring + small on-accent dot checked. *)
+let radio_ops ctx store id st rs r alpha =
   let s = ctx.scale in
   let b = leading_box ctx r 16. in
   let half = b.w /. 2. in
@@ -948,91 +1010,112 @@ let radio_ops ctx store id rs r alpha =
   let accent =
     match pcolor ctx.hooks store id "border-color" with
     | Some c -> c
-    | None -> col_primary ctx
+    | None -> col_accent ctx
   in
   let chrome =
     if checked then
-      let inner = b.w /. 2. in
       [ fill b (corners b (half, half, half, half) false) ~paint:Solid
           ~c1:accent ~c2:accent ~grad:(0., 0., 0., 0.)
           ~border:(0., 0., 0., 0.) ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha;
         (let c =
            match pcolor ctx.hooks store id "background" with
            | Some c -> c
-           | None -> col_background ctx
+           | None -> col_accent_text ctx
          in
-         let d = inner in
+         let d = Float.min (6. *. s) (b.w /. 2.) in
          fill
            (rect (b.x +. ((b.w -. d) /. 2.)) (b.y +. ((b.h -. d) /. 2.)) d d)
            (corners b (d /. 2., d /. 2., d /. 2., d /. 2.) false)
            ~paint:Solid ~c1:c ~c2:c ~grad:(0., 0., 0., 0.)
            ~border:(0., 0., 0., 0.) ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha) ]
     else
-      [ fill b (corners b (half, half, half, half) false) ~paint:Solid
-          ~c1:(color 0 0 0 0) ~c2:(color 0 0 0 0) ~grad:(0., 0., 0., 0.)
-          ~border:(1. *. s, 1. *. s, 1. *. s, 1. *. s) ~bcolor:accent
+      [ let edge = if st.hovered then accent else col_control_border ctx in
+        fill b (corners b (half, half, half, half) false) ~paint:Solid
+          ~c1:(col_background ctx) ~c2:(col_background ctx) ~grad:(0., 0., 0., 0.)
+          ~border:(1. *. s, 1. *. s, 1. *. s, 1. *. s) ~bcolor:edge
           ~dashed:false ~alpha ]
   in
   box_ops ctx store id rs r alpha @ chrome @ label_after ctx store id r b 8. alpha
 
-(* switch: trailing rounded track with a thumb on the checked side. *)
+(* switch: trailing pill track with a white knob on the checked side;
+   the knob carries a small contact shadow so it reads as raised. *)
 let switch_ops ctx store id rs r alpha =
   let s = ctx.scale in
-  let tw = Float.min (44. *. s) r.w and th = Float.min (24. *. s) r.h in
+  let tw = Float.min (36. *. s) r.w and th = Float.min (20. *. s) r.h in
   let tr = rect (r.x +. r.w -. tw) (r.y +. ((r.h -. th) /. 2.)) tw th in
   let checked = pbool store id "checked" in
   let track_c =
-    if checked then col_primary ctx
+    if checked then col_accent ctx
     else
       match pcolor ctx.hooks store id "border-color" with
       | Some c -> c
-      | None -> theme ctx "input" (color 229 231 235 255)
+      | None -> col_switch_track ctx
   in
   let d = Float.max 0. (th -. (4. *. s)) in
   let tx =
     if checked then tr.x +. tr.w -. (2. *. s) -. d else tr.x +. (2. *. s)
   in
   let thumb_r = rect tx (tr.y +. ((tr.h -. d) /. 2.)) d d in
-  let thumb_c = col_background ctx in
+  let thumb_c = color 255 255 255 255 in
+  let thumb_radii = (d /. 2., d /. 2., d /. 2., d /. 2.) in
   box_ops ctx store id rs r alpha
-  @ [ fill tr (corners tr (th /. 2., th /. 2., th /. 2., th /. 2.) false)
+  @ [ fill ~continuous:true tr (corners tr (th /. 2., th /. 2., th /. 2., th /. 2.) false)
         ~paint:Solid ~c1:track_c ~c2:track_c ~grad:(0., 0., 0., 0.)
         ~border:(0., 0., 0., 0.) ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha;
-      fill thumb_r (corners thumb_r (d /. 2., d /. 2., d /. 2., d /. 2.) false)
+      shadow_op_of ctx thumb_r thumb_radii
+        { dx = 0.; dy = 1.; blur = 3.; spread = 0.;
+          scolor = color 0 0 0 64; inset = false }
+        alpha;
+      fill ~continuous:true thumb_r
+        (corners thumb_r thumb_radii false)
         ~paint:Solid ~c1:thumb_c ~c2:thumb_c ~grad:(0., 0., 0., 0.)
         ~border:(0., 0., 0., 0.) ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha ]
 
-(* slider: thin track, filled portion, round thumb at the fraction. *)
+(* slider: thin track with an accent-filled lead and a white capsule
+   knob riding it; the knob wears a rim plus an ambient/key shadow pair
+   so it lifts off the track. *)
 let slider_ops ctx store id rs r alpha =
   let s = ctx.scale in
   let frac = frac_of store id in
-  let th = Float.min (4. *. s) r.h in
-  let tr = rect r.x (r.y +. ((r.h -. th) /. 2.)) r.w th in
+  let th = Float.min (6. *. s) r.h in
+  let pad = Float.min (10. *. s) (r.w /. 2.) in
+  let tr = rect (r.x +. pad) (r.y +. ((r.h -. th) /. 2.)) (Float.max 0. (r.w -. (2. *. pad))) th in
   let track_c =
     match pcolor ctx.hooks store id "border-color" with
     | Some c -> c
-    | None -> theme ctx "input" (color 229 231 235 255)
+    | None -> col_border ctx
   in
   let fill_c =
     match pcolor ctx.hooks store id "foreground" with
     | Some c -> c
-    | None -> col_primary ctx
+    | None -> col_accent ctx
   in
-  let d = Float.min (16. *. s) r.h in
-  let cx = r.x +. (r.w *. frac) in
-  let cx = Float.max (r.x +. (d /. 2.)) (Float.min (r.x +. r.w -. (d /. 2.)) cx) in
-  let thumb_r = rect (cx -. (d /. 2.)) (r.y +. ((r.h -. d) /. 2.)) d d in
+  let kw = Float.min (20. *. s) (r.w /. 2.) and kh = Float.min (16. *. s) r.h in
+  let cx = tr.x +. (tr.w *. frac) in
+  let cx = Float.max (tr.x +. (kw /. 2.)) (Float.min (tr.x +. tr.w -. (kw /. 2.)) cx) in
+  let thumb_r = rect (cx -. (kw /. 2.)) (r.y +. ((r.h -. kh) /. 2.)) kw kh in
+  let thumb_radii = (kh /. 2., kh /. 2., kh /. 2., kh /. 2.) in
   box_ops ctx store id rs r alpha
-  @ [ fill tr (corners tr (th /. 2., th /. 2., th /. 2., th /. 2.) false)
+  @ [ fill ~continuous:true tr (corners tr (th /. 2., th /. 2., th /. 2., th /. 2.) false)
         ~paint:Solid ~c1:track_c ~c2:track_c ~grad:(0., 0., 0., 0.)
         ~border:(0., 0., 0., 0.) ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha;
-      fill (rect tr.x tr.y (tr.w *. frac) tr.h)
+      fill ~continuous:true (rect tr.x tr.y (tr.w *. frac) tr.h)
         (corners tr (th /. 2., th /. 2., th /. 2., th /. 2.) false)
         ~paint:Solid ~c1:fill_c ~c2:fill_c ~grad:(0., 0., 0., 0.)
         ~border:(0., 0., 0., 0.) ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha;
-      fill thumb_r (corners thumb_r (d /. 2., d /. 2., d /. 2., d /. 2.) false)
-        ~paint:Solid ~c1:fill_c ~c2:fill_c ~grad:(0., 0., 0., 0.)
-        ~border:(0., 0., 0., 0.) ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha ]
+      shadow_op_of ctx thumb_r thumb_radii
+        { dx = 0.; dy = 0.5; blur = 1.; spread = 0.;
+          scolor = color 0 0 0 20; inset = false }
+        alpha;
+      shadow_op_of ctx thumb_r thumb_radii
+        { dx = 0.; dy = 1.5; blur = 7.; spread = 0.;
+          scolor = color 0 0 0 26; inset = false }
+        alpha;
+      fill ~continuous:true thumb_r (corners thumb_r thumb_radii false)
+        ~paint:Solid ~c1:(color 255 255 255 255) ~c2:(color 255 255 255 255)
+        ~grad:(0., 0., 0., 0.)
+        ~border:(1. *. s, 1. *. s, 1. *. s, 1. *. s)
+        ~bcolor:(col_control_border ctx) ~dashed:false ~alpha ]
 
 (* spinner: a ring drawn as border edges with one quarter missing —
    the static placeholder until an animated arc op exists. *)
@@ -1102,19 +1185,193 @@ let scrollbar_ops ctx store id r alpha =
   match ctx.hooks.scroll_of id with
   | Some sm when sm.sm_extent > 0. && sm.sm_extent < 1. ->
     let s = ctx.scale in
-    let w = 4. *. s and m = 2. *. s in
+    let w = 6. *. s and m = 2.5 *. s in
     let th = Float.max (r.h *. sm.sm_extent) (16. *. s) in
     let ty = r.y +. ((r.h -. th) *. clamp01 sm.sm_offset) in
     let c =
       match pcolor ctx.hooks store id "border-color" with
       | Some c -> c
-      | None -> theme ctx "muted-foreground" (color 128 128 128 160)
+      | None -> col_scrollbar ctx
     in
     let tr = rect (r.x +. r.w -. w -. m) ty w th in
-    [ fill tr (corners tr (w /. 2., w /. 2., w /. 2., w /. 2.) false)
+    [ fill ~continuous:true tr (corners tr (w /. 2., w /. 2., w /. 2., w /. 2.) false)
         ~paint:Solid ~c1:c ~c2:c ~grad:(0., 0., 0., 0.)
         ~border:(0., 0., 0., 0.) ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha ]
   | _ -> []
+
+(* ---------- default chrome for interactive kinds ---------- *)
+
+(* Whether the node already carries the prop that would own an aspect;
+   defaults below only fill gaps explicit styling left. *)
+let prop_set store id name = Lui_store.prop store id name <> None
+
+(* The default focus ring: a 2px border drawn 1px outside the box,
+   corners grown to match. Emitted over the control when focused and
+   the view didn't supply its own focus-shadow. *)
+let focus_ring_op ctx r radii alpha =
+  let w = 2. *. ctx.scale and o = 1. *. ctx.scale in
+  let rr =
+    rect (r.x -. w -. o) (r.y -. w -. o)
+      (r.w +. (2. *. (w +. o))) (r.h +. (2. *. (w +. o)))
+  in
+  fill ~continuous:true rr
+    (corners rr (grow_radii radii (w +. o)) false)
+    ~paint:Solid ~c1:(color 0 0 0 0) ~c2:(color 0 0 0 0)
+    ~grad:(0., 0., 0., 0.) ~border:(w, w, w, w)
+    ~bcolor:(col_focus ctx) ~dashed:false ~alpha
+
+(* Kinds that show the default focus ring when focused. *)
+let focusable = function
+  | "button" | "toggle-button" | "toggle" | "menu-trigger" | "menu-item"
+  | "bottom-tab" | "tab" | "list-item" | "link" | "select" | "combobox"
+  | "text-field" | "secure-field" | "input" | "search-field" | "textarea"
+  | "checkbox" | "radio" | "switch" | "slider" | "number-stepper" -> true
+  | _ -> false
+
+(* Default surface treatment for kinds that arrive unstyled. Every
+   aspect (fill, border, radius, shadow) defers to an explicit prop;
+   when nothing is set the token palette supplies the whole look. *)
+let default_chrome ctx store id st kind r rs alpha =
+  let s = ctx.scale in
+  let bg_styled = rs.rs_background <> None in
+  let border_styled =
+    prop_set store id "border-width" || prop_set store id "border-color"
+  in
+  let rad = chrome_radii ctx store id in
+  let bw1 = (1. *. s, 1. *. s, 1. *. s, 1. *. s) in
+  let zb = (0., 0., 0., 0.) in
+  let zc = color 0 0 0 0 in
+  let face bg rad bw bcolor ~dashed =
+    fill ~continuous:true r (corners r rad false) ~paint:Solid ~c1:bg
+      ~c2:bg ~grad:(0., 0., 0., 0.) ~border:bw ~bcolor ~dashed ~alpha
+  in
+  (* ambient + key shadow pair under floating surfaces *)
+  let shadow_pair rad specs =
+    match rs.rs_shadow with
+    | Some _ -> []
+    | None ->
+      List.map
+        (fun (dx, dy, blur, a) ->
+          shadow_op_of ctx r rad
+            { dx; dy; blur; spread = 0.; scolor = color 0 0 0 a;
+              inset = false }
+            alpha)
+        specs
+  in
+  match kind with
+  | "button" | "toggle-button" | "toggle" | "menu-trigger"
+  | "number-stepper" ->
+    let rad = rad (6. *. s) in
+    (if bg_styled then []
+     else
+       let face_c =
+         if st.disabled then col_surface ctx
+         else if st.pressed || (st.selected && kind <> "button") then
+           col_surface_pressed ctx
+         else if st.hovered then col_surface_hover ctx
+         else col_surface ctx
+       in
+       [ face face_c rad zb zc ~dashed:false ])
+    @ (if border_styled then []
+       else [ face zc rad bw1 (col_control_border ctx) ~dashed:false ])
+  | "text-field" | "secure-field" | "input" | "search-field" | "textarea"
+  | "select" | "combobox" ->
+    let rad = rad (6. *. s) in
+    (if bg_styled then []
+     else [ face (col_surface ctx) rad zb zc ~dashed:false ])
+    @ (if border_styled then []
+       else
+         [ let bc =
+             if st.focused then col_accent ctx else col_control_border ctx
+           in
+           face zc rad bw1 bc ~dashed:false ])
+  | "menu-item" ->
+    if bg_styled || (not st.hovered && not st.focused) then []
+    else [ face (col_accent ctx) (rad (6. *. s)) zb zc ~dashed:false ]
+  | "list-item" ->
+    if bg_styled then []
+    else if st.selected then
+      [ face (col_accent ctx) (rad (6. *. s)) zb zc ~dashed:false ]
+    else if st.hovered then
+      [ face (col_surface_hover ctx) (rad (6. *. s)) zb zc ~dashed:false ]
+    else []
+  | "bottom-tab" | "tab" ->
+    if st.selected then
+      let h = 2. *. s and i = 6. *. s in
+      [ fill
+          (rect (r.x +. i) (r.y +. r.h -. h)
+             (Float.max 0. (r.w -. (2. *. i))) h)
+          (0., 0., 0., 0.) ~paint:Solid ~c1:(col_accent ctx)
+          ~c2:(col_accent ctx) ~grad:(0., 0., 0., 0.) ~border:zb ~bcolor:zc
+          ~dashed:false ~alpha ]
+    else []
+  | "swipe-action" ->
+    if bg_styled then [] else [ face (col_danger ctx) (rad 0.) zb zc ~dashed:false ]
+  | "file-picker" ->
+    let rad = rad (6. *. s) in
+    (if bg_styled then [] else [ face (col_surface ctx) rad zb zc ~dashed:false ])
+    @ (if border_styled then []
+       else [ face zc rad bw1 (col_control_border ctx) ~dashed:true ])
+  | "popover" | "dropdown-menu" | "menu" | "context-menu" ->
+    let rad = rad (8. *. s) in
+    shadow_pair rad [ (0., 1., 3., 26); (0., 6., 20., 41) ]
+    @ (if bg_styled then [] else [ face (col_popover ctx) rad zb zc ~dashed:false ])
+    @ (if border_styled then []
+       else [ face zc rad bw1 (col_border ctx) ~dashed:false ])
+  | "dialog" | "sheet" | "drawer" | "modal" ->
+    let rad = rad (10. *. s) in
+    shadow_pair rad [ (0., 2., 8., 31); (0., 10., 30., 76) ]
+    @ (if bg_styled then [] else [ face (col_popover ctx) rad zb zc ~dashed:false ])
+    @ (if border_styled then []
+       else [ face zc rad bw1 (col_border ctx) ~dashed:false ])
+  | "tooltip" | "toast" | "alert" | "bubble" ->
+    let rad = rad (5. *. s) in
+    shadow_pair rad [ (0., 1., 2., 26); (0., 2., 8., 51) ]
+    @ (if bg_styled then [] else [ face (col_inverse ctx) rad zb zc ~dashed:false ])
+  | "card" ->
+    let rad = rad (8. *. s) in
+    shadow_pair rad [ (0., 1., 2., 20); (0., 4., 10., 15) ]
+    @ (if bg_styled then []
+       else [ face (theme ctx "card") rad zb zc ~dashed:false ])
+    @ (if border_styled then []
+       else [ face zc rad bw1 (col_border ctx) ~dashed:false ])
+  | "kbd" ->
+    let rad = rad (4. *. s) in
+    (if bg_styled then [] else [ face (col_surface ctx) rad zb zc ~dashed:false ])
+    @ (if border_styled then []
+       else [ face zc rad bw1 (col_control_border ctx) ~dashed:false ])
+  | _ -> []
+
+(* Foreground color per kind and state when no foreground prop is set:
+   selection and inverse surfaces flip the ink. Ink only flips when our
+   chrome also supplies the accent/danger fill — a view-set background
+   keeps the view's ink. *)
+let default_text_fg ctx store id kind st rs =
+  let bg_styled = rs.rs_background <> None in
+  match pcolor ctx.hooks store id "foreground" with
+  | Some c -> c
+  | None -> (
+    match kind with
+    | "link" -> col_accent ctx
+    | "menu-item" when st.hovered || st.focused ->
+      if bg_styled then text_fg ctx store id else col_accent_text ctx
+    | "list-item" when st.selected ->
+      if bg_styled then text_fg ctx store id else col_accent_text ctx
+    | "bottom-tab" | "tab" ->
+      if st.selected then col_accent ctx else col_muted_fg ctx
+    | "swipe-action" ->
+      if bg_styled then text_fg ctx store id else col_accent_text ctx
+    | "tooltip" | "toast" | "alert" | "bubble" -> col_inverse_fg ctx
+    | "list-section-header" | "list-section-footer" -> col_muted_fg ctx
+    | _ -> text_fg ctx store id)
+
+(* Disabled controls dim unless the view already drove an opacity. *)
+let disabled_alpha store id st =
+  if
+    st.disabled
+    && not (prop_set store id "disabled-opacity" || prop_set store id "opacity")
+  then 0.55
+  else 1.
 
 (* ---------- node paint ---------- *)
 
@@ -1218,61 +1475,74 @@ let emit scene ops = scene.ops <- List.rev_append ops scene.ops
 let emit1 scene op = scene.ops <- op :: scene.ops
 
 (* Ops for a single node's own chrome. *)
-let rec paint_own ctx store id kind r rs alpha =
-  match kind with
-  | "spacer" -> []
-  | "divider" -> divider_ops ctx store id rs r alpha
-  | "progress" -> progress_ops ctx store id rs r alpha
-  | "checkbox" -> checkbox_ops ctx store id rs r alpha
-  | "radio" -> radio_ops ctx store id rs r alpha
-  | "switch" -> switch_ops ctx store id rs r alpha
-  | "slider" -> slider_ops ctx store id rs r alpha
-  | "spinner" -> spinner_ops ctx store id rs r alpha
-  | "icon" -> icon_ops ctx store id rs r alpha
-  | "image" | "file-image" | "media-surface" | "file-preview" ->
-    box_ops ctx store id rs r alpha
-    @ image_ops ctx store id r alpha (corners r (radii_of ctx store id) false)
-  | "avatar" -> (
-    let half = r.h /. 2. in
-    let rad = (half, half, half, half) in
-    match ctx.hooks.image_of id with
-    | Some _ -> box_ops ctx store id rs r alpha @ image_ops ctx store id r alpha (corners r rad false)
-    | None -> (
-      let rad = chrome_radii ctx store id half in
-      let b = rect r.x r.y r.w r.h in
-      let c = theme ctx "primary" (color 37 99 235 255) in
-      match pstr store id "text" with
-      | Some s when s <> "" ->
-        [ fill b (corners b rad false) ~paint:Solid ~c1:c ~c2:c
-            ~grad:(0., 0., 0., 0.) ~border:(0., 0., 0., 0.)
-            ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha ]
-        @ scale_ops alpha (ctx.hooks.text_ops id r (col_primary_fg ctx) s)
-      | _ -> box_ops ctx store id rs r alpha))
-  | "text" | "label" | "heading" | "paragraph" | "br" | "link" | "kbd" ->
-    box_ops ctx store id rs r alpha
-    @ text_ops ctx store id r alpha ~placeholder_ok:false
-  | "text-field" | "secure-field" | "input" | "search-field" | "textarea"
-  | "select" | "combobox" ->
-    box_ops ctx store id rs r alpha
-    @ text_ops ctx store id r alpha ~placeholder_ok:true
-  | "button" | "toggle-button" | "toggle" | "menu-item" | "menu-trigger"
-  | "bottom-tab" | "list-item" | "swipe-action" | "file-picker"
-  | "list-section-header" | "list-section-footer" ->
-    (* labeled chrome: box decoration plus the label through the text
-       engine *)
-    box_ops ctx store id rs r alpha
-    @ text_ops ctx store id r alpha ~placeholder_ok:false
-  | kind -> (
-    match String.index_opt kind ':' with
-    | Some _ when String.length kind > 10 && String.sub kind 0 10 = "extension:" -> (
-      let identifier = String.sub kind 10 (String.length kind - 10) in
-      match Hashtbl.find_opt extension_renderers identifier with
-      | Some renderer -> (
-        match Lui_store.find_opt store id with
-        | Some node -> scale_ops alpha (renderer.paint ctx store node r)
+let rec paint_own ctx store id st kind r rs alpha =
+  let fg = default_text_fg ctx store id kind st rs in
+  let own =
+    match kind with
+    | "spacer" -> []
+    | "divider" -> divider_ops ctx store id rs r alpha
+    | "progress" -> progress_ops ctx store id rs r alpha
+    | "checkbox" -> checkbox_ops ctx store id st rs r alpha
+    | "radio" -> radio_ops ctx store id st rs r alpha
+    | "switch" -> switch_ops ctx store id rs r alpha
+    | "slider" -> slider_ops ctx store id rs r alpha
+    | "spinner" -> spinner_ops ctx store id rs r alpha
+    | "icon" -> icon_ops ctx store id rs r alpha
+    | "image" | "file-image" | "media-surface" | "file-preview" ->
+      box_ops ctx store id rs r alpha
+      @ image_ops ctx store id r alpha (corners r (radii_of ctx store id) false)
+    | "avatar" -> (
+      let half = r.h /. 2. in
+      let rad = (half, half, half, half) in
+      match ctx.hooks.image_of id with
+      | Some _ -> box_ops ctx store id rs r alpha @ image_ops ctx store id r alpha (corners r rad false)
+      | None -> (
+        let rad = chrome_radii ctx store id half in
+        let b = rect r.x r.y r.w r.h in
+        let c = col_muted ctx in
+        match pstr store id "text" with
+        | Some s when s <> "" ->
+          [ fill ~continuous:true b (corners b rad false) ~paint:Solid ~c1:c ~c2:c
+              ~grad:(0., 0., 0., 0.) ~border:(0., 0., 0., 0.)
+              ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha ]
+          @ scale_ops alpha (ctx.hooks.text_ops id r (col_muted_fg ctx) s)
+        | _ -> box_ops ctx store id rs r alpha))
+    | "text" | "label" | "heading" | "paragraph" | "br" | "link" | "kbd" ->
+      box_ops ctx store id rs r alpha
+      @ text_ops ~fg ctx store id r alpha ~placeholder_ok:false
+    | "text-field" | "secure-field" | "input" | "search-field" | "textarea"
+    | "select" | "combobox" ->
+      box_ops ctx store id rs r alpha
+      @ text_ops ~fg ctx store id r alpha ~placeholder_ok:true
+    | "button" | "toggle-button" | "toggle" | "menu-item" | "menu-trigger"
+    | "bottom-tab" | "list-item" | "swipe-action" | "file-picker"
+    | "list-section-header" | "list-section-footer" | "tab" ->
+      (* labeled chrome: box decoration plus the label through the text
+         engine *)
+      box_ops ctx store id rs r alpha
+      @ text_ops ~fg ctx store id r alpha ~placeholder_ok:false
+    | kind -> (
+      match String.index_opt kind ':' with
+      | Some _ when String.length kind > 10 && String.sub kind 0 10 = "extension:" -> (
+        let identifier = String.sub kind 10 (String.length kind - 10) in
+        match Hashtbl.find_opt extension_renderers identifier with
+        | Some renderer -> (
+          match Lui_store.find_opt store id with
+          | Some node -> scale_ops alpha (renderer.paint ctx store node r)
+          | None -> box_ops ctx store id rs r alpha)
         | None -> box_ops ctx store id rs r alpha)
-      | None -> box_ops ctx store id rs r alpha)
-    | _ -> box_ops ctx store id rs r alpha)
+      | _ -> box_ops ctx store id rs r alpha)
+  in
+  (* explicit-prop ops first, then token defaults filling the gaps;
+     shadow ops carry a cast cutout so painting them after prop fills
+     still leaves them visually underneath the box. *)
+  own @ default_chrome ctx store id st kind r rs alpha
+  @
+  if
+    st.focused && focusable kind
+    && not (prop_set store id "focus-shadow")
+  then [ focus_ring_op ctx r (radii_of ctx store id) alpha ]
+  else []
 
 (* A visible node: resolve state and placement, clip, own chrome,
    children in z order, scrollbar, unclip. *)
@@ -1286,7 +1556,10 @@ and paint_node ctx store scene id parent_r alpha =
     let contents = unboxed store id in
     (* display:contents generates no box, so its opacity and chrome do
        not apply — children paint with the parent's alpha and clip. *)
-    let alpha = if contents then alpha else alpha *. rs.rs_opacity in
+    let alpha =
+      if contents then alpha
+      else alpha *. rs.rs_opacity *. disabled_alpha store id st
+    in
     let clip =
       (not contents) && (not (rect_empty r)) && clips kind store id
     in
@@ -1295,7 +1568,8 @@ and paint_node ctx store scene id parent_r alpha =
         (Push_clip
            { crect = r; cradii = corners r (radii_of ctx store id) false;
              ccontinuous = false });
-    if not contents then emit scene (paint_own ctx store id kind r rs alpha);
+    if not contents then
+      emit scene (paint_own ctx store id st kind r rs alpha);
     (* Children of a display:contents node keep the parent's containing
        block — the node itself generates no box to anchor to. *)
     let child_parent = if contents then parent_r else r in

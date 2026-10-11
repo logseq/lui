@@ -277,8 +277,10 @@ let test_selected_shadow () =
         (fun _ -> { Lui_paint.state_neutral with hovered = true }) }
   in
   let s = paint_with h t () in
-  match s.ops with
-  | [ Shadow sh ] -> check bool "sel+hover" true (sh.srect.w = 104.)
+  (* the list item also gains its selected accent fill from default
+     chrome; the shadow assertion still checks the one Shadow op *)
+  match List.filter_map (function Lui_scene.Shadow sh -> Some sh | _ -> None) s.ops with
+  | [ sh ] -> check bool "sel+hover" true (sh.srect.w = 104.)
   | _ -> fail "expected one Shadow op"
 
 let test_disabled_opacity () =
@@ -289,9 +291,12 @@ let test_disabled_opacity () =
       SetProp (1, Enabled, BoolValue false);
       SetProp (1, DisabledOpacity, FloatValue 0.5) ];
   let s = paint_with (hooks ()) t () in
+  (* the button also gains a default control border; both fills carry
+     the disabled opacity *)
   match s.ops with
-  | [ Fill f ] -> check bool "half opacity" true (f.fopacity = 0.5)
-  | _ -> fail "expected one Fill op"
+  | [ Fill bg; Fill border ] ->
+    check bool "half opacity" true (bg.fopacity = 0.5 && border.fopacity = 0.5)
+  | _ -> fail "expected bg + border fills"
 
 (* ---------- compositing ---------- *)
 
@@ -386,8 +391,10 @@ let test_popup_xy () =
       SetProp (1, PopupY, FloatValue 40.);
       SetProp (1, BackgroundValue, StringValue "#ff0000") ];
   let s = paint_with (hooks ()) t () in
+  (* the styled background fill lands first; popover defaults add
+     shadow + border after it *)
   match s.ops with
-  | [ Fill f ] ->
+  | Fill f :: _ ->
     check bool "popup" true (f.frect.x = 30. && f.frect.y = 40.)
   | _ -> fail "expected popup fill"
 
@@ -464,7 +471,8 @@ let test_checkbox_unchecked () =
   match s.ops with
   | [ Fill f ] ->
     check bool "bordered" true (f.fborder = (1., 1., 1., 1.));
-    check bool "hollow" true (f.fcolor.a = 0)
+    (* unchecked box now paints the page face inside its border *)
+    check bool "page face" true (f.fcolor.a = 255)
   | _ -> fail "expected bordered box"
 
 let test_switch () =
@@ -474,12 +482,12 @@ let test_switch () =
       SetProp (1, Checked, BoolValue true) ];
   let s = paint_with (hooks ()) t () in
   match s.ops with
-  | [ Fill track; Fill thumb ] ->
+  | [ Fill track; Lui_scene.Shadow _; Fill thumb ] ->
     check bool "track accent" true (track.fcolor.b = 235);
-    (* track right-aligned in 100x40: 44x24 at x=56; checked thumb
-       (d=20) sits 2px off the right edge → x=78 *)
-    check bool "thumb right" true (thumb.frect.x = 78.)
-  | _ -> fail "expected track + thumb"
+    (* track right-aligned in 100x40: 36x20 at x=64; checked thumb
+       (d=16) sits 2px off the right edge → x=82, wearing a shadow *)
+    check bool "thumb right" true (thumb.frect.x = 82.)
+  | _ -> fail "expected track + thumb shadow + thumb"
 
 let test_radio () =
   let t = store () in
@@ -510,11 +518,14 @@ let test_slider () =
       SetProp (1, ProgressValue, FloatValue 0.5) ];
   let s = paint_with (hooks ()) t () in
   match s.ops with
-  | [ Fill track; Fill fill'; Fill thumb ] ->
-    check bool "track full" true (track.frect.w = 100.);
-    check bool "half fill" true (fill'.frect.w = 50.);
-    check bool "thumb middle" true (thumb.frect.x = 42.)
-  | _ -> fail "expected track + fill + thumb"
+  | [ Fill track; Fill fill'; Lui_scene.Shadow _; Lui_scene.Shadow _;
+      Fill thumb ] ->
+    (* track insets 10px either side for knob travel *)
+    check bool "track inset" true (track.frect.w = 80.);
+    check bool "half fill" true (fill'.frect.w = 40.);
+    (* 20x16 capsule knob centered at the fraction: cx=50 → x=40 *)
+    check bool "thumb middle" true (thumb.frect.x = 40.)
+  | _ -> fail "expected track + fill + thumb shadows + thumb"
 
 let test_scrollbar () =
   let t = store () in
@@ -527,11 +538,11 @@ let test_scrollbar () =
   in
   let s = paint_with h t ~width:100 ~height:100 () in
   (* scroll container clips; the thumb is the last op inside the clip:
-     4px wide, 2px off the right edge, half the height *)
+     6px wide, 2.5px off the right edge, half the height *)
   match List.rev s.ops with
   | Pop_clip :: Fill f :: _ ->
     check bool "thumb half" true (f.frect.h = 50.);
-    check bool "right edge" true (f.frect.x = 94.)
+    check bool "right edge" true (f.frect.x = 91.5)
   | _ -> fail "expected thumb inside clip"
 
 let test_extension () =
