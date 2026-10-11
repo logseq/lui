@@ -106,8 +106,14 @@ let apply_batch h (batch : Lui_protocol.patch_batch) =
 let resize h ~width ~height ~scale =
   h.width <- width; h.height <- height; h.scale <- scale; h.dirty <- true
 
+let prof_t0 = Sys.time ()
+let prof msg =
+  if Sys.getenv_opt "LUI_HOST_PROF" <> None then
+    Printf.eprintf "[host +%.3f] %s\n%!" (Sys.time () -. prof_t0) msg
+
 (* Paint the current tree and render; returns pixel bytes. *)
 let repaint h =
+  prof "repaint begin";
   let hooks =
     match h.layout with
     | None -> h.hooks
@@ -126,6 +132,7 @@ let repaint h =
       then { h.hooks with layout = l.lhook }
       else h.hooks
   in
+  prof "layout done";
   (* The window clear follows the app theme's "background" token —
      what the web paints on <body>. Regions the tree does not cover
      must not flash the raw framebuffer. *)
@@ -136,8 +143,11 @@ let repaint h =
   in
   Lui_paint.paint hooks h.store h.scene ~width:h.width ~height:h.height
     ~scale:h.scale ~clear;
+  prof "paint done";
   h.dirty <- false;
-  h.renderer.render h.scene
+  let bytes = h.renderer.render h.scene in
+  prof "render done";
+  bytes
 
 let layout_rect h id =
   match h.layout with
