@@ -4,12 +4,52 @@
 
 open Lui_protocol
 
+(* Children of a node live in a growable array: patch streams append
+   children one op at a time and a list made every [InsertChild] an
+   O(fan-out) rewalk, which made large mounts quadratic. The vec keeps
+   appends O(1) amortized; readers materialize lists on demand. *)
+type child_vec = { mutable arr : int array; mutable len : int }
+
+let vec_create () = { arr = [||]; len = 0 }
+
+let vec_grow v =
+  let cap = max 8 (2 * Array.length v.arr) in
+  let arr' = Array.make cap 0 in
+  Array.blit v.arr 0 arr' 0 v.len;
+  v.arr <- arr'
+
+let vec_insert_at v i x =
+  let i = max 0 (min i v.len) in
+  if v.len = Array.length v.arr then vec_grow v;
+  Array.blit v.arr i v.arr (i + 1) (v.len - i);
+  v.arr.(i) <- x;
+  v.len <- v.len + 1
+
+let vec_remove v x =
+  let w = ref 0 in
+  for i = 0 to v.len - 1 do
+    let c = v.arr.(i) in
+    if c <> x then (
+      v.arr.(!w) <- c;
+      incr w)
+  done;
+  v.len <- !w
+
+let vec_to_list v =
+  let rec go i acc = if i < 0 then acc else go (i - 1) (v.arr.(i) :: acc) in
+  go (v.len - 1) []
+
+let vec_iter v f =
+  for i = 0 to v.len - 1 do
+    f v.arr.(i)
+  done
+
 type node = {
   id : int;
   mutable kind : string; (* node_kind_name, or "extension:<identifier>" *)
   props : (string, wire_value) Hashtbl.t;
   mutable parent : int option;
-  mutable children : int list;
+  children : child_vec;
 }
 
 type t = {
@@ -21,17 +61,19 @@ let create () = { nodes = Hashtbl.create 64; generation = 0 }
 let node_count t = Hashtbl.length t.nodes
 let generation t = t.generation
 
-let new_node id kind = { id; kind; props = Hashtbl.create 8; parent = None; children = [] }
+let new_node id kind = { id; kind; props = Hashtbl.create 8; parent = None; children = vec_create () }
 
 let rec drop t id =
   match Hashtbl.find_opt t.nodes id with
   | None -> ()
   | Some node ->
-    List.iter (drop t) node.children;
+    (* Snapshot first: dropping a child unlinks it from this vec, and
+       mutating the vec mid-iteration would skip siblings. *)
+    List.iter (drop t) (vec_to_list node.children);
     (match node.parent with
      | Some pid -> (
        match Hashtbl.find_opt t.nodes pid with
-       | Some p -> p.children <- List.filter (fun c -> c <> id) p.children
+       | Some p -> vec_remove p.children id
        | None -> ())
      | None -> ());
     Hashtbl.remove t.nodes id
@@ -39,13 +81,10 @@ let rec drop t id =
 let insert_child t parent child index =
   match Hashtbl.find_opt t.nodes parent, Hashtbl.find_opt t.nodes child with
   | Some p, Some c ->
-    p.children <- List.filter (fun x -> x <> child) p.children;
-    let rec insert_at i acc = function
-      | [] -> List.rev (child :: acc)
-      | rest when i <= 0 -> List.rev_append acc (child :: rest)
-      | x :: tl -> insert_at (i - 1) (x :: acc) tl
-    in
-    p.children <- insert_at index [] p.children;
+    (* [c.parent = None] means the id sits in no children vec, so the
+       common first-attach path can skip the dedupe scan. *)
+    if Option.is_some c.parent then vec_remove p.children child;
+    vec_insert_at p.children index child;
     c.parent <- Some parent
   | _ -> ()
 
@@ -78,7 +117,7 @@ let apply_op t = function
   | RemoveChild (parent, child) -> (
     match Hashtbl.find_opt t.nodes parent, Hashtbl.find_opt t.nodes child with
     | Some p, Some c ->
-      p.children <- List.filter (fun x -> x <> child) p.children;
+      vec_remove p.children child;
       c.parent <- None
     | _ -> ())
   | MoveChild (parent, child, index) -> insert_child t parent child index
@@ -129,7 +168,7 @@ let apply_wire_op t (json : Yojson.Safe.t) =
     let parent = member "parent" json |> to_int_option |> Option.value ~default:(-1) in
     let child = member "child" json |> to_int_option |> Option.value ~default:(-1) in
     (match Hashtbl.find_opt t.nodes parent with
-     | Some p -> p.children <- List.filter (fun x -> x <> child) p.children
+     | Some p -> vec_remove p.children child
      | None -> ())
   | _ -> ()
 
@@ -205,8 +244,18 @@ let prop t id name = match Hashtbl.find_opt t.nodes id with
   | None -> None
 
 let children t id = match Hashtbl.find_opt t.nodes id with
-  | Some n -> List.filter_map (fun c -> Hashtbl.find_opt t.nodes c) n.children
+  | Some n ->
+    let acc = ref [] in
+    vec_iter n.children (fun c ->
+      match Hashtbl.find_opt t.nodes c with
+      | Some child -> acc := child :: !acc
+      | None -> ());
+    List.rev !acc
   | None -> []
+
+(* Child ids of a node as a list; callers that only inspect order use
+   this instead of the vec field. *)
+let node_children n = vec_to_list n.children
 
 (* ---------- coordinate hit-testing (live attach) ---------- *)
 
@@ -250,7 +299,7 @@ let doc_order t =
     | Some n ->
       incr i;
       Hashtbl.replace order id !i;
-      List.iter dfs n.children
+      vec_iter n.children dfs
     | None -> ()
   in
   Hashtbl.iter

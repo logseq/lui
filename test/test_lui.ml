@@ -1176,7 +1176,7 @@ let test_glass_button_menu_action () =
   let group_with_children n =
     List.find_opt
       (fun (g : Drive.Model.node) ->
-         List.length g.Drive.Model.children = n)
+         List.length (Drive.Model.node_children g) = n)
       (Drive.Model.find (drive_tree s) (Drive.Model.Kind "button-group"))
   in
   (* A lone menu action still shares the glass capsule shape: a one-member
@@ -3379,7 +3379,7 @@ let test_composer_feedback_above_actions () =
       match Hashtbl.find_opt tree.Drive.Model.nodes p with
       | Some parent ->
         List.find_index (fun c -> c = n.Drive.Model.id)
-          parent.Drive.Model.children
+          (Drive.Model.node_children parent)
       | None -> None)
     | None -> None
   in
@@ -3445,7 +3445,7 @@ let test_composer_separate_input_and_cards () =
   let surface = match input_row.Drive.Model.parent with
     | Some id -> Option.get (Hashtbl.find_opt (drive_tree s).Drive.Model.nodes id)
     | None -> Alcotest.fail "composer surface missing" in
-  let index id = Option.get (List.find_index ((=) id) surface.Drive.Model.children) in
+  let index id = Option.get (List.find_index ((=) id) (Drive.Model.node_children surface)) in
   Alcotest.(check bool) "input precedes attachments and controls" true
     (index input_row.Drive.Model.id < index strip.Drive.Model.id);
   drive_dispose s
