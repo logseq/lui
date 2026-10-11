@@ -321,6 +321,10 @@ jobs:
 
               opam install -y 'ocaml=5.5.1' tsdl tsdl-ttf tgls imagelib alcotest
             fi
+            # The setup action's deps top-up is soft-failed here (tsdl
+            # cannot build before this step) — close out whatever it
+            # left uninstalled.
+            opam install . --deps-only --with-test -y --locked
             # SDL2.dll must be on PATH for the tests that call Sdl.init.
             SYSROOT="$(cygpath -u "$(opam var root)")/.cygwin/root/usr/x86_64-w64-mingw32/sys-root/mingw"
             echo "$(cygpath -w "$SYSROOT/bin")" >> "$GITHUB_PATH"
@@ -330,6 +334,8 @@ jobs:
             # --confirm-level=unsafe-yes to run brew, and aborts otherwise).
             export PKG_CONFIG_PATH="/opt/homebrew/opt/libffi/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
             opam install -y --assume-depexts tsdl tsdl-ttf tgls imagelib alcotest
+            # Same soft-failed top-up story as the Windows branch.
+            opam install . --deps-only --with-test -y --locked --assume-depexts
           else
             opam install -y tsdl tsdl-ttf tgls imagelib alcotest
           fi

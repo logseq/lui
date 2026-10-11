@@ -61,7 +61,21 @@ runs:
       # this is a cheap no-op solver pass.
       if: inputs.scope == 'dependencies'
       shell: bash
-      run: opam install . --deps-only --with-test -y --locked
+      run: |
+        if [ "$RUNNER_OS" = "Linux" ]; then
+          # The runner image's apt index goes stale between publishes;
+          # depext installs of SDL2 etc. 404 without a refresh.
+          sudo apt-get update -qq || true
+        fi
+        # macOS depext aborts on non-interactive brew, and on Windows tsdl
+        # cannot build until the SDL overlay and pkgconf seeding in the
+        # native-tests step has run — those steps complete the switch, so
+        # a top-up failure is tolerated off Linux only.
+        if [ "$RUNNER_OS" = "Linux" ]; then
+          opam install . --deps-only --with-test -y --locked
+        else
+          opam install . --deps-only --with-test -y --locked || true
+        fi
     - name: Preserve the opam executable
       if: steps.environment.outputs.cache-hit != 'true'
       shell: bash
