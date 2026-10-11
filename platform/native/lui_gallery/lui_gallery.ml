@@ -241,6 +241,7 @@ let hooks_of ?(text_ops = fun id r c s -> stub_text_ops id r c s) e =
     text_ops;
     image_of =
       (fun id -> if Hashtbl.mem e.images id then Some test_image else None);
+    image_in = (fun id _ -> if Hashtbl.mem e.images id then Some test_image else None);
     shadow_of = (fun s -> Lui_paint.parse_shadow color_of s) }
 
 (* ---------- cell catalog ---------- *)

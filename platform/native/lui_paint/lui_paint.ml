@@ -423,6 +423,10 @@ type hooks = {
   scroll_of : int -> scroll_metrics option; (* scroll container metrics *)
   text_ops : int -> rect -> color -> string -> op list; (* text engine *)
   image_of : int -> image option;    (* node id → decoded image *)
+  image_in : int -> rect -> image option;
+    (* node id → target rect (logical px) → decoded image; for sources
+       that rasterize on demand (svg icons) so a glyph drawn in a slot
+       smaller than the node's own rect stays crisp *)
   shadow_of : string -> shadow_spec option; (* shadow spec parser *)
 }
 
@@ -464,6 +468,7 @@ let default_hooks =
     scroll_of = (fun _ -> None);
     text_ops = (fun _ _ _ _ -> []);
     image_of = (fun _ -> None);
+    image_in = (fun _ _ -> None);
     shadow_of = (fun _ -> None) }
 
 (* ---------- shadow parsing ---------- *)
@@ -1336,7 +1341,7 @@ let control_icon_ops ctx store id r alpha =
    centered slot from [control_icon_ops]. *)
 let labeled_content_ops ctx store id r alpha ~fg ~placeholder_ok =
   match ctx.hooks.image_of id, Lui_store.child_ids store id with
-  | Some img, [] -> (
+  | Some _, [] -> (
     let has_label =
       (match pstr store id "text" with
        | Some t -> t <> ""
@@ -1367,6 +1372,16 @@ let labeled_content_ops ctx store id r alpha ~fg ~placeholder_ok =
             { r with
               x = r.x +. size +. gap;
               w = Float.max 0. (r.w -. size -. gap) }
+        in
+        (* rasterize at the slot size when the host can — [image_of]
+           answers at the node's own rect, which squishes an icon
+           glyph on a wide list/button row. The rect is logical px. *)
+        let img =
+          match
+            ctx.hooks.image_in id (rect 0. 0. (size /. s) (size /. s))
+          with
+          | Some i -> i
+          | None -> img
         in
         Image
           { irect2 = dst; iradii = (0., 0., 0., 0.);
