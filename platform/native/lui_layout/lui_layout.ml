@@ -114,6 +114,31 @@ let padding_edges ~scale store id : Lui_flex.edges =
     horizontal = length_prop ~scale store id "padding-horizontal";
     vertical = length_prop ~scale store id "padding-vertical" }
 
+(* margin family → flex margin edges, same resolution order as
+   padding: shorthand on the uniform prop, then per-axis and per-side
+   props win. *)
+let margin_edges ~scale store id : Lui_flex.edges =
+  let base = Lui_flex.edges_auto in
+  let base =
+    match Lui_store.prop store id "margin" with
+    | Some (StringValue s) -> (
+      match shorthand_lengths ~scale s with
+      | Some (t, r, b, l) -> { base with top = t; right = r; bottom = b; left = l }
+      | None -> base)
+    | Some _ -> { base with all = length_prop ~scale store id "margin" }
+    | None -> base
+  in
+  let base =
+    { base with
+      horizontal = length_prop ~scale store id "margin-horizontal";
+      vertical = length_prop ~scale store id "margin-vertical" }
+  in
+  { base with
+    top = length_prop ~scale store id "margin-top";
+    right = length_prop ~scale store id "margin-right";
+    bottom = length_prop ~scale store id "margin-bottom";
+    left = length_prop ~scale store id "margin-left" }
+
 (* Modal surfaces reserve the top zone their title chrome paints
    (26px title, 15px description; sheets get a 12px grabber lane).
    The reserve stacks on top of any view-set top padding. *)
@@ -366,6 +391,7 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
          | Unset -> lp "max-height"
          | l -> l);
       padding = title_pad ~scale store id kind (padding_edges ~scale store id);
+      margin = margin_edges ~scale store id;
       position;
       row_gap =
         (match lp "row-gap" with Unset -> gap | l -> l);
