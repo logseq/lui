@@ -25,6 +25,7 @@
 #include <stdlib.h>
 
 #define MTD(...) do { if (getenv("LUI_METAL_DEBUG")) { fprintf(stderr, __VA_ARGS__); fflush(stderr); } } while (0)
+#define MTP(name, t0) do { if (getenv("LUI_METAL_PROF")) { fprintf(stderr, "[mtlp %.1fms] %s\n", (CFAbsoluteTimeGetCurrent()-(t0))*1000., name); fflush(stderr); } } while (0)
 
 /* ------------------------------------------------------------------ */
 /* context                                                             */
@@ -187,6 +188,16 @@ CAMLprim value lui_metal_create_layer(value vwin)
     LuiMtlCtx *m = new_ctx(dev, w, h);
     m->layer = layer;
     m->sdl_view = sv;
+    /* The first nextDrawable blocks ~200ms while the layer lazily
+       allocates its drawable pool. Acquire one on a background thread
+       here — released unpresented, it returns to the pool — so the
+       boot-critical first real present does not pay that wait. */
+    LuiMtlCtx *warm = m;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        @autoreleasepool {
+            (void)[warm->layer nextDrawable];
+        }
+    });
     CAMLreturn(ok_box((void *)CFBridgingRetain(m)));
 }
 
@@ -532,11 +543,19 @@ CAMLprim value lui_metal_render(value vctx, value vreq)
             [enc endEncoding];
         }
         MTD("render: committing\n");
+        CFAbsoluteTime _pt = CFAbsoluteTimeGetCurrent();
+        /* Commit, don't wait: the first frame's GPU pipeline JIT costs
+           ~200ms — waiting here serializes it onto the boot-critical
+           main thread. Errors still surface via the completed handler
+           (and the readback path keeps its own waitUntilCompleted). */
+        [cmd addCompletedHandler:^(id<MTLCommandBuffer> c) {
+            if (c.status == MTLCommandBufferStatusError)
+                fprintf(stderr, "lui_metal render: %s\n",
+                        [[c.error localizedDescription] UTF8String]);
+        }];
         [cmd commit];
-        [cmd waitUntilCompleted];
-        MTD("render: done %ld\n", (long)cmd.status);
-        if (cmd.status == MTLCommandBufferStatusError)
-            caml_failwith([[cmd.error localizedDescription] UTF8String]);
+        MTP("render commit", _pt);
+        MTD("render: committed\n");
     }
     CAMLreturn(Val_unit);
 }
@@ -581,7 +600,9 @@ CAMLprim value lui_metal_present(value vctx)
             CGSize want = { m->tw, m->th };
             if (!CGSizeEqualToSize(m->layer.drawableSize, want))
                 m->layer.drawableSize = want;
+            CFAbsoluteTime _pt = CFAbsoluteTimeGetCurrent();
             id<CAMetalDrawable> dr = [m->layer nextDrawable];
+            MTP("nextDrawable", _pt);
             if (dr) {
                 NSUInteger cw = MIN((NSUInteger)m->tw, dr.texture.width);
                 NSUInteger ch = MIN((NSUInteger)m->th, dr.texture.height);
@@ -596,6 +617,7 @@ CAMLprim value lui_metal_present(value vctx)
                 [blit endEncoding];
                 [cmd presentDrawable:dr];
                 [cmd commit];
+                MTP("presented", _pt);
             }
         }
     }
@@ -605,6 +627,51 @@ CAMLprim value lui_metal_present(value vctx)
 /* Release any boxed object from this module: drop the slot, let the
    finalizer release the pointer. A context's dealloc also removes its
    SDL view. */
+CAMLprim value lui_metal_warm(value vctx, value vpipe)
+{
+    CAMLparam2(vctx, vpipe);
+    LuiMtlCtx *m = (__bridge LuiMtlCtx *)Lui_ref_val(vctx);
+    id<MTLRenderPipelineState> pipe = UNBOX(vpipe);
+    if (!m || !pipe) CAMLreturn(Val_unit);
+    @autoreleasepool {
+        /* Pipeline state compiles lazily at first draw (~200ms the
+           first time). One degenerate draw on the frame queue JITs
+           it while the rest of init runs. Zeros make the triangle
+           collapse to nothing, so nothing visible lands. */
+        static char zeros[240];
+        id<MTLBuffer> ibuf =
+            [m->dev newBufferWithBytes:zeros length:sizeof(zeros)
+                               options:MTLResourceStorageModeShared];
+        id<MTLTexture> e = make_target(m->dev, 1, 1);
+        id<MTLCommandBuffer> cmd = [m->queue commandBuffer];
+        MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
+        rp.colorAttachments[0].texture = m->target;
+        rp.colorAttachments[0].loadAction = MTLLoadActionClear;
+        rp.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0);
+        rp.colorAttachments[0].storeAction = MTLStoreActionStore;
+        id<MTLRenderCommandEncoder> enc =
+            [cmd renderCommandEncoderWithDescriptor:rp];
+        MTLViewport vp = { 0, 0, (double)m->tw, (double)m->th, 0, 1 };
+        [enc setViewport:vp];
+        [enc setVertexBuffer:ibuf offset:0 atIndex:0];
+        float us[2] = { (float)m->tw, (float)m->th };
+        [enc setVertexBytes:us length:sizeof(us) atIndex:1];
+        [enc setFragmentTexture:e atIndex:0];
+        [enc setFragmentTexture:e atIndex:1];
+        [enc setFragmentTexture:e atIndex:2];
+        [enc setFragmentTexture:e atIndex:3];
+        [enc setFragmentSamplerState:m->smp atIndex:0];
+        [enc setRenderPipelineState:pipe];
+        MTLScissorRect sct = { 0, 0, 1, 1 };
+        [enc setScissorRect:sct];
+        [enc drawPrimitives:MTLPrimitiveTypeTriangleStrip
+              vertexStart:0 vertexCount:4 instanceCount:1 baseInstance:0];
+        [enc endEncoding];
+        [cmd commit];
+    }
+    CAMLreturn(Val_unit);
+}
+
 CAMLprim value lui_metal_release(value v)
 {
     CAMLparam1(v);
@@ -634,6 +701,7 @@ CAMLprim value lui_metal_upload(value a, value b, value c, value d, value e) { N
 CAMLprim value lui_metal_render(value a, value b) { NO_METAL(); }
 CAMLprim value lui_metal_read(value a, value b, value c) { NO_METAL(); }
 CAMLprim value lui_metal_present(value a) { NO_METAL(); }
+CAMLprim value lui_metal_warm(value a, value b) { NO_METAL(); }
 CAMLprim value lui_metal_release(value a) { NO_METAL(); }
 
 #endif

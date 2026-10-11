@@ -98,6 +98,7 @@ external metal_upload : tex -> int * int * int * int -> Bytes.t -> int -> int ->
 external metal_render : ctx -> req -> unit = "lui_metal_render"
 external metal_read : ctx -> int -> int -> bytes = "lui_metal_read"
 external metal_present : ctx -> unit = "lui_metal_present"
+external metal_warm : ctx -> pipe -> unit = "lui_metal_warm"
 external metal_release : obj -> unit = "lui_metal_release"
 
 (* -------------------------------------------------------- internals *)
@@ -303,16 +304,29 @@ let renderer ctx ~dual ~lib ~pipe_main ~pipe_hole ~pipe_down ~pipe_blur =
    channel by the coverage of the matching source channel; without it
    they blend by the mean coverage. The single-source program is tried
    when the dual one fails to build. *)
+let prof_t0 = Sys.time ()
+let prof msg =
+  if Sys.getenv_opt "LUI_METAL_PROF" <> None then
+    Printf.eprintf "[metal +%.3f] %s\n%!" (Sys.time () -. prof_t0) msg
+
 let init_ctx (ctx : ctx) : (t, string) result =
+  prof "init_ctx";
   match metal_compile ctx ("#define DUAL\n" ^ Metal_source.source) with
   | Error e -> Error e
   | Ok lib_dual ->
+      prof "dual lib compiled";
       (match metal_pipeline ctx lib_dual "mainVert" "mainFrag" 0 with
        | Ok pipe_main ->
+           prof "main pipe";
            (match metal_pipeline ctx lib_dual "mainVert" "mainFrag" 2,
                   metal_pipeline ctx lib_dual "passVert" "downFrag" 4,
                   metal_pipeline ctx lib_dual "passVert" "blurFrag" 4 with
             | Ok pipe_hole, Ok pipe_down, Ok pipe_blur ->
+                prof "all pipes";
+                (* Deferred-compile warm: issues one degenerate draw so
+                   the driver JITs pipe_main off the first frame's
+                   critical path. *)
+                metal_warm ctx pipe_main;
                 Ok (renderer ctx ~dual:true ~lib:lib_dual ~pipe_main
                       ~pipe_hole ~pipe_down ~pipe_blur)
             | _ ->
@@ -349,9 +363,10 @@ let init_offscreen ~w ~h : (t, string) result =
   | Ok ctx -> init_ctx_releasing ctx
 
 let init_window (win : nativeint) : (t, string) result =
+  prof "create_layer";
   match metal_create_layer win with
-  | Error _ as e -> e
-  | Ok ctx -> init_ctx_releasing ctx
+  | Error _ as e -> prof "create_layer done"; e
+  | Ok ctx -> prof "create_layer done"; init_ctx_releasing ctx
 
 (* -------------------------------------------------------- render *)
 
