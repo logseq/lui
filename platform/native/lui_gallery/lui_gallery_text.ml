@@ -62,6 +62,18 @@ let num_prop store id name =
   | Some (StringValue s) -> parse_len s
   | _ -> None
 
+(* A selected top-strip tab — the bare kind or a direct button child
+   of a tabs strip — draws heavier ink. *)
+let selected_tab_trigger store id =
+  Lui_store.bool_prop store id "selected"
+  && (match Lui_store.kind store id with
+     | "tab" -> true
+     | "button" -> (
+       match Lui_store.parent store id with
+       | Some pid -> Lui_store.kind store pid = "tabs"
+       | None -> false)
+     | _ -> false)
+
 let font_of store id =
   let size =
     Option.value ~default:14. (num_prop store id "font-size")
@@ -72,6 +84,7 @@ let font_of store id =
     | None -> (
       match Lui_store.kind store id with
       | "heading" -> 700
+      | "tab" | "button" when selected_tab_trigger store id -> 600
       | _ -> 400)
   in
   Lui_text.system ~weight ~italic:false ~size ()

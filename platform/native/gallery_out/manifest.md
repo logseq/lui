@@ -73,10 +73,10 @@ One cell per exercised state; every standard kind appears at least once. `ops` =
 | cells/c67_list_item.png | list-item | 0 | unselected row |
 | cells/c68_list_item_sel.png | list-item | 0 | selected row |
 | cells/c69_tabs.png | tabs | 0 | tab strip |
-| cells/c70_bottom_tabs.png | bottom-tabs | 0 | tab bar |
-| cells/c71_button_group.png | button-group | 0 | segmented cluster |
-| cells/c72_toggle_group.png | toggle-group | 0 | format toggles |
-| cells/c73_input_group.png | input-group | 0 | field + action |
+| cells/c70_bottom_tabs.png | bottom-tabs | 2 | tab bar |
+| cells/c71_button_group.png | button-group | 2 | segmented cluster |
+| cells/c72_toggle_group.png | toggle-group | 2 | format toggles |
+| cells/c73_input_group.png | input-group | 2 | composer |
 | cells/c74_input_group_actions.png | input-group-actions | 0 | action pair |
 | cells/c75_radio_group.png | radio-group | 0 | option set |
 | cells/c76_list_section.png | list-section | 0 | header rows footer |
@@ -92,7 +92,7 @@ One cell per exercised state; every standard kind appears at least once. `ops` =
 | cells/c86_table_row.png | table-row | 0 | one row |
 | cells/c87_table_cell.png | table-cell | 0 | one cell |
 | cells/c88_tree.png | tree | 0 | indented rows |
-| cells/c89_toolbar.png | toolbar | 0 | tool row |
+| cells/c89_toolbar.png | toolbar | 2 | tool row |
 | cells/c90_status_bar.png | status-bar | 0 | status row |
 | cells/c91_spacer.png | spacer | 0 | expanding gap |
 | cells/c92_root.png | root | 0 | frame root box |
@@ -117,8 +117,8 @@ One cell per exercised state; every standard kind appears at least once. `ops` =
 | cells/c111_deco_zindex.png | box | 0 | z-index order |
 | cells/c112_ext_spark.png | extension:lui_gallery.spark | -1 | custom renderer + hole |
 
-## Kinds emitting no ops unadorned (52)
+## Kinds emitting no ops unadorned (47)
 
-`root`, `row`, `column`, `grid`, `stack`, `edge-inset`, `overlay`, `view-that-fits`, `panel`, `box`, `text`, `heading`, `paragraph`, `label`, `radio-group`, `tabs`, `bottom-tabs`, `bottom-tab`, `button-group`, `toggle-group`, `spacer`, `icon`, `menu-item`, `list-item`, `avatar`, `image`, `media-surface`, `stepper`, `step`, `timeline`, `timeline-item`, `input-group`, `input-group-actions`, `breadcrumb`, `pagination`, `accordion`, `table`, `table-row`, `table-cell`, `tree`, `resizable`, `split`, `toolbar`, `status-bar`, `list-section`, `list-section-header`, `list-section-footer`, `swipe-actions`, `link`, `file-image`, `file-preview`, `br`
+`root`, `row`, `column`, `grid`, `stack`, `edge-inset`, `overlay`, `view-that-fits`, `panel`, `box`, `text`, `heading`, `paragraph`, `label`, `radio-group`, `tabs`, `bottom-tab`, `spacer`, `icon`, `menu-item`, `list-item`, `avatar`, `image`, `media-surface`, `stepper`, `step`, `timeline`, `timeline-item`, `input-group-actions`, `breadcrumb`, `pagination`, `accordion`, `table`, `table-row`, `table-cell`, `tree`, `resizable`, `split`, `status-bar`, `list-section`, `list-section-header`, `list-section-footer`, `swipe-actions`, `link`, `file-image`, `file-preview`, `br`
 
 Kinds absent from the catalog: none — every `all_node_kinds` entry is exercised by at least one cell.

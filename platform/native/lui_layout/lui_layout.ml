@@ -181,16 +181,26 @@ let popup_needs_default store id kind =
 
 (* ---------- style translation ---------- *)
 
-(* Kind → container direction + overflow. Everything else is a column. *)
+(* Kind → container direction + overflow. Everything else is a column.
+   Horizontal kinds follow the component contracts: groups, tab strips,
+   table rows, toolbars, steppers and the horizontal composition
+   containers lay children out along the main axis. An explicit
+   [orientation] prop wins over the kind default. *)
 let direction_of ~store ~id kind : Lui_flex.flex_direction =
-  match kind with
-  | "row" -> Row
-  | "edge-inset" -> (
-    match pstr store id "edge" with
-    | Some ("leading" | "trailing") -> Row
+  match pstr store id "orientation" with
+  | Some "horizontal" -> Row
+  | Some "vertical" -> Column
+  | _ -> (
+    match kind with
+    | "row" | "grid" | "button-group" | "toggle-group"
+    | "input-group-actions" | "table-row" | "tabs" | "bottom-tabs"
+    | "toolbar" | "swipe-actions" | "stepper" | "breadcrumb"
+    | "pagination" | "split" -> Row
+    | "edge-inset" -> (
+      match pstr store id "edge" with
+      | Some ("leading" | "trailing") -> Row
+      | _ -> Column)
     | _ -> Column)
-  | "grid" -> Row
-  | _ -> Column
 
 let overflow_of ~store ~id kind : Lui_flex.overflow =
   match pstr store id "overflow" with
@@ -244,7 +254,17 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
     | Some g -> g
     | None -> if kind = "spacer" then 1. else d.flex_grow
   in
-  let gap = lp "gap" in
+  (* Contract default gaps when the view leaves [gap] unset. *)
+  let gap =
+    match lp "gap" with
+    | Unset -> (
+      match kind with
+      | "button-group" | "toggle-group" | "breadcrumb" -> Pt (4. *. scale)
+      | "input-group-actions" -> Pt (6. *. scale)
+      | "pagination" -> Pt (2. *. scale)
+      | _ -> Unset)
+    | l -> l
+  in
   let style =
     { d with
       flex_direction = direction_of ~store ~id kind;
@@ -255,7 +275,12 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
       align_items =
         (match pstr store id "cross" with
          | Some s -> align_of_string s
-         | None -> d.align_items);
+         | None -> (
+           (* Grouped controls center their children on the cross axis. *)
+           match kind with
+           | "button-group" | "toggle-group" | "input-group-actions"
+           | "breadcrumb" | "pagination" | "toolbar" -> Align_center
+           | _ -> d.align_items));
       position_type;
       flex_wrap = (if kind = "grid" then Wrap else No_wrap);
       overflow = overflow_of ~store ~id kind;
