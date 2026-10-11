@@ -275,6 +275,11 @@ let has_prefix s p =
   String.length s >= String.length p
   && String.sub s 0 (String.length p) = p
 
+let contains s sub =
+  let n = String.length sub and h = String.length s in
+  let rec go i = i + n <= h && (String.sub s i n = sub || go (i + 1)) in
+  h >= n && go 0
+
 let test_boot_webview () =
   let root = tmp_dir () in
   ignore (write_web root);
@@ -299,9 +304,13 @@ let test_boot_webview () =
 let test_boot_fallback () =
   let root = tmp_dir () in
   ignore (write_web root);
-  (* no provider, fallback off -> clear Failure *)
+  (* no provider, native shell bypassed, fallback off -> clear
+     Failure *)
   (match
-     try W.boot ~base:root ~fallback_browser:false sample; `Ran
+     try
+       W.boot ~base:root ~native_shell:false ~fallback_browser:false
+         sample;
+       `Ran
      with Failure m -> `Failed m
    with
    | `Failed m ->
@@ -316,13 +325,59 @@ let test_boot_fallback () =
   (* invalid spec -> Failure before any backend decision *)
   (match
      try
-       W.boot ~base:root ~fallback_browser:false
+       W.boot ~base:root ~native_shell:false ~fallback_browser:false
          { sample with app_id = "" };
        `Ran
      with Failure _ -> `Failed ""
    with
    | `Failed _ -> ()
    | `Ran -> Alcotest.fail "invalid spec must fail")
+
+(* The launcher's own CLI: argument errors, missing spec, and the
+   --print-url surface, run against the real main.exe. *)
+
+let cli_exe () = Filename.dirname Sys.executable_name / ".." / "main.exe"
+
+let run_cli args =
+  let cmd =
+    List.fold_left
+      (fun acc a -> acc ^ " " ^ Filename.quote a)
+      (Filename.quote (cli_exe ())) args
+  in
+  let r = P.Proc.run "sh" [ "-c"; cmd ] in
+  (r.P.Proc.status, String.trim (r.P.Proc.stdout ^ r.P.Proc.stderr))
+
+let test_cli_errors () =
+  if Sys.file_exists (cli_exe ()) then begin
+    let code, out = run_cli [ "--bogus" ] in
+    check Alcotest.int "unknown option exits 2" 2 code;
+    check Alcotest.bool "names the option" true
+      (contains out "unknown option --bogus");
+    let code, out = run_cli [ "/nonexistent/webapp.json" ] in
+    check Alcotest.int "missing spec exits 2" 2 code;
+    check Alcotest.bool "names the file" true
+      (contains out "nonexistent")
+  end
+
+let test_cli_print_url () =
+  if Sys.file_exists (cli_exe ()) then begin
+    let root = tmp_dir () in
+    let web = write_web root in
+    let spec_json =
+      Yojson.Safe.pretty_to_string
+        (W.spec_to_json { sample with web_dir = web })
+    in
+    let spec_path = root / "webapp.json" in
+    P.Fs.write_file spec_path spec_json;
+    let code, out = run_cli [ "--print-url"; spec_path ] in
+    check Alcotest.int "print-url exits 0" 0 code;
+    check Alcotest.bool "prints file url" true
+      (has_prefix out "file://")
+  end
+
+let test_backend_probe () =
+  check Alcotest.bool "probe mirrors backend_name" true
+    (W.Sdl_shell.available () = (Lui_webview.backend_name () <> "none"))
 
 let test_browser_open () =
   let root = tmp_dir () in
@@ -357,4 +412,10 @@ let () =
             test_boot_webview;
           Alcotest.test_case "fallback errors" `Quick
             test_boot_fallback;
-          Alcotest.test_case "browser open" `Quick test_browser_open ] ) ]
+          Alcotest.test_case "backend probe" `Quick test_backend_probe ] );
+      ( "cli",
+        [ Alcotest.test_case "arg errors" `Quick test_cli_errors;
+          Alcotest.test_case "print url" `Quick test_cli_print_url ] );
+      ( "browser",
+        [ Alcotest.test_case "browser open" `Quick test_browser_open ]
+        ) ]

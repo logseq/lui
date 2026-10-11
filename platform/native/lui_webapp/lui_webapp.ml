@@ -1,9 +1,9 @@
 (* Lui_webapp — webview-shell host for web-asset apps. See the .mli
-   for the model: a JSON spec drives a pluggable webview window, with
-   a default-browser fallback when no webview backend is installed.
+   for the model: a JSON spec drives a webview window, backed by
+   {!Lui_webview} through {!Lui_webapp_sdl} when the platform engine is
+   available, with a default-browser fallback when it is not.
 
-   Pure OCaml: no C stubs — the webview arrives as a first-class
-   module at runtime, so the library builds on every platform. *)
+   The {!WEBVIEW} provider seam remains for tests and custom hosts. *)
 
 open Lui_pkg.Private
 
@@ -260,6 +260,10 @@ let provider : (module WEBVIEW) option ref = ref None
 let set_webview w = provider := w
 let webview () = !provider
 
+(* The built-in shell, re-exported: the wrapped library only exposes
+   this main module, so the SDL+Lui_webview backend surfaces here. *)
+module Sdl_shell = Lui_webapp_sdl
+
 (** {1 Prepare and boot} *)
 
 type prepared = {
@@ -275,7 +279,14 @@ let prepare ?(base = Sys.getcwd ()) (s : spec) : (prepared, string) result =
     let s = resolve ~base s in
     (match Fs.kind_of s.web_dir with
      | Fs.Dir ->
+       (* the entry must be absolute: the native shell hands it to the
+          platform view as a file URL and the browser fallback needs a
+          file:// URL that resolves from any cwd *)
        let entry_file = entry_path s in
+       let entry_file =
+         if is_abs entry_file then entry_file
+         else Sys.getcwd () / entry_file
+       in
        (match Fs.kind_of entry_file with
         | Fs.File ->
           Ok { prep_spec = s; entry_file; url = file_url entry_file }
@@ -310,7 +321,8 @@ let open_in_browser url : (unit, string) result =
              (String.trim (r.Proc.stdout ^ r.Proc.stderr)))
 
 let boot ?base ?(webview : (module WEBVIEW) option)
-    ?(fallback_browser = true) ?(on_message = fun _ -> ())
+    ?(native_shell = true) ?(fallback_browser = true)
+    ?(on_message = fun _ -> ())
     ?(on_ready = fun ~eval:(_ : string -> unit) -> ()) (s : spec) :
     unit =
   match prepare ?base s with
@@ -335,23 +347,40 @@ let boot ?base ?(webview : (module WEBVIEW) option)
              on_ready ~eval:(fun js -> W.eval t js);
              W.run t))
      | None ->
-       if fallback_browser then
-         match open_in_browser prep.url with
-         | Ok () ->
-           Printf.eprintf
-             "lui_webapp: no native webview backend — opened %s in \
-              the default browser\n\
-              %!"
-             prep.url
-         | Error e ->
+       let browser_or_fail why =
+         if fallback_browser then
+           match open_in_browser prep.url with
+           | Ok () ->
+             Printf.eprintf
+               "lui_webapp: %s — opened %s in the default browser\n%!"
+               why prep.url
+           | Error e ->
+             failwith
+               (Printf.sprintf
+                  "lui_webapp: %s and the default browser could not \
+                   be opened: %s"
+                  why e)
+         else
            failwith
-             ("lui_webapp: no webview backend installed \
-               (Lui_webapp.set_webview was never called) and the \
-               default browser could not be opened: " ^ e)
+             (Printf.sprintf
+                "lui_webapp: %s and the browser fallback is disabled"
+                why)
+       in
+       if native_shell && Lui_webapp_sdl.available () then
+         match
+           let (w : window) = prep.prep_spec.window in
+           Lui_webapp_sdl.run
+             ~window:
+               { Lui_webapp_sdl.width = w.width; height = w.height;
+                 resizable = w.resizable; min_width = w.min_width;
+                 min_height = w.min_height }
+             ~title:prep.prep_spec.name ~entry_file:prep.entry_file
+             ~on_message ~on_ready
+         with
+         | Ok () -> ()
+         | Error e -> browser_or_fail ("native shell: " ^ e)
        else
-         failwith
-           "lui_webapp: no webview backend installed and the browser \
-            fallback is disabled")
+         browser_or_fail "no webview backend installed")
 
 (** {1 Packaged-spec discovery} *)
 
