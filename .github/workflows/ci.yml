@@ -260,7 +260,7 @@ jobs:
                 ls "$CYGBIN" | grep -i pkg || true
                 exit 1
               }
-              SHIM_DIR="$RUNNER_TEMP/pc-shim"
+              SHIM_DIR="$(cygpath -u "$RUNNER_TEMP")/pc-shim"
               mkdir -p "$SHIM_DIR"
               # Wrapper script (not a copy): keeps argv[0] as the mingw
               # name, so pkgconf's argv[0]-derived personality still
@@ -278,7 +278,7 @@ jobs:
               echo "$(cygpath -w "$SHIM_DIR")" >> "$GITHUB_PATH"
 
               SYSROOT_MINGW="$(cygpath -u "$(opam var root)")/.cygwin/root/usr/x86_64-w64-mingw32/sys-root/mingw"
-              DEV_TMP="$RUNNER_TEMP/sdl-devel"
+              DEV_TMP="$(cygpath -u "$RUNNER_TEMP")/sdl-devel"
               mkdir -p "$DEV_TMP"
               curl -fsSL -o "$DEV_TMP/sdl2.tar.gz" \
                 https://github.com/libsdl-org/SDL/releases/download/release-2.32.4/SDL2-devel-2.32.4-mingw.tar.gz
