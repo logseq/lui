@@ -260,10 +260,12 @@ jobs:
                 ls "$CYGBIN" | grep -i pkg || true
                 exit 1
               }
-              # Workspace-relative: the first curl.exe on PATH is Windows'
-              # native one, which cannot write MSYS (/d/...) paths and
-              # exits 23 mid-download; relative paths work for both.
-              SHIM_DIR="pc-shim"
+              # Absolute workspace path: tsdl's build shells out to
+              # pkg-config from _opam/.opam-switch/build/<pkg>/, so a
+              # relative PATH entry would not resolve there. (Downloads
+              # below stay relative — Windows' native curl.exe cannot
+              # write MSYS /d/... paths, but cwd-relative is fine.)
+              SHIM_DIR="$PWD/pc-shim"
               mkdir -p "$SHIM_DIR"
               # Wrapper script (not a copy): keeps argv[0] as the mingw
               # name, so pkgconf's argv[0]-derived personality still
@@ -278,7 +280,7 @@ jobs:
                 exit 1
               }
               # Keep the shim on PATH for the later dune build/test steps.
-              echo "$(cygpath -w "$PWD/$SHIM_DIR")" >> "$GITHUB_PATH"
+              echo "$(cygpath -w "$SHIM_DIR")" >> "$GITHUB_PATH"
 
               SYSROOT_MINGW="$(cygpath -u "$(opam var root)")/.cygwin/root/usr/x86_64-w64-mingw32/sys-root/mingw"
               DEV_TMP="sdl-devel"
