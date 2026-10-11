@@ -28,6 +28,7 @@ module type LAYOUT_ENGINE = sig
 
   val sync :
     ?scale:float -> ?measure:text_measure -> ?hidden:(int -> bool) ->
+    ?ctx_anchor:(float * float) ->
     width:float -> height:float -> t -> Lui_store.t -> unit
 
   val layout_hook : t -> int -> Lui_paint.placement
@@ -75,6 +76,12 @@ val set_hidden : t -> (int -> bool) option -> unit
     nodes the layout engine should skip entirely (closed menu panels).
     [None] clears the predicate. Marks the host dirty so the change
     lands on the next repaint. *)
+
+val set_ctx_anchor : t -> (unit -> (float * float) option) option -> unit
+(** Host-owned popup anchor: the accessor returns the pointer point
+    (frame px) an unanchored [context-menu] opens at, read live on each
+    repaint. [None] clears it — context menus then fall back to their
+    containing block. *)
 
 val apply_batch : t -> Lui_protocol.patch_batch -> bool
 

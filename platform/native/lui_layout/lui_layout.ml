@@ -463,6 +463,7 @@ type ctx = {
   vh : float;
   tm : text_measure;
   hidden : int -> bool; (* host-owned transient visibility (menus) *)
+  ctx_anchor : (float * float) option; (* pointer point for context menus *)
   store : Lui_store.t;
   nodes : (int, Lui_flex.node) Hashtbl.t; (* store id → flex node *)
   applied : (int, Lui_flex.style) Hashtbl.t; (* store id → applied style *)
@@ -684,20 +685,39 @@ let refine_popups ctx =
             ( { Lui_flex.x = 0.; y = 0.; w = ctx.vw; h = ctx.vh },
               None )
         in
-        let bor_l, bor_t =
+        let bor_l, bor_t, bor_r, bor_b =
           match pstyle_opt with
           | Some (ps : Lui_flex.style) ->
             ( edge_px ~owner:pr.w ps.border.left ps.border.horizontal ps.border,
-              edge_px ~owner:pr.h ps.border.top ps.border.vertical ps.border )
-          | None -> (0., 0.)
+              edge_px ~owner:pr.h ps.border.top ps.border.vertical ps.border,
+              edge_px ~owner:pr.w ps.border.right ps.border.horizontal ps.border,
+              edge_px ~owner:pr.h ps.border.bottom ps.border.vertical ps.border )
+          | None -> (0., 0., 0., 0.)
         in
         match Hashtbl.find_opt ctx.applied sid with
         | None -> ()
         | Some (pstyle : Lui_flex.style) ->
+          let pstyle =
+            (* A popup measures against the viewport, not its
+               (possibly tiny) parent — bound its max extents and
+               re-measure the subtree before placing it. *)
+            { pstyle with
+              max_width =
+                (match pstyle.max_width with Unset -> Pt ctx.vw | m -> m);
+              max_height =
+                (match pstyle.max_height with Unset -> Pt ctx.vh | m -> m) }
+          in
+          Lui_flex.set_style pnode pstyle;
+          Lui_flex.compute_layout pnode ~width:Lui_flex.undefined
+            ~height:Lui_flex.undefined ();
           let ml =
             edge_px ~owner:pr.w pstyle.margin.left pstyle.margin.horizontal pstyle.margin
           and mt =
             edge_px ~owner:pr.w pstyle.margin.top pstyle.margin.vertical pstyle.margin
+          and mr =
+            edge_px ~owner:pr.w pstyle.margin.right pstyle.margin.horizontal pstyle.margin
+          and mb =
+            edge_px ~owner:pr.h pstyle.margin.bottom pstyle.margin.vertical pstyle.margin
           in
           let prp = Lui_flex.absolute_layout pnode in
           let anchored =
@@ -709,20 +729,57 @@ let refine_popups ctx =
           in
           if (not anchored) && popup_has_edges ctx.store sid then ()
           else
+          let kind = Lui_store.kind ctx.store sid in
+          let center =
+            ( ((pr.w -. prp.w) /. 2.) -. bor_l -. ml,
+              ((pr.h -. prp.h) /. 2.) -. bor_t -. mt )
+          in
+          let abs_of (ax, ay) =
+            (ax -. pr.x -. bor_l -. ml, ay -. pr.y -. bor_t -. mt)
+          in
           let left, top =
             if anchored then
-              let ax, ay =
-                anchored_xy ctx ctx.store sid
-                  (anchor_rect_of ctx ctx.store sid pr)
-                  prp
-              in
-              (ax -. pr.x -. bor_l -. ml, ay -. pr.y -. bor_t -. mt)
+              abs_of
+                (anchored_xy ctx ctx.store sid
+                   (anchor_rect_of ctx ctx.store sid pr) prp)
             else
-              ( ((pr.w -. prp.w) /. 2.) -. bor_l -. ml,
-                ((pr.h -. prp.h) /. 2.) -. bor_t -. mt )
+              (* Unanchored popups take their platform placement —
+                 the web stylesheet's fixed rules: a context menu
+                 opens at the pointer, sheets pin the right edge on
+                 wide screens, toasts sit in the bottom-right toast
+                 viewport, everything else centers. *)
+              match kind with
+              | "context-menu" -> (
+                match ctx.ctx_anchor with
+                | Some (cx, cy) ->
+                  abs_of
+                    (anchored_xy ctx ctx.store sid
+                       { Lui_flex.x = cx; y = cy; w = 0.; h = 0. } prp)
+                | None -> center)
+              | "sheet" ->
+                (pr.w -. prp.w -. bor_r -. mr, -.bor_t -. mt)
+              | "toast" ->
+                ( pr.w -. prp.w -. (16. *. ctx.scale) -. bor_r -. mr,
+                  pr.h -. prp.h -. (16. *. ctx.scale) -. bor_b -. mb )
+              | _ -> center
+          in
+          (* Pin the viewport-measured box as explicit dimensions —
+             the final layout pass re-measures absolute children
+             against their parent, which would collapse the popup
+             back to the parent's size. The sheet keeps its contract
+             height: edge-to-edge on wide screens. *)
+          let height =
+            match kind with
+            | "sheet" -> (
+              match pstyle.height with
+              | Unset -> Pt pr.h
+              | h -> h)
+            | _ -> Pt prp.h
           in
           Lui_flex.set_style pnode
             { pstyle with
+              width = Pt prp.w;
+              height;
               position =
                 { pstyle.position with left = Pt left; top = Pt top } }))
     !(ctx.popups)
@@ -776,11 +833,11 @@ let compute t ~width ~height =
     collect t
 
 let sync ?(scale = 1.) ?(measure = (fun _ _ _ _ -> None))
-    ?(hidden = fun _ -> false) ~width ~height (t : t) store =
+    ?(hidden = fun _ -> false) ?ctx_anchor ~width ~height (t : t) store =
   Hashtbl.reset t.nodes;
   let ctx =
-    { scale; vw = width; vh = height; tm = measure; hidden; store;
-      nodes = t.nodes;
+    { scale; vw = width; vh = height; tm = measure; hidden; ctx_anchor;
+      store; nodes = t.nodes;
       applied = Hashtbl.create 64; grids = ref []; popups = ref [] }
   in
   let kids =
@@ -806,8 +863,8 @@ let layout_hook (t : t) id =
 
 let rect (t : t) id = Hashtbl.find_opt t.rects id
 
-let run ?(scale = 1.) ?hidden store ~measure ~width ~height =
+let run ?(scale = 1.) ?hidden ?ctx_anchor store ~measure ~width ~height =
   let t = create () in
   sync ~scale ~measure:(fun id _text w h -> measure id w h)
-    ~width ~height ?hidden t store;
+    ~width ~height ?hidden ?ctx_anchor t store;
   layout_hook t

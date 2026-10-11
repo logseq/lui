@@ -250,6 +250,11 @@ module Ui : sig
   val open_menu : t -> int
   (** The trigger-owned menu panel currently open, 0 when none. *)
 
+  val pointer : t -> float * float
+  (** Last pointer position in logical px — wire to
+      {!Lui_host.set_ctx_anchor} so unanchored context menus open at
+      the cursor. *)
+
   val hidden : t -> Lui_store.t -> int -> bool
   (** Host-owned transient visibility: true for menu panels declared
       under a [menu-trigger] that are not the open one. Wire to

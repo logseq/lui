@@ -462,8 +462,16 @@ let () =
   in
   let host =
     Lui_host.create ~hooks ~layout:(module Lui_layout)
+      (* Measure the text the engine selected (label/title/text per
+         kind) plus the placement padding it will paint around it —
+         feeding the raw glyph metric collapses every labeled control
+         to bare-text size (buttons, fields, kbd...). *)
       ~measure:(fun id text _w _h ->
-        Some (Lui_window_text.measure_text text_engine id text))
+        let w, h = Lui_window_text.measure_text text_engine id text in
+        let tp = Lui_paint.text_placement_of (text_engine.store ()) id in
+        let s = text_engine.scale () in
+        Some
+          (w +. (2. *. tp.tp_pad_x *. s), h +. (2. *. tp.tp_pad_y *. s)))
       ~renderer ~width:dw ~height:dh ~scale ()
   in
   host_cell := Some host;
@@ -471,6 +479,10 @@ let () =
   (* Trigger-owned menu panels stay hidden until opened; the predicate
      reads the interaction state's mutable open-menu slot each sync. *)
   Lui_host.set_hidden host (Some (fun id -> Ui.hidden ui store id));
+  (* Unanchored context menus open at the pointer — the accessor reads
+     the live position each repaint. *)
+  Lui_host.set_ctx_anchor host
+    (Some (fun () -> Some (Ui.pointer ui)));
   let win_w = ref cfg.width and win_h = ref cfg.height in
   (* Populate the hit-test mirror from the layout engine: each node's
      shifted rect clipped to its scrollable ancestors' viewports (so

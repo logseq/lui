@@ -619,7 +619,10 @@ let default_palette : (string * color) list =
     ("selection", color 37 99 235 64);
     ("scrollbar-thumb", color 0 0 0 82);
     ("inverse", color 24 24 27 255);
-    ("inverse-foreground", color 255 255 255 255) ]
+    ("inverse-foreground", color 255 255 255 255);
+    (* Modal popup backdrop — the dim a dialog or sheet paints over
+       the content it covers. *)
+    ("scrim", color 0 0 0 102) ]
 
 let theme ctx name =
   match ctx.hooks.color_of name with
@@ -1506,7 +1509,21 @@ let default_chrome ctx store id st kind r rs alpha =
        else [ face zc rad bw1 (col_border ctx) ~dashed:false ])
   | "dialog" | "sheet" | "drawer" | "modal" ->
     let rad = rad (10. *. s) in
-    (* Platform title chrome per the dialog/sheet contract: the title
+    (* A modal surface dims the content it covers. An in-flow drawer
+       pane (carries [selected]) is not modal and gets no scrim. *)
+    let scrim =
+      if kind = "drawer" && Lui_store.prop store id "selected" <> None
+      then []
+      else
+        let scrim_c = theme ctx "scrim" in
+        [ fill (rect ctx.viewport.x ctx.viewport.y ctx.viewport.w
+                ctx.viewport.h)
+            (0., 0., 0., 0.) ~paint:Solid ~c1:scrim_c ~c2:scrim_c
+            ~grad:(0., 0., 0., 0.) ~border:(0., 0., 0., 0.)
+            ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha:1. ]
+    in
+    scrim
+    @ (* Platform title chrome per the dialog/sheet contract: the title
        and description paint inside the top zone the layout reserved;
        sheets also carry a grabber pill. *)
     let pad_of n = Option.value ~default:0. (pnum store id n) *. s in
@@ -1634,6 +1651,14 @@ let clips kind store id =
      | Some ("hidden" | "clip" | "auto" | "scroll") -> true
      | _ -> false
 
+(* Popup surfaces the layout engine positions itself (mirror of
+   Lui_layout.popup_kind) — their [x]/[y] props are anchor inputs,
+   not absolute coordinates. *)
+let popup_kind = function
+  | "dialog" | "drawer" | "sheet" | "tooltip" | "toast"
+  | "dropdown-menu" | "context-menu" | "popover" | "alert" -> true
+  | _ -> false
+
 (* The node's display box: layout result → popup x/y override →
    position/inset resolution → layout rect. *)
 let resolve_rect ctx store id p parent_r =
@@ -1681,6 +1706,11 @@ let resolve_rect ctx store id p parent_r =
       in
       { p.p_rect with
         x = p.p_rect.x +. (dx *. s); y = p.p_rect.y +. (dy *. s) })
+    else if popup_kind (Lui_store.kind store id) then
+      (* Popup kinds carry [x]/[y] as an anchor point the layout
+         engine already resolved into the node's rect — re-applying
+         them here would undo the anchor/alignment math. *)
+      p.p_rect
     else
       (* Popup coordinates are absolute placements on popup kinds. *)
       match (pnum store id "x", pnum store id "y") with

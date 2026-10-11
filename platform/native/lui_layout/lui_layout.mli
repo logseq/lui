@@ -76,8 +76,13 @@ val measure_of :
     [width]) is a minimum: content that does not fit the offered
     extent grows the frame — see {!content_extent}. *)
 
+(** [?ctx_anchor] supplies the pointer point (frame px) an unanchored
+    [context-menu] popup opens at — the host-owned channel that stands
+    in for the cursor coordinate a context menu tracks. *)
+
 val sync :
   ?scale:float -> ?measure:text_measure -> ?hidden:(int -> bool) ->
+  ?ctx_anchor:(float * float) ->
   width:float -> height:float -> t -> Lui_store.t -> unit
 
 (** [compute t ~width ~height] re-runs layout on the current mirror —
@@ -116,7 +121,8 @@ val rect : t -> int -> Lui_scene.rect option
     a [t] and go through {!create}/{!sync}/{!layout_hook} instead. *)
 
 val run :
-  ?scale:float -> ?hidden:(int -> bool) -> Lui_store.t ->
+  ?scale:float -> ?hidden:(int -> bool) -> ?ctx_anchor:(float * float) ->
+  Lui_store.t ->
   measure:(int -> float -> float -> (float * float) option) ->
   width:float -> height:float -> (int -> Lui_paint.placement)
 

@@ -863,7 +863,7 @@ let test_headless_checksum () =
   (* the recorded value pins the demo's initial scene: any render-path
      change shows up here *)
   Alcotest.(check string) "golden"
-    "headless done: frames=6 checksum=e60b49d93f016ead" c1
+    "headless done: frames=6 checksum=3e4def9631ef43ad" c1
 
 (* ---------- widget-layer interactions ---------- *)
 
