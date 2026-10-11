@@ -75,8 +75,12 @@ runs:
         # manager?' prompt otherwise aborts on missing SDL packages.
         if [ "$RUNNER_OS" = "Linux" ]; then
           opam install . --deps-only --with-test -y --locked --confirm-level=unsafe-yes
+          # Second pass unlocked: dependencies added after the lock file was
+          # written are silently skipped by --locked resolution.
+          opam install . --deps-only --with-test -y --confirm-level=unsafe-yes
         else
           opam install . --deps-only --with-test -y --locked || true
+          opam install . --deps-only --with-test -y || true
         fi
     - name: Preserve the opam executable
       if: steps.environment.outputs.cache-hit != 'true'
