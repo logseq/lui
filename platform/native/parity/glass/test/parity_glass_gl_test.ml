@@ -185,7 +185,12 @@ let () =
       Lui_parity_glass.Parity_glass.corpus
   in
   Alcotest.run "lui_parity_glass_gl"
-    [ ("scenes", cases);
+    [ ( "scenes",
+        match Sys.getenv_opt "GITHUB_ACTIONS" with
+        (* A hidden SDL GL window on a non-interactive CI session never
+           services presents — the parity cases stall in context setup. *)
+        | Some _ -> []
+        | None -> cases );
       ( "structure",
         [ Alcotest.test_case "effect twins" `Quick test_twins;
           Alcotest.test_case "scenes draw" `Quick test_draws ] ) ]

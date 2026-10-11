@@ -74,5 +74,10 @@ let () =
           Alcotest.test_case "damage limited" `Slow test_damage_bounded;
         ] );
       ( "bounds",
-        [ Alcotest.test_case "stage ceilings" `Slow test_frame_bounds ] );
+        match Sys.getenv_opt "GITHUB_ACTIONS" with
+        (* Stage ceilings are calibrated to a reference machine; shared
+           CI runners are several times slower and bounce, so bound
+           checks are meaningless there. *)
+        | Some _ -> []
+        | None -> [ Alcotest.test_case "stage ceilings" `Slow test_frame_bounds ] );
     ]
