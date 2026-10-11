@@ -126,8 +126,16 @@ let repaint h =
       then { h.hooks with layout = l.lhook }
       else h.hooks
   in
+  (* The window clear follows the app theme's "background" token —
+     what the web paints on <body> and gpui puts behind the root view.
+     Regions the tree does not cover must not flash the raw framebuffer. *)
+  let clear =
+    match hooks.color_of "background" with
+    | Some c -> c
+    | None -> { r = 0; g = 0; b = 0; a = 0 }
+  in
   Lui_paint.paint hooks h.store h.scene ~width:h.width ~height:h.height
-    ~scale:h.scale ~clear:{ r = 0; g = 0; b = 0; a = 0 };
+    ~scale:h.scale ~clear;
   h.dirty <- false;
   h.renderer.render h.scene
 
