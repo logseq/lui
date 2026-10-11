@@ -502,6 +502,7 @@ let require_event_supported context node event label =
          (Lui_wire_schema.node_kind_name kind))
 
 let register_press context node handler =
+  enable context node PointerEnabled;
   require_event_supported context node (Press node) "press";
   ignore (on_event context node is_press handler)
 
