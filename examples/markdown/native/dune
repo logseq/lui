@@ -10,6 +10,7 @@
  (target liblui_markdown.dylib)
  (deps
   ../../../platform/native/lui_ocaml_bridge.c
+  ../../../platform/native/lui_caml_dispatch.h
   markdown_bridge.cmxa
   ../markdown_app.cmxa
   ../../../src/lui.cmxa)

@@ -21,4 +21,8 @@
   melange-webapi
   ocaml-signal
   yojson
+  tsdl
+  tsdl-ttf
+  imagelib
+  tgls
   (alcotest :with-test)))
