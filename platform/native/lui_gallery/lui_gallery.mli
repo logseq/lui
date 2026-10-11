@@ -91,8 +91,10 @@ val test_image : image
 (* Deterministic hooks: theme table, fixed states/scrolls/images, the
    glyph-rectangle text stub and the real shadow parser. *)
 val color_of : string -> color option
-val stub_text_ops : int -> rect -> color -> string -> op list
-val stub_measure : Lui_host.text_measure
+val stub_text_ops :
+  ?store:Lui_store.t -> int -> rect -> color -> string -> op list
+
+val stub_measure : ?store:Lui_store.t -> Lui_host.text_measure
 
 val hooks_of :
   ?text_ops:(int -> rect -> color -> string -> op list) ->

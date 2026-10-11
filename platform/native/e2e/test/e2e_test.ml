@@ -75,9 +75,9 @@ let test_boot_pipeline () =
   let ops = E2e_harness.repaint h in
   check bool "repaint clears dirty" false (E2e_harness.wants_repaint h);
   check (list string) "op sequence"
-    [ "glyphs"; "glyphs"; "fill"; "fill"; "fill"; "glyphs"; "fill";
-      "glyphs"; "glyphs"; "fill"; "fill"; "glyphs"; "fill"; "fill";
-      "glyphs"; "glyphs"; "fill"; "fill"; "glyphs"; "fill"; "fill" ]
+    [ "glyphs"; "fill"; "fill"; "glyphs"; "fill"; "glyphs"; "glyphs";
+      "fill"; "fill"; "glyphs"; "fill"; "fill"; "glyphs"; "glyphs";
+      "fill"; "fill"; "glyphs"; "fill"; "fill"; "glyphs" ]
     (E2e_harness.op_names ops);
   check int "one frame" 1 (E2e_harness.cap h).frames;
   check int "pixel bytes" (320 * 240 * 4) (E2e_harness.cap h).bytes;
@@ -143,10 +143,10 @@ let test_press_add_remove_promote () =
   check bool "new row dirty" true (List.mem gamma_row dirty);
   let ops = E2e_harness.repaint h in
   check (list string) "op sequence"
-    [ "glyphs"; "glyphs"; "fill"; "fill"; "fill"; "glyphs"; "fill";
-      "glyphs"; "glyphs"; "fill"; "fill"; "glyphs"; "fill"; "fill";
-      "glyphs"; "glyphs"; "fill"; "fill"; "glyphs"; "fill"; "fill";
-      "glyphs"; "glyphs"; "fill"; "fill"; "glyphs"; "fill"; "fill" ]
+    [ "glyphs"; "fill"; "fill"; "glyphs"; "fill"; "glyphs"; "glyphs";
+      "fill"; "fill"; "glyphs"; "fill"; "fill"; "glyphs"; "glyphs";
+      "fill"; "fill"; "glyphs"; "fill"; "fill"; "glyphs"; "glyphs";
+      "fill"; "fill"; "glyphs"; "fill"; "fill"; "glyphs" ]
     (E2e_harness.op_names ops);
 
   (* promote moves the gamma row to the front of the keyed list *)

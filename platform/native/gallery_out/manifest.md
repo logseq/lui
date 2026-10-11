@@ -42,7 +42,7 @@ One cell per exercised state; every standard kind appears at least once. `ops` =
 | cells/c36_switch_off.png | switch | 3 | unchecked |
 | cells/c37_slider.png | slider | 5 | 40 percent |
 | cells/c38_progress.png | progress | 2 | 65 percent |
-| cells/c39_spinner.png | spinner | 3 | ring |
+| cells/c39_spinner.png | spinner | 12 | ring |
 | cells/c40_divider_h.png | divider | 1 | horizontal rule |
 | cells/c41_divider_v.png | divider | 1 | vertical rule |
 | cells/c42_icon.png | icon | 0 | host bitmap icon |

@@ -158,10 +158,31 @@ let fill1 x y w h c =
 
 (* Deterministic text stub: every byte becomes a small solid rect whose
    height hints at the character class (ascender, x-height, descender,
-   punctuation dot). Readable as text structure, portable everywhere. *)
-let stub_text_ops _id r c s =
-  let base = r.y +. Float.max 1. ((r.h -. 9.) /. 2.) in
-  let x = ref r.x in
+   punctuation dot). Readable as text structure, portable everywhere.
+   Honors the shared placement table so centered/padded kinds look
+   right in the stub render too. *)
+let stub_text_ops ?store id r c s =
+  let tp =
+    match store with
+    | Some st -> Lui_paint.text_placement_of st id
+    | None ->
+      { Lui_paint.tp_align = Ta_start; tp_pad_x = 0.; tp_pad_y = 0.;
+        tp_top = false }
+  in
+  let pad = tp.tp_pad_x in
+  let w' = Float.max 0. (r.w -. (2. *. pad)) in
+  let text_w = 7. *. float_of_int (String.length s) in
+  let x =
+    match tp.tp_align with
+    | Lui_paint.Ta_start -> ref (r.x +. pad)
+    | Ta_center ->
+      ref (r.x +. pad +. Float.max 0. ((w' -. text_w) /. 2.))
+    | Ta_end -> ref (r.x +. pad +. Float.max 0. (w' -. text_w))
+  in
+  let base =
+    if tp.tp_top then r.y +. tp.tp_pad_y
+    else r.y +. Float.max 1. ((r.h -. 9.) /. 2.)
+  in
   let ops = ref [] in
   let put y w h = ops := fill1 !x y w h c :: !ops in
   String.iter
@@ -178,8 +199,17 @@ let stub_text_ops _id r c s =
     s;
   List.rev !ops
 
-let stub_measure _id text _w _h =
-  Some (7. *. float_of_int (String.length text), 10.)
+let stub_measure ?store id text _w _h =
+  let tp =
+    match store with
+    | Some st -> Lui_paint.text_placement_of st id
+    | None ->
+      { Lui_paint.tp_align = Ta_start; tp_pad_x = 0.; tp_pad_y = 0.;
+        tp_top = false }
+  in
+  Some
+    ( (7. *. float_of_int (String.length text)) +. (2. *. tp.tp_pad_x),
+      10. +. (2. *. tp.tp_pad_y) )
 
 (* Fixed 24x24 two-tone checkerboard, premultiplied RGBA — the bitmap
    every image-driven kind samples. *)
@@ -198,7 +228,7 @@ let test_image =
   done;
   new_image ~w ~h pix
 
-let hooks_of ?(text_ops = stub_text_ops) e =
+let hooks_of ?(text_ops = fun id r c s -> stub_text_ops id r c s) e =
   { Lui_paint.color_of;
     layout = Lui_paint.default_hooks.layout;
     state_of =
@@ -863,8 +893,20 @@ type frame = {
 let render ?text_ops ?measure ?post_create ?(workers = 1) () =
   let g = build_gallery () in
   let e = emit g.root in
-  let hooks = hooks_of ?text_ops e in
-  let measure = Option.value measure ~default:stub_measure in
+  (* The stub engines need the host's store for prop lookup; it only
+     exists after create, so the hooks close over a ref filled then. *)
+  let store_cell = ref None in
+  let text_ops =
+    match text_ops with
+    | Some f -> f
+    | None -> (fun id r c s -> stub_text_ops ?store:!store_cell id r c s)
+  in
+  let hooks = hooks_of ~text_ops e in
+  let measure =
+    match measure with
+    | Some f -> f
+    | None -> fun id t w h -> stub_measure ?store:!store_cell id t w h
+  in
   let captured = ref None in
   let renderer =
     { Lui_host.render =
@@ -881,6 +923,7 @@ let render ?text_ops ?measure ?post_create ?(workers = 1) () =
     Lui_host.create ~hooks ~layout:(module Lui_layout) ~measure ~renderer
       ~width:g.frame_w ~height:6000 ~scale:1. ()
   in
+  store_cell := Some (Lui_host.store host);
   (match post_create with Some f -> f host | None -> ());
   ignore (Lui_host.apply_batch host { generation = 1; ops = e.ops });
   ignore (Lui_host.repaint host);

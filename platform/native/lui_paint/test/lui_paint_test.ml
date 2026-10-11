@@ -291,12 +291,11 @@ let test_disabled_opacity () =
       SetProp (1, Enabled, BoolValue false);
       SetProp (1, DisabledOpacity, FloatValue 0.5) ];
   let s = paint_with (hooks ()) t () in
-  (* the button also gains a default control border; both fills carry
-     the disabled opacity *)
+  (* a view-styled background owns the whole surface: no default border
+     is added, and the fill carries the disabled opacity *)
   match s.ops with
-  | [ Fill bg; Fill border ] ->
-    check bool "half opacity" true (bg.fopacity = 0.5 && border.fopacity = 0.5)
-  | _ -> fail "expected bg + border fills"
+  | [ Fill bg ] -> check bool "half opacity" true (bg.fopacity = 0.5)
+  | _ -> fail "expected bg fill only"
 
 (* ---------- compositing ---------- *)
 
@@ -391,9 +390,9 @@ let test_popup_xy () =
       SetProp (1, PopupY, FloatValue 40.);
       SetProp (1, BackgroundValue, StringValue "#ff0000") ];
   let s = paint_with (hooks ()) t () in
-  (* the styled background fill lands first; popover defaults add
-     shadow + border after it *)
-  match s.ops with
+  (* token chrome paints first (popover shadow), then the node's own
+     styled background at the popup offset *)
+  match List.rev s.ops with
   | Fill f :: _ ->
     check bool "popup" true (f.frect.x = 30. && f.frect.y = 40.)
   | _ -> fail "expected popup fill"
@@ -505,11 +504,11 @@ let test_spinner () =
   let t = store () in
   apply t [ Lui_protocol.CreateNode (1, Spinner) ];
   let s = paint_with (hooks ()) t () in
-  (* ring minus one quarter: three border-edge fills *)
-  check int "three edges" 3 (List.length s.ops);
+  (* radial indicator: twelve fading dots *)
+  check int "twelve dots" 12 (List.length s.ops);
   match s.ops with
-  | Fill f :: _ -> check bool "edge width" true (f.fborder = (2., 0., 0., 0.))
-  | _ -> fail "expected edge fills"
+  | Fill f :: _ -> check int "dot opaque" 255 f.fcolor.a
+  | _ -> fail "expected dot fills"
 
 let test_slider () =
   let t = store () in

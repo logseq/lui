@@ -219,6 +219,27 @@ let color_of_hex s =
     else None
   else None
 
+(* HSL (h in degrees, s and l in 0..1) to a premultiplied color. *)
+let hsl h s l =
+  let c = (1. -. Float.abs (2. *. l -. 1.)) *. s in
+  let h' = Float.rem h 360. /. 60. in
+  let h' = if h' < 0. then h' +. 6. else h' in
+  let x = c *. (1. -. Float.abs (Float.rem h' 2. -. 1.)) in
+  let m = l -. (c /. 2.) in
+  let r, g, b =
+    match int_of_float h' with
+    | 0 -> (c, x, 0.) | 1 -> (x, c, 0.) | 2 -> (0., c, x)
+    | 3 -> (0., x, c) | 4 -> (x, 0., c) | _ -> (c, 0., x)
+  in
+  let ch v = int_of_float ((v +. m) *. 255.) in
+  color (ch r) (ch g) (ch b) 255
+
+(* Stable per-string hue: initials of a name always get the same tint. *)
+let hash_hue s =
+  let h = ref 5381 in
+  String.iter (fun c -> h := (!h * 33 + Char.code c) land max_int) s;
+  float (!h mod 360)
+
 (* ---------- tokenizing ----------
 
    Whitespace/comma tokenizers that keep parenthesized groups together,
@@ -902,6 +923,59 @@ let frac_of store id =
 
 (* ---------- kind visuals ---------- *)
 
+(* ---------- text placement ---------- *)
+
+type text_align = Ta_start | Ta_center | Ta_end
+
+type text_placement = {
+  tp_align : text_align;
+  tp_pad_x : float; (* logical px inset on each side *)
+  tp_pad_y : float; (* logical px measure adds top and bottom *)
+  tp_top : bool;    (* anchor first line at pad-y instead of centering *)
+}
+
+(* Where a kind's own ink sits inside its chrome: labeled controls
+   center, fields and rows pad their ink, plain text flows from the
+   edge. The text-alignment and padding props win over the table.
+   Every text engine feeds this into its pen math so all backends
+   place glyphs identically. *)
+let text_placement_of store id =
+  let align, pad_x, pad_y, top =
+    match Lui_store.kind store id with
+    | "button" | "toggle-button" | "toggle" | "menu-trigger"
+    | "swipe-action" | "file-picker" -> (Ta_center, 14., 6., false)
+    | "number-stepper" -> (Ta_center, 10., 5., false)
+    | "kbd" -> (Ta_center, 5., 2., false)
+    | "avatar" -> (Ta_center, 0., 0., false)
+    | "bottom-tab" | "tab" -> (Ta_center, 12., 5., false)
+    | "tooltip" | "toast" -> (Ta_center, 8., 4., false)
+    | "alert" | "bubble" -> (Ta_start, 10., 6., false)
+    | "menu-item" -> (Ta_start, 10., 5., false)
+    | "step" -> (Ta_center, 8., 4., false)
+    | "list-item" -> (Ta_start, 12., 6., false)
+    | "text-field" | "secure-field" | "input" | "search-field"
+    | "select" | "combobox" -> (Ta_start, 10., 6., false)
+    | "textarea" -> (Ta_start, 10., 6., true)
+    | _ -> (Ta_start, 0., 0., false)
+  in
+  let align =
+    match pstr store id "text-alignment" with
+    | Some "center" -> Ta_center
+    | Some "end" -> Ta_end
+    | Some _ -> Ta_start
+    | None -> align
+  in
+  let pad_x, pad_y =
+    match
+      ( pnum store id "padding-horizontal", pnum store id "padding",
+        pnum store id "padding-vertical" )
+    with
+    | Some x, _, v -> (x, Option.value ~default:pad_y v)
+    | None, Some p, v -> (p, Option.value ~default:p v)
+    | None, None, v -> (pad_x, Option.value ~default:pad_y v)
+  in
+  { tp_align = align; tp_pad_x = pad_x; tp_pad_y = pad_y; tp_top = top }
+
 let text_ops ?fg ctx store id r alpha ~placeholder_ok =
   let fg =
     match fg with Some c -> c | None -> text_fg ctx store id
@@ -1117,26 +1191,34 @@ let slider_ops ctx store id rs r alpha =
         ~border:(1. *. s, 1. *. s, 1. *. s, 1. *. s)
         ~bcolor:(col_control_border ctx) ~dashed:false ~alpha ]
 
-(* spinner: a ring drawn as border edges with one quarter missing —
-   the static placeholder until an animated arc op exists. *)
+(* spinner: twelve dots around a circle, alpha fading with age so the
+   frame reads as the paused tick of a rotating indicator. *)
 let spinner_ops ctx store id rs r alpha =
   let s = ctx.scale in
   let side = Float.min r.w r.h in
-  let b = rect (r.x +. ((r.w -. side) /. 2.)) (r.y +. ((r.h -. side) /. 2.)) side side in
-  let half = side /. 2. in
-  let w = 2. *. s in
-  let c =
+  let cx = r.x +. (r.w /. 2.) and cy = r.y +. (r.h /. 2.) in
+  let base =
     match pcolor ctx.hooks store id "foreground" with
     | Some c -> c
     | None -> col_primary ctx
   in
-  let edge border =
-    fill b (corners b (half, half, half, half) false) ~paint:Solid
-      ~c1:(color 0 0 0 0) ~c2:(color 0 0 0 0) ~grad:(0., 0., 0., 0.) ~border
-      ~bcolor:c ~dashed:false ~alpha
+  let rad = side *. 0.34 and d = Float.max (1.5 *. s) (side *. 0.16) in
+  let half = d /. 2. in
+  let spokes = 12 in
+  let dot i =
+    let theta = Float.pi *. 2. *. float i /. float spokes in
+    let x = cx +. (rad *. Float.sin theta) and y = cy -. (rad *. Float.cos theta) in
+    (* fade clockwise: dot 0 brightest, trailing dots dimmer *)
+    let a = 1. -. (float i /. float spokes *. 0.85) in
+    let c = { base with a = int_of_float (float base.a *. a) } in
+    let dr = rect (x -. half) (y -. half) d d in
+    fill ~continuous:true dr (corners dr (half, half, half, half) false)
+      ~paint:Solid ~c1:c ~c2:c ~grad:(0., 0., 0., 0.)
+      ~border:(0., 0., 0., 0.) ~bcolor:(color 0 0 0 0) ~dashed:false
+      ~alpha
   in
   box_ops ctx store id rs r alpha
-  @ [ edge (w, 0., 0., 0.); edge (0., 0., w, 0.); edge (0., 0., 0., w) ]
+  @ List.init spokes dot
 
 (* icon: host-decoded glyph image, else a foreground square so the
    missing path stays visible in tests. *)
@@ -1272,14 +1354,14 @@ let default_chrome ctx store id st kind r rs alpha =
          else col_surface ctx
        in
        [ face face_c rad zb zc ~dashed:false ])
-    @ (if border_styled then []
+    @ (if border_styled || bg_styled then []
        else [ face zc rad bw1 (col_control_border ctx) ~dashed:false ])
   | "text-field" | "secure-field" | "input" | "search-field" | "textarea"
   | "select" | "combobox" ->
     let rad = rad (6. *. s) in
     (if bg_styled then []
      else [ face (col_surface ctx) rad zb zc ~dashed:false ])
-    @ (if border_styled then []
+    @ (if border_styled || bg_styled then []
        else
          [ let bc =
              if st.focused then col_accent ctx else col_control_border ctx
@@ -1310,19 +1392,19 @@ let default_chrome ctx store id st kind r rs alpha =
   | "file-picker" ->
     let rad = rad (6. *. s) in
     (if bg_styled then [] else [ face (col_surface ctx) rad zb zc ~dashed:false ])
-    @ (if border_styled then []
+    @ (if border_styled || bg_styled then []
        else [ face zc rad bw1 (col_control_border ctx) ~dashed:true ])
   | "popover" | "dropdown-menu" | "menu" | "context-menu" ->
     let rad = rad (8. *. s) in
     shadow_pair rad [ (0., 1., 3., 26); (0., 6., 20., 41) ]
     @ (if bg_styled then [] else [ face (col_popover ctx) rad zb zc ~dashed:false ])
-    @ (if border_styled then []
+    @ (if border_styled || bg_styled then []
        else [ face zc rad bw1 (col_border ctx) ~dashed:false ])
   | "dialog" | "sheet" | "drawer" | "modal" ->
     let rad = rad (10. *. s) in
     shadow_pair rad [ (0., 2., 8., 31); (0., 10., 30., 76) ]
     @ (if bg_styled then [] else [ face (col_popover ctx) rad zb zc ~dashed:false ])
-    @ (if border_styled then []
+    @ (if border_styled || bg_styled then []
        else [ face zc rad bw1 (col_border ctx) ~dashed:false ])
   | "tooltip" | "toast" | "alert" | "bubble" ->
     let rad = rad (5. *. s) in
@@ -1333,12 +1415,12 @@ let default_chrome ctx store id st kind r rs alpha =
     shadow_pair rad [ (0., 1., 2., 20); (0., 4., 10., 15) ]
     @ (if bg_styled then []
        else [ face (theme ctx "card") rad zb zc ~dashed:false ])
-    @ (if border_styled then []
+    @ (if border_styled || bg_styled then []
        else [ face zc rad bw1 (col_border ctx) ~dashed:false ])
   | "kbd" ->
     let rad = rad (4. *. s) in
     (if bg_styled then [] else [ face (col_surface ctx) rad zb zc ~dashed:false ])
-    @ (if border_styled then []
+    @ (if border_styled || bg_styled then []
        else [ face zc rad bw1 (col_control_border ctx) ~dashed:false ])
   | _ -> []
 
@@ -1499,13 +1581,14 @@ let rec paint_own ctx store id st kind r rs alpha =
       | None -> (
         let rad = chrome_radii ctx store id half in
         let b = rect r.x r.y r.w r.h in
-        let c = col_muted ctx in
         match pstr store id "text" with
         | Some s when s <> "" ->
+          (* hue from the label so every name gets a stable tint *)
+          let c = hsl (hash_hue s) 0.45 0.55 in
           [ fill ~continuous:true b (corners b rad false) ~paint:Solid ~c1:c ~c2:c
               ~grad:(0., 0., 0., 0.) ~border:(0., 0., 0., 0.)
               ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha ]
-          @ scale_ops alpha (ctx.hooks.text_ops id r (col_muted_fg ctx) s)
+          @ scale_ops alpha (ctx.hooks.text_ops id r (color 255 255 255 255) s)
         | _ -> box_ops ctx store id rs r alpha))
     | "text" | "label" | "heading" | "paragraph" | "br" | "link" | "kbd" ->
       box_ops ctx store id rs r alpha
@@ -1515,7 +1598,7 @@ let rec paint_own ctx store id st kind r rs alpha =
       box_ops ctx store id rs r alpha
       @ text_ops ~fg ctx store id r alpha ~placeholder_ok:true
     | "button" | "toggle-button" | "toggle" | "menu-item" | "menu-trigger"
-    | "bottom-tab" | "list-item" | "swipe-action" | "file-picker"
+    | "bottom-tab" | "list-item" | "swipe-action" | "file-picker" | "step"
     | "list-section-header" | "list-section-footer" | "tab" ->
       (* labeled chrome: box decoration plus the label through the text
          engine *)
@@ -1533,10 +1616,11 @@ let rec paint_own ctx store id st kind r rs alpha =
         | None -> box_ops ctx store id rs r alpha)
       | _ -> box_ops ctx store id rs r alpha)
   in
-  (* explicit-prop ops first, then token defaults filling the gaps;
-     shadow ops carry a cast cutout so painting them after prop fills
-     still leaves them visually underneath the box. *)
-  own @ default_chrome ctx store id st kind r rs alpha
+  (* token chrome first (shadow + face + border underneath), then the
+     node's own ops — prop fills sit on top of the defaults and the
+     label is never covered by a chrome face. *)
+  default_chrome ctx store id st kind r rs alpha
+  @ own
   @
   if
     st.focused && focusable kind
