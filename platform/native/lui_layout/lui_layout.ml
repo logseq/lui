@@ -612,16 +612,16 @@ let refine_grids ctx =
     !(ctx.grids)
 
 (* Popup anchoring: [x]/[y] supply an anchor point (a zero-size anchor
-   box inside the parent); bare [anchor] uses the parent rect as the
-   anchor box, like the web backend's element anchoring. [anchor]
+   box inside the containing block); bare [anchor] uses the parent rect
+   as the anchor box, like the web backend's element anchoring. [anchor]
    names the preferred side (below default), [anchor-alignment] the
    cross-axis alignment (start default), [anchor-offset] the gap
    (4px default). *)
-let anchor_rect_of ctx store id pr =
+let anchor_rect_of ctx store id ~cb pr =
   let s = ctx.scale in
   let f name = Option.map (fun v -> v *. s) (pnum store id name) in
   match (f "x", f "y") with
-  | Some x, Some y -> { Lui_flex.x = pr.x +. x; y = pr.y +. y; w = 0.; h = 0. }
+  | Some x, Some y -> { Lui_flex.x = cb.x +. x; y = cb.y +. y; w = 0.; h = 0. }
   | _ -> pr
 
 let anchored_xy ctx store sid ar (prp : Lui_flex.rect) =
@@ -696,6 +696,30 @@ let refine_popups ctx =
               edge_px ~owner:pr.h ps.border.bottom ps.border.vertical ps.border )
           | None -> (0., 0., 0., 0.)
         in
+        (* The containing block a popup places against is the nearest
+           out-of-flow ancestor (popup kinds, [position] edges, shared-
+           cell overlays) — layers and nested popups anchor it, while
+           in-flow parents keep sizing to content. The flex parent is
+           the fallback and the bare-[anchor] target (its trigger). *)
+        let cb =
+          let rec positioned id =
+            match Hashtbl.find_opt ctx.applied id with
+            | Some (a : Lui_flex.style)
+              when a.position_type = Lui_flex.Absolute -> (
+              match Hashtbl.find_opt ctx.nodes id with
+              | Some n -> Some (Lui_flex.absolute_layout n)
+              | None -> None)
+            | _ -> (
+              match Lui_store.parent ctx.store id with
+              | Some anc -> positioned anc
+              | None -> None)
+          in
+          match store_id_of_flex ctx parent with
+          | Some psid -> (match positioned psid with
+            | Some r -> r
+            | None -> pr)
+          | None -> pr
+        in
         match Hashtbl.find_opt ctx.applied sid with
         | None -> ()
         | Some (pstyle : Lui_flex.style) ->
@@ -732,9 +756,13 @@ let refine_popups ctx =
           if (not anchored) && popup_has_edges ctx.store sid then ()
           else
           let kind = Lui_store.kind ctx.store sid in
+          (* Placement targets live in the containing block [cb] but the
+             position edges resolve against the flex parent's padding
+             box — express them as offsets from that origin. *)
+          let cbx = cb.x -. pr.x and cby = cb.y -. pr.y in
           let center =
-            ( ((pr.w -. prp.w) /. 2.) -. bor_l -. ml,
-              ((pr.h -. prp.h) /. 2.) -. bor_t -. mt )
+            ( cbx +. ((cb.w -. prp.w) /. 2.) -. bor_l -. ml,
+              cby +. ((cb.h -. prp.h) /. 2.) -. bor_t -. mt )
           in
           let abs_of (ax, ay) =
             (ax -. pr.x -. bor_l -. ml, ay -. pr.y -. bor_t -. mt)
@@ -743,7 +771,7 @@ let refine_popups ctx =
             if anchored then
               abs_of
                 (anchored_xy ctx ctx.store sid
-                   (anchor_rect_of ctx ctx.store sid pr) prp)
+                   (anchor_rect_of ctx ctx.store sid ~cb pr) prp)
             else
               (* Unanchored popups take their platform placement —
                  the web stylesheet's fixed rules: a context menu
@@ -759,10 +787,10 @@ let refine_popups ctx =
                        { Lui_flex.x = cx; y = cy; w = 0.; h = 0. } prp)
                 | None -> center)
               | "sheet" ->
-                (pr.w -. prp.w -. bor_r -. mr, -.bor_t -. mt)
+                (cbx +. cb.w -. prp.w -. bor_r -. mr, cby -. bor_t -. mt)
               | "toast" ->
-                ( pr.w -. prp.w -. (16. *. ctx.scale) -. bor_r -. mr,
-                  pr.h -. prp.h -. (16. *. ctx.scale) -. bor_b -. mb )
+                ( cbx +. cb.w -. prp.w -. (16. *. ctx.scale) -. bor_r -. mr,
+                  cby +. cb.h -. prp.h -. (16. *. ctx.scale) -. bor_b -. mb )
               | _ -> center
           in
           (* Pin the viewport-measured box as explicit dimensions —
@@ -774,7 +802,7 @@ let refine_popups ctx =
             match kind with
             | "sheet" -> (
               match pstyle.height with
-              | Unset -> Pt pr.h
+              | Unset -> Pt cb.h
               | h -> h)
             | _ -> Pt prp.h
           in
