@@ -1854,6 +1854,11 @@ and layout_node_impl
            (* Indefinite main dim, negative consumption: the node will
               clamp to zero content size. *)
            remaining_free_space := -. !size_consumed_on_current_line);
+        (* A scroll container's children overflow along its main axis —
+           they grow to fill spare space but never shrink to fit, so a
+           negative remainder resolves like a content-sized line. *)
+        if node.style.overflow = Scroll && !remaining_free_space < zero then
+          remaining_free_space := zero;
         let original_remaining_free_space = !remaining_free_space in
         let delta_free_space = ref zero in
 
