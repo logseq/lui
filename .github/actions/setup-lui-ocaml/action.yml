@@ -71,8 +71,10 @@ runs:
         # cannot build until the SDL overlay and pkgconf seeding in the
         # native-tests step has run — those steps complete the switch, so
         # a top-up failure is tolerated off Linux only.
+        # --confirm-level=unsafe-yes: depext's 'run the system package
+        # manager?' prompt otherwise aborts on missing SDL packages.
         if [ "$RUNNER_OS" = "Linux" ]; then
-          opam install . --deps-only --with-test -y --locked
+          opam install . --deps-only --with-test -y --locked --confirm-level=unsafe-yes
         else
           opam install . --deps-only --with-test -y --locked || true
         fi
