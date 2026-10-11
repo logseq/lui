@@ -713,22 +713,22 @@ module Ui = struct
   let press_target store path =
     (* DOM click semantics: the activation lands on the deepest
        ancestor that opted into press handling ("press-enabled" is
-       what [register_press] sets; "toggle-enabled" is what [on_toggle]
-       sets — toggle kinds flip state on press instead of emitting
-       Press, and [ToggleButton] does not admit Press at all), not on a
-       passive leaf — bare text/box kinds admit Press unconditionally
-       and would otherwise swallow the click before it reaches the
-       pressable wrapper. *)
+       what [register_press] sets), not on a passive leaf — bare
+       text/box kinds admit Press unconditionally and would otherwise
+       swallow the click before it reaches the pressable wrapper.
+       Toggle kinds flip their state on press instead of emitting it —
+       [ToggleButton] does not admit Press at all, so admit
+       [ToggleChanged] as an activation signal too. *)
     match
       select_activation store path
-        (fun s id ->
-          Lui_store.bool_prop s id "press-enabled"
-          || Lui_store.bool_prop s id "toggle-enabled")
+        (fun s id -> Lui_store.bool_prop s id "press-enabled")
     with
     | Some id -> Some id
     | None ->
       select_activation store path
-        (fun s id -> event_supported s id (ev_press id))
+        (fun s id ->
+          event_supported s id (ev_press id)
+          || event_supported s id (ToggleChanged (id, true)))
 
   let detail_target store path make =
     pick store path (fun s id ->
