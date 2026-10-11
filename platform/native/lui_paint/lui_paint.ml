@@ -186,7 +186,21 @@ let prop_coverage =
     ("min-width-viewport", Layout);
     ("max-width-viewport", Layout);
     ("min-height-viewport", Layout);
-    ("max-height-viewport", Layout) ]
+    ("max-height-viewport", Layout);
+    ("margin", Layout); (* CSS shorthand, 1–4 lengths *)
+    ("margin-horizontal", Layout);
+    ("margin-vertical", Layout);
+    ("margin-top", Layout);
+    ("margin-right", Layout);
+    ("margin-bottom", Layout);
+    ("margin-left", Layout);
+    ("font-family", Painted_by_text);
+    ("text-decoration", Painted_by_text);
+    ("list-style", Painted_by_text); (* list marker style *)
+    ("flex-wrap", Layout);
+    ("hover-foreground", Painted);
+    ("hover-border", Painted);
+    ("transition", Unmapped "prop transition animation, applied by the diff layer") ]
 
 (* Extension-prop names the pass reads outside the protocol list:
    "border-style" ("dashed"/"dotted" → fdashed). *)
