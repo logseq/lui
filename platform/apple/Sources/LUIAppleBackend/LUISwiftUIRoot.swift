@@ -5118,20 +5118,7 @@ private struct LUIButtonView: View {
     }
 
     var body: some View {
-        styledButton
-            .controlSize(controlSize)
-            .frame(
-                maxWidth: LUIButtonVisualPolicy.fillsAvailableWidth(
-                    grow: model.property(.grow)?.doubleValue
-                ) ? .infinity : nil,
-                alignment: LUIButtonVisualPolicy.labelAlignment(
-                    textAlignment: model.property(.textAlignment)?.stringValue
-                )
-            )
-            .frame(
-                width: buttonWidth,
-                height: buttonHeight
-            )
+        sizedButton
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(verbatim: model.accessibilityLabel(in: backend)
                 ?? (model.text.isEmpty ? model.buttonIconName : model.text)))
@@ -5179,6 +5166,50 @@ private struct LUIButtonView: View {
     }
 
     @ViewBuilder
+    private var sizedButton: some View {
+        let control = styledButton
+            .controlSize(controlSize)
+            .frame(
+                maxWidth: LUIButtonVisualPolicy.fillsAvailableWidth(
+                    grow: model.property(.grow)?.doubleValue
+                ) ? .infinity : nil,
+                alignment: LUIButtonVisualPolicy.labelAlignment(
+                    textAlignment: model.property(.textAlignment)?.stringValue
+                )
+            )
+            .frame(
+                width: buttonWidth,
+                height: buttonHeight
+            )
+        if usesDefaultTouchCell {
+            control
+                // Reserve space after native styling so its padding does not enlarge chrome.
+                // A minimum keeps Dynamic Type intrinsic height unconstrained.
+                .frame(
+                    minWidth: minimumControlExtent(
+                        fixed: model.surfaceWidth,
+                        minimum: model.surfaceMinWidth,
+                        maximum: model.surfaceMaxWidth
+                    ),
+                    maxWidth: model.surfaceMaxWidth.map(CGFloat.init),
+                    minHeight: minimumControlExtent(
+                        fixed: model.surfaceHeight,
+                        minimum: model.surfaceMinHeight,
+                        maximum: model.surfaceMaxHeight
+                    ),
+                    maxHeight: model.surfaceMaxHeight.map(CGFloat.init)
+                )
+                .contentShape(Rectangle())
+                .modifier(LUIOptionalClipModifier(
+                    cornerRadius: 0,
+                    clipsContent: model.surfaceMaxWidth != nil || model.surfaceMaxHeight != nil
+                ))
+        } else {
+            control
+        }
+    }
+
+    @ViewBuilder
     private var styledButton: some View {
         if isTabTrigger {
             button
@@ -5217,7 +5248,7 @@ private struct LUIButtonView: View {
             ) {
                 button.buttonStyle(.borderless)
             } else if LUINavigationFormRowPolicy.usesAutomaticButtonStyle(
-                isNativeFormRow: isNativeFormRow,
+                isNativeFormRow: usesNativeWholeFormRow,
                 variant: model.buttonVariant
             ) {
                 button.foregroundStyle(.tint)
@@ -5337,9 +5368,17 @@ private struct LUIButtonView: View {
     }
 
     private var iconExtent: CGFloat {
-        min(LUIButtonVisualPolicy.iconExtent(buttonSize: model.buttonSize),
+        let visualExtent: CGFloat = usesDefaultTouchCell && isIconOnly && model.buttonSize == "default"
+            ? 20 : LUIButtonVisualPolicy.iconExtent(buttonSize: model.buttonSize)
+        let maximumWidth = usesDefaultTouchCell ? model.surfaceMaxWidth.map(CGFloat.init) : nil
+        let maximumHeight = usesDefaultTouchCell ? model.surfaceMaxHeight.map(CGFloat.init) : nil
+        return min(
+            visualExtent,
             buttonWidth ?? .greatestFiniteMagnitude,
-            buttonHeight ?? .greatestFiniteMagnitude)
+            buttonHeight ?? .greatestFiniteMagnitude,
+            maximumWidth ?? .greatestFiniteMagnitude,
+            maximumHeight ?? .greatestFiniteMagnitude
+        )
     }
 
     private var controlSize: ControlSize {
@@ -5359,9 +5398,12 @@ private struct LUIButtonView: View {
     }
 
     private var buttonWidth: CGFloat? {
+        // Explicit bounds own this axis, including size=icon. Do not retain
+        // its fixed fallback width underneath a caller's smaller hit cell.
+        let hasWidthBounds = model.surfaceMinWidth != nil || model.surfaceMaxWidth != nil
         let width = LUIButtonVisualPolicy.resolvedExtent(
             explicit: model.surfaceWidth,
-            fallback: LUIButtonVisualPolicy.defaultWidth(
+            fallback: usesDefaultTouchCell && hasWidthBounds ? nil : LUIButtonVisualPolicy.defaultWidth(
                 buttonSize: model.buttonSize,
                 usesMinimumTouchTarget: usesMinimumTouchTarget
             )
@@ -5371,6 +5413,32 @@ private struct LUIButtonView: View {
 
     private var isIconOnly: Bool {
         !model.buttonIconName.isEmpty && model.text.isEmpty
+    }
+
+    private var usesDefaultTouchCell: Bool {
+        usesMinimumTouchTarget && !inHoistedToolbar && !usesNativeWholeFormRow
+    }
+
+    // Only a direct default Form button uses the native automatic whole-row action.
+    // Explicit variants and nested controls need independent touch cells.
+    private var usesNativeWholeFormRow: Bool {
+        guard usesMinimumTouchTarget else { return isNativeFormRow }
+        guard LUINavigationFormRowPolicy.usesAutomaticButtonStyle(
+            isNativeFormRow: isNativeFormRow,
+            variant: model.buttonVariant
+        ), let parentID = model.parent,
+              let parent = backend.model(id: parentID) else { return false }
+        return LUINavigationFormSheetPolicy.isForm(
+            parent.property(.styleClass)?.stringValue
+        )
+    }
+
+    /// Explicit per-axis constraints opt out of the default 44pt minimum.
+    /// Small control size changes visual chrome, not the reserved hit cell.
+    private func minimumControlExtent(fixed: Int?, minimum: Int?, maximum: Int?) -> CGFloat? {
+        guard usesDefaultTouchCell else { return nil }
+        if let minimum { return CGFloat(minimum) }
+        return fixed == nil && maximum == nil ? 44 : nil
     }
 
     /// Hoisted icon-only controls keep the platform's 44pt bar-item hit target:

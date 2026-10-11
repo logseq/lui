@@ -353,6 +353,18 @@ system `Button` with native label/icon composition, control sizing, focus, and
 accessibility traits. The internal event-capability bit does
 not become a public LG attribute.
 
+On iOS, ordinary independent buttons reserve at least a 44-by-44-point touch
+cell after native styling, keeping the native background at its intrinsic
+size. Text retains its intrinsic Dynamic Type height. A default icon-only
+button uses a 20-point visual icon; `sm` still changes visual sizing without
+reducing the default touch cell. Explicit fixed, minimum, or maximum surface
+constraints opt out of the new minimum on that axis; existing surface-frame
+semantics still resolve combinations of those constraints. Maximum bounds
+also clip native drawing to the cell. Native toolbar targets and direct
+default automatic Form row actions retain their existing platform behavior;
+nested Form/List buttons and direct Form buttons with explicit variants use
+independent cells. macOS sizing is unchanged.
+
 ### ToggleButton contract
 
 `toggle-button` follows the pinned pressed-button contract. It shares `text`,
