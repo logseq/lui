@@ -394,5 +394,13 @@ jobs:
       - name: Test platform/native
         # Tests skip what the runner cannot provide: no display -> GL/parity
         # skip, no dbus -> ax/shell skip, no lavapipe -> vulkan skip.
-        run: opam exec -- dune runtest platform/native/ -f
+        # Windows: bound the whole suite while a hung test is diagnosed —
+        # verbose lists each test command as it starts, so the last one
+        # printed identifies the hang.
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            timeout 600 opam exec -- dune runtest platform/native/ -f --verbose
+          else
+            opam exec -- dune runtest platform/native/ -f
+          fi
         shell: bash
