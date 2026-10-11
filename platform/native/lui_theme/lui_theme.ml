@@ -53,10 +53,10 @@ let light_tokens : (string * color) list =
     ("ring", color 37 99 235 140);
     ("selection", color 37 99 235 64);
     ("scrollbar-thumb", color 0 0 0 82);
-    (* inverse surfaces: tooltips and toasts flip the polarity. *)
+    (* inverse surfaces: tooltips flip the polarity. *)
     ("inverse", color 24 24 27 255);
     ("inverse-foreground", color 255 255 255 255);
-    ("scrim", color 0 0 0 102) ]
+    ("scrim", color 0 0 0 128) ]
 
 let dark_tokens : (string * color) list =
   [ ("background", color 24 24 27 255);
