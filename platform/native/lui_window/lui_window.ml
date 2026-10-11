@@ -238,23 +238,49 @@ let hit_path store rects ~x ~y =
     | Some (BoolValue false) -> false
     | _ -> true
   in
-  let rec walk id path =
+  (* Mirror of Lui_paint.clips: a node clips its descendants when it
+     scrolls, carries an overflow prop, or is a split pane. *)
+  let node_clips id =
+    (match Lui_store.kind store id with
+     | Some "scroll" | Some "list" | Some "virtual-list" -> true
+     | _ -> false)
+    || (match Lui_store.parent store id with
+        | Some pid -> Lui_store.kind store pid = "split"
+        | None -> false)
+    || (match Lui_store.string_prop store id "overflow" with
+        | Some ("hidden" | "clip" | "auto" | "scroll") -> true
+        | _ -> false)
+  in
+  let rec walk id path clip_r =
     if not (visible id) then path
     else
+      let r = Rects.get rects id in
+      let clipped =
+        match clip_r with
+        | Some cr -> rect_intersect r cr
+        | None -> r
+      in
       let path =
-        let r = Rects.get rects id in
-        if not (rect_empty r) && rect_contains r x y then id :: path else path
+        if not (rect_empty clipped) && rect_contains clipped x y
+        then id :: path
+        else path
+      in
+      let child_clip =
+        (* display:contents has no box to clip with. *)
+        if node_clips id && string_prop store id "display" <> "contents"
+        then Some clipped
+        else clip_r
       in
       (* Children paint after their parent, so prepending while walking
          leaves the node visited last — visually topmost — at the head. *)
       List.fold_left
-        (fun acc c -> walk c acc)
+        (fun acc c -> walk c acc child_clip)
         path (Lui_store.child_ids store id)
   in
   (* The head is the node visited last in paint order: visually
      topmost. *)
   List.fold_left
-    (fun acc id -> walk id acc)
+    (fun acc id -> walk id acc None)
     [] (Lui_store.root_ids store)
 
 let hit store rects ~x ~y =

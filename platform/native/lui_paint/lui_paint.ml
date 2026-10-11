@@ -1707,6 +1707,11 @@ let scrollable kind store id =
 
 let clips kind store id =
   scrollable kind store id
+  || (* A split pane always clips: a collapsed track's content must not
+        leak into the sibling pane (web resizer panes clip likewise). *)
+     (match Lui_store.parent store id with
+      | Some pid -> Lui_store.kind store pid = "split"
+      | None -> false)
   || match pstr store id "overflow" with
      | Some ("hidden" | "clip" | "auto" | "scroll") -> true
      | _ -> false
@@ -1930,7 +1935,13 @@ and paint_node ctx store scene id parent_r alpha =
         else alpha *. rs.rs_opacity *. disabled_alpha store id st
       in
       let clip =
-        (not contents) && (not (rect_empty r)) && clips kind store id
+        (not contents) && clips kind store id
+        && ((not (rect_empty r))
+            || (* An empty split pane still clips: its children's own
+                  minimum sizes would otherwise paint through it. *)
+               (match Lui_store.parent store id with
+                | Some pid -> Lui_store.kind store pid = "split"
+                | None -> false))
       in
       if clip then
         emit1 scene
