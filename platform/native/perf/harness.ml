@@ -164,6 +164,11 @@ let quad_text_ops gcount scene slot _id r c s =
 type text_engine = Stub | Quads
 
 let create ?(text_engine = Stub) ~width ~height ~scale () =
+  (* Scenarios share the process heap: garbage owed by an earlier
+     scenario's mounts is otherwise collected inside the next
+     scenario's timed stages. Force a full collection up front so each
+     stage measures its own work. *)
+  Gc.full_major ();
   let engine = Lui_layout.create () in
   let hooks = { Lui_paint.default_hooks with text_ops = stub_text_ops } in
   (* The host holds the store and scene; this harness drives layout,

@@ -158,7 +158,7 @@ let run_line ~emit (d : Session.driver) lineno line =
              that reaches capture listeners on document) *)
           | None ->
             { Model.id = 0; kind = ""; props = Hashtbl.create 0
-            ; children = []; parent = None }
+            ; children = Model.vec_create (); parent = None }
         in
         let parts = String.split_on_char '+' combo in
         let mods, key =

@@ -101,7 +101,8 @@ let check_resync mirror application =
       let actual = Hashtbl.find restored.Drive.Model.nodes id in
       Alcotest.(check string) "node kind restored" expected.kind actual.kind;
       Alcotest.(check (option int)) "parent restored" expected.parent actual.parent;
-      Alcotest.(check (list int)) "child order restored" expected.children actual.children;
+      Alcotest.(check (list int)) "child order restored"
+        (Drive.Model.node_children expected) (Drive.Model.node_children actual);
       let props node =
         Hashtbl.to_seq node.Drive.Model.props |> List.of_seq |> List.sort compare
       in

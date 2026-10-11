@@ -1389,9 +1389,9 @@ let default_chrome ctx store id st kind r rs alpha =
   let last_sibling =
     match Lui_store.parent store id with
     | Some pid -> (
-      match List.rev (Lui_store.child_ids store pid) with
-      | last :: _ -> last = id
-      | [] -> true)
+      match Lui_store.last_child_id store pid with
+      | Some last -> last = id
+      | None -> true)
     | None -> true
   in
   (* ambient + key shadow pair under floating surfaces *)

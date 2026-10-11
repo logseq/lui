@@ -25,6 +25,9 @@ separately.
   the `Quads` engine (text scenario) appends real 8×16 glyph records
   into the mask atlas so shaping/blit work is measured without a
   platform font stack.
+- `Harness.create` runs `Gc.full_major ()` first: scenarios share the
+  process heap, so garbage owed by an earlier scenario's mounts would
+  otherwise be collected inside the next scenario's timed stages.
 - RSS: `/proc/self/status` VmRSS, `ps -o rss=` fallback on macOS.
 
 ## Scenarios
@@ -41,7 +44,7 @@ separately.
 
 ```sh
 opam exec -- dune build
-_build/default/platform/native/perf/main.exe          # full sizes (slow: 100k mounts are super-quadratic)
+_build/default/platform/native/perf/main.exe          # full sizes
 _build/default/platform/native/perf/main.exe --small  # bounded sizes, ~10 s
 opam exec -- dune runtest platform/native/            # alcotest regression bounds (small sizes)
 ```
@@ -56,107 +59,109 @@ Machine: Mac (Apple Silicon, arm64), macOS 26.5.2, OCaml 5.5.0,
 
 | scenario | metric | value | unit |
 |---|---|---|---|
-| vlist-10k | mount patch apply | 606.24 | ms |
-| vlist-10k | mount layout | 31.37 | ms |
-| vlist-10k | mount paint | 238.14 | ms |
-| vlist-10k | mount raster | 3.38 | ms |
+| vlist-10k | mount patch apply | 6.77 | ms |
+| vlist-10k | mount layout | 38.25 | ms |
+| vlist-10k | mount paint | 16.90 | ms |
+| vlist-10k | mount raster | 6.17 | ms |
 | vlist-10k | frame apply p50 | 0.00 | ms |
-| vlist-10k | frame layout p50 | 30.85 | ms |
-| vlist-10k | frame paint p50 | 233.36 | ms |
-| vlist-10k | frame raster p50 | 4.68 | ms |
-| vlist-10k | frame total p50 | 270.55 | ms |
-| vlist-10k | frame total p95 | 276.11 | ms |
+| vlist-10k | frame layout p50 | 33.49 | ms |
+| vlist-10k | frame paint p50 | 20.35 | ms |
+| vlist-10k | frame raster p50 | 4.41 | ms |
+| vlist-10k | frame total p50 | 59.98 | ms |
+| vlist-10k | frame total p95 | 63.41 | ms |
 | vlist-10k | visible children | 30 | nodes |
 | vlist-10k | scene ops/frame | 20002 | ops |
-| vlist-50k | mount patch apply | 53034.46 | ms |
-| vlist-50k | mount layout | 178.49 | ms |
-| vlist-50k | mount paint | 17993.98 | ms |
-| vlist-50k | mount raster | 10.38 | ms |
+| vlist-50k | mount patch apply | 39.72 | ms |
+| vlist-50k | mount layout | 213.62 | ms |
+| vlist-50k | mount paint | 105.54 | ms |
+| vlist-50k | mount raster | 21.60 | ms |
 | vlist-50k | frame apply p50 | 0.00 | ms |
-| vlist-50k | frame layout p50 | 190.62 | ms |
-| vlist-50k | frame paint p50 | 17118.13 | ms |
-| vlist-50k | frame raster p50 | 23.54 | ms |
-| vlist-50k | frame total p50 | 17321.22 | ms |
-| vlist-50k | frame total p95 | 18549.73 | ms |
+| vlist-50k | frame layout p50 | 187.30 | ms |
+| vlist-50k | frame paint p50 | 114.02 | ms |
+| vlist-50k | frame raster p50 | 17.82 | ms |
+| vlist-50k | frame total p50 | 318.61 | ms |
+| vlist-50k | frame total p95 | 339.11 | ms |
 | vlist-50k | visible children | 30 | nodes |
 | vlist-50k | scene ops/frame | 100002 | ops |
-| vlist-100k | mount patch apply | 305850.52 | ms |
-| vlist-100k | mount layout | 379.80 | ms |
-| vlist-100k | mount paint | 133357.70 | ms |
-| vlist-100k | mount raster | 18.77 | ms |
+| vlist-100k | mount patch apply | 74.63 | ms |
+| vlist-100k | mount layout | 377.77 | ms |
+| vlist-100k | mount paint | 248.46 | ms |
+| vlist-100k | mount raster | 17.14 | ms |
 | vlist-100k | frame apply p50 | 0.00 | ms |
-| vlist-100k | frame layout p50 | 407.95 | ms |
-| vlist-100k | frame paint p50 | 131374.39 | ms |
-| vlist-100k | frame raster p50 | 42.56 | ms |
-| vlist-100k | frame total p50 | 131792.48 | ms |
-| vlist-100k | frame total p95 | 135095.22 | ms |
+| vlist-100k | frame layout p50 | 394.77 | ms |
+| vlist-100k | frame paint p50 | 251.81 | ms |
+| vlist-100k | frame raster p50 | 29.60 | ms |
+| vlist-100k | frame total p50 | 685.53 | ms |
+| vlist-100k | frame total p95 | 737.27 | ms |
 | vlist-100k | visible children | 30 | nodes |
 | vlist-100k | scene ops/frame | 200002 | ops |
-| damage-5k | mount patch apply | 98.08 | ms |
-| damage-5k | mount layout | 14.90 | ms |
-| damage-5k | mount paint | 46.83 | ms |
-| damage-5k | mount raster | 2.59 | ms |
+| damage-5k | mount patch apply | 3.09 | ms |
+| damage-5k | mount layout | 13.98 | ms |
+| damage-5k | mount paint | 9.42 | ms |
+| damage-5k | mount raster | 2.10 | ms |
 | damage-5k | flip apply p50 | 0.00 | ms |
-| damage-5k | damaged raster p50 | 0.86 | ms |
-| damage-5k | full raster p50 | 4.35 | ms |
+| damage-5k | damaged raster p50 | 0.96 | ms |
+| damage-5k | full raster p50 | 2.87 | ms |
 | damage-5k | damaged rects | 1.00 | rects |
-| text-500 | patch apply | 0.78 | ms |
-| text-500 | layout+measure | 1.11 | ms |
-| text-500 | paint+shape | 3.58 | ms |
-| text-500 | raster+blit | 3.78 | ms |
+| text-500 | patch apply | 0.13 | ms |
+| text-500 | layout+measure | 1.49 | ms |
+| text-500 | paint+shape | 3.67 | ms |
+| text-500 | raster+blit | 5.50 | ms |
 | text-500 | glyphs | 25890 | glyphs |
 | text-500 | scene ops | 500 | ops |
-| first-frame-10k | patch apply | 676.13 | ms |
-| first-frame-10k | layout | 36.61 | ms |
-| first-frame-10k | paint | 246.70 | ms |
-| first-frame-10k | raster | 2.17 | ms |
-| first-frame-10k | total | 963.46 | ms |
-| rss-100k | RSS before apply | 50.2 | MiB |
-| rss-100k | patch apply | 290961.36 | ms |
-| rss-100k | RSS after apply | 110.0 | MiB |
-| rss-100k | apply delta | 59.8 | MiB |
-| rss-100k | RSS after first frame | 510.6 | MiB |
+| first-frame-10k | patch apply | 9.10 | ms |
+| first-frame-10k | layout | 28.89 | ms |
+| first-frame-10k | paint | 15.30 | ms |
+| first-frame-10k | raster | 7.83 | ms |
+| first-frame-10k | total | 62.93 | ms |
+| rss-100k | RSS before apply | 50.4 | MiB |
+| rss-100k | patch apply | 83.96 | ms |
+| rss-100k | RSS after apply | 82.7 | MiB |
+| rss-100k | apply delta | 32.3 | MiB |
+| rss-100k | RSS after first frame | 309.5 | MiB |
 
-## What is unexpectedly slow, and why
+## What was unexpectedly slow, and the fix that landed
 
-Two stages are super-linear; everything else is roughly linear in
-mounted children. These are measured facts and code-level root causes —
-reported, not silently optimized (the spec caps changes to this
-directory; both fixes belong upstream).
+The first run of this harness found two super-linear stages; both root
+causes have since been fixed upstream and re-measured below.
 
-**Patch apply is ~O(n^2.8) in sibling count.**
-`Lui_store.insert_child` runs a full `List.filter` over the parent's
-children plus an `insert_at` walk for every `InsertChild`, so mounting
-n children ascending costs O(n²) list traversals — and every traversal
-rebuilds the spine, so GC pressure pushes the measured exponent to
-~2.8 (5k→0.11s, 10k→0.62s, 20k→4.5s, 40k→33s, 50k→53s, 100k→306s).
-An array-backed or tail-registered child list would restore linear
-apply; small incremental patches (a prop flip: 0.00ms) are already
-free.
+**Patch apply was ~O(n^2.8) in sibling count → now linear.**
+`Lui_store.insert_child` ran a full `List.filter` over the parent's
+children plus an `insert_at` walk for every `InsertChild` (100k mount
+measured at 306s). `node.children` is now a growable `child_vec`
+(array + length): appends are O(1) amortized, and the dedupe filter
+runs only when the child already had a parent (`c.parent = None`
+means first attach, no scan). Mount apply: 606→6.8ms @10k,
+53s→40ms @50k, 306s→75ms @100k. The twin implementation in
+`deps/drive/src/model.ml` got the same treatment. Small incremental
+patches were already free (prop flip: 0.00ms).
 
-**Paint is ~O(n^2.7) in container fan-out.**
-`Lui_paint.default_chrome` computes `last_sibling` for every node by
+**Paint was ~O(n^2.7) in container fan-out → now linear.**
+`Lui_paint.default_chrome` computed `last_sibling` per node via
 `List.rev (Lui_store.child_ids parent)` — an O(fan-out) walk per
-child — so a 100k-child container paints 100k × 100k list walks:
-10k→0.23s/frame, 50k→17.1s, 100k→131s per frame. The check only needs
-the parent's last child id once per parent — hoisting it (or caching
-a last-child pointer in the store) should return paint to ~linear.
-Paint also emits an op for every mounted child regardless of the
-viewport (`visible children` stays 30 while `scene ops/frame` is
-200002 at 100k): emission is correct-but-unclipped, so the quadratic
-walk is paid on all of them.
+child (100k frame: 131s). The store now answers the question in O(1)
+via `Lui_store.last_child_id`. Frame paint p50: 233→20ms @10k,
+17.1s→114ms @50k, 131s→252ms @100k.
 
-**Layout and raster are ~linear** (layout p50: 31→191→408ms,
-raster p50: 4.7→23.5→42.6ms across 10k/50k/100k) — healthy at these
-sizes. Layout still re-syncs the whole flex tree every scroll frame;
-at 100k that is 0.4s/frame even though no store node changed.
+**Layout and raster are ~linear** (layout p50: 33→187→395ms,
+raster p50: 4.4→17.8→29.6ms across 10k/50k/100k). Layout re-syncs the
+whole flex tree every scroll frame and is now the largest per-frame
+cost at 100k (~0.4s) — incremental layout is the next candidate if
+big-list scrolling must hit 60fps.
+
+**Paint still emits an op for every mounted child** (`visible
+children` stays 30 while `scene ops/frame` is 200002 at 100k):
+emission is correct-but-unclipped, so paint cost scales with tree size,
+not viewport size — ~250ms/frame at 100k. Viewport-aware emission
+would cut the largest stage again; the raster already discards
+off-clip ops cheaply.
 
 **Damage-limited raster does its job:** one color flip inside a 5k
-tree damages exactly 1 rect and rasters in 0.86ms vs 4.35ms for a
+tree damages exactly 1 rect and rasters in 0.96ms vs 2.87ms for a
 full pass. The win grows with scene size.
 
-**Memory:** ~0.6KB/node in the store (50→110 MiB across a 100k
-patch), then ~4.5KB/node total after the first frame (510.6 MiB)
+**Memory:** ~0.34KB/node in the store (50→83 MiB across a 100k
+patch), then ~2.7KB/node total after the first frame (309.5 MiB)
 once the flex tree, emitted ops, and the damage tracker's
 prev_ops/prev_glyphs/bounds snapshots are live. High but proportional;
 the retained snapshots (a second copy of every op) are the largest
