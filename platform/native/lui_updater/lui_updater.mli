@@ -20,7 +20,7 @@
         "url": "…/app-1.2.0.tar.gz",       // the full package
         "size": 123456,                    // bytes, required
         "sha256": "<64 hex>",              // required: the integrity anchor
-        "signature": "…",                  // optional: verified via [verify_sig]
+        "signature": "…",                  // optional: Ed25519 sig (hex/base64)
         "deltas": [
           { "from": "1.1.0",               // running version it patches
             "url": "…/d-1.1.0-1.2.0.delta", // a [Lui_pkg.update_pkg] file
@@ -35,10 +35,15 @@
 
     {b Integrity.} Every download is checked against its published size
     and SHA-256. A feed served over HTTPS plus a correct digest is the
-    baseline. Two extension points tighten it: [verify_sig] checks the
-    optional [signature] field of an artifact (e.g. an Ed25519 signature
-    of the digest), and [verify] inspects the fully staged tree before
-    the swap (e.g. [codesign --verify] or an mtree manifest).
+    baseline. Three extension points tighten it: an artifact's optional
+    [signature] — a hex or base64 Ed25519 signature (RFC 8032) over the
+    raw artifact bytes — is verified by {!Lui_ed25519} against the
+    public key given as [pk] or exported as [LUI_UPDATE_PUBKEY] (the
+    argument wins); [verify_sig] replaces all of that with an injected
+    checker for tests; and [verify] inspects the fully staged tree
+    before the swap (e.g. [codesign --verify] or an mtree manifest). A
+    signed artifact with no key available fails the download — signing
+    is opt-in per artifact, never silently skipped.
 
     {b Schemes.} [https:] always; [http:] only to loopback hosts (local
     servers); [file:] for local mirrors and tests. Everything else is
@@ -82,6 +87,8 @@ type artifact = {
   size : int;
   sha256 : string;       (** lowercase hex, 64 chars *)
   signature : string option;
+    (** hex or base64 of a 64-byte Ed25519 signature over the raw
+        artifact bytes *)
 }
 
 (** A delta update entry: patches [from] to the manifest's version. *)
@@ -203,11 +210,19 @@ val max_package : int
 val download :
   ?fetch:fetcher ->
   ?verify_sig:(sha256:string -> signature:string -> bool) ->
+  ?pk:string ->
   ?progress:(received:int -> total:int -> unit) ->
   artifact -> dest:string -> (unit, string) result
-(** Downloads [artifact] to [dest] and verifies size and SHA-256; when
-    the artifact carries a [signature] and [verify_sig] is given, it
-    must accept or the download fails. Bounds: [0 < size <= max_package]. *)
+(** Downloads [artifact] to [dest] and verifies size and SHA-256.
+    Bounds: [0 < size <= max_package].
+
+    When the artifact carries a [signature], it must also pass: with
+    [verify_sig] given, that injected checker decides (the test seam);
+    otherwise the signature is verified as an Ed25519 signature over
+    the raw file bytes against the key from [pk] or the
+    [LUI_UPDATE_PUBKEY] environment variable — a signed artifact with
+    no key, an undecodable key or signature, or a signature that does
+    not match all fail the download. *)
 
 (** {1 Apply and swap} *)
 
@@ -268,6 +283,7 @@ val install :
   ?fetch:fetcher ->
   ?verify:(string -> unit Lui_pkg.outcome) ->
   ?verify_sig:(sha256:string -> signature:string -> bool) ->
+  ?pk:string ->
   ?progress:(received:int -> total:int -> unit) ->
   ?on_state:(state -> unit) ->
   ?stage_dir:string ->
@@ -283,6 +299,7 @@ val install_and_relaunch :
   ?fetch:fetcher ->
   ?verify:(string -> unit Lui_pkg.outcome) ->
   ?verify_sig:(sha256:string -> signature:string -> bool) ->
+  ?pk:string ->
   ?progress:(received:int -> total:int -> unit) ->
   ?on_state:(state -> unit) ->
   ?stage_dir:string ->

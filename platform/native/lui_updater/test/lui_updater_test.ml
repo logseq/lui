@@ -467,6 +467,120 @@ let test_curl_file_fetch () =
   | U.Up_to_date -> Alcotest.fail "expected install"
   | U.Install_failed m -> Alcotest.failf "install failed: %s" m
 
+(* Ed25519 end to end: an in-test keypair signs the real artifact
+   bytes; install accepts the good signature through the [pk] argument
+   or LUI_UPDATE_PUBKEY, and tampered bytes, a wrong key, or no key at
+   all fail. Assumes LUI_UPDATE_PUBKEY is unset until this test sets
+   it. *)
+let test_signed_install () =
+  let base, old_app, _new_app, feed_dir = fixture ~with_delta:false in
+  let sk = String.make 32 '\x07' in
+  let pk_hex =
+    Lui_ed25519.encode_hex (Option.get (Lui_ed25519.public_key ~sk))
+  in
+  let wrong_pk_hex =
+    Lui_ed25519.encode_hex
+      (Option.get (Lui_ed25519.public_key ~sk:(String.make 32 '\x09')))
+  in
+  let pkg = Filename.concat base "pkg.tar.gz" in
+  let exe = "Contents/MacOS/myapp" in
+  let f = feed_of feed_dir ~version:"1.0" in
+  let signed_artifact path =
+    {
+      (artifact_of_file path (file_url path)) with
+      U.signature =
+        Some
+          (Lui_ed25519.encode_hex
+             (Option.get
+                (Lui_ed25519.sign ~sk ~msg:(P.Fs.read_file path))));
+    }
+  in
+  let write_manifest a =
+    write (Filename.concat feed_dir "stable.json")
+      (manifest ~version:"2.0" ~archive:a ~deltas:[])
+  in
+  let contains hay needle =
+    let hl = String.length hay and nl = String.length needle in
+    let rec go i =
+      i + nl <= hl
+      && (String.sub hay i nl = needle || go (i + 1))
+    in
+    go 0
+  in
+  (* good signature + explicit key → installs *)
+  write_manifest (signed_artifact pkg);
+  let target = installed_copy (Filename.concat base "live") old_app in
+  (match U.install ~fetch:file_fetcher ~pk:pk_hex f ~bundle:target ~exe
+   with
+   | U.Installed { version; _ } ->
+     check string "signed version" "2.0" version
+   | U.Up_to_date -> Alcotest.fail "expected install"
+   | U.Install_failed m -> Alcotest.failf "signed install failed: %s" m);
+  check string "now runs 2.0" "2.0" (read_plist_version target);
+  (* a manifest that honestly describes artifact B but carries the
+     signature of artifact A: size+sha pass, the signature catches it *)
+  let pkg2 = Filename.concat base "pkg2.tar.gz" in
+  write pkg2 "tampered payload that is definitely different\n";
+  let good_sig = (signed_artifact pkg).U.signature in
+  let a2 =
+    { (artifact_of_file pkg2 (file_url pkg2)) with
+      U.signature = good_sig }
+  in
+  write_manifest a2;
+  let target2 = installed_copy (Filename.concat base "live2") old_app in
+  (match U.install ~fetch:file_fetcher ~pk:pk_hex f ~bundle:target2 ~exe
+   with
+   | U.Install_failed m ->
+     check bool "tampered rejected" true
+       (contains m "signature check failed")
+   | _ -> Alcotest.fail "tampered artifact installed");
+  (* the wrong key rejects the good signature *)
+  write_manifest (signed_artifact pkg);
+  let target3 = installed_copy (Filename.concat base "live3") old_app in
+  (match
+     U.install ~fetch:file_fetcher ~pk:wrong_pk_hex f ~bundle:target3
+       ~exe
+   with
+   | U.Install_failed m ->
+     check bool "wrong key rejected" true
+       (contains m "signature check failed")
+   | _ -> Alcotest.fail "wrong key installed");
+  (* a signed artifact with no key anywhere is a hard error *)
+  let dl = Filename.concat base "dl.pkg" in
+  (match U.download ~fetch:file_fetcher (signed_artifact pkg) ~dest:dl
+   with
+   | Error m ->
+     check bool "no key rejected" true
+       (contains m "no Ed25519 public key")
+   | Stdlib.Ok () -> Alcotest.fail "signed artifact unchecked");
+  (* the injected hook still wins, for tests *)
+  (match
+     U.download ~fetch:file_fetcher
+       ~verify_sig:(fun ~sha256:_ ~signature:_ -> true)
+       {
+         (artifact_of_file pkg (file_url pkg)) with
+         U.signature = Some "not-a-real-signature";
+       }
+       ~dest:dl
+   with
+   | Stdlib.Ok () -> ()
+   | Error m -> Alcotest.failf "verify_sig hook ignored: %s" m);
+  (* the explicit key beats the environment *)
+  Unix.putenv "LUI_UPDATE_PUBKEY" pk_hex;
+  (match
+     U.download ~fetch:file_fetcher ~pk:wrong_pk_hex
+       (signed_artifact pkg) ~dest:dl
+   with
+   | Error m ->
+     check bool "arg beats env" true
+       (contains m "signature check failed")
+   | Stdlib.Ok () -> Alcotest.fail "env beat explicit key");
+  (* LUI_UPDATE_PUBKEY alone supplies the key *)
+  (match U.download ~fetch:file_fetcher (signed_artifact pkg) ~dest:dl
+   with
+   | Stdlib.Ok () -> ()
+   | Error m -> Alcotest.failf "env key rejected: %s" m)
+
 (* http:// over loopback: a python file server + default curl. *)
 let test_http_loopback () =
   let base, old_app, _new_app, feed_dir = fixture ~with_delta:true in
@@ -579,6 +693,8 @@ let () =
           Alcotest.test_case "delta->full fallback" `Quick
             test_delta_fallback;
           Alcotest.test_case "curl file://" `Quick test_curl_file_fetch;
+          Alcotest.test_case "ed25519 signed feed" `Quick
+            test_signed_install;
           Alcotest.test_case "http loopback" `Quick test_http_loopback;
           Alcotest.test_case "install+relaunch" `Quick
             test_install_and_relaunch;
