@@ -288,9 +288,7 @@ let cells : cell list =
     cell "label" "label" "field label"
       (n Label ~cov:true ~props:(sized ~h:12. [ (TextValue, sv "Email address") ]) ());
     cell "kbd" "kbd" "keyboard hint chip"
-      (chrome Kbd "cmd K" [ (BackgroundValue, sv "#f1f5f9"); (BorderWidth, fv 1.);
-                            (BorderColorValue, sv "#cbd5e1"); (CornerRadius, fv 4.) ]
-       |> fun s -> { s with cov = true });
+      (chrome Kbd "cmd K" [] |> fun s -> { s with cov = true });
     cell "link" "link" "anchor text"
       (n Link ~cov:true ~props:(sized ~h:12. [ (TextValue, sv "https://logseq.com"); (ForegroundValue, sv "#2563eb") ]) ());
     cell "br" "br" "line break between runs"
