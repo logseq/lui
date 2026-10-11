@@ -174,6 +174,12 @@ let text_ops t id r fg s =
   let store = t.store () in
   let font = font_of store id in
   let lines = Lui_text.shape font s in
+  (* Horizontal placement: the shared placement table decides the kind's
+     alignment and content inset; props win over it. *)
+  let tp = Lui_paint.text_placement_of store id in
+  let pad = tp.tp_pad_x *. scale in
+  let x0 = r.x +. pad in
+  let w' = Float.max 0. (r.w -. (2. *. pad)) in
   (* Vertical centering inside the node's rect, device pixels. *)
   let text_h =
     Array.fold_left
@@ -182,19 +188,28 @@ let text_ops t id r fg s =
       0. lines
     *. scale
   in
-  let y0 = r.y +. Float.max 0. ((r.h -. text_h) /. 2.) in
+  let y0 =
+    if tp.tp_top then r.y +. (tp.tp_pad_y *. scale)
+    else r.y +. Float.max 0. ((r.h -. text_h) /. 2.)
+  in
   let gstart = List.length scene.glyphs in
   let line_y = ref 0. in
   Array.iter
     (fun (l : Lui_text.line) ->
        let baseline = Lui_text.baseline (y0 +. !line_y +. l.ascent *. scale) in
+       let lx =
+         match tp.tp_align with
+         | Lui_paint.Ta_start -> x0
+         | Ta_center -> x0 +. Float.max 0. ((w' -. l.width *. scale) /. 2.)
+         | Ta_end -> x0 +. Float.max 0. (w' -. l.width *. scale)
+       in
        Array.iter
          (fun (run : Lui_text.run) ->
             Array.iter
               (fun (g : Lui_text.glyph) ->
                  ignore
                    (emit_glyph t scene ~scale
-                      ~pen:(r.x +. g.x *. scale)
+                      ~pen:(lx +. g.x *. scale)
                       ~baseline ~font:run.font ~gid:g.id ~g_y:g.y ~fg))
               run.glyphs)
          l.runs;
@@ -234,7 +249,9 @@ let measure store id ~scale =
     if text = "" then (0., 0.)
     else
       let w, h = Lui_text.measure (font_of store id) text in
-      (w *. scale, h *. scale)
+      let tp = Lui_paint.text_placement_of store id in
+      ((w +. (2. *. tp.tp_pad_x)) *. scale,
+       (h +. (2. *. tp.tp_pad_y)) *. scale)
 
 (* Device-pixel (w, h) of an arbitrary string in node [id]'s font —
    the caret offset and the composition overlay measure through this

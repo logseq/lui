@@ -430,11 +430,19 @@ let () =
                let mw, mh =
                  Lui_window_text.measure_text text_engine id marked
                in
+               let pad =
+                 match !host_cell with
+                 | Some h ->
+                   (Lui_paint.text_placement_of (Lui_host.store h) id)
+                     .tp_pad_x
+                   *. !scale_cell
+                 | None -> 0.
+               in
                let underline =
                  Lui_scene.Fill
                    { frect =
                        Lui_scene.rect
-                         (r.Lui_scene.x +. dx)
+                         (r.Lui_scene.x +. pad +. dx)
                          (r.Lui_scene.y
                           +. (r.Lui_scene.h +. mh) /. 2. -. 2.)
                          mw 2.;
@@ -596,15 +604,10 @@ let () =
     if Lui_scene.rect_empty r then r
     else begin
       let s = !scale_cell in
+      (* Same content inset the text engine applies, so the caret lands
+         where the ink starts. *)
       let pad =
-        match Lui_store.prop store id "padding-horizontal" with
-        | Some (Lui_protocol.IntValue n) -> float n *. s
-        | Some (Lui_protocol.FloatValue f) -> f *. s
-        | _ ->
-          (match Lui_store.prop store id "padding" with
-           | Some (Lui_protocol.IntValue n) -> float n *. s
-           | Some (Lui_protocol.FloatValue f) -> f *. s
-           | _ -> 0.)
+        (Lui_paint.text_placement_of store id).tp_pad_x *. s
       in
       let text = Ui.shadow ui in
       let prefix =
