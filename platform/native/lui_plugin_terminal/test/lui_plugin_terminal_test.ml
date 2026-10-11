@@ -247,7 +247,7 @@ let text_backend_ok () =
   | None -> false
 
 let test_service () =
-  if not (text_backend_ok ()) then () else
+  if text_backend_ok () then begin
   (match Lui_plugin.use [ Lui_plugin_terminal.plugin ] with
    | Ok () -> ()
    | Error e -> Alcotest.fail e);
@@ -292,6 +292,7 @@ let test_service () =
           (json [ ("id", `Int id) ]) with
   | Error _ -> ()
   | Ok _ -> Alcotest.fail "close did not remove terminal"
+  end
 
 (* ------------------------------------------------------------ *)
 
