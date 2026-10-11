@@ -2242,10 +2242,78 @@ module Theme = struct
          | _ -> None)
       with _ -> None
 
+  (* CSS rgb()/rgba() functional notation — comma-separated
+     (rgba(67, 63, 56, 0.25)) and modern space/slash forms. *)
+  let color_of_fn name =
+    let n = String.length name in
+    let body pre =
+      String.length pre < n
+      && String.sub name 0 (String.length pre) = pre
+      && name.[n - 1] = ')'
+    in
+    let inner pre =
+      String.sub name (String.length pre) (n - String.length pre - 1)
+    in
+    let split ch s =
+      String.split_on_char ch s
+      |> List.map String.trim
+      |> List.filter (fun t -> t <> "")
+    in
+    let chan t =
+      let pct = String.length t > 0 && t.[String.length t - 1] = '%' in
+      match
+        float_of_string_opt
+          (if pct then String.sub t 0 (String.length t - 1) else t)
+      with
+      | Some v -> Some (int_of_float (Float.round (if pct then v *. 2.55 else v)))
+      | None -> None
+    in
+    let alpha t =
+      let pct = String.length t > 0 && t.[String.length t - 1] = '%' in
+      match
+        float_of_string_opt
+          (if pct then String.sub t 0 (String.length t - 1) else t)
+      with
+      | Some v ->
+        Some
+          (int_of_float
+             (Float.round
+                (if pct then v *. 2.55
+                 else if v <= 1. then v *. 255.
+                 else v)))
+      | None -> None
+    in
+    let emit comps a =
+      match List.map chan comps with
+      | [ Some r; Some g; Some b ] ->
+        Some (color r g b (Option.value a ~default:255))
+      | _ -> None
+    in
+    let pre =
+      if body "rgba(" then Some "rgba("
+      else if body "rgb(" then Some "rgb("
+      else None
+    in
+    match pre with
+    | None -> None
+    | Some p -> (
+      let inner = inner p in
+      match split ',' inner with
+      | [ a; b; c ] -> emit [ a; b; c ] None
+      | [ a; b; c; d ] -> emit [ a; b; c ] (alpha d)
+      | _ -> (
+        match split '/' inner with
+        | [ core ] -> emit (split ' ' core) None
+        | [ core; a ] -> emit (split ' ' core) (alpha a)
+        | _ -> None))
+
   let color_of name =
     match List.assoc_opt name palette with
     | Some c -> Some c
-    | None -> color_of_hex name
+    | None -> (
+      match color_of_hex name with
+      | Some _ as c -> c
+      | None -> color_of_fn name)
 end
 
 module Checksum = struct
