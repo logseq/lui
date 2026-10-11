@@ -48,7 +48,7 @@ let create ~scene ~scale ~store =
 
 (* ---- font + text prop plumbing ---- *)
 
-let parse_len s =
+let rec parse_len s =
   let n = String.length s in
   let stop =
     let rec find i =
@@ -60,7 +60,24 @@ let parse_len s =
     in
     find 0
   in
-  if stop = 0 then None
+  if stop = 0 then
+    (* "var(--name, <fallback>)" — the app's declared default is a
+       plain number; custom-prop resolution lives in the host's
+       color_of hook, so here the fallback is the value *)
+    if String.length s > 4 && String.sub s 0 4 = "var(" then
+      match String.rindex_opt s ',' with
+      | Some comma ->
+        let fb =
+          String.sub s (comma + 1) (n - comma - 1)
+          |> String.trim
+          |> fun t ->
+            if String.length t > 0 && t.[String.length t - 1] = ')' then
+              String.sub t 0 (String.length t - 1)
+            else t
+        in
+        parse_len fb
+      | None -> None
+    else None
   else
     try Some (float_of_string (String.sub s 0 stop))
     with _ -> None
@@ -72,16 +89,61 @@ let num_prop store id name =
   | Some (StringValue s) -> parse_len s
   | _ -> None
 
+(* A selected top-strip tab — the bare kind or a direct button child
+   of a tabs strip — draws heavier ink. *)
+let selected_tab_trigger store id =
+  Lui_store.bool_prop store id "selected"
+  && (match Lui_store.kind store id with
+     | "tab" -> true
+     | "button" -> (
+       match Lui_store.parent store id with
+       | Some pid -> Lui_store.kind store pid = "tabs"
+       | None -> false)
+     | _ -> false)
+
+(* font-size and font-weight inherit like the CSS they model: a node
+   without its own value uses the nearest ancestor's. kbd's smaller
+   default still applies before the walk. *)
+let inherited_num store id name =
+  let rec walk id =
+    match num_prop store id name with
+    | Some v -> Some v
+    | None -> (
+      match Lui_store.parent store id with
+      | Some pid when pid <> id -> walk pid
+      | _ -> None)
+  in
+  walk id
+
+let inherited_int store id name =
+  let rec walk id =
+    match Lui_store.int_prop store id name with
+    | Some v -> Some v
+    | None -> (
+      match Lui_store.parent store id with
+      | Some pid when pid <> id -> walk pid
+      | _ -> None)
+  in
+  walk id
+
 let font_of store id =
   let size =
-    Option.value ~default:14. (num_prop store id "font-size")
+    match inherited_num store id "font-size" with
+    | Some v -> v
+    | None -> (
+      (* Keycaps set smaller type than the surrounding copy. *)
+      match Lui_store.kind store id with
+      | "kbd" -> 11.
+      | _ -> 14.)
   in
   let weight =
-    match Lui_store.int_prop store id "font-weight" with
+    match inherited_int store id "font-weight" with
     | Some w -> min 900 (max 100 w)
     | None ->
       (match Lui_store.kind store id with
        | "heading" -> 700
+       | "tab" | "button" when selected_tab_trigger store id -> 600
+       | "dialog" | "sheet" -> 600
        | _ -> 400)
   in
   Lui_text.system ~weight ~italic:false ~size ()
