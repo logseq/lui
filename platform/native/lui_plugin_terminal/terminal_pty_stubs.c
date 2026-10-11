@@ -294,7 +294,8 @@ static char **strv(value v) {
   char **out = (char **)malloc((n + 1) * sizeof(char *));
   if (!out) return NULL;
   for (i = 0; i < n; i++)
-    out[i] = String_val(Field(v, i)); /* strings are NUL-terminated */
+    /* exec* only reads argv/env entries; OCaml 5's String_val is const. */
+    out[i] = (char *)String_val(Field(v, i)); /* strings are NUL-terminated */
   out[n] = NULL;
   return out;
 }
