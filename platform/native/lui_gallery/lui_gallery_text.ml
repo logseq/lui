@@ -81,7 +81,7 @@ let font_of store id =
     | None -> (
       (* Keycaps set smaller type than the surrounding copy. *)
       match Lui_store.kind store id with
-      | "kbd" -> 12.
+      | "kbd" -> 11.
       | _ -> 14.)
   in
   let weight =

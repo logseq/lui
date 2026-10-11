@@ -945,7 +945,7 @@ let text_placement_of store id =
     | "button" | "toggle-button" | "toggle" | "menu-trigger"
     | "swipe-action" | "file-picker" -> (Ta_center, 14., 6., false)
     | "number-stepper" -> (Ta_center, 10., 5., false)
-    | "kbd" -> (Ta_center, 5., 2., false)
+    | "kbd" -> (Ta_center, 6., 2., false)
     | "avatar" -> (Ta_center, 0., 0., false)
     | "bottom-tab" | "tab" -> (Ta_center, 12., 5., false)
     | "tooltip" | "toast" -> (Ta_center, 8., 4., false)
@@ -1515,14 +1515,11 @@ let default_chrome ctx store id st kind r rs alpha =
     @ (if border_styled || bg_styled then []
        else [ face zc rad bw1 (col_border ctx) ~dashed:false ])
   | "kbd" ->
-    (* Keycap: flat top and sides, a doubled bottom edge reads as the
-       key's lip. *)
-    let rad = rad (5. *. s) in
-    (if bg_styled then [] else [ face (col_surface ctx) rad zb zc ~dashed:false ])
+    (* Key hint chip: muted fill, hairline frame, compact radius. *)
+    let rad = rad (4. *. s) in
+    (if bg_styled then [] else [ face (col_muted ctx) rad zb zc ~dashed:false ])
     @ (if border_styled || bg_styled then []
-       else
-         [ face zc rad (1. *. s, 1. *. s, 2. *. s, 1. *. s)
-             (col_control_border ctx) ~dashed:false ])
+       else [ face zc rad bw1 (col_border ctx) ~dashed:false ])
   | _ -> []
 
 (* Foreground color per kind and state when no foreground prop is set:
@@ -1536,6 +1533,7 @@ let default_text_fg ctx store id kind st rs =
   | None -> (
     match kind with
     | "link" -> col_accent ctx
+    | "kbd" -> col_muted_fg ctx
     | "menu-item" when st.hovered || st.focused ->
       if bg_styled then text_fg ctx store id else col_accent_text ctx
     | "list-item" | "table-row" when st.selected ->
