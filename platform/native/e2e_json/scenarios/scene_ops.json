@@ -1,0 +1,65 @@
+{
+  "name": "scene-ops",
+  "steps": [
+    {
+      "apply": {
+        "generation": 1,
+        "ops": [
+          { "op": "create-node", "id": 1, "kind": "scroll" },
+          { "op": "create-node", "id": 2, "kind": "box" },
+          { "op": "set-prop", "id": 2, "prop": "background",
+            "value": "#ff0000" },
+          { "op": "create-node", "id": 3, "kind": "box" },
+          { "op": "set-prop", "id": 3, "prop": "background",
+            "value": "accent" },
+          { "op": "create-node", "id": 4, "kind": "image" },
+          { "op": "create-node", "id": 5, "kind": "box" },
+          { "op": "set-prop", "id": 5, "prop": "shadow", "value": "card" },
+          { "op": "set-prop", "id": 5, "prop": "background",
+            "value": "#00ff00" },
+          { "op": "insert-child", "parent": 1, "child": 2, "index": 0 },
+          { "op": "insert-child", "parent": 1, "child": 3, "index": 1 },
+          { "op": "insert-child", "parent": 1, "child": 4, "index": 2 },
+          { "op": "insert-child", "parent": 1, "child": 5, "index": 3 },
+          { "op": "create-extension", "id": 8,
+            "identifier": "test.hole", "fingerprint": "" },
+          { "op": "set-extension-prop", "id": 8, "prop": "w", "value": 1 },
+          { "op": "insert-child", "parent": 1, "child": 8, "index": 4 },
+          { "op": "create-node", "id": 6, "kind": "column" },
+          { "op": "set-prop", "id": 6, "prop": "visible", "value": false },
+          { "op": "create-node", "id": 7, "kind": "box" },
+          { "op": "set-prop", "id": 7, "prop": "background",
+            "value": "#0000ff" },
+          { "op": "insert-child", "parent": 6, "child": 7, "index": 0 }
+        ]
+      }
+    },
+    {
+      "expect-store": {
+        "node-count": 8,
+        "roots": [1, 6],
+        "nodes": [
+          { "id": 8, "kind": "extension:test.hole",
+            "ext-id": "test.hole" },
+          { "id": 6, "props": { "visible": false } }
+        ]
+      }
+    },
+    {
+      "expect-frame": {
+        "ops": [
+          "push_clip", "fill", "fill", "image", "shadow", "fill",
+          "hole", "pop_clip"
+        ],
+        "find": [
+          { "kind": "fill",
+            "color": { "r": 255, "g": 0, "b": 0, "a": 255 } },
+          { "kind": "fill",
+            "color": { "r": 10, "g": 20, "b": 30, "a": 255 } },
+          { "kind": "shadow",
+            "color": { "a": 80 }, "blur": 6.0 }
+        ]
+      }
+    }
+  ]
+}

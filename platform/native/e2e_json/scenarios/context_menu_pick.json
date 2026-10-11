@@ -1,0 +1,35 @@
+{
+  "name": "context-menu-pick",
+  "app": "menu",
+  "steps": [
+    { "right-click": { "kind": "textarea" } },
+    {
+      "expect-events": [
+        { "kind": "pointer-enter", "node": "*" },
+        { "kind": "context-menu-press", "node": "*",
+          "modifiers": 8, "button": 2 }
+      ]
+    },
+    {
+      "expect-store": {
+        "nodes": [
+          { "id": { "kind": "menu-item", "text": "copy" },
+            "kind": "menu-item" },
+          { "id": { "kind": "menu-item", "text": "paste" },
+            "kind": "menu-item" }
+        ]
+      }
+    },
+    { "click": { "kind": "menu-item", "text": "copy" } },
+    { "expect-events": "*" },
+    {
+      "expect-store": {
+        "absent": [{ "kind": "menu-item", "text": "copy" }],
+        "nodes": [
+          { "id": { "kind": "text", "index": 0 },
+            "props": { "text": "picked:copy" } }
+        ]
+      }
+    }
+  ]
+}
