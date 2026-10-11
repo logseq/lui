@@ -88,7 +88,8 @@ let test_real_crash () =
     match Unix.fork () with
     | 0 ->
       let t =
-        R.install ~dir ~app_name:"crashapp" ~renderer:"lui_gl" ()
+        R.install ~dir ~enable_signals:true ~app_name:"crashapp"
+          ~renderer:"lui_gl" ()
       in
       R.log t "about to die";
       Unix.kill (Unix.getpid ()) Sys.sigsegv;

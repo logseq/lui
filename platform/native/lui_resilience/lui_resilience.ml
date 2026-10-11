@@ -99,7 +99,17 @@ let write_crash_report t ~signal ~backtrace =
     Some t.crash_path
   with _ -> None
 
-let install ?dir ~app_name ~renderer () =
+let signals_env_enabled () =
+  match Sys.getenv_opt "LUI_CRASH_SIGNALS" with
+  | Some ("1" | "true" | "yes" | "YES" | "TRUE") -> true
+  | _ -> false
+
+(* Signal handlers are opt-in: OCaml is not async-signal-safe, so the
+   crash file write is best-effort and can hang or double-fault. Callers
+   that want handlers pass [~enable_signals:true] or set
+   LUI_CRASH_SIGNALS=1. [install] without that still returns a reporter
+   usable via {!write_crash_report}/{!log}. *)
+let install ?dir ?(enable_signals = false) ~app_name ~renderer () =
   Printexc.record_backtrace true;
   let dir = crash_dir ?dir ~app_name () in
   let t =
@@ -107,24 +117,28 @@ let install ?dir ~app_name ~renderer () =
       ring = Array.make ring_cap ""; ring_pos = 0; ring_len = 0;
       crash_path = crash_path ?dir:(Some dir) ~app_name () }
   in
-  let handler signo =
-    (* Best-effort: the write may fail or re-fault; the re-raise below
-       must still deliver the original signal. *)
-    (try
-       ignore
-         (write_crash_report t
-            ~signal:(Printf.sprintf "%s (%d)" (signal_name signo) signo)
-            ~backtrace:(Printexc.get_backtrace ()))
-     with _ -> ());
-    (try Sys.set_signal signo Sys.Signal_default with _ -> ());
-    (try Unix.kill (Unix.getpid ()) signo with _ -> ())
-  in
-  List.iter
-    (fun s ->
-       try Sys.set_signal s (Sys.Signal_handle handler) with _ -> ())
-    [ Sys.sigabrt; Sys.sigbus; Sys.sigfpe; Sys.sigill; Sys.sigsegv ];
+  let enable = enable_signals || signals_env_enabled () in
+  if enable then begin
+    let handler signo =
+      (* Best-effort: the write may fail or re-fault; the re-raise below
+         must still deliver the original signal. *)
+      (try
+         ignore
+           (write_crash_report t
+              ~signal:(Printf.sprintf "%s (%d)" (signal_name signo) signo)
+              ~backtrace:(Printexc.get_backtrace ()))
+       with _ -> ());
+      (try Sys.set_signal signo Sys.Signal_default with _ -> ());
+      (try Unix.kill (Unix.getpid ()) signo with _ -> ())
+    in
+    List.iter
+      (fun s ->
+         try Sys.set_signal s (Sys.Signal_handle handler) with _ -> ())
+      [ Sys.sigabrt; Sys.sigbus; Sys.sigfpe; Sys.sigill; Sys.sigsegv ]
+  end;
   log t
-    (Printf.sprintf "install: app=%s renderer=%s" app_name renderer);
+    (Printf.sprintf "install: app=%s renderer=%s signals=%b" app_name
+       renderer enable);
   t
 
 let report_path t = t.crash_path

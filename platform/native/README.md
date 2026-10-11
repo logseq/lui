@@ -33,7 +33,7 @@ within documented ±1/±2 tolerances.
 |---|---|
 | macOS | Metal → GL → CPU |
 | Windows | D3D11 → GL → CPU |
-| Linux | GL → CPU (Vulkan offscreen available via `lui_vulkan`) |
+| Linux | Vulkan → GL → CPU (`LUI_GPU=gl` skips Vulkan) |
 
 `LUI_GPU=0` (or `cpu`) forces the CPU path: `Lui_raster` renders, `Lui_blit`
 uploads only damaged rects to an SDL streaming texture. `LUI_GPU=gl` forces
