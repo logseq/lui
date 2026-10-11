@@ -26,4 +26,6 @@
   imagelib
   tgls
   cmdliner
+  mirage-crypto-ec
+  digestif
   (alcotest :with-test)))
