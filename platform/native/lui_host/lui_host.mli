@@ -27,7 +27,7 @@ module type LAYOUT_ENGINE = sig
   val create : unit -> t
 
   val sync :
-    ?scale:float -> ?measure:text_measure ->
+    ?scale:float -> ?measure:text_measure -> ?hidden:(int -> bool) ->
     width:float -> height:float -> t -> Lui_store.t -> unit
 
   val layout_hook : t -> int -> Lui_paint.placement
@@ -69,6 +69,12 @@ val create :
 val store : t -> Lui_store.t
 val scene : t -> Lui_scene.t
 val wants_repaint : t -> bool
+
+val set_hidden : t -> (int -> bool) option -> unit
+(** Host-owned transient visibility: [pred id] returns true for store
+    nodes the layout engine should skip entirely (closed menu panels).
+    [None] clears the predicate. Marks the host dirty so the change
+    lands on the next repaint. *)
 
 val apply_batch : t -> Lui_protocol.patch_batch -> bool
 

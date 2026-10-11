@@ -77,7 +77,7 @@ val measure_of :
     extent grows the frame — see {!content_extent}. *)
 
 val sync :
-  ?scale:float -> ?measure:text_measure ->
+  ?scale:float -> ?measure:text_measure -> ?hidden:(int -> bool) ->
   width:float -> height:float -> t -> Lui_store.t -> unit
 
 (** [compute t ~width ~height] re-runs layout on the current mirror —
@@ -116,7 +116,7 @@ val rect : t -> int -> Lui_scene.rect option
     a [t] and go through {!create}/{!sync}/{!layout_hook} instead. *)
 
 val run :
-  ?scale:float -> Lui_store.t ->
+  ?scale:float -> ?hidden:(int -> bool) -> Lui_store.t ->
   measure:(int -> float -> float -> (float * float) option) ->
   width:float -> height:float -> (int -> Lui_paint.placement)
 

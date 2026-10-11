@@ -877,6 +877,7 @@ let common_property_supported kind property =
     | Text | Heading | Paragraph | Label | Button | ToggleButton | TextField
     | SecureField | Input | SearchField | Textarea | Checkbox | Toggle | Radio
     | Slider | NumberStepper | Spinner | Icon | Select | Combobox | DropdownMenu | MenuItem
+    | Popover
     | ListItem | TableCell | Resizable | Split | Alert | Bubble | StatusBar
     | Link | FileImage -> true
     | _ -> false)

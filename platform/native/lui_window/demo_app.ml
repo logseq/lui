@@ -727,8 +727,7 @@ let popups model_s send =
            menu_item ~text:"close" ~foreground:"#989eb2"
              ~on_press:(press send (Close P_menu)) [] ]);
     open_ ~test:(fun m -> m.ctx_open)
-      (context_menu ~background:"#262743" ~border_color:"#383b4c"
-         ~border_width:1 ~corner_radius:8 ~padding:4
+      (context_menu
          [ menu_item ~text:"context: first" ~foreground:"#e4e6ee"
              ~on_press:(press send (Close P_ctx)) [];
            menu_item ~text:"context: second" ~foreground:"#e4e6ee"
