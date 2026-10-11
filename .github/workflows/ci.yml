@@ -245,8 +245,12 @@ jobs:
             # POSIX ':' separators; .pc copies land under the wrong root).
             # The retry installs a pkg-config shim resolved to the
             # x86_64-w64-mingw32 pkg-config symlink, which is pkgconf with
-            # the mingw sysroot baked into its default search path —
-            # --exists below proves it can see sdl2 before we retry.
+            # the mingw sysroot baked into its default search path.
+            # Cygwin's own mingw64-x86_64-SDL2 is 2.0.7 — far too old for
+            # tsdl's stubs (SDL_HINT_MOUSE_TOUCH_EVENTS, SDL_DISPLAYEVENT,
+            # ... all undeclared) — so the official SDL 2.32.4 / SDL2_ttf
+            # 2.24.0 mingw devel tarballs are overlaid into the sysroot,
+            # where the shim's pkgconf already resolves sdl2/SDL2_ttf.
             # 'ocaml=5.5.1' stops the solver downgrading the compiler.
             if ! opam install -y 'ocaml=5.5.1' tsdl tsdl-ttf tgls imagelib alcotest; then
               CYGBIN="$(cygpath -u "$(opam var root)")/.cygwin/root/bin"
@@ -272,6 +276,36 @@ jobs:
               }
               # Keep the shim on PATH for the later dune build/test steps.
               echo "$(cygpath -w "$SHIM_DIR")" >> "$GITHUB_PATH"
+
+              SYSROOT_MINGW="$(cygpath -u "$(opam var root)")/.cygwin/root/usr/x86_64-w64-mingw32/sys-root/mingw"
+              DEV_TMP="$RUNNER_TEMP/sdl-devel"
+              mkdir -p "$DEV_TMP"
+              curl -fsSL -o "$DEV_TMP/sdl2.tar.gz" \
+                https://github.com/libsdl-org/SDL/releases/download/release-2.32.4/SDL2-devel-2.32.4-mingw.tar.gz
+              curl -fsSL -o "$DEV_TMP/sdl2_ttf.tar.gz" \
+                https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.24.0/SDL2_ttf-devel-2.24.0-mingw.tar.gz
+              tar -xzf "$DEV_TMP/sdl2.tar.gz" -C "$DEV_TMP"
+              tar -xzf "$DEV_TMP/sdl2_ttf.tar.gz" -C "$DEV_TMP"
+              # Overlay headers, import libs and runtime DLLs over the
+              # 2.0.7/2.0.14 files the depext installed — but NOT the
+              # tarballs' .pc files (their prefix is written for a Linux
+              # cross sysroot, unusable here). Keep cygwin's .pc files,
+              # whose prefix already resolves under the mingw pkgconf
+              # personality, and refresh only their versions.
+              cp -rf "$DEV_TMP"/SDL2-2.32.4/x86_64-w64-mingw32/{bin,include} "$SYSROOT_MINGW/"
+              cp -rf "$DEV_TMP"/SDL2_ttf-2.24.0/x86_64-w64-mingw32/{bin,include} "$SYSROOT_MINGW/"
+              (cd "$DEV_TMP"/SDL2-2.32.4/x86_64-w64-mingw32/lib \
+                && find . -mindepth 1 -maxdepth 1 ! -name pkgconfig -exec cp -rf {} "$SYSROOT_MINGW/lib/" \;)
+              (cd "$DEV_TMP"/SDL2_ttf-2.24.0/x86_64-w64-mingw32/lib \
+                && find . -mindepth 1 -maxdepth 1 ! -name pkgconfig -exec cp -rf {} "$SYSROOT_MINGW/lib/" \;)
+              sed -i 's/^Version:.*/Version: 2.32.4/' "$SYSROOT_MINGW"/lib/pkgconfig/{sdl2,SDL2}.pc 2>/dev/null || true
+              sed -i 's/^Version:.*/Version: 2.24.0/' "$SYSROOT_MINGW"/lib/pkgconfig/{sdl2_ttf,SDL2_ttf}.pc 2>/dev/null || true
+              pkg-config --exists 'sdl2 >= 2.0.22' 'SDL2_ttf >= 2.0.18' || {
+                echo "SDL overlay did not take — versions now seen:"
+                pkg-config --modversion sdl2 SDL2_ttf || true
+                exit 1
+              }
+
               opam install -y 'ocaml=5.5.1' tsdl tsdl-ttf tgls imagelib alcotest
             fi
             # SDL2.dll must be on PATH for the tests that call Sdl.init.
