@@ -350,7 +350,14 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
       justify_content =
         (match pstr store id "main" with
          | Some s -> justify_of_string s
-         | None -> d.justify_content);
+         | None -> (
+           (* Labeled chrome centers its content vertically — the web
+              stylesheet's .lui-menu-item items-center on the cross axis
+              of a horizontal flex is the main axis of this column
+              kind. *)
+           match kind with
+           | "menu-item" -> Justify_center
+           | _ -> d.justify_content));
       align_items =
         (match pstr store id "cross" with
          | Some s -> align_of_string s
@@ -384,7 +391,17 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
          | l -> l);
       min_height =
         (match viewport_len ~viewport store id ~name:"min-height-viewport" ~horizontal:false with
-         | Unset -> lp "min-height"
+         | Unset -> (
+           match lp "min-height" with
+           | Unset -> (
+             (* The component contract floor the web stylesheet gives
+                .lui-menu-item (min-height: 2rem) — without it a
+                childless item collapses to its text measure and an item
+                with trailing content to the child's height. *)
+             match kind with
+             | "menu-item" -> Pt (32. *. scale)
+             | _ -> Unset)
+           | l -> l)
          | l -> l);
       max_height =
         (match viewport_len ~viewport store id ~name:"max-height-viewport" ~horizontal:false with

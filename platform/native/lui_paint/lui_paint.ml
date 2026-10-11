@@ -972,7 +972,7 @@ let text_placement_of store id =
     | "bottom-tab" | "tab" -> (Ta_center, 12., 5., false)
     | "tooltip" | "toast" -> (Ta_center, 8., 4., false)
     | "alert" | "bubble" -> (Ta_start, 10., 6., false)
-    | "menu-item" -> (Ta_start, 10., 5., false)
+    | "menu-item" -> (Ta_start, 8., 6., false)
     | "table-cell" | "table-row" -> (Ta_start, 10., 6., false)
     | "step" -> (Ta_center, 8., 4., false)
     | "list-item" -> (Ta_start, 12., 6., false)
