@@ -272,13 +272,29 @@ jobs:
               printf '#!/bin/sh\nexec "%s" "$@"\n' "$CYG_PKGCFG" > "$SHIM_DIR/pkg-config"
               chmod +x "$SHIM_DIR/pkg-config"
               export PATH="$SHIM_DIR:$PATH"
-              mkdir -p "$CYGROOT/usr/lib/pkgconfig"
-              cp -f "$SYSROOT_MINGW"/lib/pkgconfig/*.pc \
-                "$CYGROOT/usr/lib/pkgconfig/" 2>/dev/null || true
+              # Seed into both plausible roots: the bundled Cygwin's
+              # /usr/lib/pkgconfig (when the resolved pkgconf is the
+              # bundled one) and Git Bash's own /usr/lib/pkgconfig
+              # (when pkgconf is MSYS-built — same printed pc_path,
+              # different physical dir).
+              for d in "$CYGROOT/usr/lib/pkgconfig" \
+                       "$CYGROOT/usr/share/pkgconfig" \
+                       "/usr/lib/pkgconfig" \
+                       "/usr/share/pkgconfig"; do
+                mkdir -p "$d" 2>/dev/null || true
+                cp -f "$SYSROOT_MINGW"/lib/pkgconfig/*.pc "$d/" 2>/dev/null || true
+              done
               pkg-config --exists sdl2 SDL2_ttf || {
-                echo "pkg-config still cannot resolve sdl2 — sysroot .pc files:"
+                echo "pkg-config still cannot resolve sdl2"
+                echo "resolved binary: $(command -v pkg-config)"
+                echo "wrapper contents: $(cat "$SHIM_DIR/pkg-config")"
+                echo "pc_path: $(pkg-config --variable pc_path pkg-config || true)"
+                echo "sysroot .pc files:"
                 ls "$SYSROOT_MINGW/lib/pkgconfig" 2>/dev/null || true
-                pkg-config --variable pc_path pkg-config || true
+                echo "cygwin seeded dir:"
+                ls "$CYGROOT/usr/lib/pkgconfig" 2>/dev/null || true
+                echo "msys seeded dir:"
+                ls /usr/lib/pkgconfig 2>/dev/null | head -15 || true
                 exit 1
               }
               # Keep the wrapper on PATH for the later dune build/test steps.
@@ -309,7 +325,10 @@ jobs:
               (cd "$DEV_TMP"/SDL2_ttf-2.24.0/x86_64-w64-mingw32/lib \
                 && find . -mindepth 1 -maxdepth 1 ! -name pkgconfig -exec cp -rf {} "$SYSROOT_MINGW/lib/" \;)
               for d in "$SYSROOT_MINGW/lib/pkgconfig" \
-                       "$CYGROOT/usr/lib/pkgconfig"; do
+                       "$CYGROOT/usr/lib/pkgconfig" \
+                       "$CYGROOT/usr/share/pkgconfig" \
+                       "/usr/lib/pkgconfig" \
+                       "/usr/share/pkgconfig"; do
                 sed -i 's/^Version:.*/Version: 2.32.4/' "$d"/{sdl2,SDL2}.pc 2>/dev/null || true
                 sed -i 's/^Version:.*/Version: 2.24.0/' "$d"/{sdl2_ttf,SDL2_ttf}.pc 2>/dev/null || true
               done
