@@ -440,6 +440,11 @@ type ctx = {
   hooks : hooks;
   scale : float;    (* device px per logical px *)
   viewport : rect;  (* frame rect, device px — fixed-position containing block *)
+  order_cache :
+    (int, (int * int) list * Lui_store.node list) Hashtbl.t;
+    (** parent id → ([(child_id, z); …], ordered children). Filled
+        lazily during a paint; avoids re-sorting when z-order is
+        unchanged within the frame. *)
 }
 
 type extension_renderer = {
@@ -1756,13 +1761,35 @@ let zindex store id =
     match int_of_string_opt (String.trim s) with Some i -> i | None -> 0)
   | _ -> 0
 
-(* Siblings paint in z-index order, DOM order breaking ties. *)
-let ordered_children store id =
-  Lui_store.children store id
-  |> List.stable_sort (fun a b ->
-       compare
-         (zindex store (Lui_store.node_id a))
-         (zindex store (Lui_store.node_id b)))
+(* Siblings paint in z-index order, DOM order breaking ties.
+   Skip the sort entirely when every sibling has z-index 0 (the common
+   case), and reuse a per-frame cache when the (id, z) fingerprint is
+   unchanged so fan-out trees do not re-sort every ancestor walk. *)
+let ordered_children cache store id =
+  let kids = Lui_store.children store id in
+  let fp =
+    List.map
+      (fun c ->
+        let cid = Lui_store.node_id c in
+        (cid, zindex store cid))
+      kids
+  in
+  match Hashtbl.find_opt cache id with
+  | Some (fp', ordered) when fp' = fp -> ordered
+  | _ ->
+    let needs_sort = List.exists (fun (_, z) -> z <> 0) fp in
+    let ordered =
+      if not needs_sort then kids
+      else
+        List.stable_sort
+          (fun a b ->
+            compare
+              (zindex store (Lui_store.node_id a))
+              (zindex store (Lui_store.node_id b)))
+          kids
+    in
+    Hashtbl.replace cache id (fp, ordered);
+    ordered
 
 let node_shown store id =
   (match Lui_store.prop store id "visible" with
@@ -1858,38 +1885,53 @@ and paint_node ctx store scene id parent_r alpha =
     let r = resolve_rect ctx store id p parent_r in
     let kind = Lui_store.kind store id in
     let contents = unboxed store id in
-    (* display:contents generates no box, so its opacity and chrome do
-       not apply — children paint with the parent's alpha and clip. *)
-    let alpha =
-      if contents then alpha
-      else alpha *. rs.rs_opacity *. disabled_alpha store id st
+    (* Viewport cull: a node whose box misses the frame produces no
+       chrome and no descendants. display:contents has no box of its
+       own so it always walks children; zero-size nodes still walk so
+       absolute/fixed descendants (resolved against parent_r) are not
+       lost. Full damage/incremental paint is intentionally unfinished. *)
+    let misses_viewport =
+      (not contents)
+      && (not (rect_empty r))
+      && rect_empty (rect_intersect r ctx.viewport)
     in
-    let clip =
-      (not contents) && (not (rect_empty r)) && clips kind store id
-    in
-    if clip then
-      emit1 scene
-        (Push_clip
-           { crect = r; cradii = corners r (radii_of ctx store id) false;
-             ccontinuous = false });
-    if not contents then
-      emit scene (paint_own ctx store id st kind r rs alpha);
-    (* Children of a display:contents node keep the parent's containing
-       block — the node itself generates no box to anchor to. *)
-    let child_parent = if contents then parent_r else r in
-    List.iter
-      (fun c -> paint_node ctx store scene (Lui_store.node_id c) child_parent alpha)
-      (ordered_children store id);
-    if scrollable kind store id && not contents then
-      emit scene (scrollbar_ops ctx store id r alpha);
-    if clip then emit1 scene Pop_clip)
+    if misses_viewport then ()
+    else begin
+      (* display:contents generates no box, so its opacity and chrome do
+         not apply — children paint with the parent's alpha and clip. *)
+      let alpha =
+        if contents then alpha
+        else alpha *. rs.rs_opacity *. disabled_alpha store id st
+      in
+      let clip =
+        (not contents) && (not (rect_empty r)) && clips kind store id
+      in
+      if clip then
+        emit1 scene
+          (Push_clip
+             { crect = r; cradii = corners r (radii_of ctx store id) false;
+               ccontinuous = false });
+      if not contents then
+        emit scene (paint_own ctx store id st kind r rs alpha);
+      (* Children of a display:contents node keep the parent's containing
+         block — the node itself generates no box to anchor to. *)
+      let child_parent = if contents then parent_r else r in
+      List.iter
+        (fun c ->
+          paint_node ctx store scene (Lui_store.node_id c) child_parent alpha)
+        (ordered_children ctx.order_cache store id);
+      if scrollable kind store id && not contents then
+        emit scene (scrollbar_ops ctx store id r alpha);
+      if clip then emit1 scene Pop_clip
+    end)
 
 (* Full repaint: reset the scene and repaint the whole forest. *)
 let paint hooks store scene ~width ~height ~scale ~clear =
   Lui_scene.reset scene ~width ~height ~scale ~clear;
   let ctx =
     { hooks; scale;
-      viewport = rect 0. 0. (float width) (float height) }
+      viewport = rect 0. 0. (float width) (float height);
+      order_cache = Hashtbl.create 64 }
   in
   List.iter
     (fun id -> paint_node ctx store scene id ctx.viewport 1.)
