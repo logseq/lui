@@ -753,7 +753,7 @@ module Ui = struct
 
   let store_changed t store = sync t store
 
-  let handle t store rects input =
+  let handle ?spatial t store rects input =
     let acts = ref [] in
     let emit_all l = acts := List.rev_append l !acts in
     let run m_acts = emit_all (perform_all t store m_acts) in
@@ -764,7 +764,7 @@ module Ui = struct
        let dx, dy = x *. t.scale, y *. t.scale in
        if Lui_drag.active t.drag then begin
          (* live drop-target tracking while a drag is in flight *)
-         let path = hit_path store rects ~x:dx ~y:dy in
+         let path = hit_path ?spatial store rects ~x:dx ~y:dy in
          let d, m = Lui_drag.track store t.drag ~path in
          t.drag <- d;
          run m
@@ -799,7 +799,7 @@ module Ui = struct
                 run m
               | None -> t.dirty <- true)
            end else begin
-             let path = hit_path store rects ~x:dx ~y:dy in
+             let path = hit_path ?spatial store rects ~x:dx ~y:dy in
              let p, m = Lui_pointer.move store t.pointer ~path ~x ~y in
              t.pointer <- p;
              run m
@@ -810,7 +810,7 @@ module Ui = struct
        (match btn with
         | Input.Left ->
           let dx, dy = x *. t.scale, y *. t.scale in
-          let path = hit_path store rects ~x:dx ~y:dy in
+          let path = hit_path ?spatial store rects ~x:dx ~y:dy in
           t.drag <- Lui_drag.note_down t.drag ~x ~y;
           t.gesture <- Lui_gesture.reset_typeahead t.gesture;
           (* a press outside the open menu closes it host-side *)
@@ -880,7 +880,7 @@ module Ui = struct
              run m)
         | Input.Right ->
           let dx, dy = x *. t.scale, y *. t.scale in
-          let path = hit_path store rects ~x:dx ~y:dy in
+          let path = hit_path ?spatial store rects ~x:dx ~y:dy in
           let p, m =
             Lui_pointer.down store t.pointer ~path ~x ~y
               ~button:Lui_input.Right ~clicks ~mods:(conv_mods mods)
@@ -909,7 +909,7 @@ module Ui = struct
           t.pointer <- p;
           emit_all (perform_all t store up_acts);
           let dx, dy = x *. t.scale, y *. t.scale in
-          let path = hit_path store rects ~x:dx ~y:dy in
+          let path = hit_path ?spatial store rects ~x:dx ~y:dy in
           let release =
             match Lui_query.press_target store path with
             | Some id -> id
@@ -1116,7 +1116,7 @@ module Ui = struct
      | Input.Wheel (dx, dy) ->
        let sx, sy = Lui_pointer.position t.pointer in
        let path =
-         hit_path store rects ~x:(sx *. t.scale)
+         hit_path ?spatial store rects ~x:(sx *. t.scale)
            ~y:(sy *. t.scale)
        in
        let s', m =
@@ -1128,7 +1128,7 @@ module Ui = struct
      | Input.Wheel_mods (dx, dy, mods) ->
        let sx, sy = Lui_pointer.position t.pointer in
        let path =
-         hit_path store rects ~x:(sx *. t.scale)
+         hit_path ?spatial store rects ~x:(sx *. t.scale)
            ~y:(sy *. t.scale)
        in
        let s', m =
@@ -1144,7 +1144,7 @@ module Ui = struct
           them from internal drags *)
        let sx, sy = Lui_pointer.position t.pointer in
        let path =
-         hit_path store rects ~x:(sx *. t.scale)
+         hit_path ?spatial store rects ~x:(sx *. t.scale)
            ~y:(sy *. t.scale)
        in
        let d, m =
@@ -1155,7 +1155,7 @@ module Ui = struct
      | Input.Drop_text s ->
        let sx, sy = Lui_pointer.position t.pointer in
        let path =
-         hit_path store rects ~x:(sx *. t.scale)
+         hit_path ?spatial store rects ~x:(sx *. t.scale)
            ~y:(sy *. t.scale)
        in
        let d, m =
@@ -1707,6 +1707,9 @@ module Assembly = struct
     caret_rect : unit -> rect;
         (** Focused field's caret rect, device px — candidate-window
             anchor while composing. *)
+    spatial_hit : unit -> Lui_spatial.t option;
+        (** Fresh subtree-bound index for {!Ui.handle} — [None] until
+            the first {!populate} has produced rects. *)
   }
 
   let host t = t.host
@@ -1717,7 +1720,8 @@ module Assembly = struct
   let populate t = t.populate ()
   let caret_rect t = t.caret_rect ()
   let store t = Lui_host.store t.host
-  let handle t input = Ui.handle t.ui (store t) t.rects input
+  let handle t input =
+    Ui.handle ?spatial:(t.spatial_hit ()) t.ui (store t) t.rects input
   let store_changed t = Ui.store_changed t.ui (store t)
 
   (* One frame's paint path: the engine re-syncs inside
@@ -1915,14 +1919,56 @@ module Assembly = struct
        the live pointer position unconditionally would defeat the
        layout memo on every pointer-driven repaint, so the accessor
        returns [None] the rest of the time. *)
-    Lui_host.set_ctx_anchor host
-      (Some
-         (fun () ->
-            match Ui.open_menu ui with
-            | 0 -> None
-            | id when Lui_store.kind store id = "context-menu" ->
-              Some (Ui.pointer ui)
-            | _ -> None));
+    let ctx_anchor () =
+      match Ui.open_menu ui with
+      | 0 -> None
+      | id when Lui_store.kind store id = "context-menu" ->
+        Some (Ui.pointer ui)
+      | _ -> None
+    in
+    Lui_host.set_ctx_anchor host (Some ctx_anchor);
+    (* The spatial index over the hit mirror — see [Lui_spatial]. It
+       is rebuilt lazily whenever the rects or store shape it was
+       derived from moved on; [sp_key] records the geometry inputs
+       [populate] built the mirror under so the paint pass can prove
+       an index is fresh for the frame it is about to resolve. The
+       key must cover everything that moves resolved rects: store
+       contents, host-side layout invalidations (font loads, menu
+       visibility), scroll offsets, the live context anchor, scale
+       and viewport size. *)
+    let geom_key () =
+      let scn = Lui_host.scene host in
+      ( Lui_store.revision store, Lui_host.invalidation_count host,
+        Ui.scroll_epoch ui, ctx_anchor (), !scale_cell,
+        scn.Lui_scene.width, scn.Lui_scene.height )
+    in
+    let sp_key = ref None in
+    let sp_idx = ref None in
+    let spatial_index () =
+      let rev = Lui_store.revision store in
+      match !sp_idx with
+      | Some (k, r, idx) when k = !sp_key && r = rev -> idx
+      | _ ->
+        let idx =
+          Lui_spatial.build Lui_paint.spatial_env store
+            ~rect_of:(Rects.get rects)
+        in
+        sp_idx := Some (!sp_key, rev, idx);
+        idx
+    in
+    (* Paint may use the index only when the mirror was built under
+       the same geometry inputs this frame resolves with — otherwise
+       the walk falls back to visiting everything. *)
+    Lui_host.set_spatial host
+      (fun () ->
+        match !sp_key with
+        | Some k when k = geom_key () -> Some (spatial_index ())
+        | _ -> None);
+    let spatial_for_hit () =
+      match !sp_key with
+      | Some _ -> Some (spatial_index ())
+      | None -> None
+    in
     (* Populate the hit-test mirror from the layout engine: each
        node's shifted rect clipped to its scrollable ancestors'
        viewports (so scrolled-off content can't be hit), then each
@@ -1988,7 +2034,10 @@ module Assembly = struct
         (Lui_store.preorder store);
       (* Rects were just rebuilt — visible-range memos key on the
          epoch. *)
-      Ui.notify_layout ui
+      Ui.notify_layout ui;
+      (* Stamp the geometry inputs this mirror was built under — the
+         spatial index and the paint cull key off it. *)
+      sp_key := Some (geom_key ())
     in
     (* Caret rect of the focused field, device px: the node's layout
        rect shifted to the caret's real position inside the laid-out
@@ -2018,5 +2067,6 @@ module Assembly = struct
        horizontally, visual (soft-wrapped) lines vertically. *)
     Ui.set_caret_ops ui (fun _store id s ~lw ~lh -> caret_ops id s ~lw ~lh);
     Ui.set_content_rect ui engine_rect;
-    { host; ui; rects; scale_cell; engine_rect; populate; caret_rect }
+    { host; ui; rects; scale_cell; engine_rect; populate; caret_rect;
+      spatial_hit = spatial_for_hit }
 end

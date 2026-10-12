@@ -63,6 +63,16 @@ type t = {
   (* Pointer point an unanchored context-menu opens at — a thunk so the
      accessor reads the live position each repaint. *)
   mutable ctx_anchor : unit -> (float * float) option;
+  (* Spatial index provider for the paint pass's viewport cull —
+     returns [Some index] only when the caller can prove it matches
+     the geometry this repaint resolves (see [Lui_spatial]); [None]
+     is always safe: the walk just visits every node. *)
+  mutable spatial : unit -> Lui_spatial.t option;
+  (* Bumped by every host-side poke that can change layout output
+     without a store revision — [invalidate_layout], [resize],
+     [set_hidden], [set_ctx_anchor]. Epoch keys mixing it in stay
+     honest across external measure/visibility changes. *)
+  mutable inv_count : int;
 }
 
 let no_measure _id _text _offered_w _offered_h = None
@@ -88,7 +98,8 @@ let create ~hooks ?layout ?(measure = no_measure) ~renderer ~width ~height ~scal
     scene = Lui_scene.create ~mask_atlas ~color_atlas;
     hooks; layout; measure; renderer; width; height; scale;
     dirty = false; hidden = (fun _ -> false);
-    ctx_anchor = (fun () -> None) }
+    ctx_anchor = (fun () -> None); spatial = (fun () -> None);
+    inv_count = 0 }
 
 let store h = h.store
 let scene h = h.scene
@@ -96,18 +107,28 @@ let wants_repaint h = h.dirty
 
 let set_hidden h pred =
   h.hidden <- (match pred with Some p -> p | None -> fun _ -> false);
+  h.inv_count <- h.inv_count + 1;
   h.dirty <- true
 
 let set_ctx_anchor h accessor =
   h.ctx_anchor <-
-    (match accessor with Some f -> f | None -> fun () -> None)
+    (match accessor with Some f -> f | None -> fun () -> None);
+  h.inv_count <- h.inv_count + 1
 
 (* The layout engine memoizes on (store revision, frame, input
    identities); a measure/hidden closure whose answers changed under a
    stable identity — e.g. a font stack that finished loading — needs
    this poke to be seen. *)
 let invalidate_layout h =
+  h.inv_count <- h.inv_count + 1;
   match h.layout with Some l -> l.linvalidate () | None -> ()
+
+let invalidation_count h = h.inv_count
+
+(* Install the spatial-index provider the paint pass consults; the
+   thunk runs inside [repaint] after layout sync, so it sees the
+   frame's final geometry inputs. *)
+let set_spatial h f = h.spatial <- f
 
 let apply_batch h (batch : Lui_protocol.patch_batch) =
   Lui_store.apply_batch h.store batch;
@@ -115,7 +136,11 @@ let apply_batch h (batch : Lui_protocol.patch_batch) =
   true
 
 let resize h ~width ~height ~scale =
-  h.width <- width; h.height <- height; h.scale <- scale; h.dirty <- true
+  h.width <- width;
+  h.height <- height;
+  h.scale <- scale;
+  h.inv_count <- h.inv_count + 1;
+  h.dirty <- true
 
 let prof_t0 = Sys.time ()
 let prof msg =
@@ -152,8 +177,8 @@ let repaint h =
     | Some c -> c
     | None -> { r = 0; g = 0; b = 0; a = 0 }
   in
-  Lui_paint.paint hooks h.store h.scene ~width:h.width ~height:h.height
-    ~scale:h.scale ~clear;
+  Lui_paint.paint ?spatial:(h.spatial ()) hooks h.store h.scene
+    ~width:h.width ~height:h.height ~scale:h.scale ~clear;
   prof "paint done";
   h.dirty <- false;
   let bytes = h.renderer.render h.scene in

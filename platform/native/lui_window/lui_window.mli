@@ -187,11 +187,18 @@ val event_supported :
 (** Deepest-first id path from the root to the topmost node whose
     layout rect contains [(x, y)] (device pixels). Skips invisible and
     zero-area nodes. [pointer-enabled] only gates pointer-detail
-    events — plain clicks still reach Press-able nodes. *)
-val hit_path :
-  Lui_store.t -> Rects.t -> x:float -> y:float -> int list
+    events — plain clicks still reach Press-able nodes.
 
-val hit : Lui_store.t -> Rects.t -> x:float -> y:float -> int option
+    [?spatial] is a {!Lui_spatial.t} built over the same [rects]
+    mirror — the walk then visits only subtrees that could contain
+    the point. *)
+val hit_path :
+  ?spatial:Lui_spatial.t -> Lui_store.t -> Rects.t -> x:float ->
+  y:float -> int list
+
+val hit :
+  ?spatial:Lui_spatial.t -> Lui_store.t -> Rects.t -> x:float ->
+  y:float -> int option
 
 (** Deterministic layout stub. Stacks children vertically inside
     their parent's padded content box (or horizontally for rows),
@@ -361,8 +368,11 @@ module Ui : sig
       before each input too. *)
   val store_changed : t -> Lui_store.t -> action list
 
-  (** Map one input event to ordered actions. *)
-  val handle : t -> Lui_store.t -> Rects.t -> Input.t -> action list
+  (** Map one input event to ordered actions. [?spatial] accelerates
+      the rect hit-tests — see {!Lui_window.hit_path}. *)
+  val handle :
+    ?spatial:Lui_spatial.t -> t -> Lui_store.t -> Rects.t ->
+    Input.t -> action list
 
   (** [state_of] hook for the paint pipeline: folds hover/press/focus
       from this Ui plus selected/disabled props. *)

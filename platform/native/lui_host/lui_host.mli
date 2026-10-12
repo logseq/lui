@@ -98,6 +98,19 @@ val invalidate_layout : t -> unit
     keys on, and sync always runs between batches, so the memo can
     never observe a half-applied tree. *)
 
+val invalidation_count : t -> int
+(** Monotonic counter bumped by every host-side input that can move
+    layout output without a store revision: {!invalidate_layout},
+    {!resize}, {!set_hidden}, {!set_ctx_anchor}. Epoch keys that must
+    stay honest about resolved geometry mix it in. *)
+
+val set_spatial : t -> (unit -> Lui_spatial.t option) -> unit
+(** Install the spatial-index provider the paint pass consults for
+    viewport culling. The thunk runs inside {!repaint} after layout
+    sync; it must return [Some index] only when the index provably
+    matches the geometry this frame resolves, [None] otherwise —
+    [None] is always safe, the paint pass just walks every node. *)
+
 val apply_batch : t -> Lui_protocol.patch_batch -> bool
 
 val resize : t -> width:int -> height:int -> scale:float -> unit
