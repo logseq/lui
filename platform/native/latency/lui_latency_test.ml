@@ -99,6 +99,49 @@ let test_frame_stamps () =
   check bool "scene <= present" true (s.scene_ready <= s.present_submitted);
   check bool "present <= presented" true (s.present_submitted <= s.presented)
 
+(* The same app pipeline under the Wire transport (P1-4): the patch
+   crosses encode -> decode before the store apply, so this proves the
+   harness's backend seam runs both ways and the result is the same
+   mirror state the in-process path produces. *)
+let test_wire_transport_pipeline () =
+  let t =
+    H.create ~transport:Lui_wire.Wire ~width:640 ~height:480 ~scale:1. ()
+  in
+  let app =
+    Lui_app.create
+      (H.backend t (Lui_protocol.generic_profile ()))
+      Scenarios.Draft.initial Scenarios.Draft.update Scenarios.Draft.view
+  in
+  check bool "start" true (Lui_app.start app);
+  check bool "initial flush" true (Lui_app.flush app);
+  let fid = H.find_kind (H.store t) "text-field" in
+  let s =
+    H.run_frame t app ~act:(fun () ->
+        ignore
+          (Lui_app.dispatch_event app (Lui_protocol.TextChanged (fid, "abc"))))
+  in
+  check bool "patch emitted" true (s.H.patch_ops > 0);
+  check bool "text mirrored via wire" true
+    (Lui_store.prop (H.store t) fid "text"
+    = Some (Lui_protocol.StringValue "abc"))
+
+(* The mount-apply scenario reports both transports. *)
+let test_mount_apply_rows () =
+  let rows = Lazy.force rows in
+  ignore (find rows ~scenario:"mount-apply-10k-in-process"
+            ~metric:"patch apply p50");
+  ignore (find rows ~scenario:"mount-apply-10k-wire"
+            ~metric:"patch apply p50");
+  (* 5 ops per row (create + 3 props + insert) plus the 3-op root/list
+     scaffold. *)
+  check int "same op count" 50003
+    (int_of_string
+       (List.find
+          (fun (r : Scenarios.row) ->
+            r.scenario = "mount-apply-10k-wire" && r.metric = "patch ops")
+          rows)
+       .value)
+
 (* ---------- absolute bounds (generous: ~3x measured, see LATENCY.md) ---------- *)
 
 let bound scenario metric ceiling =
@@ -125,11 +168,16 @@ let () =
   run "lui_latency"
     [
       ( "pipeline",
-        [ test_case "typing frame stamps + patch" `Quick test_frame_stamps ] );
+        [
+          test_case "typing frame stamps + patch" `Quick test_frame_stamps;
+          test_case "wire transport frame" `Quick
+            test_wire_transport_pipeline;
+        ] );
       ( "structure",
         [
           test_case "metric coverage" `Slow test_metric_coverage;
           test_case "patches flow" `Slow test_patches_flow;
+          test_case "mount-apply rows" `Slow test_mount_apply_rows;
         ] );
       ( "bounds",
         match Sys.getenv_opt "GITHUB_ACTIONS" with
