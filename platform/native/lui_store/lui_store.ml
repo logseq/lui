@@ -70,13 +70,21 @@ type node = {
 
 type t = {
   nodes : (int, node) Hashtbl.t;
+  roots : (int, unit) Hashtbl.t;
+    (* Ids whose node is stored with no live parent — kept
+       incrementally so [root_ids] does not fold the whole table on
+       every paint. *)
   dirty : (int, unit) Hashtbl.t;
   mutable generation : int;
   mutable revision : int;
 }
 
 let create () =
-  { nodes = Hashtbl.create 64; dirty = Hashtbl.create 64; generation = 0; revision = 0 }
+  { nodes = Hashtbl.create 64;
+    roots = Hashtbl.create 8;
+    dirty = Hashtbl.create 64;
+    generation = 0;
+    revision = 0 }
 
 let node_count t = Hashtbl.length t.nodes
 let generation t = t.generation
@@ -119,6 +127,7 @@ let rec drop t id =
        | None -> ())
      | None -> ());
     Hashtbl.remove t.nodes id;
+    Hashtbl.remove t.roots id;
     mark_dirty t id
 
 (* Insert child at index within parent, detaching it from its previous
@@ -141,6 +150,7 @@ let insert_child t parent child index =
      | None -> ());
     vec_insert_at p.children index child;
     c.parent <- Some parent;
+    Hashtbl.remove t.roots child;
     mark_dirty t parent;
     mark_dirty t child
   | _ -> ()
@@ -152,12 +162,14 @@ let apply_op t = function
        the new node starts with an empty child_vec — orphans. *)
     if Hashtbl.mem t.nodes id then drop t id;
     Hashtbl.replace t.nodes id (new_node id (Lui_wire_schema.node_kind_name k));
+    Hashtbl.replace t.roots id ();
     mark_dirty t id
   | CreateExtension (id, identifier, _fp) ->
     if Hashtbl.mem t.nodes id then drop t id;
     let n = new_node id ("extension:" ^ identifier) in
     n.ext_id <- Some identifier;
     Hashtbl.replace t.nodes id n;
+    Hashtbl.replace t.roots id ();
     mark_dirty t id
   | DropNode id | DetachSubtree id -> drop t id
   | SetProp (id, p, v) -> (
@@ -191,6 +203,7 @@ let apply_op t = function
     | Some p, Some c ->
       vec_remove p.children child;
       c.parent <- None;
+      Hashtbl.replace t.roots child ();
       mark_dirty t parent;
       mark_dirty t child
     | _ -> ())
@@ -217,6 +230,7 @@ let is_editable_text_kind = function
 
 let ext_id t id = match find_opt t id with Some n -> n.ext_id | None -> None
 let parent t id = match find_opt t id with Some n -> n.parent | None -> None
+
 let children t id =
   match find_opt t id with
   | Some n ->
@@ -232,6 +246,42 @@ let children t id =
 let child_ids t id =
   match find_opt t id with
   | Some n -> vec_to_list n.children
+  | None -> []
+
+(* Indexed access for virtualized containers: a virtual list may hold
+   100k logical children whose materialized list a caller must not pay
+   for when it only wants a window slice. *)
+let child_count t id =
+  match find_opt t id with Some n -> n.children.len | None -> 0
+
+let child_id_at t id i =
+  match find_opt t id with
+  | Some n when i >= 0 && i < n.children.len -> n.children.arr.(i)
+  | _ -> -1
+
+let child_index t id child =
+  match find_opt t id with
+  | Some n ->
+    let rec go i =
+      if i >= n.children.len then -1
+      else if n.children.arr.(i) = child then i
+      else go (i + 1)
+    in
+    go 0
+  | None -> -1
+
+let children_range t id ~first ~last =
+  match find_opt t id with
+  | Some n ->
+    let first = max 0 first and last = min last n.children.len in
+    let rec go i acc =
+      if i < first then acc
+      else
+        match Hashtbl.find_opt t.nodes n.children.arr.(i) with
+        | Some c -> go (i - 1) (c :: acc)
+        | None -> go (i - 1) acc
+    in
+    go (last - 1) []
   | None -> []
 
 let last_child_id t id =
@@ -253,15 +303,12 @@ let rec depth t id =
   | Some { parent = Some p; _ } -> 1 + depth t p
   | _ -> 0
 
-(* Ids whose parent chain reaches no stored node: the forest roots. *)
+(* Ids whose parent chain reaches no stored node: the forest roots.
+   The set is maintained by the mutation paths above, so this stays
+   O(#roots) instead of folding the whole table — a paint that asks
+   for roots of a 100k-row virtual list must not scan all of them. *)
 let root_ids t =
-  Hashtbl.fold
-    (fun id n acc ->
-      match n.parent with
-      | None -> id :: acc
-      | Some pid when not (Hashtbl.mem t.nodes pid) -> id :: acc
-      | Some _ -> acc)
-    t.nodes []
+  Hashtbl.fold (fun id () acc -> id :: acc) t.roots []
   |> List.sort compare
 
 (* Preorder ids under [root] (or the whole forest when None). *)
