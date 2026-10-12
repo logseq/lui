@@ -1686,6 +1686,72 @@ let test_autofocus () =
   ignore (Ui.store_changed ui s);
   Alcotest.(check int) "explicit focus is not stolen back" 3 (Ui.focused ui)
 
+let test_modal_focus_scope () =
+  (* C3: a modal dialog without autofocus children still owns the
+     keyboard — the pre-modal focus is cleared into its scope and
+     restored on close, and background lists keep their highlight. *)
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Column);
+        CreateNode (3, TextField); CreateNode (4, ListContainer);
+        CreateNode (5, ListItem); CreateNode (6, ListItem);
+        InsertChild (1, 2, 0); InsertChild (2, 3, 0);
+        InsertChild (2, 4, 1); InsertChild (4, 5, 0);
+        InsertChild (4, 6, 1);
+        SetProp (3, TextValue, StringValue "bg");
+        SetProp (5, TextValue, StringValue "one");
+        SetProp (6, TextValue, StringValue "two") ]
+  in
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:200 ~height:200 ~scale:1.
+    ~measure:Layout.default_measure;
+  let ui = Ui.create () in
+  (* click the background list so it owns a keyboard highlight *)
+  let r5 = Rects.get rects 5 in
+  ignore
+    (Ui.handle ui s rects
+       (Input.Button_down
+          (r5.x +. 2., r5.y +. 2., Input.Left, 1, Input.mods_none)));
+  Alcotest.(check int) "list item highlighted" 5 (Ui.hl_item ui);
+  Ui.set_focused ui s 3;
+  (* a modal with no autofocus child mounts over the focused field *)
+  Lui_store.apply_batch s
+    { generation = 2;
+      ops =
+        [ CreateNode (7, Dialog); CreateNode (8, TextField);
+          InsertChild (2, 7, 2); InsertChild (7, 8, 0);
+          SetProp (8, TextValue, StringValue "") ] };
+  ignore (Ui.store_changed ui s);
+  Alcotest.(check int) "focus cleared into modal scope" 0
+    (Ui.focused ui);
+  (* typing no longer reaches the background field *)
+  let acts = Ui.handle ui s rects (Input.Text_input "x") in
+  Alcotest.(check int) "keystroke swallowed" 0
+    (List.length (press_actions acts));
+  Alcotest.(check (option string)) "background text untouched"
+    (Some "bg") (Lui_store.string_prop s 3 "text");
+  (* arrows and Return leave the background list untouched *)
+  ignore (Ui.handle ui s rects (key Input.Arrow_down));
+  ignore (Ui.handle ui s rects (key Input.Return));
+  Alcotest.(check int) "highlight frozen" 5 (Ui.hl_item ui);
+  (* Tab stays inside the dialog's scope *)
+  ignore (Ui.handle ui s rects (key Input.Tab));
+  Alcotest.(check int) "tab into dialog field" 8 (Ui.focused ui);
+  (match
+     press_actions (Ui.handle ui s rects (Input.Text_input "y"))
+   with
+   | [ TextChanged (8, "y") ] -> ()
+   | _ -> Alcotest.fail "expected TextChanged on dialog field");
+  (* closing restores the pre-modal focus *)
+  Lui_store.apply_batch s { generation = 3; ops = [ DropNode 7 ] };
+  ignore (Ui.store_changed ui s);
+  Alcotest.(check int) "focus restored" 3 (Ui.focused ui);
+  (match
+     press_actions (Ui.handle ui s rects (Input.Text_input "z"))
+   with
+   | [ TextChanged (3, _) ] -> ()
+   | _ -> Alcotest.fail "expected TextChanged back on field 3")
+
 let test_appear_once () =
   let s =
     store_of
@@ -1767,7 +1833,9 @@ let () =
         [ Alcotest.test_case "modal+esc" `Quick test_overlay_close;
           Alcotest.test_case "light dismiss" `Quick test_light_dismiss;
           Alcotest.test_case "appear once" `Quick test_appear_once;
-          Alcotest.test_case "autofocus" `Quick test_autofocus ] );
+          Alcotest.test_case "autofocus" `Quick test_autofocus;
+          Alcotest.test_case "modal focus scope" `Quick
+            test_modal_focus_scope ] );
       ( "multi-window",
         [ Alcotest.test_case "registry" `Quick test_multi_registry;
           Alcotest.test_case "dispatch" `Quick
