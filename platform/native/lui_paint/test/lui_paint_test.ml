@@ -366,6 +366,121 @@ let test_viewport_cull () =
   | [ f ] -> check int "red on-screen" 255 f.fcolor.r
   | _ -> fail "expected the on-screen fill only"
 
+(* ---------- culling: node-not-drawn vs subtree-invisible ---------- *)
+
+let layout_map f = fun id -> Lui_paint.placement_of_rect (f id)
+
+(* A parent whose box misses the frame emits no chrome, but its
+   subtree is NOT culled: an overflow:visible child laid out inside
+   the viewport still paints. *)
+let test_cull_escape_child () =
+  let t = store () in
+  apply t
+    [ Lui_protocol.CreateNode (1, Column);
+      CreateNode (2, Column);
+      SetProp (2, BackgroundValue, StringValue "#ff0000");
+      InsertChild (1, 2, 0) ];
+  let layout =
+    layout_map (function
+      | 1 -> rect 0. 500. 100. 40. (* parent offscreen *)
+      | 2 -> rect 0. 50. 100. 40.  (* child inside the frame *)
+      | _ -> rect 0. 0. 0. 0.)
+  in
+  let s = paint_with (hooks ~layout ()) t ~width:200 ~height:200 () in
+  match s.ops with
+  | [ Fill _ ] -> ()
+  | _ -> fail "expected the escaped child's fill"
+
+(* A position:fixed descendant resolves against the frame, so it can
+   paint even when its parent's box is entirely offscreen. *)
+let test_cull_escape_fixed () =
+  let t = store () in
+  apply t
+    [ Lui_protocol.CreateNode (1, Column);
+      CreateNode (2, Column);
+      SetProp (2, Position, StringValue "fixed");
+      SetProp (2, InsetTop, FloatValue 10.);
+      SetProp (2, InsetLeft, FloatValue 10.);
+      SetProp (2, BackgroundValue, StringValue "#ff0000");
+      InsertChild (1, 2, 0) ];
+  let layout =
+    layout_map (function
+      | 1 -> rect 0. 500. 100. 40.
+      | 2 -> rect 0. 0. 20. 20.
+      | _ -> rect 0. 0. 0. 0.)
+  in
+  let s = paint_with (hooks ~layout ()) t ~width:200 ~height:200 () in
+  match s.ops with
+  | [ Fill f ] ->
+    check bool "fixed at frame inset" true (f.frect.x = 10. && f.frect.y = 10.)
+  | _ -> fail "expected the fixed child's fill"
+
+(* A popover inside an offscreen parent is still promoted and paints
+   at its own coordinates. *)
+let test_cull_escape_popup () =
+  let t = store () in
+  apply t
+    [ Lui_protocol.CreateNode (1, Column);
+      CreateNode (2, Popover);
+      SetProp (2, BackgroundValue, StringValue "#ff0000");
+      InsertChild (1, 2, 0) ];
+  let layout =
+    layout_map (function
+      | 1 -> rect 0. 500. 100. 40.
+      | 2 -> rect 0. 60. 80. 30.
+      | _ -> rect 0. 0. 0. 0.)
+  in
+  let s = paint_with (hooks ~layout ()) t ~width:200 ~height:200 () in
+  (* the popover paints its own chrome (shadow/fill) at y=60 — the
+     offscreen parent contributes nothing *)
+  let fills =
+    List.filter_map (function Lui_scene.Fill f -> Some f | _ -> None) s.ops
+  in
+  match fills with
+  | f :: _ -> check bool "popover painted" true (f.frect.y = 60.)
+  | _ -> fail "expected the promoted popover's ops"
+
+(* A scroll container entirely offscreen still culls its clipped
+   children — that subtree is provably invisible. *)
+let test_cull_dead_clip () =
+  let t = store () in
+  apply t
+    [ Lui_protocol.CreateNode (1, Scroll);
+      CreateNode (2, Column);
+      SetProp (2, BackgroundValue, StringValue "#ff0000");
+      InsertChild (1, 2, 0) ];
+  let layout =
+    layout_map (function
+      | 1 -> rect 0. 500. 100. 100.
+      | 2 -> rect 0. 510. 80. 30.
+      | _ -> rect 0. 0. 0. 0.)
+  in
+  let s = paint_with (hooks ~layout ()) t ~width:200 ~height:200 () in
+  check int "dead clip culls" 0 (List.length s.ops)
+
+(* But a promoted popup escapes even a dead clip: it is an overlay,
+   not clipped content. *)
+let test_cull_dead_clip_popup () =
+  let t = store () in
+  apply t
+    [ Lui_protocol.CreateNode (1, Scroll);
+      CreateNode (2, Popover);
+      SetProp (2, BackgroundValue, StringValue "#ff0000");
+      InsertChild (1, 2, 0) ];
+  let layout =
+    layout_map (function
+      | 1 -> rect 0. 500. 100. 100.
+      | 2 -> rect 0. 60. 80. 30.
+      | _ -> rect 0. 0. 0. 0.)
+  in
+  let s = paint_with (hooks ~layout ()) t ~width:200 ~height:200 () in
+  let fills =
+    List.filter_map (function Lui_scene.Fill f -> Some f | _ -> None) s.ops
+  in
+  match fills with
+  | f :: _ -> check bool "popover painted" true (f.frect.y = 60.)
+  | _ -> fail "expected the popover to escape the dead clip"
+
 let test_zindex () =
   let t = store () in
   apply t
@@ -398,8 +513,6 @@ let test_display_contents () =
   | _ -> fail "expected only the child's fill"
 
 (* ---------- placement ---------- *)
-
-let layout_map f = fun id -> Lui_paint.placement_of_rect (f id)
 
 let test_position_absolute () =
   let t = store () in
@@ -728,7 +841,13 @@ let () =
          test_case "viewport cull" `Quick test_viewport_cull;
          test_case "z-index" `Quick test_zindex;
          test_case "display contents" `Quick test_display_contents;
-         test_case "mounted range" `Quick test_mounted_range ]);
+         test_case "mounted range" `Quick test_mounted_range;
+         test_case "cull: escaped child" `Quick test_cull_escape_child;
+         test_case "cull: fixed descendant" `Quick test_cull_escape_fixed;
+         test_case "cull: promoted popup" `Quick test_cull_escape_popup;
+         test_case "cull: dead clip" `Quick test_cull_dead_clip;
+         test_case "cull: popup escapes dead clip" `Quick
+           test_cull_dead_clip_popup ]);
       ("placement",
        [ test_case "absolute" `Quick test_position_absolute;
          test_case "relative" `Quick test_position_relative;

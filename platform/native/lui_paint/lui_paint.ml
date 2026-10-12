@@ -2249,6 +2249,13 @@ let popup_kind = function
    the hit-test mirror resolves placements identically — hit-testing
    shares this, and the two must never disagree on where a node sits. *)
 let resolve_rect ~scale ~viewport store id kind p parent_r =
+  (* The resolved display box is edge-snapped ([Lui_scene.rect_snap])
+     before it returns — the pixel-snapping contract. Paint, clip,
+     the hit-test mirror, scroll extents and damage bounds all consume
+     this same snapped geometry, so a fractional layout or a
+     scroll-shifted position can never diverge into a 0.5 px
+     paint/hit-test mismatch. *)
+  let r =
   match p.p_override with
   | Some r -> r
   | None -> (
@@ -2309,8 +2316,10 @@ let resolve_rect ~scale ~viewport store id kind p parent_r =
         | Some x, None -> { p.p_rect with x = x *. s }
         | None, Some y -> { p.p_rect with y = y *. s }
         | None, None -> p.p_rect)
+  in
+  rect_snap r
 
-(* The ctx-taking form [paint_node_body] calls; the labeled-args one
+(* The ctx-taking form [repaint_frag] calls; the labeled-args one
    above is the shared entry point. *)
 let resolve_in ctx = resolve_rect ~scale:ctx.scale ~viewport:ctx.viewport
 
@@ -2339,14 +2348,6 @@ let z_ordered store kids =
 
 let ordered_children store id = z_ordered store (Lui_store.children store id)
 
-(* The children paint walks: a mounted window slice for virtualized
-   containers, the full ordered list otherwise. *)
-let paint_children ctx store id =
-  match ctx.hooks.mounted_children id with
-  | Some ids ->
-    z_ordered store (List.filter_map (Lui_store.find_opt store) ids)
-  | None -> ordered_children store id
-
 let node_shown store id =
   (match Lui_store.prop store id "visible" with
    | Some (Lui_protocol.BoolValue false) -> false
@@ -2356,11 +2357,138 @@ let node_shown store id =
 
 let unboxed store id = pstr store id "display" = Some "contents"
 
+(* ---------- shared stacking walk ---------- *)
+
+(* One frame of the tree walk paint and hit-testing share: the node's
+   resolved box plus the stacking/clip result both passes agree on —
+   z-ordered siblings, promoted popups, display:contents pass-through
+   and the ancestor clip it sits inside.
+
+   [f_clip] is the clip context applying to the node (None inside the
+   deferred overlay pass — a promoted popup escapes ancestor clips);
+   [f_clipped] its painted area (f_rect ∩ f_clip). Children inherit
+   [f_clipped] when the node clips, [f_clip] otherwise, and resolve
+   their containing block against [f_parent_r]. *)
+type frame = {
+  f_id : int;
+  f_kind : string;
+  f_rect : rect;
+  f_clip : rect option;
+  f_clipped : rect;
+  f_clips : bool;
+  f_contents : bool;
+  f_parent_r : rect;
+}
+
+(* What [enter] decides for one node: [b_emit] fires the node's own
+   chrome (ops, clip brackets, hit tests); [b_down] walks the
+   children; [b_ctx] is the context the subtree and [leave] run under. *)
+type 'a branch = {
+  b_emit : bool;
+  b_down : bool;
+  b_ctx : 'a;
+}
+
+(* Walk the forest in paint order — z-sorted siblings, popups
+   promoted out of their ancestors' clips into a deferred overlay
+   pass, display:contents unboxed — carrying [clip] (the accumulated
+   ancestor clip) and the caller's context down the tree. [enter]
+   fires on every shown node, [leave] closes frames whose own chrome
+   emitted, and both receive the context the caller threaded down.
+   Inside a dead clip — one that misses [viewport] entirely — the
+   walk switches to a ghost pass that skips [enter]/[leave] and every
+   node's chrome cost, keeping only the promoted-popup search and the
+   [ghost_enter] context update (a popup's alpha and hit flags still
+   accumulate its clipped-away ancestors). *)
+let walk ?(mounted = fun _ -> None) ~scale ~viewport store ~layout ~enter
+    ~ghost_enter ~leave ctx0 =
+  let deferred = Queue.create () in
+  (* Virtualized containers walk only their mounted window slice. *)
+  let kids id =
+    match mounted id with
+    | Some ids ->
+      z_ordered store (List.filter_map (Lui_store.find_opt store) ids)
+    | None -> ordered_children store id
+  in
+  (* A clip context that misses [viewport] entirely is dead: nothing
+     inside it can paint or be hit — except promoted popups, which
+     escape to the overlay pass. *)
+  let dead clip =
+    match clip with
+    | Some cr -> rect_empty (rect_intersect cr viewport)
+    | None -> false
+  in
+  let rec go ctx clip parent_r (n : Lui_store.node) =
+    let id = Lui_store.node_id n and kind = Lui_store.node_kind n in
+    if node_shown store id then
+      if popup_kind kind && not (unboxed store id) then
+        (* promoted out of the ancestor clips: painted after the whole
+           tree with a fresh clip context *)
+        Queue.add (fun () -> body ctx None parent_r id kind) deferred
+      else if dead clip then ghost ctx parent_r n
+      else body ctx clip parent_r id kind
+  (* The subtree sits entirely inside a dead clip: keep walking only
+     far enough to find promoted popups (and their containing blocks),
+     skipping every node's enter/chrome cost. *)
+  and ghost ctx parent_r (n : Lui_store.node) =
+    let id = Lui_store.node_id n and kind = Lui_store.node_kind n in
+    if node_shown store id then
+      if popup_kind kind && not (unboxed store id) then
+        Queue.add (fun () -> body ctx None parent_r id kind) deferred
+      else begin
+        let contents = unboxed store id in
+        let p = layout id in
+        let r = resolve_rect ~scale ~viewport store id kind p parent_r in
+        let ctx = ghost_enter ctx id contents in
+        let child_parent = if contents then parent_r else r in
+        List.iter (ghost ctx child_parent) (kids id)
+      end
+  and body ctx clip parent_r id kind =
+    let contents = unboxed store id in
+    let p = layout id in
+    let r = resolve_rect ~scale ~viewport store id kind p parent_r in
+    let clipped =
+      match clip with
+      | Some cr -> rect_intersect r cr
+      | None -> r
+    in
+    let clips_own =
+      (not contents) && clips kind store id
+      && ((not (rect_empty r))
+          || (* An empty split pane still clips: its children's own
+                minimum sizes would otherwise paint through it. *)
+             (match Lui_store.parent store id with
+              | Some pid -> Lui_store.kind store pid = "split"
+              | None -> false))
+    in
+    let f =
+      { f_id = id; f_kind = kind; f_rect = r; f_clip = clip;
+        f_clipped = clipped; f_clips = clips_own; f_contents = contents;
+        f_parent_r = (if contents then parent_r else r) }
+    in
+    let br = enter ctx f in
+    if br.b_down then
+      let child_clip = if clips_own then Some clipped else clip in
+      List.iter (go br.b_ctx child_clip f.f_parent_r) (kids id);
+    if br.b_emit then leave br.b_ctx f
+  in
+  List.iter
+    (fun id -> go ctx0 None viewport
+        (match Lui_store.find_opt store id with
+         | Some n -> n
+         | None -> invalid_arg "Lui_paint.walk: root id missing"))
+    (Lui_store.root_ids store);
+  (* Promoted popups drain after the tree — nested popups enqueue
+     during the drain and preserve preorder among popups. *)
+  while not (Queue.is_empty deferred) do
+    (Queue.pop deferred) ()
+  done
+
 let emit scene ops = scene.ops <- List.rev_append ops scene.ops
 let emit1 scene op = scene.ops <- op :: scene.ops
 
 (* Ops for a single node's own chrome. *)
-let rec paint_own ctx store id st kind r rs alpha =
+let paint_own ctx store id st kind r rs alpha =
   let fg = default_text_fg ctx store id kind st rs in
   let own =
     match kind with
@@ -2431,84 +2559,68 @@ let rec paint_own ctx store id st kind r rs alpha =
   then [ focus_ring_op ctx r (radii_of ctx store id) alpha ]
   else []
 
-(* A popup node: defer to the overlay pass so mid-tree popups paint
-   above later siblings; everything else paints inline. [kind] arrives
-   from the caller — the child loop already holds the node record, so
-   the hot path never pays a second store lookup for it. *)
-and paint_node ctx store scene id kind parent_r alpha =
-  if popup_kind kind && not (unboxed store id) then
-    Queue.add
-      (fun () -> paint_node_body ctx store scene id kind parent_r alpha)
-      ctx.deferred
-  else paint_node_body ctx store scene id kind parent_r alpha
+(* Inside a dead clip only the context still matters: a promoted
+   popup inherits its clipped-away ancestors' opacity, so the ghost
+   walk threads alpha down without resolving chrome. *)
+let paint_ghost_enter ctx store alpha id contents =
+  if contents then alpha
+  else
+    let st = effective_state ctx.hooks store id in
+    let rs = resolve_style store id st in
+    alpha *. rs.rs_opacity *. disabled_alpha store id st
 
-(* A visible node: resolve placement, cull against the viewport, then
-   state/style/chrome/children. Geometry comes first deliberately —
-   a culled node never pays for state resolution, so scrolling a huge
-   tree costs one layout-hook hit plus a rect check per offscreen
-   node. *)
-and paint_node_body ctx store scene id kind parent_r alpha =
-  if node_shown store id then (
-    let contents = unboxed store id in
-    let p = ctx.hooks.layout id in
-    let r = resolve_in ctx store id kind p parent_r in
-    (* Viewport cull: a node whose box misses the frame produces no
-       chrome and no descendants. display:contents has no box of its
-       own so it always walks children; zero-size nodes still walk so
-       absolute/fixed descendants (resolved against parent_r) are not
-       lost. Full damage/incremental paint is intentionally unfinished. *)
-    let misses_viewport =
+(* A visible node's own chrome: clip bracket, box ops, scrollbar —
+   everything except the child walk, which the shared stacking walk
+   drives. A node whose painted area misses the frame emits nothing
+   but still walks its children: they can escape the box
+   (overflow:visible content, absolute/fixed children, promoted
+   popups) and cull themselves. The only true subtree cull is the
+   walk's dead-clip path — a clip that misses the viewport cannot
+   contain output. *)
+let paint_enter ctx store scene alpha f =
+  let id = f.f_id and kind = f.f_kind in
+  let contents = f.f_contents in
+  let st = effective_state ctx.hooks store id in
+  let rs = resolve_style store id st in
+  (* display:contents generates no box, so its opacity and chrome do
+     not apply — children paint with the parent's alpha and clip. *)
+  let alpha =
+    if contents then alpha
+    else alpha *. rs.rs_opacity *. disabled_alpha store id st
+  in
+  (* An alpha-0 subtree emits no ops at all: the raster treats an op
+     opacity of 0 as "unset" (opaque), so invisible nodes must be
+     culled here rather than painted at opacity 0. *)
+  if alpha <= 0. then { b_emit = false; b_down = false; b_ctx = alpha }
+  else begin
+    (* Node-not-drawn vs subtree-invisible: only the node's own chrome
+       is skipped here; the subtree walks on. Zero-size nodes still
+       emit — shadows and outlines can paint outside an empty box —
+       matching the pre-cull contract that the raster drops empty
+       ops. *)
+    let node_drawn =
       (not contents)
-      && (not (rect_empty r))
-      && rect_empty (rect_intersect r ctx.viewport)
+      && (rect_empty f.f_rect
+          || not (rect_empty (rect_intersect f.f_clipped ctx.viewport)))
     in
-    if misses_viewport then ()
-    else begin
-      let st = effective_state ctx.hooks store id in
-      let rs = resolve_style store id st in
-      (* display:contents generates no box, so its opacity and chrome
-         do not apply — children paint with the parent's alpha and
-         clip. *)
-      let alpha =
-        if contents then alpha
-        else alpha *. rs.rs_opacity *. disabled_alpha store id st
-      in
-      (* An alpha-0 subtree emits no ops at all: the raster treats an
-         op opacity of 0 as "unset" (opaque), so invisible nodes must
-         be culled here rather than painted at opacity 0. *)
-      if alpha <= 0. then ()
-      else begin
-        let clip =
-          (not contents) && clips kind store id
-          && ((not (rect_empty r))
-              || (* An empty split pane still clips: its children's own
-                    minimum sizes would otherwise paint through it. *)
-                 (match Lui_store.parent store id with
-                  | Some pid -> Lui_store.kind store pid = "split"
-                  | None -> false))
-        in
-        if clip then
-          emit1 scene
-            (Push_clip
-               { crect = r;
-                 cradii = corners r (radii_of ctx store id) false;
-                 ccontinuous = false });
-        if not contents then
-          emit scene (paint_own ctx store id st kind r rs alpha);
-        (* Children of a display:contents node keep the parent's
-           containing block — the node itself generates no box to
-           anchor to. *)
-        let child_parent = if contents then parent_r else r in
-        List.iter
-          (fun c ->
-            paint_node ctx store scene (Lui_store.node_id c)
-              (Lui_store.node_kind c) child_parent alpha)
-          (paint_children ctx store id);
-        if scrollable kind store id && not contents then
-          emit scene (scrollbar_ops ctx store id r alpha);
-        if clip then emit1 scene Pop_clip
-      end
-    end)
+    if node_drawn then begin
+      if f.f_clips then
+        emit1 scene
+          (Push_clip
+             { crect = f.f_rect;
+               cradii = corners f.f_rect (radii_of ctx store id) false;
+               ccontinuous = false });
+      if not contents then
+        emit scene (paint_own ctx store id st kind f.f_rect rs alpha);
+      { b_emit = true; b_down = true; b_ctx = alpha }
+    end
+    else { b_emit = false; b_down = true; b_ctx = alpha }
+  end
+
+let paint_leave ctx store scene alpha f =
+  if scrollable f.f_kind store f.f_id && not f.f_contents then
+    emit scene (scrollbar_ops ctx store f.f_id f.f_rect alpha);
+  if f.f_clips then emit1 scene Pop_clip
 
 (* Full repaint: reset the scene and repaint the whole forest. *)
 let paint hooks store scene ~width ~height ~scale ~clear =
@@ -2518,13 +2630,13 @@ let paint hooks store scene ~width ~height ~scale ~clear =
       viewport = rect 0. 0. (float width) (float height);
       deferred = Queue.create () }
   in
-  List.iter
-    (fun id ->
-      paint_node ctx store scene id (Lui_store.kind store id)
-        ctx.viewport 1.)
-    (Lui_store.root_ids store);
-  (* Nested popups (submenus) enqueue during this drain — they paint
-     after their parent, preserving preorder among popups. *)
+  walk ~scale ~viewport:ctx.viewport store ~layout:hooks.layout
+    ~mounted:hooks.mounted_children
+    ~enter:(paint_enter ctx store scene)
+    ~ghost_enter:(paint_ghost_enter ctx store)
+    ~leave:(paint_leave ctx store scene) 1.;
+  (* Extension renderers may enqueue their own deferred work on
+     ctx.deferred — drain it after the walk's own popup pass. *)
   while not (Queue.is_empty ctx.deferred) do
     (Queue.pop ctx.deferred) ()
   done;

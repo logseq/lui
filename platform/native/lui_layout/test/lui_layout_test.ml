@@ -481,6 +481,35 @@ let test_vlist_unwindowed () =
   check int "mounted" 50 (Lui_layout.mounted_count t 2);
   check_some_rect "row49" 0. 980. 100. 20. (Lui_layout.rect t 59)
 
+(* Pixel snapping contract: at a fractional backing scale the exported
+   rects land on device-pixel edges, and siblings stacked without a
+   gap share their boundary exactly — the same snapped geometry feeds
+   paint, hit-test and scroll extents. *)
+let test_snapped_edges () =
+  let store = Lui_store.create () in
+  apply store
+    [ CreateNode (1, Root); CreateNode (2, Column);
+      CreateNode (3, Text); CreateNode (4, Text);
+      InsertChild (1, 2, 0); InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+      SetProp (2, PaddingValue, IntValue 3);
+      SetProp (3, HeightValue, IntValue 20);
+      SetProp (4, HeightValue, IntValue 20) ];
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~scale:1.5 ~width:200. ~height:100. t store;
+  let r3 = Option.get (Lui_layout.rect t 3)
+  and r4 = Option.get (Lui_layout.rect t 4) in
+  let aligned (r : Lui_scene.rect) =
+    r.x = Float.round r.x && r.y = Float.round r.y
+    && r.w = Float.round r.w && r.h = Float.round r.h
+  in
+  check bool "child1 aligned" true (aligned r3);
+  check bool "child2 aligned" true (aligned r4);
+  (* pad 3 logical = 4.5 device: first child spans 4.5..195.5 and
+     snaps to 5..196 (w 191); its bottom 34.5 snaps to 35, which the
+     second child shares exactly. *)
+  check_rect "child1" 5. 5. 191. 30. r3;
+  check_rect "child2 shared edge" 5. 35. 191. 30. r4
+
 (* ---------- incremental mirror ---------- *)
 
 let rect_or_zero t id =
@@ -687,6 +716,7 @@ let () =
          test_case "vlist unwindowed" `Quick test_vlist_unwindowed;
          test_case "vlist incremental child" `Quick
            test_vlist_incremental_child;
+         test_case "snapped edges" `Quick test_snapped_edges;
          test_case "incremental equivalence" `Quick
            test_incremental_equivalence;
          test_case "incremental random" `Quick test_incremental_random;

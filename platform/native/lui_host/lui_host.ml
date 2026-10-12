@@ -46,6 +46,10 @@ module type LAYOUT_ENGINE = sig
   val virtual_index_of_key : t -> Lui_store.t -> int -> string -> int option
   val virtual_index_of_id : t -> Lui_store.t -> int -> int -> int option
   val virtual_view : t -> int -> (float * float) option
+
+  (** Store ids whose absolute rect changed under the last {!sync};
+      drained by the paint pass to re-emit only moved subtrees. *)
+  val take_rect_changes : t -> (int, unit) Hashtbl.t
 end
 
 (* An instantiated engine: what (module LAYOUT_ENGINE) becomes once the
@@ -67,6 +71,7 @@ type layout_state = {
   lkey : int -> string -> int option;
   lid : int -> int -> int option;
   lview : int -> (float * float) option;
+  lchanges : unit -> (int, unit) Hashtbl.t;
 }
 
 type t = {
@@ -80,6 +85,15 @@ type t = {
   mutable height : int;
   mutable scale : float;
   mutable dirty : bool; (* repaint requested since last present *)
+  retained : Lui_retained.retained;
+  (* Ids whose host-side paint inputs (interaction state, async
+     resources) changed since the last repaint — the fragment pass's
+     third dirty channel, next to the store journal and moved rects. *)
+  paint_hints : (int, unit) Hashtbl.t;
+  (* Soft hints: ids whose rects translated under unchanged
+     props/state — the fragment pass may shift cached ops instead of
+     re-planning. *)
+  moved_hints : (int, unit) Hashtbl.t;
   mutable hidden : int -> bool; (* host-owned transient visibility *)
   (* Pointer point an unanchored context-menu opens at — a thunk so the
      accessor reads the live position each repaint. *)
@@ -113,14 +127,18 @@ let create ~hooks ?layout ?(measure = no_measure) ~renderer ~width ~height ~scal
           litem = (fun id ~index -> L.virtual_item_rect engine id ~index);
           lkey = (fun id key -> L.virtual_index_of_key engine store id key);
           lid = (fun id cid -> L.virtual_index_of_id engine store id cid);
-          lview = (fun id -> L.virtual_view engine id) }
+          lview = (fun id -> L.virtual_view engine id);
+          lchanges = (fun () -> L.take_rect_changes engine) }
   in
   let mask_atlas = Atlas.create ~bpp:1 ~w:512 ~h:512 in
   let color_atlas = Atlas.create ~bpp:4 ~w:512 ~h:512 in
   { store;
     scene = Lui_scene.create ~mask_atlas ~color_atlas;
     hooks; layout; measure; renderer; width; height; scale;
-    dirty = false; hidden = (fun _ -> false);
+    dirty = false; retained = Lui_retained.create ();
+    paint_hints = Hashtbl.create 16;
+    moved_hints = Hashtbl.create 16;
+    hidden = (fun _ -> false);
     ctx_anchor = (fun () -> None);
     vport = (fun _ -> None) }
 
@@ -176,6 +194,24 @@ let layout_virtual_view h id =
 let invalidate_layout h =
   match h.layout with Some l -> l.linvalidate () | None -> ()
 
+(* Host-side paint inputs the store cannot see (interaction state,
+     images that finished decoding): the next repaint re-derives these
+     fragments instead of replaying stale ops. *)
+let note_paint h id = Hashtbl.replace h.paint_hints id ()
+
+let note_paints h ids = List.iter (note_paint h) ids
+
+(* Geometry-only change — a scroll offset that shifted a subtree.
+     Marks like a moved rect: the fragment pass may reuse ops under a
+     uniform translation instead of re-planning. *)
+let note_moved h id = Hashtbl.replace h.moved_hints id ()
+
+let note_moveds h ids = List.iter (note_moved h) ids
+
+(* The retained fragment cache — tests invalidate it wholesale when
+   their hooks change under a stable store (e.g. a theme swap). *)
+let invalidate_paint h = Lui_retained.invalidate h.retained
+
 let apply_batch h (batch : Lui_protocol.patch_batch) =
   Lui_store.apply_batch h.store batch;
   h.dirty <- true;
@@ -192,9 +228,9 @@ let prof msg =
 (* Paint the current tree and render; returns pixel bytes. *)
 let repaint h =
   prof "repaint begin";
-  let hooks =
+  let hooks, moved =
     match h.layout with
-    | None -> h.hooks
+    | None -> (h.hooks, None)
     | Some l ->
       (* Rebuilt every repaint, never per batch: the engine must see
          the store as it is NOW (several batches may land between
@@ -206,9 +242,16 @@ let repaint h =
         h.store;
       (* The engine hook yields to an explicitly supplied
          hooks.layout; the zero-rect default does. *)
-      if h.hooks.layout == Lui_paint.default_hooks.layout
-      then { h.hooks with layout = l.lhook }
-      else h.hooks
+      let hooks =
+        if h.hooks.layout == Lui_paint.default_hooks.layout
+        then { h.hooks with layout = l.lhook }
+        else h.hooks
+      in
+      let mv = l.lchanges () in
+      Hashtbl.iter
+        (fun id () -> Hashtbl.replace mv id ())
+        h.moved_hints;
+      (hooks, Some mv)
   in
   prof "layout done";
   (* The window clear follows the app theme's "background" token —
@@ -219,8 +262,15 @@ let repaint h =
     | Some c -> c
     | None -> { r = 0; g = 0; b = 0; a = 0 }
   in
-  Lui_paint.paint hooks h.store h.scene ~width:h.width ~height:h.height
-    ~scale:h.scale ~clear;
+  let vlists =
+    match h.layout with Some l -> Some (l.llists ()) | None -> None
+  in
+  Lui_retained.paint_retained h.retained hooks h.store h.scene ?moved
+    ?vlists
+    ~hints:h.paint_hints ~width:h.width ~height:h.height ~scale:h.scale
+    ~clear ();
+  Hashtbl.reset h.paint_hints;
+  Hashtbl.reset h.moved_hints;
   prof "paint done";
   h.dirty <- false;
   let bytes = h.renderer.render h.scene in

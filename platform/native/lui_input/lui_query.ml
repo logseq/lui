@@ -65,31 +65,15 @@ let event_supported store id event =
     in
     Lui_protocol.event_supported_for_properties kind props event
 
-(* Everything [hit_path] needs from the store for one node: visibility,
-   the scrollable/split-pane clip rule, overlay presentation, the
-   pointer-enabled opt, and the two kind strings it branches on.
-   Computed once per node per store revision — see [hit_flags_of]. *)
+(* Everything [hit_path] needs from the store for one node on top of
+   the shared walk's stacking/clip frame: overlay presentation, the
+   pointer-enabled opt, and the spacer kind check. Computed once per
+   node per store revision — see [hit_flags_of]. *)
 type hit_flags = {
-  hf_visible : bool;
-  hf_clips : bool;
   hf_overlay : bool;
   hf_pen : bool option;
-  hf_no_box : bool;
   hf_spacer : bool;
 }
-
-(* Mirror of Lui_paint.clips: a node clips its descendants when it
-   scrolls, carries an overflow prop, or is a split pane. *)
-let hit_node_clips store id =
-  (match Lui_store.kind store id with
-   | "scroll" | "list" | "virtual-list" -> true
-   | _ -> false)
-  || (match Lui_store.parent store id with
-      | Some pid -> Lui_store.kind store pid = "split"
-      | None -> false)
-  || (match Lui_store.string_prop store id "overflow" with
-      | Some ("hidden" | "clip" | "auto" | "scroll") -> true
-      | _ -> false)
 
 (* pointer-enabled=false makes a subtree hit-transparent like the web
    pointer-events:none: descendants inherit it and only an explicit
@@ -119,17 +103,11 @@ let presented_overlay store id =
       | _ -> false)
 
 let hit_flags_compute store id =
-  { hf_visible =
-      (match Lui_store.prop store id "visible" with
-       | Some (BoolValue false) -> false
-       | _ -> true);
-    hf_clips = hit_node_clips store id;
-    hf_overlay = presented_overlay store id;
+  { hf_overlay = presented_overlay store id;
     hf_pen =
       (match Lui_store.prop store id "pointer-enabled" with
        | Some (BoolValue v) -> Some v
        | _ -> None);
-    hf_no_box = string_prop store id "display" = "contents";
     hf_spacer = Lui_store.kind store id = "spacer" }
 
 (* hit_path's per-node flags, memoized for the (store, revision) of the
@@ -156,47 +134,47 @@ let hit_flags_of store id =
     Hashtbl.replace hit_flags_tbl id f;
     f
 
+(* Hit-testing runs the same stacking walk the paint pass paints:
+   z-ordered siblings, promoted popups escaping their ancestors' clip,
+   display:contents pass-through, and the clip context computed with
+   [Lui_paint.clips]'s exact rule. [rects] carries the driver's
+   resolved boxes — fed back as placement overrides so the walk
+   shares the stacking/clip result without re-resolving geometry. *)
 let hit_path store rects ~x ~y =
-  let rec walk id path clip_r pointer_on =
-    let f = hit_flags_of store id in
-    if not f.hf_visible then path
-    else
-      let on =
-        match f.hf_pen with
-        | Some v -> v
-        | None -> pointer_on || f.hf_overlay
-      in
-      let r = Rects.get rects id in
-      let clipped =
-        match clip_r with
-        | Some cr -> rect_intersect r cr
-        | None -> r
-      in
-      let path =
-        (* spacers are layout voids — they paint nothing and must never
-           be the hit target (a full-window spacer in an overlay layer
-           would otherwise swallow every DOM event). *)
-        if on && not f.hf_spacer
-           && not (rect_empty clipped) && rect_contains clipped x y
-        then id :: path
-        else path
-      in
-      let child_clip =
-        (* display:contents has no box to clip with. *)
-        if f.hf_clips && not f.hf_no_box then Some clipped
-        else clip_r
-      in
-      (* Children paint after their parent, so prepending while walking
-         leaves the node visited last — visually topmost — at the head. *)
-      List.fold_left
-        (fun acc c -> walk c acc child_clip on)
-        path (Lui_store.child_ids store id)
+  let path = ref [] in
+  (* pointer-events accumulate down the tree; the ghost pass threads
+     the same [on] update so a promoted popup keeps its clipped-away
+     ancestors' flags. *)
+  let flags_or on fl =
+    match fl.hf_pen with Some v -> v | None -> on || fl.hf_overlay
   in
+  let enter on (f : Lui_paint.frame) =
+    let fl = hit_flags_of store f.f_id in
+    let on = flags_or on fl in
+    (* spacers are layout voids — they paint nothing and must never be
+       the hit target (a full-window spacer in an overlay layer would
+       otherwise swallow every DOM event). *)
+    if on && not fl.hf_spacer
+       && not (rect_empty f.f_clipped)
+       && rect_contains f.f_clipped x y
+    then path := f.f_id :: !path;
+    { Lui_paint.b_emit = false; b_down = true; b_ctx = on }
+  in
+  (* The walk's "viewport" is the pointer point itself: a clip that
+     misses it can contain no hit, so the walk prunes the subtree —
+     promoted popups still escape. *)
+  Lui_paint.walk ~scale:1.
+    ~viewport:(rect x y 1e-4 1e-4) store
+    ~layout:(fun id ->
+      let r = Rects.get rects id in
+      { Lui_paint.p_rect = r; p_override = Some r })
+    ~enter
+    ~ghost_enter:(fun on id _contents ->
+      flags_or on (hit_flags_of store id))
+    ~leave:(fun _ _ -> ()) true;
   (* The head is the node visited last in paint order: visually
      topmost. *)
-  List.fold_left
-    (fun acc id -> walk id acc None true)
-    [] (Lui_store.root_ids store)
+  !path
 
 let hit store rects ~x ~y =
   match hit_path store rects ~x ~y with

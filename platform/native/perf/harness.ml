@@ -69,6 +69,7 @@ type t = {
   scroll : (int, float) Hashtbl.t; (* node id -> scroll offset, device px *)
   renderer : Lui_raster.Renderer.t;
   mutable hooks : Lui_paint.hooks;
+  retained : Lui_retained.retained;
   gcount : int ref; (* glyph records appended this paint (Quads engine) *)
   rev_glyphs : bool; (* Quads prepends records; [paint] unreverses once *)
   width : int;
@@ -188,6 +189,7 @@ let create ?(text_engine = Stub) ~width ~height ~scale () =
       scroll = Hashtbl.create 8;
       renderer = Lui_raster.Renderer.create ();
       hooks;
+      retained = Lui_retained.create ();
       gcount;
       rev_glyphs = (text_engine = Quads);
       width;
@@ -324,6 +326,19 @@ let raster_full t =
   snd (timed (fun () -> ignore (Lui_raster.render ~workers:1 ~scene:(scene t) ())))
 
 let ops_count t = List.length (scene t).ops
+
+(* Retained fragment pass — same frame inputs as {!paint}, driven the
+   way [Lui_host.repaint] wires it: engine rect changes as [~moved]. *)
+let paint_retained t =
+  snd
+    (timed (fun () ->
+         Lui_retained.paint_retained t.retained (paint_hooks t) (store t)
+           (scene t) ~moved:(Lui_layout.take_rect_changes t.engine)
+           ~width:t.width ~height:t.height ~scale:t.scale
+           ~clear:(color 0 0 0 0) ()))
+
+let retained_repaints t = Lui_retained.stat_repaints t.retained
+let retained_visits t = Lui_retained.stat_visits t.retained
 
 (* ---------- resident memory ---------- *)
 
