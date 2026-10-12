@@ -254,14 +254,37 @@ let hit_path store rects ~x ~y =
   (* pointer-enabled=false makes a subtree hit-transparent like the web
      pointer-events:none: descendants inherit it and only an explicit
      pointer-enabled=true opts a node back in (registering pointer
-     handlers sets that prop). *)
+     handlers sets that prop). A presented overlay (popover, dialog,
+     menu, sheet, toast, or a [selected]-less drawer) always opts its
+     own subtree back in — it is interactive content by definition —
+     while a permanent overlay-layer host (data-overlay-layer) keeps
+     whatever its own flag says. *)
+  let presented_overlay id =
+    let layer_host =
+      match Lui_store.prop store id "data-attrs" with
+      | Some (StringValue s) -> (
+        try
+          List.assoc_opt "data-overlay-layer"
+            (Lui_protocol.data_attrs_decode s)
+          = Some "true"
+        with _ -> false)
+      | _ -> false
+    in
+    (not layer_host)
+    && (match Lui_store.kind store id with
+        | "dialog" | "sheet" | "popover" | "dropdown-menu"
+        | "context-menu" | "toast" ->
+          true
+        | "drawer" -> Lui_store.prop store id "selected" = None
+        | _ -> false)
+  in
   let rec walk id path clip_r pointer_on =
     if not (visible id) then path
     else
       let on =
         match Lui_store.prop store id "pointer-enabled" with
         | Some (BoolValue v) -> v
-        | _ -> pointer_on
+        | _ -> pointer_on || presented_overlay id
       in
       let r = Rects.get rects id in
       let clipped =
