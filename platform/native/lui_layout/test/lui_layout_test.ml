@@ -566,6 +566,7 @@ let test_snapped_edges () =
      second child shares exactly. *)
   check_rect "child1" 5. 5. 191. 30. r3;
   check_rect "child2 shared edge" 5. 35. 191. 30. r4
+
 (* ---------- incremental mirror ---------- *)
 
 let rect_or_zero t id =

@@ -2319,6 +2319,8 @@ let resolve_rect ~scale ~viewport store id kind p parent_r =
   in
   rect_snap r
 
+(* The ctx-taking form [repaint_frag] calls; the labeled-args one
+   above is the shared entry point. *)
 let resolve_in ctx = resolve_rect ~scale:ctx.scale ~viewport:ctx.viewport
 
 let zindex store id =
@@ -2628,8 +2630,8 @@ let paint hooks store scene ~width ~height ~scale ~clear =
       viewport = rect 0. 0. (float width) (float height);
       deferred = Queue.create () }
   in
-  walk ~mounted:hooks.mounted_children ~scale ~viewport:ctx.viewport store
-    ~layout:hooks.layout
+  walk ~scale ~viewport:ctx.viewport store ~layout:hooks.layout
+    ~mounted:hooks.mounted_children
     ~enter:(paint_enter ctx store scene)
     ~ghost_enter:(paint_ghost_enter ctx store)
     ~leave:(paint_leave ctx store scene) 1.;

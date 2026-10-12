@@ -1817,13 +1817,17 @@ let collect_vlist t (v : vlist) =
             match Hashtbl.find_opt v.nodes id with
             | Some f ->
               let r = Lui_flex.absolute_layout f in
+              (* Row rects share the engine's snapped scene_rect —
+                 paint, hit-test and retained pieces all read the same
+                 device-pixel geometry. *)
               let r' =
-                {
-                  Lui_scene.x = v.origin_cross +. (r.x -. rr.x);
-                  y = ry +. (r.y -. rr.y);
-                  w = r.w;
-                  h = r.h;
-                }
+                Lui_scene.rect_snap
+                  {
+                    Lui_scene.x = v.origin_cross +. (r.x -. rr.x);
+                    y = ry +. (r.y -. rr.y);
+                    w = r.w;
+                    h = r.h;
+                  }
               in
               (match Hashtbl.find_opt prev id with
                | Some old when old = r' -> ()
