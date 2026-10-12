@@ -91,6 +91,21 @@ internal object LuiKindRules {
     fun horizontalGroupDefaultGap(kind: LuiNodeKind): Int =
         if (kind == LuiNodeKind.pagination) 2 else 4
 
+    fun isMainCrossKind(kind: LuiNodeKind): Boolean =
+        kind == LuiNodeKind.row ||
+            kind == LuiNodeKind.column ||
+            kind == LuiNodeKind.list ||
+            kind == LuiNodeKind.virtualList ||
+            kind == LuiNodeKind.card ||
+            kind == LuiNodeKind.panel ||
+            kind == LuiNodeKind.box ||
+            kind == LuiNodeKind.button ||
+            kind == LuiNodeKind.menuItem ||
+            kind == LuiNodeKind.listItem ||
+            kind == LuiNodeKind.popover ||
+            kind == LuiNodeKind.link ||
+            isHorizontalGroupKind(kind)
+
     fun isTreeRowKind(kind: LuiNodeKind): Boolean =
         kind == LuiNodeKind.row ||
             kind == LuiNodeKind.column ||
@@ -317,19 +332,9 @@ internal object LuiKindRules {
         }
         return when (property) {
             "main" ->
-                value.stringValue in mainAlignments &&
-                    (kind == LuiNodeKind.row ||
-                        kind == LuiNodeKind.column ||
-                        kind == LuiNodeKind.list ||
-                        kind == LuiNodeKind.virtualList ||
-                        isHorizontalGroupKind(kind))
+                value.stringValue in mainAlignments && isMainCrossKind(kind)
             "cross" ->
-                value.stringValue in crossAlignments &&
-                    (kind == LuiNodeKind.row ||
-                        kind == LuiNodeKind.column ||
-                        kind == LuiNodeKind.list ||
-                        kind == LuiNodeKind.virtualList ||
-                        isHorizontalGroupKind(kind))
+                value.stringValue in crossAlignments && isMainCrossKind(kind)
             "grow" ->
                 value.numberValue?.let { it.isFinite() && it >= 0 } == true &&
                     kind != LuiNodeKind.avatar &&
@@ -459,14 +464,19 @@ internal object LuiKindRules {
                         isTreeRowKind(kind))
             "press-enabled" ->
                 value is LuiWireValue.Bool &&
-                    (kind == LuiNodeKind.text ||
+                    (kind == LuiNodeKind.button ||
+                        kind == LuiNodeKind.toggleButton ||
+                        kind == LuiNodeKind.text ||
+                        kind == LuiNodeKind.row ||
                         kind == LuiNodeKind.column ||
+                        kind == LuiNodeKind.box ||
                         kind == LuiNodeKind.radio ||
                         kind == LuiNodeKind.select ||
                         kind == LuiNodeKind.combobox ||
                         kind == LuiNodeKind.menuItem ||
                         kind == LuiNodeKind.listItem ||
                         kind == LuiNodeKind.tableCell ||
+                        kind == LuiNodeKind.bottomTab ||
                         kind == LuiNodeKind.fileImage ||
                         isTreeRowKind(kind))
             "submit-enabled" ->
@@ -572,6 +582,10 @@ internal object LuiKindRules {
                         kind == LuiNodeKind.popover ||
                         kind == LuiNodeKind.tableRow ||
                         kind == LuiNodeKind.tree ||
+                        kind == LuiNodeKind.scroll ||
+                        kind == LuiNodeKind.card ||
+                        kind == LuiNodeKind.panel ||
+                        kind == LuiNodeKind.box ||
                         kind == LuiNodeKind.split ||
                         kind == LuiNodeKind.edgeInset ||
                         isHorizontalGroupKind(kind))
@@ -587,18 +601,24 @@ internal object LuiKindRules {
                     kind != LuiNodeKind.tooltip
             "padding-horizontal", "padding-vertical" ->
                 value.intValue?.let { it >= 0 } == true &&
-                    (kind == LuiNodeKind.row ||
-                        kind == LuiNodeKind.column ||
-                        kind == LuiNodeKind.grid ||
-                        kind == LuiNodeKind.box)
+                    kind != LuiNodeKind.avatar &&
+                    kind != LuiNodeKind.tooltip
             "background" ->
                 value is LuiWireValue.Str &&
-                    kind != LuiNodeKind.avatar &&
                     kind != LuiNodeKind.tooltip &&
                     !isModalSurface(kind)
             "foreground" ->
                 value is LuiWireValue.Str &&
-                    (kind == LuiNodeKind.edgeInset ||
+                    (kind == LuiNodeKind.row ||
+                        kind == LuiNodeKind.column ||
+                        kind == LuiNodeKind.grid ||
+                        kind == LuiNodeKind.box ||
+                        kind == LuiNodeKind.panel ||
+                        kind == LuiNodeKind.card ||
+                        kind == LuiNodeKind.stack ||
+                        kind == LuiNodeKind.scroll ||
+                        kind == LuiNodeKind.avatar ||
+                        kind == LuiNodeKind.edgeInset ||
                         kind == LuiNodeKind.overlay ||
                         kind == LuiNodeKind.viewThatFits ||
                         kind == LuiNodeKind.text ||
@@ -617,6 +637,7 @@ internal object LuiKindRules {
                         kind == LuiNodeKind.select ||
                         kind == LuiNodeKind.dropdownMenu ||
                         kind == LuiNodeKind.menuItem ||
+                        kind == LuiNodeKind.popover ||
                         kind == LuiNodeKind.menuTrigger ||
                         kind == LuiNodeKind.listItem ||
                         kind == LuiNodeKind.tableCell ||
@@ -629,33 +650,26 @@ internal object LuiKindRules {
                         kind == LuiNodeKind.fileImage)
             "border-color" ->
                 value is LuiWireValue.Str &&
-                    kind != LuiNodeKind.avatar &&
                     kind != LuiNodeKind.tooltip &&
                     !isModalSurface(kind)
             "border-width" ->
                 value.intValue?.let { it >= 0 } == true &&
-                    kind != LuiNodeKind.avatar &&
                     kind != LuiNodeKind.tooltip &&
                     !isModalSurface(kind)
             "corner-radius" ->
                 value.intValue?.let { it >= 0 } == true &&
-                    kind != LuiNodeKind.avatar &&
                     kind != LuiNodeKind.tooltip &&
                     !isModalSurface(kind)
             "width", "height" ->
                 value.intValue?.let { it >= 0 } == true &&
-                    kind != LuiNodeKind.avatar &&
                     kind != LuiNodeKind.tooltip
             "min-width", "max-width", "min-height", "max-height" ->
                 value.intValue?.let { it >= 0 } == true &&
-                    kind != LuiNodeKind.avatar &&
-                    kind != LuiNodeKind.tooltip &&
-                    !isModalSurface(kind)
+                    (kind == LuiNodeKind.dialog ||
+                        (!isModalSurface(kind) && kind != LuiNodeKind.tooltip))
             "style-class" ->
                 value is LuiWireValue.Str &&
-                    kind != LuiNodeKind.avatar &&
-                    kind != LuiNodeKind.tooltip &&
-                    !isModalSurface(kind)
+                    kind != LuiNodeKind.tooltip
             "data-attrs" ->
                 value.stringValue?.let { dataAttrsValueOk(it) } == true &&
                     kind != LuiNodeKind.tooltip

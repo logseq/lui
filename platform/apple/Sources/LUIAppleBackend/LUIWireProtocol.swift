@@ -1069,6 +1069,7 @@ struct LUIRetainedTree {
             kind == .row || kind == .column || kind == .list || kind == .virtualList ||
                 kind == .card || kind == .panel || kind == .box ||
                 kind == .button || kind == .menuItem || kind == .listItem ||
+                kind == .popover || kind == .link ||
                 isHorizontalGroup(kind)
         case .grow: kind != .avatar && kind != .tooltip && !isModalSurface(kind)
         case .columns: kind == .grid
@@ -1082,10 +1083,10 @@ struct LUIRetainedTree {
         case .asTag:
             kind == .text || kind == .heading || kind == .paragraph ||
                 kind == .label
-        case .background, .borderColor, .borderWidth,
-             .cornerRadius,
-             .minWidth, .maxWidth, .minHeight, .maxHeight:
+        case .background, .borderColor, .borderWidth, .cornerRadius:
             kind != .tooltip && !isModalSurface(kind)
+        case .minWidth, .maxWidth, .minHeight, .maxHeight:
+            kind == .dialog || (!isModalSurface(kind) && kind != .tooltip)
         case .containerRelativeFrame, .containerRelativeFrameInset:
             kind != .root && !isModalSurface(kind)
         case .foreground:
@@ -1100,7 +1101,7 @@ struct LUIRetainedTree {
                 kind == .radio || kind == .slider || kind == .numberStepper ||
                 kind == .spinner || kind == .icon
                 || kind == .select || kind == .combobox || kind == .dropdownMenu
-                || kind == .menuItem || kind == .listItem
+                || kind == .menuItem || kind == .popover || kind == .listItem
                 || kind == .tableCell || kind == .resizable || kind == .split ||
                 kind == .alert || kind == .bubble || kind == .statusBar ||
                 kind == .link || kind == .fileImage
@@ -1183,10 +1184,12 @@ struct LUIRetainedTree {
         case .changeEnabled: kind == .radio || isTreeRow(kind)
         case .toggleEnabled: kind == .radio || kind == .drawer || isTreeRow(kind)
         case .pressEnabled:
-            kind == .text || kind == .row || kind == .column || kind == .box ||
+            kind == .button || kind == .toggleButton || kind == .text ||
+                kind == .row || kind == .column || kind == .box ||
                 kind == .radio || kind == .select ||
                 kind == .combobox || kind == .menuItem || kind == .listItem
-                || kind == .tableCell || kind == .fileImage || isTreeRow(kind)
+                || kind == .tableCell || kind == .bottomTab ||
+                kind == .fileImage || isTreeRow(kind)
         case .submitEnabled: kind == .combobox || kind == .listItem
         case .doublePressEnabled: kind == .listItem
         case .appearEnabled, .pointerEnabled: kind != .root
