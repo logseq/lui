@@ -24,8 +24,11 @@ Alternatives considered and why they lost:
 Independent surfaces are the least invasive: zero core changes,
 per-window checksums/a11y/IME for free, clean per-window teardown, and
 each window can host a different view — the desktop semantic. The cost
-(no live views of one model across windows) is acceptable for this
-backend; a shared-model document app would add a sync layer on top.
+(no live views of one model across windows) is covered by
+`Lui_multi_window` (`src/`): a shared-model application that mounts
+one runtime + backend per window over a single scheduler, model and
+resource payload — the sync layer a shared-document driver plugs into
+in place of per-window `Lui_app`s.
 
 ## Layers
 
