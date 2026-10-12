@@ -254,7 +254,7 @@ let direction_of ~store ~id kind : Lui_flex.flex_direction =
     | "button-group" | "toggle-group"
     | "input-group-actions" | "table-row" | "tabs" | "bottom-tabs"
     | "toolbar" | "swipe-actions" | "stepper" | "breadcrumb"
-    | "pagination" | "split" | "drawer" | "link" -> Row
+    | "pagination" | "split" | "drawer" | "link" | "text" -> Row
     | "edge-inset" -> (
       match pstr store id "edge" with
       | Some ("leading" | "trailing") -> Row
@@ -399,7 +399,7 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
         (match pstr store id "flex-wrap" with
          | Some "wrap" -> Wrap
          | Some "nowrap" -> No_wrap
-         | _ -> if kind = "grid" then Wrap else No_wrap);
+         | _ -> if kind = "grid" || kind = "text" then Wrap else No_wrap);
       overflow = overflow_of ~store ~id kind;
       flex_grow = grow;
       width =
