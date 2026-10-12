@@ -458,6 +458,66 @@ module Checksum : sig
   val value : t -> int64
 end
 
+(** Per-surface frame scheduler: the "mark dirty → frame callback →
+    present" half of the pipeline contract
+
+      event → action queue → stabilize → patch flush → mark dirty →
+      frame callback → layout/scene → present
+
+    Mutations never draw — they {!request_frame}. The driver's frame
+    callback {!poll}s each surface and only a [Present] decision lays
+    out, rebuilds the scene and presents. Pacing: a shown surface
+    runs at the monitor's refresh rate (a vsync swap paces itself),
+    a hidden or minimized surface is throttled to the background
+    cadence, and a clean surface is [Idle] so the driver can sleep
+    until an event wakes the loop. Pure state — no SDL, no clock, so
+    every rule is unit-testable. *)
+module Frame : sig
+  type visibility =
+    | Shown
+    | Hidden
+    | Minimized
+
+  type decision =
+    | Present  (** run layout/scene/present now *)
+    | Wait_ms of float  (** present pending; ms until its deadline *)
+    | Idle  (** nothing pending — the loop may sleep for events *)
+
+  type t
+
+  val create : unit -> t
+  (** Fresh scheduler: dirty (first frame always paints), shown,
+      60 Hz, 250 ms background cadence. *)
+
+  val request_frame : t -> unit
+  (** Mark a present pending. Cheap and idempotent — call it from
+      every mutation path. *)
+
+  val dirty : t -> bool
+  val visibility : t -> visibility
+  val refresh_hz : t -> float
+
+  val set_visibility : t -> visibility -> unit
+  (** [Hidden]/[Minimized] throttle presents to the background
+      cadence; [Shown] again marks the surface dirty so it presents
+      fresh content on restore. *)
+
+  val set_refresh_hz : t -> float -> unit
+  (** Monitor refresh rate (60/120/144…). Invalid values are ignored,
+      keeping the previous rate. *)
+
+  val set_bg_period_ms : t -> float -> unit
+  (** Present cadence while throttled. *)
+
+  val poll : t -> now_ms:float -> vsync:bool -> decision
+  (** Frame callback: [Present] when dirty and (vsync or past the
+      cadence deadline), [Wait_ms] while pacing, [Idle] when clean. *)
+
+  val presented : t -> now_ms:float -> unit
+  (** Record a present: clears {!dirty} and starts the next cadence
+      interval. *)
+end
+
 (** Multi-window manager: a registry of independent surfaces.
 
     Each surface owns a full pipeline — {!Lui_host} (store, layout,

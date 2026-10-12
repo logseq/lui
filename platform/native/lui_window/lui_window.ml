@@ -1512,6 +1512,87 @@ module Checksum = struct
   let value t = t.hash
 end
 
+module Frame = struct
+  (* Per-surface frame scheduler — the "mark dirty → frame callback →
+     present" half of the pipeline contract
+
+       event → action queue → stabilize → patch flush → mark dirty →
+       frame callback → layout/scene → present
+
+     Mutations never draw: they [request_frame]. The driver's frame
+     callback [poll]s and only a [Present] decision lays out, rebuilds
+     the scene and presents. [poll] also carries the pacing contract:
+     a shown surface runs at the monitor's refresh rate (a vsync
+     swap paces itself, so it presents whenever dirty), a hidden or
+     minimized surface is throttled to the background cadence — it
+     still presents occasionally so previews and screenshots stay
+     live, just ~60x cheaper — and a clean surface is [Idle], telling
+     the driver it may sleep until an event wakes the loop. *)
+  type visibility =
+    | Shown
+    | Hidden
+    | Minimized
+
+  type decision =
+    | Present  (** run layout/scene/present now *)
+    | Wait_ms of float  (** present pending; ms until the deadline *)
+    | Idle  (** nothing pending — the loop may sleep for events *)
+
+  type t = {
+    mutable dirty : bool;
+    mutable visibility : visibility;
+    mutable refresh_hz : float;
+    mutable bg_period_ms : float;
+    mutable last_present_ms : float;
+  }
+
+  let create () =
+    { dirty = true;  (* the first frame always paints *)
+      visibility = Shown;
+      refresh_hz = 60.;
+      bg_period_ms = 250.;
+      last_present_ms = Float.neg_infinity }
+
+  let request_frame t = t.dirty <- true
+  let dirty t = t.dirty
+  let visibility t = t.visibility
+  let refresh_hz t = t.refresh_hz
+
+  let set_visibility t v =
+    if v <> t.visibility then begin
+      t.visibility <- v;
+      (* Back on screen: present fresh content regardless of when the
+         surface last painted. *)
+      if v = Shown then t.dirty <- true
+    end
+
+  let set_refresh_hz t hz =
+    if hz > 0. && hz <= 1000. then t.refresh_hz <- hz
+
+  let set_bg_period_ms t ms =
+    if ms > 0. then t.bg_period_ms <- ms
+
+  (* The cadence a visibility allows: refresh-rate pacing while shown,
+     the background period while throttled. *)
+  let period_ms t =
+    match t.visibility with
+    | Shown -> 1000. /. t.refresh_hz
+    | Hidden | Minimized -> t.bg_period_ms
+
+  let poll t ~now_ms ~vsync =
+    if not t.dirty then Idle
+    else if vsync then Present
+    else begin
+      let next = t.last_present_ms +. period_ms t in
+      if now_ms >= next then Present
+      else Wait_ms (next -. now_ms)
+    end
+
+  let presented t ~now_ms =
+    t.dirty <- false;
+    t.last_present_ms <- now_ms
+end
+
 module Multi = struct
   (* Multi-window manager: a registry of independent surfaces. Each
      surface owns a full pipeline — host (store, layout, scene,
