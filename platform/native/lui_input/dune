@@ -3,5 +3,5 @@
  (public_name lui.input)
  (modules lui_input lui_query lui_pointer lui_gesture lui_focus
   lui_selection lui_scroll lui_drag lui_overlay lui_text_input)
- (libraries lui lui_store lui_scene lui_ime)
+ (libraries lui lui_store lui_scene lui_ime lui_paint)
  (wrapped false))
