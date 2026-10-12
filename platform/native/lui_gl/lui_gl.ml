@@ -1,6 +1,6 @@
 (* OpenGL renderer for Lui_scene display lists, through tgls: every op
    of a scene is an instanced quad drawn by the one shader
-   (Lui_gpu.shader_source) from the instances Lui_gpu.build produces;
+   (Lui_gpu.shader_source) from the instances Lui_gpu.frame compiles;
    clips are scissor rectangles, with the innermost rounded clip
    computed in the shader.
 
