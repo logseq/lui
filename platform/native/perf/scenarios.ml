@@ -134,6 +134,9 @@ let vlist ~n ~frames ~velocity ~item_h ~width ~height =
     ms_row name "frame total p50" (H.stats_of !ta).p50;
     ms_row name "frame total p95" (H.stats_of !ta).p95;
     row name "visible children" (string_of_int visible) "nodes";
+    (* The virtualization bound: logical rows the pipeline actually
+       materializes — viewport + overscan, independent of n. *)
+    row name "mounted rows" (string_of_int (H.mounted_count t 2)) "rows";
     row name "scene ops/frame" (string_of_int ops) "ops";
   ]
 
