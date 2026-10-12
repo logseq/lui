@@ -1070,6 +1070,7 @@ let recover_dom renderer =
   Hashtbl.clear renderer.web_cleanups;
   Hashtbl.clear renderer.web_pointer_cleanups;
   Hashtbl.clear renderer.web_context_hosts;
+  Hashtbl.clear renderer.web_menu_highlights;
   Hashtbl.clear renderer.web_virtual_lists;
   Hashtbl.clear renderer.web_lists;
   Hashtbl.iter (reset_platform renderer) renderer.web_store.retained_nodes;
