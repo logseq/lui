@@ -85,6 +85,11 @@ type 'f t = {
   mutable baseline : int;        (* device px from row top *)
   slots : (gkey, slot option) Hashtbl.t;
   mutable hover_link : int;   (* link id to underline, 0 = none *)
+  (* Running count of scene.glyphs during a render: [gstart]/[gend]
+     are positions in the sealed (reversed) array, and a per-row
+     [List.length] over the reversed build list would be O(rows x
+     glyphs) per frame. [render] seeds it once. *)
+  mutable gcount : int;
 }
 
 let cell_w t = t.cell_w
@@ -143,7 +148,7 @@ let create eng ?(families = [ "monospace" ]) ?(weight = 400) ~size ~scale
   { eng; fonts = { regular; bold; italic; bold_italic };
     theme; size; scale;
     cell_w; cell_h; baseline;
-    slots = Hashtbl.create 1024; hover_link = 0 }
+    slots = Hashtbl.create 1024; hover_link = 0; gcount = 0 }
 
 let set_scale t scale =
   if scale <> t.scale then begin
@@ -229,7 +234,8 @@ let emit_glyph t scene ~pen ~baseline ~font ~gid ~g_y ~fg =
         gcolored = s.sl_colored;
         gsubpixel = false; gthin = false }
     in
-    scene.Lui_scene.glyphs <- gl :: scene.Lui_scene.glyphs
+    scene.Lui_scene.glyphs <- gl :: scene.Lui_scene.glyphs;
+    t.gcount <- t.gcount + 1
 
 (* ------------------------------------------------------------------ *)
 (* Ops *)
@@ -284,7 +290,7 @@ let render_row t grid ~doc ~vy (cw : float) (ch : float)
   (* glyph pass: each cell's cluster shaped and drawn at its column —
      terminal grids stay cell-aligned *)
   x := 0;
-  let gstart = List.length scene.Lui_scene.glyphs in
+  let gstart = t.gcount in
   while !x < cols do
     let c = cells.(!x) in
     let a = c.G.attrs in
@@ -356,7 +362,7 @@ let render_row t grid ~doc ~vy (cw : float) (ch : float)
       deco th.A.fg rx0 rx1 (base_y +. ul_thick *. 2.) (Float.max 1. ul_thick);
     x := x1
   done;
-  let gend = List.length scene.Lui_scene.glyphs in
+  let gend = t.gcount in
   if gend > gstart then begin
     let fg = th.A.fg in
     ops := glyphs_op gstart gend fg :: !ops
@@ -381,6 +387,9 @@ let render_scrollbar _t grid ~w ~h ops =
 
 let render ?(blink_on = true) t grid scene ~w ~h =
   let cw = float t.cell_w and ch = float t.cell_h in
+  (* Seed the span bookkeeping once: [scene.glyphs] may already hold
+     glyphs from emitters that ran before this pass. *)
+  t.gcount <- List.length scene.Lui_scene.glyphs;
   let rows = G.rows grid in
   let ops = ref [] in
   let rows_vis = min rows (int_of_float (float h /. ch) + 1) in
@@ -429,7 +438,7 @@ let render ?(blink_on = true) t grid scene ~w ~h =
             let font = font_of t c.G.attrs in
             let baseline = y +. float t.baseline in
             let runs = t.eng.shape font c.G.text in
-            let gstart = List.length scene.Lui_scene.glyphs in
+            let gstart = t.gcount in
             Array.iter
               (fun (r : 'f srun) ->
                  Array.iter
@@ -438,7 +447,7 @@ let render ?(blink_on = true) t grid scene ~w ~h =
                         ~baseline ~font:r.sfont ~gid:g.sid ~g_y:g.sy ~fg)
                    r.sgs)
               runs;
-            let gend = List.length scene.Lui_scene.glyphs in
+            let gend = t.gcount in
             if gend > gstart then ops := glyphs_op gstart gend fg :: !ops
           | _ -> ()
       end
