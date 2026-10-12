@@ -931,6 +931,9 @@ let open_window ~title ~idx =
      unshifted engine rects for scroll_show/visible-range. *)
   Ui.set_measure ui
     (fun _store id s -> Lui_window_text.measure_text text_engine id s);
+  Ui.set_hit_text ui
+    (fun _store id text ~lx ~ly ~lw ~lh ->
+       Lui_window_text.hit_text text_engine id text ~lx ~ly ~lw ~lh);
   Ui.set_content_rect ui engine_rect;
   (* The a11y forest mirrors the store: synced after every repaint,
      focused along with the Ui focus, dumped on request and at quit. *)

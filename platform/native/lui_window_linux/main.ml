@@ -507,6 +507,11 @@ let () =
   ignore (Lui_app.start app);
   ignore (Lui_app.flush app);
   refresh_layout ();
+  (* Layout-accurate text hit-testing for caret/selection math — the
+     engine resolves points against the same layouts it paints. *)
+  Ui.set_hit_text ui
+    (fun _store id text ~lx ~ly ~lw ~lh ->
+       Lui_window_text.hit_text text_engine id text ~lx ~ly ~lw ~lh);
   (* Hand focus to the first autofocus field, if any. *)
   (match
      List.find_opt

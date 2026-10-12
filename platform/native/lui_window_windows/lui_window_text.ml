@@ -568,3 +568,35 @@ let measure_text t id s =
   else
     let w, h = extent_of t st s in
     (w *. t.scale (), h *. t.scale ())
+
+(* Byte offset in [text] under the device-px point [(lx, ly)] inside
+   the node's rect [lw]x[lh] (both measured from the rect's origin;
+   [lw] is unused — the engine paints unwrapped): the same vertical
+   centering [text_ops] paints, resolved against the cached layout's
+   cluster boundaries. *)
+let hit_text t id text ~lx ~ly ~lw:_ ~lh =
+  let store = t.store () in
+  let scale = t.scale () in
+  let st = style_of t store id in
+  let lay = layout_of t st ~width:0. text in
+  let text_h = styled_height st lay *. scale in
+  let y0 = Float.max 0. ((lh -. text_h) /. 2.) in
+  let py = (ly -. y0) /. scale in
+  (* With a line-height override the painted pitch is [ts_lh], not the
+     layout's own line tops — remap [py] into the matching layout
+     line so [hit_test] picks the one the pointer actually covers. *)
+  let py' =
+    let n = Array.length lay.Lui_text.lay_lines in
+    if st.ts_lh <= 0. || n = 0 then py
+    else
+      let k =
+        min (n - 1)
+          (max 0 (int_of_float (Float.floor (py /. st.ts_lh))))
+      in
+      let ll = lay.Lui_text.lay_lines.(k) in
+      let frac =
+        Float.min 1. (Float.max 0. (py /. st.ts_lh -. float k))
+      in
+      ll.Lui_text.ll_top +. frac *. ll.Lui_text.ll_height
+  in
+  Lui_text.hit_test lay (lx /. scale, py')

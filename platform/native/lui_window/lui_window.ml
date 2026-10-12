@@ -587,8 +587,13 @@ module Ui = struct
     vrange : (int, int * int) Hashtbl.t;
     (* Driver hooks: glyph measurement for caret/selection math and
        unshifted (content-space) rects for scroll_show. Deterministic
-       defaults keep the module testable without a text engine. *)
+       defaults keep the module testable without a text engine.
+       [hit_text] is the text engine's layout-accurate point-to-byte
+       map; unset it falls back to the measure-based path. *)
     mutable measure : Lui_store.t -> int -> string -> float * float;
+    mutable hit_text :
+      (Lui_store.t -> int -> string -> lx:float -> ly:float ->
+       lw:float -> lh:float -> int) option;
     mutable content_rect : int -> rect;
   }
 
@@ -613,10 +618,12 @@ module Ui = struct
       scroll_token = Hashtbl.create 8; vrange = Hashtbl.create 8;
       measure =
         (fun _store _id s -> (8. *. float (String.length s), 16.));
+      hit_text = None;
       content_rect = (fun _ -> rect 0. 0. 0. 0.) }
 
   let set_scale t s = t.scale <- s
   let set_measure t f = t.measure <- f
+  let set_hit_text t f = t.hit_text <- Some f
   let set_content_rect t f = t.content_rect <- f
   let hovered t = t.hovered
   let pressed t = t.pressed
@@ -951,7 +958,10 @@ module Ui = struct
       choose 0 (utf8_bounds line)
 
   (* Byte offset in [text] under the device-px point [(x,y)] inside
-     node [id]'s shifted rect, honoring padding and line breaks. *)
+     node [id]'s shifted rect, honoring padding and line breaks. When
+     the driver wired a [hit_text] hook the text engine resolves the
+     point against the same layout it painted — wrap, alignment and
+     vertical placement included — instead of per-prefix measures. *)
   let offset_at_point t store rects id ~x ~y text =
     let r = Rects.get rects id in
     let ph =
@@ -960,19 +970,24 @@ module Ui = struct
       pad_axis store id ~scale:t.scale "padding-vertical" "padding" in
     let lx = x -. r.Lui_scene.x -. ph
     and ly = y -. r.Lui_scene.y -. pv in
-    let lh = Float.max 1. (snd (t.measure store id "Ag")) in
-    let lines = String.split_on_char '\n' text in
-    let li =
-      if ly <= 0. then 0
-      else min (int_of_float (ly /. lh)) (List.length lines - 1)
-    in
-    let rec base i acc = function
-      | [] -> acc
-      | l :: tl ->
-        if i = li then acc else base (i + 1) (acc + String.length l + 1) tl
-    in
-    let line = List.nth lines li in
-    base 0 0 lines + boundary_at_x t store id line lx
+    match t.hit_text with
+    | Some f ->
+      f store id text ~lx:(x -. r.Lui_scene.x) ~ly:(y -. r.Lui_scene.y)
+        ~lw:r.w ~lh:r.h
+    | None ->
+      let lh = Float.max 1. (snd (t.measure store id "Ag")) in
+      let lines = String.split_on_char '\n' text in
+      let li =
+        if ly <= 0. then 0
+        else min (int_of_float (ly /. lh)) (List.length lines - 1)
+      in
+      let rec base i acc = function
+        | [] -> acc
+        | l :: tl ->
+          if i = li then acc else base (i + 1) (acc + String.length l + 1) tl
+      in
+      let line = List.nth lines li in
+      base 0 0 lines + boundary_at_x t store id line lx
 
   (* ---- drag & drop (data-attrs) -------------------------------------- *)
 

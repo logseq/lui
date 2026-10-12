@@ -571,3 +571,72 @@ let measure_text t id s =
   else
     let w, h = extent_of t st s in
     (w *. t.scale (), h *. t.scale ())
+
+(* Byte offset in [text] under the device-px point [(lx, ly)] inside
+   the node's rect [lw]x[lh] (both measured from the rect's origin):
+   the same wrap, insets, alignment and vertical placement
+   [text_ops] paints, resolved against the cached layout's cluster
+   boundaries. *)
+let hit_text t id text ~lx ~ly ~lw ~lh =
+  let store = t.store () in
+  let scale = t.scale () in
+  let st = style_of t store id in
+  let tp = Lui_paint.text_placement_of store id in
+  let pad = tp.tp_pad_x *. scale in
+  let lx = lx -. pad in
+  let lw = Float.max 0. (lw -. (2. *. pad)) in
+  let wrap_w =
+    if st.ts_nowrap || lw <= 0. then 0.
+    else if wrapping_kind (Lui_store.kind store id) then lw /. scale
+    else 0.
+  in
+  let lay = layout_of t st ~width:wrap_w text in
+  let text_h = styled_height st lay *. scale in
+  let y0 =
+    if tp.tp_top then tp.tp_pad_y *. scale
+    else Float.max 0. ((lh -. text_h) /. 2.)
+  in
+  let py = (ly -. y0) /. scale in
+  (* With a line-height override the painted pitch is [ts_lh], not the
+     layout's own line tops — remap [py] into the matching layout
+     line so [hit_test] picks the one the pointer actually covers. *)
+  let py' =
+    let n = Array.length lay.Lui_text.lay_lines in
+    if st.ts_lh <= 0. || n = 0 then py
+    else
+      let k =
+        min (n - 1)
+          (max 0 (int_of_float (Float.floor (py /. st.ts_lh))))
+      in
+      let ll = lay.Lui_text.lay_lines.(k) in
+      let frac =
+        Float.min 1. (Float.max 0. (py /. st.ts_lh -. float k))
+      in
+      ll.Lui_text.ll_top +. frac *. ll.Lui_text.ll_height
+  in
+  (* Center/end-aligned lines paint shifted right: the point maps onto
+     the picked line's own layout-space x. *)
+  let px =
+    match tp.tp_align with
+    | Lui_paint.Ta_start -> lx /. scale
+    | Ta_center | Ta_end ->
+      let lines = lay.Lui_text.lay_lines in
+      let n = Array.length lines in
+      let rec pick k =
+        if k >= n - 1 then max 0 (n - 1)
+        else if
+          py' < lines.(k).Lui_text.ll_top +. lines.(k).Lui_text.ll_height
+        then k
+        else pick (k + 1)
+      in
+      if n = 0 then lx /. scale
+      else
+        let w = lines.(pick 0).Lui_text.ll_line.Lui_text.width *. scale in
+        let off =
+          match tp.tp_align with
+          | Ta_center -> Float.max 0. ((lw -. w) /. 2.)
+          | _ -> Float.max 0. (lw -. w)
+        in
+        (lx -. off) /. scale
+  in
+  Lui_text.hit_test lay (px, py')
