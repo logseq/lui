@@ -486,22 +486,33 @@ struct LUIThemeScopeModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         let scope = model.derived.themeScope
+        if scope.applies {
+            // Environment reads live in this branch so nodes that
+            // contribute nothing never subscribe to the theme
+            // environments — an ancestor retheme no longer invalidates
+            // every modifier in the subtree.
+            scopedContent(content, scope: scope)
+        } else {
+            content
+        }
+    }
+
+    private func scopedContent(
+        _ content: Content,
+        scope: LUIThemeScopeContribution
+    ) -> some View {
         let ownColors = scope.colors(
             dark: (scope.scheme ?? systemScheme) == .dark
         )
-        if ownColors.isEmpty && scope.scheme == nil && scope.typography.isEmpty {
-            content
-        } else {
-            content
-                .environment(
-                    \.luiSemanticColors,
-                    inheritedColors.merging(ownColors) { _, new in new }
-                )
-                .environment(
-                    \.luiTypography,
-                    inheritedTypography.merged(with: scope.typography)
-                )
-                .preferredColorScheme(scope.scheme)
-        }
+        return content
+            .environment(
+                \.luiSemanticColors,
+                inheritedColors.merging(ownColors) { _, new in new }
+            )
+            .environment(
+                \.luiTypography,
+                inheritedTypography.merged(with: scope.typography)
+            )
+            .preferredColorScheme(scope.scheme)
     }
 }
