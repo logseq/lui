@@ -288,11 +288,11 @@ type node = {
   mutable parent : node;
   mutable next_child : node;
   mutable has_new_layout : bool;
-  measure : (node -> width:float -> width_mode:measure_mode
+  mutable measure : (node -> width:float -> width_mode:measure_mode
                      -> height:float -> height_mode:measure_mode
                      -> dims) option;
-  children : node array;
-  children_count : int;
+  mutable children : node array;
+  mutable children_count : int;
   mutable is_dirty : bool;
   (* Auto margins resolved by the parent during its flex line layout,
      per physical edge. *)
@@ -2563,6 +2563,7 @@ let create ?(style = default_style) ?measure (children : node list) : node =
   n
 
 let children (n : node) : node list = Array.to_list n.children
+let child_count (n : node) : int = n.children_count
 
 let parent (n : node) : node option =
   if n.parent == null_node then None else Some n.parent
@@ -2571,6 +2572,26 @@ let set_style (n : node) (s : style) : unit =
   n.spec <- s;
   n.style <- style_of_spec s;
   (* Propagate the dirty flag up so the ancestors re-measure. *)
+  mark_dirty_internal n
+
+(* The persistent layout mirror needs mid-life child edits: swapping the
+   array keeps node identity (and its cached layout) while the store
+   splices produced children in and out. Detached children lose their
+   parent link so a stale pointer cannot dirty a tree they left. *)
+let set_children (n : node) (kids : node list) : unit =
+  let arr = Array.of_list kids in
+  Array.iter (fun c -> if c.parent == n then c.parent <- null_node) n.children;
+  Array.iter (fun c -> c.parent <- n) arr;
+  n.children <- arr;
+  n.children_count <- Array.length arr;
+  mark_dirty_internal n
+
+(* Text/leaf re-measure: the mirror rebuilds the closure when a measure
+   input prop changes instead of recreating the node. *)
+let set_measure (n : node) (m : measure option) : unit =
+  if m <> None && n.children_count > 0 then
+    invalid_arg "Lui_flex.set_measure: a measure callback is only allowed on leaf nodes";
+  n.measure <- m;
   mark_dirty_internal n
 
 let has_new_layout (n : node) : bool = n.has_new_layout

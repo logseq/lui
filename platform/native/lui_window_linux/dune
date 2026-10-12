@@ -35,6 +35,7 @@
   lui_scene
   lui_paint
   lui_host
+  lui_layout
   lui_ime
   lui_a11y
   lui_ax_linux

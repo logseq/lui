@@ -5,7 +5,6 @@
    `reactive f s`, `if_` and `keyed` cover structural changes (model-driven
    subtrees, show/hide, identity-keyed lists). *)
 
-open Lui_protocol
 open Lui_elements
 
 let content_padding = function
