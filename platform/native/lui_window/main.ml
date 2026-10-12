@@ -165,6 +165,7 @@ type drv = {
   mutable frame : int;
   stats : stats;
   idx : int;                   (* registry/log index, 0-based *)
+  sched : Frame.t;             (* frame scheduler: dirty → deadline → present *)
   asm : Assembly.t;            (* shared host assembly *)
   caret_rect : unit -> Lui_scene.rect;
 }
@@ -212,10 +213,21 @@ let set_ime_rect (s : surf) (r : Lui_scene.rect) =
    window may have crossed onto a monitor with a different scale, on
    display events anything may have changed. Cheap and idempotent —
    [apply_drawable] only acts when the values differ. *)
+(* The monitor's reported refresh rate for the display a surface sits
+   on; 0 when the OS declines to say (the scheduler keeps its previous
+   rate then — [Frame.set_refresh_hz] ignores non-positive input). *)
+let refresh_hz_of (s : surf) =
+  if s.Multi.display < 0 then 0
+  else
+    match Sdl.get_current_display_mode s.Multi.display with
+    | Ok m -> Option.value ~default:0 m.Sdl.dm_refresh_rate
+    | Error _ -> 0
+
 let refresh_scale (s : surf) =
   (match Sdl.get_window_display_index s.driver.sdl with
    | Ok di when di <> s.Multi.display -> s.Multi.display <- di
    | _ -> ());
+  Frame.set_refresh_hz s.driver.sched (float (refresh_hz_of s));
   let dw, dh = drawable s in
   if Multi.apply_drawable s ~dw ~dh then
     log "win=%d: drawable %dx%d scale %.2f (display %d)" s.driver.idx
@@ -393,14 +405,22 @@ let poll_driver (s : surf) =
      | _ -> ())
   end
 
-(* One frame for one window: flush queued patches, run store-driven
-   effects, poll model-driven side effects, refresh the IME anchor,
-   repaint when dirty. Returns whether a repaint happened. *)
+(* One frame-callback for one window: flush queued patches, run
+   store-driven effects, poll model-driven side effects, refresh the
+   IME anchor — then the scheduler decides whether the surface
+   presents, waits for its pacing deadline or stays idle. Mutations
+   only mark the frame dirty; nothing draws until [Frame.poll] says
+   [Present]. Returns the scheduler's decision so the loop can sleep
+   until the nearest deadline. *)
 let tick (s : surf) ~t0 =
   let d = s.driver in
   let store = Lui_host.store s.host in
   ignore (Lui_app.flush d.app);
   apply_actions s (Ui.store_changed s.ui store);
+  (* Effects can dispatch back into the app — flush once more so the
+     patches they produced land in this same frame instead of waiting
+     for the next wake-up. *)
+  ignore (Lui_app.flush d.app);
   poll_driver s;
   poll_drop s;
   (* Report the caret once per frame: while a composition is open
@@ -410,43 +430,51 @@ let tick (s : surf) ~t0 =
     apply_actions s (Multi.dispatch s (Input.Caret (d.caret_rect ())));
   (* Headless proves the loop: force a repaint every iteration so
      the frame counter and checksum actually run. *)
-  let dirty = !headless || Ui.want_frame s.ui s.host in
-  if dirty then begin
-    (* populate's anchor-drift corrections surface as VisibleRange
-       dispatches — apply them like any other Ui action *)
-    apply_actions s (snd (Assembly.repaint s.driver.asm));
-    ignore (Lui_a11y.sync d.a11y);
-    if !(d.gl_live_cell) then begin
-      (match !(d.gctx_cell) with
-       | Some c -> ignore (Sdl.gl_make_current d.sdl c)
-       | None -> ());
-      Sdl.gl_swap_window d.sdl
-    end;
-    Ui.frame_done s.ui;
-    d.frame <- d.frame + 1;
-    Checksum.add_scene d.checksum (Lui_host.scene s.host);
-    if !headless && not !(d.gl_live_cell) then
-      log "win=%d frame=%d ops=%d" d.idx d.frame
-        (List.length (Lui_host.scene s.host).Lui_scene.ops);
-    stats_update d.stats ((perf_s () -. t0) *. 1000.);
-    if d.frame mod 60 = 0 then begin
-      (* FPS for the badge rides the same ~1 s window as the stats
-         log; headless never sends it, keeping the initial badge
-         (empty) deterministic for the checksum. *)
-      let fps =
-        if d.stats.frames > 0 && d.stats.acc_ms > 0. then
-          1000. /. (d.stats.acc_ms /. float d.stats.frames)
-        else 0. in
-      stats_report d.stats (!(d.renderer_cell)).Lui_host.name;
-      if not !headless then
-        ignore
-          (Lui_app.send d.app
-             (Demo_app.Badge
-                (Printf.sprintf "%s — %.0f fps"
-                   (!(d.renderer_cell)).Lui_host.name fps)))
-    end
-  end;
-  dirty
+  if !headless || Ui.want_frame s.ui s.host then
+    Frame.request_frame d.sched;
+  let decision =
+    if !headless then Frame.Present
+    else Frame.poll d.sched ~now_ms:(perf_s () *. 1000.) ~vsync:d.vsync
+  in
+  (match decision with
+   | Frame.Present ->
+     (* Assembly.repaint repaints and refreshes the hit-test mirror *)
+     (* populate's anchor-drift corrections surface as VisibleRange
+        dispatches — apply them like any other Ui action *)
+     apply_actions s (snd (Assembly.repaint s.driver.asm));
+     ignore (Lui_a11y.sync d.a11y);
+     if !(d.gl_live_cell) then begin
+       (match !(d.gctx_cell) with
+        | Some c -> ignore (Sdl.gl_make_current d.sdl c)
+        | None -> ());
+       Sdl.gl_swap_window d.sdl
+     end;
+     Ui.frame_done s.ui;
+     d.frame <- d.frame + 1;
+     Checksum.add_scene d.checksum (Lui_host.scene s.host);
+     if !headless && not !(d.gl_live_cell) then
+       log "win=%d frame=%d ops=%d" d.idx d.frame
+         (List.length (Lui_host.scene s.host).Lui_scene.ops);
+     stats_update d.stats ((perf_s () -. t0) *. 1000.);
+     Frame.presented d.sched ~now_ms:(perf_s () *. 1000.);
+     if d.frame mod 60 = 0 then begin
+       (* FPS for the badge rides the same ~1 s window as the stats
+          log; headless never sends it, keeping the initial badge
+          (empty) deterministic for the checksum. *)
+       let fps =
+         if d.stats.frames > 0 && d.stats.acc_ms > 0. then
+           1000. /. (d.stats.acc_ms /. float d.stats.frames)
+         else 0. in
+       stats_report d.stats (!(d.renderer_cell)).Lui_host.name;
+       if not !headless then
+         ignore
+           (Lui_app.send d.app
+              (Demo_app.Badge
+                 (Printf.sprintf "%s — %.0f fps"
+                    (!(d.renderer_cell)).Lui_host.name fps)))
+     end
+   | Frame.Wait_ms _ | Frame.Idle -> ());
+  decision
 
 
 (* ---------- window creation ---------- *)
@@ -743,7 +771,7 @@ let open_window ~title ~idx =
       reqs_seen = Hashtbl.create 8; checksum = Checksum.create ();
       frame = 0;
       stats = { frames = 0; acc_ms = 0.; min_ms = 1e9; max_ms = 0. };
-      idx; asm; caret_rect }
+      idx; sched = Frame.create (); asm; caret_rect }
   in
   let s =
     Multi.make_surface ~id ~host ~driver:d ~ui ~rects ~scale_cell
@@ -754,6 +782,7 @@ let open_window ~title ~idx =
   (match Sdl.get_window_display_index !win with
    | Ok di -> s.Multi.display <- di
    | Error _ -> ());
+  Frame.set_refresh_hz d.sched (float (refresh_hz_of s));
   log "lui_window[%d]: %dx%d drawable (scale %.2f), renderer=%s%s"
     idx dw dh scale (!(renderer_cell)).Lui_host.name
     (if !headless then " [headless]" else "");
@@ -805,11 +834,48 @@ let handle_window_event e =
        apply_actions s (Multi.dispatch s (Input.Resize (w, h)))
      | `Moved -> refresh_scale s
      | `Close -> close_window id
+     (* Visibility feeds the scheduler: covered windows throttle to
+        the background cadence, restored ones present fresh content. *)
+     | `Hidden -> Frame.set_visibility s.driver.sched Frame.Hidden
+     | `Minimized -> Frame.set_visibility s.driver.sched Frame.Minimized
+     | `Shown | `Restored ->
+       Frame.set_visibility s.driver.sched Frame.Shown
+     | `Exposed -> Frame.request_frame s.driver.sched
      | `Focus_gained -> Multi.set_focused windows id
      | `Focus_lost ->
        if Multi.focused windows = id then Multi.clear_focus windows
      | `Take_focus -> focus_window id
      | _ -> ())
+
+(* One SDL event, routed: process-global events apply everywhere,
+   window-tagged events go to their surface. An event that woke a
+   [Sdl.wait_event_timeout] sleep goes through here too — a wake is
+   just a slower first poll. *)
+let handle_sdl_event e =
+  let typ = Sdl.Event.get e Sdl.Event.typ in
+  (* SDL_RENDER_TARGETS_RESET / SDL_RENDER_DEVICE_RESET: the GPU
+     device is shared across windows, so a reset demotes every
+     surface down the ladder. *)
+  if typ = 0x2000 || typ = 0x2001 then
+    Multi.iter windows (fun s -> demote s "SDL render reset")
+  else
+    match Sdl.Event.enum typ with
+    | `Quit -> quit := true
+    | `Window_event -> handle_window_event e
+    | `Display_event ->
+      (* Hotplug / mode change: re-query every window's drawable —
+         cheap, and only windows that actually changed respond. *)
+      Multi.iter windows refresh_scale
+    | _ ->
+      let target =
+        match window_id_of e with
+        | Some id -> Multi.find windows id
+        | None -> Multi.find_focused windows
+      in
+      (match target, input_of_event e with
+       | Some s, Some input ->
+         apply_actions s (Multi.dispatch s input)
+       | _ -> ())
 
 let drain_events e =
   (* Shell-queued model actions go to the focused window (falling back
@@ -819,35 +885,8 @@ let drain_events e =
      Queue.iter (fun a -> ignore (Lui_app.send s.driver.app a)) pending
    | None -> ());
   Queue.clear pending;
-  let go = ref true in
-  while !go do
-    if Sdl.poll_event (Some e) then begin
-      let typ = Sdl.Event.get e Sdl.Event.typ in
-      (* SDL_RENDER_TARGETS_RESET / SDL_RENDER_DEVICE_RESET: the GPU
-         device is shared across windows, so a reset demotes every
-         surface down the ladder. *)
-      if typ = 0x2000 || typ = 0x2001 then
-        Multi.iter windows (fun s -> demote s "SDL render reset")
-      else
-      match Sdl.Event.enum typ with
-      | `Quit -> quit := true
-      | `Window_event -> handle_window_event e
-      | `Display_event ->
-        (* Hotplug / mode change: re-query every window's drawable —
-           cheap, and only windows that actually changed respond. *)
-        Multi.iter windows refresh_scale
-      | _ ->
-        let target =
-          match window_id_of e with
-          | Some id -> Multi.find windows id
-          | None -> Multi.find_focused windows
-        in
-        (match target, input_of_event e with
-         | Some s, Some input ->
-           apply_actions s (Multi.dispatch s input)
-         | _ -> ())
-      end
-    else go := false
+  while Sdl.poll_event (Some e) do
+    handle_sdl_event e
   done
 
 (* ---------- shell integration (interactive, process-wide) ---------- *)
@@ -954,20 +993,31 @@ let () =
                (Input.Key_down (Input.Tab, Input.mods_none, false)))
         | None -> ()
     end;
-    let dirty_any = ref false in
-    Multi.iter windows (fun s -> if tick s ~t0 then dirty_any := true);
+    (* Each tick returns the scheduler's decision; the loop sleeps
+       until the nearest present deadline across surfaces. Idle
+       surfaces sleep for events too — the wait returns as soon as
+       input lands, and housekeeping (model polls) caps the sleep. *)
+    let wait_ms = ref Float.infinity in
+    Multi.iter windows (fun s ->
+        match tick s ~t0 with
+        | Frame.Wait_ms ms -> wait_ms := Float.min !wait_ms ms
+        | Frame.Present | Frame.Idle -> ());
     incr iter_no;
-    (* No vsync under the dummy driver and possibly none elsewhere:
-       pace the loop explicitly. An idle iteration (no repaint) also
-       sleeps briefly so the poll loop does not spin at 100% CPU. *)
     if not !headless then begin
-      let any_vsync = Multi.any windows (fun s -> s.driver.vsync) in
-      if !dirty_any && not any_vsync then begin
-        let remaining = 16.6 -. ((perf_s () -. t0) *. 1000.) in
-        if remaining > 0.5 then
-          Sdl.delay (Int32.of_int (int_of_float remaining))
+      let ms =
+        if !wait_ms = Float.infinity then 250.
+        else Float.max 0. !wait_ms
+      in
+      (* Sleep/wake in one call: [SDL_WaitEventTimeout] returns early
+         the moment an event lands — a wake is just a slower first
+         poll, and the event routes through the same handler — or at
+         the deadline, where the next tick presents on time. *)
+      if Sdl.wait_event_timeout (Some e)
+           (int_of_float (Float.ceil ms))
+      then begin
+        handle_sdl_event e;
+        drain_events e
       end
-      else if not !dirty_any then Sdl.delay 4l
     end
   done;
   Multi.iter windows (fun s ->

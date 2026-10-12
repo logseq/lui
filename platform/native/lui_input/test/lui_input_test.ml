@@ -267,6 +267,124 @@ let test_text_ime_commit () =
   Alcotest.(check bool) "not composing" false
     (Lui_text_input.composing st)
 
+(* ---------- P1-2: the session revision protocol ---------- *)
+
+(* Rapid typing: every local edit mirrors into the prop instantly,
+   so the model echo Acks without ever rolling the shadow back —
+   local typing never waits on the round trip. *)
+let test_revision_rapid_typing () =
+  let store = store_of base_ops in
+  let st =
+    Lui_text_input.attach Lui_text_input.initial ~node:4 ~text:"x"
+  in
+  let st, _ = Lui_text_input.splice st "a" in
+  Alcotest.(check int) "local rev" 1
+    (Lui_text_input.local_revision st);
+  (* the app's echo of the mirrored prop arrives — an Ack *)
+  let st, acts =
+    Lui_text_input.sync_model store st ~model_text:"xa"
+  in
+  Alcotest.(check bool) "ack response" true
+    (Lui_text_input.model_response st = `Ack);
+  Alcotest.(check int) "no repaint churn" 0 (List.length acts);
+  Alcotest.(check string) "shadow intact" "xa"
+    (Lui_text_input.text st);
+  (* type ahead before the next frame — still intact *)
+  let st, _ = Lui_text_input.splice st "b" in
+  let st, _ =
+    Lui_text_input.sync_model store st ~model_text:"xab"
+  in
+  Alcotest.(check string) "rapid typing stable" "xab"
+    (Lui_text_input.text st)
+
+(* A stale model re-write of the attached baseline is a no-op —
+   it cannot roll the shadow back over pending local edits. *)
+let test_revision_stale_model_ignored () =
+  let store = store_of base_ops in
+  let st =
+    Lui_text_input.attach Lui_text_input.initial ~node:4 ~text:"x"
+  in
+  let st, _ = Lui_text_input.splice st "a" in
+  let st, acts =
+    Lui_text_input.sync_model store st ~model_text:"x"
+  in
+  Alcotest.(check string) "stale baseline ignored" "xa"
+    (Lui_text_input.text st);
+  Alcotest.(check int) "no acts" 0 (List.length acts)
+
+(* A genuinely new model text while local edits are in flight is a
+   Correction: the model is canonical — adopt, clamp, drop undo. *)
+let test_revision_correction () =
+  let store = store_of base_ops in
+  let st =
+    Lui_text_input.attach Lui_text_input.initial ~node:4 ~text:"x"
+  in
+  let st, _ = Lui_text_input.splice st "a" in
+  let st, acts =
+    Lui_text_input.sync_model store st ~model_text:"replaced"
+  in
+  Alcotest.(check bool) "correction" true
+    (Lui_text_input.model_response st = `Correction);
+  Alcotest.(check string) "model wins" "replaced"
+    (Lui_text_input.text st);
+  Alcotest.(check int) "model rev" 1
+    (Lui_text_input.model_revision st);
+  Alcotest.(check bool) "repaint" true
+    (List.exists (function `Repaint -> true | _ -> false) acts);
+  (* no pending undo across a correction *)
+  let st, _ = Lui_text_input.undo st ~shift:false in
+  Alcotest.(check string) "undo does not resurrect" "replaced"
+    (Lui_text_input.text st)
+
+(* The same change on a clean session is a Reset, not a
+   Correction. *)
+let test_revision_reset () =
+  let store = store_of base_ops in
+  let st =
+    Lui_text_input.attach Lui_text_input.initial ~node:4 ~text:"x"
+  in
+  let st, _ =
+    Lui_text_input.sync_model store st ~model_text:"remote"
+  in
+  Alcotest.(check bool) "reset" true
+    (Lui_text_input.model_response st = `Reset);
+  Alcotest.(check string) "adopted" "remote"
+    (Lui_text_input.text st)
+
+(* A model update landing mid-composition cancels it — marked text
+   was never dispatched, so rollback on the changed base is the
+   only stable answer. *)
+let test_revision_cancels_composition () =
+  let store = store_of base_ops in
+  let st =
+    Lui_text_input.attach Lui_text_input.initial ~node:4 ~text:"x"
+  in
+  let st, _ =
+    Lui_text_input.feed_ime store st (`Editing ("に", 0, 2))
+  in
+  Alcotest.(check bool) "composing" true
+    (Lui_text_input.composing st);
+  let st, _ =
+    Lui_text_input.sync_model store st ~model_text:"new base"
+  in
+  Alcotest.(check string) "marked cleared" ""
+    (Lui_text_input.marked st);
+  Alcotest.(check string) "base adopted" "new base"
+    (Lui_text_input.text st)
+
+(* Every attach starts a fresh session — responses to the old one
+   cannot leak across the boundary. *)
+let test_session_ids () =
+  let a =
+    Lui_text_input.attach Lui_text_input.initial ~node:4 ~text:"x"
+  in
+  let b = Lui_text_input.attach a ~node:0 ~text:"" in
+  let c = Lui_text_input.attach b ~node:4 ~text:"y" in
+  Alcotest.(check bool) "session bumps" true
+    (Lui_text_input.session_id a <> Lui_text_input.session_id c);
+  Alcotest.(check int) "fresh revisions" 0
+    (Lui_text_input.local_revision c)
+
 (* ---------- Lui_selection ---------- *)
 
 let test_static_selection () =
@@ -437,7 +555,17 @@ let () =
         [ Alcotest.test_case "splice" `Quick test_text_session;
           Alcotest.test_case "undo" `Quick test_text_undo;
           Alcotest.test_case "caret ops" `Quick test_text_caret_ops;
-          Alcotest.test_case "ime commit" `Quick test_text_ime_commit ] );
+          Alcotest.test_case "ime commit" `Quick test_text_ime_commit;
+          Alcotest.test_case "rapid typing" `Quick
+            test_revision_rapid_typing;
+          Alcotest.test_case "stale model" `Quick
+            test_revision_stale_model_ignored;
+          Alcotest.test_case "correction" `Quick
+            test_revision_correction;
+          Alcotest.test_case "reset" `Quick test_revision_reset;
+          Alcotest.test_case "model vs composition" `Quick
+            test_revision_cancels_composition;
+          Alcotest.test_case "session ids" `Quick test_session_ids ] );
       ( "selection",
         [ Alcotest.test_case "static" `Quick test_static_selection ] );
       ( "scroll",

@@ -383,6 +383,11 @@ module Layout = struct
     | None -> avail
 
   let rec layout_node store measure scale rects id (r : rect) =
+    (* Pixel-snapping contract: stored geometry is edge-snapped once at
+       production so the hit-test mirror, scroll extents, clip and
+       caret share the rasterizer's device-pixel edges. Children lay
+       out inside the snapped box. *)
+    let r = rect_snap r in
     Hashtbl.replace rects id r;
     match Lui_store.child_ids store id with
     | [] -> ()
@@ -510,6 +515,30 @@ module Ui = struct
     mutable scroll : Lui_scroll.state;
     mutable drag : Lui_drag.state;
     mutable overlay : Lui_overlay.state;
+    (* Paint-hint channels for the retained fragment pass: scroll
+       containers whose offset moved this frame (their whole subtree
+       re-derives — ops embed shifted rects), containers whose
+       scrollable range changed (thumb metrics only), and the
+       interaction snapshot the last hints diff ran against. *)
+    scrolled : (int, unit) Hashtbl.t;
+    scroll_metrics : (int, unit) Hashtbl.t;
+    mutable paint_snap : snap;
+  }
+
+  and snap = {
+    ps_hovered : int;
+    ps_pressed : int;
+    ps_focused : int;
+    ps_drop_target : int;
+    ps_drag_src : int;
+    ps_hl : int;
+    ps_menu : int;
+    ps_caret : int;
+    ps_anchor : int;
+    ps_sel_text : (int * int * int * int) option;
+    ps_marked : string;
+    ps_shadow : string;
+    ps_focus_vis : bool;
   }
 
   let create () =
@@ -527,7 +556,14 @@ module Ui = struct
       gesture = Lui_gesture.initial;
       scroll = Lui_scroll.initial;
       drag = Lui_drag.initial;
-      overlay = Lui_overlay.initial }
+      overlay = Lui_overlay.initial;
+      scrolled = Hashtbl.create 8;
+      scroll_metrics = Hashtbl.create 8;
+      paint_snap =
+        { ps_hovered = 0; ps_pressed = 0; ps_focused = 0;
+          ps_drop_target = 0; ps_drag_src = 0; ps_hl = 0; ps_menu = 0;
+          ps_caret = 0; ps_anchor = 0; ps_sel_text = None;
+          ps_marked = ""; ps_shadow = ""; ps_focus_vis = false } }
 
   let set_scale t s = t.scale <- s
   let set_measure t f = t.measure <- f
@@ -546,6 +582,14 @@ module Ui = struct
   let shadow t = Lui_text_input.text t.session
   let ime t = Lui_text_input.ime t.session
   let marked t = Lui_text_input.marked t.session
+
+  (* (session id, host-local edit revision, adopted model
+     revision) of the active text session — observability for the
+     edit protocol. *)
+  let text_revisions t =
+    (Lui_text_input.session_id t.session,
+     Lui_text_input.local_revision t.session,
+     Lui_text_input.model_revision t.session)
   let sel_anchor t = Lui_text_input.anchor t.session
   let sel_text t = Lui_selection.text t.selection
   let focus_visible t = Lui_focus.kbd_visible t.focus
@@ -571,9 +615,63 @@ module Ui = struct
   let scroll_offset_x t = Lui_scroll.offset t.scroll Lui_scroll.X
   let scroll_cap_x t = Lui_scroll.cap t.scroll Lui_scroll.X
 
+  (* Install the next scroll state, recording which containers'
+     offsets moved (a moved offset shifts every descendant rect, so
+     the subtree re-derives) and which caps changed (thumb metrics
+     only) for the paint-hint channel. *)
+  let set_scroll t (s' : Lui_scroll.state) =
+    let module M = Lui_scroll.IdMap in
+    let prev : Lui_scroll.state = t.scroll in
+    M.iter
+      (fun id o ->
+        if Lui_scroll.offset s' Y id <> o then
+          Hashtbl.replace t.scrolled id ())
+      prev.off;
+    M.iter
+      (fun id o ->
+        if Lui_scroll.offset prev Y id <> o then
+          Hashtbl.replace t.scrolled id ())
+      s'.off;
+    M.iter
+      (fun id o ->
+        if Lui_scroll.offset s' X id <> o then
+          Hashtbl.replace t.scrolled id ())
+      prev.off_x;
+    M.iter
+      (fun id o ->
+        if Lui_scroll.offset prev X id <> o then
+          Hashtbl.replace t.scrolled id ())
+      s'.off_x;
+    M.iter
+      (fun id c ->
+        if Lui_scroll.cap s' Y id <> c then
+          Hashtbl.replace t.scroll_metrics id ())
+      prev.cap;
+    M.iter
+      (fun id c ->
+        if Lui_scroll.cap prev Y id <> c then
+          Hashtbl.replace t.scroll_metrics id ())
+      s'.cap;
+    M.iter
+      (fun id c ->
+        if Lui_scroll.cap s' X id <> c then
+          Hashtbl.replace t.scroll_metrics id ())
+      prev.cap_x;
+    M.iter
+      (fun id c ->
+        if Lui_scroll.cap prev X id <> c then
+          Hashtbl.replace t.scroll_metrics id ())
+      s'.cap_x;
+    t.scroll <- s'
+
   let set_scroll_cap_axis t axis id cap =
+    (* Snapped-geometry contract: the scrollable range lives on the
+       same device-pixel edges as the rects it derives from — a
+       fractional remainder rounds out instead of becoming phantom
+       scroll range. *)
+    let cap = Float.max 0. (Lui_scene.snap cap) in
     let s', m = Lui_scroll.set_cap t.scroll axis id cap in
-    t.scroll <- s';
+    set_scroll t s';
     (* a clamped offset repaints — the intent can only be Repaint *)
     if m <> [] then t.dirty <- true
 
@@ -672,13 +770,13 @@ module Ui = struct
     | `Ime_rect r -> [ Ime_rect r ]
     | `Scroll_show id ->
       let s', m = Lui_scroll.scroll_show (senv t) store t.scroll id in
-      t.scroll <- s';
+      set_scroll t s';
       perform_all t store m
     | `Scroll_by (axis, id, d) ->
       let s', m =
         Lui_scroll.scroll_by ~axis (senv t) store t.scroll id d
       in
-      t.scroll <- s';
+      set_scroll t s';
       perform_all t store m
   and perform_all t store m_acts =
     List.concat_map (perform t store) m_acts
@@ -749,14 +847,14 @@ module Ui = struct
        t.focus <- f';
        run m);
       let s', m = Lui_scroll.sync (senv t) store t.scroll in
-      t.scroll <- s';
+      set_scroll t s';
       run m
     end;
     (* visible-range reports follow scroll offsets, which live in
        the machine rather than the store — they run on every sync,
        memoized on their inputs *)
     (let s', m = Lui_scroll.report_tracked (senv t) store t.scroll in
-     t.scroll <- s';
+     set_scroll t s';
      run m);
     List.rev !acts
 
@@ -985,7 +1083,11 @@ module Ui = struct
        t.session <- s';
        run m
      | Input.Caret r ->
-       let s', m = Lui_text_input.feed_ime store t.session (`Caret r) in
+       (* The caret is painted geometry too: it snaps to the same
+          device-pixel edges as the rects it anchors on. *)
+       let s', m =
+         Lui_text_input.feed_ime store t.session (`Caret (rect_snap r))
+       in
        t.session <- s';
        run m
      | Input.Paste s ->
@@ -1083,7 +1185,7 @@ module Ui = struct
               let s', m =
                 Lui_scroll.scroll_show (senv t) store t.scroll next
               in
-              t.scroll <- s';
+              set_scroll t s';
               run m
             end
           | _ ->
@@ -1128,7 +1230,7 @@ module Ui = struct
          Lui_scroll.wheel (senv t) store t.scroll ~path
            ~scale:t.scale ~dx ~dy ~mods:Lui_input.mods_none
        in
-       t.scroll <- s';
+       set_scroll t s';
        run m
      | Input.Wheel_mods (dx, dy, mods) ->
        let sx, sy = Lui_pointer.position t.pointer in
@@ -1140,7 +1242,7 @@ module Ui = struct
          Lui_scroll.wheel (senv t) store t.scroll ~path
            ~scale:t.scale ~dx ~dy ~mods:(conv_mods mods)
        in
-       t.scroll <- s';
+       set_scroll t s';
        run m
      | Input.Drop_file p ->
        (* OS drops land at the pointer's last position on the
@@ -1183,12 +1285,74 @@ module Ui = struct
         (bool_prop store id "selected" || Lui_gesture.hl t.gesture = id);
       disabled = not (node_enabled store id) }
 
+  (* Ids whose paint inputs moved outside the store journal: the
+     interaction-state slots [state_of] reads, the editing session
+     behind the focused node's text ops, menu visibility, and every
+     scroll container that moved — a moved offset shifts all
+     descendant rects (ops embed them), so the whole subtree
+     re-derives. Drains the scroll tables and rolls the snapshot. *)
+  (* Returns (hard, soft): hard ids re-plan (interaction state, caret,
+     metric thumbs); soft ids merely shifted — scrolled subtrees move
+     under unchanged props, so the fragment pass may translate their
+     cached ops instead. *)
+  let paint_hints t store =
+    let h = Hashtbl.create 16 in
+    let soft = Hashtbl.create 16 in
+    let mark id = if id <> 0 then Hashtbl.replace h id () in
+    let mark_soft id = if id <> 0 then Hashtbl.replace soft id () in
+    let s = t.paint_snap in
+    let drag_src = Lui_drag.source t.drag
+    and drop_target = Lui_drag.target t.drag in
+    if s.ps_hovered <> hovered t then (mark s.ps_hovered; mark (hovered t));
+    if s.ps_pressed <> pressed t then (mark s.ps_pressed; mark (pressed t));
+    if s.ps_focused <> focused t then (mark s.ps_focused; mark (focused t));
+    if s.ps_drop_target <> drop_target then
+      (mark s.ps_drop_target; mark drop_target);
+    if s.ps_drag_src <> drag_src then (mark s.ps_drag_src; mark drag_src);
+    if s.ps_hl <> hl_item t then (mark s.ps_hl; mark (hl_item t));
+    if s.ps_menu <> open_menu t then (mark s.ps_menu; mark (open_menu t));
+    (* Caret/selection/marked/shadow ride the focused node's text
+       ops; the ring channel reads focus_visible. *)
+    if
+      s.ps_caret <> caret t || s.ps_anchor <> sel_anchor t
+      || s.ps_marked <> marked t || s.ps_shadow <> shadow t
+      || s.ps_focus_vis <> focus_visible t
+    then mark (focused t);
+    if s.ps_sel_text <> sel_text t then begin
+      (match s.ps_sel_text with
+       | Some (a, _, b, _) -> mark a; mark b
+       | None -> ());
+      (match sel_text t with
+       | Some (a, _, b, _) -> mark a; mark b
+       | None -> ())
+    end;
+    (* Moved offset: the container's thumb is a hard repaint; every
+       descendant just translates. *)
+    Hashtbl.iter
+      (fun id () ->
+        mark id;
+        List.iter mark_soft (Lui_store.preorder ~root:id store))
+      t.scrolled;
+    Hashtbl.reset t.scrolled;
+    (* Range-only change: the thumb metrics, nothing below. *)
+    Hashtbl.iter (fun id () -> mark id) t.scroll_metrics;
+    Hashtbl.reset t.scroll_metrics;
+    t.paint_snap <-
+      { ps_hovered = hovered t; ps_pressed = pressed t;
+        ps_focused = focused t; ps_drop_target = drop_target;
+        ps_drag_src = drag_src; ps_hl = hl_item t;
+        ps_menu = open_menu t; ps_caret = caret t;
+        ps_anchor = sel_anchor t; ps_sel_text = sel_text t;
+        ps_marked = marked t; ps_shadow = shadow t;
+        ps_focus_vis = focus_visible t };
+    (h, soft)
+
   let scroll_to ?(axis = Y) t store id off =
     let s', m =
       Lui_scroll.scroll_to ~axis:(conv_axis axis) (senv t) store
         t.scroll id off
     in
-    t.scroll <- s';
+    set_scroll t s';
     perform_all t store m
 
   let scroll_by ?(axis = Y) t store id d =
@@ -1196,14 +1360,14 @@ module Ui = struct
       Lui_scroll.scroll_by ~axis:(conv_axis axis) (senv t) store
         t.scroll id d
     in
-    t.scroll <- s';
+    set_scroll t s';
     perform_all t store m
 
   let drop_accepts = Lui_query.drop_accepts
 
   let scroll_show t store id =
     let s', m = Lui_scroll.scroll_show (senv t) store t.scroll id in
-    t.scroll <- s';
+    set_scroll t s';
     perform_all t store m
 
   (* Repaint pacing: the open menu changing under a fixed layout
@@ -1517,6 +1681,87 @@ module Checksum = struct
   let value t = t.hash
 end
 
+module Frame = struct
+  (* Per-surface frame scheduler — the "mark dirty → frame callback →
+     present" half of the pipeline contract
+
+       event → action queue → stabilize → patch flush → mark dirty →
+       frame callback → layout/scene → present
+
+     Mutations never draw: they [request_frame]. The driver's frame
+     callback [poll]s and only a [Present] decision lays out, rebuilds
+     the scene and presents. [poll] also carries the pacing contract:
+     a shown surface runs at the monitor's refresh rate (a vsync
+     swap paces itself, so it presents whenever dirty), a hidden or
+     minimized surface is throttled to the background cadence — it
+     still presents occasionally so previews and screenshots stay
+     live, just ~60x cheaper — and a clean surface is [Idle], telling
+     the driver it may sleep until an event wakes the loop. *)
+  type visibility =
+    | Shown
+    | Hidden
+    | Minimized
+
+  type decision =
+    | Present  (** run layout/scene/present now *)
+    | Wait_ms of float  (** present pending; ms until the deadline *)
+    | Idle  (** nothing pending — the loop may sleep for events *)
+
+  type t = {
+    mutable dirty : bool;
+    mutable visibility : visibility;
+    mutable refresh_hz : float;
+    mutable bg_period_ms : float;
+    mutable last_present_ms : float;
+  }
+
+  let create () =
+    { dirty = true;  (* the first frame always paints *)
+      visibility = Shown;
+      refresh_hz = 60.;
+      bg_period_ms = 250.;
+      last_present_ms = Float.neg_infinity }
+
+  let request_frame t = t.dirty <- true
+  let dirty t = t.dirty
+  let visibility t = t.visibility
+  let refresh_hz t = t.refresh_hz
+
+  let set_visibility t v =
+    if v <> t.visibility then begin
+      t.visibility <- v;
+      (* Back on screen: present fresh content regardless of when the
+         surface last painted. *)
+      if v = Shown then t.dirty <- true
+    end
+
+  let set_refresh_hz t hz =
+    if hz > 0. && hz <= 1000. then t.refresh_hz <- hz
+
+  let set_bg_period_ms t ms =
+    if ms > 0. then t.bg_period_ms <- ms
+
+  (* The cadence a visibility allows: refresh-rate pacing while shown,
+     the background period while throttled. *)
+  let period_ms t =
+    match t.visibility with
+    | Shown -> 1000. /. t.refresh_hz
+    | Hidden | Minimized -> t.bg_period_ms
+
+  let poll t ~now_ms ~vsync =
+    if not t.dirty then Idle
+    else if vsync then Present
+    else begin
+      let next = t.last_present_ms +. period_ms t in
+      if now_ms >= next then Present
+      else Wait_ms (next -. now_ms)
+    end
+
+  let presented t ~now_ms =
+    t.dirty <- false;
+    t.last_present_ms <- now_ms
+end
+
 module Multi = struct
   (* Multi-window manager: a registry of independent surfaces. Each
      surface owns a full pipeline — host (store, layout, scene,
@@ -1735,6 +1980,15 @@ module Assembly = struct
      platform. Returns the frame bytes plus the actions populate's
      anchor-drift corrections produced. *)
   let repaint t =
+    (* Interaction-state diffs reach the fragment pass through the
+       host's hint table — the store journal cannot see them. *)
+    let hard, soft = Ui.paint_hints t.ui (store t) in
+    Hashtbl.iter
+      (fun id () -> Lui_host.note_paint t.host id)
+      hard;
+    Hashtbl.iter
+      (fun id () -> Lui_host.note_moved t.host id)
+      soft;
     let px = Lui_host.repaint t.host in
     let acts = t.populate () in
     (px, acts)
@@ -2019,7 +2273,7 @@ module Assembly = struct
         Lui_scene.rect 0. 0. (float scn.Lui_scene.width)
           (float scn.Lui_scene.height)
       in
-      let rec visit id ~sx ~sy ~anc_clip ~parent_r =
+      let rec visit id ~sx ~sy ~parent_r =
         let base = engine_rect id in
         let shifted =
           { base with
@@ -2031,15 +2285,13 @@ module Assembly = struct
             (Lui_store.kind store id)
             (Lui_paint.placement_of_rect shifted) parent_r
         in
-        let stored = Lui_scene.rect_intersect resolved anc_clip in
-        Hashtbl.replace rects id stored;
+        (* Clipping is NOT baked in: the shared hit walk recomputes the
+           exact stacking/clip context (clip kinds, promoted popups
+           escaping ancestor clips), so each node keeps its full
+           resolved box. *)
+        Hashtbl.replace rects id resolved;
         let sx' = sx +. Ui.scroll_offset_x ui id
         and sy' = sy +. Ui.scroll_offset ui id in
-        let anc_clip' =
-          if Ui.scrollable store id && not (Lui_scene.rect_empty stored)
-          then Lui_scene.rect_intersect anc_clip stored
-          else anc_clip
-        in
         let child_parent =
           if Lui_paint.unboxed store id then parent_r else resolved
         in
@@ -2052,14 +2304,11 @@ module Assembly = struct
         in
         List.iter
           (fun c ->
-             visit c ~sx:sx' ~sy:sy' ~anc_clip:anc_clip'
-               ~parent_r:child_parent)
+             visit c ~sx:sx' ~sy:sy' ~parent_r:child_parent)
           cids
       in
-      let everything = Lui_scene.rect (-.1e9) (-.1e9) 2e9 2e9 in
       List.iter
-        (fun id ->
-           visit id ~sx:0. ~sy:0. ~anc_clip:everything ~parent_r:viewport)
+        (fun id -> visit id ~sx:0. ~sy:0. ~parent_r:viewport)
         (Lui_store.root_ids store);
       let srev = Lui_store.revision store in
       let sids =
