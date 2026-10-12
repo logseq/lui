@@ -737,7 +737,7 @@ private struct LUINodeView: View {
         case .row:
             return AnyView(LUIRowView(model: model, backend: backend))
         case .tabs:
-            if LUISegmentedTabsView.supports(model: model, backend: backend) {
+            if LUISegmentedTabsView.supports(model: model) {
                 return AnyView(LUISegmentedTabsView(model: model, backend: backend))
             }
             return AnyView(LUIHorizontalGroupView(model: model, backend: backend))
@@ -1340,9 +1340,8 @@ private struct LUIContextMenuModifier: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if let menu = model.children.compactMap({ backend.model(id: $0) })
-            .first(where: { $0.kind == .contextMenu }),
-           menu.children.contains(where: { backend.model(id: $0)?.kind == .menuItem }) {
+        if let menuID = model.childData.contextMenuID,
+           let menu = backend.model(id: menuID) {
             #if os(macOS)
             // `.contextMenu` never sees right-clicks that land on Button/Menu
             // descendants — AppKit hit-tests an interactive control first. An
@@ -1702,8 +1701,19 @@ private struct LUITreeOutlineList: View {
         }
 
         var tokens: [Token] = []
+        // `collect` re-queries `containsTreeItem` for sibling subtrees, so
+        // memoize within this rebuild — an unmemoized walk rescans whole
+        // branches and can degrade to O(depth × nodes) per evaluation.
+        var treeItemCache: [Int: Bool] = [:]
 
         func containsTreeItem(_ nodeID: Int) -> Bool {
+            if let cached = treeItemCache[nodeID] { return cached }
+            let result = containsTreeItemUncached(nodeID)
+            treeItemCache[nodeID] = result
+            return result
+        }
+
+        func containsTreeItemUncached(_ nodeID: Int) -> Bool {
             guard let node = backend.model(id: nodeID) else { return false }
             if node.isTreeItem { return true }
             return node.children.contains(where: containsTreeItem)
@@ -1971,7 +1981,7 @@ private struct LUITableCellView: View {
     }
 
     private var cellMaxWidth: CGFloat? {
-        (model.property(.grow)?.doubleValue ?? 0) > 0 ? .infinity : nil
+        model.derived.grow > 0 ? .infinity : nil
     }
 
     private var frameAlignment: Alignment {
@@ -2021,27 +2031,19 @@ private struct LUIStackView: View {
     }
 
     private var anchoredMenu: LUINodeModel? {
-        model.children
-            .compactMap(backend.model)
-            .first { $0.kind == .dropdownMenu && $0.property(.anchor) != nil }
+        model.childData.anchoredMenuID.flatMap { backend.model(id: $0) }
     }
 
     private var anchoredTooltip: LUINodeModel? {
-        model.children
-            .compactMap(backend.model)
-            .first { $0.kind == .tooltip && $0.property(.anchor) != nil }
+        model.childData.anchoredTooltipID.flatMap { backend.model(id: $0) }
     }
 
     private var hasComboboxTrigger: Bool {
-        model.children
-            .compactMap(backend.model)
-            .contains { $0.kind == .combobox }
+        model.childData.hasComboboxChild
     }
 
     private var hasSelectTrigger: Bool {
-        model.children
-            .compactMap(backend.model)
-            .contains { $0.kind == .select }
+        model.childData.hasSelectChild
     }
 
     @ViewBuilder
@@ -2161,8 +2163,8 @@ private struct LUIOverlayView: View {
 
     private func alignment(of childID: Int) -> Alignment {
         Self.alignment(
-            backend.model(id: childID)?.property(.alignment)?.stringValue
-                ?? model.property(.alignment)?.stringValue
+            model.childData.layout[childID]?.alignment
+                ?? model.derived.alignment
         )
     }
 
@@ -3159,9 +3161,8 @@ private struct LUINavigationFormToolbar: ToolbarContent {
     private func actionID(for placement: LUINavigationFormActionPlacement) -> Int? {
         guard let toolbarID, let toolbar = backend.model(id: toolbarID) else { return nil }
         return toolbar.children.first { childID in
-            guard let child = backend.model(id: childID) else { return false }
-            return LUINavigationFormSheetPolicy.actionPlacement(
-                child.derived.styleClass
+            LUINavigationFormSheetPolicy.actionPlacement(
+                toolbar.childData.layout[childID]?.styleClass
             ) == placement
         }
     }
@@ -4486,8 +4487,8 @@ private struct LUIMenuTriggerView: View {
 
     private var menu: LUINodeModel? {
         model.children
-            .compactMap(backend.model)
-            .first { $0.kind == .dropdownMenu }
+            .first { model.childData.layout[$0]?.kind == .dropdownMenu }
+            .flatMap { backend.model(id: $0) }
     }
 
     private var spokenLabel: String {
@@ -4794,17 +4795,17 @@ private struct LUIListItemView: View {
             }
             if !contentChildIDs.isEmpty {
                 ForEach(contentChildIDs, id: \.self) { childID in
-                    let child = backend.model(id: childID)
+                    let child = model.childData.layout[childID]
                     LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
                         .environment(\.luiIsNativeListRow, isNativeListRow)
                         .frame(
                             maxWidth: LUIListItemLayoutPolicy.stretchesChild(
                                 kind: child?.kind,
-                                grow: child?.property(.grow)?.doubleValue
+                                grow: child?.grow
                             ) ? .infinity : nil,
                             alignment: .leading
                         )
-                        .layoutPriority(child?.property(.grow)?.doubleValue ?? 0)
+                        .layoutPriority(child?.grow ?? 0)
                 }
             }
             if usesInlineTrailingIcon {
@@ -4899,12 +4900,12 @@ private struct LUIListItemView: View {
 
     /// Nested list-item children of a disclosure row.
     private var nestedRowIDs: [Int] {
-        visibleChildren.filter { backend.model(id: $0)?.kind == .listItem }
+        visibleChildren.filter { model.childData.layout[$0]?.kind == .listItem }
     }
 
     /// Content children rendered inside the row itself.
     private var contentChildIDs: [Int] {
-        visibleChildren.filter { backend.model(id: $0)?.kind != .listItem }
+        visibleChildren.filter { model.childData.layout[$0]?.kind != .listItem }
     }
 
     private var expansion: Binding<Bool> {
@@ -4923,9 +4924,10 @@ private struct LUIListItemView: View {
 
     private var hasGrowingVisibleChild: Bool {
         visibleChildren.contains { childID in
-            LUIListItemLayoutPolicy.stretchesChild(
-                kind: backend.model(id: childID)?.kind,
-                grow: backend.model(id: childID)?.property(.grow)?.doubleValue
+            let child = model.childData.layout[childID]
+            return LUIListItemLayoutPolicy.stretchesChild(
+                kind: child?.kind,
+                grow: child?.grow
             )
         }
     }
@@ -4943,11 +4945,7 @@ private struct LUIListItemView: View {
     }
 
     private var contextMenu: LUINodeModel? {
-        model.children.compactMap(backend.model).first { menu in
-            menu.kind == .contextMenu && menu.children.contains { childID in
-                backend.model(id: childID)?.kind == .menuItem
-            }
-        }
+        model.childData.contextMenuID.flatMap { backend.model(id: $0) }
     }
 
     private var showsTreeToggleChevron: Bool {
@@ -5099,8 +5097,9 @@ private struct LUIListItemSwipeActionsModifier: ViewModifier {
     }
 
     private var swipeActions: LUINodeModel? {
-        model.children.compactMap { backend.model(id: $0) }
-            .first { $0.kind == .swipeActions }
+        model.children
+            .first { model.childData.layout[$0]?.kind == .swipeActions }
+            .flatMap { backend.model(id: $0) }
     }
 
     private enum SwipeEdge {
@@ -5321,7 +5320,7 @@ private struct LUIButtonView: View {
             .controlSize(controlSize)
             .frame(
                 maxWidth: LUIButtonVisualPolicy.fillsAvailableWidth(
-                    grow: model.property(.grow)?.doubleValue
+                    grow: model.derived.grow
                 ) ? .infinity : nil,
                 alignment: LUIButtonVisualPolicy.labelAlignment(
                     textAlignment: model.property(.textAlignment)?.stringValue
@@ -5456,7 +5455,7 @@ private struct LUIButtonView: View {
             .lineLimit(1)
             .frame(
                 maxWidth: LUIButtonVisualPolicy.fillsAvailableWidth(
-                    grow: model.property(.grow)?.doubleValue
+                    grow: model.derived.grow
                 ) ? .infinity : nil,
                 alignment: LUIButtonVisualPolicy.labelAlignment(
                     textAlignment: model.property(.textAlignment)?.stringValue
@@ -5471,8 +5470,8 @@ private struct LUIButtonView: View {
 
     private var contextMenu: LUINodeModel? {
         model.children
-            .compactMap { backend.model(id: $0) }
-            .first { $0.kind == .contextMenu }
+            .first { model.childData.layout[$0]?.kind == .contextMenu }
+            .flatMap { backend.model(id: $0) }
     }
 
     @ViewBuilder
@@ -5673,13 +5672,11 @@ private struct LUISegmentedTabsView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
 
-    static func supports(model: LUINodeModel, backend: LUIAppleBackend) -> Bool {
-        let segments = model.children.compactMap { backend.model(id: $0) }
+    static func supports(model: LUINodeModel) -> Bool {
         // A segmented Picker models a single selection and has no per-segment
         // disabled state — groups that need either keep the button-row path.
-        return !segments.isEmpty && segments.allSatisfy {
-            $0.kind == .button && $0.isEnabled
-        }
+        // The scan runs once per commit into `childData`.
+        model.childData.segmentedTabsSupported
     }
 
     private var segments: [LUINodeModel] {
@@ -5751,10 +5748,10 @@ private struct LUIHorizontalGroupView: View {
                     groupChild(child)
                         .environment(\.luiInFusedCapsule, groupCarriesGlass)
                         .frame(
-                            maxWidth: child.property(.grow)?.doubleValue ?? 0 > 0
+                            maxWidth: child.derived.grow > 0
                                 ? .infinity : nil
                         )
-                        .layoutPriority(child.property(.grow)?.doubleValue ?? 0)
+                        .layoutPriority(child.derived.grow)
                 }
                 if main == "space_between" && index < model.children.count - 1 {
                     Spacer(minLength: gap)
@@ -6135,7 +6132,7 @@ private struct LUIRowView: View {
         // Cross-axis stretch makes children accept any offered height, which
         // also makes the row greedy in a VStack. Keep it at its ideal height
         // unless the wire explicitly sizes it.
-        if model.property(.grow)?.doubleValue ?? 0 > 0
+        if model.derived.grow > 0
             || model.surfaceHeight != nil || model.surfaceMinHeight != nil {
             rowContent
                 .modifier(LUIContainerPressModifier(model: model, backend: backend))
@@ -6153,20 +6150,20 @@ private struct LUIRowView: View {
                 Spacer(minLength: 0)
             }
             ForEach(Array(model.children.enumerated()), id: \.element) { index, childID in
-                let child = backend.model(id: childID)
+                let child = model.childData.layout[childID]
                 if child?.kind == .spacer {
                     Spacer(minLength: 0)
                 } else {
                     LUIAnyNodeView(nodeID: childID, backend: backend)
                         .equatable()
                         .frame(
-                            maxWidth: child?.property(.grow)?.doubleValue ?? 0 > 0
+                            maxWidth: (child?.grow ?? 0) > 0
                                 ? .infinity : nil,
                             maxHeight: cross == "stretch" ? .infinity : nil
                         )
                         .layoutPriority(LUIRowLayoutPolicy.childLayoutPriority(
-                            grow: child?.property(.grow)?.doubleValue,
-                            styleClass: child?.derived.styleClass
+                            grow: child?.grow,
+                            styleClass: child?.styleClass
                         ))
                 }
                 if model.property(.main)?.stringValue == "space_between" &&
@@ -6185,10 +6182,10 @@ private struct LUIRowView: View {
 
     private var hasGrowingChild: Bool {
         model.children.contains { childID in
-            let child = backend.model(id: childID)
+            let child = model.childData.layout[childID]
             return LUIRowLayoutPolicy.isFlexibleChild(
                 kind: child?.kind,
-                grow: child?.property(.grow)?.doubleValue
+                grow: child?.grow
             )
         }
     }
@@ -6233,7 +6230,7 @@ private struct LUIColumnView: View {
         .frame(
             maxWidth: LUIColumnLayoutPolicy.fillsAvailableWidth(
                 cross: cross,
-                grow: model.property(.grow)?.doubleValue
+                grow: model.derived.grow
             )
                 ? .infinity : nil,
             alignment: frameAlignment
@@ -6248,18 +6245,18 @@ private struct LUIColumnView: View {
             Spacer(minLength: 0)
         }
         ForEach(Array(model.children.enumerated()), id: \.element) { index, childID in
-            let child = backend.model(id: childID)
+            let child = model.childData.layout[childID]
             LUIAnyNodeView(nodeID: childID, backend: backend)
                 .equatable()
                 .frame(
                     maxWidth: LUIVerticalContainerPolicy.stretchesCrossAxis(cross)
                         ? .infinity : nil,
-                    maxHeight: child?.property(.grow)?.doubleValue ?? 0 > 0
+                    maxHeight: (child?.grow ?? 0) > 0
                         ? .infinity : nil,
                     alignment: .topLeading
                 )
                 .layoutPriority(
-                    (child?.property(.grow)?.doubleValue ?? 0) > 0 ? 1 : 0
+                    (child?.grow ?? 0) > 0 ? 1 : 0
                 )
             if model.property(.main)?.stringValue == "space_between" &&
                 index < model.children.count - 1 {
@@ -6276,10 +6273,10 @@ private struct LUIColumnView: View {
 
     private var hasGrowingChild: Bool {
         model.children.contains { childID in
-            let child = backend.model(id: childID)
+            let child = model.childData.layout[childID]
             return LUIRowLayoutPolicy.isFlexibleChild(
                 kind: child?.kind,
-                grow: child?.property(.grow)?.doubleValue
+                grow: child?.grow
             )
         }
     }
@@ -6673,7 +6670,8 @@ private struct LUIListView: View {
             $0 != searchableField?.id
         }, id: \.self) { childID in
             Group {
-                if let child = backend.model(id: childID), child.kind == .listItem {
+                if model.childData.layout[childID]?.kind == .listItem,
+                   let child = backend.model(id: childID) {
                     LUIListItemView(model: child, backend: backend, isNativeListRow: true)
                 } else {
                     LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
@@ -6693,7 +6691,7 @@ private struct LUIListView: View {
             childID != searchableField?.id
         }
         if childIDs.contains(where: {
-            backend.model(id: $0)?.kind == .listSection
+            model.childData.layout[$0]?.kind == .listSection
         }) {
             return LUIListSectionPolicy.explicitSections(
                 childIDs: childIDs,
@@ -6710,14 +6708,14 @@ private struct LUIListView: View {
     }
 
     private func isHeading(_ childID: Int) -> Bool {
-        backend.model(id: childID)?.kind == .heading
+        model.childData.layout[childID]?.kind == .heading
     }
 
     private func isFooter(_ childID: Int) -> Bool {
-        guard let child = backend.model(id: childID), child.kind == .text else {
+        guard let child = model.childData.layout[childID], child.kind == .text else {
             return false
         }
-        return child.derived.styleClassTokens.contains("footnote")
+        return child.styleClassTokens.contains("footnote")
     }
 
     /// Row ids in flat payload order across sections; nested rows of
@@ -6903,16 +6901,20 @@ private struct LUIVirtualListView: View {
                 spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
             ) {
                 ForEach(sectionRows, id: \.id) { row in
-                    LUIAnyNodeView(nodeID: row.id, backend: backend)
+                    let rowView = LUIAnyNodeView(nodeID: row.id, backend: backend)
                         .equatable()
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .modifier(LUIScrollSectionFrameModifier(
+                    if tracksSectionTitles {
+                        rowView.modifier(LUIScrollSectionFrameModifier(
                             index: row.index, title: row.title,
                             coordinateSpace: titleCoordinateSpace,
                             onVisibilityChange: { index, title in
                                 titleTracker.update(index: index, title: title)
                             }
                         ))
+                    } else {
+                        rowView
+                    }
                 }
             }
             .environment(\.luiUnobscuredScrollHeight, unobscuredHeight)
@@ -6950,19 +6952,10 @@ private struct LUIVirtualListView: View {
     }
 
     private var sectionRows: [SectionRow] {
-        var currentTitle: String?
+        let titles = model.childData.sectionTitles ?? [:]
         return model.visibleChildren.enumerated().map { index, id in
-            if tracksSectionTitles, let title = sectionTitle(in: id) { currentTitle = title }
-            return SectionRow(id: id, index: index, title: currentTitle)
+            SectionRow(id: id, index: index, title: titles[id])
         }
-    }
-
-    private func sectionTitle(in nodeID: Int) -> String? {
-        guard let node = backend.model(id: nodeID) else { return nil }
-        if node.derived.styleClassTokens.contains("scroll-section-title") {
-            return node.text.isEmpty ? nil : node.text
-        }
-        return node.children.lazy.compactMap { sectionTitle(in: $0) }.first
     }
 
 }
@@ -6994,7 +6987,7 @@ private struct LUIGridView: View {
     var body: some View {
         LazyVGrid(columns: gridItems, spacing: gap) {
             ForEach(model.children.filter {
-                backend.model(id: $0)?.kind != .contextMenu
+                model.childData.layout[$0]?.kind != .contextMenu
             }, id: \.self) { childID in
                 LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
             }
@@ -7311,10 +7304,10 @@ private struct LUIRadioGroupView: View {
 
     private var choices: [LUINodeModel] {
         model.children.compactMap { childID in
-            guard let child = backend.model(id: childID), child.kind == .radio else {
+            guard model.childData.layout[childID]?.kind == .radio else {
                 return nil
             }
-            return child
+            return backend.model(id: childID)
         }
     }
 
@@ -7548,7 +7541,7 @@ private struct LUISurfaceModifier: ViewModifier {
         let isSurface = model.kind == .panel || model.kind == .card ||
             model.kind == .resizable || model.kind == .alert || model.kind == .bubble
         let isTabs = model.kind == .tabs &&
-            !LUISegmentedTabsView.supports(model: model, backend: backend)
+            !LUISegmentedTabsView.supports(model: model)
         let defaultPadding = switch model.kind {
         case .card: 24
         case .alert: 16
@@ -7594,7 +7587,7 @@ private struct LUISurfaceModifier: ViewModifier {
             .frame(
                 maxWidth: LUIIntrinsicSurfacePolicy.fillsWidth(
                     kind: model.kind,
-                    grow: model.property(.grow)?.doubleValue ?? 0
+                    grow: model.derived.grow
                 ) ? .infinity : nil,
                 alignment: .leading
             )

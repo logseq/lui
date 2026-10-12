@@ -4,9 +4,14 @@ struct LUIModelChanges: OptionSet {
     let rawValue: UInt8
     static let properties = Self(rawValue: 1 << 0)
     static let children = Self(rawValue: 1 << 1)
-    static let visibleChildren = Self(rawValue: 1 << 2)
+    static let childData = Self(rawValue: 1 << 2)
     static let parent = Self(rawValue: 1 << 3)
     static let derived = Self(rawValue: 1 << 4)
+    /// Marked by the stage that actually increments `revision`, so publish
+    /// only notifies revision readers on real bumps — `.childData` and
+    /// `.subtreeStamp` commits invalidate through their own key paths
+    /// without touching the revision gate.
+    static let revision = Self(rawValue: 1 << 6)
 }
 
 /// Tracks lookup membership per ID, including reads of nodes not yet present.
