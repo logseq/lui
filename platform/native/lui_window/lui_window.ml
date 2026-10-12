@@ -1344,9 +1344,21 @@ module Ui = struct
 
   (* ---- lists: highlight + typeahead ---------------------------------- *)
 
+  (* Keyboard routing is part of the modal focus scope: while a modal
+     surface is top, ids outside its subtree do not answer keyboard
+     input — a background list keeps its highlight and items
+     untouched. *)
+  let in_modal_scope t store id =
+    match top_overlay t store with
+    | Some (ov, true, _) -> id = ov || is_desc store id ov
+    | _ -> true
+
+  let list_scope_live t store =
+    t.list_scope <> 0 && Lui_store.mem store t.list_scope
+    && in_modal_scope t store t.list_scope
+
   let list_items t store =
-    if t.list_scope = 0 || not (Lui_store.mem store t.list_scope)
-    then []
+    if not (list_scope_live t store) then []
     else
       List.filter
         (fun id -> kind_name store id = "list-item")
@@ -1552,13 +1564,35 @@ module Ui = struct
       | None -> (0, false)
     in
     if ov_id <> t.overlay_id then begin
-      if ov_modal && t.focused <> 0 && t.focused <> ov_id
-         && not (is_desc store t.focused ov_id)
-      then t.saved_focus <- t.focused;
-      if t.overlay_modal && not ov_modal && t.saved_focus <> 0
-         && t.focused = 0 then begin
-        set_focused t store t.saved_focus;
-        push (Focus_changed t.saved_focus)
+      (* Modal focus scope: a modal surface owns the keyboard while it
+         is top. A focus held outside it is saved (once — a stacked
+         modal keeps the earliest save) and cleared, so text input,
+         IME and the shortcut table cannot reach a background field;
+         an autofocus child inside the dialog claims focus in the
+         scan below, else it stays empty until Tab or a press moves
+         it. *)
+      if ov_modal then begin
+        if t.focused <> 0 && t.focused <> ov_id
+           && not (is_desc store t.focused ov_id)
+        then begin
+          if t.saved_focus = 0 then t.saved_focus <- t.focused;
+          set_focused t store 0;
+          push (Focus_changed 0)
+        end;
+        (* A selection held on background text belongs to the pre-
+           modal scope as well — copy/select-all shortcuts must not
+           reach it while the dialog is up. *)
+        if t.sel_text <> None then begin
+          t.sel_text <- None;
+          t.dirty <- true
+        end
+      end;
+      if t.overlay_modal && not ov_modal then begin
+        if t.saved_focus <> 0 && t.focused = 0 then begin
+          set_focused t store t.saved_focus;
+          push (Focus_changed t.saved_focus)
+        end;
+        t.saved_focus <- 0
       end;
       t.overlay_id <- ov_id;
       t.overlay_modal <- ov_modal
@@ -1837,8 +1871,7 @@ module Ui = struct
     | Input.Page_down | Input.Page_up ->
       let dir = if key = Input.Page_down then 1. else -1. in
       (match
-         (if t.list_scope <> 0 && Lui_store.mem store t.list_scope
-          then Some t.list_scope else None)
+         (if list_scope_live t store then Some t.list_scope else None)
        with
        | Some a ->
          let ar = t.content_rect a in
@@ -1846,8 +1879,8 @@ module Ui = struct
          else scroll_by t store a (dir *. 0.9 *. ar.Lui_scene.h)
        | None -> [])
     | Input.Return | Input.Space ->
-      if t.hl_item <> 0 && Lui_store.mem store t.hl_item
-         && node_enabled store t.hl_item
+      if t.hl_item <> 0 && node_enabled store t.hl_item
+         && List.mem t.hl_item (list_items t store)
       then primary_press store t.hl_item else []
     | Input.Other sc ->
       (match Input.char_of_scancode ~shift:mods.Input.shift sc with
