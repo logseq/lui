@@ -7,10 +7,11 @@
 (** {1 Event translation} *)
 
 val key_of_vk : int -> Lui_window.Input.key
-(** Win32 virtual-key codes → keys (0x0D return, 0x1B escape, 0x08
-    backspace, 0x2E delete, 0x09 tab, 0x20 space, 0x24 home, 0x21/0x22
-    page up/down, 0x23 end, 0x25-0x28 arrows). Pure table so the
-    driver stays thin and tests need no Win32. *)
+(** Win32 virtual-key codes → keys — delegates to
+    {!Lui_window.Input.key_of_win32_vk}, which produces the same
+    SDL-scancode-numbered [Other] values the SDL hosts emit, so the
+    shared accelerator table (Ctrl+A/C/V/X/Z) and typeahead fire
+    identically on Windows. *)
 
 val button_of_win32 : int -> Lui_window.Input.mouse_button
 (** Driver-internal button numbering: 1 left, 2 middle, 3 right —
