@@ -575,6 +575,7 @@ module Ui = struct
     mutable overlay_id : int;
     mutable overlay_modal : bool;
     mutable open_menu : int; (* trigger-owned menu panel currently open *)
+    mutable laid_out_menu : int;
     mutable saved_focus : int;
     (* Autofocus controls already observed during their mount lifecycle. *)
     autofocus_seen : (int, unit) Hashtbl.t;
@@ -605,6 +606,7 @@ module Ui = struct
       drag_src = 0; drag = None; drop_target = 0; last_drop = None;
       drop_seq = 0;
       overlay_id = 0; overlay_modal = false; open_menu = 0;
+      laid_out_menu = 0;
       saved_focus = 0;
       autofocus_seen = Hashtbl.create 8;
       seen = Hashtbl.create 64;
@@ -761,7 +763,8 @@ module Ui = struct
     | None ->
       select_activation store path
         (fun s id ->
-          event_supported s id (ev_press id)
+          kind_name s id = "menu-trigger"
+          || event_supported s id (ev_press id)
           || event_supported s id (ToggleChanged (id, true)))
 
   let detail_target store path make =
@@ -2283,7 +2286,12 @@ module Ui = struct
       selected = bool_prop store id "selected" || t.hl_item = id;
       disabled = not (node_enabled store id) }
 
-  let want_frame t host = t.dirty || Lui_host.wants_repaint host
+  let want_frame t host =
+    if t.laid_out_menu <> t.open_menu then begin
+      Lui_host.invalidate_layout host;
+      t.laid_out_menu <- t.open_menu
+    end;
+    t.dirty || Lui_host.wants_repaint host
   let frame_done t = t.dirty <- false
 end
 
