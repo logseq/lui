@@ -1880,12 +1880,16 @@ let popup_kind = function
    position/inset resolution → layout rect. Position edges resolve
    lazily: the common case — no [position] prop — never pays the four
    inset lookups, which matters because the viewport cull runs this on
-   every visited node, visible or not. *)
-let resolve_rect ctx store id kind p parent_r =
+   every visited node, visible or not.
+
+   Standalone on (scale, viewport) rather than the full paint ctx so
+   the hit-test mirror resolves placements identically — hit-testing
+   shares this, and the two must never disagree on where a node sits. *)
+let resolve_rect ~scale ~viewport store id kind p parent_r =
   match p.p_override with
   | Some r -> r
   | None -> (
-    let s = ctx.scale in
+    let s = scale in
     let side n = match pnum store id n with
       | Some v -> Some v
       | None -> pnum store id "inset"
@@ -1895,7 +1899,7 @@ let resolve_rect ctx store id kind p parent_r =
       let it, ir, ib, il =
         (side "inset-top", side "inset-right", side "inset-bottom", side "inset-left")
       in
-      let cb = if pos = Some "fixed" then ctx.viewport else parent_r in
+      let cb = if pos = Some "fixed" then viewport else parent_r in
       let x =
         match il with
         | Some l -> cb.x +. (l *. s)
@@ -1942,6 +1946,10 @@ let resolve_rect ctx store id kind p parent_r =
         | Some x, None -> { p.p_rect with x = x *. s }
         | None, Some y -> { p.p_rect with y = y *. s }
         | None, None -> p.p_rect)
+
+(* The ctx-taking form [paint_node_body] calls; the labeled-args one
+   above is the shared entry point. *)
+let resolve_in ctx = resolve_rect ~scale:ctx.scale ~viewport:ctx.viewport
 
 let zindex store id =
   match Lui_store.prop store id "z-index" with
@@ -2071,7 +2079,7 @@ and paint_node_body ctx store scene id kind parent_r alpha =
   if node_shown store id then (
     let contents = unboxed store id in
     let p = ctx.hooks.layout id in
-    let r = resolve_rect ctx store id kind p parent_r in
+    let r = resolve_in ctx store id kind p parent_r in
     (* Viewport cull: a node whose box misses the frame produces no
        chrome and no descendants. display:contents has no box of its
        own so it always walks children; zero-size nodes still walk so

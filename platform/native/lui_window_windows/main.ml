@@ -238,6 +238,11 @@ let () =
      scene and scale that only exist after Lui_host.create. *)
   let host_cell = ref None in
   let rects = Rects.create () in
+  (* Hit-test mirror: [rects] stays the layout stub's output because
+     paint feeds it back through Lui_paint.resolve_rect — the mirror
+     carries the resolved boxes instead, so clicks land where the
+     chrome painted. *)
+  let hit_rects = Rects.create () in
   let ui = Ui.create () in
   Ui.set_scale ui scale;
   let scale_cell = ref scale in
@@ -326,6 +331,43 @@ let () =
   let refresh_layout () =
     Layout.refresh store rects ~width:!win_w ~height:!win_h
       ~scale:!scale_cell ~measure:(Lui_window_text.measure text_engine);
+    (* Rebuild the hit mirror through the same resolve_rect the paint
+       pass applies — position/inset, fixed and popup coordinates —
+       plus the scrollable-ancestor clip. [parent_r] is the parent's
+       resolved box (a display:contents node forwards its own
+       containing block). *)
+    Hashtbl.reset hit_rects;
+    let vp =
+      Lui_scene.rect 0. 0.
+        (float !win_w *. !scale_cell)
+        (float !win_h *. !scale_cell)
+    in
+    let rec visit id ~anc_clip ~parent_r =
+      let base = Rects.get rects id in
+      let resolved =
+        Lui_paint.resolve_rect ~scale:!scale_cell ~viewport:vp store id
+          (Lui_store.kind store id)
+          (Lui_paint.placement_of_rect base) parent_r
+      in
+      let stored = Lui_scene.rect_intersect resolved anc_clip in
+      Hashtbl.replace hit_rects id stored;
+      let anc_clip' =
+        if Ui.scrollable store id && not (Lui_scene.rect_empty stored)
+        then Lui_scene.rect_intersect anc_clip stored
+        else anc_clip
+      in
+      let child_parent =
+        if Lui_paint.unboxed store id then parent_r else resolved
+      in
+      List.iter
+        (fun c ->
+           visit c ~anc_clip:anc_clip' ~parent_r:child_parent)
+        (Lui_store.child_ids store id)
+    in
+    let everything = Lui_scene.rect (-.1e9) (-.1e9) 2e9 2e9 in
+    List.iter
+      (fun id -> visit id ~anc_clip:everything ~parent_r:vp)
+      (Lui_store.root_ids store);
     (* Rects were just rebuilt — visible-range memos key on the
        epoch. *)
     Ui.notify_layout ui
@@ -483,7 +525,7 @@ he caret column — horizontal padding plus the
          Input.Paste (interactive only — headless never types Ctrl-V) *)
       (match if headless then None else Lui_shell_windows.clipboard_read () with
        | Some s ->
-         apply_actions (Ui.handle ui store rects (Input.Paste s))
+         apply_actions (Ui.handle ui store hit_rects (Input.Paste s))
        | None -> ())
     | Resize_host _ ->
       let dw, dh = drawable () in
@@ -545,9 +587,9 @@ he caret column — horizontal padding plus the
           win_w := w;
           win_h := h;
           apply_actions
-            (Ui.handle ui store rects (Input.Resize (w, h)))
+            (Ui.handle ui store hit_rects (Input.Resize (w, h)))
         | Some input ->
-          apply_actions (Ui.handle ui store rects input)
+          apply_actions (Ui.handle ui store hit_rects input)
         | None -> ()
     done
   in
@@ -630,7 +672,7 @@ he caret column — horizontal padding plus the
        window tracks the caret; idle, the rect is only remembered. *)
     if Ui.focused ui <> 0 then
       apply_actions
-        (Ui.handle ui store rects (Input.Caret (caret_rect ())));
+        (Ui.handle ui store hit_rects (Input.Caret (caret_rect ())));
     (* Headless proves the loop: force a repaint every iteration so
        the frame counter and checksum actually run. *)
     let dirty = headless || Ui.want_frame ui host in

@@ -871,16 +871,29 @@ let open_window ~title ~idx =
        children, and a scrollable node's already-stored mirror rect
        becomes its descendants' clip — the same result the old
        per-node ancestor walk produced, without re-summing the chain
-       for every node. *)
-    let rec visit id ~sx ~sy ~anc_clip =
+       for every node. Placement goes through the same
+       [Lui_paint.resolve_rect] the paint pass uses, so
+       position/inset, fixed and popup coordinates hit-test where
+       they paint; [parent_r] is the parent's resolved box (a
+       display:contents node forwards its own containing block). *)
+    let scn = Lui_host.scene host in
+    let viewport =
+      Lui_scene.rect 0. 0. (float scn.Lui_scene.width)
+        (float scn.Lui_scene.height)
+    in
+    let rec visit id ~sx ~sy ~anc_clip ~parent_r =
       let base = engine_rect id in
-      let clip = rect_intersect base anc_clip in
-      let r =
+      let shifted =
         { base with
           Lui_scene.x = base.Lui_scene.x -. sx;
           Lui_scene.y = base.Lui_scene.y -. sy }
       in
-      let stored = rect_intersect r clip in
+      let resolved =
+        Lui_paint.resolve_rect ~scale:!scale_cell ~viewport store id
+          (Lui_store.kind store id)
+          (Lui_paint.placement_of_rect shifted) parent_r
+      in
+      let stored = rect_intersect resolved anc_clip in
       Hashtbl.replace rects id stored;
       let sx' = sx +. Ui.scroll_offset_x ui id
       and sy' = sy +. Ui.scroll_offset ui id in
@@ -889,13 +902,19 @@ let open_window ~title ~idx =
         then rect_intersect anc_clip stored
         else anc_clip
       in
+      let child_parent =
+        if Lui_paint.unboxed store id then parent_r else resolved
+      in
       List.iter
-        (fun c -> visit c ~sx:sx' ~sy:sy' ~anc_clip:anc_clip')
+        (fun c ->
+           visit c ~sx:sx' ~sy:sy' ~anc_clip:anc_clip'
+             ~parent_r:child_parent)
         (Lui_store.child_ids store id)
     in
     let everything = Lui_scene.rect (-.1e9) (-.1e9) 2e9 2e9 in
     List.iter
-      (fun id -> visit id ~sx:0. ~sy:0. ~anc_clip:everything)
+      (fun id ->
+         visit id ~sx:0. ~sy:0. ~anc_clip:everything ~parent_r:viewport)
       (Lui_store.root_ids store);
     List.iter
       (fun id ->
