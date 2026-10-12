@@ -1905,7 +1905,7 @@ and layout_node_impl
                 end
               end
             end
-            else if !remaining_free_space > zero then begin
+            else if perform_layout && !remaining_free_space > zero then begin
               let flex_grow_factor = get_flex_grow !current_relative_child in
               (* Is this child able to grow? *)
               if flex_grow_factor <> zero then begin
@@ -1963,7 +1963,7 @@ and layout_node_impl
                   bound_axis !current_relative_child main_axis child_size
               end
             end
-            else if !remaining_free_space > zero then begin
+            else if perform_layout && !remaining_free_space > zero then begin
               let flex_grow_factor = get_flex_grow !current_relative_child in
               if flex_grow_factor <> zero then
                 updated_main_size :=

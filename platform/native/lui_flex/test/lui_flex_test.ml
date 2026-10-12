@@ -364,6 +364,42 @@ let test_row_reverse () =
   check_rect "c0" (r 90. 0. 10. 10.) c0;
   check_rect "c1" (r 80. 0. 10. 10.) c1
 
+(* A non-stretch align must not inflate a child's measured basis: the
+   grow distribution only runs in the real layout pass, so a nested
+   row's auto basis stays content-sized and free space reaches the
+   top-level grow items. *)
+let test_align_center_grow_basis () =
+  let sp w =
+    leaf ~style:{ default_style with flex_grow = 1.; width = Pt w;
+                  height = Pt 1. } ()
+  in
+  let txt w h =
+    leaf ~style:{ default_style with width = Pt w; height = Pt h } ()
+  in
+  let inner () =
+    box ~style:{ default_style with flex_direction = Row }
+      [sp 2.; txt 28. 14.]
+  in
+  let inner2 () =
+    box ~style:{ default_style with flex_direction = Row }
+      [sp 6.; txt 14. 14.]
+  in
+  let grow () = leaf ~style:{ default_style with flex_grow = 1. } () in
+  let r1, r2, g1, g2 = inner (), inner2 (), grow (), grow () in
+  let root =
+    box ~style:{ default_style with flex_direction = Row;
+                 align_items = Align_center;
+                 column_gap = Pt 8.;
+                 padding = edges_xy ~h:(Pt 12.) ~v:Unset }
+      [r1; r2; g1; g2]
+  in
+  run root ~w:898. ~h:32.;
+  (* inner width 874; gaps 24; free space 800 split between g1/g2 *)
+  check_rect "r1" (r 12. 9. 30. 14.) r1;
+  check_rect "r2" (r 50. 9. 20. 14.) r2;
+  check_rect "g1" (r 78. 16. 400. 0.) g1;
+  check_rect "g2" (r 486. 16. 400. 0.) g2
+
 (* -- measure leaves -------------------------------------------------------- *)
 
 let test_measure_leaf () =
@@ -428,7 +464,8 @@ let () =
       "align",
       [ Alcotest.test_case "stretch" `Quick test_align_stretch;
         Alcotest.test_case "center" `Quick test_align_center;
-        Alcotest.test_case "row_reverse" `Quick test_row_reverse ];
+        Alcotest.test_case "row_reverse" `Quick test_row_reverse;
+        Alcotest.test_case "center_grow_basis" `Quick test_align_center_grow_basis ];
       "measure",
       [ Alcotest.test_case "leaf" `Quick test_measure_leaf;
         Alcotest.test_case "is_leaf" `Quick test_measure_is_leaf ];
