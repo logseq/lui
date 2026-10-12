@@ -141,6 +141,21 @@ let test_atlas_update (r : Lui_metal.t) =
   in
   check_scene r "atlas updated" s2 Exact
 
+let test_frame_size_changes (r : Lui_metal.t) =
+  List.iter
+    (fun (w, h) ->
+       check_scene r (Printf.sprintf "resized frame %dx%d" w h)
+         (scene ~w ~h []) Exact;
+       let outside_frame_rejected =
+         try
+           ignore (Lui_metal.read_frame r ~w:(w + 1) ~h);
+           false
+         with Failure _ -> true
+       in
+       Alcotest.(check bool) "readback respects current frame bounds"
+         true outside_frame_rejected)
+    [160, 144; 73, 61; 192, 160]
+
 (* {1 Entry} *)
 
 let () =
@@ -155,4 +170,6 @@ let () =
         [ ( "render",
             [ Alcotest.test_case "parity corpus" `Quick (fun () -> test_parity r);
               Alcotest.test_case "determinism" `Quick (fun () -> test_determinism r);
-              Alcotest.test_case "atlas update" `Quick (fun () -> test_atlas_update r) ] ) ]
+              Alcotest.test_case "atlas update" `Quick (fun () -> test_atlas_update r);
+              Alcotest.test_case "frame size changes" `Quick
+                (fun () -> test_frame_size_changes r) ] ) ]
