@@ -1193,15 +1193,6 @@ let update_rect (t : t) id r =
    | _ -> Hashtbl.replace t.rect_changed id ());
   Hashtbl.replace t.rects id r'
 
-(* Re-read [id]'s absolute rect into [t.rects], marking it changed when
-     it differs from what consumers last saw. *)
-let update_rect (t : t) id r =
-  let r' = scene_rect r in
-  (match Hashtbl.find_opt t.rects id with
-   | Some old when old = r' -> ()
-   | _ -> Hashtbl.replace t.rect_changed id ());
-  Hashtbl.replace t.rects id r'
-
 let collect (t : t) =
   Hashtbl.iter
     (fun id n -> update_rect t id (Lui_flex.absolute_layout n))
