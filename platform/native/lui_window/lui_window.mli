@@ -298,6 +298,32 @@ module Ui : sig
      lw:float -> lh:float -> int) ->
     unit
 
+  (** The text engine's caret model for one editable string, built
+      over the same laid-out text the painter and {!set_hit_text}
+      resolve against. [c_before]/[c_after] step byte offsets across
+      grapheme clusters (combining marks, emoji ZWJ chains,
+      ligatures); [c_up]/[c_down] move across visual — soft-wrapped —
+      lines; [c_rect i] is the caret's device-pixel (x, y, h) in node
+      content coordinates, for the IME candidate anchor. *)
+  type caret_ops = {
+    c_before : int -> int;
+    c_after : int -> int;
+    c_up : int -> int;
+    c_down : int -> int;
+    c_rect : int -> float * float * float;
+  }
+
+  (** Optional layout-accurate caret model: [f store id text ~lw ~lh]
+      builds the {!caret_ops} for [text] inside a node rect of size
+      [(lw, lh)] device px. Keyboard and delete paths consult it so
+      they move like the mouse does; unset, codepoint and paragraph
+      fallbacks keep tests text-engine free. *)
+  val set_caret_ops :
+    t ->
+    (Lui_store.t -> int -> string -> lw:float -> lh:float ->
+     caret_ops) ->
+    unit
+
   val set_content_rect : t -> (int -> Lui_scene.rect) -> unit
 
   (** Tell the Ui that layout rects were recomputed (the driver's
@@ -566,6 +592,10 @@ module Assembly : sig
     hit_text :
       int -> string -> lx:float -> ly:float -> lw:float -> lh:float ->
       int;
+    caret_ops :
+      int -> string -> lw:float -> lh:float -> Ui.caret_ops;
+        (** Keyboard caret geometry over the same laid-out text
+            (grapheme moves, visual lines, caret rect). *)
   }
 
   type t

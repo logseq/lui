@@ -429,7 +429,8 @@ let () =
         Assembly.
           { measure = Lui_window_text.measure_text text_engine;
             text_ops = Lui_window_text.text_ops text_engine;
-            hit_text = Lui_window_text.hit_text text_engine }
+            hit_text = Lui_window_text.hit_text text_engine;
+            caret_ops = Lui_window_text.caret_ops text_engine }
       ~renderer:renderer_live ~width:dw ~height:dh ()
   in
   host_cell := Some (Assembly.host asm);

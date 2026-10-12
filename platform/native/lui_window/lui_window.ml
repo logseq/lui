@@ -725,7 +725,25 @@ module Ui = struct
     mutable hit_text :
       (Lui_store.t -> int -> string -> lx:float -> ly:float ->
        lw:float -> lh:float -> int) option;
+    mutable caret_ops :
+      (Lui_store.t -> int -> string -> lw:float -> lh:float ->
+       caret_ops) option;
     mutable content_rect : int -> rect;
+  }
+
+  (* The text engine's caret model for one editable string, built
+     over the same laid-out text the painter and [hit_text] resolve
+     against: horizontal moves follow grapheme clusters (combining
+     marks, emoji ZWJ chains, ligatures), vertical moves follow
+     visual — soft-wrapped — lines, and [c_rect] is the caret's
+     device-pixel (x, y, h) in node content coordinates for the IME
+     candidate anchor. *)
+  and caret_ops = {
+    c_before : int -> int;
+    c_after : int -> int;
+    c_up : int -> int;
+    c_down : int -> int;
+    c_rect : int -> float * float * float;
   }
 
   let create () =
@@ -752,12 +770,13 @@ module Ui = struct
       rects_epoch = 0;
       measure =
         (fun _store _id s -> (8. *. float (String.length s), 16.));
-      hit_text = None;
+      hit_text = None; caret_ops = None;
       content_rect = (fun _ -> rect 0. 0. 0. 0.) }
 
   let set_scale t s = t.scale <- s
   let set_measure t f = t.measure <- f
   let set_hit_text t f = t.hit_text <- Some f
+  let set_caret_ops t f = t.caret_ops <- Some f
   let notify_layout t = t.rects_epoch <- t.rects_epoch + 1
   let set_content_rect t f = t.content_rect <- f
   let hovered t = t.hovered
@@ -1413,9 +1432,21 @@ module Ui = struct
 
   (* ---- lists: highlight + typeahead ---------------------------------- *)
 
+  (* Keyboard routing is part of the modal focus scope: while a modal
+     surface is top, ids outside its subtree do not answer keyboard
+     input — a background list keeps its highlight and items
+     untouched. *)
+  let in_modal_scope t store id =
+    match top_overlay t store with
+    | Some (ov, true, _) -> id = ov || is_desc store id ov
+    | _ -> true
+
+  let list_scope_live t store =
+    t.list_scope <> 0 && Lui_store.mem store t.list_scope
+    && in_modal_scope t store t.list_scope
+
   let list_items t store =
-    if t.list_scope = 0 || not (Lui_store.mem store t.list_scope)
-    then []
+    if not (list_scope_live t store) then []
     else
       List.filter
         (fun id -> kind_name store id = "list-item")
@@ -1621,13 +1652,35 @@ module Ui = struct
       | None -> (0, false)
     in
     if ov_id <> t.overlay_id then begin
-      if ov_modal && t.focused <> 0 && t.focused <> ov_id
-         && not (is_desc store t.focused ov_id)
-      then t.saved_focus <- t.focused;
-      if t.overlay_modal && not ov_modal && t.saved_focus <> 0
-         && t.focused = 0 then begin
-        set_focused t store t.saved_focus;
-        push (Focus_changed t.saved_focus)
+      (* Modal focus scope: a modal surface owns the keyboard while it
+         is top. A focus held outside it is saved (once — a stacked
+         modal keeps the earliest save) and cleared, so text input,
+         IME and the shortcut table cannot reach a background field;
+         an autofocus child inside the dialog claims focus in the
+         scan below, else it stays empty until Tab or a press moves
+         it. *)
+      if ov_modal then begin
+        if t.focused <> 0 && t.focused <> ov_id
+           && not (is_desc store t.focused ov_id)
+        then begin
+          if t.saved_focus = 0 then t.saved_focus <- t.focused;
+          set_focused t store 0;
+          push (Focus_changed 0)
+        end;
+        (* A selection held on background text belongs to the pre-
+           modal scope as well — copy/select-all shortcuts must not
+           reach it while the dialog is up. *)
+        if t.sel_text <> None then begin
+          t.sel_text <- None;
+          t.dirty <- true
+        end
+      end;
+      if t.overlay_modal && not ov_modal then begin
+        if t.saved_focus <> 0 && t.focused = 0 then begin
+          set_focused t store t.saved_focus;
+          push (Focus_changed t.saved_focus)
+        end;
+        t.saved_focus <- 0
       end;
       t.overlay_id <- ov_id;
       t.overlay_modal <- ov_modal
@@ -1778,8 +1831,31 @@ module Ui = struct
       + boundary_at_x t store t.focused (List.nth lines li') x
     end else c
 
-  let text_key t store key (mods : Input.mods) prim =
+  let text_key t store rects key (mods : Input.mods) prim =
     let n = t.focused in
+    (* The engine's caret model over the live shadow — grapheme
+       clusters horizontally, visual (soft-wrapped) lines vertically,
+       resolved against the same layout the painter used. Without a
+       wired engine the codepoint/paragraph fallbacks below keep the
+       old behavior. *)
+    let ops =
+      match t.caret_ops with
+      | Some f ->
+        let r = Rects.get rects n in
+        Some (f store n t.shadow ~lw:r.Lui_scene.w ~lh:r.Lui_scene.h)
+      | None -> None
+    in
+    let cur = t.shadow in
+    let caret = min t.caret (String.length cur) in
+    let prev i =
+      match ops with Some o -> o.c_before i | None -> utf8_prev cur i
+    and next i =
+      match ops with Some o -> o.c_after i | None -> utf8_next cur i
+    and vmove dir =
+      match ops with
+      | Some o -> if dir < 0 then o.c_up caret else o.c_down caret
+      | None -> move_caret_line t store dir
+    in
     match key with
     | Input.Return ->
       (match kind_name store n with
@@ -1789,42 +1865,34 @@ module Ui = struct
          then submit store n else []
        | _ -> submit store n)
     | Input.Backspace ->
-      let cur = t.shadow in
-      let caret = min t.caret (String.length cur) in
       if sel_hi t > sel_lo t then splice t store n ""
-      else if caret > 0 then delete_between t store n (utf8_prev cur caret) caret
+      else if caret > 0 then delete_between t store n (prev caret) caret
       else []
     | Input.Delete ->
-      let cur = t.shadow in
-      let caret = min t.caret (String.length cur) in
       if sel_hi t > sel_lo t then splice t store n ""
       else if caret < String.length cur then
-        delete_between t store n caret (utf8_next cur caret)
+        delete_between t store n caret (next caret)
       else []
     | Input.Arrow_left ->
-      let cur = t.shadow in
-      let caret = min t.caret (String.length cur) in
       let dest =
         if prim then fst (line_bounds cur caret)
         else if mods.alt then word_left cur caret
         else if not mods.shift && sel_hi t > sel_lo t then sel_lo t
-        else utf8_prev cur caret
+        else prev caret
       in
       move_caret t dest mods; []
     | Input.Arrow_right ->
-      let cur = t.shadow in
-      let caret = min t.caret (String.length cur) in
       let dest =
         if prim then snd (line_bounds cur caret)
         else if mods.alt then word_right cur caret
         else if not mods.shift && sel_hi t > sel_lo t then sel_hi t
-        else utf8_next cur caret
+        else next caret
       in
       move_caret t dest mods; []
     | Input.Arrow_up ->
-      move_caret t (move_caret_line t store (-1)) mods; []
+      move_caret t (vmove (-1)) mods; []
     | Input.Arrow_down ->
-      move_caret t (move_caret_line t store 1) mods; []
+      move_caret t (vmove 1) mods; []
     | Input.Home -> move_caret t 0 mods; []
     | Input.End -> move_caret t (String.length t.shadow) mods; []
     | _ -> []
@@ -1906,8 +1974,7 @@ module Ui = struct
     | Input.Page_down | Input.Page_up ->
       let dir = if key = Input.Page_down then 1. else -1. in
       (match
-         (if t.list_scope <> 0 && Lui_store.mem store t.list_scope
-          then Some t.list_scope else None)
+         (if list_scope_live t store then Some t.list_scope else None)
        with
        | Some a ->
          let ar = t.content_rect a in
@@ -1915,8 +1982,8 @@ module Ui = struct
          else scroll_by t store a (dir *. 0.9 *. ar.Lui_scene.h)
        | None -> [])
     | Input.Return | Input.Space ->
-      if t.hl_item <> 0 && Lui_store.mem store t.hl_item
-         && node_enabled store t.hl_item
+      if t.hl_item <> 0 && node_enabled store t.hl_item
+         && List.mem t.hl_item (list_items t store)
       then primary_press store t.hl_item else []
     | Input.Other sc ->
       (match Input.char_of_scancode ~shift:mods.Input.shift sc with
@@ -2446,7 +2513,7 @@ module Ui = struct
              Focus_changed next :: scroll_show t store next
            end else []
          | _ ->
-           if editable t store then text_key t store key mods prim
+           if editable t store then text_key t store rects key mods prim
            else if t.focused <> 0 then control_key t store key mods
            else list_key t store key mods)
       end
@@ -2957,6 +3024,8 @@ module Assembly = struct
     hit_text :
       int -> string -> lx:float -> ly:float -> lw:float -> lh:float ->
       int;
+    caret_ops :
+      int -> string -> lw:float -> lh:float -> Ui.caret_ops;
   }
 
   (* [populate] and [caret_rect] are stored closures rather than
@@ -3008,7 +3077,9 @@ module Assembly = struct
     (* Destructure once. [emit_text] is renamed deliberately: inside a
        [Lui_paint.{ }] record literal the module's own [text_ops]
        function is in scope and would shadow the field binding. *)
-    let ({ measure; text_ops = emit_text; hit_text } : text) = text in
+    let ({ measure; text_ops = emit_text; hit_text; caret_ops } : text) =
+      text
+    in
     let host_cell = ref None in
     let rects = Rects.create () in
     let ui = Ui.create () in
@@ -3121,23 +3192,21 @@ module Assembly = struct
                    in
                    if has_text then ops else []
                  in
-                 let dx, _ =
-                   measure id (String.sub (Ui.shadow ui) 0 caret)
+                 (* The caret's real position inside the laid-out
+                    shadow — the same rect the IME candidate anchor
+                    uses, so marked text and its underline land where
+                    the commit will insert. *)
+                 let cx, _, _ =
+                   (caret_ops id (Ui.shadow ui) ~lw:r.Lui_scene.w
+                      ~lh:r.Lui_scene.h)
+                     .Ui.c_rect caret
                  in
                  let mw, mh = measure id marked in
-                 let pad =
-                   match !host_cell with
-                   | Some h ->
-                     (Lui_paint.text_placement_of (Lui_host.store h) id)
-                       .tp_pad_x
-                     *. !scale_cell
-                   | None -> 0.
-                 in
                  let underline =
                    Lui_scene.Fill
                      { frect =
                          Lui_scene.rect
-                           (r.Lui_scene.x +. pad +. dx)
+                           (r.Lui_scene.x +. cx)
                            (r.Lui_scene.y
                             +. (r.Lui_scene.h +. mh) /. 2. -. 2.)
                            mw 2.;
@@ -3149,7 +3218,7 @@ module Assembly = struct
                        fborder_color = Lui_scene.color 0 0 0 0;
                        fdashed = false; fwide = 0; fopacity = 1. }
                  in
-                 let mr = { r with Lui_scene.x = r.Lui_scene.x +. dx } in
+                 let mr = { r with Lui_scene.x = r.Lui_scene.x +. cx } in
                  ops @ [ underline ] @ emit_text id mr fg marked
                end);
           image_of = (fun _ -> None);
@@ -3263,25 +3332,21 @@ module Assembly = struct
       Ui.notify_layout ui
     in
     (* Caret rect of the focused field, device px: the node's layout
-       rect shifted to the caret column — horizontal padding plus the
-       width of the text up to the caret. This is the
-       candidate-window anchor while composing. *)
+       rect shifted to the caret's real position inside the laid-out
+       text — wrap, line pitch, alignment and insets included. This is
+       the candidate-window anchor while composing. *)
     let caret_rect () =
       let id = Ui.focused ui in
       let r = Rects.get rects id in
       if Lui_scene.rect_empty r then r
       else begin
-        let s = !scale_cell in
-        (* Same content inset the text engine applies, so the caret
-           lands where the ink starts. *)
-        let pad = (Lui_paint.text_placement_of store id).tp_pad_x *. s in
         let text' = Ui.shadow ui in
-        let prefix =
-          String.sub text' 0 (min (Ui.caret ui) (String.length text'))
+        let ops = caret_ops id text' ~lw:r.Lui_scene.w ~lh:r.Lui_scene.h in
+        let cx, cy, ch =
+          ops.Ui.c_rect (min (Ui.caret ui) (String.length text'))
         in
-        let dx, _ = measure id prefix in
-        Lui_scene.rect (r.Lui_scene.x +. pad +. dx) r.Lui_scene.y 2.
-          r.Lui_scene.h
+        Lui_scene.rect (r.Lui_scene.x +. cx) (r.Lui_scene.y +. cy) 2.
+          (Float.max 2. ch)
       end
     in
     (* Ui driver hooks: real glyph measurement for caret/selection
@@ -3290,6 +3355,9 @@ module Assembly = struct
     Ui.set_hit_text ui
       (fun _store id s ~lx ~ly ~lw ~lh ->
          hit_text id s ~lx ~ly ~lw ~lh);
+    (* Keyboard caret moves run on the same layouts: grapheme clusters
+       horizontally, visual (soft-wrapped) lines vertically. *)
+    Ui.set_caret_ops ui (fun _store id s ~lw ~lh -> caret_ops id s ~lw ~lh);
     Ui.set_content_rect ui engine_rect;
     { host; ui; rects; scale_cell; engine_rect; populate; caret_rect }
 end
