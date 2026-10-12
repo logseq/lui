@@ -668,6 +668,7 @@ private struct LUINodeView: View {
     let backend: LUIAppleBackend
     @Environment(\.luiTreeContext) private var treeContext
     @Environment(\.luiSemanticColors) private var semanticColors
+    @Environment(\.luiTypography) private var typography
     @Environment(\.luiDialogButtonsExtracted) private var dialogButtonsExtracted
     @Environment(\.luiPinnedDrawerChrome) private var pinnedDrawerChrome
 
@@ -787,21 +788,29 @@ private struct LUINodeView: View {
         case .heading:
             return AnyView(
                 Text(verbatim: model.text)
-                    .font(headingFont)
-                    .fontWeight(
-                        LUIHeadingTypography.isBold(level: headingLevel) ? .bold : nil
+                    .luiTypography(typography)
+                    .font(
+                        typography.font(
+                            base: LUIHeadingTypography.isBold(level: headingLevel)
+                                ? headingFont.weight(.bold) : headingFont
+                        )
                     )
+                    .luiTypographyMetrics(typography, baseSize: headingSize)
                     .accessibilityAddTraits(.isHeader)
             )
         case .paragraph:
             return AnyView(
                 Text(verbatim: model.text)
-                    .font(.body)
+                    .luiTypography(typography)
+                    .font(typography.font(base: .body))
+                    .luiTypographyMetrics(typography, baseSize: 17)
             )
         case .label:
             return AnyView(
                 Text(verbatim: model.text)
-                    .font(.body)
+                    .luiTypography(typography)
+                    .font(typography.font(base: .body))
+                    .luiTypographyMetrics(typography, baseSize: 17)
             )
         case .button:
             if dialogButtonsExtracted || drawerToggleSuppressed { return AnyView(EmptyView()) }
@@ -1012,7 +1021,13 @@ private struct LUINodeView: View {
         case .kbd:
             return AnyView(
                 Text(verbatim: model.text)
-                    .font(.system(.caption2, design: .monospaced))
+                    .luiTypography(typography)
+                    .font(
+                        typography.font(
+                            base: .system(.caption2, design: .monospaced)
+                        )
+                    )
+                    .luiTypographyMetrics(typography, baseSize: 11)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .foregroundStyle(.secondary)
@@ -1048,6 +1063,19 @@ private struct LUINodeView: View {
         case 4: .title3
         case 5: .headline
         default: .subheadline
+        }
+    }
+
+    /// Point size of `headingFont` — the base `line-height` resolves
+    /// against when a typography override applies.
+    private var headingSize: CGFloat {
+        switch headingLevel {
+        case 1: 34
+        case 2: 28
+        case 3: 22
+        case 4: 20
+        case 5: 17
+        default: 15
         }
     }
 
@@ -5960,6 +5988,7 @@ private struct LUITextView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     @Environment(\.luiTextHighlightQuery) private var highlightQuery
+    @Environment(\.luiTypography) private var typography
 
     @ViewBuilder
     var body: some View {
@@ -5975,6 +6004,7 @@ private struct LUITextView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .layoutPriority(layoutPriority)
                     .modifier(attachmentScaling)
+                    .luiTypographyMetrics(typography, baseSize: baseSize)
             }
             .buttonStyle(.plain)
         } else {
@@ -5986,6 +6016,7 @@ private struct LUITextView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .layoutPriority(layoutPriority)
                 .modifier(attachmentScaling)
+                .luiTypographyMetrics(typography, baseSize: baseSize)
         }
     }
 
@@ -5998,8 +6029,9 @@ private struct LUITextView: View {
         let classes = model.property(.styleClass)?.stringValue?.split(separator: " ") ?? []
         if classes.contains("search-match") {
             return Text(LUITextHighlight.preview(model.text, query: highlightQuery))
+                .luiTypography(typography)
         }
-        return Text(verbatim: model.text)
+        return Text(verbatim: model.text).luiTypography(typography)
     }
 
     private var lineLimit: Int? {
@@ -6034,7 +6066,20 @@ private struct LUITextView: View {
         let mono = classes.contains("mono")
         var result = Font.system(style, design: mono ? .monospaced : .default)
         if semibold { result = result.weight(.semibold) }
-        return result
+        return typography.font(base: result)
+    }
+
+    /// Point size of the style-class font — the base `line-height`
+    /// resolves against when a typography override applies.
+    private var baseSize: CGFloat {
+        if typography.fontSize != nil { return typography.fontSize ?? 17 }
+        let classes = model.property(.styleClass)?.stringValue?.split(separator: " ") ?? []
+        if classes.contains("title2") { return 22 }
+        if classes.contains("headline") { return 17 }
+        if classes.contains("subheadline") { return 15 }
+        if classes.contains("caption") { return 12 }
+        if isFootnote { return 13 }
+        return 17
     }
 
     private var alignedMaxWidth: CGFloat? {

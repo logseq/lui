@@ -306,7 +306,7 @@ private fun LuiNodeContent(
 
         LuiNodeKind.alert -> Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (node.text().isNotEmpty()) {
-                Text(node.text(), style = MaterialTheme.typography.titleSmall)
+                Text(node.text(), style = MaterialTheme.typography.titleSmall.luiInherited())
             }
             Box { children.forEachNode { LuiNodeView(backend, it) } }
         }
@@ -592,7 +592,7 @@ private fun LuiNodeContent(
             node.text(),
             modifier = modifier,
             textAlign = textAlignment(node.propString("text-alignment")),
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodySmall.luiInherited(),
             color = luiThemeColor(node.propString("foreground"), foreground = true)
                 ?: MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -611,7 +611,7 @@ private fun LuiNodeContent(
                 node.text(),
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontFamily = FontFamily.Monospace,
-                ),
+                ).luiInherited(),
             )
         }
 
@@ -834,7 +834,7 @@ private fun LuiBubble(
                 Text(
                     node.text(),
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelSmall.luiInherited(),
                 )
             }
         }
@@ -1051,7 +1051,7 @@ private fun LuiTextControl(
     val fieldTextStyle = MaterialTheme.typography.bodyMedium.copy(
         color = luiThemeColor(node.propString("foreground"), foreground = true)
             ?: MaterialTheme.colorScheme.onSurface,
-    )
+    ).luiInherited()
     val onValueChange: (String) -> Unit = { value ->
         localText = value
         emitted.add(value)
@@ -1356,7 +1356,7 @@ private fun LuiAvatar(backend: LuiBackend, node: LuiNode, modifier: Modifier) {
                 contentScale = ContentScale.Crop,
             )
         } else if (node.text().isNotEmpty()) {
-            Text(node.text(), style = MaterialTheme.typography.labelLarge)
+            Text(node.text(), style = MaterialTheme.typography.labelLarge.luiInherited())
         } else {
             Icon(
                 backend.icons.icon("person") ?: Icons.Filled.Person,
@@ -1494,7 +1494,7 @@ private fun LuiStep(backend: LuiBackend, node: LuiNode, id: Long, modifier: Modi
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         },
-                    ),
+                    ).luiInherited(),
                 )
             }
         }
@@ -1508,7 +1508,7 @@ private fun LuiStep(backend: LuiBackend, node: LuiNode, id: Long, modifier: Modi
                 } else {
                     Color.Unspecified
                 },
-            ),
+            ).luiInherited(),
         )
         if (index + 1 < count) {
             Spacer(Modifier.width(8.dp))
@@ -1566,7 +1566,7 @@ private fun LuiTimelineItem(backend: LuiBackend, node: LuiNode, id: Long, modifi
                             style = MaterialTheme.typography.labelSmall.copy(
                                 color = variantColor,
                                 fontWeight = FontWeight.SemiBold,
-                            ),
+                            ).luiInherited(),
                         )
                         else -> Box(Modifier.size(10.dp).clip(CircleShape).background(variantColor))
                     }
@@ -1584,7 +1584,7 @@ private fun LuiTimelineItem(backend: LuiBackend, node: LuiNode, id: Long, modifi
                 if (title.isNotEmpty()) {
                     Text(
                         title,
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold).luiInherited(),
                     )
                 }
                 val description = node.propString("description") ?: ""
@@ -1593,7 +1593,7 @@ private fun LuiTimelineItem(backend: LuiBackend, node: LuiNode, id: Long, modifi
                         description,
                         style = MaterialTheme.typography.bodyMedium.copy(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        ),
+                        ).luiInherited(),
                     )
                 }
                 val meta = node.propString("meta") ?: ""
@@ -1602,7 +1602,7 @@ private fun LuiTimelineItem(backend: LuiBackend, node: LuiNode, id: Long, modifi
                         meta,
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        ),
+                        ).luiInherited(),
                     )
                 }
             }
@@ -1686,7 +1686,7 @@ private fun LuiAccordion(
                 .padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(node.text(), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+            Text(node.text(), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall.luiInherited())
             Icon(
                 if (expanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowRight,
                 contentDescription = null,
@@ -1747,7 +1747,7 @@ private fun LuiTableCell(backend: LuiBackend, node: LuiNode, id: Long, modifier:
         style = LuiTypography.textStyleForSize(node.propString("size")).copy(
             color = luiThemeColor(node.propString("foreground"), foreground = true)
                 ?: Color.Unspecified,
-        ),
+        ).luiInherited(),
     )
 }
 
