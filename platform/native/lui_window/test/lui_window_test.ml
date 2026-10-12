@@ -2000,6 +2000,235 @@ let test_appear_once () =
   Alcotest.(check int) "once" 0
     (List.length (press_actions (Ui.store_changed ui s)))
 
+(* ---------- shared host assembly (cross-platform parity) ---------- *)
+
+(* A deterministic layout engine for [Assembly] tests: children stack
+   vertically inside their parent, each taking its ["height"] prop
+   (device px) and its parent's full width. Deliberately NOT the real
+   [Lui_layout] — the wiring under test (caps, mirror, hooks) must be
+   verified against controlled geometry, not a second opinion about
+   flex math. *)
+module Fake_layout = struct
+  type t = (int, rect) Hashtbl.t
+
+  let create () = Hashtbl.create 16
+
+  let h_of store id =
+    match Lui_store.prop store id "height" with
+    | Some (IntValue n) -> float n
+    | Some (FloatValue f) -> f
+    | _ -> 0.
+
+  let sync ?scale:_ ?measure:_ ?hidden:_ ?ctx_anchor:_ ~width ~height
+      t store =
+    Hashtbl.reset t;
+    let rec place id ~x ~y ~w =
+      Hashtbl.replace t id (rect x y w (h_of store id));
+      ignore
+        (List.fold_left
+           (fun acc c ->
+              place c ~x ~y:(y +. acc) ~w;
+              acc +. h_of store c)
+           0. (Lui_store.child_ids store id))
+    in
+    List.iter
+      (fun id -> place id ~x:0. ~y:0. ~w:width)
+      (Lui_store.root_ids store);
+    ignore height
+
+  let invalidate _ = ()
+
+  let layout_hook t id =
+    Lui_paint.placement_of_rect
+      (Option.value ~default:Rects.zero (Hashtbl.find_opt t id))
+
+  let rect t id = Hashtbl.find_opt t id
+end
+
+let assembly_text : Assembly.text =
+  { measure = (fun _ s -> (float (String.length s) *. 8., 16.));
+    text_ops = (fun _ _ _ _ -> []);
+    hit_text =
+      (fun _ s ~lx ~ly:_ ~lw:_ ~lh:_ ->
+         Float.min (float (String.length s)) (lx /. 8.)
+         |> int_of_float |> max 0);
+    caret_ops =
+      (fun _ s ~lw:_ ~lh ->
+         let n = String.length s in
+         Ui.
+           { c_before = (fun i -> max 0 (i - 1));
+             c_after = (fun i -> min n (i + 1));
+             c_up = (fun _ -> 0);
+             c_down = (fun _ -> n);
+             c_rect = (fun i -> (float i *. 8., 0., lh)) }) }
+
+let assembly_renderer =
+  { Lui_host.name = "noop";
+    render =
+      (fun (s : Lui_scene.t) ->
+         Bytes.create (s.Lui_scene.width * s.Lui_scene.height * 4)) }
+
+let assembly_of store =
+  let asm =
+    Assembly.create ~layout:(module Fake_layout)
+      ~scale_cell:(ref 1.) ~text:assembly_text
+      ~renderer:assembly_renderer ~width:200 ~height:200 ()
+  in
+  Lui_store.apply_batch (Assembly.store asm) { generation = 1; ops = store };
+  ignore (Assembly.repaint asm);
+  asm
+
+(* root 1 → scroll 2 (100px viewport) → items 3 (120px) + 4 (80px):
+   200px of content in a 100px viewport — wheel reveals the second
+   item as the first scrolls out under the clip. *)
+let scroll_store_ops =
+  [ CreateNode (1, Root); CreateNode (2, Scroll);
+    CreateNode (3, ListItem); CreateNode (4, ListItem);
+    InsertChild (1, 2, 0); InsertChild (2, 3, 0);
+    InsertChild (2, 4, 1);
+    SetProp (2, HeightValue, IntValue 100);
+    SetProp (3, HeightValue, IntValue 120);
+    SetProp (4, HeightValue, IntValue 80) ]
+
+let test_assembly_scroll_caps () =
+  (* The wiring the Linux/Windows drivers lacked: populate must fill
+     each scrollable container's cap from the engine's content extent,
+     or wheel input finds no target. *)
+  let asm = assembly_of scroll_store_ops in
+  let ui = Assembly.ui asm in
+  Alcotest.(check (float 0.001)) "cap from content" 100.
+    (Ui.scroll_cap ui 2);
+  (* pointer inside the container, wheel down: the deepest scrollable
+     ancestor on the hit path takes the delta *)
+  ignore (Assembly.handle asm (Input.Move (10., 10.)));
+  ignore (Assembly.handle asm (Input.Wheel (0., -1.)));
+  Alcotest.(check (float 0.001)) "wheel scrolled" 44.
+    (Ui.scroll_offset ui 2);
+  (* the mirror reflects the shift after the next paint: item 3 loses
+     44px off the top under the container clip, item 4 slides into the
+     freed span below *)
+  ignore (Assembly.repaint asm);
+  let r3 = Rects.get (Assembly.rects asm) 3
+  and r4 = Rects.get (Assembly.rects asm) 4 in
+  Alcotest.(check (float 0.001)) "item3 clipped h" 76. r3.h;
+  Alcotest.(check (float 0.001)) "item4 in view" 76. r4.y;
+  Alcotest.(check (float 0.001)) "item4 visible h" 24. r4.h;
+  (* hit parity follows paint: the point that hit item 3 before the
+     scroll now hits item 4 where it slid in *)
+  Alcotest.(check (option int)) "scrolled hit" (Some 4)
+    (hit (Assembly.store asm) (Assembly.rects asm) ~x:10. ~y:90.)
+
+let test_assembly_scroll_shows_in_paint () =
+  (* scroll_of feeds the scrollbar: a container with range reports
+     metrics; one without reports none. *)
+  let asm = assembly_of scroll_store_ops in
+  let ui = Assembly.ui asm in
+  ignore (Assembly.handle asm (Input.Move (10., 10.)));
+  ignore (Assembly.handle asm (Input.Wheel (0., -1.)));
+  ignore (Assembly.repaint asm);
+  (* A scroll container with range paints a scrollbar thumb — the
+     shared [scroll_of] hook feeds sm_offset/sm_extent. The same tree
+     as a plain column paints strictly fewer ops (no clip, no thumb). *)
+  let scrolled = Ui.scroll_offset ui 2 in
+  Alcotest.(check bool) "offset moved" true (scrolled > 0.);
+  let scroll_ops =
+    List.length (Lui_host.scene (Assembly.host asm)).ops
+  in
+  let plain =
+    assembly_of
+      [ CreateNode (1, Root); CreateNode (2, Column);
+        CreateNode (3, ListItem);
+        InsertChild (1, 2, 0); InsertChild (2, 3, 0);
+        SetProp (2, HeightValue, IntValue 100);
+        SetProp (3, HeightValue, IntValue 400) ]
+  in
+  let plain_ops =
+    List.length (Lui_host.scene (Assembly.host plain)).ops
+  in
+  Alcotest.(check bool) "scrollbar ops" true (scroll_ops > plain_ops)
+
+let test_assembly_autofocus () =
+  let asm =
+    assembly_of
+      [ CreateNode (1, Root); CreateNode (2, TextField);
+        InsertChild (1, 2, 0);
+        SetProp (2, TextValue, StringValue "");
+        SetProp (2, Autofocus, BoolValue true) ]
+  in
+  Alcotest.(check (option int)) "autofocus id" (Some 2)
+    (Assembly.first_autofocus asm)
+
+(* ---------- Win32 key parity ---------- *)
+
+let test_win32_key_parity () =
+  (* Every named VK must land on the same [Input.key] the SDL table
+     produces — this is the table that used to feed raw VKs into
+     [Other], leaving every letter shortcut unreachable. *)
+  let named =
+    [ (0x0D, Input.Return); (0x1B, Input.Escape); (0x08, Input.Backspace);
+      (0x2E, Input.Delete); (0x09, Input.Tab); (0x20, Input.Space);
+      (0x24, Input.Home); (0x21, Input.Page_up); (0x22, Input.Page_down);
+      (0x23, Input.End); (0x25, Input.Arrow_left); (0x27, Input.Arrow_right);
+      (0x26, Input.Arrow_up); (0x28, Input.Arrow_down) ]
+  in
+  List.iter
+    (fun (vk, k) ->
+       Alcotest.(check bool) (Printf.sprintf "VK %02X" vk) true
+         (Input.key_of_win32_vk vk = k))
+    named;
+  (* letters and digits map to the SDL scancode numbering *)
+  for vk = 0x41 to 0x5A do
+    Alcotest.(check bool) (Printf.sprintf "VK %02X" vk) true
+      (Input.key_of_win32_vk vk
+       = Input.key_of_sdl_scancode (vk - 0x41 + 4))
+  done;
+  for vk = 0x31 to 0x39 do
+    Alcotest.(check bool) (Printf.sprintf "VK %02X" vk) true
+      (Input.key_of_win32_vk vk
+       = Input.key_of_sdl_scancode (vk - 0x31 + 30))
+  done;
+  Alcotest.(check bool) "0" true
+    (Input.key_of_win32_vk 0x30 = Input.key_of_sdl_scancode 39)
+
+let test_win32_accelerators () =
+  (* The functional half of the parity: a VK the Win32 adapter decodes
+     must drive the same accelerator table Ctrl+<scancode> does on the
+     SDL hosts — here Ctrl+A select-all, Ctrl+C copy, Ctrl+V paste. *)
+  let s, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  Ui.set_focused ui s 4;
+  Lui_store.apply_op s (SetProp (4, TextValue, StringValue "hello"));
+  ignore (Ui.store_changed ui s);
+  let ctrl = { Input.mods_none with ctrl = true } in
+  let key vk = Input.Key_down (Input.key_of_win32_vk vk, ctrl, false) in
+  (* Ctrl+A: select all — caret to end, anchor to 0 *)
+  ignore (Ui.handle ui s rects (key 0x41));
+  Alcotest.(check int) "select-all caret" 5 (Ui.caret ui);
+  Alcotest.(check int) "select-all anchor" 0 (Ui.sel_anchor ui);
+  (* Ctrl+C: copy the selection *)
+  (match Ui.handle ui s rects (key 0x43) with
+   | [ Clipboard_write "hello" ] -> ()
+   | _ -> Alcotest.fail "expected Clipboard_write hello");
+  (* Ctrl+V: paste accelerator — the action a raw VK (0x56) never
+     produced because it failed the [Other 25] match *)
+  (match Ui.handle ui s rects (key 0x56) with
+   | [ Paste_request ] -> ()
+   | _ -> Alcotest.fail "expected Paste_request");
+  (* the pasted text splices in as an edit event, same as SDL's
+     scancode-25 V *)
+  (match
+     press_actions (Ui.handle ui s rects (Input.Paste "world"))
+   with
+   | [ TextChanged (4, "world") ] -> ()
+   | _ -> Alcotest.fail "expected TextChanged world");
+  (* the model echoes the edit, then Ctrl+X cuts the whole value *)
+  Lui_store.apply_op s (SetProp (4, TextValue, StringValue "world"));
+  ignore (Ui.store_changed ui s);
+  ignore (Ui.handle ui s rects (key 0x41));
+  (match Ui.handle ui s rects (key 0x58) with
+   | Clipboard_write "world" :: _ -> ()
+   | _ -> Alcotest.fail "expected cut of selection")
+
 let () =
   Alcotest.run "lui_window"
     [ ("config", [ Alcotest.test_case "parse_args" `Quick test_parse_args ]);
@@ -2079,4 +2308,15 @@ let () =
       ( "headless",
         [ Alcotest.test_case "checksum" `Quick test_headless_checksum;
           Alcotest.test_case "drop-file" `Quick test_headless_drop;
-          Alcotest.test_case "two windows" `Quick test_headless_multi ] ) ]
+          Alcotest.test_case "two windows" `Quick test_headless_multi ] );
+      ( "assembly",
+        [ Alcotest.test_case "scroll caps" `Quick
+            test_assembly_scroll_caps;
+          Alcotest.test_case "scrollbar paint" `Quick
+            test_assembly_scroll_shows_in_paint;
+          Alcotest.test_case "autofocus" `Quick test_assembly_autofocus ] );
+      ( "parity",
+        [ Alcotest.test_case "win32 key table" `Quick
+            test_win32_key_parity;
+          Alcotest.test_case "win32 accelerators" `Quick
+            test_win32_accelerators ] ) ]

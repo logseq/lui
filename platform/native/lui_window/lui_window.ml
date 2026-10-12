@@ -166,6 +166,75 @@ module Input = struct
     | 2 -> Middle
     | 3 -> Right
     | n -> Other n
+
+  (* Win32 virtual-key codes → the SDL-scancode numbering the rest of
+     this module speaks. [Other] must mean the same thing on every
+     platform: the accelerator table matches [Other] against SDL
+     scancode values (A=4, C=6, V=25, X=27, Z=29) and typeahead goes
+     through [char_of_scancode], so feeding raw VK codes (A=0x41)
+     would make every letter shortcut unreachable on Windows. The
+     table follows the positional (scancode-style) reading of VKs —
+     same keys SDL's own Win32 backend maps the same way. *)
+  let sdl_scancode_of_win32_vk = function
+    | vk when vk >= 0x41 && vk <= 0x5A -> vk - 0x41 + 4   (* A-Z *)
+    | 0x30 -> 39                                        (* 0 *)
+    | vk when vk >= 0x31 && vk <= 0x39 -> vk - 0x31 + 30 (* 1-9 *)
+    | 0x60 -> 98                                       (* numpad 0 *)
+    | vk when vk >= 0x61 && vk <= 0x69 -> vk - 0x61 + 89 (* numpad 1-9 *)
+    | 0x6A -> 85    (* VK_MULTIPLY → KP_MULTIPLY *)
+    | 0x6B -> 87    (* VK_ADD → KP_PLUS *)
+    | 0x6D -> 86    (* VK_SUBTRACT → KP_MINUS *)
+    | 0x6E -> 99    (* VK_DECIMAL → KP_PERIOD *)
+    | 0x6F -> 84    (* VK_DIVIDE → KP_DIVIDE *)
+    | vk when vk >= 0x70 && vk <= 0x7B -> vk - 0x70 + 58  (* F1-F12 *)
+    | vk when vk >= 0x7C && vk <= 0x87 -> vk - 0x7C + 104 (* F13-F24 *)
+    | 0x10 -> 225   (* VK_SHIFT → LSHIFT *)
+    | 0x11 -> 224   (* VK_CONTROL → LCTRL *)
+    | 0x12 -> 226   (* VK_MENU → LALT *)
+    | 0x14 -> 57    (* VK_CAPITAL → CAPSLOCK *)
+    | 0x5B -> 227   (* VK_LWIN → LGUI *)
+    | 0x5C -> 231   (* VK_RWIN → RGUI *)
+    | 0x5D -> 101   (* VK_APPS → APPLICATION *)
+    | 0x2C -> 70    (* VK_SNAPSHOT → PRINTSCREEN *)
+    | 0x2D -> 73    (* VK_INSERT → INSERT *)
+    | 0x13 -> 72    (* VK_PAUSE → PAUSE *)
+    | 0x90 -> 83    (* VK_NUMLOCK → NUMLOCKCLEAR *)
+    | 0x91 -> 71    (* VK_SCROLL → SCROLLLOCK *)
+    | 0xA0 -> 225 | 0xA1 -> 229       (* L/R SHIFT *)
+    | 0xA2 -> 224 | 0xA3 -> 228       (* L/R CONTROL *)
+    | 0xA4 -> 226 | 0xA5 -> 230       (* L/R MENU (alt) *)
+    | 0xBA -> 51    (* VK_OEM_1 → SEMICOLON *)
+    | 0xBB -> 46    (* VK_OEM_PLUS → EQUALS *)
+    | 0xBC -> 54    (* VK_OEM_COMMA → COMMA *)
+    | 0xBD -> 45    (* VK_OEM_MINUS → MINUS *)
+    | 0xBE -> 55    (* VK_OEM_PERIOD → PERIOD *)
+    | 0xBF -> 56    (* VK_OEM_2 → SLASH *)
+    | 0xC0 -> 53    (* VK_OEM_3 → GRAVE *)
+    | 0xDB -> 47    (* VK_OEM_4 → LEFTBRACKET *)
+    | 0xDC -> 49    (* VK_OEM_5 → BACKSLASH *)
+    | 0xDD -> 48    (* VK_OEM_6 → RIGHTBRACKET *)
+    | 0xDE -> 52    (* VK_OEM_7 → APOSTROPHE *)
+    | n -> n
+
+  (* Win32 virtual-key codes → keys in the same space
+     [key_of_sdl_scancode] produces: named keys map to their variant,
+     the rest become [Other] of the SDL scancode above. *)
+  let key_of_win32_vk = function
+    | 0x0D -> Return (* VK_RETURN — keypad-enter is the same VK *)
+    | 0x1B -> Escape
+    | 0x08 -> Backspace
+    | 0x2E -> Delete
+    | 0x09 -> Tab
+    | 0x20 -> Space
+    | 0x24 -> Home
+    | 0x21 -> Page_up
+    | 0x22 -> Page_down
+    | 0x23 -> End
+    | 0x25 -> Arrow_left
+    | 0x27 -> Arrow_right
+    | 0x26 -> Arrow_up
+    | 0x28 -> Arrow_down
+    | vk -> Other (sdl_scancode_of_win32_vk vk)
 end
 
 type action =
@@ -2932,4 +3001,363 @@ module Multi = struct
     end
 
   let scale s = !(s.scale_cell)
+end
+
+(** Shared native host assembly: the wiring every window driver used
+    to hand-roll — the real layout engine synced per repaint, paint
+    hooks (theme colors, scroll metrics, IME marked-text overlay,
+    shadows), trigger-menu visibility, the pointer-anchored context
+    menu, the scroll-offset-shifted hit-test mirror, the scroll caps
+    that let wheel input find a target, and the IME caret anchor.
+    Platform drivers keep only OS event translation, window
+    management and frame presentation; everything else lives here so
+    macOS, Linux and Windows paint and hit-test identically. *)
+module Assembly = struct
+  (* The platform text engine reduced to the three callbacks the
+     shared wiring needs: glyph measure for layout/caret math,
+     glyph-run emission for the paint hook, and layout-accurate point
+     hit resolution for caret/selection. Each driver's
+     [Lui_window_text] satisfies this directly. *)
+  type text = {
+    measure : int -> string -> float * float;
+    text_ops : int -> rect -> color -> string -> op list;
+    hit_text :
+      int -> string -> lx:float -> ly:float -> lw:float -> lh:float ->
+      int;
+    caret_ops :
+      int -> string -> lw:float -> lh:float -> Ui.caret_ops;
+  }
+
+  (* [populate] and [caret_rect] are stored closures rather than
+     module functions because they capture the pre-host cells
+     (host_cell / shift memo / scale) the hooks also capture. *)
+  type t = {
+    host : Lui_host.t;
+    ui : Ui.t;
+    rects : Rects.t;         (* hit-test mirror, device px *)
+    scale_cell : float ref;  (* shared with the hooks/text engine *)
+    engine_rect : int -> rect;
+        (** Unshifted engine rect — content-space input for
+            [scroll_show]/visible-range. *)
+    populate : unit -> unit; (** rebuild the hit mirror + scroll caps *)
+    caret_rect : unit -> rect;
+        (** Focused field's caret rect, device px — candidate-window
+            anchor while composing. *)
+  }
+
+  let host t = t.host
+  let ui t = t.ui
+  let rects t = t.rects
+  let scale_cell t = t.scale_cell
+  let engine_rect t = t.engine_rect
+  let populate t = t.populate ()
+  let caret_rect t = t.caret_rect ()
+  let store t = Lui_host.store t.host
+  let handle t input = Ui.handle t.ui (store t) t.rects input
+  let store_changed t = Ui.store_changed t.ui (store t)
+
+  (* One frame's paint path: the engine re-syncs inside
+     [Lui_host.repaint], then the hit mirror and scroll caps are
+     rebuilt from the fresh rects — always in this order, on every
+     platform. *)
+  let repaint t =
+    let px = Lui_host.repaint t.host in
+    t.populate ();
+    px
+
+  let backend t profile = Lui_host.backend t.host profile
+
+  let first_autofocus t =
+    List.find_opt
+      (fun id -> bool_prop (store t) id "autofocus")
+      (Lui_store.preorder (store t))
+
+  let create ?layout ~scale_cell ~(text : text) ~renderer ~width ~height
+      () =
+    (* Destructure once. [emit_text] is renamed deliberately: inside a
+       [Lui_paint.{ }] record literal the module's own [text_ops]
+       function is in scope and would shadow the field binding. *)
+    let ({ measure; text_ops = emit_text; hit_text; caret_ops } : text) =
+      text
+    in
+    let host_cell = ref None in
+    let rects = Rects.create () in
+    let ui = Ui.create () in
+    Ui.set_scale ui !scale_cell;
+    let store_of () = Lui_host.store (Option.get !host_cell) in
+    (* Rect lookups for paint and hit tests, all in device px.
+       [engine_rect] is the layout engine's placement; a node shifts
+       up by the scroll offsets of its scrollable ancestors; a scroll
+       container's extent is the unshifted span of its
+       descendants. *)
+    let engine_rect id =
+      match !host_cell with
+      | Some h ->
+        Option.value ~default:Rects.zero (Lui_host.layout_rect h id)
+      | None -> Rects.zero
+    in
+    (* [shifted_rect] runs once per painted node and the
+       ancestor-offset sum is otherwise O(depth) each — memoize it
+       for as long as both the store shape and the scroll offsets
+       stand still. *)
+    let shift_memo : (int, float * float) Hashtbl.t = Hashtbl.create 64 in
+    let shift_epoch = ref (-1, -1) in
+    let rec scroll_shift_of id =
+      let epoch =
+        (Lui_store.revision (store_of ()), Ui.scroll_epoch ui)
+      in
+      if epoch <> !shift_epoch then begin
+        Hashtbl.reset shift_memo;
+        shift_epoch := epoch
+      end;
+      match Hashtbl.find_opt shift_memo id with
+      | Some v -> v
+      | None ->
+        let v =
+          match Lui_store.parent (store_of ()) id with
+          | Some p ->
+            let sx, sy = scroll_shift_of p in
+            (sx +. Ui.scroll_offset_x ui p, sy +. Ui.scroll_offset ui p)
+          | None -> (0., 0.)
+        in
+        Hashtbl.replace shift_memo id v;
+        v
+    in
+    let shifted_rect id =
+      let r = engine_rect id in
+      let sx, sy = scroll_shift_of id in
+      { r with x = r.x -. sx; y = r.y -. sy }
+    in
+    let content_box id =
+      List.fold_left
+        (fun (l, t, rgt, b) d ->
+           if d = id then (l, t, rgt, b)
+           else
+             let r = engine_rect d in
+             (Float.min l r.x, Float.min t r.y,
+              Float.max rgt (r.x +. r.w), Float.max b (r.y +. r.h)))
+        (Float.max_float, Float.max_float,
+         Float.min_float, Float.min_float)
+        (Lui_store.preorder ~root:id (store_of ()))
+    in
+    let hooks =
+      Lui_paint.
+        { color_of = Theme.color_of;
+          layout =
+            (fun id -> Lui_paint.placement_of_rect (shifted_rect id));
+          state_of =
+            (fun id ->
+               match !host_cell with
+               | Some h -> Ui.state_of ui (Lui_host.store h) id
+               | None -> Lui_paint.state_neutral);
+          scroll_of =
+            (fun id ->
+               let cap = Ui.scroll_cap ui id in
+               if cap <= 0.001 then None
+               else
+                 let cr = engine_rect id in
+                 let _, top, _, bot = content_box id in
+                 let content = Float.max (bot -. top) 0.001 in
+                 Some
+                   Lui_paint.
+                     { sm_offset = Ui.scroll_offset ui id /. cap;
+                       sm_extent =
+                         Float.min 1. (cr.h /. content) });
+          text_ops =
+            (fun id r fg s ->
+               let ops = emit_text id r fg s in
+               let marked = Ui.marked ui in
+               if marked = "" || id <> Ui.focused ui then ops
+               else begin
+                 (* Composition overlay: marked text drawn underlined
+                    at the caret of the focused field. It is
+                    paint-only — never dispatched — and cleared the
+                    moment the composition commits or cancels. When
+                    the node's text prop is empty [s] is the
+                    placeholder: drop its glyphs so the marked string
+                    paints alone. *)
+                 let caret =
+                   min (Ui.caret ui) (String.length (Ui.shadow ui))
+                 in
+                 let ops =
+                   let has_text =
+                     match !host_cell with
+                     | Some h -> (
+                       match
+                         Lui_store.prop (Lui_host.store h) id "text"
+                       with
+                       | Some (Lui_protocol.StringValue v) -> v <> ""
+                       | _ -> false)
+                     | None -> false
+                   in
+                   if has_text then ops else []
+                 in
+                 (* The caret's real position inside the laid-out
+                    shadow — the same rect the IME candidate anchor
+                    uses, so marked text and its underline land where
+                    the commit will insert. *)
+                 let cx, _, _ =
+                   (caret_ops id (Ui.shadow ui) ~lw:r.Lui_scene.w
+                      ~lh:r.Lui_scene.h)
+                     .Ui.c_rect caret
+                 in
+                 let mw, mh = measure id marked in
+                 let underline =
+                   Lui_scene.Fill
+                     { frect =
+                         Lui_scene.rect
+                           (r.Lui_scene.x +. cx)
+                           (r.Lui_scene.y
+                            +. (r.Lui_scene.h +. mh) /. 2. -. 2.)
+                           mw 2.;
+                       fradii = (0., 0., 0., 0.); fcontinuous = false;
+                       fcolor = fg; fpaint = Lui_scene.Solid;
+                       fcolor2 = fg;
+                       fgradient = (0., 0., 0., 0.);
+                       fborder = (0., 0., 0., 0.);
+                       fborder_color = Lui_scene.color 0 0 0 0;
+                       fdashed = false; fwide = 0; fopacity = 1. }
+                 in
+                 let mr = { r with Lui_scene.x = r.Lui_scene.x +. cx } in
+                 ops @ [ underline ] @ emit_text id mr fg marked
+               end);
+          image_of = (fun _ -> None);
+          image_in = (fun _ _ -> None);
+          shadow_of = Lui_paint.parse_shadows Theme.color_of }
+    in
+    let host =
+      Lui_host.create ~hooks ?layout
+        (* Measure the text the engine selected (label/title/text per
+           kind) plus the placement padding it will paint around it —
+           feeding the raw glyph metric collapses every labeled
+           control to bare-text size (buttons, fields, kbd...). *)
+        ~measure:(fun id s _w _h ->
+          let w, h = measure id s in
+          let tp = Lui_paint.text_placement_of (store_of ()) id in
+          let sc = !scale_cell in
+          Some
+            (w +. (2. *. tp.tp_pad_x *. sc),
+             h +. (2. *. tp.tp_pad_y *. sc)))
+        ~renderer ~width ~height ~scale:!scale_cell ()
+    in
+    host_cell := Some host;
+    let store = Lui_host.store host in
+    (* Trigger-owned menu panels stay hidden until opened; the
+       predicate reads the interaction state's mutable open-menu slot
+       each sync. *)
+    Lui_host.set_hidden host (Some (fun id -> Ui.hidden ui store id));
+    (* Unanchored context menus open at the pointer. The anchor feeds
+       [refine_popups] only while a context-menu is open — reporting
+       the live pointer position unconditionally would defeat the
+       layout memo on every pointer-driven repaint, so the accessor
+       returns [None] the rest of the time. *)
+    Lui_host.set_ctx_anchor host
+      (Some
+         (fun () ->
+            match Ui.open_menu ui with
+            | 0 -> None
+            | id when Lui_store.kind store id = "context-menu" ->
+              Some (Ui.pointer ui)
+            | _ -> None));
+    (* Populate the hit-test mirror from the layout engine: each
+       node's shifted rect clipped to its scrollable ancestors'
+       viewports (so scrolled-off content can't be hit), then each
+       scroll container's range on both axes from its unshifted
+       content extent. Runs after every repaint while the engine is
+       fresh. *)
+    let populate () =
+      Hashtbl.reset rects;
+      (* One preorder pass carrying the ancestors' accumulated scroll
+         offset and clip: the node's own offset shifts only its
+         children, and a scrollable node's already-stored mirror rect
+         becomes its descendants' clip — the same result the old
+         per-node ancestor walk produced, without re-summing the
+         chain for every node. Placement goes through the same
+         [Lui_paint.resolve_rect] the paint pass uses, so
+         position/inset, fixed and popup coordinates hit-test where
+         they paint; [parent_r] is the parent's resolved box (a
+         display:contents node forwards its own containing block). *)
+      let scn = Lui_host.scene host in
+      let viewport =
+        Lui_scene.rect 0. 0. (float scn.Lui_scene.width)
+          (float scn.Lui_scene.height)
+      in
+      let rec visit id ~sx ~sy ~anc_clip ~parent_r =
+        let base = engine_rect id in
+        let shifted =
+          { base with
+            Lui_scene.x = base.Lui_scene.x -. sx;
+            Lui_scene.y = base.Lui_scene.y -. sy }
+        in
+        let resolved =
+          Lui_paint.resolve_rect ~scale:!scale_cell ~viewport store id
+            (Lui_store.kind store id)
+            (Lui_paint.placement_of_rect shifted) parent_r
+        in
+        let stored = Lui_scene.rect_intersect resolved anc_clip in
+        Hashtbl.replace rects id stored;
+        let sx' = sx +. Ui.scroll_offset_x ui id
+        and sy' = sy +. Ui.scroll_offset ui id in
+        let anc_clip' =
+          if Ui.scrollable store id && not (Lui_scene.rect_empty stored)
+          then Lui_scene.rect_intersect anc_clip stored
+          else anc_clip
+        in
+        let child_parent =
+          if Lui_paint.unboxed store id then parent_r else resolved
+        in
+        List.iter
+          (fun c ->
+             visit c ~sx:sx' ~sy:sy' ~anc_clip:anc_clip'
+               ~parent_r:child_parent)
+          (Lui_store.child_ids store id)
+      in
+      let everything = Lui_scene.rect (-.1e9) (-.1e9) 2e9 2e9 in
+      List.iter
+        (fun id ->
+           visit id ~sx:0. ~sy:0. ~anc_clip:everything ~parent_r:viewport)
+        (Lui_store.root_ids store);
+      List.iter
+        (fun id ->
+           if Ui.scrollable store id then
+             let cr = engine_rect id in
+             let l, t, rgt, b = content_box id in
+             Ui.set_scroll_cap ui id
+               (Float.max 0. (b -. t -. cr.Lui_scene.h));
+             Ui.set_scroll_cap_x ui id
+               (Float.max 0. (rgt -. l -. cr.Lui_scene.w)))
+        (Lui_store.preorder store);
+      (* Rects were just rebuilt — visible-range memos key on the
+         epoch. *)
+      Ui.notify_layout ui
+    in
+    (* Caret rect of the focused field, device px: the node's layout
+       rect shifted to the caret's real position inside the laid-out
+       text — wrap, line pitch, alignment and insets included. This is
+       the candidate-window anchor while composing. *)
+    let caret_rect () =
+      let id = Ui.focused ui in
+      let r = Rects.get rects id in
+      if Lui_scene.rect_empty r then r
+      else begin
+        let text' = Ui.shadow ui in
+        let ops = caret_ops id text' ~lw:r.Lui_scene.w ~lh:r.Lui_scene.h in
+        let cx, cy, ch =
+          ops.Ui.c_rect (min (Ui.caret ui) (String.length text'))
+        in
+        Lui_scene.rect (r.Lui_scene.x +. cx) (r.Lui_scene.y +. cy) 2.
+          (Float.max 2. ch)
+      end
+    in
+    (* Ui driver hooks: real glyph measurement for caret/selection
+       math, unshifted engine rects for scroll_show/visible-range. *)
+    Ui.set_measure ui (fun _store id s -> measure id s);
+    Ui.set_hit_text ui
+      (fun _store id s ~lx ~ly ~lw ~lh ->
+         hit_text id s ~lx ~ly ~lw ~lh);
+    (* Keyboard caret moves run on the same layouts: grapheme clusters
+       horizontally, visual (soft-wrapped) lines vertically. *)
+    Ui.set_caret_ops ui (fun _store id s ~lw ~lh -> caret_ops id s ~lw ~lh);
+    Ui.set_content_rect ui engine_rect;
+    { host; ui; rects; scale_cell; engine_rect; populate; caret_rect }
 end

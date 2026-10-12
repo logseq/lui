@@ -7,24 +7,12 @@ open Lui_window
 
 (* ---------- event translation ---------- *)
 
-(* Win32 virtual-key constants for the keys with special handling;
-   everything else reaches the app as [Other vk]. *)
-let key_of_vk = function
-  | 0x0D -> Input.Return (* VK_RETURN — keypad-enter is the same VK *)
-  | 0x1B -> Input.Escape
-  | 0x08 -> Input.Backspace
-  | 0x2E -> Input.Delete
-  | 0x09 -> Input.Tab
-  | 0x20 -> Input.Space
-  | 0x24 -> Input.Home
-  | 0x21 -> Input.Page_up
-  | 0x22 -> Input.Page_down
-  | 0x23 -> Input.End
-  | 0x25 -> Input.Arrow_left
-  | 0x27 -> Input.Arrow_right
-  | 0x26 -> Input.Arrow_up
-  | 0x28 -> Input.Arrow_down
-  | n -> Input.Other n
+(* Win32 virtual-key codes → the shared [Input.key] space: the named
+   keys plus [Other] of the equivalent SDL scancode, so the shortcut
+   table (Ctrl+A/C/V/X/Z) and typeahead fire exactly as on the SDL
+   hosts. Lives in [Lui_window.Input] so the mapping is unit-testable
+   without Win32. *)
+let key_of_vk = Input.key_of_win32_vk
 
 let button_of_win32 = function
   | 1 -> Input.Left
@@ -69,7 +57,7 @@ let input_of_event ~scale (e : Lui_win32.event) =
       (Button_up
          (e.x /. scale, e.y /. scale, button_of_win32 e.a,
           mods_of_mask e.c))
-  | 9 -> Some (Wheel (e.x, e.y))
+  | 9 -> Some (Wheel_mods (e.x, e.y, mods_of_mask e.c))
   | _ -> None
 
 (* ---------- renderer ladder ---------- *)
