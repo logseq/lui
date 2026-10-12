@@ -234,6 +234,7 @@ let host_with_app () =
              | Some h -> Ui.state_of ui (Lui_host.store h) id
              | None -> Lui_paint.state_neutral);
         scroll_of = (fun _ -> None);
+        mounted_range = (fun _ -> None);
         text_ops =
           (fun id r fg s ->
              Lui_window_text.text_ops text_engine id r fg s);

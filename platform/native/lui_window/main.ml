@@ -754,6 +754,40 @@ let open_window ~title ~idx =
             (b.Lui_scene.y +. b.Lui_scene.h)
           -. y))
   in
+  (* Virtual-list viewport feed: the node's content-space visible
+     range — its own scroll offset plus how far the frame clip has
+     scrolled into its (shifted) box. Outer scroller clips are not
+     tracked, so a clipped-away list just mounts a few extra rows. *)
+  let vport_of id =
+    if Lui_store.kind (store_of ()) id <> "virtual-list" then None
+    else begin
+      let er = engine_rect id in
+      let sx, sy = scroll_shift_of id in
+      let shifted = { er with
+                      Lui_scene.x = er.Lui_scene.x -. sx;
+                      y = er.Lui_scene.y -. sy }
+      in
+      let scn =
+        match !host_cell with
+        | Some h -> Lui_host.scene h
+        | None -> failwith "vport before host"
+      in
+      let frame =
+        Lui_scene.rect 0. 0. (float scn.Lui_scene.width)
+          (float scn.Lui_scene.height)
+      in
+      let clip = rect_intersect shifted frame in
+      Some
+        ( Ui.scroll_offset ui id
+          +. Float.max 0. (clip.Lui_scene.y -. shifted.Lui_scene.y),
+          Float.max 0. clip.Lui_scene.h )
+    end
+  in
+  let vport_of id =
+    match !host_cell with
+    | Some _ -> vport_of id
+    | None -> None
+  in
   let hooks =
     Lui_paint.
       { color_of = Theme.color_of;
@@ -764,14 +798,29 @@ let open_window ~title ~idx =
              match !host_cell with
              | Some h -> Ui.state_of ui (Lui_host.store h) id
              | None -> Lui_paint.state_neutral);
+        mounted_range =
+          (fun id ->
+             match !host_cell with
+             | Some h -> Lui_host.layout_mounted_range h id
+             | None -> None);
         scroll_of =
           (fun id ->
              let cap = Ui.scroll_cap ui id in
              if cap <= 0.001 then None
              else
                let cr = engine_rect id in
-               let _, top, _, bot = content_box id in
-               let content = Float.max (bot -. top) 0.001 in
+               let content =
+                 match
+                   !host_cell
+                   |> Option.map (fun h ->
+                          Lui_host.layout_virtual_extent h id)
+                   |> Option.join
+                 with
+                 | Some ext -> Float.max ext 0.001
+                 | None ->
+                   let _, top, _, bot = content_box id in
+                   Float.max (bot -. top) 0.001
+               in
                Some
                  Lui_paint.
                    { sm_offset = Ui.scroll_offset ui id /. cap;
@@ -875,11 +924,19 @@ let open_window ~title ~idx =
           | id when Lui_store.kind store id = "context-menu" ->
             Some (Ui.pointer ui)
           | _ -> None));
+  (* Virtual lists: feed each node's content-space visible range
+     during layout sync so only the mounted window is materialized. *)
+  Lui_host.set_vport host vport_of;
   (* Populate the hit-test mirror from the layout engine: each node's
      shifted rect clipped to its scrollable ancestors' viewports (so
      scrolled-off content can't be hit), then each scroll container's
      range on both axes from its unshifted content extent. Runs after
      every repaint while the engine is fresh. *)
+  (* Scroll-container ids memoized on the store revision: a scroll
+     frame changes no props, so the cap refresh below does not re-walk
+     the whole tree on every frame (a 100k-row list has ~3
+     scrollables). *)
+  let scrollables = ref (-1, []) in
   let populate () =
     Hashtbl.reset rects;
     (* One preorder pass carrying the ancestors' accumulated scroll
@@ -921,27 +978,61 @@ let open_window ~title ~idx =
       let child_parent =
         if Lui_paint.unboxed store id then parent_r else resolved
       in
+      (* A virtual list only hit-tests its mounted window — unmounted
+         rows have no rect and cannot be hit anyway. *)
+      let cids =
+        match Lui_host.layout_mounted_range host id with
+        | Some (first, last) ->
+          let rec go i acc =
+            if i < first then acc
+            else
+              let cid = Lui_store.child_id_at store id i in
+              go (i - 1) (if cid >= 0 then cid :: acc else acc)
+          in
+          go (last - 1) []
+        | None -> Lui_store.child_ids store id
+      in
       List.iter
         (fun c ->
            visit c ~sx:sx' ~sy:sy' ~anc_clip:anc_clip'
              ~parent_r:child_parent)
-        (Lui_store.child_ids store id)
+        cids
     in
     let everything = Lui_scene.rect (-.1e9) (-.1e9) 2e9 2e9 in
     List.iter
       (fun id ->
          visit id ~sx:0. ~sy:0. ~anc_clip:everything ~parent_r:viewport)
       (Lui_store.root_ids store);
+    let srev = Lui_store.revision store in
+    let sids =
+      match !scrollables with
+      | r, ids when r = srev -> ids
+      | _ ->
+        let ids =
+          List.filter
+            (fun id -> Ui.scrollable store id)
+            (Lui_store.preorder store)
+        in
+        scrollables := (srev, ids);
+        ids
+    in
     List.iter
       (fun id ->
-         if Ui.scrollable store id then
-           let cr = engine_rect id in
+         let cr = engine_rect id in
+         match Lui_host.layout_virtual_extent host id with
+         | Some ext ->
+           (* Virtual extent, not the mounted rows' box: the cap
+              spans the full logical content. *)
+           Ui.set_scroll_cap ui id
+             (Float.max 0. (ext -. cr.Lui_scene.h));
+           Ui.set_scroll_cap_x ui id 0.
+         | None ->
            let l, t, rgt, b = content_box id in
            Ui.set_scroll_cap ui id
              (Float.max 0. (b -. t -. cr.Lui_scene.h));
            Ui.set_scroll_cap_x ui id
              (Float.max 0. (rgt -. l -. cr.Lui_scene.w)))
-      (Lui_store.preorder store);
+      sids;
     (* Rects were just rebuilt — visible-range memos key on the epoch. *)
     Ui.notify_layout ui
   in
@@ -975,7 +1066,40 @@ let open_window ~title ~idx =
   Ui.set_hit_text ui
     (fun _store id text ~lx ~ly ~lw ~lh ->
        Lui_window_text.hit_text text_engine id text ~lx ~ly ~lw ~lh);
-  Ui.set_content_rect ui engine_rect;
+  (* Virtual lists: expose the extent model to Ui (scroll-target,
+     visible-range), and synthesize rects for unmounted rows so
+     reveal/scroll-align work on logical items. *)
+  Ui.set_vlist_hook ui
+    (Some
+       Ui.
+         { vh_count =
+             (fun id ->
+                if Lui_store.kind store id = "virtual-list"
+                then Some (Lui_store.child_count store id)
+                else None);
+           vh_item =
+             (fun id ~index ->
+                Lui_host.layout_virtual_item host id ~index);
+           vh_index_of_key =
+             (fun id key ->
+                Lui_host.layout_virtual_index_of_key host id key);
+           vh_view =
+             (fun id -> Lui_host.layout_virtual_view host id) });
+  Ui.set_content_rect ui
+    (fun id ->
+       let r = engine_rect id in
+       if not (Lui_scene.rect_empty r) then r
+       else
+         (* Unmounted virtual-list row: the model still knows where
+            it sits, so scroll-to-item reaches it. *)
+         match Lui_store.parent store id with
+         | Some p -> (
+           match Lui_host.layout_virtual_index_of_id host p id with
+           | Some i ->
+             Option.value ~default:r
+               (Lui_host.layout_virtual_item host p ~index:i)
+           | None -> r)
+         | None -> r);
   (* The a11y forest mirrors the store: synced after every repaint,
      focused along with the Ui focus, dumped on request and at quit. *)
   let a11y = Lui_a11y.of_store store in

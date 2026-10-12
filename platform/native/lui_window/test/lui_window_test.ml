@@ -1443,6 +1443,76 @@ let test_scroll_request () =
   ignore (Ui.scroll_by ui s 2 (-50.));
   Alcotest.(check (float 0.001)) "by" 150. (Ui.scroll_offset ui 2)
 
+(* Virtual lists take the scroll-request triple over data-attrs and
+   resolve the key through the extent model — the target row does not
+   need a mounted rect, the driver's synthesized content_rect stands
+   in. *)
+let test_vlist_scroll_request () =
+  let ops =
+    [ CreateNode (1, Root); CreateNode (2, VirtualList);
+      InsertChild (1, 2, 0);
+      SetProp
+        (2, DataAttrs,
+          StringValue
+            (Lui_protocol.data_attrs_encode
+               [ ("data-scroll-target", "item-9");
+                 ("data-scroll-token", "1");
+                 ("data-track-visible-range", "true") ])) ]
+    @ List.flatten
+        (List.init 10 (fun i ->
+             [ CreateNode (10 + i, ListItem);
+               SetProp
+                 (10 + i, KeyValue,
+                   StringValue (Printf.sprintf "item-%d" i));
+               InsertChild (2, 10 + i, i) ]))
+  in
+  let s = store_of ops in
+  let ui = Ui.create () in
+  (* The driver's content_rect hook: the container's box, and the
+     model rect for rows whether mounted or not. *)
+  Ui.set_content_rect ui
+    (fun id ->
+       if id = 2 then rect 0. 0. 100. 60.
+       else rect 0. (float (id - 10) *. 20.) 100. 20.);
+  Ui.set_vlist_hook ui
+    (Some
+       Ui.
+         { vh_count = (fun id -> if id = 2 then Some 10 else None);
+           vh_item =
+             (fun _ ~index ->
+                Some (rect 0. (float index *. 20.) 100. 20.));
+           vh_index_of_key =
+             (fun _ k ->
+                if String.length k > 5 && String.sub k 0 5 = "item-"
+                then int_of_string_opt (String.sub k 5 (String.length k - 5))
+                else None);
+           vh_view = (fun _ -> Some (0., 60.)) });
+  Ui.set_scroll_cap ui 2 200.;
+  let acts = Ui.store_changed ui s in
+  (match press_actions acts with
+   | [ VisibleRange (2, 0, 2); ScrollCompleted (2, 1, "succeeded") ]
+   | [ ScrollCompleted (2, 1, "succeeded"); VisibleRange (2, 0, 2) ]
+   | [ ScrollCompleted (2, 1, "succeeded") ] -> ()
+   | a -> Alcotest.failf "expected ScrollCompleted, got %d actions" (List.length a));
+  (* item-9 at y=180 in a 60px view: minimal reveal scrolls to 140 *)
+  Alcotest.(check (float 0.001)) "scrolled" 140. (Ui.scroll_offset ui 2);
+  (* a missing key reports missing-target *)
+  Lui_store.apply_batch s
+    { generation = 2;
+      ops =
+        [ SetProp
+            (2, DataAttrs,
+              StringValue
+                (Lui_protocol.data_attrs_encode
+                   [ ("data-scroll-target", "nope");
+                     ("data-scroll-token", "2") ])) ] };
+  (match press_actions (Ui.store_changed ui s) with
+   | [ ScrollCompleted (2, 2, "missing-target") ]
+   | [ VisibleRange _; ScrollCompleted (2, 2, "missing-target") ]
+   | [ ScrollCompleted (2, 2, "missing-target"); VisibleRange _ ] ->
+     ()
+   | _ -> Alcotest.fail "expected missing-target")
+
 let test_drag_drop () =
   let s =
     store_of
@@ -1759,7 +1829,9 @@ let () =
           Alcotest.test_case "control keys" `Quick test_control_keys ] );
       ( "list",
         [ Alcotest.test_case "typeahead" `Quick test_list_typeahead;
-          Alcotest.test_case "scroll request" `Quick test_scroll_request ] );
+          Alcotest.test_case "scroll request" `Quick test_scroll_request;
+          Alcotest.test_case "vlist scroll request" `Quick
+            test_vlist_scroll_request ] );
       ( "dnd",
         [ Alcotest.test_case "drag drop" `Quick test_drag_drop;
           Alcotest.test_case "file drop" `Quick test_file_drop ] );

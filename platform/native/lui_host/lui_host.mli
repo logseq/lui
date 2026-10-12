@@ -29,6 +29,7 @@ module type LAYOUT_ENGINE = sig
   val sync :
     ?scale:float -> ?measure:text_measure -> ?hidden:(int -> bool) ->
     ?ctx_anchor:(float * float) ->
+    ?vport:(int -> (float * float) option) ->
     width:float -> height:float -> t -> Lui_store.t -> unit
 
   val invalidate : t -> unit
@@ -38,6 +39,16 @@ module type LAYOUT_ENGINE = sig
   val layout_hook : t -> int -> Lui_paint.placement
 
   val rect : t -> int -> Lui_scene.rect option
+
+  (* Virtual-list surface: engines without virtualization return
+     [[]]/[None] everywhere, which reproduces the unwindowed path. *)
+  val vlists : t -> int list
+  val mounted_range : t -> int -> (int * int) option
+  val virtual_extent : t -> int -> float option
+  val virtual_item_rect : t -> int -> index:int -> Lui_scene.rect option
+  val virtual_index_of_key : t -> Lui_store.t -> int -> string -> int option
+  val virtual_index_of_id : t -> Lui_store.t -> int -> int -> int option
+  val virtual_view : t -> int -> (float * float) option
 end
 
 type t
@@ -111,5 +122,25 @@ val layout_rect : t -> int -> Lui_scene.rect option
 (** [layout_rect h id] is the node's rect from the last engine sync —
     the hit-testing surface for the window driver. [None] when the host
     has no engine or the mirror skipped the id. *)
+
+val set_vport : t -> (int -> (float * float) option) -> unit
+(** Install the virtual-list viewport feed: [f id] reports the node's
+    content-space visible range (start, extent, device px) — the scroll
+    offset for a directly-scrolled list, or the on-screen clip mapped
+    into the list's content when an outer scroller clips it. Evaluated
+    inside every engine sync, including memo hits. *)
+
+(** {2 Virtual lists}
+
+    Forwards to the layout engine's virtual-list surface; all answer
+    [[]]/[None] when no engine is installed. *)
+
+val layout_vlists : t -> int list
+val layout_mounted_range : t -> int -> (int * int) option
+val layout_virtual_extent : t -> int -> float option
+val layout_virtual_item : t -> int -> index:int -> Lui_scene.rect option
+val layout_virtual_index_of_key : t -> int -> string -> int option
+val layout_virtual_index_of_id : t -> int -> int -> int option
+val layout_virtual_view : t -> int -> (float * float) option
 
 val backend : t -> Lui_protocol.platform_profile -> Lui_protocol.backend

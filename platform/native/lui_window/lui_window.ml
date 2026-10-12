@@ -657,6 +657,18 @@ module Ui = struct
       (Lui_store.t -> int -> string -> lx:float -> ly:float ->
        lw:float -> lh:float -> int) option;
     mutable content_rect : int -> rect;
+    (* Layout engine forwards for virtual-list math: item counts,
+       content-space item rects (mounted or not), key → index lookup
+       and the last fed viewport — the pieces scroll-target,
+       visible-range and reveal logic need on logical items. *)
+    mutable vlist_hook : vlist_hook option;
+  }
+
+  and vlist_hook = {
+    vh_count : int -> int option;
+    vh_item : int -> index:int -> rect option;
+    vh_index_of_key : int -> string -> int option;
+    vh_view : int -> (float * float) option;
   }
 
   let create () =
@@ -684,13 +696,16 @@ module Ui = struct
       measure =
         (fun _store _id s -> (8. *. float (String.length s), 16.));
       hit_text = None;
-      content_rect = (fun _ -> rect 0. 0. 0. 0.) }
+      content_rect = (fun _ -> rect 0. 0. 0. 0.);
+      vlist_hook = None }
 
   let set_scale t s = t.scale <- s
   let set_measure t f = t.measure <- f
   let set_hit_text t f = t.hit_text <- Some f
   let notify_layout t = t.rects_epoch <- t.rects_epoch + 1
   let set_content_rect t f = t.content_rect <- f
+
+  let set_vlist_hook t h = t.vlist_hook <- h
   let hovered t = t.hovered
   let pressed t = t.pressed
   let focused t = t.focused
@@ -1267,6 +1282,46 @@ module Ui = struct
              Hashtbl.replace t.vrange id (f, l);
              [ Dispatch (VisibleRange (id, f, l)) ])
       end
+    else if kind_name store id = "virtual-list" then
+      (* Same report over the extent model: the fed viewport and a
+         binary search on item rects — no item walk at any size. *)
+      match (t.vlist_hook, data_attr store id "data-track-visible-range") with
+      | Some vh, Some "true" -> (
+        match (vh.vh_view id, vh.vh_count id) with
+        | Some (vs, ve), Some n when n > 0 ->
+          let key = (Lui_store.revision store, vs, t.rects_epoch) in
+          (match Hashtbl.find_opt t.vrange_key id with
+           | Some k when k = key -> []
+           | _ ->
+             Hashtbl.replace t.vrange_key id key;
+             let cr = t.content_rect id in
+             if rect_empty cr then []
+             else begin
+               (* Largest index whose content-space top is ≤ y; -1
+                  before the first item. *)
+               let item_at y =
+                 let rec go lo hi =
+                   if lo > hi then hi
+                   else
+                     let mid = (lo + hi) / 2 in
+                     match vh.vh_item id ~index:mid with
+                     | Some r
+                       when r.Lui_scene.y -. cr.Lui_scene.y <= y ->
+                       go (mid + 1) hi
+                     | _ -> go lo (mid - 1)
+                 in
+                 go 0 (n - 1)
+               in
+               let f = max 0 (item_at vs) in
+               let l = max 0 (item_at (vs +. ve -. 0.001)) in
+               match Hashtbl.find_opt t.vrange id with
+               | Some (f', l') when f' = f && l' = l -> []
+               | _ ->
+                 Hashtbl.replace t.vrange id (f, l);
+                 [ Dispatch (VisibleRange (id, f, l)) ]
+             end)
+        | _ -> [])
+      | _ -> []
     else []
 
   let scroll_set ?(axis = Y) t store id off =
@@ -1610,7 +1665,8 @@ module Ui = struct
     (* scroll-target requests on list containers *)
     List.iter
       (fun id ->
-         if kind_name store id = "list" then
+         let k = kind_name store id in
+         if k = "list" then
            match Lui_store.int_prop store id "scroll-token" with
            | Some tok ->
              (match Hashtbl.find_opt t.scroll_token id with
@@ -1632,7 +1688,50 @@ module Ui = struct
                    push (Dispatch (ScrollCompleted (id, tok, "succeeded")))
                  | None ->
                    push (Dispatch (ScrollCompleted (id, tok, "missing-target")))))
-           | None -> ())
+           | None -> ()
+         else if k = "virtual-list" then
+           (* The schema wires scroll-target on ListContainer only;
+              virtual lists take the same triple over data-attrs and
+              resolve the key through the extent model — the target
+              row does not need to be mounted. *)
+           match
+             ( Option.bind
+                 (data_attr store id "data-scroll-token")
+                 (fun s -> int_of_string_opt (String.trim s)),
+               data_attr store id "data-scroll-target",
+               t.vlist_hook )
+           with
+           | Some tok, Some target, Some vh when target <> "" -> (
+             match Hashtbl.find_opt t.scroll_token id with
+             | Some prev when prev = tok -> ()
+             | _ ->
+               Hashtbl.replace t.scroll_token id tok;
+               (match vh.vh_index_of_key id target with
+                | Some i ->
+                  let cid = Lui_store.child_id_at store id i in
+                  if cid >= 0 then begin
+                    let anchor =
+                      match
+                        data_attr store id "data-scroll-anchor"
+                      with
+                      | Some a -> a
+                      | None -> ""
+                    in
+                    acts :=
+                      List.rev_append
+                        (scroll_align t store id cid anchor) !acts;
+                    push
+                      (Dispatch (ScrollCompleted (id, tok, "succeeded")))
+                  end
+                  else
+                    push
+                      (Dispatch
+                         (ScrollCompleted (id, tok, "missing-target")))
+                | None ->
+                  push
+                    (Dispatch
+                       (ScrollCompleted (id, tok, "missing-target")))))
+           | _ -> ())
       (Lui_store.preorder store);
     (* The tracked-list ids are store-derived too — refreshed under
        the same gate so the per-sync report loop below only walks
@@ -1640,8 +1739,11 @@ module Ui = struct
     t.vrange_lists <-
       List.filter
         (fun id ->
-           kind_name store id = "list"
-           && bool_prop store id "track-visible-range")
+           let k = kind_name store id in
+           (k = "list" && bool_prop store id "track-visible-range")
+           || (k = "virtual-list"
+              && data_attr store id "data-track-visible-range"
+                 = Some "true"))
         (Lui_store.preorder store)
     end;
     List.iter
