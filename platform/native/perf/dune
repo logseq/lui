@@ -2,7 +2,7 @@
  (name lui_perf)
  (modules harness scenarios)
  (libraries lui lui_store lui_scene lui_paint lui_layout lui_raster
-   lui_host unix))
+   lui_host lui_input lui_spatial unix))
 
 (executable
  (name main)
@@ -15,3 +15,4 @@
  (modules lui_perf_test)
  (libraries lui_perf lui lui_store lui_scene lui_paint lui_layout
    lui_raster lui_host alcotest unix))
+

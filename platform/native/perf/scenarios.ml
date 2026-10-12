@@ -248,6 +248,77 @@ let memory ~n ~item_h ~width ~height =
     row name "RSS after first frame" (mb after_frame) "MiB";
   ]
 
+(* Pointer-event cost over a mounted virtual list: the store is
+   static and the hit mirror is resolved once, then every pointer
+   event pays one point query. The unindexed path walks the whole
+   tree; the spatial index descends only toward the hit band. Also
+   reports an indexed static-frame paint — the viewport-cull case the
+   same index serves. *)
+let hit ~n ~item_h ~width ~height =
+  let name = Printf.sprintf "hit-%dk" (n / 1000) in
+  let t = H.create ~width ~height ~scale:1. () in
+  ignore (H.apply t (mount_vlist ~n ~item_h));
+  ignore (H.layout t);
+  ignore (H.paint t);
+  (* The mirror the window driver's populate fills: resolved rects —
+     shifted engine rects here, resolve_rect is identity for these
+     plain rows. *)
+  let rects = Lui_query.Rects.create () in
+  List.iter
+    (fun id ->
+      match H.rect_of t id with
+      | Some r -> Hashtbl.replace rects id r
+      | None -> ())
+    (Lui_store.preorder (H.store t));
+  let idx =
+    Lui_spatial.build Lui_paint.spatial_env (H.store t)
+      ~rect_of:(Lui_query.Rects.get rects)
+  in
+  (* Probe points: three depths inside the visible viewport. *)
+  let probes =
+    [ (float_of_int width *. 0.5, 20.);
+      (float_of_int width *. 0.5, float_of_int height *. 0.5);
+      (float_of_int width *. 0.9, float_of_int height -. 20.) ]
+  in
+  let iters = 30 in
+  let time_hits spatial =
+    let acc = ref [] in
+    for _ = 1 to iters do
+      let t0 = H.now () in
+      List.iter
+        (fun (x, y) ->
+          ignore (Lui_query.hit_path ?spatial (H.store t) rects ~x ~y))
+        probes;
+      acc := (H.now () -. t0) *. 1000. :: !acc
+    done;
+    H.stats_of !acc
+  in
+  let unindexed = time_hits None in
+  let indexed = time_hits (Some idx) in
+  (* Static-frame paint with a warm index: what a hover-only repaint
+     costs once geometry is already indexed. *)
+  let paint_idx =
+    let acc = ref [] in
+    for _ = 1 to 10 do
+      let t0 = H.now () in
+      Lui_paint.paint ~spatial:idx (H.paint_hooks t) (H.store t)
+        (H.scene t) ~width ~height ~scale:1. ~clear:(Lui_scene.color 0 0 0 0);
+      acc := (H.now () -. t0) *. 1000. :: !acc
+    done;
+    H.stats_of !acc
+  in
+  [
+    ms_row name "hit_path p50" unindexed.p50;
+    ms_row name "hit_path p50 indexed" indexed.p50;
+    ms_row name "paint static p50 indexed" paint_idx.p50;
+    ms_row name "index build"
+      (snd
+         (H.timed (fun () ->
+              ignore
+                (Lui_spatial.build Lui_paint.spatial_env (H.store t)
+                   ~rect_of:(Lui_query.Rects.get rects)))));
+  ]
+
 (* ---------- suite ---------- *)
 
 let default_width = 1280
@@ -272,6 +343,8 @@ let all ?(scale_sizes = false) () =
              vlist ~n ~frames ~velocity:40. ~item_h:28. ~width:w ~height:h)
            vlists);
       damage ~n:n5 ~item_h:20. ~width:w ~height:h;
+      hit ~n:(List.nth vlists (List.length vlists - 1)) ~item_h:28.
+        ~width:w ~height:h;
       text ~n:ntx ~len:48 ~width:w ~height:h;
       first_frame ~n:n10 ~item_h:20. ~width:w ~height:h;
       memory ~n:nrss ~item_h:28. ~width:w ~height:h;

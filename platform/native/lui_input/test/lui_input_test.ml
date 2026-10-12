@@ -417,6 +417,95 @@ let test_pointer_hover_press () =
        (function `Dispatch (PointerUp (2, _)) -> true | _ -> false)
        m2)
 
+(* ---------- spatial index (P2-2) ---------- *)
+
+(* A tree exercising everything hit-testing must agree on: a scroll
+   clip with clipped-away children, a popover promoted out of that
+   clip, a wide list exercising the interval index, display:contents,
+   a hidden subtree, a spacer and z-reordered overlap. *)
+let spatial_hit_store () =
+  store_of
+    ([ CreateNode (1, Root); CreateNode (2, Scroll);
+       CreateNode (3, Button);
+       CreateNode (4, Column); CreateNode (50, Popover);
+       CreateNode (7, ListContainer);
+       CreateNode (8, Column); CreateNode (9, Button);
+       CreateNode (10, Button); CreateNode (11, Spacer);
+       CreateNode (12, Button); CreateNode (13, Button);
+       SetProp (8, DisplayValue, StringValue "contents");
+       SetProp (10, Visible, BoolValue false);
+       SetProp (12, ZIndex, IntValue 1);
+       SetProp (13, ZIndex, IntValue 2);
+       InsertChild (1, 2, 0);
+       InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+       InsertChild (4, 50, 0);
+       InsertChild (1, 7, 1);
+       InsertChild (1, 8, 2); InsertChild (8, 9, 0);
+       InsertChild (1, 10, 3); InsertChild (1, 11, 4);
+       InsertChild (1, 12, 5); InsertChild (1, 13, 6) ]
+    @ List.concat_map
+        (fun i ->
+          [ CreateNode (100 + i, ListItem);
+            SetProp (100 + i, TextValue, StringValue "row");
+            InsertChild (7, 100 + i, i) ])
+        (List.init 40 Fun.id))
+
+let spatial_hit_rects =
+  [ (1, rect 0. 0. 300. 200.); (2, rect 0. 0. 100. 80.);
+    (3, rect 0. 0. 100. 40.); (4, rect 0. 120. 100. 40.);
+    (50, rect 0. 120. 60. 20.); (7, rect 100. 0. 200. 200.);
+    (8, rect 100. 60. 100. 20.); (9, rect 100. 60. 100. 20.);
+    (10, rect 150. 100. 50. 50.); (11, rect 0. 90. 100. 10.);
+    (12, rect 150. 150. 50. 40.); (13, rect 150. 150. 50. 40.) ]
+  @ List.init 40 (fun i ->
+        (100 + i, rect 100. (float_of_int i *. 5.) 200. 5.))
+
+let spatial_index store rects =
+  Lui_spatial.build Lui_paint.spatial_env store
+    ~rect_of:(Lui_query.Rects.get rects)
+
+(* Indexed and unindexed hit paths must agree on every point. *)
+let test_spatial_hit_equiv () =
+  let store = spatial_hit_store () in
+  let rects = rects_of spatial_hit_rects in
+  let idx = spatial_index store rects in
+  let y = ref (-10.) in
+  while !y < 210. do
+    let x = ref (-10.) in
+    while !x < 310. do
+      let a = Lui_query.hit_path store rects ~x:!x ~y:!y in
+      let b = Lui_query.hit_path ~spatial:idx store rects ~x:!x ~y:!y in
+      if a <> b then
+        Alcotest.failf "hit_path diverged at (%.1f,%.1f): %s vs %s" !x !y
+          (String.concat "," (List.map string_of_int a))
+          (String.concat "," (List.map string_of_int b));
+      x := !x +. 7.5
+    done;
+    y := !y +. 7.5
+  done
+
+(* The promoted popover escapes its off-clip parent: indexed or not,
+   a click in its painted area must still land on it. *)
+let test_spatial_hit_popup_escape () =
+  let store = spatial_hit_store () in
+  let rects = rects_of spatial_hit_rects in
+  let idx = spatial_index store rects in
+  Alcotest.(check (option int)) "popover hits" (Some 50)
+    (Lui_query.hit ~spatial:idx store rects ~x:10. ~y:130.);
+  Alcotest.(check (option int)) "clipped child misses" (Some 1)
+    (Lui_query.hit ~spatial:idx store rects ~x:10. ~y:100.)
+
+(* The interval index enumerates the same candidates in the same
+   order the unindexed walk would — a click deep in a 40-row list. *)
+let test_spatial_hit_wide_list () =
+  let store = spatial_hit_store () in
+  let rects = rects_of spatial_hit_rects in
+  let idx = spatial_index store rects in
+  Alcotest.(check (option int)) "row 20 hits" (Some 120)
+    (Lui_query.hit ~spatial:idx store rects ~x:110. ~y:102.);
+  Alcotest.(check (option int)) "last row hits" (Some 139)
+    (Lui_query.hit ~spatial:idx store rects ~x:110. ~y:197.)
+
 let () =
   Alcotest.run "lui_input"
     [ ( "focus",
@@ -446,4 +535,11 @@ let () =
         [ Alcotest.test_case "flow" `Quick test_drag_flow ] );
       ( "pointer",
         [ Alcotest.test_case "hover+press" `Quick
-            test_pointer_hover_press ] ) ]
+            test_pointer_hover_press ] );
+      ( "spatial",
+        [ Alcotest.test_case "hit equivalence" `Quick
+            test_spatial_hit_equiv;
+          Alcotest.test_case "popup escape" `Quick
+            test_spatial_hit_popup_escape;
+          Alcotest.test_case "wide list" `Quick
+            test_spatial_hit_wide_list ] ) ]
