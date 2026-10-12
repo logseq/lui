@@ -291,9 +291,14 @@ let () =
                  in
                  if has_text then ops else []
                in
-               let dx, _ =
-                 Lui_window_text.measure_text text_engine id
-                   (String.sub (Ui.shadow ui) 0 caret)
+               (* The caret's real position inside the laid-out
+                  shadow — the same rect the IME candidate anchor
+                  uses, so marked text and its underline land where
+                  the commit will insert. *)
+               let cx, _, _ =
+                 (Lui_window_text.caret_ops text_engine id
+                    (Ui.shadow ui) ~lw:r.Lui_scene.w ~lh:r.Lui_scene.h)
+                   .Lui_window.Ui.c_rect caret
                in
                let mw, mh =
                  Lui_window_text.measure_text text_engine id marked
@@ -302,7 +307,7 @@ let () =
                  Lui_scene.Fill
                    { frect =
                        Lui_scene.rect
-                         (r.Lui_scene.x +. dx)
+                         (r.Lui_scene.x +. cx)
                          (r.Lui_scene.y
                           +. (r.Lui_scene.h +. mh) /. 2. -. 2.)
                          mw 2.;
@@ -313,7 +318,7 @@ let () =
                      fborder_color = Lui_scene.color 0 0 0 0;
                      fdashed = false; fwide = 0; fopacity = 1. }
                in
-               let mr = { r with Lui_scene.x = r.Lui_scene.x +. dx } in
+               let mr = { r with Lui_scene.x = r.Lui_scene.x +. cx } in
                ops @ [ underline ]
                  @ Lui_window_text.text_ops text_engine id mr fg marked
              end);
@@ -383,6 +388,11 @@ let () =
   Ui.set_hit_text ui
     (fun _store id text ~lx ~ly ~lw ~lh ->
        Lui_window_text.hit_text text_engine id text ~lx ~ly ~lw ~lh);
+  (* Keyboard caret moves run on the same layouts: grapheme clusters
+     horizontally, visual lines vertically. *)
+  Ui.set_caret_ops ui
+    (fun _store id text ~lw ~lh ->
+       Lui_window_text.caret_ops text_engine id text ~lw ~lh);
   Ui.set_content_rect ui (fun id -> Rects.get rects id);
   (* The a11y forest mirrors the store: synced after every repaint,
      focused along with the Ui focus, served over UIA by
@@ -477,34 +487,25 @@ let () =
       ~h:(max 1 (int_of_float r.Lui_scene.h))
   in
   (* Caret rect of the focused field, device px: the node's layout
-     rect shifted to the caret column — horizontal padding plus the
-     width of t
-he caret column — horizontal padding plus the
-     width of the text up to the caret. This is the candidate-window
-     anchor while composing. *)
+     rect shifted to the caret's real position inside the laid-out
+     text — line pitch and vertical centering included. This is the
+     candidate-window anchor while composing. *)
   let caret_rect () =
     let id = Ui.focused ui in
     let r = Rects.get rects id in
     if Lui_scene.rect_empty r then r
     else begin
-      let s = !scale_cell in
-      let pad =
-        match Lui_store.prop store id "padding-horizontal" with
-        | Some (Lui_protocol.IntValue n) -> float n *. s
-        | Some (Lui_protocol.FloatValue f) -> f *. s
-        | _ ->
-          (match Lui_store.prop store id "padding" with
-           | Some (Lui_protocol.IntValue n) -> float n *. s
-           | Some (Lui_protocol.FloatValue f) -> f *. s
-           | _ -> 0.)
-      in
       let text = Ui.shadow ui in
-      let prefix =
-        String.sub text 0 (min (Ui.caret ui) (String.length text))
+      let ops =
+        Lui_window_text.caret_ops text_engine id text ~lw:r.Lui_scene.w
+          ~lh:r.Lui_scene.h
       in
-      let dx, _ = Lui_window_text.measure_text text_engine id prefix in
-      Lui_scene.rect (r.Lui_scene.x +. pad +. dx) r.Lui_scene.y 2.
-        r.Lui_scene.h
+      let cx, cy, ch =
+        ops.Lui_window.Ui.c_rect
+          (min (Ui.caret ui) (String.length text))
+      in
+      Lui_scene.rect (r.Lui_scene.x +. cx) (r.Lui_scene.y +. cy) 2.
+        (Float.max 2. ch)
     end
   in
   let rec apply_actions acts = List.iter (function

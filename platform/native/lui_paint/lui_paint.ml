@@ -1358,6 +1358,16 @@ let secure_byte_of_masked s m =
   let idx = min (max 0 m / mask_char_len) (Array.length b - 1) in
   b.(idx)
 
+(* The inverse of [secure_byte_of_masked]: the masked-form byte
+   offset of real-text byte [i] — the bullet that starts the grapheme
+   containing [i]. Lets caret models built on the masked layout take
+   and return real-text offsets. *)
+let secure_masked_of_byte s i =
+  let b = grapheme_bounds s in
+  let n = Array.length b in
+  let rec go k = if k + 1 < n && b.(k + 1) <= i then go (k + 1) else k in
+  (if n = 0 then 0 else go 0) * mask_char_len
+
 let text_ops ?fg ctx store id r alpha ~placeholder_ok =
   let fg =
     match fg with Some c -> c | None -> text_fg ctx store id
