@@ -582,6 +582,86 @@ let test_extension () =
   (* unregistered extension falls back to a box fill *)
   check int "fallback" 0 (List.length s.ops)
 
+(* ---------- secure field ---------- *)
+
+(* The strings the paint pass hands the text engine, in order. *)
+let text_calls t =
+  let calls = ref [] in
+  let h =
+    { (hooks ()) with
+      Lui_paint.text_ops =
+        (fun _ _ _ s ->
+          calls := s :: !calls;
+          []) }
+  in
+  ignore (paint_with h t ());
+  List.rev !calls
+
+let test_secure_masked () =
+  let t = store () in
+  apply t
+    [ Lui_protocol.CreateNode (1, SecureField);
+      SetProp (1, TextValue, StringValue "hunter2") ];
+  let calls = text_calls t in
+  (* The real text must never reach the renderer — only the bullet
+     mask, one grapheme one bullet. *)
+  check (list string) "mask only" [ "•••••••" ] calls
+
+let test_secure_masked_graphemes () =
+  let t = store () in
+  apply t
+    [ Lui_protocol.CreateNode (1, SecureField);
+      SetProp
+        (1, TextValue,
+          StringValue
+            "e\xcc\x81x\xf0\x9f\x91\xa8\xe2\x80\x8d\xf0\x9f\x91\xa9") ];
+  (* "é"(combining) + "x" + ZWJ-joined pair: three graphemes. *)
+  let calls = text_calls t in
+  check (list string) "one bullet per grapheme" [ "•••" ] calls
+
+let test_secure_placeholder_unmasked () =
+  let t = store () in
+  apply t
+    [ Lui_protocol.CreateNode (1, SecureField);
+      SetProp (1, PlaceholderValue, StringValue "password hint") ];
+  let calls = text_calls t in
+  (* the placeholder is a hint, not a secret — it stays readable *)
+  check (list string) "placeholder readable" [ "password hint" ] calls
+
+let test_secure_mask_units () =
+  let bullets s = Lui_paint.secure_mask s in
+  check string "ascii" "•••••••" (bullets "hunter2");
+  check string "empty" "" (bullets "");
+  (* combining mark attaches: "e" + U+0301 is one grapheme *)
+  check string "combining" "•" (bullets "e\xcc\x81");
+  (* precomposed counts the same *)
+  check string "precomposed" "•" (bullets "\xc3\xa9");
+  (* emoji modifier joins its base *)
+  check string "skin tone" "•"
+    (bullets "\xf0\x9f\x91\x8d\xf0\x9f\x8f\xbb");
+  (* ZWJ chain is one grapheme *)
+  check string "zwj family" "•"
+    (bullets
+       "\xf0\x9f\x91\xa8\xe2\x80\x8d\xf0\x9f\x91\xa9\xe2\x80\x8d\xf0\x9f\x91\xa7");
+  (* regional indicators pair per flag *)
+  check string "two flags" "••"
+    (bullets
+       "\xf0\x9f\x87\xab\xf0\x9f\x87\xb7\xf0\x9f\x87\xba\xf0\x9f\x87\xb8");
+  (* idempotent: masked bullets re-mask one-to-one *)
+  check string "idempotent" "•••" (bullets "•••")
+
+let test_secure_byte_of_masked () =
+  let s = "hunter2" in
+  check int "start" 0 (Lui_paint.secure_byte_of_masked s 0);
+  check int "second char" 1 (Lui_paint.secure_byte_of_masked s 3);
+  check int "end" 7 (Lui_paint.secure_byte_of_masked s 21);
+  (* a masked offset past the end clamps to the text's end *)
+  check int "clamp" 7 (Lui_paint.secure_byte_of_masked s 300);
+  (* multibyte: "éx" is 2 graphemes, 4 bytes *)
+  let m = "e\xcc\x81x" in
+  check int "past composed" 3 (Lui_paint.secure_byte_of_masked m 3);
+  check int "end composed" 4 (Lui_paint.secure_byte_of_masked m 6)
+
 (* ---------- coverage ---------- *)
 
 let test_coverage_table () =
@@ -642,5 +722,11 @@ let () =
          test_case "slider" `Quick test_slider;
          test_case "scrollbar" `Quick test_scrollbar;
          test_case "extension" `Quick test_extension ]);
+      ("secure",
+       [ test_case "masked paint" `Quick test_secure_masked;
+         test_case "mask per grapheme" `Quick test_secure_masked_graphemes;
+         test_case "placeholder unmasked" `Quick test_secure_placeholder_unmasked;
+         test_case "mask units" `Quick test_secure_mask_units;
+         test_case "masked offset map" `Quick test_secure_byte_of_masked ]);
       ("coverage",
        [ test_case "all props" `Quick test_coverage_table ]) ]
