@@ -269,7 +269,6 @@ private fun LuiNodeContent(
         }
 
         LuiNodeKind.column,
-        LuiNodeKind.list,
         LuiNodeKind.listSection,
         LuiNodeKind.listSectionHeader,
         LuiNodeKind.listSectionFooter,
@@ -287,6 +286,30 @@ private fun LuiNodeContent(
             horizontalAlignment = crossHorizontalAlignment(node.propString("cross")),
         ) {
             children.forEachNode { childId -> GrowChildColumn(backend, childId) }
+        }
+
+        LuiNodeKind.list -> LazyColumn(
+            modifier = modifier,
+            verticalArrangement = Arrangement.spacedBy(
+                gapOf(node).dp,
+                alignment = mainVerticalAlignment(node.propString("main")),
+            ),
+            horizontalAlignment = crossHorizontalAlignment(node.propString("cross")),
+        ) {
+            children.forEach { childId ->
+                if (backend.node(childId)?.kind == LuiNodeKind.listSection) {
+                    // Expand section children so rows compose lazily like
+                    // the Apple backend's native list; headers/footers
+                    // stay inline items (not pinned) to keep wire order.
+                    backend.node(childId)?.children?.forEach { sectionChildId ->
+                        item(key = sectionChildId) {
+                            LuiNodeView(backend, sectionChildId)
+                        }
+                    }
+                } else {
+                    item(key = childId) { LuiNodeView(backend, childId) }
+                }
+            }
         }
 
         LuiNodeKind.table -> Column(
