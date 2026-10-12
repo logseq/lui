@@ -678,6 +678,17 @@ module Ui = struct
 
   let text_of store id = string_prop store id "text"
 
+  let retains_text store id =
+    match Lui_store.kind store id with
+    | "text-field" | "secure-field" | "input" | "search-field" | "textarea"
+    | "combobox" -> true
+    | _ -> false
+
+  let set_edit_text t store id text =
+    t.shadow <- text;
+    if retains_text store id then
+      Lui_store.apply_op store (SetProp (id, TextValue, StringValue text))
+
   let set_focused ?(kbd = false) t store id =
     if id <> t.focused then begin
       (* Focus loss cancels any in-flight composition first — marked
@@ -1084,7 +1095,7 @@ module Ui = struct
 
   (* Splice [ins] over the current selection in [n]'s shadow and
      dispatch the resulting TextChanged (undo-recorded). *)
-  let splice t _store n ins =
+  let splice t store n ins =
     let cur = t.shadow in
     let lo = min (sel_lo t) (String.length cur)
     and hi = min (sel_hi t) (String.length cur) in
@@ -1097,7 +1108,8 @@ module Ui = struct
       t.caret <- caret'; t.sel_anchor <- caret'; []
     end else begin
       push_undo t;
-      t.shadow <- next; t.caret <- caret'; t.sel_anchor <- caret';
+      set_edit_text t store n next;
+      t.caret <- caret'; t.sel_anchor <- caret';
       t.dirty <- true;
       [ Dispatch (TextChanged (n, next)) ]
     end
@@ -1401,6 +1413,25 @@ module Ui = struct
     if t.focused <> 0 && not (Lui_store.mem store t.focused) then begin
       set_focused t store 0;
       push (Focus_changed 0)
+    end;
+    if t.focused <> 0 && retains_text store t.focused then begin
+      let text = text_of store t.focused in
+      if text <> t.shadow then begin
+        let clamp_caret offset =
+          let len = String.length text in
+          let rec back i =
+            if i <= 0 then 0
+            else if Char.code text.[i] land 0xC0 = 0x80 then back (i - 1)
+            else i
+          in
+          if offset >= len then len else back offset
+        in
+        t.shadow <- text;
+        t.caret <- clamp_caret t.caret;
+        t.sel_anchor <- clamp_caret t.sel_anchor;
+        t.undo <- []; t.redo <- [];
+        t.dirty <- true
+      end
     end;
     if t.saved_focus <> 0 && not (Lui_store.mem store t.saved_focus)
     then t.saved_focus <- 0;
@@ -2205,13 +2236,15 @@ module Ui = struct
             | false, (s, c, a) :: tl, _ ->
               t.redo <- (t.shadow, t.caret, t.sel_anchor) :: t.redo;
               t.undo <- tl;
-              t.shadow <- s; t.caret <- c; t.sel_anchor <- a;
+              set_edit_text t store t.focused s;
+              t.caret <- c; t.sel_anchor <- a;
               t.dirty <- true;
               [ Dispatch (TextChanged (t.focused, s)) ]
             | true, _, (s, c, a) :: tl ->
               t.undo <- (t.shadow, t.caret, t.sel_anchor) :: t.undo;
               t.redo <- tl;
-              t.shadow <- s; t.caret <- c; t.sel_anchor <- a;
+              set_edit_text t store t.focused s;
+              t.caret <- c; t.sel_anchor <- a;
               t.dirty <- true;
               [ Dispatch (TextChanged (t.focused, s)) ]
             | _ -> [])

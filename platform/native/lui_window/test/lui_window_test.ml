@@ -280,6 +280,8 @@ let test_text_input_and_keys () =
   (match press_actions acts with
    | [ TextChanged (4, "ab") ] -> ()
    | _ -> Alcotest.fail "expected TextChanged ab");
+  Alcotest.(check (option string)) "committed text paints from the native store"
+    (Some "ab") (Lui_store.string_prop s 4 "text");
   let acts =
     Ui.handle ui s rects
       (Input.Key_down (Input.Return, Input.mods_none, false))
@@ -299,6 +301,32 @@ let test_text_input_and_keys () =
   (match press_actions acts with
    | [ TextChanged (4, "a") ] -> ()
    | _ -> Alcotest.fail "expected TextChanged a");
+  Alcotest.(check (option string)) "deletion updates the displayed value"
+    (Some "a") (Lui_store.string_prop s 4 "text");
+  let meta = { Input.mods_none with meta = true } in
+  ignore (Ui.handle ui s rects (Input.Key_down (Input.Other 29, meta, false)));
+  Alcotest.(check (option string)) "undo restores the displayed value"
+    (Some "ab") (Lui_store.string_prop s 4 "text");
+  ignore
+    (Ui.handle ui s rects
+       (Input.Key_down (Input.Other 29, { meta with Input.shift = true }, false)));
+  Alcotest.(check (option string)) "redo restores the displayed value"
+    (Some "a") (Lui_store.string_prop s 4 "text");
+  Ui.set_focused ui s 0;
+  Ui.set_focused ui s 4;
+  Alcotest.(check string) "refocusing preserves the committed field value"
+    "a" (Ui.shadow ui);
+  Lui_store.apply_op s (SetProp (4, TextValue, StringValue "model"));
+  ignore (Ui.store_changed ui s);
+  Alcotest.(check string) "model updates synchronize the focused edit buffer"
+    "model" (Ui.shadow ui);
+  Lui_store.apply_op s (SetProp (4, TextValue, StringValue "字"));
+  ignore (Ui.store_changed ui s);
+  Alcotest.(check int) "model updates keep the caret at a UTF-8 boundary"
+    0 (Ui.caret ui);
+  ignore (Ui.handle ui s rects (Input.Text_input "x"));
+  Alcotest.(check (option string)) "typing after a UTF-8 model update stays valid"
+    (Some "x字") (Lui_store.string_prop s 4 "text");
   (* Escape blurs first, then quits *)
   (match
      Ui.handle ui s rects
