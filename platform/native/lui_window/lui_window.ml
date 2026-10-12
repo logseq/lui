@@ -577,6 +577,11 @@ module Ui = struct
     mutable open_menu : int; (* trigger-owned menu panel currently open *)
     mutable laid_out_menu : int;
     mutable saved_focus : int;
+    (* Store state [sync] last derived its effects from: the store
+       revision and the Ui-local open menu (top_overlay reads both).
+       Equal pair means the scans would recompute the same results. *)
+    mutable sync_rev : int;
+    mutable sync_menu : int;
     (* Autofocus controls already observed during their mount lifecycle. *)
     autofocus_seen : (int, unit) Hashtbl.t;
     (* appear-enabled ids already announced (mount lifecycle). *)
@@ -612,7 +617,7 @@ module Ui = struct
       drop_seq = 0;
       overlay_id = 0; overlay_modal = false; open_menu = 0;
       laid_out_menu = 0;
-      saved_focus = 0;
+      saved_focus = 0; sync_rev = -1; sync_menu = -1;
       autofocus_seen = Hashtbl.create 8;
       seen = Hashtbl.create 64;
       scroll_token = Hashtbl.create 8; vrange = Hashtbl.create 8;
@@ -1428,6 +1433,17 @@ module Ui = struct
   let sync t store =
     let acts = ref [] in
     let push a = acts := a :: !acts in
+    (* The whole derived-state block below reads only store props and
+       [t.open_menu]: when the revision and the open menu are both
+       what the last sync saw, the preorder walks recompute the same
+       results — skip them. Scroll-range reports follow scroll
+       offsets, which live in Ui state rather than the store, so they
+       stay outside the gate (report_vrange memoizes on its own
+       inputs). *)
+    let rev = Lui_store.revision store in
+    if rev <> t.sync_rev || t.open_menu <> t.sync_menu then begin
+    t.sync_rev <- rev;
+    t.sync_menu <- t.open_menu;
     if t.focused <> 0 && not (Lui_store.mem store t.focused) then begin
       set_focused t store 0;
       push (Focus_changed 0)
@@ -1541,7 +1557,8 @@ module Ui = struct
                  | None ->
                    push (Dispatch (ScrollCompleted (id, tok, "missing-target")))))
            | None -> ())
-      (Lui_store.preorder store);
+      (Lui_store.preorder store)
+    end;
     List.iter
       (fun id ->
          acts := List.rev_append (report_vrange t store id) !acts)
