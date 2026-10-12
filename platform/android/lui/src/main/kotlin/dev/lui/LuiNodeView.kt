@@ -1394,7 +1394,9 @@ private fun LuiFileImage(backend: LuiBackend, node: LuiNode, modifier: Modifier)
     var bitmap by remember(path) { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(path) {
         if (path.isNotEmpty()) {
-            bitmap = runCatching { decodeSampled(path, maxPixel) }.getOrNull()
+            bitmap = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching { decodeSampled(path, maxPixel) }.getOrNull()
+            }
         }
     }
     val radius = node.propInt("corner-radius")
