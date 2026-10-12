@@ -87,6 +87,104 @@ let test_dirty () =
   apply t [ SetProp (2, TextValue, StringValue "v") ];
   check (list int) "only touched" [2] (Lui_store.drain_dirty t)
 
+(* Typed dirty masks: a paint-only prop reports only the paint bit, a
+   layout prop reports layout|paint, and structure ops report
+   structure. Consumers drain the same ids they always did — the mask
+   rides along. *)
+let test_dirty_masks () =
+  let t = Lui_store.create () in
+  apply t [ CreateNode (1, Column); CreateNode (2, Text); InsertChild (1, 2, 0) ];
+  ignore (Lui_store.drain_dirty_masked t);
+  apply t [ SetProp (2, BackgroundValue, StringValue "#fff") ];
+  (match Lui_store.drain_dirty_masked t with
+   | [ (2, m) ] ->
+     check bool "paint bit" true (Lui_store.mask_has m Lui_store.d_paint);
+     check bool "no layout bit" false (Lui_store.mask_has m Lui_store.d_layout);
+     check bool "no structure bit" false (Lui_store.mask_has m Lui_store.d_structure)
+   | _ -> fail "expected one masked entry");
+  apply t [ SetProp (2, WidthValue, IntValue 30) ];
+  (match Lui_store.drain_dirty_masked t with
+   | [ (2, m) ] ->
+     check bool "layout bit" true (Lui_store.mask_has m Lui_store.d_layout);
+     check bool "paint bit" true (Lui_store.mask_has m Lui_store.d_paint)
+   | _ -> fail "expected one masked entry");
+  apply t [ SetProp (2, DisplayValue, StringValue "none") ];
+  (match Lui_store.drain_dirty_masked t with
+   | [ (2, m) ] ->
+     check bool "display is structure" true (Lui_store.mask_has m Lui_store.d_structure)
+   | _ -> fail "expected one masked entry");
+  (* masks accumulate across ops on one id *)
+  apply t
+    [ SetProp (2, BackgroundValue, StringValue "#000");
+      SetProp (2, HeightValue, IntValue 10) ];
+  (match Lui_store.drain_dirty_masked t with
+   | [ (2, m) ] ->
+     check bool "merged paint" true (Lui_store.mask_has m Lui_store.d_paint);
+     check bool "merged layout" true (Lui_store.mask_has m Lui_store.d_layout)
+   | _ -> fail "expected merged entry")
+
+(* The layout revision moves only on geometry-relevant ops: paint churn
+   leaves it (and therefore the layout memo) untouched. *)
+let test_layout_rev () =
+  let t = Lui_store.create () in
+  apply t [ CreateNode (1, Column); CreateNode (2, Text); InsertChild (1, 2, 0) ];
+  let r0 = Lui_store.layout_rev t in
+  check bool "mount bumps" true (r0 > 0);
+  apply t [ SetProp (2, BackgroundValue, StringValue "#fff") ];
+  check int "paint only" r0 (Lui_store.layout_rev t);
+  apply t [ SetProp (2, ZIndex, IntValue 2) ];
+  check int "z-index paint only" r0 (Lui_store.layout_rev t);
+  apply t [ SetProp (2, AccessibilityLabel, StringValue "x") ];
+  check int "a11y prop not layout" r0 (Lui_store.layout_rev t);
+  apply t [ SetProp (2, WidthValue, IntValue 10) ];
+  check bool "width bumps" true (Lui_store.layout_rev t > r0)
+
+(* changes_since replays ops in order for a consumer cursor; an unknown
+   revision still yields everything reachable. *)
+let test_changes_since () =
+  let t = Lui_store.create () in
+  apply t [ CreateNode (1, Column); CreateNode (2, Text); InsertChild (1, 2, 0) ];
+  let rev = Lui_store.revision t in
+  (match Lui_store.changes_since t rev with
+   | Some [] -> ()
+   | _ -> fail "expected no ops since head");
+  apply t [ SetProp (2, TextValue, StringValue "a"); SetProp (2, WidthValue, IntValue 5) ];
+  (match Lui_store.changes_since t rev with
+   | Some [ SetProp (2, TextValue, StringValue "a"); SetProp (2, WidthValue, IntValue 5) ] -> ()
+   | _ -> fail "expected the two SetProps in order");
+  (match Lui_store.changes_since t 0 with
+   | Some ops -> check bool "from scratch" true (List.length ops >= 5)
+   | None -> fail "fresh journal covers rev 0")
+
+(* O(N) wide removals: the intrusive child list detaches each child in
+   O(1), so dropping 20k siblings one op at a time — or dropping their
+   parent — stays linear. The old compacting array re-scanned the
+   siblings per removal and took seconds here. *)
+let test_wide_removal_complexity () =
+  let n = 20_000 in
+  let t = Lui_store.create () in
+  apply t [ CreateNode (1, Column) ];
+  apply t
+    (List.concat_map
+       (fun i -> [ CreateNode (10 + i, Text); InsertChild (1, 10 + i, i) ])
+       (List.init n Fun.id));
+  let t0 = Sys.time () in
+  apply t (List.init n (fun i -> RemoveChild (1, 10 + i)));
+  let remove_ms = (Sys.time () -. t0) *. 1000. in
+  check (list int) "all detached" [] (Lui_store.child_ids t 1);
+  (* Repopulate, then drop the whole subtree at once. *)
+  apply t
+    (List.concat_map
+       (fun i -> [ CreateNode (10 + i, Text); InsertChild (1, 10 + i, i) ])
+       (List.init n Fun.id));
+  let t1 = Sys.time () in
+  apply t [ DropNode 1 ];
+  let drop_ms = (Sys.time () -. t1) *. 1000. in
+  check int "dropped" 0 (Lui_store.node_count t);
+  (* ~2ms at linear; the quadratic version needed ~seconds. *)
+  check bool "remove under 500ms" true (remove_ms < 500.);
+  check bool "drop under 500ms" true (drop_ms < 500.)
+
 let test_root_ids () =
   let t = Lui_store.create () in
   apply t
@@ -141,4 +239,8 @@ let () =
          test_case "extension" `Quick test_extension ]);
       ("dirty",
        [ test_case "drain" `Quick test_dirty;
+         test_case "typed masks" `Quick test_dirty_masks;
+         test_case "layout rev" `Quick test_layout_rev;
+         test_case "changes since" `Quick test_changes_since;
+         test_case "wide removal complexity" `Quick test_wide_removal_complexity;
          test_case "missing ids ignored" `Quick test_ops_on_missing_are_ignored ]) ]
