@@ -661,7 +661,25 @@ module Ui = struct
     mutable hit_text :
       (Lui_store.t -> int -> string -> lx:float -> ly:float ->
        lw:float -> lh:float -> int) option;
+    mutable caret_ops :
+      (Lui_store.t -> int -> string -> lw:float -> lh:float ->
+       caret_ops) option;
     mutable content_rect : int -> rect;
+  }
+
+  (* The text engine's caret model for one editable string, built
+     over the same laid-out text the painter and [hit_text] resolve
+     against: horizontal moves follow grapheme clusters (combining
+     marks, emoji ZWJ chains, ligatures), vertical moves follow
+     visual — soft-wrapped — lines, and [c_rect] is the caret's
+     device-pixel (x, y, h) in node content coordinates for the IME
+     candidate anchor. *)
+  and caret_ops = {
+    c_before : int -> int;
+    c_after : int -> int;
+    c_up : int -> int;
+    c_down : int -> int;
+    c_rect : int -> float * float * float;
   }
 
   let create () =
@@ -688,12 +706,13 @@ module Ui = struct
       rects_epoch = 0;
       measure =
         (fun _store _id s -> (8. *. float (String.length s), 16.));
-      hit_text = None;
+      hit_text = None; caret_ops = None;
       content_rect = (fun _ -> rect 0. 0. 0. 0.) }
 
   let set_scale t s = t.scale <- s
   let set_measure t f = t.measure <- f
   let set_hit_text t f = t.hit_text <- Some f
+  let set_caret_ops t f = t.caret_ops <- Some f
   let notify_layout t = t.rects_epoch <- t.rects_epoch + 1
   let set_content_rect t f = t.content_rect <- f
   let hovered t = t.hovered
@@ -1753,8 +1772,31 @@ module Ui = struct
       + boundary_at_x t store t.focused (List.nth lines li') x
     end else c
 
-  let text_key t store key (mods : Input.mods) prim =
+  let text_key t store rects key (mods : Input.mods) prim =
     let n = t.focused in
+    (* The engine's caret model over the live shadow — grapheme
+       clusters horizontally, visual (soft-wrapped) lines vertically,
+       resolved against the same layout the painter used. Without a
+       wired engine the codepoint/paragraph fallbacks below keep the
+       old behavior. *)
+    let ops =
+      match t.caret_ops with
+      | Some f ->
+        let r = Rects.get rects n in
+        Some (f store n t.shadow ~lw:r.Lui_scene.w ~lh:r.Lui_scene.h)
+      | None -> None
+    in
+    let cur = t.shadow in
+    let caret = min t.caret (String.length cur) in
+    let prev i =
+      match ops with Some o -> o.c_before i | None -> utf8_prev cur i
+    and next i =
+      match ops with Some o -> o.c_after i | None -> utf8_next cur i
+    and vmove dir =
+      match ops with
+      | Some o -> if dir < 0 then o.c_up caret else o.c_down caret
+      | None -> move_caret_line t store dir
+    in
     match key with
     | Input.Return ->
       (match kind_name store n with
@@ -1764,42 +1806,34 @@ module Ui = struct
          then submit store n else []
        | _ -> submit store n)
     | Input.Backspace ->
-      let cur = t.shadow in
-      let caret = min t.caret (String.length cur) in
       if sel_hi t > sel_lo t then splice t store n ""
-      else if caret > 0 then delete_between t store n (utf8_prev cur caret) caret
+      else if caret > 0 then delete_between t store n (prev caret) caret
       else []
     | Input.Delete ->
-      let cur = t.shadow in
-      let caret = min t.caret (String.length cur) in
       if sel_hi t > sel_lo t then splice t store n ""
       else if caret < String.length cur then
-        delete_between t store n caret (utf8_next cur caret)
+        delete_between t store n caret (next caret)
       else []
     | Input.Arrow_left ->
-      let cur = t.shadow in
-      let caret = min t.caret (String.length cur) in
       let dest =
         if prim then fst (line_bounds cur caret)
         else if mods.alt then word_left cur caret
         else if not mods.shift && sel_hi t > sel_lo t then sel_lo t
-        else utf8_prev cur caret
+        else prev caret
       in
       move_caret t dest mods; []
     | Input.Arrow_right ->
-      let cur = t.shadow in
-      let caret = min t.caret (String.length cur) in
       let dest =
         if prim then snd (line_bounds cur caret)
         else if mods.alt then word_right cur caret
         else if not mods.shift && sel_hi t > sel_lo t then sel_hi t
-        else utf8_next cur caret
+        else next caret
       in
       move_caret t dest mods; []
     | Input.Arrow_up ->
-      move_caret t (move_caret_line t store (-1)) mods; []
+      move_caret t (vmove (-1)) mods; []
     | Input.Arrow_down ->
-      move_caret t (move_caret_line t store 1) mods; []
+      move_caret t (vmove 1) mods; []
     | Input.Home -> move_caret t 0 mods; []
     | Input.End -> move_caret t (String.length t.shadow) mods; []
     | _ -> []
@@ -2425,7 +2459,7 @@ module Ui = struct
              Focus_changed next :: scroll_show t store next
            end else []
          | _ ->
-           if editable t store then text_key t store key mods prim
+           if editable t store then text_key t store rects key mods prim
            else if t.focused <> 0 then control_key t store key mods
            else list_key t store key mods)
       end

@@ -341,6 +341,43 @@ let test_text_input_and_keys () =
    | [ Quit ] -> ()
    | _ -> Alcotest.fail "expected Quit")
 
+let test_caret_ops_wiring () =
+  (* C7: with a caret model wired, keyboard moves and deletes consult
+     it instead of the codepoint fallback — sentinel steps of 3 make
+     the delegation observable. *)
+  let s, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  Ui.set_caret_ops ui
+    (fun _store _id _text ~lw:_ ~lh:_ ->
+       { Ui.c_before = (fun i -> max 0 (i - 3));
+         c_after = (fun i -> i + 3);
+         c_up = (fun _ -> 0);
+         c_down = (fun i -> i);
+         c_rect = (fun _ -> (0., 0., 0.)) });
+  Ui.set_focused ui s 4;
+  ignore (Ui.handle ui s rects (Input.Text_input "abcde"));
+  ignore
+    (Ui.handle ui s rects
+       (Input.Key_down (Input.Arrow_left, Input.mods_none, false)));
+  Alcotest.(check int) "engine step left" 2 (Ui.caret ui);
+  ignore
+    (Ui.handle ui s rects
+       (Input.Key_down (Input.Arrow_right, Input.mods_none, false)));
+  Alcotest.(check int) "engine step right" 5 (Ui.caret ui);
+  (* Backspace deletes back to the engine's boundary, not one
+     codepoint *)
+  (match
+     press_actions
+       (Ui.handle ui s rects
+          (Input.Key_down (Input.Backspace, Input.mods_none, false)))
+   with
+   | [ TextChanged (4, "ab") ] -> ()
+   | _ -> Alcotest.fail "expected boundary delete");
+  ignore
+    (Ui.handle ui s rects
+       (Input.Key_down (Input.Arrow_up, Input.mods_none, false)));
+  Alcotest.(check int) "engine up sentinel" 0 (Ui.caret ui)
+
 let test_hover_detail () =
   let s, rects = ui_store_fresh () in
   let ui = Ui.create () in
@@ -1116,7 +1153,7 @@ let test_headless_checksum () =
   (* the recorded value pins the demo's initial scene: any render-path
      change shows up here *)
   Alcotest.(check string) "golden"
-    "headless done: frames=6 checksum=10ad2bfdcbf7b0ad" c1
+    "headless done: frames=6 checksum=0f41717e5f4a15a5" c1
 
 (* ---------- multi-window ---------- *)
 
@@ -1278,7 +1315,7 @@ let test_headless_multi () =
   let out1 = run () and out2 = run () in
   (match win_done_lines out1 with
    | [ w0; w1 ] ->
-     Alcotest.(check string) "win0 golden" "10ad2bfdcbf7b0ad"
+     Alcotest.(check string) "win0 golden" "0f41717e5f4a15a5"
        (checksum_value w0);
      Alcotest.(check bool) "independent checksums" true
        (checksum_value w0 <> checksum_value w1)
@@ -2014,6 +2051,7 @@ let () =
             test_click_release_elsewhere;
           Alcotest.test_case "focus" `Quick test_click_focus;
           Alcotest.test_case "text+keys" `Quick test_text_input_and_keys;
+          Alcotest.test_case "caret ops" `Quick test_caret_ops_wiring;
           Alcotest.test_case "hover detail" `Quick test_hover_detail;
           Alcotest.test_case "context menu" `Quick test_context_menu;
           Alcotest.test_case "disabled gate" `Quick test_disabled_gate ] );

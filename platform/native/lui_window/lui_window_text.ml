@@ -640,3 +640,69 @@ let hit_text t id text ~lx ~ly ~lw ~lh =
         (lx -. off) /. scale
   in
   Lui_text.hit_test lay (px, py')
+
+(* The caret model the Ui drives keyboard editing with: the same
+   cached layout [hit_text] resolves against (wrap, insets, alignment
+   and vertical placement all agree with the painted text), so
+   grapheme moves, visual-line moves and the IME candidate anchor
+   stay consistent with what the pointer hits. *)
+let caret_ops t id text ~lw ~lh : Lui_window.Ui.caret_ops =
+  let store = t.store () in
+  let scale = t.scale () in
+  let st = style_of t store id in
+  let tp = Lui_paint.text_placement_of store id in
+  let pad = tp.tp_pad_x *. scale in
+  let lw = Float.max 0. (lw -. (2. *. pad)) in
+  let wrap_w =
+    if st.ts_nowrap || lw <= 0. then 0.
+    else if wrapping_kind (Lui_store.kind store id) then lw /. scale
+    else 0.
+  in
+  let lay = layout_of t st ~width:wrap_w text in
+  let text_h = styled_height st lay *. scale in
+  let y0 =
+    if tp.tp_top then tp.tp_pad_y *. scale
+    else Float.max 0. ((lh -. text_h) /. 2.)
+  in
+  { Lui_window.Ui.c_before = (fun i -> Lui_text.caret_before lay i);
+    c_after = (fun i -> Lui_text.caret_after lay i);
+    c_up = (fun i -> Lui_text.caret_up lay i);
+    c_down = (fun i -> Lui_text.caret_down lay i);
+    c_rect =
+      (fun i ->
+        let cr = Lui_text.caret_rect lay i in
+        let lines = lay.Lui_text.lay_lines in
+        let n = Array.length lines in
+        (* The caret's own visual line: its painted row and — for
+           center/end alignment — that line's shift, the same map
+           [hit_text] applies in reverse. *)
+        let rec pick k =
+          if k >= n - 1 then max 0 (n - 1)
+          else if
+            cr.Lui_text.ry
+            < lines.(k).Lui_text.ll_top +. lines.(k).Lui_text.ll_height
+          then k
+          else pick (k + 1)
+        in
+        let k = if n = 0 then 0 else pick 0 in
+        let off =
+          match tp.tp_align with
+          | Lui_paint.Ta_start -> 0.
+          | align ->
+            if n = 0 then 0.
+            else
+              let w =
+                lines.(k).Lui_text.ll_line.Lui_text.width *. scale
+              in
+              (match align with
+               | Ta_center -> Float.max 0. ((lw -. w) /. 2.)
+               | _ -> Float.max 0. (lw -. w))
+        in
+        (* Painted pitch under a line-height override: row k sits at
+           k * ts_lh, the inverse of the [hit_text] remap. *)
+        let y =
+          if st.ts_lh <= 0. || n = 0 then cr.Lui_text.ry *. scale
+          else float k *. st.ts_lh *. scale
+        in
+        (pad +. off +. (cr.Lui_text.rx *. scale), y0 +. y,
+         cr.Lui_text.rh *. scale)) }
