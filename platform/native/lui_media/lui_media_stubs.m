@@ -425,7 +425,7 @@ CAMLprim value lui_media_player_create(value unit)
   p.vol = 1.0f;
   p.ref = -1;
   value v = caml_alloc_custom(&player_ops, sizeof(void *),
-                              4 * 1024 * 1024, 32 * 1024 * 1024);
+                              4 * 1024 * 1024, 128 * 1024 * 1024);
   LuiPlayer_val(v) = (void *)CFBridgingRetain(p);
   CAMLreturn(v);
 }
@@ -684,7 +684,7 @@ CAMLprim value lui_media_video_open(value vpath)
       caml_failwith([m UTF8String]);
     }
     v = caml_alloc_custom(&video_ops, sizeof(void *),
-                              8 * 1024 * 1024, 32 * 1024 * 1024);
+                              8 * 1024 * 1024, 128 * 1024 * 1024);
     LuiVideo_val(v) = (void *)CFBridgingRetain(d);
     CAMLreturn(v);
   }
@@ -1476,7 +1476,7 @@ CAMLprim value lui_media_player_create(value unit)
   p->vol = 1.0f;
   p->ff = -1;
   value v = caml_alloc_custom(&player_ops, sizeof(void *),
-                              4 * 1024 * 1024, 32 * 1024 * 1024);
+                              4 * 1024 * 1024, 128 * 1024 * 1024);
   LuiPlayer_val(v) = p;
   CAMLreturn(v);
 }

@@ -67,11 +67,13 @@ static struct custom_operations lui_font_ops = {
 
 static value lui_font_wrap(CTFontRef font)
 {
-  /* A CTFontRef owns its descriptors, tables and caches — hundreds of
-     KB per face. used=0 left the GC blind to that cost; report ~256KB
-     per wrap against a 4MB budget so font churn paces collection. */
+  /* The block wraps a shared retained CTFontRef — the shape path
+     emits one per line, so a large charge makes alloc storms trigger
+     a major collection every few lines. Report ~4KB per wrap against
+     a 4MB budget: ~1000 pending wraps per cycle, still paced, never
+     the used=0 free-for-all. */
   value v = caml_alloc_custom(&lui_font_ops, sizeof(CTFontRef),
-                              256 * 1024, 4 * 1024 * 1024);
+                              4096, 4 * 1024 * 1024);
   Lui_font_val(v) = font;
   return v;
 }

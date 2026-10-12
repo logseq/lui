@@ -84,13 +84,13 @@ static value lui_box(void *o)
 {
     MTD("box: %p ops=%p\n", o, &lui_ref_ops);
     /* Boxed refs own GPU objects (contexts, libraries, pipelines and
-       textures up to tens of MB each). Report ~1MB per box against a
-       10MB budget so a burst of ~10 boxed natives schedules a major
-       collection — with used=0 dead textures waited for a GC the
-       small OCaml heap never pressured, and sustained repaint churn
-       piled them up unboundedly. */
+       textures up to tens of MB each). used=0 left them invisible to
+       the GC so dead textures waited for a collection the small heap
+       never pressured; charge ~1MB per box against a 256MB budget —
+       ~256 pending boxes per major cycle, paced without thrashing
+       alloc bursts. */
     value v = caml_alloc_custom(&lui_ref_ops, sizeof(struct lui_ref),
-                                1024 * 1024, 10 * 1024 * 1024);
+                                1024 * 1024, 256 * 1024 * 1024);
     MTD("box: v=%lx\n", (unsigned long)v);
     Lui_ref_val(v) = o;
     MTD("box: done\n");
