@@ -139,5 +139,37 @@ val to_float32_array : instance -> float array
     params, clip2, clip2_radii, clip3, clip3_radii — rounded to
     float32. *)
 
+(** {1 Scene batch cache} *)
+
+type f32_ba =
+  (float, Bigarray.float32_elt, Bigarray.c_layout) Bigarray.Array1.t
+
+(** The buffer a renderer uploads: [data] is the grow-only staging,
+    [floats] the live prefix, [spans] each batch's (first, count)
+    instance offset in that prefix. *)
+type pack = { data : f32_ba; floats : int; spans : (int * int) array }
+
+type batch_cache
+(** A renderer's memoized batches and instance buffer for one scene.
+    The key is the scene's revision plus the other inputs {!build}
+    folds into instances: the wide-gamut flag, frame size, text
+    coverage parameters, and atlas dimensions. A paint that changed
+    nothing — the retained pass's clean frames — reuses the batches,
+    the staging buffer, and the GPU-side contents it was uploaded to,
+    so the renderer may skip the re-upload entirely. *)
+
+val batch_cache : unit -> batch_cache
+
+val frame :
+  ?wide:bool -> batch_cache -> Lui_scene.t -> batch list * pack * bool
+(** The scene's compiled batches and packed instance buffer, rebuilt
+    only when the cache key moved. The flag tells whether this call
+    rebuilt — on [false] the returned [pack]'s GPU-side contents are
+    still current and the renderer skips re-uploading them. *)
+
+val stat_rebuilds : batch_cache -> int
+val stat_reuses : batch_cache -> int
+(** Cache accounting for tests and benchmarks. *)
+
 val shader_source : string
 (** The shader of shader.glsl, verbatim, as data. *)

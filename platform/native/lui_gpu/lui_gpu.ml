@@ -559,4 +559,99 @@ let to_float32_array (i : instance) : float array =
   pack_instance i b ~ofs:0;
   Array.init instance_floats (fun j -> Bigarray.Array1.get b j)
 
+(* {1 Scene batch cache}
+
+   A renderer compiles a scene to a batch list and a packed instance
+   buffer every frame, even when the display list did not move — the
+   retained paint pass already reports that: an unchanged scene keeps
+   its revision. The cache memoizes both artifacts under a key of what
+   [build] folds into instances, so a clean frame reuses the batch
+   structure, the CPU staging buffer and the GPU-side contents it was
+   uploaded to — renderers skip the re-upload on a hit. *)
+
+type f32_ba =
+  (float, Bigarray.float32_elt, Bigarray.c_layout) Bigarray.Array1.t
+
+(* The buffer a renderer uploads: [data] is the grow-only staging,
+   [floats] the live prefix, [spans] each batch's (first, count) in
+   instances. *)
+type pack = { data : f32_ba; floats : int; spans : (int * int) array }
+
+(* The inputs [build] folds into instances besides the display list:
+   the revision identifying it, [wide] selecting the gamut, the frame
+   size (the root scissor), the text coverage params, and the atlas
+   dimensions glyph UVs divide by. A change to any recompiles. *)
+type key =
+  int * bool * int * int * text_params * (int * int) * (int * int)
+
+type batch_cache = {
+  mutable c_scene : t option;
+  mutable c_key : key option;
+  mutable c_batches : batch list;
+  mutable c_pack : pack;
+  mutable c_rebuilds : int;
+  mutable c_reuses : int;
+}
+
+let batch_cache () =
+  { c_scene = None; c_key = None; c_batches = [];
+    c_pack =
+      { data = Bigarray.(Array1.create float32 c_layout 0);
+        floats = 0; spans = [||] };
+    c_rebuilds = 0; c_reuses = 0 }
+
+let stat_rebuilds c = c.c_rebuilds
+let stat_reuses c = c.c_reuses
+
+(* Snapshot the key; the text params are copied so a later in-place
+   edit cannot mutate the stored key along with them. *)
+let key_of ~wide (s : t) : key =
+  ( s.rev, wide, s.width, s.height,
+    { gamma_ratios = s.text.gamma_ratios;
+      contrast = s.text.contrast;
+      subpixel_contrast = s.text.subpixel_contrast },
+    (s.mask_atlas.w, s.mask_atlas.h),
+    (s.color_atlas.w, s.color_atlas.h) )
+
+let rebuild c ~wide s =
+  let batches = build ~wide s in
+  let total =
+    List.fold_left (fun n b -> n + List.length b.instances) 0 batches
+  in
+  let floats = total * instance_floats in
+  let data =
+    if Bigarray.Array1.dim c.c_pack.data >= floats then c.c_pack.data
+    else
+      Bigarray.(Array1.create float32 c_layout (floats + floats / 2))
+  in
+  let spans = Array.make (List.length batches) (0, 0) in
+  let ofs = ref 0 in
+  List.iteri
+    (fun bi b ->
+      let start = !ofs / instance_floats in
+      List.iter
+        (fun inst ->
+          pack_instance inst data ~ofs:!ofs;
+          ofs := !ofs + instance_floats)
+        b.instances;
+      spans.(bi) <- (start, List.length b.instances))
+    batches;
+  c.c_scene <- Some s;
+  c.c_key <- Some (key_of ~wide s);
+  c.c_batches <- batches;
+  c.c_pack <- { data; floats; spans };
+  c.c_rebuilds <- c.c_rebuilds + 1
+
+(* The scene's compiled batches and packed buffer, rebuilt only when
+   the key moved; [rebuilt] tells the renderer whether the GPU-side
+   buffer contents are stale. *)
+let frame ?(wide = false) c (s : t) : batch list * pack * bool =
+  match (c.c_scene, c.c_key) with
+  | Some sc, Some k when sc == s && k = key_of ~wide s ->
+    c.c_reuses <- c.c_reuses + 1;
+    (c.c_batches, c.c_pack, false)
+  | _ ->
+    rebuild c ~wide s;
+    (c.c_batches, c.c_pack, true)
+
 let shader_source = Shader_source.source

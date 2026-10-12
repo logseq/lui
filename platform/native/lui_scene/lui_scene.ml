@@ -482,7 +482,10 @@ and effect_draw = { edrect : rect; edradii : float * float * float * float; edco
 
 and hole_op = { hrect : rect; hradii : float * float * float * float; hcontinuous : bool; hopacity : float }
 
-(* Scene: one frame's display list. *)
+(* Scene: one frame's display list. [rev] identifies its contents:
+   {!reset} bumps it, and a writer mutating the buffers outside a
+   reset–seal window calls {!touch}, so a renderer can tell a scene it
+   has already compiled from one whose display list moved. *)
 type t = {
   mutable width : int;
   mutable height : int;
@@ -493,6 +496,7 @@ type t = {
   mutable effects : effect_op list;
   mutable wide : wide_colors list;
   mutable text : text_params;
+  mutable rev : int;
   mask_atlas : Atlas.t;
   color_atlas : Atlas.t;
 }
@@ -500,10 +504,13 @@ type t = {
 let create ~mask_atlas ~color_atlas =
   { width = 0; height = 0; scale = 1.; clear = color 0 0 0 0;
     ops = []; glyphs = []; effects = []; wide = [];
-    text = default_text_params; mask_atlas; color_atlas }
+    text = default_text_params; rev = 0; mask_atlas; color_atlas }
+
+let touch s = s.rev <- s.rev + 1
 
 let reset s ~width ~height ~scale ~clear =
   s.width <- width; s.height <- height; s.scale <- scale; s.clear <- clear;
-  s.ops <- []; s.glyphs <- []; s.effects <- []; s.wide <- []
+  s.ops <- []; s.glyphs <- []; s.effects <- []; s.wide <- [];
+  s.rev <- s.rev + 1
 
 let add_wide s wc = s.wide <- wc :: s.wide; List.length s.wide
