@@ -79,6 +79,8 @@ let start ~document ~positioner ~popup ~anchor ~valid ~update ~on_invalid =
   | Some window ->
       let active = ref true in
       let frame = ref None in
+      let poll = ref None in
+      let previous = ref None in
       let reveal = ref true in
       let previous_height = ref 0 in
       let chain = ancestors anchor in
@@ -96,6 +98,7 @@ let start ~document ~positioner ~popup ~anchor ~valid ~update ~on_invalid =
             stop positioner;
             on_invalid ()
           end else begin
+            previous := Some (geometry anchor);
             update ();
             let height = W.Element.clientHeight popup in
             if !reveal || height <> !previous_height then begin
@@ -128,16 +131,25 @@ let start ~document ~positioner ~popup ~anchor ~valid ~update ~on_invalid =
               refresh ()))
       in
       let listener _event = schedule () in
-      (* the ResizeObserver on the anchor replaces the 100ms geometry poll:
-         it fires when the anchor resizes, while the capture scroll listener
-         and the ancestor observations cover position-only moves *)
       let observer = Webapi.ResizeObserver.make (fun _ -> schedule ()) in
       let reveal_active () = reveal := true; schedule () in
       let focus_listener _event = reveal_active () in
       let highlights = W.MutationObserver.make (fun _ _ -> reveal_active ()) in
+      (* Observers cannot cover every trigger: position-only anchor moves
+         (transforms, alignment shifts that resize nothing) produce no
+         ResizeObserver entry or scroll event, and an anchor going
+         visibility:hidden or model-invalid has no DOM signal at all — the
+         low-frequency geometry poll closes that gap *)
+      let rec check_geometry () =
+        if !active then begin
+          if invalid () || !previous <> Some (geometry anchor) then schedule ();
+          poll := Some (Js.Global.setTimeout ~f:check_geometry 100)
+        end
+      in
       let cleanup () =
         active := false;
         Option.iter (cancel_frame window) !frame;
+        Option.iter Js.Global.clearTimeout !poll;
         Webapi.ResizeObserver.disconnect observer;
         W.MutationObserver.disconnect highlights;
         W.Element.removeEventListener "focusin" focus_listener popup;
@@ -161,4 +173,5 @@ let start ~document ~positioner ~popup ~anchor ~valid ~update ~on_invalid =
       Option.iter (fun viewport ->
           viewport_listen viewport "resize" listener;
           viewport_listen viewport "scroll" listener) viewport;
-      schedule ()
+      schedule ();
+      poll := Some (Js.Global.setTimeout ~f:check_geometry 100)
