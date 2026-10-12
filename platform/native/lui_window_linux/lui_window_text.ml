@@ -256,7 +256,13 @@ let emit_glyph t scene ~scale ~pen ~baseline ~font ~gid ~g_y ~fg =
         gcolored = s.sl_colored;
         gsubpixel = false; gthin = false }
     in
-    scene.glyphs <- scene.glyphs @ [ gl ];
+    (* Cons, like the other engines: [scene.glyphs] is built reversed
+       and the paint pass reverses it once when sealing, so the
+       [gstart]/[gend] span recorded around a run stays the glyphs the
+       run emitted. Appending would put the new glyph before the
+       reversal on the wrong side of the span — the op would index
+       glyphs owned by earlier ops — and cost O(n) per glyph. *)
+    scene.glyphs <- gl :: scene.glyphs;
     true
 
 let text_ops t id r fg s =
