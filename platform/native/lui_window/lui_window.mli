@@ -49,7 +49,7 @@ module Input : sig
     | End
     | Page_up
     | Page_down
-    | Other of int  (** SDL keycode for keys without special handling. *)
+    | Other of int  (** SDL scancode for keys without special handling. *)
 
   type mouse_button =
     | Left
@@ -117,6 +117,21 @@ module Input : sig
 
   (** SDL_BUTTON_* integer values: 1 left, 2 middle, 3 right. *)
   val button_of_sdl : int -> mouse_button
+
+  (** Win32 virtual-key codes → SDL scancode values. [Other] must
+      mean the same thing on every platform — the accelerator table
+      matches [Other] against SDL scancodes (A=4, C=6, V=25, X=27,
+      Z=29) and typeahead goes through {!char_of_scancode} — so raw
+      VK codes (A=0x41) would leave every letter shortcut unreachable
+      on Windows. Positional (scancode-style) reading of VKs: the
+      same mapping SDL's own Win32 backend applies. *)
+  val sdl_scancode_of_win32_vk : int -> int
+
+  (** Win32 virtual-key codes → keys, in the same space
+      {!key_of_sdl_scancode} produces: the named keys map to their
+      variant, the rest become [Other] of
+      {!sdl_scancode_of_win32_vk}. *)
+  val key_of_win32_vk : int -> key
 end
 
 (** Effects the driver performs for [Ui.handle]: dispatch goes to
@@ -178,11 +193,13 @@ val hit_path :
 
 val hit : Lui_store.t -> Rects.t -> x:float -> y:float -> int option
 
-(** Deterministic layout stub. Until a real flex engine lands, this
-    stacks children vertically inside their parent's padded content
-    box (or horizontally for rows), honours [width]/[height]/[gap]/
-    [padding]/[grow] props and uses intrinsic extents for leaf kinds.
-    All output is device pixels and fully deterministic. *)
+(** Deterministic layout stub. Stacks children vertically inside
+    their parent's padded content box (or horizontally for rows),
+    honours [width]/[height]/[gap]/[padding]/[grow] props and uses
+    intrinsic extents for leaf kinds. All output is device pixels and
+    fully deterministic. Kept for the pure-Ui unit tests — the
+    drivers' production path is the real engine wired through
+    {!Assembly}. *)
 module Layout : sig
   (** Intrinsic content extent of a leaf node in device pixels —
       implemented by the driver over the real text engine. *)
@@ -566,4 +583,106 @@ module Multi : sig
       monitor-crossing re-queries, where most calls are no-ops. *)
 
   val scale : 'd surface -> float
+end
+
+(** Shared native host assembly: the wiring every window driver used
+    to hand-roll — the layout engine synced per repaint, the paint
+    hooks (theme colors, scroll metrics, IME marked-text overlay,
+    shadows), trigger-menu visibility, the pointer-anchored context
+    menu, the scroll-offset-shifted hit-test mirror, the scroll caps
+    that let wheel input find a target, and the IME caret anchor.
+    Platform drivers keep only OS event translation, window
+    management and frame presentation; everything else lives here so
+    every platform paints and hit-tests identically. *)
+module Assembly : sig
+  (** The platform text engine reduced to the three callbacks the
+      shared wiring needs: glyph measure for layout/caret math,
+      glyph-run emission for the paint hook, and layout-accurate
+      point hit resolution for caret/selection. Each driver's
+      [Lui_window_text] satisfies this directly. *)
+  type text = {
+    measure : int -> string -> float * float;
+    text_ops : int -> rect -> color -> string -> op list;
+    hit_text :
+      int -> string -> lx:float -> ly:float -> lw:float -> lh:float ->
+      int;
+    caret_ops :
+      int -> string -> lw:float -> lh:float -> Ui.caret_ops;
+        (** Keyboard caret geometry over the same laid-out text
+            (grapheme moves, visual lines, caret rect). *)
+  }
+
+  type t
+
+  val create :
+    ?layout:(module Lui_host.LAYOUT_ENGINE) ->
+    scale_cell:float ref ->
+    text:text ->
+    renderer:Lui_host.renderer ->
+    width:int -> height:int -> unit -> t
+  (** [create ~scale_cell ~text ~renderer ~width ~height ()] builds
+      one surface's shared pipeline: interaction {!Ui.t}, paint
+      hooks, {!Lui_host} (store + scene + renderer), and the
+      engine-driven hit-test mirror.
+
+      Pass [~layout:(module Lui_layout)] — the production engine.
+      The engine must be supplied as a module (not created inside)
+      so the assembly stays decoupled from any concrete engine, the
+      same contract {!Lui_host.create} declares.
+
+      [~scale_cell] is a caller-owned ref: the text engine the driver
+      builds must read the same cell, and the driver mutates it on
+      drawable resizes (macOS via {!Multi.apply_drawable}); the hooks
+      and [Ui] read it live. [width]/[height] are the initial
+      drawable size in device px.
+
+      Side effects wired at create: [Lui_host.set_hidden] (menu
+      panels hidden until opened), [Lui_host.set_ctx_anchor]
+      (unanchored context-menus open at the pointer), the [Ui]
+      measure/hit-text/content-rect hooks, and the engine's text
+      [measure] (glyph metric + painted padding — feeding raw
+      extents collapses labeled controls to bare-text size). *)
+
+  val host : t -> Lui_host.t
+  val ui : t -> Ui.t
+  val rects : t -> Rects.t
+  (** The hit-test mirror {!Ui.handle} wants: resolved, scroll-
+      shifted and ancestor-clipped rects, refreshed by {!repaint}. *)
+
+  val scale_cell : t -> float ref
+  val engine_rect : t -> int -> rect
+  (** Unshifted engine rect — content-space input for
+      [scroll_show]/visible-range reports. *)
+
+  val store : t -> Lui_store.t
+  val handle : t -> Input.t -> action list
+  (** {!Ui.handle} over this surface's [ui], [store] and hit mirror —
+      the single input entry point, identical on every platform. *)
+
+  val store_changed : t -> action list
+  (** {!Ui.store_changed} over this surface — run it after every
+      [Lui_app.flush]. *)
+
+  val populate : t -> action list
+  (** Rebuild the hit mirror and the scroll caps from the last layout
+      sync, then fold each virtual list's measured anchor drift back
+      into its scroll offset. {!repaint} already calls it; expose only
+      for drivers that keep paint and hit-refresh on separate
+      schedules. The returned actions are the VisibleRange dispatches
+      the corrections produced — apply them like {!handle}'s. *)
+
+  val repaint : t -> Bytes.t * action list
+  (** One frame's paint path: [Lui_host.repaint] (which re-syncs the
+      engine) then {!populate} — always in this order, on every
+      platform. Returns the frame bytes and populate's actions. *)
+
+  val caret_rect : t -> rect
+  (** Focused field's caret rect, device px — the IME candidate-window
+      anchor; feed it back as {!Input.Caret} once per frame while
+      focused. *)
+
+  val backend : t -> Lui_protocol.platform_profile -> Lui_protocol.backend
+  val first_autofocus : t -> int option
+  (** First node carrying [autofocus] in preorder — the field the
+      driver hands focus to at startup. *)
 end

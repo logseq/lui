@@ -248,11 +248,14 @@ static LRESULT CALLBACK lww_wndproc(HWND hwnd, UINT msg, WPARAM wp,
     return 0;
   }
   case WM_MOUSEWHEEL:
-    ev_push(EV_WHEEL, 0, 0, 0, 0,
+    /* The c field carries the modifier state, same as the button
+       events: Shift turns the vertical delta horizontal in the shared
+       wheel handler. */
+    ev_push(EV_WHEEL, 0, 0, mods_now(), 0,
             (double)GET_WHEEL_DELTA_WPARAM(wp) / WHEEL_DELTA, NULL);
     return 0;
   case WM_MOUSEHWHEEL: {
-    ev_push(EV_WHEEL, 0, 0, 0,
+    ev_push(EV_WHEEL, 0, 0, mods_now(),
             (double)GET_WHEEL_DELTA_WPARAM(wp) / WHEEL_DELTA, 0,
             NULL);
     return 0;
