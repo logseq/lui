@@ -866,33 +866,37 @@ let open_window ~title ~idx =
      every repaint while the engine is fresh. *)
   let populate () =
     Hashtbl.reset rects;
+    (* One preorder pass carrying the ancestors' accumulated scroll
+       offset and clip: the node's own offset shifts only its
+       children, and a scrollable node's already-stored mirror rect
+       becomes its descendants' clip — the same result the old
+       per-node ancestor walk produced, without re-summing the chain
+       for every node. *)
+    let rec visit id ~sx ~sy ~anc_clip =
+      let base = engine_rect id in
+      let clip = rect_intersect base anc_clip in
+      let r =
+        { base with
+          Lui_scene.x = base.Lui_scene.x -. sx;
+          Lui_scene.y = base.Lui_scene.y -. sy }
+      in
+      let stored = rect_intersect r clip in
+      Hashtbl.replace rects id stored;
+      let sx' = sx +. Ui.scroll_offset_x ui id
+      and sy' = sy +. Ui.scroll_offset ui id in
+      let anc_clip' =
+        if Ui.scrollable store id && not (Lui_scene.rect_empty stored)
+        then rect_intersect anc_clip stored
+        else anc_clip
+      in
+      List.iter
+        (fun c -> visit c ~sx:sx' ~sy:sy' ~anc_clip:anc_clip')
+        (Lui_store.child_ids store id)
+    in
+    let everything = Lui_scene.rect (-.1e9) (-.1e9) 2e9 2e9 in
     List.iter
-      (fun id ->
-         let base = engine_rect id in
-         let rec walk aid ((sx, sy), clip) =
-           match Lui_store.parent store aid with
-           | None -> ((sx, sy), clip)
-           | Some p ->
-             let clip =
-               if Ui.scrollable store p then
-                 match Hashtbl.find_opt rects p with
-                 | Some pr when not (Lui_scene.rect_empty pr) ->
-                   rect_intersect clip pr
-                 | _ -> clip
-               else clip
-             in
-             walk p
-               ((sx +. Ui.scroll_offset_x ui p,
-                 sy +. Ui.scroll_offset ui p), clip)
-         in
-         let (sx, sy), clip = walk id ((0., 0.), base) in
-         let r =
-           { base with
-             Lui_scene.x = base.Lui_scene.x -. sx;
-             Lui_scene.y = base.Lui_scene.y -. sy }
-         in
-         Hashtbl.replace rects id (rect_intersect r clip))
-      (Lui_store.preorder store);
+      (fun id -> visit id ~sx:0. ~sy:0. ~anc_clip:everything)
+      (Lui_store.root_ids store);
     List.iter
       (fun id ->
          if Ui.scrollable store id then
