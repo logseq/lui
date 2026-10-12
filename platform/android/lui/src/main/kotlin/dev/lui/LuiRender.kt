@@ -298,37 +298,46 @@ internal fun LuiAppear(backend: LuiBackend, node: LuiNode, id: Long) {
  */
 @Composable
 internal fun LuiThemeScope(node: LuiNode, content: @Composable () -> Unit) {
-    val themeSource = node.propString("theme")
-    val schemeOverride = LuiThemeTokenDecoder.colorScheme(node.propString("theme-mode"))
+    val props = node.properties
+    val themeSource = props["theme"]?.stringValue
+    val themeMode = props["theme-mode"]?.stringValue
+    // Decode once per changed property map, not once per recomposition:
+    // nodeSpec runs regexes, string splits and a native Typeface lookup.
+    val typography = remember(props) {
+        if (props.keys.any { it in LuiTypography.propNames }) {
+            LuiTypography.nodeSpec(props)
+        } else {
+            null
+        }
+    }
+    // Nodes contributing no theme or typography must not subscribe to the
+    // ambient locals — reading them here would let an ancestor
+    // theme/font-* change invalidate the whole subtree. Typography props
+    // inherit like CSS: merged over the accumulated spec and pushed
+    // through LocalTextStyle so `Text` calls without an explicit style
+    // inherit them. Text leaves pick the values up via `luiInherited()`.
+    if (themeSource == null && themeMode == null && typography == null) {
+        content()
+        return
+    }
     val inherited = LocalLuiSemanticColors.current
     val ambientDark = LocalLuiThemeDark.current
+    val schemeOverride = LuiThemeTokenDecoder.colorScheme(themeMode)
     val dark = schemeOverride ?: (ambientDark ?: isSystemInDarkTheme())
-    // Decode the wire strings once per changed value, not once per
-    // recomposition: colors() is a full JSON DOM parse and nodeSpec runs
-    // regexes, string splits and a native Typeface lookup.
+    // colors() is a full JSON DOM parse — decode once per (source, dark).
     val own = remember(themeSource, dark) {
         LuiThemeTokenDecoder.colors(themeSource, dark)
     }
-    // Typography props (`font-*`/`line-height`/`letter-spacing`/
-    // `text-decoration`) inherit like CSS: merged over the accumulated
-    // spec and pushed through LocalTextStyle so `Text` calls without an
-    // explicit style inherit them.
-    val props = node.properties
-    val typography = remember(props) { LuiTypography.nodeSpec(node) }
-    if (own.isEmpty() && schemeOverride == null && typography == null) {
+    CompositionLocalProvider(
+        LocalLuiSemanticColors provides inherited + own,
+        LocalLuiThemeDark provides dark,
+        LocalLuiTypography provides LocalLuiTypography.current.merge(
+            typography ?: TextStyle(),
+        ),
+        LocalTextStyle provides LocalTextStyle.current.merge(
+            typography ?: TextStyle(),
+        ),
+    ) {
         content()
-    } else {
-        CompositionLocalProvider(
-            LocalLuiSemanticColors provides inherited + own,
-            LocalLuiThemeDark provides dark,
-            LocalLuiTypography provides LocalLuiTypography.current.merge(
-                typography ?: TextStyle(),
-            ),
-            LocalTextStyle provides LocalTextStyle.current.merge(
-                typography ?: TextStyle(),
-            ),
-        ) {
-            content()
-        }
     }
 }

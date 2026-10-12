@@ -215,6 +215,13 @@ object LuiThemeTokenDecoder {
 object LuiTypography {
     private val cssLength = Regex("^\\s*([+-]?\\d*\\.?\\d+)(px|pt|sp|em|rem)?\\s*$")
 
+    /** Wire props consumed by [nodeSpec]; used to skip the decode for
+     * nodes that carry none of them. */
+    internal val propNames = setOf(
+        "font-size", "font-weight", "font-style", "line-height",
+        "letter-spacing", "font-family", "text-decoration",
+    )
+
     /** `font-size` can't take relative units — resolve em/rem against
      * the 17sp body default both mobile hosts share. */
     private fun fontSizeSpec(value: String?): TextUnit? =
@@ -270,18 +277,18 @@ object LuiTypography {
     /** Typography delta contributed by a node's own props, merged over
      * the inherited spec in `LuiThemeScope`. Null when the node sets no
      * typography props. */
-    fun nodeSpec(node: LuiNode): TextStyle? {
-        val size = fontSizeSpec(node.propString("font-size"))
-        val lineHeight = lineHeightSpec(node.propString("line-height"))
-        val weight = node.prop("font-weight")?.intValue
+    fun nodeSpec(properties: Map<String, LuiWireValue>): TextStyle? {
+        val size = fontSizeSpec(properties["font-size"]?.stringValue)
+        val lineHeight = lineHeightSpec(properties["line-height"]?.stringValue)
+        val weight = properties["font-weight"]?.intValue
             ?.let { FontWeight(it.coerceIn(1, 1000)) }
-        val style = when (node.propString("font-style")) {
+        val style = when (properties["font-style"]?.stringValue) {
             "italic", "oblique" -> FontStyle.Italic
             else -> null
         }
-        val family = familySpec(node.propString("font-family"))
-        val tracking = node.prop("letter-spacing")?.numberValue?.toFloat()?.sp
-        val decoration = decorationSpec(node.propString("text-decoration"))
+        val family = familySpec(properties["font-family"]?.stringValue)
+        val tracking = properties["letter-spacing"]?.numberValue?.toFloat()?.sp
+        val decoration = decorationSpec(properties["text-decoration"]?.stringValue)
         if (size == null && lineHeight == null && weight == null &&
             style == null && family == null && tracking == null &&
             decoration == null
