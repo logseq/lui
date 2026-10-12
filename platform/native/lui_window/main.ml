@@ -798,10 +798,10 @@ let open_window ~title ~idx =
              match !host_cell with
              | Some h -> Ui.state_of ui (Lui_host.store h) id
              | None -> Lui_paint.state_neutral);
-        mounted_range =
+        mounted_children =
           (fun id ->
              match !host_cell with
-             | Some h -> Lui_host.layout_mounted_range h id
+             | Some h -> Lui_host.layout_mounted_children h id
              | None -> None);
         scroll_of =
           (fun id ->
@@ -854,26 +854,23 @@ let open_window ~title ~idx =
                  in
                  if has_text then ops else []
                in
-               let dx, _ =
-                 Lui_window_text.measure_text text_engine id
-                   (String.sub (Ui.shadow ui) 0 caret)
+               (* The caret's real position inside the laid-out
+                  shadow — the same rect the IME candidate anchor
+                  uses, so marked text and its underline land where
+                  the commit will insert. *)
+               let cx, _, _ =
+                 (Lui_window_text.caret_ops text_engine id
+                    (Ui.shadow ui) ~lw:r.Lui_scene.w ~lh:r.Lui_scene.h)
+                   .Lui_window.Ui.c_rect caret
                in
                let mw, mh =
                  Lui_window_text.measure_text text_engine id marked
-               in
-               let pad =
-                 match !host_cell with
-                 | Some h ->
-                   (Lui_paint.text_placement_of (Lui_host.store h) id)
-                     .tp_pad_x
-                   *. !scale_cell
-                 | None -> 0.
                in
                let underline =
                  Lui_scene.Fill
                    { frect =
                        Lui_scene.rect
-                         (r.Lui_scene.x +. pad +. dx)
+                         (r.Lui_scene.x +. cx)
                          (r.Lui_scene.y
                           +. (r.Lui_scene.h +. mh) /. 2. -. 2.)
                          mw 2.;
@@ -884,7 +881,7 @@ let open_window ~title ~idx =
                      fborder_color = Lui_scene.color 0 0 0 0;
                      fdashed = false; fwide = 0; fopacity = 1. }
                in
-               let mr = { r with Lui_scene.x = r.Lui_scene.x +. dx } in
+               let mr = { r with Lui_scene.x = r.Lui_scene.x +. cx } in
                ops @ [ underline ]
                  @ Lui_window_text.text_ops text_engine id mr fg marked
              end);
@@ -981,15 +978,8 @@ let open_window ~title ~idx =
       (* A virtual list only hit-tests its mounted window — unmounted
          rows have no rect and cannot be hit anyway. *)
       let cids =
-        match Lui_host.layout_mounted_range host id with
-        | Some (first, last) ->
-          let rec go i acc =
-            if i < first then acc
-            else
-              let cid = Lui_store.child_id_at store id i in
-              go (i - 1) (if cid >= 0 then cid :: acc else acc)
-          in
-          go (last - 1) []
+        match Lui_host.layout_mounted_children host id with
+        | Some ids -> ids
         | None -> Lui_store.child_ids store id
       in
       List.iter
@@ -1066,6 +1056,11 @@ let open_window ~title ~idx =
   Ui.set_hit_text ui
     (fun _store id text ~lx ~ly ~lw ~lh ->
        Lui_window_text.hit_text text_engine id text ~lx ~ly ~lw ~lh);
+  (* Keyboard caret moves run on the same layouts: grapheme clusters
+     horizontally, visual (soft-wrapped) lines vertically. *)
+  Ui.set_caret_ops ui
+    (fun _store id text ~lw ~lh ->
+       Lui_window_text.caret_ops text_engine id text ~lw ~lh);
   (* Virtual lists: expose the extent model to Ui (scroll-target,
      visible-range), and synthesize rects for unmounted rows so
      reveal/scroll-align work on logical items. *)
@@ -1104,27 +1099,25 @@ let open_window ~title ~idx =
      focused along with the Ui focus, dumped on request and at quit. *)
   let a11y = Lui_a11y.of_store store in
   (* Caret rect of the focused field, device px: the node's layout
-     rect shifted to the caret column — horizontal padding plus the
-     width of the text up to the caret. This is the candidate-window
-     anchor while composing. *)
+     rect shifted to the caret's real position inside the laid-out
+     text — wrap, line pitch, alignment and insets included. This is
+     the candidate-window anchor while composing. *)
   let caret_rect () =
     let id = Ui.focused ui in
     let r = Rects.get rects id in
     if Lui_scene.rect_empty r then r
     else begin
-      let s = !scale_cell in
-      (* Same content inset the text engine applies, so the caret lands
-         where the ink starts. *)
-      let pad =
-        (Lui_paint.text_placement_of store id).tp_pad_x *. s
-      in
       let text = Ui.shadow ui in
-      let prefix =
-        String.sub text 0 (min (Ui.caret ui) (String.length text))
+      let ops =
+        Lui_window_text.caret_ops text_engine id text ~lw:r.Lui_scene.w
+          ~lh:r.Lui_scene.h
       in
-      let dx, _ = Lui_window_text.measure_text text_engine id prefix in
-      Lui_scene.rect (r.Lui_scene.x +. pad +. dx) r.Lui_scene.y 2.
-        r.Lui_scene.h
+      let cx, cy, ch =
+        ops.Lui_window.Ui.c_rect
+          (min (Ui.caret ui) (String.length text))
+      in
+      Lui_scene.rect (r.Lui_scene.x +. cx) (r.Lui_scene.y +. cy) 2.
+        (Float.max 2. ch)
     end
   in
   (* Hand focus to the first autofocus field — primary window only,

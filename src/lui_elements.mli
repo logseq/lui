@@ -2766,6 +2766,7 @@ val text_field :
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
+  ?placeholder_signal:string Signal.signal ->
   ?label:string ->
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
@@ -2818,6 +2819,7 @@ val secure_field :
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
+  ?placeholder_signal:string Signal.signal ->
   ?label:string ->
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
@@ -2870,6 +2872,7 @@ val input :
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
+  ?placeholder_signal:string Signal.signal ->
   ?label:string ->
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
@@ -2923,6 +2926,7 @@ val search_field :
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
+  ?placeholder_signal:string Signal.signal ->
   ?label:string ->
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
@@ -2975,6 +2979,7 @@ val textarea :
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
+  ?placeholder_signal:string Signal.signal ->
   ?label:string ->
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
@@ -3108,6 +3113,7 @@ val select :
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
+  ?placeholder_signal:string Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_press:(Lui_protocol.event -> unit) ->
@@ -3162,6 +3168,7 @@ val combobox :
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
+  ?placeholder_signal:string Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_press:(Lui_protocol.event -> unit) ->

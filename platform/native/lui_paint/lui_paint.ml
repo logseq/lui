@@ -422,11 +422,11 @@ type hooks = {
   layout : int -> placement;         (* node id → layout result *)
   state_of : int -> state;           (* node id → interaction state *)
   scroll_of : int -> scroll_metrics option; (* scroll container metrics *)
-  mounted_range : int -> (int * int) option;
-    (* virtualized container id → mounted child-index window
-       [first, last): the child walk enumerates only that slice, so a
-       scroll frame over a 100k virtual list touches ~30 rows, not
-       100k. [None] enumerates every child (ordinary containers). *)
+  mounted_children : int -> int list option;
+    (* virtualized container id → mounted child store ids: the child
+       walk enumerates only that slice, so a scroll frame over a 100k
+       virtual list touches ~30 rows, not 100k. [None] enumerates
+       every child (ordinary containers). *)
   text_ops : int -> rect -> color -> string -> op list; (* text engine *)
   image_of : int -> image option;    (* node id → decoded image *)
   image_in : int -> rect -> image option;
@@ -472,7 +472,7 @@ let default_hooks =
     layout = (fun _ -> placement_of_rect (rect 0. 0. 0. 0.));
     state_of = (fun _ -> state_neutral);
     scroll_of = (fun _ -> None);
-    mounted_range = (fun _ -> None);
+    mounted_children = (fun _ -> None);
     text_ops = (fun _ _ _ _ -> []);
     image_of = (fun _ -> None);
     image_in = (fun _ _ -> None);
@@ -1985,9 +1985,9 @@ let ordered_children store id = z_ordered store (Lui_store.children store id)
 (* The children paint walks: a mounted window slice for virtualized
    containers, the full ordered list otherwise. *)
 let paint_children ctx store id =
-  match ctx.hooks.mounted_range id with
-  | Some (first, last) ->
-    z_ordered store (Lui_store.children_range store id ~first ~last)
+  match ctx.hooks.mounted_children id with
+  | Some ids ->
+    z_ordered store (List.filter_map (Lui_store.find_opt store) ids)
   | None -> ordered_children store id
 
 let node_shown store id =

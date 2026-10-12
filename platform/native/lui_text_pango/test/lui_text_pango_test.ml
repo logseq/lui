@@ -538,6 +538,42 @@ let test_emoji_boundaries () =
   Alcotest.(check bool) "no interior hits" true
     (List.for_all (fun i -> List.mem i [ 0; 1; 19; 20 ]) !seen)
 
+(* caret_before/after over a real ZWJ chain and a combining sequence
+   never stop inside the cluster — the moves the Ui's Left/Right and
+   Backspace/Delete delegate to. *)
+let test_cluster_caret_moves () =
+  let fam = "\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA7" in
+  let lay = layout sys ("a" ^ fam ^ "z") in
+  Alcotest.(check int) "after a" 1 (caret_after lay 0);
+  Alcotest.(check int) "past family" 19 (caret_after lay 1);
+  Alcotest.(check int) "past z" 20 (caret_after lay 19);
+  Alcotest.(check int) "before z" 19 (caret_before lay 20);
+  Alcotest.(check int) "before family" 1 (caret_before lay 19);
+  Alcotest.(check int) "before a" 0 (caret_before lay 1);
+  let lay2 = layout sys "e\xCC\x81x" in
+  Alcotest.(check int) "past combining" 3 (caret_after lay2 0);
+  Alcotest.(check int) "combining start" 0 (caret_before lay2 3)
+
+(* caret_up/caret_down follow the wrapped layout's visual lines, so a
+   soft-wrapped paragraph steps row by row, not paragraph by
+   paragraph. *)
+let test_wrap_caret_vertical () =
+  let s = "the quick brown fox jumps over the lazy dog" in
+  let lay = layout ~width:80. sys s in
+  Alcotest.(check bool) "wrapped" true (Array.length lay.lay_lines > 1);
+  let i0 = 4 in
+  let i1 = caret_down lay i0 in
+  let r0 = caret_rect lay i0 and r1 = caret_rect lay i1 in
+  Alcotest.(check bool) "down a visual row" true (r1.ry > r0.ry);
+  (* lands inside the second wrapped line's byte range *)
+  let l1 = lay.lay_lines.(1).ll_line in
+  Alcotest.(check bool) "inside line 1" true
+    (i1 >= l1.start && i1 <= l1.stop);
+  Alcotest.(check bool) "x kept" true
+    (Float.abs (r1.rx -. r0.rx) < 12.);
+  let i2 = caret_up lay i1 in
+  checkf ~msg:"up back to first row" ~eps (caret_rect lay i2).ry r0.ry
+
 let test_spans_color () =
   let s = "abcdef" in
   let red = 0xFF0000FF in
@@ -764,7 +800,9 @@ let () =
         [ test_case "ascii" `Quick test_graphemes_ascii;
           test_case "cjk" `Quick test_graphemes_cjk;
           test_case "emoji" `Quick test_graphemes_emoji;
-          test_case "emoji boundaries" `Quick test_emoji_boundaries ] );
+          test_case "emoji boundaries" `Quick test_emoji_boundaries;
+          test_case "cluster caret moves" `Quick test_cluster_caret_moves;
+          test_case "wrap caret vertical" `Quick test_wrap_caret_vertical ] );
       ( "spans",
         [ test_case "color" `Quick test_spans_color;
           test_case "font" `Quick test_spans_font;

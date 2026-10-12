@@ -44,6 +44,7 @@ type vrow = {
 type vlist = {
   vid : int;
   mutable count : int;
+  mutable kids : int array;   (* logical child ids, per structural sync *)
   mutable estimate : float;  (* unmeasured row main extent, device px *)
   mutable overscan : int;    (* extra rows mounted past each view edge *)
   mutable gap : float;       (* resolved row gap, device px *)
@@ -102,6 +103,10 @@ type t = {
   mutable synced_anchor : (float * float) option;
   mutable synced_measure : text_measure;
   mutable synced_hidden : int -> bool;
+  (* Instrumentation: how many times {!sync} actually rebuilt the
+     mirror. Lets tests assert that memoization (and later the
+     incremental path) skipped work instead of trusting timings. *)
+  mutable stat_syncs : int;
 }
 
 let create () =
@@ -118,9 +123,11 @@ let create () =
     synced_h = 0.;
     synced_anchor = None;
     synced_measure = no_measure;
-    synced_hidden = show_all }
+    synced_hidden = show_all;
+    stat_syncs = 0 }
 
 let invalidate (t : t) = t.synced_rev <- -1
+let stat_syncs (t : t) = t.stat_syncs
 
 (* ---------- wire value access ---------- *)
 
@@ -796,6 +803,7 @@ let vlist_state ctx id =
       {
         vid = id;
         count = 0;
+        kids = [||];
         estimate = 0.;
         overscan = 4;
         gap = 0.;
@@ -846,6 +854,12 @@ let vlist_vertical store id =
    [style] is the vlist's own flex style — padding, border and the
    row gap come straight from it. *)
 let vlist_configure ctx store (v : vlist) (style : Lui_flex.style) =
+  (* The logical child ids snapshot: [count] stays O(1) on the store,
+     but a per-row indexed probe on the intrusive child list is O(i),
+     so the window machinery reads this array instead. One O(count)
+     materialization per structural sync — the same order the mirror
+     build already pays. *)
+  v.kids <- Array.of_list (Lui_store.child_ids store v.vid);
   let count = Lui_store.child_count store v.vid in
   let gap = len_px ~owner:ctx.vh style.row_gap in
   let estimate =
@@ -856,7 +870,7 @@ let vlist_configure ctx store (v : vlist) (style : Lui_flex.style) =
     with
     | Some f when f > 0. -> f *. ctx.scale
     | _ -> (
-      match Lui_store.child_id_at store v.vid 0 with
+      match if count > 0 then v.kids.(0) else -1 with
       | cid when cid >= 0 -> (
         match pnum store cid "height" with
         | Some h -> h *. ctx.scale
@@ -1429,7 +1443,7 @@ let build_vrows t ctx store (v : vlist) ~first ~last =
     !stale;
   for i = first to last - 1 do
     if not (Hashtbl.mem v.rows i) then begin
-      let cid = Lui_store.child_id_at store v.vid i in
+      let cid = if i < Array.length v.kids then v.kids.(i) else -1 in
       if cid >= 0 then begin
         (* Row-local context: registrations land in the list's own
            node table so [collect] stays a mirror-only pass. *)
@@ -1629,10 +1643,12 @@ let compute t ~width ~height =
 
 let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
     ?ctx_anchor ?(vport = no_vport) ~width ~height (t : t) store =
-  let rev = Lui_store.revision store in
-  (* The store bumps its revision on every mutation, so a matching key
-     means the rebuild below would produce an identical mirror —
-     skipped wholesale (scroll-only and idle repaints pay nothing). *)
+  let rev = Lui_store.layout_rev store in
+  (* The store bumps its layout revision on every mutation that can
+     move geometry — structure and layout-classified props — so a
+     matching key means the rebuild below would produce an identical
+     mirror: skipped wholesale (scroll-only frames, idle repaints and
+     paint-only prop churn all pay nothing). *)
   if
     t.synced_rev <> rev || t.synced_scale <> scale
     || t.synced_w <> width || t.synced_h <> height
@@ -1640,6 +1656,7 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
     || (not (t.synced_measure == measure))
     || (not (t.synced_hidden == hidden))
   then begin
+    t.stat_syncs <- t.stat_syncs + 1;
     Hashtbl.reset t.nodes;
     Hashtbl.reset t.applied;
     let ctx =
@@ -1696,6 +1713,16 @@ let mounted_range (t : t) id =
   | Some v -> Some (v.first, v.last)
   | None -> None
 
+(* The mounted window's child store ids — the slice paint and
+   hit-test enumerate. Read off [v.kids] so a mid-list window costs
+   O(window), not a linked-list walk to [first]. *)
+let mounted_children (t : t) id =
+  match Hashtbl.find_opt t.vlists id with
+  | Some v ->
+    let n = max 0 (min v.last (Array.length v.kids) - v.first) in
+    Some (Array.to_list (Array.sub v.kids v.first n))
+  | None -> None
+
 let mounted_count (t : t) id =
   match Hashtbl.find_opt t.vlists id with
   | Some v -> Hashtbl.length v.rows
@@ -1738,7 +1765,7 @@ let virtual_index_of_key (t : t) store id key =
       | None ->
         let m = Hashtbl.create 64 in
         for i = 0 to v.count - 1 do
-          let cid = Lui_store.child_id_at store id i in
+          let cid = v.kids.(i) in
           if cid >= 0 then
             match Lui_store.string_prop store cid "key" with
             | Some k -> Hashtbl.replace m k i
@@ -1750,7 +1777,7 @@ let virtual_index_of_key (t : t) store id key =
     Hashtbl.find_opt m key
 
 (* store id → item index (same lazy index as above, reversed). *)
-let virtual_index_of_id (t : t) store id cid =
+let virtual_index_of_id (t : t) _store id cid =
   match Hashtbl.find_opt t.vlists id with
   | None -> None
   | Some v ->
@@ -1760,7 +1787,7 @@ let virtual_index_of_id (t : t) store id cid =
       | None ->
         let m = Hashtbl.create 64 in
         for i = 0 to v.count - 1 do
-          let k = Lui_store.child_id_at store id i in
+          let k = v.kids.(i) in
           if k >= 0 then Hashtbl.replace m k i
         done;
         v.id_index <- Some m;

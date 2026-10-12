@@ -579,6 +579,60 @@ let test_dyn_shared_source_survives_remount () =
        (all_ops ()));
   ignore (Lui_app.dispose app)
 
+(* [~placeholder_signal] republishes the placeholder prop in place: the
+   update is a SetProp on the same node, not a remount. *)
+let test_placeholder_signal_updates () =
+  let app =
+    Lui_app.create (recording_backend ()) "Search"
+      (fun _model action -> match action with `Set s -> s)
+      (fun _context model_source _send ->
+        Lui_elements.column
+          [ Lui_elements.input ~placeholder_signal:model_source [] ])
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let input_node =
+    match
+      List.find_map
+        (function
+          | Lui_protocol.CreateNode (id, Lui_protocol.Input) -> Some id
+          | _ -> None)
+        (all_ops ())
+    with
+    | Some id -> id
+    | None -> Alcotest.fail "input node not created"
+  in
+  Alcotest.(check bool) "placeholder emitted" true
+    (List.exists
+       (function
+         | Lui_protocol.SetProp
+             (id, Lui_protocol.PlaceholderValue,
+              Lui_protocol.StringValue "Search") ->
+             id = input_node
+         | _ -> false)
+       (all_ops ()));
+  batches := [];
+  ignore (Lui_app.send app (`Set "Move blocks"));
+  flush_app app;
+  let ops = all_ops () in
+  Alcotest.(check bool) "placeholder republished" true
+    (List.exists
+       (function
+         | Lui_protocol.SetProp
+             (id, Lui_protocol.PlaceholderValue,
+              Lui_protocol.StringValue "Move blocks") ->
+             id = input_node
+         | _ -> false)
+       ops);
+  Alcotest.(check bool) "no input remount" false
+    (List.exists
+       (function
+         | Lui_protocol.CreateNode (id, Lui_protocol.Input) ->
+             id <> input_node
+         | _ -> false)
+       ops);
+  ignore (Lui_app.dispose app)
+
 let creates_text_count ops =
   List.length
     (List.filter
@@ -3946,6 +4000,8 @@ let () =
             test_dyn_default_equal;
           Alcotest.test_case "if_ test toggles" `Quick
             test_if_test_toggles;
+          Alcotest.test_case "placeholder_signal updates in place" `Quick
+            test_placeholder_signal_updates;
           Alcotest.test_case "owns derived source" `Quick
             test_dyn_shared_source_survives_remount;
           Alcotest.test_case "keyed source diffs" `Quick

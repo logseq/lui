@@ -244,15 +244,15 @@ let visible_children t ~root ~clip =
        0
 
 let paint_hooks t =
-  let mounted_range = Lui_layout.mounted_range t.engine in
+  let mounted_children = Lui_layout.mounted_children t.engine in
   if Hashtbl.length t.scroll = 0 then
     { t.hooks with
       layout = Lui_layout.layout_hook t.engine;
-      mounted_range }
+      mounted_children }
   else
     {
       t.hooks with
-      mounted_range;
+      mounted_children;
       layout =
         (fun id ->
           let p = Lui_layout.layout_hook t.engine id in

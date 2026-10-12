@@ -207,6 +207,77 @@ let test_ime_flow () =
      Alcotest.(check (float 0.01)) "x" 20. r.Lui_scene.x
    | _ -> Alcotest.fail "expected Ime_rect")
 
+(* ---------- shared caret model (C7) ---------- *)
+
+(* A Ui wired to the pango-backed caret ops, focused on a text field
+   holding [text]: keyboard moves/deletes run on the same layouts
+   the painter resolves. *)
+let caret_ops_store text =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, TextField);
+        InsertChild (1, 2, 0);
+        SetProp (2, TextValue, StringValue text) ]
+  in
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:200 ~height:100 ~scale:1.
+    ~measure:Layout.default_measure;
+  let scene =
+    Lui_scene.create ~mask_atlas:(Atlas.create ~bpp:1 ~w:8 ~h:8)
+      ~color_atlas:(Atlas.create ~bpp:4 ~w:8 ~h:8)
+  in
+  let te =
+    Lui_window_text.create ~scene:(fun () -> scene)
+      ~scale:(fun () -> 1.) ~store:(fun () -> s)
+  in
+  let ui = Ui.create () in
+  Ui.set_caret_ops ui
+    (fun _store id text ~lw ~lh ->
+       Lui_window_text.caret_ops te id text ~lw ~lh);
+  Ui.set_focused ui s 2;
+  (s, rects, ui)
+
+let key k = Input.Key_down (k, Input.mods_none, false)
+
+let test_caret_ops_zwj () =
+  let fam = "\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA7" in
+  let s, rects, ui = caret_ops_store ("a" ^ fam ^ "z") in
+  (* caret starts at the end (20): one Left lands before "z"... *)
+  ignore (Ui.handle ui s rects (key Input.Arrow_left));
+  Alcotest.(check int) "before z" 19 (Ui.caret ui);
+  (* ...the next Left crosses the whole ZWJ family — never inside *)
+  ignore (Ui.handle ui s rects (key Input.Arrow_left));
+  Alcotest.(check int) "skips family" 1 (Ui.caret ui);
+  (* Backspace from 19 deletes the whole cluster, leaving "az" *)
+  ignore (Ui.handle ui s rects (key Input.Arrow_right));
+  Alcotest.(check int) "back before z" 19 (Ui.caret ui);
+  (match
+     press_actions (Ui.handle ui s rects (key Input.Backspace))
+   with
+   | [ TextChanged (2, "az") ] -> ()
+   | a -> Alcotest.failf "expected cluster delete, got %d" (List.length a))
+
+let test_caret_ops_combining () =
+  let s, rects, ui = caret_ops_store "e\xCC\x81x" in
+  ignore (Ui.handle ui s rects (key Input.Arrow_left));
+  Alcotest.(check int) "before x" 3 (Ui.caret ui);
+  ignore (Ui.handle ui s rects (key Input.Arrow_left));
+  Alcotest.(check int) "skips combining" 0 (Ui.caret ui);
+  (* Delete at 0 removes e+acute whole *)
+  (match
+     press_actions (Ui.handle ui s rects (key Input.Delete))
+   with
+   | [ TextChanged (2, "x") ] -> ()
+   | _ -> Alcotest.fail "expected combining delete")
+
+let test_caret_ops_vertical () =
+  let s, rects, ui = caret_ops_store "ab\ncd" in
+  (* caret at end of "cd" (5) -> Up keeps the column on "ab" *)
+  ignore (Ui.handle ui s rects (key Input.Arrow_up));
+  Alcotest.(check int) "up keeps x" 2 (Ui.caret ui);
+  ignore (Ui.handle ui s rects (key Input.Arrow_down));
+  Alcotest.(check int) "down keeps x" 5 (Ui.caret ui)
+
 (* ---------- headless checksum pipeline ---------- *)
 
 (* The demo app mounted on a host exactly as main.ml wires it — same
@@ -234,7 +305,7 @@ let host_with_app () =
              | Some h -> Ui.state_of ui (Lui_host.store h) id
              | None -> Lui_paint.state_neutral);
         scroll_of = (fun _ -> None);
-        mounted_range = (fun _ -> None);
+        mounted_children = (fun _ -> None);
         text_ops =
           (fun id r fg s ->
              Lui_window_text.text_ops text_engine id r fg s);
@@ -416,6 +487,10 @@ let () =
         [ Alcotest.test_case "click" `Quick test_click_press;
           Alcotest.test_case "focus+text" `Quick test_focus_and_text;
           Alcotest.test_case "ime" `Quick test_ime_flow ] );
+      ( "caret",
+        [ Alcotest.test_case "zwj cluster" `Quick test_caret_ops_zwj;
+          Alcotest.test_case "combining" `Quick test_caret_ops_combining;
+          Alcotest.test_case "vertical" `Quick test_caret_ops_vertical ] );
       ( "headless",
         [ Alcotest.test_case "checksum" `Quick test_headless_checksum ] );
       ( "shell",

@@ -189,6 +189,27 @@ let test_sync_memoized () =
   Lui_layout.sync ~measure ~width:200. ~height:100. t store;
   check bool "store mutation resyncs" true (!calls > after_invalidate)
 
+(* A paint-only prop change never re-enters the mirror: the store's
+   layout revision does not move, so sync stays memoized. *)
+let test_paint_prop_skips_layout () =
+  let store = Lui_store.create () in
+  apply store
+    [ CreateNode (1, Root); CreateNode (2, Row); CreateNode (3, Text);
+      InsertChild (1, 2, 0); InsertChild (2, 3, 0);
+      SetProp (3, TextValue, StringValue "hi");
+      SetProp (3, WidthValue, IntValue 200);
+      SetProp (3, HeightValue, IntValue 10) ];
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  check int "first sync builds" 1 (Lui_layout.stat_syncs t);
+  apply store [ SetProp (3, BackgroundValue, StringValue "#ff0000") ];
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  check int "paint-only prop skips rebuild" 1 (Lui_layout.stat_syncs t);
+  check_some_rect "rect intact" 0. 0. 200. 10. (Lui_layout.rect t 3);
+  apply store [ SetProp (3, WidthValue, IntValue 30) ];
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  check int "layout prop resyncs" 2 (Lui_layout.stat_syncs t)
+
 (* Grid cells subtract the gap share: columns=2 + gap 10 in a 200-wide
    frame gives two 95-wide cells per row, not one. *)
 let test_grid_gap_fits_columns () =
@@ -474,6 +495,7 @@ let () =
          test_case "display none" `Quick test_display_none_absent;
          test_case "rebuild" `Quick test_rebuild_after_mutation;
          test_case "sync memoized" `Quick test_sync_memoized;
+         test_case "paint prop skips layout" `Quick test_paint_prop_skips_layout;
          test_case "frame grows" `Quick test_frame_grows_to_content;
          test_case "popup centered" `Quick test_popup_default_centered;
          test_case "root popup" `Quick test_root_popup_centered_in_frame;

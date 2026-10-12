@@ -238,7 +238,7 @@ let hooks_of ?(text_ops = fun id r c s -> stub_text_ops id r c s) e =
         | Some s -> s
         | None -> Lui_paint.state_neutral);
     scroll_of = (fun id -> Hashtbl.find_opt e.scrolls id);
-    mounted_range = (fun _ -> None);
+    mounted_children = (fun _ -> None);
     text_ops;
     image_of =
       (fun id -> if Hashtbl.mem e.images id then Some test_image else None);

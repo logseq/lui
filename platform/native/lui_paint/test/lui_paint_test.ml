@@ -68,7 +68,7 @@ let test_children_order () =
     check int "second green" 255 b.fcolor.g
   | _ -> fail "expected two Fill ops in paint order"
 
-(* The mounted_range hook restricts the child walk to its window —
+(* The mounted_children hook restricts the child walk to its window —
    the mechanism a virtual list uses to skip unmounted rows without
    the paint pass touching them at all. *)
 let test_mounted_range () =
@@ -82,8 +82,8 @@ let test_mounted_range () =
                Lui_protocol.InsertChild (1, 10 + i, i) ])));
   let h =
     { (hooks ()) with
-      Lui_paint.mounted_range =
-        (fun id -> if id = 1 then Some (2, 5) else None) }
+      Lui_paint.mounted_children =
+        (fun id -> if id = 1 then Some [ 12; 13; 14 ] else None) }
   in
   let s = paint_with h t ~width:100 ~height:10000 () in
   let fills =

@@ -44,6 +44,7 @@ module type LAYOUT_ENGINE = sig
      [[]]/[None] everywhere, which reproduces the unwindowed path. *)
   val vlists : t -> int list
   val mounted_range : t -> int -> (int * int) option
+  val mounted_children : t -> int -> int list option
   val virtual_extent : t -> int -> float option
   val virtual_item_rect : t -> int -> index:int -> Lui_scene.rect option
   val virtual_index_of_key : t -> Lui_store.t -> int -> string -> int option
@@ -137,6 +138,7 @@ val set_vport : t -> (int -> (float * float) option) -> unit
 
 val layout_vlists : t -> int list
 val layout_mounted_range : t -> int -> (int * int) option
+val layout_mounted_children : t -> int -> int list option
 val layout_virtual_extent : t -> int -> float option
 val layout_virtual_item : t -> int -> index:int -> Lui_scene.rect option
 val layout_virtual_index_of_key : t -> int -> string -> int option

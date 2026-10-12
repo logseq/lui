@@ -90,10 +90,12 @@ type viewport = float * float
 
 (** Memoized: a call whose inputs all match the last sync returns
     immediately, keeping the previous mirror and rects. The key is the
-    store's mutation revision (bumped by every applied op), the frame
-    geometry, [?ctx_anchor]'s value, and the [?measure]/[?hidden]
-    functions' identities. Scroll offsets are not an input — a frame
-    that only scrolls pays no layout at all.
+    store's layout revision ({!Lui_store.layout_rev} — bumped only by
+    structure and layout-classified ops, so a paint-only prop change
+    like [background] never re-enters the mirror), the frame geometry,
+    [?ctx_anchor]'s value, and the [?measure]/[?hidden] functions'
+    identities. Scroll offsets are not an input — a frame that only
+    scrolls pays no layout at all.
 
     [?vport] maps a node id to the visible range of a [virtual-list]
     ({!viewport}), evaluated per virtual list on every call — including
@@ -137,6 +139,11 @@ val mounted_range : t -> int -> (int * int) option
 (** [mounted_count t id] is how many row subtrees are materialized. *)
 val mounted_count : t -> int -> int
 
+(** [mounted_children t id] is the mounted window's child store ids,
+    in order — the slice paint and hit-test enumerate instead of all
+    children. O(window); [None] for non-virtual ids. *)
+val mounted_children : t -> int -> int list option
+
 (** [virtual_extent t id] is the list's total virtual content extent
     on the main axis (border-box span, device px) — what a scroll cap
     is computed against when the mounted rows do not reach the end. *)
@@ -166,6 +173,10 @@ val virtual_index_of_id : t -> Lui_store.t -> int -> int -> int option
     The store revision covers every store mutation on its own. *)
 
 val invalidate : t -> unit
+
+(** [stat_syncs t] counts the {!sync} calls that actually rebuilt the
+    mirror — memoized calls do not. Test instrumentation. *)
+val stat_syncs : t -> int
 
 (** [compute t ~width ~height] re-runs layout on the current mirror —
     the cheap path when only the frame size changed. [*-viewport]

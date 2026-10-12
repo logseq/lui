@@ -40,6 +40,7 @@ module type LAYOUT_ENGINE = sig
      [[]]/[None] everywhere, which reproduces the unwindowed path. *)
   val vlists : t -> int list
   val mounted_range : t -> int -> (int * int) option
+  val mounted_children : t -> int -> int list option
   val virtual_extent : t -> int -> float option
   val virtual_item_rect : t -> int -> index:int -> Lui_scene.rect option
   val virtual_index_of_key : t -> Lui_store.t -> int -> string -> int option
@@ -60,6 +61,7 @@ type layout_state = {
   lrect : int -> rect option;
   llists : unit -> int list;
   lrange : int -> (int * int) option;
+  lchildren : int -> int list option;
   lextent : int -> float option;
   litem : int -> index:int -> rect option;
   lkey : int -> string -> int option;
@@ -106,6 +108,7 @@ let create ~hooks ?layout ?(measure = no_measure) ~renderer ~width ~height ~scal
           lrect = L.rect engine;
           llists = (fun () -> L.vlists engine);
           lrange = (fun id -> L.mounted_range engine id);
+          lchildren = (fun id -> L.mounted_children engine id);
           lextent = (fun id -> L.virtual_extent engine id);
           litem = (fun id ~index -> L.virtual_item_rect engine id ~index);
           lkey = (fun id key -> L.virtual_index_of_key engine store id key);
@@ -147,6 +150,9 @@ let layout_vlists h =
 
 let layout_mounted_range h id =
   match h.layout with Some l -> l.lrange id | None -> None
+
+let layout_mounted_children h id =
+  match h.layout with Some l -> l.lchildren id | None -> None
 
 let layout_virtual_extent h id =
   match h.layout with Some l -> l.lextent id | None -> None
