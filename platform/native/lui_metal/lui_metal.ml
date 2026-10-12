@@ -133,8 +133,7 @@ let pack_batches (batches : Lui_gpu.batch list) =
        let start = !ofs / Lui_gpu.instance_floats in
        List.iter
          (fun inst ->
-            let floats = Lui_gpu.to_float32_array inst in
-            Array.iteri (fun j v -> data.{!ofs + j} <- v) floats;
+            Lui_gpu.pack_instance inst data ~ofs:!ofs;
             ofs := !ofs + Lui_gpu.instance_floats)
          b.instances;
        spans.(i) <- (start, !ofs / Lui_gpu.instance_floats - start))

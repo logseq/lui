@@ -232,59 +232,106 @@ let event_supported store id event =
     in
     Lui_protocol.event_supported_for_properties kind props event
 
+(* Everything [hit_path] needs from the store for one node: visibility,
+   the scrollable/split-pane clip rule, overlay presentation, the
+   pointer-enabled opt, and the two kind strings it branches on.
+   Computed once per node per store revision — see [hit_flags_of]. *)
+type hit_flags = {
+  hf_visible : bool;
+  hf_clips : bool;
+  hf_overlay : bool;
+  hf_pen : bool option;
+  hf_no_box : bool;
+  hf_spacer : bool;
+}
+
+(* Mirror of Lui_paint.clips: a node clips its descendants when it
+   scrolls, carries an overflow prop, or is a split pane. *)
+let hit_node_clips store id =
+  (match Lui_store.kind store id with
+   | "scroll" | "list" | "virtual-list" -> true
+   | _ -> false)
+  || (match Lui_store.parent store id with
+      | Some pid -> Lui_store.kind store pid = "split"
+      | None -> false)
+  || (match Lui_store.string_prop store id "overflow" with
+      | Some ("hidden" | "clip" | "auto" | "scroll") -> true
+      | _ -> false)
+
+(* pointer-enabled=false makes a subtree hit-transparent like the web
+   pointer-events:none: descendants inherit it and only an explicit
+   pointer-enabled=true opts a node back in (registering pointer
+   handlers sets that prop). A presented overlay (popover, dialog,
+   menu, sheet, toast, or a [selected]-less drawer) always opts its
+   own subtree back in — it is interactive content by definition —
+   while a permanent overlay-layer host (data-overlay-layer) keeps
+   whatever its own flag says. *)
+let presented_overlay store id =
+  let layer_host =
+    match Lui_store.prop store id "data-attrs" with
+    | Some (StringValue s) -> (
+      try
+        List.assoc_opt "data-overlay-layer"
+          (Lui_protocol.data_attrs_decode s)
+        = Some "true"
+      with _ -> false)
+    | _ -> false
+  in
+  (not layer_host)
+  && (match Lui_store.kind store id with
+      | "dialog" | "sheet" | "popover" | "dropdown-menu"
+      | "context-menu" | "toast" ->
+        true
+      | "drawer" -> Lui_store.prop store id "selected" = None
+      | _ -> false)
+
+let hit_flags_compute store id =
+  { hf_visible =
+      (match Lui_store.prop store id "visible" with
+       | Some (BoolValue false) -> false
+       | _ -> true);
+    hf_clips = hit_node_clips store id;
+    hf_overlay = presented_overlay store id;
+    hf_pen =
+      (match Lui_store.prop store id "pointer-enabled" with
+       | Some (BoolValue v) -> Some v
+       | _ -> None);
+    hf_no_box = string_prop store id "display" = "contents";
+    hf_spacer = Lui_store.kind store id = "spacer" }
+
+(* hit_path's per-node flags, memoized for the (store, revision) of the
+   last call: pointer events hit-test the same tree repeatedly, and the
+   flags only move when the store does. Physical store identity keeps
+   two windows' stores from aliasing; a revision mismatch resets and
+   re-derives lazily. *)
+let hit_flags_tbl : (int, hit_flags) Hashtbl.t = Hashtbl.create 256
+let hit_flags_store : Lui_store.t option ref = ref None
+let hit_flags_rev = ref (-1)
+
+let hit_flags_of store id =
+  (match !hit_flags_store with
+   | Some s when s == store && !hit_flags_rev = Lui_store.revision store ->
+     ()
+   | _ ->
+     Hashtbl.reset hit_flags_tbl;
+     hit_flags_store := Some store;
+     hit_flags_rev := Lui_store.revision store);
+  match Hashtbl.find_opt hit_flags_tbl id with
+  | Some f -> f
+  | None ->
+    let f = hit_flags_compute store id in
+    Hashtbl.replace hit_flags_tbl id f;
+    f
+
 let hit_path store rects ~x ~y =
-  let visible id =
-    match Lui_store.prop store id "visible" with
-    | Some (BoolValue false) -> false
-    | _ -> true
-  in
-  (* Mirror of Lui_paint.clips: a node clips its descendants when it
-     scrolls, carries an overflow prop, or is a split pane. *)
-  let node_clips id =
-    (match Lui_store.kind store id with
-     | "scroll" | "list" | "virtual-list" -> true
-     | _ -> false)
-    || (match Lui_store.parent store id with
-        | Some pid -> Lui_store.kind store pid = "split"
-        | None -> false)
-    || (match Lui_store.string_prop store id "overflow" with
-        | Some ("hidden" | "clip" | "auto" | "scroll") -> true
-        | _ -> false)
-  in
-  (* pointer-enabled=false makes a subtree hit-transparent like the web
-     pointer-events:none: descendants inherit it and only an explicit
-     pointer-enabled=true opts a node back in (registering pointer
-     handlers sets that prop). A presented overlay (popover, dialog,
-     menu, sheet, toast, or a [selected]-less drawer) always opts its
-     own subtree back in — it is interactive content by definition —
-     while a permanent overlay-layer host (data-overlay-layer) keeps
-     whatever its own flag says. *)
-  let presented_overlay id =
-    let layer_host =
-      match Lui_store.prop store id "data-attrs" with
-      | Some (StringValue s) -> (
-        try
-          List.assoc_opt "data-overlay-layer"
-            (Lui_protocol.data_attrs_decode s)
-          = Some "true"
-        with _ -> false)
-      | _ -> false
-    in
-    (not layer_host)
-    && (match Lui_store.kind store id with
-        | "dialog" | "sheet" | "popover" | "dropdown-menu"
-        | "context-menu" | "toast" ->
-          true
-        | "drawer" -> Lui_store.prop store id "selected" = None
-        | _ -> false)
-  in
   let rec walk id path clip_r pointer_on =
-    if not (visible id) then path
+    let f = hit_flags_of store id in
+    if not f.hf_visible then path
     else
       let on =
-        match Lui_store.prop store id "pointer-enabled" with
-        | Some (BoolValue v) -> v
-        | _ -> pointer_on || presented_overlay id
+        match f.hf_pen with
+        | Some v -> v
+        | None -> pointer_on || f.hf_overlay
       in
       let r = Rects.get rects id in
       let clipped =
@@ -296,15 +343,14 @@ let hit_path store rects ~x ~y =
         (* spacers are layout voids — they paint nothing and must never
            be the hit target (a full-window spacer in an overlay layer
            would otherwise swallow every DOM event). *)
-        if on && Lui_store.kind store id <> "spacer"
+        if on && not f.hf_spacer
            && not (rect_empty clipped) && rect_contains clipped x y
         then id :: path
         else path
       in
       let child_clip =
         (* display:contents has no box to clip with. *)
-        if node_clips id && string_prop store id "display" <> "contents"
-        then Some clipped
+        if f.hf_clips && not f.hf_no_box then Some clipped
         else clip_r
       in
       (* Children paint after their parent, so prepending while walking
@@ -531,6 +577,9 @@ module Ui = struct
     scroll_cap : (int, float) Hashtbl.t;
     scroll_off_x : (int, float) Hashtbl.t;
     scroll_cap_x : (int, float) Hashtbl.t;
+    (* Bumped whenever a scroll offset moves — drivers memoize
+       ancestor-offset sums against it. *)
+    mutable scroll_epoch : int;
     (* Last pointer position in logical px — the wheel's implicit
        target since SDL mouse-wheel events carry no coordinates. *)
     mutable last_x : float;
@@ -577,18 +626,36 @@ module Ui = struct
     mutable open_menu : int; (* trigger-owned menu panel currently open *)
     mutable laid_out_menu : int;
     mutable saved_focus : int;
+    (* Store state [sync] last derived its effects from: the store
+       revision and the Ui-local open menu (top_overlay reads both).
+       Equal pair means the scans would recompute the same results. *)
+    mutable sync_rev : int;
+    mutable sync_menu : int;
     (* Autofocus controls already observed during their mount lifecycle. *)
     autofocus_seen : (int, unit) Hashtbl.t;
     (* appear-enabled ids already announced (mount lifecycle). *)
     seen : (int, unit) Hashtbl.t;
-    (* Per-container scroll bookkeeping: handled scroll-target tokens
-       and last emitted visible ranges. *)
+    (* Per-container scroll bookkeeping: handled scroll-target tokens,
+       last emitted visible ranges, the inputs each range was computed
+       at — (store revision, scroll offset, layout epoch) — and the
+       tracked list ids the last store scan found. *)
     scroll_token : (int, int) Hashtbl.t;
     vrange : (int, int * int) Hashtbl.t;
+    vrange_key : (int, int * float * int) Hashtbl.t;
+    mutable vrange_lists : int list;
+    (* Bumped by the driver whenever layout rects are recomputed — the
+       third leg of the vrange memo, since rect moves do not change
+       the store revision. *)
+    mutable rects_epoch : int;
     (* Driver hooks: glyph measurement for caret/selection math and
        unshifted (content-space) rects for scroll_show. Deterministic
-       defaults keep the module testable without a text engine. *)
+       defaults keep the module testable without a text engine.
+       [hit_text] is the text engine's layout-accurate point-to-byte
+       map; unset it falls back to the measure-based path. *)
     mutable measure : Lui_store.t -> int -> string -> float * float;
+    mutable hit_text :
+      (Lui_store.t -> int -> string -> lx:float -> ly:float ->
+       lw:float -> lh:float -> int) option;
     mutable content_rect : int -> rect;
   }
 
@@ -598,6 +665,7 @@ module Ui = struct
       ime = Lui_ime.initial; dirty = true;
       scroll_off = Hashtbl.create 8; scroll_cap = Hashtbl.create 8;
       scroll_off_x = Hashtbl.create 8; scroll_cap_x = Hashtbl.create 8;
+      scroll_epoch = 0;
       last_x = 0.; last_y = 0.;
       sel_anchor = 0; sel_text = None; focus_visible = false;
       undo = []; redo = [];
@@ -607,16 +675,21 @@ module Ui = struct
       drop_seq = 0;
       overlay_id = 0; overlay_modal = false; open_menu = 0;
       laid_out_menu = 0;
-      saved_focus = 0;
+      saved_focus = 0; sync_rev = -1; sync_menu = -1;
       autofocus_seen = Hashtbl.create 8;
       seen = Hashtbl.create 64;
       scroll_token = Hashtbl.create 8; vrange = Hashtbl.create 8;
+      vrange_key = Hashtbl.create 8; vrange_lists = [];
+      rects_epoch = 0;
       measure =
         (fun _store _id s -> (8. *. float (String.length s), 16.));
+      hit_text = None;
       content_rect = (fun _ -> rect 0. 0. 0. 0.) }
 
   let set_scale t s = t.scale <- s
   let set_measure t f = t.measure <- f
+  let set_hit_text t f = t.hit_text <- Some f
+  let notify_layout t = t.rects_epoch <- t.rects_epoch + 1
   let set_content_rect t f = t.content_rect <- f
   let hovered t = t.hovered
   let pressed t = t.pressed
@@ -668,10 +741,12 @@ module Ui = struct
     let off = scroll_offset_axis t axis id in
     if off > cap then begin
       Hashtbl.replace (fst (scroll_tbls t axis)) id cap;
+      t.scroll_epoch <- t.scroll_epoch + 1;
       t.dirty <- true
     end
 
   let scroll_offset t = scroll_offset_axis t Y
+  let scroll_epoch t = t.scroll_epoch
   let scroll_cap t = scroll_cap_axis t Y
   let set_scroll_cap t = set_scroll_cap_axis t Y
   let scroll_offset_x t = scroll_offset_axis t X
@@ -951,7 +1026,10 @@ module Ui = struct
       choose 0 (utf8_bounds line)
 
   (* Byte offset in [text] under the device-px point [(x,y)] inside
-     node [id]'s shifted rect, honoring padding and line breaks. *)
+     node [id]'s shifted rect, honoring padding and line breaks. When
+     the driver wired a [hit_text] hook the text engine resolves the
+     point against the same layout it painted — wrap, alignment and
+     vertical placement included — instead of per-prefix measures. *)
   let offset_at_point t store rects id ~x ~y text =
     let r = Rects.get rects id in
     let ph =
@@ -960,19 +1038,24 @@ module Ui = struct
       pad_axis store id ~scale:t.scale "padding-vertical" "padding" in
     let lx = x -. r.Lui_scene.x -. ph
     and ly = y -. r.Lui_scene.y -. pv in
-    let lh = Float.max 1. (snd (t.measure store id "Ag")) in
-    let lines = String.split_on_char '\n' text in
-    let li =
-      if ly <= 0. then 0
-      else min (int_of_float (ly /. lh)) (List.length lines - 1)
-    in
-    let rec base i acc = function
-      | [] -> acc
-      | l :: tl ->
-        if i = li then acc else base (i + 1) (acc + String.length l + 1) tl
-    in
-    let line = List.nth lines li in
-    base 0 0 lines + boundary_at_x t store id line lx
+    match t.hit_text with
+    | Some f ->
+      f store id text ~lx:(x -. r.Lui_scene.x) ~ly:(y -. r.Lui_scene.y)
+        ~lw:r.w ~lh:r.h
+    | None ->
+      let lh = Float.max 1. (snd (t.measure store id "Ag")) in
+      let lines = String.split_on_char '\n' text in
+      let li =
+        if ly <= 0. then 0
+        else min (int_of_float (ly /. lh)) (List.length lines - 1)
+      in
+      let rec base i acc = function
+        | [] -> acc
+        | l :: tl ->
+          if i = li then acc else base (i + 1) (acc + String.length l + 1) tl
+      in
+      let line = List.nth lines li in
+      base 0 0 lines + boundary_at_x t store id line lx
 
   (* ---- drag & drop (data-attrs) -------------------------------------- *)
 
@@ -1138,40 +1221,52 @@ module Ui = struct
   (* Recompute the visible list-item range of a tracked container and
      emit VisibleRange when it changed. *)
   let report_vrange t store id =
-    (* VisibleRange is admissible on ListContainer ("list") only *)
+    (* VisibleRange is admissible on ListContainer ("list") only. The
+       range is a pure function of (store revision, scroll offset,
+       layout epoch): memoize the inputs — an identical triple means
+       the last scan's result still stands, so a scroll-less sync on
+       a tracked list costs a hashtable hit instead of an item walk. *)
     if kind_name store id = "list"
        && bool_prop store id "track-visible-range"
     then
-      let cr = t.content_rect id in
-      if rect_empty cr || cr.Lui_scene.h <= 0. then []
-      else
-        let off = scroll_offset t id in
-        let y0 = cr.Lui_scene.y +. off
-        and y1 = cr.Lui_scene.y +. off +. cr.Lui_scene.h in
-        let items =
-          List.filter
-            (fun c -> kind_name store c = "list-item")
-            (Lui_store.preorder ~root:id store)
-        in
-        let rec scan i f l = function
-          | [] -> (f, l)
-          | it :: tl ->
-            let r = t.content_rect it in
-            let vis =
-              (not (rect_empty r))
-              && r.Lui_scene.y +. r.Lui_scene.h > y0
-              && r.Lui_scene.y < y1
-            in
-            scan (i + 1) (if vis && f < 0 then i else f)
-              (if vis then i else l) tl
-        in
-        let f, l = scan 0 (-1) (-1) items in
-        let f = max 0 f in
-        (match Hashtbl.find_opt t.vrange id with
-         | Some (f', l') when f' = f && l' = l -> []
-         | _ ->
-           Hashtbl.replace t.vrange id (f, l);
-           [ Dispatch (VisibleRange (id, f, l)) ])
+      let key =
+        (Lui_store.revision store, scroll_offset t id, t.rects_epoch)
+      in
+      match Hashtbl.find_opt t.vrange_key id with
+      | Some k when k = key -> []
+      | _ -> begin
+        Hashtbl.replace t.vrange_key id key;
+        let cr = t.content_rect id in
+        if rect_empty cr || cr.Lui_scene.h <= 0. then []
+        else
+          let off = scroll_offset t id in
+          let y0 = cr.Lui_scene.y +. off
+          and y1 = cr.Lui_scene.y +. off +. cr.Lui_scene.h in
+          let items =
+            List.filter
+              (fun c -> kind_name store c = "list-item")
+              (Lui_store.preorder ~root:id store)
+          in
+          let rec scan i f l = function
+            | [] -> (f, l)
+            | it :: tl ->
+              let r = t.content_rect it in
+              let vis =
+                (not (rect_empty r))
+                && r.Lui_scene.y +. r.Lui_scene.h > y0
+                && r.Lui_scene.y < y1
+              in
+              scan (i + 1) (if vis && f < 0 then i else f)
+                (if vis then i else l) tl
+          in
+          let f, l = scan 0 (-1) (-1) items in
+          let f = max 0 f in
+          (match Hashtbl.find_opt t.vrange id with
+           | Some (f', l') when f' = f && l' = l -> []
+           | _ ->
+             Hashtbl.replace t.vrange id (f, l);
+             [ Dispatch (VisibleRange (id, f, l)) ])
+      end
     else []
 
   let scroll_set ?(axis = Y) t store id off =
@@ -1180,6 +1275,7 @@ module Ui = struct
     if Float.abs (off' -. scroll_offset_axis t axis id) > 0.001
     then begin
       Hashtbl.replace (fst (scroll_tbls t axis)) id off';
+      t.scroll_epoch <- t.scroll_epoch + 1;
       t.dirty <- true
     end;
     (* VisibleRange is a row concept — reported on y moves only. *)
@@ -1413,6 +1509,17 @@ module Ui = struct
   let sync t store =
     let acts = ref [] in
     let push a = acts := a :: !acts in
+    (* The whole derived-state block below reads only store props and
+       [t.open_menu]: when the revision and the open menu are both
+       what the last sync saw, the preorder walks recompute the same
+       results — skip them. Scroll-range reports follow scroll
+       offsets, which live in Ui state rather than the store, so they
+       stay outside the gate (report_vrange memoizes on its own
+       inputs). *)
+    let rev = Lui_store.revision store in
+    if rev <> t.sync_rev || t.open_menu <> t.sync_menu then begin
+    t.sync_rev <- rev;
+    t.sync_menu <- t.open_menu;
     if t.focused <> 0 && not (Lui_store.mem store t.focused) then begin
       set_focused t store 0;
       push (Focus_changed 0)
@@ -1527,10 +1634,20 @@ module Ui = struct
                    push (Dispatch (ScrollCompleted (id, tok, "missing-target")))))
            | None -> ())
       (Lui_store.preorder store);
+    (* The tracked-list ids are store-derived too — refreshed under
+       the same gate so the per-sync report loop below only walks
+       actual VisibleRange producers, not the whole tree. *)
+    t.vrange_lists <-
+      List.filter
+        (fun id ->
+           kind_name store id = "list"
+           && bool_prop store id "track-visible-range")
+        (Lui_store.preorder store)
+    end;
     List.iter
       (fun id ->
          acts := List.rev_append (report_vrange t store id) !acts)
-      (Lui_store.preorder store);
+      t.vrange_lists;
     List.rev !acts
 
   let store_changed = sync
@@ -1781,6 +1898,7 @@ module Ui = struct
             in
             if off' <> off then begin
               Hashtbl.replace (fst (scroll_tbls t axis)) id off';
+              t.scroll_epoch <- t.scroll_epoch + 1;
               t.dirty <- true
             end;
             []

@@ -269,7 +269,25 @@ module Ui : sig
   val set_measure :
     t -> (Lui_store.t -> int -> string -> float * float) -> unit
 
+  (** Optional layout-accurate text hit-testing: [f store id text
+      ~lx ~ly ~lw ~lh] is the byte offset in [text] under the
+      device-px point [(lx, ly)] measured from the node's rect origin,
+      where [(lw, lh)] is the rect's size. The engine resolves the
+      point against the same layout it painted; unset, a
+      measure-based fallback keeps tests text-engine free. *)
+  val set_hit_text :
+    t ->
+    (Lui_store.t -> int -> string -> lx:float -> ly:float ->
+     lw:float -> lh:float -> int) ->
+    unit
+
   val set_content_rect : t -> (int -> Lui_scene.rect) -> unit
+
+  (** Tell the Ui that layout rects were recomputed (the driver's
+      populate/refresh pass). Bumps the internal layout epoch that
+      visible-range memoization keys on — call it wherever the rects
+      feeding [content_rect] are rebuilt. *)
+  val notify_layout : t -> unit
 
   (** Device-pixel scale; the driver updates it on resize/startup so
       logical input coordinates hit-test against device-pixel rects. *)
@@ -326,6 +344,10 @@ module Ui : sig
   val scroll_offset : t -> int -> float
   (** Current vertical scroll offset of the container, device px
       (0 when it was never scrolled). *)
+
+  val scroll_epoch : t -> int
+  (** Monotonic counter bumped whenever any scroll offset changes —
+      drivers can memoize ancestor-offset sums against it. *)
 
   val scroll_cap : t -> int -> float
   (** Maximum vertical scroll offset of the container, device px. *)
