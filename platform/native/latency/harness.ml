@@ -135,6 +135,7 @@ type t = {
   mutable batch_out : float; (* apply_batch exit stamp *)
   mutable batch_seen : bool;
   mutable batch_ops : int;
+  transport : Lui_wire.transport; (* how batches reach the store apply *)
   width : int;
   height : int;
   scale : float;
@@ -142,7 +143,13 @@ type t = {
 
 let store t = Lui_host.store t.host
 let scene t = Lui_host.scene t.host
-let apply t batch = Lui_host.apply_batch t.host batch
+
+(* [~transport] picks the delivery path at the backend seam (P1-4):
+   [In_process] hands the batch over as a value (production), [Wire]
+   routes it through encode -> decode first — what a bridged host
+   pays — so scenarios can run and measure both. *)
+let apply ?(transport = Lui_wire.In_process) t batch =
+  Lui_host.apply_batch t.host (Lui_wire.transcode transport batch)
 let set_hovered t id = t.hovered <- id
 
 (* Deterministic measure: 8 device px per byte, 16 px tall — the
@@ -167,7 +174,7 @@ let stub_text_ops _id _r c _s =
       };
   ]
 
-let create ~width ~height ~scale () =
+let create ?(transport = Lui_wire.In_process) ~width ~height ~scale () =
   Gc.full_major ();
   (* The host's own hook/renderer slots are never exercised — the
      harness drives layout, paint and raster itself so each stage can
@@ -189,6 +196,7 @@ let create ~width ~height ~scale () =
       batch_out = 0.;
       batch_seen = false;
       batch_ops = 0;
+      transport;
       width;
       height;
       scale;
@@ -207,7 +215,12 @@ let backend t profile =
         t.batch_in <- now ();
         t.batch_seen <- true;
         t.batch_ops <- List.length batch.Lui_protocol.ops;
-        let ok = Lui_host.apply_batch t.host batch in
+        (* The transport's transcoding is part of "backend applied": a
+           wire-mode frame prices encode -> decode -> store apply. *)
+        let ok =
+          Lui_host.apply_batch t.host
+            (Lui_wire.transcode t.transport batch)
+        in
         t.batch_out <- now ();
         ok);
   }
