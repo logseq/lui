@@ -1,0 +1,4 @@
+(test
+ (name lui_resource_test)
+ (modules lui_resource_test)
+ (libraries lui_resource ocaml-signal alcotest unix))
