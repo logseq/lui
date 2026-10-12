@@ -944,7 +944,7 @@ static double lui_shade_gray(double shade)
 /* rasterize : font -> glyph id -> scale -> dx -> shade -> bitmap option
    A bitmap is (left, top, w, h, color, bytes): the pixel box relative to
    the glyph's origin, and coverage (1 byte per pixel) or premultiplied
-   BGRA (4 bytes per pixel) rows, top first. */
+   RGBA (4 bytes per pixel) rows, top first. */
 CAMLprim value lui_ct_rasterize(value vfont, value vid, value vscale,
                                 value vdx, value vshade)
 {
@@ -983,10 +983,12 @@ CAMLprim value lui_ct_rasterize(value vfont, value vid, value vscale,
 
   CGContextRef ctx;
   if (color) {
+    /* Premultiplied RGBA: the atlas and every backend sample the bytes
+       as R,G,B,A, so the context must write that memory order. */
     ctx = CGBitmapContextCreate(Bytes_val(vbytes), (size_t)w, (size_t)h, 8,
                                 (size_t)(4 * w), lui_srgb(),
-                                kCGImageAlphaPremultipliedFirst |
-                                kCGBitmapByteOrder32Little);
+                                kCGImageAlphaPremultipliedLast |
+                                kCGBitmapByteOrder32Big);
   } else {
     ctx = CGBitmapContextCreate(Bytes_val(vbytes), (size_t)w, (size_t)h, 8,
                                 (size_t)w, NULL,
