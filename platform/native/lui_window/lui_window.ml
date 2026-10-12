@@ -232,59 +232,106 @@ let event_supported store id event =
     in
     Lui_protocol.event_supported_for_properties kind props event
 
+(* Everything [hit_path] needs from the store for one node: visibility,
+   the scrollable/split-pane clip rule, overlay presentation, the
+   pointer-enabled opt, and the two kind strings it branches on.
+   Computed once per node per store revision — see [hit_flags_of]. *)
+type hit_flags = {
+  hf_visible : bool;
+  hf_clips : bool;
+  hf_overlay : bool;
+  hf_pen : bool option;
+  hf_no_box : bool;
+  hf_spacer : bool;
+}
+
+(* Mirror of Lui_paint.clips: a node clips its descendants when it
+   scrolls, carries an overflow prop, or is a split pane. *)
+let hit_node_clips store id =
+  (match Lui_store.kind store id with
+   | "scroll" | "list" | "virtual-list" -> true
+   | _ -> false)
+  || (match Lui_store.parent store id with
+      | Some pid -> Lui_store.kind store pid = "split"
+      | None -> false)
+  || (match Lui_store.string_prop store id "overflow" with
+      | Some ("hidden" | "clip" | "auto" | "scroll") -> true
+      | _ -> false)
+
+(* pointer-enabled=false makes a subtree hit-transparent like the web
+   pointer-events:none: descendants inherit it and only an explicit
+   pointer-enabled=true opts a node back in (registering pointer
+   handlers sets that prop). A presented overlay (popover, dialog,
+   menu, sheet, toast, or a [selected]-less drawer) always opts its
+   own subtree back in — it is interactive content by definition —
+   while a permanent overlay-layer host (data-overlay-layer) keeps
+   whatever its own flag says. *)
+let presented_overlay store id =
+  let layer_host =
+    match Lui_store.prop store id "data-attrs" with
+    | Some (StringValue s) -> (
+      try
+        List.assoc_opt "data-overlay-layer"
+          (Lui_protocol.data_attrs_decode s)
+        = Some "true"
+      with _ -> false)
+    | _ -> false
+  in
+  (not layer_host)
+  && (match Lui_store.kind store id with
+      | "dialog" | "sheet" | "popover" | "dropdown-menu"
+      | "context-menu" | "toast" ->
+        true
+      | "drawer" -> Lui_store.prop store id "selected" = None
+      | _ -> false)
+
+let hit_flags_compute store id =
+  { hf_visible =
+      (match Lui_store.prop store id "visible" with
+       | Some (BoolValue false) -> false
+       | _ -> true);
+    hf_clips = hit_node_clips store id;
+    hf_overlay = presented_overlay store id;
+    hf_pen =
+      (match Lui_store.prop store id "pointer-enabled" with
+       | Some (BoolValue v) -> Some v
+       | _ -> None);
+    hf_no_box = string_prop store id "display" = "contents";
+    hf_spacer = Lui_store.kind store id = "spacer" }
+
+(* hit_path's per-node flags, memoized for the (store, revision) of the
+   last call: pointer events hit-test the same tree repeatedly, and the
+   flags only move when the store does. Physical store identity keeps
+   two windows' stores from aliasing; a revision mismatch resets and
+   re-derives lazily. *)
+let hit_flags_tbl : (int, hit_flags) Hashtbl.t = Hashtbl.create 256
+let hit_flags_store : Lui_store.t option ref = ref None
+let hit_flags_rev = ref (-1)
+
+let hit_flags_of store id =
+  (match !hit_flags_store with
+   | Some s when s == store && !hit_flags_rev = Lui_store.revision store ->
+     ()
+   | _ ->
+     Hashtbl.reset hit_flags_tbl;
+     hit_flags_store := Some store;
+     hit_flags_rev := Lui_store.revision store);
+  match Hashtbl.find_opt hit_flags_tbl id with
+  | Some f -> f
+  | None ->
+    let f = hit_flags_compute store id in
+    Hashtbl.replace hit_flags_tbl id f;
+    f
+
 let hit_path store rects ~x ~y =
-  let visible id =
-    match Lui_store.prop store id "visible" with
-    | Some (BoolValue false) -> false
-    | _ -> true
-  in
-  (* Mirror of Lui_paint.clips: a node clips its descendants when it
-     scrolls, carries an overflow prop, or is a split pane. *)
-  let node_clips id =
-    (match Lui_store.kind store id with
-     | "scroll" | "list" | "virtual-list" -> true
-     | _ -> false)
-    || (match Lui_store.parent store id with
-        | Some pid -> Lui_store.kind store pid = "split"
-        | None -> false)
-    || (match Lui_store.string_prop store id "overflow" with
-        | Some ("hidden" | "clip" | "auto" | "scroll") -> true
-        | _ -> false)
-  in
-  (* pointer-enabled=false makes a subtree hit-transparent like the web
-     pointer-events:none: descendants inherit it and only an explicit
-     pointer-enabled=true opts a node back in (registering pointer
-     handlers sets that prop). A presented overlay (popover, dialog,
-     menu, sheet, toast, or a [selected]-less drawer) always opts its
-     own subtree back in — it is interactive content by definition —
-     while a permanent overlay-layer host (data-overlay-layer) keeps
-     whatever its own flag says. *)
-  let presented_overlay id =
-    let layer_host =
-      match Lui_store.prop store id "data-attrs" with
-      | Some (StringValue s) -> (
-        try
-          List.assoc_opt "data-overlay-layer"
-            (Lui_protocol.data_attrs_decode s)
-          = Some "true"
-        with _ -> false)
-      | _ -> false
-    in
-    (not layer_host)
-    && (match Lui_store.kind store id with
-        | "dialog" | "sheet" | "popover" | "dropdown-menu"
-        | "context-menu" | "toast" ->
-          true
-        | "drawer" -> Lui_store.prop store id "selected" = None
-        | _ -> false)
-  in
   let rec walk id path clip_r pointer_on =
-    if not (visible id) then path
+    let f = hit_flags_of store id in
+    if not f.hf_visible then path
     else
       let on =
-        match Lui_store.prop store id "pointer-enabled" with
-        | Some (BoolValue v) -> v
-        | _ -> pointer_on || presented_overlay id
+        match f.hf_pen with
+        | Some v -> v
+        | None -> pointer_on || f.hf_overlay
       in
       let r = Rects.get rects id in
       let clipped =
@@ -296,15 +343,14 @@ let hit_path store rects ~x ~y =
         (* spacers are layout voids — they paint nothing and must never
            be the hit target (a full-window spacer in an overlay layer
            would otherwise swallow every DOM event). *)
-        if on && Lui_store.kind store id <> "spacer"
+        if on && not f.hf_spacer
            && not (rect_empty clipped) && rect_contains clipped x y
         then id :: path
         else path
       in
       let child_clip =
         (* display:contents has no box to clip with. *)
-        if node_clips id && string_prop store id "display" <> "contents"
-        then Some clipped
+        if f.hf_clips && not f.hf_no_box then Some clipped
         else clip_r
       in
       (* Children paint after their parent, so prepending while walking
