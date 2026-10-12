@@ -236,6 +236,7 @@ type property =
   | AvailableHeight
   | FontSize
   | FontWeight
+  | FontStyle
   | LineHeight
   | LetterSpacing
   | Position
