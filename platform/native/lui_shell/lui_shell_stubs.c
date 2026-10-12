@@ -240,7 +240,7 @@ static value lui_wrap_image(NSImage *img)
      cost so the GC paces collection instead of letting dead images
      pile up between major cycles. */
   value v = caml_alloc_custom(&lui_image_ops, sizeof(NSImage *),
-                              1024 * 1024, 8 * 1024 * 1024);
+                              1024 * 1024, 128 * 1024 * 1024);
   Lui_image_val(v) = img;
   return v;
 }
@@ -248,7 +248,7 @@ static value lui_wrap_image(NSImage *img)
 static value lui_wrap_si(NSStatusItem *item)
 {
   value v = caml_alloc_custom(&lui_si_ops, sizeof(NSStatusItem *),
-                              1024 * 1024, 8 * 1024 * 1024);
+                              1024 * 1024, 128 * 1024 * 1024);
   Lui_si_val(v) = item;
   return v;
 }
