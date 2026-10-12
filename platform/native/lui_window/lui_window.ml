@@ -1932,7 +1932,7 @@ module Assembly = struct
         Lui_scene.rect 0. 0. (float scn.Lui_scene.width)
           (float scn.Lui_scene.height)
       in
-      let rec visit id ~sx ~sy ~anc_clip ~parent_r =
+      let rec visit id ~sx ~sy ~parent_r =
         let base = engine_rect id in
         let shifted =
           { base with
@@ -1944,28 +1944,23 @@ module Assembly = struct
             (Lui_store.kind store id)
             (Lui_paint.placement_of_rect shifted) parent_r
         in
-        let stored = Lui_scene.rect_intersect resolved anc_clip in
-        Hashtbl.replace rects id stored;
+        (* Clipping is NOT baked in: the shared hit walk recomputes the
+           exact stacking/clip context (clip kinds, promoted popups
+           escaping ancestor clips), so each node keeps its full
+           resolved box. *)
+        Hashtbl.replace rects id resolved;
         let sx' = sx +. Ui.scroll_offset_x ui id
         and sy' = sy +. Ui.scroll_offset ui id in
-        let anc_clip' =
-          if Ui.scrollable store id && not (Lui_scene.rect_empty stored)
-          then Lui_scene.rect_intersect anc_clip stored
-          else anc_clip
-        in
         let child_parent =
           if Lui_paint.unboxed store id then parent_r else resolved
         in
         List.iter
           (fun c ->
-             visit c ~sx:sx' ~sy:sy' ~anc_clip:anc_clip'
-               ~parent_r:child_parent)
+             visit c ~sx:sx' ~sy:sy' ~parent_r:child_parent)
           (Lui_store.child_ids store id)
       in
-      let everything = Lui_scene.rect (-.1e9) (-.1e9) 2e9 2e9 in
       List.iter
-        (fun id ->
-           visit id ~sx:0. ~sy:0. ~anc_clip:everything ~parent_r:viewport)
+        (fun id -> visit id ~sx:0. ~sy:0. ~parent_r:viewport)
         (Lui_store.root_ids store);
       List.iter
         (fun id ->
