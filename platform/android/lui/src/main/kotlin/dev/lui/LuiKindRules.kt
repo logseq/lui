@@ -122,7 +122,7 @@ internal object LuiKindRules {
             kind == LuiNodeKind.textarea ||
             kind == LuiNodeKind.combobox
 
-    fun isContextMenuLeafHost(kind: LuiNodeKind): Boolean = kind in setOf(
+    private val contextMenuLeafHosts = setOf(
         LuiNodeKind.button,
         LuiNodeKind.toggleButton,
         LuiNodeKind.toggle,
@@ -142,6 +142,8 @@ internal object LuiKindRules {
         LuiNodeKind.text,
         LuiNodeKind.tableCell,
     )
+
+    fun isContextMenuLeafHost(kind: LuiNodeKind): Boolean = kind in contextMenuLeafHosts
 
     fun isToolbarChild(kind: LuiNodeKind): Boolean =
         isButtonKind(kind) ||

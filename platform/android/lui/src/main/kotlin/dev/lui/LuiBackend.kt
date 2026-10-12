@@ -3,7 +3,6 @@ package dev.lui
 import android.graphics.BitmapFactory
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.MutableState
@@ -32,13 +31,28 @@ class LuiBackend(
 ) {
     internal var tree = LuiRetainedTree(extensions)
         private set
-    private data class ObservedNode(val node: LuiNode?, val extension: LuiExtensionNode?)
+    private data class ObservedNode(val node: LuiNode?, val extension: LuiExtensionNode?) {
+        /** Content-wise comparison: apply() copies every touched record, so
+         * the default data-class equality (referential on the node fields)
+         * would treat value-identical ops as changes. */
+        fun contentEquals(other: ObservedNode): Boolean =
+            node.contentEquals(other.node) && extension.contentEquals(other.extension)
+
+        private fun LuiNode?.contentEquals(other: LuiNode?): Boolean =
+            this == other ||
+                (this != null && other != null &&
+                    kind == other.kind && parent == other.parent &&
+                    children == other.children && properties == other.properties)
+
+        private fun LuiExtensionNode?.contentEquals(other: LuiExtensionNode?): Boolean =
+            this == other ||
+                (this != null && other != null &&
+                    identifier == other.identifier &&
+                    fingerprint == other.fingerprint && parent == other.parent &&
+                    children == other.children && properties == other.properties)
+    }
     private val observedNodes = mutableMapOf<Long, MutableState<ObservedNode>>()
     private var roots by mutableStateOf<List<Long>>(emptyList())
-
-    /** Bump on every applied batch so composables recompose. */
-    internal var revision by mutableIntStateOf(0)
-        private set
 
     /** Host-registered raster images, keyed by the `image` prop id. */
     internal val images = mutableStateMapOf<Int, ImageBitmap>()
@@ -59,11 +73,19 @@ class LuiBackend(
     fun node(id: Long): LuiNode? = observed(id).node
     fun extensionNode(id: Long): LuiExtensionNode? = observed(id).extension
 
-    private fun publish(changed: Set<Long>) = Snapshot.withMutableSnapshot {
-        changed.forEach { id -> observedNodes[id]?.value = ObservedNode(tree.node(id), tree.extensionNode(id)) }
-        roots = tree.rootIds
-        revision++
-    }
+    private fun publish(changed: Set<Long>, dropped: Set<Long> = tree.lastDropped) =
+        Snapshot.withMutableSnapshot {
+            changed.forEach { id ->
+                val state = observedNodes[id] ?: return@forEach
+                val next = ObservedNode(tree.node(id), tree.extensionNode(id))
+                // Skip the write for value-identical ops so readers are not
+                // invalidated by no-op patches.
+                if (!state.value.contentEquals(next)) state.value = next
+            }
+            // Let entries for dropped/detached nodes go so the table shrinks.
+            dropped.forEach { observedNodes.remove(it) }
+            roots = tree.rootIds
+        }
 
     /** Apply one JSON patch batch. Returns false (state untouched) when the
      * batch fails validation — mirrors the other backends' reject semantics. */
@@ -87,8 +109,12 @@ class LuiBackend(
     fun applySnapshot(source: String): Boolean = try {
         val replacement = LuiRetainedTree(extensions)
         replacement.applyInitialSnapshot(LuiPatchBatch.parse(source))
+        val observed = observedNodes.keys.toSet()
         tree = replacement
-        publish(observedNodes.keys.toSet())
+        publish(
+            changed = observed,
+            dropped = observed.filterNotTo(mutableSetOf()) { replacement.contains(it) },
+        )
         lastError = null
         true
     } catch (error: LuiBackendException) {
