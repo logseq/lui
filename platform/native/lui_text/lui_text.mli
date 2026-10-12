@@ -55,7 +55,7 @@ val family : font -> string
 
 val is_color : font -> bool
 (** [is_color f] holds when [f] is a color-glyph font (e.g. emoji); its
-    glyphs rasterize to premultiplied BGRA instead of coverage masks. *)
+    glyphs rasterize to premultiplied RGBA instead of coverage masks. *)
 
 type glyph = {
   id : int;        (** glyph id within [run]'s font *)
@@ -107,8 +107,8 @@ type bitmap = {
   top : int;    (** pixel offset of the box's top edge from the baseline *)
   w : int;
   h : int;
-  color : bool;     (** premultiplied BGRA when set, coverage mask else *)
-  pixels : bytes;   (** top-first rows: [w*h] mask bytes or [w*h*4] BGRA *)
+  color : bool;     (** premultiplied RGBA when set, coverage mask else *)
+  pixels : bytes;   (** top-first rows: [w*h] mask bytes or [w*h*4] RGBA *)
 }
 (** A rasterized glyph, ready for the atlas:
     [Atlas.put a ~x ~y ~w:b.w ~h:b.h ~src:b.pixels
