@@ -1315,8 +1315,14 @@ let image_ops ctx store id r alpha radii =
 
 (* A control carrying an [icon] prop and no children renders its
    glyph centered — the web stylesheet's .lui-icon[data-size="icon"]
-   18px box inside the control's own rect. *)
+   18px box inside the control's own rect. The [icon] prop gates the
+   image lookup: [image_of] is the host's decode channel, not an
+   "is there an icon" test, so a hook that answers images eagerly
+   must not mint a glyph for every unlabeled control. *)
 let control_icon_ops ctx store id r alpha =
+  match pstr store id "icon" with
+  | None -> []
+  | Some _ -> (
   match ctx.hooks.image_of id with
   | None -> []
   | Some img -> (
@@ -1343,7 +1349,7 @@ let control_icon_ops ctx store id r alpha =
               icontinuous = false; iimage = img;
               isrc =
                 { x = 0.; y = 0.; w = float img.iw; h = float img.ih };
-              igrayscale = false; iopacity = alpha } ])
+              igrayscale = false; iopacity = alpha } ]))
 
 (* Labeled chrome carrying an [icon] prop and no children paints the
    glyph in a side slot — on the web the icon is a flex child sitting
@@ -1351,9 +1357,15 @@ let control_icon_ops ctx store id r alpha =
    label's rect steps aside by the icon zone (glyph + 6px gap). The
    text engine still applies the kind's own pad inside the shrunken
    rect, keeping the same visual gap. Icon-only nodes keep the
-   centered slot from [control_icon_ops]. *)
+   centered slot from [control_icon_ops]. Like there, the [icon]
+   prop gates the image lookup. *)
 let labeled_content_ops ctx store id r alpha ~fg ~placeholder_ok =
-  match ctx.hooks.image_of id, Lui_store.child_ids store id with
+  match
+    ( (match pstr store id "icon" with
+       | Some _ -> ctx.hooks.image_of id
+       | None -> None),
+      Lui_store.child_ids store id )
+  with
   | Some img0, [] -> (
     let has_label =
       (match pstr store id "text" with
