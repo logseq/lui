@@ -28,4 +28,6 @@
   cmdliner
   mirage-crypto-ec
   digestif
+  decompress
+  uuseg
   (alcotest :with-test)))
