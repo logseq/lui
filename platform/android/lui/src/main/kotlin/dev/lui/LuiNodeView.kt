@@ -1895,7 +1895,7 @@ private fun LuiSplit(
                         val total = totalPx
                         if (enabledNow && total > 0) {
                             val next = currentFraction + dragAmount / total
-                            backend.emit(LuiEvent.ValueChanged(id, next.toDouble()))
+                            backend.emit(LuiEvent.ValueChanged(id, next))
                         }
                     }
                 },
