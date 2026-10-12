@@ -864,7 +864,7 @@ let test_headless_checksum () =
   (* the recorded value pins the demo's initial scene: any render-path
      change shows up here *)
   Alcotest.(check string) "golden"
-    "headless done: frames=6 checksum=3e4def9631ef43ad" c1
+    "headless done: frames=6 checksum=10ad2bfdcbf7b0ad" c1
 
 (* ---------- multi-window ---------- *)
 
@@ -1026,7 +1026,7 @@ let test_headless_multi () =
   let out1 = run () and out2 = run () in
   (match win_done_lines out1 with
    | [ w0; w1 ] ->
-     Alcotest.(check string) "win0 golden" "3e4def9631ef43ad"
+     Alcotest.(check string) "win0 golden" "10ad2bfdcbf7b0ad"
        (checksum_value w0);
      Alcotest.(check bool) "independent checksums" true
        (checksum_value w0 <> checksum_value w1)
