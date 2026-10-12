@@ -314,7 +314,7 @@ let () =
              end);
         image_of = (fun _ -> None);
         image_in = (fun _ _ -> None);
-        shadow_of = (fun _ -> None) }
+        shadow_of = (fun _ -> []) }
   in
   let host =
     Lui_host.create ~hooks ~renderer:renderer_live ~width:dw ~height:dh

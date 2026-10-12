@@ -27,7 +27,7 @@ let default_layout = fun _ -> Lui_paint.placement_of_rect (rect 0. 0. 100. 40.)
 let hooks ?(layout = default_layout) () =
   { Lui_paint.default_hooks with
     layout;
-    shadow_of = Lui_paint.parse_shadow (fun _ -> None) }
+    shadow_of = Lui_paint.parse_shadows (fun _ -> None) }
 
 let scene () =
   Lui_scene.create
@@ -180,22 +180,27 @@ let test_per_edge_border_colors () =
 
 let test_shadow_parse () =
   let resolve = function "ring" -> Some (color 0 120 255 255) | _ -> None in
-  (match Lui_paint.parse_shadow resolve "0 2px 4px #00000080" with
-   | Some (sp : Lui_paint.shadow_spec) ->
+  (match Lui_paint.parse_shadows resolve "0 2px 4px #00000080" with
+   | [ (sp : Lui_paint.shadow_spec) ] ->
      check bool "dx" true (sp.dx = 0.);
      check bool "dy" true (sp.dy = 2.);
      check bool "blur" true (sp.blur = 4.);
      check bool "alpha" true (sp.scolor.a = 128);
      check bool "outset" true (not sp.inset)
-   | None -> fail "shadow parse failed");
-  (match Lui_paint.parse_shadow resolve "inset 0 0 0 2px ring" with
-   | Some (sp : Lui_paint.shadow_spec) ->
+   | _ -> fail "shadow parse failed");
+  (match Lui_paint.parse_shadows resolve "inset 0 0 0 2px ring" with
+   | [ (sp : Lui_paint.shadow_spec) ] ->
      check bool "inset" true sp.inset;
      check bool "spread" true (sp.spread = 2.);
      check int "ring blue" 255 sp.scolor.b
-   | None -> fail "inset parse failed");
+   | _ -> fail "inset parse failed");
+  (match Lui_paint.parse_shadows resolve "0 1px 0 red inset, 0 -1px 0 blue inset" with
+   | [ a; b ] ->
+     check bool "two layers" true (a.inset && b.inset);
+     check bool "css order kept" true (a.dy = 1. && b.dy = -1.)
+   | _ -> fail "multi-layer parse failed");
   check bool "none" true
-    (Lui_paint.parse_shadow resolve "none" = None)
+    (Lui_paint.parse_shadows resolve "none" = [])
 
 let test_shadow_op () =
   let t = store () in

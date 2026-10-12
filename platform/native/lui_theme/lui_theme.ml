@@ -182,8 +182,8 @@ let shadow_names =
     ("toast", Tooltip); ("knob", Knob) ]
 
 (* A shadow_of resolver for host hooks: named specs resolve to the key
-   (stronger) layer — CSS props keep working through the paint parser. *)
+   layers — CSS props keep working through the paint parser. *)
 let shadow_of mode name =
   match List.assoc_opt name shadow_names with
-  | Some k -> (match shadow mode k with s :: _ -> Some s | [] -> None)
-  | None -> Lui_paint.parse_shadow (color_of mode) name
+  | Some k -> shadow mode k
+  | None -> Lui_paint.parse_shadows (color_of mode) name

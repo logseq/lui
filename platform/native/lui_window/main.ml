@@ -825,7 +825,7 @@ let open_window ~title ~idx =
              end);
         image_of = (fun _ -> None);
         image_in = (fun _ _ -> None);
-        shadow_of = Lui_paint.parse_shadow Theme.color_of }
+        shadow_of = Lui_paint.parse_shadows Theme.color_of }
   in
   let host =
     Lui_host.create ~hooks ~layout:(module Lui_layout)
