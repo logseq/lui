@@ -80,5 +80,47 @@ let of_list values =
       node left value right, rest in
   fst (build (List.length values) values)
 let map f tree = of_list (List.map f (to_list tree))
-let iter f tree = List.iter f (to_list tree)
-let fold_left f initial tree = List.fold_left f initial (to_list tree)
+let rec iter f tree =
+  match tree with
+  | Empty -> ()
+  | Node (left, value, right, _, _) ->
+      iter f left;
+      f value;
+      iter f right
+let iteri f tree =
+  let rec visit index tree =
+    match tree with
+    | Empty -> index
+    | Node (left, value, right, _, _) ->
+        let index = visit index left in
+        f index value;
+        visit (index + 1) right
+  in
+  ignore (visit 0 tree)
+let rec fold_left f initial tree =
+  match tree with
+  | Empty -> initial
+  | Node (left, value, right, _, _) ->
+      fold_left f (f (fold_left f initial left) value) right
+let rec fold_right f tree initial =
+  match tree with
+  | Empty -> initial
+  | Node (left, value, right, _, _) ->
+      fold_right f left (f value (fold_right f right initial))
+let rec exists predicate tree =
+  match tree with
+  | Empty -> false
+  | Node (left, value, right, _, _) ->
+      exists predicate left || predicate value || exists predicate right
+let rec find_map f tree =
+  match tree with
+  | Empty -> None
+  | Node (left, value, right, _, _) ->
+      match find_map f left with
+      | Some _ as found -> found
+      | None ->
+          (match f value with
+           | Some _ as found -> found
+           | None -> find_map f right)
+let find_opt predicate tree =
+  find_map (fun value -> if predicate value then Some value else None) tree

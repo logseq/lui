@@ -28,9 +28,13 @@ external cancel_frame : W.Window.t -> int -> unit
 external connected : Dom.element -> bool = "isConnected" [@@mel.get]
 external parent_element : Dom.element -> Dom.element option = "parentElement"
   [@@mel.get] [@@mel.return nullable]
-external listen_scroll : Dom.element -> string -> (Dom.event -> unit) -> bool -> unit
+(* Scroll events don't bubble, but they do propagate through the capture
+   phase — a single capture listener on the document hears every scroller
+   in the tree, including the anchor's whole ancestor chain and the
+   document scroller itself. *)
+external listen_document : W.Document.t -> string -> (Dom.event -> unit) -> bool -> unit
   = "addEventListener" [@@mel.send]
-external unlisten_scroll : Dom.element -> string -> (Dom.event -> unit) -> bool -> unit
+external unlisten_document : W.Document.t -> string -> (Dom.event -> unit) -> bool -> unit
   = "removeEventListener" [@@mel.send]
 
 let trackers = make_trackers ()
@@ -75,8 +79,6 @@ let start ~document ~positioner ~popup ~anchor ~valid ~update ~on_invalid =
   | Some window ->
       let active = ref true in
       let frame = ref None in
-      let poll = ref None in
-      let previous = ref None in
       let reveal = ref true in
       let previous_height = ref 0 in
       let chain = ancestors anchor in
@@ -94,7 +96,6 @@ let start ~document ~positioner ~popup ~anchor ~valid ~update ~on_invalid =
             stop positioner;
             on_invalid ()
           end else begin
-            previous := Some (geometry anchor);
             update ();
             let height = W.Element.clientHeight popup in
             if !reveal || height <> !previous_height then begin
@@ -127,34 +128,28 @@ let start ~document ~positioner ~popup ~anchor ~valid ~update ~on_invalid =
               refresh ()))
       in
       let listener _event = schedule () in
+      (* the ResizeObserver on the anchor replaces the 100ms geometry poll:
+         it fires when the anchor resizes, while the capture scroll listener
+         and the ancestor observations cover position-only moves *)
       let observer = Webapi.ResizeObserver.make (fun _ -> schedule ()) in
       let reveal_active () = reveal := true; schedule () in
       let focus_listener _event = reveal_active () in
       let highlights = W.MutationObserver.make (fun _ _ -> reveal_active ()) in
-      let rec check_geometry () =
-        if !active then begin
-          if invalid () || !previous <> Some (geometry anchor) then schedule ();
-          poll := Some (Js.Global.setTimeout ~f:check_geometry 100)
-        end
-      in
       let cleanup () =
         active := false;
         Option.iter (cancel_frame window) !frame;
-        Option.iter Js.Global.clearTimeout !poll;
         Webapi.ResizeObserver.disconnect observer;
         W.MutationObserver.disconnect highlights;
         W.Element.removeEventListener "focusin" focus_listener popup;
-        List.iter (fun ancestor ->
-            unlisten_scroll ancestor "scroll" listener true) chain;
+        unlisten_document document "scroll" listener true;
         W.Window.removeEventListener "resize" listener window;
-        W.Window.removeEventListener "scroll" listener window;
         Option.iter (fun viewport ->
             viewport_unlisten viewport "resize" listener;
             viewport_unlisten viewport "scroll" listener) viewport
       in
       set_tracker trackers positioner cleanup;
+      listen_document document "scroll" listener true;
       List.iter (fun ancestor ->
-          listen_scroll ancestor "scroll" listener true;
           Webapi.ResizeObserver.observe observer ancestor) chain;
       Webapi.ResizeObserver.observe observer anchor;
       Webapi.ResizeObserver.observe observer popup;
@@ -163,9 +158,7 @@ let start ~document ~positioner ~popup ~anchor ~valid ~update ~on_invalid =
                      attributeFilter = [|"data-highlighted"|] }]) highlights;
       W.Element.addEventListener "focusin" focus_listener popup;
       W.Window.addEventListener "resize" listener window;
-      W.Window.addEventListener "scroll" listener window;
       Option.iter (fun viewport ->
           viewport_listen viewport "resize" listener;
           viewport_listen viewport "scroll" listener) viewport;
-      schedule ();
-      poll := Some (Js.Global.setTimeout ~f:check_geometry 100)
+      schedule ()

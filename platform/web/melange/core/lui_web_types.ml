@@ -120,6 +120,13 @@ type web_renderer = {
   web_tooltip_warm : bool ref;
   web_open_context_menu : int option ref;
   web_splits : (int, web_split_state) Hashtbl.t;
+  (* detach functions for the context-menu host listener bundle, keyed by
+     host node id — only nodes that actually have a ContextMenu child pay
+     for the wiring *)
+  web_context_hosts : (int, unit -> unit) Hashtbl.t;
+  (* container ids with a pending initial-highlight timer — each timer
+     runs a full querySelectorAll scan, so multi-item mounts share one *)
+  web_menu_highlights : (int, unit) Hashtbl.t;
   web_extension_registry : Lui_extension.extension_registry;
   web_extension_adapters : (string, web_extension_adapter) Hashtbl.t;
 }

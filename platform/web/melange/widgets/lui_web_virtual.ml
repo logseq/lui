@@ -33,6 +33,41 @@ let install renderer node ~materialize ~unmount =
     let updating = ref false in
     let render_ref = ref (fun () -> ()) in
     let document = W.Document.unsafeAsHtmlDocument renderer.web_document in
+    let live_rows () =
+      Hashtbl.fold (fun id _ rows -> id :: rows) mounted []
+      |> List.sort (fun a b ->
+          Int.compare (Hashtbl.find positions a) (Hashtbl.find positions b))
+    in
+    (* update_tree_roving rewrites aria/tabindex on every item, but its
+       inputs are only the store snapshot, the mounted row ids, and the
+       focused element — scroll-driven onChange ticks leave all three
+       alone, so identical inputs skip the pass entirely. *)
+    let last_roving_inputs = ref None in
+    let same_element a b =
+      match (a, b) with
+      | None, None -> true
+      | Some left, Some right -> left == right
+      | _ -> false
+    in
+    let sync_tree_roving () =
+      match Store.tree_ancestor renderer node with
+      | Some tree ->
+          let generation = Store.generation renderer.web_store in
+          let mounted_ids = live_rows () in
+          let active = W.HtmlDocument.activeElement document in
+          let unchanged =
+            match !last_roving_inputs with
+            | Some (gen, ids, last_active) ->
+                gen = generation && ids = mounted_ids
+                && same_element last_active active
+            | None -> false
+          in
+          if not unchanged then begin
+            last_roving_inputs := Some (generation, mounted_ids, active);
+            Lui_web_focus.update_tree_roving renderer tree
+          end
+      | None -> last_roving_inputs := None
+    in
     let focused_index () =
       match W.HtmlDocument.activeElement document with
       | None -> None
@@ -178,9 +213,7 @@ let install renderer node ~materialize ~unmount =
             V.measure virtualizer Js.Nullable.null;
             style spacer "height"
               (Js.Float.toString (V.total_size virtualizer) ^ "px");
-            Option.iter
-              (Lui_web_focus.update_tree_roving renderer)
-              (Store.tree_ancestor renderer node))
+            sync_tree_roving ())
       end
     in
     render_ref := render;
@@ -213,12 +246,7 @@ let install renderer node ~materialize ~unmount =
               (Hashtbl.find_opt positions id));
         dispose_virtual = dispose;
         virtual_row_live = (fun id -> Hashtbl.mem mounted id);
-        virtual_live_rows =
-          (fun () ->
-            Hashtbl.fold (fun id _ rows -> id :: rows) mounted []
-            |> List.sort (fun a b ->
-                Int.compare (Hashtbl.find positions a)
-                  (Hashtbl.find positions b)));
+        virtual_live_rows = live_rows;
       };
     refresh ()
   end
