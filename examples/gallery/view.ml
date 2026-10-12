@@ -1768,9 +1768,9 @@ let blocks_section model_source send : t =
                  button ~variant:`destructive ~text:"Clear"
                    ~on_press:(press send Model.ClearBlocks) [])
             model_source
-        ; button ~variant:`outline ~text:"Edit middle block"
+        ; button ~variant:`outline ~text:"Edit middle"
             ~on_press:(press send Model.EditBlock) []
-        ; button ~variant:`outline ~text:"Insert block"
+        ; button ~variant:`outline ~text:"Insert"
             ~on_press:(press send Model.InsertBlock) []
         ]
     ; text ~value:(reactive Model.blocks_summary model_source) []
@@ -1803,9 +1803,9 @@ let virtual_list_section model_source send : t =
                 mounted row to round-trip an action."
         []
     ; row ~gap:8
-        [ button ~text:"Load 100k rows"
+        [ button ~text:"Load 100k"
             ~on_press:(press send (Model.SetVirtualCount 100_000)) []
-        ; button ~variant:`outline ~text:"Load 10k"
+        ; button ~variant:`outline ~text:"10k"
             ~on_press:(press send (Model.SetVirtualCount 10_000)) []
         ; button ~variant:`destructive ~text:"Clear"
             ~on_press:(press send (Model.SetVirtualCount 0)) []
