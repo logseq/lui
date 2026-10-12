@@ -9,6 +9,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -74,9 +75,22 @@ fun luiHexColor(name: String): Color? {
 @Composable
 fun luiThemeColor(name: String?, foreground: Boolean = false): Color? {
     if (name == null) return null
-    val lower = name.lowercase()
-    LocalLuiSemanticColors.current[lower]?.let { return it }
+    val tokens = LocalLuiSemanticColors.current
     val scheme = MaterialTheme.colorScheme
+    // Cache the lowercasing + table lookup + hex parse per name against
+    // the token table and scheme it resolved under.
+    return remember(name, foreground, tokens, scheme) {
+        resolveLuiThemeColor(name.lowercase(), foreground, tokens, scheme)
+    }
+}
+
+private fun resolveLuiThemeColor(
+    lower: String,
+    foreground: Boolean,
+    tokens: Map<String, Color>,
+    scheme: ColorScheme,
+): Color? {
+    tokens[lower]?.let { return it }
     return when (lower) {
         "transparent" -> Color.Transparent
         "background" -> scheme.surface

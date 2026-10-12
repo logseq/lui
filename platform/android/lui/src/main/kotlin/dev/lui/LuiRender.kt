@@ -298,16 +298,23 @@ internal fun LuiAppear(backend: LuiBackend, node: LuiNode, id: Long) {
  */
 @Composable
 internal fun LuiThemeScope(node: LuiNode, content: @Composable () -> Unit) {
+    val themeSource = node.propString("theme")
+    val schemeOverride = LuiThemeTokenDecoder.colorScheme(node.propString("theme-mode"))
     val inherited = LocalLuiSemanticColors.current
     val ambientDark = LocalLuiThemeDark.current
-    val schemeOverride = LuiThemeTokenDecoder.colorScheme(node.propString("theme-mode"))
     val dark = schemeOverride ?: (ambientDark ?: isSystemInDarkTheme())
-    val own = LuiThemeTokenDecoder.colors(node.propString("theme"), dark)
+    // Decode the wire strings once per changed value, not once per
+    // recomposition: colors() is a full JSON DOM parse and nodeSpec runs
+    // regexes, string splits and a native Typeface lookup.
+    val own = remember(themeSource, dark) {
+        LuiThemeTokenDecoder.colors(themeSource, dark)
+    }
     // Typography props (`font-*`/`line-height`/`letter-spacing`/
     // `text-decoration`) inherit like CSS: merged over the accumulated
     // spec and pushed through LocalTextStyle so `Text` calls without an
     // explicit style inherit them.
-    val typography = LuiTypography.nodeSpec(node)
+    val props = node.properties
+    val typography = remember(props) { LuiTypography.nodeSpec(node) }
     if (own.isEmpty() && schemeOverride == null && typography == null) {
         content()
     } else {
