@@ -195,16 +195,16 @@ let picker_menu_items renderer dropdown =
   | None -> []
 
 let picker_selected_index renderer dropdown =
-  let items = picker_menu_items renderer dropdown in
-  let rec loop index =
-    if index = List.length items then 0
-    else if
-      Store.property renderer.web_store (List.nth items index) Selected
-      = Some (BoolValue true)
-    then index
-    else loop (index + 1)
+  let rec find index = function
+    | [] -> 0
+    | item :: rest ->
+        if
+          Store.property renderer.web_store item Selected
+          = Some (BoolValue true)
+        then index
+        else find (index + 1) rest
   in
-  loop 0
+  find 0 (picker_menu_items renderer dropdown)
 
 let combobox_active_index renderer picker items =
   match
@@ -261,6 +261,7 @@ let set_combobox_active renderer picker dropdown index =
              (Lui_web_nodes.dom_node renderer item))
          current.retained_children
    | None -> ());
+  let previous_index = W.Element.getAttribute "data-lui-active-index" control in
   W.Element.removeAttribute "data-lui-active-index" control;
   W.Element.removeAttribute "aria-activedescendant" control;
   if items <> [] && index >= 0 && index < List.length items then begin
@@ -271,7 +272,16 @@ let set_combobox_active renderer picker dropdown index =
     W.Element.setAttribute "data-highlighted" "" element;
     W.Element.setAttribute "aria-activedescendant"
       (Lui_web_util.node_dom_id item) control;
-    scroll_picker_item renderer dropdown element
+    (* Scroll only when the highlight actually moved while the popup is
+       open: a closed popup's forced layout reads would be thrown away, and
+       an unchanged index is already in view. *)
+    let popup =
+      Lui_web_util.child_element (Lui_web_nodes.dom_node renderer dropdown) 0
+    in
+    if
+      previous_index <> Some (string_of_int index)
+      && W.Element.hasAttribute "data-open" popup
+    then scroll_picker_item renderer dropdown element
   end
 
 let set_combobox_active_bang = set_combobox_active

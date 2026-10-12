@@ -148,7 +148,34 @@ let refresh_dropdown_parent renderer parent =
       end
   | None -> ()
 
-let refresh_parent_for_prop renderer node property =
+(* Parent-scoped follow-ups that ops used to run once per patch op: a menu
+   with n inserted children re-scanned all of them n times, each pass ending
+   in a combobox state sync that reads popup geometry. The ops loop now only
+   records the touched parent ids and the batch epilogue runs each refresh
+   once per parent. *)
+type batch_effects = {
+  dropdowns : (int, unit) Hashtbl.t;
+  comboboxes : (int, unit) Hashtbl.t;
+}
+
+let new_effects () =
+  { dropdowns = Hashtbl.create 4; comboboxes = Hashtbl.create 4 }
+
+let run_effects renderer effects =
+  Hashtbl.iter
+    (fun parent () -> refresh_dropdown_parent renderer parent)
+    effects.dropdowns;
+  Hashtbl.iter
+    (fun parent () ->
+      match Store.node renderer.web_store parent with
+      | Some parent_node
+        when Store.standard_kind_is parent_node DropdownMenu ->
+          ignore
+            (Lui_web_menu.refresh_combobox_list_state renderer parent)
+      | _ -> ())
+    effects.comboboxes
+
+let refresh_parent_for_prop renderer effects node property =
   match Store.node renderer.web_store node with
   | Some current -> (
       match current.retained_parent with
@@ -168,8 +195,7 @@ let refresh_parent_for_prop renderer node property =
                 && (property = Selected || property = Enabled)
               then Lui_web_widgets.refresh_bottom_tabs renderer parent;
               if Store.standard_kind_is parent_node DropdownMenu then
-                ignore
-                  (Lui_web_menu.refresh_combobox_list_state renderer parent)
+                Hashtbl.replace effects.comboboxes parent ()
           | None -> ())
       | None -> ())
   | None -> ()
@@ -307,8 +333,8 @@ let insert_child_dom renderer previous_nodes children_of parent child
             (visible_child_index renderer ~container
                ~children:(children_of parent) index))
 
-let apply_insert_child renderer previous_nodes children_of parent child
-    index =
+let apply_insert_child renderer previous_nodes children_of effects parent
+    child index =
   insert_child_dom renderer previous_nodes children_of parent child index;
   Lui_web_split.update_split renderer parent;
   Lui_web_focus.refresh_button_context renderer child;
@@ -320,7 +346,7 @@ let apply_insert_child renderer previous_nodes children_of parent child
        Lui_web_layers.reconcile_owner renderer.web_layers
          renderer.web_document child current.retained_parent
    | None -> ());
-  refresh_dropdown_parent renderer parent
+  Hashtbl.replace effects.dropdowns parent ()
 
 let remove_bottom_tab renderer parent child =
   let tabs_dom = Nodes.dom_node renderer parent in
@@ -347,7 +373,7 @@ let clear_submenu_trigger _renderer previous_nodes parent =
       end
   | None -> ()
 
-let apply_remove_child renderer previous_nodes parent child =
+let apply_remove_child renderer previous_nodes effects parent child =
   let surface = Nodes.dom_node_before renderer previous_nodes child in
   let modal = prev_modal previous_nodes child in
   let bottom_tab = prev_kind_is previous_nodes child BottomTab in
@@ -401,7 +427,7 @@ let apply_remove_child renderer previous_nodes parent child =
          clear_submenu_trigger renderer previous_nodes parent
        end
    | None -> ());
-  refresh_dropdown_parent renderer parent
+  Hashtbl.replace effects.dropdowns parent ()
 
 let move_bottom_tab renderer parent child index =
   let tabs_dom = Nodes.dom_node renderer parent in
@@ -418,8 +444,8 @@ let move_bottom_tab renderer parent child index =
       Util.insert_dom_child bar trigger index
   | None -> ()
 
-let apply_move_child renderer previous_nodes children_of parent child
-    index =
+let apply_move_child renderer previous_nodes children_of effects parent
+    child index =
   let dropdown = prev_kind_is previous_nodes child DropdownMenu in
   let modal = prev_modal previous_nodes child in
   let tooltip = prev_anchored_tooltip previous_nodes child in
@@ -467,7 +493,7 @@ let apply_move_child renderer previous_nodes children_of parent child
   refresh_structured_children renderer parent;
   if bottom_tab && bottom_tabs then
     Lui_web_widgets.refresh_bottom_tabs renderer parent;
-  refresh_dropdown_parent renderer parent;
+  Hashtbl.replace effects.dropdowns parent ();
   if dropdown then Lui_web_position.position_dropdown renderer child;
   if tooltip && W.Element.hasAttribute "data-open" surface_node then
     Lui_web_position.position_tooltip renderer child;
@@ -478,7 +504,7 @@ let apply_move_child renderer previous_nodes children_of parent child
    | None -> ());
   Lui_web_focus.restore_focus renderer focused
 
-let apply_set_prop renderer node property value =
+let apply_set_prop renderer effects node property value =
   match Store.node renderer.web_store node with
   | Some current -> (
       match Store.standard_kind current with
@@ -502,11 +528,11 @@ let apply_set_prop renderer node property value =
           if property = PointerEnabled then
             Lui_web_events.sync_pointer_events renderer node kind
               (Lazy.force current.platform_node);
-          refresh_parent_for_prop renderer node property
+          refresh_parent_for_prop renderer effects node property
       | None -> invalid_arg "standard property targets extension node")
   | None -> ()
 
-let apply_remove_prop renderer node property =
+let apply_remove_prop renderer effects node property =
   (match Store.node renderer.web_store node with
    | Some current -> (
        match Store.standard_kind current with
@@ -524,7 +550,7 @@ let apply_remove_prop renderer node property =
            if property = PointerEnabled then
              Lui_web_events.sync_pointer_events renderer node kind
                (Lazy.force current.platform_node);
-           refresh_parent_for_prop renderer node property
+           refresh_parent_for_prop renderer effects node property
        | None -> invalid_arg "standard property targets extension node")
    | None -> ())
 
@@ -580,14 +606,14 @@ let rec unmount_retained renderer node =
       reset_platform renderer node current
     end
 
-let rec materialize renderer node =
+let rec materialize_in renderer effects node =
   match Store.node renderer.web_store node with
   | None -> invalid_arg "cannot materialize an unknown node"
   | Some current ->
     (match current.semantic_kind with
      | StandardSemantic kind ->
        apply_create renderer node kind;
-       Property_map.iter (apply_set_prop renderer node) current.retained_properties
+       Property_map.iter (apply_set_prop renderer effects node) current.retained_properties
      | ExtensionSemantic _ ->
        W.Element.setAttribute "id" (Util.node_dom_id node) (Lazy.force current.platform_node);
        String_map.iter (Ext.apply_extension_property renderer node)
@@ -599,12 +625,19 @@ let rec materialize renderer node =
       let shadow = shadow_of_list [] in
       let children_of _ = shadow in
       Lui_sequence.iteri (fun index child ->
-        ignore (materialize renderer child);
+        ignore (materialize_in renderer effects child);
         shadow_insert shadow index child;
-        apply_insert_child renderer (Store.node renderer.web_store) children_of node child index;
+        apply_insert_child renderer (Store.node renderer.web_store) children_of
+          effects node child index;
         shadow_refresh_weight renderer shadow child) current.retained_children
     end;
     Nodes.dom_node renderer node
+
+and materialize renderer node =
+  let effects = new_effects () in
+  let element = materialize_in renderer effects node in
+  run_effects renderer effects;
+  element
 
 (* detach-subtree replaces the per-node remove/drop op pair for a whole
    removed subtree: one pass unmounts every member — layer registrations,
@@ -614,7 +647,7 @@ let rec materialize renderer node =
    the document with their ancestor's detach; only elements whose actual
    parent is still connected get removed here. A departing popup root keeps
    its visual subtree until its existing exit transition completes. *)
-let apply_detach_subtree renderer previous_nodes children_of node =
+let apply_detach_subtree renderer previous_nodes children_of effects node =
   let exit_boundary =
     match prev_node previous_nodes node with
     | Some previous
@@ -630,7 +663,7 @@ let apply_detach_subtree renderer previous_nodes children_of node =
                  Util.modal_layer_node (Lazy.force previous.platform_node)
                else (Lazy.force previous.platform_node)
              in
-             apply_remove_child renderer previous_nodes parent node;
+             apply_remove_child renderer previous_nodes effects parent node;
              Some boundary
          | None -> None)
     | _ -> None
@@ -749,11 +782,11 @@ let apply_detach_subtree renderer previous_nodes children_of node =
               Lui_web_menu.update_picker_expanded renderer parent false;
               clear_submenu_trigger renderer previous_nodes parent
             end);
-           refresh_dropdown_parent renderer parent
+           Hashtbl.replace effects.dropdowns parent ()
        | None -> ())
   | _ -> ()
 
-let apply_dom_op renderer previous_nodes children_of operation =
+let apply_dom_op renderer previous_nodes children_of effects operation =
   let visible node = visible_in_virtual renderer previous_nodes node in
   let virtual_parent parent = match Store.node renderer.web_store parent with
     | Some current -> Store.standard_kind_is current VirtualList | None -> false in
@@ -782,10 +815,10 @@ let apply_dom_op renderer previous_nodes children_of operation =
       end
   | DetachSubtree node ->
       if known_node renderer previous_nodes node then
-        apply_detach_subtree renderer previous_nodes children_of node
+        apply_detach_subtree renderer previous_nodes children_of effects node
   | SetProp (node, property, value) ->
-      apply_set_prop renderer node property value
-  | RemoveProp (node, property) -> apply_remove_prop renderer node property
+      apply_set_prop renderer effects node property value
+  | RemoveProp (node, property) -> apply_remove_prop renderer effects node property
   | SetExtensionProp (node, property, value) ->
       Ext.apply_extension_property renderer node property value
   | RemoveExtensionProp (node, property) ->
@@ -795,19 +828,19 @@ let apply_dom_op renderer previous_nodes children_of operation =
         known_node renderer previous_nodes parent
         && known_node renderer previous_nodes child
       then
-        apply_insert_child renderer previous_nodes children_of parent
+        apply_insert_child renderer previous_nodes children_of effects parent
           child index
   | RemoveChild (parent, child) ->
       if
         known_node renderer previous_nodes parent
         && known_node renderer previous_nodes child
-      then apply_remove_child renderer previous_nodes parent child
+      then apply_remove_child renderer previous_nodes effects parent child
   | MoveChild (parent, child, index) ->
       if
         known_node renderer previous_nodes parent
         && known_node renderer previous_nodes child
       then
-        apply_move_child renderer previous_nodes children_of parent
+        apply_move_child renderer previous_nodes children_of effects parent
           child index
 (* DOM ops run after the whole store batch has landed, so
    `retained_children` already reflects every op in the batch; sibling ops
@@ -846,11 +879,12 @@ let apply_dom_batch renderer previous_nodes batch =
         shadow_insert children index child
     | _ -> ()
   in
+  let effects = new_effects () in
   List.iter
     (fun operation ->
        mirror operation;
        try
-         apply_dom_op renderer previous_nodes children_of operation;
+         apply_dom_op renderer previous_nodes children_of effects operation;
          (match operation with
           | InsertChild (parent, child, _) | MoveChild (parent, child, _) ->
             shadow_refresh_weight renderer (children_of parent) child
@@ -859,6 +893,9 @@ let apply_dom_batch renderer previous_nodes batch =
          invalid_arg
            (Printf.sprintf "op %s: %s" (Lui_wire.encode_op operation) msg))
     batch.ops;
+  (* Parent-scoped widget refreshes recorded during the ops loop run once
+     per parent here instead of once per op. *)
+  run_effects renderer effects;
   (* Refresh roving tabindex only on groups this batch could have changed,
      walking from each touched id to the nearest tree, toolbar, or
      horizontal group instead of scanning the whole store. *)
