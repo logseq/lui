@@ -235,6 +235,15 @@ final class LUINodeModel: Identifiable {
         access(keyPath: \.revision)
         return storedRevision
     }
+    /// Fold of this node's revision and all descendants' stamps,
+    /// maintained at commit time — reads are O(1) and subscribe to one
+    /// key path instead of the whole subtree.
+    @ObservationIgnored private var storedSubtreeStamp = 0
+    var subtreeStamp: Int {
+        access(keyPath: \.subtreeStamp)
+        return storedSubtreeStamp
+    }
+
     init(id: Int, state: LUINodeState) {
         self.id = id
         kind = state.kind
@@ -288,12 +297,31 @@ final class LUINodeModel: Identifiable {
         return [.childData]
     }
 
+    /// Restaged after `stageChildData` so children already carry their
+    /// fresh stamps when parents fold them. Same no-revision rule as
+    /// `stageChildData` — a descendant commit must not walk view
+    /// re-evaluation up the ancestor chain.
+    func stageSubtreeStamp(_ stamp: Int) -> LUIModelChanges {
+        guard storedSubtreeStamp != stamp else { return [] }
+        storedSubtreeStamp = stamp
+        return [.subtreeStamp]
+    }
+
+    /// Off-commit stamp invalidation for `invalidateResource` callers:
+    /// bumps the stamp directly (and the backend propagates it to
+    /// ancestors) since no restage pass runs.
+    func invalidateSubtreeStamp() {
+        storedSubtreeStamp &+= 1
+        withMutation(keyPath: \.subtreeStamp) {}
+    }
+
     func publish(_ changes: LUIModelChanges) {
         if changes.contains(.properties) { withMutation(keyPath: \.properties) {} }
         if changes.contains(.derived) { withMutation(keyPath: \.derived) {} }
         if changes.contains(.children) { withMutation(keyPath: \.children) {} }
         if changes.contains(.childData) { withMutation(keyPath: \.childData) {} }
         if changes.contains(.parent) { withMutation(keyPath: \.parent) {} }
+        if changes.contains(.subtreeStamp) { withMutation(keyPath: \.subtreeStamp) {} }
         if changes.contains(.revision) { withMutation(keyPath: \.revision) {} }
     }
 
@@ -1443,9 +1471,9 @@ public final class LUIAppleBackend {
         var nodeChanges: [Int: (LUINodeModel, LUIModelChanges)] = [:]
         var extensionChanges: [Int: (LUIExtensionNodeModel, LUIModelChanges)] = [:]
         var membershipChanges = Set<Int>()
-        /// Nodes whose child data must be restaged: every touched node plus
-        /// its ancestors, collected on both the pre- and post-stage parent
-        /// chains so reparents cover the old side too.
+        /// Nodes whose child data or subtree stamp must be restaged: every
+        /// touched node plus its ancestors, collected on both the pre- and
+        /// post-stage parent chains so reparents cover the old side too.
         var descendantsRefresh = Set<Int>()
         for id in dropped { collectAncestors(of: id, into: &descendantsRefresh) }
         for id in dropped {
@@ -1510,6 +1538,49 @@ public final class LUIAppleBackend {
                 nodeChanges[id] = (model, merged)
             }
         }
+        // Subtree stamps fold descendant revisions bottom-up; memoized over
+        // the refreshed set so refreshed parents reuse fresh child values
+        // and untouched children contribute their stored stamp.
+        var stampMemo: [Int: Int] = [:]
+        var stampVisiting = Set<Int>()
+        func stamp(_ id: Int) -> Int {
+            if let memo = stampMemo[id] { return memo }
+            let value: Int
+            guard descendantsRefresh.contains(id), !stampVisiting.contains(id) else {
+                value = models[id]?.subtreeStamp
+                    ?? extensionModels[id]?.subtreeStamp ?? -1
+                stampMemo[id] = value
+                return value
+            }
+            stampVisiting.insert(id)
+            var folded = (models[id]?.revision
+                ?? extensionModels[id]?.revision ?? -1) &* 31
+            for childID in models[id]?.children
+                ?? extensionModels[id]?.children ?? []
+            {
+                folded = folded &* 31 &+ stamp(childID)
+            }
+            stampVisiting.remove(id)
+            value = folded
+            stampMemo[id] = value
+            return value
+        }
+        for id in descendantsRefresh {
+            let folded = stamp(id)
+            if let model = models[id] {
+                let changes = model.stageSubtreeStamp(folded)
+                if !changes.isEmpty {
+                    let merged = (nodeChanges[id]?.1 ?? []).union(changes)
+                    nodeChanges[id] = (model, merged)
+                }
+            } else if let model = extensionModels[id] {
+                let changes = model.stageSubtreeStamp(folded)
+                if !changes.isEmpty {
+                    let merged = (extensionChanges[id]?.1 ?? []).union(changes)
+                    extensionChanges[id] = (model, merged)
+                }
+            }
+        }
         if perf { tChildData = CFAbsoluteTimeGetCurrent() - t3 }
         // Every state, revision and lookup now belongs to the same commit.
         // Observation willSet can synchronously flush SwiftUI transactions;
@@ -1525,8 +1596,8 @@ public final class LUIAppleBackend {
     }
 
     /// Walks the model parent chain of `nodeID`, collecting every ancestor.
-    /// Both sides of a reparent need a child-data restage, so callers run
-    /// this before and after `stage` updates `parent`.
+    /// Both sides of a reparent need a child-data/stamp restage, so callers
+    /// run this before and after `stage` updates `parent`.
     private func collectAncestors(of nodeID: Int, into set: inout Set<Int>) {
         var cursor = models[nodeID]?.parent ?? extensionModels[nodeID]?.parent
         while let parentID = cursor {
@@ -1705,6 +1776,7 @@ public final class LUIAppleBackend {
             where (model.kind == .avatar || model.kind == .image) &&
                 model.property(.image)?.intValue == imageID {
                 model.invalidateResource()
+                invalidateSubtreeStamps(from: model.id)
             }
         }
     }
@@ -1715,7 +1787,24 @@ public final class LUIAppleBackend {
             where model.kind == .mediaSurface &&
                 model.property(.surface)?.intValue == surfaceID {
                 model.invalidateResource()
+                invalidateSubtreeStamps(from: model.id)
             }
+        }
+    }
+
+    /// `invalidateResource` bumps a revision without a commit, so the
+    /// commit-maintained subtree stamps along the node's ancestor chain
+    /// would go stale — bump them directly to keep `measureStamp` reads
+    /// monotonic.
+    private func invalidateSubtreeStamps(from nodeID: Int) {
+        var cursor: Int? = nodeID
+        while let id = cursor {
+            if let model = models[id] {
+                model.invalidateSubtreeStamp()
+            } else {
+                extensionModels[id]?.invalidateSubtreeStamp()
+            }
+            cursor = models[id]?.parent ?? extensionModels[id]?.parent
         }
     }
 

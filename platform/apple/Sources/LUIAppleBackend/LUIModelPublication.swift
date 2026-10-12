@@ -7,6 +7,7 @@ struct LUIModelChanges: OptionSet {
     static let childData = Self(rawValue: 1 << 2)
     static let parent = Self(rawValue: 1 << 3)
     static let derived = Self(rawValue: 1 << 4)
+    static let subtreeStamp = Self(rawValue: 1 << 5)
     /// Marked by the stage that actually increments `revision`, so publish
     /// only notifies revision readers on real bumps — `.childData` and
     /// `.subtreeStamp` commits invalidate through their own key paths
