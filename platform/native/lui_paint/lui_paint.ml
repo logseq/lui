@@ -919,7 +919,17 @@ let box_ops ctx store id rs r alpha =
 (* ---------- helpers for control chrome ---------- *)
 
 let text_fg ctx store id =
-  match pcolor ctx.hooks store id "foreground" with
+  (* CSS color inherits: nearest ancestor carrying a foreground wins,
+     falling back to the theme text color. *)
+  let rec walk id =
+    match pcolor ctx.hooks store id "foreground" with
+    | Some c -> Some c
+    | None -> (
+      match Lui_store.parent store id with
+      | Some pid when pid <> id -> walk pid
+      | _ -> None)
+  in
+  match walk id with
   | Some c -> c
   | None -> theme ctx "foreground"
 
