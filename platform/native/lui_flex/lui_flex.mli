@@ -166,3 +166,17 @@ val layout : node -> rect
 val absolute_layout : node -> rect
 
 val iter : (node -> unit) -> node -> unit
+
+(** [child_count node] is the number of children without materializing
+    the list. *)
+val child_count : node -> int
+
+(** [set_children node kids] replaces the child array in place, fixing
+    parent links and marking the node dirty so ancestors re-measure.
+    Detached children get their parent link cleared. *)
+val set_children : node -> node list -> unit
+
+(** [set_measure node m] swaps the leaf's measure callback, marking the
+    node dirty. Raises [Invalid_argument] when [m] is [Some] on a node
+    with children, mirroring {!create}. *)
+val set_measure : node -> measure option -> unit

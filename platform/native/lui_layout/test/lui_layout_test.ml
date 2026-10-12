@@ -378,6 +378,158 @@ let test_snapped_edges () =
      second child shares exactly. *)
   check_rect "child1" 5. 5. 191. 30. r3;
   check_rect "child2 shared edge" 5. 35. 191. 30. r4
+(* ---------- incremental mirror ---------- *)
+
+let rect_or_zero t id =
+  Option.value ~default:(Lui_scene.rect 0. 0. 0. 0.)
+    (Lui_layout.rect t id)
+
+(* Differential oracle: the persistent mirror must produce the same
+   rects as a wholesale rebuild of the same store state. *)
+let check_equiv msg store t =
+  let p = Lui_layout.run store ~measure:no_measure ~width:200. ~height:100. in
+  List.iter
+    (fun id ->
+      let expect = (p id).Lui_paint.p_rect in
+      let got = rect_or_zero t id in
+      check_rect (Printf.sprintf "%s #%d" msg id) expect.x expect.y
+        expect.w expect.h got)
+    (Lui_store.preorder store)
+
+(* A journal replay through moves, toggles, drops and prop churn keeps
+   the mirror identical to a rebuild at every step. *)
+let test_incremental_equivalence () =
+  let store = Lui_store.create () in
+  apply store
+    [ CreateNode (1, Root); CreateNode (2, Column);
+      CreateNode (3, Row); CreateNode (4, Text); CreateNode (5, Text);
+      CreateNode (6, Text); CreateNode (7, Column);
+      InsertChild (1, 2, 0); InsertChild (2, 3, 0); InsertChild (2, 7, 1);
+      InsertChild (3, 4, 0); InsertChild (3, 5, 1); InsertChild (7, 6, 0);
+      SetProp (4, WidthValue, IntValue 20); SetProp (4, HeightValue, IntValue 10);
+      SetProp (5, WidthValue, IntValue 30); SetProp (5, HeightValue, IntValue 10);
+      SetProp (6, WidthValue, IntValue 40); SetProp (6, HeightValue, IntValue 10);
+      SetProp (3, Gap, IntValue 5) ];
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  check_equiv "init" store t;
+  (* Move a leaf across parents — reuse, not rebuild. *)
+  apply store [ MoveChild (7, 4, 0) ];
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  check_equiv "move across" store t;
+  check bool "incremental path" true (Lui_layout.stat_steps t > 0);
+  (* Same-parent reorder. *)
+  apply store [ MoveChild (7, 4, 1) ];
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  check_equiv "reorder" store t;
+  (* display:none then back. *)
+  apply store [ SetProp (6, DisplayValue, StringValue "none") ];
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  check_equiv "hidden" store t;
+  apply store [ RemoveProp (6, DisplayValue) ];
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  check_equiv "reshown" store t;
+  (* RemoveChild leaves a root. *)
+  apply store [ RemoveChild (3, 5) ];
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  check_equiv "detached root" store t;
+  apply store [ InsertChild (2, 5, 0) ];
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  check_equiv "reattached" store t;
+  (* Drop a whole subtree. *)
+  apply store [ DropNode 7 ];
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  check_equiv "dropped subtree" store t;
+  (* Layout prop on a survivor. *)
+  apply store [ SetProp (5, HeightValue, IntValue 42) ];
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  check_equiv "restyle" store t
+
+(* Deterministic op fuzz: leaf props, reorders, cross-parent moves,
+   display toggles and drops keep the mirror rebuild-equivalent. *)
+let test_incremental_random () =
+  let store = Lui_store.create () in
+  let leaves = List.init 10 (fun i -> 10 + i) in
+  apply store
+    ([ CreateNode (1, Root); CreateNode (2, Column); CreateNode (3, Row);
+       InsertChild (1, 2, 0); InsertChild (1, 3, 1) ]
+     @ List.concat_map
+         (fun i ->
+           [ CreateNode (10 + i, Text);
+             InsertChild ((if i mod 2 = 0 then 2 else 3), 10 + i, i / 2);
+             SetProp (10 + i, WidthValue, IntValue (10 + i));
+             SetProp (10 + i, HeightValue, IntValue 10) ])
+         leaves);
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  let st = Random.State.make [| 42 |] in
+  let pick l = List.nth l (Random.State.int st (List.length l)) in
+  for round = 1 to 80 do
+    let ops =
+      List.init (1 + Random.State.int st 3) (fun _ ->
+        let leaf = pick leaves in
+        match Random.State.int st 6 with
+        | 0 -> SetProp (leaf, WidthValue, IntValue (5 + Random.State.int st 60))
+        | 1 -> SetProp (leaf, HeightValue, IntValue (5 + Random.State.int st 40))
+        | 2 -> (
+          match Lui_store.parent store leaf with
+          | Some p -> MoveChild (p, leaf, Random.State.int st 3)
+          | None -> SetProp (leaf, PaddingValue, IntValue 0))
+        | 3 -> InsertChild ((if Random.State.bool st then 2 else 3), leaf,
+                            Random.State.int st 3)
+        | 4 ->
+          if Lui_store.string_prop store leaf "display" = Some "none"
+          then RemoveProp (leaf, DisplayValue)
+          else SetProp (leaf, DisplayValue, StringValue "none")
+        | _ -> SetProp ((if Random.State.bool st then 2 else 3), Gap,
+                        IntValue (Random.State.int st 8)))
+    in
+    apply store ops;
+    Lui_layout.sync ~width:200. ~height:100. t store;
+    check_equiv (Printf.sprintf "round %d" round) store t
+  done
+
+(* Two store roots: growth under the first shifts the second — the
+   scoped rect refresh must cover the moved sibling root's subtree. *)
+let test_incremental_root_shift () =
+  let store = Lui_store.create () in
+  apply store
+    [ CreateNode (1, Root); CreateNode (2, Root);
+      CreateNode (3, Text); CreateNode (4, Text);
+      InsertChild (1, 3, 0); InsertChild (2, 4, 0);
+      SetProp (3, HeightValue, IntValue 10);
+      SetProp (4, HeightValue, IntValue 10) ];
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  check_equiv "roots init" store t;
+  apply store [ SetProp (3, HeightValue, IntValue 40) ];
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  check_equiv "root shifted" store t
+
+(* A 10k-sibling tree stays incremental: one text prop edit replays
+   through the journal and relayouts only the dirty path, well under
+   the cost of a full mirror rebuild. *)
+let test_incremental_large_tree () =
+  let store = Lui_store.create () in
+  apply store
+    ([ CreateNode (1, Root); CreateNode (2, Column); InsertChild (1, 2, 0) ]
+     @ List.concat_map
+         (fun i ->
+           [ CreateNode (10 + i, Text);
+             InsertChild (2, 10 + i, i);
+             SetProp (10 + i, HeightValue, IntValue 1) ])
+         (List.init 10_000 Fun.id));
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  check_equiv "big init" store t;
+  let before_steps = Lui_layout.stat_steps t in
+  let t0 = Sys.time () in
+  apply store [ SetProp (5_000, TextValue, StringValue "x") ];
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  let dt = Sys.time () -. t0 in
+  check bool "journal path" true (Lui_layout.stat_steps t > before_steps);
+  check_equiv "big restyle" store t;
+  check bool "fast incremental" true (dt < 0.5)
 
 let () =
   run "lui_layout"
@@ -399,4 +551,11 @@ let () =
          test_case "root popup" `Quick test_root_popup_centered_in_frame;
          test_case "menu panel" `Quick test_menu_panel;
          test_case "ac row" `Quick test_ac_row;
-         test_case "snapped edges" `Quick test_snapped_edges ]) ]
+         test_case "snapped edges" `Quick test_snapped_edges;
+         test_case "incremental equivalence" `Quick
+           test_incremental_equivalence;
+         test_case "incremental random" `Quick test_incremental_random;
+         test_case "incremental root shift" `Quick
+           test_incremental_root_shift;
+         test_case "incremental large tree" `Quick
+           test_incremental_large_tree ]) ]

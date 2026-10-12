@@ -102,9 +102,14 @@ val sync :
 
 val invalidate : t -> unit
 
-(** [stat_syncs t] counts the {!sync} calls that actually rebuilt the
-    mirror — memoized calls do not. Test instrumentation. *)
+(** [stat_syncs t] counts the {!sync} calls that touched the mirror —
+    memoized calls do not. Test instrumentation. *)
 val stat_syncs : t -> int
+
+(** [stat_steps t] counts the {!sync} calls that took the incremental
+    journal path rather than a wholesale rebuild. Test
+    instrumentation. *)
+val stat_steps : t -> int
 
 (** [compute t ~width ~height] re-runs layout on the current mirror —
     the cheap path when only the frame size changed. [*-viewport]
