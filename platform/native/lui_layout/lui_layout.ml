@@ -34,6 +34,10 @@ type t = {
   mutable synced_anchor : (float * float) option;
   mutable synced_measure : text_measure;
   mutable synced_hidden : int -> bool;
+  (* Instrumentation: how many times {!sync} actually rebuilt the
+     mirror. Lets tests assert that memoization (and later the
+     incremental path) skipped work instead of trusting timings. *)
+  mutable stat_syncs : int;
 }
 
 let create () =
@@ -47,9 +51,11 @@ let create () =
     synced_h = 0.;
     synced_anchor = None;
     synced_measure = no_measure;
-    synced_hidden = show_all }
+    synced_hidden = show_all;
+    stat_syncs = 0 }
 
 let invalidate (t : t) = t.synced_rev <- -1
+let stat_syncs (t : t) = t.stat_syncs
 
 (* ---------- wire value access ---------- *)
 
@@ -1085,10 +1091,12 @@ let compute t ~width ~height =
 
 let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
     ?ctx_anchor ~width ~height (t : t) store =
-  let rev = Lui_store.revision store in
-  (* The store bumps its revision on every mutation, so a matching key
-     means the rebuild below would produce an identical mirror —
-     skipped wholesale (scroll-only and idle repaints pay nothing). *)
+  let rev = Lui_store.layout_rev store in
+  (* The store bumps its layout revision on every mutation that can
+     move geometry — structure and layout-classified props — so a
+     matching key means the rebuild below would produce an identical
+     mirror: skipped wholesale (scroll-only frames, idle repaints and
+     paint-only prop churn all pay nothing). *)
   if
     t.synced_rev <> rev || t.synced_scale <> scale
     || t.synced_w <> width || t.synced_h <> height
@@ -1096,6 +1104,7 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
     || (not (t.synced_measure == measure))
     || (not (t.synced_hidden == hidden))
   then begin
+    t.stat_syncs <- t.stat_syncs + 1;
     Hashtbl.reset t.nodes;
     let ctx =
       { scale; vw = width; vh = height; tm = measure; hidden;
