@@ -523,6 +523,14 @@ let adjust ~pkind ~pid ~index store id (style : Lui_flex.style) : Lui_flex.style
     else style
   in
   let style =
+    if scroll_kind pkind then
+      (* A scroller's content keeps its natural main size so it
+         overflows and scrolls — the default flex_shrink=1 would
+         compress children into the clipped viewport instead. *)
+      { style with flex_shrink = 0. }
+    else style
+  in
+  let style =
     if pkind = "edge-inset" then
       (* The first store child is the scrollable content; CSS gives it
          flex:1 while pinned siblings group at the named edge. *)
