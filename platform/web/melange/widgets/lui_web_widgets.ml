@@ -355,6 +355,25 @@ let bottom_tab_string_property renderer node property =
 
 let refresh_bottom_tabs renderer tabs =
   let children = Store.children renderer.web_store tabs in
+  (* Index the bar's triggers once by the panel they control — looking
+     each one up with its own querySelector turned a refresh into n DOM
+     selector scans. *)
+  let triggers = Hashtbl.create 8 in
+  let nodes =
+    W.Element.querySelectorAll ".lui-bottom-tabs-tab"
+      (Util.bottom_tabs_bar_node (Lui_web_nodes.dom_node renderer tabs))
+  in
+  for index = 0 to W.NodeList.length nodes - 1 do
+    match W.NodeList.item index nodes with
+    | Some node -> (
+        match W.Element.ofNode node with
+        | Some element -> (
+            match W.Element.getAttribute "aria-controls" element with
+            | Some controls -> Hashtbl.replace triggers controls element
+            | None -> ())
+        | None -> ())
+    | None -> ()
+  done;
   let selected =
     match
       List.find_opt
@@ -374,7 +393,7 @@ let refresh_bottom_tabs renderer tabs =
            let panel = (Lazy.force current.platform_node) in
            Util.set_state_attribute panel "hidden" (not active);
            Util.set_state_attribute panel "inert" (not active);
-           (match bottom_tab_trigger renderer child with
+           (match Hashtbl.find_opt triggers (Util.node_dom_id child) with
             | Some trigger ->
                 W.Element.setAttribute "aria-selected"
                   (if active then "true" else "false") trigger;

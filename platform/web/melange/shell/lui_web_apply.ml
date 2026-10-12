@@ -158,12 +158,14 @@ type batch_effects = {
   dropdowns : (int, unit) Hashtbl.t;
   comboboxes : (int, unit) Hashtbl.t;
   splits : (int, unit) Hashtbl.t;
+  bottom_tabs : (int, unit) Hashtbl.t;
 }
 
 let new_effects () =
   { dropdowns = Hashtbl.create 4;
     comboboxes = Hashtbl.create 4;
-    splits = Hashtbl.create 4 }
+    splits = Hashtbl.create 4;
+    bottom_tabs = Hashtbl.create 4 }
 
 let queue_split effects node = Hashtbl.replace effects.splits node ()
 
@@ -184,7 +186,10 @@ let run_effects renderer effects =
      re-read clientWidth right after style writes *)
   Hashtbl.iter
     (fun node () -> Lui_web_split.update_split renderer node)
-    effects.splits
+    effects.splits;
+  Hashtbl.iter
+    (fun parent () -> Lui_web_widgets.refresh_bottom_tabs renderer parent)
+    effects.bottom_tabs
 
 let refresh_parent_for_prop renderer effects node property =
   match Store.node renderer.web_store node with
@@ -203,7 +208,7 @@ let refresh_parent_for_prop renderer effects node property =
               if
                 Store.standard_kind_is parent_node BottomTabs
                 && (property = Selected || property = Enabled)
-              then Lui_web_widgets.refresh_bottom_tabs renderer parent;
+              then Hashtbl.replace effects.bottom_tabs parent ();
               if Store.standard_kind_is parent_node DropdownMenu then
                 Hashtbl.replace effects.comboboxes parent ()
           | None -> ())
@@ -290,8 +295,8 @@ let mount_inserted_child renderer parent child current =
       Lui_web_overlay.mount_toast renderer child (Lazy.force current.platform_node)
   | _ -> ()
 
-let insert_child_dom renderer previous_nodes children_of parent child
-    index =
+let insert_child_dom renderer previous_nodes children_of effects parent
+    child index =
   let parent_dom = Nodes.dom_node_before renderer previous_nodes parent in
   let child_dom = Nodes.dom_node_before renderer previous_nodes child in
   match Store.node renderer.web_store child with
@@ -310,7 +315,7 @@ let insert_child_dom renderer previous_nodes children_of parent child
               ignore
                 (Lui_web_widgets.create_bottom_tab_trigger renderer parent
                    child index);
-              Lui_web_widgets.refresh_bottom_tabs renderer parent
+              Hashtbl.replace effects.bottom_tabs parent ()
           | _ ->
               let container =
                 dom_child_container renderer parent parent_dom
@@ -345,7 +350,8 @@ let insert_child_dom renderer previous_nodes children_of parent child
 
 let apply_insert_child renderer previous_nodes children_of effects parent
     child index =
-  insert_child_dom renderer previous_nodes children_of parent child index;
+  insert_child_dom renderer previous_nodes children_of effects parent
+    child index;
   queue_split effects parent;
   Lui_web_focus.refresh_button_context renderer child;
   refresh_structured_children renderer parent;
@@ -434,7 +440,7 @@ let apply_remove_child renderer previous_nodes effects parent child =
   (match prev_node previous_nodes parent with
    | Some parent_node ->
        if Store.standard_kind_is parent_node BottomTabs then
-         Lui_web_widgets.refresh_bottom_tabs renderer parent
+         Hashtbl.replace effects.bottom_tabs parent ()
    | None -> ());
   (match prev_node previous_nodes child with
    | Some previous ->
@@ -513,7 +519,7 @@ let apply_move_child renderer previous_nodes children_of effects parent
   queue_split effects parent;
   refresh_structured_children renderer parent;
   if bottom_tab && bottom_tabs then
-    Lui_web_widgets.refresh_bottom_tabs renderer parent;
+    Hashtbl.replace effects.bottom_tabs parent ();
   Hashtbl.replace effects.dropdowns parent ();
   if dropdown then Lui_web_position.position_dropdown renderer child;
   if metadata then
@@ -814,7 +820,7 @@ let apply_detach_subtree renderer previous_nodes children_of effects node =
            (match prev_node previous_nodes parent with
             | Some parent_node ->
                 if Store.standard_kind_is parent_node BottomTabs then
-                  Lui_web_widgets.refresh_bottom_tabs renderer parent
+                  Hashtbl.replace effects.bottom_tabs parent ()
             | None -> ());
            (if Store.standard_kind_is previous DropdownMenu then begin
               Lui_web_menu.update_picker_expanded renderer parent false;

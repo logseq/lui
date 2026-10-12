@@ -237,12 +237,9 @@ let apply_enabled renderer node kind dom_node enabled =
            W.Element.setAttribute "aria-disabled" "true" trigger
          end
      | None -> ());
-    match Store.node renderer.web_store node with
-    | Some current ->
-        (match current.retained_parent with
-         | Some parent -> Widgets.refresh_bottom_tabs renderer parent
-         | None -> ())
-    | None -> ()
+    (* the parent's selected/tabindex refresh is queued by
+       refresh_parent_for_prop for this same property *)
+    ()
   end
   else begin
     let control_node =
@@ -349,13 +346,9 @@ let apply_inline_icon_name renderer node kind dom_node name =
   end
 
 let apply_selected renderer node kind dom_node selected =
-  if kind = BottomTab then
-    (match Store.node renderer.web_store node with
-     | Some current ->
-         (match current.retained_parent with
-          | Some parent -> Widgets.refresh_bottom_tabs renderer parent
-          | None -> ())
-     | None -> ())
+  (* BottomTab selection lands on the trigger via the parent's refresh,
+     queued by refresh_parent_for_prop — nothing to write on the panel *)
+  if kind = BottomTab then ()
   else if kind = Accordion then
     set_accordion_open renderer node dom_node selected
   else if
