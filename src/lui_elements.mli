@@ -1861,6 +1861,7 @@ val text :
   ?line_height:string ->
   ?letter_spacing:float ->
   ?font_family:string ->
+  ?font_style:string ->
   ?text_decoration:string ->
   ?white_space:string ->
   ?text_overflow:string ->
@@ -1919,6 +1920,7 @@ val heading :
   ?line_height:string ->
   ?letter_spacing:float ->
   ?font_family:string ->
+  ?font_style:string ->
   ?text_decoration:string ->
   ?white_space:string ->
   ?text_overflow:string ->
@@ -1971,6 +1973,7 @@ val paragraph :
   ?line_height:string ->
   ?letter_spacing:float ->
   ?font_family:string ->
+  ?font_style:string ->
   ?text_decoration:string ->
   ?white_space:string ->
   ?text_overflow:string ->
@@ -2023,6 +2026,7 @@ val label :
   ?line_height:string ->
   ?letter_spacing:float ->
   ?font_family:string ->
+  ?font_style:string ->
   ?text_decoration:string ->
   ?white_space:string ->
   ?text_overflow:string ->
