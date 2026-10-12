@@ -347,6 +347,42 @@ let vlist_scroll ~n ~frames ~velocity ~item_h ~width ~height =
   in
   ms_row name "mount patch apply" mount_apply_ms :: metric_rows name samples
 
+(* ---------- mount patch apply: the P1-4 transport comparison ---------- *)
+
+(* The big-mount apply this milestone is about: the same mount batch
+   delivered to a fresh store through each transport, timing the whole
+   apply path — [Wire] prices patch -> encode -> decode -> apply (what
+   a bridged host pays), [In_process] prices apply alone (what a
+   same-process backend pays). A fresh store per sample keeps every
+   iteration at full mount cost; encode of the same batch repeats
+   inside [Wire], so the delta is the serialization work itself. *)
+let mount_apply ~n ~iters ~item_h =
+  let batch = mount_vlist ~n ~item_h in
+  List.concat_map
+    (fun transport ->
+      let name =
+        Printf.sprintf "mount-apply-%dk-%s" (n / 1000)
+          (match transport with
+          | Lui_wire.In_process -> "in-process"
+          | Lui_wire.Wire -> "wire")
+      in
+      let samples =
+        List.init iters (fun _ ->
+            let store = Lui_store.create () in
+            let t0 = H.now () in
+            Lui_store.apply_batch store (Lui_wire.transcode transport batch);
+            (H.now () -. t0) *. 1000.)
+      in
+      let s = H.stats_of samples in
+      [
+        ms_row name "patch apply p50" s.H.p50;
+        ms_row name "patch apply p95" s.H.p95;
+        ms_row name "patch apply mean" s.H.mean;
+        mrow name "patch ops"
+          (string_of_int (List.length batch.ops)) "ops";
+      ])
+    [ Lui_wire.In_process; Lui_wire.Wire ]
+
 (* ---------- collapse / expand subtree ---------- *)
 
 module Tree = struct
@@ -410,6 +446,7 @@ let all ?(scale_sizes = false) () =
         blocks ~n:2_000 ~iters:12 ~width:w ~height:h;
         vlist_scroll ~n:10_000 ~frames:12 ~velocity:40. ~item_h:28.
           ~width:w ~height:h;
+        mount_apply ~n:10_000 ~iters:5 ~item_h:28.;
         collapse_expand ~kids:80 ~iters:16 ~width:w ~height:h;
         ime_compose ~iters:24 ~width:w ~height:h;
       ]
@@ -422,6 +459,7 @@ let all ?(scale_sizes = false) () =
         blocks ~n:10_000 ~iters:30 ~width:w ~height:h;
         vlist_scroll ~n:100_000 ~frames:30 ~velocity:40. ~item_h:28.
           ~width:w ~height:h;
+        mount_apply ~n:100_000 ~iters:5 ~item_h:28.;
         collapse_expand ~kids:200 ~iters:40 ~width:w ~height:h;
         ime_compose ~iters:60 ~width:w ~height:h;
       ]
