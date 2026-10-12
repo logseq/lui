@@ -81,6 +81,72 @@ let test_ladder () =
   let pix = Lui_linux.noop_renderer.Lui_host.render scene in
   Alcotest.(check int) "noop bytes" (5 * 3 * 4) (Bytes.length pix)
 
+(* The real walk/demote path the driver uses: injected init failures
+   step down the ladder at startup, and a mid-render device loss
+   demotes inside the same render call — not a CPU->CPU comparison. *)
+let test_ladder_demote () =
+  let module RL = Renderer_ladder in
+  let scene () =
+    let s =
+      Lui_scene.create ~mask_atlas:(Atlas.create ~bpp:1 ~w:8 ~h:8)
+        ~color_atlas:(Atlas.create ~bpp:4 ~w:8 ~h:8)
+    in
+    s.Lui_scene.width <- 2;
+    s.Lui_scene.height <- 1;
+    s
+  in
+  let tried = ref [] and released = ref [] in
+  let cpu_live = ref true in
+  let cpu_pix = Bytes.make 8 '\xAB' in
+  let cpu =
+    { RL.renderer =
+        { Lui_host.name = "mock-cpu";
+          render =
+            (fun _ ->
+               if !cpu_live then cpu_pix else failwith "device lost") };
+      state = `cpu }
+  in
+  let noop =
+    { RL.renderer = Lui_linux.noop_renderer; state = `noop }
+  in
+  let try_rung rung ~rest:_ =
+    tried := rung :: !tried;
+    match rung with
+    (* injected GPU init failures: no Vulkan device, no GL context *)
+    | Lui_linux.Vulkan | Lui_linux.Gl -> None
+    | Lui_linux.Cpu -> Some cpu
+    | Lui_linux.Noop -> Some noop
+  in
+  let t =
+    RL.create ~warn:(fun _ -> ())
+      ~release:(fun a -> released := a.RL.state :: !released)
+      ~noop ~try_rung
+      [ Lui_linux.Vulkan; Lui_linux.Gl; Lui_linux.Cpu; Lui_linux.Noop ]
+  in
+  (* the init walk tried Vulkan and Gl, then settled on Cpu with the
+     Noop tail kept in reserve for a runtime demote *)
+  Alcotest.(check bool) "walk order" true
+    (List.rev !tried
+     = [ Lui_linux.Vulkan; Lui_linux.Gl; Lui_linux.Cpu ]);
+  Alcotest.(check bool) "cpu active" true
+    ((RL.active t).RL.state = `cpu);
+  Alcotest.(check bool) "tail kept" true
+    (RL.remaining t = [ Lui_linux.Noop ]);
+  (* the CPU rung wins a frame before dying *)
+  let live = RL.renderer_live t in
+  Alcotest.(check bool) "cpu frame" true
+    (live.Lui_host.render (scene ()) == cpu_pix);
+  (* a mid-render device loss demotes to Noop inside the same call:
+     the rung's release ran and the zeroed fallback frame comes back *)
+  cpu_live := false;
+  let pix = live.Lui_host.render (scene ()) in
+  Alcotest.(check bool) "cpu released" true (!released = [ `cpu ]);
+  Alcotest.(check bool) "noop active" true
+    ((RL.active t).RL.state = `noop);
+  Alcotest.(check int) "zeroed frame" (2 * 1 * 4) (Bytes.length pix);
+  Alcotest.(check bool) "walked on" true
+    (List.exists (fun r -> r = Lui_linux.Noop) !tried)
+
 let test_tray_icon () =
   let px = Lui_linux.tray_icon_rgba () in
   Alcotest.(check int) "rgba bytes" (22 * 22 * 4) (Bytes.length px);
@@ -337,8 +403,31 @@ let host_with_app () =
   let app = Demo_app.create backend in
   (host, store, app, refresh, text_engine)
 
+(* One scripted frame's outcome: the actions [Ui.handle] produced and
+   the scene checksum after the driver's flush/relayout/repaint. *)
+type headless_run = {
+  checksum : int64;
+  ops : int;
+  acted : action list list;
+  ui : Ui.t;
+  store : Lui_store.t;
+}
+
+(* Feed the host-level action list back into the app the way the
+   driver's apply_actions does: only [Dispatch] events reach the
+   model; the rest are driver-side concerns out of scope here. *)
+let apply_to_app app acts =
+  List.iter
+    (function
+      | Dispatch ev -> (
+        try ignore (Lui_app.dispatch_event app ev)
+        with Invalid_argument _ -> ())
+      | _ -> ())
+    acts
+
 (* Drive [script] input events between frames like the SDL loop does,
-   accumulating the scene checksum. *)
+   accumulating the scene checksum and keeping the action list each
+   event produced so callers can assert on them. *)
 let run_headless frames script =
   let host, store, app, refresh, text_engine = host_with_app () in
   let ui = Ui.create () in
@@ -350,35 +439,124 @@ let run_headless frames script =
     Layout.refresh store rects ~width:480 ~height:320 ~scale:1.
       ~measure:(Lui_window_text.measure text_engine)
   in
+  (* prime the hit-test mirror before the first event — the driver
+     lays out once before its loop, otherwise frame 1's click tests
+     against empty rects *)
+  refresh' ();
   let cs = Checksum.create () in
   let ops_last = ref 0 in
+  let acted = ref [] in
   let scripted = Array.of_list script in
   for f = 1 to frames do
     (* one scripted input per frame, then flush + relayout + repaint —
        the same ordering the driver loop uses *)
-    if f <= Array.length scripted then
-      ignore (Ui.handle ui store rects scripted.(f - 1));
+    if f <= Array.length scripted then begin
+      let acts = Ui.handle ui store rects scripted.(f - 1) in
+      acted := acts :: !acted;
+      apply_to_app app acts
+    end;
     ignore (Lui_app.flush app);
     refresh' ();
     ignore (Lui_host.repaint host);
     Checksum.add_scene cs (Lui_host.scene host);
     ops_last := List.length (Lui_host.scene host).Lui_scene.ops
   done;
-  (Checksum.value cs, !ops_last)
+  { checksum = Checksum.value cs; ops = !ops_last;
+    acted = List.rev !acted; ui; store }
+
+let headless_script =
+  [ Input.Button_down (60., 100., Input.Left, 1, Input.mods_none);
+    Input.Button_up (60., 100., Input.Left, Input.mods_none);
+    Input.Text_input "hello";
+    Input.Key_down (Input.Return, Input.mods_none, false) ]
 
 let test_headless_checksum () =
   let frames = 6 in
-  let script =
-    [ Input.Button_down (60., 78., Input.Left, 1, Input.mods_none);
-      Input.Button_up (60., 78., Input.Left, Input.mods_none);
-      Input.Text_input "hello";
-      Input.Key_down (Input.Return, Input.mods_none, false) ]
+  let r1 = run_headless frames headless_script in
+  let r2 = run_headless frames headless_script in
+  Alcotest.(check bool) "scene painted" true (r1.ops > 0);
+  Alcotest.(check int64) "deterministic" r1.checksum r2.checksum;
+  Alcotest.(check int) "same ops" r1.ops r2.ops
+
+(* The scripted frames are an interaction test, not just a render
+   determinism check: every event must produce the actions the
+   driver's apply_actions consumes, and the dispatches must land as
+   store mutations. *)
+let show_event = function
+  | TextChanged (id, s) -> Printf.sprintf "TextChanged(%d,%S)" id s
+  | Submit id -> Printf.sprintf "Submit %d" id
+  | Press id -> Printf.sprintf "Press %d" id
+  | PointerDown (id, _) -> Printf.sprintf "PointerDown %d" id
+  | PointerUp (id, _) -> Printf.sprintf "PointerUp %d" id
+  | PressDetail (id, _) -> Printf.sprintf "PressDetail %d" id
+  | Appear id -> Printf.sprintf "Appear %d" id
+  | ToggleChanged (id, b) -> Printf.sprintf "ToggleChanged(%d,%b)" id b
+  | Change id -> Printf.sprintf "Change %d" id
+  | Dismiss id -> Printf.sprintf "Dismiss %d" id
+  | _ -> "event"
+
+let show_acts acts =
+  String.concat ", "
+    (List.map
+       (function
+         | Focus_changed id -> Printf.sprintf "Focus_changed %d" id
+         | Dispatch e -> "Dispatch " ^ show_event e
+         | Quit -> "Quit"
+         | Ime_rect _ -> "Ime_rect"
+         | Resize_host _ -> "Resize_host"
+         | Clipboard_write s -> Printf.sprintf "Clipboard_write %S" s
+         | Paste_request -> "Paste_request")
+       acts)
+
+let test_headless_actions () =
+  let r = run_headless 4 headless_script in
+  let field =
+    match
+      List.find_opt
+        (fun id ->
+           Lui_store.string_prop r.store id "accessibility-label"
+           = Some "New item")
+        (Lui_store.preorder r.store)
+    with
+    | Some id -> id
+    | None -> Alcotest.fail "demo text field not mounted"
   in
-  let v1, ops1 = run_headless frames script in
-  let v2, ops2 = run_headless frames script in
-  Alcotest.(check bool) "scene painted" true (ops1 > 0);
-  Alcotest.(check int64) "deterministic" v1 v2;
-  Alcotest.(check int) "same ops" ops1 ops2
+  (match r.acted with
+   | [ down; up; input; submit ] ->
+     (* the click claims the autofocus field — the Focus_changed the
+        driver would use to start text input *)
+     (match down with
+      | [ Focus_changed f ] when f = field -> ()
+      | _ ->
+        Alcotest.failf "click did not focus the field: %s"
+          (show_acts down));
+     (match up with
+      | [ Dispatch (Press p) ] when p <> 0 -> ()
+      | _ -> Alcotest.failf "release not quiet: %s" (show_acts up));
+     (match input with
+      | [ Dispatch (TextChanged (f, "hello")) ] when f = field -> ()
+      | _ ->
+        Alcotest.failf "typing did not dispatch TextChanged: %s"
+          (show_acts input));
+     (match submit with
+      | [ Dispatch (Submit f) ] when f = field -> ()
+      | _ ->
+        Alcotest.failf "Return did not dispatch Submit: %s"
+          (show_acts submit))
+   | frames ->
+     Alcotest.failf "expected four action frames, got %d"
+       (List.length frames));
+  (* the dispatches reached the model: "hello" mounts as a new item
+     and the field's draft is cleared *)
+  let has_text_node v =
+    List.exists
+      (fun id -> Lui_store.string_prop r.store id "text" = Some v)
+      (Lui_store.preorder r.store)
+  in
+  Alcotest.(check bool) "item added" true (has_text_node "hello");
+  Alcotest.(check bool) "draft cleared" true
+    (Lui_store.string_prop r.store field "text" = Some "");
+  Alcotest.(check int) "focus kept" field (Ui.focused r.ui)
 
 (* ---------- accessibility bridge (offline-safe) ---------- *)
 
@@ -478,6 +656,7 @@ let () =
   Alcotest.run "lui_window_linux"
     [ ( "ladder",
         [ Alcotest.test_case "renderer ladder" `Quick test_ladder;
+          Alcotest.test_case "demote path" `Quick test_ladder_demote;
           Alcotest.test_case "tray icon" `Quick test_tray_icon ] );
       ( "a11y",
         [ Alcotest.test_case "action mapping" `Quick test_a11y_actions;
@@ -491,7 +670,8 @@ let () =
           Alcotest.test_case "combining" `Quick test_caret_ops_combining;
           Alcotest.test_case "vertical" `Quick test_caret_ops_vertical ] );
       ( "headless",
-        [ Alcotest.test_case "checksum" `Quick test_headless_checksum ] );
+        [ Alcotest.test_case "checksum" `Quick test_headless_checksum;
+          Alcotest.test_case "actions" `Quick test_headless_actions ] );
       ( "shell",
         [ Alcotest.test_case "menu model" `Quick test_shell_model;
           Alcotest.test_case "degraded" `Quick test_shell_degraded ] ) ]

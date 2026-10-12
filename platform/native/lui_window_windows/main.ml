@@ -90,149 +90,129 @@ let () =
   in
   let dw, dh = drawable () in
   let scale = Float.max 0.01 (Lui_win32.dpi_scale hwnd) in
-  (* Renderer selection. [d3d_state] keeps the live [Lui_d3d11.t] for
-     release at shutdown; [present_last] remembers the last blitted
-     frame so a WM_PAINT can be answered without a full repaint. *)
-  let d3d_state = ref None in
+  (* Renderer selection. The ladder attempt's [state] keeps the live
+     [Lui_d3d11.t] (when a D3D11 rung won) for release at shutdown;
+     [present_last] remembers the last blitted frame so a WM_PAINT
+     can be answered without a full repaint. *)
   let present_last = ref None in
   (* The ladder walk returns the renderer plus the live [Lui_d3d11.t]
-     (when a D3D11 rung won) so shutdown can release the device.
-     [remaining] keeps the rungs below the active one so a runtime
-     demotion can re-walk the tail. *)
-  let remaining = ref [] in
-  let renderer, d3d_live, walk =
-    let rec walk = function
-      | [] ->
-        remaining := [];
-        warn "all renderer rungs failed; using no-op loop renderer";
-        (Lui_window_windows.noop_renderer, None)
-      | rung :: rest ->
-        remaining := rest;
-        (
-        match rung with
-        | Lui_window_windows.Cpu -> (
-          (* CPU rung: Lui_raster renders the scene; StretchDIBits
-             uploads the damaged rects (or the whole frame). *)
-          match
-            let rr = Lui_raster.Renderer.create () in
-            { Lui_host.name = "lui_raster+dib";
+     (when a D3D11 rung won) as the attempt state so shutdown can
+     release the device. The walk/demote sequencing lives in
+     [Lui_window.Renderer_ladder]; this supplies the per-rung init. *)
+  let try_rung rung ~rest:_ =
+    let attempt renderer state =
+      Some { Renderer_ladder.renderer; state }
+    in
+    match rung with
+    | Lui_window_windows.Cpu -> (
+      (* CPU rung: Lui_raster renders the scene; StretchDIBits
+         uploads the damaged rects (or the whole frame). *)
+      match
+        let rr = Lui_raster.Renderer.create () in
+        { Lui_host.name = "lui_raster+dib";
+          render =
+            (fun s ->
+               let dirty = Lui_raster.Renderer.render rr s in
+               let img = Lui_raster.Renderer.image rr in
+               let pix = img.Lui_raster.Image.pix in
+               let stride = img.Lui_raster.Image.stride / 4 in
+               let w = img.Lui_raster.Image.w
+               and h = img.Lui_raster.Image.h in
+               if Lui_raster.Renderer.whole rr || dirty = [] then
+                 ignore (Lui_win32.present_frame hwnd pix ~w ~h)
+               else
+                 List.iter
+                   (fun (r : Lui_scene.irect) ->
+                      ignore
+                        (Lui_win32.present_region hwnd ~x0:r.x0
+                           ~y0:r.y0 ~x1:r.x1 ~y1:r.y1 ~pix ~stride))
+                   dirty;
+               present_last := Some (pix, w, h);
+               pix) }
+      with
+      | r -> attempt r None
+      | exception e ->
+        warn "cpu rung init failed: %s" (Printexc.to_string e);
+        None)
+    | Lui_window_windows.D3d11 -> (
+      (* Default rung: first a swapchain on the window's HWND —
+         real presentation with GPU rasterization — then an
+         offscreen render target whose frames are read back and
+         uploaded through the same DIB path as the CPU rung.
+         [Lui_d3d11.render] auto-resizes its target to the scene
+         size, so resizes need no extra plumbing. *)
+      let try_hwnd () =
+        match Lui_d3d11.init_hwnd hwnd ~w:dw ~h:dh with
+        | Ok d ->
+          attempt
+            { Lui_host.name = "lui_d3d11 (hwnd)";
               render =
                 (fun s ->
-                   let dirty = Lui_raster.Renderer.render rr s in
-                   let img = Lui_raster.Renderer.image rr in
-                   let pix = img.Lui_raster.Image.pix in
-                   let stride = img.Lui_raster.Image.stride / 4 in
-                   let w = img.Lui_raster.Image.w
-                   and h = img.Lui_raster.Image.h in
-                   if Lui_raster.Renderer.whole rr || dirty = [] then
-                     ignore (Lui_win32.present_frame hwnd pix ~w ~h)
-                   else
-                     List.iter
-                       (fun (r : Lui_scene.irect) ->
-                          ignore
-                            (Lui_win32.present_region hwnd ~x0:r.x0
-                               ~y0:r.y0 ~x1:r.x1 ~y1:r.y1 ~pix ~stride))
-                       dirty;
-                   present_last := Some (pix, w, h);
-                   pix) }
-          with
-          | r -> (r, None)
-          | exception e ->
-            warn "cpu rung init failed: %s" (Printexc.to_string e);
-            walk rest)
-        | Lui_window_windows.D3d11 -> (
-          (* Default rung: first a swapchain on the window's HWND —
-             real presentation with GPU rasterization — then an
-             offscreen render target whose frames are read back and
-             uploaded through the same DIB path as the CPU rung.
-             [Lui_d3d11.render] auto-resizes its target to the scene
-             size, so resizes need no extra plumbing. *)
-          let try_hwnd () =
-            match Lui_d3d11.init_hwnd hwnd ~w:dw ~h:dh with
-            | Ok d ->
-              Some
-                ( { Lui_host.name = "lui_d3d11 (hwnd)";
-                    render =
-                      (fun s ->
-                         Lui_d3d11.render d s;
-                         Bytes.empty) },
-                  Some d )
-            | Error e ->
-              warn "lui_d3d11.init_hwnd failed: %s" e;
-              None
-          in
-          let try_offscreen () =
-            match Lui_d3d11.init_offscreen ~w:dw ~h:dh with
-            | Ok d ->
-              Some
-                ( { Lui_host.name = "lui_d3d11 (offscreen+blit)";
-                    render =
-                      (fun s ->
-                         Lui_d3d11.render d s;
-                         let px =
-                           Lui_d3d11.read_frame d ~w:s.Lui_scene.width
-                             ~h:s.Lui_scene.height
-                         in
-                         ignore
-                           (Lui_win32.present_frame hwnd px
-                              ~w:s.Lui_scene.width
-                              ~h:s.Lui_scene.height);
-                         present_last :=
-                           Some (px, s.Lui_scene.width, s.Lui_scene.height);
-                         px) },
-                  Some d )
-            | Error e ->
-              warn "lui_d3d11.init_offscreen failed: %s" e;
-              None
-          in
-          match try_hwnd () with
-          | Some v -> v
-          | None -> (
-            match try_offscreen () with
-            | Some v -> v
-            | None -> walk rest))
-        | Lui_window_windows.Gl ->
-          (* This build carries no GL bindings (tsdl/tgls are not
-             installed on the VM), so the rung can only report and
-             yield — a build that links Lui_gl would create a WGL
-             context on the HWND here. *)
-          warn "lui_gl unavailable on this build (no GL bindings)";
-          walk rest
-        | Lui_window_windows.Noop ->
-          (Lui_window_windows.noop_renderer, None))
-    in
-    let r, d = walk rungs in (r, d, walk)
+                   Lui_d3d11.render d s;
+                   Bytes.empty) }
+            (Some d)
+        | Error e ->
+          warn "lui_d3d11.init_hwnd failed: %s" e;
+          None
+      in
+      let try_offscreen () =
+        match Lui_d3d11.init_offscreen ~w:dw ~h:dh with
+        | Ok d ->
+          attempt
+            { Lui_host.name = "lui_d3d11 (offscreen+blit)";
+              render =
+                (fun s ->
+                   Lui_d3d11.render d s;
+                   let px =
+                     Lui_d3d11.read_frame d ~w:s.Lui_scene.width
+                       ~h:s.Lui_scene.height
+                   in
+                   ignore
+                     (Lui_win32.present_frame hwnd px
+                        ~w:s.Lui_scene.width
+                        ~h:s.Lui_scene.height);
+                   present_last :=
+                     Some (px, s.Lui_scene.width, s.Lui_scene.height);
+                   px) }
+            (Some d)
+        | Error e ->
+          warn "lui_d3d11.init_offscreen failed: %s" e;
+          None
+      in
+      match try_hwnd () with
+      | Some v -> Some v
+      | None -> try_offscreen ())
+    | Lui_window_windows.Gl ->
+      (* This build carries no GL bindings (tsdl/tgls are not
+         installed on the VM), so the rung can only report and
+         yield — a build that links Lui_gl would create a WGL
+         context on the HWND here. *)
+      warn "lui_gl unavailable on this build (no GL bindings)";
+      None
+    | Lui_window_windows.Noop ->
+      attempt Lui_window_windows.noop_renderer None
   in
-  d3d_state := d3d_live;
+  let ladder_t =
+    Renderer_ladder.create
+      ~warn:(fun m -> warn "%s" m)
+      ~release:(fun a ->
+        (match a.Renderer_ladder.state with
+         | Some d -> Lui_d3d11.release d
+         | None -> ());
+        present_last := None)
+      ~noop:{ Renderer_ladder.renderer =
+                Lui_window_windows.noop_renderer;
+              state = None }
+      ~try_rung rungs
+  in
 
   (* Runtime backend-loss recovery: a device-removed or any render
      exception demotes the active rung to the next ladder entry. The
      scene store is untouched, so the next repaint re-uploads a full
      scene — identical pixels on the CPU path by the parity
-     contract. *)
-  let renderer_cell = ref renderer in
-  let demote reason =
-    warn "renderer %s lost (%s); stepping down the ladder"
-      (!renderer_cell).Lui_host.name reason;
-    (match !d3d_state with
-     | Some d -> Lui_d3d11.release d; d3d_state := None
-     | None -> ());
-    present_last := None;
-    let r, d = walk !remaining in
-    renderer_cell := r;
-    d3d_state := d
-  in
-  (* The host owns a stable record whose render delegates to the live
-     rung, so a demote needs no host rebuild. *)
-  let renderer_live =
-    { Lui_host.name = "lui (resilient)";
-      render =
-        (fun s ->
-           try (!renderer_cell).Lui_host.render s
-           with exn ->
-             demote (Printexc.to_string exn);
-             (!renderer_cell).Lui_host.render s) }
-  in
+     contract. The host owns a stable record whose render delegates
+     to the live rung, so a demote needs no host rebuild. *)
+  let renderer_live = Renderer_ladder.renderer_live ladder_t in
 
   (* Wiring: mutable cells so the paint hooks can reach the host,
      scene and scale that only exist after Lui_host.create. *)
@@ -473,7 +453,8 @@ let () =
          second further down. *)
       ignore
         (Lui_app.send app
-           (Demo_app.Badge (!renderer_cell).Lui_host.name));
+           (Demo_app.Badge
+              (Renderer_ladder.active ladder_t).renderer.Lui_host.name));
       Some item
     end
   in
@@ -615,7 +596,7 @@ let () =
       if req_hit "clipboard" m.Demo_app.req_clipboard then begin
         let s =
           Printf.sprintf "lui_window_windows %dx%d renderer=%s frames=%d"
-            dw dh (!renderer_cell).Lui_host.name !frame in
+            dw dh (Renderer_ladder.active ladder_t).renderer.Lui_host.name !frame in
         log "shell clipboard: wrote %d chars (ok=%b)"
           (String.length s) (Lui_shell_windows.clipboard_write s)
       end;
@@ -645,7 +626,7 @@ let () =
         | None -> true)
   in
   log "lui_window_windows: %dx%d drawable (scale %.2f), renderer=%s%s"
-    dw dh scale (!renderer_cell).Lui_host.name
+    dw dh scale (Renderer_ladder.active ladder_t).renderer.Lui_host.name
     (if headless then " [headless]" else "");
   while continue () do
     let t0 = perf_s () in
@@ -688,13 +669,13 @@ let () =
           if st.frames > 0 && st.acc_ms > 0. then
             1000. /. (st.acc_ms /. float st.frames)
           else 0. in
-        stats_report st (!renderer_cell).Lui_host.name;
+        stats_report st (Renderer_ladder.active ladder_t).renderer.Lui_host.name;
         if not headless then
           ignore
             (Lui_app.send app
                (Demo_app.Badge
                   (Printf.sprintf "%s — %.0f fps"
-                     (!renderer_cell).Lui_host.name fps)))
+                     (Renderer_ladder.active ladder_t).renderer.Lui_host.name fps)))
       end
     end;
     (* The semantic tree tracks the store every iteration — cheap
@@ -713,7 +694,7 @@ let () =
       else Lui_win32.delay_ms 4
     end
   done;
-  stats_report st (!renderer_cell).Lui_host.name;
+  stats_report st (Renderer_ladder.active ladder_t).renderer.Lui_host.name;
   log "a11y: %d nodes" (Lui_a11y.node_count a11y);
   (match frames_target with
    | Some _ ->
@@ -725,7 +706,7 @@ let () =
   (match status_item with
    | Some item -> Lui_shell_windows.status_item_remove item
    | None -> ());
-  (match !d3d_state with
+  (match (Renderer_ladder.active ladder_t).state with
    | Some d -> Lui_d3d11.release d
    | None -> ());
   Lui_win32.destroy_window hwnd
