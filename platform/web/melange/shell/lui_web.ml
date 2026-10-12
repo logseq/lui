@@ -54,6 +54,7 @@ let create_with_extensions host app_icons registry adapters =
     web_tooltip_warm = ref false;
     web_open_context_menu = ref None;
     web_splits = Hashtbl.create 4;
+    web_context_hosts = Hashtbl.create 4;
     web_extension_registry = registry;
     web_extension_adapters }
   in

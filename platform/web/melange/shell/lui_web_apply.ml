@@ -67,6 +67,7 @@ let cleanup_node renderer node =
   (match Hashtbl.find_opt renderer.web_virtual_lists node with
    | Some state -> state.dispose_virtual ()
    | None -> ());
+  Lui_web_menu.release_context_host_events renderer node;
   Lui_web_events.release_pointer_events renderer node;
   match Hashtbl.find_opt renderer.web_cleanups node with
   | Some cleanup ->
@@ -344,7 +345,11 @@ let apply_insert_child renderer previous_nodes children_of effects parent
        insert_menu_item_role renderer child current parent;
        mount_inserted_child renderer parent child current;
        Lui_web_layers.reconcile_owner renderer.web_layers
-         renderer.web_document child current.retained_parent
+         renderer.web_document child current.retained_parent;
+       (* a freshly inserted ContextMenu arm its host's listener bundle *)
+       if Store.standard_kind_is current ContextMenu then
+         Lui_web_menu.sync_context_host_events renderer parent
+           (Nodes.dom_node_before renderer previous_nodes parent)
    | None -> ());
   Hashtbl.replace effects.dropdowns parent ()
 
@@ -425,7 +430,12 @@ let apply_remove_child renderer previous_nodes effects parent child =
        if Store.standard_kind_is previous DropdownMenu then begin
          Lui_web_menu.update_picker_expanded renderer parent false;
          clear_submenu_trigger renderer previous_nodes parent
-       end
+       end;
+       (* losing a ContextMenu child releases the host listener bundle when
+          no other menu remains *)
+       if Store.standard_kind_is previous ContextMenu then
+         Lui_web_menu.sync_context_host_events renderer parent
+           (Nodes.dom_node_before renderer previous_nodes parent)
    | None -> ());
   Hashtbl.replace effects.dropdowns parent ()
 
@@ -495,6 +505,9 @@ let apply_move_child renderer previous_nodes children_of effects parent
     Lui_web_widgets.refresh_bottom_tabs renderer parent;
   Hashtbl.replace effects.dropdowns parent ();
   if dropdown then Lui_web_position.position_dropdown renderer child;
+  if metadata then
+    Lui_web_menu.sync_context_host_events renderer parent
+      (Nodes.dom_node_before renderer previous_nodes parent);
   if tooltip && W.Element.hasAttribute "data-open" surface_node then
     Lui_web_position.position_tooltip renderer child;
   (match Store.node renderer.web_store child with
@@ -782,6 +795,9 @@ let apply_detach_subtree renderer previous_nodes children_of effects node =
               Lui_web_menu.update_picker_expanded renderer parent false;
               clear_submenu_trigger renderer previous_nodes parent
             end);
+           (if Store.standard_kind_is previous ContextMenu then
+              Lui_web_menu.sync_context_host_events renderer parent
+                (Nodes.dom_node_before renderer previous_nodes parent));
            Hashtbl.replace effects.dropdowns parent ()
        | None -> ())
   | _ -> ()
@@ -1023,6 +1039,7 @@ let recover_dom renderer =
     end) resources;
   Hashtbl.clear renderer.web_cleanups;
   Hashtbl.clear renderer.web_pointer_cleanups;
+  Hashtbl.clear renderer.web_context_hosts;
   Hashtbl.clear renderer.web_virtual_lists;
   Hashtbl.clear renderer.web_lists;
   Hashtbl.iter (reset_platform renderer) renderer.web_store.retained_nodes;

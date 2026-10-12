@@ -1127,38 +1127,92 @@ let context_host_keydown renderer node host_node event =
           (int_of_float (W.DomRect.bottom bounds))
     | None -> ()
 
-let attach_context_host_events renderer node host_node =
-  let state =
-    { timer = ref None; suppress_click = ref false;
-      touch_pointer = ref None; touch_origin_x = ref None;
-      touch_origin_y = ref None }
-  in
-  W.Element.addMouseDownEventListener
-    (fun event -> context_host_mouse_down renderer node event)
-    host_node;
-  W.Element.addEventListener "pointerdown"
-    (fun event -> context_host_pointer_down renderer node state event)
-    host_node;
-  W.Element.addEventListener "pointermove"
-    (fun event -> context_host_pointer_move state event)
-    host_node;
-  W.Element.addEventListener "pointerup"
-    (fun event -> context_host_pointer_end state event)
-    host_node;
-  W.Element.addEventListener "pointercancel"
-    (fun event -> context_host_pointer_end state event)
-    host_node;
-  W.Element.addEventListener "click"
-    (fun event -> context_host_click state event)
-    host_node;
-  W.Element.addEventListener "contextmenu"
-    (fun event -> context_host_contextmenu renderer node event)
-    host_node;
-  W.Element.addKeyDownEventListener
-    (fun event -> context_host_keydown renderer node host_node event)
-    host_node
+(* Cheap membership check for the host wiring: only the ContextMenu child's
+   presence is needed to arm the listeners — the handlers still run the full
+   direct_context_menu check at event time. *)
+let has_context_menu_child renderer node =
+  match Store.node renderer.web_store node with
+  | Some current ->
+      Lui_sequence.exists
+        (fun child ->
+          match Store.node renderer.web_store child with
+          | Some child_node -> Store.standard_kind_is child_node ContextMenu
+          | None -> false)
+        current.retained_children
+  | None -> false
 
-let attach_context_host_events_bang = attach_context_host_events
+(* The host bundle is attached only while the node actually has a
+   ContextMenu child: most nodes never host a menu, so paying eight listener
+   registrations per element is pure mount cost. pointermove/up/cancel are
+   the transient half — they are bound on the touch pointerdown that arms a
+   long-press and removed again when the press ends. *)
+let ensure_context_host_events renderer node host_node =
+  if not (Hashtbl.mem renderer.web_context_hosts node) then begin
+    let state =
+      { timer = ref None; suppress_click = ref false;
+        touch_pointer = ref None; touch_origin_x = ref None;
+        touch_origin_y = ref None }
+    in
+    let transient_attached = ref false in
+    let pointer_end_ref = ref (fun (_event : Dom.event) -> ()) in
+    let pointer_move event = context_host_pointer_move state event in
+    let detach_transient () =
+      if !transient_attached then begin
+        transient_attached := false;
+        W.Element.removeEventListener "pointermove" pointer_move host_node;
+        W.Element.removeEventListener "pointerup" !pointer_end_ref host_node;
+        W.Element.removeEventListener "pointercancel" !pointer_end_ref
+          host_node
+      end
+    in
+    let pointer_end event =
+      context_host_pointer_end state event;
+      detach_transient ()
+    in
+    pointer_end_ref := pointer_end;
+    let mouse_down event = context_host_mouse_down renderer node event in
+    let pointer_down event =
+      context_host_pointer_down renderer node state event;
+      if !(state.touch_pointer) <> None && not !transient_attached then begin
+        transient_attached := true;
+        W.Element.addEventListener "pointermove" pointer_move host_node;
+        W.Element.addEventListener "pointerup" pointer_end host_node;
+        W.Element.addEventListener "pointercancel" pointer_end host_node
+      end
+    in
+    let click event = context_host_click state event in
+    let contextmenu event = context_host_contextmenu renderer node event in
+    let keydown event =
+      context_host_keydown renderer node host_node event
+    in
+    W.Element.addMouseDownEventListener mouse_down host_node;
+    W.Element.addEventListener "pointerdown" pointer_down host_node;
+    W.Element.addEventListener "click" click host_node;
+    W.Element.addEventListener "contextmenu" contextmenu host_node;
+    W.Element.addKeyDownEventListener keydown host_node;
+    Hashtbl.replace renderer.web_context_hosts node (fun () ->
+        cancel_context_touch state;
+        W.Element.removeMouseDownEventListener mouse_down host_node;
+        W.Element.removeEventListener "pointerdown" pointer_down host_node;
+        W.Element.removeEventListener "click" click host_node;
+        W.Element.removeEventListener "contextmenu" contextmenu host_node;
+        W.Element.removeKeyDownEventListener keydown host_node;
+        detach_transient ())
+  end
+
+let release_context_host_events renderer node =
+  match Hashtbl.find_opt renderer.web_context_hosts node with
+  | Some detach ->
+      Hashtbl.remove renderer.web_context_hosts node;
+      detach ()
+  | None -> ()
+
+(* Keep the host wiring in step with the node's ContextMenu child: present
+   child → attach once, no child → detach. *)
+let sync_context_host_events renderer node host_node =
+  if has_context_menu_child renderer node then
+    ensure_context_host_events renderer node host_node
+  else release_context_host_events renderer node
 
 (* --- context menu document-level wiring --- *)
 
