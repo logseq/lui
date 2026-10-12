@@ -292,12 +292,16 @@ let test_menu_panel () =
   let p = Lui_layout.run ~hidden:h store ~measure:no_measure ~width:200. ~height:100. in
   check (float eps) "panel hidden" 0. (place p 4).w;
   open_ := 4;
-  let p = Lui_layout.run ~hidden:h store ~measure:(fun _ _ _ -> Some (30., 10.)) ~width:200. ~height:100. in
+  (* The frame must leave room for the open panel below the trigger —
+     viewport clamping otherwise pulls it up to stay on-screen. *)
+  let p = Lui_layout.run ~hidden:h store ~measure:(fun _ _ _ -> Some (30., 10.)) ~width:200. ~height:400. in
   let trig = place p 3 and panel = place p 4 in
   (* anchored default: side below, 4pt offset *)
   check (float eps) "panel below" (trig.y +. trig.h +. 4.) panel.y;
-  check_rect "item1" panel.x panel.y panel.w 10. (place p 5);
-  check_rect "item3" panel.x (panel.y +. 20.) panel.w 10. (place p 7)
+  (* menu-item carries the 2rem min-height contract, so the measured
+     10px text grows to a 32px row. *)
+  check_rect "item1" panel.x panel.y panel.w 32. (place p 5);
+  check_rect "item3" panel.x (panel.y +. 64.) panel.w 32. (place p 7)
 
 
 (* AC menu row: scroll > column > wrap > horizontal extension row >

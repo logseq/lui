@@ -934,7 +934,8 @@ static CGColorSpaceRef lui_srgb(void)
 }
 
 /* sRGB gray for a relative luminance: the fill the context rasterizes
-   mask glyphs with, which decides how much font smoothing thickens. */
+   mask glyphs with, and the input to the coverage gain applied after
+   drawing (see below). */
 static double lui_shade_gray(double shade)
 {
   if (shade <= 0.0031308) return shade * 12.92;
@@ -1010,6 +1011,22 @@ CAMLprim value lui_ct_rasterize(value vfont, value vid, value vscale,
   CGPoint pos = CGPointMake((dx - left) / s, bottom / s);
   CTFontDrawGlyphs(font, &g, &pos, 1, ctx);
   CGContextRelease(ctx);
+
+  /* Font smoothing in an alpha-only context takes the fill's alpha
+     only — the gray above no longer biases dilation — so apply the
+     ink-luminance thickening directly: light ink optically shrinks on
+     dark surfaces, so coverage gains scale with shade (black ink is
+     untouched, and zero coverage stays zero). */
+  if (!color && smooth) {
+    double gain = 1.0 + 0.35 * gray;
+    if (gain > 1.0) {
+      unsigned char *px = (unsigned char *)Bytes_val(vbytes);
+      for (size_t i = 0; i < (size_t)w * (size_t)h; i++) {
+        int v = (int)(px[i] * gain + 0.5);
+        px[i] = (unsigned char)(v > 255 ? 255 : v);
+      }
+    }
+  }
 
   vtup = caml_alloc(6, 0);
   Store_field(vtup, 0, Val_int(left));
