@@ -752,6 +752,134 @@ let test_wheel_x () =
   Alcotest.(check (float 0.001)) "x reveal" 200.
     (Ui.scroll_offset_x ui 2)
 
+(* ---------- pixel snapping contract ---------- *)
+
+(* The stub layout snaps stored rects to device-pixel edges at
+   fractional scales, and stacked siblings share the snapped
+   boundary — the same edge the paint pass and scroll extents see. *)
+let test_snap_stub_layout () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Column);
+        CreateNode (3, Button); CreateNode (4, Button);
+        InsertChild (1, 2, 0); InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+        SetProp (2, PaddingValue, IntValue 3);
+        SetProp (3, HeightValue, IntValue 20);
+        SetProp (4, HeightValue, IntValue 20) ]
+  in
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:100 ~height:100 ~scale:1.5
+    ~measure:Layout.default_measure;
+  let aligned (r : rect) =
+    r.x = Float.round r.x && r.y = Float.round r.y
+    && r.w = Float.round r.w && r.h = Float.round r.h
+  in
+  List.iter
+    (fun id ->
+       Alcotest.(check bool)
+         (Printf.sprintf "node %d aligned" id) true
+         (aligned (Rects.get rects id)))
+    [ 1; 2; 3; 4 ];
+  let r3 = Rects.get rects 3 and r4 = Rects.get rects 4 in
+  (* pad 3 logical = 4.5 device px: node 3 spans 4.5..34.5 → 5..35,
+     node 4 starts exactly on that shared edge. *)
+  Alcotest.(check (float 0.001)) "shared edge" 35. (r3.y +. r3.h);
+  Alcotest.(check (float 0.001)) "shared edge" 35. r4.y
+
+(* The 0.5 px phantom scroll: a fractional cap — the overshoot a
+   fractional layout could leave — rounds onto the device-pixel grid
+   instead of opening a sub-pixel scroll range the rasterizer cannot
+   paint. *)
+let test_snap_phantom_scroll () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Scroll);
+        CreateNode (3, ListItem);
+        InsertChild (1, 2, 0); InsertChild (2, 3, 0) ]
+  in
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:100 ~height:100 ~scale:1.
+    ~measure:Layout.default_measure;
+  let ui = Ui.create () in
+  ignore (Ui.handle ui s rects (Input.Move (10., 10.)));
+  let epoch0 = Ui.scroll_epoch ui in
+  (* 0.4 px of range snaps shut: no scrollable range, no move. *)
+  Ui.set_scroll_cap ui 2 0.4;
+  Alcotest.(check (float 0.001)) "cap snapped shut" 0.
+    (Ui.scroll_cap ui 2);
+  ignore (Ui.handle ui s rects (Input.Wheel (0., -1.)));
+  Alcotest.(check (float 0.001)) "no phantom offset" 0.
+    (Ui.scroll_offset ui 2);
+  Alcotest.(check int) "no scroll epoch" epoch0 (Ui.scroll_epoch ui);
+  (* A fractional cap rounds to the pixel the content edges snapped
+     to. *)
+  Ui.set_scroll_cap ui 2 80.6;
+  Alcotest.(check (float 0.001)) "cap rounds" 81. (Ui.scroll_cap ui 2);
+  Ui.set_scroll_cap_x ui 2 40.4;
+  Alcotest.(check (float 0.001)) "x cap rounds" 40.
+    (Ui.scroll_cap_x ui 2)
+
+(* Hit-testing honours the snapped edges: a point inside the
+   fractional band the rect snapped away from belongs to the
+   neighbour the edge moved to — exactly where the rasterizer drew
+   the boundary. *)
+let test_snap_hit_boundary () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Column);
+        CreateNode (3, Button); CreateNode (4, Button);
+        InsertChild (1, 2, 0); InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+        SetProp (2, PaddingValue, IntValue 3);
+        SetProp (3, HeightValue, IntValue 20);
+        SetProp (4, HeightValue, IntValue 20) ]
+  in
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:100 ~height:100 ~scale:1.5
+    ~measure:Layout.default_measure;
+  (* the snapped boundary sits at device y 35: the fractional band
+     34.5..35 belongs to node 3 and the point just past it to node 4 —
+     unsnapped, the boundary would have been 34.5 and node 3's hit
+     strip would have ended where its painted edge does not. *)
+  Alcotest.(check (option int)) "below edge" (Some 3)
+    (hit s rects ~x:15. ~y:34.8);
+  Alcotest.(check (option int)) "on edge" (Some 4)
+    (hit s rects ~x:15. ~y:35.1)
+
+(* The caret rect is snapped before it reaches the IME state machine —
+   the candidate window anchors on the same device-pixel edges the
+   field painted. *)
+let test_snap_caret () =
+  let s, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  ignore
+    (Ui.handle ui s rects
+       (Input.Caret (rect 10.4 5.6 2.4 12.2)));
+  match (Ui.ime ui).Lui_ime.caret_rect with
+  | Some r ->
+    Alcotest.(check (float 0.001)) "x" 10. r.Lui_scene.x;
+    Alcotest.(check (float 0.001)) "y" 6. r.Lui_scene.y;
+    Alcotest.(check (float 0.001)) "w" 3. r.Lui_scene.w;
+    Alcotest.(check (float 0.001)) "h" 12. r.Lui_scene.h
+  | None -> Alcotest.fail "caret rect not recorded"
+
+(* Paint and hit-test resolve a placement through the same
+   [Lui_paint.resolve_rect]; its output is snapped, so a fractional
+   layout rect can never produce a strip the raster did not paint but
+   the hit-test still counts. *)
+let test_snap_resolve_parity () =
+  let s = demo_store () in
+  let p =
+    Lui_paint.placement_of_rect (rect 10.4 5.6 30.4 20.3)
+  in
+  let r =
+    Lui_paint.resolve_rect ~scale:1. ~viewport:(rect 0. 0. 200. 200.) s 3
+      "button" p (rect 0. 0. 200. 200.)
+  in
+  Alcotest.(check (float 0.001)) "x" 10. r.Lui_scene.x;
+  Alcotest.(check (float 0.001)) "y" 6. r.Lui_scene.y;
+  Alcotest.(check (float 0.001)) "w" 31. r.Lui_scene.w;
+  Alcotest.(check (float 0.001)) "h" 20. r.Lui_scene.h
+
 (* ---------- demo dispatch flow ---------- *)
 
 (* Boot the real demo app against a store-mirroring backend, then feed
@@ -987,7 +1115,7 @@ let test_headless_checksum () =
   (* the recorded value pins the demo's initial scene: any render-path
      change shows up here *)
   Alcotest.(check string) "golden"
-    "headless done: frames=6 checksum=e6ca6478011f11ad" c1
+    "headless done: frames=6 checksum=7b8b9dbbe6351aa5" c1
 
 (* ---------- multi-window ---------- *)
 
@@ -1340,7 +1468,7 @@ let test_headless_multi () =
   let out1 = run () and out2 = run () in
   (match win_done_lines out1 with
    | [ w0; w1 ] ->
-     Alcotest.(check string) "win0 golden" "e6ca6478011f11ad"
+     Alcotest.(check string) "win0 golden" "7b8b9dbbe6351aa5"
        (checksum_value w0);
      Alcotest.(check bool) "independent checksums" true
        (checksum_value w0 <> checksum_value w1)
@@ -2339,6 +2467,15 @@ let () =
       ( "scroll",
         [ Alcotest.test_case "wheel" `Quick test_scroll;
           Alcotest.test_case "wheel-x" `Quick test_wheel_x ] );
+      ( "snapping",
+        [ Alcotest.test_case "stub layout" `Quick test_snap_stub_layout;
+          Alcotest.test_case "phantom scroll" `Quick
+            test_snap_phantom_scroll;
+          Alcotest.test_case "hit boundary" `Quick
+            test_snap_hit_boundary;
+          Alcotest.test_case "caret" `Quick test_snap_caret;
+          Alcotest.test_case "resolve parity" `Quick
+            test_snap_resolve_parity ] );
       ( "demo",
         [ Alcotest.test_case "dispatch flow" `Quick test_demo_dispatch ] );
       ( "selection",

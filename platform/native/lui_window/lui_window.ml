@@ -383,6 +383,11 @@ module Layout = struct
     | None -> avail
 
   let rec layout_node store measure scale rects id (r : rect) =
+    (* Pixel-snapping contract: stored geometry is edge-snapped once at
+       production so the hit-test mirror, scroll extents, clip and
+       caret share the rasterizer's device-pixel edges. Children lay
+       out inside the snapped box. *)
+    let r = rect_snap r in
     Hashtbl.replace rects id r;
     match Lui_store.child_ids store id with
     | [] -> ()
@@ -554,6 +559,11 @@ module Ui = struct
   let scroll_cap_x t = Lui_scroll.cap t.scroll Lui_scroll.X
 
   let set_scroll_cap_axis t axis id cap =
+    (* Snapped-geometry contract: the scrollable range lives on the
+       same device-pixel edges as the rects it derives from — a
+       fractional remainder rounds out instead of becoming phantom
+       scroll range. *)
+    let cap = Float.max 0. (Lui_scene.snap cap) in
     let s', m = Lui_scroll.set_cap t.scroll axis id cap in
     t.scroll <- s';
     (* a clamped offset repaints — the intent can only be Repaint *)
@@ -966,7 +976,11 @@ module Ui = struct
        t.session <- s';
        run m
      | Input.Caret r ->
-       let s', m = Lui_text_input.feed_ime store t.session (`Caret r) in
+       (* The caret is painted geometry too: it snaps to the same
+          device-pixel edges as the rects it anchors on. *)
+       let s', m =
+         Lui_text_input.feed_ime store t.session (`Caret (rect_snap r))
+       in
        t.session <- s';
        run m
      | Input.Paste s ->

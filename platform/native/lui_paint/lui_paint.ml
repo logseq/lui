@@ -2243,6 +2243,13 @@ let popup_kind = function
    the hit-test mirror resolves placements identically — hit-testing
    shares this, and the two must never disagree on where a node sits. *)
 let resolve_rect ~scale ~viewport store id kind p parent_r =
+  (* The resolved display box is edge-snapped ([Lui_scene.rect_snap])
+     before it returns — the pixel-snapping contract. Paint, clip,
+     the hit-test mirror, scroll extents and damage bounds all consume
+     this same snapped geometry, so a fractional layout or a
+     scroll-shifted position can never diverge into a 0.5 px
+     paint/hit-test mismatch. *)
+  let r =
   match p.p_override with
   | Some r -> r
   | None -> (
@@ -2303,6 +2310,8 @@ let resolve_rect ~scale ~viewport store id kind p parent_r =
         | Some x, None -> { p.p_rect with x = x *. s }
         | None, Some y -> { p.p_rect with y = y *. s }
         | None, None -> p.p_rect)
+  in
+  rect_snap r
 
 let zindex store id =
   match Lui_store.prop store id "z-index" with
