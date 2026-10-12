@@ -248,6 +248,38 @@ let memory ~n ~item_h ~width ~height =
     row name "RSS after first frame" (mb after_frame) "MiB";
   ]
 
+(* Retained fragments: one visible node's color flips on a static
+   n-node tree — the P0-3 acceptance case. The fragment pass re-derives
+   only that node; the flat scene materialize still walks ops. *)
+let retained ~n ~item_h ~width ~height =
+  let name = Printf.sprintf "retained-%dk" (n / 1000) in
+  let t = H.create ~width ~height ~scale:1. () in
+  ignore (H.apply t (mount_rows ~n ~item_h ~text:(Some "row")));
+  ignore (H.layout t);
+  ignore (H.paint_retained t);
+  let flips = 10 in
+  let target = 10 + min 20 (n - 1) in
+  let pa, rp = (ref [], ref []) in
+  for i = 0 to flips - 1 do
+    let c = if i land 1 = 0 then "#ff5030" else "#2a2d33" in
+    ignore
+      (H.apply t
+         { generation = 2 + i;
+           ops = [ SetProp (target, BackgroundValue, StringValue c) ] });
+    let r0 = H.retained_repaints t in
+    pa := H.paint_retained t :: !pa;
+    rp := float_of_int (H.retained_repaints t - r0) :: !rp
+  done;
+  let full = H.paint t in
+  [
+    ms_row name "full paint (same frame)" full;
+    ms_row name "retained paint p50" (H.stats_of !pa).p50;
+    ms_row name "retained paint p95" (H.stats_of !pa).p95;
+    row name "nodes repainted/frame"
+      (f2 (H.stats_of !rp).mean)
+      "nodes";
+  ]
+
 (* ---------- suite ---------- *)
 
 let default_width = 1280
@@ -274,6 +306,10 @@ let all ?(scale_sizes = false) () =
       damage ~n:n5 ~item_h:20. ~width:w ~height:h;
       text ~n:ntx ~len:48 ~width:w ~height:h;
       first_frame ~n:n10 ~item_h:20. ~width:w ~height:h;
+      List.concat
+        (List.map
+           (fun n -> retained ~n ~item_h:20. ~width:w ~height:h)
+           (if scale_sizes then [ 10_000 ] else [ 10_000; 100_000 ]));
       memory ~n:nrss ~item_h:28. ~width:w ~height:h;
     ]
 

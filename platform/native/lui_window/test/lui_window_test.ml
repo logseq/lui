@@ -2348,6 +2348,13 @@ module Fake_layout = struct
       (Option.value ~default:Rects.zero (Hashtbl.find_opt t id))
 
   let rect t id = Hashtbl.find_opt t id
+
+  (* The stub re-places the whole tree every sync — every rect is
+     potentially fresh. *)
+  let take_rect_changes t =
+    let m = Hashtbl.create (Hashtbl.length t) in
+    Hashtbl.iter (fun id _ -> Hashtbl.replace m id ()) t;
+    m
 end
 
 let assembly_text : Assembly.text =
