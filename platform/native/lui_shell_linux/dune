@@ -2,7 +2,7 @@
  (name lui_shell_linux)
  (public_name lui.shell_linux)
  (modules lui_shell_linux)
- (libraries unix)
+ (libraries unix imagelib)
  (foreign_stubs
   (language c)
   (names lui_shell_linux_stubs)

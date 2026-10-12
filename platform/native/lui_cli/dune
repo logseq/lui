@@ -2,4 +2,4 @@
  (name lui_cli)
  (public_name lui.cli)
  (modules lui_cli)
- (libraries lui_pkg lui_pkg_linux lui_pkg_windows lui_updater lui_ed25519 unix))
+ (libraries lui_pkg lui_pkg_linux lui_pkg_windows lui_updater lui_ed25519 cmdliner unix))
