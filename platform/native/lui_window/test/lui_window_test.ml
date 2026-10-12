@@ -202,6 +202,64 @@ let test_hit () =
      Alcotest.failf "deep path %s"
        (String.concat "," (List.map string_of_int p)))
 
+let rects_of lst =
+  let t = Rects.create () in
+  List.iter (fun (id, r) -> Hashtbl.replace t id r) lst;
+  t
+
+(* DOM order [z2, z1]: the z2 node paints on top even though it is the
+   first child, so it must head the hit path — paint order, not store
+   order, decides who wins a click. *)
+let test_hit_z_order () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Stack);
+        CreateNode (3, Button); CreateNode (4, Button);
+        InsertChild (1, 2, 0);
+        InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+        SetProp (3, ZIndex, IntValue 2); SetProp (4, ZIndex, IntValue 1) ]
+  in
+  let r = rect 0. 0. 100. 40. in
+  let rects = rects_of [ (1, r); (2, r); (3, r); (4, r) ] in
+  Alcotest.(check (option int)) "z2 paints on top" (Some 3)
+    (hit s rects ~x:10. ~y:10.)
+
+(* A popover inside a clipped scroll container paints OUTSIDE the
+   clip — it is a promoted overlay. A click in that region must reach
+   the popover's child, not die on the scroll clip like an in-flow
+   child does. *)
+let test_hit_popup_escapes_clip () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Scroll);
+        CreateNode (3, Popover); CreateNode (4, Button);
+        InsertChild (1, 2, 0); InsertChild (2, 3, 0);
+        InsertChild (3, 4, 0) ]
+  in
+  let rects =
+    rects_of
+      [ (1, rect 0. 0. 100. 100.); (2, rect 0. 0. 100. 100.);
+        (3, rect 0. 120. 80. 30.); (4, rect 0. 130. 80. 10.) ]
+  in
+  Alcotest.(check (option int)) "popover's child hits" (Some 4)
+    (hit s rects ~x:10. ~y:135.)
+
+(* A mid-tree popup paints above siblings that come after it, so its
+   content wins the click even when a later sibling covers the same
+   spot. *)
+let test_hit_popup_promoted () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Popover);
+        CreateNode (3, Button); CreateNode (4, Button);
+        InsertChild (1, 2, 0); InsertChild (1, 4, 1);
+        InsertChild (2, 3, 0) ]
+  in
+  let r = rect 0. 0. 100. 100. in
+  let rects = rects_of [ (1, r); (2, r); (3, r); (4, r) ] in
+  Alcotest.(check (option int)) "popup over later sibling" (Some 3)
+    (hit s rects ~x:10. ~y:10.)
+
 (* ---------- event mapping ---------- *)
 
 let ui_store_fresh () =
@@ -1717,7 +1775,12 @@ let () =
         [ Alcotest.test_case "stack" `Quick test_layout;
           Alcotest.test_case "props" `Quick test_layout_props ] );
       ( "hit",
-        [ Alcotest.test_case "path" `Quick test_hit ] );
+        [ Alcotest.test_case "path" `Quick test_hit;
+          Alcotest.test_case "z-order" `Quick test_hit_z_order;
+          Alcotest.test_case "popup escapes clip" `Quick
+            test_hit_popup_escapes_clip;
+          Alcotest.test_case "popup promoted" `Quick
+            test_hit_popup_promoted ] );
       ( "events",
         [ Alcotest.test_case "click" `Quick test_click_press;
           Alcotest.test_case "release elsewhere" `Quick

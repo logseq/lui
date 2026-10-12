@@ -876,20 +876,20 @@ let open_window ~title ~idx =
             Some (Ui.pointer ui)
           | _ -> None));
   (* Populate the hit-test mirror from the layout engine: each node's
-     shifted rect clipped to its scrollable ancestors' viewports (so
-     scrolled-off content can't be hit), then each scroll container's
-     range on both axes from its unshifted content extent. Runs after
-     every repaint while the engine is fresh. *)
+     shifted rect resolved through the paint pass's placement, then
+     each scroll container's range on both axes from its unshifted
+     content extent. Clipping is NOT baked in: [Ui]'s hit walk
+     recomputes the exact stacking/clip context (clips kinds,
+     promoted popups escaping ancestor clips). Runs after every
+     repaint while the engine is fresh. *)
   let populate () =
     Hashtbl.reset rects;
     (* One preorder pass carrying the ancestors' accumulated scroll
-       offset and clip: the node's own offset shifts only its
-       children, and a scrollable node's already-stored mirror rect
-       becomes its descendants' clip — the same result the old
-       per-node ancestor walk produced, without re-summing the chain
-       for every node. Placement goes through the same
-       [Lui_paint.resolve_rect] the paint pass uses, so
-       position/inset, fixed and popup coordinates hit-test where
+       offset: the node's own offset shifts only its children —
+       the same result the old per-node ancestor walk produced,
+       without re-summing the chain for every node. Placement goes
+       through the same [Lui_paint.resolve_rect] the paint pass uses,
+       so position/inset, fixed and popup coordinates hit-test where
        they paint; [parent_r] is the parent's resolved box (a
        display:contents node forwards its own containing block). *)
     let scn = Lui_host.scene host in
@@ -897,7 +897,7 @@ let open_window ~title ~idx =
       Lui_scene.rect 0. 0. (float scn.Lui_scene.width)
         (float scn.Lui_scene.height)
     in
-    let rec visit id ~sx ~sy ~anc_clip ~parent_r =
+    let rec visit id ~sx ~sy ~parent_r =
       let base = engine_rect id in
       let shifted =
         { base with
@@ -909,28 +909,18 @@ let open_window ~title ~idx =
           (Lui_store.kind store id)
           (Lui_paint.placement_of_rect shifted) parent_r
       in
-      let stored = rect_intersect resolved anc_clip in
-      Hashtbl.replace rects id stored;
+      Hashtbl.replace rects id resolved;
       let sx' = sx +. Ui.scroll_offset_x ui id
       and sy' = sy +. Ui.scroll_offset ui id in
-      let anc_clip' =
-        if Ui.scrollable store id && not (Lui_scene.rect_empty stored)
-        then rect_intersect anc_clip stored
-        else anc_clip
-      in
       let child_parent =
         if Lui_paint.unboxed store id then parent_r else resolved
       in
       List.iter
-        (fun c ->
-           visit c ~sx:sx' ~sy:sy' ~anc_clip:anc_clip'
-             ~parent_r:child_parent)
+        (fun c -> visit c ~sx:sx' ~sy:sy' ~parent_r:child_parent)
         (Lui_store.child_ids store id)
     in
-    let everything = Lui_scene.rect (-.1e9) (-.1e9) 2e9 2e9 in
     List.iter
-      (fun id ->
-         visit id ~sx:0. ~sy:0. ~anc_clip:everything ~parent_r:viewport)
+      (fun id -> visit id ~sx:0. ~sy:0. ~parent_r:viewport)
       (Lui_store.root_ids store);
     List.iter
       (fun id ->
