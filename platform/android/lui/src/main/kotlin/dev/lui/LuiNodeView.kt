@@ -131,7 +131,7 @@ fun LuiNodeView(backend: LuiBackend, id: Long) {
  * child as a popup anchored to the long-press point.
  */
 @Composable
-private fun LuiChromeSurface(backend: LuiBackend, node: LuiNode, id: Long) {
+private fun LuiChromeSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
     var contextMenuAt by remember(id) { mutableStateOf<Offset?>(null) }
     val contextMenuId =
         node.children.firstOrNull { backend.node(it)?.kind == LuiNodeKind.contextMenu }
@@ -187,14 +187,14 @@ private data class LuiChildSlot(val index: Int, val count: Int)
 
 private val LocalLuiChildSlot = compositionLocalOf<LuiChildSlot?> { null }
 
-private fun gapOf(node: LuiNode): Int =
+private fun gapOf(node: LuiNodeLike): Int =
     node.prop("gap")?.intValue ?: if (LuiKindRules.isHorizontalGroupKind(node.kind)) {
         LuiKindRules.horizontalGroupDefaultGap(node.kind)
     } else {
         0
     }
 
-private fun emitValueChange(backend: LuiBackend, node: LuiNode, id: Long, value: Double) {
+private fun emitValueChange(backend: LuiBackend, node: LuiNodeLike, id: Long, value: Double) {
     if (!node.isEnabled()) return
     val emitted = when (node.kind) {
         LuiNodeKind.numberStepper -> {
@@ -240,7 +240,7 @@ private fun ColumnScope.GrowChildColumn(backend: LuiBackend, childId: Long) {
 @Composable
 private fun LuiNodeContent(
     backend: LuiBackend,
-    node: LuiNode,
+    node: LuiNodeLike,
     id: Long,
     modifier: Modifier,
 ) {
@@ -682,7 +682,7 @@ private fun crossHorizontalAlignment(name: String?): Alignment.Horizontal = when
 @Composable
 private fun LuiGrid(
     backend: LuiBackend,
-    node: LuiNode,
+    node: LuiNodeLike,
     modifier: Modifier,
     children: List<Long>,
 ) {
@@ -710,7 +710,7 @@ private fun LuiGrid(
 @Composable
 private fun LuiStackLike(
     backend: LuiBackend,
-    node: LuiNode,
+    node: LuiNodeLike,
     modifier: Modifier,
     children: List<Long>,
 ) {
@@ -778,7 +778,7 @@ private fun LuiStackLike(
 @Composable
 private fun LuiEdgeInset(
     backend: LuiBackend,
-    node: LuiNode,
+    node: LuiNodeLike,
     modifier: Modifier,
     children: List<Long>,
 ) {
@@ -821,7 +821,7 @@ private fun LuiEdgeInset(
 @Composable
 private fun LuiOverlay(
     backend: LuiBackend,
-    node: LuiNode,
+    node: LuiNodeLike,
     modifier: Modifier,
     children: List<Long>,
 ) {
@@ -847,7 +847,7 @@ private fun LuiOverlay(
 @Composable
 private fun LuiBubble(
     backend: LuiBackend,
-    node: LuiNode,
+    node: LuiNodeLike,
     modifier: Modifier,
     children: List<Long>,
 ) {
@@ -881,7 +881,7 @@ private fun LuiBubble(
 @Composable
 private fun LuiButton(
     backend: LuiBackend,
-    node: LuiNode,
+    node: LuiNodeLike,
     id: Long,
     modifier: Modifier,
     children: List<Long>,
@@ -1025,7 +1025,7 @@ private fun LuiButton(
 /** Toggle buttons keep a local selection so taps feel instant; the model
  * `selected` prop re-syncs on the next patch. */
 @Composable
-private fun LuiToggleButton(backend: LuiBackend, node: LuiNode, id: Long, modifier: Modifier) {
+private fun LuiToggleButton(backend: LuiBackend, node: LuiNodeLike, id: Long, modifier: Modifier) {
     val enabled = node.isEnabled()
     var selected by remember(id) { mutableStateOf(node.propBool("selected")) }
     val modelSelected = node.propBool("selected")
@@ -1048,7 +1048,7 @@ private fun LuiToggleButton(backend: LuiBackend, node: LuiNode, id: Long, modifi
 @Composable
 private fun LuiTextControl(
     backend: LuiBackend,
-    node: LuiNode,
+    node: LuiNodeLike,
     id: Long,
     modifier: Modifier,
 ) {
@@ -1153,7 +1153,7 @@ private fun LuiTextControl(
 }
 
 @Composable
-private fun LuiSelect(backend: LuiBackend, node: LuiNode, id: Long, modifier: Modifier) {
+private fun LuiSelect(backend: LuiBackend, node: LuiNodeLike, id: Long, modifier: Modifier) {
     val enabled = node.isEnabled()
     val title = node.propString("accessibility-label") ?: node.propString("placeholder") ?: ""
     val value = node.text().ifEmpty { node.propString("placeholder") ?: "" }
@@ -1190,7 +1190,7 @@ internal fun LuiMenuEntry(backend: LuiBackend, childId: Long) {
 }
 
 @Composable
-private fun LuiMenuItem(backend: LuiBackend, node: LuiNode, id: Long, modifier: Modifier) {
+private fun LuiMenuItem(backend: LuiBackend, node: LuiNodeLike, id: Long, modifier: Modifier) {
     val submenuId =
         node.children.firstOrNull { backend.node(it)?.kind == LuiNodeKind.dropdownMenu }
     val enabled = node.isEnabled()
@@ -1243,7 +1243,7 @@ private fun LuiMenuItem(backend: LuiBackend, node: LuiNode, id: Long, modifier: 
 }
 
 @Composable
-private fun LuiMenuTrigger(backend: LuiBackend, node: LuiNode, id: Long, modifier: Modifier) {
+private fun LuiMenuTrigger(backend: LuiBackend, node: LuiNodeLike, id: Long, modifier: Modifier) {
     val menuId = node.children.firstOrNull { backend.node(it)?.kind == LuiNodeKind.dropdownMenu }
     val enabled = node.isEnabled()
     val icon = node.propString("icon")?.let { backend.icons.icon(it) }
@@ -1321,7 +1321,7 @@ private fun LuiMenuTrigger(backend: LuiBackend, node: LuiNode, id: Long, modifie
 @Composable
 private fun LuiListItem(
     backend: LuiBackend,
-    node: LuiNode,
+    node: LuiNodeLike,
     id: Long,
     modifier: Modifier,
     children: List<Long>,
@@ -1374,7 +1374,7 @@ private fun LuiListItem(
 }
 
 @Composable
-private fun LuiAvatar(backend: LuiBackend, node: LuiNode, modifier: Modifier) {
+private fun LuiAvatar(backend: LuiBackend, node: LuiNodeLike, modifier: Modifier) {
     val image = backend.images[node.propInt("image")]
     Box(
         modifier.size(40.dp).clip(CircleShape)
@@ -1401,7 +1401,7 @@ private fun LuiAvatar(backend: LuiBackend, node: LuiNode, modifier: Modifier) {
 }
 
 @Composable
-private fun LuiImage(backend: LuiBackend, node: LuiNode, modifier: Modifier) {
+private fun LuiImage(backend: LuiBackend, node: LuiNodeLike, modifier: Modifier) {
     val bitmap = backend.images[node.propInt("image")]
     val alt = node.propString("alt") ?: node.propString("accessibility-label")
     if (bitmap != null) {
@@ -1420,7 +1420,7 @@ private fun LuiImage(backend: LuiBackend, node: LuiNode, modifier: Modifier) {
 }
 
 @Composable
-private fun LuiFileImage(backend: LuiBackend, node: LuiNode, modifier: Modifier) {
+private fun LuiFileImage(backend: LuiBackend, node: LuiNodeLike, modifier: Modifier) {
     val path = backend.filePathResolver?.invoke(node.propString("path") ?: "")
         ?: node.propString("path") ?: ""
     val maxPixel = node.propInt("max-pixel-size", 1024)
@@ -1469,7 +1469,7 @@ private fun decodeSampled(path: String, maxPixel: Int): ImageBitmap? {
 }
 
 @Composable
-private fun LuiMediaSurface(backend: LuiBackend, node: LuiNode, modifier: Modifier) {
+private fun LuiMediaSurface(backend: LuiBackend, node: LuiNodeLike, modifier: Modifier) {
     val frame = backend.mediaSurfaces[node.propInt("surface")]
     if (frame != null) {
         Image(
@@ -1484,7 +1484,7 @@ private fun LuiMediaSurface(backend: LuiBackend, node: LuiNode, modifier: Modifi
 }
 
 @Composable
-private fun LuiStep(backend: LuiBackend, node: LuiNode, id: Long, modifier: Modifier) {
+private fun LuiStep(backend: LuiBackend, node: LuiNodeLike, id: Long, modifier: Modifier) {
     val slot = LocalLuiChildSlot.current
     val parent = node.parent?.let { backend.node(it) }
     val index = slot?.index ?: parent?.children?.indexOf(id) ?: 0
@@ -1555,7 +1555,7 @@ private fun LuiStep(backend: LuiBackend, node: LuiNode, id: Long, modifier: Modi
 }
 
 @Composable
-private fun LuiTimelineItem(backend: LuiBackend, node: LuiNode, id: Long, modifier: Modifier) {
+private fun LuiTimelineItem(backend: LuiBackend, node: LuiNodeLike, id: Long, modifier: Modifier) {
     val variantColor = when (node.propString("variant")) {
         "primary" -> MaterialTheme.colorScheme.primary
         "destructive" -> MaterialTheme.colorScheme.error
@@ -1657,7 +1657,7 @@ private fun LuiTimelineItem(backend: LuiBackend, node: LuiNode, id: Long, modifi
 @Composable
 private fun LuiInputGroup(
     backend: LuiBackend,
-    node: LuiNode,
+    node: LuiNodeLike,
     modifier: Modifier,
     children: List<Long>,
 ) {
@@ -1674,7 +1674,7 @@ private fun LuiInputGroup(
 }
 
 @Composable
-private fun LuiBottomTabs(backend: LuiBackend, node: LuiNode, modifier: Modifier) {
+private fun LuiBottomTabs(backend: LuiBackend, node: LuiNodeLike, modifier: Modifier) {
     val destinationIds = node.children
     val selectedIndex = destinationIds.indexOfFirst {
         backend.node(it)?.propBool("selected") == true
@@ -1707,7 +1707,7 @@ private fun LuiBottomTabs(backend: LuiBackend, node: LuiNode, modifier: Modifier
 @Composable
 private fun LuiAccordion(
     backend: LuiBackend,
-    node: LuiNode,
+    node: LuiNodeLike,
     id: Long,
     modifier: Modifier,
     children: List<Long>,
@@ -1739,7 +1739,7 @@ private fun LuiAccordion(
 @Composable
 private fun LuiTableRow(
     backend: LuiBackend,
-    node: LuiNode,
+    node: LuiNodeLike,
     id: Long,
     modifier: Modifier,
     children: List<Long>,
@@ -1767,7 +1767,7 @@ private fun LuiTableRow(
 }
 
 @Composable
-private fun LuiTableCell(backend: LuiBackend, node: LuiNode, id: Long, modifier: Modifier) {
+private fun LuiTableCell(backend: LuiBackend, node: LuiNodeLike, id: Long, modifier: Modifier) {
     val enabled = node.isEnabled()
     Text(
         node.text(),
@@ -1797,7 +1797,7 @@ private fun LuiTableCell(backend: LuiBackend, node: LuiNode, id: Long, modifier:
 @Composable
 private fun LuiDrawer(
     backend: LuiBackend,
-    node: LuiNode,
+    node: LuiNodeLike,
     id: Long,
     modifier: Modifier,
     children: List<Long>,
@@ -1849,7 +1849,7 @@ private fun LuiDrawer(
 @Composable
 private fun LuiSplit(
     backend: LuiBackend,
-    node: LuiNode,
+    node: LuiNodeLike,
     id: Long,
     modifier: Modifier,
     children: List<Long>,
@@ -1894,7 +1894,7 @@ private fun LuiSplit(
 @Composable
 private fun LuiToast(
     backend: LuiBackend,
-    node: LuiNode,
+    node: LuiNodeLike,
     id: Long,
     modifier: Modifier,
     children: List<Long>,
@@ -1924,7 +1924,7 @@ private fun LuiToast(
 @Composable
 private fun LuiToolbar(
     backend: LuiBackend,
-    node: LuiNode,
+    node: LuiNodeLike,
     modifier: Modifier,
     children: List<Long>,
 ) {
@@ -1963,7 +1963,7 @@ private fun LuiToolbar(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LuiModalSurface(backend: LuiBackend, node: LuiNode, id: Long) {
+private fun LuiModalSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
     val onDismiss = { backend.emit(LuiEvent.Dismiss(id)) }
     when (node.kind) {
         LuiNodeKind.dialog -> AlertDialog(

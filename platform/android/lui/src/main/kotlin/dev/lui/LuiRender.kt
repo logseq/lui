@@ -59,22 +59,22 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
-internal fun LuiNode.prop(name: String): LuiWireValue? = properties[name]
+internal fun LuiNodeLike.prop(name: String): LuiWireValue? = properties[name]
 
-internal fun LuiNode.propString(name: String): String? = properties[name]?.stringValue
+internal fun LuiNodeLike.propString(name: String): String? = properties[name]?.stringValue
 
-internal fun LuiNode.propBool(name: String, default: Boolean = false): Boolean =
+internal fun LuiNodeLike.propBool(name: String, default: Boolean = false): Boolean =
     properties[name]?.boolValue ?: default
 
-internal fun LuiNode.propInt(name: String, default: Int = 0): Int =
+internal fun LuiNodeLike.propInt(name: String, default: Int = 0): Int =
     properties[name]?.intValue ?: default
 
-internal fun LuiNode.propDouble(name: String, default: Double = 0.0): Double =
+internal fun LuiNodeLike.propDouble(name: String, default: Double = 0.0): Double =
     properties[name]?.doubleValue ?: default
 
-internal fun LuiNode.text(): String = propString("text") ?: ""
+internal fun LuiNodeLike.text(): String = propString("text") ?: ""
 
-internal fun LuiNode.isEnabled(): Boolean = propBool("enabled", true)
+internal fun LuiNodeLike.isEnabled(): Boolean = propBool("enabled", true)
 
 internal fun overlayAlignment(name: String?): Alignment = when (name) {
     "top-leading" -> Alignment.TopStart
@@ -109,7 +109,7 @@ private fun defaultPadding(kind: LuiNodeKind): Int = when (kind) {
  * decoration paints under the padding.
  */
 @Composable
-internal fun Modifier.luiChrome(node: LuiNode): Modifier {
+internal fun Modifier.luiChrome(node: LuiNodeLike): Modifier {
     // On `drawer` the `width` prop is the side panel's width (LuiDrawer reads
     // it for the Surface), not the element's own size — the drawer container
     // always fills its parent. Mirrors the SwiftUI backend where width only
@@ -211,7 +211,7 @@ internal fun Modifier.luiChrome(node: LuiNode): Modifier {
 @Composable
 internal fun Modifier.luiGestures(
     backend: LuiBackend,
-    node: LuiNode,
+    node: LuiNodeLike,
     id: Long,
     onContextMenu: (Offset) -> Unit = {},
 ): Modifier {
@@ -285,7 +285,7 @@ internal fun Modifier.luiGestures(
 
 /** Emits `Appear` once when an `appear-enabled` node first composes. */
 @Composable
-internal fun LuiAppear(backend: LuiBackend, node: LuiNode, id: Long) {
+internal fun LuiAppear(backend: LuiBackend, node: LuiNodeLike, id: Long) {
     if (node.propBool("appear-enabled")) {
         LaunchedEffect(id) { backend.emit(LuiEvent.Appear(id)) }
     }
@@ -297,7 +297,7 @@ internal fun LuiAppear(backend: LuiBackend, node: LuiNode, id: Long) {
  * appearance — a port of `LUIThemeScopeModifier`.
  */
 @Composable
-internal fun LuiThemeScope(node: LuiNode, content: @Composable () -> Unit) {
+internal fun LuiThemeScope(node: LuiNodeLike, content: @Composable () -> Unit) {
     val props = node.properties
     val themeSource = props["theme"]?.stringValue
     val themeMode = props["theme-mode"]?.stringValue

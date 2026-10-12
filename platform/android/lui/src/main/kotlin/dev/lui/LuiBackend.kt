@@ -1,11 +1,9 @@
 package dev.lui
 
-import android.graphics.BitmapFactory
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.key
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.setValue
@@ -31,27 +29,43 @@ class LuiBackend(
 ) {
     internal var tree = LuiRetainedTree(extensions)
         private set
-    private data class ObservedNode(val node: LuiNode?, val extension: LuiExtensionNode?) {
-        /** Content-wise comparison: apply() copies every touched record, so
-         * the default data-class equality (referential on the node fields)
-         * would treat value-identical ops as changes. */
-        fun contentEquals(other: ObservedNode): Boolean =
-            node.contentEquals(other.node) && extension.contentEquals(other.extension)
+    /** Structural half of a published node: kind, parent link and child
+     * order. A batch that only mutates properties leaves this state
+     * untouched, so parent scans of `kind`/`children` are not invalidated
+     * by property writes on the child. */
+    private data class LuiNodeStructure(
+        val kind: LuiNodeKind,
+        val parent: Long?,
+        val children: List<Long>,
+    )
 
-        private fun LuiNode?.contentEquals(other: LuiNode?): Boolean =
-            this == other ||
-                (this != null && other != null &&
-                    kind == other.kind && parent == other.parent &&
-                    children == other.children && properties == other.properties)
+    private data class LuiExtensionStructure(
+        val identifier: String,
+        val parent: Long?,
+        val children: List<Long>,
+    )
 
-        private fun LuiExtensionNode?.contentEquals(other: LuiExtensionNode?): Boolean =
-            this == other ||
-                (this != null && other != null &&
-                    identifier == other.identifier &&
-                    fingerprint == other.fingerprint && parent == other.parent &&
-                    children == other.children && properties == other.properties)
+    /** Per-node snapshot states backing [node]/[extensionNode]. The store
+     * copies a record before mutating it, so the published child lists and
+     * property maps are effectively immutable once written, and structural
+     * equality on the states skips invalidation for value-identical ops. */
+    private class NodeObservation {
+        val structure = mutableStateOf<LuiNodeStructure?>(null)
+        val extension = mutableStateOf<LuiExtensionStructure?>(null)
+        val props = mutableStateOf<Map<String, LuiWireValue>>(emptyMap())
+
+        /** Live view handed out by [LuiBackend.node]: getters read the two
+         * states lazily so a reader subscribes only to the side it touches. */
+        val nodeView = object : LuiNodeLike {
+            override val kind: LuiNodeKind get() = structure.value!!.kind
+            override val parent: Long? get() = structure.value?.parent
+            override val children: List<Long>
+                get() = structure.value?.children ?: emptyList()
+            override val properties: Map<String, LuiWireValue> get() = props.value
+        }
     }
-    private val observedNodes = mutableMapOf<Long, MutableState<ObservedNode>>()
+
+    private val observedNodes = mutableMapOf<Long, NodeObservation>()
     private var roots by mutableStateOf<List<Long>>(emptyList())
 
     /** Host-registered raster images, keyed by the `image` prop id. */
@@ -66,22 +80,37 @@ class LuiBackend(
     internal var lastError: String? = null
         private set
 
-    private fun observed(id: Long): ObservedNode = observedNodes.getOrPut(id) {
-        mutableStateOf(ObservedNode(tree.node(id), tree.extensionNode(id)))
-    }.value
+    private fun observed(id: Long): NodeObservation = observedNodes.getOrPut(id) {
+        NodeObservation().also { refresh(it, id) }
+    }
 
-    fun node(id: Long): LuiNode? = observed(id).node
-    fun extensionNode(id: Long): LuiExtensionNode? = observed(id).extension
+    private fun refresh(obs: NodeObservation, id: Long) {
+        val node = tree.node(id)
+        val extension = tree.extensionNode(id)
+        obs.structure.value =
+            node?.let { LuiNodeStructure(it.kind, it.parent, it.children) }
+        obs.extension.value =
+            extension?.let { LuiExtensionStructure(it.identifier, it.parent, it.children) }
+        obs.props.value = node?.properties ?: extension?.properties ?: emptyMap()
+    }
+
+    fun node(id: Long): LuiNodeLike? {
+        val obs = observed(id)
+        return if (obs.structure.value != null) obs.nodeView else null
+    }
+
+    fun extensionNode(id: Long): LuiExtensionNode? {
+        val obs = observed(id)
+        // Read both states so callers stay subscribed to structural and
+        // property mutations even though the retained record is returned.
+        obs.extension.value ?: return null
+        obs.props.value
+        return tree.extensionNode(id)
+    }
 
     private fun publish(changed: Set<Long>, dropped: Set<Long> = tree.lastDropped) =
         Snapshot.withMutableSnapshot {
-            changed.forEach { id ->
-                val state = observedNodes[id] ?: return@forEach
-                val next = ObservedNode(tree.node(id), tree.extensionNode(id))
-                // Skip the write for value-identical ops so readers are not
-                // invalidated by no-op patches.
-                if (!state.value.contentEquals(next)) state.value = next
-            }
+            changed.forEach { id -> observedNodes[id]?.let { refresh(it, id) } }
             // Let entries for dropped/detached nodes go so the table shrinks.
             dropped.forEach { observedNodes.remove(it) }
             roots = tree.rootIds
