@@ -381,8 +381,7 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
       justify_content =
         (match pstr store id "main" with
          | Some s -> justify_of_string s
-         | None -> (
-           | _ -> d.justify_content));
+         | None -> d.justify_content);
       align_items =
         (match pstr store id "cross" with
          | Some s -> align_of_string s
