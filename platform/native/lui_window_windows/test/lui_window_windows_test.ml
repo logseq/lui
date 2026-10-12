@@ -536,7 +536,20 @@ let test_headless_checksum () =
   let r2 = run_headless frames headless_script in
   Alcotest.(check bool) "scene painted" true (r1.ops > 0);
   Alcotest.(check int64) "deterministic" r1.checksum r2.checksum;
-  Alcotest.(check int) "same ops" r1.ops r2.ops
+  Alcotest.(check int) "same ops" r1.ops r2.ops;
+  (* the scripted input is replayed identically: one action list per
+     scripted event, the same focus and the same resulting store *)
+  Alcotest.(check (list int)) "same actions per event"
+    (List.map List.length r1.acted) (List.map List.length r2.acted);
+  Alcotest.(check int) "one action list per event"
+    (List.length headless_script) (List.length r1.acted);
+  Alcotest.(check int) "same focus" (Ui.focused r1.ui) (Ui.focused r2.ui);
+  let texts st =
+    List.map (fun id -> Lui_store.string_prop st id "text")
+      (Lui_store.preorder st)
+  in
+  Alcotest.(check (list (option string))) "same store text"
+    (texts r1.store) (texts r2.store)
 
 let show_event = function
   | TextChanged (id, s) -> Printf.sprintf "TextChanged(%d,%S)" id s
