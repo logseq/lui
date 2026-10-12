@@ -533,21 +533,30 @@ let build ?(wide = false) (s : t) : batch list =
 
 (* The packed layout of one instance for the instance buffer: rect,
    radii, inner, color, color2, border, grad, uv, clip, clip_radii,
-   params, clip2, clip2_radii, clip3, clip3_radii, rounded to float32. *)
-let to_float32_array (i : instance) : float array =
-  let b = Bigarray.(Array1.create float32 c_layout instance_floats) in
-  let k = ref 0 in
+   params, clip2, clip2_radii, clip3, clip3_radii, rounded to float32.
+   Writes straight into the caller's destination — the renderers own
+   one big instance buffer, so the field list lives here exactly once
+   with no staging array. *)
+let pack_instance (i : instance)
+    (dst :
+      (float, Bigarray.float32_elt, Bigarray.c_layout)
+      Bigarray.Array1.t) ~ofs =
+  let k = ref ofs in
   let put (x, y, z, w) =
-    Bigarray.Array1.set b !k x;
-    Bigarray.Array1.set b (!k + 1) y;
-    Bigarray.Array1.set b (!k + 2) z;
-    Bigarray.Array1.set b (!k + 3) w;
+    Bigarray.Array1.set dst !k x;
+    Bigarray.Array1.set dst (!k + 1) y;
+    Bigarray.Array1.set dst (!k + 2) z;
+    Bigarray.Array1.set dst (!k + 3) w;
     k := !k + 4
   in
   put i.rect; put i.radii; put i.inner; put i.color; put i.color2;
   put i.border; put i.grad; put i.uv; put i.clip; put i.clip_radii;
   put i.params; put i.clip2; put i.clip2_radii; put i.clip3;
-  put i.clip3_radii;
+  put i.clip3_radii
+
+let to_float32_array (i : instance) : float array =
+  let b = Bigarray.(Array1.create float32 c_layout instance_floats) in
+  pack_instance i b ~ofs:0;
   Array.init instance_floats (fun j -> Bigarray.Array1.get b j)
 
 let shader_source = Shader_source.source

@@ -125,6 +125,14 @@ val build : ?wide:bool -> Lui_scene.t -> batch list
     the sRGB gamut (the scene's wide list) in place of their nearest
     sRGB colors, for a target that keeps them. *)
 
+val pack_instance : instance ->
+  (float, Bigarray.float32_elt, Bigarray.c_layout) Bigarray.Array1.t ->
+  ofs:int -> unit
+(** [pack_instance i dst ~ofs] writes [i]'s packed layout
+    ({!instance_floats} float32s) straight into the destination
+    instance buffer — the path renderers take, with no intermediate
+    array copies. *)
+
 val to_float32_array : instance -> float array
 (** The packed layout of one instance for the instance buffer — rect,
     radii, inner, color, color2, border, grad, uv, clip, clip_radii,
