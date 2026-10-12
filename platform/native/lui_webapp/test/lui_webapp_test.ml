@@ -376,13 +376,11 @@ let test_boot_fallback () =
 
 let cli_exe () = Filename.dirname Sys.executable_name / ".." / "main.exe"
 
+(* Spawn the launcher directly: no [sh -c] indirection, whose quoting
+   and path translation of a native Windows path is shell-dependent
+   (a fresh Cygwin sh exits 127 on it). *)
 let run_cli args =
-  let cmd =
-    List.fold_left
-      (fun acc a -> acc ^ " " ^ Filename.quote a)
-      (Filename.quote (cli_exe ())) args
-  in
-  let r = P.Proc.run "sh" [ "-c"; cmd ] in
+  let r = P.Proc.run (cli_exe ()) args in
   (r.P.Proc.status, String.trim (r.P.Proc.stdout ^ r.P.Proc.stderr))
 
 let test_cli_errors () =

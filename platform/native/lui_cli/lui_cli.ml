@@ -76,258 +76,248 @@ module Args = struct
     | "windows" | "win" | "mingw" | "mingw64" -> Ok P_windows
     | s -> Error (fmt "unknown --platform %S (auto|mac|linux|windows)" s)
 
-  (** Option scanner: tokens are long options ["--x"], ["--x=v"], or
-      bare positionals; ["--"] ends option processing. Returns
-      (flags present, params present, positionals). *)
-  module SMap = Stdlib.Map.Make (String)
+  (* Command-line syntax is Cmdliner's: each subcommand below is a
+     [Cmd.v] whose term builds the spec record, and [parse] evaluates
+     the whole command group on an argv rebuilt from the token list —
+     tests drive the same parser the binary runs, and Cmdliner owns
+     option scanning, [--opt=value] splitting, positional arity and
+     the generated manpages that [usage]/[usage_of] render. *)
+  open Cmdliner
 
-  let scan ~flags ~params args =
-    let is_flag a = List.mem a flags in
-    let is_param a = List.mem a params in
-    let rec loop fl pa pos = function
-      | [] -> Ok (fl, pa, List.rev pos)
-      | "--" :: rest -> Ok (fl, pa, List.rev pos @ rest)
-      | a :: rest when String.length a > 2 && String.sub a 0 2 = "--" ->
-        (match String.index_opt a '=' with
-         | Some i ->
-           let k = String.sub a 2 (i - 2) and v = String.sub a (i + 1) (String.length a - i - 1) in
-           if is_param k then loop fl (SMap.add k v pa) pos rest
-           else if is_flag k then
-             (match bool_of_string_opt v with
-              | Some b -> loop (SMap.add k b fl) pa pos rest
-              | None -> Error (fmt "flag --%s takes no value" k))
-           else Error (fmt "unknown option --%s" k)
-         | None ->
-           let k = String.sub a 2 (String.length a - 2) in
-           if is_flag k then loop (SMap.add k true fl) pa pos rest
-           else if is_param k then
-             (match rest with
-              | v :: rest' -> loop fl (SMap.add k v pa) pos rest'
-              | [] -> Error (fmt "option --%s needs a value" k))
-           else Error (fmt "unknown option --%s" k))
-      | a :: _ when String.length a > 1 && a.[0] = '-' ->
-        Error (fmt "unknown option %S" a)
-      | a :: rest -> loop fl pa (a :: pos) rest
+  let ( let+ ) t f = Term.app (Term.const f) t
+  let ( and+ ) a b = Term.product a b
+
+  let dir_pos doc =
+    Arg.(value & pos 0 string "." & info [] ~docv:"DIR" ~doc)
+
+  let init_cmd =
+    let name =
+      Arg.(value & opt (some string) None
+           & info [ "name" ] ~docv:"NAME" ~doc:"application name")
+    and dir =
+      Arg.(value & opt (some string) None
+           & info [ "dir" ] ~docv:"DIR" ~doc:"target directory")
+    and force =
+      Arg.(value & flag
+           & info [ "force" ] ~doc:"allow a non-empty target directory")
     in
-    loop SMap.empty SMap.empty [] args
+    let make name dir force pos =
+      Init { i_name = name; i_force = force;
+             i_dir = Option.value ~default:pos dir }
+    in
+    Cmd.v
+      (Cmd.info "init" ~doc:"scaffold a minimal app")
+      (let+ name and+ dir and+ force
+       and+ pos = dir_pos "target directory" in
+       make name dir force pos)
 
-  let get_flag m k = Option.value ~default:false (SMap.find_opt k m)
-  let get_param m k = SMap.find_opt k m
-  let no_extra_positionals what pos =
-    match pos with
-    | [] | [ _ ] -> Ok ()
-    | _ -> Error (fmt "%s takes at most one argument" what)
+  let dev_cmd =
+    let exe =
+      Arg.(value & opt string "main.exe"
+           & info [ "exe" ] ~docv:"NAME"
+               ~doc:"exe under _build/default to (re)start")
+    in
+    Cmd.v
+      (Cmd.info "dev" ~doc:"rebuild on change and restart the app")
+      (let+ exe and+ dir = dir_pos "project directory" in
+       Dev { d_dir = dir; d_exe = exe })
 
-  let dir_arg pos ~default =
-    match pos with [] -> default | [ d ] -> d | _ -> default
+  let build_cmd =
+    let release =
+      Arg.(value & flag
+           & info [ "release" ] ~doc:"build with the release profile")
+    in
+    Cmd.v
+      (Cmd.info "build" ~doc:"build the app once")
+      (let+ release and+ dir = dir_pos "project directory" in
+       Build { b_dir = dir; b_release = release })
 
-  let parse_init args =
-    match
-      scan ~flags:[ "force" ] ~params:[ "name"; "dir" ] args
-    with
-    | Error e -> Error e
-    | Ok (fl, pa, pos) ->
-      (match no_extra_positionals "init" pos with
-       | Error e -> Error e
-       | Ok () ->
-         let i_dir =
-           match get_param pa "dir", pos with
-           | Some d, _ -> d
-           | None, [ d ] -> d
-           | None, _ -> "."
-         in
-         Ok (Init { i_name = get_param pa "name"; i_dir;
-                    i_force = get_flag fl "force" }))
+  let package_cmd =
+    let platform =
+      Arg.(value & opt (some string) None
+           & info [ "platform" ] ~docv:"auto|mac|linux|windows"
+               ~doc:"target platform (default: host)")
+    and sign =
+      Arg.(value & opt (some string) None
+           & info [ "sign" ] ~docv:"IDENTITY" ~doc:"signing identity")
+    and out =
+      Arg.(value & opt (some string) None
+           & info [ "out" ] ~docv:"DIR" ~doc:"output directory")
+    and pname =
+      Arg.(value & opt (some string) None
+           & info [ "name" ] ~docv:"NAME" ~doc:"application name")
+    and bundle_id =
+      Arg.(value & opt (some string) None
+           & info [ "bundle-id" ] ~docv:"ID" ~doc:"bundle identifier")
+    and version =
+      Arg.(value & opt (some string) None
+           & info [ "version" ] ~docv:"VER" ~doc:"short version (semver)")
+    and icon =
+      Arg.(value & opt (some string) None
+           & info [ "icon" ] ~docv:"PNG" ~doc:"source PNG for the icon")
+    and exe =
+      Arg.(value & opt (some string) None
+           & info [ "exe" ] ~docv:"PATH" ~doc:"built binary to package")
+    and webview =
+      Arg.(value & flag
+           & info [ "webview" ] ~doc:"bundle DIR/web/ as assets")
+    and no_build =
+      Arg.(value & flag
+           & info [ "no-build" ] ~doc:"skip the dune build step")
+    in
+    let fmt_flag name doc =
+      Arg.(value & flag & info [ name ] ~doc)
+    in
+    let f_dmg = fmt_flag "dmg" "disk image (macOS)"
+    and f_zip = fmt_flag "zip" "zip archive (windows)"
+    and f_deb = fmt_flag "deb" "deb package (linux)"
+    and f_tar = fmt_flag "tar" "tarball (linux)"
+    and f_appimage = fmt_flag "appimage" "AppImage (linux)"
+    and f_msix = fmt_flag "msix" "MSIX package (windows)"
+    and f_nsis = fmt_flag "nsis" "NSIS installer (windows)" in
+    let make platform sign out pname bundle_id version icon exe webview
+        no_build dir f_dmg f_zip f_deb f_tar f_appimage f_msix f_nsis =
+      let fmts =
+        List.filter_map
+          (fun (b, f) -> if b then Some f else None)
+          [ (f_dmg, F_dmg); (f_zip, F_zip); (f_deb, F_deb); (f_tar, F_tar);
+            (f_appimage, F_appimage); (f_msix, F_msix); (f_nsis, F_nsis) ]
+      in
+      match fmts with
+      | _ :: _ :: _ ->
+        Error (`Msg "package takes at most one artifact format flag")
+      | _ ->
+        (match
+           match platform with
+           | None -> Ok P_auto
+           | Some p ->
+             (match parse_platform p with
+              | Ok v -> Ok v
+              | Error e -> Error (`Msg e))
+         with
+         | Error e -> Error e
+         | Ok p_platform ->
+           Ok
+             (Package
+                { p_dir = dir; p_platform;
+                  p_format =
+                    (match fmts with [] -> F_auto | f :: _ -> f);
+                  p_out =
+                    Option.value ~default:(dir / "dist") out;
+                  p_webview = webview;
+                  p_sign = sign; p_name = pname; p_bundle_id = bundle_id;
+                  p_version = version; p_icon = icon; p_exe = exe;
+                  p_build = not no_build }))
+    in
+    Cmd.v
+      (Cmd.info "package" ~doc:"produce a distributable artifact")
+      (Term.term_result
+         (let+ platform and+ sign and+ out and+ pname and+ bundle_id
+          and+ version and+ icon and+ exe and+ webview and+ no_build
+          and+ dir = dir_pos "project directory"
+          and+ f_dmg and+ f_zip and+ f_deb and+ f_tar and+ f_appimage
+          and+ f_msix and+ f_nsis in
+          make platform sign out pname bundle_id version icon exe webview
+            no_build dir f_dmg f_zip f_deb f_tar f_appimage f_msix f_nsis))
 
-  let parse_dev args =
-    match scan ~flags:[] ~params:[ "exe" ] args with
-    | Error e -> Error e
-    | Ok (_, pa, pos) ->
-      (match no_extra_positionals "dev" pos with
-       | Error e -> Error e
-       | Ok () ->
-         Ok (Dev { d_dir = dir_arg pos ~default:".";
-                   d_exe = Option.value ~default:"main.exe"
-                             (get_param pa "exe") }))
+  let doctor_cmd =
+    Cmd.v
+      (Cmd.info "doctor" ~doc:"check the toolchain")
+      (Term.const Doctor)
 
-  let parse_build args =
-    match scan ~flags:[ "release" ] ~params:[] args with
-    | Error e -> Error e
-    | Ok (fl, _, pos) ->
-      (match no_extra_positionals "build" pos with
-       | Error e -> Error e
-       | Ok () ->
-         Ok (Build { b_dir = dir_arg pos ~default:".";
-                     b_release = get_flag fl "release" }))
+  let keygen_cmd =
+    let dir =
+      Arg.(value & opt string ""
+           & info [ "dir" ] ~docv:"DIR" ~doc:"key output directory")
+    and kname =
+      Arg.(value & opt string "lui-update"
+           & info [ "name" ] ~docv:"NAME" ~doc:"basename of the key files")
+    and alg =
+      Arg.(value & opt (some string) None
+           & info [ "alg" ] ~docv:"ed25519|rsa" ~doc:"key algorithm")
+    and force =
+      Arg.(value & flag
+           & info [ "force" ] ~doc:"replace existing keys")
+    in
+    let make dir kname alg force =
+      match
+        match alg with
+        | None | Some "ed25519" -> Ok Ed25519
+        | Some "rsa" -> Ok Rsa
+        | Some a -> Error (`Msg (fmt "unknown --alg %S (ed25519|rsa)" a))
+      with
+      | Error e -> Error e
+      | Ok k_alg ->
+        Ok (Keygen { k_dir = dir; k_name = kname; k_alg; k_force = force })
+    in
+    Cmd.v
+      (Cmd.info "keygen" ~doc:"write an update-signing key pair")
+      (Term.term_result
+         (let+ dir and+ kname and+ alg and+ force in
+          make dir kname alg force))
 
-  let fmt_flags =
-    [ ("dmg", F_dmg); ("zip", F_zip); ("deb", F_deb); ("tar", F_tar);
-      ("appimage", F_appimage); ("msix", F_msix); ("nsis", F_nsis) ]
+  let sign_cmd =
+    let key =
+      Arg.(required & opt (some string) None
+           & info [ "key" ] ~docv:"PRIV.pem"
+               ~doc:"Ed25519 PKCS8 PEM private key")
+    and input =
+      Arg.(required & opt (some string) None
+           & info [ "in" ] ~docv:"FILE" ~doc:"file whose bytes to sign")
+    in
+    Cmd.v
+      (Cmd.info "sign" ~doc:"Ed25519-sign a file's raw bytes")
+      (let+ key and+ input in Sign { s_key = key; s_in = input })
 
-  let parse_package args =
-    match
-      scan
-        ~flags:("webview" :: "no-build" :: List.map fst fmt_flags)
-        ~params:[ "platform"; "sign"; "out"; "name"; "bundle-id";
-                  "version"; "icon"; "exe" ]
-        args
-    with
-    | Error e -> Error e
-    | Ok (fl, pa, pos) ->
-      (match no_extra_positionals "package" pos with
-       | Error e -> Error e
-       | Ok () ->
-         let fmts =
-           List.filter_map
-             (fun (k, f) -> if get_flag fl k then Some f else None)
-             fmt_flags
-         in
-         (match fmts with
-          | _ :: _ :: _ ->
-            Error "package takes at most one artifact format flag"
-          | _ ->
-            let p_format =
-              match fmts with [] -> F_auto | [ f ] -> f | _ -> F_auto
-            in
-            let plat =
-              match get_param pa "platform" with
-              | None -> Ok P_auto
-              | Some p -> parse_platform p
-            in
-            (match plat with
-             | Error e -> Error e
-             | Ok p_platform ->
-               Ok
-                 (Package
-                    { p_dir = dir_arg pos ~default:".";
-                      p_platform;
-                      p_sign = get_param pa "sign";
-                      p_format;
-                      p_out =
-                        Option.value
-                          ~default:(dir_arg pos ~default:"." / "dist")
-                          (get_param pa "out");
-                      p_webview = get_flag fl "webview";
-                      p_name = get_param pa "name";
-                      p_bundle_id = get_param pa "bundle-id";
-                      p_version = get_param pa "version";
-                      p_icon = get_param pa "icon";
-                      p_exe = get_param pa "exe";
-                      p_build = not (get_flag fl "no-build") }))))
-
-  let parse_keygen args =
-    match
-      scan ~flags:[ "force" ] ~params:[ "dir"; "name"; "alg" ] args
-    with
-    | Error e -> Error e
-    | Ok (fl, pa, pos) ->
-      (match pos with
-       | _ :: _ -> Error "keygen takes no positional arguments"
-       | [] ->
-         let alg =
-           match get_param pa "alg" with
-           | None -> Ok Ed25519
-           | Some "ed25519" -> Ok Ed25519
-           | Some "rsa" -> Ok Rsa
-           | Some a -> Error (fmt "unknown --alg %S (ed25519|rsa)" a)
-         in
-         (match alg with
-          | Error e -> Error e
-          | Ok k_alg ->
-            Ok
-              (Keygen
-                 { k_dir = Option.value ~default:"" (get_param pa "dir");
-                   k_name = Option.value ~default:"lui-update"
-                              (get_param pa "name");
-                   k_alg;
-                   k_force = get_flag fl "force" })))
-
-  let parse_sign args =
-    match scan ~flags:[] ~params:[ "key"; "in" ] args with
-    | Error e -> Error e
-    | Ok (_, pa, pos) -> (
-      match pos with
-      | _ :: _ -> Error "sign takes no positional arguments"
-      | [] -> (
-        match (get_param pa "key", get_param pa "in") with
-        | Some s_key, Some s_in -> Ok (Sign { s_key; s_in })
-        | _ -> Error "sign needs --key <priv.pem> and --in <file>"))
+  let version_cmd =
+    Cmd.v
+      (Cmd.info "version" ~doc:"print the cli version")
+      (Term.const Version)
 
   let known = [ "init"; "dev"; "build"; "package"; "doctor"; "keygen";
                 "sign"; "version"; "help" ]
 
-  let usage_of = function
-    | "init" ->
-      Some
-        "lui init [--name NAME] [--dir DIR] [--force]\n\
-        \  Scaffold a minimal app: dune-project, dune, main.ml (window-host\n\
-        \  idiom on a recording backend), .gitignore, README.md. DIR defaults\n\
-        \  to the current directory and must be empty unless --force."
-    | "dev" ->
-      Some
-        "lui dev [DIR] [--exe NAME]\n\
-        \  Run `dune build -w` in DIR and (re)start _build/default/<exe>\n\
-        \  (default main.exe) after every successful rebuild. Ctrl+C stops\n\
-        \  both the watcher and the app."
-    | "build" ->
-      Some
-        "lui build [DIR] [--release]\n\
-        \  Run `dune build` once in DIR (release profile with --release)\n\
-        \  and report the produced executables."
-    | "package" ->
-      Some
-        "lui package [DIR] [options]\n\
-        \  Build the app and produce a distributable via the platform\n\
-        \  packager. Options:\n\
-        \    --platform auto|mac|linux|windows   target (default: host)\n\
-        \    --dmg | --deb | --appimage | --tar | --zip | --msix | --nsis\n\
-        \                                      artifact format (default per\n\
-        \                                      platform: dmg, tar, zip)\n\
-        \    --sign IDENTITY                     signing identity\n\
-        \                                      (mac: codesign name or adhoc;\n\
-        \                                       win: pfx path, thumbprint or env var)\n\
-        \    --out DIR                           output (default: DIR/dist)\n\
-        \    --webview                           bundle DIR/web/ as assets\n\
-        \    --exe PATH                          built binary to package\n\
-        \    --name/--bundle-id/--version/--icon overrides\n\
-        \    --no-build                          skip the dune build step"
-    | "doctor" ->
-      Some
-        "lui doctor\n\
-        \  Check the toolchain: opam switch, OCaml >= 5.4, dune, and the\n\
-        \  per-platform packaging/display tools. Exits 1 when a required\n\
-        \  item is missing."
-    | "keygen" ->
-      Some
-        "lui keygen [--dir DIR] [--name NAME] [--alg ed25519|rsa] [--force]\n\
-        \  Generate an update-signing key pair with openssl (Ed25519 by\n\
-        \  default). Keys go to the per-user config dir unless --dir is\n\
-        \  given; existing keys are kept unless --force. For Ed25519 it\n\
-        \  also prints the raw pubkey (hex) the update feed wants."
-    | "sign" ->
-      Some
-        "lui sign --key PRIV.pem --in FILE\n\
-        \  Ed25519-sign FILE's raw bytes with an Ed25519 PKCS8 PEM key\n\
-        \  (as `lui keygen` writes) and print the signature and pubkey\n\
-        \  in hex and base64 — the manifest \"signature\"/\"pubkey\"\n\
-        \  values for the update feed."
-    | "version" -> Some "lui version\n  Print the cli version."
-    | "help" -> Some "lui help [command]\n  Show the overview or one command's usage."
-    | _ -> None
+  (* No ~version on the group info: Cmdliner would inject a [--version]
+     option into every subcommand, colliding with [package]'s own
+     [--version]. [parse] answers version and help before delegating. *)
+  let cli_group =
+    Cmd.group
+      (Cmd.info "lui" ~doc:"developer tool for LUI native apps")
+      [ init_cmd; dev_cmd; build_cmd; package_cmd; doctor_cmd;
+        keygen_cmd; sign_cmd; version_cmd ]
 
-  let usage =
-    let cmds =
-      String.concat "\n"
-        (List.map
-           (fun c ->
-              match usage_of c with
-              | Some u -> "  " ^ String.sub u 0 (String.index u '\n') ^ "\n"
-              | None -> "")
-           [ "init"; "dev"; "build"; "package"; "doctor"; "keygen";
-             "sign"; "version"; "help" ])
-    in
-    fmt "lui %s — developer tool for LUI native apps\n\nusage: lui <command> [options]\n\n%s\nRun `lui help <command>` for a command's options."
-      version cmds
+  (* [render_help argv] runs the group evaluation with output captured:
+     the help strings the interface exposes are Cmdliner's own manpage
+     text, not a parallel hand-written copy. *)
+  let render_help argv =
+    let buf = Buffer.create 512 in
+    let help = Format.formatter_of_buffer buf in
+    ignore (Cmd.eval_value ~argv ~help ~err:help cli_group);
+    Format.pp_print_flush help ();
+    Buffer.contents buf
+
+  let usage = render_help [| "lui"; "--help" |]
+
+  let usage_of c =
+    if List.mem c known then Some (render_help [| "lui"; c; "--help" |])
+    else None
+
+  (* [eval_args c rest] evaluates [c]'s subcommand on [rest]; Cmdliner
+     reports parse and term errors on the captured formatter, which
+     becomes [parse]'s human-readable [Error] string. *)
+  let eval_args c rest =
+    let argv = Array.of_list ("lui" :: c :: rest) in
+    let buf = Buffer.create 256 in
+    let fmt = Format.formatter_of_buffer buf in
+    match Cmd.eval_value ~argv ~help:fmt ~err:fmt cli_group with
+    | Ok (`Ok cmd) -> Ok cmd
+    | Ok `Help -> Ok (Help (Some c))
+    | Ok `Version -> Ok Version
+    | Error _ ->
+      Format.pp_print_flush fmt ();
+      (match String.trim (Buffer.contents buf) with
+       | "" -> Error "bad arguments"
+       | m -> Error m)
 
   let parse = function
     | [] -> Ok (Help None)
@@ -344,19 +334,7 @@ module Args = struct
       (* A lone -h/--help anywhere in a subcommand asks for its usage. *)
       if List.exists (fun a -> a = "-h" || a = "--help") rest then
         Ok (Help (Some c))
-      else
-        (match c with
-         | "init" -> parse_init rest
-         | "dev" -> parse_dev rest
-         | "build" -> parse_build rest
-         | "package" -> parse_package rest
-         | "doctor" ->
-           (match rest with
-            | [] -> Ok Doctor
-            | _ -> Error "doctor takes no arguments")
-         | "keygen" -> parse_keygen rest
-         | "sign" -> parse_sign rest
-         | _ -> Error (fmt "unhandled command %S" c))
+      else eval_args c rest
     | c :: _ -> Error (fmt "unknown command %S (try `lui help`)" c)
 end
 
