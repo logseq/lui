@@ -102,53 +102,83 @@ final class LUINodeModel: Identifiable {
     let id: Int
     let kind: LUINodeKind
 
-    private(set) var properties: [LUIProperty: LUIWireValue]
-    private(set) var children: [Int]
+    @ObservationIgnored private var storedProperties: [LUIProperty: LUIWireValue]
+    var properties: [LUIProperty: LUIWireValue] {
+        access(keyPath: \.properties)
+        return storedProperties
+    }
+    @ObservationIgnored private var storedChildren: [Int]
+    var children: [Int] {
+        access(keyPath: \.children)
+        return storedChildren
+    }
     /// `children` minus context-menu entries. Child kinds are immutable, so it
     /// only changes when `children` does — maintained by the backend at commit
     /// time so view bodies don't refilter on every evaluation.
-    private(set) var visibleChildren: [Int]
-    private(set) var parent: Int?
-    private(set) var revision = 0
+    @ObservationIgnored private var storedVisibleChildren: [Int]
+    var visibleChildren: [Int] {
+        access(keyPath: \.visibleChildren)
+        return storedVisibleChildren
+    }
+    @ObservationIgnored private var storedParent: Int?
+    var parent: Int? {
+        access(keyPath: \.parent)
+        return storedParent
+    }
+    @ObservationIgnored private var storedRevision = 0
+    var revision: Int {
+        access(keyPath: \.revision)
+        return storedRevision
+    }
 
     init(id: Int, state: LUINodeState, visibleChildren: [Int]) {
         self.id = id
         kind = state.kind
-        properties = state.properties
-        children = state.children
-        self.visibleChildren = visibleChildren
-        parent = state.parent
+        storedProperties = state.properties
+        storedChildren = state.children
+        storedVisibleChildren = visibleChildren
+        storedParent = state.parent
     }
 
     func property(_ property: LUIProperty) -> LUIWireValue? {
         properties[property]
     }
 
-    func apply(state: LUINodeState, visibleChildren: [Int]) {
-        var changed = false
-        if properties != state.properties {
-            properties = state.properties
-            changed = true
+    // Stage without observation callbacks: a synchronous render must never
+    // see a partially updated model or an incomplete graph.
+    func stage(state: LUINodeState, visibleChildren: [Int]) -> LUIModelChanges {
+        var changes: LUIModelChanges = []
+        if storedProperties != state.properties {
+            storedProperties = state.properties
+            changes.insert(.properties)
         }
-        if children != state.children {
-            children = state.children
-            changed = true
+        if storedChildren != state.children {
+            storedChildren = state.children
+            changes.insert(.children)
         }
-        if self.visibleChildren != visibleChildren {
-            self.visibleChildren = visibleChildren
-            changed = true
+        if storedVisibleChildren != visibleChildren {
+            storedVisibleChildren = visibleChildren
+            changes.insert(.visibleChildren)
         }
-        if parent != state.parent {
-            parent = state.parent
-            changed = true
+        if storedParent != state.parent {
+            storedParent = state.parent
+            changes.insert(.parent)
         }
-        if changed {
-            revision += 1
-        }
+        if !changes.isEmpty { storedRevision += 1 }
+        return changes
+    }
+
+    func publish(_ changes: LUIModelChanges) {
+        if changes.contains(.properties) { withMutation(keyPath: \.properties) {} }
+        if changes.contains(.children) { withMutation(keyPath: \.children) {} }
+        if changes.contains(.visibleChildren) { withMutation(keyPath: \.visibleChildren) {} }
+        if changes.contains(.parent) { withMutation(keyPath: \.parent) {} }
+        if !changes.isEmpty { withMutation(keyPath: \.revision) {} }
     }
 
     func invalidateResource() {
-        revision += 1
+        storedRevision += 1
+        withMutation(keyPath: \.revision) {}
     }
 
     var text: String {
@@ -522,6 +552,7 @@ public final class LUIAppleBackend {
     }
 
     private var tree = LUIRetainedTree()
+    private let lookupObservation = LUIModelLookupObservation()
     private var models: [Int: LUINodeModel] = [:]
     private var extensionModels: [Int: LUIExtensionNodeModel] = [:]
     // Count of mounted dialog/sheet/filePreview nodes; maintained in
@@ -589,7 +620,8 @@ public final class LUIAppleBackend {
     }
 
     func model(id: Int) -> LUINodeModel? {
-        models[id]
+        _ = lookupObservation[id]
+        return models[id]
     }
 
     func setDrawerInteractionLocked(_ locked: Bool, node: Int) {
@@ -614,7 +646,8 @@ public final class LUIAppleBackend {
     }
 
     func extensionModel(id: Int) -> LUIExtensionNodeModel? {
-        extensionModels[id]
+        _ = lookupObservation[id]
+        return extensionModels[id]
     }
 
     func extensionView(nodeID: Int) -> AnyView {
@@ -1251,7 +1284,13 @@ public final class LUIAppleBackend {
         var tNodeApply: Double = 0
         var tExtApply: Double = 0
         let t0 = CFAbsoluteTimeGetCurrent()
+        var nodeChanges: [(LUINodeModel, LUIModelChanges)] = []
+        var extensionChanges: [(LUIExtensionNodeModel, LUIModelChanges)] = []
+        var membershipChanges = Set<Int>()
         for id in dropped {
+            if models[id] != nil || extensionModels[id] != nil {
+                membershipChanges.insert(id)
+            }
             if let model = models[id], Self.isModalKind(model.kind) {
                 modalNodeCount -= 1
             }
@@ -1277,11 +1316,13 @@ public final class LUIAppleBackend {
                 let t2 = CFAbsoluteTimeGetCurrent()
                 if perf { tFilter += t2 - t1 }
                 if let model = models[id] {
-                    model.apply(state: state, visibleChildren: visibleChildren)
+                    let changes = model.stage(state: state, visibleChildren: visibleChildren)
+                    if !changes.isEmpty { nodeChanges.append((model, changes)) }
                 } else {
                     if Self.isModalKind(state.kind) {
                         modalNodeCount += 1
                     }
+                    membershipChanges.insert(id)
                     models[id] = LUINodeModel(
                         id: id,
                         state: state,
@@ -1293,8 +1334,10 @@ public final class LUIAppleBackend {
             if let state = tree.extensionNodes[id] {
                 let t3 = CFAbsoluteTimeGetCurrent()
                 if let model = extensionModels[id] {
-                    model.apply(state: state)
+                    let changes = model.stage(state: state)
+                    if !changes.isEmpty { extensionChanges.append((model, changes)) }
                 } else {
+                    membershipChanges.insert(id)
                     extensionModels[id] = LUIExtensionNodeModel(
                         id: id,
                         state: state
@@ -1303,6 +1346,12 @@ public final class LUIAppleBackend {
                 if perf { tExtApply += CFAbsoluteTimeGetCurrent() - t3 }
             }
         }
+        // Every state, revision and lookup now belongs to the same commit.
+        // Observation willSet can synchronously flush SwiftUI transactions;
+        // publish only after that flush can traverse the complete new graph.
+        for (model, changes) in nodeChanges { model.publish(changes) }
+        for (model, changes) in extensionChanges { model.publish(changes) }
+        for id in membershipChanges { lookupObservation.publish(id: id) }
         if perf {
             FileHandle.standardError.write(
                 "PERF commit-split drop=\(Int(tDrop*1000))ms filter=\(Int(tFilter*1000))ms nodeApply=\(Int(tNodeApply*1000))ms extApply=\(Int(tExtApply*1000))ms\n"

@@ -397,46 +397,65 @@ final class LUIExtensionNodeModel: Identifiable {
     let id: Int
     let identifier: String
     let fingerprint: String
-    private(set) var parent: Int?
-    private(set) var children: [Int]
-    /// Kept in wire form so `apply` can compare and store the incoming state
-    /// without rebuilding the dictionary; values convert on read.
-    private(set) var properties: [String: LUIWireValue]
-    private(set) var revision = 0
+    @ObservationIgnored private var storedParent: Int?
+    @ObservationIgnored private var storedChildren: [Int]
+    @ObservationIgnored private var storedProperties: [String: LUIWireValue]
+    @ObservationIgnored private var storedRevision = 0
+
+    var parent: Int? {
+        access(keyPath: \.parent)
+        return storedParent
+    }
+    var children: [Int] {
+        access(keyPath: \.children)
+        return storedChildren
+    }
+    /// Kept in wire form; values convert on read.
+    var properties: [String: LUIWireValue] {
+        access(keyPath: \.properties)
+        return storedProperties
+    }
+    var revision: Int {
+        access(keyPath: \.revision)
+        return storedRevision
+    }
 
     init(id: Int, state: LUIExtensionNodeState) {
         self.id = id
         identifier = state.identifier
         fingerprint = state.fingerprint
-        parent = state.parent
-        children = state.children
-        properties = state.properties
+        storedParent = state.parent
+        storedChildren = state.children
+        storedProperties = state.properties
     }
 
     func property(_ name: String) -> LUIExtensionValue? {
         properties[name]?.extensionValue
     }
 
-    func apply(state: LUIExtensionNodeState) {
-        // Write only what changed: each write notifies `properties`/
-        // `children`/`parent` observers in addition to `revision`, so
-        // unconditional writes invalidate extension views on unrelated edits.
-        var changed = false
-        if parent != state.parent {
-            parent = state.parent
-            changed = true
+    func stage(state: LUIExtensionNodeState) -> LUIModelChanges {
+        var changes: LUIModelChanges = []
+        if storedParent != state.parent {
+            storedParent = state.parent
+            changes.insert(.parent)
         }
-        if children != state.children {
-            children = state.children
-            changed = true
+        if storedChildren != state.children {
+            storedChildren = state.children
+            changes.insert(.children)
         }
-        if properties != state.properties {
-            properties = state.properties
-            changed = true
+        if storedProperties != state.properties {
+            storedProperties = state.properties
+            changes.insert(.properties)
         }
-        if changed {
-            revision += 1
-        }
+        if !changes.isEmpty { storedRevision += 1 }
+        return changes
+    }
+
+    func publish(_ changes: LUIModelChanges) {
+        if changes.contains(.properties) { withMutation(keyPath: \.properties) {} }
+        if changes.contains(.children) { withMutation(keyPath: \.children) {} }
+        if changes.contains(.parent) { withMutation(keyPath: \.parent) {} }
+        if !changes.isEmpty { withMutation(keyPath: \.revision) {} }
     }
 }
 
