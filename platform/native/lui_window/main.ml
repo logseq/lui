@@ -741,19 +741,6 @@ let open_window ~title ~idx =
        Float.min_float, Float.min_float)
       (Lui_store.preorder ~root:id (store_of ()))
   in
-  let rect_intersect a b =
-    let x = Float.max a.Lui_scene.x b.Lui_scene.x
-    and y = Float.max a.Lui_scene.y b.Lui_scene.y in
-    Lui_scene.rect x y
-      (Float.max 0.
-         (Float.min (a.Lui_scene.x +. a.Lui_scene.w)
-            (b.Lui_scene.x +. b.Lui_scene.w)
-          -. x))
-      (Float.max 0.
-         (Float.min (a.Lui_scene.y +. a.Lui_scene.h)
-            (b.Lui_scene.y +. b.Lui_scene.h)
-          -. y))
-  in
   let hooks =
     Lui_paint.
       { color_of = Theme.color_of;
