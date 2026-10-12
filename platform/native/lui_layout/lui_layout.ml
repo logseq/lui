@@ -590,7 +590,7 @@ let display_contents store id = pstr store id "display" = Some "contents"
 
 (* The string a text leaf measures: [text], else [placeholder], else
    [title] (bottom-tab and timeline items carry their label on the
-   latter). *)
+   latter). Empty editable controls still need their line height. *)
 let text_of store id =
   match Lui_store.prop store id "text" with
   | Some (StringValue s) when s <> "" -> Some s
@@ -600,7 +600,10 @@ let text_of store id =
     | _ -> (
       match Lui_store.prop store id "title" with
       | Some (StringValue s) when s <> "" -> Some s
-      | _ -> None))
+      | _ ->
+          if Lui_store.is_editable_text_kind (Lui_store.kind store id)
+          then Some ""
+          else None))
 
 let measure_of (tm : text_measure) ~id ~text : Lui_flex.measure =
   fun _node ~width ~width_mode:_ ~height ~height_mode:_ ->

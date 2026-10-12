@@ -210,6 +210,11 @@ let node_prop n name = Hashtbl.find_opt n.props name
 let node_revision (n : node) = n.revision
 
 let kind t id = match find_opt t id with Some n -> n.kind | None -> ""
+let is_editable_text_kind = function
+  | "text-field" | "secure-field" | "input" | "search-field"
+  | "textarea" -> true
+  | _ -> false
+
 let ext_id t id = match find_opt t id with Some n -> n.ext_id | None -> None
 let parent t id = match find_opt t id with Some n -> n.parent | None -> None
 let children t id =
