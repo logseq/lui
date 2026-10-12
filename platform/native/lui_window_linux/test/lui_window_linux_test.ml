@@ -280,38 +280,17 @@ let test_caret_ops_vertical () =
 
 (* ---------- headless checksum pipeline ---------- *)
 
-(* The demo app mounted on a host exactly as main.ml wires it — same
-   hooks, same pango text engine, same layout stub — but with the CPU
-   renderer and no SDL. *)
+(* The demo app mounted on the shared assembly exactly as main.ml
+   wires it — same hooks, same pango text engine, same real
+   [Lui_layout] — but with the CPU renderer and no SDL. *)
 let host_with_app () =
+  let scale_cell = ref 1. in
   let host_cell = ref None in
-  let rects = Rects.create () in
-  let ui = Ui.create () in
-  let scale = 1. in
   let text_engine =
     Lui_window_text.create
       ~scene:(fun () -> Lui_host.scene (Option.get !host_cell))
-      ~scale:(fun () -> scale)
+      ~scale:(fun () -> !scale_cell)
       ~store:(fun () -> Lui_host.store (Option.get !host_cell))
-  in
-  let hooks =
-    Lui_paint.
-      { color_of = Theme.color_of;
-        layout =
-          (fun id -> Lui_paint.placement_of_rect (Rects.get rects id));
-        state_of =
-          (fun id ->
-             match !host_cell with
-             | Some h -> Ui.state_of ui (Lui_host.store h) id
-             | None -> Lui_paint.state_neutral);
-        scroll_of = (fun _ -> None);
-        mounted_children = (fun _ -> None);
-        text_ops =
-          (fun id r fg s ->
-             Lui_window_text.text_ops text_engine id r fg s);
-        image_of = (fun _ -> None);
-        image_in = (fun _ _ -> None);
-        shadow_of = (fun _ -> []) }
   in
   let rr = Lui_raster.Renderer.create () in
   let renderer =
@@ -321,47 +300,43 @@ let host_with_app () =
            ignore (Lui_raster.Renderer.render rr s);
            (Lui_raster.Renderer.image rr).Lui_raster.Image.pix) }
   in
-  let host =
-    Lui_host.create ~hooks ~renderer ~width:480 ~height:320 ~scale ()
+  let asm =
+    Assembly.create ~layout:(module Lui_layout) ~scale_cell
+      ~text:
+        Assembly.
+          { measure = Lui_window_text.measure_text text_engine;
+            text_ops = Lui_window_text.text_ops text_engine;
+            hit_text = Lui_window_text.hit_text text_engine;
+            caret_ops = Lui_window_text.caret_ops text_engine }
+      ~renderer ~width:480 ~height:320 ()
   in
-  host_cell := Some host;
-  let store = Lui_host.store host in
-  let refresh () =
-    Layout.refresh store rects ~width:480 ~height:320 ~scale
-      ~measure:(Lui_window_text.measure text_engine)
-  in
+  host_cell := Some (Assembly.host asm);
   let backend =
-    Lui_host.backend host
+    Assembly.backend asm
       (Lui_protocol.profile Lui_protocol.LinuxOS
          Lui_protocol.GenericHost)
   in
   let app = Demo_app.create backend in
-  (host, store, app, refresh, text_engine)
+  (asm, app)
 
 (* Drive [script] input events between frames like the SDL loop does,
    accumulating the scene checksum. *)
 let run_headless frames script =
-  let host, store, app, refresh, text_engine = host_with_app () in
-  let ui = Ui.create () in
-  let rects = Rects.create () in
+  let asm, app = host_with_app () in
+  let host = Assembly.host asm in
   ignore (Lui_app.start app);
   ignore (Lui_app.flush app);
-  refresh ();
-  let refresh' () =
-    Layout.refresh store rects ~width:480 ~height:320 ~scale:1.
-      ~measure:(Lui_window_text.measure text_engine)
-  in
+  ignore (Assembly.repaint asm);
   let cs = Checksum.create () in
   let ops_last = ref 0 in
   let scripted = Array.of_list script in
   for f = 1 to frames do
-    (* one scripted input per frame, then flush + relayout + repaint —
+    (* one scripted input per frame, then flush + repaint + populate —
        the same ordering the driver loop uses *)
     if f <= Array.length scripted then
-      ignore (Ui.handle ui store rects scripted.(f - 1));
+      ignore (Assembly.handle asm scripted.(f - 1));
     ignore (Lui_app.flush app);
-    refresh' ();
-    ignore (Lui_host.repaint host);
+    ignore (Assembly.repaint asm);
     Checksum.add_scene cs (Lui_host.scene host);
     ops_last := List.length (Lui_host.scene host).Lui_scene.ops
   done;

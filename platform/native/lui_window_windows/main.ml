@@ -234,173 +234,47 @@ let () =
              (!renderer_cell).Lui_host.render s) }
   in
 
-  (* Wiring: mutable cells so the paint hooks can reach the host,
-     scene and scale that only exist after Lui_host.create. *)
-  let host_cell = ref None in
-  let rects = Rects.create () in
-  (* Hit-test mirror: [rects] stays the layout stub's output because
-     paint feeds it back through Lui_paint.resolve_rect — the mirror
-     carries the resolved boxes instead, so clicks land where the
-     chrome painted. *)
-  let hit_rects = Rects.create () in
-  let ui = Ui.create () in
-  Ui.set_scale ui scale;
+  (* Shared host assembly: hooks, the real layout engine, the
+     scroll-shifted hit-test mirror and the scroll caps are all wired
+     by [Lui_window.Assembly] — the same code macOS and Linux run,
+     so every platform paints, scrolls and hit-tests identically.
+     The text engine's scene/store accessors are cell-reads because it
+     must exist before the assembly hands the host back. *)
   let scale_cell = ref scale in
+  let host_cell = ref None in
   let text_engine =
     Lui_window_text.create
       ~scene:(fun () -> Lui_host.scene (Option.get !host_cell))
       ~scale:(fun () -> !scale_cell)
       ~store:(fun () -> Lui_host.store (Option.get !host_cell))
   in
-  let hooks =
-    Lui_paint.
-      { color_of = Theme.color_of;
-        layout =
-          (fun id -> Lui_paint.placement_of_rect (Rects.get rects id));
-        state_of =
-          (fun id ->
-             match !host_cell with
-             | Some h -> Ui.state_of ui (Lui_host.store h) id
-             | None -> Lui_paint.state_neutral);
-        scroll_of = (fun _ -> None);
-        mounted_children = (fun _ -> None);
-        text_ops =
-          (fun id r fg s ->
-             let ops = Lui_window_text.text_ops text_engine id r fg s in
-             let marked = Ui.marked ui in
-             if marked = "" || id <> Ui.focused ui then ops
-             else begin
-               (* Composition overlay: marked text drawn underlined at
-                  the caret of the focused field. It is paint-only —
-                  never dispatched — and cleared the moment the
-                  composition commits or cancels. When the node's
-                  text prop is empty [s] is the placeholder: drop its
-                  glyphs so the marked string paints alone. *)
-               let caret =
-                 min (Ui.caret ui) (String.length (Ui.shadow ui))
-               in
-               let ops =
-                 let has_text =
-                   match !host_cell with
-                   | Some h -> (
-                     match
-                       Lui_store.prop (Lui_host.store h) id "text"
-                     with
-                     | Some (Lui_protocol.StringValue v) -> v <> ""
-                     | _ -> false)
-                   | None -> false
-                 in
-                 if has_text then ops else []
-               in
-               (* The caret's real position inside the laid-out
-                  shadow — the same rect the IME candidate anchor
-                  uses, so marked text and its underline land where
-                  the commit will insert. *)
-               let cx, _, _ =
-                 (Lui_window_text.caret_ops text_engine id
-                    (Ui.shadow ui) ~lw:r.Lui_scene.w ~lh:r.Lui_scene.h)
-                   .Lui_window.Ui.c_rect caret
-               in
-               let mw, mh =
-                 Lui_window_text.measure_text text_engine id marked
-               in
-               let underline =
-                 Lui_scene.Fill
-                   { frect =
-                       Lui_scene.rect
-                         (r.Lui_scene.x +. cx)
-                         (r.Lui_scene.y
-                          +. (r.Lui_scene.h +. mh) /. 2. -. 2.)
-                         mw 2.;
-                     fradii = (0., 0., 0., 0.); fcontinuous = false;
-                     fcolor = fg; fpaint = Lui_scene.Solid; fcolor2 = fg;
-                     fgradient = (0., 0., 0., 0.);
-                     fborder = (0., 0., 0., 0.);
-                     fborder_color = Lui_scene.color 0 0 0 0;
-                     fdashed = false; fwide = 0; fopacity = 1. }
-               in
-               let mr = { r with Lui_scene.x = r.Lui_scene.x +. cx } in
-               ops @ [ underline ]
-                 @ Lui_window_text.text_ops text_engine id mr fg marked
-             end);
-        image_of = (fun _ -> None);
-        image_in = (fun _ _ -> None);
-        shadow_of = (fun _ -> []) }
+  let asm =
+    Assembly.create ~layout:(module Lui_layout) ~scale_cell
+      ~text:
+        Assembly.
+          { measure = Lui_window_text.measure_text text_engine;
+            text_ops = Lui_window_text.text_ops text_engine;
+            hit_text = Lui_window_text.hit_text text_engine;
+            caret_ops = Lui_window_text.caret_ops text_engine }
+      ~renderer:renderer_live ~width:dw ~height:dh ()
   in
-  let host =
-    Lui_host.create ~hooks ~renderer:renderer_live ~width:dw ~height:dh
-      ~scale ()
-  in
-  host_cell := Some host;
-  let store = Lui_host.store host in
+  host_cell := Some (Assembly.host asm);
+  let host = Assembly.host asm in
+  let ui = Assembly.ui asm in
+  let rects = Assembly.rects asm in
+  let store = Assembly.store asm in
   let win_w = ref cfg.width and win_h = ref cfg.height in
-  let refresh_layout () =
-    Layout.refresh store rects ~width:!win_w ~height:!win_h
-      ~scale:!scale_cell ~measure:(Lui_window_text.measure text_engine);
-    (* Rebuild the hit mirror through the same resolve_rect the paint
-       pass applies — position/inset, fixed and popup coordinates —
-       plus the scrollable-ancestor clip. [parent_r] is the parent's
-       resolved box (a display:contents node forwards its own
-       containing block). *)
-    Hashtbl.reset hit_rects;
-    let vp =
-      Lui_scene.rect 0. 0.
-        (float !win_w *. !scale_cell)
-        (float !win_h *. !scale_cell)
-    in
-    let rec visit id ~anc_clip ~parent_r =
-      let base = Rects.get rects id in
-      let resolved =
-        Lui_paint.resolve_rect ~scale:!scale_cell ~viewport:vp store id
-          (Lui_store.kind store id)
-          (Lui_paint.placement_of_rect base) parent_r
-      in
-      let stored = Lui_scene.rect_intersect resolved anc_clip in
-      Hashtbl.replace hit_rects id stored;
-      let anc_clip' =
-        if Ui.scrollable store id && not (Lui_scene.rect_empty stored)
-        then Lui_scene.rect_intersect anc_clip stored
-        else anc_clip
-      in
-      let child_parent =
-        if Lui_paint.unboxed store id then parent_r else resolved
-      in
-      List.iter
-        (fun c ->
-           visit c ~anc_clip:anc_clip' ~parent_r:child_parent)
-        (Lui_store.child_ids store id)
-    in
-    let everything = Lui_scene.rect (-.1e9) (-.1e9) 2e9 2e9 in
-    List.iter
-      (fun id -> visit id ~anc_clip:everything ~parent_r:vp)
-      (Lui_store.root_ids store);
-    (* Rects were just rebuilt — visible-range memos key on the
-       epoch. *)
-    Ui.notify_layout ui
-  in
   let backend =
-    Lui_host.backend host
-      (Lui_protocol.profile Lui_protocol.WindowsOS Lui_protocol.GenericHost)
+    Assembly.backend asm
+      (Lui_protocol.profile Lui_protocol.WindowsOS
+         Lui_protocol.GenericHost)
   in
   let app = Demo_app.create backend in
   ignore (Lui_app.start app);
   ignore (Lui_app.flush app);
-  (* Priming layout: fills the hit-test mirror so autofocus and the
-     a11y frames below see real rects. *)
-  refresh_layout ();
-  (* Ui driver hooks: real glyph measurement for caret/selection math,
-     unshifted engine rects for scroll_show/visible-range. *)
-  Ui.set_measure ui
-    (fun _store id s -> Lui_window_text.measure_text text_engine id s);
-  Ui.set_hit_text ui
-    (fun _store id text ~lx ~ly ~lw ~lh ->
-       Lui_window_text.hit_text text_engine id text ~lx ~ly ~lw ~lh);
-  (* Keyboard caret moves run on the same layouts: grapheme clusters
-     horizontally, visual lines vertically. *)
-  Ui.set_caret_ops ui
-    (fun _store id text ~lw ~lh ->
-       Lui_window_text.caret_ops text_engine id text ~lw ~lh);
-  Ui.set_content_rect ui (fun id -> Rects.get rects id);
+  (* Priming paint: syncs the flex engine and renders once so the
+     hit-test mirror and scroll caps see real rects. *)
+  ignore (Assembly.repaint asm);
   (* The a11y forest mirrors the store: synced after every repaint,
      focused along with the Ui focus, served over UIA by
      [Lui_ax_windows]. [frame_of] answers in client pixels — the
@@ -425,11 +299,7 @@ let () =
   (* Hand focus to the first autofocus field, if any — and open the
      IME context for it (IMM32 associate; headless is a no-op when
      the OS has no IME installed). *)
-  (match
-     List.find_opt
-       (fun id -> bool_prop store id "autofocus")
-       (Lui_store.preorder store)
-   with
+  (match Assembly.first_autofocus asm with
    | Some id ->
      Ui.set_focused ui store id;
      Lui_ax_windows.set_focused ax id;
@@ -493,28 +363,9 @@ let () =
       ~w:(max 1 (int_of_float r.Lui_scene.w))
       ~h:(max 1 (int_of_float r.Lui_scene.h))
   in
-  (* Caret rect of the focused field, device px: the node's layout
-     rect shifted to the caret's real position inside the laid-out
-     text — line pitch and vertical centering included. This is the
-     candidate-window anchor while composing. *)
-  let caret_rect () =
-    let id = Ui.focused ui in
-    let r = Rects.get rects id in
-    if Lui_scene.rect_empty r then r
-    else begin
-      let text = Ui.shadow ui in
-      let ops =
-        Lui_window_text.caret_ops text_engine id text ~lw:r.Lui_scene.w
-          ~lh:r.Lui_scene.h
-      in
-      let cx, cy, ch =
-        ops.Lui_window.Ui.c_rect
-          (min (Ui.caret ui) (String.length text))
-      in
-      Lui_scene.rect (r.Lui_scene.x +. cx) (r.Lui_scene.y +. cy) 2.
-        (Float.max 2. ch)
-    end
-  in
+  (* Caret rect of the focused field, device px — the candidate-window
+     anchor while composing. *)
+  let caret_rect () = Assembly.caret_rect asm in
   let rec apply_actions acts = List.iter (function
     | Dispatch ev ->
       (try ignore (Lui_app.dispatch_event app ev)
@@ -527,14 +378,13 @@ let () =
          Input.Paste (interactive only — headless never types Ctrl-V) *)
       (match if headless then None else Lui_shell_windows.clipboard_read () with
        | Some s ->
-         apply_actions (Ui.handle ui store hit_rects (Input.Paste s))
+         apply_actions (Assembly.handle asm (Input.Paste s))
        | None -> ())
     | Resize_host _ ->
       let dw, dh = drawable () in
       scale_cell := float dw /. float (max 1 !win_w);
       Ui.set_scale ui !scale_cell;
       Lui_host.resize host ~width:dw ~height:dh ~scale:!scale_cell;
-      refresh_layout ();
       Lui_ax_windows.refresh_frames ax
     | Focus_changed id ->
       if id = 0 then Lui_ax_windows.clear_focused ax
@@ -589,9 +439,9 @@ let () =
           win_w := w;
           win_h := h;
           apply_actions
-            (Ui.handle ui store hit_rects (Input.Resize (w, h)))
+            (Assembly.handle asm (Input.Resize (w, h)))
         | Some input ->
-          apply_actions (Ui.handle ui store hit_rects input)
+          apply_actions (Assembly.handle asm input)
         | None -> ()
     done
   in
@@ -658,8 +508,8 @@ let () =
     let t0 = perf_s () in
     drain_events ();
     (* Patches queued by dispatched events land in the store here;
-       layout must see them before the next paint or hit test. *)
-    if Lui_app.flush app then refresh_layout ();
+       the engine re-syncs inside the next repaint. *)
+    ignore (Lui_app.flush app);
     (* Store-driven effects: Appear lifecycle events, scroll-target
        completions, visible-range reports, modal focus save/restore. *)
     apply_actions (Ui.store_changed ui store);
@@ -674,12 +524,12 @@ let () =
        window tracks the caret; idle, the rect is only remembered. *)
     if Ui.focused ui <> 0 then
       apply_actions
-        (Ui.handle ui store hit_rects (Input.Caret (caret_rect ())));
+        (Assembly.handle asm (Input.Caret (caret_rect ())));
     (* Headless proves the loop: force a repaint every iteration so
        the frame counter and checksum actually run. *)
     let dirty = headless || Ui.want_frame ui host in
     if dirty then begin
-      ignore (Lui_host.repaint host);
+      ignore (Assembly.repaint asm);
       Ui.frame_done ui;
       incr frame;
       Checksum.add_scene checksum (Lui_host.scene host);

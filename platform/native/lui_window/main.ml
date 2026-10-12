@@ -142,12 +142,12 @@ let stats_report st renderer_name =
 (* ---------- driver state per window ---------- *)
 
 (* Everything the loop needs per window beyond the pure state kept in
-   [Multi.surface]: the OS window/context/renderer handles and the
-   closures the pipeline built during setup (populate / caret_rect
-   capture the pre-host cells, so they live here). The backend pieces
-   are cells because a renderer demote swaps them live: it drops the
-   GL context, recreates the window (which also re-keys the surface —
-   [Multi.rekey]) and installs the next rung's renderer. *)
+   [Multi.surface]: the OS window/context/renderer handles, the shared
+   host assembly and the IME anchor closure the pipeline built during
+   setup. The backend pieces are cells because a renderer demote swaps
+   them live: it drops the GL context, recreates the window (which
+   also re-keys the surface — [Multi.rekey]) and installs the next
+   rung's renderer. *)
 type drv = {
   mutable sdl : Sdl.window;
   gctx_cell : Sdl.gl_context option ref;
@@ -165,7 +165,7 @@ type drv = {
   mutable frame : int;
   stats : stats;
   idx : int;                   (* registry/log index, 0-based *)
-  populate : unit -> unit;     (* hit-test mirror refresh *)
+  asm : Assembly.t;            (* shared host assembly *)
   caret_rect : unit -> Lui_scene.rect;
 }
 
@@ -412,8 +412,7 @@ let tick (s : surf) ~t0 =
      the frame counter and checksum actually run. *)
   let dirty = !headless || Ui.want_frame s.ui s.host in
   if dirty then begin
-    ignore (Lui_host.repaint s.host);
-    d.populate ();
+    ignore (Assembly.repaint s.driver.asm);
     ignore (Lui_a11y.sync d.a11y);
     if !(d.gl_live_cell) then begin
       (match !(d.gctx_cell) with
@@ -670,364 +669,37 @@ let open_window ~title ~idx =
               | None -> raise exn);
              (!(renderer_cell)).Lui_host.render scene) }
   in
-  (* Wiring: mutable cells so the paint hooks can reach the host,
-     scene and scale that only exist after Lui_host.create. *)
-  let host_cell = ref None in
-  let rects = Rects.create () in
-  let ui = Ui.create () in
-  Ui.set_scale ui scale;
+  (* Shared host assembly: hooks, the real layout engine, the
+     scroll-shifted hit-test mirror and the scroll caps are all wired
+     by [Lui_window.Assembly] — the same code Linux and Windows run,
+     so every platform paints, scrolls and hit-tests identically.
+     The text engine's scene/store accessors are cell-reads because it
+     must exist before the assembly hands the host back. *)
   let scale_cell = ref scale in
+  let host_cell = ref None in
   let text_engine =
     Lui_window_text.create
       ~scene:(fun () -> Lui_host.scene (Option.get !host_cell))
       ~scale:(fun () -> !scale_cell)
       ~store:(fun () -> Lui_host.store (Option.get !host_cell))
   in
-  (* Rect lookups for paint and hit tests, all in device px.
-     [engine_rect] is the flex engine's placement; a node shifts up by
-     the scroll offsets of its scrollable ancestors; a scroll
-     container's extent is the unshifted span of its descendants. *)
-  let store_of () = Lui_host.store (Option.get !host_cell) in
-  let engine_rect id =
-    match !host_cell with
-    | Some h ->
-      Option.value ~default:Rects.zero (Lui_host.layout_rect h id)
-    | None -> Rects.zero
+  let asm =
+    Assembly.create ~layout:(module Lui_layout) ~scale_cell
+      ~text:
+        Assembly.
+          { measure = Lui_window_text.measure_text text_engine;
+            text_ops = Lui_window_text.text_ops text_engine;
+            hit_text = Lui_window_text.hit_text text_engine;
+            caret_ops = Lui_window_text.caret_ops text_engine }
+      ~renderer:renderer_live ~width:dw ~height:dh ()
   in
-  (* [shifted_rect] runs once per painted node and the ancestor-offset
-     sum is otherwise O(depth) each — memoize it for as long as both
-     the store shape and the scroll offsets stand still. *)
-  let shift_memo : (int, float * float) Hashtbl.t = Hashtbl.create 64 in
-  let shift_epoch = ref (-1, -1) in
-  let rec scroll_shift_of id =
-    let epoch =
-      (Lui_store.revision (store_of ()), Ui.scroll_epoch ui)
-    in
-    if epoch <> !shift_epoch then begin
-      Hashtbl.reset shift_memo;
-      shift_epoch := epoch
-    end;
-    match Hashtbl.find_opt shift_memo id with
-    | Some v -> v
-    | None ->
-      let v =
-        match Lui_store.parent (store_of ()) id with
-        | Some p ->
-          let sx, sy = scroll_shift_of p in
-          (sx +. Ui.scroll_offset_x ui p, sy +. Ui.scroll_offset ui p)
-        | None -> (0., 0.)
-      in
-      Hashtbl.replace shift_memo id v;
-      v
-  in
-  let shifted_rect id =
-    let r = engine_rect id in
-    let sx, sy = scroll_shift_of id in
-    { r with
-      Lui_scene.x = r.Lui_scene.x -. sx;
-      Lui_scene.y = r.Lui_scene.y -. sy }
-  in
-  let content_box id =
-    List.fold_left
-      (fun (l, t, rgt, b) d ->
-         if d = id then (l, t, rgt, b)
-         else
-           let r = engine_rect d in
-           (Float.min l r.Lui_scene.x,
-            Float.min t r.Lui_scene.y,
-            Float.max rgt (r.Lui_scene.x +. r.Lui_scene.w),
-            Float.max b (r.Lui_scene.y +. r.Lui_scene.h)))
-      (Float.max_float, Float.max_float,
-       Float.min_float, Float.min_float)
-      (Lui_store.preorder ~root:id (store_of ()))
-  in
-  let rect_intersect a b =
-    let x = Float.max a.Lui_scene.x b.Lui_scene.x
-    and y = Float.max a.Lui_scene.y b.Lui_scene.y in
-    Lui_scene.rect x y
-      (Float.max 0.
-         (Float.min (a.Lui_scene.x +. a.Lui_scene.w)
-            (b.Lui_scene.x +. b.Lui_scene.w)
-          -. x))
-      (Float.max 0.
-         (Float.min (a.Lui_scene.y +. a.Lui_scene.h)
-            (b.Lui_scene.y +. b.Lui_scene.h)
-          -. y))
-  in
-  (* Virtual-list viewport feed: the node's content-space visible
-     range — its own scroll offset plus how far the frame clip has
-     scrolled into its (shifted) box. Outer scroller clips are not
-     tracked, so a clipped-away list just mounts a few extra rows. *)
-  let vport_of id =
-    if Lui_store.kind (store_of ()) id <> "virtual-list" then None
-    else begin
-      let er = engine_rect id in
-      let sx, sy = scroll_shift_of id in
-      let shifted = { er with
-                      Lui_scene.x = er.Lui_scene.x -. sx;
-                      y = er.Lui_scene.y -. sy }
-      in
-      let scn =
-        match !host_cell with
-        | Some h -> Lui_host.scene h
-        | None -> failwith "vport before host"
-      in
-      let frame =
-        Lui_scene.rect 0. 0. (float scn.Lui_scene.width)
-          (float scn.Lui_scene.height)
-      in
-      let clip = rect_intersect shifted frame in
-      Some
-        ( Ui.scroll_offset ui id
-          +. Float.max 0. (clip.Lui_scene.y -. shifted.Lui_scene.y),
-          Float.max 0. clip.Lui_scene.h )
-    end
-  in
-  let vport_of id =
-    match !host_cell with
-    | Some _ -> vport_of id
-    | None -> None
-  in
-  let hooks =
-    Lui_paint.
-      { color_of = Theme.color_of;
-        layout =
-          (fun id -> Lui_paint.placement_of_rect (shifted_rect id));
-        state_of =
-          (fun id ->
-             match !host_cell with
-             | Some h -> Ui.state_of ui (Lui_host.store h) id
-             | None -> Lui_paint.state_neutral);
-        mounted_children =
-          (fun id ->
-             match !host_cell with
-             | Some h -> Lui_host.layout_mounted_children h id
-             | None -> None);
-        scroll_of =
-          (fun id ->
-             let cap = Ui.scroll_cap ui id in
-             if cap <= 0.001 then None
-             else
-               let cr = engine_rect id in
-               let content =
-                 match
-                   !host_cell
-                   |> Option.map (fun h ->
-                          Lui_host.layout_virtual_extent h id)
-                   |> Option.join
-                 with
-                 | Some ext -> Float.max ext 0.001
-                 | None ->
-                   let _, top, _, bot = content_box id in
-                   Float.max (bot -. top) 0.001
-               in
-               Some
-                 Lui_paint.
-                   { sm_offset = Ui.scroll_offset ui id /. cap;
-                     sm_extent =
-                       Float.min 1. (cr.Lui_scene.h /. content) });
-        text_ops =
-          (fun id r fg s ->
-             let ops = Lui_window_text.text_ops text_engine id r fg s in
-             let marked = Ui.marked ui in
-             if marked = "" || id <> Ui.focused ui then ops
-             else begin
-               (* Composition overlay: marked text drawn underlined at
-                  the caret of the focused field. It is paint-only —
-                  never dispatched — and cleared the moment the
-                  composition commits or cancels. When the node's
-                  text prop is empty [s] is the placeholder: drop its
-                  glyphs so the marked string paints alone. *)
-               let caret =
-                 min (Ui.caret ui) (String.length (Ui.shadow ui))
-               in
-               let ops =
-                 let has_text =
-                   match !host_cell with
-                   | Some h -> (
-                     match
-                       Lui_store.prop (Lui_host.store h) id "text"
-                     with
-                     | Some (Lui_protocol.StringValue v) -> v <> ""
-                     | _ -> false)
-                   | None -> false
-                 in
-                 if has_text then ops else []
-               in
-               (* The caret's real position inside the laid-out
-                  shadow — the same rect the IME candidate anchor
-                  uses, so marked text and its underline land where
-                  the commit will insert. *)
-               let cx, _, _ =
-                 (Lui_window_text.caret_ops text_engine id
-                    (Ui.shadow ui) ~lw:r.Lui_scene.w ~lh:r.Lui_scene.h)
-                   .Lui_window.Ui.c_rect caret
-               in
-               let mw, mh =
-                 Lui_window_text.measure_text text_engine id marked
-               in
-               let underline =
-                 Lui_scene.Fill
-                   { frect =
-                       Lui_scene.rect
-                         (r.Lui_scene.x +. cx)
-                         (r.Lui_scene.y
-                          +. (r.Lui_scene.h +. mh) /. 2. -. 2.)
-                         mw 2.;
-                     fradii = (0., 0., 0., 0.); fcontinuous = false;
-                     fcolor = fg; fpaint = Lui_scene.Solid; fcolor2 = fg;
-                     fgradient = (0., 0., 0., 0.);
-                     fborder = (0., 0., 0., 0.);
-                     fborder_color = Lui_scene.color 0 0 0 0;
-                     fdashed = false; fwide = 0; fopacity = 1. }
-               in
-               let mr = { r with Lui_scene.x = r.Lui_scene.x +. cx } in
-               ops @ [ underline ]
-                 @ Lui_window_text.text_ops text_engine id mr fg marked
-             end);
-        image_of = (fun _ -> None);
-        image_in = (fun _ _ -> None);
-        shadow_of = Lui_paint.parse_shadows Theme.color_of }
-  in
-  let host =
-    Lui_host.create ~hooks ~layout:(module Lui_layout)
-      (* Measure the text the engine selected (label/title/text per
-         kind) plus the placement padding it will paint around it —
-         feeding the raw glyph metric collapses every labeled control
-         to bare-text size (buttons, fields, kbd...). *)
-      ~measure:(fun id text _w _h ->
-        let w, h = Lui_window_text.measure_text text_engine id text in
-        let tp = Lui_paint.text_placement_of (text_engine.store ()) id in
-        let s = text_engine.scale () in
-        Some
-          (w +. (2. *. tp.tp_pad_x *. s), h +. (2. *. tp.tp_pad_y *. s)))
-      ~renderer:renderer_live ~width:dw ~height:dh ~scale ()
-  in
-  host_cell := Some host;
-  let store = Lui_host.store host in
-  (* Trigger-owned menu panels stay hidden until opened; the predicate
-     reads the interaction state's mutable open-menu slot each sync. *)
-  Lui_host.set_hidden host (Some (fun id -> Ui.hidden ui store id));
-  (* Unanchored context menus open at the pointer. The anchor feeds
-     [refine_popups] only while a context-menu is open — reporting the
-     live pointer position unconditionally would defeat the layout
-     memo on every pointer-driven repaint, so the accessor returns
-     [None] the rest of the time. *)
-  Lui_host.set_ctx_anchor host
-    (Some
-       (fun () ->
-          match Ui.open_menu ui with
-          | 0 -> None
-          | id when Lui_store.kind store id = "context-menu" ->
-            Some (Ui.pointer ui)
-          | _ -> None));
-  (* Virtual lists: feed each node's content-space visible range
-     during layout sync so only the mounted window is materialized. *)
-  Lui_host.set_vport host vport_of;
-  (* Populate the hit-test mirror from the layout engine: each node's
-     shifted rect clipped to its scrollable ancestors' viewports (so
-     scrolled-off content can't be hit), then each scroll container's
-     range on both axes from its unshifted content extent. Runs after
-     every repaint while the engine is fresh. *)
-  (* Scroll-container ids memoized on the store revision: a scroll
-     frame changes no props, so the cap refresh below does not re-walk
-     the whole tree on every frame (a 100k-row list has ~3
-     scrollables). *)
-  let scrollables = ref (-1, []) in
-  let populate () =
-    Hashtbl.reset rects;
-    (* One preorder pass carrying the ancestors' accumulated scroll
-       offset and clip: the node's own offset shifts only its
-       children, and a scrollable node's already-stored mirror rect
-       becomes its descendants' clip — the same result the old
-       per-node ancestor walk produced, without re-summing the chain
-       for every node. Placement goes through the same
-       [Lui_paint.resolve_rect] the paint pass uses, so
-       position/inset, fixed and popup coordinates hit-test where
-       they paint; [parent_r] is the parent's resolved box (a
-       display:contents node forwards its own containing block). *)
-    let scn = Lui_host.scene host in
-    let viewport =
-      Lui_scene.rect 0. 0. (float scn.Lui_scene.width)
-        (float scn.Lui_scene.height)
-    in
-    let rec visit id ~sx ~sy ~anc_clip ~parent_r =
-      let base = engine_rect id in
-      let shifted =
-        { base with
-          Lui_scene.x = base.Lui_scene.x -. sx;
-          Lui_scene.y = base.Lui_scene.y -. sy }
-      in
-      let resolved =
-        Lui_paint.resolve_rect ~scale:!scale_cell ~viewport store id
-          (Lui_store.kind store id)
-          (Lui_paint.placement_of_rect shifted) parent_r
-      in
-      let stored = rect_intersect resolved anc_clip in
-      Hashtbl.replace rects id stored;
-      let sx' = sx +. Ui.scroll_offset_x ui id
-      and sy' = sy +. Ui.scroll_offset ui id in
-      let anc_clip' =
-        if Ui.scrollable store id && not (Lui_scene.rect_empty stored)
-        then rect_intersect anc_clip stored
-        else anc_clip
-      in
-      let child_parent =
-        if Lui_paint.unboxed store id then parent_r else resolved
-      in
-      (* A virtual list only hit-tests its mounted window — unmounted
-         rows have no rect and cannot be hit anyway. *)
-      let cids =
-        match Lui_host.layout_mounted_children host id with
-        | Some ids -> ids
-        | None -> Lui_store.child_ids store id
-      in
-      List.iter
-        (fun c ->
-           visit c ~sx:sx' ~sy:sy' ~anc_clip:anc_clip'
-             ~parent_r:child_parent)
-        cids
-    in
-    let everything = Lui_scene.rect (-.1e9) (-.1e9) 2e9 2e9 in
-    List.iter
-      (fun id ->
-         visit id ~sx:0. ~sy:0. ~anc_clip:everything ~parent_r:viewport)
-      (Lui_store.root_ids store);
-    let srev = Lui_store.revision store in
-    let sids =
-      match !scrollables with
-      | r, ids when r = srev -> ids
-      | _ ->
-        let ids =
-          List.filter
-            (fun id -> Ui.scrollable store id)
-            (Lui_store.preorder store)
-        in
-        scrollables := (srev, ids);
-        ids
-    in
-    List.iter
-      (fun id ->
-         let cr = engine_rect id in
-         match Lui_host.layout_virtual_extent host id with
-         | Some ext ->
-           (* Virtual extent, not the mounted rows' box: the cap
-              spans the full logical content. *)
-           Ui.set_scroll_cap ui id
-             (Float.max 0. (ext -. cr.Lui_scene.h));
-           Ui.set_scroll_cap_x ui id 0.
-         | None ->
-           let l, t, rgt, b = content_box id in
-           Ui.set_scroll_cap ui id
-             (Float.max 0. (b -. t -. cr.Lui_scene.h));
-           Ui.set_scroll_cap_x ui id
-             (Float.max 0. (rgt -. l -. cr.Lui_scene.w)))
-      sids;
-    (* Rects were just rebuilt — visible-range memos key on the epoch. *)
-    Ui.notify_layout ui
-  in
+  host_cell := Some (Assembly.host asm);
+  let host = Assembly.host asm
+  and ui = Assembly.ui asm
+  and rects = Assembly.rects asm
+  and store = Assembly.store asm in
   let backend =
-    Lui_host.backend host
+    Assembly.backend asm
       (Lui_protocol.profile Lui_protocol.MacOS Lui_protocol.GenericHost)
   in
   let app = Demo_app.create backend in
@@ -1046,88 +718,18 @@ let open_window ~title ~idx =
              | 2 -> Demo_app.Deco
              | _ -> Demo_app.Controls)));
   (* Priming paint: syncs the flex engine and renders once so the
-     hit-test mirror and scroll caps below see real rects. *)
-  ignore (Lui_host.repaint host);
-  populate ();
-  (* Ui driver hooks: real glyph measurement for caret/selection math,
-     unshifted engine rects for scroll_show/visible-range. *)
-  Ui.set_measure ui
-    (fun _store id s -> Lui_window_text.measure_text text_engine id s);
-  Ui.set_hit_text ui
-    (fun _store id text ~lx ~ly ~lw ~lh ->
-       Lui_window_text.hit_text text_engine id text ~lx ~ly ~lw ~lh);
-  (* Keyboard caret moves run on the same layouts: grapheme clusters
-     horizontally, visual (soft-wrapped) lines vertically. *)
-  Ui.set_caret_ops ui
-    (fun _store id text ~lw ~lh ->
-       Lui_window_text.caret_ops text_engine id text ~lw ~lh);
-  (* Virtual lists: expose the extent model to Ui (scroll-target,
-     visible-range), and synthesize rects for unmounted rows so
-     reveal/scroll-align work on logical items. *)
-  Ui.set_vlist_hook ui
-    (Some
-       Ui.
-         { vh_count =
-             (fun id ->
-                if Lui_store.kind store id = "virtual-list"
-                then Some (Lui_store.child_count store id)
-                else None);
-           vh_item =
-             (fun id ~index ->
-                Lui_host.layout_virtual_item host id ~index);
-           vh_index_of_key =
-             (fun id key ->
-                Lui_host.layout_virtual_index_of_key host id key);
-           vh_view =
-             (fun id -> Lui_host.layout_virtual_view host id) });
-  Ui.set_content_rect ui
-    (fun id ->
-       let r = engine_rect id in
-       if not (Lui_scene.rect_empty r) then r
-       else
-         (* Unmounted virtual-list row: the model still knows where
-            it sits, so scroll-to-item reaches it. *)
-         match Lui_store.parent store id with
-         | Some p -> (
-           match Lui_host.layout_virtual_index_of_id host p id with
-           | Some i ->
-             Option.value ~default:r
-               (Lui_host.layout_virtual_item host p ~index:i)
-           | None -> r)
-         | None -> r);
+     hit-test mirror and scroll caps see real rects. *)
+  ignore (Assembly.repaint asm);
   (* The a11y forest mirrors the store: synced after every repaint,
      focused along with the Ui focus, dumped on request and at quit. *)
   let a11y = Lui_a11y.of_store store in
-  (* Caret rect of the focused field, device px: the node's layout
-     rect shifted to the caret's real position inside the laid-out
-     text — wrap, line pitch, alignment and insets included. This is
-     the candidate-window anchor while composing. *)
-  let caret_rect () =
-    let id = Ui.focused ui in
-    let r = Rects.get rects id in
-    if Lui_scene.rect_empty r then r
-    else begin
-      let text = Ui.shadow ui in
-      let ops =
-        Lui_window_text.caret_ops text_engine id text ~lw:r.Lui_scene.w
-          ~lh:r.Lui_scene.h
-      in
-      let cx, cy, ch =
-        ops.Lui_window.Ui.c_rect
-          (min (Ui.caret ui) (String.length text))
-      in
-      Lui_scene.rect (r.Lui_scene.x +. cx) (r.Lui_scene.y +. cy) 2.
-        (Float.max 2. ch)
-    end
-  in
+  (* Caret rect of the focused field, device px — the candidate-window
+     anchor while composing. *)
+  let caret_rect () = Assembly.caret_rect asm in
   (* Hand focus to the first autofocus field — primary window only,
      secondary windows start unfocused. *)
   if idx = 0 then
-    (match
-       List.find_opt
-         (fun id -> bool_prop store id "autofocus")
-         (Lui_store.preorder store)
-     with
+    (match Assembly.first_autofocus asm with
      | Some id ->
        Ui.set_focused ui store id;
        Sdl.start_text_input ()
@@ -1139,7 +741,7 @@ let open_window ~title ~idx =
       reqs_seen = Hashtbl.create 8; checksum = Checksum.create ();
       frame = 0;
       stats = { frames = 0; acc_ms = 0.; min_ms = 1e9; max_ms = 0. };
-      idx; populate; caret_rect }
+      idx; asm; caret_rect }
   in
   let s =
     Multi.make_surface ~id ~host ~driver:d ~ui ~rects ~scale_cell
