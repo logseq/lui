@@ -311,7 +311,7 @@ let host_with_app () =
              Lui_window_text.text_ops text_engine id r fg s);
         image_of = (fun _ -> None);
         image_in = (fun _ _ -> None);
-        shadow_of = (fun _ -> None) }
+        shadow_of = (fun _ -> []) }
   in
   let rr = Lui_raster.Renderer.create () in
   let renderer =

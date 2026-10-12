@@ -1265,6 +1265,14 @@ let property_supported kind property =
     | Kbd ->
       property = TextValue || property = StyleClass
       || property = PointerEnabled || property = DataAttrs
+      || property = BackgroundValue || property = BorderColorValue
+      || property = BorderWidth || property = CornerRadius
+      || property = ForegroundValue || property = GrowValue
+      || property = PaddingValue || property = PaddingHorizontal
+      || property = PaddingVertical
+      || property = WidthValue || property = HeightValue
+      || property = MinWidth || property = MaxWidth
+      || property = MinHeight || property = MaxHeight || property = Opacity
       || property = FontSize || property = FontWeight || property = LineHeight
       || property = LetterSpacing || property = FontFamily
       || property = TextDecoration || property = WhiteSpace

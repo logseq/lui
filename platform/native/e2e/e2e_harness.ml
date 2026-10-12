@@ -90,10 +90,9 @@ let create ?(width = frame_w) ?(height = frame_h) () =
         (fun name ->
           match name with
           | "card" ->
-            Some
-              { dx = 0.; dy = 2.; blur = 6.; spread = 0.;
-                scolor = color 0 0 0 80; inset = false }
-          | _ -> None) }
+            [ { dx = 0.; dy = 2.; blur = 6.; spread = 0.;
+                scolor = color 0 0 0 80; inset = false } ]
+          | _ -> []) }
   in
   { host =
       Lui_host.create ~hooks

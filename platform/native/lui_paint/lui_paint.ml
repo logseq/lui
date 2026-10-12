@@ -427,7 +427,7 @@ type hooks = {
     (* node id → target rect (logical px) → decoded image; for sources
        that rasterize on demand (svg icons) so a glyph drawn in a slot
        smaller than the node's own rect stays crisp *)
-  shadow_of : string -> shadow_spec option; (* shadow spec parser *)
+  shadow_of : string -> shadow_spec list; (* shadow spec parser *)
 }
 
 and shadow_spec = {
@@ -474,21 +474,20 @@ let default_hooks =
     text_ops = (fun _ _ _ _ -> []);
     image_of = (fun _ -> None);
     image_in = (fun _ _ -> None);
-    shadow_of = (fun _ -> None) }
+    shadow_of = (fun _ -> []) }
 
 (* ---------- shadow parsing ---------- *)
 
-(* CSS box-shadow grammar, first layer only:
+(* CSS box-shadow grammar, all comma-separated layers:
      [inset]? <dx> <dy> [<blur> [<spread>]] [<color>]
    Lengths may carry a px suffix; color may be hex, rgb()/rgba(),
-   "transparent" or a resolver name. Returns None for "none"/unparseable.
-   All lengths come out in logical px; callers scale to device px. *)
-let parse_shadow resolve s =
-  let s = String.trim s in
-  if s = "" || s = "none" then None
-  else
-    let layer = match split_commas s with l :: _ -> l | [] -> s in
-    let toks = tokens layer in
+   "transparent" or a resolver name. Unparseable layers are dropped;
+   "none"/empty give []. The list stays in CSS order — the first
+   layer is topmost (painted last). All lengths come out in logical
+   px; callers scale to device px. *)
+let parse_shadows resolve s =
+  let layer_of l =
+    let toks = tokens l in
     let inset = List.mem "inset" toks in
     let lens = List.filter_map px_of_token toks in
     let col_tok =
@@ -510,6 +509,9 @@ let parse_shadow resolve s =
       in
       Some { dx; dy; blur; spread; scolor; inset }
     | _ -> None
+  in
+  let s = String.trim s in
+  if s = "" || s = "none" then [] else List.filter_map layer_of (split_commas s)
 
 (* ---------- prop helpers ---------- *)
 
@@ -871,18 +873,18 @@ let box_ops ctx store id rs r alpha =
   let bw = border_widths ctx store id in
   let bcs = border_colors ctx.hooks store id in
   let dashed = dashed_border store id in
-  let shadow_op =
-    match rs.rs_shadow with
-    | Some s -> (
-      match ctx.hooks.shadow_of s with
-      | Some spec -> Some (shadow_op_of ctx r radii spec alpha, spec.inset)
-      | None -> None)
-    | None -> None
-  in
+  (* Every layer of the shadow spec paints: outsets under the box,
+     insets over the fill. CSS draws shadows front-to-back — the first
+     listed is topmost — and cons-accumulating emits them bottom
+     first. *)
   let outset, inset =
-    match shadow_op with
-    | Some (op, false) -> ([ op ], [])
-    | Some (op, true) -> ([], [ op ])
+    match rs.rs_shadow with
+    | Some s ->
+      List.fold_left
+        (fun (o, i) spec ->
+          let op = shadow_op_of ctx r radii spec alpha in
+          if spec.inset then (o, op :: i) else (op :: o, i))
+        ([], []) (ctx.hooks.shadow_of s)
     | None -> ([], [])
   in
   let bg =
