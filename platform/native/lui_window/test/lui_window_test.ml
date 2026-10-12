@@ -378,6 +378,29 @@ let test_caret_ops_wiring () =
        (Input.Key_down (Input.Arrow_up, Input.mods_none, false)));
   Alcotest.(check int) "engine up sentinel" 0 (Ui.caret ui)
 
+let test_text_revisions () =
+  (* P1-2: the text session counts host-local edits and adopted
+     model revisions separately — a Ui-visible window into the
+     edit protocol. *)
+  let s, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  let s0, _, _ = Ui.text_revisions ui in
+  Ui.set_focused ui s 4;
+  ignore (Ui.handle ui s rects (Input.Text_input "ab"));
+  let s1, l1, m1 = Ui.text_revisions ui in
+  Alcotest.(check bool) "new session" true (s1 <> s0);
+  Alcotest.(check int) "local edit counted" 1 l1;
+  Alcotest.(check int) "no model adoption yet" 0 m1;
+  (* a model-side write adopts into the session *)
+  Lui_store.apply_batch s
+    { generation = 2;
+      ops = [ SetProp (4, TextValue, StringValue "remote") ] };
+  ignore (Ui.store_changed ui s);
+  Alcotest.(check string) "model text adopted" "remote"
+    (Ui.shadow ui);
+  let _, _, m2 = Ui.text_revisions ui in
+  Alcotest.(check int) "model revision" 1 m2
+
 let test_hover_detail () =
   let s, rects = ui_store_fresh () in
   let ui = Ui.create () in
@@ -1828,6 +1851,8 @@ let () =
           Alcotest.test_case "focus" `Quick test_click_focus;
           Alcotest.test_case "text+keys" `Quick test_text_input_and_keys;
           Alcotest.test_case "caret ops" `Quick test_caret_ops_wiring;
+          Alcotest.test_case "text revisions" `Quick
+            test_text_revisions;
           Alcotest.test_case "hover detail" `Quick test_hover_detail;
           Alcotest.test_case "context menu" `Quick test_context_menu;
           Alcotest.test_case "disabled gate" `Quick test_disabled_gate ] );
