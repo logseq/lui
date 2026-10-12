@@ -866,6 +866,7 @@ and apply_secondary_property renderer node kind dom_node property value =
       set_style dom_node "opacity" (Js.Float.toString value)
   | DisplayValue, StringValue value -> set_style dom_node "display" value
   | FontFamily, StringValue value -> set_style dom_node "font-family" value
+  | FontStyle, StringValue value -> set_style dom_node "font-style" value
   | TextDecoration, StringValue value ->
       set_style dom_node "text-decoration" value
   | ListStyle, StringValue value -> set_style dom_node "list-style" value
@@ -1110,6 +1111,7 @@ let remove_property renderer node kind dom_node property =
        | Opacity -> set_style dom_node "opacity" ""
        | DisplayValue -> set_style dom_node "display" ""
        | FontFamily -> set_style dom_node "font-family" ""
+       | FontStyle -> set_style dom_node "font-style" ""
        | TextDecoration -> set_style dom_node "text-decoration" ""
        | ListStyle -> set_style dom_node "list-style" ""
        | FlexWrap -> set_style dom_node "flex-wrap" ""
