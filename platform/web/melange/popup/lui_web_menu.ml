@@ -128,14 +128,6 @@ let dropdown_node nodes node =
 
 let dropdown_node_ = dropdown_node
 
-let child_with_kind renderer children kind =
-  List.find_opt
-    (fun child ->
-      match Store.node renderer.web_store child with
-      | Some child_node -> Store.standard_kind_is child_node kind
-      | None -> false)
-    children
-
 (* --- picker / combobox plumbing --- *)
 
 let picker_dropdown renderer picker =
@@ -143,21 +135,32 @@ let picker_dropdown renderer picker =
   | Some current ->
       (match current.retained_parent with
        | Some parent ->
-           child_with_kind renderer
-             (Store.children renderer.web_store parent)
-             DropdownMenu
+           (match Store.node renderer.web_store parent with
+            | Some parent_node ->
+                Lui_sequence.find_map
+                  (fun child ->
+                    match Store.node renderer.web_store child with
+                    | Some child_node
+                      when Store.standard_kind_is child_node DropdownMenu ->
+                        Some child
+                    | _ -> None)
+                  parent_node.retained_children
+            | None -> None)
        | None -> None)
   | None -> None
 
 let picker_under_parent renderer parent =
-  List.find_opt
-    (fun child ->
-      match Store.node renderer.web_store child with
-      | Some child_node ->
-          Store.standard_kind_is child_node Select
-          || Store.standard_kind_is child_node Combobox
-      | None -> false)
-    (Store.children renderer.web_store parent)
+  match Store.node renderer.web_store parent with
+  | Some parent_node ->
+      Lui_sequence.find_opt
+        (fun child ->
+          match Store.node renderer.web_store child with
+          | Some child_node ->
+              Store.standard_kind_is child_node Select
+              || Store.standard_kind_is child_node Combobox
+          | None -> false)
+        parent_node.retained_children
+  | None -> None
 
 let picker_for_dropdown renderer dropdown =
   match Store.node renderer.web_store dropdown with
@@ -179,14 +182,16 @@ let picker_control_element renderer picker =
 let picker_menu_items renderer dropdown =
   match Store.node renderer.web_store dropdown with
   | Some current ->
-      List.filter
-        (fun child ->
+      Lui_sequence.fold_left
+        (fun items child ->
           match Store.node renderer.web_store child with
-          | Some child_node ->
-              Store.menu_item_row child_node
-              && Store.enabled_node renderer child
-          | None -> false)
-        (Lui_sequence.to_list current.retained_children)
+          | Some child_node
+            when Store.menu_item_row child_node
+                 && Store.enabled_node renderer child ->
+              child :: items
+          | _ -> items)
+        [] current.retained_children
+      |> List.rev
   | None -> []
 
 let picker_selected_index renderer dropdown =
@@ -248,11 +253,14 @@ let scroll_picker_item renderer dropdown element =
 let set_combobox_active renderer picker dropdown index =
   let items = picker_menu_items renderer dropdown in
   let control = picker_control_element renderer picker in
-  List.iter
-    (fun item ->
-      W.Element.removeAttribute "data-highlighted"
-        (Lui_web_nodes.dom_node renderer item))
-    (Store.children renderer.web_store dropdown);
+  (match Store.node renderer.web_store dropdown with
+   | Some current ->
+       Lui_sequence.iter
+         (fun item ->
+           W.Element.removeAttribute "data-highlighted"
+             (Lui_web_nodes.dom_node renderer item))
+         current.retained_children
+   | None -> ());
   W.Element.removeAttribute "data-lui-active-index" control;
   W.Element.removeAttribute "aria-activedescendant" control;
   if items <> [] && index >= 0 && index < List.length items then begin
@@ -292,27 +300,30 @@ let ensure_combobox_status renderer dropdown =
 
 let refresh_dropdown_item_roles renderer dropdown =
   let listbox = Lui_web_nodes.dropdown_listbox renderer dropdown in
-  List.iter
-    (fun item ->
-      match Store.node renderer.web_store item with
-      | Some current ->
-          if Store.menu_item_row current then
-            if listbox then begin
-              W.Element.setAttribute "role" "option" (Lazy.force current.platform_node);
-              W.Element.setAttribute "aria-selected"
-                (if
-                   Store.property renderer.web_store item Selected
-                   = Some (BoolValue true)
-                 then "true"
-                 else "false")
-                (Lazy.force current.platform_node)
-            end
-            else begin
-              W.Element.setAttribute "role" "menuitem" (Lazy.force current.platform_node);
-              W.Element.removeAttribute "aria-selected" (Lazy.force current.platform_node)
-            end
-      | None -> ())
-    (Store.children renderer.web_store dropdown)
+  match Store.node renderer.web_store dropdown with
+  | Some dropdown_node ->
+      Lui_sequence.iter
+        (fun item ->
+          match Store.node renderer.web_store item with
+          | Some current ->
+              if Store.menu_item_row current then
+                if listbox then begin
+                  W.Element.setAttribute "role" "option" (Lazy.force current.platform_node);
+                  W.Element.setAttribute "aria-selected"
+                    (if
+                       Store.property renderer.web_store item Selected
+                       = Some (BoolValue true)
+                     then "true"
+                     else "false")
+                    (Lazy.force current.platform_node)
+                end
+                else begin
+                  W.Element.setAttribute "role" "menuitem" (Lazy.force current.platform_node);
+                  W.Element.removeAttribute "aria-selected" (Lazy.force current.platform_node)
+                end
+          | None -> ())
+        dropdown_node.retained_children
+  | None -> ()
 
 let combobox_status_text item_count =
   if item_count = 1 then "1 result available."
@@ -407,26 +418,32 @@ let set_dropdown_open_bang = set_dropdown_open
 let direct_context_menu renderer node =
   match Store.node renderer.web_store node with
   | Some current ->
-      List.find_opt
+      Lui_sequence.find_opt
         (fun child ->
           match Store.node renderer.web_store child with
           | Some child_node ->
               Store.standard_kind_is child_node ContextMenu
-              && List.exists
+              && Lui_sequence.exists
                    (fun item ->
                      match Store.node renderer.web_store item with
                      | Some item_node ->
                          Store.standard_kind_is item_node MenuItem
                      | None -> false)
-                   (Lui_sequence.to_list child_node.retained_children)
+                   child_node.retained_children
           | None -> false)
-        (Lui_sequence.to_list current.retained_children)
+        current.retained_children
   | None -> None
 
 let direct_dropdown_menu renderer node =
   match Store.node renderer.web_store node with
   | Some current ->
-      child_with_kind renderer (Lui_sequence.to_list current.retained_children) DropdownMenu
+      Lui_sequence.find_opt
+        (fun child ->
+          match Store.node renderer.web_store child with
+          | Some child_node ->
+              Store.standard_kind_is child_node DropdownMenu
+          | None -> false)
+        current.retained_children
   | None -> None
 
 let hide_context_menu renderer =
@@ -447,14 +464,16 @@ let hide_context_menu renderer =
 let context_menu_focus_items renderer menu =
   match Store.node renderer.web_store menu with
   | Some current ->
-      List.filter
-        (fun child ->
+      Lui_sequence.fold_left
+        (fun items child ->
           match Store.node renderer.web_store child with
-          | Some child_node ->
-              Store.menu_item_row child_node
-              && Store.enabled_node renderer child
-          | None -> false)
-        (Lui_sequence.to_list current.retained_children)
+          | Some child_node
+            when Store.menu_item_row child_node
+                 && Store.enabled_node renderer child ->
+              child :: items
+          | _ -> items)
+        [] current.retained_children
+      |> List.rev
   | None -> []
 
 let focus_context_menu_item renderer menu index =
@@ -701,12 +720,12 @@ let rec group_positioners renderer acc current =
       (Lazy.force current.platform_node) :: acc
     else acc
   in
-  List.fold_left
+  Lui_sequence.fold_left
     (fun acc child ->
       match Store.node renderer.web_store child with
       | Some child_node -> group_positioners renderer acc child_node
       | None -> acc)
-    acc (Lui_sequence.to_list current.retained_children)
+    acc current.retained_children
 
 let dropdown_group_contains_event renderer node event =
   match Store.node renderer.web_store node with
@@ -1569,7 +1588,7 @@ let mount_dropdown_bang = mount_dropdown
 let update_picker_expanded renderer parent expanded =
   match Store.node renderer.web_store parent with
   | Some parent_node ->
-      List.iter
+      Lui_sequence.iter
         (fun child ->
           match Store.node renderer.web_store child with
           | Some current ->
@@ -1584,7 +1603,7 @@ let update_picker_expanded renderer parent expanded =
                      (Lui_web_util.child_element (Lazy.force current.platform_node) 0)
                | _ -> ())
           | None -> ())
-        (Lui_sequence.to_list parent_node.retained_children)
+        parent_node.retained_children
   | None -> ()
 
 let update_picker_expanded_bang = update_picker_expanded

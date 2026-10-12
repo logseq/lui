@@ -95,7 +95,6 @@ let shadow_insert shadow index child =
   Lui_indexed_sequence.insert shadow.items index child;
   Lui_indexed_sequence.set_weight shadow.items child 0
 
-let shadow_ids shadow = Lui_indexed_sequence.to_list shadow.items
 
 let shadow_remove shadow child =
   if Lui_indexed_sequence.index shadow.items child <> None then
@@ -116,7 +115,8 @@ let visible_child_index renderer ~container ~children index =
    | Some previous when previous == container -> ()
    | _ ->
      children.prefix_container <- Some container;
-     List.iter (shadow_refresh_weight renderer children) (shadow_ids children));
+     Lui_indexed_sequence.iter
+       (shadow_refresh_weight renderer children) children.items);
   Lui_indexed_sequence.prefix_weight children.items index
 
 let focused_descendant renderer dom_node =
@@ -598,12 +598,11 @@ let rec materialize renderer node =
     else begin
       let shadow = shadow_of_list [] in
       let children_of _ = shadow in
-      Lui_sequence.to_list current.retained_children
-      |> List.iteri (fun index child ->
+      Lui_sequence.iteri (fun index child ->
         ignore (materialize renderer child);
         shadow_insert shadow index child;
         apply_insert_child renderer (Store.node renderer.web_store) children_of node child index;
-        shadow_refresh_weight renderer shadow child)
+        shadow_refresh_weight renderer shadow child) current.retained_children
     end;
     Nodes.dom_node renderer node
 
@@ -649,7 +648,7 @@ let apply_detach_subtree renderer previous_nodes children_of node =
               toast_boundaries := toast :: !toast_boundaries
           | None -> ())
      | _ -> ());
-    List.iter retain_toasts (shadow_ids (children_of node_id))
+    Lui_indexed_sequence.iter retain_toasts (children_of node_id).items
   in
   retain_toasts node;
   let retained_for_exit element =
@@ -731,7 +730,7 @@ let apply_detach_subtree renderer previous_nodes children_of node =
     detach_bottom_tab_trigger node_id;
     Ext.cleanup_extension_node renderer previous_nodes node_id;
     cleanup_node renderer node_id;
-    List.iter visit (shadow_ids (children_of node_id))
+    Lui_indexed_sequence.iter visit (children_of node_id).items
   in
   visit node;
   (* parent-side follow-ups mirror apply_remove_child *)

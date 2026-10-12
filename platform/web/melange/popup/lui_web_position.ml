@@ -260,14 +260,17 @@ let finish_popup_close_after_transition_bang =
    but position sits below it in the layering, so the queries it needs are
    replicated here against the retained store. *)
 let picker_under_parent renderer parent =
-  List.find_opt
-    (fun child ->
-       match Store.node renderer.web_store child with
-       | Some child_node ->
-           Store.standard_kind_is child_node Select
-           || Store.standard_kind_is child_node Combobox
-       | None -> false)
-    (Store.children renderer.web_store parent)
+  match Store.node renderer.web_store parent with
+  | Some parent_node ->
+      Lui_sequence.find_opt
+        (fun child ->
+           match Store.node renderer.web_store child with
+           | Some child_node ->
+               Store.standard_kind_is child_node Select
+               || Store.standard_kind_is child_node Combobox
+           | None -> false)
+        parent_node.retained_children
+  | None -> None
 
 let picker_for_dropdown renderer dropdown =
   match Store.node renderer.web_store dropdown with
@@ -289,14 +292,16 @@ let picker_control_element renderer picker =
 let picker_menu_items renderer dropdown =
   match Store.node renderer.web_store dropdown with
   | Some current ->
-      List.filter
-        (fun child ->
+      Lui_sequence.fold_left
+        (fun items child ->
            match Store.node renderer.web_store child with
-           | Some child_node ->
-               Store.menu_item_row child_node
-               && Store.enabled_node renderer child
-           | None -> false)
-        (Lui_sequence.to_list current.retained_children)
+           | Some child_node
+             when Store.menu_item_row child_node
+                  && Store.enabled_node renderer child ->
+               child :: items
+           | _ -> items)
+        [] current.retained_children
+      |> List.rev
   | None -> []
 
 let picker_selected_index renderer dropdown =

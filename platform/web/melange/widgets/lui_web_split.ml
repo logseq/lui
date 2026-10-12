@@ -144,9 +144,12 @@ let update_split_bang = update_split
 
 let rec update_splits_under renderer node =
   update_split renderer node;
-  List.iter
-    (fun child -> update_splits_under renderer child)
-    (Store.children renderer.web_store node)
+  match Store.node renderer.web_store node with
+  | Some current ->
+      Lui_sequence.iter
+        (fun child -> update_splits_under renderer child)
+        current.retained_children
+  | None -> ()
 
 let update_splits_under_bang = update_splits_under
 

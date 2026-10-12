@@ -505,22 +505,17 @@ let dom_child_container_before renderer previous_nodes node dom_node =
        | None -> dom_node)
 
 let picker_under_parent renderer parent =
-  let children = Store.children renderer.web_store parent in
-  let count = List.length children in
-  let rec loop index =
-    if index = count then None
-    else
-      let child = List.nth children index in
-      match Store.node renderer.web_store child with
-      | Some child_node ->
-          if
-            Store.standard_kind_is child_node Select
-            || Store.standard_kind_is child_node Combobox
-          then Some child
-          else loop (index + 1)
-      | None -> loop (index + 1)
-  in
-  loop 0
+  match Store.node renderer.web_store parent with
+  | Some parent_node ->
+      Lui_sequence.find_opt
+        (fun child ->
+          match Store.node renderer.web_store child with
+          | Some child_node ->
+              Store.standard_kind_is child_node Select
+              || Store.standard_kind_is child_node Combobox
+          | None -> false)
+        parent_node.retained_children
+  | None -> None
 
 let picker_for_dropdown renderer dropdown =
   match Store.node renderer.web_store dropdown with

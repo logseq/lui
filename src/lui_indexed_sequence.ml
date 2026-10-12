@@ -125,6 +125,17 @@ let to_list sequence =
   in
   collect sequence.root []
 
+let iter f sequence =
+  let rec visit root =
+    match root with
+    | None -> ()
+    | Some node ->
+        visit node.left;
+        f node.id;
+        visit node.right
+  in
+  visit sequence.root
+
 let set_weight sequence id value =
   match Hashtbl.find_opt sequence.handles id with
   | None -> ()
