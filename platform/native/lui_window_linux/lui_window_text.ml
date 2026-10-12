@@ -582,3 +582,43 @@ let hit_text t id text ~lx ~ly ~lw:_ ~lh =
       ll.Lui_text.ll_top +. frac *. ll.Lui_text.ll_height
   in
   Lui_text.hit_test lay (lx /. scale, py')
+
+(* The caret model the Ui drives keyboard editing with: the same
+   cached layout [hit_text] resolves against (this engine paints
+   unwrapped, so visual lines are paragraph lines), so grapheme
+   moves, vertical moves and the IME candidate anchor stay
+   consistent with what the pointer hits. *)
+let caret_ops t id text ~lw:_ ~lh : Lui_window.Ui.caret_ops =
+  let scale = t.scale () in
+  let store = t.store () in
+  let st = style_of t store id in
+  let lay = layout_of t st ~width:0. text in
+  let text_h = styled_height st lay *. scale in
+  let y0 = Float.max 0. ((lh -. text_h) /. 2.) in
+  { Lui_window.Ui.c_before = (fun i -> Lui_text.caret_before lay i);
+    c_after = (fun i -> Lui_text.caret_after lay i);
+    c_up = (fun i -> Lui_text.caret_up lay i);
+    c_down = (fun i -> Lui_text.caret_down lay i);
+    c_rect =
+      (fun i ->
+        let cr = Lui_text.caret_rect lay i in
+        (* Painted pitch under a line-height override: row k sits at
+           k * ts_lh, the inverse of the [hit_text] remap. *)
+        let y =
+          if st.ts_lh <= 0. then cr.Lui_text.ry
+          else
+            let lines = lay.Lui_text.lay_lines in
+            let n = Array.length lines in
+            let rec pick k =
+              if k >= n - 1 then max 0 (n - 1)
+              else if
+                cr.Lui_text.ry
+                < lines.(k).Lui_text.ll_top
+                  +. lines.(k).Lui_text.ll_height
+              then k
+              else pick (k + 1)
+            in
+            float (if n = 0 then 0 else pick 0) *. st.ts_lh
+        in
+        (cr.Lui_text.rx *. scale, y0 +. (y *. scale),
+         cr.Lui_text.rh *. scale)) }
