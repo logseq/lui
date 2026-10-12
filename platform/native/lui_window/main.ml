@@ -165,7 +165,7 @@ type drv = {
   mutable frame : int;
   stats : stats;
   idx : int;                   (* registry/log index, 0-based *)
-  populate : unit -> unit;     (* hit-test mirror refresh *)
+  populate : unit -> Ui.action list; (* hit-test mirror refresh *)
   caret_rect : unit -> Lui_scene.rect;
 }
 
@@ -413,7 +413,7 @@ let tick (s : surf) ~t0 =
   let dirty = !headless || Ui.want_frame s.ui s.host in
   if dirty then begin
     ignore (Lui_host.repaint s.host);
-    d.populate ();
+    apply_actions s (d.populate ());
     ignore (Lui_a11y.sync d.a11y);
     if !(d.gl_live_cell) then begin
       (match !(d.gctx_cell) with
@@ -1024,7 +1024,17 @@ let open_window ~title ~idx =
              (Float.max 0. (rgt -. l -. cr.Lui_scene.w)))
       sids;
     (* Rects were just rebuilt — visible-range memos key on the epoch. *)
-    Ui.notify_layout ui
+    Ui.notify_layout ui;
+    (* Anchor correction: rows that measured off-estimate above the
+       viewport shifted everything below — fold the drift back into
+       the scroll offset so the top row does not visibly jump. *)
+    List.concat_map
+      (fun id ->
+         let d = Lui_host.layout_take_drift host id in
+         if Float.abs d > 0.001 then
+           Ui.scroll_set ui store id (Ui.scroll_offset ui id +. d)
+         else [])
+      (Lui_host.layout_vlists host)
   in
   let backend =
     Lui_host.backend host
@@ -1048,7 +1058,7 @@ let open_window ~title ~idx =
   (* Priming paint: syncs the flex engine and renders once so the
      hit-test mirror and scroll caps below see real rects. *)
   ignore (Lui_host.repaint host);
-  populate ();
+  ignore (populate ());
   (* Ui driver hooks: real glyph measurement for caret/selection math,
      unshifted engine rects for scroll_show/visible-range. *)
   Ui.set_measure ui

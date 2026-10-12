@@ -46,6 +46,7 @@ module type LAYOUT_ENGINE = sig
   val virtual_index_of_key : t -> Lui_store.t -> int -> string -> int option
   val virtual_index_of_id : t -> Lui_store.t -> int -> int -> int option
   val virtual_view : t -> int -> (float * float) option
+  val virtual_take_drift : t -> int -> float
 end
 
 (* An instantiated engine: what (module LAYOUT_ENGINE) becomes once the
@@ -67,6 +68,7 @@ type layout_state = {
   lkey : int -> string -> int option;
   lid : int -> int -> int option;
   lview : int -> (float * float) option;
+  ldrift : int -> float;
 }
 
 type t = {
@@ -113,7 +115,8 @@ let create ~hooks ?layout ?(measure = no_measure) ~renderer ~width ~height ~scal
           litem = (fun id ~index -> L.virtual_item_rect engine id ~index);
           lkey = (fun id key -> L.virtual_index_of_key engine store id key);
           lid = (fun id cid -> L.virtual_index_of_id engine store id cid);
-          lview = (fun id -> L.virtual_view engine id) }
+          lview = (fun id -> L.virtual_view engine id);
+          ldrift = (fun id -> L.virtual_take_drift engine id) }
   in
   let mask_atlas = Atlas.create ~bpp:1 ~w:512 ~h:512 in
   let color_atlas = Atlas.create ~bpp:4 ~w:512 ~h:512 in
@@ -168,6 +171,11 @@ let layout_virtual_index_of_id h id cid =
 
 let layout_virtual_view h id =
   match h.layout with Some l -> l.lview id | None -> None
+
+(* Consume-on-read scroll correction from virtual-list measurement
+   drift — the driver adds it to the list's scroll offset. *)
+let layout_take_drift h id =
+  match h.layout with Some l -> l.ldrift id | None -> 0.
 
 (* The layout engine memoizes on (store revision, frame, input
    identities); a measure/hidden closure whose answers changed under a

@@ -50,6 +50,11 @@ module type LAYOUT_ENGINE = sig
   val virtual_index_of_key : t -> Lui_store.t -> int -> string -> int option
   val virtual_index_of_id : t -> Lui_store.t -> int -> int -> int option
   val virtual_view : t -> int -> (float * float) option
+
+  (** Pending anchor correction in device px, consume-on-read: how far
+      the row at the viewport top moved because rows above it measured
+      off-estimate. Add it to the list's scroll offset. *)
+  val virtual_take_drift : t -> int -> float
 end
 
 type t
@@ -144,5 +149,10 @@ val layout_virtual_item : t -> int -> index:int -> Lui_scene.rect option
 val layout_virtual_index_of_key : t -> int -> string -> int option
 val layout_virtual_index_of_id : t -> int -> int -> int option
 val layout_virtual_view : t -> int -> (float * float) option
+
+(** Consume-on-read anchor correction in device px; the driver adds it
+    to the list's scroll offset so the top row keeps its screen
+    position while variable heights settle. *)
+val layout_take_drift : t -> int -> float
 
 val backend : t -> Lui_protocol.platform_profile -> Lui_protocol.backend
