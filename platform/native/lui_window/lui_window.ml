@@ -482,6 +482,11 @@ module Layout = struct
     | None -> avail
 
   let rec layout_node store measure scale rects id (r : rect) =
+    (* Pixel-snapping contract: stored geometry is edge-snapped once at
+       production so the hit-test mirror, scroll extents, clip and
+       caret share the rasterizer's device-pixel edges. Children lay
+       out inside the snapped box. *)
+    let r = rect_snap r in
     Hashtbl.replace rects id r;
     match Lui_store.child_ids store id with
     | [] -> ()
@@ -735,6 +740,11 @@ module Ui = struct
       (Hashtbl.find_opt (snd (scroll_tbls t axis)) id)
 
   let set_scroll_cap_axis t axis id cap =
+    (* Snapped-geometry contract: the scrollable range lives on the
+       same device-pixel edges as the rects it derives from — a
+       fractional remainder (e.g. 0.4 px of overshoot at scale 1.5)
+       rounds out instead of becoming phantom scroll range. *)
+    let cap = Float.max 0. (Lui_scene.snap cap) in
     Hashtbl.replace (snd (scroll_tbls t axis)) id cap;
     (* A shrinking cap (content removed, window grown) clamps any
        offset it left dangling past the new range. *)
@@ -2308,7 +2318,12 @@ module Ui = struct
     | Input.Text_input s -> feed_ime t store (`Commit s)
     | Input.Text_editing (text, start, len) ->
       feed_ime t store (`Editing (text, start, len))
-    | Input.Caret r -> feed_ime t store (`Caret r)
+    | Input.Caret r ->
+      (* The caret is painted geometry too: it snaps to the same
+         device-pixel edges as the rects it anchors on, so the IME
+         candidate window never straddles a 0.5 px boundary the
+         layout could not have produced. *)
+      feed_ime t store (`Caret (rect_snap r))
     | Input.Paste s ->
       (* clipboard text the driver pulled after Paste_request *)
       if s = "" || not (editable t store) then []

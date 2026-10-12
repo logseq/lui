@@ -329,6 +329,35 @@ let test_ac_row () =
   check (float eps) "text h" 10. (place p 10).h;
   check (float eps) "wrap h" 10. (place p 4).h
 
+(* Pixel snapping contract: at a fractional backing scale the exported
+   rects land on device-pixel edges, and siblings stacked without a
+   gap share their boundary exactly — the same snapped geometry feeds
+   paint, hit-test and scroll extents. *)
+let test_snapped_edges () =
+  let store = Lui_store.create () in
+  apply store
+    [ CreateNode (1, Root); CreateNode (2, Column);
+      CreateNode (3, Text); CreateNode (4, Text);
+      InsertChild (1, 2, 0); InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+      SetProp (2, PaddingValue, IntValue 3);
+      SetProp (3, HeightValue, IntValue 20);
+      SetProp (4, HeightValue, IntValue 20) ];
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~scale:1.5 ~width:200. ~height:100. t store;
+  let r3 = Option.get (Lui_layout.rect t 3)
+  and r4 = Option.get (Lui_layout.rect t 4) in
+  let aligned (r : Lui_scene.rect) =
+    r.x = Float.round r.x && r.y = Float.round r.y
+    && r.w = Float.round r.w && r.h = Float.round r.h
+  in
+  check bool "child1 aligned" true (aligned r3);
+  check bool "child2 aligned" true (aligned r4);
+  (* pad 3 logical = 4.5 device: first child spans 4.5..195.5 and
+     snaps to 5..196 (w 191); its bottom 34.5 snaps to 35, which the
+     second child shares exactly. *)
+  check_rect "child1" 5. 5. 191. 30. r3;
+  check_rect "child2 shared edge" 5. 35. 191. 30. r4
+
 let () =
   run "lui_layout"
     [ ("layout",
@@ -347,4 +376,5 @@ let () =
          test_case "popup centered" `Quick test_popup_default_centered;
          test_case "root popup" `Quick test_root_popup_centered_in_frame;
          test_case "menu panel" `Quick test_menu_panel;
-         test_case "ac row" `Quick test_ac_row ]) ]
+         test_case "ac row" `Quick test_ac_row;
+         test_case "snapped edges" `Quick test_snapped_edges ]) ]
