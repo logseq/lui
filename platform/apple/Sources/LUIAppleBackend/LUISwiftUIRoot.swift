@@ -617,8 +617,11 @@ struct LUIAnyNodeView: View, Equatable {
 }
 
 /// Feeds `LUIAppleBackend.reportNodeFrame` with each node's frame in the
-/// scene's global coordinate space. Collection is unconditional (cheap
-/// dict writes) so `frameReportingEnabled` can turn on mid-session.
+/// scene's global coordinate space. The geometry probe only mounts while
+/// `frameReportingEnabled` is set (and collection isn't suspended);
+/// `frameReporting` is observable, so toggling the flag mounts every probe
+/// and the first layout pass repopulates `nodeFrames` for a mid-session
+/// attach.
 private struct LUIFrameReportModifier: ViewModifier {
     let nodeID: Int
     let backend: LUIAppleBackend
@@ -628,18 +631,23 @@ private struct LUIFrameReportModifier: ViewModifier {
     /// SwiftUI gestures already deliver the correct action.
     @Environment(\.luiInHoistedToolbar) private var inHoistedToolbar
 
+    @ViewBuilder
     func body(content: Content) -> some View {
-        content
-            .onGeometryChange(for: CGRect.self) { proxy in
-                proxy.frame(in: .global)
-            } action: { rect in
-                if !inHoistedToolbar {
-                    backend.reportNodeFrame(nodeID, rect)
+        if backend.frameReporting.isEnabled && !backend.frameReporting.isSuspended {
+            content
+                .onGeometryChange(for: CGRect.self) { proxy in
+                    proxy.frame(in: .global)
+                } action: { rect in
+                    if !inHoistedToolbar {
+                        backend.reportNodeFrame(nodeID, rect)
+                    }
                 }
-            }
-            .onDisappear {
-                backend.removeNodeFrame(nodeID)
-            }
+                .onDisappear {
+                    backend.removeNodeFrame(nodeID)
+                }
+        } else {
+            content
+        }
     }
 }
 

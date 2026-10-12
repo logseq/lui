@@ -435,6 +435,17 @@ final class LUINodeModel: Identifiable {
     func accessibilityHint(in backend: LUIAppleBackend) -> String? { nil }
 }
 
+/// Observable flags backing `LUIAppleBackend`'s frame reporting: the
+/// per-node geometry probe reads `isEnabled`/`isSuspended` in its body so
+/// probes mount and unmount with the flags instead of staying installed
+/// and no-op'ing.
+@Observable
+@MainActor
+final class LUIFrameReporting {
+    var isEnabled = false
+    var isSuspended = false
+}
+
 @MainActor
 public final class LUIAppleBackend {
     public private(set) var generation = 0
@@ -444,12 +455,20 @@ public final class LUIAppleBackend {
 
     // MARK: - Node frame reporting
 
-    /// Gates emission of `onFramesReport`. Frames are collected
-    /// unconditionally (a dict write per layout change) so a driver can
-    /// attach mid-session and still see every node's latest geometry.
-    public var frameReportingEnabled = false {
-        didSet {
-            if frameReportingEnabled && !oldValue {
+    /// Observable side of `frameReportingEnabled`: views read this so the
+    /// per-node geometry probes mount/unmount when reporting toggles.
+    let frameReporting = LUIFrameReporting()
+
+    /// Gates emission of `onFramesReport` and the per-node
+    /// `onGeometryChange` probes. Toggling it on mounts the probes, whose
+    /// first layout pass feeds `nodeFrames`, so a driver attaching
+    /// mid-session still sees every node's latest geometry.
+    public var frameReportingEnabled: Bool {
+        get { frameReporting.isEnabled }
+        set {
+            let wasEnabled = frameReporting.isEnabled
+            frameReporting.isEnabled = newValue
+            if newValue && !wasEnabled {
                 scheduleFramesReport()
             }
         }
@@ -463,8 +482,11 @@ public final class LUIAppleBackend {
 
     /// When true, per-node frame collection is skipped entirely — hosts
     /// running the LOGSEQ_NO_FRAME_PROBE mount-cost experiment set this so
-    /// `onGeometryChange` recorders never feed `nodeFrames`.
-    public var frameCollectionSuspended = false
+    /// `onGeometryChange` recorders never mount.
+    public var frameCollectionSuspended: Bool {
+        get { frameReporting.isSuspended }
+        set { frameReporting.isSuspended = newValue }
+    }
 
     private var nodeFrames: [Int: CGRect] = [:]
     private var framesReportScheduled = false
