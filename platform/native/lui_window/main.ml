@@ -694,15 +694,31 @@ let open_window ~title ~idx =
       Option.value ~default:Rects.zero (Lui_host.layout_rect h id)
     | None -> Rects.zero
   in
-  let scroll_shift_of id =
-    let rec sum aid (sx, sy) =
-      match Lui_store.parent (store_of ()) aid with
-      | Some p ->
-        sum p
-          (sx +. Ui.scroll_offset_x ui p, sy +. Ui.scroll_offset ui p)
-      | None -> (sx, sy)
+  (* [shifted_rect] runs once per painted node and the ancestor-offset
+     sum is otherwise O(depth) each — memoize it for as long as both
+     the store shape and the scroll offsets stand still. *)
+  let shift_memo : (int, float * float) Hashtbl.t = Hashtbl.create 64 in
+  let shift_epoch = ref (-1, -1) in
+  let rec scroll_shift_of id =
+    let epoch =
+      (Lui_store.revision (store_of ()), Ui.scroll_epoch ui)
     in
-    sum id (0., 0.)
+    if epoch <> !shift_epoch then begin
+      Hashtbl.reset shift_memo;
+      shift_epoch := epoch
+    end;
+    match Hashtbl.find_opt shift_memo id with
+    | Some v -> v
+    | None ->
+      let v =
+        match Lui_store.parent (store_of ()) id with
+        | Some p ->
+          let sx, sy = scroll_shift_of p in
+          (sx +. Ui.scroll_offset_x ui p, sy +. Ui.scroll_offset ui p)
+        | None -> (0., 0.)
+      in
+      Hashtbl.replace shift_memo id v;
+      v
   in
   let shifted_rect id =
     let r = engine_rect id in

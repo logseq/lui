@@ -345,6 +345,10 @@ module Ui : sig
   (** Current vertical scroll offset of the container, device px
       (0 when it was never scrolled). *)
 
+  val scroll_epoch : t -> int
+  (** Monotonic counter bumped whenever any scroll offset changes —
+      drivers can memoize ancestor-offset sums against it. *)
+
   val scroll_cap : t -> int -> float
   (** Maximum vertical scroll offset of the container, device px. *)
 

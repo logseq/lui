@@ -577,6 +577,9 @@ module Ui = struct
     scroll_cap : (int, float) Hashtbl.t;
     scroll_off_x : (int, float) Hashtbl.t;
     scroll_cap_x : (int, float) Hashtbl.t;
+    (* Bumped whenever a scroll offset moves — drivers memoize
+       ancestor-offset sums against it. *)
+    mutable scroll_epoch : int;
     (* Last pointer position in logical px — the wheel's implicit
        target since SDL mouse-wheel events carry no coordinates. *)
     mutable last_x : float;
@@ -662,6 +665,7 @@ module Ui = struct
       ime = Lui_ime.initial; dirty = true;
       scroll_off = Hashtbl.create 8; scroll_cap = Hashtbl.create 8;
       scroll_off_x = Hashtbl.create 8; scroll_cap_x = Hashtbl.create 8;
+      scroll_epoch = 0;
       last_x = 0.; last_y = 0.;
       sel_anchor = 0; sel_text = None; focus_visible = false;
       undo = []; redo = [];
@@ -737,10 +741,12 @@ module Ui = struct
     let off = scroll_offset_axis t axis id in
     if off > cap then begin
       Hashtbl.replace (fst (scroll_tbls t axis)) id cap;
+      t.scroll_epoch <- t.scroll_epoch + 1;
       t.dirty <- true
     end
 
   let scroll_offset t = scroll_offset_axis t Y
+  let scroll_epoch t = t.scroll_epoch
   let scroll_cap t = scroll_cap_axis t Y
   let set_scroll_cap t = set_scroll_cap_axis t Y
   let scroll_offset_x t = scroll_offset_axis t X
@@ -1269,6 +1275,7 @@ module Ui = struct
     if Float.abs (off' -. scroll_offset_axis t axis id) > 0.001
     then begin
       Hashtbl.replace (fst (scroll_tbls t axis)) id off';
+      t.scroll_epoch <- t.scroll_epoch + 1;
       t.dirty <- true
     end;
     (* VisibleRange is a row concept — reported on y moves only. *)
@@ -1891,6 +1898,7 @@ module Ui = struct
             in
             if off' <> off then begin
               Hashtbl.replace (fst (scroll_tbls t axis)) id off';
+              t.scroll_epoch <- t.scroll_epoch + 1;
               t.dirty <- true
             end;
             []
