@@ -785,6 +785,102 @@ let test_snap_resolve_parity () =
   Alcotest.(check (float 0.001)) "w" 31. r.Lui_scene.w;
   Alcotest.(check (float 0.001)) "h" 20. r.Lui_scene.h
 
+(* ---------- frame scheduler ---------- *)
+
+(* Mutation → dirty → frame callback → present: the first frame always
+   paints, presents clear the flag, a clean scheduler is Idle so the
+   loop may sleep. *)
+let test_frame_dirty_cycle () =
+  let f = Frame.create () in
+  Alcotest.(check bool) "starts dirty" true (Frame.dirty f);
+  (match Frame.poll f ~now_ms:0. ~vsync:false with
+   | Frame.Present -> ()
+   | _ -> Alcotest.fail "first frame must present");
+  Frame.presented f ~now_ms:0.;
+  (match Frame.poll f ~now_ms:1. ~vsync:false with
+   | Frame.Idle -> ()
+   | _ -> Alcotest.fail "clean scheduler is idle");
+  Frame.request_frame f;
+  (match Frame.poll f ~now_ms:1. ~vsync:false with
+   | Frame.Wait_ms _ -> ()
+   | _ -> Alcotest.fail "dirty inside the period waits")
+
+(* Non-vsync pacing: presents hold to the monitor's refresh period,
+   vsync presents whenever dirty (the swap itself blocks). *)
+let test_frame_pacing () =
+  let f = Frame.create () in
+  Frame.presented f ~now_ms:0.;
+  Frame.request_frame f;
+  (match Frame.poll f ~now_ms:5. ~vsync:false with
+   | Frame.Wait_ms ms ->
+     (* 60 Hz → 16.67 ms period; ~11.6 remains *)
+     Alcotest.(check bool) "waits the rest" true
+       (ms > 10. && ms < 13.)
+   | _ -> Alcotest.fail "expected a wait");
+  (match Frame.poll f ~now_ms:17. ~vsync:false with
+   | Frame.Present -> ()
+   | _ -> Alcotest.fail "past deadline presents");
+  (match Frame.poll f ~now_ms:1. ~vsync:true with
+   | Frame.Present -> ()
+   | _ -> Alcotest.fail "vsync presents when dirty")
+
+(* The monitor's refresh rate drives the period — 120 Hz and 144 Hz
+   shorten it. *)
+let test_frame_refresh_rate () =
+  let f = Frame.create () in
+  Frame.set_refresh_hz f 120.;
+  Frame.presented f ~now_ms:0.;
+  Frame.request_frame f;
+  (match Frame.poll f ~now_ms:4. ~vsync:false with
+   | Frame.Wait_ms ms ->
+     Alcotest.(check bool) "120Hz period" true (ms > 3. && ms < 6.)
+   | _ -> Alcotest.fail "expected a wait");
+  (match Frame.poll f ~now_ms:9. ~vsync:false with
+   | Frame.Present -> ()
+   | _ -> Alcotest.fail "120Hz deadline");
+  Frame.set_refresh_hz f 144.;
+  Frame.presented f ~now_ms:10.;
+  Frame.request_frame f;
+  (match Frame.poll f ~now_ms:15. ~vsync:false with
+   | Frame.Wait_ms ms ->
+     Alcotest.(check bool) "144Hz period" true (ms > 1. && ms < 3.)
+   | _ -> Alcotest.fail "expected a wait");
+  (* invalid rates keep the previous value *)
+  Frame.set_refresh_hz f 0.;
+  Alcotest.(check (float 0.01)) "kept" 144. (Frame.refresh_hz f)
+
+(* Visibility: hidden and minimized surfaces throttle presents to the
+   background cadence; restoring marks the surface dirty so it
+   presents fresh content right away. *)
+let test_frame_visibility () =
+  let f = Frame.create () in
+  Frame.set_refresh_hz f 60.;
+  Frame.presented f ~now_ms:0.;
+  Frame.set_visibility f Frame.Hidden;
+  Frame.request_frame f;
+  (* inside the 250 ms background period the surface waits even
+     though a refresh interval already passed *)
+  (match Frame.poll f ~now_ms:20. ~vsync:false with
+   | Frame.Wait_ms ms ->
+     Alcotest.(check bool) "bg cadence" true (ms > 200.)
+   | _ -> Alcotest.fail "expected a wait");
+  (match Frame.poll f ~now_ms:260. ~vsync:false with
+   | Frame.Present -> ()
+   | _ -> Alcotest.fail "throttled present");
+  Frame.presented f ~now_ms:260.;
+  Frame.set_visibility f Frame.Minimized;
+  Frame.request_frame f;
+  (match Frame.poll f ~now_ms:300. ~vsync:false with
+   | Frame.Wait_ms _ -> ()
+   | _ -> Alcotest.fail "minimized throttles too");
+  (* back on screen: dirty again, and past the refresh deadline the
+     restored surface presents promptly *)
+  Frame.set_visibility f Frame.Shown;
+  Alcotest.(check bool) "restore is dirty" true (Frame.dirty f);
+  (match Frame.poll f ~now_ms:300. ~vsync:false with
+   | Frame.Present -> ()
+   | _ -> Alcotest.fail "restore presents promptly")
+
 (* ---------- demo dispatch flow ---------- *)
 
 (* Boot the real demo app against a store-mirroring backend, then feed
@@ -1934,6 +2030,12 @@ let () =
         [ Alcotest.test_case "scale" `Quick test_resize_scale ] );
       ( "pacing",
         [ Alcotest.test_case "dirty" `Quick test_pacing ] );
+      ( "frame scheduler",
+        [ Alcotest.test_case "dirty cycle" `Quick test_frame_dirty_cycle;
+          Alcotest.test_case "pacing" `Quick test_frame_pacing;
+          Alcotest.test_case "refresh rate" `Quick
+            test_frame_refresh_rate;
+          Alcotest.test_case "visibility" `Quick test_frame_visibility ] );
       ( "checksum",
         [ Alcotest.test_case "ops" `Quick test_checksum ] );
       ( "scroll",
