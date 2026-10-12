@@ -2823,7 +2823,7 @@ test("every Gallery page fits the compact one-page mobile shell", async () => {
     failures,
   }
 
-  assert.equal(audit.count, 72)
+  assert.equal(audit.count, 77)
   assert.ok(audit.minNavigationHeight >= 44, JSON.stringify(audit))
   assert.equal(audit.mountedPages, 1)
   assert.deepEqual(audit.failures, [])

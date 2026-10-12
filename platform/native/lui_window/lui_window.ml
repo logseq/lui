@@ -254,191 +254,23 @@ module Rects = struct
   let get t id = match Hashtbl.find_opt t id with Some r -> r | None -> zero
 end
 
-let kind_name store id = Lui_store.kind store id
-
-let kind_table =
-  let t = Hashtbl.create 97 in
-  List.iter
-    (fun k -> Hashtbl.replace t (Lui_wire_schema.node_kind_name k) k)
-    Lui_wire_schema.all_node_kinds;
-  t
-
-let kind_of store id = Hashtbl.find_opt kind_table (Lui_store.kind store id)
+let kind_name = Lui_query.kind_name
+let kind_of = Lui_query.kind_of
 
 (* Enabled unless the prop explicitly says otherwise — mirrors the
    paint pipeline's disabled fold (BoolValue false or "false"). *)
-let node_enabled store id =
-  match Lui_store.prop store id "enabled" with
-  | Some (BoolValue false) -> false
-  | Some (StringValue "false") -> false
-  | _ -> true
-
-let pointer_enabled store id = Lui_store.bool_prop store id "pointer-enabled"
-
-let bool_prop store id name = Lui_store.bool_prop store id name
-
-let string_prop store id name =
-  match Lui_store.string_prop store id name with
-  | Some s -> s
-  | None -> ""
+let node_enabled = Lui_query.node_enabled
+let pointer_enabled = Lui_query.pointer_enabled
+let bool_prop = Lui_query.bool_prop
+let string_prop = Lui_query.string_prop
 
 (* The only properties dispatch admission consults. *)
-let gate_properties =
-  [ AppearEnabled; PressEnabled; PointerEnabled; ChangeEnabled;
-    ToggleEnabled; RoleValue ]
+let event_supported = Lui_query.event_supported
 
-let event_supported store id event =
-  match kind_of store id with
-  | None -> false
-  | Some kind ->
-    let props =
-      List.fold_left
-        (fun acc p ->
-           match Lui_store.prop store id (Lui_wire_schema.property_name p) with
-           | Some v -> Property_map.add p v acc
-           | None -> acc)
-        Property_map.empty gate_properties
-    in
-    Lui_protocol.event_supported_for_properties kind props event
-
-(* Everything [hit_path] needs from the store for one node: visibility,
-   the scrollable/split-pane clip rule, overlay presentation, the
-   pointer-enabled opt, and the two kind strings it branches on.
-   Computed once per node per store revision — see [hit_flags_of]. *)
-type hit_flags = {
-  hf_visible : bool;
-  hf_clips : bool;
-  hf_overlay : bool;
-  hf_pen : bool option;
-  hf_no_box : bool;
-  hf_spacer : bool;
-}
-
-(* Mirror of Lui_paint.clips: a node clips its descendants when it
-   scrolls, carries an overflow prop, or is a split pane. *)
-let hit_node_clips store id =
-  (match Lui_store.kind store id with
-   | "scroll" | "list" | "virtual-list" -> true
-   | _ -> false)
-  || (match Lui_store.parent store id with
-      | Some pid -> Lui_store.kind store pid = "split"
-      | None -> false)
-  || (match Lui_store.string_prop store id "overflow" with
-      | Some ("hidden" | "clip" | "auto" | "scroll") -> true
-      | _ -> false)
-
-(* pointer-enabled=false makes a subtree hit-transparent like the web
-   pointer-events:none: descendants inherit it and only an explicit
-   pointer-enabled=true opts a node back in (registering pointer
-   handlers sets that prop). A presented overlay (popover, dialog,
-   menu, sheet, toast, or a [selected]-less drawer) always opts its
-   own subtree back in — it is interactive content by definition —
-   while a permanent overlay-layer host (data-overlay-layer) keeps
-   whatever its own flag says. *)
-let presented_overlay store id =
-  let layer_host =
-    match Lui_store.prop store id "data-attrs" with
-    | Some (StringValue s) -> (
-      try
-        List.assoc_opt "data-overlay-layer"
-          (Lui_protocol.data_attrs_decode s)
-        = Some "true"
-      with _ -> false)
-    | _ -> false
-  in
-  (not layer_host)
-  && (match Lui_store.kind store id with
-      | "dialog" | "sheet" | "popover" | "dropdown-menu"
-      | "context-menu" | "toast" ->
-        true
-      | "drawer" -> Lui_store.prop store id "selected" = None
-      | _ -> false)
-
-let hit_flags_compute store id =
-  { hf_visible =
-      (match Lui_store.prop store id "visible" with
-       | Some (BoolValue false) -> false
-       | _ -> true);
-    hf_clips = hit_node_clips store id;
-    hf_overlay = presented_overlay store id;
-    hf_pen =
-      (match Lui_store.prop store id "pointer-enabled" with
-       | Some (BoolValue v) -> Some v
-       | _ -> None);
-    hf_no_box = string_prop store id "display" = "contents";
-    hf_spacer = Lui_store.kind store id = "spacer" }
-
-(* hit_path's per-node flags, memoized for the (store, revision) of the
-   last call: pointer events hit-test the same tree repeatedly, and the
-   flags only move when the store does. Physical store identity keeps
-   two windows' stores from aliasing; a revision mismatch resets and
-   re-derives lazily. *)
-let hit_flags_tbl : (int, hit_flags) Hashtbl.t = Hashtbl.create 256
-let hit_flags_store : Lui_store.t option ref = ref None
-let hit_flags_rev = ref (-1)
-
-let hit_flags_of store id =
-  (match !hit_flags_store with
-   | Some s when s == store && !hit_flags_rev = Lui_store.revision store ->
-     ()
-   | _ ->
-     Hashtbl.reset hit_flags_tbl;
-     hit_flags_store := Some store;
-     hit_flags_rev := Lui_store.revision store);
-  match Hashtbl.find_opt hit_flags_tbl id with
-  | Some f -> f
-  | None ->
-    let f = hit_flags_compute store id in
-    Hashtbl.replace hit_flags_tbl id f;
-    f
-
-let hit_path store rects ~x ~y =
-  let rec walk id path clip_r pointer_on =
-    let f = hit_flags_of store id in
-    if not f.hf_visible then path
-    else
-      let on =
-        match f.hf_pen with
-        | Some v -> v
-        | None -> pointer_on || f.hf_overlay
-      in
-      let r = Rects.get rects id in
-      let clipped =
-        match clip_r with
-        | Some cr -> rect_intersect r cr
-        | None -> r
-      in
-      let path =
-        (* spacers are layout voids — they paint nothing and must never
-           be the hit target (a full-window spacer in an overlay layer
-           would otherwise swallow every DOM event). *)
-        if on && not f.hf_spacer
-           && not (rect_empty clipped) && rect_contains clipped x y
-        then id :: path
-        else path
-      in
-      let child_clip =
-        (* display:contents has no box to clip with. *)
-        if f.hf_clips && not f.hf_no_box then Some clipped
-        else clip_r
-      in
-      (* Children paint after their parent, so prepending while walking
-         leaves the node visited last — visually topmost — at the head. *)
-      List.fold_left
-        (fun acc c -> walk c acc child_clip on)
-        path (Lui_store.child_ids store id)
-  in
-  (* The head is the node visited last in paint order: visually
-     topmost. *)
-  List.fold_left
-    (fun acc id -> walk id acc None true)
-    [] (Lui_store.root_ids store)
-
-let hit store rects ~x ~y =
-  match hit_path store rects ~x ~y with
-  | id :: _ -> Some id
-  | [] -> None
-
+(* hit_path's per-node flag memo lives in Lui_query — a pure function
+   of (store, revision) shared by pointer and drop paths. *)
+let hit_path = Lui_query.hit_path
+let hit = Lui_query.hit
 module Layout = struct
   type measure = Lui_store.t -> int -> scale:float -> float * float
 
@@ -620,107 +452,31 @@ module Layout = struct
 end
 
 module Ui = struct
+  (* Interaction runtime composed out of the platform-neutral
+     machines in the lui_input library. Each subsystem — pointer
+     tracking, focus/autofocus, the editable text session, the
+     static-text selection, list highlight/typeahead, scroll offsets
+     and visible-range reports, drag & drop, overlays and menus —
+     is a pure state machine: an input goes in, a next state plus
+     intents comes out. This record is the composer: it owns the
+     machine states and the driver-wired hooks, sequences the
+     machines for each input and performs the intents they return
+     (dispatches, focus moves, scroll ops, store mirrors, repaints). *)
+
+  type caret_ops = {
+    c_before : int -> int;
+    c_after : int -> int;
+    c_up : int -> int;
+    c_down : int -> int;
+    c_rect : int -> float * float * float;
+  }
+
   type t = {
     mutable scale : float;
-    mutable hovered : int;
-    mutable hover_detail : int;
-    mutable pressed : int;
-    mutable press_detail : int;
-    mutable focused : int;
-    mutable caret : int;
-    (* Latest text value as the app sees it: the store prop lags one
-       frame behind the events we dispatch, so rapid edits splice onto
-       this shadow instead of the stale prop. *)
-    mutable shadow : string;
-    (* IME composition state machine: SDL text-editing/commit events
-       feed it; marked text rides here (never dispatched) until the
-       commit lands through the normal input path. *)
-    mutable ime : Lui_ime.state;
     mutable dirty : bool;
-    (* Scroll: offset and max offset (device px) per scroll container
-       id, per axis — scroll_off/scroll_cap track y, *_x track x. The
-       driver computes caps from the layout engine's content extents
-       each frame; wheel deltas scroll the deepest scrollable
-       ancestor under the pointer. *)
-    scroll_off : (int, float) Hashtbl.t;
-    scroll_cap : (int, float) Hashtbl.t;
-    scroll_off_x : (int, float) Hashtbl.t;
-    scroll_cap_x : (int, float) Hashtbl.t;
-    (* Bumped whenever a scroll offset moves — drivers memoize
-       ancestor-offset sums against it. *)
-    mutable scroll_epoch : int;
-    (* Last pointer position in logical px — the wheel's implicit
-       target since SDL mouse-wheel events carry no coordinates. *)
-    mutable last_x : float;
-    mutable last_y : float;
-    (* Editable selection: byte offsets into [shadow]; [anchor = caret]
-       is the collapsed caret. Static user-select=text nodes keep a
-       focus-independent selection: (anchor node, anchor byte, focus
-       node, focus byte) — the focus endpoint may sit on a sibling
-       text node of the anchor's container (cross-node selection). *)
-    mutable sel_anchor : int;
-    mutable sel_text : (int * int * int * int) option;
-    (* Keyboard-driven focus (Tab) vs pointer-driven — the ring state
-       paints via the existing focus-shadow channel. *)
-    mutable focus_visible : bool;
-    (* Host-side undo/redo for shadow edits; reset on focus change.
-       Entries are (shadow, caret, anchor) snapshots. *)
-    mutable undo : (string * int * int) list;
-    mutable redo : (string * int * int) list;
-    (* List interaction: the scroll container that owns the highlight,
-       the highlighted list-item, and the typeahead prefix buffer. *)
-    mutable list_scope : int;
-    mutable hl_item : int;
-    mutable typeahead : string;
-    (* Press point (logical px) for drag thresholds and the text node
-       whose selection a drag gesture extends. *)
-    mutable down_x : float;
-    mutable down_y : float;
-    mutable sel_drag : int;
-    (* data-attrs drag/drop: grabbed source (threshold pending), live
-       (source, payload) session, the accepting target under the
-       pointer, the last completed drop as (target, payload, serial),
-       and the serial counter — the driver polls the serial to notice
-       repeat drops of an identical payload. The wire carries no drop
-       event — this is host-local by design (gaps.md TODO). *)
-    mutable drag_src : int;
-    mutable drag : (int * string) option;
-    mutable drop_target : int;
-    mutable last_drop : (int * string * int) option;
-    mutable drop_seq : int;
-    (* Overlay tracking: topmost overlay-kind id, its modality, and the
-       focus a modal surface saved and restores on close. *)
-    mutable overlay_id : int;
-    mutable overlay_modal : bool;
-    mutable open_menu : int; (* trigger-owned menu panel currently open *)
-    mutable laid_out_menu : int;
-    mutable saved_focus : int;
-    (* Store state [sync] last derived its effects from: the store
-       revision and the Ui-local open menu (top_overlay reads both).
-       Equal pair means the scans would recompute the same results. *)
-    mutable sync_rev : int;
-    mutable sync_menu : int;
-    (* Autofocus controls already observed during their mount lifecycle. *)
-    autofocus_seen : (int, unit) Hashtbl.t;
-    (* appear-enabled ids already announced (mount lifecycle). *)
-    seen : (int, unit) Hashtbl.t;
-    (* Per-container scroll bookkeeping: handled scroll-target tokens,
-       last emitted visible ranges, the inputs each range was computed
-       at — (store revision, scroll offset, layout epoch) — and the
-       tracked list ids the last store scan found. *)
-    scroll_token : (int, int) Hashtbl.t;
-    vrange : (int, int * int) Hashtbl.t;
-    vrange_key : (int, int * float * int) Hashtbl.t;
-    mutable vrange_lists : int list;
-    (* Bumped by the driver whenever layout rects are recomputed — the
-       third leg of the vrange memo, since rect moves do not change
-       the store revision. *)
+    mutable sync_rev : int;    (* last synced Lui_store.revision *)
+    mutable sync_menu : int;   (* open_menu as of last sync *)
     mutable rects_epoch : int;
-    (* Driver hooks: glyph measurement for caret/selection math and
-       unshifted (content-space) rects for scroll_show. Deterministic
-       defaults keep the module testable without a text engine.
-       [hit_text] is the text engine's layout-accurate point-to-byte
-       map; unset it falls back to the measure-based path. *)
     mutable measure : Lui_store.t -> int -> string -> float * float;
     mutable hit_text :
       (Lui_store.t -> int -> string -> lx:float -> ly:float ->
@@ -729,6 +485,15 @@ module Ui = struct
       (Lui_store.t -> int -> string -> lw:float -> lh:float ->
        caret_ops) option;
     mutable content_rect : int -> rect;
+    (* composed machine states — see platform/native/lui_input *)
+    mutable pointer : Lui_pointer.state;
+    mutable focus : Lui_focus.state;
+    mutable session : Lui_text_input.state;
+    mutable selection : Lui_selection.state;
+    mutable gesture : Lui_gesture.state;
+    mutable scroll : Lui_scroll.state;
+    mutable drag : Lui_drag.state;
+    mutable overlay : Lui_overlay.state;
     (* Paint-hint channels for the retained fragment pass: scroll
        containers whose offset moved this frame (their whole subtree
        re-derives — ops embed shifted rects), containers whose
@@ -755,47 +520,21 @@ module Ui = struct
     ps_focus_vis : bool;
   }
 
-  (* The text engine's caret model for one editable string, built
-     over the same laid-out text the painter and [hit_text] resolve
-     against: horizontal moves follow grapheme clusters (combining
-     marks, emoji ZWJ chains, ligatures), vertical moves follow
-     visual — soft-wrapped — lines, and [c_rect] is the caret's
-     device-pixel (x, y, h) in node content coordinates for the IME
-     candidate anchor. *)
-  and caret_ops = {
-    c_before : int -> int;
-    c_after : int -> int;
-    c_up : int -> int;
-    c_down : int -> int;
-    c_rect : int -> float * float * float;
-  }
-
   let create () =
-    { scale = 1.; hovered = 0; hover_detail = 0; pressed = 0;
-      press_detail = 0; focused = 0; caret = 0; shadow = "";
-      ime = Lui_ime.initial; dirty = true;
-      scroll_off = Hashtbl.create 8; scroll_cap = Hashtbl.create 8;
-      scroll_off_x = Hashtbl.create 8; scroll_cap_x = Hashtbl.create 8;
-      scroll_epoch = 0;
-      last_x = 0.; last_y = 0.;
-      sel_anchor = 0; sel_text = None; focus_visible = false;
-      undo = []; redo = [];
-      list_scope = 0; hl_item = 0; typeahead = "";
-      down_x = 0.; down_y = 0.; sel_drag = 0;
-      drag_src = 0; drag = None; drop_target = 0; last_drop = None;
-      drop_seq = 0;
-      overlay_id = 0; overlay_modal = false; open_menu = 0;
-      laid_out_menu = 0;
-      saved_focus = 0; sync_rev = -1; sync_menu = -1;
-      autofocus_seen = Hashtbl.create 8;
-      seen = Hashtbl.create 64;
-      scroll_token = Hashtbl.create 8; vrange = Hashtbl.create 8;
-      vrange_key = Hashtbl.create 8; vrange_lists = [];
+    { scale = 1.; dirty = true; sync_rev = -1; sync_menu = -1;
       rects_epoch = 0;
       measure =
         (fun _store _id s -> (8. *. float (String.length s), 16.));
       hit_text = None; caret_ops = None;
       content_rect = (fun _ -> rect 0. 0. 0. 0.);
+      pointer = Lui_pointer.initial;
+      focus = Lui_focus.initial;
+      session = Lui_text_input.initial;
+      selection = Lui_selection.initial;
+      gesture = Lui_gesture.initial;
+      scroll = Lui_scroll.initial;
+      drag = Lui_drag.initial;
+      overlay = Lui_overlay.initial;
       scrolled = Hashtbl.create 8;
       scroll_metrics = Hashtbl.create 8;
       paint_snap =
@@ -810,1771 +549,699 @@ module Ui = struct
   let set_caret_ops t f = t.caret_ops <- Some f
   let notify_layout t = t.rects_epoch <- t.rects_epoch + 1
   let set_content_rect t f = t.content_rect <- f
-  let hovered t = t.hovered
-  let pressed t = t.pressed
-  let focused t = t.focused
-  let caret t = t.caret
-  let shadow t = t.shadow
-  let ime t = t.ime
-  let marked t = t.ime.Lui_ime.marked_text
-  let sel_anchor t = t.sel_anchor
-  let sel_text t = t.sel_text
-  let focus_visible t = t.focus_visible
-  let hl_item t = t.hl_item
-  let typeahead t = t.typeahead
-  let last_drop t = t.last_drop
-  let drag_active t = Option.is_some t.drag
-  let overlay_top t = t.overlay_id
 
-  (* Same scrollable rule as the paint pass: a scroll-kind node, or
-     anything opting in through its overflow prop. *)
-  let scrollable store id =
-    (match kind_name store id with
-     | "scroll" | "list" | "virtual-list" -> true
-     | _ -> false)
-    || (match string_prop store id "overflow" with
-        | "scroll" | "auto" -> true
-        | _ -> false)
+  (* ---- state accessors -------------------------------------------- *)
+
+  let hovered t = Lui_pointer.hovered t.pointer
+  let pressed t = Lui_pointer.pressed t.pointer
+  let focused t = Lui_focus.focused t.focus
+  let caret t = Lui_text_input.caret t.session
+  let shadow t = Lui_text_input.text t.session
+  let ime t = Lui_text_input.ime t.session
+  let marked t = Lui_text_input.marked t.session
+  let sel_anchor t = Lui_text_input.anchor t.session
+  let sel_text t = Lui_selection.text t.selection
+  let focus_visible t = Lui_focus.kbd_visible t.focus
+  let hl_item t = Lui_gesture.hl t.gesture
+  let typeahead t = Lui_gesture.typeahead t.gesture
+  let last_drop t = Lui_drag.last_drop t.drag
+  let drag_active t = Lui_drag.active t.drag
+  let overlay_top t = Lui_overlay.top t.overlay
+  let open_menu t = Lui_overlay.open_menu t.overlay
+  let pointer t = Lui_pointer.position t.pointer
+  let hidden t store id = Lui_overlay.hidden store t.overlay id
+  let scrollable = Lui_scroll.scrollable
 
   (* Scroll axes: y is the established vertical path; x adds
      horizontal range for wheel-x / shift+wheel and horizontal
      reveal. *)
   type axis = X | Y
 
-  let scroll_tbls t = function
-    | Y -> (t.scroll_off, t.scroll_cap)
-    | X -> (t.scroll_off_x, t.scroll_cap_x)
+  let conv_axis = function X -> Lui_scroll.X | Y -> Lui_scroll.Y
+  let scroll_offset t = Lui_scroll.offset t.scroll Lui_scroll.Y
+  let scroll_epoch t = Lui_scroll.epoch t.scroll
+  let scroll_cap t = Lui_scroll.cap t.scroll Lui_scroll.Y
+  let scroll_offset_x t = Lui_scroll.offset t.scroll Lui_scroll.X
+  let scroll_cap_x t = Lui_scroll.cap t.scroll Lui_scroll.X
 
-  let scroll_offset_axis t axis id =
-    Option.value ~default:0.
-      (Hashtbl.find_opt (fst (scroll_tbls t axis)) id)
-
-  let scroll_cap_axis t axis id =
-    Option.value ~default:0.
-      (Hashtbl.find_opt (snd (scroll_tbls t axis)) id)
+  (* Install the next scroll state, recording which containers'
+     offsets moved (a moved offset shifts every descendant rect, so
+     the subtree re-derives) and which caps changed (thumb metrics
+     only) for the paint-hint channel. *)
+  let set_scroll t (s' : Lui_scroll.state) =
+    let module M = Lui_scroll.IdMap in
+    let prev : Lui_scroll.state = t.scroll in
+    M.iter
+      (fun id o ->
+        if Lui_scroll.offset s' Y id <> o then
+          Hashtbl.replace t.scrolled id ())
+      prev.off;
+    M.iter
+      (fun id o ->
+        if Lui_scroll.offset prev Y id <> o then
+          Hashtbl.replace t.scrolled id ())
+      s'.off;
+    M.iter
+      (fun id o ->
+        if Lui_scroll.offset s' X id <> o then
+          Hashtbl.replace t.scrolled id ())
+      prev.off_x;
+    M.iter
+      (fun id o ->
+        if Lui_scroll.offset prev X id <> o then
+          Hashtbl.replace t.scrolled id ())
+      s'.off_x;
+    M.iter
+      (fun id c ->
+        if Lui_scroll.cap s' Y id <> c then
+          Hashtbl.replace t.scroll_metrics id ())
+      prev.cap;
+    M.iter
+      (fun id c ->
+        if Lui_scroll.cap prev Y id <> c then
+          Hashtbl.replace t.scroll_metrics id ())
+      s'.cap;
+    M.iter
+      (fun id c ->
+        if Lui_scroll.cap s' X id <> c then
+          Hashtbl.replace t.scroll_metrics id ())
+      prev.cap_x;
+    M.iter
+      (fun id c ->
+        if Lui_scroll.cap prev X id <> c then
+          Hashtbl.replace t.scroll_metrics id ())
+      s'.cap_x;
+    t.scroll <- s'
 
   let set_scroll_cap_axis t axis id cap =
-    (* A new range moves the scrollbar thumb — metric-only hint. *)
-    if scroll_cap_axis t axis id <> cap then
-      Hashtbl.replace t.scroll_metrics id ();
-    Hashtbl.replace (snd (scroll_tbls t axis)) id cap;
-    (* A shrinking cap (content removed, window grown) clamps any
-       offset it left dangling past the new range. *)
-    let off = scroll_offset_axis t axis id in
-    if off > cap then begin
-      Hashtbl.replace (fst (scroll_tbls t axis)) id cap;
-      Hashtbl.replace t.scrolled id ();
-      t.scroll_epoch <- t.scroll_epoch + 1;
-      t.dirty <- true
-    end
+    let s', m = Lui_scroll.set_cap t.scroll axis id cap in
+    set_scroll t s';
+    (* a clamped offset repaints — the intent can only be Repaint *)
+    if m <> [] then t.dirty <- true
 
-  let scroll_offset t = scroll_offset_axis t Y
-  let scroll_epoch t = t.scroll_epoch
-  let scroll_cap t = scroll_cap_axis t Y
-  let set_scroll_cap t = set_scroll_cap_axis t Y
-  let scroll_offset_x t = scroll_offset_axis t X
-  let scroll_cap_x t = scroll_cap_axis t X
-  let set_scroll_cap_x t = set_scroll_cap_axis t X
+  let set_scroll_cap t = set_scroll_cap_axis t Lui_scroll.Y
+  let set_scroll_cap_x t = set_scroll_cap_axis t Lui_scroll.X
 
-  let text_of store id = string_prop store id "text"
+  (* ---- driver hooks packaged for the machines ----------------------- *)
 
-  let retains_text store id =
-    match Lui_store.kind store id with
-    | "text-field" | "secure-field" | "input" | "search-field" | "textarea"
-    | "combobox" -> true
-    | _ -> false
+  (* The caret model's record is the same shape under a different
+     owner — it converts field by field. *)
+  let hooks t : Lui_query.text_hooks =
+    { Lui_query.measure = t.measure;
+      hit_text = t.hit_text;
+      caret_ops =
+        (match t.caret_ops with
+         | Some f ->
+           Some
+             (fun store id s ~lw ~lh ->
+                let o = f store id s ~lw ~lh in
+                { Lui_query.c_before = o.c_before;
+                  c_after = o.c_after; c_up = o.c_up;
+                  c_down = o.c_down; c_rect = o.c_rect })
+         | None -> None);
+      scale = t.scale }
 
-  let set_edit_text t store id text =
-    t.shadow <- text;
-    if retains_text store id then
-      Lui_store.apply_op store (SetProp (id, TextValue, StringValue text))
+  let senv t : Lui_scroll.env =
+    { Lui_scroll.content_rect = t.content_rect;
+      rects_epoch = t.rects_epoch }
 
-  let set_focused ?(kbd = false) t store id =
-    if id <> t.focused then begin
-      (* Focus loss cancels any in-flight composition first — marked
-         text was never dispatched, so clearing it locally is the
-         whole rollback. *)
-      let st, _ = Lui_ime.feed_event t.ime (`Focus false) in
-      let st, _ = Lui_ime.feed_event st (`Focus (id <> 0)) in
-      t.ime <- st;
-      t.focused <- id;
-      t.shadow <- (if id = 0 then "" else text_of store id);
-      t.caret <- (if id = 0 then 0 else String.length t.shadow);
-      (* The selection, undo chain and any static-text selection are
-         owned by the focused node — they reset on every move. *)
-      t.sel_anchor <- t.caret;
-      t.sel_text <- None;
-      t.undo <- [];
-      t.redo <- [];
-      t.focus_visible <- kbd;
-      t.dirty <- true
-    end
+  (* The public [Input] vocabulary predates the machines' own event
+     types — identical shapes, so the boundary converts. *)
+  let conv_key : Input.key -> Lui_input.key = function
+    | Input.Return -> Lui_input.Return
+    | Input.Escape -> Lui_input.Escape
+    | Input.Backspace -> Lui_input.Backspace
+    | Input.Delete -> Lui_input.Delete
+    | Input.Tab -> Lui_input.Tab
+    | Input.Space -> Lui_input.Space
+    | Input.Arrow_left -> Lui_input.Arrow_left
+    | Input.Arrow_right -> Lui_input.Arrow_right
+    | Input.Arrow_up -> Lui_input.Arrow_up
+    | Input.Arrow_down -> Lui_input.Arrow_down
+    | Input.Home -> Lui_input.Home
+    | Input.End -> Lui_input.End
+    | Input.Page_up -> Lui_input.Page_up
+    | Input.Page_down -> Lui_input.Page_down
+    | Input.Other n -> Lui_input.Other n
 
-  (* First id in [path] (deepest-first) that is enabled and passes
-     [accept]. Pointer events keep bubbling past disabled nodes. *)
-  let pick store path accept =
-    List.find_opt
-      (fun id -> node_enabled store id && accept store id)
-      path
+  let conv_mods (m : Input.mods) : Lui_input.mods =
+    { Lui_input.ctrl = m.Input.ctrl; shift = m.Input.shift;
+      alt = m.Input.alt; meta = m.Input.meta }
 
-  (* First path node satisfying [accept]; if it is disabled it swallows
-     the activation — matches web: disabled controls neither activate
-     nor let activation fall through to ancestors. *)
-  let select_activation store path accept =
-    match List.find_opt (fun id -> accept store id) path with
-    | Some id -> if node_enabled store id then Some id else None
-    | None -> None
+  let dummy_detail = Lui_query.dummy_detail
 
   let detail_of store id x y mods button =
-    { x; y;
-      modifiers =
-        Input.mods_to_int mods lor (if button = 2 then 8 else 0);
-      button; target_class = string_prop store id "style-class" }
+    Lui_query.detail_of store id x y (conv_mods mods) button
 
-  (* A representative event per family for admission checks; only the
-     constructor matters to the gate. *)
-  let ev_text n : event = TextChanged (n, "")
-  let ev_press n : event = Press n
-  let ev_submit n : event = Submit n
-
-  let dummy_detail =
-    { x = 0.; y = 0.; modifiers = 0; button = 0; target_class = "" }
-
-  let focus_target store path =
-    select_activation store path
-      (fun s id -> event_supported s id (ev_text id))
-
-  let press_target store path =
-    (* DOM click semantics: the activation lands on the deepest
-       ancestor that opted into press handling ("press-enabled" is
-       what [register_press] sets), not on a passive leaf — bare
-       text/box kinds admit Press unconditionally and would otherwise
-       swallow the click before it reaches the pressable wrapper.
-       Toggle kinds flip their state on press instead of emitting it —
-       [ToggleButton] does not admit Press at all, so admit
-       [ToggleChanged] as an activation signal too. *)
-    match
-      select_activation store path
-        (fun s id -> Lui_store.bool_prop s id "press-enabled")
-    with
-    | Some id -> Some id
-    | None ->
-      select_activation store path
-        (fun s id ->
-          kind_name s id = "menu-trigger"
-          || event_supported s id (ev_press id)
-          || event_supported s id (ToggleChanged (id, true)))
-
-  let detail_target store path make =
-    pick store path (fun s id ->
-        pointer_enabled s id && event_supported s id (make id))
-
-  (* Click on a pressable node, mirroring the web click dispatch:
-     toggle kinds flip their state instead of emitting Press. *)
-  let primary_press store id =
-    let dispatch e =
-      if node_enabled store id && event_supported store id e
-      then [ Dispatch e ] else []
-    in
-    match kind_name store id with
-    | "toggle-button" | "toggle" | "drawer" ->
-      dispatch (ToggleChanged (id, not (bool_prop store id "selected")))
-    | "checkbox" | "switch" ->
-      dispatch (ToggleChanged (id, not (bool_prop store id "checked")))
-    | "radio" ->
-      if event_supported store id (Change id) then [ Dispatch (Change id) ]
-      else
-        (match dispatch (ToggleChanged (id, true)) with
-         | [] -> dispatch (Press id)
-         | acts -> acts)
-    | "list-item" ->
-      let expand =
-        if string_prop store id "role" = "treeitem"
-           && event_supported store id (ToggleChanged (id, true))
-        then
-          dispatch (ToggleChanged (id, not (bool_prop store id "expanded")))
-        else []
-      in
-      dispatch (Press id) @ expand
-    | _ -> dispatch (Press id)
-
-  (* ---- overlays (popover/dialog/menu/sheet/toast) ----------------- *)
-
-  (* data-* attributes — declared ahead of the overlay rules, which
-     consult the layer-host marker. *)
-  let data_attrs store id =
-    match Lui_store.prop store id "data-attrs" with
-    | Some (StringValue s) ->
-      (try Lui_protocol.data_attrs_decode s with _ -> [])
-    | _ -> []
-
-  let data_attr store id name =
-    List.assoc_opt name (data_attrs store id)
-
-  let overlay_class store id =
-    match kind_name store id with
-    | "dialog" | "sheet" -> `modal
-    | "drawer" -> (
-      (* [selected] marks the inline pane control, not a presented
-         modal — those mount without the prop. *)
-      match Lui_store.prop store id "selected" with
-      | Some _ -> `none
-      | None -> `modal)
-    | "popover" | "dropdown-menu" | "context-menu" | "toast" -> `light
-    | _ -> `none
-
-  let is_desc store id anc =
-    let rec go cur =
-      match Lui_store.parent store cur with
-      | Some p -> p = anc || go p
-      | None -> false
-    in
-    go id
-
-  (* Topmost overlay = last overlay-kind node in paint (preorder)
-     order; returns (id, modal, dismiss-admitted). *)
-  (* Host-owned menu tracking: menu panels declared under a
-     [menu-trigger] stay hidden until the trigger toggles them — the
-     view does not re-render for menu state. *)
-  let menu_panel_kind store id =
-    match kind_name store id with
-    | "dropdown-menu" | "context-menu" -> true
-    | _ -> false
-
-  let trigger_owned store id =
-    menu_panel_kind store id
-    && (match Lui_store.parent store id with
-       | Some p -> kind_name store p = "menu-trigger"
-       | None -> false)
-
-  let menu_panel store id =
-    List.find_opt (trigger_owned store) (Lui_store.child_ids store id)
-
-  let hidden t store id = trigger_owned store id && id <> t.open_menu
-
-  let open_menu t = t.open_menu
-
-  (* Last pointer position in logical px — the point an unanchored
-     context-menu opens at. *)
-  let pointer t = (t.last_x, t.last_y)
-
-  let close_menu t =
-    if t.open_menu <> 0 then begin t.open_menu <- 0; t.dirty <- true end
-
-  (* Overlay-layer hosts (the [data-overlay-layer] marker) are
-     permanent containers that lift popup children into the floating
-     layer — e.g. an app's shared popover stack mount. They stay in
-     the overlay list so Escape and modal bookkeeping still see the
-     layer, but a press outside must not Dismiss them: with nothing
-     presented they would swallow every outside press (and the Escape
-     fallthrough) for their children. *)
-  let overlay_dismissible store id =
-    event_supported store id (Dismiss id)
-    && data_attr store id "data-overlay-layer" <> Some "true"
-
-  let top_overlay t store =
-    List.fold_left
-      (fun acc id ->
-         match overlay_class store id with
-         | `none -> acc
-         | _ when trigger_owned store id && id <> t.open_menu -> acc
-         | cls ->
-           Some (id, cls = `modal, overlay_dismissible store id))
-      None (Lui_store.preorder store)
-
-  let inside_ov store ov path =
-    List.exists (fun i -> i = ov || is_desc store i ov) path
-
-
-  (* ---- text selection math ---------------------------------------- *)
-
-  let sel_lo t = min t.sel_anchor t.caret
-  let sel_hi t = max t.sel_anchor t.caret
-  let sel_range t = (sel_lo t, sel_hi t)
-
-  let word_byte c =
-    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-    || (c >= '0' && c <= '9') || c = '_' || Char.code c >= 0x80
-
-  (* [i] on a word byte expands to the word; on a non-word byte the
-     contiguous same-class run is the unit. *)
-  let word_bounds s i =
-    let n = String.length s in
-    if i < 0 || i >= n then (n, n)
-    else begin
-      let w = word_byte s.[i] in
-      let rec l j = if j > 0 && word_byte s.[j - 1] = w then l (j - 1) else j in
-      let rec r j = if j < n && word_byte s.[j] = w then r (j + 1) else j in
-      (l i, r i)
+  (* Every focus move flows through here: the focus machine records
+     it, the text session re-attaches to the node's prop (its live
+     composition cancels silently — marked text was never
+     dispatched, so local rollback is the whole of it), and the
+     static selection and editable undo reset — those are owned by
+     the focused node. Callers emit [Focus_changed] when it moved. *)
+  let focus_move ?(kbd = false) t store id =
+    if id <> Lui_focus.focused t.focus then begin
+      t.focus <- Lui_focus.set t.focus ~id ~kbd;
+      t.session <-
+        Lui_text_input.attach t.session ~node:id
+          ~text:(if id = 0 then "" else Lui_query.text_of store id);
+      t.selection <- Lui_selection.clear t.selection;
+      t.dirty <- true
     end
 
-  (* Paragraph line: the run between newlines around [i]. *)
-  let line_bounds s i =
-    let n = String.length s in
-    let i = min (max 0 i) n in
-    let rec l j = if j > 0 && s.[j - 1] <> '\n' then l (j - 1) else j in
-    let rec r j = if j < n && s.[j] <> '\n' then r (j + 1) else j in
-    (l i, r i)
+  let set_focused ?(kbd = false) t store id = focus_move ~kbd t store id
 
-  let pad_axis store id ~scale name fallback =
-    match Layout.len_prop store id name ~scale with
-    | Some v -> v
-    | None ->
-      Option.value ~default:0. (Layout.len_prop store id fallback ~scale)
-
-  (* UTF-8 byte boundaries of [s] ascending, 0 and len included. *)
-  let utf8_bounds s =
-    let n = String.length s in
-    let rec go i acc =
-      if i >= n then List.rev (n :: acc)
-      else if Char.code s.[i] land 0xC0 = 0x80 then go (i + 1) acc
-      else go (i + 1) (i :: acc)
-    in
-    go 0 []
-
-  (* Nearest byte boundary in one [line] whose measured prefix width
-     reaches [lx] device px. *)
-  let boundary_at_x t store id line lx =
-    if lx <= 0. then 0
-    else
-      let rec choose prev = function
-        | b :: tl ->
-          let w = fst (t.measure store id (String.sub line 0 b)) in
-          if w >= lx then
-            let wp = fst (t.measure store id (String.sub line 0 prev)) in
-            if lx -. wp < w -. lx then prev else b
-          else choose b tl
-        | [] -> String.length line
-      in
-      choose 0 (utf8_bounds line)
-
-  (* Byte offset in [text] under the device-px point [(x,y)] inside
-     node [id]'s shifted rect, honoring padding and line breaks. When
-     the driver wired a [hit_text] hook the text engine resolves the
-     point against the same layout it painted — wrap, alignment and
-     vertical placement included — instead of per-prefix measures. *)
-  let offset_at_point t store rects id ~x ~y text =
-    let r = Rects.get rects id in
-    let ph =
-      pad_axis store id ~scale:t.scale "padding-horizontal" "padding" in
-    let pv =
-      pad_axis store id ~scale:t.scale "padding-vertical" "padding" in
-    let lx = x -. r.Lui_scene.x -. ph
-    and ly = y -. r.Lui_scene.y -. pv in
-    match t.hit_text with
-    | Some f ->
-      f store id text ~lx:(x -. r.Lui_scene.x) ~ly:(y -. r.Lui_scene.y)
-        ~lw:r.w ~lh:r.h
-    | None ->
-      let lh = Float.max 1. (snd (t.measure store id "Ag")) in
-      let lines = String.split_on_char '\n' text in
-      let li =
-        if ly <= 0. then 0
-        else min (int_of_float (ly /. lh)) (List.length lines - 1)
-      in
-      let rec base i acc = function
-        | [] -> acc
-        | l :: tl ->
-          if i = li then acc else base (i + 1) (acc + String.length l + 1) tl
-      in
-      let line = List.nth lines li in
-      base 0 0 lines + boundary_at_x t store id line lx
-
-  (* ---- drag & drop (data-attrs) -------------------------------------- *)
-
-  (* A text node opts into host-side selection via the wire
-     "user-select" prop, or — on vocabularies that lack it — the
-     legal data-* channel: data-user-select="text". *)
-  let selectable_text store id =
-    string_prop store id "user-select" = "text"
-    || data_attr store id "data-user-select" = Some "text"
-
-  let index_of id items =
-    let rec go i = function
-      | a :: _ when a = id -> Some i
-      | _ :: tl -> go (i + 1) tl
-      | [] -> None
-    in
-    go 0 items
-
-  (* Selectable text nodes under [id]'s parent, in child order — the
-     bound a cross-node selection may span. Siblings that do not opt
-     into selection simply stay outside the range. *)
-  let sel_siblings store id =
-    match Lui_store.parent store id with
-    | None -> []
-    | Some p ->
-      List.filter
-        (fun c -> selectable_text store c)
-        (Lui_store.child_ids store p)
-
-  (* The focus endpoint a drag at [(x,y)] (device px) extends to.
-     The selection stays inside the anchor's container: the pointer
-     maps onto the sibling band by y — inside a node to its byte
-     offset, above the first sibling to its start, below the last to
-     its end, inside a gap to the start of the next sibling. *)
-  let sel_extend t store rects anchor ~x ~y =
-    let rec go last = function
-      | [] ->
-        (match last with
-         | Some l ->
-           Some (l, String.length (text_of store l))
-         | None -> None)
-      | id :: tl ->
-        let r = Rects.get rects id in
-        if rect_empty r then go last tl
-        else if y <= r.Lui_scene.y +. r.h then
-          let off =
-            if y < r.Lui_scene.y then 0
-            else
-              offset_at_point t store rects id ~x ~y
-                (text_of store id)
-          in
-          Some (id, off)
-        else go (Some id) tl
-    in
-    go None (sel_siblings store anchor)
-
-  (* The selected text in document order: a same-node selection takes
-     the usual substring; a spanning selection takes the start
-     endpoint's suffix, every whole middle sibling and the end
-     endpoint's prefix, joined with newlines. Endpoints in different
-     containers (out of bound) yield nothing. *)
-  let sel_text_string t store =
-    match t.sel_text with
-    | None -> None
-    | Some (an, ao, fn, fo) ->
-      if an = fn then begin
-        let s = text_of store an in
-        let lo = min ao fo
-        and hi = min (max ao fo) (String.length s) in
-        if hi > lo then Some (String.sub s lo (hi - lo)) else None
-      end else
-        (match
-           (Lui_store.parent store an, Lui_store.parent store fn)
-         with
-         | Some pa, Some pf when pa = pf ->
-           let sibs = sel_siblings store an in
-           (match index_of an sibs, index_of fn sibs with
-            | Some ai, Some fi ->
-              let lo_i, hi_i = min ai fi, max ai fi in
-              (* ordered endpoints: (start off, end off) *)
-              let s_lo, s_hi =
-                if ai <= fi then (ao, fo) else (fo, ao)
-              in
-              let parts =
-                List.mapi
-                  (fun i id ->
-                     if i < lo_i || i > hi_i then None
-                     else
-                       let s = text_of store id in
-                       let len = String.length s in
-                       if i = lo_i then
-                         let o = min s_lo len in
-                         Some (String.sub s o (len - o))
-                       else if i = hi_i then
-                         Some (String.sub s 0 (min s_hi len))
-                       else Some s)
-                  sibs
-              in
-              let s =
-                String.concat "\n"
-                  (List.filter_map Fun.id parts)
-              in
-              if s = "" then None else Some s
-            | _ -> None)
-         | _ -> None)
-
-  (* The focused node is editable only while it admits TextChanged. *)
-  let editable t store =
-    t.focused <> 0
-    && event_supported store t.focused (ev_text t.focused)
-
-  (* ---- selection / clipboard / undo -------------------------------- *)
-
-  let push_undo t =
-    (match t.undo with
-     | (s, _, _) :: _ when s = t.shadow -> ()
-     | _ ->
-       t.undo <- (t.shadow, t.caret, t.sel_anchor) :: t.undo;
-       (* bound the chain *)
-       if List.length t.undo > 64 then
-         t.undo <- List.rev (List.tl (List.rev t.undo)));
-    t.redo <- []
-
-  (* Splice [ins] over the current selection in [n]'s shadow and
-     dispatch the resulting TextChanged (undo-recorded). *)
-  let splice t store n ins =
-    let cur = t.shadow in
-    let lo = min (sel_lo t) (String.length cur)
-    and hi = min (sel_hi t) (String.length cur) in
-    let next =
-      String.sub cur 0 lo ^ ins
-      ^ String.sub cur hi (String.length cur - hi)
-    in
-    let caret' = lo + String.length ins in
-    if next = cur then begin
-      t.caret <- caret'; t.sel_anchor <- caret'; []
-    end else begin
-      push_undo t;
-      set_edit_text t store n next;
-      t.caret <- caret'; t.sel_anchor <- caret';
+  (* Perform one machine intent: side effects land on the composer
+     state here and the driver-facing [action] list comes back. *)
+  let rec perform t store = function
+    | `Dispatch e -> [ Dispatch e ]
+    | `Repaint -> t.dirty <- true; []
+    | `Focus (id, kbd) ->
+      if id <> Lui_focus.focused t.focus then begin
+        focus_move ~kbd t store id;
+        [ Focus_changed id ]
+      end else []
+    | `Clear_selection ->
+      t.selection <- Lui_selection.clear t.selection;
       t.dirty <- true;
-      [ Dispatch (TextChanged (n, next)) ]
-    end
+      []
+    | `Mirror_text (id, s) ->
+      (if Lui_query.retains_text store id then
+         Lui_store.apply_op store
+           (SetProp (id, TextValue, StringValue s)));
+      []
+    | `Ime_rect r -> [ Ime_rect r ]
+    | `Scroll_show id ->
+      let s', m = Lui_scroll.scroll_show (senv t) store t.scroll id in
+      set_scroll t s';
+      perform_all t store m
+    | `Scroll_by (axis, id, d) ->
+      let s', m =
+        Lui_scroll.scroll_by ~axis (senv t) store t.scroll id d
+      in
+      set_scroll t s';
+      perform_all t store m
+  and perform_all t store m_acts =
+    List.concat_map (perform t store) m_acts
 
-  let delete_between t store n lo hi =
-    t.sel_anchor <- lo; t.caret <- hi;
-    splice t store n ""
-
-  (* Selected text the accelerators act on: a live static selection
-     first, else the focused node's range. *)
+  (* The text a copy/cut puts on the clipboard: the static
+     selection's joined string, else the focused editable's
+     selection slice. *)
   let active_sel_text t store =
-    match sel_text_string t store with
+    match Lui_selection.selected_text store t.selection with
     | Some s -> Some s
     | None ->
-      if editable t store then
-        let lo, hi = sel_range t in
-        if hi > lo then Some (String.sub t.shadow lo (hi - lo))
+      if Lui_text_input.editable store (Lui_focus.focused t.focus)
+      then begin
+        let lo = Lui_text_input.sel_lo t.session
+        and hi = Lui_text_input.sel_hi t.session in
+        if hi > lo then
+          Some
+            (String.sub (Lui_text_input.text t.session) lo (hi - lo))
         else None
-      else None
+      end else None
 
-  (* ---- scroll APIs --------------------------------------------------- *)
-
-  (* Recompute the visible list-item range of a tracked container and
-     emit VisibleRange when it changed. *)
-  let report_vrange t store id =
-    (* VisibleRange is admissible on ListContainer ("list") only. The
-       range is a pure function of (store revision, scroll offset,
-       layout epoch): memoize the inputs — an identical triple means
-       the last scan's result still stands, so a scroll-less sync on
-       a tracked list costs a hashtable hit instead of an item walk. *)
-    if kind_name store id = "list"
-       && bool_prop store id "track-visible-range"
-    then
-      let key =
-        (Lui_store.revision store, scroll_offset t id, t.rects_epoch)
-      in
-      match Hashtbl.find_opt t.vrange_key id with
-      | Some k when k = key -> []
-      | _ -> begin
-        Hashtbl.replace t.vrange_key id key;
-        let cr = t.content_rect id in
-        if rect_empty cr || cr.Lui_scene.h <= 0. then []
-        else
-          let off = scroll_offset t id in
-          let y0 = cr.Lui_scene.y +. off
-          and y1 = cr.Lui_scene.y +. off +. cr.Lui_scene.h in
-          let items =
-            List.filter
-              (fun c -> kind_name store c = "list-item")
-              (Lui_store.preorder ~root:id store)
-          in
-          let rec scan i f l = function
-            | [] -> (f, l)
-            | it :: tl ->
-              let r = t.content_rect it in
-              let vis =
-                (not (rect_empty r))
-                && r.Lui_scene.y +. r.Lui_scene.h > y0
-                && r.Lui_scene.y < y1
-              in
-              scan (i + 1) (if vis && f < 0 then i else f)
-                (if vis then i else l) tl
-          in
-          let f, l = scan 0 (-1) (-1) items in
-          let f = max 0 f in
-          (match Hashtbl.find_opt t.vrange id with
-           | Some (f', l') when f' = f && l' = l -> []
-           | _ ->
-             Hashtbl.replace t.vrange id (f, l);
-             [ Dispatch (VisibleRange (id, f, l)) ])
-      end
-    else []
-
-  let scroll_set ?(axis = Y) t store id off =
-    let cap = scroll_cap_axis t axis id in
-    let off' = Float.max 0. (Float.min cap off) in
-    if Float.abs (off' -. scroll_offset_axis t axis id) > 0.001
-    then begin
-      Hashtbl.replace (fst (scroll_tbls t axis)) id off';
-      Hashtbl.replace t.scrolled id ();
-      t.scroll_epoch <- t.scroll_epoch + 1;
-      t.dirty <- true
-    end;
-    (* VisibleRange is a row concept — reported on y moves only. *)
-    if axis = Y then report_vrange t store id else []
-
-  let scroll_to ?(axis = Y) t store id off =
-    scroll_set ~axis t store id off
-
-  let scroll_by ?(axis = Y) t store id d =
-    scroll_set ~axis t store id (scroll_offset_axis t axis id +. d)
-
-  (* Nearest scrollable ancestor-or-self of [id]. *)
-  let scroll_ancestor store id =
-    let rec go cur =
-      if scrollable store cur then Some cur
-      else
-        match Lui_store.parent store cur with
-        | Some p -> go p
-        | None -> None
-    in
-    go id
-
-  (* Reveal [id] inside its nearest scrollable ancestor — minimal
-     reveal on both axes (a clipped column scrolls horizontally too). *)
-  let scroll_show t store id =
-    match scroll_ancestor store id with
-    | None -> []
-    | Some a ->
-      let ar = t.content_rect a and nr = t.content_rect id in
-      if rect_empty ar || rect_empty nr then []
-      else begin
-        let reveal lo hi off view =
-          if lo < off then lo
-          else if hi > off +. view then hi -. view
-          else off
-        in
-        let top = nr.Lui_scene.y -. ar.Lui_scene.y in
-        let left = nr.Lui_scene.x -. ar.Lui_scene.x in
-        scroll_set ~axis:Y t store a
-          (reveal top (top +. nr.Lui_scene.h)
-             (scroll_offset t a) ar.Lui_scene.h)
-        @ scroll_set ~axis:X t store a
-            (reveal left (left +. nr.Lui_scene.w)
-               (scroll_offset_x t a) ar.Lui_scene.w)
-      end
-
-  (* scroll-anchor aligned reveal for scroll-target requests. *)
-  let scroll_align t store a it anchor =
-    let ar = t.content_rect a and nr = t.content_rect it in
-    if rect_empty ar || rect_empty nr then []
-    else
-      let top = nr.Lui_scene.y -. ar.Lui_scene.y in
-      let off' =
-        match anchor with
-        | "center" -> top -. ((ar.Lui_scene.h -. nr.Lui_scene.h) /. 2.)
-        | "bottom" -> top +. nr.Lui_scene.h -. ar.Lui_scene.h
-        | _ ->
-          (* "top" / unset: minimal reveal *)
-          let off = scroll_offset t a in
-          if top < off then top
-          else if top +. nr.Lui_scene.h > off +. ar.Lui_scene.h then
-            top +. nr.Lui_scene.h -. ar.Lui_scene.h
-          else off
-      in
-      scroll_set t store a off'
-
-  (* ---- lists: highlight + typeahead ---------------------------------- *)
-
-  (* Keyboard routing is part of the modal focus scope: while a modal
-     surface is top, ids outside its subtree do not answer keyboard
-     input — a background list keeps its highlight and items
-     untouched. *)
-  let in_modal_scope t store id =
-    match top_overlay t store with
-    | Some (ov, true, _) -> id = ov || is_desc store id ov
-    | _ -> true
-
-  let list_scope_live t store =
-    t.list_scope <> 0 && Lui_store.mem store t.list_scope
-    && in_modal_scope t store t.list_scope
-
-  let list_items t store =
-    if not (list_scope_live t store) then []
-    else
-      List.filter
-        (fun id -> kind_name store id = "list-item")
-        (Lui_store.preorder ~root:t.list_scope store)
-
-  (* Highlight [items.(i)] and scroll it into view. *)
-  let hl_index t store items i =
-    if items = [] then []
-    else begin
-      let i = min (max 0 i) (List.length items - 1) in
-      t.hl_item <- List.nth items i;
-      t.dirty <- true;
-      scroll_show t store t.hl_item
-    end
-
-  let move_hl t store delta =
-    let items = list_items t store in
-    match index_of t.hl_item items with
-    | Some i -> hl_index t store items (i + delta)
-    | None -> hl_index t store items (if delta > 0 then 0 else List.length items - 1)
-
-  (* First list-item in scope whose text starts with the typeahead
-     buffer (case-insensitive). *)
-  let typeahead_match t store =
-    let buf = String.lowercase_ascii t.typeahead in
-    List.find_opt
-      (fun id ->
-         let s = String.lowercase_ascii (string_prop store id "text") in
-         String.length s >= String.length buf
-         && String.sub s 0 (String.length buf) = buf)
-      (list_items t store)
-
-  (* ---- drag & drop (data-attrs) -------------------------------------- *)
-
-  let draggable store id =
-    data_attr store id "draggable" = Some "true"
-
-  let drop_accepts store id payload =
-    data_attr store id "data-drop-target" = Some "true"
-    &&
-    match data_attr store id "data-drop-accept" with
-    | None | Some "*" | Some "" -> true
-    | Some acc ->
-      (* comma-separated payload prefixes *)
-      List.exists
-        (fun p ->
-           let p = String.trim p in
-           p <> ""
-           && String.length payload >= String.length p
-           && String.sub payload 0 (String.length p) = p)
-        (String.split_on_char ',' acc)
-
-  (* Record a completed drop and bump the serial — the driver polls
-     the serial so a repeat drop of the same payload is not lost. *)
-  let record_drop t id payload =
-    t.drop_seq <- t.drop_seq + 1;
-    t.last_drop <- Some (id, payload, t.drop_seq);
-    t.dirty <- true
-
-  (* ---- focusables + keyboard activation -------------------------------- *)
-
-  (* Activation-capable control kinds — the pointer does not focus
-     them on this host (macOS-like), Tab/Shift-Tab do. *)
-  let activatable store id =
-    node_enabled store id
-    &&
-    match kind_name store id with
-    | "button" | "toggle-button" | "toggle" | "checkbox" | "switch"
-    | "radio" | "slider" | "number-stepper" | "select" | "menu-item" ->
-      true
-    | _ -> false
-
-  let focusables t store =
-    let scope =
-      match top_overlay t store with
-      | Some (ov, true, _) -> Some ov  (* modal focus trap *)
-      | _ -> None
-    in
-    List.filter
-      (fun id ->
-         node_enabled store id
-         && (event_supported store id (ev_text id) || activatable store id)
-         &&
-         match scope with
-         | None -> true
-         | Some ov -> id = ov || is_desc store id ov)
-      (Lui_store.preorder store)
-
-  let step_focusable t store cur dir =
-    let ids = focusables t store in
-    match ids with
-    | [] -> 0
-    | _ ->
-      let n = List.length ids in
-      let idx =
-        match index_of cur ids with
-        | Some i -> i
-        | None -> if dir > 0 then -1 else n
-      in
-      List.nth ids (((idx + dir) mod n + n) mod n)
-
-  (* UTF-8 aware caret stepping over byte offsets. *)
-  let utf8_prev s i =
-    let rec back j =
-      if j <= 0 then 0
-      else if Char.code s.[j] land 0xC0 = 0x80 then back (j - 1)
-      else j
-    in
-    back (i - 1)
-
-  let utf8_next s i =
-    let n = String.length s in
-    let rec fwd j =
-      if j >= n then n
-      else if Char.code s.[j] land 0xC0 = 0x80 then fwd (j + 1)
-      else j
-    in
-    fwd (i + 1)
-
-  let submit store id =
-    if event_supported store id (ev_submit id) then [ Dispatch (Submit id) ]
-    else []
-
-  (* Translate one lui_ime action into window actions plus the Ui
-     side effects they imply. `Commit_text splices through the exact
-     path raw text input used before composition existed. *)
-  let apply_ime t store actions =
-    List.filter_map
-      (fun a ->
-         match a with
-         | `Move_candidate r -> Some (Ime_rect r)
-         | `Commit_text s ->
-           t.dirty <- true;
-           (match t.focused with
-            | 0 -> None
-            | n when node_enabled store n
-                     && event_supported store n (ev_text n) ->
-              (match splice t store n s with
-               | [ a ] -> Some a
-               | _ -> None)
-            | _ -> None)
-         | `Begin_composition | `Update_composition _ | `Cancel ->
-           t.dirty <- true;
-           None)
-      actions
-
-  (* Feed one IME event into the state machine and apply what it
-     asks for. *)
-  let feed_ime t store ev =
-    let st, actions = Lui_ime.feed_event t.ime ev in
-    t.ime <- st;
-    apply_ime t store actions
-
-  (* ---- store sync: effects that react to store changes -------------
-
-     Runs at the top of [handle] and through [store_changed] after the
-     app flushes a batch — dead-focus cleanup, modal overlay focus
-     save/restore, Appear lifecycle events, scroll-target requests and
-     track-visible-range reports. *)
+  (* The sync half, run on store revisions and before each input:
+     dead-focus cleanup, model-side text adoption, the modal
+     focus-scope transition, autofocus inside the top overlay's
+     scope, the Appear lifecycle and scroll bookkeeping. Intents go
+     through [perform]; dispatches land in action order. *)
   let sync t store =
     let acts = ref [] in
-    let push a = acts := a :: !acts in
-    (* The whole derived-state block below reads only store props and
-       [t.open_menu]: when the revision and the open menu are both
-       what the last sync saw, the preorder walks recompute the same
-       results — skip them. Scroll-range reports follow scroll
-       offsets, which live in Ui state rather than the store, so they
-       stay outside the gate (report_vrange memoizes on its own
-       inputs). *)
+    let run m_acts =
+      List.iter
+        (fun m ->
+           acts := List.rev_append (perform t store m) !acts)
+        m_acts
+    in
     let rev = Lui_store.revision store in
-    if rev <> t.sync_rev || t.open_menu <> t.sync_menu then begin
-    t.sync_rev <- rev;
-    t.sync_menu <- t.open_menu;
-    if t.focused <> 0 && not (Lui_store.mem store t.focused) then begin
-      set_focused t store 0;
-      push (Focus_changed 0)
+    if rev <> t.sync_rev
+       || Lui_overlay.open_menu t.overlay <> t.sync_menu
+    then begin
+      t.sync_rev <- rev;
+      t.sync_menu <- Lui_overlay.open_menu t.overlay;
+      run (Lui_focus.sync_dead store t.focus);
+      (let n = Lui_focus.focused t.focus in
+       if n <> 0 && Lui_query.retains_text store n then begin
+         let s', m =
+           Lui_text_input.sync_model store t.session
+             ~model_text:(Lui_query.text_of store n)
+         in
+         t.session <- s';
+         run m
+       end);
+      (let ov', m =
+         Lui_overlay.sync store t.overlay
+           ~focused:(Lui_focus.focused t.focus)
+       in
+       t.overlay <- ov';
+       run m);
+      (let f', cand =
+         Lui_focus.scan_autofocus store t.focus
+           ~scope:(Lui_overlay.top t.overlay)
+       in
+       t.focus <- f';
+       match cand with
+       | Some id when id <> Lui_focus.focused t.focus ->
+         focus_move t store id;
+         acts := Focus_changed id :: !acts
+       | _ -> ());
+      (let f', m = Lui_focus.scan_appear store t.focus in
+       t.focus <- f';
+       run m);
+      let s', m = Lui_scroll.sync (senv t) store t.scroll in
+      set_scroll t s';
+      run m
     end;
-    if t.focused <> 0 && retains_text store t.focused then begin
-      let text = text_of store t.focused in
-      if text <> t.shadow then begin
-        let clamp_caret offset =
-          let len = String.length text in
-          let rec back i =
-            if i <= 0 then 0
-            else if Char.code text.[i] land 0xC0 = 0x80 then back (i - 1)
-            else i
-          in
-          if offset >= len then len else back offset
-        in
-        t.shadow <- text;
-        t.caret <- clamp_caret t.caret;
-        t.sel_anchor <- clamp_caret t.sel_anchor;
-        t.undo <- []; t.redo <- [];
-        t.dirty <- true
-      end
-    end;
-    if t.saved_focus <> 0 && not (Lui_store.mem store t.saved_focus)
-    then t.saved_focus <- 0;
-    let ov = top_overlay t store in
-    let ov_id, ov_modal =
-      match ov with
-      | Some (id, m, _) -> (id, m)
-      | None -> (0, false)
-    in
-    if ov_id <> t.overlay_id then begin
-      (* Modal focus scope: a modal surface owns the keyboard while it
-         is top. A focus held outside it is saved (once — a stacked
-         modal keeps the earliest save) and cleared, so text input,
-         IME and the shortcut table cannot reach a background field;
-         an autofocus child inside the dialog claims focus in the
-         scan below, else it stays empty until Tab or a press moves
-         it. *)
-      if ov_modal then begin
-        if t.focused <> 0 && t.focused <> ov_id
-           && not (is_desc store t.focused ov_id)
-        then begin
-          if t.saved_focus = 0 then t.saved_focus <- t.focused;
-          set_focused t store 0;
-          push (Focus_changed 0)
-        end;
-        (* A selection held on background text belongs to the pre-
-           modal scope as well — copy/select-all shortcuts must not
-           reach it while the dialog is up. *)
-        if t.sel_text <> None then begin
-          t.sel_text <- None;
-          t.dirty <- true
-        end
-      end;
-      if t.overlay_modal && not ov_modal then begin
-        if t.saved_focus <> 0 && t.focused = 0 then begin
-          set_focused t store t.saved_focus;
-          push (Focus_changed t.saved_focus)
-        end;
-        t.saved_focus <- 0
-      end;
-      t.overlay_id <- ov_id;
-      t.overlay_modal <- ov_modal
-    end;
-    let rec visible id =
-      match Lui_store.prop store id "visible" with
-      | Some (BoolValue false) -> false
-      | _ ->
-        match Lui_store.parent store id with
-        | Some parent -> visible parent
-        | None -> true
-    in
-    let autofocus_now =
-      List.filter
-        (fun id -> bool_prop store id "autofocus" && visible id)
-        (Lui_store.preorder store)
-    in
-    let autofocus =
-      List.find_opt
-        (fun id ->
-           not (Hashtbl.mem t.autofocus_seen id)
-           && node_enabled store id
-           && (event_supported store id (ev_text id) || activatable store id)
-           && (ov_id = 0 || id = ov_id || is_desc store id ov_id))
-        autofocus_now
-    in
-    Hashtbl.reset t.autofocus_seen;
-    List.iter (fun id -> Hashtbl.replace t.autofocus_seen id ()) autofocus_now;
-    (match autofocus with
-     | Some id when id <> t.focused ->
-       set_focused t store id;
-       push (Focus_changed id)
-     | _ -> ());
-    (* enter hook: appear-enabled nodes announce their mount *)
-    let appear_now =
-      List.filter
-        (fun id ->
-           node_enabled store id
-           && bool_prop store id "appear-enabled"
-           && event_supported store id (Appear id))
-        (Lui_store.preorder store)
-    in
-    List.iter
-      (fun id ->
-         if not (Hashtbl.mem t.seen id) then push (Dispatch (Appear id)))
-      appear_now;
-    Hashtbl.reset t.seen;
-    List.iter (fun id -> Hashtbl.replace t.seen id ()) appear_now;
-    (* scroll-target requests on list containers *)
-    List.iter
-      (fun id ->
-         if kind_name store id = "list" then
-           match Lui_store.int_prop store id "scroll-token" with
-           | Some tok ->
-             (match Hashtbl.find_opt t.scroll_token id with
-              | Some prev when prev = tok -> ()
-              | _ ->
-                Hashtbl.replace t.scroll_token id tok;
-                let target = string_prop store id "scroll-target" in
-                let item =
-                  if target = "" then None
-                  else
-                    List.find_opt
-                      (fun c -> string_prop store c "key" = target)
-                      (Lui_store.preorder ~root:id store)
-                in
-                (match item with
-                 | Some it ->
-                   let anchor = string_prop store id "scroll-anchor" in
-                   acts := List.rev_append (scroll_align t store id it anchor) !acts;
-                   push (Dispatch (ScrollCompleted (id, tok, "succeeded")))
-                 | None ->
-                   push (Dispatch (ScrollCompleted (id, tok, "missing-target")))))
-           | None -> ())
-      (Lui_store.preorder store);
-    (* The tracked-list ids are store-derived too — refreshed under
-       the same gate so the per-sync report loop below only walks
-       actual VisibleRange producers, not the whole tree. *)
-    t.vrange_lists <-
-      List.filter
-        (fun id ->
-           kind_name store id = "list"
-           && bool_prop store id "track-visible-range")
-        (Lui_store.preorder store)
-    end;
-    List.iter
-      (fun id ->
-         acts := List.rev_append (report_vrange t store id) !acts)
-      t.vrange_lists;
+    (* visible-range reports follow scroll offsets, which live in
+       the machine rather than the store — they run on every sync,
+       memoized on their inputs *)
+    (let s', m = Lui_scroll.report_tracked (senv t) store t.scroll in
+     set_scroll t s';
+     run m);
     List.rev !acts
 
-  let store_changed = sync
-
-  (* ---- key sub-dispatchers ------------------------------------------- *)
-
-  let move_caret t off mods =
-    t.caret <- off;
-    if not mods.Input.shift then t.sel_anchor <- off;
-    t.dirty <- true
-
-  (* Word jump helpers over byte offsets. *)
-  let word_left s i =
-    let rec skip j =
-      if j <= 0 then 0
-      else if word_byte s.[j - 1] then j else skip (j - 1)
-    in
-    let rec take j =
-      if j <= 0 then 0
-      else if word_byte s.[j - 1] then take (j - 1) else j
-    in
-    take (skip i)
-
-  let word_right s i =
-    let n = String.length s in
-    let rec skip j =
-      if j >= n then n
-      else if word_byte s.[j] then j else skip (j + 1)
-    in
-    let rec take j =
-      if j >= n then n
-      else if word_byte s.[j] then take (j + 1) else j
-    in
-    take (skip i)
-
-  (* Caret (line, column-in-bytes) then boundary on the target line —
-     shared by Arrow_up/down in multi-line fields. *)
-  let move_caret_line t store dir =
-    let s = t.shadow in
-    let c = min t.caret (String.length s) in
-    let lines = String.split_on_char '\n' s in
-    let rec find li base = function
-      | l :: tl ->
-        let e = base + String.length l in
-        if c <= e then (li, c - base) else find (li + 1) (e + 1) tl
-      | [] -> (List.length lines - 1, String.length (List.nth lines (List.length lines - 1)))
-    in
-    let li, col = find 0 0 lines in
-    let li' = min (max 0 (li + dir)) (List.length lines - 1) in
-    if li' <> li then begin
-      let x = fst (t.measure store t.focused
-                     (String.sub (List.nth lines li) 0 col)) in
-      let rec base i acc = function
-        | [] -> acc
-        | l :: tl ->
-          if i = li' then acc else base (i + 1) (acc + String.length l + 1) tl
-      in
-      base 0 0 lines
-      + boundary_at_x t store t.focused (List.nth lines li') x
-    end else c
-
-  let text_key t store rects key (mods : Input.mods) prim =
-    let n = t.focused in
-    (* The engine's caret model over the live shadow — grapheme
-       clusters horizontally, visual (soft-wrapped) lines vertically,
-       resolved against the same layout the painter used. Without a
-       wired engine the codepoint/paragraph fallbacks below keep the
-       old behavior. *)
-    let ops =
-      match t.caret_ops with
-      | Some f ->
-        let r = Rects.get rects n in
-        Some (f store n t.shadow ~lw:r.Lui_scene.w ~lh:r.Lui_scene.h)
-      | None -> None
-    in
-    let cur = t.shadow in
-    let caret = min t.caret (String.length cur) in
-    let prev i =
-      match ops with Some o -> o.c_before i | None -> utf8_prev cur i
-    and next i =
-      match ops with Some o -> o.c_after i | None -> utf8_next cur i
-    and vmove dir =
-      match ops with
-      | Some o -> if dir < 0 then o.c_up caret else o.c_down caret
-      | None -> move_caret_line t store dir
-    in
-    match key with
-    | Input.Return ->
-      (match kind_name store n with
-       | "textarea" ->
-         if (bool_prop store n "submit-on-enter" && not mods.shift)
-            || mods.ctrl || mods.meta
-         then submit store n else []
-       | _ -> submit store n)
-    | Input.Backspace ->
-      if sel_hi t > sel_lo t then splice t store n ""
-      else if caret > 0 then delete_between t store n (prev caret) caret
-      else []
-    | Input.Delete ->
-      if sel_hi t > sel_lo t then splice t store n ""
-      else if caret < String.length cur then
-        delete_between t store n caret (next caret)
-      else []
-    | Input.Arrow_left ->
-      let dest =
-        if prim then fst (line_bounds cur caret)
-        else if mods.alt then word_left cur caret
-        else if not mods.shift && sel_hi t > sel_lo t then sel_lo t
-        else prev caret
-      in
-      move_caret t dest mods; []
-    | Input.Arrow_right ->
-      let dest =
-        if prim then snd (line_bounds cur caret)
-        else if mods.alt then word_right cur caret
-        else if not mods.shift && sel_hi t > sel_lo t then sel_hi t
-        else next caret
-      in
-      move_caret t dest mods; []
-    | Input.Arrow_up ->
-      move_caret t (vmove (-1)) mods; []
-    | Input.Arrow_down ->
-      move_caret t (vmove 1) mods; []
-    | Input.Home -> move_caret t 0 mods; []
-    | Input.End -> move_caret t (String.length t.shadow) mods; []
-    | _ -> []
-
-  (* Slider/stepper value stepping, bounded by min/max props. *)
-  let step_value store n dir =
-    let cur =
-      match Lui_store.prop store n "value" with
-      | Some (FloatValue v) -> v
-      | Some (IntValue i) -> float i
-      | _ -> 0.
-    in
-    let step =
-      match Lui_store.prop store n "step" with
-      | Some (FloatValue v) -> v
-      | Some (IntValue i) -> float i
-      | _ -> 0.05
-    in
-    let lo, hi =
-      ( (match Lui_store.prop store n "min" with
-         | Some (FloatValue v) -> v | Some (IntValue i) -> float i
-         | _ -> 0.),
-        (match Lui_store.prop store n "max" with
-         | Some (FloatValue v) -> v | Some (IntValue i) -> float i
-         | _ -> 1.) )
-    in
-    let v = Float.max lo (Float.min hi (cur +. dir *. step)) in
-    if v <> cur && event_supported store n (ValueChanged (n, v))
-    then [ Dispatch (ValueChanged (n, v)) ] else []
-
-  (* Arrow keys move inside a radio group: sibling radios of the same
-     parent, focus follows the change. *)
-  let radio_step t store n dir =
-    match Lui_store.parent store n with
-    | None -> []
-    | Some p ->
-      let siblings =
-        List.filter
-          (fun c -> kind_name store c = "radio" && node_enabled store c)
-          (Lui_store.child_ids store p)
-      in
-      (match index_of n siblings with
-       | Some i ->
-         let i' = min (max 0 (i + dir)) (List.length siblings - 1) in
-         let tgt = List.nth siblings i' in
-         if tgt <> n then begin
-           set_focused ~kbd:true t store tgt;
-           Focus_changed tgt :: primary_press store tgt
-         end else []
-       | None -> [])
-
-  let control_key t store key _mods =
-    let n = t.focused in
-    match kind_name store n, key with
-    | ("slider" | "number-stepper"), Input.Arrow_left
-    | ("slider" | "number-stepper"), Input.Arrow_down ->
-      step_value store n (-1.)
-    | ("slider" | "number-stepper"), Input.Arrow_right
-    | ("slider" | "number-stepper"), Input.Arrow_up ->
-      step_value store n 1.
-    | "radio", (Input.Arrow_left | Input.Arrow_up) ->
-      radio_step t store n (-1)
-    | "radio", (Input.Arrow_right | Input.Arrow_down) ->
-      radio_step t store n 1
-    | _, (Input.Return | Input.Space) -> primary_press store n
-    | _ -> []
-
-  (* Keyboard on lists with no focused widget: arrows move the
-     highlight, PgUp/PgDn page the scope, chars typeahead-jump and
-     Return/Space activates the highlighted item. *)
-  let list_key t store key mods =
-    match key with
-    | Input.Arrow_down -> move_hl t store 1
-    | Input.Arrow_up -> move_hl t store (-1)
-    | Input.Home -> hl_index t store (list_items t store) 0
-    | Input.End ->
-      hl_index t store (list_items t store)
-        (List.length (list_items t store) - 1)
-    | Input.Page_down | Input.Page_up ->
-      let dir = if key = Input.Page_down then 1. else -1. in
-      (match
-         (if list_scope_live t store then Some t.list_scope else None)
-       with
-       | Some a ->
-         let ar = t.content_rect a in
-         if rect_empty ar then []
-         else scroll_by t store a (dir *. 0.9 *. ar.Lui_scene.h)
-       | None -> [])
-    | Input.Return | Input.Space ->
-      if t.hl_item <> 0 && node_enabled store t.hl_item
-         && List.mem t.hl_item (list_items t store)
-      then primary_press store t.hl_item else []
-    | Input.Other sc ->
-      (match Input.char_of_scancode ~shift:mods.Input.shift sc with
-       | Some c ->
-         t.typeahead <- t.typeahead ^ String.make 1 c;
-         (match typeahead_match t store with
-          | Some it ->
-            t.hl_item <- it; t.dirty <- true;
-            scroll_show t store it
-          | None -> [])
-       | None -> [])
-    | _ -> []
-
-  let primary mods = mods.Input.ctrl || mods.Input.meta
-
-  (* Wheel deltas scroll the deepest scrollable ancestor under the
-     pointer per axis — a +x delta scrolls right, a +y delta scrolls
-     content up (SDL convention), and Shift turns the vertical delta
-     horizontal (the desktop's wheel-x gesture). Each axis applies to
-     the first container on the hit path with range on that axis, so
-     an unscrollable-x container does not swallow a horizontal delta
-     for a deeper one. *)
-  let wheel t store rects dx dy mods =
-    let ix = dx +. if mods.Input.shift then -. dy else 0. in
-    let iy = if mods.Input.shift then 0. else -. dy in
-    if ix = 0. && iy = 0. then []
-    else begin
-      let path =
-        hit_path store rects
-          ~x:(t.last_x *. t.scale) ~y:(t.last_y *. t.scale)
-      in
-      let scroll_axis axis intent =
-        if intent = 0. then []
-        else
-          match
-            List.find_opt
-              (fun id ->
-                 scrollable store id
-                 && scroll_cap_axis t axis id > 0.001)
-              path
-          with
-          | Some id ->
-            let cap = scroll_cap_axis t axis id in
-            let off = scroll_offset_axis t axis id in
-            let off' =
-              Float.max 0.
-                (Float.min cap (off +. intent *. 44. *. t.scale))
-            in
-            if off' <> off then begin
-              Hashtbl.replace (fst (scroll_tbls t axis)) id off';
-              Hashtbl.replace t.scrolled id ();
-              t.scroll_epoch <- t.scroll_epoch + 1;
-              t.dirty <- true
-            end;
-            []
-          | None -> []
-      in
-      scroll_axis X ix @ scroll_axis Y iy
-    end
-
-  (* OS-side drops (SDL_DROPFILE/DROPTEXT): land at the pointer's
-     last position on the deepest matching target. File drops offer
-     the payload ["file:" ^ path] and text drops ["text:" ^ s] — the
-     namespacing lets data-drop-accept prefixes distinguish them from
-     internal drags. Recorded into [last_drop] like an internal
-     drag — the wire carries no drop event. *)
-  let os_drop t store rects payload =
-    let path =
-      hit_path store rects
-        ~x:(t.last_x *. t.scale) ~y:(t.last_y *. t.scale)
-    in
-    match
-      List.find_opt (fun id -> drop_accepts store id payload) path
-    with
-    | Some id -> record_drop t id payload; []
-    | None -> []
+  let store_changed t store = sync t store
 
   let handle t store rects input =
-    let pre = sync t store in
-    pre
-    @
+    let acts = ref [] in
+    let emit_all l = acts := List.rev_append l !acts in
+    let run m_acts = emit_all (perform_all t store m_acts) in
+    emit_all (sync t store);
     (match input with
-    | Input.Move (x, y) ->
-      t.last_x <- x;
-      t.last_y <- y;
-      let dx, dy = x *. t.scale, y *. t.scale in
-      if Option.is_some t.drag then begin
-        (* live drop-target tracking while a drag is in flight *)
-        let path = hit_path store rects ~x:dx ~y:dy in
-        let tgt =
-          match t.drag with
-          | Some (_, payload) ->
-            (match
-               List.find_opt
-                 (fun id -> drop_accepts store id payload) path
-             with
-             | Some id -> id
-             | None -> 0)
-          | None -> 0
-        in
-        if tgt <> t.drop_target then begin
-          t.drop_target <- tgt;
-          t.dirty <- true
-        end;
-        []
-      end else if t.drag_src <> 0
-                  && Float.abs (x -. t.down_x)
-                     +. Float.abs (y -. t.down_y) > 6. then begin
-        (* threshold crossed: promote the grab into a drag session;
-           the payload is the data-drag-payload attr, falling back to
-           the node's text prop *)
-        let payload =
-          match data_attr store t.drag_src "data-drag-payload" with
-          | Some p -> p
-          | None ->
-            (match Lui_store.prop store t.drag_src "text" with
-             | Some (StringValue s) -> s
-             | _ -> kind_name store t.drag_src)
-        in
-        t.drag <- Some (t.drag_src, payload);
-        t.sel_drag <- 0;
-        t.dirty <- true;
-        []
-      end else if t.sel_drag <> 0 then begin
-        (* drag-select: extend the focus endpoint across the
-           selectable siblings of the anchor's container (a drag into
-           a neighbouring text node selects across both) *)
-        let id = t.sel_drag in
-        (match t.sel_text with
-         | Some (an, a, _, _) ->
-           (match sel_extend t store rects an ~x:dx ~y:dy with
-            | Some (nid, off) ->
-              t.sel_text <- Some (an, a, nid, off)
-            | None -> ())
-         | _ when id = t.focused ->
-           t.caret <-
-             offset_at_point t store rects id ~x:dx ~y:dy t.shadow
-         | _ -> ());
-        t.dirty <- true;
-        []
-      end else begin
-      let path = hit_path store rects ~x:dx ~y:dy in
-      let hover = match path with id :: _ -> id | [] -> 0 in
-      let detail =
-        match
-          detail_target store path (fun id -> PointerEnter id)
-        with
-        | Some id -> id
-        | None -> 0
-      in
-      let actions =
-        if detail <> t.hover_detail then
-          (if t.hover_detail <> 0
-              && node_enabled store t.hover_detail
-              && event_supported store t.hover_detail
-                   (PointerLeave t.hover_detail)
-           then [ Dispatch (PointerLeave t.hover_detail) ]
-           else [])
-          @ (if detail <> 0 then [ Dispatch (PointerEnter detail) ] else [])
-        else []
-      in
-      if hover <> t.hovered || detail <> t.hover_detail then t.dirty <- true;
-      t.hovered <- hover;
-      t.hover_detail <- detail;
-      actions
-      end
-    | Input.Button_down (x, y, btn, clicks, mods) ->
-      t.last_x <- x;
-      t.last_y <- y;
-      (match btn with
-       | Input.Left ->
-         let dx, dy = x *. t.scale, y *. t.scale in
+     | Input.Move (x, y) ->
+       t.pointer <- Lui_pointer.note_pos t.pointer ~x ~y;
+       let dx, dy = x *. t.scale, y *. t.scale in
+       if Lui_drag.active t.drag then begin
+         (* live drop-target tracking while a drag is in flight *)
          let path = hit_path store rects ~x:dx ~y:dy in
-         t.down_x <- x; t.down_y <- y;
-         t.typeahead <- "";
-         (* Press outside the open menu closes it host-side — the
-            owning trigger counts as inside so a second click toggles
-            rather than close-then-reopen. *)
-         (if t.open_menu <> 0
-            && not
-                 (inside_ov store t.open_menu path
-                  || List.exists
-                       (fun i -> Lui_store.parent store t.open_menu = Some i)
-                       path)
-          then close_menu t);
-         (* Overlay semantics: a press outside the top overlay light-
-            dismisses it when its kind admits Dismiss; a modal surface
-            swallows the press entirely (focus trap). *)
-         let ov = top_overlay t store in
-         let inside =
-           match ov with
-           | None -> true
-           | Some (oid, _, _) -> inside_ov store oid path
-         in
-         (match ov, inside with
-          | Some (_, true, _), false -> []
-          | _ ->
-            let dismiss =
-              match ov with
-              | Some (oid, false, true) when not inside ->
-                [ Dispatch (Dismiss oid) ]
-              | _ -> []
-            in
-            let focus =
-              match focus_target store path with
-              | Some id -> id
-              | None -> 0
-            in
-            let focus_actions =
-              if focus <> t.focused then begin
-                set_focused t store focus;
-                [ Focus_changed focus ]
-              end else []
-            in
-            (* Selection: click sets the caret, shift-click extends,
-               double/triple click selects word/paragraph — on
-               editable fields and on user-select=text nodes alike. *)
-            (match
-               (if focus <> 0 && List.mem focus path then `edit
-                else if
-                  List.exists (fun i -> selectable_text store i) path
-                then `static
-                else `none)
-             with
-             | `edit ->
-               let off =
-                 offset_at_point t store rects focus ~x:dx ~y:dy t.shadow
-               in
-               if mods.shift then t.caret <- off
-               else if clicks >= 3 then
-                 let a, b = line_bounds t.shadow off in
-                 t.sel_anchor <- a; t.caret <- b
-               else if clicks = 2 then
-                 let a, b = word_bounds t.shadow off in
-                 t.sel_anchor <- a; t.caret <- b
-               else begin t.caret <- off; t.sel_anchor <- off end;
-               t.sel_drag <- focus; t.sel_text <- None
-             | `static ->
-               let id =
-                 List.find (fun i -> selectable_text store i) path in
-               let text = text_of store id in
-               let off =
-                 offset_at_point t store rects id ~x:dx ~y:dy text in
-               (match mods.shift, t.sel_text with
-                | true, Some (an, ao, _, _)
-                  when Lui_store.parent store an
-                       = Lui_store.parent store id ->
-                  (* shift-click extends the recorded anchor onto a
-                     sibling text node *)
-                  t.sel_text <- Some (an, ao, id, off)
-                | _ ->
-                  let a, b =
-                    if clicks >= 3 then line_bounds text off
-                    else if clicks = 2 then word_bounds text off
-                    else (off, off)
-                  in
-                  t.sel_text <- Some (id, a, id, b));
-               t.sel_drag <- id
-             | `none ->
-               t.sel_drag <- 0;
-               if not mods.shift then t.sel_text <- None);
-            t.drag_src <-
-              (match List.find_opt (fun i -> draggable store i) path with
+         let d, m = Lui_drag.track store t.drag ~path in
+         t.drag <- d;
+         run m
+       end else begin
+         match Lui_drag.promote store t.drag ~x ~y with
+         | Some (d, m) ->
+           (* threshold crossed: the grab becomes a drag session *)
+           t.drag <- d;
+           t.selection <- Lui_selection.clear_drag t.selection;
+           run m
+         | None ->
+           if Lui_selection.drag_id t.selection <> 0 then begin
+             (* drag-select: the focus endpoint follows the pointer
+                across the anchor's selectable siblings, or inside
+                the focused editable *)
+             (match Lui_selection.text t.selection with
+              | Some _ ->
+                let s', m =
+                  Lui_selection.drag_move (hooks t) store rects
+                    t.selection ~x:dx ~y:dy
+                in
+                t.selection <- s';
+                run m
+              | None
+                when Lui_selection.drag_id t.selection
+                     = Lui_focus.focused t.focus ->
+                let s', m =
+                  Lui_text_input.point_move (hooks t) store rects
+                    t.session ~x:dx ~y:dy
+                in
+                t.session <- s';
+                run m
+              | None -> t.dirty <- true)
+           end else begin
+             let path = hit_path store rects ~x:dx ~y:dy in
+             let p, m = Lui_pointer.move store t.pointer ~path ~x ~y in
+             t.pointer <- p;
+             run m
+           end
+       end
+     | Input.Button_down (x, y, btn, clicks, mods) ->
+       t.pointer <- Lui_pointer.note_pos t.pointer ~x ~y;
+       (match btn with
+        | Input.Left ->
+          let dx, dy = x *. t.scale, y *. t.scale in
+          let path = hit_path store rects ~x:dx ~y:dy in
+          t.drag <- Lui_drag.note_down t.drag ~x ~y;
+          t.gesture <- Lui_gesture.reset_typeahead t.gesture;
+          (* a press outside the open menu closes it host-side *)
+          (let ov', m =
+             Lui_overlay.close_on_outside_press store t.overlay path
+           in
+           t.overlay <- ov';
+           run m);
+          (* overlay press semantics: a modal surface swallows
+             outside presses entirely; a light-dismissible one
+             emits its Dismiss *)
+          (match Lui_overlay.press store t.overlay path with
+           | ov', `Swallow -> t.overlay <- ov'
+           | ov', `Proceed dismiss ->
+             t.overlay <- ov';
+             emit_all (perform_all t store dismiss);
+             let focus =
+               match Lui_query.focus_target store path with
                | Some id -> id
-               | None -> 0);
-            let down =
-              match
-                detail_target store path (fun id ->
-                    PointerDown (id, dummy_detail))
-              with
-              | Some id ->
-                t.press_detail <- id;
-                [ Dispatch
-                    (PointerDown
-                       (id, detail_of store id x y mods 0)) ]
-              | None ->
-                t.press_detail <- 0;
-                []
-            in
-            t.pressed <-
-              (match press_target store path with
-               | Some id -> id
-               | None -> 0);
-            let double =
-              if clicks = 2 then
-                match
-                  pick store path (fun s id ->
-                      event_supported s id (DoublePress id))
-                with
-                | Some id -> [ Dispatch (DoublePress id) ]
-                | None -> []
-              else []
-            in
-            (* list context: the innermost scrollable ancestor with
-               items under the pointer owns typeahead/arrows; a pressed
-               list-item becomes the highlight *)
-            (match
-               List.find_opt
-                 (fun i ->
-                    scrollable store i
-                    && List.exists
-                         (fun c -> kind_name store c = "list-item")
-                         (Lui_store.preorder ~root:i store))
-                 path
-             with
-             | Some id -> t.list_scope <- id
-             | None -> ());
-            (match
-               List.find_opt
-                 (fun i -> kind_name store i = "list-item") path
-             with
-             | Some it -> t.hl_item <- it
-             | None -> ());
-            t.dirty <- true;
-            dismiss @ focus_actions @ down @ double)
-       | Input.Right ->
-         let dx, dy = x *. t.scale, y *. t.scale in
-         let path = hit_path store rects ~x:dx ~y:dy in
-         (match
-            detail_target store path (fun id ->
-                ContextMenuPress (id, dummy_detail))
-          with
-          | Some id ->
-            [ Dispatch
-                (ContextMenuPress
-                   (id, detail_of store id x y mods 2)) ]
-          | None -> [])
-       | _ -> [])
-    | Input.Button_up (x, y, btn, mods) ->
-      t.last_x <- x;
-      t.last_y <- y;
-      (match btn with
-       | Input.Left when Option.is_some t.drag ->
-         (* drop completes on the accepting target under the pointer;
-            the click it rode on is consumed *)
-         (match t.drag with
-          | Some (_, payload) when t.drop_target <> 0 ->
-            record_drop t t.drop_target payload
-          | _ -> ());
-         t.drag <- None;
-         t.drag_src <- 0;
-         t.drop_target <- 0;
-         t.pressed <- 0;
-         t.press_detail <- 0;
-         t.sel_drag <- 0;
-         t.dirty <- true;
-         []
-       | Input.Left ->
-         t.sel_drag <- 0;
-         t.drag_src <- 0;
-         let up =
-           if t.press_detail <> 0
-              && node_enabled store t.press_detail
-              && event_supported store t.press_detail
-                   (PointerUp (t.press_detail, dummy_detail))
-           then
-             [ Dispatch
-                 (PointerUp
-                    (t.press_detail,
-                     detail_of store t.press_detail x y mods 0)) ]
-           else []
-         in
-         let dx, dy = x *. t.scale, y *. t.scale in
-         let path = hit_path store rects ~x:dx ~y:dy in
-         let release =
-           match press_target store path with
-           | Some id -> id
-           | None -> 0
-         in
-         let click =
-           if t.pressed <> 0 && release = t.pressed then begin
-             let n = t.pressed in
-             let pd =
-               if pointer_enabled store n
-                  && event_supported store n
-                       (PressDetail (n, dummy_detail))
-               then
-                 [ Dispatch
-                     (PressDetail (n, detail_of store n x y mods 0)) ]
-               else []
+               | None -> 0
              in
-             (* A click landing anywhere on a menu trigger toggles its
-                owned panel (the trigger itself may not be pressable);
-                activating a node inside the open panel closes it after
-                the press. *)
+             (if focus <> Lui_focus.focused t.focus then begin
+                focus_move t store focus;
+                emit_all [ Focus_changed focus ]
+              end);
+             (* Selection: click sets the caret, shift-click
+                extends, double/triple click selects word/paragraph
+                — on editable fields and user-select=text nodes
+                alike. *)
+             (if focus <> 0 && List.mem focus path then begin
+                let s', _m =
+                  Lui_text_input.press (hooks t) store rects t.session
+                    ~x:dx ~y:dy ~clicks ~shift:mods.Input.shift
+                in
+                t.session <- s';
+                t.selection <-
+                  Lui_selection.arm_drag
+                    (Lui_selection.clear t.selection) focus
+              end
+              else if
+                List.exists
+                  (fun i -> Lui_query.selectable_text store i) path
+              then begin
+                let s', m =
+                  Lui_selection.press (hooks t) store rects t.selection
+                    ~path ~clicks ~shift:mods.Input.shift ~x:dx ~y:dy
+                in
+                t.selection <- s';
+                run m
+              end else
+                t.selection <-
+                  Lui_selection.clear_drag
+                    (Lui_selection.press_none t.selection
+                       ~shift:mods.Input.shift));
+             t.drag <- Lui_drag.arm store t.drag ~path;
+             let p, m =
+               Lui_pointer.down store t.pointer ~path ~x ~y
+                 ~button:Lui_input.Left ~clicks ~mods:(conv_mods mods)
+             in
+             t.pointer <- p;
+             (* list context: the innermost scrollable ancestor with
+                items under the pointer owns typeahead/arrows; a
+                pressed list-item becomes the highlight *)
+             t.gesture <-
+               Lui_gesture.note_list_context store t.gesture ~path;
+             t.dirty <- true;
+             run m)
+        | Input.Right ->
+          let dx, dy = x *. t.scale, y *. t.scale in
+          let path = hit_path store rects ~x:dx ~y:dy in
+          let p, m =
+            Lui_pointer.down store t.pointer ~path ~x ~y
+              ~button:Lui_input.Right ~clicks ~mods:(conv_mods mods)
+          in
+          t.pointer <- p;
+          run m
+        | _ -> ())
+     | Input.Button_up (x, y, btn, mods) ->
+       t.pointer <- Lui_pointer.note_pos t.pointer ~x ~y;
+       (match btn with
+        | Input.Left when Lui_drag.active t.drag ->
+          (* the drop completes on the accepting target under the
+             pointer; the click it rode on is consumed *)
+          let d, m = Lui_drag.drop t.drag in
+          t.drag <- d;
+          t.pointer <- Lui_pointer.clear_press t.pointer;
+          t.selection <- Lui_selection.clear_drag t.selection;
+          run m
+        | Input.Left ->
+          t.selection <- Lui_selection.clear_drag t.selection;
+          t.drag <- Lui_drag.clear_arm t.drag;
+          let p, up_acts =
+            Lui_pointer.up store t.pointer ~x ~y
+              ~button:Lui_input.Left ~mods:(conv_mods mods)
+          in
+          t.pointer <- p;
+          emit_all (perform_all t store up_acts);
+          let dx, dy = x *. t.scale, y *. t.scale in
+          let path = hit_path store rects ~x:dx ~y:dy in
+          let release =
+            match Lui_query.press_target store path with
+            | Some id -> id
+            | None -> 0
+          in
+          (let n = Lui_pointer.pressed t.pointer in
+           if n <> 0 && release = n then begin
+             (if pointer_enabled store n
+                 && event_supported store n
+                      (PressDetail (n, dummy_detail))
+              then
+                acts :=
+                  Dispatch
+                    (PressDetail
+                       (n, detail_of store n x y mods 0))
+                  :: !acts);
+             (* a click landing anywhere on a menu trigger toggles
+                its owned panel; activating a node inside the open
+                panel closes it after the press *)
+             (let ov', m =
+                Lui_overlay.click_menu store t.overlay ~path
+                  ~pressed:n
+              in
+              t.overlay <- ov';
+              run m);
+             emit_all
+               (perform_all t store
+                  (Lui_query.primary_press store n));
+             (* a toggle-only container owns the click even when a
+                kind-pressable child was the deepest target — the
+                container bubbles up *)
              (match
                 List.find_opt
-                  (fun i -> kind_name store i = "menu-trigger") path
-              with
-              | Some trig -> (
-                match menu_panel store trig with
-                | Some m ->
-                  t.open_menu <- (if t.open_menu = m then 0 else m);
-                  t.dirty <- true
-                | None -> ())
-              | None ->
-                if t.open_menu <> 0 && is_desc store n t.open_menu
-                then close_menu t);
-             (* A toggle-only container owns the click even when a
-                kind-pressable child (a bare text/box admits Press)
-                was the deepest target — the container bubbles up. *)
-             let toggle_acts =
-               match
-                 List.find_opt
-                   (fun i ->
+                  (fun i ->
                      i <> n
                      && kind_name store i = "drawer"
                      && bool_prop store i "toggle-enabled"
                      && event_supported store i
                           (ToggleChanged (i, true)))
-                   path
-               with
-               | Some d ->
-                 [ Dispatch
-                     (ToggleChanged (d, not (bool_prop store d "selected"))) ]
-               | None -> []
-             in
-             pd @ primary_press store n @ toggle_acts
-           end else []
-         in
-         t.pressed <- 0;
-         t.press_detail <- 0;
-         t.dirty <- true;
-         up @ click
-       | _ -> [])
-    | Input.Text_input s -> feed_ime t store (`Commit s)
-    | Input.Text_editing (text, start, len) ->
-      feed_ime t store (`Editing (text, start, len))
-    | Input.Caret r -> feed_ime t store (`Caret r)
-    | Input.Paste s ->
-      (* clipboard text the driver pulled after Paste_request *)
-      if s = "" || not (editable t store) then []
-      else splice t store t.focused s
-    | Input.Key_down (key, mods, _repeat) ->
-      (* While marked text is on screen the keys belong to the IME —
-         SDL filters most of them already; this gate is the belt. *)
-      if Lui_ime.composing t.ime then []
-      else begin
-        (* The accelerator table: "primary" is Cmd on macOS, Ctrl
-           elsewhere — this host accepts either. Entries the wire has
-           a channel for route through dispatch; clipboard/undo stay
-           host-side (no wire event exists for them). *)
-        let prim = primary mods in
-        (match key with
-         | Input.Escape ->
-           (match t.drag with
-            | Some _ ->
+                  path
+              with
+              | Some d ->
+                acts :=
+                  Dispatch
+                    (ToggleChanged
+                       (d, not (bool_prop store d "selected")))
+                  :: !acts
+              | None -> ())
+           end);
+          t.pointer <- Lui_pointer.clear_press t.pointer;
+          t.dirty <- true
+        | _ -> ())
+     | Input.Text_input s ->
+       let s', m =
+         Lui_text_input.feed_ime store t.session (`Commit s)
+       in
+       t.session <- s';
+       run m
+     | Input.Text_editing (text, start, len) ->
+       let s', m =
+         Lui_text_input.feed_ime store t.session
+           (`Editing (text, start, len))
+       in
+       t.session <- s';
+       run m
+     | Input.Caret r ->
+       let s', m = Lui_text_input.feed_ime store t.session (`Caret r) in
+       t.session <- s';
+       run m
+     | Input.Paste s ->
+       (* clipboard text the driver pulled after Paste_request *)
+       if s <> "" && Lui_text_input.editable store (focused t)
+       then begin
+         let s', m = Lui_text_input.insert t.session s in
+         t.session <- s';
+         run m
+       end
+     | Input.Key_down (key, mods, _repeat) ->
+       (* While marked text is on screen the keys belong to the
+          IME — SDL filters most of them already; this gate is the
+          belt. *)
+       if not (Lui_text_input.composing t.session) then begin
+         (* The accelerator table: "primary" is Cmd on macOS, Ctrl
+            elsewhere — this host accepts either. Entries the wire
+            has a channel for route through dispatch;
+            clipboard/undo stay host-side (no wire event exists). *)
+         let prim = mods.Input.ctrl || mods.Input.meta in
+         (match key with
+          | Input.Escape ->
+            if Lui_drag.active t.drag then begin
               (* cancel the drag: no drop, click consumed *)
-              t.drag <- None; t.drag_src <- 0; t.drop_target <- 0;
-              t.dirty <- true;
-              []
-            | None ->
-              (if t.open_menu <> 0 then (close_menu t; [])
-               else
-              match top_overlay t store with
-               | Some (oid, _, true) -> [ Dispatch (Dismiss oid) ]
-               | Some _ -> []
-               | None ->
-                 if t.focused <> 0 then begin
-                   set_focused t store 0;
-                   [ Focus_changed 0 ]
-                 end else [ Quit ]))
-         | Input.Other 4 when prim ->
-           (* A: select all — editable range, or every selectable
-              sibling in the static selection's container *)
-           (match editable t store, t.sel_text with
-            | true, _ ->
-              t.sel_anchor <- 0;
-              t.caret <- String.length t.shadow;
-              t.dirty <- true;
-              []
-            | false, Some (an, _, _, _) ->
-              (match sel_siblings store an with
-               | first :: _ ->
-                 let last =
-                   List.nth (sel_siblings store an)
-                     (List.length (sel_siblings store an) - 1)
-                 in
-                 t.sel_text <-
-                   Some
-                     (first, 0, last,
-                      String.length (text_of store last));
-                 t.dirty <- true;
-                 []
-               | [] ->
-                 t.sel_text <-
-                   Some (an, 0, an, String.length (text_of store an));
-                 t.dirty <- true;
-                 [])
-            | _ -> [])
-         | Input.Other 6 when prim ->
-           (* C: copy the active selection *)
-           (match active_sel_text t store with
-            | Some s -> [ Clipboard_write s ]
-            | None -> [])
-         | Input.Other 27 when prim && editable t store ->
-           (* X: cut = copy + delete *)
-           (match active_sel_text t store with
-            | Some s -> Clipboard_write s :: splice t store t.focused ""
-            | None -> [])
-         | Input.Other 25 when prim && editable t store ->
-           (* V: the driver turns this into Input.Paste with the
-              clipboard text *)
-           [ Paste_request ]
-         | Input.Other 29 when prim && editable t store ->
-           (* Z / shift-Z: host-side undo/redo of shadow edits *)
-           (match mods.shift, t.undo, t.redo with
-            | false, (s, c, a) :: tl, _ ->
-              t.redo <- (t.shadow, t.caret, t.sel_anchor) :: t.redo;
-              t.undo <- tl;
-              set_edit_text t store t.focused s;
-              t.caret <- c; t.sel_anchor <- a;
-              t.dirty <- true;
-              [ Dispatch (TextChanged (t.focused, s)) ]
-            | true, _, (s, c, a) :: tl ->
-              t.undo <- (t.shadow, t.caret, t.sel_anchor) :: t.undo;
-              t.redo <- tl;
-              set_edit_text t store t.focused s;
-              t.caret <- c; t.sel_anchor <- a;
-              t.dirty <- true;
-              [ Dispatch (TextChanged (t.focused, s)) ]
-            | _ -> [])
-         | Input.Tab ->
-           let dir = if mods.Input.shift then -1 else 1 in
-           let next = step_focusable t store t.focused dir in
-           if next <> 0 && next <> t.focused then begin
-             set_focused ~kbd:true t store next;
-             Focus_changed next :: scroll_show t store next
-           end else []
-         | _ ->
-           if editable t store then text_key t store rects key mods prim
-           else if t.focused <> 0 then control_key t store key mods
-           else list_key t store key mods)
-      end
-    | Input.Resize (w, h) -> [ Resize_host (w, h) ]
-    | Input.Wheel (dx, dy) ->
-      wheel t store rects dx dy Input.mods_none
-    | Input.Wheel_mods (dx, dy, mods) ->
-      wheel t store rects dx dy mods
-    | Input.Drop_file path ->
-      os_drop t store rects ("file:" ^ path)
-    | Input.Drop_text s ->
-      os_drop t store rects ("text:" ^ s)
-    | Input.Quit_input -> [ Quit ])
+              let d, m = Lui_drag.cancel t.drag in
+              t.drag <- d;
+              run m
+            end else begin
+              (* Escape peels one layer at a time: the open menu,
+                 then a dismissible overlay; a non-dismissible top
+                 overlay eats the key. *)
+              let ov', res = Lui_overlay.escape store t.overlay in
+              t.overlay <- ov';
+              (match res with
+               | `Closed_menu -> t.dirty <- true
+               | `Dismissed oid ->
+                 acts := Dispatch (Dismiss oid) :: !acts
+               | `Blocked -> ()
+               | `Pass ->
+                 if Lui_focus.focused t.focus <> 0 then begin
+                   focus_move t store 0;
+                   acts := Focus_changed 0 :: !acts
+                 end else acts := Quit :: !acts)
+            end
+          | Input.Other 4 when prim ->
+            (* A: select all — the editable range, or every
+               selectable sibling in the static selection's
+               container *)
+            if Lui_text_input.editable store (focused t) then begin
+              let s', m = Lui_text_input.select_all t.session in
+              t.session <- s';
+              run m
+            end else begin
+              let s', m =
+                Lui_selection.select_all store t.selection
+              in
+              t.selection <- s';
+              run m
+            end
+          | Input.Other 6 when prim ->
+            (match active_sel_text t store with
+             | Some s -> acts := Clipboard_write s :: !acts
+             | None -> ())
+          | Input.Other 27 when prim ->
+            if Lui_text_input.editable store (focused t) then
+              (match active_sel_text t store with
+               | Some s ->
+                 acts := Clipboard_write s :: !acts;
+                 let s', m = Lui_text_input.splice t.session "" in
+                 t.session <- s';
+                 run m
+               | None -> ())
+          | Input.Other 25 when prim ->
+            if Lui_text_input.editable store (focused t)
+            then acts := Paste_request :: !acts
+          | Input.Other 29 when prim ->
+            if Lui_text_input.editable store (focused t) then begin
+              let s', m =
+                Lui_text_input.undo t.session ~shift:mods.Input.shift
+              in
+              t.session <- s';
+              run m
+            end
+          | Input.Tab ->
+            let dir = if mods.Input.shift then -1 else 1 in
+            let next =
+              Lui_focus.step store
+                ~scope:(Lui_overlay.modal_scope store t.overlay)
+                ~cur:(Lui_focus.focused t.focus) ~dir
+            in
+            if next <> 0 && next <> Lui_focus.focused t.focus
+            then begin
+              focus_move ~kbd:true t store next;
+              acts := Focus_changed next :: !acts;
+              let s', m =
+                Lui_scroll.scroll_show (senv t) store t.scroll next
+              in
+              set_scroll t s';
+              run m
+            end
+          | _ ->
+            if Lui_text_input.editable store (focused t) then begin
+              let s', m =
+                Lui_text_input.key (hooks t) store rects t.session
+                  ~k:(conv_key key) ~mods:(conv_mods mods) ~prim
+              in
+              t.session <- s';
+              run m
+            end
+            else if Lui_focus.focused t.focus <> 0 then begin
+              let g', m =
+                Lui_gesture.control_key store t.gesture
+                  ~node:(Lui_focus.focused t.focus)
+                  ~key:(conv_key key) ~mods:(conv_mods mods)
+              in
+              t.gesture <- g';
+              run m
+            end else begin
+              let scope =
+                Option.value ~default:0
+                  (Lui_overlay.modal_scope store t.overlay)
+              in
+              let g', m =
+                Lui_gesture.list_key store t.gesture ~scope
+                  ~content_rect:t.content_rect ~key:(conv_key key)
+                  ~mods:(conv_mods mods)
+              in
+              t.gesture <- g';
+              run m
+            end)
+       end
+     | Input.Resize (w, h) -> acts := Resize_host (w, h) :: !acts
+     | Input.Wheel (dx, dy) ->
+       let sx, sy = Lui_pointer.position t.pointer in
+       let path =
+         hit_path store rects ~x:(sx *. t.scale)
+           ~y:(sy *. t.scale)
+       in
+       let s', m =
+         Lui_scroll.wheel (senv t) store t.scroll ~path
+           ~scale:t.scale ~dx ~dy ~mods:Lui_input.mods_none
+       in
+       set_scroll t s';
+       run m
+     | Input.Wheel_mods (dx, dy, mods) ->
+       let sx, sy = Lui_pointer.position t.pointer in
+       let path =
+         hit_path store rects ~x:(sx *. t.scale)
+           ~y:(sy *. t.scale)
+       in
+       let s', m =
+         Lui_scroll.wheel (senv t) store t.scroll ~path
+           ~scale:t.scale ~dx ~dy ~mods:(conv_mods mods)
+       in
+       set_scroll t s';
+       run m
+     | Input.Drop_file p ->
+       (* OS drops land at the pointer's last position on the
+          deepest matching target; payloads are namespaced
+          ("file:"/"text:") so data-drop-accept prefixes can tell
+          them from internal drags *)
+       let sx, sy = Lui_pointer.position t.pointer in
+       let path =
+         hit_path store rects ~x:(sx *. t.scale)
+           ~y:(sy *. t.scale)
+       in
+       let d, m =
+         Lui_drag.os_drop store t.drag ~path ~payload:("file:" ^ p)
+       in
+       t.drag <- d;
+       run m
+     | Input.Drop_text s ->
+       let sx, sy = Lui_pointer.position t.pointer in
+       let path =
+         hit_path store rects ~x:(sx *. t.scale)
+           ~y:(sy *. t.scale)
+       in
+       let d, m =
+         Lui_drag.os_drop store t.drag ~path ~payload:("text:" ^ s)
+       in
+       t.drag <- d;
+       run m
+     | Input.Quit_input -> acts := Quit :: !acts);
+    List.rev !acts
 
   let state_of t store id =
-    { Lui_paint.hovered = t.hovered = id || t.drop_target = id;
+    { Lui_paint.hovered =
+        (Lui_pointer.hovered t.pointer = id
+         || Lui_drag.target t.drag = id);
       pressed =
-        (t.pressed = id
-         ||
-         match t.drag with
-         | Some (src, _) -> src = id
-         | None -> false);
-      focused = t.focused = id;
-      selected = bool_prop store id "selected" || t.hl_item = id;
+        (Lui_pointer.pressed t.pointer = id
+         || Lui_drag.source t.drag = id);
+      focused = Lui_focus.focused t.focus = id;
+      selected =
+        (bool_prop store id "selected" || Lui_gesture.hl t.gesture = id);
       disabled = not (node_enabled store id) }
 
   (* Ids whose paint inputs moved outside the store journal: the
@@ -2587,29 +1254,28 @@ module Ui = struct
     let h = Hashtbl.create 16 in
     let mark id = if id <> 0 then Hashtbl.replace h id () in
     let s = t.paint_snap in
-    let drag_src =
-      match t.drag with Some (id, _) -> id | None -> 0
-    in
-    if s.ps_hovered <> t.hovered then (mark s.ps_hovered; mark t.hovered);
-    if s.ps_pressed <> t.pressed then (mark s.ps_pressed; mark t.pressed);
-    if s.ps_focused <> t.focused then (mark s.ps_focused; mark t.focused);
-    if s.ps_drop_target <> t.drop_target then
-      (mark s.ps_drop_target; mark t.drop_target);
+    let drag_src = Lui_drag.source t.drag
+    and drop_target = Lui_drag.target t.drag in
+    if s.ps_hovered <> hovered t then (mark s.ps_hovered; mark (hovered t));
+    if s.ps_pressed <> pressed t then (mark s.ps_pressed; mark (pressed t));
+    if s.ps_focused <> focused t then (mark s.ps_focused; mark (focused t));
+    if s.ps_drop_target <> drop_target then
+      (mark s.ps_drop_target; mark drop_target);
     if s.ps_drag_src <> drag_src then (mark s.ps_drag_src; mark drag_src);
-    if s.ps_hl <> t.hl_item then (mark s.ps_hl; mark t.hl_item);
-    if s.ps_menu <> t.open_menu then (mark s.ps_menu; mark t.open_menu);
+    if s.ps_hl <> hl_item t then (mark s.ps_hl; mark (hl_item t));
+    if s.ps_menu <> open_menu t then (mark s.ps_menu; mark (open_menu t));
     (* Caret/selection/marked/shadow ride the focused node's text
        ops; the ring channel reads focus_visible. *)
     if
-      s.ps_caret <> t.caret || s.ps_anchor <> t.sel_anchor
-      || s.ps_marked <> marked t || s.ps_shadow <> t.shadow
-      || s.ps_focus_vis <> t.focus_visible
-    then mark t.focused;
-    if s.ps_sel_text <> t.sel_text then begin
+      s.ps_caret <> caret t || s.ps_anchor <> sel_anchor t
+      || s.ps_marked <> marked t || s.ps_shadow <> shadow t
+      || s.ps_focus_vis <> focus_visible t
+    then mark (focused t);
+    if s.ps_sel_text <> sel_text t then begin
       (match s.ps_sel_text with
        | Some (a, _, b, _) -> mark a; mark b
        | None -> ());
-      (match t.sel_text with
+      (match sel_text t with
        | Some (a, _, b, _) -> mark a; mark b
        | None -> ())
     end;
@@ -2625,21 +1291,47 @@ module Ui = struct
     Hashtbl.iter (fun id () -> mark id) t.scroll_metrics;
     Hashtbl.reset t.scroll_metrics;
     t.paint_snap <-
-      { ps_hovered = t.hovered; ps_pressed = t.pressed;
-        ps_focused = t.focused; ps_drop_target = t.drop_target;
-        ps_drag_src = drag_src; ps_hl = t.hl_item;
-        ps_menu = t.open_menu; ps_caret = t.caret;
-        ps_anchor = t.sel_anchor; ps_sel_text = t.sel_text;
-        ps_marked = marked t; ps_shadow = t.shadow;
-        ps_focus_vis = t.focus_visible };
+      { ps_hovered = hovered t; ps_pressed = pressed t;
+        ps_focused = focused t; ps_drop_target = drop_target;
+        ps_drag_src = drag_src; ps_hl = hl_item t;
+        ps_menu = open_menu t; ps_caret = caret t;
+        ps_anchor = sel_anchor t; ps_sel_text = sel_text t;
+        ps_marked = marked t; ps_shadow = shadow t;
+        ps_focus_vis = focus_visible t };
     h
 
+  let scroll_to ?(axis = Y) t store id off =
+    let s', m =
+      Lui_scroll.scroll_to ~axis:(conv_axis axis) (senv t) store
+        t.scroll id off
+    in
+    set_scroll t s';
+    perform_all t store m
+
+  let scroll_by ?(axis = Y) t store id d =
+    let s', m =
+      Lui_scroll.scroll_by ~axis:(conv_axis axis) (senv t) store
+        t.scroll id d
+    in
+    set_scroll t s';
+    perform_all t store m
+
+  let drop_accepts = Lui_query.drop_accepts
+
+  let scroll_show t store id =
+    let s', m = Lui_scroll.scroll_show (senv t) store t.scroll id in
+    set_scroll t s';
+    perform_all t store m
+
+  (* Repaint pacing: the open menu changing under a fixed layout
+     needs a layout invalidation before the next frame. *)
   let want_frame t host =
-    if t.laid_out_menu <> t.open_menu then begin
+    if Lui_overlay.menu_moved t.overlay then begin
       Lui_host.invalidate_layout host;
-      t.laid_out_menu <- t.open_menu
+      t.overlay <- Lui_overlay.menu_laid_out t.overlay
     end;
     t.dirty || Lui_host.wants_repaint host
+
   let frame_done t = t.dirty <- false
 end
 
