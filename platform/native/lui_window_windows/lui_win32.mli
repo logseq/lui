@@ -19,7 +19,8 @@
     - 7: button down — [x], [y] client px, [a] = button (1 left, 2
          middle, 3 right), [b] = click count, [c] = mods bitmask
     - 8: button up — [x], [y] client px, [a] = button, [c] = mods
-    - 9: wheel — [x] = horizontal lines, [y] = vertical lines
+    - 9: wheel — [x] = horizontal lines, [y] = vertical lines, [c] =
+         mods bitmask
     - 10: present requested (WM_PAINT) — re-draw the last scene
 
     The mods bitmask: 1 ctrl, 2 shift, 4 alt, 8 meta (the Win key). *)
