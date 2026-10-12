@@ -274,7 +274,11 @@ let measure store id ~scale =
    the caret offset and the composition overlay measure through this
    so they stay consistent with what [text_ops] paints. *)
 let measure_text t id s =
-  if s = "" then (0., 0.)
+  if s = "" then
+    if Lui_store.is_editable_text_kind (Lui_store.kind (t.store ()) id) then
+      let height = (Lui_text.metrics (font_of (t.store ()) id)).line_height in
+      (0., height *. t.scale ())
+    else (0., 0.)
   else
     let w, h = measure_keep (font_of (t.store ()) id) s in
     (w *. t.scale (), h *. t.scale ())

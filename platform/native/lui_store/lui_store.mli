@@ -27,6 +27,10 @@ val drain_dirty : t -> int list
 val peek_dirty : t -> int -> bool
 
 val kind : t -> int -> string
+
+(** Editable text kinds have an intrinsic line height even when empty. *)
+val is_editable_text_kind : string -> bool
+
 val ext_id : t -> int -> string option
 val parent : t -> int -> int option
 val children : t -> int -> node list
