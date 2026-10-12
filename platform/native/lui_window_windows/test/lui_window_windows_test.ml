@@ -328,7 +328,7 @@ let host_with_app () =
   let store = Lui_host.store host in
   let refresh () =
     Layout.refresh store rects ~width:480 ~height:320 ~scale
-      ~measure:Lui_window_text.measure
+      ~measure:(Lui_window_text.measure text_engine)
   in
   let backend =
     Lui_host.backend host
@@ -336,7 +336,7 @@ let host_with_app () =
          Lui_protocol.GenericHost)
   in
   let app = Demo_app.create backend in
-  (host, store, app, refresh)
+  (host, store, app, text_engine, refresh)
 
 (* Drive [script] input events between frames like the Win32 loop
    does, accumulating the scene checksum. *)
@@ -344,7 +344,7 @@ let dbg fmt = Printf.printf (fmt ^^ "
 %!")
 let run_headless frames script =
   dbg "stage: host_with_app";
-  let host, store, app, refresh = host_with_app () in
+  let host, store, app, text_engine, refresh = host_with_app () in
   dbg "stage: app start";
   let ui = Ui.create () in
   let rects = Rects.create () in
@@ -356,7 +356,7 @@ let run_headless frames script =
   dbg "stage: refresh";
   let refresh' () =
     Layout.refresh store rects ~width:480 ~height:320 ~scale:1.
-      ~measure:Lui_window_text.measure
+      ~measure:(Lui_window_text.measure text_engine)
   in
   let cs = Checksum.create () in
   let ops_last = ref 0 in

@@ -30,6 +30,23 @@ type slot = {
   sl_colored : bool;
 }
 
+(* The text-side typography props, resolved as a unit so shaping,
+   measuring and painting always agree. [ts_kern] is extra advance
+   per glyph in points (letter-spacing); [ts_lh] the explicit
+   line-height in points, 0 for the font's own; the three booleans
+   drive paint-side decorations; [ts_nowrap]/[ts_ellipsis] implement
+   white-space/text-overflow. *)
+type text_style = {
+  ts_font : Lui_text.font;
+  ts_kern : float;
+  ts_lh : float;
+  ts_nowrap : bool;
+  ts_ellipsis : bool;
+  ts_under : bool;
+  ts_strike : bool;
+  ts_over : bool;
+}
+
 type t = {
   scene : unit -> Lui_scene.t;
   scale : unit -> float;
@@ -39,10 +56,10 @@ type t = {
      font): text_ops and measure share it, so the shape a node's
      measure produced is the one its paint reuses. *)
   shapes : Lui_text.Cache.t;
-  (* node id -> (store revision, font): font resolution walks the
-     ancestor chain per call, so memoize it for the revision it was
-     computed at — any prop change bumps the revision. *)
-  fonts : (int, int * Lui_text.font) Hashtbl.t;
+  (* node id -> (store revision, text style): font resolution walks
+     the ancestor chain per call, so memoize it for the revision it
+     was computed at — any prop change bumps the revision. *)
+  styles : (int, int * text_style) Hashtbl.t;
   (* O(1) [List.length scene.glyphs] bookkeeping — see [gcount]. *)
   mutable gcount : int;
   mutable ghead : Lui_scene.glyph list;
@@ -51,7 +68,7 @@ type t = {
 let create ~scene ~scale ~store =
   { scene; scale; store; slots = Hashtbl.create 512;
     shapes = Lui_text.Cache.create 512;
-    fonts = Hashtbl.create 64; gcount = 0; ghead = [] }
+    styles = Hashtbl.create 64; gcount = 0; ghead = [] }
 
 (* ---- font + text prop plumbing ---- *)
 
@@ -149,7 +166,38 @@ let inherited_str store id name =
   in
   walk id
 
-let resolve_font store id =
+(* A node's own [text-decoration] value as paint flags. The prop does
+   not inherit (CSS), and the wire admits only the space-separated
+   tokens checked here. *)
+let decoration_of store id =
+  match Lui_store.prop store id "text-decoration" with
+  | Some (Lui_protocol.StringValue s) ->
+    let has tok =
+      List.exists
+        (fun t -> String.trim t = tok)
+        (String.split_on_char ' ' s)
+    in
+    (has "underline", has "line-through", has "overline")
+  | _ -> (false, false, false)
+
+(* [line-height]: a unitless number is a multiplier of the computed
+   font size (the CSS <number> semantics the wire schema declares);
+   a length suffix resolves through [parse_len]. *)
+let line_height_of store id ~size =
+  match inherited_str store id "line-height" with
+  | Some s ->
+    let s = String.trim s in
+    if s = "" || s = "normal" then 0.
+    else
+      (match float_of_string_opt s with
+       | Some f when f > 0. -> f *. size
+       | _ ->
+         (match parse_len s with
+          | Some v when v > 0. -> v
+          | _ -> 0.))
+  | None -> 0.
+
+let resolve_style store id =
   let size =
     match inherited_num store id "font-size" with
     | Some v -> v
@@ -174,24 +222,69 @@ let resolve_font store id =
     | Some "italic" | Some "oblique" -> true
     | _ -> false
   in
+  let families =
+    match inherited_str store id "font-family" with
+    | Some s ->
+      List.filter_map
+        (fun f -> match String.trim f with "" -> None | f -> Some f)
+        (String.split_on_char ',' s)
+    | None -> []
+  in
   (* [create] with no families resolves to the system font, and goes
      through the engine's own cache so the same (weight, italic, size)
      reuses one font object instead of allocating a fresh CoreText
      font per node per frame. *)
-  Lui_text.create ~weight ~italic ~size ()
+  let font = Lui_text.create ~families ~weight ~italic ~size () in
+  let under, strike, over = decoration_of store id in
+  { ts_font = font;
+    ts_kern =
+      Option.value ~default:0.
+        (inherited_num store id "letter-spacing");
+    ts_lh = line_height_of store id ~size;
+    ts_nowrap =
+      (inherited_str store id "white-space" = Some "nowrap");
+    (* text-overflow does not inherit. *)
+    ts_ellipsis =
+      (Lui_store.string_prop store id "text-overflow"
+       = Some "ellipsis");
+    ts_under = under; ts_strike = strike; ts_over = over }
 
-(* The node font, memoized on the store revision: font props inherit
-   down the ancestor chain, so resolving one is an O(depth) walk
-   every frame otherwise. Any prop mutation bumps the revision and
-   re-walks lazily. *)
-let font_of t store id =
+(* The node's text style, memoized on the store revision: the props
+   above inherit down the ancestor chain, so resolving them is an
+   O(depth) walk every frame otherwise. Any prop mutation bumps the
+   revision and re-walks lazily. *)
+let style_of t store id =
   let rev = Lui_store.revision store in
-  match Hashtbl.find_opt t.fonts id with
-  | Some (r, f) when r = rev -> f
+  match Hashtbl.find_opt t.styles id with
+  | Some (r, s) when r = rev -> s
   | _ ->
-    let f = resolve_font store id in
-    Hashtbl.replace t.fonts id (rev, f);
-    f
+    let s = resolve_style store id in
+    Hashtbl.replace t.styles id (rev, s);
+    s
+
+(* The layout text_ops, measure and hit-testing share: letter-spacing
+   rides in as a span so shaped runs carry the extra advance. *)
+let layout_of t (st : text_style) ~width s =
+  if st.ts_kern = 0. then
+    Lui_text.Cache.layout t.shapes ~width st.ts_font s
+  else
+    Lui_text.Cache.layout_spans t.shapes ~width st.ts_font
+      [ { Lui_text.text = s;
+          style =
+            { Lui_text.default_style with Lui_text.skern = st.ts_kern };
+          range = (0, String.length s) } ]
+
+(* The height [lay] occupies once the line-height override applies:
+   every line takes [ts_lh] points instead of its natural metrics. *)
+let styled_height (st : text_style) (lay : Lui_text.layout) =
+  if st.ts_lh > 0. then
+    float (Array.length lay.Lui_text.lay_lines) *. st.ts_lh
+  else lay.Lui_text.lay_height
+
+(* Logical-pixel extent of [s] in [st], for the measure hooks. *)
+let extent_of t st s =
+  let lay = layout_of t st ~width:0. s in
+  (lay.Lui_text.lay_width, styled_height st lay)
 
 (* ---- atlas upload ---- *)
 
@@ -300,11 +393,27 @@ let emit_glyph t scene ~scale ~nsub ~pen ~baseline ~font ~gid ~g_y ~fg =
     t.gcount <- t.gcount + 1;
     true
 
+(* Kinds that wrap at their padded width; every other kind keeps a
+   single line. Shared by paint and hit-testing so the wrap the point
+   maps against is the wrap the glyphs drew. *)
+let wrapping_kind = function
+  | "text" | "paragraph" | "heading" | "dialog" | "sheet" | "drawer"
+  | "popover" | "alert" ->
+    true
+  | _ -> false
+
+(* A line's painted height in points: the line-height override wins,
+   else the natural advance. *)
+let line_h (st : text_style) (l : Lui_text.line) =
+  if st.ts_lh > 0. then st.ts_lh
+  else l.ascent +. l.descent +. l.leading
+
 let text_ops t id r fg s =
   let scene = t.scene () in
   let scale = t.scale () in
   let store = t.store () in
-  let font = font_of t store id in
+  let st = style_of t store id in
+  let font = st.ts_font in
   (* Horizontal placement: the shared placement table decides the kind's
      alignment and content inset; props win over it. *)
   let tp = Lui_paint.text_placement_of store id in
@@ -312,35 +421,81 @@ let text_ops t id r fg s =
   let x0 = r.x +. pad in
   let w' = Float.max 0. (r.w -. (2. *. pad)) in
   (* Flowing text wraps at its padded width so a long line never spills
-     into the node's inset; labeled controls keep a single line. *)
+     into the node's inset; labeled controls keep a single line.
+     white-space:nowrap forces the single-line path. *)
   let wrap_w =
-    match Lui_store.kind store id with
-    | "text" | "paragraph" | "heading" | "dialog" | "sheet" | "drawer"
-    | "popover" | "alert" ->
-      w' /. scale
-    | _ -> 0.
+    if st.ts_nowrap then 0.
+    else if wrapping_kind (Lui_store.kind store id) then w' /. scale
+    else 0.
   in
   (* The layout comes from the bounded cache: measure populated the
-     same entry on the layout pass, so a repaints pays no shaping. *)
-  let lay = Lui_text.Cache.layout t.shapes ~width:wrap_w font s in
+     same entry on the layout pass, so a repaint pays no shaping. *)
+  let lay = layout_of t st ~width:wrap_w s in
+  (* text-overflow:ellipsis truncates a single overflowing line at the
+     padded width. *)
+  let lines : Lui_text.line array =
+    if
+      st.ts_ellipsis && Array.length lay.Lui_text.lay_lines = 1
+      && lay.Lui_text.lay_lines.(0).Lui_text.ll_line.Lui_text.width
+         > w' /. scale
+    then
+      (match Lui_text.truncate ~width:(w' /. scale) font s with
+       | Some l -> [| l |]
+       | None -> [||])
+    else
+      Array.map
+        (fun (ll : Lui_text.line_layout) -> ll.Lui_text.ll_line)
+        lay.Lui_text.lay_lines
+  in
   (* Vertical centering inside the node's rect, device pixels. *)
-  let text_h = lay.Lui_text.lay_height *. scale in
+  let text_h =
+    Array.fold_left (fun a l -> a +. line_h st l) 0. lines *. scale
+  in
   let y0 =
     if tp.tp_top then r.y +. (tp.tp_pad_y *. scale)
     else r.y +. Float.max 0. ((r.h -. text_h) /. 2.)
   in
   let gstart = gcount t scene in
+  (* Decoration fills draw under the ink, one rect per line per
+     decoration, em-sized like the CSS defaults. *)
+  let decos = ref [] in
+  let em = (Lui_text.metrics font).size in
+  let thick = Float.max 1. (em *. 0.0625 *. scale) in
   let line_y = ref 0. in
   Array.iter
-    (fun (ll : Lui_text.line_layout) ->
-       let l = ll.Lui_text.ll_line in
-       let baseline = Lui_text.baseline (y0 +. !line_y +. l.ascent *. scale) in
+    (fun (l : Lui_text.line) ->
+       let lh = line_h st l in
+       (* line-height splits its extra space above and below the
+          glyphs — CSS half-leading. *)
+       let half_lead = Float.max 0. ((lh -. l.ascent -. l.descent -. l.leading) /. 2.) in
+       let baseline =
+         Lui_text.baseline
+           (y0 +. !line_y +. (half_lead +. l.ascent) *. scale)
+       in
        let lx =
          match tp.tp_align with
          | Lui_paint.Ta_start -> x0
          | Ta_center -> x0 +. Float.max 0. ((w' -. l.width *. scale) /. 2.)
          | Ta_end -> x0 +. Float.max 0. (w' -. l.width *. scale)
        in
+       if st.ts_under || st.ts_strike || st.ts_over then begin
+         let fill dy =
+           decos :=
+             Fill
+               { frect =
+                   { x = lx; y = baseline +. dy *. scale;
+                     w = l.width *. scale; h = thick };
+                 fradii = (0., 0., 0., 0.); fcontinuous = false;
+                 fcolor = fg; fpaint = Solid; fcolor2 = fg;
+                 fgradient = (0., 0., 0., 0.);
+                 fborder = (0., 0., 0., 0.); fborder_color = fg;
+                 fdashed = false; fwide = 0; fopacity = 1. }
+             :: !decos
+         in
+         if st.ts_under then fill (em *. 0.09);
+         if st.ts_strike then fill (-. (em *. 0.3));
+         if st.ts_over then fill (-. (l.ascent +. em *. 0.09))
+       end;
        Array.iter
          (fun (run : Lui_text.run) ->
             (* Subpixel positions are a (font, scale) constant — hoist
@@ -354,16 +509,20 @@ let text_ops t id r fg s =
                       ~baseline ~font:run.font ~gid:g.id ~g_y:g.y ~fg))
               run.glyphs)
          l.runs;
-       line_y :=
-         !line_y +. (l.ascent +. l.descent +. l.leading) *. scale)
-    lay.Lui_text.lay_lines;
+       line_y := !line_y +. lh *. scale)
+    lines;
   let gend = gcount t scene in
-  if gend = gstart then []
+  if gend = gstart && !decos = [] then []
   else
-    [ Glyphs
-        { gstart; gend; gpaint = Solid;
-          gcolor = fg; gcolor2 = fg; ggradient = (0., 0., 0., 0.);
-          gwide2 = 0; gopacity = 1. } ]
+    let glyph_ops =
+      if gend = gstart then []
+      else
+        [ Glyphs
+            { gstart; gend; gpaint = Solid;
+              gcolor = fg; gcolor2 = fg; ggradient = (0., 0., 0., 0.);
+              gwide2 = 0; gopacity = 1. } ]
+    in
+    List.rev !decos @ glyph_ops
 
 (* ---- layout measure ---- *)
 
@@ -389,7 +548,8 @@ let measure t store id ~scale =
     in
     if text = "" then (0., 0.)
     else
-      let w, h = Lui_text.Cache.measure t.shapes (font_of t store id) text in
+      let st = style_of t store id in
+      let w, h = extent_of t st text in
       let tp = Lui_paint.text_placement_of store id in
       ((w +. (2. *. tp.tp_pad_x)) *. scale,
        (h +. (2. *. tp.tp_pad_y)) *. scale)
@@ -399,15 +559,15 @@ let measure t store id ~scale =
    so they stay consistent with what [text_ops] paints. *)
 let measure_text t id s =
   let store = t.store () in
+  let st = style_of t store id in
   if s = "" then
     if Lui_store.is_editable_text_kind (Lui_store.kind store id) then
       let height =
-        (Lui_text.metrics (font_of t store id)).line_height
+        if st.ts_lh > 0. then st.ts_lh
+        else (Lui_text.metrics st.ts_font).line_height
       in
       (0., height *. t.scale ())
     else (0., 0.)
   else
-    let w, h =
-      Lui_text.Cache.measure t.shapes (font_of t store id) s
-    in
+    let w, h = extent_of t st s in
     (w *. t.scale (), h *. t.scale ())
