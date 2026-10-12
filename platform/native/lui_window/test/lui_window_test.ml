@@ -1610,7 +1610,53 @@ let test_autofocus () =
   (* never steals focus again *)
   Ui.set_focused ui s 0;
   Alcotest.(check int) "once" 0
-    (List.length (Ui.store_changed ui s))
+    (List.length (Ui.store_changed ui s));
+  Ui.set_focused ui s 3;
+  let change ops =
+    Lui_store.apply_batch s { generation = 2; ops };
+    ignore (Ui.store_changed ui s)
+  in
+  change
+    [ CreateNode (5, Popover); CreateNode (6, TextField);
+      CreateNode (14, TextField);
+      CreateNode (7, TextField); CreateNode (8, TextField);
+      CreateNode (9, Button);
+      InsertChild (2, 5, 2); InsertChild (5, 6, 0);
+      InsertChild (5, 14, 1); InsertChild (5, 7, 2);
+      InsertChild (5, 8, 3); InsertChild (5, 9, 4);
+      SetProp (6, Enabled, BoolValue false);
+      SetProp (6, Autofocus, BoolValue true);
+      SetProp (14, Visible, BoolValue false);
+      SetProp (14, Autofocus, BoolValue true);
+      SetProp (7, Autofocus, BoolValue true) ];
+  Alcotest.(check int) "dynamic popover autofocus" 7 (Ui.focused ui);
+  ignore (Ui.handle ui s rects (key Input.Tab));
+  Alcotest.(check int) "Tab advances to label" 8 (Ui.focused ui);
+  ignore (Ui.store_changed ui s);
+  Alcotest.(check int) "frame preserves label focus" 8 (Ui.focused ui);
+  ignore (Ui.handle ui s rects (key Input.Tab));
+  Alcotest.(check int) "Tab advances to button" 9 (Ui.focused ui);
+  change [ DropNode 5 ];
+  Ui.set_focused ui s 3;
+  let modal =
+    [ CreateNode (10, Dialog); CreateNode (11, TextField);
+      InsertChild (2, 10, 2); InsertChild (10, 11, 0);
+      SetProp (11, Autofocus, BoolValue true) ]
+  in
+  change modal;
+  Alcotest.(check int) "modal autofocus" 11 (Ui.focused ui);
+  change
+    [ CreateNode (12, TextField); InsertChild (2, 12, 3);
+      SetProp (12, Autofocus, BoolValue true) ];
+  Alcotest.(check int) "background mount cannot steal modal focus" 11
+    (Ui.focused ui);
+  change [ DropNode 10 ];
+  Alcotest.(check int) "modal removal restores focus" 3 (Ui.focused ui);
+  change modal;
+  Alcotest.(check int) "reopened modal autofocus" 11 (Ui.focused ui);
+  Ui.set_focused ui s 3;
+  ignore (Ui.store_changed ui s);
+  Alcotest.(check int) "explicit focus is not stolen back" 3 (Ui.focused ui)
 
 let test_appear_once () =
   let s =

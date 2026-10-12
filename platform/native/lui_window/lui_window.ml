@@ -576,8 +576,8 @@ module Ui = struct
     mutable overlay_modal : bool;
     mutable open_menu : int; (* trigger-owned menu panel currently open *)
     mutable saved_focus : int;
-    (* autofocus is honored once, at mount, when nothing is focused. *)
-    mutable autofocus_done : bool;
+    (* Autofocus controls already observed during their mount lifecycle. *)
+    autofocus_seen : (int, unit) Hashtbl.t;
     (* appear-enabled ids already announced (mount lifecycle). *)
     seen : (int, unit) Hashtbl.t;
     (* Per-container scroll bookkeeping: handled scroll-target tokens
@@ -606,7 +606,7 @@ module Ui = struct
       drop_seq = 0;
       overlay_id = 0; overlay_modal = false; open_menu = 0;
       saved_focus = 0;
-      autofocus_done = false;
+      autofocus_seen = Hashtbl.create 8;
       seen = Hashtbl.create 64;
       scroll_token = Hashtbl.create 8; vrange = Hashtbl.create 8;
       measure =
@@ -1422,24 +1422,35 @@ module Ui = struct
       t.overlay_id <- ov_id;
       t.overlay_modal <- ov_modal
     end;
-    (* autofocus (wire `autofocus` prop): the first autofocus-marked
-       node takes keyboard focus once, when nothing else is focused *)
-    if not t.autofocus_done then
-      (match
-         List.find_opt
-           (fun id -> bool_prop store id "autofocus")
-           (Lui_store.preorder store)
-       with
-       | Some id ->
-         t.autofocus_done <- true;
-         if t.focused = 0 && node_enabled store id
-            && (event_supported store id (ev_text id)
-                || activatable store id)
-         then begin
-           set_focused t store id;
-           push (Focus_changed id)
-         end
-       | None -> ());
+    let rec visible id =
+      match Lui_store.prop store id "visible" with
+      | Some (BoolValue false) -> false
+      | _ ->
+        match Lui_store.parent store id with
+        | Some parent -> visible parent
+        | None -> true
+    in
+    let autofocus_now =
+      List.filter
+        (fun id -> bool_prop store id "autofocus" && visible id)
+        (Lui_store.preorder store)
+    in
+    let autofocus =
+      List.find_opt
+        (fun id ->
+           not (Hashtbl.mem t.autofocus_seen id)
+           && node_enabled store id
+           && (event_supported store id (ev_text id) || activatable store id)
+           && (ov_id = 0 || id = ov_id || is_desc store id ov_id))
+        autofocus_now
+    in
+    Hashtbl.reset t.autofocus_seen;
+    List.iter (fun id -> Hashtbl.replace t.autofocus_seen id ()) autofocus_now;
+    (match autofocus with
+     | Some id when id <> t.focused ->
+       set_focused t store id;
+       push (Focus_changed id)
+     | _ -> ());
     (* enter hook: appear-enabled nodes announce their mount *)
     let appear_now =
       List.filter
