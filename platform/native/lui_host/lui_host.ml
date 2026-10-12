@@ -29,6 +29,8 @@ module type LAYOUT_ENGINE = sig
     ?ctx_anchor:(float * float) ->
     width:float -> height:float -> t -> Lui_store.t -> unit
 
+  val invalidate : t -> unit
+
   val layout_hook : t -> int -> Lui_paint.placement
 
   val rect : t -> int -> Lui_scene.rect option
@@ -41,6 +43,7 @@ type layout_state = {
     scale:float -> measure:text_measure -> hidden:(int -> bool) ->
     ctx_anchor:(float * float) option ->
     width:float -> height:float -> Lui_store.t -> unit;
+  linvalidate : unit -> unit;
   lhook : int -> Lui_paint.placement;
   lrect : int -> rect option;
 }
@@ -75,6 +78,7 @@ let create ~hooks ?layout ?(measure = no_measure) ~renderer ~width ~height ~scal
             (fun ~scale ~measure ~hidden ~ctx_anchor ~width ~height store ->
               L.sync ~scale ~measure ~hidden ?ctx_anchor ~width ~height
                 engine store);
+          linvalidate = (fun () -> L.invalidate engine);
           lhook = L.layout_hook engine;
           lrect = L.rect engine }
   in
@@ -97,6 +101,13 @@ let set_hidden h pred =
 let set_ctx_anchor h accessor =
   h.ctx_anchor <-
     (match accessor with Some f -> f | None -> fun () -> None)
+
+(* The layout engine memoizes on (store revision, frame, input
+   identities); a measure/hidden closure whose answers changed under a
+   stable identity — e.g. a font stack that finished loading — needs
+   this poke to be seen. *)
+let invalidate_layout h =
+  match h.layout with Some l -> l.linvalidate () | None -> ()
 
 let apply_batch h (batch : Lui_protocol.patch_batch) =
   Lui_store.apply_batch h.store batch;

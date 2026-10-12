@@ -31,6 +31,10 @@ module type LAYOUT_ENGINE = sig
     ?ctx_anchor:(float * float) ->
     width:float -> height:float -> t -> Lui_store.t -> unit
 
+  val invalidate : t -> unit
+  (** Drop any cached layout state so the next {!sync} rebuilds — see
+      {!Lui_host.invalidate_layout}. *)
+
   val layout_hook : t -> int -> Lui_paint.placement
 
   val rect : t -> int -> Lui_scene.rect option
@@ -82,6 +86,17 @@ val set_ctx_anchor : t -> (unit -> (float * float) option) option -> unit
     (frame px) an unanchored [context-menu] opens at, read live on each
     repaint. [None] clears it — context menus then fall back to their
     containing block. *)
+
+val invalidate_layout : t -> unit
+(** Force the layout engine's next sync to rebuild. Layout memoizes on
+    the store's mutation revision plus the frame and input identities,
+    so this is only needed when a function input keeps its identity
+    but changes its answers — e.g. a text measure whose font stack
+    finished loading, or a [hidden] predicate whose captured state
+    flipped without going through {!set_hidden}. Store edits never
+    need it — every applied op already bumps the revision the memo
+    keys on, and sync always runs between batches, so the memo can
+    never observe a half-applied tree. *)
 
 val apply_batch : t -> Lui_protocol.patch_batch -> bool
 
