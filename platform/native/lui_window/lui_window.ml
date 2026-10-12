@@ -1250,9 +1250,15 @@ module Ui = struct
      scroll container that moved — a moved offset shifts all
      descendant rects (ops embed them), so the whole subtree
      re-derives. Drains the scroll tables and rolls the snapshot. *)
+  (* Returns (hard, soft): hard ids re-plan (interaction state, caret,
+     metric thumbs); soft ids merely shifted — scrolled subtrees move
+     under unchanged props, so the fragment pass may translate their
+     cached ops instead. *)
   let paint_hints t store =
     let h = Hashtbl.create 16 in
+    let soft = Hashtbl.create 16 in
     let mark id = if id <> 0 then Hashtbl.replace h id () in
+    let mark_soft id = if id <> 0 then Hashtbl.replace soft id () in
     let s = t.paint_snap in
     let drag_src = Lui_drag.source t.drag
     and drop_target = Lui_drag.target t.drag in
@@ -1279,12 +1285,12 @@ module Ui = struct
        | Some (a, _, b, _) -> mark a; mark b
        | None -> ())
     end;
-    (* Moved offset: the container's thumb plus every descendant's
-       shifted rect. *)
+    (* Moved offset: the container's thumb is a hard repaint; every
+       descendant just translates. *)
     Hashtbl.iter
       (fun id () ->
         mark id;
-        List.iter mark (Lui_store.preorder ~root:id store))
+        List.iter mark_soft (Lui_store.preorder ~root:id store))
       t.scrolled;
     Hashtbl.reset t.scrolled;
     (* Range-only change: the thumb metrics, nothing below. *)
@@ -1298,7 +1304,7 @@ module Ui = struct
         ps_anchor = sel_anchor t; ps_sel_text = sel_text t;
         ps_marked = marked t; ps_shadow = shadow t;
         ps_focus_vis = focus_visible t };
-    h
+    (h, soft)
 
   let scroll_to ?(axis = Y) t store id off =
     let s', m =
@@ -1849,9 +1855,13 @@ module Assembly = struct
   let repaint t =
     (* Interaction-state diffs reach the fragment pass through the
        host's hint table — the store journal cannot see them. *)
+    let hard, soft = Ui.paint_hints t.ui (store t) in
     Hashtbl.iter
       (fun id () -> Lui_host.note_paint t.host id)
-      (Ui.paint_hints t.ui (store t));
+      hard;
+    Hashtbl.iter
+      (fun id () -> Lui_host.note_moved t.host id)
+      soft;
     let px = Lui_host.repaint t.host in
     t.populate ();
     px

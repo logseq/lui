@@ -172,6 +172,19 @@ let test_single_paint_update () =
   check int "one repaint" 1
     (Lui_retained.stat_repaints env.rt - r0)
 
+(* A geometry-only shift translates cached fragments instead of
+   re-planning: one row's height change moves every sibling below it
+   plus the column itself — only those two may hard-repaint. *)
+let test_geom_shift_translates () =
+  let env = env () in
+  build_rows env 20;
+  frame env ();
+  let r0 = Lui_retained.stat_repaints env.rt in
+  apply env.store [ SetProp (3, HeightValue, FloatValue 40.) ];
+  frame env ();
+  check bool "shifted siblings translated" true
+    (Lui_retained.stat_repaints env.rt - r0 <= 3)
+
 let test_semantics_only_skips () =
   let env = env () in
   build_rows env 5;
@@ -394,6 +407,7 @@ let () =
     [ ( "fragments",
         [ test_case "static frame" `Quick test_static_frame;
           test_case "single paint update" `Quick test_single_paint_update;
+          test_case "geom shift translates" `Quick test_geom_shift_translates;
           test_case "semantics-only skips" `Quick test_semantics_only_skips;
           test_case "text edit" `Quick test_text_edit;
           test_case "insert/remove" `Quick test_insert_remove;
