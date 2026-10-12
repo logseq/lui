@@ -282,8 +282,8 @@ let apply_grid_columns dom_node columns =
       ("repeat(" ^ string_of_int columns ^ ", minmax(0, 1fr))")
   end
 
-let apply_gap renderer node kind dom_node gap =
-  if kind = Split then Lui_web_split.update_split renderer node
+let apply_gap _renderer queue_split node kind dom_node gap =
+  if kind = Split then queue_split node
   else set_style dom_node "gap" (string_of_int gap ^ "px");
   if kind = TableRow then
     set_style dom_node "--lui-table-gap" (string_of_int gap ^ "px")
@@ -642,13 +642,18 @@ let apply_anchor_offset kind dom_node offset =
     W.Element.setAttribute "data-anchor-offset"
       (Js.Float.toString offset) dom_node
 
-let rec apply_property renderer node kind dom_node property value =
+(* queue_split defers a Split re-render to the batch epilogue: each render
+   measures clientWidth, so running it per property op forced layout once
+   per op on splits touched by several ops. *)
+let rec apply_property renderer queue_split node kind dom_node property
+    value =
   match (property, value) with
   | TextValue, StringValue text ->
       apply_text_value renderer node kind dom_node text
   | Enabled, BoolValue enabled ->
       apply_enabled renderer node kind dom_node enabled
-  | Gap, IntValue gap -> apply_gap renderer node kind dom_node gap
+  | Gap, IntValue gap ->
+      apply_gap renderer queue_split node kind dom_node gap
   | MainAlignment, StringValue alignment ->
       set_style dom_node "justify-content" (main_alignment_value alignment)
   | CrossAlignment, StringValue alignment ->
@@ -715,7 +720,9 @@ let rec apply_property renderer node kind dom_node property value =
       refresh_node_class renderer node kind dom_node
   | HeadingLevel, IntValue level ->
       W.Element.setAttribute "aria-level" (string_of_int level) dom_node
-  | _ -> apply_secondary_property renderer node kind dom_node property value
+  | _ ->
+      apply_secondary_property renderer queue_split node kind dom_node
+        property value
 
 (* Sheets honour `detents` (medium|large|fraction list — the largest caps
    the surface height as a viewport fraction) and `sizing` (form|fitted
@@ -751,7 +758,8 @@ and apply_sheet_sizing dom_node value =
       set_style dom_node "max-width" "";
       set_style dom_node "margin-inline" ""
 
-and apply_secondary_property renderer node kind dom_node property value =
+and apply_secondary_property renderer queue_split node kind dom_node
+    property value =
   match (property, value) with
   | Checked, BoolValue checked -> apply_checked kind dom_node checked
   | ProgressValue, FloatValue value ->
@@ -771,12 +779,9 @@ and apply_secondary_property renderer node kind dom_node property value =
   | Sizing, StringValue value ->
       W.Element.setAttribute "data-sizing" value dom_node;
       if kind = Sheet then apply_sheet_sizing dom_node value
-  | ResizeDuration, IntValue _duration ->
-      Lui_web_split.update_split renderer node
-  | ResizeEasing, StringValue _easing ->
-      Lui_web_split.update_split renderer node
-  | ResizeOrigin, FloatValue _origin ->
-      Lui_web_split.update_split renderer node
+  | ResizeDuration, IntValue _duration -> queue_split node
+  | ResizeEasing, StringValue _easing -> queue_split node
+  | ResizeOrigin, FloatValue _origin -> queue_split node
   | OrientationValue, StringValue orientation ->
       W.Element.setAttribute "data-orientation" orientation dom_node;
       W.Element.setAttribute "aria-orientation" orientation dom_node
@@ -1024,7 +1029,7 @@ and apply_secondary_property renderer node kind dom_node property value =
 
 let apply_property_bang = apply_property
 
-let remove_property renderer node kind dom_node property =
+let remove_property renderer queue_split node kind dom_node property =
   match Store.node renderer.web_store node with
   | Some _current ->
       (match property with
@@ -1032,9 +1037,11 @@ let remove_property renderer node kind dom_node property =
        | ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange -> ()
        | TextValue -> apply_text_value renderer node kind dom_node ""
        | Enabled ->
-           apply_property renderer node kind dom_node Enabled
+           apply_property renderer queue_split node kind dom_node Enabled
              (BoolValue true)
-       | Gap -> set_style dom_node "gap" ""
+       | Gap ->
+           if kind = Split then queue_split node
+           else set_style dom_node "gap" ""
        | MainAlignment -> set_style dom_node "justify-content" ""
        | CrossAlignment -> set_style dom_node "align-items" ""
        | GrowValue -> set_style dom_node "flex-grow" ""

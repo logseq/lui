@@ -92,6 +92,11 @@ const LUISplit = (() => {
       dragStart = {
         ratio,
         point: horizontal ? event.clientX : event.clientY,
+        // Cache the divider thickness for the gesture — closest() +
+        // getPropertyValue() + parseFloat on every pointermove was doing a
+        // DOM ancestor walk and style read per event for a value that only
+        // changes when the view re-renders.
+        gap: dividerThickness(el),
       };
       divider.setPointerCapture(event.pointerId);
       el.dataset.dragging = 'true';
@@ -100,8 +105,7 @@ const LUISplit = (() => {
     divider.addEventListener('pointermove', (event) => {
       if (!dragStart) return;
       const span = horizontal ? el.clientWidth : el.clientHeight;
-      const gap = dividerThickness(el);
-      const available = Math.max(span - gap, 1);
+      const available = Math.max(span - dragStart.gap, 1);
       const point = horizontal ? event.clientX : event.clientY;
       ratio = Math.min(
         1, Math.max(0, dragStart.ratio + (point - dragStart.point) / available));

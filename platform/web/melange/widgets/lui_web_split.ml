@@ -25,25 +25,45 @@ let split_int_property renderer node property fallback =
   | _ -> fallback
 
 let split_child_minimum renderer node index =
-  let children = Store.children renderer.web_store node in
-  if index < List.length children then
-    split_int_property renderer (List.nth children index) MinWidth 0
-  else 0
+  match Store.node renderer.web_store node with
+  | Some current ->
+      if index < Lui_sequence.length current.retained_children then
+        split_int_property renderer
+          (Lui_sequence.get current.retained_children index)
+          MinWidth 0
+      else 0
+  | None -> 0
 
-let effective_split_fraction renderer node value =
-  let root = Lui_web_nodes.dom_node renderer node in
+(* Gap, minima, and the layout read are captured once per update — the old
+   code rebuilt the children list and re-queried the gap three times per
+   render, and every clientWidth read after a style write forced layout. *)
+type split_geometry = {
+  geo_gap : int;
+  geo_first_min : int;
+  geo_second_min : int;
+  geo_available : int;
+}
+
+let split_geometry renderer node root =
   let gap = split_int_property renderer node Gap 9 in
-  let available = W.Element.clientWidth root - gap in
-  let first_minimum = split_child_minimum renderer node 0 in
-  let second_minimum = split_child_minimum renderer node 1 in
-  if available <= 0 then 0.5
+  { geo_gap = gap;
+    geo_first_min = split_child_minimum renderer node 0;
+    geo_second_min = split_child_minimum renderer node 1;
+    geo_available = W.Element.clientWidth root - gap }
+
+let effective_fraction geometry value =
+  if geometry.geo_available <= 0 then 0.5
   else
-    let available_float = Float.of_int available in
-    let low = Float.of_int first_minimum /. available_float in
-    let high = 1.0 -. (Float.of_int second_minimum /. available_float) in
+    let available = Float.of_int geometry.geo_available in
+    let low = Float.of_int geometry.geo_first_min /. available in
+    let high = 1.0 -. (Float.of_int geometry.geo_second_min /. available) in
     if low > high then
       low /. Float.max (low +. (1.0 -. high)) 0.0001
     else Float.min (Float.max (split_base_fraction value) low) high
+
+let effective_split_fraction renderer node value =
+  let root = Lui_web_nodes.dom_node renderer node in
+  effective_fraction (split_geometry renderer node root) value
 
 let split_timing_function renderer node =
   match Store.property renderer.web_store node ResizeEasing with
@@ -53,26 +73,24 @@ let split_timing_function renderer node =
   | _ -> "ease-in-out"
 
 let render_split renderer node root value animated =
-  let fraction = effective_split_fraction renderer node value in
-  let gap = split_int_property renderer node Gap 9 in
-  let gap_float = Float.of_int gap in
-  let first_minimum = split_child_minimum renderer node 0 in
-  let second_minimum = split_child_minimum renderer node 1 in
+  let geometry = split_geometry renderer node root in
+  let fraction = effective_fraction geometry value in
+  let gap_float = Float.of_int geometry.geo_gap in
   let panes = Util.child_element root 0 in
   let divider = Util.child_element root 1 in
   let duration =
     if animated then split_int_property renderer node ResizeDuration 0 else 0
   in
   set_style panes "grid-template-columns"
-    ("minmax(" ^ string_of_int first_minimum ^ "px, "
+    ("minmax(" ^ string_of_int geometry.geo_first_min ^ "px, "
      ^ float_string fraction ^ "fr) minmax("
-     ^ string_of_int second_minimum ^ "px, "
+     ^ string_of_int geometry.geo_second_min ^ "px, "
      ^ float_string (1.0 -. fraction) ^ "fr)");
-  set_style panes "column-gap" (string_of_int gap ^ "px");
+  set_style panes "column-gap" (string_of_int geometry.geo_gap ^ "px");
   set_style divider "left"
     ("calc(" ^ float_string (fraction *. 100.0) ^ "% - "
      ^ float_string (fraction *. gap_float) ^ "px)");
-  set_style divider "width" (string_of_int gap ^ "px");
+  set_style divider "width" (string_of_int geometry.geo_gap ^ "px");
   set_style panes "transition-property" "grid-template-columns";
   set_style divider "transition-property" "left";
   set_style panes "transition-duration" (string_of_int duration ^ "ms");

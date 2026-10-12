@@ -157,10 +157,15 @@ let refresh_dropdown_parent renderer parent =
 type batch_effects = {
   dropdowns : (int, unit) Hashtbl.t;
   comboboxes : (int, unit) Hashtbl.t;
+  splits : (int, unit) Hashtbl.t;
 }
 
 let new_effects () =
-  { dropdowns = Hashtbl.create 4; comboboxes = Hashtbl.create 4 }
+  { dropdowns = Hashtbl.create 4;
+    comboboxes = Hashtbl.create 4;
+    splits = Hashtbl.create 4 }
+
+let queue_split effects node = Hashtbl.replace effects.splits node ()
 
 let run_effects renderer effects =
   Hashtbl.iter
@@ -174,15 +179,19 @@ let run_effects renderer effects =
           ignore
             (Lui_web_menu.refresh_combobox_list_state renderer parent)
       | _ -> ())
-    effects.comboboxes
+    effects.comboboxes;
+  (* one geometry pass per touched split — inside the ops loop each call
+     re-read clientWidth right after style writes *)
+  Hashtbl.iter
+    (fun node () -> Lui_web_split.update_split renderer node)
+    effects.splits
 
 let refresh_parent_for_prop renderer effects node property =
   match Store.node renderer.web_store node with
   | Some current -> (
       match current.retained_parent with
       | Some parent -> (
-          if property = MinWidth then
-            Lui_web_split.update_split renderer parent;
+          if property = MinWidth then queue_split effects parent;
           match Store.node renderer.web_store parent with
           | Some parent_node ->
               if
@@ -337,7 +346,7 @@ let insert_child_dom renderer previous_nodes children_of parent child
 let apply_insert_child renderer previous_nodes children_of effects parent
     child index =
   insert_child_dom renderer previous_nodes children_of parent child index;
-  Lui_web_split.update_split renderer parent;
+  queue_split effects parent;
   Lui_web_focus.refresh_button_context renderer child;
   refresh_structured_children renderer parent;
   (match Store.node renderer.web_store child with
@@ -420,6 +429,8 @@ let apply_remove_child renderer previous_nodes effects parent child =
      | None -> ()));
   Lui_web_focus.refresh_button_context renderer child;
   refresh_structured_children renderer parent;
+  (* removing a pane changes the split's minima — queue one epilogue pass *)
+  queue_split effects parent;
   (match prev_node previous_nodes parent with
    | Some parent_node ->
        if Store.standard_kind_is parent_node BottomTabs then
@@ -499,7 +510,7 @@ let apply_move_child renderer previous_nodes children_of effects parent
         (visible_child_index renderer ~container:parent_node
            ~children:(children_of parent) index)
   end;
-  Lui_web_split.update_split renderer parent;
+  queue_split effects parent;
   refresh_structured_children renderer parent;
   if bottom_tab && bottom_tabs then
     Lui_web_widgets.refresh_bottom_tabs renderer parent;
@@ -536,7 +547,8 @@ let apply_set_prop renderer effects node property value =
                    | None -> ())
                | _ -> ())
            | _ ->
-               Lui_web_props.apply_property renderer node kind
+               Lui_web_props.apply_property renderer (queue_split effects)
+                 node kind
                  (Lazy.force current.platform_node) property value);
           if property = PointerEnabled then
             Lui_web_events.sync_pointer_events renderer node kind
@@ -558,7 +570,8 @@ let apply_remove_prop renderer effects node property =
                     Lui_web_events.attach_events renderer node kind next
                 | None -> ())
             | _ ->
-                Lui_web_props.remove_property renderer node kind
+                Lui_web_props.remove_property renderer (queue_split effects)
+                  node kind
                   (Lazy.force current.platform_node) property);
            if property = PointerEnabled then
              Lui_web_events.sync_pointer_events renderer node kind
@@ -786,6 +799,7 @@ let apply_detach_subtree renderer previous_nodes children_of effects node =
        | Some parent ->
            Lui_web_focus.refresh_button_context renderer parent;
            refresh_structured_children renderer parent;
+           queue_split effects parent;
            (match prev_node previous_nodes parent with
             | Some parent_node ->
                 if Store.standard_kind_is parent_node BottomTabs then
