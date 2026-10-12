@@ -1110,6 +1110,197 @@ let test_parse_windows () =
    | Error _ -> ()
    | Ok _ -> Alcotest.fail "missing value accepted")
 
+(* ---------- shared-model multi-window ---------- *)
+
+(* A Lui_multi_window application over two real hosts: each window
+   keeps the full per-surface pipeline the SDL driver builds (own
+   host/store, Ui, rect mirror) while the model, scheduler and
+   reducer live once on the application — the wiring a driver adopts
+   for a shared-document app, minus the OS handles. *)
+
+module Mw = Lui_multi_window
+
+type sm_doc = {
+  sm_title : string;
+  sm_count : int;
+}
+
+type sm_action =
+  | Sm_title of string
+  | Sm_bump
+
+let sm_reducer m = function
+  | Sm_title sm_title -> { m with sm_title }
+  | Sm_bump -> { m with sm_count = m.sm_count + 1 }
+
+let sm_view _surface _context model_source send =
+  Lui_elements.column
+    [
+      Lui_elements.dyn
+        ~equal:(fun (a : sm_doc) b -> a.sm_title = b.sm_title)
+        (fun d ->
+           Lui_elements.text_field ~text:d.sm_title
+             ~on_input:
+               (Lui_elements.on_input send (fun s -> Sm_title s))
+             [])
+        model_source;
+      Lui_elements.dyn
+        ~equal:(fun (a : sm_doc) b -> a.sm_count = b.sm_count)
+        (fun d ->
+           Lui_elements.text
+             ~value:("edits=" ^ string_of_int d.sm_count)
+             [])
+        model_source;
+      Lui_elements.scroll [ Lui_elements.text ~value:"scrollable" [] ];
+      Lui_elements.button ~text:"Bump"
+        ~on_press:(Lui_elements.press send Sm_bump) [];
+    ]
+
+(* One window's driver-side payload: real host (store + paint
+   pipeline) as the surface backend, plus the Ui/rects pair the
+   driver's registry would hold for it. *)
+let sm_surface app =
+  let host = host_stub () in
+  let surface =
+    Mw.open_window app
+      (Lui_host.backend host (Lui_protocol.generic_profile ()))
+  in
+  (host, surface, Ui.create (), Rects.create ())
+
+let sm_layout host rects =
+  Layout.refresh (Lui_host.store host) rects ~width:200 ~height:200
+    ~scale:1. ~measure:Layout.default_measure
+
+(* The [Dispatch] arm of the driver's apply_actions: Ui actions route
+   into that window's runtime surface — and nowhere else. *)
+let sm_apply surface acts =
+  List.iter
+    (function
+      | Dispatch ev -> ignore (Mw.dispatch surface ev)
+      | _ -> ())
+    acts
+
+let sm_find store kind =
+  List.find_opt
+    (fun id -> Lui_store.kind store id = kind)
+    (Lui_store.preorder store)
+
+(* Editing through one window's Ui → dispatch → reducer → shared model
+   re-renders every window's store; focus, caret and scroll stay
+   inside the window that produced them. *)
+let test_shared_model_pipeline () =
+  let app =
+    Mw.create ~shared:() { sm_title = "doc"; sm_count = 0 } sm_reducer
+      sm_view
+  in
+  let h1, s1, ui1, r1 = sm_surface app in
+  let h2, s2, ui2, r2 = sm_surface app in
+  ignore (Mw.flush app);
+  sm_layout h1 r1;
+  sm_layout h2 r2;
+  let store1 = Lui_host.store h1 and store2 = Lui_host.store h2 in
+  let field1 =
+    match sm_find store1 "text-field" with
+    | Some id -> id
+    | None -> Alcotest.fail "no text-field in window 1"
+  and field2 =
+    match sm_find store2 "text-field" with
+    | Some id -> id
+    | None -> Alcotest.fail "no text-field in window 2"
+  in
+  (* both windows mounted the same page from the shared model *)
+  Alcotest.(check int) "same tree size"
+    (Lui_store.node_count store1)
+    (Lui_store.node_count store2);
+  (* click the field in window 1: focus lands there only *)
+  let fr = Rects.get r1 field1 in
+  sm_apply s1
+    (Ui.handle ui1 store1 r1
+       (Input.Button_down
+          ( fr.x +. (fr.w /. 2.),
+            fr.y +. (fr.h /. 2.),
+            Input.Left,
+            1,
+            Input.mods_none )));
+  Alcotest.(check int) "w1 field focused" field1 (Ui.focused ui1);
+  Alcotest.(check int) "w2 untouched" 0 (Ui.focused ui2);
+  (* type into the focused field of window 1 *)
+  sm_apply s1
+    (Ui.handle ui1 store1 r1 (Input.Text_input "hi"));
+  Alcotest.(check string) "w1 shadow" "dochi" (Ui.shadow ui1);
+  Alcotest.(check string) "w2 shadow empty" "" (Ui.shadow ui2);
+  Alcotest.(check int) "w1 caret at end" 5 (Ui.caret ui1);
+  Alcotest.(check int) "w2 caret empty" 0 (Ui.caret ui2);
+  ignore (Mw.flush app);
+  Alcotest.(check string) "model updated" "dochi"
+    (Mw.model app).sm_title;
+  (* the edit reached BOTH windows' stores — one model, two views *)
+  Alcotest.(check (option string)) "w1 store text" (Some "dochi")
+    (Lui_store.string_prop store1 field1 "text");
+  Alcotest.(check (option string)) "w2 store text" (Some "dochi")
+    (Lui_store.string_prop store2 field2 "text");
+  (* scroll one window's scroll container; the other's offset stays *)
+  let scroll1 =
+    match sm_find store1 "scroll" with
+    | Some id -> id
+    | None -> Alcotest.fail "no scroll container in window 1"
+  in
+  Ui.set_scroll_cap ui1 scroll1 300.;
+  ignore (Ui.scroll_by ui1 store1 scroll1 50.);
+  Alcotest.(check bool) "w1 scrolled" true
+    (Ui.scroll_offset ui1 scroll1 = 50.);
+  Alcotest.(check bool) "w2 scroll zero" true
+    (Ui.scroll_offset ui2 scroll1 = 0.);
+  (* a press routed through window 2 reduces the same shared model *)
+  let button2 =
+    match sm_find store2 "button" with
+    | Some id -> id
+    | None -> Alcotest.fail "no button in window 2"
+  in
+  sm_apply s2 [ Dispatch (Press button2) ];
+  ignore (Mw.flush app);
+  Alcotest.(check int) "shared count" 1 (Mw.model app).sm_count;
+  Alcotest.(check bool) "w1 shows count" true
+    (List.exists
+       (fun id -> Lui_store.string_prop store1 id "text" = Some "edits=1")
+       (Lui_store.preorder store1));
+  Alcotest.(check bool) "w2 shows count" true
+    (List.exists
+       (fun id -> Lui_store.string_prop store2 id "text" = Some "edits=1")
+       (Lui_store.preorder store2));
+  ignore (Mw.dispose app)
+
+(* Closing a window drops only that surface's store tree; the sibling
+   keeps its own Ui/host and keeps tracking the shared model. *)
+let test_shared_model_window_close () =
+  let app =
+    Mw.create ~shared:() { sm_title = "doc"; sm_count = 0 } sm_reducer
+      sm_view
+  in
+  let h1, s1, _ui1, _r1 = sm_surface app in
+  let h2, s2, _ui2, _r2 = sm_surface app in
+  ignore (Mw.flush app);
+  let store1 = Lui_host.store h1 and store2 = Lui_host.store h2 in
+  Alcotest.(check bool) "close w1" true (Mw.close_window s1);
+  Alcotest.(check int) "w1 store emptied" 0
+    (Lui_store.node_count store1);
+  Alcotest.(check bool) "w2 untouched" true
+    (Lui_store.node_count store2 > 0);
+  ignore (Mw.send app (Sm_title "still-live"));
+  ignore (Mw.flush app);
+  let field2 =
+    match sm_find store2 "text-field" with
+    | Some id -> id
+    | None -> Alcotest.fail "no text-field in window 2"
+  in
+  Alcotest.(check (option string)) "w2 saw the edit"
+    (Some "still-live")
+    (Lui_store.string_prop store2 field2 "text");
+  Alcotest.(check bool) "dispatch on closed" false
+    (Mw.dispatch s1 (Press 1));
+  ignore s2;
+  ignore (Mw.dispose app)
+
 (* Two real windows under the dummy driver: independent surfaces get
    independent frames and checksums; window 0's scene is byte-identical
    to the single-window golden, proving window 1's routed input (a Tab
@@ -1943,7 +2134,11 @@ let () =
             test_multi_dispatch_independence;
           Alcotest.test_case "resize+scale" `Quick
             test_multi_resize_and_scale;
-          Alcotest.test_case "windows flag" `Quick test_parse_windows ] );
+          Alcotest.test_case "windows flag" `Quick test_parse_windows;
+          Alcotest.test_case "shared model" `Quick
+            test_shared_model_pipeline;
+          Alcotest.test_case "shared close" `Quick
+            test_shared_model_window_close ] );
       ( "headless",
         [ Alcotest.test_case "checksum" `Quick test_headless_checksum;
           Alcotest.test_case "drop-file" `Quick test_headless_drop;
