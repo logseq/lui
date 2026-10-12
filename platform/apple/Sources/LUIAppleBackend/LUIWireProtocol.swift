@@ -555,11 +555,9 @@ struct LUINodeState {
 struct LUIRetainedTree {
     private(set) var nodes: [Int: LUINodeState] = [:]
     private(set) var extensionNodes: [Int: LUIExtensionNodeState] = [:]
-
-    var rootIDs: [Int] {
-        nodes.compactMap { id, node in node.parent == nil ? id : nil } +
-            extensionNodes.compactMap { id, node in node.parent == nil ? id : nil }
-    }
+    /// Node ids with no parent, maintained incrementally by `apply` so reads
+    /// stay O(1) instead of rescanning the whole tree per batch.
+    private(set) var rootIDs: Set<Int> = []
 
     struct PatchEffects {
         /// Nodes created or mutated by an op. Ops only mutate the nodes they
@@ -597,6 +595,7 @@ struct LUIRetainedTree {
         var snapshotted = Set<Int>()
         var oldNodes: [Int: LUINodeState] = [:]
         var oldExtensions: [Int: LUIExtensionNodeState] = [:]
+        let oldRootIDs = rootIDs
         do {
             for operation in operations {
                 for id in Self.affectedIDs(of: operation) where !snapshotted.contains(id) {
@@ -716,6 +715,7 @@ struct LUIRetainedTree {
                 nodes[id] = oldNodes[id]
                 extensionNodes[id] = oldExtensions[id]
             }
+            rootIDs = oldRootIDs
             throw error
         }
         return effects
@@ -750,6 +750,7 @@ struct LUIRetainedTree {
                 children: [],
                 properties: [:]
             )
+            rootIDs.insert(id)
         case let .createExtension(id, identifier, fingerprint):
             guard !contains(id) else { throw invalid("node already exists") }
             guard let registration = extensionRegistry.registration(identifier) else {
@@ -772,6 +773,7 @@ struct LUIRetainedTree {
                     }
                 )
             )
+            rootIDs.insert(id)
         case let .dropNode(id):
             guard contains(id) else { throw invalid("unknown node") }
             guard parent(of: id) == nil, children(of: id)?.isEmpty == true else {
@@ -779,6 +781,7 @@ struct LUIRetainedTree {
             }
             nodes[id] = nil
             extensionNodes[id] = nil
+            rootIDs.remove(id)
         case let .detachSubtree(id):
             // detach-subtree unmounts a whole retained subtree: the root
             // is unlinked from whatever parent still records it (the
@@ -794,6 +797,7 @@ struct LUIRetainedTree {
             for memberID in subtreeIDs(of: id) {
                 nodes[memberID] = nil
                 extensionNodes[memberID] = nil
+                rootIDs.remove(memberID)
             }
         case let .setProp(id, property, value):
             guard var node = nodes[id] else { throw invalid("unknown node") }
@@ -899,6 +903,13 @@ struct LUIRetainedTree {
         } else if var node = extensionNodes[id] {
             node.parent = parent
             extensionNodes[id] = node
+        } else {
+            return
+        }
+        if parent == nil {
+            rootIDs.insert(id)
+        } else {
+            rootIDs.remove(id)
         }
     }
 

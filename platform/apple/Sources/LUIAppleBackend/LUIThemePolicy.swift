@@ -180,17 +180,17 @@ struct LUITypographySpec: Equatable {
 
 extension LUITypographySpec {
     /// Typography delta contributed by a node's own props; merged over
-    /// the inherited spec in `LUIThemeScopeModifier`.
-    @MainActor
-    init(model: LUINodeModel) {
+    /// the inherited spec in `LUIThemeScopeModifier`. Parsed once per
+    /// commit into `LUINodeModel.derived`.
+    init(properties: [LUIProperty: LUIWireValue]) {
         self.init()
-        if let raw = model.property(.fontSize)?.stringValue {
+        if let raw = properties[.fontSize]?.stringValue {
             fontSize = Self.points(raw)
         }
-        fontWeight = model.property(.fontWeight)?.intValue
-        italic = model.property(.fontStyle)?.stringValue.map { $0 != "normal" }
-        fontFamily = Self.familyName(model.property(.fontFamily)?.stringValue)
-        if let raw = model.property(.lineHeight)?.stringValue,
+        fontWeight = properties[.fontWeight]?.intValue
+        italic = properties[.fontStyle]?.stringValue.map { $0 != "normal" }
+        fontFamily = Self.familyName(properties[.fontFamily]?.stringValue)
+        if let raw = properties[.lineHeight]?.stringValue,
            let (value, unit) = Self.cssLength(raw)
         {
             switch unit {
@@ -198,8 +198,8 @@ extension LUITypographySpec {
             default: lineHeight = CGFloat(value)
             }
         }
-        letterSpacing = model.property(.letterSpacing)?.doubleValue.map { CGFloat($0) }
-        if let raw = model.property(.textDecoration)?.stringValue {
+        letterSpacing = properties[.letterSpacing]?.doubleValue.map { CGFloat($0) }
+        if let raw = properties[.textDecoration]?.stringValue {
             let tokens = raw.split(separator: " ")
             underline = tokens.contains("underline")
             strikethrough = tokens.contains("line-through")
@@ -396,32 +396,41 @@ enum LUIAccessibilityPolicy {
 }
 
 enum LUIThemeTokenDecoder {
-    /// Parses the `theme` wire prop into semantic-color entries the
-    /// resolver consults before platform defaults. A token value is either
-    /// a color string used in both modes or a `{"light": ..., "dark": ...}`
-    /// object picked by `dark`. Entries that do not decode to a color are
-    /// ignored so non-color tokens can join the table later without
-    /// breaking hosts.
-    static func colors(_ json: String?, dark: Bool) -> [String: Color] {
+    /// Parses the `theme` wire prop into per-mode semantic-color entries.
+    /// A token value is either a color string used in both modes or a
+    /// `{"light": ..., "dark": ...}` object picked by mode. Entries that do
+    /// not decode to a color in either mode are ignored so non-color
+    /// tokens can join the table later without breaking hosts.
+    static func tokens(_ json: String?) -> [String: LUIThemeModeColors] {
         guard let json,
               let data = json.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data),
               let dict = object as? [String: Any]
         else { return [:] }
-        var colors: [String: Color] = [:]
+        var tokens: [String: LUIThemeModeColors] = [:]
         for (key, value) in dict {
-            let raw: String?
+            let light: Color?
+            let dark: Color?
             if let string = value as? String {
-                raw = string
+                light = luiHexColor(string)
+                dark = light
             } else if let modes = value as? [String: Any] {
-                raw = modes[dark ? "dark" : "light"] as? String
+                light = (modes["light"] as? String).flatMap(luiHexColor)
+                dark = (modes["dark"] as? String).flatMap(luiHexColor)
             } else {
-                raw = nil
+                continue
             }
-            guard let raw, let color = luiHexColor(raw) else { continue }
-            colors[key.lowercased()] = color
+            guard light != nil || dark != nil else { continue }
+            tokens[key.lowercased()] = LUIThemeModeColors(light: light, dark: dark)
         }
-        return colors
+        return tokens
+    }
+
+    /// Semantic-color entries for one appearance mode; call sites that
+    /// evaluate per frame should prefer the commit-decoded
+    /// `LUIThemeScopeContribution` instead.
+    static func colors(_ json: String?, dark: Bool) -> [String: Color] {
+        tokens(json).compactMapValues { dark ? $0.dark : $0.light }
     }
 
     static func colorScheme(_ value: String?) -> ColorScheme? {
@@ -430,6 +439,38 @@ enum LUIThemeTokenDecoder {
         case "light": .light
         default: nil
         }
+    }
+}
+
+/// Per-mode value of a decoded `theme` token: a plain color string fills
+/// both modes, a `{"light": ..., "dark": ...}` object fills each side.
+struct LUIThemeModeColors: Equatable {
+    var light: Color?
+    var dark: Color?
+}
+
+/// A node's `theme`/`theme-mode`/typography contribution to the scoped
+/// environment, decoded once per commit on `LUINodeModel` so
+/// `LUIThemeScopeModifier` only picks a color-scheme entry per evaluation.
+struct LUIThemeScopeContribution: Equatable {
+    /// Decoded `theme` tokens; entries without a decodable color in either
+    /// mode are absent.
+    var tokens: [String: LUIThemeModeColors] = [:]
+    /// `theme-mode` override, if any.
+    var scheme: ColorScheme?
+    /// `font-*`/`line-height`/`letter-spacing`/`text-decoration` props.
+    var typography = LUITypographySpec()
+
+    /// Whether the node contributes anything to the scope — gates
+    /// mounting `LUIThemeScopeModifier` and its environment reads.
+    var applies: Bool {
+        !tokens.isEmpty || scheme != nil || !typography.isEmpty
+    }
+
+    /// Semantic-color entries for one appearance mode, matching the
+    /// per-eval `LUIThemeTokenDecoder.colors(_:dark:)` selection.
+    func colors(dark: Bool) -> [String: Color] {
+        tokens.compactMapValues { dark ? $0.dark : $0.light }
     }
 }
 
@@ -444,27 +485,34 @@ struct LUIThemeScopeModifier: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        let scheme = LUIThemeTokenDecoder.colorScheme(
-            model.property(.themeMode)?.stringValue
-        )
-        let ownColors = LUIThemeTokenDecoder.colors(
-            model.property(.theme)?.stringValue,
-            dark: (scheme ?? systemScheme) == .dark
-        )
-        let typography = LUITypographySpec(model: model)
-        if ownColors.isEmpty && scheme == nil && typography.isEmpty {
-            content
+        let scope = model.derived.themeScope
+        if scope.applies {
+            // Environment reads live in this branch so nodes that
+            // contribute nothing never subscribe to the theme
+            // environments — an ancestor retheme no longer invalidates
+            // every modifier in the subtree.
+            scopedContent(content, scope: scope)
         } else {
             content
-                .environment(
-                    \.luiSemanticColors,
-                    inheritedColors.merging(ownColors) { _, new in new }
-                )
-                .environment(
-                    \.luiTypography,
-                    inheritedTypography.merged(with: typography)
-                )
-                .preferredColorScheme(scheme)
         }
+    }
+
+    private func scopedContent(
+        _ content: Content,
+        scope: LUIThemeScopeContribution
+    ) -> some View {
+        let ownColors = scope.colors(
+            dark: (scope.scheme ?? systemScheme) == .dark
+        )
+        return content
+            .environment(
+                \.luiSemanticColors,
+                inheritedColors.merging(ownColors) { _, new in new }
+            )
+            .environment(
+                \.luiTypography,
+                inheritedTypography.merged(with: scope.typography)
+            )
+            .preferredColorScheme(scope.scheme)
     }
 }
