@@ -1274,7 +1274,8 @@ let property_supported kind property =
       || property = WidthValue || property = HeightValue
       || property = MinWidth || property = MaxWidth
       || property = MinHeight || property = MaxHeight || property = Opacity
-      || property = FontSize || property = FontWeight || property = LineHeight
+      || property = FontSize || property = FontWeight || property = FontStyle
+      || property = LineHeight
       || property = LetterSpacing || property = FontFamily
       || property = TextDecoration || property = WhiteSpace
       || property = TextOverflow || property = UserSelect || property = Cursor

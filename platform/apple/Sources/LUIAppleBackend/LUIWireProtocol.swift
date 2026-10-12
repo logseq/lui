@@ -318,6 +318,9 @@ enum LUIWireValue: Decodable, Equatable {
         case .textDecoration:
             guard let value = stringValue else { return false }
             return Self.textDecorationSupported(value)
+        case .fontStyle:
+            guard let value = stringValue else { return false }
+            return ["normal", "italic", "oblique"].contains(value)
         case .listStyle:
             guard let value = stringValue else { return false }
             return ["none", "disc", "decimal"].contains(value)
@@ -1231,8 +1234,8 @@ struct LUIRetainedTree {
         case .alignment: kind != .root
         // Typography carries a foreground — same kinds as `.foreground`
         // minus purely graphical kinds whose `size` prop governs metrics.
-        case .fontSize, .fontWeight, .lineHeight, .letterSpacing, .userSelect,
-             .fontFamily, .textDecoration:
+        case .fontSize, .fontWeight, .fontStyle, .lineHeight, .letterSpacing,
+             .userSelect, .fontFamily, .textDecoration:
             kind == .row || kind == .column || kind == .grid || kind == .box ||
                 kind == .panel || kind == .card || kind == .stack ||
                 kind == .scroll || kind == .avatar ||

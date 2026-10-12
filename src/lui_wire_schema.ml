@@ -372,7 +372,7 @@ let kind_property_matrix kind =
   | SwipeAction -> Some [ TextValue; InlineIconName; VariantValue; EdgeValue; Enabled; BackgroundValue; PressEnabled; PointerEnabled ]
   | FilePicker -> Some [ PickerRequest; PickerTypes; PickerMultiple; PickerSource; PickerCompletion; PickerAccept; PickerDirectory; Enabled; AppearEnabled; PointerEnabled ]
   | FilePreview -> Some [ PathValue; PointerEnabled ]
-  | Kbd -> Some [ TextValue; StyleClass; DataAttrs; PointerEnabled; FontSize; FontWeight; FontStyle; LineHeight; LetterSpacing; FontFamily; TextDecoration; WhiteSpace; TextOverflow; UserSelect; Cursor; Shadow; HoverBackground; HoverOpacity; HoverShadow; PressedBackground; PressedOpacity; PressedShadow; FocusShadow; SelectedBackground; SelectedShadow; SelectedHoverShadow; DisabledOpacity; Transition ]
+  | Kbd -> Some [ TextValue; StyleClass; DataAttrs; PointerEnabled; BackgroundValue; BorderColorValue; BorderWidth; CornerRadius; ForegroundValue; GrowValue; PaddingValue; PaddingHorizontal; PaddingVertical; WidthValue; HeightValue; MinWidth; MaxWidth; MinHeight; MaxHeight; Opacity; FontSize; FontWeight; FontStyle; LineHeight; LetterSpacing; FontFamily; TextDecoration; WhiteSpace; TextOverflow; UserSelect; Cursor; Shadow; HoverBackground; HoverOpacity; HoverShadow; PressedBackground; PressedOpacity; PressedShadow; FocusShadow; SelectedBackground; SelectedShadow; SelectedHoverShadow; DisabledOpacity; Transition ]
   | _ -> None
 
 let kind_extra_properties kind =
