@@ -1025,6 +1025,12 @@ extern __declspec(dllimport) int LUI_STDCALL GlobalUnlock(void *);
 extern __declspec(dllimport) long LUI_STDCALL CreateStreamOnHGlobal(
     void *, int, void **);
 extern __declspec(dllimport) void LUI_STDCALL CoTaskMemFree(void *);
+#else
+/* <windows.h> came in via SDL_syswm.h, which defines
+   WIN32_LEAN_AND_MEAN: that skips the COM headers, so the real
+   CoTaskMemFree / CreateStreamOnHGlobal / GetHGlobalFromStream protos
+   must be pulled in explicitly. */
+#include <objbase.h>
 #endif /* !WINAPI — no real Win32 headers in this TU */
 
 typedef struct {

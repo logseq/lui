@@ -5,6 +5,7 @@
 
 module L = Lui_pkg
 module P = Lui_pkg.Private
+module V1 = Lui_pkg_deflate_v1
 
 let check = Alcotest.check
 let string = Alcotest.string
@@ -170,6 +171,131 @@ let test_deflate () =
     cases;
   let z = P.Deflate.zlib "payload" in
   check bool "zlib magic" true (z.[0] = '\x78' && z.[1] = '\x9c')
+
+(* old<->new codec compat, not just self round-trips: streams the
+   vendored pre-decompress encoder writes must inflate under the new
+   decoder, and vice versa — the delta wire format depends on it. *)
+let test_deflate_cross () =
+  let cases =
+    [
+      ""; "x"; "hello world"; String.make 70_000 'z';
+      String.init 256 Char.chr ^ String.init 256 Char.chr;
+      pseudo_random 200_000;
+    ]
+  in
+  List.iteri
+    (fun i data ->
+       check string (Printf.sprintf "old enc -> new dec %d" i) data
+         (P.Deflate.inflate (V1.deflate data));
+       check string (Printf.sprintf "new enc -> old dec %d" i) data
+         (V1.inflate (P.Deflate.deflate data)))
+    cases;
+  (* zlib level: header + adler wrap a raw deflate body either way *)
+  let z = V1.zlib "cross payload" in
+  check string "old zlib -> new inflate" "cross payload"
+    (P.Deflate.inflate ~off:2 ~len:(String.length z - 6) z);
+  let z2 = P.Deflate.zlib "cross payload" in
+  check string "new zlib -> old inflate" "cross payload"
+    (V1.inflate ~off:2 ~len:(String.length z2 - 6) z2)
+
+(* A whole delta file whose index and blobs were encoded with the
+   vendored codec: parse_index and apply_delta — the new decoder path —
+   must accept it. *)
+let test_delta_v1_wire () =
+  let base = tmp_dir () in
+  let old_d = Filename.concat base "old"
+  and new_d = Filename.concat base "new" in
+  P.Fs.mkdir_p (Filename.concat new_d "sub");
+  P.Fs.mkdir_p old_d;
+  P.Fs.write_file (Filename.concat old_d "a.txt") "old body\n";
+  P.Fs.write_file (Filename.concat new_d "a.txt") "new body\n";
+  P.Fs.write_file (Filename.concat new_d "sub/b.txt") "added\n";
+  let sha p = P.Sha256.string (P.Fs.read_file p) in
+  let blob_a = V1.deflate "new body\n" and blob_b = V1.deflate "added\n" in
+  let entries =
+    [
+      { P.Delta.path = "a.txt"; dir = false; link = ""; mode = 0o644;
+        size = 9; sha256 = sha (Filename.concat new_d "a.txt");
+        from = ""; data = String.length blob_a };
+      { P.Delta.path = "sub"; dir = true; link = ""; mode = 0; size = 0;
+        sha256 = ""; from = ""; data = 0 };
+      { P.Delta.path = "sub/b.txt"; dir = false; link = ""; mode = 0o644;
+        size = 6; sha256 = sha (Filename.concat new_d "sub/b.txt");
+        from = ""; data = String.length blob_b };
+    ]
+  in
+  let index =
+    `Assoc
+      [ ("from", `String "1.0"); ("version", `String "1.1");
+        ("entries", `List (List.map P.Delta.entry_json entries)) ]
+  in
+  let js = V1.deflate (Yojson.Safe.to_string index) in
+  let delta = Filename.concat base "v1.delta" in
+  let oc = open_out_bin delta in
+  output_string oc P.Delta.magic;
+  let head = Buffer.create 8 in
+  P.Varint.append_uvarint head (String.length js);
+  Buffer.output_buffer oc head;
+  output_string oc js;
+  output_string oc blob_a;
+  output_string oc blob_b;
+  close_out oc;
+  let data = P.Fs.read_file delta in
+  let f, t, es, _ = P.Delta.parse_index data in
+  check string "from" "1.0" f;
+  check string "to" "1.1" t;
+  check int "entries" 3 (List.length es);
+  let rebuilt = Filename.concat base "rebuilt" in
+  expect_ok
+    (L.apply_delta ~delta ~from:"1.0" ~to_:"1.1" ~old_dir:old_d
+       ~new_dir:rebuilt);
+  same_tree new_d rebuilt
+
+(* The other direction at package level: a delta the new encoder writes
+   must decode under the vendored codec — index, raw blobs and the
+   deflate streams inside bsdiff patches alike. *)
+let test_delta_v1_decodes_new () =
+  let base = tmp_dir () in
+  let old_d, new_d = make_trees base in
+  let out = Filename.concat base "u.delta" in
+  let entries =
+    P.Delta.write ~from:"1.0" ~to_:"1.1" ~old_dir:old_d ~new_dir:new_d out
+  in
+  let data = P.Fs.read_file out in
+  let uv off =
+    match P.Varint.uvarint data off with
+    | Some v -> v
+    | None -> Alcotest.fail "no varint"
+  in
+  let index_len, start = uv (String.length P.Delta.magic) in
+  let f, t, n =
+    let j = Yojson.Safe.from_string (V1.inflate ~off:start ~len:index_len data) in
+    let open Yojson.Safe.Util in
+    ( j |> member "from" |> to_string, j |> member "version" |> to_string,
+      List.length (j |> member "entries" |> to_list) )
+  in
+  check string "v1 reads index from" "1.0" f;
+  check string "v1 reads index to" "1.1" t;
+  check int "v1 reads entries" (List.length entries) n;
+  let off = ref (start + index_len) in
+  List.iter
+    (fun (e : P.Delta.entry) ->
+       if e.data > 0 then begin
+         if e.from = "" then
+           (* a raw DEFLATE blob *)
+           check int ("v1 blob " ^ e.path) e.size
+             (String.length (V1.inflate ~off:!off ~len:e.data data))
+         else
+           (* a bsdiff patch: uvarints then three DEFLATE streams —
+              decoding its control stream under v1 proves the new
+              encoder's streams read back *)
+           let _nb, o1 = uv !off in
+           let clen, o2 = uv o1 in
+           let _dlen, o3 = uv o2 in
+           ignore (V1.inflate ~off:o3 ~len:clen data)
+       end;
+       off := !off + e.data)
+    entries
 
 let test_bsdiff () =
   let cases =
@@ -593,6 +719,10 @@ let () =
           Alcotest.test_case "crc/adler" `Quick test_crc;
           Alcotest.test_case "varint" `Quick test_varint;
           Alcotest.test_case "deflate roundtrip" `Quick test_deflate;
+          Alcotest.test_case "deflate cross" `Quick test_deflate_cross;
+          Alcotest.test_case "delta v1 wire" `Quick test_delta_v1_wire;
+          Alcotest.test_case "delta v1 decodes new" `Quick
+            test_delta_v1_decodes_new;
           Alcotest.test_case "bsdiff roundtrip" `Quick test_bsdiff;
           Alcotest.test_case "Info.plist" `Quick test_plist_xml;
           Alcotest.test_case "binary plist" `Quick test_plist_binary;
