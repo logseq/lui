@@ -888,7 +888,7 @@ let dropdown_key_handler renderer node typeahead_buffer typeahead_timer
     Lui_web_util.event_target_to_element (W.KeyboardEvent.target event)
   in
   let current_index =
-    Lui_web_focus.focused_child_index renderer items event_target 0
+    Lui_web_focus.focused_child_index renderer items event_target
   in
   let submenu_trigger = dropdown_submenu_trigger renderer node in
   let rec picker_root menu =
@@ -1232,7 +1232,7 @@ let context_menu_key_handler renderer document node event =
       let current =
         match W.HtmlDocument.activeElement html_document with
         | Some focused ->
-            Lui_web_focus.focused_child_index renderer items focused 0
+            Lui_web_focus.focused_child_index renderer items focused
         | None -> None
       in
       let navigation_key =
