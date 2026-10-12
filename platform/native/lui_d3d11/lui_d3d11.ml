@@ -174,35 +174,11 @@ let effect_source eglsl =
 
 (* {1 Instance packing} *)
 
-type pack = { data : f32_ba; spans : (int * int) array }
-
 let attribute_count = Lui_gpu.instance_floats / 4
 let instance_bytes = Lui_gpu.instance_floats * 4
 
 let attribute_offset start attr =
   start * instance_bytes + attr * 16
-
-let pack_batches batches =
-  let total =
-    List.fold_left (fun n b -> n + List.length b.Lui_gpu.instances) 0 batches
-  in
-  let data =
-    A1.create Bigarray.float32 Bigarray.c_layout
-      (total * Lui_gpu.instance_floats)
-  in
-  let spans = Array.make (List.length batches) (0, 0) in
-  let ofs = ref 0 in
-  List.iteri
-    (fun bi b ->
-      let start = !ofs / Lui_gpu.instance_floats in
-      List.iter
-        (fun inst ->
-          Lui_gpu.pack_instance inst data ~ofs:!ofs;
-          ofs := !ofs + Lui_gpu.instance_floats)
-        b.Lui_gpu.instances;
-      spans.(bi) <- (start, List.length b.Lui_gpu.instances))
-    batches;
-  { data; spans }
 
 (* {1 Textures} *)
 
@@ -234,6 +210,10 @@ type t = {
   mutable grab : int * int;
   mutable backdrop_tex : int * int;
   mutable effects : (fx * int) list;
+  (* The scene's compiled batches and packed staging; a frame whose
+     display list did not move reuses them and skips the instance
+     upload — the vertex buffer still holds what was drawn. *)
+  fc : Lui_gpu.batch_cache;
 }
 and texture =
   { mutable gen : int; mutable ver : int; mutable w : int;
@@ -376,7 +356,7 @@ let read_backdrop r (bk : backdrop) =
 (* {1 Drawing} *)
 
 let draw_batch r s pack bi (b : Lui_gpu.batch) bound program hole =
-  let start, count = pack.spans.(bi) in
+  let start, count = pack.Lui_gpu.spans.(bi) in
   let sc = clamp_scissor b.Lui_gpu.scissor ~w:s.width ~h:s.height in
   if count > 0 && not (Lui_gpu.scissor_empty sc) then (
     let want =
@@ -418,13 +398,15 @@ let render r s =
     r.frame <- r.frame + 1;
     sync_atlas r 0 r.mask s.mask_atlas;
     sync_atlas r 1 r.color s.color_atlas;
-    let batches = Lui_gpu.build s in
+    let batches, pack, rebuilt = Lui_gpu.frame r.fc s in
     fit_backdrop r batches;
     let cr, cg, cb, ca = premul s.clear 1. in
     c_begin r.ctx w h cr cg cb ca;
-    let pack = pack_batches batches in
-    if A1.dim pack.data > 0 then (
-      c_instances r.ctx pack.data;
+    if pack.Lui_gpu.floats > 0 then (
+      (* A scene the cache already compiled reuses the vertex
+         buffer's contents as uploaded — no second upload. *)
+      if rebuilt then
+        c_instances r.ctx (A1.sub pack.data 0 pack.floats);
       let bound = ref (-1) and program = ref 0 and hole = ref false in
       List.iteri (fun i b -> draw_batch r s pack i b bound program hole)
         batches);
@@ -450,7 +432,8 @@ let init hwnd ~w ~h =
         images = Hashtbl.create 16;
         grab = (0, 0);
         backdrop_tex = (0, 0);
-        effects = [] }
+        effects = [];
+        fc = Lui_gpu.batch_cache () }
 
 let init_offscreen ~w ~h = init 0n ~w ~h
 

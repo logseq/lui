@@ -149,6 +149,11 @@ type f32_ba =
     instance offset in that prefix. *)
 type pack = { data : f32_ba; floats : int; spans : (int * int) array }
 
+val pack_batches : batch list -> pack
+(** [pack_batches batches] packs every batch's instances into one
+    exact-size float32 buffer — the one-shot packer for callers
+    without a cache to grow into (tests). *)
+
 type batch_cache
 (** A renderer's memoized batches and instance buffer for one scene.
     The key is the scene's revision plus the other inputs {!build}

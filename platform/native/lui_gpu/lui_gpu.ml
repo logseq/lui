@@ -613,17 +613,7 @@ let key_of ~wide (s : t) : key =
     (s.mask_atlas.w, s.mask_atlas.h),
     (s.color_atlas.w, s.color_atlas.h) )
 
-let rebuild c ~wide s =
-  let batches = build ~wide s in
-  let total =
-    List.fold_left (fun n b -> n + List.length b.instances) 0 batches
-  in
-  let floats = total * instance_floats in
-  let data =
-    if Bigarray.Array1.dim c.c_pack.data >= floats then c.c_pack.data
-    else
-      Bigarray.(Array1.create float32 c_layout (floats + floats / 2))
-  in
+let pack_into (batches : batch list) (data : f32_ba) =
   let spans = Array.make (List.length batches) (0, 0) in
   let ofs = ref 0 in
   List.iteri
@@ -636,6 +626,30 @@ let rebuild c ~wide s =
         b.instances;
       spans.(bi) <- (start, List.length b.instances))
     batches;
+  spans
+
+(* The one-shot packer: an exact-size buffer, for callers without a
+   cache to grow into (tests). *)
+let pack_batches (batches : batch list) : pack =
+  let total =
+    List.fold_left (fun n b -> n + List.length b.instances) 0 batches
+  in
+  let floats = total * instance_floats in
+  let data = Bigarray.(Array1.create float32 c_layout floats) in
+  { data; floats; spans = pack_into batches data }
+
+let rebuild c ~wide s =
+  let batches = build ~wide s in
+  let total =
+    List.fold_left (fun n b -> n + List.length b.instances) 0 batches
+  in
+  let floats = total * instance_floats in
+  let data =
+    if Bigarray.Array1.dim c.c_pack.data >= floats then c.c_pack.data
+    else
+      Bigarray.(Array1.create float32 c_layout (floats + floats / 2))
+  in
+  let spans = pack_into batches data in
   c.c_scene <- Some s;
   c.c_key <- Some (key_of ~wide s);
   c.c_batches <- batches;
