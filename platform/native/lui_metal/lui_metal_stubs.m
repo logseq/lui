@@ -83,7 +83,14 @@ static struct custom_operations lui_ref_ops = {
 static value lui_box(void *o)
 {
     MTD("box: %p ops=%p\n", o, &lui_ref_ops);
-    value v = caml_alloc_custom(&lui_ref_ops, sizeof(struct lui_ref), 0, 1);
+    /* Boxed refs own GPU objects (contexts, libraries, pipelines and
+       textures up to tens of MB each). Report ~1MB per box against a
+       10MB budget so a burst of ~10 boxed natives schedules a major
+       collection — with used=0 dead textures waited for a GC the
+       small OCaml heap never pressured, and sustained repaint churn
+       piled them up unboundedly. */
+    value v = caml_alloc_custom(&lui_ref_ops, sizeof(struct lui_ref),
+                                1024 * 1024, 10 * 1024 * 1024);
     MTD("box: v=%lx\n", (unsigned long)v);
     Lui_ref_val(v) = o;
     MTD("box: done\n");
