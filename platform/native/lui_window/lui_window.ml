@@ -533,6 +533,14 @@ module Ui = struct
   let shadow t = Lui_text_input.text t.session
   let ime t = Lui_text_input.ime t.session
   let marked t = Lui_text_input.marked t.session
+
+  (* (session id, host-local edit revision, adopted model
+     revision) of the active text session — observability for the
+     edit protocol. *)
+  let text_revisions t =
+    (Lui_text_input.session_id t.session,
+     Lui_text_input.local_revision t.session,
+     Lui_text_input.model_revision t.session)
   let sel_anchor t = Lui_text_input.anchor t.session
   let sel_text t = Lui_selection.text t.selection
   let focus_visible t = Lui_focus.kbd_visible t.focus

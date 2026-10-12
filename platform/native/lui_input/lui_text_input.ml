@@ -10,10 +10,27 @@ open Lui_protocol
 
 type state = {
   node : int;           (* node this session is attached to *)
+  session : int;
+      (* session id — bumps on every attach, so model responses
+         cannot be mistaken across session boundaries *)
   text : string;
       (* latest text value as the app sees it: the store prop lags
          one frame behind dispatched edits, so caret math runs on
          this shadow *)
+  local_rev : int;
+      (* host-side edit counter — every TextEdit bumps it *)
+  model_rev : int;
+      (* count of model-side texts adopted — every Correction and
+         Reset bumps it *)
+  model : string;
+      (* the store prop as last observed — the baseline that tells
+         an Ack (model echoing our mirror) from a genuine
+         model-side change *)
+  dirty_since_model : bool;
+      (* local edits exist that the model has not echoed yet *)
+  response : [ `None | `Ack | `Correction | `Reset ];
+      (* the last model response classification — see
+         {!sync_model}; observability for the revision protocol *)
   caret : int;          (* byte offset into [text] *)
   anchor : int;         (* selection anchor; selection is
                            [min anchor caret .. max anchor caret) *)
@@ -26,13 +43,19 @@ type state = {
 }
 
 let initial =
-  { node = 0; text = ""; caret = 0; anchor = 0;
+  { node = 0; session = 0; text = ""; local_rev = 0; model_rev = 0;
+    model = ""; dirty_since_model = false; response = `None;
+    caret = 0; anchor = 0;
     undo = []; redo = []; ime = Lui_ime.initial }
 
 let node st = st.node
+let session_id st = st.session
 let text st = st.text
 let caret st = st.caret
 let anchor st = st.anchor
+let local_revision st = st.local_rev
+let model_revision st = st.model_rev
+let model_response st = st.response
 let ime st = st.ime
 let marked st = st.ime.Lui_ime.marked_text
 let composing st = Lui_ime.composing st.ime
@@ -44,17 +67,24 @@ let sel_hi st = max st.anchor st.caret
 let editable store node =
   node <> 0 && Lui_query.event_supported store node (TextChanged (node, ""))
 
+(* Session ids — every attach starts a new session so model
+   responses to one session cannot leak into the next. *)
+let session_seq = ref 0
+
 (* Re-attach the session to a node on focus change: the composition
    machine hears the focus transition (a live composition cancels
    silently — its actions are dropped here because the driver marks
    the frame anyway), the shadow takes the node's text and the
-   caret lands at its end. Selection and undo reset. *)
+   caret lands at its end. Selection, undo and the revision
+   counters reset — the model baseline is the attached prop. *)
 let attach st ~node ~text =
+  incr session_seq;
   let ime, _ = Lui_ime.feed_event st.ime (`Focus false) in
   let ime, _ = Lui_ime.feed_event ime (`Focus (node <> 0)) in
   let caret = if node = 0 then 0 else String.length text in
-  { node; text; caret; anchor = caret;
-    undo = []; redo = []; ime }
+  { node; session = !session_seq; text; local_rev = 0; model_rev = 0;
+    model = text; dirty_since_model = false; response = `None;
+    caret; anchor = caret; undo = []; redo = []; ime }
 
 let set_caret st ~off ~extend =
   if st.caret = off && (extend || st.anchor = off) then st
@@ -87,6 +117,8 @@ let splice st ins =
         else u
     in
     ( { st with text = next; caret = caret'; anchor = caret';
+                local_rev = st.local_rev + 1;
+                dirty_since_model = true;
                 undo; redo = [] },
       [ `Dispatch (TextChanged (st.node, next));
         `Mirror_text (st.node, next);
@@ -98,18 +130,23 @@ let delete_between st lo hi =
 
 let insert st s = splice st s
 
-(* Host-side undo/redo of shadow edits. *)
+(* Host-side undo/redo of shadow edits — each replay is a local
+   edit in revision terms. *)
 let undo st ~shift =
   match shift, st.undo, st.redo with
   | false, (s, c, a) :: tl, _ ->
     ( { st with redo = (st.text, st.caret, st.anchor) :: st.redo;
-                undo = tl; text = s; caret = c; anchor = a },
+                undo = tl; text = s; caret = c; anchor = a;
+                local_rev = st.local_rev + 1;
+                dirty_since_model = true },
       [ `Dispatch (TextChanged (st.node, s));
         `Mirror_text (st.node, s);
         `Repaint ] )
   | true, _, (s, c, a) :: tl ->
     ( { st with undo = (st.text, st.caret, st.anchor) :: st.undo;
-                redo = tl; text = s; caret = c; anchor = a },
+                redo = tl; text = s; caret = c; anchor = a;
+                local_rev = st.local_rev + 1;
+                dirty_since_model = true },
       [ `Dispatch (TextChanged (st.node, s));
         `Mirror_text (st.node, s);
         `Repaint ] )
@@ -254,16 +291,35 @@ let feed_ime store st ev =
   let st, acts = apply_ime store { st with ime } actions in
   (st, acts)
 
-(* Model-side text sync: the store prop changed under the session
-   (programmatic edit, remote state). Adopt it, clamp caret/anchor
-   onto UTF-8 boundaries, drop the undo chain — the model is
-   canonical. *)
+(* Model-side text sync — the revision protocol. The host's own
+   edits mirror into the store prop immediately, so a prop equal to
+   the shadow is the model's Ack of a local edit (or simply no
+   change): the dirty flag clears and nothing else moves — local
+   typing never waits on the model round trip. A prop equal to the
+   last observed baseline is a no-op re-read. Anything else is a
+   genuine model-side change: a Correction when local edits were in
+   flight, a Reset when clean. Either way the model is canonical:
+   adopt it, clamp caret/anchor onto UTF-8 boundaries, drop the
+   undo chain, and cancel any live composition — marked text was
+   never dispatched, so rolling it back is the only stable answer
+   to a changed base. *)
 let sync_model _store st ~model_text =
-  if model_text = st.text then (st, [])
+  if model_text = st.text then
+    ({ st with model = model_text; dirty_since_model = false;
+               response = `Ack }, [])
+  else if model_text = st.model then (st, [])
   else
+    let response =
+      if st.dirty_since_model then `Correction else `Reset
+    in
+    let ime, _ = Lui_ime.feed_event st.ime (`Focus false) in
+    let ime, _ = Lui_ime.feed_event ime (`Focus (st.node <> 0)) in
     ( { st with
-        text = model_text;
+        text = model_text; model = model_text;
         caret = Lui_query.clamp_boundary model_text st.caret;
         anchor = Lui_query.clamp_boundary model_text st.anchor;
-        undo = []; redo = [] },
+        model_rev = st.model_rev + 1;
+        dirty_since_model = false;
+        response;
+        undo = []; redo = []; ime },
       [ `Repaint ] )

@@ -350,6 +350,11 @@ module Ui : sig
       renderer draws it underlined at the caret of the focused node. *)
   val marked : t -> string
 
+  (** Text-session counters: [(session id, host-local edit
+      revision, adopted model revision)] of the active session —
+      observability for the edit protocol (P1-2). *)
+  val text_revisions : t -> int * int * int
+
   (** [~kbd:true] marks keyboard-driven focus (affects
       {!focus_visible}); the default is pointer/programmatic focus. *)
   val set_focused : ?kbd:bool -> t -> Lui_store.t -> int -> unit
