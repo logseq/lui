@@ -9,6 +9,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -74,9 +75,22 @@ fun luiHexColor(name: String): Color? {
 @Composable
 fun luiThemeColor(name: String?, foreground: Boolean = false): Color? {
     if (name == null) return null
-    val lower = name.lowercase()
-    LocalLuiSemanticColors.current[lower]?.let { return it }
+    val tokens = LocalLuiSemanticColors.current
     val scheme = MaterialTheme.colorScheme
+    // Cache the lowercasing + table lookup + hex parse per name against
+    // the token table and scheme it resolved under.
+    return remember(name, foreground, tokens, scheme) {
+        resolveLuiThemeColor(name.lowercase(), foreground, tokens, scheme)
+    }
+}
+
+private fun resolveLuiThemeColor(
+    lower: String,
+    foreground: Boolean,
+    tokens: Map<String, Color>,
+    scheme: ColorScheme,
+): Color? {
+    tokens[lower]?.let { return it }
     return when (lower) {
         "transparent" -> Color.Transparent
         "background" -> scheme.surface
@@ -201,6 +215,13 @@ object LuiThemeTokenDecoder {
 object LuiTypography {
     private val cssLength = Regex("^\\s*([+-]?\\d*\\.?\\d+)(px|pt|sp|em|rem)?\\s*$")
 
+    /** Wire props consumed by [nodeSpec]; used to skip the decode for
+     * nodes that carry none of them. */
+    internal val propNames = setOf(
+        "font-size", "font-weight", "font-style", "line-height",
+        "letter-spacing", "font-family", "text-decoration",
+    )
+
     /** `font-size` can't take relative units — resolve em/rem against
      * the 17sp body default both mobile hosts share. */
     private fun fontSizeSpec(value: String?): TextUnit? =
@@ -256,18 +277,18 @@ object LuiTypography {
     /** Typography delta contributed by a node's own props, merged over
      * the inherited spec in `LuiThemeScope`. Null when the node sets no
      * typography props. */
-    fun nodeSpec(node: LuiNode): TextStyle? {
-        val size = fontSizeSpec(node.propString("font-size"))
-        val lineHeight = lineHeightSpec(node.propString("line-height"))
-        val weight = node.prop("font-weight")?.intValue
+    fun nodeSpec(properties: Map<String, LuiWireValue>): TextStyle? {
+        val size = fontSizeSpec(properties["font-size"]?.stringValue)
+        val lineHeight = lineHeightSpec(properties["line-height"]?.stringValue)
+        val weight = properties["font-weight"]?.intValue
             ?.let { FontWeight(it.coerceIn(1, 1000)) }
-        val style = when (node.propString("font-style")) {
+        val style = when (properties["font-style"]?.stringValue) {
             "italic", "oblique" -> FontStyle.Italic
             else -> null
         }
-        val family = familySpec(node.propString("font-family"))
-        val tracking = node.prop("letter-spacing")?.numberValue?.toFloat()?.sp
-        val decoration = decorationSpec(node.propString("text-decoration"))
+        val family = familySpec(properties["font-family"]?.stringValue)
+        val tracking = properties["letter-spacing"]?.numberValue?.toFloat()?.sp
+        val decoration = decorationSpec(properties["text-decoration"]?.stringValue)
         if (size == null && lineHeight == null && weight == null &&
             style == null && family == null && tracking == null &&
             decoration == null

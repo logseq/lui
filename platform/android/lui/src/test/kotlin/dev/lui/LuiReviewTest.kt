@@ -53,8 +53,8 @@ class LuiReviewTest {
         val observer = SnapshotStateObserver { it() }
         observer.start()
         try {
-            observer.observeReads("changed", { changes += it }) { backend.node(2) }
-            observer.observeReads("unrelated", { changes += it }) { backend.node(3) }
+            observer.observeReads("changed", { changes += it }) { backend.node(2)?.properties }
+            observer.observeReads("unrelated", { changes += it }) { backend.node(3)?.properties }
             assertTrue(backend.applyBatch("""{"generation":2,"ops":[
                 {"op":"set-prop","id":2,"property":"text","value":"after"}
             ]}"""))

@@ -4,6 +4,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.atomic.AtomicLong
@@ -32,12 +33,19 @@ object LuiBridge {
     const val HOST_KOTLIN: Int = 4
 
     fun interface PatchSink {
-        fun onPatch(json: String, snapshot: Boolean): Boolean
+        fun onPatch(batch: LuiPatchBatch, snapshot: Boolean): Boolean
     }
 
     private val ocamlThread = HandlerThread("lui-ocaml").apply { start() }
     private val ocamlHandler = Handler(ocamlThread.looper)
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    // Single-threaded so batches stay ordered: each JSON payload decodes
+    // off the main thread, then the decoded batch is posted to the main
+    // handler in the order it arrived.
+    private val patchParser = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "lui-patch-parse").apply { isDaemon = true }
+    }
 
     @Volatile
     private var patchSink: PatchSink? = null
@@ -53,8 +61,9 @@ object LuiBridge {
 
     /**
      * Called from JNI while the OCaml domain lock is held. Only copies the
-     * string into the JVM and enqueues delivery on the main thread — never
-     * call back into native exports from here.
+     * string into the JVM and enqueues it for decoding — never call back
+     * into native exports from here. Parse runs on the `lui-patch-parse`
+     * thread; the decoded batch is applied on the main thread.
      */
     @JvmStatic
     @Suppress("unused")
@@ -63,21 +72,33 @@ object LuiBridge {
         val token = session.get()
         val snapshot = emittingSnapshot
         val text = json.toString(Charsets.UTF_8)
-        mainHandler.post {
-            if (!started || session.get() != token || patchSink !== sink) return@post
-            if (awaitingSnapshot && !snapshot) return@post
-            if (sink.onPatch(text, snapshot)) {
-                if (snapshot) awaitingSnapshot = false
-            } else {
-                check(!snapshot) { "LUI host rejected the authoritative runtime snapshot" }
-                awaitingSnapshot = true
-                ocamlHandler.post {
-                    if (session.get() != token) return@post
-                    emittingSnapshot = true
-                    try {
-                        check(nativeResync() == 1) { "LUI runtime snapshot failed" }
-                    } finally {
-                        emittingSnapshot = false
+        patchParser.execute {
+            // LuiPatchBatch.parse is pure; decode here so the main thread
+            // only pays for tree.apply + publish. A decode failure reads
+            // as a rejection and takes the same resync path.
+            val batch = try {
+                LuiPatchBatch.parse(text)
+            } catch (_: LuiBackendException) {
+                null
+            }
+            mainHandler.post {
+                if (!started || session.get() != token || patchSink !== sink) return@post
+                if (awaitingSnapshot && !snapshot) return@post
+                if (batch != null && sink.onPatch(batch, snapshot)) {
+                    if (snapshot) awaitingSnapshot = false
+                } else {
+                    check(!snapshot) {
+                        "LUI host rejected the authoritative runtime snapshot"
+                    }
+                    awaitingSnapshot = true
+                    ocamlHandler.post {
+                        if (session.get() != token) return@post
+                        emittingSnapshot = true
+                        try {
+                            check(nativeResync() == 1) { "LUI runtime snapshot failed" }
+                        } finally {
+                            emittingSnapshot = false
+                        }
                     }
                 }
             }
@@ -86,8 +107,8 @@ object LuiBridge {
 
     /** Start a session with a retained backend that can apply both deltas and snapshots. */
     fun start(libraryName: String, hostCode: Int = HOST_KOTLIN, backend: LuiBackend): Boolean =
-        start(libraryName, hostCode, PatchSink { json, snapshot ->
-            if (snapshot) backend.applySnapshot(json) else backend.applyBatch(json)
+        start(libraryName, hostCode, PatchSink { batch, snapshot ->
+            if (snapshot) backend.applySnapshot(batch) else backend.applyBatch(batch)
         })
 
     /** Start an ordered runtime session and retire any previous receiver. */
