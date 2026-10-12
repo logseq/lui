@@ -409,10 +409,21 @@ let emit_glyph t scene ~scale ~nsub ~pen ~baseline ~font ~gid ~g_y ~fg =
     t.gcount <- t.gcount + 1;
     true
 
+(* A secure field never shapes its real text: the paint pass hands the
+   engine the bullet mask already, and any string that arrives here
+   unmasked — the composition overlay's marked text, a caret prefix —
+   goes through the same mask so plaintext can never reach a shaped
+   layout. Masking is idempotent, so a masked input passes through
+   unchanged. *)
+let masked_text store id s =
+  if Lui_store.kind store id = "secure-field" then Lui_paint.secure_mask s
+  else s
+
 let text_ops t id r fg s =
   let scene = t.scene () in
   let scale = t.scale () in
   let store = t.store () in
+  let s = masked_text store id s in
   let st = style_of t store id in
   let font = st.ts_font in
   (* The layout comes from the bounded cache: measure populated the
@@ -521,7 +532,7 @@ let measure t store id ~scale =
   else
     let text =
       match Lui_store.string_prop store id "text" with
-      | Some s when s <> "" -> s
+      | Some s when s <> "" -> masked_text store id s
       | _ ->
         (match Lui_store.string_prop store id "placeholder" with
          | Some s -> s
@@ -538,6 +549,7 @@ let measure t store id ~scale =
    so they stay consistent with what [text_ops] paints. *)
 let measure_text t id s =
   let store = t.store () in
+  let s = masked_text store id s in
   let st = style_of t store id in
   if s = "" then
     if Lui_store.is_editable_text_kind (Lui_store.kind store id) then
@@ -559,8 +571,12 @@ let measure_text t id s =
 let hit_text t id text ~lx ~ly ~lw:_ ~lh =
   let store = t.store () in
   let scale = t.scale () in
+  (* A secure field hit-tests the mask it paints; the masked offset
+     maps back to a real caret offset on the same boundaries. *)
+  let masked = Lui_store.kind store id = "secure-field" in
+  let shown = if masked then Lui_paint.secure_mask text else text in
   let st = style_of t store id in
-  let lay = layout_of t st ~width:0. text in
+  let lay = layout_of t st ~width:0. shown in
   let text_h = styled_height st lay *. scale in
   let y0 = Float.max 0. ((lh -. text_h) /. 2.) in
   let py = (ly -. y0) /. scale in
@@ -581,4 +597,5 @@ let hit_text t id text ~lx ~ly ~lw:_ ~lh =
       in
       ll.Lui_text.ll_top +. frac *. ll.Lui_text.ll_height
   in
-  Lui_text.hit_test lay (lx /. scale, py')
+  let off = Lui_text.hit_test lay (lx /. scale, py') in
+  if masked then Lui_paint.secure_byte_of_masked text off else off
