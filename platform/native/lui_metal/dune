@@ -39,4 +39,4 @@
  (action
   (with-stdout-to %{target}
    (bash
-    "if [ \"$(uname -s)\" = Darwin ]; then printf '(-framework Metal -framework QuartzCore %s)' \"$(pkg-config --libs sdl2 2>/dev/null)\"; else printf '(%s)' \"$(pkg-config --libs sdl2 2>/dev/null)\"; fi"))))
+    "if [ \"$(uname -s)\" = Darwin ]; then printf '(-framework Metal -framework QuartzCore -framework CoreFoundation -framework Foundation %s)' \"$(pkg-config --libs sdl2 2>/dev/null)\"; else printf '(%s)' \"$(pkg-config --libs sdl2 2>/dev/null)\"; fi"))))
