@@ -2403,9 +2403,11 @@ module Theme = struct
     match List.assoc_opt name palette with
     | Some c -> Some c
     | None -> (
-      match color_of_hex name with
-      | Some _ as c -> c
-      | None -> color_of_fn name)
+      if name = "transparent" then Some (color 0 0 0 0)
+      else
+        match color_of_hex name with
+        | Some _ as c -> c
+        | None -> color_of_fn name)
 end
 
 module Checksum = struct
