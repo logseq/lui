@@ -202,6 +202,64 @@ let test_hit () =
      Alcotest.failf "deep path %s"
        (String.concat "," (List.map string_of_int p)))
 
+let rects_of lst =
+  let t = Rects.create () in
+  List.iter (fun (id, r) -> Hashtbl.replace t id r) lst;
+  t
+
+(* DOM order [z2, z1]: the z2 node paints on top even though it is the
+   first child, so it must head the hit path — paint order, not store
+   order, decides who wins a click. *)
+let test_hit_z_order () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Stack);
+        CreateNode (3, Button); CreateNode (4, Button);
+        InsertChild (1, 2, 0);
+        InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+        SetProp (3, ZIndex, IntValue 2); SetProp (4, ZIndex, IntValue 1) ]
+  in
+  let r = rect 0. 0. 100. 40. in
+  let rects = rects_of [ (1, r); (2, r); (3, r); (4, r) ] in
+  Alcotest.(check (option int)) "z2 paints on top" (Some 3)
+    (hit s rects ~x:10. ~y:10.)
+
+(* A popover inside a clipped scroll container paints OUTSIDE the
+   clip — it is a promoted overlay. A click in that region must reach
+   the popover's child, not die on the scroll clip like an in-flow
+   child does. *)
+let test_hit_popup_escapes_clip () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Scroll);
+        CreateNode (3, Popover); CreateNode (4, Button);
+        InsertChild (1, 2, 0); InsertChild (2, 3, 0);
+        InsertChild (3, 4, 0) ]
+  in
+  let rects =
+    rects_of
+      [ (1, rect 0. 0. 100. 100.); (2, rect 0. 0. 100. 100.);
+        (3, rect 0. 120. 80. 30.); (4, rect 0. 130. 80. 10.) ]
+  in
+  Alcotest.(check (option int)) "popover's child hits" (Some 4)
+    (hit s rects ~x:10. ~y:135.)
+
+(* A mid-tree popup paints above siblings that come after it, so its
+   content wins the click even when a later sibling covers the same
+   spot. *)
+let test_hit_popup_promoted () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Popover);
+        CreateNode (3, Button); CreateNode (4, Button);
+        InsertChild (1, 2, 0); InsertChild (1, 4, 1);
+        InsertChild (2, 3, 0) ]
+  in
+  let r = rect 0. 0. 100. 100. in
+  let rects = rects_of [ (1, r); (2, r); (3, r); (4, r) ] in
+  Alcotest.(check (option int)) "popup over later sibling" (Some 3)
+    (hit s rects ~x:10. ~y:10.)
+
 (* ---------- event mapping ---------- *)
 
 let ui_store_fresh () =
@@ -377,6 +435,29 @@ let test_caret_ops_wiring () =
     (Ui.handle ui s rects
        (Input.Key_down (Input.Arrow_up, Input.mods_none, false)));
   Alcotest.(check int) "engine up sentinel" 0 (Ui.caret ui)
+
+let test_text_revisions () =
+  (* P1-2: the text session counts host-local edits and adopted
+     model revisions separately — a Ui-visible window into the
+     edit protocol. *)
+  let s, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  let s0, _, _ = Ui.text_revisions ui in
+  Ui.set_focused ui s 4;
+  ignore (Ui.handle ui s rects (Input.Text_input "ab"));
+  let s1, l1, m1 = Ui.text_revisions ui in
+  Alcotest.(check bool) "new session" true (s1 <> s0);
+  Alcotest.(check int) "local edit counted" 1 l1;
+  Alcotest.(check int) "no model adoption yet" 0 m1;
+  (* a model-side write adopts into the session *)
+  Lui_store.apply_batch s
+    { generation = 2;
+      ops = [ SetProp (4, TextValue, StringValue "remote") ] };
+  ignore (Ui.store_changed ui s);
+  Alcotest.(check string) "model text adopted" "remote"
+    (Ui.shadow ui);
+  let _, _, m2 = Ui.text_revisions ui in
+  Alcotest.(check int) "model revision" 1 m2
 
 let test_hover_detail () =
   let s, rects = ui_store_fresh () in
@@ -694,6 +775,230 @@ let test_wheel_x () =
   Alcotest.(check (float 0.001)) "x reveal" 200.
     (Ui.scroll_offset_x ui 2)
 
+(* ---------- pixel snapping contract ---------- *)
+
+(* The stub layout snaps stored rects to device-pixel edges at
+   fractional scales, and stacked siblings share the snapped
+   boundary — the same edge the paint pass and scroll extents see. *)
+let test_snap_stub_layout () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Column);
+        CreateNode (3, Button); CreateNode (4, Button);
+        InsertChild (1, 2, 0); InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+        SetProp (2, PaddingValue, IntValue 3);
+        SetProp (3, HeightValue, IntValue 20);
+        SetProp (4, HeightValue, IntValue 20) ]
+  in
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:100 ~height:100 ~scale:1.5
+    ~measure:Layout.default_measure;
+  let aligned (r : rect) =
+    r.x = Float.round r.x && r.y = Float.round r.y
+    && r.w = Float.round r.w && r.h = Float.round r.h
+  in
+  List.iter
+    (fun id ->
+       Alcotest.(check bool)
+         (Printf.sprintf "node %d aligned" id) true
+         (aligned (Rects.get rects id)))
+    [ 1; 2; 3; 4 ];
+  let r3 = Rects.get rects 3 and r4 = Rects.get rects 4 in
+  (* pad 3 logical = 4.5 device px: node 3 spans 4.5..34.5 → 5..35,
+     node 4 starts exactly on that shared edge. *)
+  Alcotest.(check (float 0.001)) "shared edge" 35. (r3.y +. r3.h);
+  Alcotest.(check (float 0.001)) "shared edge" 35. r4.y
+
+(* The 0.5 px phantom scroll: a fractional cap — the overshoot a
+   fractional layout could leave — rounds onto the device-pixel grid
+   instead of opening a sub-pixel scroll range the rasterizer cannot
+   paint. *)
+let test_snap_phantom_scroll () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Scroll);
+        CreateNode (3, ListItem);
+        InsertChild (1, 2, 0); InsertChild (2, 3, 0) ]
+  in
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:100 ~height:100 ~scale:1.
+    ~measure:Layout.default_measure;
+  let ui = Ui.create () in
+  ignore (Ui.handle ui s rects (Input.Move (10., 10.)));
+  let epoch0 = Ui.scroll_epoch ui in
+  (* 0.4 px of range snaps shut: no scrollable range, no move. *)
+  Ui.set_scroll_cap ui 2 0.4;
+  Alcotest.(check (float 0.001)) "cap snapped shut" 0.
+    (Ui.scroll_cap ui 2);
+  ignore (Ui.handle ui s rects (Input.Wheel (0., -1.)));
+  Alcotest.(check (float 0.001)) "no phantom offset" 0.
+    (Ui.scroll_offset ui 2);
+  Alcotest.(check int) "no scroll epoch" epoch0 (Ui.scroll_epoch ui);
+  (* A fractional cap rounds to the pixel the content edges snapped
+     to. *)
+  Ui.set_scroll_cap ui 2 80.6;
+  Alcotest.(check (float 0.001)) "cap rounds" 81. (Ui.scroll_cap ui 2);
+  Ui.set_scroll_cap_x ui 2 40.4;
+  Alcotest.(check (float 0.001)) "x cap rounds" 40.
+    (Ui.scroll_cap_x ui 2)
+
+(* Hit-testing honours the snapped edges: a point inside the
+   fractional band the rect snapped away from belongs to the
+   neighbour the edge moved to — exactly where the rasterizer drew
+   the boundary. *)
+let test_snap_hit_boundary () =
+  let s =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Column);
+        CreateNode (3, Button); CreateNode (4, Button);
+        InsertChild (1, 2, 0); InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+        SetProp (2, PaddingValue, IntValue 3);
+        SetProp (3, HeightValue, IntValue 20);
+        SetProp (4, HeightValue, IntValue 20) ]
+  in
+  let rects = Rects.create () in
+  Layout.refresh s rects ~width:100 ~height:100 ~scale:1.5
+    ~measure:Layout.default_measure;
+  (* the snapped boundary sits at device y 35: the fractional band
+     34.5..35 belongs to node 3 and the point just past it to node 4 —
+     unsnapped, the boundary would have been 34.5 and node 3's hit
+     strip would have ended where its painted edge does not. *)
+  Alcotest.(check (option int)) "below edge" (Some 3)
+    (hit s rects ~x:15. ~y:34.8);
+  Alcotest.(check (option int)) "on edge" (Some 4)
+    (hit s rects ~x:15. ~y:35.1)
+
+(* The caret rect is snapped before it reaches the IME state machine —
+   the candidate window anchors on the same device-pixel edges the
+   field painted. *)
+let test_snap_caret () =
+  let s, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  ignore
+    (Ui.handle ui s rects
+       (Input.Caret (rect 10.4 5.6 2.4 12.2)));
+  match (Ui.ime ui).Lui_ime.caret_rect with
+  | Some r ->
+    Alcotest.(check (float 0.001)) "x" 10. r.Lui_scene.x;
+    Alcotest.(check (float 0.001)) "y" 6. r.Lui_scene.y;
+    Alcotest.(check (float 0.001)) "w" 3. r.Lui_scene.w;
+    Alcotest.(check (float 0.001)) "h" 12. r.Lui_scene.h
+  | None -> Alcotest.fail "caret rect not recorded"
+
+(* Paint and hit-test resolve a placement through the same
+   [Lui_paint.resolve_rect]; its output is snapped, so a fractional
+   layout rect can never produce a strip the raster did not paint but
+   the hit-test still counts. *)
+let test_snap_resolve_parity () =
+  let s = demo_store () in
+  let p =
+    Lui_paint.placement_of_rect (rect 10.4 5.6 30.4 20.3)
+  in
+  let r =
+    Lui_paint.resolve_rect ~scale:1. ~viewport:(rect 0. 0. 200. 200.) s 3
+      "button" p (rect 0. 0. 200. 200.)
+  in
+  Alcotest.(check (float 0.001)) "x" 10. r.Lui_scene.x;
+  Alcotest.(check (float 0.001)) "y" 6. r.Lui_scene.y;
+  Alcotest.(check (float 0.001)) "w" 31. r.Lui_scene.w;
+  Alcotest.(check (float 0.001)) "h" 20. r.Lui_scene.h
+
+(* ---------- frame scheduler ---------- *)
+
+(* Mutation → dirty → frame callback → present: the first frame always
+   paints, presents clear the flag, a clean scheduler is Idle so the
+   loop may sleep. *)
+let test_frame_dirty_cycle () =
+  let f = Frame.create () in
+  Alcotest.(check bool) "starts dirty" true (Frame.dirty f);
+  (match Frame.poll f ~now_ms:0. ~vsync:false with
+   | Frame.Present -> ()
+   | _ -> Alcotest.fail "first frame must present");
+  Frame.presented f ~now_ms:0.;
+  (match Frame.poll f ~now_ms:1. ~vsync:false with
+   | Frame.Idle -> ()
+   | _ -> Alcotest.fail "clean scheduler is idle");
+  Frame.request_frame f;
+  (match Frame.poll f ~now_ms:1. ~vsync:false with
+   | Frame.Wait_ms _ -> ()
+   | _ -> Alcotest.fail "dirty inside the period waits")
+
+(* Non-vsync pacing: presents hold to the monitor's refresh period,
+   vsync presents whenever dirty (the swap itself blocks). *)
+let test_frame_pacing () =
+  let f = Frame.create () in
+  Frame.presented f ~now_ms:0.;
+  Frame.request_frame f;
+  (match Frame.poll f ~now_ms:5. ~vsync:false with
+   | Frame.Wait_ms ms ->
+     (* 60 Hz → 16.67 ms period; ~11.6 remains *)
+     Alcotest.(check bool) "waits the rest" true
+       (ms > 10. && ms < 13.)
+   | _ -> Alcotest.fail "expected a wait");
+  (match Frame.poll f ~now_ms:17. ~vsync:false with
+   | Frame.Present -> ()
+   | _ -> Alcotest.fail "past deadline presents");
+  (match Frame.poll f ~now_ms:1. ~vsync:true with
+   | Frame.Present -> ()
+   | _ -> Alcotest.fail "vsync presents when dirty")
+
+(* The monitor's refresh rate drives the period — 120 Hz and 144 Hz
+   shorten it. *)
+let test_frame_refresh_rate () =
+  let f = Frame.create () in
+  Frame.set_refresh_hz f 120.;
+  Frame.presented f ~now_ms:0.;
+  Frame.request_frame f;
+  (match Frame.poll f ~now_ms:4. ~vsync:false with
+   | Frame.Wait_ms ms ->
+     Alcotest.(check bool) "120Hz period" true (ms > 3. && ms < 6.)
+   | _ -> Alcotest.fail "expected a wait");
+  (match Frame.poll f ~now_ms:9. ~vsync:false with
+   | Frame.Present -> ()
+   | _ -> Alcotest.fail "120Hz deadline");
+  Frame.set_refresh_hz f 144.;
+  Frame.presented f ~now_ms:10.;
+  Frame.request_frame f;
+  (match Frame.poll f ~now_ms:15. ~vsync:false with
+   | Frame.Wait_ms ms ->
+     Alcotest.(check bool) "144Hz period" true (ms > 1. && ms < 3.)
+   | _ -> Alcotest.fail "expected a wait");
+  (* invalid rates keep the previous value *)
+  Frame.set_refresh_hz f 0.;
+  Alcotest.(check (float 0.01)) "kept" 144. (Frame.refresh_hz f)
+
+(* Visibility: hidden and minimized surfaces throttle presents to the
+   background cadence; restoring marks the surface dirty so it
+   presents fresh content right away. *)
+let test_frame_visibility () =
+  let f = Frame.create () in
+  Frame.set_refresh_hz f 60.;
+  Frame.presented f ~now_ms:0.;
+  Frame.set_visibility f Frame.Hidden;
+  Frame.request_frame f;
+  (* inside the 250 ms background period the surface waits even
+     though a refresh interval already passed *)
+  (match Frame.poll f ~now_ms:20. ~vsync:false with
+   | Frame.Wait_ms ms ->
+     Alcotest.(check bool) "bg cadence" true (ms > 200.)
+   | _ -> Alcotest.fail "expected a wait");
+  (match Frame.poll f ~now_ms:260. ~vsync:false with
+   | Frame.Present -> ()
+   | _ -> Alcotest.fail "throttled present");
+  Frame.presented f ~now_ms:260.;
+  Frame.set_visibility f Frame.Minimized;
+  Frame.request_frame f;
+  (match Frame.poll f ~now_ms:300. ~vsync:false with
+   | Frame.Wait_ms _ -> ()
+   | _ -> Alcotest.fail "minimized throttles too");
+  (* back on screen: dirty again, and past the refresh deadline the
+     restored surface presents promptly *)
+  Frame.set_visibility f Frame.Shown;
+  Alcotest.(check bool) "restore is dirty" true (Frame.dirty f);
+  (match Frame.poll f ~now_ms:300. ~vsync:false with
+   | Frame.Present -> ()
+   | _ -> Alcotest.fail "restore presents promptly")
+
 (* ---------- demo dispatch flow ---------- *)
 
 (* Boot the real demo app against a store-mirroring backend, then feed
@@ -929,7 +1234,7 @@ let test_headless_checksum () =
   (* the recorded value pins the demo's initial scene: any render-path
      change shows up here *)
   Alcotest.(check string) "golden"
-    "headless done: frames=6 checksum=e6ca6478011f11ad" c1
+    "headless done: frames=6 checksum=7b8b9dbbe6351aa5" c1
 
 (* ---------- multi-window ---------- *)
 
@@ -1282,7 +1587,7 @@ let test_headless_multi () =
   let out1 = run () and out2 = run () in
   (match win_done_lines out1 with
    | [ w0; w1 ] ->
-     Alcotest.(check string) "win0 golden" "e6ca6478011f11ad"
+     Alcotest.(check string) "win0 golden" "7b8b9dbbe6351aa5"
        (checksum_value w0);
      Alcotest.(check bool) "independent checksums" true
        (checksum_value w0 <> checksum_value w1)
@@ -2111,15 +2416,22 @@ let test_assembly_scroll_caps () =
   ignore (Assembly.handle asm (Input.Wheel (0., -1.)));
   Alcotest.(check (float 0.001)) "wheel scrolled" 44.
     (Ui.scroll_offset ui 2);
-  (* the mirror reflects the shift after the next paint: item 3 loses
-     44px off the top under the container clip, item 4 slides into the
-     freed span below *)
+  (* the mirror reflects the shift after the next paint: item 3 moves
+     44px up, item 4 slides into the freed span below. Mirror rects
+     keep their full resolved box — the container clip is applied by
+     the shared hit walk, not baked into the mirror. *)
   ignore (Assembly.repaint asm);
   let r3 = Rects.get (Assembly.rects asm) 3
   and r4 = Rects.get (Assembly.rects asm) 4 in
-  Alcotest.(check (float 0.001)) "item3 clipped h" 76. r3.h;
+  Alcotest.(check (float 0.001)) "item3 shifted" (-44.) r3.y;
+  Alcotest.(check (float 0.001)) "item3 full h" 120. r3.h;
   Alcotest.(check (float 0.001)) "item4 in view" 76. r4.y;
-  Alcotest.(check (float 0.001)) "item4 visible h" 24. r4.h;
+  Alcotest.(check (float 0.001)) "item4 full h" 80. r4.h;
+  (* the clip still holds for hits: item 4's box extends to 156 but
+     the part below the 100px viewport is clipped away *)
+  Alcotest.(check bool) "clipped part misses item4" true
+    (hit (Assembly.store asm) (Assembly.rects asm) ~x:10. ~y:130.
+     <> Some 4);
   (* hit parity follows paint: the point that hit item 3 before the
      scroll now hits item 4 where it slid in *)
   Alcotest.(check (option int)) "scrolled hit" (Some 4)
@@ -2247,7 +2559,12 @@ let () =
         [ Alcotest.test_case "stack" `Quick test_layout;
           Alcotest.test_case "props" `Quick test_layout_props ] );
       ( "hit",
-        [ Alcotest.test_case "path" `Quick test_hit ] );
+        [ Alcotest.test_case "path" `Quick test_hit;
+          Alcotest.test_case "z-order" `Quick test_hit_z_order;
+          Alcotest.test_case "popup escapes clip" `Quick
+            test_hit_popup_escapes_clip;
+          Alcotest.test_case "popup promoted" `Quick
+            test_hit_popup_promoted ] );
       ( "events",
         [ Alcotest.test_case "click" `Quick test_click_press;
           Alcotest.test_case "release elsewhere" `Quick
@@ -2255,6 +2572,8 @@ let () =
           Alcotest.test_case "focus" `Quick test_click_focus;
           Alcotest.test_case "text+keys" `Quick test_text_input_and_keys;
           Alcotest.test_case "caret ops" `Quick test_caret_ops_wiring;
+          Alcotest.test_case "text revisions" `Quick
+            test_text_revisions;
           Alcotest.test_case "hover detail" `Quick test_hover_detail;
           Alcotest.test_case "context menu" `Quick test_context_menu;
           Alcotest.test_case "disabled gate" `Quick test_disabled_gate ] );
@@ -2271,11 +2590,26 @@ let () =
         [ Alcotest.test_case "scale" `Quick test_resize_scale ] );
       ( "pacing",
         [ Alcotest.test_case "dirty" `Quick test_pacing ] );
+      ( "frame scheduler",
+        [ Alcotest.test_case "dirty cycle" `Quick test_frame_dirty_cycle;
+          Alcotest.test_case "pacing" `Quick test_frame_pacing;
+          Alcotest.test_case "refresh rate" `Quick
+            test_frame_refresh_rate;
+          Alcotest.test_case "visibility" `Quick test_frame_visibility ] );
       ( "checksum",
         [ Alcotest.test_case "ops" `Quick test_checksum ] );
       ( "scroll",
         [ Alcotest.test_case "wheel" `Quick test_scroll;
           Alcotest.test_case "wheel-x" `Quick test_wheel_x ] );
+      ( "snapping",
+        [ Alcotest.test_case "stub layout" `Quick test_snap_stub_layout;
+          Alcotest.test_case "phantom scroll" `Quick
+            test_snap_phantom_scroll;
+          Alcotest.test_case "hit boundary" `Quick
+            test_snap_hit_boundary;
+          Alcotest.test_case "caret" `Quick test_snap_caret;
+          Alcotest.test_case "resolve parity" `Quick
+            test_snap_resolve_parity ] );
       ( "demo",
         [ Alcotest.test_case "dispatch flow" `Quick test_demo_dispatch ] );
       ( "selection",

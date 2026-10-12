@@ -60,6 +60,12 @@ and frag = {
   mutable child_parent : rect;
   mutable show_kids : bool;
   mutable born : bool;
+  (* [has_box]/[resolved]: the rect ops were painted under, for
+     translation reuse. [hard]: a mark whose effect isn't pure
+     geometry — translation is only legal without it. *)
+  mutable has_box : bool;
+  mutable resolved : rect;
+  mutable hard : bool;
   mutable repaint : bool;
   mutable rekids : bool;
   mutable seg_dirty : bool;
@@ -76,8 +82,9 @@ type retained = {
      ops re-derive the right child list when the op only names the
      child. *)
   fparent : (int, int) Hashtbl.t;
-  (* Open work the next materialize must process. *)
-  pend_repaint : (int, unit) Hashtbl.t;
+  (* Open work the next materialize must process: child lists run
+     first so parent links are current, then segments — every mark
+     lands there since a repaint always perturbs its segment. *)
   pend_kids : (int, unit) Hashtbl.t;
   pend_segs : (int, unit) Hashtbl.t;
   (* Store revision the journal has been replayed through. *)
@@ -96,8 +103,7 @@ type retained = {
 
 let create () =
   { frags = Hashtbl.create 256; fparent = Hashtbl.create 256;
-    pend_repaint = Hashtbl.create 64; pend_kids = Hashtbl.create 16;
-    pend_segs = Hashtbl.create 64;
+    pend_kids = Hashtbl.create 16; pend_segs = Hashtbl.create 64;
     rev = -1; vp = rect 0. 0. 0. 0.; scale = 1.;
     dirty = false; mgen = 0; stat_repaints = 0; stat_visits = 0 }
 
@@ -115,6 +121,7 @@ let fresh_frag id =
     alpha_in = 0.; parent_r = rect 0. 0. 0. 0.;
     alpha_out = 0.; child_parent = rect 0. 0. 0. 0.;
     show_kids = false; born = false;
+    has_box = false; resolved = rect 0. 0. 0. 0.; hard = true;
     repaint = false; rekids = false; seg_dirty = true;
     gen = -1; gbase = 0; wbase = 0; ebase = 0 }
 
@@ -142,10 +149,16 @@ let mark_seg rt id =
 
 let mark_repaint rt id =
   let f = frag_of rt id in
-  if not f.repaint then begin
-    f.repaint <- true;
-    Hashtbl.replace rt.pend_repaint id ()
-  end;
+  f.repaint <- true;
+  f.hard <- true;
+  mark_seg rt id;
+  rt.dirty <- true
+
+(* Geometry-only mark: rects moved under unchanged props/state — a
+   pure translation may re-derive the fragment without re-planning. *)
+let mark_geom rt id =
+  let f = frag_of rt id in
+  f.repaint <- true;
   mark_seg rt id;
   rt.dirty <- true
 
@@ -253,6 +266,35 @@ let build_kids rt store (f : frag) id =
   List.iter (fun (k, _) -> Hashtbl.replace rt.fparent k id) f.kids;
   f.rekids <- false
 
+(* Uniform-translation re-derivation: only these fields carry
+   absolute coordinates — gradient vectors are unit-space, [isrc] is
+   texture-space, radii/borders/shadow-offsets are relative, and the
+   [fx] buffer's shader params are opaque (its presence disables the
+   fast path). *)
+let shift r dx dy = { r with x = r.x +. dx; y = r.y +. dy }
+
+let translate_op dx dy (op : op) : op =
+  match op with
+  | Fill fl -> Fill { fl with frect = shift fl.frect dx dy }
+  | Shadow s ->
+    Shadow
+      { s with srect = shift s.srect dx dy;
+               scast = shift s.scast dx dy }
+  | Image i -> Image { i with irect2 = shift i.irect2 dx dy }
+  | Push_clip c -> Push_clip { c with crect = shift c.crect dx dy }
+  | Effect e -> Effect { e with edrect = shift e.edrect dx dy }
+  | Hole h -> Hole { h with hrect = shift h.hrect dx dy }
+  | Glyphs _ | Pop_clip -> op
+
+let translate_frag (f : frag) dx dy =
+  f.pre <- List.map (translate_op dx dy) f.pre;
+  f.post <- List.map (translate_op dx dy) f.post;
+  if Array.length f.glyphs > 0 then
+    f.glyphs <-
+      Array.map
+        (fun g -> { g with gx = g.gx +. dx; gy = g.gy +. dy })
+        f.glyphs
+
 (* The node's own emission, captured into [f]: the same decisions
    [Lui_paint.paint_node_body] makes — shown/cull/state/alpha/clip —
    minus the child walk, which the segment build drives through
@@ -266,6 +308,49 @@ let repaint_frag rt ctx store scene (f : frag) id kind ~parent_r
   f.alpha_in <- alpha_in;
   f.parent_r <- parent_r;
   f.kind <- kind;
+  (* Fast paths reproducing exactly what the normal walk emits. A
+     hidden or viewport-missing node contributes nothing — only its
+     bookkeeping updates. A pure translation shifts every absolute
+     coordinate in the cached ops — no prop reads, no re-plan. *)
+  let quick =
+    if not (Lui_paint.node_shown store id) then `Empty
+    else if Lui_paint.unboxed store id then `Full
+    else
+      let p = ctx.Lui_paint.hooks.layout id in
+      let r = Lui_paint.resolve_in ctx store id kind p parent_r in
+      if
+        (not (rect_empty r))
+        && rect_empty (rect_intersect r ctx.Lui_paint.viewport)
+      then `Empty
+      else if
+        (not f.hard) && f.has_box && Array.length f.fx = 0
+        && r.w = f.resolved.w && r.h = f.resolved.h
+      then `Shift r
+      else `Full
+  in
+  (match quick with
+   | `Empty ->
+     f.pre <- [];
+     f.post <- [];
+     f.glyphs <- [||];
+     f.wide <- [||];
+     f.fx <- [||];
+     (* The normal path's culled/hidden branch: children context
+        forwards unchanged. *)
+     f.has_box <- false;
+     f.show_kids <- false;
+     f.child_parent <- parent_r;
+     f.alpha_out <- alpha_in;
+     f.born <- true;
+     f.repaint <- false;
+     f.hard <- false
+   | `Shift r ->
+     translate_frag f (r.x -. f.resolved.x) (r.y -. f.resolved.y);
+     f.resolved <- r;
+     f.child_parent <- r;
+     f.repaint <- false;
+     f.hard <- false
+   | `Full -> begin
   let saved_ops = scene.ops
   and saved_glyphs = scene.glyphs
   and saved_wide = scene.wide
@@ -276,17 +361,20 @@ let repaint_frag rt ctx store scene (f : frag) id kind ~parent_r
   scene.effects <- [];
   let pre = ref [] and post = ref [] in
   let show_kids = ref false in
+  let has_box = ref false in
   let child_parent = ref parent_r and alpha_out = ref alpha_in in
   if Lui_paint.node_shown store id then begin
     let contents = Lui_paint.unboxed store id in
     let p = ctx.Lui_paint.hooks.layout id in
     let r = Lui_paint.resolve_in ctx store id kind p parent_r in
-    let misses_viewport =
+    let misses_viewport0 =
       (not contents)
       && (not (rect_empty r))
       && rect_empty (rect_intersect r ctx.Lui_paint.viewport)
     in
-    if not misses_viewport then begin
+    if not misses_viewport0 then begin
+      f.resolved <- r;
+      has_box := not contents;
       let st = Lui_paint.effective_state ctx.hooks store id in
       let rs = Lui_paint.resolve_style store id st in
       let alpha =
@@ -335,20 +423,26 @@ let repaint_frag rt ctx store scene (f : frag) id kind ~parent_r
   f.glyphs <- Array.of_list (List.rev scene.glyphs);
   f.wide <- Array.of_list (List.rev scene.wide);
   f.fx <- Array.of_list scene.effects;
+  f.has_box <- !has_box;
   f.child_parent <- !child_parent;
   f.alpha_out <- !alpha_out;
   f.show_kids <- !show_kids;
   f.born <- true;
   f.repaint <- false;
+  f.hard <- false;
   rt.stat_repaints <- rt.stat_repaints + 1;
   scene.ops <- saved_ops;
   scene.glyphs <- saved_glyphs;
   scene.wide <- saved_wide;
-  scene.effects <- saved_fx;
+  scene.effects <- saved_fx
+  end);
   (* Inherited-context cascade: children painted under the old values
-     must re-derive when either moved. *)
-  if f.alpha_out <> old_alpha || f.child_parent <> old_cp then
+     must re-derive when either moved — alpha moves re-plan, a pure
+     containing-block shift may only need re-positioning. *)
+  if f.alpha_out <> old_alpha then
     List.iter (fun (k, _) -> mark_repaint rt k) f.kids
+  else if f.child_parent <> old_cp then
+    List.iter (fun (k, _) -> mark_geom rt k) f.kids
 
 (* Parent context for a pending repaint, painting the parent first so
    the inherited alpha/containing-block are current. [None] while the
@@ -508,7 +602,7 @@ let paint_retained rt hooks store (scene : Lui_scene.t) ?moved ?hints
   end;
   if Lui_store.revision store <> rt.rev then advance rt store;
   (match moved with
-   | Some mv -> Hashtbl.iter (fun id () -> mark_repaint rt id) mv
+   | Some mv -> Hashtbl.iter (fun id () -> mark_geom rt id) mv
    | None -> ());
   (match hints with
    | Some h -> Hashtbl.iter (fun id () -> mark_repaint rt id) h
@@ -531,21 +625,6 @@ let paint_retained rt hooks store (scene : Lui_scene.t) ?moved ?hints
         | Some f when f.rekids -> build_kids rt store f id
         | _ -> ())
       rt.pend_kids;
-    (* Repaints can re-mark children (alpha/containing-block moves) —
-       drain until the worklist empties. *)
-    while Hashtbl.length rt.pend_repaint > 0 do
-      let ids =
-        Hashtbl.fold (fun id () acc -> id :: acc) rt.pend_repaint []
-      in
-      Hashtbl.reset rt.pend_repaint;
-      List.iter
-        (fun id ->
-          match Hashtbl.find_opt rt.frags id with
-          | Some f ->
-            ignore (ensure_painted rt store m.m_ctx scene vp f)
-          | None -> ())
-        ids
-    done;
     (* Roots anchor the paint tree — link them. Dirty subtrees
        rebuild through the worklist; emit-status flips re-mark
        parents into it. Marks under a culled branch are skipped —
@@ -601,7 +680,6 @@ let paint_retained rt hooks store (scene : Lui_scene.t) ?moved ?hints
        same frame's worklists — nothing may leak a phantom dirty into
        the next frame. Fragment flags persist independently for
        culled branches. *)
-    Hashtbl.reset rt.pend_repaint;
     Hashtbl.reset rt.pend_kids;
     Hashtbl.reset rt.pend_segs;
     rt.dirty <- false

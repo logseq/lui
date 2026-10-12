@@ -147,9 +147,41 @@ let test_text_coverage () =
   fcheck "subpixel g" (2. *. 0.5 /. 1.5) ag;
   fcheck "subpixel b" (2. *. 0.5 /. 1.5) ab
 
+(* Pixel snapping: coordinates round half away from zero; rects snap
+   their edges so neighbours share a boundary exactly — the contract
+   that keeps paint, clip, hit-test and scroll extents on the same
+   device-pixel geometry. *)
+let test_snap () =
+  fcheck "snap down" 10. (snap 10.4);
+  fcheck "snap up" 11. (snap 10.6);
+  fcheck "snap half" 11. (snap 10.5);
+  fcheck "snap neg" (-11.) (snap (-10.5));
+  let px, py = snap_point (10.4, 5.6) in
+  fcheck "point x" 10. px;
+  fcheck "point y" 6. py
+
+let test_rect_snap () =
+  let r = rect_snap (rect 10.4 5.6 20.3 11.5) in
+  fcheck "x0" 10. r.x;
+  fcheck "y0" 6. r.y;
+  (* x1 = round(30.7) = 31 → w 21; y1 = round(17.1) = 17 → h 11 *)
+  fcheck "w" 21. r.w;
+  fcheck "h" 11. r.h;
+  (* Adjacent tiles sharing a fractional edge keep sharing the snapped
+     edge — no seam, no overlap. *)
+  let a = rect_snap (rect 0. 0. 33.3 10.5)
+  and b = rect_snap (rect 33.3 0. 33.4 10.5) in
+  fcheck "shared edge" (a.x +. a.w) b.x;
+  (* A rect collapsing under the snap reports empty, not negative. *)
+  Alcotest.(check bool) "degenerate" true
+    (rect_empty (rect_snap (rect 10.6 0. 0.2 4.)))
+
 let () =
   Alcotest.run "lui_scene"
-    [ ( "atlas",
+    [ ( "snap",
+        [ Alcotest.test_case "coordinate" `Quick test_snap;
+          Alcotest.test_case "rect edges" `Quick test_rect_snap ] );
+      ( "atlas",
         [ Alcotest.test_case "put clears padding" `Quick
             test_atlas_put_clears_padding;
           Alcotest.test_case "make room" `Quick test_atlas_make_room;

@@ -110,6 +110,14 @@ val note_paint : t -> int -> unit
 
 val note_paints : t -> int list -> unit
 
+val note_moved : t -> int -> unit
+(** [note_moved h id] marks a node whose emitted rect shifted under
+    unchanged props and state — a scroll subtree, a translated
+    overlay. The next repaint may slide its cached ops instead of
+    re-planning them. *)
+
+val note_moveds : t -> int list -> unit
+
 val invalidate_paint : t -> unit
 (** Drop every cached paint fragment — the wholesale counterpart of
     {!note_paint} for inputs that moved globally (a theme swap under

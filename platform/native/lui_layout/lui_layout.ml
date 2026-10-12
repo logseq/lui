@@ -1177,8 +1177,21 @@ let extent_of root : float * float =
 
 (* ---------- layout ---------- *)
 
+(* The snap boundary of the pixel-snapping contract: flex math stays
+   fractional, the exported rect is edge-snapped once here so paint,
+   hit-test, scroll extents and damage bounds all share the same
+   device-pixel geometry. *)
 let scene_rect (r : Lui_flex.rect) : Lui_scene.rect =
-  { x = r.x; y = r.y; w = r.w; h = r.h }
+  Lui_scene.rect_snap { x = r.x; y = r.y; w = r.w; h = r.h }
+
+(* Re-read [id]'s absolute rect into [t.rects], marking it changed when
+     it differs from what consumers last saw. *)
+let update_rect (t : t) id r =
+  let r' = scene_rect r in
+  (match Hashtbl.find_opt t.rects id with
+   | Some old when old = r' -> ()
+   | _ -> Hashtbl.replace t.rect_changed id ());
+  Hashtbl.replace t.rects id r'
 
 (* Re-read [id]'s absolute rect into [t.rects], marking it changed when
      it differs from what consumers last saw. *)

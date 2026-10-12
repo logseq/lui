@@ -22,6 +22,28 @@ let rect_intersect r o =
 
 let rect_contains r px py = px >= r.x && py >= r.y && px < r.x +. r.w && py < r.y +. r.h
 
+(* Pixel snapping — the single policy for the whole pipeline.
+
+   The contract: logical layout → scale → snap → geometry. Layout and
+   placement math stays in fractional device px; [rect_snap] is applied
+   once where a node's geometry is produced, and every consumer —
+   layout bounds, clip, hit-test, scroll extent, caret and damage
+   bounds — sees the same snapped rect. Snapping the edges (rather
+   than the origin or the size) keeps neighbouring boxes sharing an
+   edge: round(x0) and round(x1) meet exactly, so stacked siblings
+   neither overlap nor leak a fractional gap, and a 0.5 px overshoot
+   can never become phantom scroll range or a hit-test strip the
+   rasterizer did not paint. *)
+let snap v = Float.round v
+
+let snap_point (x, y) = (snap x, snap y)
+
+let rect_snap r =
+  let x0 = snap r.x and y0 = snap r.y in
+  rect x0 y0
+    (Float.max 0. (snap (r.x +. r.w) -. x0))
+    (Float.max 0. (snap (r.y +. r.h) -. y0))
+
 (* Integer rectangle, used by atlas change tracking and backdrops. *)
 type irect = { x0 : int; y0 : int; x1 : int; y1 : int }
 

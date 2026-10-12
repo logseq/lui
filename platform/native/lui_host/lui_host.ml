@@ -69,6 +69,10 @@ type t = {
      resources) changed since the last repaint — the fragment pass's
      third dirty channel, next to the store journal and moved rects. *)
   paint_hints : (int, unit) Hashtbl.t;
+  (* Soft hints: ids whose rects translated under unchanged
+     props/state — the fragment pass may shift cached ops instead of
+     re-planning. *)
+  moved_hints : (int, unit) Hashtbl.t;
   mutable hidden : int -> bool; (* host-owned transient visibility *)
   (* Pointer point an unanchored context-menu opens at — a thunk so the
      accessor reads the live position each repaint. *)
@@ -100,6 +104,7 @@ let create ~hooks ?layout ?(measure = no_measure) ~renderer ~width ~height ~scal
     hooks; layout; measure; renderer; width; height; scale;
     dirty = false; retained = Lui_retained.create ();
     paint_hints = Hashtbl.create 16;
+    moved_hints = Hashtbl.create 16;
     hidden = (fun _ -> false);
     ctx_anchor = (fun () -> None) }
 
@@ -128,6 +133,13 @@ let invalidate_layout h =
 let note_paint h id = Hashtbl.replace h.paint_hints id ()
 
 let note_paints h ids = List.iter (note_paint h) ids
+
+(* Geometry-only change — a scroll offset that shifted a subtree.
+     Marks like a moved rect: the fragment pass may reuse ops under a
+     uniform translation instead of re-planning. *)
+let note_moved h id = Hashtbl.replace h.moved_hints id ()
+
+let note_moveds h ids = List.iter (note_moved h) ids
 
 (* The retained fragment cache — tests invalidate it wholesale when
    their hooks change under a stable store (e.g. a theme swap). *)
@@ -168,7 +180,11 @@ let repaint h =
         then { h.hooks with layout = l.lhook }
         else h.hooks
       in
-      (hooks, Some (l.lchanges ()))
+      let mv = l.lchanges () in
+      Hashtbl.iter
+        (fun id () -> Hashtbl.replace mv id ())
+        h.moved_hints;
+      (hooks, Some mv)
   in
   prof "layout done";
   (* The window clear follows the app theme's "background" token —
@@ -183,6 +199,7 @@ let repaint h =
     ~hints:h.paint_hints ~width:h.width ~height:h.height ~scale:h.scale
     ~clear ();
   Hashtbl.reset h.paint_hints;
+  Hashtbl.reset h.moved_hints;
   prof "paint done";
   h.dirty <- false;
   let bytes = h.renderer.render h.scene in
