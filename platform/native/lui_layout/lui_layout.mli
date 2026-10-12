@@ -82,10 +82,12 @@ val measure_of :
 
 (** Memoized: a call whose inputs all match the last sync returns
     immediately, keeping the previous mirror and rects. The key is the
-    store's mutation revision (bumped by every applied op), the frame
-    geometry, [?ctx_anchor]'s value, and the [?measure]/[?hidden]
-    functions' identities. Scroll offsets are not an input — a frame
-    that only scrolls pays no layout at all. *)
+    store's layout revision ({!Lui_store.layout_rev} — bumped only by
+    structure and layout-classified ops, so a paint-only prop change
+    like [background] never re-enters the mirror), the frame geometry,
+    [?ctx_anchor]'s value, and the [?measure]/[?hidden] functions'
+    identities. Scroll offsets are not an input — a frame that only
+    scrolls pays no layout at all. *)
 
 val sync :
   ?scale:float -> ?measure:text_measure -> ?hidden:(int -> bool) ->
@@ -99,6 +101,10 @@ val sync :
     The store revision covers every store mutation on its own. *)
 
 val invalidate : t -> unit
+
+(** [stat_syncs t] counts the {!sync} calls that actually rebuilt the
+    mirror — memoized calls do not. Test instrumentation. *)
+val stat_syncs : t -> int
 
 (** [compute t ~width ~height] re-runs layout on the current mirror —
     the cheap path when only the frame size changed. [*-viewport]
