@@ -347,7 +347,7 @@ private struct LUIDialogPresentationModifier: ViewModifier {
                 guard let presentation = dialogPresentation,
                       !usesCustomSurface else { return false }
                 return LUIDialogContentPolicy.presentationStyle(
-                    styleClass: presentation.model.property(.styleClass)?.stringValue
+                    styleClass: presentation.model.derived.styleClass
                 ) == style
             },
             set: { isPresented in
@@ -685,7 +685,7 @@ private struct LUINodeView: View {
     private var drawerToggleSuppressed: Bool {
         pinnedDrawerChrome
             && LUIDrawerToggleMarker.isDrawerToggle(
-                styleClass: model.property(.styleClass)?.stringValue)
+                styleClass: model.derived.styleClass)
     }
 
     @ViewBuilder
@@ -1209,9 +1209,7 @@ private struct LUIRetainedPaneModifier: ViewModifier {
     }
 
     private var isRetainedPane: Bool {
-        model.property(.styleClass)?.stringValue?
-            .split(separator: " ")
-            .contains("retained-pane") == true
+        model.derived.styleClassTokens.contains("retained-pane")
     }
 }
 
@@ -2240,7 +2238,7 @@ private struct LUIAnchoredComboboxMenuHost<Content: View>: View {
     var body: some View {
         #if os(iOS)
         if LUIMenuPresentationPolicy.usesAnchoredPopover(
-            styleClass: model?.property(.styleClass)?.stringValue,
+            styleClass: model?.derived.styleClass,
             model: model,
             backend: backend
         ) {
@@ -2416,7 +2414,7 @@ private struct LUIAnchoredMenuHost<Content: View>: View {
     var body: some View {
         #if os(iOS)
         if LUIMenuPresentationPolicy.usesAnchoredPopover(
-            styleClass: model?.property(.styleClass)?.stringValue,
+            styleClass: model?.derived.styleClass,
             model: model,
             backend: backend
         ) {
@@ -2841,8 +2839,8 @@ private struct LUIModalSurfaceContent: View {
 
     /// Modal content renders outside the node tree, so `theme` props on its
     /// ancestors never reach it through the environment — walk the chain and
-    /// decode tokens the same way `LUIThemeScopeModifier` does
-    /// (outermost-first, inner wins).
+    /// apply each ancestor's commit-decoded tokens the same way
+    /// `LUIThemeScopeModifier` does (outermost-first, inner wins).
     private var effectiveSemanticColors: [String: Color] {
         var ancestors: [LUINodeModel] = []
         var cursor = model.parent
@@ -2854,10 +2852,7 @@ private struct LUIModalSurfaceContent: View {
         var colors = semanticColors
         for ancestor in ancestors.reversed() {
             colors.merge(
-                LUIThemeTokenDecoder.colors(
-                    ancestor.property(.theme)?.stringValue,
-                    dark: colorScheme == .dark
-                )
+                ancestor.derived.themeScope.colors(dark: colorScheme == .dark)
             ) { _, new in new }
         }
         return colors
@@ -2867,20 +2862,20 @@ private struct LUIModalSurfaceContent: View {
     private var surfaceContent: some View {
         let _ = model.revision
         if LUINavigationFormSheetPolicy.isNavigationForm(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) || LUINavigationFormSheetPolicy.isNavigationScroll(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) || LUINavigationFormSheetPolicy.isNavigationList(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) || LUINavigationFormSheetPolicy.isNavigationContent(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) {
             NavigationStack {
                 navigationContent
                 .background(modalBackground)
                 .navigationTitle(model.text)
                 .modifier(LUINavigationFormTitleStyle(
-                    styleClass: model.property(.styleClass)?.stringValue
+                    styleClass: model.derived.styleClass
                 ))
                 .toolbar {
                     LUINavigationFormToolbar(
@@ -2909,7 +2904,7 @@ private struct LUIModalSurfaceContent: View {
 
     private var modalBackground: Color {
         if LUIModalBackgroundPolicy.usesGroupedSystemBackground(
-            styleClass: model.property(.styleClass)?.stringValue
+            styleClass: model.derived.styleClass
         ) {
             return modalGroupedSystemBackground
         }
@@ -2950,7 +2945,7 @@ private struct LUIModalSurfaceContent: View {
     @ViewBuilder
     private var navigationContent: some View {
         if LUINavigationFormSheetPolicy.isNavigationScroll(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) {
             ScrollView {
                 if let contentID = navigationFormContentID {
@@ -2959,9 +2954,9 @@ private struct LUIModalSurfaceContent: View {
             }
             .accessibilityIdentifier(navigationFormAccessibilityIdentifier)
         } else if LUINavigationFormSheetPolicy.isNavigationList(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) || LUINavigationFormSheetPolicy.isNavigationContent(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) {
             if let contentID = navigationFormContentID {
                 LUIAnyNodeView(nodeID: contentID, backend: backend).equatable()
@@ -2995,7 +2990,7 @@ private struct LUIModalSurfaceContent: View {
         guard let contentID = navigationFormContentID,
               let content = backend.model(id: contentID),
               LUINavigationFormSheetPolicy.isForm(
-                  content.property(.styleClass)?.stringValue
+                  content.derived.styleClass
               ),
               let fieldID = LUISearchFieldPlacementPolicy.searchableChildID(
                   of: content,
@@ -3041,7 +3036,7 @@ private struct LUINavigationFormRows: View {
     var body: some View {
         if let contentID, let content = backend.model(id: contentID) {
             if LUINavigationFormSheetPolicy.isForm(
-                content.property(.styleClass)?.stringValue
+                content.derived.styleClass
             ) {
                 ForEach(sections(for: content)) { section in
                     if let headerID = section.headerID,
@@ -3166,7 +3161,7 @@ private struct LUINavigationFormToolbar: ToolbarContent {
         return toolbar.children.first { childID in
             guard let child = backend.model(id: childID) else { return false }
             return LUINavigationFormSheetPolicy.actionPlacement(
-                child.property(.styleClass)?.stringValue
+                child.derived.styleClass
             ) == placement
         }
     }
@@ -3239,7 +3234,7 @@ private struct LUIToolbarView: View {
     private var inlineContent: some View {
         let layout = LUIToolbarLayoutPolicy.layout(
             orientation: model.property(.orientation)?.stringValue,
-            styleClass: model.property(.styleClass)?.stringValue,
+            styleClass: model.derived.styleClass,
             childIDs: model.children
         )
         if layout.axis == .vertical {
@@ -3256,7 +3251,7 @@ private struct LUIToolbarView: View {
                         children(layout.scrollingChildIDs)
                     }
                     .padding(.leading, CGFloat(LUIToolbarLayoutPolicy.leadingInset(
-                        model.property(.styleClass)?.stringValue
+                        model.derived.styleClass
                     )))
                 }
                 if let fixedChildID = layout.fixedChildID {
@@ -3578,7 +3573,7 @@ private struct LUIToolbarGroupAnchor: View {
         // the leading children scroll inside their own fused capsule so the
         // pinned item is never pushed off-screen by overflow.
         let pinnedID = LUIToolbarLayoutPolicy.pinsTrailing(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) && model.children.count >= 2 ? model.children.last : nil
         if let pinnedID {
             return [
@@ -4508,8 +4503,7 @@ private struct LUIMenuTriggerView: View {
     /// their pinned wrapper; text cells stay hug-sized with the capsule's
     /// 12pt side padding inside the hit region.
     private var capsuleCell: Bool {
-        model.property(.styleClass)?.stringValue?
-            .split(separator: " ").contains("capsule") == true
+        model.derived.styleClassTokens.contains("capsule")
     }
 
     private var iconOnly: Bool {
@@ -5445,7 +5439,7 @@ private struct LUIButtonView: View {
         label
             .font(
                 LUIButtonVisualPolicy.usesCaptionLabel(
-                    styleClass: model.property(.styleClass)?.stringValue
+                    styleClass: model.derived.styleClass
                 ) ? .caption : .body
             )
             .padding(
@@ -5456,7 +5450,7 @@ private struct LUIButtonView: View {
             )
             .fontWeight(
                 LUIButtonVisualPolicy.usesSemiboldLabel(
-                    styleClass: model.property(.styleClass)?.stringValue
+                    styleClass: model.derived.styleClass
                 ) ? .semibold : nil
             )
             .lineLimit(1)
@@ -5585,7 +5579,7 @@ private struct LUIButtonView: View {
         ), let parentID = model.parent,
               let parent = backend.model(id: parentID) else { return false }
         return LUINavigationFormSheetPolicy.isForm(
-            parent.property(.styleClass)?.stringValue
+            parent.derived.styleClass
         )
     }
 
@@ -6030,11 +6024,11 @@ private struct LUITextView: View {
 
     private var attachmentScaling: LUIAttachmentTextScalingModifier {
         LUIAttachmentTextScalingModifier(enabled: LUITextLinePolicy.boundsAttachmentScaling(
-            styleClass: model.property(.styleClass)?.stringValue))
+            styleClass: model.derived.styleClass))
     }
 
     private var textContent: Text {
-        let classes = model.property(.styleClass)?.stringValue?.split(separator: " ") ?? []
+        let classes = model.derived.styleClassTokens
         if classes.contains("search-match") {
             return Text(LUITextHighlight.preview(model.text, query: highlightQuery))
                 .luiTypography(typography)
@@ -6044,24 +6038,22 @@ private struct LUITextView: View {
 
     private var lineLimit: Int? {
         LUITextLinePolicy.lineLimit(
-            styleClass: model.property(.styleClass)?.stringValue
+            styleClass: model.derived.styleClass
         )
     }
 
     private var layoutPriority: Double {
         LUITextLinePolicy.layoutPriority(
-            styleClass: model.property(.styleClass)?.stringValue
+            styleClass: model.derived.styleClass
         )
     }
 
     private var isFootnote: Bool {
-        model.property(.styleClass)?.stringValue?
-            .split(separator: " ")
-            .contains("footnote") ?? false
+        model.derived.styleClassTokens.contains("footnote")
     }
 
     private var font: Font {
-        let classes = model.property(.styleClass)?.stringValue?.split(separator: " ") ?? []
+        let classes = model.derived.styleClassTokens
         var style: Font.TextStyle = .body
         if classes.contains("title2") { style = .title2 }
         else if classes.contains("headline") { style = .headline }
@@ -6081,7 +6073,7 @@ private struct LUITextView: View {
     /// resolves against when a typography override applies.
     private var baseSize: CGFloat {
         if typography.fontSize != nil { return typography.fontSize ?? 17 }
-        let classes = model.property(.styleClass)?.stringValue?.split(separator: " ") ?? []
+        let classes = model.derived.styleClassTokens
         if classes.contains("title2") { return 22 }
         if classes.contains("headline") { return 17 }
         if classes.contains("subheadline") { return 15 }
@@ -6174,7 +6166,7 @@ private struct LUIRowView: View {
                         )
                         .layoutPriority(LUIRowLayoutPolicy.childLayoutPriority(
                             grow: child?.property(.grow)?.doubleValue,
-                            styleClass: child?.property(.styleClass)?.stringValue
+                            styleClass: child?.derived.styleClass
                         ))
                 }
                 if model.property(.main)?.stringValue == "space_between" &&
@@ -6725,9 +6717,7 @@ private struct LUIListView: View {
         guard let child = backend.model(id: childID), child.kind == .text else {
             return false
         }
-        return (child.property(.styleClass)?.stringValue ?? "")
-            .split(separator: " ")
-            .contains("footnote") == true
+        return child.derived.styleClassTokens.contains("footnote")
     }
 
     /// Row ids in flat payload order across sections; nested rows of
@@ -6946,7 +6936,7 @@ private struct LUIVirtualListView: View {
     }
 
     private var tracksSectionTitles: Bool {
-        model.property(.styleClass)?.stringValue?.split(separator: " ").contains("scroll-section-titles") == true
+        model.derived.styleClassTokens.contains("scroll-section-titles")
     }
 
     private var titleCoordinateSpace: LUIScrollTitleCoordinateSpace {
@@ -6969,7 +6959,7 @@ private struct LUIVirtualListView: View {
 
     private func sectionTitle(in nodeID: Int) -> String? {
         guard let node = backend.model(id: nodeID) else { return nil }
-        if node.property(.styleClass)?.stringValue?.split(separator: " ").contains("scroll-section-title") == true {
+        if node.derived.styleClassTokens.contains("scroll-section-title") {
             return node.text.isEmpty ? nil : node.text
         }
         return node.children.lazy.compactMap { sectionTitle(in: $0) }.first
@@ -7155,7 +7145,7 @@ private struct LUITextControlView: View {
                 text: binding,
                 axis: .vertical
             )
-            .lineLimit(1...(model.property(.styleClass)?.stringValue == "composer-input" ? 6 : Int.max))
+            .lineLimit(1...(model.derived.styleClass == "composer-input" ? 6 : Int.max))
             .submitLabel(model.property(.submitOnEnter)?.boolValue == true ? .send : .return)
         } else if model.kind == .searchField {
             #if os(iOS)
@@ -7292,7 +7282,7 @@ private struct LUIRadioGroupView: View {
     var body: some View {
         #if os(macOS)
         if LUIRadioGroupVisualPolicy.usesMenuStyle(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) {
             picker.pickerStyle(.menu)
         } else {
@@ -7300,7 +7290,7 @@ private struct LUIRadioGroupView: View {
         }
         #else
         if LUIRadioGroupVisualPolicy.usesSegmentedStyle(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) {
             picker.pickerStyle(.segmented)
         } else {
@@ -7616,7 +7606,7 @@ private struct LUISurfaceModifier: ViewModifier {
                 height: floored(model.surfaceHeight).map(CGFloat.init)
             )
             .modifier(LUIBodyLineControlModifier(
-                enabled: model.property(.styleClass)?.stringValue?.split(separator: " ").contains("body-line") == true,
+                enabled: model.derived.styleClassTokens.contains("body-line"),
                 width: model.surfaceWidth.map(CGFloat.init),
                 minimumHeight: CGFloat(model.surfaceHeight ?? 24)
             ))
@@ -7636,7 +7626,7 @@ private struct LUISurfaceModifier: ViewModifier {
                 horizontal: false,
                 vertical: LUISurfaceFramePolicy.usesIntrinsicHeight(
                     kind: model.kind,
-                    styleClass: model.property(.styleClass)?.stringValue
+                    styleClass: model.derived.styleClass
                 )
             )
             .modifier(

@@ -96,6 +96,36 @@ public struct LUIRootSection: Identifiable, Hashable, Sendable {
     }
 }
 
+/// Display data decoded from wire props once per commit — the raw
+/// `style-class` string plus its split token set, and the theme-scope
+/// contribution — so view bodies read plain fields instead of re-parsing
+/// strings every evaluation.
+struct LUINodeDerived: Equatable {
+    var styleClass: String?
+    var styleClassTokens: Set<String>
+    var themeScope: LUIThemeScopeContribution
+
+    init() {
+        styleClass = nil
+        styleClassTokens = []
+        themeScope = LUIThemeScopeContribution()
+    }
+
+    init(properties: [LUIProperty: LUIWireValue]) {
+        styleClass = properties[.styleClass]?.stringValue
+        styleClassTokens = styleClass.map {
+            Set($0.split(separator: " ").map(String.init))
+        } ?? []
+        themeScope = LUIThemeScopeContribution(
+            tokens: LUIThemeTokenDecoder.tokens(properties[.theme]?.stringValue),
+            scheme: LUIThemeTokenDecoder.colorScheme(
+                properties[.themeMode]?.stringValue
+            ),
+            typography: LUITypographySpec(properties: properties)
+        )
+    }
+}
+
 @Observable
 @MainActor
 final class LUINodeModel: Identifiable {
@@ -106,6 +136,14 @@ final class LUINodeModel: Identifiable {
     var properties: [LUIProperty: LUIWireValue] {
         access(keyPath: \.properties)
         return storedProperties
+    }
+    /// Prop-derived display data (style-class tokens, theme scope),
+    /// refreshed whenever `properties` restages — subscribers only see a
+    /// mutation when the derived data itself changes.
+    @ObservationIgnored private var storedDerived: LUINodeDerived
+    var derived: LUINodeDerived {
+        access(keyPath: \.derived)
+        return storedDerived
     }
     @ObservationIgnored private var storedChildren: [Int]
     var children: [Int] {
@@ -135,6 +173,7 @@ final class LUINodeModel: Identifiable {
         self.id = id
         kind = state.kind
         storedProperties = state.properties
+        storedDerived = LUINodeDerived(properties: state.properties)
         storedChildren = state.children
         storedVisibleChildren = visibleChildren
         storedParent = state.parent
@@ -151,6 +190,11 @@ final class LUINodeModel: Identifiable {
         if storedProperties != state.properties {
             storedProperties = state.properties
             changes.insert(.properties)
+            let derived = LUINodeDerived(properties: state.properties)
+            if storedDerived != derived {
+                storedDerived = derived
+                changes.insert(.derived)
+            }
         }
         if storedChildren != state.children {
             storedChildren = state.children
@@ -170,6 +214,7 @@ final class LUINodeModel: Identifiable {
 
     func publish(_ changes: LUIModelChanges) {
         if changes.contains(.properties) { withMutation(keyPath: \.properties) {} }
+        if changes.contains(.derived) { withMutation(keyPath: \.derived) {} }
         if changes.contains(.children) { withMutation(keyPath: \.children) {} }
         if changes.contains(.visibleChildren) { withMutation(keyPath: \.visibleChildren) {} }
         if changes.contains(.parent) { withMutation(keyPath: \.parent) {} }

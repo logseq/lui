@@ -6,6 +6,7 @@ struct LUIModelChanges: OptionSet {
     static let children = Self(rawValue: 1 << 1)
     static let visibleChildren = Self(rawValue: 1 << 2)
     static let parent = Self(rawValue: 1 << 3)
+    static let derived = Self(rawValue: 1 << 4)
 }
 
 /// Tracks lookup membership per ID, including reads of nodes not yet present.
