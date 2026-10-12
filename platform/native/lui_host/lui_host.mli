@@ -38,6 +38,10 @@ module type LAYOUT_ENGINE = sig
   val layout_hook : t -> int -> Lui_paint.placement
 
   val rect : t -> int -> Lui_scene.rect option
+
+  (** Store ids whose absolute rect changed under the last {!sync};
+      drained by the paint pass to re-emit only moved subtrees. *)
+  val take_rect_changes : t -> (int, unit) Hashtbl.t
 end
 
 type t
@@ -97,6 +101,19 @@ val invalidate_layout : t -> unit
     need it — every applied op already bumps the revision the memo
     keys on, and sync always runs between batches, so the memo can
     never observe a half-applied tree. *)
+
+val note_paint : t -> int -> unit
+(** [note_paint h id] marks a node whose host-side paint inputs
+    changed outside the store — interaction state the hooks report,
+    an image that finished decoding. The next {!repaint} re-derives
+    the fragment instead of replaying its cached ops. *)
+
+val note_paints : t -> int list -> unit
+
+val invalidate_paint : t -> unit
+(** Drop every cached paint fragment — the wholesale counterpart of
+    {!note_paint} for inputs that moved globally (a theme swap under
+    a stable store). *)
 
 val apply_batch : t -> Lui_protocol.patch_batch -> bool
 

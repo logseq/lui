@@ -1502,6 +1502,9 @@ let rec purge ctx id =
   Hashtbl.remove ctx.sparent id;
   Hashtbl.remove ctx.owner id;
   Hashtbl.remove ctx.eng.rects id;
+  (* A dropped rect is a geometry change too: paint consumers holding
+     the old box must re-derive (their layout hook now answers zero). *)
+  Hashtbl.replace ctx.eng.rect_changed id ();
   unregister ctx id
 
 (* display/structure churn on id: rebuild its produced expansion in

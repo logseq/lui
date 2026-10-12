@@ -729,6 +729,30 @@ module Ui = struct
       (Lui_store.t -> int -> string -> lw:float -> lh:float ->
        caret_ops) option;
     mutable content_rect : int -> rect;
+    (* Paint-hint channels for the retained fragment pass: scroll
+       containers whose offset moved this frame (their whole subtree
+       re-derives — ops embed shifted rects), containers whose
+       scrollable range changed (thumb metrics only), and the
+       interaction snapshot the last hints diff ran against. *)
+    scrolled : (int, unit) Hashtbl.t;
+    scroll_metrics : (int, unit) Hashtbl.t;
+    mutable paint_snap : snap;
+  }
+
+  and snap = {
+    ps_hovered : int;
+    ps_pressed : int;
+    ps_focused : int;
+    ps_drop_target : int;
+    ps_drag_src : int;
+    ps_hl : int;
+    ps_menu : int;
+    ps_caret : int;
+    ps_anchor : int;
+    ps_sel_text : (int * int * int * int) option;
+    ps_marked : string;
+    ps_shadow : string;
+    ps_focus_vis : bool;
   }
 
   (* The text engine's caret model for one editable string, built
@@ -771,7 +795,14 @@ module Ui = struct
       measure =
         (fun _store _id s -> (8. *. float (String.length s), 16.));
       hit_text = None; caret_ops = None;
-      content_rect = (fun _ -> rect 0. 0. 0. 0.) }
+      content_rect = (fun _ -> rect 0. 0. 0. 0.);
+      scrolled = Hashtbl.create 8;
+      scroll_metrics = Hashtbl.create 8;
+      paint_snap =
+        { ps_hovered = 0; ps_pressed = 0; ps_focused = 0;
+          ps_drop_target = 0; ps_drag_src = 0; ps_hl = 0; ps_menu = 0;
+          ps_caret = 0; ps_anchor = 0; ps_sel_text = None;
+          ps_marked = ""; ps_shadow = ""; ps_focus_vis = false } }
 
   let set_scale t s = t.scale <- s
   let set_measure t f = t.measure <- f
@@ -823,12 +854,16 @@ module Ui = struct
       (Hashtbl.find_opt (snd (scroll_tbls t axis)) id)
 
   let set_scroll_cap_axis t axis id cap =
+    (* A new range moves the scrollbar thumb — metric-only hint. *)
+    if scroll_cap_axis t axis id <> cap then
+      Hashtbl.replace t.scroll_metrics id ();
     Hashtbl.replace (snd (scroll_tbls t axis)) id cap;
     (* A shrinking cap (content removed, window grown) clamps any
        offset it left dangling past the new range. *)
     let off = scroll_offset_axis t axis id in
     if off > cap then begin
       Hashtbl.replace (fst (scroll_tbls t axis)) id cap;
+      Hashtbl.replace t.scrolled id ();
       t.scroll_epoch <- t.scroll_epoch + 1;
       t.dirty <- true
     end
@@ -1363,6 +1398,7 @@ module Ui = struct
     if Float.abs (off' -. scroll_offset_axis t axis id) > 0.001
     then begin
       Hashtbl.replace (fst (scroll_tbls t axis)) id off';
+      Hashtbl.replace t.scrolled id ();
       t.scroll_epoch <- t.scroll_epoch + 1;
       t.dirty <- true
     end;
@@ -2034,6 +2070,7 @@ module Ui = struct
             in
             if off' <> off then begin
               Hashtbl.replace (fst (scroll_tbls t axis)) id off';
+              Hashtbl.replace t.scrolled id ();
               t.scroll_epoch <- t.scroll_epoch + 1;
               t.dirty <- true
             end;
@@ -2539,6 +2576,63 @@ module Ui = struct
       focused = t.focused = id;
       selected = bool_prop store id "selected" || t.hl_item = id;
       disabled = not (node_enabled store id) }
+
+  (* Ids whose paint inputs moved outside the store journal: the
+     interaction-state slots [state_of] reads, the editing session
+     behind the focused node's text ops, menu visibility, and every
+     scroll container that moved — a moved offset shifts all
+     descendant rects (ops embed them), so the whole subtree
+     re-derives. Drains the scroll tables and rolls the snapshot. *)
+  let paint_hints t store =
+    let h = Hashtbl.create 16 in
+    let mark id = if id <> 0 then Hashtbl.replace h id () in
+    let s = t.paint_snap in
+    let drag_src =
+      match t.drag with Some (id, _) -> id | None -> 0
+    in
+    if s.ps_hovered <> t.hovered then (mark s.ps_hovered; mark t.hovered);
+    if s.ps_pressed <> t.pressed then (mark s.ps_pressed; mark t.pressed);
+    if s.ps_focused <> t.focused then (mark s.ps_focused; mark t.focused);
+    if s.ps_drop_target <> t.drop_target then
+      (mark s.ps_drop_target; mark t.drop_target);
+    if s.ps_drag_src <> drag_src then (mark s.ps_drag_src; mark drag_src);
+    if s.ps_hl <> t.hl_item then (mark s.ps_hl; mark t.hl_item);
+    if s.ps_menu <> t.open_menu then (mark s.ps_menu; mark t.open_menu);
+    (* Caret/selection/marked/shadow ride the focused node's text
+       ops; the ring channel reads focus_visible. *)
+    if
+      s.ps_caret <> t.caret || s.ps_anchor <> t.sel_anchor
+      || s.ps_marked <> marked t || s.ps_shadow <> t.shadow
+      || s.ps_focus_vis <> t.focus_visible
+    then mark t.focused;
+    if s.ps_sel_text <> t.sel_text then begin
+      (match s.ps_sel_text with
+       | Some (a, _, b, _) -> mark a; mark b
+       | None -> ());
+      (match t.sel_text with
+       | Some (a, _, b, _) -> mark a; mark b
+       | None -> ())
+    end;
+    (* Moved offset: the container's thumb plus every descendant's
+       shifted rect. *)
+    Hashtbl.iter
+      (fun id () ->
+        mark id;
+        List.iter mark (Lui_store.preorder ~root:id store))
+      t.scrolled;
+    Hashtbl.reset t.scrolled;
+    (* Range-only change: the thumb metrics, nothing below. *)
+    Hashtbl.iter (fun id () -> mark id) t.scroll_metrics;
+    Hashtbl.reset t.scroll_metrics;
+    t.paint_snap <-
+      { ps_hovered = t.hovered; ps_pressed = t.pressed;
+        ps_focused = t.focused; ps_drop_target = t.drop_target;
+        ps_drag_src = drag_src; ps_hl = t.hl_item;
+        ps_menu = t.open_menu; ps_caret = t.caret;
+        ps_anchor = t.sel_anchor; ps_sel_text = t.sel_text;
+        ps_marked = marked t; ps_shadow = t.shadow;
+        ps_focus_vis = t.focus_visible };
+    h
 
   let want_frame t host =
     if t.laid_out_menu <> t.open_menu then begin
@@ -3061,6 +3155,11 @@ module Assembly = struct
      rebuilt from the fresh rects — always in this order, on every
      platform. *)
   let repaint t =
+    (* Interaction-state diffs reach the fragment pass through the
+       host's hint table — the store journal cannot see them. *)
+    Hashtbl.iter
+      (fun id () -> Lui_host.note_paint t.host id)
+      (Ui.paint_hints t.ui (store t));
     let px = Lui_host.repaint t.host in
     t.populate ();
     px
