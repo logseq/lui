@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -49,6 +50,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -301,12 +303,23 @@ internal fun LuiThemeScope(node: LuiNode, content: @Composable () -> Unit) {
     val schemeOverride = LuiThemeTokenDecoder.colorScheme(node.propString("theme-mode"))
     val dark = schemeOverride ?: (ambientDark ?: isSystemInDarkTheme())
     val own = LuiThemeTokenDecoder.colors(node.propString("theme"), dark)
-    if (own.isEmpty() && schemeOverride == null) {
+    // Typography props (`font-*`/`line-height`/`letter-spacing`/
+    // `text-decoration`) inherit like CSS: merged over the accumulated
+    // spec and pushed through LocalTextStyle so `Text` calls without an
+    // explicit style inherit them.
+    val typography = LuiTypography.nodeSpec(node)
+    if (own.isEmpty() && schemeOverride == null && typography == null) {
         content()
     } else {
         CompositionLocalProvider(
             LocalLuiSemanticColors provides inherited + own,
             LocalLuiThemeDark provides dark,
+            LocalLuiTypography provides LocalLuiTypography.current.merge(
+                typography ?: TextStyle(),
+            ),
+            LocalTextStyle provides LocalTextStyle.current.merge(
+                typography ?: TextStyle(),
+            ),
         ) {
             content()
         }

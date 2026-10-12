@@ -846,10 +846,19 @@ let open_window ~title ~idx =
   (* Trigger-owned menu panels stay hidden until opened; the predicate
      reads the interaction state's mutable open-menu slot each sync. *)
   Lui_host.set_hidden host (Some (fun id -> Ui.hidden ui store id));
-  (* Unanchored context menus open at the pointer — the accessor reads
-     the live position each repaint. *)
+  (* Unanchored context menus open at the pointer. The anchor feeds
+     [refine_popups] only while a context-menu is open — reporting the
+     live pointer position unconditionally would defeat the layout
+     memo on every pointer-driven repaint, so the accessor returns
+     [None] the rest of the time. *)
   Lui_host.set_ctx_anchor host
-    (Some (fun () -> Some (Ui.pointer ui)));
+    (Some
+       (fun () ->
+          match Ui.open_menu ui with
+          | 0 -> None
+          | id when Lui_store.kind store id = "context-menu" ->
+            Some (Ui.pointer ui)
+          | _ -> None));
   (* Populate the hit-test mirror from the layout engine: each node's
      shifted rect clipped to its scrollable ancestors' viewports (so
      scrolled-off content can't be hit), then each scroll container's

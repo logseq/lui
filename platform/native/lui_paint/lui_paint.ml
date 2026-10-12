@@ -2148,4 +2148,6 @@ let paint hooks store scene ~width ~height ~scale ~clear =
   while not (Queue.is_empty ctx.deferred) do
     (Queue.pop ctx.deferred) ()
   done;
-  scene.ops <- List.rev scene.ops
+  scene.ops <- List.rev scene.ops;
+  scene.glyphs <- List.rev scene.glyphs;
+  scene.wide <- List.rev scene.wide

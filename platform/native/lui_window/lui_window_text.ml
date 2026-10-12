@@ -125,6 +125,17 @@ let inherited_int store id name =
   in
   walk id
 
+let inherited_str store id name =
+  let rec walk id =
+    match Lui_store.prop store id name with
+    | Some (Lui_protocol.StringValue s) -> Some s
+    | _ -> (
+      match Lui_store.parent store id with
+      | Some pid when pid <> id -> walk pid
+      | _ -> None)
+  in
+  walk id
+
 let font_of store id =
   let size =
     match inherited_num store id "font-size" with
@@ -145,7 +156,12 @@ let font_of store id =
        | "dialog" | "sheet" -> 600
        | _ -> 400)
   in
-  Lui_text.system ~weight ~italic:false ~size ()
+  let italic =
+    match inherited_str store id "font-style" with
+    | Some "italic" | Some "oblique" -> true
+    | _ -> false
+  in
+  Lui_text.system ~weight ~italic ~size ()
 
 (* ---- atlas upload ---- *)
 
@@ -234,7 +250,7 @@ let emit_glyph t scene ~scale ~pen ~baseline ~font ~gid ~g_y ~fg =
         gcolored = s.sl_colored;
         gsubpixel = false; gthin = false }
     in
-    scene.glyphs <- scene.glyphs @ [ gl ];
+    scene.glyphs <- gl :: scene.glyphs;
     true
 
 let text_ops t id r fg s =

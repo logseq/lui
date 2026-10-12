@@ -72,6 +72,11 @@ let num_prop store id name =
   | Some (StringValue s) -> parse_len s
   | _ -> None
 
+let str_prop store id name =
+  match Lui_store.prop store id name with
+  | Some (Lui_protocol.StringValue s) -> Some s
+  | _ -> None
+
 let font_of store id =
   let size =
     Option.value ~default:14. (num_prop store id "font-size")
@@ -88,7 +93,12 @@ let font_of store id =
      through the engine's cache so the same (weight, size) reuses one
      font object instead of churning through fresh collections that
      the GC frees mid-paint. *)
-  Lui_text.create ~weight ~italic:false ~size ()
+  let italic =
+    match str_prop store id "font-style" with
+    | Some "italic" | Some "oblique" -> true
+    | _ -> false
+  in
+  Lui_text.create ~weight ~italic ~size ()
 
 (* The DWrite engine's [shape] hands each run a font block that shares
    its face reference with the collector the stub clears on the next
@@ -199,7 +209,7 @@ let emit_glyph t scene ~scale ~pen ~baseline ~font ~gid ~g_y ~fg =
         gcolored = s.sl_colored;
         gsubpixel = false; gthin = false }
     in
-    scene.glyphs <- scene.glyphs @ [ gl ];
+    scene.glyphs <- gl :: scene.glyphs;
     true
 
 let text_ops t id r fg s =

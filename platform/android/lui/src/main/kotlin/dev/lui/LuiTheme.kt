@@ -1,5 +1,6 @@
 package dev.lui
 
+import android.graphics.Typeface
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
@@ -11,7 +12,11 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -33,6 +38,18 @@ val LocalLuiSemanticColors = compositionLocalOf<Map<String, Color>> { emptyMap()
  * host-provided override). Null means "not provided" — fall back to the
  * system setting. */
 val LocalLuiThemeDark = compositionLocalOf<Boolean?> { null }
+
+/** Typography overrides inherited down the tree — the `font-*`,
+ * `line-height`, `letter-spacing` and `text-decoration` props, mirroring
+ * the CSS-typed web props. Carried as a `TextStyle` delta: unspecified
+ * fields leave the base style untouched under `TextStyle.merge`. */
+val LocalLuiTypography = compositionLocalOf { TextStyle() }
+
+/** Applies the inherited typography delta over [this]. Leaf renderers
+ * that pass an explicit `style` to `Text` bypass `LocalTextStyle`, so
+ * they merge the delta here. */
+@Composable
+fun TextStyle.luiInherited(): TextStyle = merge(LocalLuiTypography.current)
 
 /** Hex resolver shared by color-name props and theme tokens. Accepts
  * `#rgb`, `#rgba`, `#rrggbb` and `#rrggbbaa` (CSS alpha-suffix).
@@ -182,6 +199,92 @@ object LuiThemeTokenDecoder {
 }
 
 object LuiTypography {
+    private val cssLength = Regex("^\\s*([+-]?\\d*\\.?\\d+)(px|pt|sp|em|rem)?\\s*$")
+
+    /** `font-size` can't take relative units — resolve em/rem against
+     * the 17sp body default both mobile hosts share. */
+    private fun fontSizeSpec(value: String?): TextUnit? =
+        cssLength.matchEntire(value ?: return null)?.let { m ->
+            val amount = m.groupValues[1].toFloatOrNull() ?: return null
+            when (m.groupValues[2]) {
+                "em", "rem" -> (amount * 17).sp
+                else -> amount.sp
+            }
+        }
+
+    /** CSS `line-height`: a unitless value is the multiplier (em);
+     * lengths resolve to sp. */
+    private fun lineHeightSpec(value: String?): TextUnit? =
+        cssLength.matchEntire(value ?: return null)?.let { m ->
+            val amount = m.groupValues[1].toFloatOrNull() ?: return null
+            when (m.groupValues[2]) {
+                "", "em", "rem" -> amount.em
+                else -> amount.sp
+            }
+        }
+
+    /** First family in the CSS list wins; generic keywords map to the
+     * Compose defaults, named families resolve through `Typeface`. */
+    private fun familySpec(value: String?): FontFamily? {
+        val name = (value ?: return null)
+            .split(',').firstOrNull()
+            ?.trim()?.trim('"', '\'')
+            ?.takeIf { it.isNotEmpty() } ?: return null
+        return when (name.lowercase()) {
+            "system-ui", "-apple-system", "sans-serif", "ui-sans-serif" ->
+                FontFamily.Default
+            "serif", "ui-serif" -> FontFamily.Serif
+            "monospace", "ui-monospace" -> FontFamily.Monospace
+            "cursive" -> FontFamily.Cursive
+            else -> FontFamily(Typeface.create(name, Typeface.NORMAL))
+        }
+    }
+
+    private fun decorationSpec(value: String?): TextDecoration? {
+        val tokens = (value ?: return null).split(' ').filter { it.isNotBlank() }
+        if (tokens == listOf("none")) return TextDecoration.None
+        val decorations = tokens.mapNotNull {
+            when (it) {
+                "underline" -> TextDecoration.Underline
+                "line-through" -> TextDecoration.LineThrough
+                else -> null
+            }
+        }
+        return decorations.takeIf { it.isNotEmpty() }?.let(TextDecoration::combine)
+    }
+
+    /** Typography delta contributed by a node's own props, merged over
+     * the inherited spec in `LuiThemeScope`. Null when the node sets no
+     * typography props. */
+    fun nodeSpec(node: LuiNode): TextStyle? {
+        val size = fontSizeSpec(node.propString("font-size"))
+        val lineHeight = lineHeightSpec(node.propString("line-height"))
+        val weight = node.prop("font-weight")?.intValue
+            ?.let { FontWeight(it.coerceIn(1, 1000)) }
+        val style = when (node.propString("font-style")) {
+            "italic", "oblique" -> FontStyle.Italic
+            else -> null
+        }
+        val family = familySpec(node.propString("font-family"))
+        val tracking = node.prop("letter-spacing")?.numberValue?.toFloat()?.sp
+        val decoration = decorationSpec(node.propString("text-decoration"))
+        if (size == null && lineHeight == null && weight == null &&
+            style == null && family == null && tracking == null &&
+            decoration == null
+        ) {
+            return null
+        }
+        return TextStyle(
+            fontSize = size ?: TextUnit.Unspecified,
+            fontWeight = weight,
+            fontStyle = style,
+            fontFamily = family,
+            letterSpacing = tracking ?: TextUnit.Unspecified,
+            lineHeight = lineHeight ?: TextUnit.Unspecified,
+            textDecoration = decoration,
+        )
+    }
+
     // Apple font sizes (SwiftUI text styles), mirrored 1pt = 1sp:
     // largeTitle 34, title 28, title2 22, title3 20, headline 17,
     // body 17, subheadline 15, footnote 13, caption 12, caption2 11.
@@ -195,7 +298,7 @@ object LuiTypography {
             4 -> theme.titleMedium.copy(fontSize = 20.sp)
             5 -> theme.bodyLarge.copy(fontSize = 17.sp)
             else -> theme.titleSmall.copy(fontSize = 15.sp)
-        }
+        }.luiInherited()
     }
 
     @Composable
@@ -238,6 +341,6 @@ object LuiTypography {
         if (classes.contains("mono")) {
             style = style.copy(fontFamily = FontFamily.Monospace)
         }
-        return style
+        return style.luiInherited()
     }
 }
