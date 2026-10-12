@@ -250,7 +250,8 @@ let direction_of ~store ~id kind : Lui_flex.flex_direction =
   | Some "vertical" -> Column
   | _ -> (
     match kind with
-    | "row" | "grid" | "button-group" | "toggle-group"
+    | "row" | "grid" | "button" | "toggle-button" | "menu-item"
+    | "button-group" | "toggle-group"
     | "input-group-actions" | "table-row" | "tabs" | "bottom-tabs"
     | "toolbar" | "swipe-actions" | "stepper" | "breadcrumb"
     | "pagination" | "split" | "drawer" | "link" -> Row
@@ -336,11 +337,41 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
   let size_w, size_h =
     match kind with
     | "button" | "toggle-button" -> (
+      (* Icon-only buttons are square chrome on the web — the width
+         contract falls back to the resolved height (explicit height
+         prop or the size contract's default). *)
+      let blank s = match s with None | Some "" -> true | _ -> false in
+      let icon_only =
+        not (blank (pstr store id "icon"))
+        && blank (pstr store id "text")
+        && blank (pstr store id "label")
+      in
+      if icon_only then
+        let dfl =
+          match pstr store id "size" with
+          | Some "icon" -> 40.
+          | Some "sm" | Some "small" -> 36.
+          | Some "lg" | Some "large" -> 44.
+          | _ -> 40.
+        in
+        let h =
+          match lp "height" with Unset -> Pt (dfl *. scale) | l -> l
+        in
+        (h, h)
+      else
+        match pstr store id "size" with
+        | Some "icon" -> (Pt (40. *. scale), Pt (40. *. scale))
+        | Some "sm" | Some "small" -> (Unset, Pt (36. *. scale))
+        | Some "lg" | Some "large" -> (Unset, Pt (44. *. scale))
+        | Some _ -> (Unset, Pt (40. *. scale))
+        | None -> (Unset, Unset))
+    | "icon" -> (
+      (* A bare icon's [size] picks its glyph box like the web's
+         ti-size utilities (sm→14², lg→20², default 16²). *)
       match pstr store id "size" with
-      | Some "icon" -> (Pt (40. *. scale), Pt (40. *. scale))
-      | Some "sm" | Some "small" -> (Unset, Pt (36. *. scale))
-      | Some "lg" | Some "large" -> (Unset, Pt (44. *. scale))
-      | Some _ -> (Unset, Pt (40. *. scale))
+      | Some "sm" | Some "small" -> (Pt (14. *. scale), Pt (14. *. scale))
+      | Some "lg" | Some "large" -> (Pt (20. *. scale), Pt (20. *. scale))
+      | Some _ -> (Pt (16. *. scale), Pt (16. *. scale))
       | None -> (Unset, Unset))
     | _ -> (Unset, Unset)
   in
@@ -350,20 +381,16 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
       justify_content =
         (match pstr store id "main" with
          | Some s -> justify_of_string s
-         | None -> (
-           (* Labeled chrome centers its content vertically — the web
-              stylesheet's .lui-menu-item items-center on the cross axis
-              of a horizontal flex is the main axis of this column
-              kind. *)
-           match kind with
-           | "menu-item" -> Justify_center
-           | _ -> d.justify_content));
+         | None -> d.justify_content);
       align_items =
         (match pstr store id "cross" with
          | Some s -> align_of_string s
          | None -> (
-           (* Grouped controls center their children on the cross axis. *)
+           (* Grouped controls and labeled chrome center their children
+              on the cross axis — .lui-button / .lui-menu-item are
+              items-center flex rows on the web. *)
            match kind with
+           | "button" | "toggle-button" | "menu-item"
            | "button-group" | "toggle-group" | "input-group-actions"
            | "breadcrumb" | "pagination" | "toolbar" -> Align_center
            | _ -> d.align_items));

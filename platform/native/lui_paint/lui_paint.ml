@@ -449,6 +449,11 @@ type ctx = {
     (** parent id → ([(child_id, z); …], ordered children). Filled
         lazily during a paint; avoids re-sorting when z-order is
         unchanged within the frame. *)
+  deferred : (unit -> unit) Queue.t;
+    (** Popup subtrees collected during the walk; painted after the
+        whole tree so a popup declared mid-tree is never covered by
+        later siblings — the overlay stacking contract these kinds
+        carry on the web. *)
 }
 
 type extension_renderer = {
@@ -2033,9 +2038,20 @@ let rec paint_own ctx store id st kind r rs alpha =
   then [ focus_ring_op ctx r (radii_of ctx store id) alpha ]
   else []
 
+(* A popup node: defer to the overlay pass so mid-tree popups paint
+   above later siblings; everything else paints inline. *)
+and paint_node ctx store scene id parent_r alpha =
+  if
+    popup_kind (Lui_store.kind store id) && not (unboxed store id)
+  then
+    Queue.add
+      (fun () -> paint_node_body ctx store scene id parent_r alpha)
+      ctx.deferred
+  else paint_node_body ctx store scene id parent_r alpha
+
 (* A visible node: resolve state and placement, clip, own chrome,
    children in z order, scrollbar, unclip. *)
-and paint_node ctx store scene id parent_r alpha =
+and paint_node_body ctx store scene id parent_r alpha =
   if node_shown store id then (
     let st = effective_state ctx.hooks store id in
     let rs = resolve_style store id st in
@@ -2098,9 +2114,15 @@ let paint hooks store scene ~width ~height ~scale ~clear =
   let ctx =
     { hooks; scale;
       viewport = rect 0. 0. (float width) (float height);
-      order_cache = Hashtbl.create 64 }
+      order_cache = Hashtbl.create 64;
+      deferred = Queue.create () }
   in
   List.iter
     (fun id -> paint_node ctx store scene id ctx.viewport 1.)
     (Lui_store.root_ids store);
+  (* Nested popups (submenus) enqueue during this drain — they paint
+     after their parent, preserving preorder among popups. *)
+  while not (Queue.is_empty ctx.deferred) do
+    (Queue.pop ctx.deferred) ()
+  done;
   scene.ops <- List.rev scene.ops
