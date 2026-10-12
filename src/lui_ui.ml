@@ -431,6 +431,8 @@ let letter_spacing context node spacing =
   float_property context node LetterSpacing spacing
 let font_family context node value =
   string_property context node FontFamily value
+let font_style context node value =
+  string_property context node FontStyle value
 let text_decoration context node value =
   string_property context node TextDecoration value
 let position context node value = string_property context node Position value

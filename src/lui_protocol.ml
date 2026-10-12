@@ -238,6 +238,7 @@ type property =
   | AvailableHeight
   | FontSize
   | FontWeight
+  | FontStyle
   | LineHeight
   | LetterSpacing
   | Position
@@ -900,8 +901,8 @@ let common_property_supported kind property =
     | ListItem | TableCell | Resizable | Split | Alert | Bubble | StatusBar
     | Link | FileImage -> true
     | _ -> false)
-  | FontSize | FontWeight | LineHeight | LetterSpacing | FontFamily
-  | TextDecoration | UserSelect ->
+  | FontSize | FontWeight | FontStyle | LineHeight | LetterSpacing
+  | FontFamily | TextDecoration | UserSelect ->
     (* Text styling inherits; admitted on the same kinds that accept a
        foreground color minus purely graphical kinds whose [size] governs
        their metrics (icon, spinner, file-image). *)
@@ -1588,6 +1589,8 @@ let property_value_supported property value =
   | Position, StringValue value ->
     List.mem value [ "static"; "relative"; "absolute"; "fixed"; "sticky" ]
   | FontFamily, StringValue value -> String.trim value <> ""
+  | FontStyle, StringValue value ->
+    List.mem value [ "normal"; "italic"; "oblique" ]
   | TextDecoration, StringValue value -> text_decoration_supported value
   | ListStyle, StringValue value ->
     List.mem value [ "none"; "disc"; "decimal" ]

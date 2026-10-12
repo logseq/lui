@@ -1502,6 +1502,11 @@
       "swift": "fontWeight"
     },
     {
+      "lg": "FontStyle",
+      "wire": "font-style",
+      "swift": "fontStyle"
+    },
+    {
       "lg": "LineHeight",
       "wire": "line-height",
       "swift": "lineHeight"
@@ -1998,6 +2003,7 @@
       "pointer-enabled",
       "font-size",
       "font-weight",
+      "font-style",
       "line-height",
       "letter-spacing",
       "font-family",
