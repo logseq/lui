@@ -591,23 +591,34 @@ let known_node renderer previous_nodes node =
 (* The retained mirror contains every row. Only rows in a virtual window
    have platform resources; patches to other rows remain in the mirror until
    the row enters a window. *)
-let rec visible_in_virtual renderer previous_nodes node =
-  let current = match Store.node renderer.web_store node with
-    | Some _ as current -> current | None -> previous_nodes node in
-  match current with
-  | Some current -> (match current.retained_parent with
-    | None -> true
-    | Some parent ->
-      let parent_node = match Store.node renderer.web_store parent with
-        | Some _ as current -> current | None -> previous_nodes parent in
-      (match parent_node with
-       | Some current when Store.standard_kind_is current VirtualList ->
-         (match Hashtbl.find_opt renderer.web_virtual_lists parent with
-          | Some state -> state.virtual_row_live node
-          | None -> false)
-         && visible_in_virtual renderer previous_nodes parent
-       | _ -> visible_in_virtual renderer previous_nodes parent))
-  | None -> false
+(* [cache] is batch-local: the store is committed before the DOM ops run
+   and virtual mount sets only change in the epilogue's refresh pass, so a
+   node's answer is stable for the whole batch — without it every op
+   re-walks the same ancestor chain. *)
+let rec visible_in_virtual renderer previous_nodes cache node =
+  match Hashtbl.find_opt cache node with
+  | Some result -> result
+  | None ->
+    let current = match Store.node renderer.web_store node with
+      | Some _ as current -> current | None -> previous_nodes node in
+    let result =
+      match current with
+      | Some current -> (match current.retained_parent with
+        | None -> true
+        | Some parent ->
+          let parent_node = match Store.node renderer.web_store parent with
+            | Some _ as current -> current | None -> previous_nodes parent in
+          (match parent_node with
+           | Some current when Store.standard_kind_is current VirtualList ->
+             (match Hashtbl.find_opt renderer.web_virtual_lists parent with
+              | Some state -> state.virtual_row_live node
+              | None -> false)
+             && visible_in_virtual renderer previous_nodes cache parent
+           | _ -> visible_in_virtual renderer previous_nodes cache parent))
+      | None -> false
+    in
+    Hashtbl.replace cache node result;
+    result
 
 let reset_platform renderer node current =
   let platform_node = match current.semantic_kind with
@@ -816,8 +827,8 @@ let apply_detach_subtree renderer previous_nodes children_of effects node =
        | None -> ())
   | _ -> ()
 
-let apply_dom_op renderer previous_nodes children_of effects operation =
-  let visible node = visible_in_virtual renderer previous_nodes node in
+let apply_dom_op renderer previous_nodes children_of effects visible
+    operation =
   let virtual_parent parent = match Store.node renderer.web_store parent with
     | Some current -> Store.standard_kind_is current VirtualList | None -> false in
   let apply = match operation with
@@ -910,11 +921,16 @@ let apply_dom_batch renderer previous_nodes batch =
     | _ -> ()
   in
   let effects = new_effects () in
+  let visibility = Hashtbl.create 64 in
+  let visible node =
+    visible_in_virtual renderer previous_nodes visibility node
+  in
   List.iter
     (fun operation ->
        mirror operation;
        try
-         apply_dom_op renderer previous_nodes children_of effects operation;
+         apply_dom_op renderer previous_nodes children_of effects visible
+           operation;
          (match operation with
           | InsertChild (parent, child, _) | MoveChild (parent, child, _) ->
             shadow_refresh_weight renderer (children_of parent) child
@@ -1008,7 +1024,7 @@ let apply_dom_batch renderer previous_nodes batch =
   Hashtbl.iter (fun id () ->
     match Store.node renderer.web_store id with
     | Some current when Store.standard_kind_is current VirtualList
-      && visible_in_virtual renderer previous_nodes id ->
+      && visible_in_virtual renderer previous_nodes visibility id ->
       Lui_web_virtual.install renderer id ~materialize:(materialize renderer)
         ~unmount:(unmount_retained renderer)
     | _ -> ()) visited;
