@@ -80,10 +80,25 @@ val measure_of :
     [context-menu] popup opens at — the host-owned channel that stands
     in for the cursor coordinate a context menu tracks. *)
 
+(** Memoized: a call whose inputs all match the last sync returns
+    immediately, keeping the previous mirror and rects. The key is the
+    store's mutation revision (bumped by every applied op), the frame
+    geometry, [?ctx_anchor]'s value, and the [?measure]/[?hidden]
+    functions' identities. Scroll offsets are not an input — a frame
+    that only scrolls pays no layout at all. *)
+
 val sync :
   ?scale:float -> ?measure:text_measure -> ?hidden:(int -> bool) ->
   ?ctx_anchor:(float * float) ->
   width:float -> height:float -> t -> Lui_store.t -> unit
+
+(** [invalidate t] forces the next {!sync} to rebuild the mirror.
+    Needed when a function input keeps its identity but changes its
+    answers — e.g. a text measure backed by a font stack that finishes
+    loading, or a [?hidden] predicate whose captured state flipped.
+    The store revision covers every store mutation on its own. *)
+
+val invalidate : t -> unit
 
 (** [compute t ~width ~height] re-runs layout on the current mirror —
     the cheap path when only the frame size changed. [*-viewport]

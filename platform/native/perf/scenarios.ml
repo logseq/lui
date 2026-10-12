@@ -95,9 +95,9 @@ let mount_texts ~n ~len =
 (* Virtual list: mount n rows, then scroll at a constant velocity for
    [frames] frames. Scrolling shifts children's placements through the
    paint hook (production model) — the store is untouched, so patch
-   apply is zero; layout is still re-synced every frame because
-   Lui_host.repaint always re-syncs — that cost is reported, not
-   hidden. *)
+   apply is zero, and the memoized [Lui_layout.sync] returns
+   immediately on a scroll frame (the production model too: repaint
+   re-syncs every frame, the memo is what makes that cheap). *)
 let vlist ~n ~frames ~velocity ~item_h ~width ~height =
   let name = Printf.sprintf "vlist-%dk" (n / 1000) in
   let t = H.create ~width ~height ~scale:1. () in
@@ -116,9 +116,9 @@ let vlist ~n ~frames ~velocity ~item_h ~width ~height =
     ra := rms :: !ra;
     ta := (H.now () -. t0) *. 1000. :: !ta
   done;
-  (* The window itself is the viewport: paint emits an op for every
-     mounted child (paint does not clip), and the frame bounds what
-     actually lands on screen — count children inside it. *)
+  (* The window itself is the viewport: paint culls nodes whose box
+     misses the frame, so only the visible window emits ops — count
+     children inside it to confirm the cull. *)
   let viewport = Lui_scene.rect 0. 0. (float_of_int width) (float_of_int height) in
   let visible = H.visible_children t ~root:2 ~clip:viewport in
   let ops = H.ops_count t in

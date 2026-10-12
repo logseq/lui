@@ -195,6 +195,7 @@ let prop_coverage =
     ("margin-bottom", Layout);
     ("margin-left", Layout);
     ("font-family", Painted_by_text);
+    ("font-style", Painted_by_text);
     ("text-decoration", Painted_by_text);
     ("list-style", Painted_by_text); (* list marker style *)
     ("flex-wrap", Layout);
@@ -444,11 +445,6 @@ type ctx = {
   hooks : hooks;
   scale : float;    (* device px per logical px *)
   viewport : rect;  (* frame rect, device px — fixed-position containing block *)
-  order_cache :
-    (int, (int * int) list * Lui_store.node list) Hashtbl.t;
-    (** parent id → ([(child_id, z); …], ordered children). Filled
-        lazily during a paint; avoids re-sorting when z-order is
-        unchanged within the frame. *)
   deferred : (unit -> unit) Queue.t;
     (** Popup subtrees collected during the walk; painted after the
         whole tree so a popup declared mid-tree is never covered by
@@ -1869,21 +1865,24 @@ let popup_kind = function
   | _ -> false
 
 (* The node's display box: layout result → popup x/y override →
-   position/inset resolution → layout rect. *)
-let resolve_rect ctx store id p parent_r =
+   position/inset resolution → layout rect. Position edges resolve
+   lazily: the common case — no [position] prop — never pays the four
+   inset lookups, which matters because the viewport cull runs this on
+   every visited node, visible or not. *)
+let resolve_rect ctx store id kind p parent_r =
   match p.p_override with
   | Some r -> r
-  | None ->
+  | None -> (
     let s = ctx.scale in
     let side n = match pnum store id n with
       | Some v -> Some v
       | None -> pnum store id "inset"
     in
-    let it, ir, ib, il =
-      (side "inset-top", side "inset-right", side "inset-bottom", side "inset-left")
-    in
-    let pos = pstr store id "position" in
-    if pos = Some "absolute" || pos = Some "fixed" then (
+    match pstr store id "position" with
+    | Some ("absolute" | "fixed") as pos -> (
+      let it, ir, ib, il =
+        (side "inset-top", side "inset-right", side "inset-bottom", side "inset-left")
+      in
       let cb = if pos = Some "fixed" then ctx.viewport else parent_r in
       let x =
         match il with
@@ -1902,7 +1901,10 @@ let resolve_rect ctx store id p parent_r =
           | None -> p.p_rect.y)
       in
       { p.p_rect with x; y })
-    else if pos = Some "relative" then (
+    | Some "relative" -> (
+      let it, ir, ib, il =
+        (side "inset-top", side "inset-right", side "inset-bottom", side "inset-left")
+      in
       let dx =
         match il with
         | Some l -> l
@@ -1915,18 +1917,19 @@ let resolve_rect ctx store id p parent_r =
       in
       { p.p_rect with
         x = p.p_rect.x +. (dx *. s); y = p.p_rect.y +. (dy *. s) })
-    else if popup_kind (Lui_store.kind store id) then
-      (* Popup kinds carry [x]/[y] as an anchor point the layout
-         engine already resolved into the node's rect — re-applying
-         them here would undo the anchor/alignment math. *)
-      p.p_rect
-    else
-      (* Popup coordinates are absolute placements on popup kinds. *)
-      match (pnum store id "x", pnum store id "y") with
-      | Some x, Some y -> { p.p_rect with x = x *. s; y = y *. s }
-      | Some x, None -> { p.p_rect with x = x *. s }
-      | None, Some y -> { p.p_rect with y = y *. s }
-      | None, None -> p.p_rect
+    | _ ->
+      if popup_kind kind then
+        (* Popup kinds carry [x]/[y] as an anchor point the layout
+           engine already resolved into the node's rect — re-applying
+           them here would undo the anchor/alignment math. *)
+        p.p_rect
+      else
+        (* Popup coordinates are absolute placements on popup kinds. *)
+        match (pnum store id "x", pnum store id "y") with
+        | Some x, Some y -> { p.p_rect with x = x *. s; y = y *. s }
+        | Some x, None -> { p.p_rect with x = x *. s }
+        | None, Some y -> { p.p_rect with y = y *. s }
+        | None, None -> p.p_rect)
 
 let zindex store id =
   match Lui_store.prop store id "z-index" with
@@ -1936,35 +1939,21 @@ let zindex store id =
     match int_of_string_opt (String.trim s) with Some i -> i | None -> 0)
   | _ -> 0
 
-(* Siblings paint in z-index order, DOM order breaking ties.
-   Skip the sort entirely when every sibling has z-index 0 (the common
-   case), and reuse a per-frame cache when the (id, z) fingerprint is
-   unchanged so fan-out trees do not re-sort every ancestor walk. *)
-let ordered_children cache store id =
+(* Siblings paint in z-index order, DOM order breaking ties. The scan
+   exits on the first nonzero z-index so a lone stacked sibling is the
+   only reason to sort — most lists have none and pay one prop lookup
+   per child, no fingerprint list, no sort. *)
+let ordered_children store id =
   let kids = Lui_store.children store id in
-  let fp =
-    List.map
-      (fun c ->
-        let cid = Lui_store.node_id c in
-        (cid, zindex store cid))
+  if List.exists (fun c -> zindex store (Lui_store.node_id c) <> 0) kids
+  then
+    List.stable_sort
+      (fun a b ->
+        compare
+          (zindex store (Lui_store.node_id a))
+          (zindex store (Lui_store.node_id b)))
       kids
-  in
-  match Hashtbl.find_opt cache id with
-  | Some (fp', ordered) when fp' = fp -> ordered
-  | _ ->
-    let needs_sort = List.exists (fun (_, z) -> z <> 0) fp in
-    let ordered =
-      if not needs_sort then kids
-      else
-        List.stable_sort
-          (fun a b ->
-            compare
-              (zindex store (Lui_store.node_id a))
-              (zindex store (Lui_store.node_id b)))
-          kids
-    in
-    Hashtbl.replace cache id (fp, ordered);
-    ordered
+  else kids
 
 let node_shown store id =
   (match Lui_store.prop store id "visible" with
@@ -2051,26 +2040,26 @@ let rec paint_own ctx store id st kind r rs alpha =
   else []
 
 (* A popup node: defer to the overlay pass so mid-tree popups paint
-   above later siblings; everything else paints inline. *)
-and paint_node ctx store scene id parent_r alpha =
-  if
-    popup_kind (Lui_store.kind store id) && not (unboxed store id)
-  then
+   above later siblings; everything else paints inline. [kind] arrives
+   from the caller — the child loop already holds the node record, so
+   the hot path never pays a second store lookup for it. *)
+and paint_node ctx store scene id kind parent_r alpha =
+  if popup_kind kind && not (unboxed store id) then
     Queue.add
-      (fun () -> paint_node_body ctx store scene id parent_r alpha)
+      (fun () -> paint_node_body ctx store scene id kind parent_r alpha)
       ctx.deferred
-  else paint_node_body ctx store scene id parent_r alpha
+  else paint_node_body ctx store scene id kind parent_r alpha
 
-(* A visible node: resolve state and placement, clip, own chrome,
-   children in z order, scrollbar, unclip. *)
-and paint_node_body ctx store scene id parent_r alpha =
+(* A visible node: resolve placement, cull against the viewport, then
+   state/style/chrome/children. Geometry comes first deliberately —
+   a culled node never pays for state resolution, so scrolling a huge
+   tree costs one layout-hook hit plus a rect check per offscreen
+   node. *)
+and paint_node_body ctx store scene id kind parent_r alpha =
   if node_shown store id then (
-    let st = effective_state ctx.hooks store id in
-    let rs = resolve_style store id st in
-    let p = ctx.hooks.layout id in
-    let r = resolve_rect ctx store id p parent_r in
-    let kind = Lui_store.kind store id in
     let contents = unboxed store id in
+    let p = ctx.hooks.layout id in
+    let r = resolve_rect ctx store id kind p parent_r in
     (* Viewport cull: a node whose box misses the frame produces no
        chrome and no descendants. display:contents has no box of its
        own so it always walks children; zero-size nodes still walk so
@@ -2081,43 +2070,52 @@ and paint_node_body ctx store scene id parent_r alpha =
       && (not (rect_empty r))
       && rect_empty (rect_intersect r ctx.viewport)
     in
-    (* display:contents generates no box, so its opacity and chrome do
-       not apply — children paint with the parent's alpha and clip. *)
-    let alpha =
-      if contents then alpha
-      else alpha *. rs.rs_opacity *. disabled_alpha store id st
-    in
-    (* An alpha-0 subtree emits no ops at all: the raster treats an op
-       opacity of 0 as "unset" (opaque), so invisible nodes must be
-       culled here rather than painted at opacity 0. *)
-    if misses_viewport || alpha <= 0. then ()
+    if misses_viewport then ()
     else begin
-      let clip =
-        (not contents) && clips kind store id
-        && ((not (rect_empty r))
-            || (* An empty split pane still clips: its children's own
-                  minimum sizes would otherwise paint through it. *)
-               (match Lui_store.parent store id with
-                | Some pid -> Lui_store.kind store pid = "split"
-                | None -> false))
+      let st = effective_state ctx.hooks store id in
+      let rs = resolve_style store id st in
+      (* display:contents generates no box, so its opacity and chrome
+         do not apply — children paint with the parent's alpha and
+         clip. *)
+      let alpha =
+        if contents then alpha
+        else alpha *. rs.rs_opacity *. disabled_alpha store id st
       in
-      if clip then
-        emit1 scene
-          (Push_clip
-             { crect = r; cradii = corners r (radii_of ctx store id) false;
-               ccontinuous = false });
-      if not contents then
-        emit scene (paint_own ctx store id st kind r rs alpha);
-      (* Children of a display:contents node keep the parent's containing
-         block — the node itself generates no box to anchor to. *)
-      let child_parent = if contents then parent_r else r in
-      List.iter
-        (fun c ->
-          paint_node ctx store scene (Lui_store.node_id c) child_parent alpha)
-        (ordered_children ctx.order_cache store id);
-      if scrollable kind store id && not contents then
-        emit scene (scrollbar_ops ctx store id r alpha);
-      if clip then emit1 scene Pop_clip
+      (* An alpha-0 subtree emits no ops at all: the raster treats an
+         op opacity of 0 as "unset" (opaque), so invisible nodes must
+         be culled here rather than painted at opacity 0. *)
+      if alpha <= 0. then ()
+      else begin
+        let clip =
+          (not contents) && clips kind store id
+          && ((not (rect_empty r))
+              || (* An empty split pane still clips: its children's own
+                    minimum sizes would otherwise paint through it. *)
+                 (match Lui_store.parent store id with
+                  | Some pid -> Lui_store.kind store pid = "split"
+                  | None -> false))
+        in
+        if clip then
+          emit1 scene
+            (Push_clip
+               { crect = r;
+                 cradii = corners r (radii_of ctx store id) false;
+                 ccontinuous = false });
+        if not contents then
+          emit scene (paint_own ctx store id st kind r rs alpha);
+        (* Children of a display:contents node keep the parent's
+           containing block — the node itself generates no box to
+           anchor to. *)
+        let child_parent = if contents then parent_r else r in
+        List.iter
+          (fun c ->
+            paint_node ctx store scene (Lui_store.node_id c)
+              (Lui_store.node_kind c) child_parent alpha)
+          (ordered_children store id);
+        if scrollable kind store id && not contents then
+          emit scene (scrollbar_ops ctx store id r alpha);
+        if clip then emit1 scene Pop_clip
+      end
     end)
 
 (* Full repaint: reset the scene and repaint the whole forest. *)
@@ -2126,11 +2124,12 @@ let paint hooks store scene ~width ~height ~scale ~clear =
   let ctx =
     { hooks; scale;
       viewport = rect 0. 0. (float width) (float height);
-      order_cache = Hashtbl.create 64;
       deferred = Queue.create () }
   in
   List.iter
-    (fun id -> paint_node ctx store scene id ctx.viewport 1.)
+    (fun id ->
+      paint_node ctx store scene id (Lui_store.kind store id)
+        ctx.viewport 1.)
     (Lui_store.root_ids store);
   (* Nested popups (submenus) enqueue during this drain — they paint
      after their parent, preserving preorder among popups. *)

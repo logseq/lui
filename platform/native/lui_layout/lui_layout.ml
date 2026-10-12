@@ -11,18 +11,45 @@ open Lui_flex
 
 type text_measure = int -> string -> float -> float -> (float * float) option
 
+(* Shared defaults so the memo's physical-equality check on function
+   inputs sees a stable identity: an inline [fun] default would
+   allocate a fresh closure per call and never match. *)
+let no_measure _id _text _offered_w _offered_h = None
+let show_all _id = false
+
 type t = {
   mutable root : Lui_flex.node option;
   nodes : (int, Lui_flex.node) Hashtbl.t; (* store id → flex node *)
   rects : (int, Lui_scene.rect) Hashtbl.t;
   mutable extent : float * float; (* frame extent the last layout used *)
+  (* Memo of the inputs the current mirror+rects reflect. [synced_rev]
+     is the store revision covered; -1 forces a rebuild. Function
+     inputs compare by identity — a caller whose measure/hidden
+     closure keeps its identity but changes its answers (e.g. a text
+     engine that finishes loading fonts) must {!invalidate}. *)
+  mutable synced_rev : int;
+  mutable synced_scale : float;
+  mutable synced_w : float;
+  mutable synced_h : float;
+  mutable synced_anchor : (float * float) option;
+  mutable synced_measure : text_measure;
+  mutable synced_hidden : int -> bool;
 }
 
 let create () =
   { root = None;
     nodes = Hashtbl.create 64;
     rects = Hashtbl.create 64;
-    extent = (0., 0.) }
+    extent = (0., 0.);
+    synced_rev = -1;
+    synced_scale = 0.;
+    synced_w = 0.;
+    synced_h = 0.;
+    synced_anchor = None;
+    synced_measure = no_measure;
+    synced_hidden = show_all }
+
+let invalidate (t : t) = t.synced_rev <- -1
 
 (* ---------- wire value access ---------- *)
 
@@ -1048,29 +1075,53 @@ let compute t ~width ~height =
   | None -> ()
   | Some root ->
     t.extent <- layout_frame root ~width ~height;
-    collect t
+    collect t;
+    (* The rects now reflect a frame the memo never synced at — a
+       later {!sync} at the memoized size would wrongly reuse them. *)
+    invalidate t
 
-let sync ?(scale = 1.) ?(measure = (fun _ _ _ _ -> None))
-    ?(hidden = fun _ -> false) ?ctx_anchor ~width ~height (t : t) store =
-  Hashtbl.reset t.nodes;
-  let ctx =
-    { scale; vw = width; vh = height; tm = measure; hidden; ctx_anchor;
-      store; nodes = t.nodes;
-      applied = Hashtbl.create 64; grids = ref []; popups = ref [] }
-  in
-  let kids =
-    build_seq ctx store ~pkind:"frame" ~pid:(-1) ~first:0
-      (Lui_store.root_ids store)
-  in
-  let root = Lui_flex.create ~style:(frame_style_for width (Pt height)) kids in
-  t.root <- Some root;
-  let ew, eh = layout_frame root ~width ~height in
-  refine_grids ctx;
-  refine_popups ctx;
-  (if !(ctx.grids) <> [] || !(ctx.popups) <> [] then
-     Lui_flex.compute_layout root ~width:ew ~height:eh ());
-  t.extent <- (ew, eh);
-  collect t
+let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
+    ?ctx_anchor ~width ~height (t : t) store =
+  let rev = Lui_store.revision store in
+  (* The store bumps its revision on every mutation, so a matching key
+     means the rebuild below would produce an identical mirror —
+     skipped wholesale (scroll-only and idle repaints pay nothing). *)
+  if
+    t.synced_rev <> rev || t.synced_scale <> scale
+    || t.synced_w <> width || t.synced_h <> height
+    || t.synced_anchor <> ctx_anchor
+    || (not (t.synced_measure == measure))
+    || (not (t.synced_hidden == hidden))
+  then begin
+    Hashtbl.reset t.nodes;
+    let ctx =
+      { scale; vw = width; vh = height; tm = measure; hidden;
+        ctx_anchor; store; nodes = t.nodes;
+        applied = Hashtbl.create 64; grids = ref []; popups = ref [] }
+    in
+    let kids =
+      build_seq ctx store ~pkind:"frame" ~pid:(-1) ~first:0
+        (Lui_store.root_ids store)
+    in
+    let root =
+      Lui_flex.create ~style:(frame_style_for width (Pt height)) kids
+    in
+    t.root <- Some root;
+    let ew, eh = layout_frame root ~width ~height in
+    refine_grids ctx;
+    refine_popups ctx;
+    (if !(ctx.grids) <> [] || !(ctx.popups) <> [] then
+       Lui_flex.compute_layout root ~width:ew ~height:eh ());
+    t.extent <- (ew, eh);
+    collect t;
+    t.synced_rev <- rev;
+    t.synced_scale <- scale;
+    t.synced_w <- width;
+    t.synced_h <- height;
+    t.synced_anchor <- ctx_anchor;
+    t.synced_measure <- measure;
+    t.synced_hidden <- hidden
+  end
 
 let content_extent (t : t) = t.extent
 

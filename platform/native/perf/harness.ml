@@ -11,9 +11,10 @@
    - Scrolling is modelled exactly like the window driver: ancestor
      scroll offsets are summed and subtracted from each node's engine
      rect inside the paint [layout] hook — a scroll frame costs a
-     paint + raster pass over the unchanged store, not a patch. The
-     layout engine is still re-synced every frame because that is what
-     [Lui_host.repaint] does in production.
+     paint + raster pass over the unchanged store, not a patch.
+     [Lui_layout.sync] is called every frame because that is what
+     [Lui_host.repaint] does in production; the memo makes the call
+     free when the store revision and frame inputs are unchanged.
    - Raster uses [Lui_raster.Renderer], the damage-limited renderer a
      real window drives; the full-frame [Lui_raster.render] is kept
      alongside for before/after damage comparisons.

@@ -164,6 +164,31 @@ let test_rebuild_after_mutation () =
   check_some_rect "new node" 0. 0. 200. 30. (Lui_layout.rect t 6);
   check_some_rect "old sibling shifted" 0. 30. 200. 20. (Lui_layout.rect t 4)
 
+(* Sync over an untouched store is memoized: the measure counter shows
+   no rebuild ran. A store mutation or an explicit {!invalidate}
+   re-runs layout and measures again. *)
+let test_sync_memoized () =
+  let store = Lui_store.create () in
+  apply store
+    [ CreateNode (1, Root); CreateNode (2, Row); CreateNode (3, Text);
+      InsertChild (1, 2, 0); InsertChild (2, 3, 0);
+      SetProp (3, TextValue, StringValue "hello") ];
+  let calls = ref 0 in
+  let measure _id _text _w _h = incr calls; Some (40., 10.) in
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~measure ~width:200. ~height:100. t store;
+  let first = !calls in
+  check bool "measured once" true (first > 0);
+  Lui_layout.sync ~measure ~width:200. ~height:100. t store;
+  check int "unchanged inputs skip rebuild" first !calls;
+  Lui_layout.invalidate t;
+  Lui_layout.sync ~measure ~width:200. ~height:100. t store;
+  check bool "invalidate forces rebuild" true (!calls > first);
+  let after_invalidate = !calls in
+  apply store [ SetProp (3, WidthValue, IntValue 30) ];
+  Lui_layout.sync ~measure ~width:200. ~height:100. t store;
+  check bool "store mutation resyncs" true (!calls > after_invalidate)
+
 (* Grid cells subtract the gap share: columns=2 + gap 10 in a 200-wide
    frame gives two 95-wide cells per row, not one. *)
 let test_grid_gap_fits_columns () =
@@ -313,6 +338,7 @@ let () =
          test_case "run placements" `Quick test_run_placements;
          test_case "display none" `Quick test_display_none_absent;
          test_case "rebuild" `Quick test_rebuild_after_mutation;
+         test_case "sync memoized" `Quick test_sync_memoized;
          test_case "frame grows" `Quick test_frame_grows_to_content;
          test_case "popup centered" `Quick test_popup_default_centered;
          test_case "root popup" `Quick test_root_popup_centered_in_frame;
