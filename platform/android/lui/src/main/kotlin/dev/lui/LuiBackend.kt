@@ -91,24 +91,41 @@ class LuiBackend(
      * batch fails validation — mirrors the other backends' reject semantics. */
     fun applyJson(source: String?): Boolean {
         if (source.isNullOrEmpty()) return false
-        return try {
-            tree.apply(LuiPatchBatch.parse(source))
-            publish(tree.lastChanged)
-            lastError = null
-            true
+        val batch = try {
+            LuiPatchBatch.parse(source)
         } catch (error: LuiBackendException) {
             lastError = error.message
-            false
+            return false
         }
+        return applyBatch(batch)
     }
 
     /** Alias of [applyJson] kept for internal callers. */
     fun applyBatch(source: String): Boolean = applyJson(source)
 
+    /** Apply an already-decoded patch batch (the bridge parses off the main
+     * thread and posts the batch for apply+publish here). */
+    internal fun applyBatch(batch: LuiPatchBatch): Boolean = try {
+        tree.apply(batch)
+        publish(tree.lastChanged)
+        lastError = null
+        true
+    } catch (error: LuiBackendException) {
+        lastError = error.message
+        false
+    }
+
     /** Replace the host mirror with a fully validated authoritative runtime snapshot. */
     fun applySnapshot(source: String): Boolean = try {
+        applySnapshot(LuiPatchBatch.parse(source))
+    } catch (error: LuiBackendException) {
+        lastError = error.message
+        false
+    }
+
+    internal fun applySnapshot(batch: LuiPatchBatch): Boolean = try {
         val replacement = LuiRetainedTree(extensions)
-        replacement.applyInitialSnapshot(LuiPatchBatch.parse(source))
+        replacement.applyInitialSnapshot(batch)
         val observed = observedNodes.keys.toSet()
         tree = replacement
         publish(
