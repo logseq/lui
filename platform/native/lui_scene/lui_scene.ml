@@ -506,4 +506,4 @@ let reset s ~width ~height ~scale ~clear =
   s.width <- width; s.height <- height; s.scale <- scale; s.clear <- clear;
   s.ops <- []; s.glyphs <- []; s.effects <- []; s.wide <- []
 
-let add_wide s wc = s.wide <- s.wide @ [ wc ]; List.length s.wide
+let add_wide s wc = s.wide <- wc :: s.wide; List.length s.wide

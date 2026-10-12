@@ -183,7 +183,7 @@ let emit_glyph t scene ~scale ~pen ~baseline ~font ~gid ~g_y ~fg =
         gcolored = s.sl_colored;
         gsubpixel = false; gthin = false }
     in
-    scene.glyphs <- scene.glyphs @ [ gl ];
+    scene.glyphs <- gl :: scene.glyphs;
     true
 
 let text_ops t id r fg s =
