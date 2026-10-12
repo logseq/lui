@@ -364,7 +364,7 @@ let cells : cell list =
                   @ [ (FocusShadow, sv "0 0 0 3px rgba(59 130 246 / 40%)") ])) ());
     cell "secure_field" "secure-field" "masked secret"
       (n SecureField ~cov:true
-         ~props:(sized ~h:30. ([ (TextValue, sv "********") ] @ bordered)) ());
+         ~props:(sized ~h:30. ([ (TextValue, sv "hunter2 secret") ] @ bordered)) ());
     cell "input" "input" "bare input"
       (n Input ~cov:true ~props:(sized ~h:28. ([ (TextValue, sv "Plain input") ] @ bordered)) ());
     cell "search_field" "search-field" "placeholder"

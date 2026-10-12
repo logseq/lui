@@ -68,6 +68,7 @@ type vlist = {
   mutable mounted_ids : int list; (* ids whose rects are registered *)
   mutable key_index : (string, int) Hashtbl.t option; (* lazy key → index *)
   mutable id_index : (int, int) Hashtbl.t option; (* lazy store id → index *)
+  mutable built_cross : float; (* cross size the mounted rows laid out at *)
 }
 
 (* The sync inputs a scroll-driven remount needs to rebuild row
@@ -83,30 +84,65 @@ type saved_ctx = {
   sc_store : Lui_store.t;
 }
 
+(* One raw child's produced expansion inside its parent's produced
+   list: [gens] is the flat list of store ids that own flex nodes and
+   land, in order, inside the flex children of the parent's flex owner
+   (a normal child produces itself; a display:contents child produces
+   its own produced children; display:none produces nothing). *)
+type pkid = { raw : int; mutable gens : int list }
+
+(* The pseudo store id of the synthetic frame root: store roots' parent
+   in the [sparent] shadow and the key of their produced list in
+   [pkids]. Real store ids are >= 0. *)
+let frame_id = -1
+
 type t = {
   mutable root : Lui_flex.node option;
+  (* The mirror is persistent: maps below live across syncs and the
+     journal replays store ops onto them. *)
   nodes : (int, Lui_flex.node) Hashtbl.t; (* store id → flex node *)
   applied : (int, Lui_flex.style) Hashtbl.t; (* store id → applied style *)
   rects : (int, Lui_scene.rect) Hashtbl.t;
   vlists : (int, vlist) Hashtbl.t; (* store id → virtual-list state *)
   mutable vctx : saved_ctx option; (* inputs of the last full sync *)
+  (* Store ids whose produced subtree needs a rect re-read after the
+     incremental pass ([frame_id] = everything). *)
+  rect_dirty : (int, unit) Hashtbl.t;
+  (* [pkids p] is the produced expansion of raw parent p's children —
+     the shadow the incremental path edits when children move. Present
+     for every built node (leaves keep []) and for [frame_id]. *)
+  pkids : (int, pkid list) Hashtbl.t;
+  (* Raw parent of each built store id at mirror time (drops need it —
+     the store link is already gone when the op arrives). *)
+  sparent : (int, int) Hashtbl.t;
+  (* Produced store id → owner: the store id whose flex node is its
+     flex parent ([frame_id] for frame children). *)
+  owner : (int, int) Hashtbl.t;
+  grids : (int * Lui_flex.node * Lui_flex.style * float) list ref;
+  popups : (Lui_flex.node * int) list ref;
   mutable extent : float * float; (* frame extent the last layout used *)
   (* Memo of the inputs the current mirror+rects reflect. [synced_rev]
-     is the store revision covered; -1 forces a rebuild. Function
-     inputs compare by identity — a caller whose measure/hidden
-     closure keeps its identity but changes its answers (e.g. a text
-     engine that finishes loading fonts) must {!invalidate}. *)
+     is the store revision the journal has been replayed through;
+     [synced_lrev] is the layout revision ([Lui_store.layout_rev]) —
+     paint-only churn leaves it still so the fast path skips entirely.
+     -1 forces a rebuild. Function inputs compare by identity — a
+     caller whose measure/hidden closure keeps its identity but
+     changes its answers (e.g. a text engine that finishes loading
+     fonts) must {!invalidate}. *)
   mutable synced_rev : int;
+  mutable synced_lrev : int;
   mutable synced_scale : float;
   mutable synced_w : float;
   mutable synced_h : float;
   mutable synced_anchor : (float * float) option;
   mutable synced_measure : text_measure;
   mutable synced_hidden : int -> bool;
-  (* Instrumentation: how many times {!sync} actually rebuilt the
-     mirror. Lets tests assert that memoization (and later the
-     incremental path) skipped work instead of trusting timings. *)
+  (* Instrumentation: [stat_syncs] counts syncs that rebuilt the mirror
+     wholesale, [stat_steps] syncs that applied journal ops. Lets tests
+     assert memoization and the incremental path instead of trusting
+     timings. *)
   mutable stat_syncs : int;
+  mutable stat_steps : int;
 }
 
 let create () =
@@ -116,18 +152,27 @@ let create () =
     rects = Hashtbl.create 64;
     vlists = Hashtbl.create 4;
     vctx = None;
+    rect_dirty = Hashtbl.create 16;
+    pkids = Hashtbl.create 64;
+    sparent = Hashtbl.create 64;
+    owner = Hashtbl.create 64;
+    grids = ref [];
+    popups = ref [];
     extent = (0., 0.);
     synced_rev = -1;
+    synced_lrev = -1;
     synced_scale = 0.;
     synced_w = 0.;
     synced_h = 0.;
     synced_anchor = None;
     synced_measure = no_measure;
     synced_hidden = show_all;
-    stat_syncs = 0 }
+    stat_syncs = 0;
+    stat_steps = 0 }
 
 let invalidate (t : t) = t.synced_rev <- -1
 let stat_syncs (t : t) = t.stat_syncs
+let stat_steps (t : t) = t.stat_steps
 
 (* ---------- wire value access ---------- *)
 
@@ -715,11 +760,18 @@ type ctx = {
   hidden : int -> bool; (* host-owned transient visibility (menus) *)
   ctx_anchor : (float * float) option; (* pointer point for context menus *)
   store : Lui_store.t;
+  eng : t; (* back-reference: root and rects *)
   nodes : (int, Lui_flex.node) Hashtbl.t; (* store id → flex node *)
   applied : (int, Lui_flex.style) Hashtbl.t; (* store id → applied style *)
-  grids : (Lui_flex.node * Lui_flex.style * float) list ref;
+  pkids : (int, pkid list) Hashtbl.t;
+  sparent : (int, int) Hashtbl.t;
+  owner : (int, int) Hashtbl.t;
+  grids : (int * Lui_flex.node * Lui_flex.style * float) list ref;
   popups : (Lui_flex.node * int) list ref; (* flex node, store id *)
   vlists : (int, vlist) Hashtbl.t; (* virtual-list states (t.vlists) *)
+  (* Virtual lists a journal op touched this sync — resynced before
+     layout (row forests are rebuilt, never edited in place). *)
+  vresync : (int, unit) Hashtbl.t;
 }
 
 (* ---------- virtual-list extent model ----------
@@ -827,6 +879,7 @@ let vlist_state ctx id =
         mounted_ids = [];
         key_index = None;
         id_index = None;
+        built_cross = 0.;
       }
     in
     Hashtbl.replace ctx.vlists id v;
@@ -952,96 +1005,169 @@ let vlist_range (v : vlist) =
     (first, max first last)
   end
 
-(* [build] expands a store node into flex nodes — a singleton list for
-   normal kinds, [] for display:none, and the lifted children for
-   display:contents. [index] is the flattened sibling position. *)
-let rec build ctx store ~pkind ~pid ~index id : Lui_flex.node list =
-  if display_none store id || ctx.hidden id then []
-  else if display_contents store id then
-    build_seq ctx store ~pkind ~pid ~first:index (Lui_store.child_ids store id)
+let kind_of ctx id = if id = frame_id then "frame" else Lui_store.kind ctx.store id
+
+(* What a store node produces into its flex parent's children. *)
+type nstatus = N_hidden | N_contents | N_normal
+
+let status_of ctx id =
+  if display_none ctx.store id || ctx.hidden id then N_hidden
+  else if display_contents ctx.store id then N_contents
+  else N_normal
+
+let pkids_of ctx p = Option.value ~default:[] (Hashtbl.find_opt ctx.pkids p)
+
+(* Produced gens from mirror state only — never builds. *)
+let peek_produced ctx id =
+  match status_of ctx id with
+  | N_hidden -> []
+  | N_normal -> if Hashtbl.mem ctx.nodes id then [ id ] else []
+  | N_contents -> List.concat_map (fun e -> e.gens) (pkids_of ctx id)
+
+(* The store id owning the flex node p's produced children land in: p
+   itself when it has a flex node, else the nearest ancestor with one
+   (contents/hidden nodes lift their produced set up the raw chain). *)
+let children_owner ctx p =
+  if Hashtbl.mem ctx.nodes p then p
   else
-    let style =
-      style_of ~scale:ctx.scale ~viewport:(ctx.vw, ctx.vh) store id
-      |> adjust ~pkind ~pid ~index store id
+    let rec climb x =
+      match Hashtbl.find_opt ctx.sparent x with
+      | Some par ->
+        if par = frame_id || Hashtbl.mem ctx.nodes par then par
+        else climb par
+      | None -> frame_id
     in
-    let kind = Lui_store.kind store id in
-    if kind = "virtual-list" && vlist_vertical store id then begin
+    climb p
+
+(* A node whose produced children are all popup surfaces (e.g. a menu
+   trigger) still sizes to its own label — the popups are out of flow
+   and contribute nothing. *)
+let popup_min_style ctx id cids kids (style : Lui_flex.style) : Lui_flex.style =
+  let text = text_of ctx.store id in
+  match (kids, text) with
+  | _ :: _, Some t
+    when List.for_all
+           (fun cid -> popup_kind (Lui_store.kind ctx.store cid))
+           cids -> (
+    match ctx.tm id t ctx.vw ctx.vh with
+    | Some (tw, th) ->
+      { style with
+        min_width =
+          (match (style.width, style.min_width) with
+           | Unset, Unset -> Pt tw
+           | _, l -> l);
+        min_height =
+          (match (style.height, style.min_height) with
+           | Unset, Unset -> Pt th
+           | _, l -> l) }
+    | None -> style)
+  | _ -> style
+
+let measure_for ctx id ~kids : Lui_flex.measure option =
+  match (kids, text_of ctx.store id) with
+  | [], Some t -> (
+    match Lui_store.prop ctx.store id "icon" with
+    | Some (StringValue s) when s <> "" ->
+      (* labeled_content_ops paints a 16px icon slot + 6px gap —
+         reserve them so the label doesn't overflow the chrome *)
+      let icon_extra = 22. *. ctx.scale in
+      Some
+        (fun node ~width ~width_mode ~height ~height_mode ->
+          let d =
+            measure_of ctx.tm ~id ~text:t node ~width ~width_mode
+              ~height ~height_mode
+          in
+          { d with Lui_flex.width = d.Lui_flex.width +. icon_extra })
+    | _ -> Some (measure_of ctx.tm ~id ~text:t))
+  | _ -> None
+
+let register ctx id kind node style =
+  (if kind = "grid" then
+     match pnum ctx.store id "columns" with
+     | Some n when n > 0. ->
+       ctx.grids := (id, node, style, n) :: !(ctx.grids)
+     | _ -> ());
+  if popup_kind kind
+     && not (kind = "drawer" && has_prop ctx.store id "selected")
+  then ctx.popups := (node, id) :: !(ctx.popups)
+
+let unregister ctx id =
+  ctx.grids := List.filter (fun (g, _, _, _) -> g <> id) !(ctx.grids);
+  ctx.popups := List.filter (fun (_, s) -> s <> id) !(ctx.popups)
+
+(* [build] expands a store node into (flex node, generator store id)
+   pairs — a singleton for normal kinds, [] for display:none/hidden,
+   the lifted produced pairs for display:contents. Every mirror map is
+   populated as it goes: nodes/applied/owner per built node, pkids and
+   sparent per expanded parent. [index] is the flattened sibling
+   position inside the produced children of [pid]. *)
+let rec build ctx ~owner_id ~pkind ~pid ~index id : (Lui_flex.node * int) list =
+  match status_of ctx id with
+  | N_hidden -> []
+  | N_contents ->
+    let cids =
+      ordered_child_ids ctx.store id (Lui_store.kind ctx.store id)
+    in
+    fst
+      (expand_children ctx ~owner:owner_id ~pkind ~pid ~raw_parent:id
+         ~first:index cids)
+  | N_normal ->
+    let kind = Lui_store.kind ctx.store id in
+    let style =
+      style_of ~scale:ctx.scale ~viewport:(ctx.vw, ctx.vh) ctx.store id
+      |> adjust ~pkind ~pid ~index ctx.store id
+    in
+    if kind = "virtual-list" && vlist_vertical ctx.store id then begin
       (* Real virtualization: the list is a leaf in this mirror — only
-         the mounted row window gets flex trees (side forest). *)
+         the mounted row window gets flex trees (side forest). Its
+         produced child list stays empty; [pkids] records the leaf. *)
       let v = vlist_state ctx id in
-      vlist_configure ctx store v style;
+      vlist_configure ctx ctx.store v style;
       let style = vlist_leaf_style ctx v style in
       let node = Lui_flex.create ~style [] in
       Hashtbl.replace ctx.nodes id node;
       Hashtbl.replace ctx.applied id style;
-      [ node ]
+      Hashtbl.replace ctx.owner id owner_id;
+      Hashtbl.replace ctx.pkids id [];
+      register ctx id kind node style;
+      [ (node, id) ]
     end
     else
-    let cids = ordered_child_ids store id kind in
-    let kids = build_seq ctx store ~pkind:kind ~pid:id ~first:0 cids in
-    let text = text_of store id in
-    let style =
-      (* A node whose built children are all popup surfaces (e.g. a
-         menu trigger) still sizes to its own label — the popups are
-         out of flow and contribute nothing. *)
-      match (kids, text) with
-      | _ :: _, Some t
-        when List.for_all
-               (fun cid -> popup_kind (Lui_store.kind store cid))
-               cids -> (
-        match ctx.tm id t ctx.vw ctx.vh with
-        | Some (tw, th) ->
-          { style with
-            min_width =
-              (match (style.width, style.min_width) with
-               | Unset, Unset -> Pt tw
-               | _, l -> l);
-            min_height =
-              (match (style.height, style.min_height) with
-               | Unset, Unset -> Pt th
-               | _, l -> l) }
-        | None -> style)
-      | _ -> style
+    let cids = ordered_child_ids ctx.store id kind in
+    let kids, () =
+      expand_children ctx ~owner:id ~pkind:kind ~pid:id ~raw_parent:id
+        ~first:0 cids
     in
-    let m =
-      match (kids, text) with
-      | [], Some t -> (
-        match Lui_store.prop store id "icon" with
-        | Some (StringValue s) when s <> "" ->
-          (* labeled_content_ops paints a 16px icon slot + 6px gap —
-             reserve them so the label doesn't overflow the chrome *)
-          let icon_extra = 22. *. ctx.scale in
-          Some
-            (fun node ~width ~width_mode ~height ~height_mode ->
-              let d =
-                measure_of ctx.tm ~id ~text:t node ~width ~width_mode
-                  ~height ~height_mode
-              in
-              { d with Lui_flex.width = d.Lui_flex.width +. icon_extra })
-        | _ -> Some (measure_of ctx.tm ~id ~text:t))
-      | _ -> None
-    in
+    let kids = List.map fst kids in
+    let style = popup_min_style ctx id cids kids style in
+    let m = measure_for ctx id ~kids in
     let node = Lui_flex.create ~style ?measure:m kids in
     Hashtbl.replace ctx.nodes id node;
     Hashtbl.replace ctx.applied id style;
-    (if kind = "grid" then
-       match pnum store id "columns" with
-       | Some n when n > 0. ->
-         ctx.grids := (node, style, n) :: !(ctx.grids)
-       | _ -> ());
-    (if popup_kind kind
-        && not (kind = "drawer" && has_prop store id "selected")
-     then ctx.popups := (node, id) :: !(ctx.popups));
-    [ node ]
+    Hashtbl.replace ctx.owner id owner_id;
+    register ctx id kind node style;
+    [ (node, id) ]
 
-and build_seq ctx store ~pkind ~pid ~first ids : Lui_flex.node list =
+(* Build each raw child of [raw_parent], recording sparent per child
+   and pkids[raw_parent]. [owner] is the flex owner the produced pairs
+   belong to — for a contents raw_parent the enclosing owner's values
+   pass straight through, exactly like [pkind]/[pid] did at rebuild
+   time. *)
+and expand_children ctx ~owner ~pkind ~pid ~raw_parent ~first cids =
   let counter = ref first in
-  List.concat_map
+  let acc = ref [] and entries = ref [] in
+  List.iter
     (fun cid ->
-      let ns = build ctx store ~pkind ~pid ~index:!counter cid in
-      counter := !counter + List.length ns;
-      ns)
-    ids
+      let pairs =
+        build ctx ~owner_id:owner ~pkind ~pid ~index:!counter cid
+      in
+      counter := !counter + List.length pairs;
+      Hashtbl.replace ctx.sparent cid raw_parent;
+      entries := { raw = cid; gens = List.map snd pairs } :: !entries;
+      acc := List.rev_append pairs !acc)
+    cids;
+  Hashtbl.replace ctx.pkids raw_parent (List.rev !entries);
+  (List.rev !acc, ())
 
 (* ---------- two-pass refinement ----------
 
@@ -1059,20 +1185,13 @@ and build_seq ctx store ~pkind ~pid ~first ids : Lui_flex.node list =
      The default is centered in the containing block — the flex
      parent's border box, or the offered frame for a store-root popup. *)
 
-(* Reverse lookup: store id that produced [fnode] (physical equality —
-   the mirror is rebuilt per sync and discarded right after). *)
-let store_id_of_flex ctx fnode =
-  let found = ref None in
-  Hashtbl.iter
-    (fun sid n -> if !found = None && n == fnode then found := Some sid)
-    ctx.nodes;
-  !found
-
 (* Pin every flex child of a [columns = n] grid to its real share of
-   the row so [n] cells plus [(n-1)] gaps fit one line. *)
+   the row so [n] cells plus [(n-1)] gaps fit one line. The produced
+   children come from pkids — the mirror is persistent, so a reverse
+   flex→store lookup is no longer needed. *)
 let refine_grids ctx =
   List.iter
-    (fun (gnode, (gstyle : Lui_flex.style), ncols) ->
+    (fun (gsid, gnode, (gstyle : Lui_flex.style), ncols) ->
       let gr = Lui_flex.absolute_layout gnode in
       let pl = edge_px ~owner:gr.w gstyle.padding.left gstyle.padding.horizontal gstyle.padding in
       let pr = edge_px ~owner:gr.w gstyle.padding.right gstyle.padding.horizontal gstyle.padding in
@@ -1086,15 +1205,18 @@ let refine_grids ctx =
         Float.max 0. ((inner_w -. (ncols -. 1.) *. gap) /. ncols -. 0.001)
       in
       List.iter
-        (fun c ->
-          match store_id_of_flex ctx c with
-          | Some sid -> (
-            match Hashtbl.find_opt ctx.applied sid with
-            | Some s ->
-              Lui_flex.set_style c { s with flex_basis = Pt basis }
-            | None -> ())
-          | None -> ())
-        (Lui_flex.children gnode))
+        (fun e ->
+          List.iter
+            (fun sid ->
+              match
+                (Hashtbl.find_opt ctx.applied sid,
+                 Hashtbl.find_opt ctx.nodes sid)
+              with
+              | Some s, Some f ->
+                Lui_flex.set_style f { s with flex_basis = Pt basis }
+              | _ -> ())
+            e.gens)
+        (pkids_of ctx gsid))
     !(ctx.grids)
 
 (* Popup anchoring: [x]/[y] supply an anchor point (a zero-size anchor
@@ -1165,8 +1287,15 @@ let refine_popups ctx =
       match Lui_flex.parent pnode with
       | None -> ()
       | Some parent -> (
+        (* The flex parent's store id is the popup's recorded owner —
+           [frame_id] means the popup sits directly under the root. *)
+        let psid_opt =
+          match Hashtbl.find_opt ctx.owner sid with
+          | Some o when o <> frame_id -> Some o
+          | _ -> None
+        in
         let pr, pstyle_opt =
-          match store_id_of_flex ctx parent with
+          match psid_opt with
           | Some psid ->
             ( Lui_flex.absolute_layout parent,
               Hashtbl.find_opt ctx.applied psid )
@@ -1210,7 +1339,7 @@ let refine_popups ctx =
               | Some anc -> positioned anc
               | None -> None)
           in
-          match store_id_of_flex ctx parent with
+          match psid_opt with
           | Some psid -> (match positioned psid with
             | Some r -> r
             | None -> pr)
@@ -1394,6 +1523,63 @@ let layout_frame root ~width ~height : float * float =
   Lui_flex.compute_layout root ~width:ew ~height:eh ();
   (ew, eh)
 
+(* ---------- mirror purge and virtual-list ancestry ----------
+
+   Shared by the virtual-list passes below and the incremental journal:
+   row subtrees register into the mirror's shadow tables (pkids,
+   sparent, owner) even though their flex nodes live in the list's own
+   [v.nodes] table, so dropping a row must scrub both. *)
+
+(* Remove id's flex node and every built descendant's mirror state —
+   shadow tables included, so a dropped row leaves no trace the
+   incremental path could trip over. *)
+let rec purge ctx id =
+  (match Hashtbl.find_opt ctx.pkids id with
+   | Some es ->
+     Hashtbl.remove ctx.pkids id;
+     List.iter (fun e -> purge ctx e.raw) es
+   | None -> ());
+  Hashtbl.remove ctx.nodes id;
+  Hashtbl.remove ctx.applied id;
+  Hashtbl.remove ctx.sparent id;
+  Hashtbl.remove ctx.owner id;
+  Hashtbl.remove ctx.eng.rects id;
+  unregister ctx id
+
+let vlist_of ctx id = if Hashtbl.mem ctx.vlists id then Some id else None
+
+(* The live virtual list [id] sits inside, if any — strict ancestors
+   only. [sparent] covers mounted row subtrees (row roots point at the
+   list); the store parent covers everything else: unmounted items and
+   nodes the journal just moved. *)
+let rec vlist_ancestor ctx id =
+  if id = frame_id then None
+  else
+    let above p =
+      match vlist_of ctx p with
+      | Some _ as v -> v
+      | None -> vlist_ancestor ctx p
+    in
+    match Hashtbl.find_opt ctx.sparent id with
+    | Some p -> above p
+    | None -> (
+      match Lui_store.parent ctx.store id with
+      | Some p -> above p
+      | None -> None)
+
+(* Marks the enclosing list for resync; true when [id] sits inside one. *)
+let under_vlist ctx id =
+  match vlist_ancestor ctx id with
+  | Some v -> Hashtbl.replace ctx.vresync v (); true
+  | None -> false
+
+(* Same, but [id] itself counts: the parent argument of a child op is
+   the list it lands in, not a node inside it. *)
+let in_vlist ctx id =
+  match vlist_of ctx id with
+  | Some v -> Hashtbl.replace ctx.vresync v (); true
+  | None -> under_vlist ctx id
+
 (* ---------- virtual-list post-layout passes ----------
 
    After the mirror computes, each virtual list learns its own content
@@ -1423,11 +1609,26 @@ let vlist_geometry ctx (v : vlist) =
     v.origin_cross <- ar.x +. bl +. pl;
     v.cross_size <- Float.max 0. (ar.w -. bl -. br -. pl -. pr)
 
+(* Drop one mounted row: its shadow registrations (rows share the
+   mirror's shadow tables, which is how journal ops routed to a row
+   find the list), its per-list flex nodes and its composed rects.
+   A subtree that moved out of the list mid-batch keeps its new mirror
+   slot — its raw chain no longer reaches this list. *)
+let drop_vrow ctx (v : vlist) i (row : vrow) =
+  List.iter
+    (fun id ->
+      match vlist_ancestor ctx id with
+      | Some a when a = v.vid -> purge ctx id
+      | _ -> ())
+    row.rids;
+  List.iter (fun id -> Hashtbl.remove v.nodes id) row.rids;
+  Hashtbl.remove v.rows i
+
 (* Mount the row subtrees for [first, last): drop the ones that left
    the window, build the ones that entered. A row is a standalone flex
    tree measured against the list's content width; its laid-out main
    extent refines the model ([vlist_measure]). *)
-let build_vrows t ctx store (v : vlist) ~first ~last =
+let build_vrows _t ctx store (v : vlist) ~first ~last =
   let stale = ref [] in
   Hashtbl.iter
     (fun i (_ : vrow) -> if i < first || i >= last then stale := i :: !stale)
@@ -1435,18 +1636,19 @@ let build_vrows t ctx store (v : vlist) ~first ~last =
   List.iter
     (fun i ->
        match Hashtbl.find_opt v.rows i with
-       | Some row ->
-         List.iter (fun id -> Hashtbl.remove v.nodes id) row.rids;
-         List.iter (fun id -> Hashtbl.remove t.rects id) row.rids;
-         Hashtbl.remove v.rows i
+       | Some row -> drop_vrow ctx v i row
        | None -> ())
     !stale;
+  v.built_cross <- v.cross_size;
   for i = first to last - 1 do
     if not (Hashtbl.mem v.rows i) then begin
       let cid = if i < Array.length v.kids then v.kids.(i) else -1 in
       if cid >= 0 then begin
         (* Row-local context: registrations land in the list's own
-           node table so [collect] stays a mirror-only pass. *)
+           node table so [collect] stays a mirror-only pass. The shadow
+           tables are shared with the mirror — row roots point their
+           [sparent] at the list so incremental ops on row descendants
+           resolve to a virtual-list resync. *)
         let rctx =
           { ctx with
             nodes = v.nodes;
@@ -1454,9 +1656,12 @@ let build_vrows t ctx store (v : vlist) ~first ~last =
             grids = ref [];
             popups = ref [] }
         in
-        let kids =
-          build rctx store ~pkind:"virtual-list" ~pid:v.vid ~index:i cid
+        let pairs =
+          build rctx ~owner_id:v.vid ~pkind:"virtual-list" ~pid:v.vid
+            ~index:i cid
         in
+        Hashtbl.replace ctx.sparent cid v.vid;
+        let kids = List.map fst pairs in
         let root =
           match kids with
           | [ n ] -> n
@@ -1488,6 +1693,19 @@ let vlists_mount (t : t) ctx store ~vport =
           v.vs <- vs;
           v.ve <- ve
         | None -> v.windowed <- false);
+       (if v.cross_size <> v.built_cross && Hashtbl.length v.rows > 0
+        then begin
+          (* The content width moved under the mounted forest on the
+             persistent mirror — the rows must lay out again at the new
+             width, a slide of the window alone would not catch it. *)
+          let idx = Hashtbl.fold (fun i _ acc -> i :: acc) v.rows [] in
+          List.iter
+            (fun i ->
+               match Hashtbl.find_opt v.rows i with
+               | Some row -> drop_vrow ctx v i row
+               | None -> ())
+            idx
+        end);
        let f, l = vlist_range v in
        if f <> v.first || l <> v.last || Hashtbl.length v.rows < l - f
        then begin
@@ -1558,40 +1776,61 @@ let collect_vlist t (v : vlist) =
 let vlists_collect (t : t) =
   Hashtbl.iter (fun _ v -> collect_vlist t v) t.vlists
 
-(* Full-sync pass: prune dead lists, learn geometry, mount the fed
-   windows, and repatch leaf extents when measurements moved them. *)
-let vlists_prepare (t : t) ctx ~vport ~width ~height =
-  let store = ctx.store in
-  Hashtbl.filter_map_inplace
-    (fun id v ->
-       if Lui_store.kind store id = "virtual-list" && vlist_vertical store id
-       then Some v
-       else None)
+(* Post-layout pass over every live list: prune dead ones (dropped,
+   hidden, re-kinded or flipped to horizontal), learn geometry, mount
+   the fed windows, and repatch leaf extents when measurements moved
+   them. [reset] drops every mounted row first — the rebuild path uses
+   it since row forests were built under the previous sync's context;
+   the incremental path keeps rows the journal did not touch. *)
+let vlists_pass (t : t) ctx ~vport ~width ~height ~reset =
+  let dead = ref [] in
+  Hashtbl.iter
+    (fun _ (v : vlist) ->
+       let alive =
+         Lui_store.kind ctx.store v.vid = "virtual-list"
+         && vlist_vertical ctx.store v.vid
+         && Hashtbl.mem t.nodes v.vid
+       in
+       if not alive then dead := v :: !dead)
     t.vlists;
+  List.iter
+    (fun (v : vlist) ->
+       (* Rows and their composed rects die with the list. *)
+       let idx = Hashtbl.fold (fun i row acc -> (i, row) :: acc) v.rows [] in
+       List.iter (fun (i, row) -> drop_vrow ctx v i row) idx;
+       Hashtbl.reset v.nodes;
+       Hashtbl.remove t.vlists v.vid)
+    !dead;
   if Hashtbl.length t.vlists > 0 then begin
-    (* Row subtrees were built under the previous sync's context —
-       props, scale and viewport may all have changed, so the mounted
-       forest rebuilds from scratch against the fresh ctx. *)
-    Hashtbl.iter
-      (fun _ (v : vlist) ->
-         Hashtbl.reset v.rows;
-         Hashtbl.reset v.nodes)
-      t.vlists;
+    (if reset then
+       Hashtbl.iter
+         (fun _ (v : vlist) ->
+            let idx =
+              Hashtbl.fold (fun i row acc -> (i, row) :: acc) v.rows []
+            in
+            List.iter (fun (i, row) -> drop_vrow ctx v i row) idx)
+         t.vlists);
     Hashtbl.iter (fun _ v -> vlist_geometry ctx v) t.vlists;
-    ignore (vlists_mount t ctx store ~vport);
+    ignore (vlists_mount t ctx ctx.store ~vport);
     if vlists_patch t ctx then begin
-      (match t.root with
-       | Some root ->
-         let ew, eh = layout_frame root ~width ~height in
-         t.extent <- (ew, eh);
-         Hashtbl.iter (fun _ v -> vlist_geometry ctx v) t.vlists;
-         ignore (vlists_mount t ctx store ~vport)
-       | None -> ())
+      (* A resized leaf shifts every rect after it — scoped re-reads
+         cannot cover that, so refresh the whole frame. *)
+      Hashtbl.replace t.rect_dirty frame_id ();
+      match t.root with
+      | Some root ->
+        let ew, eh = layout_frame root ~width ~height in
+        t.extent <- (ew, eh);
+        Hashtbl.iter (fun _ v -> vlist_geometry ctx v) t.vlists;
+        ignore (vlists_mount t ctx ctx.store ~vport)
+      | None -> ()
     end
   end
 
 (* A build ctx reconstructed from the saved sync inputs — used by the
-   memo-hit path to remount row windows without a mirror rebuild. *)
+   memo-hit path to remount row windows without a mirror rebuild. The
+   shadow tables are shared with the mirror for the same reason as in
+   [build_vrows]: mounted rows must stay reachable through the raw
+   chain. *)
 let ctx_of_saved (t : t) (sc : saved_ctx) : ctx =
   { scale = sc.sc_scale;
     vw = sc.sc_vw;
@@ -1600,11 +1839,16 @@ let ctx_of_saved (t : t) (sc : saved_ctx) : ctx =
     hidden = sc.sc_hidden;
     ctx_anchor = sc.sc_anchor;
     store = sc.sc_store;
+    eng = t;
     nodes = t.nodes;
     applied = t.applied;
+    pkids = t.pkids;
+    sparent = t.sparent;
+    owner = t.owner;
     grids = ref [];
     popups = ref [];
-    vlists = t.vlists }
+    vlists = t.vlists;
+    vresync = Hashtbl.create 4 }
 
 (* Memo-hit path: only the fed viewports moved since the last layout —
    remount the windows that slid, repatch extents, recompose rects.
@@ -1641,48 +1885,558 @@ let compute t ~width ~height =
        later {!sync} at the memoized size would wrongly reuse them. *)
     invalidate t
 
-let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
-    ?ctx_anchor ?(vport = no_vport) ~width ~height (t : t) store =
-  let rev = Lui_store.layout_rev store in
-  (* The store bumps its layout revision on every mutation that can
-     move geometry — structure and layout-classified props — so a
-     matching key means the rebuild below would produce an identical
-     mirror: skipped wholesale (scroll-only frames, idle repaints and
-     paint-only prop churn all pay nothing). *)
-  if
-    t.synced_rev <> rev || t.synced_scale <> scale
-    || t.synced_w <> width || t.synced_h <> height
-    || t.synced_anchor <> ctx_anchor
-    || (not (t.synced_measure == measure))
-    || (not (t.synced_hidden == hidden))
-  then begin
-    t.stat_syncs <- t.stat_syncs + 1;
-    Hashtbl.reset t.nodes;
-    Hashtbl.reset t.applied;
-    let ctx =
-      { scale; vw = width; vh = height; tm = measure; hidden;
-        ctx_anchor; store; nodes = t.nodes;
-        applied = t.applied; grids = ref []; popups = ref [];
-        vlists = t.vlists }
+(* ---------- incremental mirror ----------
+
+   Between syncs the mirror is persistent: [changes_since] replays the
+   store's op journal onto the shadow tables (pkids/sparent/owner), the
+   flex engine's own dirty propagation confines relayout to the touched
+   paths, and [rect_dirty] scopes the rect refresh to the produced
+   subtrees a change can actually shift. *)
+
+(* produced_of is the built-state produced list: unlike peek it expands
+   whatever the produced set needs. [owner_id] is the flex owner a lazy
+   expansion belongs to — the caller knows it, an unbuilt node's own
+   shadow does not yet. *)
+let rec produced_of ctx ~owner_id id =
+  match status_of ctx id with
+  | N_hidden -> []
+  | N_normal -> [ id ]
+  | N_contents ->
+    (if not (Hashtbl.mem ctx.pkids id) then
+       let cids =
+         ordered_child_ids ctx.store id (Lui_store.kind ctx.store id)
+       in
+       ignore
+         (expand_children ctx ~owner:owner_id ~pkind:(kind_of ctx owner_id)
+            ~pid:owner_id ~raw_parent:id ~first:0 cids));
+    List.concat_map (fun e -> e.gens) (pkids_of ctx id)
+
+(* ensure_produced builds whatever the produced expansion needs: a
+   never-built node mirrors its whole subtree, an unexpanded contents
+   node expands its children, anything already built is reused. *)
+and ensure_produced ctx ~owner_id id =
+  match status_of ctx id with
+  | N_hidden -> []
+  | N_normal ->
+    if Hashtbl.mem ctx.nodes id then [ id ]
+    else begin
+      ignore
+        (build ctx ~owner_id ~pkind:(kind_of ctx owner_id) ~pid:owner_id
+           ~index:0 id);
+      [ id ]
+    end
+  | N_contents -> produced_of ctx ~owner_id id
+
+(* Raw children in produced order: store roots for the frame
+   pseudo-parent, the ordered child list otherwise. *)
+let raw_children ctx p =
+  if p = frame_id then Lui_store.root_ids ctx.store
+  else ordered_child_ids ctx.store p (kind_of ctx p)
+
+(* Align pkids[p] with the store's current child list for p: recorded
+   gens survive (the produced set did not change), [overrides] supply
+   fresh gens for spliced children, unseen raws peek — never build. *)
+let sync_entries ?(overrides = []) ctx p =
+  let ids = raw_children ctx p in
+  let old = pkids_of ctx p in
+  let tbl =
+    Hashtbl.create (2 * (List.length old + List.length overrides + 1))
+  in
+  List.iter (fun e -> Hashtbl.replace tbl e.raw e.gens) old;
+  List.iter (fun (id, g) -> Hashtbl.replace tbl id g) overrides;
+  Hashtbl.replace ctx.pkids p
+    (List.map
+       (fun id ->
+         { raw = id;
+           gens =
+             (match Hashtbl.find_opt tbl id with
+              | Some g -> g
+              | None -> peek_produced ctx id) })
+       ids)
+
+let flex_children_of ctx p : Lui_flex.node list =
+  List.concat_map
+    (fun e -> List.filter_map (Hashtbl.find_opt ctx.nodes) e.gens)
+    (pkids_of ctx p)
+
+(* Update pkids[p]'s entry for [raw] to [ng]; true when the gens
+   actually changed (unchanged means ancestors see no difference and the
+   climb can stop). *)
+let replace_gens ctx p raw ng =
+  match Hashtbl.find_opt ctx.pkids p with
+  | None -> false
+  | Some es ->
+    let rec loop = function
+      | [] -> false
+      | e :: rest ->
+        if e.raw = raw then
+          if e.gens = ng then false
+          else begin
+            e.gens <- ng;
+            true
+          end
+        else loop rest
     in
-    let kids =
-      build_seq ctx store ~pkind:"frame" ~pid:(-1) ~first:0
-        (Lui_store.root_ids store)
+    loop es
+
+(* pkids[p] changed: re-set the flex children of the flex owner of p's
+   produced set — p's own flex node when it has one — and, for
+   hidden/contents p, push the recomputed produced list into the
+   parent's slot and keep climbing until a flex owner. *)
+let rec commit ctx p =
+  if p = frame_id then (
+    match ctx.eng.root with
+    | Some root -> Lui_flex.set_children root (flex_children_of ctx frame_id)
+    | None -> ())
+  else if Hashtbl.mem ctx.nodes p then
+    Lui_flex.set_children (Hashtbl.find ctx.nodes p) (flex_children_of ctx p)
+  else begin
+    match Hashtbl.find_opt ctx.sparent p with
+    | Some par ->
+      if
+        replace_gens ctx par p
+          (produced_of ctx ~owner_id:(children_owner ctx p) p)
+      then commit ctx par
+    | None -> ()
+  end
+
+(* A frame-level produced node that resized also shifted every later
+   frame sibling — mark their produced subtrees too. [t] is a produced
+   id directly under the frame. *)
+let mark_frame_siblings_after ctx t =
+  let rec scan_entries = function
+    | [] -> ()
+    | e :: rest ->
+      let rec mark_tail = function
+        | [] -> scan_entries rest
+        | g :: gs ->
+          if g = t then begin
+            List.iter
+              (fun x -> Hashtbl.replace ctx.eng.rect_dirty x ())
+              gs;
+            List.iter
+              (fun e' ->
+                List.iter
+                  (fun x -> Hashtbl.replace ctx.eng.rect_dirty x ())
+                  e'.gens)
+              rest
+          end
+          else mark_tail gs
+      in
+      mark_tail e.gens
+  in
+  scan_entries (pkids_of ctx frame_id)
+
+(* Any change can re-flow the owner's siblings, which can grow the
+   owner, which can re-flow the grandparent's siblings — the shifted
+   region walks the flex-parent chain to a store root. The produced
+   subtree of that root covers every mirror node under it, so marking
+   the chain's topmost owner is the tight bound (plus, for a resized
+   root, every later frame sibling) and a full collect is its cheap
+   realization (rect writes only — no style resolution, no flex node
+   churn). *)
+let mark_affected ctx o =
+  let rec top x =
+    match Hashtbl.find_opt ctx.owner x with
+    | Some p when p <> frame_id -> top p
+    | _ -> x
+  in
+  let t = top o in
+  Hashtbl.replace ctx.eng.rect_dirty t ();
+  if t <> frame_id then mark_frame_siblings_after ctx t
+
+(* Flattened position of produced node g inside owner o's produced
+   children — the value [index] had when g was built. *)
+let produced_index ctx o g =
+  let rec scan acc = function
+    | [] -> acc
+    | e :: rest -> (
+      let rec find i = function
+        | [] -> None
+        | x :: xs -> if x = g then Some (acc + i) else find (i + 1) xs
+      in
+      match find 0 e.gens with
+      | Some p -> p
+      | None -> scan (acc + List.length e.gens) rest)
+  in
+  scan 0 (pkids_of ctx o)
+
+(* Recompute g's style and measure against its current owner and index
+   — the incremental equivalent of rebuilding its flex node. *)
+let restyle_gen ctx o g =
+  match Hashtbl.find_opt ctx.nodes g with
+  | Some f ->
+    let index = produced_index ctx o g in
+    let style =
+      style_of ~scale:ctx.scale ~viewport:(ctx.vw, ctx.vh) ctx.store g
+      |> adjust ~pkind:(kind_of ctx o) ~pid:o ~index ctx.store g
     in
-    let root =
-      Lui_flex.create ~style:(frame_style_for width (Pt height)) kids
+    (match Hashtbl.find_opt ctx.vlists g with
+     | Some v ->
+       (* A virtual list restyles like its build: configure the model
+          off the raw style, then claim the virtual extent — children
+          are row subtrees, never produced gens. *)
+       vlist_configure ctx ctx.store v style;
+       let style = vlist_leaf_style ctx v style in
+       Lui_flex.set_style f style;
+       Lui_flex.set_measure f None;
+       Hashtbl.replace ctx.applied g style;
+       Hashtbl.replace ctx.owner g o;
+       unregister ctx g;
+       register ctx g "virtual-list" f style
+     | None ->
+       let kids = Lui_flex.children f in
+       let cids =
+         ordered_child_ids ctx.store g (Lui_store.kind ctx.store g)
+       in
+       let style = popup_min_style ctx g cids kids style in
+       let m = measure_for ctx g ~kids in
+       Lui_flex.set_style f style;
+       Lui_flex.set_measure f m;
+       Hashtbl.replace ctx.applied g style;
+       Hashtbl.replace ctx.owner g o;
+       let kind = Lui_store.kind ctx.store g in
+       unregister ctx g;
+       register ctx g kind f style)
+  | None -> ()
+
+(* Parent kinds whose child adjustment depends on sibling position:
+   membership or order churn under them rewrites sibling styles, not
+   just the moved node's. *)
+let index_sensitive = function
+  | "overlay" | "stack" | "panel" | "card" | "resizable"
+  | "view-that-fits" | "split" | "edge-inset" -> true
+  | _ -> false
+
+let restyle_children_of ctx o =
+  List.iter
+    (fun e -> List.iter (fun g -> restyle_gen ctx o g) e.gens)
+    (pkids_of ctx o)
+
+(* Insert/MoveChild: detach the shadow entry from the old raw parent,
+   ensure the child's produced set exists, then let [sync_entries]
+   place it at the store's current position. *)
+let attach_child ctx ~parent:p ~child:c =
+  (match Hashtbl.find_opt ctx.sparent c with
+   | Some op when op <> p ->
+     sync_entries ctx op;
+     commit ctx op;
+     mark_affected ctx (children_owner ctx op)
+   | _ -> ());
+  let o = children_owner ctx p in
+  let gens = ensure_produced ctx ~owner_id:o c in
+  Hashtbl.replace ctx.sparent c p;
+  sync_entries ctx p ~overrides:[ (c, gens) ];
+  (* Commit before restyling: gens indices inside the owner's produced
+     list only read correctly once the parent chain has propagated. *)
+  commit ctx p;
+  List.iter
+    (fun g ->
+      Hashtbl.replace ctx.owner g o;
+      restyle_gen ctx o g)
+    gens;
+  (if index_sensitive (kind_of ctx o) then restyle_children_of ctx o);
+  mark_affected ctx o
+
+let detach_child ctx ~parent:p ~child:c =
+  Hashtbl.remove ctx.sparent c;
+  sync_entries ctx p;
+  commit ctx p;
+  let o = children_owner ctx p in
+  (if index_sensitive (kind_of ctx o) then restyle_children_of ctx o);
+  mark_affected ctx o
+
+(* The store link is already gone (drop/recreate): find the old raw
+   parent in the shadow, drop the entry, keep the subtree for reuse. *)
+let detach_from_parent ctx id =
+  match Hashtbl.find_opt ctx.sparent id with
+  | Some par ->
+    Hashtbl.remove ctx.sparent id;
+    sync_entries ctx par;
+    commit ctx par;
+    mark_affected ctx (children_owner ctx par)
+  | None -> ()
+
+(* display/structure churn on id: rebuild its produced expansion in
+   place — the subtree is re-mirrored (a rare op). *)
+let reexpand ctx id =
+  match Hashtbl.find_opt ctx.sparent id with
+  | Some par ->
+    let o = children_owner ctx par in
+    purge ctx id;
+    (* Purge dropped the raw-parent link too — restore it so the next
+       structure op on id can still find its slot. *)
+    Hashtbl.replace ctx.sparent id par;
+    let pairs =
+      build ctx ~owner_id:o ~pkind:(kind_of ctx o) ~pid:o ~index:0 id
     in
-    t.root <- Some root;
+    let gens = List.map snd pairs in
+    sync_entries ctx par ~overrides:[ (id, gens) ];
+    commit ctx par;
+    List.iter
+      (fun g ->
+        Hashtbl.replace ctx.owner g o;
+        restyle_gen ctx o g)
+      gens;
+    mark_affected ctx o
+  | None -> ()
+
+let restyle_self ctx id =
+  match Hashtbl.find_opt ctx.owner id with
+  | Some o ->
+    restyle_gen ctx o id;
+    mark_affected ctx o
+  | None -> ()
+
+(* A layout-kids prop (columns/value/edge) rewrites the produced
+   children's styles and possibly their order — restyle them all
+   against the current parent inputs. *)
+let restyle_children ctx id =
+  let o = children_owner ctx id in
+  sync_entries ctx id;
+  commit ctx id;
+  List.iter
+    (fun e ->
+      List.iter
+        (fun g ->
+          Hashtbl.replace ctx.owner g o;
+          restyle_gen ctx o g)
+        e.gens)
+    (pkids_of ctx id);
+  mark_affected ctx o
+
+(* A journal op landed on a live virtual list or inside one: rows
+   index a logical model that may have changed and row subtrees are
+   never edited in place, so the mounted forest drops wholesale and the
+   leaf is restyled/reconfigured — the post-layout pass remounts the
+   window. Subtrees that moved out of the list mid-batch keep their new
+   mirror slot. *)
+let resync_vlist ctx (v : vlist) =
+  let idx = Hashtbl.fold (fun i row acc -> (i, row) :: acc) v.rows [] in
+  List.iter (fun (i, row) -> drop_vrow ctx v i row) idx;
+  Hashtbl.reset v.nodes;
+  v.mounted_ids <- [];
+  match
+    (Hashtbl.find_opt ctx.nodes v.vid, Hashtbl.find_opt ctx.owner v.vid)
+  with
+  | Some f, Some o ->
+    let index = produced_index ctx o v.vid in
+    let style =
+      style_of ~scale:ctx.scale ~viewport:(ctx.vw, ctx.vh) ctx.store v.vid
+      |> adjust ~pkind:(kind_of ctx o) ~pid:o ~index ctx.store v.vid
+    in
+    vlist_configure ctx ctx.store v style;
+    let style = vlist_leaf_style ctx v style in
+    Lui_flex.set_style f style;
+    Hashtbl.replace ctx.applied v.vid style;
+    mark_affected ctx o
+  | _ -> ()
+
+let apply_journal_op ctx (op : patch_op) =
+  (* A virtual list owns its rows: ops landing inside one mark it for
+     resync rather than editing the persistent mirror — the side
+     forest rebuilds from the store before layout. *)
+  match op with
+  | SetProp (id, p, _) | RemoveProp (id, p) -> (
+    let m =
+      Lui_store.mask_of_prop (Lui_wire_schema.property_name p)
+    in
+    if m land (Lui_store.d_structure lor Lui_store.d_layout lor Lui_store.d_layout_kids) = 0 then ()
+    else if under_vlist ctx id then ()
+    else
+      match vlist_of ctx id with
+      | Some _ ->
+        (* The list's own props feed the row model (gap, padding,
+           estimate) — resync restyles the leaf and rebuilds rows. *)
+        Hashtbl.replace ctx.vresync id ();
+        if Lui_store.mask_has m Lui_store.d_structure then reexpand ctx id
+      | None ->
+        if
+          Lui_store.kind ctx.store id = "virtual-list"
+          && vlist_vertical ctx.store id
+        then
+          (* A horizontal virtual-list turning vertical becomes a leaf —
+             rebuild its produced expansion in place. *)
+          reexpand ctx id
+        else if Lui_store.mask_has m Lui_store.d_structure then reexpand ctx id
+        else begin
+          if Lui_store.mask_has m Lui_store.d_layout then restyle_self ctx id;
+          if Lui_store.mask_has m Lui_store.d_layout_kids then
+            restyle_children ctx id
+        end)
+  | SetExtensionProp (id, _, _) | RemoveExtensionProp (id, _) ->
+    if under_vlist ctx id then ()
+    else (
+      match vlist_of ctx id with
+      | Some _ -> Hashtbl.replace ctx.vresync id ()
+      | None ->
+        (* Unknown prop semantics: restyle the node and its children. *)
+        restyle_self ctx id;
+        restyle_children ctx id)
+  | CreateNode (id, _) | CreateExtension (id, _, _)
+  | DropNode id | DetachSubtree id ->
+    if under_vlist ctx id then purge ctx id
+    else begin
+      detach_from_parent ctx id;
+      purge ctx id
+    end
+  | InsertChild (p, c, _) | MoveChild (p, c, _) -> (
+    (match Hashtbl.find_opt ctx.sparent c with
+     | Some op when op <> p -> ignore (in_vlist ctx op)
+     | _ -> ());
+    if in_vlist ctx p then begin
+      (* The child is list data now: detach its old mirror slot and
+         scrub its shadow — the resync materializes rows itself. *)
+      detach_from_parent ctx c;
+      purge ctx c
+    end
+    else attach_child ctx ~parent:p ~child:c)
+  | RemoveChild (p, c) ->
+    if in_vlist ctx p then () else detach_child ctx ~parent:p ~child:c
+
+(* Rect refresh scoped to dirty owner subtrees: every produced
+   descendant of a dirty owner gets its rect re-read (a resized node
+   moves its siblings, so the refresh root is the owner — the flex
+   parent — not the changed node). [frame_id] dirties everything. *)
+let rec refresh_sub ctx sid =
+  (match Hashtbl.find_opt ctx.nodes sid with
+   | Some f ->
+     Hashtbl.replace ctx.eng.rects sid (scene_rect (Lui_flex.absolute_layout f))
+   | None -> ());
+  List.iter
+    (fun e -> List.iter (fun g -> refresh_sub ctx g) e.gens)
+    (pkids_of ctx sid)
+
+let refresh_rects ctx =
+  if Hashtbl.mem ctx.eng.rect_dirty frame_id then collect ctx.eng
+  else
+    Hashtbl.iter (fun sid () -> refresh_sub ctx sid) ctx.eng.rect_dirty;
+  Hashtbl.reset ctx.eng.rect_dirty
+
+let ctx_of t store ~scale ~measure ~hidden ctx_anchor ~width ~height : ctx =
+  { scale; vw = width; vh = height; tm = measure; hidden; ctx_anchor;
+    store; eng = t; nodes = t.nodes; applied = t.applied;
+    pkids = t.pkids; sparent = t.sparent; owner = t.owner;
+    grids = t.grids; popups = t.popups;
+    vlists = t.vlists; vresync = Hashtbl.create 4 }
+
+(* Wipe the mirror and re-expand the frame: first sync, invalidate, or
+   a journal that no longer reaches our cursor. *)
+let rebuild ctx (t : t) ~width ~height =
+  Hashtbl.reset t.nodes;
+  Hashtbl.reset t.applied;
+  Hashtbl.reset t.pkids;
+  Hashtbl.reset t.sparent;
+  Hashtbl.reset t.owner;
+  t.grids := [];
+  t.popups := [];
+  ignore
+    (expand_children ctx ~owner:frame_id ~pkind:"frame" ~pid:frame_id
+       ~raw_parent:frame_id ~first:0 (Lui_store.root_ids ctx.store));
+  let root =
+    Lui_flex.create ~style:(frame_style_for width (Pt height))
+      (flex_children_of ctx frame_id)
+  in
+  t.root <- Some root;
+  Hashtbl.reset t.rect_dirty;
+  Hashtbl.replace t.rect_dirty frame_id ()
+
+let finish ctx (t : t) ~width ~height ~vport ~full =
+  match t.root with
+  | None -> ()
+  | Some root ->
     let ew, eh = layout_frame root ~width ~height in
     refine_grids ctx;
     refine_popups ctx;
     (if !(ctx.grids) <> [] || !(ctx.popups) <> [] then
        Lui_flex.compute_layout root ~width:ew ~height:eh ());
     t.extent <- (ew, eh);
-    vlists_prepare t ctx ~vport ~width ~height;
-    collect t;
-    vlists_collect t;
-    t.synced_rev <- rev;
+    (* Virtual lists learn their content geometry only after the frame
+       layout exists: geometry comes off the fresh rects, the fed
+       windows mount (a rebuilt mirror resets the side forests), and
+       measured rows can still grow a leaf — [vlists_pass] re-runs the
+       frame layout itself when they do. *)
+    vlists_pass t ctx ~vport ~width ~height ~reset:full;
+    refresh_rects ctx;
+    (* Row rects are composed off the final mirror geometry — always
+       recomposed, never part of the scoped refresh. *)
+    vlists_collect t
+
+let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
+    ?ctx_anchor ?(vport = no_vport) ~width ~height (t : t) store =
+  let inputs_changed =
+    t.synced_scale <> scale
+    || t.synced_w <> width || t.synced_h <> height
+    || t.synced_anchor <> ctx_anchor
+    || (not (t.synced_measure == measure))
+    || (not (t.synced_hidden == hidden))
+  in
+  (* Fast path: inputs stable and the store's layout revision
+     unmoved — paint-only churn, scroll-only and idle frames all skip
+     the mirror entirely. The store-revision cursor still advances so
+     the journal never re-feeds paint ops. *)
+  if
+    (not inputs_changed) && t.synced_rev >= 0
+    && t.synced_lrev = Lui_store.layout_rev store
+  then begin
+    t.synced_rev <- Lui_store.revision store;
+    (* Memo-hit: only the fed viewports may have moved — remount the
+       virtual-list windows that slid instead of touching the mirror. *)
+    vlists_update t ~vport
+  end
+  else begin
+    t.stat_syncs <- t.stat_syncs + 1;
+    let ctx = ctx_of t store ~scale ~measure ~hidden ctx_anchor ~width ~height in
+    let full =
+      if inputs_changed || t.synced_rev < 0 || t.root = None then true
+      else
+        match Lui_store.changes_since store t.synced_rev with
+        | None -> true
+        | Some ops ->
+          t.stat_steps <- t.stat_steps + 1;
+          List.iter (apply_journal_op ctx) ops;
+          (* Detach/drop can leave a built node as a fresh store root —
+             resync the frame level so new roots appear and removed
+             ones vanish. Membership churn dirties the whole frame. *)
+          let before =
+            List.map (fun e -> e.raw) (pkids_of ctx frame_id)
+          in
+          sync_entries ctx frame_id;
+          if before <> List.map (fun e -> e.raw) (pkids_of ctx frame_id)
+          then Hashtbl.replace t.rect_dirty frame_id ();
+          List.iter
+            (fun e ->
+              Hashtbl.replace ctx.sparent e.raw frame_id;
+              let gens =
+                if e.gens = [] then
+                  ensure_produced ctx ~owner_id:frame_id e.raw
+                else e.gens
+              in
+              e.gens <- gens;
+              (* A reused node that newly became a root still carries
+                 its old owner — restyle it against the frame. *)
+              List.iter
+                (fun g ->
+                  match Hashtbl.find_opt ctx.owner g with
+                  | Some o when o = frame_id -> ()
+                  | _ ->
+                    Hashtbl.replace ctx.owner g frame_id;
+                    restyle_gen ctx frame_id g)
+                gens)
+            (pkids_of ctx frame_id);
+          commit ctx frame_id;
+          (* Ops that touched a virtual list resync the whole side
+             forest — mounted rows are rebuilt, never patched. *)
+          Hashtbl.iter
+            (fun _ (v : vlist) ->
+               if Hashtbl.mem ctx.vresync v.vid then resync_vlist ctx v)
+            t.vlists;
+          false
+    in
+    if full then rebuild ctx t ~width ~height;
+    finish ctx t ~width ~height ~vport ~full;
+    t.synced_rev <- Lui_store.revision store;
+    t.synced_lrev <- Lui_store.layout_rev store;
     t.synced_scale <- scale;
     t.synced_w <- width;
     t.synced_h <- height;
@@ -1695,10 +2449,6 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
           sc_tm = measure; sc_hidden = hidden; sc_anchor = ctx_anchor;
           sc_store = store }
   end
-  else
-    (* Memo-hit: only the fed viewports may have moved — remount the
-       virtual-list windows that slid instead of rebuilding anything. *)
-    vlists_update t ~vport
 
 (* ---------- virtual-list queries ---------- *)
 
