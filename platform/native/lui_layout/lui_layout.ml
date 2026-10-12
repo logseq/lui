@@ -395,7 +395,11 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
            | "breadcrumb" | "pagination" | "toolbar" -> Align_center
            | _ -> d.align_items));
       position_type;
-      flex_wrap = (if kind = "grid" then Wrap else No_wrap);
+      flex_wrap =
+        (match pstr store id "flex-wrap" with
+         | Some "wrap" -> Wrap
+         | Some "nowrap" -> No_wrap
+         | _ -> if kind = "grid" then Wrap else No_wrap);
       overflow = overflow_of ~store ~id kind;
       flex_grow = grow;
       width =
