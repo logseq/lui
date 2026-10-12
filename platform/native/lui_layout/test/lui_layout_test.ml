@@ -274,6 +274,32 @@ let test_menu_panel () =
   check_rect "item1" panel.x panel.y panel.w 10. (place p 5);
   check_rect "item3" panel.x (panel.y +. 20.) panel.w 10. (place p 7)
 
+
+(* AC menu row: scroll > column > wrap > horizontal extension row >
+   grow box > box > row > icon + text — the slash popup shape. *)
+let test_ac_row () =
+  let store = Lui_store.create () in
+  apply store
+    [ CreateNode (1, Root); CreateNode (2, Scroll); CreateNode (3, Column);
+      CreateNode (4, Box); CreateExtension (5, "logseq-a", "");
+      CreateNode (6, Box); CreateNode (7, Box); CreateNode (8, Row);
+      CreateNode (9, Icon); CreateNode (10, Text);
+      InsertChild (1, 2, 0); InsertChild (2, 3, 0); InsertChild (3, 4, 0);
+      InsertChild (4, 5, 0); InsertChild (5, 6, 0); InsertChild (6, 7, 0);
+      InsertChild (7, 8, 0); InsertChild (8, 9, 0); InsertChild (8, 10, 1);
+      SetProp (5, OrientationValue, StringValue "horizontal");
+      SetProp (10, TextValue, StringValue "Query") ];
+  let p =
+    Lui_layout.run store
+      ~measure:(fun id _ _ ->
+        (match Lui_store.string_prop store id "text" with
+         | Some _ -> Some (30., 10.)
+         | None -> None))
+      ~width:200. ~height:100.
+  in
+  check (float eps) "text h" 10. (place p 10).h;
+  check (float eps) "wrap h" 10. (place p 4).h
+
 let () =
   run "lui_layout"
     [ ("layout",
@@ -290,4 +316,5 @@ let () =
          test_case "frame grows" `Quick test_frame_grows_to_content;
          test_case "popup centered" `Quick test_popup_default_centered;
          test_case "root popup" `Quick test_root_popup_centered_in_frame;
-         test_case "menu panel" `Quick test_menu_panel ]) ]
+         test_case "menu panel" `Quick test_menu_panel;
+         test_case "ac row" `Quick test_ac_row ]) ]

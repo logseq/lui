@@ -1687,8 +1687,10 @@ and layout_node_impl
          of zero: it will be flexed to exactly fill the space, so the
          basis measurement can be skipped entirely. *)
       let single_flex_child = ref null_node in
-      if (is_main_axis_row && width_measure_mode = Measure_exactly)
-         || ((not is_main_axis_row) && height_measure_mode = Measure_exactly)
+      if perform_layout
+         && ((is_main_axis_row && width_measure_mode = Measure_exactly)
+             || ((not is_main_axis_row)
+                 && height_measure_mode = Measure_exactly))
       then begin
         let should_continue = ref true in
         let i = ref 0 in
