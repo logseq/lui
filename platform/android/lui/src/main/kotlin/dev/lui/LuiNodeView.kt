@@ -12,7 +12,6 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -75,12 +74,16 @@ import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.key
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -91,6 +94,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -175,6 +179,13 @@ private fun LuiExtensionView(backend: LuiBackend, id: Long) {
     )
     context.builder()
 }
+
+/** Child position published by container renderers so children that need
+ * their index/count (step, table-row) skip an O(C) scan of the parent's
+ * child list — O(C) per child adds up to O(C²) per row. */
+private data class LuiChildSlot(val index: Int, val count: Int)
+
+private val LocalLuiChildSlot = compositionLocalOf<LuiChildSlot?> { null }
 
 private fun gapOf(node: LuiNode): Int =
     node.prop("gap")?.intValue ?: if (LuiKindRules.isHorizontalGroupKind(node.kind)) {
@@ -266,7 +277,6 @@ private fun LuiNodeContent(
         LuiNodeKind.link,
         LuiNodeKind.popover,
         LuiNodeKind.tree,
-        LuiNodeKind.table,
         LuiNodeKind.timeline,
         -> Column(
             modifier = modifier,
@@ -277,6 +287,23 @@ private fun LuiNodeContent(
             horizontalAlignment = crossHorizontalAlignment(node.propString("cross")),
         ) {
             children.forEachNode { childId -> GrowChildColumn(backend, childId) }
+        }
+
+        LuiNodeKind.table -> Column(
+            modifier = modifier,
+            verticalArrangement = Arrangement.spacedBy(
+                gapOf(node).dp,
+                alignment = mainVerticalAlignment(node.propString("main")),
+            ),
+            horizontalAlignment = crossHorizontalAlignment(node.propString("cross")),
+        ) {
+            children.forEachIndexedNode { index, childId ->
+                CompositionLocalProvider(
+                    LocalLuiChildSlot provides LuiChildSlot(index, children.size),
+                ) {
+                    GrowChildColumn(backend, childId)
+                }
+            }
         }
 
         LuiNodeKind.virtualList -> LazyColumn(
@@ -555,7 +582,13 @@ private fun LuiNodeContent(
         LuiNodeKind.mediaSurface -> LuiMediaSurface(backend, node, modifier)
 
         LuiNodeKind.stepper -> Row(modifier.wrapContentSize()) {
-            children.forEachNode { LuiNodeView(backend, it) }
+            children.forEachIndexedNode { index, childId ->
+                CompositionLocalProvider(
+                    LocalLuiChildSlot provides LuiChildSlot(index, children.size),
+                ) {
+                    LuiNodeView(backend, childId)
+                }
+            }
         }
 
         LuiNodeKind.step -> LuiStep(backend, node, id, modifier)
@@ -1452,9 +1485,10 @@ private fun LuiMediaSurface(backend: LuiBackend, node: LuiNode, modifier: Modifi
 
 @Composable
 private fun LuiStep(backend: LuiBackend, node: LuiNode, id: Long, modifier: Modifier) {
+    val slot = LocalLuiChildSlot.current
     val parent = node.parent?.let { backend.node(it) }
-    val index = parent?.children?.indexOf(id) ?: 0
-    val count = parent?.children?.size ?: 1
+    val index = slot?.index ?: parent?.children?.indexOf(id) ?: 0
+    val count = slot?.count ?: parent?.children?.size ?: 1
     val active = parent?.propInt("active") ?: 0
     val state = when {
         index < active -> "completed"
@@ -1710,8 +1744,11 @@ private fun LuiTableRow(
     modifier: Modifier,
     children: List<Long>,
 ) {
-    val parent = node.parent?.let { backend.node(it) }
-    val isLast = parent == null || parent.children.lastOrNull() == id
+    val isLast = LocalLuiChildSlot.current?.let { it.index == it.count - 1 }
+        ?: run {
+            val parent = node.parent?.let { backend.node(it) }
+            parent == null || parent.children.lastOrNull() == id
+        }
     val gap = gapOf(node)
     Column(modifier) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1819,17 +1856,22 @@ private fun LuiSplit(
 ) {
     val fraction = node.propDouble("value").coerceIn(0.05, 0.95)
     val enabled = node.isEnabled()
-    BoxWithConstraints(modifier.fillMaxSize()) {
-        val total = constraints.maxWidth.toFloat()
+    // The drag handler outlives individual recompositions, so read the
+    // latest fraction/enabled through state instead of captured vals.
+    val currentFraction by rememberUpdatedState(fraction)
+    val enabledNow by rememberUpdatedState(enabled)
+    var totalPx by remember { mutableFloatStateOf(0f) }
+    Box(modifier.fillMaxSize().onSizeChanged { totalPx = it.width.toFloat() }) {
         Row(Modifier.fillMaxSize()) {
             Box(Modifier.weight(fraction.toFloat().coerceAtLeast(0.01f))) {
                 children.getOrNull(0)?.let { LuiNodeView(backend, it) }
             }
             Box(
-                Modifier.width(9.dp).fillMaxHeight().pointerInput(id, total) {
+                Modifier.width(9.dp).fillMaxHeight().pointerInput(id) {
                     detectHorizontalDragGestures { _, dragAmount ->
-                        if (enabled && total > 0) {
-                            val next = fraction + dragAmount / total
+                        val total = totalPx
+                        if (enabledNow && total > 0) {
+                            val next = currentFraction + dragAmount / total
                             backend.emit(LuiEvent.ValueChanged(id, next.toDouble()))
                         }
                     }
