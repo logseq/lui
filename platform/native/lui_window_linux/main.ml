@@ -497,7 +497,10 @@ let () =
   let win_w = ref cfg.width and win_h = ref cfg.height in
   let refresh_layout () =
     Layout.refresh store rects ~width:!win_w ~height:!win_h
-      ~scale:!scale_cell ~measure:(Lui_window_text.measure text_engine)
+      ~scale:!scale_cell ~measure:(Lui_window_text.measure text_engine);
+    (* Rects were just rebuilt — visible-range memos key on the
+       epoch. *)
+    Ui.notify_layout ui
   in
   let backend =
     Lui_host.backend host

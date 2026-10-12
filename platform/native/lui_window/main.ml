@@ -902,7 +902,9 @@ let open_window ~title ~idx =
              (Float.max 0. (b -. t -. cr.Lui_scene.h));
            Ui.set_scroll_cap_x ui id
              (Float.max 0. (rgt -. l -. cr.Lui_scene.w)))
-      (Lui_store.preorder store)
+      (Lui_store.preorder store);
+    (* Rects were just rebuilt — visible-range memos key on the epoch. *)
+    Ui.notify_layout ui
   in
   let backend =
     Lui_host.backend host

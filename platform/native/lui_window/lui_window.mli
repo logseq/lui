@@ -283,6 +283,12 @@ module Ui : sig
 
   val set_content_rect : t -> (int -> Lui_scene.rect) -> unit
 
+  (** Tell the Ui that layout rects were recomputed (the driver's
+      populate/refresh pass). Bumps the internal layout epoch that
+      visible-range memoization keys on — call it wherever the rects
+      feeding [content_rect] are rebuilt. *)
+  val notify_layout : t -> unit
+
   (** Device-pixel scale; the driver updates it on resize/startup so
       logical input coordinates hit-test against device-pixel rects. *)
   val set_scale : t -> float -> unit

@@ -586,10 +586,18 @@ module Ui = struct
     autofocus_seen : (int, unit) Hashtbl.t;
     (* appear-enabled ids already announced (mount lifecycle). *)
     seen : (int, unit) Hashtbl.t;
-    (* Per-container scroll bookkeeping: handled scroll-target tokens
-       and last emitted visible ranges. *)
+    (* Per-container scroll bookkeeping: handled scroll-target tokens,
+       last emitted visible ranges, the inputs each range was computed
+       at — (store revision, scroll offset, layout epoch) — and the
+       tracked list ids the last store scan found. *)
     scroll_token : (int, int) Hashtbl.t;
     vrange : (int, int * int) Hashtbl.t;
+    vrange_key : (int, int * float * int) Hashtbl.t;
+    mutable vrange_lists : int list;
+    (* Bumped by the driver whenever layout rects are recomputed — the
+       third leg of the vrange memo, since rect moves do not change
+       the store revision. *)
+    mutable rects_epoch : int;
     (* Driver hooks: glyph measurement for caret/selection math and
        unshifted (content-space) rects for scroll_show. Deterministic
        defaults keep the module testable without a text engine.
@@ -621,6 +629,8 @@ module Ui = struct
       autofocus_seen = Hashtbl.create 8;
       seen = Hashtbl.create 64;
       scroll_token = Hashtbl.create 8; vrange = Hashtbl.create 8;
+      vrange_key = Hashtbl.create 8; vrange_lists = [];
+      rects_epoch = 0;
       measure =
         (fun _store _id s -> (8. *. float (String.length s), 16.));
       hit_text = None;
@@ -629,6 +639,7 @@ module Ui = struct
   let set_scale t s = t.scale <- s
   let set_measure t f = t.measure <- f
   let set_hit_text t f = t.hit_text <- Some f
+  let notify_layout t = t.rects_epoch <- t.rects_epoch + 1
   let set_content_rect t f = t.content_rect <- f
   let hovered t = t.hovered
   let pressed t = t.pressed
@@ -1158,40 +1169,52 @@ module Ui = struct
   (* Recompute the visible list-item range of a tracked container and
      emit VisibleRange when it changed. *)
   let report_vrange t store id =
-    (* VisibleRange is admissible on ListContainer ("list") only *)
+    (* VisibleRange is admissible on ListContainer ("list") only. The
+       range is a pure function of (store revision, scroll offset,
+       layout epoch): memoize the inputs — an identical triple means
+       the last scan's result still stands, so a scroll-less sync on
+       a tracked list costs a hashtable hit instead of an item walk. *)
     if kind_name store id = "list"
        && bool_prop store id "track-visible-range"
     then
-      let cr = t.content_rect id in
-      if rect_empty cr || cr.Lui_scene.h <= 0. then []
-      else
-        let off = scroll_offset t id in
-        let y0 = cr.Lui_scene.y +. off
-        and y1 = cr.Lui_scene.y +. off +. cr.Lui_scene.h in
-        let items =
-          List.filter
-            (fun c -> kind_name store c = "list-item")
-            (Lui_store.preorder ~root:id store)
-        in
-        let rec scan i f l = function
-          | [] -> (f, l)
-          | it :: tl ->
-            let r = t.content_rect it in
-            let vis =
-              (not (rect_empty r))
-              && r.Lui_scene.y +. r.Lui_scene.h > y0
-              && r.Lui_scene.y < y1
-            in
-            scan (i + 1) (if vis && f < 0 then i else f)
-              (if vis then i else l) tl
-        in
-        let f, l = scan 0 (-1) (-1) items in
-        let f = max 0 f in
-        (match Hashtbl.find_opt t.vrange id with
-         | Some (f', l') when f' = f && l' = l -> []
-         | _ ->
-           Hashtbl.replace t.vrange id (f, l);
-           [ Dispatch (VisibleRange (id, f, l)) ])
+      let key =
+        (Lui_store.revision store, scroll_offset t id, t.rects_epoch)
+      in
+      match Hashtbl.find_opt t.vrange_key id with
+      | Some k when k = key -> []
+      | _ -> begin
+        Hashtbl.replace t.vrange_key id key;
+        let cr = t.content_rect id in
+        if rect_empty cr || cr.Lui_scene.h <= 0. then []
+        else
+          let off = scroll_offset t id in
+          let y0 = cr.Lui_scene.y +. off
+          and y1 = cr.Lui_scene.y +. off +. cr.Lui_scene.h in
+          let items =
+            List.filter
+              (fun c -> kind_name store c = "list-item")
+              (Lui_store.preorder ~root:id store)
+          in
+          let rec scan i f l = function
+            | [] -> (f, l)
+            | it :: tl ->
+              let r = t.content_rect it in
+              let vis =
+                (not (rect_empty r))
+                && r.Lui_scene.y +. r.Lui_scene.h > y0
+                && r.Lui_scene.y < y1
+              in
+              scan (i + 1) (if vis && f < 0 then i else f)
+                (if vis then i else l) tl
+          in
+          let f, l = scan 0 (-1) (-1) items in
+          let f = max 0 f in
+          (match Hashtbl.find_opt t.vrange id with
+           | Some (f', l') when f' = f && l' = l -> []
+           | _ ->
+             Hashtbl.replace t.vrange id (f, l);
+             [ Dispatch (VisibleRange (id, f, l)) ])
+      end
     else []
 
   let scroll_set ?(axis = Y) t store id off =
@@ -1557,12 +1580,21 @@ module Ui = struct
                  | None ->
                    push (Dispatch (ScrollCompleted (id, tok, "missing-target")))))
            | None -> ())
-      (Lui_store.preorder store)
+      (Lui_store.preorder store);
+    (* The tracked-list ids are store-derived too — refreshed under
+       the same gate so the per-sync report loop below only walks
+       actual VisibleRange producers, not the whole tree. *)
+    t.vrange_lists <-
+      List.filter
+        (fun id ->
+           kind_name store id = "list"
+           && bool_prop store id "track-visible-range")
+        (Lui_store.preorder store)
     end;
     List.iter
       (fun id ->
          acts := List.rev_append (report_vrange t store id) !acts)
-      (Lui_store.preorder store);
+      t.vrange_lists;
     List.rev !acts
 
   let store_changed = sync
