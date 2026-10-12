@@ -801,6 +801,13 @@ let refine_popups ctx =
            in-flow parents keep sizing to content. The flex parent is
            the fallback and the bare-[anchor] target (its trigger). *)
         let cb =
+          (* [position:fixed] anchors to the viewport itself, not to
+             positioned ancestors — the native tree is document-
+             anchored, so a fixed layer pinned to (0,0,vw,vh) outside
+             any scroller behaves like the web fixed layer. *)
+          match pstr ctx.store sid "position" with
+          | Some "fixed" -> { Lui_flex.x = 0.; y = 0.; w = ctx.vw; h = ctx.vh }
+          | _ ->
           let rec positioned id =
             match Hashtbl.find_opt ctx.applied id with
             | Some (a : Lui_flex.style)
