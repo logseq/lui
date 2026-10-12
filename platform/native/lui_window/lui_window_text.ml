@@ -35,10 +35,23 @@ type t = {
   scale : unit -> float;
   store : unit -> Lui_store.t;
   slots : (glyph_key, slot option) Hashtbl.t;
+  (* Bounded LRU of shaped layouts keyed by (text, wrap, direction,
+     font): text_ops and measure share it, so the shape a node's
+     measure produced is the one its paint reuses. *)
+  shapes : Lui_text.Cache.t;
+  (* node id -> (store revision, font): font resolution walks the
+     ancestor chain per call, so memoize it for the revision it was
+     computed at — any prop change bumps the revision. *)
+  fonts : (int, int * Lui_text.font) Hashtbl.t;
+  (* O(1) [List.length scene.glyphs] bookkeeping — see [gcount]. *)
+  mutable gcount : int;
+  mutable ghead : Lui_scene.glyph list;
 }
 
 let create ~scene ~scale ~store =
-  { scene; scale; store; slots = Hashtbl.create 512 }
+  { scene; scale; store; slots = Hashtbl.create 512;
+    shapes = Lui_text.Cache.create 512;
+    fonts = Hashtbl.create 64; gcount = 0; ghead = [] }
 
 (* ---- font + text prop plumbing ---- *)
 
@@ -136,7 +149,7 @@ let inherited_str store id name =
   in
   walk id
 
-let font_of store id =
+let resolve_font store id =
   let size =
     match inherited_num store id "font-size" with
     | Some v -> v
@@ -161,7 +174,24 @@ let font_of store id =
     | Some "italic" | Some "oblique" -> true
     | _ -> false
   in
-  Lui_text.system ~weight ~italic ~size ()
+  (* [create] with no families resolves to the system font, and goes
+     through the engine's own cache so the same (weight, italic, size)
+     reuses one font object instead of allocating a fresh CoreText
+     font per node per frame. *)
+  Lui_text.create ~weight ~italic ~size ()
+
+(* The node font, memoized on the store revision: font props inherit
+   down the ancestor chain, so resolving one is an O(depth) walk
+   every frame otherwise. Any prop mutation bumps the revision and
+   re-walks lazily. *)
+let font_of t store id =
+  let rev = Lui_store.revision store in
+  match Hashtbl.find_opt t.fonts id with
+  | Some (r, f) when r = rev -> f
+  | _ ->
+    let f = resolve_font store id in
+    Hashtbl.replace t.fonts id (rev, f);
+    f
 
 (* ---- atlas upload ---- *)
 
@@ -228,14 +258,27 @@ let slot_of t run_font gid sub shade scale scene =
 
 (* ---- paint hook ---- *)
 
-(* Emit one positioned glyph; appends to [scene.glyphs] and returns
-   whether one was added. *)
-let emit_glyph t scene ~scale ~pen ~baseline ~font ~gid ~g_y ~fg =
+(* [List.length scene.glyphs] in O(1): the build list only grows by
+   consing, so while its head is still the cell this engine last
+   prepended or observed, the count is unchanged. A foreign prepend
+   shows a different head cell and forces a recount; [t.ghead]
+   retains the cell so the GC cannot recycle its address. *)
+let gcount t scene =
+  if scene.glyphs == t.ghead then t.gcount
+  else begin
+    t.gcount <- List.length scene.glyphs;
+    t.ghead <- scene.glyphs;
+    t.gcount
+  end
+
+(* Emit one positioned glyph; prepends to [scene.glyphs] and returns
+   whether one was added. [nsub] is the run font's subpixel position
+   count — the caller computes it once per run instead of per glyph. *)
+let emit_glyph t scene ~scale ~nsub ~pen ~baseline ~font ~gid ~g_y ~fg =
   let ix = Float.floor pen in
-  let n = Lui_text.subpixel_positions ~scale font in
   let sub =
-    if n <= 1 then 0
-    else min (n - 1) (int_of_float ((pen -. ix) *. float n +. 0.5))
+    if nsub <= 1 then 0
+    else min (nsub - 1) (int_of_float ((pen -. ix) *. float nsub +. 0.5))
   in
   match slot_of t font gid sub (shade_of fg) scale scene with
   | None -> false
@@ -250,14 +293,18 @@ let emit_glyph t scene ~scale ~pen ~baseline ~font ~gid ~g_y ~fg =
         gcolored = s.sl_colored;
         gsubpixel = false; gthin = false }
     in
-    scene.glyphs <- gl :: scene.glyphs;
+    ignore (gcount t scene);
+    let cell = gl :: scene.glyphs in
+    scene.glyphs <- cell;
+    t.ghead <- cell;
+    t.gcount <- t.gcount + 1;
     true
 
 let text_ops t id r fg s =
   let scene = t.scene () in
   let scale = t.scale () in
   let store = t.store () in
-  let font = font_of store id in
+  let font = font_of t store id in
   (* Horizontal placement: the shared placement table decides the kind's
      alignment and content inset; props win over it. *)
   let tp = Lui_paint.text_placement_of store id in
@@ -273,23 +320,20 @@ let text_ops t id r fg s =
       w' /. scale
     | _ -> 0.
   in
-  let lines = Lui_text.shape font s ~width:wrap_w in
+  (* The layout comes from the bounded cache: measure populated the
+     same entry on the layout pass, so a repaints pays no shaping. *)
+  let lay = Lui_text.Cache.layout t.shapes ~width:wrap_w font s in
   (* Vertical centering inside the node's rect, device pixels. *)
-  let text_h =
-    Array.fold_left
-      (fun acc (l : Lui_text.line) ->
-         acc +. l.ascent +. l.descent +. l.leading)
-      0. lines
-    *. scale
-  in
+  let text_h = lay.Lui_text.lay_height *. scale in
   let y0 =
     if tp.tp_top then r.y +. (tp.tp_pad_y *. scale)
     else r.y +. Float.max 0. ((r.h -. text_h) /. 2.)
   in
-  let gstart = List.length scene.glyphs in
+  let gstart = gcount t scene in
   let line_y = ref 0. in
   Array.iter
-    (fun (l : Lui_text.line) ->
+    (fun (ll : Lui_text.line_layout) ->
+       let l = ll.Lui_text.ll_line in
        let baseline = Lui_text.baseline (y0 +. !line_y +. l.ascent *. scale) in
        let lx =
          match tp.tp_align with
@@ -299,18 +343,21 @@ let text_ops t id r fg s =
        in
        Array.iter
          (fun (run : Lui_text.run) ->
+            (* Subpixel positions are a (font, scale) constant — hoist
+               out of the per-glyph loop. *)
+            let nsub = Lui_text.subpixel_positions ~scale run.font in
             Array.iter
               (fun (g : Lui_text.glyph) ->
                  ignore
-                   (emit_glyph t scene ~scale
+                   (emit_glyph t scene ~scale ~nsub
                       ~pen:(lx +. g.x *. scale)
                       ~baseline ~font:run.font ~gid:g.id ~g_y:g.y ~fg))
               run.glyphs)
          l.runs;
        line_y :=
          !line_y +. (l.ascent +. l.descent +. l.leading) *. scale)
-    lines;
-  let gend = List.length scene.glyphs in
+    lay.Lui_text.lay_lines;
+  let gend = gcount t scene in
   if gend = gstart then []
   else
     [ Glyphs
@@ -329,7 +376,7 @@ let textish = function
   | "select" | "combobox" | "checkbox" | "radio" | "switch" -> true
   | _ -> false
 
-let measure store id ~scale =
+let measure t store id ~scale =
   if not (textish (Lui_store.kind store id)) then (0., 0.)
   else
     let text =
@@ -342,7 +389,7 @@ let measure store id ~scale =
     in
     if text = "" then (0., 0.)
     else
-      let w, h = Lui_text.measure (font_of store id) text in
+      let w, h = Lui_text.Cache.measure t.shapes (font_of t store id) text in
       let tp = Lui_paint.text_placement_of store id in
       ((w +. (2. *. tp.tp_pad_x)) *. scale,
        (h +. (2. *. tp.tp_pad_y)) *. scale)
@@ -351,11 +398,16 @@ let measure store id ~scale =
    the caret offset and the composition overlay measure through this
    so they stay consistent with what [text_ops] paints. *)
 let measure_text t id s =
+  let store = t.store () in
   if s = "" then
-    if Lui_store.is_editable_text_kind (Lui_store.kind (t.store ()) id) then
-      let height = (Lui_text.metrics (font_of (t.store ()) id)).line_height in
+    if Lui_store.is_editable_text_kind (Lui_store.kind store id) then
+      let height =
+        (Lui_text.metrics (font_of t store id)).line_height
+      in
       (0., height *. t.scale ())
     else (0., 0.)
   else
-    let w, h = Lui_text.measure (font_of (t.store ()) id) s in
+    let w, h =
+      Lui_text.Cache.measure t.shapes (font_of t store id) s
+    in
     (w *. t.scale (), h *. t.scale ())
