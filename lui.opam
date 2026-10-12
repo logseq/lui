@@ -21,6 +21,8 @@ depends: [
   "cmdliner"
   "mirage-crypto-ec"
   "digestif"
+  "decompress"
+  "uuseg"
   "alcotest" {with-test}
   "odoc" {with-doc}
 ]

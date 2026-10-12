@@ -161,100 +161,23 @@ let image_of_rgba ~width ~height px =
 
 let image_size i = (float_of_int i.img_w, float_of_int i.img_h)
 
-(* PNG encoding, minimal and complete: signature + IHDR (RGBA 8-bit) +
-   one IDAT holding a zlib stream of stored (uncompressed) deflate
-   blocks + IEND. Every scanline carries filter byte 0. *)
+(* PNG encoding via imagelib: the RGBA buffer becomes an RGBA8
+   Image.image and its PNG writer owns chunks, CRCs and the DEFLATE
+   stream — the hand-rolled encoder is gone. *)
 module Png = struct
-  let crc_table =
-    Array.init 256 (fun n ->
-        let c = ref (Int32.of_int n) in
-        for _ = 0 to 7 do
-          c :=
-            if Int32.logand !c 1l <> 0l then
-              Int32.logxor 0xedb88320l (Int32.shift_right_logical !c 1)
-            else Int32.shift_right_logical !c 1
-        done;
-        !c)
-
-  let crc32 buf off len =
-    let c = ref 0xffffffffl in
-    for i = off to off + len - 1 do
-      let idx =
-        Int32.to_int
-          (Int32.logxor !c (Int32.of_int (Bytes.get_uint8 buf i)))
-        land 0xff
-      in
-      c := Int32.logxor crc_table.(idx) (Int32.shift_right_logical !c 8)
-    done;
-    Int32.logxor !c 0xffffffffl
-
-  let adler32 buf off len =
-    let a = ref 1 and b = ref 0 in
-    for i = off to off + len - 1 do
-      a := (!a + Bytes.get_uint8 buf i) mod 65521;
-      b := (!b + !a) mod 65521
-    done;
-    (!b lsl 16) lor !a
-
-  let be32 out v = Buffer.add_int32_be out (Int32.of_int v)
-
-  let chunk out tag payload =
-    let t = Bytes.create 4 in
-    Bytes.blit_string tag 0 t 0 4;
-    let tag_len = Bytes.length t + Bytes.length payload in
-    be32 out (Bytes.length payload);
-    Buffer.add_bytes out t;
-    Buffer.add_bytes out payload;
-    let crc_buf = Bytes.create tag_len in
-    Bytes.blit t 0 crc_buf 0 4;
-    Bytes.blit payload 0 crc_buf 4 (Bytes.length payload);
-    be32 out (Int32.to_int (crc32 crc_buf 0 tag_len))
-
-  (* zlib stream: 2-byte header then stored deflate blocks
-     (BTYPE=00): 1 byte final flag, LEN and NLEN little-endian, raw
-     bytes; closed by the adler32 of the raw input. *)
-  let zlib_store out raw off len =
-    Buffer.add_uint8 out 0x78;
-    Buffer.add_uint8 out 0x01;
-    let pos = ref off in
-    let remaining = ref len in
-    while !remaining > 0 do
-      let n = min 65535 !remaining in
-      Buffer.add_uint8 out (if !remaining - n = 0 then 1 else 0);
-      Buffer.add_uint8 out (n land 0xff);
-      Buffer.add_uint8 out ((n lsr 8) land 0xff);
-      let nlen = lnot n land 0xffff in
-      Buffer.add_uint8 out (nlen land 0xff);
-      Buffer.add_uint8 out ((nlen lsr 8) land 0xff);
-      Buffer.add_bytes out (Bytes.sub raw !pos n);
-      pos := !pos + n;
-      remaining := !remaining - n
-    done;
-    Buffer.add_int32_be out (Int32.of_int (adler32 raw off len))
-
   let encode ~width ~height px =
-    let stride = width * 4 + 1 in
-    let raw = Bytes.create (stride * height) in
+    let im = Image.create_rgb ~alpha:true ~max_val:255 width height in
     for y = 0 to height - 1 do
-      Bytes.set_uint8 raw (y * stride) 0;
-      Bytes.blit px (y * width * 4) raw (y * stride + 1) (width * 4)
+      for x = 0 to width - 1 do
+        let i = ((y * width) + x) * 4 in
+        Image.write_rgba im x y
+          (Bytes.get_uint8 px i) (Bytes.get_uint8 px (i + 1))
+          (Bytes.get_uint8 px (i + 2)) (Bytes.get_uint8 px (i + 3))
+      done
     done;
-    let out = Buffer.create (Bytes.length raw + 64) in
-    Buffer.add_string out "\137PNG\013\010\026\010";
-    let ihdr = Bytes.create 13 in
-    Bytes.set_int32_be ihdr 0 (Int32.of_int width);
-    Bytes.set_int32_be ihdr 4 (Int32.of_int height);
-    Bytes.set_uint8 ihdr 8 8;
-    Bytes.set_uint8 ihdr 9 6;
-    Bytes.set_uint8 ihdr 10 0;
-    Bytes.set_uint8 ihdr 11 0;
-    Bytes.set_uint8 ihdr 12 0;
-    chunk out "IHDR" ihdr;
-    let idat = Buffer.create (Bytes.length raw + 16) in
-    zlib_store idat raw 0 (Bytes.length raw);
-    chunk out "IDAT" (Buffer.to_bytes idat);
-    chunk out "IEND" Bytes.empty;
-    Buffer.to_bytes out
+    let buf = Buffer.create 256 in
+    ImageLib.PNG.write (ImageUtil.chunk_writer_of_buffer buf) im;
+    Buffer.to_bytes buf
 end
 
 let image_png i = Png.encode ~width:i.img_w ~height:i.img_h i.img_px

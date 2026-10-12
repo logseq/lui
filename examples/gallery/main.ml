@@ -26,10 +26,16 @@ let () =
   ignore (Lui_app.send app Model.OpenDialog);
   ignore (Lui_app.send app Model.CloseDialog);
   ignore (Lui_app.send app (Model.SelectBottomTab "search"));
+  ignore (Lui_app.send app Model.CounterIncrement);
+  ignore (Lui_app.send app (Model.SetTodoDraft "wire demos"));
+  ignore (Lui_app.send app Model.AddTodo);
+  ignore (Lui_app.send app (Model.SetEditorText "hello\nworld"));
   ignore (Lui_app.flush app);
   let model = Lui_app.model app in
   Printf.printf
     "disabled=%b field=%S progress=%.1f bottom_tab=%S\n%!"
     model.Model.disabled model.Model.field_value model.Model.progress
     model.Model.bottom_tab;
+  Printf.printf "count=%d todos=%d editor=%S\n%!" model.Model.count
+    (List.length model.Model.todo_items) model.Model.editor_text;
   ignore (Lui_app.dispose app)

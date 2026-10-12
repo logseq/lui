@@ -70,7 +70,7 @@ test(`${browserLabel} preserves the Gallery's retained interaction contract`, as
       mountedPages: await page.locator(".lui-gallery-content > *").count(),
       failures,
     }
-    assert.equal(mobileAudit.count, 72)
+    assert.equal(mobileAudit.count, 77)
     assert.ok(mobileAudit.minNavigationHeight >= 44, JSON.stringify(mobileAudit))
     assert.equal(mobileAudit.mountedPages, 1)
     assert.deepEqual(mobileAudit.failures, [])

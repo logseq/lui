@@ -2,4 +2,4 @@
  (name lui_pkg)
  (public_name lui.pkg)
  (modules lui_pkg)
- (libraries unix yojson))
+ (libraries unix yojson digestif decompress.de decompress.zl))
