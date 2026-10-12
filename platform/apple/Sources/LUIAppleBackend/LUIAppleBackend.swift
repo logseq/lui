@@ -324,12 +324,25 @@ final class LUINodeModel: Identifiable {
         return croppedImage(image, source: imageSourceRect)
     }
 
+    /// Last `croppedImage` result; a node's image and source rect only
+    /// change via props, so one entry covers every body evaluation between
+    /// commits and avoids a `CGImage.cropping(to:)` copy per eval.
+    @ObservationIgnored private var cachedCrop:
+        (source: CGImage, rect: CGRect, result: CGImage?)?
+
     private func croppedImage(_ image: CGImage, source: CGRect?) -> CGImage? {
         guard let source else { return image }
+        if let cached = cachedCrop,
+           cached.source === image, cached.rect == source {
+            return cached.result
+        }
         let bounds = CGRect(x: 0, y: 0, width: image.width, height: image.height)
         let clipped = source.intersection(bounds)
-        guard !clipped.isNull, !clipped.isEmpty else { return nil }
-        return image.cropping(to: clipped)
+        let result = clipped.isNull || clipped.isEmpty
+            ? nil
+            : image.cropping(to: clipped)
+        cachedCrop = (image, source, result)
+        return result
     }
 
     func mediaSurfaceFrame(in backend: LUIAppleBackend) -> CGImage? {
