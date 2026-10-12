@@ -1,0 +1,18 @@
+; Reuse the fetch plugin's loopback server: copied next to the test
+; binary so with_server can spawn "python fetch_test_server.py".
+(rule
+ (target fetch_test_server.py)
+ (deps ../../lui_plugin_fetch/test/fetch_test_server.py)
+ (action (copy %{deps} %{target})))
+
+(test
+ (name lui_resource_loaders_test)
+ (modules lui_resource_loaders_test)
+ (libraries lui_resource lui_resource_loaders lui_scene lui_image lui_svg
+  lui_plugin lui_plugin_fetch lui_media ocaml-signal alcotest imagelib
+  unix)
+ (deps fetch_test_server.py)
+ (enabled_if
+  (or
+   (= %{system} linux)
+   (= %{system} macosx))))

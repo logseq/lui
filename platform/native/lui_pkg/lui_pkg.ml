@@ -280,185 +280,30 @@ module Proc = struct
     match check prog args with Ok r -> Ok r.stdout | Error e -> Failed e
 end
 
-(** {1 SHA-256} *)
+(** {1 SHA-256}
+
+    Digestif's SHA-256 behind the interface the updater and the delta
+    format already use: hex digests plus the raw 32-byte form. *)
 
 module Sha256 = struct
-  let k = [|
-    0x428a2f98l; 0x71374491l; 0xb5c0fbcfl; 0xe9b5dba5l; 0x3956c25bl;
-    0x59f111f1l; 0x923f82a4l; 0xab1c5ed5l; 0xd807aa98l; 0x12835b01l;
-    0x243185bel; 0x550c7dc3l; 0x72be5d74l; 0x80deb1fel; 0x9bdc06a7l;
-    0xc19bf174l; 0xe49b69c1l; 0xefbe4786l; 0x0fc19dc6l; 0x240ca1ccl;
-    0x2de92c6fl; 0x4a7484aal; 0x5cb0a9dcl; 0x76f988dal; 0x983e5152l;
-    0xa831c66dl; 0xb00327c8l; 0xbf597fc7l; 0xc6e00bf3l; 0xd5a79147l;
-    0x06ca6351l; 0x14292967l; 0x27b70a85l; 0x2e1b2138l; 0x4d2c6dfcl;
-    0x53380d13l; 0x650a7354l; 0x766a0abbl; 0x81c2c92el; 0x92722c85l;
-    0xa2bfe8a1l; 0xa81a664bl; 0xc24b8b70l; 0xc76c51a3l; 0xd192e819l;
-    0xd6990624l; 0xf40e3585l; 0x106aa070l; 0x19a4c116l; 0x1e376c08l;
-    0x2748774cl; 0x34b0bcb5l; 0x391c0cb3l; 0x4ed8aa4al; 0x5b9cca4fl;
-    0x682e6ff3l; 0x748f82eel; 0x78a5636fl; 0x84c87814l; 0x8cc70208l;
-    0x90befffal; 0xa4506cebl; 0xbef9a3f7l; 0xc67178f2l
-  |]
+  module D = Digestif.SHA256
 
-  let init = [|
-    0x6a09e667l; 0xbb67ae85l; 0x3c6ef372l; 0xa54ff53al;
-    0x510e527fl; 0x9b05688cl; 0x1f83d9abl; 0x5be0cd19l
-  |]
-
-  let ror32 x n =
-    Int32.logor (Int32.shift_right_logical x n) (Int32.shift_left x (32 - n))
-
-  let get32 s i =
-    Int32.logor
-      (Int32.shift_left (Int32.of_int (Char.code s.[i])) 24)
-      (Int32.logor
-         (Int32.shift_left (Int32.of_int (Char.code s.[i + 1])) 16)
-         (Int32.logor
-            (Int32.shift_left (Int32.of_int (Char.code s.[i + 2])) 8)
-            (Int32.of_int (Char.code s.[i + 3]))))
-
-  (* One compression over the 64-byte block of [s] at [off]. *)
-  let compress h s off =
-    let w = Array.make 64 0l in
-    for i = 0 to 15 do
-      w.(i) <- get32 s (off + (4 * i))
-    done;
-    for i = 16 to 63 do
-      let x = w.(i - 15) and y = w.(i - 2) in
-      let s0 =
-        Int32.logxor (ror32 x 7)
-          (Int32.logxor (ror32 x 18) (Int32.shift_right_logical x 3))
-      in
-      let s1 =
-        Int32.logxor (ror32 y 17)
-          (Int32.logxor (ror32 y 19) (Int32.shift_right_logical y 10))
-      in
-      w.(i) <- Int32.add w.(i - 16) (Int32.add s0 (Int32.add w.(i - 7) s1))
-    done;
-    let a = ref h.(0) and b = ref h.(1) and c = ref h.(2) and d = ref h.(3) in
-    let e = ref h.(4) and f = ref h.(5) and g = ref h.(6) and hh = ref h.(7) in
-    for i = 0 to 63 do
-      let s1 =
-        Int32.logxor (ror32 !e 6) (Int32.logxor (ror32 !e 11) (ror32 !e 25))
-      in
-      let ch =
-        Int32.logxor (Int32.logand !e !f) (Int32.logand (Int32.lognot !e) !g)
-      in
-      let t1 =
-        Int32.add !hh (Int32.add s1 (Int32.add ch (Int32.add k.(i) w.(i))))
-      in
-      let s0 =
-        Int32.logxor (ror32 !a 2) (Int32.logxor (ror32 !a 13) (ror32 !a 22))
-      in
-      let maj =
-        Int32.logxor (Int32.logand !a !b)
-          (Int32.logxor (Int32.logand !a !c) (Int32.logand !b !c))
-      in
-      let t2 = Int32.add s0 maj in
-      hh := !g;
-      g := !f;
-      f := !e;
-      e := Int32.add !d t1;
-      d := !c;
-      c := !b;
-      b := !a;
-      a := Int32.add t1 t2
-    done;
-    h.(0) <- Int32.add h.(0) !a;
-    h.(1) <- Int32.add h.(1) !b;
-    h.(2) <- Int32.add h.(2) !c;
-    h.(3) <- Int32.add h.(3) !d;
-    h.(4) <- Int32.add h.(4) !e;
-    h.(5) <- Int32.add h.(5) !f;
-    h.(6) <- Int32.add h.(6) !g;
-    h.(7) <- Int32.add h.(7) !hh
-
-  let of_state h =
-    let b = Buffer.create 32 in
-    Array.iter
-      (fun v ->
-         for sft = 3 downto 0 do
-           Buffer.add_char b
-             (Char.chr
-                (Int32.to_int
-                   (Int32.logand (Int32.shift_right_logical v (8 * sft)) 0xffl)))
-         done)
-      h;
-    Buffer.contents b
-
-  let hex_of s =
-    let b = Buffer.create (2 * String.length s) in
-    String.iter (fun c -> Buffer.add_string b (fmt "%02x" (Char.code c))) s;
-    Buffer.contents b
-
-  let digest_string data =
-    let h = Array.copy init in
-    let total = String.length data in
-    let whole = total / 64 in
-    for blk = 0 to whole - 1 do
-      compress h data (blk * 64)
-    done;
-    let rem = total mod 64 in
-    let pad = Bytes.make 128 '\x00' in
-    Bytes.blit_string data (whole * 64) pad 0 rem;
-    Bytes.set pad rem '\x80';
-    let padlen = if rem <= 55 then 64 else 128 in
-    let bitlen = Int64.mul (Int64.of_int total) 8L in
-    for i = 0 to 7 do
-      Bytes.set pad (padlen - 8 + i)
-        (Char.chr
-           (Int64.to_int
-              (Int64.logand (Int64.shift_right_logical bitlen (8 * (7 - i))) 0xffL)))
-    done;
-    compress h (Bytes.unsafe_to_string pad) 0;
-    if padlen = 128 then compress h (Bytes.unsafe_to_string pad) 64;
-    of_state h
-
-  let string data = hex_of (digest_string data)
+  let digest_string data = D.(to_raw_string (digest_string data))
+  let string data = D.(to_hex (digest_string data))
 
   let digest_file path =
-    let h = Array.copy init in
     let ic = open_in_bin path in
     let buf = Bytes.create (64 * 1024) in
-    let total = ref 0 in
-    let carry = Bytes.create 64 and carry_len = ref 0 in
-    let rec go () =
+    let rec go ctx =
       match input ic buf 0 (Bytes.length buf) with
-      | 0 -> ()
-      | n ->
-        total := !total + n;
-        let off = ref 0 in
-        while !off < n do
-          let take = min (64 - !carry_len) (n - !off) in
-          Bytes.blit buf !off carry !carry_len take;
-          carry_len := !carry_len + take;
-          off := !off + take;
-          if !carry_len = 64 then begin
-            compress h (Bytes.unsafe_to_string carry) 0;
-            carry_len := 0
-          end
-        done;
-        go ()
+      | 0 -> ctx
+      | n -> go (D.feed_bytes ctx ~len:n buf)
     in
-    go ();
+    let ctx = go (D.init ()) in
     close_in ic;
-    let rem = !carry_len in
-    let pad = Bytes.make 128 '\x00' in
-    Bytes.blit carry 0 pad 0 rem;
-    Bytes.set pad rem '\x80';
-    let padlen = if rem <= 55 then 64 else 128 in
-    let bitlen = Int64.mul (Int64.of_int !total) 8L in
-    for i = 0 to 7 do
-      Bytes.set pad (padlen - 8 + i)
-        (Char.chr
-           (Int64.to_int
-              (Int64.logand (Int64.shift_right_logical bitlen (8 * (7 - i))) 0xffL)))
-    done;
-    let padstr = Bytes.unsafe_to_string pad in
-    compress h padstr 0;
-    if padlen = 128 then compress h padstr 64;
-    of_state h
+    D.(to_raw_string (get ctx))
 
-  let file path = hex_of (digest_file path)
+  let file path = D.to_hex (D.of_raw_string (digest_file path))
 end
 
 (** {1 CRC-32 and Adler-32} *)
@@ -542,372 +387,71 @@ end
 
 (** {1 DEFLATE (RFC 1951)}
 
-    A fixed-Huffman compressor with greedy LZ77 matching, and a full
-    inflater (stored, fixed and dynamic blocks) so streams produced by
-    any compressor round-trip. *)
+    LZ77 + Huffman from the decompress library: [De] for raw DEFLATE
+    streams and [Zl] for the zlib wrapper. The interface the delta
+    format and the Windows packager use is unchanged; [Bad_stream]
+    still reports damaged input. *)
 
 module Deflate = struct
-  let hash_bits = 15
-  let hash_size = 1 lsl hash_bits
-  let window_size = 32768
-  let max_match = 258
-  let min_match = 3
-  let max_chain = 96
-
-  let hash3 data i =
-    ((Char.code data.[i] lsl 10)
-     lxor (Char.code data.[i + 1] lsl 5)
-     lxor Char.code data.[i + 2])
-    land (hash_size - 1)
-
-  (* code index 0..28 ↔ lengths 3..258 *)
-  let length_base = [|
-    3; 4; 5; 6; 7; 8; 9; 10; 11; 13; 15; 17; 19; 23; 27; 31; 35; 43; 51;
-    59; 67; 83; 99; 115; 131; 163; 195; 227; 258
-  |]
-
-  let length_extra = [|
-    0; 0; 0; 0; 0; 0; 0; 0; 1; 1; 1; 1; 2; 2; 2; 2; 3; 3; 3; 3; 4; 4; 4;
-    4; 5; 5; 5; 5; 0
-  |]
-
-  let dist_base = [|
-    1; 2; 3; 4; 5; 7; 9; 13; 17; 25; 33; 49; 65; 97; 129; 193; 257; 385;
-    513; 769; 1025; 1537; 2049; 3073; 4097; 6145; 8193; 12289; 16385;
-    24577
-  |]
-
-  let dist_extra = [|
-    0; 0; 0; 0; 1; 1; 2; 2; 3; 3; 4; 4; 5; 5; 6; 6; 7; 7; 8; 8; 9; 9;
-    10; 10; 11; 11; 12; 12; 13; 13
-  |]
-
-  (* LSB-first bit writer. *)
-  type bitw = { mutable acc : int; mutable nbits : int; buf : Buffer.t }
-
-  let bitw () = { acc = 0; nbits = 0; buf = Buffer.create 4096 }
-
-  let put_bits w v n =
-    let v = v land ((1 lsl n) - 1) in
-    w.acc <- w.acc lor (v lsl w.nbits);
-    w.nbits <- w.nbits + n;
-    while w.nbits >= 8 do
-      Buffer.add_char w.buf (Char.chr (w.acc land 0xff));
-      w.acc <- w.acc lsr 8;
-      w.nbits <- w.nbits - 8
-    done
-
-  (* Huffman codes are packed MSB-first. *)
-  let put_code w code n =
-    for i = n - 1 downto 0 do
-      put_bits w ((code lsr i) land 1) 1
-    done
-
-  let flush_bits w =
-    if w.nbits > 0 then begin
-      Buffer.add_char w.buf (Char.chr (w.acc land 0xff));
-      w.acc <- 0;
-      w.nbits <- 0
-    end
-
-  let fixed_lit_code sym =
-    if sym <= 143 then (0x30 + sym, 8)
-    else if sym <= 255 then (0x190 + sym - 144, 9)
-    else if sym <= 279 then (sym - 256, 7)
-    else (0xc0 + sym - 280, 8)
-
-  let emit_lit w sym =
-    let code, n = fixed_lit_code sym in
-    put_code w code n
-
-  let emit_match w ~len ~dist =
-    let li = ref 0 in
-    while !li < 28 && len >= length_base.(!li + 1) do
-      incr li
-    done;
-    let code, n = fixed_lit_code (257 + !li) in
-    put_code w code n;
-    put_bits w (len - length_base.(!li)) length_extra.(!li);
-    let di = ref 0 in
-    while !di < 29 && dist >= dist_base.(!di + 1) do
-      incr di
-    done;
-    put_code w !di 5;
-    put_bits w (dist - dist_base.(!di)) dist_extra.(!di)
-
-  (** [deflate data] compresses to raw DEFLATE: a single final fixed
-      block. *)
-  let deflate data =
-    let n = String.length data in
-    let w = bitw () in
-    put_bits w 1 1;
-    (* BFINAL *)
-    put_bits w 1 2;
-    (* BTYPE fixed *)
-    if n > 0 then begin
-      let head = Array.make hash_size (-1) in
-      let prev = Array.make n (-1) in
-      let i = ref 0 in
-      while !i < n do
-        let best_len = ref 0 and best_pos = ref (-1) in
-        if !i + 2 < n then begin
-          let h = hash3 data !i in
-          let cand = ref head.(h) and steps = ref 0 in
-          while
-            !cand >= 0 && !steps < max_chain && !i - !cand <= window_size
-          do
-            let l = ref 0 in
-            while
-              !l < max_match && !cand + !l < n && !i + !l < n
-              && data.[!cand + !l] = data.[!i + !l]
-            do
-              incr l
-            done;
-            if !l > !best_len then begin
-              best_len := !l;
-              best_pos := !cand;
-              if !l >= max_match then steps := max_chain
-            end;
-            cand := prev.(!cand);
-            incr steps
-          done;
-          prev.(!i) <- head.(h);
-          head.(h) <- !i
-        end;
-        if !best_len >= min_match then begin
-          emit_match w ~len:!best_len ~dist:(!i - !best_pos);
-          let stop = min (!i + !best_len) n in
-          for j = !i + 1 to stop - 1 do
-            if j + 2 < n then begin
-              let h = hash3 data j in
-              prev.(j) <- head.(h);
-              head.(h) <- j
-            end
-          done;
-          i := stop
-        end
-        else begin
-          emit_lit w (Char.code data.[!i]);
-          incr i
-        end
-      done
-    end;
-    emit_lit w 256;
-    flush_bits w;
-    Buffer.contents w.buf
-
   exception Bad_stream of string
 
-  (* LSB-first bit reader. *)
-  type bitr = {
-    data : string;
-    mutable pos : int;
-    mutable acc : int;
-    mutable nbits : int;
-  }
+  (* string <-> bigstring plumbing for decompress' buffered codec API:
+     [refill] feeds input chunks, [flush] collects output chunks. *)
+  let io () = De.bigstring_create De.io_buffer_size
 
-  let bitr data = { data; pos = 0; acc = 0; nbits = 0 }
+  let bs_set b i c = Bigarray.Array1.unsafe_set b i c
+  let bs_get b i = Bigarray.Array1.unsafe_get b i
 
-  let get_bit r =
-    if r.nbits = 0 then begin
-      if r.pos >= String.length r.data then raise (Bad_stream "truncated");
-      r.acc <- Char.code r.data.[r.pos];
-      r.pos <- r.pos + 1;
-      r.nbits <- 8
-    end;
-    let b = r.acc land 1 in
-    r.acc <- r.acc lsr 1;
-    r.nbits <- r.nbits - 1;
-    b
+  let refill ~pos ~stop s buf =
+    let len = min (stop - !pos) De.io_buffer_size in
+    for k = 0 to len - 1 do bs_set buf k s.[!pos + k] done;
+    pos := !pos + len;
+    len
 
-  let get_bits r n =
-    let v = ref 0 in
-    for i = 0 to n - 1 do
-      v := !v lor (get_bit r lsl i)
-    done;
-    !v
+  let flush_into out buf len =
+    Buffer.add_string out (String.init len (fun k -> bs_get buf k))
 
-  let align_byte r =
-    r.acc <- 0;
-    r.nbits <- 0
-
-  (* Canonical Huffman table: counts per length + sorted symbols. *)
-  type table = { counts : int array; symbols : int array }
-
-  let build_table lengths =
-    let counts = Array.make 16 0 in
-    Array.iter (fun l -> counts.(l) <- counts.(l) + 1) lengths;
-    counts.(0) <- 0;
-    let offs = Array.make 16 0 in
-    for i = 1 to 15 do
-      offs.(i) <- offs.(i - 1) + counts.(i - 1)
-    done;
-    let symbols = Array.make (Array.length lengths) 0 in
-    Array.iteri
-      (fun sym l ->
-         if l > 0 then begin
-           symbols.(offs.(l)) <- sym;
-           offs.(l) <- offs.(l) + 1
-         end)
-      lengths;
-    { counts; symbols }
-
-  let decode r t =
-    let code = ref 0 and first = ref 0 and index = ref 0 in
-    let len = ref 1 and found = ref (-1) in
-    while !len <= 15 && !found < 0 do
-      code := (!code lsl 1) lor get_bit r;
-      let count = t.counts.(!len) in
-      if !code - !first >= 0 && !code - !first < count then
-        found := t.symbols.(!index + !code - !first)
-      else begin
-        index := !index + count;
-        first := (!first + count) lsl 1;
-        incr len
-      end
-    done;
-    if !found < 0 then raise (Bad_stream "bad huffman code");
-    !found
-
-  let fixed_lit_table =
-    lazy
-      (let lengths = Array.make 288 0 in
-       for i = 0 to 143 do lengths.(i) <- 8 done;
-       for i = 144 to 255 do lengths.(i) <- 9 done;
-       for i = 256 to 279 do lengths.(i) <- 7 done;
-       for i = 280 to 287 do lengths.(i) <- 8 done;
-       build_table lengths)
-
-  let fixed_dist_table = lazy (build_table (Array.make 32 5))
-
-  let clen_order = [|
-    16; 17; 18; 0; 8; 7; 9; 6; 10; 5; 11; 4; 12; 3; 13; 2; 14; 1; 15
-  |]
+  (** [deflate data] compresses to raw DEFLATE. *)
+  let deflate data =
+    let i = io () and o = io () in
+    let w = De.Lz77.make_window ~bits:15 in
+    let q = De.Queue.create 0x1000 in
+    let out = Buffer.create 64 in
+    let pos = ref 0 and stop = String.length data in
+    let refill buf = refill ~pos ~stop data buf in
+    let flush buf len = flush_into out buf len in
+    De.Higher.compress ~w ~q ~refill ~flush i o;
+    Buffer.contents out
 
   (** [inflate ~off ~len data] decodes a raw DEFLATE stream into a
       string. Raises [Bad_stream] on damaged input. *)
   let inflate ?(off = 0) ?len data =
-    let len = match len with Some l -> l | None -> String.length data - off in
-    let sub = String.sub data off len in
-    let r = bitr sub in
-    let arr = ref (Bytes.create (min (max (2 * len) 4096) (1 lsl 26))) in
-    let out_len = ref 0 in
-    let put_byte b =
-      if !out_len = Bytes.length !arr then begin
-        let bigger = Bytes.create (2 * Bytes.length !arr) in
-        Bytes.blit !arr 0 bigger 0 !out_len;
-        arr := bigger
-      end;
-      Bytes.set !arr !out_len (Char.chr b);
-      incr out_len
+    let avail =
+      match len with Some l -> l | None -> String.length data - off
     in
-    let copy ~dist ~length =
-      if dist <= 0 || dist > !out_len then raise (Bad_stream "bad distance");
-      for _ = 1 to length do
-        put_byte (Char.code (Bytes.get !arr (!out_len - dist)))
-      done
-    in
-    let rec decode_block lit_t dist_t =
-      let sym = decode r lit_t in
-      if sym = 256 then ()
-      else if sym < 256 then begin
-        put_byte sym;
-        decode_block lit_t dist_t
-      end
-      else begin
-        let li = sym - 257 in
-        if li > 28 then raise (Bad_stream "bad length code");
-        let length = length_base.(li) + get_bits r length_extra.(li) in
-        let di = decode r dist_t in
-        if di > 29 then raise (Bad_stream "bad distance code");
-        let dist = dist_base.(di) + get_bits r dist_extra.(di) in
-        copy ~dist ~length;
-        decode_block lit_t dist_t
-      end
-    in
-    let done_ = ref false in
-    while not !done_ do
-      let final = get_bit r = 1 in
-      (match get_bits r 2 with
-       | 0 ->
-         align_byte r;
-         if r.pos + 4 > String.length sub then raise (Bad_stream "stored");
-         let l =
-           Char.code sub.[r.pos] lor (Char.code sub.[r.pos + 1] lsl 8)
-         in
-         let nl =
-           Char.code sub.[r.pos + 2] lor (Char.code sub.[r.pos + 3] lsl 8)
-         in
-         if l <> nl lxor 0xffff then raise (Bad_stream "stored length");
-         r.pos <- r.pos + 4;
-         if r.pos + l > String.length sub then raise (Bad_stream "stored data");
-         for _ = 1 to l do
-           put_byte (Char.code sub.[r.pos]);
-           r.pos <- r.pos + 1
-         done
-       | 1 ->
-         decode_block (Lazy.force fixed_lit_table)
-           (Lazy.force fixed_dist_table)
-       | 2 ->
-         let hlit = get_bits r 5 + 257 in
-         let hdist = get_bits r 5 + 1 in
-         let hclen = get_bits r 4 + 4 in
-         let cl = Array.make 19 0 in
-         for i = 0 to hclen - 1 do
-           cl.(clen_order.(i)) <- get_bits r 3
-         done;
-         let cl_t = build_table cl in
-         let lengths = Array.make (hlit + hdist) 0 in
-         let i = ref 0 in
-         while !i < hlit + hdist do
-           let sym = decode r cl_t in
-           (match sym with
-            | _ when sym <= 15 ->
-              lengths.(!i) <- sym;
-              incr i
-            | 16 ->
-              if !i = 0 then raise (Bad_stream "repeat with no previous");
-              let rep = get_bits r 2 + 3 in
-              if !i + rep > hlit + hdist then raise (Bad_stream "clen overflow");
-              let prev = lengths.(!i - 1) in
-              for _ = 1 to rep do
-                lengths.(!i) <- prev;
-                incr i
-              done
-            | 17 ->
-              let rep = get_bits r 3 + 3 in
-              if !i + rep > hlit + hdist then raise (Bad_stream "clen overflow");
-              i := !i + rep
-            | 18 ->
-              let rep = get_bits r 7 + 11 in
-              if !i + rep > hlit + hdist then raise (Bad_stream "clen overflow");
-              i := !i + rep
-            | _ -> raise (Bad_stream "bad clen symbol"))
-         done;
-         let lit_t = build_table (Array.sub lengths 0 hlit)
-         and dist_t = build_table (Array.sub lengths hlit hdist) in
-         decode_block lit_t dist_t
-       | _ -> raise (Bad_stream "bad block type"));
-      if final then done_ := true
-    done;
-    Bytes.sub_string !arr 0 !out_len
+    if off < 0 || avail < 0 || off + avail > String.length data then
+      raise (Bad_stream "out of bounds");
+    let i = io () and o = io () in
+    let w = De.make_window ~bits:15 in
+    let out = Buffer.create avail in
+    let pos = ref off and stop = off + avail in
+    let refill buf = refill ~pos ~stop data buf in
+    let flush buf len = flush_into out buf len in
+    match De.Higher.uncompress ~w ~refill ~flush i o with
+    | Ok () -> Buffer.contents out
+    | Error (`Msg m) -> raise (Bad_stream m)
 
-  (** zlib wrapper: 0x78 0x9C + raw deflate + adler32 — what
-      [zlib.decompress]/[unzip -t] understand. *)
+  (** zlib wrapper — what [zlib.decompress]/[unzip -t] understand. *)
   let zlib data =
-    let cmf_flg = "\x78\x9c" in
-    let body = deflate data in
-    let a = Adler32.string data in
-    let b = Buffer.create (6 + String.length body) in
-    Buffer.add_string b cmf_flg;
-    Buffer.add_string b body;
-    for sft = 3 downto 0 do
-      Buffer.add_char b
-        (Char.chr
-           (Int32.to_int
-              (Int32.logand (Int32.shift_right_logical a (8 * sft)) 0xffl)))
-    done;
-    Buffer.contents b
+    let i = io () and o = io () in
+    let w = De.Lz77.make_window ~bits:15 in
+    let q = De.Queue.create 0x1000 in
+    let out = Buffer.create 64 in
+    let pos = ref 0 and stop = String.length data in
+    let refill buf = refill ~pos ~stop data buf in
+    let flush buf len = flush_into out buf len in
+    Zl.Higher.compress ~w ~q ~refill ~flush i o;
+    Buffer.contents out
 end
 
 (** {1 Binary diff (bsdiff)} *)

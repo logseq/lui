@@ -1,6 +1,6 @@
 (** Lui_cli — the [lui] developer command line for the native backend.
 
-    One entry point, {!main}, dispatches hand-parsed argv to the
+    One entry point, {!main}, dispatches a Cmdliner-parsed argv to the
     per-command runners below. The command set covers the whole
     developer loop: {!Init} scaffolds an app, {!Dev} rebuilds and
     restarts it on change, {!Build} compiles once, {!Package} drives

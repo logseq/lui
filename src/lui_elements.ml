@@ -41,6 +41,24 @@ type list_style = [ `plain | `inset | `inset_grouped ]
 type scroll_anchor = [ `top | `center | `bottom ]
 type separator_visibility = [ `visible | `hidden ]
 
+(* Platform vocabulary re-exported from [Lui_protocol] so view code can
+   match on [Lui_ui.platform] / [Lui_ui.host] results without opening
+   the wire-protocol module. *)
+type operating_system = Lui_protocol.operating_system =
+  | GenericOS
+  | WebOS
+  | MacOS
+  | IOS
+  | AndroidOS
+  | LinuxOS
+  | WindowsOS
+
+type host_kind = Lui_protocol.host_kind =
+  | GenericHost
+  | WebHost
+  | SwiftUIHost
+  | KotlinHost
+
 type image_loading = [ `eager | `lazy_ ]
 
 type referrer_policy =
