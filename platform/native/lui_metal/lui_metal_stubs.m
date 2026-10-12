@@ -424,6 +424,13 @@ CAMLprim value lui_metal_render(value vctx, value vreq)
     if (!m) caml_failwith("lui_metal: released context");
     @autoreleasepool {
         int w = Int_val(Field(vreq, 0)), h = Int_val(Field(vreq, 1));
+        if (w != m->tw || h != m->th) {
+            id<MTLTexture> target = make_target(m->dev, w, h);
+            if (!target) caml_failwith("lui_metal: target resize failed");
+            m->target = target;
+            m->tw = w;
+            m->th = h;
+        }
         value vc = Field(vreq, 2);
         float cr = Double_val(Field(vc, 0)), cg = Double_val(Field(vc, 1));
         float cb_ = Double_val(Field(vc, 2)), ca = Double_val(Field(vc, 3));
