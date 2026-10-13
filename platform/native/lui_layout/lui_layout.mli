@@ -139,6 +139,14 @@ val layout_hook : t -> int -> Lui_paint.placement
 
 val rect : t -> int -> Lui_scene.rect option
 
+(** [take_rect_changes t] is the set of store ids whose absolute rect
+    differed at the last rect refresh, drained: the caller owns the
+    returned table and the next refresh starts a fresh one. The
+    retained paint pass uses it to re-emit only the subtrees whose
+    geometry actually moved. *)
+
+val take_rect_changes : t -> (int, unit) Hashtbl.t
+
 (** [run ?scale store ~measure ~width ~height] is the one-shot hook for
     [Lui_host]: mirror + layout + the placement function. The
     [~measure] here is the id-keyed host form; the mirror picks the

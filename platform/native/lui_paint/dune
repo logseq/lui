@@ -3,3 +3,9 @@
  (public_name lui.paint)
  (modules lui_paint)
  (libraries lui_store lui_scene))
+
+(library
+ (name lui_retained)
+ (public_name lui.retained)
+ (modules lui_retained)
+ (libraries lui_paint lui_store lui_scene))
