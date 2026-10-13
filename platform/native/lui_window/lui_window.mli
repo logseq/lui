@@ -326,6 +326,20 @@ module Ui : sig
 
   val set_content_rect : t -> (int -> Lui_scene.rect) -> unit
 
+  (** Layout-engine forwards for virtual-list math: the pieces
+      scroll-target resolution, visible-range reports and
+      reveal-on-focus need on logical items that may not be mounted.
+      [vh_view] is the last viewport the driver fed the engine;
+      [vh_item] answers content-space rects for any item index. *)
+  type vlist_hook = {
+    vh_count : int -> int option;
+    vh_item : int -> index:int -> Lui_scene.rect option;
+    vh_index_of_key : int -> string -> int option;
+    vh_view : int -> (float * float) option;
+  }
+
+  val set_vlist_hook : t -> vlist_hook option -> unit
+
   (** Tell the Ui that layout rects were recomputed (the driver's
       populate/refresh pass). Bumps the internal layout epoch that
       visible-range memoization keys on — call it wherever the rects
