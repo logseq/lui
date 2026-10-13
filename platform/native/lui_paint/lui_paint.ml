@@ -2313,6 +2313,10 @@ let resolve_rect ~scale ~viewport store id kind p parent_r =
   in
   rect_snap r
 
+(* The ctx-taking form of [resolve_rect], used by the retained paint
+   pass (Lui_retained). *)
+let resolve_in ctx = resolve_rect ~scale:ctx.scale ~viewport:ctx.viewport
+
 let zindex store id =
   match Lui_store.prop store id "z-index" with
   | Some (Lui_protocol.IntValue i) -> i
@@ -2383,9 +2387,22 @@ type 'a branch = {
    pass, display:contents unboxed — carrying [clip] (the accumulated
    ancestor clip) and the caller's context down the tree. [enter]
    fires on every shown node, [leave] closes frames whose own chrome
-   emitted, and both receive the context the caller threaded down. *)
-let walk ~scale ~viewport store ~layout ~enter ~leave ctx0 =
+   emitted, and both receive the context the caller threaded down.
+   Inside a dead clip — one that misses [viewport] entirely — the
+   walk switches to a ghost pass that skips [enter]/[leave] and every
+   node's chrome cost, keeping only the promoted-popup search and the
+   [ghost_enter] context update (a popup's alpha and hit flags still
+   accumulate its clipped-away ancestors). *)
+let walk ~scale ~viewport store ~layout ~enter ~ghost_enter ~leave ctx0 =
   let deferred = Queue.create () in
+  (* A clip context that misses [viewport] entirely is dead: nothing
+     inside it can paint or be hit — except promoted popups, which
+     escape to the overlay pass. *)
+  let dead clip =
+    match clip with
+    | Some cr -> rect_empty (rect_intersect cr viewport)
+    | None -> false
+  in
   let rec go ctx clip parent_r (n : Lui_store.node) =
     let id = Lui_store.node_id n and kind = Lui_store.node_kind n in
     if node_shown store id then
@@ -2393,7 +2410,24 @@ let walk ~scale ~viewport store ~layout ~enter ~leave ctx0 =
         (* promoted out of the ancestor clips: painted after the whole
            tree with a fresh clip context *)
         Queue.add (fun () -> body ctx None parent_r id kind) deferred
+      else if dead clip then ghost ctx parent_r n
       else body ctx clip parent_r id kind
+  (* The subtree sits entirely inside a dead clip: keep walking only
+     far enough to find promoted popups (and their containing blocks),
+     skipping every node's enter/chrome cost. *)
+  and ghost ctx parent_r (n : Lui_store.node) =
+    let id = Lui_store.node_id n and kind = Lui_store.node_kind n in
+    if node_shown store id then
+      if popup_kind kind && not (unboxed store id) then
+        Queue.add (fun () -> body ctx None parent_r id kind) deferred
+      else begin
+        let contents = unboxed store id in
+        let p = layout id in
+        let r = resolve_rect ~scale ~viewport store id kind p parent_r in
+        let ctx = ghost_enter ctx id contents in
+        let child_parent = if contents then parent_r else r in
+        List.iter (ghost ctx child_parent) (ordered_children store id)
+      end
   and body ctx clip parent_r id kind =
     let contents = unboxed store id in
     let p = layout id in
@@ -2511,39 +2545,51 @@ let paint_own ctx store id st kind r rs alpha =
   then [ focus_ring_op ctx r (radii_of ctx store id) alpha ]
   else []
 
+(* Inside a dead clip only the context still matters: a promoted
+   popup inherits its clipped-away ancestors' opacity, so the ghost
+   walk threads alpha down without resolving chrome. *)
+let paint_ghost_enter ctx store alpha id contents =
+  if contents then alpha
+  else
+    let st = effective_state ctx.hooks store id in
+    let rs = resolve_style store id st in
+    alpha *. rs.rs_opacity *. disabled_alpha store id st
+
 (* A visible node's own chrome: clip bracket, box ops, scrollbar —
    everything except the child walk, which the shared stacking walk
-   drives. Geometry comes first deliberately — a culled node never
-   pays for state resolution, so scrolling a huge tree costs one
-   layout-hook hit plus a rect check per offscreen node. *)
+   drives. A node whose painted area misses the frame emits nothing
+   but still walks its children: they can escape the box
+   (overflow:visible content, absolute/fixed children, promoted
+   popups) and cull themselves. The only true subtree cull is the
+   walk's dead-clip path — a clip that misses the viewport cannot
+   contain output. *)
 let paint_enter ctx store scene alpha f =
   let id = f.f_id and kind = f.f_kind in
   let contents = f.f_contents in
-  (* Viewport cull: a node whose box misses the frame produces no
-     chrome and no descendants. display:contents has no box of its own
-     so it always walks children; zero-size nodes still walk so
-     absolute/fixed descendants (resolved against f_parent_r) are not
-     lost. Full damage/incremental paint is intentionally unfinished. *)
-  let misses_viewport =
-    (not contents)
-    && (not (rect_empty f.f_rect))
-    && rect_empty (rect_intersect f.f_rect ctx.viewport)
+  let st = effective_state ctx.hooks store id in
+  let rs = resolve_style store id st in
+  (* display:contents generates no box, so its opacity and chrome do
+     not apply — children paint with the parent's alpha and clip. *)
+  let alpha =
+    if contents then alpha
+    else alpha *. rs.rs_opacity *. disabled_alpha store id st
   in
-  if misses_viewport then { b_emit = false; b_down = false; b_ctx = alpha }
+  (* An alpha-0 subtree emits no ops at all: the raster treats an op
+     opacity of 0 as "unset" (opaque), so invisible nodes must be
+     culled here rather than painted at opacity 0. *)
+  if alpha <= 0. then { b_emit = false; b_down = false; b_ctx = alpha }
   else begin
-    let st = effective_state ctx.hooks store id in
-    let rs = resolve_style store id st in
-    (* display:contents generates no box, so its opacity and chrome do
-       not apply — children paint with the parent's alpha and clip. *)
-    let alpha =
-      if contents then alpha
-      else alpha *. rs.rs_opacity *. disabled_alpha store id st
+    (* Node-not-drawn vs subtree-invisible: only the node's own chrome
+       is skipped here; the subtree walks on. Zero-size nodes still
+       emit — shadows and outlines can paint outside an empty box —
+       matching the pre-cull contract that the raster drops empty
+       ops. *)
+    let node_drawn =
+      (not contents)
+      && (rect_empty f.f_rect
+          || not (rect_empty (rect_intersect f.f_clipped ctx.viewport)))
     in
-    (* An alpha-0 subtree emits no ops at all: the raster treats an op
-       opacity of 0 as "unset" (opaque), so invisible nodes must be
-       culled here rather than painted at opacity 0. *)
-    if alpha <= 0. then { b_emit = false; b_down = false; b_ctx = alpha }
-    else begin
+    if node_drawn then begin
       if f.f_clips then
         emit1 scene
           (Push_clip
@@ -2554,6 +2600,7 @@ let paint_enter ctx store scene alpha f =
         emit scene (paint_own ctx store id st kind f.f_rect rs alpha);
       { b_emit = true; b_down = true; b_ctx = alpha }
     end
+    else { b_emit = false; b_down = true; b_ctx = alpha }
   end
 
 let paint_leave ctx store scene alpha f =
@@ -2571,6 +2618,7 @@ let paint hooks store scene ~width ~height ~scale ~clear =
   in
   walk ~scale ~viewport:ctx.viewport store ~layout:hooks.layout
     ~enter:(paint_enter ctx store scene)
+    ~ghost_enter:(paint_ghost_enter ctx store)
     ~leave:(paint_leave ctx store scene) 1.;
   (* Extension renderers may enqueue their own deferred work on
      ctx.deferred — drain it after the walk's own popup pass. *)
