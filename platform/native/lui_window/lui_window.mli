@@ -537,6 +537,59 @@ module Frame : sig
       interval. *)
 end
 
+(** The renderer-ladder walk shared by the platform drivers.
+
+    A ladder is an ordered list of backend rungs; {!create} tries each
+    rung's init left to right — [try_rung] returning [None] steps
+    down — and records the untried tail so a mid-render failure can
+    {!demote} the active rung and resume the walk below it. The
+    platform supplies the per-rung init, a [release] for the dropped
+    rung's resources and an optional [before_walk] hook (used to
+    re-create the OS window when the next rung needs different
+    flags); the sequencing, loss logging and the exception-catching
+    {!renderer_live} wrapper live here once so the fallback path can
+    be exercised with injected rung failures off-device. *)
+module Renderer_ladder : sig
+  type 'a attempt = {
+    renderer : Lui_host.renderer;
+    state : 'a;
+        (** rung payload the driver reads back — e.g. the live-GL flag
+            or the D3D11 device held for shutdown *)
+  }
+
+  type ('rung, 'a) t
+
+  val create :
+    warn:(string -> unit) ->
+    release:('a attempt -> unit) ->
+    ?before_walk:('rung list -> unit) ->
+    ?exhausted_msg:string ->
+    noop:'a attempt ->
+    try_rung:('rung -> rest:'rung list -> 'a attempt option) ->
+    'rung list -> ('rung, 'a) t
+  (** [create ~warn ~release ~noop ~try_rung rungs] walks [rungs],
+      returning the state with the first successful rung active.
+      [try_rung rung ~rest] is the platform's init for one rung:
+      [Some attempt] on success, [None] to step down. [noop] is the
+      terminal attempt used when every rung fails; [release] drops a
+      demoted rung's resources; [before_walk] runs once per demote
+      with the remaining rungs (the SDL driver re-creates its window
+      there); [exhausted_msg] customises the empty-walk warning. *)
+
+  val active : ('rung, 'a) t -> 'a attempt
+  val remaining : ('rung, 'a) t -> 'rung list
+  (** Rungs below the active one — what a demote will walk. *)
+
+  val demote : ('rung, 'a) t -> reason:string -> unit
+  (** Drop the active rung (release + warn) and resume the walk at
+      {!remaining}. *)
+
+  val renderer_live : ('rung, 'a) t -> Lui_host.renderer
+  (** A stable renderer record whose render delegates to the active
+      rung: a render exception demotes once and retries on the next
+      rung inside the same call, so the host needs no rebuild. *)
+end
+
 (** Multi-window manager: a registry of independent surfaces.
 
     Each surface owns a full pipeline — {!Lui_host} (store, layout,
