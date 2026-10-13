@@ -552,7 +552,8 @@ let emit s ee ~eblur eparams ?(radii = (0., 0., 0., 0.))
     s.ops
     @ [ Effect
           { edrect = rc; edradii = radii; edcontinuous = continuous;
-            edindex = List.length s.effects - 1; edopacity = opacity } ]
+            edindex = List.length s.effects - 1; edopacity = opacity } ];
+  Lui_scene.touch s
 
 let emit_fill s ?(radii = (0., 0., 0., 0.)) ?(continuous = false)
     ?(paint_ = Solid) ?(c2 = transparent) ?(g = (0., 0., 0., 0.)) rc c1 =
@@ -562,7 +563,8 @@ let emit_fill s ?(radii = (0., 0., 0., 0.)) ?(continuous = false)
           { frect = rc; fradii = radii; fcontinuous = continuous;
             fcolor = c1; fpaint = paint_; fcolor2 = c2; fgradient = g;
             fborder = (0., 0., 0., 0.); fborder_color = transparent;
-            fdashed = false; fwide = 0; fopacity = 0. } ]
+            fdashed = false; fwide = 0; fopacity = 0. } ];
+  Lui_scene.touch s
 
 (* A pane of glass over rect, rounded by radii: what was painted under
    it shows through, blurred and lensed and rim-lit per the material.

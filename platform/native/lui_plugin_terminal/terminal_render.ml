@@ -457,4 +457,5 @@ let render ?(blink_on = true) t grid scene ~w ~h =
     render_scrollbar t grid ~w ~h ops;
   (* scene.ops is reversed paint order; !ops already holds ours newest
      first, so a plain append keeps the invariant *)
-  scene.Lui_scene.ops <- !ops @ scene.Lui_scene.ops
+  scene.Lui_scene.ops <- !ops @ scene.Lui_scene.ops;
+  Lui_scene.touch scene

@@ -306,11 +306,12 @@ let test_damage_backdrop () =
               (fun () ->
                 for step = 0 to 1 do
                   (* step 1 changes the fill inside the backdrop *)
-                  if step = 1 then
+                  if step = 1 then (
                     s.ops <-
                       [ Tk.ifill (rect 0. 0. 96. 64.) (color 37 99 235 255);
                         Tk.ifill (rect 20. 10. 40. 30.) (color 220 38 38 255);
                         Tk.ieffect ~radii:(Tk.radii 6.) (rect 12. 8. 60. 40.) 0 ];
+                    Lui_scene.touch s);
                   ignore (Lui_raster.Renderer.render dr s);
                   let cpu =
                     (Lui_raster.Renderer.image dr).Lui_raster.Image.pix

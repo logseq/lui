@@ -470,6 +470,9 @@ module Maker = struct
        done;
        image_changed m.img
      | _ -> ());
+    (* The mutations above bypass reset — the renderer-facing
+       revision must move with them. *)
+    touch s;
     s
 end
 

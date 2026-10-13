@@ -50,6 +50,11 @@ type t = {
   images : (int, mtex) Hashtbl.t;
   mutable frame : int;
   mutable effects : (fx * effect_prog) list;
+  (* The scene's compiled batches and packed staging; a frame whose
+     display list did not move reuses them — the stub still copies
+     the staging each render, so the hit saves the OCaml compile
+     and pack. *)
+  fc : Lui_gpu.batch_cache;
 }
 (* An atlas or image's texture: gen/version track the source's, so
    uploads are incremental; last_frame lets render release textures
@@ -116,30 +121,6 @@ let clamp_scissor (s : Lui_gpu.scissor) ~w ~h =
 
 (* A frame's instances packed for one buffer upload: data is the whole
    array, spans the (first, count) instance of each batch. *)
-type pack = { data : f32_ba; spans : (int * int) array }
-
-let pack_batches (batches : Lui_gpu.batch list) =
-  let spans =
-    Array.of_list
-      (List.map (fun (b : Lui_gpu.batch) -> (0, List.length b.instances)) batches)
-  in
-  let total = Array.fold_left (fun n (_, c) -> n + c) 0 spans in
-  let data =
-    A1.create Bigarray.float32 Bigarray.c_layout (total * Lui_gpu.instance_floats)
-  in
-  let ofs = ref 0 in
-  List.iteri
-    (fun i (b : Lui_gpu.batch) ->
-       let start = !ofs / Lui_gpu.instance_floats in
-       List.iter
-         (fun inst ->
-            Lui_gpu.pack_instance inst data ~ofs:!ofs;
-            ofs := !ofs + Lui_gpu.instance_floats)
-         b.instances;
-       spans.(i) <- (start, !ofs / Lui_gpu.instance_floats - start))
-    batches;
-  { data; spans }
-
 (* Atlas texture sync: recreate when the atlas grew, upload the changed
    rects when the same atlas was drawn on, skip the upload when it is
    unchanged. *)
@@ -297,7 +278,8 @@ let renderer ctx ~dual ~lib ~pipe_main ~pipe_hole ~pipe_down ~pipe_blur =
   { ctx; dual; lib; pipe_main; pipe_hole; pipe_down; pipe_blur;
     empty = make_empty ctx;
     mask = new_mtex (); color = new_mtex ();
-    images = Hashtbl.create 17; frame = 0; effects = [] }
+    images = Hashtbl.create 17; frame = 0; effects = [];
+    fc = Lui_gpu.batch_cache () }
 
 (* With dual-source blending, subpixel glyphs blend each destination
    channel by the coverage of the matching source channel; without it
@@ -380,8 +362,7 @@ let render (t : t) (s : Lui_scene.t) : unit =
     t.frame <- t.frame + 1;
     sync_atlas t t.mask s.mask_atlas ~fmt:0;
     sync_atlas t t.color s.color_atlas ~fmt:1;
-    let batches = Lui_gpu.build s in
-    let pack = pack_batches batches in
+    let batches, pack, _rebuilt = Lui_gpu.frame t.fc s in
     (* Drop the image textures unseen for 64 frames. *)
     Hashtbl.filter_map_inplace
       (fun _i (m : mtex) ->
@@ -394,7 +375,7 @@ let render (t : t) (s : Lui_scene.t) : unit =
       Array.of_list
         (List.mapi
            (fun bi (b : Lui_gpu.batch) ->
-              let first, count = pack.spans.(bi) in
+              let first, count = pack.Lui_gpu.spans.(bi) in
               let sc = clamp_scissor b.scissor ~w ~h in
               let pipe =
                 match b.fx with
@@ -422,7 +403,7 @@ let render (t : t) (s : Lui_scene.t) : unit =
     let mask_tex = match t.mask.tex with Some x -> x | None -> t.empty in
     let color_tex = match t.color.tex with Some x -> x | None -> t.empty in
     metal_render t.ctx
-      ( w, h, clear, pack.data, draws,
+      ( w, h, clear, A1.sub pack.data 0 pack.floats, draws,
         mask_tex, color_tex, t.empty,
         t.pipe_down, t.pipe_blur )
   end
