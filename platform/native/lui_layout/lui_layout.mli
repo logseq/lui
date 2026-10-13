@@ -67,6 +67,14 @@ val style_of :
 val measure_of :
   text_measure -> id:int -> text:string -> Lui_flex.measure
 
+(** A content-space visible range fed to a [virtual-list]: [(start,
+    extent)] in the list's own border-box coordinates — [scroll offset]
+    for the simple scrolled-viewport case, or the on-screen clip mapped
+    into the list's content when an outer scroller clips it. [None]
+    keeps the list unwindowed (every row mounted, today's behavior). *)
+
+type viewport = float * float
+
 (** [sync ?scale ?measure ~width ~height t store] rebuilds the flex
     mirror from the store's current structure and runs layout for a
     [width]x[height] device-px frame. Root-level nodes that are not
@@ -87,12 +95,82 @@ val measure_of :
     like [background] never re-enters the mirror), the frame geometry,
     [?ctx_anchor]'s value, and the [?measure]/[?hidden] functions'
     identities. Scroll offsets are not an input — a frame that only
-    scrolls pays no layout at all. *)
+    scrolls pays no layout at all.
+
+    [?vport] maps a node id to the visible range of a [virtual-list]
+    ({!viewport}), evaluated per virtual list on every call — including
+    memo hits, where a moved viewport remounts only the row window that
+    slid (no mirror rebuild). Lists the accessor leaves at [None]
+    materialize every child like ordinary containers. *)
 
 val sync :
   ?scale:float -> ?measure:text_measure -> ?hidden:(int -> bool) ->
   ?ctx_anchor:(float * float) ->
+  ?vport:(int -> viewport option) ->
   width:float -> height:float -> t -> Lui_store.t -> unit
+
+(** {2 Virtual lists}
+
+    A [virtual-list] keeps every child in the store as its logical
+    model but materializes flex trees only for the mounted window of
+    item indices — visible range plus overscan. The list itself stays
+    a leaf in the mirror whose intrinsic main size is the virtual
+    content extent, so frame extent, scroll caps and hit clips behave
+    exactly as if all rows were laid out.
+
+    Config rides [data-attrs] on the node (no schema change):
+    [data-item-extent] — estimated row main extent in logical px (per-
+    child [height] or a 28px default otherwise); [data-overscan] —
+    extra rows mounted past each view edge (4 default). Rows are
+    measured once mounted, so a mixed-height list converges to real
+    positions; [data-scroll-target]/[data-scroll-token]/
+    [data-scroll-anchor] name a scroll request the host resolves
+    through {!virtual_index_of_key}, and [data-track-visible-range]
+    opts the list into visible-range reports through {!virtual_view}. *)
+
+(** Ids of the [virtual-list] nodes the last sync registered. *)
+val vlists : t -> int list
+
+(** [mounted_range t id] is the mounted child-index window
+    \[first, last) of a virtual list — the slice paint and hit-test
+    enumerate instead of all children. [None] for non-virtual ids. *)
+val mounted_range : t -> int -> (int * int) option
+
+(** [mounted_count t id] is how many row subtrees are materialized. *)
+val mounted_count : t -> int -> int
+
+(** [mounted_children t id] is the mounted window's child store ids,
+    in order — the slice paint and hit-test enumerate instead of all
+    children. O(window); [None] for non-virtual ids. *)
+val mounted_children : t -> int -> int list option
+
+(** [virtual_extent t id] is the list's total virtual content extent
+    on the main axis (border-box span, device px) — what a scroll cap
+    is computed against when the mounted rows do not reach the end. *)
+val virtual_extent : t -> int -> float option
+
+(** [virtual_item_rect t id ~index] is the item's rect in
+    engine-absolute (content-space) coordinates — available for
+    unmounted indices too, so scroll-to-item can reach a row that is
+    not materialized yet. *)
+val virtual_item_rect : t -> int -> index:int -> Lui_scene.rect option
+
+(** [virtual_view t id] is the last {!viewport} fed to this list —
+    what the interaction layer reports as the visible range. *)
+val virtual_view : t -> int -> viewport option
+
+(** [virtual_take_drift t id] is the pending anchor correction in
+    device px — how far the row at the viewport top moved because
+    rows above it measured off-estimate. Consume-on-read: the caller
+    (the scroller) adds it to the list's scroll offset. *)
+val virtual_take_drift : t -> int -> float
+
+(** [virtual_index_of_key t store id key] resolves a child [key] prop
+    to its item index — O(n) once per list shape, O(1) after. *)
+val virtual_index_of_key : t -> Lui_store.t -> int -> string -> int option
+
+(** [virtual_index_of_id t store id child] is the child's item index. *)
+val virtual_index_of_id : t -> Lui_store.t -> int -> int -> int option
 
 (** [invalidate t] forces the next {!sync} to rebuild the mirror.
     Needed when a function input keeps its identity but changes its

@@ -332,6 +332,57 @@ let test_wide_removal () =
   check bool "bounded repaints" true
     (Lui_retained.stat_repaints env.rt - r0 < 320)
 
+(* A virtual list under retained paint: both walks enumerate the
+   mounted window slice, and a scroll-driven remount must rebuild the
+   list's kids list — never replaying pieces of rows that slid out. *)
+let vlist_store env ~n =
+  let ops =
+    ref
+      [ InsertChild (1, 2, 0); CreateNode (2, VirtualList);
+        CreateNode (1, Root) ]
+  in
+  for i = 0 to n - 1 do
+    let id = 10 + i in
+    ops :=
+      InsertChild (2, id, i)
+      :: SetProp (id, KeyValue, StringValue (Printf.sprintf "row-%d" i))
+      :: SetProp (id, HeightValue, FloatValue 20.)
+      :: SetProp (id, BackgroundValue, StringValue "#112233")
+      :: CreateNode (id, ListItem)
+      :: !ops
+  done;
+  apply env.store (List.rev !ops)
+
+let vframe env ~vport =
+  Lui_layout.sync ~scale:1. ~measure ~width:200. ~height:200. ~vport
+    env.eng env.store;
+  let moved = Lui_layout.take_rect_changes env.eng in
+  let h =
+    { (hooks env) with
+      layout = Lui_layout.layout_hook env.eng;
+      mounted_children = Lui_layout.mounted_children env.eng }
+  in
+  let full = scene () in
+  env.cur := full;
+  Lui_paint.paint h env.store full ~width:200 ~height:200 ~scale:1.
+    ~clear:(color 0 0 0 0);
+  env.cur := env.kept;
+  Lui_retained.paint_retained env.rt h env.store env.kept ~moved
+    ~vlists:(Lui_layout.vlists env.eng) ~width:200 ~height:200 ~scale:1.
+    ~clear:(color 0 0 0 0) ();
+  check_scene full env.kept
+
+let test_vlist_scroll () =
+  let env = env () in
+  vlist_store env ~n:1000;
+  let vport y h id = if id = 2 then Some (y, h) else None in
+  vframe env ~vport:(vport 0. 200.);
+  (* Each scroll remounts a different window; the retained scene must
+     equal a fresh full paint on every frame, back-scrolls included. *)
+  vframe env ~vport:(vport 500. 200.);
+  vframe env ~vport:(vport 9500. 200.);
+  vframe env ~vport:(vport 0. 200.)
+
 (* Deterministic random op sequences: every frame cross-checks the
    retained scene against a full repaint. Covers stacking (z-index),
    promoted popups (incl. nested and clip-escaping), clip culling
@@ -497,4 +548,5 @@ let () =
           test_case "state hint" `Quick test_state_hint;
           test_case "drop subtree" `Quick test_drop_subtree;
           test_case "wide removal" `Quick test_wide_removal;
+          test_case "vlist scroll" `Quick test_vlist_scroll;
           test_case "random equivalence" `Quick test_random_equivalence ] ) ]

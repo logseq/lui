@@ -1,6 +1,6 @@
 (* OpenGL renderer for Lui_scene display lists, through tgls: every op
    of a scene is an instanced quad drawn by the one shader
-   (Lui_gpu.shader_source) from the instances Lui_gpu.build produces;
+   (Lui_gpu.shader_source) from the instances Lui_gpu.frame compiles;
    clips are scissor rectangles, with the innermost rounded clip
    computed in the shader.
 
@@ -26,8 +26,6 @@ module A1 = Bigarray.Array1
 
 type char_ba =
   (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
-type f32_ba =
-  (float, Bigarray.float32_elt, Bigarray.c_layout) Bigarray.Array1.t
 
 external blit_bytes_to_ba :
   Bytes.t -> int -> char_ba -> int -> int -> unit = "lui_gl_blit_bytes_to_ba"
@@ -284,9 +282,11 @@ type t = {
   backdrop_fb : int array;
   header : string;
   mutable effects : (fx * effect_program) list;
+  (* The scene's compiled batches and packed staging; a frame whose
+     display list did not move reuses them and skips the instance
+     upload — [buf] still holds what was drawn. *)
+  fc : Lui_gpu.batch_cache;
 }
-
-type pack = { data : f32_ba; spans : (int * int) array }
 
 (* {1 Instance packing} *)
 
@@ -295,28 +295,6 @@ let instance_bytes = Lui_gpu.instance_floats * 4
 
 let attribute_offset start attr =
   start * instance_bytes + attr * 16
-
-let pack_batches batches =
-  let total =
-    List.fold_left (fun n b -> n + List.length b.Lui_gpu.instances) 0 batches
-  in
-  let data =
-    A1.create Bigarray.float32 Bigarray.c_layout
-      (total * Lui_gpu.instance_floats)
-  in
-  let spans = Array.make (List.length batches) (0, 0) in
-  let ofs = ref 0 in
-  List.iteri
-    (fun bi b ->
-      let start = !ofs / Lui_gpu.instance_floats in
-      List.iter
-        (fun inst ->
-          Lui_gpu.pack_instance inst data ~ofs:!ofs;
-          ofs := !ofs + Lui_gpu.instance_floats)
-        b.Lui_gpu.instances;
-      spans.(bi) <- (start, List.length b.Lui_gpu.instances))
-    batches;
-  { data; spans }
 
 (* {1 Textures} *)
 
@@ -577,7 +555,8 @@ let init () =
                   backdrop_tex = [| texture (); texture () |];
                   backdrop_fb = [| 0; 0 |];
                   header;
-                  effects = [] }))))
+                  effects = [];
+                  fc = Lui_gpu.batch_cache () }))))
 
 (* {1 Backdrop passes} *)
 
@@ -710,7 +689,7 @@ let bind_state r s =
   Gl.enable Gl.scissor_test
 
 let draw_batch r s fb pack bi (b : Lui_gpu.batch) bound program hole =
-  let start, count = pack.spans.(bi) in
+  let start, count = pack.Lui_gpu.spans.(bi) in
   let sc = clamp_scissor b.Lui_gpu.scissor ~w:s.width ~h:s.height in
   if count > 0 && not (Lui_gpu.scissor_empty sc) then (
     let want =
@@ -796,7 +775,7 @@ let render r s =
     Gl.active_texture Gl.texture0;
     sync_atlas r r.mask s.mask_atlas ~internal:Gl.r8 ~format:Gl.red;
     sync_atlas r r.color s.color_atlas ~internal:Gl.rgba8 ~format:Gl.rgba;
-    let batches = Lui_gpu.build s in
+    let batches, pack, rebuilt = Lui_gpu.frame r.fc s in
     fit_backdrop r batches;
     (* The framebuffer drawn into, which the backdrop passes leave for
        their own. *)
@@ -806,17 +785,20 @@ let render r s =
     let cr, cg, cb, ca = premul s.clear 1. in
     Gl.clear_color cr cg cb ca;
     Gl.clear Gl.color_buffer_bit;
-    let pack = pack_batches batches in
-    if A1.dim pack.data > 0 then (
-      Gl.bind_buffer Gl.array_buffer r.buf;
-      Gl.buffer_data Gl.array_buffer
-        (Gl.bigarray_byte_size pack.data)
-        (Some pack.data) Gl.stream_draw;
+    if pack.Lui_gpu.floats > 0 then (
+      (* A scene the cache already compiled reuses the instance
+         buffer's contents as uploaded — no second upload. *)
+      if rebuilt then (
+        let live = A1.sub pack.data 0 pack.floats in
+        Gl.bind_buffer Gl.array_buffer r.buf;
+        Gl.buffer_data Gl.array_buffer
+          (Gl.bigarray_byte_size live) (Some live) Gl.stream_draw);
       bind_state r s;
       let bound = ref r.empty
       and program = ref r.program
       and hole = ref false in
-      List.iteri (fun bi b -> draw_batch r s fb pack bi b bound program hole)
+      List.iteri
+        (fun bi b -> draw_batch r s fb pack bi b bound program hole)
         batches;
       teardown ();
       gc_images r);

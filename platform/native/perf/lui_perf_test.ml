@@ -34,6 +34,11 @@ let test_visible_window () =
   let capacity = float_of_int height /. 28. +. 2. in
   Alcotest.(check bool) "visible bounded" true
     (visible > 0. && visible <= capacity);
+  (* The milestone's structural bound: 10k logical rows mount only the
+     viewport + overscan — nowhere near the item count. *)
+  let mounted = find rows ~scenario:"vlist-10k" ~metric:"mounted rows" in
+  Alcotest.(check bool) "mounted bounded" true
+    (mounted > 0. && mounted <= 200.);
   let ops = find rows ~scenario:"vlist-10k" ~metric:"scene ops/frame" in
   Alcotest.(check bool) "ops emitted" true (ops > visible)
 

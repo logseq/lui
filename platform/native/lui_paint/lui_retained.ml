@@ -107,16 +107,23 @@ type retained = {
   (* Instrumentation for tests/benchmarks. *)
   mutable stat_repaints : int;
   mutable stat_visits : int;
+  (* Virtualized containers: the mounted window each kids list was
+     last built from, and the hook answering the current one. A slid
+     window re-derives that container's kids. *)
+  vwin : (int, int list) Hashtbl.t;
+  mutable mounted : int -> int list option;
 }
 
 let create () =
   { frags = Hashtbl.create 256; fparent = Hashtbl.create 256;
     pend_kids = Hashtbl.create 16; pend_segs = Hashtbl.create 64;
     rev = -1; vp = rect 0. 0. 0. 0.; scale = 1.;
-    dirty = false; mgen = 0; stat_repaints = 0; stat_visits = 0 }
+    dirty = false; mgen = 0; stat_repaints = 0; stat_visits = 0;
+    vwin = Hashtbl.create 4; mounted = (fun _ -> None) }
 
 let invalidate (rt : retained) =
   Hashtbl.reset rt.frags;
+  Hashtbl.reset rt.vwin;
   rt.dirty <- true
 
 let stat_repaints (rt : retained) = rt.stat_repaints
@@ -317,7 +324,14 @@ let build_kids rt store (f : frag) id =
         ( cid,
           Lui_paint.popup_kind (Lui_store.node_kind c)
           && not (Lui_paint.unboxed store cid) ))
-      (Lui_paint.ordered_children store id);
+      (match rt.mounted id with
+       | Some ids ->
+         Hashtbl.replace rt.vwin id ids;
+         Lui_paint.z_ordered store
+           (List.filter_map (Lui_store.find_opt store) ids)
+       | None ->
+         Hashtbl.remove rt.vwin id;
+         Lui_paint.ordered_children store id);
   (* Re-point parent links: entries this list dropped keep whatever
      parent claimed them since (a reparent op already marked it). *)
   List.iter
@@ -674,7 +688,7 @@ let rec emit_seg (scene : Lui_scene.t) m (f : frag) =
       | Sub g -> emit_seg scene m g)
     f.seg
 
-let paint_retained rt hooks store (scene : Lui_scene.t) ?moved ?hints
+let paint_retained rt hooks store (scene : Lui_scene.t) ?moved ?hints ?vlists
     ~width ~height ~scale ~clear () =
   let vp = rect 0. 0. (float width) (float height) in
   if vp <> rt.vp || scale <> rt.scale then begin
@@ -684,6 +698,18 @@ let paint_retained rt hooks store (scene : Lui_scene.t) ?moved ?hints
     rt.scale <- scale
   end;
   if Lui_store.revision store <> rt.rev then advance rt store;
+  rt.mounted <- hooks.Lui_paint.mounted_children;
+  (* A virtual list whose mounted window slid (scroll, resize) has a
+     stale kids list even though no store op named it. *)
+  (match vlists with
+   | Some ids ->
+     List.iter
+       (fun id ->
+         let now = rt.mounted id in
+         let before = Hashtbl.find_opt rt.vwin id in
+         if now <> before then mark_rekids rt store id)
+       ids
+   | None -> ());
   (match moved with
    | Some mv -> Hashtbl.iter (fun id () -> mark_geom rt id) mv
    | None -> ());

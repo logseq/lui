@@ -74,8 +74,15 @@ val ext_id : t -> int -> string option
 val parent : t -> int -> int option
 val children : t -> int -> node list
 val child_ids : t -> int -> int list
-val last_child_id : t -> int -> int option
 val child_count : t -> int -> int
+
+(** [child_id_at t id i] is the [i]-th child id of [id], or [-1] when
+    out of range or [id] is unknown. Walks from the nearer end —
+    O(min(i, count-i)); per-frame window slices come from the layout
+    engine's mounted-window snapshot instead. *)
+
+val child_id_at : t -> int -> int -> int
+val last_child_id : t -> int -> int option
 val prop : t -> int -> string -> Lui_protocol.wire_value option
 val bool_prop : t -> int -> string -> bool
 val string_prop : t -> int -> string -> string option

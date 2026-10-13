@@ -476,6 +476,19 @@ module Ui = struct
     c_rect : int -> float * float * float;
   }
 
+  (* Layout-engine forwards for virtual-list math: item counts,
+     content-space item rects (mounted or not), key → index lookup
+     and the last fed viewport — the pieces scroll-target,
+     visible-range and reveal logic need on logical items. The
+     record is defined in {!Lui_scroll} — the machine that consumes
+     it — and re-exported here for the drivers that install it. *)
+  type vlist_hook = Lui_scroll.vlist = {
+    vh_count : int -> int option;
+    vh_item : int -> index:int -> rect option;
+    vh_index_of_key : int -> string -> int option;
+    vh_view : int -> (float * float) option;
+  }
+
   type t = {
     mutable scale : float;
     mutable dirty : bool;
@@ -490,6 +503,9 @@ module Ui = struct
       (Lui_store.t -> int -> string -> lw:float -> lh:float ->
        caret_ops) option;
     mutable content_rect : int -> rect;
+    (* Layout engine forwards for virtual-list math, consumed by the
+       scroll machine through {!senv}. *)
+    mutable vlist_hook : Lui_scroll.vlist option;
     (* composed machine states — see platform/native/lui_input *)
     mutable pointer : Lui_pointer.state;
     mutable focus : Lui_focus.state;
@@ -532,6 +548,7 @@ module Ui = struct
         (fun _store _id s -> (8. *. float (String.length s), 16.));
       hit_text = None; caret_ops = None;
       content_rect = (fun _ -> rect 0. 0. 0. 0.);
+      vlist_hook = None;
       pointer = Lui_pointer.initial;
       focus = Lui_focus.initial;
       session = Lui_text_input.initial;
@@ -554,6 +571,7 @@ module Ui = struct
   let set_caret_ops t f = t.caret_ops <- Some f
   let notify_layout t = t.rects_epoch <- t.rects_epoch + 1
   let set_content_rect t f = t.content_rect <- f
+  let set_vlist_hook t h = t.vlist_hook <- h
 
   (* ---- state accessors -------------------------------------------- *)
 
@@ -681,7 +699,8 @@ module Ui = struct
 
   let senv t : Lui_scroll.env =
     { Lui_scroll.content_rect = t.content_rect;
-      rects_epoch = t.rects_epoch }
+      rects_epoch = t.rects_epoch;
+      vlist = t.vlist_hook }
 
   (* The public [Input] vocabulary predates the machines' own event
      types — identical shapes, so the boundary converts. *)
@@ -1743,6 +1762,86 @@ module Frame = struct
     t.last_present_ms <- now_ms
 end
 
+module Renderer_ladder = struct
+  (* The renderer-ladder walk shared by the platform drivers. A ladder
+     is an ordered list of backend rungs (Vulkan/Gl/Cpu/Noop on Linux,
+     D3d11/Gl/Cpu/Noop on Windows): [walk] tries each rung's init left
+     to right — [try_rung] returning [None] steps down — and records
+     the untried tail so a mid-render failure can [demote] the active
+     rung and resume the walk below it. The platform supplies the
+     per-rung init (SDL/GL/Vulkan/D3D11 specifics), a [release] for
+     the dropped rung's resources and an optional [before_walk] hook
+     (the SDL driver re-creates its window there when the next rung
+     needs different flags); the sequencing, loss logging and the
+     exception-catching [renderer_live] wrapper live here once so the
+     fallback path can be exercised off-device. *)
+
+  type 'a attempt = {
+    renderer : Lui_host.renderer;
+    state : 'a;
+        (** rung payload the driver reads back — e.g. the live-GL flag
+            or the D3D11 device held for shutdown *)
+  }
+
+  type ('rung, 'a) t = {
+    warn : string -> unit;
+    release : 'a attempt -> unit;
+    before_walk : 'rung list -> unit;
+    exhausted_msg : string;
+    noop : 'a attempt;
+    try_rung : 'rung -> rest:'rung list -> 'a attempt option;
+    mutable remaining : 'rung list;
+    mutable active : 'a attempt;
+  }
+
+  let rec walk t = function
+    | [] ->
+      t.remaining <- [];
+      t.warn t.exhausted_msg;
+      t.noop
+    | rung :: rest ->
+      (* The tail lands in [remaining] before the try so a later
+         demote resumes strictly below the active rung — a backend
+         that already lost its device is never retried. *)
+      t.remaining <- rest;
+      (match t.try_rung rung ~rest with
+       | Some a -> a
+       | None -> walk t rest)
+
+  let create ~warn ~release ?(before_walk = fun _ -> ())
+      ?(exhausted_msg =
+        "all renderer rungs failed; using no-op loop renderer")
+      ~noop ~try_rung rungs =
+    let t =
+      { warn; release; before_walk; exhausted_msg; noop; try_rung;
+        remaining = []; active = noop }
+    in
+    t.active <- walk t rungs;
+    t
+
+  let active t = t.active
+  let remaining t = t.remaining
+
+  let demote t ~reason =
+    t.warn
+      (Printf.sprintf "renderer %s lost (%s); stepping down the ladder"
+         t.active.renderer.Lui_host.name reason);
+    t.release t.active;
+    t.before_walk t.remaining;
+    t.active <- walk t t.remaining
+
+  (* The host owns a stable record whose render delegates to the live
+     rung, so a demote needs no host rebuild. *)
+  let renderer_live t =
+    { Lui_host.name = "lui (resilient)";
+      render =
+        (fun s ->
+           try t.active.renderer.Lui_host.render s
+           with exn ->
+             demote t ~reason:(Printexc.to_string exn);
+             t.active.renderer.Lui_host.render s) }
+end
+
 module Multi = struct
   (* Multi-window manager: a registry of independent surfaces. Each
      surface owns a full pipeline — host (store, layout, scene,
@@ -1934,7 +2033,11 @@ module Assembly = struct
     engine_rect : int -> rect;
         (** Unshifted engine rect — content-space input for
             [scroll_show]/visible-range. *)
-    populate : unit -> unit; (** rebuild the hit mirror + scroll caps *)
+    populate : unit -> action list;
+        (** rebuild the hit mirror + scroll caps, fold measured anchor
+            drift back into scroll offsets — the VisibleRange
+            dispatches those corrections produce come back for the
+            driver to apply *)
     caret_rect : unit -> rect;
         (** Focused field's caret rect, device px — candidate-window
             anchor while composing. *)
@@ -1954,7 +2057,8 @@ module Assembly = struct
   (* One frame's paint path: the engine re-syncs inside
      [Lui_host.repaint], then the hit mirror and scroll caps are
      rebuilt from the fresh rects — always in this order, on every
-     platform. *)
+     platform. Returns the frame bytes plus the actions populate's
+     anchor-drift corrections produced. *)
   let repaint t =
     (* Interaction-state diffs reach the fragment pass through the
        host's hint table — the store journal cannot see them. *)
@@ -1966,8 +2070,8 @@ module Assembly = struct
       (fun id () -> Lui_host.note_moved t.host id)
       soft;
     let px = Lui_host.repaint t.host in
-    t.populate ();
-    px
+    let acts = t.populate () in
+    (px, acts)
 
   let backend t profile = Lui_host.backend t.host profile
 
@@ -2044,6 +2148,42 @@ module Assembly = struct
          Float.min_float, Float.min_float)
         (Lui_store.preorder ~root:id (store_of ()))
     in
+    (* Virtual-list viewport feed: the node's content-space visible
+       range — its own scroll offset plus how far the frame clip has
+       scrolled into its (shifted) box. Outer scroller clips are not
+       tracked, so a clipped-away list just mounts a few extra
+       rows. *)
+    let vport_of id =
+      if Lui_store.kind (store_of ()) id <> "virtual-list" then None
+      else begin
+        let er = engine_rect id in
+        let sx, sy = scroll_shift_of id in
+        let shifted =
+          { er with
+            Lui_scene.x = er.Lui_scene.x -. sx;
+            y = er.Lui_scene.y -. sy }
+        in
+        let scn =
+          match !host_cell with
+          | Some h -> Lui_host.scene h
+          | None -> failwith "vport before host"
+        in
+        let frame =
+          Lui_scene.rect 0. 0. (float scn.Lui_scene.width)
+            (float scn.Lui_scene.height)
+        in
+        let clip = Lui_scene.rect_intersect shifted frame in
+        Some
+          ( Ui.scroll_offset ui id
+            +. Float.max 0. (clip.Lui_scene.y -. shifted.Lui_scene.y),
+            Float.max 0. clip.Lui_scene.h )
+      end
+    in
+    let vport_of id =
+      match !host_cell with
+      | Some _ -> vport_of id
+      | None -> None
+    in
     let hooks =
       Lui_paint.
         { color_of = Theme.color_of;
@@ -2054,14 +2194,29 @@ module Assembly = struct
                match !host_cell with
                | Some h -> Ui.state_of ui (Lui_host.store h) id
                | None -> Lui_paint.state_neutral);
+          mounted_children =
+            (fun id ->
+               match !host_cell with
+               | Some h -> Lui_host.layout_mounted_children h id
+               | None -> None);
           scroll_of =
             (fun id ->
                let cap = Ui.scroll_cap ui id in
                if cap <= 0.001 then None
                else
                  let cr = engine_rect id in
-                 let _, top, _, bot = content_box id in
-                 let content = Float.max (bot -. top) 0.001 in
+                 let content =
+                   match
+                     !host_cell
+                     |> Option.map (fun h ->
+                            Lui_host.layout_virtual_extent h id)
+                     |> Option.join
+                   with
+                   | Some ext -> Float.max ext 0.001
+                   | None ->
+                     let _, top, _, bot = content_box id in
+                     Float.max (bot -. top) 0.001
+                 in
                  Some
                    Lui_paint.
                      { sm_offset = Ui.scroll_offset ui id /. cap;
@@ -2163,12 +2318,24 @@ module Assembly = struct
             | id when Lui_store.kind store id = "context-menu" ->
               Some (Ui.pointer ui)
             | _ -> None));
+    (* Virtual lists: feed each node's content-space visible range
+       during layout sync so only the mounted window is
+       materialized. A scroll move repaints (the offset lives in the
+       scroll machine's dirty path), the repaint re-syncs the engine
+       and the engine re-reads this feed — that is the scroll-driven
+       remount. *)
+    Lui_host.set_vport host vport_of;
     (* Populate the hit-test mirror from the layout engine: each
        node's shifted rect clipped to its scrollable ancestors'
        viewports (so scrolled-off content can't be hit), then each
        scroll container's range on both axes from its unshifted
        content extent. Runs after every repaint while the engine is
        fresh. *)
+    (* Scroll-container ids memoized on the store revision: a scroll
+       frame changes no props, so the cap refresh below does not
+       re-walk the whole tree on every frame (a 100k-row list has ~3
+       scrollables). *)
+    let scrollables = ref (-1, []) in
     let populate () =
       Hashtbl.reset rects;
       (* One preorder pass carrying the ancestors' accumulated scroll
@@ -2208,27 +2375,64 @@ module Assembly = struct
         let child_parent =
           if Lui_paint.unboxed store id then parent_r else resolved
         in
+        (* A virtual list only hit-tests its mounted window —
+           unmounted rows have no rect and cannot be hit anyway. *)
+        let cids =
+          match Lui_host.layout_mounted_children host id with
+          | Some ids -> ids
+          | None -> Lui_store.child_ids store id
+        in
         List.iter
           (fun c ->
              visit c ~sx:sx' ~sy:sy' ~parent_r:child_parent)
-          (Lui_store.child_ids store id)
+          cids
       in
       List.iter
         (fun id -> visit id ~sx:0. ~sy:0. ~parent_r:viewport)
         (Lui_store.root_ids store);
+      let srev = Lui_store.revision store in
+      let sids =
+        match !scrollables with
+        | r, ids when r = srev -> ids
+        | _ ->
+          let ids =
+            List.filter
+              (fun id -> Ui.scrollable store id)
+              (Lui_store.preorder store)
+          in
+          scrollables := (srev, ids);
+          ids
+      in
       List.iter
         (fun id ->
-           if Ui.scrollable store id then
-             let cr = engine_rect id in
+           let cr = engine_rect id in
+           match Lui_host.layout_virtual_extent host id with
+           | Some ext ->
+             (* Virtual extent, not the mounted rows' box: the cap
+                spans the full logical content. *)
+             Ui.set_scroll_cap ui id
+               (Float.max 0. (ext -. cr.Lui_scene.h));
+             Ui.set_scroll_cap_x ui id 0.
+           | None ->
              let l, t, rgt, b = content_box id in
              Ui.set_scroll_cap ui id
                (Float.max 0. (b -. t -. cr.Lui_scene.h));
              Ui.set_scroll_cap_x ui id
                (Float.max 0. (rgt -. l -. cr.Lui_scene.w)))
-        (Lui_store.preorder store);
+        sids;
       (* Rects were just rebuilt — visible-range memos key on the
          epoch. *)
-      Ui.notify_layout ui
+      Ui.notify_layout ui;
+      (* Anchor correction: rows that measured off-estimate above the
+         viewport shifted everything below — fold the drift back into
+         the scroll offset so the top row does not visibly jump. *)
+      List.concat_map
+        (fun id ->
+           let d = Lui_host.layout_take_drift host id in
+           if Float.abs d > 0.001 then
+             Ui.scroll_to ui store id (Ui.scroll_offset ui id +. d)
+           else [])
+        (Lui_host.layout_vlists host)
     in
     (* Caret rect of the focused field, device px: the node's layout
        rect shifted to the caret's real position inside the laid-out
@@ -2257,6 +2461,40 @@ module Assembly = struct
     (* Keyboard caret moves run on the same layouts: grapheme clusters
        horizontally, visual (soft-wrapped) lines vertically. *)
     Ui.set_caret_ops ui (fun _store id s ~lw ~lh -> caret_ops id s ~lw ~lh);
-    Ui.set_content_rect ui engine_rect;
+    (* Virtual lists: expose the extent model to the scroll machine
+       (scroll-target, visible-range), and synthesize rects for
+       unmounted rows so reveal/scroll-align work on logical
+       items. *)
+    Ui.set_vlist_hook ui
+      (Some
+         Ui.
+           { vh_count =
+               (fun id ->
+                  if Lui_store.kind store id = "virtual-list"
+                  then Some (Lui_store.child_count store id)
+                  else None);
+             vh_item =
+               (fun id ~index ->
+                  Lui_host.layout_virtual_item host id ~index);
+             vh_index_of_key =
+               (fun id key ->
+                  Lui_host.layout_virtual_index_of_key host id key);
+             vh_view =
+               (fun id -> Lui_host.layout_virtual_view host id) });
+    Ui.set_content_rect ui
+      (fun id ->
+         let r = engine_rect id in
+         if not (Lui_scene.rect_empty r) then r
+         else
+           (* Unmounted virtual-list row: the model still knows where
+              it sits, so scroll-to-item reaches it. *)
+           match Lui_store.parent store id with
+           | Some p -> (
+             match Lui_host.layout_virtual_index_of_id host p id with
+             | Some i ->
+               Option.value ~default:r
+                 (Lui_host.layout_virtual_item host p ~index:i)
+             | None -> r)
+           | None -> r);
     { host; ui; rects; scale_cell; engine_rect; populate; caret_rect }
 end
