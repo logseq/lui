@@ -2319,8 +2319,8 @@ let resolve_rect ~scale ~viewport store id kind p parent_r =
   in
   rect_snap r
 
-(* The ctx-taking form [repaint_frag] calls; the labeled-args one
-   above is the shared entry point. *)
+(* The ctx-taking form of [resolve_rect], used by the retained paint
+   pass (Lui_retained). *)
 let resolve_in ctx = resolve_rect ~scale:ctx.scale ~viewport:ctx.viewport
 
 let zindex store id =
