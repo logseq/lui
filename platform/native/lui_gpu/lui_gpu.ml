@@ -267,7 +267,14 @@ let build ?(wide = false) (s : t) : batch list =
      effect's or a hole batch. *)
   let add inst img =
     let cur = top () in
-    if not (scissor_empty cur.cf_scissor) then (
+    let kind, _, paint, opacity = inst.params in
+    let _, _, _, alpha = inst.color in
+    let _, _, _, alpha2 = inst.color2 in
+    let _, _, _, border_alpha = inst.border in
+    let visible = kind <> kind_fill ||
+      (opacity > 0. && (alpha > 0. || (paint <> 0. && alpha2 > 0.) ||
+        (inst.uv <> (0., 0., 0., 0.) && border_alpha > 0.))) in
+    if visible && not (scissor_empty cur.cf_scissor) then (
       let inst = with_clip inst in
       let wb =
         match !open_batch with

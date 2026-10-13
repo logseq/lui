@@ -28,6 +28,12 @@ val mask_has : dirty_mask -> dirty_mask -> bool
     feeds. Unknown names return the conservative layout|paint default. *)
 val mask_of_prop : string -> dirty_mask
 
+(** Declare which pipeline stages a host-owned extension property changes.
+    Install before applying its patches. Undeclared properties retain the
+    conservative all-stages mask. Classifications belong to this store. *)
+val set_extension_prop_mask :
+  t -> identifier:string -> property:string -> dirty_mask -> unit
+
 (** Bumped by every op that can move geometry (structure, layout or
     layout-kids masks). Pure paint churn leaves it untouched — the
     layout memo keys on it so a background flip never rebuilds the

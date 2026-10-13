@@ -171,6 +171,7 @@ type t = {
        incrementally so [root_ids] does not fold the whole table on
        every paint. *)
   dirty : (int, dirty_mask) Hashtbl.t;
+  extension_masks : (string * string, dirty_mask) Hashtbl.t;
   mutable generation : int;
   mutable revision : int;
   (* Bumped only by ops that can move geometry (structure, layout and
@@ -190,9 +191,20 @@ let journal_cap = 8192
 
 let create () =
   { nodes = Hashtbl.create 64; roots = Hashtbl.create 8;
-    dirty = Hashtbl.create 64;
+    dirty = Hashtbl.create 64; extension_masks = Hashtbl.create 16;
     generation = 0; revision = 0; layout_rev = 0;
     journal = Queue.create (); journal_len = 0; journal_base = -1 }
+
+let set_extension_prop_mask t ~identifier ~property mask =
+  Hashtbl.replace t.extension_masks (identifier, property) mask
+
+let extension_prop_mask t (node : node) name =
+  match node.ext_id with
+  | Some identifier ->
+    (match Hashtbl.find_opt t.extension_masks (identifier, name) with
+     | Some mask -> mask
+     | None -> d_all)
+  | None -> d_all
 
 let node_count t = Hashtbl.length t.nodes
 let generation t = t.generation
@@ -432,14 +444,14 @@ let apply_op t = function
     match Hashtbl.find_opt t.nodes id with
     | Some n ->
       Hashtbl.replace n.props name v;
-      mark_dirty_mask t id d_all
+      mark_dirty_mask t id (extension_prop_mask t n name)
     | None -> ());
     journal_push t op
   | RemoveExtensionProp (id, name) as op -> (
     match Hashtbl.find_opt t.nodes id with
     | Some n ->
       Hashtbl.remove n.props name;
-      mark_dirty_mask t id d_all
+      mark_dirty_mask t id (extension_prop_mask t n name)
     | None -> ());
     journal_push t op
   | (InsertChild (parent, child, index) | MoveChild (parent, child, index)) as op ->

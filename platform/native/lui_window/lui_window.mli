@@ -434,6 +434,12 @@ module Ui : sig
 
   val scroll_cap_x : t -> int -> float
 
+  val tick_scrollbars : t -> now_ms:float -> unit
+  (** Advance scrollbar visibility using the driver's monotonic clock. *)
+
+  val scrollbar_visible : t -> int -> bool
+  (** True while a container's overlay scrollbar is active. Hidden at rest. *)
+
   val set_scroll_cap_x : t -> int -> float -> unit
 
   (** Programmatic scroll APIs (clamped to the driver-filled caps);
@@ -462,6 +468,12 @@ module Ui : sig
 
   (** Called by the driver after it repainted: resets the per-frame
       dirty flags collected in [handle]. *)
+  val paint_hints :
+    t -> Lui_store.t -> (int, unit) Hashtbl.t * (int, unit) Hashtbl.t
+  (** Drain interaction changes before repainting a custom host. The first
+      table contains nodes requiring {!Lui_host.note_paint}; the second
+      contains translated nodes requiring {!Lui_host.note_moved}. *)
+
   val frame_done : t -> unit
 end
 

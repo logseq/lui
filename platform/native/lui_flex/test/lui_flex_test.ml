@@ -429,6 +429,91 @@ let test_measure_is_leaf () =
        "Lui_flex.create: a measure callback is only allowed on leaf nodes")
     (fun () -> ignore (create ~measure:m [c0]))
 
+let test_unbounded_cache () =
+  let calls = ref 0 in
+  let m _ ~width:_ ~width_mode:_ ~height:_ ~height_mode:_ =
+    incr calls; { width=30.; height=12. } in
+  let child = create ~measure:m [] in
+  let rec nest depth node =
+    if depth=0 then node else nest (depth-1)
+      (box ~style:{default_style with flex_direction=Row; align_items=Align_center} [node]) in
+  let root = nest 10 child in
+  run root ~w:undefined ~h:undefined;
+  check_abs "deep intrinsic leaf" (r 0. 0. 30. 12.) child;
+  Alcotest.(check bool) "unbounded nested rows reuse measurements" true (!calls < 64);
+  let before = !calls in
+  run root ~w:undefined ~h:undefined;
+  Alcotest.(check int) "unchanged intrinsic layout reuses measurements" before !calls;
+  set_measure child (Some (fun _ ~width:_ ~width_mode:_ ~height:_ ~height_mode:_ ->
+    incr calls; {width=40.;height=12.}));
+  run root ~w:undefined ~h:undefined;
+  check_abs "changed intrinsic leaf" (r 0. 0. 40. 12.) child
+
+let test_mixed_nested_cache () =
+  List.iter (fun depth ->
+    let calls = ref 0 in
+    let text () = create ~measure:(fun _ ~width:_ ~width_mode:_ ~height:_ ~height_mode:_ ->
+      incr calls;
+      if !calls > depth * 64 then Alcotest.fail "nested measurement work exceeds its bound";
+      {width=30.; height=12.}) [] in
+    let rec nest remaining node =
+      if remaining=0 then node else
+        let direction = if remaining mod 2=0 then Row else Column in
+        nest (remaining-1)
+          (box ~style:{default_style with flex_direction=direction; align_items=Align_center}
+            [text (); node]) in
+    let first = text () in
+    let root = nest depth first in
+    run root ~w:(float depth *. 60.) ~h:(float depth *. 30.);
+    Alcotest.(check bool) "mixed nested containers bound text measurements" true (!calls < depth * 64);
+    Alcotest.(check (float eps)) "measured leaf width" 30. (layout first).w;
+    set_measure first (Some (fun _ ~width:_ ~width_mode:_ ~height:_ ~height_mode:_ ->
+      {width=40.; height=18.}));
+    run root ~w:(float depth *. 60.) ~h:(float depth *. 30.);
+    Alcotest.(check (float eps)) "updated measured leaf width" 40. (layout first).w)
+    [16; 32; 64]
+
+let test_incremental_block_budget () =
+  let block () =
+    let leaf = create ~measure:(fun _ ~width:_ ~width_mode:_ ~height:_ ~height_mode:_ ->
+      {width=30.; height=18.}) [] in
+    let rec nest depth child =
+      if depth = 0 then child else
+        let direction = if depth mod 2 = 0 then Row else Column in
+        nest (depth - 1) (box ~style:{default_style with flex_direction=direction} [child]) in
+    nest 12 leaf
+  in
+  let blocks = ref (List.init 100 (fun _ -> block ())) in
+  let content = box ~style:{default_style with flex_direction=Column} !blocks in
+  let root = box ~style:{default_style with flex_direction=Column} [content] in
+  run root ~w:1200. ~h:900.;
+  let timings = Array.init 20 (fun _ ->
+    blocks := !blocks @ [block ()];
+    set_children content !blocks;
+    let started = Sys.time () in
+    run root ~w:1200. ~h:900.;
+    (Sys.time () -. started) *. 1000.) in
+  Array.sort Float.compare timings;
+  Alcotest.(check bool)
+    (Printf.sprintf "incremental block layout p95 %.2fms fits editing budget" timings.(19))
+    true (timings.(19) <= 1000. /. 60.)
+
+let test_measure_fits_offer () =
+  let calls = ref 0 in
+  let child = create ~measure:(fun _ ~width ~width_mode:_ ~height:_ ~height_mode:_ ->
+    incr calls;
+    let width = if Float.is_nan width then 100. else min 100. width in
+    {width; height=if width < 100. then 20. else 10.}) [] in
+  let root = box ~style:{default_style with align_items=Align_flex_start} [child] in
+  run root ~w:200. ~h:100.;
+  let before = !calls in
+  run root ~w:150. ~h:100.;
+  Alcotest.(check int) "intrinsic text still fits a smaller offer" before !calls;
+  check_rect "fitting text" (r 0. 0. 100. 10.) child;
+  run root ~w:60. ~h:100.;
+  check_rect "new wrap width reshapes text" (r 0. 0. 60. 20.) child;
+  Alcotest.(check bool) "changed wrap width was measured" true (!calls > before)
+
 let () =
   Alcotest.run "lui_flex"
     [ "axis",
@@ -468,5 +553,9 @@ let () =
         Alcotest.test_case "center_grow_basis" `Quick test_align_center_grow_basis ];
       "measure",
       [ Alcotest.test_case "leaf" `Quick test_measure_leaf;
-        Alcotest.test_case "is_leaf" `Quick test_measure_is_leaf ];
+        Alcotest.test_case "is_leaf" `Quick test_measure_is_leaf;
+        Alcotest.test_case "unbounded_cache" `Quick test_unbounded_cache;
+        Alcotest.test_case "mixed_cache" `Quick test_mixed_nested_cache;
+        Alcotest.test_case "incremental block budget" `Quick test_incremental_block_budget;
+        Alcotest.test_case "fits_offer" `Quick test_measure_fits_offer ];
     ]

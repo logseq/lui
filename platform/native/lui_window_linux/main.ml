@@ -648,6 +648,7 @@ let () =
         (Assembly.handle asm (Input.Caret (caret_rect ())));
     (* Headless proves the loop: force a repaint every iteration so
        the frame counter and checksum actually run. *)
+    Ui.tick_scrollbars ui ~now_ms:(perf_s () *. 1000.);
     let dirty = headless || Ui.want_frame ui host in
     if dirty then begin
       (* populate's anchor-drift corrections surface as VisibleRange

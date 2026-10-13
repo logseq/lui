@@ -223,6 +223,30 @@ let test_create_replaces_drops_subtree () =
   check bool "ext child gone" false (Lui_store.mem t 11);
   check string "ext kind" "extension:chart" (Lui_store.kind t 10)
 
+let test_extension_input_mask () =
+  let t = Lui_store.create () in
+  Lui_store.set_extension_prop_mask t ~identifier:"editor" ~property:"caret"
+    (Lui_store.d_input lor Lui_store.d_paint);
+  apply t [CreateExtension (1, "editor", "editor-fingerprint")];
+  ignore (Lui_store.drain_dirty_masked t);
+  let revision = Lui_store.layout_rev t in
+  apply t [SetExtensionProp (1, "caret", IntValue 2)];
+  check int "caret does not change layout" revision (Lui_store.layout_rev t);
+  let dirty = List.assoc 1 (Lui_store.drain_dirty_masked t) in
+  check bool "caret repaints" true (Lui_store.mask_has dirty Lui_store.d_paint);
+  check bool "caret updates input" true (Lui_store.mask_has dirty Lui_store.d_input);
+  apply t [RemoveExtensionProp (1, "caret")];
+  check int "caret removal does not change layout" revision (Lui_store.layout_rev t);
+  apply t [SetExtensionProp (1, "width", IntValue 40)];
+  check bool "unknown extension props remain conservative" true
+    (Lui_store.layout_rev t > revision);
+  let other = Lui_store.create () in
+  apply other [CreateExtension (1, "editor", "editor-fingerprint")];
+  let before = Lui_store.layout_rev other in
+  apply other [SetExtensionProp (1, "caret", IntValue 2)];
+  check bool "classification belongs to the host store" true
+    (Lui_store.layout_rev other > before)
+
 let () =
   run "lui_store"
     [ ("tree",
@@ -240,6 +264,7 @@ let () =
       ("dirty",
        [ test_case "drain" `Quick test_dirty;
          test_case "typed masks" `Quick test_dirty_masks;
+         test_case "extension input mask" `Quick test_extension_input_mask;
          test_case "layout rev" `Quick test_layout_rev;
          test_case "changes since" `Quick test_changes_since;
          test_case "wide removal complexity" `Quick test_wide_removal_complexity;

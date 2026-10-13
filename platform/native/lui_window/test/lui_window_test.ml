@@ -697,6 +697,8 @@ let test_scroll () =
     ~measure:Layout.default_measure;
   let ui = Ui.create () in
   Ui.set_scroll_cap ui 2 80.;
+  Ui.tick_scrollbars ui ~now_ms:100.;
+  Alcotest.(check bool) "scrollbar hidden at rest" false (Ui.scrollbar_visible ui 2);
   Alcotest.(check (float 0.001)) "cap" 80. (Ui.scroll_cap ui 2);
   Alcotest.(check (float 0.001)) "x cap starts 0" 0.
     (Ui.scroll_cap_x ui 2);
@@ -705,6 +707,9 @@ let test_scroll () =
   ignore (Ui.handle ui s rects (Input.Move (10., 10.)));
   ignore (Ui.handle ui s rects (Input.Wheel (0., -1.)));
   Alcotest.(check (float 0.001)) "scrolled" 44. (Ui.scroll_offset ui 2);
+  Alcotest.(check bool) "scrollbar visible while scrolling" true (Ui.scrollbar_visible ui 2);
+  Ui.tick_scrollbars ui ~now_ms:1000.;
+  Alcotest.(check bool) "scrollbar hides after inactivity" false (Ui.scrollbar_visible ui 2);
   (* two more wheels clamp at the cap *)
   ignore (Ui.handle ui s rects (Input.Wheel (0., -1.)));
   ignore (Ui.handle ui s rects (Input.Wheel (0., -1.)));

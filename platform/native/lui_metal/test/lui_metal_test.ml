@@ -62,6 +62,7 @@ let stats = ref []
    fresh Metal renderer keeps atlas tracking honest between unrelated
    scenes, as the shared suite does. *)
 let check_scene (r : Lui_metal.t) name (s : Lui_scene.t) expect =
+  Alcotest.(check bool) "offscreen renderer is ready" true (Lui_metal.ready r);
   Lui_metal.render r s;
   let gpu = Lui_metal.read_frame r ~w:s.width ~h:s.height in
   let cpu = (Lui_raster.render ~scene:s ()).Lui_raster.Image.pix in
@@ -156,6 +157,143 @@ let test_frame_size_changes (r : Lui_metal.t) =
          true outside_frame_rejected)
     [160, 144; 73, 61; 192, 160]
 
+let test_fill_budget r =
+  let s = scene ~w:2880 ~h:1800
+    (List.init 3 (fun _ -> ifill (rect 0. 0. 2880. 1800.) (color 245 245 245 255))) in
+  for _ = 1 to 3 do
+    Lui_metal.render r s;
+    ignore (Lui_metal.read_frame r ~w:s.width ~h:s.height)
+  done;
+  let elapsed = Lui_metal.gpu_ms r in
+  Alcotest.(check bool) (Printf.sprintf "solid frame GPU %.2fms fits 120 Hz budget" elapsed)
+    true (elapsed > 0. && elapsed < 8.33)
+
+let test_rounded_budget r =
+  let s = scene ~w:2880 ~h:1800
+    (List.init 3 (fun _ -> ifill ~radii:(radii 16.) (rect 0. 0. 2880. 1800.) (color 245 245 245 255))) in
+  for _ = 1 to 3 do
+    Lui_metal.render r s;
+    ignore (Lui_metal.read_frame r ~w:s.width ~h:s.height)
+  done;
+  let elapsed = Lui_metal.gpu_ms r in
+  Alcotest.(check bool) (Printf.sprintf "rounded frame GPU %.2fms fits 120 Hz budget" elapsed)
+    true (elapsed > 0. && elapsed < 8.33)
+
+let test_shadow_budget r =
+  let s = scene ~w:2880 ~h:1800
+    (List.init 2 (fun index ->
+      ishadow ~cast:(rect 0. 0. 2880. 1800.) ~blur:20.
+        (rect 0. (float (index + 1) *. 4.) 2880. 1800.) (color 0 0 0 64))) in
+  for _ = 1 to 3 do
+    Lui_metal.render r s;
+    ignore (Lui_metal.read_frame r ~w:s.width ~h:s.height)
+  done;
+  let elapsed = Lui_metal.gpu_ms r in
+  Alcotest.(check bool) (Printf.sprintf "outset shadow GPU %.2fms fits 120 Hz budget" elapsed)
+    true (elapsed > 0. && elapsed < 8.33)
+
+let test_native_chrome_budget r =
+  let s = scene ~w:2880 ~h:1800
+    [ishadow ~radii:(radii 12.) ~cast:(rect 0. 0. 2880. 1800.)
+       ~blur:20. (rect 0. 8. 2880. 1800.) (color 0 0 0 26);
+     ishadow ~radii:(radii 12.) ~cast:(rect 0. 0. 2880. 1800.)
+       ~blur:20. (rect 0. 4. 2880. 1800.) (color 0 0 0 26);
+     ifill (rect 0. 0. 2880. 1800.) (color 0 0 0 0)] in
+  for _ = 1 to 5 do
+    Lui_metal.render r s;
+    ignore (Lui_metal.read_frame r ~w:s.width ~h:s.height)
+  done;
+  let elapsed = Lui_metal.gpu_ms r in
+  Alcotest.(check bool) (Printf.sprintf "native chrome GPU %.2fms fits 120 Hz budget" elapsed)
+    true (elapsed > 0. && elapsed < 8.33)
+
+let test_captured_scene r =
+  match Sys.getenv_opt "LUI_METAL_BENCH_SCENE" with
+  | None -> ()
+  | Some path ->
+      let channel = open_in_bin path in
+      let captured : Lui_scene.t = Fun.protect ~finally:(fun () -> close_in channel)
+        (fun () -> Marshal.from_channel channel) in
+      Printf.printf "capture: %dx%d, %d ops, %d glyphs\n%!"
+        captured.width captured.height (List.length captured.ops) (List.length captured.glyphs);
+      List.iter (function
+        | Fill f when f.frect.w *. f.frect.h > 1000000. ->
+            let a,b,c,d = f.fradii in
+            Printf.printf "large fill: %.0f,%.0f %.0fx%.0f r=%g,%g,%g,%g cont=%b alpha=%d opacity=%g\n%!"
+              f.frect.x f.frect.y f.frect.w f.frect.h a b c d f.fcontinuous f.fcolor.a f.fopacity
+        | _ -> ()) captured.ops;
+      let measure name keep =
+        let s = {captured with ops=List.filter keep captured.ops} in
+        for _ = 1 to 5 do
+          Lui_metal.render r s;
+          ignore (Lui_metal.read_frame r ~w:s.width ~h:s.height)
+        done;
+        let timings = Array.init 120 (fun _ ->
+          Lui_metal.render r s;
+          ignore (Lui_metal.read_frame r ~w:s.width ~h:s.height);
+          Lui_metal.gpu_ms r) in
+        Array.sort Float.compare timings;
+        Printf.printf "capture %s: GPU p50=%.3f p95=%.3f ms\n%!" name timings.(60) timings.(114);
+        timings.(114)
+      in
+      let full = measure "full" (fun _ -> true) in
+      ignore (measure "without fills" (function Fill _ -> false | _ -> true));
+      ignore (measure "without shadows" (function Shadow _ -> false | _ -> true));
+      ignore (measure "without glyphs" (function Glyphs _ -> false | _ -> true));
+      Alcotest.(check bool) "actual captured scene fits 120 Hz GPU budget" true (full <= 1000. /. 120.)
+
+let test_modal_budget r =
+  (* Preserve the expensive composition from the native search capture without
+     storing graph content or requiring a local capture file. *)
+  let frame = rect 0. 0. 2880. 1800. in
+  let panel = rect 720. 180. 1440. 1200. in
+  let mask = Atlas.create ~bpp:1 ~w:16 ~h:16 in
+  Atlas.put mask ~x:0 ~y:0 ~w:16 ~h:16
+    ~src:(Bytes.make 256 '\255') ~stride:16;
+  let glyphs = List.init 640 (fun index ->
+    glyph ~x:(760. +. float (index mod 40) *. 30.)
+      ~y:(240. +. float (index / 40) *. 60.) ~w:16. ~h:24.
+      ~u:0 ~v:0 ~uw:16 ~vh:16 black) in
+  let rows = List.init 20 (fun index ->
+    ifill ~cont:true ~radii:(radii 8.)
+      (rect 752. (220. +. float index *. 54.) 1376. 48.)
+      (color 240 240 240 255)) in
+  let s = scene ~w:2880 ~h:1800 ~mask ~glyphs
+    ([ ifill frame white;
+       ishadow ~cast:frame ~blur:20. (rect 0. 8. 2880. 1800.)
+         (color 0 0 0 26);
+       ifill frame (color 0 0 0 128);
+       ishadow ~cont:true ~radii:(radii 16.) ~cast:panel
+         ~cradii:(radii 16.) ~ccont:true ~blur:20.
+         (rect 720. 188. 1440. 1200.) (color 0 0 0 64);
+       ifill ~cont:true ~radii:(radii 16.) panel white;
+       ifill ~cont:true ~radii:(radii 16.) ~bw:(uniform 2.)
+         ~bc:(color 180 180 180 255) panel transparent ]
+     @ rows @ [iglyphs 0 640]) in
+  let measure name scene =
+    for _ = 1 to 5 do
+      Lui_metal.render r scene;
+      ignore (Lui_metal.read_frame r ~w:scene.width ~h:scene.height)
+    done;
+    let timings = Array.init 120 (fun _ ->
+      Lui_metal.render r scene;
+      ignore (Lui_metal.read_frame r ~w:scene.width ~h:scene.height);
+      Lui_metal.gpu_ms r) in
+    Array.sort Float.compare timings;
+    Printf.printf "modal fixture %s GPU p50=%.3f p95=%.3f ms\n%!"
+      name timings.(60) timings.(114);
+    timings.(114)
+  in
+  let full = measure "full" s in
+  if full > 1000. /. 120. then begin
+    ignore (measure "without shadows"
+      {s with ops=List.filter (function Shadow _ -> false | _ -> true) s.ops});
+    ignore (measure "without fills"
+      {s with ops=List.filter (function Fill _ -> false | _ -> true) s.ops})
+  end;
+  Alcotest.(check bool) "native modal GPU p95 fits 120 Hz budget"
+    true (full > 0. && full <= 1000. /. 120.)
+
 (* {1 Entry} *)
 
 let () =
@@ -168,7 +306,13 @@ let () =
       at_exit (fun () -> Lui_metal.release r);
       Alcotest.run "lui_metal"
         [ ( "render",
-            [ Alcotest.test_case "parity corpus" `Quick (fun () -> test_parity r);
+            [ Alcotest.test_case "rounded frame budget" `Quick (fun () -> test_rounded_budget r);
+              Alcotest.test_case "native chrome budget" `Quick (fun () -> test_native_chrome_budget r);
+              Alcotest.test_case "captured scene budget" `Quick (fun () -> test_captured_scene r);
+              Alcotest.test_case "native modal budget" `Quick (fun () -> test_modal_budget r);
+              Alcotest.test_case "outset shadow budget" `Quick (fun () -> test_shadow_budget r);
+              Alcotest.test_case "solid frame budget" `Quick (fun () -> test_fill_budget r);
+              Alcotest.test_case "parity corpus" `Quick (fun () -> test_parity r);
               Alcotest.test_case "determinism" `Quick (fun () -> test_determinism r);
               Alcotest.test_case "atlas update" `Quick (fun () -> test_atlas_update r);
               Alcotest.test_case "frame size changes" `Quick

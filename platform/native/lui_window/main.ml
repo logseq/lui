@@ -430,6 +430,7 @@ let tick (s : surf) ~t0 =
     apply_actions s (Multi.dispatch s (Input.Caret (d.caret_rect ())));
   (* Headless proves the loop: force a repaint every iteration so
      the frame counter and checksum actually run. *)
+  Ui.tick_scrollbars s.ui ~now_ms:(perf_s () *. 1000.);
   if !headless || Ui.want_frame s.ui s.host then
     Frame.request_frame d.sched;
   let decision =

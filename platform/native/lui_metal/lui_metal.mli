@@ -41,8 +41,27 @@ val render : t -> Lui_scene.t -> unit
     which must be [scene.width]×[scene.height] device pixels. *)
 
 val present : t -> unit
-(** [present r] blits the frame to the window's drawable. A no-op for
-    an offscreen renderer. *)
+(** [present r] blits the frame to the window drawable. *)
+
+val ready : t -> bool
+(** Whether a window has completed its render and drawable acquisition.
+    Check before rendering to bound in-flight work without blocking input. *)
+
+val present_async : t -> unit
+(** Request a window presentation without blocking the input thread on
+    drawable acquisition. Repeated requests coalesce to the latest target. *)
+
+val presented_frames : t -> int
+(** Number of frames reported as displayed by Metal's presented handler. *)
+
+val presentation_samples : t -> int * float array
+(** Total measured display intervals and the latest 240 intervals in milliseconds,
+    ordered oldest first. Uses drawable presentation timestamps, not callback
+    delivery times. Offscreen renderers have no presentation samples. *)
+
+val set_frame_rate : t -> int -> unit
+(** Request the window display cadence on macOS 14 or later. The system
+    chooses a cadence supported by the attached display. *)
 
 val read_frame : t -> w:int -> h:int -> bytes
 (** [read_frame r ~w ~h] is the target's pixels: premultiplied BGRA
@@ -82,3 +101,6 @@ val effect_source : dual:bool -> string -> string
     shared shader (with [DUAL] defined when [dual] holds), the
     declarations effects use, the effect's own MSL text, and the
     fragment entry that draws its instances. *)
+
+val gpu_ms : t -> float
+(** Execution time in milliseconds of the last completed GPU render. *)

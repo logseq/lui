@@ -217,6 +217,12 @@ float contCoverage(float2 p, float4 rect, float4 radii) {
 // exactly, the area of the pixel inside it, near square ones.
 // Negative radii mark continuous corners, which the whole shape takes.
 float rectCoverage(float2 p, float4 rect, float4 radii) {
+  float2 inset = min(p - rect.xy, rect.xy + rect.zw - p);
+  float4 ar = abs(radii);
+  float radius = max(max(ar.x, ar.y), max(ar.z, ar.w));
+  // Both circular and continuous corners are confined to their corner
+  // boxes. Fully interior pixels have exact coverage one.
+  if (min(inset.x, inset.y) >= radius * contExtent + 0.5) return 1.0;
   if (min(min(radii.x, radii.y), min(radii.z, radii.w)) < 0.0) {
     return contCoverage(p, rect, radii);
   }
@@ -224,6 +230,8 @@ float rectCoverage(float2 p, float4 rect, float4 radii) {
   float r = q.x < 0.0 ? (q.y < 0.0 ? radii.x : radii.w)
                     : (q.y < 0.0 ? radii.y : radii.z);
   if (r > 0.0) {
+    float2 roundInset = rect.zw * 0.5 - abs(q);
+    if (min(roundInset.x, roundInset.y) >= r + 0.5) return 1.0;
     return coverage(sdRoundRect(p, rect, radii));
   }
   float2 c = clamp(min(rect.xy + rect.zw, p + 0.5) - max(rect.xy, p - 0.5),
@@ -401,20 +409,10 @@ float dash(float2 p, float4 rect, float4 w) {
   return coverage(k - 2.0 * floor(k * 0.5) < 0.5 ? -edge : edge);
 }
 
-// The main fragment shader. uMask is the mask atlas (R8), uColor the
-// color atlas (RGBA premultiplied), uImage a batch's image (RGBA
-// premultiplied).
-fragment FOut mainFrag(VOut in [[stage_in]],
-                       texture2d<float> uMask [[texture(0)]],
-                       texture2d<float> uColor [[texture(1)]],
-                       texture2d<float> uImage [[texture(2)]],
-                       sampler smp [[sampler(0)]])
-{
-  float2 p = in.point.xy;
-  float2 tex = in.point.zw;
-  float kind = in.params.x;
+// Separate fills from the general shader so large backgrounds do not carry
+// the shadow and glyph shader's register requirements.
+float4 fillColor(float2 p, VOut in) {
   float4 res;
-  if (kind < 0.5) {
     float outer = rectCoverage(p, in.rect, in.radii);
     res = paint(p, in.params.z, in.rect, in.color, in.color2, in.grad) * outer;
     float4 bw = in.widths; // top, right, bottom, left
@@ -429,6 +427,48 @@ fragment FOut mainFrag(VOut in [[stage_in]],
       float4 b = premul(in.border) * bc;
       res = b + res * (1.0 - b.a);
     }
+  return res;
+}
+
+fragment FOut fillFrag(VOut in [[stage_in]]) {
+  FOut o;
+  o.color = fillColor(in.point.xy, in) * clipCoverage(in.point.xy, in) * in.params.w;
+#ifdef DUAL
+  o.alpha = float4(o.color.a);
+#endif
+  return o;
+}
+
+fragment FOut maskFrag(VOut in [[stage_in]],
+                      texture2d<float> uMask [[texture(0)]],
+                      sampler smp [[sampler(0)]]) {
+  float2 p = in.point.xy;
+  float4 c = paint(p, in.params.z, in.rect, in.color, in.color2, in.grad);
+  FOut o;
+  o.color = c * textCoverage(uMask.sample(smp, in.point.zw).r, unpremul(c),
+                             in.inner.x, in.inner.y, in.radii)
+              * clipCoverage(p, in) * in.params.w;
+#ifdef DUAL
+  o.alpha = float4(o.color.a);
+#endif
+  return o;
+}
+
+// The main fragment shader. uMask is the mask atlas (R8), uColor the
+// color atlas (RGBA premultiplied), uImage a batch's image (RGBA
+// premultiplied).
+fragment FOut mainFrag(VOut in [[stage_in]],
+                       texture2d<float> uMask [[texture(0)]],
+                       texture2d<float> uColor [[texture(1)]],
+                       texture2d<float> uImage [[texture(2)]],
+                       sampler smp [[sampler(0)]])
+{
+  float2 p = in.point.xy;
+  float2 tex = in.point.zw;
+  float kind = in.params.x;
+  float4 res;
+  if (kind < 0.5) {
+    res = fillColor(p, in);
   } else if (kind < 1.5 && in.params.y > 0.5) {
     // An inner shadow: inside the box, what the hole, blurred, leaves.
     float sigma = in.params.z;
@@ -440,14 +480,18 @@ fragment FOut mainFrag(VOut in [[stage_in]],
     }
     res = premul(in.color) * (rectCoverage(p, in.rect, in.radii) * (1.0 - hole));
   } else if (kind < 1.5) {
+    float outside = 1.0;
+    if (in.widths.z > 0.0 && in.widths.w > 0.0) {
+      outside -= rectCoverage(p, in.widths, in.inner);
+      // The casting box hides its outset shadow. Avoid evaluating the
+      // Gaussian over the entire interior of large windows and panels.
+      if (outside <= 0.0) discard_fragment();
+    }
     float sigma = in.params.z;
     float corner = max(max(in.radii.x, in.radii.y), max(in.radii.z, in.radii.w));
     float s = sigma > 0.0 ? boxShadow(p, in.rect, sigma, corner)
                           : rectCoverage(p, in.rect, in.radii);
-    if (in.widths.z > 0.0 && in.widths.w > 0.0) {
-      s *= 1.0 - rectCoverage(p, in.widths, in.inner); // outside the box casting it
-    }
-    res = premul(in.color) * s;
+    res = premul(in.color) * (s * outside);
   } else if (kind < 2.5) {
     float4 c = paint(p, in.params.z, in.rect, in.color, in.color2, in.grad);
     res = c * textCoverage(uMask.sample(smp, tex).r, unpremul(c),
@@ -488,6 +532,31 @@ fragment FOut mainFrag(VOut in [[stage_in]],
 #ifdef DUAL
   o.alpha = float4(o.color.a);
 #endif
+  return o;
+}
+
+// Pixel-aligned opaque rectangles need no coverage evaluation or blending.
+struct OpaqueOut { float4 pos [[position]]; float4 color [[flat]]; };
+vertex OpaqueOut opaqueVert(const device Inst *insts [[buffer(0)]],
+                            constant Frame &u [[buffer(1)]],
+                            uint vid [[vertex_id]], uint iid [[instance_id]]) {
+  const device Inst &in = insts[iid];
+  float2 p = in.rect.xy + float2(float(vid & 1u), float(vid >> 1u)) * in.rect.zw;
+  OpaqueOut o;
+  o.pos = float4(p / u.size * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
+  o.color = in.color;
+  return o;
+}
+fragment float4 opaqueFrag(OpaqueOut in [[stage_in]]) { return in.color; }
+
+vertex OpaqueOut flatFillVert(const device Inst *insts [[buffer(0)]],
+                              constant Frame &u [[buffer(1)]],
+                              uint vid [[vertex_id]], uint iid [[instance_id]]) {
+  const device Inst &in = insts[iid];
+  float2 p = in.rect.xy + float2(float(vid & 1u), float(vid >> 1u)) * in.rect.zw;
+  OpaqueOut o;
+  o.pos = float4(p / u.size * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
+  o.color = premul(in.color) * in.params.w;
   return o;
 }
 

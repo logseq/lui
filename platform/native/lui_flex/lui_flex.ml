@@ -260,6 +260,15 @@ type cached_measurement = {
   mutable computed_height : float;
 }
 
+module Measurement_cache = Hashtbl.Make (struct
+  type t = float * float * measure_mode * measure_mode * int
+  let equal (w, h, wm, hm, gen) (w', h', wm', hm', gen') =
+    gen = gen' && wm = wm' && hm = hm'
+    && (w = w' || (Float.is_nan w && Float.is_nan w'))
+    && (h = h' || (Float.is_nan h && Float.is_nan h'))
+  let hash = Hashtbl.hash
+end)
+
 (* Layout output plus the bookkeeping that lets repeated measurements
    inside one layout pass reuse earlier results. *)
 type ilayout = {
@@ -269,6 +278,7 @@ type ilayout = {
   mutable computed_flex_basis : float;
   mutable next_cached_measurements_index : int;
   cached_measurements : cached_measurement array;
+  offer_cache : cached_measurement Measurement_cache.t;
   mutable measured_width : float;
   mutable measured_height : float;
   cached_layout : cached_measurement;
@@ -476,6 +486,7 @@ let rec null_node : node = {
       [| dummy_cached_measurement; dummy_cached_measurement;
          dummy_cached_measurement; dummy_cached_measurement;
          dummy_cached_measurement; dummy_cached_measurement |];
+    offer_cache = Measurement_cache.create 8;
     cached_layout = dummy_cached_measurement;
     measured_width = undefined;
     measured_height = undefined;
@@ -556,6 +567,7 @@ let fresh_layout () : ilayout = {
     [| dummy_cached_measurement; dummy_cached_measurement;
        dummy_cached_measurement; dummy_cached_measurement;
        dummy_cached_measurement; dummy_cached_measurement |];
+  offer_cache = Measurement_cache.create 8;
   cached_layout = create_cached_measurement ();
   measured_width = undefined;
   measured_height = undefined;
@@ -1430,24 +1442,17 @@ let can_use_cached_measurement
     (width_measure_mode : measure_mode)
     (height_measure_mode : measure_mode)
     (cached_layout : cached_measurement) : bool =
-  if cached_layout.available_width = available_width
-     && cached_layout.available_height = available_height
-     && cached_layout.width_measure_mode = width_measure_mode
-     && cached_layout.height_measure_mode = height_measure_mode
-  then true
-  (* Exact width match: try a fuzzy match on the height. *)
-  else if cached_layout.width_measure_mode = width_measure_mode
-          && cached_layout.available_width = available_width
-          && height_measure_mode = Measure_exactly
-          && available_height -. margin_col = cached_layout.computed_height
-  then true
-  (* Exact height match: try a fuzzy match on the width. *)
-  else if cached_layout.height_measure_mode = height_measure_mode
-          && cached_layout.available_height = available_height
-          && width_measure_mode = Measure_exactly
-          && available_width -. margin_row = cached_layout.computed_width
-  then true
-  else false
+  let fits mode available old_mode old_available computed margin =
+    (mode = old_mode && same_dim available old_available)
+    || (mode = Measure_exactly && available -. margin = computed)
+    || (mode = Measure_at_most && computed <= available -. margin
+        && (old_mode = Measure_undefined
+            || (old_mode = Measure_at_most && old_available > available)))
+  in
+  fits width_measure_mode available_width cached_layout.width_measure_mode
+    cached_layout.available_width cached_layout.computed_width margin_row
+  && fits height_measure_mode available_height cached_layout.height_measure_mode
+    cached_layout.available_height cached_layout.computed_height margin_col
 
 let cached_measurement_at (layout : ilayout) (i : int) : cached_measurement =
   if i < 0 || i >= css_max_cached_result_count then
@@ -1464,6 +1469,10 @@ let cached_measurement_at (layout : ilayout) (i : int) : cached_measurement =
    inputs were already measured, keeping a small ring of measurement
    results plus one layout result per node. Returns true when layout
    actually ran. *)
+let profile_enabled = Sys.getenv_opt "LUI_FLEX_PROFILE" = Some "1"
+let profile_calls = ref 0
+let profile_hits = ref 0
+
 let rec layout_node_internal
     (node : node)
     (available_width : float)
@@ -1472,6 +1481,7 @@ let rec layout_node_internal
     (width_measure_mode : measure_mode)
     (height_measure_mode : measure_mode)
     (perform_layout : bool) : bool =
+  if profile_enabled then incr profile_calls;
   let layout = node.layout in
   let need_to_visit_node =
     (node.is_dirty && layout.generation_count <> !g_current_generation_count)
@@ -1485,7 +1495,19 @@ let rec layout_node_internal
     layout.cached_layout.computed_width <- negativeOne;
     layout.cached_layout.computed_height <- negativeOne
   end;
-  let cached_results = ref None in
+  (* Keep every distinct offer within a pass and retain a bounded cache
+     between passes. Dirty nodes discard all previous measurements. *)
+  if need_to_visit_node
+     || (layout.generation_count <> !g_current_generation_count
+         && Measurement_cache.length layout.offer_cache > 32) then
+    Measurement_cache.clear layout.offer_cache;
+  let key_dim d = if Float.is_nan d then Float.nan else d in
+  let offer = (key_dim available_width, key_dim available_height,
+               width_measure_mode, height_measure_mode, node.res_gen) in
+  let memo = if perform_layout then None
+    else Measurement_cache.find_opt layout.offer_cache offer in
+  let cached_results = ref memo in
+  if !cached_results = None then begin
   (* Determine whether the results are already cached. A layout result
      modifies positions and dimensions for the whole subtree; the
      algorithm assumes each node is laid out at most once per tree pass,
@@ -1518,8 +1540,8 @@ let rec layout_node_internal
     end
   end
   else if perform_layout then begin
-    if layout.cached_layout.available_width = available_width
-       && layout.cached_layout.available_height = available_height
+    if same_dim layout.cached_layout.available_width available_width
+       && same_dim layout.cached_layout.available_height available_height
        && layout.cached_layout.width_measure_mode = width_measure_mode
        && layout.cached_layout.height_measure_mode = height_measure_mode
     then cached_results := Some layout.cached_layout
@@ -1529,8 +1551,8 @@ let rec layout_node_internal
     for i = 0 to layout.next_cached_measurements_index - 1 do
       if not !found then begin
         let c = cached_measurement_at layout i in
-        if c.available_width = available_width
-           && c.available_height = available_height
+        if same_dim c.available_width available_width
+           && same_dim c.available_height available_height
            && c.width_measure_mode = width_measure_mode
            && c.height_measure_mode = height_measure_mode
         then begin
@@ -1540,7 +1562,9 @@ let rec layout_node_internal
       end
     done
   end;
+  end;
   if (not need_to_visit_node) && !cached_results <> None then begin
+    if profile_enabled then incr profile_hits;
     let cached =
       match !cached_results with
       | None -> invalid_arg "Not possible"
@@ -1576,6 +1600,10 @@ let rec layout_node_internal
       new_entry.computed_height <- layout.measured_height
     end
   end;
+  if not perform_layout && memo = None then
+    Measurement_cache.replace layout.offer_cache offer
+      { available_width; available_height; width_measure_mode; height_measure_mode;
+        computed_width=layout.measured_width; computed_height=layout.measured_height };
   if perform_layout then begin
     node.layout.width <- node.layout.measured_width;
     node.layout.height <- node.layout.measured_height;
@@ -2982,7 +3010,12 @@ let compute_layout (node : node) ~(width : float) ~(height : float)
     else height
   in
   ignore (resolve_specs node ~owner_w:width ~owner_h:height ~owner_main);
-  layout_node node width height direction
+  let before_calls = !profile_calls and before_hits = !profile_hits in
+  let started = Sys.time () in
+  layout_node node width height direction;
+  if profile_enabled then Printf.eprintf "flex: %.2fms calls=%d hits=%d\n%!"
+    ((Sys.time () -. started) *. 1000.)
+    (!profile_calls - before_calls) (!profile_hits - before_hits)
 
 let layout (n : node) : rect =
   { x = n.layout.left; y = n.layout.top;

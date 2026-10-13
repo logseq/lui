@@ -13,6 +13,9 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <SDL_metal.h>
+#import <AppKit/AppKit.h>
+#import <QuartzCore/CADisplayLink.h>
+#include <stdatomic.h>
 
 #include <caml/mlvalues.h>
 #include <caml/alloc.h>
@@ -35,6 +38,13 @@
    size of the window's layer), and the two small textures backdrop
    passes ping-pong between. For a window, sdl_view/layer are the
    SDL-created Metal view and its CAMetalLayer. */
+@interface LuiMtlCadence : NSObject
+- (void)tick:(CADisplayLink *)sender;
+@end
+@implementation LuiMtlCadence
+- (void)tick:(CADisplayLink *)sender { (void)sender; }
+@end
+
 @interface LuiMtlCtx : NSObject {
 @public
     id<MTLDevice> dev;
@@ -46,13 +56,36 @@
     id<MTLTexture> bd0;
     id<MTLTexture> bd1;
     int tw, th;   /* target pixel size */
+    dispatch_queue_t present_queue;
+    atomic_bool present_pending;
+    atomic_bool render_pending;
+    _Atomic double gpu_ms;
+    atomic_ullong presented_frames;
+    double last_presented_time;
+    double presentation_intervals[240];
+    unsigned long presentation_count;
+    CADisplayLink *display_link;
+    id rendering_activity;
     int bw, bh;   /* backdrop textures' current size */
 }
 @end
 
 @implementation LuiMtlCtx
 - (void)dealloc {
-    if (sdl_view) SDL_Metal_DestroyView(sdl_view);
+    CADisplayLink *link = display_link;
+    id activity = rendering_activity;
+    SDL_MetalView view = sdl_view;
+    if (NSThread.isMainThread) {
+        [link invalidate];
+        if (activity) [NSProcessInfo.processInfo endActivity:activity];
+        if (view) SDL_Metal_DestroyView(view);
+    } else {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [link invalidate];
+        if (activity) [NSProcessInfo.processInfo endActivity:activity];
+            if (view) SDL_Metal_DestroyView(view);
+        });
+    }
 }
 @end
 
@@ -149,6 +182,13 @@ static LuiMtlCtx *new_ctx(id<MTLDevice> dev, int w, int h)
     LuiMtlCtx *m = [LuiMtlCtx new];
     m->dev = dev;
     m->queue = [dev newCommandQueue];
+    m->present_queue = dispatch_queue_create("lui.metal.present", DISPATCH_QUEUE_SERIAL);
+    atomic_init(&m->present_pending, false);
+    atomic_init(&m->render_pending, false);
+    atomic_init(&m->gpu_ms, 0.);
+    atomic_init(&m->presented_frames, 0);
+    m->last_presented_time = 0.;
+    m->presentation_count = 0;
     m->smp = make_sampler(dev);
     m->target = make_target(dev, w, h);
     m->tw = w;
@@ -186,6 +226,7 @@ CAMLprim value lui_metal_create_layer(value vwin)
         if (sv) SDL_Metal_DestroyView(sv);
         CAMLreturn(err_str("no Metal device/layer"));
     }
+    MTD("layer: sync=%d transaction=%d\n", layer.displaySyncEnabled, layer.presentsWithTransaction);
     layer.device = dev;
     layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
     layer.framebufferOnly = YES;
@@ -427,9 +468,12 @@ CAMLprim value lui_metal_render(value vctx, value vreq)
         if (w != m->tw || h != m->th) {
             id<MTLTexture> target = make_target(m->dev, w, h);
             if (!target) caml_failwith("lui_metal: target resize failed");
-            m->target = target;
-            m->tw = w;
-            m->th = h;
+            @synchronized (m) {
+                m->target = target;
+                m->tw = w;
+                m->th = h;
+            }
+            if (m->layer) m->layer.drawableSize = CGSizeMake(w, h);
         }
         value vc = Field(vreq, 2);
         float cr = Double_val(Field(vc, 0)), cg = Double_val(Field(vc, 1));
@@ -556,6 +600,7 @@ CAMLprim value lui_metal_render(value vctx, value vreq)
         } else if (enc) {
             [enc endEncoding];
         }
+        if (m->layer) atomic_store(&m->render_pending, true);
         MTD("render: committing\n");
         CFAbsoluteTime _pt = CFAbsoluteTimeGetCurrent();
         /* Commit, don't wait: the first frame's GPU pipeline JIT costs
@@ -563,6 +608,11 @@ CAMLprim value lui_metal_render(value vctx, value vreq)
            main thread. Errors still surface via the completed handler
            (and the readback path keeps its own waitUntilCompleted). */
         [cmd addCompletedHandler:^(id<MTLCommandBuffer> c) {
+            atomic_store(&m->gpu_ms, (c.GPUEndTime - c.GPUStartTime) * 1000.);
+            atomic_store(&m->render_pending, false);
+            MTD("gpu: %.2fms completion: %.2fms\n",
+                (c.GPUEndTime - c.GPUStartTime) * 1000.,
+                (CFAbsoluteTimeGetCurrent() - _pt) * 1000.);
             if (c.status == MTLCommandBufferStatusError)
                 fprintf(stderr, "lui_metal render: %s\n",
                         [[c.error localizedDescription] UTF8String]);
@@ -602,6 +652,123 @@ CAMLprim value lui_metal_read(value vctx, value vw, value vh)
         memcpy(Bytes_val(out), buf.contents, bpr * h);
     }
     CAMLreturn(out);
+}
+
+/* Drawable acquisition can block for a refresh interval. Keep it off
+   the input thread, with at most one pending submission per surface. */
+CAMLprim value lui_metal_gpu_ms(value vctx)
+{
+    CAMLparam1(vctx);
+    LuiMtlCtx *m = (__bridge LuiMtlCtx *)Lui_ref_val(vctx);
+    if (!m) caml_failwith("lui_metal: released context");
+    CAMLreturn(caml_copy_double(atomic_load(&m->gpu_ms)));
+}
+
+CAMLprim value lui_metal_ready(value vctx)
+{
+    CAMLparam1(vctx);
+    LuiMtlCtx *m = (__bridge LuiMtlCtx *)Lui_ref_val(vctx);
+    if (!m) caml_failwith("lui_metal: released context");
+    CAMLreturn(Val_bool(!atomic_load(&m->render_pending)
+                       && !atomic_load(&m->present_pending)));
+}
+
+CAMLprim value lui_metal_present_async(value vctx)
+{
+    CAMLparam1(vctx);
+    LuiMtlCtx *m = (__bridge LuiMtlCtx *)Lui_ref_val(vctx);
+    if (!m) caml_failwith("lui_metal: released context");
+    if (m->layer && !atomic_exchange(&m->present_pending, true)) {
+        dispatch_async(m->present_queue, ^{
+            @autoreleasepool {
+                id<CAMetalDrawable> drawable = [m->layer nextDrawable];
+                if (drawable) {
+                    id<MTLTexture> source;
+                    @synchronized (m) { source = m->target; }
+                    NSUInteger w = MIN(source.width, drawable.texture.width);
+                    NSUInteger h = MIN(source.height, drawable.texture.height);
+                    id<MTLCommandBuffer> command = [m->queue commandBuffer];
+                    id<MTLBlitCommandEncoder> blit = [command blitCommandEncoder];
+                    [blit copyFromTexture:source sourceSlice:0 sourceLevel:0
+                            sourceOrigin:MTLOriginMake(0, 0, 0)
+                              sourceSize:MTLSizeMake(w, h, 1)
+                               toTexture:drawable.texture destinationSlice:0
+                        destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
+                    [blit endEncoding];
+                    [drawable addPresentedHandler:^(id<MTLDrawable> completed) {
+                        @synchronized (m) {
+                            double now = completed.presentedTime;
+                            if (now > 0.) {
+                                if (m->last_presented_time > 0. && now >= m->last_presented_time) {
+                                    m->presentation_intervals[m->presentation_count % 240] =
+                                        (now - m->last_presented_time) * 1000.;
+                                    m->presentation_count++;
+                                }
+                                m->last_presented_time = now;
+                                atomic_fetch_add(&m->presented_frames, 1);
+                            }
+                        }
+                    }];
+                    [command presentDrawable:drawable];
+                    [command commit];
+                }
+                atomic_store(&m->present_pending, false);
+            }
+        });
+    }
+    CAMLreturn(Val_unit);
+}
+
+CAMLprim value lui_metal_presented_frames(value vctx)
+{
+    CAMLparam1(vctx);
+    LuiMtlCtx *m = (__bridge LuiMtlCtx *)Lui_ref_val(vctx);
+    if (!m) caml_failwith("lui_metal: released context");
+    CAMLreturn(Val_long(atomic_load(&m->presented_frames)));
+}
+
+CAMLprim value lui_metal_presentation_samples(value vctx)
+{
+    CAMLparam1(vctx);
+    CAMLlocal2(out, samples);
+    LuiMtlCtx *m = (__bridge LuiMtlCtx *)Lui_ref_val(vctx);
+    if (!m) caml_failwith("lui_metal: released context");
+    double values[240];
+    unsigned long total, count;
+    @synchronized (m) {
+        total = m->presentation_count;
+        count = MIN(total, 240UL);
+        for (unsigned long i = 0; i < count; i++)
+            values[i] = m->presentation_intervals[(total - count + i) % 240];
+    }
+    samples = caml_alloc_float_array(count);
+    for (unsigned long i = 0; i < count; i++) Store_double_field(samples, i, values[i]);
+    out = caml_alloc_tuple(2);
+    Store_field(out, 0, Val_long(total));
+    Store_field(out, 1, samples);
+    CAMLreturn(out);
+}
+
+CAMLprim value lui_metal_set_frame_rate(value vctx, value vfps)
+{
+    CAMLparam2(vctx, vfps);
+    LuiMtlCtx *m = (__bridge LuiMtlCtx *)Lui_ref_val(vctx);
+    if (!m || !m->sdl_view) caml_invalid_argument("frame rate requires a window surface");
+    if (@available(macOS 14.0, *)) {
+        [m->display_link invalidate];
+        if (m->rendering_activity) [NSProcessInfo.processInfo endActivity:m->rendering_activity];
+        m->rendering_activity = [NSProcessInfo.processInfo
+            beginActivityWithOptions:NSActivityUserInitiatedAllowingIdleSystemSleep | NSActivityLatencyCritical
+                              reason:@"Interactive native rendering"];
+        NSView *view = (__bridge NSView *)m->sdl_view;
+        m->display_link = [view displayLinkWithTarget:[LuiMtlCadence new] selector:@selector(tick:)];
+        float fps = (float)Int_val(vfps);
+        m->display_link.preferredFrameRateRange = CAFrameRateRangeMake(1., fps, fps);
+        [m->display_link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+    } else {
+        caml_failwith("display frame-rate requests require macOS 14 or later");
+    }
+    CAMLreturn(Val_unit);
 }
 
 CAMLprim value lui_metal_present(value vctx)
@@ -715,6 +882,12 @@ CAMLprim value lui_metal_upload(value a, value b, value c, value d, value e) { N
 CAMLprim value lui_metal_render(value a, value b) { NO_METAL(); }
 CAMLprim value lui_metal_read(value a, value b, value c) { NO_METAL(); }
 CAMLprim value lui_metal_present(value a) { NO_METAL(); }
+CAMLprim value lui_metal_ready(value a) { NO_METAL(); }
+CAMLprim value lui_metal_gpu_ms(value a) { NO_METAL(); }
+CAMLprim value lui_metal_present_async(value a) { NO_METAL(); }
+CAMLprim value lui_metal_presented_frames(value a) { NO_METAL(); }
+CAMLprim value lui_metal_presentation_samples(value a) { NO_METAL(); }
+CAMLprim value lui_metal_set_frame_rate(value a, value b) { NO_METAL(); }
 CAMLprim value lui_metal_warm(value a, value b) { NO_METAL(); }
 CAMLprim value lui_metal_release(value a) { NO_METAL(); }
 

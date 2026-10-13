@@ -54,6 +54,16 @@ let holes = List.map (fun (b : G.batch) -> b.hole)
 let sc l t r b : G.scissor = { left = l; top = t; right = r; bottom = b }
 let image_iid (b : G.batch) = match b.image with Some i -> i.iid | None -> -1
 
+let test_transparent_fills () =
+  let s = scene () in
+  s.ops <- [fill ~c:black ~c2:black (); fill ~op:0. ();
+            fill ~c:black ~c2:black ~bw:(uniform_border 2.) ~bc:red ();
+            fill ~c:black ~c2:red ~paint:Linear (); fill ()];
+  let instances = all_insts (G.build s) in
+  check int "transparent fill consumes no GPU work; zero opacity keeps legacy semantics" 4 (List.length instances);
+  check bool "visible border survives" true
+    (List.exists (fun (i : G.instance) -> i.uv = uniform_border 2.) instances)
+
 (* ---------- the build pass ---------- *)
 
 let test_build () =
@@ -600,6 +610,7 @@ let () =
   run "lui_gpu"
     [ ( "build",
         [ test_case "ops to batches" `Quick test_build;
+          test_case "transparent fills" `Quick test_transparent_fills;
           test_case "nested clips" `Quick test_nested_clips;
           test_case "empty clip skips" `Quick test_empty_clip_skips;
           test_case "clip off frame" `Quick test_clip_off_frame;

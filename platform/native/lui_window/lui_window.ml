@@ -513,6 +513,8 @@ module Ui = struct
     mutable selection : Lui_selection.state;
     mutable gesture : Lui_gesture.state;
     mutable scroll : Lui_scroll.state;
+    mutable scroll_clock_ms : float;
+    scrollbar_deadlines : (int, float) Hashtbl.t;
     mutable drag : Lui_drag.state;
     mutable overlay : Lui_overlay.state;
     (* Paint-hint channels for the retained fragment pass: scroll
@@ -555,6 +557,8 @@ module Ui = struct
       selection = Lui_selection.initial;
       gesture = Lui_gesture.initial;
       scroll = Lui_scroll.initial;
+      scroll_clock_ms = 0.;
+      scrollbar_deadlines = Hashtbl.create 8;
       drag = Lui_drag.initial;
       overlay = Lui_overlay.initial;
       scrolled = Hashtbl.create 8;
@@ -615,6 +619,20 @@ module Ui = struct
   let scroll_offset_x t = Lui_scroll.offset t.scroll Lui_scroll.X
   let scroll_cap_x t = Lui_scroll.cap t.scroll Lui_scroll.X
 
+  let tick_scrollbars t ~now_ms =
+    if not (Float.is_finite now_ms) || now_ms < t.scroll_clock_ms then
+      invalid_arg "Scrollbar clock must be monotonic";
+    t.scroll_clock_ms <- now_ms;
+    Hashtbl.filter_map_inplace (fun id deadline ->
+      if deadline > now_ms then Some deadline
+      else begin
+        Hashtbl.replace t.scroll_metrics id ();
+        t.dirty <- true;
+        None
+      end) t.scrollbar_deadlines
+
+  let scrollbar_visible t id = Hashtbl.mem t.scrollbar_deadlines id
+
   (* Install the next scroll state, recording which containers'
      offsets moved (a moved offset shifts every descendant rect, so
      the subtree re-derives) and which caps changed (thumb metrics
@@ -622,25 +640,26 @@ module Ui = struct
   let set_scroll t (s' : Lui_scroll.state) =
     let module M = Lui_scroll.IdMap in
     let prev : Lui_scroll.state = t.scroll in
+    let show id = Hashtbl.replace t.scrollbar_deadlines id (t.scroll_clock_ms +. 800.) in
     M.iter
       (fun id o ->
         if Lui_scroll.offset s' Y id <> o then
-          Hashtbl.replace t.scrolled id ())
+          (show id; Hashtbl.replace t.scrolled id ()))
       prev.off;
     M.iter
       (fun id o ->
         if Lui_scroll.offset prev Y id <> o then
-          Hashtbl.replace t.scrolled id ())
+          (show id; Hashtbl.replace t.scrolled id ()))
       s'.off;
     M.iter
       (fun id o ->
         if Lui_scroll.offset s' X id <> o then
-          Hashtbl.replace t.scrolled id ())
+          (show id; Hashtbl.replace t.scrolled id ()))
       prev.off_x;
     M.iter
       (fun id o ->
         if Lui_scroll.offset prev X id <> o then
-          Hashtbl.replace t.scrolled id ())
+          (show id; Hashtbl.replace t.scrolled id ()))
       s'.off_x;
     M.iter
       (fun id c ->
@@ -2206,7 +2225,7 @@ module Assembly = struct
           scroll_of =
             (fun id ->
                let cap = Ui.scroll_cap ui id in
-               if cap <= 0.001 then None
+               if cap <= 0.001 || not (Ui.scrollbar_visible ui id) then None
                else
                  let cr = engine_rect id in
                  let content =

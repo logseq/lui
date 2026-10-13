@@ -41,6 +41,10 @@ type t = {
   dual : bool;
   lib : lib;
   pipe_main : pipe;
+  pipe_fill : pipe;
+  pipe_mask : pipe;
+  pipe_flat : pipe;
+  pipe_opaque : pipe;
   pipe_hole : pipe;
   pipe_down : pipe;
   pipe_blur : pipe;
@@ -102,7 +106,13 @@ external metal_upload : tex -> int * int * int * int -> Bytes.t -> int -> int ->
   = "lui_metal_upload"
 external metal_render : ctx -> req -> unit = "lui_metal_render"
 external metal_read : ctx -> int -> int -> bytes = "lui_metal_read"
+external metal_gpu_ms : ctx -> float = "lui_metal_gpu_ms"
+external metal_ready : ctx -> bool = "lui_metal_ready"
 external metal_present : ctx -> unit = "lui_metal_present"
+external metal_present_async : ctx -> unit = "lui_metal_present_async"
+external metal_presented_frames : ctx -> int = "lui_metal_presented_frames"
+external metal_presentation_samples : ctx -> int * float array = "lui_metal_presentation_samples"
+external metal_set_frame_rate : ctx -> int -> unit = "lui_metal_set_frame_rate"
 external metal_warm : ctx -> pipe -> unit = "lui_metal_warm"
 external metal_release : obj -> unit = "lui_metal_release"
 
@@ -275,7 +285,19 @@ let make_empty ctx =
   tex
 
 let renderer ctx ~dual ~lib ~pipe_main ~pipe_hole ~pipe_down ~pipe_blur =
-  { ctx; dual; lib; pipe_main; pipe_hole; pipe_down; pipe_blur;
+  let pipe_flat = match metal_pipeline ctx lib "flatFillVert" "opaqueFrag" 1 with
+    | Ok pipe -> pipe
+    | Error message -> failwith ("flat fill pipeline: " ^ message) in
+  let pipe_fill = match metal_pipeline ctx lib "mainVert" "fillFrag" (if dual then 0 else 1) with
+    | Ok pipe -> pipe
+    | Error message -> failwith ("fill pipeline: " ^ message) in
+  let pipe_mask = match metal_pipeline ctx lib "mainVert" "maskFrag" (if dual then 0 else 1) with
+    | Ok pipe -> pipe
+    | Error message -> failwith ("mask glyph pipeline: " ^ message) in
+  let pipe_opaque = match metal_pipeline ctx lib "opaqueVert" "opaqueFrag" 4 with
+    | Ok pipe -> pipe
+    | Error message -> failwith ("opaque fill pipeline: " ^ message) in
+  { ctx; dual; lib; pipe_main; pipe_fill; pipe_mask; pipe_flat; pipe_opaque; pipe_hole; pipe_down; pipe_blur;
     empty = make_empty ctx;
     mask = new_mtex (); color = new_mtex ();
     images = Hashtbl.create 17; frame = 0; effects = [];
@@ -356,13 +378,88 @@ let backdrop_of (b : backdrop) : draw_bd =
   ( b.barea.x0, b.barea.y0, b.barea.x1, b.barea.y1,
     b.bdown, b.bradius, b.bsigma, w, h )
 
+let opaque_instance (i : Lui_gpu.instance) =
+  let zero = (0., 0., 0., 0.) in
+  let aligned (x, y, w, h) =
+    List.for_all (fun v -> Float.is_finite v && v = Float.floor v) [x; y; w; h] in
+  let kind, _, paint, opacity = i.params in
+  let _, _, _, alpha = i.color in
+  kind = Lui_gpu.kind_fill && paint = 0. && opacity = 1. && alpha = 1.
+  && i.uv = zero && i.radii = zero
+  && i.clip_radii = zero && i.clip2_radii = zero && i.clip3_radii = zero
+  && aligned i.rect && aligned i.clip && aligned i.clip2 && aligned i.clip3
+
+let outset_scissors (i : Lui_gpu.instance) (sc : Lui_gpu.scissor) =
+  let kind, inset, _, _ = i.params in
+  let _,_,_,alpha = i.color in
+  let x,y,w,h =
+    if kind = Lui_gpu.kind_fill && alpha = 0. then
+      let x,y,w,h = i.rect in
+      let top,right,bottom,left = i.uv in
+      x +. left, y +. top, w -. left -. right, h -. top -. bottom
+    else i.uv in
+  let transparent_border = kind = Lui_gpu.kind_fill && alpha = 0.
+    && let _,_,paint,_ = i.params in paint = 0. in
+  if (not transparent_border && (kind <> Lui_gpu.kind_shadow || inset <> 0.))
+     || w <= 0. || h <= 0. then [sc]
+  else
+    let a, b, c, d = i.inner in
+    let radius = List.fold_left (fun radius v -> max radius (abs_float v)) 0. [a;b;c;d] in
+    let extent = if min (min a b) (min c d) < 0. then 1.528665 else 1. in
+    let margin = radius *. extent +. 1. in
+    let left = max sc.left (int_of_float (Float.ceil (x +. margin)))
+    and top = max sc.top (int_of_float (Float.ceil (y +. margin)))
+    and right = min sc.right (int_of_float (Float.floor (x +. w -. margin)))
+    and bottom = min sc.bottom (int_of_float (Float.floor (y +. h -. margin))) in
+    if left >= right || top >= bottom then [sc]
+    else
+      (* The casting box's interior has coverage one. Leave its curved
+         corners and antialiased edges in four nonoverlapping strips. *)
+      List.filter (fun (s : Lui_gpu.scissor) -> s.left < s.right && s.top < s.bottom)
+        [ {sc with bottom=top}; {sc with top=bottom};
+          {sc with top; bottom; right=left}; {sc with top; bottom; left=right} ]
+
+let fill_interior (i : Lui_gpu.instance) (sc : Lui_gpu.scissor) =
+  let kind, _, paint, _ = i.params in
+  if kind <> Lui_gpu.kind_fill || paint <> 0. || i.uv <> (0.,0.,0.,0.) then None
+  else
+    let inset sc ((x,y,w,h), (a,b,c,d)) =
+      let radius = max (max (abs_float a) (abs_float b)) (max (abs_float c) (abs_float d)) in
+      let margin = if radius = 0. then 0. else radius *. 1.528665 +. 1. in
+      { Lui_gpu.left=max sc.Lui_gpu.left (int_of_float (Float.ceil (x +. margin)));
+        top=max sc.top (int_of_float (Float.ceil (y +. margin)));
+        right=min sc.right (int_of_float (Float.floor (x +. w -. margin)));
+        bottom=min sc.bottom (int_of_float (Float.floor (y +. h -. margin))) } in
+    let inner = List.fold_left inset sc
+      [i.rect,i.radii; i.clip,i.clip_radii; i.clip2,i.clip2_radii; i.clip3,i.clip3_radii] in
+    if inner.left >= inner.right || inner.top >= inner.bottom then None else Some inner
+
 let render (t : t) (s : Lui_scene.t) : unit =
   let w, h = s.width, s.height in
   if w > 0 && h > 0 then begin
     t.frame <- t.frame + 1;
+    (match Sys.getenv_opt "LUI_METAL_CAPTURE" with
+       | Some path when t.frame = 30 || Sys.file_exists (path ^ ".request") ->
+           if s.effects <> [] then invalid_arg "Scene capture requires serializable effects";
+           let channel = open_out_bin path in
+           Fun.protect ~finally:(fun () -> close_out channel)
+             (fun () -> Marshal.to_channel channel s []);
+           if Sys.file_exists (path ^ ".request") then Sys.remove (path ^ ".request")
+       | Some _ | None -> ());
     sync_atlas t t.mask s.mask_atlas ~fmt:0;
     sync_atlas t t.color s.color_atlas ~fmt:1;
     let batches, pack, _rebuilt = Lui_gpu.frame t.fc s in
+    if t.frame = 30 && Sys.getenv_opt "LUI_METAL_DEBUG" = Some "1" then
+      List.iter (fun (b : Lui_gpu.batch) -> List.iter (fun (i : Lui_gpu.instance) ->
+        let x,y,w,h = i.rect in
+        if w *. h > 100000. then
+          let k,_,_,_ = i.params in
+          Printf.eprintf "large: kind=%.0f opaque=%b %.0f,%.0f %.0fx%.0f\n%!"
+            k (opaque_instance i) x y w h;
+          let a,b,c,d = i.radii in let ca,cb,cc,cd = i.color in
+          let ba,bb,bc,bd = i.uv in
+          Printf.eprintf "  radii=%g,%g,%g,%g color=%g,%g,%g,%g border=%g,%g,%g,%g\n%!"
+            a b c d ca cb cc cd ba bb bc bd) b.instances) batches;
     (* Drop the image textures unseen for 64 frames. *)
     Hashtbl.filter_map_inplace
       (fun _i (m : mtex) ->
@@ -394,11 +491,49 @@ let render (t : t) (s : Lui_scene.t) : unit =
               in
               match pipe with
               | Some pipe ->
-                  ( (sc.left, sc.top, sc.right, sc.bottom),
-                    first, count, pipe, img, bd )
-              | None ->
-                  ( (0, 0, 0, 0), first, 0, t.pipe_main, None, None ))
-           batches)
+                  let draw_at (sc : Lui_gpu.scissor) first count pipe =
+                    ((sc.left, sc.top, sc.right, sc.bottom), first, count, pipe, img, bd) in
+                  let draw first count pipe = draw_at sc first count pipe in
+                  if b.hole || b.fx <> None then [draw first count pipe]
+                  else begin
+                    let rec runs offset current length acc = function
+                      | [] -> List.rev (if length = 0 then acc else draw offset length current :: acc)
+                      | (instance : Lui_gpu.instance) :: rest ->
+                        let kind, _, _, _ = instance.params in
+                        let next = if opaque_instance instance then t.pipe_opaque
+                          else if kind = Lui_gpu.kind_fill then t.pipe_fill
+                          else if kind = Lui_gpu.kind_mask_glyph then t.pipe_mask else pipe in
+                        let strips = outset_scissors instance sc in
+                        match fill_interior instance sc with
+                        | Some inner when next != t.pipe_opaque ->
+                          let acc = if length = 0 then acc else draw offset length current :: acc in
+                          let index = offset + length in
+                          let strips =
+                            [ {sc with bottom=inner.top}; {sc with top=inner.bottom};
+                              {sc with top=inner.top; bottom=inner.bottom; right=inner.left};
+                              {sc with top=inner.top; bottom=inner.bottom; left=inner.right} ] in
+                          let _, _, _, alpha = instance.color in
+                          let _, _, _, opacity = instance.params in
+                          let interior_pipe = if alpha = 1. && opacity = 1.
+                            then t.pipe_opaque else t.pipe_flat in
+                          let acc = draw_at inner index 1 interior_pipe :: acc in
+                          let acc = List.fold_left (fun acc strip ->
+                            if strip.Lui_gpu.left < strip.right && strip.top < strip.bottom
+                            then draw_at strip index 1 next :: acc else acc) acc strips in
+                          runs (index + 1) pipe 0 acc rest
+                        | Some _ | None -> if strips <> [sc] then begin
+                          let acc = if length = 0 then acc else draw offset length current :: acc in
+                          let index = offset + length in
+                          let acc = List.fold_left (fun acc strip -> draw_at strip index 1 next :: acc) acc strips in
+                          runs (index + 1) pipe 0 acc rest
+                        end else if length = 0 || next == current then
+                          runs offset next (length + 1) acc rest
+                        else runs (offset + length) next 1 (draw offset length current :: acc) rest
+                    in
+                    runs first pipe 0 [] b.instances
+                  end
+              | None -> [] )
+           batches |> List.fold_left (fun acc draws -> List.rev_append draws acc) [] |> List.rev)
     in
     let mask_tex = match t.mask.tex with Some x -> x | None -> t.empty in
     let color_tex = match t.color.tex with Some x -> x | None -> t.empty in
@@ -408,7 +543,15 @@ let render (t : t) (s : Lui_scene.t) : unit =
         t.pipe_down, t.pipe_blur )
   end
 
+let gpu_ms (t : t) = metal_gpu_ms t.ctx
+let ready (t : t) = metal_ready t.ctx
 let present (t : t) : unit = metal_present t.ctx
+let present_async (t : t) : unit = metal_present_async t.ctx
+let presented_frames (t : t) = metal_presented_frames t.ctx
+let presentation_samples (t : t) = metal_presentation_samples t.ctx
+let set_frame_rate (t : t) fps =
+  if fps <= 0 then invalid_arg "frame rate must be positive";
+  metal_set_frame_rate t.ctx fps
 
 let read_frame (t : t) ~w ~h : bytes =
   if w <= 0 || h <= 0 then error "read_frame: bad size %d\xC3\x97%d" w h;
@@ -426,6 +569,10 @@ let release (t : t) : unit =
       (match p.elib with Some o -> metal_release o | None -> ()))
     t.effects;
   metal_release t.pipe_main;
+  metal_release t.pipe_fill;
+  metal_release t.pipe_mask;
+  metal_release t.pipe_flat;
+  metal_release t.pipe_opaque;
   metal_release t.pipe_hole;
   metal_release t.pipe_down;
   metal_release t.pipe_blur;
