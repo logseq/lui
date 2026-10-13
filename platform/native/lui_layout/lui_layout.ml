@@ -39,6 +39,10 @@ type t = {
   (* Store ids whose produced subtree needs a rect re-read after the
      incremental pass ([frame_id] = everything). *)
   rect_dirty : (int, unit) Hashtbl.t;
+  (* Store ids whose absolute rect changed under the refresh — paint
+     consumes the accumulated set via {!take_rect_changes} to re-emit
+     only moved subtrees. *)
+  mutable rect_changed : (int, unit) Hashtbl.t;
   (* [pkids p] is the produced expansion of raw parent p's children —
      the shadow the incremental path edits when children move. Present
      for every built node (leaves keep []) and for [frame_id]. *)
@@ -82,6 +86,7 @@ let create () =
     applied = Hashtbl.create 64;
     rects = Hashtbl.create 64;
     rect_dirty = Hashtbl.create 16;
+    rect_changed = Hashtbl.create 64;
     pkids = Hashtbl.create 64;
     sparent = Hashtbl.create 64;
     owner = Hashtbl.create 64;
@@ -1172,14 +1177,34 @@ let extent_of root : float * float =
 
 (* ---------- layout ---------- *)
 
+(* The snap boundary of the pixel-snapping contract: flex math stays
+   fractional, the exported rect is edge-snapped once here so paint,
+   hit-test, scroll extents and damage bounds all share the same
+   device-pixel geometry. *)
 let scene_rect (r : Lui_flex.rect) : Lui_scene.rect =
-  { x = r.x; y = r.y; w = r.w; h = r.h }
+  Lui_scene.rect_snap { x = r.x; y = r.y; w = r.w; h = r.h }
+
+(* Re-read [id]'s absolute rect into [t.rects], marking it changed when
+     it differs from what consumers last saw. *)
+let update_rect (t : t) id r =
+  let r' = scene_rect r in
+  (match Hashtbl.find_opt t.rects id with
+   | Some old when old = r' -> ()
+   | _ -> Hashtbl.replace t.rect_changed id ());
+  Hashtbl.replace t.rects id r'
 
 let collect (t : t) =
-  Hashtbl.reset t.rects;
   Hashtbl.iter
-    (fun id n -> Hashtbl.replace t.rects id (scene_rect (Lui_flex.absolute_layout n)))
+    (fun id n -> update_rect t id (Lui_flex.absolute_layout n))
     t.nodes
+
+(* The set of ids whose absolute rect differed at the last rect
+   refresh. Hands the table itself to the caller and installs a fresh
+   one — ids a later refresh moves again simply re-mark. *)
+let take_rect_changes (t : t) =
+  let s = t.rect_changed in
+  t.rect_changed <- Hashtbl.create (Hashtbl.length s);
+  s
 
 (* The frame style for one offered extent. *)
 let frame_style_for width (height : Lui_flex.length) =
@@ -1481,6 +1506,9 @@ let rec purge ctx id =
   Hashtbl.remove ctx.sparent id;
   Hashtbl.remove ctx.owner id;
   Hashtbl.remove ctx.eng.rects id;
+  (* A dropped rect is a geometry change too: paint consumers holding
+     the old box must re-derive (their layout hook now answers zero). *)
+  Hashtbl.replace ctx.eng.rect_changed id ();
   unregister ctx id
 
 (* display/structure churn on id: rebuild its produced expansion in
@@ -1561,8 +1589,7 @@ let apply_journal_op ctx (op : patch_op) =
    parent — not the changed node). [frame_id] dirties everything. *)
 let rec refresh_sub ctx sid =
   (match Hashtbl.find_opt ctx.nodes sid with
-   | Some f ->
-     Hashtbl.replace ctx.eng.rects sid (scene_rect (Lui_flex.absolute_layout f))
+   | Some f -> update_rect ctx.eng sid (Lui_flex.absolute_layout f)
    | None -> ());
   List.iter
     (fun e -> List.iter (fun g -> refresh_sub ctx g) e.gens)
@@ -1585,6 +1612,11 @@ let ctx_of t store ~scale ~measure ~hidden ctx_anchor ~width ~height : ctx =
 let rebuild ctx (t : t) ~width ~height =
   Hashtbl.reset t.nodes;
   Hashtbl.reset t.applied;
+  (* Rects reset with the mirror: entries for dropped ids would
+     otherwise linger and answer stale rects to {!rect}. Every rect
+     the rebuild produces reads as changed to {!take_rect_changes}
+     consumers. *)
+  Hashtbl.reset t.rects;
   Hashtbl.reset t.pkids;
   Hashtbl.reset t.sparent;
   Hashtbl.reset t.owner;
