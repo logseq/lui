@@ -995,8 +995,16 @@ val list :
   ?opacity_signal:float Signal.signal ->
   ?list_marker:list_marker ->
   ?transition:string -> t list -> t
+(* [virtual_list] keeps all children in the model but materializes
+   only the visible window plus [?overscan] rows (backends that
+   virtualize — web and native). [?item_extent] is the estimated row
+   main extent in logical px, used to size unmeasured rows on the
+   native backend; both ride [data-attrs] as
+   [data-overscan]/[data-item-extent]. *)
 val virtual_list :
   ?key:string ->
+  ?overscan:int ->
+  ?item_extent:float ->
   ?gap:int ->
   ?main:main_alignment ->
   ?cross:cross_alignment ->

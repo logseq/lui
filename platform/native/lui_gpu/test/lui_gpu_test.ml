@@ -437,6 +437,165 @@ let test_shader_source () =
     (String.length G.shader_source > 1000
      && String.sub G.shader_source 0 2 = "//")
 
+(* ---------- scene batch cache ---------- *)
+
+let ops_scene ?(w = 200) ?(h = 100) ops =
+  let s = scene ~w ~h () in
+  s.ops <- ops;
+  s
+
+let frame3 c ?(wide = false) s = G.frame ~wide c s
+
+let test_cache_hit () =
+  let s = ops_scene [ fill () ] in
+  let c = G.batch_cache () in
+  let b1, p1, r1 = frame3 c s in
+  check bool "first builds" true r1;
+  let b2, p2, r2 = frame3 c s in
+  check bool "second reuses" false r2;
+  check bool "same batches" true (b1 == b2);
+  check bool "same buffer" true (p1.data == p2.data);
+  check int "rebuilds" 1 (G.stat_rebuilds c);
+  check int "reuses" 1 (G.stat_reuses c)
+
+let test_cache_touch () =
+  let s = ops_scene [ fill () ] in
+  let c = G.batch_cache () in
+  let b1, _, _ = frame3 c s in
+  s.ops <- [ fill ~r:(rect 5. 5. 20. 20.) () ];
+  (* Writers that mutate outside reset must touch: the cache only
+     rebuilds because the revision moved. *)
+  Lui_scene.touch s;
+  let b2, _, r = frame3 c s in
+  check bool "touch rebuilds" true r;
+  check bool "fresh batches" true (b1 != b2);
+  check int "rebuilds" 2 (G.stat_rebuilds c)
+
+(* A scene object the cache has never compiled always rebuilds, even
+   one byte-identical to the compiled scene — the key pairs identity
+   with revision. *)
+let test_cache_identity () =
+  let ops () = [ fill () ] in
+  let s1 = ops_scene (ops ()) and s2 = ops_scene (ops ()) in
+  let c = G.batch_cache () in
+  ignore (frame3 c s1);
+  let _, _, r2 = frame3 c s2 in
+  check bool "another scene rebuilds" true r2;
+  let _, _, r3 = frame3 c s2 in
+  check bool "then reuses" false r3;
+  let _, _, r4 = frame3 c s1 in
+  check bool "back to first rebuilds" true r4
+
+(* The inputs build folds into instances that the revision does not
+   capture — frame size, text coverage, atlas size, the gamut flag —
+   are in the key: each change recompiles. *)
+let test_cache_key_inputs () =
+  let s = scene ~w:200 ~h:100 () in
+  s.glyphs <- [ glyph () ];
+  s.ops <-
+    [ Glyphs
+        { gstart = 0; gend = 1; gpaint = Solid; gcolor = red;
+          gcolor2 = red; ggradient = (0., 0., 0., 0.); gwide2 = 0;
+          gopacity = 0. } ];
+  let c = G.batch_cache () in
+  let _, _, r0 = frame3 c s in
+  check bool "build" true r0;
+  s.width <- 300;
+  let _, _, r1 = frame3 c s in
+  check bool "width rebuilds" true r1;
+  let _, _, r1b = frame3 c s in
+  check bool "width then reuses" false r1b;
+  s.text <- { s.text with contrast = 1.5 };
+  let _, _, r2 = frame3 c s in
+  check bool "text params rebuild" true r2;
+  ignore (Atlas.grow s.mask_atlas);
+  let _, p, r3 = frame3 c s in
+  check bool "atlas growth rebuilds" true r3;
+  (* Glyph UVs are baked over the doubled atlas: 16/128 = 0.125.
+     [uv] is the instance's eighth float4, floats 28-31. *)
+  check (float 1e-3) "uv re-based" 0.125 p.data.{28};
+  let _, _, r4 = frame3 ~wide:true c s in
+  check bool "wide flag rebuilds" true r4;
+  let _, _, r5 = frame3 ~wide:true c s in
+  check bool "wide then reuses" false r5
+
+(* The staging buffer is grow-only: a smaller later scene reuses it
+   with a shorter live prefix. *)
+let test_cache_buffer_growth () =
+  let s = ops_scene [ fill (); fill (); fill () ] in
+  let c = G.batch_cache () in
+  let _, p1, _ = frame3 c s in
+  check int "three instances" (3 * G.instance_floats) p1.floats;
+  let cap = Bigarray.Array1.dim p1.data in
+  s.ops <- [ fill () ];
+  Lui_scene.touch s;
+  let _, p2, _ = frame3 c s in
+  check int "one instance" G.instance_floats p2.floats;
+  check bool "same buffer" true (p1.data == p2.data);
+  check bool "capacity kept" true (Bigarray.Array1.dim p2.data = cap)
+
+(* ---------- cache benchmark ---------- *)
+
+(* What the GPU marshalling pays per frame on a glyph-heavy scene, the
+   text-500 profile: 500 Glyphs ops indexing 24k glyph records.
+   Reports uncached build+pack against cached frames, hit and miss. *)
+let bench_cache () =
+  let n_ops, n_glyphs = 500, 48 in
+  let s = scene ~w:1280 ~h:800 () in
+  s.glyphs <-
+    List.init (n_ops * n_glyphs) (fun i ->
+        glyph ~x:(Float.of_int (i mod 1000))
+          ~y:(Float.of_int ((i / 50) mod 700)) ());
+  s.ops <-
+    List.init n_ops (fun i ->
+        Glyphs
+          { gstart = i * n_glyphs; gend = (i + 1) * n_glyphs;
+            gpaint = Solid; gcolor = red; gcolor2 = red;
+            ggradient = (0., 0., 0., 0.); gwide2 = 0; gopacity = 0. });
+  let insts =
+    List.fold_left
+      (fun n (b : G.batch) -> n + List.length b.instances)
+      0 (G.build s)
+  in
+  let iters = 200 in
+  let timed f =
+    let t0 = Sys.time () in
+    ignore (f ());
+    (Sys.time () -. t0) *. 1000. /. Float.of_int iters
+  in
+  let uncached =
+    timed (fun () ->
+        for _ = 1 to iters do
+          ignore (G.pack_batches (G.build s))
+        done)
+  in
+  let c = G.batch_cache () in
+  ignore (frame3 c s);
+  let hit =
+    timed (fun () ->
+        for _ = 1 to iters do
+          ignore (frame3 c s)
+        done)
+  in
+  let c2 = G.batch_cache () in
+  let miss =
+    timed (fun () ->
+        for _ = 1 to iters do
+          (* Every frame a repaint: touch, compile, pack. *)
+          Lui_scene.touch s;
+          ignore (frame3 c2 s)
+        done)
+  in
+  Printf.printf
+    "\n  gpu-frame cache, %d instances/frame\n\
+    \  build+pack uncached : %8.3f ms\n\
+    \  cache hit           : %8.4f ms\n\
+    \  cache miss          : %8.3f ms\n\
+    %!"
+    insts uncached hit miss;
+  check int "one hit per frame" iters (G.stat_reuses c);
+  check int "misses rebuild" iters (G.stat_rebuilds c2)
+
 let () =
   run "lui_gpu"
     [ ( "build",
@@ -451,4 +610,11 @@ let () =
           test_case "wide gamut" `Quick test_wide ] );
       ( "packing",
         [ test_case "to_float32_array" `Quick test_float32_packing;
-          test_case "shader source" `Quick test_shader_source ] ) ]
+          test_case "shader source" `Quick test_shader_source ] );
+      ( "batch cache",
+        [ test_case "hit reuses" `Quick test_cache_hit;
+          test_case "touch rebuilds" `Quick test_cache_touch;
+          test_case "scene identity" `Quick test_cache_identity;
+          test_case "key inputs" `Quick test_cache_key_inputs;
+          test_case "buffer growth" `Quick test_cache_buffer_growth;
+          test_case "bench" `Quick bench_cache ] ) ]

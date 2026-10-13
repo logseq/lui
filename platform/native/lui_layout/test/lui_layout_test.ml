@@ -350,6 +350,194 @@ let test_ac_row () =
   check (float eps) "text h" 10. (place p 10).h;
   check (float eps) "wrap h" 10. (place p 4).h
 
+(* ---------- virtual lists ---------- *)
+
+(* root > virtual-list(2) > n 20-px rows keyed "row-i". *)
+let vlist_store ?(item_h = 20.) ~n () =
+  let store = Lui_store.create () in
+  let ops =
+    ref
+      [ InsertChild (1, 2, 0); CreateNode (2, VirtualList);
+        CreateNode (1, Root) ]
+  in
+  for i = 0 to n - 1 do
+    let id = 10 + i in
+    ops :=
+      InsertChild (2, id, i)
+      :: SetProp (id, KeyValue, StringValue (Printf.sprintf "row-%d" i))
+      :: SetProp (id, HeightValue, FloatValue item_h)
+      :: CreateNode (id, ListItem)
+      :: !ops
+  done;
+  Lui_store.apply_batch store { generation = 1; ops = List.rev !ops };
+  store
+
+let vport y h id = if id = 2 then Some (y, h) else None
+
+(* The mounted window is the fed viewport plus overscan — 1000 logical
+   rows never materialize more than a couple dozen. *)
+let test_vlist_window_mounts_slice () =
+  let store = vlist_store ~n:1000 () in
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~measure:no_measure4 ~width:100. ~height:800.
+    ~vport:(vport 0. 200.) t store;
+  let f, l = Option.get (Lui_layout.mounted_range t 2) in
+  check int "first" 0 f;
+  (* 200px viewport over 20px rows = 10 rows (+1 touching) and 4
+     overscan past the end *)
+  check int "last" 15 l;
+  check bool "mounted bounded" true
+    (Lui_layout.mounted_count t 2 <= 15);
+  check int "one vlist" 1 (List.length (Lui_layout.vlists t));
+  (* the list claims the full virtual extent as its frame height *)
+  check (float eps) "extent" 20000.
+    (Option.get (Lui_layout.virtual_extent t 2));
+  check_some_rect "vlist" 0. 0. 100. 20000. (Lui_layout.rect t 2);
+  (* mounted rows sit at model positions *)
+  check_some_rect "row0" 0. 0. 100. 20. (Lui_layout.rect t 10);
+  check_some_rect "row5" 0. 100. 100. 20. (Lui_layout.rect t 15);
+  (* unmounted rows have no rect *)
+  check bool "unmounted no rect" true
+    (Lui_layout.rect t (10 + 500) = None)
+
+(* A memo-hit sync only remounts the window that slid — same store
+   revision, no mirror rebuild, just a different fed viewport. *)
+let test_vlist_window_moves () =
+  let store = vlist_store ~n:1000 () in
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~measure:no_measure4 ~width:100. ~height:800.
+    ~vport:(vport 0. 200.) t store;
+  Lui_layout.sync ~measure:no_measure4 ~width:100. ~height:800.
+    ~vport:(vport 500. 200.) t store;
+  let f, l = Option.get (Lui_layout.mounted_range t 2) in
+  (* [420,780) over 20px rows: items 21..39 *)
+  check int "first" 21 f;
+  check int "last" 40 l;
+  check bool "mounted bounded" true
+    (Lui_layout.mounted_count t 2 <= 19);
+  check_some_rect "row30" 0. 600. 100. 20. (Lui_layout.rect t 40);
+  check bool "before window" true (Lui_layout.rect t 30 = None);
+  check bool "after window" true (Lui_layout.rect t 50 = None);
+  (* scroll-to-item reaches unmounted rows through the model *)
+  check (option int) "key" (Some 30)
+    (Lui_layout.virtual_index_of_key t store 2 "row-30");
+  check_some_rect "item500" 0. 10000. 100. 20.
+    (Lui_layout.virtual_item_rect t 2 ~index:500)
+
+(* Measured extents: a row taller than the estimate refines the model
+   once mounted, and the total reflects measured + estimated parts. *)
+let test_vlist_measured_extents () =
+  let store = Lui_store.create () in
+  let ops =
+    ref
+      [ InsertChild (1, 2, 0); CreateNode (2, VirtualList);
+        CreateNode (1, Root) ]
+  in
+  for i = 0 to 99 do
+    let id = 10 + i in
+    ops :=
+      InsertChild (2, id, i)
+      :: SetProp (id, HeightValue, FloatValue (if i = 0 then 100. else 20.))
+      :: CreateNode (id, ListItem)
+      :: !ops
+  done;
+  Lui_store.apply_batch store { generation = 1; ops = List.rev !ops };
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~measure:no_measure4 ~width:100. ~height:800.
+    ~vport:(vport 0. 200.) t store;
+  (* Estimate = first child's height (100) → the initial window is
+     [0,600) → rows 0..6; mounting them measures rows 1-6 at 20, so
+     the post-patch remount reaches further down the shrunk strides:
+     rows 0..10. Total = 100 + 10*20 + 89*100 estimated. *)
+  let f, l = Option.get (Lui_layout.mounted_range t 2) in
+  check int "first" 0 f;
+  check int "last" 11 l;
+  check (float eps) "extent" 9200.
+    (Option.get (Lui_layout.virtual_extent t 2));
+  (* row 1 sits right after the 100px row 0 *)
+  check_some_rect "row1" 0. 100. 100. 20. (Lui_layout.rect t 11)
+
+(* A gap between rows participates in the stride: positions and the
+   total both include it. *)
+let test_vlist_gap () =
+  let store = vlist_store ~n:100 () in
+  apply store [ SetProp (2, Gap, IntValue 10) ];
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~measure:no_measure4 ~width:100. ~height:800.
+    ~vport:(vport 0. 200.) t store;
+  (* 100 rows * 20 + 99 gaps * 10 = 2990 *)
+  check (float eps) "extent" 2990.
+    (Option.get (Lui_layout.virtual_extent t 2));
+  check_some_rect "row2" 0. 60. 100. 20. (Lui_layout.rect t 12)
+
+(* No vport → the list is unwindowed and mounts every row (the legacy
+   behavior hosts without a viewport feed keep). *)
+let test_vlist_unwindowed () =
+  let store = vlist_store ~n:50 () in
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~measure:no_measure4 ~width:100. ~height:800. t store;
+  let f, l = Option.get (Lui_layout.mounted_range t 2) in
+  check int "all" 50 (l - f);
+  check int "mounted" 50 (Lui_layout.mounted_count t 2);
+  check_some_rect "row49" 0. 980. 100. 20. (Lui_layout.rect t 59)
+
+(* The mounted window's store ids — what paint and hit-test slice to. *)
+let test_vlist_mounted_children () =
+  let store = vlist_store ~n:1000 () in
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~measure:no_measure4 ~width:100. ~height:800.
+    ~vport:(vport 500. 200.) t store;
+  let f, l = Option.get (Lui_layout.mounted_range t 2) in
+  let ids = Option.get (Lui_layout.mounted_children t 2) in
+  check int "window size" (l - f) (List.length ids);
+  check int "first id" (10 + f) (List.hd ids);
+  check int "last id" (10 + l - 1) (List.nth ids (l - f - 1))
+
+(* Variable heights settle through measured extents: overscan rows
+   above the anchor that differ from the estimate shift the prefix
+   sums — the drift the scroller folds back into the offset so the
+   anchored row does not visibly jump. *)
+let test_vlist_anchor_drift () =
+  let store = Lui_store.create () in
+  let ops =
+    ref
+      [ InsertChild (1, 2, 0);
+        SetProp
+          (2, DataAttrs,
+            StringValue
+              (Lui_protocol.data_attrs_encode
+                 [ ("data-item-extent", "20") ]));
+        CreateNode (2, VirtualList); CreateNode (1, Root) ]
+  in
+  for i = 0 to 99 do
+    let id = 10 + i in
+    (* Rows 46-49 are really 60 px against the 20-px estimate. *)
+    ops :=
+      InsertChild (2, id, i)
+      :: SetProp
+           (id, HeightValue,
+             FloatValue (if i >= 46 && i < 50 then 60. else 20.))
+      :: CreateNode (id, ListItem) :: !ops
+  done;
+  Lui_store.apply_batch store { generation = 1; ops = List.rev !ops };
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~measure:no_measure4 ~width:100. ~height:800.
+    ~vport:(vport 0. 300.) t store;
+  (* Anchor is item 0 — nothing above it can move. *)
+  check (float eps) "no drift at top" 0.
+    (Lui_layout.virtual_take_drift t 2);
+  (* Jump mid-list: rows 46-49 mount in the overscan band and measure
+     60 instead of the 20 estimate — prefix(anchor=50) grew by 160. *)
+  Lui_layout.sync ~measure:no_measure4 ~width:100. ~height:800.
+    ~vport:(vport 1000. 300.) t store;
+  check (float eps) "drift" 160. (Lui_layout.virtual_take_drift t 2);
+  (* consume-on-read *)
+  check (float eps) "consumed" 0. (Lui_layout.virtual_take_drift t 2);
+  (* the model reports corrected positions: item 50 sits at
+     46*20 + 4*60 = 1160 *)
+  check_some_rect "item50" 0. 1160. 100. 20.
+    (Lui_layout.virtual_item_rect t 2 ~index:50)
+
 (* Pixel snapping contract: at a fractional backing scale the exported
    rects land on device-pixel edges, and siblings stacked without a
    gap share their boundary exactly — the same snapped geometry feeds
@@ -378,6 +566,7 @@ let test_snapped_edges () =
      second child shares exactly. *)
   check_rect "child1" 5. 5. 191. 30. r3;
   check_rect "child2 shared edge" 5. 35. 191. 30. r4
+
 (* ---------- incremental mirror ---------- *)
 
 let rect_or_zero t id =
@@ -531,6 +720,32 @@ let test_incremental_large_tree () =
   check_equiv "big restyle" store t;
   check bool "fast incremental" true (dt < 0.5)
 
+(* Journal ops that land inside a virtual list resync its side forest
+   instead of rebuilding the mirror — composed row rects still match a
+   fresh full layout of the same store. *)
+let test_vlist_incremental_child () =
+  let store = vlist_store ~n:30 () in
+  let t = Lui_layout.create () in
+  (* Frame and measure inputs match [check_equiv]'s oracle exactly —
+     no vport, so the whole list mounts like an ordinary column. *)
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  check int "mounted all" 30 (Lui_layout.mounted_count t 2);
+  (* Layout prop on a mounted row replays through the journal. *)
+  apply store [ SetProp (15, HeightValue, IntValue 60) ];
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  check bool "incremental path" true (Lui_layout.stat_steps t > 0);
+  check_equiv "row resized" store t;
+  (* A structural op under the list: a new row splices in. *)
+  apply store
+    [ CreateNode (200, ListItem); InsertChild (2, 200, 3);
+      SetProp (200, HeightValue, IntValue 25) ];
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  check_equiv "row inserted" store t;
+  (* And one removed again, then dropped. *)
+  apply store [ RemoveChild (2, 12); DropNode 12 ];
+  Lui_layout.sync ~width:200. ~height:100. t store;
+  check_equiv "row dropped" store t
+
 let () =
   run "lui_layout"
     [ ("layout",
@@ -551,6 +766,16 @@ let () =
          test_case "root popup" `Quick test_root_popup_centered_in_frame;
          test_case "menu panel" `Quick test_menu_panel;
          test_case "ac row" `Quick test_ac_row;
+         test_case "vlist window" `Quick test_vlist_window_mounts_slice;
+         test_case "vlist window moves" `Quick test_vlist_window_moves;
+         test_case "vlist measured" `Quick test_vlist_measured_extents;
+         test_case "vlist gap" `Quick test_vlist_gap;
+         test_case "vlist unwindowed" `Quick test_vlist_unwindowed;
+         test_case "vlist mounted children" `Quick
+           test_vlist_mounted_children;
+         test_case "vlist anchor drift" `Quick test_vlist_anchor_drift;
+         test_case "vlist incremental child" `Quick
+           test_vlist_incremental_child;
          test_case "snapped edges" `Quick test_snapped_edges;
          test_case "incremental equivalence" `Quick
            test_incremental_equivalence;

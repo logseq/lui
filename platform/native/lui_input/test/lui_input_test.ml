@@ -426,7 +426,8 @@ let scroll_env () =
       (fun id ->
          if id = 5 then rect 0. 0. 100. 100.
          else rect 0. 0. 100. 20.);
-    rects_epoch = 1 }
+    rects_epoch = 1;
+    vlist = None }
 
 let test_scroll_offsets () =
   let store = store_of base_ops in

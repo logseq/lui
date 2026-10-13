@@ -67,15 +67,6 @@ val attribute_offset : int -> int -> int
 (** [attribute_offset index attribute] is the byte offset of [attribute]
     of instance [index]. *)
 
-type pack = {
-  data : (float, Bigarray.float32_elt, Bigarray.c_layout) Bigarray.Array1.t;
-  spans : (int * int) array;  (** instance (start, count) per batch *)
-}
-
-val pack_batches : Lui_gpu.batch list -> pack
-(** The instance data of [batches], packed as the vertex shader reads
-    them, plus each batch's span. *)
-
 val clamp_scissor : Lui_gpu.scissor -> w:int -> h:int -> Lui_gpu.scissor
 
 type atlas_plan = Recreate | Upload of Lui_scene.irect list | Nothing

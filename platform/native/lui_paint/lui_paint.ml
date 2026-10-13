@@ -422,6 +422,11 @@ type hooks = {
   layout : int -> placement;         (* node id → layout result *)
   state_of : int -> state;           (* node id → interaction state *)
   scroll_of : int -> scroll_metrics option; (* scroll container metrics *)
+  mounted_children : int -> int list option;
+    (* virtualized container id → mounted child store ids: the child
+       walk enumerates only that slice, so a scroll frame over a 100k
+       virtual list touches ~30 rows, not 100k. [None] enumerates
+       every child (ordinary containers). *)
   text_ops : int -> rect -> color -> string -> op list; (* text engine *)
   image_of : int -> image option;    (* node id → decoded image *)
   image_in : int -> rect -> image option;
@@ -467,6 +472,7 @@ let default_hooks =
     layout = (fun _ -> placement_of_rect (rect 0. 0. 0. 0.));
     state_of = (fun _ -> state_neutral);
     scroll_of = (fun _ -> None);
+    mounted_children = (fun _ -> None);
     text_ops = (fun _ _ _ _ -> []);
     image_of = (fun _ -> None);
     image_in = (fun _ _ -> None);
@@ -2329,8 +2335,7 @@ let zindex store id =
    exits on the first nonzero z-index so a lone stacked sibling is the
    only reason to sort — most lists have none and pay one prop lookup
    per child, no fingerprint list, no sort. *)
-let ordered_children store id =
-  let kids = Lui_store.children store id in
+let z_ordered store kids =
   if List.exists (fun c -> zindex store (Lui_store.node_id c) <> 0) kids
   then
     List.stable_sort
@@ -2340,6 +2345,8 @@ let ordered_children store id =
           (zindex store (Lui_store.node_id b)))
       kids
   else kids
+
+let ordered_children store id = z_ordered store (Lui_store.children store id)
 
 let node_shown store id =
   (match Lui_store.prop store id "visible" with
@@ -2410,9 +2417,16 @@ type 'a branch = {
    and wide parents enumerate candidates through the interval index
    instead of scanning every child. Pruning is a strict filter on the
    unindexed walk's visit set — same order, same clip contexts. *)
-let walk ~scale ~viewport store ~layout ~enter ~ghost_enter ~leave
+let walk ?(mounted = fun _ -> None) ~scale ~viewport store ~layout ~enter ~ghost_enter ~leave
     ?spatial ctx0 =
   let deferred = Queue.create () in
+  (* Virtualized containers walk only their mounted window slice. *)
+  let kids id =
+    match mounted id with
+    | Some ids ->
+      z_ordered store (List.filter_map (Lui_store.find_opt store) ids)
+    | None -> ordered_children store id
+  in
   (* A clip context that misses [viewport] entirely is dead: nothing
      inside it can paint or be hit — except promoted popups, which
      escape to the overlay pass. *)
@@ -2451,10 +2465,11 @@ let walk ~scale ~viewport store ~layout ~enter ~ghost_enter ~leave
             match Lui_store.find_opt store cid with
             | Some c -> ghost ctx clip child_parent c
             | None -> ())
-          (match spatial with
-           | None ->
+          (match mounted id, spatial with
+           | Some _, _ -> List.map Lui_store.node_id (kids id)
+           | None, None ->
              List.map Lui_store.node_id (ordered_children store id)
-           | Some (idx, q) -> candidates idx q clip id)
+           | None, Some (idx, q) -> candidates idx q clip id)
       end
   (* Children of [id] that could contribute to the query under clip
      context [clip]: the interval index for indexed parents, the
@@ -2501,11 +2516,14 @@ let walk ~scale ~viewport store ~layout ~enter ~ghost_enter ~leave
     let br = enter ctx f in
     if br.b_down then begin
       let child_clip = if clips_own then Some clipped else clip in
-      match spatial with
-      | None ->
+      (* Mounted virtual-list slices are already window-sized; the
+         spatial index only prunes ordinary children. *)
+      match mounted id, spatial with
+      | Some _, _ -> List.iter (go br.b_ctx child_clip f.f_parent_r) (kids id)
+      | None, None ->
         List.iter (go br.b_ctx child_clip f.f_parent_r)
           (ordered_children store id)
-      | Some (idx, q) ->
+      | None, Some (idx, q) ->
         List.iter
           (fun cid ->
             match Lui_store.find_opt store cid with
@@ -2699,6 +2717,7 @@ let paint ?spatial hooks store scene ~width ~height ~scale ~clear =
       deferred = Queue.create () }
   in
   walk ~scale ~viewport:ctx.viewport store ~layout:hooks.layout
+    ~mounted:hooks.mounted_children
     ~enter:(paint_enter ctx store scene)
     ~ghost_enter:(paint_ghost_enter ctx store)
     ~leave:(paint_leave ctx store scene)

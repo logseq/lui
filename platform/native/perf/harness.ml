@@ -225,6 +225,15 @@ let scroll_shift t id =
 
 let set_scroll t id off = Hashtbl.replace t.scroll id off
 
+(* Anchor correction, the way the window driver applies it in
+   populate: measurement drift folds back into the scroll offset so
+   the top row keeps its screen position. *)
+let apply_vlist_drift t id =
+  let d = Lui_layout.virtual_take_drift t.engine id in
+  if Float.abs d > 0.001 then
+    set_scroll t id
+      (Option.value ~default:0. (Hashtbl.find_opt t.scroll id) +. d)
+
 (* Engine rect shifted by ancestor scroll offsets — what paint and hit
    tests see. *)
 let rect_of t id =
@@ -246,11 +255,15 @@ let visible_children t ~root ~clip =
        0
 
 let paint_hooks t =
+  let mounted_children = Lui_layout.mounted_children t.engine in
   if Hashtbl.length t.scroll = 0 then
-    { t.hooks with layout = Lui_layout.layout_hook t.engine }
+    { t.hooks with
+      layout = Lui_layout.layout_hook t.engine;
+      mounted_children }
   else
     {
       t.hooks with
+      mounted_children;
       layout =
         (fun id ->
           let p = Lui_layout.layout_hook t.engine id in
@@ -261,6 +274,33 @@ let paint_hooks t =
               { p.p_rect with y = p.p_rect.y -. sy });
     }
 
+(* Virtual-list viewport feed, same composition the window driver
+   makes: the container's scroll offset plus how far the frame clip
+   has scrolled into its shifted box. *)
+let vport_of t id =
+  if Lui_store.kind (store t) id <> "virtual-list" then None
+  else begin
+    let er =
+      match Lui_layout.rect t.engine id with
+      | Some r -> r
+      | None -> rect 0. 0. 0. 0.
+    in
+    let shifted = { er with y = er.y -. scroll_shift t id } in
+    let clip =
+      rect_intersect shifted
+        (rect 0. 0. (float_of_int t.width) (float_of_int t.height))
+    in
+    Some
+      ( Option.value ~default:0. (Hashtbl.find_opt t.scroll id)
+        +. Float.max 0. (clip.y -. shifted.y),
+        Float.max 0. clip.h )
+  end
+
+(* Mounted window [first, last) and mounted row count for a virtual
+   list id — the structural bound the scenarios assert. *)
+let mounted_range t id = Lui_layout.mounted_range t.engine id
+let mounted_count t id = Lui_layout.mounted_count t.engine id
+
 (* ---------- timed stages (each returns elapsed ms) ---------- *)
 
 let apply t batch =
@@ -269,7 +309,7 @@ let apply t batch =
 let layout t =
   snd
     (timed (fun () ->
-         Lui_layout.sync ~scale:t.scale ~measure
+         Lui_layout.sync ~scale:t.scale ~measure ~vport:(vport_of t)
            ~width:(float_of_int t.width)
            ~height:(float_of_int t.height) t.engine (store t)))
 

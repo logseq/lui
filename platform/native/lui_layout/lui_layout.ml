@@ -17,6 +17,74 @@ type text_measure = int -> string -> float -> float -> (float * float) option
 let no_measure _id _text _offered_w _offered_h = None
 let show_all _id = false
 
+(* Content-space visible range fed to a virtual list: (start, extent)
+   in the list's own border-box coordinates. *)
+type viewport = float * float
+
+let no_vport _id = None
+
+(* ---------- virtual lists ----------
+
+   A [virtual-list] node's store children are the logical items; only
+   the mounted window [first, last) of item indices gets flex trees —
+   the node itself stays a leaf in the main mirror whose intrinsic
+   main size is the virtual content extent. Row subtrees live in a
+   side forest per virtual list; their absolute rects are composed
+   (list content origin + model offset + row-relative layout) into
+   [t.rects], so paint, hit-testing and scroll math see ordinary
+   rects while unmounted items cost nothing. *)
+
+(* One mounted row's flex subtree and the store ids it registered —
+   the subtree is dropped wholesale when the row leaves the window. *)
+type vrow = {
+  rf : Lui_flex.node;
+  rids : int list;
+}
+
+type vlist = {
+  vid : int;
+  mutable count : int;
+  mutable kids : int array;   (* logical child ids, per structural sync *)
+  mutable estimate : float;  (* unmeasured row main extent, device px *)
+  mutable overscan : int;    (* extra rows mounted past each view edge *)
+  mutable gap : float;       (* resolved row gap, device px *)
+  mutable pad0 : float;      (* main-axis padding, near and far edges *)
+  mutable pad1 : float;
+  mutable bor0 : float;      (* main-axis border *)
+  mutable bor1 : float;
+  mutable origin_main : float;  (* border-box main origin, frame px *)
+  mutable origin_cross : float; (* content-box cross origin *)
+  mutable cross_size : float;   (* content-box cross size: row width *)
+  measured : (int, float) Hashtbl.t; (* index → measured main extent *)
+  mutable bit : float array;   (* Fenwick tree over stride = ext + gap *)
+  mutable total : float;       (* padding-box content span *)
+  mutable first : int;         (* mounted window [first, last) *)
+  mutable last : int;
+  mutable vs : float;          (* last viewport fed (content space) *)
+  mutable ve : float;
+  mutable windowed : bool;     (* a viewport was supplied → slice *)
+  mutable drift : float;       (* pending anchor correction, device px *)
+  rows : (int, vrow) Hashtbl.t;   (* index → mounted row subtree *)
+  nodes : (int, Lui_flex.node) Hashtbl.t; (* store id → flex node, rows *)
+  mutable mounted_ids : int list; (* ids whose rects are registered *)
+  mutable key_index : (string, int) Hashtbl.t option; (* lazy key → index *)
+  mutable id_index : (int, int) Hashtbl.t option; (* lazy store id → index *)
+  mutable built_cross : float; (* cross size the mounted rows laid out at *)
+}
+
+(* The sync inputs a scroll-driven remount needs to rebuild row
+   subtrees on a memo-hit path: the live store plus the style/measure
+   context the rows were built under. *)
+type saved_ctx = {
+  sc_scale : float;
+  sc_vw : float;
+  sc_vh : float;
+  sc_tm : text_measure;
+  sc_hidden : int -> bool;
+  sc_anchor : (float * float) option;
+  sc_store : Lui_store.t;
+}
+
 (* One raw child's produced expansion inside its parent's produced
    list: [gens] is the flat list of store ids that own flex nodes and
    land, in order, inside the flex children of the parent's flex owner
@@ -36,6 +104,8 @@ type t = {
   nodes : (int, Lui_flex.node) Hashtbl.t; (* store id → flex node *)
   applied : (int, Lui_flex.style) Hashtbl.t; (* store id → applied style *)
   rects : (int, Lui_scene.rect) Hashtbl.t;
+  vlists : (int, vlist) Hashtbl.t; (* store id → virtual-list state *)
+  mutable vctx : saved_ctx option; (* inputs of the last full sync *)
   (* Store ids whose produced subtree needs a rect re-read after the
      incremental pass ([frame_id] = everything). *)
   rect_dirty : (int, unit) Hashtbl.t;
@@ -85,6 +155,8 @@ let create () =
     nodes = Hashtbl.create 64;
     applied = Hashtbl.create 64;
     rects = Hashtbl.create 64;
+    vlists = Hashtbl.create 4;
+    vctx = None;
     rect_dirty = Hashtbl.create 16;
     rect_changed = Hashtbl.create 64;
     pkids = Hashtbl.create 64;
@@ -640,6 +712,24 @@ let ordered_child_ids store id kind : int list =
       | Some ("bottom" | "trailing") -> ids
       | _ -> pinned @ [ content ])
 
+(* Resolve a length against an owner dimension; non-absolute specs
+   count as zero for the purposes of these patches. *)
+let len_px ~owner (l : Lui_flex.length) : float =
+  match l with
+  | Pt v -> v
+  | Percent p -> owner *. p /. 100.
+  | _ -> 0.
+
+(* One named edge of an [edges] record, following the engine's cascade:
+   named side > axis shorthand (horizontal/vertical) > all. *)
+let edge_px ~owner named axis (e : Lui_flex.edges) : float =
+  let defined (l : Lui_flex.length) =
+    match l with Unset | Auto -> false | _ -> true
+  in
+  if defined named then len_px ~owner named
+  else if defined axis then len_px ~owner axis
+  else len_px ~owner e.all
+
 (* ---------- mirror ---------- *)
 
 let display_none store id = pstr store id "display" = Some "none"
@@ -684,7 +774,243 @@ type ctx = {
   owner : (int, int) Hashtbl.t;
   grids : (int * Lui_flex.node * Lui_flex.style * float) list ref;
   popups : (Lui_flex.node * int) list ref; (* flex node, store id *)
+  vlists : (int, vlist) Hashtbl.t; (* virtual-list states (t.vlists) *)
+  (* Virtual lists a journal op touched this sync — resynced before
+     layout (row forests are rebuilt, never edited in place). *)
+  vresync : (int, unit) Hashtbl.t;
 }
+
+(* ---------- virtual-list extent model ----------
+
+   Per-item main extents feed a Fenwick tree over stride = extent + gap,
+   so index→offset and offset→index are both O(log n): prefix(i) is
+   the content-space offset of item i inside the padding box. *)
+
+let vlist_ext (v : vlist) i =
+  match Hashtbl.find_opt v.measured i with
+  | Some h -> h
+  | None -> v.estimate
+
+(* Sum of strides[0..i) — item i's offset within the padding box. *)
+let bit_sum (bit : float array) i =
+  let rec go i acc =
+    if i <= 0 then acc else go (i - (i land (-i))) (acc +. bit.(i))
+  in
+  go i 0.
+
+let bit_add (bit : float array) i d =
+  let n = Array.length bit - 1 in
+  let rec go i =
+    if i <= n then begin
+      bit.(i) <- bit.(i) +. d;
+      go (i + (i land (-i)))
+    end
+  in
+  go (i + 1)
+
+(* Largest i ∈ [0,n] with prefix(i) ≤ y: the index of the item whose
+   span contains y (n when y lies past the content end). *)
+let bit_lower (bit : float array) y =
+  let n = Array.length bit - 1 in
+  let idx = ref 0 and acc = ref 0. in
+  let k = ref 1 in
+  while !k * 2 <= n do
+    k := !k * 2
+  done;
+  while !k > 0 do
+    let nx = !idx + !k in
+    if nx <= n && !acc +. bit.(nx) <= y then begin
+      idx := nx;
+      acc := !acc +. bit.(nx)
+    end;
+    k := !k lsr 1
+  done;
+  !idx
+
+let vlist_total (v : vlist) =
+  v.pad0
+  +. (if v.count = 0 then 0. else bit_sum v.bit v.count -. v.gap)
+  +. v.pad1
+
+let vlist_rebuild_bit (v : vlist) =
+  let n = v.count in
+  let bit = Array.make (n + 1) 0. in
+  for i = 0 to n - 1 do
+    bit.(i + 1) <- vlist_ext v i +. v.gap
+  done;
+  for i = 1 to n do
+    let j = i + (i land (-i)) in
+    if j <= n then bit.(j) <- bit.(j) +. bit.(i)
+  done;
+  v.bit <- bit;
+  v.total <- vlist_total v
+
+let vlist_measure (v : vlist) i h =
+  let old = vlist_ext v i in
+  if Float.abs (h -. old) > 0.01 then begin
+    Hashtbl.replace v.measured i h;
+    bit_add v.bit i (h -. old);
+    v.total <- v.total +. (h -. old)
+  end
+
+let vlist_state ctx id =
+  match Hashtbl.find_opt ctx.vlists id with
+  | Some v -> v
+  | None ->
+    let v =
+      {
+        vid = id;
+        count = 0;
+        kids = [||];
+        estimate = 0.;
+        overscan = 4;
+        gap = 0.;
+        pad0 = 0.;
+        pad1 = 0.;
+        bor0 = 0.;
+        bor1 = 0.;
+        origin_main = 0.;
+        origin_cross = 0.;
+        cross_size = 0.;
+        measured = Hashtbl.create 16;
+        bit = [| 0. |];
+        total = 0.;
+        first = 0;
+        last = 0;
+        vs = 0.;
+        ve = 0.;
+        windowed = false;
+        drift = 0.;
+        rows = Hashtbl.create 16;
+        nodes = Hashtbl.create 64;
+        mounted_ids = [];
+        key_index = None;
+        id_index = None;
+        built_cross = 0.;
+      }
+    in
+    Hashtbl.replace ctx.vlists id v;
+    v
+
+(* data-attrs is the wire-clean channel for virtual-list config that
+   the schema does not model: [data-item-extent] is the estimated row
+   main extent in logical px, [data-overscan] the extra rows mounted
+   past each viewport edge, [data-scroll-target]/[data-scroll-token]/
+   [data-scroll-anchor] the scroll-request triple and
+   [data-track-visible-range] the visible-range opt-in. *)
+let vlist_data_attr store id name =
+  match Lui_store.prop store id "data-attrs" with
+  | Some (StringValue s) -> (
+    try List.assoc_opt name (Lui_protocol.data_attrs_decode s)
+    with Invalid_argument _ -> None)
+  | _ -> None
+
+(* M3 virtualizes the vertical axis only: a horizontal virtual-list
+   keeps the ordinary flow path (all children in the mirror). *)
+let vlist_vertical store id =
+  pstr store id "orientation" <> Some "horizontal"
+
+(* Pull the model inputs off the resolved style and the data-attrs.
+   [style] is the vlist's own flex style — padding, border and the
+   row gap come straight from it. *)
+let vlist_configure ctx store (v : vlist) (style : Lui_flex.style) =
+  (* The logical child ids snapshot: [count] stays O(1) on the store,
+     but a per-row indexed probe on the intrusive child list is O(i),
+     so the window machinery reads this array instead. One O(count)
+     materialization per structural sync — the same order the mirror
+     build already pays. *)
+  v.kids <- Array.of_list (Lui_store.child_ids store v.vid);
+  let count = Lui_store.child_count store v.vid in
+  let gap = len_px ~owner:ctx.vh style.row_gap in
+  let estimate =
+    match
+      Option.bind
+        (vlist_data_attr store v.vid "data-item-extent")
+        (fun s -> float_of_string_opt (String.trim s))
+    with
+    | Some f when f > 0. -> f *. ctx.scale
+    | _ -> (
+      match if count > 0 then v.kids.(0) else -1 with
+      | cid when cid >= 0 -> (
+        match pnum store cid "height" with
+        | Some h -> h *. ctx.scale
+        | None -> 28. *. ctx.scale)
+      | _ -> 28. *. ctx.scale)
+  in
+  let overscan =
+    match
+      Option.bind
+        (vlist_data_attr store v.vid "data-overscan")
+        (fun s -> int_of_string_opt (String.trim s))
+    with
+    | Some n -> max 0 n
+    | None -> 4
+  in
+  (* Configure runs once per structural sync; child props may have
+     changed under a stable shape, so the lazy lookup indexes rebuild
+     on demand. *)
+  v.key_index <- None;
+  v.id_index <- None;
+  let shape_changed =
+    count <> v.count || estimate <> v.estimate || gap <> v.gap
+  in
+  v.count <- count;
+  v.estimate <- estimate;
+  v.overscan <- overscan;
+  v.gap <- gap;
+  v.pad0 <-
+    edge_px ~owner:ctx.vh style.padding.top style.padding.vertical
+      style.padding;
+  v.pad1 <-
+    edge_px ~owner:ctx.vh style.padding.bottom style.padding.vertical
+      style.padding;
+  v.bor0 <-
+    edge_px ~owner:ctx.vh style.border.top style.border.vertical
+      style.border;
+  v.bor1 <-
+    edge_px ~owner:ctx.vh style.border.bottom style.border.vertical
+      style.border;
+  if shape_changed then begin
+    Hashtbl.filter_map_inplace
+      (fun i h -> if i < count then Some h else None)
+      v.measured;
+    vlist_rebuild_bit v
+  end
+  else v.total <- vlist_total v
+
+(* The leaf patch: a self-sizing virtual list claims the virtual
+   content extent as its minimum main size, so the frame grows to the
+   full logical content exactly like the un-windowed flow did. *)
+let vlist_leaf_style ctx (v : vlist) (style : Lui_flex.style) :
+    Lui_flex.style =
+  match style.height with
+  | Unset ->
+    let want = v.bor0 +. v.total +. v.bor1 in
+    let cur = len_px ~owner:ctx.vh style.min_height in
+    { style with min_height = Pt (Float.max cur want) }
+  | _ -> style
+
+(* Mounted window [first, last) of item indices: the fed viewport
+   expanded by [overscan] strides, clamped to \[0, count]. *)
+let vlist_range (v : vlist) =
+  if (not v.windowed) || v.count = 0 then (0, v.count)
+  else begin
+    let over =
+      float_of_int v.overscan *. Float.max (v.estimate +. v.gap) 1.
+    in
+    let item_at y =
+      min (v.count - 1)
+        (bit_lower v.bit (Float.max 0. (y -. v.bor0 -. v.pad0)))
+    in
+    let first = max 0 (item_at (v.vs -. over)) in
+    let last =
+      min v.count
+        (bit_lower v.bit
+           (Float.max 0. (v.vs +. v.ve +. over -. v.bor0 -. v.pad0))
+        + 1)
+    in
+    (first, max first last)
+  end
 
 let kind_of ctx id = if id = frame_id then "frame" else Lui_store.kind ctx.store id
 
@@ -798,6 +1124,22 @@ let rec build ctx ~owner_id ~pkind ~pid ~index id : (Lui_flex.node * int) list =
       style_of ~scale:ctx.scale ~viewport:(ctx.vw, ctx.vh) ctx.store id
       |> adjust ~pkind ~pid ~index ctx.store id
     in
+    if kind = "virtual-list" && vlist_vertical ctx.store id then begin
+      (* Real virtualization: the list is a leaf in this mirror — only
+         the mounted row window gets flex trees (side forest). Its
+         produced child list stays empty; [pkids] records the leaf. *)
+      let v = vlist_state ctx id in
+      vlist_configure ctx ctx.store v style;
+      let style = vlist_leaf_style ctx v style in
+      let node = Lui_flex.create ~style [] in
+      Hashtbl.replace ctx.nodes id node;
+      Hashtbl.replace ctx.applied id style;
+      Hashtbl.replace ctx.owner id owner_id;
+      Hashtbl.replace ctx.pkids id [];
+      register ctx id kind node style;
+      [ (node, id) ]
+    end
+    else
     let cids = ordered_child_ids ctx.store id kind in
     let kids, () =
       expand_children ctx ~owner:id ~pkind:kind ~pid:id ~raw_parent:id
@@ -849,24 +1191,6 @@ and expand_children ctx ~owner ~pkind ~pid ~raw_parent ~first cids =
      [inset*], [x]/[y] or [anchor]) would land at its parent's origin.
      The default is centered in the containing block — the flex
      parent's border box, or the offered frame for a store-root popup. *)
-
-(* Resolve a length against an owner dimension; non-absolute specs
-   count as zero for the purposes of these patches. *)
-let len_px ~owner (l : Lui_flex.length) : float =
-  match l with
-  | Pt v -> v
-  | Percent p -> owner *. p /. 100.
-  | _ -> 0.
-
-(* One named edge of an [edges] record, following the engine's cascade:
-   named side > axis shorthand (horizontal/vertical) > all. *)
-let edge_px ~owner named axis (e : Lui_flex.edges) : float =
-  let defined (l : Lui_flex.length) =
-    match l with Unset | Auto -> false | _ -> true
-  in
-  if defined named then len_px ~owner named
-  else if defined axis then len_px ~owner axis
-  else len_px ~owner e.all
 
 (* Pin every flex child of a [columns = n] grid to its real share of
    the row so [n] cells plus [(n-1)] gaps fit one line. The produced
@@ -1226,6 +1550,404 @@ let layout_frame root ~width ~height : float * float =
   Lui_flex.compute_layout root ~width:ew ~height:eh ();
   (ew, eh)
 
+(* ---------- mirror purge and virtual-list ancestry ----------
+
+   Shared by the virtual-list passes below and the incremental journal:
+   row subtrees register into the mirror's shadow tables (pkids,
+   sparent, owner) even though their flex nodes live in the list's own
+   [v.nodes] table, so dropping a row must scrub both. *)
+
+(* Remove id's flex node and every built descendant's mirror state —
+   shadow tables included, so a dropped row leaves no trace the
+   incremental path could trip over. *)
+let rec purge ctx id =
+  (match Hashtbl.find_opt ctx.pkids id with
+   | Some es ->
+     Hashtbl.remove ctx.pkids id;
+     List.iter (fun e -> purge ctx e.raw) es
+   | None -> ());
+  Hashtbl.remove ctx.nodes id;
+  Hashtbl.remove ctx.applied id;
+  Hashtbl.remove ctx.sparent id;
+  Hashtbl.remove ctx.owner id;
+  Hashtbl.remove ctx.eng.rects id;
+  (* A dropped rect is a geometry change too: paint consumers holding
+     the old box must re-derive (their layout hook now answers zero). *)
+  Hashtbl.replace ctx.eng.rect_changed id ();
+  unregister ctx id
+
+let vlist_of ctx id = if Hashtbl.mem ctx.vlists id then Some id else None
+
+(* The live virtual list [id] sits inside, if any — strict ancestors
+   only. [sparent] covers mounted row subtrees (row roots point at the
+   list); the store parent covers everything else: unmounted items and
+   nodes the journal just moved. *)
+let rec vlist_ancestor ctx id =
+  if id = frame_id then None
+  else
+    let above p =
+      match vlist_of ctx p with
+      | Some _ as v -> v
+      | None -> vlist_ancestor ctx p
+    in
+    match Hashtbl.find_opt ctx.sparent id with
+    | Some p -> above p
+    | None -> (
+      match Lui_store.parent ctx.store id with
+      | Some p -> above p
+      | None -> None)
+
+(* Marks the enclosing list for resync; true when [id] sits inside one. *)
+let under_vlist ctx id =
+  match vlist_ancestor ctx id with
+  | Some v -> Hashtbl.replace ctx.vresync v (); true
+  | None -> false
+
+(* Same, but [id] itself counts: the parent argument of a child op is
+   the list it lands in, not a node inside it. *)
+let in_vlist ctx id =
+  match vlist_of ctx id with
+  | Some v -> Hashtbl.replace ctx.vresync v (); true
+  | None -> under_vlist ctx id
+
+(* ---------- virtual-list post-layout passes ----------
+
+   After the mirror computes, each virtual list learns its own content
+   geometry (origin, cross size) from the resolved rect, mounts the
+   window of row subtrees the fed viewport covers, measures them into
+   the extent model, and composes their absolute rects into [t.rects]. *)
+
+let vlist_geometry ctx (v : vlist) =
+  match Hashtbl.find_opt ctx.nodes v.vid with
+  | None -> ()
+  | Some f ->
+    let ar = Lui_flex.absolute_layout f in
+    let s =
+      match Hashtbl.find_opt ctx.applied v.vid with
+      | Some s -> s
+      | None -> Lui_flex.default_style
+    in
+    let bl = edge_px ~owner:ar.w s.border.left s.border.horizontal s.border
+    and br = edge_px ~owner:ar.w s.border.right s.border.horizontal s.border
+    and pl = edge_px ~owner:ar.w s.padding.left s.padding.horizontal s.padding
+    and pr = edge_px ~owner:ar.w s.padding.right s.padding.horizontal s.padding in
+    v.bor0 <- edge_px ~owner:ar.h s.border.top s.border.vertical s.border;
+    v.bor1 <- edge_px ~owner:ar.h s.border.bottom s.border.vertical s.border;
+    v.pad0 <- edge_px ~owner:ar.h s.padding.top s.padding.vertical s.padding;
+    v.pad1 <- edge_px ~owner:ar.h s.padding.bottom s.padding.vertical s.padding;
+    v.origin_main <- ar.y;
+    v.origin_cross <- ar.x +. bl +. pl;
+    v.cross_size <- Float.max 0. (ar.w -. bl -. br -. pl -. pr)
+
+(* Drop one mounted row: its shadow registrations (rows share the
+   mirror's shadow tables, which is how journal ops routed to a row
+   find the list), its per-list flex nodes and its composed rects.
+   A subtree that moved out of the list mid-batch keeps its new mirror
+   slot — its raw chain no longer reaches this list. *)
+let drop_vrow ctx (v : vlist) i (row : vrow) =
+  List.iter
+    (fun id ->
+      match vlist_ancestor ctx id with
+      | Some a when a = v.vid -> purge ctx id
+      | _ -> ())
+    row.rids;
+  List.iter (fun id -> Hashtbl.remove v.nodes id) row.rids;
+  Hashtbl.remove v.rows i
+
+(* Mount the row subtrees for [first, last): drop the ones that left
+   the window, build the ones that entered. A row is a standalone flex
+   tree measured against the list's content width; its laid-out main
+   extent refines the model ([vlist_measure]). *)
+let build_vrows _t ctx store (v : vlist) ~first ~last =
+  let stale = ref [] in
+  Hashtbl.iter
+    (fun i (_ : vrow) -> if i < first || i >= last then stale := i :: !stale)
+    v.rows;
+  List.iter
+    (fun i ->
+       match Hashtbl.find_opt v.rows i with
+       | Some row -> drop_vrow ctx v i row
+       | None -> ())
+    !stale;
+  v.built_cross <- v.cross_size;
+  for i = first to last - 1 do
+    if not (Hashtbl.mem v.rows i) then begin
+      let cid = if i < Array.length v.kids then v.kids.(i) else -1 in
+      if cid >= 0 then begin
+        (* Row-local context: registrations land in the list's own
+           node table so [collect] stays a mirror-only pass. The shadow
+           tables are shared with the mirror — row roots point their
+           [sparent] at the list so incremental ops on row descendants
+           resolve to a virtual-list resync. *)
+        let rctx =
+          { ctx with
+            nodes = v.nodes;
+            applied = Hashtbl.create 8;
+            grids = ref [];
+            popups = ref [] }
+        in
+        let pairs =
+          build rctx ~owner_id:v.vid ~pkind:"virtual-list" ~pid:v.vid
+            ~index:i cid
+        in
+        Hashtbl.replace ctx.sparent cid v.vid;
+        let kids = List.map fst pairs in
+        let root =
+          match kids with
+          | [ n ] -> n
+          | _ -> Lui_flex.create kids
+        in
+        Lui_flex.compute_layout root ~width:v.cross_size
+          ~height:Lui_flex.undefined ();
+        refine_grids rctx;
+        refine_popups rctx;
+        (if !(rctx.grids) <> [] || !(rctx.popups) <> [] then
+           Lui_flex.compute_layout root ~width:v.cross_size
+             ~height:Lui_flex.undefined ());
+        vlist_measure v i (Lui_flex.absolute_layout root).h;
+        Hashtbl.replace v.rows i
+          { rf = root; rids = Lui_store.preorder ~root:cid store }
+      end
+    end
+  done
+
+(* Feed the viewport accessor and remount any list whose window moved.
+   Returns true when row sets changed. *)
+let vlists_mount (t : t) ctx store ~vport =
+  let changed = ref false in
+  Hashtbl.iter
+    (fun _ (v : vlist) ->
+       (match vport v.vid with
+        | Some (vs, ve) ->
+          v.windowed <- true;
+          v.vs <- vs;
+          v.ve <- ve
+        | None -> v.windowed <- false);
+       (if v.cross_size <> v.built_cross && Hashtbl.length v.rows > 0
+        then begin
+          (* The content width moved under the mounted forest on the
+             persistent mirror — the rows must lay out again at the new
+             width, a slide of the window alone would not catch it. *)
+          let idx = Hashtbl.fold (fun i _ acc -> i :: acc) v.rows [] in
+          List.iter
+            (fun i ->
+               match Hashtbl.find_opt v.rows i with
+               | Some row -> drop_vrow ctx v i row
+               | None -> ())
+            idx
+        end);
+       let f, l = vlist_range v in
+       if f <> v.first || l <> v.last || Hashtbl.length v.rows < l - f
+       then begin
+         (* Anchor the item at the viewport top: measuring freshly
+            mounted overscan rows above it shifts every offset below —
+            record the prefix delta as drift the scroller applies so
+            the anchored row keeps its screen position. *)
+         let anchor =
+           if v.windowed && v.count > 0 then
+             let ai =
+               min (v.count - 1)
+                 (bit_lower v.bit
+                    (Float.max 0. (v.vs -. v.bor0 -. v.pad0)))
+             in
+             Some (ai, bit_sum v.bit ai)
+           else None
+         in
+         v.first <- f;
+         v.last <- l;
+         build_vrows t ctx store v ~first:f ~last:l;
+         (match anchor with
+          | Some (ai, y0) ->
+            v.drift <- v.drift +. (bit_sum v.bit ai -. y0)
+          | None -> ());
+         changed := true
+       end)
+    t.vlists;
+  !changed
+
+(* Measurements shift the virtual extent: repatch the leaf min-height
+   of every self-sizing list whose total moved. Returns true when any
+   style changed (caller re-runs the frame layout). *)
+let vlists_patch (t : t) ctx =
+  let moved = ref false in
+  Hashtbl.iter
+    (fun _ (v : vlist) ->
+       let total = vlist_total v in
+       if Float.abs (total -. v.total) > 0.001 then v.total <- total;
+       match
+         (Hashtbl.find_opt ctx.nodes v.vid, Hashtbl.find_opt ctx.applied v.vid)
+       with
+       | Some f, Some (s : Lui_flex.style) -> (
+         match s.height with
+         | Unset ->
+           let want = v.bor0 +. v.total +. v.bor1 in
+           let cur = len_px ~owner:ctx.vh s.min_height in
+           if Float.abs (want -. cur) > 0.001 then begin
+             let s' = { s with min_height = Lui_flex.Pt want } in
+             Lui_flex.set_style f s';
+             Hashtbl.replace ctx.applied v.vid s';
+             moved := true
+           end
+         | _ -> ())
+       | _ -> ())
+    t.vlists;
+  !moved
+
+(* Composed rects for mounted row subtrees: model offset on the main
+   axis, content origin on the cross axis. Stale ids from the previous
+   window are dropped first. *)
+let collect_vlist t (v : vlist) =
+  (* Remember the previous window's boxes so the paint pass only sees
+     rows whose rect actually moved, appeared or vanished. *)
+  let prev = Hashtbl.create (List.length v.mounted_ids) in
+  List.iter
+    (fun id ->
+       (match Hashtbl.find_opt t.rects id with
+        | Some r -> Hashtbl.replace prev id r
+        | None -> ());
+       Hashtbl.remove t.rects id)
+    v.mounted_ids;
+  let ids = ref [] in
+  Hashtbl.iter
+    (fun i (row : vrow) ->
+       let ry = v.origin_main +. v.bor0 +. v.pad0 +. bit_sum v.bit i in
+       let rr = Lui_flex.absolute_layout row.rf in
+       List.iter
+         (fun id ->
+            match Hashtbl.find_opt v.nodes id with
+            | Some f ->
+              let r = Lui_flex.absolute_layout f in
+              (* Row rects share the engine's snapped scene_rect —
+                 paint, hit-test and retained pieces all read the same
+                 device-pixel geometry. *)
+              let r' =
+                Lui_scene.rect_snap
+                  {
+                    Lui_scene.x = v.origin_cross +. (r.x -. rr.x);
+                    y = ry +. (r.y -. rr.y);
+                    w = r.w;
+                    h = r.h;
+                  }
+              in
+              (match Hashtbl.find_opt prev id with
+               | Some old when old = r' -> ()
+               | _ -> Hashtbl.replace t.rect_changed id ());
+              Hashtbl.remove prev id;
+              Hashtbl.replace t.rects id r';
+              ids := id :: !ids
+            | None -> ())
+         row.rids)
+    v.rows;
+  (* Rows that slid out of the window lost their rect. *)
+  Hashtbl.iter (fun id _ -> Hashtbl.replace t.rect_changed id ()) prev;
+  v.mounted_ids <- !ids
+
+let vlists_collect (t : t) =
+  Hashtbl.iter (fun _ v -> collect_vlist t v) t.vlists
+
+(* Post-layout pass over every live list: prune dead ones (dropped,
+   hidden, re-kinded or flipped to horizontal), learn geometry, mount
+   the fed windows, and repatch leaf extents when measurements moved
+   them. [reset] drops every mounted row first — the rebuild path uses
+   it since row forests were built under the previous sync's context;
+   the incremental path keeps rows the journal did not touch. *)
+let vlists_pass (t : t) ctx ~vport ~width ~height ~reset =
+  let dead = ref [] in
+  Hashtbl.iter
+    (fun _ (v : vlist) ->
+       let alive =
+         Lui_store.kind ctx.store v.vid = "virtual-list"
+         && vlist_vertical ctx.store v.vid
+         && Hashtbl.mem t.nodes v.vid
+       in
+       if not alive then dead := v :: !dead)
+    t.vlists;
+  List.iter
+    (fun (v : vlist) ->
+       (* Rows and their composed rects die with the list. *)
+       let idx = Hashtbl.fold (fun i row acc -> (i, row) :: acc) v.rows [] in
+       List.iter (fun (i, row) -> drop_vrow ctx v i row) idx;
+       Hashtbl.reset v.nodes;
+       Hashtbl.remove t.vlists v.vid)
+    !dead;
+  if Hashtbl.length t.vlists > 0 then begin
+    (if reset then
+       Hashtbl.iter
+         (fun _ (v : vlist) ->
+            let idx =
+              Hashtbl.fold (fun i row acc -> (i, row) :: acc) v.rows []
+            in
+            List.iter (fun (i, row) -> drop_vrow ctx v i row) idx)
+         t.vlists);
+    Hashtbl.iter (fun _ v -> vlist_geometry ctx v) t.vlists;
+    ignore (vlists_mount t ctx ctx.store ~vport);
+    if vlists_patch t ctx then begin
+      (* A resized leaf shifts every rect after it — scoped re-reads
+         cannot cover that, so refresh the whole frame. *)
+      Hashtbl.replace t.rect_dirty frame_id ();
+      match t.root with
+      | Some root ->
+        let ew, eh = layout_frame root ~width ~height in
+        t.extent <- (ew, eh);
+        Hashtbl.iter (fun _ v -> vlist_geometry ctx v) t.vlists;
+        ignore (vlists_mount t ctx ctx.store ~vport)
+      | None -> ()
+    end
+  end
+
+(* A build ctx reconstructed from the saved sync inputs — used by the
+   memo-hit path to remount row windows without a mirror rebuild. The
+   shadow tables are shared with the mirror for the same reason as in
+   [build_vrows]: mounted rows must stay reachable through the raw
+   chain. *)
+let ctx_of_saved (t : t) (sc : saved_ctx) : ctx =
+  { scale = sc.sc_scale;
+    vw = sc.sc_vw;
+    vh = sc.sc_vh;
+    tm = sc.sc_tm;
+    hidden = sc.sc_hidden;
+    ctx_anchor = sc.sc_anchor;
+    store = sc.sc_store;
+    eng = t;
+    nodes = t.nodes;
+    applied = t.applied;
+    pkids = t.pkids;
+    sparent = t.sparent;
+    owner = t.owner;
+    grids = ref [];
+    popups = ref [];
+    vlists = t.vlists;
+    vresync = Hashtbl.create 4 }
+
+(* Memo-hit path: only the fed viewports moved since the last layout —
+   remount the windows that slid, repatch extents, recompose rects.
+   Everything else (mirror, main rects) stands as it was. *)
+let vlists_update (t : t) ~vport =
+  if Hashtbl.length t.vlists > 0 then
+    match t.vctx with
+    | Some sc ->
+      let ctx = ctx_of_saved t sc in
+      if vlists_mount t ctx sc.sc_store ~vport then begin
+        if vlists_patch t ctx then begin
+          (match t.root with
+           | Some root ->
+             let ew, eh =
+               layout_frame root ~width:sc.sc_vw ~height:sc.sc_vh
+             in
+             t.extent <- (ew, eh);
+             Hashtbl.iter (fun _ v -> vlist_geometry ctx v) t.vlists;
+             collect t;
+             (* Freshly measured rows can widen the window the first
+                pass computed — a second mount covers what the
+                post-measure range now reaches. *)
+             ignore (vlists_mount t ctx sc.sc_store ~vport)
+           | None -> ())
+        end;
+        vlists_collect t
+      end
+    | None -> ()
+
+
 let compute t ~width ~height =
   match t.root with
   | None -> ()
@@ -1422,19 +2144,33 @@ let restyle_gen ctx o g =
       style_of ~scale:ctx.scale ~viewport:(ctx.vw, ctx.vh) ctx.store g
       |> adjust ~pkind:(kind_of ctx o) ~pid:o ~index ctx.store g
     in
-    let kids = Lui_flex.children f in
-    let cids =
-      ordered_child_ids ctx.store g (Lui_store.kind ctx.store g)
-    in
-    let style = popup_min_style ctx g cids kids style in
-    let m = measure_for ctx g ~kids in
-    Lui_flex.set_style f style;
-    Lui_flex.set_measure f m;
-    Hashtbl.replace ctx.applied g style;
-    Hashtbl.replace ctx.owner g o;
-    let kind = Lui_store.kind ctx.store g in
-    unregister ctx g;
-    register ctx g kind f style
+    (match Hashtbl.find_opt ctx.vlists g with
+     | Some v ->
+       (* A virtual list restyles like its build: configure the model
+          off the raw style, then claim the virtual extent — children
+          are row subtrees, never produced gens. *)
+       vlist_configure ctx ctx.store v style;
+       let style = vlist_leaf_style ctx v style in
+       Lui_flex.set_style f style;
+       Lui_flex.set_measure f None;
+       Hashtbl.replace ctx.applied g style;
+       Hashtbl.replace ctx.owner g o;
+       unregister ctx g;
+       register ctx g "virtual-list" f style
+     | None ->
+       let kids = Lui_flex.children f in
+       let cids =
+         ordered_child_ids ctx.store g (Lui_store.kind ctx.store g)
+       in
+       let style = popup_min_style ctx g cids kids style in
+       let m = measure_for ctx g ~kids in
+       Lui_flex.set_style f style;
+       Lui_flex.set_measure f m;
+       Hashtbl.replace ctx.applied g style;
+       Hashtbl.replace ctx.owner g o;
+       let kind = Lui_store.kind ctx.store g in
+       unregister ctx g;
+       register ctx g kind f style)
   | None -> ()
 
 (* Parent kinds whose child adjustment depends on sibling position:
@@ -1494,23 +2230,6 @@ let detach_from_parent ctx id =
     mark_affected ctx (children_owner ctx par)
   | None -> ()
 
-(* Remove id's flex node and every built descendant's mirror state. *)
-let rec purge ctx id =
-  (match Hashtbl.find_opt ctx.pkids id with
-   | Some es ->
-     Hashtbl.remove ctx.pkids id;
-     List.iter (fun e -> purge ctx e.raw) es
-   | None -> ());
-  Hashtbl.remove ctx.nodes id;
-  Hashtbl.remove ctx.applied id;
-  Hashtbl.remove ctx.sparent id;
-  Hashtbl.remove ctx.owner id;
-  Hashtbl.remove ctx.eng.rects id;
-  (* A dropped rect is a geometry change too: paint consumers holding
-     the old box must re-derive (their layout hook now answers zero). *)
-  Hashtbl.replace ctx.eng.rect_changed id ();
-  unregister ctx id
-
 (* display/structure churn on id: rebuild its produced expansion in
    place — the subtree is re-mirrored (a rare op). *)
 let reexpand ctx id =
@@ -1559,29 +2278,94 @@ let restyle_children ctx id =
     (pkids_of ctx id);
   mark_affected ctx o
 
+(* A journal op landed on a live virtual list or inside one: rows
+   index a logical model that may have changed and row subtrees are
+   never edited in place, so the mounted forest drops wholesale and the
+   leaf is restyled/reconfigured — the post-layout pass remounts the
+   window. Subtrees that moved out of the list mid-batch keep their new
+   mirror slot. *)
+let resync_vlist ctx (v : vlist) =
+  let idx = Hashtbl.fold (fun i row acc -> (i, row) :: acc) v.rows [] in
+  List.iter (fun (i, row) -> drop_vrow ctx v i row) idx;
+  Hashtbl.reset v.nodes;
+  v.mounted_ids <- [];
+  match
+    (Hashtbl.find_opt ctx.nodes v.vid, Hashtbl.find_opt ctx.owner v.vid)
+  with
+  | Some f, Some o ->
+    let index = produced_index ctx o v.vid in
+    let style =
+      style_of ~scale:ctx.scale ~viewport:(ctx.vw, ctx.vh) ctx.store v.vid
+      |> adjust ~pkind:(kind_of ctx o) ~pid:o ~index ctx.store v.vid
+    in
+    vlist_configure ctx ctx.store v style;
+    let style = vlist_leaf_style ctx v style in
+    Lui_flex.set_style f style;
+    Hashtbl.replace ctx.applied v.vid style;
+    mark_affected ctx o
+  | _ -> ()
+
 let apply_journal_op ctx (op : patch_op) =
+  (* A virtual list owns its rows: ops landing inside one mark it for
+     resync rather than editing the persistent mirror — the side
+     forest rebuilds from the store before layout. *)
   match op with
   | SetProp (id, p, _) | RemoveProp (id, p) -> (
     let m =
       Lui_store.mask_of_prop (Lui_wire_schema.property_name p)
     in
     if m land (Lui_store.d_structure lor Lui_store.d_layout lor Lui_store.d_layout_kids) = 0 then ()
-    else if Lui_store.mask_has m Lui_store.d_structure then reexpand ctx id
-    else begin
-      if Lui_store.mask_has m Lui_store.d_layout then restyle_self ctx id;
-      if Lui_store.mask_has m Lui_store.d_layout_kids then
-        restyle_children ctx id
-    end)
+    else if under_vlist ctx id then ()
+    else
+      match vlist_of ctx id with
+      | Some _ ->
+        (* The list's own props feed the row model (gap, padding,
+           estimate) — resync restyles the leaf and rebuilds rows. *)
+        Hashtbl.replace ctx.vresync id ();
+        if Lui_store.mask_has m Lui_store.d_structure then reexpand ctx id
+      | None ->
+        if
+          Lui_store.kind ctx.store id = "virtual-list"
+          && vlist_vertical ctx.store id
+        then
+          (* A horizontal virtual-list turning vertical becomes a leaf —
+             rebuild its produced expansion in place. *)
+          reexpand ctx id
+        else if Lui_store.mask_has m Lui_store.d_structure then reexpand ctx id
+        else begin
+          if Lui_store.mask_has m Lui_store.d_layout then restyle_self ctx id;
+          if Lui_store.mask_has m Lui_store.d_layout_kids then
+            restyle_children ctx id
+        end)
   | SetExtensionProp (id, _, _) | RemoveExtensionProp (id, _) ->
-    (* Unknown prop semantics: restyle the node and its children. *)
-    restyle_self ctx id;
-    restyle_children ctx id
+    if under_vlist ctx id then ()
+    else (
+      match vlist_of ctx id with
+      | Some _ -> Hashtbl.replace ctx.vresync id ()
+      | None ->
+        (* Unknown prop semantics: restyle the node and its children. *)
+        restyle_self ctx id;
+        restyle_children ctx id)
   | CreateNode (id, _) | CreateExtension (id, _, _)
   | DropNode id | DetachSubtree id ->
-    detach_from_parent ctx id;
-    purge ctx id
-  | InsertChild (p, c, _) | MoveChild (p, c, _) -> attach_child ctx ~parent:p ~child:c
-  | RemoveChild (p, c) -> detach_child ctx ~parent:p ~child:c
+    if under_vlist ctx id then purge ctx id
+    else begin
+      detach_from_parent ctx id;
+      purge ctx id
+    end
+  | InsertChild (p, c, _) | MoveChild (p, c, _) -> (
+    (match Hashtbl.find_opt ctx.sparent c with
+     | Some op when op <> p -> ignore (in_vlist ctx op)
+     | _ -> ());
+    if in_vlist ctx p then begin
+      (* The child is list data now: detach its old mirror slot and
+         scrub its shadow — the resync materializes rows itself. *)
+      detach_from_parent ctx c;
+      purge ctx c
+    end
+    else attach_child ctx ~parent:p ~child:c)
+  | RemoveChild (p, c) ->
+    if in_vlist ctx p then () else detach_child ctx ~parent:p ~child:c
 
 (* Rect refresh scoped to dirty owner subtrees: every produced
    descendant of a dirty owner gets its rect re-read (a resized node
@@ -1605,7 +2389,8 @@ let ctx_of t store ~scale ~measure ~hidden ctx_anchor ~width ~height : ctx =
   { scale; vw = width; vh = height; tm = measure; hidden; ctx_anchor;
     store; eng = t; nodes = t.nodes; applied = t.applied;
     pkids = t.pkids; sparent = t.sparent; owner = t.owner;
-    grids = t.grids; popups = t.popups }
+    grids = t.grids; popups = t.popups;
+    vlists = t.vlists; vresync = Hashtbl.create 4 }
 
 (* Wipe the mirror and re-expand the frame: first sync, invalidate, or
    a journal that no longer reaches our cursor. *)
@@ -1633,7 +2418,7 @@ let rebuild ctx (t : t) ~width ~height =
   Hashtbl.reset t.rect_dirty;
   Hashtbl.replace t.rect_dirty frame_id ()
 
-let finish ctx (t : t) ~width ~height =
+let finish ctx (t : t) ~width ~height ~vport ~full =
   match t.root with
   | None -> ()
   | Some root ->
@@ -1643,10 +2428,19 @@ let finish ctx (t : t) ~width ~height =
     (if !(ctx.grids) <> [] || !(ctx.popups) <> [] then
        Lui_flex.compute_layout root ~width:ew ~height:eh ());
     t.extent <- (ew, eh);
-    refresh_rects ctx
+    (* Virtual lists learn their content geometry only after the frame
+       layout exists: geometry comes off the fresh rects, the fed
+       windows mount (a rebuilt mirror resets the side forests), and
+       measured rows can still grow a leaf — [vlists_pass] re-runs the
+       frame layout itself when they do. *)
+    vlists_pass t ctx ~vport ~width ~height ~reset:full;
+    refresh_rects ctx;
+    (* Row rects are composed off the final mirror geometry — always
+       recomposed, never part of the scoped refresh. *)
+    vlists_collect t
 
 let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
-    ?ctx_anchor ~width ~height (t : t) store =
+    ?ctx_anchor ?(vport = no_vport) ~width ~height (t : t) store =
   let inputs_changed =
     t.synced_scale <> scale
     || t.synced_w <> width || t.synced_h <> height
@@ -1661,7 +2455,12 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
   if
     (not inputs_changed) && t.synced_rev >= 0
     && t.synced_lrev = Lui_store.layout_rev store
-  then t.synced_rev <- Lui_store.revision store
+  then begin
+    t.synced_rev <- Lui_store.revision store;
+    (* Memo-hit: only the fed viewports may have moved — remount the
+       virtual-list windows that slid instead of touching the mirror. *)
+    vlists_update t ~vport
+  end
   else begin
     t.stat_syncs <- t.stat_syncs + 1;
     let ctx = ctx_of t store ~scale ~measure ~hidden ctx_anchor ~width ~height in
@@ -1703,10 +2502,16 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
                 gens)
             (pkids_of ctx frame_id);
           commit ctx frame_id;
+          (* Ops that touched a virtual list resync the whole side
+             forest — mounted rows are rebuilt, never patched. *)
+          Hashtbl.iter
+            (fun _ (v : vlist) ->
+               if Hashtbl.mem ctx.vresync v.vid then resync_vlist ctx v)
+            t.vlists;
           false
     in
     if full then rebuild ctx t ~width ~height;
-    finish ctx t ~width ~height;
+    finish ctx t ~width ~height ~vport ~full;
     t.synced_rev <- Lui_store.revision store;
     t.synced_lrev <- Lui_store.layout_rev store;
     t.synced_scale <- scale;
@@ -1714,8 +2519,120 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
     t.synced_h <- height;
     t.synced_anchor <- ctx_anchor;
     t.synced_measure <- measure;
-    t.synced_hidden <- hidden
+    t.synced_hidden <- hidden;
+    t.vctx <-
+      Some
+        { sc_scale = scale; sc_vw = width; sc_vh = height;
+          sc_tm = measure; sc_hidden = hidden; sc_anchor = ctx_anchor;
+          sc_store = store }
   end
+
+(* ---------- virtual-list queries ---------- *)
+
+let vlists (t : t) =
+  Hashtbl.fold (fun id _ acc -> id :: acc) t.vlists []
+
+(* The mounted child-index window paint/hit-test slices to. An
+   unwindowed list reports its full range — identical behavior to an
+   unsliced walk, at slice cost. *)
+let mounted_range (t : t) id =
+  match Hashtbl.find_opt t.vlists id with
+  | Some v -> Some (v.first, v.last)
+  | None -> None
+
+(* The mounted window's child store ids — the slice paint and
+   hit-test enumerate. Read off [v.kids] so a mid-list window costs
+   O(window), not a linked-list walk to [first]. *)
+let mounted_children (t : t) id =
+  match Hashtbl.find_opt t.vlists id with
+  | Some v ->
+    let n = max 0 (min v.last (Array.length v.kids) - v.first) in
+    Some (Array.to_list (Array.sub v.kids v.first n))
+  | None -> None
+
+let mounted_count (t : t) id =
+  match Hashtbl.find_opt t.vlists id with
+  | Some v -> Hashtbl.length v.rows
+  | None -> 0
+
+(* Total virtual content extent (border-box span, device px). *)
+let virtual_extent (t : t) id =
+  match Hashtbl.find_opt t.vlists id with
+  | Some v -> Some (v.bor0 +. v.total +. v.bor1)
+  | None -> None
+
+(* The item's rect in engine-absolute (content-space) coordinates —
+   works for unmounted indices too, which is what makes scroll-to-item
+   reach a row that does not exist yet. *)
+let virtual_item_rect (t : t) id ~index : Lui_scene.rect option =
+  match Hashtbl.find_opt t.vlists id with
+  | Some v when index >= 0 && index < v.count ->
+    Some
+      { Lui_scene.x = v.origin_cross;
+        y = v.origin_main +. v.bor0 +. v.pad0 +. bit_sum v.bit index;
+        w = v.cross_size;
+        h = vlist_ext v index }
+  | _ -> None
+
+(* The last viewport the vport accessor fed this list — what the
+   interaction layer reports as the visible range. *)
+let virtual_view (t : t) id =
+  match Hashtbl.find_opt t.vlists id with
+  | Some v when v.windowed -> Some (v.vs, v.ve)
+  | _ -> None
+
+(* Pending scroll correction from measurement drift, device px —
+   consume-on-read. The scroller adds it to the list's offset so the
+   row at the viewport top keeps its screen position when rows above
+   measure off-estimate. *)
+let virtual_take_drift (t : t) id =
+  match Hashtbl.find_opt t.vlists id with
+  | Some v ->
+    let d = v.drift in
+    v.drift <- 0.;
+    d
+  | None -> 0.
+
+(* key → item index, lazily built once per list shape. *)
+let virtual_index_of_key (t : t) store id key =
+  match Hashtbl.find_opt t.vlists id with
+  | None -> None
+  | Some v ->
+    let m =
+      match v.key_index with
+      | Some m -> m
+      | None ->
+        let m = Hashtbl.create 64 in
+        for i = 0 to v.count - 1 do
+          let cid = v.kids.(i) in
+          if cid >= 0 then
+            match Lui_store.string_prop store cid "key" with
+            | Some k -> Hashtbl.replace m k i
+            | None -> ()
+        done;
+        v.key_index <- Some m;
+        m
+    in
+    Hashtbl.find_opt m key
+
+(* store id → item index (same lazy index as above, reversed). *)
+let virtual_index_of_id (t : t) _store id cid =
+  match Hashtbl.find_opt t.vlists id with
+  | None -> None
+  | Some v ->
+    let m =
+      match v.id_index with
+      | Some m -> m
+      | None ->
+        let m = Hashtbl.create 64 in
+        for i = 0 to v.count - 1 do
+          let k = v.kids.(i) in
+          if k >= 0 then Hashtbl.replace m k i
+        done;
+        v.id_index <- Some m;
+        m
+    in
+    Hashtbl.find_opt m cid
 
 let content_extent (t : t) = t.extent
 

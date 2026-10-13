@@ -29,8 +29,10 @@ jobs:
           cache: npm
           cache-dependency-path: platform/web/package-lock.json
       - uses: ./.github/actions/setup-lui-ocaml
-      - name: Cache dune
-        uses: actions/cache@v4
+      # PRs restore read-only; only base-branch pushes save (repo cache is
+      # capped at 10GB and per-PR dune caches were evicting the Windows opam switch).
+      - name: Restore dune cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/dune
           key: dune-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
@@ -55,3 +57,13 @@ jobs:
           path: _build/web-release
       - id: deployment
         uses: actions/deploy-pages@v4
+      - name: Trim dune cache
+        if: github.event_name == 'push'
+        run: opam exec -- dune cache trim --size=400MB
+      - name: Save dune cache
+        if: github.event_name == 'push'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/dune
+          key: dune-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+

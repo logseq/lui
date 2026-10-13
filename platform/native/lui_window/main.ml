@@ -439,7 +439,9 @@ let tick (s : surf) ~t0 =
   (match decision with
    | Frame.Present ->
      (* Assembly.repaint repaints and refreshes the hit-test mirror *)
-     ignore (Assembly.repaint s.driver.asm);
+     (* populate's anchor-drift corrections surface as VisibleRange
+        dispatches — apply them like any other Ui action *)
+     apply_actions s (snd (Assembly.repaint s.driver.asm));
      ignore (Lui_a11y.sync d.a11y);
      if !(d.gl_live_cell) then begin
        (match !(d.gctx_cell) with

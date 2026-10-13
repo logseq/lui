@@ -70,6 +70,29 @@ let test_children_order () =
     check int "second green" 255 b.fcolor.g
   | _ -> fail "expected two Fill ops in paint order"
 
+(* The mounted_children hook restricts the child walk to its window —
+   the mechanism a virtual list uses to skip unmounted rows without
+   the paint pass touching them at all. *)
+let test_mounted_range () =
+  let t = store () in
+  apply t
+    ([ Lui_protocol.CreateNode (1, VirtualList) ]
+    @ List.flatten
+        (List.init 10 (fun i ->
+             [ Lui_protocol.CreateNode (10 + i, ListItem);
+               SetProp (10 + i, BackgroundValue, StringValue "#ff0000");
+               Lui_protocol.InsertChild (1, 10 + i, i) ])));
+  let h =
+    { (hooks ()) with
+      Lui_paint.mounted_children =
+        (fun id -> if id = 1 then Some [ 12; 13; 14 ] else None) }
+  in
+  let s = paint_with h t ~width:100 ~height:10000 () in
+  let fills =
+    List.filter (function Lui_scene.Fill _ -> true | _ -> false) s.ops
+  in
+  check int "sliced fills" 3 (List.length fills)
+
 let test_invisible () =
   let t = store () in
   apply t
@@ -956,6 +979,7 @@ let () =
          test_case "viewport cull" `Quick test_viewport_cull;
          test_case "z-index" `Quick test_zindex;
          test_case "display contents" `Quick test_display_contents;
+         test_case "mounted range" `Quick test_mounted_range;
          test_case "cull: escaped child" `Quick test_cull_escape_child;
          test_case "cull: fixed descendant" `Quick test_cull_escape_fixed;
          test_case "cull: promoted popup" `Quick test_cull_escape_popup;

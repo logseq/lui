@@ -28,7 +28,7 @@ let row_bg i = if i land 1 = 0 then "#2a2d33" else "#23262b"
    here is the frame itself, same as a real window. Children are
    inserted at ascending indices — the same op stream a frontend
    emits — so the apply stage reflects the store's real mount cost. *)
-let mount_vlist ~n ~item_h =
+let mount_vlist ~n ~item_h ?(vary = fun _ -> None) () =
   let ops =
     ref
       [
@@ -42,7 +42,8 @@ let mount_vlist ~n ~item_h =
     (* Ops are pushed tail-first onto [!ops] so [List.rev] emits
        CreateNode > SetProps > InsertChild. *)
     ops := CreateNode (id, ListItem) :: !ops;
-    ops := SetProp (id, HeightValue, FloatValue item_h) :: !ops;
+    let h = match vary i with Some h -> h | None -> item_h in
+    ops := SetProp (id, HeightValue, FloatValue h) :: !ops;
     ops :=
       SetProp (id, TextValue, StringValue (Printf.sprintf "row %d" i))
       :: !ops;
@@ -98,10 +99,15 @@ let mount_texts ~n ~len =
    apply is zero, and the memoized [Lui_layout.sync] returns
    immediately on a scroll frame (the production model too: repaint
    re-syncs every frame, the memo is what makes that cheap). *)
-let vlist ~n ~frames ~velocity ~item_h ~width ~height =
-  let name = Printf.sprintf "vlist-%dk" (n / 1000) in
+let vlist ~n ~frames ~velocity ~item_h ?(vary = fun _ -> None)
+    ?name ~width ~height () =
+  let name =
+    match name with
+    | Some s -> s
+    | None -> Printf.sprintf "vlist-%dk" (n / 1000)
+  in
   let t = H.create ~width ~height ~scale:1. () in
-  let mount = mount_vlist ~n ~item_h in
+  let mount = mount_vlist ~n ~item_h ~vary () in
   let mount_ms = H.apply t mount in
   let mlayout = H.layout t in
   let mpaint = H.paint t in
@@ -111,6 +117,9 @@ let vlist ~n ~frames ~velocity ~item_h ~width ~height =
     H.set_scroll t 2 (velocity *. float_of_int f);
     let t0 = H.now () in
     la := H.layout t :: !la;
+    (* Measured-extent drift folds into the scroll offset — the same
+       correction the window driver applies each populate. *)
+    H.apply_vlist_drift t 2;
     pa := H.paint t :: !pa;
     let _, rms = H.raster t in
     ra := rms :: !ra;
@@ -134,6 +143,9 @@ let vlist ~n ~frames ~velocity ~item_h ~width ~height =
     ms_row name "frame total p50" (H.stats_of !ta).p50;
     ms_row name "frame total p95" (H.stats_of !ta).p95;
     row name "visible children" (string_of_int visible) "nodes";
+    (* The virtualization bound: logical rows the pipeline actually
+       materializes — viewport + overscan, independent of n. *)
+    row name "mounted rows" (string_of_int (H.mounted_count t 2)) "rows";
     row name "scene ops/frame" (string_of_int ops) "ops";
   ]
 
@@ -228,7 +240,7 @@ let memory ~n ~item_h ~width ~height =
     | None -> "n/a"
   in
   let t = H.create ~width ~height ~scale:1. () in
-  let batch = mount_vlist ~n ~item_h in
+  let batch = mount_vlist ~n ~item_h () in
   let before = H.rss_kb () in
   let apply_ms = H.apply t batch in
   let after_apply = H.rss_kb () in
@@ -257,7 +269,7 @@ let memory ~n ~item_h ~width ~height =
 let hit ~n ~item_h ~width ~height =
   let name = Printf.sprintf "hit-%dk" (n / 1000) in
   let t = H.create ~width ~height ~scale:1. () in
-  ignore (H.apply t (mount_vlist ~n ~item_h));
+  ignore (H.apply t (mount_vlist ~n ~item_h ()));
   ignore (H.layout t);
   ignore (H.paint t);
   (* The mirror the window driver's populate fills: resolved rects —
@@ -372,8 +384,15 @@ let all ?(scale_sizes = false) () =
       List.concat
         (List.map
            (fun n ->
-             vlist ~n ~frames ~velocity:40. ~item_h:28. ~width:w ~height:h)
+             vlist ~n ~frames ~velocity:40. ~item_h:28. ~width:w
+               ~height:h ())
            vlists);
+      (* Variable-height scroll: every 7th row is ~2.1x the estimate,
+         so scrolling measures fresh rows and exercises the
+         Fenwick/extent-model + anchor-drift path. *)
+      (vlist ~n:100_000 ~frames ~velocity:40. ~item_h:28.
+         ~vary:(fun i -> if i mod 7 = 0 then Some 60. else None)
+         ~name:"vlist-var-100k" ~width:w ~height:h ());
       damage ~n:n5 ~item_h:20. ~width:w ~height:h;
       hit ~n:(List.nth vlists (List.length vlists - 1)) ~item_h:28.
         ~width:w ~height:h;

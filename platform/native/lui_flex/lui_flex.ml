@@ -300,6 +300,80 @@ type node = {
   mutable res_margin_top : float;
   mutable res_margin_right : float;
   mutable res_margin_bottom : float;
+  (* Resolved-spec fingerprint: owner inputs the current [style]
+     scalars reflect. A percent-free spec resolves identically under
+     any owner dims, so [res_uses_owner] exempts it from the dims
+     compare. *)
+  mutable res_valid : bool;
+  mutable res_uses_owner : bool;
+  mutable res_owner_w : float;
+  mutable res_owner_h : float;
+  mutable res_owner_main : float;
+  (* Resolution generation: bumped every time [resolve_specs] rewrites
+     the scalars, so consumers of [fin] can tell whether the offer's
+     result is still the one they measured. *)
+  mutable res_gen : int;
+  mutable fin_gen : int;
+  (* Resolution products cached alongside the scalars: non-auto margin
+     sums per physical axis and whether any margin edge is auto. *)
+  mutable marg_row : float;
+  mutable marg_col : float;
+  mutable any_auto_margin : bool;
+  (* [basis_static] records that the last flex-basis derivation needed
+     no owner dims (definite basis), letting it be reused across owner
+     size changes. *)
+  mutable basis_static : bool;
+  (* Whether the last basis came from the single-flex-child zero-basis
+     shortcut — contingent on the sibling set, so reuse requires the
+     same answer this pass. *)
+  mutable was_sflex : bool;
+  (* The context the node was last fully laid out under: owner inner
+     dims, the owner's offered measure modes, resolved main axis,
+     direction, and the owner style bits that enter child
+     derivations. *)
+  mutable ctx_valid : bool;
+  mutable ctx_w : float;
+  mutable ctx_h : float;
+  mutable ctx_main : float;
+  mutable ctx_wm : measure_mode;
+  mutable ctx_hm : measure_mode;
+  mutable ctx_axis : flex_direction;
+  mutable ctx_dir : direction;
+  mutable ctx_poverflow : overflow;
+  mutable ctx_palign : align;
+  (* Position seeds [set_position] last computed (physical slots);
+     clean children skip the re-seed and patches apply on top. *)
+  mutable pos_seeded : bool;
+  mutable pos_seed_l : float;
+  mutable pos_seed_t : float;
+  mutable pos_seed_r : float;
+  mutable pos_seed_b : float;
+  (* Per-pass lane markers computed by the parent's child loop. *)
+  mutable spec_clean : bool;
+  mutable ctx_same : bool;
+  (* Container-side record of the last perform pass (nowrap only):
+     the final line cross the stretch re-layouts were made against. *)
+  mutable pl_valid : bool;
+  mutable pl_cross : float;
+  (* [fin_*]: offer of the most recent [layout_node_internal] call —
+     i.e. the offer whose result [layout.measured_*] currently holds.
+     [prev_a_*]/[prev_b_*]: the offers made at the flex-line call
+     sites during the last perform pass. *)
+  mutable fin_set : bool;
+  mutable fin_w : float;
+  mutable fin_h : float;
+  mutable fin_wm : measure_mode;
+  mutable fin_hm : measure_mode;
+  mutable fin_pl : bool;
+  mutable prev_a_set : bool;
+  mutable prev_a_w : float;
+  mutable prev_a_h : float;
+  mutable prev_a_wm : measure_mode;
+  mutable prev_a_hm : measure_mode;
+  mutable prev_a_pl : bool;
+  mutable prev_b_set : bool;
+  mutable prev_b_w : float;
+  mutable prev_b_h : float;
 }
 
 (* Public measure-callback type (same signature as the node field). *)
@@ -424,6 +498,52 @@ let rec null_node : node = {
   res_margin_top = zero;
   res_margin_right = zero;
   res_margin_bottom = zero;
+  res_valid = false;
+  res_uses_owner = false;
+  res_owner_w = zero;
+  res_owner_h = zero;
+  res_owner_main = zero;
+  res_gen = 0;
+  fin_gen = -1;
+  marg_row = zero;
+  marg_col = zero;
+  any_auto_margin = false;
+  basis_static = false;
+  was_sflex = false;
+  ctx_valid = false;
+  ctx_w = zero;
+  ctx_h = zero;
+  ctx_main = zero;
+  ctx_wm = Measure_invalid;
+  ctx_hm = Measure_invalid;
+  ctx_axis = Column;
+  ctx_dir = Inherit;
+  ctx_poverflow = Visible;
+  ctx_palign = Align_auto;
+  pos_seeded = false;
+  pos_seed_l = zero;
+  pos_seed_t = zero;
+  pos_seed_r = zero;
+  pos_seed_b = zero;
+  spec_clean = false;
+  ctx_same = false;
+  pl_valid = false;
+  pl_cross = zero;
+  fin_set = false;
+  fin_w = zero;
+  fin_h = zero;
+  fin_wm = Measure_invalid;
+  fin_hm = Measure_invalid;
+  fin_pl = false;
+  prev_a_set = false;
+  prev_a_w = zero;
+  prev_a_h = zero;
+  prev_a_wm = Measure_invalid;
+  prev_a_hm = Measure_invalid;
+  prev_a_pl = false;
+  prev_b_set = false;
+  prev_b_w = zero;
+  prev_b_h = zero;
 }
 
 let fresh_layout () : ilayout = {
@@ -530,62 +650,6 @@ let resolve_len (basis : float) (l : length) : float =
 (* Percent values in a node's style always resolve against the owning
    (parent) node's inner dimensions, so it is the parent's job to resolve
    each child's specs right before it consumes them. *)
-let resolve_specs (n : node) ~owner_w ~owner_h ~owner_main : unit =
-  let s = n.spec in
-  let st = n.style in
-  let dim = resolve_len in
-  st.flex_basis <- dim owner_main s.flex_basis;
-  st.width <- dim owner_w s.width;
-  st.height <- dim owner_h s.height;
-  st.min_width <- dim owner_w s.min_width;
-  st.min_height <- dim owner_h s.min_height;
-  st.max_width <- dim owner_w s.max_width;
-  st.max_height <- dim owner_h s.max_height;
-  st.margin <- dim owner_w s.margin.all;
-  st.margin_vertical <- dim owner_w s.margin.vertical;
-  st.margin_horizontal <- dim owner_w s.margin.horizontal;
-  st.margin_left <- dim owner_w s.margin.left;
-  st.margin_top <- dim owner_w s.margin.top;
-  st.margin_right <- dim owner_w s.margin.right;
-  st.margin_bottom <- dim owner_w s.margin.bottom;
-  st.margin_start <- dim owner_w s.margin.start;
-  st.margin_end <- dim owner_w s.margin.end_;
-  st.margin_auto_all <- (s.margin.all = Auto);
-  st.margin_auto_vertical <- (s.margin.vertical = Auto);
-  st.margin_auto_horizontal <- (s.margin.horizontal = Auto);
-  st.margin_auto_left <- (s.margin.left = Auto);
-  st.margin_auto_top <- (s.margin.top = Auto);
-  st.margin_auto_right <- (s.margin.right = Auto);
-  st.margin_auto_bottom <- (s.margin.bottom = Auto);
-  st.margin_auto_start <- (s.margin.start = Auto);
-  st.margin_auto_end <- (s.margin.end_ = Auto);
-  st.padding <- dim owner_w s.padding.all;
-  st.padding_vertical <- dim owner_w s.padding.vertical;
-  st.padding_horizontal <- dim owner_w s.padding.horizontal;
-  st.padding_left <- dim owner_w s.padding.left;
-  st.padding_top <- dim owner_w s.padding.top;
-  st.padding_right <- dim owner_w s.padding.right;
-  st.padding_bottom <- dim owner_w s.padding.bottom;
-  st.padding_start <- dim owner_w s.padding.start;
-  st.padding_end <- dim owner_w s.padding.end_;
-  st.border <- dim owner_w s.border.all;
-  st.border_vertical <- dim owner_w s.border.vertical;
-  st.border_horizontal <- dim owner_w s.border.horizontal;
-  st.border_left <- dim owner_w s.border.left;
-  st.border_top <- dim owner_w s.border.top;
-  st.border_right <- dim owner_w s.border.right;
-  st.border_bottom <- dim owner_w s.border.bottom;
-  st.border_start <- dim owner_w s.border.start;
-  st.border_end <- dim owner_w s.border.end_;
-  st.position <- dim owner_w s.position.all;
-  st.position_vertical <- dim owner_h s.position.vertical;
-  st.position_horizontal <- dim owner_w s.position.horizontal;
-  st.left <- dim owner_w s.position.left;
-  st.top <- dim owner_h s.position.top;
-  st.right <- dim owner_w s.position.right;
-  st.bottom <- dim owner_h s.position.bottom;
-  st.start <- dim owner_w s.position.start;
-  st.endd <- dim owner_w s.position.end_
 
 let fminf (a : float) (b : float) : float =
   if is_undefined b || a < b then a else b
@@ -816,6 +880,130 @@ let reset_auto_margins (n : node) : unit =
   n.res_margin_right <- zero;
   n.res_margin_bottom <- zero
 
+let same_dim (a : float) (b : float) : bool = a = b || (a <> a && b <> b)
+
+let uses_owner_len = function Percent _ -> true | _ -> false
+let uses_owner_edges (e : edges) : bool =
+  uses_owner_len e.left || uses_owner_len e.right
+  || uses_owner_len e.top || uses_owner_len e.bottom
+  || uses_owner_len e.start || uses_owner_len e.end_
+  || uses_owner_len e.horizontal || uses_owner_len e.vertical
+  || uses_owner_len e.all
+
+let spec_uses_owner (s : style) : bool =
+  uses_owner_len s.flex_basis || uses_owner_len s.width
+  || uses_owner_len s.height || uses_owner_len s.min_width
+  || uses_owner_len s.min_height || uses_owner_len s.max_width
+  || uses_owner_len s.max_height || uses_owner_len s.row_gap
+  || uses_owner_len s.column_gap
+  || uses_owner_edges s.margin || uses_owner_edges s.padding
+  || uses_owner_edges s.border || uses_owner_edges s.position
+
+(* Resolve a node's specs against the owner's inner dims. Returns
+   [true] when the resolved scalars were (re)written, [false] when the
+   previous resolution still applies — a percent-free spec never
+   needs re-resolution, a percent spec only when an owner dim moved. *)
+let resolve_specs (n : node) ~owner_w ~owner_h ~owner_main : bool =
+  if n.res_valid
+     && ((not n.res_uses_owner)
+         || (same_dim n.res_owner_w owner_w
+             && same_dim n.res_owner_h owner_h
+             && same_dim n.res_owner_main owner_main))
+  then false
+  else begin
+  let s = n.spec in
+  let st = n.style in
+  let dim = resolve_len in
+  st.flex_basis <- dim owner_main s.flex_basis;
+  st.width <- dim owner_w s.width;
+  st.height <- dim owner_h s.height;
+  st.min_width <- dim owner_w s.min_width;
+  st.min_height <- dim owner_h s.min_height;
+  st.max_width <- dim owner_w s.max_width;
+  st.max_height <- dim owner_h s.max_height;
+  st.margin <- dim owner_w s.margin.all;
+  st.margin_vertical <- dim owner_w s.margin.vertical;
+  st.margin_horizontal <- dim owner_w s.margin.horizontal;
+  st.margin_left <- dim owner_w s.margin.left;
+  st.margin_top <- dim owner_w s.margin.top;
+  st.margin_right <- dim owner_w s.margin.right;
+  st.margin_bottom <- dim owner_w s.margin.bottom;
+  st.margin_start <- dim owner_w s.margin.start;
+  st.margin_end <- dim owner_w s.margin.end_;
+  st.margin_auto_all <- (s.margin.all = Auto);
+  st.margin_auto_vertical <- (s.margin.vertical = Auto);
+  st.margin_auto_horizontal <- (s.margin.horizontal = Auto);
+  st.margin_auto_left <- (s.margin.left = Auto);
+  st.margin_auto_top <- (s.margin.top = Auto);
+  st.margin_auto_right <- (s.margin.right = Auto);
+  st.margin_auto_bottom <- (s.margin.bottom = Auto);
+  st.margin_auto_start <- (s.margin.start = Auto);
+  st.margin_auto_end <- (s.margin.end_ = Auto);
+  st.padding <- dim owner_w s.padding.all;
+  st.padding_vertical <- dim owner_w s.padding.vertical;
+  st.padding_horizontal <- dim owner_w s.padding.horizontal;
+  st.padding_left <- dim owner_w s.padding.left;
+  st.padding_top <- dim owner_w s.padding.top;
+  st.padding_right <- dim owner_w s.padding.right;
+  st.padding_bottom <- dim owner_w s.padding.bottom;
+  st.padding_start <- dim owner_w s.padding.start;
+  st.padding_end <- dim owner_w s.padding.end_;
+  st.border <- dim owner_w s.border.all;
+  st.border_vertical <- dim owner_w s.border.vertical;
+  st.border_horizontal <- dim owner_w s.border.horizontal;
+  st.border_left <- dim owner_w s.border.left;
+  st.border_top <- dim owner_w s.border.top;
+  st.border_right <- dim owner_w s.border.right;
+  st.border_bottom <- dim owner_w s.border.bottom;
+  st.border_start <- dim owner_w s.border.start;
+  st.border_end <- dim owner_w s.border.end_;
+  st.position <- dim owner_w s.position.all;
+  st.position_vertical <- dim owner_h s.position.vertical;
+  st.position_horizontal <- dim owner_w s.position.horizontal;
+  st.left <- dim owner_w s.position.left;
+  st.top <- dim owner_h s.position.top;
+  st.right <- dim owner_w s.position.right;
+  st.bottom <- dim owner_h s.position.bottom;
+  st.start <- dim owner_w s.position.start;
+  st.endd <- dim owner_w s.position.end_;
+  (* Resolution products: auto flags, per-axis non-auto margin sums,
+     and the owner-dependence fingerprint. Auto margins reset here so
+     a restyle away from auto cannot leak a stale share. *)
+  n.any_auto_margin <-
+    st.margin_auto_all || st.margin_auto_vertical
+    || st.margin_auto_horizontal || st.margin_auto_left
+    || st.margin_auto_top || st.margin_auto_right
+    || st.margin_auto_bottom || st.margin_auto_start
+    || st.margin_auto_end;
+  n.res_margin_left <- zero;
+  n.res_margin_top <- zero;
+  n.res_margin_right <- zero;
+  n.res_margin_bottom <- zero;
+  n.marg_row <-
+    (if is_defined st.margin_start && not st.margin_auto_start
+     then st.margin_start
+     else if st.margin_auto_left then zero else computed_edge_margin st Left zero)
+    +.
+    (if is_defined st.margin_end && not st.margin_auto_end
+     then st.margin_end
+     else if st.margin_auto_right then zero else computed_edge_margin st Right zero);
+  n.marg_col <-
+    (if st.margin_auto_top then zero else computed_edge_margin st Top zero)
+    +.
+    (if st.margin_auto_bottom then zero else computed_edge_margin st Bottom zero);
+  n.res_uses_owner <- spec_uses_owner s;
+  n.res_owner_w <- owner_w;
+  n.res_owner_h <- owner_h;
+  n.res_owner_main <- owner_main;
+  n.res_valid <- true;
+  n.res_gen <- n.res_gen + 1;
+  (* The stored position seeds derive from the resolved scalars just
+     overwritten — re-seeding is mandatory before the clean lane may
+     use them again. *)
+  n.pos_seeded <- false;
+  true
+  end
+
 let is_row_direction = function
   | Row | Row_reverse -> true
   | _ -> false
@@ -889,6 +1077,13 @@ let get_trailing_padding_and_border (n : node) (axis : flex_direction) : float =
 let get_margin_axis (n : node) (axis : flex_direction) : float =
   get_leading_margin n axis +. get_trailing_margin n axis
 
+(* Per-axis margin for a child in the fast lane: spec_clean implies
+   no auto margins, so the resolution-time sums are exact. *)
+let margin_axis_of (n : node) (axis : flex_direction) : float =
+  if n.spec_clean then
+    (if is_row_direction axis then n.marg_row else n.marg_col)
+  else get_margin_axis n axis
+
 let get_padding_and_border_axis (n : node) (axis : flex_direction) : float =
   get_leading_padding_and_border n axis +. get_trailing_padding_and_border n axis
 
@@ -918,10 +1113,9 @@ let style_min_dimension_for_axis (n : node) (axis : flex_direction) : float =
   | Column | Column_reverse -> n.style.min_height
   | Row | Row_reverse -> n.style.min_width
 
-let get_dim_with_margin (n : node) (axis : flex_direction) : float =
-  layout_measured_dimension_for_axis n axis
-  +. get_leading_margin n axis
-  +. get_trailing_margin n axis
+
+let dim_with_margin_of (n : node) (axis : flex_direction) : float =
+  layout_measured_dimension_for_axis n axis +. margin_axis_of n axis
 
 let is_style_dim_defined (n : node) (axis : flex_direction) : bool =
   let value = style_dimension_for_axis n axis in
@@ -1067,20 +1261,36 @@ let get_relative_position (n : node) (axis : flex_direction) : float =
   if is_leading_pos_defined n axis then get_leading_position n axis
   else -. get_trailing_position n axis
 
+let set_seed_for_axis (n : node) (axis : flex_direction) (leading : float) (trailing : float) : unit =
+  match axis with
+  | Column -> n.pos_seed_t <- leading; n.pos_seed_b <- trailing
+  | Column_reverse -> n.pos_seed_b <- leading; n.pos_seed_t <- trailing
+  | Row -> n.pos_seed_l <- leading; n.pos_seed_r <- trailing
+  | Row_reverse -> n.pos_seed_r <- leading; n.pos_seed_l <- trailing
+
 let set_position (n : node) (direction : direction) : unit =
   let (main_axis, cross_axis) = resolve_axises n.style.flex_direction direction in
   let rel_main = get_relative_position n main_axis in
   let rel_cross = get_relative_position n cross_axis in
-  set_layout_position_for_axis
-    n
-    main_axis
-    (get_leading_margin n main_axis +. rel_main)
-    (get_trailing_margin n main_axis +. rel_main);
-  set_layout_position_for_axis
-    n
-    cross_axis
-    (get_leading_margin n cross_axis +. rel_cross)
-    (get_trailing_margin n cross_axis +. rel_cross)
+  let lead_main = get_leading_margin n main_axis +. rel_main in
+  let trail_main = get_trailing_margin n main_axis +. rel_main in
+  let lead_cross = get_leading_margin n cross_axis +. rel_cross in
+  let trail_cross = get_trailing_margin n cross_axis +. rel_cross in
+  set_seed_for_axis n main_axis lead_main trail_main;
+  set_seed_for_axis n cross_axis lead_cross trail_cross;
+  set_layout_position_for_axis n main_axis lead_main trail_main;
+  set_layout_position_for_axis n cross_axis lead_cross trail_cross;
+  n.pos_seeded <- true
+
+(* The value [set_position] seeded (or would seed) into the slot the
+   parent treats as [axis]'s leading edge — lets a clean child keep
+   its old position field while the parent re-derives placement. *)
+let pos_seed (n : node) (axis : flex_direction) : float =
+  match axis with
+  | Column -> n.pos_seed_t
+  | Column_reverse -> n.pos_seed_b
+  | Row -> n.pos_seed_l
+  | Row_reverse -> n.pos_seed_r
 
 let rec mark_dirty_internal (n : node) : unit =
   if not n.is_dirty then begin
@@ -1373,6 +1583,15 @@ let rec layout_node_internal
     node.is_dirty <- false
   end;
   layout.generation_count <- !g_current_generation_count;
+  (* Record the offer that produced the node's current measured
+     dims — later calls with a provably identical offer are skippable. *)
+  node.fin_w <- available_width;
+  node.fin_h <- available_height;
+  node.fin_wm <- width_measure_mode;
+  node.fin_hm <- height_measure_mode;
+  node.fin_pl <- perform_layout;
+  node.fin_gen <- node.res_gen;
+  node.fin_set <- true;
   need_to_visit_node || !cached_results = None
 
 and compute_child_flex_basis
@@ -1395,20 +1614,26 @@ and compute_child_flex_basis
   if is_defined this_flex_basis
      && is_defined (if is_main_axis_row then width else height)
   then begin
+    child.basis_static <- true;
     if is_undefined child.layout.computed_flex_basis
     then
       child.layout.computed_flex_basis <-
         fmaxf this_flex_basis (get_padding_and_border_axis child main_axis)
   end
-  else if is_main_axis_row && is_row_style_dim_defined then
+  else if is_main_axis_row && is_row_style_dim_defined then begin
     (* The width is definite, so use it as the flex basis. *)
+    child.basis_static <- true;
     child.layout.computed_flex_basis <-
       fmaxf child.style.width (get_padding_and_border_axis child Row)
-  else if (not is_main_axis_row) && is_column_style_dim_defined then
+  end
+  else if (not is_main_axis_row) && is_column_style_dim_defined then begin
     (* The height is definite, so use it as the flex basis. *)
+    child.basis_static <- true;
     child.layout.computed_flex_basis <-
       fmaxf child.style.height (get_padding_and_border_axis child Column)
+  end
   else begin
+    child.basis_static <- false;
     child_width := undefined;
     child_height := undefined;
     child_width_mode := Measure_undefined;
@@ -1719,37 +1944,85 @@ and layout_node_impl
         let child = node.children.(i) in
         assert (child != null_node);
         (* Resolve the child's percent/auto specs against this node's
-           inner dimensions before anything reads them, and clear the
-           resolved auto-margin scratch for this pass. *)
-        resolve_specs child
-          ~owner_w:available_inner_width
-          ~owner_h:available_inner_height
-          ~owner_main:available_inner_main_dim;
-        reset_auto_margins child;
-        if perform_layout then begin
-          (* Seed the layout positions from the raw style (margin plus
-             position offsets); the flex steps refine them later. *)
-          let child_direction = resolve_direction child direction in
-          set_position child child_direction
-        end;
-        if child.style.position_type = Absolute then begin
-          (if !first_absolute_child == null_node then
-             first_absolute_child := child);
-          let previous_absolute_child = !current_absolute_child_ref in
-          (* If there was a prev absolute, set its next_child to child. *)
-          (if previous_absolute_child != null_node then
-             previous_absolute_child.next_child <- child);
-          current_absolute_child_ref := child
+           inner dimensions before anything reads them. A fingerprint
+           hit means the resolved scalars — and the cached margin
+           sums — are still current. *)
+        let fresh =
+          resolve_specs child
+            ~owner_w:available_inner_width
+            ~owner_h:available_inner_height
+            ~owner_main:available_inner_main_dim
+        in
+        (* Context equality: the inputs every per-child derivation
+           reads. [spec_clean] additionally certifies the cheap lane —
+           identical spec, relative flow, no auto margins, seeds and a
+           basis already computed under this axis/direction. *)
+        child.ctx_same <-
+          child.ctx_valid
+          && same_dim child.ctx_w available_inner_width
+          && same_dim child.ctx_h available_inner_height
+          && same_dim child.ctx_main available_inner_main_dim
+          && child.ctx_wm = width_measure_mode
+          && child.ctx_hm = height_measure_mode
+          && child.ctx_axis = main_axis
+          && child.ctx_dir = direction
+          && child.ctx_poverflow = node.style.overflow
+          && child.ctx_palign = node.style.align_items;
+        child.spec_clean <-
+          (not fresh) && (not child.is_dirty)
+          && child.style.position_type = Relative
+          && (not child.any_auto_margin)
+          && (not is_node_flex_wrap)
+          && child.ctx_valid
+          && child.ctx_axis = main_axis
+          && child.ctx_dir = direction
+          && child.pos_seeded
+          && is_defined child.layout.computed_flex_basis;
+        let sflex = child == !single_flex_child in
+        if child.spec_clean && (child.basis_static || child.ctx_same)
+           && child.was_sflex = sflex
+        then ()
+        else begin
+          (* The child is being fully re-evaluated under this
+             context — record the context its basis/offers will
+             reflect, clear the resolved auto-margin scratch, and
+             (in a perform pass) seed positions from the raw style. *)
+          child.ctx_valid <- true;
+          child.ctx_w <- available_inner_width;
+          child.ctx_h <- available_inner_height;
+          child.ctx_main <- available_inner_main_dim;
+          child.ctx_wm <- width_measure_mode;
+          child.ctx_hm <- height_measure_mode;
+          child.ctx_axis <- main_axis;
+          child.ctx_dir <- direction;
+          child.ctx_poverflow <- node.style.overflow;
+          child.ctx_palign <- node.style.align_items;
+          child.was_sflex <- sflex;
+          reset_auto_margins child;
+          (if perform_layout then begin
+             let child_direction = resolve_direction child direction in
+             set_position child child_direction
+           end);
+          if child.style.position_type = Absolute then begin
+            (if !first_absolute_child == null_node then
+               first_absolute_child := child);
+            let previous_absolute_child = !current_absolute_child_ref in
+            (* If there was a prev absolute, set its next_child to child. *)
+            (if previous_absolute_child != null_node then
+               previous_absolute_child.next_child <- child);
+            current_absolute_child_ref := child
+          end
+          else if sflex then begin
+            child.basis_static <- true;
+            child.layout.computed_flex_basis <- zero
+          end
+          else
+            compute_child_flex_basis
+              node child
+              available_inner_width width_measure_mode
+              available_inner_height height_measure_mode
+              direction
         end
-        else if child == !single_flex_child then begin
-          child.layout.computed_flex_basis <- zero
-        end
-        else
-          compute_child_flex_basis
-            node child
-            available_inner_width width_measure_mode
-            available_inner_height height_measure_mode
-            direction
       done;
       (if !current_absolute_child_ref != null_node then
          (* Seal the absolute-child chain. *)
@@ -1776,6 +2049,7 @@ and layout_node_impl
         (* Chain of the children on this line that can shrink/grow. *)
         let first_relative_child = ref null_node in
         let current_relative_child = ref null_node in
+        let any_auto_anywhere = ref false in
         let should_continue = ref true in
         (* Add items to the current line until it's full or the items
            run out. *)
@@ -1785,7 +2059,7 @@ and layout_node_impl
           if (!child).style.position_type <> Absolute then begin
             let outer_flex_basis =
               (!child).layout.computed_flex_basis
-              +. get_margin_axis !child main_axis
+              +. margin_axis_of !child main_axis
             in
             (* A new item on a non-empty line also consumes one gap. *)
             let item_main_dim =
@@ -1809,6 +2083,7 @@ and layout_node_impl
               size_consumed_on_current_line :=
                 !size_consumed_on_current_line +. item_main_dim;
               items_on_line := !items_on_line + 1;
+              (if (!child).any_auto_margin then any_auto_anywhere := true);
               if is_flex !child then begin
                 total_flex_grow_factors :=
                   !total_flex_grow_factors +. get_flex_grow !child;
@@ -1875,6 +2150,7 @@ and layout_node_impl
           let delta_flex_shrink_scaled_factors = ref zero in
           let delta_flex_grow_factors = ref zero in
           current_relative_child := !first_relative_child;
+          if !remaining_free_space <> zero then
           while !current_relative_child != null_node do
             let child_flex_basis =
               (!current_relative_child).layout.computed_flex_basis
@@ -1945,6 +2221,40 @@ and layout_node_impl
             let child_flex_basis =
               (!current_relative_child).layout.computed_flex_basis
             in
+            (* A clean child under an identical context and an inert
+               flex pass is being offered exactly what this site
+               offered it last perform pass ([prev_a]); flex-inert
+               means its updated main size is just the basis. When its
+               measured dims still hold that offer's result — or the
+               equally final stretch-pass result — the whole offer
+               derivation and the recursive call are skippable. *)
+            let clean_inert =
+              perform_layout && (!current_relative_child).spec_clean
+              && (!current_relative_child).ctx_same
+              && ((not (is_flex !current_relative_child))
+                  || !remaining_free_space = zero)
+            in
+            if clean_inert && (!current_relative_child).prev_a_set
+               && ((!current_relative_child).fin_set
+                   && !current_relative_child.fin_pl
+                      = !current_relative_child.prev_a_pl
+                   && !current_relative_child.fin_wm
+                      = !current_relative_child.prev_a_wm
+                   && !current_relative_child.fin_hm
+                      = !current_relative_child.prev_a_hm
+                   && !current_relative_child.fin_w
+                      = !current_relative_child.prev_a_w
+                   && !current_relative_child.fin_h
+                      = !current_relative_child.prev_a_h
+                   || ((!current_relative_child).prev_b_set
+                       && !current_relative_child.fin_pl
+                       && !current_relative_child.fin_w
+                          = !current_relative_child.prev_b_w
+                       && !current_relative_child.fin_h
+                          = !current_relative_child.prev_b_h))
+            then
+              current_relative_child := (!current_relative_child).next_child
+            else begin
             let updated_main_size = ref child_flex_basis in
             if !remaining_free_space < zero then begin
               let flex_shrink_scaled_factor =
@@ -2055,15 +2365,45 @@ and layout_node_impl
               (not (is_style_dim_defined !current_relative_child cross_axis))
               && get_align_item node !current_relative_child = Align_stretch
             in
+            (if perform_layout then begin
+               (!current_relative_child).prev_a_set <- true;
+               (!current_relative_child).prev_a_w <- !child_width;
+               (!current_relative_child).prev_a_h <- !child_height;
+               (!current_relative_child).prev_a_wm <- !child_width_mode;
+               (!current_relative_child).prev_a_hm <- !child_height_mode;
+               (!current_relative_child).prev_a_pl <-
+                 (perform_layout && not requires_stretch_layout)
+             end);
             (* Recursively lay out this child with its updated main size. *)
-            let _ =
-              layout_node_internal
-                !current_relative_child
-                !child_width !child_height direction
-                !child_width_mode !child_height_mode
-                (perform_layout && not requires_stretch_layout)
-            in
+            (* Even without a clean-lane certificate the call is
+               skippable when the child's measured dims already equal
+               the result of this exact offer: [fin] tracks the offer
+               that produced them. A dirty child must be laid out —
+               its dirty flag and the new-layout bookkeeping ride
+               along on the call. *)
+            let pl = perform_layout && not requires_stretch_layout in
+            (if not
+                ((not (!current_relative_child).is_dirty)
+                     && !current_relative_child.layout.last_parent_direction
+                        = Some direction
+                     && !current_relative_child.fin_set
+                     && !current_relative_child.fin_gen
+                        = !current_relative_child.res_gen
+                     && !current_relative_child.fin_pl = pl
+                     && same_dim !current_relative_child.fin_w !child_width
+                     && same_dim !current_relative_child.fin_h !child_height
+                     && !current_relative_child.fin_wm = !child_width_mode
+                     && !current_relative_child.fin_hm = !child_height_mode)
+            then
+              let _ =
+                layout_node_internal
+                  !current_relative_child
+                  !child_width !child_height direction
+                  !child_width_mode !child_height_mode pl
+              in
+              ());
             current_relative_child := (!current_relative_child).next_child
+            end
           done
         end;
         remaining_free_space :=
@@ -2094,30 +2434,32 @@ and layout_node_impl
            equal share of it. *)
         let leading_main_dim, between_main_dim =
           let auto_count = ref 0 in
-          for i = !start_of_line_index to !end_of_line_index - 1 do
-            let c = node.children.(i) in
-            if c.style.position_type = Relative then begin
-              (if margin_is_auto c.style (leading_edge_for_axis main_axis) then
-                 incr auto_count);
-              (if margin_is_auto c.style (trailing_edge_for_axis main_axis) then
-                 incr auto_count)
-            end
-          done;
+          (if !any_auto_anywhere then
+             for i = !start_of_line_index to !end_of_line_index - 1 do
+               let c = node.children.(i) in
+               if c.style.position_type = Relative && c.any_auto_margin then begin
+                 (if margin_is_auto c.style (leading_edge_for_axis main_axis) then
+                    incr auto_count);
+                 (if margin_is_auto c.style (trailing_edge_for_axis main_axis) then
+                    incr auto_count)
+               end
+             done);
           if !auto_count > 0 && !remaining_free_space > zero then begin
             let share =
               !remaining_free_space /. float_of_int !auto_count
             in
-            for i = !start_of_line_index to !end_of_line_index - 1 do
-              let c = node.children.(i) in
-              if c.style.position_type = Relative then begin
-                let lead = leading_edge_for_axis main_axis in
-                let trail = trailing_edge_for_axis main_axis in
-                (if margin_is_auto c.style lead then
-                   set_res_margin_for_edge c lead share);
-                (if margin_is_auto c.style trail then
-                   set_res_margin_for_edge c trail share)
-              end
-            done;
+            (if !any_auto_anywhere then
+               for i = !start_of_line_index to !end_of_line_index - 1 do
+                 let c = node.children.(i) in
+                 if c.style.position_type = Relative && c.any_auto_margin then begin
+                   let lead = leading_edge_for_axis main_axis in
+                   let trail = trailing_edge_for_axis main_axis in
+                   (if margin_is_auto c.style lead then
+                      set_res_margin_for_edge c lead share);
+                   (if margin_is_auto c.style trail then
+                      set_res_margin_for_edge c trail share)
+                 end
+               done);
             remaining_free_space := zero
           end;
           match justify_content with
@@ -2169,10 +2511,12 @@ and layout_node_impl
             relative_index := !relative_index + 1;
             (if perform_layout then
                (* Auto margins were seeded as zero before resolution, so
-                  the resolved leading share is added explicitly here. *)
+                  the resolved leading share is added explicitly here.
+                  [pos_seed] is the value [set_position] seeded (or
+                  would seed) into this slot. *)
                set_layout_leading_position_for_axis
                  !child main_axis
-                 (layout_pos_position_for_axis !child main_axis
+                 (pos_seed !child main_axis
                   +. res_margin_for_edge !child
                        (leading_edge_for_axis main_axis)
                   +. !main_dim));
@@ -2182,7 +2526,7 @@ and layout_node_impl
               main_dim :=
                 !main_dim
                 +. between_main_dim
-                +. get_margin_axis !child main_axis
+                +. margin_axis_of !child main_axis
                 +. (!child).layout.computed_flex_basis;
               (* A wrapping container's line cross is the line's largest
                  item cross; only single-line containers inherit the
@@ -2190,7 +2534,7 @@ and layout_node_impl
               cross_dim :=
                 if is_node_flex_wrap then
                   fmaxf !cross_dim
-                    (get_dim_with_margin !child cross_axis)
+                    (dim_with_margin_of !child cross_axis)
                 else available_inner_cross_dim
             end
             else begin
@@ -2198,18 +2542,18 @@ and layout_node_impl
                  plus the spacing. *)
               main_dim :=
                 !main_dim +. between_main_dim
-                +. get_dim_with_margin !child main_axis;
+                +. dim_with_margin_of !child main_axis;
               (* The cross dimension is the max of the items' cross
                  dimensions. *)
               cross_dim :=
                 fmaxf !cross_dim
-                  (get_dim_with_margin !child cross_axis)
+                  (dim_with_margin_of !child cross_axis)
             end
           end
           else if perform_layout then
             set_layout_leading_position_for_axis
               !child main_axis
-              (layout_pos_position_for_axis !child main_axis
+              (pos_seed !child main_axis
                +. get_leading_border !child main_axis
                +. leading_main_dim)
         done;
@@ -2236,6 +2580,13 @@ and layout_node_impl
           bound_axis node cross_axis
             (!cross_dim +. padding_and_border_axis_cross)
           -. padding_and_border_axis_cross;
+        (* Remember the line cross the stretch re-layouts below are
+           made against (nowrap ⇔ single line ⇔ this is the node's
+           only line cross). *)
+        (if perform_layout && not is_node_flex_wrap then begin
+           node.pl_valid <- true;
+           node.pl_cross <- !cross_dim
+         end);
         (* STEP 7: CROSS-AXIS ALIGNMENT. Skipped on measurement-only
            passes. *)
         (if perform_layout then
@@ -2264,10 +2615,14 @@ and layout_node_impl
                  first. *)
               let align_item = get_align_item node !child in
               let cross_lead_auto =
-                margin_is_auto (!child).style (leading_edge_for_axis cross_axis)
+                (!child).any_auto_margin
+                && margin_is_auto (!child).style
+                     (leading_edge_for_axis cross_axis)
               in
               let cross_trail_auto =
-                margin_is_auto (!child).style (trailing_edge_for_axis cross_axis)
+                (!child).any_auto_margin
+                && margin_is_auto (!child).style
+                     (trailing_edge_for_axis cross_axis)
               in
               let auto_cross_count =
                 (if cross_lead_auto then 1 else 0)
@@ -2276,7 +2631,7 @@ and layout_node_impl
               if auto_cross_count > 0 then begin
                 let remaining_cross =
                   !container_cross_axis
-                  -. get_dim_with_margin !child cross_axis
+                  -. dim_with_margin_of !child cross_axis
                 in
                 let share =
                   fmaxf remaining_cross zero
@@ -2309,10 +2664,10 @@ and layout_node_impl
                   if is_main_axis_row then
                     (!cross_dim,
                      (!child).layout.measured_width
-                     +. get_margin_axis !child Row)
+                     +. margin_axis_of !child Row)
                   else
                     ((!child).layout.measured_height
-                     +. get_margin_axis !child Column,
+                     +. margin_axis_of !child Column,
                      !cross_dim)
                 in
                 let child_width =
@@ -2333,18 +2688,37 @@ and layout_node_impl
                     if is_undefined child_height then Measure_undefined
                     else Measure_exactly
                   in
-                  let _ =
-                    layout_node_internal
-                      !child child_width child_height direction
-                      child_width_mode child_height_mode true
+                  (* Same story as the main call site: a clean child
+                     under an identical context is being offered what
+                     this site offered last perform pass ([prev_b]);
+                     when the final line cross also matches, the
+                     measured dims are already in place. *)
+                  let skip_b =
+                    (!child).spec_clean && (!child).ctx_same
+                    && node.pl_valid && same_dim !cross_dim node.pl_cross
+                    && (!child).prev_b_set && (!child).fin_set
+                    && (!child).fin_pl
+                    && (!child).fin_wm = child_width_mode
+                    && (!child).fin_hm = child_height_mode
+                    && (!child).fin_w = child_width
+                    && (!child).fin_h = child_height
                   in
-                  ()
+                  (!child).prev_b_set <- true;
+                  (!child).prev_b_w <- child_width;
+                  (!child).prev_b_h <- child_height;
+                  if not skip_b then
+                    let _ =
+                      layout_node_internal
+                        !child child_width child_height direction
+                        child_width_mode child_height_mode true
+                    in
+                    ()
                 end
               end
               else if align_item <> Align_flex_start then begin
                 let remaining_cross_dim =
                   !container_cross_axis
-                  -. get_dim_with_margin !child cross_axis
+                  -. dim_with_margin_of !child cross_axis
                 in
                 if align_item = Align_center then
                   leading_cross_dim :=
@@ -2356,7 +2730,7 @@ and layout_node_impl
               end;
               set_layout_leading_position_for_axis
                 !child cross_axis
-                (layout_pos_position_for_axis !child cross_axis
+                (pos_seed !child cross_axis
                  +. (!total_line_cross_dim +. !leading_cross_dim))
             end
           done);
@@ -2571,6 +2945,7 @@ let parent (n : node) : node option =
 let set_style (n : node) (s : style) : unit =
   n.spec <- s;
   n.style <- style_of_spec s;
+  n.res_valid <- false;
   (* Propagate the dirty flag up so the ancestors re-measure. *)
   mark_dirty_internal n
 
@@ -2606,7 +2981,7 @@ let compute_layout (node : node) ~(width : float) ~(height : float)
     then width
     else height
   in
-  resolve_specs node ~owner_w:width ~owner_h:height ~owner_main;
+  ignore (resolve_specs node ~owner_w:width ~owner_h:height ~owner_main);
   layout_node node width height direction
 
 let layout (n : node) : rect =
@@ -2625,3 +3000,4 @@ let absolute_layout (n : node) : rect =
 let rec iter (f : node -> unit) (n : node) : unit =
   f n;
   Array.iter (iter f) n.children
+

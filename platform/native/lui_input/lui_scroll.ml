@@ -35,12 +35,27 @@ type state = {
       (* tracked-list ids found by the last store scan *)
 }
 
+(* Layout-engine forwards for virtual-list math: item counts,
+   content-space item rects (mounted or not), key → index lookup and
+   the last fed viewport — the pieces scroll-target, visible-range
+   and reveal logic need on logical items that may not be mounted. *)
+type vlist = {
+  vh_count : int -> int option;
+  vh_item : int -> index:int -> rect option;
+  vh_index_of_key : int -> string -> int option;
+  vh_view : int -> (float * float) option;
+}
+
 type env = {
   content_rect : int -> rect;
       (* unshifted (content-space) rect — the driver's layout view *)
   rects_epoch : int;
       (* layout epoch; bumped whenever the rects feeding
          [content_rect] were recomputed *)
+  vlist : vlist option;
+      (* extent model for "virtual-list" containers; [None] keeps the
+         mounted-children path, which is also what engines without
+         virtualization answer *)
 }
 
 let initial =
@@ -138,6 +153,50 @@ let report_vrange env store st id =
            ( { st with vrange = IdMap.add id (f, l) st.vrange },
              [ `Dispatch (VisibleRange (id, f, l)) ] ))
     end
+  else if Lui_query.kind_name store id = "virtual-list" then
+    (* Same report over the extent model: the fed viewport and a
+       binary search on item rects — no item walk at any size. *)
+    match
+      ( env.vlist,
+        Lui_query.data_attr store id "data-track-visible-range" )
+    with
+    | Some vh, Some "true" -> (
+      match (vh.vh_view id, vh.vh_count id) with
+      | Some (vs, ve), Some n when n > 0 ->
+        let key = (Lui_store.revision store, vs, env.rects_epoch) in
+        (match IdMap.find_opt id st.vrange_key with
+         | Some k when k = key -> (st, [])
+         | _ ->
+           let st =
+             { st with vrange_key = IdMap.add id key st.vrange_key }
+           in
+           let cr = env.content_rect id in
+           if rect_empty cr then (st, [])
+           else begin
+             (* Largest index whose content-space top is ≤ y; -1
+                before the first item. *)
+             let item_at y =
+               let rec go lo hi =
+                 if lo > hi then hi
+                 else
+                   let mid = (lo + hi) / 2 in
+                   match vh.vh_item id ~index:mid with
+                   | Some r when r.Lui_scene.y -. cr.Lui_scene.y <= y ->
+                     go (mid + 1) hi
+                   | _ -> go lo (mid - 1)
+               in
+               go 0 (n - 1)
+             in
+             let f = max 0 (item_at vs) in
+             let l = max 0 (item_at (vs +. ve -. 0.001)) in
+             match IdMap.find_opt id st.vrange with
+             | Some (f', l') when f' = f && l' = l -> (st, [])
+             | _ ->
+               ( { st with vrange = IdMap.add id (f, l) st.vrange },
+                 [ `Dispatch (VisibleRange (id, f, l)) ] )
+           end)
+      | _ -> (st, []))
+    | _ -> (st, [])
   else (st, [])
 
 let set_offset env store st axis id off =
@@ -294,7 +353,54 @@ let sync env store st =
                  acts :=
                    `Dispatch (ScrollCompleted (id, tok, "missing-target"))
                    :: !acts))
-         | None -> ())
+         | None -> ()
+         else if Lui_query.kind_name store id = "virtual-list" then
+           (* The schema wires scroll-target on ListContainer only;
+              virtual lists take the same triple over data-attrs and
+              resolve the key through the extent model — the target
+              row does not need to be mounted. *)
+           match
+             ( Option.bind
+                 (Lui_query.data_attr store id "data-scroll-token")
+                 (fun s -> int_of_string_opt (String.trim s)),
+               Lui_query.data_attr store id "data-scroll-target",
+               env.vlist )
+           with
+           | Some tok, Some target, Some vh when target <> "" -> (
+             match IdMap.find_opt id !st.tokens with
+             | Some prev when prev = tok -> ()
+             | _ ->
+               st := { !st with tokens = IdMap.add id tok !st.tokens };
+               (match vh.vh_index_of_key id target with
+                | Some i ->
+                  let cid = Lui_store.child_id_at store id i in
+                  if cid >= 0 then begin
+                    let anchor =
+                      match
+                        Lui_query.data_attr store id "data-scroll-anchor"
+                      with
+                      | Some a -> a
+                      | None -> ""
+                    in
+                    let st', a =
+                      scroll_align env store !st id cid anchor
+                    in
+                    st := st';
+                    acts := List.rev_append a !acts;
+                    acts :=
+                      `Dispatch (ScrollCompleted (id, tok, "succeeded"))
+                      :: !acts
+                  end
+                  else
+                    acts :=
+                      `Dispatch
+                        (ScrollCompleted (id, tok, "missing-target"))
+                      :: !acts
+                | None ->
+                  acts :=
+                    `Dispatch (ScrollCompleted (id, tok, "missing-target"))
+                    :: !acts))
+           | _ -> ())
     (Lui_store.preorder store);
   (* The tracked-list ids are store-derived too — refreshed under
      the same gate so the per-sync report loop only walks actual
@@ -304,8 +410,12 @@ let sync env store st =
       lists =
         List.filter
           (fun id ->
-             Lui_query.kind_name store id = "list"
-             && Lui_store.bool_prop store id "track-visible-range")
+             let k = Lui_query.kind_name store id in
+             (k = "list"
+              && Lui_store.bool_prop store id "track-visible-range")
+             || (k = "virtual-list"
+                && Lui_query.data_attr store id "data-track-visible-range"
+                   = Some "true"))
           (Lui_store.preorder store) };
   (!st, List.rev !acts)
 
