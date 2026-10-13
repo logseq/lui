@@ -54,10 +54,18 @@ let effect_shallow (e : effect_op) =
 
 let show_op = function
   | Fill f ->
-    Printf.sprintf "Fill(%.1f,%.1f,%.1f,%.1f)" f.frect.x f.frect.y
-      f.frect.w f.frect.h
+    Printf.sprintf
+      "Fill(%.1f,%.1f,%.1f,%.1f c=%d,%d,%d,%d op=%.2f b=%.0f,%.0f,%.0f,%.0f)"
+      f.frect.x f.frect.y f.frect.w f.frect.h
+      f.fcolor.r f.fcolor.g f.fcolor.b f.fcolor.a f.fopacity
+      (let t, _, _, _ = f.fborder in t)
+      (let _, r, _, _ = f.fborder in r)
+      (let _, _, b, _ = f.fborder in b)
+      (let _, _, _, l = f.fborder in l)
   | Shadow _ -> "Shadow"
-  | Glyphs g -> Printf.sprintf "Glyphs(%d,%d)" g.gstart g.gend
+  | Glyphs g ->
+    Printf.sprintf "Glyphs(%d,%d op=%.3f c=%d,%d,%d,%d)"
+      g.gstart g.gend g.gopacity g.gcolor.r g.gcolor.g g.gcolor.b g.gcolor.a
   | Image _ -> "Image"
   | Push_clip c ->
     Printf.sprintf "Push_clip(%.1f,%.1f,%.1f,%.1f)" c.crect.x c.crect.y
@@ -174,14 +182,17 @@ let test_single_paint_update () =
 
 (* A geometry-only shift translates cached fragments instead of
    re-planning: one row's height change moves every sibling below it
-   plus the column itself — only those two may hard-repaint. *)
+   plus the column itself — only those two may hard-repaint. The tall
+   viewport keeps every row onscreen: C4 lets an offscreen node's
+   children escape, so offscreen siblings must re-derive rather than
+   cull — only drawn fragments can take the pure-translation path. *)
 let test_geom_shift_translates () =
   let env = env () in
   build_rows env 20;
-  frame env ();
+  frame env ~height:720 ();
   let r0 = Lui_retained.stat_repaints env.rt in
   apply env.store [ SetProp (3, HeightValue, FloatValue 40.) ];
-  frame env ();
+  frame env ~height:720 ();
   check bool "shifted siblings translated" true
     (Lui_retained.stat_repaints env.rt - r0 <= 3)
 
@@ -373,85 +384,151 @@ let test_vlist_scroll () =
   vframe env ~vport:(vport 0. 200.)
 
 (* Deterministic random op sequences: every frame cross-checks the
-   retained scene against a full repaint. *)
+   retained scene against a full repaint. Covers stacking (z-index),
+   promoted popups (incl. nested and clip-escaping), clip culling
+   (scroll/overflow containers pushed offscreen), display:contents
+   pass-through, hidden subtrees, reparenting and prop removal. *)
 let test_random_equivalence () =
-  let env = env () in
-  let rand = Random.State.make [| 0xC0FFEE |] in
-  let next_id = ref 100 in
-  let kinds =
-    [| Column; Row; Text; Button; Scroll; ViewThatFits; Label; Kbd |]
-  in
-  let paint_props =
-    [| BackgroundValue; ForegroundValue; CornerRadius; Shadow;
-      HoverBackground; BorderWidth; BorderColorValue |]
-  in
-  let layout_props =
-    [| WidthValue; HeightValue; PaddingValue; Gap; MarginValue |]
-  in
-  let colors = [| "#ff0000"; "#00ff00"; "#0000ff"; "#11223344" |] in
-  let pick a = a.(Random.State.int rand (Array.length a)) in
-  let live = ref [ 1 ] in
-  let kids_of id = Lui_store.child_ids env.store id in
-  let rand_live () = pick (Array.of_list !live) in
-  let rand_op () =
-    match Random.State.int rand 10 with
-    | 0 -> (
-      incr next_id;
-      let id = !next_id in
-      let p = rand_live () in
-      live := id :: !live;
-      let n = List.length (kids_of p) in
-      [ CreateNode (id, pick kinds);
-        SetProp (id, TextValue, StringValue (Printf.sprintf "n%d" id));
-        InsertChild (p, id, Random.State.int rand (n + 1)) ])
-    | 1 -> (
-      let p = rand_live () in
-      match kids_of p with
-      | [] -> []
-      | kids ->
-        let c = pick (Array.of_list kids) in
-        [ RemoveChild (p, c) ])
-    | 2 -> (
-      let p = rand_live () in
-      match kids_of p with
-      | [] -> []
-      | kids ->
-        let c = pick (Array.of_list kids) in
+  let run_seed seed =
+    let env = env () in
+    let rand = Random.State.make seed in
+    let next_id = ref 100 in
+    let kinds =
+      [| Column; Row; Text; Button; Scroll; ViewThatFits; Label; Kbd;
+        Stack; Overlay; ContextMenu; Tooltip; Popover; Dialog;
+        MenuItem |]
+    in
+    let paint_props =
+      [| BackgroundValue; ForegroundValue; CornerRadius; Shadow;
+        HoverBackground; BorderWidth; BorderColorValue |]
+    in
+    (* Sizes reach well past the 200px viewport so subtrees land
+       partly or wholly offscreen and clip contexts die. *)
+    let layout_props =
+      [| WidthValue; HeightValue; PaddingValue; Gap; MarginValue |]
+    in
+    let colors = [| "#ff0000"; "#00ff00"; "#0000ff"; "#11223344" |] in
+    let removable_props =
+      [| DisplayValue; Position; ZIndex; Overflow; Opacity; Visible |]
+    in
+    let pick a = a.(Random.State.int rand (Array.length a)) in
+    let live = ref [ 1 ] in
+    let kids_of id = Lui_store.child_ids env.store id in
+    let rand_live () = pick (Array.of_list !live) in
+    let is_ancestor anc id =
+      let rec go cur =
+        match Lui_store.parent env.store cur with
+        | Some p -> p = anc || go p
+        | None -> false
+      in
+      go id
+    in
+    let rand_op () =
+      match Random.State.int rand 14 with
+      | 0 -> (
+        incr next_id;
+        let id = !next_id in
+        let p = rand_live () in
+        live := id :: !live;
         let n = List.length (kids_of p) in
-        [ MoveChild (p, c, Random.State.int rand n) ])
-    | 3 ->
-      [ SetProp (rand_live (), pick paint_props, StringValue (pick colors)) ]
-    | 4 ->
-      [ SetProp
-          (rand_live (), pick layout_props,
-            FloatValue (float_of_int (Random.State.int rand 60))) ]
-    | 5 ->
-      [ SetProp
-            (rand_live (), Opacity,
+        [ CreateNode (id, pick kinds);
+          SetProp (id, TextValue, StringValue (Printf.sprintf "n%d" id));
+          InsertChild (p, id, Random.State.int rand (n + 1)) ])
+      | 1 -> (
+        let p = rand_live () in
+        match kids_of p with
+        | [] -> []
+        | kids ->
+          let c = pick (Array.of_list kids) in
+          [ RemoveChild (p, c) ])
+      | 2 -> (
+        (* Reparent an existing subtree — the child's paint context
+           (containing block, alpha, clip) changes wholesale. *)
+        let p = rand_live () in
+        match kids_of p with
+        | [] -> []
+        | kids -> (
+          let c = pick (Array.of_list kids) in
+          let np = rand_live () in
+          if np = c || is_ancestor c np then []
+          else
+            let n = List.length (kids_of np) in
+            [ RemoveChild (p, c);
+              InsertChild (np, c, Random.State.int rand (n + 1)) ]))
+      | 3 -> (
+        let p = rand_live () in
+        match kids_of p with
+        | [] -> []
+        | kids ->
+          let c = pick (Array.of_list kids) in
+          let n = List.length (kids_of p) in
+          [ MoveChild (p, c, Random.State.int rand n) ])
+      | 4 ->
+        [ SetProp
+            (rand_live (), pick paint_props, StringValue (pick colors)) ]
+      | 5 ->
+        [ SetProp
+            (rand_live (), pick layout_props,
+              FloatValue (float_of_int (Random.State.int rand 400))) ]
+      | 6 ->
+        [ SetProp
+            ( rand_live (),
+              Opacity,
               FloatValue (Random.State.float rand 1.)) ]
-    | 6 ->
-      [ SetProp
+      | 7 ->
+        [ SetProp
             ( rand_live (),
               DisplayValue,
-              StringValue (if Random.State.bool rand then "none" else "contents") ) ]
-    | 7 ->
-      [ SetProp
+              StringValue
+                (if Random.State.bool rand then "none" else "contents") ) ]
+      | 8 ->
+        [ SetProp
             ( rand_live (),
               Visible,
               BoolValue (Random.State.bool rand) ) ]
-    | 8 ->
-      [ SetProp (rand_live (), ZIndex, IntValue (Random.State.int rand 4)) ]
-    | _ ->
-      [ SetProp (rand_live (), TextValue, StringValue (pick colors)) ]
-  in
-  apply env.store [ CreateNode (1, Column) ];
-  for _step = 1 to 60 do
-    let ops =
-      List.concat_map (fun _ -> rand_op ()) (List.init 4 Fun.id)
+      | 9 ->
+        [ SetProp (rand_live (), ZIndex, IntValue (Random.State.int rand 4)) ]
+      | 10 ->
+        [ SetProp
+            ( rand_live (),
+              Overflow,
+              StringValue (pick [| "hidden"; "auto"; "visible" |]) ) ]
+      | 11 -> (
+        (* Out-of-viewport placement: absolute/fixed offsets and popup
+           x/y land nodes outside the 200px frame. *)
+        let id = rand_live () in
+        match Random.State.int rand 3 with
+        | 0 ->
+          [ SetProp (id, Position, StringValue (pick [| "absolute"; "fixed"; "relative" |]));
+            SetProp
+              ( id,
+                pick [| Inset; InsetTop; InsetLeft |],
+                FloatValue (float_of_int (Random.State.int rand 500 - 100)) ) ]
+        | 1 ->
+          [ SetProp (id, PopupX, FloatValue (float_of_int (Random.State.int rand 500 - 100)));
+            SetProp (id, PopupY, FloatValue (float_of_int (Random.State.int rand 500 - 100))) ]
+        | _ ->
+          [ RemoveProp (id, Position) ])
+      | 12 ->
+        [ RemoveProp (rand_live (), pick removable_props) ]
+      | _ ->
+        [ SetProp (rand_live (), TextValue, StringValue (pick colors)) ]
     in
-    if ops <> [] then apply env.store ops;
-    frame env ()
-  done
+    apply env.store [ CreateNode (1, Column) ];
+    (* Each generated op group applies immediately: the reparent
+       acyclicity check and live-node picks in [rand_op] must see the
+       store the earlier ops produced, not the frame's stale start
+       state. *)
+    for _ = 1 to 100 do
+      for _ = 1 to 5 do
+        let ops = rand_op () in
+        if ops <> [] then apply env.store ops
+      done;
+      frame env ()
+    done
+  in
+  List.iter run_seed
+    [ [| 0x5EED; 0xBEEF |]; [| 1; 0xC0FFEE |]; [| 33; 7 |]; [| 104; 42 |] ]
 
 let () =
   run "lui_retained"

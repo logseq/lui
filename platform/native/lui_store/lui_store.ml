@@ -454,7 +454,11 @@ let apply_op t = function
       else begin
         (* Defensive scan: the child claims a different parent but the
            op names this one — walk the list and cut any matching link
-           so a stale record cannot leave the id listed twice. *)
+           so a stale record cannot leave the id listed twice. Only
+           clear the parent link when a link was actually cut: when the
+           child is not in this list at all it still sits in its real
+           parent's list, and dropping [c.parent] would leave it
+           reachable both there and as a root. *)
         let rec scan prev cur =
           match cur with
           | None -> ()
@@ -469,11 +473,11 @@ let apply_op t = function
                | None -> p.last_child <- prev);
               p.child_count <- p.child_count - 1;
               c'.prev_sib <- None;
-              c'.next_sib <- None)
+              c'.next_sib <- None;
+              c'.parent <- None)
             else scan cur c'.next_sib
         in
-        scan None p.first_child;
-        c.parent <- None
+        scan None p.first_child
       end;
       Hashtbl.replace t.roots child ();
       mark_dirty_mask t parent (d_structure lor d_layout lor d_paint);
