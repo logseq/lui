@@ -2,3 +2,8 @@
  (name lui_paint_test)
  (modules lui_paint_test)
  (libraries lui_paint lui_spatial lui_store lui_scene lui alcotest))
+
+(test
+ (name lui_retained_test)
+ (modules lui_retained_test)
+ (libraries lui_retained lui_paint lui_store lui_scene lui_layout lui alcotest))

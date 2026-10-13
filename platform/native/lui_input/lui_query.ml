@@ -147,13 +147,15 @@ let hit_flags_of store id =
    O(n) per pointer event. *)
 let hit_path ?spatial store rects ~x ~y =
   let path = ref [] in
+  (* pointer-events accumulate down the tree; the ghost pass threads
+     the same [on] update so a promoted popup keeps its clipped-away
+     ancestors' flags. *)
+  let flags_or on fl =
+    match fl.hf_pen with Some v -> v | None -> on || fl.hf_overlay
+  in
   let enter on (f : Lui_paint.frame) =
     let fl = hit_flags_of store f.f_id in
-    let on =
-      match fl.hf_pen with
-      | Some v -> v
-      | None -> on || fl.hf_overlay
-    in
+    let on = flags_or on fl in
     (* spacers are layout voids — they paint nothing and must never be
        the hit target (a full-window spacer in an overlay layer would
        otherwise swallow every DOM event). *)
@@ -163,11 +165,18 @@ let hit_path ?spatial store rects ~x ~y =
     then path := f.f_id :: !path;
     { Lui_paint.b_emit = false; b_down = true; b_ctx = on }
   in
-  Lui_paint.walk ~scale:1. ~viewport:(rect 0. 0. 0. 0.) store
+  (* The walk's "viewport" is the pointer point itself: a clip that
+     misses it can contain no hit, so the walk prunes the subtree —
+     promoted popups still escape. *)
+  Lui_paint.walk ~scale:1.
+    ~viewport:(rect x y 1e-4 1e-4) store
     ~layout:(fun id ->
       let r = Rects.get rects id in
       { Lui_paint.p_rect = r; p_override = Some r })
-    ~enter ~leave:(fun _ _ -> ())
+    ~enter
+    ~ghost_enter:(fun on id _contents ->
+      flags_or on (hit_flags_of store id))
+    ~leave:(fun _ _ -> ())
     ?spatial:(Option.map (fun i -> (i, Lui_spatial.Point (x, y))) spatial)
     true;
   (* The head is the node visited last in paint order: visually

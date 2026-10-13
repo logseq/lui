@@ -173,6 +173,8 @@ type t = {
      layout-kids bits). The layout memo keys on it so pure paint churn
      leaves the flex mirror untouched. *)
   mutable layout_rev : int;
+  mutable roots_cache : int list;
+  mutable roots_rev : int;
   journal : change Queue.t;
   mutable journal_len : int;
   (* Journal completeness: every op whose [crev] exceeds
@@ -187,6 +189,7 @@ let journal_cap = 8192
 let create () =
   { nodes = Hashtbl.create 64; dirty = Hashtbl.create 64;
     generation = 0; revision = 0; layout_rev = 0;
+    roots_cache = []; roots_rev = -1;
     journal = Queue.create (); journal_len = 0; journal_base = -1 }
 
 let node_count t = Hashtbl.length t.nodes
@@ -525,16 +528,24 @@ let rec depth t id =
   | Some { parent = Some p; _ } -> 1 + depth t p
   | _ -> 0
 
-(* Ids whose parent chain reaches no stored node: the forest roots. *)
+(* Ids whose parent chain reaches no stored node: the forest roots.
+   The set only moves when structure ops run, so the scan+sort is
+   memoized on [layout_rev] — callers on per-frame paths stay O(roots)
+   between them. *)
 let root_ids t =
-  Hashtbl.fold
-    (fun id n acc ->
-      match n.parent with
-      | None -> id :: acc
-      | Some pid when not (Hashtbl.mem t.nodes pid) -> id :: acc
-      | Some _ -> acc)
-    t.nodes []
-  |> List.sort compare
+  if t.roots_rev <> t.layout_rev then begin
+    t.roots_cache <-
+      Hashtbl.fold
+        (fun id n acc ->
+          match n.parent with
+          | None -> id :: acc
+          | Some pid when not (Hashtbl.mem t.nodes pid) -> id :: acc
+          | Some _ -> acc)
+        t.nodes []
+      |> List.sort compare;
+    t.roots_rev <- t.layout_rev
+  end;
+  t.roots_cache
 
 (* Preorder ids under [root] (or the whole forest when None). *)
 let preorder ?root t =

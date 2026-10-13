@@ -37,6 +37,7 @@ separately.
 | `vlist-{10,50,100}k` | mount N list-items under a `virtual-list`, then scroll at 40 px/frame for 30 frames; per-stage p50/p95, visible window, ops emitted |
 | `damage-5k` | flip one visible node's `background` in a 5k-row tree; damaged rect count, damage-limited vs full raster |
 | `text-500` | 500 text leaves through the glyph-quad engine; layout+measure, paint+shape, raster+blit |
+| `hit-100k` | `hit_path` point queries over a mounted 100k list, unindexed vs `Lui_spatial`-indexed; indexed static-frame paint; index build cost |
 | `first-frame-10k` | one 10k-node initial patch, apply through pixels |
 | `rss-100k` | RSS before/after a 100k-node patch and after the first frame |
 
