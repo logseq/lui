@@ -76,18 +76,6 @@ val attribute_offset : int -> int -> int
     [attr]'s first component in the instance buffer, for a batch whose
     instances start at index [start]. *)
 
-type pack = {
-  data : (float, Bigarray.float32_elt, Bigarray.c_layout) Bigarray.Array1.t;
-  spans : (int * int) array;
-}
-(** A frame's instances packed for one buffer upload: [data] is the
-    float32 buffer and [spans.(i)] is the (first index, count) of
-    batch [i]'s instances in it. *)
-
-val pack_batches : Lui_gpu.batch list -> pack
-(** [pack_batches batches] packs every batch's instances into one
-    float32 bigarray. *)
-
 val clamp_scissor : Lui_gpu.scissor -> w:int -> h:int -> Lui_gpu.scissor
 (** [clamp_scissor sc ~w ~h] is [sc] clamped to the frame's pixels. *)
 

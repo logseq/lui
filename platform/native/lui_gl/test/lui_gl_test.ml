@@ -48,7 +48,7 @@ let test_pack_batches () =
   let s = make_scene ~w:64 ~h:64 in
   s.ops <- [ fill_op () ];
   let batches = Lui_gpu.build s in
-  let pack = Lui_gl.pack_batches batches in
+  let pack = Lui_gpu.pack_batches batches in
   Alcotest.(check int) "one batch" 1 (List.length batches);
   Alcotest.(check int) "one instance" 60
     (Bigarray.Array1.dim pack.data);
@@ -76,7 +76,7 @@ let test_pack_spans () =
       Lui_scene.Pop_clip;
       fill_op ~x:40. ~y:40. ~w:8. ~h:8. () ];
   let batches = Lui_gpu.build s in
-  let pack = Lui_gl.pack_batches batches in
+  let pack = Lui_gpu.pack_batches batches in
   Alcotest.(check int) "batches" 3 (List.length batches);
   Alcotest.(check int) "spans" 3 (Array.length pack.spans);
   Alcotest.(check (pair int int)) "span 0" (0, 1) pack.spans.(0);

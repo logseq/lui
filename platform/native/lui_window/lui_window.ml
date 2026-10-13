@@ -1762,6 +1762,86 @@ module Frame = struct
     t.last_present_ms <- now_ms
 end
 
+module Renderer_ladder = struct
+  (* The renderer-ladder walk shared by the platform drivers. A ladder
+     is an ordered list of backend rungs (Vulkan/Gl/Cpu/Noop on Linux,
+     D3d11/Gl/Cpu/Noop on Windows): [walk] tries each rung's init left
+     to right — [try_rung] returning [None] steps down — and records
+     the untried tail so a mid-render failure can [demote] the active
+     rung and resume the walk below it. The platform supplies the
+     per-rung init (SDL/GL/Vulkan/D3D11 specifics), a [release] for
+     the dropped rung's resources and an optional [before_walk] hook
+     (the SDL driver re-creates its window there when the next rung
+     needs different flags); the sequencing, loss logging and the
+     exception-catching [renderer_live] wrapper live here once so the
+     fallback path can be exercised off-device. *)
+
+  type 'a attempt = {
+    renderer : Lui_host.renderer;
+    state : 'a;
+        (** rung payload the driver reads back — e.g. the live-GL flag
+            or the D3D11 device held for shutdown *)
+  }
+
+  type ('rung, 'a) t = {
+    warn : string -> unit;
+    release : 'a attempt -> unit;
+    before_walk : 'rung list -> unit;
+    exhausted_msg : string;
+    noop : 'a attempt;
+    try_rung : 'rung -> rest:'rung list -> 'a attempt option;
+    mutable remaining : 'rung list;
+    mutable active : 'a attempt;
+  }
+
+  let rec walk t = function
+    | [] ->
+      t.remaining <- [];
+      t.warn t.exhausted_msg;
+      t.noop
+    | rung :: rest ->
+      (* The tail lands in [remaining] before the try so a later
+         demote resumes strictly below the active rung — a backend
+         that already lost its device is never retried. *)
+      t.remaining <- rest;
+      (match t.try_rung rung ~rest with
+       | Some a -> a
+       | None -> walk t rest)
+
+  let create ~warn ~release ?(before_walk = fun _ -> ())
+      ?(exhausted_msg =
+        "all renderer rungs failed; using no-op loop renderer")
+      ~noop ~try_rung rungs =
+    let t =
+      { warn; release; before_walk; exhausted_msg; noop; try_rung;
+        remaining = []; active = noop }
+    in
+    t.active <- walk t rungs;
+    t
+
+  let active t = t.active
+  let remaining t = t.remaining
+
+  let demote t ~reason =
+    t.warn
+      (Printf.sprintf "renderer %s lost (%s); stepping down the ladder"
+         t.active.renderer.Lui_host.name reason);
+    t.release t.active;
+    t.before_walk t.remaining;
+    t.active <- walk t t.remaining
+
+  (* The host owns a stable record whose render delegates to the live
+     rung, so a demote needs no host rebuild. *)
+  let renderer_live t =
+    { Lui_host.name = "lui (resilient)";
+      render =
+        (fun s ->
+           try t.active.renderer.Lui_host.render s
+           with exn ->
+             demote t ~reason:(Printexc.to_string exn);
+             t.active.renderer.Lui_host.render s) }
+end
+
 module Multi = struct
   (* Multi-window manager: a registry of independent surfaces. Each
      surface owns a full pipeline — host (store, layout, scene,
