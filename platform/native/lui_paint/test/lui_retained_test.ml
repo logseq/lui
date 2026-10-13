@@ -530,6 +530,35 @@ let test_random_equivalence () =
   List.iter run_seed
     [ [| 0x5EED; 0xBEEF |]; [| 1; 0xC0FFEE |]; [| 33; 7 |]; [| 104; 42 |] ]
 
+(* A batch larger than the store journal (8192 ops) truncates the retained
+   cursor; the wholesale resync must re-derive every kid list, not
+   paint childless roots (an empty frame). *)
+let test_journal_overflow_resync () =
+  let env = env () in
+  build_rows env 4;
+  frame env ();
+  let ops =
+    List.concat_map
+      (fun i ->
+        let id = 1000 + i in
+        [ CreateNode (id, Button);
+          SetProp (id, TextValue, StringValue "x");
+          InsertChild (1, id, 4 + i) ])
+      (List.init 5000 Fun.id)
+  in
+  apply env.store ops;
+  frame env ~height:720 ();
+  check bool "frame not empty" true (env.kept.ops <> [])
+
+(* Same for an explicit wholesale invalidation (theme swap). *)
+let test_invalidate_rebuilds_kids () =
+  let env = env () in
+  build_rows env 6;
+  frame env ();
+  Lui_retained.invalidate env.rt;
+  frame env ();
+  check bool "frame not empty" true (env.kept.ops <> [])
+
 let () =
   run "lui_retained"
     [ ( "fragments",
@@ -549,4 +578,6 @@ let () =
           test_case "drop subtree" `Quick test_drop_subtree;
           test_case "wide removal" `Quick test_wide_removal;
           test_case "vlist scroll" `Quick test_vlist_scroll;
-          test_case "random equivalence" `Quick test_random_equivalence ] ) ]
+          test_case "random equivalence" `Quick test_random_equivalence;
+          test_case "journal overflow resync" `Quick test_journal_overflow_resync;
+          test_case "invalidate rebuilds kids" `Quick test_invalidate_rebuilds_kids ] ) ]
