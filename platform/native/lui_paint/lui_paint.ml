@@ -2194,6 +2194,14 @@ let default_text_fg ctx store id kind st rs =
     | "list-section-header" | "list-section-footer" -> col_muted_fg ctx
     | _ -> text_fg ctx store id)
 
+(* Kinds whose own chrome anchors to the viewport rather than the
+   node box — the modal scrim fills the frame, not [r]. Their cached
+   ops are not translation-invariant, which the retained pass's
+   shift fast path needs to know. *)
+let viewport_anchored = function
+  | "dialog" | "sheet" | "drawer" | "modal" -> true
+  | _ -> false
+
 (* Disabled controls dim unless the view already drove an opacity. *)
 let disabled_alpha store id st =
   if
@@ -2378,6 +2386,40 @@ type 'a branch = {
   b_ctx : 'a;
 }
 
+(* A clip context that misses [viewport] entirely is dead: nothing
+   inside it can paint or be hit — except promoted popups, which
+   escape to the overlay pass. *)
+let clip_dead ~viewport = function
+  | Some cr -> rect_empty (rect_intersect cr viewport)
+  | None -> false
+
+(* The geometry half of a walk step: resolved box, ancestor-clip
+   intersection, own-clip decision and the containing block — shared
+   with the retained pass so both agree on where a node sits and what
+   it clips to. Returns the node's frame and the clip context its
+   children inherit. *)
+let frame_of ~scale ~viewport store id kind p parent_r clip =
+  let contents = unboxed store id in
+  let r = resolve_rect ~scale ~viewport store id kind p parent_r in
+  let clipped =
+    match clip with
+    | Some cr -> rect_intersect r cr
+    | None -> r
+  in
+  let clips_own =
+    (not contents) && clips kind store id
+    && ((not (rect_empty r))
+        || (* An empty split pane still clips: its children's own
+              minimum sizes would otherwise paint through it. *)
+           (match Lui_store.parent store id with
+            | Some pid -> Lui_store.kind store pid = "split"
+            | None -> false))
+  in
+  ( { f_id = id; f_kind = kind; f_rect = r; f_clip = clip;
+      f_clipped = clipped; f_clips = clips_own; f_contents = contents;
+      f_parent_r = (if contents then parent_r else r) },
+    if clips_own then Some clipped else clip )
+
 (* Walk the forest in paint order — z-sorted siblings, popups
    promoted out of their ancestors' clips into a deferred overlay
    pass, display:contents unboxed — carrying [clip] (the accumulated
@@ -2391,14 +2433,7 @@ type 'a branch = {
    accumulate its clipped-away ancestors). *)
 let walk ~scale ~viewport store ~layout ~enter ~ghost_enter ~leave ctx0 =
   let deferred = Queue.create () in
-  (* A clip context that misses [viewport] entirely is dead: nothing
-     inside it can paint or be hit — except promoted popups, which
-     escape to the overlay pass. *)
-  let dead clip =
-    match clip with
-    | Some cr -> rect_empty (rect_intersect cr viewport)
-    | None -> false
-  in
+  let dead = clip_dead ~viewport in
   let rec go ctx clip parent_r (n : Lui_store.node) =
     let id = Lui_store.node_id n and kind = Lui_store.node_kind n in
     if node_shown store id then
@@ -2425,31 +2460,12 @@ let walk ~scale ~viewport store ~layout ~enter ~ghost_enter ~leave ctx0 =
         List.iter (ghost ctx child_parent) (ordered_children store id)
       end
   and body ctx clip parent_r id kind =
-    let contents = unboxed store id in
     let p = layout id in
-    let r = resolve_rect ~scale ~viewport store id kind p parent_r in
-    let clipped =
-      match clip with
-      | Some cr -> rect_intersect r cr
-      | None -> r
-    in
-    let clips_own =
-      (not contents) && clips kind store id
-      && ((not (rect_empty r))
-          || (* An empty split pane still clips: its children's own
-                minimum sizes would otherwise paint through it. *)
-             (match Lui_store.parent store id with
-              | Some pid -> Lui_store.kind store pid = "split"
-              | None -> false))
-    in
-    let f =
-      { f_id = id; f_kind = kind; f_rect = r; f_clip = clip;
-        f_clipped = clipped; f_clips = clips_own; f_contents = contents;
-        f_parent_r = (if contents then parent_r else r) }
+    let f, child_clip =
+      frame_of ~scale ~viewport store id kind p parent_r clip
     in
     let br = enter ctx f in
     if br.b_down then
-      let child_clip = if clips_own then Some clipped else clip in
       List.iter (go br.b_ctx child_clip f.f_parent_r)
         (ordered_children store id);
     if br.b_emit then leave br.b_ctx f
