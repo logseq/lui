@@ -25,8 +25,10 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/setup-lui-ocaml
-      - name: Cache dune
-        uses: actions/cache@v4
+      # PRs restore read-only; only base-branch pushes save (repo cache is
+      # capped at 10GB and per-PR dune caches were evicting the Windows opam switch).
+      - name: Restore dune cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/dune
           key: dune-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
@@ -56,6 +58,15 @@ jobs:
         run: opam exec -- dune build --action-stderr-on-success=must-be-empty @runtest
       - name: Runtime performance qualification
         run: bash tooling/performance/qualify_runtime.sh
+      - name: Trim dune cache
+        if: github.event_name == 'push'
+        run: opam exec -- dune cache trim --size=400MB
+      - name: Save dune cache
+        if: github.event_name == 'push'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/dune
+          key: dune-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
 
   web-tests:
     runs-on: ubuntu-latest
@@ -68,8 +79,10 @@ jobs:
           cache: npm
           cache-dependency-path: platform/web/package-lock.json
       - uses: ./.github/actions/setup-lui-ocaml
-      - name: Cache dune
-        uses: actions/cache@v4
+      # PRs restore read-only; only base-branch pushes save (repo cache is
+      # capped at 10GB and per-PR dune caches were evicting the Windows opam switch).
+      - name: Restore dune cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/dune
           key: dune-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
@@ -125,6 +138,15 @@ jobs:
       # Hot reload edits shared sources and starts Dune, so it runs alone.
       - name: Hot reload regression
         run: node --test platform/web/test/hot-reload.e2e.mjs
+      - name: Trim dune cache
+        if: github.event_name == 'push'
+        run: opam exec -- dune cache trim --size=400MB
+      - name: Save dune cache
+        if: github.event_name == 'push'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/dune
+          key: dune-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
 
   apple-tests:
     # Package.swift requires swift-tools-version 6.2 (Xcode 26).
@@ -165,8 +187,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-lui-ocaml
-      - name: Cache dune
-        uses: actions/cache@v4
+      # PRs restore read-only; only base-branch pushes save (repo cache is
+      # capped at 10GB and per-PR dune caches were evicting the Windows opam switch).
+      - name: Restore dune cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/dune
           key: dune-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
@@ -375,3 +399,13 @@ jobs:
             opam exec -- dune runtest platform/native/ -f
           fi
         shell: bash
+      - name: Trim dune cache
+        if: github.event_name == 'push'
+        run: opam exec -- dune cache trim --size=400MB
+      - name: Save dune cache
+        if: github.event_name == 'push'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/dune
+          key: dune-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+

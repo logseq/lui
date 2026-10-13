@@ -26,7 +26,7 @@ runs:
         # exist and is skipped with a warning.
         # v4: v1-v3 Windows entries cached ~/.opam, which is never the real
         # root — restores there leave an uninitialised opam.
-        key: lui-ocaml-v4-${{ runner.os }}-${{ runner.arch }}-${{ steps.epoch.outputs.image }}-5.5.1-${{ inputs.scope }}-${{ hashFiles('*.opam*', 'dune-project') }}-${{ steps.epoch.outputs.week }}
+        key: lui-ocaml-v4-${{ runner.os }}-${{ runner.arch }}-${{ steps.epoch.outputs.image }}-5.5.1-${{ inputs.scope }}-${{ hashFiles('*.opam*', 'dune-project') }}
         # The opam hash makes every dependency change a full miss (~20 min
         # of compiler build on Windows); fall back to the newest switch
         # from this image (then any image) and let the top-up step below
@@ -89,7 +89,10 @@ runs:
         mkdir -p _opam/.ci/bin
         cp -L "$(command -v opam)" _opam/.ci/bin/opam
     - name: Save OCaml environment
-      if: steps.environment.outputs.cache-hit != 'true'
+      # Stable key (no weekly epoch) so the ~20 min Windows switch stays
+      # resident; only base-branch pushes save, PR-scoped copies are never
+      # restorable elsewhere and only push the repo over its 10GB cap.
+      if: steps.environment.outputs.cache-hit != 'true' && github.event_name != 'pull_request'
       uses: actions/cache/save@v4
       with:
         # C:/.opam must be saved alongside _opam: it holds the opam root
