@@ -159,6 +159,12 @@ val virtual_item_rect : t -> int -> index:int -> Lui_scene.rect option
     what the interaction layer reports as the visible range. *)
 val virtual_view : t -> int -> viewport option
 
+(** [virtual_take_drift t id] is the pending anchor correction in
+    device px — how far the row at the viewport top moved because
+    rows above it measured off-estimate. Consume-on-read: the caller
+    (the scroller) adds it to the list's scroll offset. *)
+val virtual_take_drift : t -> int -> float
+
 (** [virtual_index_of_key t store id key] resolves a child [key] prop
     to its item index — O(n) once per list shape, O(1) after. *)
 val virtual_index_of_key : t -> Lui_store.t -> int -> string -> int option

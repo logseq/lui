@@ -481,6 +481,63 @@ let test_vlist_unwindowed () =
   check int "mounted" 50 (Lui_layout.mounted_count t 2);
   check_some_rect "row49" 0. 980. 100. 20. (Lui_layout.rect t 59)
 
+(* The mounted window's store ids — what paint and hit-test slice to. *)
+let test_vlist_mounted_children () =
+  let store = vlist_store ~n:1000 () in
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~measure:no_measure4 ~width:100. ~height:800.
+    ~vport:(vport 500. 200.) t store;
+  let f, l = Option.get (Lui_layout.mounted_range t 2) in
+  let ids = Option.get (Lui_layout.mounted_children t 2) in
+  check int "window size" (l - f) (List.length ids);
+  check int "first id" (10 + f) (List.hd ids);
+  check int "last id" (10 + l - 1) (List.nth ids (l - f - 1))
+
+(* Variable heights settle through measured extents: overscan rows
+   above the anchor that differ from the estimate shift the prefix
+   sums — the drift the scroller folds back into the offset so the
+   anchored row does not visibly jump. *)
+let test_vlist_anchor_drift () =
+  let store = Lui_store.create () in
+  let ops =
+    ref
+      [ InsertChild (1, 2, 0);
+        SetProp
+          (2, DataAttrs,
+            StringValue
+              (Lui_protocol.data_attrs_encode
+                 [ ("data-item-extent", "20") ]));
+        CreateNode (2, VirtualList); CreateNode (1, Root) ]
+  in
+  for i = 0 to 99 do
+    let id = 10 + i in
+    (* Rows 46-49 are really 60 px against the 20-px estimate. *)
+    ops :=
+      InsertChild (2, id, i)
+      :: SetProp
+           (id, HeightValue,
+             FloatValue (if i >= 46 && i < 50 then 60. else 20.))
+      :: CreateNode (id, ListItem) :: !ops
+  done;
+  Lui_store.apply_batch store { generation = 1; ops = List.rev !ops };
+  let t = Lui_layout.create () in
+  Lui_layout.sync ~measure:no_measure4 ~width:100. ~height:800.
+    ~vport:(vport 0. 300.) t store;
+  (* Anchor is item 0 — nothing above it can move. *)
+  check (float eps) "no drift at top" 0.
+    (Lui_layout.virtual_take_drift t 2);
+  (* Jump mid-list: rows 46-49 mount in the overscan band and measure
+     60 instead of the 20 estimate — prefix(anchor=50) grew by 160. *)
+  Lui_layout.sync ~measure:no_measure4 ~width:100. ~height:800.
+    ~vport:(vport 1000. 300.) t store;
+  check (float eps) "drift" 160. (Lui_layout.virtual_take_drift t 2);
+  (* consume-on-read *)
+  check (float eps) "consumed" 0. (Lui_layout.virtual_take_drift t 2);
+  (* the model reports corrected positions: item 50 sits at
+     46*20 + 4*60 = 1160 *)
+  check_some_rect "item50" 0. 1160. 100. 20.
+    (Lui_layout.virtual_item_rect t 2 ~index:50)
+
 (* Pixel snapping contract: at a fractional backing scale the exported
    rects land on device-pixel edges, and siblings stacked without a
    gap share their boundary exactly — the same snapped geometry feeds
@@ -714,6 +771,9 @@ let () =
          test_case "vlist measured" `Quick test_vlist_measured_extents;
          test_case "vlist gap" `Quick test_vlist_gap;
          test_case "vlist unwindowed" `Quick test_vlist_unwindowed;
+         test_case "vlist mounted children" `Quick
+           test_vlist_mounted_children;
+         test_case "vlist anchor drift" `Quick test_vlist_anchor_drift;
          test_case "vlist incremental child" `Quick
            test_vlist_incremental_child;
          test_case "snapped edges" `Quick test_snapped_edges;

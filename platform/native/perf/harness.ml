@@ -225,6 +225,15 @@ let scroll_shift t id =
 
 let set_scroll t id off = Hashtbl.replace t.scroll id off
 
+(* Anchor correction, the way the window driver applies it in
+   populate: measurement drift folds back into the scroll offset so
+   the top row keeps its screen position. *)
+let apply_vlist_drift t id =
+  let d = Lui_layout.virtual_take_drift t.engine id in
+  if Float.abs d > 0.001 then
+    set_scroll t id
+      (Option.value ~default:0. (Hashtbl.find_opt t.scroll id) +. d)
+
 (* Engine rect shifted by ancestor scroll offsets — what paint and hit
    tests see. *)
 let rect_of t id =

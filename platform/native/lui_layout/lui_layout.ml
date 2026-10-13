@@ -63,6 +63,7 @@ type vlist = {
   mutable vs : float;          (* last viewport fed (content space) *)
   mutable ve : float;
   mutable windowed : bool;     (* a viewport was supplied → slice *)
+  mutable drift : float;       (* pending anchor correction, device px *)
   rows : (int, vrow) Hashtbl.t;   (* index → mounted row subtree *)
   nodes : (int, Lui_flex.node) Hashtbl.t; (* store id → flex node, rows *)
   mutable mounted_ids : int list; (* ids whose rects are registered *)
@@ -879,6 +880,7 @@ let vlist_state ctx id =
         vs = 0.;
         ve = 0.;
         windowed = false;
+        drift = 0.;
         rows = Hashtbl.create 16;
         nodes = Hashtbl.create 64;
         mounted_ids = [];
@@ -1737,9 +1739,27 @@ let vlists_mount (t : t) ctx store ~vport =
        let f, l = vlist_range v in
        if f <> v.first || l <> v.last || Hashtbl.length v.rows < l - f
        then begin
+         (* Anchor the item at the viewport top: measuring freshly
+            mounted overscan rows above it shifts every offset below —
+            record the prefix delta as drift the scroller applies so
+            the anchored row keeps its screen position. *)
+         let anchor =
+           if v.windowed && v.count > 0 then
+             let ai =
+               min (v.count - 1)
+                 (bit_lower v.bit
+                    (Float.max 0. (v.vs -. v.bor0 -. v.pad0)))
+             in
+             Some (ai, bit_sum v.bit ai)
+           else None
+         in
          v.first <- f;
          v.last <- l;
          build_vrows t ctx store v ~first:f ~last:l;
+         (match anchor with
+          | Some (ai, y0) ->
+            v.drift <- v.drift +. (bit_sum v.bit ai -. y0)
+          | None -> ());
          changed := true
        end)
     t.vlists;
@@ -1916,7 +1936,11 @@ let vlists_update (t : t) ~vport =
              in
              t.extent <- (ew, eh);
              Hashtbl.iter (fun _ v -> vlist_geometry ctx v) t.vlists;
-             collect t
+             collect t;
+             (* Freshly measured rows can widen the window the first
+                pass computed — a second mount covers what the
+                post-measure range now reaches. *)
+             ignore (vlists_mount t ctx sc.sc_store ~vport)
            | None -> ())
         end;
         vlists_collect t
@@ -2556,6 +2580,18 @@ let virtual_view (t : t) id =
   match Hashtbl.find_opt t.vlists id with
   | Some v when v.windowed -> Some (v.vs, v.ve)
   | _ -> None
+
+(* Pending scroll correction from measurement drift, device px —
+   consume-on-read. The scroller adds it to the list's offset so the
+   row at the viewport top keeps its screen position when rows above
+   measure off-estimate. *)
+let virtual_take_drift (t : t) id =
+  match Hashtbl.find_opt t.vlists id with
+  | Some v ->
+    let d = v.drift in
+    v.drift <- 0.;
+    d
+  | None -> 0.
 
 (* key → item index, lazily built once per list shape. *)
 let virtual_index_of_key (t : t) store id key =

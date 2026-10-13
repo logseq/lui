@@ -510,7 +510,9 @@ let () =
        the frame counter and checksum actually run. *)
     let dirty = headless || Ui.want_frame ui host in
     if dirty then begin
-      ignore (Assembly.repaint asm);
+      (* populate's anchor-drift corrections surface as VisibleRange
+         dispatches — apply them like any other Ui action *)
+      apply_actions (snd (Assembly.repaint asm));
       Ui.frame_done ui;
       incr frame;
       Checksum.add_scene checksum (Lui_host.scene host);

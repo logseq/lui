@@ -781,15 +781,18 @@ module Assembly : sig
   (** {!Ui.store_changed} over this surface — run it after every
       [Lui_app.flush]. *)
 
-  val populate : t -> unit
+  val populate : t -> action list
   (** Rebuild the hit mirror and the scroll caps from the last layout
-      sync. {!repaint} already calls it; expose only for drivers that
-      keep paint and hit-refresh on separate schedules. *)
+      sync, then fold each virtual list's measured anchor drift back
+      into its scroll offset. {!repaint} already calls it; expose only
+      for drivers that keep paint and hit-refresh on separate
+      schedules. The returned actions are the VisibleRange dispatches
+      the corrections produced — apply them like {!handle}'s. *)
 
-  val repaint : t -> Bytes.t
+  val repaint : t -> Bytes.t * action list
   (** One frame's paint path: [Lui_host.repaint] (which re-syncs the
       engine) then {!populate} — always in this order, on every
-      platform. *)
+      platform. Returns the frame bytes and populate's actions. *)
 
   val caret_rect : t -> rect
   (** Focused field's caret rect, device px — the IME candidate-window

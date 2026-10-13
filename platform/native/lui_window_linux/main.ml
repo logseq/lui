@@ -650,7 +650,9 @@ let () =
        the frame counter and checksum actually run. *)
     let dirty = headless || Ui.want_frame ui host in
     if dirty then begin
-      ignore (Assembly.repaint asm);
+      (* populate's anchor-drift corrections surface as VisibleRange
+         dispatches — apply them like any other Ui action *)
+      apply_actions (snd (Assembly.repaint asm));
       if gl_live () then Sdl.gl_swap_window !win;
       Ui.frame_done ui;
       incr frame;

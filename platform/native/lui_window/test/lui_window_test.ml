@@ -2429,6 +2429,7 @@ module Fake_layout = struct
   let virtual_index_of_key _ _ _ _ = None
   let virtual_index_of_id _ _ _ _ = None
   let virtual_view _ _ = None
+  let virtual_take_drift _ _ = 0.
 
   (* The stub re-places the whole tree every sync — every rect is
      potentially fresh. *)

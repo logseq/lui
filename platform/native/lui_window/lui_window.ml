@@ -2033,7 +2033,11 @@ module Assembly = struct
     engine_rect : int -> rect;
         (** Unshifted engine rect — content-space input for
             [scroll_show]/visible-range. *)
-    populate : unit -> unit; (** rebuild the hit mirror + scroll caps *)
+    populate : unit -> action list;
+        (** rebuild the hit mirror + scroll caps, fold measured anchor
+            drift back into scroll offsets — the VisibleRange
+            dispatches those corrections produce come back for the
+            driver to apply *)
     caret_rect : unit -> rect;
         (** Focused field's caret rect, device px — candidate-window
             anchor while composing. *)
@@ -2053,7 +2057,8 @@ module Assembly = struct
   (* One frame's paint path: the engine re-syncs inside
      [Lui_host.repaint], then the hit mirror and scroll caps are
      rebuilt from the fresh rects — always in this order, on every
-     platform. *)
+     platform. Returns the frame bytes plus the actions populate's
+     anchor-drift corrections produced. *)
   let repaint t =
     (* Interaction-state diffs reach the fragment pass through the
        host's hint table — the store journal cannot see them. *)
@@ -2065,8 +2070,8 @@ module Assembly = struct
       (fun id () -> Lui_host.note_moved t.host id)
       soft;
     let px = Lui_host.repaint t.host in
-    t.populate ();
-    px
+    let acts = t.populate () in
+    (px, acts)
 
   let backend t profile = Lui_host.backend t.host profile
 
@@ -2417,7 +2422,17 @@ module Assembly = struct
         sids;
       (* Rects were just rebuilt — visible-range memos key on the
          epoch. *)
-      Ui.notify_layout ui
+      Ui.notify_layout ui;
+      (* Anchor correction: rows that measured off-estimate above the
+         viewport shifted everything below — fold the drift back into
+         the scroll offset so the top row does not visibly jump. *)
+      List.concat_map
+        (fun id ->
+           let d = Lui_host.layout_take_drift host id in
+           if Float.abs d > 0.001 then
+             Ui.scroll_to ui store id (Ui.scroll_offset ui id +. d)
+           else [])
+        (Lui_host.layout_vlists host)
     in
     (* Caret rect of the focused field, device px: the node's layout
        rect shifted to the caret's real position inside the laid-out
