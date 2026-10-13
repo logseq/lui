@@ -14,8 +14,10 @@
      touches its ancestors' segment lists. Ancestors re-derive only
      when a child's *emit-status* flips (shown ↔ silent) or the child
      set/order changes;
-   - [sub_pops]: the popup nodes this subtree contributes to the
-     overlay drain, in preorder.
+   - [sub_pops]: the popup nodes this subtree promotes to the *next*
+     overlay-drain level, in preorder — the same queueing the walk's
+     deferred pass produces, so popups nested inside popups surface
+     one level at a time.
 
    Marks come from three channels: the store op journal (replayed at
    a paint-owned cursor), engine rect changes ([~moved]), and host
@@ -53,18 +55,24 @@ and frag = {
   mutable sub_pops : frag list;
   mutable emitted : bool;
   (* Inherited inputs the fragment was painted under, and the results
-     children resolve against. *)
+     children resolve against — containing block, alpha and the clip
+     context the shared walk threads down. *)
   mutable alpha_in : float;
   mutable parent_r : rect;
   mutable alpha_out : float;
   mutable child_parent : rect;
+  mutable clip_out : rect option;
   mutable show_kids : bool;
   mutable born : bool;
   (* [has_box]/[resolved]: the rect ops were painted under, for
-     translation reuse. [hard]: a mark whose effect isn't pure
-     geometry — translation is only legal without it. *)
+     translation reuse. [was_last]: the store-level last-sibling
+     status chrome read at paint time — sibling-set churn can flip it
+     without touching the node's own props. [hard]: a mark whose
+     effect isn't pure geometry — translation is only legal without
+     it. *)
   mutable has_box : bool;
   mutable resolved : rect;
+  mutable was_last : bool;
   mutable hard : bool;
   mutable repaint : bool;
   mutable rekids : bool;
@@ -127,8 +135,9 @@ let fresh_frag id =
     kids = []; seg = []; sub_pops = []; emitted = false;
     alpha_in = 0.; parent_r = rect 0. 0. 0. 0.;
     alpha_out = 0.; child_parent = rect 0. 0. 0. 0.;
-    show_kids = false; born = false;
-    has_box = false; resolved = rect 0. 0. 0. 0.; hard = true;
+    clip_out = None; show_kids = false; born = false;
+    has_box = false; resolved = rect 0. 0. 0. 0.;
+    was_last = false; hard = true;
     repaint = false; rekids = false; seg_dirty = true;
     gen = -1; gbase = 0; wbase = 0; ebase = 0 }
 
@@ -147,12 +156,16 @@ let paint_parent rt store id =
   | Some p when p <> 0 -> Some p
   | _ -> Lui_store.parent store id
 
+(* [seg_dirty] and [pend_segs] diverge on purpose: the flag persists
+   for branches under a culled ancestor until they surface, while the
+   worklist is drained and reset every materialize. A lingering flag
+   must never keep a fresh mark off the worklist — a dirty-but-
+   unlisted fragment whose parent does not rebuild this frame would
+   emit its stale pieces through the parent's memoized [Sub]. *)
 let mark_seg rt id =
   let f = frag_of rt id in
-  if not f.seg_dirty then begin
-    f.seg_dirty <- true;
-    Hashtbl.replace rt.pend_segs id ()
-  end
+  f.seg_dirty <- true;
+  Hashtbl.replace rt.pend_segs id ()
 
 let mark_repaint rt id =
   let f = frag_of rt id in
@@ -169,7 +182,26 @@ let mark_geom rt id =
   mark_seg rt id;
   rt.dirty <- true
 
-let mark_rekids rt id =
+(* A parent's child set is about to be re-derived: the store-level
+   last-sibling flag chrome reads ([default_chrome]'s divider) can
+   flip for a node whose own props never moved. Repaint the current
+   last child plus every stale kid that held the flag last paint. *)
+let mark_last_flip rt store id =
+  (match Lui_store.last_child_id store id with
+   | Some l -> mark_repaint rt l
+   | None -> ());
+  match Hashtbl.find_opt rt.frags id with
+  | Some f ->
+    List.iter
+      (fun (k, _) ->
+        match Hashtbl.find_opt rt.frags k with
+        | Some kf when kf.was_last -> mark_repaint rt k
+        | _ -> ())
+      f.kids
+  | None -> ()
+
+let mark_rekids rt store id =
+  mark_last_flip rt store id;
   let f = frag_of rt id in
   if not f.rekids then begin
     f.rekids <- true;
@@ -180,7 +212,7 @@ let mark_rekids rt id =
 
 let mark_parent_rekids rt store id =
   match paint_parent rt store id with
-  | Some p -> mark_rekids rt p
+  | Some p -> mark_rekids rt store p
   | None -> ()
 
 (* [f]'s emit-status moved — its slot in the parent's piece list is
@@ -200,6 +232,22 @@ let rec purge_frag rt id =
     List.iter (fun (k, _) -> purge_frag rt k) f.kids
   | None -> ()
 
+(* Props whose value a *different* node's paint reads: "foreground"
+   inherits down the ancestor chain, a tooltip/alert/bubble parent's
+   own "background" flips its direct text children's ink, and an
+   extension renderer's contract is unknown. Their journal marks must
+   reach every reader, not just the node they landed on. *)
+let mark_inherited rt store id name =
+  if name = "foreground" then
+    List.iter (mark_repaint rt) (Lui_store.preorder ~root:id store)
+  else if
+    name = "background"
+    &&
+    (match Lui_store.kind store id with
+     | "tooltip" | "alert" | "bubble" -> true
+     | _ -> false)
+  then List.iter (mark_repaint rt) (Lui_store.child_ids store id)
+
 (* Replay the store ops since [rt.rev], translating them into fragment
    marks. Mirrors the layout engine's incremental contract: the
    journal is the single source of truth for what the store saw. *)
@@ -217,6 +265,7 @@ let advance rt store =
           let name = Lui_wire_schema.property_name p in
           let m = Lui_store.mask_of_prop name in
           if m land Lui_store.d_paint <> 0 then mark_repaint rt id;
+          mark_inherited rt store id name;
           (* Structure-classified props (display) change the node's
              deferral in the parent's child list; a z-index change
              reorders it. Both re-derive the parent's kids. *)
@@ -224,9 +273,10 @@ let advance rt store =
             m land Lui_store.d_structure <> 0 || name = "z-index"
           then mark_parent_rekids rt store id)
         | SetExtensionProp (id, _, _) | RemoveExtensionProp (id, _) ->
-          (* Unknown semantics: repaint the node and re-derive its
-             slot under the parent. *)
-          mark_repaint rt id;
+          (* Unknown semantics: repaint the whole subtree — a
+             renderer's prop contract can reach its descendants — and
+             re-derive the node's slot under the parent. *)
+          List.iter (mark_repaint rt) (Lui_store.preorder ~root:id store);
           mark_parent_rekids rt store id
         | CreateNode (id, _) | CreateExtension (id, _, _) ->
           (* A reused id may still carry a stale fragment. *)
@@ -235,14 +285,27 @@ let advance rt store =
           mark_parent_rekids rt store id;
           purge_frag rt id
         | InsertChild (p, c, _) ->
-          mark_rekids rt p;
+          mark_rekids rt store p;
+          (* The context [c] resolves against may differ under the new
+             parent even when its layout rect happens to coincide, and
+             inherited props (foreground, the inverse-surface
+             background rule) flow through the whole ancestor chain —
+             every descendant can change too. *)
+          List.iter (mark_repaint rt) (Lui_store.preorder ~root:c store);
           (* The store silently unlinks [c] from its old parent — the
              journal names only the new one, so the recorded
              paint-parent must rebuild its kid list too. *)
           mark_parent_rekids rt store c
-        | RemoveChild (p, _) -> mark_rekids rt p
+        | RemoveChild (p, c) ->
+          mark_rekids rt store p;
+          (* An orphaned child becomes a forest root: re-derive it
+             under root context (viewport block, alpha 1, no clip) —
+             and repaint its subtree, which loses the inherited props
+             that used to flow down through it. *)
+          List.iter (mark_repaint rt) (Lui_store.preorder ~root:c store)
         | MoveChild (p, c, _) ->
-          mark_rekids rt p;
+          mark_rekids rt store p;
+          mark_repaint rt c;
           mark_parent_rekids rt store c)
       ops;
     (* [rt.dirty] only follows real marks — a semantics-only op leaves
@@ -309,166 +372,172 @@ let translate_frag (f : frag) dx dy =
         (fun g -> { g with gx = g.gx +. dx; gy = g.gy +. dy })
         f.glyphs
 
-(* The node's own emission, captured into [f]: the same decisions
-   [Lui_paint.paint_node_body] makes — shown/cull/state/alpha/clip —
-   minus the child walk, which the segment build drives through
-   [f.kids]. Ops land in the scene's swapped-in fresh buffers so every
-   buffer index they carry is fragment-local. Afterwards, children
-   whose inherited context actually moved get re-marked (the alpha
-   and containing-block cascades). *)
+(* The node's own emission, captured into [f]: the same decisions the
+   shared stacking walk makes for one node — shown, popup promotion,
+   dead-clip ghosting, state/alpha, chrome, clip brackets — minus the
+   child walk, which the segment build drives through [f.kids].
+   Geometry comes from {!Lui_paint.frame_of} and the chrome from
+   {!Lui_paint.paint_enter}/{!Lui_paint.paint_leave}, so a fragment
+   can never disagree with a full [Lui_paint.paint] about where a
+   node sits or what it emits. Ops land in the scene's swapped-in
+   fresh buffers so every buffer index they carry is fragment-local.
+   Afterwards, children whose inherited context actually moved get
+   re-marked (the alpha, containing-block and clip cascades). *)
 let repaint_frag rt ctx store scene (f : frag) id kind ~parent_r
-    ~alpha_in =
-  let old_alpha = f.alpha_out and old_cp = f.child_parent in
+    ~alpha_in ~clip_in =
+  let old_alpha = f.alpha_out and old_cp = f.child_parent
+  and old_clip = f.clip_out in
   f.alpha_in <- alpha_in;
   f.parent_r <- parent_r;
   f.kind <- kind;
-  (* Fast paths reproducing exactly what the normal walk emits. A
-     hidden or viewport-missing node contributes nothing — only its
-     bookkeeping updates. A pure translation shifts every absolute
-     coordinate in the cached ops — no prop reads, no re-plan. *)
-  let quick =
-    if not (Lui_paint.node_shown store id) then `Empty
-    else if Lui_paint.unboxed store id then `Full
-    else
-      let p = ctx.Lui_paint.hooks.layout id in
-      let r = Lui_paint.resolve_in ctx store id kind p parent_r in
-      if
-        (not (rect_empty r))
-        && rect_empty (rect_intersect r ctx.Lui_paint.viewport)
-      then `Empty
-      else if
-        (not f.hard) && f.has_box && Array.length f.fx = 0
-        && r.w = f.resolved.w && r.h = f.resolved.h
-      then `Shift r
-      else `Full
+  (* Store-level sibling position, refreshed on every repaint —
+     [mark_last_flip] consumes it when the parent's child set moves.
+     Mirrors [default_chrome]'s [last_sibling] read exactly. *)
+  f.was_last <-
+    (match Lui_store.parent store id with
+     | Some pid -> (
+       match Lui_store.last_child_id store pid with
+       | Some last -> last = id
+       | None -> true)
+     | None -> true);
+  let vp = ctx.Lui_paint.viewport in
+  let no_ops () =
+    f.pre <- [];
+    f.post <- [];
+    f.glyphs <- [||];
+    f.wide <- [||];
+    f.fx <- [||];
+    f.has_box <- false
   in
-  (match quick with
-   | `Empty ->
-     f.pre <- [];
-     f.post <- [];
-     f.glyphs <- [||];
-     f.wide <- [||];
-     f.fx <- [||];
-     (* The normal path's culled/hidden branch: children context
-        forwards unchanged. *)
-     f.has_box <- false;
-     f.show_kids <- false;
-     f.child_parent <- parent_r;
-     f.alpha_out <- alpha_in;
-     f.born <- true;
-     f.repaint <- false;
-     f.hard <- false
-   | `Shift r ->
-     translate_frag f (r.x -. f.resolved.x) (r.y -. f.resolved.y);
-     f.resolved <- r;
-     f.child_parent <- r;
-     f.repaint <- false;
-     f.hard <- false
-   | `Full -> begin
-  let saved_ops = scene.ops
-  and saved_glyphs = scene.glyphs
-  and saved_wide = scene.wide
-  and saved_fx = scene.effects in
-  scene.ops <- [];
-  scene.glyphs <- [];
-  scene.wide <- [];
-  scene.effects <- [];
-  let pre = ref [] and post = ref [] in
-  let show_kids = ref false in
-  let has_box = ref false in
-  let child_parent = ref parent_r and alpha_out = ref alpha_in in
-  if Lui_paint.node_shown store id then begin
+  if not (Lui_paint.node_shown store id) then begin
+    (* Hidden: the walk never reaches the node — no chrome, no
+       children, no popup search. *)
+    no_ops ();
+    f.show_kids <- false;
+    f.resolved <- rect 0. 0. 0. 0.;
+    f.child_parent <- parent_r;
+    f.clip_out <- clip_in;
+    f.alpha_out <- alpha_in;
+    f.born <- true;
+    f.repaint <- false;
+    f.hard <- false
+  end
+  else begin
     let contents = Lui_paint.unboxed store id in
-    let p = ctx.Lui_paint.hooks.layout id in
-    let r = Lui_paint.resolve_in ctx store id kind p parent_r in
-    let misses_viewport0 =
-      (not contents)
-      && (not (rect_empty r))
-      && rect_empty (rect_intersect r ctx.Lui_paint.viewport)
+    (* A promoted popup escapes the inherited clip entirely: the walk
+       re-enters it under a fresh clip context in the overlay drain. *)
+    let clip_in =
+      if Lui_paint.popup_kind kind && not contents then None
+      else clip_in
     in
-    if not misses_viewport0 then begin
-      f.resolved <- r;
-      has_box := not contents;
-      let st = Lui_paint.effective_state ctx.hooks store id in
-      let rs = Lui_paint.resolve_style store id st in
-      let alpha =
-        if contents then alpha_in
-        else
-          alpha_in *. rs.rs_opacity
-          *. Lui_paint.disabled_alpha store id st
+    let p = ctx.Lui_paint.hooks.layout id in
+    let fr, child_clip =
+      Lui_paint.frame_of ~scale:ctx.Lui_paint.scale ~viewport:vp store
+        id kind p parent_r clip_in
+    in
+    if Lui_paint.clip_dead ~viewport:vp clip_in then begin
+      (* Ghosted by a dead ancestor clip: no chrome, but the subtree
+         still walks — a promoted popup inside can escape, and the
+         ghost context keeps threading the accumulated alpha down to
+         it. *)
+      no_ops ();
+      f.resolved <- fr.Lui_paint.f_rect;
+      f.child_parent <- fr.Lui_paint.f_parent_r;
+      f.clip_out <- child_clip;
+      f.alpha_out <-
+        Lui_paint.paint_ghost_enter ctx store alpha_in id contents;
+      f.show_kids <- true;
+      f.born <- true;
+      f.repaint <- false;
+      f.hard <- false
+    end
+    else begin
+      (* Node-not-drawn vs subtree-invisible: only the node's own
+         chrome is skipped when its painted area misses the frame;
+         the subtree still walks. A pure translation shifts every
+         absolute coordinate in the cached ops — no re-plan. *)
+      let node_drawn =
+        (not fr.Lui_paint.f_contents)
+        && (rect_empty fr.Lui_paint.f_rect
+            || not
+                 (rect_empty
+                    (rect_intersect fr.Lui_paint.f_clipped vp)))
       in
-      (* display:contents generates no box: children keep the
-         parent's containing block and its alpha, exactly like the
-         full pass. *)
-      child_parent := (if contents then parent_r else r);
-      alpha_out := alpha;
-      if alpha > 0. then begin
-        show_kids := true;
-        let clip =
-          (not contents)
-          && Lui_paint.clips kind store id
-          && ((not (rect_empty r))
-              || (match Lui_store.parent store id with
-                 | Some pid -> Lui_store.kind store pid = "split"
-                 | None -> false))
-        in
-        if clip then
-          Lui_paint.emit1 scene
-            (Push_clip
-               { crect = r;
-                 cradii =
-                   corners r (Lui_paint.radii_of ctx store id) false;
-                 ccontinuous = false });
-        if not contents then
-          Lui_paint.emit scene
-            (Lui_paint.paint_own ctx store id st kind r rs alpha);
-        pre := List.rev scene.ops;
+      if
+        node_drawn && (not f.hard) && f.has_box
+        && Array.length f.fx = 0
+        && fr.Lui_paint.f_rect.w = f.resolved.w
+        && fr.Lui_paint.f_rect.h = f.resolved.h
+        && not (Lui_paint.viewport_anchored kind)
+      then begin
+        translate_frag f
+          (fr.Lui_paint.f_rect.x -. f.resolved.x)
+          (fr.Lui_paint.f_rect.y -. f.resolved.y);
+        f.resolved <- fr.Lui_paint.f_rect;
+        f.child_parent <- fr.Lui_paint.f_parent_r;
+        f.clip_out <- child_clip;
+        (* [alpha_out] and [show_kids] stand: the cached ops were
+           painted under them and a geom-only mark cannot have moved
+           the alpha channel. *)
+        f.repaint <- false;
+        f.hard <- false
+      end
+      else begin
+        let saved_ops = scene.ops
+        and saved_glyphs = scene.glyphs
+        and saved_wide = scene.wide
+        and saved_fx = scene.effects in
         scene.ops <- [];
-        if Lui_paint.scrollable kind store id && not contents then
-          Lui_paint.emit scene
-            (Lui_paint.scrollbar_ops ctx store id r alpha);
-        if clip then Lui_paint.emit1 scene Pop_clip;
-        post := List.rev scene.ops
+        scene.glyphs <- [];
+        scene.wide <- [];
+        scene.effects <- [];
+        let br = Lui_paint.paint_enter ctx store scene alpha_in fr in
+        f.pre <- List.rev scene.ops;
+        scene.ops <- [];
+        if br.Lui_paint.b_emit then
+          Lui_paint.paint_leave ctx store scene br.Lui_paint.b_ctx fr;
+        f.post <- List.rev scene.ops;
+        f.glyphs <- Array.of_list (List.rev scene.glyphs);
+        f.wide <- Array.of_list (List.rev scene.wide);
+        f.fx <- Array.of_list scene.effects;
+        scene.ops <- saved_ops;
+        scene.glyphs <- saved_glyphs;
+        scene.wide <- saved_wide;
+        scene.effects <- saved_fx;
+        f.has_box <- br.Lui_paint.b_emit;
+        f.show_kids <- br.Lui_paint.b_down;
+        f.alpha_out <- br.Lui_paint.b_ctx;
+        f.resolved <- fr.Lui_paint.f_rect;
+        f.child_parent <- fr.Lui_paint.f_parent_r;
+        f.clip_out <- child_clip;
+        f.born <- true;
+        f.repaint <- false;
+        f.hard <- false;
+        rt.stat_repaints <- rt.stat_repaints + 1
       end
     end
   end;
-  f.pre <- !pre;
-  f.post <- !post;
-  f.glyphs <- Array.of_list (List.rev scene.glyphs);
-  f.wide <- Array.of_list (List.rev scene.wide);
-  f.fx <- Array.of_list scene.effects;
-  f.has_box <- !has_box;
-  f.child_parent <- !child_parent;
-  f.alpha_out <- !alpha_out;
-  f.show_kids <- !show_kids;
-  f.born <- true;
-  f.repaint <- false;
-  f.hard <- false;
-  rt.stat_repaints <- rt.stat_repaints + 1;
-  scene.ops <- saved_ops;
-  scene.glyphs <- saved_glyphs;
-  scene.wide <- saved_wide;
-  scene.effects <- saved_fx
-  end);
   (* Inherited-context cascade: children painted under the old values
-     must re-derive when either moved — alpha moves re-plan, a pure
-     containing-block shift may only need re-positioning. *)
+     must re-derive when any moved — alpha moves re-plan, a pure
+     containing-block or clip-context shift may only need
+     re-positioning. *)
   if f.alpha_out <> old_alpha then
     List.iter (fun (k, _) -> mark_repaint rt k) f.kids
-  else if f.child_parent <> old_cp then
+  else if f.child_parent <> old_cp || f.clip_out <> old_clip then
     List.iter (fun (k, _) -> mark_geom rt k) f.kids
 
 (* Parent context for a pending repaint, painting the parent first so
-   the inherited alpha/containing-block are current. [None] while the
-   parent's subtree is culled — the child keeps its marks for when
-   the branch surfaces. *)
+   the inherited alpha/containing-block/clip are current. [None]
+   while the parent's subtree is culled — the child keeps its marks
+   for when the branch surfaces. *)
 let rec parent_ctx rt store ctx scene vp id =
   match paint_parent rt store id with
   | Some p -> (
     let pf = frag_of rt p in
     ignore (ensure_painted rt store ctx scene vp pf);
-    if pf.show_kids then Some (pf.child_parent, pf.alpha_out) else None)
-  | None -> Some (vp, 1.)
+    if pf.show_kids then Some (pf.child_parent, pf.alpha_out, pf.clip_out)
+    else None)
+  | None -> Some (vp, 1., None)
 
 (* Paint [f] if it is marked or unborn — parent context first so the
    inherited values are current. Returns whether [f] holds fresh ops
@@ -483,9 +552,9 @@ and ensure_painted rt store ctx scene vp (f : frag) : bool =
     else
       match parent_ctx rt store ctx scene vp f.self with
       | None -> false
-      | Some (parent_r, alpha_in) ->
+      | Some (parent_r, alpha_in, clip_in) ->
         repaint_frag rt ctx store scene f f.self
-          (Lui_store.kind store f.self) ~parent_r ~alpha_in;
+          (Lui_store.kind store f.self) ~parent_r ~alpha_in ~clip_in;
         true
   end
   else f.born
@@ -501,6 +570,13 @@ type mat = {
   mutable fx_rev : effect_op list;
 }
 
+(* Physical identity on frag lists — [sub_pops] change detection. *)
+let rec same_frags xs ys =
+  match (xs, ys) with
+  | [], [] -> true
+  | x :: xs', y :: ys' -> x == y && same_frags xs' ys'
+  | _ -> false
+
 (* Bring one child current — repaint under this parent's resolved
    context, rebuild its own segment — then let the fold read its
    emit-status. Culled parents skip this entirely: the marks persist
@@ -513,6 +589,7 @@ let rec ensure_kid rt store scene m (f : frag) (k, _d) =
       repaint_frag rt m.m_ctx store scene kf k
         (Lui_store.kind store k)
         ~parent_r:f.child_parent ~alpha_in:f.alpha_out
+        ~clip_in:f.clip_out
   end;
   if kf.born && kf.seg_dirty then rebuild_seg rt store scene m kf
 
@@ -523,6 +600,7 @@ let rec ensure_kid rt store scene m (f : frag) (k, _d) =
 and rebuild_seg rt store scene m (f : frag) =
   rt.stat_visits <- rt.stat_visits + 1;
   f.seg_dirty <- false;
+  let old_pops = f.sub_pops in
   let own ops = List.map (fun o -> Own (f, o)) ops in
   if f.show_kids then begin
     List.iter (ensure_kid rt store scene m f) f.kids;
@@ -535,20 +613,25 @@ and rebuild_seg rt store scene m (f : frag) =
             else Some (Sub kf))
           f.kids
       @ own f.post;
+    (* Only the next drain level: a deferred kid contributes itself;
+       the popups *it* promotes wait behind it in the drain queue,
+       exactly like the walk's deferred thunk enqueuing during the
+       drain. *)
     f.sub_pops <-
       List.concat_map
         (fun (k, deferred) ->
           let kf = frag_of rt k in
-          if deferred then kf :: kf.sub_pops else kf.sub_pops)
+          if deferred then [ kf ] else kf.sub_pops)
         f.kids
   end
   else begin
     f.seg <- own f.pre @ own f.post;
     f.sub_pops <- []
   end;
-  (* Emit-status flips re-derive the parent's piece list. *)
+  (* Emit-status and next-level promotion flips both re-derive the
+     parent's piece/promotion lists. *)
   let e = f.seg <> [] in
-  if e <> f.emitted then begin
+  if e <> f.emitted || not (same_frags old_pops f.sub_pops) then begin
     f.emitted <- e;
     flip_to_parent rt store f
   end
@@ -624,7 +707,7 @@ let paint_retained rt hooks store (scene : Lui_scene.t) ?moved ?hints ?vlists
        (fun id ->
          let now = rt.mounted id in
          let before = Hashtbl.find_opt rt.vwin id in
-         if now <> before then mark_rekids rt id)
+         if now <> before then mark_rekids rt store id)
        ids
    | None -> ());
   (match moved with
@@ -688,13 +771,30 @@ let paint_retained rt hooks store (scene : Lui_scene.t) ?moved ?hints ?vlists
           if ensure_painted rt store m.m_ctx scene vp f then
             rebuild_seg rt store scene m f)
       roots;
-    List.iter (emit_seg scene m) (List.map (frag_of rt) roots);
-    (* Overlay drain: subtree popups in preorder — each emits its own
-       memoized segment. *)
+    let root_frags = List.map (frag_of rt) roots in
+    (* A root that is itself a popup kind promotes like any other
+       node — the walk defers it to the overlay pass too. *)
+    let promotes (f : frag) =
+      Lui_paint.popup_kind (Lui_store.kind store f.self)
+      && not (Lui_paint.unboxed store f.self)
+    in
     List.iter
-      (fun id ->
-        List.iter (emit_seg scene m) (frag_of rt id).sub_pops)
-      roots;
+      (fun f -> if not (promotes f) then emit_seg scene m f)
+      root_frags;
+    (* Overlay drain: the walk's deferred queue — each subtree's
+       next-level promotions in forest order, emitting a memoized
+       segment apiece and seeding the level behind them. *)
+    let drain = Queue.create () in
+    List.iter
+      (fun f ->
+        if promotes f then Queue.add f drain
+        else List.iter (fun g -> Queue.add g drain) f.sub_pops)
+      root_frags;
+    while not (Queue.is_empty drain) do
+      let g = Queue.pop drain in
+      emit_seg scene m g;
+      List.iter (fun h -> Queue.add h drain) g.sub_pops
+    done;
     while not (Queue.is_empty m.m_ctx.Lui_paint.deferred) do
       (Queue.pop m.m_ctx.Lui_paint.deferred) ()
     done;
