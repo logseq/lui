@@ -101,6 +101,7 @@ type retained = {
   mutable scale : float;
   (* Any mark since the last materialize. *)
   mutable dirty : bool;
+  mutable resync : bool;
   (* Materialize generation — fragments record which frame last
      pushed their buffers. *)
   mutable mgen : int;
@@ -118,12 +119,16 @@ let create () =
   { frags = Hashtbl.create 256; fparent = Hashtbl.create 256;
     pend_kids = Hashtbl.create 16; pend_segs = Hashtbl.create 64;
     rev = -1; vp = rect 0. 0. 0. 0.; scale = 1.;
-    dirty = false; mgen = 0; stat_repaints = 0; stat_visits = 0;
+    dirty = false; resync = false; mgen = 0; stat_repaints = 0; stat_visits = 0;
     vwin = Hashtbl.create 4; mounted = (fun _ -> None) }
 
 let invalidate (rt : retained) =
   Hashtbl.reset rt.frags;
   Hashtbl.reset rt.vwin;
+  (* Fresh fragments start with no kid list and nothing marks them:
+     the next paint must re-derive every node's children, or the tree
+     paints as childless roots (an empty frame). *)
+  rt.resync <- true;
   rt.dirty <- true
 
 let stat_repaints (rt : retained) = rt.stat_repaints
@@ -699,6 +704,14 @@ let paint_retained rt hooks store (scene : Lui_scene.t) ?moved ?hints ?vlists
   end;
   if Lui_store.revision store <> rt.rev then advance rt store;
   rt.mounted <- hooks.Lui_paint.mounted_children;
+  if rt.resync then begin
+    rt.resync <- false;
+    List.iter
+      (fun root ->
+        List.iter (fun id -> mark_rekids rt store id)
+          (Lui_store.preorder ~root store))
+      (Lui_store.root_ids store)
+  end;
   (* A virtual list whose mounted window slid (scroll, resize) has a
      stale kids list even though no store op named it. *)
   (match vlists with
