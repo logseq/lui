@@ -1980,7 +1980,7 @@ and layout_node_impl
           && is_defined child.layout.computed_flex_basis;
         let sflex = child == !single_flex_child in
         if child.spec_clean && (child.basis_static || child.ctx_same)
-           && child.was_sflex = sflex && false
+           && child.was_sflex = sflex
         then ()
         else begin
           (* The child is being fully re-evaluated under this
@@ -2234,7 +2234,6 @@ and layout_node_impl
               && ((not (is_flex !current_relative_child))
                   || !remaining_free_space = zero)
             in
-            let clean_inert = clean_inert && false in
             if clean_inert && (!current_relative_child).prev_a_set
                && ((!current_relative_child).fin_set
                    && !current_relative_child.fin_pl
@@ -2695,7 +2694,7 @@ and layout_node_impl
                      when the final line cross also matches, the
                      measured dims are already in place. *)
                   let skip_b =
-                    false && (!child).spec_clean && (!child).ctx_same
+                    (!child).spec_clean && (!child).ctx_same
                     && node.pl_valid && same_dim !cross_dim node.pl_cross
                     && (!child).prev_b_set && (!child).fin_set
                     && (!child).fin_pl
