@@ -949,6 +949,32 @@ let test_spatial_degenerate_kept () =
   in
   check bool "degenerate ops preserved" true (ops_of a = ops_of b)
 
+
+(* A labeled menu-item with an icon prop paints its glyph exactly once,
+   in the fixed leading slot (x+8). The labeled side-slot path used to
+   paint a second copy beside it. *)
+let test_menu_item_single_icon () =
+  let t = store () in
+  apply t
+    [ Lui_protocol.CreateNode (1, MenuItem);
+      SetProp (1, InlineIconName, StringValue "settings");
+      SetProp (1, TextValue, StringValue "Settings") ];
+  let img = Lui_scene.new_image ~w:4 ~h:4 (Bytes.make 64 '\255') in
+  let h =
+    { (hooks ~layout:(fun _ ->
+          Lui_paint.placement_of_rect (rect 0. 0. 200. 32.)) ())
+      with Lui_paint.image_of = (fun id -> if id = 1 then Some img else None);
+      image_in = (fun id _ -> if id = 1 then Some img else None) }
+  in
+  let s = paint_with h t () in
+  let images =
+    List.filter_map (function Image i -> Some i | _ -> None) s.ops
+  in
+  check int "one icon image" 1 (List.length images);
+  match images with
+  | [ i ] -> check (float 0.01) "leading slot x" 8. i.irect2.x
+  | _ -> ()
+
 let () =
   run "lui_paint"
     [ ("color",
@@ -1002,7 +1028,8 @@ let () =
          test_case "spinner" `Quick test_spinner;
          test_case "slider" `Quick test_slider;
          test_case "scrollbar" `Quick test_scrollbar;
-         test_case "extension" `Quick test_extension ]);
+         test_case "extension" `Quick test_extension;
+         test_case "menu item single icon" `Quick test_menu_item_single_icon ]);
       ("secure",
        [ test_case "masked paint" `Quick test_secure_masked;
          test_case "mask per grapheme" `Quick test_secure_masked_graphemes;

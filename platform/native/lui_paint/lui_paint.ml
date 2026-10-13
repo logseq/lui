@@ -1723,6 +1723,13 @@ let control_icon_ops ctx store id r alpha =
    centered slot from [control_icon_ops]. Like there, the [icon]
    prop gates the image lookup. *)
 let labeled_content_ops ctx store id r alpha ~fg ~placeholder_ok =
+  (* menu-item owns a fixed leading icon slot: its box branch paints the
+     glyph through [control_icon_ops] and [text_placement_of] already
+     reserves the slot in the label pad. Painting the side-slot icon here
+     as well drew every menu icon twice. *)
+  if Lui_store.kind store id = "menu-item" then
+    text_ops ~fg ctx store id r alpha ~placeholder_ok
+  else
   match
     ( (match pstr store id "icon" with
        | Some _ -> ctx.hooks.image_of id
