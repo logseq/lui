@@ -34,9 +34,11 @@ let scene () =
     ~mask_atlas:(Atlas.create ~bpp:1 ~w:64 ~h:64)
     ~color_atlas:(Atlas.create ~bpp:4 ~w:64 ~h:64)
 
-let paint_with h t ?(width = 200) ?(height = 200) ?(scale = 1.) () =
+let paint_with h t ?(width = 200) ?(height = 200) ?(scale = 1.)
+    ?spatial () =
   let s = scene () in
-  Lui_paint.paint h t s ~width ~height ~scale ~clear:(color 0 0 0 0);
+  Lui_paint.paint ?spatial h t s ~width ~height ~scale
+    ~clear:(color 0 0 0 0);
   s
 
 let test_fill_op () =
@@ -811,6 +813,142 @@ let test_coverage_table () =
   in
   check bool "all props classified" true (missing = [])
 
+(* ---------- spatial index ---------- *)
+
+(* Build an index over the same rects a layout-map hook hands the
+   walk — integral rects so [rect_snap] is the identity. *)
+let spatial_of store f =
+  Lui_spatial.build Lui_paint.spatial_env store
+    ~rect_of:(fun id -> f id)
+
+let ops_of s = (s.ops, s.glyphs, s.wide)
+
+let test_spatial_paint_equiv () =
+  (* Everything the cull must respect at once: a scroll clip with
+     off-clip children, a promoted popup inside a fully offscreen
+     parent, a hidden subtree, a display:contents wrapper, a zero-area
+     spacer and z-reordered siblings. *)
+  let t = store () in
+  apply t
+    [ Lui_protocol.CreateNode (1, Column);
+      CreateNode (2, Scroll);
+      CreateNode (3, Column); CreateNode (4, Column);
+      CreateNode (5, Popover);
+      CreateNode (6, Column); CreateNode (7, Spacer);
+      CreateNode (8, Column); CreateNode (9, Column);
+      CreateNode (10, Column); CreateNode (11, Column);
+      SetProp (2, BackgroundValue, StringValue "#101010");
+      SetProp (3, BackgroundValue, StringValue "#ff0000");
+      SetProp (4, BackgroundValue, StringValue "#00ff00");
+      SetProp (5, BackgroundValue, StringValue "#0000ff");
+      SetProp (6, Visible, BoolValue false);
+      SetProp (6, BackgroundValue, StringValue "#ffffff");
+      SetProp (8, DisplayValue, StringValue "contents");
+      SetProp (9, BackgroundValue, StringValue "#ffff00");
+      SetProp (10, ZIndex, IntValue 2);
+      SetProp (10, BackgroundValue, StringValue "#00ffff");
+      SetProp (11, ZIndex, IntValue 1);
+      SetProp (11, BackgroundValue, StringValue "#ff00ff");
+      InsertChild (1, 2, 0);
+      InsertChild (2, 3, 0); InsertChild (2, 4, 1);
+      InsertChild (4, 5, 0);
+      InsertChild (1, 6, 1); InsertChild (1, 7, 2);
+      InsertChild (1, 8, 3); InsertChild (8, 9, 0);
+      InsertChild (1, 10, 4); InsertChild (1, 11, 5) ];
+  let rects = function
+    | 1 -> rect 0. 0. 200. 200.
+    | 2 -> rect 0. 0. 200. 100.
+    | 3 -> rect 0. 0. 200. 20.
+    | 4 -> rect 0. 300. 200. 20.   (* fully offscreen + off-clip *)
+    | 5 -> rect 10. 50. 60. 30.    (* promoted popup back onscreen *)
+    | 6 -> rect 0. 100. 200. 50.
+    | 7 -> rect 0. 150. 0. 0.
+    | 8 -> rect 0. 160. 200. 40.
+    | 9 -> rect 0. 160. 200. 40.
+    | 10 -> rect 0. 20. 100. 100.
+    | 11 -> rect 50. 20. 100. 100.
+    | _ -> rect 0. 0. 0. 0.
+  in
+  let layout = layout_map rects in
+  let idx = spatial_of t rects in
+  let a = paint_with (hooks ~layout ()) t () in
+  let b = paint_with (hooks ~layout ()) t ~spatial:idx () in
+  check bool "indexed paint emits identical scene" true
+    (ops_of a = ops_of b)
+
+let test_spatial_visit_bound () =
+  (* A 300-row column under a 100px viewport: the interval index must
+     visit only the band, not every mounted row. *)
+  let t = store () in
+  let ops = ref [ Lui_protocol.InsertChild (1, 2, 0);
+                  CreateNode (2, Column); CreateNode (1, Root) ] in
+  for i = 0 to 299 do
+    ops :=
+      InsertChild (2, 10 + i, i)
+      :: CreateNode (10 + i, ViewThatFits)
+      :: !ops
+  done;
+  apply t (List.rev !ops);
+  let rects = function
+    | 1 -> rect 0. 0. 200. 100.
+    | 2 -> rect 0. 0. 200. 6000.
+    | id -> rect 0. (float_of_int (id - 10) *. 20.) 200. 20.
+  in
+  let idx = spatial_of t rects in
+  let count ?spatial () =
+    let n = ref 0 in
+    Lui_paint.walk ~scale:1. ~viewport:(rect 0. 0. 200. 100.) t
+      ~layout:(layout_map rects)
+      ~enter:(fun () _ -> incr n;
+             { Lui_paint.b_emit = false; b_down = true; b_ctx = () })
+      ~ghost_enter:(fun () _ _ -> ())
+      ~leave:(fun _ _ -> ())
+      ?spatial:(Option.map
+                  (fun i -> (i, Lui_spatial.Region (rect 0. 0. 200. 100.)))
+                  spatial)
+      ();
+    !n
+  in
+  let full = count () and pruned = count ~spatial:idx () in
+  check int "unindexed visits everything" 302 full;
+  check bool "indexed visits the band only" true (pruned <= 12)
+
+let test_spatial_degenerate_kept () =
+  (* A zero-area child inside a wide parent must still run its
+     emission path — the index keeps zero-bound subtrees reachable
+     for region queries. *)
+  let t = store () in
+  let ops =
+    ref [ Lui_protocol.InsertChild (1, 2, 0);
+          CreateNode (2, Column); CreateNode (1, Root) ]
+  in
+  for i = 0 to 39 do
+    ops :=
+      InsertChild (2, 10 + i, i)
+      :: CreateNode (10 + i, ViewThatFits)
+      :: SetProp (10 + i, BackgroundValue, StringValue "#ff0000")
+      :: !ops
+  done;
+  (* one zero-area box at a scrolled-off position *)
+  ops :=
+    InsertChild (2, 500, 40)
+    :: CreateNode (500, Column)
+    :: SetProp (500, BackgroundValue, StringValue "#00ff00")
+    :: !ops;
+  apply t (List.rev !ops);
+  let rects = function
+    | 1 -> rect 0. 0. 200. 200.
+    | 2 -> rect 0. 0. 200. 2000.
+    | 500 -> rect 0. 5000. 0. 0.
+    | id -> rect 0. (float_of_int (id - 10) *. 40.) 200. 40.
+  in
+  let idx = spatial_of t rects in
+  let a = paint_with (hooks ~layout:(layout_map rects) ()) t () in
+  let b =
+    paint_with (hooks ~layout:(layout_map rects) ()) t ~spatial:idx ()
+  in
+  check bool "degenerate ops preserved" true (ops_of a = ops_of b)
+
 let () =
   run "lui_paint"
     [ ("color",
@@ -871,5 +1009,9 @@ let () =
          test_case "placeholder unmasked" `Quick test_secure_placeholder_unmasked;
          test_case "mask units" `Quick test_secure_mask_units;
          test_case "masked offset map" `Quick test_secure_byte_of_masked ]);
+      ("spatial",
+       [ test_case "paint equivalence" `Quick test_spatial_paint_equiv;
+         test_case "visit bound" `Quick test_spatial_visit_bound;
+         test_case "degenerate kept" `Quick test_spatial_degenerate_kept ]);
       ("coverage",
        [ test_case "all props" `Quick test_coverage_table ]) ]

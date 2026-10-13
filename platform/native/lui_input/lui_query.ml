@@ -139,8 +139,13 @@ let hit_flags_of store id =
    display:contents pass-through, and the clip context computed with
    [Lui_paint.clips]'s exact rule. [rects] carries the driver's
    resolved boxes — fed back as placement overrides so the walk
-   shares the stacking/clip result without re-resolving geometry. *)
-let hit_path store rects ~x ~y =
+   shares the stacking/clip result without re-resolving geometry.
+   [?spatial] is the subtree-bound index built over that same mirror
+   ([Lui_spatial.build] with [~rect_of:(Rects.get rects)]): with it,
+   the walk descends only toward subtrees that could contain the
+   point instead of visiting every node — O(log n + path) instead of
+   O(n) per pointer event. *)
+let hit_path ?spatial store rects ~x ~y =
   let path = ref [] in
   (* pointer-events accumulate down the tree; the ghost pass threads
      the same [on] update so a promoted popup keeps its clipped-away
@@ -171,13 +176,15 @@ let hit_path store rects ~x ~y =
     ~enter
     ~ghost_enter:(fun on id _contents ->
       flags_or on (hit_flags_of store id))
-    ~leave:(fun _ _ -> ()) true;
+    ~leave:(fun _ _ -> ())
+    ?spatial:(Option.map (fun i -> (i, Lui_spatial.Point (x, y))) spatial)
+    true;
   (* The head is the node visited last in paint order: visually
      topmost. *)
   !path
 
-let hit store rects ~x ~y =
-  match hit_path store rects ~x ~y with
+let hit ?spatial store rects ~x ~y =
+  match hit_path ?spatial store rects ~x ~y with
   | id :: _ -> Some id
   | [] -> None
 

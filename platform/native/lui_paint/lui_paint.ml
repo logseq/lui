@@ -2365,6 +2365,16 @@ let node_shown store id =
 
 let unboxed store id = pstr store id "display" = Some "contents"
 
+(* The store/paint predicates a spatial index build needs, wired to
+   this module's own rules so index bounds always mirror the walk's
+   visibility and clip-escape decisions. *)
+let spatial_env : Lui_spatial.env =
+  { shown = node_shown;
+    promotes =
+      (fun store id ->
+        popup_kind (Lui_store.kind store id) && not (unboxed store id));
+    ordered = ordered_children }
+
 (* ---------- shared stacking walk ---------- *)
 
 (* One frame of the tree walk paint and hit-testing share: the node's
@@ -2441,9 +2451,16 @@ let frame_of ~scale ~viewport store id kind p parent_r clip =
    walk switches to a ghost pass that skips [enter]/[leave] and every
    node's chrome cost, keeping only the promoted-popup search and the
    [ghost_enter] context update (a popup's alpha and hit flags still
-   accumulate its clipped-away ancestors). *)
-let walk ?(mounted = fun _ -> None) ~scale ~viewport store ~layout ~enter
-    ~ghost_enter ~leave ctx0 =
+   accumulate its clipped-away ancestors).
+
+   [?spatial] supplies a fresh [Lui_spatial] index plus the query the
+   walk serves ([Point] for hit-testing, [Region] for paint culling):
+   children whose subtree bound cannot contribute are never entered,
+   and wide parents enumerate candidates through the interval index
+   instead of scanning every child. Pruning is a strict filter on the
+   unindexed walk's visit set — same order, same clip contexts. *)
+let walk ?(mounted = fun _ -> None) ~scale ~viewport store ~layout ~enter ~ghost_enter ~leave
+    ?spatial ctx0 =
   let deferred = Queue.create () in
   (* Virtualized containers walk only their mounted window slice. *)
   let kids id =
@@ -2460,12 +2477,12 @@ let walk ?(mounted = fun _ -> None) ~scale ~viewport store ~layout ~enter
         (* promoted out of the ancestor clips: painted after the whole
            tree with a fresh clip context *)
         Queue.add (fun () -> body ctx None parent_r id kind) deferred
-      else if dead clip then ghost ctx parent_r n
+      else if dead clip then ghost ctx clip parent_r n
       else body ctx clip parent_r id kind
   (* The subtree sits entirely inside a dead clip: keep walking only
      far enough to find promoted popups (and their containing blocks),
      skipping every node's enter/chrome cost. *)
-  and ghost ctx parent_r (n : Lui_store.node) =
+  and ghost ctx clip parent_r (n : Lui_store.node) =
     let id = Lui_store.node_id n and kind = Lui_store.node_kind n in
     if node_shown store id then
       if popup_kind kind && not (unboxed store id) then
@@ -2476,24 +2493,90 @@ let walk ?(mounted = fun _ -> None) ~scale ~viewport store ~layout ~enter
         let r = resolve_rect ~scale ~viewport store id kind p parent_r in
         let ctx = ghost_enter ctx id contents in
         let child_parent = if contents then parent_r else r in
-        List.iter (ghost ctx child_parent) (kids id)
+        (* The ghost pass owes the query only promoted escapees —
+           [keep] answers exactly that via [eb]/[esc]. *)
+        List.iter
+          (fun cid ->
+            match Lui_store.find_opt store cid with
+            | Some c -> ghost ctx clip child_parent c
+            | None -> ())
+          (match mounted id, spatial with
+           | Some _, _ -> List.map Lui_store.node_id (kids id)
+           | None, None ->
+             List.map Lui_store.node_id (ordered_children store id)
+           | None, Some (idx, q) -> candidates idx q clip id)
       end
+  (* Children of [id] that could contribute to the query under clip
+     context [clip]: the interval index for indexed parents, the
+     per-child [keep] test otherwise. Returns ids in paint order. *)
+  and candidates idx q clip id =
+    match Lui_spatial.children idx ~clip q id with
+    | Some ids -> ids
+    | None ->
+      List.filter_map
+        (fun c ->
+          let cid = Lui_store.node_id c in
+          if
+            Lui_spatial.keep idx ~clip
+              ~esc:
+                (popup_kind (Lui_store.node_kind c)
+                 && not (unboxed store cid))
+              q cid
+          then Some cid
+          else None)
+        (ordered_children store id)
   and body ctx clip parent_r id kind =
     let p = layout id in
     let f, child_clip =
       frame_of ~scale ~viewport store id kind p parent_r clip
     in
     let br = enter ctx f in
-    if br.b_down then
-      List.iter (go br.b_ctx child_clip f.f_parent_r) (kids id);
+    if br.b_down then begin
+      (* Mounted virtual-list slices are already window-sized; the
+         spatial index only prunes ordinary children. *)
+      match mounted id, spatial with
+      | Some _, _ -> List.iter (go br.b_ctx child_clip f.f_parent_r) (kids id)
+      | None, None ->
+        List.iter (go br.b_ctx child_clip f.f_parent_r)
+          (ordered_children store id)
+      | None, Some (idx, q) ->
+        List.iter
+          (fun cid ->
+            match Lui_store.find_opt store cid with
+            | Some c -> go br.b_ctx child_clip f.f_parent_r c
+            | None -> ())
+          (candidates idx q child_clip id)
+    end;
     if br.b_emit then leave br.b_ctx f
   in
+  let roots =
+    (* [root_ids] folds the whole store — with an index the snapshot
+       already knows the roots. *)
+    match spatial with
+    | None -> Lui_store.root_ids store
+    | Some (idx, _) -> Lui_spatial.roots idx
+  in
   List.iter
-    (fun id -> go ctx0 None viewport
-        (match Lui_store.find_opt store id with
-         | Some n -> n
-         | None -> invalid_arg "Lui_paint.walk: root id missing"))
-    (Lui_store.root_ids store);
+    (fun id ->
+       let keep =
+         match spatial with
+         | None -> true
+         | Some (idx, q) ->
+           (match Lui_store.find_opt store id with
+            | Some n ->
+              Lui_spatial.keep idx ~clip:None
+                ~esc:
+                  (popup_kind (Lui_store.node_kind n)
+                   && not (unboxed store id))
+                q id
+            | None -> false)
+       in
+       if keep then
+         go ctx0 None viewport
+           (match Lui_store.find_opt store id with
+            | Some n -> n
+            | None -> invalid_arg "Lui_paint.walk: root id missing"))
+    roots;
   (* Promoted popups drain after the tree — nested popups enqueue
      during the drain and preserve preorder among popups. *)
   while not (Queue.is_empty deferred) do
@@ -2638,8 +2721,11 @@ let paint_leave ctx store scene alpha f =
     emit scene (scrollbar_ops ctx store f.f_id f.f_rect alpha);
   if f.f_clips then emit1 scene Pop_clip
 
-(* Full repaint: reset the scene and repaint the whole forest. *)
-let paint hooks store scene ~width ~height ~scale ~clear =
+(* Full repaint: reset the scene and repaint the whole forest. A
+   [?spatial] index fresh for the geometry about to resolve lets the
+   walk skip subtrees whose bounds miss the viewport instead of
+   visiting every mounted node — see {!Lui_spatial}. *)
+let paint ?spatial hooks store scene ~width ~height ~scale ~clear =
   Lui_scene.reset scene ~width ~height ~scale ~clear;
   let ctx =
     { hooks; scale;
@@ -2650,7 +2736,10 @@ let paint hooks store scene ~width ~height ~scale ~clear =
     ~mounted:hooks.mounted_children
     ~enter:(paint_enter ctx store scene)
     ~ghost_enter:(paint_ghost_enter ctx store)
-    ~leave:(paint_leave ctx store scene) 1.;
+    ~leave:(paint_leave ctx store scene)
+    ?spatial:
+      (Option.map (fun i -> (i, Lui_spatial.Region ctx.viewport)) spatial)
+    1.;
   (* Extension renderers may enqueue their own deferred work on
      ctx.deferred — drain it after the walk's own popup pass. *)
   while not (Queue.is_empty ctx.deferred) do

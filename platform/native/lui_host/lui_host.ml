@@ -100,6 +100,11 @@ type t = {
   (* Pointer point an unanchored context-menu opens at — a thunk so the
      accessor reads the live position each repaint. *)
   mutable ctx_anchor : unit -> (float * float) option;
+  (* Bumped by every host-side poke that can change layout output
+     without a store revision — [invalidate_layout], [resize],
+     [set_hidden], [set_ctx_anchor]. Epoch keys mixing it in stay
+     honest across external measure/visibility changes. *)
+  mutable inv_count : int;
   (* Virtual-list viewport feed: node id → content-space visible range
      (start, extent) evaluated during every layout sync. *)
   mutable vport : int -> (float * float) option;
@@ -142,7 +147,7 @@ let create ~hooks ?layout ?(measure = no_measure) ~renderer ~width ~height ~scal
     paint_hints = Hashtbl.create 16;
     moved_hints = Hashtbl.create 16;
     hidden = (fun _ -> false);
-    ctx_anchor = (fun () -> None);
+    ctx_anchor = (fun () -> None); inv_count = 0;
     vport = (fun _ -> None) }
 
 let store h = h.store
@@ -151,11 +156,13 @@ let wants_repaint h = h.dirty
 
 let set_hidden h pred =
   h.hidden <- (match pred with Some p -> p | None -> fun _ -> false);
+  h.inv_count <- h.inv_count + 1;
   h.dirty <- true
 
 let set_ctx_anchor h accessor =
   h.ctx_anchor <-
-    (match accessor with Some f -> f | None -> fun () -> None)
+    (match accessor with Some f -> f | None -> fun () -> None);
+  h.inv_count <- h.inv_count + 1
 
 (* Install the virtual-list viewport feed: [f id] reports the node's
    content-space visible range (start, extent, device px) — scroll
@@ -200,7 +207,10 @@ let layout_take_drift h id =
    stable identity — e.g. a font stack that finished loading — needs
    this poke to be seen. *)
 let invalidate_layout h =
+  h.inv_count <- h.inv_count + 1;
   match h.layout with Some l -> l.linvalidate () | None -> ()
+
+let invalidation_count h = h.inv_count
 
 (* Host-side paint inputs the store cannot see (interaction state,
      images that finished decoding): the next repaint re-derives these
@@ -226,7 +236,11 @@ let apply_batch h (batch : Lui_protocol.patch_batch) =
   true
 
 let resize h ~width ~height ~scale =
-  h.width <- width; h.height <- height; h.scale <- scale; h.dirty <- true
+  h.width <- width;
+  h.height <- height;
+  h.scale <- scale;
+  h.inv_count <- h.inv_count + 1;
+  h.dirty <- true
 
 let prof_t0 = Sys.time ()
 let prof msg =

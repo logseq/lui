@@ -119,6 +119,12 @@ val invalidate_layout : t -> unit
     keys on, and sync always runs between batches, so the memo can
     never observe a half-applied tree. *)
 
+val invalidation_count : t -> int
+(** Monotonic counter bumped by every host-side input that can move
+    layout output without a store revision: {!invalidate_layout},
+    {!resize}, {!set_hidden}, {!set_ctx_anchor}. Epoch keys that must
+    stay honest about resolved geometry mix it in. *)
+
 val note_paint : t -> int -> unit
 (** [note_paint h id] marks a node whose host-side paint inputs
     changed outside the store — interaction state the hooks report,
