@@ -598,6 +598,7 @@ let is_context_menu_press = function
 
 let register_press_detail context node handler =
   enable context node PointerEnabled;
+  enable context node PressEnabled;
   require_event_supported context node
     (PressDetail (node, pointer_detail_probe))
     "press-detail";

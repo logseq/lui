@@ -414,7 +414,7 @@ let repaint_frag rt ctx store scene (f : frag) id kind ~parent_r
     f.fx <- [||];
     f.has_box <- false
   in
-  if not (Lui_paint.node_shown store id) then begin
+  if ctx.Lui_paint.hooks.hidden id || not (Lui_paint.node_shown store id) then begin
     (* Hidden: the walk never reaches the node — no chrome, no
        children, no popup search. *)
     no_ops ();

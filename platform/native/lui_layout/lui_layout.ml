@@ -1517,10 +1517,26 @@ let update_rect (t : t) id r =
    | _ -> Hashtbl.replace t.rect_changed id ());
   Hashtbl.replace t.rects id r'
 
+let absolute_reader (t : t) =
+  let resolved = Hashtbl.create (Hashtbl.length t.nodes) in
+  let frame = Lui_flex.layout (Option.get t.root) in
+  let rec read id =
+    match Hashtbl.find_opt resolved id with
+    | Some rect -> rect
+    | None ->
+      let local = Lui_flex.layout (Hashtbl.find t.nodes id) in
+      let owner = Hashtbl.find t.owner id in
+      let parent = if owner=frame_id then frame else read owner in
+      (* Keep ancestor positions unsnapped: only the exported leaf edges
+         round to device pixels, so fractional offsets cannot accumulate. *)
+      let rect = {local with Lui_flex.x=parent.x +. local.x; y=parent.y +. local.y} in
+      Hashtbl.add resolved id rect;
+      rect in
+  read
+
 let collect (t : t) =
-  Hashtbl.iter
-    (fun id n -> update_rect t id (Lui_flex.absolute_layout n))
-    t.nodes
+  let read = absolute_reader t in
+  Hashtbl.iter (fun id _ -> update_rect t id (read id)) t.nodes
 
 (* The set of ids whose absolute rect differed at the last rect
    refresh. Hands the table itself to the caller and installs a fresh
@@ -2213,7 +2229,9 @@ let attach_child ctx ~parent:p ~child:c =
 
 let detach_child ctx ~parent:p ~child:c =
   Hashtbl.remove ctx.sparent c;
-  sync_entries ctx p;
+  (* Replay this unlink against the mirror, rather than the final store
+     state: later subtree drops still need their recorded descendants. *)
+  Hashtbl.replace ctx.pkids p (List.filter (fun e -> e.raw <> c) (pkids_of ctx p));
   commit ctx p;
   let o = children_owner ctx p in
   (if index_sensitive (kind_of ctx o) then restyle_children_of ctx o);
@@ -2225,7 +2243,7 @@ let detach_from_parent ctx id =
   match Hashtbl.find_opt ctx.sparent id with
   | Some par ->
     Hashtbl.remove ctx.sparent id;
-    sync_entries ctx par;
+    Hashtbl.replace ctx.pkids par (List.filter (fun e -> e.raw <> id) (pkids_of ctx par));
     commit ctx par;
     mark_affected ctx (children_owner ctx par)
   | None -> ()
@@ -2354,6 +2372,10 @@ let apply_journal_op ctx (op : patch_op) =
       purge ctx id
     end
   | InsertChild (p, c, _) | MoveChild (p, c, _) -> (
+    (* The mirror reads the transaction's final tree. A link that was
+       removed or superseded later in this transaction must not build a
+       phantom subtree whose owner no longer exists. *)
+    if Lui_store.parent ctx.store c <> Some p then () else begin
     (match Hashtbl.find_opt ctx.sparent c with
      | Some op when op <> p -> ignore (in_vlist ctx op)
      | _ -> ());
@@ -2363,7 +2385,8 @@ let apply_journal_op ctx (op : patch_op) =
       detach_from_parent ctx c;
       purge ctx c
     end
-    else attach_child ctx ~parent:p ~child:c)
+    else attach_child ctx ~parent:p ~child:c
+    end)
   | RemoveChild (p, c) ->
     if in_vlist ctx p then () else detach_child ctx ~parent:p ~child:c
 
@@ -2371,18 +2394,20 @@ let apply_journal_op ctx (op : patch_op) =
    descendant of a dirty owner gets its rect re-read (a resized node
    moves its siblings, so the refresh root is the owner — the flex
    parent — not the changed node). [frame_id] dirties everything. *)
-let rec refresh_sub ctx sid =
+let rec refresh_sub ctx read sid =
   (match Hashtbl.find_opt ctx.nodes sid with
-   | Some f -> update_rect ctx.eng sid (Lui_flex.absolute_layout f)
+   | Some _ -> update_rect ctx.eng sid (read sid)
    | None -> ());
   List.iter
-    (fun e -> List.iter (fun g -> refresh_sub ctx g) e.gens)
+    (fun e -> List.iter (fun g -> refresh_sub ctx read g) e.gens)
     (pkids_of ctx sid)
 
 let refresh_rects ctx =
   if Hashtbl.mem ctx.eng.rect_dirty frame_id then collect ctx.eng
-  else
-    Hashtbl.iter (fun sid () -> refresh_sub ctx sid) ctx.eng.rect_dirty;
+  else begin
+    let read = absolute_reader ctx.eng in
+    Hashtbl.iter (fun sid () -> refresh_sub ctx read sid) ctx.eng.rect_dirty
+  end;
   Hashtbl.reset ctx.eng.rect_dirty
 
 let ctx_of t store ~scale ~measure ~hidden ctx_anchor ~width ~height : ctx =
@@ -2441,13 +2466,14 @@ let finish ctx (t : t) ~width ~height ~vport ~full =
 
 let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
     ?ctx_anchor ?(vport = no_vport) ~width ~height (t : t) store =
-  let inputs_changed =
+  let viewport_changed = t.synced_w <> width || t.synced_h <> height in
+  let mirror_inputs_changed =
     t.synced_scale <> scale
-    || t.synced_w <> width || t.synced_h <> height
     || t.synced_anchor <> ctx_anchor
     || (not (t.synced_measure == measure))
     || (not (t.synced_hidden == hidden))
   in
+  let inputs_changed = mirror_inputs_changed || viewport_changed in
   (* Fast path: inputs stable and the store's layout revision
      unmoved — paint-only churn, scroll-only and idle frames all skip
      the mirror entirely. The store-revision cursor still advances so
@@ -2465,13 +2491,28 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
     t.stat_syncs <- t.stat_syncs + 1;
     let ctx = ctx_of t store ~scale ~measure ~hidden ctx_anchor ~width ~height in
     let full =
-      if inputs_changed || t.synced_rev < 0 || t.root = None then true
+      if mirror_inputs_changed || t.synced_rev < 0 || t.root = None then true
       else
         match Lui_store.changes_since store t.synced_rev with
         | None -> true
         | Some ops ->
           t.stat_steps <- t.stat_steps + 1;
-          List.iter (apply_journal_op ctx) ops;
+          (* The store already contains the final batch tree. Building a
+             newly inserted ancestor also builds its new descendants.
+             Purge old identities first so later create records cannot
+             destroy and rebuild those freshly mirrored descendants. *)
+          let created = Hashtbl.create 16 in
+          List.iter (function
+            | (CreateNode (id,_) | CreateExtension (id,_,_)) as op ->
+              Hashtbl.replace created id ();
+              apply_journal_op ctx op
+            | _ -> ()) ops;
+          List.iter (function
+            | CreateNode _ | CreateExtension _ -> ()
+            | SetProp (id,_,_) | RemoveProp (id,_)
+            | SetExtensionProp (id,_,_) | RemoveExtensionProp (id,_)
+              when Hashtbl.mem created id || not (Lui_store.mem store id) -> ()
+            | op -> apply_journal_op ctx op) ops;
           (* Detach/drop can leave a built node as a fresh store root —
              resync the frame level so new roots appear and removed
              ones vanish. Membership churn dirties the whole frame. *)
@@ -2510,7 +2551,22 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
             t.vlists;
           false
     in
-    if full then rebuild ctx t ~width ~height;
+    if full then rebuild ctx t ~width ~height
+    else if viewport_changed then begin
+      (* Keep the flex mirror and its text measurements across resize.
+         Only viewport-relative props need new resolved styles. *)
+      let viewport_props = ["width-viewport"; "height-viewport";
+        "min-width-viewport"; "max-width-viewport";
+        "min-height-viewport"; "max-height-viewport"] in
+      Hashtbl.iter (fun id _ ->
+        if List.exists (has_prop store id) viewport_props then
+          restyle_gen ctx (Hashtbl.find ctx.owner id) id) t.nodes;
+      let popup_owners = List.filter_map (fun (_,id) -> Hashtbl.find_opt ctx.owner id) !(t.popups)
+        |> List.sort_uniq Int.compare in
+      List.iter (fun id -> if id <> frame_id then
+        restyle_gen ctx (Hashtbl.find ctx.owner id) id) popup_owners;
+      Hashtbl.replace t.rect_dirty frame_id ()
+    end;
     finish ctx t ~width ~height ~vport ~full;
     t.synced_rev <- Lui_store.revision store;
     t.synced_lrev <- Lui_store.layout_rev store;

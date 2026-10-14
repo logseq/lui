@@ -495,6 +495,8 @@ module Ui = struct
     mutable sync_rev : int;    (* last synced Lui_store.revision *)
     mutable sync_menu : int;   (* open_menu as of last sync *)
     mutable rects_epoch : int;
+    mutable sync_scroll_epoch : int;
+    mutable sync_rects_epoch : int;
     mutable measure : Lui_store.t -> int -> string -> float * float;
     mutable hit_text :
       (Lui_store.t -> int -> string -> lx:float -> ly:float ->
@@ -545,7 +547,7 @@ module Ui = struct
 
   let create () =
     { scale = 1.; dirty = true; sync_rev = -1; sync_menu = -1;
-      rects_epoch = 0;
+      rects_epoch = 0; sync_scroll_epoch = -1; sync_rects_epoch = -1;
       measure =
         (fun _store _id s -> (8. *. float (String.length s), 16.));
       hit_text = None; caret_ops = None;
@@ -623,6 +625,7 @@ module Ui = struct
     if not (Float.is_finite now_ms) || now_ms < t.scroll_clock_ms then
       invalid_arg "Scrollbar clock must be monotonic";
     t.scroll_clock_ms <- now_ms;
+    if Hashtbl.length t.scrollbar_deadlines > 0 then
     Hashtbl.filter_map_inplace (fun id deadline ->
       if deadline > now_ms then Some deadline
       else begin
@@ -744,7 +747,6 @@ module Ui = struct
     { Lui_input.ctrl = m.Input.ctrl; shift = m.Input.shift;
       alt = m.Input.alt; meta = m.Input.meta }
 
-  let dummy_detail = Lui_query.dummy_detail
 
   let detail_of store id x y mods button =
     Lui_query.detail_of store id x y (conv_mods mods) button
@@ -823,6 +825,11 @@ module Ui = struct
      scope, the Appear lifecycle and scroll bookkeeping. Intents go
      through [perform]; dispatches land in action order. *)
   let sync t store =
+    if Lui_store.revision store = t.sync_rev
+       && Lui_overlay.open_menu t.overlay = t.sync_menu
+       && Lui_scroll.epoch t.scroll = t.sync_scroll_epoch
+       && t.rects_epoch = t.sync_rects_epoch then []
+    else
     let acts = ref [] in
     let run m_acts =
       List.iter
@@ -875,6 +882,8 @@ module Ui = struct
     (let s', m = Lui_scroll.report_tracked (senv t) store t.scroll in
      set_scroll t s';
      run m);
+    t.sync_scroll_epoch <- Lui_scroll.epoch t.scroll;
+    t.sync_rects_epoch <- t.rects_epoch;
     List.rev !acts
 
   let store_changed t store = sync t store
@@ -1043,15 +1052,21 @@ module Ui = struct
           in
           (let n = Lui_pointer.pressed t.pointer in
            if n <> 0 && release = n then begin
-             (if pointer_enabled store n
-                 && event_supported store n
-                      (PressDetail (n, dummy_detail))
-              then
-                acts :=
-                  Dispatch
-                    (PressDetail
-                       (n, detail_of store n x y mods 0))
-                  :: !acts);
+             (* Click detail bubbles through the actual hit's ancestors,
+                preserving its class for delegated container handlers. *)
+             (match path with
+              | [] -> ()
+              | target :: _ ->
+                let detail = detail_of store target x y mods 0 in
+                let rec bubble id =
+                  if node_enabled store id then begin
+                    if pointer_enabled store id
+                       && event_supported store id (PressDetail (id, detail)) then
+                      emit_all [Dispatch (PressDetail (id, detail))];
+                    Option.iter bubble (Lui_store.parent store id)
+                  end
+                in
+                bubble target);
              (* a click landing anywhere on a menu trigger toggles
                 its owned panel; activating a node inside the open
                 panel closes it after the press *)
@@ -1350,7 +1365,7 @@ module Ui = struct
     Hashtbl.iter
       (fun id () ->
         mark id;
-        List.iter mark_soft (Lui_store.preorder ~root:id store))
+        Lui_store.iter_preorder ~root:id store mark_soft)
       t.scrolled;
     Hashtbl.reset t.scrolled;
     (* Range-only change: the thumb metrics, nothing below. *)
@@ -1394,6 +1409,7 @@ module Ui = struct
   let want_frame t host =
     if Lui_overlay.menu_moved t.overlay then begin
       Lui_host.invalidate_layout host;
+      Lui_host.invalidate_paint host;
       t.overlay <- Lui_overlay.menu_laid_out t.overlay
     end;
     t.dirty || Lui_host.wants_repaint host
@@ -1779,6 +1795,36 @@ module Frame = struct
   let presented t ~now_ms =
     t.dirty <- false;
     t.last_present_ms <- now_ms
+end
+
+module Presentation_meter = struct
+  type t = {
+    mutable since_ms : float;
+    mutable baseline : int;
+    mutable last_ms : float;
+    mutable last_count : int;
+  }
+
+  let create ~now_ms ~displayed_frames =
+    if not (Float.is_finite now_ms) || displayed_frames < 0 then
+      invalid_arg "invalid presentation baseline";
+    { since_ms = now_ms; baseline = displayed_frames;
+      last_ms = now_ms; last_count = displayed_frames }
+
+  let sample t ~now_ms ~displayed_frames =
+    if not (Float.is_finite now_ms) || now_ms < t.last_ms
+       || displayed_frames < t.last_count then
+      invalid_arg "presentation counters must be monotonic";
+    t.last_ms <- now_ms;
+    t.last_count <- displayed_frames;
+    let elapsed = now_ms -. t.since_ms in
+    if elapsed < 1000. then None
+    else begin
+      let fps = float (displayed_frames - t.baseline) *. 1000. /. elapsed in
+      t.since_ms <- now_ms;
+      t.baseline <- displayed_frames;
+      Some fps
+    end
 end
 
 module Renderer_ladder = struct
@@ -2210,6 +2256,7 @@ module Assembly = struct
     let hooks =
       Lui_paint.
         { color_of = Theme.color_of;
+          hidden = (fun _ -> false);
           layout =
             (fun id -> Lui_paint.placement_of_rect (shifted_rect id));
           state_of =

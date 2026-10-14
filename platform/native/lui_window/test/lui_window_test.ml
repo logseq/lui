@@ -45,6 +45,27 @@ let host_stub () =
 
 (* ---------- arg parsing ---------- *)
 
+let test_presentation_meter () =
+  let m = Presentation_meter.create ~now_ms:100. ~displayed_frames:20 in
+  Alcotest.(check (option (float 0.001))) "wait for complete window" None
+    (Presentation_meter.sample m ~now_ms:600. ~displayed_frames:70);
+  Alcotest.(check (option (float 0.001))) "actual 100 Hz display" (Some 100.)
+    (Presentation_meter.sample m ~now_ms:1100. ~displayed_frames:120);
+  Alcotest.(check (option (float 0.001))) "irregular window uses elapsed time" (Some 60.)
+    (Presentation_meter.sample m ~now_ms:2600. ~displayed_frames:210);
+  Alcotest.(check (option (float 0.001))) "idle display rate falls to zero" (Some 0.)
+    (Presentation_meter.sample m ~now_ms:3600. ~displayed_frames:210)
+
+let test_presentation_meter_rejects_regression () =
+  let m = Presentation_meter.create ~now_ms:100. ~displayed_frames:20 in
+  ignore (Presentation_meter.sample m ~now_ms:600. ~displayed_frames:70);
+  Alcotest.check_raises "reject decreasing display counter"
+    (Invalid_argument "presentation counters must be monotonic")
+    (fun () -> ignore (Presentation_meter.sample m ~now_ms:650. ~displayed_frames:69));
+  Alcotest.check_raises "reject decreasing clock"
+    (Invalid_argument "presentation counters must be monotonic")
+    (fun () -> ignore (Presentation_meter.sample m ~now_ms:599. ~displayed_frames:70))
+
 let test_parse_args () =
   let cfg =
     match parse_args [ "--width"; "800"; "--height"; "600"; "--headless"; "5" ] with
@@ -1031,6 +1052,65 @@ let find_kind_id store kind =
     (Lui_store.all_nodes store)
 
 let require_id = function Some id -> id | None -> Alcotest.fail "node"
+
+let detail_click_app () =
+  let store = Lui_store.create () in
+  let received = ref [] and behind = ref 0 in
+  let open Lui_elements in
+  let view _ _ _ = column
+    [ column ~style_class:"behind" ~on_press_detail:(fun _ -> incr behind) [];
+      column ~style_class:"owner" ~on_press_detail:(fun ev ->
+        match ev with
+        | PressDetail (_, detail) -> received := detail :: !received
+        | _ -> ())
+        [ text ~style_class:"page-title" ~value:"page" [];
+          button ~style_class:"sidebar-page-actions" ~text:"dots" [] ] ]
+  in
+  let app = Lui_app.create (demo_backend store) () (fun () () -> ()) view in
+  ignore (Lui_app.start app);
+  ignore (Lui_app.flush app);
+  let find kind cls = require_id (find_prop_id store kind "style-class" cls) in
+  let owner = find "column" "owner" in
+  let title = find "text" "page-title" and dots = find "button" "sidebar-page-actions" in
+  let rects = Rects.create () in
+  List.iter (fun id -> Hashtbl.replace rects id (rect 0. 0. 100. 40.))
+    (Lui_store.preorder store);
+  Hashtbl.replace rects title (rect 0. 0. 50. 40.);
+  Hashtbl.replace rects dots (rect 50. 0. 50. 40.);
+  let ui = Ui.create () in
+  let input event =
+    List.iter (function
+      | Dispatch event -> ignore (Lui_app.dispatch_event app event)
+      | _ -> ()) (Ui.handle ui store rects event);
+    ignore (Lui_app.flush app)
+  in
+  app, store, ui, owner, received, behind, input
+
+let test_detail_click_bubbles_to_owner () =
+  let _, _, _, _, received, behind, input = detail_click_app () in
+  let mods = { Input.mods_none with shift = true } in
+  input (Input.Button_down (10., 10., Input.Left, 1, mods));
+  input (Input.Button_up (10., 10., Input.Left, mods));
+  Alcotest.(check int) "wrapper activated once" 1 (List.length !received);
+  let detail = List.hd !received in
+  Alcotest.(check string) "deepest hit class preserved" "page-title" detail.target_class;
+  Alcotest.(check int) "shift preserved" 2 detail.modifiers;
+  Alcotest.(check int) "unrelated underlay receives no click" 0 !behind
+
+let test_detail_click_capture_and_dots () =
+  let _, store, _, owner, received, _, input = detail_click_app () in
+  input (Input.Button_down (10., 10., Input.Left, 1, Input.mods_none));
+  input (Input.Button_up (70., 10., Input.Left, Input.mods_none));
+  Alcotest.(check int) "same owner captures release over sibling" 1 (List.length !received);
+  Alcotest.(check string) "dots hit class reaches owner" "sidebar-page-actions"
+    (List.hd !received).target_class;
+  input (Input.Button_down (10., 10., Input.Left, 1, Input.mods_none));
+  input (Input.Button_up (150., 10., Input.Left, Input.mods_none));
+  Alcotest.(check int) "release outside cancels click" 1 (List.length !received);
+  Lui_store.apply_op store (SetProp (owner, Enabled, BoolValue false));
+  input (Input.Button_down (10., 10., Input.Left, 1, Input.mods_none));
+  input (Input.Button_up (10., 10., Input.Left, Input.mods_none));
+  Alcotest.(check int) "disabled owner does not activate" 1 (List.length !received)
 
 let test_demo_dispatch () =
   let store = Lui_store.create () in
@@ -2635,6 +2715,22 @@ let test_win32_accelerators () =
    | Clipboard_write "world" :: _ -> ()
    | _ -> Alcotest.fail "expected cut of selection")
 
+let test_idle_sync_allocations () =
+  let store, _ = ui_store_fresh () in
+  let ui = Ui.create () in
+  ignore (Ui.store_changed ui store);
+  let before = Gc.allocated_bytes () in
+  for _ = 1 to 10000 do ignore (Ui.store_changed ui store) done;
+  let bytes = Gc.allocated_bytes () -. before in
+  Alcotest.(check bool) "Idle interaction sync exceeds 16 bytes per poll" true (bytes < 160000.)
+
+let test_idle_scrollbar_allocations () =
+  let ui = Ui.create () in
+  let before = Gc.allocated_bytes () in
+  for _ = 1 to 10000 do Ui.tick_scrollbars ui ~now_ms:0. done;
+  let bytes = Gc.allocated_bytes () -. before in
+  Alcotest.(check bool) "Hidden scrollbar polling exceeds 16 bytes per poll" true (bytes < 160000.)
+
 let () =
   Alcotest.run "lui_window"
     [ ("config", [ Alcotest.test_case "parse_args" `Quick test_parse_args ]);
@@ -2653,7 +2749,9 @@ let () =
           Alcotest.test_case "popup promoted" `Quick
             test_hit_popup_promoted ] );
       ( "events",
-        [ Alcotest.test_case "click" `Quick test_click_press;
+        [ Alcotest.test_case "idle allocations" `Quick test_idle_sync_allocations;
+          Alcotest.test_case "idle scrollbar allocations" `Quick test_idle_scrollbar_allocations;
+          Alcotest.test_case "click" `Quick test_click_press;
           Alcotest.test_case "release elsewhere" `Quick
             test_click_release_elsewhere;
           Alcotest.test_case "focus" `Quick test_click_focus;
@@ -2683,6 +2781,9 @@ let () =
           Alcotest.test_case "refresh rate" `Quick
             test_frame_refresh_rate;
           Alcotest.test_case "visibility" `Quick test_frame_visibility ] );
+      ( "presentation meter",
+        [ Alcotest.test_case "displayed cadence" `Quick test_presentation_meter;
+          Alcotest.test_case "monotonic counters" `Quick test_presentation_meter_rejects_regression ] );
       ( "checksum",
         [ Alcotest.test_case "ops" `Quick test_checksum ] );
       ( "scroll",
@@ -2698,7 +2799,9 @@ let () =
           Alcotest.test_case "resolve parity" `Quick
             test_snap_resolve_parity ] );
       ( "demo",
-        [ Alcotest.test_case "dispatch flow" `Quick test_demo_dispatch ] );
+        [ Alcotest.test_case "dispatch flow" `Quick test_demo_dispatch;
+          Alcotest.test_case "detail click owner" `Quick test_detail_click_bubbles_to_owner;
+          Alcotest.test_case "detail click capture" `Quick test_detail_click_capture_and_dots ] );
       ( "selection",
         [ Alcotest.test_case "shift+all" `Quick test_sel_shift_and_all;
           Alcotest.test_case "static text" `Quick test_static_select;

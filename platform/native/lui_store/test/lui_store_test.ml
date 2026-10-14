@@ -247,6 +247,41 @@ let test_extension_input_mask () =
   check bool "classification belongs to the host store" true
     (Lui_store.layout_rev other > before)
 
+let test_preorder_allocation () =
+  let t = Lui_store.create () in
+  for id = 1 to 6000 do
+    Lui_store.apply_op t (CreateNode (id, Column));
+    if id > 1 then Lui_store.apply_op t (InsertChild (id-1, id, 0))
+  done;
+  let before = Gc.allocated_bytes () in
+  let ids = Lui_store.preorder t in
+  let allocated = Gc.allocated_bytes () -. before in
+  check (list int) "deep preorder stays ordered" (List.init 6000 (fun i -> i+1)) ids;
+  check bool (Printf.sprintf "preorder allocation %.0f bytes" allocated) true (allocated < 512000.);
+  let count = ref 0 in
+  let visit _ = incr count in
+  let before = Gc.allocated_bytes () in
+  for _ = 1 to 20 do Lui_store.iter_preorder t visit done;
+  let allocated = Gc.allocated_bytes () -. before in
+  check int "every node visited once per pass" 120000 !count;
+  check bool (Printf.sprintf "streamed traversal allocation %.0f bytes" allocated)
+    true (allocated < 32768.)
+
+let test_iter_preorder_order () =
+  let t = Lui_store.create () in
+  apply t [CreateNode (20, Column); CreateNode (1, Column); CreateNode (3, Text);
+    CreateNode (2, Column); CreateNode (4, Text); InsertChild (1,2,0);
+    InsertChild (1,3,1); InsertChild (2,4,0)];
+  let collect ?root () =
+    let ids = ref [] in
+    Lui_store.iter_preorder ?root t (fun id -> ids := id :: !ids);
+    List.rev !ids in
+  check (list int) "forest root order and sibling order" [1;2;4;3;20] (collect ());
+  check (list int) "rooted traversal excludes siblings" [2;4] (collect ~root:2 ());
+  check (list int) "missing root visits nothing" [] (collect ~root:99 ());
+  apply t [MoveChild (1,3,0)];
+  check (list int) "updated sibling order" [1;3;2;4;20] (collect ())
+
 let () =
   run "lui_store"
     [ ("tree",
@@ -257,7 +292,9 @@ let () =
          test_case "drop subtree" `Quick test_drop_subtree;
          test_case "recreate drops subtree" `Quick
            test_create_replaces_drops_subtree;
-         test_case "roots" `Quick test_root_ids ]);
+         test_case "roots" `Quick test_root_ids;
+         test_case "preorder allocation" `Quick test_preorder_allocation;
+         test_case "streamed preorder order" `Quick test_iter_preorder_order ]);
       ("props",
        [ test_case "set/remove" `Quick test_props;
          test_case "extension" `Quick test_extension ]);

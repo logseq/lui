@@ -559,6 +559,14 @@ module Frame : sig
       interval. *)
 end
 
+module Presentation_meter : sig
+  type t
+  val create : now_ms:float -> displayed_frames:int -> t
+  val sample : t -> now_ms:float -> displayed_frames:int -> float option
+  (** Actual displayed frames per elapsed second, reported once per second.
+      Counts and timestamps must be monotonic. *)
+end
+
 (** The renderer-ladder walk shared by the platform drivers.
 
     A ladder is an ordered list of backend rungs; {!create} tries each

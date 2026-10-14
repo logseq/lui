@@ -583,17 +583,35 @@ let root_ids t =
   Hashtbl.fold (fun id () acc -> id :: acc) t.roots []
   |> List.sort compare
 
+(* Follow intrusive child/sibling links directly. Climbing parent links
+   avoids a recursive stack and temporary child lists, even for deep trees. *)
+let iter_preorder ?root t f =
+  let visit root =
+    let current = ref root and ancestor = ref root in
+    let finished = ref false and found = ref false in
+    while not !finished do
+      f (!current).id;
+      match (!current).first_child with
+      | Some child -> current := child
+      | None ->
+        ancestor := !current;
+        found := false;
+        while not !found && not !finished do
+          if !ancestor == root then finished := true
+          else match (!ancestor).next_sib with
+            | Some sibling -> current := sibling; found := true
+            | None -> ancestor := Hashtbl.find t.nodes (Option.get (!ancestor).parent)
+        done
+    done in
+  match root with
+  | Some id -> Option.iter visit (find_opt t id)
+  | None -> List.iter (fun id -> visit (Hashtbl.find t.nodes id)) (root_ids t)
+
 (* Preorder ids under [root] (or the whole forest when None). *)
 let preorder ?root t =
-  let rec walk id acc =
-    match find_opt t id with
-    | None -> acc
-    | Some n ->
-      let acc = id :: acc in
-      List.fold_left (fun a c -> walk c.id a) acc (node_children_list n)
-  in
-  let roots = match root with Some id -> [ id ] | None -> root_ids t in
-  List.rev (List.fold_left (fun acc id -> walk id acc) [] roots)
+  let ids = ref [] in
+  iter_preorder ?root t (fun id -> ids := id :: !ids);
+  List.rev !ids
 
 let all_nodes t =
   Hashtbl.fold (fun _ n acc -> n :: acc) t.nodes []

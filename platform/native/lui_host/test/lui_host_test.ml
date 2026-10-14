@@ -69,6 +69,63 @@ let test_backend_profile () =
     (b.apply_batch (batch [ CreateNode (9, Text) ]));
   check bool "host dirty" true (Lui_host.wants_repaint h)
 
+let popup_host () =
+  let hooks =
+    { Lui_paint.default_hooks with
+      layout = (fun _ ->
+        Lui_paint.placement_of_rect (Lui_scene.rect 4. 4. 24. 20.)) }
+  in
+  let h = Lui_host.create ~hooks ~renderer:noop_renderer
+    ~width:80 ~height:60 ~scale:1. () in
+  ignore (Lui_host.apply_batch h (batch
+    [ CreateNode (1, Column); CreateNode (2, Box);
+      CreateNode (3, Popover); CreateNode (4, Box);
+      CreateNode (5, Popover); CreateNode (6, Box);
+      InsertChild (1, 2, 0); InsertChild (1, 3, 1);
+      InsertChild (3, 4, 0); InsertChild (4, 5, 0);
+      InsertChild (5, 6, 0);
+      SetProp (2, BackgroundValue, StringValue "#00ff00");
+      SetProp (4, BackgroundValue, StringValue "#ff0000");
+      SetProp (6, BackgroundValue, StringValue "#0000ff") ]));
+  h
+
+let painted_color h r g b =
+  List.exists (function
+    | Lui_scene.Fill f -> f.fcolor = Lui_scene.color r g b 255
+    | _ -> false) (Lui_host.scene h).Lui_scene.ops
+
+let test_hidden_popup_first_frame () =
+  let h = popup_host () in
+  Lui_host.set_hidden h (Some (fun id -> id = 3));
+  ignore (Lui_host.repaint h);
+  check bool "unrelated content paints" true (painted_color h 0 255 0);
+  check bool "closed menu content does not paint" false (painted_color h 255 0 0);
+  check bool "nested promoted popup cannot escape hidden ancestor" false
+    (painted_color h 0 0 255)
+
+let test_hidden_popup_retained_toggle () =
+  let h = popup_host () in
+  ignore (Lui_host.repaint h);
+  check bool "open content paints" true (painted_color h 255 0 0);
+  for _ = 1 to 3 do
+    Lui_host.set_hidden h (Some (fun id -> id = 3));
+    ignore (Lui_host.repaint h);
+    check bool "cached content is removed on close" false (painted_color h 255 0 0);
+    check bool "cached nested popup is removed on close" false (painted_color h 0 0 255);
+    Lui_host.set_hidden h None;
+    ignore (Lui_host.repaint h);
+    check bool "content returns on reopen" true (painted_color h 255 0 0);
+    check bool "nested popup returns on reopen" true (painted_color h 0 0 255)
+  done
+
+let test_hidden_preserves_wire_visibility () =
+  let h = popup_host () in
+  ignore (Lui_host.apply_batch h (batch [SetProp (3, Visible, BoolValue false)]));
+  Lui_host.set_hidden h None;
+  ignore (Lui_host.repaint h);
+  check bool "wire-hidden content stays hidden" false (painted_color h 255 0 0);
+  check bool "wire-hidden nested popup stays hidden" false (painted_color h 0 0 255)
+
 let () =
   run "lui_host"
     [ ( "dirty",
@@ -79,4 +136,8 @@ let () =
           test_case "set_hidden marks dirty" `Quick test_set_hidden_marks_dirty
         ] );
       ( "backend",
-        [ test_case "backend apply" `Quick test_backend_profile ] ) ]
+        [ test_case "backend apply" `Quick test_backend_profile ] );
+      ( "visibility",
+        [ test_case "closed popup first frame" `Quick test_hidden_popup_first_frame;
+          test_case "retained popup toggle" `Quick test_hidden_popup_retained_toggle;
+          test_case "wire visibility" `Quick test_hidden_preserves_wire_visibility ] ) ]

@@ -207,7 +207,31 @@ type work_batch = {
   mutable w_insts : instance list;
 }
 
-let build ?(wide = false) (s : t) : batch list =
+(* Retained paint shares immutable glyphs across hover repaints. Weak
+   keys reuse their compiled instances without retaining removed text. *)
+module Glyph_instances = Ephemeron.K1.Make (struct
+  type t = glyph
+  let equal a b = a == b
+  let hash = Hashtbl.hash
+end)
+
+type glyph_context = {
+  gc_text : text_params;
+  gc_mask_size : int * int;
+  gc_color_size : int * int;
+  gc_paint : paint;
+  gc_colors : f4 * f4;
+  gc_gradient : f4;
+  gc_opacity : float;
+  gc_clips : (f4 * f4) * (f4 * f4) * (f4 * f4);
+}
+
+let same_glyph_context a b =
+  a.gc_text=b.gc_text && a.gc_mask_size=b.gc_mask_size && a.gc_color_size=b.gc_color_size
+  && a.gc_paint=b.gc_paint && a.gc_colors=b.gc_colors && a.gc_gradient=b.gc_gradient
+  && a.gc_opacity=b.gc_opacity && a.gc_clips=b.gc_clips
+
+let build_with_cache ?(wide = false) ?glyph_cache (s : t) : batch list =
   let glyphs = Array.of_list s.glyphs in
   let effects = Array.of_list s.effects in
   let wides = Array.of_list s.wide in
@@ -249,23 +273,26 @@ let build ?(wide = false) (s : t) : batch list =
      the stack: the shader multiplies their coverages, as the CPU
      renderer multiplies all of its clips'; deeper clips, when any,
      cut by their scissor bounds only. *)
-  let with_clip inst =
+  let pad = (f4_of_rect everything, (0., 0., 0., 0.)) in
+  let clips = ref (pad, pad, pad) in
+  let refresh_clips () =
     let of_frame cf = (f4_of_rect cf.cf_rect, cf.cf_radii) in
-    let pad = (f4_of_rect everything, (0., 0., 0., 0.)) in
-    let rec take n = function
-      | cf :: tl when n > 0 -> of_frame cf :: take (n - 1) tl
-      | _ -> []
-    in
-    match take 3 !stack @ [ pad; pad; pad ] with
-    | (c1, r1) :: (c2, r2) :: (c3, r3) :: _ ->
-      { inst with clip = c1; clip_radii = r1; clip2 = c2;
-                  clip2_radii = r2; clip3 = c3; clip3_radii = r3 }
-    | _ -> assert false
+    clips := (match !stack with
+      | a :: b :: c :: _ -> (of_frame a, of_frame b, of_frame c)
+      | [a; b] -> (of_frame a, of_frame b, pad)
+      | [a] -> (of_frame a, pad, pad)
+      | [] -> assert false)
+  in
+  refresh_clips ();
+  let with_clip inst =
+    let (c1, r1), (c2, r2), (c3, r3) = !clips in
+    { inst with clip = c1; clip_radii = r1; clip2 = c2;
+                clip2_radii = r2; clip3 = c3; clip3_radii = r3 }
   in
   (* add appends an instance within the current clip, starting a batch
      when the scissor rectangle or the image changes, or after an
      effect's or a hole batch. *)
-  let add inst img =
+  let add ?(clipped=false) inst img =
     let cur = top () in
     let kind, _, paint, opacity = inst.params in
     let _, _, _, alpha = inst.color in
@@ -275,7 +302,7 @@ let build ?(wide = false) (s : t) : batch list =
       (opacity > 0. && (alpha > 0. || (paint <> 0. && alpha2 > 0.) ||
         (inst.uv <> (0., 0., 0., 0.) && border_alpha > 0.))) in
     if visible && not (scissor_empty cur.cf_scissor) then (
-      let inst = with_clip inst in
+      let inst = if clipped then inst else with_clip inst in
       let wb =
         match !open_batch with
         | None -> start { w_scissor = cur.cf_scissor; w_image = img;
@@ -375,10 +402,11 @@ let build ?(wide = false) (s : t) : batch list =
           { cf_rect = c.crect;
             cf_radii = corners c.crect c.cradii c.ccontinuous;
             cf_bounds = bounds; cf_scissor = scissor_of_bounds bounds }
-          :: !stack
+          :: !stack;
+        refresh_clips ()
       | Pop_clip -> (
         match !stack with
-        | _ :: (_ :: _ as tl) -> stack := tl
+        | _ :: (_ :: _ as tl) -> stack := tl; refresh_clips ()
         | _ -> ())
       | Fill f ->
         if not (rect_empty f.frect) then (
@@ -459,9 +487,12 @@ let build ?(wide = false) (s : t) : batch list =
               wide_col w Lui_scene.wide_color2 g.gcolor2 )
           else ((0., 0., 0., 0.), (0., 0., 0., 0.))
         in
-        let g0 = max 0 g.gstart and g1 = min (Array.length glyphs) g.gend in
-        for i = g0 to g1 - 1 do
-          let gl = glyphs.(i) in
+        let context = {gc_text=s.text;
+          gc_mask_size=(s.mask_atlas.w,s.mask_atlas.h);
+          gc_color_size=(s.color_atlas.w,s.color_atlas.h);
+          gc_paint=g.gpaint;gc_colors=(c1,c2);gc_gradient=g.ggradient;
+          gc_opacity=g.gopacity;gc_clips= !clips} in
+        let compile (gl : glyph) wide_color =
           let atlas, kind, contrast =
             if gl.gcolored then (s.color_atlas, kind_color_glyph, s.text.contrast)
             else if gl.gsubpixel then
@@ -484,8 +515,8 @@ let build ?(wide = false) (s : t) : batch list =
               clip3 = no_clip; clip3_radii = no_clip_radii }
           in
           let inst =
-            match wide_of gl.gwide with
-            | Some w -> { inst with color = w.wcolor }
+            match wide_color with
+            | Some color -> { inst with color }
             | None -> inst
           in
           let inst =
@@ -495,7 +526,22 @@ let build ?(wide = false) (s : t) : batch list =
                             (kind, 0., paint_code g.gpaint, opacity g.gopacity) }
             else inst
           in
-          add inst None
+          with_clip inst in
+        let g0 = max 0 g.gstart and g1 = min (Array.length glyphs) g.gend in
+        for i = g0 to g1 - 1 do
+          let gl = glyphs.(i) in
+          let wide_color = Option.map (fun w -> w.wcolor) (wide_of gl.gwide) in
+          let inst = match glyph_cache with
+            | None -> compile gl wide_color
+            | Some cache ->
+              (match Glyph_instances.find_opt cache gl with
+               | Some (previous,previous_wide,inst)
+                 when same_glyph_context previous context && previous_wide=wide_color -> inst
+               | _ ->
+                 let inst = compile gl wide_color in
+                 Glyph_instances.replace cache gl (context,wide_color,inst);
+                 inst) in
+          add ~clipped:true inst None
         done
       | Image io ->
         let img = io.iimage in
@@ -538,28 +584,39 @@ let build ?(wide = false) (s : t) : batch list =
   close ();
   List.rev !done_
 
+let build ?wide s = build_with_cache ?wide s
+
 (* The packed layout of one instance for the instance buffer: rect,
    radii, inner, color, color2, border, grad, uv, clip, clip_radii,
    params, clip2, clip2_radii, clip3, clip3_radii, rounded to float32.
    Writes straight into the caller's destination — the renderers own
    one big instance buffer, so the field list lives here exactly once
    with no staging array. *)
+let put_float4 dst ofs (x, y, z, w) =
+  Bigarray.Array1.set dst ofs x;
+  Bigarray.Array1.set dst (ofs + 1) y;
+  Bigarray.Array1.set dst (ofs + 2) z;
+  Bigarray.Array1.set dst (ofs + 3) w
+
 let pack_instance (i : instance)
     (dst :
       (float, Bigarray.float32_elt, Bigarray.c_layout)
       Bigarray.Array1.t) ~ofs =
-  let k = ref ofs in
-  let put (x, y, z, w) =
-    Bigarray.Array1.set dst !k x;
-    Bigarray.Array1.set dst (!k + 1) y;
-    Bigarray.Array1.set dst (!k + 2) z;
-    Bigarray.Array1.set dst (!k + 3) w;
-    k := !k + 4
-  in
-  put i.rect; put i.radii; put i.inner; put i.color; put i.color2;
-  put i.border; put i.grad; put i.uv; put i.clip; put i.clip_radii;
-  put i.params; put i.clip2; put i.clip2_radii; put i.clip3;
-  put i.clip3_radii
+  put_float4 dst ofs i.rect;
+  put_float4 dst (ofs + 4) i.radii;
+  put_float4 dst (ofs + 8) i.inner;
+  put_float4 dst (ofs + 12) i.color;
+  put_float4 dst (ofs + 16) i.color2;
+  put_float4 dst (ofs + 20) i.border;
+  put_float4 dst (ofs + 24) i.grad;
+  put_float4 dst (ofs + 28) i.uv;
+  put_float4 dst (ofs + 32) i.clip;
+  put_float4 dst (ofs + 36) i.clip_radii;
+  put_float4 dst (ofs + 40) i.params;
+  put_float4 dst (ofs + 44) i.clip2;
+  put_float4 dst (ofs + 48) i.clip2_radii;
+  put_float4 dst (ofs + 52) i.clip3;
+  put_float4 dst (ofs + 56) i.clip3_radii
 
 let to_float32_array (i : instance) : float array =
   let b = Bigarray.(Array1.create float32 c_layout instance_floats) in
@@ -598,6 +655,8 @@ type batch_cache = {
   mutable c_pack : pack;
   mutable c_rebuilds : int;
   mutable c_reuses : int;
+  c_glyphs : (glyph_context * f4 option * instance) Glyph_instances.t;
+  mutable c_glyphs_major : int;
 }
 
 let batch_cache () =
@@ -605,7 +664,9 @@ let batch_cache () =
     c_pack =
       { data = Bigarray.(Array1.create float32 c_layout 0);
         floats = 0; spans = [||] };
-    c_rebuilds = 0; c_reuses = 0 }
+    c_rebuilds = 0; c_reuses = 0;
+    c_glyphs = Glyph_instances.create 1024;
+    c_glyphs_major = (Gc.quick_stat ()).Gc.major_collections }
 
 let stat_rebuilds c = c.c_rebuilds
 let stat_reuses c = c.c_reuses
@@ -646,7 +707,12 @@ let pack_batches (batches : batch list) : pack =
   { data; floats; spans = pack_into batches data }
 
 let rebuild c ~wide s =
-  let batches = build ~wide s in
+  let major = (Gc.quick_stat ()).Gc.major_collections in
+  if major <> c.c_glyphs_major then begin
+    Glyph_instances.clean c.c_glyphs;
+    c.c_glyphs_major <- major
+  end;
+  let batches = build_with_cache ~wide ~glyph_cache:c.c_glyphs s in
   let total =
     List.fold_left (fun n b -> n + List.length b.instances) 0 batches
   in

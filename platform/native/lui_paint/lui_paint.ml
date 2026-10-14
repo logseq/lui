@@ -421,6 +421,7 @@ type hooks = {
   color_of : string -> color option; (* theme/resource name → color *)
   layout : int -> placement;         (* node id → layout result *)
   state_of : int -> state;           (* node id → interaction state *)
+  hidden : int -> bool;              (* host-owned subtree visibility *)
   scroll_of : int -> scroll_metrics option; (* scroll container metrics *)
   mounted_children : int -> int list option;
     (* virtualized container id → mounted child store ids: the child
@@ -471,6 +472,7 @@ let default_hooks =
   { color_of = (fun _ -> None);
     layout = (fun _ -> placement_of_rect (rect 0. 0. 0. 0.));
     state_of = (fun _ -> state_neutral);
+    hidden = (fun _ -> false);
     scroll_of = (fun _ -> None);
     mounted_children = (fun _ -> None);
     text_ops = (fun _ _ _ _ -> []);
@@ -2466,7 +2468,8 @@ let frame_of ~scale ~viewport store id kind p parent_r clip =
    and wide parents enumerate candidates through the interval index
    instead of scanning every child. Pruning is a strict filter on the
    unindexed walk's visit set — same order, same clip contexts. *)
-let walk ?(mounted = fun _ -> None) ~scale ~viewport store ~layout ~enter ~ghost_enter ~leave
+let walk ?(mounted = fun _ -> None) ?(hidden = fun _ -> false)
+    ~scale ~viewport store ~layout ~enter ~ghost_enter ~leave
     ?spatial ctx0 =
   let deferred = Queue.create () in
   (* Virtualized containers walk only their mounted window slice. *)
@@ -2479,7 +2482,7 @@ let walk ?(mounted = fun _ -> None) ~scale ~viewport store ~layout ~enter ~ghost
   let dead = clip_dead ~viewport in
   let rec go ctx clip parent_r (n : Lui_store.node) =
     let id = Lui_store.node_id n and kind = Lui_store.node_kind n in
-    if node_shown store id then
+    if not (hidden id) && node_shown store id then
       if popup_kind kind && not (unboxed store id) then
         (* promoted out of the ancestor clips: painted after the whole
            tree with a fresh clip context *)
@@ -2491,7 +2494,7 @@ let walk ?(mounted = fun _ -> None) ~scale ~viewport store ~layout ~enter ~ghost
      skipping every node's enter/chrome cost. *)
   and ghost ctx clip parent_r (n : Lui_store.node) =
     let id = Lui_store.node_id n and kind = Lui_store.node_kind n in
-    if node_shown store id then
+    if not (hidden id) && node_shown store id then
       if popup_kind kind && not (unboxed store id) then
         Queue.add (fun () -> body ctx None parent_r id kind) deferred
       else begin
@@ -2741,6 +2744,7 @@ let paint ?spatial hooks store scene ~width ~height ~scale ~clear =
   in
   walk ~scale ~viewport:ctx.viewport store ~layout:hooks.layout
     ~mounted:hooks.mounted_children
+    ~hidden:hooks.hidden
     ~enter:(paint_enter ctx store scene)
     ~ghost_enter:(paint_ghost_enter ctx store)
     ~leave:(paint_leave ctx store scene)

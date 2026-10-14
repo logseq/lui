@@ -231,6 +231,7 @@ let test_image =
 
 let hooks_of ?(text_ops = fun id r c s -> stub_text_ops id r c s) e =
   { Lui_paint.color_of;
+    hidden = (fun _ -> false);
     layout = Lui_paint.default_hooks.layout;
     state_of =
       (fun id ->

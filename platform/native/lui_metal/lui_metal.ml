@@ -36,6 +36,18 @@ type tex = obj
 
 type effect_prog = { elib : lib option; epipe : pipe option }
 
+(* The blocks metal_render encodes. The C side reads tuple fields by
+   position (named record fields would look unused to OCaml), so these
+   layouts and the C code's indices change together. *)
+type draw_bd =
+  int * int * int * int * int * int * float * int * int
+(* bx0, by0, bx1, by1, down, radius, sigma, texture w, texture h *)
+
+type draw =
+  (int * int * int * int) * int * int * pipe * tex option * draw_bd option
+(* scissor left, top, right, bottom; first instance; instance count;
+   pipeline; image texture; backdrop *)
+
 type t = {
   ctx : ctx;
   dual : bool;
@@ -59,6 +71,8 @@ type t = {
      the staging each render, so the hit saves the OCaml compile
      and pack. *)
   fc : Lui_gpu.batch_cache;
+  (* Draw descriptors follow the batch cache; image uploads still run each frame. *)
+  mutable draws : draw array option;
 }
 (* An atlas or image's texture: gen/version track the source's, so
    uploads are incremental; last_frame lets render release textures
@@ -73,18 +87,6 @@ and mtex = {
 }
 
 let new_mtex () = { tex = None; w = 0; h = 0; gen = 0; ver = 0; last_frame = 0 }
-
-(* The blocks metal_render encodes. The C side reads tuple fields by
-   position (named record fields would look unused to OCaml), so these
-   layouts and the C code's indices change together. *)
-type draw_bd =
-  int * int * int * int * int * int * float * int * int
-(* bx0, by0, bx1, by1, down, radius, sigma, texture w, texture h *)
-
-type draw =
-  (int * int * int * int) * int * int * pipe * tex option * draw_bd option
-(* scissor left, top, right, bottom; first instance; instance count;
-   pipeline; image texture; backdrop *)
 
 type req =
   int * int * (float * float * float * float) * f32_ba * draw array *
@@ -301,7 +303,7 @@ let renderer ctx ~dual ~lib ~pipe_main ~pipe_hole ~pipe_down ~pipe_blur =
     empty = make_empty ctx;
     mask = new_mtex (); color = new_mtex ();
     images = Hashtbl.create 17; frame = 0; effects = [];
-    fc = Lui_gpu.batch_cache () }
+    fc = Lui_gpu.batch_cache (); draws = None }
 
 (* With dual-source blending, subpixel glyphs blend each destination
    channel by the coverage of the matching source channel; without it
@@ -448,7 +450,20 @@ let render (t : t) (s : Lui_scene.t) : unit =
        | Some _ | None -> ());
     sync_atlas t t.mask s.mask_atlas ~fmt:0;
     sync_atlas t t.color s.color_atlas ~fmt:1;
-    let batches, pack, _rebuilt = Lui_gpu.frame t.fc s in
+    let batches, pack, rebuilt = Lui_gpu.frame t.fc s in
+    let textures_changed = ref false in
+    List.iter (fun (batch : Lui_gpu.batch) ->
+      match batch.image with
+      | None -> ()
+      | Some image ->
+        let previous = match Hashtbl.find_opt t.images image.iid with
+          | None -> None
+          | Some texture -> texture.tex
+        in
+        let current = image_texture t image in
+        match previous with
+        | Some previous when previous == current -> ()
+        | Some _ | None -> textures_changed := true) batches;
     if t.frame = 30 && Sys.getenv_opt "LUI_METAL_DEBUG" = Some "1" then
       List.iter (fun (b : Lui_gpu.batch) -> List.iter (fun (i : Lui_gpu.instance) ->
         let x,y,w,h = i.rect in
@@ -468,8 +483,10 @@ let render (t : t) (s : Lui_scene.t) : unit =
          if keep then Some m else None)
       t.images;
     let clear = premul s.clear 1. in
-    let draws =
-      Array.of_list
+    let draws = match t.draws with
+      | Some draws when not rebuilt && not !textures_changed -> draws
+      | Some _ | None ->
+      let draws = Array.of_list
         (List.mapi
            (fun bi (b : Lui_gpu.batch) ->
               let first, count = pack.Lui_gpu.spans.(bi) in
@@ -534,6 +551,9 @@ let render (t : t) (s : Lui_scene.t) : unit =
                   end
               | None -> [] )
            batches |> List.fold_left (fun acc draws -> List.rev_append draws acc) [] |> List.rev)
+      in
+      t.draws <- Some draws;
+      draws
     in
     let mask_tex = match t.mask.tex with Some x -> x | None -> t.empty in
     let color_tex = match t.color.tex with Some x -> x | None -> t.empty in
@@ -558,6 +578,7 @@ let read_frame (t : t) ~w ~h : bytes =
   metal_read t.ctx w h
 
 let release (t : t) : unit =
+  t.draws <- None;
   let rel (m : mtex) = match m.tex with Some o -> metal_release o | None -> () in
   rel t.mask;
   rel t.color;

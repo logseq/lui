@@ -157,6 +157,7 @@ let wants_repaint h = h.dirty
 let set_hidden h pred =
   h.hidden <- (match pred with Some p -> p | None -> fun _ -> false);
   h.inv_count <- h.inv_count + 1;
+  Lui_retained.invalidate h.retained;
   h.dirty <- true
 
 let set_ctx_anchor h accessor =
@@ -275,6 +276,7 @@ let repaint h =
         h.moved_hints;
       (hooks, Some mv)
   in
+  let hooks = { hooks with Lui_paint.hidden = h.hidden } in
   prof "layout done";
   (* The window clear follows the app theme's "background" token —
      what the web paints on <body>. Regions the tree does not cover

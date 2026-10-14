@@ -279,6 +279,8 @@ type ilayout = {
   mutable next_cached_measurements_index : int;
   cached_measurements : cached_measurement array;
   offer_cache : cached_measurement Measurement_cache.t;
+  mutable natural_cache : cached_measurement option;
+  mutable natural_height : cached_measurement option;
   mutable measured_width : float;
   mutable measured_height : float;
   cached_layout : cached_measurement;
@@ -304,6 +306,7 @@ type node = {
   mutable children : node array;
   mutable children_count : int;
   mutable is_dirty : bool;
+  mutable owner_independent : bool option;
   (* Auto margins resolved by the parent during its flex line layout,
      per physical edge. *)
   mutable res_margin_left : float;
@@ -487,6 +490,8 @@ let rec null_node : node = {
          dummy_cached_measurement; dummy_cached_measurement;
          dummy_cached_measurement; dummy_cached_measurement |];
     offer_cache = Measurement_cache.create 8;
+  natural_cache = None;
+  natural_height = None;
     cached_layout = dummy_cached_measurement;
     measured_width = undefined;
     measured_height = undefined;
@@ -505,6 +510,7 @@ let rec null_node : node = {
   children = [||];
   children_count = 0;
   is_dirty = false;
+  owner_independent = None;
   res_margin_left = zero;
   res_margin_top = zero;
   res_margin_right = zero;
@@ -568,6 +574,8 @@ let fresh_layout () : ilayout = {
        dummy_cached_measurement; dummy_cached_measurement;
        dummy_cached_measurement; dummy_cached_measurement |];
   offer_cache = Measurement_cache.create 8;
+  natural_cache = None;
+  natural_height = None;
   cached_layout = create_cached_measurement ();
   measured_width = undefined;
   measured_height = undefined;
@@ -1015,6 +1023,22 @@ let resolve_specs (n : node) ~owner_w ~owner_h ~owner_main : bool =
   n.pos_seeded <- false;
   true
   end
+
+let rec owner_independent (n : node) =
+  match n.owner_independent with
+  | Some independent -> independent
+  | None ->
+    let independent = not (spec_uses_owner n.spec)
+      && Array.for_all owner_independent n.children in
+    n.owner_independent <- Some independent;
+    independent
+
+let rec invalidate_owner_independent (n : node) =
+  match n.owner_independent with
+  | None -> ()
+  | Some _ ->
+    n.owner_independent <- None;
+    if n.parent != null_node then invalidate_owner_independent n.parent
 
 let is_row_direction = function
   | Row | Row_reverse -> true
@@ -1499,13 +1523,31 @@ let rec layout_node_internal
      between passes. Dirty nodes discard all previous measurements. *)
   if need_to_visit_node
      || (layout.generation_count <> !g_current_generation_count
-         && Measurement_cache.length layout.offer_cache > 32) then
+         && Measurement_cache.length layout.offer_cache > 32) then begin
     Measurement_cache.clear layout.offer_cache;
+    layout.natural_cache <- None;
+    layout.natural_height <- None
+  end;
   let key_dim d = if Float.is_nan d then Float.nan else d in
   let offer = (key_dim available_width, key_dim available_height,
                width_measure_mode, height_measure_mode, node.res_gen) in
   let memo = if perform_layout then None
-    else Measurement_cache.find_opt layout.offer_cache offer in
+    else match Measurement_cache.find_opt layout.offer_cache offer with
+      | Some _ as result -> result
+      | None when owner_independent node ->
+        (match layout.natural_cache with
+         | Some result when can_use_cached_measurement
+             available_width available_height
+             (get_margin_axis node Row) (get_margin_axis node Column)
+             width_measure_mode height_measure_mode result -> Some result
+         | _ -> match layout.natural_height with
+           | Some result when same_dim result.available_width available_width
+               && result.width_measure_mode=width_measure_mode
+               && (height_measure_mode=Measure_undefined
+                   || (height_measure_mode=Measure_at_most
+                       && result.computed_height <= available_height -. get_margin_axis node Column)) -> Some result
+           | _ -> None)
+      | None -> None in
   let cached_results = ref memo in
   if !cached_results = None then begin
   (* Determine whether the results are already cached. A layout result
@@ -1600,10 +1642,23 @@ let rec layout_node_internal
       new_entry.computed_height <- layout.measured_height
     end
   end;
-  if not perform_layout && memo = None then
-    Measurement_cache.replace layout.offer_cache offer
-      { available_width; available_height; width_measure_mode; height_measure_mode;
-        computed_width=layout.measured_width; computed_height=layout.measured_height };
+  if not perform_layout && memo = None then begin
+    let result = { available_width; available_height; width_measure_mode; height_measure_mode;
+      computed_width=layout.measured_width; computed_height=layout.measured_height } in
+    Measurement_cache.replace layout.offer_cache offer result;
+    (* Intrinsic measurements can satisfy a tighter fitting offer.
+       Descendant percentages would change their content dimensions,
+       so only owner-independent subtrees use this representative. *)
+    if owner_independent node then begin
+      let representative = Some result in
+      if width_measure_mode<>Measure_exactly && height_measure_mode<>Measure_exactly
+      then layout.natural_cache <- representative;
+      if height_measure_mode=Measure_undefined
+         || (height_measure_mode=Measure_at_most
+             && result.computed_height < available_height -. get_margin_axis node Column)
+      then layout.natural_height <- representative
+    end
+  end;
   if perform_layout then begin
     node.layout.width <- node.layout.measured_width;
     node.layout.height <- node.layout.measured_height;
@@ -1938,10 +1993,10 @@ and layout_node_impl
 
       (* A single child that can both grow and shrink gets a flex basis
          of zero: it will be flexed to exactly fill the space, so the
-         basis measurement can be skipped entirely. *)
+         basis measurement can be skipped entirely, including a
+         measurement pass whose main-axis offer is already exact. *)
       let single_flex_child = ref null_node in
-      if perform_layout
-         && ((is_main_axis_row && width_measure_mode = Measure_exactly)
+      if ((is_main_axis_row && width_measure_mode = Measure_exactly)
              || ((not is_main_axis_row)
                  && height_measure_mode = Measure_exactly))
       then begin
@@ -2211,7 +2266,8 @@ and layout_node_impl
                 end
               end
             end
-            else if perform_layout && !remaining_free_space > zero then begin
+            else if (perform_layout || measure_mode_main_dim = Measure_exactly)
+                    && !remaining_free_space > zero then begin
               let flex_grow_factor = get_flex_grow !current_relative_child in
               (* Is this child able to grow? *)
               if flex_grow_factor <> zero then begin
@@ -2303,7 +2359,8 @@ and layout_node_impl
                   bound_axis !current_relative_child main_axis child_size
               end
             end
-            else if perform_layout && !remaining_free_space > zero then begin
+            else if (perform_layout || measure_mode_main_dim = Measure_exactly)
+                    && !remaining_free_space > zero then begin
               let flex_grow_factor = get_flex_grow !current_relative_child in
               if flex_grow_factor <> zero then
                 updated_main_size :=
@@ -2971,6 +3028,7 @@ let parent (n : node) : node option =
   if n.parent == null_node then None else Some n.parent
 
 let set_style (n : node) (s : style) : unit =
+  invalidate_owner_independent n;
   n.spec <- s;
   n.style <- style_of_spec s;
   n.res_valid <- false;
@@ -2982,6 +3040,7 @@ let set_style (n : node) (s : style) : unit =
    splices produced children in and out. Detached children lose their
    parent link so a stale pointer cannot dirty a tree they left. *)
 let set_children (n : node) (kids : node list) : unit =
+  invalidate_owner_independent n;
   let arr = Array.of_list kids in
   Array.iter (fun c -> if c.parent == n then c.parent <- null_node) n.children;
   Array.iter (fun c -> c.parent <- n) arr;

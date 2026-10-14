@@ -27,9 +27,27 @@ let sdl_ok = function
   | Ok v -> v
   | Error (`Msg m) -> failwith ("SDL: " ^ m)
 
+let frame_stats = Sys.getenv_opt "LUI_FRAME_STATS" = Some "1"
+
 let perf_s () =
   Int64.to_float (Sdl.get_performance_counter ())
   /. Int64.to_float (Sdl.get_performance_frequency ())
+
+let profile_layout_ms = ref 0.
+let profile_encode_ms = ref 0.
+let profile_present_ms = ref 0.
+
+module Profiled_layout = struct
+  include Lui_layout
+  let sync ?scale ?measure ?hidden ?ctx_anchor ?vport ~width ~height t store =
+    if not frame_stats then
+      Lui_layout.sync ?scale ?measure ?hidden ?ctx_anchor ?vport ~width ~height t store
+    else begin
+      let start = perf_s () in
+      Lui_layout.sync ?scale ?measure ?hidden ?ctx_anchor ?vport ~width ~height t store;
+      profile_layout_ms := !profile_layout_ms +. (perf_s () -. start) *. 1000.
+    end
+end
 
 let mods_of_keymod km =
   Input.
@@ -130,8 +148,8 @@ let stats_update st ms =
 let stats_report st renderer_name =
   if st.frames > 0 then begin
     let avg = st.acc_ms /. float st.frames in
-    log "stats: frames=%d fps=%.0f frame_ms=%.2f (min %.2f max %.2f) renderer=%s"
-      st.frames (1000. /. Float.max avg 0.001) avg st.min_ms st.max_ms
+    log "stats: frames=%d frame_ms=%.2f (min %.2f max %.2f) renderer=%s"
+      st.frames avg st.min_ms st.max_ms
       renderer_name;
     st.frames <- 0;
     st.acc_ms <- 0.;
@@ -164,6 +182,7 @@ type drv = {
   checksum : Checksum.t;
   mutable frame : int;
   stats : stats;
+  presentations : Presentation_meter.t option;
   idx : int;                   (* registry/log index, 0-based *)
   sched : Frame.t;             (* frame scheduler: dirty → deadline → present *)
   asm : Assembly.t;            (* shared host assembly *)
@@ -414,6 +433,23 @@ let poll_driver (s : surf) =
    until the nearest deadline. *)
 let tick (s : surf) ~t0 =
   let d = s.driver in
+  (match d.metal, d.presentations with
+   | Some metal, Some meter when not !headless ->
+     let displayed_frames = Lui_metal.presented_frames metal in
+     (match Presentation_meter.sample meter ~now_ms:(t0 *. 1000.) ~displayed_frames with
+      | None -> ()
+      | Some fps ->
+        log "display_stats: time_s=%.6f displayed_frames=%d fps=%.2f"
+          t0 displayed_frames fps;
+        ignore (Lui_app.send d.app
+          (Demo_app.Badge (Printf.sprintf "%s — %.0f fps"
+            (!(d.renderer_cell)).Lui_host.name fps))))
+   | _ -> ());
+  profile_layout_ms := 0.;
+  profile_encode_ms := 0.;
+  profile_present_ms := 0.;
+  let allocation_before = if frame_stats then
+    Some (Gc.allocated_bytes (), (Gc.quick_stat ()).minor_collections) else None in
   let store = Lui_host.store s.host in
   ignore (Lui_app.flush d.app);
   apply_actions s (Ui.store_changed s.ui store);
@@ -442,7 +478,9 @@ let tick (s : surf) ~t0 =
      (* Assembly.repaint repaints and refreshes the hit-test mirror *)
      (* populate's anchor-drift corrections surface as VisibleRange
         dispatches — apply them like any other Ui action *)
+     let repaint_start = perf_s () in
      apply_actions s (snd (Assembly.repaint s.driver.asm));
+     let repaint_ms = (perf_s () -. repaint_start) *. 1000. in
      ignore (Lui_a11y.sync d.a11y);
      if !(d.gl_live_cell) then begin
        (match !(d.gctx_cell) with
@@ -456,23 +494,21 @@ let tick (s : surf) ~t0 =
      if !headless && not !(d.gl_live_cell) then
        log "win=%d frame=%d ops=%d" d.idx d.frame
          (List.length (Lui_host.scene s.host).Lui_scene.ops);
-     stats_update d.stats ((perf_s () -. t0) *. 1000.);
+     let frame_ms = (perf_s () -. t0) *. 1000. in
+     stats_update d.stats frame_ms;
+     (match allocation_before with
+      | None -> ()
+      | Some (before, collections) ->
+        let after = Gc.quick_stat () in
+        log "frame_stats: frame=%d time_s=%.6f cpu_ms=%.3f repaint_ms=%.3f allocated_bytes=%.0f minor_gc=%d ops=%d layout_ms=%.3f encode_ms=%.3f present_ms=%.3f"
+          d.frame (perf_s ()) frame_ms repaint_ms
+          (Gc.allocated_bytes () -. before)
+          (after.minor_collections - collections)
+          (List.length (Lui_host.scene s.host).Lui_scene.ops)
+          !profile_layout_ms !profile_encode_ms !profile_present_ms);
      Frame.presented d.sched ~now_ms:(perf_s () *. 1000.);
      if d.frame mod 60 = 0 then begin
-       (* FPS for the badge rides the same ~1 s window as the stats
-          log; headless never sends it, keeping the initial badge
-          (empty) deterministic for the checksum. *)
-       let fps =
-         if d.stats.frames > 0 && d.stats.acc_ms > 0. then
-           1000. /. (d.stats.acc_ms /. float d.stats.frames)
-         else 0. in
-       stats_report d.stats (!(d.renderer_cell)).Lui_host.name;
-       if not !headless then
-         ignore
-           (Lui_app.send d.app
-              (Demo_app.Badge
-                 (Printf.sprintf "%s — %.0f fps"
-                    (!(d.renderer_cell)).Lui_host.name fps)))
+       stats_report d.stats (!(d.renderer_cell)).Lui_host.name
      end
    | Frame.Wait_ms _ | Frame.Idle -> ());
   decision
@@ -650,8 +686,17 @@ let open_window ~title ~idx =
       ( { Lui_host.name = "lui_metal";
           render =
             (fun s ->
-               Lui_metal.render m s;
-               Lui_metal.present m;
+               if not frame_stats then begin
+                 Lui_metal.render m s;
+                 Lui_metal.present m
+               end else begin
+                 let start = perf_s () in
+                 Lui_metal.render m s;
+                 let present_start = perf_s () in
+                 Lui_metal.present m;
+                 profile_encode_ms := !profile_encode_ms +. (present_start -. start) *. 1000.;
+                 profile_present_ms := !profile_present_ms +. (perf_s () -. present_start) *. 1000.
+               end;
                Bytes.empty) },
         false, None )
     | None ->
@@ -715,7 +760,7 @@ let open_window ~title ~idx =
       ~store:(fun () -> Lui_host.store (Option.get !host_cell))
   in
   let asm =
-    Assembly.create ~layout:(module Lui_layout) ~scale_cell
+    Assembly.create ~layout:(module Profiled_layout) ~scale_cell
       ~text:
         Assembly.
           { measure = Lui_window_text.measure_text text_engine;
@@ -772,6 +817,9 @@ let open_window ~title ~idx =
       reqs_seen = Hashtbl.create 8; checksum = Checksum.create ();
       frame = 0;
       stats = { frames = 0; acc_ms = 0.; min_ms = 1e9; max_ms = 0. };
+      presentations = Option.map (fun m -> Presentation_meter.create
+        ~now_ms:(perf_s () *. 1000.)
+        ~displayed_frames:(Lui_metal.presented_frames m)) metal;
       idx; sched = Frame.create (); asm; caret_rect }
   in
   let s =

@@ -442,6 +442,40 @@ let test_float32_packing () =
   (* float32 rounding at the boundary. *)
   check (float 0.) "f32 rounding" 0.100000001490116119384765625 a.(0)
 
+let test_clip_allocations () =
+  let s = scene () in
+  let fills = List.init 1000 (fun _ -> fill ()) in
+  let clip = Push_clip {crect = rect 0. 0. 200. 100.; cradii = (3., 3., 3., 3.); ccontinuous = false} in
+  let allocate ops =
+    s.ops <- ops;
+    let before = Gc.minor_words () in
+    let batches = G.build s in
+    let words = Gc.minor_words () -. before in
+    check int "all visible instances survive clipping" 1000
+      (List.fold_left (fun count (b : G.batch) -> count + List.length b.instances) 0 batches);
+    words *. 8.
+  in
+  let plain = allocate fills in
+  let clipped = allocate (clip :: clip :: clip :: clip :: fills) in
+  let extra = clipped -. plain in
+  check bool (Printf.sprintf "Nested clipping allocates %.0f extra bytes" extra)
+    true (extra < 32000.)
+
+let test_pack_allocations () =
+  let s = scene () in
+  s.ops <- [fill ()];
+  let inst = List.hd (all_insts (G.build s)) in
+  let dst = Bigarray.(Array1.create float32 c_layout (G.instance_floats * 1000)) in
+  let before = Gc.minor_words () in
+  for index = 0 to 999 do
+    G.pack_instance inst dst ~ofs:(index * G.instance_floats)
+  done;
+  let allocated = (Gc.minor_words () -. before) *. 8. in
+  check bool (Printf.sprintf "Packing allocates %.0f bytes for 1000 instances" allocated)
+    true (allocated < 16000.);
+  check (float 0.) "last packed rectangle" 1.
+    (Bigarray.Array1.get dst (999 * G.instance_floats))
+
 let test_shader_source () =
   check bool "shader embedded" true
     (String.length G.shader_source > 1000
@@ -606,12 +640,82 @@ let bench_cache () =
   check int "one hit per frame" iters (G.stat_reuses c);
   check int "misses rebuild" iters (G.stat_rebuilds c2)
 
+let test_hover_glyph_allocation () =
+  let s = scene ~w:1280 ~h:800 () in
+  s.glyphs <- List.init 1000 (fun i -> glyph ~x:(Float.of_int (i mod 100)*.10.)
+    ~y:(Float.of_int (i/100)*.20.) ());
+  let text = Glyphs {gstart=0;gend=1000;gpaint=Solid;gcolor=red;gcolor2=red;
+    ggradient=(0.,0.,0.,0.);gwide2=0;gopacity=1.} in
+  s.ops <- [fill ();text];
+  let cache = G.batch_cache () in
+  ignore (frame3 cache s);
+  let before = Gc.allocated_bytes () in
+  for i=1 to 20 do
+    s.ops <- [fill ~c:(if i mod 2=0 then red else green) ();text];
+    touch s;
+    ignore (frame3 cache s)
+  done;
+  let allocated = (Gc.allocated_bytes () -. before) /. 20. in
+  Printf.printf "hover scene with 1000 stable glyphs allocated %.0f bytes/frame\n%!" allocated;
+  check bool "Changing one hover fill must not regenerate all stable glyph instances"
+    true (allocated < 131072.);
+  check bool "Cached hover scene changed instance values" true
+    (all_insts (let b,_,_ = frame3 cache s in b) = all_insts (G.build s))
+
+let test_glyph_reuse_inputs () =
+  let s = scene () and cache = G.batch_cache () in
+  s.glyphs <- [glyph ~wide:1 (); glyph ~subpixel:true (); glyph ~colored:true ()];
+  let text = {gstart=0;gend=3;gpaint=Solid;gcolor=red;gcolor2=green;
+    ggradient=(1.,2.,3.,4.);gwide2=1;gopacity=0.6} in
+  let check_frame ~wide message =
+    touch s;
+    let batches,_,_ = frame3 ~wide cache s in
+    check bool message true (all_insts batches = all_insts (G.build ~wide s)) in
+  s.ops <- [Glyphs text];
+  s.wide <- [{wcolor=(0.8,0.2,0.1,1.);wcolor2=(0.1,0.3,0.8,1.);
+    wborder=(0.,0.,0.,0.);wset=wide_color lor wide_color2}];
+  check_frame ~wide:false "cold glyphs";
+  check_frame ~wide:false "retained glyphs";
+  s.text <- {gamma_ratios=(0.1,0.2,0.3,0.4);contrast=0.8;subpixel_contrast=1.2};
+  check_frame ~wide:false "changed text coverage";
+  check bool "mask atlas grew" true (Atlas.grow s.mask_atlas);
+  check bool "color atlas grew" true (Atlas.grow s.color_atlas);
+  check_frame ~wide:false "changed atlas dimensions";
+  s.ops <- [Push_clip {crect=rect 0. 0. 80. 60.;cradii=(1.,2.,3.,4.);
+    ccontinuous=false};Glyphs {text with gpaint=Linear};Pop_clip];
+  check_frame ~wide:true "gradient and rounded clipping";
+  s.wide <- [{wcolor=(0.2,0.4,0.6,1.);wcolor2=(0.6,0.4,0.2,1.);
+    wborder=(0.,0.,0.,0.);wset=wide_color lor wide_color2}];
+  check_frame ~wide:true "changed wide colors";
+  s.ops <- [Glyphs {text with gpaint=Oklab;gopacity=0.2;ggradient=(4.,3.,2.,1.)}];
+  check_frame ~wide:false "changed gradient and opacity";
+  s.glyphs <- [glyph ~x:35. ~y:45. ~c:green ()];
+  s.ops <- [Glyphs {text with gend=1}];
+  check_frame ~wide:false "replaced glyph geometry and color"
+
+let test_glyph_reuse_lifetime () =
+  let cache = G.batch_cache () in
+  let weak =
+    let s = scene () and weak = Weak.create 1 in
+    let original = glyph () in
+    Weak.set weak 0 (Some original);
+    s.glyphs <- [original];
+    s.ops <- [Glyphs {gstart=0;gend=1;gpaint=Solid;gcolor=red;gcolor2=red;
+      ggradient=(0.,0.,0.,0.);gwide2=0;gopacity=1.}];
+    ignore (frame3 cache s);
+    weak in
+  let empty = scene () in
+  ignore (frame3 cache empty);
+  Gc.full_major (); Gc.full_major ();
+  check bool "Removed text must not remain alive through the GPU cache" false (Weak.check weak 0)
+
 let () =
   run "lui_gpu"
     [ ( "build",
         [ test_case "ops to batches" `Quick test_build;
           test_case "transparent fills" `Quick test_transparent_fills;
           test_case "nested clips" `Quick test_nested_clips;
+          test_case "nested clip allocations" `Quick test_clip_allocations;
           test_case "empty clip skips" `Quick test_empty_clip_skips;
           test_case "clip off frame" `Quick test_clip_off_frame;
           test_case "holes" `Quick test_holes;
@@ -621,6 +725,7 @@ let () =
           test_case "wide gamut" `Quick test_wide ] );
       ( "packing",
         [ test_case "to_float32_array" `Quick test_float32_packing;
+          test_case "packing allocations" `Quick test_pack_allocations;
           test_case "shader source" `Quick test_shader_source ] );
       ( "batch cache",
         [ test_case "hit reuses" `Quick test_cache_hit;
@@ -628,4 +733,7 @@ let () =
           test_case "scene identity" `Quick test_cache_identity;
           test_case "key inputs" `Quick test_cache_key_inputs;
           test_case "buffer growth" `Quick test_cache_buffer_growth;
+          test_case "stable glyph hover allocations" `Quick test_hover_glyph_allocation;
+          test_case "glyph reuse inputs" `Quick test_glyph_reuse_inputs;
+          test_case "glyph reuse lifetime" `Quick test_glyph_reuse_lifetime;
           test_case "bench" `Quick bench_cache ] ) ]

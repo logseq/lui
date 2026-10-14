@@ -157,6 +157,44 @@ let test_frame_size_changes (r : Lui_metal.t) =
          true outside_frame_rejected)
     [160, 144; 73, 61; 192, 160]
 
+let test_retained_allocations r =
+  let s = scene ~w:128 ~h:128
+    (List.init 1000 (fun index ->
+       ifill (rect (float (index mod 100)) (float (index / 100)) 2. 2.) black)) in
+  Lui_metal.render r s;
+  ignore (Lui_metal.read_frame r ~w:s.width ~h:s.height);
+  let allocated = ref 0. in
+  for _ = 1 to 20 do
+    let before = Gc.minor_words () in
+    Lui_metal.render r s;
+    allocated := !allocated +. (Gc.minor_words () -. before) *. 8.;
+    ignore (Lui_metal.read_frame r ~w:s.width ~h:s.height)
+  done;
+  let per_frame = !allocated /. 20. in
+  Alcotest.(check bool)
+    (Printf.sprintf "Retained Metal submission allocates %.0f bytes per frame" per_frame)
+    true (per_frame < 8192.)
+
+let test_retained_invalidation r =
+  let image = new_image ~w:1 ~h:1 (Bytes.of_string "\255\000\000\255") in
+  let s = scene ~w:32 ~h:32
+    [iimage (rect 4. 4. 16. 16.) image (rect 0. 0. 1. 1.)] in
+  check_scene r "retained image first" s Exact;
+  for _ = 1 to 70 do
+    Lui_metal.render r s;
+    ignore (Lui_metal.read_frame r ~w:s.width ~h:s.height)
+  done;
+  Bytes.blit_string "\000\000\255\255" 0 image.ipix 0 4;
+  image_changed image;
+  check_scene r "retained image update after 70 frames" s Exact;
+  s.ops <- [ifill (rect 8. 8. 16. 16.) black];
+  touch s;
+  check_scene r "retained display list update" s Exact;
+  s.width <- 48;
+  s.height <- 40;
+  s.clear <- color 0 255 0 255;
+  check_scene r "retained viewport and clear update" s Exact
+
 let test_fill_budget r =
   let s = scene ~w:2880 ~h:1800
     (List.init 3 (fun _ -> ifill (rect 0. 0. 2880. 1800.) (color 245 245 245 255))) in
@@ -316,4 +354,8 @@ let () =
               Alcotest.test_case "determinism" `Quick (fun () -> test_determinism r);
               Alcotest.test_case "atlas update" `Quick (fun () -> test_atlas_update r);
               Alcotest.test_case "frame size changes" `Quick
-                (fun () -> test_frame_size_changes r) ] ) ]
+                (fun () -> test_frame_size_changes r);
+              Alcotest.test_case "retained allocations" `Quick
+                (fun () -> test_retained_allocations r);
+              Alcotest.test_case "retained invalidation" `Quick
+                (fun () -> test_retained_invalidation r) ] ) ]

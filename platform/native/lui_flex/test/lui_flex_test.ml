@@ -365,8 +365,8 @@ let test_row_reverse () =
   check_rect "c1" (r 80. 0. 10. 10.) c1
 
 (* A non-stretch align must not inflate a child's measured basis: the
-   grow distribution only runs in the real layout pass, so a nested
-   row's auto basis stays content-sized and free space reaches the
+   grow distribution waits for an exact main-axis offer, so a nested
+   row's intrinsic basis stays content-sized and free space reaches the
    top-level grow items. *)
 let test_align_center_grow_basis () =
   let sp w =
@@ -473,6 +473,67 @@ let test_mixed_nested_cache () =
     Alcotest.(check (float eps)) "updated measured leaf width" 40. (layout first).w)
     [16; 32; 64]
 
+let test_definite_nested_measurement_budget () =
+  let terminals = ref [] in
+  let branch () =
+    let leaf = create ~measure:(fun _ ~width ~width_mode:_ ~height:_ ~height_mode:_ ->
+      {width=min width 160.; height=24.}) [] in
+    terminals := leaf :: !terminals;
+    let rec nest depth child =
+      if depth=0 then child else
+        nest (depth-1) (box ~style:{default_style with
+          flex_direction=(if depth mod 3=0 then Column else Row);
+          flex_grow=1.; min_width=Pt 0.} [child]) in
+    nest 24 leaf in
+  let root = box (List.init 128 (fun _ -> branch ())) in
+  Gc.full_major ();
+  let before = Gc.allocated_bytes () in
+  run root ~w:1600. ~h:undefined;
+  let allocated = Gc.allocated_bytes () -. before in
+  Alcotest.(check bool)
+    (Printf.sprintf "definite nested measurements allocate %.0f bytes" allocated)
+    true (allocated < 10000000.);
+  List.iter (fun leaf -> Alcotest.(check (float eps))
+    "content height survives measurement shortcuts" 24. (layout leaf).h) !terminals;
+  run root ~w:800. ~h:undefined;
+  Alcotest.(check (float eps)) "all branches retain their content height" (128. *. 24.) (layout root).h
+
+let test_nested_height_measurement_budget () =
+  let text () = create ~measure:(fun _ ~width:_ ~width_mode:_ ~height:_ ~height_mode:_ ->
+    {width=80.;height=24.}) [] in
+  let branch () =
+    let rec nest depth child = if depth=0 then child else
+      nest (depth-1) (box ~style:{default_style with
+        flex_direction=(if depth mod 2=0 then Row else Column);
+        align_items=Align_center; flex_grow=1.} [child]) in
+    nest 24 (text ()) in
+  let root = box (List.init 128 (fun _ -> branch ())) in
+  Gc.full_major ();
+  let before = Gc.allocated_bytes () in
+  run root ~w:1600. ~h:undefined;
+  let allocated = Gc.allocated_bytes () -. before in
+  Alcotest.(check bool) (Printf.sprintf "height-compatible nested layout allocates %.0f bytes" allocated)
+    true (allocated < 10000000.);
+  Alcotest.(check (float eps)) "content height" (128. *. 24.) (layout root).h
+
+let test_nested_owner_measurements () =
+  let percent = leaf ~style:{default_style with height=Percent 50.} () in
+  let wrapper = box [percent] in
+  let root = box [wrapper] in
+  run root ~w:500. ~h:200.;
+  Alcotest.(check (float eps)) "initial auto wrapper" 100. (layout wrapper).h;
+  Alcotest.(check (float eps)) "initial percent child" 50. (layout percent).h;
+  run root ~w:500. ~h:100.;
+  Alcotest.(check (float eps)) "changed owner recomputes wrapper" 50. (layout wrapper).h;
+  Alcotest.(check (float eps)) "changed owner recomputes child" 25. (layout percent).h;
+  set_style percent {default_style with height=Pt 40.};
+  run root ~w:500. ~h:200.;
+  Alcotest.(check (float eps)) "fixed child invalidates ancestors" 40. (layout wrapper).h;
+  set_style percent {default_style with height=Percent 80.};
+  run root ~w:500. ~h:200.;
+  Alcotest.(check (float eps)) "new percent dependency invalidates ancestors" 160. (layout wrapper).h;
+  Alcotest.(check (float eps)) "new percent child" 128. (layout percent).h
+
 let test_incremental_block_budget () =
   let block () =
     let leaf = create ~measure:(fun _ ~width:_ ~width_mode:_ ~height:_ ~height_mode:_ ->
@@ -556,6 +617,9 @@ let () =
         Alcotest.test_case "is_leaf" `Quick test_measure_is_leaf;
         Alcotest.test_case "unbounded_cache" `Quick test_unbounded_cache;
         Alcotest.test_case "mixed_cache" `Quick test_mixed_nested_cache;
+        Alcotest.test_case "definite nested measurement budget" `Quick test_definite_nested_measurement_budget;
+        Alcotest.test_case "nested owner measurements" `Quick test_nested_owner_measurements;
+        Alcotest.test_case "nested height measurement budget" `Quick test_nested_height_measurement_budget;
         Alcotest.test_case "incremental block budget" `Quick test_incremental_block_budget;
         Alcotest.test_case "fits_offer" `Quick test_measure_fits_offer ];
     ]

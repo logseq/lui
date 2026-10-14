@@ -11,6 +11,26 @@ let no_measure _id _w _h = None
 
 let no_measure4 _id _text _w _h = None
 
+let () = match Sys.getenv_opt "LUI_LAYOUT_TRACE_REPLAY" with
+  | None -> ()
+  | Some path ->
+    let layout = Lui_layout.create () in
+    let hidden_nodes = Hashtbl.create 16 in
+    let hidden id = Hashtbl.mem hidden_nodes id in
+    In_channel.with_open_bin path (fun channel ->
+      let frame = ref 0 in
+      let rec replay () = match (Marshal.from_channel channel :
+          Lui_store.t * float * float * float * int list * (float * float) option) with
+        | store,width,height,scale,hidden_ids,anchor ->
+          incr frame;
+          Hashtbl.reset hidden_nodes;
+          List.iter (fun id -> Hashtbl.add hidden_nodes id ()) hidden_ids;
+          Printf.printf "trace frame=%d nodes=%d\n%!" !frame (Lui_store.node_count store);
+          Lui_layout.sync ~scale ~hidden ?ctx_anchor:anchor ~width ~height layout store;
+          replay ()
+        | exception End_of_file -> () in
+      replay ())
+
 let place f id = (f id).Lui_paint.p_rect
 
 let eps = 0.01
@@ -746,6 +766,175 @@ let test_vlist_incremental_child () =
   Lui_layout.sync ~width:200. ~height:100. t store;
   check_equiv "row dropped" store t
 
+let test_resize_retains_measurements () =
+  let store = Lui_store.create () in
+  apply store [CreateNode (1, Column); SetProp (1, HeightViewport, FloatValue 1.)];
+  for index = 0 to 99 do
+    let id = index + 2 in
+    apply store [CreateNode (id, Text); InsertChild (1,id,index);
+      SetProp (id, WidthValue, IntValue 100); SetProp (id, TextValue, StringValue "hello")]
+  done;
+  let measured = ref 0 in
+  let measure _ _ _ _ = incr measured; Some (100.,20.) in
+  let layout = Lui_layout.create () in
+  Lui_layout.sync ~measure ~width:400. ~height:800. layout store;
+  measured := 0;
+  Lui_layout.sync ~measure ~width:500. ~height:700. layout store;
+  check int "Fixed-width text is remeasured during viewport resize" 0 !measured;
+  check_some_rect "Viewport-height root" 0. 0. 500. 700. (Lui_layout.rect layout 1);
+  let fresh = Lui_layout.create () in
+  Lui_layout.sync ~measure ~width:500. ~height:700. fresh store;
+  for id = 1 to 101 do
+    check (option (of_pp (fun formatter rect -> Format.fprintf formatter "%g,%g %gx%g" rect.Lui_scene.x rect.y rect.w rect.h))) "Resize geometry differs from fresh layout"
+      (Lui_layout.rect fresh id) (Lui_layout.rect layout id)
+  done
+
+let test_deep_rect_refresh_budget () =
+  let store = Lui_store.create () in
+  Lui_store.apply_op store (CreateNode (1, Column));
+  let next = ref 2 and last = ref 0 in
+  for branch = 0 to 127 do
+    let parent = ref 1 in
+    for depth = 0 to 32 do
+      let id = !next in incr next;
+      Lui_store.apply_op store (CreateNode (id, Column));
+      Lui_store.apply_op store (InsertChild (!parent,id,if depth=0 then branch else 0));
+      parent := id;
+      if depth=32 then begin
+        Lui_store.apply_op store (SetProp (id,HeightValue,IntValue 1)); last := id
+      end
+    done
+  done;
+  let layout = Lui_layout.create () in
+  Lui_layout.sync ~width:1000. ~height:600. layout store;
+  Lui_store.apply_op store (SetProp (1,MarginTop,IntValue 1));
+  Gc.full_major ();
+  let before = Gc.allocated_bytes () in
+  Lui_layout.sync ~width:1000. ~height:600. layout store;
+  let allocated = Gc.allocated_bytes () -. before in
+  check bool (Printf.sprintf "deep absolute geometry refresh allocates %.0f bytes" allocated)
+    true (allocated < 2097152.);
+  check_some_rect "last leaf follows ancestor offset" 0. 128. 1000. 1.
+    (Lui_layout.rect layout !last);
+  Lui_store.apply_op store (SetProp (!last,HeightValue,IntValue 2));
+  Lui_layout.sync ~width:1000. ~height:600. layout store;
+  check_some_rect "scoped refresh follows current ancestry" 0. 128. 1000. 2.
+    (Lui_layout.rect layout !last)
+
+let test_created_subtree_mirrored_once () =
+  let store = Lui_store.create () and layout = Lui_layout.create () in
+  apply store [CreateNode (1,Column)];
+  Lui_layout.sync ~width:200. ~height:100. layout store;
+  let ops = ref [] in
+  for id = 2 to 81 do
+    ops := InsertChild (id-1,id,0)
+      :: SetProp (id,MarginTop,IntValue 0) :: SetProp (id,MarginBottom,IntValue 0)
+      :: SetProp (id,PaddingValue,IntValue 0) :: SetProp (id,WidthValue,IntValue 200)
+      :: SetProp (id,Gap,IntValue 0) :: CreateNode (id,Column) :: !ops
+  done;
+  apply store (List.rev !ops @ [SetProp (81,HeightValue,IntValue 10)]);
+  let before = Gc.allocated_bytes () in
+  Lui_layout.sync ~width:200. ~height:100. layout store;
+  let allocated = Gc.allocated_bytes () -. before in
+  Printf.printf "created subtree allocated %.0f bytes\n%!" allocated;
+  check bool "A new subtree must not be mirrored again for each descendant create"
+    true (allocated < 1500000.);
+  check_some_rect "new leaf" 0. 0. 200. 10. (Lui_layout.rect layout 81);
+  check_equiv "new subtree" store layout
+
+let test_created_identity_reuse () =
+  let store = Lui_store.create () and layout = Lui_layout.create () in
+  let settle message ops =
+    apply store ops;
+    Lui_layout.sync ~width:200. ~height:100. layout store;
+    check_equiv message store layout in
+  settle "initial" [CreateNode (1,Column); CreateNode (2,Column); CreateNode (3,Text);
+    CreateNode (4,Text); InsertChild (1,2,0); InsertChild (2,3,0); InsertChild (2,4,1)];
+  settle "replace parent identity" [DropNode 2; CreateNode (2,Column);
+    CreateNode (3,Text); InsertChild (1,2,0); InsertChild (2,3,0);
+    SetProp (3,HeightValue,IntValue 20)];
+  check (option reject) "old descendants released" None (Lui_layout.rect layout 4);
+  settle "replace attached child identity" [CreateNode (3,Text);
+    SetProp (3,HeightValue,IntValue 30); InsertChild (2,3,0)];
+  settle "drop then recreate newly inserted identity" [CreateNode (5,Column);
+    InsertChild (1,5,1); DropNode 5; CreateNode (5,Text);
+    SetProp (5,HeightValue,IntValue 15)];
+  settle "created subtree disappears in batch" [CreateNode (6,Column);
+    CreateNode (7,Text); InsertChild (1,6,1); InsertChild (6,7,0); DetachSubtree 6];
+  List.iter (fun id -> check (option reject) "transient descendants released" None
+    (Lui_layout.rect layout id)) [6;7]
+
+let test_updates_before_subtree_disposal () =
+  let store = Lui_store.create () and layout = Lui_layout.create () in
+  apply store [CreateNode (1,Column); CreateNode (2,Column); CreateNode (3,Column);
+    CreateNode (4,Text); InsertChild (1,2,0); InsertChild (2,3,0); InsertChild (3,4,0)];
+  Lui_layout.sync ~width:200. ~height:100. layout store;
+  (* A queued property update remains valid in the wire transaction even
+     when a later scope disposal removes its target and descendants. *)
+  apply store [SetProp (3,Gap,IntValue 8); SetExtensionProp (3,"height",StringValue "40");
+    DetachSubtree 2];
+  Lui_layout.sync ~width:200. ~height:100. layout store;
+  Lui_layout.sync ~width:180. ~height:100. layout store;
+  Lui_layout.sync ~width:200. ~height:100. layout store;
+  check_equiv "queued update then disposal" store layout;
+  List.iter (fun id -> check (option reject) "disposed descendant geometry" None
+    (Lui_layout.rect layout id)) [2;3;4]
+
+let test_transient_links_before_disposal () =
+  let store = Lui_store.create () and layout = Lui_layout.create () in
+  let settle message ops =
+    apply store ops;
+    Lui_layout.sync ~width:200. ~height:100. layout store;
+    Lui_layout.sync ~width:180. ~height:100. layout store;
+    Lui_layout.sync ~width:200. ~height:100. layout store;
+    check_equiv message store layout in
+  settle "initial" [CreateNode (1,Column); CreateNode (2,Column);
+    InsertChild (1,2,0)];
+  settle "transient editor subtree" [CreateNode (3,Column); CreateNode (4,Column);
+    CreateNode (5,Text); InsertChild (2,3,0); InsertChild (3,4,0);
+    InsertChild (4,5,0); DetachSubtree 3];
+  settle "insert inside disposed owner" [CreateNode (6,Column); InsertChild (2,6,0)];
+  settle "queued child inside disposed owner" [CreateNode (7,Column); CreateNode (8,Text);
+    InsertChild (6,7,0); InsertChild (7,8,0); DetachSubtree 6];
+  settle "reparent final child" [CreateNode (9,Column); CreateNode (10,Text);
+    InsertChild (2,9,0); InsertChild (9,10,0); MoveChild (1,10,1); DetachSubtree 9];
+  settle "remove and reinsert live child" [RemoveChild (1,10); InsertChild (1,10,0)];
+  settle "discard old position before final move" [CreateNode (11,Column);
+    InsertChild (2,11,0); MoveChild (11,10,0); MoveChild (1,10,1); DetachSubtree 11]
+
+let test_nested_disposal_purges_geometry () =
+  let store = Lui_store.create () in
+  apply store [CreateNode (1,Column); CreateNode (2,Column); CreateNode (3,Column);
+    CreateNode (4,Text); CreateNode (5,Text); InsertChild (1,2,0); InsertChild (1,3,1);
+    InsertChild (2,4,0); InsertChild (3,5,0);
+    SetProp (4,HeightValue,IntValue 10); SetProp (5,HeightValue,IntValue 10)];
+  let layout = Lui_layout.create () in
+  Lui_layout.sync ~width:100. ~height:40. layout store;
+  (* Scope disposal can drop one child before dropping its enclosing root
+     in the same batch. The mirror must retain the other child until purge. *)
+  apply store [DetachSubtree 2; DetachSubtree 1];
+  Lui_layout.sync ~width:100. ~height:40. layout store;
+  for id = 1 to 5 do
+    check (option reject) "disposed geometry is released" None (Lui_layout.rect layout id)
+  done;
+  apply store [CreateNode (6,Text); SetProp (6,HeightValue,IntValue 20)];
+  Lui_layout.sync ~width:100. ~height:40. layout store;
+  check_some_rect "subsequent root fills frame" 0. 0. 100. 40. (Lui_layout.rect layout 6)
+
+let test_fractional_ancestor_offsets () =
+  let store = Lui_store.create () in
+  apply store [CreateNode (1,Column);CreateNode (2,Column);CreateNode (3,Column);
+    InsertChild (1,2,0);InsertChild (2,3,0);
+    SetProp (1,MarginLeft,FloatValue 0.3);SetProp (2,MarginLeft,FloatValue 0.3);
+    SetProp (3,MarginLeft,FloatValue 0.3);SetProp (3,WidthValue,IntValue 40);
+    SetProp (3,HeightValue,IntValue 10)];
+  let layout = Lui_layout.create () in
+  Lui_layout.sync ~width:100. ~height:40. layout store;
+  check_some_rect "ancestors stay unsnapped" 1. 0. 40. 10. (Lui_layout.rect layout 3);
+  apply store [SetProp (2,MarginLeft,FloatValue 0.9)];
+  Lui_layout.sync ~width:100. ~height:40. layout store;
+  check_some_rect "fractional ancestor update" 2. 0. 40. 10. (Lui_layout.rect layout 3)
+
 let () =
   run "lui_layout"
     [ ("layout",
@@ -759,6 +948,7 @@ let () =
          test_case "run placements" `Quick test_run_placements;
          test_case "display none" `Quick test_display_none_absent;
          test_case "rebuild" `Quick test_rebuild_after_mutation;
+         test_case "resize retains measurements" `Quick test_resize_retains_measurements;
          test_case "sync memoized" `Quick test_sync_memoized;
          test_case "paint prop skips layout" `Quick test_paint_prop_skips_layout;
          test_case "frame grows" `Quick test_frame_grows_to_content;
@@ -782,5 +972,12 @@ let () =
          test_case "incremental random" `Quick test_incremental_random;
          test_case "incremental root shift" `Quick
            test_incremental_root_shift;
+         test_case "created subtree mirrored once" `Quick test_created_subtree_mirrored_once;
+         test_case "created identity reuse" `Quick test_created_identity_reuse;
+         test_case "updates before subtree disposal" `Quick test_updates_before_subtree_disposal;
+         test_case "transient links before disposal" `Quick test_transient_links_before_disposal;
+         test_case "nested disposal purges geometry" `Quick test_nested_disposal_purges_geometry;
+         test_case "fractional ancestor offsets" `Quick test_fractional_ancestor_offsets;
+         test_case "deep rect refresh budget" `Quick test_deep_rect_refresh_budget;
          test_case "incremental large tree" `Quick
            test_incremental_large_tree ]) ]
