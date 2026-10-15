@@ -1579,12 +1579,21 @@ let op_bounds s =
         if f.sinset then outset f.scast 1. else outset f.srect (1.5 *. f.sblur +. 1.)
       | Glyphs f ->
         let gend = min f.gend (Array.length glyphs) in
-        let b = ref (irect 0 0 0 0) in
+        let x0=ref 0 and y0=ref 0 and x1=ref 0 and y1=ref 0 in
         for gi = max f.gstart 0 to gend - 1 do
           let g = glyphs.(gi) in
-          b := irect_union !b (outset (rect g.gx g.gy g.gw g.gh) 1.)
+          let left=ifloor (g.gx -. 1.) and top=ifloor (g.gy -. 1.)
+          and right=iceil (g.gx +. g.gw +. 1.)
+          and bottom=iceil (g.gy +. g.gh +. 1.) in
+          if left < right && top < bottom then
+            if !x1 <= !x0 || !y1 <= !y0 then begin
+              x0 := left; y0 := top; x1 := right; y1 := bottom
+            end else begin
+              x0 := min !x0 left; y0 := min !y0 top;
+              x1 := max !x1 right; y1 := max !y1 bottom
+            end
         done;
-        !b
+        irect !x0 !y0 !x1 !y1
       | Push_clip f ->
         (* A clip that changes changes everything it cuts. *)
         let b = outset f.crect 1. in
@@ -1696,9 +1705,10 @@ let op_same prev_effects d ops_a i _s ops_b j glyphs_a glyphs_b fxs_b mask_rects
             && ga.gu = gb.gu && ga.gv = gb.gv && ga.guw = gb.guw && ga.gvh = gb.gvh
             && ga.gcolor = gb.gcolor && ga.gcolored = gb.gcolored
             && ga.gsubpixel = gb.gsubpixel && ga.gthin = gb.gthin
-            && (let at = irect gb.gu gb.gv (gb.gu + gb.guw) (gb.gv + gb.gvh) in
-                let rects = if gb.gcolored then color_rects else mask_rects in
-                not (List.exists (fun c -> irect_overlaps c at) rects))
+            && (let rects = if gb.gcolored then color_rects else mask_rects in
+                rects=[] ||
+                  let at = irect gb.gu gb.gv (gb.gu + gb.guw) (gb.gv + gb.gvh) in
+                  not (List.exists (fun c -> irect_overlaps c at) rects))
             && loop (k + 1)
           end
         in

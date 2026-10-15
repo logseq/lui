@@ -793,6 +793,108 @@ let test_image_fractional_coverage () =
     assert_pixels_close "Bilinear image fractional edge coverage" expected actual
   ) [false;true]) [0.;0.5]
 
+let test_glyph_damage_allocation () =
+  let glyphs =
+    List.init 1000 (fun i ->
+        glyph
+          ~x:(float (i mod 40) *. 10.)
+          ~y:(float (i / 40) *. 20.)
+          ~w:8. ~h:16. ~u:0 ~v:0 ~uw:8 ~vh:16 black)
+  in
+  let mask = Atlas.create ~bpp:1 ~w:8 ~h:16 in
+  Atlas.put mask ~x:0 ~y:0 ~w:8 ~h:16 ~src:(Bytes.make 128 '\128') ~stride:8;
+  let color_atlas = Atlas.create ~bpp:4 ~w:8 ~h:16 in
+  let scenes =
+    Array.init 31 (fun n ->
+        scene ~w:512 ~h:640 ~mask ~color_atlas ~glyphs
+          [ iglyphs 0 1000; ifill (rect 450. 8. 20. 16.) (color n 0 0 255) ])
+  in
+  let damage = Lui_raster.Damage.create () in
+  ignore (Lui_raster.Damage.update damage scenes.(0));
+  let before = Gc.allocated_bytes () in
+  for frame = 1 to 100 do
+    ignore
+      (Lui_raster.Damage.update damage scenes.(frame mod Array.length scenes))
+  done;
+  let allocated = (Gc.allocated_bytes () -. before) /. 100. in
+  Printf.printf "Retained glyph damage allocated %.0f bytes/frame\n%!" allocated;
+  Alcotest.(check bool)
+    "Damage checks allocate per-glyph rectangles and closures" true
+    (allocated < 49_152.);
+  Alcotest.(check bool)
+    "A changed panel forces the whole static body to redraw" false
+    (Lui_raster.Damage.whole damage)
+
+let test_glyph_damage_bounds () =
+  let glyphs =
+    List.map
+      (fun (x, y, w, h) -> glyph ~x ~y ~w ~h ~u:0 ~v:0 ~uw:8 ~vh:16 black)
+      [
+        (-0.25, 2.75, 7.5, 9.25);
+        (31.75, -0.5, 0., 0.);
+        (20.125, 20.875, -3., 8.);
+      ]
+  in
+  let damage = Lui_raster.Damage.create () in
+  let s = scene ~w:64 ~h:64 ~glyphs [ iglyphs 0 3 ] in
+  ignore (Lui_raster.Damage.update damage s);
+  let fields r = [ r.x0; r.y0; r.x1; r.y1 ] in
+  Alcotest.(check (list int))
+    "Fractional, zero and empty glyph bounds" [ 0; 0; 33; 13 ]
+    (fields (Lui_raster.Damage.bounds damage).(0));
+  s.ops <-
+    [
+      iclip (rect 1.25 2.25 20.5 10.5);
+      iclip (rect 5.5 5.5 8. 8.);
+      iglyphs 0 3;
+      Pop_clip;
+      Pop_clip;
+      iglyphs 0 0;
+    ];
+  ignore (Lui_raster.Damage.update damage s);
+  Alcotest.(check (list int))
+    "Glyph bounds preserve nested clip intersections" [ 4; 4; 15; 13 ]
+    (fields (Lui_raster.Damage.bounds damage).(2));
+  Alcotest.(check bool)
+    "Empty glyph range became visible" true
+    (irect_empty (Lui_raster.Damage.bounds damage).(5))
+
+let test_glyph_atlas_damage () =
+  List.iter
+    (fun colored ->
+      let mask = Atlas.create ~bpp:1 ~w:8 ~h:16
+      and color_atlas = Atlas.create ~bpp:4 ~w:8 ~h:16 in
+      let glyphs =
+        [
+          glyph ~colored ~x:4.25 ~y:4.75 ~w:8. ~h:16. ~u:0 ~v:0 ~uw:8 ~vh:16
+            black;
+        ]
+      in
+      let s = scene ~w:64 ~h:32 ~mask ~color_atlas ~glyphs [ iglyphs 0 1 ] in
+      let renderer = Lui_raster.Renderer.create () in
+      ignore (Lui_raster.Renderer.render renderer s);
+      let before = Bytes.copy (Lui_raster.Renderer.image renderer).pix in
+      let atlas, bpp = if colored then (color_atlas, 4) else (mask, 1) in
+      let source =
+        Bytes.init (128 * bpp) (fun i ->
+            if bpp = 1 || i mod 4 = 3 then '\255'
+            else Char.chr (17 + (i mod 3 * 31)))
+      in
+      Atlas.put atlas ~x:0 ~y:0 ~w:8 ~h:16 ~src:source ~stride:(8 * bpp);
+      let dirty = Lui_raster.Renderer.render renderer s in
+      let actual = (Lui_raster.Renderer.image renderer).pix in
+      let expected = (Lui_raster.render ~scene:s ()).pix in
+      Alcotest.(check bool)
+        "Unchanged glyphs ignore changed atlas pixels" true (dirty <> []);
+      Alcotest.(check bool)
+        "Atlas changes did not repaint visible glyph pixels" false
+        (Bytes.equal before actual);
+      Alcotest.(check bool)
+        "Atlas damage differs from a complete redraw" true
+        (Bytes.equal actual expected);
+      Lui_raster.Renderer.release renderer)
+    [ false; true ]
+
 let redraw_allocation scene =
   let renderer=Lui_raster.Renderer.create () in
   ignore (Lui_raster.Renderer.render ~workers:1 renderer scene);
@@ -933,7 +1035,10 @@ let () =
           Alcotest.test_case "redraws effects" `Slow test_damage_redraws_effects;
           Alcotest.test_case "skips unchanged" `Quick test_damage_skips;
           Alcotest.test_case "merge cap" `Quick test_damage_merge;
-          Alcotest.test_case "damage bands" `Slow test_damage_bands ] )
+          Alcotest.test_case "damage bands" `Slow test_damage_bands;
+          Alcotest.test_case "glyph allocation" `Quick test_glyph_damage_allocation;
+          Alcotest.test_case "glyph bounds" `Quick test_glyph_damage_bounds;
+          Alcotest.test_case "glyph atlas updates" `Quick test_glyph_atlas_damage ] )
       ; ("window pixels", [
           Alcotest.test_case "staging retention" `Slow test_window_pixel_retention;
           Alcotest.test_case "bands and resize" `Slow test_window_tiles_match_whole;
