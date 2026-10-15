@@ -826,6 +826,29 @@ let test_empty_inset_allocation () =
   Alcotest.(check bool) "An empty inset hole does not allocate per interior pixel" true
     (allocated <= 262_144.)
 
+let test_continuous_border_allocation () =
+  let s = scene ~w:512 ~h:256
+    [ifill ~radii:(radii 40.) ~cont:true ~bw:(uniform 12.)
+       ~bc:(color 19 31 73 180) (rect 0.25 0.75 510.5 254.)
+       (color 37 99 235 128)] in
+  let allocated = redraw_allocation s in
+  Printf.printf "Continuous border redraw allocated %.0f bytes/frame\n%!" allocated;
+  Alcotest.(check bool) "Continuous border coverage stays below 1 MB per frame" true
+    (allocated <= 1_000_000.)
+
+let test_clipped_inset_allocation () =
+  let s = scene ~w:512 ~h:256
+    [iclip (rect 0.25 0.75 511. 254.);
+     iclip ~radii:(radii 16.) ~cont:true (rect 0.5 0.25 510.5 255.);
+     ishadow ~inset:true ~cast:(rect 0.25 0.5 511. 255.)
+       ~radii:(radii 20.) ~cradii:(radii 24.) ~cont:true ~ccont:true ~blur:0.
+       (rect 8.25 7.5 496.5 240.75) (color 19 31 73 128);
+     Pop_clip; Pop_clip] in
+  let allocated = redraw_allocation s in
+  Printf.printf "Clipped sharp inset redraw allocated %.0f bytes/frame\n%!" allocated;
+  Alcotest.(check bool) "Clipped inset coverage stays below 1 MB per frame" true
+    (allocated <= 1_000_000.)
+
 let () =
   Alcotest.run "lui_raster"
     [ ( "goldens", [ Alcotest.test_case "reference scenes" `Slow test_golden ] );
@@ -869,7 +892,9 @@ let () =
           Alcotest.test_case "empty inset allocation" `Quick test_empty_inset_allocation;
           Alcotest.test_case "shared clip rows allocation" `Quick test_shared_clip_rows_allocation;
           Alcotest.test_case "shadow sampling allocation" `Quick test_shadow_sampling_allocation;
-          Alcotest.test_case "scanline allocation" `Quick test_scanline_allocation])
+          Alcotest.test_case "scanline allocation" `Quick test_scanline_allocation;
+          Alcotest.test_case "continuous border allocation" `Quick test_continuous_border_allocation;
+          Alcotest.test_case "clipped inset allocation" `Quick test_clipped_inset_allocation])
       ; ("native replay", match Sys.getenv_opt "LUI_RASTER_SCROLL_SCENE" with
           | None -> []
           | Some path -> [Alcotest.test_case "scroll work budget" `Slow

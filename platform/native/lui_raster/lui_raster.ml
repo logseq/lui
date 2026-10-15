@@ -210,7 +210,7 @@ let new_cont_corner r rh rv w h =
 (* The corner's value at the point u inside its vertical edge and v
    inside its horizontal one: about the signed distance to its edge near
    it, positive outside. *)
-let corner_dist c u v =
+let[@inline always] corner_dist c u v =
   let ax = fmax 0. (1. -. u /. c.ce) and ay = fmax 0. (1. -. v /. c.ce) in
   let l = sqrt (ax *. ax +. ay *. ay) in
   let hi = fmax ax ay and lo = fmin ax ay in
@@ -294,47 +294,52 @@ let new_shape rc (r0, r1, r2, r3) =
 
 (* The area of the pixel centered at (px, py) inside the rectangle, near
    square corners: exact for lines thinner than a pixel too. *)
-let area_coverage rc px py =
+let[@inline always] area_coverage rc px py =
   let cx = fmin (rc.x +. rc.w) (px +. 0.5) -. fmax rc.x (px -. 0.5) in
   let cy = fmin (rc.y +. rc.h) (py +. 0.5) -. fmax rc.y (py -. 0.5) in
   clamp01 cx *. clamp01 cy
 
-(* The value of a shape with continuous corners at (px, py): the largest
-   of its corners' and the rectangle's signed distances, and whether a
-   corner's curve reaches it. *)
-let cont_dist s px py =
+let[@inline always] corner_reaches c u v = c.cr > 0. && u < c.ce && v < c.ce
+
+let[@inline always] corner_max c u v distance =
+  if corner_reaches c u v then fmax distance (corner_dist c u v) else distance
+
+(* The largest corner or rectangle distance. Keep pixel evaluation
+   scalar: constructing corner lists and pairs allocates on every edge. *)
+let[@inline always] cont_dist s px py =
   let rc = s.sr in
   let left = px -. rc.x and right = rc.x +. rc.w -. px in
   let top = py -. rc.y and bottom = rc.y +. rc.h -. py in
-  let d = ref (fmax (fmax (-.left) (-.right)) (fmax (-.top) (-.bottom))) in
-  let curved = ref false in
-  List.iter2
-    (fun i (u, v) ->
-      let c = s.scorners.(i) in
-      if c.cr > 0. && u < c.ce && v < c.ce then begin
-        d := fmax !d (corner_dist c u v);
-        curved := true
-      end)
-    [ 0; 1; 2; 3 ] [ (left, top); (right, top); (right, bottom); (left, bottom) ];
-  (!d, !curved)
+  let d = fmax (fmax (-.left) (-.right)) (fmax (-.top) (-.bottom)) in
+  let d = corner_max s.scorners.(0) left top d in
+  let d = corner_max s.scorners.(1) right top d in
+  let d = corner_max s.scorners.(2) right bottom d in
+  corner_max s.scorners.(3) left bottom d
 
 (* Coverage with continuous corners: away from their curves, the area of
    the pixel inside the rectangle; near them, the shape's value over the
    sum of its derivatives. *)
-let cont_coverage s px py =
-  let d, curved = cont_dist s px py in
+let[@inline always] cont_coverage s px py =
+  let rc = s.sr in
+  let left = px -. rc.x and right = rc.x +. rc.w -. px in
+  let top = py -. rc.y and bottom = rc.y +. rc.h -. py in
+  let curved = corner_reaches s.scorners.(0) left top
+    || corner_reaches s.scorners.(1) right top
+    || corner_reaches s.scorners.(2) right bottom
+    || corner_reaches s.scorners.(3) left bottom in
   if not curved then area_coverage s.sr px py
-  else if Float.abs d > 2. then (if d < 0. then 1. else 0.)
+  else let d = cont_dist s px py in
+  if Float.abs d > 2. then (if d < 0. then 1. else 0.)
   else begin
     let h = 1. /. 16. in
-    let dx, _ = cont_dist s (px +. h) py in
-    let dy, _ = cont_dist s px (py +. h) in
+    let dx = cont_dist s (px +. h) py in
+    let dy = cont_dist s px (py +. h) in
     clamp01 (0.5 -. d *. h /. fmax (Float.abs (dx -. d) +. Float.abs (dy -. d)) 1e-6)
   end
 
 (* How much of the pixel centered at (px, py) the rounded rectangle
    covers, from the signed distance to its edge. *)
-let coverage s px py =
+let[@inline always] coverage s px py =
   if s.scont then cont_coverage s px py
   else begin
     let (r0, r1, r2, r3) = s.sradii in
@@ -565,9 +570,11 @@ let pixel_bounds r rc =
 let clip_coverage r x y =
   let cov = ref 1. in
   let px = float x +. 0.5 and py = float y +. 0.5 in
-  List.iter
-    (fun c ->
-      if !cov <> 0. then
+  let clips = ref r.rclips in
+  while !clips <> [] && !cov <> 0. do
+    match !clips with
+    | [] -> ()
+    | c :: rest ->
         cov :=
           !cov
           *.
@@ -575,8 +582,9 @@ let clip_coverage r x y =
            else
              (* Partial pixels at fractional clip edges. *)
              clamp01 (fmin (px -. c.cshape.sr.x) (c.cshape.sr.x +. c.cshape.sr.w -. px) +. 0.5)
-             *. clamp01 (fmin (py -. c.cshape.sr.y) (c.cshape.sr.y +. c.cshape.sr.h -. py) +. 0.5)))
-    r.rclips;
+             *. clamp01 (fmin (py -. c.cshape.sr.y) (c.cshape.sr.y +. c.cshape.sr.h -. py) +. 0.5));
+        clips := rest
+  done;
   !cov
 
 (* The pixels of row y that the clips let through entirely, so that
