@@ -589,16 +589,41 @@ let test_window_worker_limit () =
 let test_window_worker_failure () =
   let renderer = Lui_raster.Tile_renderer.create () in
   let invalid = new_image ~w:2 ~h:2 Bytes.empty in
-  let s = scene ~w:128 ~h:509
-    [iimage (rect 0. 0. 128. 509.) invalid (rect 0. 0. 2. 2.)] in
-  (match Lui_raster.Tile_renderer.render ~workers:4 renderer s ~emit:(fun _ _ -> ()) with
-   | () -> Alcotest.fail "worker failure must propagate to the caller"
-   | exception Invalid_argument _ -> ());
+  List.iter (fun height ->
+    let s = scene ~w:128 ~h:509
+      [iimage (rect 0. 0. 128. height) invalid (rect 0. 0. 2. 2.)] in
+    (match Lui_raster.Tile_renderer.render ~workers:4 renderer s ~emit:(fun _ _ -> ()) with
+     | () -> Alcotest.fail "worker failure must propagate to the caller"
+     | exception Invalid_argument _ -> ())) [509.;64.];
   let clean = scene ~w:128 ~h:509 [] in
   let emitted = ref 0 in
   Lui_raster.Tile_renderer.render ~workers:4 renderer clean ~emit:(fun _ _ -> incr emitted);
   Lui_raster.Tile_renderer.release renderer;
   Alcotest.(check bool) "failed workers join before the renderer is reused" true (!emitted > 0)
+
+let test_caller_rendering_domain () =
+  List.iter (fun workers ->
+    let renderer=Lui_raster.Tile_renderer.create () in
+    Fun.protect ~finally:(fun () -> Lui_raster.Tile_renderer.release renderer) (fun () ->
+      let s=scene ~w:64 ~h:640 [ifill (rect 0. 0. 64. 640.) (color 17 31 47 255)] in
+      let on_caller=ref true and bands=ref 0 in
+      let caller=Domain.self () in
+      let emit _ image =
+        incr bands;
+        if Domain.self ()<>caller then on_caller:=false;
+        Alcotest.(check int) "worker pixels remain complete before upload" 47
+          (Char.code (Bytes.get image.Lui_raster.Image.pix 0)) in
+      for _=1 to 2 do
+        Lui_raster.Tile_renderer.invalidate renderer;
+        Lui_raster.Tile_renderer.render ~workers renderer s ~emit;
+        Alcotest.(check int) "caller work avoids an extra resident domain" (workers-1)
+          (Lui_raster.Tile_renderer.background_domains renderer)
+      done;
+      Alcotest.(check int) "each complete band uploads exactly once" 20 !bands;
+      Alcotest.(check bool) "uploads remain on the caller domain" true !on_caller);
+    Alcotest.(check int) "release removes resident domains" 0
+      (Lui_raster.Tile_renderer.background_domains renderer)
+  ) [1;2;4;8]
 
 let test_native_tile_scroll_budget ?(workers=1) path () =
   let s : Lui_scene.t = In_channel.with_open_bin path Marshal.from_channel in
@@ -884,6 +909,7 @@ let () =
           Alcotest.test_case "parallel staging retention" `Slow test_parallel_staging_retention;
           Alcotest.test_case "worker limit" `Quick test_window_worker_limit;
           Alcotest.test_case "worker failure" `Quick test_window_worker_failure;
+          Alcotest.test_case "caller rendering domain" `Quick test_caller_rendering_domain;
           Alcotest.test_case "parallel redraw GC" `Quick test_parallel_redraw_gc])
       ; ("compositing", [
           Alcotest.test_case "translucent rounding" `Slow test_translucent_byte_rounding;

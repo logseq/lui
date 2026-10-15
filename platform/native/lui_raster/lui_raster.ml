@@ -1952,6 +1952,7 @@ module Tile_renderer = struct
     Domain.join (Option.get producer.domain)
 
   let create () = { slots = [||]; producers = [||]; damage = Damage.create () }
+  let background_domains t = Array.length t.producers
   let invalidate t = Damage.invalidate t.damage
   let release t =
     Array.iter release_producer t.producers;
@@ -1964,15 +1965,18 @@ module Tile_renderer = struct
      consumed that image before drawing again. Uploads stay on the caller's
      domain, and queued pixels never exceed the fixed staging capacity. *)
   let stream t members bands ~draw ~emit =
-    if Array.length t.producers < members then begin
+    let background = members - 1 in
+    if Array.length t.producers < background then begin
       let previous = t.producers in
-      t.producers <- Array.init members (fun member ->
+      t.producers <- Array.init background (fun member ->
         if member < Array.length previous then previous.(member) else create_producer ())
     end;
-    let producers = Array.sub t.producers 0 members in
+    let producers = Array.sub t.producers 0 background in
     let mutex = Mutex.create () and wake = Condition.create () in
     let ready = Array.make members None in
-    let next = Atomic.make 0 and stopped = ref false and failure = ref None in
+    (* The caller owns the first band and takes more work whenever the
+       producers have no completed upload. It needs no extra domain. *)
+    let next = Atomic.make 1 and stopped = ref false and failure = ref None in
     let producer member () =
       let rec work () =
         Mutex.lock mutex;
@@ -2009,10 +2013,11 @@ module Tile_renderer = struct
         Mutex.unlock mutex;
         Array.iter await_producer producers)
       (fun () ->
-        for member = 0 to members - 1 do
-          start_producer producers.(member) (producer member)
+        for member = 1 to members - 1 do
+          start_producer producers.(member-1) (producer member)
         done;
-        for _ = 0 to Array.length bands - 1 do
+        emit 0 (draw 0 bands.(0));
+        for _ = 1 to Array.length bands - 1 do
           Mutex.lock mutex;
           let rec available () =
             match !failure with
@@ -2026,17 +2031,23 @@ module Tile_renderer = struct
                   | Some area -> Some (member, area)
                   | None -> find (member + 1)
               in
-              match find 0 with
-              | Some found -> found
-              | None -> Condition.wait wake mutex; available ()
+              match find 1 with
+              | Some found -> `Ready found
+              | None ->
+                  let job = Atomic.fetch_and_add next 1 in
+                  if job < Array.length bands then `Draw job
+                  else begin Condition.wait wake mutex; available () end
           in
-          let member, area = available () in
+          let work = available () in
           Mutex.unlock mutex;
-          emit member area;
-          Mutex.lock mutex;
-          ready.(member) <- None;
-          Condition.broadcast wake;
-          Mutex.unlock mutex
+          match work with
+          | `Draw job -> emit 0 (draw 0 bands.(job))
+          | `Ready (member,area) ->
+              emit member area;
+              Mutex.lock mutex;
+              ready.(member) <- None;
+              Condition.broadcast wake;
+              Mutex.unlock mutex
         done)
 
   let render ?(workers=1) t s ~emit =

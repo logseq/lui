@@ -58,7 +58,10 @@ module Tile_renderer : sig
   val create : unit -> t
   val invalidate : t -> unit
   val release : t -> unit
-  (* [workers] is between one and eight. Each worker owns one staging band;
+  (* Number of resident producer domains, including parked producers. *)
+  val background_domains : t -> int
+  (* [workers] is between one and eight, including the caller's rendering
+     work. Each worker owns one staging band;
      [emit] runs on the caller's domain and must consume or copy its borrowed
      pixels before returning. The first row corresponds to the rectangle's
      [y0]. Failed uploads invalidate damage and join every worker before
