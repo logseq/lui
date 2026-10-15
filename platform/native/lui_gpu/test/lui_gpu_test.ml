@@ -697,17 +697,22 @@ let test_glyph_reuse_lifetime () =
   let cache = G.batch_cache () in
   let weak =
     let s = scene () and weak = Weak.create 1 in
-    let original = glyph () in
+    (* Runtime geometry keeps the immutable glyph from being lifted into
+       static data by the optimizing compiler. *)
+    let original = glyph ~x:(Sys.opaque_identity 10.4) () in
     Weak.set weak 0 (Some original);
     s.glyphs <- [original];
     s.ops <- [Glyphs {gstart=0;gend=1;gpaint=Solid;gcolor=red;gcolor2=red;
       ggradient=(0.,0.,0.,0.);gwide2=0;gopacity=1.}];
     ignore (frame3 cache s);
     weak in
+  Gc.full_major (); Gc.full_major ();
+  check bool "Current text stays alive through the GPU cache" true (Weak.check weak 0);
   let empty = scene () in
   ignore (frame3 cache empty);
   Gc.full_major (); Gc.full_major ();
-  check bool "Removed text must not remain alive through the GPU cache" false (Weak.check weak 0)
+  check bool "Removed text must not remain alive through the GPU cache" false (Weak.check weak 0);
+  ignore (Sys.opaque_identity cache)
 
 let test_replaced_glyph_cache_bound () =
   (* Other retained snapshots may still own old glyphs. That must not
