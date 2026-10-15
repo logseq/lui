@@ -247,6 +247,27 @@ let gl_scene ~w ~h =
                edindex = 0; edopacity = 1. } ];
   s
 
+let test_shader_source_lifetime () =
+  match sdl_gl_context () with
+  | None -> Alcotest.(check pass) "GL context unavailable; test skipped" () ()
+  | Some context ->
+    Fun.protect ~finally:(fun () -> release_gl context) (fun () ->
+      let collecting = Atomic.make true and started = Atomic.make false in
+      let collector = Domain.spawn (fun () ->
+        while Atomic.get collecting do
+          Gc.full_major ();
+          Atomic.set started true
+        done) in
+      while not (Atomic.get started) do Domain.cpu_relax () done;
+      Fun.protect ~finally:(fun () -> Atomic.set collecting false; Domain.join collector)
+        (fun () ->
+          for _=1 to 2 do
+            let renderer = match Lui_gl.init () with
+              | Ok renderer -> renderer
+              | Error message -> Alcotest.failf "Shader upload under GC failed: %s" message in
+            Lui_gl.release renderer
+          done))
+
 let test_gl_render () =
   match sdl_gl_context () with
   | None ->
@@ -298,4 +319,5 @@ let () =
       ( "effects",
         [ Alcotest.test_case "effect source" `Quick test_effect_source ] );
       ( "gl",
-        [ Alcotest.test_case "render checksum" `Quick test_gl_render ] ) ]
+        [ Alcotest.test_case "render checksum" `Quick test_gl_render;
+          Alcotest.test_case "shader source lifetime" `Quick test_shader_source_lifetime ] ) ]

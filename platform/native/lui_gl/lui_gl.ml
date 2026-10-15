@@ -60,9 +60,11 @@ let info_log ~get ~read id =
     read id n None b;
     String.trim (Gl.string_of_bigarray b))
 
+external shader_source : int -> string -> unit = "lui_gl_shader_source"
+
 let compile_shader kind src =
   let s = Gl.create_shader kind in
-  Gl.shader_source s src;
+  shader_source s src;
   Gl.compile_shader s;
   let ok = i32 1 in
   Gl.get_shaderiv s Gl.compile_status ok;
