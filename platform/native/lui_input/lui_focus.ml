@@ -91,43 +91,37 @@ let sync_dead store st =
   then [ `Focus (0, false) ]
   else []
 
+let refresh_seen previous ids =
+  if List.length ids = IntSet.cardinal previous
+     && List.for_all (fun id -> IntSet.mem id previous) ids
+  then previous
+  else IntSet.of_list ids
+
 (* Store-sync half B: first not-yet-seen visible autofocus control in
    the active overlay scope. The seen set is refreshed to whatever
    carries autofocus now (it is a mount-lifecycle record). *)
 let scan_autofocus store st ~scope:ov_id =
-  let autofocus_now =
-    List.filter
-      (fun id ->
-         Lui_store.bool_prop store id "autofocus" && chain_visible store id)
-      (Lui_store.preorder store)
-  in
-  let cand =
-    List.find_opt
-      (fun id ->
-         not (IntSet.mem id st.autofocus_seen)
+  let now = ref [] and candidate = ref None in
+  Lui_store.iter_preorder store (fun id ->
+    if Lui_store.bool_prop store id "autofocus" && chain_visible store id then begin
+      now := id :: !now;
+      if !candidate = None && not (IntSet.mem id st.autofocus_seen)
          && Lui_query.node_enabled store id
          && (admits_text store id || activatable store id)
-         && (ov_id = 0 || id = ov_id || Lui_query.is_desc store id ov_id))
-      autofocus_now
-  in
-  ( { st with autofocus_seen = IntSet.of_list autofocus_now },
-    cand )
+         && (ov_id = 0 || id = ov_id || Lui_query.is_desc store id ov_id)
+      then candidate := Some id
+    end);
+  ({ st with autofocus_seen = refresh_seen st.autofocus_seen !now }, !candidate)
 
 (* Store-sync half C: appear-enabled nodes announce their mount once. *)
 let scan_appear store st =
-  let now =
-    List.filter
-      (fun id ->
-         Lui_query.node_enabled store id
-         && Lui_store.bool_prop store id "appear-enabled"
-         && Lui_query.event_supported store id (Appear id))
-      (Lui_store.preorder store)
-  in
-  let acts =
-    List.filter_map
-      (fun id ->
-         if IntSet.mem id st.appear_seen then None
-         else Some (`Dispatch (Appear id)))
-      now
-  in
-  ({ st with appear_seen = IntSet.of_list now }, acts)
+  let now = ref [] and actions = ref [] in
+  Lui_store.iter_preorder store (fun id ->
+    if Lui_query.node_enabled store id
+       && Lui_store.bool_prop store id "appear-enabled"
+       && Lui_query.event_supported store id (Appear id) then begin
+      now := id :: !now;
+      if not (IntSet.mem id st.appear_seen) then
+        actions := `Dispatch (Appear id) :: !actions
+    end);
+  ({ st with appear_seen = refresh_seen st.appear_seen !now }, List.rev !actions)

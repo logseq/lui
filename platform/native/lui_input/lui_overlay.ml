@@ -73,14 +73,13 @@ let overlay_dismissible store id =
 (* Topmost overlay = last overlay-kind node in paint (preorder)
    order; returns (id, modal, dismiss-admitted). *)
 let top_scan store ~open_menu =
-  List.fold_left
-    (fun acc id ->
-       match overlay_class store id with
-       | `none -> acc
-       | _ when trigger_owned store id && id <> open_menu -> acc
-       | cls ->
-         Some (id, cls = `modal, overlay_dismissible store id))
-    None (Lui_store.preorder store)
+  let top = ref None in
+  Lui_store.iter_preorder store (fun id ->
+    match overlay_class store id with
+    | `none -> ()
+    | _ when trigger_owned store id && id <> open_menu -> ()
+    | cls -> top := Some (id, cls = `modal, overlay_dismissible store id));
+  !top
 
 let inside store ov path =
   List.exists (fun i -> i = ov || Lui_query.is_desc store i ov) path

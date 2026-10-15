@@ -625,9 +625,146 @@ let test_spatial_hit_wide_list () =
   Alcotest.(check (option int)) "last row hits" (Some 139)
     (Lui_query.hit ~spatial:idx store rects ~x:110. ~y:197.)
 
+let wide_sync_store () =
+  let ops = ref [CreateNode (1, Root)] in
+  for id = 2 to 6001 do
+    ops := InsertChild (1, id, id - 2) :: CreateNode (id, Column) :: !ops
+  done;
+  store_of (List.rev !ops)
+
+let test_sync_scan_allocation scan () =
+  let store = wide_sync_store () in
+  scan store;
+  Gc.full_major ();
+  let before = Gc.allocated_bytes () in
+  for _ = 1 to 10 do scan store done;
+  let per_scan = (Gc.allocated_bytes () -. before) /. 10. in
+  Printf.printf "Interaction scan allocation: %.0f bytes\n%!" per_scan;
+  if per_scan > 16_384. then
+    Alcotest.failf "Scanning unchanged controls allocates %.0f bytes" per_scan
+
+let scan_focus store =
+  ignore (Lui_focus.scan_autofocus store Lui_focus.initial ~scope:0)
+
+let scan_appear store =
+  ignore (Lui_focus.scan_appear store Lui_focus.initial)
+
+let scan_overlay store = ignore (Lui_overlay.top_scan store ~open_menu:0)
+
+let scan_scroll store =
+  let env = Lui_scroll.{content_rect=(fun _ -> Lui_scene.rect 0. 0. 0. 0.);
+    rects_epoch=0; vlist=None} in
+  ignore (Lui_scroll.sync env store Lui_scroll.initial)
+
+let test_native_event_admission () =
+  let events = [Appear 1; Press 1; Change 1; ToggleChanged (1,true);
+    PointerEnter 1; PointerLeave 1; Dismiss 1; Load 1] in
+  let gates = [AppearEnabled; PressEnabled; PointerEnabled; ChangeEnabled; ToggleEnabled] in
+  List.iter (fun kind ->
+    for mask = 0 to 31 do
+      List.iter (fun role ->
+        let props = List.mapi (fun bit property ->
+          property, BoolValue (mask land (1 lsl bit) <> 0)) gates in
+        let props = (RoleValue, StringValue role) :: props in
+        let store = store_of (CreateNode (1,kind) :: List.map (fun (p,v) -> SetProp (1,p,v)) props) in
+        let map = List.fold_left (fun acc (p,v) -> Property_map.add p v acc) Property_map.empty props in
+        List.iter (fun event ->
+          if event_supported_for_properties kind map event
+             <> Lui_query.event_supported store 1 event then
+            Alcotest.failf "Native admission diverged: kind=%s role=%s mask=%d"
+              (Lui_wire_schema.node_kind_name kind) role mask) events)
+        ["";"treeitem"]
+    done) Lui_wire_schema.all_node_kinds;
+  let store = store_of [CreateExtension (1,"test","");
+    SetExtensionProp (1,"appear-enabled",BoolValue true)] in
+  Alcotest.(check bool) "unknown extension cannot admit a standard event" false
+    (Lui_query.event_supported store 1 (Appear 1))
+
+let test_dense_lifecycle_allocation () =
+  let store = wide_sync_store () in
+  for id = 2 to 6001 do
+    Lui_store.apply_op store (SetProp (id, AppearEnabled, BoolValue true))
+  done;
+  let state, actions = Lui_focus.scan_appear store Lui_focus.initial in
+  Alcotest.(check int) "every eligible node appears" 6000 (List.length actions);
+  Gc.full_major ();
+  let before = Gc.allocated_bytes () in
+  let _, actions = Lui_focus.scan_appear store state in
+  let allocated = Gc.allocated_bytes () -. before in
+  Alcotest.(check int) "existing nodes do not reappear" 0 (List.length actions);
+  Printf.printf "Dense appearance scan allocation: %.0f bytes\n%!" allocated;
+  if allocated > 1_000_000. then
+    Alcotest.failf "A dense appearance scan allocates %.0f bytes" allocated
+
+let test_sync_scan_order () =
+  let store = store_of [
+    CreateNode (1, Root); CreateNode (2, Column);
+    CreateNode (30, TextField); CreateNode (20, TextField);
+    CreateNode (10, TextField); CreateNode (9, TextField);
+    CreateNode (50, Dialog); CreateNode (6, TextField);
+    InsertChild (1, 2, 0); InsertChild (2, 30, 0);
+    InsertChild (2, 20, 1); InsertChild (2, 10, 2);
+    InsertChild (2, 9, 3); InsertChild (1, 50, 1);
+    InsertChild (50, 6, 0);
+    SetProp (30, Autofocus, BoolValue true);
+    SetProp (30, Enabled, BoolValue false);
+    SetProp (20, Autofocus, BoolValue true);
+    SetProp (20, Visible, BoolValue false);
+    SetProp (10, Autofocus, BoolValue true);
+    SetProp (9, Autofocus, BoolValue true);
+    SetProp (6, Autofocus, BoolValue true);
+    SetProp (10, AppearEnabled, BoolValue true);
+    SetProp (9, AppearEnabled, BoolValue true);
+    SetProp (6, AppearEnabled, BoolValue true)] in
+  let state, candidate = Lui_focus.scan_autofocus store Lui_focus.initial ~scope:0 in
+  Alcotest.(check (option int)) "first eligible control in tree order" (Some 10) candidate;
+  let _, candidate = Lui_focus.scan_autofocus store state ~scope:0 in
+  Alcotest.(check (option int)) "seen controls do not autofocus again" None candidate;
+  let _, candidate = Lui_focus.scan_autofocus store Lui_focus.initial ~scope:50 in
+  Alcotest.(check (option int)) "autofocus remains in the overlay scope" (Some 6) candidate;
+  let state, actions = Lui_focus.scan_appear store Lui_focus.initial in
+  let appeared actions = List.map (function `Dispatch (Appear id) -> id
+    | _ -> Alcotest.fail "unexpected appearance intent") actions in
+  Alcotest.(check (list int)) "appearance follows tree order" [10;9;6] (appeared actions);
+  let _, actions = Lui_focus.scan_appear store state in
+  Alcotest.(check int) "appearance is emitted once per mount" 0 (List.length actions);
+  Lui_store.apply_batch store {generation=2; ops=[RemoveProp (9, AppearEnabled)]};
+  let state, _ = Lui_focus.scan_appear store state in
+  Lui_store.apply_batch store {generation=3; ops=[SetProp (9, AppearEnabled, BoolValue true)]};
+  let _, actions = Lui_focus.scan_appear store state in
+  Alcotest.(check (list int)) "remounted appearance is emitted again" [9] (appeared actions);
+  let before, _ = Lui_focus.scan_appear store Lui_focus.initial in
+  Lui_store.apply_batch store {generation=4; ops=[
+    RemoveProp (9, AppearEnabled); CreateNode (7, Column);
+    InsertChild (2, 7, 4); SetProp (7, AppearEnabled, BoolValue true)]};
+  let after, actions = Lui_focus.scan_appear store before in
+  Alcotest.(check (list int)) "equal-size membership replacement appears" [7] (appeared actions);
+  let _, actions = Lui_focus.scan_appear store after in
+  Alcotest.(check int) "replacement is remembered" 0 (List.length actions);
+  Lui_store.apply_batch store {generation=5; ops=[
+    CreateNode (40, Dialog); InsertChild (1, 40, 2);
+    CreateNode (60, ListContainer); CreateNode (55, ListContainer);
+    InsertChild (2, 60, 4); InsertChild (2, 55, 5);
+    SetProp (60, TrackVisibleRange, BoolValue true);
+    SetProp (55, TrackVisibleRange, BoolValue true)]};
+  Alcotest.(check (option (triple int bool bool))) "last overlay in paint order wins"
+    (Some (40,true,true)) (Lui_overlay.top_scan store ~open_menu:0);
+  let env = Lui_scroll.{content_rect=(fun _ -> Lui_scene.rect 0. 0. 0. 0.);
+    rects_epoch=0; vlist=None} in
+  let state, _ = Lui_scroll.sync env store Lui_scroll.initial in
+  Alcotest.(check (list int)) "tracked lists keep tree order" [60;55] state.Lui_scroll.lists
+
 let () =
   Alcotest.run "lui_input"
-    [ ( "focus",
+    [ ( "store sync",
+        [ Alcotest.test_case "autofocus allocation" `Quick (test_sync_scan_allocation scan_focus);
+          Alcotest.test_case "appearance allocation" `Quick (test_sync_scan_allocation scan_appear);
+          Alcotest.test_case "overlay allocation" `Quick (test_sync_scan_allocation scan_overlay);
+          Alcotest.test_case "scroll allocation" `Quick (test_sync_scan_allocation scan_scroll);
+          Alcotest.test_case "native event admission" `Quick test_native_event_admission;
+          Alcotest.test_case "dense lifecycle allocation" `Quick test_dense_lifecycle_allocation;
+          Alcotest.test_case "tree order and lifecycle" `Quick test_sync_scan_order ] );
+      ( "focus",
         [ Alcotest.test_case "step" `Quick test_focus_step;
           Alcotest.test_case "dead" `Quick test_focus_dead ] );
       ( "overlay",

@@ -46,24 +46,12 @@ let string_prop store id name =
   | Some s -> s
   | None -> ""
 
-(* The only properties dispatch admission consults. *)
-let gate_properties =
-  [ AppearEnabled; PressEnabled; PointerEnabled; ChangeEnabled;
-    ToggleEnabled; RoleValue ]
-
 let event_supported store id event =
   match kind_of store id with
   | None -> false
   | Some kind ->
-    let props =
-      List.fold_left
-        (fun acc p ->
-           match Lui_store.prop store id (Lui_wire_schema.property_name p) with
-           | Some v -> Property_map.add p v acc
-           | None -> acc)
-        Property_map.empty gate_properties
-    in
-    Lui_protocol.event_supported_for_properties kind props event
+    Lui_protocol.event_supported_for_lookup kind
+      (fun property -> Lui_store.prop store id (Lui_wire_schema.property_name property)) event
 
 (* Everything [hit_path] needs from the store for one node on top of
    the shared walk's stacking/clip frame: overlay presentation, the

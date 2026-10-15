@@ -552,23 +552,29 @@ let treeitem_properties properties =
   | Some (StringValue "treeitem") -> true
   | _ -> false
 
-let event_supported_for_properties kind properties event =
+let event_supported_for_lookup kind lookup event =
+  let enabled property =
+    match lookup property with Some (BoolValue true) -> true | _ -> false
+  in
   if
     match event with
-    | Appear _ -> true_property properties AppearEnabled
+    | Appear _ -> enabled AppearEnabled
     | _ -> false
   then true
-  else if treeitem_properties properties then
+  else if lookup RoleValue = Some (StringValue "treeitem") then
     match event with
     | Press _ | PressModifiers _ ->
-      true_property properties PressEnabled
+      enabled PressEnabled
     | PressDetail _ | PointerDown _ | PointerUp _ | PointerEnter _
     | PointerLeave _ | ContextMenuPress _ ->
-      true_property properties PointerEnabled
-    | Change _ -> true_property properties ChangeEnabled
-    | ToggleChanged _ -> true_property properties ToggleEnabled
+      enabled PointerEnabled
+    | Change _ -> enabled ChangeEnabled
+    | ToggleChanged _ -> enabled ToggleEnabled
     | _ -> event_supported kind event
   else event_supported kind event
+
+let event_supported_for_properties kind properties event =
+  event_supported_for_lookup kind (fun property -> Property_map.find_opt property properties) event
 
 let container_relative_frame_supported value =
   value = "horizontal"

@@ -322,7 +322,7 @@ let wheel env store st ~path ~scale ~dx ~dy ~(mods : Lui_input.mods) =
 let sync env store st =
   let st = ref st in
   let acts = ref [] in
-  List.iter
+  Lui_store.iter_preorder store
     (fun id ->
        if Lui_query.kind_name store id = "list" then
          match Lui_store.int_prop store id "scroll-token" with
@@ -400,23 +400,18 @@ let sync env store st =
                   acts :=
                     `Dispatch (ScrollCompleted (id, tok, "missing-target"))
                     :: !acts))
-           | _ -> ())
-    (Lui_store.preorder store);
+           | _ -> ());
   (* The tracked-list ids are store-derived too — refreshed under
      the same gate so the per-sync report loop only walks actual
      VisibleRange producers, not the whole tree. *)
-  st :=
-    { !st with
-      lists =
-        List.filter
-          (fun id ->
-             let k = Lui_query.kind_name store id in
-             (k = "list"
-              && Lui_store.bool_prop store id "track-visible-range")
-             || (k = "virtual-list"
-                && Lui_query.data_attr store id "data-track-visible-range"
-                   = Some "true"))
-          (Lui_store.preorder store) };
+  let lists = ref [] in
+  Lui_store.iter_preorder store (fun id ->
+    let kind = Lui_query.kind_name store id in
+    if (kind = "list" && Lui_store.bool_prop store id "track-visible-range")
+       || (kind = "virtual-list"
+           && Lui_query.data_attr store id "data-track-visible-range" = Some "true")
+    then lists := id :: !lists);
+  st := { !st with lists = List.rev !lists };
   (!st, List.rev !acts)
 
 (* Visible-range reports follow scroll offsets, which live here
