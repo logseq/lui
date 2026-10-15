@@ -150,9 +150,7 @@ let fresh_frag id =
     gen = -1; gbase = 0; wbase = 0; ebase = 0 }
 
 let frag_of (rt : retained) id =
-  match Hashtbl.find_opt rt.frags id with
-  | Some f -> f
-  | None ->
+  try Hashtbl.find rt.frags id with Not_found ->
     let f = fresh_frag id in
     Hashtbl.replace rt.frags id f;
     f

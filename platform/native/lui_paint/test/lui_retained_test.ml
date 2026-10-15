@@ -158,6 +158,22 @@ let build_rows env n =
   in
   apply env.store ops
 
+let test_fragment_lookup_allocation () =
+  let retained = Lui_retained.create () in
+  let originals = Array.init 1000 (fun id -> Lui_retained.frag_of retained id) in
+  let identities_match = ref true in
+  let before = Gc.allocated_bytes () in
+  for _ = 1 to 100 do
+    Array.iteri
+      (fun id expected ->
+        if Lui_retained.frag_of retained id != expected then identities_match := false)
+      originals
+  done;
+  let allocated = (Gc.allocated_bytes () -. before) /. 100. in
+  check bool "Existing fragments preserve physical identity" true !identities_match;
+  Printf.printf "Retained 1000-fragment lookup allocated %.0f bytes/pass\n%!" allocated;
+  check bool "Looking up live paint fragments allocates wrappers" true (allocated < 4096.)
+
 let test_static_frame () =
   let env = env () in
   build_rows env 10;
@@ -618,7 +634,8 @@ let test_invalidate_rebuilds_kids () =
 let () =
   run "lui_retained"
     [ ( "fragments",
-        [ test_case "static frame" `Quick test_static_frame;
+        [ test_case "fragment lookup allocation" `Quick test_fragment_lookup_allocation;
+          test_case "static frame" `Quick test_static_frame;
           test_case "single paint update" `Quick test_single_paint_update;
           test_case "geom shift translates" `Quick test_geom_shift_translates;
           test_case "semantics-only skips" `Quick test_semantics_only_skips;
