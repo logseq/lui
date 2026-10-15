@@ -732,8 +732,8 @@ let test_shared_clip_rows_allocation () =
      iglyphs 0 320;Pop_clip;Pop_clip] in
   let allocated=redraw_allocation s in
   Printf.printf "Shared glyph clip rows allocated %.0f bytes/frame\n%!" allocated;
-  Alcotest.(check bool) "Glyphs sharing clip rows stay below 512 KB per frame" true
-    (allocated <= 524_288.)
+  Alcotest.(check bool) "Glyphs sharing clip rows stay below 128 KB per frame" true
+    (allocated <= 131_072.)
 
 let test_clip_row_changes () =
   let renderer=Lui_raster.Renderer.create () in
@@ -777,18 +777,21 @@ let test_shadow_sampling_allocation () =
       Alcotest.(check bool) "Shadow integration stays below 256 KB per frame" true
         (allocated <= 262_144.)
     ) [false; true]
-  ) [96,57.25;160,121.25]
+  ) [96,57.25;160,121.25;2048,2009.25]
 
 let test_scanline_allocation () =
   let radii = (0., 0., 0., 0.) in
-  let s = scene ~w:1024 ~h:768
-    [iclip ~radii (rect 0. 0. 1024. 768.);
-     ifill ~radii (rect 1. 1. 1022. 766.) (color 37 99 235 255);
-     Pop_clip] in
-  let allocated = redraw_allocation s in
-  Printf.printf "Solid scanline redraw allocated %.0f bytes/frame\n%!" allocated;
-  Alcotest.(check bool) "Solid scanlines stay below 128 KB per frame" true
-    (allocated <= 131_072.)
+  List.iter (fun height ->
+    let s = scene ~w:1024 ~h:height
+      [iclip ~radii (rect 0. 0. 1024. (float height));
+       ifill ~radii (rect 1. 1. 1022. (float height -. 2.)) (color 37 99 235 255);
+       Pop_clip] in
+    let allocated = redraw_allocation s in
+    Printf.printf "Solid scanline redraw at height %d allocated %.0f bytes/frame\n%!"
+      height allocated;
+    Alcotest.(check bool) "Solid scanlines stay below 128 KB per frame" true
+      (allocated <= 131_072.)
+  ) [768; 3072]
 
 let test_empty_inset_allocation () =
   let s=scene ~w:512 ~h:128

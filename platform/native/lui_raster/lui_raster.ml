@@ -372,17 +372,17 @@ let[@inline always] shape_inset s i v =
     end
   end
 
-(* The pixels of the row between y0 and y1 that the rounded rectangle
-   covers entirely; lo >= hi when there are none. *)
-let[@inline always] solid_span s y0 y1 =
+(* One edge of the pixels fully covered between y0 and y1. Scalar
+   results avoid allocating an interval pair for every scanline. *)
+let[@inline always] solid_edge s y0 y1 ~right =
   let rc = s.sr in
-  if y0 < rc.y || y1 > rc.y +. rc.h then (0, 0)
+  if y0 < rc.y || y1 > rc.y +. rc.h then 0
   else begin
-    (* The corners narrow the row the most at its edge nearer to theirs. *)
     let top = y0 -. rc.y and bottom = rc.y +. rc.h -. y1 in
-    let left = rc.x +. fmax (shape_inset s 0 top) (shape_inset s 3 bottom) in
-    let right = rc.x +. rc.w -. fmax (shape_inset s 1 top) (shape_inset s 2 bottom) in
-    (iceil left, ifloor right)
+    if right then
+      ifloor (rc.x +. rc.w -. fmax (shape_inset s 1 top) (shape_inset s 2 bottom))
+    else
+      iceil (rc.x +. fmax (shape_inset s 0 top) (shape_inset s 3 bottom))
   end
 
 (* ---------- colors ---------- *)
@@ -581,40 +581,33 @@ let clip_coverage r x y =
 
 (* The pixels of row y that the clips let through entirely, so that
    clipCoverage need not run for them. *)
-let compute_clip_solid r y =
-  let rec intersect lo hi = function
-    | [] -> (lo, hi)
-    | c :: rest ->
-      let l, h =
-        if c.cspans >= 0 && y >= r.rarea.y0 && y < r.rarea.y1 then begin
-          let k = c.cspans + 2 * (y - r.rarea.y0) in
-          if r.span_buf.(k) = no_span then begin
-            let l, h = solid_span c.cshape (float y) (float (y + 1)) in
-            r.span_buf.(k) <- l;
-            r.span_buf.(k + 1) <- h;
-            (l, h)
-          end
-          else (r.span_buf.(k), r.span_buf.(k + 1))
-        end
-        else solid_span c.cshape (float y) (float (y + 1))
-      in
-      intersect (max lo l) (min hi h) rest
-  in
-  intersect r.rx0 r.rx1 r.rclips
+let rec compute_clip_solid r y row lo hi = function
+  | [] ->
+    r.clip_rows.(row + 1) <- lo;
+    r.clip_rows.(row + 2) <- hi
+  | c :: rest ->
+    if c.cspans >= 0 && y >= r.rarea.y0 && y < r.rarea.y1 then begin
+      let k = c.cspans + 2 * (y - r.rarea.y0) in
+      if r.span_buf.(k) = no_span then begin
+        r.span_buf.(k) <- solid_edge c.cshape (float y) (float (y + 1)) ~right:false;
+        r.span_buf.(k + 1) <- solid_edge c.cshape (float y) (float (y + 1)) ~right:true
+      end;
+      compute_clip_solid r y row (max lo r.span_buf.(k)) (min hi r.span_buf.(k + 1)) rest
+    end
+    else
+      compute_clip_solid r y row
+        (max lo (solid_edge c.cshape (float y) (float (y + 1)) ~right:false))
+        (min hi (solid_edge c.cshape (float y) (float (y + 1)) ~right:true)) rest
 
 (* Glyphs and images often share the same clip stack and pixel rows.
    Only a clip or area change invalidates their integer span cache. *)
-let clip_solid r y =
+let clip_row r y =
   let row = 3 * (y - r.rarea.y0) in
-  if r.clip_rows.(row) = r.clip_epoch then
-    (r.clip_rows.(row + 1), r.clip_rows.(row + 2))
-  else begin
-    let low, high = compute_clip_solid r y in
-    r.clip_rows.(row) <- r.clip_epoch;
-    r.clip_rows.(row + 1) <- low;
-    r.clip_rows.(row + 2) <- high;
-    (low, high)
-  end
+  if r.clip_rows.(row) <> r.clip_epoch then begin
+    compute_clip_solid r y row r.rx0 r.rx1 r.rclips;
+    r.clip_rows.(row) <- r.clip_epoch
+  end;
+  row
 
 (* ---------- per-op drawing ---------- *)
 
@@ -644,13 +637,18 @@ let r_fill r (op : fill_op) =
     for y = y0 to y1 - 1 do
       let row = (y - r.origin_y) * r.dst.Image.stride in
       let py = float y +. 0.5 in
-      let cl, ch = clip_solid r y in
-      let ol, oh = solid_span outer (float y) (float (y + 1)) in
-      let il, ih =
-        if has_border then
-          if rect_empty inner.sr then (0, 0) else solid_span inner (float y) (float (y + 1))
-        else (ol, oh)
-      in
+      let clip_index = clip_row r y in
+      let cl = r.clip_rows.(clip_index + 1) and ch = r.clip_rows.(clip_index + 2) in
+      let ol = solid_edge outer (float y) (float (y + 1)) ~right:false
+        and oh = solid_edge outer (float y) (float (y + 1)) ~right:true in
+      let il =
+        if not has_border then ol
+        else if rect_empty inner.sr then 0
+        else solid_edge inner (float y) (float (y + 1)) ~right:false in
+      let ih =
+        if not has_border then oh
+        else if rect_empty inner.sr then 0
+        else solid_edge inner (float y) (float (y + 1)) ~right:true in
       (* The middle run, inside the clips, the shape and its border, is
          plain fill. *)
       let sl = max (max il cl) x0 and sh = min (min ih ch) x1 in
@@ -693,8 +691,10 @@ let r_hole r (op : hole_op) =
     for y = y0 to y1 - 1 do
       let row = (y - r.origin_y) * r.dst.Image.stride in
       let py = float y +. 0.5 in
-      let cl, ch = clip_solid r y in
-      let ol, oh = solid_span sh (float y) (float (y + 1)) in
+      let clip_index = clip_row r y in
+      let cl = r.clip_rows.(clip_index + 1) and ch = r.clip_rows.(clip_index + 2) in
+      let ol = solid_edge sh (float y) (float (y + 1)) ~right:false
+        and oh = solid_edge sh (float y) (float (y + 1)) ~right:true in
       let sl = max (max ol cl) x0 and shi = min (min oh ch) x1 in
       if sl < shi then begin
         if opacity >= 1. then Bytes.fill r.dst.Image.pix (row + 4 * sl) (4 * (shi - sl)) '\000'
@@ -796,12 +796,12 @@ let r_shadow r (op : shadow_op) =
              iceil (op.scast.x +. op.scast.w), iceil (op.scast.y +. op.scast.h))
           else (0, 0, 0, 0)
         in
+        let weight = Array.make 4 0. and half = Array.make 4 0. in
         for y = y0 to y1 - 1 do
           let py = float y +. 0.5 -. cy in
           let low = py -. hy and high = py +. hy in
           let start = fmin (fmax (-.ext) low) high and fin = fmin (fmax ext low) high in
           let step = (fin -. start) /. 4. in
-          let weight = Array.make 4 0. and half = Array.make 4 0. in
           let sum = ref 0. and narrowest = ref hx in
           let yy = ref (start +. step *. 0.5) in
           for i = 0 to 3 do
@@ -828,18 +828,16 @@ let r_shadow r (op : shadow_op) =
           if !sum > 0.002 then begin
             let straight = !narrowest = hx in
             let row = (y - r.origin_y) * r.dst.Image.stride in
-            let cl, ch = clip_solid r y in
+            let clip_index = clip_row r y in
+            let cl = r.clip_rows.(clip_index + 1) and ch = r.clip_rows.(clip_index + 2) in
             let ml = max (iceil (cx -. !narrowest +. far -. 0.5)) (max x0 cl) in
             let mh = min (ifloor (cx +. !narrowest -. far -. 0.5) + 1) (min x1 ch) in
             (* On the row, the box casting the shadow touches kl..kh,
                which the middle leaves out, and hides it in sl..sh. *)
-            let kl, kh, sl, sh =
-              if cast && y >= ky0 && y < ky1 then begin
-                let sl, sh = solid_span caster (float y) (float (y + 1)) in
-                (kx0, kx1, sl, sh)
-              end
-              else (0, 0, 0, 0)
-            in
+            let on_cast = cast && y >= ky0 && y < ky1 in
+            let kl = if on_cast then kx0 else 0 and kh = if on_cast then kx1 else 0 in
+            let sl = if on_cast then solid_edge caster (float y) (float (y + 1)) ~right:false else 0 in
+            let sh = if on_cast then solid_edge caster (float y) (float (y + 1)) ~right:true else 0 in
             if kl < kh then begin
               blend_span r.dst.Image.pix row ml (min mh kl) c !sum;
               blend_span r.dst.Image.pix row (max ml kh) mh c !sum
@@ -900,7 +898,8 @@ let r_inset_shadow r (op : shadow_op) =
       for y = y0 to y1 - 1 do
         (* Nothing shows where the hole covers the row's pixels
            entirely, as it does most of a large box. *)
-        let sl, sh = solid_span hole (float y) (float (y + 1)) in
+        let sl = solid_edge hole (float y) (float (y + 1)) ~right:false
+        and sh = solid_edge hole (float y) (float (y + 1)) ~right:true in
         let x = ref x0 in
         while !x < x1 do
           if !x >= sl && !x < sh then x := sh - 1
@@ -928,12 +927,12 @@ let r_inset_shadow r (op : shadow_op) =
       let hx = op.srect.w /. 2. and hy = op.srect.h /. 2. in
       let k = sqrt 0.5 /. sigma in
       let far = 2.6 /. k in (* where erf passes 0.9997 *)
+      let weight = Array.make 4 0. and half = Array.make 4 0. in
       for y = y0 to y1 - 1 do
         let py = float y +. 0.5 -. cy in
         let low = py -. hy and high = py +. hy in
         let start = fmin (fmax (-.ext) low) high and fin = fmin (fmax ext low) high in
         let step = (fin -. start) /. 4. in
-        let weight = Array.make 4 0. and half = Array.make 4 0. in
         let sum = ref 0. and narrowest = ref hx in
         let yy = ref (start +. step *. 0.5) in
         for i = 0 to 3 do
@@ -957,8 +956,10 @@ let r_inset_shadow r (op : shadow_op) =
           end;
           yy := !yy +. step
         done;
-        let cl, ch = clip_solid r y in
-        let bl, bh = solid_span box (float y) (float (y + 1)) in
+        let clip_index = clip_row r y in
+        let cl = r.clip_rows.(clip_index + 1) and ch = r.clip_rows.(clip_index + 2) in
+        let bl = solid_edge box (float y) (float (y + 1)) ~right:false
+        and bh = solid_edge box (float y) (float (y + 1)) ~right:true in
         (* In the middle of the row, far from the hole's edges, the hole
            covers sum of each pixel, and nothing shows where that is
            all. *)
@@ -998,7 +999,8 @@ let r_inset_shadow r (op : shadow_op) =
 let mask_opaque r a (g : glyph) gx gy x0 y0 x1 y1 =
   let c = g.gcolor in
   for y = y0 to y1 - 1 do
-    let cl, ch = clip_solid r y in
+    let clip_index = clip_row r y in
+    let cl = r.clip_rows.(clip_index + 1) and ch = r.clip_rows.(clip_index + 2) in
     let at = (g.gv + y - gy) * a.Atlas.w + g.gu + x0 - gx in
     let row = (y - r.origin_y) * r.dst.Image.stride in
     for i = 0 to x1 - x0 - 1 do
@@ -1052,7 +1054,8 @@ let r_glyphs r (op : glyphs_op) s glyphs =
       else
         for y = y0 to y1 - 1 do
           let row = (y - r.origin_y) * r.dst.Image.stride in
-          let cl, ch = clip_solid r y in
+          let clip_index = clip_row r y in
+          let cl = r.clip_rows.(clip_index + 1) and ch = r.clip_rows.(clip_index + 2) in
           let ay = g.gv + y - gy in
           for x = x0 to x1 - 1 do
             let ax = g.gu + x - gx in
@@ -1141,8 +1144,10 @@ let r_image r (op : image_op) =
     let x0, y0, x1, y1 = pixel_bounds r op.irect2 in
     for y = y0 to y1 - 1 do
       let py = float y +. 0.5 in
-      let cl, ch = clip_solid r y in
-      let ol, oh = solid_span box (float y) (float (y + 1)) in
+      let clip_index = clip_row r y in
+      let cl = r.clip_rows.(clip_index + 1) and ch = r.clip_rows.(clip_index + 2) in
+      let ol = solid_edge box (float y) (float (y + 1)) ~right:false
+        and oh = solid_edge box (float y) (float (y + 1)) ~right:true in
       for x = x0 to x1 - 1 do
         let px = float x +. 0.5 in
         let cov = opacity in
@@ -1183,8 +1188,10 @@ let r_effect r (op : effect_draw) px b =
     let x0, y0, x1, y1 = pixel_bounds r op.edrect in
     for y = y0 to y1 - 1 do
       let py = float y +. 0.5 in
-      let cl, ch = clip_solid r y in
-      let ol, oh = solid_span box (float y) (float (y + 1)) in
+      let clip_index = clip_row r y in
+      let cl = r.clip_rows.(clip_index + 1) and ch = r.clip_rows.(clip_index + 2) in
+      let ol = solid_edge box (float y) (float (y + 1)) ~right:false
+        and oh = solid_edge box (float y) (float (y + 1)) ~right:true in
       for x = x0 to x1 - 1 do
         let px0 = float x +. 0.5 in
         let cov = opacity in
