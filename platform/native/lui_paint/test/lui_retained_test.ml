@@ -314,8 +314,64 @@ let test_drop_subtree () =
   frame env ();
   apply env.store [ DropNode 1 ];
   frame env ();
-  (* store still carries the orphaned children as roots *)
+  (* A second clean frame must preserve the empty forest. *)
   frame env ()
+
+let test_disposed_fragments () =
+  List.iter (fun painted ->
+    let env = env () in
+    apply env.store [CreateNode (1, Column)];
+    frame env ();
+    let baseline = (Gc.stat ()).live_words in
+    for turn=0 to 99 do
+      let parent=1000+turn*4 in
+      apply env.store [CreateNode (parent,Column); InsertChild (1,parent,0);
+        CreateNode (parent+1,Column); InsertChild (parent,parent+1,0);
+        CreateNode (parent+2,Button); SetProp (parent+2,TextValue,StringValue "temporary");
+        InsertChild (parent+1,parent+2,0);
+        CreateNode (parent+3,Button); InsertChild (parent,parent+3,1)];
+      if painted then frame env ();
+      (* Native viewport teardown can dispose an inner scope and then its
+         enclosing row before the next materialization. *)
+      apply env.store [RemoveChild (parent,parent+1); DetachSubtree (parent+1);
+        DetachSubtree parent];
+      frame env ()
+    done;
+    Gc.full_major (); Gc.full_major ();
+    let retained = ((Gc.stat ()).live_words-baseline)*(Sys.word_size/8) in
+    Printf.printf "Disposed paint fragments (painted=%b): fragments=%d parents=%d retained=%d bytes\n%!"
+      painted (Hashtbl.length env.rt.frags) (Hashtbl.length env.rt.fparent) retained;
+    check bool "Disposed viewport rows retain paint fragments"
+      true (Hashtbl.length env.rt.frags <= Lui_store.node_count env.store);
+    check bool "Disposed viewport rows retain paint parent links"
+      true (Hashtbl.length env.rt.fparent <= Lui_store.node_count env.store);
+    check bool "Disposed viewport rows retain virtual paint windows"
+      true (Hashtbl.length env.rt.vwin <= Lui_store.node_count env.store);
+    check bool "Disposed rows retain pending paint work"
+      true (Hashtbl.length env.rt.pend_segs=0 && Hashtbl.length env.rt.pend_kids=0)
+  ) [false;true]
+
+let test_removed_paint_hints () =
+  let env = env () in
+  build_rows env 4;
+  frame env ();
+  apply env.store [DetachSubtree 1];
+  let moved=Hashtbl.create 4 and hints=Hashtbl.create 4 in
+  for id=1 to 5 do Hashtbl.add moved id (); Hashtbl.add hints id () done;
+  let h=hooks env in
+  Lui_retained.paint_retained env.rt h env.store env.kept ~moved ~hints
+    ~width:200 ~height:200 ~scale:1. ~clear:(color 0 0 0 0) ();
+  check int "Deleted geometry and hover hints recreate paint resources"
+    0 (Hashtbl.length env.rt.frags);
+  check int "Deleted geometry leaves parent links" 0 (Hashtbl.length env.rt.fparent);
+  apply env.store [CreateNode (1,Column); CreateNode (2,Button);
+    SetProp (2,TextValue,StringValue "replacement"); InsertChild (1,2,0)];
+  frame env ();
+  Lui_retained.invalidate env.rt;
+  frame env ();
+  check bool "Invalidation retains obsolete parent links"
+    true (Hashtbl.length env.rt.fparent <= Lui_store.node_count env.store)
+
 
 (* Wide-child removals: 250 removed children land on the root list
    and re-emit there — one repaint per moved id, never a rebuild per
@@ -576,6 +632,8 @@ let () =
           test_case "popup deferred" `Quick test_popup_deferred;
           test_case "state hint" `Quick test_state_hint;
           test_case "drop subtree" `Quick test_drop_subtree;
+          test_case "disposed fragments" `Quick test_disposed_fragments;
+          test_case "removed paint hints" `Quick test_removed_paint_hints;
           test_case "wide removal" `Quick test_wide_removal;
           test_case "vlist scroll" `Quick test_vlist_scroll;
           test_case "random equivalence" `Quick test_random_equivalence;

@@ -124,6 +124,9 @@ let create () =
 
 let invalidate (rt : retained) =
   Hashtbl.reset rt.frags;
+  Hashtbl.reset rt.fparent;
+  Hashtbl.reset rt.pend_kids;
+  Hashtbl.reset rt.pend_segs;
   Hashtbl.reset rt.vwin;
   (* Fresh fragments start with no kid list and nothing marks them:
      the next paint must re-derive every node's children, or the tree
@@ -253,6 +256,22 @@ let mark_inherited rt store id name =
      | _ -> false)
   then List.iter (mark_repaint rt) (Lui_store.child_ids store id)
 
+(* Cached child lists describe the last painted window, not the complete
+   disposal topology. A coalesced teardown or a virtual-window change can
+   leave retired descendants outside those lists. Prune at structural
+   journal boundaries against the authoritative final store. *)
+let prune_retired rt store =
+  let prune table = Hashtbl.filter_map_inplace (fun id item ->
+    if Lui_store.mem store id then Some item else None) table in
+  prune rt.frags;
+  prune rt.pend_kids;
+  prune rt.pend_segs;
+  prune rt.vwin;
+  Hashtbl.filter_map_inplace (fun id parent ->
+    if Lui_store.mem store id && (parent=0 || Lui_store.mem store parent)
+    then Some parent else None) rt.fparent
+
+
 (* Replay the store ops since [rt.rev], translating them into fragment
    marks. Mirrors the layout engine's incremental contract: the
    journal is the single source of truth for what the store saw. *)
@@ -263,6 +282,7 @@ let advance rt store =
     invalidate rt;
     rt.rev <- Lui_store.revision store
   | Some ops ->
+    let retired = ref false in
     List.iter
       (fun (op : Lui_protocol.patch_op) ->
         match op with
@@ -284,9 +304,12 @@ let advance rt store =
           List.iter (mark_repaint rt) (Lui_store.preorder ~root:id store);
           mark_parent_rekids rt store id
         | CreateNode (id, _) | CreateExtension (id, _, _) ->
-          (* A reused id may still carry a stale fragment. *)
+          (* A reused id can retire descendants without an explicit drop. *)
+          retired := true;
           mark_repaint rt id
         | DropNode id | DetachSubtree id ->
+          retired := true;
+          rt.dirty <- true;
           mark_parent_rekids rt store id;
           purge_frag rt id
         | InsertChild (p, c, _) ->
@@ -313,6 +336,7 @@ let advance rt store =
           mark_repaint rt c;
           mark_parent_rekids rt store c)
       ops;
+    if !retired then prune_retired rt store;
     (* [rt.dirty] only follows real marks — a semantics-only op leaves
        the frame alone. *)
     rt.rev <- Lui_store.revision store
@@ -724,10 +748,12 @@ let paint_retained rt hooks store (scene : Lui_scene.t) ?moved ?hints ?vlists
        ids
    | None -> ());
   (match moved with
-   | Some mv -> Hashtbl.iter (fun id () -> mark_geom rt id) mv
+   | Some mv -> Hashtbl.iter (fun id () ->
+       if Lui_store.mem store id then mark_geom rt id) mv
    | None -> ());
   (match hints with
-   | Some h -> Hashtbl.iter (fun id () -> mark_repaint rt id) h
+   | Some h -> Hashtbl.iter (fun id () ->
+       if Lui_store.mem store id then mark_repaint rt id) h
    | None -> ());
   if rt.dirty then begin
     let m =
