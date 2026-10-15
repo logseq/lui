@@ -7,6 +7,47 @@ open Lui_scene
 let fcheck name want got =
   Alcotest.(check (float 1e-6)) name want got
 
+let test_rect_intersections () =
+  let check_rect name expected actual =
+    List.iter2 (fun expected actual ->
+      Alcotest.(check bool) name true
+        (Float.equal expected actual || Float.is_nan expected && Float.is_nan actual))
+      [expected.x; expected.y; expected.w; expected.h]
+      [actual.x; actual.y; actual.w; actual.h]
+  in
+  List.iter (fun (a,b,expected) ->
+    check_rect "clipped geometry" expected (rect_intersect a b);
+    check_rect "reversed clipping" expected (rect_intersect b a))
+    [ rect 0. 0. 10. 10., rect 2. 3. 4. 5., rect 2. 3. 4. 5.;
+      rect 0. 0. 10. 10., rect 5. 6. 10. 10., rect 5. 6. 5. 4.;
+      rect 0. 0. 10. 10., rect 10. 0. 2. 5., rect 10. 0. 0. 0.;
+      rect 0. 0. 10. 10., rect 20. 30. 2. 5., rect 20. 30. 0. 0.;
+      rect 0. 0. 10. 10., rect 2. 3. 0. 5., rect 2. 3. 0. 0.;
+      rect 0. 0. 10. 10., rect 2. 3. (-1.) 5., rect 2. 3. 0. 0.;
+      rect 0. 0. Float.infinity Float.infinity,
+        rect 2. 3. 4. 5., rect 2. 3. 4. 5.;
+      rect 0. 0. 1.e17 1.e17,
+        rect 1.e16 1.e16 3. 3., rect 1.e16 1.e16 4. 4.;
+      rect 0. 0. 10. 10., rect 0.1 0.1 0.2 0.2,
+        rect 0.1 0.1 0.20000000000000004 0.20000000000000004 ];
+  check_rect "left NaN follows scalar maximum/minimum semantics"
+    (rect 0. 1. 10. 3.)
+    (rect_intersect (rect Float.nan 1. 2. 3.) (rect 0. 0. 10. 10.));
+  check_rect "right NaN follows scalar maximum/minimum semantics"
+    (rect Float.nan 1. Float.nan 3.)
+    (rect_intersect (rect 0. 0. 10. 10.) (rect Float.nan 1. 2. 3.));
+  let clip = rect 0. 0. 2880. 1800. and child = rect 17. 23. 900. 90. in
+  let result = ref child in
+  let before = Gc.allocated_bytes () in
+  for _=1 to 10000 do
+    result := rect_intersect !result clip;
+    result := rect_intersect clip !result
+  done;
+  let allocated = Gc.allocated_bytes () -. before in
+  Printf.printf "Contained scene clipping: %.0f bytes for 20000 intersections\n%!" allocated;
+  check_rect "clipping retains the complete child" child !result;
+  Alcotest.(check bool) "contained scene clipping allocation budget" true (allocated <= 200000.)
+
 let atlas_byte a x y = Char.code (Bytes.get a.Atlas.pix (y * a.Atlas.w + x))
 
 (* Atlas.put writes a one-byte padding column and row around the bitmap
@@ -179,7 +220,8 @@ let test_rect_snap () =
 let () =
   Alcotest.run "lui_scene"
     [ ( "snap",
-        [ Alcotest.test_case "coordinate" `Quick test_snap;
+        [ Alcotest.test_case "intersection allocation" `Quick test_rect_intersections;
+          Alcotest.test_case "coordinate" `Quick test_snap;
           Alcotest.test_case "rect edges" `Quick test_rect_snap ] );
       ( "atlas",
         [ Alcotest.test_case "put clears padding" `Quick

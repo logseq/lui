@@ -16,9 +16,18 @@ type rect = { x : float; y : float; w : float; h : float }
 let rect x y w h = { x; y; w; h }
 let rect_empty r = r.w <= 0. || r.h <= 0.
 let rect_intersect r o =
-  let x0 = max r.x o.x and y0 = max r.y o.y in
-  let x1 = min (r.x +. r.w) (o.x +. o.w) and y1 = min (r.y +. r.h) (o.y +. o.h) in
-  if x1 <= x0 || y1 <= y0 then rect x0 y0 0. 0. else rect x0 y0 (x1 -. x0) (y1 -. y0)
+  let x0 = if r.x >= o.x then r.x else o.x in
+  let y0 = if r.y >= o.y then r.y else o.y in
+  let rx1 = r.x +. r.w and ox1 = o.x +. o.w in
+  let ry1 = r.y +. r.h and oy1 = o.y +. o.h in
+  let x1 = if rx1 <= ox1 then rx1 else ox1 in
+  let y1 = if ry1 <= oy1 then ry1 else oy1 in
+  if x1 <= x0 || y1 <= y0 then rect x0 y0 0. 0.
+  else
+    let w = x1 -. x0 and h = y1 -. y0 in
+    if r.x=x0 && r.y=y0 && r.w=w && r.h=h then r
+    else if o.x=x0 && o.y=y0 && o.w=w && o.h=h then o
+    else rect x0 y0 w h
 
 let rect_contains r px py = px >= r.x && py >= r.y && px < r.x +. r.w && py < r.y +. r.h
 
