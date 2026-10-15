@@ -714,6 +714,41 @@ let test_translucent_span_allocation () =
   Alcotest.(check bool) "translucent pixel operations do not allocate per pixel" true
     (allocated < 131_072.)
 
+let test_opaque_span_edges () =
+  List.iter (fun height -> List.iter (fun width -> List.iter (fun offset ->
+    let s = scene ~w:(width+5) ~h:(height+2) ~clear:(color 217 91 13 127)
+      [ifill (rect (float offset) 1. (float width) (float height)) (color 37 151 243 255)] in
+    let image = Lui_raster.render ~workers:1 ~scene:s () in
+    let expected = Bytes.init (Bytes.length image.pix) (fun index ->
+      let pixel = index / 4 in
+      let x = pixel mod image.w and y = pixel / image.w in
+      let active = y>=1 && y<=height && x>=offset && x<offset+width in
+      let channel = index mod 4 in
+      Char.chr (if active then [|243;151;37;255|].(channel)
+        else [|6;45;108;127|].(channel))) in
+    Alcotest.(check bool) "Opaque spans preserve odd tails, row edges and surrounding pixels"
+      true (Bytes.equal expected image.pix)
+  ) [0;1;3]) [0;1;2;3;4;7;8;15;16;31;32;63;64;127;128;257;2880]) [1;3;65]
+
+let test_translucent_span_channels () =
+  let source = new_image ~w:259 ~h:1 (Bytes.init (259*4) (fun index ->
+    Char.chr (if index mod 4=3 then 255 else (index/4 + index mod 4*71) mod 256))) in
+  for alpha=1 to 254 do
+    let s = scene ~w:259 ~h:1
+      [iimage (rect 0. 0. 259. 1.) source (rect 0. 0. 259. 1.);
+       ifill (rect 1. 0. 257. 1.) (color 255 151 37 alpha)] in
+    let image = Lui_raster.render ~workers:1 ~scene:s () in
+    let expected = Bytes.init (Bytes.length image.pix) (fun index ->
+      let x = index/4 and channel = index mod 4 in
+      let dest = if channel=3 then 255 else (x + (2-channel)*71) mod 256 in
+      let value = if x=0 || x=258 then dest else
+        let src = ([|37;151;255;255|].(channel)*alpha+127)/255 in
+        Int.min 255 (src + (dest*(255-alpha)+127)/255) in
+      Char.chr value) in
+    Alcotest.(check bool) "Translucent spans preserve every destination byte and alpha"
+      true (Bytes.equal expected image.pix)
+  done
+
 let assert_pixels_close message expected actual =
   Alcotest.(check int) (message ^ " size") (Bytes.length expected) (Bytes.length actual);
   Bytes.iteri (fun i byte ->
@@ -914,6 +949,8 @@ let () =
       ; ("compositing", [
           Alcotest.test_case "translucent rounding" `Slow test_translucent_byte_rounding;
           Alcotest.test_case "span allocation" `Quick test_translucent_span_allocation;
+          Alcotest.test_case "opaque span edges" `Quick test_opaque_span_edges;
+          Alcotest.test_case "translucent span channels" `Quick test_translucent_span_channels;
           Alcotest.test_case "image sampling allocation" `Quick test_image_sampling_allocation;
           Alcotest.test_case "empty inset allocation" `Quick test_empty_inset_allocation;
           Alcotest.test_case "shared clip rows allocation" `Quick test_shared_clip_rows_allocation;

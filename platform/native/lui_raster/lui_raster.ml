@@ -115,20 +115,22 @@ let blend_span p row x0 x1 (r_, g_, b_, a_) cov =
     if a > 0. then begin
       let pb = to8 (b_ *. cov) and pg = to8 (g_ *. cov) and pr = to8 (r_ *. cov) and pa = to8 a in
       if pa = 255 then begin
-        let pixel = Int64.of_int (pb lor (pg lsl 8) lor (pr lsl 16) lor (255 lsl 24)) in
-        let pair = Int64.logor pixel (Int64.shift_left pixel 32) in
-        let x = ref x0 in
-        while !x + 1 < x1 do
-          Bytes.set_int64_le p (row + 4 * !x) pair;
-          x := !x + 2
-        done;
-        if !x < x1 then Bytes.set_int32_le p (row + 4 * !x) (Int64.to_int32 pixel)
+        let pixel = Int32.of_int (pb lor (pg lsl 8) lor (pr lsl 16) lor (255 lsl 24)) in
+        let start = row + 4 * x0 and length = 4 * (x1 - x0) in
+        Bytes.set_int32_le p start pixel;
+        (* Expand an initialized run with bulk copies instead of checking
+           and storing every pair of pixels individually. *)
+        let filled = ref 4 in
+        while !filled < length do
+          let count = Int.min !filled (length - !filled) in
+          Bytes.blit p start p (start + !filled) count;
+          filled := !filled + count
+        done
       end
       else begin
         let inv = 255 - pa in
         let inv64 = Int64.of_int inv in
         let lanes = 0x00ff00ff00ff00ffL and bias = 0x0080008000800080L in
-        let ones = 0x0001000100010001L in
         let rb = Int64.of_int (pb lor (pr lsl 16))
         and ga = Int64.of_int (pg lor (pa lsl 16)) in
         let rb = Int64.logor rb (Int64.shift_left rb 32)
@@ -138,8 +140,9 @@ let blend_span p row x0 x1 (r_, g_, b_, a_) cov =
           let i = row + 4 * !x in
           let pixels = Bytes.get_int64_le p i in
           (* Four independent 16-bit lanes hold a byte product and its
-             rounding bias. Packing two pixels preserves byte rounding
-             and saturation without per-channel calls or boxed results. *)
+             rounding bias. A premultiplied source channel is at most pa,
+             and the destination contribution is at most 255-pa, so the
+             sum fits a byte without saturation or inter-lane carries. *)
           let trb = Int64.add (Int64.mul (Int64.logand pixels lanes) inv64) bias in
           let tga = Int64.add (Int64.mul
             (Int64.logand (Int64.shift_right_logical pixels 8) lanes) inv64) bias in
@@ -148,11 +151,7 @@ let blend_span p row x0 x1 (r_, g_, b_, a_) cov =
           let dga = Int64.logand (Int64.shift_right_logical
             (Int64.add tga (Int64.logand (Int64.shift_right_logical tga 8) lanes)) 8) lanes in
           let srb = Int64.add rb drb and sga = Int64.add ga dga in
-          let orb = Int64.logor (Int64.logand srb lanes)
-            (Int64.mul (Int64.logand (Int64.shift_right_logical srb 8) ones) 255L) in
-          let oga = Int64.logor (Int64.logand sga lanes)
-            (Int64.mul (Int64.logand (Int64.shift_right_logical sga 8) ones) 255L) in
-          Bytes.set_int64_le p i (Int64.logor orb (Int64.shift_left oga 8));
+          Bytes.set_int64_le p i (Int64.logor srb (Int64.shift_left sga 8));
           x := !x + 2
         done;
         if !x < x1 then begin
@@ -554,16 +553,16 @@ let update_bounds r =
   r.rx0 <- r.rarea.x0; r.ry0 <- r.rarea.y0; r.rx1 <- r.rarea.x1; r.ry1 <- r.rarea.y1;
   List.iter
     (fun c ->
-      r.rx0 <- max r.rx0 (ifloor c.cshape.sr.x);
-      r.ry0 <- max r.ry0 (ifloor c.cshape.sr.y);
-      r.rx1 <- min r.rx1 (iceil (c.cshape.sr.x +. c.cshape.sr.w));
-      r.ry1 <- min r.ry1 (iceil (c.cshape.sr.y +. c.cshape.sr.h)))
+      r.rx0 <- Int.max r.rx0 (ifloor c.cshape.sr.x);
+      r.ry0 <- Int.max r.ry0 (ifloor c.cshape.sr.y);
+      r.rx1 <- Int.min r.rx1 (iceil (c.cshape.sr.x +. c.cshape.sr.w));
+      r.ry1 <- Int.min r.ry1 (iceil (c.cshape.sr.y +. c.cshape.sr.h)))
     r.rclips
 
 (* The pixels a rectangle touches within the clips. *)
 let pixel_bounds r rc =
-  (max r.rx0 (ifloor rc.x), max r.ry0 (ifloor rc.y),
-   min r.rx1 (iceil (rc.x +. rc.w)), min r.ry1 (iceil (rc.y +. rc.h)))
+  (Int.max r.rx0 (ifloor rc.x), Int.max r.ry0 (ifloor rc.y),
+   Int.min r.rx1 (iceil (rc.x +. rc.w)), Int.min r.ry1 (iceil (rc.y +. rc.h)))
 
 (* How much of pixel (x, y) the clips let through, given the clip
    rectangles' pixel bounds already apply. *)
@@ -600,12 +599,12 @@ let rec compute_clip_solid r y row lo hi = function
         r.span_buf.(k) <- solid_edge c.cshape (float y) (float (y + 1)) ~right:false;
         r.span_buf.(k + 1) <- solid_edge c.cshape (float y) (float (y + 1)) ~right:true
       end;
-      compute_clip_solid r y row (max lo r.span_buf.(k)) (min hi r.span_buf.(k + 1)) rest
+      compute_clip_solid r y row (Int.max lo r.span_buf.(k)) (Int.min hi r.span_buf.(k + 1)) rest
     end
     else
       compute_clip_solid r y row
-        (max lo (solid_edge c.cshape (float y) (float (y + 1)) ~right:false))
-        (min hi (solid_edge c.cshape (float y) (float (y + 1)) ~right:true)) rest
+        (Int.max lo (solid_edge c.cshape (float y) (float (y + 1)) ~right:false))
+        (Int.min hi (solid_edge c.cshape (float y) (float (y + 1)) ~right:true)) rest
 
 (* Glyphs and images often share the same clip stack and pixel rows.
    Only a clip or area change invalidates their integer span cache. *)
@@ -641,6 +640,9 @@ let r_fill r (op : fill_op) =
       else outer
     in
     let has_fill = painter_visible pt and solid = painter_solid pt in
+    let (_,_,_,alpha) = pt.pc1 in
+    let opaque = solid && to8 alpha=255 in
+    let filled_row = ref (-1) and filled_left = ref 0 and filled_right = ref 0 in
     let x0, y0, x1, y1 = pixel_bounds r op.frect in
     for y = y0 to y1 - 1 do
       let row = (y - r.origin_y) * r.dst.Image.stride in
@@ -659,8 +661,16 @@ let r_fill r (op : fill_op) =
         else solid_edge inner (float y) (float (y + 1)) ~right:true in
       (* The middle run, inside the clips, the shape and its border, is
          plain fill. *)
-      let sl = max (max il cl) x0 and sh = min (min ih ch) x1 in
-      if sl < sh && has_fill && solid then blend_span r.dst.Image.pix row sl sh pt.pc1 1.;
+      let sl = Int.max (Int.max il cl) x0 and sh = Int.min (Int.min ih ch) x1 in
+      if sl < sh && has_fill && solid then begin
+        (* Fully covered pixels have the same solid color on every row.
+           Copy only from a previous interior that contains this span;
+           antialiased edges and borders stay on the coverage path. *)
+        if opaque && !filled_row>=0 && sl>= !filled_left && sh<= !filled_right then
+          Bytes.blit r.dst.Image.pix (!filled_row+4*sl) r.dst.Image.pix (row+4*sl) (4*(sh-sl))
+        else blend_span r.dst.Image.pix row sl sh pt.pc1 1.;
+        filled_row := row; filled_left := sl; filled_right := sh
+      end;
       let x = ref x0 in
       while !x < x1 do
         if !x >= sl && !x < sh then begin
@@ -703,7 +713,7 @@ let r_hole r (op : hole_op) =
       let cl = r.clip_rows.(clip_index + 1) and ch = r.clip_rows.(clip_index + 2) in
       let ol = solid_edge sh (float y) (float (y + 1)) ~right:false
         and oh = solid_edge sh (float y) (float (y + 1)) ~right:true in
-      let sl = max (max ol cl) x0 and shi = min (min oh ch) x1 in
+      let sl = Int.max (Int.max ol cl) x0 and shi = Int.min (Int.min oh ch) x1 in
       if sl < shi then begin
         if opacity >= 1. then Bytes.fill r.dst.Image.pix (row + 4 * sl) (4 * (shi - sl)) '\000'
         else
@@ -838,8 +848,8 @@ let r_shadow r (op : shadow_op) =
             let row = (y - r.origin_y) * r.dst.Image.stride in
             let clip_index = clip_row r y in
             let cl = r.clip_rows.(clip_index + 1) and ch = r.clip_rows.(clip_index + 2) in
-            let ml = max (iceil (cx -. !narrowest +. far -. 0.5)) (max x0 cl) in
-            let mh = min (ifloor (cx +. !narrowest -. far -. 0.5) + 1) (min x1 ch) in
+            let ml = Int.max (iceil (cx -. !narrowest +. far -. 0.5)) (Int.max x0 cl) in
+            let mh = Int.min (ifloor (cx +. !narrowest -. far -. 0.5) + 1) (Int.min x1 ch) in
             (* On the row, the box casting the shadow touches kl..kh,
                which the middle leaves out, and hides it in sl..sh. *)
             let on_cast = cast && y >= ky0 && y < ky1 in
@@ -847,15 +857,15 @@ let r_shadow r (op : shadow_op) =
             let sl = if on_cast then solid_edge caster (float y) (float (y + 1)) ~right:false else 0 in
             let sh = if on_cast then solid_edge caster (float y) (float (y + 1)) ~right:true else 0 in
             if kl < kh then begin
-              blend_span r.dst.Image.pix row ml (min mh kl) c !sum;
-              blend_span r.dst.Image.pix row (max ml kh) mh c !sum
+              blend_span r.dst.Image.pix row ml (Int.min mh kl) c !sum;
+              blend_span r.dst.Image.pix row (Int.max ml kh) mh c !sum
             end
             else blend_span r.dst.Image.pix row ml mh c !sum;
             let x = ref x0 in
             while !x < x1 do
               if !x >= ml && !x < mh && (!x < kl || !x >= kh) then begin
                 x := mh - 1;
-                if !x < kl then x := min mh kl - 1
+                if !x < kl then x := Int.min mh kl - 1
               end
               else if !x >= sl && !x < sh then x := sh - 1
               else begin
@@ -906,6 +916,8 @@ let r_inset_shadow r (op : shadow_op) =
       for y = y0 to y1 - 1 do
         (* Nothing shows where the hole covers the row's pixels
            entirely, as it does most of a large box. *)
+        let clip_index = clip_row r y in
+        let cl = r.clip_rows.(clip_index+1) and ch = r.clip_rows.(clip_index+2) in
         let sl = solid_edge hole (float y) (float (y + 1)) ~right:false
         and sh = solid_edge hole (float y) (float (y + 1)) ~right:true in
         let x = ref x0 in
@@ -915,7 +927,10 @@ let r_inset_shadow r (op : shadow_op) =
             let px = float !x +. 0.5 and py = float y +. 0.5 in
             let v = coverage box px py in
             let v = v *. (1. -. coverage hole px py) in
-            if v > 0. then blend_at r !x y c (v *. clip_coverage r !x y)
+            if v > 0. then begin
+              let cov = if !x<cl || !x>=ch then clip_coverage r !x y else 1. in
+              blend_at r !x y c (v *. cov)
+            end
           end;
           incr x
         done
@@ -973,8 +988,8 @@ let r_inset_shadow r (op : shadow_op) =
            all. *)
         let ml, mh =
           if 1. -. !sum <= 0.002 then
-            (max (iceil (cx -. !narrowest +. far -. 0.5)) x0,
-             min (ifloor (cx +. !narrowest -. far -. 0.5) + 1) x1)
+            (Int.max (iceil (cx -. !narrowest +. far -. 0.5)) x0,
+             Int.min (ifloor (cx +. !narrowest -. far -. 0.5) + 1) x1)
           else (x1, x1)
         in
         let x = ref x0 in
@@ -1043,13 +1058,13 @@ let r_glyphs r (op : glyphs_op) s glyphs =
     else None
   in
   let text = s.text in
-  let gend = min op.gend (Array.length glyphs) in
-  for gi = max op.gstart 0 to gend - 1 do
+  let gend = Int.min op.gend (Array.length glyphs) in
+  for gi = Int.max op.gstart 0 to gend - 1 do
     let g = glyphs.(gi) in
     let atlas = if g.gcolored || g.gsubpixel then s.color_atlas else s.mask_atlas in
     let gx = iround g.gx and gy = iround g.gy in
-    let x0 = max gx r.rx0 and y0 = max gy r.ry0 in
-    let x1 = min (gx + g.guw) r.rx1 and y1 = min (gy + g.gvh) r.ry1 in
+    let x0 = Int.max gx r.rx0 and y0 = Int.max gy r.ry0 in
+    let x1 = Int.min (gx + g.guw) r.rx1 and y1 = Int.min (gy + g.gvh) r.ry1 in
     if x0 < x1 && y0 < y1 then begin
       let tint0 = premul g.gcolor 1. in
       let alpha = float g.gcolor.a /. 255. in
