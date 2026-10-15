@@ -76,6 +76,14 @@ type layout_state = {
   lchanges : unit -> (int, unit) Hashtbl.t;
 }
 
+type transition = {
+  from_value : float;
+  target : float;
+  started : float;
+  duration : float;
+  easing : string;
+}
+
 type t = {
   store : Lui_store.t;
   scene : Lui_scene.t;
@@ -87,6 +95,9 @@ type t = {
   mutable height : int;
   mutable scale : float;
   mutable dirty : bool; (* repaint requested since last present *)
+  mutable animation_time : float option;
+  mutable reduced_motion : bool;
+  transitions : (int, transition) Hashtbl.t;
   retained : Lui_retained.retained;
   (* Ids whose host-side paint inputs (interaction state, async
      resources) changed since the last repaint — the fragment pass's
@@ -143,7 +154,8 @@ let create ~hooks ?layout ?(measure = no_measure) ~renderer ~width ~height ~scal
   { store;
     scene = Lui_scene.create ~mask_atlas ~color_atlas;
     hooks; layout; measure; renderer; width; height; scale;
-    dirty = false; retained = Lui_retained.create ();
+    dirty = false; animation_time = None; reduced_motion = false;
+    transitions = Hashtbl.create 4; retained = Lui_retained.create ();
     paint_hints = Hashtbl.create 16;
     moved_hints = Hashtbl.create 16;
     hidden = (fun _ -> false);
@@ -152,7 +164,7 @@ let create ~hooks ?layout ?(measure = no_measure) ~renderer ~width ~height ~scal
 
 let store h = h.store
 let scene h = h.scene
-let wants_repaint h = h.dirty
+let wants_repaint h = h.dirty || Hashtbl.length h.transitions > 0
 
 let set_hidden h pred =
   h.hidden <- (match pred with Some p -> p | None -> fun _ -> false);
@@ -231,8 +243,90 @@ let note_moveds h ids = List.iter (note_moved h) ids
    their hooks change under a stable store (e.g. a theme swap). *)
 let invalidate_paint h = Lui_retained.invalidate h.retained
 
+let eased easing progress =
+  if easing = "linear" then progress
+  else begin
+    let x1,y1,x2,y2 = match easing with
+      | "standard" -> 0.42,0.,0.58,1.
+      | "emphasized" -> 0.2,0.,0.,1.
+      | "spring" -> 0.16,1.2,0.3,1.
+      | _ -> invalid_arg "Unknown split easing" in
+    let coordinate a b t =
+      let inv = 1. -. t in
+      3. *. inv *. inv *. t *. a +. 3. *. inv *. t *. t *. b +. t *. t *. t in
+    let low = ref 0. and high = ref 1. in
+    for _ = 1 to 16 do
+      let middle = (!low +. !high) /. 2. in
+      if coordinate x1 x2 middle < progress then low := middle else high := middle
+    done;
+    coordinate y1 y2 ((!low +. !high) /. 2.)
+  end
+
+let set_transition_value h id value =
+  Lui_store.apply_op h.store (Lui_protocol.SetProp
+    (id,Lui_protocol.ProgressValue,Lui_protocol.FloatValue value));
+  h.dirty <- true
+
+let tick h ~now =
+  if not (Float.is_finite now) then invalid_arg "Invalid native animation time";
+  (match h.animation_time with
+   | Some previous when now < previous -> invalid_arg "Native animation clock moved backwards"
+   | _ -> ());
+  h.animation_time <- Some now;
+  if Hashtbl.length h.transitions > 0 then
+    Hashtbl.filter_map_inplace (fun id motion ->
+      if not (Lui_store.mem h.store id) then None
+      else begin
+        let progress = min 1. ((now -. motion.started) /. motion.duration) in
+        let value = if progress >= 1. then motion.target
+          else max 0. (min 1. (motion.from_value +.
+            (motion.target -. motion.from_value) *. eased motion.easing progress)) in
+        set_transition_value h id value;
+        if progress >= 1. then None else Some motion
+      end) h.transitions
+
+let set_reduced_motion h enabled =
+  h.reduced_motion <- enabled;
+  if enabled && Hashtbl.length h.transitions > 0 then begin
+    Hashtbl.iter (fun id motion ->
+      if Lui_store.mem h.store id then set_transition_value h id motion.target) h.transitions;
+    Hashtbl.clear h.transitions
+  end
+
 let apply_batch h (batch : Lui_protocol.patch_batch) =
+  let previous = Hashtbl.create 4 and created = Hashtbl.create 4 in
+  List.iter (function
+    | Lui_protocol.CreateNode (id,_) | CreateExtension (id,_,_)
+    | DropNode id | DetachSubtree id ->
+        Hashtbl.replace created id ();
+        Hashtbl.remove previous id;
+        Hashtbl.remove h.transitions id
+    | SetProp (id, ProgressValue, _) when not (Hashtbl.mem created id)
+        && Lui_store.kind h.store id = "split" ->
+        if not (Hashtbl.mem previous id) then
+          (match Lui_store.prop h.store id "value" with
+           | Some (FloatValue value) -> Hashtbl.add previous id value
+           | Some (IntValue value) -> Hashtbl.add previous id (float value)
+           | _ -> ())
+    | _ -> ()) batch.ops;
   Lui_store.apply_batch h.store batch;
+  Hashtbl.filter_map_inplace (fun id motion ->
+    if Lui_store.mem h.store id then Some motion else None) h.transitions;
+  Hashtbl.iter (fun id from_value ->
+    match h.animation_time, Lui_store.prop h.store id "value" with
+    | Some started, Some (Lui_protocol.FloatValue target)
+        when not h.reduced_motion && from_value <> target ->
+        let duration = Option.value ~default:0 (Lui_store.int_prop h.store id "resize-duration") in
+        if duration > 0 then begin
+          let easing = Option.value ~default:"standard"
+            (Lui_store.string_prop h.store id "resize-easing") in
+          (match Hashtbl.find_opt h.transitions id with
+           | Some motion when motion.target = target -> ()
+           | _ -> Hashtbl.replace h.transitions id
+               {from_value;target;started;duration=float duration /. 1000.;easing});
+          set_transition_value h id from_value
+        end else Hashtbl.remove h.transitions id
+    | _ -> Hashtbl.remove h.transitions id) previous;
   h.dirty <- true;
   true
 

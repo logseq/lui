@@ -126,9 +126,82 @@ let test_hidden_preserves_wire_visibility () =
   check bool "wire-hidden content stays hidden" false (painted_color h 255 0 0);
   check bool "wire-hidden nested popup stays hidden" false (painted_color h 0 0 255)
 
+let split_value h =
+  match Lui_store.prop (Lui_host.store h) 1 "value" with
+  | Some (FloatValue value) -> value
+  | _ -> fail "split value missing"
+
+let animated_split () =
+  let h = make () in
+  Lui_host.tick h ~now:0.;
+  ignore (Lui_host.apply_batch h (batch
+    [CreateNode (1, Split); SetProp (1, ResizeDuration, IntValue 120);
+     SetProp (1, ResizeEasing, StringValue "standard");
+     SetProp (1, ProgressValue, FloatValue 0.2)]));
+  ignore (Lui_host.repaint h);
+  check (float 0.00001) "initial geometry is immediate" 0.2 (split_value h);
+  h
+
+let test_split_transition () =
+  let h = animated_split () in
+  Lui_host.tick h ~now:1.;
+  ignore (Lui_host.apply_batch h (batch [SetProp (1, ProgressValue, FloatValue 0.8)]));
+  check (float 0.00001) "toggle starts at current geometry" 0.2 (split_value h);
+  Lui_host.tick h ~now:1.06;
+  let value = split_value h in
+  check bool "halfway geometry is between the endpoints" true (value > 0.2 && value < 0.8);
+  ignore (Lui_host.repaint h);
+  check bool "animation requests another frame" true (Lui_host.wants_repaint h);
+  Lui_host.tick h ~now:1.13;
+  ignore (Lui_host.repaint h);
+  check (float 0.00001) "duration ends at the exact target" 0.8 (split_value h);
+  check bool "completed motion leaves the host idle" false (Lui_host.wants_repaint h)
+
+let test_split_reversal_and_removal () =
+  let h = animated_split () in
+  Lui_host.tick h ~now:1.;
+  ignore (Lui_host.apply_batch h (batch [SetProp (1, ProgressValue, FloatValue 0.8)]));
+  Lui_host.tick h ~now:1.06;
+  let previous = split_value h in
+  ignore (Lui_host.apply_batch h (batch [SetProp (1, ProgressValue, FloatValue 0.1)]));
+  check (float 0.00001) "reverse starts from the current displayed value" previous (split_value h);
+  Lui_host.tick h ~now:1.2;
+  check (float 0.00001) "reverse reaches its new target" 0.1 (split_value h);
+  ignore (Lui_host.apply_batch h (batch [SetProp (1, ProgressValue, FloatValue 0.9); DropNode 1]));
+  Lui_host.tick h ~now:1.4;
+  ignore (Lui_host.repaint h);
+  check bool "removed animation leaves no scheduled work" false (Lui_host.wants_repaint h);
+  ignore (Lui_host.apply_batch h (batch [CreateNode (1, Split);
+    SetProp (1, ProgressValue, FloatValue 0.5)]));
+  Lui_host.tick h ~now:2.;
+  check (float 0.00001) "reused id does not inherit a disposed transition" 0.5 (split_value h)
+
+let test_split_reduced_motion_and_drag () =
+  let h = animated_split () in
+  Lui_host.tick h ~now:1.;
+  Lui_host.set_reduced_motion h true;
+  ignore (Lui_host.apply_batch h (batch [SetProp (1, ProgressValue, FloatValue 0.8)]));
+  check (float 0.00001) "reduced motion changes geometry immediately" 0.8 (split_value h);
+  Lui_host.set_reduced_motion h false;
+  ignore (Lui_host.apply_batch h (batch [SetProp (1, ProgressValue, FloatValue 0.2)]));
+  Lui_host.tick h ~now:1.06;
+  Lui_host.set_reduced_motion h true;
+  check (float 0.00001) "enabling reduced motion finishes active transitions" 0.2 (split_value h);
+  Lui_host.set_reduced_motion h false;
+  Lui_store.apply_op (Lui_host.store h) (SetProp (1, ProgressValue, FloatValue 0.6));
+  ignore (Lui_host.apply_batch h (batch [SetProp (1, ProgressValue, FloatValue 0.6)]));
+  ignore (Lui_host.repaint h);
+  check bool "pointer drag feedback does not create eased catch-up" false (Lui_host.wants_repaint h);
+  ignore (Lui_host.apply_batch h (batch [SetProp (1, ResizeDuration, IntValue 0);
+    SetProp (1, ProgressValue, FloatValue 0.4)]));
+  check (float 0.00001) "zero duration updates immediately" 0.4 (split_value h)
+
 let () =
   run "lui_host"
-    [ ( "dirty",
+    [ ("motion", [test_case "split transition" `Quick test_split_transition;
+                    test_case "split reversal and removal" `Quick test_split_reversal_and_removal;
+                    test_case "reduced motion and drag" `Quick test_split_reduced_motion_and_drag]);
+      ( "dirty",
         [ test_case "create clean" `Quick test_create_clean;
           test_case "apply marks dirty" `Quick test_apply_marks_dirty;
           test_case "repaint clears" `Quick test_repaint_clears_dirty;

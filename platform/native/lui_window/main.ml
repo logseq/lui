@@ -680,9 +680,9 @@ let open_window ~title ~idx =
     match metal with
     | Some m ->
       log "renderer: lui_metal";
-      (* Lui_metal.render encodes; present commits and blits to the
-         layer drawable — called from inside the render callback like
-         the CPU path's Lui_blit.present. *)
+      (* Window frames encode directly into a drawable on the renderer's
+         queue. This synchronous driver waits at presentation; hosts
+         handling input independently use present_async. *)
       ( { Lui_host.name = "lui_metal";
           render =
             (fun s ->

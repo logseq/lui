@@ -434,6 +434,364 @@ let test_oklab_gradient () =
           ("b", b, int_of_float (Float.round (eb *. 255.))) ])
     [ 8; 16; 24; 32; 40; 48; 56 ]
 
+let test_native_scroll_budget path () =
+  let s : Lui_scene.t = In_channel.with_open_bin path Marshal.from_channel in
+  let r = Lui_raster.Renderer.create () in
+  let glyphs = s.glyphs in
+  ignore (Lui_raster.Renderer.render r s);
+  let times = Array.init 60 (fun frame ->
+    s.glyphs <- List.map (fun (g : glyph) ->
+      {g with gy = g.gy -. float (1 + frame mod 10)}) glyphs;
+    Lui_scene.touch s;
+    let started = Unix.gettimeofday () in
+    ignore (Lui_raster.Renderer.render r s);
+    (Unix.gettimeofday () -. started) *. 1000.) in
+  let full = Lui_raster.render ~scene:s () in
+  Alcotest.(check bool) "scrolled pixels match full rendering" true
+    (Bytes.equal (bytes_of full) (bytes_of (Lui_raster.Renderer.image r)));
+  Array.sort Float.compare times;
+  let p95 = times.(57) in
+  Printf.printf "native CPU scroll p50=%.2fms p95=%.2fms\n%!" times.(30) p95;
+  Alcotest.(check bool) "native scroll redraw meets the 60 FPS work budget" true
+    (p95 <= 16.67);
+  Lui_raster.Renderer.release r
+
+let window_painter () =
+  let r = Lui_raster.Tile_renderer.create () in
+  (fun s emit -> Lui_raster.Tile_renderer.render r s ~emit),
+  (fun () -> Lui_raster.Tile_renderer.release r)
+
+let test_window_pixel_retention () =
+  let s = scene ~w:2880 ~h:1800 [] in
+  Gc.full_major ();
+  let before = (Gc.stat ()).live_words in
+  let paint,release = window_painter () in
+  paint s (fun _ _ -> ());
+  Gc.full_major ();
+  let retained = ((Gc.stat ()).live_words - before) * 8 in
+  release ();
+  Printf.printf "window painter retained %d bytes\n%!" retained;
+  Alcotest.(check bool) "window painting retains less than 2 MB of staging pixels" true
+    (retained < 2_000_000)
+
+let test_window_tiles_match_whole () =
+  let paint,release = window_painter () in
+  List.iter (fun (w,h) ->
+    let output = Lui_raster.Image.create ~w ~h in
+    let emit (area : irect) (tile : Lui_raster.Image.t) =
+      for y=area.y0 to area.y1 - 1 do
+        Bytes.blit tile.pix ((y - area.y0) * tile.stride)
+          output.pix (y * output.stride) (4 * w)
+      done in
+    for frame=0 to 3 do
+      let s = scene ~w ~h ~clear:(color 31 47 83 255)
+        [ifill ~radii:(radii 7.) ~bw:(uniform 1.) ~bc:black
+           (rect 3.25 (50.5 +. float frame *. 9.) 70. 90.) (color 37 99 235 128);
+         ifill (rect 1. 1. (float w -. 2.) 3.) (color 220 51 99 255)] in
+      paint s emit;
+      let expected = Lui_raster.render ~workers:1 ~scene:s () in
+      Alcotest.(check bool) "window pixels match whole rendering across bands and resize" true
+        (Bytes.equal output.pix expected.pix)
+    done) [128,201; 91,73; 233,129];
+  release ()
+
+let test_window_unchanged_skips () =
+  let paint,release = window_painter () in
+  let s = scene ~w:128 ~h:201 [] in
+  paint s (fun _ _ -> ());
+  let emitted = ref 0 in
+  paint s (fun _ _ -> incr emitted);
+  release ();
+  Alcotest.(check int) "unchanged window has no pixel upload" 0 !emitted
+
+let test_window_golden_pixels () =
+  List.iter (fun (name,build) ->
+    let s = build () in
+    if s.effects = [] then begin
+      let paint,release = window_painter () in
+      let output = Lui_raster.Image.create ~w:s.width ~h:s.height in
+      paint s (fun (area : irect) (tile : Lui_raster.Image.t) ->
+        for y=area.y0 to area.y1 - 1 do
+          Bytes.blit tile.pix ((y - area.y0) * tile.stride)
+            output.pix (y * output.stride) (4 * s.width)
+        done);
+      release ();
+      check_golden name output
+    end) golden_scenes
+
+let test_parallel_window_pixels () =
+  let owner = Domain.self () in
+  let renderer = Lui_raster.Tile_renderer.create () in
+  List.iter (fun workers -> List.iter (fun (w,h) ->
+    let output = Lui_raster.Image.create ~w ~h in
+    for frame=0 to 3 do
+      let s = scene ~w ~h ~clear:(color 31 47 83 255)
+        [ifill ~radii:(radii 7.) ~bw:(uniform 1.) ~bc:black
+           (rect 3.25 (50.5 +. float frame *. 9.) 70. 190.) (color 37 99 235 128)] in
+      Lui_raster.Tile_renderer.render ~workers renderer s
+        ~emit:(fun (area : irect) (tile : Lui_raster.Image.t) ->
+          Alcotest.(check bool) "pixel upload stays on its owning domain" true
+            (Domain.self () = owner);
+          for y=area.y0 to area.y1-1 do
+            Bytes.blit tile.pix ((y-area.y0)*tile.stride) output.pix (y*output.stride) (4*w)
+          done);
+      let expected = Lui_raster.render ~workers:1 ~scene:s () in
+      Alcotest.(check bool) "parallel bands preserve damage and resized pixels" true
+        (Bytes.equal output.pix expected.pix)
+    done) [128,509; 91,73; 233,129]) [1;4;2;6];
+  Lui_raster.Tile_renderer.release renderer
+
+exception Pixel_upload_failed
+
+let test_window_upload_failure () =
+  let renderer = Lui_raster.Tile_renderer.create () in
+  let s = scene ~w:128 ~h:509 ~clear:(color 31 47 83 255) [] in
+  let uploaded = ref 0 in
+  (match Lui_raster.Tile_renderer.render ~workers:4 renderer s ~emit:(fun _ _ ->
+      incr uploaded; if !uploaded = 2 then raise Pixel_upload_failed) with
+   | () -> Alcotest.fail "pixel upload failure must propagate"
+   | exception Pixel_upload_failed -> ());
+  let output = Lui_raster.Image.create ~w:s.width ~h:s.height in
+  let copied = ref 0 in
+  Lui_raster.Tile_renderer.render ~workers:4 renderer s
+    ~emit:(fun (area : irect) (tile : Lui_raster.Image.t) ->
+      incr copied;
+      for y=area.y0 to area.y1-1 do
+        Bytes.blit tile.pix ((y-area.y0)*tile.stride) output.pix (y*output.stride) (4*s.width)
+      done);
+  let expected = Lui_raster.render ~workers:1 ~scene:s () in
+  Lui_raster.Tile_renderer.release renderer;
+  Alcotest.(check bool) "interrupted uploads retry the complete frame" true
+    (!copied > 0 && Bytes.equal output.pix expected.pix)
+
+let test_parallel_staging_retention () =
+  let s = scene ~w:2880 ~h:1800 [] in
+  Gc.full_major ();
+  let before = (Gc.stat ()).live_words in
+  let renderer = Lui_raster.Tile_renderer.create () in
+  Lui_raster.Tile_renderer.render ~workers:4 renderer s ~emit:(fun _ _ -> ());
+  Gc.full_major ();
+  let retained = ((Gc.stat ()).live_words-before)*8 in
+  Lui_raster.Tile_renderer.release renderer;
+  Printf.printf "parallel window staging retained %d bytes\n%!" retained;
+  Alcotest.(check bool) "parallel window staging stays below 5 MB" true
+    (retained < 5_000_000)
+
+let test_window_worker_limit () =
+  let renderer = Lui_raster.Tile_renderer.create () in
+  let s = scene ~w:16 ~h:16 [] in
+  List.iter (fun workers ->
+    match Lui_raster.Tile_renderer.render ~workers renderer s ~emit:(fun _ _ -> ()) with
+    | () -> Alcotest.fail "invalid worker count must fail"
+    | exception Invalid_argument _ -> ()) [0;-1;9];
+  Lui_raster.Tile_renderer.release renderer
+
+let test_window_worker_failure () =
+  let renderer = Lui_raster.Tile_renderer.create () in
+  let invalid = new_image ~w:2 ~h:2 Bytes.empty in
+  let s = scene ~w:128 ~h:509
+    [iimage (rect 0. 0. 128. 509.) invalid (rect 0. 0. 2. 2.)] in
+  (match Lui_raster.Tile_renderer.render ~workers:4 renderer s ~emit:(fun _ _ -> ()) with
+   | () -> Alcotest.fail "worker failure must propagate to the caller"
+   | exception Invalid_argument _ -> ());
+  let clean = scene ~w:128 ~h:509 [] in
+  let emitted = ref 0 in
+  Lui_raster.Tile_renderer.render ~workers:4 renderer clean ~emit:(fun _ _ -> incr emitted);
+  Lui_raster.Tile_renderer.release renderer;
+  Alcotest.(check bool) "failed workers join before the renderer is reused" true (!emitted > 0)
+
+let test_native_tile_scroll_budget ?(workers=1) path () =
+  let s : Lui_scene.t = In_channel.with_open_bin path Marshal.from_channel in
+  let output = Lui_raster.Image.create ~w:s.width ~h:s.height in
+  let renderer = Lui_raster.Tile_renderer.create () in
+  let paint s emit = Lui_raster.Tile_renderer.render ~workers renderer s ~emit in
+  let release () = Lui_raster.Tile_renderer.release renderer in
+  let emit (area : irect) (tile : Lui_raster.Image.t) =
+    for y=area.y0 to area.y1 - 1 do
+      Bytes.blit tile.pix ((y-area.y0)*tile.stride) output.pix (y*output.stride) (4*s.width)
+    done in
+  let glyphs = s.glyphs in
+  paint s emit;
+  let times = Array.init 60 (fun frame ->
+    s.glyphs <- List.map (fun (g : glyph) ->
+      {g with gy=g.gy -. float (1+frame mod 10)}) glyphs;
+    Lui_scene.touch s;
+    let started = Unix.gettimeofday () in
+    paint s emit;
+    (Unix.gettimeofday () -. started) *. 1000.) in
+  let full = Lui_raster.render ~workers:1 ~scene:s () in
+  Alcotest.(check bool) "tiled scroll pixels match whole rendering" true
+    (Bytes.equal output.pix full.pix);
+  release ();
+  Array.sort Float.compare times;
+  Printf.printf "native tiled scroll workers=%d p50=%.2fms p95=%.2fms\n%!"
+    workers times.(30) times.(57);
+  let budget = if workers=1 then 16.67 else 8.33 in
+  Alcotest.(check bool) "native tiled redraw and pixel copy meets its frame budget" true
+    (times.(57) <= budget)
+
+let test_translucent_byte_rounding () =
+  let premul channel alpha = (channel * alpha + 127) / 255 in
+  let over source dest inv =
+    let t = dest * inv + 128 in
+    Int.min 255 (source + ((t + (t lsr 8)) lsr 8)) in
+  List.iter (fun alpha -> List.iter (fun dest_alpha ->
+    List.iter (fun (x,width) ->
+      let s = scene ~w:33 ~h:3 ~clear:(color 217 91 13 dest_alpha)
+        [ifill (rect (float x) 0. (float width) 3.) (color 37 151 243 alpha)] in
+      let image = Lui_raster.render ~workers:1 ~scene:s () in
+      for y=0 to 2 do
+        for p=0 to 32 do
+          let active = p >= x && p < x+width in
+          List.iteri (fun channel (source,dest) ->
+            let initial = premul dest dest_alpha in
+            let expected = if active then
+                over (premul source alpha) initial (255-alpha)
+              else initial in
+            Alcotest.(check int) "translucent byte rounding and untouched edges"
+              expected (Char.code (Bytes.get image.pix (y*image.stride+4*p+channel))))
+            [243,13; 151,91; 37,217; 255,255]
+        done
+      done) [0,1; 1,2; 2,3; 1,31; 0,33]
+  ) [0;1;127;255]) [1;2;127;128;254;255]
+
+let test_translucent_span_allocation () =
+  let s = scene ~w:512 ~h:128 [ifill (rect 0. 0. 512. 128.) (color 37 151 243 128)] in
+  let image = Lui_raster.Image.create ~w:512 ~h:128 in
+  let before = Gc.allocated_bytes () in
+  Lui_raster.render_into ~workers:1 ~image ~scene:s ();
+  let allocated = Gc.allocated_bytes () -. before in
+  Printf.printf "translucent span allocated %.0f bytes\n%!" allocated;
+  Alcotest.(check bool) "translucent pixel operations do not allocate per pixel" true
+    (allocated < 131_072.)
+
+let assert_pixels_close message expected actual =
+  Alcotest.(check int) (message ^ " size") (Bytes.length expected) (Bytes.length actual);
+  Bytes.iteri (fun i byte ->
+    Alcotest.(check bool) (Printf.sprintf "%s channel %d" message i) true
+      (abs (Char.code byte - Char.code (Bytes.get actual i)) <= 2)) expected
+
+let test_empty_inset_matches_fill () =
+  List.iter (fun (rc,rad,cont) -> List.iter (fun alpha ->
+    List.iter (fun opacity -> List.iter (fun blur ->
+      let cast=rect 3.25 2.75 71.5 39.25 in
+      let tint=color 37 99 151 alpha in
+      let wrap op=scene ~w:80 ~h:48 ~clear:(color 19 31 73 173)
+        [iclip ~radii:(radii 5.) ~cont:true (rect 1.5 1.5 74. 43.);op;Pop_clip] in
+      let shadow=wrap (ishadow ~inset:true ~cast ~radii:(radii rad)
+        ~cradii:(radii rad) ~cont ~ccont:cont ~opacity ~blur rc tint) in
+      let filled=wrap (ifill ~radii:(radii rad) ~cont ~opacity cast tint) in
+      let expected=Lui_raster.render ~workers:1 ~scene:filled () in
+      let actual=Lui_raster.render ~workers:1 ~scene:shadow () in
+      assert_pixels_close "Empty inset equals a clipped fill" expected.pix actual.pix
+    ) [0.;8.]) [0.;0.5]) [0;18;128;255])
+    [rect 0. 0. 0. 0.,0.,false;rect 4. 3. 0. 2.,7.,false;
+     rect 2. 2. 3. 0.,7.,true]
+
+let test_image_fractional_coverage () =
+  let source=new_image ~w:1 ~h:1 (Bytes.init 4 (function 0->'\037'|1->'\063'|2->'\127'|_->'\128')) in
+  let rc=rect 0.25 0.75 3.25 2.5 in
+  List.iter (fun opacity -> List.iter (fun gray ->
+    let s=scene ~w:5 ~h:5 ~clear:transparent
+      [iimage ~opacity ~gray rc source (rect 0. 0. 1. 1.)] in
+    let got=Lui_raster.render ~workers:1 ~scene:s () in
+    let actual=Lui_raster.Image.rgba got in
+    let expected=Bytes.init 100 (fun index ->
+      let x=float ((index/4) mod 5) and y=float ((index/4)/5) in
+      let overlap origin length pixel =
+        Float.max 0. (Float.min (origin+.length) (pixel+.1.) -. Float.max origin pixel) in
+      let coverage=overlap rc.x rc.w x *. overlap rc.y rc.h y
+        *. (if opacity=0. then 1. else opacity) in
+      let channel=index mod 4 in
+      let value=if channel=3 then 128. else if gray then 0.2126*.37.+.0.7152*.63.+.0.0722*.127.
+        else float [|37;63;127|].(channel) in
+      Char.chr (int_of_float (value*.coverage+.0.5))) in
+    assert_pixels_close "Bilinear image fractional edge coverage" expected actual
+  ) [false;true]) [0.;0.5]
+
+let redraw_allocation scene =
+  let renderer=Lui_raster.Renderer.create () in
+  ignore (Lui_raster.Renderer.render ~workers:1 renderer scene);
+  let before=Gc.allocated_bytes () in
+  for _=1 to 10 do
+    Lui_raster.Renderer.invalidate renderer;
+    ignore (Lui_raster.Renderer.render ~workers:1 renderer scene)
+  done;
+  let allocated=(Gc.allocated_bytes ()-.before)/.10. in
+  Lui_raster.Renderer.release renderer;
+  allocated
+
+let test_shared_clip_rows_allocation () =
+  let mask=Atlas.create ~bpp:1 ~w:8 ~h:16 in
+  Atlas.put mask ~x:0 ~y:0 ~w:8 ~h:16 ~src:(Bytes.make 128 '\128') ~stride:8;
+  let glyphs=List.init 320 (fun i ->
+    glyph ~x:(float (i mod 32)*.8.) ~y:(float (i/32)*.20.) ~w:8. ~h:16.
+      ~u:0 ~v:0 ~uw:8 ~vh:16 (color 0 0 0 255)) in
+  let s=scene ~w:256 ~h:208 ~mask ~glyphs
+    [iclip (rect 0. 0. 256. 208.);iclip ~radii:(radii 8.) (rect 0. 0. 256. 208.);
+     iglyphs 0 320;Pop_clip;Pop_clip] in
+  let allocated=redraw_allocation s in
+  Printf.printf "Shared glyph clip rows allocated %.0f bytes/frame\n%!" allocated;
+  Alcotest.(check bool) "Glyphs sharing clip rows stay below 512 KB per frame" true
+    (allocated <= 524_288.)
+
+let test_clip_row_changes () =
+  let renderer=Lui_raster.Renderer.create () in
+  List.iter (fun (w,h) ->
+    for frame=0 to 5 do
+      let first=iclip ~radii:(radii (float (frame+2))) ~cont:(frame mod 2=0)
+        (rect (float frame+.0.25) 1.75 (float w-.8.) (float h-.4.)) in
+      let second=iclip (rect 2.5 (float frame+.3.25) (float w-.7.) (float h-.9.)) in
+      let s=scene ~w ~h [first;ifill (rect 0. 0. (float w) (float h)) (color 255 0 0 128);
+        second;ifill (rect 0. 0. (float w) (float h)) (color 0 255 0 128);Pop_clip;
+        ifill (rect 0. 0. (float w) (float h)) (color 0 0 255 128);Pop_clip] in
+      ignore (Lui_raster.Renderer.render ~workers:4 renderer s);
+      let expected=Lui_raster.render ~workers:1 ~scene:s () in
+      Alcotest.(check bool) "Clip changes, pop, damage, and resize preserve pixels" true
+        (Bytes.equal expected.pix (Lui_raster.Renderer.image renderer).pix)
+    done) [80,48;64,33;91,73];
+  Lui_raster.Renderer.release renderer
+
+let test_image_sampling_allocation () =
+  let pixels=Bytes.init (8*8*4) (fun i ->
+    if i mod 4=3 then '\128' else Char.chr ((i*17) mod 129)) in
+  let image=new_image ~w:8 ~h:8 pixels in
+  let s=scene ~w:128 ~h:96
+    [iimage (rect 0. 0. 128. 96.) image (rect 1. 1. 6. 6.)] in
+  let allocated=redraw_allocation s in
+  Printf.printf "Bilinear image redraw allocated %.0f bytes/frame\n%!" allocated;
+  Alcotest.(check bool) "Image sampling stays below 1 MB per frame" true
+    (allocated <= 1_000_000.)
+
+let test_shadow_sampling_allocation () =
+  let s = scene ~w:128 ~h:96
+    [ishadow ~radii:(radii 24.) ~cont:true ~blur:12.
+       (rect 20.25 18.75 79.5 57.25) (color 17 29 41 180)] in
+  let allocated = redraw_allocation s in
+  Printf.printf "Blurred shadow redraw allocated %.0f bytes/frame\n%!" allocated;
+  Alcotest.(check bool) "Shadow integration stays below 256 KB per frame" true
+    (allocated <= 262_144.)
+
+let test_scanline_allocation () =
+  let radii = (0., 0., 0., 0.) in
+  let s = scene ~w:1024 ~h:768
+    [iclip ~radii (rect 0. 0. 1024. 768.);
+     ifill ~radii (rect 1. 1. 1022. 766.) (color 37 99 235 255);
+     Pop_clip] in
+  let allocated = redraw_allocation s in
+  Printf.printf "Solid scanline redraw allocated %.0f bytes/frame\n%!" allocated;
+  Alcotest.(check bool) "Solid scanlines stay below 128 KB per frame" true
+    (allocated <= 131_072.)
+
+let test_empty_inset_allocation () =
+  let s=scene ~w:512 ~h:128
+    [ishadow ~inset:true ~cast:(rect 0. 0. 512. 128.) ~blur:8.
+       (rect 0. 0. 0. 0.) (color 0 0 0 18)] in
+  let allocated=redraw_allocation s in
+  Printf.printf "Empty inset redraw allocated %.0f bytes/frame\n%!" allocated;
+  Alcotest.(check bool) "An empty inset hole does not allocate per interior pixel" true
+    (allocated <= 262_144.)
+
 let () =
   Alcotest.run "lui_raster"
     [ ( "goldens", [ Alcotest.test_case "reference scenes" `Slow test_golden ] );
@@ -449,10 +807,39 @@ let () =
             test_thin_line_coverage;
           Alcotest.test_case "opaque mask coverage" `Quick
             test_opaque_mask_coverage;
-          Alcotest.test_case "oklab gradient" `Quick test_oklab_gradient ] );
+          Alcotest.test_case "oklab gradient" `Quick test_oklab_gradient;
+          Alcotest.test_case "empty inset fill" `Quick test_empty_inset_matches_fill;
+          Alcotest.test_case "fractional image coverage" `Quick test_image_fractional_coverage;
+          Alcotest.test_case "clip row changes" `Quick test_clip_row_changes ] );
       ( "damage",
         [ Alcotest.test_case "redraws what changed" `Slow test_damage_redraws_plain;
           Alcotest.test_case "redraws effects" `Slow test_damage_redraws_effects;
           Alcotest.test_case "skips unchanged" `Quick test_damage_skips;
           Alcotest.test_case "merge cap" `Quick test_damage_merge;
-          Alcotest.test_case "damage bands" `Slow test_damage_bands ] ) ]
+          Alcotest.test_case "damage bands" `Slow test_damage_bands ] )
+      ; ("window pixels", [
+          Alcotest.test_case "staging retention" `Slow test_window_pixel_retention;
+          Alcotest.test_case "bands and resize" `Slow test_window_tiles_match_whole;
+          Alcotest.test_case "unchanged skips" `Quick test_window_unchanged_skips;
+          Alcotest.test_case "reference pixels" `Slow test_window_golden_pixels;
+          Alcotest.test_case "parallel pixels" `Slow test_parallel_window_pixels;
+          Alcotest.test_case "upload failure" `Quick test_window_upload_failure;
+          Alcotest.test_case "parallel staging retention" `Slow test_parallel_staging_retention;
+          Alcotest.test_case "worker limit" `Quick test_window_worker_limit;
+          Alcotest.test_case "worker failure" `Quick test_window_worker_failure])
+      ; ("compositing", [
+          Alcotest.test_case "translucent rounding" `Slow test_translucent_byte_rounding;
+          Alcotest.test_case "span allocation" `Quick test_translucent_span_allocation;
+          Alcotest.test_case "image sampling allocation" `Quick test_image_sampling_allocation;
+          Alcotest.test_case "empty inset allocation" `Quick test_empty_inset_allocation;
+          Alcotest.test_case "shared clip rows allocation" `Quick test_shared_clip_rows_allocation;
+          Alcotest.test_case "shadow sampling allocation" `Quick test_shadow_sampling_allocation;
+          Alcotest.test_case "scanline allocation" `Quick test_scanline_allocation])
+      ; ("native replay", match Sys.getenv_opt "LUI_RASTER_SCROLL_SCENE" with
+          | None -> []
+          | Some path -> [Alcotest.test_case "scroll work budget" `Slow
+                           (test_native_scroll_budget path);
+                         Alcotest.test_case "tiled scroll work budget" `Slow
+                           (test_native_tile_scroll_budget path);
+                         Alcotest.test_case "parallel tiled scroll work budget" `Slow
+                           (test_native_tile_scroll_budget ~workers:4 path)]) ]

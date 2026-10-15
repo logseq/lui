@@ -13,14 +13,14 @@ open Lui_scene
 
 (* ---------- float and byte helpers ---------- *)
 
-let fmin a b = if Float.is_nan a || Float.is_nan b then Float.nan else Float.min a b
-let fmax a b = if Float.is_nan a || Float.is_nan b then Float.nan else Float.max a b
-let clamp01 v = fmin (fmax v 0.) 1.
-let to8 v = if v <= 0. then 0 else if v >= 1. then 255 else int_of_float (v *. 255. +. 0.5)
+let[@inline always] fmin a b = if Float.is_nan a || Float.is_nan b then Float.nan else Float.min a b
+let[@inline always] fmax a b = if Float.is_nan a || Float.is_nan b then Float.nan else Float.max a b
+let[@inline always] clamp01 v = fmin (fmax v 0.) 1.
+let[@inline always] to8 v = if v <= 0. then 0 else if v >= 1. then 255 else int_of_float (v *. 255. +. 0.5)
 
 (* A channel of a byte-coded texture value, rounded as a texture holds it. *)
 let texel v = float (to8 v) /. 255.
-let byte_f p i = float (Char.code (Bytes.get p i)) /. 255.
+let[@inline always] byte_f p i = float (Char.code (Bytes.get p i)) /. 255.
 let byte_at p i = Char.code (Bytes.get p i)
 let ifloor v = int_of_float (Float.floor v)
 let iceil v = int_of_float (Float.ceil v)
@@ -67,7 +67,7 @@ end
 (* ---------- compositing ---------- *)
 
 (* A premultiplied RGBA color with coverage cov over a BGRA pixel. *)
-let blend p i (r_, g_, b_, a_) cov =
+let[@inline always] blend p i (r_, g_, b_, a_) cov =
   let a = a_ *. cov in
   if a <= 0. then ()
   else begin
@@ -95,7 +95,7 @@ let unpremul (r, g, b, a) = if a <= 0. then (0., 0., 0.) else (r /. a, g /. a, b
 (* src + dst*inv/255, rounded, for 8-bit premultiplied channels. *)
 let over src dst inv =
   let t = dst * inv + 128 in
-  min (src + ((t + (t lsr 8)) lsr 8)) 255
+  Int.min (src + ((t + (t lsr 8)) lsr 8)) 255
 
 let mix_mask src dst cov =
   let v = src * cov + dst * (255 - cov) + 128 in
@@ -115,24 +115,53 @@ let blend_span p row x0 x1 (r_, g_, b_, a_) cov =
     if a > 0. then begin
       let pb = to8 (b_ *. cov) and pg = to8 (g_ *. cov) and pr = to8 (r_ *. cov) and pa = to8 a in
       if pa = 255 then begin
-        let pb = Char.chr pb and pg = Char.chr pg and pr = Char.chr pr in
-        for x = x0 to x1 - 1 do
-          let i = row + 4 * x in
-          Bytes.set p i pb;
-          Bytes.set p (i + 1) pg;
-          Bytes.set p (i + 2) pr;
-          Bytes.set p (i + 3) '\255'
-        done
+        let pixel = Int64.of_int (pb lor (pg lsl 8) lor (pr lsl 16) lor (255 lsl 24)) in
+        let pair = Int64.logor pixel (Int64.shift_left pixel 32) in
+        let x = ref x0 in
+        while !x + 1 < x1 do
+          Bytes.set_int64_le p (row + 4 * !x) pair;
+          x := !x + 2
+        done;
+        if !x < x1 then Bytes.set_int32_le p (row + 4 * !x) (Int64.to_int32 pixel)
       end
       else begin
         let inv = 255 - pa in
-        for x = x0 to x1 - 1 do
-          let i = row + 4 * x in
-          Bytes.set p i (Char.chr (over pb (byte_at p i) inv));
-          Bytes.set p (i + 1) (Char.chr (over pg (byte_at p (i + 1)) inv));
-          Bytes.set p (i + 2) (Char.chr (over pr (byte_at p (i + 2)) inv));
-          Bytes.set p (i + 3) (Char.chr (over pa (byte_at p (i + 3)) inv))
-        done
+        let inv64 = Int64.of_int inv in
+        let lanes = 0x00ff00ff00ff00ffL and bias = 0x0080008000800080L in
+        let ones = 0x0001000100010001L in
+        let rb = Int64.of_int (pb lor (pr lsl 16))
+        and ga = Int64.of_int (pg lor (pa lsl 16)) in
+        let rb = Int64.logor rb (Int64.shift_left rb 32)
+        and ga = Int64.logor ga (Int64.shift_left ga 32) in
+        let x = ref x0 in
+        while !x + 1 < x1 do
+          let i = row + 4 * !x in
+          let pixels = Bytes.get_int64_le p i in
+          (* Four independent 16-bit lanes hold a byte product and its
+             rounding bias. Packing two pixels preserves byte rounding
+             and saturation without per-channel calls or boxed results. *)
+          let trb = Int64.add (Int64.mul (Int64.logand pixels lanes) inv64) bias in
+          let tga = Int64.add (Int64.mul
+            (Int64.logand (Int64.shift_right_logical pixels 8) lanes) inv64) bias in
+          let drb = Int64.logand (Int64.shift_right_logical
+            (Int64.add trb (Int64.logand (Int64.shift_right_logical trb 8) lanes)) 8) lanes in
+          let dga = Int64.logand (Int64.shift_right_logical
+            (Int64.add tga (Int64.logand (Int64.shift_right_logical tga 8) lanes)) 8) lanes in
+          let srb = Int64.add rb drb and sga = Int64.add ga dga in
+          let orb = Int64.logor (Int64.logand srb lanes)
+            (Int64.mul (Int64.logand (Int64.shift_right_logical srb 8) ones) 255L) in
+          let oga = Int64.logor (Int64.logand sga lanes)
+            (Int64.mul (Int64.logand (Int64.shift_right_logical sga 8) ones) 255L) in
+          Bytes.set_int64_le p i (Int64.logor orb (Int64.shift_left oga 8));
+          x := !x + 2
+        done;
+        if !x < x1 then begin
+          let i = row + 4 * !x in
+          Bytes.set_uint8 p i (over pb (byte_at p i) inv);
+          Bytes.set_uint8 p (i + 1) (over pg (byte_at p (i + 1)) inv);
+          Bytes.set_uint8 p (i + 2) (over pr (byte_at p (i + 2)) inv);
+          Bytes.set_uint8 p (i + 3) (over pa (byte_at p (i + 3)) inv)
+        end
       end
     end
   end
@@ -331,7 +360,7 @@ let coverage s px py =
 
 (* How far corner i of the rounded rectangle narrows a row v pixels from
    its horizontal edge, at the least. *)
-let shape_inset s i v =
+let[@inline always] shape_inset s i v =
   if s.scont then snd (corner_inset s.scorners.(i) v)
   else begin
     let rad = r4_get s.sradii i in
@@ -345,7 +374,7 @@ let shape_inset s i v =
 
 (* The pixels of the row between y0 and y1 that the rounded rectangle
    covers entirely; lo >= hi when there are none. *)
-let solid_span s y0 y1 =
+let[@inline always] solid_span s y0 y1 =
   let rc = s.sr in
   if y0 < rc.y || y1 > rc.y +. rc.h then (0, 0)
   else begin
@@ -485,6 +514,7 @@ type clip = { cshape : shape; cround : bool; cspans : int }
    spans a continuous clip computed for its rows. *)
 type renderer = {
   mutable dst : Image.t;
+  mutable origin_y : int;
   mutable rarea : irect; (* the part of dst to draw, in whole pixels *)
   mutable rx0 : int;
   mutable ry0 : int;
@@ -494,13 +524,18 @@ type renderer = {
   mutable profile : float array;
   mutable span_buf : int array; (* lo,hi pairs, no_span until found *)
   mutable span_len : int;
+  image_sample : float array;
+  mutable clip_epoch : int;
+  mutable clip_rows : int array;
 }
 
 let new_renderer () = {
-  dst = Image.create ~w:0 ~h:0;
+  dst = Image.create ~w:0 ~h:0; origin_y = 0;
   rarea = irect 0 0 0 0;
   rx0 = 0; ry0 = 0; rx1 = 0; ry1 = 0;
   rclips = []; profile = [||]; span_buf = [||]; span_len = 0;
+  image_sample = Array.make 4 0.;
+  clip_epoch = 0; clip_rows = [||];
 }
 
 let ensure_span_buf r n =
@@ -508,6 +543,9 @@ let ensure_span_buf r n =
     r.span_buf <- Array.make (max n (2 * Array.length r.span_buf + 8)) no_span
 
 let update_bounds r =
+  r.clip_epoch <- r.clip_epoch + 1;
+  let count = 3 * irect_h r.rarea in
+  if Array.length r.clip_rows < count then r.clip_rows <- Array.make count 0;
   r.rx0 <- r.rarea.x0; r.ry0 <- r.rarea.y0; r.rx1 <- r.rarea.x1; r.ry1 <- r.rarea.y1;
   List.iter
     (fun c ->
@@ -543,10 +581,10 @@ let clip_coverage r x y =
 
 (* The pixels of row y that the clips let through entirely, so that
    clipCoverage need not run for them. *)
-let clip_solid r y =
-  let lo = ref r.rx0 and hi = ref r.rx1 in
-  List.iter
-    (fun c ->
+let compute_clip_solid r y =
+  let rec intersect lo hi = function
+    | [] -> (lo, hi)
+    | c :: rest ->
       let l, h =
         if c.cspans >= 0 && y >= r.rarea.y0 && y < r.rarea.y1 then begin
           let k = c.cspans + 2 * (y - r.rarea.y0) in
@@ -560,14 +598,27 @@ let clip_solid r y =
         end
         else solid_span c.cshape (float y) (float (y + 1))
       in
-      lo := max !lo l;
-      hi := min !hi h)
-    r.rclips;
-  (!lo, !hi)
+      intersect (max lo l) (min hi h) rest
+  in
+  intersect r.rx0 r.rx1 r.rclips
+
+(* Glyphs and images often share the same clip stack and pixel rows.
+   Only a clip or area change invalidates their integer span cache. *)
+let clip_solid r y =
+  let row = 3 * (y - r.rarea.y0) in
+  if r.clip_rows.(row) = r.clip_epoch then
+    (r.clip_rows.(row + 1), r.clip_rows.(row + 2))
+  else begin
+    let low, high = compute_clip_solid r y in
+    r.clip_rows.(row) <- r.clip_epoch;
+    r.clip_rows.(row + 1) <- low;
+    r.clip_rows.(row + 2) <- high;
+    (low, high)
+  end
 
 (* ---------- per-op drawing ---------- *)
 
-let blend_at r x y c cov = blend r.dst.Image.pix (y * r.dst.Image.stride + 4 * x) c cov
+let[@inline always] blend_at r x y c cov = blend r.dst.Image.pix ((y - r.origin_y) * r.dst.Image.stride + 4 * x) c cov
 
 (* A rounded rectangle filled with the op's paint, with a border of
    widths around its inner edge, dashed or not. *)
@@ -591,7 +642,7 @@ let r_fill r (op : fill_op) =
     let has_fill = painter_visible pt and solid = painter_solid pt in
     let x0, y0, x1, y1 = pixel_bounds r op.frect in
     for y = y0 to y1 - 1 do
-      let row = y * r.dst.Image.stride in
+      let row = (y - r.origin_y) * r.dst.Image.stride in
       let py = float y +. 0.5 in
       let cl, ch = clip_solid r y in
       let ol, oh = solid_span outer (float y) (float (y + 1)) in
@@ -640,7 +691,7 @@ let r_hole r (op : hole_op) =
     let sh = new_shape op.hrect (corners op.hrect op.hradii op.hcontinuous) in
     let x0, y0, x1, y1 = pixel_bounds r op.hrect in
     for y = y0 to y1 - 1 do
-      let row = y * r.dst.Image.stride in
+      let row = (y - r.origin_y) * r.dst.Image.stride in
       let py = float y +. 0.5 in
       let cl, ch = clip_solid r y in
       let ol, oh = solid_span sh (float y) (float (y + 1)) in
@@ -667,11 +718,11 @@ let r_hole r (op : hole_op) =
     done
   end
 
-let gaussian x sigma = exp (-.(x *. x) /. (2. *. sigma *. sigma)) /. (sqrt (2. *. Float.pi) *. sigma)
+let[@inline always] gaussian x sigma = exp (-.(x *. x) /. (2. *. sigma *. sigma)) /. (sqrt (2. *. Float.pi) *. sigma)
 
 (* The error function within 5e-4, as the GPU evaluator approximates it
    (Abramowitz and Stegun 7.1.27). *)
-let erf x =
+let[@inline always] erf x =
   let a = Float.abs x in
   let t = 1. +. (0.278393 +. (0.230389 +. 0.078108 *. (a *. a)) *. a) *. a in
   let t = t *. t in
@@ -776,7 +827,7 @@ let r_shadow r (op : shadow_op) =
           done;
           if !sum > 0.002 then begin
             let straight = !narrowest = hx in
-            let row = y * r.dst.Image.stride in
+            let row = (y - r.origin_y) * r.dst.Image.stride in
             let cl, ch = clip_solid r y in
             let ml = max (iceil (cx -. !narrowest +. far -. 0.5)) (max x0 cl) in
             let mh = min (ifloor (cx +. !narrowest -. far -. 0.5) + 1) (min x1 ch) in
@@ -830,6 +881,13 @@ let r_shadow r (op : shadow_op) =
 (* An inner shadow: inside the box Cast, what the hole Rect, blurred as
    a shadow blurs a box, leaves uncovered. *)
 let r_inset_shadow r (op : shadow_op) =
+  if rect_empty op.srect then
+    r_fill r
+      { frect=op.scast; fradii=op.scast_radii; fcontinuous=op.scontinuous;
+        fcolor=op.scolor; fpaint=Solid; fcolor2=op.scolor; fgradient=(0.,0.,0.,0.);
+        fborder=(0.,0.,0.,0.); fborder_color=color 0 0 0 0; fdashed=false;
+        fwide=op.swide; fopacity=op.sopacity }
+  else
   let x0, y0, x1, y1 = pixel_bounds r op.scast in
   if x0 < x1 && y0 < y1 then begin
     let opacity = if op.sopacity = 0. then 1. else op.sopacity in
@@ -837,20 +895,19 @@ let r_inset_shadow r (op : shadow_op) =
     let box = new_shape op.scast (corners op.scast op.scast_radii op.scontinuous) in
     let radii = corners op.srect op.sradii op.scontinuous in
     let hole = new_shape op.srect radii in
-    let empty = rect_empty op.srect in
     let sigma = op.sblur /. 2. in
-    if sigma < 0.5 || empty then begin
+    if sigma < 0.5 then begin
       for y = y0 to y1 - 1 do
         (* Nothing shows where the hole covers the row's pixels
            entirely, as it does most of a large box. *)
-        let sl, sh = if empty then (0, 0) else solid_span hole (float y) (float (y + 1)) in
+        let sl, sh = solid_span hole (float y) (float (y + 1)) in
         let x = ref x0 in
         while !x < x1 do
           if !x >= sl && !x < sh then x := sh - 1
           else begin
             let px = float !x +. 0.5 and py = float y +. 0.5 in
             let v = coverage box px py in
-            let v = if empty then v else v *. (1. -. coverage hole px py) in
+            let v = v *. (1. -. coverage hole px py) in
             if v > 0. then blend_at r !x y c (v *. clip_coverage r !x y)
           end;
           incr x
@@ -939,7 +996,7 @@ let mask_opaque r a (g : glyph) gx gy x0 y0 x1 y1 =
   for y = y0 to y1 - 1 do
     let cl, ch = clip_solid r y in
     let at = (g.gv + y - gy) * a.Atlas.w + g.gu + x0 - gx in
-    let row = y * r.dst.Image.stride in
+    let row = (y - r.origin_y) * r.dst.Image.stride in
     for i = 0 to x1 - x0 - 1 do
       let m = Char.code (Bytes.get a.Atlas.pix (at + i)) in
       if m <> 0 then begin
@@ -990,7 +1047,7 @@ let r_glyphs r (op : glyphs_op) s glyphs =
         mask_opaque r atlas g gx gy x0 y0 x1 y1
       else
         for y = y0 to y1 - 1 do
-          let row = y * r.dst.Image.stride in
+          let row = (y - r.origin_y) * r.dst.Image.stride in
           let cl, ch = clip_solid r y in
           let ay = g.gv + y - gy in
           for x = x0 to x1 - 1 do
@@ -1047,25 +1104,28 @@ let r_glyphs r (op : glyphs_op) s glyphs =
     end
   done
 
-(* A premultiplied pixel of img at (u, v), bilinear, clamped to src. *)
-let sample img u v (src : rect) =
+(* Bilinear channels go into per-renderer scratch. Sampling must not
+   construct closures or color tuples for each pixel. *)
+let[@inline always] sample img u v (src : rect) out =
   let u = u -. 0.5 and v = v -. 0.5 in
   let x0 = ifloor u and y0 = ifloor v in
   let tx = u -. float x0 and ty = v -. float y0 in
   let minX = int_of_float src.x and minY = int_of_float src.y in
-  let maxX = min (iceil (src.x +. src.w) - 1) (img.iw - 1) in
-  let maxY = min (iceil (src.y +. src.h) - 1) (img.ih - 1) in
-  let at x y =
-    let x = max minX (min x maxX) and y = max minY (min y maxY) in
-    (y * img.iw + x) * 4
-  in
-  let p00 = at x0 y0 and p10 = at (x0 + 1) y0 and p01 = at x0 (y0 + 1) and p11 = at (x0 + 1) (y0 + 1) in
-  let ch i =
-    let top = byte_f img.ipix (p00 + i) *. (1. -. tx) +. byte_f img.ipix (p10 + i) *. tx in
-    let bot = byte_f img.ipix (p01 + i) *. (1. -. tx) +. byte_f img.ipix (p11 + i) *. tx in
-    top *. (1. -. ty) +. bot *. ty
-  in
-  (ch 0, ch 1, ch 2, ch 3)
+  let maxX = Int.min (iceil (src.x +. src.w) - 1) (img.iw - 1) in
+  let maxY = Int.min (iceil (src.y +. src.h) - 1) (img.ih - 1) in
+  let left = Int.max minX (Int.min x0 maxX)
+  and right = Int.max minX (Int.min (x0 + 1) maxX)
+  and top = Int.max minY (Int.min y0 maxY)
+  and bottom = Int.max minY (Int.min (y0 + 1) maxY) in
+  let p00 = (top * img.iw + left) * 4 and p10 = (top * img.iw + right) * 4
+  and p01 = (bottom * img.iw + left) * 4 and p11 = (bottom * img.iw + right) * 4 in
+  for channel=0 to 3 do
+    let top = byte_f img.ipix (p00+channel) *. (1.-.tx)
+      +. byte_f img.ipix (p10+channel) *. tx in
+    let bottom = byte_f img.ipix (p01+channel) *. (1.-.tx)
+      +. byte_f img.ipix (p11+channel) *. tx in
+    out.(channel) <- top *. (1.-.ty) +. bottom *. ty
+  done
 
 let r_image r (op : image_op) =
   let img = op.iimage in
@@ -1073,7 +1133,6 @@ let r_image r (op : image_op) =
     let opacity = if op.iopacity = 0. then 1. else op.iopacity in
     let radii = corners op.irect2 op.iradii op.icontinuous in
     let box = new_shape op.irect2 radii in
-    let round = has_radii radii in
     let sx = op.isrc.w /. op.irect2.w and sy = op.isrc.h /. op.irect2.h in
     let x0, y0, x1, y1 = pixel_bounds r op.irect2 in
     for y = y0 to y1 - 1 do
@@ -1083,20 +1142,25 @@ let r_image r (op : image_op) =
       for x = x0 to x1 - 1 do
         let px = float x +. 0.5 in
         let cov = opacity in
-        let cov = if x < ol || x >= oh || not round then cov *. coverage box px py else cov in
+        let cov = if x < ol || x >= oh then cov *. coverage box px py else cov in
         let cov = if x < cl || x >= ch then cov *. clip_coverage r x y else cov in
         if cov > 0. then begin
-          let cr, cg, cb, ca =
-            sample img (op.isrc.x +. (px -. op.irect2.x) *. sx) (op.isrc.y +. (py -. op.irect2.y) *. sy) op.isrc
-          in
-          let cr, cg, cb =
-            if op.igrayscale then begin
-              let l = 0.2126 *. cr +. 0.7152 *. cg +. 0.0722 *. cb in
-              (l, l, l)
-            end
-            else (cr, cg, cb)
-          in
-          blend_at r x y (cr, cg, cb, ca) cov
+          sample img (op.isrc.x +. (px -. op.irect2.x) *. sx)
+            (op.isrc.y +. (py -. op.irect2.y) *. sy) op.isrc r.image_sample;
+          let alpha = r.image_sample.(3) *. cov in
+          if alpha > 0. then begin
+            let inv = 1. -. alpha in
+            let gray = if op.igrayscale then
+              0.2126 *. r.image_sample.(0) +. 0.7152 *. r.image_sample.(1)
+                +. 0.0722 *. r.image_sample.(2) else 0. in
+            let i = (y - r.origin_y) * r.dst.Image.stride + 4*x in
+            for channel=0 to 3 do
+              let value = if channel=3 then r.image_sample.(3)
+                else if op.igrayscale then gray else r.image_sample.(2-channel) in
+              Bytes.set r.dst.Image.pix (i+channel)
+                (Char.chr (to8 (value *. cov +. byte_f r.dst.Image.pix (i+channel) *. inv)))
+            done
+          end
         end
       done
     done
@@ -1124,7 +1188,7 @@ let r_effect r (op : effect_draw) px b =
         let cov = if x < cl || x >= ch then cov *. clip_coverage r x y else cov in
         if cov > 0. then begin
           let cr, cg, cb, ca = px.color_at px0 py b in
-          let i = y * r.dst.Image.stride + 4 * x in
+          let i = (y - r.origin_y) * r.dst.Image.stride + 4 * x in
           if cov >= 1. && ca >= 1. then begin
             Bytes.set r.dst.Image.pix i (Char.chr (to8 cb));
             Bytes.set r.dst.Image.pix (i + 1) (Char.chr (to8 cg));
@@ -1332,11 +1396,12 @@ let pixels_of d e =
    bounds miss it, over the clear color from the first; those before only
    clip. px draws operation from when it is an effect, over the
    backdrop b. *)
-let renderer_render r dst s ops _fxs glyphs area bounds from to_ px b =
+let renderer_render ?(origin_y=0) r dst s ops _fxs glyphs area bounds from to_ px b =
   r.dst <- dst;
+  r.origin_y <- origin_y;
   r.rclips <- [];
   r.span_len <- 0;
-  r.rarea <- irect_intersect area (irect 0 0 dst.Image.w dst.Image.h);
+  r.rarea <- irect_intersect area (irect 0 origin_y dst.Image.w (origin_y + dst.Image.h));
   if not (irect_empty r.rarea) then begin
     if from = 0 then begin
       let pr, pg, pb, pa = premul s.clear 1. in
@@ -1345,7 +1410,7 @@ let renderer_render r dst s ops _fxs glyphs area bounds from to_ px b =
       if w > 0 then begin
         let pb8 = Char.chr (to8 pb) and pg8 = Char.chr (to8 pg)
         and pr8 = Char.chr (to8 pr) and pa8 = Char.chr (to8 pa) in
-        let row0 = a.y0 * d.Image.stride + 4 * a.x0 in
+        let row0 = (a.y0 - origin_y) * d.Image.stride + 4 * a.x0 in
         for x = 0 to w - 1 do
           let i = row0 + 4 * x in
           Bytes.set d.Image.pix i pb8;
@@ -1354,7 +1419,7 @@ let renderer_render r dst s ops _fxs glyphs area bounds from to_ px b =
           Bytes.set d.Image.pix (i + 3) pa8
         done;
         for y = a.y0 + 1 to a.y1 - 1 do
-          Bytes.blit d.Image.pix row0 d.Image.pix (y * d.Image.stride + 4 * a.x0) (4 * w)
+          Bytes.blit d.Image.pix row0 d.Image.pix ((y - origin_y) * d.Image.stride + 4 * a.x0) (4 * w)
         done
       end
     end;
@@ -1805,4 +1870,145 @@ module Renderer = struct
     if t.image.w <> s.width || t.image.h <> s.height then Image.resize t.image ~w:s.width ~h:s.height;
     List.iter (fun dr -> draw_into ?workers t.drawer t.image s dr (Damage.bounds t.dmg)) damage;
     damage
+end
+
+(* Window pixels are streamed in fixed-height bands. The presenter owns
+   retained pixels; this renderer keeps only one reusable staging band. *)
+module Tile_renderer = struct
+  let band_height = 64
+  type slot = { image : Image.t; worker : renderer }
+  type t = { mutable slots : slot array; damage : Damage.t }
+
+  let create () = { slots = [||]; damage = Damage.create () }
+  let invalidate t = Damage.invalidate t.damage
+  let release t =
+    Array.iter (fun slot -> Image.resize slot.image ~w:0 ~h:0) t.slots;
+    t.slots <- [||];
+    invalidate t
+
+  (* Each producer owns one staging image. It waits until the caller has
+     consumed that image before drawing again. Uploads stay on the caller's
+     domain, and queued pixels never exceed the fixed staging capacity. *)
+  let stream members bands ~draw ~emit =
+    let mutex = Mutex.create () and wake = Condition.create () in
+    let ready = Array.make members None and tasks = Array.make members None in
+    let next = Atomic.make 0 and stopped = ref false and failure = ref None in
+    let producer member () =
+      let rec work () =
+        Mutex.lock mutex;
+        while Option.is_some ready.(member) && not !stopped do
+          Condition.wait wake mutex
+        done;
+        let running = not !stopped in
+        Mutex.unlock mutex;
+        if running then begin
+          let job = Atomic.fetch_and_add next 1 in
+          if job < Array.length bands then begin
+            let area = draw member bands.(job) in
+            Mutex.lock mutex;
+            if not !stopped then ready.(member) <- Some area;
+            Condition.broadcast wake;
+            Mutex.unlock mutex;
+            work ()
+          end
+        end
+      in
+      try work () with exn ->
+        let trace = Printexc.get_raw_backtrace () in
+        Mutex.lock mutex;
+        if Option.is_none !failure then failure := Some (exn, trace);
+        stopped := true;
+        Condition.broadcast wake;
+        Mutex.unlock mutex
+    in
+    Fun.protect
+      ~finally:(fun () ->
+        Mutex.lock mutex;
+        stopped := true;
+        Condition.broadcast wake;
+        Mutex.unlock mutex;
+        Array.iter (Option.iter Domain.join) tasks)
+      (fun () ->
+        for member = 0 to members - 1 do
+          tasks.(member) <- Some (Domain.spawn (producer member))
+        done;
+        for _ = 0 to Array.length bands - 1 do
+          Mutex.lock mutex;
+          let rec available () =
+            match !failure with
+            | Some (exn, trace) ->
+              Mutex.unlock mutex;
+              Printexc.raise_with_backtrace exn trace
+            | None ->
+              let rec find member =
+                if member = members then None
+                else match ready.(member) with
+                  | Some area -> Some (member, area)
+                  | None -> find (member + 1)
+              in
+              match find 0 with
+              | Some found -> found
+              | None -> Condition.wait wake mutex; available ()
+          in
+          let member, area = available () in
+          Mutex.unlock mutex;
+          emit member area;
+          Mutex.lock mutex;
+          ready.(member) <- None;
+          Condition.broadcast wake;
+          Mutex.unlock mutex
+        done)
+
+  let render ?(workers=1) t s ~emit =
+    if workers < 1 || workers > max_workers then
+      invalid_arg "Tile rendering requires between one and eight workers";
+    if List.exists (function Effect _ -> true | _ -> false) s.ops then
+      invalid_arg "Tile rendering does not support shader effects";
+    let damage = Damage.update t.damage s in
+    if damage <> [] && s.width > 0 && s.height > 0 then begin
+      let ops = Array.of_list s.ops and glyphs = Array.of_list s.glyphs in
+      let bounds = Damage.bounds t.damage in
+      let count = (s.height + band_height - 1) / band_height in
+      let changed = Array.make count false in
+      List.iter (fun area ->
+        let area = irect_intersect area (irect 0 0 s.width s.height) in
+        if not (irect_empty area) then
+          for band = area.y0 / band_height to (area.y1 - 1) / band_height do
+            changed.(band) <- true
+          done) damage;
+      let bands = ref [] in
+      Array.iteri (fun band changed -> if changed then bands := band :: !bands) changed;
+      let bands = Array.of_list (List.rev !bands) in
+      let members = min workers (Array.length bands) in
+      if members > 0 then begin
+        let height = min band_height s.height in
+        if Array.length t.slots < members then begin
+          let previous = t.slots in
+          t.slots <- Array.init members (fun member ->
+            if member < Array.length previous then previous.(member)
+            else { image = Image.create ~w:0 ~h:0; worker = new_renderer () })
+        end;
+        for member = 0 to members - 1 do
+          let image = t.slots.(member).image in
+          if image.w <> s.width || image.h <> height then
+            Image.resize image ~w:s.width ~h:height
+        done;
+        let draw member band =
+          let y0 = band * band_height in
+          let area = irect 0 y0 s.width (min s.height (y0 + band_height)) in
+          let slot = t.slots.(member) in
+          renderer_render ~origin_y:y0 slot.worker slot.image s ops [||] glyphs
+            area bounds 0 (Array.length ops) None None;
+          area
+        in
+        let emit member area = emit area t.slots.(member).image in
+        try
+          if members = 1 then Array.iter (fun band -> emit 0 (draw 0 band)) bands
+          else stream members bands ~draw ~emit
+        with exn ->
+          let trace = Printexc.get_raw_backtrace () in
+          invalidate t;
+          Printexc.raise_with_backtrace exn trace
+      end
+    end
 end

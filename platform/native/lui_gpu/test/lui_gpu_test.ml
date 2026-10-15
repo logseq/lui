@@ -709,6 +709,27 @@ let test_glyph_reuse_lifetime () =
   Gc.full_major (); Gc.full_major ();
   check bool "Removed text must not remain alive through the GPU cache" false (Weak.check weak 0)
 
+let test_replaced_glyph_cache_bound () =
+  (* Other retained snapshots may still own old glyphs. That must not
+     make this renderer keep compiled data for every historical frame. *)
+  let snapshots = Array.init 100 (fun _ ->
+    List.init 400 (fun i -> glyph ~x:(Float.of_int (i mod 80) *. 10.)
+      ~y:(Float.of_int (i / 80) *. 20.) ())) in
+  let s = scene ~w:1280 ~h:800 () and cache = G.batch_cache () in
+  s.ops <- [Glyphs {gstart=0;gend=400;gpaint=Solid;gcolor=red;gcolor2=red;
+    ggradient=(0.,0.,0.,0.);gwide2=0;gopacity=1.}];
+  Gc.full_major (); Gc.full_major ();
+  let baseline = (Gc.stat ()).Gc.live_words in
+  Array.iter (fun glyphs -> s.glyphs <- glyphs; touch s; ignore (frame3 cache s)) snapshots;
+  Gc.full_major (); Gc.full_major ();
+  let retained = ((Gc.stat ()).Gc.live_words - baseline) * (Sys.word_size / 8) in
+  Printf.printf "replaced glyphs retained %d bytes of renderer data\n%!" retained;
+  check bool "Historical text snapshots accumulated compiled GPU instances"
+    true (retained < 1048576);
+  check bool "Replacement changed the current rendered text" true
+    (all_insts (let b,_,_ = frame3 cache s in b) = all_insts (G.build s));
+  ignore (Sys.opaque_identity snapshots)
+
 let () =
   run "lui_gpu"
     [ ( "build",
@@ -736,4 +757,5 @@ let () =
           test_case "stable glyph hover allocations" `Quick test_hover_glyph_allocation;
           test_case "glyph reuse inputs" `Quick test_glyph_reuse_inputs;
           test_case "glyph reuse lifetime" `Quick test_glyph_reuse_lifetime;
+          test_case "replaced glyph cache bound" `Quick test_replaced_glyph_cache_bound;
           test_case "bench" `Quick bench_cache ] ) ]

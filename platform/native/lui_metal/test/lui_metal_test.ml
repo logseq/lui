@@ -334,6 +334,21 @@ let test_modal_budget r =
 
 (* {1 Entry} *)
 
+let test_trim_offscreen r =
+  let s = scene ~w:96 ~h:64
+    [ifill (rect 4. 8. 60. 40.) (color 37 99 235 255)] in
+  Lui_metal.render r s;
+  let before = Lui_metal.read_frame r ~w:s.width ~h:s.height in
+  Alcotest.(check bool) "offscreen pixels retain an owned target" true
+    (Lui_metal.owned_target_bytes r > 0);
+  Alcotest.(check int) "offscreen renderer has no drawable pool" 0
+    (Lui_metal.drawable_count r);
+  Alcotest.(check bool) "offscreen renderer has no window dimensions" true
+    (Lui_metal.drawable_size r = None);
+  Lui_metal.trim r;
+  Alcotest.(check bytes) "trimming preserves offscreen pixels" before
+    (Lui_metal.read_frame r ~w:s.width ~h:s.height)
+
 let () =
   match Lui_metal.init_offscreen ~w:128 ~h:128 with
   | Error e ->
@@ -352,6 +367,7 @@ let () =
               Alcotest.test_case "solid frame budget" `Quick (fun () -> test_fill_budget r);
               Alcotest.test_case "parity corpus" `Quick (fun () -> test_parity r);
               Alcotest.test_case "determinism" `Quick (fun () -> test_determinism r);
+              Alcotest.test_case "offscreen trimming" `Quick (fun () -> test_trim_offscreen r);
               Alcotest.test_case "atlas update" `Quick (fun () -> test_atlas_update r);
               Alcotest.test_case "frame size changes" `Quick
                 (fun () -> test_frame_size_changes r);

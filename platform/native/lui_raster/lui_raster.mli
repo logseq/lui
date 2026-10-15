@@ -49,3 +49,19 @@ module Renderer : sig
   val invalidate : t -> unit
   val release : t -> unit
 end
+
+(* A window presenter retains copied bands; the renderer retains only staging
+   pixels. Shader effects require the whole-image Renderer above. *)
+module Tile_renderer : sig
+  type t
+  val band_height : int
+  val create : unit -> t
+  val invalidate : t -> unit
+  val release : t -> unit
+  (* [workers] is between one and eight. Each worker owns one staging band;
+     [emit] runs on the caller's domain and must consume or copy its borrowed
+     pixels before returning. The first row corresponds to the rectangle's
+     [y0]. Failed uploads invalidate damage and join every worker before
+     propagating the exception. *)
+  val render : ?workers:int -> t -> Lui_scene.t -> emit:(Lui_scene.irect -> Image.t -> unit) -> unit
+end

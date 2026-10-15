@@ -63,6 +63,9 @@ end
 
 type t
 
+val tick : t -> now:float -> unit
+val set_reduced_motion : t -> bool -> unit
+
 val create :
   hooks:Lui_paint.hooks ->
   ?layout:(module LAYOUT_ENGINE) ->

@@ -207,9 +207,10 @@ type work_batch = {
   mutable w_insts : instance list;
 }
 
-(* Retained paint shares immutable glyphs across hover repaints. Weak
-   keys reuse their compiled instances without retaining removed text. *)
-module Glyph_instances = Ephemeron.K1.Make (struct
+(* Only the current compiled frame owns glyph instances. Dropping entries
+   at frame replacement also bounds memory when old text snapshots live
+   elsewhere, without depending on completion of a major collection. *)
+module Glyph_instances = Hashtbl.Make (struct
   type t = glyph
   let equal a b = a == b
   let hash = Hashtbl.hash
@@ -224,6 +225,13 @@ type glyph_context = {
   gc_gradient : f4;
   gc_opacity : float;
   gc_clips : (f4 * f4) * (f4 * f4) * (f4 * f4);
+}
+
+type cached_glyph = {
+  context : glyph_context;
+  wide_color : f4 option;
+  instance : instance;
+  mutable seen : int;
 }
 
 let same_glyph_context a b =
@@ -533,13 +541,16 @@ let build_with_cache ?(wide = false) ?glyph_cache (s : t) : batch list =
           let wide_color = Option.map (fun w -> w.wcolor) (wide_of gl.gwide) in
           let inst = match glyph_cache with
             | None -> compile gl wide_color
-            | Some cache ->
+            | Some (cache, generation) ->
               (match Glyph_instances.find_opt cache gl with
-               | Some (previous,previous_wide,inst)
-                 when same_glyph_context previous context && previous_wide=wide_color -> inst
+               | Some previous
+                 when same_glyph_context previous.context context && previous.wide_color=wide_color ->
+                 previous.seen <- generation;
+                 previous.instance
                | _ ->
                  let inst = compile gl wide_color in
-                 Glyph_instances.replace cache gl (context,wide_color,inst);
+                 Glyph_instances.replace cache gl
+                   {context;wide_color;instance=inst;seen=generation};
                  inst) in
           add ~clipped:true inst None
         done
@@ -655,8 +666,7 @@ type batch_cache = {
   mutable c_pack : pack;
   mutable c_rebuilds : int;
   mutable c_reuses : int;
-  c_glyphs : (glyph_context * f4 option * instance) Glyph_instances.t;
-  mutable c_glyphs_major : int;
+  c_glyphs : cached_glyph Glyph_instances.t;
 }
 
 let batch_cache () =
@@ -665,8 +675,7 @@ let batch_cache () =
       { data = Bigarray.(Array1.create float32 c_layout 0);
         floats = 0; spans = [||] };
     c_rebuilds = 0; c_reuses = 0;
-    c_glyphs = Glyph_instances.create 1024;
-    c_glyphs_major = (Gc.quick_stat ()).Gc.major_collections }
+    c_glyphs = Glyph_instances.create 1024 }
 
 let stat_rebuilds c = c.c_rebuilds
 let stat_reuses c = c.c_reuses
@@ -707,12 +716,10 @@ let pack_batches (batches : batch list) : pack =
   { data; floats; spans = pack_into batches data }
 
 let rebuild c ~wide s =
-  let major = (Gc.quick_stat ()).Gc.major_collections in
-  if major <> c.c_glyphs_major then begin
-    Glyph_instances.clean c.c_glyphs;
-    c.c_glyphs_major <- major
-  end;
-  let batches = build_with_cache ~wide ~glyph_cache:c.c_glyphs s in
+  let generation = c.c_rebuilds + 1 in
+  let batches = build_with_cache ~wide ~glyph_cache:(c.c_glyphs,generation) s in
+  Glyph_instances.filter_map_inplace (fun _ entry ->
+    if entry.seen=generation then Some entry else None) c.c_glyphs;
   let total =
     List.fold_left (fun n b -> n + List.length b.instances) 0 batches
   in

@@ -14,8 +14,8 @@
 
     {b Metal device.} [init_offscreen] makes a renderer with its own
     BGRA8Unorm target texture — the testable path, needing no window.
-    [init_window] wraps an SDL window's Metal layer, and additionally
-    blits the frame to the layer's drawable on [present]. When the
+    [init_window] draws directly into an SDL window's Metal drawable,
+    acquired and encoded on a background queue. When the
     device supports dual-source blending, subpixel glyphs blend each
     destination channel by the coverage of the matching source channel;
     otherwise they blend by the mean coverage. *)
@@ -37,19 +37,24 @@ val init_window : nativeint -> (t, string) result
     [SDL_Metal_CreateView]'s conventions; see lui_window). *)
 
 val render : t -> Lui_scene.t -> unit
-(** [render r scene] draws [scene] into the renderer's target texture,
-    which must be [scene.width]×[scene.height] device pixels. *)
+(** [render r scene] draws [scene] into the offscreen target or queues a
+    window frame. Check [ready] before submitting a window frame. *)
 
 val present : t -> unit
-(** [present r] blits the frame to the window drawable. *)
+(** [present r] presents the queued window frame and waits for completion. *)
 
 val ready : t -> bool
 (** Whether a window has completed its render and drawable acquisition.
     Check before rendering to bound in-flight work without blocking input. *)
 
 val present_async : t -> unit
-(** Request a window presentation without blocking the input thread on
-    drawable acquisition. Repeated requests coalesce to the latest target. *)
+(** Request a queued window presentation without blocking the input thread.
+    Repeated requests coalesce. *)
+
+val trim : t -> unit
+(** Release unused window drawables while retaining the visible frame and
+    rendered target. The next render restores the scene's drawable dimensions.
+    Offscreen renderers have no drawable pool to trim. *)
 
 val presented_frames : t -> int
 (** Number of frames reported as displayed by Metal's presented handler. *)
@@ -72,6 +77,15 @@ val release : t -> unit
 (** [release r] releases the renderer's Metal objects. *)
 
 (** {1 Internals exposed for tests} *)
+
+val drawable_count : t -> int
+(** Configured window drawable capacity, or zero for an offscreen renderer. *)
+
+val drawable_size : t -> (int * int) option
+(** Current window drawable dimensions, absent for an offscreen renderer. *)
+
+val owned_target_bytes : t -> int
+(** Allocated bytes in a private frame target, excluding window drawables. *)
 
 val attribute_count : int
 (** Float4 vertex attributes per instance (15). *)

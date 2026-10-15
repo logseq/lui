@@ -12,10 +12,9 @@
    frame is marshalled here: atlas uploads, instance packing, batch
    scissoring, and the backdrop passes an effect needs.
 
-   Frames render into an owned BGRA8 texture, whether offscreen or
-   windowed, so read_frame and the backdrop passes never depend on a
-   drawable; init_window additionally blits to the layer's drawable on
-   present. *)
+   Offscreen frames render into an owned BGRA8 texture. Window frames
+   render directly into an asynchronously acquired drawable, and
+   read_frame reads the last rendered texture. *)
 
 open Lui_scene
 
@@ -117,6 +116,10 @@ external metal_presentation_samples : ctx -> int * float array = "lui_metal_pres
 external metal_set_frame_rate : ctx -> int -> unit = "lui_metal_set_frame_rate"
 external metal_warm : ctx -> pipe -> unit = "lui_metal_warm"
 external metal_release : obj -> unit = "lui_metal_release"
+external metal_trim : ctx -> unit = "lui_metal_trim"
+external metal_drawable_count : ctx -> int = "lui_metal_drawable_count"
+external metal_drawable_size : ctx -> (int * int) option = "lui_metal_drawable_size"
+external metal_owned_target_bytes : ctx -> int = "lui_metal_owned_target_bytes"
 
 (* -------------------------------------------------------- internals *)
 
@@ -567,6 +570,10 @@ let gpu_ms (t : t) = metal_gpu_ms t.ctx
 let ready (t : t) = metal_ready t.ctx
 let present (t : t) : unit = metal_present t.ctx
 let present_async (t : t) : unit = metal_present_async t.ctx
+let trim (t : t) = metal_trim t.ctx
+let drawable_count (t : t) = metal_drawable_count t.ctx
+let drawable_size (t : t) = metal_drawable_size t.ctx
+let owned_target_bytes (t : t) = metal_owned_target_bytes t.ctx
 let presented_frames (t : t) = metal_presented_frames t.ctx
 let presentation_samples (t : t) = metal_presentation_samples t.ctx
 let set_frame_rate (t : t) fps =

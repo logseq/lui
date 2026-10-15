@@ -33,6 +33,34 @@
 /* ------------------------------------------------------------------ */
 /* context                                                             */
 
+struct lui_mtl_draw {
+    long sl, st, sr, sb;
+    int first, count;
+    __unsafe_unretained id<MTLRenderPipelineState> pipe;
+    __unsafe_unretained id<MTLTexture> image;
+    BOOL backdrop;
+    int bx0, by0, bx1, by1, down, radius, bw, bh;
+    float sigma;
+};
+
+/* A queued frame owns its copied instances, draw records and GPU refs.
+   Background encoding never reads OCaml values or mutable staging arrays. */
+@interface LuiMtlFrame : NSObject {
+@public
+    int w, h;
+    MTLClearColor clear;
+    id<MTLBuffer> instances;
+    id<MTLTexture> mask, color, empty;
+    id<MTLRenderPipelineState> down, blur;
+    struct lui_mtl_draw *draws;
+    NSUInteger count;
+    NSArray *resources;
+}
+@end
+@implementation LuiMtlFrame
+- (void)dealloc { free(draws); }
+@end
+
 /* One renderer: the device, its queue, the nearest sampler every draw
    shares, the target texture being drawn (owned for offscreen, or the
    size of the window's layer), and the two small textures backdrop
@@ -53,6 +81,7 @@
     CAMetalLayer *layer;
     SDL_MetalView sdl_view;
     id<MTLTexture> target;
+    id<CAMetalDrawable> frame_drawable;
     id<MTLTexture> bd0;
     id<MTLTexture> bd1;
     int tw, th;   /* target pixel size */
@@ -177,7 +206,7 @@ static id<MTLTexture> make_target(id<MTLDevice> dev, NSUInteger w, NSUInteger h)
     return [dev newTextureWithDescriptor:td];
 }
 
-static LuiMtlCtx *new_ctx(id<MTLDevice> dev, int w, int h)
+static LuiMtlCtx *new_ctx(id<MTLDevice> dev, int w, int h, BOOL offscreen)
 {
     LuiMtlCtx *m = [LuiMtlCtx new];
     m->dev = dev;
@@ -190,7 +219,7 @@ static LuiMtlCtx *new_ctx(id<MTLDevice> dev, int w, int h)
     m->last_presented_time = 0.;
     m->presentation_count = 0;
     m->smp = make_sampler(dev);
-    m->target = make_target(dev, w, h);
+    if (offscreen) m->target = make_target(dev, w, h);
     m->tw = w;
     m->th = h;
     return m;
@@ -207,7 +236,7 @@ CAMLprim value lui_metal_create_offscreen(value vw, value vh)
     id<MTLDevice> dev = MTLCreateSystemDefaultDevice();
     if (!dev) CAMLreturn(err_str("no Metal device"));
     MTD("offscreen: dev=%p\n", dev);
-    LuiMtlCtx *m = new_ctx(dev, w, h);
+    LuiMtlCtx *m = new_ctx(dev, w, h, YES);
     MTD("offscreen: ctx=%p target=%p queue=%p\n", m, m->target, m->queue);
     if (!m->target || !m->queue) CAMLreturn(err_str("Metal target creation failed"));
     CAMLreturn(ok_box((void *)CFBridgingRetain(m)));
@@ -229,23 +258,19 @@ CAMLprim value lui_metal_create_layer(value vwin)
     MTD("layer: sync=%d transaction=%d\n", layer.displaySyncEnabled, layer.presentsWithTransaction);
     layer.device = dev;
     layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
-    layer.framebufferOnly = YES;
+    layer.framebufferOnly = NO;
+    layer.maximumDrawableCount = 2;
     CGSize sz = layer.drawableSize;
     int w = sz.width > 1 ? (int)sz.width : 1;
     int h = sz.height > 1 ? (int)sz.height : 1;
-    LuiMtlCtx *m = new_ctx(dev, w, h);
+    LuiMtlCtx *m = new_ctx(dev, w, h, NO);
     m->layer = layer;
     m->sdl_view = sv;
-    /* The first nextDrawable blocks ~200ms while the layer lazily
-       allocates its drawable pool. Acquire one on a background thread
-       here — released unpresented, it returns to the pool — so the
-       boot-critical first real present does not pay that wait. */
-    LuiMtlCtx *warm = m;
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        @autoreleasepool {
-            (void)[warm->layer nextDrawable];
-        }
-    });
+    /* Reserve window-sized surfaces only for a submitted frame.
+       Rendering already acquires its drawable off the input thread;
+       startup prefetching needlessly allocated the complete pool even
+       when the window could not present. */
+    layer.drawableSize = CGSizeMake(1, 1);
     CAMLreturn(ok_box((void *)CFBridgingRetain(m)));
 }
 
@@ -458,53 +483,70 @@ static void encode_pass(id<MTLRenderCommandEncoder> enc,
             vertexStart:0 vertexCount:4 instanceCount:1 baseInstance:0];
 }
 
-CAMLprim value lui_metal_render(value vctx, value vreq)
+static LuiMtlFrame *copy_frame(LuiMtlCtx *m, value request)
 {
-    CAMLparam2(vctx, vreq);
-    LuiMtlCtx *m = (__bridge LuiMtlCtx *)Lui_ref_val(vctx);
-    if (!m) caml_failwith("lui_metal: released context");
-    @autoreleasepool {
-        int w = Int_val(Field(vreq, 0)), h = Int_val(Field(vreq, 1));
-        if (w != m->tw || h != m->th) {
-            id<MTLTexture> target = make_target(m->dev, w, h);
-            if (!target) caml_failwith("lui_metal: target resize failed");
-            @synchronized (m) {
-                m->target = target;
-                m->tw = w;
-                m->th = h;
-            }
-            if (m->layer) m->layer.drawableSize = CGSizeMake(w, h);
+    LuiMtlFrame *frame = [LuiMtlFrame new];
+    frame->w = Int_val(Field(request, 0));
+    frame->h = Int_val(Field(request, 1));
+    value clear = Field(request, 2);
+    frame->clear = MTLClearColorMake(Double_val(Field(clear, 0)), Double_val(Field(clear, 1)),
+                                    Double_val(Field(clear, 2)), Double_val(Field(clear, 3)));
+    value instances = Field(request, 3);
+    NSUInteger bytes = (NSUInteger)Caml_ba_array_val(instances)->dim[0] * sizeof(float);
+    if (bytes) frame->instances = [m->dev newBufferWithBytes:Caml_ba_data_val(instances)
+                                        length:bytes options:MTLResourceStorageModeShared];
+    value draws = Field(request, 4);
+    frame->count = Wosize_val(draws);
+    frame->draws = calloc(frame->count, sizeof(struct lui_mtl_draw));
+    if (frame->count && !frame->draws) caml_failwith("lui_metal: frame allocation failed");
+    frame->mask = UNBOX(Field(request, 5));
+    frame->color = UNBOX(Field(request, 6));
+    frame->empty = UNBOX(Field(request, 7));
+    frame->down = UNBOX(Field(request, 8));
+    frame->blur = UNBOX(Field(request, 9));
+    NSMutableArray *resources = [NSMutableArray arrayWithCapacity:frame->count * 2];
+    for (NSUInteger i = 0; i < frame->count; i++) {
+        struct lui_mtl_draw *draw = &frame->draws[i];
+        value d = Field(draws, i), scissor = Field(d, 0);
+        draw->sl = Int_val(Field(scissor, 0)); draw->st = Int_val(Field(scissor, 1));
+        draw->sr = Int_val(Field(scissor, 2)); draw->sb = Int_val(Field(scissor, 3));
+        draw->first = Int_val(Field(d, 1)); draw->count = Int_val(Field(d, 2));
+        draw->pipe = UNBOX(Field(d, 3));
+        value image = Field(d, 4), backdrop = Field(d, 5);
+        draw->image = Is_block(image) ? UNBOX(Field(image, 0)) : frame->empty;
+        if (draw->pipe) [resources addObject:draw->pipe];
+        if (draw->image) [resources addObject:draw->image];
+        draw->backdrop = Is_block(backdrop);
+        if (draw->backdrop) {
+            value b = Field(backdrop, 0);
+            draw->bx0 = Int_val(Field(b, 0)); draw->by0 = Int_val(Field(b, 1));
+            draw->bx1 = Int_val(Field(b, 2)); draw->by1 = Int_val(Field(b, 3));
+            draw->down = Int_val(Field(b, 4)); draw->radius = Int_val(Field(b, 5));
+            draw->sigma = Double_val(Field(b, 6));
+            draw->bw = Int_val(Field(b, 7)); draw->bh = Int_val(Field(b, 8));
         }
-        value vc = Field(vreq, 2);
-        float cr = Double_val(Field(vc, 0)), cg = Double_val(Field(vc, 1));
-        float cb_ = Double_val(Field(vc, 2)), ca = Double_val(Field(vc, 3));
-        value vinsts = Field(vreq, 3);
-        float *insts = Caml_ba_data_val(vinsts);
-        NSUInteger ilen = (NSUInteger)Caml_ba_array_val(vinsts)->dim[0] * sizeof(float);
-        value vdraws = Field(vreq, 4);
-        id<MTLTexture> mask = UNBOX(Field(vreq, 5));
-        id<MTLTexture> color = UNBOX(Field(vreq, 6));
-        id<MTLTexture> empty = UNBOX(Field(vreq, 7));
-        id<MTLRenderPipelineState> pdown = UNBOX(Field(vreq, 8));
-        id<MTLRenderPipelineState> pblur = UNBOX(Field(vreq, 9));
-        mlsize_t n = Wosize_val(vdraws);
+    }
+    frame->resources = resources;
+    return frame;
+}
 
-        int nbw = 0, nbh = 0;
-        for (mlsize_t i = 0; i < n; i++) {
-            value vbd = Field(Field(vdraws, i), 5);
-            if (Is_block(vbd)) {
-                value vb = Field(vbd, 0);
-                nbw = MAX(nbw, Int_val(Field(vb, 7)));
-                nbh = MAX(nbh, Int_val(Field(vb, 8)));
-            }
+static void render_frame(LuiMtlCtx *m, LuiMtlFrame *frame, id<MTLTexture> target)
+{
+    int w = frame->w, h = frame->h;
+    float cr = frame->clear.red, cg = frame->clear.green;
+    float cb_ = frame->clear.blue, ca = frame->clear.alpha;
+    id<MTLBuffer> ibuf = frame->instances;
+    NSUInteger ilen = ibuf.length, n = frame->count;
+    id<MTLTexture> mask = frame->mask, color = frame->color, empty = frame->empty;
+    id<MTLRenderPipelineState> pdown = frame->down, pblur = frame->blur;
+    int nbw = 0, nbh = 0;
+    for (NSUInteger i = 0; i < n; i++) {
+        if (frame->draws[i].backdrop) {
+            nbw = MAX(nbw, frame->draws[i].bw);
+            nbh = MAX(nbh, frame->draws[i].bh);
         }
-        ensure_bd(m, nbw, nbh);
-
-        id<MTLBuffer> ibuf = nil;
-        if (ilen)
-            ibuf = [m->dev newBufferWithBytes:insts length:ilen
-                                      options:MTLResourceStorageModeShared];
-
+    }
+    ensure_bd(m, nbw, nbh);
         float us[2] = { (float)w, (float)h };
         MTD("render: draws %ld insts %lu\n", (long)n, (unsigned long)ilen);
         id<MTLCommandBuffer> cmd = [m->queue commandBuffer];
@@ -512,27 +554,24 @@ CAMLprim value lui_metal_render(value vctx, value vreq)
         BOOL cleared = NO;
 
         for (mlsize_t i = 0; i < n; i++) {
-            value d = Field(vdraws, i);
-            value sc = Field(d, 0);
-            long sl = Int_val(Field(sc, 0)), st = Int_val(Field(sc, 1));
-            long sr = Int_val(Field(sc, 2)), sb = Int_val(Field(sc, 3));
-            int first = Int_val(Field(d, 1)), count = Int_val(Field(d, 2));
-            id<MTLRenderPipelineState> pipe = UNBOX(Field(d, 3));
-            value vimg = Field(d, 4);
-            id<MTLTexture> img = Is_block(vimg) ? UNBOX(Field(vimg, 0)) : empty;
-            value vbd = Field(d, 5);
+            struct lui_mtl_draw *d = &frame->draws[i];
+            long sl = d->sl, st = d->st;
+            long sr = MIN(d->sr, (long)target.width);
+            long sb = MIN(d->sb, (long)target.height);
+            int first = d->first, count = d->count;
+            id<MTLRenderPipelineState> pipe = d->pipe;
+            id<MTLTexture> img = d->image;
             if (count <= 0 || !pipe || sr <= sl || sb <= st) continue;
 
-            if (Is_block(vbd) && m->bd0 && pdown && pblur) {
+            if (d->backdrop && m->bd0 && pdown && pblur) {
                 /* An effect's backdrop: finish the frame pass so the
                    target can be sampled, then down + blur into bd0. */
                 if (enc) { [enc endEncoding]; enc = nil; }
-                value b = Field(vbd, 0);
-                int bx0 = Int_val(Field(b, 0)), by0 = Int_val(Field(b, 1));
-                int bx1 = Int_val(Field(b, 2)), by1 = Int_val(Field(b, 3));
-                int bdown = Int_val(Field(b, 4)), brad = Int_val(Field(b, 5));
-                float bsigma = Double_val(Field(b, 6));
-                int btw = Int_val(Field(b, 7)), bth = Int_val(Field(b, 8));
+                int bx0 = d->bx0, by0 = d->by0;
+                int bx1 = d->bx1, by1 = d->by1;
+                int bdown = d->down, brad = d->radius;
+                float bsigma = d->sigma;
+                int btw = d->bw, bth = d->bh;
                 if (btw > 0 && bth > 0) {
                     MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
                     rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
@@ -541,7 +580,7 @@ CAMLprim value lui_metal_render(value vctx, value vreq)
                     id<MTLRenderCommandEncoder> pe =
                         [cmd renderCommandEncoderWithDescriptor:rp];
                     struct down_args da = { bx0, by0, bx1 - 1, by1 - 1, bdown, 0 };
-                    encode_pass(pe, pdown, m->target,
+                    encode_pass(pe, pdown, target,
                                 &da, sizeof(da), btw, bth);
                     [pe endEncoding];
                     if (brad > 0) {
@@ -562,7 +601,7 @@ CAMLprim value lui_metal_render(value vctx, value vreq)
             }
             if (!enc) {
                 MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
-                rp.colorAttachments[0].texture = m->target;
+                rp.colorAttachments[0].texture = target;
                 rp.colorAttachments[0].loadAction =
                     cleared ? MTLLoadActionLoad : MTLLoadActionClear;
                 rp.colorAttachments[0].clearColor =
@@ -579,7 +618,7 @@ CAMLprim value lui_metal_render(value vctx, value vreq)
                 [enc setFragmentSamplerState:m->smp atIndex:0];
             }
             [enc setFragmentTexture:(img ? img : empty) atIndex:2];
-            [enc setFragmentTexture:(Is_block(vbd) ? m->bd0 : empty) atIndex:3];
+            [enc setFragmentTexture:(d->backdrop ? m->bd0 : empty) atIndex:3];
             [enc setRenderPipelineState:pipe];
             MTLScissorRect sct = { (NSUInteger)sl, (NSUInteger)st,
                                    (NSUInteger)(sr - sl), (NSUInteger)(sb - st) };
@@ -591,7 +630,7 @@ CAMLprim value lui_metal_render(value vctx, value vreq)
         if (!cleared) {
             /* An empty frame still gets the clear color. */
             MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
-            rp.colorAttachments[0].texture = m->target;
+            rp.colorAttachments[0].texture = target;
             rp.colorAttachments[0].loadAction = MTLLoadActionClear;
             rp.colorAttachments[0].clearColor = MTLClearColorMake(cr, cg, cb_, ca);
             rp.colorAttachments[0].storeAction = MTLStoreActionStore;
@@ -620,6 +659,46 @@ CAMLprim value lui_metal_render(value vctx, value vreq)
         [cmd commit];
         MTP("render commit", _pt);
         MTD("render: committed\n");
+}
+
+CAMLprim value lui_metal_render(value vctx, value vreq)
+{
+    CAMLparam2(vctx, vreq);
+    LuiMtlCtx *m = (__bridge LuiMtlCtx *)Lui_ref_val(vctx);
+    if (!m) caml_failwith("lui_metal: released context");
+    if (m->layer && atomic_load(&m->render_pending))
+        caml_invalid_argument("lui_metal: wait for readiness before rendering");
+    @autoreleasepool {
+        LuiMtlFrame *frame = copy_frame(m, vreq);
+        if (m->layer) {
+            CGSize wanted = CGSizeMake(frame->w, frame->h);
+            if (!CGSizeEqualToSize(m->layer.drawableSize, wanted)) m->layer.drawableSize = wanted;
+            atomic_store(&m->render_pending, true);
+            dispatch_async(m->present_queue, ^{
+                @autoreleasepool {
+                    @synchronized (m) { m->frame_drawable = nil; }
+                    id<CAMetalDrawable> drawable = [m->layer nextDrawable];
+                    if (!drawable) {
+                        atomic_store(&m->render_pending, false);
+                        return;
+                    }
+                    @synchronized (m) {
+                        m->frame_drawable = drawable;
+                        m->target = drawable.texture;
+                        m->tw = (int)drawable.texture.width;
+                        m->th = (int)drawable.texture.height;
+                    }
+                    render_frame(m, frame, drawable.texture);
+                }
+            });
+        } else {
+            if (frame->w != m->tw || frame->h != m->th) {
+                m->target = make_target(m->dev, frame->w, frame->h);
+                if (!m->target) caml_failwith("lui_metal: target resize failed");
+                m->tw = frame->w; m->th = frame->h;
+            }
+            render_frame(m, frame, m->target);
+        }
     }
     CAMLreturn(Val_unit);
 }
@@ -630,8 +709,12 @@ CAMLprim value lui_metal_read(value vctx, value vw, value vh)
     CAMLlocal1(out);
     LuiMtlCtx *m = (__bridge LuiMtlCtx *)Lui_ref_val(vctx);
     if (!m) caml_failwith("lui_metal: released context");
+    if (m->layer) dispatch_sync(m->present_queue, ^{});
+    id<MTLTexture> target;
+    @synchronized (m) { target = m->target; }
+    if (!target) caml_failwith("lui_metal: no rendered frame is available");
     NSUInteger w = Int_val(vw), h = Int_val(vh);
-    if (!w || !h || (int)w > m->tw || (int)h > m->th)
+    if (!w || !h || w > target.width || h > target.height)
         caml_failwith("lui_metal: read size exceeds target");
     @autoreleasepool {
         NSUInteger bpr = w * 4;
@@ -640,7 +723,7 @@ CAMLprim value lui_metal_read(value vctx, value vw, value vh)
                                               options:MTLResourceStorageModeShared];
         id<MTLCommandBuffer> cmd = [m->queue commandBuffer];
         id<MTLBlitCommandEncoder> blit = [cmd blitCommandEncoder];
-        [blit copyFromTexture:m->target sourceSlice:0 sourceLevel:0
+        [blit copyFromTexture:target sourceSlice:0 sourceLevel:0
                   sourceOrigin:MTLOriginMake(0, 0, 0)
                     sourceSize:MTLSizeMake(w, h, 1)
                       toBuffer:buf destinationOffset:0
@@ -673,48 +756,94 @@ CAMLprim value lui_metal_ready(value vctx)
                        && !atomic_load(&m->present_pending)));
 }
 
+CAMLprim value lui_metal_trim(value vctx)
+{
+    CAMLparam1(vctx);
+    LuiMtlCtx *m = (__bridge LuiMtlCtx *)Lui_ref_val(vctx);
+    if (!m) caml_failwith("lui_metal: released context");
+    if (m->layer && !atomic_load(&m->render_pending)
+                 && !atomic_load(&m->present_pending)) {
+        @synchronized (m) { m->frame_drawable = nil; }
+        CGSize idle = CGSizeMake(1, 1);
+        if (!CGSizeEqualToSize(m->layer.drawableSize, idle))
+            m->layer.drawableSize = idle;
+    }
+    CAMLreturn(Val_unit);
+}
+
+CAMLprim value lui_metal_drawable_count(value vctx)
+{
+    CAMLparam1(vctx);
+    LuiMtlCtx *m = (__bridge LuiMtlCtx *)Lui_ref_val(vctx);
+    if (!m) caml_failwith("lui_metal: released context");
+    CAMLreturn(Val_long(m->layer ? m->layer.maximumDrawableCount : 0));
+}
+
+CAMLprim value lui_metal_drawable_size(value vctx)
+{
+    CAMLparam1(vctx);
+    CAMLlocal2(size, option);
+    LuiMtlCtx *m = (__bridge LuiMtlCtx *)Lui_ref_val(vctx);
+    if (!m) caml_failwith("lui_metal: released context");
+    if (!m->layer) CAMLreturn(Val_int(0));
+    CGSize current = m->layer.drawableSize;
+    size = caml_alloc_tuple(2);
+    Store_field(size, 0, Val_long((long)current.width));
+    Store_field(size, 1, Val_long((long)current.height));
+    option = caml_alloc(1, 0);
+    Store_field(option, 0, size);
+    CAMLreturn(option);
+}
+
+CAMLprim value lui_metal_owned_target_bytes(value vctx)
+{
+    CAMLparam1(vctx);
+    LuiMtlCtx *m = (__bridge LuiMtlCtx *)Lui_ref_val(vctx);
+    if (!m) caml_failwith("lui_metal: released context");
+    id<MTLTexture> target;
+    @synchronized (m) { target = m->target; }
+    CAMLreturn(Val_long(target && !target.iosurface ? target.allocatedSize : 0));
+}
+
+static void present_frame(LuiMtlCtx *m, BOOL wait)
+{
+    @autoreleasepool {
+        id<CAMetalDrawable> drawable;
+        @synchronized (m) {
+            drawable = m->frame_drawable;
+            m->frame_drawable = nil;
+        }
+        if (drawable) {
+            id<MTLCommandBuffer> command = [m->queue commandBuffer];
+            [drawable addPresentedHandler:^(id<MTLDrawable> completed) {
+                @synchronized (m) {
+                    double now = completed.presentedTime;
+                    if (now > 0.) {
+                        if (m->last_presented_time > 0. && now >= m->last_presented_time) {
+                            m->presentation_intervals[m->presentation_count % 240] =
+                                (now - m->last_presented_time) * 1000.;
+                            m->presentation_count++;
+                        }
+                        m->last_presented_time = now;
+                        atomic_fetch_add(&m->presented_frames, 1);
+                    }
+                }
+            }];
+            [command presentDrawable:drawable];
+            [command commit];
+            if (wait) [command waitUntilCompleted];
+        }
+        atomic_store(&m->present_pending, false);
+    }
+}
+
 CAMLprim value lui_metal_present_async(value vctx)
 {
     CAMLparam1(vctx);
     LuiMtlCtx *m = (__bridge LuiMtlCtx *)Lui_ref_val(vctx);
     if (!m) caml_failwith("lui_metal: released context");
     if (m->layer && !atomic_exchange(&m->present_pending, true)) {
-        dispatch_async(m->present_queue, ^{
-            @autoreleasepool {
-                id<CAMetalDrawable> drawable = [m->layer nextDrawable];
-                if (drawable) {
-                    id<MTLTexture> source;
-                    @synchronized (m) { source = m->target; }
-                    NSUInteger w = MIN(source.width, drawable.texture.width);
-                    NSUInteger h = MIN(source.height, drawable.texture.height);
-                    id<MTLCommandBuffer> command = [m->queue commandBuffer];
-                    id<MTLBlitCommandEncoder> blit = [command blitCommandEncoder];
-                    [blit copyFromTexture:source sourceSlice:0 sourceLevel:0
-                            sourceOrigin:MTLOriginMake(0, 0, 0)
-                              sourceSize:MTLSizeMake(w, h, 1)
-                               toTexture:drawable.texture destinationSlice:0
-                        destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
-                    [blit endEncoding];
-                    [drawable addPresentedHandler:^(id<MTLDrawable> completed) {
-                        @synchronized (m) {
-                            double now = completed.presentedTime;
-                            if (now > 0.) {
-                                if (m->last_presented_time > 0. && now >= m->last_presented_time) {
-                                    m->presentation_intervals[m->presentation_count % 240] =
-                                        (now - m->last_presented_time) * 1000.;
-                                    m->presentation_count++;
-                                }
-                                m->last_presented_time = now;
-                                atomic_fetch_add(&m->presented_frames, 1);
-                            }
-                        }
-                    }];
-                    [command presentDrawable:drawable];
-                    [command commit];
-                }
-                atomic_store(&m->present_pending, false);
-            }
-        });
+        dispatch_async(m->present_queue, ^{ present_frame(m, NO); });
     }
     CAMLreturn(Val_unit);
 }
@@ -776,31 +905,9 @@ CAMLprim value lui_metal_present(value vctx)
     CAMLparam1(vctx);
     LuiMtlCtx *m = (__bridge LuiMtlCtx *)Lui_ref_val(vctx);
     if (!m) caml_failwith("lui_metal: released context");
-    @autoreleasepool {
-        if (m->layer) {
-            CGSize want = { m->tw, m->th };
-            if (!CGSizeEqualToSize(m->layer.drawableSize, want))
-                m->layer.drawableSize = want;
-            CFAbsoluteTime _pt = CFAbsoluteTimeGetCurrent();
-            id<CAMetalDrawable> dr = [m->layer nextDrawable];
-            MTP("nextDrawable", _pt);
-            if (dr) {
-                NSUInteger cw = MIN((NSUInteger)m->tw, dr.texture.width);
-                NSUInteger ch = MIN((NSUInteger)m->th, dr.texture.height);
-                id<MTLCommandBuffer> cmd = [m->queue commandBuffer];
-                id<MTLBlitCommandEncoder> blit = [cmd blitCommandEncoder];
-                [blit copyFromTexture:m->target sourceSlice:0 sourceLevel:0
-                          sourceOrigin:MTLOriginMake(0, 0, 0)
-                            sourceSize:MTLSizeMake(cw, ch, 1)
-                           toTexture:dr.texture destinationSlice:0
-                       destinationLevel:0
-                      destinationOrigin:MTLOriginMake(0, 0, 0)];
-                [blit endEncoding];
-                [cmd presentDrawable:dr];
-                [cmd commit];
-                MTP("presented", _pt);
-            }
-        }
+    if (m->layer) {
+        atomic_store(&m->present_pending, true);
+        dispatch_sync(m->present_queue, ^{ present_frame(m, YES); });
     }
     CAMLreturn(Val_unit);
 }
@@ -814,6 +921,11 @@ CAMLprim value lui_metal_warm(value vctx, value vpipe)
     LuiMtlCtx *m = (__bridge LuiMtlCtx *)Lui_ref_val(vctx);
     id<MTLRenderPipelineState> pipe = UNBOX(vpipe);
     if (!m || !pipe) CAMLreturn(Val_unit);
+    if (m->sdl_view) {
+        NSWindow *window = ((__bridge NSView *)m->sdl_view).window;
+        if (!(window.occlusionState & NSWindowOcclusionStateVisible))
+            CAMLreturn(Val_unit);
+    }
     @autoreleasepool {
         /* Pipeline state compiles lazily at first draw (~200ms the
            first time). One degenerate draw on the frame queue JITs
@@ -826,16 +938,16 @@ CAMLprim value lui_metal_warm(value vctx, value vpipe)
         id<MTLTexture> e = make_target(m->dev, 1, 1);
         id<MTLCommandBuffer> cmd = [m->queue commandBuffer];
         MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
-        rp.colorAttachments[0].texture = m->target;
+        rp.colorAttachments[0].texture = e;
         rp.colorAttachments[0].loadAction = MTLLoadActionClear;
         rp.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0);
         rp.colorAttachments[0].storeAction = MTLStoreActionStore;
         id<MTLRenderCommandEncoder> enc =
             [cmd renderCommandEncoderWithDescriptor:rp];
-        MTLViewport vp = { 0, 0, (double)m->tw, (double)m->th, 0, 1 };
+        MTLViewport vp = { 0, 0, 1, 1, 0, 1 };
         [enc setViewport:vp];
         [enc setVertexBuffer:ibuf offset:0 atIndex:0];
-        float us[2] = { (float)m->tw, (float)m->th };
+        float us[2] = { 1, 1 };
         [enc setVertexBytes:us length:sizeof(us) atIndex:1];
         [enc setFragmentTexture:e atIndex:0];
         [enc setFragmentTexture:e atIndex:1];
@@ -883,6 +995,10 @@ CAMLprim value lui_metal_render(value a, value b) { NO_METAL(); }
 CAMLprim value lui_metal_read(value a, value b, value c) { NO_METAL(); }
 CAMLprim value lui_metal_present(value a) { NO_METAL(); }
 CAMLprim value lui_metal_ready(value a) { NO_METAL(); }
+CAMLprim value lui_metal_trim(value a) { NO_METAL(); }
+CAMLprim value lui_metal_drawable_count(value a) { NO_METAL(); }
+CAMLprim value lui_metal_drawable_size(value a) { NO_METAL(); }
+CAMLprim value lui_metal_owned_target_bytes(value a) { NO_METAL(); }
 CAMLprim value lui_metal_gpu_ms(value a) { NO_METAL(); }
 CAMLprim value lui_metal_present_async(value a) { NO_METAL(); }
 CAMLprim value lui_metal_presented_frames(value a) { NO_METAL(); }
