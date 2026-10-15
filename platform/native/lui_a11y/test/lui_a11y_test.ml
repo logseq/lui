@@ -354,6 +354,99 @@ let test_update_structure () =
   check (list int) "visible in" [ 1; 4 ] (Lui_a11y.sync a);
   check bool "visible back" true (Lui_a11y.mem a 4)
 
+let test_overlapping_dirty_trees () =
+  let store = Lui_store.create () in
+  apply store
+    [ CreateNode (1, Column); CreateNode (2, Button); CreateNode (3, Row);
+      CreateNode (4, Text); CreateNode (5, Button); CreateNode (6, Text);
+      CreateNode (7, Row); CreateNode (8, Text);
+      InsertChild (1,2,0); InsertChild (2,3,0); InsertChild (3,4,0);
+      InsertChild (1,5,1); InsertChild (5,6,0);
+      InsertChild (1,7,2); InsertChild (7,8,0);
+      SetProp (4,TextValue,StringValue "alpha");
+      SetProp (6,TextValue,StringValue "beta");
+      SetProp (8,TextValue,StringValue "gamma") ];
+  let cached = Lui_a11y.of_store store in
+  ignore (Lui_store.drain_dirty store);
+  let verify label ops =
+    apply store ops;
+    let dirty = Lui_store.drain_dirty store in
+    let changed = Lui_a11y.update cached (List.rev dirty @ dirty) in
+    check (list int) "changed ids remain unique and sorted"
+      (List.sort_uniq Int.compare changed) changed;
+    let rebuilt = Lui_a11y.of_store store in
+    check bool label true (Lui_a11y.flatten cached = Lui_a11y.flatten rebuilt)
+  in
+  verify "hidden descendants match a fresh tree"
+    [SetProp (3,Visible,BoolValue false)];
+  verify "moving a hidden descendant updates both names"
+    [SetProp (4,TextValue,StringValue "delta"); InsertChild (5,4,1)];
+  check (option string) "new button accumulates the moved text"
+    (Some "beta delta") (name_of cached 5);
+  verify "overlapping old and new ancestry stays current"
+    [InsertChild (7,2,0); SetProp (3,Visible,BoolValue true)];
+  verify "dropping overlapping subtrees removes every record" [DropNode 7];
+  verify "reparenting to a new root preserves forest order"
+    [CreateNode (9,Column); InsertChild (9,5,0)];
+  verify "an empty batch does not change accessible records" [];
+  check (list int) "duplicate unchanged ids produce no changes" []
+    (Lui_a11y.update cached [9;5;9;5])
+
+
+let test_incremental_insert_allocation () =
+  let store = Lui_store.create () in
+  Lui_store.apply_op store (CreateNode (1,Column));
+  for id = 2 to 6001 do
+    Lui_store.apply_op store (CreateNode (id,Text));
+    Lui_store.apply_op store (InsertChild (1,id,id-2));
+    Lui_store.apply_op store (SetProp (id,TextValue,StringValue "existing"))
+  done;
+  let tree = Lui_a11y.of_store store in
+  ignore (Lui_store.drain_dirty store);
+  apply store [CreateNode (6002,Text); SetProp (6002,TextValue,StringValue "new");
+               InsertChild (1,6002,6000)];
+  Gc.full_major ();
+  let before = Gc.allocated_bytes () in
+  let changed = Lui_a11y.sync tree in
+  let allocated = Gc.allocated_bytes () -. before in
+  Printf.printf "Accessibility insertion beside 6000 unchanged nodes allocated %.0f bytes\n%!" allocated;
+  check (list int) "only parent and inserted child changed" [1;6002] changed;
+  check int "all existing accessible nodes remain" 6002 (Lui_a11y.node_count tree);
+  check (option string) "inserted text is accessible" (Some "new") (name_of tree 6002);
+  check bool "insertion avoids rebuilding unchanged sibling records" true (allocated <= 524288.)
+
+let test_incremental_visibility () =
+  let store = Lui_store.create () in
+  apply store [CreateNode (1,Column); CreateNode (2,Column); CreateNode (3,Column);
+               CreateNode (4,Button); CreateNode (5,Text);
+               InsertChild (1,2,0); InsertChild (1,3,1); InsertChild (2,4,0);
+               InsertChild (4,5,0); SetProp (5,TextValue,StringValue "child");
+               SetProp (3,Visible,BoolValue false)];
+  let tree = Lui_a11y.of_store store in
+  ignore (Lui_store.drain_dirty store);
+  let verify label ops =
+    apply store ops;
+    ignore (Lui_a11y.sync tree);
+    let rebuilt = Lui_a11y.of_store store in
+    check bool label true (Lui_a11y.flatten tree = Lui_a11y.flatten rebuilt)
+  in
+  verify "reparenting under hidden ancestry removes every descendant"
+    [InsertChild (3,4,0)];
+  check bool "hidden grandchild is absent" false (Lui_a11y.mem tree 5);
+  verify "ancestor visibility restores unchanged descendant records"
+    [SetProp (3,Visible,BoolValue true)];
+  check (option string) "restored composite name" (Some "child") (name_of tree 4);
+  verify "display none hides unchanged descendants"
+    [SetExtensionProp (3,"display",StringValue "none")];
+  verify "moving out of hidden ancestry restores every descendant"
+    [InsertChild (2,4,0)];
+  verify "string visibility hides the complete ancestry"
+    [SetProp (2,Visible,StringValue "false")];
+  verify "removing visibility restores unchanged descendants"
+    [RemoveProp (2,Visible)];
+  verify "recreating an existing root removes former descendants"
+    [CreateNode (2,Row)]
+
 (* ---------- focus ---------- *)
 
 let test_focus_tracking () =
@@ -403,4 +496,7 @@ let () =
       ( "update",
         [ test_case "changed ids" `Quick test_update_marks_only_changed;
           test_case "structure" `Quick test_update_structure;
+          test_case "visibility and reparenting" `Quick test_overlapping_dirty_trees;
+          test_case "incremental insertion allocation" `Quick test_incremental_insert_allocation;
+          test_case "inherited visibility" `Quick test_incremental_visibility;
           test_case "focus" `Quick test_focus_tracking ] ) ]

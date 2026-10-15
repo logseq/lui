@@ -256,17 +256,19 @@ let new_node id kind =
 
 (* ---------- intrusive child list ---------- *)
 
-let node_children_list n =
+let map_children f n =
   (* Iterative walk + one reverse: a 100k-wide sibling list must not
      recurse per element. *)
   let acc = ref [] in
   let cur = ref n.first_child in
   while !cur <> None do
     let c = Option.get !cur in
-    acc := c :: !acc;
+    acc := f c :: !acc;
     cur := c.next_sib
   done;
   List.rev !acc
+
+let node_children_list n = map_children Fun.id n
 
 (* Detach [c] from its recorded parent's list. O(1): the sibling links
    carry the position. Callers fix [c.parent] themselves — this only
@@ -507,7 +509,7 @@ let node_id n = n.id
 let node_kind n = n.kind
 let node_ext_id n = n.ext_id
 let node_parent n = n.parent
-let node_children n = List.map node_id (node_children_list n)
+let node_children n = map_children node_id n
 let node_prop n name = Hashtbl.find_opt n.props name
 let node_revision (n : node) = n.revision
 let node_child_count n = n.child_count
@@ -537,7 +539,7 @@ let children t id =
 
 let child_ids t id =
   match find_opt t id with
-  | Some n -> List.map node_id (node_children_list n)
+  | Some n -> node_children n
   | None -> []
 
 (* Indexed access for virtualized containers: walks the intrusive

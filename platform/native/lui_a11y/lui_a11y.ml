@@ -505,12 +505,10 @@ let flatten t =
 
 (* ---------- incremental update ---------- *)
 
-(* The work set for a dirty-id batch: each dirty id, its old a11y subtree
-   (catches dropped or newly hidden descendants), its store subtree
-   (catches newly visible descendants), and both ancestor chains
-   (catches reparents, children-list edits and names accumulated from
-   descendant text). Recomputation reads only the store, so a single
-   pass over this set reconciles every derived field. *)
+(* The store marks every directly changed, moved, or removed node.
+   Unchanged descendants only need recomputation when inherited visibility
+   changes. Ancestor records still reconcile child lists and names derived
+   from descendant text. *)
 let update t dirty =
   let work = ref ISet.empty in
   let add id = work := ISet.add id !work in
@@ -538,8 +536,12 @@ let update t dirty =
   List.iter
     (fun id ->
       add id;
-      add_a11y_subtree id;
-      add_store_subtree id;
+      let was_visible = Hashtbl.mem t.nodes id in
+      let is_visible = Lui_store.mem t.store id && not (hidden_in_chain t.store id) in
+      if was_visible <> is_visible then begin
+        if was_visible then add_a11y_subtree id;
+        if is_visible then add_store_subtree id
+      end;
       add_store_ancestors id;
       add_a11y_ancestors id)
     dirty;

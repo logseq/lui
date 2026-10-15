@@ -358,6 +358,27 @@ let test_read_lookup_missing () =
   check int "removed child count" 0 (Lui_store.child_count t 2);
   check bool "removed property" true (Lui_store.prop t 2 "flag" = None)
 
+let test_child_ids_allocation () =
+  let store = Lui_store.create () in
+  Lui_store.apply_op store (CreateNode (1,Column));
+  for id = 2 to 10001 do
+    Lui_store.apply_op store (CreateNode (id,Text));
+    Lui_store.apply_op store (InsertChild (1,id,id-2))
+  done;
+  let parent = Option.get (Lui_store.find_opt store 1) in
+  let expected = List.init 10000 (fun i -> i+2) in
+  let within_budget = ref true in
+  List.iter (fun (label,read) ->
+    let before = Gc.allocated_bytes () in
+    let ids = read () in
+    let allocated = Gc.allocated_bytes () -. before in
+    Printf.printf "%s for 10000 children allocated %.0f bytes\n%!" label allocated;
+    check (list int) label expected ids;
+    if allocated > 524288. then within_budget := false
+  ) ["node children",(fun () -> Lui_store.node_children parent);
+     "child IDs",(fun () -> Lui_store.child_ids store 1)];
+  check bool "child IDs avoid an intermediate node list" true !within_budget
+
 let () =
   run "lui_store"
     [ ("tree",
@@ -371,7 +392,8 @@ let () =
          test_case "roots" `Quick test_root_ids;
          test_case "preorder allocation" `Quick test_preorder_allocation;
          test_case "streamed preorder order" `Quick test_iter_preorder_order;
-         test_case "kind lookup allocation" `Quick test_kind_lookup_allocation ]);
+         test_case "kind lookup allocation" `Quick test_kind_lookup_allocation;
+         test_case "child ID allocation" `Quick test_child_ids_allocation ]);
       ("props",
        [ test_case "set/remove" `Quick test_props;
          test_case "extension" `Quick test_extension;
