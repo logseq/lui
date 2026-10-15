@@ -284,8 +284,12 @@ let keyed (type key) context parent source (key_fn : _ -> key) compare mount =
         let key = key_fn item in
         if Keys.mem key !desired then invalid_arg "keyed collection contains a duplicate key";
         desired := Keys.add key index !desired) items;
-      let nodes = Array.fold_left (fun nodes (_, entry) ->
-        List.rev_append (Lui_runtime.collect_subtree_nodes
+      (* Reordering changes only the parent sequence. Retained row updates
+         are queued through Signal.set; only removed subtrees are dropped
+         inside this transaction and need their runtime state restored. *)
+      let nodes = Array.fold_left (fun nodes (key, entry) ->
+        if Keys.mem key !desired then nodes
+        else List.rev_append (Lui_runtime.collect_subtree_nodes
           application.Lui_runtime.runtime_children entry.keyed_item_node) nodes)
         [Lui_runtime.canonical_node application parent] old in
       let saved = Lui_runtime.checkpoint ~nodes application in
