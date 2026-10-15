@@ -92,40 +92,24 @@ type env = {
 
 let info t id = Hashtbl.find_opt t.info id
 
-(* Union accumulators: bounds fold as raw (x0,y0,x1,y1) edges so an
-   untouched accumulator materializes to an empty rect. *)
-type acc = {
-  mutable x0 : float;
-  mutable y0 : float;
-  mutable x1 : float;
-  mutable y1 : float;
-}
+let empty_rect = rect 0. 0. 0. 0.
+let empty_info = {b=empty_rect; eb=empty_rect; z=false}
 
-let acc_empty () =
-  { x0 = Float.max_float; y0 = Float.max_float;
-    x1 = Float.min_float; y1 = Float.min_float }
-
-let acc_nonvoid a = a.x1 > a.x0 && a.y1 > a.y0
-
-let acc_union a b =
-  if acc_nonvoid b then begin
-    if b.x0 < a.x0 then a.x0 <- b.x0;
-    if b.y0 < a.y0 then a.y0 <- b.y0;
-    if b.x1 > a.x1 then a.x1 <- b.x1;
-    if b.y1 > a.y1 then a.y1 <- b.y1
+(* Most wrappers have the same bounds as their child. Reuse immutable
+   rectangles when the union already exists, including negative bounds. *)
+let union_bounds a b =
+  if rect_empty b then a
+  else begin
+    let no_bounds = rect_empty a in
+    let x0 = if no_bounds || b.x<a.x then b.x else a.x in
+    let y0 = if no_bounds || b.y<a.y then b.y else a.y in
+    let x1 = if no_bounds || b.x+.b.w>a.x+.a.w then b.x+.b.w else a.x+.a.w in
+    let y1 = if no_bounds || b.y+.b.h>a.y+.a.h then b.y+.b.h else a.y+.a.h in
+    let w = x1-.x0 and h = y1-.y0 in
+    if a.x=x0 && a.y=y0 && a.w=w && a.h=h then a
+    else if b.x=x0 && b.y=y0 && b.w=w && b.h=h then b
+    else rect x0 y0 w h
   end
-
-let acc_add a r =
-  if not (rect_empty r) then begin
-    if r.x < a.x0 then a.x0 <- r.x;
-    if r.y < a.y0 then a.y0 <- r.y;
-    if r.x +. r.w > a.x1 then a.x1 <- r.x +. r.w;
-    if r.y +. r.h > a.y1 then a.y1 <- r.y +. r.h
-  end
-
-let acc_rect a =
-  if acc_nonvoid a then rect a.x0 a.y0 (a.x1 -. a.x0) (a.y1 -. a.y0)
-  else rect 0. 0. 0. 0.
 
 (* Post-order fold over shown nodes: [b] unions every non-empty
    resolved rect in the subtree, [eb] unions the bounds of children
@@ -138,28 +122,34 @@ let build env store ~rect_of =
   let idx =
     { info = Hashtbl.create 256; kids = Hashtbl.create 16; roots }
   in
-  let rec visit id : acc * acc * bool =
-    if not (env.shown store id) then (acc_empty (), acc_empty (), false)
+  let rec visit id =
+    if not (env.shown store id) then empty_info
     else begin
-      let b = acc_empty () and eb = acc_empty () in
+      let b = ref empty_rect and eb = ref empty_rect in
       let z = ref false in
-      List.iter
-        (fun cid ->
-          let cb, ceb, cz = visit cid in
-          acc_union b cb;
+      let children = ref (Lui_store.children store id) in
+      while !children <> [] do
+        match !children with
+        | [] -> ()
+        | node :: rest ->
+          let cid = Lui_store.node_id node in
+          let child = visit cid in
+          b := union_bounds !b child.b;
           (* A promoting child's whole bound escapes the clip context
              this node's children share; a non-promoting child passes
              only its own escapees upward. *)
-          acc_union eb (if env.promotes store cid then cb else ceb);
-          if cz then z := true)
-        (Lui_store.child_ids store id);
+          eb := union_bounds !eb (if env.promotes store cid then child.b else child.eb);
+          if child.z then z := true;
+          children := rest
+      done;
       let r = rect_of id in
-      acc_add b r;
-      let z = !z || rect_empty r in
-      Hashtbl.replace idx.info id { b = acc_rect b; eb = acc_rect eb; z };
+      b := union_bounds !b r;
+      let zero = !z || rect_empty r in
+      let facts = {b= !b; eb= !eb; z=zero} in
+      Hashtbl.replace idx.info id facts;
       if Lui_store.child_count store id >= kid_threshold then
         build_kids id;
-      (b, eb, z)
+      facts
     end
   and build_kids id =
     (* Paint-order positions are ranks; [ka] sorts by bound top for

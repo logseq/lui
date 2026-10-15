@@ -823,6 +823,40 @@ let spatial_of store f =
 
 let ops_of s = (s.ops, s.glyphs, s.wide)
 
+let test_spatial_negative_bounds () =
+  let t = store () in
+  apply t [CreateNode (1, Column); CreateNode (2, Column); InsertChild (1,2,0)];
+  let idx = spatial_of t (function
+    | 1 -> rect (-100.) (-100.) 10. 10.
+    | _ -> rect (-80.) (-80.) 20. 20.) in
+  let root = Option.get (Lui_spatial.info idx 1) in
+  check bool "Negative subtree bounds must not grow to the coordinate origin"
+    true (root.b=rect (-100.) (-100.) 40. 40.);
+  check bool "Fully scrolled-off subtrees must not enter the origin viewport"
+    false (Lui_spatial.keep idx ~clip:None ~esc:false
+      (Lui_spatial.Region (rect 0. 0. 100. 100.)) 1)
+
+let test_spatial_build_allocation () =
+  let t = store () in
+  for id=1 to 1000 do
+    Lui_store.apply_op t (CreateNode (id, Column));
+    if id>1 then Lui_store.apply_op t (InsertChild (id-1,id,0))
+  done;
+  let bounds = rect 10. 20. 100. 80. in
+  let env = {Lui_spatial.shown=(fun _ _ -> true); promotes=(fun _ _ -> false);
+    ordered=Lui_store.children} in
+  let build () = Lui_spatial.build env t ~rect_of:(fun _ -> bounds) in
+  ignore (build ());
+  let before = Gc.allocated_bytes () in
+  let idx = build () in
+  let allocated = Gc.allocated_bytes () -. before in
+  check bool "Every subtree must retain its complete bounds" true
+    ((Option.get (Lui_spatial.info idx 1)).b=bounds
+     && (Option.get (Lui_spatial.info idx 1000)).b=bounds);
+  Printf.printf "1000-node spatial snapshot allocated %.0f bytes\n%!" allocated;
+  check bool "Spatial builds must not allocate mutable bounds and tuples for every node"
+    true (allocated <= 150000.)
+
 let test_spatial_paint_equiv () =
   (* Everything the cull must respect at once: a scroll clip with
      off-clip children, a promoted popup inside a fully offscreen
@@ -1037,7 +1071,9 @@ let () =
          test_case "mask units" `Quick test_secure_mask_units;
          test_case "masked offset map" `Quick test_secure_byte_of_masked ]);
       ("spatial",
-       [ test_case "paint equivalence" `Quick test_spatial_paint_equiv;
+       [ test_case "negative bounds" `Quick test_spatial_negative_bounds;
+         test_case "build allocation" `Quick test_spatial_build_allocation;
+         test_case "paint equivalence" `Quick test_spatial_paint_equiv;
          test_case "visit bound" `Quick test_spatial_visit_bound;
          test_case "degenerate kept" `Quick test_spatial_degenerate_kept ]);
       ("coverage",
