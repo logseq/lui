@@ -282,6 +282,23 @@ let test_iter_preorder_order () =
   apply t [MoveChild (1,3,0)];
   check (list int) "updated sibling order" [1;3;2;4;20] (collect ())
 
+let test_kind_lookup_allocation () =
+  let t = Lui_store.create () in
+  apply t [CreateNode (1, Column); CreateExtension (2, "editor", "editor-fingerprint")];
+  check string "missing node kind" "" (Lui_store.kind t 99);
+  check string "extension node kind" "extension:editor" (Lui_store.kind t 2);
+  let correct = ref true in
+  let before = Gc.allocated_bytes () in
+  for _ = 1 to 10000 do
+    if Lui_store.kind t 1 <> "column" then correct := false
+  done;
+  let allocated = Gc.allocated_bytes () -. before in
+  check bool "ordinary node kind" true !correct;
+  check bool (Printf.sprintf "kind lookup allocation %.0f bytes" allocated)
+    true (allocated <= 1024.);
+  apply t [DropNode 1];
+  check string "dropped node kind" "" (Lui_store.kind t 1)
+
 let () =
   run "lui_store"
     [ ("tree",
@@ -294,7 +311,8 @@ let () =
            test_create_replaces_drops_subtree;
          test_case "roots" `Quick test_root_ids;
          test_case "preorder allocation" `Quick test_preorder_allocation;
-         test_case "streamed preorder order" `Quick test_iter_preorder_order ]);
+         test_case "streamed preorder order" `Quick test_iter_preorder_order;
+         test_case "kind lookup allocation" `Quick test_kind_lookup_allocation ]);
       ("props",
        [ test_case "set/remove" `Quick test_props;
          test_case "extension" `Quick test_extension ]);

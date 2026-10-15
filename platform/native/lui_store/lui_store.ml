@@ -512,7 +512,10 @@ let node_prop n name = Hashtbl.find_opt n.props name
 let node_revision (n : node) = n.revision
 let node_child_count n = n.child_count
 
-let kind t id = match find_opt t id with Some n -> n.kind | None -> ""
+let kind t id =
+  match Hashtbl.find t.nodes id with
+  | n -> n.kind
+  | exception Not_found -> ""
 let is_editable_text_kind = function
   | "text-field" | "secure-field" | "input" | "search-field"
   | "textarea" -> true
