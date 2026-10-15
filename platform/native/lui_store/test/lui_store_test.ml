@@ -299,6 +299,65 @@ let test_kind_lookup_allocation () =
   apply t [DropNode 1];
   check string "dropped node kind" "" (Lui_store.kind t 1)
 
+let read_store () =
+  let t = Lui_store.create () in
+  apply t [CreateNode (1, Column); CreateExtension (2, "editor", "fingerprint");
+    InsertChild (1,2,0); SetExtensionProp (2,"flag",BoolValue true);
+    SetExtensionProp (2,"label",StringValue "hello");
+    SetExtensionProp (2,"amount",FloatValue 12.5);
+    SetExtensionProp (2,"count",IntValue 7)];
+  t
+
+let test_read_lookup_allocation () =
+  let t = read_store () in
+  let correct = ref true in
+  let before = Gc.allocated_bytes () in
+  for _=1 to 10000 do
+    if not (Lui_store.bool_prop t 2 "flag") || Lui_store.child_count t 1 <> 1
+       || Lui_store.parent t 2 <> Some 1 || Lui_store.ext_id t 2 <> Some "editor"
+    then correct := false
+  done;
+  let allocated = Gc.allocated_bytes () -. before in
+  check bool "readers return the stored values" true !correct;
+  check bool (Printf.sprintf "scalar and stored-option reads allocated %.0f bytes" allocated)
+    true (allocated <= 1024.)
+
+let test_property_lookup_allocation () =
+  let t = read_store () in
+  let correct = ref true in
+  let before = Gc.allocated_bytes () in
+  for _=1 to 10000 do
+    if Lui_store.string_prop t 2 "label" <> Some "hello"
+       || Lui_store.float_prop t 2 "amount" <> Some 12.5
+       || Lui_store.int_prop t 2 "count" <> Some 7
+       || Lui_store.prop t 2 "flag" <> Some (BoolValue true)
+    then correct := false
+  done;
+  let allocated = Gc.allocated_bytes () -. before in
+  check bool "typed and raw property values" true !correct;
+  check bool (Printf.sprintf "property reads allocated %.0f bytes" allocated)
+    true (allocated <= 800000.)
+
+let test_read_lookup_missing () =
+  let t = read_store () in
+  List.iter (fun id ->
+    List.iter (fun name ->
+      check bool "missing or mistyped boolean" false (Lui_store.bool_prop t id name);
+      check (option string) "missing or mistyped string" None (Lui_store.string_prop t id name);
+      check (option (float 0.)) "missing or mistyped float" None (Lui_store.float_prop t id name);
+      check (option int) "missing or mistyped integer" None (Lui_store.int_prop t id name)
+    ) ["missing"]
+  ) [2;99];
+  check bool "string is not a boolean" false (Lui_store.bool_prop t 2 "label");
+  check (option string) "boolean is not a string" None (Lui_store.string_prop t 2 "flag");
+  check (option (float 0.)) "integer is not a float" None (Lui_store.float_prop t 2 "count");
+  check (option int) "float is not an integer" None (Lui_store.int_prop t 2 "amount");
+  apply t [DropNode 2];
+  check (option int) "removed parent" None (Lui_store.parent t 2);
+  check (option string) "removed extension" None (Lui_store.ext_id t 2);
+  check int "removed child count" 0 (Lui_store.child_count t 2);
+  check bool "removed property" true (Lui_store.prop t 2 "flag" = None)
+
 let () =
   run "lui_store"
     [ ("tree",
@@ -315,7 +374,10 @@ let () =
          test_case "kind lookup allocation" `Quick test_kind_lookup_allocation ]);
       ("props",
        [ test_case "set/remove" `Quick test_props;
-         test_case "extension" `Quick test_extension ]);
+         test_case "extension" `Quick test_extension;
+         test_case "scalar lookup allocation" `Quick test_read_lookup_allocation;
+         test_case "property lookup allocation" `Quick test_property_lookup_allocation;
+         test_case "missing lookups" `Quick test_read_lookup_missing ]);
       ("dirty",
        [ test_case "drain" `Quick test_dirty;
          test_case "typed masks" `Quick test_dirty_masks;

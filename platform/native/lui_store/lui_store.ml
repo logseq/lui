@@ -521,8 +521,14 @@ let is_editable_text_kind = function
   | "textarea" -> true
   | _ -> false
 
-let ext_id t id = match find_opt t id with Some n -> n.ext_id | None -> None
-let parent t id = match find_opt t id with Some n -> n.parent | None -> None
+let ext_id t id =
+  match Hashtbl.find t.nodes id with
+  | n -> n.ext_id
+  | exception Not_found -> None
+let parent t id =
+  match Hashtbl.find t.nodes id with
+  | n -> n.parent
+  | exception Not_found -> None
 
 let children t id =
   match find_opt t id with
@@ -562,16 +568,40 @@ let last_child_id t id =
   | Some n -> Option.map node_id n.last_child
   | None -> None
 let child_count t id =
-  match find_opt t id with Some n -> n.child_count | None -> 0
-let prop t id name =
-  match find_opt t id with
-  | Some n -> Hashtbl.find_opt n.props name
-  | None -> None
+  match Hashtbl.find t.nodes id with
+  | n -> n.child_count
+  | exception Not_found -> 0
 
-let bool_prop t id name = match prop t id name with Some (BoolValue b) -> b | _ -> false
-let string_prop t id name = match prop t id name with Some (StringValue s) -> Some s | _ -> None
-let float_prop t id name = match prop t id name with Some (FloatValue f) -> Some f | _ -> None
-let int_prop t id name = match prop t id name with Some (IntValue i) -> Some i | _ -> None
+(* Typed readers inspect the stored value before constructing their public
+   optional result. Intermediate node/value options are unnecessary here. *)
+let[@inline always] find_prop t id name =
+  Hashtbl.find (Hashtbl.find t.nodes id).props name
+
+let prop t id name =
+  match find_prop t id name with
+  | value -> Some value
+  | exception Not_found -> None
+
+let bool_prop t id name =
+  match find_prop t id name with
+  | BoolValue b -> b
+  | StringValue _ | FloatValue _ | IntValue _ -> false
+  | exception Not_found -> false
+let string_prop t id name =
+  match find_prop t id name with
+  | StringValue s -> Some s
+  | BoolValue _ | FloatValue _ | IntValue _ -> None
+  | exception Not_found -> None
+let float_prop t id name =
+  match find_prop t id name with
+  | FloatValue f -> Some f
+  | StringValue _ | BoolValue _ | IntValue _ -> None
+  | exception Not_found -> None
+let int_prop t id name =
+  match find_prop t id name with
+  | IntValue i -> Some i
+  | StringValue _ | FloatValue _ | BoolValue _ -> None
+  | exception Not_found -> None
 
 let rec depth t id =
   match find_opt t id with
