@@ -1888,11 +1888,66 @@ end
 module Tile_renderer = struct
   let band_height = 64
   type slot = { image : Image.t; worker : renderer }
-  type t = { mutable slots : slot array; damage : Damage.t }
+  (* Keep producers with the renderer: terminating a domain forces a
+     minor collection, even when the frame itself allocates very little. *)
+  type producer = {
+    lock : Mutex.t;
+    wake : Condition.t;
+    mutable job : (unit -> unit) option;
+    mutable busy : bool;
+    mutable stopped : bool;
+    mutable domain : unit Domain.t option;
+  }
+  type t = { mutable slots : slot array; mutable producers : producer array; damage : Damage.t }
 
-  let create () = { slots = [||]; damage = Damage.create () }
+  let create_producer () =
+    let producer = {lock=Mutex.create (); wake=Condition.create (); job=None;
+      busy=false; stopped=false; domain=None} in
+    let rec work () =
+      Mutex.lock producer.lock;
+      while producer.job = None && not producer.stopped do
+        Condition.wait producer.wake producer.lock
+      done;
+      let job = producer.job in
+      producer.job <- None;
+      Mutex.unlock producer.lock;
+      match job with
+      | None -> ()
+      | Some run ->
+        run ();
+        Mutex.lock producer.lock;
+        producer.busy <- false;
+        Condition.broadcast producer.wake;
+        Mutex.unlock producer.lock;
+        work ()
+    in
+    producer.domain <- Some (Domain.spawn work);
+    producer
+
+  let start_producer producer job =
+    Mutex.lock producer.lock;
+    producer.job <- Some job;
+    producer.busy <- true;
+    Condition.signal producer.wake;
+    Mutex.unlock producer.lock
+
+  let await_producer producer =
+    Mutex.lock producer.lock;
+    while producer.busy do Condition.wait producer.wake producer.lock done;
+    Mutex.unlock producer.lock
+
+  let release_producer producer =
+    Mutex.lock producer.lock;
+    producer.stopped <- true;
+    Condition.signal producer.wake;
+    Mutex.unlock producer.lock;
+    Domain.join (Option.get producer.domain)
+
+  let create () = { slots = [||]; producers = [||]; damage = Damage.create () }
   let invalidate t = Damage.invalidate t.damage
   let release t =
+    Array.iter release_producer t.producers;
+    t.producers <- [||];
     Array.iter (fun slot -> Image.resize slot.image ~w:0 ~h:0) t.slots;
     t.slots <- [||];
     invalidate t
@@ -1900,9 +1955,15 @@ module Tile_renderer = struct
   (* Each producer owns one staging image. It waits until the caller has
      consumed that image before drawing again. Uploads stay on the caller's
      domain, and queued pixels never exceed the fixed staging capacity. *)
-  let stream members bands ~draw ~emit =
+  let stream t members bands ~draw ~emit =
+    if Array.length t.producers < members then begin
+      let previous = t.producers in
+      t.producers <- Array.init members (fun member ->
+        if member < Array.length previous then previous.(member) else create_producer ())
+    end;
+    let producers = Array.sub t.producers 0 members in
     let mutex = Mutex.create () and wake = Condition.create () in
-    let ready = Array.make members None and tasks = Array.make members None in
+    let ready = Array.make members None in
     let next = Atomic.make 0 and stopped = ref false and failure = ref None in
     let producer member () =
       let rec work () =
@@ -1938,10 +1999,10 @@ module Tile_renderer = struct
         stopped := true;
         Condition.broadcast wake;
         Mutex.unlock mutex;
-        Array.iter (Option.iter Domain.join) tasks)
+        Array.iter await_producer producers)
       (fun () ->
         for member = 0 to members - 1 do
-          tasks.(member) <- Some (Domain.spawn (producer member))
+          start_producer producers.(member) (producer member)
         done;
         for _ = 0 to Array.length bands - 1 do
           Mutex.lock mutex;
@@ -2015,7 +2076,7 @@ module Tile_renderer = struct
         let emit member area = emit area t.slots.(member).image in
         try
           if members = 1 then Array.iter (fun band -> emit 0 (draw 0 band)) bands
-          else stream members bands ~draw ~emit
+          else stream t members bands ~draw ~emit
         with exn ->
           let trace = Printexc.get_raw_backtrace () in
           invalidate t;

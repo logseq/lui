@@ -655,6 +655,30 @@ let test_translucent_byte_rounding () =
       done) [0,1; 1,2; 2,3; 1,31; 0,33]
   ) [0;1;127;255]) [1;2;127;128;254;255]
 
+let test_parallel_redraw_gc () =
+  let renderer = Lui_raster.Tile_renderer.create () in
+  Fun.protect ~finally:(fun () -> Lui_raster.Tile_renderer.release renderer) (fun () ->
+    let s = scene ~w:64 ~h:256
+      [ifill (rect 0. 0. 64. 256.) (color 37 151 243 255)] in
+    let pixels_ok = ref true in
+    let emit _ image =
+      if Char.code (Bytes.get image.Lui_raster.Image.pix 0) <> 243 then pixels_ok := false in
+    let frame ?(workers=4) () =
+      Lui_raster.Tile_renderer.invalidate renderer;
+      Lui_raster.Tile_renderer.render ~workers renderer s ~emit in
+    frame ();
+    Gc.full_major ();
+    let before = (Gc.quick_stat ()).minor_collections in
+    for _=1 to 32 do frame () done;
+    let collections = (Gc.quick_stat ()).minor_collections - before in
+    Printf.printf "32 low-allocation parallel redraws caused %d minor collections\n%!" collections;
+    Alcotest.(check bool) "Parallel redraw preserves fill pixels" true !pixels_ok;
+    Alcotest.(check bool) "Parallel redraws do not force multiple minor collections per frame" true
+      (collections <= 32);
+    Lui_raster.Tile_renderer.release renderer;
+    List.iter (fun workers -> frame ~workers ()) [1;2;4];
+    Alcotest.(check bool) "Release and worker changes preserve rendering" true !pixels_ok)
+
 let test_translucent_span_allocation () =
   let s = scene ~w:512 ~h:128 [ifill (rect 0. 0. 512. 128.) (color 37 151 243 128)] in
   let image = Lui_raster.Image.create ~w:512 ~h:128 in
@@ -836,7 +860,8 @@ let () =
           Alcotest.test_case "upload failure" `Quick test_window_upload_failure;
           Alcotest.test_case "parallel staging retention" `Slow test_parallel_staging_retention;
           Alcotest.test_case "worker limit" `Quick test_window_worker_limit;
-          Alcotest.test_case "worker failure" `Quick test_window_worker_failure])
+          Alcotest.test_case "worker failure" `Quick test_window_worker_failure;
+          Alcotest.test_case "parallel redraw GC" `Quick test_parallel_redraw_gc])
       ; ("compositing", [
           Alcotest.test_case "translucent rounding" `Slow test_translucent_byte_rounding;
           Alcotest.test_case "span allocation" `Quick test_translucent_span_allocation;
