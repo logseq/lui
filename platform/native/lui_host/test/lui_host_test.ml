@@ -1,0 +1,216 @@
+(* Focused unit tests for Lui_host assembly: dirty flag, apply_batch,
+   resize, and repaint clearing — the seams e2e covers only indirectly. *)
+
+open Alcotest
+open Lui_protocol
+
+let noop_renderer : Lui_host.renderer =
+  {
+    name = "noop";
+    render =
+      (fun scene ->
+        let n = scene.Lui_scene.width * scene.Lui_scene.height * 4 in
+        Bytes.make (max n 0) '\000');
+  }
+
+let make ?(width = 80) ?(height = 60) ?(scale = 1.) () =
+  Lui_host.create ~hooks:Lui_paint.default_hooks ~renderer:noop_renderer
+    ~width ~height ~scale ()
+
+let batch ops = { generation = 1; ops }
+
+let test_create_clean () =
+  let h = make () in
+  check bool "starts clean" false (Lui_host.wants_repaint h);
+  check int "empty store" 0 (Lui_store.node_count (Lui_host.store h))
+
+let test_apply_marks_dirty () =
+  let h = make () in
+  let ok =
+    Lui_host.apply_batch h
+      (batch [ CreateNode (1, Column); CreateNode (2, Text); InsertChild (1, 2, 0) ])
+  in
+  check bool "apply ok" true ok;
+  check bool "dirty after apply" true (Lui_host.wants_repaint h);
+  check int "nodes" 2 (Lui_store.node_count (Lui_host.store h))
+
+let test_repaint_clears_dirty () =
+  let h = make () in
+  ignore
+    (Lui_host.apply_batch h
+       (batch
+          [ CreateNode (1, Column);
+            SetProp (1, BackgroundValue, StringValue "#ff0000") ]));
+  check bool "dirty before" true (Lui_host.wants_repaint h);
+  let pixels = Lui_host.repaint h in
+  check bool "clean after" false (Lui_host.wants_repaint h);
+  check int "frame bytes" (80 * 60 * 4) (Bytes.length pixels)
+
+let test_resize_marks_dirty () =
+  let h = make () in
+  ignore (Lui_host.repaint h);
+  check bool "clean" false (Lui_host.wants_repaint h);
+  Lui_host.resize h ~width:100 ~height:80 ~scale:2.;
+  check bool "dirty after resize" true (Lui_host.wants_repaint h);
+  let pixels = Lui_host.repaint h in
+  check int "resized frame" (100 * 80 * 4) (Bytes.length pixels);
+  check bool "clean again" false (Lui_host.wants_repaint h)
+
+let test_set_hidden_marks_dirty () =
+  let h = make () in
+  ignore (Lui_host.repaint h);
+  Lui_host.set_hidden h (Some (fun _ -> false));
+  check bool "dirty after hidden" true (Lui_host.wants_repaint h)
+
+let test_backend_profile () =
+  let h = make () in
+  let b = Lui_host.backend h (Lui_protocol.generic_profile ()) in
+  check bool "apply through backend" true
+    (b.apply_batch (batch [ CreateNode (9, Text) ]));
+  check bool "host dirty" true (Lui_host.wants_repaint h)
+
+let popup_host () =
+  let hooks =
+    { Lui_paint.default_hooks with
+      layout = (fun _ ->
+        Lui_paint.placement_of_rect (Lui_scene.rect 4. 4. 24. 20.)) }
+  in
+  let h = Lui_host.create ~hooks ~renderer:noop_renderer
+    ~width:80 ~height:60 ~scale:1. () in
+  ignore (Lui_host.apply_batch h (batch
+    [ CreateNode (1, Column); CreateNode (2, Box);
+      CreateNode (3, Popover); CreateNode (4, Box);
+      CreateNode (5, Popover); CreateNode (6, Box);
+      InsertChild (1, 2, 0); InsertChild (1, 3, 1);
+      InsertChild (3, 4, 0); InsertChild (4, 5, 0);
+      InsertChild (5, 6, 0);
+      SetProp (2, BackgroundValue, StringValue "#00ff00");
+      SetProp (4, BackgroundValue, StringValue "#ff0000");
+      SetProp (6, BackgroundValue, StringValue "#0000ff") ]));
+  h
+
+let painted_color h r g b =
+  List.exists (function
+    | Lui_scene.Fill f -> f.fcolor = Lui_scene.color r g b 255
+    | _ -> false) (Lui_host.scene h).Lui_scene.ops
+
+let test_hidden_popup_first_frame () =
+  let h = popup_host () in
+  Lui_host.set_hidden h (Some (fun id -> id = 3));
+  ignore (Lui_host.repaint h);
+  check bool "unrelated content paints" true (painted_color h 0 255 0);
+  check bool "closed menu content does not paint" false (painted_color h 255 0 0);
+  check bool "nested promoted popup cannot escape hidden ancestor" false
+    (painted_color h 0 0 255)
+
+let test_hidden_popup_retained_toggle () =
+  let h = popup_host () in
+  ignore (Lui_host.repaint h);
+  check bool "open content paints" true (painted_color h 255 0 0);
+  for _ = 1 to 3 do
+    Lui_host.set_hidden h (Some (fun id -> id = 3));
+    ignore (Lui_host.repaint h);
+    check bool "cached content is removed on close" false (painted_color h 255 0 0);
+    check bool "cached nested popup is removed on close" false (painted_color h 0 0 255);
+    Lui_host.set_hidden h None;
+    ignore (Lui_host.repaint h);
+    check bool "content returns on reopen" true (painted_color h 255 0 0);
+    check bool "nested popup returns on reopen" true (painted_color h 0 0 255)
+  done
+
+let test_hidden_preserves_wire_visibility () =
+  let h = popup_host () in
+  ignore (Lui_host.apply_batch h (batch [SetProp (3, Visible, BoolValue false)]));
+  Lui_host.set_hidden h None;
+  ignore (Lui_host.repaint h);
+  check bool "wire-hidden content stays hidden" false (painted_color h 255 0 0);
+  check bool "wire-hidden nested popup stays hidden" false (painted_color h 0 0 255)
+
+let split_value h =
+  match Lui_store.prop (Lui_host.store h) 1 "value" with
+  | Some (FloatValue value) -> value
+  | _ -> fail "split value missing"
+
+let animated_split () =
+  let h = make () in
+  Lui_host.tick h ~now:0.;
+  ignore (Lui_host.apply_batch h (batch
+    [CreateNode (1, Split); SetProp (1, ResizeDuration, IntValue 120);
+     SetProp (1, ResizeEasing, StringValue "standard");
+     SetProp (1, ProgressValue, FloatValue 0.2)]));
+  ignore (Lui_host.repaint h);
+  check (float 0.00001) "initial geometry is immediate" 0.2 (split_value h);
+  h
+
+let test_split_transition () =
+  let h = animated_split () in
+  Lui_host.tick h ~now:1.;
+  ignore (Lui_host.apply_batch h (batch [SetProp (1, ProgressValue, FloatValue 0.8)]));
+  check (float 0.00001) "toggle starts at current geometry" 0.2 (split_value h);
+  Lui_host.tick h ~now:1.06;
+  let value = split_value h in
+  check bool "halfway geometry is between the endpoints" true (value > 0.2 && value < 0.8);
+  ignore (Lui_host.repaint h);
+  check bool "animation requests another frame" true (Lui_host.wants_repaint h);
+  Lui_host.tick h ~now:1.13;
+  ignore (Lui_host.repaint h);
+  check (float 0.00001) "duration ends at the exact target" 0.8 (split_value h);
+  check bool "completed motion leaves the host idle" false (Lui_host.wants_repaint h)
+
+let test_split_reversal_and_removal () =
+  let h = animated_split () in
+  Lui_host.tick h ~now:1.;
+  ignore (Lui_host.apply_batch h (batch [SetProp (1, ProgressValue, FloatValue 0.8)]));
+  Lui_host.tick h ~now:1.06;
+  let previous = split_value h in
+  ignore (Lui_host.apply_batch h (batch [SetProp (1, ProgressValue, FloatValue 0.1)]));
+  check (float 0.00001) "reverse starts from the current displayed value" previous (split_value h);
+  Lui_host.tick h ~now:1.2;
+  check (float 0.00001) "reverse reaches its new target" 0.1 (split_value h);
+  ignore (Lui_host.apply_batch h (batch [SetProp (1, ProgressValue, FloatValue 0.9); DropNode 1]));
+  Lui_host.tick h ~now:1.4;
+  ignore (Lui_host.repaint h);
+  check bool "removed animation leaves no scheduled work" false (Lui_host.wants_repaint h);
+  ignore (Lui_host.apply_batch h (batch [CreateNode (1, Split);
+    SetProp (1, ProgressValue, FloatValue 0.5)]));
+  Lui_host.tick h ~now:2.;
+  check (float 0.00001) "reused id does not inherit a disposed transition" 0.5 (split_value h)
+
+let test_split_reduced_motion_and_drag () =
+  let h = animated_split () in
+  Lui_host.tick h ~now:1.;
+  Lui_host.set_reduced_motion h true;
+  ignore (Lui_host.apply_batch h (batch [SetProp (1, ProgressValue, FloatValue 0.8)]));
+  check (float 0.00001) "reduced motion changes geometry immediately" 0.8 (split_value h);
+  Lui_host.set_reduced_motion h false;
+  ignore (Lui_host.apply_batch h (batch [SetProp (1, ProgressValue, FloatValue 0.2)]));
+  Lui_host.tick h ~now:1.06;
+  Lui_host.set_reduced_motion h true;
+  check (float 0.00001) "enabling reduced motion finishes active transitions" 0.2 (split_value h);
+  Lui_host.set_reduced_motion h false;
+  Lui_store.apply_op (Lui_host.store h) (SetProp (1, ProgressValue, FloatValue 0.6));
+  ignore (Lui_host.apply_batch h (batch [SetProp (1, ProgressValue, FloatValue 0.6)]));
+  ignore (Lui_host.repaint h);
+  check bool "pointer drag feedback does not create eased catch-up" false (Lui_host.wants_repaint h);
+  ignore (Lui_host.apply_batch h (batch [SetProp (1, ResizeDuration, IntValue 0);
+    SetProp (1, ProgressValue, FloatValue 0.4)]));
+  check (float 0.00001) "zero duration updates immediately" 0.4 (split_value h)
+
+let () =
+  run "lui_host"
+    [ ("motion", [test_case "split transition" `Quick test_split_transition;
+                    test_case "split reversal and removal" `Quick test_split_reversal_and_removal;
+                    test_case "reduced motion and drag" `Quick test_split_reduced_motion_and_drag]);
+      ( "dirty",
+        [ test_case "create clean" `Quick test_create_clean;
+          test_case "apply marks dirty" `Quick test_apply_marks_dirty;
+          test_case "repaint clears" `Quick test_repaint_clears_dirty;
+          test_case "resize marks dirty" `Quick test_resize_marks_dirty;
+          test_case "set_hidden marks dirty" `Quick test_set_hidden_marks_dirty
+        ] );
+      ( "backend",
+        [ test_case "backend apply" `Quick test_backend_profile ] );
+      ( "visibility",
+        [ test_case "closed popup first frame" `Quick test_hidden_popup_first_frame;
+          test_case "retained popup toggle" `Quick test_hidden_popup_retained_toggle;
+          test_case "wire visibility" `Quick test_hidden_preserves_wire_visibility ] ) ]

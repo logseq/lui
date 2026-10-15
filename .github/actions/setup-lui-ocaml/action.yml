@@ -20,13 +20,33 @@ runs:
         path: |
           ~/.opam
           _opam
-        key: lui-ocaml-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.epoch.outputs.image }}-5.5.1-${{ inputs.scope }}-${{ hashFiles('*.opam*', 'dune-project') }}-${{ steps.epoch.outputs.week }}
+          C:/.opam
+        # C:/.opam: setup-ocaml's Windows runs keep the opam root there
+        # (it exports OPAMROOT=C:\.opam itself); on POSIX the path does not
+        # exist and is skipped with a warning.
+        # v4: v1-v3 Windows entries cached ~/.opam, which is never the real
+        # root — restores there leave an uninitialised opam.
+        key: lui-ocaml-v4-${{ runner.os }}-${{ runner.arch }}-${{ steps.epoch.outputs.image }}-5.5.1-${{ inputs.scope }}-${{ hashFiles('*.opam*', 'dune-project') }}
+        # The opam hash makes every dependency change a full miss (~20 min
+        # of compiler build on Windows); fall back to the newest switch
+        # from this image (then any image) and let the top-up step below
+        # close the dependency drift.
+        restore-keys: |
+          lui-ocaml-v4-${{ runner.os }}-${{ runner.arch }}-${{ steps.epoch.outputs.image }}-5.5.1-${{ inputs.scope }}-
+          lui-ocaml-v4-${{ runner.os }}-${{ runner.arch }}-
     - name: Activate cached opam
       if: steps.environment.outputs.cache-hit == 'true'
       shell: bash
       run: |
         echo "$GITHUB_WORKSPACE/_opam/.ci/bin" >> "$GITHUB_PATH"
-        echo "OPAMROOT=$HOME/.opam" >> "$GITHUB_ENV"
+        if [ "$RUNNER_OS" = "Windows" ]; then
+          # setup-ocaml roots opam at C:\.opam on Windows and exports that
+          # itself on a cache miss — mirror it here so the restored root
+          # is the one opam.exe looks at.
+          echo "OPAMROOT=C:\.opam" >> "$GITHUB_ENV"
+        else
+          echo "OPAMROOT=$HOME/.opam" >> "$GITHUB_ENV"
+        fi
         echo "OPAMYES=true" >> "$GITHUB_ENV"
     - uses: ocaml/setup-ocaml@v3
       if: steps.environment.outputs.cache-hit != 'true'
@@ -36,9 +56,32 @@ runs:
         # second overlapping root cache and its unconditional opam update.
         cache: false
     - name: Install locked dependencies
-      if: steps.environment.outputs.cache-hit != 'true' && inputs.scope == 'dependencies'
+      # Runs even on a cache hit: a partial restore-keys match brings a
+      # stale switch whose missing deps must be topped up. On an exact hit
+      # this is a cheap no-op solver pass.
+      if: inputs.scope == 'dependencies'
       shell: bash
-      run: opam install . --deps-only --with-test -y --locked
+      run: |
+        if [ "$RUNNER_OS" = "Linux" ]; then
+          # The runner image's apt index goes stale between publishes;
+          # depext installs of SDL2 etc. 404 without a refresh.
+          sudo apt-get update -qq || true
+        fi
+        # macOS depext aborts on non-interactive brew, and on Windows tsdl
+        # cannot build until the SDL overlay and pkgconf seeding in the
+        # native-tests step has run — those steps complete the switch, so
+        # a top-up failure is tolerated off Linux only.
+        # --confirm-level=unsafe-yes: depext's 'run the system package
+        # manager?' prompt otherwise aborts on missing SDL packages.
+        if [ "$RUNNER_OS" = "Linux" ]; then
+          opam install . --deps-only --with-test -y --locked --confirm-level=unsafe-yes
+          # Second pass unlocked: dependencies added after the lock file was
+          # written are silently skipped by --locked resolution.
+          opam install . --deps-only --with-test -y --confirm-level=unsafe-yes
+        else
+          opam install . --deps-only --with-test -y --locked || true
+          opam install . --deps-only --with-test -y || true
+        fi
     - name: Preserve the opam executable
       if: steps.environment.outputs.cache-hit != 'true'
       shell: bash
@@ -46,12 +89,18 @@ runs:
         mkdir -p _opam/.ci/bin
         cp -L "$(command -v opam)" _opam/.ci/bin/opam
     - name: Save OCaml environment
-      if: steps.environment.outputs.cache-hit != 'true'
+      # Stable key (no weekly epoch) so the ~20 min Windows switch stays
+      # resident; only base-branch pushes save, PR-scoped copies are never
+      # restorable elsewhere and only push the repo over its 10GB cap.
+      if: steps.environment.outputs.cache-hit != 'true' && github.event_name != 'pull_request'
       uses: actions/cache/save@v4
       with:
+        # C:/.opam must be saved alongside _opam: it holds the opam root
+        # (bundled cygwin, repo metadata, download cache) the switch needs.
         path: |
           ~/.opam
           _opam
+          C:/.opam
         key: ${{ steps.environment.outputs.cache-primary-key }}
     - name: Check active compiler
       shell: bash

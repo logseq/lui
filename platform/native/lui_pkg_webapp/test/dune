@@ -1,0 +1,14 @@
+(test
+ (name lui_pkg_webapp_test)
+ (modules lui_pkg_webapp_test)
+ ; the packaged launch e2e runs the real webapp launcher
+ (deps ../../lui_webapp/main.exe)
+ (libraries
+  alcotest
+  lui_webapp
+  lui_pkg_webapp
+  lui_pkg
+  lui_pkg_linux
+  lui_pkg_windows
+  unix
+  yojson))

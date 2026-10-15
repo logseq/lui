@@ -61,12 +61,14 @@ let node_index nodes node =
   loop 0 nodes
 
 let logical_tree_parent renderer tree items node =
+  (* the upward walk indexes repeatedly — an array keeps it linear *)
+  let item_array = Array.of_list items in
   let index = node_index items node in
   let level = tree_item_level renderer tree node in
   let rec loop candidate =
     if candidate < 0 then None
     else
-      let candidate_node = List.nth items candidate in
+      let candidate_node = item_array.(candidate) in
       if tree_item_level renderer tree candidate_node = level - 1 then
         Some candidate_node
       else loop (candidate - 1)
@@ -132,15 +134,14 @@ let refresh_tree_item_accessibility renderer tree node =
 
 let refresh_tree_item_accessibility_bang = refresh_tree_item_accessibility
 
-let rec focused_child_index renderer children focused index =
-  if index >= List.length children then None
-  else if
-    W.Element.isSameNode
-      (W.Element.asNode
-         (Lui_web_nodes.dom_node renderer (List.nth children index)))
-      focused
-  then Some index
-  else focused_child_index renderer children focused (index + 1)
+(* one pass over the list — the old per-index List.nth made this O(n²) *)
+let focused_child_index renderer children focused =
+  List.find_index
+    (fun child ->
+       W.Element.isSameNode
+         (W.Element.asNode (Lui_web_nodes.dom_node renderer child))
+         focused)
+    children
 
 let update_tree_roving renderer tree =
   let all_items = tree_items_under renderer tree in
@@ -153,24 +154,22 @@ let update_tree_roving renderer tree =
     all_items;
   if items <> [] then begin
     let selected =
-      let rec loop index =
-        if index = List.length items then List.hd items
-        else
-          let item = List.nth items index in
-          if
-            Store.property renderer.web_store item Selected
-            = Some (BoolValue true)
-          then item
-          else loop (index + 1)
-      in
-      loop 0
+      match
+        List.find_opt
+          (fun item ->
+             Store.property renderer.web_store item Selected
+             = Some (BoolValue true))
+          items
+      with
+      | Some item -> item
+      | None -> List.hd items
     in
     let document =
       W.Document.unsafeAsHtmlDocument renderer.web_document
     in
     let active_index =
       match W.HtmlDocument.activeElement document with
-      | Some focused -> focused_child_index renderer items focused 0
+      | Some focused -> focused_child_index renderer items focused
       | None -> None
     in
     let target =
@@ -308,7 +307,7 @@ let typeahead_key_handler renderer tree typeahead_buffer typeahead_timer
     in
     let current_index =
       match W.HtmlDocument.activeElement document with
-      | Some focused -> focused_child_index renderer items focused 0
+      | Some focused -> focused_child_index renderer items focused
       | None -> None
     in
     let query =
@@ -319,10 +318,12 @@ let typeahead_key_handler renderer tree typeahead_buffer typeahead_timer
     in
     typeahead_buffer := query;
     reset_typeahead_later typeahead_buffer typeahead_timer;
+    let item_array = Array.of_list items in
+    let item_count = Array.length item_array in
     let rec loop offset =
-      if offset <= List.length items then begin
-        let index = (start + offset) mod List.length items in
-        let item = List.nth items index in
+      if offset <= item_count then begin
+        let index = (start + offset) mod item_count in
+        let item = item_array.(index) in
         let label =
           String.lowercase_ascii
             (String.trim
@@ -493,14 +494,13 @@ let horizontal_focus_children renderer node kind =
     (fun child -> Store.enabled_node renderer child)
     (horizontal_all_focus_children renderer node kind)
 
-let rec horizontal_tab_stop_index renderer children index =
-  if index >= List.length children then None
-  else if
-    W.Element.getAttribute "tabindex"
-      (Lui_web_nodes.dom_node renderer (List.nth children index))
-    = Some "0"
-  then Some index
-  else horizontal_tab_stop_index renderer children (index + 1)
+let horizontal_tab_stop_index renderer children =
+  List.find_index
+    (fun child ->
+       W.Element.getAttribute "tabindex"
+         (Lui_web_nodes.dom_node renderer child)
+       = Some "0")
+    children
 
 let horizontal_focus_index key current length =
   if length = 0 then None
@@ -536,14 +536,14 @@ let refresh_horizontal_group_roving renderer node kind =
   in
   let focused_index =
     match W.HtmlDocument.activeElement document with
-    | Some focused -> focused_child_index renderer children focused 0
+    | Some focused -> focused_child_index renderer children focused
     | None -> None
   in
   let target =
     match focused_index with
     | Some index -> index
     | None ->
-        (match horizontal_tab_stop_index renderer children 0 with
+        (match horizontal_tab_stop_index renderer children with
          | Some index -> index
          | None -> 0)
   in
@@ -630,7 +630,7 @@ let attach_horizontal_focus renderer node kind group_node =
          let current =
            match W.HtmlDocument.activeElement document with
            | Some focused ->
-               focused_child_index renderer children focused 0
+               focused_child_index renderer children focused
            | None -> None
          in
          match

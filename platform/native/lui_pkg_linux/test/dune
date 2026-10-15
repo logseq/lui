@@ -1,0 +1,13 @@
+(test
+ (name lui_pkg_linux_test)
+ (modules lui_pkg_linux_test)
+ (libraries alcotest lui_pkg lui_pkg_linux unix))
+
+;; Real-tool runs (tar/zstd/dpkg-deb/appimagetool/AppDir layout) are
+;; Linux-only; pure generators stay testable everywhere.
+(test
+ (name lui_pkg_linux_e2e)
+ (modules lui_pkg_linux_e2e)
+ (libraries alcotest lui_pkg lui_pkg_linux unix)
+ (enabled_if
+  (= %{system} linux)))

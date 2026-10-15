@@ -412,18 +412,47 @@ let attach_button_events renderer node kind dom_node =
       button_origin_x = ref 0;
       button_origin_y = ref 0 }
   in
-  let pointer_down = button_pointer_down renderer node dom_node state in
   let pointer_move = button_pointer_move state in
   let pointer_end = button_pointer_end state in
   let pointer_cancel = button_pointer_cancel state in
   let context_menu = button_context_menu renderer node dom_node state in
   let click = button_click renderer node kind dom_node state in
   let previous_cleanup = Hashtbl.find_opt renderer.web_cleanups node in
+  (* move/up/cancel only matter while a long-press candidate is armed, so
+     they are bound on the qualifying pointerdown and removed when the press
+     ends instead of sitting on the element permanently. *)
+  let transient_attached = ref false in
+  let pointer_up_ref = ref (fun (_event : Dom.event) -> ()) in
+  let pointer_cancel_ref = ref (fun (_event : Dom.event) -> ()) in
+  let detach_transient () =
+    if !transient_attached then begin
+      transient_attached := false;
+      W.Element.removeEventListener "pointermove" pointer_move dom_node;
+      W.Element.removeEventListener "pointerup" !pointer_up_ref dom_node;
+      W.Element.removeEventListener "pointercancel" !pointer_cancel_ref
+        dom_node;
+      W.Element.removeEventListener "lostpointercapture" !pointer_cancel_ref
+        dom_node
+    end
+  in
+  let pointer_up event = pointer_end event; detach_transient () in
+  let pointer_cancel_capture event = pointer_cancel event; detach_transient () in
+  pointer_up_ref := pointer_up;
+  pointer_cancel_ref := pointer_cancel_capture;
+  let pointer_down event =
+    button_pointer_down renderer node dom_node state event;
+    if !(state.button_active_pointer) <> None && not !transient_attached
+    then begin
+      transient_attached := true;
+      W.Element.addEventListener "pointermove" pointer_move dom_node;
+      W.Element.addEventListener "pointerup" pointer_up dom_node;
+      W.Element.addEventListener "pointercancel" pointer_cancel_capture
+        dom_node;
+      W.Element.addEventListener "lostpointercapture" pointer_cancel_capture
+        dom_node
+    end
+  in
   W.Element.addEventListener "pointerdown" pointer_down dom_node;
-  W.Element.addEventListener "pointermove" pointer_move dom_node;
-  W.Element.addEventListener "pointerup" pointer_end dom_node;
-  W.Element.addEventListener "pointercancel" pointer_cancel dom_node;
-  W.Element.addEventListener "lostpointercapture" pointer_cancel dom_node;
   W.Element.addEventListener "contextmenu" context_menu dom_node;
   W.Element.addEventListener "click" click dom_node;
   Hashtbl.replace renderer.web_cleanups node (fun () ->
@@ -431,12 +460,8 @@ let attach_button_events renderer node kind dom_node =
        | Some cleanup -> cleanup ()
        | None -> ());
       button_cancel_long_press state;
+      detach_transient ();
       W.Element.removeEventListener "pointerdown" pointer_down dom_node;
-      W.Element.removeEventListener "pointermove" pointer_move dom_node;
-      W.Element.removeEventListener "pointerup" pointer_end dom_node;
-      W.Element.removeEventListener "pointercancel" pointer_cancel dom_node;
-      W.Element.removeEventListener "lostpointercapture" pointer_cancel
-        dom_node;
       W.Element.removeEventListener "contextmenu" context_menu dom_node;
       W.Element.removeEventListener "click" click dom_node)
 
@@ -514,8 +539,11 @@ let attach_pointer_events renderer node kind dom_node =
   sync_pointer_events renderer node kind dom_node
 
 let attach_events renderer node kind dom_node =
+  (* The context-menu host bundle is only worth wiring when the node
+     actually has a ContextMenu child; later inserts re-check via
+     apply_dom_op's structural ops. *)
   if kind <> ContextMenu then
-    ignore (Lui_web_menu.attach_context_host_events renderer node dom_node);
+    Lui_web_menu.sync_context_host_events renderer node dom_node;
   attach_pointer_events renderer node kind dom_node;
   if tree_row_kind kind then
     ignore

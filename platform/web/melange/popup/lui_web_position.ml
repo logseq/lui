@@ -55,27 +55,30 @@ let resolved_popup_side preferred anchor_bounds popup_width popup_height
 
 let position_anchored document positioner popup anchor_bounds preferred
     alignment offset =
+  let popup_element = W.Element.unsafeAsHtmlElement popup in
+  (* All layout reads for a measure happen inside this helper, so each call
+     is one forced layout with no style writes in between. *)
+  let measure () =
+    let bounds = W.Element.getBoundingClientRect popup in
+    ( 1.0
+      +. max
+           (float_of_int (W.HtmlElement.offsetWidth popup_element))
+           (W.DomRect.width bounds),
+      1.0
+      +. max
+           (float_of_int (W.HtmlElement.offsetHeight popup_element))
+           (W.DomRect.height bounds) )
+  in
   let viewport_left, viewport_top, viewport_width, viewport_height =
     Lui_web_popup_tracking.viewport_bounds document
   in
   let available_width = max 0.0 (viewport_width -. 16.0) in
   let available_height = max 0.0 (viewport_height -. 16.0) in
+  (* clamp to the viewport before the first measure so an oversized popup
+     reports its constrained size *)
   set_style popup "--lui-popup-available-width" (css_px available_width);
   set_style popup "--lui-popup-available-height" (css_px available_height);
-  let popup_bounds = W.Element.getBoundingClientRect popup in
-  let popup_element = W.Element.unsafeAsHtmlElement popup in
-  let popup_width =
-    1.0
-    +. max
-         (float_of_int (W.HtmlElement.offsetWidth popup_element))
-         (W.DomRect.width popup_bounds)
-  in
-  let popup_height =
-    1.0
-    +. max
-         (float_of_int (W.HtmlElement.offsetHeight popup_element))
-         (W.DomRect.height popup_bounds)
-  in
+  let popup_width, popup_height = measure () in
   let side =
     resolved_popup_side preferred anchor_bounds popup_width popup_height
       viewport_left viewport_top viewport_width viewport_height offset
@@ -88,11 +91,24 @@ let position_anchored document positioner popup anchor_bounds preferred
        | "left" -> W.DomRect.left anchor_bounds -. viewport_left -. offset -. 8.0
        | _ -> viewport_left +. viewport_width -. W.DomRect.right anchor_bounds -. offset -. 8.0)
   in
+  let side_available =
+    min side_space
+      (if vertical then available_height else available_width)
+  in
   set_style popup
-    (if vertical then "--lui-popup-available-height" else "--lui-popup-available-width")
-    (css_px (min side_space (if vertical then available_height else available_width)));
-  let popup_width = 1.0 +. float_of_int (W.HtmlElement.offsetWidth popup_element) in
-  let popup_height = 1.0 +. float_of_int (W.HtmlElement.offsetHeight popup_element) in
+    (if vertical then "--lui-popup-available-height"
+     else "--lui-popup-available-width")
+    (css_px side_available);
+  (* the side-axis clamp only forces a second layout pass when it actually
+     binds: a value at or above the measured size cannot change it, so the
+     re-measure is skipped *)
+  let popup_width, popup_height =
+    if
+      (vertical && side_available < popup_height)
+      || ((not vertical) && side_available < popup_width)
+    then measure ()
+    else (popup_width, popup_height)
+  in
   let aligned_left =
     match alignment with
     | "center" ->
@@ -260,14 +276,17 @@ let finish_popup_close_after_transition_bang =
    but position sits below it in the layering, so the queries it needs are
    replicated here against the retained store. *)
 let picker_under_parent renderer parent =
-  List.find_opt
-    (fun child ->
-       match Store.node renderer.web_store child with
-       | Some child_node ->
-           Store.standard_kind_is child_node Select
-           || Store.standard_kind_is child_node Combobox
-       | None -> false)
-    (Store.children renderer.web_store parent)
+  match Store.node renderer.web_store parent with
+  | Some parent_node ->
+      Lui_sequence.find_opt
+        (fun child ->
+           match Store.node renderer.web_store child with
+           | Some child_node ->
+               Store.standard_kind_is child_node Select
+               || Store.standard_kind_is child_node Combobox
+           | None -> false)
+        parent_node.retained_children
+  | None -> None
 
 let picker_for_dropdown renderer dropdown =
   match Store.node renderer.web_store dropdown with
@@ -289,14 +308,16 @@ let picker_control_element renderer picker =
 let picker_menu_items renderer dropdown =
   match Store.node renderer.web_store dropdown with
   | Some current ->
-      List.filter
-        (fun child ->
+      Lui_sequence.fold_left
+        (fun items child ->
            match Store.node renderer.web_store child with
-           | Some child_node ->
-               Store.menu_item_row child_node
-               && Store.enabled_node renderer child
-           | None -> false)
-        (Lui_sequence.to_list current.retained_children)
+           | Some child_node
+             when Store.menu_item_row child_node
+                  && Store.enabled_node renderer child ->
+               child :: items
+           | _ -> items)
+        [] current.retained_children
+      |> List.rev
   | None -> []
 
 let picker_selected_index renderer dropdown =

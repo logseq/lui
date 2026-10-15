@@ -17,8 +17,10 @@ internal object LuiKindRules {
 
     fun isModalSurface(kind: LuiNodeKind): Boolean = kind in modalSurfaceKinds
 
-    // Kinds carrying typography/selectability — the foreground set minus
-    // purely graphical kinds whose `size` prop governs their metrics.
+    // Kinds carrying typography/selectability — mirrors the
+    // `FontSize | … | UserSelect` arm of `Lui_protocol.property_supported`:
+    // the foreground set minus purely graphical kinds (icon, spinner,
+    // file-image) whose `size` prop governs their metrics.
     fun isTextAppearanceKind(kind: LuiNodeKind): Boolean =
         kind == LuiNodeKind.edgeInset ||
             kind == LuiNodeKind.overlay ||
@@ -27,6 +29,16 @@ internal object LuiKindRules {
             kind == LuiNodeKind.heading ||
             kind == LuiNodeKind.paragraph ||
             kind == LuiNodeKind.label ||
+            kind == LuiNodeKind.row ||
+            kind == LuiNodeKind.column ||
+            kind == LuiNodeKind.grid ||
+            kind == LuiNodeKind.box ||
+            kind == LuiNodeKind.panel ||
+            kind == LuiNodeKind.card ||
+            kind == LuiNodeKind.stack ||
+            kind == LuiNodeKind.scroll ||
+            kind == LuiNodeKind.avatar ||
+            kind == LuiNodeKind.popover ||
             isButtonKind(kind) ||
             isTextControl(kind) ||
             kind == LuiNodeKind.checkbox ||
@@ -37,7 +49,6 @@ internal object LuiKindRules {
             kind == LuiNodeKind.select ||
             kind == LuiNodeKind.dropdownMenu ||
             kind == LuiNodeKind.menuItem ||
-            kind == LuiNodeKind.menuTrigger ||
             kind == LuiNodeKind.listItem ||
             kind == LuiNodeKind.tableCell ||
             kind == LuiNodeKind.resizable ||
@@ -80,6 +91,21 @@ internal object LuiKindRules {
     fun horizontalGroupDefaultGap(kind: LuiNodeKind): Int =
         if (kind == LuiNodeKind.pagination) 2 else 4
 
+    fun isMainCrossKind(kind: LuiNodeKind): Boolean =
+        kind == LuiNodeKind.row ||
+            kind == LuiNodeKind.column ||
+            kind == LuiNodeKind.list ||
+            kind == LuiNodeKind.virtualList ||
+            kind == LuiNodeKind.card ||
+            kind == LuiNodeKind.panel ||
+            kind == LuiNodeKind.box ||
+            kind == LuiNodeKind.button ||
+            kind == LuiNodeKind.menuItem ||
+            kind == LuiNodeKind.listItem ||
+            kind == LuiNodeKind.popover ||
+            kind == LuiNodeKind.link ||
+            isHorizontalGroupKind(kind)
+
     fun isTreeRowKind(kind: LuiNodeKind): Boolean =
         kind == LuiNodeKind.row ||
             kind == LuiNodeKind.column ||
@@ -96,7 +122,7 @@ internal object LuiKindRules {
             kind == LuiNodeKind.textarea ||
             kind == LuiNodeKind.combobox
 
-    fun isContextMenuLeafHost(kind: LuiNodeKind): Boolean = kind in setOf(
+    private val contextMenuLeafHosts = setOf(
         LuiNodeKind.button,
         LuiNodeKind.toggleButton,
         LuiNodeKind.toggle,
@@ -116,6 +142,8 @@ internal object LuiKindRules {
         LuiNodeKind.text,
         LuiNodeKind.tableCell,
     )
+
+    fun isContextMenuLeafHost(kind: LuiNodeKind): Boolean = kind in contextMenuLeafHosts
 
     fun isToolbarChild(kind: LuiNodeKind): Boolean =
         isButtonKind(kind) ||
@@ -222,6 +250,18 @@ internal object LuiKindRules {
     private val textSizes = setOf("heading", "display")
     private val textAlignments = setOf("start", "center", "end")
     private val themeModes = setOf("system", "light", "dark")
+    private val wireProperties: Map<String, LuiProperty> =
+        LuiProperty.entries.associateBy { it.wireName }
+    private val containerRelativeFrames = setOf(
+        "horizontal", "vertical", "both",
+        "min-horizontal", "min-vertical", "min-both",
+    )
+    private val toolbarPlacements = setOf(
+        "automatic", "bottom", "navigation", "principal",
+        "primary-action", "secondary-action", "status",
+        "confirmation-action", "cancellation-action",
+        "destructive-action", "top-bar-leading", "top-bar-trailing",
+    )
     private val buttonVariants =
         setOf("default", "primary", "secondary", "outline", "ghost", "destructive")
     private val overlayAlignments = setOf(
@@ -273,122 +313,17 @@ internal object LuiKindRules {
         if (property == "alignment") {
             return kind != LuiNodeKind.root && value.stringValue in overlayAlignments
         }
-        if (kind == LuiNodeKind.filePreview) {
-            return property == "path" && value is LuiWireValue.Str
+        // Restrictive per-kind allow-lists come from schema/components.json
+        // via LuiSchemaMatrix — the same source the Swift host consults.
+        // Kinds absent from the table fall back to the shared structural
+        // rules below.
+        LuiSchemaMatrix.restrictive[kind]?.let { allowed ->
+            val prop = wireProperties[property] ?: return false
+            return prop in allowed && schemaValueSupported(property, value)
         }
-        if (kind == LuiNodeKind.accordion) {
-            return when (property) {
-                "text" -> value is LuiWireValue.Str
-                "selected", "toggle-enabled" -> value is LuiWireValue.Bool
-                "height" -> value.intValue?.let { it >= 0 } == true
-                else -> false
-            }
-        }
-        if (kind == LuiNodeKind.stepper) {
-            return when (property) {
-                "active" -> value.intValue?.let { it >= 0 } == true
-                "accessibility-label" -> value is LuiWireValue.Str
-                else -> false
-            }
-        }
-        if (kind == LuiNodeKind.step) {
-            return property == "text" && value is LuiWireValue.Str
-        }
-        if (kind == LuiNodeKind.timeline) {
-            return when (property) {
-                "gap" -> value.intValue?.let { it >= 0 } == true
-                "grow" -> value.numberValue?.let { it.isFinite() && it >= 0 } == true
-                "accessibility-label" -> value is LuiWireValue.Str
-                else -> false
-            }
-        }
-        if (kind == LuiNodeKind.timelineItem) {
-            return when (property) {
-                "title", "description", "meta", "indicator" -> value is LuiWireValue.Str
-                "icon" -> value.stringValue?.let { isIconName(it) } == true
-                "variant" -> value.stringValue in buttonVariants
-                "connector", "selected", "press-enabled" -> value is LuiWireValue.Bool
-                else -> false
-            }
-        }
-        if (kind == LuiNodeKind.inputGroup) {
-            return when (property) {
-                "accessibility-label" -> value is LuiWireValue.Str
-                "width", "height", "min-width" -> value.intValue?.let { it >= 0 } == true
-                "grow" -> value.numberValue?.let { it.isFinite() && it >= 0 } == true
-                else -> false
-            }
-        }
-        if (kind == LuiNodeKind.inputGroupActions) {
-            return property == "gap" && value.intValue?.let { it >= 0 } == true
-        }
-        if (kind == LuiNodeKind.toast) {
-            return when (property) {
-                "duration" -> value.intValue?.let { it >= 0 } == true
-                "accessibility-label", "style-class" -> value is LuiWireValue.Str
-                else -> false
-            }
-        }
-        if (kind == LuiNodeKind.toolbar) {
-            return when (property) {
-                "orientation" -> value.stringValue == "horizontal" ||
-                    value.stringValue == "vertical"
-                "placement" -> value.stringValue in setOf(
-                    "automatic", "bottom", "navigation", "principal",
-                    "primary-action", "secondary-action", "status",
-                    "confirmation-action", "cancellation-action",
-                    "destructive-action", "top-bar-leading", "top-bar-trailing",
-                )
-                "gap" -> value.intValue?.let { it >= 0 } == true
-                "accessibility-label", "style-class" -> value is LuiWireValue.Str
-                else -> false
-            }
-        }
-        if (kind == LuiNodeKind.bottomTabs) {
-            return when (property) {
-                "accessibility-label", "style-class" -> value is LuiWireValue.Str
-                "grow" -> value.numberValue?.let { it.isFinite() && it >= 0 } == true
-                "width", "height", "min-width", "max-width",
-                "min-height", "max-height" -> value.intValue?.let { it >= 0 } == true
-                else -> false
-            }
-        }
-        if (kind == LuiNodeKind.bottomTab) {
-            return when (property) {
-                "title" -> value is LuiWireValue.Str
-                "icon" -> value.stringValue?.let { isIconName(it) } == true
-                "selected", "enabled", "press-enabled" -> value is LuiWireValue.Bool
-                else -> false
-            }
-        }
-        if (kind == LuiNodeKind.listSection) {
-            return when (property) {
-                "key" -> value is LuiWireValue.Str
-                "separator" -> value.stringValue == "visible" || value.stringValue == "hidden"
-                else -> false
-            }
-        }
-        if (kind == LuiNodeKind.swipeActions) return false
-        if (kind == LuiNodeKind.swipeAction) {
-            return when (property) {
-                "text", "background" -> value is LuiWireValue.Str
-                "icon" -> value.stringValue?.let { isIconName(it) } == true
-                "variant" -> value.stringValue in buttonVariants
-                "edge" -> value.stringValue == "leading" || value.stringValue == "trailing"
-                "enabled", "press-enabled" -> value is LuiWireValue.Bool
-                else -> false
-            }
-        }
-        if (kind == LuiNodeKind.filePicker) {
-            return when (property) {
-                "request", "completion" ->
-                    value is LuiWireValue.Str || value is LuiWireValue.IntValue
-                "types", "accept" -> value is LuiWireValue.Str
-                "multiple", "enabled", "appear-enabled" -> value is LuiWireValue.Bool
-                "directory" -> value is LuiWireValue.Bool
-                "source" -> value.stringValue in setOf("files", "photos", "camera")
-                else -> false
-            }
+        // Additive extras widen an otherwise schema-driven kind.
+        if (LuiSchemaMatrix.extra[kind]?.contains(wireProperties[property]) == true) {
+            return schemaValueSupported(property, value)
         }
         // Theme props are admitted on every non-restrictive container kind.
         if (property == "theme") {
@@ -399,19 +334,9 @@ internal object LuiKindRules {
         }
         return when (property) {
             "main" ->
-                value.stringValue in mainAlignments &&
-                    (kind == LuiNodeKind.row ||
-                        kind == LuiNodeKind.column ||
-                        kind == LuiNodeKind.list ||
-                        kind == LuiNodeKind.virtualList ||
-                        isHorizontalGroupKind(kind))
+                value.stringValue in mainAlignments && isMainCrossKind(kind)
             "cross" ->
-                value.stringValue in crossAlignments &&
-                    (kind == LuiNodeKind.row ||
-                        kind == LuiNodeKind.column ||
-                        kind == LuiNodeKind.list ||
-                        kind == LuiNodeKind.virtualList ||
-                        isHorizontalGroupKind(kind))
+                value.stringValue in crossAlignments && isMainCrossKind(kind)
             "grow" ->
                 value.numberValue?.let { it.isFinite() && it >= 0 } == true &&
                     kind != LuiNodeKind.avatar &&
@@ -541,14 +466,19 @@ internal object LuiKindRules {
                         isTreeRowKind(kind))
             "press-enabled" ->
                 value is LuiWireValue.Bool &&
-                    (kind == LuiNodeKind.text ||
+                    (kind == LuiNodeKind.button ||
+                        kind == LuiNodeKind.toggleButton ||
+                        kind == LuiNodeKind.text ||
+                        kind == LuiNodeKind.row ||
                         kind == LuiNodeKind.column ||
+                        kind == LuiNodeKind.box ||
                         kind == LuiNodeKind.radio ||
                         kind == LuiNodeKind.select ||
                         kind == LuiNodeKind.combobox ||
                         kind == LuiNodeKind.menuItem ||
                         kind == LuiNodeKind.listItem ||
                         kind == LuiNodeKind.tableCell ||
+                        kind == LuiNodeKind.bottomTab ||
                         kind == LuiNodeKind.fileImage ||
                         isTreeRowKind(kind))
             "submit-enabled" ->
@@ -654,6 +584,10 @@ internal object LuiKindRules {
                         kind == LuiNodeKind.popover ||
                         kind == LuiNodeKind.tableRow ||
                         kind == LuiNodeKind.tree ||
+                        kind == LuiNodeKind.scroll ||
+                        kind == LuiNodeKind.card ||
+                        kind == LuiNodeKind.panel ||
+                        kind == LuiNodeKind.box ||
                         kind == LuiNodeKind.split ||
                         kind == LuiNodeKind.edgeInset ||
                         isHorizontalGroupKind(kind))
@@ -669,18 +603,24 @@ internal object LuiKindRules {
                     kind != LuiNodeKind.tooltip
             "padding-horizontal", "padding-vertical" ->
                 value.intValue?.let { it >= 0 } == true &&
-                    (kind == LuiNodeKind.row ||
-                        kind == LuiNodeKind.column ||
-                        kind == LuiNodeKind.grid ||
-                        kind == LuiNodeKind.box)
+                    kind != LuiNodeKind.avatar &&
+                    kind != LuiNodeKind.tooltip
             "background" ->
                 value is LuiWireValue.Str &&
-                    kind != LuiNodeKind.avatar &&
                     kind != LuiNodeKind.tooltip &&
                     !isModalSurface(kind)
             "foreground" ->
                 value is LuiWireValue.Str &&
-                    (kind == LuiNodeKind.edgeInset ||
+                    (kind == LuiNodeKind.row ||
+                        kind == LuiNodeKind.column ||
+                        kind == LuiNodeKind.grid ||
+                        kind == LuiNodeKind.box ||
+                        kind == LuiNodeKind.panel ||
+                        kind == LuiNodeKind.card ||
+                        kind == LuiNodeKind.stack ||
+                        kind == LuiNodeKind.scroll ||
+                        kind == LuiNodeKind.avatar ||
+                        kind == LuiNodeKind.edgeInset ||
                         kind == LuiNodeKind.overlay ||
                         kind == LuiNodeKind.viewThatFits ||
                         kind == LuiNodeKind.text ||
@@ -699,6 +639,7 @@ internal object LuiKindRules {
                         kind == LuiNodeKind.select ||
                         kind == LuiNodeKind.dropdownMenu ||
                         kind == LuiNodeKind.menuItem ||
+                        kind == LuiNodeKind.popover ||
                         kind == LuiNodeKind.menuTrigger ||
                         kind == LuiNodeKind.listItem ||
                         kind == LuiNodeKind.tableCell ||
@@ -711,33 +652,37 @@ internal object LuiKindRules {
                         kind == LuiNodeKind.fileImage)
             "border-color" ->
                 value is LuiWireValue.Str &&
-                    kind != LuiNodeKind.avatar &&
                     kind != LuiNodeKind.tooltip &&
                     !isModalSurface(kind)
             "border-width" ->
                 value.intValue?.let { it >= 0 } == true &&
-                    kind != LuiNodeKind.avatar &&
                     kind != LuiNodeKind.tooltip &&
                     !isModalSurface(kind)
             "corner-radius" ->
                 value.intValue?.let { it >= 0 } == true &&
-                    kind != LuiNodeKind.avatar &&
                     kind != LuiNodeKind.tooltip &&
                     !isModalSurface(kind)
             "width", "height" ->
                 value.intValue?.let { it >= 0 } == true &&
-                    kind != LuiNodeKind.avatar &&
                     kind != LuiNodeKind.tooltip
             "min-width", "max-width", "min-height", "max-height" ->
                 value.intValue?.let { it >= 0 } == true &&
-                    kind != LuiNodeKind.avatar &&
-                    kind != LuiNodeKind.tooltip &&
-                    !isModalSurface(kind)
+                    (kind == LuiNodeKind.dialog ||
+                        (!isModalSurface(kind) && kind != LuiNodeKind.tooltip))
             "style-class" ->
                 value is LuiWireValue.Str &&
-                    kind != LuiNodeKind.avatar &&
-                    kind != LuiNodeKind.tooltip &&
-                    !isModalSurface(kind)
+                    kind != LuiNodeKind.tooltip
+            "data-attrs" ->
+                value.stringValue?.let { dataAttrsValueOk(it) } == true &&
+                    kind != LuiNodeKind.tooltip
+            "as" ->
+                value.stringValue?.let { elementTagSupported(kind, it) } == true
+            "container-relative-frame" ->
+                value.stringValue in containerRelativeFrames &&
+                    kind != LuiNodeKind.root && !isModalSurface(kind)
+            "container-relative-frame-inset" ->
+                value.intValue?.let { it >= 0 } == true &&
+                    kind != LuiNodeKind.root && !isModalSurface(kind)
             "checked" ->
                 value is LuiWireValue.Bool &&
                     (kind == LuiNodeKind.checkbox ||
@@ -822,6 +767,9 @@ internal object LuiKindRules {
                     isTextAppearanceKind(kind)
             "letter-spacing" ->
                 value.numberValue?.isFinite() == true && isTextAppearanceKind(kind)
+            "font-style" ->
+                value.stringValue in setOf("normal", "italic", "oblique") &&
+                    isTextAppearanceKind(kind)
             "user-select" ->
                 value.stringValue in setOf("none", "text") && isTextAppearanceKind(kind)
             "white-space" ->
@@ -974,4 +922,82 @@ internal object LuiKindRules {
             "none" !in tokens &&
             tokens.all { it in setOf("underline", "line-through", "overline") }
     }
+
+    // Value vocabulary for props admitted through the generated schema
+    // matrix (restrictive kinds and additive extras), mirroring
+    // `Lui_protocol.property_value_supported`.
+    private fun schemaValueSupported(property: String, value: LuiWireValue): Boolean =
+        when (property) {
+            "text", "title", "description", "meta", "indicator", "key",
+            "path", "style-class", "accessibility-label", "background",
+            "foreground", "border-color", "types", "accept", "shadow",
+            "hover-background", "hover-shadow", "pressed-background",
+            "pressed-shadow", "focus-shadow", "selected-background",
+            "selected-shadow", "selected-hover-shadow" -> value is LuiWireValue.Str
+            "font-size", "line-height", "font-family" ->
+                value.stringValue?.isNotBlank() == true
+            "font-style" -> value.stringValue in setOf("normal", "italic", "oblique")
+            "font-weight" -> value.intValue?.let { it in 1..1000 } == true
+            "letter-spacing" -> value.numberValue?.isFinite() == true
+            "text-decoration" -> textDecorationSupported(value.stringValue)
+            "white-space" -> value.stringValue in setOf("normal", "nowrap")
+            "text-overflow" -> value.stringValue in setOf("clip", "ellipsis")
+            "user-select" -> value.stringValue in setOf("none", "text")
+            "cursor" -> value.stringValue in setOf("default", "pointer", "text")
+            "data-attrs" -> value.stringValue?.let { dataAttrsValueOk(it) } == true
+            "selected", "toggle-enabled", "enabled", "press-enabled",
+            "connector", "multiple", "appear-enabled", "directory",
+            "pointer-enabled" -> value is LuiWireValue.Bool
+            "height", "width", "min-width", "max-width", "min-height",
+            "max-height", "active", "gap", "border-width", "corner-radius",
+            "padding-horizontal", "padding-vertical", "duration" ->
+                value.intValue?.let { it >= 0 } == true
+            "padding" -> value is LuiWireValue.IntValue
+            "margin", "margin-horizontal", "margin-vertical", "margin-top",
+            "margin-right", "margin-bottom", "margin-left" -> value.intValue != null
+            "grow" -> value.numberValue?.let { it.isFinite() && it >= 0 } == true
+            "opacity", "hover-opacity", "pressed-opacity", "disabled-opacity" ->
+                value.numberValue?.let { it >= 0 && it <= 1 } == true
+            "icon" -> value.stringValue?.let { isIconName(it) } == true
+            "variant" -> value.stringValue in buttonVariants
+            "orientation" -> value.stringValue in setOf("horizontal", "vertical")
+            "placement" -> value.stringValue in toolbarPlacements
+            "separator" -> value.stringValue in setOf("visible", "hidden")
+            "edge" -> value.stringValue in setOf("top", "bottom", "leading", "trailing")
+            "request", "completion" ->
+                value is LuiWireValue.Str || value is LuiWireValue.IntValue
+            "source" -> value.stringValue in setOf("files", "photos", "camera")
+            "transition" -> transitionSupported(value.stringValue)
+            else -> false
+        }
+
+    // `data-attrs` payload: \u001e-separated `name\u001fvalue` records; each
+    // name must be an aria-/data- attribute or one of the enumerated plain
+    // names (mirrors `Lui_protocol.data_attrs_value_ok`).
+    private fun dataAttrsValueOk(payload: String): Boolean {
+        if (payload.isEmpty()) return true
+        return payload.split('\u001e').all { record ->
+            val parts = record.split('\u001f')
+            parts.size == 2 && dataAttrNameOk(parts[0])
+        }
+    }
+
+    private fun dataAttrNameOk(name: String): Boolean =
+        name == "role" || name == "tabindex" || name == "draggable" ||
+            name == "style" ||
+            (name.length > 5 && (name.startsWith("data-") || name.startsWith("aria-")))
+
+    // `as` retags a text-flow element; admissible tags are the ones
+    // `Lui_protocol.element_tag_supported` lists per kind.
+    private fun elementTagSupported(kind: LuiNodeKind, tag: String): Boolean =
+        when (kind) {
+            LuiNodeKind.text -> tag in setOf(
+                "span", "em", "strong", "b", "i", "u", "s", "del", "mark",
+                "small", "code", "kbd", "sub", "sup", "pre",
+            )
+            LuiNodeKind.heading -> tag in setOf("h1", "h2", "h3", "h4", "h5", "h6")
+            LuiNodeKind.paragraph -> tag in setOf("p", "span", "div", "pre")
+            LuiNodeKind.label -> tag in setOf("label", "span", "div")
+            else -> false
+        }
 }

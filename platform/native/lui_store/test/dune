@@ -1,0 +1,4 @@
+(test
+ (name lui_store_test)
+ (modules lui_store_test)
+ (libraries lui_store lui alcotest))

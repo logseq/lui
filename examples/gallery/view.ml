@@ -1499,53 +1499,6 @@ let tweak_paragraph : t =
 
 let tweak_section : t = section "Tweaks" [ tweak_paragraph ]
 
-(* GPUI extensions: `gpui-*` components only mount on the GPUI host —
-   gpui-kit widgets that have no cross-platform LUI kind. *)
-
-let gpui_extension_section model_source send : t =
-  section "GPUI"
-    [ paragraph
-        ~value:"gpui-* components: gpui-kit widgets exposed only on the GPUI
-          host. Interactive ones (rating, color picker) round-trip through
-          extension events."
-        []
-    ; label ~value:"Rating" []
-    ; Extension_schemas.gpui_rating
-        ~value:(Model.gpui_rating Model.initial)
-        ~value_signal:(model_source >|= Model.gpui_rating) ~max:5
-        ~on_change:(fun (event : Extension_schemas.gpui_rating_change) ->
-          ignore (send (Model.GpuiRate event.value)))
-        ()
-    ; label ~value:"Color picker" []
-    ; row ~gap:8 ~cross:`center
-        [ Extension_schemas.gpui_color_picker
-            ~value:(Model.gpui_color Model.initial)
-            ~value_signal:(model_source >|= Model.gpui_color)
-            ~on_change:(fun (event : Extension_schemas.gpui_color_picker_change) ->
-              ignore (send (Model.GpuiPickColor event.color)))
-            ()
-        ; kbd ~value:(reactive Model.gpui_color model_source) []
-        ]
-    ; label ~value:"Tags" []
-    ; row ~gap:8
-        [ Extension_schemas.gpui_tag ~text:"Primary" ~variant:"primary" ()
-        ; Extension_schemas.gpui_tag ~text:"Success" ~variant:"success" ()
-        ; Extension_schemas.gpui_tag ~text:"Warning" ~variant:"warning" ()
-        ; Extension_schemas.gpui_tag ~text:"Danger" ~variant:"danger" ()
-        ]
-    ; label ~value:"Bar chart" []
-    ; Extension_schemas.gpui_chart_bar ~name:"Weekly activity"
-        ~data:"Mon:12,Tue:19,Wed:8,Thu:24,Fri:16,Sat:6,Sun:9" ()
-    ; label ~value:"Table" []
-    ; Extension_schemas.gpui_table ~columns:"Name,Role,Status"
-        ~rows:"Ada Lovelace,Engineer,Active;Grace Hopper,Admiral,Active;Alan \
-               Turing,Mathematician,Away"
-        ~bordered:true ~stripe:true ()
-    ; Extension_schemas.gpui_empty ~title:"No search results"
-        ~description:"Try a different query or clear the filters."
-        [ button ~variant:`outline ~text:"Clear filters" ~on_press:noop [] ]
-    ]
-
 (* Composite components (lui_element_combine): generic layouts built
    purely from primitives — composer, banners, settings rows, sidebar. *)
 
@@ -1726,6 +1679,167 @@ let combine_sidebar_section model_source send : t =
                           model_source) []
     ]
 
+
+(* Milestone 8 macro demos: small self-contained apps embedded as
+   gallery pages. Everything below goes through the public Lui_elements
+   surface — no store, layout, patch or renderer type appears. *)
+
+let counter_section model_source send : t =
+  section "Counter"
+    [ text
+        ~value:(reactive (fun (m : Model.t) -> Printf.sprintf "count=%d" m.Model.count)
+                  model_source)
+        []
+    ; row ~gap:8
+        [ button ~text:"-" ~on_press:(press send Model.CounterDecrement) []
+        ; button ~text:"+" ~on_press:(press send Model.CounterIncrement) []
+        ; button ~variant:`outline ~text:"Reset"
+            ~on_press:(press send Model.CounterReset) []
+        ]
+    ]
+
+let todo_row send item_source : t =
+  let item = sample item_source in
+  row ~gap:8 ~cross:`center
+    [ text ~grow:1.
+        ~value:(reactive
+                  (fun (i : Model.todo_item) ->
+                     (if i.Model.todo_done then "[x] " else "[ ] ")
+                     ^ i.Model.todo_title)
+                  item_source)
+        []
+    ; button ~size:`sm
+        ~text:(reactive
+                 (fun (i : Model.todo_item) ->
+                    if i.Model.todo_done then "Undo" else "Done")
+                 item_source)
+        ~on_press:(press send (Model.ToggleTodo item.Model.todo_id)) []
+    ; button ~variant:`outline ~size:`sm ~text:"Up"
+        ~on_press:(press send (Model.MoveTodoUp item.Model.todo_id)) []
+    ; button ~variant:`destructive ~size:`sm ~text:"Delete"
+        ~on_press:(press send (Model.DeleteTodo item.Model.todo_id)) []
+    ]
+
+let todos_section model_source send : t =
+  section "Todo List"
+    [ row ~gap:8
+        [ text_field ~grow:1.
+            ~text:(reactive Model.todo_draft model_source)
+            ~placeholder:"What needs to be done?" ~label:"New todo"
+            ~on_input:(on_input send (fun draft -> Model.SetTodoDraft draft))
+            ~on_submit:(press send Model.AddTodo) []
+        ; button ~text:"Add" ~on_press:(press send Model.AddTodo) []
+        ]
+    ; keyed
+        ~source:(reactive Model.todo_items model_source)
+        ~key:(fun (i : Model.todo_item) -> i.Model.todo_id)
+        ~cmp:Int.compare
+        ~mount:(todo_row send)
+    ; text
+        ~value:(reactive Model.todo_summary model_source)
+        []
+    ]
+
+let block_row _send item_source : t =
+  row ~gap:8 ~height:20 ~cross:`center
+    [ text ~value:"•" []
+    ; text
+        ~value:(reactive (fun (b : Model.block) -> b.Model.block_text)
+                  item_source)
+        []
+    ]
+
+let blocks_section model_source send : t =
+  section "10k Blocks"
+    [ paragraph
+        ~value:"A keyed outliner-style list. Load mounts 10,000 blocks; \
+                Edit rewrites one block's text and Insert splices a sibling \
+                mid-list — both exercise the incremental patch path."
+        []
+    ; row ~gap:8
+        [ reactive
+            ~equal:(fun (a : Model.t) (b : Model.t) ->
+              (a.Model.blocks = []) = (b.Model.blocks = []))
+            (fun (m : Model.t) ->
+               if m.Model.blocks = [] then
+                 button ~text:"Load 10k blocks"
+                   ~on_press:(press send Model.LoadBlocks) []
+               else
+                 button ~variant:`destructive ~text:"Clear"
+                   ~on_press:(press send Model.ClearBlocks) [])
+            model_source
+        ; button ~variant:`outline ~text:"Edit middle"
+            ~on_press:(press send Model.EditBlock) []
+        ; button ~variant:`outline ~text:"Insert"
+            ~on_press:(press send Model.InsertBlock) []
+        ]
+    ; text ~value:(reactive Model.blocks_summary model_source) []
+    ; scroll ~height:320
+        [ keyed
+            ~source:
+              (reactive Model.blocks
+                 (Signal.cutoff
+                    (fun (a : Model.t) (b : Model.t) ->
+                       a.Model.blocks == b.Model.blocks)
+                    model_source))
+            ~key:(fun (b : Model.block) -> b.Model.block_id)
+            ~cmp:Int.compare
+            ~mount:(block_row send)
+        ]
+    ]
+
+let virtual_row send item_source : t =
+  let i = sample item_source in
+  list_item ~key:(Printf.sprintf "row-%d" i) ~height:28
+    ~text:(Printf.sprintf "row %d — virtualized item" i)
+    ~on_press:(press send (Model.PressVirtualRow i))
+    []
+
+let virtual_list_section model_source send : t =
+  section "100k Virtual List"
+    [ paragraph
+        ~value:"A virtual_list keeps 100,000 logical rows while the \
+                backend only materializes the visible window. Press any \
+                mounted row to round-trip an action."
+        []
+    ; row ~gap:8
+        [ button ~text:"Load 100k"
+            ~on_press:(press send (Model.SetVirtualCount 100_000)) []
+        ; button ~variant:`outline ~text:"10k"
+            ~on_press:(press send (Model.SetVirtualCount 10_000)) []
+        ; button ~variant:`destructive ~text:"Clear"
+            ~on_press:(press send (Model.SetVirtualCount 0)) []
+        ]
+    ; text ~value:(reactive Model.virtual_summary model_source) []
+    ; virtual_list ~height:400
+        [ keyed
+            ~source:
+              (reactive
+                 (fun (m : Model.t) -> List.init m.Model.virtual_count Fun.id)
+                 (Signal.cutoff
+                    (fun (a : Model.t) (b : Model.t) ->
+                       a.Model.virtual_count = b.Model.virtual_count)
+                    model_source))
+            ~key:Fun.id ~cmp:Int.compare
+            ~mount:(virtual_row send)
+        ]
+    ]
+
+let editor_section model_source send : t =
+  section "Editor Input"
+    [ textarea ~grow:1. ~height:160
+        ~text:(reactive Model.editor_text model_source)
+        ~placeholder:"Type here — every keystroke round-trips the reducer"
+        ~label:"Document"
+        ~on_input:(on_input send (fun text -> Model.SetEditorText text)) []
+    ; text ~value:(reactive Model.editor_stats model_source) []
+    ; card ~padding:12
+        [ paragraph
+            ~value:(reactive Model.editor_text model_source)
+            []
+        ]
+    ]
+
 let view context model_source send : t =
   let sections =
     [ (* Maestro-tested components first, in .maestro/ios-components-interactions.yaml order *)
@@ -1799,6 +1913,11 @@ let view context model_source send : t =
     ; combine_sidebar_section model_source send
     ; spotify_section
     ; youtube_section
+    ; counter_section model_source send
+    ; todos_section model_source send
+    ; blocks_section model_source send
+    ; virtual_list_section model_source send
+    ; editor_section model_source send
     ]
   in
   let sections =
@@ -1811,12 +1930,6 @@ let view context model_source send : t =
           split_panes_section model_source send;
         ]
     | WebOS -> sections @ [ native_extension_section; tweak_section ]
-    | _ -> sections
-  in
-  let sections =
-    match Lui_ui.host context with
-    | Lui_protocol.GPUIHost ->
-      sections @ [ gpui_extension_section model_source send ]
     | _ -> sections
   in
   column sections

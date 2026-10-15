@@ -347,7 +347,7 @@ private struct LUIDialogPresentationModifier: ViewModifier {
                 guard let presentation = dialogPresentation,
                       !usesCustomSurface else { return false }
                 return LUIDialogContentPolicy.presentationStyle(
-                    styleClass: presentation.model.property(.styleClass)?.stringValue
+                    styleClass: presentation.model.derived.styleClass
                 ) == style
             },
             set: { isPresented in
@@ -617,8 +617,11 @@ struct LUIAnyNodeView: View, Equatable {
 }
 
 /// Feeds `LUIAppleBackend.reportNodeFrame` with each node's frame in the
-/// scene's global coordinate space. Collection is unconditional (cheap
-/// dict writes) so `frameReportingEnabled` can turn on mid-session.
+/// scene's global coordinate space. The geometry probe only mounts while
+/// `frameReportingEnabled` is set (and collection isn't suspended);
+/// `frameReporting` is observable, so toggling the flag mounts every probe
+/// and the first layout pass repopulates `nodeFrames` for a mid-session
+/// attach.
 private struct LUIFrameReportModifier: ViewModifier {
     let nodeID: Int
     let backend: LUIAppleBackend
@@ -628,18 +631,23 @@ private struct LUIFrameReportModifier: ViewModifier {
     /// SwiftUI gestures already deliver the correct action.
     @Environment(\.luiInHoistedToolbar) private var inHoistedToolbar
 
+    @ViewBuilder
     func body(content: Content) -> some View {
-        content
-            .onGeometryChange(for: CGRect.self) { proxy in
-                proxy.frame(in: .global)
-            } action: { rect in
-                if !inHoistedToolbar {
-                    backend.reportNodeFrame(nodeID, rect)
+        if backend.frameReporting.isEnabled && !backend.frameReporting.isSuspended {
+            content
+                .onGeometryChange(for: CGRect.self) { proxy in
+                    proxy.frame(in: .global)
+                } action: { rect in
+                    if !inHoistedToolbar {
+                        backend.reportNodeFrame(nodeID, rect)
+                    }
                 }
-            }
-            .onDisappear {
-                backend.removeNodeFrame(nodeID)
-            }
+                .onDisappear {
+                    backend.removeNodeFrame(nodeID)
+                }
+        } else {
+            content
+        }
     }
 }
 
@@ -668,6 +676,7 @@ private struct LUINodeView: View {
     let backend: LUIAppleBackend
     @Environment(\.luiTreeContext) private var treeContext
     @Environment(\.luiSemanticColors) private var semanticColors
+    @Environment(\.luiTypography) private var typography
     @Environment(\.luiDialogButtonsExtracted) private var dialogButtonsExtracted
     @Environment(\.luiPinnedDrawerChrome) private var pinnedDrawerChrome
 
@@ -676,7 +685,7 @@ private struct LUINodeView: View {
     private var drawerToggleSuppressed: Bool {
         pinnedDrawerChrome
             && LUIDrawerToggleMarker.isDrawerToggle(
-                styleClass: model.property(.styleClass)?.stringValue)
+                styleClass: model.derived.styleClass)
     }
 
     @ViewBuilder
@@ -728,7 +737,7 @@ private struct LUINodeView: View {
         case .row:
             return AnyView(LUIRowView(model: model, backend: backend))
         case .tabs:
-            if LUISegmentedTabsView.supports(model: model, backend: backend) {
+            if LUISegmentedTabsView.supports(model: model) {
                 return AnyView(LUISegmentedTabsView(model: model, backend: backend))
             }
             return AnyView(LUIHorizontalGroupView(model: model, backend: backend))
@@ -787,21 +796,29 @@ private struct LUINodeView: View {
         case .heading:
             return AnyView(
                 Text(verbatim: model.text)
-                    .font(headingFont)
-                    .fontWeight(
-                        LUIHeadingTypography.isBold(level: headingLevel) ? .bold : nil
+                    .luiTypography(typography)
+                    .font(
+                        typography.font(
+                            base: LUIHeadingTypography.isBold(level: headingLevel)
+                                ? headingFont.weight(.bold) : headingFont
+                        )
                     )
+                    .luiTypographyMetrics(typography, baseSize: headingSize)
                     .accessibilityAddTraits(.isHeader)
             )
         case .paragraph:
             return AnyView(
                 Text(verbatim: model.text)
-                    .font(.body)
+                    .luiTypography(typography)
+                    .font(typography.font(base: .body))
+                    .luiTypographyMetrics(typography, baseSize: 17)
             )
         case .label:
             return AnyView(
                 Text(verbatim: model.text)
-                    .font(.body)
+                    .luiTypography(typography)
+                    .font(typography.font(base: .body))
+                    .luiTypographyMetrics(typography, baseSize: 17)
             )
         case .button:
             if dialogButtonsExtracted || drawerToggleSuppressed { return AnyView(EmptyView()) }
@@ -1012,7 +1029,13 @@ private struct LUINodeView: View {
         case .kbd:
             return AnyView(
                 Text(verbatim: model.text)
-                    .font(.system(.caption2, design: .monospaced))
+                    .luiTypography(typography)
+                    .font(
+                        typography.font(
+                            base: .system(.caption2, design: .monospaced)
+                        )
+                    )
+                    .luiTypographyMetrics(typography, baseSize: 11)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .foregroundStyle(.secondary)
@@ -1048,6 +1071,19 @@ private struct LUINodeView: View {
         case 4: .title3
         case 5: .headline
         default: .subheadline
+        }
+    }
+
+    /// Point size of `headingFont` — the base `line-height` resolves
+    /// against when a typography override applies.
+    private var headingSize: CGFloat {
+        switch headingLevel {
+        case 1: 34
+        case 2: 28
+        case 3: 22
+        case 4: 20
+        case 5: 17
+        default: 15
         }
     }
 
@@ -1173,9 +1209,7 @@ private struct LUIRetainedPaneModifier: ViewModifier {
     }
 
     private var isRetainedPane: Bool {
-        model.property(.styleClass)?.stringValue?
-            .split(separator: " ")
-            .contains("retained-pane") == true
+        model.derived.styleClassTokens.contains("retained-pane")
     }
 }
 
@@ -1306,9 +1340,8 @@ private struct LUIContextMenuModifier: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if let menu = model.children.compactMap({ backend.model(id: $0) })
-            .first(where: { $0.kind == .contextMenu }),
-           menu.children.contains(where: { backend.model(id: $0)?.kind == .menuItem }) {
+        if let menuID = model.childData.contextMenuID,
+           let menu = backend.model(id: menuID) {
             #if os(macOS)
             // `.contextMenu` never sees right-clicks that land on Button/Menu
             // descendants — AppKit hit-tests an interactive control first. An
@@ -1668,8 +1701,19 @@ private struct LUITreeOutlineList: View {
         }
 
         var tokens: [Token] = []
+        // `collect` re-queries `containsTreeItem` for sibling subtrees, so
+        // memoize within this rebuild — an unmemoized walk rescans whole
+        // branches and can degrade to O(depth × nodes) per evaluation.
+        var treeItemCache: [Int: Bool] = [:]
 
         func containsTreeItem(_ nodeID: Int) -> Bool {
+            if let cached = treeItemCache[nodeID] { return cached }
+            let result = containsTreeItemUncached(nodeID)
+            treeItemCache[nodeID] = result
+            return result
+        }
+
+        func containsTreeItemUncached(_ nodeID: Int) -> Bool {
             guard let node = backend.model(id: nodeID) else { return false }
             if node.isTreeItem { return true }
             return node.children.contains(where: containsTreeItem)
@@ -1937,7 +1981,7 @@ private struct LUITableCellView: View {
     }
 
     private var cellMaxWidth: CGFloat? {
-        (model.property(.grow)?.doubleValue ?? 0) > 0 ? .infinity : nil
+        model.derived.grow > 0 ? .infinity : nil
     }
 
     private var frameAlignment: Alignment {
@@ -1987,27 +2031,19 @@ private struct LUIStackView: View {
     }
 
     private var anchoredMenu: LUINodeModel? {
-        model.children
-            .compactMap(backend.model)
-            .first { $0.kind == .dropdownMenu && $0.property(.anchor) != nil }
+        model.childData.anchoredMenuID.flatMap { backend.model(id: $0) }
     }
 
     private var anchoredTooltip: LUINodeModel? {
-        model.children
-            .compactMap(backend.model)
-            .first { $0.kind == .tooltip && $0.property(.anchor) != nil }
+        model.childData.anchoredTooltipID.flatMap { backend.model(id: $0) }
     }
 
     private var hasComboboxTrigger: Bool {
-        model.children
-            .compactMap(backend.model)
-            .contains { $0.kind == .combobox }
+        model.childData.hasComboboxChild
     }
 
     private var hasSelectTrigger: Bool {
-        model.children
-            .compactMap(backend.model)
-            .contains { $0.kind == .select }
+        model.childData.hasSelectChild
     }
 
     @ViewBuilder
@@ -2127,8 +2163,8 @@ private struct LUIOverlayView: View {
 
     private func alignment(of childID: Int) -> Alignment {
         Self.alignment(
-            backend.model(id: childID)?.property(.alignment)?.stringValue
-                ?? model.property(.alignment)?.stringValue
+            model.childData.layout[childID]?.alignment
+                ?? model.derived.alignment
         )
     }
 
@@ -2204,7 +2240,7 @@ private struct LUIAnchoredComboboxMenuHost<Content: View>: View {
     var body: some View {
         #if os(iOS)
         if LUIMenuPresentationPolicy.usesAnchoredPopover(
-            styleClass: model?.property(.styleClass)?.stringValue,
+            styleClass: model?.derived.styleClass,
             model: model,
             backend: backend
         ) {
@@ -2380,7 +2416,7 @@ private struct LUIAnchoredMenuHost<Content: View>: View {
     var body: some View {
         #if os(iOS)
         if LUIMenuPresentationPolicy.usesAnchoredPopover(
-            styleClass: model?.property(.styleClass)?.stringValue,
+            styleClass: model?.derived.styleClass,
             model: model,
             backend: backend
         ) {
@@ -2805,8 +2841,8 @@ private struct LUIModalSurfaceContent: View {
 
     /// Modal content renders outside the node tree, so `theme` props on its
     /// ancestors never reach it through the environment — walk the chain and
-    /// decode tokens the same way `LUIThemeScopeModifier` does
-    /// (outermost-first, inner wins).
+    /// apply each ancestor's commit-decoded tokens the same way
+    /// `LUIThemeScopeModifier` does (outermost-first, inner wins).
     private var effectiveSemanticColors: [String: Color] {
         var ancestors: [LUINodeModel] = []
         var cursor = model.parent
@@ -2818,10 +2854,7 @@ private struct LUIModalSurfaceContent: View {
         var colors = semanticColors
         for ancestor in ancestors.reversed() {
             colors.merge(
-                LUIThemeTokenDecoder.colors(
-                    ancestor.property(.theme)?.stringValue,
-                    dark: colorScheme == .dark
-                )
+                ancestor.derived.themeScope.colors(dark: colorScheme == .dark)
             ) { _, new in new }
         }
         return colors
@@ -2831,20 +2864,20 @@ private struct LUIModalSurfaceContent: View {
     private var surfaceContent: some View {
         let _ = model.revision
         if LUINavigationFormSheetPolicy.isNavigationForm(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) || LUINavigationFormSheetPolicy.isNavigationScroll(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) || LUINavigationFormSheetPolicy.isNavigationList(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) || LUINavigationFormSheetPolicy.isNavigationContent(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) {
             NavigationStack {
                 navigationContent
                 .background(modalBackground)
                 .navigationTitle(model.text)
                 .modifier(LUINavigationFormTitleStyle(
-                    styleClass: model.property(.styleClass)?.stringValue
+                    styleClass: model.derived.styleClass
                 ))
                 .toolbar {
                     LUINavigationFormToolbar(
@@ -2873,7 +2906,7 @@ private struct LUIModalSurfaceContent: View {
 
     private var modalBackground: Color {
         if LUIModalBackgroundPolicy.usesGroupedSystemBackground(
-            styleClass: model.property(.styleClass)?.stringValue
+            styleClass: model.derived.styleClass
         ) {
             return modalGroupedSystemBackground
         }
@@ -2914,7 +2947,7 @@ private struct LUIModalSurfaceContent: View {
     @ViewBuilder
     private var navigationContent: some View {
         if LUINavigationFormSheetPolicy.isNavigationScroll(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) {
             ScrollView {
                 if let contentID = navigationFormContentID {
@@ -2923,9 +2956,9 @@ private struct LUIModalSurfaceContent: View {
             }
             .accessibilityIdentifier(navigationFormAccessibilityIdentifier)
         } else if LUINavigationFormSheetPolicy.isNavigationList(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) || LUINavigationFormSheetPolicy.isNavigationContent(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) {
             if let contentID = navigationFormContentID {
                 LUIAnyNodeView(nodeID: contentID, backend: backend).equatable()
@@ -2959,7 +2992,7 @@ private struct LUIModalSurfaceContent: View {
         guard let contentID = navigationFormContentID,
               let content = backend.model(id: contentID),
               LUINavigationFormSheetPolicy.isForm(
-                  content.property(.styleClass)?.stringValue
+                  content.derived.styleClass
               ),
               let fieldID = LUISearchFieldPlacementPolicy.searchableChildID(
                   of: content,
@@ -3005,7 +3038,7 @@ private struct LUINavigationFormRows: View {
     var body: some View {
         if let contentID, let content = backend.model(id: contentID) {
             if LUINavigationFormSheetPolicy.isForm(
-                content.property(.styleClass)?.stringValue
+                content.derived.styleClass
             ) {
                 ForEach(sections(for: content)) { section in
                     if let headerID = section.headerID,
@@ -3128,9 +3161,8 @@ private struct LUINavigationFormToolbar: ToolbarContent {
     private func actionID(for placement: LUINavigationFormActionPlacement) -> Int? {
         guard let toolbarID, let toolbar = backend.model(id: toolbarID) else { return nil }
         return toolbar.children.first { childID in
-            guard let child = backend.model(id: childID) else { return false }
-            return LUINavigationFormSheetPolicy.actionPlacement(
-                child.property(.styleClass)?.stringValue
+            LUINavigationFormSheetPolicy.actionPlacement(
+                toolbar.childData.layout[childID]?.styleClass
             ) == placement
         }
     }
@@ -3203,7 +3235,7 @@ private struct LUIToolbarView: View {
     private var inlineContent: some View {
         let layout = LUIToolbarLayoutPolicy.layout(
             orientation: model.property(.orientation)?.stringValue,
-            styleClass: model.property(.styleClass)?.stringValue,
+            styleClass: model.derived.styleClass,
             childIDs: model.children
         )
         if layout.axis == .vertical {
@@ -3220,7 +3252,7 @@ private struct LUIToolbarView: View {
                         children(layout.scrollingChildIDs)
                     }
                     .padding(.leading, CGFloat(LUIToolbarLayoutPolicy.leadingInset(
-                        model.property(.styleClass)?.stringValue
+                        model.derived.styleClass
                     )))
                 }
                 if let fixedChildID = layout.fixedChildID {
@@ -3542,7 +3574,7 @@ private struct LUIToolbarGroupAnchor: View {
         // the leading children scroll inside their own fused capsule so the
         // pinned item is never pushed off-screen by overflow.
         let pinnedID = LUIToolbarLayoutPolicy.pinsTrailing(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) && model.children.count >= 2 ? model.children.last : nil
         if let pinnedID {
             return [
@@ -4455,8 +4487,8 @@ private struct LUIMenuTriggerView: View {
 
     private var menu: LUINodeModel? {
         model.children
-            .compactMap(backend.model)
-            .first { $0.kind == .dropdownMenu }
+            .first { model.childData.layout[$0]?.kind == .dropdownMenu }
+            .flatMap { backend.model(id: $0) }
     }
 
     private var spokenLabel: String {
@@ -4472,8 +4504,7 @@ private struct LUIMenuTriggerView: View {
     /// their pinned wrapper; text cells stay hug-sized with the capsule's
     /// 12pt side padding inside the hit region.
     private var capsuleCell: Bool {
-        model.property(.styleClass)?.stringValue?
-            .split(separator: " ").contains("capsule") == true
+        model.derived.styleClassTokens.contains("capsule")
     }
 
     private var iconOnly: Bool {
@@ -4764,17 +4795,17 @@ private struct LUIListItemView: View {
             }
             if !contentChildIDs.isEmpty {
                 ForEach(contentChildIDs, id: \.self) { childID in
-                    let child = backend.model(id: childID)
+                    let child = model.childData.layout[childID]
                     LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
                         .environment(\.luiIsNativeListRow, isNativeListRow)
                         .frame(
                             maxWidth: LUIListItemLayoutPolicy.stretchesChild(
                                 kind: child?.kind,
-                                grow: child?.property(.grow)?.doubleValue
+                                grow: child?.grow
                             ) ? .infinity : nil,
                             alignment: .leading
                         )
-                        .layoutPriority(child?.property(.grow)?.doubleValue ?? 0)
+                        .layoutPriority(child?.grow ?? 0)
                 }
             }
             if usesInlineTrailingIcon {
@@ -4869,12 +4900,12 @@ private struct LUIListItemView: View {
 
     /// Nested list-item children of a disclosure row.
     private var nestedRowIDs: [Int] {
-        visibleChildren.filter { backend.model(id: $0)?.kind == .listItem }
+        visibleChildren.filter { model.childData.layout[$0]?.kind == .listItem }
     }
 
     /// Content children rendered inside the row itself.
     private var contentChildIDs: [Int] {
-        visibleChildren.filter { backend.model(id: $0)?.kind != .listItem }
+        visibleChildren.filter { model.childData.layout[$0]?.kind != .listItem }
     }
 
     private var expansion: Binding<Bool> {
@@ -4893,9 +4924,10 @@ private struct LUIListItemView: View {
 
     private var hasGrowingVisibleChild: Bool {
         visibleChildren.contains { childID in
-            LUIListItemLayoutPolicy.stretchesChild(
-                kind: backend.model(id: childID)?.kind,
-                grow: backend.model(id: childID)?.property(.grow)?.doubleValue
+            let child = model.childData.layout[childID]
+            return LUIListItemLayoutPolicy.stretchesChild(
+                kind: child?.kind,
+                grow: child?.grow
             )
         }
     }
@@ -4913,11 +4945,7 @@ private struct LUIListItemView: View {
     }
 
     private var contextMenu: LUINodeModel? {
-        model.children.compactMap(backend.model).first { menu in
-            menu.kind == .contextMenu && menu.children.contains { childID in
-                backend.model(id: childID)?.kind == .menuItem
-            }
-        }
+        model.childData.contextMenuID.flatMap { backend.model(id: $0) }
     }
 
     private var showsTreeToggleChevron: Bool {
@@ -5069,8 +5097,9 @@ private struct LUIListItemSwipeActionsModifier: ViewModifier {
     }
 
     private var swipeActions: LUINodeModel? {
-        model.children.compactMap { backend.model(id: $0) }
-            .first { $0.kind == .swipeActions }
+        model.children
+            .first { model.childData.layout[$0]?.kind == .swipeActions }
+            .flatMap { backend.model(id: $0) }
     }
 
     private enum SwipeEdge {
@@ -5291,7 +5320,7 @@ private struct LUIButtonView: View {
             .controlSize(controlSize)
             .frame(
                 maxWidth: LUIButtonVisualPolicy.fillsAvailableWidth(
-                    grow: model.property(.grow)?.doubleValue
+                    grow: model.derived.grow
                 ) ? .infinity : nil,
                 alignment: LUIButtonVisualPolicy.labelAlignment(
                     textAlignment: model.property(.textAlignment)?.stringValue
@@ -5409,7 +5438,7 @@ private struct LUIButtonView: View {
         label
             .font(
                 LUIButtonVisualPolicy.usesCaptionLabel(
-                    styleClass: model.property(.styleClass)?.stringValue
+                    styleClass: model.derived.styleClass
                 ) ? .caption : .body
             )
             .padding(
@@ -5420,13 +5449,13 @@ private struct LUIButtonView: View {
             )
             .fontWeight(
                 LUIButtonVisualPolicy.usesSemiboldLabel(
-                    styleClass: model.property(.styleClass)?.stringValue
+                    styleClass: model.derived.styleClass
                 ) ? .semibold : nil
             )
             .lineLimit(1)
             .frame(
                 maxWidth: LUIButtonVisualPolicy.fillsAvailableWidth(
-                    grow: model.property(.grow)?.doubleValue
+                    grow: model.derived.grow
                 ) ? .infinity : nil,
                 alignment: LUIButtonVisualPolicy.labelAlignment(
                     textAlignment: model.property(.textAlignment)?.stringValue
@@ -5441,8 +5470,8 @@ private struct LUIButtonView: View {
 
     private var contextMenu: LUINodeModel? {
         model.children
-            .compactMap { backend.model(id: $0) }
-            .first { $0.kind == .contextMenu }
+            .first { model.childData.layout[$0]?.kind == .contextMenu }
+            .flatMap { backend.model(id: $0) }
     }
 
     @ViewBuilder
@@ -5549,7 +5578,7 @@ private struct LUIButtonView: View {
         ), let parentID = model.parent,
               let parent = backend.model(id: parentID) else { return false }
         return LUINavigationFormSheetPolicy.isForm(
-            parent.property(.styleClass)?.stringValue
+            parent.derived.styleClass
         )
     }
 
@@ -5643,13 +5672,11 @@ private struct LUISegmentedTabsView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
 
-    static func supports(model: LUINodeModel, backend: LUIAppleBackend) -> Bool {
-        let segments = model.children.compactMap { backend.model(id: $0) }
+    static func supports(model: LUINodeModel) -> Bool {
         // A segmented Picker models a single selection and has no per-segment
         // disabled state — groups that need either keep the button-row path.
-        return !segments.isEmpty && segments.allSatisfy {
-            $0.kind == .button && $0.isEnabled
-        }
+        // The scan runs once per commit into `childData`.
+        model.childData.segmentedTabsSupported
     }
 
     private var segments: [LUINodeModel] {
@@ -5721,10 +5748,10 @@ private struct LUIHorizontalGroupView: View {
                     groupChild(child)
                         .environment(\.luiInFusedCapsule, groupCarriesGlass)
                         .frame(
-                            maxWidth: child.property(.grow)?.doubleValue ?? 0 > 0
+                            maxWidth: child.derived.grow > 0
                                 ? .infinity : nil
                         )
-                        .layoutPriority(child.property(.grow)?.doubleValue ?? 0)
+                        .layoutPriority(child.derived.grow)
                 }
                 if main == "space_between" && index < model.children.count - 1 {
                     Spacer(minLength: gap)
@@ -5960,6 +5987,7 @@ private struct LUITextView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     @Environment(\.luiTextHighlightQuery) private var highlightQuery
+    @Environment(\.luiTypography) private var typography
 
     @ViewBuilder
     var body: some View {
@@ -5975,6 +6003,7 @@ private struct LUITextView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .layoutPriority(layoutPriority)
                     .modifier(attachmentScaling)
+                    .luiTypographyMetrics(typography, baseSize: baseSize)
             }
             .buttonStyle(.plain)
         } else {
@@ -5986,42 +6015,42 @@ private struct LUITextView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .layoutPriority(layoutPriority)
                 .modifier(attachmentScaling)
+                .luiTypographyMetrics(typography, baseSize: baseSize)
         }
     }
 
     private var attachmentScaling: LUIAttachmentTextScalingModifier {
         LUIAttachmentTextScalingModifier(enabled: LUITextLinePolicy.boundsAttachmentScaling(
-            styleClass: model.property(.styleClass)?.stringValue))
+            styleClass: model.derived.styleClass))
     }
 
     private var textContent: Text {
-        let classes = model.property(.styleClass)?.stringValue?.split(separator: " ") ?? []
+        let classes = model.derived.styleClassTokens
         if classes.contains("search-match") {
             return Text(LUITextHighlight.preview(model.text, query: highlightQuery))
+                .luiTypography(typography)
         }
-        return Text(verbatim: model.text)
+        return Text(verbatim: model.text).luiTypography(typography)
     }
 
     private var lineLimit: Int? {
         LUITextLinePolicy.lineLimit(
-            styleClass: model.property(.styleClass)?.stringValue
+            styleClass: model.derived.styleClass
         )
     }
 
     private var layoutPriority: Double {
         LUITextLinePolicy.layoutPriority(
-            styleClass: model.property(.styleClass)?.stringValue
+            styleClass: model.derived.styleClass
         )
     }
 
     private var isFootnote: Bool {
-        model.property(.styleClass)?.stringValue?
-            .split(separator: " ")
-            .contains("footnote") ?? false
+        model.derived.styleClassTokens.contains("footnote")
     }
 
     private var font: Font {
-        let classes = model.property(.styleClass)?.stringValue?.split(separator: " ") ?? []
+        let classes = model.derived.styleClassTokens
         var style: Font.TextStyle = .body
         if classes.contains("title2") { style = .title2 }
         else if classes.contains("headline") { style = .headline }
@@ -6034,7 +6063,20 @@ private struct LUITextView: View {
         let mono = classes.contains("mono")
         var result = Font.system(style, design: mono ? .monospaced : .default)
         if semibold { result = result.weight(.semibold) }
-        return result
+        return typography.font(base: result)
+    }
+
+    /// Point size of the style-class font — the base `line-height`
+    /// resolves against when a typography override applies.
+    private var baseSize: CGFloat {
+        if typography.fontSize != nil { return typography.fontSize ?? 17 }
+        let classes = model.derived.styleClassTokens
+        if classes.contains("title2") { return 22 }
+        if classes.contains("headline") { return 17 }
+        if classes.contains("subheadline") { return 15 }
+        if classes.contains("caption") { return 12 }
+        if isFootnote { return 13 }
+        return 17
     }
 
     private var alignedMaxWidth: CGFloat? {
@@ -6090,7 +6132,7 @@ private struct LUIRowView: View {
         // Cross-axis stretch makes children accept any offered height, which
         // also makes the row greedy in a VStack. Keep it at its ideal height
         // unless the wire explicitly sizes it.
-        if model.property(.grow)?.doubleValue ?? 0 > 0
+        if model.derived.grow > 0
             || model.surfaceHeight != nil || model.surfaceMinHeight != nil {
             rowContent
                 .modifier(LUIContainerPressModifier(model: model, backend: backend))
@@ -6108,20 +6150,20 @@ private struct LUIRowView: View {
                 Spacer(minLength: 0)
             }
             ForEach(Array(model.children.enumerated()), id: \.element) { index, childID in
-                let child = backend.model(id: childID)
+                let child = model.childData.layout[childID]
                 if child?.kind == .spacer {
                     Spacer(minLength: 0)
                 } else {
                     LUIAnyNodeView(nodeID: childID, backend: backend)
                         .equatable()
                         .frame(
-                            maxWidth: child?.property(.grow)?.doubleValue ?? 0 > 0
+                            maxWidth: (child?.grow ?? 0) > 0
                                 ? .infinity : nil,
                             maxHeight: cross == "stretch" ? .infinity : nil
                         )
                         .layoutPriority(LUIRowLayoutPolicy.childLayoutPriority(
-                            grow: child?.property(.grow)?.doubleValue,
-                            styleClass: child?.property(.styleClass)?.stringValue
+                            grow: child?.grow,
+                            styleClass: child?.styleClass
                         ))
                 }
                 if model.property(.main)?.stringValue == "space_between" &&
@@ -6140,10 +6182,10 @@ private struct LUIRowView: View {
 
     private var hasGrowingChild: Bool {
         model.children.contains { childID in
-            let child = backend.model(id: childID)
+            let child = model.childData.layout[childID]
             return LUIRowLayoutPolicy.isFlexibleChild(
                 kind: child?.kind,
-                grow: child?.property(.grow)?.doubleValue
+                grow: child?.grow
             )
         }
     }
@@ -6188,7 +6230,7 @@ private struct LUIColumnView: View {
         .frame(
             maxWidth: LUIColumnLayoutPolicy.fillsAvailableWidth(
                 cross: cross,
-                grow: model.property(.grow)?.doubleValue
+                grow: model.derived.grow
             )
                 ? .infinity : nil,
             alignment: frameAlignment
@@ -6203,18 +6245,18 @@ private struct LUIColumnView: View {
             Spacer(minLength: 0)
         }
         ForEach(Array(model.children.enumerated()), id: \.element) { index, childID in
-            let child = backend.model(id: childID)
+            let child = model.childData.layout[childID]
             LUIAnyNodeView(nodeID: childID, backend: backend)
                 .equatable()
                 .frame(
                     maxWidth: LUIVerticalContainerPolicy.stretchesCrossAxis(cross)
                         ? .infinity : nil,
-                    maxHeight: child?.property(.grow)?.doubleValue ?? 0 > 0
+                    maxHeight: (child?.grow ?? 0) > 0
                         ? .infinity : nil,
                     alignment: .topLeading
                 )
                 .layoutPriority(
-                    (child?.property(.grow)?.doubleValue ?? 0) > 0 ? 1 : 0
+                    (child?.grow ?? 0) > 0 ? 1 : 0
                 )
             if model.property(.main)?.stringValue == "space_between" &&
                 index < model.children.count - 1 {
@@ -6231,10 +6273,10 @@ private struct LUIColumnView: View {
 
     private var hasGrowingChild: Bool {
         model.children.contains { childID in
-            let child = backend.model(id: childID)
+            let child = model.childData.layout[childID]
             return LUIRowLayoutPolicy.isFlexibleChild(
                 kind: child?.kind,
-                grow: child?.property(.grow)?.doubleValue
+                grow: child?.grow
             )
         }
     }
@@ -6628,7 +6670,8 @@ private struct LUIListView: View {
             $0 != searchableField?.id
         }, id: \.self) { childID in
             Group {
-                if let child = backend.model(id: childID), child.kind == .listItem {
+                if model.childData.layout[childID]?.kind == .listItem,
+                   let child = backend.model(id: childID) {
                     LUIListItemView(model: child, backend: backend, isNativeListRow: true)
                 } else {
                     LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
@@ -6648,7 +6691,7 @@ private struct LUIListView: View {
             childID != searchableField?.id
         }
         if childIDs.contains(where: {
-            backend.model(id: $0)?.kind == .listSection
+            model.childData.layout[$0]?.kind == .listSection
         }) {
             return LUIListSectionPolicy.explicitSections(
                 childIDs: childIDs,
@@ -6665,16 +6708,14 @@ private struct LUIListView: View {
     }
 
     private func isHeading(_ childID: Int) -> Bool {
-        backend.model(id: childID)?.kind == .heading
+        model.childData.layout[childID]?.kind == .heading
     }
 
     private func isFooter(_ childID: Int) -> Bool {
-        guard let child = backend.model(id: childID), child.kind == .text else {
+        guard let child = model.childData.layout[childID], child.kind == .text else {
             return false
         }
-        return (child.property(.styleClass)?.stringValue ?? "")
-            .split(separator: " ")
-            .contains("footnote") == true
+        return child.styleClassTokens.contains("footnote")
     }
 
     /// Row ids in flat payload order across sections; nested rows of
@@ -6860,16 +6901,20 @@ private struct LUIVirtualListView: View {
                 spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
             ) {
                 ForEach(sectionRows, id: \.id) { row in
-                    LUIAnyNodeView(nodeID: row.id, backend: backend)
+                    let rowView = LUIAnyNodeView(nodeID: row.id, backend: backend)
                         .equatable()
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .modifier(LUIScrollSectionFrameModifier(
+                    if tracksSectionTitles {
+                        rowView.modifier(LUIScrollSectionFrameModifier(
                             index: row.index, title: row.title,
                             coordinateSpace: titleCoordinateSpace,
                             onVisibilityChange: { index, title in
                                 titleTracker.update(index: index, title: title)
                             }
                         ))
+                    } else {
+                        rowView
+                    }
                 }
             }
             .environment(\.luiUnobscuredScrollHeight, unobscuredHeight)
@@ -6893,7 +6938,7 @@ private struct LUIVirtualListView: View {
     }
 
     private var tracksSectionTitles: Bool {
-        model.property(.styleClass)?.stringValue?.split(separator: " ").contains("scroll-section-titles") == true
+        model.derived.styleClassTokens.contains("scroll-section-titles")
     }
 
     private var titleCoordinateSpace: LUIScrollTitleCoordinateSpace {
@@ -6907,19 +6952,10 @@ private struct LUIVirtualListView: View {
     }
 
     private var sectionRows: [SectionRow] {
-        var currentTitle: String?
+        let titles = model.childData.sectionTitles ?? [:]
         return model.visibleChildren.enumerated().map { index, id in
-            if tracksSectionTitles, let title = sectionTitle(in: id) { currentTitle = title }
-            return SectionRow(id: id, index: index, title: currentTitle)
+            SectionRow(id: id, index: index, title: titles[id])
         }
-    }
-
-    private func sectionTitle(in nodeID: Int) -> String? {
-        guard let node = backend.model(id: nodeID) else { return nil }
-        if node.property(.styleClass)?.stringValue?.split(separator: " ").contains("scroll-section-title") == true {
-            return node.text.isEmpty ? nil : node.text
-        }
-        return node.children.lazy.compactMap { sectionTitle(in: $0) }.first
     }
 
 }
@@ -6951,7 +6987,7 @@ private struct LUIGridView: View {
     var body: some View {
         LazyVGrid(columns: gridItems, spacing: gap) {
             ForEach(model.children.filter {
-                backend.model(id: $0)?.kind != .contextMenu
+                model.childData.layout[$0]?.kind != .contextMenu
             }, id: \.self) { childID in
                 LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
             }
@@ -7102,7 +7138,7 @@ private struct LUITextControlView: View {
                 text: binding,
                 axis: .vertical
             )
-            .lineLimit(1...(model.property(.styleClass)?.stringValue == "composer-input" ? 6 : Int.max))
+            .lineLimit(1...(model.derived.styleClass == "composer-input" ? 6 : Int.max))
             .submitLabel(model.property(.submitOnEnter)?.boolValue == true ? .send : .return)
         } else if model.kind == .searchField {
             #if os(iOS)
@@ -7239,7 +7275,7 @@ private struct LUIRadioGroupView: View {
     var body: some View {
         #if os(macOS)
         if LUIRadioGroupVisualPolicy.usesMenuStyle(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) {
             picker.pickerStyle(.menu)
         } else {
@@ -7247,7 +7283,7 @@ private struct LUIRadioGroupView: View {
         }
         #else
         if LUIRadioGroupVisualPolicy.usesSegmentedStyle(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) {
             picker.pickerStyle(.segmented)
         } else {
@@ -7268,10 +7304,10 @@ private struct LUIRadioGroupView: View {
 
     private var choices: [LUINodeModel] {
         model.children.compactMap { childID in
-            guard let child = backend.model(id: childID), child.kind == .radio else {
+            guard model.childData.layout[childID]?.kind == .radio else {
                 return nil
             }
-            return child
+            return backend.model(id: childID)
         }
     }
 
@@ -7505,7 +7541,7 @@ private struct LUISurfaceModifier: ViewModifier {
         let isSurface = model.kind == .panel || model.kind == .card ||
             model.kind == .resizable || model.kind == .alert || model.kind == .bubble
         let isTabs = model.kind == .tabs &&
-            !LUISegmentedTabsView.supports(model: model, backend: backend)
+            !LUISegmentedTabsView.supports(model: model)
         let defaultPadding = switch model.kind {
         case .card: 24
         case .alert: 16
@@ -7551,7 +7587,7 @@ private struct LUISurfaceModifier: ViewModifier {
             .frame(
                 maxWidth: LUIIntrinsicSurfacePolicy.fillsWidth(
                     kind: model.kind,
-                    grow: model.property(.grow)?.doubleValue ?? 0
+                    grow: model.derived.grow
                 ) ? .infinity : nil,
                 alignment: .leading
             )
@@ -7563,7 +7599,7 @@ private struct LUISurfaceModifier: ViewModifier {
                 height: floored(model.surfaceHeight).map(CGFloat.init)
             )
             .modifier(LUIBodyLineControlModifier(
-                enabled: model.property(.styleClass)?.stringValue?.split(separator: " ").contains("body-line") == true,
+                enabled: model.derived.styleClassTokens.contains("body-line"),
                 width: model.surfaceWidth.map(CGFloat.init),
                 minimumHeight: CGFloat(model.surfaceHeight ?? 24)
             ))
@@ -7583,7 +7619,7 @@ private struct LUISurfaceModifier: ViewModifier {
                 horizontal: false,
                 vertical: LUISurfaceFramePolicy.usesIntrinsicHeight(
                     kind: model.kind,
-                    styleClass: model.property(.styleClass)?.stringValue
+                    styleClass: model.derived.styleClass
                 )
             )
             .modifier(
@@ -7772,24 +7808,52 @@ struct LUISplitFractionState: Equatable {
 }
 
 private struct LUISplitView: View {
+    // Fractions at or below this share render the first pane as collapsed
+    // (the model can't express literal zero — values <= 0 normalize to the
+    // unset default — so a collapsed dock reads as a hairline fraction).
+    private static let collapsedFraction: Double = 0.0001
+    // At or above this share the second pane is effectively gone; a
+    // NavigationSplitView can never hide its detail column, so the split
+    // permanently falls back to the manual layout (one-way latch — a split
+    // that collapses its second pane is a right-dock shape NavSplit can't
+    // render in any state).
+    private static let detailCollapseFraction: Double = 0.98
+
     let model: LUINodeModel
     let backend: LUIAppleBackend
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.luiInsideScroll) private var insideScroll
     @State private var fractionState: LUISplitFractionState
     @State private var dragStartFraction: Double?
-    #if os(iOS)
-    @State private var columnVisibility = NavigationSplitViewVisibility.doubleColumn
+    @State private var columnVisibility: NavigationSplitViewVisibility
+    @State private var navSplitEligible: Bool
+    #if os(macOS)
+    // On macOS the column uses the fixed `width:` overload (the `ideal:`
+    // overload only takes effect when the column appears, so model pushes
+    // while visible would never apply). `appliedWidth` is the rendered width
+    // in points — driven by the model fraction on appearance and on model
+    // pushes, and by the split's own divider handle while the user drags.
+    // Holding it in points (rather than deriving it as fraction * width on
+    // every layout) is what keeps the sidebar at an absolute width while the
+    // window resizes, matching the docked-sidebar idiom of `prominentDetail`.
+    @State private var appliedWidth: CGFloat?
+    @State private var lastAvailable: CGFloat = 0
     #endif
 
     init(model: LUINodeModel, backend: LUIAppleBackend) {
         self.model = model
         self.backend = backend
+        let initialFraction = model.splitResizeOrigin ?? model.splitFraction
         _fractionState = State(
-            initialValue: LUISplitFractionState(
-                sourceFraction: model.splitResizeOrigin ?? model.splitFraction
-            )
+            initialValue: LUISplitFractionState(sourceFraction: initialFraction)
         )
+        _columnVisibility = State(
+            initialValue:
+                initialFraction <= Self.collapsedFraction
+                ? .detailOnly : .doubleColumn
+        )
+        _navSplitEligible = State(
+            initialValue: initialFraction < Self.detailCollapseFraction)
     }
 
     var body: some View {
@@ -7798,28 +7862,53 @@ private struct LUISplitView: View {
             .onChange(of: model.splitFraction) { _, value in
                 reconcile(sourceFraction: value)
             }
+            .onChange(of: columnVisibility) { _, visibility in
+                if visibility == .detailOnly,
+                   fractionState.fraction > Self.collapsedFraction {
+                    // The column was collapsed through chrome (toolbar
+                    // toggle / pressure); report the hairline fraction so
+                    // the model sees the same collapsed state a drag to
+                    // zero would have produced.
+                    try? backend.performValueChange(
+                        node: model.id,
+                        value: Self.collapsedFraction
+                    )
+                    return
+                }
+                #if os(macOS)
+                // A chrome-driven reopen while the model still reports the
+                // collapsed fraction reports the rendered width so the
+                // model learns the user reopened the column. The chrome
+                // toggle commits `.all` rather than `.doubleColumn`.
+                if visibility != .detailOnly,
+                   fractionState.fraction <= Self.collapsedFraction,
+                   let appliedWidth, lastAvailable > 0 {
+                    try? backend.performValueChange(
+                        node: model.id,
+                        value: Double(appliedWidth / lastAvailable)
+                    )
+                }
+                #endif
+            }
     }
 
     @ViewBuilder
     private var splitContent: some View {
-        #if os(iOS)
         // NavigationSplitView owns a ScrollView; nested inside scrolling
         // content it fails to lay out, so the manual layout renders instead.
         if insideScroll {
             manualSplit
+        } else if navSplitEligible {
+            // The split renders as a NavigationSplitView so the divider,
+            // collapse behavior, and column chrome are system-provided. The
+            // model fraction maps onto the sidebar column's ideal width.
+            navSplit
         } else {
-            // On iOS the split renders as a NavigationSplitView so the divider,
-            // collapse behavior, and column chrome are system-provided. The model
-            // fraction maps onto the sidebar column's ideal width.
-            iOSSplit
+            manualSplit
         }
-        #else
-        manualSplit
-        #endif
     }
 
-    #if os(iOS)
-    private var iOSSplit: some View {
+    private var navSplit: some View {
         let firstID = model.children.first
         let secondID = model.children.dropFirst().first
         let firstModel = firstID.flatMap(backend.model(id:))
@@ -7831,13 +7920,16 @@ private struct LUISplitView: View {
                         LUIAnyNodeView(nodeID: firstID, backend: backend).equatable()
                     }
                 }
+                #if os(iOS)
                 .background {
                     // NavigationSplitView exposes no drag callback; observe the
                     // rendered column width so user resizes still emit the
                     // declared value-change event.
                     GeometryReader { columnGeometry in
                         Color.clear.onChange(of: columnGeometry.size.width) { _, width in
-                            guard width > 0, geometry.size.width > 0 else { return }
+                            guard width > 0, geometry.size.width > 0,
+                                  columnVisibility != .detailOnly
+                            else { return }
                             let fraction = Double(width / geometry.size.width)
                             guard abs(fraction - fractionState.fraction) > 0.005 else {
                                 return
@@ -7860,14 +7952,136 @@ private struct LUISplitView: View {
                         max(geometry.size.width - CGFloat($0), 0)
                     }
                 )
+                #else
+                // Fixed column width: `ideal:` never re-applies after the
+                // column first appears, so model-driven width changes would
+                // silently drop. The fixed overload applies on every update;
+                // the split's own divider handle keeps it draggable.
+                .navigationSplitViewColumnWidth(
+                    appliedWidth ?? sidebarWidth(
+                        available: geometry.size.width,
+                        firstModel: firstModel,
+                        secondModel: secondModel
+                    )
+                )
+                #endif
             } detail: {
                 if let secondID {
-                    LUIAnyNodeView(nodeID: secondID, backend: backend).equatable()
+                    ZStack(alignment: .leading) {
+                        LUIAnyNodeView(nodeID: secondID, backend: backend).equatable()
+                        #if os(macOS)
+                        // The fixed column width has no draggable divider and
+                        // the native divider strip swallows pointer events, so
+                        // the split reuses its manual divider handle along the
+                        // detail's leading edge, giving drags the same
+                        // clamping and value-change semantics as manualSplit.
+                        if columnVisibility != .detailOnly {
+                            dividerHandle(
+                                firstWidth:
+                                    appliedWidth ?? sidebarWidth(
+                                        available: geometry.size.width,
+                                        firstModel: firstModel,
+                                        secondModel: secondModel
+                                    ),
+                                available: geometry.size.width,
+                                firstModel: firstModel,
+                                secondModel: secondModel
+                            )
+                        }
+                        #endif
+                    }
                 }
             }
+            #if os(macOS)
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.width
+            } action: { width in
+                guard width > 0 else { return }
+                lastAvailable = width
+                if appliedWidth == nil {
+                    appliedWidth = sidebarWidth(
+                        available: width,
+                        firstModel: firstModel,
+                        secondModel: secondModel
+                    )
+                }
+            }
+            // On macOS the detail stays prominent so a docked sidebar keeps
+            // its width while the window resizes and collapses first under
+            // space pressure; iOS keeps the established balanced style.
+            .navigationSplitViewStyle(.prominentDetail)
+            #else
             .navigationSplitViewStyle(.balanced)
+            #endif
         }
     }
+
+    #if os(macOS)
+    private func dividerHandle(
+        firstWidth: CGFloat,
+        available: CGFloat,
+        firstModel: LUINodeModel?,
+        secondModel: LUINodeModel?
+    ) -> some View {
+        Color.clear
+            .frame(width: 20)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        let start = dragStartFraction ?? fractionState.fraction
+                        dragStartFraction = start
+                        updateFraction(
+                            start + Double(value.translation.width / max(available, 1)),
+                            available: available,
+                            firstMinimum: firstModel?.surfaceMinWidth ?? 0,
+                            secondMinimum: secondModel?.surfaceMinWidth ?? 0
+                        )
+                    }
+                    .onEnded { _ in dragStartFraction = nil }
+            )
+            .focusable()
+            .onKeyPress(.leftArrow) {
+                adjust(
+                    by: -0.05,
+                    available: available,
+                    firstMinimum: firstModel?.surfaceMinWidth ?? 0,
+                    secondMinimum: secondModel?.surfaceMinWidth ?? 0
+                )
+            }
+            .onKeyPress(.rightArrow) {
+                adjust(
+                    by: 0.05,
+                    available: available,
+                    firstMinimum: firstModel?.surfaceMinWidth ?? 0,
+                    secondMinimum: secondModel?.surfaceMinWidth ?? 0
+                )
+            }
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.resizeLeftRight.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            .accessibilityElement()
+            .accessibilityLabel(
+                Text("\(model.property(.accessibilityLabel)?.stringValue ?? "Split") divider")
+            )
+            .accessibilityValue(
+                Text("\(Int((firstWidth / max(available, 1) * 100).rounded()))%")
+            )
+            .accessibilityAdjustableAction { direction in
+                _ = adjust(
+                    by: direction == .increment ? 0.05 : -0.05,
+                    available: available,
+                    firstMinimum: firstModel?.surfaceMinWidth ?? 0,
+                    secondMinimum: secondModel?.surfaceMinWidth ?? 0
+                )
+            }
+    }
+    #endif
 
     private func sidebarWidth(
         available: CGFloat,
@@ -7882,7 +8096,6 @@ private struct LUISplitView: View {
         )
         return available * CGFloat(fraction)
     }
-    #endif
 
     private var manualSplit: some View {
         GeometryReader { geometry in
@@ -7977,8 +8190,42 @@ private struct LUISplitView: View {
     }
 
     private func reconcile(sourceFraction: Double) {
+        let previousFraction = fractionState.fraction
         withAnimation(splitAnimation) {
             fractionState.reconcile(sourceFraction: sourceFraction)
+            if fractionState.fraction >= Self.detailCollapseFraction {
+                navSplitEligible = false
+            } else {
+                columnVisibility =
+                    fractionState.fraction <= Self.collapsedFraction
+                    ? .detailOnly : .doubleColumn
+            }
+            #if os(macOS)
+            // A model push that changed the rendered fraction moves the
+            // fixed-width column; a source that only caught up to the
+            // rendered fraction leaves the user's position alone. Collapsing
+            // keeps the open width so a chrome-driven reopen restores it.
+            if fractionState.fraction != previousFraction,
+               fractionState.fraction > Self.collapsedFraction,
+               lastAvailable > 0
+            {
+                appliedWidth = lastAvailable
+                    * CGFloat(
+                        LUISplitGeometry.effectiveFraction(
+                            value: fractionState.fraction,
+                            available: Double(lastAvailable),
+                            firstMinimum: Double(
+                                model.children.first.flatMap(backend.model(id:))?
+                                    .surfaceMinWidth ?? 0
+                            ),
+                            secondMinimum: Double(
+                                model.children.dropFirst().first.flatMap(backend.model(id:))?
+                                    .surfaceMinWidth ?? 0
+                            )
+                        )
+                    )
+            }
+            #endif
         }
     }
 
@@ -8010,6 +8257,9 @@ private struct LUISplitView: View {
             secondMinimum: Double(secondMinimum)
         )
         fractionState.applyUserFraction(effective)
+        #if os(macOS)
+        appliedWidth = available * CGFloat(effective)
+        #endif
         try? backend.performValueChange(node: model.id, value: effective)
     }
 }

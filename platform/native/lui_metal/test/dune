@@ -1,0 +1,5 @@
+(test
+ (name lui_metal_test)
+ (enabled_if (= %{system} macosx))
+ (libraries lui_metal lui_gpu lui_scene lui_raster lui_raster_testkit
+   lui_parity alcotest))

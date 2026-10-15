@@ -1,0 +1,4 @@
+(test
+ (name lui_ime_test)
+ (modules lui_ime_test)
+ (libraries lui_ime lui_scene alcotest))

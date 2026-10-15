@@ -172,7 +172,7 @@ let apply_detach_subtree nodes node_id =
   let rec drop node_id =
     match Hashtbl.find_opt nodes node_id with
     | Some node ->
-        List.iter drop (Lui_sequence.to_list node.retained_children);
+        Lui_sequence.iter drop node.retained_children;
         Hashtbl.remove nodes node_id
     | None -> ()
   in
@@ -183,9 +183,9 @@ let apply_detach_subtree nodes node_id =
 let rec collect_subtree nodes node_id acc =
   match Hashtbl.find_opt nodes node_id with
   | Some node ->
-      List.fold_left
+      Lui_sequence.fold_left
         (fun acc child -> collect_subtree nodes child acc)
-        (node_id :: acc) (Lui_sequence.to_list node.retained_children)
+        (node_id :: acc) node.retained_children
   | None -> acc
 
 let apply_set_prop nodes node_id property value =
@@ -739,7 +739,7 @@ let apply_operations nodes platform_for extension_platform_for registry
       Hashtbl.replace descended node ();
       note node;
       match Hashtbl.find_opt nodes node with
-      | Some current -> List.iter descendants (Lui_sequence.to_list current.retained_children)
+      | Some current -> Lui_sequence.iter descendants current.retained_children
       | None -> ()
     end in
   Hashtbl.iter (fun node previous ->

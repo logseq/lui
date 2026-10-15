@@ -10,7 +10,6 @@
 /platform/web/node_modules/
 /platform/web/dist/
 
-/platform/gpui/target/
 
 # Android / Gradle build outputs
 .gradle/

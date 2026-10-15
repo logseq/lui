@@ -55,6 +55,24 @@ type list_marker = [ `none | `disc | `decimal ]
 type scroll_anchor = [ `top | `center | `bottom ]
 type separator_visibility = [ `visible | `hidden ]
 
+(** Platform vocabulary re-exported from {!Lui_protocol} so view code can
+    match on {!Lui_ui.platform} / {!Lui_ui.host} results without opening
+    the wire-protocol module. *)
+type operating_system = Lui_protocol.operating_system =
+  | GenericOS
+  | WebOS
+  | MacOS
+  | IOS
+  | AndroidOS
+  | LinuxOS
+  | WindowsOS
+
+type host_kind = Lui_protocol.host_kind =
+  | GenericHost
+  | WebHost
+  | SwiftUIHost
+  | KotlinHost
+
 type image_loading = [ `eager | `lazy_ ]
 
 type referrer_policy =
@@ -393,6 +411,7 @@ val column :
   ?height:int ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_signal:int Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
   ?container_relative_frame:frame_axes ->
@@ -977,8 +996,16 @@ val list :
   ?opacity_signal:float Signal.signal ->
   ?list_marker:list_marker ->
   ?transition:string -> t list -> t
+(* [virtual_list] keeps all children in the model but materializes
+   only the visible window plus [?overscan] rows (backends that
+   virtualize — web and native). [?item_extent] is the estimated row
+   main extent in logical px, used to size unmeasured rows on the
+   native backend; both ride [data-attrs] as
+   [data-overscan]/[data-item-extent]. *)
 val virtual_list :
   ?key:string ->
+  ?overscan:int ->
+  ?item_extent:float ->
   ?gap:int ->
   ?main:main_alignment ->
   ?cross:cross_alignment ->
@@ -1861,6 +1888,7 @@ val text :
   ?line_height:string ->
   ?letter_spacing:float ->
   ?font_family:string ->
+  ?font_style:string ->
   ?text_decoration:string ->
   ?white_space:string ->
   ?text_overflow:string ->
@@ -1919,6 +1947,7 @@ val heading :
   ?line_height:string ->
   ?letter_spacing:float ->
   ?font_family:string ->
+  ?font_style:string ->
   ?text_decoration:string ->
   ?white_space:string ->
   ?text_overflow:string ->
@@ -1971,6 +2000,7 @@ val paragraph :
   ?line_height:string ->
   ?letter_spacing:float ->
   ?font_family:string ->
+  ?font_style:string ->
   ?text_decoration:string ->
   ?white_space:string ->
   ?text_overflow:string ->
@@ -2023,6 +2053,7 @@ val label :
   ?line_height:string ->
   ?letter_spacing:float ->
   ?font_family:string ->
+  ?font_style:string ->
   ?text_decoration:string ->
   ?white_space:string ->
   ?text_overflow:string ->
@@ -2754,6 +2785,7 @@ val text_field :
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
+  ?placeholder_signal:string Signal.signal ->
   ?label:string ->
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
@@ -2806,6 +2838,7 @@ val secure_field :
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
+  ?placeholder_signal:string Signal.signal ->
   ?label:string ->
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
@@ -2858,6 +2891,7 @@ val input :
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
+  ?placeholder_signal:string Signal.signal ->
   ?label:string ->
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
@@ -2911,6 +2945,7 @@ val search_field :
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
+  ?placeholder_signal:string Signal.signal ->
   ?label:string ->
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
@@ -2963,6 +2998,7 @@ val textarea :
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
+  ?placeholder_signal:string Signal.signal ->
   ?label:string ->
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
@@ -3096,6 +3132,7 @@ val select :
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
+  ?placeholder_signal:string Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_press:(Lui_protocol.event -> unit) ->
@@ -3150,6 +3187,7 @@ val combobox :
   ?text:string ->
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
+  ?placeholder_signal:string Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_press:(Lui_protocol.event -> unit) ->
@@ -3258,7 +3296,8 @@ val context_menu :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?disabled:bool -> ?disabled_signal:bool Signal.signal -> t list -> t
+  ?disabled:bool -> ?disabled_signal:bool Signal.signal ->
+  ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
 val menu_trigger :
   ?key:string ->
   ?accessibility_identifier:string ->

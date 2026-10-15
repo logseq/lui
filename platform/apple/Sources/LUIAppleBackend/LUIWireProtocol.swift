@@ -318,6 +318,9 @@ enum LUIWireValue: Decodable, Equatable {
         case .textDecoration:
             guard let value = stringValue else { return false }
             return Self.textDecorationSupported(value)
+        case .fontStyle:
+            guard let value = stringValue else { return false }
+            return ["normal", "italic", "oblique"].contains(value)
         case .listStyle:
             guard let value = stringValue else { return false }
             return ["none", "disc", "decimal"].contains(value)
@@ -552,11 +555,9 @@ struct LUINodeState {
 struct LUIRetainedTree {
     private(set) var nodes: [Int: LUINodeState] = [:]
     private(set) var extensionNodes: [Int: LUIExtensionNodeState] = [:]
-
-    var rootIDs: [Int] {
-        nodes.compactMap { id, node in node.parent == nil ? id : nil } +
-            extensionNodes.compactMap { id, node in node.parent == nil ? id : nil }
-    }
+    /// Node ids with no parent, maintained incrementally by `apply` so reads
+    /// stay O(1) instead of rescanning the whole tree per batch.
+    private(set) var rootIDs: Set<Int> = []
 
     struct PatchEffects {
         /// Nodes created or mutated by an op. Ops only mutate the nodes they
@@ -594,6 +595,7 @@ struct LUIRetainedTree {
         var snapshotted = Set<Int>()
         var oldNodes: [Int: LUINodeState] = [:]
         var oldExtensions: [Int: LUIExtensionNodeState] = [:]
+        let oldRootIDs = rootIDs
         do {
             for operation in operations {
                 for id in Self.affectedIDs(of: operation) where !snapshotted.contains(id) {
@@ -713,6 +715,7 @@ struct LUIRetainedTree {
                 nodes[id] = oldNodes[id]
                 extensionNodes[id] = oldExtensions[id]
             }
+            rootIDs = oldRootIDs
             throw error
         }
         return effects
@@ -747,6 +750,7 @@ struct LUIRetainedTree {
                 children: [],
                 properties: [:]
             )
+            rootIDs.insert(id)
         case let .createExtension(id, identifier, fingerprint):
             guard !contains(id) else { throw invalid("node already exists") }
             guard let registration = extensionRegistry.registration(identifier) else {
@@ -769,6 +773,7 @@ struct LUIRetainedTree {
                     }
                 )
             )
+            rootIDs.insert(id)
         case let .dropNode(id):
             guard contains(id) else { throw invalid("unknown node") }
             guard parent(of: id) == nil, children(of: id)?.isEmpty == true else {
@@ -776,6 +781,7 @@ struct LUIRetainedTree {
             }
             nodes[id] = nil
             extensionNodes[id] = nil
+            rootIDs.remove(id)
         case let .detachSubtree(id):
             // detach-subtree unmounts a whole retained subtree: the root
             // is unlinked from whatever parent still records it (the
@@ -791,6 +797,7 @@ struct LUIRetainedTree {
             for memberID in subtreeIDs(of: id) {
                 nodes[memberID] = nil
                 extensionNodes[memberID] = nil
+                rootIDs.remove(memberID)
             }
         case let .setProp(id, property, value):
             guard var node = nodes[id] else { throw invalid("unknown node") }
@@ -896,6 +903,13 @@ struct LUIRetainedTree {
         } else if var node = extensionNodes[id] {
             node.parent = parent
             extensionNodes[id] = node
+        } else {
+            return
+        }
+        if parent == nil {
+            rootIDs.insert(id)
+        } else {
+            rootIDs.remove(id)
         }
     }
 
@@ -972,7 +986,7 @@ struct LUIRetainedTree {
                 throw invalid("toolbar accepts only interactive controls and dividers")
             }
             // Interactive leaf hosts (button, menu-item, ...) accept context-menu
-            // metadata and content children (text/icon/etc., matching gpui), but
+            // metadata and content children (text/icon/etc.), but
             // never nested menu containers — submenus are not supported.
             if Self.isContextMenuLeafHost(parentNode.kind),
                childNode.kind == .dropdownMenu || childNode.kind == .menuTrigger {
@@ -1066,6 +1080,7 @@ struct LUIRetainedTree {
             kind == .row || kind == .column || kind == .list || kind == .virtualList ||
                 kind == .card || kind == .panel || kind == .box ||
                 kind == .button || kind == .menuItem || kind == .listItem ||
+                kind == .popover || kind == .link ||
                 isHorizontalGroup(kind)
         case .grow: kind != .avatar && kind != .tooltip && !isModalSurface(kind)
         case .columns: kind == .grid
@@ -1079,10 +1094,10 @@ struct LUIRetainedTree {
         case .asTag:
             kind == .text || kind == .heading || kind == .paragraph ||
                 kind == .label
-        case .background, .borderColor, .borderWidth,
-             .cornerRadius,
-             .minWidth, .maxWidth, .minHeight, .maxHeight:
+        case .background, .borderColor, .borderWidth, .cornerRadius:
             kind != .tooltip && !isModalSurface(kind)
+        case .minWidth, .maxWidth, .minHeight, .maxHeight:
+            kind == .dialog || (!isModalSurface(kind) && kind != .tooltip)
         case .containerRelativeFrame, .containerRelativeFrameInset:
             kind != .root && !isModalSurface(kind)
         case .foreground:
@@ -1097,7 +1112,7 @@ struct LUIRetainedTree {
                 kind == .radio || kind == .slider || kind == .numberStepper ||
                 kind == .spinner || kind == .icon
                 || kind == .select || kind == .combobox || kind == .dropdownMenu
-                || kind == .menuItem || kind == .listItem
+                || kind == .menuItem || kind == .popover || kind == .listItem
                 || kind == .tableCell || kind == .resizable || kind == .split ||
                 kind == .alert || kind == .bubble || kind == .statusBar ||
                 kind == .link || kind == .fileImage
@@ -1180,10 +1195,12 @@ struct LUIRetainedTree {
         case .changeEnabled: kind == .radio || isTreeRow(kind)
         case .toggleEnabled: kind == .radio || kind == .drawer || isTreeRow(kind)
         case .pressEnabled:
-            kind == .text || kind == .row || kind == .column || kind == .box ||
+            kind == .button || kind == .toggleButton || kind == .text ||
+                kind == .row || kind == .column || kind == .box ||
                 kind == .radio || kind == .select ||
                 kind == .combobox || kind == .menuItem || kind == .listItem
-                || kind == .tableCell || kind == .fileImage || isTreeRow(kind)
+                || kind == .tableCell || kind == .bottomTab ||
+                kind == .fileImage || isTreeRow(kind)
         case .submitEnabled: kind == .combobox || kind == .listItem
         case .doublePressEnabled: kind == .listItem
         case .appearEnabled, .pointerEnabled: kind != .root
@@ -1231,8 +1248,8 @@ struct LUIRetainedTree {
         case .alignment: kind != .root
         // Typography carries a foreground — same kinds as `.foreground`
         // minus purely graphical kinds whose `size` prop governs metrics.
-        case .fontSize, .fontWeight, .lineHeight, .letterSpacing, .userSelect,
-             .fontFamily, .textDecoration:
+        case .fontSize, .fontWeight, .fontStyle, .lineHeight, .letterSpacing,
+             .userSelect, .fontFamily, .textDecoration:
             kind == .row || kind == .column || kind == .grid || kind == .box ||
                 kind == .panel || kind == .card || kind == .stack ||
                 kind == .scroll || kind == .avatar ||
@@ -1405,8 +1422,7 @@ struct LUIRetainedTree {
                 let label = node.properties[.accessibilityLabel]?.stringValue ?? ""
                 let icon = node.properties[.icon]?.stringValue ?? ""
                 // Content may arrive as child nodes (text/label/icon) rather than
-                // properties — those children provide the accessible name,
-                // matching gpui toleration.
+                // properties — those children provide the accessible name.
                 let hasNamedChild = hasNamedChild(node)
                 guard !text.isEmpty || !label.isEmpty || !icon.isEmpty || hasNamedChild else {
                     throw invalid("button requires an accessible name")

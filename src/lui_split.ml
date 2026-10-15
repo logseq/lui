@@ -22,9 +22,6 @@ let profiles =
     { profile_os = MacOS; profile_host = SwiftUIHost };
     { profile_os = IOS; profile_host = SwiftUIHost };
     { profile_os = AndroidOS; profile_host = KotlinHost };
-    { profile_os = MacOS; profile_host = GPUIHost };
-    { profile_os = LinuxOS; profile_host = GPUIHost };
-    { profile_os = WindowsOS; profile_host = GPUIHost };
     { profile_os = WebOS; profile_host = WebHost };
   ]
 

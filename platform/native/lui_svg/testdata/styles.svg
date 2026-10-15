@@ -1,0 +1,13 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .hot { fill: #ff3300; }
+    #special { stroke: #0033ff; stroke-width: 2; }
+    rect.cold { fill: #003366; }
+    g.outer rect { stroke-width: 1; }
+  </style>
+  <g class="outer">
+    <rect class="hot" x="2" y="2" width="8" height="8"/>
+    <rect id="special" class="cold" x="12" y="2" width="8" height="8" fill="#00aa00"/>
+    <rect class="cold" x="2" y="12" width="8" height="8" style="fill: #884488"/>
+  </g>
+</svg>

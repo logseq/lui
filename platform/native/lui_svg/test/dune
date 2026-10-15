@@ -1,0 +1,5 @@
+(test
+ (name lui_svg_test)
+ (modules lui_svg_test)
+ (libraries lui_svg lui_scene alcotest)
+ (deps (glob_files ../testdata/*.svg)))

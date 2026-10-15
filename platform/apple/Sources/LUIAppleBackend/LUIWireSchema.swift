@@ -217,6 +217,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case availableHeight = "available-height"
     case fontSize = "font-size"
     case fontWeight = "font-weight"
+    case fontStyle = "font-style"
     case lineHeight = "line-height"
     case letterSpacing = "letter-spacing"
     case position = "position"
@@ -277,7 +278,7 @@ enum LUISchemaMatrix {
         .swipeAction: [.text, .icon, .variant, .edge, .enabled, .background, .pressEnabled, .pointerEnabled],
         .filePicker: [.request, .types, .multiple, .source, .completion, .pickerAccept, .pickerDirectory, .enabled, .appearEnabled, .pointerEnabled],
         .filePreview: [.path, .pointerEnabled],
-        .kbd: [.text, .styleClass, .dataAttrs, .pointerEnabled, .fontSize, .fontWeight, .lineHeight, .letterSpacing, .fontFamily, .textDecoration, .whiteSpace, .textOverflow, .userSelect, .cursor, .shadow, .hoverBackground, .hoverOpacity, .hoverShadow, .pressedBackground, .pressedOpacity, .pressedShadow, .focusShadow, .selectedBackground, .selectedShadow, .selectedHoverShadow, .disabledOpacity, .transition],
+        .kbd: [.text, .styleClass, .dataAttrs, .pointerEnabled, .background, .borderColor, .borderWidth, .cornerRadius, .foreground, .grow, .padding, .paddingHorizontal, .paddingVertical, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight, .opacity, .fontSize, .fontWeight, .fontStyle, .lineHeight, .letterSpacing, .fontFamily, .textDecoration, .whiteSpace, .textOverflow, .userSelect, .cursor, .shadow, .hoverBackground, .hoverOpacity, .hoverShadow, .pressedBackground, .pressedOpacity, .pressedShadow, .focusShadow, .selectedBackground, .selectedShadow, .selectedHoverShadow, .disabledOpacity, .transition],
     ]
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [

@@ -96,6 +96,95 @@ public struct LUIRootSection: Identifiable, Hashable, Sendable {
     }
 }
 
+/// Display data decoded from wire props once per commit — the raw
+/// `style-class` string plus its split token set, layout fields parents
+/// read while laying children out, and the theme-scope contribution — so
+/// view bodies read plain fields instead of re-parsing strings every
+/// evaluation.
+struct LUINodeDerived: Equatable {
+    var styleClass: String?
+    var styleClassTokens: Set<String>
+    /// `grow` layout factor (absent = 0).
+    var grow: Double
+    /// `alignment` override consulted by overlay/stack parents.
+    var alignment: String?
+    /// `anchor` prop present — marks anchored menus/tooltips.
+    var hasAnchor: Bool
+    /// `enabled` prop (absent = true).
+    var isEnabled: Bool
+    var themeScope: LUIThemeScopeContribution
+
+    init() {
+        styleClass = nil
+        styleClassTokens = []
+        grow = 0
+        alignment = nil
+        hasAnchor = false
+        isEnabled = true
+        themeScope = LUIThemeScopeContribution()
+    }
+
+    init(properties: [LUIProperty: LUIWireValue]) {
+        styleClass = properties[.styleClass]?.stringValue
+        styleClassTokens = styleClass.map {
+            Set($0.split(separator: " ").map(String.init))
+        } ?? []
+        grow = properties[.grow]?.doubleValue ?? 0
+        alignment = properties[.alignment]?.stringValue
+        hasAnchor = properties[.anchor] != nil
+        isEnabled = properties[.enabled]?.boolValue ?? true
+        themeScope = LUIThemeScopeContribution(
+            tokens: LUIThemeTokenDecoder.tokens(properties[.theme]?.stringValue),
+            scheme: LUIThemeTokenDecoder.colorScheme(
+                properties[.themeMode]?.stringValue
+            ),
+            typography: LUITypographySpec(properties: properties)
+        )
+    }
+}
+
+/// Child fields a parent body reads while laying out — a view onto the
+/// child's own commit-decoded `LUINodeDerived`, so the parent never
+/// re-parses child props per evaluation.
+struct LUIChildLayout: Equatable {
+    var kind: LUINodeKind
+    var derived: LUINodeDerived
+
+    var grow: Double { derived.grow }
+    var alignment: String? { derived.alignment }
+    var isEnabled: Bool { derived.isEnabled }
+    var styleClass: String? { derived.styleClass }
+    var styleClassTokens: Set<String> { derived.styleClassTokens }
+}
+
+/// Everything a view body needs to know about a node's children — the
+/// visible-child list, per-child layout fields, auxiliary-slot
+/// capabilities and scroll-section titles — computed once per commit so
+/// parents consume plain data instead of re-resolving child models and
+/// re-parsing child props on every evaluation. Maintained by
+/// `LUIAppleBackend` during `apply`, including for parents that were not
+/// themselves touched but whose children were.
+struct LUIChildData: Equatable {
+    /// `children` minus auxiliary slots (context-menu, swipe-actions,
+    /// list-section header/footer).
+    var visible: [Int] = []
+    /// Per-child layout fields keyed by child id; extension and unmounted
+    /// children have no entry.
+    var layout: [Int: LUIChildLayout] = [:]
+    /// First `context-menu` child containing at least one `menu-item`.
+    var contextMenuID: Int?
+    /// First `dropdown-menu` / `tooltip` child carrying an `anchor` prop.
+    var anchoredMenuID: Int?
+    var anchoredTooltipID: Int?
+    /// Anchored-menu trigger children the stack host handles specially.
+    var hasComboboxChild = false
+    var hasSelectChild = false
+    /// Segmented-control fast path: non-empty, every child an enabled button.
+    var segmentedTabsSupported = false
+    /// Visible-child → active `scroll-section-title` for tracking lists.
+    var sectionTitles: [Int: String]?
+}
+
 @Observable
 @MainActor
 final class LUINodeModel: Identifiable {
@@ -107,18 +196,34 @@ final class LUINodeModel: Identifiable {
         access(keyPath: \.properties)
         return storedProperties
     }
+    /// Prop-derived display data (style-class tokens, theme scope),
+    /// refreshed whenever `properties` restages — subscribers only see a
+    /// mutation when the derived data itself changes.
+    @ObservationIgnored private var storedDerived: LUINodeDerived
+    var derived: LUINodeDerived {
+        access(keyPath: \.derived)
+        return storedDerived
+    }
     @ObservationIgnored private var storedChildren: [Int]
     var children: [Int] {
         access(keyPath: \.children)
         return storedChildren
     }
-    /// `children` minus context-menu entries. Child kinds are immutable, so it
-    /// only changes when `children` does — maintained by the backend at commit
-    /// time so view bodies don't refilter on every evaluation.
-    @ObservationIgnored private var storedVisibleChildren: [Int]
+    /// Commit-computed data about this node's children: the visible-child
+    /// list, per-child layout fields, auxiliary-slot capabilities and
+    /// scroll-section titles. Maintained by the backend so view bodies
+    /// don't re-resolve child models or re-parse child props per
+    /// evaluation.
+    @ObservationIgnored private var storedChildData = LUIChildData()
+    var childData: LUIChildData {
+        access(keyPath: \.childData)
+        return storedChildData
+    }
+    /// `children` minus auxiliary slots — kept as an alias over
+    /// `childData` so existing readers subscribe to the same commit data.
     var visibleChildren: [Int] {
-        access(keyPath: \.visibleChildren)
-        return storedVisibleChildren
+        access(keyPath: \.childData)
+        return storedChildData.visible
     }
     @ObservationIgnored private var storedParent: Int?
     var parent: Int? {
@@ -130,13 +235,21 @@ final class LUINodeModel: Identifiable {
         access(keyPath: \.revision)
         return storedRevision
     }
+    /// Fold of this node's revision and all descendants' stamps,
+    /// maintained at commit time — reads are O(1) and subscribe to one
+    /// key path instead of the whole subtree.
+    @ObservationIgnored private var storedSubtreeStamp = 0
+    var subtreeStamp: Int {
+        access(keyPath: \.subtreeStamp)
+        return storedSubtreeStamp
+    }
 
-    init(id: Int, state: LUINodeState, visibleChildren: [Int]) {
+    init(id: Int, state: LUINodeState) {
         self.id = id
         kind = state.kind
         storedProperties = state.properties
+        storedDerived = LUINodeDerived(properties: state.properties)
         storedChildren = state.children
-        storedVisibleChildren = visibleChildren
         storedParent = state.parent
     }
 
@@ -146,34 +259,70 @@ final class LUINodeModel: Identifiable {
 
     // Stage without observation callbacks: a synchronous render must never
     // see a partially updated model or an incomplete graph.
-    func stage(state: LUINodeState, visibleChildren: [Int]) -> LUIModelChanges {
+    func stage(state: LUINodeState) -> LUIModelChanges {
         var changes: LUIModelChanges = []
         if storedProperties != state.properties {
             storedProperties = state.properties
             changes.insert(.properties)
+            let derived = LUINodeDerived(properties: state.properties)
+            if storedDerived != derived {
+                storedDerived = derived
+                changes.insert(.derived)
+            }
         }
         if storedChildren != state.children {
             storedChildren = state.children
             changes.insert(.children)
         }
-        if storedVisibleChildren != visibleChildren {
-            storedVisibleChildren = visibleChildren
-            changes.insert(.visibleChildren)
-        }
         if storedParent != state.parent {
             storedParent = state.parent
             changes.insert(.parent)
         }
-        if !changes.isEmpty { storedRevision += 1 }
+        if !changes.isEmpty {
+            storedRevision += 1
+            changes.insert(.revision)
+        }
         return changes
+    }
+
+    /// Restaged in a second commit pass once every child model holds its
+    /// new state — parents refresh even when only a child's props changed.
+    /// Deliberately does not bump `revision`: `.childData` readers
+    /// subscribe to that key path directly, and folding it into the
+    /// revision gate would re-evaluate every ancestor view on each
+    /// descendant commit.
+    func stageChildData(_ data: LUIChildData) -> LUIModelChanges {
+        guard storedChildData != data else { return [] }
+        storedChildData = data
+        return [.childData]
+    }
+
+    /// Restaged after `stageChildData` so children already carry their
+    /// fresh stamps when parents fold them. Same no-revision rule as
+    /// `stageChildData` — a descendant commit must not walk view
+    /// re-evaluation up the ancestor chain.
+    func stageSubtreeStamp(_ stamp: Int) -> LUIModelChanges {
+        guard storedSubtreeStamp != stamp else { return [] }
+        storedSubtreeStamp = stamp
+        return [.subtreeStamp]
+    }
+
+    /// Off-commit stamp invalidation for `invalidateResource` callers:
+    /// bumps the stamp directly (and the backend propagates it to
+    /// ancestors) since no restage pass runs.
+    func invalidateSubtreeStamp() {
+        storedSubtreeStamp &+= 1
+        withMutation(keyPath: \.subtreeStamp) {}
     }
 
     func publish(_ changes: LUIModelChanges) {
         if changes.contains(.properties) { withMutation(keyPath: \.properties) {} }
+        if changes.contains(.derived) { withMutation(keyPath: \.derived) {} }
         if changes.contains(.children) { withMutation(keyPath: \.children) {} }
-        if changes.contains(.visibleChildren) { withMutation(keyPath: \.visibleChildren) {} }
+        if changes.contains(.childData) { withMutation(keyPath: \.childData) {} }
         if changes.contains(.parent) { withMutation(keyPath: \.parent) {} }
-        if !changes.isEmpty { withMutation(keyPath: \.revision) {} }
+        if changes.contains(.subtreeStamp) { withMutation(keyPath: \.subtreeStamp) {} }
+        if changes.contains(.revision) { withMutation(keyPath: \.revision) {} }
     }
 
     func invalidateResource() {
@@ -324,12 +473,25 @@ final class LUINodeModel: Identifiable {
         return croppedImage(image, source: imageSourceRect)
     }
 
+    /// Last `croppedImage` result; a node's image and source rect only
+    /// change via props, so one entry covers every body evaluation between
+    /// commits and avoids a `CGImage.cropping(to:)` copy per eval.
+    @ObservationIgnored private var cachedCrop:
+        (source: CGImage, rect: CGRect, result: CGImage?)?
+
     private func croppedImage(_ image: CGImage, source: CGRect?) -> CGImage? {
         guard let source else { return image }
+        if let cached = cachedCrop,
+           cached.source === image, cached.rect == source {
+            return cached.result
+        }
         let bounds = CGRect(x: 0, y: 0, width: image.width, height: image.height)
         let clipped = source.intersection(bounds)
-        guard !clipped.isNull, !clipped.isEmpty else { return nil }
-        return image.cropping(to: clipped)
+        let result = clipped.isNull || clipped.isEmpty
+            ? nil
+            : image.cropping(to: clipped)
+        cachedCrop = (image, source, result)
+        return result
     }
 
     func mediaSurfaceFrame(in backend: LUIAppleBackend) -> CGImage? {
@@ -435,6 +597,17 @@ final class LUINodeModel: Identifiable {
     func accessibilityHint(in backend: LUIAppleBackend) -> String? { nil }
 }
 
+/// Observable flags backing `LUIAppleBackend`'s frame reporting: the
+/// per-node geometry probe reads `isEnabled`/`isSuspended` in its body so
+/// probes mount and unmount with the flags instead of staying installed
+/// and no-op'ing.
+@Observable
+@MainActor
+final class LUIFrameReporting {
+    var isEnabled = false
+    var isSuspended = false
+}
+
 @MainActor
 public final class LUIAppleBackend {
     public private(set) var generation = 0
@@ -444,12 +617,20 @@ public final class LUIAppleBackend {
 
     // MARK: - Node frame reporting
 
-    /// Gates emission of `onFramesReport`. Frames are collected
-    /// unconditionally (a dict write per layout change) so a driver can
-    /// attach mid-session and still see every node's latest geometry.
-    public var frameReportingEnabled = false {
-        didSet {
-            if frameReportingEnabled && !oldValue {
+    /// Observable side of `frameReportingEnabled`: views read this so the
+    /// per-node geometry probes mount/unmount when reporting toggles.
+    let frameReporting = LUIFrameReporting()
+
+    /// Gates emission of `onFramesReport` and the per-node
+    /// `onGeometryChange` probes. Toggling it on mounts the probes, whose
+    /// first layout pass feeds `nodeFrames`, so a driver attaching
+    /// mid-session still sees every node's latest geometry.
+    public var frameReportingEnabled: Bool {
+        get { frameReporting.isEnabled }
+        set {
+            let wasEnabled = frameReporting.isEnabled
+            frameReporting.isEnabled = newValue
+            if newValue && !wasEnabled {
                 scheduleFramesReport()
             }
         }
@@ -463,8 +644,11 @@ public final class LUIAppleBackend {
 
     /// When true, per-node frame collection is skipped entirely — hosts
     /// running the LOGSEQ_NO_FRAME_PROBE mount-cost experiment set this so
-    /// `onGeometryChange` recorders never feed `nodeFrames`.
-    public var frameCollectionSuspended = false
+    /// `onGeometryChange` recorders never mount.
+    public var frameCollectionSuspended: Bool {
+        get { frameReporting.isSuspended }
+        set { frameReporting.isSuspended = newValue }
+    }
 
     private var nodeFrames: [Int: CGRect] = [:]
     private var framesReportScheduled = false
@@ -1280,13 +1464,18 @@ public final class LUIAppleBackend {
         // nodes they name), so reconciliation only walks the patched set.
         let perf = ProcessInfo.processInfo.environment["LOGSEQ_PERF"] != nil
         var tDrop: Double = 0
-        var tFilter: Double = 0
         var tNodeApply: Double = 0
         var tExtApply: Double = 0
+        var tChildData: Double = 0
         let t0 = CFAbsoluteTimeGetCurrent()
-        var nodeChanges: [(LUINodeModel, LUIModelChanges)] = []
-        var extensionChanges: [(LUIExtensionNodeModel, LUIModelChanges)] = []
+        var nodeChanges: [Int: (LUINodeModel, LUIModelChanges)] = [:]
+        var extensionChanges: [Int: (LUIExtensionNodeModel, LUIModelChanges)] = [:]
         var membershipChanges = Set<Int>()
+        /// Nodes whose child data or subtree stamp must be restaged: every
+        /// touched node plus its ancestors, collected on both the pre- and
+        /// post-stage parent chains so reparents cover the old side too.
+        var descendantsRefresh = Set<Int>()
+        for id in dropped { collectAncestors(of: id, into: &descendantsRefresh) }
         for id in dropped {
             if models[id] != nil || extensionModels[id] != nil {
                 membershipChanges.insert(id)
@@ -1300,42 +1489,30 @@ public final class LUIAppleBackend {
         }
         if perf { tDrop = CFAbsoluteTimeGetCurrent() - t0 }
         for id in touched where !dropped.contains(id) {
+            collectAncestors(of: id, into: &descendantsRefresh)
             if let state = tree.nodes[id] {
-                // Kinds are immutable, so auxiliary-slot membership in the
-                // child list is fixed until the list itself changes.
+                descendantsRefresh.insert(id)
                 let t1 = CFAbsoluteTimeGetCurrent()
-                let visibleChildren = state.children.filter { childID in
-                    switch tree.nodes[childID]?.kind {
-                    case .contextMenu, .swipeActions, .listSectionHeader,
-                         .listSectionFooter:
-                        false
-                    default:
-                        true
-                    }
-                }
-                let t2 = CFAbsoluteTimeGetCurrent()
-                if perf { tFilter += t2 - t1 }
                 if let model = models[id] {
-                    let changes = model.stage(state: state, visibleChildren: visibleChildren)
-                    if !changes.isEmpty { nodeChanges.append((model, changes)) }
+                    let changes = model.stage(state: state)
+                    if !changes.isEmpty {
+                        nodeChanges[id] = (model, changes)
+                    }
                 } else {
                     if Self.isModalKind(state.kind) {
                         modalNodeCount += 1
                     }
                     membershipChanges.insert(id)
-                    models[id] = LUINodeModel(
-                        id: id,
-                        state: state,
-                        visibleChildren: visibleChildren
-                    )
+                    models[id] = LUINodeModel(id: id, state: state)
                 }
-                if perf { tNodeApply += CFAbsoluteTimeGetCurrent() - t2 }
+                if perf { tNodeApply += CFAbsoluteTimeGetCurrent() - t1 }
             }
             if let state = tree.extensionNodes[id] {
-                let t3 = CFAbsoluteTimeGetCurrent()
+                descendantsRefresh.insert(id)
+                let t2 = CFAbsoluteTimeGetCurrent()
                 if let model = extensionModels[id] {
                     let changes = model.stage(state: state)
-                    if !changes.isEmpty { extensionChanges.append((model, changes)) }
+                    if !changes.isEmpty { extensionChanges[id] = (model, changes) }
                 } else {
                     membershipChanges.insert(id)
                     extensionModels[id] = LUIExtensionNodeModel(
@@ -1343,20 +1520,171 @@ public final class LUIAppleBackend {
                         state: state
                     )
                 }
-                if perf { tExtApply += CFAbsoluteTimeGetCurrent() - t3 }
+                if perf { tExtApply += CFAbsoluteTimeGetCurrent() - t2 }
+            }
+            // Post-stage chain: a reparent also invalidates the new side.
+            collectAncestors(of: id, into: &descendantsRefresh)
+        }
+        let t3 = CFAbsoluteTimeGetCurrent()
+        // Child data reads the staged state of every child, so it stages
+        // after the main pass: parents refresh even when only a child's
+        // props (grow, alignment, anchor, enabled, style-class) changed.
+        descendantsRefresh.subtract(dropped)
+        for id in descendantsRefresh {
+            guard let model = models[id] else { continue }
+            let changes = model.stageChildData(makeChildData(for: model))
+            if !changes.isEmpty {
+                let merged = (nodeChanges[id]?.1 ?? []).union(changes)
+                nodeChanges[id] = (model, merged)
             }
         }
+        // Subtree stamps fold descendant revisions bottom-up; memoized over
+        // the refreshed set so refreshed parents reuse fresh child values
+        // and untouched children contribute their stored stamp.
+        var stampMemo: [Int: Int] = [:]
+        var stampVisiting = Set<Int>()
+        func stamp(_ id: Int) -> Int {
+            if let memo = stampMemo[id] { return memo }
+            let value: Int
+            guard descendantsRefresh.contains(id), !stampVisiting.contains(id) else {
+                value = models[id]?.subtreeStamp
+                    ?? extensionModels[id]?.subtreeStamp ?? -1
+                stampMemo[id] = value
+                return value
+            }
+            stampVisiting.insert(id)
+            var folded = (models[id]?.revision
+                ?? extensionModels[id]?.revision ?? -1) &* 31
+            for childID in models[id]?.children
+                ?? extensionModels[id]?.children ?? []
+            {
+                folded = folded &* 31 &+ stamp(childID)
+            }
+            stampVisiting.remove(id)
+            value = folded
+            stampMemo[id] = value
+            return value
+        }
+        for id in descendantsRefresh {
+            let folded = stamp(id)
+            if let model = models[id] {
+                let changes = model.stageSubtreeStamp(folded)
+                if !changes.isEmpty {
+                    let merged = (nodeChanges[id]?.1 ?? []).union(changes)
+                    nodeChanges[id] = (model, merged)
+                }
+            } else if let model = extensionModels[id] {
+                let changes = model.stageSubtreeStamp(folded)
+                if !changes.isEmpty {
+                    let merged = (extensionChanges[id]?.1 ?? []).union(changes)
+                    extensionChanges[id] = (model, merged)
+                }
+            }
+        }
+        if perf { tChildData = CFAbsoluteTimeGetCurrent() - t3 }
         // Every state, revision and lookup now belongs to the same commit.
         // Observation willSet can synchronously flush SwiftUI transactions;
         // publish only after that flush can traverse the complete new graph.
-        for (model, changes) in nodeChanges { model.publish(changes) }
-        for (model, changes) in extensionChanges { model.publish(changes) }
+        for (model, changes) in nodeChanges.values { model.publish(changes) }
+        for (model, changes) in extensionChanges.values { model.publish(changes) }
         for id in membershipChanges { lookupObservation.publish(id: id) }
         if perf {
             FileHandle.standardError.write(
-                "PERF commit-split drop=\(Int(tDrop*1000))ms filter=\(Int(tFilter*1000))ms nodeApply=\(Int(tNodeApply*1000))ms extApply=\(Int(tExtApply*1000))ms\n"
+                "PERF commit-split drop=\(Int(tDrop*1000))ms nodeApply=\(Int(tNodeApply*1000))ms extApply=\(Int(tExtApply*1000))ms childData=\(Int(tChildData*1000))ms\n"
                     .data(using: .utf8)!)
         }
+    }
+
+    /// Walks the model parent chain of `nodeID`, collecting every ancestor.
+    /// Both sides of a reparent need a child-data/stamp restage, so callers
+    /// run this before and after `stage` updates `parent`.
+    private func collectAncestors(of nodeID: Int, into set: inout Set<Int>) {
+        var cursor = models[nodeID]?.parent ?? extensionModels[nodeID]?.parent
+        while let parentID = cursor {
+            set.insert(parentID)
+            cursor = models[parentID]?.parent ?? extensionModels[parentID]?.parent
+        }
+    }
+
+    /// Commit-time children data for `model`: the visible-child filter plus
+    /// per-child layout fields and auxiliary-slot capabilities parent views
+    /// used to recompute by scanning child models on every body evaluation.
+    private func makeChildData(for model: LUINodeModel) -> LUIChildData {
+        var data = LUIChildData()
+        var sawWireChild = false
+        var sawContextMenu = false
+        var allEnabledButtons = true
+        for childID in model.children {
+            guard let child = models[childID] else {
+                // Extension and unmounted children stay visible, carry no
+                // layout entry and are ignored for segmented support —
+                // matching the old `compactMap(model)` child scans.
+                data.visible.append(childID)
+                continue
+            }
+            sawWireChild = true
+            data.layout[childID] = LUIChildLayout(kind: child.kind, derived: child.derived)
+            switch child.kind {
+            case .contextMenu:
+                if !sawContextMenu {
+                    sawContextMenu = true
+                    if child.children.contains(where: { models[$0]?.kind == .menuItem }) {
+                        data.contextMenuID = childID
+                    }
+                }
+            case .swipeActions, .listSectionHeader, .listSectionFooter:
+                break
+            case .dropdownMenu:
+                data.visible.append(childID)
+                if child.derived.hasAnchor, data.anchoredMenuID == nil {
+                    data.anchoredMenuID = childID
+                }
+            case .tooltip:
+                data.visible.append(childID)
+                if child.derived.hasAnchor, data.anchoredTooltipID == nil {
+                    data.anchoredTooltipID = childID
+                }
+            case .combobox:
+                data.visible.append(childID)
+                data.hasComboboxChild = true
+            case .select:
+                data.visible.append(childID)
+                data.hasSelectChild = true
+            default:
+                data.visible.append(childID)
+            }
+            if child.kind != .button || !child.derived.isEnabled {
+                allEnabledButtons = false
+            }
+        }
+        data.segmentedTabsSupported = sawWireChild && allEnabledButtons
+        if model.derived.styleClassTokens.contains("scroll-section-titles") {
+            data.sectionTitles = sectionTitles(over: data.visible)
+        }
+        return data
+    }
+
+    /// Maps each visible child of a `scroll-section-titles` list to the
+    /// title in effect at that row — the nearest preceding descendant
+    /// carrying `scroll-section-title`, resolved with one commit-time DFS
+    /// instead of a per-evaluation subtree walk.
+    private func sectionTitles(over childIDs: [Int]) -> [Int: String]? {
+        var titles: [Int: String] = [:]
+        var current: String?
+
+        func title(in nodeID: Int) -> String? {
+            guard let node = models[nodeID] else { return nil }
+            if node.derived.styleClassTokens.contains("scroll-section-title") {
+                return node.text.isEmpty ? nil : node.text
+            }
+            return node.children.lazy.compactMap { title(in: $0) }.first
+        }
+
+        for childID in childIDs {
+            if let title = title(in: childID) { current = title }
+            if let current { titles[childID] = current }
+        }
+        return titles.isEmpty ? nil : titles
     }
 
     private static func isModalKind(_ kind: LUINodeKind) -> Bool {
@@ -1448,6 +1776,7 @@ public final class LUIAppleBackend {
             where (model.kind == .avatar || model.kind == .image) &&
                 model.property(.image)?.intValue == imageID {
                 model.invalidateResource()
+                invalidateSubtreeStamps(from: model.id)
             }
         }
     }
@@ -1458,7 +1787,24 @@ public final class LUIAppleBackend {
             where model.kind == .mediaSurface &&
                 model.property(.surface)?.intValue == surfaceID {
                 model.invalidateResource()
+                invalidateSubtreeStamps(from: model.id)
             }
+        }
+    }
+
+    /// `invalidateResource` bumps a revision without a commit, so the
+    /// commit-maintained subtree stamps along the node's ancestor chain
+    /// would go stale — bump them directly to keep `measureStamp` reads
+    /// monotonic.
+    private func invalidateSubtreeStamps(from nodeID: Int) {
+        var cursor: Int? = nodeID
+        while let id = cursor {
+            if let model = models[id] {
+                model.invalidateSubtreeStamp()
+            } else {
+                extensionModels[id]?.invalidateSubtreeStamp()
+            }
+            cursor = models[id]?.parent ?? extensionModels[id]?.parent
         }
     }
 

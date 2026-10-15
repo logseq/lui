@@ -10,6 +10,7 @@
  (target liblui_components.dylib)
  (deps
   ../../../platform/native/lui_ocaml_bridge.c
+  ../../../platform/native/lui_caml_dispatch.h
   components_bridge.cmxa
   ../../gallery/gallery_app.cmxa
   ../../../src/lui.cmxa)

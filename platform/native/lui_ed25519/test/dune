@@ -1,0 +1,4 @@
+(test
+ (name lui_ed25519_test)
+ (modules lui_ed25519_test)
+ (libraries alcotest lui_ed25519))

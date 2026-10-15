@@ -1,0 +1,42 @@
+(rule
+ (deps lui_metal_stubs.m)
+ (action (copy %{deps} lui_metal_stubs.c)))
+
+(library
+ (name lui_metal)
+ (public_name lui.metal)
+ (modules lui_metal metal_source)
+ (libraries lui_scene lui_gpu)
+ (foreign_stubs
+  (language c)
+  (names lui_metal_stubs)
+  (flags (:standard (:include c_flags.sexp))))
+ (c_library_flags
+  (:standard (:include c_libs.sexp))))
+
+(executable
+ (name embed)
+ (modules embed))
+
+(rule
+ (target metal_source.ml)
+ (deps shader.metal)
+ (action
+  (with-stdout-to %{target}
+   (run %{exe:embed.exe} shader.metal))))
+
+; The stubs are plain C off macOS but must be compiled as Objective-C
+; with ARC on macOS to reach Metal; the frameworks only exist there.
+(rule
+ (target c_flags.sexp)
+ (action
+  (with-stdout-to %{target}
+   (bash
+    "if [ \"$(uname -s)\" = Darwin ]; then printf '(-x objective-c -fobjc-arc %s)' \"$(pkg-config --cflags sdl2 2>/dev/null)\"; else printf '(%s)' \"$(pkg-config --cflags sdl2 2>/dev/null)\"; fi"))))
+
+(rule
+ (target c_libs.sexp)
+ (action
+  (with-stdout-to %{target}
+   (bash
+    "if [ \"$(uname -s)\" = Darwin ]; then printf '(-framework Metal -framework QuartzCore -framework CoreFoundation -framework Foundation %s)' \"$(pkg-config --libs sdl2 2>/dev/null)\"; else printf '(%s)' \"$(pkg-config --libs sdl2 2>/dev/null)\"; fi"))))

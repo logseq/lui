@@ -1,0 +1,10 @@
+(library
+ (name spike_lib)
+ (modules spike_render)
+ (libraries lui_scene)
+ (wrapped false))
+
+(executable
+ (name spike)
+ (modules spike spike_main)
+ (libraries spike_lib lui_scene tsdl tsdl-ttf))

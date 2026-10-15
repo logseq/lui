@@ -107,7 +107,6 @@ type host_kind =
   | WebHost
   | SwiftUIHost
   | KotlinHost
-  | GPUIHost
 
 type platform_profile = {
   profile_os : operating_system;
@@ -239,6 +238,7 @@ type property =
   | AvailableHeight
   | FontSize
   | FontWeight
+  | FontStyle
   | LineHeight
   | LetterSpacing
   | Position
@@ -512,6 +512,7 @@ let event_supported kind event =
     | Sheet
     | FilePreview
     | FilePicker
+    | ContextMenu
     | Popover -> true
     | _ -> false)
   | DoublePress _ -> kind = ListItem
@@ -876,6 +877,8 @@ let common_property_supported kind property =
     || kind = Button
     || kind = MenuItem
     || kind = ListItem
+    || kind = Popover
+    || kind = Link
     || horizontal_container kind
   | GrowValue ->
     kind <> Avatar && (not (modal_surface kind)) && kind <> Tooltip
@@ -894,11 +897,12 @@ let common_property_supported kind property =
     | Text | Heading | Paragraph | Label | Button | ToggleButton | TextField
     | SecureField | Input | SearchField | Textarea | Checkbox | Toggle | Radio
     | Slider | NumberStepper | Spinner | Icon | Select | Combobox | DropdownMenu | MenuItem
+    | Popover
     | ListItem | TableCell | Resizable | Split | Alert | Bubble | StatusBar
     | Link | FileImage -> true
     | _ -> false)
-  | FontSize | FontWeight | LineHeight | LetterSpacing | FontFamily
-  | TextDecoration | UserSelect ->
+  | FontSize | FontWeight | FontStyle | LineHeight | LetterSpacing
+  | FontFamily | TextDecoration | UserSelect ->
     (* Text styling inherits; admitted on the same kinds that accept a
        foreground color minus purely graphical kinds whose [size] governs
        their metrics (icon, spinner, file-image). *)
@@ -908,12 +912,16 @@ let common_property_supported kind property =
     | Text | Heading | Paragraph | Label | Button | ToggleButton | TextField
     | SecureField | Input | SearchField | Textarea | Checkbox | Toggle | Radio
     | Slider | NumberStepper | Select | Combobox | DropdownMenu | MenuItem
+    | Popover
     | ListItem | TableCell | Resizable | Split | Alert | Bubble | StatusBar
     | Link -> true
     | _ -> false)
   | WidthValue | HeightValue -> kind <> Tooltip
   | MinWidth | MaxWidth | MinHeight | MaxHeight ->
-    (not (modal_surface kind)) && kind <> Tooltip
+    (* Dialogs carry px clamps alongside viewport fractions (e.g.
+       width:90vw + max-width:1246px); the host caps the default dialog
+       size only when the view did not set an explicit clamp. *)
+    kind = Dialog || ((not (modal_surface kind)) && kind <> Tooltip)
   | ContainerRelativeFrameValue | ContainerRelativeFrameInset ->
     kind <> Root && not (modal_surface kind)
   (* Position hint honored on [overlay] children and on [overlay] itself;
@@ -1009,7 +1017,9 @@ let common_property_supported kind property =
   | ChangeEnabled -> kind = Radio || tree_row_kind kind
   | ToggleEnabled -> kind = Radio || kind = Drawer || tree_row_kind kind
   | PressEnabled ->
-    kind = Text
+    kind = Button
+    || kind = ToggleButton
+    || kind = Text
     || kind = Row
     || kind = Column
     || kind = Box
@@ -1256,7 +1266,16 @@ let property_supported kind property =
     | Kbd ->
       property = TextValue || property = StyleClass
       || property = PointerEnabled || property = DataAttrs
-      || property = FontSize || property = FontWeight || property = LineHeight
+      || property = BackgroundValue || property = BorderColorValue
+      || property = BorderWidth || property = CornerRadius
+      || property = ForegroundValue || property = GrowValue
+      || property = PaddingValue || property = PaddingHorizontal
+      || property = PaddingVertical
+      || property = WidthValue || property = HeightValue
+      || property = MinWidth || property = MaxWidth
+      || property = MinHeight || property = MaxHeight || property = Opacity
+      || property = FontSize || property = FontWeight || property = FontStyle
+      || property = LineHeight
       || property = LetterSpacing || property = FontFamily
       || property = TextDecoration || property = WhiteSpace
       || property = TextOverflow || property = UserSelect || property = Cursor
@@ -1571,6 +1590,8 @@ let property_value_supported property value =
   | Position, StringValue value ->
     List.mem value [ "static"; "relative"; "absolute"; "fixed"; "sticky" ]
   | FontFamily, StringValue value -> String.trim value <> ""
+  | FontStyle, StringValue value ->
+    List.mem value [ "normal"; "italic"; "oblique" ]
   | TextDecoration, StringValue value -> text_decoration_supported value
   | ListStyle, StringValue value ->
     List.mem value [ "none"; "disc"; "decimal" ]

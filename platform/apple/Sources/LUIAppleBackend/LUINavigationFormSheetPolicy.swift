@@ -119,7 +119,7 @@ struct LUINavigationFormActionView: View {
     @ViewBuilder
     private var actionLabel: some View {
         if LUINavigationFormSheetPolicy.usesNavigationBackIcon(
-            model.property(.styleClass)?.stringValue
+            model.derived.styleClass
         ) {
             Image(systemName: "chevron.backward")
         } else {

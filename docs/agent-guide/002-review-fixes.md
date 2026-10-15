@@ -38,7 +38,6 @@ call sites, then build and run its focused UI tests.
 - [x] F18: Stable Apple List identity
 - [x] F19: Web DOM application recovery
 - [x] F20: False extension event fields
-- [x] F21: GPUI protocol validation parity
 - [x] F22: Executable performance qualification
 
 ## Constraints
@@ -64,16 +63,7 @@ DOM resources are released without discarding retained state. Tree navigation
 uses the visible window. List scroll requests complete by token and report visible
 ranges. A partial DOM failure rebuilds the mirror from the committed store.
 
-Apple List keeps row-local identity across property commits. GPUI validates
-standard kind/property/scalar and child contracts, including context menus, with
-admission tables exported from the canonical OCaml protocol. Its imperative input
-and attribute writes now use the corresponding standard or extension boundary.
-Fixed extension CSS dimensions participate in GPUI leaf caching.
-
-GPUI extension specs remain renderer metadata for trusted, OCaml-validated
-extension traffic; they do not implement the typed OCaml extension registry.
-This capability difference is explicit in platform/gpui/README.md. Standard-node
-validation and extension/standard property boundaries are enforced by the store.
+Apple List keeps row-local identity across property commits.
 
 Both performance entry points execute in CI. Native qualification covers local
 text updates, sustained typing, keyed edits/reversal, flat mounting, wide child
@@ -102,8 +92,6 @@ Actionlint passes. Cache speed/hit behavior awaits the next real Actions run.
 - Web unit checks: 53 passed. The broader browser suite passed 101 tests before
   the final window edge cases; all seven focused review regressions subsequently
   passed in Chromium, Firefox, and WebKit. Vite hot reload passed.
-- GPUI: 83 tests passed across core, renderer units, bindings, and interactive
-  regressions. Invalid legacy fixtures were corrected to canonical wire shapes.
 - Android unit tests passed; Gallery compileDebugKotlin passed. Snapshot rejection
   and recovery, observation locality, child identity, stop, and failed loading
   have regressions. Real JNI rotation/rejection recovery was not device-tested.
@@ -113,8 +101,6 @@ Actionlint passes. Cache speed/hit behavior awaits the next real Actions run.
 - Runtime qualification passed all nine configurable budgets. Example native
   measurements: flat mount 10k 13.2 ms, reversal 10k 2.9 ms, 1000 branch lifecycle
   updates 3.9 ms. These exclude host layout/paint and are smoke measurements.
-- GPUI release single-property store updates measured 0.3–0.6 microseconds at
-  100/1k/10k/50k nodes. These exclude rendering.
 - Logseq refactor/lui built js_app and test, then passed 1924 UI checks and native
   and Web contract tests with the updated local LUI and signal packages.
 
@@ -124,8 +110,8 @@ A full Dune @all build hits an existing native-example sandbox failure: four
 example rules omit lui_caml_dispatch.h from their declared dependencies. No Dune
 files were changed because AGENTS.md prohibits this without explicit permission.
 The application/library, Web, runtime tests, and bridge stress builds above passed.
-Android emits existing Kotlin deprecation/redundancy warnings; GPUI's block 0.1.6
-dependency emits a future-incompatibility warning. These were not suppressed.
+Android emits existing Kotlin deprecation/redundancy warnings; these were not
+suppressed.
 
 The old LUI branches were removed (13 local and 127 remote), retaining main.
 Existing worktree contents were preserved by detaching them. A new

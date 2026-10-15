@@ -1,0 +1,256 @@
+(* Glue between the retained store and the flex engine: mirrors a
+   [Lui_store.t] into a [Lui_flex] tree, runs layout, and serves the
+   placement hook that [Lui_paint.hooks.layout] consumes.
+
+   Coordinate space: the returned placements are device px in the frame
+   coordinate space — the same space the scene and paint use. Wire
+   lengths are logical px and are multiplied by the frame [scale] as
+   they become flex style values, so flex output lands in device px
+   already and paint can use each [p_rect] unmodified (see
+   [resolve_rect] in lui_paint.ml: with [p_override = None] and no
+   position/inset props, [p_rect] is the emitted scene rect; the
+   children of a node are resolved against that same absolute rect).
+
+   Contracts beyond the bare flex engine:
+
+   - Grid cells: a [grid] node with [columns = n] lays out [n] cells
+     per row, each sized [(inner_width - (n-1) * gap) / n] so the cells
+     and the gaps between them fit the row exactly (a plain percent
+     basis cannot subtract the gap share and would wrap early).
+   - Popup surfaces: popup-family kinds ([dialog], [drawer], [sheet],
+     [tooltip], [toast], [dropdown-menu], [context-menu], [popover],
+     [alert]) placed with no positioning input at all — no [position],
+     [inset*], [x]/[y] or [anchor] prop — default to centered in the
+     containing block: the flex parent's border box, or the offered
+     frame extent for a store-root popup.
+   - Frame extent: the offered [width]/[height] are a floor, not a
+     cap. When the laid-out content is taller or wider than the
+     offered frame, the frame grows to the content instead of the
+     content being compressed or cut; {!content_extent} reports the
+     extent the last layout actually used.
+
+   Only new files live in this directory; nothing else is touched. *)
+
+(** Text measure function the host injects: [id text offered_w
+    offered_h] reports the intrinsic size of [text] on node [id] in
+    device px. Offered dims may be NaN when the engine leaves the axis
+    unconstrained; [None] means "no intrinsic size" (layout falls back
+    to a zero box). *)
+type text_measure = int -> string -> float -> float -> (float * float) option
+
+(** A flex mirror of a store plus the rects the last layout produced.
+    The mirror is rebuilt wholesale by {!sync} — the store is small and
+    rebuild-per-sync keeps invalidation trivial. *)
+type t
+
+val create : unit -> t
+
+(** [style_of ?scale ?viewport store id] translates the node's wire kind
+    and props into a flex style. Parent-driven adjustments (overlay
+    children, grid cells, edge-inset ordering) are applied by {!sync},
+    not here — this function only sees the node's own kind and props.
+    [viewport] is the frame size in device px, used to resolve the
+    [*-viewport] props; without it they degrade to parent-relative
+    percents. *)
+
+val style_of :
+  ?scale:float -> ?viewport:float * float ->
+  Lui_store.t -> int -> Lui_flex.style
+
+(** [measure_of tm ~id ~text] builds the flex [measure] callback for one
+    text leaf. The flex callback hands back only the engine's own node,
+    which carries no store id, so the builder binds the store id and the
+    string being measured per leaf. Modes map onto the offered dims:
+    [Measure_undefined] surfaces as an undefined offered value; the
+    other modes pass the engine's inner size through. *)
+
+val measure_of :
+  text_measure -> id:int -> text:string -> Lui_flex.measure
+
+(** A content-space visible range fed to a [virtual-list]: [(start,
+    extent)] in the list's own border-box coordinates — [scroll offset]
+    for the simple scrolled-viewport case, or the on-screen clip mapped
+    into the list's content when an outer scroller clips it. [None]
+    keeps the list unwindowed (every row mounted, today's behavior). *)
+
+type viewport = float * float
+
+(** [sync ?scale ?measure ~width ~height t store] rebuilds the flex
+    mirror from the store's current structure and runs layout for a
+    [width]x[height] device-px frame. Root-level nodes that are not
+    popup surfaces get [flex_grow = 1] so they fill the frame;
+    [display:none] nodes are skipped entirely and [display:contents]
+    nodes lift their children into the parent flow. [height] (and
+    [width]) is a minimum: content that does not fit the offered
+    extent grows the frame — see {!content_extent}. *)
+
+(** [?ctx_anchor] supplies the pointer point (frame px) an unanchored
+    [context-menu] popup opens at — the host-owned channel that stands
+    in for the cursor coordinate a context menu tracks. *)
+
+(** Memoized: a call whose inputs all match the last sync returns
+    immediately, keeping the previous mirror and rects. The key is the
+    store's layout revision ({!Lui_store.layout_rev} — bumped only by
+    structure and layout-classified ops, so a paint-only prop change
+    like [background] never re-enters the mirror), the frame geometry,
+    [?ctx_anchor]'s value, and the [?measure]/[?hidden] functions'
+    identities. Scroll offsets are not an input — a frame that only
+    scrolls pays no layout at all.
+
+    [?vport] maps a node id to the visible range of a [virtual-list]
+    ({!viewport}), evaluated per virtual list on every call — including
+    memo hits, where a moved viewport remounts only the row window that
+    slid (no mirror rebuild). Lists the accessor leaves at [None]
+    materialize every child like ordinary containers. *)
+
+val sync :
+  ?scale:float -> ?measure:text_measure -> ?hidden:(int -> bool) ->
+  ?ctx_anchor:(float * float) ->
+  ?vport:(int -> viewport option) ->
+  width:float -> height:float -> t -> Lui_store.t -> unit
+
+(** {2 Virtual lists}
+
+    A [virtual-list] keeps every child in the store as its logical
+    model but materializes flex trees only for the mounted window of
+    item indices — visible range plus overscan. The list itself stays
+    a leaf in the mirror whose intrinsic main size is the virtual
+    content extent, so frame extent, scroll caps and hit clips behave
+    exactly as if all rows were laid out.
+
+    Config rides [data-attrs] on the node (no schema change):
+    [data-item-extent] — estimated row main extent in logical px (per-
+    child [height] or a 28px default otherwise); [data-overscan] —
+    extra rows mounted past each view edge (4 default). Rows are
+    measured once mounted, so a mixed-height list converges to real
+    positions; [data-scroll-target]/[data-scroll-token]/
+    [data-scroll-anchor] name a scroll request the host resolves
+    through {!virtual_index_of_key}, and [data-track-visible-range]
+    opts the list into visible-range reports through {!virtual_view}. *)
+
+(** Ids of the [virtual-list] nodes the last sync registered. *)
+val vlists : t -> int list
+
+(** [mounted_range t id] is the mounted child-index window
+    \[first, last) of a virtual list — the slice paint and hit-test
+    enumerate instead of all children. [None] for non-virtual ids. *)
+val mounted_range : t -> int -> (int * int) option
+
+(** [mounted_count t id] is how many row subtrees are materialized. *)
+val mounted_count : t -> int -> int
+
+(** [mounted_children t id] is the mounted window's child store ids,
+    in order — the slice paint and hit-test enumerate instead of all
+    children. O(window); [None] for non-virtual ids. *)
+val mounted_children : t -> int -> int list option
+
+(** [virtual_extent t id] is the list's total virtual content extent
+    on the main axis (border-box span, device px) — what a scroll cap
+    is computed against when the mounted rows do not reach the end. *)
+val virtual_extent : t -> int -> float option
+
+(** [virtual_item_rect t id ~index] is the item's rect in
+    engine-absolute (content-space) coordinates — available for
+    unmounted indices too, so scroll-to-item can reach a row that is
+    not materialized yet. *)
+val virtual_item_rect : t -> int -> index:int -> Lui_scene.rect option
+
+(** [virtual_view t id] is the last {!viewport} fed to this list —
+    what the interaction layer reports as the visible range. *)
+val virtual_view : t -> int -> viewport option
+
+(** [virtual_take_drift t id] is the pending anchor correction in
+    device px — how far the row at the viewport top moved because
+    rows above it measured off-estimate. Consume-on-read: the caller
+    (the scroller) adds it to the list's scroll offset. *)
+val virtual_take_drift : t -> int -> float
+
+(** [virtual_index_of_key t store id key] resolves a child [key] prop
+    to its item index — O(n) once per list shape, O(1) after. *)
+val virtual_index_of_key : t -> Lui_store.t -> int -> string -> int option
+
+(** [virtual_index_of_id t store id child] is the child's item index. *)
+val virtual_index_of_id : t -> Lui_store.t -> int -> int -> int option
+
+(** [invalidate t] forces the next {!sync} to rebuild the mirror.
+    Needed when a function input keeps its identity but changes its
+    answers — e.g. a text measure backed by a font stack that finishes
+    loading, or a [?hidden] predicate whose captured state flipped.
+    The store revision covers every store mutation on its own. *)
+
+val invalidate : t -> unit
+
+(** [stat_syncs t] counts the {!sync} calls that touched the mirror —
+    memoized calls do not. Test instrumentation. *)
+val stat_syncs : t -> int
+
+(** [stat_steps t] counts the {!sync} calls that took the incremental
+    journal path rather than a wholesale rebuild. Test
+    instrumentation. *)
+val stat_steps : t -> int
+
+(** [compute t ~width ~height] re-runs layout on the current mirror —
+    the cheap path when only the frame size changed. [*-viewport]
+    props keep the resolution from the last {!sync}; call {!sync} on
+    resize when any node uses them — and likewise when a grid or
+    default-placed popup is present, since their pinned offsets were
+    computed against the last sync's frame extent. *)
+
+val compute : t -> width:float -> height:float -> unit
+
+(** [content_extent t] is the frame extent the last layout actually
+    used — never smaller than the size passed to {!sync} or {!compute},
+    larger when the content needed it. Hosts that present the whole
+    content (e.g. a rasterizer sizing its target) size their output to
+    this. *)
+
+val content_extent : t -> float * float
+
+(** [layout_hook t id] is the [Lui_paint.hooks.layout] implementation:
+    the node's computed rect in frame device px, [p_override = None].
+    Unknown ids (dropped nodes, [display:none]) get a zero rect. *)
+
+val layout_hook : t -> int -> Lui_paint.placement
+
+(** [rect t id] is the node's current layout rect — the hit-testing
+    surface. [None] for ids the mirror skipped. *)
+
+val rect : t -> int -> Lui_scene.rect option
+
+(** [take_rect_changes t] is the set of store ids whose absolute rect
+    differed at the last rect refresh, drained: the caller owns the
+    returned table and the next refresh starts a fresh one. The
+    retained paint pass uses it to re-emit only the subtrees whose
+    geometry actually moved. *)
+
+val take_rect_changes : t -> (int, unit) Hashtbl.t
+
+(** [run ?scale store ~measure ~width ~height] is the one-shot hook for
+    [Lui_host]: mirror + layout + the placement function. The
+    [~measure] here is the id-keyed host form; the mirror picks the
+    string itself ([text], falling back to [placeholder] when text is
+    empty or absent). Hosts that also want {!rect} for hit-testing keep
+    a [t] and go through {!create}/{!sync}/{!layout_hook} instead. *)
+
+val run :
+  ?scale:float -> ?hidden:(int -> bool) -> ?ctx_anchor:(float * float) ->
+  Lui_store.t ->
+  measure:(int -> float -> float -> (float * float) option) ->
+  width:float -> height:float -> (int -> Lui_paint.placement)
+
+(* Scroll offset composition (documented contract — this module does
+   not apply scroll offsets):
+
+   Layout rects are content-space positions: a scroll container's
+   children are laid out where they would sit with zero scroll. The
+   paint pass clips them to the container's clip rect, so scrolling is
+   purely a translation of the subtree. To implement it, the host wraps
+   [layout_hook]: for a node inside a scroll container, subtract the
+   container's current scroll offset (device px) from the placement —
+   i.e. shift [p_rect.y] (or [x] for horizontal scrollers) by the
+   offset each ancestor scroll container reports. The scrollbar chrome
+   comes from [hooks.scroll_of], whose fractions the host derives from
+   the same two numbers this module exposes: the container's own rect
+   (viewport size) and the laid-out content extent of its subtree
+   (union of the descendant rects) — [sm_extent = viewport / content],
+   [sm_offset = offset / (content - viewport)]. *)

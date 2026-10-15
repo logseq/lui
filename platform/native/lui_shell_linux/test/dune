@@ -1,0 +1,10 @@
+(test
+ (name lui_shell_linux_test)
+ (modules lui_shell_linux_test)
+ (libraries lui_shell_linux alcotest unix))
+
+(test
+ (name lui_shell_linux_real_test)
+ (modules lui_shell_linux_real_test)
+ (enabled_if (= %{system} linux))
+ (libraries lui_shell_linux alcotest unix))

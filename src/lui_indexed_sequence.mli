@@ -2,6 +2,7 @@ type t
 
 val of_list : int list -> t
 val to_list : t -> int list
+val iter : (int -> unit) -> t -> unit
 val length : t -> int
 val index : t -> int -> int option
 val insert : t -> int -> int -> unit

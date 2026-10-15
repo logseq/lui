@@ -216,6 +216,7 @@ val font_weight : ui_context -> int -> int -> unit
 val line_height : ui_context -> int -> string -> unit
 val letter_spacing : ui_context -> int -> float -> unit
 val font_family : ui_context -> int -> string -> unit
+val font_style : ui_context -> int -> string -> unit
 val text_decoration : ui_context -> int -> string -> unit
 val position : ui_context -> int -> string -> unit
 val inset : ui_context -> int -> float -> unit

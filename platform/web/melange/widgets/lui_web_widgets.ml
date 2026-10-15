@@ -294,15 +294,14 @@ let string_property renderer node property =
   | _ -> ""
 
 let update_stepper renderer node =
-  let children = Store.children renderer.web_store node in
   let current =
     match Store.node renderer.web_store node with
     | Some current -> current
     | None -> invalid_arg "unknown Stepper"
   in
   let active = int_property current.retained_properties ActiveIndex 0 in
-  let count = List.length children in
-  List.iteri
+  let count = Lui_sequence.length current.retained_children in
+  Lui_sequence.iteri
     (fun index child ->
        let step = Lui_web_nodes.dom_node renderer child in
        let indicator = Util.child_element step 0 in
@@ -334,7 +333,7 @@ let update_stepper renderer node =
        let connector = Util.child_element step 2 in
        if index = count - 1 then W.Element.setAttribute "hidden" "" connector
        else W.Element.removeAttribute "hidden" connector)
-    children
+    current.retained_children
 
 let update_stepper_bang = update_stepper
 
@@ -356,6 +355,25 @@ let bottom_tab_string_property renderer node property =
 
 let refresh_bottom_tabs renderer tabs =
   let children = Store.children renderer.web_store tabs in
+  (* Index the bar's triggers once by the panel they control — looking
+     each one up with its own querySelector turned a refresh into n DOM
+     selector scans. *)
+  let triggers = Hashtbl.create 8 in
+  let nodes =
+    W.Element.querySelectorAll ".lui-bottom-tabs-tab"
+      (Util.bottom_tabs_bar_node (Lui_web_nodes.dom_node renderer tabs))
+  in
+  for index = 0 to W.NodeList.length nodes - 1 do
+    match W.NodeList.item index nodes with
+    | Some node -> (
+        match W.Element.ofNode node with
+        | Some element -> (
+            match W.Element.getAttribute "aria-controls" element with
+            | Some controls -> Hashtbl.replace triggers controls element
+            | None -> ())
+        | None -> ())
+    | None -> ()
+  done;
   let selected =
     match
       List.find_opt
@@ -375,7 +393,7 @@ let refresh_bottom_tabs renderer tabs =
            let panel = (Lazy.force current.platform_node) in
            Util.set_state_attribute panel "hidden" (not active);
            Util.set_state_attribute panel "inert" (not active);
-           (match bottom_tab_trigger renderer child with
+           (match Hashtbl.find_opt triggers (Util.node_dom_id child) with
             | Some trigger ->
                 W.Element.setAttribute "aria-selected"
                   (if active then "true" else "false") trigger;
@@ -451,15 +469,17 @@ let update_stepper_parent renderer node =
 let update_stepper_parent_bang = update_stepper_parent
 
 let update_timeline renderer node =
-  let children = Store.children renderer.web_store node in
-  let count = List.length children in
-  List.iteri
-    (fun index child ->
-       let item = Lui_web_nodes.dom_node renderer child in
-       W.Element.setAttribute "aria-posinset"
-         (string_of_int (index + 1)) item;
-       W.Element.setAttribute "aria-setsize" (string_of_int count) item)
-    children
+  match Store.node renderer.web_store node with
+  | Some current ->
+      let count = Lui_sequence.length current.retained_children in
+      Lui_sequence.iteri
+        (fun index child ->
+           let item = Lui_web_nodes.dom_node renderer child in
+           W.Element.setAttribute "aria-posinset"
+             (string_of_int (index + 1)) item;
+           W.Element.setAttribute "aria-setsize" (string_of_int count) item)
+        current.retained_children
+  | None -> ()
 
 let update_timeline_bang = update_timeline
 

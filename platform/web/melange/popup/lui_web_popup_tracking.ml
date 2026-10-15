@@ -28,9 +28,13 @@ external cancel_frame : W.Window.t -> int -> unit
 external connected : Dom.element -> bool = "isConnected" [@@mel.get]
 external parent_element : Dom.element -> Dom.element option = "parentElement"
   [@@mel.get] [@@mel.return nullable]
-external listen_scroll : Dom.element -> string -> (Dom.event -> unit) -> bool -> unit
+(* Scroll events don't bubble, but they do propagate through the capture
+   phase — a single capture listener on the document hears every scroller
+   in the tree, including the anchor's whole ancestor chain and the
+   document scroller itself. *)
+external listen_document : W.Document.t -> string -> (Dom.event -> unit) -> bool -> unit
   = "addEventListener" [@@mel.send]
-external unlisten_scroll : Dom.element -> string -> (Dom.event -> unit) -> bool -> unit
+external unlisten_document : W.Document.t -> string -> (Dom.event -> unit) -> bool -> unit
   = "removeEventListener" [@@mel.send]
 
 let trackers = make_trackers ()
@@ -131,6 +135,11 @@ let start ~document ~positioner ~popup ~anchor ~valid ~update ~on_invalid =
       let reveal_active () = reveal := true; schedule () in
       let focus_listener _event = reveal_active () in
       let highlights = W.MutationObserver.make (fun _ _ -> reveal_active ()) in
+      (* Observers cannot cover every trigger: position-only anchor moves
+         (transforms, alignment shifts that resize nothing) produce no
+         ResizeObserver entry or scroll event, and an anchor going
+         visibility:hidden or model-invalid has no DOM signal at all — the
+         low-frequency geometry poll closes that gap *)
       let rec check_geometry () =
         if !active then begin
           if invalid () || !previous <> Some (geometry anchor) then schedule ();
@@ -144,17 +153,15 @@ let start ~document ~positioner ~popup ~anchor ~valid ~update ~on_invalid =
         Webapi.ResizeObserver.disconnect observer;
         W.MutationObserver.disconnect highlights;
         W.Element.removeEventListener "focusin" focus_listener popup;
-        List.iter (fun ancestor ->
-            unlisten_scroll ancestor "scroll" listener true) chain;
+        unlisten_document document "scroll" listener true;
         W.Window.removeEventListener "resize" listener window;
-        W.Window.removeEventListener "scroll" listener window;
         Option.iter (fun viewport ->
             viewport_unlisten viewport "resize" listener;
             viewport_unlisten viewport "scroll" listener) viewport
       in
       set_tracker trackers positioner cleanup;
+      listen_document document "scroll" listener true;
       List.iter (fun ancestor ->
-          listen_scroll ancestor "scroll" listener true;
           Webapi.ResizeObserver.observe observer ancestor) chain;
       Webapi.ResizeObserver.observe observer anchor;
       Webapi.ResizeObserver.observe observer popup;
@@ -163,7 +170,6 @@ let start ~document ~positioner ~popup ~anchor ~valid ~update ~on_invalid =
                      attributeFilter = [|"data-highlighted"|] }]) highlights;
       W.Element.addEventListener "focusin" focus_listener popup;
       W.Window.addEventListener "resize" listener window;
-      W.Window.addEventListener "scroll" listener window;
       Option.iter (fun viewport ->
           viewport_listen viewport "resize" listener;
           viewport_listen viewport "scroll" listener) viewport;

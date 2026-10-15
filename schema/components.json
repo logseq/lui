@@ -1502,6 +1502,11 @@
       "swift": "fontWeight"
     },
     {
+      "lg": "FontStyle",
+      "wire": "font-style",
+      "swift": "fontStyle"
+    },
+    {
       "lg": "LineHeight",
       "wire": "line-height",
       "swift": "lineHeight"
@@ -1996,8 +2001,25 @@
       "style-class",
       "data-attrs",
       "pointer-enabled",
+      "background",
+      "border-color",
+      "border-width",
+      "corner-radius",
+      "foreground",
+      "grow",
+      "padding",
+      "padding-horizontal",
+      "padding-vertical",
+      "width",
+      "height",
+      "min-width",
+      "max-width",
+      "min-height",
+      "max-height",
+      "opacity",
       "font-size",
       "font-weight",
+      "font-style",
       "line-height",
       "letter-spacing",
       "font-family",

@@ -101,7 +101,8 @@ let check_resync mirror application =
       let actual = Hashtbl.find restored.Drive.Model.nodes id in
       Alcotest.(check string) "node kind restored" expected.kind actual.kind;
       Alcotest.(check (option int)) "parent restored" expected.parent actual.parent;
-      Alcotest.(check (list int)) "child order restored" expected.children actual.children;
+      Alcotest.(check (list int)) "child order restored"
+        (Drive.Model.node_children expected) (Drive.Model.node_children actual);
       let props node =
         Hashtbl.to_seq node.Drive.Model.props |> List.of_seq |> List.sort compare
       in
@@ -476,6 +477,80 @@ let review_keyed_unchanged () =
   let bytes = allocated (fun () -> Signal.set source [1]; ignore (Lui_runtime.flush app)) in
   Alcotest.(check bool) "unchanged publication has bounded bookkeeping" true (bytes < 2048.)
 
+let keyed_retained_subtree_allocation () =
+  let app = runtime () in
+  let scope = Signal.scope "retained-keyed-subtrees" in
+  let context = Lui_ui.context app scope in
+  let parent = Lui_ui.column context in
+  let initial = List.init 128 Fun.id in
+  let source = Signal.state context.ui_scheduler initial in
+  let mounts = ref 0 in
+  ignore (Lui_dynamic.keyed context parent (Signal.value source) Fun.id Int.compare
+    (fun row item ->
+      incr mounts;
+      let root = Lui_ui.column row in
+      for _ = 1 to 32 do
+        Lui_ui.append row root (Lui_ui.text row (string_of_int (Signal.sample item)))
+      done;
+      root));
+  ignore (Lui_runtime.flush app);
+  let original = Lui_runtime.children app parent in
+  List.iter (fun (label,items,expected_mounts) ->
+    let before = Gc.allocated_bytes () in
+    Signal.set source items;
+    ignore (Lui_runtime.flush app);
+    let bytes = Gc.allocated_bytes () -. before in
+    Printf.printf "keyed %s over retained subtrees allocated %.0f bytes\n%!" label bytes;
+    Alcotest.(check bool) "keyed mutation does not snapshot retained row subtrees" true
+      (bytes <= 524288.);
+    Alcotest.(check int) "retained rows do not remount" expected_mounts !mounts
+  ) ["append",initial @ [128],129; "reorder",128 :: List.rev initial,129];
+  Alcotest.(check (list int)) "reorder retains original row identities"
+    (List.rev original) (List.tl (Lui_runtime.children app parent));
+  Signal.dispose_scope scope
+
+let keyed_removed_subtree_rollback () =
+  let app = runtime () in
+  let scope = Signal.scope "removed-keyed-subtrees" in
+  let context = Lui_ui.context app scope in
+  let parent = Lui_ui.table context in
+  let source = Signal.state context.ui_scheduler [1;2] in
+  let buttons = Hashtbl.create 4 in
+  let clicks = ref 0 and disposed = ref [] in
+  let mount row item =
+    let key = Signal.sample item in
+    if key=3 then Lui_ui.text row "invalid table child"
+    else begin
+      Signal.on_dispose row.Lui_ui.ui_scope (fun () -> disposed := key :: !disposed);
+      let root = Lui_ui.table_row row in
+      let cell = Lui_ui.table_cell row in
+      Lui_ui.append row root cell;
+      let button = Lui_ui.button row in
+      Lui_runtime.on_event row.Lui_ui.ui_scope app button (fun _ -> incr clicks);
+      Lui_ui.append row cell button;
+      Hashtbl.replace buttons key button;
+      root
+    end in
+  ignore (Lui_dynamic.keyed context parent (Signal.value source) Fun.id Int.compare mount);
+  let following = Signal.state context.ui_scheduler [100] in
+  ignore (Lui_dynamic.keyed context parent (Signal.value following) Fun.id Int.compare mount);
+  ignore (Lui_runtime.flush app);
+  let original = Lui_runtime.resync_batch app in
+  Signal.set source [2;3];
+  check_failure "insertion after removal rejects invalid child" (attempt (fun () ->
+    ignore (Lui_runtime.flush app)));
+  Alcotest.(check bool) "rollback restores removed subtree and following segment" true
+    (Lui_runtime.resync_batch app = original);
+  Alcotest.(check (list int)) "rollback keeps removed row scope alive" [] !disposed;
+  ignore (Lui_runtime.dispatch app (Press (Hashtbl.find buttons 1)));
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check int) "restored descendant handler still receives input" 1 !clicks;
+  Signal.set source [2;4];
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check (list int)) "successful replacement disposes removed owner once" [1] !disposed;
+  Alcotest.(check int) "following collection retains its row" 3 (Lui_runtime.child_count app parent);
+  Signal.dispose_scope scope
+
 let review_wide_reorder () =
   let measure count =
     let app = runtime () in
@@ -505,4 +580,6 @@ let tests = existing_tests @ List.map (fun (name, test) -> Alcotest.test_case na
    "review retired queued event", review_retired_event;
    "review subscription retirement", review_subscription_retirement;
    "review keyed locality", review_keyed_locality;
-   "review unchanged keyed publication", review_keyed_unchanged]
+   "review unchanged keyed publication", review_keyed_unchanged;
+   "keyed retained subtree allocation", keyed_retained_subtree_allocation;
+   "keyed removed subtree rollback", keyed_removed_subtree_rollback]

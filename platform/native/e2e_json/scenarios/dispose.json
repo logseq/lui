@@ -1,0 +1,9 @@
+{
+  "name": "dispose",
+  "app": "e2e",
+  "steps": [
+    { "expect-store": { "node-count": 12 } },
+    { "app-dispose": true },
+    { "expect-store": { "node-count": 0 } }
+  ]
+}

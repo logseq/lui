@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # feat/ml-backend is temporary: lets CI exercise the native backend on
+    # this branch's pushes until it lands on main.
+    branches: [main, feat/ml-backend]
   pull_request:
 
 permissions:
@@ -10,7 +12,9 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # feat/ml-backend: cancel stale push runs too — upstream lands commits
+  # every few minutes, so a serialized queue just jams behind the oldest.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/feat/ml-backend' }}
 
 jobs:
   ocaml-tests:
@@ -21,8 +25,10 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/setup-lui-ocaml
-      - name: Cache dune
-        uses: actions/cache@v4
+      # PRs restore read-only; only base-branch pushes save (repo cache is
+      # capped at 10GB and per-PR dune caches were evicting the Windows opam switch).
+      - name: Restore dune cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/dune
           key: dune-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
@@ -33,14 +39,34 @@ jobs:
         run: |
           echo "DUNE_CACHE=enabled" >> "$GITHUB_ENV"
           echo "DUNE_CACHE_TRANSPORT=direct" >> "$GITHUB_ENV"
+      - name: Install native platform dependencies
+        run: |
+          # platform/native joins @runtest on this branch: SDL2/SDL2_ttf
+          # satisfy conf-sdl2(-ttf) for tsdl, the Pango/fontconfig headers
+          # build lui_text_pango's stubs, and the dbus/GTK/appindicator
+          # runtime libs are dlopen'd by the ax/shell stubs.
+          sudo apt-get update
+          sudo apt-get install -y \
+            libsdl2-dev libsdl2-ttf-dev \
+            libpango1.0-dev libcairo2-dev libfontconfig-dev \
+            libdbus-1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            mesa-vulkan-drivers fonts-liberation fonts-noto-cjk
+          opam install -y tsdl tsdl-ttf tgls imagelib
       - name: Schema tests
         run: node --test tooling/test/*.mjs
-      - name: GPUI protocol parity
-        run: node tooling/generate_gpui_protocol_rules.mjs --check
       - name: OCaml tests
         run: opam exec -- dune build --action-stderr-on-success=must-be-empty @runtest
       - name: Runtime performance qualification
         run: bash tooling/performance/qualify_runtime.sh
+      - name: Trim dune cache
+        if: github.event_name == 'push'
+        run: opam exec -- dune cache trim --size=400MB
+      - name: Save dune cache
+        if: github.event_name == 'push'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/dune
+          key: dune-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
 
   web-tests:
     runs-on: ubuntu-latest
@@ -53,8 +79,10 @@ jobs:
           cache: npm
           cache-dependency-path: platform/web/package-lock.json
       - uses: ./.github/actions/setup-lui-ocaml
-      - name: Cache dune
-        uses: actions/cache@v4
+      # PRs restore read-only; only base-branch pushes save (repo cache is
+      # capped at 10GB and per-PR dune caches were evicting the Windows opam switch).
+      - name: Restore dune cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/dune
           key: dune-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
@@ -110,6 +138,15 @@ jobs:
       # Hot reload edits shared sources and starts Dune, so it runs alone.
       - name: Hot reload regression
         run: node --test platform/web/test/hot-reload.e2e.mjs
+      - name: Trim dune cache
+        if: github.event_name == 'push'
+        run: opam exec -- dune cache trim --size=400MB
+      - name: Save dune cache
+        if: github.event_name == 'push'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/dune
+          key: dune-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
 
   apple-tests:
     # Package.swift requires swift-tools-version 6.2 (Xcode 26).
@@ -131,36 +168,6 @@ jobs:
           -derivedDataPath "$RUNNER_TEMP/lui-ios-build"
           build-for-testing
 
-  cargo-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.88.0
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: platform/gpui -> target
-          cache-on-failure: true
-      - name: lui-core tests
-        working-directory: platform/gpui
-        run: cargo test -p lui-core --locked
-      - name: Store performance qualification
-        working-directory: platform/gpui
-        run: cargo run -p lui-core --release --locked --example store_patch_bench
-
-  gpui-tests:
-    runs-on: macos-26
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.96.1
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: platform/gpui -> target
-          cache-on-failure: true
-      - name: GPUI renderer and core tests
-        working-directory: platform/gpui
-        run: cargo test -p lui-core -p lui-gpui --locked
-
   c-bridge-stress:
     runs-on: ubuntu-latest
     steps:
@@ -170,3 +177,235 @@ jobs:
           scope: compiler
       - name: GC stress the native pointer bridge
         run: opam exec -- sh platform/native/stress/run.sh
+
+  native-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-lui-ocaml
+      # PRs restore read-only; only base-branch pushes save (repo cache is
+      # capped at 10GB and per-PR dune caches were evicting the Windows opam switch).
+      - name: Restore dune cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/dune
+          key: dune-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+          restore-keys: |
+            dune-${{ runner.os }}-${{ github.job }}-
+            dune-${{ runner.os }}-
+      - name: Enable dune cache
+        run: |
+          echo "DUNE_CACHE=enabled" >> "$GITHUB_ENV"
+          echo "DUNE_CACHE_TRANSPORT=direct" >> "$GITHUB_ENV"
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          # Same dep set as the ocaml-tests job: SDL2 >= 2.0.22 satisfies
+          # tsdl (ubuntu-latest ships 2.30, so apt beats a source build),
+          # Pango/fontconfig headers build lui_text_pango, and the rest are
+          # runtime libs the ax/shell/vulkan stubs dlopen.
+          sudo apt-get update
+          sudo apt-get install -y \
+            libsdl2-dev libsdl2-ttf-dev \
+            libpango1.0-dev libcairo2-dev libfontconfig-dev \
+            libdbus-1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            mesa-vulkan-drivers fonts-liberation fonts-noto-cjk
+          pkg-config --modversion sdl2 SDL2_ttf
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        # libffi too: opam's depext needs --confirm-level=unsafe-yes to run
+        # brew itself, so system deps are all installed here and opam runs
+        # with --assume-depexts below. Note the 'sdl2' formula is an alias
+        # for sdl2-compat, which still provides sdl2.pc for conf-sdl2.
+        run: brew install sdl2 sdl2_ttf libffi pkgconf
+      - name: Install OCaml native dependencies
+        # tsdl provides the SDL2 bindings (lui_blit, lui_window*, spike,
+        # lui_gl/parity tests), tgls the GL3 bindings (lui_gl), imagelib the
+        # PNG/JPEG codecs (lui_image, lui_gallery). alcotest is already in
+        # the locked deps but listed for the non-composite Windows path.
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            # On mingw, tsdl/tsdl-ttf resolve SDL2 through conf-sdl2(-ttf):
+            # opam depext drops the Cygwin mingw64 SDL2 packages into
+            # opam's bundled Cygwin sysroot during install. But tsdl's own
+            # build shells out to bare `pkg-config`, and the default Cygwin
+            # pkgconf never sees the mingw sysroot .pc dir — and can't be
+            # pointed at it from Git Bash (PKG_CONFIG_PATH is parsed with
+            # POSIX ':' separators; .pc copies land under the wrong root).
+            # 'ocaml=5.5.1' stops the solver downgrading the compiler.
+            if ! opam install -y 'ocaml=5.5.1' tsdl tsdl-ttf tgls imagelib alcotest; then
+              CYGROOT="$(cygpath -u "$(opam var root)")/.cygwin/root"
+              SYSROOT_MINGW="$CYGROOT/usr/x86_64-w64-mingw32/sys-root/mingw"
+              # On a cache-restored run the switch can already list
+              # conf-mingw-w64-sdl2* installed while the restored Cygwin
+              # sysroot lacks the SDL2 payloads, so `opam install` skips
+              # their depext. Reinstalling the conf packages re-runs it
+              # (plain `opam depext` is not a command on this opam).
+              if [ ! -f "$SYSROOT_MINGW/lib/pkgconfig/sdl2.pc" ]; then
+                opam reinstall -y conf-mingw-w64-sdl2-x86_64 \
+                  conf-mingw-w64-sdl2-ttf-x86_64 || true
+              fi
+              # tsdl's build shells out to bare `pkg-config`, but the
+              # mingw sysroot .pc dir is outside Cygwin pkgconf's default
+              # search path, and env vars can't bridge the roots from Git
+              # Bash (PKG_CONFIG_PATH splits on ':' and mangles drive
+              # letters). Shadow pkg-config with a wrapper resolved to
+              # the bundled Cygwin pkgconf and seed every sysroot .pc
+              # into its baked-in /usr/lib/pkgconfig instead — SDL2_ttf's
+              # Requires chain needs freetype2/libpng/zlib too, so
+              # copying only the SDL files is not enough.
+              SHIM_DIR="$PWD/pc-shim"
+              mkdir -p "$SHIM_DIR"
+              CYG_PKGCFG=
+              for p in "$CYGROOT/bin/pkg-config" "$CYGROOT/usr/bin/pkg-config" \
+                       "$CYGROOT/bin/pkg-config.exe" "$CYGROOT/usr/bin/pkg-config.exe"; do
+                [ -x "$p" ] && CYG_PKGCFG="$p" && break
+              done
+              [ -n "$CYG_PKGCFG" ] || { echo "no bundled cygwin pkg-config under $CYGROOT"; exit 1; }
+              # The wrapper runs both under this MSYS step (where the
+              # bundled cygwin mounts C: as /c/) and inside opam's own
+              # Cygwin build env (where it is /cygdrive/c/) — resolve
+              # the target through cygpath at exec time so either
+              # spelling works.
+              printf '#!/bin/sh\nexec "$(cygpath -u '"'"'%s'"'"')" "$@"\n' \
+                "$(cygpath -w "$CYG_PKGCFG")" > "$SHIM_DIR/pkg-config"
+              chmod +x "$SHIM_DIR/pkg-config"
+              export PATH="$SHIM_DIR:$PATH"
+              # Seed into both plausible roots: the bundled Cygwin's
+              # /usr/lib/pkgconfig (when the resolved pkgconf is the
+              # bundled one) and Git Bash's own /usr/lib/pkgconfig
+              # (when pkgconf is MSYS-built — same printed pc_path,
+              # different physical dir).
+              for d in "$CYGROOT/usr/lib/pkgconfig" \
+                       "$CYGROOT/usr/share/pkgconfig" \
+                       "/usr/lib/pkgconfig" \
+                       "/usr/share/pkgconfig"; do
+                mkdir -p "$d" 2>/dev/null || true
+                cp -f "$SYSROOT_MINGW"/lib/pkgconfig/*.pc "$d/" 2>/dev/null || true
+              done
+              pkg-config --exists sdl2 SDL2_ttf || {
+                echo "pkg-config still cannot resolve sdl2"
+                echo "resolved binary: $(command -v pkg-config)"
+                echo "wrapper contents: $(cat "$SHIM_DIR/pkg-config")"
+                echo "pc_path: $(pkg-config --variable pc_path pkg-config || true)"
+                echo "sysroot .pc files:"
+                ls "$SYSROOT_MINGW/lib/pkgconfig" 2>/dev/null || true
+                echo "cygwin seeded dir:"
+                ls "$CYGROOT/usr/lib/pkgconfig" 2>/dev/null || true
+                echo "msys seeded dir:"
+                ls /usr/lib/pkgconfig 2>/dev/null | head -15 || true
+                exit 1
+              }
+              # Keep the wrapper on PATH for the later dune build/test steps.
+              echo "$(cygpath -w "$SHIM_DIR")" >> "$GITHUB_PATH"
+
+              # Cygwin's own mingw64-x86_64-SDL2 is 2.0.7 — far too old for
+              # tsdl's stubs (SDL_HINT_MOUSE_TOUCH_EVENTS, SDL_DISPLAYEVENT,
+              # ... all undeclared) — so the official SDL 2.32.4 / SDL2_ttf
+              # 2.24.0 mingw devel tarballs are overlaid into the sysroot.
+              DEV_TMP="sdl-devel"
+              mkdir -p "$DEV_TMP"
+              curl -fsSL --retry 3 --retry-delay 2 -o "$DEV_TMP/sdl2.tar.gz" \
+                https://github.com/libsdl-org/SDL/releases/download/release-2.32.4/SDL2-devel-2.32.4-mingw.tar.gz
+              curl -fsSL --retry 3 --retry-delay 2 -o "$DEV_TMP/sdl2_ttf.tar.gz" \
+                https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.24.0/SDL2_ttf-devel-2.24.0-mingw.tar.gz
+              tar -xzf "$DEV_TMP/sdl2.tar.gz" -C "$DEV_TMP"
+              tar -xzf "$DEV_TMP/sdl2_ttf.tar.gz" -C "$DEV_TMP"
+              # Overlay headers, import libs and runtime DLLs over the
+              # 2.0.7/2.0.14 files the depext installed — but NOT the
+              # tarballs' .pc files (their prefix is written for a Linux
+              # cross sysroot, unusable here). Keep cygwin's .pc files —
+              # their prefix resolves under this root — and refresh only
+              # the version fields, in both .pc locations.
+              cp -rf "$DEV_TMP"/SDL2-2.32.4/x86_64-w64-mingw32/{bin,include} "$SYSROOT_MINGW/"
+              cp -rf "$DEV_TMP"/SDL2_ttf-2.24.0/x86_64-w64-mingw32/{bin,include} "$SYSROOT_MINGW/"
+              (cd "$DEV_TMP"/SDL2-2.32.4/x86_64-w64-mingw32/lib \
+                && find . -mindepth 1 -maxdepth 1 ! -name pkgconfig -exec cp -rf {} "$SYSROOT_MINGW/lib/" \;)
+              (cd "$DEV_TMP"/SDL2_ttf-2.24.0/x86_64-w64-mingw32/lib \
+                && find . -mindepth 1 -maxdepth 1 ! -name pkgconfig -exec cp -rf {} "$SYSROOT_MINGW/lib/" \;)
+              for d in "$SYSROOT_MINGW/lib/pkgconfig" \
+                       "$CYGROOT/usr/lib/pkgconfig" \
+                       "$CYGROOT/usr/share/pkgconfig" \
+                       "/usr/lib/pkgconfig" \
+                       "/usr/share/pkgconfig"; do
+                sed -i 's/^Version:.*/Version: 2.32.4/' "$d"/{sdl2,SDL2}.pc 2>/dev/null || true
+                sed -i 's/^Version:.*/Version: 2.24.0/' "$d"/{sdl2_ttf,SDL2_ttf}.pc 2>/dev/null || true
+                # tsdl bakes `pkg-config --libs sdl2` into its cmxa cclib.
+                # The conventional mingw flags break OCaml links:
+                # -mwindows selects the GUI CRT (wants wWinMain) while
+                # OCaml exes export main/wmain, -lSDL2main's trampoline
+                # wants SDL_main, and -lmingw32 drags in ucrtexewin.o
+                # whose wmain calls wWinMain. Keep -lSDL2 only.
+                sed -i -e 's/-lSDL2main//g' -e 's/-mwindows//g' -e 's/-lmingw32//g' \
+                  "$d"/{sdl2,SDL2,sdl2_ttf,SDL2_ttf}.pc 2>/dev/null || true
+              done
+              pkg-config --exists 'sdl2 >= 2.0.22' 'SDL2_ttf >= 2.0.18' || {
+                echo "SDL overlay did not take — versions now seen:"
+                pkg-config --modversion sdl2 SDL2_ttf || true
+                exit 1
+              }
+              echo "=== resolved sdl2 pc ==="
+              pkg-config --libs sdl2
+              pkg-config --libs-only-l sdl2
+              pkg-config --variable=prefix sdl2
+              grep -H "Libs" "$SYSROOT_MINGW/lib/pkgconfig"/{sdl2,SDL2}.pc 2>/dev/null || true
+              # A cache-restored switch may already carry tsdl baked with
+              # the unstripped Libs — rebuild so the new flags take.
+              opam reinstall -y tsdl tsdl-ttf 2>/dev/null || true
+
+              opam install -y 'ocaml=5.5.1' tsdl tsdl-ttf tgls imagelib alcotest
+            fi
+            # The setup action's deps top-up is soft-failed here (tsdl
+            # cannot build before this step) — close out whatever it
+            # left uninstalled.
+            opam install . --deps-only --with-test -y --locked
+            # SDL2.dll must be on PATH for the tests that call Sdl.init.
+            SYSROOT="$(cygpath -u "$(opam var root)")/.cygwin/root/usr/x86_64-w64-mingw32/sys-root/mingw"
+            echo "$(cygpath -w "$SYSROOT/bin")" >> "$GITHUB_PATH"
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            # Keg-only libffi is not on pkgconf's default path. System deps
+            # are brewed above, so skip depext (it would need
+            # --confirm-level=unsafe-yes to run brew, and aborts otherwise).
+            export PKG_CONFIG_PATH="/opt/homebrew/opt/libffi/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+            opam install -y --assume-depexts tsdl tsdl-ttf tgls imagelib alcotest
+            # Same soft-failed top-up story as the Windows branch. Unlocked:
+            # the lock file lags deps added after it was written.
+            opam install . --deps-only --with-test -y --assume-depexts
+          else
+            opam install -y tsdl tsdl-ttf tgls imagelib alcotest
+          fi
+      - name: Build platform/native
+        run: |
+          # OCAMLPARAM verbose prints the exact linker invocation on
+          # Windows while the wWinMain link failure is being diagnosed.
+          if [ "$RUNNER_OS" = "Windows" ]; then export OCAMLPARAM='verbose=1,_'; fi
+          opam exec -- dune build platform/native/
+        shell: bash
+      - name: Test platform/native
+        # Tests skip what the runner cannot provide: no display -> GL/parity
+        # skip, no dbus -> ax/shell skip, no lavapipe -> vulkan skip.
+        # Windows: bound the whole suite while a hung test is diagnosed —
+        # verbose lists each test command as it starts, so the last one
+        # printed identifies the hang.
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            timeout 600 opam exec -- dune runtest platform/native/ -f --verbose
+          else
+            opam exec -- dune runtest platform/native/ -f
+          fi
+        shell: bash
+      - name: Trim dune cache
+        if: github.event_name == 'push'
+        run: opam exec -- dune cache trim --size=400MB
+      - name: Save dune cache
+        if: github.event_name == 'push'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/dune
+          key: dune-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+

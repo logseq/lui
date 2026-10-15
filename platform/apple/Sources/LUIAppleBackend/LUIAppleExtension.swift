@@ -363,23 +363,14 @@ public struct LUIAppleExtensionViewContext {
     /// A subtree-content stamp for measure caches and flat-list probes:
     /// folds every descendant's mutation revision, so it changes whenever
     /// anything under the node commits and stays equal when only nodes
-    /// outside the subtree do. Reading it in a View body also subscribes
-    /// the view to every descendant model's revision, so the view
-    /// re-resolves exactly when a descendant commits.
+    /// outside the subtree do. The fold is maintained at commit time, so
+    /// reading it in a View body subscribes to one stored key path per
+    /// node instead of traversing — and subscribing to — the whole
+    /// subtree on every evaluation.
     public func measureStamp(of nodeID: Int) -> Int {
-        var stamp = 0
-        func visit(_ id: Int) {
-            let rev = backend.extensionModel(id: id)?.revision
-                ?? backend.model(id: id)?.revision
-                ?? -1
-            stamp = stamp &* 31 &+ rev
-            let kids = backend.extensionModel(id: id)?.children
-                ?? backend.model(id: id)?.children
-                ?? []
-            for kid in kids { visit(kid) }
-        }
-        visit(nodeID)
-        return stamp
+        backend.extensionModel(id: nodeID)?.subtreeStamp
+            ?? backend.model(id: nodeID)?.subtreeStamp
+            ?? -1
     }
 }
 
@@ -401,6 +392,10 @@ final class LUIExtensionNodeModel: Identifiable {
     @ObservationIgnored private var storedChildren: [Int]
     @ObservationIgnored private var storedProperties: [String: LUIWireValue]
     @ObservationIgnored private var storedRevision = 0
+    /// Fold of this node's revision and all descendants' stamps,
+    /// maintained at commit time — same contract as
+    /// `LUINodeModel.subtreeStamp`.
+    @ObservationIgnored private var storedSubtreeStamp = 0
 
     var parent: Int? {
         access(keyPath: \.parent)
@@ -418,6 +413,10 @@ final class LUIExtensionNodeModel: Identifiable {
     var revision: Int {
         access(keyPath: \.revision)
         return storedRevision
+    }
+    var subtreeStamp: Int {
+        access(keyPath: \.subtreeStamp)
+        return storedSubtreeStamp
     }
 
     init(id: Int, state: LUIExtensionNodeState) {
@@ -447,15 +446,32 @@ final class LUIExtensionNodeModel: Identifiable {
             storedProperties = state.properties
             changes.insert(.properties)
         }
-        if !changes.isEmpty { storedRevision += 1 }
+        if !changes.isEmpty {
+            storedRevision += 1
+            changes.insert(.revision)
+        }
         return changes
+    }
+
+    /// Same contract as `LUINodeModel.stageSubtreeStamp` — staged after
+    /// every descendant carries its fresh stamp.
+    func stageSubtreeStamp(_ stamp: Int) -> LUIModelChanges {
+        guard storedSubtreeStamp != stamp else { return [] }
+        storedSubtreeStamp = stamp
+        return [.subtreeStamp]
+    }
+
+    func invalidateSubtreeStamp() {
+        storedSubtreeStamp &+= 1
+        withMutation(keyPath: \.subtreeStamp) {}
     }
 
     func publish(_ changes: LUIModelChanges) {
         if changes.contains(.properties) { withMutation(keyPath: \.properties) {} }
         if changes.contains(.children) { withMutation(keyPath: \.children) {} }
         if changes.contains(.parent) { withMutation(keyPath: \.parent) {} }
-        if !changes.isEmpty { withMutation(keyPath: \.revision) {} }
+        if changes.contains(.subtreeStamp) { withMutation(keyPath: \.subtreeStamp) {} }
+        if changes.contains(.revision) { withMutation(keyPath: \.revision) {} }
     }
 }
 

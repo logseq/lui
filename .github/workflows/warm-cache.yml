@@ -1,0 +1,41 @@
+name: Warm OCaml cache
+
+# PR runs can only restore caches saved on their own ref or on the base
+# branch. CI's push runs on feat/ml-backend are cancel-in-progress and are
+# routinely cancelled before the ~20 min cold Windows opam/cygwin setup
+# saves, so no base-branch cache existed and every PR paid the cold
+# setup (and raced to save a PR-scoped copy nobody else can read).
+# This workflow is never cancelled: it only builds and saves the
+# environment on the base branches, and refreshes it when the runner
+# image in the cache key changes.
+on:
+  push:
+    branches: [main, feat/ml-backend]
+    paths:
+      - '*.opam'
+      - '*.opam.locked'
+      - 'dune-project'
+      - '.github/actions/setup-lui-ocaml/**'
+      - '.github/workflows/warm-cache.yml'
+  schedule:
+    # Weekly: re-warm after runner image updates.
+    - cron: '10 0 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: warm-cache-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  warm:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-lui-ocaml

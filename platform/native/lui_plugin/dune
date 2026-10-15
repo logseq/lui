@@ -1,0 +1,4 @@
+(library
+ (name lui_plugin)
+ (public_name lui.plugin)
+ (modules lui_plugin))

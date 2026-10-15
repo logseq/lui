@@ -1,12 +1,32 @@
 package dev.lui
 
+import androidx.compose.runtime.Stable
+
+/**
+ * Read view of a retained standard node. `kind`/`parent`/`children` are
+ * the structural side, `properties` the value side. The backend publishes
+ * the two through separate snapshot states and hands out live views whose
+ * getters read those states lazily, so a reader subscribes only to the
+ * side it actually touches — a parent scanning `child.kind` is not
+ * invalidated by property mutations on the child. Marked stable: the
+ * observed views are immutable value objects backed by snapshot state,
+ * so composables may skip when the view instance is unchanged.
+ */
+@Stable
+interface LuiNodeLike {
+    val kind: LuiNodeKind
+    val parent: Long?
+    val children: List<Long>
+    val properties: Map<String, LuiWireValue>
+}
+
 /** A retained standard node. Property keys are wire property names. */
 class LuiNode(
-    val kind: LuiNodeKind,
-    var parent: Long? = null,
-    val children: MutableList<Long> = mutableListOf(),
-    val properties: MutableMap<String, LuiWireValue> = mutableMapOf(),
-) {
+    override val kind: LuiNodeKind,
+    override var parent: Long? = null,
+    override val children: MutableList<Long> = mutableListOf(),
+    override val properties: MutableMap<String, LuiWireValue> = mutableMapOf(),
+) : LuiNodeLike {
     fun copy(): LuiNode = LuiNode(kind, parent, children.toMutableList(), properties.toMutableMap())
 }
 

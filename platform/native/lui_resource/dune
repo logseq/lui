@@ -1,0 +1,5 @@
+(library
+ (name lui_resource)
+ (public_name lui.resource)
+ (modules lui_resource)
+ (libraries lui ocaml-signal))

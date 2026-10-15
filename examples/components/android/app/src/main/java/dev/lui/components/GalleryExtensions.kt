@@ -26,7 +26,7 @@ object GalleryExtensions {
     private const val NATIVE_CARD_FINGERPRINT =
         "lui-extension-v1|10:native-card|profiles:android/kotlin,web/web|standard-children:0|children:|properties:5:title:string:required:none|events:"
     private const val GALLERY_ACCENT_FINGERPRINT =
-        "lui-tweak-v1|14:gallery-accent|profiles:android/kotlin,ios/swiftui,linux/gpui,macos/gpui,macos/swiftui,web/web,windows/gpui|properties:"
+        "lui-tweak-v1|14:gallery-accent|profiles:android/kotlin,ios/swiftui,macos/swiftui,web/web|properties:"
 
     fun register(registry: LuiExtensionRegistry) {
         LuiSplit.register(registry)

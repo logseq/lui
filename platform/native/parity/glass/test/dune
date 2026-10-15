@@ -1,0 +1,28 @@
+(test
+ (name parity_glass_gl_test)
+ (modules parity_glass_gl_test)
+ (libraries
+  lui_scene
+  lui_raster
+  lui_raster_testkit
+  lui_gl
+  lui_parity
+  lui_parity_glass
+  lui_plugin_glass
+  alcotest
+  tsdl
+  tgls))
+
+(test
+ (name parity_glass_metal_test)
+ (modules parity_glass_metal_test)
+ (enabled_if (= %{system} macosx))
+ (libraries
+  lui_scene
+  lui_raster
+  lui_raster_testkit
+  lui_metal
+  lui_parity
+  lui_parity_glass
+  lui_plugin_glass
+  alcotest))

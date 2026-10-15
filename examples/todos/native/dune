@@ -10,6 +10,7 @@
  (target liblui_todos.dylib)
  (deps
   ../../../platform/native/lui_ocaml_bridge.c
+  ../../../platform/native/lui_caml_dispatch.h
   todos_bridge.cmxa
   ../todos_app.cmxa
   ../../../src/lui.cmxa)

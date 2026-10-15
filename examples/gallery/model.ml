@@ -1,5 +1,16 @@
 (* Component gallery model: pure data + reducer. *)
 
+type todo_item = {
+  todo_id : int;
+  todo_title : string;
+  todo_done : bool;
+}
+
+type block = {
+  block_id : int;
+  block_text : string;
+}
+
 type t = {
   disabled : bool;
   field_value : string;
@@ -33,8 +44,17 @@ type t = {
   composer_source : Lui_elements.file_picker_source;
   composer_feedback : string;
   split_panes : Lui_split.Model.t;
-  gpui_rating : int;
-  gpui_color : string;
+  (* Milestone 8 macro demos *)
+  count : int;
+  todo_draft : string;
+  todo_items : todo_item list;
+  todo_next_id : int;
+  blocks : block list;
+  block_next_id : int;
+  block_edits : int;
+  virtual_count : int;
+  virtual_last : string;
+  editor_text : string;
 }
 
 let gallery_split_state =
@@ -61,6 +81,21 @@ let gallery_split_state =
                   tab ~tab_id:"backlinks" ~title:"Backlinks" ();
                 ]);
        })
+
+let move_todo_up items id =
+  let rec loop acc = function
+    | [] -> List.rev acc
+    | [ x ] -> List.rev (x :: acc)
+    | prev :: (cur :: rest as tail) ->
+      if cur.todo_id = id then List.rev_append (cur :: acc) (prev :: rest)
+      else loop (prev :: acc) tail
+  in
+  loop [] items
+
+let starter_editor_text =
+  "The editor demo below keeps the document in the reducer:\n\
+   every keystroke dispatches SetEditorText, and the stats line and\n\
+   preview re-render from the same signal."
 
 type action =
   | ToggleDisabled
@@ -102,8 +137,21 @@ type action =
   | ComposerRemove of string
   | ComposerSend
   | SplitPanes of Lui_split.Model.action
-  | GpuiRate of int
-  | GpuiPickColor of string
+  | CounterIncrement
+  | CounterDecrement
+  | CounterReset
+  | SetTodoDraft of string
+  | AddTodo
+  | ToggleTodo of int
+  | MoveTodoUp of int
+  | DeleteTodo of int
+  | LoadBlocks
+  | ClearBlocks
+  | EditBlock
+  | InsertBlock
+  | SetVirtualCount of int
+  | PressVirtualRow of int
+  | SetEditorText of string
 
 let initial =
   {
@@ -138,8 +186,16 @@ let initial =
     composer_source = `files;
     composer_feedback = "";
     split_panes = gallery_split_state;
-    gpui_rating = 3;
-    gpui_color = "#3b82f6";
+    count = 0;
+    todo_draft = "";
+    todo_items = [];
+    todo_next_id = 1;
+    blocks = [];
+    block_next_id = 0;
+    block_edits = 0;
+    virtual_count = 0;
+    virtual_last = "none";
+    editor_text = starter_editor_text;
   }
 
 let update model action =
@@ -229,8 +285,99 @@ let update model action =
     { model with composer_files = []; field_value = ""; composer_feedback = "" }
   | SplitPanes action ->
     { model with split_panes = Lui_split.Model.update model.split_panes action }
-  | GpuiRate rating -> { model with gpui_rating = rating }
-  | GpuiPickColor color -> { model with gpui_color = color }
+  | CounterIncrement -> { model with count = model.count + 1 }
+  | CounterDecrement -> { model with count = model.count - 1 }
+  | CounterReset -> { model with count = 0 }
+  | SetTodoDraft todo_draft -> { model with todo_draft }
+  | AddTodo ->
+    let title = String.trim model.todo_draft in
+    if title = "" then model
+    else
+      {
+        model with
+        todo_items =
+          model.todo_items
+          @ [
+              {
+                todo_id = model.todo_next_id;
+                todo_title = title;
+                todo_done = false;
+              }
+            ];
+        todo_draft = "";
+        todo_next_id = model.todo_next_id + 1;
+      }
+  | ToggleTodo id ->
+    {
+      model with
+      todo_items =
+        List.map
+          (fun (item : todo_item) ->
+             if item.todo_id = id then { item with todo_done = not item.todo_done }
+             else item)
+          model.todo_items;
+    }
+  | MoveTodoUp id -> { model with todo_items = move_todo_up model.todo_items id }
+  | DeleteTodo id ->
+    {
+      model with
+      todo_items =
+        List.filter (fun (item : todo_item) -> item.todo_id <> id) model.todo_items;
+    }
+  | LoadBlocks ->
+    if model.blocks <> [] then model
+    else
+      {
+        model with
+        blocks =
+          List.init 10_000 (fun i ->
+              {
+                block_id = i;
+                block_text = Printf.sprintf "block %d content" i;
+              });
+        block_next_id = 10_000;
+      }
+  | ClearBlocks -> if model.blocks = [] then model else { model with blocks = [] }
+  | EditBlock ->
+    (match model.blocks with
+     | [] -> model
+     | _ ->
+       let target = List.length model.blocks / 2 in
+       {
+         model with
+         block_edits = model.block_edits + 1;
+         blocks =
+           List.mapi
+             (* Unedited blocks keep their record identity so the keyed
+                source republish only touches the edited row. *)
+             (fun i (b : block) ->
+                if i = target then
+                  {
+                    b with
+                    block_text =
+                      Printf.sprintf "block %d content (edit %d)" b.block_id
+                        model.block_edits;
+                  }
+                else b)
+             model.blocks;
+       })
+  | InsertBlock ->
+    let id = model.block_next_id in
+    let rec go i acc = function
+      | rest when i <= 0 ->
+        List.rev_append acc ({ block_id = id; block_text = Printf.sprintf "inserted block %d" id } :: rest)
+      | [] -> List.rev ({ block_id = id; block_text = Printf.sprintf "inserted block %d" id } :: acc)
+      | b :: rest -> go (i - 1) (b :: acc) rest
+    in
+    {
+      model with
+      blocks = go (List.length model.blocks / 2) [] model.blocks;
+      block_next_id = id + 1;
+    }
+  | SetVirtualCount virtual_count -> { model with virtual_count }
+  | PressVirtualRow row ->
+    { model with virtual_last = Printf.sprintf "row %d" row }
+  | SetEditorText editor_text -> { model with editor_text }
 
 let progress_label model =
   Printf.sprintf "Progress fraction: %.1f" model.progress
@@ -321,6 +468,44 @@ let combine_dialog_open model = model.combine_dialog_open
 let combine_sheet_open model = model.combine_sheet_open
 let combine_menu_open model = model.combine_menu_open
 
-let gpui_rating model = model.gpui_rating
+let count model = model.count
+let todo_draft model = model.todo_draft
+let todo_items model = model.todo_items
+let blocks model = model.blocks
+let virtual_count model = model.virtual_count
+let virtual_last model = model.virtual_last
+let editor_text model = model.editor_text
 
-let gpui_color model = model.gpui_color
+let todo_summary model =
+  let remaining =
+    List.length
+      (List.filter (fun (item : todo_item) -> not item.todo_done) model.todo_items)
+  in
+  Printf.sprintf "%d remaining / %d total" remaining
+    (List.length model.todo_items)
+
+let blocks_summary model =
+  if model.blocks = [] then "no blocks loaded"
+  else Printf.sprintf "%d blocks mounted" (List.length model.blocks)
+
+let virtual_summary model =
+  if model.virtual_count = 0 then "virtual list empty — load rows to mount"
+  else
+    Printf.sprintf "%d logical rows · last pressed: %s" model.virtual_count
+      model.virtual_last
+
+let editor_stats model =
+  let lines = ref 1 and words = ref 0 and in_word = ref false in
+  String.iter
+    (fun c ->
+       if c = '\n' then incr lines;
+       match c with
+       | '0' .. '9' | 'a' .. 'z' | 'A' .. 'Z' | '\128' .. '\255' ->
+         if not !in_word then begin
+           incr words;
+           in_word := true
+         end
+       | _ -> in_word := false)
+    model.editor_text;
+  Printf.sprintf "%d chars · %d words · %d lines" (String.length model.editor_text)
+    !words !lines
