@@ -2033,11 +2033,14 @@ let move_child application parent child index =
    outlive its node: a dyn remount dropped mid-round disposes the scope lazily,
    so the callback still fires on a stale id. Live nodes keep their writes;
    dropped ones are skipped rather than failing on the host's behalf. *)
-let bind_prop scope application node property source =
+let bind_prop_map scope application node property convert source =
   Signal.own scope
     (Signal.observe source (fun value ->
          if node_live application node then
-           set_prop application node property value))
+           set_prop application node property (convert value)))
+
+let bind_prop scope application node property source =
+  bind_prop_map scope application node property Fun.id source
 
 let bind_extension_prop scope application node property source =
   Signal.own scope
