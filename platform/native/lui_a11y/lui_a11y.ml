@@ -511,6 +511,9 @@ let flatten t =
    from descendant text. *)
 let update t dirty =
   let work = ref ISet.empty in
+  (* Reparenting can give the two trees different ancestor chains. Each
+     chain is walked once per update, independently of dirty-list order. *)
+  let store_ancestors = ref ISet.empty and a11y_ancestors = ref ISet.empty in
   let add id = work := ISet.add id !work in
   let add_a11y_subtree id =
     let rec walk i =
@@ -525,12 +528,17 @@ let update t dirty =
   in
   let rec add_store_ancestors id =
     match Lui_store.parent t.store id with
-    | Some p -> add p; add_store_ancestors p
+    | Some p when not (ISet.mem p !store_ancestors) ->
+      store_ancestors := ISet.add p !store_ancestors;
+      add p; add_store_ancestors p
+    | Some _ -> ()
     | None -> ()
   in
   let rec add_a11y_ancestors id =
     match Hashtbl.find_opt t.nodes id with
-    | Some { parent = Some p; _ } -> add p; add_a11y_ancestors p
+    | Some { parent = Some p; _ } when not (ISet.mem p !a11y_ancestors) ->
+      a11y_ancestors := ISet.add p !a11y_ancestors;
+      add p; add_a11y_ancestors p
     | _ -> ()
   in
   List.iter
