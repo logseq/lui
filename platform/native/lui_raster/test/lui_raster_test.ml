@@ -764,13 +764,20 @@ let test_image_sampling_allocation () =
     (allocated <= 1_000_000.)
 
 let test_shadow_sampling_allocation () =
-  let s = scene ~w:128 ~h:96
-    [ishadow ~radii:(radii 24.) ~cont:true ~blur:12.
-       (rect 20.25 18.75 79.5 57.25) (color 17 29 41 180)] in
-  let allocated = redraw_allocation s in
-  Printf.printf "Blurred shadow redraw allocated %.0f bytes/frame\n%!" allocated;
-  Alcotest.(check bool) "Shadow integration stays below 256 KB per frame" true
-    (allocated <= 262_144.)
+  List.iter (fun (height, shadow_height) ->
+    List.iter (fun inset ->
+      let s = scene ~w:128 ~h:height
+        [ishadow ~inset ~cast:(if inset then rect 0. 0. 128. (float height)
+                             else rect 0. 0. 0. 0.)
+           ~radii:(radii 24.) ~cont:true ~blur:12.
+           (rect 20.25 18.75 79.5 shadow_height) (color 17 29 41 180)] in
+      let allocated = redraw_allocation s in
+      Printf.printf "Blurred %s shadow at height %d allocated %.0f bytes/frame\n%!"
+        (if inset then "inset" else "outer") height allocated;
+      Alcotest.(check bool) "Shadow integration stays below 256 KB per frame" true
+        (allocated <= 262_144.)
+    ) [false; true]
+  ) [96,57.25;160,121.25]
 
 let test_scanline_allocation () =
   let radii = (0., 0., 0., 0.) in

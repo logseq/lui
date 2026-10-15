@@ -13,8 +13,8 @@ open Lui_scene
 
 (* ---------- float and byte helpers ---------- *)
 
-let[@inline always] fmin a b = if Float.is_nan a || Float.is_nan b then Float.nan else Float.min a b
-let[@inline always] fmax a b = if Float.is_nan a || Float.is_nan b then Float.nan else Float.max a b
+let[@inline always] fmin a b = (Float.min[@inlined always]) a b
+let[@inline always] fmax a b = (Float.max[@inlined always]) a b
 let[@inline always] clamp01 v = fmin (fmax v 0.) 1.
 let[@inline always] to8 v = if v <= 0. then 0 else if v >= 1. then 255 else int_of_float (v *. 255. +. 0.5)
 
@@ -958,6 +958,7 @@ let r_inset_shadow r (op : shadow_op) =
           yy := !yy +. step
         done;
         let cl, ch = clip_solid r y in
+        let bl, bh = solid_span box (float y) (float (y + 1)) in
         (* In the middle of the row, far from the hole's edges, the hole
            covers sum of each pixel, and nothing shows where that is
            all. *)
@@ -976,7 +977,10 @@ let r_inset_shadow r (op : shadow_op) =
             for i = 0 to 3 do
               covered := !covered +. weight.(i) *. 0.5 *. (erf ((px -. cx +. half.(i)) *. k) -. erf ((px -. cx -. half.(i)) *. k))
             done;
-            let v = (1. -. !covered) *. coverage box px (float y +. 0.5) in
+            let box_coverage =
+              if !x >= bl && !x < bh then 1.
+              else coverage box px (float y +. 0.5) in
+            let v = (1. -. !covered) *. box_coverage in
             if v > 0.002 then begin
               let v = if !x < cl || !x >= ch then v *. clip_coverage r !x y else v in
               blend_at r !x y c v
