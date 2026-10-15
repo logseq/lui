@@ -1561,9 +1561,7 @@ let draw d dst s area bounds workers =
 (* ---------- op bounds ---------- *)
 
 (* Where each operation of s draws, within the clips around it. *)
-let op_bounds s =
-  let ops = Array.of_list s.ops in
-  let glyphs = Array.of_list s.glyphs in
+let op_bounds_arrays s ops glyphs =
   let n = Array.length ops in
   let out = Array.make n (irect 0 0 0 0) in
   let clip = ref (irect 0 0 s.width s.height) in
@@ -1611,6 +1609,8 @@ let op_bounds s =
     out.(i) <- irect_intersect b !clip
   done;
   out
+
+let op_bounds s = op_bounds_arrays s (Array.of_list s.ops) (Array.of_list s.glyphs)
 
 (* ---------- damage: what of the next scene to repaint ---------- *)
 
@@ -1784,16 +1784,14 @@ let add_backdrops d s ops fxs =
 
 (* The damage between the last scene and s, and false when s must be
    drawn whole. *)
-let diff d s =
+let diff d s ops glyphs_b fxs_b =
   let mask_rects, ok = mark_changes d.mask_mark s.mask_atlas in
   if not ok then false
   else begin
     let color_rects, ok = mark_changes d.color_mark s.color_atlas in
     if not ok then false
     else begin
-      let ops = Array.of_list s.ops in
-      let glyphs_a = d.prev_glyphs and glyphs_b = Array.of_list s.glyphs in
-      let fxs_b = Array.of_list s.effects in
+      let glyphs_a = d.prev_glyphs in
       let same i j =
         op_same d.prev_effects d d.prev_ops i s ops j glyphs_a glyphs_b fxs_b mask_rects color_rects
       in
@@ -1829,15 +1827,15 @@ let diff d s =
   end
 
 (* Keep what the next scene is compared with. *)
-let remember d s =
+let remember d s ops glyphs effects =
   d.valid <- true;
   d.dw <- s.width;
   d.dh <- s.height;
   d.dclear <- s.clear;
-  d.prev_ops <- Array.of_list s.ops;
-  d.prev_glyphs <- Array.of_list s.glyphs;
+  d.prev_ops <- ops;
+  d.prev_glyphs <- glyphs;
   d.prev_effects <-
-    Array.map (fun e -> { e with eparams = Array.copy e.eparams }) (Array.of_list s.effects);
+    Array.map (fun e -> { e with eparams = Array.copy e.eparams }) effects;
   let t = d.bounds in
   d.bounds <- d.next;
   d.next <- t;
@@ -1864,14 +1862,18 @@ module Damage = struct
   (* s against the last scene: the rectangles of it that changed, a
      full-size one when it must be drawn whole. *)
   let update d s =
-    d.next <- op_bounds s;
+    (* Bounds, comparison, and drawing use one snapshot of this frame.
+       Effect parameters remain copied when remembered because they are mutable. *)
+    let ops = Array.of_list s.ops and glyphs = Array.of_list s.glyphs in
+    let effects = Array.of_list s.effects in
+    d.next <- op_bounds_arrays s ops glyphs;
     let whole =
       (not d.valid) || s.width <> d.dw || s.height <> d.dh || s.clear <> d.dclear
-      || not (diff d s)
+      || not (diff d s ops glyphs effects)
     in
     d.is_whole <- whole;
     if whole then d.damage <- [ irect 0 0 s.width s.height ];
-    remember d s;
+    remember d s ops glyphs effects;
     d.damage
 end
 
@@ -2082,7 +2084,7 @@ module Tile_renderer = struct
       invalid_arg "Tile rendering does not support shader effects";
     let damage = Damage.update t.damage s in
     if damage <> [] && s.width > 0 && s.height > 0 then begin
-      let ops = Array.of_list s.ops and glyphs = Array.of_list s.glyphs in
+      let ops = t.damage.prev_ops and glyphs = t.damage.prev_glyphs in
       let bounds = Damage.bounds t.damage in
       let count = (s.height + band_height - 1) / band_height in
       let changed = Array.make count false in

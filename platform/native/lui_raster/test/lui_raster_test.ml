@@ -819,11 +819,35 @@ let test_glyph_damage_allocation () =
   let allocated = (Gc.allocated_bytes () -. before) /. 100. in
   Printf.printf "Retained glyph damage allocated %.0f bytes/frame\n%!" allocated;
   Alcotest.(check bool)
-    "Damage checks allocate per-glyph rectangles and closures" true
-    (allocated < 49_152.);
+    "Damage checks copy the same glyph snapshot repeatedly" true
+    (allocated < 16_384.);
   Alcotest.(check bool)
     "A changed panel forces the whole static body to redraw" false
     (Lui_raster.Damage.whole damage)
+
+let test_mutable_scene_snapshots () =
+  let mask = Atlas.create ~bpp:1 ~w:8 ~h:16 in
+  Atlas.put mask ~x:0 ~y:0 ~w:8 ~h:16 ~src:(Bytes.make 128 '\128') ~stride:8;
+  let s = scene ~w:64 ~h:265 ~mask [] in
+  let output = Lui_raster.Image.create ~w:64 ~h:265 in
+  let paint,release = window_painter () in
+  Fun.protect ~finally:release (fun () ->
+    List.iteri (fun frame positions ->
+      s.glyphs <- List.map (fun (x,y) ->
+        glyph ~x ~y ~w:8. ~h:16. ~u:0 ~v:0 ~uw:8 ~vh:16
+          (color (30*frame) 17 93 255)) positions;
+      s.ops <- [iclip (rect 1. 1. 61. 263.); iglyphs 0 (List.length positions); Pop_clip;
+        ifill (rect (float frame) 240. 8. 8.) black];
+      if frame=2 then Atlas.put mask ~x:0 ~y:0 ~w:8 ~h:16
+        ~src:(Bytes.make 128 '\255') ~stride:8;
+      paint s (fun (area : irect) (tile : Lui_raster.Image.t) ->
+        for y=area.y0 to area.y1-1 do
+          Bytes.blit tile.pix ((y-area.y0)*tile.stride) output.pix (y*output.stride) (4*s.width)
+        done);
+      let expected = Lui_raster.render ~scene:s () in
+      Alcotest.(check bool) "Changed scene lists and atlas pixels replace prior snapshots" true
+        (Bytes.equal output.pix expected.pix))
+      [[2.,120.]; [19.,128.; 40.,250.]; [7.,-4.]; []; [31.,129.]])
 
 let test_glyph_damage_bounds () =
   let glyphs =
@@ -1037,6 +1061,7 @@ let () =
           Alcotest.test_case "merge cap" `Quick test_damage_merge;
           Alcotest.test_case "damage bands" `Slow test_damage_bands;
           Alcotest.test_case "glyph allocation" `Quick test_glyph_damage_allocation;
+          Alcotest.test_case "mutable scene snapshots" `Quick test_mutable_scene_snapshots;
           Alcotest.test_case "glyph bounds" `Quick test_glyph_damage_bounds;
           Alcotest.test_case "glyph atlas updates" `Quick test_glyph_atlas_damage ] )
       ; ("window pixels", [
