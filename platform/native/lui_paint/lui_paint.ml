@@ -2082,7 +2082,9 @@ let default_chrome ctx store id st kind r rs alpha =
           || List.mem variant [ "primary"; "destructive"; "secondary" ]
        then []
        else [ face zc rad bw1 (col_control_border ctx) ~dashed:false ])
-    @ control_icon_ops ctx store id r alpha
+    (* Button-like kinds paint content through labeled_content_ops. *)
+    @ (if kind = "number-stepper" then control_icon_ops ctx store id r alpha
+       else [])
   | "text-field" | "secure-field" | "input" | "search-field" | "textarea"
   | "select" | "combobox" ->
     let rad = rad (6. *. s) in

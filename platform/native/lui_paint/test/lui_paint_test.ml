@@ -1114,6 +1114,78 @@ let test_menu_item_single_icon () =
   | [ i ] -> check (float 0.01) "leading slot x" 8. i.irect2.x
   | _ -> ()
 
+let test_control_single_icon () =
+  List.iter
+    (fun kind ->
+      List.iter
+        (fun scale ->
+          List.iter
+            (fun label ->
+              List.iter
+                (fun placement ->
+                  let t = store () in
+                  apply t
+                    ([
+                       Lui_protocol.CreateNode (1, kind);
+                       SetProp (1, InlineIconName, StringValue "keyboard");
+                       SetProp (1, IconPlacementValue, StringValue placement);
+                     ]
+                    @
+                    match label with
+                    | None -> []
+                    | Some value ->
+                        [ SetProp (1, TextValue, StringValue value) ]);
+                  let image = new_image ~w:4 ~h:4 (Bytes.make 64 '\255') in
+                  let label_rect = ref None in
+                  let r =
+                    rect (20. *. scale) (10. *. scale) (240. *. scale)
+                      (40. *. scale)
+                  in
+                  let h =
+                    {
+                      (hooks
+                         ~layout:(fun _ -> Lui_paint.placement_of_rect r)
+                         ())
+                      with
+                      Lui_paint.image_of = (fun _ -> Some image);
+                      image_in = (fun _ _ -> Some image);
+                      text_ops =
+                        (fun _ region _ _ ->
+                          label_rect := Some region;
+                          []);
+                    }
+                  in
+                  let painted =
+                    paint_with h t ~width:600 ~height:160 ~scale ()
+                  in
+                  let images =
+                    List.filter_map
+                      (function Image value -> Some value | _ -> None)
+                      painted.ops
+                  in
+                  check int "a control paints its icon once" 1
+                    (List.length images);
+                  let slot = (List.hd images).irect2 in
+                  match label with
+                  | Some value when value <> "" ->
+                      let ink = Option.get !label_rect in
+                      let pad =
+                        (Lui_paint.text_placement_of t 1).tp_pad_x *. scale
+                      in
+                      check bool "the label leaves the icon slot clear" true
+                        (if placement = "trailing" then
+                           ink.x +. ink.w -. pad <= slot.x
+                         else ink.x +. pad >= slot.x +. slot.w)
+                  | _ ->
+                      check bool "an icon-only control stays centered" true
+                        (abs_float
+                           (slot.x +. (slot.w /. 2.) -. (r.x +. (r.w /. 2.)))
+                        < 0.01))
+                [ "leading"; "trailing" ])
+            [ None; Some ""; Some "Search by keys" ])
+        [ 1.; 2. ])
+    [ Lui_protocol.Button; ToggleButton; Toggle; MenuTrigger ]
+
 let () =
   run "lui_paint"
     [ ("color",
@@ -1170,7 +1242,8 @@ let () =
          test_case "slider" `Quick test_slider;
          test_case "scrollbar" `Quick test_scrollbar;
          test_case "extension" `Quick test_extension;
-         test_case "menu item single icon" `Quick test_menu_item_single_icon ]);
+         test_case "menu item single icon" `Quick test_menu_item_single_icon;
+         test_case "control single icon" `Quick test_control_single_icon ]);
       ("secure",
        [ test_case "masked paint" `Quick test_secure_masked;
          test_case "mask per grapheme" `Quick test_secure_masked_graphemes;
