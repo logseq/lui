@@ -932,6 +932,26 @@
       "swift": "paddingVertical"
     },
     {
+      "lg": "PaddingTop",
+      "wire": "padding-top",
+      "swift": "paddingTop"
+    },
+    {
+      "lg": "PaddingRight",
+      "wire": "padding-right",
+      "swift": "paddingRight"
+    },
+    {
+      "lg": "PaddingBottom",
+      "wire": "padding-bottom",
+      "swift": "paddingBottom"
+    },
+    {
+      "lg": "PaddingLeft",
+      "wire": "padding-left",
+      "swift": "paddingLeft"
+    },
+    {
       "lg": "MarginValue",
       "wire": "margin",
       "swift": "margin"
@@ -1907,6 +1927,10 @@
       "padding",
       "padding-horizontal",
       "padding-vertical",
+      "padding-top",
+      "padding-right",
+      "padding-bottom",
+      "padding-left",
       "margin",
       "margin-horizontal",
       "margin-vertical",
@@ -2010,6 +2034,10 @@
       "padding",
       "padding-horizontal",
       "padding-vertical",
+      "padding-top",
+      "padding-right",
+      "padding-bottom",
+      "padding-left",
       "width",
       "height",
       "min-width",

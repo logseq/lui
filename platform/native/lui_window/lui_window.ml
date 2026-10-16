@@ -319,7 +319,13 @@ module Layout = struct
       | Vertical -> "padding-vertical"
       | Horizontal -> "padding-horizontal"
     in
-    Option.value ~default:uniform (len_prop store id name ~scale)
+    let axis_padding = Option.value ~default:uniform (len_prop store id name ~scale) in
+    let before, after = match axis with
+      | Vertical -> "padding-top", "padding-bottom"
+      | Horizontal -> "padding-left", "padding-right"
+    in
+    (Option.value ~default:axis_padding (len_prop store id before ~scale),
+     Option.value ~default:axis_padding (len_prop store id after ~scale))
 
   let gap_px store id ~scale =
     Option.value ~default:0. (len_prop store id "gap" ~scale)
@@ -364,7 +370,8 @@ module Layout = struct
           | Vertical -> if mh > 0. then mh else dh
           | Horizontal -> if mw > 0. then mw else max dw 24.)
        | children ->
-         let pm = 2. *. pad_axis store id ~scale dir in
+         let before, after = pad_axis store id ~scale dir in
+         let pm = before +. after in
          let gap = gap_px store id ~scale in
          let n = List.length children in
          let sum =
@@ -394,8 +401,8 @@ module Layout = struct
     | children ->
       let dir = direction store id in
       let gap = gap_px store id ~scale in
-      let pm = pad_axis store id ~scale dir in
-      let pc =
+      let pm, pm_end = pad_axis store id ~scale dir in
+      let pc, pc_end =
         pad_axis store id ~scale
           (match dir with Vertical -> Horizontal | Horizontal -> Vertical)
       in
@@ -403,10 +410,10 @@ module Layout = struct
         match dir with
         | Vertical ->
           ( r.x +. pc, r.y +. pm,
-            max 0. (r.w -. (2. *. pc)), max 0. (r.h -. (2. *. pm)) )
+            max 0. (r.w -. pc -. pc_end), max 0. (r.h -. pm -. pm_end) )
         | Horizontal ->
           ( r.x +. pm, r.y +. pc,
-            max 0. (r.w -. (2. *. pm)), max 0. (r.h -. (2. *. pc)) )
+            max 0. (r.w -. pm -. pm_end), max 0. (r.h -. pc -. pc_end) )
       in
       let n = List.length children in
       let entries =
@@ -2511,8 +2518,8 @@ module Assembly = struct
           let tp = Lui_paint.text_placement_of (store_of ()) id in
           let sc = !scale_cell in
           Some
-            (w +. (2. *. tp.tp_pad_x *. sc),
-             h +. (2. *. tp.tp_pad_y *. sc)))
+            (w +. ((tp.tp_pad_left +. tp.tp_pad_right) *. sc),
+             h +. ((tp.tp_pad_top +. tp.tp_pad_bottom) *. sc)))
         ~renderer ~width ~height ~scale:!scale_cell ()
     in
     host_cell := Some host;

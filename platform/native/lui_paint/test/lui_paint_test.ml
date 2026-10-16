@@ -1170,7 +1170,7 @@ let test_control_single_icon () =
                   | Some value when value <> "" ->
                       let ink = Option.get !label_rect in
                       let pad =
-                        (Lui_paint.text_placement_of t 1).tp_pad_x *. scale
+                        (Lui_paint.text_placement_of t 1).tp_pad_left *. scale
                       in
                       check bool "the label leaves the icon slot clear" true
                         (if placement = "trailing" then
@@ -1185,6 +1185,24 @@ let test_control_single_icon () =
             [ None; Some ""; Some "Search by keys" ])
         [ 1.; 2. ])
     [ Lui_protocol.Button; ToggleButton; Toggle; MenuTrigger ]
+
+let test_text_edge_placement () =
+  let t = store () in
+  apply t
+    [
+      Lui_protocol.CreateNode (1, SearchField);
+      SetProp (1, PaddingHorizontal, IntValue 10);
+      SetProp (1, PaddingVertical, IntValue 6);
+      SetProp (1, PaddingLeft, IntValue 28);
+      SetProp (1, PaddingRight, IntValue 8);
+      SetProp (1, PaddingTop, IntValue 3);
+      SetProp (1, PaddingBottom, IntValue 9);
+    ];
+  let placement = Lui_paint.text_placement_of t 1 in
+  check (float 0.001) "text starts at its left edge inset" 28.
+    placement.tp_pad_left;
+  check (float 0.001) "text starts at its top edge inset" 3.
+    placement.tp_pad_top
 
 let () =
   run "lui_paint"
@@ -1243,7 +1261,8 @@ let () =
          test_case "scrollbar" `Quick test_scrollbar;
          test_case "extension" `Quick test_extension;
          test_case "menu item single icon" `Quick test_menu_item_single_icon;
-         test_case "control single icon" `Quick test_control_single_icon ]);
+         test_case "control single icon" `Quick test_control_single_icon;
+         test_case "text edge placement" `Quick test_text_edge_placement ]);
       ("secure",
        [ test_case "masked paint" `Quick test_secure_masked;
          test_case "mask per grapheme" `Quick test_secure_masked_graphemes;

@@ -167,11 +167,11 @@ let stub_text_ops ?store id r c s =
     match store with
     | Some st -> Lui_paint.text_placement_of st id
     | None ->
-      { Lui_paint.tp_align = Ta_start; tp_pad_x = 0.; tp_pad_y = 0.;
+      { Lui_paint.tp_align = Ta_start; tp_pad_left = 0.; tp_pad_right = 0.; tp_pad_top = 0.; tp_pad_bottom = 0.;
         tp_top = false }
   in
-  let pad = tp.tp_pad_x in
-  let w' = Float.max 0. (r.w -. (2. *. pad)) in
+  let pad = tp.tp_pad_left in
+  let w' = Float.max 0. (r.w -. (tp.tp_pad_left +. tp.tp_pad_right)) in
   let text_w = 7. *. float_of_int (String.length s) in
   let x =
     match tp.tp_align with
@@ -181,8 +181,8 @@ let stub_text_ops ?store id r c s =
     | Ta_end -> ref (r.x +. pad +. Float.max 0. (w' -. text_w))
   in
   let base =
-    if tp.tp_top then r.y +. tp.tp_pad_y
-    else r.y +. Float.max 1. ((r.h -. 9.) /. 2.)
+    if tp.tp_top then r.y +. tp.tp_pad_top
+    else r.y +. Float.max 1. ((r.h -. 9. +. tp.tp_pad_top -. tp.tp_pad_bottom) /. 2.)
   in
   let ops = ref [] in
   let put y w h = ops := fill1 !x y w h c :: !ops in
@@ -205,12 +205,12 @@ let stub_measure ?store id text _w _h =
     match store with
     | Some st -> Lui_paint.text_placement_of st id
     | None ->
-      { Lui_paint.tp_align = Ta_start; tp_pad_x = 0.; tp_pad_y = 0.;
+      { Lui_paint.tp_align = Ta_start; tp_pad_left = 0.; tp_pad_right = 0.; tp_pad_top = 0.; tp_pad_bottom = 0.;
         tp_top = false }
   in
   Some
-    ( (7. *. float_of_int (String.length text)) +. (2. *. tp.tp_pad_x),
-      10. +. (2. *. tp.tp_pad_y) )
+    ( (7. *. float_of_int (String.length text)) +. (tp.tp_pad_left +. tp.tp_pad_right),
+      10. +. (tp.tp_pad_top +. tp.tp_pad_bottom) )
 
 (* Fixed 24x24 two-tone checkerboard, premultiplied RGBA — the bitmap
    every image-driven kind samples. *)

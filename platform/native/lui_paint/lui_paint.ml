@@ -48,6 +48,10 @@ let prop_coverage =
     ("padding", Layout);
     ("padding-horizontal", Layout);
     ("padding-vertical", Layout);
+    ("padding-top", Layout);
+    ("padding-right", Layout);
+    ("padding-bottom", Layout);
+    ("padding-left", Layout);
     ("background", Painted);
     ("foreground", Painted);
     ("border-color", Painted); (* CSS shorthand, 1–4 colors *)
@@ -977,8 +981,10 @@ type text_align = Ta_start | Ta_center | Ta_end
 
 type text_placement = {
   tp_align : text_align;
-  tp_pad_x : float; (* logical px inset on each side *)
-  tp_pad_y : float; (* logical px measure adds top and bottom *)
+  tp_pad_left : float; (* logical px insets *)
+  tp_pad_right : float;
+  tp_pad_top : float;
+  tp_pad_bottom : float;
   tp_top : bool;    (* anchor first line at pad-y instead of centering *)
 }
 
@@ -1026,7 +1032,12 @@ let text_placement_of store id =
     | None, Some p, v -> (p, Option.value ~default:p v)
     | None, None, v -> (pad_x, Option.value ~default:pad_y v)
   in
-  { tp_align = align; tp_pad_x = pad_x; tp_pad_y = pad_y; tp_top = top }
+  { tp_align = align;
+    tp_pad_left = Option.value ~default:pad_x (pnum store id "padding-left");
+    tp_pad_right = Option.value ~default:pad_x (pnum store id "padding-right");
+    tp_pad_top = Option.value ~default:pad_y (pnum store id "padding-top");
+    tp_pad_bottom = Option.value ~default:pad_y (pnum store id "padding-bottom");
+    tp_top = top }
 
 (* ---------- secure-field masking ---------- *)
 
@@ -1413,11 +1424,13 @@ let text_ops ?fg ctx store id r alpha ~placeholder_ok =
 (* Select indicators use the host's existing image decoder, including its
    scale-aware SVG cache. Clip labels before the trailing icon slot. *)
 let select_ops ctx store id rs r alpha fg =
-  let pad = (text_placement_of store id).tp_pad_x *. ctx.scale in
+  let tp = text_placement_of store id in
+  let pad_left = tp.tp_pad_left *. ctx.scale in
+  let pad = tp.tp_pad_right *. ctx.scale in
   let _, right, _, left = border_widths ctx store id in
   let size =
     Float.min (16. *. ctx.scale)
-      (Float.min r.h (Float.max 0. (r.w -. left -. right -. (2. *. pad))))
+      (Float.min r.h (Float.max 0. (r.w -. left -. right -. pad_left -. pad)))
   in
   let label = { r with w = Float.max 0. (r.w -. right -. pad -. size) } in
   let indicator =
@@ -1814,9 +1827,9 @@ let labeled_content_ops ctx store id r alpha ~fg ~placeholder_ok =
       if size <= 0. then []
       else
         let tp = text_placement_of store id in
-        let pad = tp.tp_pad_x *. s in
-        let gap = 6. *. s in
         let trailing = pstr store id "icon-placement" = Some "trailing" in
+        let pad = (if trailing then tp.tp_pad_right else tp.tp_pad_left) *. s in
+        let gap = 6. *. s in
         let ix =
           if trailing then r.x +. r.w -. pad -. size else r.x +. pad
         in

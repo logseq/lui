@@ -601,7 +601,8 @@ internal object LuiKindRules {
                 value.intValue != null &&
                     kind != LuiNodeKind.avatar &&
                     kind != LuiNodeKind.tooltip
-            "padding-horizontal", "padding-vertical" ->
+            "padding-horizontal", "padding-vertical",
+            "padding-top", "padding-right", "padding-bottom", "padding-left" ->
                 value.intValue?.let { it >= 0 } == true &&
                     kind != LuiNodeKind.avatar &&
                     kind != LuiNodeKind.tooltip
@@ -950,7 +951,8 @@ internal object LuiKindRules {
             "pointer-enabled" -> value is LuiWireValue.Bool
             "height", "width", "min-width", "max-width", "min-height",
             "max-height", "active", "gap", "border-width", "corner-radius",
-            "padding-horizontal", "padding-vertical", "duration" ->
+            "padding-horizontal", "padding-vertical",
+            "padding-top", "padding-right", "padding-bottom", "padding-left", "duration" ->
                 value.intValue?.let { it >= 0 } == true
             "padding" -> value is LuiWireValue.IntValue
             "margin", "margin-horizontal", "margin-vertical", "margin-top",

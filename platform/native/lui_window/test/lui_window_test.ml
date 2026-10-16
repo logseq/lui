@@ -175,6 +175,46 @@ let test_layout () =
   Alcotest.(check (float 0.001)) "scaled btn h" 64. r3'.h;
   Alcotest.(check (float 0.001)) "scaled field y" 72. (Rects.get rects 4).y
 
+let test_layout_padding_edges () =
+  List.iter
+    (fun scale ->
+      List.iter
+        (fun kind ->
+          let store =
+            store_of
+              [
+                CreateNode (1, Root);
+                CreateNode (2, kind);
+                CreateNode (3, Box);
+                InsertChild (1, 2, 0);
+                InsertChild (2, 3, 0);
+                SetProp (2, WidthValue, IntValue 100);
+                SetProp (2, HeightValue, IntValue 80);
+                SetProp (2, PaddingHorizontal, IntValue 10);
+                SetProp (2, PaddingVertical, IntValue 6);
+                SetProp (2, PaddingTop, IntValue 3);
+                SetProp (2, PaddingRight, IntValue 8);
+                SetProp (2, PaddingBottom, IntValue 9);
+                SetProp (2, PaddingLeft, IntValue 28);
+                SetProp (3, GrowValue, FloatValue 1.);
+              ]
+          in
+          let rects = Rects.create () in
+          Layout.refresh store rects ~width:200 ~height:120 ~scale
+            ~measure:Layout.default_measure;
+          let child = Rects.get rects 3 in
+          List.iter
+            (fun (label, expected, actual) ->
+              Alcotest.(check (float 0.001)) label (expected *. scale) actual)
+            [
+              ("child left", 28., child.x);
+              ("child top", 3., child.y);
+              ("child width", 64., child.w);
+              ("child height", 68., child.h);
+            ])
+        [ Column; Row ])
+    [ 1.; 2. ]
+
 let test_layout_props () =
   let s =
     store_of
@@ -3214,7 +3254,8 @@ let () =
         [ Alcotest.test_case "event_supported" `Quick test_event_supported ] );
       ( "layout",
         [ Alcotest.test_case "stack" `Quick test_layout;
-          Alcotest.test_case "props" `Quick test_layout_props ] );
+          Alcotest.test_case "props" `Quick test_layout_props;
+          Alcotest.test_case "padding edges" `Quick test_layout_padding_edges ] );
       ( "hit",
         [ Alcotest.test_case "path" `Quick test_hit;
           Alcotest.test_case "z-order" `Quick test_hit_z_order;

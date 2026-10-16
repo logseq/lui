@@ -193,9 +193,9 @@ let text_ops t id r fg s =
   let font = font_of store id in
   (* Horizontal placement from the shared placement table. *)
   let tp = Lui_paint.text_placement_of store id in
-  let pad = tp.tp_pad_x *. scale in
+  let pad = tp.tp_pad_left *. scale in
   let x0 = r.x +. pad in
-  let w' = Float.max 0. (r.w -. (2. *. pad)) in
+  let w' = Float.max 0. (r.w -. ((tp.tp_pad_left +. tp.tp_pad_right) *. scale)) in
   (* Flowing text wraps at its padded width — mirror of
      Lui_window_text.text_ops. *)
   let wrap_w =
@@ -215,8 +215,8 @@ let text_ops t id r fg s =
     *. scale
   in
   let y0 =
-    if tp.tp_top then r.y +. (tp.tp_pad_y *. scale)
-    else r.y +. Float.max 0. ((r.h -. text_h) /. 2.)
+    if tp.tp_top then r.y +. (tp.tp_pad_top *. scale)
+    else r.y +. Float.max 0. ((r.h -. text_h +. (tp.tp_pad_top -. tp.tp_pad_bottom) *. scale) /. 2.)
   in
   let gstart = List.length scene.glyphs in
   let line_y = ref 0. in
@@ -270,5 +270,5 @@ let measure t id _text _w _h =
     let w, h = Lui_text.measure (font_of store id) text in
     let tp = Lui_paint.text_placement_of store id in
     Some
-      ((w +. (2. *. tp.tp_pad_x)) *. scale,
-       (h +. (2. *. tp.tp_pad_y)) *. scale)
+      ((w +. (tp.tp_pad_left +. tp.tp_pad_right)) *. scale,
+       (h +. (tp.tp_pad_top +. tp.tp_pad_bottom)) *. scale)

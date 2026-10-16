@@ -267,9 +267,18 @@ let uniform_edges ~scale store id name : Lui_flex.edges =
 (* Axis props override the uniform padding shorthand. *)
 let padding_edges ~scale store id : Lui_flex.edges =
   let base = uniform_edges ~scale store id "padding" in
+  let side name uniform =
+    match Lui_store.prop store id name with
+    | None -> uniform
+    | Some _ -> length_prop ~scale store id name
+  in
   { base with
     horizontal = length_prop ~scale store id "padding-horizontal";
-    vertical = length_prop ~scale store id "padding-vertical" }
+    vertical = length_prop ~scale store id "padding-vertical";
+    top = side "padding-top" base.top;
+    right = side "padding-right" base.right;
+    bottom = side "padding-bottom" base.bottom;
+    left = side "padding-left" base.left }
 
 (* Axis and side props override the uniform margin shorthand. *)
 let margin_edges ~scale store id : Lui_flex.edges =

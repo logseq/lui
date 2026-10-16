@@ -122,6 +122,10 @@ type property =
   | PaddingValue
   | PaddingHorizontal
   | PaddingVertical
+  | PaddingTop
+  | PaddingRight
+  | PaddingBottom
+  | PaddingLeft
   | MarginValue
   | MarginHorizontal
   | MarginVertical

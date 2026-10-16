@@ -518,9 +518,13 @@ let boundary_at_x hooks store id line lx =
 let offset_at_point hooks store rects id ~x ~y text =
   let r = Rects.get rects id in
   let ph =
-    pad_axis store id ~scale:hooks.scale "padding-horizontal" "padding" in
+    Option.value
+      ~default:(pad_axis store id ~scale:hooks.scale "padding-horizontal" "padding")
+      (len_prop store id "padding-left" ~scale:hooks.scale) in
   let pv =
-    pad_axis store id ~scale:hooks.scale "padding-vertical" "padding" in
+    Option.value
+      ~default:(pad_axis store id ~scale:hooks.scale "padding-vertical" "padding")
+      (len_prop store id "padding-top" ~scale:hooks.scale) in
   let lx = x -. r.Lui_scene.x -. ph
   and ly = y -. r.Lui_scene.y -. pv in
   match hooks.hit_text with

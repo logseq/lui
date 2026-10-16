@@ -7553,6 +7553,12 @@ private struct LUISurfaceModifier: ViewModifier {
             ? 0
             : model.property(.paddingHorizontal)?.intValue ?? padding
         let vertical = model.property(.paddingVertical)?.intValue ?? padding
+        let insets = EdgeInsets(
+            top: CGFloat(model.property(.paddingTop)?.intValue ?? vertical),
+            leading: CGFloat(model.property(.paddingLeft)?.intValue ?? horizontal),
+            bottom: CGFloat(model.property(.paddingBottom)?.intValue ?? vertical),
+            trailing: CGFloat(model.property(.paddingRight)?.intValue ?? horizontal)
+        )
         let radius = CGFloat(
             model.property(.cornerRadius)?.intValue ?? (isSurface ? 12 : (isTabs ? 8 : 0))
         )
@@ -7579,8 +7585,7 @@ private struct LUISurfaceModifier: ViewModifier {
         )
 
         content
-            .padding(.horizontal, CGFloat(horizontal))
-            .padding(.vertical, CGFloat(vertical))
+            .padding(insets)
             .opacity(model.property(.opacity)?.doubleValue ?? 1)
             .modifier(LUITooltipModifier(
                 text: model.property(.tooltip)?.stringValue))

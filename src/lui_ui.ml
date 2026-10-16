@@ -387,6 +387,14 @@ let padding_horizontal context node padding =
   int_property context node PaddingHorizontal padding
 let padding_vertical context node padding =
   int_property context node PaddingVertical padding
+let padding_top context node padding =
+  int_property context node PaddingTop padding
+let padding_right context node padding =
+  int_property context node PaddingRight padding
+let padding_bottom context node padding =
+  int_property context node PaddingBottom padding
+let padding_left context node padding =
+  int_property context node PaddingLeft padding
 let margin context node margin = int_property context node MarginValue margin
 let margin_horizontal context node margin =
   int_property context node MarginHorizontal margin

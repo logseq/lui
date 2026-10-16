@@ -428,9 +428,9 @@ let text_ops t id r fg s =
   (* Horizontal placement: the shared placement table decides the kind's
      alignment and content inset; props win over it. *)
   let tp = Lui_paint.text_placement_of store id in
-  let pad = tp.tp_pad_x *. scale in
+  let pad = tp.tp_pad_left *. scale in
   let x0 = r.x +. pad in
-  let w' = Float.max 0. (r.w -. (2. *. pad)) in
+  let w' = Float.max 0. (r.w -. ((tp.tp_pad_left +. tp.tp_pad_right) *. scale)) in
   (* Flowing text wraps at its padded width so a long line never spills
      into the node's inset; labeled controls keep a single line.
      white-space:nowrap forces the single-line path. *)
@@ -463,8 +463,8 @@ let text_ops t id r fg s =
     Array.fold_left (fun a l -> a +. line_h st l) 0. lines *. scale
   in
   let y0 =
-    if tp.tp_top then r.y +. (tp.tp_pad_y *. scale)
-    else r.y +. Float.max 0. ((r.h -. text_h) /. 2.)
+    if tp.tp_top then r.y +. (tp.tp_pad_top *. scale)
+    else r.y +. Float.max 0. ((r.h -. text_h +. (tp.tp_pad_top -. tp.tp_pad_bottom) *. scale) /. 2.)
   in
   let gstart = gcount t scene in
   (* Decoration fills draw under the ink, one rect per line per
@@ -562,8 +562,8 @@ let measure t store id ~scale =
       let st = style_of t store id in
       let w, h = extent_of t st text in
       let tp = Lui_paint.text_placement_of store id in
-      ((w +. (2. *. tp.tp_pad_x)) *. scale,
-       (h +. (2. *. tp.tp_pad_y)) *. scale)
+      ((w +. (tp.tp_pad_left +. tp.tp_pad_right)) *. scale,
+       (h +. (tp.tp_pad_top +. tp.tp_pad_bottom)) *. scale)
 
 (* Device-pixel (w, h) of an arbitrary string in node [id]'s font —
    the caret offset and the composition overlay measure through this
@@ -598,9 +598,9 @@ let hit_text t id text ~lx ~ly ~lw ~lh =
   let shown = if masked then Lui_paint.secure_mask text else text in
   let st = style_of t store id in
   let tp = Lui_paint.text_placement_of store id in
-  let pad = tp.tp_pad_x *. scale in
+  let pad = tp.tp_pad_left *. scale in
   let lx = lx -. pad in
-  let lw = Float.max 0. (lw -. (2. *. pad)) in
+  let lw = Float.max 0. (lw -. ((tp.tp_pad_left +. tp.tp_pad_right) *. scale)) in
   let wrap_w =
     if st.ts_nowrap || lw <= 0. then 0.
     else if wrapping_kind (Lui_store.kind store id) then lw /. scale
@@ -609,8 +609,8 @@ let hit_text t id text ~lx ~ly ~lw ~lh =
   let lay = layout_of t st ~width:wrap_w shown in
   let text_h = styled_height st lay *. scale in
   let y0 =
-    if tp.tp_top then tp.tp_pad_y *. scale
-    else Float.max 0. ((lh -. text_h) /. 2.)
+    if tp.tp_top then tp.tp_pad_top *. scale
+    else Float.max 0. ((lh -. text_h +. (tp.tp_pad_top -. tp.tp_pad_bottom) *. scale) /. 2.)
   in
   let py = (ly -. y0) /. scale in
   (* With a line-height override the painted pitch is [ts_lh], not the
@@ -668,8 +668,8 @@ let caret_ops t id text ~lw ~lh : Lui_window.Ui.caret_ops =
   let scale = t.scale () in
   let st = style_of t store id in
   let tp = Lui_paint.text_placement_of store id in
-  let pad = tp.tp_pad_x *. scale in
-  let lw = Float.max 0. (lw -. (2. *. pad)) in
+  let pad = tp.tp_pad_left *. scale in
+  let lw = Float.max 0. (lw -. ((tp.tp_pad_left +. tp.tp_pad_right) *. scale)) in
   let wrap_w =
     if st.ts_nowrap || lw <= 0. then 0.
     else if wrapping_kind (Lui_store.kind store id) then lw /. scale
@@ -682,8 +682,8 @@ let caret_ops t id text ~lw ~lh : Lui_window.Ui.caret_ops =
   let lay = layout_of t st ~width:wrap_w shown in
   let text_h = styled_height st lay *. scale in
   let y0 =
-    if tp.tp_top then tp.tp_pad_y *. scale
-    else Float.max 0. ((lh -. text_h) /. 2.)
+    if tp.tp_top then tp.tp_pad_top *. scale
+    else Float.max 0. ((lh -. text_h +. (tp.tp_pad_top -. tp.tp_pad_bottom) *. scale) /. 2.)
   in
   { Lui_window.Ui.c_before = (fun i -> of_m (Lui_text.caret_before lay (to_m i)));
     c_after = (fun i -> of_m (Lui_text.caret_after lay (to_m i)));

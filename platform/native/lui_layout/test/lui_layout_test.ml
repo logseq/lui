@@ -59,6 +59,168 @@ let test_column_padding_gap () =
   check_rect "child1" 10. 10. 180. 20. (place p 3);
   check_rect "child2" 10. 35. 180. 20. (place p 4)
 
+let test_padding_edges () =
+  let property name =
+    match
+      List.find_opt
+        (fun p -> Lui_wire_schema.property_name p = name)
+        Lui_wire_schema.all_properties
+    with
+    | Some p -> p
+    | None -> fail ("Missing typed property: " ^ name)
+  in
+  let top = property "padding-top"
+  and right = property "padding-right"
+  and bottom = property "padding-bottom"
+  and left = property "padding-left" in
+  List.iter
+    (fun scale ->
+      let store = Lui_store.create () and layout = Lui_layout.create () in
+      apply store
+        [
+          CreateNode (1, Root);
+          CreateNode (2, Column);
+          CreateNode (3, Box);
+          InsertChild (1, 2, 0);
+          InsertChild (2, 3, 0);
+          SetProp (2, WidthValue, IntValue 100);
+          SetProp (2, HeightValue, IntValue 80);
+          SetProp (2, PaddingValue, IntValue 5);
+          SetProp (2, PaddingHorizontal, IntValue 10);
+          SetProp (2, PaddingVertical, IntValue 6);
+          SetProp (3, GrowValue, FloatValue 1.);
+        ];
+      let expect label l t r b =
+        Lui_layout.sync ~scale ~width:(200. *. scale) ~height:(120. *. scale)
+          layout store;
+        check_some_rect label (l *. scale) (t *. scale)
+          ((100. -. l -. r) *. scale)
+          ((80. -. t -. b) *. scale)
+          (Lui_layout.rect layout 3)
+      in
+      expect "axis padding" 10. 6. 10. 6.;
+      apply store
+        [
+          SetProp (2, left, IntValue 28);
+          SetProp (2, right, IntValue 8);
+          SetProp (2, top, IntValue 3);
+          SetProp (2, bottom, IntValue 9);
+        ];
+      expect "sides override axes" 28. 3. 8. 9.;
+      apply store
+        [ SetProp (2, left, IntValue 0); SetProp (2, bottom, IntValue 0) ];
+      expect "zero side padding invalidates retained layout" 0. 3. 8. 0.;
+      apply store
+        [
+          RemoveProp (2, left);
+          RemoveProp (2, right);
+          RemoveProp (2, top);
+          RemoveProp (2, bottom);
+        ];
+      expect "removing sides restores axes" 10. 6. 10. 6.;
+      apply store
+        [ RemoveProp (2, PaddingHorizontal); RemoveProp (2, PaddingVertical) ];
+      expect "removing axes restores uniform padding" 5. 5. 5. 5.)
+    [ 1.; 2. ]
+
+let test_absolute_cross_alignment () =
+  List.iter
+    (fun scale ->
+      List.iter
+        (fun kind ->
+          List.iter
+            (fun intrinsic ->
+              let store = Lui_store.create ()
+              and layout = Lui_layout.create () in
+              let cross_size = if kind = Row then HeightValue else WidthValue in
+              let leading = if kind = Row then InsetTop else InsetLeft in
+              let trailing = if kind = Row then InsetBottom else InsetRight in
+              apply store
+                ([
+                   CreateNode (1, Root);
+                   CreateNode (2, kind);
+                   CreateNode (3, Box);
+                   CreateNode (4, Box);
+                   CreateNode (5, Box);
+                   InsertChild (1, 2, 0);
+                   InsertChild (2, 3, 0);
+                   InsertChild (2, 4, 1);
+                   InsertChild (4, 5, 0);
+                   SetProp (2, WidthValue, IntValue 100);
+                   SetProp (2, HeightValue, IntValue 80);
+                   SetProp (2, PaddingHorizontal, IntValue 10);
+                   SetProp (2, PaddingVertical, IntValue 6);
+                   SetProp (2, BorderWidth, IntValue 2);
+                   SetProp (3, WidthValue, IntValue 30);
+                   SetProp (3, HeightValue, IntValue 20);
+                   SetProp (4, Position, StringValue "absolute");
+                   SetProp (5, WidthValue, IntValue 20);
+                   SetProp (5, HeightValue, IntValue 10);
+                 ]
+                @
+                if intrinsic then []
+                else
+                  [
+                    SetProp (4, WidthValue, IntValue 20);
+                    SetProp (4, HeightValue, IntValue 10);
+                  ]);
+              let expect label value =
+                Lui_layout.sync ~scale ~width:(200. *. scale)
+                  ~height:(160. *. scale) layout store;
+                let child = Option.get (Lui_layout.rect layout 4) in
+                let actual = if kind = Row then child.y else child.x in
+                check (float eps) label (value *. scale) actual
+              in
+              let origin, available, extent =
+                if kind = Row then (8., 64., 10.) else (12., 76., 20.)
+              in
+              List.iter
+                (fun (align, offset) ->
+                  apply store [ SetProp (2, CrossAlignment, StringValue align) ];
+                  expect "absolute static cross alignment" (origin +. offset))
+                [
+                  ("start", 0.);
+                  ("stretch", 0.);
+                  ("center", (available -. extent) /. 2.);
+                  ("end", available -. extent);
+                ];
+              apply store [ SetProp (2, CrossAlignment, StringValue "center") ];
+              apply store [ SetProp (4, leading, FloatValue 4.) ];
+              expect "leading inset overrides alignment" 6.;
+              apply store
+                [
+                  RemoveProp (4, leading); SetProp (4, trailing, FloatValue 4.);
+                ];
+              expect "trailing inset overrides alignment"
+                ((if kind = Row then 80. else 100.) -. 6. -. extent);
+              apply store
+                [
+                  RemoveProp (4, trailing); SetProp (2, cross_size, IntValue 120);
+                ];
+              expect "resize recomputes static alignment"
+                ((120. -. extent) /. 2.);
+              let cross_before, cross_after, delta =
+                if kind = Row then (PaddingTop, PaddingBottom, 8.)
+                else (PaddingLeft, PaddingRight, 20.)
+              in
+              apply store
+                [
+                  SetProp
+                    (2, cross_before, IntValue (if kind = Row then 10 else 28));
+                  SetProp
+                    (2, cross_after, IntValue (if kind = Row then 2 else 8));
+                ];
+              expect "static alignment uses asymmetric content edges"
+                ((120. -. extent +. delta) /. 2.);
+              if not intrinsic then begin
+                apply store [ SetProp (4, cross_size, IntValue 200) ];
+                expect "oversized absolute content retains center alignment"
+                  ((120. -. 200. +. delta) /. 2.)
+              end)
+            [ false; true ])
+        [ Row; Column ])
+    [ 1.; 2. ]
+
 let test_border_box_layout () =
   List.iter
     (fun scale ->
@@ -1245,6 +1407,8 @@ let () =
   run "lui_layout"
     [ ("layout",
        [ test_case "column padding/gap" `Quick test_column_padding_gap;
+         test_case "padding edges" `Quick test_padding_edges;
+         test_case "absolute cross alignment" `Quick test_absolute_cross_alignment;
          test_case "border box layout" `Quick test_border_box_layout;
          test_case "split divider fraction" `Quick test_split_gap_fraction;
          test_case "grid wraps" `Quick test_grid_wraps;

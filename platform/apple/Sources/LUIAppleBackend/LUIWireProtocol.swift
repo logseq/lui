@@ -156,7 +156,9 @@ enum LUIWireValue: Decodable, Equatable {
         case .progressValue:
             return doubleValue != nil
         case .resizeDuration, .image, .surface, .active, .columns,
-             .paddingHorizontal, .paddingVertical, .borderWidth, .cornerRadius,
+             .paddingHorizontal, .paddingVertical,
+             .paddingTop, .paddingRight, .paddingBottom, .paddingLeft,
+             .borderWidth, .cornerRadius,
              .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight,
              .containerRelativeFrameInset, .scrollToken:
             guard let value = intValue else { return false }
@@ -1085,6 +1087,7 @@ struct LUIRetainedTree {
         case .grow: kind != .avatar && kind != .tooltip && !isModalSurface(kind)
         case .columns: kind == .grid
         case .padding, .paddingHorizontal, .paddingVertical,
+             .paddingTop, .paddingRight, .paddingBottom, .paddingLeft,
              .margin, .marginHorizontal, .marginVertical,
              .marginTop, .marginRight, .marginBottom, .marginLeft:
             kind != .avatar && kind != .tooltip

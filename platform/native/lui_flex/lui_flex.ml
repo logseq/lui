@@ -1882,7 +1882,26 @@ and absolute_layout_child
        (layout_measured_dimension_for_axis node cross_axis
         -. layout_measured_dimension_for_axis child cross_axis
         -. get_trailing_border node cross_axis
-        -. get_trailing_position child cross_axis))
+        -. get_trailing_position child cross_axis)
+   else if not (is_leading_pos_defined child cross_axis) then begin
+     (* Static cross-axis alignment needs the absolute child's final
+        content size, which is not available during the flex-line pass. *)
+     let leading = get_leading_padding_and_border node cross_axis in
+     let trailing = get_trailing_padding_and_border node cross_axis in
+     let remaining =
+       layout_measured_dimension_for_axis node cross_axis
+       -. leading -. trailing
+       -. layout_measured_dimension_for_axis child cross_axis
+       -. get_margin_axis child cross_axis
+     in
+     let offset = match get_align_item node child with
+       | Align_center -> remaining /. 2.
+       | Align_flex_end -> remaining
+       | Align_auto | Align_flex_start | Align_stretch -> 0.
+     in
+     set_layout_leading_position_for_axis child cross_axis
+       (leading +. get_leading_margin child cross_axis +. offset)
+   end)
 
 and layout_node_impl
     (node : node)

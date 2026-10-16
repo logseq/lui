@@ -213,6 +213,55 @@ let test_text_undo () =
   Alcotest.(check string) "redo replays" "abc"
     (Lui_text_input.text st)
 
+let test_text_padding_hit () =
+  List.iter
+    (fun scale ->
+      let store =
+        store_of
+          [
+            CreateNode (1, SearchField);
+            SetProp (1, PaddingHorizontal, IntValue 10);
+            SetProp (1, PaddingVertical, IntValue 6);
+            SetProp (1, PaddingLeft, IntValue 28);
+            SetProp (1, PaddingRight, IntValue 8);
+            SetProp (1, PaddingTop, IntValue 3);
+            SetProp (1, PaddingBottom, IntValue 9);
+          ]
+      in
+      let rects =
+        rects_of
+          [
+            ( 1,
+              rect (10. *. scale) (20. *. scale) (200. *. scale) (40. *. scale)
+            );
+          ]
+      in
+      let hooks =
+        {
+          hooks with
+          Lui_query.scale;
+          measure =
+            (fun _ _ text ->
+              (float (String.length text * 8) *. scale, 16. *. scale));
+        }
+      in
+      List.iter
+        (fun (x, expected) ->
+          let got =
+            Lui_query.offset_at_point hooks store rects 1
+              ~x:((10. +. x) *. scale)
+              ~y:(28. *. scale) "hello"
+          in
+          Alcotest.(check int)
+            "click maps through the leading inset" expected got)
+        [ (12., 0); (28., 0); (36., 1); (44., 2); (68., 5) ];
+      let got =
+        Lui_query.offset_at_point hooks store rects 1 ~x:(38. *. scale)
+          ~y:(39.5 *. scale) "a\nb"
+      in
+      Alcotest.(check int) "multiline hit uses the top inset" 2 got)
+    [ 1.; 2. ]
+
 (* The caret-ops hook (C7): horizontal moves and Backspace/Delete
    consult the engine's grapheme model; without it the codepoint
    fallback stands. *)
@@ -781,6 +830,7 @@ let () =
         [ Alcotest.test_case "splice" `Quick test_text_session;
           Alcotest.test_case "undo" `Quick test_text_undo;
           Alcotest.test_case "caret ops" `Quick test_text_caret_ops;
+          Alcotest.test_case "padding hit" `Quick test_text_padding_hit;
           Alcotest.test_case "ime commit" `Quick test_text_ime_commit;
           Alcotest.test_case "rapid typing" `Quick
             test_revision_rapid_typing;

@@ -52,7 +52,7 @@ let layout_prop_names =
     "inset-left"; "label"; "margin"; "margin-top"; "margin-right";
     "margin-bottom"; "margin-left"; "margin-horizontal"; "margin-vertical";
     "orientation"; "overflow"; "padding"; "padding-horizontal";
-    "padding-vertical"; "placeholder"; "position"; "selected"; "size";
+    "padding-vertical"; "padding-top"; "padding-right"; "padding-bottom"; "padding-left"; "placeholder"; "position"; "selected"; "size";
     "text"; "title"; "value" ]
 
 let layout_props =

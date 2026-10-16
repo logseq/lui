@@ -662,6 +662,14 @@ let rec apply_property renderer queue_split node kind dom_node property
       set_style dom_node "padding-inline" (string_of_int padding ^ "px")
   | PaddingVertical, IntValue padding ->
       set_style dom_node "padding-block" (string_of_int padding ^ "px")
+  | PaddingTop, IntValue padding ->
+      set_style dom_node "padding-top" (string_of_int padding ^ "px")
+  | PaddingRight, IntValue padding ->
+      set_style dom_node "padding-right" (string_of_int padding ^ "px")
+  | PaddingBottom, IntValue padding ->
+      set_style dom_node "padding-bottom" (string_of_int padding ^ "px")
+  | PaddingLeft, IntValue padding ->
+      set_style dom_node "padding-left" (string_of_int padding ^ "px")
   | MarginValue, IntValue margin ->
       set_style dom_node "margin" (string_of_int margin ^ "px")
   | MarginHorizontal, IntValue margin ->
@@ -1047,6 +1055,10 @@ let remove_property renderer queue_split node kind dom_node property =
            set_style dom_node "--lui-content-padding" ""
        | PaddingHorizontal -> set_style dom_node "padding-inline" ""
        | PaddingVertical -> set_style dom_node "padding-block" ""
+       | PaddingTop -> set_style dom_node "padding-top" ""
+       | PaddingRight -> set_style dom_node "padding-right" ""
+       | PaddingBottom -> set_style dom_node "padding-bottom" ""
+       | PaddingLeft -> set_style dom_node "padding-left" ""
        | MarginValue -> set_style dom_node "margin" ""
        | MarginHorizontal -> set_style dom_node "margin-inline" ""
        | MarginVertical -> set_style dom_node "margin-block" ""

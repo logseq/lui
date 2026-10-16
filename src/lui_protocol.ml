@@ -124,6 +124,10 @@ type property =
   | PaddingValue
   | PaddingHorizontal
   | PaddingVertical
+  | PaddingTop
+  | PaddingRight
+  | PaddingBottom
+  | PaddingLeft
   | MarginValue
   | MarginHorizontal
   | MarginVertical
@@ -889,7 +893,8 @@ let common_property_supported kind property =
   | GrowValue ->
     kind <> Avatar && (not (modal_surface kind)) && kind <> Tooltip
   | GridColumns -> kind = Grid
-  | PaddingValue | PaddingHorizontal | PaddingVertical ->
+  | PaddingValue | PaddingHorizontal | PaddingVertical
+  | PaddingTop | PaddingRight | PaddingBottom | PaddingLeft ->
     kind <> Avatar && kind <> Tooltip
   | MarginValue | MarginHorizontal | MarginVertical | MarginTop
   | MarginRight | MarginBottom | MarginLeft ->
@@ -1213,7 +1218,8 @@ let property_supported kind property =
       || property = StyleClass || property = PointerEnabled
       || property = DataAttrs
       || property = PaddingValue || property = PaddingHorizontal
-      || property = PaddingVertical
+      || property = PaddingVertical || property = PaddingTop
+      || property = PaddingRight || property = PaddingBottom || property = PaddingLeft
       || property = MarginValue || property = MarginHorizontal
       || property = MarginVertical || property = MarginTop
       || property = MarginRight || property = MarginBottom
@@ -1276,7 +1282,8 @@ let property_supported kind property =
       || property = BorderWidth || property = CornerRadius
       || property = ForegroundValue || property = GrowValue
       || property = PaddingValue || property = PaddingHorizontal
-      || property = PaddingVertical
+      || property = PaddingVertical || property = PaddingTop
+      || property = PaddingRight || property = PaddingBottom || property = PaddingLeft
       || property = WidthValue || property = HeightValue
       || property = MinWidth || property = MaxWidth
       || property = MinHeight || property = MaxHeight || property = Opacity
@@ -1460,7 +1467,7 @@ let property_value_supported property value =
   | GridColumns, IntValue value -> value >= 0
   | PaddingValue, IntValue _ -> true
   | PaddingHorizontal, IntValue value -> value >= 0
-  | PaddingVertical, IntValue value -> value >= 0
+  | (PaddingVertical | PaddingTop | PaddingRight | PaddingBottom | PaddingLeft), IntValue value -> value >= 0
   (* Margins may be negative — collapsing adjacent space is a legitimate
      use, unlike padding which is clamped inside the box. *)
   | ( MarginValue | MarginHorizontal | MarginVertical | MarginTop

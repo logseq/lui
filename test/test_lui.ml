@@ -3886,6 +3886,45 @@ let test_drive_scenarios () =
   run_drive_scenario "counter.drive"
     (drive_mount ~initial:0 ~reducer:counter_reducer ~view:counter_view ())
 
+let test_padding_edge_props () =
+  let open Lui_protocol in
+  List.iter
+    (fun name ->
+      let property =
+        match
+          List.find_opt
+            (fun p -> Lui_wire_schema.property_name p = name)
+            Lui_wire_schema.all_properties
+        with
+        | Some property -> property
+        | None -> Alcotest.fail ("Missing typed property: " ^ name)
+      in
+      List.iter
+        (fun kind ->
+          Alcotest.(check bool)
+            "padding side supported" true
+            (property_supported kind property))
+        [ Box; SearchField; Kbd; Toast ];
+      List.iter
+        (fun kind ->
+          Alcotest.(check bool)
+            "padding side rejected" false
+            (property_supported kind property))
+        [ Avatar; Tooltip ];
+      List.iter
+        (fun n ->
+          Alcotest.(check bool)
+            "nonnegative padding" true
+            (property_value_supported property (IntValue n)))
+        [ 0; 28 ];
+      Alcotest.(check bool)
+        "negative padding rejected" false
+        (property_value_supported property (IntValue (-1)));
+      Alcotest.(check bool)
+        "string padding rejected" false
+        (property_value_supported property (StringValue "28")))
+    [ "padding-top"; "padding-right"; "padding-bottom"; "padding-left" ]
+
 let test_margin_props () =
   let open Lui_protocol in
   let margins =
@@ -3982,6 +4021,7 @@ let () =
         ] );
       ( "protocol",
         [
+          Alcotest.test_case "padding edge prop family" `Quick test_padding_edge_props;
           Alcotest.test_case "margin prop family" `Quick test_margin_props;
           Alcotest.test_case "margin wire props" `Quick test_margin_wire_props;
           Alcotest.test_case "toast padding" `Quick test_toast_padding;
