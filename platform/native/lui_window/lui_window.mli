@@ -271,6 +271,14 @@ module Ui : sig
   (** A data-attrs drag session is in flight. *)
   val drag_active : t -> bool
 
+  (** A split divider owns the current pointer capture. *)
+  val resizing_split : t -> bool
+
+  (** Whether logical pointer coordinates lie on this split's divider.
+      [rects] contains device-pixel pane bounds at the current scale. *)
+  val split_handle :
+    t -> Lui_store.t -> Rects.t -> int -> x:float -> y:float -> bool
+
   (** Topmost overlay-kind node currently tracked (0 = none). *)
   val overlay_top : t -> int
 
