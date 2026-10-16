@@ -1143,6 +1143,104 @@ let test_split_gap_fraction () =
         [ 0.; 0.25; 0.7; 1. ])
     [ 1.; 2. ]
 
+let test_menu_height_cap () =
+  List.iter
+    (fun scale ->
+      List.iter
+        (fun (kind, props) ->
+          List.iter
+            (fun (maximum, available) ->
+              let store = Lui_store.create ()
+              and layout = Lui_layout.create () in
+              apply store
+                [
+                  CreateNode (1, Root);
+                  CreateNode (2, kind);
+                  InsertChild (1, 2, 0);
+                  SetProp (2, WidthValue, IntValue 200);
+                  SetProp (2, AnchorValue, StringValue "below");
+                ];
+              apply store props;
+              Option.iter
+                (fun value ->
+                  apply store [ SetProp (2, MaxHeight, IntValue value) ])
+                maximum;
+              Option.iter
+                (fun value ->
+                  apply store [ SetProp (2, AvailableHeight, FloatValue value) ])
+                available;
+              for index = 0 to 29 do
+                let id = index + 3 in
+                apply store
+                  [
+                    CreateNode (id, MenuItem);
+                    InsertChild (2, id, index);
+                    SetProp (id, HeightValue, IntValue 32);
+                  ]
+              done;
+              List.iter
+                (fun height ->
+                  Lui_layout.sync ~scale ~width:(640. *. scale)
+                    ~height:(height *. scale) layout store;
+                  let popup = Option.get (Lui_layout.rect layout 2) in
+                  let limit =
+                    float_of_int (Option.value ~default:288 maximum)
+                  in
+                  let limit =
+                    Float.min limit (Option.value ~default:limit available)
+                  in
+                  check (float eps) "menu height follows its cap and viewport"
+                    (Float.min limit (height -. 16.) *. scale)
+                    popup.h;
+                  check bool "menu stays within the viewport" true
+                    (popup.y >= 0. && popup.y +. popup.h <= height *. scale);
+                  let first = Option.get (Lui_layout.rect layout 3)
+                  and last = Option.get (Lui_layout.rect layout 32) in
+                  check (float eps) "constrained menu rows retain their height"
+                    (32. *. scale) first.h;
+                  check bool "overflow remains available for scrolling" true
+                    (last.y +. last.h > popup.y +. popup.h))
+                [ 932.; 180.; 600. ])
+            [
+              (None, None); (Some 128, None); (Some 480, None); (None, Some 96.);
+            ])
+        [
+          (DropdownMenu, []);
+          (ContextMenu, []);
+          (Popover, [ SetProp (2, RoleValue, StringValue "menu") ]);
+        ])
+    [ 1.; 2. ]
+
+let test_menu_role_layout () =
+  let store = Lui_store.create () and layout = Lui_layout.create () in
+  apply store
+    [
+      CreateNode (1, Root);
+      CreateNode (2, Popover);
+      InsertChild (1, 2, 0);
+      SetProp (2, WidthValue, IntValue 200);
+    ];
+  for index = 0 to 29 do
+    let id = index + 3 in
+    apply store
+      [
+        CreateNode (id, MenuItem);
+        InsertChild (2, id, index);
+        SetProp (id, HeightValue, IntValue 32);
+      ]
+  done;
+  let height () =
+    Lui_layout.sync ~width:640. ~height:932. layout store;
+    (Option.get (Lui_layout.rect layout 2)).h
+  in
+  check (float eps) "ordinary popovers retain their content height" 932.
+    (height ());
+  apply store [ SetProp (2, RoleValue, StringValue "menu") ];
+  check (float eps) "adding menu semantics invalidates height" 288. (height ());
+  apply store [ SetProp (2, RoleValue, StringValue "") ];
+  check (float eps) "removing menu semantics restores content height" 932.
+    (height ())
+
 let () =
   run "lui_layout"
     [ ("layout",
@@ -1167,6 +1265,8 @@ let () =
          test_case "popup collision flip" `Quick test_popup_collision_flip;
          test_case "popup in centered dialog" `Quick test_popup_inside_centered_dialog;
          test_case "menu panel" `Quick test_menu_panel;
+         test_case "menu height cap" `Quick test_menu_height_cap;
+         test_case "menu role layout" `Quick test_menu_role_layout;
          test_case "ac row" `Quick test_ac_row;
          test_case "vlist window" `Quick test_vlist_window_mounts_slice;
          test_case "vlist window moves" `Quick test_vlist_window_moves;

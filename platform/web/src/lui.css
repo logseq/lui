@@ -1070,6 +1070,10 @@ body {
     transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
   }
 
+  .lui-popover[role="menu"] {
+    max-height: min(18rem, var(--lui-popup-available-height, calc(100vh - 1rem)));
+  }
+
   .lui-popover:not([data-open]):not([data-ending-style]) {
     display: none;
   }

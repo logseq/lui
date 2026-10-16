@@ -103,7 +103,7 @@ let prop_coverage =
     ("tooltip-delay", Host);
     ("duration", Host);
     ("text-alignment", Painted_by_text);
-    ("role", Host);
+    ("role", Layout);
     ("tree-level", Layout); (* row indent *)
     ("expanded", Unmapped "disclosure chevron glyph");
     ("resize-duration", Host);
@@ -1431,7 +1431,6 @@ let select_ops ctx store id rs r alpha fg =
       in
       let logical =
         {
-          slot with
           x = slot.x /. ctx.scale;
           y = slot.y /. ctx.scale;
           w = slot.w /. ctx.scale;
@@ -2287,12 +2286,18 @@ let disabled_alpha store id st =
 
 (* ---------- node paint ---------- *)
 
+let menu_kind store id = function
+  | "dropdown-menu" | "context-menu" -> true
+  | "popover" -> pstr store id "role" = Some "menu"
+  | _ -> false
+
 let scroll_kind = function
   | "scroll" | "list" | "virtual-list" -> true
   | _ -> false
 
 let scrollable kind store id =
   scroll_kind kind
+  || menu_kind store id kind
   || match pstr store id "overflow" with
      | Some ("auto" | "scroll") -> true
      | _ -> false

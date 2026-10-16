@@ -2635,6 +2635,61 @@ let test_assembly_scroll_caps () =
   Alcotest.(check (option int)) "scrolled hit" (Some 4)
     (hit (Assembly.store asm) (Assembly.rects asm) ~x:10. ~y:90.)
 
+let test_assembly_menu_scroll () =
+  List.iter
+    (fun (kind, props) ->
+      let asm =
+        assembly_of
+          [
+            CreateNode (1, Root);
+            CreateNode (2, kind);
+            CreateNode (3, MenuItem);
+            CreateNode (4, MenuItem);
+            InsertChild (1, 2, 0);
+            InsertChild (2, 3, 0);
+            InsertChild (2, 4, 1);
+            SetProp (2, HeightValue, IntValue 100);
+            SetProp (3, HeightValue, IntValue 120);
+            SetProp (4, HeightValue, IntValue 80);
+          ]
+      in
+      Lui_store.apply_batch (Assembly.store asm) { generation = 2; ops = props };
+      ignore (Assembly.store_changed asm);
+      ignore (Assembly.repaint asm);
+      let ui = Assembly.ui asm and store = Assembly.store asm in
+      Alcotest.(check (float 0.001))
+        "menus scroll without an overflow override" 100. (Ui.scroll_cap ui 2);
+      Alcotest.(check bool)
+        "offscreen menu option cannot be hit" true
+        (hit store (Assembly.rects asm) ~x:10. ~y:150. <> Some 4);
+      ignore (Assembly.handle asm (Input.Move (10., 10.)));
+      ignore (Assembly.handle asm (Input.Wheel (0., -100.)));
+      ignore (Assembly.repaint asm);
+      Alcotest.(check (float 0.001))
+        "wheel reaches the final option" 100. (Ui.scroll_offset ui 2);
+      let final = Rects.get (Assembly.rects asm) 4 in
+      Alcotest.(check (float 0.001))
+        "final option is fully visible" 100. (final.y +. final.h);
+      Alcotest.(check (option int))
+        "final option receives hits" (Some 4)
+        (hit store (Assembly.rects asm) ~x:10. ~y:60.);
+      ignore
+        (Ui.handle ui store (Assembly.rects asm)
+           (Input.Button_down (10., 60., Input.Left, 1, Input.mods_none)));
+      let events =
+        press_actions
+          (Ui.handle ui store (Assembly.rects asm)
+             (Input.Button_up (10., 60., Input.Left, Input.mods_none)))
+      in
+      Alcotest.(check bool)
+        "final option remains clickable" true
+        (List.mem (Press 4) events))
+    [
+      (DropdownMenu, []);
+      (ContextMenu, []);
+      (Popover, [ SetProp (2, RoleValue, StringValue "menu") ]);
+    ]
+
 let test_assembly_scroll_shows_in_paint () =
   (* scroll_of feeds the scrollbar: a container with range reports
      metrics; one without reports none. *)
@@ -3029,6 +3084,7 @@ let () =
         [ Alcotest.test_case "scroll caps" `Quick
             test_assembly_scroll_caps;
           Alcotest.test_case "inset scroll caps" `Quick test_assembly_inset_scroll_caps;
+          Alcotest.test_case "intrinsic menu scroll" `Quick test_assembly_menu_scroll;
           Alcotest.test_case "scrollbar paint" `Quick
             test_assembly_scroll_shows_in_paint;
           Alcotest.test_case "autofocus" `Quick test_assembly_autofocus ] );

@@ -412,7 +412,9 @@ let overflow_of ~store ~id kind : Lui_flex.overflow =
   | Some ("auto" | "scroll") -> Scroll
   | Some ("hidden" | "clip") -> Hidden
   | Some "visible" -> Visible
-  | _ -> if scroll_kind kind then Scroll else Visible
+  | _ ->
+    if scroll_kind kind || Lui_paint.menu_kind store id kind then Scroll
+    else Visible
 
 (* container-relative-frame(+ -inset): fills the container along the
    named axes (min-* variants floor it instead); the inset becomes a
@@ -668,7 +670,7 @@ let adjust ~pkind ~pid ~index store id (style : Lui_flex.style) : Lui_flex.style
     else style
   in
   let style =
-    if scroll_kind pkind then
+    if scroll_kind pkind || Lui_paint.menu_kind store pid pkind then
       (* A scroller's content keeps its natural main size so it
          overflows and scrolls — the default flex_shrink=1 would
          compress children into the clipped viewport instead. *)
@@ -1372,6 +1374,25 @@ let refine_popups ctx =
         match Hashtbl.find_opt ctx.applied sid with
         | None -> ()
         | Some (pstyle : Lui_flex.style) ->
+          let max_height =
+            if Lui_paint.menu_kind ctx.store sid (Lui_store.kind ctx.store sid) then
+              (* Match the shared Web menu cap; explicit limits and available
+                 height remain bounded by the viewport, including on resize. *)
+              let viewport = Float.max 0. (ctx.vh -. (16. *. ctx.scale)) in
+              let declared =
+                match pstyle.max_height with
+                | Unset -> 288. *. ctx.scale
+                | limit -> len_px ~owner:ctx.vh limit
+              in
+              let available =
+                match pnum ctx.store sid "available-height" with
+                | Some height -> height *. ctx.scale
+                | None -> viewport
+              in
+              Pt (Float.max 0. (Float.min viewport (Float.min declared available)))
+            else
+              match pstyle.max_height with Unset -> Pt ctx.vh | limit -> limit
+          in
           let pstyle =
             (* A popup measures against the viewport, not its
                (possibly tiny) parent — bound its max extents and
@@ -1379,8 +1400,7 @@ let refine_popups ctx =
             { pstyle with
               max_width =
                 (match pstyle.max_width with Unset -> Pt ctx.vw | m -> m);
-              max_height =
-                (match pstyle.max_height with Unset -> Pt ctx.vh | m -> m) }
+              max_height }
           in
           Lui_flex.set_style pnode pstyle;
           Lui_flex.compute_layout pnode ~width:Lui_flex.undefined

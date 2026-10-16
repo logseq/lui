@@ -109,7 +109,7 @@ let has_prefix s p =
 
 (* Semantics-only props: the a11y tree cares, paint and layout do not. *)
 let semantics_prop_names =
-  [ "accessibility-label"; "accessibility-identifier"; "role"; "expanded";
+  [ "accessibility-label"; "accessibility-identifier"; "expanded";
     "level"; "sort" ]
 
 let semantics_props =
@@ -132,6 +132,8 @@ let input_props =
    superfluous one only costs a style recompute. *)
 let mask_of_prop name : dirty_mask =
   if name = "display" then d_structure lor d_layout lor d_paint
+  (* Menu semantics change surface bounds, clipping, and child shrink. *)
+  else if name = "role" then d_layout_kids lor d_layout lor d_paint lor d_semantics
   else if Hashtbl.mem child_props name then d_layout_kids lor d_layout lor d_paint
   else if Hashtbl.mem layout_props name then d_layout lor d_paint
   else if Hashtbl.mem semantics_props name then d_semantics

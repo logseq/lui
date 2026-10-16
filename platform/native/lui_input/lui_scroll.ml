@@ -68,13 +68,7 @@ let initial =
 (* Same scrollable rule as the paint pass: a scroll-kind node, or
    anything opting in through its overflow prop. *)
 let scrollable store id =
-  (match Lui_store.kind store id with
-   | "scroll" | "list" | "virtual-list" -> true
-   | _ -> false)
-  ||
-  (match Lui_query.string_prop store id "overflow" with
-   | "scroll" | "auto" -> true
-   | _ -> false)
+  Lui_paint.scrollable (Lui_store.kind store id) store id
 
 let offset st axis id =
   let t = match axis with Y -> st.off | X -> st.off_x in
