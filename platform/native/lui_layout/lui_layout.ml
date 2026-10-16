@@ -502,6 +502,7 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
         not (blank (pstr store id "icon"))
         && blank (pstr store id "text")
         && blank (pstr store id "label")
+        && Lui_store.children store id = []
       in
       if icon_only then
         let dfl =
@@ -2286,6 +2287,12 @@ let index_sensitive = function
 let restyle_children_of ctx o =
   iter_produced_indices ctx o (pkids_of ctx o) (restyle_gen_at ctx o)
 
+let restyle_content_owner ctx o =
+  match kind_of ctx o with
+  | "button" | "toggle-button" ->
+    restyle_gen ctx (Hashtbl.find ctx.owner o) o
+  | _ -> ()
+
 (* Insert/MoveChild: detach the shadow entry from the old raw parent,
    ensure the child's produced set exists, then let [sync_entries]
    place it at the store's current position. *)
@@ -2294,6 +2301,7 @@ let attach_child ctx ~parent:p ~child:c =
    | Some op when op <> p ->
      sync_entries ctx op;
      commit ctx op;
+     restyle_content_owner ctx (children_owner ctx op);
      mark_affected ctx (children_owner ctx op)
    | _ -> ());
   let o = children_owner ctx p in
@@ -2303,6 +2311,7 @@ let attach_child ctx ~parent:p ~child:c =
   (* Commit before restyling: gens indices inside the owner's produced
      list only read correctly once the parent chain has propagated. *)
   commit ctx p;
+  restyle_content_owner ctx o;
   List.iter
     (fun g ->
       Hashtbl.replace ctx.owner g o;
@@ -2318,6 +2327,7 @@ let detach_child ctx ~parent:p ~child:c =
   Hashtbl.replace ctx.pkids p (List.filter (fun e -> e.raw <> c) (pkids_of ctx p));
   commit ctx p;
   let o = children_owner ctx p in
+  restyle_content_owner ctx o;
   (if index_sensitive (kind_of ctx o) then restyle_children_of ctx o);
   mark_affected ctx o
 
@@ -2329,6 +2339,7 @@ let detach_from_parent ctx id =
     Hashtbl.remove ctx.sparent id;
     Hashtbl.replace ctx.pkids par (List.filter (fun e -> e.raw <> id) (pkids_of ctx par));
     commit ctx par;
+    restyle_content_owner ctx (children_owner ctx par);
     mark_affected ctx (children_owner ctx par)
   | None -> ()
 

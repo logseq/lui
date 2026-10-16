@@ -1452,10 +1452,45 @@ let test_menu_role_layout () =
   check (float eps) "removing menu semantics restores content height" 932.
     (height ())
 
+let test_button_custom_content () =
+  List.iter (fun scale ->
+      let store = Lui_store.create () and layout = Lui_layout.create () in
+      apply store
+        [ CreateNode (1, Root); CreateNode (2, Row);
+          CreateNode (3, Button); CreateNode (4, Row); CreateNode (5, Box);
+          CreateNode (6, Button);
+          InsertChild (1, 2, 0); InsertChild (2, 3, 0); InsertChild (2, 6, 1);
+          InsertChild (3, 4, 0); InsertChild (4, 5, 0);
+          SetProp (3, InlineIconName, StringValue "keyboard");
+          SetProp (3, HeightValue, IntValue 30);
+          SetProp (3, PaddingHorizontal, IntValue 10);
+          SetProp (3, PaddingVertical, IntValue 0);
+          SetProp (5, WidthValue, IntValue 120);
+          SetProp (5, HeightValue, IntValue 20);
+          SetProp (6, InlineIconName, StringValue "x");
+          SetProp (6, HeightValue, IntValue 30) ];
+      Lui_layout.sync ~scale ~width:(600. *. scale) ~height:(80. *. scale)
+        layout store;
+      let rect id = Option.get (Lui_layout.rect layout id) in
+      let button = rect 3 and child = rect 5 in
+      check (float eps) "custom content determines button width"
+        (140. *. scale) button.w;
+      check bool "custom content stays inside its button" true
+        (child.x >= button.x && child.x +. child.w <= button.x +. button.w);
+      check (float eps) "childless icon buttons remain square"
+        (30. *. scale) (rect 6).w;
+      apply store [RemoveChild (4, 5); RemoveChild (3, 4)];
+      Lui_layout.sync ~scale ~width:(600. *. scale) ~height:(80. *. scale)
+        layout store;
+      check (float eps) "removing custom content restores icon sizing"
+        (30. *. scale) (rect 3).w)
+    [1.; 2.]
+
 let () =
   run "lui_layout"
     [ ("layout",
        [ test_case "column padding/gap" `Quick test_column_padding_gap;
+         test_case "button custom content" `Quick test_button_custom_content;
          test_case "list item content flow" `Quick test_list_item_content_flow;
          test_case "padding edges" `Quick test_padding_edges;
          test_case "absolute cross alignment" `Quick test_absolute_cross_alignment;
