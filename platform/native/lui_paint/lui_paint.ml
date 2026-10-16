@@ -1005,8 +1005,8 @@ let text_placement_of store id =
     | "table-cell" | "table-row" -> (Ta_start, 10., 6., false)
     | "step" -> (Ta_center, 8., 4., false)
     | "list-item" -> (Ta_start, 12., 6., false)
-    | "text-field" | "secure-field" | "input" | "search-field"
-    | "select" | "combobox" -> (Ta_start, 10., 6., false)
+    | "text-field" | "secure-field" | "input" | "search-field" -> (Ta_start, 10., 6., false)
+    | "select" | "combobox" -> (Ta_start, 12., 8., false)
     | "textarea" -> (Ta_start, 10., 6., true)
     | _ -> (Ta_start, 0., 0., false)
   in
@@ -1409,6 +1409,58 @@ let text_ops ?fg ctx store id r alpha ~placeholder_ok =
   match s with
   | Some (s, fg) -> scale_ops alpha (ctx.hooks.text_ops id r fg s)
   | None -> []
+
+(* Select indicators use the host's existing image decoder, including its
+   scale-aware SVG cache. Clip labels before the trailing icon slot. *)
+let select_ops ctx store id rs r alpha fg =
+  let pad = (text_placement_of store id).tp_pad_x *. ctx.scale in
+  let _, right, _, left = border_widths ctx store id in
+  let size =
+    Float.min (16. *. ctx.scale)
+      (Float.min r.h (Float.max 0. (r.w -. left -. right -. (2. *. pad))))
+  in
+  let label = { r with w = Float.max 0. (r.w -. right -. pad -. size) } in
+  let indicator =
+    if size <= 0. then []
+    else
+      let slot =
+        rect
+          (r.x +. r.w -. right -. pad -. size)
+          (r.y +. ((r.h -. size) /. 2.))
+          size size
+      in
+      let logical =
+        {
+          slot with
+          x = slot.x /. ctx.scale;
+          y = slot.y /. ctx.scale;
+          w = slot.w /. ctx.scale;
+          h = slot.h /. ctx.scale;
+        }
+      in
+      match ctx.hooks.image_in id logical with
+      | None -> []
+      | Some image ->
+          [
+            Image
+              {
+                irect2 = slot;
+                iradii = (0., 0., 0., 0.);
+                icontinuous = false;
+                iimage = image;
+                isrc = rect 0. 0. (float image.iw) (float image.ih);
+                igrayscale = false;
+                iopacity = alpha;
+              };
+          ]
+  in
+  box_ops ctx store id rs r alpha
+  @ [
+      Push_clip
+        { crect = label; cradii = (0., 0., 0., 0.); ccontinuous = false };
+    ]
+  @ text_ops ~fg ctx store id label alpha ~placeholder_ok:true
+  @ [ Pop_clip ] @ indicator
 
 (* divider: a 1 logical px line centered on the node's minor axis. *)
 let divider_ops ctx store id rs r alpha =
@@ -2633,8 +2685,8 @@ let paint_own ctx store id st kind r rs alpha =
     | "text" | "label" | "heading" | "paragraph" | "br" | "link" | "kbd" ->
       box_ops ctx store id rs r alpha
       @ labeled_content_ops ctx store id r alpha ~fg ~placeholder_ok:false
-    | "text-field" | "secure-field" | "input" | "search-field" | "textarea"
-    | "select" | "combobox" ->
+    | "select" | "combobox" -> select_ops ctx store id rs r alpha fg
+    | "text-field" | "secure-field" | "input" | "search-field" | "textarea" ->
       box_ops ctx store id rs r alpha
       @ text_ops ~fg ctx store id r alpha ~placeholder_ok:true
     | "button" | "toggle-button" | "toggle" | "menu-item" | "menu-trigger"

@@ -41,6 +41,81 @@ let paint_with h t ?(width = 200) ?(height = 200) ?(scale = 1.)
     ~clear:(color 0 0 0 0);
   s
 
+let test_select_indicator () =
+  List.iter
+    (fun kind ->
+      List.iter
+        (fun scale ->
+          let t = store () in
+          apply t
+            [
+              Lui_protocol.CreateNode (1, kind);
+              SetProp (1, BorderWidth, IntValue 1);
+              SetProp (1, TextValue, StringValue "A very long language name");
+            ];
+          let image = new_image ~w:1 ~h:1 (Bytes.make 4 '\255') in
+          let requested = ref None and text_rect = ref None in
+          let r =
+            rect (20. *. scale) (10. *. scale) (256. *. scale) (32. *. scale)
+          in
+          let h =
+            {
+              (hooks ~layout:(fun _ -> Lui_paint.placement_of_rect r) ()) with
+              Lui_paint.image_in =
+                (fun _ slot ->
+                  requested := Some slot;
+                  Some image);
+              text_ops =
+                (fun _ region _ _ ->
+                  text_rect := Some region;
+                  []);
+            }
+          in
+          let s = paint_with h t ~width:600 ~height:160 ~scale () in
+          let expected =
+            rect (247. *. scale) (18. *. scale) (16. *. scale) (16. *. scale)
+          in
+          check bool "select requests a trailing sixteen-point indicator" true
+            (!requested = Some (rect 247. 18. 16. 16.));
+          let images =
+            List.filter_map (function Image i -> Some i | _ -> None) s.ops
+          in
+          check int "indicator painted exactly once" 1 (List.length images);
+          check bool "indicator retains the requested slot" true
+            ((List.hd images).irect2 = expected);
+          let label = Option.get !text_rect in
+          check bool "label ends before the icon" true
+            (label.x +. label.w <= expected.x);
+          check bool "label is clipped away from the icon" true
+            (List.exists
+               (function Push_clip c -> c.crect = label | _ -> false)
+               s.ops);
+          apply t [ SetProp (1, Enabled, BoolValue false) ];
+          let disabled = paint_with h t ~width:600 ~height:160 ~scale () in
+          let opacity =
+            List.find_map
+              (function Image i -> Some i.iopacity | _ -> None)
+              disabled.ops
+          in
+          check bool "disabled indicator follows control opacity" true
+            (Option.get opacity < 1.);
+          requested := None;
+          let narrow =
+            {
+              h with
+              Lui_paint.layout =
+                (fun _ ->
+                  Lui_paint.placement_of_rect
+                    (rect (20. *. scale) (10. *. scale) (20. *. scale)
+                       (32. *. scale)));
+            }
+          in
+          ignore (paint_with narrow t ~width:600 ~height:160 ~scale ());
+          check bool "a narrow control does not request an out-of-bounds icon"
+            true (!requested = None))
+        [ 1.; 2. ])
+    [ Lui_protocol.Select; Combobox ]
+
 let test_fill_op () =
   let t = store () in
   apply t
@@ -1013,6 +1088,7 @@ let () =
   run "lui_paint"
     [ ("color",
        [ test_case "hex" `Quick test_hex;
+         test_case "select indicator" `Quick test_select_indicator;
          test_case "edges" `Quick test_edges ]);
       ("ops",
        [ test_case "fill" `Quick test_fill_op;
