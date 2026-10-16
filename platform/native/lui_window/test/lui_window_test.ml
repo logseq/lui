@@ -2874,6 +2874,95 @@ let test_assembly_menu_keyboard () =
       (Popover, [ SetProp (2, RoleValue, StringValue "menu") ]);
     ]
 
+let test_menu_open_selection () =
+  List.iter
+    (fun (selected, navigate_early) ->
+      let asm =
+        assembly_of
+          [
+            CreateNode (1, Root);
+            CreateNode (2, TextField);
+            SetProp (2, TextValue, StringValue "draft");
+            InsertChild (1, 2, 0);
+          ]
+      in
+      let ui = Assembly.ui asm and store = Assembly.store asm in
+      Ui.set_focused ui store 2;
+      let rows =
+        List.init 20 (fun index ->
+            let id = index + 4 in
+            [
+              CreateNode (id, MenuItem);
+              InsertChild (3, id, index);
+              SetProp
+                (id, TextValue, StringValue (Printf.sprintf "Option %d" index));
+              SetProp (id, HeightValue, IntValue 32);
+              SetProp (id, Selected, BoolValue (id = selected));
+              SetProp (id, Enabled, BoolValue (id <> 4));
+              SetProp (id, Visible, BoolValue (id <> 5));
+            ])
+      in
+      Lui_store.apply_batch store
+        {
+          generation = 2;
+          ops =
+            [
+              CreateNode (3, DropdownMenu);
+              InsertChild (1, 3, 1);
+              SetProp (3, HeightValue, IntValue 100);
+            ]
+            @ List.concat rows;
+        };
+      ignore (Assembly.store_changed asm);
+      let expected = if selected = 23 then 23 else 6 in
+      Alcotest.(check int)
+        "open highlights the enabled selected row or first enabled row" expected
+        (Ui.hl_item ui);
+      Alcotest.(check bool)
+        "initial selection uses the menu highlight style" true
+        (Ui.state_of ui store expected).Lui_paint.hovered;
+      Alcotest.(check int)
+        "opening a menu preserves the trigger's input focus" 2 (Ui.focused ui);
+      let events = press_actions (Assembly.handle asm (key Input.Return)) in
+      Alcotest.(check bool)
+        "Enter activates the initial selection" true
+        (List.mem (Press expected) events);
+      if navigate_early then ignore (Assembly.handle asm (key Input.Home));
+      ignore (Assembly.repaint asm);
+      ignore (Assembly.store_changed asm);
+      ignore (Assembly.repaint asm);
+      if expected = 23 && not navigate_early then begin
+        let panel = Rects.get (Assembly.rects asm) 3 in
+        let row = Rects.get (Assembly.rects asm) expected in
+        Alcotest.(check bool)
+          "opening reveals the entire selected row after layout" true
+          (Ui.scroll_offset ui 3 > 0.
+           && row.y >= panel.y && row.y +. row.h <= panel.y +. panel.h)
+      end;
+      if navigate_early then
+        Alcotest.(check (float 0.01))
+          "navigation cancels the deferred initial reveal" 0.
+          (Ui.scroll_offset ui 3);
+      ignore (Assembly.handle asm (key Input.Arrow_down));
+      let next = if expected = 23 && not navigate_early then 6 else 7 in
+      Alcotest.(check int)
+        "Down continues from the initial selection" next (Ui.hl_item ui);
+      Lui_store.apply_batch store
+        {
+          generation = 3;
+          ops = [ SetProp (3, BackgroundValue, StringValue "#fff") ];
+        };
+      ignore (Assembly.store_changed asm);
+      Alcotest.(check int)
+        "unrelated patches preserve keyboard navigation" next (Ui.hl_item ui);
+      Lui_store.apply_batch store { generation = 4; ops = [ DropNode 3 ] };
+      ignore (Assembly.store_changed asm);
+      ignore (Assembly.handle asm (Input.Text_input "x"));
+      Alcotest.(check string)
+        "closing restores editing without losing its draft" "draftx"
+        (Ui.shadow ui))
+    [ (23, false); (23, true); (4, false); (5, false); (0, false) ]
+
 let test_menu_keyboard_scope () =
   let store =
     store_of
@@ -3387,6 +3476,7 @@ let () =
           Alcotest.test_case "inset scroll caps" `Quick test_assembly_inset_scroll_caps;
           Alcotest.test_case "intrinsic menu scroll" `Quick test_assembly_menu_scroll;
           Alcotest.test_case "intrinsic menu keyboard" `Quick test_assembly_menu_keyboard;
+          Alcotest.test_case "menu initial selection" `Quick test_menu_open_selection;
           Alcotest.test_case "nested menu keyboard scope" `Quick test_menu_keyboard_scope;
           Alcotest.test_case "menu activation text commit" `Quick test_menu_activation_text_commit;
           Alcotest.test_case "scrollbar paint" `Quick

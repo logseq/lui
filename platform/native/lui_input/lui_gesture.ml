@@ -204,7 +204,9 @@ let menu_has_items store menu =
 
 let menu_items store menu =
   let rec collect acc id =
-    if id <> menu && Lui_query.presented_overlay store id then acc
+    if (id <> menu && Lui_query.presented_overlay store id)
+       || Lui_store.prop store id "visible" = Some (BoolValue false)
+       || Lui_store.string_prop store id "display" = Some "none" then acc
     else
       let acc =
         if
@@ -216,6 +218,15 @@ let menu_items store menu =
       List.fold_left collect acc (Lui_store.child_ids store id)
   in
   List.rev (collect [] menu)
+
+let menu_open store ~menu =
+  let items = menu_items store menu in
+  let hl =
+    match List.find_opt (fun id -> Lui_store.bool_prop store id "selected") items with
+    | Some id -> id
+    | None -> (match items with [] -> 0 | id :: _ -> id)
+  in
+  { list_scope = menu; hl; typeahead = "" }
 
 let menu_state st menu =
   if st.list_scope = menu then st

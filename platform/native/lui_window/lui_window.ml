@@ -527,6 +527,7 @@ module Ui = struct
     mutable drag : Lui_drag.state;
     mutable overlay : Lui_overlay.state;
     mutable menu_scope : int;
+    mutable menu_reveal : int; (* Initial highlight waiting for layout geometry. *)
     (* Space activation may dispose the menu before its text commit arrives. *)
     mutable menu_space_commit : bool;
     (* Paint-hint channels for the retained fragment pass: scroll
@@ -573,7 +574,7 @@ module Ui = struct
       scrollbar_deadlines = Hashtbl.create 8;
       drag = Lui_drag.initial;
       overlay = Lui_overlay.initial;
-      menu_scope = 0;
+      menu_scope = 0; menu_reveal = 0;
       menu_space_commit = false;
       scrolled = Hashtbl.create 8;
       scroll_metrics = Hashtbl.create 8;
@@ -873,9 +874,18 @@ module Ui = struct
        t.overlay <- ov';
        run m);
       (let id = Lui_overlay.top t.overlay in
-       t.menu_scope <-
+       let scope =
          if id <> 0 && Lui_paint.menu_kind store id (Lui_store.kind store id)
-            && Lui_gesture.menu_has_items store id then id else 0);
+            && Lui_gesture.menu_has_items store id then id else 0
+       in
+       if scope <> t.menu_scope then begin
+         t.menu_scope <- scope;
+         t.gesture <-
+           if scope = 0 then Lui_gesture.initial
+           else Lui_gesture.menu_open store ~menu:scope;
+         t.menu_reveal <- Lui_gesture.hl t.gesture;
+         t.dirty <- true
+       end);
       (let f', cand =
          Lui_focus.scan_autofocus store t.focus
            ~scope:(Lui_overlay.top t.overlay)
@@ -892,6 +902,18 @@ module Ui = struct
       let s', m = Lui_scroll.sync (senv t) store t.scroll in
       set_scroll t s';
       run m
+    end;
+    (* New menu rows may not have geometry during the opening store sync.
+       Reveal once layout supplies it; later pointer/keyboard choices win. *)
+    if t.menu_reveal <> 0 then begin
+      let id = t.menu_reveal in
+      if id <> Lui_gesture.hl t.gesture || not (Lui_store.mem store id) then
+        t.menu_reveal <- 0
+      else if not (rect_empty (t.content_rect id))
+              && not (rect_empty (t.content_rect t.menu_scope)) then begin
+        t.menu_reveal <- 0;
+        run [`Scroll_show id]
+      end
     end;
     (* visible-range reports follow scroll offsets, which live in
        the machine rather than the store — they run on every sync,
