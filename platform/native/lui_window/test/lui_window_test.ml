@@ -2633,6 +2633,35 @@ let test_assembly_scroll_shows_in_paint () =
   in
   Alcotest.(check bool) "scrollbar ops" true (scroll_ops > plain_ops)
 
+let test_assembly_inset_scroll_caps () =
+  let module Inset_layout = struct
+    include Fake_layout
+    let sync ?scale:_ ?measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_
+        ~width:_ ~height:_ t _store =
+      Hashtbl.reset t;
+      List.iter (fun (id,r) -> Hashtbl.add t id r)
+        [1,Lui_scene.rect 0. 0. 200. 200.;2,Lui_scene.rect 20. 30. 100. 100.;
+         3,Lui_scene.rect 28. 38. 180. 200.]
+  end in
+  let asm=Assembly.create ~layout:(module Inset_layout)
+    ~scale_cell:(ref 1.) ~text:assembly_text ~renderer:assembly_renderer
+    ~width:200 ~height:200 () in
+  Lui_store.apply_batch (Assembly.store asm) {generation=1;ops=
+    [CreateNode (1,Root);CreateNode (2,Scroll);CreateNode (3,Box);
+     InsertChild (1,2,0);InsertChild (2,3,0)]};
+  ignore (Assembly.repaint asm);
+  let ui=Assembly.ui asm in
+  Alcotest.(check (float 0.001)) "vertical inset remains reachable" 108.
+    (Ui.scroll_cap ui 2);
+  Alcotest.(check (float 0.001)) "horizontal inset remains reachable" 88.
+    (Ui.scroll_cap_x ui 2);
+  ignore (Ui.scroll_to ui (Assembly.store asm) 2 1000.);
+  ignore (Ui.scroll_to ~axis:X ui (Assembly.store asm) 2 1000.);
+  ignore (Assembly.repaint asm);
+  let last=Rects.get (Assembly.rects asm) 3 in
+  Alcotest.(check (float 0.001)) "last content bottom is visible" 130. (last.y+.last.h);
+  Alcotest.(check (float 0.001)) "last content right is visible" 120. (last.x+.last.w)
+
 let test_assembly_autofocus () =
   let asm =
     assembly_of
@@ -2922,6 +2951,7 @@ let () =
       ( "assembly",
         [ Alcotest.test_case "scroll caps" `Quick
             test_assembly_scroll_caps;
+          Alcotest.test_case "inset scroll caps" `Quick test_assembly_inset_scroll_caps;
           Alcotest.test_case "scrollbar paint" `Quick
             test_assembly_scroll_shows_in_paint;
           Alcotest.test_case "autofocus" `Quick test_assembly_autofocus ] );

@@ -2331,8 +2331,8 @@ module Assembly = struct
                    with
                    | Some ext -> Float.max ext 0.001
                    | None ->
-                     let _, top, _, bot = content_box id in
-                     Float.max (bot -. top) 0.001
+                     let _, _, _, bot = content_box id in
+                     Float.max (bot -. cr.y) 0.001
                  in
                  Some
                    Lui_paint.
@@ -2563,11 +2563,11 @@ module Assembly = struct
                (Float.max 0. (ext -. cr.Lui_scene.h));
              Ui.set_scroll_cap_x ui id 0.
            | None ->
-             let l, t, rgt, b = content_box id in
+             let _, _, rgt, b = content_box id in
              Ui.set_scroll_cap ui id
-               (Float.max 0. (b -. t -. cr.Lui_scene.h));
+               (Float.max 0. (b -. cr.Lui_scene.y -. cr.Lui_scene.h));
              Ui.set_scroll_cap_x ui id
-               (Float.max 0. (rgt -. l -. cr.Lui_scene.w)))
+               (Float.max 0. (rgt -. cr.Lui_scene.x -. cr.Lui_scene.w)))
         sids;
       (* Rects were just rebuilt — visible-range memos key on the
          epoch. *)
