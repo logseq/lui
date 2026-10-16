@@ -59,6 +59,55 @@ let test_column_padding_gap () =
   check_rect "child1" 10. 10. 180. 20. (place p 3);
   check_rect "child2" 10. 35. 180. 20. (place p 4)
 
+let test_list_item_content_flow () =
+  List.iter
+    (fun scale ->
+      let store = Lui_store.create () and layout = Lui_layout.create () in
+      apply store
+        [
+          CreateNode (1, Root);
+          CreateNode (2, ListItem);
+          CreateNode (3, Box);
+          CreateNode (4, Box);
+          InsertChild (1, 2, 0);
+          InsertChild (2, 3, 0);
+          InsertChild (2, 4, 1);
+          SetProp (2, WidthValue, IntValue 100);
+          SetProp (2, HeightValue, IntValue 40);
+          SetProp (2, PaddingValue, IntValue 0);
+          SetProp (3, WidthValue, IntValue 10);
+          SetProp (3, HeightValue, IntValue 10);
+          SetProp (4, WidthValue, IntValue 20);
+          SetProp (4, HeightValue, IntValue 20);
+        ];
+      let expect x1 y1 x2 y2 =
+        Lui_layout.sync ~scale ~width:(200. *. scale) ~height:(80. *. scale)
+          layout store;
+        let item = Option.get (Lui_layout.rect layout 2) in
+        let child id x y w h =
+          check_some_rect "list item child"
+            (item.x +. (x *. scale))
+            (item.y +. (y *. scale))
+            (w *. scale) (h *. scale)
+            (Lui_layout.rect layout id)
+        in
+        child 3 x1 y1 10. 10.;
+        child 4 x2 y2 20. 20.
+      in
+      expect 0. 15. 18. 10.;
+      apply store
+        [
+          SetProp (2, MainAlignment, StringValue "end");
+          SetProp (2, CrossAlignment, StringValue "start");
+        ];
+      expect 62. 0. 80. 0.;
+      apply store [ SetProp (2, WidthValue, IntValue 160) ];
+      expect 122. 0. 140. 0.;
+      apply store
+        [ RemoveProp (2, CrossAlignment); RemoveProp (2, MainAlignment) ];
+      expect 0. 15. 18. 10.)
+    [ 1.; 2. ]
+
 let test_padding_edges () =
   let property name =
     match
@@ -1407,6 +1456,7 @@ let () =
   run "lui_layout"
     [ ("layout",
        [ test_case "column padding/gap" `Quick test_column_padding_gap;
+         test_case "list item content flow" `Quick test_list_item_content_flow;
          test_case "padding edges" `Quick test_padding_edges;
          test_case "absolute cross alignment" `Quick test_absolute_cross_alignment;
          test_case "border box layout" `Quick test_border_box_layout;
