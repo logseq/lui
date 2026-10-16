@@ -396,9 +396,12 @@ module Ui : sig
   val store_changed : t -> Lui_store.t -> action list
 
   (** Map one input event to ordered actions. [?spatial] accelerates
-      the rect hit-tests — see {!Lui_window.hit_path}. *)
+      the rect hit-tests — see {!Lui_window.hit_path}.
+      [on_component_input] runs when a menu consumes the input; hosts
+      forwarding document events must suppress that duplicate delivery. *)
   val handle :
-    ?spatial:Lui_spatial.t -> t -> Lui_store.t -> Rects.t ->
+    ?spatial:Lui_spatial.t -> ?on_component_input:(unit -> unit) ->
+    t -> Lui_store.t -> Rects.t ->
     Input.t -> action list
 
   (** [state_of] hook for the paint pipeline: folds hover/press/focus

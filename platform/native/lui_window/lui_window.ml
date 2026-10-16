@@ -519,6 +519,7 @@ module Ui = struct
     scrollbar_deadlines : (int, float) Hashtbl.t;
     mutable drag : Lui_drag.state;
     mutable overlay : Lui_overlay.state;
+    mutable menu_scope : int;
     (* Paint-hint channels for the retained fragment pass: scroll
        containers whose offset moved this frame (their whole subtree
        re-derives — ops embed shifted rects), containers whose
@@ -563,6 +564,7 @@ module Ui = struct
       scrollbar_deadlines = Hashtbl.create 8;
       drag = Lui_drag.initial;
       overlay = Lui_overlay.initial;
+      menu_scope = 0;
       scrolled = Hashtbl.create 8;
       scroll_metrics = Hashtbl.create 8;
       paint_snap =
@@ -860,6 +862,10 @@ module Ui = struct
        in
        t.overlay <- ov';
        run m);
+      (let id = Lui_overlay.top t.overlay in
+       t.menu_scope <-
+         if id <> 0 && Lui_paint.menu_kind store id (Lui_store.kind store id)
+            && Lui_gesture.menu_has_items store id then id else 0);
       (let f', cand =
          Lui_focus.scan_autofocus store t.focus
            ~scope:(Lui_overlay.top t.overlay)
@@ -907,7 +913,31 @@ module Ui = struct
     if List.exists (Lui_query.presented_overlay store) path then None
     else List.find_opt (fun id -> split_handle t store rects id ~x ~y) path
 
-  let handle ?spatial t store rects input =
+  let active_menu t store =
+    let id = t.menu_scope and focused = Lui_focus.focused t.focus in
+    if
+      id <> 0
+      && not
+           (focused <> 0
+           && Lui_text_input.editable store focused
+           && Lui_query.is_desc store focused id)
+    then Some id
+    else None
+
+  let visible_rect t store id =
+    let rec offsets id x y =
+      match Lui_store.parent store id with
+      | None -> (x, y)
+      | Some parent ->
+          offsets parent
+            (x +. scroll_offset_x t parent)
+            (y +. scroll_offset t parent)
+    in
+    let x, y = offsets id 0. 0. in
+    let r = t.content_rect id in
+    { r with Lui_scene.x = r.x -. x; y = r.y -. y }
+
+  let handle ?spatial ?(on_component_input = fun () -> ()) t store rects input =
     let acts = ref [] in
     let emit_all l = acts := List.rev_append l !acts in
     let run m_acts = emit_all (perform_all t store m_acts) in
@@ -982,6 +1012,14 @@ module Ui = struct
              let path = hit_path ?spatial store rects ~x:dx ~y:dy in
              let p, m = Lui_pointer.move store t.pointer ~path ~x ~y in
              t.pointer <- p;
+             (match active_menu t store with
+              | Some menu ->
+                let gesture = Lui_gesture.menu_hover store t.gesture ~menu path in
+                if gesture != t.gesture then begin
+                  t.gesture <- gesture;
+                  t.dirty <- true
+                end
+              | None -> ());
              run m
            end
        end
@@ -1166,12 +1204,20 @@ module Ui = struct
           t.pointer <- Lui_pointer.clear_press t.pointer;
           t.dirty <- true
         | _ -> ())
+     | Input.Text_input s when Option.is_some (active_menu t store) ->
+       on_component_input ();
+       let g,m = Lui_gesture.menu_text store t.gesture
+         ~menu:(Option.get (active_menu t store)) s in
+       t.gesture <- g;
+       run m
      | Input.Text_input s ->
        let s', m =
          Lui_text_input.feed_ime store t.session (`Commit s)
        in
        t.session <- s';
        run m
+     | Input.Text_editing _ when Option.is_some (active_menu t store) ->
+       on_component_input ()
      | Input.Text_editing (text, start, len) ->
        let s', m =
          Lui_text_input.feed_ime store t.session
@@ -1195,6 +1241,21 @@ module Ui = struct
          t.session <- s';
          run m
        end
+     | Input.Key_down (key, mods, _repeat)
+       when not (mods.Input.ctrl || mods.Input.meta || mods.Input.alt)
+         && Option.is_some (active_menu t store)
+         && (match key with
+             | Input.Arrow_down | Input.Arrow_up | Input.Home | Input.End
+             | Input.Page_down | Input.Page_up | Input.Return | Input.Space -> true
+             | Input.Other scan -> Option.is_some (Input.char_of_scancode scan)
+             | _ -> false) ->
+       on_component_input ();
+       let g,m = Lui_gesture.menu_key store t.gesture
+         ~menu:(Option.get (active_menu t store))
+         ~rect_of:(visible_rect t store) ~scale:t.scale
+         ~key:(conv_key key) ~mods:(conv_mods mods) in
+       t.gesture <- g;
+       run m
      | Input.Key_down (key, mods, _repeat) ->
        (* While marked text is on screen the keys belong to the
           IME — SDL filters most of them already; this gate is the
@@ -1371,8 +1432,14 @@ module Ui = struct
     List.rev !acts
 
   let state_of t store id =
+    let menu_highlight =
+      kind_name store id = "menu-item"
+      && t.gesture.Lui_gesture.hl <> 0
+      && active_menu t store = Some t.gesture.Lui_gesture.list_scope
+    in
     { Lui_paint.hovered =
-        (Lui_pointer.hovered t.pointer = id
+        ((if menu_highlight then Lui_gesture.hl t.gesture = id
+          else Lui_pointer.hovered t.pointer = id)
          || Lui_drag.target t.drag = id);
       pressed =
         (Lui_pointer.pressed t.pointer = id

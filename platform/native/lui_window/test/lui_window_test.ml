@@ -2690,6 +2690,203 @@ let test_assembly_menu_scroll () =
       (Popover, [ SetProp (2, RoleValue, StringValue "menu") ]);
     ]
 
+let test_assembly_menu_keyboard () =
+  List.iter
+    (fun (kind, props) ->
+      let asm =
+        assembly_of
+          [
+            CreateNode (1, Root);
+            CreateNode (2, kind);
+            CreateNode (3, TextField);
+            InsertChild (1, 3, 0);
+            InsertChild (1, 2, 1);
+            SetProp (3, HeightValue, IntValue 30);
+            SetProp (3, TextValue, StringValue "background");
+            SetProp (2, HeightValue, IntValue 100);
+          ]
+      in
+      let ui = Assembly.ui asm and store = Assembly.store asm in
+      Lui_store.apply_batch store { generation = 2; ops = props };
+      for index = 0 to 19 do
+        let id = index + 4 in
+        Lui_store.apply_batch store
+          {
+            generation = index + 3;
+            ops =
+              [
+                CreateNode (id, MenuItem);
+                InsertChild (2, id, index);
+                SetProp (id, HeightValue, IntValue 32);
+                SetProp
+                  ( id,
+                    TextValue,
+                    StringValue (if id = 23 then "Last item" else "Option") );
+                SetProp (id, Enabled, BoolValue (id <> 5));
+              ];
+          }
+      done;
+      ignore (Assembly.store_changed asm);
+      ignore (Assembly.repaint asm);
+      Ui.set_focused ui store 3;
+      let input key =
+        Assembly.handle asm (Input.Key_down (key, Input.mods_none, false))
+      in
+      List.iter
+        (fun (key, expected) ->
+          ignore (input key);
+          Alcotest.(check int)
+            "menu keys navigate enabled options before the background field"
+            expected (Ui.hl_item ui))
+        [
+          (Input.Home, 4);
+          (Input.Arrow_down, 6);
+          (Input.Arrow_up, 4);
+          (Input.Arrow_up, 23);
+          (Input.Arrow_down, 4);
+          (Input.End, 23);
+        ];
+      Alcotest.(check string)
+        "menu navigation preserves the background field" "background"
+        (Ui.shadow ui);
+      Alcotest.(check bool)
+        "keyboard highlight paints as hovered" true
+        (Ui.state_of ui store 23).Lui_paint.hovered;
+      ignore (Assembly.repaint asm);
+      let panel = Rects.get (Assembly.rects asm) 2
+      and last = Rects.get (Assembly.rects asm) 23 in
+      Alcotest.(check bool)
+        "End reveals the entire final option" true
+        (Ui.scroll_offset ui 2 > 0.
+        && last.y >= panel.y
+        && last.y +. last.h <= panel.y +. panel.h);
+      List.iter
+        (fun key ->
+          let events =
+            press_actions
+              (Ui.handle ui store (Assembly.rects asm)
+                 (Input.Key_down (key, Input.mods_none, false)))
+          in
+          Alcotest.(check int)
+            "keyboard activation dispatches Press exactly once" 1
+            (List.length (List.filter (( = ) (Press 23)) events));
+          Alcotest.(check bool)
+            "detail-only menu actions receive keyboard activation" true
+            (List.exists
+               (function
+                 | PressDetail (23, d) ->
+                     d.x >= last.x
+                     && d.x <= last.x +. last.w
+                     && d.y >= last.y
+                     && d.y <= last.y +. last.h
+                 | _ -> false)
+               events))
+        [ Input.Return; Input.Space ];
+      let previous = Rects.get (Assembly.rects asm) 22 in
+      ignore
+        (Assembly.handle asm
+           (Input.Move
+              ( previous.x +. (previous.w /. 2.),
+                previous.y +. (previous.h /. 2.) )));
+      Alcotest.(check int)
+        "pointer and keyboard share one menu highlight" 22 (Ui.hl_item ui);
+      Alcotest.(check bool)
+        "moving the pointer clears the previous keyboard highlight" false
+        (Ui.state_of ui store 23).Lui_paint.hovered;
+      ignore (input Input.Home);
+      ignore (input Input.End);
+      Alcotest.(check bool)
+        "keyboard navigation clears the previous pointer highlight" false
+        (Ui.state_of ui store 22).Lui_paint.hovered;
+      ignore (input Input.Home);
+      ignore (Assembly.handle asm (Input.Text_input "La"));
+      Alcotest.(check int)
+        "typeahead finds a matching menu option" 23 (Ui.hl_item ui);
+      Alcotest.(check string)
+        "menu typeahead cannot edit the background field" "background"
+        (Ui.shadow ui);
+      Lui_store.apply_batch store { generation = 30; ops = [ DropNode 2 ] };
+      ignore (Assembly.store_changed asm);
+      ignore (Assembly.handle asm (Input.Text_input "x"));
+      Alcotest.(check string)
+        "typing resumes after the menu is disposed" "backgroundx" (Ui.shadow ui))
+    [
+      (DropdownMenu, []);
+      (ContextMenu, []);
+      (Popover, [ SetProp (2, RoleValue, StringValue "menu") ]);
+    ]
+
+let test_menu_keyboard_scope () =
+  let store =
+    store_of
+      [
+        CreateNode (1, Root);
+        CreateNode (2, TextField);
+        InsertChild (1, 2, 0);
+        SetProp (2, TextValue, StringValue "background");
+        CreateNode (3, DropdownMenu);
+        InsertChild (1, 3, 1);
+        CreateNode (4, MenuItem);
+        InsertChild (3, 4, 0);
+        CreateNode (5, Popover);
+        InsertChild (4, 5, 0);
+        SetProp (5, RoleValue, StringValue "menu");
+        CreateNode (6, MenuItem);
+        InsertChild (5, 6, 0);
+        CreateNode (7, MenuItem);
+        InsertChild (5, 7, 1);
+        SetProp (6, Enabled, BoolValue false);
+      ]
+  in
+  let ui = Ui.create () and rects = Rects.create () in
+  ignore (Ui.store_changed ui store);
+  Ui.set_focused ui store 2;
+  ignore (Ui.handle ui store rects (key Input.End));
+  Alcotest.(check int) "only the top nested menu navigates" 7 (Ui.hl_item ui);
+  let events = press_actions (Ui.handle ui store rects (key Input.Return)) in
+  Alcotest.(check bool)
+    "nested activation cannot reach the parent action" true
+    (List.mem (Press 7) events && not (List.mem (Press 4) events));
+  Lui_store.apply_batch store
+    { generation = 2; ops = [ SetProp (7, Enabled, BoolValue false) ] };
+  let events = press_actions (Ui.handle ui store rects (key Input.Return)) in
+  Alcotest.(check bool)
+    "disabling the highlighted option prevents stale activation" true
+    (not
+       (List.exists
+          (function Press _ | PressDetail _ -> true | _ -> false)
+          events));
+  let consumed = ref 0 in
+  ignore
+    (Ui.handle
+       ~on_component_input:(fun () -> incr consumed)
+       ui store rects
+       (Input.Text_editing ("ni", 2, 0)));
+  Alcotest.(check string)
+    "menu composition cannot attach to the background editor" "" (Ui.marked ui);
+  Alcotest.(check int)
+    "menu composition suppresses duplicate document delivery" 1 !consumed;
+  ignore (Ui.handle ui store rects (Input.Text_input "x"));
+  Alcotest.(check string)
+    "a disabled menu still owns text input" "background" (Ui.shadow ui);
+  Lui_store.apply_batch store { generation = 3; ops = [ DropNode 5 ] };
+  ignore (Ui.handle ui store rects (key Input.Home));
+  Alcotest.(check int)
+    "dismissing the submenu restores parent navigation" 4 (Ui.hl_item ui);
+  Lui_store.apply_batch store
+    {
+      generation = 4;
+      ops = [ CreateNode (8, TextField); InsertChild (3, 8, 1) ];
+    };
+  ignore (Ui.store_changed ui store);
+  Ui.set_focused ui store 8;
+  ignore (Ui.handle ui store rects (Input.Text_editing ("ni", 2, 0)));
+  Alcotest.(check string)
+    "an editor inside a menu retains composition" "ni" (Ui.marked ui);
+  ignore (Ui.handle ui store rects (Input.Text_input "ni"));
+  Alcotest.(check string)
+    "an editor inside a menu retains text input" "ni" (Ui.shadow ui)
+
 let test_assembly_scroll_shows_in_paint () =
   (* scroll_of feeds the scrollbar: a container with range reports
      metrics; one without reports none. *)
@@ -3085,6 +3282,8 @@ let () =
             test_assembly_scroll_caps;
           Alcotest.test_case "inset scroll caps" `Quick test_assembly_inset_scroll_caps;
           Alcotest.test_case "intrinsic menu scroll" `Quick test_assembly_menu_scroll;
+          Alcotest.test_case "intrinsic menu keyboard" `Quick test_assembly_menu_keyboard;
+          Alcotest.test_case "nested menu keyboard scope" `Quick test_menu_keyboard_scope;
           Alcotest.test_case "scrollbar paint" `Quick
             test_assembly_scroll_shows_in_paint;
           Alcotest.test_case "autofocus" `Quick test_assembly_autofocus ] );

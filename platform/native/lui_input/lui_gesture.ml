@@ -191,3 +191,97 @@ let list_key store st ~scope ~content_rect ~key ~mods =
         | None -> (st, []))
      | None -> (st, []))
   | _ -> (st, [])
+
+(* Menus own their enabled rows, excluding separately presented submenus. *)
+let menu_has_items store menu =
+  let rec contains id =
+    if id <> menu && Lui_query.presented_overlay store id then false
+    else
+      Lui_query.kind_name store id = "menu-item"
+      || List.exists contains (Lui_store.child_ids store id)
+  in
+  contains menu
+
+let menu_items store menu =
+  let rec collect acc id =
+    if id <> menu && Lui_query.presented_overlay store id then acc
+    else
+      let acc =
+        if
+          Lui_query.kind_name store id = "menu-item"
+          && Lui_query.node_enabled store id
+        then id :: acc
+        else acc
+      in
+      List.fold_left collect acc (Lui_store.child_ids store id)
+  in
+  List.rev (collect [] menu)
+
+let menu_state st menu =
+  if st.list_scope = menu then st
+  else { list_scope = menu; hl = 0; typeahead = "" }
+
+let menu_hover store st ~menu path =
+  match
+    List.find_opt
+      (fun id ->
+        Lui_query.kind_name store id = "menu-item"
+        && Lui_query.node_enabled store id
+        && Lui_query.is_desc store id menu)
+      path
+  with
+  | Some id when st.list_scope <> menu || st.hl <> id ->
+      { list_scope = menu; hl = id; typeahead = "" }
+  | _ -> st
+
+let menu_text store st ~menu text =
+  let st = menu_state st menu in
+  let prefix = String.lowercase_ascii (st.typeahead ^ text) in
+  let matches id =
+    String.starts_with ~prefix
+      (String.lowercase_ascii (Lui_query.text_of store id))
+  in
+  let st = { st with typeahead = prefix } in
+  match List.find_opt matches (menu_items store menu) with
+  | None -> (st, [])
+  | Some id -> ({ st with hl = id }, [ `Repaint; `Scroll_show id ])
+
+let menu_key store st ~menu ~rect_of ~scale ~key ~mods =
+  let st = menu_state st menu in
+  let items = menu_items store menu in
+  let move index = hl_index store { st with typeahead = "" } items index in
+  let count = List.length items in
+  let step delta =
+    let index =
+      match Lui_query.index_of st.hl items with
+      | Some index -> (index + delta + count) mod count
+      | None -> if delta > 0 then 0 else count - 1
+    in
+    move index
+  in
+  match key with
+  | Lui_input.Arrow_down when count > 0 -> step 1
+  | Lui_input.Arrow_up when count > 0 -> step (-1)
+  | Lui_input.Home -> move 0
+  | Lui_input.End -> move (count - 1)
+  | (Lui_input.Return | Lui_input.Space) when List.mem st.hl items ->
+      let r = rect_of st.hl in
+      let detail =
+        Lui_query.detail_of store st.hl
+          ((r.Lui_scene.x +. (r.w /. 2.)) /. scale)
+          ((r.y +. (r.h /. 2.)) /. scale)
+          mods 0
+      in
+      let event = PressDetail (st.hl, detail) in
+      let details =
+        if Lui_query.event_supported store st.hl event then [ `Dispatch event ]
+        else []
+      in
+      (st, details @ Lui_query.primary_press store st.hl)
+  | Lui_input.Page_down | Lui_input.Page_up ->
+      let r = rect_of menu in
+      let direction = if key = Lui_input.Page_down then 1. else -1. in
+      ( st,
+        [ `Scroll_by (Lui_scroll.Y, menu, direction *. 0.9 *. r.Lui_scene.h) ]
+      )
+  | _ -> (st, [])
