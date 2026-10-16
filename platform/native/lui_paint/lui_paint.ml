@@ -994,7 +994,7 @@ type text_placement = {
    edge. The text-alignment and padding props win over the table.
    Every text engine feeds this into its pen math so all backends
    place glyphs identically. *)
-let text_placement_of store id =
+let text_placement ~layout_padding store id =
   let align, pad_x, pad_y, top =
     match Lui_store.kind store id with
     | "button" | "toggle-button" | "toggle" | "menu-trigger"
@@ -1040,12 +1040,25 @@ let text_placement_of store id =
         (icon +. zone, 0.)
       else (icon, zone)
   in
+  let inset side axis default =
+    if not layout_padding
+       && (Lui_store.prop store id side <> None
+          || Lui_store.prop store id axis <> None
+          || Lui_store.prop store id "padding" <> None) then 0.
+    else Option.value ~default (pnum store id side)
+  in
   { tp_align = align;
-    tp_pad_left = Option.value ~default:pad_x (pnum store id "padding-left") +. leading;
-    tp_pad_right = Option.value ~default:pad_x (pnum store id "padding-right") +. trailing;
-    tp_pad_top = Option.value ~default:pad_y (pnum store id "padding-top");
-    tp_pad_bottom = Option.value ~default:pad_y (pnum store id "padding-bottom");
+    tp_pad_left = inset "padding-left" "padding-horizontal" pad_x +. leading;
+    tp_pad_right = inset "padding-right" "padding-horizontal" pad_x +. trailing;
+    tp_pad_top = inset "padding-top" "padding-vertical" pad_y;
+    tp_pad_bottom = inset "padding-bottom" "padding-vertical" pad_y;
     tp_top = top }
+
+let text_placement_of store id = text_placement ~layout_padding:true store id
+
+(* Flex already adds explicit padding around its measured content box. Only
+   implicit control chrome and built-in slots belong in the text measure. *)
+let text_measure_placement_of store id = text_placement ~layout_padding:false store id
 
 (* ---------- secure-field masking ---------- *)
 

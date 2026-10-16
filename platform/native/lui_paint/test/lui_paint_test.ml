@@ -1161,6 +1161,18 @@ let test_menu_selection_indicator () =
         (Lui_paint.text_placement_of t 1).tp_pad_right)
     [ 1.; 2. ]
 
+let test_menu_measure_padding () =
+  let t = store () in
+  apply t [CreateNode (1, MenuItem); SetProp (1, TextValue, StringValue "English");
+    SetProp (1, Selected, BoolValue true); SetProp (1, SelectionPlacementValue, StringValue "leading");
+    SetProp (1, PaddingHorizontal, IntValue 8); SetProp (1, PaddingVertical, IntValue 6)];
+  let painted = Lui_paint.text_placement_of t 1 in
+  let measured = Lui_paint.text_measure_placement_of t 1 in
+  check (float 0.01) "paint includes the outer padding" 6. painted.tp_pad_top;
+  check (float 0.01) "measurement leaves vertical padding to flex" 0. measured.tp_pad_top;
+  check (float 0.01) "measurement retains only the selection slot" 24. measured.tp_pad_left;
+  check (float 0.01) "measurement leaves trailing padding to flex" 0. measured.tp_pad_right
+
 let test_menu_selection_placement () =
   let property =
     List.find_opt
@@ -1360,6 +1372,7 @@ let () =
          test_case "menu item single icon" `Quick test_menu_item_single_icon;
          test_case "menu selection indicator" `Quick test_menu_selection_indicator;
          test_case "menu selection placement" `Quick test_menu_selection_placement;
+         test_case "menu measure padding" `Quick test_menu_measure_padding;
          test_case "control single icon" `Quick test_control_single_icon;
          test_case "text edge placement" `Quick test_text_edge_placement ]);
       ("secure",
