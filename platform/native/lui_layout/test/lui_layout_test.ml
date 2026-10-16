@@ -605,6 +605,65 @@ let check_equiv msg store t =
         expect.w expect.h got)
     (Lui_store.preorder store)
 
+let test_child_restyle_allocation () =
+  let allocation count =
+    let store = Lui_store.create () in
+    apply store ([CreateNode (1, Root); CreateNode (2, Grid);
+      InsertChild (1, 2, 0); SetProp (2, GridColumns, IntValue 2)] @
+      List.concat_map (fun i -> [CreateNode (i+10, Text);
+        InsertChild (2, i+10, i); SetProp (i+10, HeightValue, IntValue 10)])
+        (List.init count Fun.id));
+    let layout = Lui_layout.create () in
+    let sync () = Lui_layout.sync ~width:200. ~height:100. layout store in
+    sync ();
+    let change columns = apply store [SetProp (2, GridColumns, IntValue columns)]; sync () in
+    change 3; change 2;
+    let before = Gc.allocated_bytes () in
+    for step=1 to 4 do change (if step mod 2=0 then 2 else 3) done;
+    let bytes = (Gc.allocated_bytes () -. before) /. 4. in
+    check bool "Restyling retains incremental replay" true (Lui_layout.stat_steps layout >= 6);
+    check_some_rect "First grid cell keeps its width" 0. 0. 100. 10.
+      (Lui_layout.rect layout 10);
+    bytes
+  in
+  let small = allocation 64 and large = allocation 1024 in
+  Printf.printf "Child restyle allocation: 64=%.0f, 1024=%.0f bytes/update\n%!" small large;
+  check bool "Restyling 16 times as many children exceeds 1.3 times linear allocation" true
+    (large <= small *. 16. *. 1.3)
+
+let test_child_restyle_produced_order () =
+  let store = Lui_store.create () in
+  apply store [CreateNode (1, Root); CreateNode (2, Overlay);
+    CreateNode (3, Text); CreateNode (4, Box); CreateNode (5, Text);
+    CreateNode (6, Box); CreateNode (7, Text); CreateNode (8, Box);
+    CreateNode (9, Text); CreateNode (10, Text);
+    InsertChild (1,2,0); InsertChild (2,3,0); InsertChild (2,4,1);
+    InsertChild (4,5,0); InsertChild (4,6,1); InsertChild (6,7,0);
+    InsertChild (2,8,2); InsertChild (8,9,0); InsertChild (2,10,3);
+    SetProp (4,DisplayValue,StringValue "contents");
+    SetProp (6,DisplayValue,StringValue "contents");
+    SetProp (8,DisplayValue,StringValue "none");
+    SetProp (3,WidthValue,IntValue 40); SetProp (3,HeightValue,IntValue 20);
+    SetProp (5,HeightValue,IntValue 10); SetProp (7,HeightValue,IntValue 15);
+    SetProp (9,HeightValue,IntValue 30); SetProp (10,HeightValue,IntValue 25)];
+  let layout = Lui_layout.create () in
+  let verify ops =
+    apply store ops;
+    Lui_layout.sync ~width:200. ~height:100. layout store;
+    check_equiv "Produced child restyle" store layout
+  in
+  List.iter verify [ [];
+    [SetProp (4,ProgressValue,IntValue 1)];
+    [SetProp (6,ProgressValue,IntValue 2)];
+    [MoveChild (2,4,0)];
+    [MoveChild (4,5,1)];
+    [SetProp (8,DisplayValue,StringValue "contents"); MoveChild (2,8,0)];
+    [SetProp (4,ProgressValue,IntValue 3)];
+    [SetProp (4,DisplayValue,StringValue "none")];
+    [RemoveProp (4,DisplayValue)];
+    [SetProp (4,DisplayValue,StringValue "contents")];
+    [SetProp (2,ProgressValue,IntValue 4)] ]
+
 (* A journal replay through moves, toggles, drops and prop churn keeps
    the mirror identical to a rebuild at every step. *)
 let test_incremental_equivalence () =
@@ -978,6 +1037,8 @@ let () =
          test_case "transient links before disposal" `Quick test_transient_links_before_disposal;
          test_case "nested disposal purges geometry" `Quick test_nested_disposal_purges_geometry;
          test_case "fractional ancestor offsets" `Quick test_fractional_ancestor_offsets;
+         test_case "child restyle allocation" `Quick test_child_restyle_allocation;
+         test_case "child restyle produced order" `Quick test_child_restyle_produced_order;
          test_case "deep rect refresh budget" `Quick test_deep_rect_refresh_budget;
          test_case "incremental large tree" `Quick
            test_incremental_large_tree ]) ]

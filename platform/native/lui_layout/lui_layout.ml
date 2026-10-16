@@ -2152,10 +2152,9 @@ let produced_index ctx o g =
 
 (* Recompute g's style and measure against its current owner and index
    — the incremental equivalent of rebuilding its flex node. *)
-let restyle_gen ctx o g =
+let restyle_gen_at ctx o g index =
   match Hashtbl.find_opt ctx.nodes g with
   | Some f ->
-    let index = produced_index ctx o g in
     let style =
       style_of ~scale:ctx.scale ~viewport:(ctx.vw, ctx.vh) ctx.store g
       |> adjust ~pkind:(kind_of ctx o) ~pid:o ~index ctx.store g
@@ -2189,6 +2188,22 @@ let restyle_gen ctx o g =
        register ctx g kind f style)
   | None -> ()
 
+let restyle_gen ctx o g =
+  restyle_gen_at ctx o g (produced_index ctx o g)
+
+(* An expansion occupies consecutive positions in its flex owner's produced
+   children, including when transparent raw parents lift those children. *)
+let iter_produced_indices ctx o entries f =
+  let rec first_index = function
+    | [] -> 0
+    | {gens=[]; _} :: rest -> first_index rest
+    | {gens=g::_; _} :: _ -> produced_index ctx o g
+  in
+  let index = ref (first_index entries) in
+  List.iter (fun e -> List.iter (fun g ->
+    f g !index;
+    incr index) e.gens) entries
+
 (* Parent kinds whose child adjustment depends on sibling position:
    membership or order churn under them rewrites sibling styles, not
    just the moved node's. *)
@@ -2198,9 +2213,7 @@ let index_sensitive = function
   | _ -> false
 
 let restyle_children_of ctx o =
-  List.iter
-    (fun e -> List.iter (fun g -> restyle_gen ctx o g) e.gens)
-    (pkids_of ctx o)
+  iter_produced_indices ctx o (pkids_of ctx o) (restyle_gen_at ctx o)
 
 (* Insert/MoveChild: detach the shadow entry from the old raw parent,
    ensure the child's produced set exists, then let [sync_entries]
@@ -2286,14 +2299,9 @@ let restyle_children ctx id =
   let o = children_owner ctx id in
   sync_entries ctx id;
   commit ctx id;
-  List.iter
-    (fun e ->
-      List.iter
-        (fun g ->
-          Hashtbl.replace ctx.owner g o;
-          restyle_gen ctx o g)
-        e.gens)
-    (pkids_of ctx id);
+  iter_produced_indices ctx o (pkids_of ctx id) (fun g index ->
+    Hashtbl.replace ctx.owner g o;
+    restyle_gen_at ctx o g index);
   mark_affected ctx o
 
 (* A journal op landed on a live virtual list or inside one: rows
