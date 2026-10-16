@@ -17,6 +17,8 @@
 <h1>Retained layer regressions</h1>
 <button id="run-exit-audit">Run surface exit audit</button>
 <output id="exit-audit-result" role="status">Not run</output>
+<button id="run-style-audit">Run surface motion style audit</button>
+<output id="style-audit-result" role="status">Not run</output>
 <main id="host"></main>
 <script type="module">
 import * as Web from "lui.web.dom/shell/lui_web.js";
@@ -161,4 +163,29 @@ async function runExitAudit(){
   output.textContent=JSON.stringify({state:'Complete',pass:results.every(r=>r.checks.every(c=>c.pass)),results});
 }
 document.querySelector('#run-exit-audit').addEventListener('click',()=>{runExitAudit().catch(error=>{document.querySelector('#exit-audit-result').textContent=JSON.stringify({state:'Complete',pass:false,error:String(error)});});});
+function runStyleAudit(){
+  const results=[];
+  for(const kind of ['popover','dropdown-menu','dialog']){
+    const holder=node('row',root);
+    button(holder,'Style audit anchor',()=>{});
+    const className='motion-style-audit-'+kind;
+    const n=node(kind,holder,{...(kind==='dialog'?{text:'Style audit dialog'}:{anchor:'below'}),width:240,height:120,'style-class':className});
+    node(kind==='dropdown-menu'?'menu-item':'paragraph',n,{text:'Motion style content'});
+    flush();
+    const el=document.querySelector('.'+className),style=getComputedStyle(el);
+    const scale=new DOMMatrixReadOnly(style.transform).a;
+    const origin=style.transformOrigin.split(' ').map(parseFloat);
+    const duration=kind==='dialog'?0.2:0.15,easing=kind==='dialog'?'ease-out':'ease';
+    const checks=[
+      {label:'declared default duration',pass:style.transitionDuration.split(',').every(v=>Math.abs(parseFloat(v)-duration)<0.00001)},
+      {label:'declared default curve',pass:style.transitionTimingFunction.split(',').every(v=>v.trim()===easing)},
+      {label:'entrance scale is 95 percent',pass:Math.abs(scale-0.95)<0.00001},
+      {label:'zoom origin is centered',pass:Math.abs(origin[0]-el.offsetWidth/2)<0.51&&Math.abs(origin[1]-el.offsetHeight/2)<0.51}
+    ];
+    results.push({kind,scale,origin,duration:style.transitionDuration,easing:style.transitionTimingFunction,checks});
+    drop(holder);flush();
+  }
+  document.querySelector('#style-audit-result').textContent=JSON.stringify({state:'Complete',pass:results.every(r=>r.checks.every(c=>c.pass)),results});
+}
+document.querySelector('#run-style-audit').addEventListener('click',runStyleAudit);
 </script>

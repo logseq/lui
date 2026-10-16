@@ -341,6 +341,36 @@ let motion_frame h now =
 let popup_width h =
   match popup_fill h with Some fill -> fill.frect.w | None -> 0.
 
+let test_surface_motion_defaults () =
+  List.iter
+    (fun (kind, duration, halfway) ->
+      let h = popup_host () in
+      ignore
+        (Lui_host.apply_batch h
+           (batch
+              [ DropNode 5; CreateNode (3, kind); InsertChild (1, 3, 1);
+                CreateNode (4, Box); InsertChild (3, 4, 0);
+                SetProp (4, BackgroundValue, StringValue "#ff0000") ]));
+      motion_frame h 0.;
+      (match popup_fill h with
+       | Some fill ->
+           check (float 0.00001) "default entrance starts at 95 percent" 22.8 fill.frect.w;
+           check (float 0.00001) "default zoom keeps its horizontal center" 16.
+             (fill.frect.x +. fill.frect.w /. 2.);
+           check (float 0.00001) "default zoom keeps its vertical center" 14.
+             (fill.frect.y +. fill.frect.h /. 2.)
+       | None -> fail "default entrance must retain its initial geometry");
+      motion_frame h (duration /. 2.);
+      check (float 0.00001) "default curve matches the shared motion policy"
+        halfway (popup_alpha h);
+      motion_frame h (duration +. 0.001);
+      check (float 0.00001) "default duration ends exactly" 1. (popup_alpha h);
+      check bool "default motion settles without scheduled frames" false
+        (Lui_host.wants_repaint h))
+    [ Popover, 0.15, 0.8024033876; DropdownMenu, 0.15, 0.8024033876;
+      ContextMenu, 0.15, 0.8024033876; Dialog, 0.2, 0.6846431875 ]
+
+
 let test_popup_declared_tracks () =
   let h = transition_host "opacity 250ms linear, transform 0.5s linear 100ms" in
   motion_frame h 0.;
@@ -523,6 +553,7 @@ let () =
                     test_case "declared popup reversal" `Quick test_popup_transition_reversal;
                     test_case "declared popup refresh" `Quick test_popup_transition_refresh;
                     test_case "invalid popup time" `Quick test_popup_invalid_time;
+                    test_case "surface motion defaults" `Quick test_surface_motion_defaults;
                     test_case "split transition" `Quick test_split_transition;
                     test_case "split reversal and removal" `Quick test_split_reversal_and_removal;
                     test_case "reduced motion and drag" `Quick test_split_reduced_motion_and_drag]);

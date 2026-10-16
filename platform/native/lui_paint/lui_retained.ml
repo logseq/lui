@@ -203,9 +203,12 @@ let surface_timings declaration kind =
         | "dialog" | "alert" | "sheet" | "drawer" -> 0.2
         | _ -> 0.15
       in
-      let timing =
-        { duration; delay = 0.; easing = Bezier (0., 0., 0.58, 1.) }
+      let easing =
+        match kind with
+        | "dialog" | "alert" | "sheet" | "drawer" -> Bezier (0., 0., 0.58, 1.)
+        | _ -> Bezier (0.25, 0.1, 0.25, 1.)
       in
+      let timing = { duration; delay = 0.; easing } in
       (timing, timing)
   | Some declaration ->
       let immediate = { duration = 0.; delay = 0.; easing = Linear } in

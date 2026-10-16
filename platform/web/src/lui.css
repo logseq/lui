@@ -800,13 +800,13 @@ body {
     overscroll-behavior: contain;
     opacity: 1;
     transform: scale(1);
-    transition: transform 100ms ease-out, opacity 100ms ease-out;
+    transition: transform 200ms ease-out, opacity 200ms ease-out;
   }
 
   .lui-dialog[data-starting-style],
   .lui-dialog[data-ending-style] {
     opacity: 0;
-    transform: scale(0.98);
+    transform: scale(0.95);
   }
 
   .lui-dialog-title {
@@ -1027,10 +1027,10 @@ body {
     box-shadow: 0.25rem 0.25rem 0 var(--lui-foreground);
     pointer-events: auto;
     z-index: 1;
-    transform-origin: top left;
+    transform-origin: center;
     transition-property: opacity, transform;
-    transition-duration: 120ms;
-    transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+    transition-duration: 150ms;
+    transition-timing-function: ease;
   }
 
   .lui-dropdown-menu:not([data-open]):not([data-ending-style]) {
@@ -1044,7 +1044,7 @@ body {
   .lui-dropdown-menu[data-starting-style],
   .lui-dropdown-menu[data-ending-style] {
     opacity: 0;
-    transform: scale(0.96);
+    transform: scale(0.95);
   }
 
   .lui-combobox-status {
@@ -1064,10 +1064,10 @@ body {
     overflow: auto;
     pointer-events: auto;
     z-index: 1;
-    transform-origin: top left;
+    transform-origin: center;
     transition-property: opacity, transform;
-    transition-duration: 120ms;
-    transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+    transition-duration: 150ms;
+    transition-timing-function: ease;
   }
 
   .lui-popover[role="menu"] {
@@ -1085,7 +1085,7 @@ body {
   .lui-popover[data-starting-style],
   .lui-popover[data-ending-style] {
     opacity: 0;
-    transform: scale(0.96);
+    transform: scale(0.95);
   }
 
   /* cover mode: a popover with no position props spans the viewport */

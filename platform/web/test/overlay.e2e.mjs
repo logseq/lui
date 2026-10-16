@@ -43,6 +43,13 @@ test("surface exits wait for all tracks without retaining zero-motion or reopene
   assert.equal(result.pass, true, JSON.stringify(result, null, 2))
 })
 
+test("popup and dialog defaults use the centered shared motion policy", async () => {
+  await openLayerRegressionPage()
+  await clickButton('Run surface motion style audit')
+  const result = JSON.parse(await session.page.locator('#style-audit-result').textContent())
+  assert.equal(result.pass, true, JSON.stringify(result, null, 2))
+})
+
 test("Untitled dialog paints and focuses its content and dismisses on Escape", async () => {
   await openLayerRegressionPage()
   await evaluate('window.audit.openDialog("untitled")')
