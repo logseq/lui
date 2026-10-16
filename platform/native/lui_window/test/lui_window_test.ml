@@ -8,6 +8,24 @@ open Lui_protocol
 open Lui_window
 open Lui_window_demo
 
+let test_css_percentage_colors () =
+  List.iter
+    (fun (css, (r, g, b, a)) ->
+      let actual = Option.get (Theme.color_of css) in
+      Alcotest.(check int) (css ^ " alpha") a actual.a;
+      Alcotest.(check int) (css ^ " red") r actual.r;
+      Alcotest.(check int) (css ^ " green") g actual.g;
+      Alcotest.(check int) (css ^ " blue") b actual.b)
+    [
+      ("rgb(18 52 86 / 50%)", (18, 52, 86, 128));
+      ("rgba(18, 52, 86, 0.5)", (18, 52, 86, 128));
+      ("hsl(0 0% 100% / 50%)", (255, 255, 255, 128));
+      ("hsla(0, 0%, 100%, 0.5)", (255, 255, 255, 128));
+      ("rgb(50% 50% 50%)", (128, 128, 128, 255));
+      ("rgb(0% 50% 100% / 0%)", (0, 128, 255, 0));
+      ("rgb(0% 50% 100% / 100%)", (0, 128, 255, 255));
+    ]
+
 (* ---------- store helpers ---------- *)
 
 let store_of ops =
@@ -3375,7 +3393,8 @@ let () =
             test_assembly_scroll_shows_in_paint;
           Alcotest.test_case "autofocus" `Quick test_assembly_autofocus ] );
       ( "parity",
-        [ Alcotest.test_case "win32 key table" `Quick
+        [ Alcotest.test_case "CSS percentage colors" `Quick test_css_percentage_colors;
+          Alcotest.test_case "win32 key table" `Quick
             test_win32_key_parity;
           Alcotest.test_case "win32 accelerators" `Quick
             test_win32_accelerators ] ) ]

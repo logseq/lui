@@ -1659,7 +1659,7 @@ module Theme = struct
         float_of_string_opt
           (if pct then String.sub t 0 (String.length t - 1) else t)
       with
-      | Some v -> Some (int_of_float (Float.round (if pct then v *. 2.55 else v)))
+      | Some v -> Some (int_of_float (Float.round (if pct then v /. 100. *. 255. else v)))
       | None -> None
     in
     let alpha t =
@@ -1672,7 +1672,7 @@ module Theme = struct
         Some
           (int_of_float
              (Float.round
-                (if pct then v *. 2.55
+                (if pct then v /. 100. *. 255.
                  else if v <= 1. then v *. 255.
                  else v)))
       | None -> None
