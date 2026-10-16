@@ -253,37 +253,27 @@ let shorthand_lengths ~scale s =
   | [ t; r; b; l ] -> Some (t, r, b, l)
   | _ -> None
 
-(* padding / padding-horizontal / padding-vertical → flex padding edges.
-   The uniform prop also accepts a string shorthand. *)
-let padding_edges ~scale store id : Lui_flex.edges =
+(* Uniform edge props accept either a number or the CSS 1–4-value shorthand. *)
+let uniform_edges ~scale store id name : Lui_flex.edges =
   let base = Lui_flex.edges_auto in
-  let base =
-    match Lui_store.prop store id "padding" with
-    | Some (StringValue s) -> (
-      match shorthand_lengths ~scale s with
-      | Some (t, r, b, l) -> { base with top = t; right = r; bottom = b; left = l }
-      | None -> base)
-    | Some _ -> { base with all = length_prop ~scale store id "padding" }
-    | None -> base
-  in
+  match Lui_store.prop store id name with
+  | Some (StringValue s) -> (
+    match shorthand_lengths ~scale s with
+    | Some (t, r, b, l) -> { base with top = t; right = r; bottom = b; left = l }
+    | None -> base)
+  | Some _ -> { base with all = length_prop ~scale store id name }
+  | None -> base
+
+(* Axis props override the uniform padding shorthand. *)
+let padding_edges ~scale store id : Lui_flex.edges =
+  let base = uniform_edges ~scale store id "padding" in
   { base with
     horizontal = length_prop ~scale store id "padding-horizontal";
     vertical = length_prop ~scale store id "padding-vertical" }
 
-(* margin family → flex margin edges, same resolution order as
-   padding: shorthand on the uniform prop, then per-axis and per-side
-   props win. *)
+(* Axis and side props override the uniform margin shorthand. *)
 let margin_edges ~scale store id : Lui_flex.edges =
-  let base = Lui_flex.edges_auto in
-  let base =
-    match Lui_store.prop store id "margin" with
-    | Some (StringValue s) -> (
-      match shorthand_lengths ~scale s with
-      | Some (t, r, b, l) -> { base with top = t; right = r; bottom = b; left = l }
-      | None -> base)
-    | Some _ -> { base with all = length_prop ~scale store id "margin" }
-    | None -> base
-  in
+  let base = uniform_edges ~scale store id "margin" in
   let base =
     { base with
       horizontal = length_prop ~scale store id "margin-horizontal";
@@ -595,6 +585,7 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
          | Unset -> lp "max-height"
          | l -> l);
       padding = title_pad ~scale store id kind (padding_edges ~scale store id);
+      border = uniform_edges ~scale store id "border-width";
       margin = margin_edges ~scale store id;
       position;
       row_gap =

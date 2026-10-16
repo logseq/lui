@@ -40,7 +40,7 @@ let mask_has m f = m land f <> 0
 (* The props [Lui_layout] reads, directly or through a parent. Keep in
    sync with style_of/adjust/text_of/ordered_child_ids/refine_popups. *)
 let layout_prop_names =
-  [ "alignment"; "anchor"; "anchor-alignment"; "anchor-offset"; "x"; "y";
+  [ "border-width"; "alignment"; "anchor"; "anchor-alignment"; "anchor-offset"; "x"; "y";
     "columns"; "container-relative-frame"; "container-relative-frame-inset";
     "cross"; "main"; "description"; "edge"; "flex-wrap"; "gap"; "row-gap";
     "column-gap"; "grow";
@@ -76,7 +76,7 @@ let child_props =
    conservative layout|paint default. *)
 let paint_prop_names =
   [ "background"; "foreground"; "opacity"; "shadow"; "corner-radius";
-    "border-color"; "border-width"; "border-style"; "z-index";
+    "border-color"; "border-style"; "z-index";
     "cursor"; "caret-color"; "tint"; "image"; "name"; "src"; "fit";
     "blend-mode"; "secure"; "style-class"; "variant"; "placement";
     "autofocus"; "submit-on-enter"; "scroll-x"; "scroll-y";

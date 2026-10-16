@@ -377,7 +377,7 @@ let kind_property_matrix kind =
 
 let kind_extra_properties kind =
   match kind with
-  | Dialog -> [ DescriptionValue ]
+  | Dialog -> [ DescriptionValue; BackgroundValue; BorderColorValue; BorderWidth; CornerRadius ]
   | _ -> []
 
 let all_node_kinds = [ Root; Row; Column; Grid; Stack; EdgeInset; Overlay; ViewThatFits; Panel; Card; Alert; Bubble; Box; Text; Heading; Paragraph; Label; Button; ToggleButton; Toggle; RadioGroup; Radio; Slider; NumberStepper; TextField; SecureField; Input; SearchField; Textarea; Checkbox; SwitchControl; Progress; Divider; Scroll; ListContainer; VirtualList; Tabs; BottomTabs; BottomTab; ButtonGroup; ToggleGroup; Spacer; Spinner; Icon; Select; Combobox; DropdownMenu; ContextMenu; MenuItem; MenuTrigger; ListItem; Avatar; Image; MediaSurface; Stepper; Step; Timeline; TimelineItem; InputGroup; InputGroupActions; Breadcrumb; Pagination; Accordion; Table; TableRow; TableCell; Tree; Resizable; Split; Dialog; Drawer; Sheet; Tooltip; Toast; Toolbar; StatusBar; ListSection; ListSectionHeader; ListSectionFooter; SwipeActions; SwipeAction; FilePicker; Kbd; Link; FileImage; FilePreview; Br; Popover ]

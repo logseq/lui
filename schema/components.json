@@ -2045,7 +2045,11 @@
   },
   "kindExtraProperties": {
     "dialog": [
-      "description"
+      "description",
+      "background",
+      "border-color",
+      "border-width",
+      "corner-radius"
     ]
   }
 }

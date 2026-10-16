@@ -59,6 +59,53 @@ let test_column_padding_gap () =
   check_rect "child1" 10. 10. 180. 20. (place p 3);
   check_rect "child2" 10. 35. 180. 20. (place p 4)
 
+let test_border_box_layout () =
+  List.iter
+    (fun scale ->
+      let store = Lui_store.create () and layout = Lui_layout.create () in
+      apply store
+        [
+          CreateNode (1, Root);
+          CreateNode (2, Column);
+          CreateNode (3, Box);
+          InsertChild (1, 2, 0);
+          InsertChild (2, 3, 0);
+          SetProp (2, WidthValue, IntValue 100);
+          SetProp (2, HeightValue, IntValue 80);
+          SetProp (2, PaddingValue, IntValue 5);
+          SetProp (3, GrowValue, FloatValue 1.);
+        ];
+      let sync () =
+        Lui_layout.sync ~scale ~width:(200. *. scale) ~height:(120. *. scale)
+          layout store
+      in
+      let expect label (top, right, bottom, left) =
+        sync ();
+        (* Exported geometry snaps edges to physical pixels. *)
+        let x = Float.round ((5. +. left) *. scale) in
+        let y = Float.round ((5. +. top) *. scale) in
+        check_some_rect label x y
+          (Float.round ((95. -. right) *. scale) -. x)
+          (Float.round ((75. -. bottom) *. scale) -. y)
+          (Lui_layout.rect layout 3)
+      in
+      List.iter
+        (fun (value, edges) ->
+          apply store [ SetProp (2, BorderWidth, value) ];
+          expect "border insets the child" edges)
+        [
+          (IntValue 3, (3., 3., 3., 3.));
+          (FloatValue 1.5, (1.5, 1.5, 1.5, 1.5));
+          (StringValue "1 2 3 4", (1., 2., 3., 4.));
+          (IntValue 6, (6., 6., 6., 6.));
+          (IntValue 0, (0., 0., 0., 0.));
+        ];
+      let revision = Lui_store.layout_rev store in
+      apply store [ SetProp (2, BorderColorValue, StringValue "red") ];
+      check int "border color remains paint-only" revision
+        (Lui_store.layout_rev store))
+    [ 1.; 2. ]
+
 (* Grid = horizontal flow that wraps: columns=2 → two cells per row. *)
 let test_grid_wraps () =
   let store = Lui_store.create () in
@@ -1100,6 +1147,7 @@ let () =
   run "lui_layout"
     [ ("layout",
        [ test_case "column padding/gap" `Quick test_column_padding_gap;
+         test_case "border box layout" `Quick test_border_box_layout;
          test_case "split divider fraction" `Quick test_split_gap_fraction;
          test_case "grid wraps" `Quick test_grid_wraps;
          test_case "grid gap fits" `Quick test_grid_gap_fits_columns;

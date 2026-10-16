@@ -1305,7 +1305,9 @@ let property_supported kind property =
         ; PointerEnabled
         ]
     | Dialog ->
-      property = DescriptionValue || common_property_supported kind property
+      List.mem property
+        [DescriptionValue; BackgroundValue; BorderColorValue; BorderWidth; CornerRadius]
+      || common_property_supported kind property
     | FilePreview ->
       property = PathValue || property = PointerEnabled
     | _ -> common_property_supported kind property

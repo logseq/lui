@@ -2751,6 +2751,37 @@ let test_visual_appearance_props () =
       (DisabledOpacity, FloatValue 0.5);
       (MaxHeightViewport, FloatValue 0.65) ]
 
+let test_dialog_chrome_props () =
+  let open Lui_protocol in
+  let node = ref 0 in
+  let app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _ -> model)
+      (fun _ _ _ ->
+        capture_node node
+          (Lui_elements.dialog ~background:"#ffffff" ~border_color:"#ebeaeb"
+             ~border_width:1 ~corner_radius:8 []))
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  List.iter
+    (fun (property, value) ->
+      Alcotest.(check bool)
+        ("dialog emits " ^ Lui_wire_schema.property_name property)
+        true
+        (List.exists
+           (function
+             | SetProp (id, p, v) -> id = !node && p = property && v = value
+             | _ -> false)
+           (all_ops ())))
+    [
+      (BackgroundValue, StringValue "#ffffff");
+      (BorderColorValue, StringValue "#ebeaeb");
+      (BorderWidth, IntValue 1);
+      (CornerRadius, IntValue 8);
+    ];
+  ignore (Lui_app.dispose app)
+
 let test_property_matrix_sync () =
   (* property_supported's restrictive arms and additive extras must mirror
      schema/components.json (kindProperties / kindExtraProperties) as emitted
@@ -3969,6 +4000,7 @@ let () =
             test_property_matrix_sync;
           Alcotest.test_case "visual appearance props" `Quick
             test_visual_appearance_props;
+          Alcotest.test_case "dialog chrome props" `Quick test_dialog_chrome_props;
           Alcotest.test_case "data-attrs protocol" `Quick
             test_data_attrs_protocol;
           Alcotest.test_case "finite float encoding" `Quick

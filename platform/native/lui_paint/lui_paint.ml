@@ -51,7 +51,7 @@ let prop_coverage =
     ("background", Painted);
     ("foreground", Painted);
     ("border-color", Painted); (* CSS shorthand, 1–4 colors *)
-    ("border-width", Painted); (* CSS shorthand, 1–4 lengths *)
+    ("border-width", Painted); (* CSS shorthand, 1–4 lengths; also insets layout *)
     ("corner-radius", Painted);
     ("width", Layout);
     ("height", Layout);

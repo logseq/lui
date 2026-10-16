@@ -195,6 +195,7 @@ val context_menu_leaf_host_kind : node_kind -> bool
 val event_supported : node_kind -> event -> bool
 val true_property : wire_value Property_map.t -> property -> bool
 val treeitem_properties : wire_value Property_map.t -> bool
+val event_supported_for_lookup : node_kind -> (property -> wire_value option) -> event -> bool
 val event_supported_for_properties : node_kind -> wire_value Property_map.t -> event -> bool
 val container_relative_frame_supported : string -> bool
 val orientation_supported : string -> bool
