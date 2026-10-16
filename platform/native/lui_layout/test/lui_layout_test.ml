@@ -336,6 +336,38 @@ let test_popup_collision_flip () =
   let p = Lui_layout.run store ~measure:no_measure ~width:200. ~height:160. in
   check_rect "oversized popup stays in frame" 140. 0. 60. 140. (place p 2)
 
+let test_popup_inside_centered_dialog () =
+  List.iter (fun scale ->
+    let store=Lui_store.create () and layout=Lui_layout.create () in
+    apply store [CreateNode (1,Root);CreateNode (2,Dialog);CreateNode (3,Column);
+      CreateNode (4,Spacer);CreateNode (5,Box);InsertChild (1,2,0);
+      InsertChild (2,3,0);InsertChild (3,4,0);InsertChild (3,5,1);
+      SetProp (2,WidthValue,IntValue 600);SetProp (2,HeightValue,IntValue 400);
+      SetProp (2,PaddingValue,IntValue 24);SetProp (4,HeightValue,IntValue 100);
+      SetProp (5,WidthValue,IntValue 200);SetProp (5,HeightValue,IntValue 32)];
+    let sync width height = Lui_layout.sync ~scale ~width:(width*.scale)
+      ~height:(height*.scale) layout store in
+    sync 800. 600.;
+    apply store [CreateNode (6,DropdownMenu);InsertChild (5,6,0);
+      SetProp (6,WidthValue,IntValue 180);SetProp (6,HeightValue,IntValue 120);
+      SetProp (6,AnchorValue,StringValue "below")];
+    sync 800. 600.;
+    let rect id=Option.get (Lui_layout.rect layout id) in
+    let anchor=rect 5 and popup=rect 6 in
+    check (float eps) "nested popup follows final trigger x" anchor.x popup.x;
+    check (float eps) "nested popup follows final trigger y"
+      (anchor.y+.anchor.h+.4.*.scale) popup.y;
+    apply store [SetProp (6,HeightValue,IntValue 500)];
+    sync 800. 600.;
+    let popup=rect 6 in
+    check bool "nested tall popup stays in viewport" true
+      (popup.y>=0. && popup.y+.popup.h<=600.*.scale+.eps);
+    sync 640. 480.;
+    let popup=rect 6 in
+    check bool "nested popup remains bounded after resize" true
+      (popup.x>=0. && popup.y>=0. && popup.x+.popup.w<=640.*.scale+.eps
+       && popup.y+.popup.h<=480.*.scale+.eps)) [1.;2.]
+
 (* A menu-trigger's dropdown panel: hidden until opened, then anchored
    below the trigger with its items stacked inside. *)
 let test_menu_panel () =
@@ -1047,6 +1079,7 @@ let () =
          test_case "popup centered" `Quick test_popup_default_centered;
          test_case "root popup" `Quick test_root_popup_centered_in_frame;
          test_case "popup collision flip" `Quick test_popup_collision_flip;
+         test_case "popup in centered dialog" `Quick test_popup_inside_centered_dialog;
          test_case "menu panel" `Quick test_menu_panel;
          test_case "ac row" `Quick test_ac_row;
          test_case "vlist window" `Quick test_vlist_window_mounts_slice;

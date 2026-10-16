@@ -1295,6 +1295,29 @@ let refine_popups ctx =
   (* Bottom y of the last placed toast per containing block, so a
      viewport's toasts stack downward like the web viewport. *)
   let toast_next = Hashtbl.create 2 in
+  (* Ancestor surfaces are positioned before the final flex pass. Resolve
+     descendant anchors in that final coordinate space, especially when a
+     viewport collision clamps a menu inside a newly centered dialog. *)
+  let placed = Hashtbl.create 4 in
+  let final_rect sid node =
+    match Hashtbl.find_opt placed sid with
+    | Some r -> r
+    | None ->
+      let r = Lui_flex.absolute_layout node in
+      let rec displacement id =
+        match Hashtbl.find_opt ctx.owner id with
+        | None -> 0.,0.
+        | Some parent when parent = frame_id -> 0.,0.
+        | Some parent ->
+          match Hashtbl.find_opt placed parent with
+          | None -> displacement parent
+          | Some target ->
+            let before = Lui_flex.absolute_layout (Hashtbl.find ctx.nodes parent) in
+            target.Lui_flex.x -. before.x, target.y -. before.y
+      in
+      let dx,dy = displacement sid in
+      {r with Lui_flex.x=r.x+.dx; y=r.y+.dy}
+  in
   List.iter
     (fun (pnode, sid) ->
       match Lui_flex.parent pnode with
@@ -1310,7 +1333,7 @@ let refine_popups ctx =
         let pr, pstyle_opt =
           match psid_opt with
           | Some psid ->
-            ( Lui_flex.absolute_layout parent,
+            ( final_rect psid parent,
               Hashtbl.find_opt ctx.applied psid )
           | None ->
             (* The frame root is no store node's containing block —
@@ -1345,7 +1368,7 @@ let refine_popups ctx =
             | Some (a : Lui_flex.style)
               when a.position_type = Lui_flex.Absolute -> (
               match Hashtbl.find_opt ctx.nodes id with
-              | Some n -> Some (Lui_flex.absolute_layout n)
+              | Some n -> Some (final_rect id n)
               | None -> None)
             | _ -> (
               match Lui_store.parent ctx.store id with
@@ -1485,6 +1508,9 @@ let refine_popups ctx =
               | h -> h)
             | _ -> Pt prp.h
           in
+          Hashtbl.replace placed sid
+            {prp with Lui_flex.x=pr.x+.bor_l+.ml+.left;
+              y=pr.y+.bor_t+.mt+.top};
           Lui_flex.set_style pnode
             { pstyle with
               width = Pt prp.w;
