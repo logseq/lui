@@ -454,8 +454,11 @@ let units_of_line ~em ~wrap ~rtl ~next_start ~breaks (l : line) =
   end
   else base_arr
 
-let layout_of_lines ?breaks ?(width = 0.) ?(rtl = false) f s
+let layout_of_lines ?breaks ?(width = 0.) ?(rtl = false) ?line_height f s
     (lines : line array) =
+  Option.iter (fun value ->
+    if not (Float.is_finite value) || value < 0. then
+      invalid_arg "line_height must be finite and nonnegative") line_height;
   let breaks =
     match breaks with
     | Some b -> b
@@ -468,7 +471,8 @@ let layout_of_lines ?breaks ?(width = 0.) ?(rtl = false) f s
     Array.init n
       (fun i ->
          let l = lines.(i) in
-         let h = l.ascent +. l.descent +. l.leading in
+         let natural = l.ascent +. l.descent +. l.leading in
+         let h = Option.value ~default:natural line_height in
          let next_start =
            if i + 1 < n then lines.(i + 1).start else -1
          in
@@ -476,7 +480,7 @@ let layout_of_lines ?breaks ?(width = 0.) ?(rtl = false) f s
            ~breaks l in
          let lb =
            { ll_line = l; ll_top = !y; ll_height = h;
-             ll_baseline = !y +. l.ascent; ll_units = units }
+             ll_baseline = !y +. (h -. natural) /. 2. +. l.ascent; ll_units = units }
          in
          if l.width > !w then w := l.width;
          y := !y +. h;
@@ -486,11 +490,11 @@ let layout_of_lines ?breaks ?(width = 0.) ?(rtl = false) f s
     lay_lines = lbs; lay_width = !w; lay_height = !y;
     lay_breaks = breaks }
 
-let layout ?(width = 0.) ?(rtl = false) ?breaks f s =
-  layout_of_lines ?breaks ~width ~rtl f s (shape ~width ~rtl f s)
+let layout ?(width = 0.) ?(rtl = false) ?breaks ?line_height f s =
+  layout_of_lines ?breaks ~width ~rtl ?line_height f s (shape ~width ~rtl f s)
 
-let layout_spans ?(width = 0.) ?(rtl = false) ?breaks f spans =
-  layout_of_lines ?breaks ~width ~rtl f (span_text spans)
+let layout_spans ?(width = 0.) ?(rtl = false) ?breaks ?line_height f spans =
+  layout_of_lines ?breaks ~width ~rtl ?line_height f (span_text spans)
     (shape_spans ~width ~rtl f spans)
 
 (* ---- caret, hit-testing, selection ---- *)
@@ -778,7 +782,7 @@ let truncate ?(mode = `End) ?(rtl = false) ~width f s =
 (* Shaped layouts are expensive; editing paths measure often and paint
    sometimes, so the cache is measure-first: [measure] populates the
    same entry a later [layout] reuses. Entries keyed by
-   (text, wrap width, direction, font, span signature) live in an LRU;
+   (text, wrap width, direction, line height, font, span signature) live in an LRU;
    an entry whose text exceeds [max_bytes] is built but not kept, so a
    giant paragraph can't evict everything else. *)
 module Cache = struct
@@ -789,7 +793,7 @@ module Cache = struct
 
   type key =
     | K_sentinel
-    | K of string * float * bool * font * span_sig
+    | K of string * float * bool * float option * font * span_sig
 
   (* Intrusive doubly-linked list behind the table: head.next is the
      hottest entry, head.prev the eviction candidate. *)
@@ -870,12 +874,12 @@ module Cache = struct
       end;
       v
 
-  let layout t ?(rtl = false) ?(width = 0.) f s =
-    get t ~key:(K (s, width, rtl, f, [])) ~text_len:(String.length s)
-      (fun () -> layout ~width ~rtl f s)
+  let layout t ?(rtl = false) ?(width = 0.) ?line_height f s =
+    get t ~key:(K (s, width, rtl, line_height, f, [])) ~text_len:(String.length s)
+      (fun () -> layout ~width ~rtl ?line_height f s)
 
-  let measure t ?(rtl = false) ?(width = 0.) f s =
-    let l = layout t ~rtl ~width f s in
+  let measure t ?(rtl = false) ?(width = 0.) ?line_height f s =
+    let l = layout t ~rtl ~width ?line_height f s in
     (l.lay_width, l.lay_height)
 
   let sig_of_spans spans =
@@ -886,9 +890,9 @@ module Cache = struct
           int_of_float (sp.style.skern *. 1024.), sp.style.sunder))
       spans
 
-  let layout_spans t ?(rtl = false) ?(width = 0.) f spans =
+  let layout_spans t ?(rtl = false) ?(width = 0.) ?line_height f spans =
     let s = span_text spans in
-    get t ~key:(K (s, width, rtl, f, sig_of_spans spans))
+    get t ~key:(K (s, width, rtl, line_height, f, sig_of_spans spans))
       ~text_len:(String.length s)
-      (fun () -> layout_spans ~width ~rtl f spans)
+      (fun () -> layout_spans ~width ~rtl ?line_height f spans)
 end

@@ -741,6 +741,66 @@ let test_cache_span_keys () =
   let _, misses = Cache.stats c in
   Alcotest.(check int) "both missed" 2 misses
 
+let test_explicit_line_height () =
+  let text = "a\na" in
+  let natural = layout sys text in
+  List.iter
+    (fun pitch ->
+      let styled = layout ~line_height:pitch sys text in
+      Alcotest.(check bool)
+        "line count preserved" true
+        (Array.length styled.lay_lines = Array.length natural.lay_lines);
+      Array.iteri
+        (fun i line ->
+          Alcotest.(check bool)
+            "line boxes use the requested pitch" true
+            (near line.ll_top (float i *. pitch) && near line.ll_height pitch);
+          let original = natural.lay_lines.(i) in
+          let h = original.ll_height in
+          Alcotest.(check bool)
+            "baseline includes signed half-leading" true
+            (near line.ll_baseline
+               ((float i *. pitch)
+               +. ((pitch -. h) /. 2.)
+               +. original.ll_line.ascent)))
+        styled.lay_lines;
+      Alcotest.(check bool)
+        "total height follows the line boxes" true
+        (near styled.lay_height (2. *. pitch));
+      let caret = caret_rect styled 2 in
+      Alcotest.(check bool)
+        "caret follows the second line box" true
+        (near caret.ry pitch && near caret.rh pitch);
+      if pitch > 0. then
+        Alcotest.(check int)
+          "hit follows styled line box" 2
+          (hit_test styled (0., pitch *. 1.5)))
+    [ 0.; 10.; 28.; 40. ];
+  let cache = Cache.create 4 in
+  let first = Cache.layout cache ~line_height:28. sys text in
+  let second = Cache.layout cache ~line_height:40. sys text in
+  Alcotest.(check bool)
+    "line height participates in the cache key" true
+    (first != second && near second.lay_height 80.);
+  Alcotest.(check bool)
+    "unchanged styles reuse their cached layout" true
+    (first == Cache.layout cache ~line_height:28. sys text);
+  let _, height = Cache.measure cache ~line_height:40. sys text in
+  Alcotest.(check bool)
+    "cached measure shares styled height" true (near height 80.);
+  let spans =
+    [ { text; style = default_style; range = (0, String.length text) } ]
+  in
+  let sp = Cache.layout_spans cache ~line_height:30. sys spans in
+  Alcotest.(check bool)
+    "rich spans retain styled line boxes" true (near sp.lay_height 60.);
+  List.iter
+    (fun invalid ->
+      Alcotest.check_raises "invalid line height fails fast"
+        (Invalid_argument "line_height must be finite and nonnegative")
+        (fun () -> ignore (layout ~line_height:invalid sys text)))
+    [ -1.; Float.nan; Float.infinity ]
+
 let () =
   let open Alcotest in
   run "lui_text"
@@ -777,7 +837,8 @@ let () =
           test_case "thick" `Quick test_glyph_thick;
           test_case "many sizes" `Quick test_fonts_many_sizes ] );
       ( "editing",
-        [ test_case "caret edges" `Quick test_caret_edges;
+        [ test_case "explicit line height" `Quick test_explicit_line_height;
+          test_case "caret edges" `Quick test_caret_edges;
           test_case "hit edges" `Quick test_hit_edges;
           test_case "ligature" `Quick test_ligature;
           test_case "rtl model" `Quick test_rtl_model;
