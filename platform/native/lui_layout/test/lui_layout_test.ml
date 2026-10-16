@@ -1354,6 +1354,102 @@ let test_split_gap_fraction () =
         [ 0.; 0.25; 0.7; 1. ])
     [ 1.; 2. ]
 
+let test_select_menu_alignment () =
+  List.iter
+    (fun scale ->
+      List.iter
+        (fun (selected, unavailable, expected) ->
+          let store = Lui_store.create () and layout = Lui_layout.create () in
+          apply store
+            [
+              CreateNode (1, Root);
+              CreateNode (2, Dialog);
+              CreateNode (3, Box);
+              CreateNode (4, Select);
+              CreateNode (5, DropdownMenu);
+              InsertChild (1, 2, 0);
+              InsertChild (2, 3, 0);
+              InsertChild (3, 4, 0);
+              InsertChild (3, 5, 1);
+              SetProp (2, WidthValue, IntValue 400);
+              SetProp (2, HeightValue, IntValue 300);
+              SetProp (2, PaddingValue, IntValue 32);
+              SetProp (3, WidthValue, IntValue 256);
+              SetProp (3, HeightValue, IntValue 32);
+              SetProp (4, WidthValue, IntValue 256);
+              SetProp (4, HeightValue, IntValue 32);
+              SetProp (5, WidthValue, IntValue 190);
+              SetProp (5, PaddingValue, IntValue 4);
+              SetProp (5, BorderWidth, IntValue 1);
+              SetProp (5, AnchorValue, StringValue "below");
+            ];
+          for index = 0 to 3 do
+            let id = index + 6 in
+            apply store
+              [
+                CreateNode (id, MenuItem);
+                InsertChild (5, id, index);
+                SetProp (id, HeightValue, IntValue 32);
+                SetProp (id, Selected, BoolValue (Some index = selected));
+                SetProp (id, SelectionPlacementValue, StringValue "leading");
+              ]
+          done;
+          Option.iter
+            (fun (property, value) ->
+              apply store [ SetProp (7, property, value) ])
+            unavailable;
+          let rect id = Option.get (Lui_layout.rect layout id) in
+          let sync width height =
+            Lui_layout.sync ~scale ~width:(width *. scale)
+              ~height:(height *. scale) layout store
+          in
+          let label id =
+            let r = rect id and p = Lui_paint.text_placement_of store id in
+            ( r.x +. (p.tp_pad_left *. scale),
+              r.y
+              +. ((r.h +. ((p.tp_pad_top -. p.tp_pad_bottom) *. scale)) /. 2.)
+            )
+          in
+          let aligned () =
+            let tx, ty = label 4 and ix, iy = label (6 + expected) in
+            check (float 0.6) "selected label aligns with the trigger" tx ix;
+            check (float 0.6) "selected row centers on the trigger" ty iy
+          in
+          sync 800. 600.;
+          aligned ();
+          sync 1000. 700.;
+          aligned ();
+          Lui_layout.invalidate layout;
+          sync 1000. 700.;
+          aligned ();
+          (* When overlapping cannot fit, retain the ordinary clamped popup. *)
+          sync 400. 320.;
+          let popup = rect 5 in
+          check bool "small viewport retains accessible menu bounds" true
+            (popup.x >= 0. && popup.y >= 0.
+            && popup.x +. popup.w <= 400. *. scale
+            && popup.y +. popup.h <= 320. *. scale);
+          check (float eps) "edge collision keeps below-trigger placement"
+            ((rect 4).y +. (rect 4).h +. (4. *. scale))
+            popup.y;
+          apply store
+            [
+              SetProp (5, Position, StringValue "fixed");
+              SetProp (5, PopupX, FloatValue 100.);
+              SetProp (5, PopupY, FloatValue 200.);
+            ];
+          sync 1000. 700.;
+          check (float eps) "explicit point keeps ordinary placement"
+            (204. *. scale) (rect 5).y)
+        [
+          (None, None, 0);
+          (Some 0, None, 0);
+          (Some 1, None, 1);
+          (Some 3, None, 3);
+          (Some 1, Some (Enabled, BoolValue false), 0);
+        ])
+    [ 1.; 2. ]
+
 let test_menu_height_cap () =
   List.iter
     (fun scale ->
@@ -1514,6 +1610,7 @@ let () =
          test_case "popup collision flip" `Quick test_popup_collision_flip;
          test_case "popup in centered dialog" `Quick test_popup_inside_centered_dialog;
          test_case "menu panel" `Quick test_menu_panel;
+         test_case "select menu alignment" `Quick test_select_menu_alignment;
          test_case "menu height cap" `Quick test_menu_height_cap;
          test_case "menu role layout" `Quick test_menu_role_layout;
          test_case "ac row" `Quick test_ac_row;

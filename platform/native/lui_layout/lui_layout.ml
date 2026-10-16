@@ -1319,6 +1319,61 @@ let refine_popups ctx =
       let dx,dy = displacement sid in
       {r with Lui_flex.x=r.x+.dx; y=r.y+.dy}
   in
+  let select_alignment sid parent (popup : Lui_flex.rect) =
+    if
+      Lui_store.kind ctx.store sid <> "dropdown-menu"
+      || has_prop ctx.store sid "x" || has_prop ctx.store sid "y"
+    then None
+    else
+      let picker =
+        List.find_opt
+          (fun id ->
+            Lui_store.kind ctx.store id = "select" && Hashtbl.mem ctx.nodes id)
+          (Lui_store.child_ids ctx.store parent)
+      in
+      let items =
+        List.filter
+          (fun id ->
+            Lui_store.kind ctx.store id = "menu-item"
+            && Lui_store.prop ctx.store id "enabled" <> Some (BoolValue false)
+            && Hashtbl.mem ctx.nodes id)
+          (Lui_store.child_ids ctx.store sid)
+      in
+      let selected =
+        match
+          List.find_opt
+            (fun id -> Lui_store.bool_prop ctx.store id "selected")
+            items
+        with
+        | Some id -> Some id
+        | None -> List.nth_opt items 0
+      in
+      match (picker, selected) with
+      | Some picker, Some selected ->
+          let anchor = final_rect picker (Hashtbl.find ctx.nodes picker)
+          and item = Lui_flex.absolute_layout (Hashtbl.find ctx.nodes selected) in
+          let value = Lui_paint.text_placement_of ctx.store picker
+          and label = Lui_paint.text_placement_of ctx.store selected in
+          let s = ctx.scale in
+          let center (r : Lui_flex.rect) p =
+            r.y
+            +. ((r.h +. ((p.Lui_paint.tp_pad_top -. p.tp_pad_bottom) *. s)) /. 2.)
+          in
+          let x =
+            anchor.x +. (value.tp_pad_left *. s)
+            -. (item.x -. popup.x +. (label.tp_pad_left *. s))
+          and y = center anchor value -. (center item label -. popup.y) in
+          if
+            anchor.y >= 20. *. s
+            && anchor.y +. anchor.h <= ctx.vh -. (20. *. s)
+            && x >= 8. *. s
+            && x +. popup.w <= ctx.vw -. (8. *. s)
+            && y >= 8. *. s
+            && y +. popup.h <= ctx.vh -. (8. *. s)
+          then Some (x, y)
+          else None
+      | _ -> None
+  in
   let refine (pnode, sid) =
       match Lui_flex.parent pnode with
       | None -> ()
@@ -1477,8 +1532,10 @@ let refine_popups ctx =
           let left, top =
             if anchored then
               abs_of
-                (anchored_xy ctx ctx.store sid
-                   (anchor_rect_of ctx ctx.store sid ~cb pr) prp)
+                (match Option.bind psid_opt (fun parent -> select_alignment sid parent prp) with
+                 | Some xy -> xy
+                 | None -> anchored_xy ctx ctx.store sid
+                     (anchor_rect_of ctx ctx.store sid ~cb pr) prp)
             else
               (* Unanchored popups take their platform placement —
                  the web stylesheet's fixed rules: a context menu
