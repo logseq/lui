@@ -84,13 +84,32 @@ and frag = {
   mutable ebase : int;
 }
 
+type surface_easing =
+  | Linear
+  | Bezier of float * float * float * float
+  | Steps of int * [ `Start | `End | `None | `Both ]
+
+type surface_timing = {
+  duration : float;
+  delay : float;
+  easing : surface_easing;
+}
+
+type surface_track = {
+  from_value : float;
+  target_value : float;
+  started : float;
+  run_duration : float;
+  timing : surface_timing;
+}
+
 type surface_motion = {
   mutable snapshot : frag;
   mutable bounds : rect;
-  mutable from_alpha : float;
-  mutable target_alpha : float;
-  mutable started : float;
-  duration : float;
+  mutable opacity : surface_track;
+  mutable zoom : surface_track;
+  mutable timings : surface_timing * surface_timing;
+  mutable declaration : string option;
 }
 
 type retained = {
@@ -138,21 +157,147 @@ let create () =
     dirty = false; resync = false; mgen = 0; stat_repaints = 0; stat_visits = 0;
     vwin = Hashtbl.create 4; mounted = (fun _ -> None) }
 
+let surface_easing value =
+  let invalid () = invalid_arg ("Invalid native transition easing: " ^ value) in
+  let arguments prefix =
+    let start = String.length prefix in
+    String.sub value start (String.length value - start - 1)
+    |> String.split_on_char ',' |> List.map String.trim
+  in
+  match value with
+  | "linear" -> Linear
+  | "ease" -> Bezier (0.25, 0.1, 0.25, 1.)
+  | "ease-in" -> Bezier (0.42, 0., 1., 1.)
+  | "ease-out" -> Bezier (0., 0., 0.58, 1.)
+  | "ease-in-out" -> Bezier (0.42, 0., 0.58, 1.)
+  | "step-start" -> Steps (1, `Start)
+  | "step-end" -> Steps (1, `End)
+  | _ when String.starts_with ~prefix:"cubic-bezier(" value -> (
+      match arguments "cubic-bezier(" |> List.map float_of_string_opt with
+      | [ Some x1; Some y1; Some x2; Some y2 ]
+        when List.for_all Float.is_finite [ x1; y1; x2; y2 ]
+             && x1 >= 0. && x1 <= 1. && x2 >= 0. && x2 <= 1. ->
+          Bezier (x1, y1, x2, y2)
+      | _ -> invalid ())
+  | _ when String.starts_with ~prefix:"steps(" value -> (
+      let parts = arguments "steps(" in
+      match parts with
+      | [ count ] | [ count; "end" ] | [ count; "jump-end" ] -> (
+          match int_of_string_opt count with
+          | Some n when n > 0 -> Steps (n, `End)
+          | _ -> invalid ())
+      | [ count; mode ] -> (
+          match (int_of_string_opt count, mode) with
+          | Some n, ("start" | "jump-start") when n > 0 -> Steps (n, `Start)
+          | Some n, "jump-none" when n > 1 -> Steps (n, `None)
+          | Some n, "jump-both" when n > 0 -> Steps (n, `Both)
+          | _ -> invalid ())
+      | _ -> invalid ())
+  | _ -> invalid ()
+
+let surface_timings declaration kind =
+  match declaration with
+  | None ->
+      let duration =
+        match kind with
+        | "dialog" | "alert" | "sheet" | "drawer" -> 0.2
+        | _ -> 0.15
+      in
+      let timing =
+        { duration; delay = 0.; easing = Bezier (0., 0., 0.58, 1.) }
+      in
+      (timing, timing)
+  | Some declaration ->
+      let immediate = { duration = 0.; delay = 0.; easing = Linear } in
+      List.fold_left
+        (fun (opacity, transform) -> function
+          | (("opacity" | "transform" | "all") as property) :: tokens ->
+              let is_time token = String.ends_with ~suffix:"s" token in
+              let times, easings = List.partition is_time tokens in
+              let seconds token =
+                let millis = String.ends_with ~suffix:"ms" token in
+                let suffix = if millis then 2 else 1 in
+                float_of_string
+                  (String.sub token 0 (String.length token - suffix))
+                /. if millis then 1000. else 1.
+              in
+              let duration, delay =
+                match times with
+                | [ duration ] -> (seconds duration, 0.)
+                | [ duration; delay ] -> (seconds duration, seconds delay)
+                | _ -> invalid_arg "Invalid native transition times"
+              in
+              let easing =
+                match easings with
+                | [] -> surface_easing "ease"
+                | [ value ] -> surface_easing value
+                | _ -> invalid_arg "Invalid native transition easing list"
+              in
+              let timing = { duration; delay; easing } in
+              ( (if property = "transform" then opacity else timing),
+                if property = "opacity" then transform else timing )
+          | _ -> (opacity, transform))
+        (immediate, immediate)
+        (Lui_protocol.transition_segments declaration)
+
+let easing_value easing progress =
+  match easing with
+  | Linear -> progress
+  | Steps (count, mode) ->
+      let step = Float.floor (progress *. float count) in
+      let step =
+        step +. match mode with `Start | `Both -> 1. | `End | `None -> 0.
+      in
+      let jumps =
+        count + match mode with `None -> -1 | `Both -> 1 | `Start | `End -> 0
+      in
+      Float.max 0. (Float.min 1. (step /. float jumps))
+  | Bezier (x1, y1, x2, y2) ->
+      if progress <= 0. then 0.
+      else if progress >= 1. then 1.
+      else
+        let coordinate t a b =
+          let other = 1. -. t in
+          (3. *. other *. other *. t *. a)
+          +. (3. *. other *. t *. t *. b)
+          +. (t *. t *. t)
+        in
+        let rec solve low high remaining =
+          let t = (low +. high) /. 2. in
+          if remaining = 0 then coordinate t y1 y2
+          else if coordinate t x1 x2 < progress then solve t high (remaining - 1)
+          else solve low t (remaining - 1)
+        in
+        solve 0. 1. 20
+
+let surface_track ~now ~from_value ~target_value timing =
+  {
+    from_value;
+    target_value;
+    started = now;
+    timing;
+    (* CSS reversal shortens the run by its remaining endpoint distance. *)
+    run_duration =
+      timing.duration *. Float.min 1. (Float.abs (target_value -. from_value));
+  }
+
+let track_value now track =
+  let elapsed = now -. track.started -. track.timing.delay in
+  if elapsed < 0. then track.from_value
+  else if track.run_duration = 0. || elapsed >= track.run_duration then
+    track.target_value
+  else
+    let eased =
+      easing_value track.timing.easing (elapsed /. track.run_duration)
+    in
+    track.from_value +. ((track.target_value -. track.from_value) *. eased)
+
+let track_active now track =
+  track.from_value <> track.target_value
+  && now < track.started +. track.timing.delay +. track.run_duration
+
 let surface_alpha now motion =
-  let progress = Float.min 1. ((now -. motion.started) /. motion.duration) in
-  if progress >= 1. then motion.target_alpha
-  else begin
-    (* CSS ease-out: cubic-bezier(0, 0, 0.58, 1). *)
-    let low = ref 0. and high = ref 1. in
-    for _ = 1 to 16 do
-      let t = (!low +. !high) /. 2. in
-      let x = (1.74 *. (1. -. t) *. t *. t) +. (t *. t *. t) in
-      if x < progress then low := t else high := t
-    done;
-    let t = (!low +. !high) /. 2. in
-    let eased = (3. *. (1. -. t) *. t *. t) +. (t *. t *. t) in
-    motion.from_alpha +. ((motion.target_alpha -. motion.from_alpha) *. eased)
-  end
+  Float.max 0. (Float.min 1. (track_value now motion.opacity))
 
 let animating rt =
   match rt.now with
@@ -160,7 +305,7 @@ let animating rt =
   | Some now ->
       Hashtbl.fold
         (fun _ motion active ->
-          active || surface_alpha now motion <> motion.target_alpha)
+          active || track_active now motion.opacity || track_active now motion.zoom)
         rt.surfaces false
 
 let tick rt ~now =
@@ -791,8 +936,8 @@ let capture_surface rt scene m surface =
   snapshot.fx <- Array.of_list (List.rev local.fx_rev);
   snapshot
 
-let emit_surface scene m viewport motion alpha =
-  let zoom = 0.95 +. (0.05 *. alpha) in
+let emit_surface scene m viewport motion alpha zoom_progress =
+  let zoom = 0.95 +. (0.05 *. zoom_progress) in
   let cx = motion.bounds.x +. (motion.bounds.w /. 2.)
   and cy = motion.bounds.y +. (motion.bounds.h /. 2.) in
   let point_x x = cx +. ((x -. cx) *. zoom)
@@ -853,7 +998,7 @@ let emit_surface scene m viewport motion alpha =
   in
   let snapshot = motion.snapshot in
   let visual =
-    if alpha = 1. then snapshot
+    if zoom_progress = 1. then snapshot
     else
       {
         snapshot with
@@ -873,11 +1018,11 @@ let emit_surface scene m viewport motion alpha =
   push_buffers scene m visual;
   List.iter
     (fun op ->
-      let op = if alpha = 1. then op else transform op in
+      let op = if alpha = 1. && zoom_progress = 1. then op else transform op in
       scene.ops <- rebase visual op :: scene.ops)
     snapshot.pre
 
-let present_surfaces rt scene m viewport ~refresh live =
+let present_surfaces rt scene m viewport store ~refresh live =
   let now = Option.get rt.now in
   let seen = Hashtbl.create (List.length live) in
   List.iter
@@ -886,37 +1031,64 @@ let present_surfaces rt scene m viewport ~refresh live =
       match Hashtbl.find_opt rt.surfaces surface.self with
       | None ->
           let snapshot = capture_surface rt scene m surface in
-          let duration =
-            match surface.kind with
-            | "dialog" | "alert" | "sheet" | "drawer" -> 0.2
-            | _ -> 0.15
+          let declaration =
+            Lui_store.string_prop store surface.self "transition"
+          in
+          let opacity_timing, zoom_timing =
+            surface_timings declaration surface.kind
           in
           Hashtbl.add rt.surfaces surface.self
             {
               snapshot;
               bounds = surface.resolved;
-              from_alpha = 0.;
-              target_alpha = 1.;
-              started = now;
-              duration;
+              opacity =
+                surface_track ~now ~from_value:0. ~target_value:1.
+                  opacity_timing;
+              zoom =
+                surface_track ~now ~from_value:0. ~target_value:1. zoom_timing;
+              timings = (opacity_timing, zoom_timing);
+              declaration;
             }
       | Some motion ->
-          if refresh then motion.snapshot <- capture_surface rt scene m surface;
+          if refresh then begin
+            motion.snapshot <- capture_surface rt scene m surface;
+            let declaration =
+              Lui_store.string_prop store surface.self "transition"
+            in
+            if declaration <> motion.declaration then begin
+              motion.timings <- surface_timings declaration surface.kind;
+              motion.declaration <- declaration
+            end
+          end;
           motion.bounds <- surface.resolved;
-          if motion.target_alpha <> 1. then begin
-            motion.from_alpha <- surface_alpha now motion;
-            motion.target_alpha <- 1.;
-            motion.started <- now
+          if motion.opacity.target_value <> 1. then begin
+            let opacity_timing, zoom_timing = motion.timings in
+            motion.opacity <-
+              surface_track ~now ~from_value:(surface_alpha now motion)
+                ~target_value:1. opacity_timing;
+            motion.zoom <-
+              surface_track ~now
+                ~from_value:(track_value now motion.zoom)
+                ~target_value:1. zoom_timing
           end)
     live;
   Hashtbl.filter_map_inplace
     (fun id motion ->
-      if (not (Hashtbl.mem seen id)) && motion.target_alpha <> 0. then begin
-        motion.from_alpha <- surface_alpha now motion;
-        motion.target_alpha <- 0.;
-        motion.started <- now
+      if (not (Hashtbl.mem seen id)) && motion.opacity.target_value <> 0. then begin
+        let opacity_timing, zoom_timing = motion.timings in
+        motion.opacity <-
+          surface_track ~now ~from_value:(surface_alpha now motion)
+            ~target_value:0. opacity_timing;
+        motion.zoom <-
+          surface_track ~now
+            ~from_value:(track_value now motion.zoom)
+            ~target_value:0. zoom_timing
       end;
-      if motion.target_alpha = 0. && surface_alpha now motion = 0. then None
+      if
+        motion.opacity.target_value = 0.
+        && (not (track_active now motion.opacity))
+        && not (track_active now motion.zoom)
+      then None
       else Some motion)
     rt.surfaces;
   (* Exiting shells remain behind the current live overlay stack. *)
@@ -930,7 +1102,8 @@ let present_surfaces rt scene m viewport ~refresh live =
   List.iter
     (fun id ->
       let motion = Hashtbl.find rt.surfaces id in
-      emit_surface scene m viewport motion (surface_alpha now motion))
+      emit_surface scene m viewport motion (surface_alpha now motion)
+        (track_value now motion.zoom))
     rt.surface_order
 
 let paint_retained rt hooks store (scene : Lui_scene.t) ?moved ?hints ?vlists
@@ -1055,7 +1228,7 @@ let paint_retained rt hooks store (scene : Lui_scene.t) ?moved ?hints ?vlists
       else emit_seg scene m g;
       List.iter (fun h -> Queue.add h drain) g.sub_pops
     done;
-    if motion_enabled then present_surfaces rt scene m vp ~refresh:refresh_surfaces (List.rev !live);
+    if motion_enabled then present_surfaces rt scene m vp store ~refresh:refresh_surfaces (List.rev !live);
     while not (Queue.is_empty m.m_ctx.Lui_paint.deferred) do
       (Queue.pop m.m_ctx.Lui_paint.deferred) ()
     done;

@@ -1350,22 +1350,19 @@ let css_ident_supported value =
     in
     tail 1
 
-(* CSS <time> token: a non-negative number with an `s`/`ms` unit;
-   a bare `0` is also valid. *)
+(* CSS <time> requires an `s`/`ms` unit even when its value is zero. *)
 let css_time_supported token =
-  if token = "0" then true
-  else
-    let len = String.length token in
-    let cut =
-      if len > 2 && String.sub token (len - 2) 2 = "ms" then 2
-      else if len > 1 && token.[len - 1] = 's' then 1
-      else 0
-    in
-    cut <> 0
-    &&
-    (match float_of_string_opt (String.sub token 0 (len - cut)) with
-     | Some number -> number >= 0.0 && is_finite number
-     | None -> false)
+  let len = String.length token in
+  let cut =
+    if len > 2 && String.sub token (len - 2) 2 = "ms" then 2
+    else if len > 1 && token.[len - 1] = 's' then 1
+    else 0
+  in
+  cut <> 0
+  &&
+  match float_of_string_opt (String.sub token 0 (len - cut)) with
+  | Some number -> number >= 0.0 && is_finite number
+  | None -> false
 
 (* Whitespace-separated tokens of a transition segment; parentheses keep
    functional easing argument lists (e.g. cubic-bezier(0.4, 0, 0.2, 1))
@@ -1397,37 +1394,7 @@ let css_tokens value =
    minimally: every segment needs a property identifier plus at least
    one <time>; extra tokens must be easing-shaped (identifier or
    identifier(args)). Commas inside easing parens do not split segments. *)
-let transition_supported value =
-  let segment_supported segment =
-    match css_tokens segment with
-    | property :: rest when rest <> [] ->
-      css_ident_supported property
-      && (let times =
-            List.filter (fun token -> css_time_supported token) rest
-          in
-          List.length times >= 1 && List.length times <= 2
-          && List.for_all
-               (fun token ->
-                  css_time_supported token
-                  ||
-                  (match String.index_opt token '(' with
-                   | Some open_paren ->
-                     (* functional easing: ident(arg-list) ending in ')' *)
-                     let len = String.length token in
-                     open_paren > 0
-                     && len > open_paren + 2
-                     && token.[len - 1] = ')'
-                     && css_ident_supported
-                          (String.sub token 0 open_paren)
-                     && String.sub token (open_paren + 1)
-                          (len - open_paren - 2)
-                          <> ""
-                   | None -> css_ident_supported token))
-               rest)
-    | _ -> false
-  in
-  String.trim value <> ""
-  &&
+let transition_segments value =
   let rec split_segments start depth acc i =
     if i = String.length value then
       List.rev (String.sub value start (i - start) :: acc)
@@ -1441,7 +1408,37 @@ let transition_supported value =
           (i + 1)
       else split_segments start depth acc (i + 1)
   in
-  List.for_all segment_supported (split_segments 0 0 [] 0)
+  List.map css_tokens (split_segments 0 0 [] 0)
+
+let transition_supported value =
+  let segment_supported tokens =
+    match tokens with
+    | property :: rest when rest <> [] ->
+        css_ident_supported property
+        &&
+        let times = List.filter (fun token -> css_time_supported token) rest in
+        List.length times >= 1
+        && List.length times <= 2
+        && List.for_all
+             (fun token ->
+               css_time_supported token
+               ||
+               match String.index_opt token '(' with
+               | Some open_paren ->
+                   (* functional easing: ident(arg-list) ending in ')' *)
+                   let len = String.length token in
+                   open_paren > 0
+                   && len > open_paren + 2
+                   && token.[len - 1] = ')'
+                   && css_ident_supported (String.sub token 0 open_paren)
+                   && String.sub token (open_paren + 1) (len - open_paren - 2)
+                      <> ""
+               | None -> css_ident_supported token)
+             rest
+    | _ -> false
+  in
+  String.trim value <> ""
+  && List.for_all segment_supported (transition_segments value)
 
 (* [text-decoration] accepts "none" alone, or a space-separated
    combination of underline/overline/line-through. *)

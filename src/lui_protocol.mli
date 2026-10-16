@@ -387,6 +387,9 @@ val horizontal_container : node_kind -> bool
 val common_property_supported : node_kind -> property -> bool
 val property_supported : node_kind -> property -> bool
 val is_finite : float -> bool
+val transition_segments : string -> string list list
+(** Tokenize CSS transition declarations, preserving functional easing arguments. *)
+
 val property_value_supported : property -> wire_value -> bool
 val property_value_supported_for_kind : node_kind -> property -> wire_value -> bool
 val int_property : wire_value Property_map.t -> property -> int -> int

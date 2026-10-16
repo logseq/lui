@@ -327,12 +327,202 @@ let test_popup_reused_id () =
   check (float 0.00001) "reused id starts a fresh presentation" 0.
     (popup_alpha h)
 
+let transition_host transition =
+  let h = popup_host () in
+  ignore
+    (Lui_host.apply_batch h
+       (batch [ DropNode 5; SetProp (3, Transition, StringValue transition) ]));
+  h
+
+let motion_frame h now =
+  Lui_host.tick h ~now;
+  ignore (Lui_host.repaint h)
+
+let popup_width h =
+  match popup_fill h with Some fill -> fill.frect.w | None -> 0.
+
+let test_popup_declared_tracks () =
+  let h = transition_host "opacity 250ms linear, transform 0.5s linear 100ms" in
+  motion_frame h 0.;
+  motion_frame h 0.05;
+  check (float 0.00001) "declared opacity duration" 0.2 (popup_alpha h);
+  check (float 0.00001) "transform waits for its own delay" 22.8 (popup_width h);
+  motion_frame h 0.25;
+  check (float 0.00001) "opacity finishes independently" 1. (popup_alpha h);
+  check (float 0.00001) "zoom keeps its own progress" 23.16 (popup_width h);
+  check bool "unfinished transform still schedules frames" true
+    (Lui_host.wants_repaint h);
+  motion_frame h 0.601;
+  check (float 0.00001) "transform finishes at its declared deadline" 24.
+    (popup_width h);
+  check bool "finished tracks leave host idle" false (Lui_host.wants_repaint h);
+  ignore (Lui_host.apply_batch h (batch [ DetachSubtree 3 ]));
+  ignore (Lui_host.repaint h);
+  motion_frame h 0.651;
+  check (float 0.00001) "detached opacity uses declared exit timing" 0.8
+    (popup_alpha h);
+  check (float 0.00001) "exit transform observes its delay" 24. (popup_width h);
+  check bool "detached shell has no interactive store node" false
+    (Lui_store.mem (Lui_host.store h) 3);
+  motion_frame h 1.202;
+  check bool "last exit track releases the shell" true (popup_fill h = None);
+  check bool "last exit track stops scheduled frames" false
+    (Lui_host.wants_repaint h)
+
+let test_popup_declared_easing () =
+  List.iter
+    (fun (easing, expected) ->
+      let h = transition_host ("opacity 1s " ^ easing) in
+      motion_frame h 0.;
+      motion_frame h 0.5;
+      check (float 0.00001)
+        (easing ^ " opacity matches CSS")
+        expected (popup_alpha h);
+      check (float 0.00001) "undeclared transform snaps to final geometry" 24.
+        (popup_width h))
+    [
+      ("linear", 0.5);
+      ("ease", 0.8024033876);
+      ("ease-in", 0.3153568125);
+      ("ease-out", 0.6846431875);
+      ("ease-in-out", 0.5);
+      ("cubic-bezier(0.25, 0.1, 0.25, 1)", 0.8024033876);
+      ("steps(4)", 0.5);
+      ("steps(4, start)", 0.75);
+      ("steps(4, jump-end)", 0.5);
+      ("steps(4, jump-none)", 2. /. 3.);
+      ("steps(4, jump-both)", 0.6);
+      ("step-start", 1.);
+      ("step-end", 0.);
+    ];
+  let h =
+    transition_host
+      "opacity 1s cubic-bezier(0.2, 2, 0.2, 2), transform 1s cubic-bezier(0.2, \
+       2, 0.2, 2)"
+  in
+  motion_frame h 0.;
+  motion_frame h 0.5;
+  check (float 0.00001) "overshooting opacity is clamped" 1. (popup_alpha h);
+  check bool "transform can overshoot independently" true (popup_width h > 24.);
+  check bool "an early endpoint value does not finish the timeline" true
+    (Lui_host.wants_repaint h)
+
+let test_popup_transition_channels () =
+  List.iter
+    (fun declaration ->
+      let h = transition_host declaration in
+      motion_frame h 0.;
+      check (float 0.00001) "disabled channels are opaque immediately" 1.
+        (popup_alpha h);
+      check (float 0.00001) "disabled channels do not zoom" 24. (popup_width h);
+      check bool "disabled channels do not schedule frames" false
+        (Lui_host.wants_repaint h))
+    [ "opacity 0ms, transform 0ms"; "background-color 200ms ease" ];
+  let h = transition_host "transform 200ms linear" in
+  motion_frame h 0.;
+  motion_frame h 0.1;
+  check (float 0.00001) "undeclared opacity stays opaque" 1. (popup_alpha h);
+  check (float 0.00001) "transform-only declaration still zooms" 23.4
+    (popup_width h);
+  let h = transition_host "all 240ms linear, opacity linear 120ms" in
+  motion_frame h 0.;
+  motion_frame h 0.06;
+  check (float 0.00001) "last matching declaration wins for opacity" 0.5
+    (popup_alpha h);
+  check (float 0.00001) "all still controls transform" 23.1 (popup_width h);
+  let h = transition_host "opacity 120ms linear, all 240ms linear" in
+  motion_frame h 0.;
+  motion_frame h 0.06;
+  check (float 0.00001) "later all overrides a specific declaration" 0.25
+    (popup_alpha h)
+
+let test_popup_transition_reversal () =
+  let h = transition_host "opacity 120ms linear, transform 120ms linear" in
+  motion_frame h 0.;
+  motion_frame h 0.06;
+  check (float 0.00001) "entrance reaches half" 0.5 (popup_alpha h);
+  Lui_host.set_hidden h (Some (fun id -> id = 3));
+  ignore (Lui_host.repaint h);
+  check (float 0.00001) "close preserves displayed opacity" 0.5 (popup_alpha h);
+  motion_frame h 0.09;
+  check (float 0.00001) "reversed track shortens to the remaining distance" 0.25
+    (popup_alpha h);
+  Lui_host.set_hidden h None;
+  ignore (Lui_host.repaint h);
+  check (float 0.00001) "reopen preserves displayed opacity" 0.25
+    (popup_alpha h);
+  motion_frame h 0.181;
+  check (float 0.00001) "second reversal keeps its shortened deadline" 1.
+    (popup_alpha h);
+  check bool "reversal leaves no idle animation" false
+    (Lui_host.wants_repaint h);
+  let h = transition_host "opacity 0ms 50ms, transform 0ms 50ms" in
+  motion_frame h 0.;
+  motion_frame h 0.025;
+  check (float 0.00001) "zero duration retains a positive delay" 0.
+    (popup_alpha h);
+  check bool "delayed jump schedules its deadline" true
+    (Lui_host.wants_repaint h);
+  motion_frame h 0.051;
+  check (float 0.00001) "delayed jump finishes" 1. (popup_alpha h);
+  check bool "delayed jump settles" false (Lui_host.wants_repaint h);
+  let h = transition_host "opacity 10s 10s, transform 10s 10s" in
+  Lui_host.set_reduced_motion h true;
+  motion_frame h 0.;
+  check (float 0.00001) "reduced motion bypasses declared delay" 1.
+    (popup_alpha h);
+  check bool "reduced motion keeps the host idle" false
+    (Lui_host.wants_repaint h)
+
+let test_popup_transition_refresh () =
+  let h = transition_host "opacity 1s linear, transform 1s linear" in
+  motion_frame h 0.;
+  motion_frame h 0.25;
+  ignore
+    (Lui_host.apply_batch h
+       (batch
+          [
+            SetProp
+              ( 3,
+                Transition,
+                StringValue "opacity 200ms linear, transform 200ms linear" );
+          ]));
+  ignore (Lui_host.repaint h);
+  motion_frame h 0.5;
+  check (float 0.00001) "changing the recipe does not restart active tracks" 0.5
+    (popup_alpha h);
+  Lui_host.set_hidden h (Some (fun id -> id = 3));
+  ignore (Lui_host.repaint h);
+  motion_frame h 0.601;
+  check bool "exit uses the latest recipe and shortened distance" true
+    (popup_fill h = None);
+  List.iter
+    (fun easing ->
+      let h = transition_host ("opacity 100ms " ^ easing) in
+      check_raises "invalid native timing does not silently pick another curve"
+        (Invalid_argument ("Invalid native transition easing: " ^ easing))
+        (fun () -> motion_frame h 0.))
+    [ "nonsense"; "cubic-bezier(2, 0, 0, 1)"; "steps(1, jump-none)" ]
+
+let test_popup_invalid_time () =
+  List.iter
+    (fun declaration ->
+      check bool "unitless transition times are rejected by the shared protocol" false
+        (property_value_supported Transition (StringValue declaration)))
+    [ "opacity 0"; "opacity 0 50ms"; "opacity 100ms 0" ]
+
 let () =
   run "lui_host"
     [ ("motion", [test_case "popup enter and exit" `Quick test_popup_motion;
                     test_case "popup reversal and resize" `Quick test_popup_motion_reversal;
                     test_case "popup reduced motion" `Quick test_popup_motion_reduced;
                     test_case "popup reused id" `Quick test_popup_reused_id;
+                    test_case "declared popup tracks" `Quick test_popup_declared_tracks;
+                    test_case "declared popup easing" `Quick test_popup_declared_easing;
+                    test_case "declared popup channels" `Quick test_popup_transition_channels;
+                    test_case "declared popup reversal" `Quick test_popup_transition_reversal;
+                    test_case "declared popup refresh" `Quick test_popup_transition_refresh;
+                    test_case "invalid popup time" `Quick test_popup_invalid_time;
                     test_case "split transition" `Quick test_split_transition;
                     test_case "split reversal and removal" `Quick test_split_reversal_and_removal;
                     test_case "reduced motion and drag" `Quick test_split_reduced_motion_and_drag]);
