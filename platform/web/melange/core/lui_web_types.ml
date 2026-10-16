@@ -127,6 +127,9 @@ type web_renderer = {
   (* container ids with a pending initial-highlight timer — each timer
      runs a full querySelectorAll scan, so multi-item mounts share one *)
   web_menu_highlights : (int, unit) Hashtbl.t;
+  web_appear_pending : (int, unit) Hashtbl.t;
+  web_appear_seen : (int, unit) Hashtbl.t;
+  web_appear_timer : Js.Global.timeoutId option ref;
   web_extension_registry : Lui_extension.extension_registry;
   web_extension_adapters : (string, web_extension_adapter) Hashtbl.t;
 }

@@ -64,6 +64,7 @@ let portal_parent renderer previous_nodes parent child =
       (Nodes.dom_node_before renderer previous_nodes parent)
 
 let cleanup_node renderer node =
+  Lui_web_events.release_appear renderer node;
   (match Hashtbl.find_opt renderer.web_virtual_lists node with
    | Some state -> state.dispose_virtual ()
    | None -> ());

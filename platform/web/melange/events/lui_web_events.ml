@@ -281,6 +281,72 @@ let button_connected renderer dom_node =
     (W.Element.asNode dom_node)
     (W.Document.documentElement renderer.web_document)
 
+let release_appear renderer node =
+  Hashtbl.remove renderer.web_appear_pending node;
+  Hashtbl.remove renderer.web_appear_seen node;
+  if Hashtbl.length renderer.web_appear_pending = 0 then begin
+    Option.iter Js.Global.clearTimeout !(renderer.web_appear_timer);
+    renderer.web_appear_timer := None
+  end
+
+let update_appear renderer node =
+  if
+    enabled_node renderer node
+    && Store.event_admitted renderer node (Appear node)
+  then
+    begin if not (Hashtbl.mem renderer.web_appear_seen node) then
+      Hashtbl.replace renderer.web_appear_pending node ()
+    end
+  else release_appear renderer node
+
+let appear_ready renderer node =
+  Hashtbl.mem renderer.web_appear_pending node
+  && enabled_node renderer node
+  && Store.event_admitted renderer node (Appear node)
+  &&
+  match Store.node renderer.web_store node with
+  | Some current when Lazy.is_val current.platform_node ->
+      button_connected renderer (Lazy.force current.platform_node)
+  | _ -> false
+
+(* Lifecycle callbacks run after the batch and root attachment. One shared
+   timeout coalesces mounts; unchanged patches and idle hosts queue none. *)
+let schedule_appear renderer =
+  if !(renderer.web_appear_timer) = None then begin
+    let ready = ref false in
+    Hashtbl.iter
+      (fun node () -> if appear_ready renderer node then ready := true)
+      renderer.web_appear_pending;
+    if !ready then
+      renderer.web_appear_timer :=
+        Some
+          (Js.Global.setTimeout
+             ~f:(fun () ->
+               renderer.web_appear_timer := None;
+               let candidates = ref [] in
+               let rec visit node =
+                 if appear_ready renderer node then
+                   candidates := node :: !candidates;
+                 match Store.node renderer.web_store node with
+                 | Some current ->
+                     Lui_sequence.iter visit current.retained_children
+                 | None -> ()
+               in
+               Hashtbl.fold
+                 (fun root _ roots -> root :: roots)
+                 renderer.web_mounted_roots []
+               |> List.sort Int.compare |> List.iter visit;
+               List.iter
+                 (fun node ->
+                   if appear_ready renderer node then begin
+                     Hashtbl.remove renderer.web_appear_pending node;
+                     Hashtbl.replace renderer.web_appear_seen node ();
+                     emit renderer (Appear node)
+                   end)
+                 (List.rev !candidates))
+             0)
+  end
+
 let button_cancel_timer state =
   (match !(state.button_timer) with
    | Some timer_id -> Js.Global.clearTimeout timer_id

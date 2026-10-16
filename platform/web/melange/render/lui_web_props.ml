@@ -644,7 +644,8 @@ let rec apply_property renderer queue_split node kind dom_node property
   | TextValue, StringValue text ->
       apply_text_value renderer node kind dom_node text
   | Enabled, BoolValue enabled ->
-      apply_enabled renderer node kind dom_node enabled
+      apply_enabled renderer node kind dom_node enabled;
+      Lui_web_events.update_appear renderer node
   | Gap, IntValue gap ->
       apply_gap renderer queue_split node kind dom_node gap
   | MainAlignment, StringValue alignment ->
@@ -800,6 +801,7 @@ and apply_secondary_property renderer queue_split node kind dom_node
   | Selected, BoolValue selected ->
       apply_selected renderer node kind dom_node selected
   | Autofocus, BoolValue autofocus -> apply_autofocus dom_node autofocus
+  | AppearEnabled, BoolValue _ -> Lui_web_events.update_appear renderer node
   | SubmitOnEnter, BoolValue enabled ->
       Util.set_state_attribute dom_node "data-submit-on-enter" enabled
   | LongPressEnabled, BoolValue enabled ->
@@ -1034,6 +1036,7 @@ let remove_property renderer queue_split node kind dom_node property =
   match Store.node renderer.web_store node with
   | Some _current ->
       (match property with
+       | AppearEnabled -> Lui_web_events.release_appear renderer node
        | StyleValue -> W.Element.removeAttribute "data-list-style" dom_node
        | ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange -> ()
        | TextValue -> apply_text_value renderer node kind dom_node ""
