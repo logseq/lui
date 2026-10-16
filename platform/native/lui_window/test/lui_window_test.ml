@@ -2887,6 +2887,51 @@ let test_menu_keyboard_scope () =
   Alcotest.(check string)
     "an editor inside a menu retains text input" "ni" (Ui.shadow ui)
 
+let test_menu_activation_text_commit () =
+  List.iter
+    (fun commit ->
+      let store =
+        store_of
+          [
+            CreateNode (1, Root);
+            CreateNode (2, TextField);
+            InsertChild (1, 2, 0);
+            SetProp (2, TextValue, StringValue "background");
+            CreateNode (3, DropdownMenu);
+            InsertChild (1, 3, 1);
+            CreateNode (4, MenuItem);
+            InsertChild (3, 4, 0);
+          ]
+      in
+      let ui = Ui.create () and rects = Rects.create () in
+      ignore (Ui.store_changed ui store);
+      Ui.set_focused ui store 2;
+      ignore (Ui.handle ui store rects (key Input.Home));
+      let activation = Ui.handle ui store rects (key Input.Space) in
+      Alcotest.(check bool)
+        "Space activates the menu item" true
+        (List.mem (Press 4) (press_actions activation));
+      Lui_store.apply_batch store { generation = 2; ops = [ DropNode 3 ] };
+      ignore (Ui.store_changed ui store);
+      if commit then begin
+        let consumed = ref false in
+        ignore
+          (Ui.handle
+             ~on_component_input:(fun () -> consumed := true)
+             ui store rects (Input.Text_input " "));
+        Alcotest.(check string)
+          "activation cannot insert behind the closed menu" "background"
+          (Ui.shadow ui);
+        Alcotest.(check bool)
+          "activation consumes its trailing text commit" true !consumed
+      end;
+      ignore (Ui.handle ui store rects (key Input.Space));
+      ignore (Ui.handle ui store rects (Input.Text_input " "));
+      Alcotest.(check string)
+        "the next ordinary Space still edits the field" "background "
+        (Ui.shadow ui))
+    [ true; false ]
+
 let test_assembly_scroll_shows_in_paint () =
   (* scroll_of feeds the scrollbar: a container with range reports
      metrics; one without reports none. *)
@@ -3284,6 +3329,7 @@ let () =
           Alcotest.test_case "intrinsic menu scroll" `Quick test_assembly_menu_scroll;
           Alcotest.test_case "intrinsic menu keyboard" `Quick test_assembly_menu_keyboard;
           Alcotest.test_case "nested menu keyboard scope" `Quick test_menu_keyboard_scope;
+          Alcotest.test_case "menu activation text commit" `Quick test_menu_activation_text_commit;
           Alcotest.test_case "scrollbar paint" `Quick
             test_assembly_scroll_shows_in_paint;
           Alcotest.test_case "autofocus" `Quick test_assembly_autofocus ] );

@@ -520,6 +520,8 @@ module Ui = struct
     mutable drag : Lui_drag.state;
     mutable overlay : Lui_overlay.state;
     mutable menu_scope : int;
+    (* Space activation may dispose the menu before its text commit arrives. *)
+    mutable menu_space_commit : bool;
     (* Paint-hint channels for the retained fragment pass: scroll
        containers whose offset moved this frame (their whole subtree
        re-derives — ops embed shifted rects), containers whose
@@ -565,6 +567,7 @@ module Ui = struct
       drag = Lui_drag.initial;
       overlay = Lui_overlay.initial;
       menu_scope = 0;
+      menu_space_commit = false;
       scrolled = Hashtbl.create 8;
       scroll_metrics = Hashtbl.create 8;
       paint_snap =
@@ -913,16 +916,16 @@ module Ui = struct
     if List.exists (Lui_query.presented_overlay store) path then None
     else List.find_opt (fun id -> split_handle t store rects id ~x ~y) path
 
-  let active_menu t store =
+  let menu_input_active t store =
     let id = t.menu_scope and focused = Lui_focus.focused t.focus in
-    if
-      id <> 0
-      && not
-           (focused <> 0
-           && Lui_text_input.editable store focused
-           && Lui_query.is_desc store focused id)
-    then Some id
-    else None
+    id <> 0
+    && not
+         (focused <> 0
+         && Lui_text_input.editable store focused
+         && Lui_query.is_desc store focused id)
+
+  let active_menu t store =
+    if menu_input_active t store then Some t.menu_scope else None
 
   let visible_rect t store id =
     let rec offsets id x y =
@@ -938,6 +941,17 @@ module Ui = struct
     { r with Lui_scene.x = r.x -. x; y = r.y -. y }
 
   let handle ?spatial ?(on_component_input = fun () -> ()) t store rects input =
+    let suppress_space =
+      match input with
+      | Input.Text_input s ->
+        let pending = t.menu_space_commit in
+        t.menu_space_commit <- false;
+        pending && s = " "
+      | Input.Key_down _ | Input.Button_down _ ->
+        t.menu_space_commit <- false;
+        false
+      | _ -> false
+    in
     let acts = ref [] in
     let emit_all l = acts := List.rev_append l !acts in
     let run m_acts = emit_all (perform_all t store m_acts) in
@@ -1204,6 +1218,7 @@ module Ui = struct
           t.pointer <- Lui_pointer.clear_press t.pointer;
           t.dirty <- true
         | _ -> ())
+     | Input.Text_input _ when suppress_space -> on_component_input ()
      | Input.Text_input s when Option.is_some (active_menu t store) ->
        on_component_input ();
        let g,m = Lui_gesture.menu_text store t.gesture
@@ -1250,6 +1265,7 @@ module Ui = struct
              | Input.Other scan -> Option.is_some (Input.char_of_scancode scan)
              | _ -> false) ->
        on_component_input ();
+       t.menu_space_commit <- key = Input.Space;
        let g,m = Lui_gesture.menu_key store t.gesture
          ~menu:(Option.get (active_menu t store))
          ~rect_of:(visible_rect t store) ~scale:t.scale

@@ -395,6 +395,10 @@ module Ui : sig
       before each input too. *)
   val store_changed : t -> Lui_store.t -> action list
 
+  (** Whether a live menu owns text commits for typeahead. Hosts must
+      keep platform text input enabled while this is true. *)
+  val menu_input_active : t -> Lui_store.t -> bool
+
   (** Map one input event to ordered actions. [?spatial] accelerates
       the rect hit-tests — see {!Lui_window.hit_path}.
       [on_component_input] runs when a menu consumes the input; hosts
