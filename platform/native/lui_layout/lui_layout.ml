@@ -1255,11 +1255,17 @@ let anchored_xy ctx store sid ar (prp : Lui_flex.rect) =
   in
   let vertical = side = "above" || side = "below" in
   let main =
-    match side with
-    | "above" -> ar.y -. offset -. prp.h
-    | "left" -> ar.x -. offset -. prp.w
-    | "right" -> ar.x +. ar.w +. offset
-    | _ -> ar.y +. ar.h +. offset
+    let start, finish, extent, viewport =
+      if vertical then ar.y, ar.y +. ar.h, prp.h, ctx.vh
+      else ar.x, ar.x +. ar.w, prp.w, ctx.vw in
+    let before = start -. offset and after = viewport -. finish -. offset in
+    let preferred_before = side = "above" || side = "left" in
+    let preferred, opposite =
+      if preferred_before then before, after else after, before in
+    let place_before =
+      if extent > preferred && opposite > preferred
+      then not preferred_before else preferred_before in
+    if place_before then start -. offset -. extent else finish +. offset
   in
   let cross =
     if vertical then

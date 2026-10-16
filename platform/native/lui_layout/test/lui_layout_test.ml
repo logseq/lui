@@ -303,6 +303,39 @@ let test_root_popup_centered_in_frame () =
   let p = Lui_layout.run store ~measure:no_measure ~width:200. ~height:100. in
   check_rect "root popup" 75. 35. 50. 30. (place p 2)
 
+let test_popup_collision_flip () =
+  let store = Lui_store.create () in
+  apply store
+    [ CreateNode (1, Root); CreateNode (2, Popover);
+      InsertChild (1, 2, 0);
+      SetProp (2, WidthValue, IntValue 60);
+      SetProp (2, HeightValue, IntValue 40);
+      SetProp (2, AnchorOffset, FloatValue 4.) ];
+  let check_at ~scale side x y expected_x expected_y =
+    apply store [SetProp (2, AnchorValue, StringValue side);
+      SetProp (2, PopupX, FloatValue x); SetProp (2, PopupY, FloatValue y)];
+    let p = Lui_layout.run ~scale store ~measure:no_measure
+      ~width:(200. *. scale) ~height:(160. *. scale) in
+    check_rect (side ^ " popup") (expected_x *. scale) (expected_y *. scale)
+      (60. *. scale) (40. *. scale) (place p 2)
+  in
+  List.iter (fun scale ->
+    check_at ~scale "below" 80. 140. 80. 96.;
+    check_at ~scale "above" 80. 20. 80. 24.;
+    check_at ~scale "right" 180. 60. 116. 60.;
+    check_at ~scale "left" 20. 60. 24. 60.;
+    check_at ~scale "below" 80. 40. 80. 44.;
+    check_at ~scale "above" 80. 100. 80. 56.;
+    check_at ~scale "right" 80. 60. 84. 60.;
+    check_at ~scale "left" 100. 60. 36. 60.;
+    (* Cross-axis overflow shifts without changing the preferred side. *)
+    check_at ~scale "below" 190. 40. 140. 44.) [1.; 2.];
+  (* Neither side fits: use the side with more room, then clamp. *)
+  apply store [SetProp (2, HeightValue, IntValue 140);
+    SetProp (2, PopupY, FloatValue 100.)];
+  let p = Lui_layout.run store ~measure:no_measure ~width:200. ~height:160. in
+  check_rect "oversized popup stays in frame" 140. 0. 60. 140. (place p 2)
+
 (* A menu-trigger's dropdown panel: hidden until opened, then anchored
    below the trigger with its items stacked inside. *)
 let test_menu_panel () =
@@ -1013,6 +1046,7 @@ let () =
          test_case "frame grows" `Quick test_frame_grows_to_content;
          test_case "popup centered" `Quick test_popup_default_centered;
          test_case "root popup" `Quick test_root_popup_centered_in_frame;
+         test_case "popup collision flip" `Quick test_popup_collision_flip;
          test_case "menu panel" `Quick test_menu_panel;
          test_case "ac row" `Quick test_ac_row;
          test_case "vlist window" `Quick test_vlist_window_mounts_slice;
