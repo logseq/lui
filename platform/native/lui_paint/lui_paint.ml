@@ -1717,6 +1717,14 @@ let image_ops ctx store id r alpha radii =
         rect sx sy sw' sh'
       | _ -> rect 0. 0. sw sh
     in
+    let isrc =
+      if pstr store id "image-fit" = Some "fill" && r.w > 0. && r.h > 0. then
+        let scale = Float.max (r.w /. isrc.w) (r.h /. isrc.h) in
+        let width = r.w /. scale and height = r.h /. scale in
+        rect (isrc.x +. (isrc.w -. width) /. 2.)
+          (isrc.y +. (isrc.h -. height) /. 2.) width height
+      else isrc
+    in
     let dst =
       match pstr store id "image-fit" with
       | Some "fit" ->

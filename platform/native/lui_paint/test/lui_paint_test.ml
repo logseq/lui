@@ -116,6 +116,36 @@ let test_select_indicator () =
         [ 1.; 2. ])
     [ Lui_protocol.Select; Combobox ]
 
+let test_image_fill_crop () =
+  List.iter
+    (fun (width, height, expected) ->
+      let t = store () in
+      apply t
+        [
+          Lui_protocol.CreateNode (1, FileImage);
+          SetProp (1, ImageFitValue, StringValue "fill");
+        ];
+      let image =
+        new_image ~w:width ~h:height (Bytes.make (width * height * 4) '\255')
+      in
+      let hooks =
+        { (hooks ()) with Lui_paint.image_of = (fun _ -> Some image) }
+      in
+      let scene = paint_with hooks t () in
+      let op =
+        List.find_map (function Image i -> Some i | _ -> None) scene.ops
+        |> Option.get
+      in
+      check bool "fill preserves the destination" true
+        (op.irect2 = rect 0. 0. 100. 40.);
+      check bool "fill crops the source without distorting its aspect" true
+        (op.isrc = expected))
+    [
+      (200, 40, rect 50. 0. 100. 40.);
+      (100, 100, rect 0. 30. 100. 40.);
+      (100, 40, rect 0. 0. 100. 40.);
+    ]
+
 let test_fill_op () =
   let t = store () in
   apply t
@@ -1089,6 +1119,7 @@ let () =
     [ ("color",
        [ test_case "hex" `Quick test_hex;
          test_case "select indicator" `Quick test_select_indicator;
+         test_case "image fill crop" `Quick test_image_fill_crop;
          test_case "edges" `Quick test_edges ]);
       ("ops",
        [ test_case "fill" `Quick test_fill_op;
