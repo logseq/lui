@@ -2333,6 +2333,13 @@ let test_vocab_batch2 () =
     (property_value_supported FlexWrap (StringValue "nowrap"));
   Alcotest.(check bool) "flex-wrap rejects wrap-reverse" false
     (property_value_supported FlexWrap (StringValue "wrap-reverse"));
+  Alcotest.(check bool) "menu rows accept typed slot spacing" true
+    (property_supported MenuItem Gap);
+  Alcotest.(check bool) "menu rows accept leading selection placement" true
+    (property_supported MenuItem SelectionPlacementValue
+     && property_value_supported SelectionPlacementValue (StringValue "leading"));
+  Alcotest.(check bool) "selection placement rejects invalid values" false
+    (property_value_supported SelectionPlacementValue (StringValue "center"));
   (* ~tooltip/~shortcut_hint *)
   Alcotest.(check bool) "tooltip on button" true
     (property_supported Button TooltipText);

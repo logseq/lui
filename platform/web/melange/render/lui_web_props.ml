@@ -799,7 +799,9 @@ and apply_secondary_property renderer queue_split node kind dom_node
   | IconPlacementValue, StringValue placement ->
       W.Element.setAttribute "data-icon-placement" placement dom_node
   | SelectionPlacementValue, StringValue placement ->
-      W.Element.setAttribute "data-selection-placement" placement dom_node
+      W.Element.setAttribute "data-selection-placement" placement dom_node;
+      set_style (Util.child_element dom_node 2) "order"
+        (if placement = "leading" then "-4" else "1")
   | Selected, BoolValue selected ->
       apply_selected renderer node kind dom_node selected
   | Autofocus, BoolValue autofocus -> apply_autofocus dom_node autofocus
@@ -1039,7 +1041,8 @@ let remove_property renderer queue_split node kind dom_node property =
   | Some _current ->
       (match property with
        | SelectionPlacementValue ->
-           W.Element.removeAttribute "data-selection-placement" dom_node
+           W.Element.removeAttribute "data-selection-placement" dom_node;
+           set_style (Util.child_element dom_node 2) "order" ""
        | AppearEnabled -> Lui_web_events.release_appear renderer node
        | StyleValue -> W.Element.removeAttribute "data-list-style" dom_node
        | ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange -> ()

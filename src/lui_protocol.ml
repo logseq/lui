@@ -1158,6 +1158,7 @@ let common_property_supported kind property =
     || kind = Grid
     || kind = ListContainer
     || kind = VirtualList
+    || kind = MenuItem
     || kind = DropdownMenu
     || kind = Popover
     || kind = TableRow
