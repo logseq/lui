@@ -315,10 +315,10 @@ type node = {
   mutable res_margin_bottom : float;
   (* Resolved-spec fingerprint: owner inputs the current [style]
      scalars reflect. A percent-free spec resolves identically under
-     any owner dims, so [res_uses_owner] exempts it from the dims
-     compare. *)
+     any owner dims. [res_owner_axes] records only the scalar inputs
+     used by percentage specs: width=1, height=2, main axis=4. *)
   mutable res_valid : bool;
-  mutable res_uses_owner : bool;
+  mutable res_owner_axes : int;
   mutable res_owner_w : float;
   mutable res_owner_h : float;
   mutable res_owner_main : float;
@@ -516,7 +516,7 @@ let rec null_node : node = {
   res_margin_right = zero;
   res_margin_bottom = zero;
   res_valid = false;
-  res_uses_owner = false;
+  res_owner_axes = 0;
   res_owner_w = zero;
   res_owner_h = zero;
   res_owner_main = zero;
@@ -923,25 +923,34 @@ let uses_owner_edges (e : edges) : bool =
   || uses_owner_len e.horizontal || uses_owner_len e.vertical
   || uses_owner_len e.all
 
+let spec_owner_axes (s : style) =
+  let position = s.position in
+  let width =
+    uses_owner_len s.width || uses_owner_len s.min_width
+    || uses_owner_len s.max_width || uses_owner_edges s.margin
+    || uses_owner_edges s.padding || uses_owner_edges s.border
+    || uses_owner_len position.all || uses_owner_len position.horizontal
+    || uses_owner_len position.left || uses_owner_len position.right
+    || uses_owner_len position.start || uses_owner_len position.end_ in
+  let height =
+    uses_owner_len s.height || uses_owner_len s.min_height
+    || uses_owner_len s.max_height || uses_owner_len position.vertical
+    || uses_owner_len position.top || uses_owner_len position.bottom in
+  (if width then 1 else 0) lor (if height then 2 else 0)
+  lor (if uses_owner_len s.flex_basis then 4 else 0)
+
 let spec_uses_owner (s : style) : bool =
-  uses_owner_len s.flex_basis || uses_owner_len s.width
-  || uses_owner_len s.height || uses_owner_len s.min_width
-  || uses_owner_len s.min_height || uses_owner_len s.max_width
-  || uses_owner_len s.max_height || uses_owner_len s.row_gap
-  || uses_owner_len s.column_gap
-  || uses_owner_edges s.margin || uses_owner_edges s.padding
-  || uses_owner_edges s.border || uses_owner_edges s.position
+  spec_owner_axes s <> 0 || uses_owner_len s.row_gap || uses_owner_len s.column_gap
 
 (* Resolve a node's specs against the owner's inner dims. Returns
    [true] when the resolved scalars were (re)written, [false] when the
    previous resolution still applies — a percent-free spec never
-   needs re-resolution, a percent spec only when an owner dim moved. *)
+   needs re-resolution, a percent spec only when its owner axis moved. *)
 let resolve_specs (n : node) ~owner_w ~owner_h ~owner_main : bool =
   if n.res_valid
-     && ((not n.res_uses_owner)
-         || (same_dim n.res_owner_w owner_w
-             && same_dim n.res_owner_h owner_h
-             && same_dim n.res_owner_main owner_main))
+     && (n.res_owner_axes land 1 = 0 || same_dim n.res_owner_w owner_w)
+     && (n.res_owner_axes land 2 = 0 || same_dim n.res_owner_h owner_h)
+     && (n.res_owner_axes land 4 = 0 || same_dim n.res_owner_main owner_main)
   then false
   else begin
   let s = n.spec in
@@ -1024,7 +1033,7 @@ let resolve_specs (n : node) ~owner_w ~owner_h ~owner_main : bool =
     (if st.margin_auto_top then zero else computed_edge_margin st Top zero)
     +.
     (if st.margin_auto_bottom then zero else computed_edge_margin st Bottom zero);
-  n.res_uses_owner <- spec_uses_owner s;
+  n.res_owner_axes <- spec_owner_axes s;
   n.res_owner_w <- owner_w;
   n.res_owner_h <- owner_h;
   n.res_owner_main <- owner_main;
