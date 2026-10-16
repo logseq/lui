@@ -135,10 +135,17 @@ let blend_span p row x0 x1 (r_, g_, b_, a_) cov =
         and ga = Int64.of_int (pg lor (pa lsl 16)) in
         let rb = Int64.logor rb (Int64.shift_left rb 32)
         and ga = Int64.logor ga (Int64.shift_left ga 32) in
+        (* Flat backdrops repeat destination pairs. Reuse their exact blended
+           result within this span; changing pixels still take the full path. *)
+        let previous_input = ref 0L and previous_output = ref 0L in
+        let previous_valid = ref false in
         let x = ref x0 in
         while !x + 1 < x1 do
           let i = row + 4 * !x in
           let pixels = Bytes.get_int64_le p i in
+          if !previous_valid && Int64.equal pixels !previous_input then
+            Bytes.set_int64_le p i !previous_output
+          else begin
           (* Four independent 16-bit lanes hold a byte product and its
              rounding bias. A premultiplied source channel is at most pa,
              and the destination contribution is at most 255-pa, so the
@@ -151,7 +158,12 @@ let blend_span p row x0 x1 (r_, g_, b_, a_) cov =
           let dga = Int64.logand (Int64.shift_right_logical
             (Int64.add tga (Int64.logand (Int64.shift_right_logical tga 8) lanes)) 8) lanes in
           let srb = Int64.add rb drb and sga = Int64.add ga dga in
-          Bytes.set_int64_le p i (Int64.logor srb (Int64.shift_left sga 8));
+          let result = Int64.logor srb (Int64.shift_left sga 8) in
+          previous_input := pixels;
+          previous_output := result;
+          previous_valid := true;
+          Bytes.set_int64_le p i result
+          end;
           x := !x + 2
         done;
         if !x < x1 then begin

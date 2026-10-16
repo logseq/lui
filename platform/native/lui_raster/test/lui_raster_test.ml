@@ -757,14 +757,20 @@ let test_parallel_redraw_gc () =
     Alcotest.(check bool) "Release and worker changes preserve rendering" true !pixels_ok)
 
 let test_translucent_span_allocation () =
-  let s = scene ~w:512 ~h:128 [ifill (rect 0. 0. 512. 128.) (color 37 151 243 128)] in
-  let image = Lui_raster.Image.create ~w:512 ~h:128 in
-  let before = Gc.allocated_bytes () in
-  Lui_raster.render_into ~workers:1 ~image ~scene:s ();
-  let allocated = Gc.allocated_bytes () -. before in
-  Printf.printf "translucent span allocated %.0f bytes\n%!" allocated;
-  Alcotest.(check bool) "translucent pixel operations do not allocate per pixel" true
-    (allocated < 131_072.)
+  let source = new_image ~w:512 ~h:128
+      (Bytes.init (512 * 128 * 4) (fun index ->
+           Char.chr (if index mod 4 = 3 then 255 else (index / 4 + index mod 4 * 71) mod 256))) in
+  List.iter (fun (name, background) ->
+      let s = scene ~w:512 ~h:128
+          (background @ [ifill (rect 0. 0. 512. 128.) (color 37 151 243 128)]) in
+      let image = Lui_raster.Image.create ~w:512 ~h:128 in
+      let before = Gc.allocated_bytes () in
+      Lui_raster.render_into ~workers:1 ~image ~scene:s ();
+      let allocated = Gc.allocated_bytes () -. before in
+      Printf.printf "%s translucent span allocated %.0f bytes\n%!" name allocated;
+      Alcotest.(check bool) "translucent pixel operations do not allocate per pixel" true
+        (allocated < 131_072.))
+    ["flat", []; "varying", [iimage (rect 0. 0. 512. 128.) source (rect 0. 0. 512. 128.)]]
 
 let test_opaque_span_edges () =
   List.iter (fun height -> List.iter (fun width -> List.iter (fun offset ->
@@ -798,6 +804,34 @@ let test_translucent_span_channels () =
         Int.min 255 (src + (dest*(255-alpha)+127)/255) in
       Char.chr value) in
     Alcotest.(check bool) "Translucent spans preserve every destination byte and alpha"
+      true (Bytes.equal expected image.pix)
+  done
+
+let test_translucent_repeated_runs () =
+  let width = 259 and height = 3 in
+  let channel x y c =
+    if c = 3 then 255
+    else if x mod 64 < 48 then 255
+    else ((x / (y + 1)) + (2 - c) * 71 + y * 17) mod 256 in
+  let source = new_image ~w:width ~h:height
+      (Bytes.init (width * height * 4) (fun index ->
+           let pixel = index / 4 in
+           Char.chr (channel (pixel mod width) (pixel / width) (index mod 4)))) in
+  for alpha = 1 to 254 do
+    let s = scene ~w:width ~h:height
+        [ iimage (rect 0. 0. (float width) (float height)) source
+            (rect 0. 0. (float width) (float height));
+          ifill (rect 1. 0. 257. (float height)) (color 255 151 37 alpha) ] in
+    let image = Lui_raster.render ~workers:1 ~scene:s () in
+    let expected = Bytes.init (Bytes.length image.pix) (fun index ->
+        let pixel = index / 4 and c = index mod 4 in
+        let x = pixel mod width and y = pixel / width in
+        let dest = channel x y (if c = 3 then 3 else 2 - c) in
+        let value = if x = 0 || x = 258 then dest else
+            let src = ([|37;151;255;255|].(c) * alpha + 127) / 255 in
+            Int.min 255 (src + (dest * (255 - alpha) + 127) / 255) in
+        Char.chr value) in
+    Alcotest.(check bool) "Repeated and changing destination runs match scalar blending"
       true (Bytes.equal expected image.pix)
   done
 
@@ -1213,6 +1247,7 @@ let () =
           Alcotest.test_case "translucent rounding" `Slow test_translucent_byte_rounding;
           Alcotest.test_case "span allocation" `Quick test_translucent_span_allocation;
           Alcotest.test_case "modal fade budget" `Slow test_modal_fade_budget;
+          Alcotest.test_case "translucent repeated runs" `Quick test_translucent_repeated_runs;
           Alcotest.test_case "opaque span edges" `Quick test_opaque_span_edges;
           Alcotest.test_case "opaque glyph allocation" `Quick test_opaque_glyph_allocation;
           Alcotest.test_case "translucent span channels" `Quick test_translucent_span_channels;
