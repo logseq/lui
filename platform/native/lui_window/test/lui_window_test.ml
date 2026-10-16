@@ -406,7 +406,7 @@ let test_text_input_and_keys () =
   ignore (Ui.handle ui s rects (Input.Text_input "x"));
   Alcotest.(check (option string)) "typing after a UTF-8 model update stays valid"
     (Some "x字") (Lui_store.string_prop s 4 "text");
-  (* Escape blurs first, then quits *)
+  (* Escape blurs the field and leaves an unfocused window open. *)
   (match
      Ui.handle ui s rects
        (Input.Key_down (Input.Escape, Input.mods_none, false))
@@ -417,8 +417,11 @@ let test_text_input_and_keys () =
      Ui.handle ui s rects
        (Input.Key_down (Input.Escape, Input.mods_none, false))
    with
+   | [] -> ()
+   | _ -> Alcotest.fail "unfocused Escape must leave the window open");
+  (match Ui.handle ui s rects Input.Quit_input with
    | [ Quit ] -> ()
-   | _ -> Alcotest.fail "expected Quit")
+   | _ -> Alcotest.fail "explicit quit must still close the window")
 
 let test_caret_ops_wiring () =
   (* C7: with a caret model wired, keyboard moves and deletes consult

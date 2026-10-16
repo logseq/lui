@@ -1227,7 +1227,7 @@ module Ui = struct
                  if Lui_focus.focused t.focus <> 0 then begin
                    focus_move t store 0;
                    acts := Focus_changed 0 :: !acts
-                 end else acts := Quit :: !acts)
+                 end)
             end
           | Input.Other 4 when prim ->
             (* A: select all — the editable range, or every
