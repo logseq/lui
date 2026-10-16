@@ -587,6 +587,19 @@ let fresh_layout () : ilayout = {
   height = undefined;
 }
 
+let clear_measurement_offers (layout : ilayout) =
+  Measurement_cache.clear layout.offer_cache;
+  layout.natural_cache <- None;
+  layout.natural_height <- None
+
+let invalidate_measurements (layout : ilayout) =
+  layout.next_cached_measurements_index <- 0;
+  layout.cached_layout.width_measure_mode <- Measure_invalid;
+  layout.cached_layout.height_measure_mode <- Measure_invalid;
+  layout.cached_layout.computed_width <- negativeOne;
+  layout.cached_layout.computed_height <- negativeOne;
+  clear_measurement_offers layout
+
 let style_of_spec (s : style) : istyle =
   (* Scalar fields start unresolved; [resolve_specs] fills them in on
      every layout pass once the owning node's dimensions are known.
@@ -1017,6 +1030,9 @@ let resolve_specs (n : node) ~owner_w ~owner_h ~owner_main : bool =
   n.res_owner_main <- owner_main;
   n.res_valid <- true;
   n.res_gen <- n.res_gen + 1;
+  (* Old offers and the measurement ring describe the previous resolved
+     edges, including when the offered dimensions themselves did not move. *)
+  invalidate_measurements n.layout;
   (* The stored position seeds derive from the resolved scalars just
      overwritten — re-seeding is mandatory before the clean lane may
      use them again. *)
@@ -1511,23 +1527,12 @@ let rec layout_node_internal
     (node.is_dirty && layout.generation_count <> !g_current_generation_count)
     || layout.last_parent_direction <> Some parent_direction
   in
-  if need_to_visit_node then begin
-    (* Invalidate the cached results. *)
-    layout.next_cached_measurements_index <- 0;
-    layout.cached_layout.width_measure_mode <- Measure_invalid;
-    layout.cached_layout.height_measure_mode <- Measure_invalid;
-    layout.cached_layout.computed_width <- negativeOne;
-    layout.cached_layout.computed_height <- negativeOne
-  end;
-  (* Keep every distinct offer within a pass and retain a bounded cache
-     between passes. Dirty nodes discard all previous measurements. *)
-  if need_to_visit_node
-     || (layout.generation_count <> !g_current_generation_count
-         && Measurement_cache.length layout.offer_cache > 32) then begin
-    Measurement_cache.clear layout.offer_cache;
-    layout.natural_cache <- None;
-    layout.natural_height <- None
-  end;
+  (* A new resolution has already discarded its old offers. Dirty nodes
+     also invalidate the ring; unchanged nodes retain their bounded history. *)
+  if need_to_visit_node then invalidate_measurements layout
+  else if layout.generation_count <> !g_current_generation_count
+          && Measurement_cache.length layout.offer_cache > 32 then
+    clear_measurement_offers layout;
   let key_dim d = if Float.is_nan d then Float.nan else d in
   let offer = (key_dim available_width, key_dim available_height,
                width_measure_mode, height_measure_mode, node.res_gen) in

@@ -575,6 +575,62 @@ let test_measure_fits_offer () =
   check_rect "new wrap width reshapes text" (r 0. 0. 60. 20.) child;
   Alcotest.(check bool) "changed wrap width was measured" true (!calls > before)
 
+let test_percent_measurement_owner_change () =
+  List.iter (fun border ->
+    let calls=ref 0 in
+    let edges={default_style.padding with all=Percent 1.} in
+    let style=if border then {default_style with width=Pt 100.;border=edges}
+      else {default_style with width=Pt 100.;padding=edges} in
+    let measure height _ ~width:_ ~width_mode:_ ~height:_ ~height_mode:_ =
+      incr calls; {width=100.;height} in
+    let child=create ~style ~measure:(measure 24.) [] in
+    let root=box [child] in
+    let verify width height =
+      run root ~w:width ~h:undefined;
+      Alcotest.(check (float eps)) "resolved edges affect measured height" height (layout child).h;
+      let before= !calls in
+      run root ~w:width ~h:undefined;
+      Alcotest.(check int) "unchanged owner reuses measurements" before !calls in
+    verify 1000. 44.;
+    verify 1200. 48.;
+    verify 1000. 44.;
+    run root ~w:undefined ~h:undefined;
+    let before= !calls and geometry=layout child in
+    run root ~w:undefined ~h:undefined;
+    check_rect "unchanged unbounded owner keeps its geometry" geometry child;
+    Alcotest.(check int) "unbounded owner reuses measurements" before !calls;
+    set_measure child (Some (measure 40.));
+    verify 1000. 60.;
+    verify 1200. 64.
+  ) [false;true]
+
+let test_percent_measurement_retention () =
+  let calls=ref 0 in
+  let measure _ ~width ~width_mode:_ ~height:_ ~height_mode:_ =
+    incr calls;
+    {width=(if Float.is_nan width then 100. else min 100. width);height=24.} in
+  let kids=List.init 2048 (fun _ -> create ~style:{default_style with
+    width=Percent 100.;padding={default_style.padding with all=Percent 1.}} ~measure []) in
+  let root=box kids in
+  let retained () =
+    Gc.full_major ();
+    Gc.full_major ();
+    let bytes=(Gc.stat ()).live_words*(Sys.word_size/8) in
+    ignore (Sys.opaque_identity root);
+    bytes in
+  run root ~w:1000. ~h:undefined;
+  let before=retained () in
+  for index=1 to 12 do run root ~w:(1000.+.float index*.20.) ~h:undefined done;
+  run root ~w:1000. ~h:undefined;
+  let growth=retained ()-before in
+  Printf.printf "Percentage layout retained %d extra bytes after resize\n%!" growth;
+  Alcotest.(check bool) "obsolete resolved offers remain bounded" true (growth<=262144);
+  Alcotest.(check (float eps)) "resized tree retains its measured content"
+    (2048.*.44.) (layout root).h;
+  let measured= !calls in
+  run root ~w:1000. ~h:undefined;
+  Alcotest.(check int) "unchanged resized tree avoids new measurement" measured !calls
+
 let () =
   Alcotest.run "lui_flex"
     [ "axis",
@@ -621,5 +677,7 @@ let () =
         Alcotest.test_case "nested owner measurements" `Quick test_nested_owner_measurements;
         Alcotest.test_case "nested height measurement budget" `Quick test_nested_height_measurement_budget;
         Alcotest.test_case "incremental block budget" `Quick test_incremental_block_budget;
-        Alcotest.test_case "fits_offer" `Quick test_measure_fits_offer ];
+        Alcotest.test_case "fits_offer" `Quick test_measure_fits_offer;
+        Alcotest.test_case "percent owner invalidation" `Quick test_percent_measurement_owner_change;
+        Alcotest.test_case "percent cache retention" `Quick test_percent_measurement_retention ];
     ]
