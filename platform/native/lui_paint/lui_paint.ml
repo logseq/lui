@@ -79,6 +79,7 @@ let prop_coverage =
     ("variant", Host);    (* styling hint; resolved upstream to props *)
     ("icon", Painted_by_image);
     ("icon-placement", Layout);
+    ("selection-placement", Layout);
     ("selected", Painted); (* folds into state.selected *)
     ("autofocus", Host);
     ("submit-on-enter", Host);
@@ -1004,10 +1005,7 @@ let text_placement_of store id =
     | "bottom-tab" | "tab" -> (Ta_center, 12., 5., false)
     | "tooltip" | "toast" -> (Ta_center, 8., 4., false)
     | "alert" | "bubble" -> (Ta_start, 10., 6., false)
-    | "menu-item" ->
-      (* icon slot [x+8, x+26] + 4px gap shifts the label — the web
-         stylesheet's icon+gap-1 inside px-2 *)
-      (Ta_start, (if pstr store id "icon" = None then 8. else 30.), 6., false)
+    | "menu-item" -> (Ta_start, 8., 6., false)
     | "table-cell" | "table-row" -> (Ta_start, 10., 6., false)
     | "step" -> (Ta_center, 8., 4., false)
     | "list-item" -> (Ta_start, 12., 6., false)
@@ -1032,9 +1030,19 @@ let text_placement_of store id =
     | None, Some p, v -> (p, Option.value ~default:p v)
     | None, None, v -> (pad_x, Option.value ~default:pad_y v)
   in
+  let leading, trailing =
+    if Lui_store.kind store id <> "menu-item" then (0., 0.)
+    else
+      let zone = 16. +. Option.value ~default:8. (pnum store id "gap") in
+      let icon = if pstr store id "icon" = None then 0. else zone in
+      if Lui_store.prop store id "selected" = None then (icon, 0.)
+      else if pstr store id "selection-placement" = Some "leading" then
+        (icon +. zone, 0.)
+      else (icon, zone)
+  in
   { tp_align = align;
-    tp_pad_left = Option.value ~default:pad_x (pnum store id "padding-left");
-    tp_pad_right = Option.value ~default:pad_x (pnum store id "padding-right");
+    tp_pad_left = Option.value ~default:pad_x (pnum store id "padding-left") +. leading;
+    tp_pad_right = Option.value ~default:pad_x (pnum store id "padding-right") +. trailing;
     tp_pad_top = Option.value ~default:pad_y (pnum store id "padding-top");
     tp_pad_bottom = Option.value ~default:pad_y (pnum store id "padding-bottom");
     tp_top = top }
@@ -1764,18 +1772,20 @@ let control_icon_ops ctx store id r alpha =
   | None -> []
   | Some img -> (
     match Lui_store.child_ids store id with
-    | _ :: _ -> []
-    | [] ->
+    | _ :: _ when Lui_store.kind store id <> "menu-item" -> []
+    | _ ->
       let s = ctx.scale in
-      let size = Float.min (18. *. s) (Float.min r.w r.h) in
+      let icon_size = if Lui_store.kind store id = "menu-item" then 16. else 18. in
+      let size = Float.min (icon_size *. s) (Float.min r.w r.h) in
       if size <= 0. then []
       else
         let dst =
           match Lui_store.kind store id with
           | "menu-item" ->
-            (* leading icon slot: 8px in, vertically centered —
-               .lui-menu-item's icon span *)
-            rect (r.x +. (8. *. s))
+            (* The icon follows the optional leading check and outer padding. *)
+            let tp = text_placement_of store id in
+            let gap = Option.value ~default:8. (pnum store id "gap") in
+            rect (r.x +. ((tp.tp_pad_left -. 16. -. gap) *. s))
               (r.y +. ((r.h -. size) /. 2.)) size size
           | _ ->
             rect (r.x +. ((r.w -. size) /. 2.))
@@ -1787,6 +1797,84 @@ let control_icon_ops ctx store id r alpha =
               isrc =
                 { x = 0.; y = 0.; w = float img.iw; h = float img.ih };
               igrayscale = false; iopacity = alpha } ]))
+
+(* A single immutable bitmap is reused across rows and frames. The bounded
+   cache also allows theme or display-scale changes without retaining old sizes. *)
+let menu_check_cache = ref None
+
+let menu_check_image size c =
+  match !menu_check_cache with
+  | Some (cached_size, cached_color, image)
+    when cached_size = size && cached_color = c ->
+      image
+  | _ ->
+      let distance x y ax ay bx by =
+        let dx = bx -. ax and dy = by -. ay in
+        let t =
+          Float.max 0.
+            (Float.min 1.
+               ((((x -. ax) *. dx) +. ((y -. ay) *. dy))
+               /. ((dx *. dx) +. (dy *. dy))))
+        in
+        Float.hypot (x -. ax -. (t *. dx)) (y -. ay -. (t *. dy))
+      in
+      let pixels = Bytes.make (size * size * 4) '\000' in
+      let step = 24. /. float size in
+      for y = 0 to size - 1 do
+        for x = 0 to size - 1 do
+          let coverage = ref 0 in
+          for sy = 0 to 3 do
+            for sx = 0 to 3 do
+              let px = (float x +. ((float sx +. 0.5) /. 4.)) *. step in
+              let py = (float y +. ((float sy +. 0.5) /. 4.)) *. step in
+              if
+                Float.min
+                  (distance px py 5. 12. 10. 17.)
+                  (distance px py 10. 17. 20. 7.)
+                <= 1.
+              then incr coverage
+            done
+          done;
+          let alpha = ((c.a * !coverage) + 8) / 16 in
+          let offset = ((y * size) + x) * 4 in
+          Bytes.set pixels offset (Char.chr (((c.r * alpha) + 127) / 255));
+          Bytes.set pixels (offset + 1) (Char.chr (((c.g * alpha) + 127) / 255));
+          Bytes.set pixels (offset + 2) (Char.chr (((c.b * alpha) + 127) / 255));
+          Bytes.set pixels (offset + 3) (Char.chr alpha)
+        done
+      done;
+      let image = new_image ~w:size ~h:size pixels in
+      menu_check_cache := Some (size, c, image);
+      image
+
+let menu_selection_ops ctx store id r alpha fg =
+  if not (pbool store id "selected") then []
+  else
+    let s = ctx.scale in
+    let size = 16. *. s in
+    let tp = text_placement_of store id in
+    let gap = Option.value ~default:8. (pnum store id "gap") in
+    let x =
+      if pstr store id "selection-placement" = Some "leading" then
+        let icon_zone =
+          if pstr store id "icon" = None then 0. else 16. +. gap
+        in
+        r.x +. ((tp.tp_pad_left -. 16. -. gap -. icon_zone) *. s)
+      else r.x +. r.w -. ((tp.tp_pad_right -. gap) *. s)
+    in
+    let image = menu_check_image (max 1 (int_of_float (Float.ceil size))) fg in
+    [
+      Image
+        {
+          irect2 = rect x (r.y +. ((r.h -. size) /. 2.)) size size;
+          iradii = (0., 0., 0., 0.);
+          icontinuous = false;
+          iimage = image;
+          isrc = rect 0. 0. (float image.iw) (float image.ih);
+          igrayscale = false;
+          iopacity = alpha;
+        };
+    ]
 
 (* Labeled chrome carrying an [icon] prop and no children paints the
    glyph in a side slot — on the web the icon is a flex child sitting
@@ -2717,7 +2805,11 @@ let paint_own ctx store id st kind r rs alpha =
     | "text-field" | "secure-field" | "input" | "search-field" | "textarea" ->
       box_ops ctx store id rs r alpha
       @ text_ops ~fg ctx store id r alpha ~placeholder_ok:true
-    | "button" | "toggle-button" | "toggle" | "menu-item" | "menu-trigger"
+    | "menu-item" ->
+      box_ops ctx store id rs r alpha
+      @ labeled_content_ops ctx store id r alpha ~fg ~placeholder_ok:false
+      @ menu_selection_ops ctx store id r alpha fg
+    | "button" | "toggle-button" | "toggle" | "menu-trigger"
     | "bottom-tab" | "list-item" | "swipe-action" | "file-picker" | "step"
     | "list-section-header" | "list-section-footer" | "tab" | "table-cell" ->
       (* labeled chrome: box decoration plus the label through the text

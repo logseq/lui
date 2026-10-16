@@ -148,6 +148,7 @@ enum class LuiProperty(val wireName: String) {
     variant("variant"),
     icon("icon"),
     iconPlacement("icon-placement"),
+    selectionPlacement("selection-placement"),
     selected("selected"),
     autofocus("autofocus"),
     submitOnEnter("submit-on-enter"),

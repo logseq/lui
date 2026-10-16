@@ -141,6 +141,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case variant = "variant"
     case icon = "icon"
     case iconPlacement = "icon-placement"
+    case selectionPlacement = "selection-placement"
     case selected = "selected"
     case autofocus = "autofocus"
     case submitOnEnter = "submit-on-enter"

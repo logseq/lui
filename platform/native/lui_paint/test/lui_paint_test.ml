@@ -1111,8 +1111,105 @@ let test_menu_item_single_icon () =
   in
   check int "one icon image" 1 (List.length images);
   match images with
-  | [ i ] -> check (float 0.01) "leading slot x" 8. i.irect2.x
+  | [ i ] ->
+    check (float 0.01) "leading slot x" 8. i.irect2.x;
+    apply t [CreateNode (2, Kbd); SetProp (2, TextValue, StringValue "K"); InsertChild (1, 2, 0)];
+    let images = List.filter_map (function Image i -> Some i | _ -> None) (paint_with h t ()).ops in
+    check int "shortcut children preserve the menu icon" 1 (List.length images)
   | _ -> ()
+
+let test_menu_selection_indicator () =
+  List.iter
+    (fun scale ->
+      let t = store () in
+      apply t
+        [
+          Lui_protocol.CreateNode (1, MenuItem);
+          SetProp (1, TextValue, StringValue "English");
+          SetProp (1, Selected, BoolValue true);
+        ];
+      let r =
+        rect (20. *. scale) (10. *. scale) (200. *. scale) (32. *. scale)
+      in
+      let h = hooks ~layout:(fun _ -> Lui_paint.placement_of_rect r) () in
+      let images scene =
+        List.filter_map (function Image i -> Some i | _ -> None) scene.ops
+      in
+      let selected = images (paint_with h t ~width:500 ~height:100 ~scale ()) in
+      check int "selected menu row paints one check" 1 (List.length selected);
+      let mark = List.hd selected in
+      check bool "check contains ink" true
+        (Bytes.exists (fun byte -> byte <> '\000') mark.iimage.ipix);
+      let repeated =
+        List.hd (images (paint_with h t ~width:500 ~height:100 ~scale ()))
+      in
+      check bool "unchanged rows reuse the check bitmap" true
+        (mark.iimage == repeated.iimage);
+      check bool "selection check occupies the trailing sixteen-point slot" true
+        (mark.irect2
+        = rect (196. *. scale) (18. *. scale) (16. *. scale) (16. *. scale));
+      let tp = Lui_paint.text_placement_of t 1 in
+      check (float 0.01) "selection reserves label space" 32. tp.tp_pad_right;
+      apply t [ SetProp (1, Selected, BoolValue false) ];
+      check int "unchecked menu row hides its check" 0
+        (List.length (images (paint_with h t ~width:500 ~height:100 ~scale ())));
+      let tp = Lui_paint.text_placement_of t 1 in
+      check (float 0.01) "unchecked options preserve alignment" 32.
+        tp.tp_pad_right;
+      apply t [ RemoveProp (1, Selected) ];
+      check (float 0.01) "ordinary actions need no selection slot" 8.
+        (Lui_paint.text_placement_of t 1).tp_pad_right)
+    [ 1.; 2. ]
+
+let test_menu_selection_placement () =
+  let property =
+    List.find_opt
+      (fun p -> Lui_wire_schema.property_name p = "selection-placement")
+      Lui_wire_schema.all_properties
+  in
+  check bool "selection placement has a typed wire property" true
+    (Option.is_some property);
+  let property = Option.get property in
+  List.iter
+    (fun scale ->
+      let t = store () in
+      apply t
+        [
+          Lui_protocol.CreateNode (1, MenuItem);
+          SetProp (1, TextValue, StringValue "English");
+          SetProp (1, Selected, BoolValue true);
+          SetProp (1, property, StringValue "leading");
+          SetProp (1, PaddingHorizontal, IntValue 12);
+          SetProp (1, Gap, IntValue 4);
+        ];
+      let r =
+        rect (20. *. scale) (10. *. scale) (200. *. scale) (32. *. scale)
+      in
+      let h = hooks ~layout:(fun _ -> Lui_paint.placement_of_rect r) () in
+      let images scene =
+        List.filter_map (function Image i -> Some i | _ -> None) scene.ops
+      in
+      let first =
+        List.hd (images (paint_with h t ~width:500 ~height:100 ~scale ()))
+      in
+      check bool "leading selection honors typed padding" true
+        (first.irect2
+        = rect (32. *. scale) (18. *. scale) (16. *. scale) (16. *. scale));
+      let tp = Lui_paint.text_placement_of t 1 in
+      check (float 0.01) "leading check and gap reserve label space" 32.
+        tp.tp_pad_left;
+      check (float 0.01) "leading check leaves trailing padding intact" 12.
+        tp.tp_pad_right;
+      apply t [ SetProp (1, Enabled, BoolValue false) ];
+      let disabled =
+        List.hd (images (paint_with h t ~width:500 ~height:100 ~scale ()))
+      in
+      check bool "disabled check follows row opacity" true
+        (disabled.iopacity > 0. && disabled.iopacity < first.iopacity);
+      apply t [ SetProp (1, property, StringValue "trailing") ];
+      check (float 0.01) "placement changes update trailing label space" 32.
+        (Lui_paint.text_placement_of t 1).tp_pad_right)
+    [ 1.; 2. ]
 
 let test_control_single_icon () =
   List.iter
@@ -1261,6 +1358,8 @@ let () =
          test_case "scrollbar" `Quick test_scrollbar;
          test_case "extension" `Quick test_extension;
          test_case "menu item single icon" `Quick test_menu_item_single_icon;
+         test_case "menu selection indicator" `Quick test_menu_selection_indicator;
+         test_case "menu selection placement" `Quick test_menu_selection_placement;
          test_case "control single icon" `Quick test_control_single_icon;
          test_case "text edge placement" `Quick test_text_edge_placement ]);
       ("secure",

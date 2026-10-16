@@ -162,6 +162,7 @@ type property =
   | VariantValue
   | InlineIconName
   | IconPlacementValue
+  | SelectionPlacementValue
   | Selected
   | Autofocus
   | SubmitOnEnter
@@ -1005,6 +1006,7 @@ let common_property_supported kind property =
     || kind = Link
   | IconPlacementValue ->
     kind = Button || kind = ToggleButton || kind = ListItem || kind = Link
+  | SelectionPlacementValue -> kind = MenuItem
   | Selected ->
     kind = Button
     || kind = ToggleButton
@@ -1500,7 +1502,8 @@ let property_value_supported property value =
   | IconName, StringValue value -> icon_name_supported value
   | VariantValue, StringValue value -> button_variant_supported value
   | InlineIconName, StringValue value -> icon_name_supported value
-  | IconPlacementValue, StringValue value -> icon_placement_supported value
+  | IconPlacementValue, StringValue value
+  | SelectionPlacementValue, StringValue value -> icon_placement_supported value
   | Selected, BoolValue _ -> true
   | Autofocus, BoolValue _ -> true
   | SubmitOnEnter, BoolValue _ -> true

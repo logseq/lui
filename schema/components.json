@@ -1122,6 +1122,11 @@
       "swift": "iconPlacement"
     },
     {
+      "lg": "SelectionPlacementValue",
+      "wire": "selection-placement",
+      "swift": "selectionPlacement"
+    },
+    {
       "lg": "Selected",
       "wire": "selected",
       "swift": "selected"

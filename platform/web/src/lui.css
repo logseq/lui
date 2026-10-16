@@ -1148,6 +1148,11 @@ body {
     @apply invisible;
   }
 
+  .lui-menu-item[data-selection-placement="leading"] > .lui-menu-item-check {
+    display: flex;
+    order: -4;
+  }
+
   .lui-menu-item-label {
     @apply flex-1;
   }

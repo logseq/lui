@@ -3795,6 +3795,7 @@ val menu_item :
   ?text_signal:string Signal.signal ->
   ?icon:icon ->
   ?icon_signal:icon Signal.signal ->
+  ?selection_placement:icon_placement ->
   ?role:role ->
   ?variant:variant ->
   ?size:control_size ->

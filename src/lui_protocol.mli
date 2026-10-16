@@ -160,6 +160,7 @@ type property =
   | VariantValue
   | InlineIconName
   | IconPlacementValue
+  | SelectionPlacementValue
   | Selected
   | Autofocus
   | SubmitOnEnter
