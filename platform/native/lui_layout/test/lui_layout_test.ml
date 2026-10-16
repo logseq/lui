@@ -1065,10 +1065,42 @@ let test_fractional_ancestor_offsets () =
   Lui_layout.sync ~width:100. ~height:40. layout store;
   check_some_rect "fractional ancestor update" 2. 0. 40. 10. (Lui_layout.rect layout 3)
 
+let test_split_gap_fraction () =
+  let store = Lui_store.create () in
+  apply store
+    [
+      CreateNode (1, Split);
+      CreateNode (2, Column);
+      CreateNode (3, Column);
+      SetProp (1, Gap, IntValue 3);
+      InsertChild (1, 2, 0);
+      InsertChild (1, 3, 1);
+    ];
+  let layout = Lui_layout.create () in
+  List.iter
+    (fun scale ->
+      List.iter
+        (fun value ->
+          apply store [ SetProp (1, ProgressValue, FloatValue value) ];
+          Lui_layout.sync ~scale ~width:1000. ~height:400. layout store;
+          let first = Option.get (Lui_layout.rect layout 2)
+          and second = Option.get (Lui_layout.rect layout 3) in
+          let available = 1000. -. (3. *. scale) in
+          check (float 0.6) "first pane uses the track excluding its divider"
+            (available *. value) first.w;
+          check (float 0.6) "second pane uses the remaining track"
+            (available *. (1. -. value))
+            second.w;
+          check (float 0.6) "divider keeps its logical width" (3. *. scale)
+            (second.x -. first.x -. first.w))
+        [ 0.; 0.25; 0.7; 1. ])
+    [ 1.; 2. ]
+
 let () =
   run "lui_layout"
     [ ("layout",
        [ test_case "column padding/gap" `Quick test_column_padding_gap;
+         test_case "split divider fraction" `Quick test_split_gap_fraction;
          test_case "grid wraps" `Quick test_grid_wraps;
          test_case "grid gap fits" `Quick test_grid_gap_fits_columns;
          test_case "absolute inset" `Quick test_absolute_inset;

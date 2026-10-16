@@ -2824,6 +2824,50 @@ let test_split_pointer_resize () =
   ignore (input (Input.Move (500.,100.)));
   Alcotest.(check (float 0.00001)) "release ends resize capture" 0.4 (split_fraction store 1)
 
+let test_split_pointer_minimums () =
+  List.iter
+    (fun scale ->
+      let store, rects, ui = split_fixture () in
+      Ui.set_scale ui scale;
+      let input event = Ui.handle ui store rects event in
+      let x = 303. /. scale and y = 200. /. scale in
+      List.iter (Lui_store.apply_op store)
+        [
+          SetProp (2, MinWidth, IntValue 100);
+          SetProp (3, MinWidth, IntValue 150);
+        ];
+      ignore (input (Input.Button_down (x, y, Input.Left, 1, Input.mods_none)));
+      ignore (input (Input.Move (-2000., y)));
+      let available = 994. /. scale in
+      Alcotest.(check (float 0.00001))
+        "drag preserves the first pane minimum" (100. /. available)
+        (split_fraction store 1);
+      Alcotest.(check (option (float 0.00001)))
+        "dragging beyond the same minimum emits no duplicate resize" None
+        (resized 1 (input (Input.Move (-2100., y))));
+      let acts =
+        input (Input.Button_up (2000., y, Input.Left, Input.mods_none))
+      in
+      Alcotest.(check (option (float 0.00001)))
+        "release preserves the second pane minimum"
+        (Some (1. -. (150. /. available)))
+        (resized 1 acts);
+      List.iter (Lui_store.apply_op store)
+        [
+          SetProp (2, MinWidth, IntValue 600);
+          SetProp (3, MinWidth, IntValue 900);
+        ];
+      ignore (input (Input.Button_down (x, y, Input.Left, 1, Input.mods_none)));
+      ignore (input (Input.Move (-2000., y)));
+      Alcotest.(check (float 0.00001))
+        "infeasible minimums share the track proportionally" 0.4
+        (split_fraction store 1);
+      ignore (input (Input.Button_up (2000., y, Input.Left, Input.mods_none)));
+      Alcotest.(check (float 0.00001))
+        "infeasible minimums remain stable on release" 0.4
+        (split_fraction store 1))
+    [ 1.; 2. ]
+
 let test_split_pointer_admission () =
   let store,rects,ui=split_fixture () in
   let input event=Ui.handle ui store rects event in
@@ -2943,6 +2987,7 @@ let () =
           Alcotest.test_case "undo/redo" `Quick test_undo_redo ] );
       ( "split resize",
         [ Alcotest.test_case "pointer feedback" `Quick test_split_pointer_resize;
+          Alcotest.test_case "pane minimums" `Quick test_split_pointer_minimums;
           Alcotest.test_case "capture admission" `Quick test_split_pointer_admission;
           Alcotest.test_case "nested scaled track" `Quick test_nested_split_pointer_resize ] );
       ( "keys",

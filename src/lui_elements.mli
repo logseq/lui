@@ -410,6 +410,7 @@ val column :
   ?width:int ->
   ?height:int ->
   ?min_width:int ->
+  ?min_width_signal:int Signal.signal ->
   ?max_width:int ->
   ?max_width_signal:int Signal.signal ->
   ?min_height:int ->

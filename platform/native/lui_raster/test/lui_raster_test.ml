@@ -655,6 +655,58 @@ let test_native_tile_scroll_budget ?(workers=1) path () =
   Alcotest.(check bool) "native tiled redraw and pixel copy meets its frame budget" true
     (times.(57) <= budget)
 
+let test_modal_fade_budget ?(workers = 4) () =
+  let width = 2880 and height = 1864 in
+  let output = Lui_raster.Image.create ~w:width ~h:height in
+  let renderer = Lui_raster.Tile_renderer.create () in
+  Fun.protect
+    ~finally:(fun () -> Lui_raster.Tile_renderer.release renderer)
+    (fun () ->
+      let emit (area : irect) (tile : Lui_raster.Image.t) =
+        for y = area.y0 to area.y1 - 1 do
+          Bytes.blit tile.pix
+            ((y - area.y0) * tile.stride)
+            output.pix (y * output.stride) (4 * width)
+        done
+      in
+      let paint alpha =
+        let s =
+          scene ~w:width ~h:height ~clear:(color 255 255 255 255)
+            [
+              ifill (rect 0. 0. 480. (float height)) (color 238 238 240 255);
+              ifill
+                (rect 0. 0. (float width) (float height))
+                (color 0 0 0 (alpha / 2));
+              ishadow ~radii:(radii 16.) ~blur:24.
+                (rect 416. 360. 2048. 1144.)
+                (color 0 0 0 (alpha / 5));
+              ifill ~radii:(radii 16.)
+                (rect 416. 360. 2048. 1144.)
+                (color 255 255 255 alpha);
+            ]
+        in
+        Lui_raster.Tile_renderer.render ~workers renderer s ~emit;
+        s
+      in
+      ignore (paint 255);
+      let times =
+        Array.init 30 (fun frame ->
+            let started = Unix.gettimeofday () in
+            ignore (paint (250 - (frame * 7)));
+            (Unix.gettimeofday () -. started) *. 1000.)
+      in
+      let final = paint 47 in
+      let expected = Lui_raster.render ~workers:1 ~scene:final () in
+      Alcotest.(check bool)
+        "modal fade tiles match complete rendering" true
+        (Bytes.equal expected.pix output.pix);
+      Array.sort Float.compare times;
+      Printf.printf "Retina modal fade p50=%.2fms p95=%.2fms\n%!" times.(15)
+        times.(28);
+      Alcotest.(check bool)
+        "Retina modal compositing fits the 120 FPS frame budget" true
+        (times.(28) <= 8.33))
+
 let test_translucent_byte_rounding () =
   let premul channel alpha = (channel * alpha + 127) / 255 in
   let over source dest inv =
@@ -1160,6 +1212,7 @@ let () =
       ; ("compositing", [
           Alcotest.test_case "translucent rounding" `Slow test_translucent_byte_rounding;
           Alcotest.test_case "span allocation" `Quick test_translucent_span_allocation;
+          Alcotest.test_case "modal fade budget" `Slow test_modal_fade_budget;
           Alcotest.test_case "opaque span edges" `Quick test_opaque_span_edges;
           Alcotest.test_case "opaque glyph allocation" `Quick test_opaque_glyph_allocation;
           Alcotest.test_case "translucent span channels" `Quick test_translucent_span_channels;

@@ -196,9 +196,144 @@ let test_split_reduced_motion_and_drag () =
     SetProp (1, ProgressValue, FloatValue 0.4)]));
   check (float 0.00001) "zero duration updates immediately" 0.4 (split_value h)
 
+let popup_fill h =
+  List.find_map
+    (function
+      | Lui_scene.Fill fill when fill.fcolor = Lui_scene.color 255 0 0 255 ->
+          Some fill
+      | _ -> None)
+    (Lui_host.scene h).Lui_scene.ops
+
+let popup_alpha h =
+  match popup_fill h with Some fill -> fill.fopacity | None -> 0.
+
+let test_popup_motion () =
+  List.iter
+    (fun kind ->
+      let h = popup_host () in
+      ignore (Lui_host.apply_batch h (batch [ DropNode 5 ]));
+      (* Recreate the surface to exercise each native presentation kind. *)
+      ignore
+        (Lui_host.apply_batch h
+           (batch
+              [
+                CreateNode (3, kind);
+                InsertChild (1, 3, 1);
+                CreateNode (4, Box);
+                InsertChild (3, 4, 0);
+                SetProp (4, BackgroundValue, StringValue "#ff0000");
+              ]));
+      Lui_host.tick h ~now:10.;
+      ignore (Lui_host.repaint h);
+      check (float 0.00001) "surface starts transparent" 0. (popup_alpha h);
+      check bool "entrance schedules frames" true (Lui_host.wants_repaint h);
+      Lui_host.tick h ~now:10.075;
+      ignore (Lui_host.repaint h);
+      let alpha = popup_alpha h in
+      check bool "surface fades during entrance" true (alpha > 0. && alpha < 1.);
+      (match popup_fill h with
+      | Some fill ->
+          check bool "surface zoom stays near final geometry" true
+            (fill.frect.w > 22.8 && fill.frect.w < 24.)
+      | None -> fail "entering surface has no visual shell");
+      Lui_host.tick h ~now:10.25;
+      ignore (Lui_host.repaint h);
+      check (float 0.00001) "entrance settles exactly" 1. (popup_alpha h);
+      check bool "settled surface leaves host idle" false
+        (Lui_host.wants_repaint h);
+      ignore (Lui_host.apply_batch h (batch [ DetachSubtree 3 ]));
+      ignore (Lui_host.repaint h);
+      check bool "exit does not retain interactive store nodes" false
+        (Lui_store.mem (Lui_host.store h) 3);
+      check (float 0.00001) "exit keeps its initial visual shell" 1.
+        (popup_alpha h);
+      Lui_host.tick h ~now:10.325;
+      ignore (Lui_host.repaint h);
+      check bool "removed surface fades out" true
+        (popup_alpha h > 0. && popup_alpha h < 1.);
+      Lui_host.tick h ~now:10.5;
+      ignore (Lui_host.repaint h);
+      check bool "exit releases visual shell" true (popup_fill h = None);
+      check bool "exit leaves no scheduled frames" false
+        (Lui_host.wants_repaint h))
+    [ Popover; DropdownMenu; ContextMenu; Dialog ]
+
+let test_popup_motion_reversal () =
+  let h = popup_host () in
+  Lui_host.tick h ~now:0.;
+  ignore (Lui_host.repaint h);
+  Lui_host.tick h ~now:0.08;
+  ignore (Lui_host.repaint h);
+  let before = popup_alpha h in
+  Lui_host.set_hidden h (Some (fun id -> id = 3));
+  ignore (Lui_host.repaint h);
+  check (float 0.00001) "closing starts from displayed opacity" before
+    (popup_alpha h);
+  Lui_host.tick h ~now:0.12;
+  ignore (Lui_host.repaint h);
+  let closing = popup_alpha h in
+  check bool "interrupted entrance fades down" true
+    (closing > 0. && closing < before);
+  Lui_host.set_hidden h None;
+  ignore (Lui_host.repaint h);
+  check (float 0.00001) "reopen reverses without flashing" closing
+    (popup_alpha h);
+  Lui_host.resize h ~width:100 ~height:80 ~scale:1.;
+  Lui_host.tick h ~now:0.16;
+  ignore (Lui_host.repaint h);
+  check bool "resizing preserves motion progress" true (popup_alpha h > closing);
+  Lui_host.tick h ~now:1.;
+  ignore (Lui_host.repaint h);
+  check (float 0.00001) "reversal finishes opaque" 1. (popup_alpha h);
+  check bool "reversal settles" false (Lui_host.wants_repaint h)
+
+let test_popup_motion_reduced () =
+  let h = popup_host () in
+  Lui_host.tick h ~now:0.;
+  ignore (Lui_host.repaint h);
+  Lui_host.tick h ~now:0.05;
+  ignore (Lui_host.repaint h);
+  Lui_host.set_reduced_motion h true;
+  ignore (Lui_host.repaint h);
+  check (float 0.00001) "reduced motion completes entrance" 1. (popup_alpha h);
+  check bool "reduced motion stops frames" false (Lui_host.wants_repaint h);
+  Lui_host.set_hidden h (Some (fun id -> id = 3));
+  ignore (Lui_host.repaint h);
+  check bool "reduced motion removes shell immediately" true
+    (popup_fill h = None);
+  Lui_host.set_hidden h None;
+  ignore (Lui_host.repaint h);
+  check (float 0.00001) "reduced motion opens immediately" 1. (popup_alpha h)
+
+let test_popup_reused_id () =
+  let h = popup_host () in
+  Lui_host.tick h ~now:0.;
+  ignore (Lui_host.repaint h);
+  Lui_host.tick h ~now:1.;
+  ignore (Lui_host.repaint h);
+  ignore (Lui_host.apply_batch h (batch [ DetachSubtree 3 ]));
+  ignore (Lui_host.repaint h);
+  ignore
+    (Lui_host.apply_batch h
+       (batch
+          [
+            CreateNode (3, Popover);
+            InsertChild (1, 3, 1);
+            CreateNode (4, Box);
+            InsertChild (3, 4, 0);
+            SetProp (4, BackgroundValue, StringValue "#ff0000");
+          ]));
+  ignore (Lui_host.repaint h);
+  check (float 0.00001) "reused id starts a fresh presentation" 0.
+    (popup_alpha h)
+
 let () =
   run "lui_host"
-    [ ("motion", [test_case "split transition" `Quick test_split_transition;
+    [ ("motion", [test_case "popup enter and exit" `Quick test_popup_motion;
+                    test_case "popup reversal and resize" `Quick test_popup_motion_reversal;
+                    test_case "popup reduced motion" `Quick test_popup_motion_reduced;
+                    test_case "popup reused id" `Quick test_popup_reused_id;
+                    test_case "split transition" `Quick test_split_transition;
                     test_case "split reversal and removal" `Quick test_split_reversal_and_removal;
                     test_case "reduced motion and drag" `Quick test_split_reduced_motion_and_drag]);
       ( "dirty",

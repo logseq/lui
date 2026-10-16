@@ -84,8 +84,22 @@ and frag = {
   mutable ebase : int;
 }
 
+type surface_motion = {
+  mutable snapshot : frag;
+  mutable bounds : rect;
+  mutable from_alpha : float;
+  mutable target_alpha : float;
+  mutable started : float;
+  duration : float;
+}
+
 type retained = {
   frags : (int, frag) Hashtbl.t;
+  surfaces : (int, surface_motion) Hashtbl.t;
+  mutable surface_order : int list;
+  mutable now : float option;
+  mutable reduced_motion : bool;
+  mutable motion_dirty : bool;
   (* The parent whose kids list last contained the id — lets drop/move
      ops re-derive the right child list when the op only names the
      child. *)
@@ -116,11 +130,54 @@ type retained = {
 }
 
 let create () =
-  { frags = Hashtbl.create 256; fparent = Hashtbl.create 256;
+  { surfaces = Hashtbl.create 4; surface_order = []; now = None;
+    reduced_motion = false; motion_dirty = false;
+    frags = Hashtbl.create 256; fparent = Hashtbl.create 256;
     pend_kids = Hashtbl.create 16; pend_segs = Hashtbl.create 64;
     rev = -1; vp = rect 0. 0. 0. 0.; scale = 1.;
     dirty = false; resync = false; mgen = 0; stat_repaints = 0; stat_visits = 0;
     vwin = Hashtbl.create 4; mounted = (fun _ -> None) }
+
+let surface_alpha now motion =
+  let progress = Float.min 1. ((now -. motion.started) /. motion.duration) in
+  if progress >= 1. then motion.target_alpha
+  else begin
+    (* CSS ease-out: cubic-bezier(0, 0, 0.58, 1). *)
+    let low = ref 0. and high = ref 1. in
+    for _ = 1 to 16 do
+      let t = (!low +. !high) /. 2. in
+      let x = (1.74 *. (1. -. t) *. t *. t) +. (t *. t *. t) in
+      if x < progress then low := t else high := t
+    done;
+    let t = (!low +. !high) /. 2. in
+    let eased = (3. *. (1. -. t) *. t *. t) +. (t *. t *. t) in
+    motion.from_alpha +. ((motion.target_alpha -. motion.from_alpha) *. eased)
+  end
+
+let animating rt =
+  match rt.now with
+  | None -> false
+  | Some now ->
+      Hashtbl.fold
+        (fun _ motion active ->
+          active || surface_alpha now motion <> motion.target_alpha)
+        rt.surfaces false
+
+let tick rt ~now =
+  let was_animating = animating rt in
+  rt.now <- Some now;
+  if was_animating then rt.motion_dirty <- true;
+  was_animating
+
+let set_reduced_motion rt enabled =
+  if rt.reduced_motion <> enabled then begin
+    rt.reduced_motion <- enabled;
+    if enabled && Hashtbl.length rt.surfaces > 0 then begin
+      Hashtbl.clear rt.surfaces;
+      rt.surface_order <- [];
+      rt.motion_dirty <- true
+    end
+  end
 
 let invalidate (rt : retained) =
   Hashtbl.reset rt.frags;
@@ -304,6 +361,7 @@ let advance rt store =
         | CreateNode (id, _) | CreateExtension (id, _, _) ->
           (* A reused id can retire descendants without an explicit drop. *)
           retired := true;
+          Hashtbl.remove rt.surfaces id;
           mark_repaint rt id
         | DropNode id | DetachSubtree id ->
           retired := true;
@@ -715,6 +773,166 @@ let rec emit_seg (scene : Lui_scene.t) m (f : frag) =
       | Sub g -> emit_seg scene m g)
     f.seg
 
+(* Snapshot only one promoted surface's display list, sharing atlas pixels.
+   An exiting snapshot has no store nodes, handlers, or hit-test presence. *)
+let capture_surface rt scene m surface =
+  let capture =
+    Lui_scene.create ~mask_atlas:scene.mask_atlas ~color_atlas:scene.color_atlas
+  in
+  rt.mgen <- rt.mgen + 1;
+  let local =
+    { m with m_gen = rt.mgen; gcount = 0; wcount = 0; ecount = 0; fx_rev = [] }
+  in
+  emit_seg capture local surface;
+  let snapshot = fresh_frag surface.self in
+  snapshot.pre <- List.rev capture.ops;
+  snapshot.glyphs <- Array.of_list (List.rev capture.glyphs);
+  snapshot.wide <- Array.of_list (List.rev capture.wide);
+  snapshot.fx <- Array.of_list (List.rev local.fx_rev);
+  snapshot
+
+let emit_surface scene m viewport motion alpha =
+  let zoom = 0.95 +. (0.05 *. alpha) in
+  let cx = motion.bounds.x +. (motion.bounds.w /. 2.)
+  and cy = motion.bounds.y +. (motion.bounds.h /. 2.) in
+  let point_x x = cx +. ((x -. cx) *. zoom)
+  and point_y y = cy +. ((y -. cy) *. zoom) in
+  let box r =
+    { x = point_x r.x; y = point_y r.y; w = r.w *. zoom; h = r.h *. zoom }
+  in
+  let radii (a, b, c, d) = (a *. zoom, b *. zoom, c *. zoom, d *. zoom) in
+  let transform = function
+    | Fill f ->
+        Fill
+          {
+            f with
+            frect = (if f.frect = viewport then f.frect else box f.frect);
+            fradii = radii f.fradii;
+            fborder = radii f.fborder;
+            fopacity = f.fopacity *. alpha;
+          }
+    | Shadow s ->
+        Shadow
+          {
+            s with
+            srect = box s.srect;
+            scast = box s.scast;
+            sradii = radii s.sradii;
+            scast_radii = radii s.scast_radii;
+            sblur = s.sblur *. zoom;
+            sopacity = s.sopacity *. alpha;
+          }
+    | Image i ->
+        Image
+          {
+            i with
+            irect2 = box i.irect2;
+            iradii = radii i.iradii;
+            iopacity = i.iopacity *. alpha;
+          }
+    | Glyphs g -> Glyphs { g with gopacity = g.gopacity *. alpha }
+    | Push_clip c ->
+        Push_clip { c with crect = box c.crect; cradii = radii c.cradii }
+    | Effect e ->
+        Effect
+          {
+            e with
+            edrect = box e.edrect;
+            edradii = radii e.edradii;
+            edopacity = e.edopacity *. alpha;
+          }
+    | Hole h ->
+        Hole
+          {
+            h with
+            hrect = box h.hrect;
+            hradii = radii h.hradii;
+            hopacity = h.hopacity *. alpha;
+          }
+    | Pop_clip -> Pop_clip
+  in
+  let snapshot = motion.snapshot in
+  let visual =
+    if alpha = 1. then snapshot
+    else
+      {
+        snapshot with
+        glyphs =
+          Array.map
+            (fun g ->
+              {
+                g with
+                gx = point_x g.gx;
+                gy = point_y g.gy;
+                gw = g.gw *. zoom;
+                gh = g.gh *. zoom;
+              })
+            snapshot.glyphs;
+      }
+  in
+  push_buffers scene m visual;
+  List.iter
+    (fun op ->
+      let op = if alpha = 1. then op else transform op in
+      scene.ops <- rebase visual op :: scene.ops)
+    snapshot.pre
+
+let present_surfaces rt scene m viewport ~refresh live =
+  let now = Option.get rt.now in
+  let seen = Hashtbl.create (List.length live) in
+  List.iter
+    (fun (surface : frag) ->
+      Hashtbl.add seen surface.self ();
+      match Hashtbl.find_opt rt.surfaces surface.self with
+      | None ->
+          let snapshot = capture_surface rt scene m surface in
+          let duration =
+            match surface.kind with
+            | "dialog" | "alert" | "sheet" | "drawer" -> 0.2
+            | _ -> 0.15
+          in
+          Hashtbl.add rt.surfaces surface.self
+            {
+              snapshot;
+              bounds = surface.resolved;
+              from_alpha = 0.;
+              target_alpha = 1.;
+              started = now;
+              duration;
+            }
+      | Some motion ->
+          if refresh then motion.snapshot <- capture_surface rt scene m surface;
+          motion.bounds <- surface.resolved;
+          if motion.target_alpha <> 1. then begin
+            motion.from_alpha <- surface_alpha now motion;
+            motion.target_alpha <- 1.;
+            motion.started <- now
+          end)
+    live;
+  Hashtbl.filter_map_inplace
+    (fun id motion ->
+      if (not (Hashtbl.mem seen id)) && motion.target_alpha <> 0. then begin
+        motion.from_alpha <- surface_alpha now motion;
+        motion.target_alpha <- 0.;
+        motion.started <- now
+      end;
+      if motion.target_alpha = 0. && surface_alpha now motion = 0. then None
+      else Some motion)
+    rt.surfaces;
+  (* Exiting shells remain behind the current live overlay stack. *)
+  let closing =
+    List.filter
+      (fun id -> (not (Hashtbl.mem seen id)) && Hashtbl.mem rt.surfaces id)
+      rt.surface_order
+  in
+  rt.surface_order <-
+    closing @ List.map (fun (surface : frag) -> surface.self) live;
+  List.iter
+    (fun id ->
+      let motion = Hashtbl.find rt.surfaces id in
+      emit_surface scene m viewport motion (surface_alpha now motion))
+    rt.surface_order
+
 let paint_retained rt hooks store (scene : Lui_scene.t) ?moved ?hints ?vlists
     ~width ~height ~scale ~clear () =
   let vp = rect 0. 0. (float width) (float height) in
@@ -753,7 +971,9 @@ let paint_retained rt hooks store (scene : Lui_scene.t) ?moved ?hints ?vlists
    | Some h -> Hashtbl.iter (fun id () ->
        if Lui_store.mem store id then mark_repaint rt id) h
    | None -> ());
-  if rt.dirty then begin
+  if rt.dirty || rt.motion_dirty then begin
+    let refresh_surfaces = rt.dirty in
+    rt.motion_dirty <- false;
     let m =
       { m_ctx =
           { Lui_paint.hooks; scale; viewport = vp;
@@ -827,11 +1047,15 @@ let paint_retained rt hooks store (scene : Lui_scene.t) ?moved ?hints ?vlists
         if promotes f then Queue.add f drain
         else List.iter (fun g -> Queue.add g drain) f.sub_pops)
       root_frags;
+    let live = ref [] in
+    let motion_enabled = rt.now <> None && not rt.reduced_motion in
     while not (Queue.is_empty drain) do
       let g = Queue.pop drain in
-      emit_seg scene m g;
+      if motion_enabled then (if g.emitted then live := g :: !live)
+      else emit_seg scene m g;
       List.iter (fun h -> Queue.add h drain) g.sub_pops
     done;
+    if motion_enabled then present_surfaces rt scene m vp ~refresh:refresh_surfaces (List.rev !live);
     while not (Queue.is_empty m.m_ctx.Lui_paint.deferred) do
       (Queue.pop m.m_ctx.Lui_paint.deferred) ()
     done;

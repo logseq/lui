@@ -917,9 +917,24 @@ module Ui = struct
       match update with
       | None -> ()
       | Some (id,value) ->
-        Lui_store.apply_op store (SetProp (id,ProgressValue,FloatValue value));
-        t.dirty <- true;
-        emit_all [Dispatch (ValueChanged (id,value))]
+        let value =
+          match Lui_store.child_ids store id with
+          | first :: second :: _ ->
+            let available = ((Rects.get rects first).w +. (Rects.get rects second).w) /. t.scale in
+            let minimum child =
+              float_of_int (Option.value (Lui_store.int_prop store child "min-width") ~default:0)
+            in
+            let low = minimum first /. available in
+            let high = 1. -. minimum second /. available in
+            if low > high then low /. (low +. 1. -. high)
+            else Float.min high (Float.max low value)
+          | _ -> assert false
+        in
+        if Lui_store.float_prop store id "value" <> Some value then begin
+          Lui_store.apply_op store (SetProp (id,ProgressValue,FloatValue value));
+          t.dirty <- true;
+          emit_all [Dispatch (ValueChanged (id,value))]
+        end
     in
     emit_all (sync t store);
     (match input with

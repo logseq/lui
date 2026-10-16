@@ -64,6 +64,11 @@ end
 type t
 
 val tick : t -> now:float -> unit
+(** Advance the monotonic presentation clock before input and repaint.
+    Promoted surfaces fade and zoom in over 150 ms (200 ms for modal
+    surfaces); dismissal retains only an inert display-list snapshot until
+    exit finishes. Split transitions share this clock. *)
+
 val set_reduced_motion : t -> bool -> unit
 
 val create :
@@ -149,7 +154,9 @@ val invalidate_paint : t -> unit
     {!note_paint} for inputs that moved globally (a theme swap under
     a stable store). *)
 
-val apply_batch : t -> Lui_protocol.patch_batch -> bool
+val apply_batch : ?animate_resize:bool -> t -> Lui_protocol.patch_batch -> bool
+(** [animate_resize=false] applies direct manipulation feedback, including
+    dependent split corrections, without scheduling eased catch-up. *)
 
 val resize : t -> width:int -> height:int -> scale:float -> unit
 

@@ -165,6 +165,7 @@ let create ~hooks ?layout ?(measure = no_measure) ~renderer ~width ~height ~scal
 let store h = h.store
 let scene h = h.scene
 let wants_repaint h = h.dirty || Hashtbl.length h.transitions > 0
+  || Lui_retained.animating h.retained
 
 let set_hidden h pred =
   h.hidden <- (match pred with Some p -> p | None -> fun _ -> false);
@@ -273,6 +274,7 @@ let tick h ~now =
    | Some previous when now < previous -> invalid_arg "Native animation clock moved backwards"
    | _ -> ());
   h.animation_time <- Some now;
+  if Lui_retained.tick h.retained ~now then h.dirty <- true;
   if Hashtbl.length h.transitions > 0 then
     Hashtbl.filter_map_inplace (fun id motion ->
       if not (Lui_store.mem h.store id) then None
@@ -286,6 +288,8 @@ let tick h ~now =
       end) h.transitions
 
 let set_reduced_motion h enabled =
+  if h.reduced_motion <> enabled then h.dirty <- true;
+  Lui_retained.set_reduced_motion h.retained enabled;
   h.reduced_motion <- enabled;
   if enabled && Hashtbl.length h.transitions > 0 then begin
     Hashtbl.iter (fun id motion ->
@@ -293,7 +297,7 @@ let set_reduced_motion h enabled =
     Hashtbl.clear h.transitions
   end
 
-let apply_batch h (batch : Lui_protocol.patch_batch) =
+let apply_batch ?(animate_resize=true) h (batch : Lui_protocol.patch_batch) =
   let previous = Hashtbl.create 4 and created = Hashtbl.create 4 in
   List.iter (function
     | Lui_protocol.CreateNode (id,_) | CreateExtension (id,_,_)
@@ -303,6 +307,7 @@ let apply_batch h (batch : Lui_protocol.patch_batch) =
         Hashtbl.remove h.transitions id
     | SetProp (id, ProgressValue, _) when not (Hashtbl.mem created id)
         && Lui_store.kind h.store id = "split" ->
+        if not animate_resize then Hashtbl.remove h.transitions id;
         if not (Hashtbl.mem previous id) then
           (match Lui_store.prop h.store id "value" with
            | Some (FloatValue value) -> Hashtbl.add previous id value
@@ -315,7 +320,7 @@ let apply_batch h (batch : Lui_protocol.patch_batch) =
   Hashtbl.iter (fun id from_value ->
     match h.animation_time, Lui_store.prop h.store id "value" with
     | Some started, Some (Lui_protocol.FloatValue target)
-        when not h.reduced_motion && from_value <> target ->
+        when animate_resize && not h.reduced_motion && from_value <> target ->
         let duration = Option.value ~default:0 (Lui_store.int_prop h.store id "resize-duration") in
         if duration > 0 then begin
           let easing = Option.value ~default:"standard"

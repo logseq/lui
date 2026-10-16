@@ -304,6 +304,59 @@ let test_popup_deferred () =
   apply env.store [ SetProp (61, TextValue, StringValue "item!") ];
   frame env ()
 
+let test_popup_motion_buffers () =
+  let env = env () in
+  apply env.store
+    [
+      CreateNode (1, Column);
+      CreateNode (60, Dialog);
+      InsertChild (1, 60, 0);
+      CreateNode (61, Text);
+      SetProp (61, TextValue, StringValue "dialog");
+      InsertChild (60, 61, 0);
+      CreateNode (62, Popover);
+      InsertChild (60, 62, 1);
+      CreateNode (63, Text);
+      SetProp (63, TextValue, StringValue "menu");
+      InsertChild (62, 63, 0);
+    ];
+  let paint now =
+    ignore (Lui_retained.tick env.rt ~now);
+    Lui_layout.sync ~scale:1. ~measure ~width:200. ~height:200. env.eng
+      env.store;
+    let moved = Lui_layout.take_rect_changes env.eng in
+    let h = { (hooks env) with layout = Lui_layout.layout_hook env.eng } in
+    env.cur := env.kept;
+    Lui_retained.paint_retained env.rt h env.store env.kept ~moved ~width:200
+      ~height:200 ~scale:1. ~clear:(color 0 0 0 0) ();
+    List.iter
+      (function
+        | Glyphs g ->
+            check bool "animated glyph references remain in range" true
+              (g.gstart >= 0 && g.gend <= List.length env.kept.glyphs)
+        | _ -> ())
+      env.kept.ops
+  in
+  paint 0.;
+  let planned = Lui_retained.stat_repaints env.rt in
+  paint 0.075;
+  check int "motion reuses the painted fragments" planned
+    (Lui_retained.stat_repaints env.rt);
+  check bool "nested glyphs fade" true
+    (List.exists
+       (function Glyphs g -> g.gopacity > 0. && g.gopacity < 1. | _ -> false)
+       env.kept.ops);
+  paint 0.25;
+  frame env ();
+  apply env.store [ DetachSubtree 60 ];
+  paint 0.25;
+  check bool "removed nested surface retains text during exit" true
+    (env.kept.glyphs <> []);
+  paint 0.5;
+  frame env ();
+  check bool "exit releases glyph buffers" true (env.kept.glyphs = []);
+  check bool "all popup motion is settled" false (Lui_retained.animating env.rt)
+
 let test_state_hint () =
   let env = env () in
   build_rows env 5;
@@ -647,6 +700,7 @@ let () =
           test_case "display contents" `Quick test_display_contents;
           test_case "opacity cascade" `Quick test_opacity_cascade;
           test_case "popup deferred" `Quick test_popup_deferred;
+          test_case "popup motion buffers" `Quick test_popup_motion_buffers;
           test_case "state hint" `Quick test_state_hint;
           test_case "drop subtree" `Quick test_drop_subtree;
           test_case "disposed fragments" `Quick test_disposed_fragments;
