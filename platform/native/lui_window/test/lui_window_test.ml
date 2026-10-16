@@ -742,6 +742,35 @@ let test_scroll () =
   Ui.set_scroll_cap ui 2 30.;
   Alcotest.(check (float 0.001)) "cap shrink" 0. (Ui.scroll_offset ui 2)
 
+let test_live_scroll_readers () =
+  let store =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Scroll); InsertChild (1, 2, 0) ]
+  in
+  let ui = Ui.create () in
+  (* Drivers retain these callbacks before the first layout and wheel. *)
+  let offset_y = Ui.scroll_offset ui and offset_x = Ui.scroll_offset_x ui in
+  let cap_y = Ui.scroll_cap ui and cap_x = Ui.scroll_cap_x ui in
+  List.iter
+    (fun (axis, set_cap, offset, cap) ->
+      List.iter
+        (fun range ->
+          set_cap ui 2 range;
+          Alcotest.(check (float 0.001))
+            "retained reader sees new range" range (cap 2);
+          List.iter
+            (fun target ->
+              ignore (Ui.scroll_to ~axis ui store 2 target);
+              Alcotest.(check (float 0.001))
+                "retained reader sees movement and reversal"
+                (Float.min range target) (offset 2))
+            [ 0.; 44.; 200.; 12.; 0. ])
+        [ 80.; 30.; 0. ])
+    [
+      (Ui.Y, Ui.set_scroll_cap, offset_y, cap_y);
+      (Ui.X, Ui.set_scroll_cap_x, offset_x, cap_x);
+    ]
+
 let test_wheel_x () =
   (* a scroll container with horizontal range: wheel-x deltas and
      shift+wheel move the x offset; the y offset is untouched *)
@@ -2853,6 +2882,7 @@ let () =
       ( "events",
         [ Alcotest.test_case "idle allocations" `Quick test_idle_sync_allocations;
           Alcotest.test_case "idle scrollbar allocations" `Quick test_idle_scrollbar_allocations;
+          Alcotest.test_case "live scroll readers" `Quick test_live_scroll_readers;
           Alcotest.test_case "click" `Quick test_click_press;
           Alcotest.test_case "release elsewhere" `Quick
             test_click_release_elsewhere;

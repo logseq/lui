@@ -615,11 +615,12 @@ module Ui = struct
   type axis = X | Y
 
   let conv_axis = function X -> Lui_scroll.X | Y -> Lui_scroll.Y
-  let scroll_offset t = Lui_scroll.offset t.scroll Lui_scroll.Y
+  (* Retained callbacks read the current state when supplied an id. *)
+  let scroll_offset t id = Lui_scroll.offset t.scroll Lui_scroll.Y id
   let scroll_epoch t = Lui_scroll.epoch t.scroll
-  let scroll_cap t = Lui_scroll.cap t.scroll Lui_scroll.Y
-  let scroll_offset_x t = Lui_scroll.offset t.scroll Lui_scroll.X
-  let scroll_cap_x t = Lui_scroll.cap t.scroll Lui_scroll.X
+  let scroll_cap t id = Lui_scroll.cap t.scroll Lui_scroll.Y id
+  let scroll_offset_x t id = Lui_scroll.offset t.scroll Lui_scroll.X id
+  let scroll_cap_x t id = Lui_scroll.cap t.scroll Lui_scroll.X id
 
   let tick_scrollbars t ~now_ms =
     if not (Float.is_finite now_ms) || now_ms < t.scroll_clock_ms then
