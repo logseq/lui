@@ -9,11 +9,6 @@ module W = Webapi.Dom
 module Store = Lui_web_store
 module Focus = Lui_web_focus
 
-(* matchMedia exposes an abstract mediaQueryList; "matches" is a plain
-   boolean property read — a typed accessor, not a cast. *)
-external media_query_matches : W.Window.mediaQueryList -> bool = "matches"
-  [@@mel.get]
-
 type selection
 external document_selection : Dom.document -> selection option = "getSelection"
   [@@mel.send] [@@mel.return nullable]
@@ -244,67 +239,10 @@ let begin_popup_close popup =
 
 let begin_popup_close_bang = begin_popup_close
 
-let prefers_reduced_motion document =
-  let html_document = W.Document.unsafeAsHtmlDocument document in
-  match W.HtmlDocument.defaultView html_document with
-  | Some window ->
-      media_query_matches
-        (W.Window.matchMedia "(prefers-reduced-motion: reduce)" window)
-  | None -> false
-
-let transition_event_from target event =
-  W.Element.isSameNode
-    (W.Element.asNode
-       (W.EventTarget.unsafeAsElement (W.Event.target event)))
-    target
-
-let after_transition document target fallback_duration finish_on_cancel
-    complete =
-  if prefers_reduced_motion document then begin
-    ignore (complete ());
-    true
-  end
-  else begin
-    let finished = ref false in
-    let timer = ref None in
-    let finish_ref = ref (fun () -> true) in
-    let transition_handler event =
-      if transition_event_from target event then
-        ignore (!(finish_ref) ())
-    in
-    let finish () =
-      if not !finished then begin
-        finished := true;
-        (match !timer with
-         | Some timer_id -> Js.Global.clearTimeout timer_id
-         | None -> ());
-        W.Element.removeEventListener
-          "transitionend" transition_handler target;
-        if finish_on_cancel then
-          W.Element.removeEventListener
-            "transitioncancel" transition_handler target;
-        ignore (complete ())
-      end;
-      true
-    in
-    finish_ref := finish;
-    W.Element.addEventListener "transitionend" transition_handler target;
-    if finish_on_cancel then
-      W.Element.addEventListener
-        "transitioncancel" transition_handler target;
-    timer :=
-      Some
-        (Js.Global.setTimeout ~f:(fun () -> ignore (finish ()))
-           fallback_duration);
-    true
-  end
-
-let after_transition_bang = after_transition
-
 let finish_popup_close_after_transition ?(on_finish = fun () -> ()) document
-    popup duration =
+    popup =
   ignore
-    (after_transition document popup duration true (fun () ->
+    (Lui_web_util.after_surface_motion document [ popup ] (fun () ->
          if W.Element.getAttribute "data-ending-style" popup = Some ""
          then W.Element.removeAttribute "data-ending-style" popup;
          on_finish ();
@@ -326,7 +264,7 @@ let restore_modal_focus renderer node surface =
   | None -> ()
 
 let close_modal_shell ?(on_finish = fun () -> ()) renderer node parent layer
-    surface kind =
+    surface =
   let token =
     Lui_web_layers.close_layer renderer.web_layers renderer.web_document node
   in
@@ -339,12 +277,8 @@ let close_modal_shell ?(on_finish = fun () -> ()) renderer node parent layer
   W.Element.setAttribute "data-ending-style" "" surface;
   W.Element.setAttribute "inert" "" layer;
   W.Element.setAttribute "inert" "" surface;
-  let transition_target =
-    if kind = Some Sheet then surface
-    else Lui_web_util.child_element layer 0
-  in
-  let duration = if kind = Some Sheet then 470 else 170 in
-  after_transition renderer.web_document transition_target duration true
+  let backdrop = Lui_web_util.child_element layer 0 in
+  Lui_web_util.after_surface_motion renderer.web_document [ backdrop; surface ]
     (fun () ->
       if
         Lui_web_layers.transition renderer.web_layers node = token
@@ -360,7 +294,8 @@ let close_modal_shell ?(on_finish = fun () -> ()) renderer node parent layer
         W.Element.removeAttribute "data-ending-style" surface;
         on_finish ()
       end;
-      true)
+      true);
+  true
 
 (* Modal event wiring. *)
 
@@ -598,11 +533,6 @@ let attach_modal_events renderer node dom_node =
     | Some current -> current.retained_parent
     | None -> None
   in
-  let kind =
-    match Store.node renderer.web_store node with
-    | Some current -> Store.standard_kind current
-    | None -> None
-  in
   ignore
     (Lui_web_layers.register renderer.web_layers
        ~document:renderer.web_document ~id:node ~owner ~trigger:None
@@ -614,7 +544,7 @@ let attach_modal_events renderer node dom_node =
            (close_modal_shell
               ~on_finish:(fun () ->
                 restore_modal_focus renderer node dom_node)
-              renderer node renderer.web_portal_root layer dom_node kind))
+              renderer node renderer.web_portal_root layer dom_node))
        ~key_handler ~present:false ~open_:false);
   W.Element.addEventListener "click" click_handler ctx.modal_backdrop;
   if ctx.modal_sheet then begin
@@ -724,10 +654,10 @@ let open_modal renderer node dom_node =
 
 let open_modal_bang = open_modal
 
-let remove_modal_layer_after_exit renderer node parent layer surface kind =
+let remove_modal_layer_after_exit renderer node parent layer surface =
   close_modal_shell
     ~on_finish:(fun () -> restore_modal_focus renderer node surface)
-    renderer node parent layer surface kind
+    renderer node parent layer surface
 
 let remove_modal_layer_after_exit_bang = remove_modal_layer_after_exit
 
@@ -757,7 +687,7 @@ let rec set_tooltip_open renderer node open_flag =
                      ~on_finish:(fun () ->
                        Lui_web_layers.finish_present renderer.web_layers
                          renderer.web_document previous token)
-                     renderer.web_document previous_tooltip 120)
+                     renderer.web_document previous_tooltip)
             | None -> ())
      | None -> ());
     renderer.web_open_tooltip := Some node;
@@ -784,7 +714,7 @@ let rec set_tooltip_open renderer node open_flag =
          ~on_finish:(fun () ->
            Lui_web_layers.finish_present renderer.web_layers
              renderer.web_document node token)
-         renderer.web_document tooltip 120);
+         renderer.web_document tooltip);
     if !(renderer.web_open_tooltip) = Some node then
       renderer.web_open_tooltip := None
   end;
@@ -1028,7 +958,7 @@ let remove_toast_after_exit renderer toast =
   W.Element.setAttribute "inert" "" toast;
   W.Element.removeAttribute "role" toast;
   refresh_toasts renderer;
-  ignore (after_transition renderer.web_document toast 500 true (fun () ->
+  ignore (Lui_web_util.after_surface_motion renderer.web_document [ toast ] (fun () ->
       (match W.Element.parentElement toast with
        | Some parent -> ignore (W.Element.removeChild (W.Element.asNode toast) parent)
        | None -> ());

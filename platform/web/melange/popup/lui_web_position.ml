@@ -1,4 +1,4 @@
-(* Popup geometry, open/close transitions, select-item alignment, and the
+(* Popup geometry, select-item alignment, and the
    submenu pointer corridor.
    Source: /tmp/lui-web-ref/web.cljc lines 3137-3345 and 5439-5597. *)
 
@@ -9,11 +9,6 @@ module W = Webapi.Dom
 module Store = Lui_web_store
 module Util = Lui_web_util
 module Nodes = Lui_web_nodes
-
-(* melange-webapi exposes Window.matchMedia but no accessor for the result's
-   [matches] flag; this is a property getter, not a coercion. *)
-external media_query_list_matches : W.Window.mediaQueryList -> bool
-  = "matches" [@@mel.get]
 
 let css_px value = Js.Float.toString value ^ "px"
 
@@ -214,63 +209,6 @@ let begin_popup_close popup =
   W.Element.setAttribute "data-ending-style" "" popup
 
 let begin_popup_close_bang = begin_popup_close
-
-let prefers_reduced_motion document =
-  let html_document = W.Document.unsafeAsHtmlDocument document in
-  match W.HtmlDocument.defaultView html_document with
-  | Some window ->
-      media_query_list_matches
-        (W.Window.matchMedia "(prefers-reduced-motion: reduce)" window)
-  | None -> false
-
-let prefers_reduced_motion_ = prefers_reduced_motion
-
-let transition_event_from target event =
-  W.Element.isSameNode
-    (W.Element.asNode
-       (W.EventTarget.unsafeAsElement (W.Event.target event)))
-    target
-
-let transition_event_from_ = transition_event_from
-
-let after_transition document target fallback_duration finish_on_cancel
-    complete =
-  if prefers_reduced_motion document then complete ()
-  else begin
-    let finished = ref false in
-    let timer = ref None in
-    let rec finish () =
-      if not !finished then begin
-        finished := true;
-        (match !timer with
-         | Some timer_id -> Js.Global.clearTimeout timer_id
-         | None -> ());
-        W.Element.removeEventListener "transitionend" transition_handler
-          target;
-        if finish_on_cancel then
-          W.Element.removeEventListener "transitioncancel" transition_handler
-            target;
-        complete ()
-      end
-    and transition_handler (event : Dom.event) =
-      if transition_event_from target event then finish ()
-    in
-    W.Element.addEventListener "transitionend" transition_handler target;
-    if finish_on_cancel then
-      W.Element.addEventListener "transitioncancel" transition_handler target;
-    timer :=
-      Some (Js.Global.setTimeout ~f:(fun () -> finish ()) fallback_duration)
-  end
-
-let after_transition_bang = after_transition
-
-let finish_popup_close_after_transition document popup duration =
-  after_transition document popup duration true (fun () ->
-      if W.Element.getAttribute "data-ending-style" popup = Some "" then
-        W.Element.removeAttribute "data-ending-style" popup)
-
-let finish_popup_close_after_transition_bang =
-  finish_popup_close_after_transition
 
 (* Select/combobox lookup helpers. The menu module owns the picker behavior,
    but position sits below it in the layering, so the queries it needs are

@@ -7,60 +7,9 @@ open Lui_web_types
 module W = Webapi.Dom
 module Store = Lui_web_store
 
-(* Popup transition helpers. These belong to the popup-transition vocabulary
-   owned by Lui_web_position, but that module is still a stub, so the port
-   keeps local copies here; switch to the shared versions when they exist. *)
-external media_query_list_matches : W.Window.mediaQueryList -> bool = "matches"
-  [@@mel.get]
-
 external click_detail : Dom.event -> int = "detail" [@@mel.get]
 
 let emit renderer event = ignore (!(renderer.web_event_handler) event)
-
-let transition_event_from target event =
-  W.Element.isSameNode
-    (W.Element.asNode
-       (Lui_web_util.event_target_to_element (W.Event.target event)))
-    target
-
-let prefers_reduced_motion document =
-  let html_document = W.Document.unsafeAsHtmlDocument document in
-  match W.HtmlDocument.defaultView html_document with
-  | Some window ->
-      media_query_list_matches
-        (W.Window.matchMedia "(prefers-reduced-motion: reduce)" window)
-  | None -> false
-
-let after_transition document target fallback_duration finish_on_cancel
-    complete =
-  if prefers_reduced_motion document then complete ()
-  else begin
-    let finished = ref false in
-    let timer = ref None in
-    let finish_ref = ref (fun () -> ()) in
-    let transition_handler event =
-      if transition_event_from target event then !finish_ref ()
-    in
-    let finish () =
-      if not !finished then begin
-        finished := true;
-        (match !timer with
-         | Some timer_id -> Js.Global.clearTimeout timer_id
-         | None -> ());
-        W.Element.removeEventListener "transitionend" transition_handler
-          target;
-        if finish_on_cancel then
-          W.Element.removeEventListener "transitioncancel" transition_handler
-            target;
-        complete ()
-      end
-    in
-    finish_ref := finish;
-    W.Element.addEventListener "transitionend" transition_handler target;
-    if finish_on_cancel then
-      W.Element.addEventListener "transitioncancel" transition_handler target;
-    timer := Some (Js.Global.setTimeout ~f:finish fallback_duration)
-  end
 
 let begin_popup_open popup =
   W.Element.removeAttribute "data-closed" popup;
@@ -411,7 +360,7 @@ let rec set_dropdown_open renderer node open_ =
     in
     begin_popup_close popup;
     W.Element.setAttribute "inert" "" popup;
-    after_transition renderer.web_document popup 130 true (fun () ->
+    Lui_web_util.after_surface_motion renderer.web_document [ popup ] (fun () ->
         if Lui_web_layers.transition renderer.web_layers node = token
            && not (Lui_web_layers.is_open renderer.web_layers node)
         then begin
@@ -1686,7 +1635,7 @@ let remove_dropdown_after_exit renderer node parent positioner =
     in
     begin_popup_close popup;
     W.Element.setAttribute "inert" "" popup;
-    after_transition renderer.web_document popup 130 true (fun () ->
+    Lui_web_util.after_surface_motion renderer.web_document [ popup ] (fun () ->
         if
           Lui_web_layers.transition renderer.web_layers node = token
           && not (Lui_web_layers.is_open renderer.web_layers node)
@@ -1806,7 +1755,7 @@ let remove_popover_after_exit renderer node parent positioner =
     in
     begin_popup_close popup;
     W.Element.setAttribute "inert" "" popup;
-    after_transition renderer.web_document popup 130 true (fun () ->
+    Lui_web_util.after_surface_motion renderer.web_document [ popup ] (fun () ->
         if
           Lui_web_layers.transition renderer.web_layers node = token
           && not (Lui_web_layers.is_open renderer.web_layers node)

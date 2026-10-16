@@ -5,6 +5,63 @@ open Lui_web_types
 
 module W = Webapi.Dom
 
+type surface_animation
+type animation_effect
+type animation_timing
+
+external element_animations : W.Element.t -> surface_animation array
+  = "getAnimations" [@@mel.send]
+external animation_finished : surface_animation -> unit Js.Promise.t
+  = "finished" [@@mel.get]
+external animation_effect : surface_animation -> animation_effect Js.Nullable.t
+  = "effect" [@@mel.get]
+external effect_timing : animation_effect -> animation_timing
+  = "getComputedTiming" [@@mel.send]
+external timing_end : animation_timing -> float = "endTime" [@@mel.get]
+external media_query_matches : W.Window.mediaQueryList -> bool = "matches"
+  [@@mel.get]
+
+let after_surface_motion document targets complete =
+  let reduced_motion =
+    match W.HtmlDocument.defaultView (W.Document.unsafeAsHtmlDocument document) with
+    | Some window ->
+        media_query_matches
+          (W.Window.matchMedia "(prefers-reduced-motion: reduce)" window)
+    | None -> false
+  in
+  if reduced_motion then ignore (complete ())
+  else
+    let pending =
+      List.fold_left
+        (fun pending target ->
+          Array.fold_left
+            (fun pending animation ->
+              let finite =
+                match Js.Nullable.toOption (animation_effect animation) with
+                | None -> false
+                | Some motion_effect ->
+                    Float.is_finite (timing_end (effect_timing motion_effect))
+              in
+              if not finite then pending
+              else
+                (* Cancelling one track settles only that track. Other surface
+                   tracks still own the exit; descendant animations do not. *)
+                (animation_finished animation
+                 |> Js.Promise.catch (fun _ -> Js.Promise.resolve ()))
+                :: pending)
+            pending (element_animations target))
+        [] targets
+    in
+    match pending with
+    | [] -> ignore (complete ())
+    | _ ->
+        ignore
+          (Js.Promise.all (Array.of_list pending)
+          |> Js.Promise.then_ (fun _ ->
+                 ignore (complete ());
+                 Js.Promise.resolve ()))
+
+
 (* The DOM is untyped: a "pointerdown" listener receives a Dom.event whose
    runtime representation is a PointerEvent. melange-webapi performs the same
    narrowing with its own %identity externals (EventTarget.asEventTarget,

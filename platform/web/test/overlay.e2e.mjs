@@ -35,6 +35,14 @@ async function clickButton(name) {
   await browser("click-button", name)
 }
 
+test("surface exits wait for all tracks without retaining zero-motion or reopened layers", async () => {
+  await openLayerRegressionPage()
+  await clickButton('Run surface exit audit')
+  await session.page.locator('#exit-audit-result').filter({hasText: 'Complete'}).waitFor()
+  const result = JSON.parse(await session.page.locator('#exit-audit-result').textContent())
+  assert.equal(result.pass, true, JSON.stringify(result, null, 2))
+})
+
 test("Untitled dialog paints and focuses its content and dismisses on Escape", async () => {
   await openLayerRegressionPage()
   await evaluate('window.audit.openDialog("untitled")')
@@ -1154,10 +1162,9 @@ test("Select keyboard navigation enters submenus and restores trigger focus", as
   await browser("press", "Escape")
   await evaluate(`(() => {
     const popup = document.getElementById(window.__selectPopupID)
-    popup?.dispatchEvent(new TransitionEvent('transitionend', {
-      bubbles: true,
-      propertyName: 'opacity',
-    }))
+    for (const animation of popup?.getAnimations() ?? []) {
+      if (Number.isFinite(animation.effect?.getComputedTiming().endTime)) animation.finish()
+    }
   })()`)
   assert.deepEqual(
     await state(`({
@@ -1423,10 +1430,9 @@ test("Combobox keeps DOM focus in the input while navigating its listbox", async
   await evaluate(`(() => {
     const control = document.querySelector(${JSON.stringify(input)})
     const popup = document.getElementById(control?.getAttribute('aria-controls'))
-    popup?.dispatchEvent(new TransitionEvent('transitionend', {
-      bubbles: true,
-      propertyName: 'opacity',
-    }))
+    for (const animation of popup?.getAnimations() ?? []) {
+      if (Number.isFinite(animation.effect?.getComputedTiming().endTime)) animation.finish()
+    }
   })()`)
   assert.deepEqual(
     await state(`(() => {

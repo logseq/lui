@@ -13,8 +13,10 @@
 "melange/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange/",
 "ocaml-signal/":"/_build/default/examples/components/web/lui-components-web/node_modules/ocaml-signal/"
 }}</script>
-<style>body{margin:24px;font:16px system-ui}#host{min-height:1400px}#host>.lui-column{position:sticky;top:0;z-index:1}button{margin:4px}.fixture-hidden{display:none}</style>
+<style>body{margin:24px;font:16px system-ui}#host{min-height:1400px}#host>.lui-column{position:sticky;top:0;z-index:1}button{margin:4px}.fixture-hidden{display:none}.exit-audit-spinner{animation:exit-audit-spin 1s linear infinite}@keyframes exit-audit-spin{to{transform:rotate(360deg)}}</style>
 <h1>Retained layer regressions</h1>
+<button id="run-exit-audit">Run surface exit audit</button>
+<output id="exit-audit-result" role="status">Not run</output>
 <main id="host"></main>
 <script type="module">
 import * as Web from "lui.web.dom/shell/lui_web.js";
@@ -76,4 +78,87 @@ function openCover(name){const cover=node("popover",root);const body=node("colum
 function alignedOverlays(){for(const alignment of ['top-leading','top','top-trailing','leading','center','trailing','bottom-leading','bottom','bottom-trailing']){const overlay=node('overlay',root,{width:200,height:100,'accessibility-identifier':`overlay-${alignment}`});node('box',overlay,{width:200,height:100});node('box',overlay,{width:20,height:20,alignment});}flush();}
 function togglePopover(){const stack=node('row',root);let popup=null;function close(){if(popup){drop(popup);popup=null;flush();}}button(stack,'Toggle anchored popup',()=>{if(popup){close();return;}popup=node('popover',stack,{anchor:'below'});node('text',popup,{text:'Anchored popup content'});handlers.set(popup,close);flush();});flush();}
 window.audit={renderer,nodes,events,openDialog,closeDialog,setupTracking,setupContextTracking,openSheet,closeSheet,addToast,openCover,alignedOverlays,togglePopover,sheetInput:null};
+
+const frames=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+const finiteAnimations=el=>el.getAnimations().filter(a=>Number.isFinite(a.effect?.getComputedTiming().endTime));
+async function runExitAudit(){
+  const output=document.querySelector('#exit-audit-result'),results=[];
+  output.textContent='Running';
+  async function scenario(name,run){
+    const checks=[];
+    const check=(label,condition)=>checks.push({label,pass:!!condition});
+    try{await run(check);}catch(error){checks.push({label:String(error._1??error),pass:false});}
+    results.push({name,checks});
+  }
+  function surface(kind,transition){
+    const holder=node('row',root);
+    button(holder,'Exit audit anchor',()=>{});
+    const n=node(kind,holder,{...(kind==='dialog'?{text:'Exit audit surface'}:{anchor:'below',transition}),width:240,height:120,
+      'style-class':'exit-audit-surface'});
+    node('paragraph',n,{text:'Exit audit content'});
+    flush();
+    const el=document.querySelector('.exit-audit-surface');
+    if(kind==='dialog')el.style.transition=transition;
+    return {n,holder,el};
+  }
+  async function settle(item){
+    await frames();
+    for(const animation of finiteAnimations(item.el))animation.finish();
+    await frames();
+  }
+  function close(item){
+    const backdrop=item.el.closest('.lui-modal-layer')?.querySelector('.lui-modal-backdrop');
+    drop(item.n);flush();
+    item.tracks=[...finiteAnimations(item.el),...(backdrop?finiteAnimations(backdrop):[])];
+    for(const animation of item.tracks)animation.pause();
+  }
+  function finish(item,property){
+    for(const animation of item.tracks){
+      if(!property||animation.transitionProperty===property)animation.finish();
+    }
+  }
+  function dispose(item){drop(item.holder);flush();}
+  await scenario('popup waits for its longest track',async check=>{
+    const item=surface('popover','opacity 60ms linear, transform 400ms linear');
+    await settle(item);
+    check('typed transition reaches the visual popup',getComputedStyle(item.el).transitionDuration==='0.06s, 0.4s');
+    close(item);finish(item,'opacity');await frames();
+    check('short opacity cannot remove the popup',item.el.isConnected);
+    check('exiting popup is noninteractive',getComputedStyle(item.el).pointerEvents==='none');
+    finish(item);await frames();check('popup releases after transform',!item.el.isConnected);dispose(item);
+  });
+  await scenario('modal waits for card and backdrop',async check=>{
+    const item=surface('dialog','opacity 80ms linear, transform 400ms linear 100ms');
+    await settle(item);close(item);finish(item,'opacity');await frames();
+    check('card survives the shorter backdrop',item.el.isConnected);
+    check('exiting modal is inert',item.el.hasAttribute('inert'));
+    finish(item);await frames();check('modal releases after its delay and transform',!item.el.isConnected);dispose(item);
+  });
+  await scenario('zero motion has no fixed timeout',async check=>{
+    const item=surface('popover','opacity 0ms, transform 0ms');
+    await settle(item);close(item);await frames();
+    check('zero duration releases on the next frame',!item.el.isConnected);dispose(item);
+  });
+  await scenario('cancelling one track still waits for another',async check=>{
+    const item=surface('popover','opacity 200ms linear, transform 400ms linear');
+    await settle(item);close(item);
+    const opacity=item.tracks.find(a=>a.transitionProperty==='opacity');
+    check('opacity transition exists',!!opacity);opacity?.cancel();await frames();
+    check('cancellation cannot remove the other track',item.el.isConnected);
+    finish(item);await frames();check('remaining transition releases the popup',!item.el.isConnected);dispose(item);
+  });
+  await scenario('reopen survives old completion and ignores child animation',async check=>{
+    const item=surface('dialog','opacity 200ms linear, transform 200ms linear');
+    const spinner=document.createElement('span');spinner.className='exit-audit-spinner';spinner.textContent='Spinner';item.el.append(spinner);
+    await settle(item);
+    const index=nodes.get(item.holder).children.indexOf(item.n);
+    backend.apply_batch({generation:++generation,ops:list([Protocol.remove_child_op(item.holder,item.n)])});
+    for(const animation of finiteAnimations(item.el))animation.pause();
+    backend.apply_batch({generation:++generation,ops:list([Protocol.insert_child_op(item.holder,item.n,index)])});
+    await settle(item);check('old close cannot remove the reopened dialog',item.el.isConnected&&!item.el.hasAttribute('data-ending-style'));
+    close(item);finish(item);await frames();check('infinite child animation cannot retain the modal',!item.el.isConnected);dispose(item);
+  });
+  output.textContent=JSON.stringify({state:'Complete',pass:results.every(r=>r.checks.every(c=>c.pass)),results});
+}
+document.querySelector('#run-exit-audit').addEventListener('click',()=>{runExitAudit().catch(error=>{document.querySelector('#exit-audit-result').textContent=JSON.stringify({state:'Complete',pass:false,error:String(error)});});});
 </script>

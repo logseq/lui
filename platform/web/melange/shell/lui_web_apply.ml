@@ -406,11 +406,10 @@ let apply_remove_child renderer previous_nodes effects parent child =
   (if bottom_tab && bottom_tabs then remove_bottom_tab renderer parent child
    else if modal then
      match prev_node previous_nodes child with
-     | Some previous ->
+     | Some _ ->
            ignore
              (Lui_web_overlay.remove_modal_layer_after_exit
-              renderer child parent_node child_node surface
-              (Store.standard_kind previous))
+              renderer child parent_node child_node surface)
      | None -> ()
    else if prev_kind_is previous_nodes child DropdownMenu then
      Lui_web_menu.remove_dropdown_after_exit renderer child parent_node

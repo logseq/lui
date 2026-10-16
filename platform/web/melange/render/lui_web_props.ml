@@ -16,6 +16,11 @@ let set_style dom_node name value =
   let scope = W.HtmlElement.style (W.Element.unsafeAsHtmlElement dom_node) in
   Util.set_style scope name value
 
+let transition_surface kind dom_node =
+  match kind with
+  | DropdownMenu | Popover -> Util.child_element dom_node 0
+  | _ -> dom_node
+
 (* webapi declares mediaQueryList but exposes no `matches` accessor; the LG
    source read it through a dict lookup on the same value. *)
 external media_query_matches : W.Window.mediaQueryList -> bool = "matches"
@@ -883,7 +888,8 @@ and apply_secondary_property renderer queue_split node kind dom_node
       set_style dom_node "text-decoration" value
   | ListStyle, StringValue value -> set_style dom_node "list-style" value
   | FlexWrap, StringValue value -> set_style dom_node "flex-wrap" value
-  | Transition, StringValue value -> set_style dom_node "transition" value
+  | Transition, StringValue value ->
+      set_style (transition_surface kind dom_node) "transition" value
   | TooltipText, StringValue value ->
       W.Element.setAttribute "data-tooltip" value dom_node
   | TooltipKeys, StringValue value ->
@@ -1137,7 +1143,7 @@ let remove_property renderer queue_split node kind dom_node property =
        | TextDecoration -> set_style dom_node "text-decoration" ""
        | ListStyle -> set_style dom_node "list-style" ""
        | FlexWrap -> set_style dom_node "flex-wrap" ""
-       | Transition -> set_style dom_node "transition" ""
+       | Transition -> set_style (transition_surface kind dom_node) "transition" ""
        | TooltipText -> W.Element.removeAttribute "data-tooltip" dom_node
        | TooltipKeys -> W.Element.removeAttribute "data-tooltip-keys" dom_node
        | InputType -> W.Element.removeAttribute "type" dom_node
