@@ -366,6 +366,12 @@ let test_popup_inside_centered_dialog () =
     let popup=rect 6 in
     check bool "nested popup remains bounded after resize" true
       (popup.x>=0. && popup.y>=0. && popup.x+.popup.w<=640.*.scale+.eps
+       && popup.y+.popup.h<=480.*.scale+.eps);
+    Lui_layout.invalidate layout;
+    sync 640. 480.;
+    let popup=rect 6 in
+    check bool "nested popup remains bounded after rebuilding the open tree" true
+      (popup.x>=0. && popup.y>=0. && popup.x+.popup.w<=640.*.scale+.eps
        && popup.y+.popup.h<=480.*.scale+.eps)) [1.;2.]
 
 (* A menu-trigger's dropdown panel: hidden until opened, then anchored

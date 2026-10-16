@@ -1318,8 +1318,7 @@ let refine_popups ctx =
       let dx,dy = displacement sid in
       {r with Lui_flex.x=r.x+.dx; y=r.y+.dy}
   in
-  List.iter
-    (fun (pnode, sid) ->
+  let refine (pnode, sid) =
       match Lui_flex.parent pnode with
       | None -> ()
       | Some parent -> (
@@ -1516,10 +1515,32 @@ let refine_popups ctx =
               width = Pt prp.w;
               height;
               position =
-                { pstyle.position with left = Pt left; top = Pt top } }))
-    (* Mount order: the list is prepended during build; oldest first so
-       a toast stack grows downward like the web viewport. *)
-    (List.rev !(ctx.popups))
+                { pstyle.position with left = Pt left; top = Pt top } })
+  in
+  let ordered = List.rev !(ctx.popups) in
+  let pending = Hashtbl.create (List.length ordered)
+  and visited = Hashtbl.create (List.length ordered) in
+  List.iter (fun ((_,id) as popup) -> Hashtbl.add pending id popup) ordered;
+  let rec visit ((_,sid) as popup) =
+    if not (Hashtbl.mem visited sid) then begin
+      let rec ancestor id =
+        match Hashtbl.find_opt ctx.owner id with
+        | None -> ()
+        | Some parent when parent = frame_id -> ()
+        | Some parent ->
+          (match Hashtbl.find_opt pending parent with
+           | Some popup -> visit popup
+           | None -> ancestor parent)
+      in
+      ancestor sid;
+      Hashtbl.add visited sid ();
+      refine popup
+    end
+  in
+  (* Full rebuilds register children before parents; incremental mounts
+     can do the reverse. Respect ancestor dependencies in both cases,
+     preserving registration order for unrelated surfaces and toasts. *)
+  List.iter visit ordered
 
 (* Union of the frame children's absolute rect edges — the extent the
    laid-out content actually occupies. *)
