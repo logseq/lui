@@ -825,6 +825,73 @@ let test_glyph_damage_allocation () =
     "A changed panel forces the whole static body to redraw" false
     (Lui_raster.Damage.whole damage)
 
+let test_prefix_bounds_allocation () =
+  let body = List.init 1000 (fun i ->
+    ifill (rect (float (i mod 40) *. 10.) (float (i / 40) *. 20.) 8. 16.) black) in
+  let mask, color_atlas = atlases () in
+  let scenes = Array.init 31 (fun n ->
+    scene ~w:512 ~h:640 ~mask ~color_atlas
+      (iclip (rect 0. 0. 512. 640.) :: body @
+        [ifill (rect 450. 8. 20. 16.) (color n 0 0 255); Pop_clip])) in
+  let damage = Lui_raster.Damage.create () in
+  ignore (Lui_raster.Damage.update damage scenes.(0));
+  let before = Gc.allocated_bytes () in
+  for frame = 1 to 100 do
+    ignore (Lui_raster.Damage.update damage scenes.(frame mod Array.length scenes))
+  done;
+  let allocated = (Gc.allocated_bytes () -. before) /. 100. in
+  Printf.printf "Unchanged prefix bounds allocated %.0f bytes/frame\n%!" allocated;
+  Alcotest.(check bool) "Unchanged body bounds stay below 40 KiB per frame" true
+    (allocated < 40_960.);
+  Alcotest.(check bool) "Only the changed overlay needs repainting" false
+    (Lui_raster.Damage.whole damage)
+
+let test_prefix_bounds_pixels () =
+  let mask = Atlas.create ~bpp:1 ~w:8 ~h:16 in
+  let put_mask value = Atlas.put mask ~x:0 ~y:0 ~w:8 ~h:16
+    ~src:(Bytes.make 128 value) ~stride:8 in
+  put_mask '\128';
+  let color_atlas = Atlas.create ~bpp:4 ~w:8 ~h:16 in
+  let damage = Lui_raster.Damage.create () in
+  let renderer = Lui_raster.Renderer.create () in
+  let glyph_at x = glyph ~x ~y:12. ~w:8. ~h:16.
+    ~u:0 ~v:0 ~uw:8 ~vh:16 black in
+  let body = ifill (rect 2. 3. 22. 27.) (color 37 99 235 255) in
+  let tail n = ifill (rect (float n) 39. 10. 8.) black in
+  let frame ?(w=64) ?(clear=white) ?(x=13.) clip ops =
+    scene ~w ~h:64 ~mask ~color_atlas ~clear ~glyphs:[glyph_at x]
+      (iclip clip :: body :: iclip (rect 9. 8. 31. 30.) :: iglyphs 0 1 ::
+        Pop_clip :: ops @ [Pop_clip]) in
+  let clip = rect 1. 1. 55. 55. in
+  let steps = [
+    frame clip [tail 30];
+    frame clip [tail 31];
+    frame (rect 5. 5. 22. 39.) [tail 32];
+    frame ~x:23. clip [tail 33];
+    frame clip [tail 34; tail 45];
+    frame clip [];
+    frame ~w:72 clip [tail 35];
+    frame ~w:72 ~clear:(color 19 31 73 255) clip [tail 36];
+  ] in
+  let verify s =
+    ignore (Lui_raster.Damage.update damage s);
+    let fresh = Lui_raster.Damage.create () in
+    ignore (Lui_raster.Damage.update fresh s);
+    Alcotest.(check bool) "Retained bounds equal a fresh clipped traversal" true
+      (Lui_raster.Damage.bounds damage = Lui_raster.Damage.bounds fresh);
+    ignore (Lui_raster.Renderer.render renderer s);
+    let expected = Lui_raster.render ~scene:s () in
+    Alcotest.(check bool) "Partial repaint equals a full render" true
+      (Bytes.equal (Lui_raster.Renderer.image renderer).pix expected.pix)
+  in
+  List.iter verify steps;
+  verify (List.hd steps);
+  put_mask '\255';
+  verify (List.hd steps);
+  Lui_raster.Damage.invalidate damage;
+  Lui_raster.Renderer.invalidate renderer;
+  verify (List.hd steps)
+
 let test_mutable_scene_snapshots () =
   let mask = Atlas.create ~bpp:1 ~w:8 ~h:16 in
   Atlas.put mask ~x:0 ~y:0 ~w:8 ~h:16 ~src:(Bytes.make 128 '\128') ~stride:8;
@@ -1061,6 +1128,8 @@ let () =
           Alcotest.test_case "merge cap" `Quick test_damage_merge;
           Alcotest.test_case "damage bands" `Slow test_damage_bands;
           Alcotest.test_case "glyph allocation" `Quick test_glyph_damage_allocation;
+          Alcotest.test_case "prefix bounds allocation" `Quick test_prefix_bounds_allocation;
+          Alcotest.test_case "prefix bounds pixels" `Quick test_prefix_bounds_pixels;
           Alcotest.test_case "mutable scene snapshots" `Quick test_mutable_scene_snapshots;
           Alcotest.test_case "glyph bounds" `Quick test_glyph_damage_bounds;
           Alcotest.test_case "glyph atlas updates" `Quick test_glyph_atlas_damage ] )

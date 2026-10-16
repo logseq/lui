@@ -1561,7 +1561,7 @@ let draw d dst s area bounds workers =
 (* ---------- op bounds ---------- *)
 
 (* Where each operation of s draws, within the clips around it. *)
-let op_bounds_arrays s ops glyphs =
+let op_bounds_arrays ~prefix ~previous s ops glyphs =
   let n = Array.length ops in
   let out = Array.make n (irect 0 0 0 0) in
   let clip = ref (irect 0 0 s.width s.height) in
@@ -1569,6 +1569,20 @@ let op_bounds_arrays s ops glyphs =
   for i = 0 to n - 1 do
     let b =
       match ops.(i) with
+      | Push_clip f ->
+        (* Even a retained prefix must establish clipping for the changed tail. *)
+        let b = outset f.crect 1. in
+        stack := !clip :: !stack;
+        clip := irect_intersect !clip b;
+        b
+      | Pop_clip -> (
+        match !stack with
+        | c :: rest ->
+          clip := c;
+          stack := rest;
+          irect 0 0 0 0
+        | [] -> irect 0 0 0 0)
+      | _ when i < prefix -> previous.(i)
       | Fill f -> outset f.frect 1.
       | Image f -> outset f.irect2 1.
       | Effect f -> outset f.edrect 1.
@@ -1592,25 +1606,14 @@ let op_bounds_arrays s ops glyphs =
             end
         done;
         irect !x0 !y0 !x1 !y1
-      | Push_clip f ->
-        (* A clip that changes changes everything it cuts. *)
-        let b = outset f.crect 1. in
-        stack := !clip :: !stack;
-        clip := irect_intersect !clip b;
-        b
-      | Pop_clip -> (
-        match !stack with
-        | c :: rest ->
-          clip := c;
-          stack := rest;
-          irect 0 0 0 0
-        | [] -> irect 0 0 0 0)
     in
-    out.(i) <- irect_intersect b !clip
+    out.(i) <- if i < prefix then previous.(i) else irect_intersect b !clip
   done;
   out
 
-let op_bounds s = op_bounds_arrays s (Array.of_list s.ops) (Array.of_list s.glyphs)
+let op_bounds s =
+  op_bounds_arrays ~prefix:0 ~previous:[||] s
+    (Array.of_list s.ops) (Array.of_list s.glyphs)
 
 (* ---------- damage: what of the next scene to repaint ---------- *)
 
@@ -1782,14 +1785,13 @@ let add_backdrops d s ops fxs =
     done
   end
 
-(* The damage between the last scene and s, and false when s must be
-   drawn whole. *)
+(* Compare a compatible frame, or return None when its atlas history expired. *)
 let diff d s ops glyphs_b fxs_b =
   let mask_rects, ok = mark_changes d.mask_mark s.mask_atlas in
-  if not ok then false
+  if not ok then None
   else begin
     let color_rects, ok = mark_changes d.color_mark s.color_atlas in
-    if not ok then false
+    if not ok then None
     else begin
       let glyphs_a = d.prev_glyphs in
       let same i j =
@@ -1800,6 +1802,7 @@ let diff d s ops glyphs_b fxs_b =
       while !pre < n && !pre < m && same !pre !pre do
         incr pre
       done;
+      d.next <- op_bounds_arrays ~prefix:!pre ~previous:d.bounds s ops glyphs_b;
       let suf = ref 0 in
       while !suf < n - !pre && !suf < m - !pre && same (n - 1 - !suf) (m - 1 - !suf) do
         incr suf
@@ -1822,7 +1825,7 @@ let diff d s ops glyphs_b fxs_b =
       end;
       add_backdrops d s ops fxs_b;
       (* Past half the window, drawing it whole costs about the same. *)
-      area_sum d.damage * 2 < s.width * s.height
+      Some (area_sum d.damage * 2 < s.width * s.height)
     end
   end
 
@@ -1866,10 +1869,16 @@ module Damage = struct
        Effect parameters remain copied when remembered because they are mutable. *)
     let ops = Array.of_list s.ops and glyphs = Array.of_list s.glyphs in
     let effects = Array.of_list s.effects in
-    d.next <- op_bounds_arrays s ops glyphs;
-    let whole =
-      (not d.valid) || s.width <> d.dw || s.height <> d.dh || s.clear <> d.dclear
-      || not (diff d s ops glyphs effects)
+    let partial =
+      if d.valid && s.width = d.dw && s.height = d.dh && s.clear = d.dclear then
+        diff d s ops glyphs effects
+      else None
+    in
+    let whole = match partial with
+      | Some partial -> not partial
+      | None ->
+        d.next <- op_bounds_arrays ~prefix:0 ~previous:[||] s ops glyphs;
+        true
     in
     d.is_whole <- whole;
     if whole then d.damage <- [ irect 0 0 s.width s.height ];
