@@ -1066,15 +1066,16 @@ let r_glyphs r (op : glyphs_op) s glyphs =
     let x0 = Int.max gx r.rx0 and y0 = Int.max gy r.ry0 in
     let x1 = Int.min (gx + g.guw) r.rx1 and y1 = Int.min (gy + g.gvh) r.ry1 in
     if x0 < x1 && y0 < y1 then begin
-      let tint0 = premul g.gcolor 1. in
-      let alpha = float g.gcolor.a /. 255. in
       let contrast = if g.gsubpixel then text.subpixel_contrast else text.contrast in
       let boost = if g.gthin then thin_boost else 0. in
       let (g0, g1, g2, g3) = text.gamma_ratios in
-      let correct = contrast <> 0. || boost <> 0. || (g0, g1, g2, g3) <> (0., 0., 0., 0.) in
+      let correct = contrast <> 0. || boost <> 0.
+        || g0 <> 0. || g1 <> 0. || g2 <> 0. || g3 <> 0. in
       if (not g.gcolored) && (not g.gsubpixel) && Option.is_none pt && (not correct) && g.gcolor.a = 255 then
         mask_opaque r atlas g gx gy x0 y0 x1 y1
-      else
+      else begin
+        let tint0 = premul g.gcolor 1. in
+        let alpha = float g.gcolor.a /. 255. in
         for y = y0 to y1 - 1 do
           let row = (y - r.origin_y) * r.dst.Image.stride in
           let clip_index = clip_row r y in
@@ -1131,6 +1132,7 @@ let r_glyphs r (op : glyphs_op) s glyphs =
             end
           done
         done
+      end
     end
   done
 
