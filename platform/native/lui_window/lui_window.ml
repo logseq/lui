@@ -888,16 +888,45 @@ module Ui = struct
 
   let store_changed t store = sync t store
 
+  let resizing_split t = Lui_pointer.resizing t.pointer
+
+  let split_handle t store rects id ~x ~y =
+    Lui_store.kind store id = "split" && Lui_query.node_enabled store id
+    && Option.is_some (Lui_store.float_prop store id "value")
+    && match Lui_store.child_ids store id with
+       | first :: second :: _ ->
+         let a=Rects.get rects first and b=Rects.get rects second in
+         let px=x*.t.scale and py=y*.t.scale in
+         a.w >= t.scale && b.w >= t.scale
+         && px >= a.x+.a.w && px <= b.x
+         && py >= max a.y b.y && py <= min (a.y+.a.h) (b.y+.b.h)
+       | _ -> false
+
+  let split_target t store rects path ~x ~y =
+    if List.exists (Lui_query.presented_overlay store) path then None
+    else List.find_opt (fun id -> split_handle t store rects id ~x ~y) path
+
   let handle ?spatial t store rects input =
     let acts = ref [] in
     let emit_all l = acts := List.rev_append l !acts in
     let run m_acts = emit_all (perform_all t store m_acts) in
+    let resize_split x =
+      let pointer,update=Lui_pointer.resize store t.pointer ~x in
+      t.pointer <- pointer;
+      match update with
+      | None -> ()
+      | Some (id,value) ->
+        Lui_store.apply_op store (SetProp (id,ProgressValue,FloatValue value));
+        t.dirty <- true;
+        emit_all [Dispatch (ValueChanged (id,value))]
+    in
     emit_all (sync t store);
     (match input with
      | Input.Move (x, y) ->
        t.pointer <- Lui_pointer.note_pos t.pointer ~x ~y;
        let dx, dy = x *. t.scale, y *. t.scale in
-       if Lui_drag.active t.drag then begin
+       if resizing_split t then resize_split x
+       else if Lui_drag.active t.drag then begin
          (* live drop-target tracking while a drag is in flight *)
          let path = hit_path ?spatial store rects ~x:dx ~y:dy in
          let d, m = Lui_drag.track store t.drag ~path in
@@ -962,6 +991,18 @@ module Ui = struct
            | ov', `Proceed dismiss ->
              t.overlay <- ov';
              emit_all (perform_all t store dismiss);
+             match split_target t store rects path ~x ~y with
+             | Some id ->
+               let first,second=match Lui_store.child_ids store id with
+                 | first :: second :: _ -> Rects.get rects first,Rects.get rects second
+                 | _ -> assert false in
+               let span=(second.x+.second.w-.first.x)/.t.scale in
+               let fraction=Option.get (Lui_store.float_prop store id "value") in
+               t.pointer <- Lui_pointer.start_resize t.pointer ~node:id ~x ~fraction ~span;
+               t.drag <- Lui_drag.clear_arm t.drag;
+               t.selection <- Lui_selection.clear_drag t.selection;
+               t.dirty <- true
+             | None ->
              let focus =
                match Lui_query.focus_target store path with
                | Some id -> id
@@ -1026,6 +1067,12 @@ module Ui = struct
      | Input.Button_up (x, y, btn, mods) ->
        t.pointer <- Lui_pointer.note_pos t.pointer ~x ~y;
        (match btn with
+        | Input.Left when resizing_split t ->
+          resize_split x;
+          t.pointer <- Lui_pointer.clear_press t.pointer;
+          t.drag <- Lui_drag.clear_arm t.drag;
+          t.selection <- Lui_selection.clear_drag t.selection;
+          t.dirty <- true
         | Input.Left when Lui_drag.active t.drag ->
           (* the drop completes on the accepting target under the
              pointer; the click it rode on is consumed *)

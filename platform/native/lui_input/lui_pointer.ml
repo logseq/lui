@@ -5,7 +5,10 @@
 
 open Lui_protocol
 
+type split_resize = { node : int; origin : float; fraction : float; span : float }
+
 type state = {
+  resize : split_resize option;
   x : float;          (* last pointer position, logical px *)
   y : float;
   hovered : int;      (* topmost hit node under the pointer *)
@@ -15,7 +18,7 @@ type state = {
 }
 
 let initial =
-  { x = 0.; y = 0.; hovered = 0; detail = 0; pressed = 0;
+  { resize = None; x = 0.; y = 0.; hovered = 0; detail = 0; pressed = 0;
     press_detail = 0 }
 
 let position st = (st.x, st.y)
@@ -24,6 +27,24 @@ let detail st = st.detail
 let pressed st = st.pressed
 let press_detail st = st.press_detail
 let note_pos st ~x ~y = { st with x; y }
+
+let resizing st = Option.is_some st.resize
+
+let start_resize st ~node ~x ~fraction ~span =
+  if not (Float.is_finite span) || span <= 0. then
+    invalid_arg "Split resize requires a positive finite track";
+  { st with pressed = 0; press_detail = 0;
+    resize = Some {node; origin=x; fraction; span} }
+
+let resize store st ~x =
+  match st.resize with
+  | None -> st,None
+  | Some drag when not (Lui_store.mem store drag.node)
+      || not (Lui_query.node_enabled store drag.node) -> {st with resize=None},None
+  | Some drag ->
+    let value = max 0. (min 1. (drag.fraction +. (x -. drag.origin) /. drag.span)) in
+    if Lui_store.float_prop store drag.node "value" = Some value then st,None
+    else st,Some (drag.node,value)
 
 (* Hover move: update position, hovered node and the PointerEnter
    target, emitting Leave/Enter on the boundary. *)
@@ -123,4 +144,4 @@ let up store st ~x ~y ~button ~mods =
 
 (* Release press capture without emitting — after click handling, or
    on a completed/cancelled drag. *)
-let clear_press st = { st with pressed = 0; press_detail = 0 }
+let clear_press st = { st with pressed = 0; press_detail = 0; resize = None }

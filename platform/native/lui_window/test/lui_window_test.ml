@@ -2731,6 +2731,79 @@ let test_idle_scrollbar_allocations () =
   let bytes = Gc.allocated_bytes () -. before in
   Alcotest.(check bool) "Hidden scrollbar polling exceeds 16 bytes per poll" true (bytes < 160000.)
 
+let split_fixture () =
+  let store = store_of [CreateNode (1,Split);CreateNode (2,Column);CreateNode (3,Column);
+    SetProp (1,ProgressValue,FloatValue 0.25);SetProp (1,Gap,IntValue 3);
+    InsertChild (1,2,0);InsertChild (1,3,1)] in
+  let rects = Rects.create () in
+  List.iter (fun (id,rect) -> Hashtbl.add rects id rect)
+    [1,rect 50. 40. 1000. 600.;2,rect 50. 40. 250. 600.;3,rect 306. 40. 744. 600.];
+  let ui=Ui.create () in
+  Ui.set_scale ui 2.;
+  store,rects,ui
+
+let split_fraction store id = Option.get (Lui_store.float_prop store id "value")
+let resized id acts = List.find_map (function
+    | Dispatch (ValueChanged (node,value)) when node=id -> Some value
+    | _ -> None) acts
+
+let test_split_pointer_resize () =
+  let store,rects,ui=split_fixture () in
+  let input event=Ui.handle ui store rects event in
+  ignore (input (Input.Move (151.5,100.)));
+  Alcotest.(check (float 0.00001)) "hover does not resize" 0.25 (split_fraction store 1);
+  ignore (input (Input.Button_down (151.5,100.,Input.Left,1,Input.mods_none)));
+  Alcotest.(check (float 0.00001)) "grabbing the divider does not jump" 0.25 (split_fraction store 1);
+  let acts=input (Input.Move (201.5,100.)) in
+  Alcotest.(check (option (float 0.00001))) "drag dispatches the new fraction" (Some 0.35) (resized 1 acts);
+  Alcotest.(check (float 0.00001)) "drag mirrors geometry before application feedback" 0.35 (split_fraction store 1);
+  ignore (input (Input.Move (-500.,-100.)));
+  Alcotest.(check (float 0.00001)) "captured drag clamps at the first endpoint" 0. (split_fraction store 1);
+  ignore (input (Input.Move (2000.,1000.)));
+  Alcotest.(check (float 0.00001)) "captured drag clamps at the second endpoint" 1. (split_fraction store 1);
+  let acts=input (Input.Button_up (226.5,100.,Input.Left,Input.mods_none)) in
+  Alcotest.(check (option (float 0.00001))) "release uses its final pointer coordinate" (Some 0.4) (resized 1 acts);
+  ignore (input (Input.Move (500.,100.)));
+  Alcotest.(check (float 0.00001)) "release ends resize capture" 0.4 (split_fraction store 1)
+
+let test_split_pointer_admission () =
+  let store,rects,ui=split_fixture () in
+  let input event=Ui.handle ui store rects event in
+  let down button x=ignore (input (Input.Button_down (x,100.,button,1,Input.mods_none))) in
+  let up button x=ignore (input (Input.Button_up (x,100.,button,Input.mods_none))) in
+  List.iter (fun (button,x) -> down button x;ignore (input (Input.Move (201.5,100.)));up button 201.5)
+    [Input.Right,151.5;Input.Middle,151.5;Input.Left,100.];
+  Alcotest.(check (float 0.00001)) "other buttons and pane content do not resize" 0.25 (split_fraction store 1);
+  Lui_store.apply_op store (SetProp (1,Enabled,BoolValue false));
+  down Input.Left 151.5;ignore (input (Input.Move (201.5,100.)));up Input.Left 201.5;
+  Alcotest.(check (float 0.00001)) "disabled split cannot capture a drag" 0.25 (split_fraction store 1);
+  Lui_store.apply_op store (SetProp (1,Enabled,BoolValue true));
+  Lui_store.apply_op store (CreateNode (9,Dialog));
+  Hashtbl.add rects 9 (rect 250. 40. 200. 600.);
+  down Input.Left 151.5;ignore (input (Input.Move (201.5,100.)));up Input.Left 201.5;
+  Alcotest.(check (float 0.00001)) "modal overlay masks a divider behind it" 0.25 (split_fraction store 1);
+  Lui_store.apply_op store (DropNode 9);
+  down Input.Left 151.5;
+  Lui_store.apply_op store (DropNode 1);
+  Alcotest.(check (option (float 0.00001))) "removed split emits no captured resize" None
+    (resized 1 (input (Input.Move (201.5,100.))));
+  up Input.Left 201.5
+
+let test_nested_split_pointer_resize () =
+  let store,rects,ui=split_fixture () in
+  List.iter (Lui_store.apply_op store)
+    [DropNode 3;CreateNode (3,Split);SetProp (3,ProgressValue,FloatValue 0.5);
+     CreateNode (5,Column);CreateNode (6,Column);InsertChild (1,3,1);
+     InsertChild (3,5,0);InsertChild (3,6,1)];
+  Hashtbl.replace rects 3 (rect 306. 40. 744. 600.);
+  Hashtbl.add rects 5 (rect 306. 40. 400. 600.);
+  Hashtbl.add rects 6 (rect 712. 40. 338. 600.);
+  ignore (Ui.handle ui store rects (Input.Button_down (354.5,100.,Input.Left,1,Input.mods_none)));
+  let acts=Ui.handle ui store rects (Input.Move (364.5,100.)) in
+  Alcotest.(check (option (float 0.00001))) "innermost divider uses its own scaled track" (Some (0.5+.20./.744.))
+    (resized 3 acts);
+  Alcotest.(check (float 0.00001)) "nested resize leaves the outer split unchanged" 0.25 (split_fraction store 1)
+
 let () =
   Alcotest.run "lui_window"
     [ ("config", [ Alcotest.test_case "parse_args" `Quick test_parse_args ]);
@@ -2809,6 +2882,10 @@ let () =
       ( "clipboard",
         [ Alcotest.test_case "cut/copy/paste" `Quick test_clipboard_cycle;
           Alcotest.test_case "undo/redo" `Quick test_undo_redo ] );
+      ( "split resize",
+        [ Alcotest.test_case "pointer feedback" `Quick test_split_pointer_resize;
+          Alcotest.test_case "capture admission" `Quick test_split_pointer_admission;
+          Alcotest.test_case "nested scaled track" `Quick test_nested_split_pointer_resize ] );
       ( "keys",
         [ Alcotest.test_case "tab activation" `Quick test_tab_activation;
           Alcotest.test_case "control keys" `Quick test_control_keys ] );
