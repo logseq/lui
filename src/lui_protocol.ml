@@ -1177,7 +1177,9 @@ let common_property_supported kind property =
   | PickerCompletion | PickerAccept | PickerDirectory -> false
   | TitleValue -> kind = BottomTab
   | Gap ->
-    kind = Row
+    kind = Checkbox
+    || kind = Radio
+    || kind = Row
     || kind = Button
     || kind = Select
     || kind = Combobox

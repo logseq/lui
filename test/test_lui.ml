@@ -2720,6 +2720,8 @@ let test_visual_appearance_props () =
     (property_supported Row OrientationValue);
   Alcotest.(check bool) "list items support responsive visibility" true
     (property_supported ListItem DisplayValue);
+  Alcotest.(check bool) "choice constructors support their typed label gap" true
+    (property_supported Checkbox Gap && property_supported Radio Gap);
   Alcotest.(check bool) "grid constructor supports its alignment properties" true
     (property_supported Grid CrossAlignment && property_supported Grid MainAlignment);
   Alcotest.(check bool) "min-viewport <= max-viewport" true

@@ -386,6 +386,8 @@ let kind_property_matrix kind =
 
 let kind_extra_properties kind =
   match kind with
+  | Checkbox -> [ Gap ]
+  | Radio -> [ Gap ]
   | Grid -> [ MainAlignment; CrossAlignment ]
   | Row -> [ OrientationValue ]
   | ListItem -> [ DisplayValue ]

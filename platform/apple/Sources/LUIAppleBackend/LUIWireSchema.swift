@@ -291,6 +291,8 @@ enum LUISchemaMatrix {
     ]
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [
+        .checkbox: [.gap],
+        .radio: [.gap],
         .grid: [.main, .cross],
         .row: [.orientation],
         .listItem: [.display],
