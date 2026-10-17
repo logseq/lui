@@ -3198,6 +3198,72 @@ let test_assembly_inset_scroll_caps () =
   Alcotest.(check (float 0.001)) "last content bottom is visible" 130. (last.y+.last.h);
   Alcotest.(check (float 0.001)) "last content right is visible" 120. (last.x+.last.w)
 
+let test_assembly_resize_scroll_clamp () =
+  let module Resize_layout = struct
+    include Fake_layout
+
+    let sync ?scale ?measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ~width ~height t
+        _store =
+      let scale = Option.value ~default:1. scale in
+      Hashtbl.reset t;
+      List.iter
+        (fun (id, r) -> Hashtbl.add t id r)
+        [
+          (1, Lui_scene.rect 0. 0. width height);
+          (2, Lui_scene.rect 0. 0. width height);
+          (3, Lui_scene.rect 0. 0. width (32. *. scale));
+          (4, Lui_scene.rect 0. (32. *. scale) width (368. *. scale));
+        ]
+  end in
+  List.iter
+    (fun scale ->
+      let asm =
+        Assembly.create
+          ~layout:(module Resize_layout)
+          ~scale_cell:(ref scale) ~text:assembly_text
+          ~renderer:assembly_renderer
+          ~width:(int_of_float (200. *. scale))
+          ~height:(int_of_float (100. *. scale))
+          ()
+      in
+      let store = Assembly.store asm and ui = Assembly.ui asm in
+      Lui_store.apply_batch store
+        {
+          generation = 1;
+          ops =
+            [
+              CreateNode (1, Root);
+              CreateNode (2, Scroll);
+              CreateNode (3, TextField);
+              CreateNode (4, Box);
+              InsertChild (1, 2, 0);
+              InsertChild (2, 3, 0);
+              InsertChild (2, 4, 1);
+            ];
+        };
+      ignore (Assembly.repaint asm);
+      ignore (Ui.scroll_to ui store 2 (300. *. scale));
+      ignore (Assembly.repaint asm);
+      Lui_host.resize (Assembly.host asm)
+        ~width:(int_of_float (200. *. scale))
+        ~height:(int_of_float (500. *. scale))
+        ~scale;
+      ignore (Assembly.repaint asm);
+      Alcotest.(check (float 0.001))
+        "resize clamps the obsolete offset" 0. (Ui.scroll_offset ui 2);
+      Alcotest.(check (float 0.001))
+        "first resized hit mirror uses the clamped offset" 0.
+        (Rects.get (Assembly.rects asm) 3).y;
+      ignore
+        (Assembly.handle asm
+           (Input.Button_down (10., 10., Input.Left, 1, Input.mods_none)));
+      ignore
+        (Assembly.handle asm
+           (Input.Button_up (10., 10., Input.Left, Input.mods_none)));
+      Alcotest.(check int)
+        "input receives focus immediately after resize" 3 (Ui.focused ui))
+    [ 1.; 2. ]
+
 let test_assembly_nested_clip_caps () =
   let module Nested_layout = struct
     include Fake_layout
@@ -3619,7 +3685,8 @@ let () =
           Alcotest.test_case "drop-file" `Quick test_headless_drop;
           Alcotest.test_case "two windows" `Quick test_headless_multi ] );
       ( "assembly",
-        [ Alcotest.test_case "scroll caps" `Quick
+        [ Alcotest.test_case "resize scroll clamp" `Quick test_assembly_resize_scroll_clamp;
+          Alcotest.test_case "scroll caps" `Quick
             test_assembly_scroll_caps;
           Alcotest.test_case "inset scroll caps" `Quick test_assembly_inset_scroll_caps;
           Alcotest.test_case "nested clip scroll caps" `Quick test_assembly_nested_clip_caps;

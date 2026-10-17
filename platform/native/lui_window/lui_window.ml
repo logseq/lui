@@ -2690,9 +2690,6 @@ module Assembly = struct
              visit c ~sx:sx' ~sy:sy' ~parent_r:child_parent)
           cids
       in
-      List.iter
-        (fun id -> visit id ~sx:0. ~sy:0. ~parent_r:viewport)
-        (Lui_store.root_ids store);
       let srev = Lui_store.revision store in
       let sids =
         match !scrollables with
@@ -2723,6 +2720,12 @@ module Assembly = struct
              Ui.set_scroll_cap_x ui id
                (Float.max 0. (rgt -. cr.Lui_scene.x -. cr.Lui_scene.w)))
         sids;
+      (* Range changes can clamp offsets during resize. Build the hit
+         mirror only after those clamps, using the same current offsets
+         as its geometry stamp and the following paint. *)
+      List.iter
+        (fun id -> visit id ~sx:0. ~sy:0. ~parent_r:viewport)
+        (Lui_store.root_ids store);
       (* Rects were just rebuilt — visible-range memos key on the
          epoch. *)
       Ui.notify_layout ui;
