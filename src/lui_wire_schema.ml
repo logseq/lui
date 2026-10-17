@@ -386,6 +386,7 @@ let kind_property_matrix kind =
 
 let kind_extra_properties kind =
   match kind with
+  | Grid -> [ MainAlignment; CrossAlignment ]
   | Row -> [ OrientationValue ]
   | ListItem -> [ DisplayValue ]
   | Dialog -> [ DescriptionValue; BackgroundValue; ForegroundValue; BorderColorValue; BorderWidth; CornerRadius; Gap ]

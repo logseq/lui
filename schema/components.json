@@ -2110,6 +2110,7 @@
     ]
   },
   "kindExtraProperties": {
+    "grid": ["main", "cross"],
     "row": ["orientation"],
     "list-item": ["display"],
     "dialog": [

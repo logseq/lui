@@ -895,6 +895,7 @@ let common_property_supported kind property =
   | MainAlignment | CrossAlignment ->
     kind = Row
     || kind = Column
+    || kind = Grid
     || kind = ListContainer
     || kind = VirtualList
     || kind = Card
