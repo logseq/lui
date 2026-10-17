@@ -1,0 +1,77 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>LUI list scroll regression fixture</title>
+<link rel="stylesheet" href="/platform/web/dist/lui.css">
+<script type="importmap">{"imports":{
+"@tanstack/virtual-core": "/platform/web/dist/tanstack-virtual.js",
+          "lui.web.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui.web.dom/",
+"lui/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui/",
+"melange-webapi/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange-webapi/",
+"melange.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.dom/",
+"melange.js/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.js/",
+"melange/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange/",
+"ocaml-signal/":"/_build/default/examples/components/web/lui-components-web/node_modules/ocaml-signal/"
+}}</script>
+<style>
+body {margin:24px;font:16px system-ui}
+#scaled-results {transform:scale(.5);transform-origin:top left}
+</style>
+<main id="host"></main>
+<script type="module">
+import * as Web from "lui.web.dom/shell/lui_web.js";
+import {Protocol, properties, kinds} from "./protocol-fixture.mjs";
+const host = document.querySelector("#host");
+const renderer = Web.create(undefined, host);
+const backend = Web.backend(renderer);
+const linked = items => items.reduceRight((tl,hd) => ({hd,tl}),0);
+const children = new Map();
+const handlers = new Map();
+let nextId = 0, generation = 0, ops = [];
+function set(id,name,value) {
+  ops.push(Protocol.set_prop_op(id,properties.get(name),{
+    TAG:typeof value === "string" ? 0 : typeof value === "boolean" ? 1 : 2,_0:value,
+  }));
+}
+function node(kind,parent,props={}) {
+  const id = ++nextId;
+  ops.push(Protocol.create_node_op(id,kinds.get(kind)));
+  for (const [name,value] of Object.entries(props)) set(id,name,value);
+  children.set(id,0);
+  if (parent) {
+    ops.push(Protocol.insert_child_op(parent,id,children.get(parent)));
+    children.set(parent,children.get(parent)+1);
+  }
+  return id;
+}
+function flush() {
+  backend.apply_batch({generation:++generation,ops:linked(ops)});
+  ops=[];
+}
+const root = node("column",null,{gap:16});
+for (const name of ["normal","scaled","unbounded"]) {
+  const panel=node("column",root,{gap:4});
+  const results=node("list",panel,{
+    "accessibility-identifier":`${name}-results`,width:240,
+    ...(name === "unbounded" ? {} : {height:90,"min-height":90}),
+    "scroll-anchor":"nearest",
+  });
+  for (let index=0;index<20;index++) {
+    node("list-item",results,{key:`row-${index}`,text:`Row ${index}`,
+      height:30,"min-height":30,"accessibility-identifier":`${name}-row-${index}`});
+  }
+  let token=0;
+  for (const [label,index] of [["final",19],["previous",18],["first",0]]) {
+    const button=node("button",panel,{text:`Reveal ${label} ${name}`});
+    handlers.set(button,()=>{
+      set(results,"scroll-target",`row-${index}`);
+      set(results,"scroll-token",++token);
+    });
+  }
+}
+Web.set_event_handler(renderer,event=>{
+  if (event.TAG===0) {handlers.get(event._0)?.();flush();}
+  return true;
+});
+flush();
+Web.mount(renderer,root,host);
+</script>
