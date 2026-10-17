@@ -386,6 +386,41 @@ let test_drop_subtree () =
   (* A second clean frame must preserve the empty forest. *)
   frame env ()
 
+(* A cached page branch can be moved into its replacement before the old
+   owner is disposed, with all operations coalesced into one paint. *)
+let test_reparent_before_owner_disposal detach separate_batches () =
+  let env = env () in
+  apply env.store
+    [
+      CreateNode (1, Column);
+      CreateNode (2, Column);
+      CreateNode (3, Column);
+      CreateNode (4, Text);
+      SetProp (4, TextValue, StringValue "retained page");
+      CreateNode (5, Column);
+      CreateNode (6, Text);
+      SetProp (6, TextValue, StringValue "replacement owner");
+      SetProp (2, ForegroundValue, StringValue "#ff0000");
+      SetProp (5, ForegroundValue, StringValue "#0000ff");
+      InsertChild (1, 2, 0);
+      InsertChild (2, 3, 0);
+      InsertChild (3, 4, 0);
+      InsertChild (1, 5, 1);
+      InsertChild (5, 6, 0);
+    ];
+  frame env ();
+  let dispose = if detach then DetachSubtree 2 else DropNode 2 in
+  if separate_batches then begin
+    apply env.store [ InsertChild (5, 3, 1) ];
+    apply env.store [ dispose ]
+  end
+  else apply env.store [ InsertChild (5, 3, 1); dispose ];
+  frame env ();
+  check bool "Reparented text remains in the store" true
+    (Lui_store.mem env.store 4);
+  check bool "Reparented text remains in the scene" true (env.kept.glyphs <> []);
+  frame env ()
+
 let test_disposed_fragments () =
   List.iter (fun painted ->
     let env = env () in
@@ -703,6 +738,14 @@ let () =
           test_case "popup motion buffers" `Quick test_popup_motion_buffers;
           test_case "state hint" `Quick test_state_hint;
           test_case "drop subtree" `Quick test_drop_subtree;
+          test_case "reparent before owner drop" `Quick
+            (test_reparent_before_owner_disposal false false);
+          test_case "reparent before owner detach" `Quick
+            (test_reparent_before_owner_disposal true false);
+          test_case "reparent before coalesced owner drop" `Quick
+            (test_reparent_before_owner_disposal false true);
+          test_case "reparent before coalesced owner detach" `Quick
+            (test_reparent_before_owner_disposal true true);
           test_case "disposed fragments" `Quick test_disposed_fragments;
           test_case "removed paint hints" `Quick test_removed_paint_hints;
           test_case "wide removal" `Quick test_wide_removal;

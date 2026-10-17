@@ -436,13 +436,6 @@ let flip_to_parent rt store f =
     if pf.show_kids then mark_seg rt p
   | None -> ()
 
-let rec purge_frag rt id =
-  match Hashtbl.find_opt rt.frags id with
-  | Some f ->
-    Hashtbl.remove rt.frags id;
-    List.iter (fun (k, _) -> purge_frag rt k) f.kids
-  | None -> ()
-
 (* Props whose value a *different* node's paint reads: "foreground"
    inherits down the ancestor chain, a tooltip/alert/bubble parent's
    own "background" flips its direct text children's ink, and an
@@ -515,7 +508,10 @@ let advance rt store =
           retired := true;
           rt.dirty <- true;
           mark_parent_rekids rt store id;
-          purge_frag rt id
+          (* Cached children may already belong to another live owner.
+             Retire this node only; prune_retired removes descendants
+             against the final store without discarding moved branches. *)
+          Hashtbl.remove rt.frags id
         | InsertChild (p, c, _) ->
           mark_rekids rt store p;
           (* The context [c] resolves against may differ under the new
