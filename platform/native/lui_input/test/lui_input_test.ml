@@ -725,6 +725,117 @@ let test_spatial_hit_wide_list () =
   Alcotest.(check (option int)) "last row hits" (Some 139)
     (Lui_query.hit ~spatial:idx store rects ~x:110. ~y:197.)
 
+let test_frontmost_hit_ancestry () =
+  let check_modes store rects f =
+    List.iter
+      (fun spatial -> f (Lui_query.hit_path ?spatial store rects))
+      [ None; Some (spatial_index store rects) ]
+  in
+  let store =
+    store_of
+      [
+        CreateNode (1, Root);
+        CreateNode (2, Button);
+        CreateNode (3, Dialog);
+        CreateNode (4, TextField);
+        InsertChild (1, 2, 0);
+        InsertChild (1, 3, 1);
+        InsertChild (3, 4, 0);
+        SetProp (2, TextValue, StringValue "Background");
+        SetProp (2, PressEnabled, BoolValue true);
+      ]
+  in
+  let rects =
+    rects_of
+      [
+        (1, rect 0. 0. 400. 300.);
+        (2, rect 20. 20. 200. 40.);
+        (3, rect 10. 10. 250. 100.);
+        (4, rect 20. 20. 200. 40.);
+      ]
+  in
+  check_modes store rects (fun hit ->
+      let path = hit ~x:50. ~y:40. in
+      Alcotest.(check (list int))
+        "modal input owns its ancestry" [ 4; 3; 1 ] path;
+      Alcotest.(check (option int))
+        "modal input keeps text focus" (Some 4)
+        (Lui_query.focus_target store path);
+      Alcotest.(check bool)
+        "modal input never activates the background button" false
+        (Lui_query.press_target store path = Some 2));
+  let store =
+    store_of
+      [
+        CreateNode (1, Root);
+        CreateNode (2, Button);
+        CreateNode (3, Button);
+        InsertChild (1, 2, 0);
+        InsertChild (1, 3, 1);
+        SetProp (2, TextValue, StringValue "Back");
+        SetProp (3, TextValue, StringValue "Front");
+        SetProp (2, PressEnabled, BoolValue true);
+        SetProp (3, PressEnabled, BoolValue true);
+      ]
+  in
+  let rects =
+    rects_of
+      [
+        (1, rect 0. 0. 400. 300.);
+        (2, rect 20. 20. 200. 40.);
+        (3, rect 20. 20. 200. 40.);
+      ]
+  in
+  check_modes store rects (fun hit ->
+      Alcotest.(check (list int))
+        "overlapping siblings do not share a hit path" [ 3; 1 ]
+        (hit ~x:50. ~y:40.));
+  Lui_store.apply_op store (SetProp (3, PointerEnabled, BoolValue false));
+  check_modes store rects (fun hit ->
+      Alcotest.(check (list int))
+        "pointer-disabled sibling passes through" [ 2; 1 ] (hit ~x:50. ~y:40.));
+  let store =
+    store_of
+      [
+        CreateNode (1, Root);
+        CreateNode (2, Scroll);
+        CreateNode (3, Column);
+        CreateNode (4, Popover);
+        CreateNode (5, MenuItem);
+        CreateNode (6, Button);
+        InsertChild (1, 2, 0);
+        InsertChild (1, 6, 1);
+        InsertChild (2, 3, 0);
+        InsertChild (3, 4, 0);
+        InsertChild (4, 5, 0);
+        SetProp (5, TextValue, StringValue "Choice");
+        SetProp (5, PressEnabled, BoolValue true);
+        SetProp (6, TextValue, StringValue "Behind popup");
+        SetProp (6, PressEnabled, BoolValue true);
+      ]
+  in
+  let rects =
+    rects_of
+      [
+        (1, rect 0. 0. 400. 300.);
+        (2, rect 0. 0. 100. 50.);
+        (3, rect 0. 120. 100. 30.);
+        (4, rect 0. 120. 100. 30.);
+        (5, rect 0. 120. 100. 16.);
+        (6, rect 0. 120. 100. 30.);
+      ]
+  in
+  check_modes store rects (fun hit ->
+      Alcotest.(check (list int))
+        "promoted popup retains only hit ancestors" [ 5; 4; 1 ]
+        (hit ~x:20. ~y:125.);
+      let path = hit ~x:20. ~y:145. in
+      Alcotest.(check (list int))
+        "popup blank area excludes the covered button" [ 4; 1 ] path;
+      Alcotest.(check bool)
+        "popup blank area never activates the covered button" false
+        (Lui_query.press_target store path = Some 6))
+
 let test_hit_path_allocation () =
   let depth = 128 in
   let ops = ref [CreateNode (1,Root)] in
@@ -923,7 +1034,8 @@ let () =
       ( "drag",
         [ Alcotest.test_case "flow" `Quick test_drag_flow ] );
       ( "pointer",
-        [ Alcotest.test_case "allocation" `Quick test_hit_path_allocation;
+        [ Alcotest.test_case "frontmost ancestry" `Quick test_frontmost_hit_ancestry;
+          Alcotest.test_case "allocation" `Quick test_hit_path_allocation;
           Alcotest.test_case "hover+press" `Quick
             test_pointer_hover_press ] );
       ( "spatial",

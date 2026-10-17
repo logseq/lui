@@ -57,14 +57,10 @@ let event_supported store id event =
       (fun property -> Lui_store.prop store id (Lui_wire_schema.property_name property)) event
     && (lifecycle || not (Lui_store.inert_in_chain store id))
 
-(* Everything [hit_path] needs from the store for one node on top of
-   the shared walk's stacking/clip frame: overlay presentation, the
-   pointer-enabled opt, and the spacer kind check. Computed once per
-   node per store revision — see [hit_flags_of]. *)
+(* Effective inherited pointer/inert state and the spacer kind check,
+   computed once per node per store revision — see [hit_flags_of]. *)
 type hit_flags = {
-  hf_inert : bool;
-  hf_overlay : bool;
-  hf_pen : bool option;
+  hf_mode : [ `On | `Off | `Inert ];
   hf_spacer : bool;
 }
 
@@ -95,14 +91,15 @@ let presented_overlay store id =
       | "drawer" -> Lui_store.prop store id "selected" = None
       | _ -> false)
 
-let hit_flags_compute store id =
-  { hf_inert = Lui_store.bool_prop store id "inert";
-    hf_overlay = presented_overlay store id;
-    hf_pen =
-      (match Lui_store.prop store id "pointer-enabled" with
-       | Some (BoolValue v) -> Some v
-       | _ -> None);
-    hf_spacer = Lui_store.kind store id = "spacer" }
+let hit_flags_compute store id inherited =
+  let mode =
+    if inherited = `Inert || Lui_store.bool_prop store id "inert" then `Inert
+    else match Lui_store.prop store id "pointer-enabled" with
+      | Some (BoolValue true) -> `On
+      | Some (BoolValue false) -> `Off
+      | _ -> if inherited = `On || presented_overlay store id then `On else `Off
+  in
+  { hf_mode = mode; hf_spacer = Lui_store.kind store id = "spacer" }
 
 (* hit_path's per-node flags, memoized for the (store, revision) of the
    last call: pointer events hit-test the same tree repeatedly, and the
@@ -113,7 +110,7 @@ let hit_flags_tbl : (int, hit_flags) Hashtbl.t = Hashtbl.create 256
 let hit_flags_store : Lui_store.t option ref = ref None
 let hit_flags_rev = ref (-1)
 
-let hit_flags_of store id =
+let rec hit_flags_of store id =
   (match !hit_flags_store with
    | Some s when s == store && !hit_flags_rev = Lui_store.revision store ->
      ()
@@ -124,7 +121,10 @@ let hit_flags_of store id =
   match Hashtbl.find_opt hit_flags_tbl id with
   | Some f -> f
   | None ->
-    let f = hit_flags_compute store id in
+    let inherited = match Lui_store.parent store id with
+      | None -> `On
+      | Some parent -> (hit_flags_of store parent).hf_mode in
+    let f = hit_flags_compute store id inherited in
     Hashtbl.replace hit_flags_tbl id f;
     f
 
@@ -141,28 +141,24 @@ let hit_flags_of store id =
    O(n) per pointer event. *)
 let hit_path ?spatial store rects ~x ~y =
   let path = ref [] in
-  (* pointer-events accumulate down the tree; the ghost pass threads
-     the same [on] update so a promoted popup keeps its clipped-away
-     ancestors' flags. *)
-  (* Constant variants keep inherited state off the heap on each hit. *)
-  let flags_or state fl =
-    if state = `Inert || fl.hf_inert then `Inert
-    else match fl.hf_pen with
-      | Some true -> `On
-      | Some false -> `Off
-      | None -> if state = `On || fl.hf_overlay then `On else `Off
-  in
-  let enter on (f : Lui_paint.frame) =
+  (* Effective pointer flags are cached with their ancestors; the walk
+     context carries only the hit ancestry and allocates no flag wrappers. *)
+  let enter ancestors (f : Lui_paint.frame) =
     let fl = hit_flags_of store f.f_id in
-    let on = flags_or on fl in
     (* spacers are layout voids — they paint nothing and must never be
        the hit target (a full-window spacer in an overlay layer would
        otherwise swallow every DOM event). *)
-    if on = `On && not fl.hf_spacer
-       && not (rect_empty f.f_clipped)
-       && rect_contains f.f_clipped x y
-    then path := f.f_id :: !path;
-    { Lui_paint.b_emit = false; b_down = on <> `Inert; b_ctx = on }
+    let ctx =
+      if fl.hf_mode = `On && not fl.hf_spacer
+         && not (rect_empty f.f_clipped)
+         && rect_contains f.f_clipped x y
+      then begin
+        let chain = f.f_id :: ancestors in
+        path := chain;
+        chain
+      end else ancestors
+    in
+    { Lui_paint.b_emit = false; b_down = fl.hf_mode <> `Inert; b_ctx = ctx }
   in
   (* The walk's "viewport" is the pointer point itself: a clip that
      misses it can contain no hit, so the walk prunes the subtree —
@@ -173,13 +169,12 @@ let hit_path ?spatial store rects ~x ~y =
       let r = Rects.get rects id in
       { Lui_paint.p_rect = r; p_override = Some r })
     ~enter
-    ~ghost_enter:(fun on id _contents ->
-      flags_or on (hit_flags_of store id))
+    ~ghost_enter:(fun ancestors _id _contents -> ancestors)
     ~leave:(fun _ _ -> ())
     ?spatial:(Option.map (fun i -> (i, Lui_spatial.Point (x, y))) spatial)
-    `On;
-  (* The head is the node visited last in paint order: visually
-     topmost. *)
+    [];
+  (* Keep only the frontmost target's hit ancestors. A passive foreground
+     control must never activate a covered sibling behind its surface. *)
   !path
 
 let hit ?spatial store rects ~x ~y =

@@ -390,6 +390,67 @@ let test_click_release_elsewhere () =
    | [ PointerUp (3, _) ] -> ()
    | _ -> Alcotest.fail "expected lone PointerUp")
 
+let test_modal_pointer_scope () =
+  List.iter
+    (fun scale ->
+      let s =
+        store_of
+          [
+            CreateNode (1, Root);
+            CreateNode (2, Button);
+            CreateNode (3, Dialog);
+            CreateNode (4, TextField);
+            InsertChild (1, 2, 0);
+            InsertChild (1, 3, 1);
+            InsertChild (3, 4, 0);
+            SetProp (2, TextValue, StringValue "Background action");
+            SetProp (2, PressEnabled, BoolValue true);
+            SetProp (2, PointerEnabled, BoolValue true);
+          ]
+      in
+      let r x y w h =
+        rect (x *. scale) (y *. scale) (w *. scale) (h *. scale)
+      in
+      let rects =
+        rects_of
+          [
+            (1, r 0. 0. 400. 300.);
+            (2, r 0. 0. 300. 150.);
+            (3, r 10. 10. 250. 100.);
+            (4, r 20. 20. 200. 40.);
+          ]
+      in
+      let ui = Ui.create () in
+      Ui.set_scale ui scale;
+      ignore (Ui.store_changed ui s);
+      let click x y =
+        let down =
+          Ui.handle ui s rects
+            (Input.Button_down (x, y, Input.Left, 1, Input.mods_none))
+        in
+        let up =
+          Ui.handle ui s rects
+            (Input.Button_up (x, y, Input.Left, Input.mods_none))
+        in
+        Alcotest.(check bool)
+          "modal click cannot dispatch to covered controls" false
+          (List.exists
+             (function
+               | Dispatch (Press 2 | PressDetail (2, _) | PointerDown (2, _)) ->
+                   true
+               | _ -> false)
+             (down @ up))
+      in
+      click 50. 40.;
+      Alcotest.(check int)
+        "modal input receives pointer focus" 4 (Ui.focused ui);
+      Alcotest.(check bool)
+        "typing reaches only the modal field" true
+        (press_actions (Ui.handle ui s rects (Input.Text_input "fast"))
+        = [ TextChanged (4, "fast") ]);
+      click 230. 80.)
+    [ 1.; 2. ]
+
 let test_click_focus () =
   let s, rects = ui_store_fresh () in
   let ui = Ui.create () in
@@ -3535,7 +3596,8 @@ let () =
         [ Alcotest.test_case "drag drop" `Quick test_drag_drop;
           Alcotest.test_case "file drop" `Quick test_file_drop ] );
       ( "overlay",
-        [ Alcotest.test_case "modal+esc" `Quick test_overlay_close;
+        [ Alcotest.test_case "pointer scope" `Quick test_modal_pointer_scope;
+          Alcotest.test_case "modal+esc" `Quick test_overlay_close;
           Alcotest.test_case "light dismiss" `Quick test_light_dismiss;
           Alcotest.test_case "appear once" `Quick test_appear_once;
           Alcotest.test_case "autofocus" `Quick test_autofocus;
