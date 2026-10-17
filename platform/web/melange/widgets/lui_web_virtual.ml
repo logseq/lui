@@ -247,9 +247,12 @@ let install renderer node ~materialize ~unmount =
         refresh_virtual = refresh;
         resize_virtual_row =
           (fun id ->
-            Option.iter
-              (fun index -> V.resize_item virtualizer index (estimate index))
-              (Hashtbl.find_opt positions id));
+            match Hashtbl.find_opt positions id, Hashtbl.find_opt mounted id with
+            | Some _, Some wrapper when connected root
+                && W.DomRect.height (W.Element.getBoundingClientRect wrapper) > 0. ->
+                V.measure virtualizer (Js.Nullable.return wrapper)
+            | Some index, _ -> V.resize_item virtualizer index (estimate index)
+            | None, _ -> ());
         dispose_virtual = dispose;
         virtual_row_live = (fun id -> Hashtbl.mem mounted id);
         virtual_live_rows = live_rows;
