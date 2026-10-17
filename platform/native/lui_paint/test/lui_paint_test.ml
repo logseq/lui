@@ -82,6 +82,24 @@ let test_button_icon_gap () =
       (float_of_int (Option.value gap ~default:6)*.scale) actual)
     [None;Some 0;Some 4;Some 16]) [false;true]) [1.;2.]
 
+let test_icon_opacity () =
+  let t = store () in
+  apply t
+    [ Lui_protocol.CreateNode (1, Row)
+    ; SetProp (1, Opacity, FloatValue 0.5)
+    ; CreateNode (2, Icon)
+    ; SetProp (2, IconName, StringValue "chevron_down")
+    ; SetProp (2, Opacity, FloatValue 0.4)
+    ; InsertChild (1, 2, 0) ];
+  let image = new_image ~w:1 ~h:1 (Bytes.make 4 '\255') in
+  let h = { (hooks ()) with Lui_paint.image_of = (fun _ -> Some image);
+    image_in = (fun _ _ -> Some image) } in
+  let painted = paint_with h t () in
+  let images = List.filter_map (function Image i -> Some i | _ -> None) painted.ops in
+  check int "icon paints once" 1 (List.length images);
+  check (float 0.0001) "icon multiplies its own and inherited opacity" 0.2
+    (List.hd images).iopacity
+
 let test_select_indicator () =
   List.iter
     (fun kind ->
@@ -1534,6 +1552,7 @@ let () =
          test_case "hex" `Quick test_hex;
          test_case "select indicator" `Quick test_select_indicator;
          test_case "button icon gap" `Quick test_button_icon_gap;
+         test_case "icon opacity" `Quick test_icon_opacity;
          test_case "image fill crop" `Quick test_image_fill_crop;
          test_case "edges" `Quick test_edges ]);
       ("ops",

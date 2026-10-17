@@ -2332,7 +2332,7 @@ let test_vocab_batch2 () =
   (* ~opacity *)
   Alcotest.(check bool) "opacity allowed on column" true
     (property_supported Column Opacity);
-  Alcotest.(check bool) "opacity rejected on leaf" false
+  Alcotest.(check bool) "opacity allowed on icon" true
     (property_supported Icon Opacity);
   Alcotest.(check bool) "opacity range check" false
     (property_value_supported Opacity (FloatValue 1.5));

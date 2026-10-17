@@ -1160,7 +1160,8 @@ let common_property_supported kind property =
   | PathValue -> kind = FileImage || kind = FilePreview
   | UrlValue -> kind = Link || kind = Image
   | TargetValue -> kind = Link
-  | Opacity -> can_contain_children kind || kind = Checkbox || kind = Radio
+  | Opacity ->
+    can_contain_children kind || kind = Checkbox || kind = Radio || kind = Icon
   | DisplayValue | FlexWrap -> kind = Box || kind = Column || kind = Row
   | ListStyle ->
     kind = ListContainer || kind = VirtualList || kind = ListItem
