@@ -26,12 +26,17 @@ let content_bounds ~store ~rect_of id =
   in
   Lui_store.iter_preorder ~root:id
     ~descend:(fun child ->
-      child = id
-      || Lui_paint.unboxed store child
-      || not (Lui_paint.clips (Lui_store.kind store child) store child))
+      Lui_paint.node_shown store child
+      && (child = id
+         || Lui_paint.unboxed store child
+         || not (Lui_paint.clips (Lui_store.kind store child) store child)))
     store
     (fun child ->
-      if child <> id && not (Lui_paint.unboxed store child) then begin
+      if
+        child <> id
+        && Lui_paint.node_shown store child
+        && not (Lui_paint.unboxed store child)
+      then begin
         let r : Lui_scene.rect = rect_of child in
         bounds.left <- Float.min bounds.left r.x;
         bounds.top <- Float.min bounds.top r.y;

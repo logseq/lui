@@ -3142,7 +3142,8 @@ let test_assembly_nested_clip_caps () =
     include Fake_layout
 
     let sync ?scale:_ ?measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ~width:_
-        ~height:_ t _store =
+        ~height:_ t store =
+      let hidden = Lui_store.string_prop store 4 "display" = Some "none" in
       Hashtbl.reset t;
       List.iter
         (fun (id, r) -> Hashtbl.add t id r)
@@ -3151,7 +3152,10 @@ let test_assembly_nested_clip_caps () =
           (2, Lui_scene.rect 20. 30. 100. 100.);
           (3, Lui_scene.rect 20. 30. 100. 200.);
           (4, Lui_scene.rect 20. 30. 100. 40.);
-          (5, Lui_scene.rect 20. 30. 400. 500.);
+          ( 5,
+            Lui_scene.rect 20. 30.
+              (if hidden then nan else 400.)
+              (if hidden then nan else 500.) );
           (6, Lui_scene.rect 20. 70. 100. 160.);
         ]
   end in
@@ -3206,6 +3210,10 @@ let test_assembly_nested_clip_caps () =
         true );
       ("auto overflow", Box, [ SetProp (4, Overflow, StringValue "auto") ], true);
       ("visible overflow", Box, [], false);
+      ( "display-none subtree",
+        Box,
+        [ SetProp (4, DisplayValue, StringValue "none") ],
+        true );
       ( "unboxed overflow",
         Box,
         [
