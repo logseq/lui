@@ -1265,11 +1265,11 @@ let anchor_rect_of ctx store id ~cb pr =
   | Some x, Some y -> { Lui_flex.x = cb.x +. x; y = cb.y +. y; w = 0.; h = 0. }
   | _ -> pr
 
-let anchored_xy ctx store sid ar (prp : Lui_flex.rect) =
+let anchored_xy ?resolved_side ctx store sid ar (prp : Lui_flex.rect) =
   let s = ctx.scale in
   let offset = Option.value ~default:4. (pnum store sid "anchor-offset") *. s in
   let side =
-    match pstr store sid "anchor" with
+    match (match resolved_side with Some side -> Some side | None -> pstr store sid "anchor") with
     | Some ("above" | "left" | "right" as v) -> v
     | _ -> "below"
   in
@@ -1289,7 +1289,7 @@ let anchored_xy ctx store sid ar (prp : Lui_flex.rect) =
     let preferred, opposite =
       if preferred_before then before, after else after, before in
     let place_before =
-      if extent > preferred && opposite > preferred
+      if resolved_side = None && extent > preferred && opposite > preferred
       then not preferred_before else preferred_before in
     if place_before then start -. offset -. extent else finish +. offset
   in
@@ -1465,23 +1465,17 @@ let refine_popups ctx =
         | None -> ()
         | Some (pstyle : Lui_flex.style) ->
           let max_height =
-            if Lui_paint.menu_kind ctx.store sid (Lui_store.kind ctx.store sid) then
-              (* Match the shared Web menu cap; explicit limits and available
-                 height remain bounded by the viewport, including on resize. *)
-              let viewport = Float.max 0. (ctx.vh -. (16. *. ctx.scale)) in
-              let declared =
-                match pstyle.max_height with
-                | Unset -> 288. *. ctx.scale
-                | limit -> len_px ~owner:ctx.vh limit
-              in
-              let available =
-                match pnum ctx.store sid "available-height" with
-                | Some height -> height *. ctx.scale
-                | None -> viewport
-              in
-              Pt (Float.max 0. (Float.min viewport (Float.min declared available)))
-            else
-              match pstyle.max_height with Unset -> Pt ctx.vh | limit -> limit
+            let menu = Lui_paint.menu_kind ctx.store sid (Lui_store.kind ctx.store sid) in
+            let viewport = Float.max 0. (ctx.vh -. (if menu then 16. *. ctx.scale else 0.)) in
+            let declared = match pstyle.max_height with
+              | Unset -> if menu then 288. *. ctx.scale else viewport
+              | limit -> len_px ~owner:ctx.vh limit in
+            let available = match pnum ctx.store sid "available-height" with
+              | Some height -> height *. ctx.scale
+              | None -> viewport in
+            (* AvailableHeight is a popover contract, independent of its
+               semantic role. Intersect every limit on each resize. *)
+            Pt (Float.max 0. (Float.min viewport (Float.min declared available)))
           in
           let pstyle =
             (* A popup measures against the viewport, not its
@@ -1533,6 +1527,28 @@ let refine_popups ctx =
                ~height:Lui_flex.undefined ()
            | _ -> ());
           let prp = Lui_flex.absolute_layout pnode in
+          (* Element-owned popovers shrink on their chosen side before
+             placement, as the Web positioner does. Keep that side after
+             remeasurement so shrinking cannot flip the decision back. *)
+          let prp, resolved_side =
+            match kind, pstr ctx.store sid "anchor", psid_opt with
+            | "popover", Some ("below" | "above" as preferred), Some owner
+              when Lui_store.kind ctx.store owner <> "root"
+                   && not (has_prop ctx.store sid "x" || has_prop ctx.store sid "y") ->
+              let offset = Option.value ~default:4. (pnum ctx.store sid "anchor-offset") *. ctx.scale in
+              let above = Float.max 0. (pr.y -. offset -. 8. *. ctx.scale)
+              and below = Float.max 0. (ctx.vh -. pr.y -. pr.h -. offset -. 8. *. ctx.scale) in
+              let first, other = if preferred = "above" then above, below else below, above in
+              let side, available =
+                if prp.h <= first || first >= other then preferred, first
+                else (if preferred = "above" then "below" else "above"), other in
+              if available < prp.h then begin
+                Lui_flex.set_style pnode {pstyle with max_height = Pt available};
+                Lui_flex.compute_layout pnode ~width:Lui_flex.undefined ~height:Lui_flex.undefined ();
+                Lui_flex.absolute_layout pnode, Some side
+              end else prp, Some side
+            | _ -> prp, None
+          in
           (* Placement targets live in the containing block [cb] but the
              position edges resolve against the flex parent's padding
              box — express them as offsets from that origin. *)
@@ -1549,7 +1565,7 @@ let refine_popups ctx =
               abs_of
                 (match Option.bind psid_opt (fun parent -> select_alignment sid parent prp) with
                  | Some xy -> xy
-                 | None -> anchored_xy ctx ctx.store sid
+                 | None -> anchored_xy ?resolved_side ctx ctx.store sid
                      (anchor_rect_of ctx ctx.store sid ~cb pr) prp)
             else
               (* Unanchored popups take their platform placement —

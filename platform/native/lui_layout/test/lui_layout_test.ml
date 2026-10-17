@@ -1597,6 +1597,94 @@ let test_menu_height_cap () =
         ])
     [ 1.; 2. ]
 
+let test_popover_available_height () =
+  List.iter
+    (fun scale ->
+      let store = Lui_store.create () and layout = Lui_layout.create () in
+      apply store
+        [
+          CreateNode (1, Root);
+          CreateNode (2, Popover);
+          InsertChild (1, 2, 0);
+          SetProp (2, WidthValue, IntValue 200);
+          SetProp (2, PopupX, FloatValue 100.);
+          SetProp (2, PopupY, FloatValue 40.);
+          SetProp (2, AvailableHeight, FloatValue 96.);
+        ];
+      for index = 0 to 29 do
+        let id = index + 3 in
+        apply store
+          [
+            CreateNode (id, Box);
+            InsertChild (2, id, index);
+            SetProp (id, HeightValue, IntValue 32);
+          ]
+      done;
+      let size height expected =
+        Lui_layout.sync ~scale ~width:(640. *. scale) ~height:(height *. scale)
+          layout store;
+        let popup = Option.get (Lui_layout.rect layout 2) in
+        check (float eps) "non-menu popover honors available height"
+          (expected *. scale) popup.h;
+        check bool "non-menu popover stays in the viewport" true
+          (popup.y >= 0. && popup.y +. popup.h <= height *. scale)
+      in
+      size 932. 96.;
+      size 64. 64.;
+      size 600. 96.;
+      apply store [ SetProp (2, MaxHeight, IntValue 64) ];
+      size 600. 64.;
+      apply store [ SetProp (2, AvailableHeight, FloatValue 32.) ];
+      size 600. 32.)
+    [ 1.; 2. ]
+
+let test_anchored_popover_side_height () =
+  List.iter
+    (fun scale ->
+      let store = Lui_store.create () and layout = Lui_layout.create () in
+      apply store
+        [
+          CreateNode (1, Root);
+          CreateNode (2, Box);
+          CreateNode (3, Popover);
+          InsertChild (1, 2, 0);
+          InsertChild (2, 3, 0);
+          SetProp (2, WidthValue, IntValue 120);
+          SetProp (2, HeightValue, IntValue 32);
+          SetProp (2, MarginLeft, IntValue 64);
+          SetProp (2, MarginTop, IntValue 96);
+          SetProp (3, WidthValue, IntValue 226);
+          SetProp (3, MaxHeight, IntValue 288);
+          SetProp (3, AnchorValue, StringValue "below");
+        ];
+      for index = 0 to 29 do
+        let id = index + 4 in
+        apply store
+          [
+            CreateNode (id, Box);
+            InsertChild (3, id, index);
+            SetProp (id, HeightValue, IntValue 32);
+          ]
+      done;
+      List.iter
+        (fun (height, y, h) ->
+          Lui_layout.sync ~scale ~width:(640. *. scale)
+            ~height:(height *. scale) layout store;
+          let popup = Option.get (Lui_layout.rect layout 3) in
+          check (float eps) "anchored popover retains its trigger edge"
+            (64. *. scale) popup.x;
+          check (float eps) "anchored popover fits its resolved side"
+            (h *. scale) popup.h;
+          check (float eps) "anchored popover does not cover its trigger"
+            (y *. scale) popup.y)
+        [
+          (932., 132., 288.);
+          (329., 132., 189.);
+          (220., 8., 84.);
+          (932., 132., 288.);
+        ])
+    [ 1.; 2. ]
+
 let test_menu_role_layout () =
   let store = Lui_store.create () and layout = Lui_layout.create () in
   apply store
@@ -1743,6 +1831,8 @@ let () =
          test_case "menu panel" `Quick test_menu_panel;
          test_case "select menu alignment" `Quick test_select_menu_alignment;
          test_case "menu height cap" `Quick test_menu_height_cap;
+         test_case "popover available height" `Quick test_popover_available_height;
+         test_case "anchored popover side height" `Quick test_anchored_popover_side_height;
          test_case "menu role layout" `Quick test_menu_role_layout;
          test_case "ac row" `Quick test_ac_row;
          test_case "vlist window" `Quick test_vlist_window_mounts_slice;
