@@ -25,6 +25,7 @@
 <output id="split-audit-result" role="status">Not run</output>
 <button id="run-inert-audit">Run inert subtree audit</button>
 <output id="inert-audit-result" role="status">Not run</output>
+<output id="action-activation-count">0</output>
 <main id="host"></main>
 <script type="module">
 import * as Web from "lui.web.dom/shell/lui_web.js";
@@ -88,7 +89,25 @@ function addToast(text,duration=0){const toast=node("toast",root,{duration,paddi
 function openCover(name){const cover=node("popover",root);const body=node("column",cover,{padding:24,width:400});node("input",body,{placeholder:name,autofocus:true});handlers.set(cover,()=>{drop(cover);flush();});flush();return cover;}
 function alignedOverlays(){for(const alignment of ['top-leading','top','top-trailing','leading','center','trailing','bottom-leading','bottom','bottom-trailing']){const overlay=node('overlay',root,{width:200,height:100,'accessibility-identifier':`overlay-${alignment}`});node('box',overlay,{width:200,height:100});node('box',overlay,{width:20,height:20,alignment});}flush();}
 function togglePopover(){const stack=node('row',root);let popup=null;function close(){if(popup){drop(popup);popup=null;flush();}}button(stack,'Toggle anchored popup',()=>{if(popup){close();return;}popup=node('popover',stack,{anchor:'below'});node('text',popup,{text:'Anchored popup content'});handlers.set(popup,close);flush();});flush();}
-window.audit={renderer,nodes,events,openDialog,closeDialog,setupTracking,setupContextTracking,openSheet,closeSheet,addToast,openCover,alignedOverlays,togglePopover,sheetInput:null};
+function setupActionMenu(kind, preserveFocus=false){
+  const owner=node('row',root);let popup=null;
+  function close(){if(popup){drop(popup);popup=null;flush();}}
+  const trigger=button(owner,`Open ${kind} action menu${preserveFocus?' with preserved focus':''}`,()=>{
+    if(popup){close();return;}
+    popup=node(kind,owner,{anchor:'below',role:'menu',width:260,'style-class':'action-menu-regression'});
+    const disabled=button(popup,'Disabled action',()=>{});set(disabled,'enabled',false);
+    const hidden=node('column',popup,{'style-class':'fixture-hidden'});button(hidden,'Hidden action',()=>{});
+    const inert=node('box',popup,{inert:true});button(inert,'Inert action',()=>{});
+    button(popup,'First action',()=>{document.querySelector('#action-activation-count').textContent=String(++window.audit.actionActivations);close();openDialog();});
+    const second=button(popup,'Second action',()=>{});
+    handlers.set(popup,close);flush();
+    if(preserveFocus)document.getElementById(`lui-node-${second}`).focus();
+  });
+  flush();return trigger;
+}
+window.audit={renderer,nodes,events,openDialog,closeDialog,setupTracking,setupContextTracking,openSheet,closeSheet,addToast,openCover,alignedOverlays,togglePopover,setupActionMenu,actionActivations:0,sheetInput:null};
+setupActionMenu('popover');setupActionMenu('popover',true);
+button(root,'Outside action',()=>{});flush();
 
 function runInertAudit(){
   const output=document.querySelector('#inert-audit-result'),checks=[];

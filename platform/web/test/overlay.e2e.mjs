@@ -35,6 +35,39 @@ async function clickButton(name) {
   await browser("click-button", name)
 }
 
+test('popover button-only menus focus the first available action and activate once', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open popover action menu')
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'First action')
+  assert.equal(await session.page.locator('.action-menu-regression button[role="menuitem"]').count(), 0)
+  await session.page.keyboard.press('Enter')
+  await session.page.locator('.lui-dialog').waitFor({state:'visible'})
+  assert.equal(await session.page.locator('#action-activation-count').textContent(), '1')
+})
+
+test('popover deferred opening preserves focus moved inside the menu', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open popover action menu with preserved focus')
+  await session.page.waitForTimeout(30)
+  assert.equal(await session.page.locator(':focus').textContent(), 'Second action')
+})
+
+test('popover Escape returns focus to its available trigger', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open popover action menu')
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'First action')
+  await session.page.keyboard.press('Escape')
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'Open popover action menu')
+})
+
+test('popover outside press keeps the newly focused control', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open popover action menu')
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'First action')
+  await clickButton('Outside action')
+  assert.equal(await session.page.locator(':focus').textContent(), 'Outside action')
+})
+
 test("surface exits wait for all tracks without retaining zero-motion or reopened layers", async () => {
   await openLayerRegressionPage()
   await clickButton('Run surface exit audit')

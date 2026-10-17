@@ -1548,7 +1548,19 @@ let highlight_initial_menu_item renderer container_id =
              in
              let items = collect (n - 1) [] in
              (match items with
-              | [] -> ()
+              | [] ->
+                  let controls = W.Element.querySelectorAll
+                    "button, input, select, textarea, a[href], [tabindex], [contenteditable]"
+                    (Lazy.force container.platform_node) in
+                  let rec focus_first index =
+                    if index < W.NodeList.length controls then
+                      match Option.bind (W.NodeList.item index controls) W.Element.ofNode with
+                      | Some element when not (in_submenu element)
+                          && Lui_web_focus.sequential_focus_target_available element ->
+                          Lui_web_util.focus_element_without_scroll element
+                      | _ -> focus_first (index + 1)
+                  in
+                  focus_first 0
               | _ ->
                   List.iter
                     (fun element ->
@@ -1688,7 +1700,16 @@ let attach_popover_events renderer node _popover_node =
        ~policy:Lui_web_layers.Nonblocking
        ~dismiss:(fun () -> emit renderer (Dismiss node))
        ~close:(fun () -> ())
-       ~key_handler:(fun _event -> ())
+       ~key_handler:(fun event ->
+         if W.KeyboardEvent.key event = "Escape" then begin
+           let trigger = Option.bind
+             (Lui_web_layers.layer_at renderer.web_layers node)
+             (fun layer -> layer.Lui_web_layers.trigger) in
+           ignore (Js.Global.setTimeout ~f:(fun () ->
+             if not (Lui_web_layers.is_open renderer.web_layers node) then
+               Lui_web_focus.restore_focus_if_unmoved renderer
+                 ~closing:positioner trigger) 0)
+         end)
        ~present:false ~open_:false);
   Hashtbl.replace renderer.web_cleanups node (fun () ->
       Lui_web_popup_tracking.stop positioner;
