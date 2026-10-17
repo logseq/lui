@@ -13,8 +13,18 @@
   "melange/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange/",
   "ocaml-signal/":"/_build/default/examples/components/web/lui-components-web/node_modules/ocaml-signal/"
 }}</script>
-<style>body { margin: 24px; font: 16px system-ui } #host { max-width: 720px }</style>
+<style>
+body { margin: 24px; font: 16px system-ui }
+#host { max-width: 720px }
+#host .lui-button { transition: none }
+</style>
 <main id="host"></main>
+<nav aria-label="Appearance test controls">
+  <button id="select">Select appearance</button>
+  <button id="disable">Disable appearance</button>
+  <button id="enable">Enable appearance</button>
+  <button id="remove-base">Remove base appearance</button>
+</nav>
 <script type="module">
 import * as Web from "lui.web.dom/shell/lui_web.js"
 import { Protocol, properties, kinds } from "./protocol-fixture.mjs"
@@ -32,6 +42,7 @@ const TAGS = { string: 0, boolean: 1, int: 2, float: 3 }
 // Props typed FloatValue in the schema — integers must still ride the
 // float tag or apply_batch rejects the batch.
 const FLOATS = new Set([
+  "opacity",
   "letter-spacing",
   "inset", "inset-top", "inset-right", "inset-bottom", "inset-left",
   "hover-opacity", "pressed-opacity", "disabled-opacity",
@@ -100,11 +111,30 @@ const interactive = create("row", root, {
   "disabled-opacity": 0.5,
 })
 create("text", interactive, { text: "row child" })
+const explicit = create("button", root, {
+  text: "Explicit appearance", width: 220, height: 40,
+  background: "linear-gradient(#112233, #223344)",
+  foreground: "#102030", "border-color": "#304050", "border-width": 1,
+  opacity: 0.6,
+  "hover-background": "#abcdef", "hover-foreground": "#123456",
+  "hover-border": "#654321", "hover-opacity": 0.9,
+  "pressed-background": "#778899", "pressed-opacity": 0.7,
+  "selected-background": "#998877", "disabled-opacity": 0.4,
+})
+document.querySelector("#select").onclick = () => { set(explicit, "selected", true); flush() }
+document.querySelector("#disable").onclick = () => {
+  set(explicit, "selected", false); set(explicit, "enabled", false); flush()
+}
+document.querySelector("#enable").onclick = () => { set(explicit, "enabled", true); flush() }
+document.querySelector("#remove-base").onclick = () => {
+  for (const name of ["background", "foreground", "border-color", "opacity"]) unset(explicit, name)
+  flush()
+}
 flush()
 Web.mount(renderer, root, host)
 
 window.probe = {
-  typography, positioned, interactive,
+  typography, positioned, interactive, explicit,
   set, unset, flush,
 }
 </script>

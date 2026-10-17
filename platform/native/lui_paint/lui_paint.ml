@@ -2367,7 +2367,7 @@ let default_text_fg ctx store id kind st rs =
   | Some c -> c
   | None -> (
     match kind with
-    | "link" -> col_accent ctx
+    | "link" -> col_primary ctx
     | "kbd" -> col_muted_fg ctx
     | "menu-item" when st.hovered || st.focused ->
       if bg_styled then text_fg ctx store id else col_accent_text ctx

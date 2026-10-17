@@ -755,11 +755,15 @@ let rec apply_property renderer queue_split node kind dom_node property
     | MarginRight | MarginBottom | MarginLeft), IntValue _ ->
       refresh_spacing renderer node dom_node ~margin:true
   | BackgroundValue, StringValue background ->
-      set_style dom_node "background" (Util.web_color_value background)
+      set_style dom_node "background"
+        ("var(--lui-current-selected-bg, var(--lui-current-pressed-bg, var(--lui-current-hover-bg, "
+         ^ Util.web_color_value background ^ ")))" )
   | ForegroundValue, StringValue foreground ->
-      set_style dom_node "color" (Util.web_color_value foreground)
+      set_style dom_node "color"
+        ("var(--lui-current-hover-fg, " ^ Util.web_color_value foreground ^ ")")
   | BorderColorValue, StringValue border ->
-      set_style dom_node "border-color" (Util.web_color_value border)
+      set_style dom_node "border-color"
+        ("var(--lui-current-hover-border, " ^ Util.web_color_value border ^ ")")
   | BorderWidth, IntValue width ->
       set_style dom_node "border-style" "solid";
       set_style dom_node "border-width" (string_of_int width ^ "px")
@@ -950,7 +954,9 @@ and apply_secondary_property renderer queue_split node kind dom_node
         W.Element.setAttribute "target" "_blank" dom_node
       end
   | Opacity, FloatValue value ->
-      set_style dom_node "opacity" (Js.Float.toString value)
+      set_style dom_node "opacity"
+        ("var(--lui-current-disabled-opacity, var(--lui-current-pressed-opacity, var(--lui-current-hover-opacity, "
+         ^ Js.Float.toString value ^ ")))" )
   | DisplayValue, StringValue value -> set_style dom_node "display" value
   | FontFamily, StringValue value -> set_style dom_node "font-family" value
   | FontStyle, StringValue value -> set_style dom_node "font-style" value

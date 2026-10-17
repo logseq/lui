@@ -41,6 +41,22 @@ let paint_with h t ?(width = 200) ?(height = 200) ?(scale = 1.)
     ~clear:(color 0 0 0 0);
   s
 
+let test_link_theme () =
+  let t = store () in
+  apply t [Lui_protocol.CreateNode (1,Link);
+    SetProp (1,TextValue,StringValue "Changelog")];
+  let primary = color 211 77 12 255 and neutral = color 40 42 45 255 in
+  let ink = ref None in
+  let h = {(hooks ()) with
+    Lui_paint.color_of = (function "primary" -> Some primary
+      | "accent" -> Some neutral | _ -> None);
+    text_ops = (fun _ _ foreground _ -> ink := Some foreground; [])} in
+  ignore (paint_with h t ());
+  check bool "link uses the primary color like Web" true (!ink = Some primary);
+  apply t [Lui_protocol.SetProp (1,ForegroundValue,StringValue "accent")];
+  ignore (paint_with h t ());
+  check bool "an explicit neutral link color is retained" true (!ink = Some neutral)
+
 let test_button_icon_gap () =
   List.iter (fun scale -> List.iter (fun trailing -> List.iter (fun gap ->
     let t = store () in
@@ -1560,7 +1576,8 @@ let () =
          test_case "popup xy" `Quick test_popup_xy;
          test_case "layout override" `Quick test_layout_override ]);
       ("kinds",
-       [ test_case "divider" `Quick test_divider;
+       [ test_case "link theme" `Quick test_link_theme;
+         test_case "divider" `Quick test_divider;
          test_case "spacer" `Quick test_spacer;
          test_case "progress" `Quick test_progress;
          test_case "checkbox" `Quick test_checkbox;
