@@ -136,14 +136,14 @@ let test_modal_clears_background_focus () =
   let store = store_of base_ops in
   let ov = ref Lui_overlay.initial in
   (* no overlay yet *)
-  let st, acts = Lui_overlay.sync store !ov ~focused:4 in
+  let st, acts = Lui_overlay.sync store !ov ~focused:4 ~kbd:false in
   ov := st;
   Alcotest.(check int) "no overlay acts" 0 (List.length acts);
   Alcotest.(check int) "top" 0 (Lui_overlay.top !ov);
   (* mount the dialog while the text-field holds focus *)
   Lui_store.apply_batch store
     { generation = 2; ops = dialog_ops };
-  let st, acts = Lui_overlay.sync store !ov ~focused:4 in
+  let st, acts = Lui_overlay.sync store !ov ~focused:4 ~kbd:false in
   ov := st;
   Alcotest.(check int) "modal on top" 9 (Lui_overlay.top !ov);
   (* the machine must ask the driver to clear focus and drop any
@@ -154,7 +154,7 @@ let test_modal_clears_background_focus () =
   Alcotest.(check int) "saved focus" 4 (Lui_overlay.saved_focus !ov);
   (* dialog disappears — focus restores *)
   Lui_store.apply_op store (DropNode 9);
-  let st, acts = Lui_overlay.sync store !ov ~focused:0 in
+  let st, acts = Lui_overlay.sync store !ov ~focused:0 ~kbd:false in
   ov := st;
   (match acts with
    | [ `Focus (4, false) ] -> ()

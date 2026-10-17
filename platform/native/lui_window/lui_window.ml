@@ -914,6 +914,7 @@ module Ui = struct
       (let ov', m =
          Lui_overlay.sync store t.overlay
            ~focused:(Lui_focus.focused t.focus)
+           ~kbd:(Lui_focus.kbd_visible t.focus)
        in
        t.overlay <- ov';
        run m);

@@ -2754,6 +2754,65 @@ let test_assembly_scroll_caps () =
   Alcotest.(check (option int)) "scrolled hit" (Some 4)
     (hit (Assembly.store asm) (Assembly.rects asm) ~x:10. ~y:90.)
 
+let test_action_menu_focus () =
+  List.iter (fun (origin,kbd) ->
+    let asm = assembly_of
+      [ CreateNode (1, Root); CreateNode (2, Button); CreateNode (8, TextField);
+        InsertChild (1,2,0); InsertChild (1,8,1);
+        SetProp (2,TextValue,StringValue "Trigger");
+        SetProp (8,TextValue,StringValue "Outside") ] in
+    let ui=Assembly.ui asm and store=Assembly.store asm and generation=ref 1 in
+    let apply ops = incr generation;
+      Lui_store.apply_batch store {generation= !generation;ops};
+      ignore (Assembly.store_changed asm) in
+    let open_menu () = apply
+      [ CreateNode (3,Popover); InsertChild (1,3,2);
+        SetProp (3,RoleValue,StringValue "menu");
+        CreateNode (4,Button); InsertChild (3,4,0);
+        SetProp (4,Enabled,BoolValue false);
+        CreateNode (5,Box); InsertChild (3,5,1);
+        SetProp (5,DisplayValue,StringValue "none");
+        CreateNode (6,Button); InsertChild (5,6,0);
+        CreateNode (10,Box); InsertChild (3,10,2);
+        SetProp (10,Inert,BoolValue true);
+        CreateNode (11,Button); InsertChild (10,11,0);
+        CreateNode (12,Box); InsertChild (3,12,3);
+        SetProp (12,Visible,BoolValue false);
+        CreateNode (13,Button); InsertChild (12,13,0);
+        CreateNode (7,Button); InsertChild (3,7,4);
+        SetProp (7,TextValue,StringValue "First action");
+        CreateNode (9,Button); InsertChild (3,9,5);
+        SetProp (9,TextValue,StringValue "Second action") ] in
+    Ui.set_focused ~kbd ui store origin;
+    open_menu ();
+    Alcotest.(check int) "button-only menu focuses its first available action" 7 (Ui.focused ui);
+    Alcotest.(check bool) "initial menu focus preserves input modality" kbd (Ui.focus_visible ui);
+    let events=press_actions (Assembly.handle asm (key Input.Return)) in
+    Alcotest.(check int) "Enter activates the first action once" 1
+      (List.length (List.filter ((=) (Press 7)) events));
+    Ui.set_focused ui store 9;
+    apply [SetProp (7,TextValue,StringValue "Updated action")];
+    Alcotest.(check int) "updates preserve focus moved within the menu" 9 (Ui.focused ui);
+    Alcotest.(check bool) "Escape dismisses the action menu" true
+      (List.mem (Dismiss 3) (press_actions (Assembly.handle asm (key Input.Escape))));
+    apply [DropNode 3];
+    Alcotest.(check int) "closing restores the original available focus" origin (Ui.focused ui);
+    open_menu ();
+    Ui.set_focused ui store 8;
+    apply [DropNode 3];
+    Alcotest.(check int) "outside dismissal preserves newly moved focus" 8 (Ui.focused ui);
+    Ui.set_focused ui store origin;
+    open_menu ();
+    apply [CreateNode (20,Dialog); InsertChild (1,20,3);
+      CreateNode (21,Input); InsertChild (20,21,0)];
+    Alcotest.(check int) "nested dialog releases the background menu action" 0 (Ui.focused ui);
+    Ui.set_focused ui store 21;
+    apply [DropNode 20];
+    Alcotest.(check int) "closing a nested dialog returns to the action menu" 7 (Ui.focused ui);
+    apply [DropNode 3];
+    Alcotest.(check int) "nested dismissal retains the original return target" origin (Ui.focused ui))
+    [0,false;2,false;2,true]
+
 let test_assembly_menu_scroll () =
   List.iter
     (fun (kind, props) ->
@@ -3757,6 +3816,7 @@ let () =
         [ Alcotest.test_case "pointer scope" `Quick test_modal_pointer_scope;
           Alcotest.test_case "modal+esc" `Quick test_overlay_close;
           Alcotest.test_case "light dismiss" `Quick test_light_dismiss;
+          Alcotest.test_case "action menu focus" `Quick test_action_menu_focus;
           Alcotest.test_case "appear once" `Quick test_appear_once;
           Alcotest.test_case "autofocus" `Quick test_autofocus;
           Alcotest.test_case "modal focus scope" `Quick

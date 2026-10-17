@@ -1,6 +1,6 @@
 (* Overlay and menu interaction state — see lui_overlay.mli for the
-   contract. Tracks the topmost presented overlay, its modality, the
-   trigger-owned open menu and the focus a modal surface saved. Pure
+   contract. Tracks the topmost presented overlay, its focus ownership, the
+   trigger-owned open menu and the focus an owning surface saved. Pure
    transitions: they read the store and return actions the driver
    performs. *)
 
@@ -9,15 +9,15 @@ open Lui_protocol
 type state = {
   top : int;
       (* topmost overlay-kind node currently tracked (0 = none) *)
-  modal : bool;         (* whether [top] is modal *)
+  focus_owned : bool;   (* modal or ordinary-action menu owns initial focus *)
   open_menu : int;      (* trigger-owned menu panel currently open *)
   laid_out_menu : int;  (* open_menu as of the last layout pass *)
   saved_focus : int;
-      (* focus a modal surface saved and restores on close *)
+      (* earliest focus an owning surface saves and restores on close *)
 }
 
 let initial =
-  { top = 0; modal = false; open_menu = 0; laid_out_menu = 0;
+  { top = 0; focus_owned = false; open_menu = 0; laid_out_menu = 0;
     saved_focus = 0 }
 
 let top st = st.top
@@ -102,19 +102,43 @@ let modal_scope store st =
 
 (* ---- transitions --------------------------------------------------- *)
 
+let available_focus store id =
+  Lui_store.mem store id && Lui_query.node_enabled store id
+  && Lui_focus.chain_visible store id
+  && not (Lui_store.inert_in_chain store id)
+
+let action_menu_focus store menu =
+  let is_menu =
+    match Lui_query.kind_name store menu with
+    | "dropdown-menu" | "context-menu" -> true
+    | "popover" -> Lui_store.string_prop store menu "role" = Some "menu"
+    | _ -> false in
+  if not is_menu || Lui_gesture.menu_has_items store menu then None
+  else
+    let rec first id =
+      if not (available_focus store id)
+         || (id <> menu && Lui_query.presented_overlay store id) then None
+      else if id <> menu
+              && (Lui_focus.admits_text store id || Lui_focus.activatable store id)
+      then Some id
+      else List.find_map first (Lui_store.child_ids store id)
+    in
+    first menu
+
 (* Store-sync half: dead saved-focus cleanup, then the top-overlay
-   change boundary — the modal focus scope. A modal surface owns the
+   change boundary. Modals and ordinary-action menus save return focus.
+   Row menus retain their separate keyboard highlight. A modal owns the
    keyboard while it is top: a focus held outside it is saved (once —
    a stacked modal keeps the earliest save) and cleared via a
    [`Focus (0, false)] intent, so text input, IME and the shortcut
    table cannot reach a background field; [`Clear_selection] drops any
    static-text selection held outside the scope for the same reason.
-   On the modal->non-modal transition the save is restored (when focus
-   is empty) and the slot reset, so a later modal cannot resurrect a
+   On release the save is restored if focus has not moved outside the
+   closing surface, and reset so a later overlay cannot resurrect a
    stale target. *)
-let sync store st ~focused =
+let sync store st ~focused ~kbd =
   let st =
-    if st.saved_focus <> 0 && not (Lui_store.mem store st.saved_focus)
+    if st.saved_focus <> 0 && not (available_focus store st.saved_focus)
     then { st with saved_focus = 0 }
     else st
   in
@@ -125,23 +149,29 @@ let sync store st ~focused =
   in
   if ov_id = st.top then (st, [])
   else begin
+    let action_focus = if ov_modal then None else action_menu_focus store ov_id in
+    let focus_owned = ov_modal || Option.is_some action_focus in
     let outside =
       focused <> 0 && focused <> ov_id
       && not (Lui_query.is_desc store focused ov_id)
     in
     let saved, acts =
-      if ov_modal then
+      if focus_owned then
         ( (if outside && st.saved_focus = 0 then focused
            else st.saved_focus),
-          `Clear_selection
-          :: (if outside then [ `Focus (0, false) ] else []) )
+          if ov_modal then
+            `Clear_selection :: (if outside then [ `Focus (0, false) ] else [])
+          else match action_focus with
+            | Some id when outside || focused = 0 -> [ `Focus (id, kbd) ]
+            | _ -> [] )
       else (st.saved_focus, [])
     in
-    let was_modal = st.modal in
-    let st = { st with saved_focus = saved; top = ov_id;
-                       modal = ov_modal } in
-    if was_modal && not ov_modal then
-      if st.saved_focus <> 0 && focused = 0 then
+    let released_focus = st.focus_owned && not focus_owned in
+    let focus_unmoved = focused = 0 || focused = st.top
+      || Lui_query.is_desc store focused st.top in
+    let st = { st with saved_focus = saved; top = ov_id; focus_owned } in
+    if released_focus then
+      if st.saved_focus <> 0 && focus_unmoved then
         ({ st with saved_focus = 0 },
          acts @ [ `Focus (st.saved_focus, false) ])
       else ({ st with saved_focus = 0 }, acts)

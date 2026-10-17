@@ -34,12 +34,11 @@ let set st ~id ~kbd =
   if id = st.focused then st
   else { st with focused = id; kbd_visible = kbd }
 
-(* A node is visible unless it or an ancestor carries
-   visible=false — the autofocus gate's chain walk. *)
+(* Hidden ancestors exclude controls from initial focus and Tab order. *)
 let rec chain_visible store id =
-  match Lui_store.prop store id "visible" with
-  | Some (BoolValue false) -> false
-  | _ ->
+  if Lui_store.prop store id "visible" = Some (BoolValue false)
+     || Lui_store.string_prop store id "display" = Some "none" then false
+  else
     match Lui_store.parent store id with
     | Some parent -> chain_visible store parent
     | None -> true
@@ -65,6 +64,7 @@ let focusables store ~scope =
     (fun id ->
        Lui_query.node_enabled store id
        && (admits_text store id || activatable store id)
+       && chain_visible store id
        && not (Lui_store.inert_in_chain store id)
        &&
        match scope with
