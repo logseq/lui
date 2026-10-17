@@ -81,6 +81,17 @@ let render_split renderer node root value animated =
   let duration =
     if animated then split_int_property renderer node ResizeDuration 0 else 0
   in
+  (* A zero duration only affects new transitions. Direct input and resize
+     observations must also cancel a transition already changing geometry. *)
+  set_style panes "transition-property"
+    (if animated then "grid-template-columns" else "none");
+  set_style divider "transition-property" (if animated then "left" else "none");
+  set_style panes "transition-duration" (string_of_int duration ^ "ms");
+  set_style divider "transition-duration" (string_of_int duration ^ "ms");
+  set_style panes "transition-timing-function"
+    (split_timing_function renderer node);
+  set_style divider "transition-timing-function"
+    (split_timing_function renderer node);
   set_style panes "grid-template-columns"
     ("minmax(" ^ string_of_int geometry.geo_first_min ^ "px, "
      ^ float_string fraction ^ "fr) minmax("
@@ -91,14 +102,6 @@ let render_split renderer node root value animated =
     ("calc(" ^ float_string (fraction *. 100.0) ^ "% - "
      ^ float_string (fraction *. gap_float) ^ "px)");
   set_style divider "width" (string_of_int geometry.geo_gap ^ "px");
-  set_style panes "transition-property" "grid-template-columns";
-  set_style divider "transition-property" "left";
-  set_style panes "transition-duration" (string_of_int duration ^ "ms");
-  set_style divider "transition-duration" (string_of_int duration ^ "ms");
-  set_style panes "transition-timing-function"
-    (split_timing_function renderer node);
-  set_style divider "transition-timing-function"
-    (split_timing_function renderer node);
   W.Element.setAttribute "aria-valuenow" (float_string fraction) divider
 
 let render_split_bang = render_split

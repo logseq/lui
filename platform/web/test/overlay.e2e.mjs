@@ -43,6 +43,14 @@ test("surface exits wait for all tracks without retaining zero-motion or reopene
   assert.equal(result.pass, true, JSON.stringify(result, null, 2))
 })
 
+test("direct nested split input cancels eased geometry without disabling programmatic motion", async () => {
+  await openLayerRegressionPage()
+  await clickButton('Run split interaction audit')
+  await session.page.waitForFunction(() => document.querySelector('#split-audit-result')?.textContent.includes('"state":"Complete"'))
+  const result = JSON.parse(await session.page.locator('#split-audit-result').textContent())
+  assert.equal(result.pass, true, JSON.stringify(result, null, 2))
+})
+
 test("popup and dialog defaults use the centered shared motion policy", async () => {
   await openLayerRegressionPage()
   await clickButton('Run surface motion style audit')

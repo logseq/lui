@@ -21,6 +21,8 @@
 <output id="style-audit-result" role="status">Not run</output>
 <button id="run-interruption-audit">Run menu and tooltip interruption audit</button>
 <output id="interruption-audit-result" role="status">Not run</output>
+<button id="run-split-audit">Run split interaction audit</button>
+<output id="split-audit-result" role="status">Not run</output>
 <main id="host"></main>
 <script type="module">
 import * as Web from "lui.web.dom/shell/lui_web.js";
@@ -51,7 +53,7 @@ button(root,"Open dialog",()=>openDialog());
 button(root,"Open focus dialog",()=>openDialog("focus"));
 button(root,"Open empty dialog",()=>openDialog("empty"));
 button(root,"Open regression sheet",openSheet);
-Web.set_event_handler(renderer,e=>{events.push(e);if(e.TAG===0||e.TAG===7){handlers.get(e._0)?.();flush();}else if(e.TAG===2&&e._0===sheetInput){set(sheetInput,"text",e._1);flush();}return true;});
+Web.set_event_handler(renderer,e=>{events.push(e);if(e.TAG===0||e.TAG===7){handlers.get(e._0)?.();flush();}else if(e.TAG===6){handlers.get(e._0)?.(e._1);flush();}else if(e.TAG===2&&e._0===sheetInput){set(sheetInput,"text",e._1);flush();}return true;});
 flush();Web.mount(renderer,root,host);
 function setupTracking(count=4,tooltip=false){
   const scroller=node("column",root,{width:440,height:300,"style-class":"tracking-scroll"});
@@ -88,6 +90,51 @@ window.audit={renderer,nodes,events,openDialog,closeDialog,setupTracking,setupCo
 
 const frames=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 const finiteAnimations=el=>el.getAnimations().filter(a=>Number.isFinite(a.effect?.getComputedTiming().endTime));
+async function runSplitAudit(){
+  const output=document.querySelector('#split-audit-result'),checks=[];
+  output.textContent='Running';
+  const check=(label,pass)=>checks.push({label,pass:!!pass});
+  let outer;
+  try{
+    outer=node('split',root,{width:1000,height:240,gap:0,'resize-duration':300,'accessibility-identifier':'audit-outer-split'});
+    const inner=node('split',outer,{gap:0,'resize-duration':300,'accessibility-identifier':'audit-inner-split'});
+    const left=node('column',inner,{'accessibility-identifier':'audit-fixed-pane'});
+    node('text',left,{text:'Fixed left pane'});
+    node('column',inner);node('column',outer);
+    const fraction=(n,value)=>ops.push(Protocol.set_prop_op(n,props.get('value'),{TAG:3,_0:value}));
+    const target=value=>{fraction(outer,value);fraction(inner,0.21/value);flush();};
+    handlers.set(outer,value=>target(value));
+    target(0.7);await frames();
+    const outerEl=document.querySelector('#audit-outer-split'),innerEl=document.querySelector('#audit-inner-split');
+    const pane=document.querySelector('#audit-fixed-pane'),divider=outerEl.querySelector(':scope > .lui-split-divider');
+    const tracks=()=>[...finiteAnimations(outerEl.firstElementChild),...finiteAnimations(innerEl.firstElementChild)];
+    const close=(actual,expected)=>Math.abs(actual-expected)<1;
+    check('initial fixed pane is 210px',close(pane.getBoundingClientRect().width,210));
+    for(const key of ['ArrowLeft','ArrowRight','ArrowLeft']){
+      divider.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));
+      await frames();
+      check(`${key} keeps the dependent pane fixed`,close(pane.getBoundingClientRect().width,210));
+      check(`${key} leaves no easing behind direct input`,tracks().length===0);
+    }
+    target(0.8);await frames();
+    check('programmatic split changes still animate',finiteAnimations(outerEl.firstElementChild).length>0);
+    for(const animation of tracks())animation.finish();await frames();
+    check('programmatic resize reaches its target',close(innerEl.getBoundingClientRect().width,800));
+    target(0.55);await frames();
+    for(const animation of tracks()){animation.pause();animation.currentTime=150;}
+    divider.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));
+    await frames();
+    check('direct input interrupts an existing resize transition',tracks().length===0);
+    check('interrupted outer track reaches the input target immediately',close(innerEl.getBoundingClientRect().width,600));
+    check('interrupted dependent pane keeps its width',close(pane.getBoundingClientRect().width,210));
+    set(outer,'width',800);fraction(inner,210/(800*0.6));flush();await frames();
+    check('container resize applies dependent geometry immediately',close(pane.getBoundingClientRect().width,210));
+    check('container resize leaves no running transitions',tracks().length===0);
+  }catch(error){check(String(error._1??error),false);}
+  finally{if(outer){drop(outer);flush();}}
+  output.textContent=JSON.stringify({state:'Complete',pass:checks.every(c=>c.pass),checks});
+}
+document.querySelector('#run-split-audit').addEventListener('click',runSplitAudit);
 async function runExitAudit(){
   const output=document.querySelector('#exit-audit-result'),results=[];
   output.textContent='Running';
