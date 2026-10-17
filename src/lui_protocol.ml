@@ -1172,6 +1172,8 @@ let common_property_supported kind property =
   | TitleValue -> kind = BottomTab
   | Gap ->
     kind = Row
+    || kind = Select
+    || kind = Combobox
     || kind = Column
     || kind = Grid
     || kind = ListContainer

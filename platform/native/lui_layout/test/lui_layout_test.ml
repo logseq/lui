@@ -60,27 +60,54 @@ let test_column_padding_gap () =
   check_rect "child2" 10. 35. 180. 20. (place p 4)
 
 let test_picker_intrinsic_width () =
-  List.iter (fun scale ->
-    List.iter (fun kind ->
-      List.iter (fun padding ->
-        let store = Lui_store.create () in
-        apply store
-          [CreateNode (1, Root); CreateNode (2, Row); CreateNode (3, kind);
-           InsertChild (1, 2, 0); InsertChild (2, 3, 0);
-           SetProp (3, TextValue, StringValue "Descending");
-           SetProp (3, PaddingHorizontal, IntValue padding)];
-        let layout = Lui_layout.create () in
-        Lui_layout.sync ~scale ~width:(500. *. scale) ~height:(100. *. scale)
-          ~measure:(fun _ _ _ _ -> Some (80. *. scale, 20. *. scale)) layout store;
-        let r = Option.get (Lui_layout.rect layout 3) in
-        let tp = Lui_paint.text_placement_of store 3 in
-        let label_end = r.x +. (tp.tp_pad_left +. 80.) *. scale in
-        let indicator_start = r.x +. r.w -. (tp.tp_pad_right +. 16.) *. scale in
-        check bool "picker width reserves the indicator and label gap" true
-          (indicator_start -. label_end >= 8. *. scale -. 1.);
-        check (float 1.) "picker does not reserve a second indicator"
-          ((80. +. 24. +. (2. *. float_of_int padding)) *. scale) r.w)
-        [0; 8; 20]) [Select; Combobox]) [1.; 2.]
+  List.iter
+    (fun scale ->
+      List.iter
+        (fun kind ->
+          List.iter
+            (fun padding ->
+              List.iter
+                (fun gap ->
+                  let store = Lui_store.create () in
+                  apply store
+                    ([
+                       CreateNode (1, Root);
+                       CreateNode (2, Row);
+                       CreateNode (3, kind);
+                       InsertChild (1, 2, 0);
+                       InsertChild (2, 3, 0);
+                       SetProp (3, TextValue, StringValue "Descending");
+                       SetProp (3, PaddingHorizontal, IntValue padding);
+                     ]
+                    @ Option.fold ~none:[]
+                        ~some:(fun value ->
+                          [ SetProp (3, Gap, IntValue value) ])
+                        gap);
+                  let layout = Lui_layout.create () in
+                  Lui_layout.sync ~scale ~width:(500. *. scale)
+                    ~height:(100. *. scale)
+                    ~measure:(fun _ _ _ _ -> Some (80. *. scale, 20. *. scale))
+                    layout store;
+                  let r = Option.get (Lui_layout.rect layout 3) in
+                  let tp = Lui_paint.text_placement_of store 3 in
+                  let label_end = r.x +. ((tp.tp_pad_left +. 80.) *. scale) in
+                  let indicator_start =
+                    r.x +. r.w -. ((tp.tp_pad_right +. 16.) *. scale)
+                  in
+                  let gap = float_of_int (Option.value gap ~default:8) in
+                  check bool
+                    "picker width reserves the indicator and requested label \
+                     gap"
+                    true
+                    (indicator_start -. label_end >= (gap *. scale) -. 1.);
+                  check (float 1.) "picker does not reserve a second indicator"
+                    ((80. +. 16. +. gap +. (2. *. float_of_int padding))
+                    *. scale)
+                    r.w)
+                [ None; Some 0; Some 4; Some 16 ])
+            [ 0; 8; 20 ])
+        [ Select; Combobox ])
+    [ 1.; 2. ]
 
 let test_list_item_content_flow () =
   List.iter

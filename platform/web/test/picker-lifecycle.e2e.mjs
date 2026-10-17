@@ -101,6 +101,19 @@ test("constrained lists reveal targets in layout pixels and retain visible rows"
   assert.equal(unbounded.height, unbounded.total, "An unconstrained list must retain its natural height")
 })
 
+test("picker Escape is owned before earlier document handlers", async () => {
+  await openPickerPage()
+  await openSelectWithKey()
+  assert.equal(await session.page.getByRole("option", {name:"Beta",exact:true})
+    .evaluate(element => getComputedStyle(element).backgroundColor), "rgb(232, 232, 232)")
+  assert.equal(await session.page.getByRole("option", {name:"Beta",exact:true})
+    .locator(".lui-menu-item-check").evaluate(element => element.getBoundingClientRect().width), 16)
+  await session.command("press", "Escape")
+  await waitFor("!document.querySelector('.lui-dropdown-menu[data-open]')")
+  assert.equal(await state("window.audit.backgroundEscapes"), 0)
+  assert.equal(await state("document.activeElement.id"), "picker-select")
+})
+
 test("Select keyboard navigation uses selected and enabled rows, typeahead and Enter press", async () => {
   await openPickerPage()
   await openSelectWithKey()

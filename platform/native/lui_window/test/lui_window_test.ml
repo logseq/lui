@@ -3024,6 +3024,53 @@ let test_menu_open_selection () =
         (Ui.shadow ui))
     [ (23, false); (23, true); (4, false); (5, false); (0, false) ]
 
+let test_select_keyboard_lifecycle () =
+  let asm = assembly_of
+    [CreateNode (1, Root);CreateNode (2, Popover);CreateNode (3, Box);
+     CreateNode (4, Select);CreateNode (9, Button);
+     InsertChild (1,2,0);InsertChild (2,3,0);InsertChild (3,4,0);InsertChild (2,9,1);
+     SetProp (4, PressEnabled, BoolValue true)] in
+  let store = Assembly.store asm and ui = Assembly.ui asm in
+  let mount generation =
+    Lui_store.apply_batch store {generation;ops=
+      [CreateNode (5,DropdownMenu);InsertChild (3,5,1)]
+      @ List.concat_map (fun (id,label,enabled) ->
+          [CreateNode (id,MenuItem);InsertChild (5,id,id-6);
+           SetProp (id,TextValue,StringValue label);SetProp (id,Enabled,BoolValue enabled)])
+        [6,"Text",true;7,"Number",false;8,"URL",true]};
+    ignore (Assembly.store_changed asm) in
+  let unmount generation =
+    Lui_store.apply_batch store {generation;ops=[DropNode 5]};
+    ignore (Assembly.store_changed asm) in
+  mount 2;
+  Alcotest.(check int) "auto-opened select owns keyboard focus" 4 (Ui.focused ui);
+  Alcotest.(check int) "auto-opened select highlights its first option" 6 (Ui.hl_item ui);
+  ignore (Assembly.handle asm (key Input.Arrow_down));
+  Alcotest.(check int) "picker skips disabled options" 8 (Ui.hl_item ui);
+  let consumed = ref 0 in
+  let escape () = Ui.handle ~on_component_input:(fun () -> incr consumed)
+    ui store (Assembly.rects asm) (key Input.Escape) in
+  Alcotest.(check bool) "Escape dismisses the inner picker only" true
+    (List.mem (Dismiss 5) (press_actions (escape ())));
+  Alcotest.(check int) "owned Escape cannot reach document handlers" 1 !consumed;
+  unmount 3;
+  Alcotest.(check int) "dismissal preserves the select's focus" 4 (Ui.focused ui);
+  Alcotest.(check bool) "Up requests reopening the focused select" true
+    (List.mem (Press 4) (press_actions (Assembly.handle asm (key Input.Arrow_up))));
+  mount 4;
+  Alcotest.(check int) "Up opens on the final enabled option" 8 (Ui.hl_item ui);
+  Ui.set_focused ui store 8;
+  unmount 5;
+  Alcotest.(check int) "removing a focused option restores its select" 4 (Ui.focused ui);
+  Alcotest.(check bool) "Down requests reopening the focused select" true
+    (List.mem (Press 4) (press_actions (Assembly.handle asm (key Input.Arrow_down))));
+  mount 6;
+  Alcotest.(check int) "Down opens on the first enabled option" 6 (Ui.hl_item ui);
+  unmount 7;
+  Alcotest.(check bool) "outer Escape still reaches the parent" true
+    (List.mem (Dismiss 2) (press_actions (escape ())));
+  Alcotest.(check int) "parent dismissal also consumes Escape exactly once" 2 !consumed
+
 let test_menu_keyboard_scope () =
   let store =
     store_of
@@ -3693,6 +3740,7 @@ let () =
           Alcotest.test_case "intrinsic menu scroll" `Quick test_assembly_menu_scroll;
           Alcotest.test_case "intrinsic menu keyboard" `Quick test_assembly_menu_keyboard;
           Alcotest.test_case "menu initial selection" `Quick test_menu_open_selection;
+          Alcotest.test_case "select keyboard lifecycle" `Quick test_select_keyboard_lifecycle;
           Alcotest.test_case "nested menu keyboard scope" `Quick test_menu_keyboard_scope;
           Alcotest.test_case "menu activation text commit" `Quick test_menu_activation_text_commit;
           Alcotest.test_case "scrollbar paint" `Quick

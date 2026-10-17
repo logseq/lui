@@ -565,6 +565,8 @@ module Ui = struct
     mutable overlay : Lui_overlay.state;
     mutable menu_scope : int;
     mutable menu_reveal : int; (* Initial highlight waiting for layout geometry. *)
+    mutable menu_picker : int;
+    mutable pending_picker : (int * Input.key) option;
     (* Space activation may dispose the menu before its text commit arrives. *)
     mutable menu_space_commit : bool;
     (* Paint-hint channels for the retained fragment pass: scroll
@@ -611,7 +613,7 @@ module Ui = struct
       scrollbar_deadlines = Hashtbl.create 8;
       drag = Lui_drag.initial;
       overlay = Lui_overlay.initial;
-      menu_scope = 0; menu_reveal = 0;
+      menu_scope = 0; menu_reveal = 0; menu_picker = 0; pending_picker = None;
       menu_space_commit = false;
       scrolled = Hashtbl.create 8;
       scroll_metrics = Hashtbl.create 8;
@@ -875,6 +877,11 @@ module Ui = struct
      focus-scope transition, autofocus inside the top overlay's
      scope, the Appear lifecycle and scroll bookkeeping. Intents go
      through [perform]; dispatches land in action order. *)
+  let select_for_menu store menu =
+    Option.bind (Lui_store.parent store menu) (fun parent ->
+      List.find_opt (fun id -> kind_name store id = "select"
+        && Lui_query.node_enabled store id) (Lui_store.child_ids store parent))
+
   let sync t store =
     if Lui_store.revision store = t.sync_rev
        && Lui_overlay.open_menu t.overlay = t.sync_menu
@@ -916,10 +923,28 @@ module Ui = struct
             && Lui_gesture.menu_has_items store id then id else 0
        in
        if scope <> t.menu_scope then begin
+         let previous_picker = t.menu_picker in
          t.menu_scope <- scope;
+         t.menu_picker <- Option.value ~default:0 (select_for_menu store scope);
          t.gesture <-
            if scope = 0 then Lui_gesture.initial
            else Lui_gesture.menu_open store ~menu:scope;
+         (match t.pending_picker with
+          | Some (picker, Input.Arrow_up) when picker = t.menu_picker
+              && not (List.exists (fun id -> bool_prop store id "selected")
+                (Lui_gesture.menu_items store scope)) ->
+              let gesture, actions = Lui_gesture.menu_key store t.gesture
+                ~menu:scope ~rect_of:t.content_rect ~scale:t.scale
+                ~key:Lui_input.End ~mods:(conv_mods Input.mods_none) in
+              t.gesture <- gesture;run actions
+          | _ -> ());
+         if scope <> 0 then t.pending_picker <- None;
+         let picker = if t.menu_picker <> 0 then t.menu_picker else previous_picker in
+         if picker <> 0 && Lui_store.mem store picker
+            && (t.menu_picker <> 0 || Lui_focus.focused t.focus = 0) then begin
+           focus_move ~kbd:true t store picker;
+           acts := Focus_changed picker :: !acts
+         end;
          t.menu_reveal <- Lui_gesture.hl t.gesture;
          t.dirty <- true
        end);
@@ -1362,10 +1387,11 @@ module Ui = struct
               let ov', res = Lui_overlay.escape store t.overlay in
               t.overlay <- ov';
               (match res with
-               | `Closed_menu -> t.dirty <- true
+               | `Closed_menu -> on_component_input ();t.dirty <- true
                | `Dismissed oid ->
+                 on_component_input ();
                  acts := Dispatch (Dismiss oid) :: !acts
-               | `Blocked -> ()
+               | `Blocked -> on_component_input ()
                | `Pass ->
                  if Lui_focus.focused t.focus <> 0 then begin
                    focus_move t store 0;
@@ -1428,6 +1454,13 @@ module Ui = struct
               set_scroll t s';
               run m
             end
+          | (Input.Arrow_up | Input.Arrow_down)
+              when not (mods.Input.shift || mods.Input.ctrl || mods.Input.meta || mods.Input.alt)
+                && kind_name store (focused t) = "select"
+                && Lui_query.node_enabled store (focused t) ->
+            on_component_input ();
+            t.pending_picker <- Some (focused t,key);
+            run (Lui_query.primary_press store (focused t))
           | _ ->
             if Lui_text_input.editable store (focused t) then begin
               let s', m =

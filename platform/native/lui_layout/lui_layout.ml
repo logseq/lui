@@ -1091,11 +1091,11 @@ let measure_for ctx id ~kids : Lui_flex.measure option =
       in
       let indicator_extra =
         match Lui_store.kind ctx.store id with
-        | "select" | "combobox" -> 24.
+        | "select" | "combobox" ->
+            16. +. Option.value ~default:8. (pnum ctx.store id "gap")
         | _ -> 0.
       in
-      (* Labeled icons reserve 16px + 6px; picker indicators reserve
-       16px + 8px so the label never enters the trailing icon slot. *)
+      (* Picker indicators reserve their width and requested label gap. *)
       let choice_extra = if choice then 24. else 0. in
       let extra =
         (icon_extra +. indicator_extra +. choice_extra) *. ctx.scale

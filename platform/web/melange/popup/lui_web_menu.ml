@@ -933,6 +933,13 @@ let attach_dropdown_events renderer node _dropdown_node =
   in
   let positioner = Lui_web_nodes.dom_node renderer node in
   let popup = Lui_web_util.child_element positioner 0 in
+  (* Resolve Escape at the popup before application document handlers can
+     dismiss an ancestor. Target-local editors still receive it first. *)
+  let escape_handler event =
+    if W.KeyboardEvent.key event = "Escape" then
+      Lui_web_layers.dispatch_key renderer.web_layers event
+  in
+  W.Element.addKeyDownEventListener escape_handler positioner;
   let owner =
     match Store.node renderer.web_store node with
     | Some current -> current.retained_parent
@@ -968,6 +975,7 @@ let attach_dropdown_events renderer node _dropdown_node =
        ~close:(fun () -> set_dropdown_open renderer node false)
        ~key_handler ~present:false ~open_:false);
   Hashtbl.replace renderer.web_cleanups node (fun () ->
+      W.Element.removeKeyDownEventListener escape_handler positioner;
       cancel_typeahead typeahead_timer;
       Lui_web_popup_tracking.stop positioner;
       if not (Lui_web_layers.is_present renderer.web_layers node) then
