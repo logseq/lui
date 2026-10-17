@@ -2171,6 +2171,7 @@ val button :
   ?label:string ->
   ?text_alignment:text_alignment ->
   ?selected:bool ->
+  ?selected_signal:bool Signal.signal ->
   ?autofocus:bool ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->

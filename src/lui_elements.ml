@@ -1253,7 +1253,7 @@ let kbd ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padd
 
   node
 
-let button ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?text ?text_signal ?variant ?size ?icon ?icon_signal ?icon_placement ?label ?text_alignment ?selected ?autofocus ?disabled ?disabled_signal ?on_press ?on_long_press ?on_press_detail ?on_pointer_down ?on_pointer_up ?on_context_menu ?tooltip ?tooltip_signal ?shortcut_hint ?shortcut_hint_signal ?transition (children : t list) : t =
+let button ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?text ?text_signal ?variant ?size ?icon ?icon_signal ?icon_placement ?label ?text_alignment ?selected ?selected_signal ?autofocus ?disabled ?disabled_signal ?on_press ?on_long_press ?on_press_detail ?on_pointer_down ?on_pointer_up ?on_context_menu ?tooltip ?tooltip_signal ?shortcut_hint ?shortcut_hint_signal ?transition (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.button context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~margin ~margin_horizontal ~margin_vertical ~margin_top ~margin_right ~margin_bottom ~margin_left ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave ~transition;
@@ -1267,6 +1267,7 @@ let button ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?p
   Option.iter (Lui_ui.string_property context node AccessibilityLabel) label;
   Option.iter (Lui_ui.string_property context node TextAlignment) (Option.map text_alignment_value text_alignment);
   Option.iter (Lui_ui.bool_property context node Selected) selected;
+  Option.iter (Lui_ui.bool_property_signal context node Selected) selected_signal;
   Option.iter (Lui_ui.bool_property context node Autofocus) autofocus;
   Option.iter (Lui_ui.disabled context node) disabled;
   Option.iter (Lui_ui.disabled_signal context node) disabled_signal;
