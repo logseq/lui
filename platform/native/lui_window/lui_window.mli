@@ -164,6 +164,12 @@ module Rects : sig
   val zero : rect
 end
 
+val content_bounds :
+  store:Lui_store.t -> rect_of:(int -> rect) -> int -> float * float * float * float
+(** Descendant bounds in layout coordinates, excluding the root's box.
+    Nested clipping containers contribute their own box, not the content
+    they clip. Unboxed containers pass their descendants through. *)
+
 val kind_name : Lui_store.t -> int -> string
 val kind_of : Lui_store.t -> int -> Lui_protocol.node_kind option
 

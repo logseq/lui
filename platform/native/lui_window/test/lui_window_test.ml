@@ -3137,6 +3137,84 @@ let test_assembly_inset_scroll_caps () =
   Alcotest.(check (float 0.001)) "last content bottom is visible" 130. (last.y+.last.h);
   Alcotest.(check (float 0.001)) "last content right is visible" 120. (last.x+.last.w)
 
+let test_assembly_nested_clip_caps () =
+  let module Nested_layout = struct
+    include Fake_layout
+
+    let sync ?scale:_ ?measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ~width:_
+        ~height:_ t _store =
+      Hashtbl.reset t;
+      List.iter
+        (fun (id, r) -> Hashtbl.add t id r)
+        [
+          (1, Lui_scene.rect 0. 0. 300. 300.);
+          (2, Lui_scene.rect 20. 30. 100. 100.);
+          (3, Lui_scene.rect 20. 30. 100. 200.);
+          (4, Lui_scene.rect 20. 30. 100. 40.);
+          (5, Lui_scene.rect 20. 30. 400. 500.);
+          (6, Lui_scene.rect 20. 70. 100. 160.);
+        ]
+  end in
+  List.iter
+    (fun (name, kind, props, clipped) ->
+      let asm =
+        Assembly.create
+          ~layout:(module Nested_layout)
+          ~scale_cell:(ref 1.) ~text:assembly_text ~renderer:assembly_renderer
+          ~width:300 ~height:300 ()
+      in
+      Lui_store.apply_batch (Assembly.store asm)
+        {
+          generation = 1;
+          ops =
+            [
+              CreateNode (1, Root);
+              CreateNode (2, Scroll);
+              CreateNode (3, Column);
+              CreateNode (4, kind);
+              CreateNode (5, Box);
+              CreateNode (6, Box);
+              InsertChild (1, 2, 0);
+              InsertChild (2, 3, 0);
+              InsertChild (3, 4, 0);
+              InsertChild (4, 5, 0);
+              InsertChild (3, 6, 1);
+            ]
+            @ props;
+        };
+      ignore (Assembly.repaint asm);
+      let ui = Assembly.ui asm in
+      Alcotest.(check (float 0.001))
+        (name ^ " outer horizontal range")
+        (if clipped then 0. else 300.)
+        (Ui.scroll_cap_x ui 2);
+      Alcotest.(check (float 0.001))
+        (name ^ " outer vertical range includes its sibling")
+        (if clipped then 100. else 400.)
+        (Ui.scroll_cap ui 2);
+      if kind = Scroll then begin
+        Alcotest.(check (float 0.001))
+          "inner horizontal range survives" 300. (Ui.scroll_cap_x ui 4);
+        Alcotest.(check (float 0.001))
+          "inner vertical range survives" 460. (Ui.scroll_cap ui 4)
+      end)
+    [
+      ("nested scroll", Scroll, [], true);
+      ( "hidden overflow",
+        Box,
+        [ SetProp (4, Overflow, StringValue "hidden") ],
+        true );
+      ("auto overflow", Box, [ SetProp (4, Overflow, StringValue "auto") ], true);
+      ("visible overflow", Box, [], false);
+      ( "unboxed overflow",
+        Box,
+        [
+          SetProp (4, Overflow, StringValue "hidden");
+          SetProp (4, DisplayValue, StringValue "contents");
+        ],
+        false );
+    ]
+
 let test_assembly_autofocus () =
   let asm =
     assembly_of
@@ -3474,6 +3552,7 @@ let () =
         [ Alcotest.test_case "scroll caps" `Quick
             test_assembly_scroll_caps;
           Alcotest.test_case "inset scroll caps" `Quick test_assembly_inset_scroll_caps;
+          Alcotest.test_case "nested clip scroll caps" `Quick test_assembly_nested_clip_caps;
           Alcotest.test_case "intrinsic menu scroll" `Quick test_assembly_menu_scroll;
           Alcotest.test_case "intrinsic menu keyboard" `Quick test_assembly_menu_keyboard;
           Alcotest.test_case "menu initial selection" `Quick test_menu_open_selection;

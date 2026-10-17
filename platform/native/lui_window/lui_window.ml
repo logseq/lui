@@ -8,6 +8,38 @@
 open Lui_scene
 open Lui_protocol
 
+type content_edges = {
+  mutable left : float;
+  mutable top : float;
+  mutable right : float;
+  mutable bottom : float;
+}
+
+let content_bounds ~store ~rect_of id =
+  let bounds =
+    {
+      left = Float.max_float;
+      top = Float.max_float;
+      right = -.Float.max_float;
+      bottom = -.Float.max_float;
+    }
+  in
+  Lui_store.iter_preorder ~root:id
+    ~descend:(fun child ->
+      child = id
+      || Lui_paint.unboxed store child
+      || not (Lui_paint.clips (Lui_store.kind store child) store child))
+    store
+    (fun child ->
+      if child <> id && not (Lui_paint.unboxed store child) then begin
+        let r : Lui_scene.rect = rect_of child in
+        bounds.left <- Float.min bounds.left r.x;
+        bounds.top <- Float.min bounds.top r.y;
+        bounds.right <- Float.max bounds.right (r.x +. r.w);
+        bounds.bottom <- Float.max bounds.bottom (r.y +. r.h)
+      end);
+  (bounds.left, bounds.top, bounds.right, bounds.bottom)
+
 type config = {
   width : int;
   height : int;
@@ -2380,18 +2412,7 @@ module Assembly = struct
       let sx, sy = scroll_shift_of id in
       { r with x = r.x -. sx; y = r.y -. sy }
     in
-    let content_box id =
-      List.fold_left
-        (fun (l, t, rgt, b) d ->
-           if d = id then (l, t, rgt, b)
-           else
-             let r = engine_rect d in
-             (Float.min l r.x, Float.min t r.y,
-              Float.max rgt (r.x +. r.w), Float.max b (r.y +. r.h)))
-        (Float.max_float, Float.max_float,
-         Float.min_float, Float.min_float)
-        (Lui_store.preorder ~root:id (store_of ()))
-    in
+    let content_box id = content_bounds ~store:(store_of ()) ~rect_of:engine_rect id in
     (* Virtual-list viewport feed: the node's content-space visible
        range — its own scroll offset plus how far the frame clip has
        scrolled into its (shifted) box. Outer scroller clips are not

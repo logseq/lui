@@ -629,15 +629,15 @@ let root_ids t =
 
 (* Follow intrusive child/sibling links directly. Climbing parent links
    avoids a recursive stack and temporary child lists, even for deep trees. *)
-let iter_preorder ?root t f =
+let iter_preorder ?root ?(descend = fun _ -> true) t f =
   let visit root =
     let current = ref root and ancestor = ref root in
     let finished = ref false and found = ref false in
     while not !finished do
       f (!current).id;
       match (!current).first_child with
-      | Some child -> current := child
-      | None ->
+      | Some child when descend (!current).id -> current := child
+      | Some _ | None ->
         ancestor := !current;
         found := false;
         while not !found && not !finished do
