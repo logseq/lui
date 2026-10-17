@@ -490,7 +490,7 @@ and glyphs_op = {
   gcolor2 : color;
   ggradient : float * float * float * float;
   gwide2 : int;
-  gopacity : float;
+  gopacity : float; (** Run opacity: zero is transparent, one is opaque. *)
 }
 
 and image_op = {

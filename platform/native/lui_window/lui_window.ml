@@ -1180,7 +1180,8 @@ module Ui = struct
                 extends, double/triple click selects word/paragraph
                 — on editable fields and user-select=text nodes
                 alike. *)
-             (if focus <> 0 && List.mem focus path then begin
+             (if focus <> 0 && List.mem focus path
+                 && Lui_query.event_supported store focus (Lui_query.ev_text focus) then begin
                 let s', _m =
                   Lui_text_input.press (hooks t) store rects t.session
                     ~x:dx ~y:dy ~clicks ~shift:mods.Input.shift
@@ -1190,7 +1191,7 @@ module Ui = struct
                   Lui_selection.arm_drag
                     (Lui_selection.clear t.selection) focus
               end
-              else if
+              else if focus = 0 &&
                 List.exists
                   (fun i -> Lui_query.selectable_text store i) path
               then begin
@@ -1467,6 +1468,9 @@ module Ui = struct
             t.pending_picker <- Some (focused t,key);
             run (Lui_query.primary_press store (focused t))
           | _ ->
+            let focused_list = kind_name store (focused t) = "list-item"
+              && t.gesture.list_scope <> 0
+              && Lui_query.is_desc store (focused t) t.gesture.list_scope in
             if Lui_text_input.editable store (focused t) then begin
               let s', m =
                 Lui_text_input.key (hooks t) store rects t.session
@@ -1475,7 +1479,7 @@ module Ui = struct
               t.session <- s';
               run m
             end
-            else if Lui_focus.focused t.focus <> 0 then begin
+            else if Lui_focus.focused t.focus <> 0 && not focused_list then begin
               let g', m =
                 Lui_gesture.control_key store t.gesture
                   ~node:(Lui_focus.focused t.focus)
@@ -1494,6 +1498,10 @@ module Ui = struct
                   ~mods:(conv_mods mods)
               in
               t.gesture <- g';
+              if focused_list && g'.hl <> 0 && g'.hl <> focused t then begin
+                focus_move ~kbd:true t store g'.hl;
+                emit_all [Focus_changed g'.hl]
+              end;
               run m
             end)
        end

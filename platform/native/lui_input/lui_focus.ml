@@ -43,27 +43,11 @@ let rec chain_visible store id =
     | Some parent -> chain_visible store parent
     | None -> true
 
-(* Activation-capable control kinds — the pointer does not focus
-   them on this host (macOS-like), Tab/Shift-Tab do. *)
-let activatable store id =
-  Lui_query.node_enabled store id
-  &&
-  match Lui_query.kind_name store id with
-  | "button" | "toggle-button" | "toggle" | "checkbox" | "switch"
-  | "radio" | "slider" | "number-stepper" | "select" | "menu-item" ->
-    true
-  | _ -> false
-
-(* Whether the node's focused field accepts edits — admits
-   TextChanged. *)
-let admits_text store id =
-  Lui_query.event_supported store id (Lui_query.ev_text id)
-
 let focusables store ~scope =
   List.filter
     (fun id ->
        Lui_query.node_enabled store id
-       && (admits_text store id || activatable store id)
+       && Lui_query.focus_candidate store id
        && chain_visible store id
        && not (Lui_store.inert_in_chain store id)
        &&
@@ -111,7 +95,7 @@ let scan_autofocus store st ~scope:ov_id =
       now := id :: !now;
       if !candidate = None && not (IntSet.mem id st.autofocus_seen)
          && Lui_query.node_enabled store id
-         && (admits_text store id || activatable store id)
+         && Lui_query.focus_candidate store id
          && (ov_id = 0 || id = ov_id || Lui_query.is_desc store id ov_id)
       then candidate := Some id
     end);

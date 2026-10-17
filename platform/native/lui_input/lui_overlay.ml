@@ -119,7 +119,7 @@ let action_menu_focus store menu =
       if not (available_focus store id)
          || (id <> menu && Lui_query.presented_overlay store id) then None
       else if id <> menu
-              && (Lui_focus.admits_text store id || Lui_focus.activatable store id)
+              && Lui_query.focus_candidate store id
       then Some id
       else List.find_map first (Lui_store.child_ids store id)
     in

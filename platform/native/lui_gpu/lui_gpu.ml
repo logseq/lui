@@ -486,6 +486,7 @@ let build_with_cache ?(wide = false) ?glyph_cache (s : t) : batch list =
                           inner = corners sh.scast sh.scast_radii sh.scast_continuous }
           in
           add inst None))
+      | Glyphs g when g.gopacity = 0. -> ()
       | Glyphs g ->
         let gradients = g.gpaint = Linear || g.gpaint = Oklab in
         let c1, c2 =
@@ -518,7 +519,7 @@ let build_with_cache ?(wide = false) ?glyph_cache (s : t) : batch list =
               uv = (float gl.gu /. aw, float gl.gv /. ah,
                     float (gl.gu + gl.guw) /. aw, float (gl.gv + gl.gvh) /. ah);
               clip = no_clip; clip_radii = no_clip_radii;
-              params = (kind, 0., 0., 1.);
+              params = (kind, 0., 0., g.gopacity);
               clip2 = no_clip; clip2_radii = no_clip_radii;
               clip3 = no_clip; clip3_radii = no_clip_radii }
           in
@@ -531,7 +532,7 @@ let build_with_cache ?(wide = false) ?glyph_cache (s : t) : batch list =
             if gradients && not gl.gcolored then
               { inst with color = c1; color2 = c2; grad = g.ggradient;
                           params =
-                            (kind, 0., paint_code g.gpaint, opacity g.gopacity) }
+                            (kind, 0., paint_code g.gpaint, g.gopacity) }
             else inst
           in
           with_clip inst in

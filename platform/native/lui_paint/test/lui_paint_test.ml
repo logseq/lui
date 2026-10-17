@@ -928,6 +928,19 @@ let test_choice_label_gap () =
       (10.+.(16.+.float_of_int (Option.value gap ~default:8))*.scale) label.x)
       [None;Some 0;Some 4;Some 16]) [1.;2.]) [Lui_protocol.Checkbox;Radio]
 
+let test_choice_focus_bounds () =
+  List.iter (fun kind -> List.iter (fun scale ->
+    let t=store () in
+    apply t [Lui_protocol.CreateNode (1,kind);SetProp (1,TextValue,StringValue "Caption")];
+    let h={(hooks ~layout:(fun _ -> Lui_paint.placement_of_rect
+      (rect (10.*.scale) (20.*.scale) (200.*.scale) (28.*.scale))) ()) with
+      Lui_paint.state_of=(fun _ -> {Lui_paint.state_neutral with focused=true})} in
+    let scene=paint_with h t ~scale () in
+    let ring=List.find_map (function Fill f when f.fborder=(2.*.scale,2.*.scale,2.*.scale,2.*.scale) -> Some f | _ -> None) scene.ops |> Option.get in
+    check (float 0.01) "choice focus ring surrounds its indicator" (22.*.scale) ring.frect.w;
+    check (float 0.01) "choice focus ring is square" (22.*.scale) ring.frect.h)
+    [1.;2.]) [Lui_protocol.Checkbox;Radio]
+
 let test_switch () =
   let t = store () in
   apply t
@@ -1636,6 +1649,7 @@ let () =
          test_case "checkbox unchecked" `Quick test_checkbox_unchecked;
          test_case "checkbox primary palette" `Quick test_checkbox_primary_palette;
          test_case "choice label gap" `Quick test_choice_label_gap;
+         test_case "choice focus bounds" `Quick test_choice_focus_bounds;
          test_case "switch" `Quick test_switch;
          test_case "radio" `Quick test_radio;
          test_case "spinner" `Quick test_spinner;

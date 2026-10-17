@@ -85,7 +85,7 @@ let test_build () =
       Glyphs
         { gstart = 0; gend = 1; gpaint = Solid; gcolor = red;
           gcolor2 = red; ggradient = (0., 0., 0., 0.); gwide2 = 0;
-          gopacity = 0. };
+          gopacity = 1. };
       image_op img1 ~src:(rect 0. 0. 2. 2.) ();
       image_op img2 ~src:(rect 0. 0. 1. 2.) ();
       Push_clip
@@ -326,7 +326,7 @@ let test_glyph_kinds () =
     [ Glyphs
         { gstart = 0; gend = 3; gpaint = Solid; gcolor = red;
           gcolor2 = red; ggradient = (0., 0., 0., 0.); gwide2 = 0;
-          gopacity = 0. } ];
+          gopacity = 1. } ];
   let insts = all_insts (G.build s) in
   check int "glyphs" 3 (List.length insts);
   let mask_i, color_i, sub_i =
@@ -343,6 +343,20 @@ let test_glyph_kinds () =
   eq4 (5., 0., 0., 1.) sub_i.params;
   eq4 (1.3, 0.5, 0., 0.) sub_i.inner;
   eq4 (0.0625, 0.125, 0.25, 0.3125) sub_i.uv
+
+let test_glyph_run_opacity () =
+  List.iter (fun paint -> List.iter (fun opacity ->
+    let s=scene () in
+    s.glyphs <- [glyph ();glyph ~colored:true ();glyph ~subpixel:true ()];
+    s.ops <- [Glyphs {gstart=0;gend=3;gpaint=paint;gcolor=red;gcolor2=red;
+      ggradient=(0.,0.,0.,0.);gwide2=0;gopacity=opacity}];
+    let instances=all_insts (G.build s) in
+    if opacity=0. then check int "transparent glyph runs emit no instances" 0 (List.length instances)
+    else (
+      check int "all glyph atlas kinds remain present" 3 (List.length instances);
+      List.iter (fun instance -> let _,_,_,alpha=instance.G.params in
+        check (float 0.001) "every glyph atlas kind carries run opacity" opacity alpha) instances))
+    [0.;0.25;0.5;1.]) [Solid;Linear;Oklab]
 
 let test_gradient_glyphs () =
   let s = scene () in
@@ -364,7 +378,7 @@ let test_gradient_glyphs () =
   (* Color glyphs keep their own color. *)
   eq4 (1., 0., 0., 1.) color_i.color;
   eq4 (0., 0., 0., 0.) color_i.color2;
-  eq4 (3., 0., 0., 1.) color_i.params
+  eq4 (3., 0., 0., 0.5) color_i.params
 
 (* ---------- wide gamut ---------- *)
 
@@ -390,11 +404,11 @@ let test_wide () =
       Glyphs
         { gstart = 0; gend = 2; gpaint = Solid; gcolor = red;
           gcolor2 = red; ggradient = (0., 0., 0., 0.); gwide2 = 0;
-          gopacity = 0. };
+          gopacity = 1. };
       Glyphs
         { gstart = 0; gend = 2; gpaint = Oklab; gcolor = green;
           gcolor2 = red; ggradient = (0., 0., 0., 0.); gwide2 = 3;
-          gopacity = 0. } ];
+          gopacity = 1. } ];
   let colors wide =
     List.map
       (fun (i : G.instance) -> (i.color, i.color2, i.border))
@@ -540,7 +554,7 @@ let test_cache_key_inputs () =
     [ Glyphs
         { gstart = 0; gend = 1; gpaint = Solid; gcolor = red;
           gcolor2 = red; ggradient = (0., 0., 0., 0.); gwide2 = 0;
-          gopacity = 0. } ];
+          gopacity = 1. } ];
   let c = G.batch_cache () in
   let _, _, r0 = frame3 c s in
   check bool "build" true r0;
@@ -595,7 +609,7 @@ let bench_cache () =
         Glyphs
           { gstart = i * n_glyphs; gend = (i + 1) * n_glyphs;
             gpaint = Solid; gcolor = red; gcolor2 = red;
-            ggradient = (0., 0., 0., 0.); gwide2 = 0; gopacity = 0. });
+            ggradient = (0., 0., 0., 0.); gwide2 = 0; gopacity = 1. });
   let insts =
     List.fold_left
       (fun n (b : G.batch) -> n + List.length b.instances)
@@ -748,6 +762,7 @@ let () =
           test_case "effect with backdrop" `Quick test_effect_backdrop;
           test_case "glyph atlas kinds" `Quick test_glyph_kinds;
           test_case "gradient glyphs" `Quick test_gradient_glyphs;
+          test_case "glyph run opacity" `Quick test_glyph_run_opacity;
           test_case "wide gamut" `Quick test_wide ] );
       ( "packing",
         [ test_case "to_float32_array" `Quick test_float32_packing;

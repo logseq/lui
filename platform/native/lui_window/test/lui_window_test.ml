@@ -2136,6 +2136,25 @@ let list_store () =
       SetProp (5, KeyValue, StringValue "item-c");
       SetProp (5, TextValue, StringValue "cherry") ]
 
+let test_focused_list_typeahead () =
+  let store=list_store () and rects=Rects.create () in
+  List.iter (fun id -> Lui_store.apply_op store (SetProp (id,PressEnabled,BoolValue true))) [3;4;5];
+  Layout.refresh store rects ~width:100 ~height:40 ~scale:1. ~measure:Layout.default_measure;
+  let ui=Ui.create () in
+  Ui.set_content_rect ui (fun id -> Rects.get rects id);
+  let first=Rects.get rects 3 in
+  ignore (Ui.handle ui store rects (Input.Button_down
+    (first.x+.2.,first.y+.2.,Input.Left,1,Input.mods_none)));
+  Alcotest.(check int) "clicked interactive list row receives focus" 3 (Ui.focused ui);
+  ignore (Ui.handle ui store rects (key (Input.Other 5)));
+  Alcotest.(check int) "focused list preserves typeahead" 4 (Ui.hl_item ui);
+  ignore (Ui.handle ui store rects (key Input.Arrow_down));
+  Alcotest.(check int) "focused list preserves arrow navigation" 5 (Ui.hl_item ui);
+  Alcotest.(check int) "keyboard focus follows the highlighted interactive row" 5 (Ui.focused ui);
+  Alcotest.(check bool) "Enter activates the highlighted row" true
+    (List.exists (function Dispatch (Press 5) -> true | _ -> false)
+      (Ui.handle ui store rects (key Input.Return)))
+
 let test_list_typeahead () =
   let s = list_store () in
   let rects = Rects.create () in
@@ -3806,6 +3825,7 @@ let () =
           Alcotest.test_case "control keys" `Quick test_control_keys ] );
       ( "list",
         [ Alcotest.test_case "typeahead" `Quick test_list_typeahead;
+          Alcotest.test_case "focused typeahead" `Quick test_focused_list_typeahead;
           Alcotest.test_case "scroll request" `Quick test_scroll_request;
           Alcotest.test_case "vlist scroll request" `Quick
             test_vlist_scroll_request ] );

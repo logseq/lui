@@ -1061,9 +1061,9 @@ let mask_opaque r a (g : glyph) gx gy x0 y0 x1 y1 =
   done
 
 let r_glyphs r (op : glyphs_op) s glyphs =
+  let opacity = op.gopacity in
   let pt =
     if op.gpaint = Linear || op.gpaint = Oklab then begin
-      let opacity = if op.gopacity = 0. then 1. else op.gopacity in
       Some (new_painter ~paint_:op.gpaint ~c1:op.gcolor ~c2:op.gcolor2
               ~g:op.ggradient ~ox:0. ~oy:0. ~opacity)
     end
@@ -1083,11 +1083,11 @@ let r_glyphs r (op : glyphs_op) s glyphs =
       let (g0, g1, g2, g3) = text.gamma_ratios in
       let correct = contrast <> 0. || boost <> 0.
         || g0 <> 0. || g1 <> 0. || g2 <> 0. || g3 <> 0. in
-      if (not g.gcolored) && (not g.gsubpixel) && Option.is_none pt && (not correct) && g.gcolor.a = 255 then
+      if opacity = 1. && (not g.gcolored) && (not g.gsubpixel) && Option.is_none pt && (not correct) && g.gcolor.a = 255 then
         mask_opaque r atlas g gx gy x0 y0 x1 y1
       else begin
-        let tint0 = premul g.gcolor 1. in
-        let alpha = float g.gcolor.a /. 255. in
+        let tint0 = premul g.gcolor opacity in
+        let alpha = float g.gcolor.a /. 255. *. opacity in
         for y = y0 to y1 - 1 do
           let row = (y - r.origin_y) * r.dst.Image.stride in
           let clip_index = clip_row r y in

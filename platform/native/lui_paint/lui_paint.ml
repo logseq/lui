@@ -2874,7 +2874,12 @@ let paint_own ctx store id st kind r rs alpha =
   if
     st.focused && focusable kind
     && not (prop_set store id "focus-shadow")
-  then [ focus_ring_op ctx r (radii_of ctx store id) alpha ]
+  then
+    let region, radii = match kind with
+      | "checkbox" -> leading_box ctx store id r 16., chrome_radii ctx store id (4. *. ctx.scale)
+      | "radio" -> leading_box ctx store id r 16., chrome_radii ctx store id (8. *. ctx.scale)
+      | _ -> r, radii_of ctx store id in
+    [ focus_ring_op ctx region radii alpha ]
   else []
 
 (* Inside a dead clip only the context still matters: a promoted

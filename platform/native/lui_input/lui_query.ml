@@ -279,9 +279,20 @@ let ev_submit n : event = Submit n
 let dummy_detail =
   { x = 0.; y = 0.; modifiers = 0; button = 0; target_class = "" }
 
+(* Pointer and keyboard focus use the same control eligibility. *)
+let focus_candidate store id =
+  event_supported store id (ev_text id)
+  || match kind_name store id with
+     | "button" | "toggle-button" | "toggle" | "checkbox" | "switch"
+     | "radio" | "slider" | "number-stepper" | "select" | "combobox"
+     | "menu-item" | "menu-trigger" | "link" | "bottom-tab" -> true
+     | "list-item" -> bool_prop store id "press-enabled" || bool_prop store id "toggle-enabled"
+     | _ -> false
+
 let focus_target store path =
-  select_activation store path
-    (fun s id -> event_supported s id (ev_text id))
+  match select_activation store path focus_candidate with
+  | Some id when not (Lui_store.inert_in_chain store id) -> Some id
+  | _ -> None
 
 let press_target store path =
   (* DOM click semantics: the activation lands on the deepest

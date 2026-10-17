@@ -67,6 +67,30 @@ let test_pixel_checks () =
   Alcotest.(check bool) "border red low" true (let r, _, _, _ = px 13 30 in r < 40);
   Alcotest.(check (list int)) "outside corner" [ 255; 255; 255; 255 ] (rgba (px 13 11))
 
+let test_glyph_run_opacity () =
+  List.iter (fun (colored,subpixel) -> List.iter (fun paint -> List.iter (fun glyph_alpha ->
+    let mask=Atlas.create ~bpp:1 ~w:1 ~h:1
+    and color_atlas=Atlas.create ~bpp:4 ~w:1 ~h:1 in
+    Atlas.put mask ~x:0 ~y:0 ~w:1 ~h:1 ~src:(Bytes.make 1 '\255') ~stride:1;
+    let pixel=if colored then Bytes.of_string "\000\000\000\255" else Bytes.make 4 '\255' in
+    Atlas.put color_atlas ~x:0 ~y:0 ~w:1 ~h:1 ~src:pixel ~stride:4;
+    let black=color 0 0 0 glyph_alpha in
+    let s=scene ~w:1 ~h:1 ~mask ~color_atlas
+      ~glyphs:[glyph ~colored ~subpixel ~x:0. ~y:0. ~w:1. ~h:1. ~u:0 ~v:0 ~uw:1 ~vh:1 black] [] in
+    let renderer=Lui_raster.Renderer.create () in
+    Fun.protect ~finally:(fun () -> Lui_raster.Renderer.release renderer) (fun () ->
+      List.iter (fun opacity ->
+        s.ops <- [iglyphs ~paint ~c:black ~c2:black ~opacity 0 1];
+        ignore (Lui_raster.Renderer.render renderer s);
+        let pixel=(Lui_raster.Renderer.image renderer).Lui_raster.Image.pix in
+        let expected=int_of_float (Float.round (255.-.float glyph_alpha*.opacity)) in
+        List.iter (fun channel -> Alcotest.(check int)
+          (Printf.sprintf "glyph opacity %.2f and alpha %d, color=%b subpixel=%b"
+            opacity glyph_alpha colored subpixel) expected (Char.code (Bytes.get pixel channel))) [0;1;2];
+        Alcotest.(check int) "opaque destination stays opaque" 255 (Char.code (Bytes.get pixel 3)))
+        [0.;0.25;0.5;1.;0.25;0.])) [255;128]) [Solid;Linear;Oklab])
+    [false,false;false,true;true,false]
+
 (* ---------- random scenes for damage and multicore ---------- *)
 
 let bytes_of img = img.Lui_raster.Image.pix
@@ -1250,6 +1274,7 @@ let () =
           Alcotest.test_case "translucent repeated runs" `Quick test_translucent_repeated_runs;
           Alcotest.test_case "opaque span edges" `Quick test_opaque_span_edges;
           Alcotest.test_case "opaque glyph allocation" `Quick test_opaque_glyph_allocation;
+          Alcotest.test_case "glyph run opacity" `Quick test_glyph_run_opacity;
           Alcotest.test_case "translucent span channels" `Quick test_translucent_span_channels;
           Alcotest.test_case "image sampling allocation" `Quick test_image_sampling_allocation;
           Alcotest.test_case "empty inset allocation" `Quick test_empty_inset_allocation;

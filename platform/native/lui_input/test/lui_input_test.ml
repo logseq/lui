@@ -67,6 +67,21 @@ let test_focus_step () =
   Alcotest.(check bool) "in-scope focusable" true (n2 <> 0);
   ignore st
 
+let test_pointer_control_focus () =
+  List.iter (fun kind ->
+    let store=store_of [CreateNode (1,Root);CreateNode (2,Button);CreateNode (3,kind);
+      CreateNode (4,Text);InsertChild (1,2,0);InsertChild (2,3,0);InsertChild (3,4,0)] in
+    if kind=ListItem then Lui_store.apply_op store (SetProp (3,PressEnabled,BoolValue true));
+    Alcotest.(check (option int)) "caption press focuses its nearest control" (Some 3)
+      (Lui_query.focus_target store [4;3;2;1]);
+    Alcotest.(check bool) "pointer controls also participate in keyboard focus" true
+      (List.mem 3 (Lui_focus.focusables store ~scope:None));
+    Lui_store.apply_op store (SetProp (3,Enabled,BoolValue false));
+    Alcotest.(check (option int)) "disabled controls swallow focus without falling through" None
+      (Lui_query.focus_target store [4;3;2;1]))
+    [Button;ToggleButton;Toggle;Checkbox;Radio;SwitchControl;Slider;NumberStepper;
+     Select;Combobox;MenuItem;MenuTrigger;Link;ListItem;BottomTab]
+
 let test_focus_dead () =
   let store = store_of base_ops in
   let st = Lui_focus.set Lui_focus.initial ~id:4 ~kbd:false in
@@ -1115,6 +1130,7 @@ let () =
       ( "focus",
         [ Alcotest.test_case "inert subtree" `Quick test_inert_subtree;
           Alcotest.test_case "step" `Quick test_focus_step;
+          Alcotest.test_case "pointer controls" `Quick test_pointer_control_focus;
           Alcotest.test_case "dead" `Quick test_focus_dead ] );
       ( "overlay",
         [ Alcotest.test_case "inert owner" `Quick test_inert_overlay;

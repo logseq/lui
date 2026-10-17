@@ -58,7 +58,7 @@ let ieffect ?(radii = no4) ?(cont = false) ?(opacity = 0.) rc index =
       edopacity = opacity }
 
 let iglyphs ?(paint = Solid) ?(c = black) ?(c2 = black) ?(g = no4)
-    ?(opacity = 0.) a b =
+    ?(opacity = 1.) a b =
   Glyphs
     { gstart = a; gend = b; gpaint = paint; gcolor = c; gcolor2 = c2;
       ggradient = g; gwide2 = 0; gopacity = opacity }
