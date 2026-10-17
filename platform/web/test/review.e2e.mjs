@@ -128,3 +128,39 @@ test("a DOM failure rebuilds a coherent mirror and accepts the following delta",
   })
   assert.deepEqual(result, { coherent: true, text: "later", roots: 1 })
 })
+
+test("virtual-list settles newly measured row positions before interaction", async () => {
+  await open()
+  const bounds = await page.evaluate(() => {
+    const create = (id, kind) => review.Protocol.create_node_op(id, review.kinds.get(kind))
+    review.apply([
+      create(2000, "virtual-list"), review.set(2000, "height", 240),
+      review.Protocol.insert_child_op(1, 2000, 4),
+      create(2001, "text"), review.set(2001, "text", "Wrapped first row"),
+      review.set(2001, "style-class", "review-variable-row"),
+      review.Protocol.insert_child_op(2000, 2001, 0),
+      create(2002, "text"), review.set(2002, "text", "Following row"),
+      review.Protocol.insert_child_op(2000, 2002, 1),
+    ])
+    const first = review.node(2001).getBoundingClientRect()
+    const next = review.node(2002).getBoundingClientRect()
+    return { height: first.height, bottom: first.bottom, next: next.top }
+  })
+  assert.ok(bounds.height >= 160)
+  assert.ok(bounds.next >= bounds.bottom, "measured rows must not overlap")
+})
+
+test("virtual-list measures a mounted row after its explicit height is removed", async () => {
+  await open()
+  const bounds = await page.evaluate(() => {
+    review.apply([
+      review.Protocol.remove_prop_op(5, review.properties.get("height")),
+      review.set(5, "style-class", "review-variable-row"),
+    ])
+    const first = review.node(5).getBoundingClientRect()
+    const next = review.node(6).getBoundingClientRect()
+    return { height: first.height, bottom: first.bottom, next: next.top }
+  })
+  assert.ok(bounds.height >= 160)
+  assert.ok(bounds.next >= bounds.bottom, "measured rows must not overlap")
+})
