@@ -2716,6 +2716,10 @@ let test_visual_appearance_props () =
     (property_supported Dialog Gap && property_supported Dialog ForegroundValue);
   Alcotest.(check bool) "dialog supports content clipping" true
     (property_supported Dialog Overflow);
+  Alcotest.(check bool) "rows support responsive orientation" true
+    (property_supported Row OrientationValue);
+  Alcotest.(check bool) "list items support responsive visibility" true
+    (property_supported ListItem DisplayValue);
   Alcotest.(check bool) "min-viewport <= max-viewport" true
     (node_properties_supported Row
        (Property_map.add MinHeightViewport (FloatValue 0.3)

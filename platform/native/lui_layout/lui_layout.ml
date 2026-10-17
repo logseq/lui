@@ -649,11 +649,14 @@ let adjust ~scale ~pkind ~pid ~index store id (style : Lui_flex.style) : Lui_fle
     if pkind = "grid" then
       let basis =
         match pnum store pid "columns" with
-        | Some n when n > 0. -> Lui_flex.Percent (100. /. n)
+        | Some n when n > 0. ->
+          let span = Option.value (pnum store id "grid-column-span") ~default:1. in
+          if span>n then invalid_arg "grid column span exceeds column count";
+          Lui_flex.Percent (100. *. span /. n)
         | _ -> Pt 0.
       in
-      (* Cells stay at exactly 1/n of the row — no grow, else a lone
-         cell on the last line would stretch to full width. *)
+      (* Cells keep their declared column share; an incomplete final
+         row must not stretch to fill unused columns. *)
       { style with flex_basis = basis }
     else style
   in
@@ -1243,7 +1246,10 @@ let refine_grids ctx =
                  Hashtbl.find_opt ctx.nodes sid)
               with
               | Some s, Some f ->
-                Lui_flex.set_style f { s with flex_basis = Pt basis }
+                let span = Option.value (pnum ctx.store sid "grid-column-span") ~default:1. in
+                if span>ncols then invalid_arg "grid column span exceeds column count";
+                Lui_flex.set_style f
+                  { s with flex_basis = Pt (basis *. span +. gap *. (span -. 1.)) }
               | _ -> ())
             e.gens)
         (pkids_of ctx gsid))

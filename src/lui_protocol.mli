@@ -284,6 +284,7 @@ type property =
   | Inert
   | NavigateEnabled
   | FirstPaneWidth
+  | GridColumnSpan
 
 module Property_map : Map.S with type key = property
 

@@ -748,6 +748,8 @@ let rec apply_property renderer queue_split node kind dom_node property
   | GrowValue, FloatValue grow ->
       set_style dom_node "flex-grow" (Js.Float.toString grow)
   | GridColumns, IntValue columns -> apply_grid_columns dom_node columns
+  | GridColumnSpan, IntValue span ->
+      set_style dom_node "grid-column" ("span " ^ string_of_int span ^ " / span " ^ string_of_int span)
   | (PaddingValue | PaddingHorizontal | PaddingVertical | PaddingTop
     | PaddingRight | PaddingBottom | PaddingLeft), IntValue _ ->
       refresh_spacing renderer node dom_node ~margin:false
@@ -862,7 +864,9 @@ and apply_secondary_property renderer queue_split node kind dom_node
   | FirstPaneWidth, FloatValue _width -> queue_split node
   | OrientationValue, StringValue orientation ->
       W.Element.setAttribute "data-orientation" orientation dom_node;
-      W.Element.setAttribute "aria-orientation" orientation dom_node
+      if kind = Row then set_style dom_node "flex-direction"
+        (if orientation="vertical" then "column" else "row")
+      else W.Element.setAttribute "aria-orientation" orientation dom_node
   | SizeValue, StringValue size ->
       W.Element.setAttribute "data-size" size dom_node
   | IconName, StringValue name ->
@@ -1253,10 +1257,15 @@ let remove_property renderer queue_split node kind dom_node property =
            W.Element.removeAttribute "data-max-pixel-size" dom_node
        | AccessibilityIdentifier -> W.Element.removeAttribute "id" dom_node
        | OrientationValue ->
+           if kind = Row then begin
+             W.Element.removeAttribute "data-orientation" dom_node;
+             set_style dom_node "flex-direction" ""
+           end else
            if kind = Tabs then begin
              W.Element.setAttribute "data-orientation" "horizontal" dom_node;
              W.Element.setAttribute "aria-orientation" "horizontal" dom_node
            end
+       | GridColumnSpan -> set_style dom_node "grid-column" ""
        | StyleClass -> refresh_node_class renderer node kind dom_node
        | DataAttrs -> remove_data_attrs dom_node
        | FontSize -> set_style dom_node "font-size" ""

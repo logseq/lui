@@ -272,6 +272,7 @@ enum class LuiProperty(val wireName: String) {
     inert("inert"),
     navigateEnabled("navigate-enabled"),
     firstPaneWidth("first-pane-width"),
+    gridColumnSpan("grid-column-span"),
     ;
 
     companion object {
@@ -310,6 +311,8 @@ object LuiSchemaMatrix {
     )
 
     val extra: Map<LuiNodeKind, Set<LuiProperty>> = mapOf(
+        LuiNodeKind.row to setOf(LuiProperty.orientation),
+        LuiNodeKind.listItem to setOf(LuiProperty.display),
         LuiNodeKind.dialog to setOf(LuiProperty.description, LuiProperty.background, LuiProperty.foreground, LuiProperty.borderColor, LuiProperty.borderWidth, LuiProperty.cornerRadius, LuiProperty.gap),
         LuiNodeKind.box to setOf(LuiProperty.inert),
     )

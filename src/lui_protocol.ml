@@ -286,6 +286,7 @@ type property =
   | Inert
   | NavigateEnabled
   | FirstPaneWidth
+  | GridColumnSpan
 
 module Property_map =
   Map.Make
@@ -910,6 +911,7 @@ let common_property_supported kind property =
   | GrowValue ->
     kind <> Avatar && (not (modal_surface kind)) && kind <> Tooltip
   | GridColumns -> kind = Grid
+  | GridColumnSpan -> kind <> Root && not (modal_surface kind) && kind <> Tooltip
   | PaddingValue | PaddingHorizontal | PaddingVertical
   | PaddingTop | PaddingRight | PaddingBottom | PaddingLeft ->
     kind <> Avatar && kind <> Tooltip
@@ -1002,6 +1004,7 @@ let common_property_supported kind property =
   | ProgressValue ->
     kind = Progress || kind = Slider || kind = NumberStepper || kind = Split
   | OrientationValue ->
+    kind = Row ||
     kind = Divider || kind = Tabs || kind = Scroll || kind = ViewThatFits
   | PlacementValue -> kind = Toolbar
   | SizeValue ->
@@ -1160,7 +1163,8 @@ let common_property_supported kind property =
   | TargetValue -> kind = Link
   | Opacity ->
     can_contain_children kind || kind = Checkbox || kind = Radio || kind = Icon
-  | DisplayValue | FlexWrap -> kind = Box || kind = Column || kind = Row
+  | DisplayValue -> kind = Box || kind = Column || kind = Row || kind = ListItem
+  | FlexWrap -> kind = Box || kind = Column || kind = Row
   | ListStyle ->
     kind = ListContainer || kind = VirtualList || kind = ListItem
   | TooltipText | TooltipKeys -> kind = Button || kind = Icon || kind = MenuItem
@@ -1490,6 +1494,7 @@ let property_value_supported property value =
   | CrossAlignment, StringValue value -> cross_alignment_supported value
   | GrowValue, FloatValue value -> is_finite value && value >= 0.0
   | GridColumns, IntValue value -> value >= 0
+  | GridColumnSpan, IntValue value -> value > 0
   | PaddingValue, IntValue _ -> true
   | PaddingHorizontal, IntValue value -> value >= 0
   | (PaddingVertical | PaddingTop | PaddingRight | PaddingBottom | PaddingLeft), IntValue value -> value >= 0

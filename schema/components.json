@@ -1740,6 +1740,11 @@
       "lg": "FirstPaneWidth",
       "wire": "first-pane-width",
       "swift": "firstPaneWidth"
+    },
+    {
+      "lg": "GridColumnSpan",
+      "wire": "grid-column-span",
+      "swift": "gridColumnSpan"
     }
   ],
   "events": [
@@ -2105,6 +2110,8 @@
     ]
   },
   "kindExtraProperties": {
+    "row": ["orientation"],
+    "list-item": ["display"],
     "dialog": [
       "description",
       "background",

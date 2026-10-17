@@ -46,6 +46,7 @@ let prop_coverage =
     ("cross", Layout);
     ("grow", Layout);
     ("columns", Layout);
+    ("grid-column-span", Layout);
     ("padding", Layout);
     ("padding-horizontal", Layout);
     ("padding-vertical", Layout);

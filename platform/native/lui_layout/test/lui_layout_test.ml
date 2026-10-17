@@ -577,6 +577,40 @@ let test_grid_gap_fits_columns () =
   check_rect "cell3" 0. 20. 95. 10. (place p 5);
   check_rect "cell4" 105. 20. 95. 10. (place p 6)
 
+let test_grid_column_spans () =
+  let span = match List.find_opt
+    (fun property -> Lui_wire_schema.property_name property="grid-column-span")
+    Lui_wire_schema.all_properties with
+    | Some property -> property
+    | None -> fail "Missing typed property: grid-column-span" in
+  List.iter (fun scale ->
+    let store=Lui_store.create () and layout=Lui_layout.create () in
+    apply store [CreateNode (1,Root);CreateNode (2,Grid);
+      CreateNode (3,Box);CreateNode (4,Box);CreateNode (5,Box);
+      InsertChild (1,2,0);InsertChild (2,3,0);InsertChild (2,4,1);InsertChild (2,5,2);
+      SetProp (2,Gap,IntValue 24);
+      SetProp (3,HeightValue,IntValue 20);SetProp (4,HeightValue,IntValue 30);
+      SetProp (5,HeightValue,IntValue 40)] ;
+    List.iter (fun columns ->
+      apply store [SetProp (2,GridColumns,IntValue columns);
+        SetProp (4,span,IntValue (if columns=1 then 1 else 2))];
+      Lui_layout.sync ~scale ~width:(600.*.scale) ~height:(300.*.scale) layout store;
+      let rect id = let r=Option.get (Lui_layout.rect layout id) in
+        Lui_scene.rect (r.x/.scale) (r.y/.scale) (r.w/.scale) (r.h/.scale) in
+      if columns=3 then (
+        check_rect "one-column label" 0. 0. 184. 20. (rect 3);
+        check_rect "two-column control" 208. 0. 392. 30. (rect 4);
+        check_rect "next grid row" 0. 54. 184. 40. (rect 5))
+      else (
+        check_rect "stacked label" 0. 0. 600. 20. (rect 3);
+        check_rect "stacked control" 0. 44. 600. 30. (rect 4);
+        check_rect "stacked tail" 0. 98. 600. 40. (rect 5))) [3;1;3];
+    apply store [SetProp (4,span,IntValue 4)];
+    let rejected = try
+      Lui_layout.sync ~scale ~width:(600.*.scale) ~height:(300.*.scale) layout store;false
+    with Invalid_argument _ -> true in
+    check bool "a span larger than its grid must fail fast" true rejected) [1.;2.]
+
 (* Content taller than the offered frame grows the frame instead of
    being compressed or cut; content_extent reports it. *)
 let test_frame_grows_to_content () =
@@ -1877,6 +1911,7 @@ let () =
          test_case "split first-pane pixels" `Quick test_split_first_width;
          test_case "grid wraps" `Quick test_grid_wraps;
          test_case "grid gap fits" `Quick test_grid_gap_fits_columns;
+         test_case "grid column spans" `Quick test_grid_column_spans;
          test_case "absolute inset" `Quick test_absolute_inset;
          test_case "text measured" `Quick test_text_measured;
          test_case "picker intrinsic width" `Quick test_picker_intrinsic_width;

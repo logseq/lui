@@ -265,6 +265,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case inert = "inert"
     case navigateEnabled = "navigate-enabled"
     case firstPaneWidth = "first-pane-width"
+    case gridColumnSpan = "grid-column-span"
 }
 
 enum LUISchemaMatrix {
@@ -290,6 +291,8 @@ enum LUISchemaMatrix {
     ]
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [
+        .row: [.orientation],
+        .listItem: [.display],
         .dialog: [.description, .background, .foreground, .borderColor, .borderWidth, .cornerRadius, .gap],
         .box: [.inert],
     ]

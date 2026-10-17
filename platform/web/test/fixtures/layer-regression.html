@@ -26,6 +26,8 @@
 <button id="run-inert-audit">Run inert subtree audit</button>
 <output id="inert-audit-result" role="status">Not run</output>
 <output id="action-activation-count">0</output>
+<button id="run-responsive-layout-audit">Run responsive layout audit</button>
+<output id="responsive-layout-result" role="status">Not run</output>
 <main id="host"></main>
 <script type="module">
 import * as Web from "lui.web.dom/shell/lui_web.js";
@@ -58,6 +60,41 @@ button(root,"Open empty dialog",()=>openDialog("empty"));
 button(root,"Open regression sheet",openSheet);
 Web.set_event_handler(renderer,e=>{events.push(e);if(e.TAG===0||e.TAG===7){handlers.get(e._0)?.();flush();}else if(e.TAG===6){handlers.get(e._0)?.(e._1);flush();}else if(e.TAG===2&&e._0===sheetInput){set(sheetInput,"text",e._1);flush();}return true;});
 flush();Web.mount(renderer,root,host);
+document.querySelector('#run-responsive-layout-audit').addEventListener('click',async()=>{
+  const result=document.querySelector('#responsive-layout-result');let fixture;
+  try{
+    const expect=(condition,message)=>{if(!condition)throw Error(message);};
+    expect(props.has('grid-column-span'),'Missing typed grid-column-span property');
+    fixture=node('column',root);
+    const grid=node('grid',fixture,{width:600,columns:3,gap:24});
+    const label=node('box',grid,{height:20,'accessibility-identifier':'span-label'});
+    const input=node('input',grid,{height:30,'grid-column-span':2,'accessibility-identifier':'span-input'});
+    const axis=node('row',fixture,{width:200,height:100,gap:8,orientation:'horizontal'});
+    node('box',axis,{width:20,height:30,'accessibility-identifier':'axis-first'});
+    node('box',axis,{width:40,height:50,'accessibility-identifier':'axis-second'});flush();
+    const original=document.querySelector('#span-input');original.value='Retained café 中文 😀';original.focus();
+    for(const columns of [3,1,3]){
+      set(grid,'columns',columns);set(input,'grid-column-span',columns===1?1:2);
+      set(axis,'orientation',columns===1?'vertical':'horizontal');flush();
+      await new Promise(requestAnimationFrame);
+      const a=document.querySelector('#span-label').getBoundingClientRect();
+      const b=original.getBoundingClientRect();
+      expect(Math.abs(a.width-(columns===1?600:184))<.1,'Incorrect label column width');
+      expect(Math.abs(b.width-(columns===1?600:392))<.1,'Incorrect control span width');
+      expect(columns===1?b.y>=a.bottom:Math.abs(b.x-a.right-24)<.1,'Incorrect grid placement');
+      const first=document.querySelector('#axis-first').getBoundingClientRect();
+      const second=document.querySelector('#axis-second').getBoundingClientRect();
+      expect(columns===1?Math.abs(second.y-first.bottom-8)<.1:Math.abs(second.x-first.right-8)<.1,'Incorrect responsive row axis');
+      expect(document.querySelector('#span-input')===original&&original.value==='Retained café 中文 😀'&&document.activeElement===original,'Resize replaced input state or focus');
+    }
+    set(axis,'orientation','vertical');flush();ops.push(Protocol.remove_prop_op(axis,props.get('orientation')));flush();
+    await new Promise(requestAnimationFrame);
+    const first=document.querySelector('#axis-first').getBoundingClientRect(),second=document.querySelector('#axis-second').getBoundingClientRect();
+    expect(Math.abs(second.x-first.right-8)<.1,'Removing orientation did not restore the row axis');
+    result.textContent='Passed: spans, gaps, repeated axes, retained input and focus';result.dataset.state='passed';
+  }catch(error){result.textContent=String(error);result.dataset.state='failed';}
+  finally{if(fixture){drop(fixture);flush();}}
+});
 function setupTracking(count=4,tooltip=false){
   const scroller=node("column",root,{width:440,height:300,"style-class":"tracking-scroll"});
   const content=node("column",scroller,{"style-class":"tracking-content"});
