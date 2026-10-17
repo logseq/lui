@@ -1074,19 +1074,24 @@ let popup_min_style ctx id cids kids (style : Lui_flex.style) : Lui_flex.style =
 let measure_for ctx id ~kids : Lui_flex.measure option =
   match (kids, text_of ctx.store id) with
   | [], Some t -> (
-    match Lui_store.prop ctx.store id "icon" with
-    | Some (StringValue s) when s <> "" ->
-      (* labeled_content_ops paints a 16px icon slot + 6px gap —
-         reserve them so the label doesn't overflow the chrome *)
-      let icon_extra = 22. *. ctx.scale in
+    let icon_extra = match Lui_store.string_prop ctx.store id "icon" with
+      | Some name when name <> "" -> 22.
+      | _ -> 0. in
+    let indicator_extra = match Lui_store.kind ctx.store id with
+      | "select" | "combobox" -> 24.
+      | _ -> 0. in
+    (* Labeled icons reserve 16px + 6px; picker indicators reserve
+       16px + 8px so the label never enters the trailing icon slot. *)
+    let extra = (icon_extra +. indicator_extra) *. ctx.scale in
+    if extra > 0. then
       Some
         (fun node ~width ~width_mode ~height ~height_mode ->
           let d =
             measure_of ctx.tm ~id ~text:t node ~width ~width_mode
               ~height ~height_mode
           in
-          { d with Lui_flex.width = d.Lui_flex.width +. icon_extra })
-    | _ -> Some (measure_of ctx.tm ~id ~text:t))
+          { d with Lui_flex.width = d.Lui_flex.width +. extra })
+    else Some (measure_of ctx.tm ~id ~text:t))
   | _ -> None
 
 let register ctx id kind node style =
