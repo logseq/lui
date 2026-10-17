@@ -943,10 +943,23 @@ let text_fg ctx store id =
   | Some c -> c
   | None -> theme ctx "foreground"
 
-(* Leading-edge square used by checkbox and radio. *)
-let leading_box ctx r side_logical =
+(* Choice chrome stays beside labels and follows alignment without a label. *)
+let leading_box ctx store id r side_logical =
   let side = Float.min (side_logical *. ctx.scale) (Float.min r.w r.h) in
-  rect r.x (r.y +. ((r.h -. side) /. 2.)) side side
+  let has_label =
+    match pstr store id "text" with
+    | Some text when text <> "" -> true
+    | _ -> false
+  in
+  let x =
+    if has_label then r.x
+    else
+      match pstr store id "main" with
+      | Some "center" -> r.x +. ((r.w -. side) /. 2.)
+      | Some "end" -> r.x +. r.w -. side
+      | _ -> r.x
+  in
+  rect x (r.y +. ((r.h -. side) /. 2.)) side side
 
 (* Label text to the right of a leading control box, bounded by the
    node's own rect, with the node's accumulated opacity folded in. *)
@@ -1551,7 +1564,7 @@ let progress_ops ctx store id rs r alpha =
    the text hook when checked. *)
 let checkbox_ops ctx store id st rs r alpha =
   let s = ctx.scale in
-  let b = leading_box ctx r 16. in
+  let b = leading_box ctx store id r 16. in
   let checked = pbool store id "checked" in
   let accent =
     match pcolor ctx.hooks store id "border-color" with
@@ -1580,7 +1593,7 @@ let checkbox_ops ctx store id st rs r alpha =
    (accent edge on hover), accent ring + small on-accent dot checked. *)
 let radio_ops ctx store id st rs r alpha =
   let s = ctx.scale in
-  let b = leading_box ctx r 16. in
+  let b = leading_box ctx store id r 16. in
   let half = b.w /. 2. in
   let checked = pbool store id "checked" in
   let accent =
@@ -2128,7 +2141,8 @@ let default_chrome ctx store id st kind r rs alpha =
     @ [ hairline r.x r.y r.w ]
   | "toolbar" ->
     (if bg_styled then [] else [ face (col_surface ctx) (rad 0.) zb zc ~dashed:false ])
-    @ [ hairline r.x (r.y +. r.h -. Float.max 1. (1. *. s)) r.w ]
+    @ (if border_styled then []
+       else [ hairline r.x (r.y +. r.h -. Float.max 1. (1. *. s)) r.w ])
   | "table-row" ->
     (if bg_styled then []
      else if st.selected then

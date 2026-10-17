@@ -369,7 +369,7 @@ let kind_property_matrix kind =
   | InputGroup -> Some [ AccessibilityLabel; WidthValue; HeightValue; MinWidth; GrowValue; PointerEnabled ]
   | InputGroupActions -> Some [ Gap; PointerEnabled ]
   | Toast -> Some [ DurationValue; AccessibilityLabel; StyleClass; DataAttrs; PointerEnabled; PaddingValue; PaddingHorizontal; PaddingVertical; PaddingTop; PaddingRight; PaddingBottom; PaddingLeft; MarginValue; MarginHorizontal; MarginVertical; MarginTop; MarginRight; MarginBottom; MarginLeft ]
-  | Toolbar -> Some [ OrientationValue; AccessibilityLabel; Gap; StyleClass; DataAttrs; PlacementValue; PointerEnabled ]
+  | Toolbar -> Some [ HeightValue; PaddingValue; BackgroundValue; BorderWidth; CornerRadius; OrientationValue; AccessibilityLabel; Gap; StyleClass; DataAttrs; PlacementValue; PointerEnabled ]
   | BottomTabs -> Some [ AccessibilityLabel; StyleClass; DataAttrs; GrowValue; WidthValue; HeightValue; MinWidth; MaxWidth; MinHeight; MaxHeight; PointerEnabled ]
   | BottomTab -> Some [ TitleValue; InlineIconName; Selected; Enabled; PressEnabled; PointerEnabled ]
   | MenuTrigger -> Some [ TextValue; InlineIconName; AccessibilityLabel; Enabled; ForegroundValue; StyleClass; DataAttrs; PointerEnabled ]

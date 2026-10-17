@@ -275,7 +275,7 @@ enum LUISchemaMatrix {
         .inputGroup: [.accessibilityLabel, .width, .height, .minWidth, .grow, .pointerEnabled],
         .inputGroupActions: [.gap, .pointerEnabled],
         .toast: [.duration, .accessibilityLabel, .styleClass, .dataAttrs, .pointerEnabled, .padding, .paddingHorizontal, .paddingVertical, .paddingTop, .paddingRight, .paddingBottom, .paddingLeft, .margin, .marginHorizontal, .marginVertical, .marginTop, .marginRight, .marginBottom, .marginLeft],
-        .toolbar: [.orientation, .accessibilityLabel, .gap, .styleClass, .dataAttrs, .placement, .pointerEnabled],
+        .toolbar: [.height, .padding, .background, .borderWidth, .cornerRadius, .orientation, .accessibilityLabel, .gap, .styleClass, .dataAttrs, .placement, .pointerEnabled],
         .bottomTabs: [.accessibilityLabel, .styleClass, .dataAttrs, .grow, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight, .pointerEnabled],
         .bottomTab: [.title, .icon, .selected, .enabled, .pressEnabled, .pointerEnabled],
         .menuTrigger: [.text, .icon, .accessibilityLabel, .enabled, .foreground, .styleClass, .dataAttrs, .pointerEnabled],

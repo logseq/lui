@@ -1951,6 +1951,11 @@
     ],
     "toolbar": [
 
+      "height",
+      "padding",
+      "background",
+      "border-width",
+      "corner-radius",
       "orientation",
       "accessibility-label",
       "gap",

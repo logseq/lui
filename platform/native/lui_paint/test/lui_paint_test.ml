@@ -1313,10 +1313,96 @@ let test_text_edge_placement () =
   check (float 0.001) "text starts at its top edge inset" 3.
     placement.tp_pad_top
 
+let test_choice_chrome_alignment () =
+  List.iter
+    (fun kind ->
+      List.iter
+        (fun scale ->
+          List.iter
+            (fun (alignment, offset) ->
+              let t = store () in
+              apply t
+                [
+                  Lui_protocol.CreateNode (1, kind);
+                  SetProp (1, MainAlignment, StringValue alignment);
+                ];
+              let r =
+                rect (10. *. scale) (20. *. scale) (32. *. scale) (32. *. scale)
+              in
+              let s =
+                paint_with
+                  (hooks ~layout:(fun _ -> Lui_paint.placement_of_rect r) ())
+                  t ~scale ()
+              in
+              let chrome =
+                List.find_map
+                  (function
+                    | Fill f
+                      when abs_float (f.frect.w -. (16. *. scale)) < 0.01
+                           && abs_float (f.frect.h -. (16. *. scale)) < 0.01 ->
+                        Some f.frect
+                    | _ -> None)
+                  s.ops
+                |> Option.get
+              in
+              check (float 0.01) "choice chrome follows main alignment"
+                ((10. +. offset) *. scale)
+                chrome.x;
+              check (float 0.01) "choice chrome stays vertically centered"
+                (28. *. scale) chrome.y)
+            [ ("start", 0.); ("center", 8.); ("end", 16.) ])
+        [ 1.; 2. ])
+    [ Lui_protocol.Checkbox; Lui_protocol.Radio ]
+
+let test_toolbar_explicit_chrome () =
+  let open Lui_protocol in
+  let props =
+    [
+      (HeightValue, IntValue 32);
+      (PaddingValue, IntValue 0);
+      (BackgroundValue, StringValue "#ffffff");
+      (BorderWidth, IntValue 0);
+      (CornerRadius, IntValue 0);
+    ]
+  in
+  List.iter
+    (fun (prop, _) ->
+      check bool
+        ("toolbar admits " ^ Lui_wire_schema.property_name prop)
+        true
+        (property_supported Toolbar prop))
+    props;
+  List.iter
+    (fun scale ->
+      let t = store () in
+      apply t
+        ([
+           CreateNode (1, Toolbar);
+           SetProp (1, AccessibilityLabel, StringValue "Actions");
+         ]
+        @ List.map (fun (prop, value) -> SetProp (1, prop, value)) props);
+      let r = rect 0. 0. (200. *. scale) (32. *. scale) in
+      let s =
+        paint_with
+          (hooks ~layout:(fun _ -> Lui_paint.placement_of_rect r) ())
+          t ~scale ()
+      in
+      check bool
+        "an explicitly borderless toolbar must not paint a default divider"
+        false
+        (List.exists
+           (function
+             | Fill f -> f.frect.h <= 2. *. scale && f.fopacity > 0.
+             | _ -> false)
+           s.ops))
+    [ 1.; 2. ]
+
 let () =
   run "lui_paint"
     [ ("color",
-       [ test_case "hex" `Quick test_hex;
+       [ test_case "toolbar explicit chrome" `Quick test_toolbar_explicit_chrome;
+         test_case "choice chrome alignment" `Quick test_choice_chrome_alignment;
+         test_case "hex" `Quick test_hex;
          test_case "select indicator" `Quick test_select_indicator;
          test_case "image fill crop" `Quick test_image_fill_crop;
          test_case "edges" `Quick test_edges ]);

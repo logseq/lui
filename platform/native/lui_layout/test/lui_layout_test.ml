@@ -573,6 +573,46 @@ let test_popup_default_centered () =
   check_rect "default centered" 80. 40. 40. 20. (place p 3);
   check_rect "explicit inset" 5. 6. 40. 20. (place p 4)
 
+(* Dialog width caps also respect the viewport during repeated resize. *)
+let test_dialog_viewport_width () =
+  List.iter
+    (fun scale ->
+      List.iter
+        (fun declared ->
+          let store = Lui_store.create () and layout = Lui_layout.create () in
+          apply store
+            ([
+               CreateNode (1, Root);
+               CreateNode (2, Dialog);
+               InsertChild (1, 2, 0);
+               SetProp (2, WidthValue, IntValue 1400);
+               SetProp (2, HeightValue, IntValue 100);
+             ]
+            @
+            match declared with
+            | None -> []
+            | Some cap -> [ SetProp (2, MaxWidth, IntValue cap) ]);
+          List.iter
+            (fun width ->
+              Lui_layout.sync ~scale ~width:(width *. scale)
+                ~height:(600. *. scale) layout store;
+              let r = Option.get (Lui_layout.rect layout 2) in
+              let cap =
+                match declared with
+                | Some cap -> float_of_int cap
+                | None -> if width >= 1024. then 768. else 672.
+              in
+              let expected = Float.min cap (width -. 32.) *. scale in
+              check (float eps)
+                "dialog width respects its declared cap and available viewport"
+                expected r.w;
+              check (float eps) "bounded dialog stays centered"
+                (((width *. scale) -. expected) /. 2.)
+                r.x)
+            [ 1440.; 600.; 800.; 1440. ])
+        [ None; Some 768; Some 1246; Some 400 ])
+    [ 1.; 2. ]
+
 (* A store-root popup centers in the offered frame extent. *)
 let test_root_popup_centered_in_frame () =
   let store = Lui_store.create () in
@@ -1445,7 +1485,9 @@ let test_select_menu_alignment () =
           Lui_layout.invalidate layout;
           sync 1000. 700.;
           aligned ();
-          (* When overlapping cannot fit, retain the ordinary clamped popup. *)
+          (* Keep the trigger at the viewport edge after the dialog's inset
+             clamp. Overlapping selection alignment cannot fit here. *)
+          apply store [SetProp (3, MarginLeft, IntValue (-32))];
           sync 400. 320.;
           let popup = rect 5 in
           check bool "small viewport retains accessible menu bounds" true
@@ -1605,10 +1647,61 @@ let test_button_custom_content () =
         (30. *. scale) (rect 3).w)
     [1.; 2.]
 
+let test_choice_intrinsic_size () =
+  List.iter
+    (fun kind ->
+      List.iter
+        (fun scale ->
+          List.iter
+            (fun labelled ->
+              let store = Lui_store.create () in
+              apply store
+                ([
+                   CreateNode (1, Root);
+                   CreateNode (2, Row);
+                   CreateNode (3, kind);
+                   InsertChild (1, 2, 0);
+                   InsertChild (2, 3, 0);
+                   SetProp (2, WidthValue, IntValue 200);
+                   SetProp (2, HeightValue, IntValue 64);
+                   SetProp (2, CrossAlignment, StringValue "center");
+                 ]
+                @
+                if labelled then
+                  [ SetProp (3, TextValue, StringValue "Choice") ]
+                else []);
+              let layout = Lui_layout.create () in
+              Lui_layout.sync ~scale
+                ~measure:(fun _ _ _ _ -> Some (80. *. scale, 20. *. scale))
+                ~width:(200. *. scale) ~height:(64. *. scale) layout store;
+              let r = Option.get (Lui_layout.rect layout 3) in
+              check (float eps) "choice intrinsic width"
+                ((if labelled then 104. else 16.) *. scale)
+                r.w;
+              check (float eps) "choice intrinsic height"
+                ((if labelled then 20. else 16.) *. scale)
+                r.h;
+              apply store
+                [
+                  SetProp (3, WidthValue, IntValue 12);
+                  SetProp (3, HeightValue, IntValue 12);
+                ];
+              Lui_layout.sync ~scale ~measure:no_measure4 ~width:(200. *. scale)
+                ~height:(64. *. scale) layout store;
+              check (float eps) "explicit choice width wins" (12. *. scale)
+                (Option.get (Lui_layout.rect layout 3)).w;
+              check (float eps) "explicit choice height wins" (12. *. scale)
+                (Option.get (Lui_layout.rect layout 3)).h)
+            [ false; true ])
+        [ 1.; 2. ])
+    [ Checkbox; Radio ]
+
 let () =
   run "lui_layout"
     [ ("layout",
-       [ test_case "column padding/gap" `Quick test_column_padding_gap;
+       [ test_case "dialog viewport width" `Quick test_dialog_viewport_width;
+         test_case "choice intrinsic size" `Quick test_choice_intrinsic_size;
+         test_case "column padding/gap" `Quick test_column_padding_gap;
          test_case "button custom content" `Quick test_button_custom_content;
          test_case "list item content flow" `Quick test_list_item_content_flow;
          test_case "padding edges" `Quick test_padding_edges;

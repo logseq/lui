@@ -887,6 +887,8 @@ let common_property_supported kind property =
     || kind = Panel
     || kind = Box
     || kind = Button
+    || kind = Checkbox
+    || kind = Radio
     || kind = MenuItem
     || kind = ListItem
     || kind = Popover
@@ -1141,7 +1143,7 @@ let common_property_supported kind property =
   | PathValue -> kind = FileImage || kind = FilePreview
   | UrlValue -> kind = Link || kind = Image
   | TargetValue -> kind = Link
-  | Opacity -> can_contain_children kind
+  | Opacity -> can_contain_children kind || kind = Checkbox || kind = Radio
   | DisplayValue | FlexWrap -> kind = Box || kind = Column || kind = Row
   | ListStyle ->
     kind = ListContainer || kind = VirtualList || kind = ListItem
@@ -1233,6 +1235,8 @@ let property_supported kind property =
       property = OrientationValue || property = AccessibilityLabel
       || property = Gap || property = StyleClass || property = PlacementValue
       || property = PointerEnabled || property = DataAttrs
+      || property = HeightValue || property = PaddingValue
+      || property = BackgroundValue || property = BorderWidth || property = CornerRadius
     | BottomTabs ->
       property = AccessibilityLabel || property = StyleClass
       || property = GrowValue || property = WidthValue || property = HeightValue

@@ -1072,26 +1072,46 @@ let popup_min_style ctx id cids kids (style : Lui_flex.style) : Lui_flex.style =
   | _ -> style
 
 let measure_for ctx id ~kids : Lui_flex.measure option =
+  let choice =
+    match Lui_store.kind ctx.store id with
+    | "checkbox" | "radio" -> true
+    | _ -> false
+  in
+  let chrome = if choice then 16. *. ctx.scale else 0. in
   match (kids, text_of ctx.store id) with
-  | [], Some t -> (
-    let icon_extra = match Lui_store.string_prop ctx.store id "icon" with
-      | Some name when name <> "" -> 22.
-      | _ -> 0. in
-    let indicator_extra = match Lui_store.kind ctx.store id with
-      | "select" | "combobox" -> 24.
-      | _ -> 0. in
-    (* Labeled icons reserve 16px + 6px; picker indicators reserve
-       16px + 8px so the label never enters the trailing icon slot. *)
-    let extra = (icon_extra +. indicator_extra) *. ctx.scale in
-    if extra > 0. then
+  | [], None when choice ->
       Some
-        (fun node ~width ~width_mode ~height ~height_mode ->
-          let d =
-            measure_of ctx.tm ~id ~text:t node ~width ~width_mode
-              ~height ~height_mode
-          in
-          { d with Lui_flex.width = d.Lui_flex.width +. extra })
-    else Some (measure_of ctx.tm ~id ~text:t))
+        (fun _ ~width:_ ~width_mode:_ ~height:_ ~height_mode:_ ->
+          { Lui_flex.width = chrome; height = chrome })
+  | [], Some t ->
+      let icon_extra =
+        match Lui_store.string_prop ctx.store id "icon" with
+        | Some name when name <> "" -> 22.
+        | _ -> 0.
+      in
+      let indicator_extra =
+        match Lui_store.kind ctx.store id with
+        | "select" | "combobox" -> 24.
+        | _ -> 0.
+      in
+      (* Labeled icons reserve 16px + 6px; picker indicators reserve
+       16px + 8px so the label never enters the trailing icon slot. *)
+      let choice_extra = if choice then 24. else 0. in
+      let extra =
+        (icon_extra +. indicator_extra +. choice_extra) *. ctx.scale
+      in
+      if extra > 0. then
+        Some
+          (fun node ~width ~width_mode ~height ~height_mode ->
+            let d =
+              measure_of ctx.tm ~id ~text:t node ~width ~width_mode ~height
+                ~height_mode
+            in
+            {
+              Lui_flex.width = Float.max chrome (d.Lui_flex.width +. extra);
+              height = Float.max chrome d.Lui_flex.height;
+            })
+      else Some (measure_of ctx.tm ~id ~text:t)
   | _ -> None
 
 let register ctx id kind node style =
@@ -1469,7 +1489,14 @@ let refine_popups ctx =
                re-measure the subtree before placing it. *)
             { pstyle with
               max_width =
-                (match pstyle.max_width with Unset -> Pt ctx.vw | m -> m);
+                (match Lui_store.kind ctx.store sid with
+                 | "dialog" | "modal" ->
+                   let available = Float.max 0. (ctx.vw -. (32. *. ctx.scale)) in
+                   let declared = match pstyle.max_width with
+                     | Unset -> (if ctx.vw >= 1024. *. ctx.scale then 768. else 672.) *. ctx.scale
+                     | limit -> len_px ~owner:ctx.vw limit in
+                   Pt (Float.min available declared)
+                 | _ -> (match pstyle.max_width with Unset -> Pt ctx.vw | limit -> limit));
               max_height }
           in
           Lui_flex.set_style pnode pstyle;
@@ -1494,8 +1521,7 @@ let refine_popups ctx =
           if (not anchored) && popup_has_edges ctx.store sid then ()
           else
           let kind = Lui_store.kind ctx.store sid in
-          (* Web overlay caps: .lui-toast-viewport is 22.5rem wide,
-             .lui-dialog is min(42rem, 100vw-2rem) (48rem ≥1024px). *)
+          (* Toasts keep the shared 22.5rem viewport cap. *)
           (match kind with
            | "toast" ->
              let w = Float.min (360. *. ctx.scale) ctx.vw in
@@ -1503,24 +1529,6 @@ let refine_popups ctx =
                { pstyle with max_width = Pt w };
              Lui_flex.compute_layout pnode ~width:Lui_flex.undefined
                ~height:Lui_flex.undefined ()
-           | "dialog" | "modal" ->
-             (* Web default cap applies only when the view did not set an
-                explicit max-width/max-width-viewport — typed clamps like
-                plugins-dashboard's 1246px take precedence. *)
-             (match pstyle.max_width with
-              | Unset ->
-                let rem =
-                  if ctx.vw >= 1024. *. ctx.scale then 768. else 672.
-                in
-                let w =
-                  Float.min (rem *. ctx.scale)
-                    (ctx.vw -. (32. *. ctx.scale))
-                in
-                Lui_flex.set_style pnode
-                  { pstyle with max_width = Pt w };
-                Lui_flex.compute_layout pnode ~width:Lui_flex.undefined
-                  ~height:Lui_flex.undefined ()
-              | _ -> ())
            | _ -> ());
           let prp = Lui_flex.absolute_layout pnode in
           (* Placement targets live in the containing block [cb] but the
