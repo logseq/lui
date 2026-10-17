@@ -1120,6 +1120,17 @@ let test_opaque_glyph_allocation () =
   Alcotest.(check bool) "Integer mask text stays below 32 KiB per frame" true
     (allocated <= 32_768.)
 
+let test_translucent_glyph_allocation () =
+  let mask=Atlas.create ~bpp:1 ~w:1 ~h:1 in
+  Atlas.put mask ~x:0 ~y:0 ~w:1 ~h:1 ~src:(Bytes.make 1 '\128') ~stride:1;
+  let glyphs=List.init 1000 (fun index ->
+    glyph ~x:(float (index mod 40)*.2.) ~y:(float (index/40)*.2.)
+      ~w:1. ~h:1. ~u:0 ~v:0 ~uw:1 ~vh:1 (color 37 99 235 255)) in
+  let s=scene ~w:80 ~h:50 ~mask ~glyphs [iglyphs ~opacity:0.5 0 1000] in
+  let allocated=redraw_allocation s in
+  Printf.printf "Translucent glyph redraw allocated %.0f bytes/frame\n%!" allocated;
+  Alcotest.(check bool) "Faded mask text stays below 32 KiB per frame" true (allocated<=32_768.)
+
 let test_shared_clip_rows_allocation () =
   let mask=Atlas.create ~bpp:1 ~w:8 ~h:16 in
   Atlas.put mask ~x:0 ~y:0 ~w:8 ~h:16 ~src:(Bytes.make 128 '\128') ~stride:8;
@@ -1274,6 +1285,7 @@ let () =
           Alcotest.test_case "translucent repeated runs" `Quick test_translucent_repeated_runs;
           Alcotest.test_case "opaque span edges" `Quick test_opaque_span_edges;
           Alcotest.test_case "opaque glyph allocation" `Quick test_opaque_glyph_allocation;
+          Alcotest.test_case "translucent glyph allocation" `Quick test_translucent_glyph_allocation;
           Alcotest.test_case "glyph run opacity" `Quick test_glyph_run_opacity;
           Alcotest.test_case "translucent span channels" `Quick test_translucent_span_channels;
           Alcotest.test_case "image sampling allocation" `Quick test_image_sampling_allocation;

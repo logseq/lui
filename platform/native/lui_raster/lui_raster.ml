@@ -101,6 +101,9 @@ let mix_mask src dst cov =
   let v = src * cov + dst * (255 - cov) + 128 in
   (v + (v lsr 8)) lsr 8
 
+let[@inline always] mix_alpha src dst alpha =
+  iround (float src *. alpha +. float dst *. (1. -. alpha))
+
 (* Take the coverage cov of a premultiplied pixel away. *)
 let erase p i cov =
   let inv = 1. -. cov in
@@ -1028,11 +1031,12 @@ let r_inset_shadow r (op : shadow_op) =
     end
   end
 
-(* Ordinary opaque mask text blended by integer math: the same result
-   the floating-point path gives, without converting every destination
-   channel. Rounded clip edges still use the general coverage. *)
-let mask_opaque r a (g : glyph) gx gy x0 y0 x1 y1 =
+(* Solid mask text avoids per-glyph color tuples. Opaque runs keep the
+   integer path; faded runs blend unboxed scalar channels. Rounded clip
+   edges still use the general coverage. *)
+let mask_solid r a (g : glyph) opacity gx gy x0 y0 x1 y1 =
   let c = g.gcolor in
+  let alpha = if c.a = 255 then opacity else float c.a /. 255. *. opacity in
   for y = y0 to y1 - 1 do
     let clip_index = clip_row r y in
     let cl = r.clip_rows.(clip_index + 1) and ch = r.clip_rows.(clip_index + 2) in
@@ -1043,7 +1047,14 @@ let mask_opaque r a (g : glyph) gx gy x0 y0 x1 y1 =
       if m <> 0 then begin
         let p = row + 4 * (x0 + i) and x = x0 + i in
         if x < cl || x >= ch then
-          blend r.dst.Image.pix p (premul c 1.) (clip_coverage r x y *. (float m /. 255.))
+          blend r.dst.Image.pix p (premul c opacity) (clip_coverage r x y *. (float m /. 255.))
+        else if alpha <> 1. then begin
+          let coverage = float m /. 255. *. alpha in
+          Bytes.set r.dst.Image.pix p (Char.chr (mix_alpha c.b (byte_at r.dst.Image.pix p) coverage));
+          Bytes.set r.dst.Image.pix (p + 1) (Char.chr (mix_alpha c.g (byte_at r.dst.Image.pix (p + 1)) coverage));
+          Bytes.set r.dst.Image.pix (p + 2) (Char.chr (mix_alpha c.r (byte_at r.dst.Image.pix (p + 2)) coverage));
+          Bytes.set r.dst.Image.pix (p + 3) (Char.chr (mix_alpha 255 (byte_at r.dst.Image.pix (p + 3)) coverage))
+        end
         else if m = 255 then begin
           Bytes.set r.dst.Image.pix p (Char.chr c.b);
           Bytes.set r.dst.Image.pix (p + 1) (Char.chr c.g);
@@ -1083,8 +1094,8 @@ let r_glyphs r (op : glyphs_op) s glyphs =
       let (g0, g1, g2, g3) = text.gamma_ratios in
       let correct = contrast <> 0. || boost <> 0.
         || g0 <> 0. || g1 <> 0. || g2 <> 0. || g3 <> 0. in
-      if opacity = 1. && (not g.gcolored) && (not g.gsubpixel) && Option.is_none pt && (not correct) && g.gcolor.a = 255 then
-        mask_opaque r atlas g gx gy x0 y0 x1 y1
+      if (not g.gcolored) && (not g.gsubpixel) && Option.is_none pt && (not correct) then
+        mask_solid r atlas g opacity gx gy x0 y0 x1 y1
       else begin
         let tint0 = premul g.gcolor opacity in
         let alpha = float g.gcolor.a /. 255. *. opacity in
