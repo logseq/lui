@@ -109,6 +109,21 @@ let test_picker_intrinsic_width () =
         [ Select; Combobox ])
     [ 1.; 2. ]
 
+let test_choice_label_gap () =
+  List.iter (fun kind -> List.iter (fun scale -> List.iter (fun gap ->
+    let store=Lui_store.create () in
+    apply store ([CreateNode (1,Root);CreateNode (2,Row);CreateNode (3,kind);
+      InsertChild (1,2,0);InsertChild (2,3,0);
+      SetProp (3,TextValue,StringValue "Retained café 中文 😀")]
+      @ Option.fold ~none:[] ~some:(fun value -> [SetProp (3,Gap,IntValue value)]) gap);
+    let layout=Lui_layout.create () in
+    Lui_layout.sync ~scale ~measure:(fun _ _ _ _ -> Some (80.*.scale,20.*.scale))
+      ~width:(400.*.scale) ~height:(100.*.scale) layout store;
+    let r=Option.get (Lui_layout.rect layout 3) in
+    check (float 0.1) "choice reserves the indicator and requested label gap"
+      ((80.+.16.+.float_of_int (Option.value gap ~default:8))*.scale) r.w)
+      [None;Some 0;Some 4;Some 16]) [1.;2.]) [Checkbox;Radio]
+
 let test_button_icon_gap () =
   List.iter (fun scale -> List.iter (fun gap ->
     let store = Lui_store.create () in
@@ -1925,6 +1940,7 @@ let () =
          test_case "text measured" `Quick test_text_measured;
          test_case "picker intrinsic width" `Quick test_picker_intrinsic_width;
          test_case "button icon gap" `Quick test_button_icon_gap;
+         test_case "choice label gap" `Quick test_choice_label_gap;
          test_case "percent size" `Quick test_percent_size;
          test_case "column in row" `Quick test_nested_column_in_row;
          test_case "run placements" `Quick test_run_placements;

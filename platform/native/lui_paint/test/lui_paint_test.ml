@@ -884,6 +884,24 @@ let test_checkbox () =
    | _ -> fail "expected control fill");
   check bool "check glyph" true (List.mem "\xe2\x9c\x93" !calls)
 
+let test_checkbox_primary_palette () =
+  List.iter (fun checked ->
+    let t=store () in
+    apply t [Lui_protocol.CreateNode (1,Checkbox);SetProp (1,Checked,BoolValue checked)];
+    let primary=color 12 131 67 255 and ink=color 245 241 224 255 in
+    let glyph=ref None in
+    let h={(hooks ()) with Lui_paint.color_of=(function
+      | "primary" -> Some primary | "primary-foreground" -> Some ink
+      | "accent" -> Some (color 200 20 30 255) | _ -> None);
+      text_ops=(fun _ _ foreground _ -> glyph:=Some foreground;[])} in
+    let scene=paint_with h t () in
+    match scene.ops with
+    | [Fill face] ->
+      check bool "checkbox chrome uses primary rather than accent" true
+        ((if checked then face.fcolor else face.fborder_color)=primary);
+      if checked then check bool "check mark uses primary foreground" true (!glyph=Some ink)
+    | _ -> fail "expected one checkbox indicator") [false;true]
+
 let test_checkbox_unchecked () =
   let t = store () in
   apply t [ Lui_protocol.CreateNode (1, Checkbox) ];
@@ -891,9 +909,24 @@ let test_checkbox_unchecked () =
   match s.ops with
   | [ Fill f ] ->
     check bool "bordered" true (f.fborder = (1., 1., 1., 1.));
-    (* unchecked box now paints the page face inside its border *)
-    check bool "page face" true (f.fcolor.a = 255)
+    check bool "unchecked face remains transparent" true (f.fcolor.a = 0);
+    check int "unchecked edge uses primary" 235 f.fborder_color.b
   | _ -> fail "expected bordered box"
+
+let test_choice_label_gap () =
+  List.iter (fun kind -> List.iter (fun scale -> List.iter (fun gap ->
+    let t=store () and label=ref None in
+    apply t ([Lui_protocol.CreateNode (1,kind);
+      SetProp (1,TextValue,StringValue "Retained café 中文 😀")]
+      @ Option.fold ~none:[] ~some:(fun value -> [Lui_protocol.SetProp (1,Gap,IntValue value)]) gap);
+    let h={(hooks ~layout:(fun _ -> Lui_paint.placement_of_rect
+      (rect 10. 20. (200.*.scale) (28.*.scale))) ()) with
+      Lui_paint.text_ops=(fun _ bounds _ _ -> label:=Some bounds;[])} in
+    ignore (paint_with h t ~width:500 ~height:200 ~scale ());
+    let label=Option.get !label in
+    check (float 0.01) "choice paints its label after the requested gap"
+      (10.+.(16.+.float_of_int (Option.value gap ~default:8))*.scale) label.x)
+      [None;Some 0;Some 4;Some 16]) [1.;2.]) [Lui_protocol.Checkbox;Radio]
 
 let test_switch () =
   let t = store () in
@@ -1601,6 +1634,8 @@ let () =
          test_case "progress" `Quick test_progress;
          test_case "checkbox" `Quick test_checkbox;
          test_case "checkbox unchecked" `Quick test_checkbox_unchecked;
+         test_case "checkbox primary palette" `Quick test_checkbox_primary_palette;
+         test_case "choice label gap" `Quick test_choice_label_gap;
          test_case "switch" `Quick test_switch;
          test_case "radio" `Quick test_radio;
          test_case "spinner" `Quick test_spinner;

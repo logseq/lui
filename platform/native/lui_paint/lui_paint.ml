@@ -976,7 +976,8 @@ let leading_box ctx store id r side_logical =
 let label_after ctx store id r box gap_logical alpha =
   match pstr store id "text" with
   | Some s when s <> "" ->
-    let x = box.x +. box.w +. (gap_logical *. ctx.scale) in
+    let gap = Option.value ~default:gap_logical (pnum store id "gap") in
+    let x = box.x +. box.w +. (gap *. ctx.scale) in
     scale_ops alpha
       (ctx.hooks.text_ops id
          (rect x r.y (Float.max 0. (r.x +. r.w -. x)) r.h)
@@ -1569,17 +1570,16 @@ let progress_ops ctx store id rs r alpha =
         ~c2:fill_c ~grad:(0., 0., 0., 0.) ~border:(0., 0., 0., 0.)
         ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha ]
 
-(* checkbox: leading square; neutral-bordered page box when
-   unchecked (accent edge on hover), accent fill + check glyph through
-   the text hook when checked. *)
-let checkbox_ops ctx store id st rs r alpha =
+(* Checkbox uses the same primary indicator and transparent unchecked
+   face as the Web component. *)
+let checkbox_ops ctx store id _st rs r alpha =
   let s = ctx.scale in
   let b = leading_box ctx store id r 16. in
   let checked = pbool store id "checked" in
   let accent =
     match pcolor ctx.hooks store id "border-color" with
     | Some c -> c
-    | None -> col_accent ctx
+    | None -> col_primary ctx
   in
   let rad = chrome_radii ctx store id (4. *. s) in
   let chrome =
@@ -1588,13 +1588,12 @@ let checkbox_ops ctx store id st rs r alpha =
         ~grad:(0., 0., 0., 0.) ~border:(0., 0., 0., 0.)
         ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha
       :: scale_ops alpha
-           (ctx.hooks.text_ops id b (col_accent_text ctx) "\xe2\x9c\x93")
+           (ctx.hooks.text_ops id b (col_primary_fg ctx) "\xe2\x9c\x93")
     else
-      [ let edge = if st.hovered then accent else col_control_border ctx in
-        fill ~continuous:true b (corners b rad false) ~paint:Solid
-          ~c1:(col_background ctx) ~c2:(col_background ctx)
+      [ fill ~continuous:true b (corners b rad false) ~paint:Solid
+          ~c1:(color 0 0 0 0) ~c2:(color 0 0 0 0)
           ~grad:(0., 0., 0., 0.)
-          ~border:(1. *. s, 1. *. s, 1. *. s, 1. *. s) ~bcolor:edge
+          ~border:(1. *. s, 1. *. s, 1. *. s, 1. *. s) ~bcolor:accent
           ~dashed:false ~alpha ]
   in
   box_ops ctx store id rs r alpha @ chrome @ label_after ctx store id r b 8. alpha

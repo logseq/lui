@@ -1096,7 +1096,8 @@ let measure_for ctx id ~kids : Lui_flex.measure option =
         | _ -> 0.
       in
       (* Picker indicators reserve their width and requested label gap. *)
-      let choice_extra = if choice then 24. else 0. in
+      let choice_extra = if choice then
+        16. +. Option.value ~default:8. (pnum ctx.store id "gap") else 0. in
       let extra =
         (icon_extra +. indicator_extra +. choice_extra) *. ctx.scale
       in
