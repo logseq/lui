@@ -578,16 +578,21 @@ let test_dialog_viewport_width () =
   List.iter
     (fun scale ->
       List.iter
-        (fun declared ->
+        (fun (declared, explicit_width) ->
           let store = Lui_store.create () and layout = Lui_layout.create () in
           apply store
             ([
                CreateNode (1, Root);
                CreateNode (2, Dialog);
+               CreateNode (3, Box);
                InsertChild (1, 2, 0);
-               SetProp (2, WidthValue, IntValue 1400);
-               SetProp (2, HeightValue, IntValue 100);
+               InsertChild (2, 3, 0);
+               SetProp (3, WidthValue, IntValue 1400);
+               SetProp (3, HeightValue, IntValue 100);
              ]
+            @ (match explicit_width with
+              | None -> []
+              | Some width -> [ SetProp (2, WidthValue, IntValue width) ])
             @
             match declared with
             | None -> []
@@ -600,7 +605,10 @@ let test_dialog_viewport_width () =
               let cap =
                 match declared with
                 | Some cap -> float_of_int cap
-                | None -> if width >= 1024. then 768. else 672.
+                | None -> (
+                    match explicit_width with
+                    | Some size -> float_of_int size
+                    | None -> if width >= 1024. then 768. else 672.)
               in
               let expected = Float.min cap (width -. 32.) *. scale in
               check (float eps)
@@ -610,7 +618,13 @@ let test_dialog_viewport_width () =
                 (((width *. scale) -. expected) /. 2.)
                 r.x)
             [ 1440.; 600.; 800.; 1440. ])
-        [ None; Some 768; Some 1246; Some 400 ])
+        [
+          (None, None);
+          (Some 768, None);
+          (Some 1246, None);
+          (Some 400, None);
+          (None, Some 898);
+        ])
     [ 1.; 2. ]
 
 (* A store-root popup centers in the offered frame extent. *)
