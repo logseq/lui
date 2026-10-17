@@ -18,6 +18,7 @@ body { margin: 10px; font: 16px system-ui }
 #host { width: 400px }
 .lui-virtual-list, .lui-list { height: 240px; overflow: auto }
 .review-virtual-row { display: block; height: 24px }
+.review-variable-row { display: block; min-height: 160px; white-space: normal }
 </style>
 <main id="host"></main>
 <script type="module">
@@ -52,7 +53,7 @@ for (let index = 0; index < 100; index++) {
 backend.apply_batch({ generation, ops: list(operations) })
 Web.mount(renderer, 1, host)
 window.review = {
-  renderer, backend, events, set, Protocol, kinds,
+  renderer, backend, events, set, Protocol, kinds, properties,
   node: id => document.getElementById(`lui-node-${id}`),
   apply: operations => backend.apply_batch({ generation: ++generation, ops: list(operations) }),
   property: (id, name) => Web.property(renderer, id, properties.get(name)),
