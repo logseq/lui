@@ -3,8 +3,9 @@ import test from "node:test"
 
 // Exercise the compiled retained store and use its matching protocol
 // constructors. Requires `opam exec -- dune build @web` before running.
+const build = process.env.LUI_TEST_BUILD_DIR ?? "_build"
 const modulesUrl = new URL(
-  "../../../_build/default/examples/components/web/lui-components-web/node_modules/",
+  `../../../${build}/default/examples/components/web/lui-components-web/node_modules/`,
   import.meta.url,
 )
 const [Store, Protocol, Schema] = await Promise.all([

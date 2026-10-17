@@ -239,13 +239,17 @@ let begin_popup_close popup =
 
 let begin_popup_close_bang = begin_popup_close
 
-let finish_popup_close_after_transition ?(on_finish = fun () -> ()) document
-    popup =
+let finish_popup_close_after_transition renderer node token popup =
   ignore
-    (Lui_web_util.after_surface_motion document [ popup ] (fun () ->
-         if W.Element.getAttribute "data-ending-style" popup = Some ""
-         then W.Element.removeAttribute "data-ending-style" popup;
-         on_finish ();
+    (Lui_web_util.after_surface_motion renderer.web_document [ popup ] (fun () ->
+         if
+           Lui_web_layers.transition renderer.web_layers node = token
+           && not (Lui_web_layers.is_open renderer.web_layers node)
+         then begin
+           W.Element.removeAttribute "data-ending-style" popup;
+           Lui_web_layers.finish_present renderer.web_layers
+             renderer.web_document node token
+         end;
          true));
   true
 
@@ -684,10 +688,7 @@ let rec set_tooltip_open renderer node open_flag =
                 ignore (begin_popup_close previous_tooltip);
                 ignore
                   (finish_popup_close_after_transition
-                     ~on_finish:(fun () ->
-                       Lui_web_layers.finish_present renderer.web_layers
-                         renderer.web_document previous token)
-                     renderer.web_document previous_tooltip)
+                     renderer previous token previous_tooltip)
             | None -> ())
      | None -> ());
     renderer.web_open_tooltip := Some node;
@@ -711,10 +712,7 @@ let rec set_tooltip_open renderer node open_flag =
     ignore (begin_popup_close tooltip);
     ignore
       (finish_popup_close_after_transition
-         ~on_finish:(fun () ->
-           Lui_web_layers.finish_present renderer.web_layers
-             renderer.web_document node token)
-         renderer.web_document tooltip);
+         renderer node token tooltip);
     if !(renderer.web_open_tooltip) = Some node then
       renderer.web_open_tooltip := None
   end;

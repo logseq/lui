@@ -300,7 +300,7 @@ test("menus use the Base UI popup and transition contract", async () => {
   assert.match(css, /\.lui-dropdown-menu\[data-ending-style\]/)
   assert.match(css, /\.lui-context-menu\{[^}]*position:fixed/)
   assert.match(css, /\.lui-context-menu\{[^}]*display:none/)
-  assert.match(css, /\.lui-context-menu\[data-open\]\{[^}]*display:flex/)
+  assert.match(css, /\.lui-context-menu\[data-open\][^{]*\{[^}]*display:flex/)
   assert.match(css, /\.lui-menu-item\{[^}]*display:flex/)
   assert.match(css, /\.lui-menu-item\[data-highlighted\]/)
   assert.match(css, /\.lui-menu-item\[data-submenu-trigger\]/)

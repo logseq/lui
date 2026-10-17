@@ -408,16 +408,23 @@ let direct_dropdown_menu renderer node =
 let hide_context_menu renderer =
   match !(renderer.web_open_context_menu) with
   | Some menu ->
-      Lui_web_popup_tracking.stop (Lui_web_nodes.dom_node renderer menu);
+      let popup = Lui_web_nodes.dom_node renderer menu in
+      Lui_web_popup_tracking.stop popup;
+      renderer.web_open_context_menu := None;
       let token =
         Lui_web_layers.close_layer renderer.web_layers renderer.web_document
           menu
       in
-      W.Element.removeAttribute "data-open"
-        (Lui_web_nodes.dom_node renderer menu);
-      Lui_web_layers.finish_present renderer.web_layers renderer.web_document
-        menu token;
-      renderer.web_open_context_menu := None
+      begin_popup_close popup;
+      Lui_web_util.after_surface_motion renderer.web_document [ popup ] (fun () ->
+          if
+            Lui_web_layers.transition renderer.web_layers menu = token
+            && not (Lui_web_layers.is_open renderer.web_layers menu)
+          then begin
+            W.Element.removeAttribute "data-ending-style" popup;
+            Lui_web_layers.finish_present renderer.web_layers
+              renderer.web_document menu token
+          end)
   | None -> ()
 
 let context_menu_focus_items renderer menu =
@@ -456,7 +463,7 @@ let focus_context_menu_host renderer menu =
 let show_context_menu renderer menu x y =
   hide_context_menu renderer;
   let menu_node = Lui_web_nodes.dom_node renderer menu in
-  W.Element.setAttribute "data-open" "" menu_node;
+  begin_popup_open menu_node;
   Lui_web_layers.reconcile_owner renderer.web_layers renderer.web_document
     menu
     (match Store.node renderer.web_store menu with

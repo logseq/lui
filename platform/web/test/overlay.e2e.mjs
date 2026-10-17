@@ -50,6 +50,14 @@ test("popup and dialog defaults use the centered shared motion policy", async ()
   assert.equal(result.pass, true, JSON.stringify(result, null, 2))
 })
 
+test("context menus and tooltips retain interrupted exits until the current tracks finish", async () => {
+  await openLayerRegressionPage()
+  await clickButton('Run menu and tooltip interruption audit')
+  await session.page.waitForFunction(() => document.querySelector('#interruption-audit-result')?.textContent.includes('"state":"Complete"'))
+  const result = JSON.parse(await session.page.locator('#interruption-audit-result').textContent())
+  assert.equal(result.pass, true, JSON.stringify(result, null, 2))
+})
+
 test("Untitled dialog paints and focuses its content and dismisses on Escape", async () => {
   await openLayerRegressionPage()
   await evaluate('window.audit.openDialog("untitled")')

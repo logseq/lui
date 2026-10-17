@@ -1109,10 +1109,25 @@ body {
     max-height: min(18rem, var(--lui-popup-available-height, calc(100vh - 1rem)));
     max-width: var(--lui-popup-available-width, calc(100vw - 1rem));
     min-width: min(10rem, var(--lui-popup-available-width, calc(100vw - 1rem)));
+    opacity: 1;
+    transform: scale(1);
+    transform-origin: center;
+    transition: opacity 150ms ease, transform 150ms ease;
   }
 
-  .lui-context-menu[data-open] {
+  .lui-context-menu[data-open],
+  .lui-context-menu[data-ending-style] {
     @apply flex;
+  }
+
+  .lui-context-menu[data-ending-style] {
+    pointer-events: none;
+  }
+
+  .lui-context-menu[data-starting-style],
+  .lui-context-menu[data-ending-style] {
+    opacity: 0;
+    transform: scale(0.95);
   }
 
   .lui-menu-item {

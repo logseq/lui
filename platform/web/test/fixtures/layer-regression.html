@@ -19,9 +19,14 @@
 <output id="exit-audit-result" role="status">Not run</output>
 <button id="run-style-audit">Run surface motion style audit</button>
 <output id="style-audit-result" role="status">Not run</output>
+<button id="run-interruption-audit">Run menu and tooltip interruption audit</button>
+<output id="interruption-audit-result" role="status">Not run</output>
 <main id="host"></main>
 <script type="module">
 import * as Web from "lui.web.dom/shell/lui_web.js";
+import * as Menu from "lui.web.dom/popup/lui_web_menu.js";
+import * as Overlay from "lui.web.dom/popup/lui_web_overlay.js";
+import * as Layers from "lui.web.dom/core/lui_web_layers.js";
 import { Protocol, properties as props, kinds } from "./protocol-fixture.mjs";
 const host=document.querySelector("#host"), renderer=Web.create(undefined,host), backend=Web.backend(renderer);
 const list=a=>a.reduceRight((tl,hd)=>({hd,tl}),0);
@@ -188,4 +193,93 @@ function runStyleAudit(){
   document.querySelector('#style-audit-result').textContent=JSON.stringify({state:'Complete',pass:results.every(r=>r.checks.every(c=>c.pass)),results});
 }
 document.querySelector('#run-style-audit').addEventListener('click',runStyleAudit);
+
+async function runInterruptionAudit(){
+  const output=document.querySelector('#interruption-audit-result'),results=[];
+  output.textContent='Running';
+  async function scenario(name,run){
+    const checks=[];
+    const check=(label,condition)=>checks.push({label,pass:!!condition});
+    try{await run(check);}catch(error){checks.push({label:String(error._1??error),pass:false});}
+    results.push({name,checks});
+  }
+  function surface(kind,transition='opacity 200ms linear, transform 600ms linear'){
+    const holder=kind==='context-menu'?node('list-item',root,{text:'Interruption context host'}):node('row',root);
+    if(kind==='tooltip')button(holder,'Interruption anchor',()=>{});
+    const n=node(kind,holder,kind==='tooltip'?{anchor:'below',text:'Interruption tip'}:{});
+    if(kind==='context-menu')node('menu-item',n,{text:'Interruption action','press-enabled':true});
+    flush();
+    const el=document.querySelector('#lui-node-'+n);
+    if(transition!==null)el.style.transition=transition;
+    return {n,holder,el};
+  }
+  const open=item=>item.el.classList.contains('lui-tooltip')
+    ?Overlay.set_tooltip_open(renderer,item.n,true):Menu.show_context_menu(renderer,item.n,80,180);
+  const close=item=>item.el.classList.contains('lui-tooltip')
+    ?Overlay.set_tooltip_open(renderer,item.n,false):Menu.hide_context_menu(renderer);
+  const pause=item=>{item.tracks=finiteAnimations(item.el);for(const animation of item.tracks)animation.pause();};
+  const finish=(item,property)=>{for(const animation of item.tracks??finiteAnimations(item.el))if(!property||animation.transitionProperty===property)animation.finish();};
+  async function settle(item){await frames();finish(item);await frames();}
+  function dispose(item){drop(item.holder);flush();}
+  await scenario('context menu shares popup motion',async check=>{
+    const item=surface('context-menu',null);
+    open(item);
+    const style=getComputedStyle(item.el),origin=style.transformOrigin.split(' ').map(parseFloat);
+    check('context defaults use 150 ms ease',style.transitionDuration.split(',').every(v=>parseFloat(v)===0.15)
+      &&style.transitionTimingFunction.split(',').every(v=>v.trim()==='ease'));
+    check('context entrance uses the centered 95 percent zoom',new DOMMatrixReadOnly(style.transform).a===0.95
+      &&Math.abs(origin[0]-item.el.offsetWidth/2)<0.51&&Math.abs(origin[1]-item.el.offsetHeight/2)<0.51);
+    await settle(item);close(item);pause(item);
+    check('context close retains visible inert content',item.el.hasAttribute('data-ending-style')
+      &&item.el.hasAttribute('inert')&&getComputedStyle(item.el).display!=='none');
+    finish(item);await frames();
+    check('context close releases presentation and hides content',!Layers.is_present(renderer.web_layers,item.n)
+      &&getComputedStyle(item.el).display==='none');
+    dispose(item);
+  });
+  await scenario('context menu waits for all exit tracks',async check=>{
+    const item=surface('context-menu');open(item);await settle(item);close(item);pause(item);
+    check('context exit owns opacity and transform',item.tracks.length===2);
+    finish(item,'opacity');await frames();
+    check('short opacity cannot hide the pending transform',Layers.is_present(renderer.web_layers,item.n)
+      &&item.el.hasAttribute('data-ending-style')&&getComputedStyle(item.el).display!=='none');
+    finish(item);await frames();
+    check('longest context track releases presentation',!Layers.is_present(renderer.web_layers,item.n)
+      &&getComputedStyle(item.el).display==='none');dispose(item);
+  });
+  for(const kind of ['context-menu','tooltip']){
+    await scenario(kind+' old close cannot finish a newer close',async check=>{
+      const item=surface(kind);open(item);await settle(item);
+      // An independent finite surface track survives CSS transition reversal.
+      const previousMotion=item.el.animate([{filter:'blur(0px)'},{filter:'blur(1px)'}],{duration:1000});
+      previousMotion.pause();close(item);pause(item);
+      open(item);await frames();
+      for(const animation of finiteAnimations(item.el))if(animation!==previousMotion)animation.finish();
+      await frames();
+      close(item);pause(item);await frames();
+      previousMotion.finish();await frames();
+      check('new exit still owns its pending tracks',item.tracks.length>0&&Layers.is_present(renderer.web_layers,item.n)
+        &&item.el.hasAttribute('data-ending-style')&&getComputedStyle(item.el).display!=='none');
+      finish(item);await frames();
+      check('new exit eventually hides content',!Layers.is_present(renderer.web_layers,item.n)
+        &&!item.el.hasAttribute('data-ending-style')&&getComputedStyle(item.el).display==='none');dispose(item);
+    });
+    await scenario(kind+' switching surfaces preserves the newer surface',async check=>{
+      const first=surface(kind),second=surface(kind);open(first);await settle(first);
+      open(second);pause(first);await settle(second);finish(first);await frames();
+      check('previous surface settles without closing its replacement',!Layers.is_present(renderer.web_layers,first.n)
+        &&Layers.is_open(renderer.web_layers,second.n)&&second.el.hasAttribute('data-open'));
+      close(second);pause(second);finish(second);await frames();dispose(first);dispose(second);
+    });
+  }
+  await scenario('zero duration context menu closes immediately',async check=>{
+    const item=surface('context-menu','opacity 0ms, transform 0ms');open(item);await settle(item);close(item);await frames();
+    check('zero motion leaves no presented menu',!Layers.is_present(renderer.web_layers,item.n)
+      &&getComputedStyle(item.el).display==='none');dispose(item);
+  });
+  output.textContent=JSON.stringify({state:'Complete',pass:results.every(r=>r.checks.every(c=>c.pass)),results});
+}
+document.querySelector('#run-interruption-audit').addEventListener('click',()=>{runInterruptionAudit().catch(error=>{
+  document.querySelector('#interruption-audit-result').textContent=JSON.stringify({state:'Complete',pass:false,error:String(error)});
+});});
 </script>
