@@ -332,6 +332,66 @@ let test_shadow_parse () =
   check bool "none" true
     (Lui_paint.parse_shadows resolve "none" = [])
 
+let test_scroll_surface_shadow_clip () =
+  List.iter
+    (fun scale ->
+      let t = store () in
+      apply t
+        [
+          Lui_protocol.CreateNode (1, Column);
+          CreateNode (2, Box);
+          CreateNode (3, Box);
+          InsertChild (1, 2, 0);
+          InsertChild (2, 3, 0);
+          SetProp (1, Overflow, StringValue "hidden");
+          SetProp (2, Overflow, StringValue "auto");
+          SetProp (2, BackgroundValue, StringValue "#ffffff");
+          SetProp
+            ( 2,
+              Shadow,
+              StringValue "0 2px 4px #00000080, inset 0 0 0 1px #000000" );
+          SetProp (3, BackgroundValue, StringValue "#ff0000");
+        ];
+      let r x y w h =
+        rect (x *. scale) (y *. scale) (w *. scale) (h *. scale)
+      in
+      let parent = r 0. 0. 200. 200. and surface = r 40. 40. 100. 80. in
+      let layout id =
+        Lui_paint.placement_of_rect
+          (match id with
+          | 1 -> parent
+          | 2 -> surface
+          | _ -> r 30. 30. 160. 120.)
+      in
+      let s =
+        paint_with (hooks ~layout ()) t
+          ~width:(int_of_float (200. *. scale))
+          ~height:(int_of_float (200. *. scale))
+          ~scale ()
+      in
+      let clips = ref [] and outside = ref 0 and inside = ref 0 in
+      List.iter
+        (function
+          | Push_clip c -> clips := c.crect :: !clips
+          | Pop_clip -> clips := List.tl !clips
+          | Shadow shadow when not shadow.sinset ->
+              incr outside;
+              check bool "outer shadow retains only ancestor clipping" true
+                (!clips = [ parent ])
+          | Shadow _ ->
+              incr inside;
+              check bool "inset shadow retains surface clipping" true
+                (!clips = [ surface; parent ])
+          | Fill f when f.fcolor = color 255 0 0 255 ->
+              check bool "overflowing child remains clipped" true
+                (!clips = [ surface; parent ])
+          | _ -> ())
+        s.ops;
+      check int "one outer shadow" 1 !outside;
+      check int "one inset shadow" 1 !inside;
+      check bool "clip stack is balanced" true (!clips = []))
+    [ 1.; 2. ]
+
 let test_shadow_op () =
   let t = store () in
   apply t
@@ -1418,7 +1478,8 @@ let () =
          test_case "per-edge borders" `Quick test_per_edge_borders;
          test_case "per-edge colors" `Quick test_per_edge_border_colors ]);
       ("shadows",
-       [ test_case "parse" `Quick test_shadow_parse;
+       [ test_case "scroll surface clip" `Quick test_scroll_surface_shadow_clip;
+         test_case "parse" `Quick test_shadow_parse;
          test_case "op" `Quick test_shadow_op;
          test_case "inset op" `Quick test_inset_shadow_op ]);
       ("state",

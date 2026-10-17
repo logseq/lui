@@ -21,6 +21,69 @@ let transition_surface kind dom_node =
   | DropdownMenu | Popover -> Util.child_element dom_node 0
   | _ -> dom_node
 
+let popup_kind = function DropdownMenu | Popover -> true | _ -> false
+
+(* A positioner owns placement and lifecycle; its child is the retained
+   component's painted, measured and scrollable box. *)
+let property_surface kind dom_node property =
+  if not (popup_kind kind) then dom_node
+  else
+    match property with
+    | Gap | MainAlignment | CrossAlignment | GridColumns | PaddingValue
+    | PaddingHorizontal | PaddingVertical | PaddingTop | PaddingRight
+    | PaddingBottom | PaddingLeft | BackgroundValue | ForegroundValue
+    | BorderColorValue | BorderWidth | CornerRadius | WidthValue | HeightValue
+    | MinWidth | MaxWidth | MinHeight | MaxHeight | AvailableHeight
+    | WidthViewport | HeightViewport | MinWidthViewport | MaxWidthViewport
+    | MinHeightViewport | MaxHeightViewport | FontFamily | FontStyle | FontSize
+    | FontWeight | LineHeight | LetterSpacing | TextDecoration | WhiteSpace
+    | TextOverflow | Overflow | Opacity | Cursor | UserSelect | Shadow
+    | HoverBackground | HoverForeground | HoverBorder | HoverOpacity
+    | HoverShadow | PressedBackground | PressedOpacity | PressedShadow
+    | FocusShadow | SelectedBackground | SelectedShadow | SelectedHoverShadow
+    | DisabledOpacity | DataAttrs ->
+        Util.child_element dom_node 0
+    | _ -> dom_node
+
+let popup_limit axis value =
+  "min(" ^ value ^ ", var(--lui-popup-available-" ^ axis ^ ", " ^ value ^ "))"
+
+let refresh_popup_height renderer node kind surface =
+  let property = Store.property renderer.web_store node in
+  let declared =
+    List.filter_map Fun.id
+      [
+        (match property MaxHeight with
+        | Some (IntValue height) -> Some (string_of_int height ^ "px")
+        | _ -> None);
+        (match property MaxHeightViewport with
+        | Some (FloatValue height) ->
+            Some (Js.Float.toString (height *. 100.) ^ "dvh")
+        | _ -> None);
+      ]
+  in
+  let requested =
+    match property AvailableHeight with
+    | Some (FloatValue height) -> [ Js.Float.toString height ^ "px" ]
+    | _ -> []
+  in
+  if declared = [] && requested = [] then set_style surface "max-height" ""
+  else
+    let declared =
+      if
+        declared = []
+        && (kind = DropdownMenu
+           || property RoleValue = Some (StringValue "menu"))
+      then [ "18rem" ]
+      else declared
+    in
+    set_style surface "max-height"
+      ("min("
+      ^ String.concat ", "
+          (declared @ requested
+          @ [ "var(--lui-popup-available-height, 100dvh)" ])
+      ^ ")")
+
 (* webapi declares mediaQueryList but exposes no `matches` accessor; the LG
    source read it through a dict lookup on the same value. *)
 external media_query_matches : W.Window.mediaQueryList -> bool = "matches"
@@ -645,6 +708,7 @@ let apply_anchor_offset kind dom_node offset =
    per op on splits touched by several ops. *)
 let rec apply_property renderer queue_split node kind dom_node property
     value =
+  let dom_node = property_surface kind dom_node property in
   match (property, value) with
   | TextValue, StringValue text ->
       apply_text_value renderer node kind dom_node text
@@ -712,11 +776,13 @@ let rec apply_property renderer queue_split node kind dom_node property
   | MinWidth, IntValue width ->
       set_style dom_node "min-width" (string_of_int width ^ "px")
   | MaxWidth, IntValue width ->
-      set_style dom_node "max-width" (string_of_int width ^ "px")
+      let value = string_of_int width ^ "px" in
+      set_style dom_node "max-width" (if popup_kind kind then popup_limit "width" value else value)
   | MinHeight, IntValue height ->
       set_style dom_node "min-height" (string_of_int height ^ "px")
   | MaxHeight, IntValue height ->
-      set_style dom_node "max-height" (string_of_int height ^ "px")
+      if popup_kind kind then refresh_popup_height renderer node kind dom_node
+      else set_style dom_node "max-height" (string_of_int height ^ "px")
   | PlaceholderValue, StringValue placeholder ->
       apply_placeholder renderer node kind dom_node placeholder
   | AccessibilityLabel, StringValue label ->
@@ -827,7 +893,9 @@ and apply_secondary_property renderer queue_split node kind dom_node
       W.Element.setAttribute "role" role
         (if kind = Popover then Util.child_element dom_node 0 else dom_node);
       W.Element.removeAttribute "aria-pressed" dom_node;
-      refresh_node_class renderer node kind dom_node
+      refresh_node_class renderer node kind dom_node;
+      if popup_kind kind then
+        refresh_popup_height renderer node kind (transition_surface kind dom_node)
   | TreeLevel, IntValue level ->
       W.Element.setAttribute "aria-level" (string_of_int level) dom_node
   | Expanded, BoolValue expanded ->
@@ -904,11 +972,8 @@ and apply_secondary_property renderer queue_split node kind dom_node
       if kind = DropdownMenu then
         Lui_web_position.position_dropdown renderer node
       else Lui_web_position.position_popover renderer node
-  | AvailableHeight, FloatValue value ->
-      let popup = Util.child_element dom_node 0 in
-      set_style popup "max-height" (Js.Float.toString value ^ "px");
-      set_style dom_node "--lui-popup-available-height"
-        (Js.Float.toString value ^ "px")
+  | AvailableHeight, FloatValue _ ->
+      refresh_popup_height renderer node kind dom_node
   | TargetValue, StringValue target ->
       if kind = Link then begin
         W.Element.setAttribute "target" target dom_node;
@@ -1029,14 +1094,14 @@ and apply_secondary_property renderer queue_split node kind dom_node
       set_style dom_node "min-width"
         (Printf.sprintf "%gdvw" (width *. 100.0))
   | MaxWidthViewport, FloatValue width ->
-      set_style dom_node "max-width"
-        (Printf.sprintf "%gdvw" (width *. 100.0))
+      let value = Printf.sprintf "%gdvw" (width *. 100.0) in
+      set_style dom_node "max-width" (if popup_kind kind then popup_limit "width" value else value)
   | MinHeightViewport, FloatValue height ->
       set_style dom_node "min-height"
         (Printf.sprintf "%gdvh" (height *. 100.0))
   | MaxHeightViewport, FloatValue height ->
-      set_style dom_node "max-height"
-        (Printf.sprintf "%gdvh" (height *. 100.0))
+      if popup_kind kind then refresh_popup_height renderer node kind dom_node
+      else set_style dom_node "max-height" (Printf.sprintf "%gdvh" (height *. 100.0))
   | _ ->
       invalid_arg
         ("invalid DOM property value: " ^ Lui_wire_schema.property_name property)
@@ -1044,6 +1109,7 @@ and apply_secondary_property renderer queue_split node kind dom_node
 let apply_property_bang = apply_property
 
 let remove_property renderer queue_split node kind dom_node property =
+  let dom_node = property_surface kind dom_node property in
   match Store.node renderer.web_store node with
   | Some _current ->
       (match property with
@@ -1095,7 +1161,9 @@ let remove_property renderer queue_split node kind dom_node property =
        | MinWidth -> set_style dom_node "min-width" ""
        | MaxWidth -> set_style dom_node "max-width" ""
        | MinHeight -> set_style dom_node "min-height" ""
-       | MaxHeight -> set_style dom_node "max-height" ""
+       | MaxHeight ->
+           if popup_kind kind then refresh_popup_height renderer node kind dom_node
+           else set_style dom_node "max-height" ""
        | ContainerRelativeFrameValue ->
            W.Element.removeAttribute "data-lui-frame-axes" dom_node;
            set_style dom_node "width" "";
@@ -1157,9 +1225,12 @@ let remove_property renderer queue_split node kind dom_node property =
              Lui_web_position.position_dropdown renderer node
            else Lui_web_position.position_popover renderer node
        | AvailableHeight ->
-           let popup = Util.child_element dom_node 0 in
-           set_style popup "max-height" "";
-           set_style dom_node "--lui-popup-available-height" ""
+           refresh_popup_height renderer node kind dom_node
+       | RoleValue ->
+           W.Element.removeAttribute "role" (transition_surface kind dom_node);
+           refresh_node_class renderer node kind dom_node;
+           if popup_kind kind then
+             refresh_popup_height renderer node kind (transition_surface kind dom_node)
        | TargetValue ->
            if kind = Link then begin
              W.Element.removeAttribute "target" dom_node;
@@ -1225,7 +1296,9 @@ let remove_property renderer queue_split node kind dom_node property =
        | MinWidthViewport -> set_style dom_node "min-width" ""
        | MaxWidthViewport -> set_style dom_node "max-width" ""
        | MinHeightViewport -> set_style dom_node "min-height" ""
-       | MaxHeightViewport -> set_style dom_node "max-height" ""
+       | MaxHeightViewport ->
+           if popup_kind kind then refresh_popup_height renderer node kind dom_node
+           else set_style dom_node "max-height" ""
        | _ -> ())
   | None -> invalid_arg "unknown DOM node"
 

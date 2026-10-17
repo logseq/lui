@@ -719,10 +719,70 @@ let test_invalidate_rebuilds_kids () =
   frame env ();
   check bool "frame not empty" true (env.kept.ops <> [])
 
+let test_scroll_surface_shadow_clip () =
+  List.iter
+    (fun scale ->
+      let t = Lui_store.create () and rt = Lui_retained.create () in
+      apply t
+        [
+          CreateNode (1, Column);
+          CreateNode (2, Box);
+          CreateNode (3, Box);
+          InsertChild (1, 2, 0);
+          InsertChild (2, 3, 0);
+          SetProp (1, Overflow, StringValue "hidden");
+          SetProp (2, Overflow, StringValue "auto");
+          SetProp (2, BackgroundValue, StringValue "#ffffff");
+          SetProp (2, Shadow, StringValue "0 2px 4px #00000080");
+          SetProp (3, BackgroundValue, StringValue "#ff0000");
+        ];
+      let r x y w h =
+        rect (x *. scale) (y *. scale) (w *. scale) (h *. scale)
+      in
+      let parent = r 0. 0. 200. 200. and surface = r 40. 40. 100. 80. in
+      let hooks =
+        {
+          Lui_paint.default_hooks with
+          layout =
+            (fun id ->
+              Lui_paint.placement_of_rect
+                (match id with
+                | 1 -> parent
+                | 2 -> surface
+                | _ -> r 30. 30. 160. 120.));
+          shadow_of = Lui_paint.parse_shadows (fun _ -> None);
+        }
+      in
+      let kept = scene () in
+      for _ = 0 to 1 do
+        Lui_retained.paint_retained rt hooks t kept
+          ~width:(int_of_float (200. *. scale))
+          ~height:(int_of_float (200. *. scale))
+          ~scale ~clear:(color 0 0 0 0) ();
+        let clips = ref [] and shadows = ref 0 in
+        List.iter
+          (function
+            | Push_clip c -> clips := c.crect :: !clips
+            | Pop_clip -> clips := List.tl !clips
+            | Shadow s when not s.sinset ->
+                incr shadows;
+                check bool "cached shadow remains outside its own scroll clip"
+                  true (!clips = [ parent ])
+            | Fill f when f.fcolor = color 255 0 0 255 ->
+                check bool "cached child retains its scroll clip" true
+                  (!clips = [ surface; parent ])
+            | _ -> ())
+          kept.ops;
+        check int "cached outer shadow remains present" 1 !shadows;
+        check bool "cached clip stack balances" true (!clips = [])
+      done)
+    [ 1.; 2. ]
+
 let () =
   run "lui_retained"
     [ ( "fragments",
-        [ test_case "fragment lookup allocation" `Quick test_fragment_lookup_allocation;
+        [ test_case "scroll surface shadow clip" `Quick test_scroll_surface_shadow_clip;
+          test_case "fragment lookup allocation" `Quick test_fragment_lookup_allocation;
           test_case "static frame" `Quick test_static_frame;
           test_case "single paint update" `Quick test_single_paint_update;
           test_case "geom shift translates" `Quick test_geom_shift_translates;

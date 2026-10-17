@@ -3610,8 +3610,8 @@ val file_picker :
     - neither — cover mode: the positioner spans the viewport
       ([data-cover], inset:0) for fullscreen surfaces.
 
-    [~available_height] bounds the popup's max-height and feeds
-    [--lui-popup-available-height]. [~role:`menu] sets role=menu on the
+    [~available_height] bounds the popup's max-height together with the
+    positioner's measured collision space. [~role:`menu] sets role=menu on the
     inner element (other roles go through [~data_attrs], which also
     covers data-keep-selection). [~on_dismiss] fires on outside-press or
     Escape while open. *)

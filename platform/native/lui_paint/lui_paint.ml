@@ -2910,17 +2910,27 @@ let paint_enter ctx store scene alpha f =
     let node_drawn =
       (not contents)
       && (rect_empty f.f_rect
-          || not (rect_empty (rect_intersect f.f_clipped ctx.viewport)))
+         || not (rect_empty (rect_intersect f.f_clipped ctx.viewport)))
     in
     if node_drawn then begin
-      if f.f_clips then
+      let own = paint_own ctx store id st kind f.f_rect rs alpha in
+      if f.f_clips then begin
+        (* Outer shadows escape the node's overflow clip, while ancestor
+           clips still constrain them. Inset shadows and content stay inside. *)
+        let outer, inside =
+          List.partition (function Shadow s -> not s.sinset | _ -> false) own
+        in
+        emit scene outer;
         emit1 scene
           (Push_clip
-             { crect = f.f_rect;
+             {
+               crect = f.f_rect;
                cradii = corners f.f_rect (radii_of ctx store id) false;
-               ccontinuous = false });
-      if not contents then
-        emit scene (paint_own ctx store id st kind f.f_rect rs alpha);
+               ccontinuous = false;
+             });
+        emit scene inside
+      end
+      else emit scene own;
       { b_emit = true; b_down = true; b_ctx = alpha }
     end
     else { b_emit = false; b_down = true; b_ctx = alpha }
