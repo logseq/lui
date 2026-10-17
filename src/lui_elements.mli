@@ -1586,6 +1586,12 @@ val resizable :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?label:string -> ?resizable_width:int ->
   ?transition:string -> t list -> t
+(** A horizontal split controlled by either [value] (a track fraction) or
+    [first_width] (logical pixels, native OCaml and Web backends).
+    These inputs are mutually exclusive.
+    [on_resize] reports [ValueChanged] in the units of the chosen input.
+    Pane minima and maxima constrain user resizing; controlled closure may
+    reach zero so opening and closing animations can complete. *)
 val split :
   ?key:string ->
   ?gap:int ->
@@ -1628,6 +1634,8 @@ val split :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?value:float ->
   ?value_signal:float Signal.signal ->
+  ?first_width:float ->
+  ?first_width_signal:float Signal.signal ->
   ?resize_duration:int ->
   ?resize_easing:resize_easing ->
   ?resize_origin:float ->

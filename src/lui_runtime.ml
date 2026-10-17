@@ -1767,7 +1767,7 @@ let note_sent_echo application node property value =
     | TextValue, StringValue text -> { state with echo_text = Some text }
     | (Checked | Expanded | Selected), BoolValue flag ->
       { state with echo_toggle = Some flag }
-    | ProgressValue, FloatValue number ->
+    | (ProgressValue | FirstPaneWidth), FloatValue number ->
       { state with echo_value = Some number }
     | _ -> state
   in
@@ -1779,7 +1779,7 @@ let note_removed_echo application node property =
     match property with
     | TextValue -> { state with echo_text = None }
     | Checked | Expanded | Selected -> { state with echo_toggle = None }
-    | ProgressValue -> { state with echo_value = None }
+    | ProgressValue | FirstPaneWidth -> { state with echo_value = None }
     | _ -> state
   in
   put_echo application node state

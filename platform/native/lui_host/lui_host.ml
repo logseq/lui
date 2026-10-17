@@ -77,6 +77,7 @@ type layout_state = {
 }
 
 type transition = {
+  property : Lui_protocol.property;
   from_value : float;
   target : float;
   started : float;
@@ -263,9 +264,9 @@ let eased easing progress =
     coordinate y1 y2 ((!low +. !high) /. 2.)
   end
 
-let set_transition_value h id value =
+let set_transition_value h id property value =
   Lui_store.apply_op h.store (Lui_protocol.SetProp
-    (id,Lui_protocol.ProgressValue,Lui_protocol.FloatValue value));
+    (id,property,Lui_protocol.FloatValue value));
   h.dirty <- true
 
 let tick h ~now =
@@ -281,9 +282,11 @@ let tick h ~now =
       else begin
         let progress = min 1. ((now -. motion.started) /. motion.duration) in
         let value = if progress >= 1. then motion.target
-          else max 0. (min 1. (motion.from_value +.
-            (motion.target -. motion.from_value) *. eased motion.easing progress)) in
-        set_transition_value h id value;
+          else motion.from_value +.
+            (motion.target -. motion.from_value) *. eased motion.easing progress in
+        let value = if motion.property = Lui_protocol.ProgressValue
+          then max 0. (min 1. value) else max 0. value in
+        set_transition_value h id motion.property value;
         if progress >= 1. then None else Some motion
       end) h.transitions
 
@@ -293,7 +296,7 @@ let set_reduced_motion h enabled =
   h.reduced_motion <- enabled;
   if enabled && Hashtbl.length h.transitions > 0 then begin
     Hashtbl.iter (fun id motion ->
-      if Lui_store.mem h.store id then set_transition_value h id motion.target) h.transitions;
+      if Lui_store.mem h.store id then set_transition_value h id motion.property motion.target) h.transitions;
     Hashtbl.clear h.transitions
   end
 
@@ -305,20 +308,22 @@ let apply_batch ?(animate_resize=true) h (batch : Lui_protocol.patch_batch) =
         Hashtbl.replace created id ();
         Hashtbl.remove previous id;
         Hashtbl.remove h.transitions id
-    | SetProp (id, ProgressValue, _) when not (Hashtbl.mem created id)
+    | RemoveProp (id, (ProgressValue | FirstPaneWidth)) ->
+        Hashtbl.remove previous id;
+        Hashtbl.remove h.transitions id
+    | SetProp (id, ((ProgressValue | FirstPaneWidth) as property), _) when not (Hashtbl.mem created id)
         && Lui_store.kind h.store id = "split" ->
         if not animate_resize then Hashtbl.remove h.transitions id;
         if not (Hashtbl.mem previous id) then
-          (match Lui_store.prop h.store id "value" with
-           | Some (FloatValue value) -> Hashtbl.add previous id value
-           | Some (IntValue value) -> Hashtbl.add previous id (float value)
-           | _ -> ())
+          (match Lui_store.float_prop h.store id (Lui_wire_schema.property_name property) with
+           | Some value -> Hashtbl.add previous id (property, value)
+           | None -> ())
     | _ -> ()) batch.ops;
   Lui_store.apply_batch h.store batch;
   Hashtbl.filter_map_inplace (fun id motion ->
     if Lui_store.mem h.store id then Some motion else None) h.transitions;
-  Hashtbl.iter (fun id from_value ->
-    match h.animation_time, Lui_store.prop h.store id "value" with
+  Hashtbl.iter (fun id (property, from_value) ->
+    match h.animation_time, Lui_store.prop h.store id (Lui_wire_schema.property_name property) with
     | Some started, Some (Lui_protocol.FloatValue target)
         when animate_resize && not h.reduced_motion && from_value <> target ->
         let duration = Option.value ~default:0 (Lui_store.int_prop h.store id "resize-duration") in
@@ -326,10 +331,10 @@ let apply_batch ?(animate_resize=true) h (batch : Lui_protocol.patch_batch) =
           let easing = Option.value ~default:"standard"
             (Lui_store.string_prop h.store id "resize-easing") in
           (match Hashtbl.find_opt h.transitions id with
-           | Some motion when motion.target = target -> ()
+           | Some motion when motion.property = property && motion.target = target -> ()
            | _ -> Hashtbl.replace h.transitions id
-               {from_value;target;started;duration=float duration /. 1000.;easing});
-          set_transition_value h id from_value
+               {property;from_value;target;started;duration=float duration /. 1000.;easing});
+          set_transition_value h id property from_value
         end else Hashtbl.remove h.transitions id
     | _ -> Hashtbl.remove h.transitions id) previous;
   h.dirty <- true;

@@ -157,6 +157,28 @@ let test_split_transition () =
   check (float 0.00001) "duration ends at the exact target" 0.8 (split_value h);
   check bool "completed motion leaves the host idle" false (Lui_host.wants_repaint h)
 
+let test_split_pixel_transition () =
+  let h = make () in
+  let width () = Option.get (Lui_store.float_prop (Lui_host.store h) 1 "first-pane-width") in
+  Lui_host.tick h ~now:0.;
+  ignore (Lui_host.apply_batch h (batch [CreateNode (1,Split);
+    SetProp (1,FirstPaneWidth,FloatValue 0.);SetProp (1,ResizeDuration,IntValue 100);
+    SetProp (1,ResizeEasing,StringValue "linear")]));
+  Lui_host.tick h ~now:1.;
+  ignore (Lui_host.apply_batch h (batch [SetProp (1,FirstPaneWidth,FloatValue 246.)]));
+  check (float 0.001) "pixel transition begins at its displayed width" 0. (width ());
+  Lui_host.tick h ~now:1.05;
+  check (float 0.01) "pixel transition is not clamped to a normalized fraction" 123. (width ());
+  ignore (Lui_host.apply_batch h (batch [SetProp (1,FirstPaneWidth,FloatValue 0.)]));
+  check (float 0.01) "pixel reversal starts from its displayed width" 123. (width ());
+  Lui_host.tick h ~now:1.16;
+  check (float 0.001) "pixel reversal reaches a fully collapsed pane" 0. (width ());
+  ignore (Lui_host.apply_batch ~animate_resize:false h
+    (batch [SetProp (1,FirstPaneWidth,FloatValue 300.)]));
+  check (float 0.001) "pixel drag is immediate" 300. (width ());
+  Lui_host.tick h ~now:2.;
+  check (float 0.001) "pixel drag cancels prior motion" 300. (width ())
+
 let test_split_reversal_and_removal () =
   let h = animated_split () in
   Lui_host.tick h ~now:1.;
@@ -555,6 +577,7 @@ let () =
                     test_case "invalid popup time" `Quick test_popup_invalid_time;
                     test_case "surface motion defaults" `Quick test_surface_motion_defaults;
                     test_case "split transition" `Quick test_split_transition;
+                    test_case "pixel split transition" `Quick test_split_pixel_transition;
                     test_case "split reversal and removal" `Quick test_split_reversal_and_removal;
                     test_case "reduced motion and drag" `Quick test_split_reduced_motion_and_drag]);
       ( "dirty",

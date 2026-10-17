@@ -993,7 +993,8 @@ module Ui = struct
 
   let split_handle t store rects id ~x ~y =
     Lui_store.kind store id = "split" && Lui_query.node_enabled store id
-    && Option.is_some (Lui_store.float_prop store id "value")
+    && (Option.is_some (Lui_store.float_prop store id "value")
+        || Option.is_some (Lui_store.float_prop store id "first-pane-width"))
     && match Lui_store.child_ids store id with
        | first :: second :: _ ->
          let a=Rects.get rects first and b=Rects.get rects second in
@@ -1052,21 +1053,22 @@ module Ui = struct
       match update with
       | None -> ()
       | Some (id,value) ->
-        let value =
-          match Lui_store.child_ids store id with
-          | first :: second :: _ ->
-            let available = ((Rects.get rects first).w +. (Rects.get rects second).w) /. t.scale in
-            let minimum child =
-              float_of_int (Option.value (Lui_store.int_prop store child "min-width") ~default:0)
-            in
-            let low = minimum first /. available in
-            let high = 1. -. minimum second /. available in
-            if low > high then low /. (low +. 1. -. high)
-            else Float.min high (Float.max low value)
-          | _ -> assert false
-        in
-        if Lui_store.float_prop store id "value" <> Some value then begin
-          Lui_store.apply_op store (SetProp (id,ProgressValue,FloatValue value));
+        let first, second = match Lui_store.child_ids store id with
+          | first :: second :: _ -> first, second
+          | _ -> assert false in
+        let available = ((Rects.get rects first).w +. (Rects.get rects second).w) /. t.scale in
+        let minimum child =
+          float_of_int (Option.value (Lui_store.int_prop store child "min-width") ~default:0) in
+        let maximum child = Option.map float_of_int (Lui_store.int_prop store child "max-width") in
+        let value = Lui_split_geometry.constrain_fraction ~available
+          ~first_min:(minimum first) ~second_min:(minimum second)
+          ?first_max:(maximum first) ?second_max:(maximum second) value in
+        let property, name, value =
+          match Lui_store.float_prop store id "first-pane-width" with
+          | Some _ -> FirstPaneWidth, "first-pane-width", value *. available
+          | None -> ProgressValue, "value", value in
+        if Lui_store.float_prop store id name <> Some value then begin
+          Lui_store.apply_op store (SetProp (id,property,FloatValue value));
           t.dirty <- true;
           emit_all [Dispatch (ValueChanged (id,value))]
         end
@@ -1155,8 +1157,10 @@ module Ui = struct
                let first,second=match Lui_store.child_ids store id with
                  | first :: second :: _ -> Rects.get rects first,Rects.get rects second
                  | _ -> assert false in
-               let span=(second.x+.second.w-.first.x)/.t.scale in
-               let fraction=Option.get (Lui_store.float_prop store id "value") in
+               let span=(first.w+.second.w)/.t.scale in
+               let fraction = match Lui_store.float_prop store id "first-pane-width" with
+                 | Some width -> if span > 0. then width /. span else 0.
+                 | None -> Option.get (Lui_store.float_prop store id "value") in
                t.pointer <- Lui_pointer.start_resize t.pointer ~node:id ~x ~fraction ~span;
                t.drag <- Lui_drag.clear_arm t.drag;
                t.selection <- Lui_selection.clear_drag t.selection;

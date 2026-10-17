@@ -285,6 +285,7 @@ type property =
   | Transition
   | Inert
   | NavigateEnabled
+  | FirstPaneWidth
 
 module Property_map =
   Map.Make
@@ -1095,6 +1096,7 @@ let common_property_supported kind property =
   | TrackVisibleRange -> kind = ListContainer
   | EdgeValue -> kind = SwipeAction || kind = EdgeInset
   | ResizeDuration | ResizeEasing | ResizeOrigin -> kind = Split
+  | FirstPaneWidth -> kind = Split
   | MinValue | MaxValue | StepValue -> kind = NumberStepper
   | Detents | Sizing -> kind = Sheet
   | ThemeValue | ThemeMode -> can_contain_children kind
@@ -1569,6 +1571,7 @@ let property_value_supported property value =
     value = "linear" || value = "standard" || value = "emphasized"
     || value = "spring"
   | ResizeOrigin, FloatValue value -> is_finite value
+  | FirstPaneWidth, FloatValue value -> is_finite value && value >= 0.
   | ThemeValue, StringValue _ -> true
   | ThemeMode, StringValue value -> theme_mode_supported value
   | KeyValue, StringValue _ -> true
@@ -1857,9 +1860,9 @@ let node_properties_supported kind properties =
       else true)
   && (if kind = Split then
         let duration = int_property properties ResizeDuration 0 in
-        (if Property_map.mem ResizeEasing properties then duration > 0 else true)
-        &&
-        if Property_map.mem ResizeOrigin properties then duration > 0 else true
+        not (Property_map.mem FirstPaneWidth properties && Property_map.mem ProgressValue properties)
+        && (if Property_map.mem ResizeEasing properties then duration > 0 else true)
+        && (if Property_map.mem ResizeOrigin properties then duration > 0 else true)
       else true)
   &&
   if tree_row_kind kind then

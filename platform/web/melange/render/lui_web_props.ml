@@ -855,6 +855,7 @@ and apply_secondary_property renderer queue_split node kind dom_node
   | ResizeDuration, IntValue _duration -> queue_split node
   | ResizeEasing, StringValue _easing -> queue_split node
   | ResizeOrigin, FloatValue _origin -> queue_split node
+  | FirstPaneWidth, FloatValue _width -> queue_split node
   | OrientationValue, StringValue orientation ->
       W.Element.setAttribute "data-orientation" orientation dom_node;
       W.Element.setAttribute "aria-orientation" orientation dom_node
@@ -1124,6 +1125,7 @@ let remove_property renderer queue_split node kind dom_node property =
        | Enabled ->
            apply_property renderer queue_split node kind dom_node Enabled
              (BoolValue true)
+       | FirstPaneWidth | ProgressValue when kind = Split -> queue_split node
        | Gap ->
            if kind = Split then queue_split node
            else set_style dom_node "gap" ""

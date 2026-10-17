@@ -1735,6 +1735,11 @@
       "lg": "NavigateEnabled",
       "wire": "navigate-enabled",
       "swift": "navigateEnabled"
+    },
+    {
+      "lg": "FirstPaneWidth",
+      "wire": "first-pane-width",
+      "swift": "firstPaneWidth"
     }
   ],
   "events": [

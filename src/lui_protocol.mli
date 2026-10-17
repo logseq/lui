@@ -283,6 +283,7 @@ type property =
   | Transition
   | Inert
   | NavigateEnabled
+  | FirstPaneWidth
 
 module Property_map : Map.S with type key = property
 

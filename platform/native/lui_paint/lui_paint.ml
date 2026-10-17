@@ -113,6 +113,7 @@ let prop_coverage =
     ("role", Layout);
     ("tree-level", Layout); (* row indent *)
     ("expanded", Unmapped "disclosure chevron glyph");
+    ("first-pane-width", Layout);
     ("resize-duration", Host);
     ("resize-easing", Host);
     ("resize-origin", Host);

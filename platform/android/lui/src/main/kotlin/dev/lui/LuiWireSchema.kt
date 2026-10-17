@@ -271,6 +271,7 @@ enum class LuiProperty(val wireName: String) {
     transition("transition"),
     inert("inert"),
     navigateEnabled("navigate-enabled"),
+    firstPaneWidth("first-pane-width"),
     ;
 
     companion object {

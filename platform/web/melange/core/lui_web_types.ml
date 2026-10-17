@@ -22,6 +22,7 @@ type web_image_resource = {
 }
 
 type web_split_state = {
+  web_split_pixels : bool;
   web_split_source : float;
   web_split_current : float;
 }

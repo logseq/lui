@@ -1475,6 +1475,25 @@ let test_split_gap_fraction () =
         [ 0.; 0.25; 0.7; 1. ])
     [ 1.; 2. ]
 
+let test_split_first_width () =
+  let properties = Property_map.singleton FirstPaneWidth (FloatValue 246.) in
+  check bool "pixel sizing is valid" true (node_properties_supported Split properties);
+  check bool "fraction and pixel sizing are mutually exclusive" false
+    (node_properties_supported Split (Property_map.add ProgressValue (FloatValue 0.5) properties));
+  List.iter (fun scale -> List.iter (fun viewport -> List.iter (fun width ->
+    let store = Lui_store.create () in
+    apply store [CreateNode (1,Split);CreateNode (2,Column);CreateNode (3,Column);
+      SetProp (1,Gap,IntValue 3);SetProp (1,FirstPaneWidth,FloatValue width);
+      SetProp (2,MinWidth,IntValue 240);InsertChild (1,2,0);InsertChild (1,3,1)];
+    let layout = Lui_layout.create () in
+    Lui_layout.sync ~scale ~width:(viewport*.scale) ~height:(300.*.scale) layout store;
+    let first = Option.get (Lui_layout.rect layout 2)
+    and second = Option.get (Lui_layout.rect layout 3) in
+    check (float 0.6) "pixel pane stays fixed while its owner resizes" (width*.scale) first.w;
+    check (float 0.6) "the other pane takes the divider-free remainder"
+      ((viewport-.width-.3.)*.scale) second.w)
+      [0.;246.;300.]) [640.;1000.;1440.]) [1.;2.]
+
 let test_select_menu_alignment () =
   List.iter
     (fun scale ->
@@ -1854,6 +1873,7 @@ let () =
          test_case "absolute cross alignment" `Quick test_absolute_cross_alignment;
          test_case "border box layout" `Quick test_border_box_layout;
          test_case "split divider fraction" `Quick test_split_gap_fraction;
+         test_case "split first-pane pixels" `Quick test_split_first_width;
          test_case "grid wraps" `Quick test_grid_wraps;
          test_case "grid gap fits" `Quick test_grid_gap_fits_columns;
          test_case "absolute inset" `Quick test_absolute_inset;

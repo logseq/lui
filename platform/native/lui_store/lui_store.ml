@@ -53,7 +53,7 @@ let layout_prop_names =
     "margin-bottom"; "margin-left"; "margin-horizontal"; "margin-vertical";
     "orientation"; "overflow"; "padding"; "padding-horizontal";
     "padding-vertical"; "padding-top"; "padding-right"; "padding-bottom"; "padding-left"; "placeholder"; "position"; "selected"; "size";
-    "text"; "title"; "value" ]
+    "text"; "title"; "value"; "first-pane-width" ]
 
 let layout_props =
   let t = Hashtbl.create 64 in
@@ -63,7 +63,7 @@ let layout_props =
 (* Props whose change ripples into produced children. [display] is the
    only prop that rewrites the produced set itself (none/contents lift);
    the three rest restyle or reorder the children a parent produced. *)
-let child_prop_names = [ "columns"; "value"; "edge" ]
+let child_prop_names = [ "columns"; "value"; "first-pane-width"; "edge" ]
 let child_props =
   let t = Hashtbl.create 8 in
   List.iter (fun n -> Hashtbl.replace t n ()) child_prop_names;

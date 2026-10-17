@@ -264,6 +264,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case transition = "transition"
     case inert = "inert"
     case navigateEnabled = "navigate-enabled"
+    case firstPaneWidth = "first-pane-width"
 }
 
 enum LUISchemaMatrix {

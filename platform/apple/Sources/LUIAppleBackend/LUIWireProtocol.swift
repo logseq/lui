@@ -153,6 +153,9 @@ enum LUIWireValue: Decodable, Equatable {
              .expanded, .enabled,
              .scrollAnimated, .trackVisibleRange:
             return boolValue != nil
+        case .firstPaneWidth:
+            guard let value = doubleValue else { return false }
+            return value.isFinite && value >= 0
         case .progressValue:
             return doubleValue != nil
         case .resizeDuration, .image, .surface, .active, .columns,
@@ -1167,6 +1170,7 @@ struct LUIRetainedTree {
         case .progressValue:
             kind == .progress || kind == .slider || kind == .numberStepper ||
                 kind == .split
+        case .firstPaneWidth: false
         case .resizeDuration, .resizeEasing, .resizeOrigin: kind == .split
         case .orientation:
             kind == .divider || kind == .tabs || kind == .scroll ||

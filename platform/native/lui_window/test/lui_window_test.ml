@@ -3519,16 +3519,38 @@ let test_split_pointer_resize () =
   ignore (input (Input.Button_down (151.5,100.,Input.Left,1,Input.mods_none)));
   Alcotest.(check (float 0.00001)) "grabbing the divider does not jump" 0.25 (split_fraction store 1);
   let acts=input (Input.Move (201.5,100.)) in
-  Alcotest.(check (option (float 0.00001))) "drag dispatches the new fraction" (Some 0.35) (resized 1 acts);
-  Alcotest.(check (float 0.00001)) "drag mirrors geometry before application feedback" 0.35 (split_fraction store 1);
+  let moved=0.25+.50./.497. in
+  Alcotest.(check (option (float 0.00001))) "drag dispatches the divider-free fraction" (Some moved) (resized 1 acts);
+  Alcotest.(check (float 0.00001)) "drag mirrors geometry before application feedback" moved (split_fraction store 1);
   ignore (input (Input.Move (-500.,-100.)));
   Alcotest.(check (float 0.00001)) "captured drag clamps at the first endpoint" 0. (split_fraction store 1);
   ignore (input (Input.Move (2000.,1000.)));
   Alcotest.(check (float 0.00001)) "captured drag clamps at the second endpoint" 1. (split_fraction store 1);
   let acts=input (Input.Button_up (226.5,100.,Input.Left,Input.mods_none)) in
-  Alcotest.(check (option (float 0.00001))) "release uses its final pointer coordinate" (Some 0.4) (resized 1 acts);
+  let released=0.25+.75./.497. in
+  Alcotest.(check (option (float 0.00001))) "release uses its final pointer coordinate" (Some released) (resized 1 acts);
   ignore (input (Input.Move (500.,100.)));
-  Alcotest.(check (float 0.00001)) "release ends resize capture" 0.4 (split_fraction store 1)
+  Alcotest.(check (float 0.00001)) "release ends resize capture" released (split_fraction store 1)
+
+let test_split_pointer_pixels () =
+  List.iter (fun scale ->
+    let store,rects,ui=split_fixture () in
+    Ui.set_scale ui scale;
+    List.iter (Lui_store.apply_op store)
+      [RemoveProp (1,ProgressValue); SetProp (1,FirstPaneWidth,FloatValue 246.);
+       SetProp (2,MinWidth,IntValue 240);SetProp (2,MaxWidth,IntValue 460)];
+    let x=303./.scale and y=200./.scale in
+    let input event=Ui.handle ui store rects event in
+    ignore (input (Input.Button_down (x,y,Input.Left,1,Input.mods_none)));
+    let acts=input (Input.Move (x+.20.,y)) in
+    Alcotest.(check (option (float 0.00001))) "pixel resize reports logical pixels" (Some 266.) (resized 1 acts);
+    Alcotest.(check (option (float 0.00001))) "pixel resize updates the active width property" (Some 266.)
+      (Lui_store.float_prop store 1 "first-pane-width");
+    Alcotest.(check (option (float 0.00001))) "pixel resize does not create a second control input" None
+      (Lui_store.float_prop store 1 "value");
+    let acts=input (Input.Button_up (x+.1000.,y,Input.Left,Input.mods_none)) in
+    Alcotest.(check (option (float 0.00001))) "pixel resize respects maximum on release" (Some 460.) (resized 1 acts))
+    [1.;2.]
 
 let test_split_pointer_minimums () =
   List.iter
@@ -3571,7 +3593,29 @@ let test_split_pointer_minimums () =
       ignore (input (Input.Button_up (2000., y, Input.Left, Input.mods_none)));
       Alcotest.(check (float 0.00001))
         "infeasible minimums remain stable on release" 0.4
-        (split_fraction store 1))
+        (split_fraction store 1);
+      List.iter (Lui_store.apply_op store)
+        [SetProp (2,MinWidth,IntValue 50);SetProp (3,MinWidth,IntValue 50);
+         SetProp (2,MaxWidth,IntValue 200)];
+      ignore (input (Input.Button_down (x,y,Input.Left,1,Input.mods_none)));
+      ignore (input (Input.Move (2000.,y)));
+      Alcotest.(check (float 0.00001)) "drag honors the first pane maximum"
+        (200./.available) (split_fraction store 1);
+      Alcotest.(check (option (float 0.00001))) "repeated capped motion emits no resize" None
+        (resized 1 (input (Input.Move (2100.,y))));
+      ignore (input (Input.Button_up (2100.,y,Input.Left,Input.mods_none)));
+      Lui_store.apply_op store (RemoveProp (2,MaxWidth));
+      Lui_store.apply_op store (SetProp (3,MaxWidth,IntValue 300));
+      ignore (input (Input.Button_down (x,y,Input.Left,1,Input.mods_none)));
+      ignore (input (Input.Button_up (-2000.,y,Input.Left,Input.mods_none)));
+      Alcotest.(check (float 0.00001)) "release honors the second pane maximum"
+        (1.-.300./.available) (split_fraction store 1);
+      List.iter (Lui_store.apply_op store)
+        [SetProp (2,MaxWidth,IntValue 100);SetProp (3,MaxWidth,IntValue 150)];
+      ignore (input (Input.Button_down (x,y,Input.Left,1,Input.mods_none)));
+      ignore (input (Input.Button_up (2000.,y,Input.Left,Input.mods_none)));
+      Alcotest.(check (float 0.00001)) "infeasible maximums share the track proportionally"
+        0.4 (split_fraction store 1))
     [ 1.; 2. ]
 
 let test_split_pointer_admission () =
@@ -3608,7 +3652,7 @@ let test_nested_split_pointer_resize () =
   Hashtbl.add rects 6 (rect 712. 40. 338. 600.);
   ignore (Ui.handle ui store rects (Input.Button_down (354.5,100.,Input.Left,1,Input.mods_none)));
   let acts=Ui.handle ui store rects (Input.Move (364.5,100.)) in
-  Alcotest.(check (option (float 0.00001))) "innermost divider uses its own scaled track" (Some (0.5+.20./.744.))
+  Alcotest.(check (option (float 0.00001))) "innermost divider uses its own divider-free scaled track" (Some (0.5+.20./.738.))
     (resized 3 acts);
   Alcotest.(check (float 0.00001)) "nested resize leaves the outer split unchanged" 0.25 (split_fraction store 1)
 
@@ -3694,6 +3738,7 @@ let () =
           Alcotest.test_case "undo/redo" `Quick test_undo_redo ] );
       ( "split resize",
         [ Alcotest.test_case "pointer feedback" `Quick test_split_pointer_resize;
+          Alcotest.test_case "pixel pane resize" `Quick test_split_pointer_pixels;
           Alcotest.test_case "pane minimums" `Quick test_split_pointer_minimums;
           Alcotest.test_case "capture admission" `Quick test_split_pointer_admission;
           Alcotest.test_case "nested scaled track" `Quick test_nested_split_pointer_resize ] );

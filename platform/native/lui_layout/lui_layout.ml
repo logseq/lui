@@ -631,7 +631,7 @@ let overlay_edges store id : Lui_flex.edges =
    for parent-level contracts: shared-cell overlays, grid cells, the
    edge-inset content child and frame-fill roots. [pkind] is the
    parent's wire kind, or "frame" for the synthetic frame root. *)
-let adjust ~pkind ~pid ~index store id (style : Lui_flex.style) : Lui_flex.style =
+let adjust ~scale ~pkind ~pid ~index store id (style : Lui_flex.style) : Lui_flex.style =
   let style =
     if pkind = "frame" && not (popup_kind (Lui_store.kind store id)) then
       (* Non-popup store roots fill the frame. *)
@@ -659,23 +659,19 @@ let adjust ~pkind ~pid ~index store id (style : Lui_flex.style) : Lui_flex.style
   in
   let style =
     if pkind = "split" then
-      (* The split kind's ~value is the first pane's fraction of the
-         track. The second pane grows into the remainder; the gap is
-         the divider. *)
       match Lui_store.child_ids store pid with
-      | first :: second :: _ ->
-        if id = first || id = second then (
-          match pnum store pid "value" with
-          | Some v ->
-            (* Panes clip like the web resizer: a collapsed track
-               hides its content instead of letting it leak into the
-               sibling pane, and min-width:0 lets the track actually
-               reach the fraction instead of its content's floor. *)
-            { style with
-              flex_basis = Pt 0.; flex_grow = (if id = first then v else 1. -. v);
+      | first :: second :: _ when id = first || id = second ->
+          let pane_style basis grow =
+            { style with flex_basis = basis; flex_grow = grow;
               min_width = Pt 0.; overflow = Hidden }
-          | None -> style)
-        else style
+          in
+          (match pnum store pid "first-pane-width", pnum store pid "value" with
+           | Some width, _ ->
+               pane_style (Pt (if id = first then width *. scale else 0.))
+                 (if id = first then 0. else 1.)
+           | None, Some fraction ->
+               pane_style (Pt 0.) (if id = first then fraction else 1. -. fraction)
+           | None, None -> style)
       | _ -> style
     else style
   in
@@ -1149,7 +1145,7 @@ let rec build ctx ~owner_id ~pkind ~pid ~index id : (Lui_flex.node * int) list =
     let kind = Lui_store.kind ctx.store id in
     let style =
       style_of ~scale:ctx.scale ~viewport:(ctx.vw, ctx.vh) ctx.store id
-      |> adjust ~pkind ~pid ~index ctx.store id
+      |> adjust ~scale:ctx.scale ~pkind ~pid ~index ctx.store id
     in
     if kind = "virtual-list" && vlist_vertical ctx.store id then begin
       (* Real virtualization: the list is a leaf in this mirror — only
@@ -2318,7 +2314,7 @@ let restyle_gen_at ctx o g index =
   | Some f ->
     let style =
       style_of ~scale:ctx.scale ~viewport:(ctx.vw, ctx.vh) ctx.store g
-      |> adjust ~pkind:(kind_of ctx o) ~pid:o ~index ctx.store g
+      |> adjust ~scale:ctx.scale ~pkind:(kind_of ctx o) ~pid:o ~index ctx.store g
     in
     (match Hashtbl.find_opt ctx.vlists g with
      | Some v ->
@@ -2493,7 +2489,7 @@ let resync_vlist ctx (v : vlist) =
     let index = produced_index ctx o v.vid in
     let style =
       style_of ~scale:ctx.scale ~viewport:(ctx.vw, ctx.vh) ctx.store v.vid
-      |> adjust ~pkind:(kind_of ctx o) ~pid:o ~index ctx.store v.vid
+      |> adjust ~scale:ctx.scale ~pkind:(kind_of ctx o) ~pid:o ~index ctx.store v.vid
     in
     vlist_configure ctx ctx.store v style;
     let style = vlist_leaf_style ctx v style in

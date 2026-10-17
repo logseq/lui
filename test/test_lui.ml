@@ -1302,6 +1302,21 @@ let test_dispatch_drops_value_echoes () =
   Alcotest.(check int) "press still delivered" 1 !presses;
   drive_dispose s
 
+let test_split_pixel_echoes () =
+  let received = ref [] in
+  let s = drive_mount ~initial:() ~reducer:(fun model () -> model)
+    ~view:(fun _ _ _ -> Lui_elements.split
+      ~first_width:246.
+      ~on_resize:(fun event -> received := event :: !received)
+      (Lui_elements.column []) (Lui_elements.column [])) () in
+  let id = (drive_node s (Drive.Model.Kind "split")).Drive.Model.id in
+  drive_send s (Lui_protocol.ValueChanged (id,246.));
+  Alcotest.(check int) "the sent pixel width is suppressed as an echo" 0 (List.length !received);
+  drive_send s (Lui_protocol.ValueChanged (id,300.));
+  drive_send s (Lui_protocol.ValueChanged (id,300.));
+  Alcotest.(check int) "a changed pixel width is delivered exactly once" 1 (List.length !received);
+  drive_dispose s
+
 let test_text_navigation_callbacks () =
   let open Lui_protocol in
   List.iter (fun (kind,make) ->
@@ -4112,6 +4127,7 @@ let () =
           Alcotest.test_case "text navigation callbacks" `Quick test_text_navigation_callbacks;
           Alcotest.test_case "pointer events" `Quick test_pointer_events;
           Alcotest.test_case "pointer dispatch" `Quick test_pointer_dispatch;
+          Alcotest.test_case "pixel split echoes" `Quick test_split_pixel_echoes;
           Alcotest.test_case "value echoes dropped" `Quick
             test_dispatch_drops_value_echoes;
           Alcotest.test_case "unset default echoes dropped" `Quick

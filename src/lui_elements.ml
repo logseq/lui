@@ -1073,12 +1073,14 @@ let resizable ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal
   mount_children context node children;
   node
 
-let split ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?value ?value_signal ?resize_duration ?resize_easing ?resize_origin ?label ?on_resize ?transition (first : t) (second : t) : t =
+let split ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?value ?value_signal ?first_width ?first_width_signal ?resize_duration ?resize_easing ?resize_origin ?label ?on_resize ?transition (first : t) (second : t) : t =
  fun context parent ->
   let node = Lui_ui.create context Split in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~margin ~margin_horizontal ~margin_vertical ~margin_top ~margin_right ~margin_bottom ~margin_left ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave ~transition;
   Option.iter (Lui_ui.float_property context node ProgressValue) value;
   Option.iter (Lui_ui.float_property_signal context node ProgressValue) value_signal;
+  Option.iter (Lui_ui.float_property context node FirstPaneWidth) first_width;
+  Option.iter (Lui_ui.float_property_signal context node FirstPaneWidth) first_width_signal;
   Option.iter (Lui_ui.int_property context node ResizeDuration) resize_duration;
   Option.iter (Lui_ui.string_property context node ResizeEasing) (Option.map resize_easing_value resize_easing);
   Option.iter (Lui_ui.float_property context node ResizeOrigin) resize_origin;
