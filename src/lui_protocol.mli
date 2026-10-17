@@ -282,6 +282,7 @@ type property =
   | HoverBorder
   | Transition
   | Inert
+  | NavigateEnabled
 
 module Property_map : Map.S with type key = property
 
@@ -329,6 +330,8 @@ type event =
   | PointerLeave of int
   | ContextMenuPress of int * pointer_detail
   | Load of int
+  | NavigatePrevious of int
+  | NavigateNext of int
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =

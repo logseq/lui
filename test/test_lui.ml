@@ -1302,6 +1302,24 @@ let test_dispatch_drops_value_echoes () =
   Alcotest.(check int) "press still delivered" 1 !presses;
   drive_dispose s
 
+let test_text_navigation_callbacks () =
+  let open Lui_protocol in
+  List.iter (fun (kind,make) ->
+    let received = ref [] in
+    let s = drive_mount ~initial:() ~reducer:(fun model () -> model)
+      ~view:(fun _ _ _ -> make (fun event -> received := event :: !received)) () in
+    let field = (drive_node s (Drive.Model.Kind kind)).Drive.Model.id in
+    drive_send s (NavigatePrevious field);
+    drive_send s (NavigateNext field);
+    Alcotest.(check bool) "typed handler receives both directions" true
+      (!received = [NavigateNext field;NavigatePrevious field]);
+    drive_dispose s)
+    ["text-field",(fun f -> Lui_elements.text_field ~on_navigate:f []);
+     "secure-field",(fun f -> Lui_elements.secure_field ~on_navigate:f []);
+     "input",(fun f -> Lui_elements.input ~on_navigate:f []);
+     "search-field",(fun f -> Lui_elements.search_field ~on_navigate:f []);
+     "textarea",(fun f -> Lui_elements.textarea ~on_navigate:f [])]
+
 let test_pointer_events () =
   let open Lui_protocol in
   let detail =
@@ -4091,6 +4109,7 @@ let () =
         ] );
       ( "dispatch",
         [
+          Alcotest.test_case "text navigation callbacks" `Quick test_text_navigation_callbacks;
           Alcotest.test_case "pointer events" `Quick test_pointer_events;
           Alcotest.test_case "pointer dispatch" `Quick test_pointer_dispatch;
           Alcotest.test_case "value echoes dropped" `Quick

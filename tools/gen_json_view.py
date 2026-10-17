@@ -44,7 +44,7 @@ UNIVERSAL_ARG = {
 EVENT_NAME = {
     'on_press': 'press', 'on_long_press': 'long-press',
     'on_double_press': 'double-press', 'on_toggle': 'toggle',
-    'on_input': 'input', 'on_submit': 'submit', 'on_change': 'change',
+    'on_input': 'input', 'on_submit': 'submit', 'on_navigate': 'navigate', 'on_change': 'change',
     'on_dismiss': 'dismiss', 'on_resize': 'resize', 'on_appear': 'appear',
 }
 
@@ -107,7 +107,7 @@ keyed_swipe_action press on_input on_event
 is_press is_long_press is_double_press is_change is_input is_submit
 is_toggle is_dismiss is_appear is_resize register_press
 register_long_press register_double_press register_change
-register_input register_submit register_toggle register_dismiss
+is_navigate register_navigate register_input register_submit register_toggle register_dismiss
 appear_handler register_resize apply_universal scoped align'''.split())
 
 
@@ -625,6 +625,8 @@ let ev name (emit : event_sink) props =
          let fields =
            match e with
            | P.ToggleChanged (_, checked) -> [ ("checked", Bool checked) ]
+           | P.NavigatePrevious _ -> [ ("direction", Str "previous") ]
+           | P.NavigateNext _ -> [ ("direction", Str "next") ]
            | P.TextChanged (_, text) -> [ ("text", Str text) ]
            | P.ValueChanged (_, v) -> [ ("value", Num v) ]
            | _ -> []

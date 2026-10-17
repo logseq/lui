@@ -263,6 +263,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case hoverBorder = "hover-border"
     case transition = "transition"
     case inert = "inert"
+    case navigateEnabled = "navigate-enabled"
 }
 
 enum LUISchemaMatrix {

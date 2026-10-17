@@ -284,6 +284,7 @@ type property =
   | HoverBorder
   | Transition
   | Inert
+  | NavigateEnabled
 
 module Property_map =
   Map.Make
@@ -338,6 +339,8 @@ type event =
   | PointerLeave of int
   | ContextMenuPress of int * pointer_detail
   | Load of int
+  | NavigatePrevious of int
+  | NavigateNext of int
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =
@@ -390,6 +393,8 @@ let event_node event =
   | PointerLeave node
   | ContextMenuPress (node, _)
   | Load node
+  | NavigatePrevious node
+  | NavigateNext node
   | ExtensionEvent (node, _, _, _) -> node
 
 let modal_surface kind = kind = Dialog || kind = Drawer || kind = Sheet
@@ -470,6 +475,9 @@ let event_supported kind event =
     | ToggleButton
     | ListItem -> true
     | _ -> false)
+  | NavigatePrevious _ | NavigateNext _ ->
+    kind = TextField || kind = SecureField || kind = Input
+    || kind = SearchField || kind = Textarea
   | TextChanged _ ->
     (match kind with
     | TextField
@@ -562,22 +570,26 @@ let event_supported_for_lookup kind lookup event =
   let enabled property =
     match lookup property with Some (BoolValue true) -> true | _ -> false
   in
-  if
-    match event with
-    | Appear _ -> enabled AppearEnabled
-    | _ -> false
-  then true
-  else if lookup RoleValue = Some (StringValue "treeitem") then
-    match event with
-    | Press _ | PressModifiers _ ->
-      enabled PressEnabled
-    | PressDetail _ | PointerDown _ | PointerUp _ | PointerEnter _
-    | PointerLeave _ | ContextMenuPress _ ->
-      enabled PointerEnabled
-    | Change _ -> enabled ChangeEnabled
-    | ToggleChanged _ -> enabled ToggleEnabled
-    | _ -> event_supported kind event
-  else event_supported kind event
+  match event with
+  | NavigatePrevious _ | NavigateNext _ ->
+    enabled NavigateEnabled && event_supported kind event
+  | _ ->
+    if
+      match event with
+      | Appear _ -> enabled AppearEnabled
+      | _ -> false
+    then true
+    else if lookup RoleValue = Some (StringValue "treeitem") then
+      match event with
+      | Press _ | PressModifiers _ ->
+        enabled PressEnabled
+      | PressDetail _ | PointerDown _ | PointerUp _ | PointerEnter _
+      | PointerLeave _ | ContextMenuPress _ ->
+        enabled PointerEnabled
+      | Change _ -> enabled ChangeEnabled
+      | ToggleChanged _ -> enabled ToggleEnabled
+      | _ -> event_supported kind event
+    else event_supported kind event
 
 let event_supported_for_properties kind properties event =
   event_supported_for_lookup kind (fun property -> Property_map.find_opt property properties) event
@@ -1048,6 +1060,9 @@ let common_property_supported kind property =
     || kind = BottomTab
     || kind = FileImage
     || tree_row_kind kind
+  | NavigateEnabled ->
+    kind = TextField || kind = SecureField || kind = Input
+    || kind = SearchField || kind = Textarea
   | SubmitEnabled -> kind = Combobox || kind = ListItem
   | DoublePressEnabled -> kind = ListItem
   | AppearEnabled -> kind <> Root
@@ -1515,6 +1530,7 @@ let property_value_supported property value =
   | ChangeEnabled, BoolValue _ -> true
   | ToggleEnabled, BoolValue _ -> true
   | PressEnabled, BoolValue _ -> true
+  | NavigateEnabled, BoolValue _
   | SubmitEnabled, BoolValue _ -> true
   | DoublePressEnabled, BoolValue _ -> true
   | AppearEnabled, BoolValue _ -> true
@@ -1559,7 +1575,7 @@ let property_value_supported property value =
     value = "plain" || value = "inset" || value = "inset-grouped"
   | ScrollTarget, StringValue _ -> true
   | ScrollAnchor, StringValue value ->
-    value = "top" || value = "center" || value = "bottom"
+    value = "top" || value = "center" || value = "bottom" || value = "nearest"
   | ScrollToken, IntValue value -> value >= 0
   | ScrollAnimated, BoolValue _ -> true
   | TrackVisibleRange, BoolValue _ -> true

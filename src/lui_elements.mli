@@ -52,7 +52,7 @@ type list_style = [ `plain | `inset | `inset_grouped ]
     distinct from [list_style], the SwiftUI-style container appearance
     passed as [~style]. *)
 type list_marker = [ `none | `disc | `decimal ]
-type scroll_anchor = [ `top | `center | `bottom ]
+type scroll_anchor = [ `top | `center | `bottom | `nearest ]
 type separator_visibility = [ `visible | `hidden ]
 
 (** Platform vocabulary re-exported from {!Lui_protocol} so view code can
@@ -266,6 +266,7 @@ val is_long_press : Lui_protocol.event -> bool
 val is_double_press : Lui_protocol.event -> bool
 val is_change : Lui_protocol.event -> bool
 val is_input : Lui_protocol.event -> bool
+val is_navigate : Lui_protocol.event -> bool
 val is_submit : Lui_protocol.event -> bool
 val is_toggle : Lui_protocol.event -> bool
 val is_dismiss : Lui_protocol.event -> bool
@@ -282,6 +283,11 @@ val register_change :
 val register_input :
   Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
 val register_submit :
+  Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
+(** Opt in to unmodified Up/Down as [NavigatePrevious]/[NavigateNext] on
+    text inputs. Window and Web hosts retain focus and the text selection;
+    modified arrows and IME composition keep their editing behavior. *)
+val register_navigate :
   Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
 val register_toggle :
   Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
@@ -2799,6 +2805,7 @@ val text_field :
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
+  ?on_navigate:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) ->
   ?transition:string -> t list -> t
 val secure_field :
@@ -2852,6 +2859,7 @@ val secure_field :
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
+  ?on_navigate:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) ->
   ?transition:string -> t list -> t
 val input :
@@ -2905,6 +2913,7 @@ val input :
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
+  ?on_navigate:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) ->
   ?kind:input_kind ->
   ?transition:string -> t list -> t
@@ -2959,6 +2968,7 @@ val search_field :
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
+  ?on_navigate:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) ->
   ?transition:string -> t list -> t
 val textarea :
@@ -3012,6 +3022,7 @@ val textarea :
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
+  ?on_navigate:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) ->
   ?transition:string -> t list -> t
 val input_group :

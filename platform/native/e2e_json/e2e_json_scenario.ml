@@ -181,6 +181,8 @@ let event_json (e : event) : J.t =
   | DoublePress id -> `Assoc [ k "double-press"; n id ]
   | TextChanged (id, s) ->
     `Assoc [ k "text-changed"; n id; ("text", `String s) ]
+  | NavigatePrevious id -> `Assoc [ k "navigate-previous"; n id ]
+  | NavigateNext id -> `Assoc [ k "navigate-next"; n id ]
   | Submit id -> `Assoc [ k "submit"; n id ]
   | ToggleChanged (id, b) ->
     `Assoc [ k "toggle-changed"; n id; ("checked", `Bool b) ]

@@ -89,6 +89,7 @@ let prop_coverage =
     ("toggle-enabled", Host);
     ("press-enabled", Host);
     ("submit-enabled", Host);
+    ("navigate-enabled", Host);
     ("double-press-enabled", Host);
     ("appear-enabled", Host);
     ("image", Painted_by_image);

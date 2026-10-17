@@ -252,6 +252,62 @@ let test_text_session () =
        acts);
   ignore store
 
+let test_text_navigation () =
+  List.iter (fun kind ->
+    let store = store_of [CreateNode (1,kind);
+      SetProp (1,TextValue,StringValue "first\nsecond");
+      SetProp (1,NavigateEnabled,BoolValue true)] in
+    let rects = rects_of [1,rect 0. 0. 200. 60.] in
+    let st = Lui_text_input.attach Lui_text_input.initial ~node:1 ~text:"first\nsecond" in
+    let run st mods key = Lui_text_input.key hooks store rects st ~k:key ~mods ~prim:false in
+    List.iter (fun (key,event) ->
+      let next,actions = run st none key in
+      Alcotest.(check bool) "navigation dispatches without editing" true
+        (actions = [`Dispatch event] && next = st))
+      [Lui_input.Arrow_up,NavigatePrevious 1;Lui_input.Arrow_down,NavigateNext 1];
+    List.iter (fun mods ->
+      let _,actions = run st mods Lui_input.Arrow_up in
+      Alcotest.(check bool) "modified arrows retain caret semantics" false
+        (List.exists (function `Dispatch (NavigatePrevious _ | NavigateNext _) -> true | _ -> false) actions))
+      [{none with shift=true};{none with ctrl=true};{none with meta=true};{none with alt=true}];
+    let composing,_ = Lui_text_input.feed_ime store st (`Editing ("candidate",0,0)) in
+    let _,actions = run composing none Lui_input.Arrow_down in
+    Alcotest.(check bool) "composition owns navigation keys" false
+      (List.exists (function `Dispatch (NavigatePrevious _ | NavigateNext _) -> true | _ -> false) actions);
+    Lui_store.apply_op store (RemoveProp (1,NavigateEnabled));
+    let next,actions = run st none Lui_input.Arrow_up in
+    Alcotest.(check bool) "unregistered arrows move the caret" true
+      (Lui_text_input.caret next <> Lui_text_input.caret st && actions = [`Repaint]);
+    Alcotest.(check bool) "unregistered navigation is rejected" false
+      (Lui_query.event_supported store 1 (NavigateNext 1));
+    Lui_store.apply_op store (SetProp (1,NavigateEnabled,BoolValue true));
+    Lui_store.apply_op store (SetProp (1,Enabled,BoolValue false));
+    let _,actions = run st none Lui_input.Arrow_down in
+    Alcotest.(check bool) "disabled controls cannot navigate" false
+      (List.exists (function `Dispatch (NavigatePrevious _ | NavigateNext _) -> true | _ -> false) actions))
+    [TextField;SecureField;Input;SearchField;Textarea]
+
+let test_scroll_anchor_alignment () =
+  List.iter (fun scale ->
+    let store = store_of [CreateNode (1,ListContainer);CreateNode (2,ListItem);
+      InsertChild (1,2,0)] in
+    let aligned ~offset ~top ~height anchor =
+      let env = Lui_scroll.{content_rect=(fun id ->
+        if id=1 then rect 0. 0. 100. (100. *. scale)
+        else rect 0. (top *. scale) 100. (height *. scale));rects_epoch=0;vlist=None} in
+      let state,_ = Lui_scroll.set_cap Lui_scroll.initial Lui_scroll.Y 1 (500. *. scale) in
+      let state,_ = Lui_scroll.set_offset env store state Lui_scroll.Y 1 (offset *. scale) in
+      let state,_ = Lui_scroll.scroll_align env store state 1 2 anchor in
+      Lui_scroll.offset state Lui_scroll.Y 1 /. scale in
+    List.iter (fun (label,offset,top,height,anchor,expected) ->
+      Alcotest.(check (float 0.001)) label expected (aligned ~offset ~top ~height anchor))
+      ["visible row stays still",50.,60.,20.,"nearest",50.;
+       "reveal above",50.,20.,20.,"nearest",20.;
+       "reveal below",50.,140.,30.,"nearest",70.;
+       "explicit top aligns",50.,60.,20.,"top",60.;
+       "center aligns",50.,160.,20.,"center",120.;
+       "bottom aligns",50.,160.,20.,"bottom",80.]) [1.;2.]
+
 let test_text_undo () =
   let st =
     Lui_text_input.attach Lui_text_input.initial ~node:4 ~text:"ab"
@@ -1052,7 +1108,8 @@ let () =
           Alcotest.test_case "modal scope" `Quick
             test_list_modal_scope ] );
       ( "text input",
-        [ Alcotest.test_case "splice" `Quick test_text_session;
+        [ Alcotest.test_case "navigation" `Quick test_text_navigation;
+          Alcotest.test_case "splice" `Quick test_text_session;
           Alcotest.test_case "undo" `Quick test_text_undo;
           Alcotest.test_case "caret ops" `Quick test_text_caret_ops;
           Alcotest.test_case "padding hit" `Quick test_text_padding_hit;
@@ -1070,7 +1127,8 @@ let () =
       ( "selection",
         [ Alcotest.test_case "static" `Quick test_static_selection ] );
       ( "scroll",
-        [ Alcotest.test_case "offsets" `Quick test_scroll_offsets;
+        [ Alcotest.test_case "anchor alignment" `Quick test_scroll_anchor_alignment;
+          Alcotest.test_case "offsets" `Quick test_scroll_offsets;
           Alcotest.test_case "wheel" `Quick test_wheel;
           Alcotest.test_case "boundary chaining" `Quick test_wheel_boundary_chaining ] );
       ( "drag",

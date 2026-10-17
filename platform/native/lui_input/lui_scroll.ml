@@ -266,10 +266,11 @@ let scroll_align env store st a it anchor =
     let top = nr.Lui_scene.y -. ar.Lui_scene.y in
     let off' =
       match anchor with
+      | "top" -> top
       | "center" -> top -. ((ar.Lui_scene.h -. nr.Lui_scene.h) /. 2.)
       | "bottom" -> top +. nr.Lui_scene.h -. ar.Lui_scene.h
       | _ ->
-        (* "top" / unset: minimal reveal *)
+        (* "nearest" / unset: minimal reveal. *)
         let off = offset st Y a in
         if top < off then top
         else if top +. nr.Lui_scene.h > off +. ar.Lui_scene.h then

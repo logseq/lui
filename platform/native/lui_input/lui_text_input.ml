@@ -188,7 +188,7 @@ let point_move hooks store rects st ~x ~y =
    text the painter resolves — grapheme clusters horizontally,
    visual (soft-wrapped) lines vertically; the codepoint/paragraph
    fallbacks keep tests text-engine free. *)
-let key hooks store rects st ~(k : Lui_input.key)
+let edit_key hooks store rects st ~(k : Lui_input.key)
     ~(mods : Lui_input.mods) ~prim =
   let n = st.node in
   let ops =
@@ -257,6 +257,23 @@ let key hooks store rects st ~(k : Lui_input.key)
     ( set_caret st ~off:(String.length st.text) ~extend:mods.shift,
       [ `Repaint ] )
   | _ -> (st, [])
+
+(* Opt-in list navigation keeps input focus, text and selection intact. *)
+let key hooks store rects st ~(k : Lui_input.key)
+    ~(mods : Lui_input.mods) ~prim =
+  if composing st || not (Lui_query.node_enabled store st.node) then (st, [])
+  else
+    let navigation =
+      if mods.ctrl || mods.meta || mods.alt || mods.shift then None
+      else match k with
+        | Lui_input.Arrow_up -> Some (NavigatePrevious st.node)
+        | Lui_input.Arrow_down -> Some (NavigateNext st.node)
+        | _ -> None
+    in
+    match navigation with
+    | Some event when Lui_query.event_supported store st.node event ->
+      (st, [`Dispatch event])
+    | _ -> edit_key hooks store rects st ~k ~mods ~prim
 
 (* Translate one lui_ime action into domain actions plus the state
    updates they imply. [`Commit_text] splices through the exact path

@@ -1730,6 +1730,11 @@
       "lg": "Inert",
       "wire": "inert",
       "swift": "inert"
+    },
+    {
+      "lg": "NavigateEnabled",
+      "wire": "navigate-enabled",
+      "swift": "navigateEnabled"
     }
   ],
   "events": [
@@ -1871,6 +1876,14 @@
       "fields": [
         ":int"
       ]
+    },
+    {
+      "lg": "NavigatePrevious",
+      "fields": [":int"]
+    },
+    {
+      "lg": "NavigateNext",
+      "fields": [":int"]
     }
   ],
   "kindProperties": {

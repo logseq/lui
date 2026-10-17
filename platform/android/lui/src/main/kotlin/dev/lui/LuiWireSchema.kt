@@ -270,6 +270,7 @@ enum class LuiProperty(val wireName: String) {
     hoverBorder("hover-border"),
     transition("transition"),
     inert("inert"),
+    navigateEnabled("navigate-enabled"),
     ;
 
     companion object {

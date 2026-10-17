@@ -904,6 +904,7 @@ and apply_secondary_property renderer queue_split node kind dom_node
         (if expanded then "true" else "false") dom_node
   | SubmitEnabled, BoolValue enabled ->
       Util.set_state_attribute dom_node "data-submit-enabled" enabled
+  | NavigateEnabled, BoolValue _ -> ()
   | DoublePressEnabled, BoolValue enabled ->
       Util.set_state_attribute dom_node "data-double-press-enabled" enabled
   | ImageIdValue, IntValue _image_id ->
@@ -1118,7 +1119,7 @@ let remove_property renderer queue_split node kind dom_node property =
            set_style (Util.child_element dom_node 2) "order" ""
        | AppearEnabled -> Lui_web_events.release_appear renderer node
        | StyleValue -> W.Element.removeAttribute "data-list-style" dom_node
-       | ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange -> ()
+       | NavigateEnabled | ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange -> ()
        | TextValue -> apply_text_value renderer node kind dom_node ""
        | Enabled ->
            apply_property renderer queue_split node kind dom_node Enabled

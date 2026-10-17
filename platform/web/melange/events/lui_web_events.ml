@@ -63,7 +63,8 @@ let combobox_keydown renderer node event =
 let text_keydown renderer node kind composing event =
   if enabled_node renderer node then begin
     let composing_now = !composing || W.KeyboardEvent.isComposing event in
-    let enter = W.KeyboardEvent.key event = "Enter" in
+    let key = W.KeyboardEvent.key event in
+    let enter = key = "Enter" in
     let shift = W.KeyboardEvent.shiftKey event in
     let primary =
       W.KeyboardEvent.metaKey event || W.KeyboardEvent.ctrlKey event
@@ -78,6 +79,13 @@ let text_keydown renderer node kind composing event =
           else true)
        else false)
     in
+    if not composing_now && not shift && not primary
+       && not (W.KeyboardEvent.altKey event)
+       && Store.true_property renderer node NavigateEnabled
+       && (key = "ArrowUp" || key = "ArrowDown") then begin
+      W.KeyboardEvent.preventDefault event;
+      emit renderer (if key = "ArrowUp" then NavigatePrevious node else NavigateNext node)
+    end;
     if submit && kind <> Combobox then begin
       W.KeyboardEvent.preventDefault event;
       emit renderer (Submit node)
