@@ -2558,9 +2558,10 @@ let apply_journal_op ctx (op : patch_op) =
     (match Hashtbl.find_opt ctx.sparent c with
      | Some op when op <> p -> ignore (in_vlist ctx op)
      | _ -> ());
-    if in_vlist ctx p then begin
-      (* The child is list data now: detach its old mirror slot and
-         scrub its shadow — the resync materializes rows itself. *)
+    if in_vlist ctx p || not (Hashtbl.mem ctx.pkids p) then begin
+      (* Virtual rows materialize during resync; an unmounted parent
+         materializes its final subtree on attachment. Building either
+         child here would leave stale grid and popup registrations. *)
       detach_from_parent ctx c;
       purge ctx c
     end

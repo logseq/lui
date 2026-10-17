@@ -583,14 +583,23 @@ let test_grid_column_spans () =
     Lui_wire_schema.all_properties with
     | Some property -> property
     | None -> fail "Missing typed property: grid-column-span" in
-  List.iter (fun scale ->
+  List.iter (fun scale -> List.iter (fun incremental ->
     let store=Lui_store.create () and layout=Lui_layout.create () in
-    apply store [CreateNode (1,Root);CreateNode (2,Grid);
+    apply store [CreateNode (1,Root)];
+    if incremental then
+      Lui_layout.sync ~scale ~width:(600.*.scale) ~height:(300.*.scale) layout store;
+    apply store [CreateNode (9,Column);CreateNode (2,Grid);
       CreateNode (3,Box);CreateNode (4,Box);CreateNode (5,Box);
-      InsertChild (1,2,0);InsertChild (2,3,0);InsertChild (2,4,1);InsertChild (2,5,2);
-      SetProp (2,Gap,IntValue 24);
+      InsertChild (2,3,0);InsertChild (2,4,1);InsertChild (2,5,2);
+      InsertChild (9,2,0);InsertChild (1,9,0);
+      SetProp (2,Gap,IntValue 24);SetProp (2,GridColumns,IntValue 3);
+      SetProp (4,span,IntValue 2);
       SetProp (3,HeightValue,IntValue 20);SetProp (4,HeightValue,IntValue 30);
       SetProp (5,HeightValue,IntValue 40)] ;
+    if incremental then (
+      Lui_layout.sync ~scale ~width:(600.*.scale) ~height:(300.*.scale) layout store;
+      let label=Option.get (Lui_layout.rect layout 3) in
+      check (float eps) "new nested grid label width" 184. (label.w/.scale));
     List.iter (fun columns ->
       apply store [SetProp (2,GridColumns,IntValue columns);
         SetProp (4,span,IntValue (if columns=1 then 1 else 2))];
@@ -609,7 +618,7 @@ let test_grid_column_spans () =
     let rejected = try
       Lui_layout.sync ~scale ~width:(600.*.scale) ~height:(300.*.scale) layout store;false
     with Invalid_argument _ -> true in
-    check bool "a span larger than its grid must fail fast" true rejected) [1.;2.]
+    check bool "a span larger than its grid must fail fast" true rejected) [false;true]) [1.;2.]
 
 (* Content taller than the offered frame grows the frame instead of
    being compressed or cut; content_extent reports it. *)
