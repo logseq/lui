@@ -385,7 +385,7 @@ let kind_property_matrix kind =
 
 let kind_extra_properties kind =
   match kind with
-  | Dialog -> [ DescriptionValue; BackgroundValue; BorderColorValue; BorderWidth; CornerRadius ]
+  | Dialog -> [ DescriptionValue; BackgroundValue; ForegroundValue; BorderColorValue; BorderWidth; CornerRadius; Gap ]
   | Box -> [ Inert ]
   | _ -> []
 

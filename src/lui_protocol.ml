@@ -946,9 +946,7 @@ let common_property_supported kind property =
     | _ -> false)
   | WidthValue | HeightValue -> kind <> Tooltip
   | MinWidth | MaxWidth | MinHeight | MaxHeight ->
-    (* Dialogs carry px clamps alongside viewport fractions (e.g.
-       width:90vw + max-width:1246px); the host caps the default dialog
-       size only when the view did not set an explicit clamp. *)
+    (* Dialogs carry pixel clamps alongside viewport fractions. *)
     kind = Dialog || ((not (modal_surface kind)) && kind <> Tooltip)
   | ContainerRelativeFrameValue | ContainerRelativeFrameInset ->
     kind <> Root && not (modal_surface kind)
@@ -1343,7 +1341,7 @@ let property_supported kind property =
         ]
     | Dialog ->
       List.mem property
-        [DescriptionValue; BackgroundValue; BorderColorValue; BorderWidth; CornerRadius]
+        [DescriptionValue; BackgroundValue; ForegroundValue; BorderColorValue; BorderWidth; CornerRadius; Gap]
       || common_property_supported kind property
     | FilePreview ->
       property = PathValue || property = PointerEnabled

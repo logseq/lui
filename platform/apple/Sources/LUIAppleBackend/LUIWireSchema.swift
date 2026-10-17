@@ -290,7 +290,7 @@ enum LUISchemaMatrix {
     ]
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [
-        .dialog: [.description, .background, .borderColor, .borderWidth, .cornerRadius],
+        .dialog: [.description, .background, .foreground, .borderColor, .borderWidth, .cornerRadius, .gap],
         .box: [.inert],
     ]
 }

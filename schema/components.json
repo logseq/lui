@@ -2108,9 +2108,11 @@
     "dialog": [
       "description",
       "background",
+      "foreground",
       "border-color",
       "border-width",
-      "corner-radius"
+      "corner-radius",
+      "gap"
     ],
     "box": [
       "inert"

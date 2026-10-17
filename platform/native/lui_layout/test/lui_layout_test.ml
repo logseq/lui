@@ -620,7 +620,7 @@ let test_popup_default_centered () =
 (* Dialog width caps also respect the viewport during repeated resize. *)
 let test_dialog_viewport_width () =
   List.iter
-    (fun scale ->
+    (fun (scale, child_width) ->
       List.iter
         (fun (declared, explicit_width) ->
           let store = Lui_store.create () and layout = Lui_layout.create () in
@@ -631,7 +631,7 @@ let test_dialog_viewport_width () =
                CreateNode (3, Box);
                InsertChild (1, 2, 0);
                InsertChild (2, 3, 0);
-               SetProp (3, WidthValue, IntValue 1400);
+               SetProp (3, WidthValue, IntValue child_width);
                SetProp (3, HeightValue, IntValue 100);
              ]
             @ (match explicit_width with
@@ -652,9 +652,10 @@ let test_dialog_viewport_width () =
                 | None -> (
                     match explicit_width with
                     | Some size -> float_of_int size
-                    | None -> if width >= 1024. then 768. else 672.)
+                    | None -> float_of_int child_width)
               in
-              let expected = Float.min cap (width -. 32.) *. scale in
+              let natural = float_of_int (Option.value explicit_width ~default:child_width) in
+              let expected = Float.min natural (Float.min cap (width -. 32.)) *. scale in
               check (float eps)
                 "dialog width respects its declared cap and available viewport"
                 expected r.w;
@@ -669,7 +670,7 @@ let test_dialog_viewport_width () =
           (Some 400, None);
           (None, Some 898);
         ])
-    [ 1.; 2. ]
+    [ 1.,80; 1.,1400; 2.,80; 2.,1400 ]
 
 (* A store-root popup centers in the offered frame extent. *)
 let test_root_popup_centered_in_frame () =

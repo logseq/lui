@@ -1484,9 +1484,7 @@ let refine_popups ctx =
                  | "dialog" | "modal" ->
                    let available = Float.max 0. (ctx.vw -. (32. *. ctx.scale)) in
                    let declared = match pstyle.max_width with
-                     | Unset -> (match pstyle.width with
-                       | Unset -> (if ctx.vw >= 1024. *. ctx.scale then 768. else 672.) *. ctx.scale
-                       | width -> len_px ~owner:ctx.vw width)
+                     | Unset -> available
                      | limit -> len_px ~owner:ctx.vw limit in
                    Pt (Float.min available declared)
                  | _ -> (match pstyle.max_width with Unset -> Pt ctx.vw | limit -> limit));

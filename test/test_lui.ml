@@ -2712,6 +2712,10 @@ let test_visual_appearance_props () =
   Alcotest.(check bool) "viewport sizes on dialog" true
     (property_supported Dialog WidthViewport
      && property_supported Dialog MaxHeightViewport);
+  Alcotest.(check bool) "dialog constructor supports typed spacing and inherited ink" true
+    (property_supported Dialog Gap && property_supported Dialog ForegroundValue);
+  Alcotest.(check bool) "dialog supports content clipping" true
+    (property_supported Dialog Overflow);
   Alcotest.(check bool) "min-viewport <= max-viewport" true
     (node_properties_supported Row
        (Property_map.add MinHeightViewport (FloatValue 0.3)
