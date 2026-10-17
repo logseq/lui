@@ -930,19 +930,26 @@ let box_ops ctx store id rs r alpha =
 
 (* ---------- helpers for control chrome ---------- *)
 
+let node_foreground hooks store id st =
+  let hovered =
+    if st.hovered && not st.disabled then pcolor hooks store id "hover-foreground"
+    else None in
+  match hovered with Some _ -> hovered | None -> pcolor hooks store id "foreground"
+
+(* Resolve declared color through the same interaction state and ancestry for
+   text and host-rasterized currentColor images. An undeclared chain returns
+   None so the caller can apply its kind-specific theme color. *)
+let rec declared_foreground hooks store id =
+  match node_foreground hooks store id (effective_state hooks store id) with
+  | Some _ as ink -> ink
+  | None ->
+      (match Lui_store.parent store id with
+       | Some parent when parent <> id -> declared_foreground hooks store parent
+       | _ -> None)
+
 let text_fg ctx store id =
-  (* CSS color inherits: nearest ancestor carrying a foreground wins,
-     falling back to the theme text color. *)
-  let rec walk id =
-    match pcolor ctx.hooks store id "foreground" with
-    | Some c -> Some c
-    | None -> (
-      match Lui_store.parent store id with
-      | Some pid when pid <> id -> walk pid
-      | _ -> None)
-  in
-  match walk id with
-  | Some c -> c
+  match declared_foreground ctx.hooks store id with
+  | Some ink -> ink
   | None -> theme ctx "foreground"
 
 (* Choice chrome stays beside labels and follows alignment without a label. *)
@@ -2356,7 +2363,7 @@ let default_chrome ctx store id st kind r rs alpha =
    keeps the view's ink. *)
 let default_text_fg ctx store id kind st rs =
   let bg_styled = rs.rs_background <> None in
-  match pcolor ctx.hooks store id "foreground" with
+  match node_foreground ctx.hooks store id st with
   | Some c -> c
   | None -> (
     match kind with

@@ -464,6 +464,34 @@ let test_state_background () =
   | [ Fill f ] -> check int "hover green" 255 f.fcolor.g
   | _ -> fail "expected one Fill op"
 
+let test_hover_foreground () =
+  let t = store () in
+  apply t [Lui_protocol.CreateNode (1,Column);CreateNode (2,Button);
+    CreateNode (3,Text);CreateNode (4,Text);InsertChild (1,2,0);
+    InsertChild (2,3,0);InsertChild (2,4,1);
+    SetProp (1,ForegroundValue,StringValue "#112233");
+    SetProp (2,ForegroundValue,StringValue "inherit");
+    SetProp (2,HoverForeground,StringValue "#abcdef");
+    SetProp (2,TextValue,StringValue "button");
+    SetProp (3,TextValue,StringValue "inherited child");
+    SetProp (4,TextValue,StringValue "explicit child");
+    SetProp (4,ForegroundValue,StringValue "#456789")];
+  let verify ~hovered ~disabled expected =
+    let inks=Hashtbl.create 4 in
+    let h={ (hooks ()) with
+      Lui_paint.state_of=(fun id -> if id=2 then {Lui_paint.state_neutral with hovered;disabled} else Lui_paint.state_neutral);
+      text_ops=(fun id _ ink _ -> Hashtbl.replace inks id ink;[])} in
+    ignore (paint_with h t ());
+    List.iter (fun id -> check bool "control and inherited label share the active foreground" true
+      (Hashtbl.find_opt inks id=Some expected)) [2;3];
+    check bool "a child declared color keeps its own foreground" true
+      (Hashtbl.find_opt inks 4=Some (color 69 103 137 255)) in
+  verify ~hovered:false ~disabled:false (color 17 34 51 255);
+  verify ~hovered:true ~disabled:false (color 171 205 239 255);
+  verify ~hovered:true ~disabled:true (color 17 34 51 255);
+  apply t [RemoveProp (2,HoverForeground)];
+  verify ~hovered:true ~disabled:false (color 17 34 51 255)
+
 let test_state_precedence () =
   let t = store () in
   apply t
@@ -1510,6 +1538,7 @@ let () =
          test_case "inset op" `Quick test_inset_shadow_op ]);
       ("state",
        [ test_case "hover bg" `Quick test_state_background;
+         test_case "hover foreground inheritance" `Quick test_hover_foreground;
          test_case "precedence" `Quick test_state_precedence;
          test_case "selected+hover" `Quick test_selected_shadow;
          test_case "disabled opacity" `Quick test_disabled_opacity ]);
