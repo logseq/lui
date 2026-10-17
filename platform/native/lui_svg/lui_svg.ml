@@ -621,6 +621,7 @@ let parse_path_d s : pcmd list list =
       (match cmd with
        | 'M' ->
          let px = num () +. dx and py = num () +. dy in
+         close_sub ();
          emit (PMove (px, py)); x := px; y := py; open_sub px py;
          prev_ctrl := None; prev_qctrl := None;
          (* implicit lineto repetition *)

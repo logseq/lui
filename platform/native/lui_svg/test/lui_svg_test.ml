@@ -232,6 +232,42 @@ let test_api () =
 
 (* ---------- fixtures ---------- *)
 
+let test_subpath_moves () =
+  let render paths =
+    let body = String.concat "" (List.map (fun path ->
+        "<path d=\"" ^ path ^ "\"/>") paths) in
+    parse_exn (svg ~vb:"0 0 24 24"
+        ("<g fill=\"none\" stroke=\"black\" stroke-width=\"2\" "
+         ^ "stroke-linecap=\"round\" stroke-linejoin=\"round\">"
+         ^ body ^ "</g>"))
+  in
+  List.iter (fun (name, compound, separate) ->
+      let actual = render [compound] and expected = render separate in
+      List.iter (fun size ->
+          let actual = Lui_svg.rasterize actual ~w:size ~h:size in
+          let expected = Lui_svg.rasterize expected ~w:size ~h:size in
+          (* Separate elements can composite antialiasing differently at
+             touching endpoints. Large interior bridges are never valid. *)
+          let error = ref 0 in
+          Bytes.iteri (fun i value ->
+              if i mod 4 = 3 then
+                error := !error + Int.abs (Char.code value - Char.code (Bytes.get expected i))) actual;
+          Alcotest.(check bool) (Printf.sprintf "%s at %dpx" name size) true
+            (!error <= size * size * 2)) [24; 36; 48])
+    [ "absolute move", "M3 4L8 4M16 18L21 18",
+        ["M3 4L8 4"; "M16 18L21 18"]
+    ; "relative move", "M3 4l5 0m8 14l5 0",
+        ["M3 4l5 0"; "M16 18l5 0"]
+    ; "relative move after close", "M3 4l5 0l0 4zm13 14l5 0",
+        ["M3 4l5 0l0 4z"; "M16 18l5 0"]
+    ; "fold arrow", "M12 3v6l3 -3m-6 0l3 3",
+        ["M12 3v6l3 -3"; "M9 6l3 3"]
+    ; "refresh arrow", "M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4",
+        ["M20 11a8.1 8.1 0 0 0 -15.5 -2"; "M4 5v4h4"]
+    ; "opposite refresh arrow", "M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4",
+        ["M4 13a8.1 8.1 0 0 0 15.5 2"; "M20 19v-4h-4"]
+    ]
+
 let read_file path =
   let ic = open_in_bin path in
   let n = in_channel_length ic in
@@ -338,6 +374,7 @@ let () =
       ]);
     ("structure", [
         Alcotest.test_case "groups/clips/use" `Quick test_structure;
+        Alcotest.test_case "independent path moves" `Quick test_subpath_moves;
       ]);
     ("api", [
         Alcotest.test_case "api" `Quick test_api;
