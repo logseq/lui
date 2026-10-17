@@ -31,6 +31,7 @@ let install renderer node ~materialize ~unmount =
     let mounted = Hashtbl.create 16 in
     let disposed = ref false in
     let updating = ref false in
+    let pending_render = ref false in
     let render_ref = ref (fun () -> ()) in
     let document = W.Document.unsafeAsHtmlDocument renderer.web_document in
     let live_rows () =
@@ -128,8 +129,9 @@ let install renderer node ~materialize ~unmount =
     in
     update_rows ();
     let virtualizer = V.make (make_options ()) in
-    let render () =
-      if (not !disposed) && not !updating then begin
+    let rec render () =
+      if !updating then pending_render := true
+      else if not !disposed then begin
         updating := true;
         Fun.protect
           ~finally:(fun () -> updating := false)
@@ -213,7 +215,11 @@ let install renderer node ~materialize ~unmount =
             V.measure virtualizer Js.Nullable.null;
             style spacer "height"
               (Js.Float.toString (V.total_size virtualizer) ^ "px");
-            sync_tree_roving ())
+            sync_tree_roving ());
+        if !pending_render then begin
+          pending_render := false;
+          render ()
+        end
       end
     in
     render_ref := render;
