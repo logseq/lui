@@ -559,6 +559,47 @@ let test_wheel () =
   Alcotest.(check bool) "wheel moved content" true
     (Lui_scroll.offset st Lui_scroll.Y 5 > 0.)
 
+let test_wheel_boundary_chaining () =
+  let store =
+    store_of
+      [
+        CreateNode (1, Root);
+        CreateNode (2, Scroll);
+        CreateNode (3, Scroll);
+        InsertChild (1, 2, 0);
+        InsertChild (2, 3, 0);
+      ]
+  in
+  let env = scroll_env () in
+  List.iter
+    (fun axis ->
+      List.iter
+        (fun (inner, delta, expected_inner, expected_outer) ->
+          let state, _ = Lui_scroll.set_cap Lui_scroll.initial axis 2 200. in
+          let state, _ = Lui_scroll.set_cap state axis 3 100. in
+          let state, _ = Lui_scroll.set_offset env store state axis 2 50. in
+          let state, _ = Lui_scroll.set_offset env store state axis 3 inner in
+          let dx, dy =
+            match axis with Lui_scroll.X -> (delta, 0.) | Y -> (0., -.delta)
+          in
+          let result, _ =
+            Lui_scroll.wheel env store state ~path:[ 3; 2; 1 ] ~scale:1. ~dx ~dy
+              ~mods:none
+          in
+          Alcotest.(check (float 0.001))
+            "inner scroll owns available movement" expected_inner
+            (Lui_scroll.offset result axis 3);
+          Alcotest.(check (float 0.001))
+            "wheel reaches an ancestor at the inner boundary" expected_outer
+            (Lui_scroll.offset result axis 2))
+        [
+          (100., 1., 100., 94.);
+          (0., -1., 0., 6.);
+          (50., 1., 94., 50.);
+          (50., -1., 6., 50.);
+        ])
+    [ Lui_scroll.X; Y ]
+
 (* ---------- Lui_drag ---------- *)
 
 let test_drag_flow () =
@@ -1030,7 +1071,8 @@ let () =
         [ Alcotest.test_case "static" `Quick test_static_selection ] );
       ( "scroll",
         [ Alcotest.test_case "offsets" `Quick test_scroll_offsets;
-          Alcotest.test_case "wheel" `Quick test_wheel ] );
+          Alcotest.test_case "wheel" `Quick test_wheel;
+          Alcotest.test_case "boundary chaining" `Quick test_wheel_boundary_chaining ] );
       ( "drag",
         [ Alcotest.test_case "flow" `Quick test_drag_flow ] );
       ( "pointer",

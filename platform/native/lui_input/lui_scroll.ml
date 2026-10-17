@@ -282,9 +282,9 @@ let scroll_align env store st a it anchor =
    pointer per axis — a +x delta scrolls right, a +y delta scrolls
    content up (SDL convention), and Shift turns the vertical delta
    horizontal (the desktop's wheel-x gesture). Each axis applies to
-   the first container on the hit path with range on that axis, so
-   an unscrollable-x container does not swallow a horizontal delta
-   for a deeper one. *)
+   the first container on the hit path with remaining range in the
+   intended direction. A container at its boundary lets an ancestor
+   continue scrolling on that axis. *)
 let wheel env store st ~path ~scale ~dx ~dy ~(mods : Lui_input.mods) =
   let ix = dx +. if mods.Lui_input.shift then -. dy else 0. in
   let iy = if mods.Lui_input.shift then 0. else -. dy in
@@ -296,7 +296,10 @@ let wheel env store st ~path ~scale ~dx ~dy ~(mods : Lui_input.mods) =
         match
           List.find_opt
             (fun id ->
-               scrollable store id && cap st axis id > 0.001)
+               scrollable store id
+               && if intent > 0. then
+                    offset st axis id < cap st axis id -. 0.001
+                  else offset st axis id > 0.001)
             path
         with
         | Some id ->
