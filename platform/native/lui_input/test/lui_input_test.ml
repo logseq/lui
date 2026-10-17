@@ -180,7 +180,27 @@ let test_modal_press_swallow_and_dismiss () =
           InsertChild (1, 11, 1) ] };
   (match Lui_overlay.press store Lui_overlay.initial [ 4; 2; 1 ] with
    | _, `Proceed [ `Dispatch (Dismiss 11) ] -> ()
-   | _ -> Alcotest.fail "popover should light-dismiss")
+   | _ -> Alcotest.fail "popover should light-dismiss");
+  Lui_store.apply_batch store {generation=4;ops=
+    [DropNode 11;CreateNode (12,ButtonGroup);CreateNode (13,Button);
+     CreateNode (14,Text);CreateNode (15,Popover);
+     InsertChild (1,12,1);InsertChild (12,13,0);InsertChild (13,14,0);
+     InsertChild (12,15,1);SetProp (15,AnchorValue,StringValue "below")]};
+  (match Lui_overlay.press store Lui_overlay.initial [14;13;12;1] with
+   | _, `Proceed [] -> ()
+   | _ -> Alcotest.fail "an anchored popover must let its trigger toggle without dismissing first");
+  (match Lui_overlay.press store Lui_overlay.initial [4;2;1] with
+   | _, `Proceed [`Dispatch (Dismiss 15)] -> ()
+   | _ -> Alcotest.fail "a different owner must still light-dismiss the popover");
+  Lui_store.apply_op store (SetProp (15,PopupX,FloatValue 0.));
+  (match Lui_overlay.press store Lui_overlay.initial [14;13;12;1] with
+   | _, `Proceed [`Dispatch (Dismiss 15)] -> ()
+   | _ -> Alcotest.fail "a coordinate-positioned popover has no trigger owner");
+  Lui_store.apply_op store (RemoveProp (15,PopupX));
+  Lui_store.apply_op store (RemoveProp (15,AnchorValue));
+  (match Lui_overlay.press store Lui_overlay.initial [14;13;12;1] with
+   | _, `Proceed [`Dispatch (Dismiss 15)] -> ()
+   | _ -> Alcotest.fail "an unanchored popover must retain outside dismissal")
 
 let test_escape_peels () =
   let store = base_store () in

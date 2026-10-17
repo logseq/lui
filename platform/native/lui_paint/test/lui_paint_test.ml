@@ -41,6 +41,31 @@ let paint_with h t ?(width = 200) ?(height = 200) ?(scale = 1.)
     ~clear:(color 0 0 0 0);
   s
 
+let test_button_icon_gap () =
+  List.iter (fun scale -> List.iter (fun trailing -> List.iter (fun gap ->
+    let t = store () in
+    apply t ([Lui_protocol.CreateNode (1,Button);
+      SetProp (1,TextValue,StringValue "Add property");
+      SetProp (1,InlineIconName,StringValue "plus");
+      SetProp (1,PaddingHorizontal,IntValue 12);
+      SetProp (1,PaddingVertical,IntValue 4);
+      SetProp (1,IconPlacementValue,StringValue (if trailing then "trailing" else "leading"))]
+      @ Option.fold ~none:[] ~some:(fun value -> [Lui_protocol.SetProp (1,Gap,IntValue value)]) gap);
+    let image = new_image ~w:1 ~h:1 (Bytes.make 4 '\255') in
+    let label = ref None in
+    let h = {(hooks ~layout:(fun _ -> Lui_paint.placement_of_rect
+      (rect 0. 0. (160.*.scale) (28.*.scale))) ()) with
+      Lui_paint.image_of=(fun _ -> Some image);image_in=(fun _ _ -> Some image);
+      text_ops=(fun _ region _ _ -> label:=Some region;[])} in
+    let painted = paint_with h t ~width:400 ~height:100 ~scale () in
+    let icon = List.find_map (function Image i -> Some i.irect2 | _ -> None) painted.ops |> Option.get in
+    let label = Option.get !label in
+    let actual = (if trailing then icon.x-.label.x-.label.w else label.x-.icon.x-.icon.w)
+      +.12.*.scale in
+    check (float 0.1) "button label and icon honor the requested gap"
+      (float_of_int (Option.value gap ~default:6)*.scale) actual)
+    [None;Some 0;Some 4;Some 16]) [false;true]) [1.;2.]
+
 let test_select_indicator () =
   List.iter
     (fun kind ->
@@ -1464,6 +1489,7 @@ let () =
          test_case "choice chrome alignment" `Quick test_choice_chrome_alignment;
          test_case "hex" `Quick test_hex;
          test_case "select indicator" `Quick test_select_indicator;
+         test_case "button icon gap" `Quick test_button_icon_gap;
          test_case "image fill crop" `Quick test_image_fill_crop;
          test_case "edges" `Quick test_edges ]);
       ("ops",

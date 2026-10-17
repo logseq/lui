@@ -1945,7 +1945,7 @@ let labeled_content_ops ctx store id r alpha ~fg ~placeholder_ok =
         let tp = text_placement_of store id in
         let trailing = pstr store id "icon-placement" = Some "trailing" in
         let pad = (if trailing then tp.tp_pad_right else tp.tp_pad_left) *. s in
-        let gap = 6. *. s in
+        let gap = Option.value ~default:6. (pnum store id "gap") *. s in
         let ix =
           if trailing then r.x +. r.w -. pad -. size else r.x +. pad
         in

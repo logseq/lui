@@ -16,6 +16,30 @@ let set_style dom_node name value =
   let scope = W.HtmlElement.style (W.Element.unsafeAsHtmlElement dom_node) in
   Util.set_style scope name value
 
+(* Typed edges have the same specificity on every host: side, axis, all.
+   CSS shorthand assignment order must not change that contract. *)
+let refresh_spacing renderer node dom_node ~margin =
+  let prefix, all, horizontal, vertical, top, right, bottom, left =
+    if margin then
+      "margin", MarginValue, MarginHorizontal, MarginVertical,
+      MarginTop, MarginRight, MarginBottom, MarginLeft
+    else
+      "padding", PaddingValue, PaddingHorizontal, PaddingVertical,
+      PaddingTop, PaddingRight, PaddingBottom, PaddingLeft
+  in
+  let value property =
+    match Store.property renderer.web_store node property with
+    | Some (IntValue number) -> Some (string_of_int number ^ "px")
+    | _ -> None
+  in
+  List.iter (fun (side, property, axis) ->
+    let resolved = List.find_map value [property;axis;all] in
+    set_style dom_node (prefix ^ "-" ^ side) (Option.value resolved ~default:""))
+    ["top",top,vertical;"right",right,horizontal;
+     "bottom",bottom,vertical;"left",left,horizontal];
+  if not margin then
+    set_style dom_node "--lui-content-padding" (Option.value (value all) ~default:"")
+
 let transition_surface kind dom_node =
   match kind with
   | DropdownMenu | Popover -> Util.child_element dom_node 0
@@ -724,36 +748,12 @@ let rec apply_property renderer queue_split node kind dom_node property
   | GrowValue, FloatValue grow ->
       set_style dom_node "flex-grow" (Js.Float.toString grow)
   | GridColumns, IntValue columns -> apply_grid_columns dom_node columns
-  | PaddingValue, IntValue padding ->
-      set_style dom_node "padding" (string_of_int padding ^ "px");
-      set_style dom_node "--lui-content-padding"
-        (string_of_int padding ^ "px")
-  | PaddingHorizontal, IntValue padding ->
-      set_style dom_node "padding-inline" (string_of_int padding ^ "px")
-  | PaddingVertical, IntValue padding ->
-      set_style dom_node "padding-block" (string_of_int padding ^ "px")
-  | PaddingTop, IntValue padding ->
-      set_style dom_node "padding-top" (string_of_int padding ^ "px")
-  | PaddingRight, IntValue padding ->
-      set_style dom_node "padding-right" (string_of_int padding ^ "px")
-  | PaddingBottom, IntValue padding ->
-      set_style dom_node "padding-bottom" (string_of_int padding ^ "px")
-  | PaddingLeft, IntValue padding ->
-      set_style dom_node "padding-left" (string_of_int padding ^ "px")
-  | MarginValue, IntValue margin ->
-      set_style dom_node "margin" (string_of_int margin ^ "px")
-  | MarginHorizontal, IntValue margin ->
-      set_style dom_node "margin-inline" (string_of_int margin ^ "px")
-  | MarginVertical, IntValue margin ->
-      set_style dom_node "margin-block" (string_of_int margin ^ "px")
-  | MarginTop, IntValue margin ->
-      set_style dom_node "margin-top" (string_of_int margin ^ "px")
-  | MarginRight, IntValue margin ->
-      set_style dom_node "margin-right" (string_of_int margin ^ "px")
-  | MarginBottom, IntValue margin ->
-      set_style dom_node "margin-bottom" (string_of_int margin ^ "px")
-  | MarginLeft, IntValue margin ->
-      set_style dom_node "margin-left" (string_of_int margin ^ "px")
+  | (PaddingValue | PaddingHorizontal | PaddingVertical | PaddingTop
+    | PaddingRight | PaddingBottom | PaddingLeft), IntValue _ ->
+      refresh_spacing renderer node dom_node ~margin:false
+  | (MarginValue | MarginHorizontal | MarginVertical | MarginTop
+    | MarginRight | MarginBottom | MarginLeft), IntValue _ ->
+      refresh_spacing renderer node dom_node ~margin:true
   | BackgroundValue, StringValue background ->
       set_style dom_node "background" (Util.web_color_value background)
   | ForegroundValue, StringValue foreground ->
@@ -1134,22 +1134,12 @@ let remove_property renderer queue_split node kind dom_node property =
            set_style dom_node "grid-auto-flow" "";
            set_style dom_node "grid-auto-columns" "";
            set_style dom_node "grid-template-columns" ""
-       | PaddingValue ->
-           set_style dom_node "padding" "";
-           set_style dom_node "--lui-content-padding" ""
-       | PaddingHorizontal -> set_style dom_node "padding-inline" ""
-       | PaddingVertical -> set_style dom_node "padding-block" ""
-       | PaddingTop -> set_style dom_node "padding-top" ""
-       | PaddingRight -> set_style dom_node "padding-right" ""
-       | PaddingBottom -> set_style dom_node "padding-bottom" ""
-       | PaddingLeft -> set_style dom_node "padding-left" ""
-       | MarginValue -> set_style dom_node "margin" ""
-       | MarginHorizontal -> set_style dom_node "margin-inline" ""
-       | MarginVertical -> set_style dom_node "margin-block" ""
-       | MarginTop -> set_style dom_node "margin-top" ""
-       | MarginRight -> set_style dom_node "margin-right" ""
-       | MarginBottom -> set_style dom_node "margin-bottom" ""
-       | MarginLeft -> set_style dom_node "margin-left" ""
+       | PaddingValue | PaddingHorizontal | PaddingVertical | PaddingTop
+       | PaddingRight | PaddingBottom | PaddingLeft ->
+           refresh_spacing renderer node dom_node ~margin:false
+       | MarginValue | MarginHorizontal | MarginVertical | MarginTop
+       | MarginRight | MarginBottom | MarginLeft ->
+           refresh_spacing renderer node dom_node ~margin:true
        | BackgroundValue -> set_style dom_node "background" ""
        | ForegroundValue -> set_style dom_node "color" ""
        | BorderColorValue -> set_style dom_node "border-color" ""

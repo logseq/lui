@@ -109,6 +109,23 @@ let test_picker_intrinsic_width () =
         [ Select; Combobox ])
     [ 1.; 2. ]
 
+let test_button_icon_gap () =
+  List.iter (fun scale -> List.iter (fun gap ->
+    let store = Lui_store.create () in
+    apply store ([CreateNode (1,Root);CreateNode (2,Row);CreateNode (3,Button);
+      InsertChild (1,2,0);InsertChild (2,3,0);
+      SetProp (3,TextValue,StringValue "Add property");
+      SetProp (3,InlineIconName,StringValue "plus");
+      SetProp (3,PaddingHorizontal,IntValue 12)]
+      @ Option.fold ~none:[] ~some:(fun value -> [SetProp (3,Gap,IntValue value)]) gap);
+    let layout = Lui_layout.create () in
+    Lui_layout.sync ~scale ~width:(500.*.scale) ~height:(100.*.scale)
+      ~measure:(fun _ _ _ _ -> Some (80.*.scale,20.*.scale)) layout store;
+    let r = Option.get (Lui_layout.rect layout 3) in
+    check (float 0.1) "button reserves its label, icon, requested gap and padding"
+      ((80.+.16.+.float_of_int (Option.value gap ~default:6)+.24.)*.scale) r.w)
+    [None;Some 0;Some 4;Some 16]) [1.;2.]
+
 let test_list_item_content_flow () =
   List.iter
     (fun scale ->
@@ -1842,6 +1859,7 @@ let () =
          test_case "absolute inset" `Quick test_absolute_inset;
          test_case "text measured" `Quick test_text_measured;
          test_case "picker intrinsic width" `Quick test_picker_intrinsic_width;
+         test_case "button icon gap" `Quick test_button_icon_gap;
          test_case "percent size" `Quick test_percent_size;
          test_case "column in row" `Quick test_nested_column_in_row;
          test_case "run placements" `Quick test_run_placements;

@@ -1086,7 +1086,8 @@ let measure_for ctx id ~kids : Lui_flex.measure option =
   | [], Some t ->
       let icon_extra =
         match Lui_store.string_prop ctx.store id "icon" with
-        | Some name when name <> "" -> 22.
+        | Some name when name <> "" ->
+            16. +. Option.value ~default:6. (pnum ctx.store id "gap")
         | _ -> 0.
       in
       let indicator_extra =

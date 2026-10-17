@@ -85,6 +85,15 @@ let top_scan store ~open_menu =
 let inside store ov path =
   List.exists (fun i -> i = ov || Lui_query.is_desc store i ov) path
 
+let inside_anchor store overlay path =
+  match Lui_query.kind_name store overlay,
+        Lui_store.string_prop store overlay "anchor", Lui_store.parent store overlay with
+  | "popover", Some _, Some owner
+    when Lui_query.kind_name store owner <> "root"
+         && Lui_store.prop store overlay "x" = None
+         && Lui_store.prop store overlay "y" = None -> inside store owner path
+  | _ -> false
+
 (* Modal focus-trap scope for focusables/tab order. *)
 let modal_scope store st =
   match top_scan store ~open_menu:st.open_menu with
@@ -159,7 +168,8 @@ let press store st path =
   match top_scan store ~open_menu:st.open_menu with
   | Some (oid, true, _) when not (inside store oid path) ->
     (st, `Swallow)
-  | Some (oid, false, true) when not (inside store oid path) ->
+  | Some (oid, false, true)
+    when not (inside store oid path || inside_anchor store oid path) ->
     (st, `Proceed [ `Dispatch (Dismiss oid) ])
   | _ -> (st, `Proceed [])
 
