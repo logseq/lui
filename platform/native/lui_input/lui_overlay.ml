@@ -78,6 +78,7 @@ let top_scan store ~open_menu =
     match overlay_class store id with
     | `none -> ()
     | _ when trigger_owned store id && id <> open_menu -> ()
+    | _ when Lui_store.inert_in_chain store id -> ()
     | cls -> top := Some (id, cls = `modal, overlay_dismissible store id));
   !top
 

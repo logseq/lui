@@ -269,6 +269,7 @@ enum class LuiProperty(val wireName: String) {
     hoverForeground("hover-foreground"),
     hoverBorder("hover-border"),
     transition("transition"),
+    inert("inert"),
     ;
 
     companion object {
@@ -308,5 +309,6 @@ object LuiSchemaMatrix {
 
     val extra: Map<LuiNodeKind, Set<LuiProperty>> = mapOf(
         LuiNodeKind.dialog to setOf(LuiProperty.description, LuiProperty.background, LuiProperty.borderColor, LuiProperty.borderWidth, LuiProperty.cornerRadius),
+        LuiNodeKind.box to setOf(LuiProperty.inert),
     )
 }

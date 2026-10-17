@@ -131,7 +131,8 @@ let input_props =
    the conservative default: a missed layout bit is a stale frame, a
    superfluous one only costs a style recompute. *)
 let mask_of_prop name : dirty_mask =
-  if name = "display" then d_structure lor d_layout lor d_paint
+  if name = "inert" then d_input lor d_semantics
+  else if name = "display" then d_structure lor d_layout lor d_paint
   (* Menu semantics change surface bounds, clipping, and child shrink. *)
   else if name = "role" then d_layout_kids lor d_layout lor d_paint lor d_semantics
   else if Hashtbl.mem child_props name then d_layout_kids lor d_layout lor d_paint
@@ -591,6 +592,12 @@ let bool_prop t id name =
   | BoolValue b -> b
   | StringValue _ | FloatValue _ | IntValue _ -> false
   | exception Not_found -> false
+let rec inert_in_chain t id =
+  bool_prop t id "inert"
+  || match parent t id with
+     | Some parent_id -> inert_in_chain t parent_id
+     | None -> false
+
 let string_prop t id name =
   match find_prop t id name with
   | StringValue s -> Some s

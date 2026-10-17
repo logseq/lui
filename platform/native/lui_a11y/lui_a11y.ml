@@ -263,6 +263,7 @@ let description_props = [ "title"; "description"; "meta" ]
 (* ---------- visibility ---------- *)
 
 let self_hidden store id =
+  Lui_store.bool_prop store id "inert" ||
   (match prop store id "visible" with
    | Some (BoolValue false) | Some (StringValue "false") -> true
    | _ -> false)

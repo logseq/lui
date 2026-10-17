@@ -23,6 +23,8 @@
 <output id="interruption-audit-result" role="status">Not run</output>
 <button id="run-split-audit">Run split interaction audit</button>
 <output id="split-audit-result" role="status">Not run</output>
+<button id="run-inert-audit">Run inert subtree audit</button>
+<output id="inert-audit-result" role="status">Not run</output>
 <main id="host"></main>
 <script type="module">
 import * as Web from "lui.web.dom/shell/lui_web.js";
@@ -87,6 +89,37 @@ function openCover(name){const cover=node("popover",root);const body=node("colum
 function alignedOverlays(){for(const alignment of ['top-leading','top','top-trailing','leading','center','trailing','bottom-leading','bottom','bottom-trailing']){const overlay=node('overlay',root,{width:200,height:100,'accessibility-identifier':`overlay-${alignment}`});node('box',overlay,{width:200,height:100});node('box',overlay,{width:20,height:20,alignment});}flush();}
 function togglePopover(){const stack=node('row',root);let popup=null;function close(){if(popup){drop(popup);popup=null;flush();}}button(stack,'Toggle anchored popup',()=>{if(popup){close();return;}popup=node('popover',stack,{anchor:'below'});node('text',popup,{text:'Anchored popup content'});handlers.set(popup,close);flush();});flush();}
 window.audit={renderer,nodes,events,openDialog,closeDialog,setupTracking,setupContextTracking,openSheet,closeSheet,addToast,openCover,alignedOverlays,togglePopover,sheetInput:null};
+
+function runInertAudit(){
+  const output=document.querySelector('#inert-audit-result'),checks=[];
+  const check=(label,pass)=>checks.push({label,pass:!!pass});
+  let scope;
+  try{
+    scope=node('box',root,{width:240,height:100,'accessibility-identifier':'inert-audit-scope'});
+    const inner=node('box',scope,{inert:false});
+    const child=button(inner,'Retained inert action',()=>{});set(child,'accessibility-identifier','inert-audit-action');
+    node('input',scope,{placeholder:'Retained inert input'});
+    flush();
+    const element=document.querySelector('#inert-audit-scope'),control=document.querySelector('#inert-audit-action');
+    control.focus();check('active controls accept focus',document.activeElement===control);
+    const before=element.getBoundingClientRect();
+    set(scope,'inert',true);flush();
+    document.querySelector('#run-inert-audit').focus();control.focus();
+    check('inert excludes descendant focus',document.activeElement!==control);
+    check('typed inert reaches the host',element.hasAttribute('inert'));
+    const during=element.getBoundingClientRect();
+    check('inert preserves layout and paint',before.width===during.width&&before.height===during.height&&getComputedStyle(element).visibility==='visible');
+    set(scope,'inert',false);flush();control.focus();
+    check('reopening restores the same control',document.querySelector('#inert-audit-action')===control&&document.activeElement===control);
+    check('false removes native HTML inert',!element.hasAttribute('inert'));
+    set(scope,'inert',true);flush();
+    ops.push(Protocol.remove_prop_op(scope,props.get('inert')));flush();control.focus();
+    check('removing the property restores focus',document.activeElement===control&&!element.hasAttribute('inert'));
+  }catch(error){check(String(error._1??error.stack??error),false);}
+  finally{if(scope){drop(scope);flush();}}
+  output.textContent=JSON.stringify({state:'Complete',pass:checks.every(c=>c.pass),checks});
+}
+document.querySelector('#run-inert-audit').addEventListener('click',runInertAudit);
 
 const frames=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 const finiteAnimations=el=>el.getAnimations().filter(a=>Number.isFinite(a.effect?.getComputedTiming().endTime));

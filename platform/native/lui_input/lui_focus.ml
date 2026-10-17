@@ -65,6 +65,7 @@ let focusables store ~scope =
     (fun id ->
        Lui_query.node_enabled store id
        && (admits_text store id || activatable store id)
+       && not (Lui_store.inert_in_chain store id)
        &&
        match scope with
        | None -> true
@@ -87,7 +88,9 @@ let step store ~scope ~cur ~dir =
 (* Store-sync half A: the focused node disappeared — ask the driver
    to drop focus ([`Focus (0, false)] intent). *)
 let sync_dead store st =
-  if st.focused <> 0 && not (Lui_store.mem store st.focused)
+  if st.focused <> 0
+     && (not (Lui_store.mem store st.focused)
+         || Lui_store.inert_in_chain store st.focused)
   then [ `Focus (0, false) ]
   else []
 
@@ -103,7 +106,8 @@ let refresh_seen previous ids =
 let scan_autofocus store st ~scope:ov_id =
   let now = ref [] and candidate = ref None in
   Lui_store.iter_preorder store (fun id ->
-    if Lui_store.bool_prop store id "autofocus" && chain_visible store id then begin
+    if Lui_store.bool_prop store id "autofocus" && chain_visible store id
+       && not (Lui_store.inert_in_chain store id) then begin
       now := id :: !now;
       if !candidate = None && not (IntSet.mem id st.autofocus_seen)
          && Lui_query.node_enabled store id

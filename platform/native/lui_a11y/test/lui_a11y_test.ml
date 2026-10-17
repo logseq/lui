@@ -493,6 +493,24 @@ let test_incremental_visibility () =
   verify "recreating an existing root removes former descendants"
     [CreateNode (2,Row)]
 
+let test_inert_subtree () =
+  let store = Lui_store.create () in
+  apply store
+    [CreateNode (1,Column); CreateNode (2,Box); CreateNode (3,Button);
+     CreateNode (4,Text); InsertChild (1,2,0); InsertChild (2,3,0);
+     InsertChild (3,4,0); SetProp (4,TextValue,StringValue "Dock action")];
+  let tree = Lui_a11y.of_store store in
+  ignore (Lui_store.drain_dirty store);
+  apply store [SetProp (2,Inert,BoolValue true)];
+  ignore (Lui_a11y.sync tree);
+  check bool "inert descendant is excluded after incremental sync" false
+    (Lui_a11y.mem tree 3);
+  check bool "inert text is excluded" false (Lui_a11y.mem tree 4);
+  apply store [RemoveProp (2,Inert)];
+  ignore (Lui_a11y.sync tree);
+  check (option string) "same descendant and name return" (Some "Dock action")
+    (name_of tree 3)
+
 (* ---------- focus ---------- *)
 
 let test_focus_tracking () =
@@ -535,7 +553,8 @@ let () =
           test_case "flags" `Quick test_state_flags;
           test_case "value" `Quick test_value ] );
       ( "tree",
-        [ test_case "build forest" `Quick test_build_forest;
+        [ test_case "inert subtree" `Quick test_inert_subtree;
+          test_case "build forest" `Quick test_build_forest;
           test_case "flatten preorder" `Quick test_flatten_preorder;
           test_case "hidden excluded" `Quick test_hidden_excluded;
           test_case "extension keeps id" `Quick test_extension_kept ] );

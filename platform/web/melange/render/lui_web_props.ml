@@ -950,6 +950,7 @@ and apply_secondary_property renderer queue_split node kind dom_node
       apply_frame_inset dom_node inset
   | EdgeValue, StringValue edge ->
       W.Element.setAttribute "data-edge" edge dom_node
+  | Inert, BoolValue inert -> Util.set_state_attribute dom_node "inert" inert
   | Visible, BoolValue visible ->
       Util.set_state_attribute dom_node "data-pinned-hidden" (not visible)
   | AlignmentValue, StringValue alignment ->
@@ -1104,6 +1105,7 @@ let remove_property renderer queue_split node kind dom_node property =
        | ContainerRelativeFrameInset ->
            W.Element.removeAttribute "data-lui-frame-inset" dom_node
        | EdgeValue -> W.Element.removeAttribute "data-edge" dom_node
+       | Inert -> W.Element.removeAttribute "inert" dom_node
        | Visible -> W.Element.removeAttribute "data-pinned-hidden" dom_node
        | AlignmentValue ->
            W.Element.removeAttribute "data-alignment" dom_node

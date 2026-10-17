@@ -1725,6 +1725,11 @@
       "lg": "Transition",
       "wire": "transition",
       "swift": "transition"
+    },
+    {
+      "lg": "Inert",
+      "wire": "inert",
+      "swift": "inert"
     }
   ],
   "events": [
@@ -2083,6 +2088,9 @@
       "border-color",
       "border-width",
       "corner-radius"
+    ],
+    "box": [
+      "inert"
     ]
   }
 }

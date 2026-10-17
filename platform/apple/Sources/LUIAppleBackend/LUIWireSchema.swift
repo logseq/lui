@@ -262,6 +262,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case hoverForeground = "hover-foreground"
     case hoverBorder = "hover-border"
     case transition = "transition"
+    case inert = "inert"
 }
 
 enum LUISchemaMatrix {
@@ -288,5 +289,6 @@ enum LUISchemaMatrix {
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [
         .dialog: [.description, .background, .borderColor, .borderWidth, .cornerRadius],
+        .box: [.inert],
     ]
 }

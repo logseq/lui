@@ -51,6 +51,13 @@ test("direct nested split input cancels eased geometry without disabling program
   assert.equal(result.pass, true, JSON.stringify(result, null, 2))
 })
 
+test("inert containers suspend descendant focus while retaining paint and identity", async () => {
+  await openLayerRegressionPage()
+  await clickButton('Run inert subtree audit')
+  const result = JSON.parse(await session.page.locator('#inert-audit-result').textContent())
+  assert.equal(result.pass, true, JSON.stringify(result, null, 2))
+})
+
 test("popup and dialog defaults use the centered shared motion policy", async () => {
   await openLayerRegressionPage()
   await clickButton('Run surface motion style audit')

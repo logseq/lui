@@ -281,6 +281,7 @@ type property =
   | HoverForeground
   | HoverBorder
   | Transition
+  | Inert
 
 module Property_map : Map.S with type key = property
 

@@ -283,6 +283,7 @@ type property =
   | HoverForeground
   | HoverBorder
   | Transition
+  | Inert
 
 module Property_map =
   Map.Make
@@ -1196,6 +1197,7 @@ let common_property_supported kind property =
     (* Interactive-state appearance channels; no-op on hosts that do not
        resolve interaction states. *)
     kind <> Root && kind <> Tooltip && not (modal_surface kind)
+  | Inert -> kind = Box
   | Transition ->
     (* CSS transition shorthand; web-only visual sugar — other hosts
        apply state changes instantly. Same admission as the state
@@ -1614,6 +1616,7 @@ let property_value_supported property value =
   | FlexWrap, StringValue value -> List.mem value [ "nowrap"; "wrap" ]
   | HoverForeground, StringValue value | HoverBorder, StringValue value ->
     String.trim value <> ""
+  | Inert, BoolValue _ -> true
   | Transition, StringValue value -> transition_supported value
   | ZIndex, IntValue _ -> true
   | WhiteSpace, StringValue value -> List.mem value [ "normal"; "nowrap" ]

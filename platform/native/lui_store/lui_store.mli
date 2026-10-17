@@ -91,6 +91,9 @@ val child_id_at : t -> int -> int -> int
 val last_child_id : t -> int -> int option
 val prop : t -> int -> string -> Lui_protocol.wire_value option
 val bool_prop : t -> int -> string -> bool
+
+(** Whether the node or an ancestor suspends subtree interaction. *)
+val inert_in_chain : t -> int -> bool
 val string_prop : t -> int -> string -> string option
 val float_prop : t -> int -> string -> float option
 val int_prop : t -> int -> string -> int option

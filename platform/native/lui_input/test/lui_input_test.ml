@@ -79,6 +79,57 @@ let test_focus_dead () =
   | [ `Focus (0, false) ] -> ()
   | _ -> Alcotest.fail "expected a clear-focus intent"
 
+let test_inert_subtree () =
+  let store = store_of
+    [ CreateNode (1, Column); CreateNode (2, Box); CreateNode (3, Box); CreateNode (6, Button);
+      CreateNode (4, TextField); CreateNode (5, Button);
+      InsertChild (1,2,0); InsertChild (2,3,0); InsertChild (3,6,0); InsertChild (2,4,1);
+      InsertChild (1,5,1); SetProp (6,TextValue,StringValue "Hidden action");
+      SetProp (6,PointerEnabled,BoolValue true);
+      SetProp (4,Autofocus,BoolValue true);
+      SetProp (4,AppearEnabled,BoolValue true);
+      SetProp (2,Inert,BoolValue true);
+      SetProp (3,Inert,BoolValue false) ] in
+  let failures = ref [] in
+  let expect label value = if not value then failures := label :: !failures in
+  expect "inert descendants leave Tab order"
+    (Lui_focus.focusables store ~scope:None = [5]);
+  expect "inert descendants cannot autofocus"
+    (snd (Lui_focus.scan_autofocus store Lui_focus.initial ~scope:0) = None);
+  let focused = Lui_focus.set Lui_focus.initial ~id:4 ~kbd:false in
+  expect "making the focused subtree inert releases focus"
+    (Lui_focus.sync_dead store focused = [`Focus (0,false)]);
+  expect "inert descendants reject user events"
+    (not (Lui_query.event_supported store 6 (Press 6))
+     && not (Lui_query.event_supported store 4 (TextChanged (4,"x"))));
+  expect "inert preserves mount lifecycle events"
+    (Lui_query.event_supported store 4 (Appear 4));
+  let mask = Lui_store.mask_of_prop "inert" in
+  expect "inert changes input and semantics without relayout"
+    (Lui_store.mask_has mask Lui_store.d_input
+     && Lui_store.mask_has mask Lui_store.d_semantics
+     && not (Lui_store.mask_has mask Lui_store.d_layout));
+  let rects = rects_of [1,rect 0. 0. 200. 100.; 2,rect 0. 0. 100. 100.;
+    3,rect 0. 0. 100. 40.; 6,rect 0. 0. 100. 40.; 4,rect 0. 40. 100. 40.; 5,rect 100. 0. 100. 40.] in
+  expect "inert descendants cannot opt back into pointer hits"
+    (not (List.mem 6 (Lui_query.hit_path store rects ~x:20. ~y:20.)));
+  Lui_store.apply_op store (RemoveProp (2,Inert));
+  expect "removing inert restores the same controls"
+    (Lui_focus.focusables store ~scope:None = [6;4;5]
+     && Lui_query.event_supported store 6 (Press 6));
+  List.iter prerr_endline (List.rev !failures);
+  Alcotest.(check (list string)) "inert interaction contract" [] (List.rev !failures)
+
+let test_inert_overlay () =
+  let store = store_of
+    [CreateNode (1,Column); CreateNode (2,Box); CreateNode (3,Dialog);
+     CreateNode (4,Button); InsertChild (1,2,0); InsertChild (2,3,0);
+     InsertChild (3,4,0); SetProp (2,Inert,BoolValue true);
+     SetProp (4,PointerEnabled,BoolValue true)] in
+  Alcotest.(check (option (triple int bool bool)))
+    "inert modal cannot capture the active interaction scope" None
+    (Lui_overlay.top_scan store ~open_menu:0)
+
 (* ---------- Lui_overlay: the modal focus scope (C3) ---------- *)
 
 let test_modal_clears_background_focus () =
@@ -674,6 +725,26 @@ let test_spatial_hit_wide_list () =
   Alcotest.(check (option int)) "last row hits" (Some 139)
     (Lui_query.hit ~spatial:idx store rects ~x:110. ~y:197.)
 
+let test_hit_path_allocation () =
+  let depth = 128 in
+  let ops = ref [CreateNode (1,Root)] in
+  let rects = Lui_query.Rects.create () in
+  Hashtbl.add rects 1 (rect 0. 0. 200. 200.);
+  for id = 2 to depth do
+    ops := InsertChild (id-1,id,0) :: CreateNode (id,Column) :: !ops;
+    Hashtbl.add rects id (rect 0. 0. 200. 200.)
+  done;
+  let store = store_of (List.rev !ops) in
+  let hit () = Lui_query.hit_path store rects ~x:100. ~y:100. in
+  ignore (hit ());
+  Gc.full_major ();
+  let before = Gc.allocated_bytes () in
+  for _ = 1 to 1000 do ignore (Sys.opaque_identity (hit ())) done;
+  let allocated = (Gc.allocated_bytes () -. before) /. 1000. in
+  Printf.printf "Nested pointer hit allocation: %.0f bytes/hit\n%!" allocated;
+  if allocated > 56_000. then
+    Alcotest.failf "Pointer state propagation allocates %.0f bytes per hit" allocated
+
 let wide_sync_store () =
   let ops = ref [CreateNode (1, Root)] in
   for id = 2 to 6001 do
@@ -814,10 +885,12 @@ let () =
           Alcotest.test_case "dense lifecycle allocation" `Quick test_dense_lifecycle_allocation;
           Alcotest.test_case "tree order and lifecycle" `Quick test_sync_scan_order ] );
       ( "focus",
-        [ Alcotest.test_case "step" `Quick test_focus_step;
+        [ Alcotest.test_case "inert subtree" `Quick test_inert_subtree;
+          Alcotest.test_case "step" `Quick test_focus_step;
           Alcotest.test_case "dead" `Quick test_focus_dead ] );
       ( "overlay",
-        [ Alcotest.test_case "modal focus scope" `Quick
+        [ Alcotest.test_case "inert owner" `Quick test_inert_overlay;
+          Alcotest.test_case "modal focus scope" `Quick
             test_modal_clears_background_focus;
           Alcotest.test_case "press gate" `Quick
             test_modal_press_swallow_and_dismiss;
@@ -850,7 +923,8 @@ let () =
       ( "drag",
         [ Alcotest.test_case "flow" `Quick test_drag_flow ] );
       ( "pointer",
-        [ Alcotest.test_case "hover+press" `Quick
+        [ Alcotest.test_case "allocation" `Quick test_hit_path_allocation;
+          Alcotest.test_case "hover+press" `Quick
             test_pointer_hover_press ] );
       ( "spatial",
         [ Alcotest.test_case "hit equivalence" `Quick

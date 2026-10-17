@@ -854,6 +854,9 @@ val bubble :
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?transition:string -> t list -> t
+
+(** [inert] suspends Web DOM and OCaml native subtree interaction while
+    retaining layout and paint. Floating surfaces keep their own lifecycle. *)
 val box :
   ?key:string ->
   ?gap:int ->
@@ -898,6 +901,8 @@ val box :
   ?opacity_signal:float Signal.signal ->
   ?display:display ->
   ?flex_wrap:flex_wrap ->
+  ?inert:bool ->
+  ?inert_signal:bool Signal.signal ->
   ?transition:string -> t list -> t
 val scroll :
   ?key:string ->
