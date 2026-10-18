@@ -137,6 +137,8 @@ let register ~(register_named : 'a. string -> 'a -> unit) prefix bridge =
   register "submit" (node (fun id -> Submit id));
   register "navigate_previous" (node (fun id -> NavigatePrevious id));
   register "navigate_next" (node (fun id -> NavigateNext id));
+  register "navigation_key" (fun id key shift ->
+    dispatch_event bridge (NavigationKey (id, key, shift)));
   register "dismiss" (node (fun id -> Dismiss id));
   register "picked" (fun id payload ->
       dispatch_event bridge (Picked (id, payload)));

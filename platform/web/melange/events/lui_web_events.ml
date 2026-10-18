@@ -482,6 +482,18 @@ let button_click renderer node kind dom_node state event =
     button_dispatch_primary renderer node kind dom_node
   end
 
+let button_navigation_keydown renderer node event =
+  let key = W.KeyboardEvent.key event in
+  let candidate = NavigationKey (node,key,W.KeyboardEvent.shiftKey event) in
+  if enabled_node renderer node
+     && not (W.KeyboardEvent.isComposing event)
+     && not (W.KeyboardEvent.ctrlKey event || W.KeyboardEvent.metaKey event
+             || W.KeyboardEvent.altKey event)
+     && Store.event_admitted renderer node candidate then begin
+    W.KeyboardEvent.preventDefault event;
+    emit renderer candidate
+  end
+
 let attach_button_events renderer node kind dom_node =
   let state =
     { button_timer = ref None;
@@ -495,6 +507,7 @@ let attach_button_events renderer node kind dom_node =
   let pointer_cancel = button_pointer_cancel state in
   let context_menu = button_context_menu renderer node dom_node state in
   let click = button_click renderer node kind dom_node state in
+  let keydown = button_navigation_keydown renderer node in
   let previous_cleanup = Hashtbl.find_opt renderer.web_cleanups node in
   (* move/up/cancel only matter while a long-press candidate is armed, so
      they are bound on the qualifying pointerdown and removed when the press
@@ -533,6 +546,7 @@ let attach_button_events renderer node kind dom_node =
   W.Element.addEventListener "pointerdown" pointer_down dom_node;
   W.Element.addEventListener "contextmenu" context_menu dom_node;
   W.Element.addEventListener "click" click dom_node;
+  W.Element.addKeyDownEventListener keydown dom_node;
   Hashtbl.replace renderer.web_cleanups node (fun () ->
       (match previous_cleanup with
        | Some cleanup -> cleanup ()
@@ -541,7 +555,8 @@ let attach_button_events renderer node kind dom_node =
       detach_transient ();
       W.Element.removeEventListener "pointerdown" pointer_down dom_node;
       W.Element.removeEventListener "contextmenu" context_menu dom_node;
-      W.Element.removeEventListener "click" click dom_node)
+      W.Element.removeEventListener "click" click dom_node;
+      W.Element.removeKeyDownEventListener keydown dom_node)
 
 (* Kinds whose click path owns PressDetail emission (button family,
    pickers, radio): a suppressed click there must not still emit it, so the

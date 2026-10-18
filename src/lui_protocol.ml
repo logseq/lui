@@ -345,6 +345,7 @@ type event =
   | Load of int
   | NavigatePrevious of int
   | NavigateNext of int
+  | NavigationKey of int * string * bool
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =
@@ -399,6 +400,7 @@ let event_node event =
   | Load node
   | NavigatePrevious node
   | NavigateNext node
+  | NavigationKey (node, _, _)
   | ExtensionEvent (node, _, _, _) -> node
 
 let modal_surface kind = kind = Dialog || kind = Drawer || kind = Sheet
@@ -482,6 +484,9 @@ let event_supported kind event =
   | NavigatePrevious _ | NavigateNext _ ->
     kind = TextField || kind = SecureField || kind = Input
     || kind = SearchField || kind = Textarea
+  | NavigationKey (_, key, _) ->
+    kind = Button && List.mem key
+      ["ArrowLeft";"ArrowRight";"ArrowUp";"ArrowDown";"Home";"End";"PageUp";"PageDown"]
   | TextChanged _ ->
     (match kind with
     | TextField
@@ -575,8 +580,10 @@ let event_supported_for_lookup kind lookup event =
     match lookup property with Some (BoolValue true) -> true | _ -> false
   in
   match event with
-  | NavigatePrevious _ | NavigateNext _ ->
-    enabled NavigateEnabled && event_supported kind event
+  | NavigatePrevious _ | NavigateNext _ | NavigationKey _ ->
+    enabled NavigateEnabled
+    && lookup Enabled <> Some (BoolValue false)
+    && event_supported kind event
   | _ ->
     if
       match event with
@@ -964,6 +971,7 @@ let common_property_supported kind property =
       kind = Text || kind = Heading || kind = Paragraph || kind = Label
   | AccessibilityLabel ->
     kind = Button
+    || kind = MenuItem
     || kind = ToggleButton
     || kind = Select
     || kind = TextField
@@ -1066,7 +1074,7 @@ let common_property_supported kind property =
     || kind = FileImage
     || tree_row_kind kind
   | NavigateEnabled ->
-    kind = TextField || kind = SecureField || kind = Input
+    kind = Button || kind = TextField || kind = SecureField || kind = Input
     || kind = SearchField || kind = Textarea
   | SubmitEnabled -> kind = Combobox || kind = ListItem
   | DoublePressEnabled -> kind = ListItem
@@ -1767,7 +1775,11 @@ let node_properties_supported kind properties =
         let placeholder = string_property_or properties PlaceholderValue "" in
         text <> "" || placeholder <> ""
       else true)
-  && (if kind = MenuItem || kind = Accordion then
+  && (if kind = MenuItem then
+        string_property_nonempty properties TextValue
+        || string_property_nonempty properties AccessibilityLabel
+      else true)
+  && (if kind = Accordion then
         string_property_nonempty properties TextValue
       else true)
   && (if kind = SwipeAction then

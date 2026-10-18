@@ -285,8 +285,12 @@ val register_input :
 val register_submit :
   Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
 
-(** Opt in to unmodified Up/Down as [NavigatePrevious]/[NavigateNext] on
-    text inputs. Window and Web hosts retain focus and the text selection;
+
+(** Text inputs opt in to unmodified Up/Down as
+    [NavigatePrevious]/[NavigateNext]. Buttons opt in to arrow, Home/End and
+    PageUp/PageDown [NavigationKey] events, retaining the Shift flag.
+    Other modifier combinations keep their shortcut behavior.
+    For text inputs, Window and Web hosts retain focus and the text selection;
     modified arrows and IME composition keep their editing behavior. *)
 val register_navigate :
   Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
@@ -2179,6 +2183,7 @@ val button :
   ?autofocus:bool ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
+  ?on_navigate:(Lui_protocol.event -> unit) ->
   ?on_press:(Lui_protocol.event -> unit) ->
   ?on_long_press:(Lui_protocol.event -> unit) ->
   ?on_press_detail:(Lui_protocol.event -> unit) ->

@@ -59,7 +59,12 @@ let focusables store ~scope =
 
 (* Next focusable in tab order; wraps. 0 when no focusable exists. *)
 let step store ~scope ~cur ~dir =
-  match focusables store ~scope with
+  let sequential id =
+    match Lui_query.data_attr store id "tabindex" with
+    | None -> true
+    | Some value -> int_of_string value >= 0
+  in
+  match List.filter sequential (focusables store ~scope) with
   | [] -> 0
   | ids ->
     let n = List.length ids in

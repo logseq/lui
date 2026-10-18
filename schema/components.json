@@ -1904,6 +1904,10 @@
     {
       "lg": "NavigateNext",
       "fields": [":int"]
+    },
+    {
+      "lg": "NavigationKey",
+      "fields": [":int", ":string", ":bool"]
     }
   ],
   "kindProperties": {
