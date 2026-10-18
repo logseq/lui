@@ -268,6 +268,73 @@ let test_subpath_moves () =
         ["M4 13a8.1 8.1 0 0 0 15.5 2"; "M20 19v-4h-4"]
     ]
 
+(* Equivalent path syntax and curve subdivisions must rasterize consistently,
+   including packed relative commands used by icon libraries. *)
+let path_pixels ~size ~fill path =
+  parse_exn
+    (svg ~vb:"0 0 24 24"
+       (Printf.sprintf
+          "<path d=\"%s\" fill=\"%s\" stroke=\"black\" stroke-width=\"1\"/>"
+          path fill))
+  |> fun doc -> Lui_svg.rasterize doc ~w:size ~h:size
+
+let test_curve_order () =
+  (* A Bezier and its exact subdivision describe the same geometry.
+     Comparing strokes also catches accidental reversals between segments. *)
+  List.iter
+    (fun (name, path, split_path) ->
+      List.iter
+        (fun fill ->
+          List.iter
+            (fun size ->
+              let actual = path_pixels ~size ~fill path
+              and expected = path_pixels ~size ~fill split_path in
+              Alcotest.(check bool)
+                (Printf.sprintf "%s %s subdivision at %dpx" name fill size)
+                true
+                (Bytes.equal actual expected))
+            [ 24; 36; 48; 96 ])
+        [ "none"; "black" ])
+    [
+      ( "cubic",
+        "M2 20C2 2 22 2 22 20",
+        "M2 20C2 11 7 6.5 12 6.5C17 6.5 22 11 22 20" );
+      ("quadratic", "M2 20Q12 2 22 20", "M2 20Q7 11 12 11Q17 11 22 20");
+    ]
+
+let test_implicit_path_repetition () =
+  List.iter
+    (fun (name, packed, expanded) ->
+      List.iter
+        (fun size ->
+          let actual = path_pixels ~size ~fill:"none" packed
+          and expected = path_pixels ~size ~fill:"none" expanded in
+          Alcotest.(check bool)
+            (Printf.sprintf "%s at %dpx" name size)
+            true
+            (Bytes.equal actual expected))
+        [ 24; 36; 48 ])
+    [
+      ("relative move", "m2 3 4 5 6 -2", "m2 3l4 5l6 -2");
+      ("absolute move", "M2 3 4 5 6 2", "M2 3L4 5L6 2");
+      ("relative line", "M2 3l4 5 6 -2", "M2 3l4 5l6 -2");
+      ("relative horizontal", "M2 3h4 6", "M2 3h4h6");
+      ("relative vertical", "M2 3v4 6", "M2 3v4v6");
+      ( "relative cubic",
+        "M2 3c1 2 3 4 5 6 1 -2 3 -4 5 -2",
+        "M2 3c1 2 3 4 5 6c1 -2 3 -4 5 -2" );
+      ( "relative smooth cubic",
+        "M2 3c1 2 3 4 5 6s3 -4 5 -2 3 4 5 2",
+        "M2 3c1 2 3 4 5 6s3 -4 5 -2s3 4 5 2" );
+      ("relative quadratic", "M2 3q2 4 5 6 2 -4 5 -2", "M2 3q2 4 5 6q2 -4 5 -2");
+      ( "relative smooth quadratic",
+        "M2 3q2 4 5 6t5 -2 5 2",
+        "M2 3q2 4 5 6t5 -2t5 2" );
+      ( "relative arc",
+        "M2 3a3 4 0 0 1 5 6 3 4 0 0 1 5 -2",
+        "M2 3a3 4 0 0 1 5 6a3 4 0 0 1 5 -2" );
+    ]
+
 let read_file path =
   let ic = open_in_bin path in
   let n = in_channel_length ic in
@@ -277,11 +344,11 @@ let read_file path =
 (* Stable checksums of the BGRA buffers — regression goldens. *)
 let fixture_hashes = [
   ("basic.svg", 788033139);
-  ("curves.svg", 544143534);
+  ("curves.svg", 991308938);
   ("arcs.svg", 1566578933);
   ("gradients.svg", 850492802);
   ("transforms.svg", 768834319);
-  ("icon.svg", 813697398);
+  ("icon.svg", 1278076243);
   ("text_ignore.svg", 813379957);
   ("styles.svg", 2052817861);
   ("group_opacity.svg", 1494345133);
@@ -375,6 +442,8 @@ let () =
     ("structure", [
         Alcotest.test_case "groups/clips/use" `Quick test_structure;
         Alcotest.test_case "independent path moves" `Quick test_subpath_moves;
+        Alcotest.test_case "curve traversal order" `Quick test_curve_order;
+        Alcotest.test_case "implicit path repetition" `Quick test_implicit_path_repetition;
       ]);
     ("api", [
         Alcotest.test_case "api" `Quick test_api;
