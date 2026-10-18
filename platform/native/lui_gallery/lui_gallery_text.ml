@@ -268,7 +268,7 @@ let measure t id _text _w _h =
   if text = "" then None
   else
     let w, h = Lui_text.measure (font_of store id) text in
-    let tp = Lui_paint.text_placement_of store id in
+    let tp = Lui_paint.text_measure_placement_of store id in
     Some
       ((w +. (tp.tp_pad_left +. tp.tp_pad_right)) *. scale,
        (h +. (tp.tp_pad_top +. tp.tp_pad_bottom)) *. scale)

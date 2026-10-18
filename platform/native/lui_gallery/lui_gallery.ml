@@ -203,7 +203,7 @@ let stub_text_ops ?store id r c s =
 let stub_measure ?store id text _w _h =
   let tp =
     match store with
-    | Some st -> Lui_paint.text_placement_of st id
+    | Some st -> Lui_paint.text_measure_placement_of st id
     | None ->
       { Lui_paint.tp_align = Ta_start; tp_pad_left = 0.; tp_pad_right = 0.; tp_pad_top = 0.; tp_pad_bottom = 0.;
         tp_top = false }

@@ -1542,6 +1542,61 @@ let test_menu_selection_indicator () =
         (Lui_paint.text_placement_of t 1).tp_pad_right)
     [ 1.; 2. ]
 
+let test_text_border_insets () =
+  List.iter
+    (fun kind ->
+      let t = store () in
+      apply t
+        [
+          CreateNode (1, kind);
+          SetProp (1, PaddingHorizontal, IntValue 12);
+          SetProp (1, PaddingVertical, IntValue 8);
+        ];
+      List.iter
+        (fun (border, (top, right, bottom, left)) ->
+          apply t [ SetProp (1, BorderWidth, StringValue border) ];
+          let paint = Lui_paint.text_placement_of t 1
+          and measured = Lui_paint.text_measure_placement_of t 1 in
+          List.iter
+            (fun (label, expected, actual) ->
+              check (float 0.01) label expected actual)
+            [
+              ( "text begins inside the left border",
+                12. +. left,
+                paint.tp_pad_left );
+              ( "text stops inside the right border",
+                12. +. right,
+                paint.tp_pad_right );
+              ("text begins inside the top border", 8. +. top, paint.tp_pad_top);
+              ( "text stops inside the bottom border",
+                8. +. bottom,
+                paint.tp_pad_bottom );
+              ( "flex owns horizontal border and padding measurement",
+                0.,
+                measured.tp_pad_left );
+              ( "flex owns vertical border and padding measurement",
+                0.,
+                measured.tp_pad_top );
+            ])
+        [
+          ("0", (0., 0., 0., 0.));
+          ("1", (1., 1., 1., 1.));
+          ("1 2 3 4", (1., 2., 3., 4.));
+          ("0", (0., 0., 0., 0.));
+        ])
+    [
+      Button;
+      TextField;
+      SecureField;
+      Input;
+      SearchField;
+      Textarea;
+      Select;
+      Combobox;
+      MenuItem;
+      Text;
+    ]
+
 let test_menu_measure_padding () =
   let t = store () in
   apply t [CreateNode (1, MenuItem); SetProp (1, TextValue, StringValue "English");
@@ -1868,7 +1923,8 @@ let () =
          test_case "popup xy" `Quick test_popup_xy;
          test_case "layout override" `Quick test_layout_override ]);
       ("kinds",
-       [ test_case "link theme" `Quick test_link_theme;
+       [ test_case "text border insets" `Quick test_text_border_insets;
+         test_case "link theme" `Quick test_link_theme;
          test_case "divider" `Quick test_divider;
          test_case "spacer" `Quick test_spacer;
          test_case "progress" `Quick test_progress;

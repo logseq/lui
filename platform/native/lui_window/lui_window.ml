@@ -2646,13 +2646,11 @@ module Assembly = struct
     in
     let host =
       Lui_host.create ~hooks ?layout
-        (* Measure the text the engine selected (label/title/text per
-           kind) plus the placement padding it will paint around it —
-           feeding the raw glyph metric collapses every labeled
-           control to bare-text size (buttons, fields, kbd...). *)
+        (* Measure the selected label/title/text plus implicit control slots.
+           Flex adds authored padding and borders around that content once. *)
         ~measure:(fun id s _w _h ->
           let w, h = measure id s in
-          let tp = Lui_paint.text_placement_of (store_of ()) id in
+          let tp = Lui_paint.text_measure_placement_of (store_of ()) id in
           let sc = !scale_cell in
           Some
             (w +. ((tp.tp_pad_left +. tp.tp_pad_right) *. sc),

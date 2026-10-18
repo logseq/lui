@@ -561,7 +561,7 @@ let measure t store id ~scale =
     else
       let st = style_of t store id in
       let w, h = extent_of t st text in
-      let tp = Lui_paint.text_placement_of store id in
+      let tp = Lui_paint.text_measure_placement_of store id in
       ((w +. (tp.tp_pad_left +. tp.tp_pad_right)) *. scale,
        (h +. (tp.tp_pad_top +. tp.tp_pad_bottom)) *. scale)
 

@@ -1467,10 +1467,11 @@ let test_headless_checksum () =
      with Not_found -> false);
   let c1 = checksum_of out1 and c2 = checksum_of out2 in
   Alcotest.(check string) "deterministic" c1 c2;
-  (* This scene includes transparent fields, input-token borders and clipped
-     select labels. Focused controls use the Web ring and offset geometry. *)
+  (* Border-box text placement includes authored border widths while flex owns
+     intrinsic border and padding measurement. The scene also covers focused
+     control rings and clipped select labels. *)
   Alcotest.(check string) "golden"
-    "headless done: frames=6 checksum=9fcd4eabb013e9dd" c1
+    "headless done: frames=6 checksum=65134b6799add55d" c1
 
 (* ---------- multi-window ---------- *)
 
@@ -1823,7 +1824,7 @@ let test_headless_multi () =
   let out1 = run () and out2 = run () in
   (match win_done_lines out1 with
    | [ w0; w1 ] ->
-     Alcotest.(check string) "win0 golden" "9fcd4eabb013e9dd"
+     Alcotest.(check string) "win0 golden" "65134b6799add55d"
        (checksum_value w0);
      Alcotest.(check bool) "independent checksums" true
        (checksum_value w0 <> checksum_value w1)

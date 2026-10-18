@@ -838,12 +838,11 @@ let radii_of ctx store id =
     let (t, r, b, l) = edges_of_floats l in
     (t *. ctx.scale, r *. ctx.scale, b *. ctx.scale, l *. ctx.scale)
 
+let border_insets store id = edges_of_or 0. (pnums store id "border-width")
+
 let border_widths ctx store id =
-  match pnums store id "border-width" with
-  | [] -> (0., 0., 0., 0.)
-  | l ->
-    let (t, r, b, l) = edges_of_floats l in
-    (t *. ctx.scale, r *. ctx.scale, b *. ctx.scale, l *. ctx.scale)
+  let t, r, b, l = border_insets store id in
+  (t *. ctx.scale, r *. ctx.scale, b *. ctx.scale, l *. ctx.scale)
 
 (* Border colors: the whole value resolves → uniform; otherwise each
    shorthand token resolves → per-edge. Unresolvable → no borders. *)
@@ -1074,11 +1073,16 @@ let text_placement ~layout_padding store id =
           || Lui_store.prop store id "padding" <> None) then 0.
     else Option.value ~default (pnum store id side)
   in
+  (* Paint starts inside the border box; flex already adds these edges to
+     intrinsic measurements, independently of the content's padding. *)
+  let bt, br, bb, bl =
+    if layout_padding then border_insets store id else (0., 0., 0., 0.)
+  in
   { tp_align = align;
-    tp_pad_left = inset "padding-left" "padding-horizontal" pad_x +. leading;
-    tp_pad_right = inset "padding-right" "padding-horizontal" pad_x +. trailing;
-    tp_pad_top = inset "padding-top" "padding-vertical" pad_y;
-    tp_pad_bottom = inset "padding-bottom" "padding-vertical" pad_y;
+    tp_pad_left = bl +. inset "padding-left" "padding-horizontal" pad_x +. leading;
+    tp_pad_right = br +. inset "padding-right" "padding-horizontal" pad_x +. trailing;
+    tp_pad_top = bt +. inset "padding-top" "padding-vertical" pad_y;
+    tp_pad_bottom = bb +. inset "padding-bottom" "padding-vertical" pad_y;
     tp_top = top }
 
 let text_placement_of store id = text_placement ~layout_padding:true store id
@@ -1475,18 +1479,17 @@ let select_ops ctx store id rs r alpha fg =
   let tp = text_placement_of store id in
   let pad_left = tp.tp_pad_left *. ctx.scale in
   let pad = tp.tp_pad_right *. ctx.scale in
-  let _, right, _, left = border_widths ctx store id in
   let size =
     Float.min (16. *. ctx.scale)
-      (Float.min r.h (Float.max 0. (r.w -. left -. right -. pad_left -. pad)))
+      (Float.min r.h (Float.max 0. (r.w -. pad_left -. pad)))
   in
-  let label = { r with w = Float.max 0. (r.w -. right -. pad -. size) } in
+  let label = { r with w = Float.max 0. (r.w -. pad -. size) } in
   let indicator =
     if size <= 0. then []
     else
       let slot =
         rect
-          (r.x +. r.w -. right -. pad -. size)
+          (r.x +. r.w -. pad -. size)
           (r.y +. ((r.h -. size) /. 2.))
           size size
       in
