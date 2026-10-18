@@ -172,7 +172,7 @@ let new_effects () =
 let queue_split effects node = Hashtbl.replace effects.splits node ()
 
 let run_effects renderer effects =
-  Lui_web_props.refresh_portal_foregrounds renderer;
+  Lui_web_props.refresh_portal_inheritance renderer;
   Hashtbl.iter
     (fun parent () -> refresh_dropdown_parent renderer parent)
     effects.dropdowns;
