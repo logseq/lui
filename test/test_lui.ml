@@ -1335,6 +1335,18 @@ let test_text_navigation_callbacks () =
      "search-field",(fun f -> Lui_elements.search_field ~on_navigate:f []);
      "textarea",(fun f -> Lui_elements.textarea ~on_navigate:f [])]
 
+let test_button_navigation_callback () =
+  let received = ref [] in
+  let s = drive_mount ~initial:() ~reducer:(fun model () -> model)
+      ~view:(fun _ _ _ -> Lui_elements.button ~text:"Day"
+        ~on_navigate:(fun event -> received := event :: !received) []) () in
+  let id = (drive_node s (Drive.Model.Kind "button")).Drive.Model.id in
+  let event = Lui_protocol.NavigationKey (id,"PageDown",true) in
+  drive_send s event;
+  Alcotest.(check bool) "the public button API delivers typed navigation" true
+    (!received=[event]);
+  drive_dispose s
+
 let test_pointer_events () =
   let open Lui_protocol in
   let detail =
@@ -4207,6 +4219,7 @@ let () =
       ( "dispatch",
         [
           Alcotest.test_case "text navigation callbacks" `Quick test_text_navigation_callbacks;
+          Alcotest.test_case "button navigation callback" `Quick test_button_navigation_callback;
           Alcotest.test_case "pointer events" `Quick test_pointer_events;
           Alcotest.test_case "pointer dispatch" `Quick test_pointer_dispatch;
           Alcotest.test_case "pixel split echoes" `Quick test_split_pixel_echoes;

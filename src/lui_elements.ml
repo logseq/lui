@@ -555,7 +555,9 @@ let register_submit context node handler =
 
 let register_navigate context node handler =
   enable context node NavigateEnabled;
-  require_event_supported context node (NavigateNext node) "navigate";
+  let event = if Lui_ui.node_kind context node = Button
+    then NavigationKey (node,"ArrowRight",false) else NavigateNext node in
+  require_event_supported context node event "navigate";
   on_event context node is_navigate handler
 
 let register_toggle context node handler =
