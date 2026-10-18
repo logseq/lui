@@ -1471,6 +1471,10 @@ let text_ops ?fg ctx store id r alpha ~placeholder_ok =
   in
   match s with
   | Some (s, fg) -> scale_ops alpha (ctx.hooks.text_ops id r fg s)
+  | None when (ctx.hooks.state_of id).focused
+      && (Lui_store.is_editable_text_kind (Lui_store.kind store id)
+          || Lui_store.kind store id = "combobox") ->
+      scale_ops alpha (ctx.hooks.text_ops id r fg "")
   | None -> []
 
 (* Select indicators use the host's existing image decoder, including its

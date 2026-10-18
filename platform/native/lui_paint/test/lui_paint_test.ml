@@ -1542,6 +1542,42 @@ let test_menu_selection_indicator () =
         (Lui_paint.text_placement_of t 1).tp_pad_right)
     [ 1.; 2. ]
 
+let test_empty_editable_text_hook () =
+  List.iter
+    (fun kind ->
+      List.iter
+        (fun focused ->
+          let t = store () in
+          apply t [ Lui_protocol.CreateNode (1, kind) ];
+          let calls = ref [] in
+          let h =
+            {
+              (hooks ()) with
+              Lui_paint.state_of =
+                (fun _ -> { Lui_paint.state_neutral with focused });
+              text_ops =
+                (fun _ _ _ value ->
+                  calls := value :: !calls;
+                  []);
+            }
+          in
+          ignore (paint_with h t ());
+          let editable = kind <> Lui_protocol.Button in
+          check (list string)
+            "focused empty editors still paint their text overlay"
+            (if editable && focused then [ "" ] else [])
+            !calls)
+        [ false; true ])
+    [
+      Lui_protocol.TextField;
+      SecureField;
+      Input;
+      SearchField;
+      Textarea;
+      Combobox;
+      Button;
+    ]
+
 let test_text_border_insets () =
   List.iter
     (fun kind ->
@@ -1923,7 +1959,8 @@ let () =
          test_case "popup xy" `Quick test_popup_xy;
          test_case "layout override" `Quick test_layout_override ]);
       ("kinds",
-       [ test_case "text border insets" `Quick test_text_border_insets;
+       [ test_case "empty editable hook" `Quick test_empty_editable_text_hook;
+         test_case "text border insets" `Quick test_text_border_insets;
          test_case "link theme" `Quick test_link_theme;
          test_case "divider" `Quick test_divider;
          test_case "spacer" `Quick test_spacer;
