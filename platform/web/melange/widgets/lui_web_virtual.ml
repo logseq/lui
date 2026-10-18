@@ -340,9 +340,24 @@ let install renderer node ~materialize ~unmount =
                  let edges =
                    (off <= 2., bottom >= V.total_size virtualizer -. 2.)
                  in
-                 (* Only real offset transitions emit: layout growth
-                    alone must not flip pin state. *)
-                 if off <> !last_edge_offset then begin
+                 (* Only real offset transitions emit. When the bottom
+                    edge is lost while the offset is unchanged, the
+                    cause is geometry growth rather than user scroll —
+                    re-anchor the tail so pinned transcripts keep
+                    following (user-unpinned positions are preserved
+                    since their offset does change). *)
+                 let bottom_lost_at_same_offset =
+                   match !last_edges with
+                   | Some (_, true) ->
+                       not (snd edges)
+                       && !last_edge_offset = off
+                   | _ -> false
+                 in
+                 if bottom_lost_at_same_offset then
+                   W.Element.setScrollTop root
+                     (float_of_int (W.Element.scrollHeight root)
+                      -. V.rect_height rect)
+                 else if off <> !last_edge_offset then begin
                    last_edge_offset := off;
                    if !last_edges <> Some edges then begin
                      last_edges := Some edges;

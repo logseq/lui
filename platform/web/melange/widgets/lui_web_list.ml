@@ -92,16 +92,25 @@ let install renderer node =
           , off +. float_of_int (W.Element.clientHeight root)
             >= float_of_int (W.Element.scrollHeight root) -. 2. )
         in
-        (* Emit only on real offset transitions: layout/geometry changes
-           without a scroll (a row growing, a header mounting) must not
-           flip pin state — only user/programmatic scroll moves it. *)
-        if off <> !last_edge_offset then begin
-          last_edge_offset := off;
-          if !last_edges <> Some edges then begin
-            last_edges := Some edges;
-            emit (ScrollEdges (node, fst edges, snd edges))
-          end
-        end
+        (* Only real offset transitions emit. When the bottom edge is
+           lost while the offset is unchanged, the cause is geometry
+           growth — re-anchor the tail so pinned transcripts keep
+           following; user-unpinned positions are preserved because
+           their offset does change. *)
+        (match !last_edges with
+         | Some (_, true)
+           when (not (snd edges)) && !last_edge_offset = off ->
+             W.Element.setScrollTop root
+               (float_of_int (W.Element.scrollHeight root)
+                -. float_of_int (W.Element.clientHeight root))
+         | _ ->
+             if off <> !last_edge_offset then begin
+               last_edge_offset := off;
+               if !last_edges <> Some edges then begin
+                 last_edges := Some edges;
+                 emit (ScrollEdges (node, fst edges, snd edges))
+               end
+             end)
       end
       else last_range := None
     in

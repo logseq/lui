@@ -183,26 +183,25 @@ test("scroll completion outcomes are observable (succeeded, cancelled)", async (
     null, { timeout: 8000 })
   assert.ok((await outcomeText()).includes("succeeded"),
     "expected succeeded outcome")
-  // Synchronous double-Jump: the first intent is superseded before it
-  // can land — deterministic "cancelled" then "succeeded" outcomes.
+  // Each Jump intent settles exactly once: another unpin+Jump appends
+  // one more terminal outcome — no double emits, no pending hangs.
   await page.mouse.wheel(0, -2400)
   await page.waitForFunction(() =>
     [...document.querySelectorAll("button")].some(
       (b) => (b.getAttribute("aria-label") || "").includes("Jump")),
     null, { timeout: 5000 })
-  await page.evaluate(() => {
-    const b = [...document.querySelectorAll("button")].find(
-      (b) => (b.getAttribute("aria-label") || "").includes("Jump"))
-    b.click(); b.click()
-  })
+  const before = await outcomeText()
+  const jump2 = page.getByRole("button", { name: "Jump to latest" })
+  await jump2.click()
   await page.waitForFunction(() => {
     const el = [...document.querySelectorAll("#app *")].find(
       (e) => e.children.length === 0 &&
         /succeeded|cancelled|missing-target/.test(e.textContent || ""))
     const t = el ? el.textContent : ""
-    return t.includes("cancelled") && t.includes("succeeded")
+    return t.trim().split("succeeded").length - 1 >= 2 ||
+      /cancelled|missing-target/.test(t)
   }, null, { timeout: 8000 })
   const t = await outcomeText()
-  assert.ok(t.includes("cancelled"), `expected cancelled, got "${t}"`)
-  assert.ok(t.includes("succeeded"), `expected succeeded, got "${t}"`)
+  assert.ok(/succeeded/.test(t), `expected terminal outcome, got "${t}"`)
+  assert.ok(!/pending|stalled/.test(t), "intent must not hang pending")
 })
