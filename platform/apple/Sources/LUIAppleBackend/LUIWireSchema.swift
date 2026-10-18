@@ -165,6 +165,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case sourceWidth = "source-width"
     case sourceHeight = "source-height"
     case anchor = "anchor"
+    case anchorTarget = "anchor-target"
     case anchorAlignment = "anchor-alignment"
     case anchorOffset = "anchor-offset"
     case tooltipDelay = "tooltip-delay"

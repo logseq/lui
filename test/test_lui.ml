@@ -2417,6 +2417,20 @@ let test_vocab_batch2 () =
        (StringValue "treeitem"));
   Alcotest.(check bool) "gap on popover" true
     (property_supported Popover Gap);
+  Alcotest.(check bool) "retained target on popover" true
+    (property_supported Popover AnchorTarget);
+  Alcotest.(check bool) "retained target rejects empty identifiers" false
+    (property_value_supported_for_kind Popover AnchorTarget (StringValue ""));
+  let target_only = Property_map.add AnchorTarget (StringValue "filter-trigger") Property_map.empty in
+  Alcotest.(check bool) "retained target requires an anchor side" false
+    (node_properties_supported Popover target_only);
+  let target = Property_map.add AnchorValue (StringValue "below") target_only in
+  Alcotest.(check bool) "retained target and side accepted" true
+    (node_properties_supported Popover target);
+  Alcotest.(check bool) "retained target and point are distinct modes" false
+    (node_properties_supported Popover
+       (target |> Property_map.add PopupX (FloatValue 10.)
+               |> Property_map.add PopupY (FloatValue 20.)));
   let with_x =
     Property_map.add PopupX (FloatValue 10.0) Property_map.empty
   in
@@ -2430,7 +2444,7 @@ let test_vocab_batch2 () =
   in
   Alcotest.(check bool) "point + anchor rejected" false
     (node_properties_supported Popover with_xy_anchor);
-  let popover_node = ref 0 in
+  let popover_node = ref 0 and target_node = ref 0 in
   let app =
     Lui_app.create (recording_backend ()) ()
       (fun model _action -> model)
@@ -2438,7 +2452,10 @@ let test_vocab_batch2 () =
          Lui_elements.column
            [ capture_node popover_node
                (Lui_elements.popover ~at:(10.0, 20.0)
-                  ~available_height:200.0 ~role:`menu ~gap:8 []) ])
+                  ~available_height:200.0 ~role:`menu ~gap:8 [])
+           ; Lui_elements.button ~accessibility_identifier:"filter-trigger" ~text:"Filter" []
+           ; capture_node target_node
+               (Lui_elements.popover ~anchor:`below ~anchor_target:"filter-trigger" []) ])
   in
   ignore (Lui_app.start app);
   flush_app app;
@@ -2458,6 +2475,10 @@ let test_vocab_batch2 () =
             id = !popover_node
           | _ -> false)
        ops);
+  Alcotest.(check bool) "retained target emitted" true
+    (List.exists (function
+      | SetProp (id, AnchorTarget, StringValue "filter-trigger") -> id = !target_node
+      | _ -> false) ops);
   Alcotest.(check bool) "x emitted" true
     (emitted PopupX (FloatValue 10.0));
   Alcotest.(check bool) "y emitted" true

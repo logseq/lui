@@ -78,7 +78,8 @@ let top_scan store ~open_menu =
     match overlay_class store id with
     | `none -> ()
     | _ when trigger_owned store id && id <> open_menu -> ()
-    | _ when Lui_store.inert_in_chain store id -> ()
+    | _ when Lui_store.inert_in_chain store id
+             || not (Lui_store.anchor_available store id) -> ()
     | cls -> top := Some (id, cls = `modal, overlay_dismissible store id));
   !top
 
@@ -86,13 +87,17 @@ let inside store ov path =
   List.exists (fun i -> i = ov || Lui_query.is_desc store i ov) path
 
 let inside_anchor store overlay path =
-  match Lui_query.kind_name store overlay,
-        Lui_store.string_prop store overlay "anchor", Lui_store.parent store overlay with
-  | "popover", Some _, Some owner
-    when Lui_query.kind_name store owner <> "root"
-         && Lui_store.prop store overlay "x" = None
-         && Lui_store.prop store overlay "y" = None -> inside store owner path
-  | _ -> false
+  if Lui_query.kind_name store overlay <> "popover"
+     || Lui_store.string_prop store overlay "anchor" = None
+     || Lui_store.prop store overlay "x" <> None
+     || Lui_store.prop store overlay "y" <> None then false
+  else
+    let owner = match Lui_store.string_prop store overlay "anchor-target" with
+      | Some identifier -> Lui_store.find_identifier store identifier
+      | None -> Lui_store.parent store overlay in
+    match owner with
+    | Some target when Lui_query.kind_name store target <> "root" -> inside store target path
+    | _ -> false
 
 (* Modal focus-trap scope for focusables/tab order. *)
 let modal_scope store st =

@@ -676,6 +676,16 @@ module Ui = struct
   let scroll_offset_x t id = Lui_scroll.offset t.scroll Lui_scroll.X id
   let scroll_cap_x t id = Lui_scroll.cap t.scroll Lui_scroll.X id
 
+  let anchor_shift t store id =
+    let rec collect current x y =
+      if Lui_store.string_prop store current "position" = Some "fixed" then (-.x,-.y)
+      else match Lui_store.parent store current with
+        | None -> (-.x,-.y)
+        | Some ancestor -> collect ancestor
+            (x +. scroll_offset_x t ancestor) (y +. scroll_offset t ancestor) in
+    collect id 0. 0.
+
+
   let tick_scrollbars t ~now_ms =
     if not (Float.is_finite now_ms) || now_ms < t.scroll_clock_ms then
       invalid_arg "Scrollbar clock must be monotonic";
@@ -2659,6 +2669,7 @@ module Assembly = struct
     in
     host_cell := Some host;
     let store = Lui_host.store host in
+    Lui_host.set_anchor_shift host (Ui.anchor_shift ui store);
     (* Trigger-owned menu panels stay hidden until opened; the
        predicate reads the interaction state's mutable open-menu slot
        each sync. *)

@@ -2559,6 +2559,104 @@ let test_overlay_close () =
    | [ Dispatch (Dismiss 4) ] -> ()
    | _ -> Alcotest.fail "esc dialog")
 
+let test_retained_anchor_scroll_shift () =
+  let store =
+    store_of
+      [
+        CreateNode (1, Root);
+        CreateNode (2, Scroll);
+        CreateNode (6, Column);
+        CreateNode (4, Scroll);
+        CreateNode (7, Box);
+        CreateNode (8, Button);
+        InsertChild (1, 2, 0);
+        InsertChild (2, 6, 0);
+        InsertChild (6, 4, 0);
+        InsertChild (4, 7, 0);
+        InsertChild (7, 8, 0);
+      ]
+  in
+  let ui = Ui.create () in
+  List.iter
+    (fun id ->
+      Ui.set_scroll_cap ui id 200.;
+      Ui.set_scroll_cap_x ui id 200.)
+    [ 2; 4 ];
+  List.iter
+    (fun (id, x, y) ->
+      ignore (Ui.scroll_to ~axis:Ui.X ui store id x);
+      ignore (Ui.scroll_to ui store id y))
+    [ (2, 25., 40.); (4, 15., 30.) ];
+  let check_shift label expected =
+    Alcotest.(check (pair (float 0.001) (float 0.001)))
+      label expected
+      (Ui.anchor_shift ui store 8)
+  in
+  check_shift "nested anchor uses both scroll axes" (-40., -70.);
+  Lui_store.apply_op store (SetProp (8, Position, StringValue "fixed"));
+  check_shift "a fixed anchor ignores ancestor scrolling" (0., 0.);
+  Lui_store.apply_op store (RemoveProp (8, Position));
+  Lui_store.apply_op store (SetProp (6, Position, StringValue "fixed"));
+  check_shift "scrolling stops at a fixed containing block" (-15., -30.)
+
+let test_retained_popover_input () =
+  let store =
+    store_of
+      [
+        CreateNode (1, Root);
+        CreateNode (2, Button);
+        CreateNode (3, Popover);
+        CreateNode (4, Button);
+        CreateNode (5, Input);
+        InsertChild (1, 2, 0);
+        InsertChild (1, 3, 1);
+        InsertChild (1, 4, 2);
+        InsertChild (3, 5, 0);
+        SetProp (2, AccessibilityIdentifier, StringValue "filter-trigger");
+        SetProp (3, AnchorValue, StringValue "below");
+        SetProp (3, AnchorTarget, StringValue "filter-trigger");
+        SetProp (5, Autofocus, BoolValue true);
+      ]
+  in
+  let rects = Rects.create () in
+  List.iter
+    (fun (id, region) -> Hashtbl.replace rects id region)
+    [
+      (1, rect 0. 0. 640. 400.);
+      (2, rect 500. 80. 24. 24.);
+      (3, rect 290. 108. 234. 178.);
+      (4, rect 10. 10. 24. 24.);
+      (5, rect 294. 112. 220. 32.);
+    ];
+  let ui = Ui.create () in
+  Ui.set_focused ui store 2;
+  ignore (Ui.store_changed ui store);
+  let down x y =
+    Ui.handle ui store rects
+      (Input.Button_down (x, y, Input.Left, 1, Input.mods_none))
+  in
+  let dismiss actions =
+    List.exists (function Dispatch (Dismiss 3) -> true | _ -> false) actions
+  in
+  Alcotest.(check bool)
+    "retained trigger belongs to its popup's press scope" false
+    (dismiss (down 510. 90.));
+  ignore
+    (Ui.handle ui store rects
+       (Input.Button_up (510., 90., Input.Left, Input.mods_none)));
+  Alcotest.(check bool)
+    "unrelated trigger remains outside the popup" true
+    (dismiss (down 20. 20.));
+  Ui.set_focused ui store 5;
+  Lui_store.apply_op store (DropNode 2);
+  ignore (Ui.store_changed ui store);
+  Alcotest.(check int)
+    "a missing target cannot retain overlay focus ownership" 0
+    (Ui.overlay_top ui);
+  Alcotest.(check bool)
+    "a hidden popup cannot retain editable focus" false
+    (Ui.focused ui = 5)
+
 let test_light_dismiss () =
   let s =
     store_of
@@ -2756,7 +2854,7 @@ module Fake_layout = struct
     | Some (FloatValue f) -> f
     | _ -> 0.
 
-  let sync ?scale:_ ?measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_
+  let sync ?scale:_ ?measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ?anchor_shift:_
       ~width ~height t store =
     Hashtbl.reset t;
     let rec place id ~x ~y ~w =
@@ -3660,7 +3758,7 @@ let test_assembly_scroll_shows_in_paint () =
 let test_assembly_inset_scroll_caps () =
   let module Inset_layout = struct
     include Fake_layout
-    let sync ?scale:_ ?measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_
+    let sync ?scale:_ ?measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ?anchor_shift:_
         ~width:_ ~height:_ t _store =
       Hashtbl.reset t;
       List.iter (fun (id,r) -> Hashtbl.add t id r)
@@ -3690,7 +3788,7 @@ let test_assembly_resize_scroll_clamp () =
   let module Resize_layout = struct
     include Fake_layout
 
-    let sync ?scale ?measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ~width ~height t
+    let sync ?scale ?measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ?anchor_shift:_ ~width ~height t
         _store =
       let scale = Option.value ~default:1. scale in
       Hashtbl.reset t;
@@ -3756,7 +3854,7 @@ let test_assembly_nested_clip_caps () =
   let module Nested_layout = struct
     include Fake_layout
 
-    let sync ?scale:_ ?measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ~width:_
+    let sync ?scale:_ ?measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ?anchor_shift:_ ~width:_
         ~height:_ t store =
       let hidden = Lui_store.string_prop store 4 "display" = Some "none" in
       Hashtbl.reset t;
@@ -4203,6 +4301,8 @@ let () =
           Alcotest.test_case "menu row focus chrome" `Quick test_menu_row_focus_chrome;
           Alcotest.test_case "pointer scope" `Quick test_modal_pointer_scope;
           Alcotest.test_case "modal+esc" `Quick test_overlay_close;
+          Alcotest.test_case "retained anchor scroll shift" `Quick test_retained_anchor_scroll_shift;
+          Alcotest.test_case "retained popover input" `Quick test_retained_popover_input;
           Alcotest.test_case "light dismiss" `Quick test_light_dismiss;
           Alcotest.test_case "action menu focus" `Quick test_action_menu_focus;
           Alcotest.test_case "appear once" `Quick test_appear_once;

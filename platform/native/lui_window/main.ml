@@ -39,12 +39,12 @@ let profile_present_ms = ref 0.
 
 module Profiled_layout = struct
   include Lui_layout
-  let sync ?scale ?measure ?hidden ?ctx_anchor ?vport ~width ~height t store =
+  let sync ?scale ?measure ?hidden ?ctx_anchor ?vport ?anchor_shift ~width ~height t store =
     if not frame_stats then
-      Lui_layout.sync ?scale ?measure ?hidden ?ctx_anchor ?vport ~width ~height t store
+      Lui_layout.sync ?scale ?measure ?hidden ?ctx_anchor ?vport ?anchor_shift ~width ~height t store
     else begin
       let start = perf_s () in
-      Lui_layout.sync ?scale ?measure ?hidden ?ctx_anchor ?vport ~width ~height t store;
+      Lui_layout.sync ?scale ?measure ?hidden ?ctx_anchor ?vport ?anchor_shift ~width ~height t store;
       profile_layout_ms := !profile_layout_ms +. (perf_s () -. start) *. 1000.
     end
 end

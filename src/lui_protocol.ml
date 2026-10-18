@@ -186,6 +186,7 @@ type property =
   | SourceWidth
   | SourceHeight
   | AnchorValue
+  | AnchorTarget
   | AnchorAlignmentValue
   | AnchorOffset
   | TooltipDelay
@@ -1074,6 +1075,7 @@ let common_property_supported kind property =
   | ImageIdValue | SourceX | SourceY | SourceWidth | SourceHeight ->
     kind = Avatar || kind = Image
   | SurfaceIdValue -> kind = MediaSurface
+  | AnchorTarget -> kind = Popover
   | AnchorValue | AnchorAlignmentValue | AnchorOffset ->
     kind = DropdownMenu || kind = Tooltip || kind = Popover
   | PopupX | PopupY -> kind = Popover || kind = DropdownMenu
@@ -1563,6 +1565,7 @@ let property_value_supported property value =
   | SourceHeight, FloatValue value -> is_finite value
   | AnchorValue, StringValue value ->
     value = "above" || value = "below" || value = "left" || value = "right"
+  | AnchorTarget, StringValue value -> String.trim value <> ""
   | AnchorAlignmentValue, StringValue value ->
     value = "start" || value = "end" || value = "stretch"
   | AnchorOffset, FloatValue value -> is_finite value
@@ -1791,6 +1794,9 @@ let node_properties_supported kind properties =
            || Property_map.mem AnchorOffset properties
         then Property_map.mem AnchorValue properties
         else true
+      else true)
+  && (if kind = Popover && Property_map.mem AnchorTarget properties then
+        Property_map.mem AnchorValue properties
       else true)
   && (if kind = Popover || kind = DropdownMenu then
         let has_x = Property_map.mem PopupX properties in

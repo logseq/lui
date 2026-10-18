@@ -172,6 +172,7 @@ enum class LuiProperty(val wireName: String) {
     sourceWidth("source-width"),
     sourceHeight("source-height"),
     anchor("anchor"),
+    anchorTarget("anchor-target"),
     anchorAlignment("anchor-alignment"),
     anchorOffset("anchor-offset"),
     tooltipDelay("tooltip-delay"),

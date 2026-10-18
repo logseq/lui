@@ -106,6 +106,7 @@ let prop_coverage =
     ("source-width", Painted);
     ("source-height", Painted);
     ("anchor", Host); (* popup anchoring is host-owned *)
+    ("anchor-target", Host);
     ("anchor-alignment", Host);
     ("anchor-offset", Host);
     ("tooltip-delay", Host);
