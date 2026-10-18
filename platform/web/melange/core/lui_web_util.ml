@@ -94,6 +94,12 @@ let event_target_class_name event =
   in
   if Js.typeof name = "string" then name else ""
 
+external click_detail : Dom.event -> int = "detail" [@@mel.get]
+
+let record_click_open_method element event =
+  W.Element.setAttribute "data-lui-open-method"
+    (if click_detail event = 0 then "keyboard" else "mouse") element
+
 (* Client-space payload shared by the pointer-detail events. [modifiers]
    uses the PressModifiers bitmask (1=ctrl, 2=shift, 4=meta, 8=secondary
    button); [target_class] is the deepest hit element's class list. *)

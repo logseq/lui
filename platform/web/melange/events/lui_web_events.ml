@@ -238,9 +238,11 @@ let attach_accordion_event renderer node dom_node =
 
 let attach_pressable_text_events renderer node dom_node =
   W.Element.addEventListener "click"
-    (fun _event ->
-       if Store.event_capability renderer node PressEnabled then
-         emit renderer (Press node))
+    (fun event ->
+       if Store.event_capability renderer node PressEnabled then begin
+         Util.record_click_open_method dom_node event;
+         emit renderer (Press node)
+       end)
     dom_node;
   W.Element.addKeyDownEventListener
     (fun event ->
@@ -250,6 +252,7 @@ let attach_pressable_text_events renderer node dom_node =
          && (key = "Enter" || key = " ")
        then begin
          W.KeyboardEvent.preventDefault event;
+         W.Element.setAttribute "data-lui-open-method" "keyboard" dom_node;
          emit renderer (Press node)
        end)
     dom_node
@@ -474,6 +477,7 @@ let button_click renderer node kind dom_node state event =
     W.Event.preventDefault event
   end
   else begin
+    Util.record_click_open_method dom_node event;
     emit_press_detail renderer node event;
     button_dispatch_primary renderer node kind dom_node
   end
@@ -577,6 +581,8 @@ let sync_pointer_events renderer node kind dom_node =
       in
       let pointer_down =
         emit_detail (fun event ->
+            W.Element.setAttribute "data-lui-open-method"
+              (Util.pointer_type event) dom_node;
             PointerDown (node, Util.pointer_detail_of event))
       in
       let pointer_up =

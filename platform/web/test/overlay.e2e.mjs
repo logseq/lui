@@ -35,6 +35,50 @@ async function clickButton(name) {
   await browser("click-button", name)
 }
 
+for (const trigger of ['Open ordinary menu', 'Open pressable menu']) {
+  test(`${trigger}: pointer opening focuses the menu without highlighting a row`, async () => {
+    await openLayerRegressionPage()
+    await clickButton(trigger)
+    await session.page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menu')
+    assert.equal(await session.page.getByRole('menu').locator('[data-highlighted]').count(), 0)
+    await session.page.keyboard.press('ArrowDown')
+    assert.equal(await session.page.locator(':focus').textContent(), 'Choose ordinary action')
+    await session.page.keyboard.press('Escape')
+    await session.page.waitForFunction(name => document.activeElement?.textContent === name, trigger)
+    await session.page.getByRole('button', {name: trigger, exact: true}).press('Enter')
+    await session.page.waitForFunction(() => document.activeElement?.textContent === 'Choose ordinary action')
+  })
+}
+
+test('ordinary pointer opening navigates backward from no selection', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open ordinary menu')
+  await session.page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menu')
+  await session.page.keyboard.press('ArrowUp')
+  assert.equal(await session.page.locator(':focus').textContent(), 'Remove ordinary owner')
+})
+
+test('retained ordinary dropdown resets old highlights on pointer reopening', async () => {
+  await openLayerRegressionPage()
+  await session.page.getByRole('button', {name: 'Open retained ordinary menu', exact: true}).press('Enter')
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'Choose ordinary action')
+  await session.page.keyboard.press('ArrowDown')
+  await session.page.keyboard.press('Escape')
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'Open retained ordinary menu')
+  await clickButton('Open retained ordinary menu')
+  await session.page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menu')
+  assert.equal(await session.page.getByRole('menu').locator('[data-highlighted]').count(), 0)
+})
+
+test('ordinary initialization leaves picker selected-item focus intact', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open dialog')
+  await session.page.getByRole('combobox').click()
+  await session.page.getByRole('option', {name: 'Beta', exact: true}).click()
+  await session.page.getByRole('combobox').click()
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'Beta')
+})
+
 test('ordinary dropdown selection returns focus to its trigger', async () => {
   await openLayerRegressionPage()
   await clickButton('Open ordinary menu')

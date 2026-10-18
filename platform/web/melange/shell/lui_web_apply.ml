@@ -293,7 +293,7 @@ let insert_menu_item_role renderer _child current parent =
         W.Element.setAttribute "role" "menuitem" (Lazy.force current.platform_node);
         W.Element.setAttribute "tabindex" "-1" (Lazy.force current.platform_node);
         W.Element.removeAttribute "aria-selected" (Lazy.force current.platform_node);
-        Lui_web_menu.highlight_initial_menu_item renderer container_id
+        Lui_web_menu.initialize_menu_focus renderer container_id
     | _ -> ()
 
 (* a child removed or reparented by a later op in the same batch has no

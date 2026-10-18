@@ -37,16 +37,16 @@ import * as Layers from "lui.web.dom/core/lui_web_layers.js";
 import { Protocol, properties as props, kinds } from "./protocol-fixture.mjs";
 const host=document.querySelector("#host"), renderer=Web.create(undefined,host), backend=Web.backend(renderer);
 const list=a=>a.reduceRight((tl,hd)=>({hd,tl}),0);
-const nodes=new Map(),handlers=new Map(),events=[];let ops=[],generation=0,id=0,dialog=null,nestedDialog=null,menu=null,submenu=null,select=null,sheet=null,sheetInput=null;
+const nodes=new Map(),handlers=new Map(),pickerValues=new Map(),events=[];let ops=[],generation=0,id=0,dialog=null,nestedDialog=null,menu=null,submenu=null,select=null,sheet=null,sheetInput=null;
 const set=(n,name,value)=>ops.push(Protocol.set_prop_op(n,props.get(name),{TAG:typeof value==="string"?0:typeof value==="boolean"?1:2,_0:value}));
 function node(kind,parent,p={}){const n=++id;ops.push(Protocol.create_node_op(n,kinds.get(kind)));nodes.set(n,{parent,children:[]});for(const [k,v]of Object.entries(p))set(n,k,v);if(parent){const siblings=nodes.get(parent).children;ops.push(Protocol.insert_child_op(parent,n,siblings.length));siblings.push(n);}return n;}
 function flush(){if(ops.length){backend.apply_batch({generation:++generation,ops:list(ops)});ops=[];}}
-function drop(n){if(!n||!nodes.has(n))return;for(const c of [...nodes.get(n).children])drop(c);const p=nodes.get(n).parent;if(p){ops.push(Protocol.remove_child_op(p,n));nodes.get(p).children=nodes.get(p).children.filter(x=>x!==n);}ops.push(Protocol.drop_node_op(n));nodes.delete(n);handlers.delete(n);}
+function drop(n){if(!n||!nodes.has(n))return;for(const c of [...nodes.get(n).children])drop(c);const p=nodes.get(n).parent;if(p){ops.push(Protocol.remove_child_op(p,n));nodes.get(p).children=nodes.get(p).children.filter(x=>x!==n);}ops.push(Protocol.drop_node_op(n));nodes.delete(n);handlers.delete(n);pickerValues.delete(n);}
 function button(parent,text,fn){const n=node("button",parent,{text});handlers.set(n,fn);return n;}
 function closeSubmenu(){if(submenu){drop(submenu);submenu=null;flush();}}
 function closeMenu(){if(menu){drop(menu);menu=null;submenu=null;flush();}}
-function openMenu(parent,picker){if(menu)return;select=picker;menu=node("dropdown-menu",parent,{"min-width":220});for(const text of ["Alpha","Beta","Gamma"]){const n=node("menu-item",menu,{text,"press-enabled":true});handlers.set(n,()=>{set(picker,"text",text);closeMenu();});}const more=node("menu-trigger",menu,{text:"More"});submenu=node("dropdown-menu",more,{"min-width":180});const nested=node("menu-trigger",submenu,{text:"Nested option"});const deep=node("dropdown-menu",nested,{"min-width":160});node("menu-item",deep,{text:"Deepest option","press-enabled":true});handlers.set(submenu,closeSubmenu);handlers.set(menu,closeMenu);flush();}
-function picker(parent){const stack=node("stack",parent),s=node("select",stack,{text:"Alpha","press-enabled":true});handlers.set(s,()=>openMenu(stack,s));return s;}
+function openMenu(parent,picker){if(menu)return;select=picker;menu=node("dropdown-menu",parent,{"min-width":220});for(const text of ["Alpha","Beta","Gamma"]){const n=node("menu-item",menu,{text,"press-enabled":true,selected:pickerValues.get(picker)===text});handlers.set(n,()=>{pickerValues.set(picker,text);set(picker,"text",text);closeMenu();});}const more=node("menu-trigger",menu,{text:"More"});submenu=node("dropdown-menu",more,{"min-width":180});const nested=node("menu-trigger",submenu,{text:"Nested option"});const deep=node("dropdown-menu",nested,{"min-width":160});node("menu-item",deep,{text:"Deepest option","press-enabled":true});handlers.set(submenu,closeSubmenu);handlers.set(menu,closeMenu);flush();}
+function picker(parent){const stack=node("stack",parent),s=node("select",stack,{text:"Alpha","press-enabled":true});pickerValues.set(s,"Alpha");handlers.set(s,()=>openMenu(stack,s));return s;}
 function closeDialog(which="main"){const target=which==="nested"?nestedDialog:dialog;if(target){drop(target);if(which==="nested")nestedDialog=null;else{dialog=null;nestedDialog=null;menu=null;submenu=null;select=null;}flush();}}
 function addScrollContent(parent){const scroller=node("scroll",parent,{height:120,width:300,"accessibility-identifier":"inner-scroll"});const content=node("column",scroller,{gap:8});node("text",content,{text:"Inner scroll start"});node("box",content,{height:480});node("text",content,{text:"Inner scroll end"});}
 function closeSheet(){if(sheet){drop(sheet);sheet=null;sheetInput=null;if(window.audit)window.audit.sheetInput=null;flush();}}
@@ -143,10 +143,11 @@ function setupActionMenu(kind, preserveFocus=false){
   flush();return trigger;
 }
 window.audit={renderer,nodes,events,openDialog,closeDialog,setupTracking,setupContextTracking,openSheet,closeSheet,addToast,openCover,alignedOverlays,togglePopover,setupActionMenu,actionActivations:0,sheetInput:null};
-function setupOrdinaryMenu(retained=false){
+function setupOrdinaryMenu(retained=false,pressable=false){
   const owner=node('row',root);let popup=null;
   function close(){if(popup){if(retained){Menu.set_dropdown_open(renderer,popup,false);}else{drop(popup);popup=null;flush();}}}
-  const trigger=button(owner,retained?'Open retained ordinary menu':'Open ordinary menu',()=>{
+  const name=pressable?'Open pressable menu':retained?'Open retained ordinary menu':'Open ordinary menu';
+  const open=()=>{
     if(popup){if(retained){Menu.set_dropdown_open(renderer,popup,!Layers.is_open(renderer.web_layers,popup));}else close();return;}
     popup=node('dropdown-menu',owner,{anchor:'below','min-width':220});
     function action(text,run){const item=node('menu-item',popup,{text,'press-enabled':true});handlers.set(item,run);}
@@ -155,12 +156,14 @@ function setupOrdinaryMenu(retained=false){
     action('Disable ordinary trigger',()=>{set(trigger,'enabled',false);close();});
     action('Remove ordinary owner',()=>{drop(owner);popup=null;flush();});
     handlers.set(popup,close);flush();
-  });
+  };
+  const trigger=pressable?node('text',owner,{'press-enabled':true,text:name}):button(owner,name,open);
+  if(pressable)handlers.set(trigger,open);
   if(retained)button(root,'Cycle retained menu',()=>{if(popup){close();Menu.set_dropdown_open(renderer,popup,true);}});
   flush();
 }
 setupActionMenu('popover');setupActionMenu('popover',true);
-setupOrdinaryMenu();setupOrdinaryMenu(true);
+setupOrdinaryMenu();setupOrdinaryMenu(true);setupOrdinaryMenu(false,true);
 button(root,'Outside action',()=>{});flush();
 
 function runInertAudit(){
