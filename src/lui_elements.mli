@@ -391,6 +391,7 @@ val column :
   ?main:main_alignment ->
   ?cross:cross_alignment ->
   ?grow:float ->
+  ?grow_signal:float Signal.signal ->
   ?columns:int ->
   ?padding:int ->
   ?padding_horizontal:int ->
@@ -432,6 +433,7 @@ val column :
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?display:display ->
+  ?display_signal:display Signal.signal ->
   ?flex_wrap:flex_wrap ->
   ?transition:string -> t list -> t
 val grid :

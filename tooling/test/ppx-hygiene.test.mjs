@@ -15,7 +15,7 @@ test("reactive expansion preserves closure variables and source expressions", ()
     return result.stdout
   }
   try {
-    run(["dune", "build", "ppx/lui_ppx.cmxa", "src/lui.cmxa"])
+    run(["dune", "build", "--root", root, "ppx/lui_ppx.cmxa", "src/lui.cmxa"])
     writeFileSync(join(dir, "driver.ml"), "let () = Ppxlib.Driver.standalone ()\n")
     run(["ocamlfind", "ocamlopt", "-package", "ppxlib", "-linkpkg", "-linkall",
       "_build/default/ppx/lui_ppx.cmxa", join(dir, "driver.ml"), "-o", join(dir, "driver")])
@@ -73,4 +73,60 @@ let () =
     assert.equal(run([join(dir, "ownership")]).trim(), "owned")
 
   } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+
+test("reactive column layout updates retain children and mount-owned derivations", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lui-layout-signal-test-"))
+  const run = args => {
+    const result = spawnSync("opam", ["exec", "--", ...args], {cwd: root, encoding: "utf8"})
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+    return result.stdout
+  }
+  try {
+    run(["dune", "build", "--root", root, "ppx/lui_ppx.cmxa", "src/lui.cmxa"])
+    writeFileSync(join(dir, "driver.ml"), "let () = Ppxlib.Driver.standalone ()\n")
+    run(["ocamlfind", "ocamlopt", "-package", "ppxlib", "-linkpkg", "-linkall",
+      "_build/default/ppx/lui_ppx.cmxa", join(dir, "driver.ml"), "-o", join(dir, "driver")])
+    writeFileSync(join(dir, "layout.ml"), `
+let () =
+  let batches = ref [] in
+  let conversions = ref 0 in
+  let display visible = incr conversions; if visible then \`inline_flex else \`none in
+  let backend = { Lui_protocol.backend_profile = Lui_protocol.generic_profile ();
+    apply_batch = (fun batch -> batches := batch :: !batches; true) } in
+  let view _context source _send =
+    Lui_elements.column
+      ~grow:(reactive (fun visible -> if visible then 1. else 0.) source)
+      ~display:(reactive display source)
+      [Lui_elements.input ~text:"Retained draft" []] in
+  let app = Lui_app.create backend true (fun _ next -> next) view in
+  ignore (Lui_app.start app); ignore (Lui_app.flush app);
+  let initial_conversions = !conversions in
+  List.iteri (fun index visible ->
+    batches := [];
+    ignore (Lui_app.send app visible); ignore (Lui_app.flush app);
+    let ops = List.concat_map (fun (b : Lui_protocol.patch_batch) -> b.ops) !batches in
+    let shown = if visible then "inline-flex" else "none" in
+    let growth = if visible then 1. else 0. in
+    assert (List.exists (function
+      | Lui_protocol.SetProp (_, Lui_protocol.DisplayValue, Lui_protocol.StringValue value) -> value = shown
+      | _ -> false) ops);
+    assert (List.exists (function
+      | Lui_protocol.SetProp (_, Lui_protocol.GrowValue, Lui_protocol.FloatValue value) -> value = growth
+      | _ -> false) ops);
+    assert (not (List.exists (function
+      | Lui_protocol.CreateNode _ | Lui_protocol.DropNode _ -> true
+      | _ -> false) ops));
+    assert (!conversions = initial_conversions + index + 1)
+  ) [false; true; false; true];
+  ignore (Lui_app.dispose app);
+  print_endline "retained"
+`)
+    run(["ocamlfind", "ocamlopt", "-package", "ocaml-signal", "-linkpkg", "-ppx",
+      `${join(dir, "driver")} --as-ppx`, "-I", "_build/default/src/.lui.objs/byte",
+      "-I", "_build/default/src/.lui.objs/native", "_build/default/src/lui.cmxa",
+      join(dir, "layout.ml"), "-o", join(dir, "layout")])
+    assert.equal(run([join(dir, "layout")]).trim(), "retained")
+  } finally { rmSync(dir, {recursive: true, force: true}) }
 })
