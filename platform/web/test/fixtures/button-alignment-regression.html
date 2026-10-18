@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LUI button alignment regressions</title>
+<link rel="stylesheet" href="/platform/web/dist/lui.css">
+<script type="importmap">{"imports":{
+  "@tanstack/virtual-core": "/platform/web/dist/tanstack-virtual.js",
+          "lui.web.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui.web.dom/",
+  "lui/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui/",
+  "melange-webapi/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange-webapi/",
+  "melange.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.dom/",
+  "melange.js/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.js/",
+  "melange/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange/",
+  "ocaml-signal/":"/_build/default/examples/components/web/lui-components-web/node_modules/ocaml-signal/"
+}}</script>
+<style>body { margin: 24px; font: 16px system-ui } #host { max-width: 720px }</style>
+<main id="host"></main>
+<script type="module">
+import * as Web from "lui.web.dom/shell/lui_web.js"
+import { Protocol, properties, kinds } from "./protocol-fixture.mjs"
+const host = document.querySelector("#host")
+const renderer = Web.create(undefined, host)
+const backend = Web.backend(renderer)
+const list = items => items.reduceRight((tl, hd) => ({ hd, tl }), 0)
+let generation = 0
+const ops = [Protocol.create_node_op(1, kinds.get("row"))]
+function prop(node, name, value) {
+  return Protocol.set_prop_op(node, properties.get(name), { TAG: 0, _0: value })
+}
+const buttons = ["button", "toggle-button"].flatMap(kind =>
+  ["default", "icon"].flatMap(size => ["leading", "trailing"].map(placement =>
+    ({kind, size, placement, label: `${kind} ${size} ${placement}`}))))
+buttons.forEach(({kind, size, placement, label}, index) => {
+  const node = index + 2
+  ops.push(Protocol.create_node_op(node, kinds.get(kind)),
+    prop(node, "accessibility-label", label), prop(node, "size", size),
+    prop(node, "icon", "arrow-up"), prop(node, "icon-placement", placement),
+    Protocol.insert_child_op(1, node, index))
+})
+backend.apply_batch({generation: ++generation, ops: list(ops)})
+Web.mount(renderer, 1, host)
+window.buttons = {
+  setText: text => backend.apply_batch({generation: ++generation,
+    ops: list(buttons.map((_, index) => prop(index + 2, "text", text)))})
+}
+</script>
