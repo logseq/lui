@@ -1787,6 +1787,20 @@ let mount_popover renderer node =
         (Lui_web_util.node_dom_id node ^ "-popup") popup;
       let cover = Store.property renderer.web_store node PopupX = None
          && Store.property renderer.web_store node AnchorValue = None in
+      let positioned = popover_positioned renderer node in
+      let invalidate () =
+        Lui_web_util.set_state_attribute positioner "hidden" true;
+        if Lui_web_layers.is_open renderer.web_layers node then begin
+          let token =
+            Lui_web_layers.close_layer renderer.web_layers
+              renderer.web_document node
+          in
+          begin_popup_close popup;
+          Lui_web_layers.finish_present renderer.web_layers
+            renderer.web_document node token;
+          emit renderer (Dismiss node)
+        end
+      in
       if cover then W.Element.setAttribute "data-cover" "" positioner;
       Lui_web_layers.set_policy renderer.web_layers renderer.web_document node
         (if cover then Lui_web_layers.Blocking else Lui_web_layers.Nonblocking);
@@ -1794,8 +1808,10 @@ let mount_popover renderer node =
       Lui_web_layers.reconcile_owner renderer.web_layers
         renderer.web_document node current.retained_parent;
       let trigger =
-        if popover_positioned renderer node then
-          Some (Lui_web_nodes.dropdown_anchor_node renderer node)
+        if positioned then
+          if Lui_web_position.anchored renderer node then
+            Some (Lui_web_nodes.dropdown_anchor_node renderer node)
+          else None
         else if cover then None
         else
           (* press fires on pointerdown, before the browser's default
@@ -1823,13 +1839,16 @@ let mount_popover renderer node =
         node;
       begin_popup_open popup;
       Lui_web_position.position_popover renderer node;
-      if popover_positioned renderer node then
-        Lui_web_position.track renderer node popup
-          ~update:(fun () -> Lui_web_position.position_popover renderer node)
-          ~on_invalid:(fun () ->
-            Lui_web_util.set_state_attribute positioner "hidden" true);
+      if positioned then begin
+        if Lui_web_position.anchored renderer node then
+          Lui_web_position.track renderer node popup
+            ~update:(fun () -> Lui_web_position.position_popover renderer node)
+            ~on_invalid:invalidate
+        else invalidate ()
+      end;
       if
-        Store.property renderer.web_store node RoleValue
+        Lui_web_layers.is_open renderer.web_layers node
+        && Store.property renderer.web_store node RoleValue
         = Some (StringValue "menu")
       then initialize_menu_focus renderer node
   | None -> invalid_arg "unknown popover node"

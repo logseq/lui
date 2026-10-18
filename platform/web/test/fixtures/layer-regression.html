@@ -15,6 +15,7 @@
 }}</script>
 <style>body{margin:24px;font:16px system-ui}#host{min-height:1400px}#host>.lui-column{position:sticky;top:0;z-index:1}button{margin:4px}.fixture-hidden{display:none}.exit-audit-spinner{animation:exit-audit-spin 1s linear infinite}@keyframes exit-audit-spin{to{transform:rotate(360deg)}}</style>
 <h1>Retained layer regressions</h1>
+<style>.anchor-audit-hidden{visibility:hidden}</style>
 <button id="run-exit-audit">Run surface exit audit</button>
 <output id="exit-audit-result" role="status">Not run</output>
 <button id="run-style-audit">Run surface motion style audit</button>
@@ -28,6 +29,8 @@
 <output id="action-activation-count">0</output>
 <button id="run-responsive-layout-audit">Run responsive layout audit</button>
 <output id="responsive-layout-result" role="status">Not run</output>
+<button id="run-retained-anchor-audit">Run retained anchor audit</button>
+<output id="retained-anchor-result" role="status">Not run</output>
 <main id="host"></main>
 <script type="module">
 import * as Web from "lui.web.dom/shell/lui_web.js";
@@ -40,7 +43,12 @@ const list=a=>a.reduceRight((tl,hd)=>({hd,tl}),0);
 const nodes=new Map(),handlers=new Map(),pickerValues=new Map(),events=[];let ops=[],generation=0,id=0,dialog=null,nestedDialog=null,menu=null,submenu=null,select=null,sheet=null,sheetInput=null;
 const set=(n,name,value)=>ops.push(Protocol.set_prop_op(n,props.get(name),{TAG:typeof value==="string"?0:typeof value==="boolean"?1:2,_0:value}));
 function node(kind,parent,p={}){const n=++id;ops.push(Protocol.create_node_op(n,kinds.get(kind)));nodes.set(n,{parent,children:[]});for(const [k,v]of Object.entries(p))set(n,k,v);if(parent){const siblings=nodes.get(parent).children;ops.push(Protocol.insert_child_op(parent,n,siblings.length));siblings.push(n);}return n;}
-function flush(){if(ops.length){backend.apply_batch({generation:++generation,ops:list(ops)});ops=[];}}
+function flush(){
+  if(ops.length){
+    const batch=ops;ops=[];
+    backend.apply_batch({generation:++generation,ops:list(batch)});
+  }
+}
 function drop(n){if(!n||!nodes.has(n))return;for(const c of [...nodes.get(n).children])drop(c);const p=nodes.get(n).parent;if(p){ops.push(Protocol.remove_child_op(p,n));nodes.get(p).children=nodes.get(p).children.filter(x=>x!==n);}ops.push(Protocol.drop_node_op(n));nodes.delete(n);handlers.delete(n);pickerValues.delete(n);}
 function button(parent,text,fn){const n=node("button",parent,{text});handlers.set(n,fn);return n;}
 function closeSubmenu(){if(submenu){drop(submenu);submenu=null;flush();}}
@@ -198,6 +206,60 @@ function runInertAudit(){
 document.querySelector('#run-inert-audit').addEventListener('click',runInertAudit);
 
 const frames=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+document.querySelector('#run-retained-anchor-audit').addEventListener('click',async()=>{
+  const output=document.querySelector('#retained-anchor-result'),checks=[];
+  const check=(label,pass)=>checks.push({label,pass:!!pass});
+  const until=async predicate=>{
+    const deadline=performance.now()+1200;
+    while(!predicate()&&performance.now()<deadline)await new Promise(resolve=>setTimeout(resolve,20));
+    return predicate();
+  };
+  output.textContent='Running';
+  for(const mode of ['inert','hidden','display-none','removed','initial-inert','initial-removed','removed-and-closed','initial-inert-and-closed']){
+    let fixture,popup;
+    try{
+      fixture=node('column',root,{width:320});
+      const owner=node('box',fixture);
+      const identifier=`retained-anchor-${mode}`;
+      const trigger=button(owner,`Anchor ${mode}`,()=>{});set(trigger,'accessibility-identifier',identifier);
+      const initiallyUnavailable=mode.startsWith('initial-');
+      if(mode.startsWith('initial-inert'))set(owner,'inert',true);
+      if(mode==='initial-removed')drop(trigger);
+      popup=node('popover',fixture,{anchor:'below','anchor-target':identifier,width:280,role:'menu'});
+      const content=node('column',popup,{gap:8,padding:8});
+      node('input',content,{placeholder:`Draft ${mode}`,autofocus:true});
+      let dismissed=0;handlers.set(popup,()=>{
+        dismissed++;
+        if(mode.endsWith('-closed')){drop(popup);flush();}
+      });flush();await frames();
+      const positioner=document.querySelector(`[data-anchor-target="${identifier}"]`);
+      if(!positioner&&mode.endsWith('-closed')){
+        check(`${mode}: dismissal can synchronously remove its popup`,!nodes.has(popup)&&dismissed===1&&!Layers.is_open(renderer.web_layers,popup)&&!Layers.is_present(renderer.web_layers,popup));
+        continue;
+      }
+      const field=positioner.querySelector('input');
+      if(initiallyUnavailable)check(`${mode}: an unavailable target cannot take focus`,document.activeElement!==field);
+      else{
+        field.focus();
+        check(`${mode}: popup starts open and focused`,Layers.is_open(renderer.web_layers,popup)&&document.activeElement===field);
+        if(mode==='inert')set(owner,'inert',true);
+        else if(mode==='hidden')set(owner,'style-class','anchor-audit-hidden');
+        else if(mode==='display-none')set(owner,'display','none');
+        else drop(trigger);
+        flush();
+      }
+      check(`${mode}: unavailable target hides the surface`,await until(()=>positioner.hasAttribute('hidden')));
+      check(`${mode}: hidden popup releases its open input scope`,!Layers.is_open(renderer.web_layers,popup));
+      check(`${mode}: hidden popup releases layer presence`,!Layers.is_present(renderer.web_layers,popup));
+      check(`${mode}: focus does not remain in a hidden field`,document.activeElement!==field);
+      check(`${mode}: target invalidation dismisses exactly once`,dismissed===1);
+      await new Promise(resolve=>setTimeout(resolve,140));
+      check(`${mode}: stopped tracking cannot dismiss twice`,dismissed===1);
+    }catch(error){check(`${mode}: ${String(error._1??error.stack??error)}`,false);}
+    finally{if(fixture){drop(fixture);flush();}}
+  }
+  output.textContent=JSON.stringify({state:'Complete',pass:checks.every(c=>c.pass),checks});
+});
 const finiteAnimations=el=>el.getAnimations().filter(a=>Number.isFinite(a.effect?.getComputedTiming().endTime));
 async function runSplitAudit(){
   const output=document.querySelector('#split-audit-result'),checks=[];
