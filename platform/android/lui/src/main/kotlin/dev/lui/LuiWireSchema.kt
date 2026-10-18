@@ -281,7 +281,7 @@ enum class LuiProperty(val wireName: String) {
  */
 object LuiSchemaMatrix {
     val restrictive: Map<LuiNodeKind, Set<LuiProperty>> = mapOf(
-        LuiNodeKind.accordion to setOf(LuiProperty.text, LuiProperty.selected, LuiProperty.toggleEnabled, LuiProperty.height, LuiProperty.pointerEnabled),
+        LuiNodeKind.accordion to setOf(LuiProperty.text, LuiProperty.selected, LuiProperty.toggleEnabled, LuiProperty.height, LuiProperty.pointerEnabled, LuiProperty.styleClass),
         LuiNodeKind.stepper to setOf(LuiProperty.active, LuiProperty.accessibilityLabel, LuiProperty.pointerEnabled),
         LuiNodeKind.step to setOf(LuiProperty.text, LuiProperty.pointerEnabled),
         LuiNodeKind.timeline to setOf(LuiProperty.gap, LuiProperty.grow, LuiProperty.accessibilityLabel, LuiProperty.pointerEnabled),
