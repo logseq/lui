@@ -48,7 +48,7 @@ let resolved_popup_side preferred anchor_bounds popup_width popup_height
         "below"
       else "above"
 
-let position_anchored document positioner popup anchor_bounds preferred
+let position_anchored ?(alignment_offset = 0.0) document positioner popup anchor_bounds preferred
     alignment offset =
   (* The undecorated positioner keeps fractional layout dimensions while
      its painted child scales. A tooltip is its own positioner, so use its
@@ -118,6 +118,9 @@ let position_anchored document positioner popup anchor_bounds preferred
     | "end" -> W.DomRect.bottom anchor_bounds -. popup_height
     | _ -> W.DomRect.top anchor_bounds
   in
+  let alignment_offset = if alignment = "end" then -.alignment_offset else alignment_offset in
+  let aligned_left = aligned_left +. alignment_offset in
+  let aligned_top = aligned_top +. alignment_offset in
   let left =
     clamp_popup_axis
       (if vertical then aligned_left
@@ -425,7 +428,12 @@ let position_popover renderer node =
                  | Some value -> value
                  | None -> "start"
                in
-               position_anchored renderer.web_document positioner popup
+               let alignment_offset =
+                 match Store.property renderer.web_store node AnchorAlignmentOffset with
+                 | Some (FloatValue value) -> value
+                 | _ -> 0.0
+               in
+               position_anchored ~alignment_offset renderer.web_document positioner popup
                  anchor_bounds side alignment offset
              end
            end

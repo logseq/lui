@@ -288,6 +288,7 @@ type property =
   | GridColumnSpan
   | LabelOpacity
   | SubmitOnBlur
+  | AnchorAlignmentOffset
 
 module Property_map : Map.S with type key = property
 

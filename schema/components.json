@@ -1760,6 +1760,11 @@
       "lg": "SubmitOnBlur",
       "wire": "submit-on-blur",
       "swift": "submitOnBlur"
+    },
+    {
+      "lg": "AnchorAlignmentOffset",
+      "wire": "anchor-alignment-offset",
+      "swift": "anchorAlignmentOffset"
     }
   ],
   "events": [

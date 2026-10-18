@@ -3645,6 +3645,10 @@ val file_picker :
       [~anchor_target] names a retained control's accessibility identifier when
       the popover lives outside that control's subtree. It requires [~anchor]
       and uses the target's current geometry and ownership.
+      [~anchor_alignment_offset] shifts the cross axis in logical pixels.
+      Positive values move toward the start for end alignment and toward
+      the end for start/stretch alignment; negative values reverse that shift.
+      It requires [~anchor], defaults to zero, and remains viewport-clamped.
     - neither — cover mode: the positioner spans the viewport
       ([data-cover], inset:0) for fullscreen surfaces.
 
@@ -3701,6 +3705,7 @@ val popover :
   ?anchor_target:string ->
   ?anchor_alignment:anchor_alignment ->
   ?anchor_offset:float ->
+  ?anchor_alignment_offset:float ->
   ?available_height:float ->
   ?available_height_signal:float Signal.signal ->
   ?role:popover_role ->

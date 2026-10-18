@@ -1873,6 +1873,54 @@ let test_retained_popover_target () =
       hidden "removing a target identifier invalidates its reference")
     [ 1.; 2. ]
 
+let test_anchor_alignment_offset () =
+  let open Lui_json_view in
+  List.iter (fun value ->
+    check bool "Alignment offsets reject nonfinite values" false
+      (property_value_supported AnchorAlignmentOffset (FloatValue value)))
+    [Float.nan;Float.infinity;Float.neg_infinity];
+  check bool "Alignment offsets require an anchor" false
+    (node_properties_supported Popover
+       (Property_map.singleton AnchorAlignmentOffset (FloatValue 5.5)));
+  List.iter (fun scale ->
+    List.iter (fun side ->
+      List.iter (fun alignment ->
+        List.iter (fun offset ->
+          let store = Lui_store.create () and layout = Lui_layout.create () in
+          let backend = {backend_profile=profile MacOS GenericHost;
+            apply_batch=(fun batch -> Lui_store.apply_batch store batch; true)} in
+          let view = Obj ["kind",Str "box";"width",Num 80.;"height",Num 32.;
+            "margin-left",Num 100.;"margin-top",Num 100.;
+            "children",Arr [Obj ["kind",Str "popover";"width",Num 60.;"height",Num 40.;
+              "anchor",Str side;"anchor-alignment",Str alignment;
+              "anchor-alignment-offset",Num offset]]] in
+          let app = Lui_app.create backend () (fun () () -> ())
+            (fun _ _ _ -> Lui_elements.column
+              [Lui_json_view.render ~on_event:(fun ~id:_ ~kind:_ ~fields:_ -> ()) view]) in
+          ignore (Lui_app.start app); ignore (Lui_app.flush app);
+          Lui_layout.sync ~scale ~width:(640. *. scale) ~height:(480. *. scale) layout store;
+          let popup = List.find (fun id -> Lui_store.kind store id="popover") (Lui_store.preorder store) in
+          let rect = Option.get (Lui_layout.rect layout popup) in
+          let vertical = side="above" || side="below" in
+          let anchor_size,popup_size,viewport = if vertical then 80.,60.,640. else 32.,40.,480. in
+          let baseline = if alignment="end" then 100. +. anchor_size -. popup_size else 100. in
+          let expect offset rect =
+            let expected = baseline +. (if alignment="end" then -.offset else offset) in
+            let expected = Float.round (Float.max 0. (Float.min expected (viewport -. popup_size)) *. scale) in
+            check (float eps) (Printf.sprintf "%s/%s offset=%g scale=%g" side alignment offset scale)
+              expected (if vertical then rect.Lui_scene.x else rect.y) in
+          expect offset rect;
+          Lui_store.apply_op store (SetProp (popup,AnchorAlignmentOffset,FloatValue (-.offset)));
+          Lui_layout.sync ~scale ~width:(640. *. scale) ~height:(480. *. scale) layout store;
+          expect (-.offset) (Option.get (Lui_layout.rect layout popup));
+          Lui_store.apply_op store (RemoveProp (popup,AnchorAlignmentOffset));
+          Lui_layout.sync ~scale ~width:(640. *. scale) ~height:(480. *. scale) layout store;
+          expect 0. (Option.get (Lui_layout.rect layout popup));
+          ignore (Lui_app.dispose app)) [0.;5.5;(-5.5);1000.;(-1000.)])
+        ["start";"end"])
+      ["above";"below";"left";"right"])
+    [1.;2.]
+
 let test_anchored_popover_side_height () =
   List.iter
     (fun scale ->
@@ -2072,6 +2120,7 @@ let () =
          test_case "menu height cap" `Quick test_menu_height_cap;
          test_case "popover available height" `Quick test_popover_available_height;
          test_case "retained popover target" `Quick test_retained_popover_target;
+         test_case "anchor alignment offset" `Quick test_anchor_alignment_offset;
          test_case "anchored popover side height" `Quick test_anchored_popover_side_height;
          test_case "menu role layout" `Quick test_menu_role_layout;
          test_case "ac row" `Quick test_ac_row;

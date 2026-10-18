@@ -171,7 +171,7 @@ enum LUIWireValue: Decodable, Equatable {
             guard let value = stringValue else { return false }
             return ["linear", "standard", "emphasized", "spring"].contains(value)
         case .resizeOrigin, .sourceX, .sourceY, .sourceWidth, .sourceHeight,
-             .anchorOffset:
+             .anchorOffset, .anchorAlignmentOffset:
             guard let value = doubleValue else { return false }
             return value.isFinite
         case .minValue, .maxValue:
@@ -1232,7 +1232,7 @@ struct LUIRetainedTree {
             kind == .mediaSurface
         case .sourceX, .sourceY, .sourceWidth, .sourceHeight:
             kind == .avatar || kind == .image
-        case .anchorTarget:
+        case .anchorTarget, .anchorAlignmentOffset:
             kind == .popover
         case .anchor, .anchorAlignment, .anchorOffset:
             kind == .dropdownMenu || kind == .tooltip || kind == .popover
@@ -1630,6 +1630,10 @@ struct LUIRetainedTree {
                     throw invalid("expanded treeitem requires toggle support")
                 }
             }
+            if node.kind == .popover, node.properties[.anchorAlignmentOffset] != nil,
+               node.properties[.anchor] == nil {
+                throw invalid("anchor-alignment-offset requires anchor")
+            }
             if node.kind == .dropdownMenu || node.kind == .tooltip {
                 if node.properties[.anchorAlignment] != nil, node.properties[.anchor] == nil {
                     throw invalid("anchor-alignment requires anchor")
@@ -1819,7 +1823,7 @@ struct LUIRetainedTree {
 
 extension LUIWireValue {
     func normalized(for property: LUIProperty) -> LUIWireValue {
-        if property == .grow || property == .anchorOffset ||
+        if property == .grow || property == .anchorOffset || property == .anchorAlignmentOffset ||
             property == .sourceX || property == .sourceY ||
             property == .sourceWidth || property == .sourceHeight ||
             property == .progressValue || property == .minValue ||

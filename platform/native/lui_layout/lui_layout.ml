@@ -1313,6 +1313,8 @@ let anchored_xy ?resolved_side ctx store sid ar (prp : Lui_flex.rect) =
       | "end" -> ar.y +. ar.h -. prp.h
       | _ -> ar.y
   in
+  let alignment_offset = Option.value ~default:0. (pnum store sid "anchor-alignment-offset") *. s in
+  let cross = cross +. (if alignment = "end" then -.alignment_offset else alignment_offset) in
   let x, y = if vertical then (cross, main) else (main, cross) in
   (* Clamp inside the viewport so the popup stays on-screen — the
      containing block may be smaller than the panel (a menu

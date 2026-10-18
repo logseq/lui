@@ -31,6 +31,37 @@ private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
 @MainActor
 @Suite("LUI SwiftUI backend", .serialized)
 struct LUISwiftUIBackendTests {
+    @Test("popover alignment offsets retain finite signed values and require an anchor")
+    func popoverAlignmentOffsets() throws {
+        for value in [Double.nan, Double.infinity, -Double.infinity] {
+            #expect(!LUIWireValue.double(value).matches(.anchorAlignmentOffset, on: .popover))
+        }
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"box"},
+          {"op":"create-node","id":2,"kind":"popover"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"set-prop","id":2,"property":"anchor","value":"below"},
+          {"op":"set-prop","id":2,"property":"anchor-alignment-offset","value":-5.5}
+        ]}
+        """)
+        #expect(backend.model(id: 2)?.property(.anchorAlignmentOffset) == .double(-5.5))
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":2,"property":"anchor-alignment-offset","value":5}
+        ]}
+        """)
+        #expect(backend.model(id: 2)?.property(.anchorAlignmentOffset) == .double(5))
+        #expect(throws: (any Error).self) {
+            try backend.apply(json: """
+            {"generation":3,"ops":[
+              {"op":"remove-prop","id":2,"property":"anchor"}
+            ]}
+            """)
+        }
+    }
+
     @Test("events raised during a retained batch wait for the commit boundary")
     func retainedBatchDefersEventsUntilCommitCompletes() throws {
         let backend = LUIAppleBackend()

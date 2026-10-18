@@ -950,6 +950,7 @@ and apply_secondary_property renderer queue_split node kind dom_node
       W.Element.setAttribute "data-anchor-target" identifier dom_node
   | AnchorAlignmentValue, StringValue alignment ->
       W.Element.setAttribute "data-anchor-alignment" alignment dom_node
+  | AnchorAlignmentOffset, FloatValue _ -> ()
   | AnchorOffset, FloatValue offset ->
       apply_anchor_offset kind dom_node offset
   | UrlValue, StringValue url ->
@@ -1238,7 +1239,7 @@ let remove_property renderer queue_split node kind dom_node property =
        | PickerAccept -> W.Element.removeAttribute "data-accept" dom_node
        | PickerDirectory ->
            W.Element.removeAttribute "data-directory" dom_node
-       | PopupX | PopupY -> ()
+       | PopupX | PopupY | AnchorAlignmentOffset -> ()
        | AnchorTarget -> W.Element.removeAttribute "data-anchor-target" dom_node
        | AnchorAlignmentValue ->
            W.Element.removeAttribute "data-anchor-alignment" dom_node

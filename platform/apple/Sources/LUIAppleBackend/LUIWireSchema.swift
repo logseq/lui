@@ -269,6 +269,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case gridColumnSpan = "grid-column-span"
     case labelOpacity = "label-opacity"
     case submitOnBlur = "submit-on-blur"
+    case anchorAlignmentOffset = "anchor-alignment-offset"
 }
 
 enum LUISchemaMatrix {

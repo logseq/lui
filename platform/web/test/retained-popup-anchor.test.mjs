@@ -77,3 +77,45 @@ test('a portal popover uses its retained target for alignment, tracking and avai
   target.isConnected = false
   assert.equal(Position.anchored(renderer, 3), false)
 })
+
+for (const side of ['above', 'below', 'left', 'right']) {
+  for (const alignment of ['start', 'end']) {
+    test(`popover ${side}/${alignment} cross-axis offsets update and clear before viewport clamping`, () => {
+      const viewport = {clientWidth: 640, clientHeight: 480}
+      const anchor = element({x: 100, y: 100, width: 80, height: 32})
+      const popup = element({x: 0, y: 0, width: 60, height: 40})
+      const positioner = element({x: 0, y: 0, width: 60, height: 40}, [popup])
+      const document = {defaultView: null, documentElement: viewport}
+      const store = Store.create_store(), renderer = {web_store: store, web_document: document}
+      const set = (name, value) => Protocol.set_prop_op(2, prop(name), value)
+      let generation = 0
+      const apply = ops => assert.equal(Store.apply_batch(store,
+        name => name === kind('popover') ? positioner : anchor,
+        {generation: ++generation, ops: list(ops)}), true)
+      apply([Protocol.create_node_op(1, kind('box')), Protocol.create_node_op(2, kind('popover')),
+        Protocol.insert_child_op(1, 2, 0), set('anchor', {TAG: 0, _0: side}),
+        set('anchor-alignment', {TAG: 0, _0: alignment})])
+      positioner.setAttribute('data-anchor', side)
+      positioner.setAttribute('data-anchor-alignment', alignment)
+      const vertical = side === 'above' || side === 'below'
+      const anchorSize = vertical ? 80 : 32, popupSize = vertical ? 60 : 40
+      const base = alignment === 'end' ? 100 + anchorSize - popupSize : 100
+      const check = offset => {
+        Position.position_popover(renderer, 2)
+        const expected = Math.max(8, Math.min(base + (alignment === 'end' ? -offset : offset),
+          (vertical ? viewport.clientWidth : viewport.clientHeight) - popupSize - 8))
+        assert.equal(positioner.styles.get(vertical ? 'left' : 'top'), `${expected}px`)
+      }
+      check(0)
+      for (const offset of [5.5, -5.5, 1000, -1000]) {
+        apply([set('anchor-alignment-offset', {TAG: 3, _0: offset})])
+        check(offset)
+      }
+      apply([Protocol.remove_prop_op(2, prop('anchor-alignment-offset'))])
+      check(0)
+      viewport.clientWidth = 480
+      viewport.clientHeight = 360
+      check(0)
+    })
+  }
+}

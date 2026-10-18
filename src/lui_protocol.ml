@@ -290,6 +290,7 @@ type property =
   | GridColumnSpan
   | LabelOpacity
   | SubmitOnBlur
+  | AnchorAlignmentOffset
 
 module Property_map =
   Map.Make
@@ -1087,6 +1088,7 @@ let common_property_supported kind property =
     kind = Avatar || kind = Image
   | SurfaceIdValue -> kind = MediaSurface
   | AnchorTarget -> kind = Popover
+  | AnchorAlignmentOffset -> kind = Popover
   | AnchorValue | AnchorAlignmentValue | AnchorOffset ->
     kind = DropdownMenu || kind = Tooltip || kind = Popover
   | PopupX | PopupY -> kind = Popover || kind = DropdownMenu
@@ -1579,7 +1581,7 @@ let property_value_supported property value =
   | AnchorTarget, StringValue value -> String.trim value <> ""
   | AnchorAlignmentValue, StringValue value ->
     value = "start" || value = "end" || value = "stretch"
-  | AnchorOffset, FloatValue value -> is_finite value
+  | AnchorOffset, FloatValue value | AnchorAlignmentOffset, FloatValue value -> is_finite value
   | TooltipDelay, IntValue value | DurationValue, IntValue value ->
     value >= 0 && value <= 2147483647
   | TextAlignment, StringValue value ->
@@ -1808,6 +1810,7 @@ let node_properties_supported kind properties =
   && (if kind = DropdownMenu || kind = Tooltip || kind = Popover then
         if Property_map.mem AnchorAlignmentValue properties
            || Property_map.mem AnchorOffset properties
+           || Property_map.mem AnchorAlignmentOffset properties
         then Property_map.mem AnchorValue properties
         else true
       else true)
