@@ -34,6 +34,81 @@ let picker_node picker request completion host_completion on_picked
     ~request_signal:(Signal.value request)
     ~completion_signal:completion_s ~on_picked ~on_dismiss []
 
+let attach_button attach_label on_attach_press : t =
+  button ~icon:`plus ~variant:`ghost ~size:`icon ~width:36 ~height:36
+    ~label:attach_label ~accessibility_identifier:"lui-ai-attach"
+    ~on_press:on_attach_press []
+
+let stop_button generating stop_label on_stop : t =
+  if_ ~test:generating
+    (button ~icon:`pause ~variant:`secondary ~width:36 ~height:36
+       ~corner_radius:18 ~label:stop_label
+       ~accessibility_identifier:"lui-ai-stop" ~on_press:on_stop [])
+
+(* One shared send-allowed gate: disabled send means disabled Enter. *)
+let send_gate context scheduler generating send_disabled disabled_reason =
+  let reason_blocked_s =
+    match disabled_reason with
+    | Some reason ->
+        Signal.own_signal context.Lui_ui.ui_scope
+          (Signal.map (fun r -> String.trim r <> "") reason)
+    | None -> Signal.constant scheduler false
+  in
+  Signal.own_signal context.Lui_ui.ui_scope
+    (Signal.map2 (||)
+       (Signal.map2 (||) generating
+          (Option.value send_disabled
+             ~default:(Signal.constant scheduler false)))
+       reason_blocked_s)
+
+let feedback_of context disabled_reason status =
+  match disabled_reason, status with
+  | None, None -> None
+  | reason, status ->
+      Some
+        (column ~cross:`stretch ~gap:2
+           ((match reason with
+             | Some reason ->
+                 [ if_
+                     ~test:
+                       (Signal.own_signal context.Lui_ui.ui_scope
+                          (Signal.map
+                             (fun r -> String.trim r <> "") reason))
+                     (text ~value_signal:reason
+                        ~foreground:"warning-foreground"
+                        ~style_class:"caption" []) ]
+             | None -> [])
+            @ Option.to_list status))
+
+(* Picker wiring: internal request token + host-driven completion. *)
+let picker_parts context picker on_attach on_picked on_picker_dismiss
+    picker_completion : t list * (Lui_protocol.event -> unit) option =
+  match picker, on_attach with
+  | None, None -> ([], None)
+  | _ ->
+      let scheduler = context.Lui_ui.ui_scheduler in
+      let request =
+        Signal.state_at scheduler context.ui_state_scope request_slot (`Int 0)
+      in
+      let completion =
+        Signal.state_at scheduler context.ui_state_scope completion_slot
+          (`Int 0)
+      in
+      let seq = ref 0 in
+      let on_attach_press ev =
+        incr seq;
+        Signal.set request (`Int !seq);
+        Option.iter (fun f -> f ev) on_attach
+      in
+      let el =
+        match picker with
+        | Some picker ->
+            [ picker_node picker request completion picker_completion
+                on_picked on_picker_dismiss ]
+        | None -> []
+      in
+      (el, Some on_attach_press)
+
 let composer ?key ?(label = "Message") ?(placeholder = "Message")
     ?(submit_on_enter = true) ?(autofocus = false)
     ?(send_label = "Send") ?(stop_label = "Stop generating")
@@ -48,37 +123,19 @@ let composer ?key ?(label = "Message") ?(placeholder = "Message")
         (Lui_ui.owner_name context "lui-ai-composer")
     in
     let scheduler = context.Lui_ui.ui_scheduler in
-    let request =
-      Signal.state_at scheduler context.ui_state_scope request_slot (`Int 0)
+    let picker_el, on_attach_press =
+      picker_parts context picker on_attach on_picked on_picker_dismiss
+        picker_completion
     in
-    let completion =
-      Signal.state_at scheduler context.ui_state_scope completion_slot
-        (`Int 0)
+    let attach_controls =
+      match on_attach_press with
+      | None -> []
+      | Some press -> [ attach_button attach_label press ]
     in
-    let seq = ref 0 in
-    let on_attach_press ev =
-      incr seq;
-      Signal.set request (`Int !seq);
-      Option.iter (fun f -> f ev) on_attach
-    in
-    let attach_button =
-      match picker, on_attach with
-      | None, None -> []
-      | _ ->
-          [ button ~icon:`plus ~variant:`ghost ~size:`icon ~width:36
-              ~height:36 ~label:attach_label
-              ~accessibility_identifier:"lui-ai-attach"
-              ~on_press:on_attach_press [] ]
-    in
-    let stop_button =
+    let stop_controls =
       match on_stop with
       | None -> []
-      | Some on_stop ->
-          [ if_ ~test:generating
-              (button ~icon:`pause ~variant:`secondary ~width:36 ~height:36
-                 ~corner_radius:18 ~label:stop_label
-                 ~accessibility_identifier:"lui-ai-stop" ~on_press:on_stop
-                 []) ]
+      | Some on_stop -> [ stop_button generating stop_label on_stop ]
     in
     let disabled_s =
       match disabled_reason with
@@ -88,47 +145,10 @@ let composer ?key ?(label = "Message") ?(placeholder = "Message")
                (Signal.map (fun r -> String.trim r <> "") reason))
       | None -> None
     in
-    let reason_blocked_s =
-      match disabled_reason with
-      | Some reason ->
-          Signal.own_signal context.ui_scope
-            (Signal.map (fun r -> String.trim r <> "") reason)
-      | None -> Signal.constant scheduler false
-    in
     let send_blocked_s =
-      Signal.own_signal context.ui_scope
-        (Signal.map2 (||)
-           (Signal.map2 (||) generating
-              (Option.value send_disabled
-                 ~default:(Signal.constant scheduler false)))
-           reason_blocked_s)
+      send_gate context scheduler generating send_disabled disabled_reason
     in
-    let feedback =
-      match disabled_reason, status with
-      | None, None -> None
-      | reason, status ->
-          Some
-            (column ~cross:`stretch ~gap:2
-               ((match reason with
-                 | Some reason ->
-                     [ if_
-                         ~test:
-                           (Signal.own_signal context.ui_scope
-                              (Signal.map
-                                 (fun r -> String.trim r <> "") reason))
-                         (text ~value_signal:reason
-                            ~foreground:"warning-foreground"
-                            ~style_class:"caption" []) ]
-                 | None -> [])
-                @ Option.to_list status))
-    in
-    let picker_el =
-      match picker with
-      | Some picker ->
-          [ picker_node picker request completion picker_completion
-              on_picked on_picker_dismiss ]
-      | None -> []
-    in
+    let feedback = feedback_of context disabled_reason status in
     column ?key ~cross:`stretch ~gap:0
       (picker_el
        @ [ Lui_element_combine.composer ~placeholder ~label ~submit_on_enter
@@ -137,6 +157,6 @@ let composer ?key ?(label = "Message") ?(placeholder = "Message")
              ?disabled_signal:disabled_s ~text_signal:draft
              ?attachments ?attachments_visible_signal:attachments_visible_signal
              ?feedback
-             ~actions:(attach_button @ controls @ trailing_controls
-                       @ stop_button)
+             ~actions:(attach_controls @ controls @ trailing_controls
+                       @ stop_controls)
              ~on_input ~on_submit:on_send ~on_send () ]))

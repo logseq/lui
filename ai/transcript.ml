@@ -343,6 +343,99 @@ let follow_requests rows_s (pinned : bool Signal.state) =
        else None)
     rows_s (Signal.value pinned)
 
+(* Pinned-tail state and the scroll intent live in transcript scope. *)
+let scroll_state context viewport =
+  let pinned = scoped_state context pinned_slot true in
+  let request = scoped_state context request_slot ("", 0) in
+  let at_top = scoped_state context at_top_slot false in
+  let seq = ref 0 in
+  let scroll_to ~key ~animated =
+    match viewport with
+    | Anchored | Anchored_list ->
+        incr seq;
+        Signal.set request (key, !seq)
+    | Host_driven h -> h.scroll_to ~key ~animated
+  in
+  (pinned, request, at_top, scroll_to)
+
+let on_visible_range_of rows_s pinned at_top on_reach_top
+    (ev : Lui_protocol.event) =
+  match ev with
+  | Lui_protocol.VisibleRange (_, first, last) ->
+      let count = List.length (get rows_s) in
+      Signal.set pinned (count = 0 || last >= count - 1);
+      if first <= 0 && not (Signal.get_state at_top) then begin
+        Signal.set at_top true;
+        Option.iter (fun f -> f ()) on_reach_top
+      end
+      else if first > 0 then Signal.set at_top false
+  | _ -> ()
+
+let jump_pill pinned rows_s scroll_to scroll_animated : t =
+  let jump_now _ =
+    Signal.set pinned true;
+    match last_row_key (get rows_s) with
+    | Some key -> scroll_to ~key ~animated:scroll_animated
+    | None -> ()
+  in
+  align `bottom
+    (if_ ~test:(reactive (fun p -> not p) (Signal.value pinned))
+       (button ~icon:`arrow_down ~variant:`secondary ~size:`icon
+          ~width:36 ~height:36 ~corner_radius:18 ~label:"Jump to latest"
+          ~accessibility_identifier:"lui-ai-jump" ~on_press:jump_now []))
+
+let list_el_of ~key ~container_kind ~anchored ?overscan ?item_extent
+    ~on_visible_range ~request ~scroll_animated ~container_class
+    ~container_data_attrs ~container_data_attrs_signal rows : t =
+  match container_kind, anchored with
+  | `list, true ->
+      list ?key ~grow:1.0 ~gap:12 ~cross:`stretch ~style:`plain
+        ~track_visible_range:true ~on_visible_range
+        ~scroll_anchor:`bottom
+        ~scroll_target:(reactive (fun (k, _) -> k) (Signal.value request))
+        ~scroll_token:(reactive (fun (_, t) -> t) (Signal.value request))
+        ~scroll_animated ?style_class:container_class
+        ?data_attrs:container_data_attrs
+        ?data_attrs_signal:container_data_attrs_signal [ rows ]
+  | `virtual_list, true ->
+      virtual_list ?key ~grow:1.0 ~gap:12 ~cross:`stretch ?overscan
+        ?item_extent ~min_height:0 ~min_width:0
+        ~track_visible_range:true ~on_visible_range
+        ~scroll_anchor:`bottom
+        ~scroll_target:(reactive (fun (k, _) -> k) (Signal.value request))
+        ~scroll_token:(reactive (fun (_, t) -> t) (Signal.value request))
+        ~scroll_animated ?style_class:container_class
+        ?data_attrs:container_data_attrs
+        ?data_attrs_signal:container_data_attrs_signal [ rows ]
+  | `list, false ->
+      list ?key ~grow:1.0 ~gap:12 ~cross:`stretch ~style:`plain
+        ~min_height:0 ~min_width:0 ?style_class:container_class
+        ?data_attrs:container_data_attrs
+        ?data_attrs_signal:container_data_attrs_signal [ rows ]
+  | `virtual_list, false ->
+      virtual_list ?key ~grow:1.0 ~gap:12 ~cross:`stretch ?overscan
+        ?item_extent ~min_height:0 ~min_width:0
+        ?style_class:container_class ?data_attrs:container_data_attrs
+        ?data_attrs_signal:container_data_attrs_signal [ rows ]
+
+let make_cfg ~render_item ~render_attachment ~item_class
+    ~item_data_attrs ~item_actions ~on_retry ~retry_label ~on_load_full
+    ~load_full_label ~content_width : config =
+  {
+    render_item = Option.value render_item ~default:(fun _ -> None);
+    render_attachment =
+      Option.value render_attachment ~default:Attachment.view;
+    item_class = Option.value item_class ~default:(fun _ -> "");
+    item_data_attrs =
+      Option.value item_data_attrs ~default:(fun _ -> []);
+    item_actions;
+    on_retry;
+    retry_label;
+    on_load_full;
+    load_full_label;
+    content_width;
+  }
+
 let transcript ?key ?(viewport = Anchored) ?overscan ?item_extent
     ?(content_width = 768) ?(group_tools = true) ?render_item
     ?render_attachment ?item_class ?item_data_attrs ?container_class
@@ -355,32 +448,13 @@ let transcript ?key ?(viewport = Anchored) ?overscan ?item_extent
     let context =
       Lui_ui.child_context context (Lui_ui.owner_name context "lui-ai")
     in
-    let pinned = scoped_state context pinned_slot true in
-    let request = scoped_state context request_slot ("", 0) in
-    let at_top = scoped_state context at_top_slot false in
-    let cfg =
-      {
-        render_item = Option.value render_item ~default:(fun _ -> None);
-        render_attachment =
-          Option.value render_attachment ~default:Attachment.view;
-        item_class = Option.value item_class ~default:(fun _ -> "");
-        item_data_attrs =
-          Option.value item_data_attrs ~default:(fun _ -> []);
-        item_actions;
-        on_retry;
-        retry_label;
-        on_load_full;
-        load_full_label;
-        content_width;
-      }
+    let pinned, request, at_top, scroll_to =
+      scroll_state context viewport
     in
-    let seq = ref 0 in
-    let scroll_to ~key ~animated =
-      match viewport with
-      | Anchored | Anchored_list ->
-          incr seq;
-          Signal.set request (key, !seq)
-      | Host_driven h -> h.scroll_to ~key ~animated
+    let cfg =
+      make_cfg ~render_item ~render_attachment ~item_class
+        ~item_data_attrs ~item_actions ~on_retry ~retry_label
+        ~on_load_full ~load_full_label ~content_width
     in
     let container_kind =
       match viewport with
@@ -406,76 +480,25 @@ let transcript ?key ?(viewport = Anchored) ?overscan ?item_extent
          own_sub context
            (Signal.subscribe h.at_bottom (fun b -> Signal.set pinned b))
      | Anchored | Anchored_list -> ());
-    let on_visible_range (ev : Lui_protocol.event) =
-      match ev with
-      | Lui_protocol.VisibleRange (_, first, last) ->
-          let count = List.length (get rows_s) in
-          Signal.set pinned (count = 0 || last >= count - 1);
-          if first <= 0 && not (Signal.get_state at_top) then begin
-            Signal.set at_top true;
-            Option.iter (fun f -> f ()) on_reach_top
-          end
-          else if first > 0 then Signal.set at_top false
-      | _ -> ()
+    let on_visible_range =
+      on_visible_range_of rows_s pinned at_top on_reach_top
     in
-    let jump_now _ =
-      Signal.set pinned true;
-      match last_row_key (get rows_s) with
-      | Some key -> scroll_to ~key ~animated:scroll_animated
-      | None -> ()
+    let anchored =
+      match viewport with
+      | Anchored | Anchored_list -> true
+      | Host_driven _ -> false
     in
     let rows =
       keyed ~source:rows_s ~key:row_key ~cmp:String.compare
         ~mount:(row_of cfg)
     in
-    let anchored =
-      match viewport with Anchored | Anchored_list -> true | Host_driven _ -> false in
     let list_el =
-      match container_kind, anchored with
-      | `list, true ->
-          list ?key ~grow:1.0 ~gap:12 ~cross:`stretch ~style:`plain
-            ~track_visible_range:true ~on_visible_range
-            ~scroll_anchor:`bottom
-            ~scroll_target:
-              (reactive (fun (k, _) -> k) (Signal.value request))
-            ~scroll_token:
-              (reactive (fun (_, t) -> t) (Signal.value request))
-            ~scroll_animated
-            ?style_class:container_class ?data_attrs:container_data_attrs
-            ?data_attrs_signal:container_data_attrs_signal [ rows ]
-      | `virtual_list, true ->
-          virtual_list ?key ~grow:1.0 ~gap:12 ~cross:`stretch ?overscan
-            ?item_extent ~min_height:0 ~min_width:0
-            ~track_visible_range:true ~on_visible_range
-            ~scroll_anchor:`bottom
-            ~scroll_target:
-              (reactive (fun (k, _) -> k) (Signal.value request))
-            ~scroll_token:
-              (reactive (fun (_, t) -> t) (Signal.value request))
-            ~scroll_animated
-            ?style_class:container_class ?data_attrs:container_data_attrs
-            ?data_attrs_signal:container_data_attrs_signal [ rows ]
-      | `list, false ->
-          list ?key ~grow:1.0 ~gap:12 ~cross:`stretch ~style:`plain
-            ~min_height:0 ~min_width:0
-            ?style_class:container_class ?data_attrs:container_data_attrs
-            ?data_attrs_signal:container_data_attrs_signal [ rows ]
-      | `virtual_list, false ->
-          virtual_list ?key ~grow:1.0 ~gap:12 ~cross:`stretch ?overscan
-            ?item_extent ~min_height:0 ~min_width:0
-            ?style_class:container_class
-            ?data_attrs:container_data_attrs
-            ?data_attrs_signal:container_data_attrs_signal [ rows ]
+      list_el_of ~key ~container_kind ~anchored ?overscan ?item_extent
+        ~on_visible_range ~request ~scroll_animated ~container_class
+        ~container_data_attrs ~container_data_attrs_signal rows
     in
     overlay ~grow:1.0 ~min_height:0 ~min_width:0
-      [ list_el
-      ; align `bottom
-          (if_
-             ~test:(reactive (fun p -> not p) (Signal.value pinned))
-             (button ~icon:`arrow_down ~variant:`secondary ~size:`icon
-                ~width:36 ~height:36 ~corner_radius:18 ~label:"Jump to latest"
-                ~accessibility_identifier:"lui-ai-jump" ~on_press:jump_now
-                [])) ])
+      [ list_el; jump_pill pinned rows_s scroll_to scroll_animated ])
 
 let item_row (item : item) : t =
   scoped (fun context ->

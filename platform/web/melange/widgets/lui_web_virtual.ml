@@ -47,8 +47,7 @@ let install renderer node ~materialize ~unmount =
     in
     let last_token = ref None in
     let last_range = ref None in
-    let pending_scroll = ref None in
-    let document = W.Document.unsafeAsHtmlDocument renderer.web_document in
+        let document = W.Document.unsafeAsHtmlDocument renderer.web_document in
     let live_rows () =
       Hashtbl.fold (fun id _ rows -> id :: rows) mounted []
       |> List.sort (fun a b ->
@@ -144,6 +143,53 @@ let install renderer node ~materialize ~unmount =
     in
     update_rows ();
     let virtualizer = V.make (make_options ()) in
+    let pending_scroll = ref None in
+    let complete_pending outcome =
+      match !pending_scroll with
+      | Some (token, _, _, _, _) ->
+          pending_scroll := None;
+          emit (ScrollCompleted (node, token, outcome))
+      | None -> ()
+    in
+    (* Retryable scroll intent: executes immediately when the token
+       lands, retries on renders while pending, completes via
+       [virtualizer.range] containment, or reports missing-target
+       (row absent after a few renders) / cancelled (superseded or
+       unreachable). *)
+    let attempt_scroll () =
+      match !pending_scroll with
+      | None -> ()
+      | Some (token, target_key, align, behavior, tries) -> (
+          let index =
+            Array.find_opt
+              (fun id ->
+                Store.property renderer.web_store id KeyValue
+                = Some (StringValue target_key))
+              !rows
+          in
+          let index =
+            Option.bind index (fun id -> Hashtbl.find_opt positions id)
+          in
+          match index with
+          | None ->
+              if tries >= 8 then complete_pending "missing-target"
+              else
+                pending_scroll :=
+                  Some (token, target_key, align, behavior, tries + 1)
+          | Some index -> (
+              match Js.Nullable.toOption (V.item_range virtualizer) with
+              | Some r
+                when index >= V.range_start r
+                     && index <= V.range_end r ->
+                  complete_pending "succeeded"
+              | _ ->
+                  V.scroll_to_index virtualizer index
+                    (V.scroll_to_index_options ~align ~behavior);
+                  if tries >= 60 then complete_pending "cancelled"
+                  else
+                    pending_scroll :=
+                      Some (token, target_key, align, behavior, tries + 1)))
+    in
     let rec render () =
       if !updating then pending_render := true
       else if not !disposed then begin
@@ -247,45 +293,7 @@ let install renderer node ~materialize ~unmount =
               | None -> ()
             end
             else last_range := None);
-            (match !pending_scroll with
-             | None -> ()
-             | Some (token, target_key, align, behavior, attempts) -> (
-                 let index =
-                   Array.find_opt
-                     (fun id ->
-                       Store.property renderer.web_store id KeyValue
-                       = Some (StringValue target_key))
-                     !rows
-                   |> Option.map (fun id -> Hashtbl.find positions id)
-                 in
-                 match index with
-                 | None ->
-                     if attempts > 150 then begin
-                       pending_scroll := None;
-                       emit (ScrollCompleted (node, token, "missing-target"))
-                     end
-                     else
-                       pending_scroll :=
-                         Some (token, target_key, align, behavior, attempts + 1)
-                 | Some index -> (
-                     V.scroll_to_index virtualizer index
-                       (V.scroll_to_index_options ~align ~behavior);
-                     match Js.Nullable.toOption (V.item_range virtualizer) with
-                     | Some r
-                       when index >= V.range_start r
-                            && index <= V.range_end r ->
-                         pending_scroll := None;
-                         emit (ScrollCompleted (node, token, "succeeded"))
-                     | _ ->
-                         if attempts > 150 then begin
-                           pending_scroll := None;
-                           emit
-                             (ScrollCompleted (node, token, "missing-target"))
-                         end
-                         else
-                           pending_scroll :=
-                             Some (token, target_key, align, behavior,
-                               attempts + 1))));
+            attempt_scroll ();
         if !pending_render then begin
           pending_render := false;
           render ()
@@ -294,14 +302,15 @@ let install renderer node ~materialize ~unmount =
     in
     render_ref := render;
     let cleanup = V.did_mount virtualizer in
-    (* A scroll request becomes a pending intent retried on each render:
-       the target row may not be materialized or the scroller not yet
-       measured when the token lands; it settles once the row enters the
-       virtualizer's visible range, or reports missing-target. *)
+    (* A scroll request supersedes any pending intent, executes
+       immediately (a settled list may never render again), and keeps a
+       pending intent retried on subsequent renders until the target
+       row enters the visible range. *)
     let request () =
       match property ScrollToken with
       | Some (IntValue token) when !last_token <> Some token ->
           last_token := Some token;
+          complete_pending "cancelled";
           let align =
             match text ScrollAnchor "top" with
             | "center" -> "center"
@@ -312,7 +321,9 @@ let install renderer node ~materialize ~unmount =
             if property ScrollAnimated = Some (BoolValue true) then "smooth"
             else "auto"
           in
-          pending_scroll := Some (token, text ScrollTarget "", align, behavior, 0)
+          pending_scroll :=
+            Some (token, text ScrollTarget "", align, behavior, 0);
+          attempt_scroll ()
       | _ -> ()
     in
     let refresh () =
