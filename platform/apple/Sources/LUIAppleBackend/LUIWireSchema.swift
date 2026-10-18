@@ -268,6 +268,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case firstPaneWidth = "first-pane-width"
     case gridColumnSpan = "grid-column-span"
     case labelOpacity = "label-opacity"
+    case submitOnBlur = "submit-on-blur"
 }
 
 enum LUISchemaMatrix {

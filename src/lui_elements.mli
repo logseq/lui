@@ -84,7 +84,7 @@ type display =
   [ `contents | `none | `block | `inline | `inline_block | `inline_flex ]
 
 type flex_wrap = [ `nowrap | `wrap ]
-type input_kind = [ `text | `color ]
+type input_kind = [ `text | `color | `time ]
 type popover_role = [ `menu ]
 type swipe_edge = [ `leading | `trailing ]
 
@@ -284,6 +284,7 @@ val register_input :
   Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
 val register_submit :
   Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
+
 (** Text inputs opt in to unmodified Up/Down as
     [NavigatePrevious]/[NavigateNext]. Buttons opt in to arrow, Home/End and
     PageUp/PageDown [NavigationKey] events, retaining the Shift flag.
@@ -1591,6 +1592,7 @@ val resizable :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?label:string -> ?resizable_width:int ->
   ?transition:string -> t list -> t
+
 (** A horizontal split controlled by either [value] (a track fraction) or
     [first_width] (logical pixels, native OCaml and Web backends).
     These inputs are mutually exclusive.
@@ -2769,6 +2771,8 @@ val br :
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?transition:string -> nothing list -> t
+(* Text-entry constructors can opt into Submit on focus loss with
+   [submit_on_blur]. Unfinished composition never submits on blur. *)
 val text_field :
   ?key:string ->
   ?gap:int ->
@@ -2816,6 +2820,7 @@ val text_field :
   ?label:string ->
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
+  ?submit_on_blur:bool ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
@@ -2870,6 +2875,7 @@ val secure_field :
   ?label:string ->
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
+  ?submit_on_blur:bool ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
@@ -2924,6 +2930,7 @@ val input :
   ?label:string ->
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
+  ?submit_on_blur:bool ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
@@ -2979,6 +2986,7 @@ val search_field :
   ?label:string ->
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
+  ?submit_on_blur:bool ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
@@ -3033,6 +3041,7 @@ val textarea :
   ?label:string ->
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
+  ?submit_on_blur:bool ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->

@@ -142,6 +142,13 @@ let attach_text_events renderer node kind dom_node =
     dom_node;
   W.Element.addKeyDownEventListener
     (fun event -> text_keydown renderer node kind composing event)
+    dom_node;
+  W.Element.addEventListener "blur"
+    (fun _event ->
+      if not !composing && enabled_node renderer node
+         && Store.true_property renderer node SubmitOnBlur
+         && Store.event_admitted renderer node (Submit node)
+      then emit renderer (Submit node))
     dom_node
 
 let attach_toggle_event renderer node _kind dom_node =

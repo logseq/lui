@@ -275,6 +275,7 @@ enum class LuiProperty(val wireName: String) {
     firstPaneWidth("first-pane-width"),
     gridColumnSpan("grid-column-span"),
     labelOpacity("label-opacity"),
+    submitOnBlur("submit-on-blur"),
     ;
 
     companion object {
