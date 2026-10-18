@@ -134,6 +134,8 @@ type t = {
      caller whose measure/hidden closure keeps its identity but
      changes its answers (e.g. a text engine that finishes loading
      fonts) must {!invalidate}. *)
+  mutable anchor_shift : int -> float * float;
+  mutable synced_anchor_shifts : (int * float * float) list;
   mutable synced_rev : int;
   mutable synced_lrev : int;
   mutable synced_scale : float;
@@ -165,6 +167,7 @@ let create () =
     grids = ref [];
     popups = ref [];
     extent = (0., 0.);
+    anchor_shift = (fun _ -> (0.,0.)); synced_anchor_shifts = [];
     synced_rev = -1;
     synced_lrev = -1;
     synced_scale = 0.;
@@ -1018,7 +1021,8 @@ let kind_of ctx id = if id = frame_id then "frame" else Lui_store.kind ctx.store
 type nstatus = N_hidden | N_contents | N_normal
 
 let status_of ctx id =
-  if display_none ctx.store id || ctx.hidden id then N_hidden
+  if display_none ctx.store id || ctx.hidden id
+     || not (Lui_store.anchor_available ctx.store id) then N_hidden
   else if display_contents ctx.store id then N_contents
   else N_normal
 
@@ -1425,6 +1429,21 @@ let refine_popups ctx =
             ( { Lui_flex.x = 0.; y = 0.; w = ctx.vw; h = ctx.vh },
               None )
         in
+        let anchor_id, anchor_rect =
+          match pstr ctx.store sid "anchor-target" with
+          | None -> psid_opt, pr
+          | Some identifier ->
+              (match Lui_store.find_identifier ctx.store identifier with
+               | Some target ->
+                   (match Hashtbl.find_opt ctx.nodes target with
+                    | Some target_node ->
+                        let region = final_rect target target_node in
+                        let tx,ty = ctx.eng.anchor_shift target
+                        and px,py = ctx.eng.anchor_shift sid in
+                        Some target, { region with x=region.x +. tx -. px; y=region.y +. ty -. py }
+                    | None -> None, { Lui_flex.x=0.; y=0.; w=0.; h=0. })
+               | None -> None, { Lui_flex.x=0.; y=0.; w=0.; h=0. })
+        in
         let bor_l, bor_t, bor_r, _bor_b =
           match pstyle_opt with
           | Some (ps : Lui_flex.style) ->
@@ -1533,13 +1552,13 @@ let refine_popups ctx =
              placement, as the Web positioner does. Keep that side after
              remeasurement so shrinking cannot flip the decision back. *)
           let prp, resolved_side =
-            match kind, pstr ctx.store sid "anchor", psid_opt with
+            match kind, pstr ctx.store sid "anchor", anchor_id with
             | "popover", Some ("below" | "above" as preferred), Some owner
               when Lui_store.kind ctx.store owner <> "root"
                    && not (has_prop ctx.store sid "x" || has_prop ctx.store sid "y") ->
               let offset = Option.value ~default:4. (pnum ctx.store sid "anchor-offset") *. ctx.scale in
-              let above = Float.max 0. (pr.y -. offset -. 8. *. ctx.scale)
-              and below = Float.max 0. (ctx.vh -. pr.y -. pr.h -. offset -. 8. *. ctx.scale) in
+              let above = Float.max 0. (anchor_rect.y -. offset -. 8. *. ctx.scale)
+              and below = Float.max 0. (ctx.vh -. anchor_rect.y -. anchor_rect.h -. offset -. 8. *. ctx.scale) in
               let first, other = if preferred = "above" then above, below else below, above in
               let side, available =
                 if prp.h <= first || first >= other then preferred, first
@@ -1568,7 +1587,7 @@ let refine_popups ctx =
                 (match Option.bind psid_opt (fun parent -> select_alignment sid parent prp) with
                  | Some xy -> xy
                  | None -> anchored_xy ?resolved_side ctx ctx.store sid
-                     (anchor_rect_of ctx ctx.store sid ~cb pr) prp)
+                     (anchor_rect_of ctx ctx.store sid ~cb anchor_rect) prp)
             else
               (* Unanchored popups take their platform placement —
                  the web stylesheet's fixed rules: a context menu
@@ -2644,7 +2663,19 @@ let finish ctx (t : t) ~width ~height ~vport ~full =
     vlists_collect t
 
 let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
-    ?ctx_anchor ?(vport = no_vport) ~width ~height (t : t) store =
+    ?ctx_anchor ?(vport = no_vport) ?(anchor_shift = fun _ -> (0.,0.)) ~width ~height (t : t) store =
+  t.anchor_shift <- anchor_shift;
+  let shifts = ref [] in
+  Lui_store.iter_anchor_targets store (fun popup ->
+    match Lui_store.string_prop store popup "anchor-target" with
+    | Some identifier ->
+        (match Lui_store.find_identifier store identifier with
+         | Some target ->
+             let tx,ty = anchor_shift target and px,py = anchor_shift popup in
+             shifts := (popup,tx-.px,ty-.py) :: !shifts
+         | None -> ())
+    | None -> ());
+  let anchor_changed = !shifts <> t.synced_anchor_shifts in
   let viewport_changed = t.synced_w <> width || t.synced_h <> height in
   let mirror_inputs_changed =
     t.synced_scale <> scale
@@ -2652,7 +2683,7 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
     || (not (t.synced_measure == measure))
     || (not (t.synced_hidden == hidden))
   in
-  let inputs_changed = mirror_inputs_changed || viewport_changed in
+  let inputs_changed = mirror_inputs_changed || viewport_changed || anchor_changed in
   (* Fast path: inputs stable and the store's layout revision
      unmoved — paint-only churn, scroll-only and idle frames all skip
      the mirror entirely. The store-revision cursor still advances so
@@ -2692,6 +2723,12 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
             | SetExtensionProp (id,_,_) | RemoveExtensionProp (id,_)
               when Hashtbl.mem created id || not (Lui_store.mem store id) -> ()
             | op -> apply_journal_op ctx op) ops;
+          (* Retained anchor references cross raw-parent boundaries. Reconcile
+             their availability after the complete target batch is applied. *)
+          Lui_store.iter_anchor_targets store (fun id ->
+            if Hashtbl.mem ctx.sparent id then
+              let produced = status_of ctx id <> N_hidden in
+              if produced <> Hashtbl.mem ctx.nodes id then reexpand ctx id);
           (* Detach/drop can leave a built node as a fresh store root —
              resync the frame level so new roots appear and removed
              ones vanish. Membership churn dirties the whole frame. *)
@@ -2746,7 +2783,10 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
         restyle_gen ctx (Hashtbl.find ctx.owner id) id) popup_owners;
       Hashtbl.replace t.rect_dirty frame_id ()
     end;
+    if anchor_changed then
+      List.iter (fun (popup,_,_) -> Hashtbl.replace t.rect_dirty popup ()) !shifts;
     finish ctx t ~width ~height ~vport ~full;
+    t.synced_anchor_shifts <- !shifts;
     t.synced_rev <- Lui_store.revision store;
     t.synced_lrev <- Lui_store.layout_rev store;
     t.synced_scale <- scale;

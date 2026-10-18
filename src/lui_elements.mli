@@ -3631,6 +3631,9 @@ val file_picker :
     - [~anchor:`below] (optional [~anchor_alignment], [~anchor_offset]) —
       anchored to the element under the popover's retained parent, with
       viewport flipping and scroll/resize tracking.
+      [~anchor_target] names a retained control's accessibility identifier when
+      the popover lives outside that control's subtree. It requires [~anchor]
+      and uses the target's current geometry and ownership.
     - neither — cover mode: the positioner spans the viewport
       ([data-cover], inset:0) for fullscreen surfaces.
 
@@ -3684,6 +3687,7 @@ val popover :
   ?at:float * float ->
   ?at_signal:(float * float) Signal.signal ->
   ?anchor:anchor ->
+  ?anchor_target:string ->
   ?anchor_alignment:anchor_alignment ->
   ?anchor_offset:float ->
   ?available_height:float ->

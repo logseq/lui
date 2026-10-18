@@ -45,6 +45,10 @@ val layout_rev : t -> int
     reaches that far back (consumer must resync wholesale). *)
 val changes_since : t -> int -> Lui_protocol.patch_op list option
 
+val find_identifier : t -> string -> int option
+val anchor_available : t -> int -> bool
+val iter_anchor_targets : t -> (int -> unit) -> unit
+
 val find_opt : t -> int -> node option
 val mem : t -> int -> bool
 val node_id : node -> int

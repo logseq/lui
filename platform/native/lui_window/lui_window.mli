@@ -430,6 +430,9 @@ module Ui : sig
       scrollable [overflow] prop) — the same rule the paint pass uses
       to clip and draw a scrollbar. *)
 
+  (** Visual translation from ancestor scroll offsets, in device pixels. *)
+  val anchor_shift : t -> Lui_store.t -> int -> float * float
+
   (** Scroll axes: [Y] is the vertical path, [X] the horizontal one
       (wheel-x / shift+wheel deltas, horizontal reveal). *)
   type axis = X | Y

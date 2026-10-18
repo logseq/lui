@@ -37,7 +37,8 @@ let set st ~id ~kbd =
 (* Hidden ancestors exclude controls from initial focus and Tab order. *)
 let rec chain_visible store id =
   if Lui_store.prop store id "visible" = Some (BoolValue false)
-     || Lui_store.string_prop store id "display" = Some "none" then false
+     || Lui_store.string_prop store id "display" = Some "none"
+     || not (Lui_store.anchor_available store id) then false
   else
     match Lui_store.parent store id with
     | Some parent -> chain_visible store parent
@@ -74,7 +75,8 @@ let step store ~scope ~cur ~dir =
 let sync_dead store st =
   if st.focused <> 0
      && (not (Lui_store.mem store st.focused)
-         || Lui_store.inert_in_chain store st.focused)
+         || Lui_store.inert_in_chain store st.focused
+         || not (chain_visible store st.focused))
   then [ `Focus (0, false) ]
   else []
 

@@ -107,6 +107,7 @@ val sync :
   ?scale:float -> ?measure:text_measure -> ?hidden:(int -> bool) ->
   ?ctx_anchor:(float * float) ->
   ?vport:(int -> viewport option) ->
+  ?anchor_shift:(int -> float * float) ->
   width:float -> height:float -> t -> Lui_store.t -> unit
 
 (** {2 Virtual lists}

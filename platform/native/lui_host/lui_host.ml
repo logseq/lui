@@ -28,6 +28,7 @@ module type LAYOUT_ENGINE = sig
     ?scale:float -> ?measure:text_measure -> ?hidden:(int -> bool) ->
     ?ctx_anchor:(float * float) ->
     ?vport:(int -> (float * float) option) ->
+    ?anchor_shift:(int -> float * float) ->
     width:float -> height:float -> t -> Lui_store.t -> unit
 
   val invalidate : t -> unit
@@ -60,6 +61,7 @@ type layout_state = {
     scale:float -> measure:text_measure -> hidden:(int -> bool) ->
     ctx_anchor:(float * float) option ->
     vport:(int -> (float * float) option) ->
+    anchor_shift:(int -> float * float) ->
     width:float -> height:float -> Lui_store.t -> unit;
   linvalidate : unit -> unit;
   lhook : int -> Lui_paint.placement;
@@ -120,6 +122,7 @@ type t = {
   (* Virtual-list viewport feed: node id → content-space visible range
      (start, extent) evaluated during every layout sync. *)
   mutable vport : int -> (float * float) option;
+  mutable anchor_shift : int -> float * float;
 }
 
 let no_measure _id _text _offered_w _offered_h = None
@@ -133,8 +136,8 @@ let create ~hooks ?layout ?(measure = no_measure) ~renderer ~width ~height ~scal
       let engine = L.create () in
       Some
         { lsync =
-            (fun ~scale ~measure ~hidden ~ctx_anchor ~vport ~width ~height store ->
-              L.sync ~scale ~measure ~hidden ?ctx_anchor ~vport ~width ~height
+            (fun ~scale ~measure ~hidden ~ctx_anchor ~vport ~anchor_shift ~width ~height store ->
+              L.sync ~scale ~measure ~hidden ?ctx_anchor ~vport ~anchor_shift ~width ~height
                 engine store);
           linvalidate = (fun () -> L.invalidate engine);
           lhook = L.layout_hook engine;
@@ -161,7 +164,7 @@ let create ~hooks ?layout ?(measure = no_measure) ~renderer ~width ~height ~scal
     moved_hints = Hashtbl.create 16;
     hidden = (fun _ -> false);
     ctx_anchor = (fun () -> None); inv_count = 0;
-    vport = (fun _ -> None) }
+    vport = (fun _ -> None); anchor_shift = (fun _ -> (0.,0.)) }
 
 let store h = h.store
 let scene h = h.scene
@@ -184,6 +187,11 @@ let set_ctx_anchor h accessor =
    offset for a directly-scrolled list, the mapped clip for one nested
    in an outer scroller. Evaluated inside every layout sync. *)
 let set_vport h f = h.vport <- f
+let set_anchor_shift h read =
+  h.anchor_shift <- read;
+  h.inv_count <- h.inv_count + 1;
+  h.dirty <- true
+
 
 (* Virtual-list queries the driver needs for hit-test slicing, scroll
    caps and scroll-to-item: all forward to the layout engine and
@@ -364,7 +372,7 @@ let repaint h =
          paints) and the current frame size — layout is the single
          place that resolves both. *)
       l.lsync ~scale:h.scale ~measure:h.measure ~hidden:h.hidden
-        ~ctx_anchor:(h.ctx_anchor ()) ~vport:h.vport
+        ~ctx_anchor:(h.ctx_anchor ()) ~vport:h.vport ~anchor_shift:h.anchor_shift
         ~width:(float_of_int h.width) ~height:(float_of_int h.height)
         h.store;
       (* The engine hook yields to an explicitly supplied

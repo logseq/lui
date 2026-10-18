@@ -943,6 +943,8 @@ and apply_secondary_property renderer queue_split node kind dom_node
       apply_media_source renderer node kind dom_node
   | AnchorValue, StringValue anchor ->
       W.Element.setAttribute "data-anchor" anchor dom_node
+  | AnchorTarget, StringValue identifier ->
+      W.Element.setAttribute "data-anchor-target" identifier dom_node
   | AnchorAlignmentValue, StringValue alignment ->
       W.Element.setAttribute "data-anchor-alignment" alignment dom_node
   | AnchorOffset, FloatValue offset ->
@@ -1228,6 +1230,7 @@ let remove_property renderer queue_split node kind dom_node property =
        | PickerDirectory ->
            W.Element.removeAttribute "data-directory" dom_node
        | PopupX | PopupY -> ()
+       | AnchorTarget -> W.Element.removeAttribute "data-anchor-target" dom_node
        | AnchorAlignmentValue ->
            W.Element.removeAttribute "data-anchor-alignment" dom_node
        | AnchorOffset ->

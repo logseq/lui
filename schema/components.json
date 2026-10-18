@@ -1242,6 +1242,11 @@
       "swift": "anchor"
     },
     {
+      "lg": "AnchorTarget",
+      "wire": "anchor-target",
+      "swift": "anchorTarget"
+    },
+    {
       "lg": "AnchorAlignmentValue",
       "wire": "anchor-alignment",
       "swift": "anchorAlignment"

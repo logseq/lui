@@ -525,7 +525,23 @@ let picker_for_dropdown renderer dropdown =
        | None -> None)
   | None -> None
 
+external closest_element : W.Element.t -> string -> W.Element.t option
+  = "closest"
+[@@mel.send] [@@mel.return nullable]
+
+let anchor_available element = closest_element element "[inert]" = None
+
+let explicit_anchor renderer node =
+  match Store.property renderer.web_store node AnchorTarget with
+  | Some (StringValue identifier) ->
+      Some (W.Document.getElementById identifier renderer.web_document)
+  | _ -> None
+
 let dropdown_anchor_node renderer node =
+  match explicit_anchor renderer node with
+  | Some (Some target) -> target
+  | Some None -> invalid_arg "popover anchor target is unavailable"
+  | None ->
   match Store.node renderer.web_store node with
   | Some current ->
       (match current.retained_parent with

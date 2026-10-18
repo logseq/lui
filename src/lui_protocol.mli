@@ -184,6 +184,7 @@ type property =
   | SourceWidth
   | SourceHeight
   | AnchorValue
+  | AnchorTarget
   | AnchorAlignmentValue
   | AnchorOffset
   | TooltipDelay

@@ -157,6 +157,9 @@ let position_at_point document popup x y =
    against — a detached-but-open menu or tooltip is skipped rather than
    treated as an error *)
 let anchored renderer node =
+  match Nodes.explicit_anchor renderer node with
+  | Some target -> Option.fold ~none:false ~some:Nodes.anchor_available target
+  | None ->
   match Store.node renderer.web_store node with
   | Some current ->
       (match current.retained_parent with
@@ -401,7 +404,9 @@ let position_popover renderer node =
   | _ ->
       (match Store.property renderer.web_store node AnchorValue with
        | Some (StringValue _) ->
-           if anchored renderer node then begin
+           if not (anchored renderer node) then
+             Util.set_state_attribute positioner "hidden" true
+           else begin
              let popup = Util.child_element positioner 0 in
              let anchor = Nodes.dropdown_anchor_node renderer node in
              let anchor_bounds = W.Element.getBoundingClientRect anchor in

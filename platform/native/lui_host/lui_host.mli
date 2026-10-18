@@ -30,6 +30,7 @@ module type LAYOUT_ENGINE = sig
     ?scale:float -> ?measure:text_measure -> ?hidden:(int -> bool) ->
     ?ctx_anchor:(float * float) ->
     ?vport:(int -> (float * float) option) ->
+    ?anchor_shift:(int -> float * float) ->
     width:float -> height:float -> t -> Lui_store.t -> unit
 
   val invalidate : t -> unit
@@ -176,6 +177,10 @@ val set_vport : t -> (int -> (float * float) option) -> unit
     offset for a directly-scrolled list, or the on-screen clip mapped
     into the list's content when an outer scroller clips it. Evaluated
     inside every engine sync, including memo hits. *)
+
+val set_anchor_shift : t -> (int -> float * float) -> unit
+(** Supply each node's visual translation in device pixels. Retained anchor
+    positioning reads this on repaint without rebuilding the document. *)
 
 (** {2 Virtual lists}
 

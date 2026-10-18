@@ -101,7 +101,8 @@ let presented_overlay store id =
 
 let hit_flags_compute store id inherited =
   let mode =
-    if inherited = `Inert || Lui_store.bool_prop store id "inert" then `Inert
+    if inherited = `Inert || Lui_store.bool_prop store id "inert"
+       || not (Lui_store.anchor_available store id) then `Inert
     else match Lui_store.prop store id "pointer-enabled" with
       | Some (BoolValue true) -> `On
       | Some (BoolValue false) -> `Off

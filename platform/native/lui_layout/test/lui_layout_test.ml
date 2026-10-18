@@ -1761,6 +1761,118 @@ let test_popover_available_height () =
       size 600. 32.)
     [ 1.; 2. ]
 
+let test_retained_popover_target () =
+  List.iter
+    (fun scale ->
+      let store = Lui_store.create () and layout = Lui_layout.create () in
+      let scroll = ref (0., 0.) in
+      let anchor_shift id =
+        if id = 2 then
+          let x, y = !scroll in
+          (-.x *. scale, -.y *. scale)
+        else (0., 0.)
+      in
+      apply store
+        [
+          CreateNode (1, Root);
+          CreateNode (2, Box);
+          CreateNode (3, Popover);
+          InsertChild (1, 2, 0);
+          InsertChild (1, 3, 1);
+          SetProp (2, AccessibilityIdentifier, StringValue "filter-trigger");
+          SetProp (2, WidthValue, IntValue 24);
+          SetProp (2, HeightValue, IntValue 24);
+          SetProp (2, Position, StringValue "fixed");
+          SetProp (2, InsetLeft, FloatValue 500.);
+          SetProp (2, InsetTop, FloatValue 80.);
+          SetProp (3, AnchorValue, StringValue "below");
+          SetProp (3, AnchorTarget, StringValue "filter-trigger");
+          SetProp (3, AnchorAlignmentValue, StringValue "end");
+          SetProp (3, AnchorOffset, FloatValue 4.);
+          SetProp (3, WidthValue, IntValue 234);
+          SetProp (3, HeightValue, IntValue 178);
+        ];
+      let check_geometry width height expected =
+        Lui_layout.sync ~anchor_shift ~scale ~width:(width *. scale)
+          ~height:(height *. scale) layout store;
+        let actual = Option.get (Lui_layout.rect layout 3) in
+        let x, y, w, h = expected in
+        check_rect "retained target geometry" (x *. scale) (y *. scale)
+          (w *. scale) (h *. scale) actual
+      in
+      check_geometry 640. 720. (290., 108., 234., 178.);
+      apply store
+        [
+          SetProp (2, InsetLeft, FloatValue 300.);
+          SetProp (2, InsetTop, FloatValue 250.);
+        ];
+      check_geometry 640. 720. (90., 278., 234., 178.);
+      check_geometry 640. 400. (90., 68., 234., 178.);
+      let full_builds =
+        Lui_layout.stat_syncs layout - Lui_layout.stat_steps layout
+      in
+      scroll := (40., 100.);
+      check_geometry 640. 400. (50., 178., 234., 178.);
+      check int "scrolling an anchor preserves the incremental mirror"
+        full_builds
+        (Lui_layout.stat_syncs layout - Lui_layout.stat_steps layout);
+      scroll := (0., 0.);
+      check_geometry 640. 400. (90., 68., 234., 178.);
+      apply store [ SetProp (3, AnchorAlignmentValue, StringValue "start") ];
+      check_geometry 640. 720. (300., 278., 234., 178.);
+      apply store [ SetProp (3, HeightValue, IntValue 40) ];
+      check_geometry 640. 400. (300., 278., 234., 40.);
+      apply store
+        [
+          SetProp (2, InsetLeft, FloatValue 10.);
+          SetProp (3, AnchorAlignmentValue, StringValue "end");
+        ];
+      Lui_layout.sync ~anchor_shift ~scale ~width:(640. *. scale)
+        ~height:(400. *. scale) layout store;
+      let clamped = Option.get (Lui_layout.rect layout 3) in
+      check bool "left collision remains inside the viewport" true
+        (clamped.x >= 0. && clamped.x +. clamped.w <= 640. *. scale);
+      let hidden message =
+        Lui_layout.sync ~anchor_shift ~scale ~width:(640. *. scale)
+          ~height:(400. *. scale) layout store;
+        check bool message true
+          (match Lui_layout.rect layout 3 with
+          | None -> true
+          | Some region -> region.w = 0. || region.h = 0.)
+      in
+      apply store [ SetProp (2, Inert, BoolValue true) ];
+      hidden "an inert target cannot leave its popup visible";
+      apply store
+        [ RemoveProp (2, Inert); SetProp (2, InsetLeft, FloatValue 300.) ];
+      check_geometry 640. 400. (90., 278., 234., 40.);
+      apply store
+        [ SetProp (2, AccessibilityIdentifier, StringValue "renamed-trigger") ];
+      hidden "renaming a target invalidates its old reference";
+      apply store [ SetProp (3, AnchorTarget, StringValue "renamed-trigger") ];
+      check_geometry 640. 400. (90., 278., 234., 40.);
+      apply store [ DropNode 2 ];
+      Lui_layout.sync ~anchor_shift ~scale ~width:(640. *. scale)
+        ~height:(400. *. scale) layout store;
+      check bool "missing target does not become a viewport-anchored popup" true
+        (match Lui_layout.rect layout 3 with
+        | None -> true
+        | Some missing -> missing.w = 0. || missing.h = 0.);
+      apply store
+        [
+          CreateNode (4, Box);
+          InsertChild (1, 4, 0);
+          SetProp (4, AccessibilityIdentifier, StringValue "renamed-trigger");
+          SetProp (4, WidthValue, IntValue 24);
+          SetProp (4, HeightValue, IntValue 24);
+          SetProp (4, Position, StringValue "fixed");
+          SetProp (4, InsetLeft, FloatValue 300.);
+          SetProp (4, InsetTop, FloatValue 250.);
+        ];
+      check_geometry 640. 400. (90., 278., 234., 40.);
+      apply store [ RemoveProp (4, AccessibilityIdentifier) ];
+      hidden "removing a target identifier invalidates its reference")
+    [ 1.; 2. ]
+
 let test_anchored_popover_side_height () =
   List.iter
     (fun scale ->
@@ -1959,6 +2071,7 @@ let () =
          test_case "select menu alignment" `Quick test_select_menu_alignment;
          test_case "menu height cap" `Quick test_menu_height_cap;
          test_case "popover available height" `Quick test_popover_available_height;
+         test_case "retained popover target" `Quick test_retained_popover_target;
          test_case "anchored popover side height" `Quick test_anchored_popover_side_height;
          test_case "menu role layout" `Quick test_menu_role_layout;
          test_case "ac row" `Quick test_ac_row;
