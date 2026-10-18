@@ -9,20 +9,20 @@ open Lui_protocol
 type state = {
   top : int;
       (* topmost overlay-kind node currently tracked (0 = none) *)
-  focus_owned : bool;   (* modal or ordinary menu owns initial focus *)
   open_menu : int;      (* trigger-owned menu panel currently open *)
   laid_out_menu : int;  (* open_menu as of the last layout pass *)
-  saved_focus : int;
-      (* earliest focus an owning surface saves and restores on close *)
+  return_focus : (int * int) list;
+      (* owning surfaces and their return targets, innermost first *)
 }
 
 let initial =
-  { top = 0; focus_owned = false; open_menu = 0; laid_out_menu = 0;
-    saved_focus = 0 }
+  { top = 0; open_menu = 0; laid_out_menu = 0; return_focus = [] }
 
 let top st = st.top
 let open_menu st = st.open_menu
-let saved_focus st = st.saved_focus
+let saved_focus st =
+  List.fold_left (fun saved (_, target) -> if target=0 then saved else target)
+    0 st.return_focus
 
 (* ---- store classification ---------------------------------------- *)
 
@@ -146,59 +146,93 @@ let initial_menu_focus store menu ~keyboard =
     in
     first menu
 
-(* Store-sync half: dead saved-focus cleanup, then the top-overlay
-   change boundary. Modals and ordinary-action menus save return focus.
-   Picker menus retain their control focus and separate row highlight. A modal owns the
-   keyboard while it is top: a focus held outside it is saved (once —
-   a stacked modal keeps the earliest save) and cleared via a
-   [`Focus (0, false)] intent, so text input, IME and the shortcut
-   table cannot reach a background field; [`Clear_selection] drops any
-   static-text selection held outside the scope for the same reason.
-   On release the save is restored if focus has not moved outside the
-   closing surface, and reset so a later overlay cannot resurrect a
-   stale target. *)
+(* Focus-owning surfaces save their return targets independently. A
+   searchable light popover owns initial focus without trapping Tab or
+   swallowing outside presses. Nested closure restores the nearest
+   available target; closing the whole stack skips removed controls. *)
 let sync store st ~focused ~kbd ~keyboard =
-  let st =
-    if st.saved_focus <> 0 && not (available_focus store st.saved_focus)
-    then { st with saved_focus = 0 }
-    else st
-  in
   let ov_id, ov_modal =
     match top_scan store ~open_menu:st.open_menu with
-    | Some (id, m, _) -> (id, m)
+    | Some (id, modal, _) -> (id, modal)
     | None -> (0, false)
   in
   if ov_id = st.top then (st, [])
-  else begin
-    let action_focus = if ov_modal then None else initial_menu_focus store ov_id ~keyboard in
-    let focus_kbd = if ordinary_row_menu store ov_id then keyboard else kbd in
-    let focus_owned = ov_modal || Option.is_some action_focus in
+  else
+    let present id =
+      Lui_store.mem store id
+      && (not (Lui_store.inert_in_chain store id))
+      && Lui_store.anchor_available store id
+      && Lui_focus.chain_visible store id
+      && ((not (trigger_owned store id)) || id = st.open_menu)
+    in
+    let closed =
+      List.filter (fun (id, _) -> not (present id)) st.return_focus
+    in
+    let can_return target =
+      available_focus store target
+      && not
+           (List.exists
+              (fun (id, _) -> target = id || Lui_query.is_desc store target id)
+              closed)
+    in
+    let return_target =
+      List.find_map
+        (fun (_, target) -> if can_return target then Some target else None)
+        closed
+    in
+    let return_focus =
+      List.filter (fun (id, _) -> present id) st.return_focus
+    in
+    let focus_unmoved =
+      focused = 0
+      || (not (available_focus store focused))
+      || focused = st.top
+      || Lui_query.is_desc store focused st.top
+    in
+    let focused, restored =
+      match return_target with
+      | Some target when focus_unmoved -> (target, [ `Focus (target, false) ])
+      | _ -> (focused, [])
+    in
+    let action_focus =
+      if ov_modal then None else initial_menu_focus store ov_id ~keyboard
+    in
+    let autofocus =
+      if ov_id = 0 || Lui_query.kind_name store ov_id <> "popover" then false
+      else
+        let found = ref false in
+        Lui_store.iter_preorder ~root:ov_id
+          ~descend:(fun _ -> not !found)
+          store
+          (fun id ->
+            if
+              Lui_store.bool_prop store id "autofocus"
+              && available_focus store id
+            then found := true);
+        !found
+    in
+    let focus_owned = ov_modal || Option.is_some action_focus || autofocus in
     let outside =
       focused <> 0 && focused <> ov_id
       && not (Lui_query.is_desc store focused ov_id)
     in
-    let saved, acts =
-      if focus_owned then
-        ( (if outside && st.saved_focus = 0 then focused
-           else st.saved_focus),
-          if ov_modal then
-            `Clear_selection :: (if outside then [ `Focus (0, false) ] else [])
-          else match action_focus with
-            | Some id when outside || focused = 0 -> [ `Focus (id, focus_kbd) ]
-            | _ -> [] )
-      else (st.saved_focus, [])
+    let return_focus =
+      if
+        focus_owned
+        && not (List.exists (fun (id, _) -> id = ov_id) return_focus)
+      then (ov_id, if outside then focused else 0) :: return_focus
+      else return_focus
     in
-    let released_focus = st.focus_owned && not focus_owned in
-    let focus_unmoved = focused = 0 || focused = st.top
-      || Lui_query.is_desc store focused st.top in
-    let st = { st with saved_focus = saved; top = ov_id; focus_owned } in
-    if released_focus then
-      if st.saved_focus <> 0 && focus_unmoved then
-        ({ st with saved_focus = 0 },
-         acts @ [ `Focus (st.saved_focus, false) ])
-      else ({ st with saved_focus = 0 }, acts)
-    else (st, acts)
-  end
+    let focus_kbd = if ordinary_row_menu store ov_id then keyboard else kbd in
+    let initial =
+      if ov_modal then
+        `Clear_selection :: (if outside then [ `Focus (0, false) ] else [])
+      else
+        match action_focus with
+        | Some id when outside || focused = 0 -> [ `Focus (id, focus_kbd) ]
+        | _ -> []
+    in
+    ({ st with top = ov_id; return_focus }, restored @ initial)
 
 (* Press outside the open menu closes it host-side — the owning
    trigger counts as inside so a second click toggles rather than

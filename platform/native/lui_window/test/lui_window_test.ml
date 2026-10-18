@@ -3530,6 +3530,86 @@ let test_menu_row_focus_chrome () =
            scene.ops))
     [ MenuItem; MenuTrigger ]
 
+let test_nested_popover_focus_return () =
+  List.iter
+    (fun outer_kind ->
+      let asm =
+        assembly_of
+          [
+            CreateNode (1, Root);
+            CreateNode (2, Button);
+            CreateNode (3, Button);
+            InsertChild (1, 2, 0);
+            InsertChild (1, 3, 1);
+            SetProp (2, TextValue, StringValue "Open");
+            SetProp (3, TextValue, StringValue "Outside");
+          ]
+      in
+      let store = Assembly.store asm
+      and ui = Assembly.ui asm
+      and generation = ref 1 in
+      let apply ops =
+        incr generation;
+        Lui_store.apply_batch store { generation = !generation; ops };
+        ignore (Assembly.store_changed asm)
+      in
+      let open_outer () =
+        apply
+          [
+            CreateNode (10, outer_kind);
+            InsertChild (1, 10, 2);
+            CreateNode (11, Button);
+            InsertChild (10, 11, 0);
+            SetProp (11, TextValue, StringValue "Next date");
+            SetProp (11, Autofocus, BoolValue true);
+          ]
+      in
+      let open_inner () =
+        apply
+          [
+            CreateNode (20, Popover);
+            InsertChild (10, 20, 1);
+            CreateNode (21, TextField);
+            InsertChild (20, 21, 0);
+            SetProp (21, Autofocus, BoolValue true);
+          ]
+      in
+      Ui.set_focused ui store 2;
+      open_outer ();
+      Alcotest.(check int) "outer control autofocus" 11 (Ui.focused ui);
+      open_inner ();
+      Alcotest.(check int) "nested search autofocus" 21 (Ui.focused ui);
+      apply [ DropNode 20 ];
+      Alcotest.(check int)
+        "nested close returns to its own trigger" 11 (Ui.focused ui);
+      apply [ DropNode 10 ];
+      Alcotest.(check int)
+        "outer close returns to its original trigger" 2 (Ui.focused ui);
+      open_outer ();
+      open_inner ();
+      apply [ DropNode 10 ];
+      Alcotest.(check int)
+        "closing both surfaces skips their removed return target" 2
+        (Ui.focused ui);
+      open_outer ();
+      open_inner ();
+      Ui.set_focused ui store 3;
+      apply [ DropNode 10 ];
+      Alcotest.(check int)
+        "closing surfaces preserves deliberate outside focus" 3 (Ui.focused ui);
+      Ui.set_focused ui store 2;
+      open_outer ();
+      open_inner ();
+      apply [ SetProp (11, Enabled, BoolValue false); DropNode 20 ];
+      Alcotest.(check bool)
+        "a disabled trigger cannot receive returned focus" true
+        (Ui.focused ui <> 11);
+      apply [ DropNode 10 ];
+      Alcotest.(check int)
+        "outer close still retains the original available trigger" 2
+        (Ui.focused ui))
+    [ Popover; Dialog ]
+
 let test_action_menu_focus () =
   List.iter (fun (origin,kbd) ->
     let asm = assembly_of
@@ -4609,6 +4689,7 @@ let () =
           Alcotest.test_case "retained popover input" `Quick test_retained_popover_input;
           Alcotest.test_case "light dismiss" `Quick test_light_dismiss;
           Alcotest.test_case "action menu focus" `Quick test_action_menu_focus;
+          Alcotest.test_case "nested popover focus return" `Quick test_nested_popover_focus_return;
           Alcotest.test_case "appear once" `Quick test_appear_once;
           Alcotest.test_case "autofocus" `Quick test_autofocus;
           Alcotest.test_case "modal focus scope" `Quick
