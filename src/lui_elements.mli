@@ -284,6 +284,7 @@ val register_input :
   Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
 val register_submit :
   Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
+
 (** Opt in to unmodified Up/Down as [NavigatePrevious]/[NavigateNext] on
     text inputs. Window and Web hosts retain focus and the text selection;
     modified arrows and IME composition keep their editing behavior. *)
@@ -1588,6 +1589,7 @@ val resizable :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?label:string -> ?resizable_width:int ->
   ?transition:string -> t list -> t
+
 (** A horizontal split controlled by either [value] (a track fraction) or
     [first_width] (logical pixels, native OCaml and Web backends).
     These inputs are mutually exclusive.
