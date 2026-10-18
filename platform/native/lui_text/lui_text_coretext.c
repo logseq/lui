@@ -437,6 +437,7 @@ static value lui_shape_run(CTRunRef run, const CFIndex *idx, CFIndex n16,
   CFIndex ng = CTRunGetGlyphCount(run);
 
   CFDictionaryRef attrs = CTRunGetAttributes(run);
+  int truncation_token = CFDictionaryContainsKey(attrs, CFSTR("lui.truncation-token"));
   CTFontRef rf =
     (CTFontRef)CFDictionaryGetValue(attrs, kCTFontAttributeName);
   CFRetain(rf);
@@ -464,7 +465,8 @@ static value lui_shape_run(CTRunRef run, const CFIndex *idx, CFIndex n16,
          can add the glyph's y to the line's baseline directly. */
       Store_field(vg, 2, caml_copy_double(-pos[j].y));
       Store_field(vg, 3, caml_copy_double(adv[j].width));
-      Store_field(vg, 4, Val_int(lui_byte_of(idx, ind[j], n16) + base));
+      Store_field(vg, 4, Val_int(
+          (truncation_token ? idx[n16] : lui_byte_of(idx, ind[j], n16)) + base));
       Store_field(vglyphs, j, vg);
     }
     free(gids); free(pos); free(adv); free(ind);
@@ -503,10 +505,11 @@ static value lui_shape_run(CTRunRef run, const CFIndex *idx, CFIndex n16,
 
   vrun = caml_alloc(7, 0);
   Store_field(vrun, 0, vfont);
-  Store_field(vrun, 1, Val_int(lui_byte_of(idx, rr.location, n16) + base));
-  Store_field(vrun, 2,
-              Val_int(lui_byte_of(idx, rr.location + rr.length, n16)
-                      + base));
+  Store_field(vrun, 1, Val_int(
+      (truncation_token ? idx[n16] : lui_byte_of(idx, rr.location, n16)) + base));
+  Store_field(vrun, 2, Val_int(
+      (truncation_token ? idx[n16] : lui_byte_of(idx, rr.location + rr.length, n16))
+      + base));
   Store_field(vrun, 3, Val_bool((st & kCTRunStatusRightToLeft) != 0));
   Store_field(vrun, 4, vglyphs);
   Store_field(vrun, 5, vcolor);
@@ -874,7 +877,9 @@ CAMLprim value lui_ct_truncate(value vfont, value vstr, value vwidth,
   CFAttributedStringRef attrstr = NULL;
   CFDictionaryRef attrs = NULL;
   CTTypesetterRef ts = NULL;
-  CTLineRef full = NULL, truncd = NULL;
+  CTLineRef full = NULL, truncd = NULL, token = NULL;
+  CFMutableDictionaryRef token_attrs = NULL;
+  CFAttributedStringRef token_text = NULL;
   vout = caml_alloc(0, 0);
 
   @autoreleasepool {
@@ -899,7 +904,14 @@ CAMLprim value lui_ct_truncate(value vfont, value vstr, value vwidth,
     CTLineTruncationType tt = kCTLineTruncationEnd;
     if (mode == 1) tt = kCTLineTruncationStart;
     else if (mode == 2) tt = kCTLineTruncationMiddle;
-    truncd = CTLineCreateTruncatedLine(full, width, tt, NULL);
+    token_attrs = CFDictionaryCreateMutableCopy(NULL, 0, attrs);
+    if (token_attrs == NULL) goto done;
+    CFDictionarySetValue(token_attrs, CFSTR("lui.truncation-token"), kCFBooleanTrue);
+    token_text = CFAttributedStringCreate(NULL, CFSTR("\u2026"), token_attrs);
+    if (token_text == NULL) goto done;
+    token = CTLineCreateWithAttributedString(token_text);
+    if (token == NULL) goto done;
+    truncd = CTLineCreateTruncatedLine(full, width, tt, token);
     if (truncd == NULL) goto done;
 
     vline = lui_emit_line(truncd, idx, n16, 0);
@@ -914,6 +926,9 @@ done:
   if (ts != NULL) CFRelease(ts);
   if (full != NULL) CFRelease(full);
   if (truncd != NULL) CFRelease(truncd);
+  if (token != NULL) CFRelease(token);
+  if (token_text != NULL) CFRelease(token_text);
+  if (token_attrs != NULL) CFRelease(token_attrs);
   free(u16);
   free(idx);
   CAMLreturn(vout);

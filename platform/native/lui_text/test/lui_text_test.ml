@@ -667,6 +667,49 @@ let test_truncate_modes () =
        | None -> Alcotest.fail "expected a truncated line")
     [ `Start; `Middle ]
 
+let test_truncate_token () =
+  let marker = "\xe2\x80\xa6" in
+  List.iter (fun font ->
+    let signatures = all_runs (shape font marker)
+      |> List.concat_map (fun r -> Array.to_list r.glyphs
+        |> List.map (fun g -> family r.font,g.id)) in
+    List.iter (fun text -> List.iter (fun rtl -> List.iter (fun mode ->
+      let width=64. in
+      match truncate ~mode ~rtl ~width font text with
+      | None -> Alcotest.fail "overflowing captions must retain an ellipsis token"
+      | Some line ->
+        Alcotest.(check bool) "truncated line fits its content width" true
+          (line.width<=width+.eps);
+        let token=ref false in
+        Array.iter (fun r -> Array.iter (fun g ->
+          if List.mem (family r.font,g.id) signatures then begin
+            token:=true;
+            Alcotest.(check int) "token cluster belongs to the source end"
+              (String.length text) g.cluster;
+            Alcotest.(check int) "token run starts at source end" (String.length text) r.start;
+            Alcotest.(check int) "token run ends at source end" (String.length text) r.stop
+          end else begin
+            Alcotest.(check bool) "retained glyph has a source byte offset" true
+              (g.cluster>=0 && g.cluster<String.length text);
+            Alcotest.(check bool) "retained glyph never starts inside UTF-8" true
+              (Char.code text.[g.cluster] land 0xc0<>0x80)
+          end) r.glyphs) line.runs;
+        Alcotest.(check bool) "overflowing text visibly contains its ellipsis" true !token)
+      [`End;`Start;`Middle]) [false;true])
+      ["WWWWWWWWWWWWWWWWWWWWWWWW";
+       "café e\xcc\x81 中文 \xf0\x9f\x98\x80 café e\xcc\x81 中文 \xf0\x9f\x98\x80"];
+    let short="Short" in
+    let width=fst (measure font short)+.1. in
+    let full=all_glyphs (shape font short) in
+    let fitted=Option.get (truncate ~width font short) in
+    Alcotest.(check int) "a fitting caption does not add a token"
+      (Array.length full) (Array.length (all_glyphs [|fitted|]));
+    Array.iter (fun g -> Alcotest.(check bool) "fitting captions keep source clusters" true
+      (g.cluster<String.length short)) (all_glyphs [|fitted|]);
+    Alcotest.(check bool) "a width narrower than the token cannot draw a truncated line" true
+      (truncate ~width:0.001 font "WWWWWWWWWWWWWWWW"=None))
+    [sys;create ~families:["Helvetica"] ~size:16. ();system ~monospace:true ~size:16. ()]
+
 let test_truncate_none () =
   Alcotest.(check bool) "zero width" true
     (truncate ~width:0. sys "hello" = None);
@@ -866,6 +909,7 @@ let () =
           test_case "layout_spans" `Quick test_layout_spans_api ] );
       ( "truncate",
         [ test_case "end" `Quick test_truncate_end;
+          test_case "visible token and UTF-8 boundaries" `Quick test_truncate_token;
           test_case "modes" `Quick test_truncate_modes;
           test_case "none" `Quick test_truncate_none ] );
       ( "utf16", [ test_case "mapping" `Quick test_utf16 ] );
