@@ -1766,16 +1766,7 @@ let attach_popover_events renderer node _popover_node =
        ~policy:Lui_web_layers.Nonblocking
        ~dismiss:(fun () -> emit renderer (Dismiss node))
        ~close:(fun () -> ())
-       ~key_handler:(fun event ->
-         if W.KeyboardEvent.key event = "Escape" then begin
-           let trigger = Option.bind
-             (Lui_web_layers.layer_at renderer.web_layers node)
-             (fun layer -> layer.Lui_web_layers.trigger) in
-           ignore (Js.Global.setTimeout ~f:(fun () ->
-             if not (Lui_web_layers.is_open renderer.web_layers node) then
-               Lui_web_focus.restore_focus_if_unmoved renderer
-                 ~closing:positioner trigger) 0)
-         end)
+       ~key_handler:(fun _event -> ())
        ~present:false ~open_:false);
   Hashtbl.replace renderer.web_cleanups node (fun () ->
       Lui_web_popup_tracking.stop positioner;
@@ -1814,7 +1805,12 @@ let mount_popover renderer node =
       Lui_web_layers.reconcile_owner renderer.web_layers
         renderer.web_document node current.retained_parent;
       let trigger =
-        if positioned then
+        let invoked = !(renderer.web_modal_return_focus) in
+        renderer.web_modal_return_focus := None;
+        match invoked with
+        | Some element when not cover
+            && Lui_web_focus.focus_target_available element -> Some element
+        | _ -> if positioned then
           if Lui_web_position.anchored renderer node then
             Some (Lui_web_nodes.dropdown_anchor_node renderer node)
           else None
@@ -1876,6 +1872,7 @@ let remove_popover_after_exit renderer node parent positioner =
     in
     begin_popup_close popup;
     W.Element.setAttribute "inert" "" popup;
+    restore_dropdown_focus renderer node positioner;
     Lui_web_util.after_surface_motion renderer.web_document [ popup ]
       ~fallback:130 (fun () ->
         if

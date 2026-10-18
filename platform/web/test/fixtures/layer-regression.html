@@ -173,6 +173,18 @@ function setupOrdinaryMenu(retained=false,pressable=false,popover=false){
 setupActionMenu('popover');setupActionMenu('popover',true);
 setupOrdinaryMenu();setupOrdinaryMenu(true);setupOrdinaryMenu(false,true);
 setupOrdinaryMenu(false,false,true);
+function setupFormPopover(){
+  const owner=node('column',root);let wrapper=null;
+  const close=()=>{if(wrapper){drop(wrapper);wrapper=null;flush();}};
+  button(owner,'Open form popover',()=>{
+    wrapper=node('box',owner);
+    const popup=node('popover',wrapper,{anchor:'below',role:'dialog',width:260});
+    const content=node('column',popup);
+    node('input',content,{placeholder:'Popover draft',autofocus:true});
+    button(content,'Save popover draft',close);handlers.set(popup,close);flush();
+  });
+}
+setupFormPopover();
 button(root,'Outside action',()=>{});flush();
 
 function runInertAudit(){
