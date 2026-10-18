@@ -4,7 +4,8 @@ let view _context model_s send =
   let model = Signal.get model_s in
   let outcome_el =
     if model.Model.debug then
-      [ text ~value_signal:(model_s >|= fun m -> m.Model.outcome)
+      [ text ~min_height:16
+          ~value_signal:(model_s >|= fun m -> m.Model.outcome)
           ~accessibility_identifier:"scroll-outcome" [] ]
     else []
   in

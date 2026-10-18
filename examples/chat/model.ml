@@ -76,7 +76,7 @@ let scripted_reply n =
 
 let update m = function
   | Input draft -> { m with draft }
-  | ScrollOutcome s -> { m with outcome = s }
+  | ScrollOutcome s -> { m with outcome = m.outcome ^ s ^ " " }
   | Stop ->
       let items =
         List.map (fun (i : item) -> { i with streaming = false }) m.items in

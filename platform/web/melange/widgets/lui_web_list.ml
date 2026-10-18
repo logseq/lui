@@ -31,6 +31,7 @@ let install renderer node =
        mount-time top position does not falsely unpin the tail-follow
        before the initial scroll lands. *)
     let last_edges = ref (Some (true, false)) in
+    let last_edge_offset = ref (-1.) in
     let emit event = ignore (!(renderer.web_event_handler) event) in
     let property = Store.property renderer.web_store node in
     let text prop fallback =
@@ -85,15 +86,21 @@ let install renderer node =
           last_range := Some (first, last);
           emit (VisibleRange (node, first, last))
         end;
+        let off = W.Element.scrollTop root in
         let edges =
-          ( W.Element.scrollTop root <= 2.
-          , W.Element.scrollTop root
-            +. float_of_int (W.Element.clientHeight root)
+          ( off <= 2.
+          , off +. float_of_int (W.Element.clientHeight root)
             >= float_of_int (W.Element.scrollHeight root) -. 2. )
         in
-        if !last_edges <> Some edges then begin
-          last_edges := Some edges;
-          emit (ScrollEdges (node, fst edges, snd edges))
+        (* Emit only on real offset transitions: layout/geometry changes
+           without a scroll (a row growing, a header mounting) must not
+           flip pin state — only user/programmatic scroll moves it. *)
+        if off <> !last_edge_offset then begin
+          last_edge_offset := off;
+          if !last_edges <> Some edges then begin
+            last_edges := Some edges;
+            emit (ScrollEdges (node, fst edges, snd edges))
+          end
         end
       end
       else last_range := None
@@ -152,16 +159,15 @@ let install renderer node =
                   (min position
                      (float_of_int (W.Element.scrollHeight root) -. viewport))
               in
+              (* Definitive landing: the scroller reaches the clamped
+                 destination for the requested anchor — one-sided edge
+                 tests accept targets on the wrong side of the viewport
+                 and unmeasured (zero-height) rows can never satisfy
+                 them. *)
               let landed =
                 W.DomRect.height rect > 0.5
-                && match anchor with
-                | "bottom" ->
-                    W.DomRect.bottom rect <= W.DomRect.bottom bounds +. 2.
-                    || W.Element.scrollTop root
-                       >= float_of_int (W.Element.scrollHeight root)
-                          -. viewport -. 2.
-                | "center" -> true
-                | _ -> W.DomRect.top rect >= W.DomRect.top bounds -. 2.
+                && abs_float (W.Element.scrollTop root -. destination)
+                   < 1.
               in
               if landed then begin
                 pending_lookup := None;

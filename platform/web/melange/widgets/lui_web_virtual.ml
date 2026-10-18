@@ -52,6 +52,7 @@ let install renderer node ~materialize ~unmount =
        mount-time top position does not falsely unpin the tail-follow
        before the initial scroll lands. *)
     let last_edges = ref (Some (true, false)) in
+    let last_edge_offset = ref (-1.) in
         let document = W.Document.unsafeAsHtmlDocument renderer.web_document in
     let live_rows () =
       Hashtbl.fold (fun id _ rows -> id :: rows) mounted []
@@ -197,19 +198,27 @@ let install renderer node ~materialize ~unmount =
                 | Some wrapper ->
                     let bounds = W.Element.getBoundingClientRect root
                     and r = W.Element.getBoundingClientRect wrapper in
+                    let viewport =
+                      float_of_int (W.Element.clientHeight root) in
+                    let top =
+                      W.Element.scrollTop root +. W.DomRect.top r
+                      -. W.DomRect.top bounds
+                    and height = W.DomRect.height r in
+                    let position =
+                      match align with
+                      | "end" -> top -. viewport +. height
+                      | "center" -> top -. ((viewport -. height) /. 2.)
+                      | _ -> top
+                    in
+                    let destination =
+                      max 0.
+                        (min position
+                           (float_of_int (W.Element.scrollHeight root)
+                            -. viewport))
+                    in
                     W.DomRect.height r > 0.5
-                    && (match align with
-                     | "end" ->
-                         W.DomRect.bottom r
-                         <= W.DomRect.bottom bounds +. 2.
-                         || W.Element.scrollTop root
-                            >= float_of_int (W.Element.scrollHeight root)
-                               -. float_of_int
-                                    (W.Element.clientHeight root)
-                               -. 2.
-                     | "start" ->
-                         W.DomRect.top r >= W.DomRect.top bounds -. 2.
-                     | _ -> true)
+                    && abs_float (W.Element.scrollTop root -. destination)
+                       < 1.
                 | None -> false
               in
               if landed then complete_pending "succeeded"
@@ -331,10 +340,15 @@ let install renderer node ~materialize ~unmount =
                  let edges =
                    (off <= 2., bottom >= V.total_size virtualizer -. 2.)
                  in
-                 if !last_edges <> Some edges then begin
-                   last_edges := Some edges;
-                   emit
-                     (ScrollEdges (node, fst edges, snd edges))
+                 (* Only real offset transitions emit: layout growth
+                    alone must not flip pin state. *)
+                 if off <> !last_edge_offset then begin
+                   last_edge_offset := off;
+                   if !last_edges <> Some edges then begin
+                     last_edges := Some edges;
+                     emit
+                       (ScrollEdges (node, fst edges, snd edges))
+                   end
                  end
              | _ -> ());
             attempt_scroll ();

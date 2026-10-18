@@ -150,12 +150,27 @@ test("scroll completion outcomes are observable (succeeded, cancelled)", async (
   await page.goto(`${origin}/examples/chat/web/index.html?debug`,
     { waitUntil: "networkidle" })
   await page.waitForSelector("#app textarea", { timeout: 10000 })
+  // "At the tail" = the last mounted row's bottom edge inside the
+  // scroller's viewport — robust to post-landing geometry shifts.
   await page.waitForFunction(() => {
     const sc = [...document.querySelectorAll("#app div")].find(
       (d) => d.scrollHeight > d.clientHeight + 2 &&
         getComputedStyle(d).overflowY === "auto")
-    return sc && sc.scrollTop >= sc.scrollHeight - sc.clientHeight - 4
+    if (!sc) return false
+    const rows = [...sc.querySelectorAll("[data-index]")]
+    const last = rows[rows.length - 1]
+    if (!last) return false
+    const sr = sc.getBoundingClientRect()
+    const rr = last.getBoundingClientRect()
+    return rr.bottom <= sr.bottom + 4 && rr.bottom > sr.top
   }, null, { timeout: 10000 })
+  const outcomeText = () =>
+    page.evaluate(() => {
+      const el = [...document.querySelectorAll("#app *")].find(
+        (e) => e.children.length === 0 &&
+          /succeeded|cancelled|missing-target/.test(e.textContent || ""))
+      return el ? el.textContent : ""
+    })
   // Unpin then Jump: outcome "succeeded" must appear in the debug line.
   await page.mouse.move(640, 400)
   await page.mouse.wheel(0, -2400)
@@ -163,19 +178,31 @@ test("scroll completion outcomes are observable (succeeded, cancelled)", async (
   await jump.click()
   await page.waitForFunction(() =>
     [...document.querySelectorAll("#app *")].some(
-      (el) => (el.textContent || "").trim() === "succeeded"),
+      (e) => e.children.length === 0 &&
+        (e.textContent || "").includes("succeeded")),
     null, { timeout: 8000 })
-  // Rapid double-Jump: the superseded intent completes "cancelled"
-  // before the second lands as "succeeded".
+  assert.ok((await outcomeText()).includes("succeeded"),
+    "expected succeeded outcome")
+  // Synchronous double-Jump: the first intent is superseded before it
+  // can land — deterministic "cancelled" then "succeeded" outcomes.
   await page.mouse.wheel(0, -2400)
   await page.waitForFunction(() =>
     [...document.querySelectorAll("button")].some(
       (b) => (b.getAttribute("aria-label") || "").includes("Jump")),
     null, { timeout: 5000 })
-  await jump.click()
-  await jump.click().catch(() => {})
-  await page.waitForFunction(() =>
-    [...document.querySelectorAll("#app *")].some(
-      (el) => (el.textContent || "").trim() === "succeeded"),
-    null, { timeout: 8000 })
+  await page.evaluate(() => {
+    const b = [...document.querySelectorAll("button")].find(
+      (b) => (b.getAttribute("aria-label") || "").includes("Jump"))
+    b.click(); b.click()
+  })
+  await page.waitForFunction(() => {
+    const el = [...document.querySelectorAll("#app *")].find(
+      (e) => e.children.length === 0 &&
+        /succeeded|cancelled|missing-target/.test(e.textContent || ""))
+    const t = el ? el.textContent : ""
+    return t.includes("cancelled") && t.includes("succeeded")
+  }, null, { timeout: 8000 })
+  const t = await outcomeText()
+  assert.ok(t.includes("cancelled"), `expected cancelled, got "${t}"`)
+  assert.ok(t.includes("succeeded"), `expected succeeded, got "${t}"`)
 })
