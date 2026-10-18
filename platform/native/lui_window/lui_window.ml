@@ -1420,6 +1420,29 @@ module Ui = struct
        t.gesture <- g;
        run m;
        emit_all (sync_menu_focus t store ~kbd:true)
+     | Input.Key_down
+         ((Input.Arrow_left | Input.Arrow_right | Input.Arrow_up | Input.Arrow_down
+          | Input.Home | Input.End | Input.Page_up | Input.Page_down) as key, mods, _repeat)
+       when kind_name store (focused t)="button"
+         && bool_prop store (focused t) "navigate-enabled"
+         && not (mods.Input.ctrl || mods.Input.meta || mods.Input.alt)
+         && not (Lui_text_input.composing t.session) ->
+       let target = focused t in
+       let name = match key with
+         | Input.Arrow_left -> "ArrowLeft" | Input.Arrow_right -> "ArrowRight"
+         | Input.Arrow_up -> "ArrowUp" | Input.Arrow_down -> "ArrowDown"
+         | Input.Home -> "Home" | Input.End -> "End"
+         | Input.Page_up -> "PageUp" | Input.Page_down -> "PageDown"
+         | _ -> assert false in
+       let event = NavigationKey (target,name,mods.Input.shift) in
+       let in_scope = match Lui_overlay.modal_scope store t.overlay with
+         | None -> true
+         | Some scope -> target=scope || Lui_query.is_desc store target scope in
+       if in_scope && Lui_focus.chain_visible store target
+          && event_supported store target event then begin
+         on_component_input ();
+         acts:=Dispatch event::!acts
+       end
      | Input.Key_down (key, mods, _repeat) ->
        (* While marked text is on screen the keys belong to the
           IME — SDL filters most of them already; this gate is the

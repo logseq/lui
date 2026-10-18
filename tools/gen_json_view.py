@@ -627,6 +627,7 @@ let ev name (emit : event_sink) props =
            | P.ToggleChanged (_, checked) -> [ ("checked", Bool checked) ]
            | P.NavigatePrevious _ -> [ ("direction", Str "previous") ]
            | P.NavigateNext _ -> [ ("direction", Str "next") ]
+           | P.NavigationKey (_, key, shift) -> [ ("key", Str key); ("shift", Bool shift) ]
            | P.TextChanged (_, text) -> [ ("text", Str text) ]
            | P.ValueChanged (_, v) -> [ ("value", Num v) ]
            | _ -> []

@@ -2206,6 +2206,90 @@ let test_tab_activation () =
   press_field s rects ui 5. 40.;
   Alcotest.(check bool) "ptr focus" false (Ui.focus_visible ui)
 
+let test_button_navigation_keys () =
+  let store, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  Ui.set_focused ui store 3;
+  let dispatched input =
+    Ui.handle ui store rects input
+    |> List.filter_map (function Dispatch event -> Some event | _ -> None)
+  in
+  Alcotest.(check int) "button navigation is opt-in" 0
+    (List.length (dispatched (key Input.Arrow_right)));
+  Lui_store.apply_op store (SetProp (3,NavigateEnabled,BoolValue true));
+  List.iter (fun navigation ->
+    let events=dispatched (key navigation) in
+    Alcotest.(check (list int)) "navigation reaches only its focused button" [3]
+      (List.map Lui_protocol.event_node events))
+    [Input.Arrow_left;Input.Arrow_right;Input.Arrow_up;Input.Arrow_down;
+     Input.Home;Input.End;Input.Page_up;Input.Page_down];
+  Alcotest.(check int) "shifted page navigation remains available" 1
+    (List.length (dispatched (key ~mods:shift Input.Page_up)));
+  List.iter (fun mods ->
+    Alcotest.(check int) "modified navigation remains owned by the shortcut" 0
+      (List.length (dispatched (key ~mods Input.Arrow_right))))
+    [{Input.mods_none with ctrl=true};{Input.mods_none with meta=true};
+     {Input.mods_none with alt=true}];
+  List.iter (fun activation ->
+    Alcotest.(check bool) "navigation does not replace button activation" true
+      (List.exists (function Press 3 -> true | _ -> false)
+        (dispatched (key activation)))) [Input.Return;Input.Space];
+  Lui_store.apply_op store (SetProp (3,Enabled,BoolValue false));
+  Alcotest.(check int) "disabled buttons do not navigate" 0
+    (List.length (dispatched (key Input.Arrow_right)));
+  Lui_store.apply_op store (SetProp (3,Enabled,BoolValue true));
+  Lui_store.apply_op store (SetProp (3,Visible,BoolValue false));
+  Alcotest.(check int) "hidden buttons do not navigate" 0
+    (List.length (dispatched (key Input.Arrow_right)));
+  Lui_store.apply_op store (RemoveProp (3,Visible));
+  Lui_store.apply_op store (SetProp (2,Inert,BoolValue true));
+  Alcotest.(check int) "inert ancestors suppress navigation" 0
+    (List.length (dispatched (key Input.Arrow_right)));
+  Lui_store.apply_op store (RemoveProp (2,Inert));
+  List.iter (Lui_store.apply_op store)
+    [CreateNode (8,Dialog);CreateNode (9,Button);InsertChild (1,8,1);
+     InsertChild (8,9,0);SetProp (9,TextValue,StringValue "Modal day");
+     SetProp (9,NavigateEnabled,BoolValue true)];
+  ignore (Ui.store_changed ui store);
+  Ui.set_focused ui store 3;
+  Alcotest.(check int) "a modal blocks background navigation" 0
+    (List.length (dispatched (key Input.Arrow_right)));
+  Ui.set_focused ui store 9;
+  Alcotest.(check (list int)) "the modal retains its own navigation" [9]
+    (List.map Lui_protocol.event_node (dispatched (key Input.Arrow_right)));
+  Lui_store.apply_op store (DropNode 8);
+  ignore (Ui.store_changed ui store);
+  Ui.set_focused ui store 3;
+  Lui_store.apply_op store (SetProp (3,NavigateEnabled,BoolValue false));
+  Alcotest.(check int) "false opt-in stops navigation" 0
+    (List.length (dispatched (key Input.Arrow_right)));
+  Lui_store.apply_op store (RemoveProp (3,NavigateEnabled));
+  Ui.set_focused ui store 3;
+  Alcotest.(check int) "removing opt-in stops navigation" 0
+    (List.length (dispatched (key Input.Arrow_right)));
+  Lui_store.apply_op store (SetProp (3,NavigateEnabled,BoolValue true));
+  Lui_store.apply_op store (DropNode 3);
+  Alcotest.(check int) "removed controls cannot navigate" 0
+    (List.length (dispatched (key Input.Arrow_right)))
+
+let test_negative_tabindex () =
+  let store, rects = ui_store_fresh () in
+  let ui=Ui.create () in
+  Lui_store.apply_op store (SetProp (3,DataAttrs,
+    StringValue (data_attrs_encode ["tabindex","-1"])));
+  ignore (Ui.handle ui store rects (key Input.Tab));
+  Alcotest.(check int) "Tab skips a negative tabindex" 4 (Ui.focused ui);
+  Ui.set_focused ui store 3;
+  Alcotest.(check int) "direct focus still reaches the roving item" 3 (Ui.focused ui);
+  Alcotest.(check bool) "directly focused roving items still activate" true
+    (List.exists (function Dispatch (Press 3) -> true | _ -> false)
+      (Ui.handle ui store rects (key Input.Return)));
+  Lui_store.apply_op store (SetProp (3,DataAttrs,
+    StringValue (data_attrs_encode ["tabindex","0"])));
+  Ui.set_focused ui store 4;
+  ignore (Ui.handle ui store rects (key ~mods:shift Input.Tab));
+  Alcotest.(check int) "zero tabindex restores sequential focus" 3 (Ui.focused ui)
+
 let test_focus_ring_modality () =
   List.iter
     (fun (kind, pointer_ring) ->
@@ -4448,6 +4532,8 @@ let () =
       ( "keys",
         [ Alcotest.test_case "focus ring modality" `Quick test_focus_ring_modality;
           Alcotest.test_case "tab activation" `Quick test_tab_activation;
+          Alcotest.test_case "button navigation keys" `Quick test_button_navigation_keys;
+          Alcotest.test_case "negative tabindex" `Quick test_negative_tabindex;
           Alcotest.test_case "control keys" `Quick test_control_keys ] );
       ( "list",
         [ Alcotest.test_case "typeahead" `Quick test_list_typeahead;

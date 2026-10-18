@@ -183,6 +183,8 @@ let event_json (e : event) : J.t =
     `Assoc [ k "text-changed"; n id; ("text", `String s) ]
   | NavigatePrevious id -> `Assoc [ k "navigate-previous"; n id ]
   | NavigateNext id -> `Assoc [ k "navigate-next"; n id ]
+  | NavigationKey (id,key,shift) ->
+    `Assoc [k "navigation-key";n id;"key",`String key;"shift",`Bool shift]
   | Submit id -> `Assoc [ k "submit"; n id ]
   | ToggleChanged (id, b) ->
     `Assoc [ k "toggle-changed"; n id; ("checked", `Bool b) ]
@@ -441,6 +443,8 @@ let event_of_json ctx (j : J.t) : event =
   | "pointer-leave" -> PointerLeave (node ())
   | "context-menu-press" -> ContextMenuPress (node (), detail ())
   | "load" -> Load (node ())
+  | "navigation-key" ->
+    NavigationKey (node (),jstr "key" j,J.Util.to_bool (jreq "shift" j))
   | "extension-event" ->
     let json_values =
       match jget "json" j with
