@@ -11,7 +11,9 @@ open Lui_window_demo
 let test_css_percentage_colors () =
   List.iter
     (fun (css, (r, g, b, a)) ->
-      let actual = Option.get (Theme.color_of css) in
+      let actual = match Theme.color_of css with
+        | Some color -> color
+        | None -> Alcotest.failf "Valid CSS color was rejected: %s" css in
       Alcotest.(check int) (css ^ " alpha") a actual.a;
       Alcotest.(check int) (css ^ " red") r actual.r;
       Alcotest.(check int) (css ^ " green") g actual.g;
@@ -21,10 +23,23 @@ let test_css_percentage_colors () =
       ("rgba(18, 52, 86, 0.5)", (18, 52, 86, 128));
       ("hsl(0 0% 100% / 50%)", (255, 255, 255, 128));
       ("hsla(0, 0%, 100%, 0.5)", (255, 255, 255, 128));
+      ("hsl(0 0 95%)", (242, 242, 242, 255));
+      ("hsl(0 0 95% / 0.75)", (242, 242, 242, 191));
+      ("hsla(0 0 95% / 75%)", (242, 242, 242, 191));
+      ("hsl(120 100 50)", (0, 255, 0, 255));
+      ("hsl(240 100% 50)", (0, 0, 255, 255));
+      ("hsl(0 -20 120)", (255, 255, 255, 255));
+      ("hsl(0 150 50)", (255, 0, 0, 255));
       ("rgb(50% 50% 50%)", (128, 128, 128, 255));
       ("rgb(0% 50% 100% / 0%)", (0, 128, 255, 0));
       ("rgb(0% 50% 100% / 100%)", (0, 128, 255, 255));
-    ]
+    ];
+  List.iter (fun css ->
+    Alcotest.(check bool) (css ^ " is rejected") true (Theme.color_of css=None))
+    ["hsl(0, 0, 95%)";"hsla(0, 0%, 95, 0.5)";
+     "hsl(0 0 95% / invalid)";"hsl(0 0% 95% / invalid)";
+     "hsl(nan 100% 50%)";"hsl(0 infinity 50%)";
+     "hsl(0 0% nan)";"hsl(0 0% 95% / nan)"]
 
 (* ---------- store helpers ---------- *)
 

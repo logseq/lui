@@ -1868,14 +1868,14 @@ module Theme = struct
         float_of_string_opt
           (if pct then String.sub t 0 (String.length t - 1) else t)
       with
-      | Some v ->
+      | Some v when Float.is_finite v ->
         Some
           (int_of_float
              (Float.round
                 (if pct then v /. 100. *. 255.
                  else if v <= 1. then v *. 255.
                  else v)))
-      | None -> None
+      | _ -> None
     in
     let emit comps a =
       match List.map chan comps with
@@ -1883,26 +1883,32 @@ module Theme = struct
         Some (color r g b (Option.value a ~default:255))
       | _ -> None
     in
-    (* CSS hsl()/hsla() — comma-separated (hsla(10, 78%, 54%, 0.9)) and
-       modern space/slash forms; hue in degrees, s/l percents. *)
-    let pct_num t =
+    (* Modern HSL accepts independent number/percentage saturation and
+       lightness channels; comma-separated HSL requires percentages. *)
+    let hsl_channel modern t =
       let n = String.length t in
-      if n > 0 && t.[n - 1] = '%' then
-        float_of_string_opt (String.sub t 0 (n - 1))
-      else None
+      let percentage = n > 0 && t.[n - 1] = '%' in
+      if not (percentage || modern) then None
+      else
+        match float_of_string_opt
+          (if percentage then String.sub t 0 (n - 1) else t) with
+        | Some value when Float.is_finite value -> Some value
+        | _ -> None
     in
-    let hsl_emit comps a =
+    let hsl_emit modern comps a =
       let hue t =
         let t =
           if String.ends_with ~suffix:"deg" t then
             String.sub t 0 (String.length t - 3)
           else t
         in
-        float_of_string_opt t
+        match float_of_string_opt t with
+        | Some value when Float.is_finite value -> Some value
+        | _ -> None
       in
       match comps with
       | [ h; s; l ] -> (
-        match hue h, pct_num s, pct_num l with
+        match hue h, hsl_channel modern s, hsl_channel modern l with
         | Some h, Some s, Some l ->
           let h =
             let h = Float.rem h 360. in
@@ -1938,15 +1944,20 @@ module Theme = struct
     match pre with
     | None -> None
     | Some p -> (
-      let emit = if is_hsl then hsl_emit else emit in
+      let emit_color modern comps opacity =
+        if is_hsl then hsl_emit modern comps opacity else emit comps opacity in
+      let with_alpha modern comps raw =
+        match alpha raw with
+        | Some opacity -> emit_color modern comps (Some opacity)
+        | None -> None in
       let inner = inner p in
       match split ',' inner with
-      | [ a; b; c ] -> emit [ a; b; c ] None
-      | [ a; b; c; d ] -> emit [ a; b; c ] (alpha d)
+      | [ a; b; c ] -> emit_color false [ a; b; c ] None
+      | [ a; b; c; d ] -> with_alpha false [ a; b; c ] d
       | _ -> (
         match split '/' inner with
-        | [ core ] -> emit (split ' ' core) None
-        | [ core; a ] -> emit (split ' ' core) (alpha a)
+        | [ core ] -> emit_color true (split ' ' core) None
+        | [ core; a ] -> with_alpha true (split ' ' core) a
         | _ -> None))
 
   let color_of name =
