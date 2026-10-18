@@ -190,3 +190,20 @@ test('retained button content preserves owned slots and intrinsic spacing', asyn
   assert.equal(audit.total, 46)
   assert.deepEqual(audit.checks.filter(check => !check.pass), [])
 })
+
+test("shared-cell containers preserve child paint and hit order", async () => {
+  await page.goto(`${origin}/platform/web/test/fixtures/appearance-regression.html`)
+  const topLayer = kind => page.locator(`#${kind}-frame`).evaluate(frame => {
+    const r = frame.getBoundingClientRect()
+    return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.id
+  })
+  for (const kind of ["stack", "panel", "card", "resizable"]) {
+    assert.equal(await topLayer(kind), `${kind}-upper`,
+      "Later overlays cover earlier positioned children and spacers stay hit-transparent")
+  }
+  await page.getByRole("button", { name: "Raise lower layers", exact: true }).click()
+  for (const kind of ["stack", "panel", "card", "resizable"]) {
+    assert.equal(await topLayer(kind), `${kind}-lower`,
+      "An explicit typed z-index must still override child order")
+  }
+})

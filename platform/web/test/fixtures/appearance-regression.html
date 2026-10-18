@@ -20,6 +20,7 @@ body { margin: 24px; font: 16px system-ui }
 </style>
 <main id="host"></main>
 <nav aria-label="Appearance test controls">
+  <button id="raise-stack-lowers">Raise lower layers</button>
   <button id="select">Select appearance</button>
   <button id="disable">Disable appearance</button>
   <button id="enable">Enable appearance</button>
@@ -74,6 +75,28 @@ function flush() {
 }
 
 const root = create("column", null, { gap: 8 })
+const stackProbes = {}
+const stackRow = create("row", root, { gap: 12 })
+for (const kind of ["stack", "panel", "card", "resizable"]) {
+  const frame = create(kind, stackRow, {
+    width: 40, height: 40, padding: 0, "border-width": 0,
+    "accessibility-identifier": `${kind}-frame`,
+  })
+  const lower = create("box", frame, {
+    position: "relative", width: 40, height: 40, background: "#ff0000",
+    "pointer-enabled": true, "accessibility-identifier": `${kind}-lower`,
+  })
+  const upper = create("box", frame, {
+    width: 40, height: 40, background: "#0000ff",
+    "pointer-enabled": true, "accessibility-identifier": `${kind}-upper`,
+  })
+  create("spacer", frame, { width: 40, height: 40 })
+  stackProbes[kind] = { lower, upper }
+}
+document.querySelector("#raise-stack-lowers").onclick = () => {
+  for (const { lower } of Object.values(stackProbes)) set(lower, "z-index", 2)
+  flush()
+}
 const typography = create("text", root, {
   text: "Typography",
   "font-size": "0.75rem",
