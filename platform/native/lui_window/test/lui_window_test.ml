@@ -2880,6 +2880,260 @@ let test_assembly_scroll_caps () =
   Alcotest.(check (option int)) "scrolled hit" (Some 4)
     (hit (Assembly.store asm) (Assembly.rects asm) ~x:10. ~y:90.)
 
+let ordinary_menu_ops selected =
+  [
+    CreateNode (5, DropdownMenu);
+    InsertChild (2, 5, 2);
+    SetProp (5, HeightValue, IntValue 100);
+    CreateNode (6, MenuItem);
+    InsertChild (5, 6, 0);
+    SetProp (6, TextValue, StringValue "Disabled");
+    SetProp (6, Enabled, BoolValue false);
+    SetProp (6, HeightValue, IntValue 16);
+    CreateNode (7, MenuItem);
+    InsertChild (5, 7, 1);
+    SetProp (7, TextValue, StringValue "Hidden");
+    SetProp (7, Visible, BoolValue false);
+    SetProp (7, HeightValue, IntValue 16);
+    CreateNode (8, MenuItem);
+    InsertChild (5, 8, 2);
+    SetProp (8, TextValue, StringValue "First");
+    SetProp (8, HeightValue, IntValue 24);
+    CreateNode (9, MenuItem);
+    InsertChild (5, 9, 3);
+    SetProp (9, TextValue, StringValue "Last");
+    SetProp (9, HeightValue, IntValue 24);
+    SetProp (9, Selected, BoolValue selected);
+  ]
+
+let ordinary_menu_fixture () =
+  let asm =
+    assembly_of
+      [
+        CreateNode (1, Root);
+        CreateNode (2, Column);
+        InsertChild (1, 2, 0);
+        CreateNode (3, Button);
+        InsertChild (2, 3, 0);
+        SetProp (3, TextValue, StringValue "Trigger");
+        SetProp (3, HeightValue, IntValue 32);
+        CreateNode (4, TextField);
+        InsertChild (2, 4, 1);
+        SetProp (4, HeightValue, IntValue 32);
+        SetProp (4, TextValue, StringValue "draft");
+      ]
+  in
+  let generation = ref 1 in
+  let apply ops =
+    incr generation;
+    Lui_store.apply_batch (Assembly.store asm) { generation = !generation; ops };
+    ignore (Assembly.store_changed asm);
+    ignore (Assembly.repaint asm)
+  in
+  (asm, apply)
+
+let test_ordinary_menu_focus_ownership () =
+  List.iter
+    (fun keyboard ->
+      List.iter
+        (fun selected ->
+          List.iter
+            (fun origin ->
+              let asm, apply = ordinary_menu_fixture () in
+              let ui = Assembly.ui asm and store = Assembly.store asm in
+              Ui.set_focused ~kbd:true ui store origin;
+              let r = Rects.get (Assembly.rects asm) origin in
+              ignore
+                (Assembly.handle asm
+                   (Input.Button_down
+                      (r.x +. 2., r.y +. 2., Input.Left, 1, Input.mods_none)));
+              ignore
+                (Assembly.handle asm
+                   (Input.Button_up
+                      (r.x +. 2., r.y +. 2., Input.Left, Input.mods_none)));
+              if keyboard then ignore (Assembly.handle asm (key Input.Return));
+              apply (ordinary_menu_ops selected);
+              let initial = if keyboard then if selected then 9 else 8 else 0 in
+              Alcotest.(check int)
+                "opening method determines initial highlight" initial
+                (Ui.hl_item ui);
+              Alcotest.(check int)
+                "ordinary menu owns logical focus"
+                (if initial = 0 then 5 else initial)
+                (Ui.focused ui);
+              ignore (Assembly.handle asm (key Input.Home));
+              Alcotest.(check int)
+                "Home focuses the first enabled visible row" 8 (Ui.focused ui);
+              ignore (Assembly.handle asm (key Input.End));
+              Alcotest.(check int)
+                "End moves logical focus with the highlight" 9 (Ui.focused ui);
+              Alcotest.(check bool)
+                "old row loses keyboard hover styling" false
+                (Ui.state_of ui store 8).Lui_paint.hovered;
+              ignore (Assembly.handle asm (Input.Text_input "Fir"));
+              Alcotest.(check int)
+                "typeahead moves logical focus" 8 (Ui.focused ui);
+              let row = Rects.get (Assembly.rects asm) 9 in
+              ignore
+                (Assembly.handle asm
+                   (Input.Move (row.x +. (row.w /. 2.), row.y +. (row.h /. 2.))));
+              Alcotest.(check int)
+                "pointer hover owns its menu row focus" 9 (Ui.focused ui);
+              let events =
+                press_actions (Assembly.handle asm (key Input.Return))
+              in
+              Alcotest.(check int)
+                "menu activation dispatches once" 1
+                (List.length (List.filter (( = ) (Press 9)) events));
+              apply [ DropNode 5 ];
+              Alcotest.(check int)
+                "menu close restores its original focus" origin (Ui.focused ui);
+              Alcotest.(check int)
+                "menu close clears its highlight" 0 (Ui.hl_item ui);
+              apply (ordinary_menu_ops false);
+              Ui.set_focused ui store (if origin = 3 then 4 else 3);
+              apply [ DropNode 5 ];
+              Alcotest.(check int)
+                "outside focus survives menu closure"
+                (if origin = 3 then 4 else 3)
+                (Ui.focused ui))
+            [ 3; 4 ])
+        [ false; true ])
+    [ false; true ];
+  let asm, apply = ordinary_menu_fixture () in
+  let ui = Assembly.ui asm in
+  Ui.set_focused ui (Assembly.store asm) 3;
+  apply
+    (ordinary_menu_ops false
+    @ [
+        SetProp (8, Enabled, BoolValue false);
+        SetProp (9, Enabled, BoolValue false);
+      ]);
+  Alcotest.(check int)
+    "a menu with no available rows focuses its container" 5 (Ui.focused ui);
+  Alcotest.(check bool)
+    "an unavailable menu cannot activate its trigger" false
+    (List.exists
+       (function Press _ -> true | _ -> false)
+       (press_actions (Assembly.handle asm (key Input.Return))))
+
+let test_menu_edit_return () =
+  List.iter
+    (fun change_model ->
+      let asm, apply = ordinary_menu_fixture () in
+      let ui = Assembly.ui asm and store = Assembly.store asm in
+      Ui.set_focused ui store 4;
+      ignore (Assembly.handle asm (key Input.Home));
+      ignore (Assembly.handle asm (key ~mods:shift Input.Arrow_right));
+      ignore (Assembly.handle asm (Input.Text_input "X"));
+      ignore (Assembly.handle asm (key ~mods:shift Input.Arrow_right));
+      let caret = Ui.caret ui and anchor = Ui.sel_anchor ui in
+      apply (ordinary_menu_ops false);
+      Alcotest.(check int)
+        "the menu suspends the background editor focus" 8 (Ui.focused ui);
+      if change_model then apply [ SetProp (4, TextValue, StringValue "中") ];
+      apply [ DropNode 5 ];
+      Alcotest.(check int) "closing returns the editor focus" 4 (Ui.focused ui);
+      Alcotest.(check int)
+        "return restores or clamps the selection caret"
+        (if change_model then 0 else caret)
+        (Ui.caret ui);
+      Alcotest.(check int)
+        "return restores or clamps the selection anchor"
+        (if change_model then 0 else anchor)
+        (Ui.sel_anchor ui);
+      ignore (Assembly.handle asm (key ~mods:meta (Input.Other 29)));
+      Alcotest.(check string)
+        "undo survives menu focus but never replays stale model history"
+        (if change_model then "中" else "draft")
+        (Ui.shadow ui))
+    [ false; true ]
+
+let test_picker_menu_input_ownership () =
+  List.iter
+    (fun kind ->
+      let asm =
+        assembly_of
+          [
+            CreateNode (1, Root);
+            CreateNode (2, Column);
+            InsertChild (1, 2, 0);
+            CreateNode (3, kind);
+            InsertChild (2, 3, 0);
+            SetProp (3, TextValue, StringValue "draft");
+            SetProp (3, PressEnabled, BoolValue true);
+          ]
+      in
+      let ui = Assembly.ui asm and store = Assembly.store asm in
+      Ui.set_focused ui store 3;
+      Alcotest.(check bool)
+        "Down opens a focused picker" true
+        (List.mem (Press 3)
+           (press_actions (Assembly.handle asm (key Input.Arrow_down))));
+      Lui_store.apply_batch store
+        {
+          generation = 2;
+          ops =
+            [
+              CreateNode (5, DropdownMenu);
+              InsertChild (2, 5, 1);
+              CreateNode (8, MenuItem);
+              InsertChild (5, 8, 0);
+              SetProp (8, TextValue, StringValue "Alpha");
+              CreateNode (9, MenuItem);
+              InsertChild (5, 9, 1);
+              SetProp (9, TextValue, StringValue "Beta");
+              SetProp (9, Selected, BoolValue true);
+            ];
+        };
+      ignore (Assembly.store_changed asm);
+      Alcotest.(check int)
+        "picker retains its own logical focus" 3 (Ui.focused ui);
+      Alcotest.(check int)
+        "picker retains selected-row initialization" 9 (Ui.hl_item ui);
+      ignore (Assembly.handle asm (key Input.Arrow_down));
+      Alcotest.(check int)
+        "picker navigation leaves focus on its control" 3 (Ui.focused ui);
+      if kind = Combobox then begin
+        ignore (Assembly.handle asm (Input.Text_input "x"));
+        Alcotest.(check string)
+          "combobox typing belongs to its input" "draftx" (Ui.shadow ui);
+        ignore (Assembly.handle asm (key Input.Home));
+        Alcotest.(check int)
+          "combobox Home belongs to its caret" 0 (Ui.caret ui)
+      end)
+    [ Select; Combobox ]
+
+let test_menu_row_focus_chrome () =
+  List.iter
+    (fun kind ->
+      let store =
+        store_of
+          [ CreateNode (1, Root); CreateNode (2, kind); InsertChild (1, 2, 0) ]
+      in
+      let ui = Ui.create () in
+      Ui.set_focused ~kbd:true ui store 2;
+      let scene =
+        Lui_scene.create
+          ~mask_atlas:(Lui_scene.Atlas.create ~bpp:1 ~w:1 ~h:1)
+          ~color_atlas:(Lui_scene.Atlas.create ~bpp:4 ~w:1 ~h:1)
+      in
+      Lui_paint.paint
+        {
+          Lui_paint.default_hooks with
+          state_of = Ui.state_of ui store;
+          layout =
+            (fun _ -> Lui_paint.placement_of_rect (rect 10. 10. 100. 32.));
+        }
+        store scene ~width:200 ~height:100 ~scale:1. ~clear:(color 0 0 0 0);
+      Alcotest.(check bool)
+        "menu focus uses its row highlight without a button outline" false
+        (List.exists
+           (function
+             | Fill f -> f.frect.x < 10. && f.frect.w > 100. | _ -> false)
+           scene.ops))
+    [ MenuItem; MenuTrigger ]
+
 let test_action_menu_focus () =
   List.iter (fun (origin,kbd) ->
     let asm = assembly_of
@@ -3168,7 +3422,8 @@ let test_menu_open_selection () =
         "initial selection uses the menu highlight style" true
         (Ui.state_of ui store expected).Lui_paint.hovered;
       Alcotest.(check int)
-        "opening a menu preserves the trigger's input focus" 2 (Ui.focused ui);
+        "keyboard opening focuses the initially highlighted row" expected
+        (Ui.focused ui);
       let events = press_actions (Assembly.handle asm (key Input.Return)) in
       Alcotest.(check bool)
         "Enter activates the initial selection" true
@@ -3941,7 +4196,11 @@ let () =
         [ Alcotest.test_case "drag drop" `Quick test_drag_drop;
           Alcotest.test_case "file drop" `Quick test_file_drop ] );
       ( "overlay",
-        [ Alcotest.test_case "pointer scope" `Quick test_modal_pointer_scope;
+        [ Alcotest.test_case "ordinary menu focus ownership" `Quick test_ordinary_menu_focus_ownership;
+          Alcotest.test_case "menu edit return" `Quick test_menu_edit_return;
+          Alcotest.test_case "picker input ownership" `Quick test_picker_menu_input_ownership;
+          Alcotest.test_case "menu row focus chrome" `Quick test_menu_row_focus_chrome;
+          Alcotest.test_case "pointer scope" `Quick test_modal_pointer_scope;
           Alcotest.test_case "modal+esc" `Quick test_overlay_close;
           Alcotest.test_case "light dismiss" `Quick test_light_dismiss;
           Alcotest.test_case "action menu focus" `Quick test_action_menu_focus;

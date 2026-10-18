@@ -86,6 +86,15 @@ let attach st ~node ~text =
     model = text; dirty_since_model = false; response = `None;
     caret; anchor = caret; undo = []; redo = []; ime }
 
+(* Resume an editor after an owning overlay without reusing its old session id. *)
+let restore_edit st saved =
+  if st.node <> saved.node then invalid_arg "restoring a different text control";
+  let caret = Lui_query.clamp_boundary st.text saved.caret
+  and anchor = Lui_query.clamp_boundary st.text saved.anchor in
+  if st.text = saved.text then
+    { st with caret; anchor; undo = saved.undo; redo = saved.redo }
+  else { st with caret; anchor }
+
 let set_caret st ~off ~extend =
   if st.caret = off && (extend || st.anchor = off) then st
   else

@@ -9,7 +9,7 @@ open Lui_protocol
 type state = {
   top : int;
       (* topmost overlay-kind node currently tracked (0 = none) *)
-  focus_owned : bool;   (* modal or ordinary-action menu owns initial focus *)
+  focus_owned : bool;   (* modal or ordinary menu owns initial focus *)
   open_menu : int;      (* trigger-owned menu panel currently open *)
   laid_out_menu : int;  (* open_menu as of the last layout pass *)
   saved_focus : int;
@@ -107,27 +107,40 @@ let available_focus store id =
   && Lui_focus.chain_visible store id
   && not (Lui_store.inert_in_chain store id)
 
-let action_menu_focus store menu =
+let ordinary_row_menu store menu =
+  Lui_query.kind_name store menu = "dropdown-menu"
+  && Lui_gesture.menu_has_items store menu
+  && Lui_query.picker_for_menu store menu = None
+
+let initial_menu_focus store menu ~keyboard =
   let is_menu =
     match Lui_query.kind_name store menu with
     | "dropdown-menu" | "context-menu" -> true
     | "popover" -> Lui_store.string_prop store menu "role" = Some "menu"
-    | _ -> false in
-  if not is_menu || Lui_gesture.menu_has_items store menu then None
+    | _ -> false
+  in
+  if not is_menu then None
+  else if Lui_gesture.menu_has_items store menu then
+    if ordinary_row_menu store menu then
+      let row =
+        if keyboard then (Lui_gesture.menu_open store ~menu).hl else 0
+      in
+      Some (if row = 0 then menu else row)
+    else None
   else
     let rec first id =
-      if not (available_focus store id)
-         || (id <> menu && Lui_query.presented_overlay store id) then None
-      else if id <> menu
-              && Lui_query.focus_candidate store id
-      then Some id
+      if
+        (not (available_focus store id))
+        || (id <> menu && Lui_query.presented_overlay store id)
+      then None
+      else if id <> menu && Lui_query.focus_candidate store id then Some id
       else List.find_map first (Lui_store.child_ids store id)
     in
     first menu
 
 (* Store-sync half: dead saved-focus cleanup, then the top-overlay
    change boundary. Modals and ordinary-action menus save return focus.
-   Row menus retain their separate keyboard highlight. A modal owns the
+   Picker menus retain their control focus and separate row highlight. A modal owns the
    keyboard while it is top: a focus held outside it is saved (once —
    a stacked modal keeps the earliest save) and cleared via a
    [`Focus (0, false)] intent, so text input, IME and the shortcut
@@ -136,7 +149,7 @@ let action_menu_focus store menu =
    On release the save is restored if focus has not moved outside the
    closing surface, and reset so a later overlay cannot resurrect a
    stale target. *)
-let sync store st ~focused ~kbd =
+let sync store st ~focused ~kbd ~keyboard =
   let st =
     if st.saved_focus <> 0 && not (available_focus store st.saved_focus)
     then { st with saved_focus = 0 }
@@ -149,7 +162,8 @@ let sync store st ~focused ~kbd =
   in
   if ov_id = st.top then (st, [])
   else begin
-    let action_focus = if ov_modal then None else action_menu_focus store ov_id in
+    let action_focus = if ov_modal then None else initial_menu_focus store ov_id ~keyboard in
+    let focus_kbd = if ordinary_row_menu store ov_id then keyboard else kbd in
     let focus_owned = ov_modal || Option.is_some action_focus in
     let outside =
       focused <> 0 && focused <> ov_id
@@ -162,7 +176,7 @@ let sync store st ~focused ~kbd =
           if ov_modal then
             `Clear_selection :: (if outside then [ `Focus (0, false) ] else [])
           else match action_focus with
-            | Some id when outside || focused = 0 -> [ `Focus (id, kbd) ]
+            | Some id when outside || focused = 0 -> [ `Focus (id, focus_kbd) ]
             | _ -> [] )
       else (st.saved_focus, [])
     in

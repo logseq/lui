@@ -567,6 +567,8 @@ module Ui = struct
     mutable menu_reveal : int; (* Initial highlight waiting for layout geometry. *)
     mutable menu_picker : int;
     mutable pending_picker : (int * Input.key) option;
+    mutable keyboard_input : bool;
+    mutable overlay_edit : Lui_text_input.state option;
     (* Space activation may dispose the menu before its text commit arrives. *)
     mutable menu_space_commit : bool;
     (* Paint-hint channels for the retained fragment pass: scroll
@@ -614,7 +616,7 @@ module Ui = struct
       drag = Lui_drag.initial;
       overlay = Lui_overlay.initial;
       menu_scope = 0; menu_reveal = 0; menu_picker = 0; pending_picker = None;
-      menu_space_commit = false;
+      menu_space_commit = false; keyboard_input = true; overlay_edit = None;
       scrolled = Hashtbl.create 8;
       scroll_metrics = Hashtbl.create 8;
       paint_snap =
@@ -881,10 +883,16 @@ module Ui = struct
      focus-scope transition, autofocus inside the top overlay's
      scope, the Appear lifecycle and scroll bookkeeping. Intents go
      through [perform]; dispatches land in action order. *)
-  let select_for_menu store menu =
-    Option.bind (Lui_store.parent store menu) (fun parent ->
-      List.find_opt (fun id -> kind_name store id = "select"
-        && Lui_query.node_enabled store id) (Lui_store.child_ids store parent))
+  let sync_menu_focus t store ~kbd =
+    let menu = t.menu_scope and focused = Lui_focus.focused t.focus in
+    if Lui_overlay.ordinary_row_menu store menu
+       && (focused = 0 || focused = menu || Lui_query.is_desc store focused menu)
+       && not (Lui_text_input.editable store focused) then begin
+      let target = if t.gesture.hl = 0 then menu else t.gesture.hl in
+      let moved = target <> focused in
+      focus_move ~kbd t store target;
+      if moved then [Focus_changed target] else []
+    end else []
 
   let sync t store =
     if Lui_store.revision store = t.sync_rev
@@ -915,13 +923,24 @@ module Ui = struct
          t.session <- s';
          run m
        end);
-      (let ov', m =
-         Lui_overlay.sync store t.overlay
-           ~focused:(Lui_focus.focused t.focus)
-           ~kbd:(Lui_focus.kbd_visible t.focus)
-       in
+      (let old_saved = Lui_overlay.saved_focus t.overlay in
+       let focused = Lui_focus.focused t.focus in
+       let ov', m =
+         Lui_overlay.sync store t.overlay ~focused
+           ~kbd:(Lui_focus.kbd_visible t.focus) ~keyboard:t.keyboard_input in
+       let saved = Lui_overlay.saved_focus ov' in
+       if old_saved = 0 && saved <> 0 then
+         t.overlay_edit <-
+           (if Lui_text_input.editable store focused then Some t.session else None);
        t.overlay <- ov';
-       run m);
+       run m;
+       match saved, t.overlay_edit with
+       | 0, Some edit ->
+           if List.exists (function `Focus (id, _) -> id = Lui_text_input.node edit | _ -> false) m
+              && Lui_focus.focused t.focus = Lui_text_input.node edit then
+             t.session <- Lui_text_input.restore_edit t.session edit;
+           t.overlay_edit <- None
+       | _ -> ());
       (let id = Lui_overlay.top t.overlay in
        let scope =
          if id <> 0 && Lui_paint.menu_kind store id (Lui_store.kind store id)
@@ -930,9 +949,11 @@ module Ui = struct
        if scope <> t.menu_scope then begin
          let previous_picker = t.menu_picker in
          t.menu_scope <- scope;
-         t.menu_picker <- Option.value ~default:0 (select_for_menu store scope);
+         t.menu_picker <- Option.value ~default:0 (Lui_query.picker_for_menu store scope);
          t.gesture <-
            if scope = 0 then Lui_gesture.initial
+           else if not t.keyboard_input && Lui_overlay.ordinary_row_menu store scope
+           then Lui_gesture.menu_state Lui_gesture.initial scope
            else Lui_gesture.menu_open store ~menu:scope;
          (match t.pending_picker with
           | Some (picker, Input.Arrow_up) when picker = t.menu_picker
@@ -1039,6 +1060,11 @@ module Ui = struct
 
   let handle ?spatial ?(on_component_input = fun () -> ()) t store rects input =
     (match input with
+     | Input.Move _ | Input.Button_down _ | Input.Wheel _ | Input.Wheel_mods _ ->
+         t.keyboard_input <- false
+     | Input.Key_down _ -> t.keyboard_input <- true
+     | _ -> ());
+    (match input with
      | Input.Key_down (_, mods, _)
        when not (mods.Input.ctrl || mods.Input.meta || mods.Input.alt) ->
          focus_move ~kbd:true t store (Lui_focus.focused t.focus)
@@ -1134,6 +1160,7 @@ module Ui = struct
                 let gesture = Lui_gesture.menu_hover store t.gesture ~menu path in
                 if gesture != t.gesture then begin
                   t.gesture <- gesture;
+                  emit_all (sync_menu_focus t store ~kbd:false);
                   t.dirty <- true
                 end
               | None -> ());
@@ -1324,19 +1351,22 @@ module Ui = struct
           t.dirty <- true
         | _ -> ())
      | Input.Text_input _ when suppress_space -> on_component_input ()
-     | Input.Text_input s when Option.is_some (active_menu t store) ->
+     | Input.Text_input s when Option.is_some (active_menu t store)
+         && kind_name store (focused t) <> "combobox" ->
        on_component_input ();
        let g,m = Lui_gesture.menu_text store t.gesture
          ~menu:(Option.get (active_menu t store)) s in
        t.gesture <- g;
-       run m
+       run m;
+       emit_all (sync_menu_focus t store ~kbd:true)
      | Input.Text_input s ->
        let s', m =
          Lui_text_input.feed_ime store t.session (`Commit s)
        in
        t.session <- s';
        run m
-     | Input.Text_editing _ when Option.is_some (active_menu t store) ->
+     | Input.Text_editing _ when Option.is_some (active_menu t store)
+         && kind_name store (focused t) <> "combobox" ->
        on_component_input ()
      | Input.Text_editing (text, start, len) ->
        let s', m =
@@ -1364,7 +1394,9 @@ module Ui = struct
      | Input.Key_down (key, mods, _repeat)
        when not (mods.Input.ctrl || mods.Input.meta || mods.Input.alt)
          && Option.is_some (active_menu t store)
-         && (match key with
+         && (if kind_name store (focused t) = "combobox" then
+               List.mem key [Input.Arrow_up; Input.Arrow_down; Input.Return]
+             else match key with
              | Input.Arrow_down | Input.Arrow_up | Input.Home | Input.End
              | Input.Page_down | Input.Page_up | Input.Return | Input.Space -> true
              | Input.Other scan -> Option.is_some (Input.char_of_scancode scan)
@@ -1376,7 +1408,8 @@ module Ui = struct
          ~rect_of:(visible_rect t store) ~scale:t.scale
          ~key:(conv_key key) ~mods:(conv_mods mods) in
        t.gesture <- g;
-       run m
+       run m;
+       emit_all (sync_menu_focus t store ~kbd:true)
      | Input.Key_down (key, mods, _repeat) ->
        (* While marked text is on screen the keys belong to the
           IME — SDL filters most of them already; this gate is the
@@ -1470,7 +1503,7 @@ module Ui = struct
             end
           | (Input.Arrow_up | Input.Arrow_down)
               when not (mods.Input.shift || mods.Input.ctrl || mods.Input.meta || mods.Input.alt)
-                && kind_name store (focused t) = "select"
+                && List.mem (kind_name store (focused t)) ["select";"combobox"]
                 && Lui_query.node_enabled store (focused t) ->
             on_component_input ();
             t.pending_picker <- Some (focused t,key);

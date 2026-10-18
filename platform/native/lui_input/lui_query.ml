@@ -37,6 +37,14 @@ let node_enabled store id =
   | Some (StringValue "false") -> false
   | _ -> true
 
+let picker_for_menu store menu =
+  Option.bind (Lui_store.parent store menu) (fun parent ->
+      List.find_opt
+        (fun id ->
+          (kind_name store id = "select" || kind_name store id = "combobox")
+          && node_enabled store id)
+        (Lui_store.child_ids store parent))
+
 let pointer_enabled store id = Lui_store.bool_prop store id "pointer-enabled"
 
 let bool_prop store id name = Lui_store.bool_prop store id name

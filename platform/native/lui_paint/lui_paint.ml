@@ -2032,7 +2032,7 @@ let focus_ring_ops ctx r radii alpha =
 
 (* Kinds that show the default focus ring when focused. *)
 let focusable = function
-  | "button" | "toggle-button" | "toggle" | "menu-trigger" | "menu-item"
+  | "button" | "toggle-button" | "toggle"
   | "bottom-tab" | "tab" | "list-item" | "link" | "select" | "combobox"
   | "text-field" | "secure-field" | "input" | "search-field" | "textarea"
   | "checkbox" | "radio" | "switch" | "slider" | "number-stepper" -> true
