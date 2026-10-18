@@ -85,7 +85,7 @@ type display =
 
 type flex_wrap = [ `nowrap | `wrap ]
 type input_kind = [ `text | `color | `time ]
-type popover_role = [ `menu ]
+type popover_role = [ `dialog | `menu ]
 type swipe_edge = [ `leading | `trailing ]
 
 (** [~as_] element-tag overrides for the phrasing kinds ([text],

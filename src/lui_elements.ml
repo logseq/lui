@@ -72,7 +72,7 @@ type flex_wrap = [ `nowrap | `wrap ]
 
 type list_marker = [ `none | `disc | `decimal ]
 type input_kind = [ `text | `color | `time ]
-type popover_role = [ `menu ]
+type popover_role = [ `dialog | `menu ]
 type swipe_edge = [ `leading | `trailing ]
 
 (* [~as_] element-tag overrides for the phrasing kinds ([text], [heading],
@@ -283,7 +283,9 @@ let input_kind_value : input_kind -> string = function
   | `color -> "color"
   | `time -> "time"
 
-let popover_role_value : popover_role -> string = function `menu -> "menu"
+let popover_role_value : popover_role -> string = function
+  | `dialog -> "dialog"
+  | `menu -> "menu"
 
 let swipe_edge_value : swipe_edge -> string = function
   | `leading -> "leading"

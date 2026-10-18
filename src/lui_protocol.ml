@@ -1688,7 +1688,8 @@ let property_value_supported property value =
   | _ -> false
 
 let property_value_supported_for_kind kind property value =
-  if property = RoleValue && kind = Popover then value = StringValue "menu"
+  if property = RoleValue && kind = Popover then
+    value = StringValue "menu" || value = StringValue "dialog"
   else if property = SizeValue then
     match value with
     | StringValue size ->

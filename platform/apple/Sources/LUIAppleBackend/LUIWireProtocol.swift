@@ -251,7 +251,7 @@ enum LUIWireValue: Decodable, Equatable {
             guard let value = stringValue else { return false }
             return value == "treeitem" || value == "navigation" ||
                 value == "navigation-heading" ||
-                (kind == .popover && value == "menu")
+                (kind == .popover && ["menu", "dialog"].contains(value))
         case .treeLevel, .gridColumnSpan:
             guard let value = intValue else { return false }
             return value > 0

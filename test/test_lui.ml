@@ -2458,6 +2458,12 @@ let test_vocab_batch2 () =
   Alcotest.(check bool) "menu role accepted on popover" true
     (property_value_supported_for_kind Popover RoleValue
        (StringValue "menu"));
+  Alcotest.(check bool) "dialog role accepted on popover" true
+    (property_value_supported_for_kind Popover RoleValue
+       (StringValue "dialog"));
+  Alcotest.(check bool) "dialog role rejected on ordinary rows" false
+    (property_value_supported_for_kind Row RoleValue
+       (StringValue "dialog"));
   Alcotest.(check bool) "treeitem role rejected on popover" false
     (property_value_supported_for_kind Popover RoleValue
        (StringValue "treeitem"));
