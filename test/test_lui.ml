@@ -2368,6 +2368,23 @@ let test_vocab_batch2 () =
     (property_value_supported FlexWrap (StringValue "wrap-reverse"));
   Alcotest.(check bool) "menu rows accept typed slot spacing" true
     (property_supported MenuItem Gap);
+  Alcotest.(check bool) "custom menu rows accept an accessible label" true
+    (property_supported MenuItem AccessibilityLabel);
+  let menu_properties entries =
+    List.fold_left (fun properties (key,value) -> Property_map.add key value properties)
+      Property_map.empty entries
+  in
+  Alcotest.(check bool) "custom menu labels satisfy the naming contract" true
+    (node_properties_supported MenuItem
+      (menu_properties [AccessibilityLabel,StringValue "Columns visibility"]));
+  Alcotest.(check bool) "ordinary menu text still satisfies the naming contract" true
+    (node_properties_supported MenuItem
+      (menu_properties [TextValue,StringValue "Action"]));
+  Alcotest.(check bool) "empty custom menu labels remain invalid" false
+    (node_properties_supported MenuItem
+      (menu_properties [AccessibilityLabel,StringValue ""]));
+  Alcotest.(check bool) "unnamed menu rows remain invalid" false
+    (node_properties_supported MenuItem Property_map.empty);
   Alcotest.(check bool) "menu rows accept leading selection placement" true
     (property_supported MenuItem SelectionPlacementValue
      && property_value_supported SelectionPlacementValue (StringValue "leading"));

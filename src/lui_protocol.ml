@@ -964,6 +964,7 @@ let common_property_supported kind property =
       kind = Text || kind = Heading || kind = Paragraph || kind = Label
   | AccessibilityLabel ->
     kind = Button
+    || kind = MenuItem
     || kind = ToggleButton
     || kind = Select
     || kind = TextField
@@ -1767,7 +1768,11 @@ let node_properties_supported kind properties =
         let placeholder = string_property_or properties PlaceholderValue "" in
         text <> "" || placeholder <> ""
       else true)
-  && (if kind = MenuItem || kind = Accordion then
+  && (if kind = MenuItem then
+        string_property_nonempty properties TextValue
+        || string_property_nonempty properties AccessibilityLabel
+      else true)
+  && (if kind = Accordion then
         string_property_nonempty properties TextValue
       else true)
   && (if kind = SwipeAction then
