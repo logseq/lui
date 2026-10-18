@@ -1763,7 +1763,8 @@ let attach_popover_events renderer node _popover_node =
     (Lui_web_layers.register renderer.web_layers
        ~document ~id:node ~owner ~trigger:None ~content:positioner
        ~style_targets:[positioner; popup]
-       ~policy:Lui_web_layers.Nonblocking
+       ~policy:(Lui_web_layers.popover_policy
+         (Store.property renderer.web_store node))
        ~dismiss:(fun () -> emit renderer (Dismiss node))
        ~close:(fun () -> ())
        ~key_handler:(fun _event -> ())
@@ -1800,7 +1801,7 @@ let mount_popover renderer node =
       in
       if cover then W.Element.setAttribute "data-cover" "" positioner;
       Lui_web_layers.set_policy renderer.web_layers renderer.web_document node
-        (if cover then Lui_web_layers.Blocking else Lui_web_layers.Nonblocking);
+        (Lui_web_layers.popover_policy (Store.property renderer.web_store node));
       W.Element.removeAttribute "inert" popup;
       Lui_web_layers.reconcile_owner renderer.web_layers
         renderer.web_document node current.retained_parent;

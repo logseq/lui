@@ -900,6 +900,9 @@ and apply_secondary_property renderer queue_split node kind dom_node
       W.Element.setAttribute "role" role
         (if kind = Popover then Util.child_element dom_node 0 else dom_node);
       W.Element.removeAttribute "aria-pressed" dom_node;
+      if kind = Popover then
+        Lui_web_layers.set_policy renderer.web_layers renderer.web_document node
+          (Lui_web_layers.popover_policy (Store.property renderer.web_store node));
       refresh_node_class renderer node kind dom_node;
       if popup_kind kind then
         refresh_popup_height renderer node kind (transition_surface kind dom_node)
@@ -1247,6 +1250,9 @@ let remove_property renderer queue_split node kind dom_node property =
            refresh_popup_height renderer node kind dom_node
        | RoleValue ->
            W.Element.removeAttribute "role" (transition_surface kind dom_node);
+           if kind = Popover then
+             Lui_web_layers.set_policy renderer.web_layers renderer.web_document node
+               (Lui_web_layers.popover_policy (Store.property renderer.web_store node));
            refresh_node_class renderer node kind dom_node;
            if popup_kind kind then
              refresh_popup_height renderer node kind (transition_surface kind dom_node)

@@ -36,7 +36,15 @@ let touch_ios window =
 
 type modal_policy =
   | Nonblocking
+  | Nonblocking_dialog
   | Blocking
+
+let popover_policy property =
+  let open Lui_protocol in
+  if property PopupX = None && property AnchorValue = None then Blocking
+  else if property RoleValue = Some (StringValue "dialog") then
+    Nonblocking_dialog
+  else Nonblocking
 
 type layer = {
   id : int;

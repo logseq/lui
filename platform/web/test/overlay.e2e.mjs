@@ -190,6 +190,18 @@ test('form popover closure returns focus through its structural anchor wrapper',
   }
 })
 
+test('form popover stays open when keyboard focus leaves and preserves outside focus on Escape', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open form popover')
+  await session.page.waitForFunction(() => document.activeElement?.placeholder === 'Popover draft')
+  await session.page.keyboard.press('Shift+Tab')
+  assert.equal(await session.page.locator(':focus').textContent(), 'Outside action')
+  assert.equal(await session.page.getByPlaceholder('Popover draft', {exact: true}).isVisible(), true)
+  await session.page.keyboard.press('Escape')
+  await session.page.getByPlaceholder('Popover draft', {exact: true}).waitFor({state: 'hidden'})
+  assert.equal(await session.page.locator(':focus').textContent(), 'Outside action')
+})
+
 test("surface exits wait for all tracks without retaining zero-motion or reopened layers", async () => {
   await openLayerRegressionPage()
   await clickButton('Run surface exit audit')
