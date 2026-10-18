@@ -18,10 +18,26 @@ external animation_effect : surface_animation -> animation_effect Js.Nullable.t
 external effect_timing : animation_effect -> animation_timing
   = "getComputedTiming" [@@mel.send]
 external timing_end : animation_timing -> float = "endTime" [@@mel.get]
+external animation_play_state : surface_animation -> string = "playState"
+  [@@mel.get]
 external media_query_matches : W.Window.mediaQueryList -> bool = "matches"
   [@@mel.get]
+external event_type : Dom.event -> string = "type" [@@mel.get]
 
-let after_surface_motion document targets complete =
+let transition_event_from target event =
+  W.Element.isSameNode
+    (W.Element.asNode
+       (W.EventTarget.unsafeAsElement (W.Event.target event)))
+    target
+
+(* Wait out a surface exit. Reduced motion finishes immediately. Otherwise
+   the first of three signals wins: every still-running finite animation on
+   [targets], a [transitioncancel] aimed at one of those targets, or
+   [fallback] milliseconds. An empty animation list must not finish
+   synchronously — callers hide transitions in tests and still need the
+   fallback timer, and a cancelled sheet has to stay mounted until the
+   cancel event. *)
+let after_surface_motion document targets ~fallback complete =
   let reduced_motion =
     match W.HtmlDocument.defaultView (W.Document.unsafeAsHtmlDocument document) with
     | Some window ->
@@ -31,21 +47,52 @@ let after_surface_motion document targets complete =
   in
   if reduced_motion then ignore (complete ())
   else
+    let finished = ref false in
+    let timer = ref None in
+    let detach = ref [] in
+    let finish () =
+      if not !finished then begin
+        finished := true;
+        (match !timer with
+         | Some timer_id -> Js.Global.clearTimeout timer_id
+         | None -> ());
+        List.iter (fun remove -> remove ()) !detach;
+        detach := [];
+        ignore (complete ())
+      end
+    in
+    let watch target =
+      let handler event =
+        if
+          transition_event_from target event
+          && event_type event = "transitioncancel"
+        then finish ()
+      in
+      W.Element.addEventListener "transitioncancel" handler target;
+      detach :=
+        (fun () ->
+           W.Element.removeEventListener "transitioncancel" handler target)
+        :: !detach
+    in
+    List.iter watch targets;
+    timer := Some (Js.Global.setTimeout ~f:finish fallback);
     let pending =
       List.fold_left
         (fun pending target ->
           Array.fold_left
             (fun pending animation ->
-              let finite =
-                match Js.Nullable.toOption (animation_effect animation) with
-                | None -> false
-                | Some motion_effect ->
-                    Float.is_finite (timing_end (effect_timing motion_effect))
+              let running =
+                animation_play_state animation <> "finished"
+                && (match Js.Nullable.toOption (animation_effect animation) with
+                   | None -> false
+                   | Some motion_effect ->
+                       Float.is_finite (timing_end (effect_timing motion_effect)))
               in
-              if not finite then pending
+              if not running then pending
               else
-                (* Cancelling one track settles only that track. Other surface
-                   tracks still own the exit; descendant animations do not. *)
+                (* Cancelling one track settles only that track. A cancel
+                   aimed at the surface itself finishes the whole wait via
+                   the transitioncancel listener above. *)
                 (animation_finished animation
                  |> Js.Promise.catch (fun _ -> Js.Promise.resolve ()))
                 :: pending)
@@ -53,12 +100,12 @@ let after_surface_motion document targets complete =
         [] targets
     in
     match pending with
-    | [] -> ignore (complete ())
+    | [] -> ()
     | _ ->
         ignore
           (Js.Promise.all (Array.of_list pending)
           |> Js.Promise.then_ (fun _ ->
-                 ignore (complete ());
+                 finish ();
                  Js.Promise.resolve ()))
 
 

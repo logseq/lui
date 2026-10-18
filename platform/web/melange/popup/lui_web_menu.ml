@@ -555,7 +555,8 @@ let rec set_dropdown_open renderer node open_ =
     begin_popup_close popup;
     W.Element.setAttribute "inert" "" popup;
     restore_dropdown_focus renderer node positioner;
-    Lui_web_util.after_surface_motion renderer.web_document [ popup ] (fun () ->
+    Lui_web_util.after_surface_motion renderer.web_document [ popup ]
+      ~fallback:130 (fun () ->
         if Lui_web_layers.transition renderer.web_layers node = token
            && not (Lui_web_layers.is_open renderer.web_layers node)
         then begin
@@ -611,7 +612,8 @@ let hide_context_menu renderer =
           menu
       in
       begin_popup_close popup;
-      Lui_web_util.after_surface_motion renderer.web_document [ popup ] (fun () ->
+      Lui_web_util.after_surface_motion renderer.web_document [ popup ]
+        ~fallback:130 (fun () ->
           if
             Lui_web_layers.transition renderer.web_layers menu = token
             && not (Lui_web_layers.is_open renderer.web_layers menu)
@@ -1722,7 +1724,8 @@ let remove_dropdown_after_exit renderer node parent positioner =
     begin_popup_close popup;
     W.Element.setAttribute "inert" "" popup;
     restore_dropdown_focus renderer node positioner;
-    Lui_web_util.after_surface_motion renderer.web_document [ popup ] (fun () ->
+    Lui_web_util.after_surface_motion renderer.web_document [ popup ]
+      ~fallback:130 (fun () ->
         if
           Lui_web_layers.transition renderer.web_layers node = token
           && not (Lui_web_layers.is_open renderer.web_layers node)
@@ -1851,7 +1854,8 @@ let remove_popover_after_exit renderer node parent positioner =
     in
     begin_popup_close popup;
     W.Element.setAttribute "inert" "" popup;
-    Lui_web_util.after_surface_motion renderer.web_document [ popup ] (fun () ->
+    Lui_web_util.after_surface_motion renderer.web_document [ popup ]
+      ~fallback:130 (fun () ->
         if
           Lui_web_layers.transition renderer.web_layers node = token
           && not (Lui_web_layers.is_open renderer.web_layers node)
