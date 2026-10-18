@@ -157,7 +157,7 @@ function setupOrdinaryMenu(retained=false,pressable=false,popover=false){
   const name=popover?'Open ordinary popover':pressable?'Open pressable menu':retained?'Open retained ordinary menu':'Open ordinary menu';
   const open=()=>{
     if(popup){if(retained){Menu.set_dropdown_open(renderer,popup,!Layers.is_open(renderer.web_layers,popup));}else close();return;}
-    popup=node(popover?'popover':'dropdown-menu',owner,{anchor:'below',role:'menu','min-width':220});
+    popup=node(popover?'popover':'dropdown-menu',owner,{anchor:'below',...(popover?{role:'menu'}:{}),'min-width':220});
     function action(text,run){const item=node('menu-item',popup,{text,'press-enabled':true});handlers.set(item,run);}
     action('Choose ordinary action',close);
     action('Open dialog from ordinary menu',()=>{close();openDialog();});

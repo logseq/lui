@@ -95,6 +95,25 @@ let positive_motion_transition document target =
       List.exists (fun token -> not (duration_token_is_zero token)) durations
   | _ -> false
 
+(* Positive longhands declared on the element. [None] means the property
+   and duration lists do not line up, so the caller must wait a frame
+   before deciding the set is complete. *)
+let declared_positive_properties document target =
+  match computed_transition document target with
+  | Some (property, durations) when property <> "" && property <> "none" ->
+      let properties =
+        List.map String.trim (String.split_on_char ',' property)
+      in
+      let durations = List.map String.trim durations in
+      if List.length properties <> List.length durations then None
+      else
+        Some
+          (List.filter_map
+             (fun (name, duration) ->
+               if duration_token_is_zero duration then None else Some name)
+             (List.combine properties durations))
+  | _ -> Some []
+
 let animation_is_active animation =
   match animation_play_state animation with
   | "running" | "paused" -> true
@@ -142,12 +161,33 @@ let after_surface_motion document targets ?(finish_on_cancel = false) ~fallback
     in
     let seen = ref false in
     let any_active () = List.exists animation_is_active !tracks in
+    let missing_positive_track () =
+      List.exists
+        (fun target ->
+          match declared_positive_properties document target with
+          | None -> true
+          | Some properties ->
+              List.exists
+                (fun name ->
+                  not
+                    (List.exists
+                       (fun animation ->
+                         transition_property_matches animation name)
+                       !tracks))
+                properties)
+        targets
+    in
     let settle_if_complete () =
       (* A promise can resolve before the next frame reveals a delayed
-         transform. Release only after that frame, and only once every
-         adopted track has settled. *)
-      if !seen && !settled >= List.length !tracks && not (any_active ()) then
-        finish ()
+         transform. When every declared positive property already has a
+         track, the current set is complete and can release immediately.
+         Otherwise wait for that frame, then release once every adopted
+         track has settled. *)
+      if
+        !settled >= List.length !tracks
+        && (not (any_active ()))
+        && (!seen || not (missing_positive_track ()))
+      then finish ()
     in
     let watch_track animation =
       if not (List.exists (fun existing -> existing == animation) !tracks) then begin
