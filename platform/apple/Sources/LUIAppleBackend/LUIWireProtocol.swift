@@ -217,6 +217,9 @@ enum LUIWireValue: Decodable, Equatable {
         case .anchor:
             guard let value = stringValue else { return false }
             return ["above", "below", "left", "right"].contains(value)
+        case .anchorTarget:
+            guard let value = stringValue else { return false }
+            return !value.trimmingCharacters(in: .whitespaces).isEmpty
         case .anchorAlignment:
             guard let value = stringValue else { return false }
             return ["start", "end", "stretch"].contains(value)
@@ -1225,6 +1228,8 @@ struct LUIRetainedTree {
             kind == .mediaSurface
         case .sourceX, .sourceY, .sourceWidth, .sourceHeight:
             kind == .avatar || kind == .image
+        case .anchorTarget:
+            kind == .popover
         case .anchor, .anchorAlignment, .anchorOffset:
             kind == .dropdownMenu || kind == .tooltip || kind == .popover
         case .popupX, .popupY: kind == .popover || kind == .dropdownMenu

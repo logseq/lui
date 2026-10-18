@@ -103,6 +103,7 @@ val float_prop : t -> int -> string -> float option
 val int_prop : t -> int -> string -> int option
 val depth : t -> int -> int
 val root_ids : t -> int list
+
 (** Visit each node once in preorder without materializing child lists.
     [descend id = false] visits [id] but skips its descendants. *)
 val iter_preorder : ?root:int -> ?descend:(int -> bool) -> t -> (int -> unit) -> unit
