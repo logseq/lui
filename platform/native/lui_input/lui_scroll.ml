@@ -282,36 +282,39 @@ let scroll_align env store st a it anchor =
 (* Wheel deltas scroll the deepest scrollable ancestor under the
    pointer per axis — a +x delta scrolls right, a +y delta scrolls
    content up (SDL convention), and Shift turns the vertical delta
-   horizontal (the desktop's wheel-x gesture). Each axis applies to
-   the first container on the hit path with remaining range in the
-   intended direction. A container at its boundary lets an ancestor
-   continue scrolling on that axis. *)
+   horizontal (the desktop's wheel-x gesture). Each container consumes
+   its available range and passes unused distance to its ancestors
+   on the same axis. *)
 let wheel env store st ~path ~scale ~dx ~dy ~(mods : Lui_input.mods) =
-  let ix = dx +. if mods.Lui_input.shift then -. dy else 0. in
-  let iy = if mods.Lui_input.shift then 0. else -. dy in
+  let ix = dx +. if mods.Lui_input.shift then -.dy else 0. in
+  let iy = if mods.Lui_input.shift then 0. else -.dy in
   if ix = 0. && iy = 0. then (st, [])
   else begin
     let scroll_axis axis intent (st, acts) =
-      if intent = 0. then (st, acts)
-      else
-        match
-          List.find_opt
-            (fun id ->
-               scrollable store id
-               && if intent > 0. then
-                    offset st axis id < cap st axis id -. 0.001
-                  else offset st axis id > 0.001)
-            path
-        with
-        | Some id ->
-          let st', acts' =
-            set_offset env store st axis id
-              (offset st axis id +. intent *. 44. *. scale)
-          in
-          (st', acts @ acts')
-        | None -> (st, acts)
+      let rec consume st acts remaining = function
+        | [] -> (st, acts)
+        | _ when abs_float remaining <= 0.001 -> (st, acts)
+        | id :: rest ->
+            let before = offset st axis id in
+            if
+              scrollable store id
+              &&
+              if remaining > 0. then before < cap st axis id -. 0.001
+              else before > 0.001
+            then
+              let st', next =
+                set_offset env store st axis id (before +. remaining)
+              in
+              let consumed = offset st' axis id -. before in
+              consume st'
+                (List.rev_append next acts)
+                (remaining -. consumed) rest
+            else consume st acts remaining rest
+      in
+      consume st acts (intent *. 44. *. scale) path
     in
-    (st, []) |> scroll_axis X ix |> scroll_axis Y iy
+    let st, acts = (st, []) |> scroll_axis X ix |> scroll_axis Y iy in
+    (st, List.rev acts)
   end
 
 (* Store-sync half: handle scroll-target requests on list containers

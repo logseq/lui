@@ -952,6 +952,129 @@ let test_wheel_x () =
   Alcotest.(check (float 0.001)) "x reveal" 200.
     (Ui.scroll_offset_x ui 2)
 
+let wheel_chain_fixture scale =
+  let store =
+    store_of
+      [
+        CreateNode (1, Root);
+        CreateNode (2, Scroll);
+        CreateNode (3, Scroll);
+        CreateNode (4, Scroll);
+        CreateNode (5, Text);
+        InsertChild (1, 2, 0);
+        InsertChild (2, 3, 0);
+        InsertChild (3, 4, 0);
+        InsertChild (4, 5, 0);
+      ]
+  in
+  let rects = Rects.create () and ui = Ui.create () in
+  Ui.set_scale ui scale;
+  List.iter
+    (fun id ->
+      Hashtbl.replace rects id (rect 0. 0. (100. *. scale) (100. *. scale)))
+    [ 1; 2; 3; 4; 5 ];
+  ignore (Ui.handle ui store rects (Input.Move (10., 10.)));
+  (store, rects, ui)
+
+let test_wheel_chain_remainder () =
+  List.iter
+    (fun scale ->
+      List.iter
+        (fun axis ->
+          let store, rects, ui = wheel_chain_fixture scale in
+          let set_cap, offset =
+            match axis with
+            | Ui.X -> (Ui.set_scroll_cap_x, Ui.scroll_offset_x)
+            | Ui.Y -> (Ui.set_scroll_cap, Ui.scroll_offset)
+          in
+          let wheel amount =
+            ignore
+              (Ui.handle ui store rects
+                 (match axis with
+                 | Ui.X -> Input.Wheel (amount, 0.)
+                 | Ui.Y -> Input.Wheel (0., -.amount)))
+          in
+          let expect label values =
+            List.iter
+              (fun (id, value) ->
+                Alcotest.(check (float 0.001))
+                  label (value *. scale) (offset ui id))
+              values
+          in
+          List.iter
+            (fun (id, cap) -> set_cap ui id (cap *. scale))
+            [ (2, 100.); (3, 71.); (4, 3.); (5, 999.) ];
+          wheel 1.;
+          expect "one wheel consumes the inner range and passes its remainder"
+            [ (4, 3.); (3, 41.); (2, 0.); (5, 0.) ];
+          wheel 1.;
+          expect "the same event can cross another ancestor boundary"
+            [ (4, 3.); (3, 71.); (2, 14.) ];
+          wheel (-1.);
+          expect "reversal consumes the deepest available range first"
+            [ (4, 0.); (3, 30.); (2, 14.) ];
+          wheel (-1000.);
+          expect "overshoot stops at the outer boundary"
+            [ (4, 0.); (3, 0.); (2, 0.) ];
+          set_cap ui 3 0.;
+          wheel 1.;
+          expect "zero-range ancestors cannot consume remaining distance"
+            [ (4, 3.); (3, 0.); (2, 41.) ];
+          wheel (-1000.);
+          set_cap ui 4 (1. *. scale);
+          set_cap ui 3 (71. *. scale);
+          wheel 0.03;
+          expect "fractional distance survives an inner boundary"
+            [ (4, 1.); (3, 0.32); (2, 0.) ];
+          wheel (-1000.);
+          set_cap ui 4 (0.0005 *. scale);
+          wheel 1.;
+          expect "a snapped-away inner sliver cannot discard a wheel step"
+            [ (4, 0.); (3, 44.); (2, 0.) ];
+          wheel (-1000.);
+          List.iter (fun id -> set_cap ui id 0.) [ 2; 3; 4 ];
+          let epoch = Ui.scroll_epoch ui in
+          wheel 1000.;
+          wheel (-1000.);
+          Alcotest.(check int)
+            "empty ranges do not change scroll state" epoch (Ui.scroll_epoch ui))
+        [ Ui.X; Ui.Y ])
+    [ 1.; 2. ]
+
+let test_wheel_chain_axes () =
+  List.iter
+    (fun scale ->
+      let store, rects, ui = wheel_chain_fixture scale in
+      List.iter
+        (fun (id, x, y) ->
+          Ui.set_scroll_cap_x ui id (x *. scale);
+          Ui.set_scroll_cap ui id (y *. scale))
+        [ (2, 100., 100.); (3, 7., 11.); (4, 3., 5.) ];
+      let expect label xs ys =
+        List.iter
+          (fun (id, x) ->
+            Alcotest.(check (float 0.001))
+              label (x *. scale) (Ui.scroll_offset_x ui id))
+          xs;
+        List.iter
+          (fun (id, y) ->
+            Alcotest.(check (float 0.001))
+              label (y *. scale) (Ui.scroll_offset ui id))
+          ys
+      in
+      ignore (Ui.handle ui store rects (Input.Wheel (1., -1.)));
+      expect "diagonal remainders stay on their own axis"
+        [ (4, 3.); (3, 7.); (2, 34.) ]
+        [ (4, 5.); (3, 11.); (2, 28.) ];
+      ignore (Ui.handle ui store rects (Input.Wheel (-1000., 1000.)));
+      ignore
+        (Ui.handle ui store rects
+           (Input.Wheel_mods (0., -1., { Input.mods_none with shift = true })));
+      expect "shift-wheel chains horizontally without moving vertically"
+        [ (4, 3.); (3, 7.); (2, 34.) ]
+        [ (4, 0.); (3, 0.); (2, 0.) ])
+    [ 1.; 2. ]
+
 (* ---------- pixel snapping contract ---------- *)
 
 (* The stub layout snaps stored rects to device-pixel edges at
@@ -4254,7 +4377,9 @@ let () =
         [ Alcotest.test_case "ops" `Quick test_checksum ] );
       ( "scroll",
         [ Alcotest.test_case "wheel" `Quick test_scroll;
-          Alcotest.test_case "wheel-x" `Quick test_wheel_x ] );
+          Alcotest.test_case "wheel-x" `Quick test_wheel_x;
+          Alcotest.test_case "wheel remainder" `Quick test_wheel_chain_remainder;
+          Alcotest.test_case "wheel remainder axes" `Quick test_wheel_chain_axes ] );
       ( "snapping",
         [ Alcotest.test_case "stub layout" `Quick test_snap_stub_layout;
           Alcotest.test_case "phantom scroll" `Quick
