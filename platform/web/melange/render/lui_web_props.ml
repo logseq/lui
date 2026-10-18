@@ -944,9 +944,7 @@ and apply_secondary_property renderer queue_split node kind dom_node
   | SourceWidth, FloatValue _value | SourceHeight, FloatValue _value ->
       apply_media_source renderer node kind dom_node
   | AnchorValue, StringValue anchor ->
-      W.Element.setAttribute "data-anchor" anchor dom_node;
-      if kind = Tooltip then
-        W.Element.setAttribute "data-anchor-alignment" "start" dom_node
+      W.Element.setAttribute "data-anchor" anchor dom_node
   | AnchorAlignmentValue, StringValue alignment ->
       W.Element.setAttribute "data-anchor-alignment" alignment dom_node
   | AnchorOffset, FloatValue offset ->
@@ -982,10 +980,7 @@ and apply_secondary_property renderer queue_split node kind dom_node
       W.Element.setAttribute "data-accept" value dom_node
   | PickerDirectory, BoolValue value ->
       Util.set_state_attribute dom_node "data-directory" value
-  | PopupX, FloatValue _ | PopupY, FloatValue _ ->
-      if kind = DropdownMenu then
-        Lui_web_position.position_dropdown renderer node
-      else Lui_web_position.position_popover renderer node
+  | PopupX, FloatValue _ | PopupY, FloatValue _ -> ()
   | AvailableHeight, FloatValue _ ->
       refresh_popup_height renderer node kind dom_node
   | TargetValue, StringValue target ->
@@ -1226,10 +1221,13 @@ let remove_property renderer queue_split node kind dom_node property =
        | PickerAccept -> W.Element.removeAttribute "data-accept" dom_node
        | PickerDirectory ->
            W.Element.removeAttribute "data-directory" dom_node
-       | PopupX | PopupY ->
-           if kind = DropdownMenu then
-             Lui_web_position.position_dropdown renderer node
-           else Lui_web_position.position_popover renderer node
+       | PopupX | PopupY -> ()
+       | AnchorAlignmentValue ->
+           W.Element.removeAttribute "data-anchor-alignment" dom_node
+       | AnchorOffset ->
+           set_style dom_node "--lui-anchor-offset" "";
+           if kind = Tooltip then
+             W.Element.removeAttribute "data-anchor-offset" dom_node
        | AvailableHeight ->
            refresh_popup_height renderer node kind dom_node
        | RoleValue ->

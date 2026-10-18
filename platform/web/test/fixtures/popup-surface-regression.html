@@ -13,7 +13,7 @@
   "melange/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange/",
   "ocaml-signal/":"/_build/default/examples/components/web/lui-components-web/node_modules/ocaml-signal/"
 }}</script>
-<style>body{margin:24px;font:16px system-ui}.surface-holder{position:fixed;left:40px;top:100px}.surface-holder>button{margin:0;width:120px;height:32px}</style>
+<style>body{margin:24px;font:16px system-ui}.surface-holder{position:fixed;left:40px;top:100px}.surface-holder>button{margin:0;width:120px;height:32px}.surface-holder.alignment-holder{left:400px;top:320px}</style>
 <button id="run-audit">Run popup surface audit</button>
 <output id="result" role="status">Not run</output>
 <main id="host"></main>
@@ -91,6 +91,43 @@ async function audit() {
     check(kind+' intersects height constraints',close(g.r.height,kind==='popover'?96.5:180),g);
     check(kind+' puts semantic attributes on content',surface.getAttribute('data-surface-audit')==='retained'
       &&positioner.getAttribute('data-surface-audit')===null);
+    set(holder,'style-class','surface-holder alignment-holder');
+    for(const [width,height] of [[226,80],[300,100]]) {
+      set(popup,'width',width);set(popup,'height',height);
+      for(const side of ['below','above','left','right']) {
+        for(const align of ['start','end']) {
+          set(popup,'anchor',side);set(popup,'anchor-alignment',align);
+          flush();await frames();g=geometry();
+          const a=target.getBoundingClientRect(),p=g.r;
+          const vertical=side==='above'||side==='below';
+          const aligned=(start,extent,size)=>align==='end'?start+extent-size:start;
+          const x=vertical?aligned(a.left,a.width,p.width)
+            :side==='left'?a.left-p.width:a.right;
+          const y=vertical?(side==='above'?a.top-p.height:a.bottom)
+            :aligned(a.top,a.height,p.height);
+          check(`${kind} ${side}/${align} uses its actual ${width}x${height} border box`,
+            Math.abs(p.left-x)<0.05&&Math.abs(p.top-y)<0.05,{...g,expected:{x,y}});
+        }
+      }
+    }
+    set(popup,'anchor','above');set(popup,'anchor-alignment','end');set(popup,'anchor-offset',7);
+    flush();await frames();g=geometry();
+    let anchorRect=target.getBoundingClientRect();
+    check(kind+' updates side, alignment and offset together without remounting',
+      surface===document.querySelector('.surface-under-test')
+      &&Math.abs(g.r.right-anchorRect.right)<0.05
+      &&Math.abs(g.r.bottom-(anchorRect.top-7))<0.05,g);
+    set(popup,'anchor','below');unset(popup,'anchor-alignment');unset(popup,'anchor-offset');
+    flush();await frames();g=geometry();anchorRect=target.getBoundingClientRect();
+    check(kind+' removes authored alignment and offset without remounting',
+      Math.abs(g.r.left-anchorRect.left)<0.05&&Math.abs(g.r.top-anchorRect.bottom)<0.05
+      &&positioner.getAttribute('data-anchor')==='below'
+      &&positioner.getAttribute('data-anchor-alignment')===null
+      &&positioner.style.getPropertyValue('--lui-anchor-offset')==='',g);
+    set(popup,'anchor-offset',0);
+    set(holder,'style-class','surface-holder');unset(popup,'height');
+    set(popup,'width',226);set(popup,'anchor','below');set(popup,'anchor-alignment','start');
+    flush();await frames();
     set(popup,'width',300);set(popup,'padding',4);set(popup,'border-width',1);
     set(popup,'background','rgb(220, 230, 240)');set(popup,'corner-radius',4);
     set(popup,'opacity',0.75);set(popup,'shadow','0 2px 4px rgb(0 0 0 / 0.1)');

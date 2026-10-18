@@ -50,19 +50,17 @@ let resolved_popup_side preferred anchor_bounds popup_width popup_height
 
 let position_anchored document positioner popup anchor_bounds preferred
     alignment offset =
-  let popup_element = W.Element.unsafeAsHtmlElement popup in
-  (* All layout reads for a measure happen inside this helper, so each call
-     is one forced layout with no style writes in between. *)
+  (* The undecorated positioner keeps fractional layout dimensions while
+     its painted child scales. A tooltip is its own positioner, so use its
+     untransformed offset dimensions instead of the animated bounds. *)
   let measure () =
-    let bounds = W.Element.getBoundingClientRect popup in
-    ( 1.0
-      +. max
-           (float_of_int (W.HtmlElement.offsetWidth popup_element))
-           (W.DomRect.width bounds),
-      1.0
-      +. max
-           (float_of_int (W.HtmlElement.offsetHeight popup_element))
-           (W.DomRect.height bounds) )
+    if W.Element.isSameNode (W.Element.asNode popup) positioner then
+      let element = W.Element.unsafeAsHtmlElement popup in
+      (float_of_int (W.HtmlElement.offsetWidth element),
+       float_of_int (W.HtmlElement.offsetHeight element))
+    else
+      let bounds = W.Element.getBoundingClientRect positioner in
+      (W.DomRect.width bounds, W.DomRect.height bounds)
   in
   let viewport_left, viewport_top, viewport_width, viewport_height =
     Lui_web_popup_tracking.viewport_bounds document

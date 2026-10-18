@@ -160,6 +160,7 @@ type batch_effects = {
   dropdowns : (int, unit) Hashtbl.t;
   comboboxes : (int, unit) Hashtbl.t;
   splits : (int, unit) Hashtbl.t;
+  popups : (int, unit) Hashtbl.t;
   bottom_tabs : (int, unit) Hashtbl.t;
 }
 
@@ -167,6 +168,7 @@ let new_effects () =
   { dropdowns = Hashtbl.create 4;
     comboboxes = Hashtbl.create 4;
     splits = Hashtbl.create 4;
+    popups = Hashtbl.create 4;
     bottom_tabs = Hashtbl.create 4 }
 
 let queue_split effects node = Hashtbl.replace effects.splits node ()
@@ -192,9 +194,27 @@ let run_effects renderer effects =
     effects.splits;
   Hashtbl.iter
     (fun parent () -> Lui_web_widgets.refresh_bottom_tabs renderer parent)
-    effects.bottom_tabs
+    effects.bottom_tabs;
+  (* Anchor changes can leave every observed size unchanged. Position once
+     after the batch's final styles and split geometry have landed. *)
+  Hashtbl.iter
+    (fun node () ->
+      match Store.node renderer.web_store node with
+      | Some current ->
+          (match Store.standard_kind current with
+           | Some DropdownMenu -> Lui_web_position.position_dropdown renderer node
+           | Some Popover -> Lui_web_position.position_popover renderer node
+           | Some Tooltip when Store.anchored_tooltip current ->
+               Lui_web_position.position_tooltip renderer node
+           | _ -> ())
+      | None -> ())
+    effects.popups
 
 let refresh_parent_for_prop renderer effects node property =
+  (match property with
+   | AnchorValue | AnchorAlignmentValue | AnchorOffset | PopupX | PopupY ->
+       Hashtbl.replace effects.popups node ()
+   | _ -> ());
   match Store.node renderer.web_store node with
   | Some current -> (
       match current.retained_parent with
