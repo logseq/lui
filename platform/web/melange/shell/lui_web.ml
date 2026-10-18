@@ -34,6 +34,7 @@ let create_with_extensions host app_icons registry adapters =
     web_document = document;
     web_host = host;
     web_portal_root = portal_root;
+    web_portal_nodes = Hashtbl.create 8;
     web_simulator_platform = ref None;
     web_simulator_device = ref None;
     web_simulator_keyboard_visible = ref false;

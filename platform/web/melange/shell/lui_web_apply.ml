@@ -64,6 +64,7 @@ let portal_parent renderer previous_nodes parent child =
       (Nodes.dom_node_before renderer previous_nodes parent)
 
 let cleanup_node renderer node =
+  Hashtbl.remove renderer.web_portal_nodes node;
   Lui_web_events.release_appear renderer node;
   (match Hashtbl.find_opt renderer.web_virtual_lists node with
    | Some state -> state.dispose_virtual ()
@@ -171,6 +172,7 @@ let new_effects () =
 let queue_split effects node = Hashtbl.replace effects.splits node ()
 
 let run_effects renderer effects =
+  Lui_web_props.refresh_portal_foregrounds renderer;
   Hashtbl.iter
     (fun parent () -> refresh_dropdown_parent renderer parent)
     effects.dropdowns;
@@ -306,6 +308,9 @@ let insert_child_dom renderer previous_nodes children_of effects parent
          remove op finds the element where the op stream put it *)
       Util.insert_dom_child parent_dom child_dom index
   | Some current -> (
+      if Store.portal_surface_node renderer.web_store child
+         || Store.standard_kind_is current Popover then
+        Hashtbl.replace renderer.web_portal_nodes child child_dom;
       match Store.standard_kind current with
       | Some BottomTab -> (
           match Store.node renderer.web_store parent with

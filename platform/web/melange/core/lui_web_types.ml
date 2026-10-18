@@ -101,6 +101,7 @@ type web_renderer = {
   web_document : Dom.document;
   web_host : web_node;
   web_portal_root : web_node;
+  web_portal_nodes : (int, web_node) Hashtbl.t;
   web_simulator_platform : operating_system option ref;
   web_simulator_device : web_simulator_device option ref;
   web_simulator_keyboard_visible : bool ref;

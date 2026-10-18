@@ -1314,3 +1314,55 @@ let remove_property renderer queue_split node kind dom_node property =
   | None -> invalid_arg "unknown DOM node"
 
 let remove_property_bang = remove_property
+
+(* Portals retain their logical foreground even though the transport moves
+   outside that DOM ancestry. Keep authored tokens live across theme changes. *)
+let refresh_portal_foreground renderer node dom_node =
+  let rec ancestor_color id =
+    match Store.node renderer.web_store id with
+    | None -> invalid_arg "unknown logical portal ancestor"
+    | Some current -> (
+        match Store.property renderer.web_store id ForegroundValue with
+        | Some (StringValue color)
+          when color <> "inherit" && color <> "currentColor" ->
+            Some (Util.web_color_value color)
+        | _ -> Option.bind current.retained_parent ancestor_color)
+  in
+  match Store.node renderer.web_store node with
+  | None -> ()
+  (* Logical detach precedes the transport's exit animation. *)
+  | Some { retained_parent = None; _ } -> ()
+  | Some current -> (
+      match Store.standard_kind current with
+      | None -> invalid_arg "portal index requires a standard node"
+      | Some kind ->
+          let wrapper =
+            modal_surface kind || kind = DropdownMenu || kind = Popover
+          in
+          let target =
+            if modal_surface kind then Util.modal_layer_node dom_node
+            else dom_node
+          in
+          let explicit =
+            match Store.property renderer.web_store node ForegroundValue with
+            | Some (StringValue color) ->
+                color <> "inherit" && color <> "currentColor"
+            | _ -> false
+          in
+          if wrapper || not explicit then begin
+            let color = Option.bind current.retained_parent ancestor_color in
+            let value =
+              match color with
+              | None -> ""
+              | Some color when wrapper -> color
+              | Some color -> "var(--lui-current-hover-fg, " ^ color ^ ")"
+            in
+            let style =
+              W.HtmlElement.style (W.Element.unsafeAsHtmlElement target)
+            in
+            if W.CssStyleDeclaration.getPropertyValue "color" style <> value
+            then Util.set_style style "color" value
+          end)
+
+let refresh_portal_foregrounds renderer =
+  Hashtbl.iter (refresh_portal_foreground renderer) renderer.web_portal_nodes
