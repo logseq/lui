@@ -1,0 +1,101 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>LUI retained button content regression</title>
+<link rel="stylesheet" href="/platform/web/dist/lui.css">
+<script type="importmap">{"imports":{
+  "@tanstack/virtual-core":"/platform/web/dist/tanstack-virtual.js",
+  "lui.web.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui.web.dom/",
+  "lui/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui/",
+  "melange-webapi/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange-webapi/",
+  "melange.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.dom/",
+  "melange.js/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.js/",
+  "melange/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange/",
+  "ocaml-signal/":"/_build/default/examples/components/web/lui-components-web/node_modules/ocaml-signal/"
+}}</script>
+<style>body{margin:24px;font:14px system-ui}#host{margin:24px 0}.lui-button{transition:none}</style>
+<button id="audit">Audit retained content</button>
+<output id="result">Not run</output>
+<pre id="report"></pre>
+<main id="host"></main>
+<script type="module">
+import * as Web from "lui.web.dom/shell/lui_web.js"
+import { Protocol, properties, kinds } from "./protocol-fixture.mjs"
+const host = document.querySelector('#host')
+const renderer = Web.create(undefined, host)
+const backend = Web.backend(renderer)
+const list = items => items.reduceRight((tl, hd) => ({hd, tl}), 0)
+let next = 0, generation = 0, ops = []
+const set = (id, key, value) => ops.push(Protocol.set_prop_op(id, properties.get(key),
+  {TAG:typeof value === 'string' ? 0 : 2, _0:value}))
+const remove = (id, key) => ops.push(Protocol.remove_prop_op(id, properties.get(key)))
+const create = (kind, parent, props = {}, index = 0) => {
+  const id = ++next
+  ops.push(Protocol.create_node_op(id, kinds.get(kind)))
+  for (const [key, value] of Object.entries(props)) set(id, key, value)
+  if (parent) ops.push(Protocol.insert_child_op(parent, id, index))
+  return id
+}
+const flush = () => {backend.apply_batch({generation:++generation, ops:list(ops)}); ops=[]}
+const element = id => document.getElementById(`lui-node-${id}`)
+const root = create('row', null, {gap:24})
+const samples = ['button','toggle-button','toggle','menu-item','menu-trigger'].map((kind,index) => {
+  const props = kind === 'menu-item' ? {text:'Menu label'} : {'accessibility-label':`Control ${index}`}
+  if (kind === 'menu-trigger') props.icon = 'check'
+  if (kind === 'button' || kind === 'menu-item') Object.assign(props,{gap:4,padding:0,'border-width':0})
+  const id = create(kind, root, props, index)
+  const child = ['button','menu-item'].includes(kind)
+    ? create('text', id, {text:`Child ${index}`}) : null
+  return {kind,id,child}
+})
+flush()
+Web.mount(renderer, root, host)
+window.audit = null
+document.querySelector('#audit').onclick = () => {
+  const checks = []
+  const check = (name, pass) => checks.push({name,pass:Boolean(pass)})
+  for (const {kind,id,child} of samples) {
+    const button = element(id), content = child ? element(child) : null
+    const label = button.querySelector(':scope > .lui-button-label, :scope > .lui-menu-item-label')
+    const icon = button.querySelector(':scope > .lui-button-icon, :scope > .lui-menu-item-icon')
+    if (kind !== 'menu-item') check(`${kind}: empty owned label is absent from layout`,getComputedStyle(label).display === 'none')
+    if (kind === 'button')
+      check(`${kind}: custom content has no empty trailing gap`,
+        Math.abs(button.getBoundingClientRect().width-content.getBoundingClientRect().width)<0.1)
+    const initialText = content?.textContent
+    if (kind === 'menu-item') {
+      const marker = button.querySelector(':scope > .lui-menu-item-check')
+      set(id,'selection-placement','leading'); flush()
+      check('menu-item: selection placement addresses its own marker',marker.style.order === '-4' && label.style.order === '')
+      remove(id,'selection-placement'); flush()
+      check('menu-item: removing selection placement clears its own marker',marker.style.order === '')
+    }
+    set(id,'text','Owned label'); if (kind !== 'toggle') set(id,'icon','check'); flush()
+    check(`${kind}: retained text update addresses its own label`,label.textContent === 'Owned label')
+    if (kind !== 'toggle') check(`${kind}: retained icon update addresses its own slot`,icon.getAttribute('data-name') === 'check')
+    if (content) check(`${kind}: text and icon updates preserve custom content`,
+      element(child) === content && content.textContent === initialText && !content.hasAttribute('data-name'))
+    check(`${kind}: nonempty owned label participates in layout`,getComputedStyle(label).display !== 'none')
+    if (kind !== 'menu-item') remove(id,'text')
+    if (kind !== 'toggle' && kind !== 'menu-trigger') remove(id,'icon')
+    flush()
+    if (kind !== 'menu-item') check(`${kind}: removed text hides its own label`,label.textContent === '' && getComputedStyle(label).display === 'none')
+    if (kind === 'menu-trigger') {set(id,'text','Menu trigger'); remove(id,'icon'); flush()}
+    check(`${kind}: removed icon clears its own slot`,!icon.hasAttribute('data-name') && icon.style.getPropertyValue('--lui-icon-image') === '')
+    if (content) {
+      check(`${kind}: property removal preserves custom content`,content.textContent === initialText)
+      ops.push(Protocol.remove_child_op(id,child),Protocol.drop_node_op(child)); flush()
+    }
+    set(id,'text','After child removal'); flush()
+    check(`${kind}: child disposal retains the owned label`,
+      label.isConnected && label.textContent === 'After child removal' && getComputedStyle(label).display !== 'none')
+    if (kind !== 'menu-item') {
+      if (kind === 'menu-trigger') set(id,'icon','check')
+      set(id,'text',''); flush()
+      check(`${kind}: explicit empty text hides the owned label`,getComputedStyle(label).display === 'none')
+    }
+  }
+  window.audit = {checks,passed:checks.filter(c=>c.pass).length,total:checks.length}
+  document.querySelector('#result').textContent = `${window.audit.passed}/${window.audit.total}`
+  document.querySelector('#report').textContent = JSON.stringify(window.audit,null,2)
+}
+</script>

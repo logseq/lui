@@ -145,8 +145,21 @@ let text_control_node dom_node =
   | None -> invalid_arg "DOM node is not a text control"
 
 let toggle_label_node dom_node = child_element dom_node 1
-let button_icon_node dom_node = child_element dom_node 0
-let button_label_node dom_node = child_element dom_node 1
+
+let owned_child dom_node selector =
+  match W.Element.querySelector selector dom_node with
+  | Some child -> child
+  | None -> invalid_arg ("DOM control slot is missing: " ^ selector)
+
+let button_icon_node dom_node =
+  owned_child dom_node
+    ":scope > :is(.lui-button-icon, .lui-menu-item-icon, .lui-link-icon)"
+
+let button_label_node dom_node =
+  owned_child dom_node ":scope > :is(.lui-button-label, .lui-menu-item-label)"
+
+let menu_item_check_node dom_node =
+  owned_child dom_node ":scope > .lui-menu-item-check"
 
 let node_dom_id node = "lui-node-" ^ string_of_int node
 

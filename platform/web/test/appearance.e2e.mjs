@@ -180,3 +180,11 @@ test("explicit base appearance composes with hover, press, selection and disable
   assert.equal((await read()).foreground, 'rgb(18, 52, 86)')
   assert.equal((await read()).opacity, '0.9')
 })
+
+test('retained button content preserves owned slots and intrinsic spacing', async () => {
+  await page.goto(`${origin}/platform/web/test/fixtures/button-content-regression.html`)
+  await page.getByRole('button', {name: 'Audit retained content', exact: true}).click()
+  const audit = JSON.parse(await page.locator('#report').textContent())
+  assert.equal(audit.total, 43)
+  assert.deepEqual(audit.checks.filter(check => !check.pass), [])
+})

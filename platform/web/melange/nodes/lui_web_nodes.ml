@@ -149,7 +149,7 @@ let create_button_node renderer kind =
   Util.element document "button" (base_class_name kind) attributes
     [ Util.element document "span" "lui-button-icon lui-icon"
         [ ("aria-hidden", "true") ] [];
-      Util.element document "span" "lui-button-label" [] [] ]
+      Util.element document "span" "lui-button-label" [ ("hidden", "") ] [] ]
 
 let create_combobox_node renderer =
   let document = renderer.web_document in
@@ -193,7 +193,7 @@ let create_menu_item_node renderer =
   Util.element document "button" "lui-menu-item"
     [ ("type", "button"); ("role", "option"); ("aria-selected", "false") ]
     [ Util.element document "span" "lui-menu-item-icon lui-icon" hidden [];
-      Util.element document "span" "lui-menu-item-label" [] [];
+      Util.element document "span" "lui-menu-item-label" [ ("hidden", "") ] [];
       Util.element document "span" "lui-menu-item-check lui-icon"
         [ ("aria-hidden", "true"); ("data-name", "check") ]
         [] ]

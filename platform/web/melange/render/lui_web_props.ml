@@ -277,15 +277,15 @@ let set_text_control_value dom_node text =
       W.Element.setTextContent dom_node text)
 
 let set_visible_text kind dom_node text =
-  let target =
-    if Store.direct_toggle kind then Util.toggle_label_node dom_node
-    else if
-      Store.button_like kind || kind = MenuItem || kind = MenuTrigger
-    then Util.button_label_node dom_node
-    else dom_node
-  in
-  if text <> W.Element.textContent target then
-    W.Element.setTextContent target text
+  if Store.button_like kind || kind = MenuItem || kind = MenuTrigger then
+    Util.set_optional_text (Util.button_label_node dom_node) text
+  else
+    let target =
+      if Store.direct_toggle kind then Util.toggle_label_node dom_node
+      else dom_node
+    in
+    if text <> W.Element.textContent target then
+      W.Element.setTextContent target text
 
 let apply_text_value renderer node kind dom_node text =
   match kind with
@@ -419,23 +419,21 @@ let apply_progress_value renderer node kind dom_node value =
     W.HtmlInputElement.setValue (Util.text_control_node dom_node)
       (Js.Float.toString value)
 
-let apply_inline_icon_name renderer node kind dom_node name =
+let inline_icon_node renderer node kind dom_node =
   if kind = BottomTab then
-    (match Widgets.bottom_tab_trigger renderer node with
-     | Some trigger ->
-         let icon = Util.child_element trigger 0 in
-         W.Element.setAttribute "data-name" name icon;
-         Widgets.update_icon_name renderer icon name
-     | None -> ())
-  else if kind = TimelineItem then
+    Option.map (fun trigger -> Util.child_element trigger 0)
+      (Widgets.bottom_tab_trigger renderer node)
+  else
+    Some (if kind = ListItem then dom_node else Util.button_icon_node dom_node)
+
+let apply_inline_icon_name renderer node kind dom_node name =
+  if kind = TimelineItem then
     Widgets.update_timeline_indicator renderer node dom_node
-  else begin
-    let icon =
-      if kind = ListItem then dom_node else Util.button_icon_node dom_node
-    in
-    W.Element.setAttribute "data-name" name icon;
-    Widgets.update_icon_name renderer icon name
-  end
+  else
+    Option.iter (fun icon ->
+        W.Element.setAttribute "data-name" name icon;
+        Widgets.update_icon_name renderer icon name)
+      (inline_icon_node renderer node kind dom_node)
 
 let apply_selected renderer node kind dom_node selected =
   (* BottomTab selection lands on the trigger via the parent's refresh,
@@ -880,7 +878,7 @@ and apply_secondary_property renderer queue_split node kind dom_node
       W.Element.setAttribute "data-icon-placement" placement dom_node
   | SelectionPlacementValue, StringValue placement ->
       W.Element.setAttribute "data-selection-placement" placement dom_node;
-      set_style (Util.child_element dom_node 2) "order"
+      set_style (Util.menu_item_check_node dom_node) "order"
         (if placement = "leading" then "-4" else "1")
   | Selected, BoolValue selected ->
       apply_selected renderer node kind dom_node selected
@@ -1124,7 +1122,15 @@ let remove_property renderer queue_split node kind dom_node property =
       (match property with
        | SelectionPlacementValue ->
            W.Element.removeAttribute "data-selection-placement" dom_node;
-           set_style (Util.child_element dom_node 2) "order" ""
+           set_style (Util.menu_item_check_node dom_node) "order" ""
+       | InlineIconName ->
+           if kind = TimelineItem then
+             Widgets.update_timeline_indicator renderer node dom_node
+           else
+             Option.iter (fun icon ->
+                 W.Element.removeAttribute "data-name" icon;
+                 set_style icon "--lui-icon-image" "")
+               (inline_icon_node renderer node kind dom_node)
        | AppearEnabled -> Lui_web_events.release_appear renderer node
        | StyleValue -> W.Element.removeAttribute "data-list-style" dom_node
        | NavigateEnabled | ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange -> ()
