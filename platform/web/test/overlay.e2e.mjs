@@ -417,7 +417,16 @@ test("removing a modal closes owned portals without duplicate Dismiss events", a
   )
 })
 
-test("nested modal locks remain until the last modal exits and contain wheel scrolling", async () => {
+test("modal close releases input before visual exit and preserves the next modal", async () => {
+  await openLayerRegressionPage()
+  await clickButton('Run modal input release audit')
+  await session.page.locator('#modal-input-result').filter({hasText: 'Complete'}).waitFor()
+  const result = JSON.parse(await session.page.locator('#modal-input-result').textContent())
+  assert.deepEqual(result, {state: 'Complete', pass: true, activations: 1,
+    retainedExit: true, nestedFocus: true, newModalPreserved: true})
+})
+
+test("nested modal locks remain until the last modal closes and contain wheel scrolling", async () => {
   await openLayerRegressionPage()
   await evaluate("window.scrollTo(0, 140)")
   const originalScrollStyles = await state(`({

@@ -327,10 +327,10 @@ let topmost_blocking registry =
     (fun layer -> layer.policy = Blocking)
     (sorted_open_layers registry)
 
-let has_blocking_present registry =
+let has_blocking_open registry =
   Hashtbl.fold
     (fun _ layer result ->
-      result || (layer.policy = Blocking && layer.present))
+      result || (layer.policy = Blocking && layer.open_ && layer.present))
     registry.layers false
 
 let refresh_order registry =
@@ -349,7 +349,7 @@ let update_inert registry =
     registry.layers
 
 let update_scroll_lock registry document =
-  let wanted = has_blocking_present registry in
+  let wanted = has_blocking_open registry in
   if wanted && not registry.scroll_lock_held then begin
     acquire_scroll_lock document;
     registry.scroll_lock_held <- true

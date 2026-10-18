@@ -31,6 +31,8 @@
 <output id="responsive-layout-result" role="status">Not run</output>
 <button id="run-retained-anchor-audit">Run retained anchor audit</button>
 <output id="retained-anchor-result" role="status">Not run</output>
+<button id="run-modal-input-audit">Run modal input release audit</button>
+<output id="modal-input-result" role="status">Not run</output>
 <main id="host"></main>
 <script type="module">
 import * as Web from "lui.web.dom/shell/lui_web.js";
@@ -68,6 +70,43 @@ button(root,"Open empty dialog",()=>openDialog("empty"));
 button(root,"Open regression sheet",openSheet);
 Web.set_event_handler(renderer,e=>{events.push(e);if(e.TAG===0||e.TAG===7){handlers.get(e._0)?.();flush();}else if(e.TAG===6){handlers.get(e._0)?.(e._1);flush();}else if(e.TAG===2&&e._0===sheetInput){set(sheetInput,"text",e._1);flush();}return true;});
 flush();Web.mount(renderer,root,host);
+document.querySelector('#run-modal-input-audit').addEventListener('click',async()=>{
+  const result=document.querySelector('#modal-input-result');let fixture,retained,next;
+  try{
+    const expect=(condition,message)=>{if(!condition)throw Error(message);};
+    const frame=()=>new Promise(requestAnimationFrame);
+    const settle=async predicate=>{const deadline=performance.now()+2000;while(!predicate()&&performance.now()<deadline)await frame();expect(predicate(),'Exit did not finish');};
+    const originalOverflow=document.documentElement.style.overflow;
+    fixture=node('column',root);let activations=0;
+    const target=button(fixture,'Modal input target',()=>{activations++;next=node('dialog',fixture,{text:'Next modal',width:240,height:120});node('input',next,{placeholder:'Next field'});flush();});flush();
+    const trigger=document.querySelector(`#lui-node-${target}`);trigger.focus();
+    retained=node('dialog',fixture,{text:'Input release',width:320,height:200});
+    const field=node('input',retained,{placeholder:'Exit field'});
+    const nestedTrigger=button(retained,'Nested target',()=>{});flush();await frame();await frame();
+    const surface=document.querySelector(`#lui-node-${retained}`),layer=surface.parentElement;
+    const nestedButton=document.querySelector(`#lui-node-${nestedTrigger}`);nestedButton.focus();
+    const nested=node('dialog',retained,{text:'Nested input release',width:240,height:120});node('input',nested,{placeholder:'Nested field'});flush();await frame();await frame();
+    drop(nested);flush();
+    expect(host.hasAttribute('inert'),'Closing a child unlocked the background');
+    expect(!layer.hasAttribute('inert'),'Closing a child did not release the parent');
+    expect(document.activeElement===nestedButton,'Closing a child did not restore focus immediately');
+    document.querySelector(`#lui-node-${field}`).focus();
+    ops.push(Protocol.remove_child_op(fixture,retained));nodes.get(fixture).children=nodes.get(fixture).children.filter(id=>id!==retained);nodes.get(retained).parent=null;flush();
+    expect(layer.isConnected&&layer.hasAttribute('data-ending-style'),'Closing removed visual exit presence');
+    expect(!host.hasAttribute('inert'),'Closing modal still blocks background input');
+    expect(document.documentElement.style.overflow===originalOverflow,'Closing modal still locks scrolling');
+    expect(document.activeElement===trigger,'Retained modal did not restore focus immediately');
+    trigger.click();expect(activations===1&&next,'Immediate next action was lost');
+    expect(host.hasAttribute('inert'),'The next modal did not acquire its input scope');
+    await frame();await frame();
+    const nextSurface=document.querySelector(`#lui-node-${next}`),nextInput=nextSurface.querySelector('input');nextInput.focus();
+    await settle(()=>!layer.isConnected);
+    expect(host.hasAttribute('inert')&&document.activeElement===nextInput,'Old exit cleanup disrupted the next modal');
+    drop(next);next=null;flush();
+    result.textContent=JSON.stringify({state:'Complete',pass:true,activations,retainedExit:true,nestedFocus:true,newModalPreserved:true});
+  }catch(error){result.textContent=JSON.stringify({state:'Complete',pass:false,error:String(error)});}
+  finally{if(next)drop(next);if(retained)drop(retained);if(fixture)drop(fixture);flush();}
+});
 document.querySelector('#run-responsive-layout-audit').addEventListener('click',async()=>{
   const result=document.querySelector('#responsive-layout-result');let fixture;
   try{

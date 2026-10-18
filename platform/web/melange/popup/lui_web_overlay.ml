@@ -125,7 +125,7 @@ let topmost_modal renderer node =
 let refresh_modal_host_inert renderer =
   Lui_web_util.set_state_attribute
     renderer.web_host "inert"
-    (Lui_web_layers.has_blocking_present renderer.web_layers);
+    (Lui_web_layers.has_blocking_open renderer.web_layers);
   true
 
 let refresh_modal_host_inert_bang = refresh_modal_host_inert
@@ -268,8 +268,7 @@ let restore_modal_focus renderer node surface =
       then Hashtbl.remove renderer.web_modal_focus_returns node
   | None -> ()
 
-let close_modal_shell ?(on_finish = fun () -> ()) renderer node parent layer
-    surface =
+let close_modal_shell renderer node parent layer surface =
   let token =
     Lui_web_layers.close_layer renderer.web_layers renderer.web_document node
   in
@@ -282,6 +281,9 @@ let close_modal_shell ?(on_finish = fun () -> ()) renderer node parent layer
   W.Element.setAttribute "data-ending-style" "" surface;
   W.Element.setAttribute "inert" "" layer;
   W.Element.setAttribute "inert" "" surface;
+  (* Retain exit paint without retaining input ownership or focus traps. *)
+  ignore (refresh_modal_host_inert renderer);
+  restore_modal_focus renderer node surface;
   let backdrop = Lui_web_util.child_element layer 0 in
   let fallback =
     match Store.node renderer.web_store node with
@@ -303,7 +305,7 @@ let close_modal_shell ?(on_finish = fun () -> ()) renderer node parent layer
           Lui_web_layers.remove renderer.web_layers renderer.web_document node;
         ignore (refresh_modal_host_inert renderer);
         W.Element.removeAttribute "data-ending-style" surface;
-        on_finish ()
+        restore_modal_focus renderer node surface
       end;
       true);
   true
@@ -552,10 +554,7 @@ let attach_modal_events renderer node dom_node =
        ~dismiss:(fun () -> ignore (modal_dismiss ctx))
        ~close:(fun () ->
          ignore
-           (close_modal_shell
-              ~on_finish:(fun () ->
-                restore_modal_focus renderer node dom_node)
-              renderer node renderer.web_portal_root layer dom_node))
+           (close_modal_shell renderer node renderer.web_portal_root layer dom_node))
        ~key_handler ~present:false ~open_:false);
   W.Element.addEventListener "click" click_handler ctx.modal_backdrop;
   if ctx.modal_sheet then begin
@@ -666,9 +665,7 @@ let open_modal renderer node dom_node =
 let open_modal_bang = open_modal
 
 let remove_modal_layer_after_exit renderer node parent layer surface =
-  close_modal_shell
-    ~on_finish:(fun () -> restore_modal_focus renderer node surface)
-    renderer node parent layer surface
+  close_modal_shell renderer node parent layer surface
 
 let remove_modal_layer_after_exit_bang = remove_modal_layer_after_exit
 
