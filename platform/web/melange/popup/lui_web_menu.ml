@@ -63,6 +63,7 @@ let after_transition document target fallback_duration finish_on_cancel
   end
 
 let begin_popup_open popup =
+  W.Element.removeAttribute "aria-hidden" popup;
   W.Element.removeAttribute "data-closed" popup;
   W.Element.removeAttribute "data-ending-style" popup;
   W.Element.setAttribute "data-open" "" popup;
@@ -71,6 +72,7 @@ let begin_popup_open popup =
       W.Element.removeAttribute "data-starting-style" popup)
 
 let begin_popup_close popup =
+  W.Element.setAttribute "aria-hidden" "true" popup;
   W.Element.removeAttribute "data-open" popup;
   W.Element.setAttribute "data-closed" "" popup;
   W.Element.setAttribute "data-ending-style" "" popup

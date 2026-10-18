@@ -104,6 +104,20 @@ function closePointMenu() {
   menu = null
   flush()
 }
+function detachPointMenu() {
+  // Conditional LUI views remove the whole subtree with one protocol operation.
+  ops.push(Protocol.detach_subtree_op(menu))
+  const parent = children.get(menu).parent
+  children.get(parent).kids = children.get(parent).kids.filter(node => node !== menu)
+  function forget(node) {
+    for (const child of children.get(node).kids) forget(child)
+    children.delete(node)
+    handlers.delete(node)
+  }
+  forget(menu)
+  menu = null
+  flush()
+}
 
 // A second menu anchored the classic way (anchor:"below" under the same
 // parent) for the regression pair: it must keep tracking its sibling.
@@ -134,5 +148,5 @@ Web.set_event_handler(renderer, e => {
 flush()
 Web.mount(renderer, root, host)
 
-window.audit = { renderer, events, activations, openPointMenu, movePointMenu, closePointMenu, openAnchoredMenu, node: () => menu }
+window.audit = { renderer, events, activations, openPointMenu, movePointMenu, closePointMenu, detachPointMenu, openAnchoredMenu, node: () => menu }
 </script>

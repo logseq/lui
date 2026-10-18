@@ -28,6 +28,29 @@ const openPositioner = () =>
     has: page.locator(".lui-dropdown-menu[data-open]"),
   })
 
+test("a closing dropdown leaves the accessibility tree before its exit animation finishes", async () => {
+  await page.goto(`${origin}/platform/web/test/fixtures/point-menu-regression.html`)
+  await page.evaluate(() => window.audit.openPointMenu())
+  await page.getByRole("menuitem", { name: "Point alpha", exact: true }).waitFor()
+  await page.evaluate(() => window.audit.detachPointMenu())
+  assert.equal(await page.locator(".lui-dropdown-menu[data-ending-style]").count(), 1)
+  assert.equal(await page.getByRole("menuitem", { name: "Point alpha", exact: true }).count(), 0)
+})
+
+test("a rapidly reopened dropdown exposes only its active items", async () => {
+  await page.goto(`${origin}/platform/web/test/fixtures/point-menu-regression.html`)
+  await page.evaluate(() => window.audit.openPointMenu())
+  await page.getByRole("menuitem", { name: "Point beta", exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.audit.detachPointMenu()
+    window.audit.openPointMenu()
+  })
+  assert.equal(await page.locator(".lui-dropdown-menu").count(), 2)
+  assert.equal(await page.getByRole("menuitem", { name: "Point beta", exact: true }).count(), 1)
+  await page.getByRole("menuitem", { name: "Point beta", exact: true }).click()
+  await page.waitForFunction(() => window.audit.activations.length === 1)
+})
+
 test("dropdown-menu x/y mounts at a computed point away from any DOM parent", async () => {
   await page.goto(`${origin}/platform/web/test/fixtures/point-menu-regression.html`)
   await page.evaluate(() => window.audit.openPointMenu(64, 96))
