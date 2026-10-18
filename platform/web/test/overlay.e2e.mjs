@@ -173,6 +173,14 @@ test("surface exits wait for all tracks without retaining zero-motion or reopene
   assert.equal(result.pass, true, JSON.stringify(result, null, 2))
 })
 
+test('retained popover targets release hidden input scopes and dismiss once', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Run retained anchor audit')
+  await session.page.locator('#retained-anchor-result').filter({hasText: 'Complete'}).waitFor()
+  const result = JSON.parse(await session.page.locator('#retained-anchor-result').textContent())
+  assert.equal(result.pass, true, JSON.stringify(result, null, 2))
+})
+
 test("direct nested split input cancels eased geometry without disabling programmatic motion", async () => {
   await openLayerRegressionPage()
   await clickButton('Run split interaction audit')
