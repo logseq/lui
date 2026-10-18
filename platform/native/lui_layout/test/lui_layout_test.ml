@@ -592,6 +592,39 @@ let test_grid_gap_fits_columns () =
   check_rect "cell3" 0. 20. 95. 10. (place p 5);
   check_rect "cell4" 105. 20. 95. 10. (place p 6)
 
+let test_nested_grid_uses_final_container_width () =
+  List.iter (fun scale ->
+    let store=Lui_store.create () and layout=Lui_layout.create () in
+    apply store [CreateNode (1,Root);CreateNode (2,Column);
+      CreateNode (3,Grid);CreateNode (4,Box);CreateNode (5,Row);
+      CreateNode (6,Box);CreateNode (7,Grid);CreateNode (8,Box);
+      InsertChild (1,2,0);InsertChild (2,3,0);
+      InsertChild (3,4,0);InsertChild (3,5,1);
+      InsertChild (5,6,0);InsertChild (5,8,1);InsertChild (6,7,0);
+      SetProp (3,GridColumns,IntValue 3);SetProp (3,Gap,IntValue 16);
+      SetProp (5,GridColumnSpan,IntValue 2);SetProp (5,Gap,IntValue 8);
+      SetProp (4,HeightValue,IntValue 20);
+      SetProp (7,GridColumns,IntValue 8);SetProp (7,Gap,IntValue 8);
+      SetProp (7,ContainerRelativeFrameValue,StringValue "horizontal");
+      SetProp (7,MaxWidth,IntValue 250);
+      SetProp (8,WidthValue,IntValue 160);SetProp (8,HeightValue,IntValue 20)];
+    for i=0 to 15 do
+      apply store [CreateNode (10+i,Box);InsertChild (7,10+i,i);
+        SetProp (10+i,WidthValue,IntValue 20);SetProp (10+i,HeightValue,IntValue 20)]
+    done;
+    List.iter (fun width ->
+      Lui_layout.sync ~scale ~width:(width*.scale) ~height:(200.*.scale) layout store;
+      let rect id = let r=Option.get (Lui_layout.rect layout id) in
+        Lui_scene.rect (r.x/.scale) (r.y/.scale) (r.w/.scale) (r.h/.scale) in
+      let grid=rect 7 and first=rect 10 and second=rect 11 and next_row=rect 18 in
+      check (float eps) "nested palette retains two rows" 48. grid.h;
+      check (float (1. /. scale)) "nested palette columns use its final width"
+        ((grid.w-.56.)/.8.+.8.)
+        (second.x-.first.x);
+      check (float eps) "ninth swatch starts the second row" 28. (next_row.y-.first.y);
+      check (float eps) "second row aligns with the first" first.x next_row.x)
+      [600.;800.;700.;600.]) [1.;2.]
+
 let test_grid_column_spans () =
   let span = match List.find_opt
     (fun property -> Lui_wire_schema.property_name property="grid-column-span")
@@ -2096,6 +2129,7 @@ let () =
          test_case "split first-pane pixels" `Quick test_split_first_width;
          test_case "grid wraps" `Quick test_grid_wraps;
          test_case "grid gap fits" `Quick test_grid_gap_fits_columns;
+         test_case "nested grid final container width" `Quick test_nested_grid_uses_final_container_width;
          test_case "grid column spans" `Quick test_grid_column_spans;
          test_case "absolute inset" `Quick test_absolute_inset;
          test_case "text measured" `Quick test_text_measured;

@@ -1227,38 +1227,71 @@ and expand_children ctx ~owner ~pkind ~pid ~raw_parent ~first cids =
    the row so [n] cells plus [(n-1)] gaps fit one line. The produced
    children come from pkids — the mirror is persistent, so a reverse
    flex→store lookup is no longer needed. *)
-let refine_grids ctx =
-  List.iter
-    (fun (gsid, gnode, (gstyle : Lui_flex.style), ncols) ->
-      let gr = Lui_flex.absolute_layout gnode in
-      let pl = edge_px ~owner:gr.w gstyle.padding.left gstyle.padding.horizontal gstyle.padding in
-      let pr = edge_px ~owner:gr.w gstyle.padding.right gstyle.padding.horizontal gstyle.padding in
-      let bl = edge_px ~owner:gr.w gstyle.border.left gstyle.border.horizontal gstyle.border in
-      let br = edge_px ~owner:gr.w gstyle.border.right gstyle.border.horizontal gstyle.border in
-      let inner_w = Float.max 0. (gr.w -. pl -. pr -. bl -. br) in
-      let gap = len_px ~owner:inner_w gstyle.column_gap in
-      (* The tiny epsilon guards the wrap test against float rounding
-         pushing the last cell onto the next line. *)
-      let basis =
-        Float.max 0. ((inner_w -. (ncols -. 1.) *. gap) /. ncols -. 0.001)
-      in
-      List.iter
-        (fun e ->
-          List.iter
-            (fun sid ->
-              match
-                (Hashtbl.find_opt ctx.applied sid,
-                 Hashtbl.find_opt ctx.nodes sid)
-              with
-              | Some s, Some f ->
-                let span = Option.value (pnum ctx.store sid "grid-column-span") ~default:1. in
-                if span>ncols then invalid_arg "grid column span exceeds column count";
-                Lui_flex.set_style f
-                  { s with flex_basis = Pt (basis *. span +. gap *. (span -. 1.)) }
-              | _ -> ())
-            e.gens)
-        (pkids_of ctx gsid))
-    !(ctx.grids)
+let refine_grids ctx ~relayout =
+  let refine (gsid, gnode, (gstyle : Lui_flex.style), ncols) =
+    let gr = Lui_flex.absolute_layout gnode in
+    let pl = edge_px ~owner:gr.w gstyle.padding.left gstyle.padding.horizontal gstyle.padding in
+    let pr = edge_px ~owner:gr.w gstyle.padding.right gstyle.padding.horizontal gstyle.padding in
+    let bl = edge_px ~owner:gr.w gstyle.border.left gstyle.border.horizontal gstyle.border in
+    let br = edge_px ~owner:gr.w gstyle.border.right gstyle.border.horizontal gstyle.border in
+    let inner_w = Float.max 0. (gr.w -. pl -. pr -. bl -. br) in
+    let gap = len_px ~owner:inner_w gstyle.column_gap in
+    (* The tiny epsilon guards the wrap test against float rounding
+       pushing the last cell onto the next line. *)
+    let basis =
+      Float.max 0. ((inner_w -. (ncols -. 1.) *. gap) /. ncols -. 0.001)
+    in
+    List.iter
+      (fun e ->
+        List.iter
+          (fun sid ->
+            match
+              (Hashtbl.find_opt ctx.applied sid,
+               Hashtbl.find_opt ctx.nodes sid)
+            with
+            | Some s, Some f ->
+              let span = Option.value (pnum ctx.store sid "grid-column-span") ~default:1. in
+              if span>ncols then invalid_arg "grid column span exceeds column count";
+              Lui_flex.set_style f
+                { s with flex_basis = Pt (basis *. span +. gap *. (span -. 1.)) }
+            | _ -> ())
+          e.gens)
+      (pkids_of ctx gsid)
+  in
+  (* A parent grid can change a descendant grid width during refinement.
+     Resolve each ancestor level before measuring its descendants. Peers
+     share a pass, and callers combine the final pass with popup layout. *)
+  match !(ctx.grids) with
+  | [] -> ()
+  | [grid] -> refine grid
+  | grids ->
+    let members = Hashtbl.create (List.length grids) in
+    List.iter (fun (id, _, _, _) -> Hashtbl.add members id ()) !(ctx.grids);
+    let depths = Hashtbl.create (Hashtbl.length members) in
+    let rec depth id =
+      match Hashtbl.find_opt depths id with
+      | Some value -> value
+      | None ->
+        let value = match Lui_store.parent ctx.store id with
+          | None -> 0
+          | Some parent -> depth parent + (if Hashtbl.mem members parent then 1 else 0)
+        in
+        Hashtbl.add depths id value;
+        value
+    in
+    let ordered = List.stable_sort
+      (fun (a, _, _, _) (b, _, _, _) -> Int.compare (depth a) (depth b))
+      !(ctx.grids) in
+    let rec apply = function
+      | [] -> ()
+      | ((id, _, _, _) as grid) :: rest ->
+        refine grid;
+        (match rest with
+         | (next, _, _, _) :: _ when depth next <> depth id -> relayout ()
+         | _ -> ());
+        apply rest
+    in
+    apply ordered
 
 (* Popup anchoring: [x]/[y] supply an anchor point (a zero-size anchor
    box inside the containing block); bare [anchor] uses the parent rect
@@ -1898,7 +1931,9 @@ let build_vrows _t ctx store (v : vlist) ~first ~last =
         in
         Lui_flex.compute_layout root ~width:v.cross_size
           ~height:Lui_flex.undefined ();
-        refine_grids rctx;
+        refine_grids rctx ~relayout:(fun () ->
+          Lui_flex.compute_layout root ~width:v.cross_size
+            ~height:Lui_flex.undefined ());
         refine_popups rctx;
         (if !(rctx.grids) <> [] || !(rctx.popups) <> [] then
            Lui_flex.compute_layout root ~width:v.cross_size
@@ -2648,7 +2683,8 @@ let finish ctx (t : t) ~width ~height ~vport ~full =
   | None -> ()
   | Some root ->
     let ew, eh = layout_frame root ~width ~height in
-    refine_grids ctx;
+    refine_grids ctx ~relayout:(fun () ->
+      Lui_flex.compute_layout root ~width:ew ~height:eh ());
     refine_popups ctx;
     (if !(ctx.grids) <> [] || !(ctx.popups) <> [] then
        Lui_flex.compute_layout root ~width:ew ~height:eh ());
