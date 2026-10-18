@@ -22,6 +22,11 @@ let install renderer node ~materialize ~unmount =
     style root "overflow" "auto";
     style root "display" "block";
     style root "overflow-anchor" "none";
+    (* A virtual scroller must never expand its flex parent past the
+       viewport; min-*:0 lets grow-bound layouts shrink it to the
+       remaining space so siblings (e.g. a composer) stay visible. *)
+    style root "min-height" "0";
+    style root "min-width" "0";
     style spacer "position" "relative";
     style spacer "width" "100%";
     W.Element.appendChild (W.Element.asNode spacer) root;
@@ -42,6 +47,7 @@ let install renderer node ~materialize ~unmount =
     in
     let last_token = ref None in
     let last_range = ref None in
+    let pending_scroll = ref None in
     let document = W.Document.unsafeAsHtmlDocument renderer.web_document in
     let live_rows () =
       Hashtbl.fold (fun id _ rows -> id :: rows) mounted []
@@ -226,17 +232,60 @@ let install renderer node ~materialize ~unmount =
               (Js.Float.toString (V.total_size virtualizer) ^ "px");
             sync_tree_roving ();
             if property TrackVisibleRange = Some (BoolValue true) then begin
-              let items = V.items virtualizer in
-              if Array.length items > 0 then begin
-                let first = V.item_index items.(0) in
-                let last = V.item_index items.(Array.length items - 1) in
-                if !last_range <> Some (first, last) then begin
-                  last_range := Some (first, last);
-                  emit (VisibleRange (node, first, last))
-                end
-              end
+              (* [virtualizer.range] reports the rows actually
+                 intersecting the viewport, excluding overscan padding
+                 and focus-retained rows, so pin detection and history
+                 paging key off what the user can see. *)
+              match Js.Nullable.toOption (V.item_range virtualizer) with
+              | Some r ->
+                  let first = V.range_start r in
+                  let last = V.range_end r in
+                  if !last_range <> Some (first, last) then begin
+                    last_range := Some (first, last);
+                    emit (VisibleRange (node, first, last))
+                  end
+              | None -> ()
             end
             else last_range := None);
+            (match !pending_scroll with
+             | None -> ()
+             | Some (token, target_key, align, behavior, attempts) -> (
+                 let index =
+                   Array.find_opt
+                     (fun id ->
+                       Store.property renderer.web_store id KeyValue
+                       = Some (StringValue target_key))
+                     !rows
+                   |> Option.map (fun id -> Hashtbl.find positions id)
+                 in
+                 match index with
+                 | None ->
+                     if attempts > 150 then begin
+                       pending_scroll := None;
+                       emit (ScrollCompleted (node, token, "missing-target"))
+                     end
+                     else
+                       pending_scroll :=
+                         Some (token, target_key, align, behavior, attempts + 1)
+                 | Some index -> (
+                     V.scroll_to_index virtualizer index
+                       (V.scroll_to_index_options ~align ~behavior);
+                     match Js.Nullable.toOption (V.item_range virtualizer) with
+                     | Some r
+                       when index >= V.range_start r
+                            && index <= V.range_end r ->
+                         pending_scroll := None;
+                         emit (ScrollCompleted (node, token, "succeeded"))
+                     | _ ->
+                         if attempts > 150 then begin
+                           pending_scroll := None;
+                           emit
+                             (ScrollCompleted (node, token, "missing-target"))
+                         end
+                         else
+                           pending_scroll :=
+                             Some (token, target_key, align, behavior,
+                               attempts + 1))));
         if !pending_render then begin
           pending_render := false;
           render ()
@@ -245,35 +294,25 @@ let install renderer node ~materialize ~unmount =
     in
     render_ref := render;
     let cleanup = V.did_mount virtualizer in
+    (* A scroll request becomes a pending intent retried on each render:
+       the target row may not be materialized or the scroller not yet
+       measured when the token lands; it settles once the row enters the
+       virtualizer's visible range, or reports missing-target. *)
     let request () =
       match property ScrollToken with
-      | Some (IntValue token) when !last_token <> Some token -> (
+      | Some (IntValue token) when !last_token <> Some token ->
           last_token := Some token;
-          let target_key = text ScrollTarget "" in
-          let index =
-            Array.find_opt
-              (fun id ->
-                Store.property renderer.web_store id KeyValue
-                = Some (StringValue target_key))
-              !rows
-            |> Option.map (fun id -> Hashtbl.find positions id)
+          let align =
+            match text ScrollAnchor "top" with
+            | "center" -> "center"
+            | "bottom" -> "end"
+            | _ -> "start"
           in
-          match index with
-          | None -> emit (ScrollCompleted (node, token, "missing-target"))
-          | Some index ->
-              let align =
-                match text ScrollAnchor "top" with
-                | "center" -> "center"
-                | "bottom" -> "end"
-                | _ -> "start"
-              in
-              let behavior =
-                if property ScrollAnimated = Some (BoolValue true) then "smooth"
-                else "auto"
-              in
-              V.scroll_to_index virtualizer index
-                (V.scroll_to_index_options ~align ~behavior);
-              emit (ScrollCompleted (node, token, "succeeded")))
+          let behavior =
+            if property ScrollAnimated = Some (BoolValue true) then "smooth"
+            else "auto"
+          in
+          pending_scroll := Some (token, text ScrollTarget "", align, behavior, 0)
       | _ -> ()
     in
     let refresh () =

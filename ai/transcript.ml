@@ -306,8 +306,9 @@ let item_row_of cfg context (item_s : item Signal.signal) : t =
       (match cfg.item_class item with "" -> None | s -> Some s)
     ?data_attrs:
       (match cfg.item_data_attrs item with [] -> None | l -> Some l)
-    [ column ~cross:`stretch ~gap:6 ~padding_horizontal:8 ~padding_vertical:4
-        [ body ] ]
+    [ row ~main:`center ~grow:1.0
+        [ column ~grow:1.0 ~max_width:cfg.content_width ~cross:`stretch
+            ~padding_horizontal:8 ~padding_vertical:4 [ body ] ] ]
 
 let row_of cfg (row_s : row Signal.signal) : t =
   scoped (fun context ->
@@ -328,19 +329,19 @@ let row_of cfg (row_s : row Signal.signal) : t =
 
 (* {1 Follow/jump wiring} *)
 
-let last_key (items : item list) =
-  match List.rev items with i :: _ -> Some i.id | [] -> None
+let last_row_key (rows : row list) =
+  match List.rev rows with r :: _ -> Some (row_key r) | [] -> None
 
 (* While pinned, content changes re-issue a scroll to the tail row; the
    (key, fingerprint) pair is cutoff-deduped so unchanged lists do not
    re-scroll. *)
-let follow_requests messages (pinned : bool Signal.state) =
+let follow_requests rows_s (pinned : bool Signal.state) =
   Signal.map2
-    (fun (items : item list) (pinned : bool) ->
-       if pinned && items <> [] then
-         Option.map (fun key -> (key, Hashtbl.hash items)) (last_key items)
+    (fun (rows : row list) (pinned : bool) ->
+       if pinned && rows <> [] then
+         Option.map (fun key -> (key, Hashtbl.hash rows)) (last_row_key rows)
        else None)
-    messages (Signal.value pinned)
+    rows_s (Signal.value pinned)
 
 let transcript ?key ?(viewport = Anchored) ?overscan ?item_extent
     ?(content_width = 768) ?(group_tools = true) ?render_item
@@ -348,7 +349,8 @@ let transcript ?key ?(viewport = Anchored) ?overscan ?item_extent
     ?container_data_attrs ?item_actions ?on_retry
     ?(retry_label = "Retry same message") ?on_load_full
     ?(load_full_label = fun _ -> "Load full item") ?on_reach_top
-    ?(scroll_animated = false) ~messages () : t =
+    ?(scroll_animated = false) ?container_data_attrs_signal
+    ~messages () : t =
   scoped (fun context ->
     let context =
       Lui_ui.child_context context (Lui_ui.owner_name context "lui-ai")
@@ -386,10 +388,13 @@ let transcript ?key ?(viewport = Anchored) ?overscan ?item_extent
       | Anchored_list -> `list
       | Host_driven h -> h.container
     in
+    let rows_s =
+      own context (Signal.map (group_rows ~group:group_tools) messages)
+    in
     let follow =
       own context
         (Signal.cutoff (fun a b -> a = b)
-           (follow_requests messages pinned))
+           (follow_requests rows_s pinned))
     in
     own_sub context
       (Signal.subscribe follow (fun req ->
@@ -404,7 +409,7 @@ let transcript ?key ?(viewport = Anchored) ?overscan ?item_extent
     let on_visible_range (ev : Lui_protocol.event) =
       match ev with
       | Lui_protocol.VisibleRange (_, first, last) ->
-          let count = List.length (get messages) in
+          let count = List.length (get rows_s) in
           Signal.set pinned (count = 0 || last >= count - 1);
           if first <= 0 && not (Signal.get_state at_top) then begin
             Signal.set at_top true;
@@ -415,12 +420,9 @@ let transcript ?key ?(viewport = Anchored) ?overscan ?item_extent
     in
     let jump_now _ =
       Signal.set pinned true;
-      match last_key (get messages) with
+      match last_row_key (get rows_s) with
       | Some key -> scroll_to ~key ~animated:scroll_animated
       | None -> ()
-    in
-    let rows_s =
-      own context (Signal.map (group_rows ~group:group_tools) messages)
     in
     let rows =
       keyed ~source:rows_s ~key:row_key ~cmp:String.compare
@@ -440,10 +442,11 @@ let transcript ?key ?(viewport = Anchored) ?overscan ?item_extent
               (reactive (fun (_, t) -> t) (Signal.value request))
             ~scroll_animated
             ?style_class:container_class ?data_attrs:container_data_attrs
-            [ rows ]
+            ?data_attrs_signal:container_data_attrs_signal [ rows ]
       | `virtual_list, true ->
           virtual_list ?key ~grow:1.0 ~gap:12 ~cross:`stretch ?overscan
-            ?item_extent ~track_visible_range:true ~on_visible_range
+            ?item_extent ~min_height:0 ~min_width:0
+            ~track_visible_range:true ~on_visible_range
             ~scroll_anchor:`bottom
             ~scroll_target:
               (reactive (fun (k, _) -> k) (Signal.value request))
@@ -451,17 +454,20 @@ let transcript ?key ?(viewport = Anchored) ?overscan ?item_extent
               (reactive (fun (_, t) -> t) (Signal.value request))
             ~scroll_animated
             ?style_class:container_class ?data_attrs:container_data_attrs
-            [ rows ]
+            ?data_attrs_signal:container_data_attrs_signal [ rows ]
       | `list, false ->
           list ?key ~grow:1.0 ~gap:12 ~cross:`stretch ~style:`plain
+            ~min_height:0 ~min_width:0
             ?style_class:container_class ?data_attrs:container_data_attrs
-            [ rows ]
+            ?data_attrs_signal:container_data_attrs_signal [ rows ]
       | `virtual_list, false ->
           virtual_list ?key ~grow:1.0 ~gap:12 ~cross:`stretch ?overscan
-            ?item_extent ?style_class:container_class
-            ?data_attrs:container_data_attrs [ rows ]
+            ?item_extent ~min_height:0 ~min_width:0
+            ?style_class:container_class
+            ?data_attrs:container_data_attrs
+            ?data_attrs_signal:container_data_attrs_signal [ rows ]
     in
-    stack ~grow:1.0
+    overlay ~grow:1.0 ~min_height:0 ~min_width:0
       [ list_el
       ; align `bottom
           (if_

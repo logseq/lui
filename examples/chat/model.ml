@@ -17,7 +17,21 @@ let tool_call id title status input output : tool_call =
   { call_id = id; title; tool_kind = "demo"; status;
     input = Some input; output; output_truncated = false }
 
-let seed_items = [
+let filler i =
+  if i mod 2 = 0 then
+    user (Printf.sprintf "f%d" i)
+      (Printf.sprintf
+         "Question %d: a longer multi-line prompt spanning\nmultiple lines\nto exercise variable row heights in the transcript."
+         i)
+  else
+    assistant (Printf.sprintf "f%d" i)
+      (Printf.sprintf
+         "Answer %d: keyed rows retain identity while streaming; overscan only\nmaterializes the visible window; the composer stays put.\nMore text here to vary the row height across the list."
+         i)
+
+let seed_items =
+  List.init 30 filler
+  @ [
   user "s1" "How do I stream chat updates in LUI?";
   item "s2" Tool_call;
   assistant "s4" "Keyed rows keep one message a single mounted item while chunks arrive.";

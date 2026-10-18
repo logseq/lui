@@ -10,9 +10,14 @@ open Lui_elements
 (** Optional platform file/photo/camera picker wiring. With [picker],
     the attach control drives an internal request token and the host
     receives the raw [Picked] event via [on_picked] — decode it with
-    [Lui_picked_files.decode] and copy/import files before the library
-    echoes the completion token. Without [picker], [on_attach] is a
-    plain callback for host-supplied pickers. *)
+    [Lui_picked_files.decode] and copy/import files BEFORE
+    acknowledging. The library never auto-acks a pick: echo the batch's
+    request token through [picker_completion] when the import settles
+    (success or error); a stale token that does not match the
+    outstanding request is ignored by the backend. A [Dismiss] cancels
+    any outstanding request automatically unless [picker_completion] is
+    supplied (then the host acknowledges it too). Without [picker],
+    [on_attach] is a plain callback for host-supplied pickers. *)
 type picker = {
   source : file_picker_source;
   types : string option;   (* UTI list, comma-separated *)
@@ -41,6 +46,7 @@ val composer :
   ?picker:picker ->
   ?on_picked:(Lui_protocol.event -> unit) ->
   ?on_picker_dismiss:(Lui_protocol.event -> unit) ->
+  ?picker_completion:Lui_elements.file_picker_token Signal.signal ->
   ?on_attach:(Lui_protocol.event -> unit) ->
   on_input:(Lui_protocol.event -> unit) ->
   on_send:(Lui_protocol.event -> unit) ->
@@ -55,4 +61,7 @@ val composer :
       is a free slot for errors/notices.
     - [controls]/[trailing_controls] flank the action row around the
       library's attach/stop controls (account select, refresh, retry).
-    - No attach control mounts unless [picker] or [on_attach] is given. *)
+    - No attach control mounts unless [picker] or [on_attach] is given.
+    - Enter, the send button and [send_disabled] share one gate:
+      [generating] or [send_disabled] or a non-empty [disabled_reason]
+      disables the control AND swallows submits (no drop, no queue). *)

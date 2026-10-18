@@ -61,3 +61,7 @@ external scroll_to_index_options :
 
 external scroll_to_index : t -> int -> scroll_to_index_options -> unit
   = "scrollToIndex" [@@mel.send]
+
+external item_range : t -> range Js.Nullable.t = "range" [@@mel.get]
+external range_start : range -> int = "startIndex" [@@mel.get]
+external range_end : range -> int = "endIndex" [@@mel.get]

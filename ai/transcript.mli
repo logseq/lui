@@ -51,6 +51,7 @@ val transcript :
   ?load_full_label:(Model.item -> string) ->
   ?on_reach_top:(unit -> unit) ->
   ?scroll_animated:bool ->
+  ?container_data_attrs_signal:(string * string) list Signal.signal ->
   messages:Model.item list Signal.signal ->
   unit ->
   t

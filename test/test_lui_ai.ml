@@ -69,7 +69,11 @@ let text_nodes s =
     tree.nodes []
 
 let send_event s ev = Drive.Session.dispatch s ev
-let aiid name = ("accessibility-identifier", StringValue name)
+
+let has_sub s sub =
+  let n = String.length s and m = String.length sub in
+  let rec go i = i + m <= n && (String.sub s i m = sub || go (i + 1)) in
+  go 0
 
 (* {1 Pure model} *)
 
@@ -299,6 +303,233 @@ let test_composer_send_stop () =
     (not (find_opt s "accessibility-identifier" (StringValue "lui-ai-stop")));
   drive_dispose s
 
+
+(* {1 PR242 review regressions} *)
+
+let scroll_target s =
+  match node_prop (container_node s) "scroll-target" with
+  | Some (StringValue v) -> Some v | _ -> None
+
+(* Rows, not items, drive the tail-follow target: a transcript ending in
+   a tool group must scroll to the group row key, not the last tool's
+   item id (which has no row). *)
+let test_grouped_tail_key () =
+  let items =
+    [ user "u1" "go"; tool_item "t1" `in_progress; tool_item "t2" `pending ] in
+  let s = drive_mount ~initial:items ~view:transcript_view in
+  drive_send_model s (fun m -> M.append_text m "u1" "!");
+  Alcotest.(check (option string)) "tail target is group row key"
+    (Some "tools:t1") (scroll_target s);
+  drive_dispose s
+
+(* Pin detection counts rows, not items: with [u1,t1,t2] grouped into 2
+   rows, seeing the last row (index 1) must keep the tail pinned. *)
+let test_grouped_pin () =
+  let items =
+    [ user "u1" "go"; tool_item "t1" `in_progress; tool_item "t2" `pending ] in
+  let s = drive_mount ~initial:items ~view:transcript_view in
+  let list_el = container_node s in
+  send_event s (VisibleRange (list_el.Drive.Model.id, 0, 1));
+  drive_send_model s (fun m -> m @ [ assistant "a9" "ok" ]);
+  Alcotest.(check (option string)) "still pinned at grouped tail"
+    (Some "a9") (scroll_target s);
+  send_event s (VisibleRange ((container_node s).Drive.Model.id, 0, 0));
+  let before = scroll_target s in
+  drive_send_model s (fun m -> m @ [ assistant "a10" "more" ]);
+  Alcotest.(check (option string)) "unpinned stays put" before
+    (scroll_target s);
+  drive_dispose s
+
+let composer_with ?(generating = fun m -> snd m) ?send_disabled
+    ?disabled_reason send model_s =
+  ignore generating;
+  Lui_ai.Composer.composer
+    ~draft:(Lui_elements.map fst model_s)
+    ~generating:(Lui_elements.map snd model_s)
+    ?send_disabled
+    ?disabled_reason
+    ~on_input:(fun _ -> ())
+    ~on_send:(fun ev -> ignore ev; send ())
+    ()
+
+let textarea_node s =
+  find_node s (fun n -> n.Drive.Model.kind = "textarea")
+
+(* One send-allowed gate for button and Enter: Enter (Submit) must be
+   swallowed while send is disabled, not queued or delivered. *)
+let test_enter_gate () =
+  let sent = ref 0 in
+  let view _ctx model_s send =
+    ignore send;
+    composer_with (fun () -> incr sent) model_s in
+  let s = drive_mount ~initial:("hi", true) ~view in
+  let field = textarea_node s in
+  send_event s (Submit field.Drive.Model.id);
+  Alcotest.(check int) "Enter gated while generating" 0 !sent;
+  drive_send_model s (fun _ -> ("hi", false));
+  send_event s (Submit (textarea_node s).Drive.Model.id);
+  Alcotest.(check int) "Enter submits when allowed" 1 !sent;
+  drive_dispose s
+
+let test_enter_gate_send_disabled () =
+  let sent = ref 0 in
+  let view _ctx model_s send =
+    ignore send;
+    Lui_elements.scoped (fun context ->
+      let blocked =
+        Signal.state context.Lui_ui.ui_scheduler true in
+      Lui_ai.Composer.composer
+        ~draft:(Lui_elements.map fst model_s)
+        ~generating:(Lui_elements.map snd model_s)
+        ~send_disabled:(Signal.value blocked)
+        ~on_input:(fun _ -> ())
+        ~on_send:(fun _ -> incr sent) ()) in
+  let s = drive_mount ~initial:("hi", false) ~view in
+  send_event s (Submit (textarea_node s).Drive.Model.id);
+  Alcotest.(check int) "Enter gated while send_disabled" 0 !sent;
+  let btn =
+    find_by_prop s "accessibility-identifier" (StringValue "button.send") in
+  Alcotest.(check bool) "send button disabled too" true
+    (node_prop btn "enabled" = Some (BoolValue false));
+  drive_dispose s
+
+(* disabled_reason must feed the same send-allowed gate. *)
+let test_disabled_reason_gate () =
+  let sent = ref 0 in
+  let view _ctx model_s send =
+    ignore send;
+    Lui_elements.scoped (fun context ->
+      let reason =
+        Signal.state context.Lui_ui.ui_scheduler "Read only" in
+      Lui_ai.Composer.composer
+        ~draft:(Lui_elements.map fst model_s)
+        ~generating:(Lui_elements.map snd model_s)
+        ~disabled_reason:(Signal.value reason)
+        ~on_input:(fun _ -> ())
+        ~on_send:(fun _ -> incr sent) ()) in
+  let s = drive_mount ~initial:("hi", false) ~view in
+  let btn =
+    find_by_prop s "accessibility-identifier" (StringValue "button.send") in
+  Alcotest.(check bool) "reason disables send" true
+    (node_prop btn "enabled" = Some (BoolValue false));
+  send_event s (Submit (textarea_node s).Drive.Model.id);
+  Alcotest.(check int) "reason gates Enter" 0 !sent;
+  drive_dispose s
+
+(* Picker completion is host-controlled: a Picked event must NOT echo the
+   completion token (Apple would revoke temp files before async import);
+   the host echoes via ?picker_completion. Dismiss still releases the
+   outstanding request automatically when no host signal is supplied. *)
+let test_picker_async_ack () =
+  let picked = ref [] in
+  let view _ctx _model_s _send =
+    Lui_elements.scoped (fun context ->
+      let draft = Signal.state context.Lui_ui.ui_scheduler "" in
+      let gen = Signal.state context.Lui_ui.ui_scheduler false in
+      Lui_ai.Composer.composer
+        ~draft:(Signal.value draft) ~generating:(Signal.value gen)
+        ~picker:{ source = `files; types = None; accept = None;
+                  multiple = true }
+        ~on_picked:(fun ev ->
+          match ev with Picked (_, p) -> picked := p :: !picked | _ -> ())
+        ~on_input:(fun _ -> ()) ~on_send:(fun _ -> ()) ()) in
+  let s = drive_mount ~initial:() ~view in
+  let picker =
+    find_node s (fun n -> n.Drive.Model.kind = "file-picker") in
+  Drive.Session.press s
+    (find_by_prop s "accessibility-identifier" (StringValue "lui-ai-attach")).id;
+  send_event s (Picked (picker.Drive.Model.id,
+    {|{"request":"op-1","files":[]}|}));
+  Alcotest.(check bool) "picked delivered" true (!picked <> []);
+  Alcotest.(check (option string)) "no premature ack" None
+    (match node_prop picker "completion" with
+     | Some (StringValue v) -> Some v | _ -> None);
+  send_event s (Dismiss picker.Drive.Model.id);
+  Alcotest.(check bool) "dismiss releases outstanding request" true
+    (node_prop picker "completion" <> None);
+  drive_dispose s
+
+let test_picker_host_completion () =
+  let completion_ref = ref None in
+  let view _ctx _model_s _send =
+    Lui_elements.scoped (fun context ->
+      let draft = Signal.state context.Lui_ui.ui_scheduler "" in
+      let gen = Signal.state context.Lui_ui.ui_scheduler false in
+      let completion =
+        Signal.state context.Lui_ui.ui_scheduler (`Int (-1)) in
+      completion_ref := Some completion;
+      Lui_ai.Composer.composer
+        ~draft:(Signal.value draft) ~generating:(Signal.value gen)
+        ~picker:{ source = `files; types = None; accept = None;
+                  multiple = true }
+        ~picker_completion:(Signal.value completion)
+        ~on_input:(fun _ -> ()) ~on_send:(fun _ -> ()) ()) in
+  let s = drive_mount ~initial:() ~view in
+  let picker =
+    find_node s (fun n -> n.Drive.Model.kind = "file-picker") in
+  Drive.Session.press s
+    (find_by_prop s "accessibility-identifier" (StringValue "lui-ai-attach")).id;
+  send_event s (Picked (picker.Drive.Model.id,
+    {|{"request":"op-1","files":[]}|}));
+  Alcotest.(check (option string)) "host acks, library does not" None
+    (match node_prop picker "completion" with
+     | Some (StringValue v) -> Some v | _ -> None);
+  Signal.set (Option.get !completion_ref) (`String "op-1");
+  drive_flush s;
+  Alcotest.(check (option string)) "host completion echoes"
+    (Some "op-1")
+    (match node_prop picker "completion" with
+     | Some (StringValue v) -> Some v | _ -> None);
+  drive_dispose s
+
+(* The transcript bounds its own scroll viewport and centers a bounded
+   content column; user bubbles right-align inside it. *)
+let test_bounded_layout () =
+  let s = drive_mount ~initial:[ user "u1" "hi" ] ~view:transcript_view in
+  let list_el = container_node s in
+  Alcotest.(check bool) "scroll container min-height 0" true
+    (node_prop list_el "min-height" = Some (IntValue 0)
+     || node_prop list_el "min-height" = Some (StringValue "0"));
+  let centered =
+    find_node s (fun n ->
+        n.Drive.Model.kind = "row"
+        && node_prop n "main" = Some (StringValue "center")) in
+  ignore centered;
+  let bounded =
+    find_node s (fun n ->
+        n.Drive.Model.kind = "column"
+        && node_prop n "max-width" = Some (IntValue 768)) in
+  ignore bounded;
+  drive_dispose s
+
+let test_container_data_attrs_signal () =
+  let attrs_ref = ref None in
+  let view _ctx model_s _send =
+    Lui_elements.scoped (fun context ->
+      let attrs =
+        Signal.state context.Lui_ui.ui_scheduler
+          [ ("data-scroll-root", "chat") ] in
+      attrs_ref := Some attrs;
+      Lui_ai.Transcript.transcript ~messages:model_s
+        ~container_data_attrs_signal:(Signal.value attrs) ()) in
+  let s = drive_mount ~initial:[ user "u1" "x" ] ~view in
+  let list_el = container_node s in
+  let get_attrs () =
+    match node_prop list_el "data-attrs" with
+    | Some (StringValue v) -> Some v | _ -> None in
+  Alcotest.(check bool) "signal attrs land" true
+    (match get_attrs () with
+     | Some v -> has_sub v "data-scroll-root"
+     | None -> false);
+  Signal.set (Option.get !attrs_ref)
+    [ ("data-scroll-root", "chat"); ("data-row-count", "1") ];
+  drive_flush s;
+  Alcotest.(check bool) "signal attrs update" true
+    (match get_attrs () with
+     | Some v -> has_sub v "data-row-count"
+     | None -> false);
+  drive_dispose s
+
 (* {1 Disposal} *)
 
 let test_dispose () =
@@ -314,7 +545,12 @@ let tests =
         Alcotest.test_case "tool sparse merge" `Quick test_tool_sparse_merge;
         Alcotest.test_case "tool grouping" `Quick test_group_rows ] );
     ( "transcript",
-      [ Alcotest.test_case "streaming updates same row" `Quick
+      [ Alcotest.test_case "grouped tail key" `Quick test_grouped_tail_key;
+        Alcotest.test_case "grouped pin" `Quick test_grouped_pin;
+        Alcotest.test_case "bounded layout" `Quick test_bounded_layout;
+        Alcotest.test_case "container attrs signal" `Quick
+          test_container_data_attrs_signal;
+        Alcotest.test_case "streaming updates same row" `Quick
           test_streaming_same_row;
         Alcotest.test_case "reorder/dup identity" `Quick
           test_keyed_reorder_dup;
@@ -324,6 +560,14 @@ let tests =
         Alcotest.test_case "host-driven viewport" `Quick
           test_host_driven_viewport ] );
     ( "composer",
-      [ Alcotest.test_case "send/stop gating" `Quick test_composer_send_stop ] );
+      [ Alcotest.test_case "send/stop gating" `Quick test_composer_send_stop;
+        Alcotest.test_case "enter gate" `Quick test_enter_gate;
+        Alcotest.test_case "enter gate send_disabled" `Quick
+          test_enter_gate_send_disabled;
+        Alcotest.test_case "disabled reason gate" `Quick
+          test_disabled_reason_gate;
+        Alcotest.test_case "picker async ack" `Quick test_picker_async_ack;
+        Alcotest.test_case "picker host completion" `Quick
+          test_picker_host_completion ] );
     ( "lifecycle", [ Alcotest.test_case "dispose" `Quick test_dispose ] );
   ]
