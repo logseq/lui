@@ -35,6 +35,59 @@ async function clickButton(name) {
   await browser("click-button", name)
 }
 
+test('ordinary dropdown selection returns focus to its trigger', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open ordinary menu')
+  await session.page.getByRole('menuitem', {name: 'Choose ordinary action', exact: true}).click()
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'Open ordinary menu')
+})
+
+test('ordinary dropdown Escape returns focus to its trigger', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open ordinary menu')
+  await session.page.getByRole('menuitem', {name: 'Choose ordinary action', exact: true}).press('Escape')
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'Open ordinary menu')
+})
+
+test('ordinary dropdown closure preserves outside and newly opened dialog focus', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open ordinary menu')
+  await clickButton('Outside action')
+  await session.page.waitForTimeout(30)
+  assert.equal(await session.page.locator(':focus').textContent(), 'Outside action')
+  await clickButton('Open ordinary menu')
+  await session.page.getByRole('menuitem', {name: 'Open dialog from ordinary menu', exact: true}).click()
+  await session.page.getByPlaceholder('Dialog input', {exact: true}).waitFor({state: 'visible'})
+  await session.page.waitForFunction(() => document.activeElement?.getAttribute('placeholder') === 'Dialog input')
+})
+
+test('retained dropdown closure restores focus and reopening cancels stale restoration', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open retained ordinary menu')
+  await session.page.getByRole('menuitem', {name: 'Choose ordinary action', exact: true}).click()
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'Open retained ordinary menu')
+  await clickButton('Open retained ordinary menu')
+  await clickButton('Cycle retained menu')
+  await session.page.waitForTimeout(30)
+  assert.equal(await session.page.getByRole('menu').isVisible(), true)
+  assert.equal(await session.page.locator(':focus').textContent(), 'Cycle retained menu')
+})
+
+test('ordinary dropdown closure skips unavailable triggers', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open ordinary menu')
+  await session.page.getByRole('menuitem', {name: 'Disable ordinary trigger', exact: true}).click()
+  await session.page.waitForTimeout(30)
+  assert.equal(await session.page.getByRole('button', {name: 'Open ordinary menu', exact: true}).isDisabled(), true)
+  assert.equal(await session.page.locator(':focus').count(), 0)
+  await openLayerRegressionPage()
+  await clickButton('Open ordinary menu')
+  await session.page.getByRole('menuitem', {name: 'Remove ordinary owner', exact: true}).click()
+  await session.page.waitForTimeout(30)
+  assert.equal(await session.page.getByRole('button', {name: 'Open ordinary menu', exact: true}).count(), 0)
+  assert.equal(await session.page.locator(':focus').count(), 0)
+})
+
 test('popover button-only menus focus the first available action and activate once', async () => {
   await openLayerRegressionPage()
   await clickButton('Open popover action menu')

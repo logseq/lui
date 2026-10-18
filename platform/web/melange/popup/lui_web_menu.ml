@@ -332,6 +332,21 @@ let activate_menu_item_bang = activate_menu_item
 
 (* --- dropdown open/close --- *)
 
+(* Return after the close batch publishes its next focus owner. A retained
+   menu reopened in that batch must keep its current focus. *)
+let restore_dropdown_focus renderer node positioner =
+  let trigger =
+    Option.bind (Lui_web_layers.layer_at renderer.web_layers node) (fun layer ->
+        layer.Lui_web_layers.trigger)
+  in
+  ignore
+    (Js.Global.setTimeout
+       ~f:(fun () ->
+         if not (Lui_web_layers.is_open renderer.web_layers node) then
+           Lui_web_focus.restore_focus_if_unmoved renderer ~closing:positioner
+             trigger)
+       0)
+
 let rec set_dropdown_open renderer node open_ =
   let positioner = Lui_web_nodes.dom_node renderer node in
   let popup = Lui_web_util.child_element positioner 0 in
@@ -360,6 +375,7 @@ let rec set_dropdown_open renderer node open_ =
     in
     begin_popup_close popup;
     W.Element.setAttribute "inert" "" popup;
+    restore_dropdown_focus renderer node positioner;
     Lui_web_util.after_surface_motion renderer.web_document [ popup ] (fun () ->
         if Lui_web_layers.transition renderer.web_layers node = token
            && not (Lui_web_layers.is_open renderer.web_layers node)
@@ -1662,6 +1678,7 @@ let remove_dropdown_after_exit renderer node parent positioner =
     in
     begin_popup_close popup;
     W.Element.setAttribute "inert" "" popup;
+    restore_dropdown_focus renderer node positioner;
     Lui_web_util.after_surface_motion renderer.web_document [ popup ] (fun () ->
         if
           Lui_web_layers.transition renderer.web_layers node = token
