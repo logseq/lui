@@ -95,9 +95,33 @@ let positive_motion_transition document target =
       List.exists (fun token -> not (duration_token_is_zero token)) durations
   | _ -> false
 
-(* Positive longhands declared on the element. [None] means the property
-   and duration lists do not line up, so the caller must wait a frame
-   before deciding the set is complete. *)
+(* CSS repeats the shorter transition list to match the longer one.
+   [transition-duration: 150ms] with [opacity, transform] is two 150ms
+   longhands, not a mismatch. *)
+let repeat_to_length items count =
+  let length = List.length items in
+  if count = 0 || length = 0 then []
+  else
+    let rec take index remaining acc =
+      if remaining = 0 then List.rev acc
+      else
+        let item = List.nth items (index mod length) in
+        take (index + 1) (remaining - 1) (item :: acc)
+    in
+    take 0 count []
+
+let align_transition_lists properties durations =
+  let property_count = List.length properties in
+  let duration_count = List.length durations in
+  if property_count = 0 || duration_count = 0 then None
+  else if property_count = duration_count then Some (properties, durations)
+  else if property_count > duration_count then
+    Some (properties, repeat_to_length durations property_count)
+  else Some (repeat_to_length properties duration_count, durations)
+
+(* Positive longhands declared on the element. [None] means the lists were
+   empty, so the caller must wait a frame before deciding the set is
+   complete. *)
 let declared_positive_properties document target =
   match computed_transition document target with
   | Some (property, durations) when property <> "" && property <> "none" ->
@@ -105,13 +129,14 @@ let declared_positive_properties document target =
         List.map String.trim (String.split_on_char ',' property)
       in
       let durations = List.map String.trim durations in
-      if List.length properties <> List.length durations then None
-      else
-        Some
-          (List.filter_map
-             (fun (name, duration) ->
-               if duration_token_is_zero duration then None else Some name)
-             (List.combine properties durations))
+      (match align_transition_lists properties durations with
+       | None -> None
+       | Some (properties, durations) ->
+           Some
+             (List.filter_map
+                (fun (name, duration) ->
+                  if duration_token_is_zero duration then None else Some name)
+                (List.combine properties durations)))
   | _ -> Some []
 
 let animation_is_active animation =
@@ -126,12 +151,14 @@ let transition_property_matches animation property =
 
 (* Wait out a surface exit. Reduced motion finishes immediately. Finite
    tracks release together when the last one settles, so a short opacity
-   fade cannot drop a card that still has a transform. A zero-duration
-   transition releases on the next frame. [transition: none] keeps
-   [fallback] instead of releasing synchronously. One transitioncancel
-   settles only the named track; the wait ends immediately when that was
-   the last active track, which is how a modal shell test dismisses from
-   a single cancel. *)
+   fade cannot drop a card that still has a transform. A declared property
+   that already has a track does not wait for the next frame: finishing
+   that track (including [animation.finish]) releases the surface in the
+   same turn. A zero-duration transition releases on the next frame.
+   [transition: none] keeps [fallback] instead of releasing synchronously.
+   One transitioncancel settles only the named track; the wait ends
+   immediately when that was the last active track, which is how a modal
+   shell test dismisses from a single cancel. *)
 let after_surface_motion document targets ?(finish_on_cancel = false) ~fallback
     complete =
   let reduced_motion =
@@ -160,38 +187,41 @@ let after_surface_motion document targets ?(finish_on_cancel = false) ~fallback
       end
     in
     let seen = ref false in
-    let any_active () = List.exists animation_is_active !tracks in
-    let missing_positive_track () =
-      List.exists
-        (fun target ->
-          match declared_positive_properties document target with
-          | None -> true
-          | Some properties ->
-              List.exists
-                (fun name ->
-                  not
-                    (List.exists
-                       (fun animation ->
-                         transition_property_matches animation name)
-                       !tracks))
-                properties)
-        targets
+    let pending = ref [] in
+    let any_active () =
+      List.exists (fun (_, animation) -> animation_is_active animation) !tracks
+    in
+    let forget_property target name =
+      pending :=
+        List.filter
+          (fun (tracked, existing) ->
+            not (tracked == target && existing = name))
+          !pending
+    in
+    (* A promise can resolve before the next frame reveals a delayed
+       transform. A property that already has a track, or that has already
+       fired transitionend, does not block. Anything still missing waits
+       for that frame, then the adopted tracks alone own the exit. *)
+    let blocking_properties () =
+      if !seen then [] else !pending
     in
     let settle_if_complete () =
-      (* A promise can resolve before the next frame reveals a delayed
-         transform. When every declared positive property already has a
-         track, the current set is complete and can release immediately.
-         Otherwise wait for that frame, then release once every adopted
-         track has settled. *)
       if
         !settled >= List.length !tracks
         && (not (any_active ()))
-        && (!seen || not (missing_positive_track ()))
+        && blocking_properties () = []
       then finish ()
     in
-    let watch_track animation =
-      if not (List.exists (fun existing -> existing == animation) !tracks) then begin
-        tracks := animation :: !tracks;
+    let watch_track target animation =
+      if
+        not (List.exists (fun (_, existing) -> existing == animation) !tracks)
+      then begin
+        tracks := (target, animation) :: !tracks;
+        (match
+           Js.Nullable.toOption (animation_transition_property animation)
+         with
+         | Some name -> forget_property target name
+         | None -> ());
         ignore
           (animation_finished animation
           |> Js.Promise.catch (fun _ -> Js.Promise.resolve ())
@@ -200,6 +230,22 @@ let after_surface_motion document targets ?(finish_on_cancel = false) ~fallback
                  settle_if_complete ();
                  Js.Promise.resolve ()))
       end
+    in
+    let watch_transition_end target =
+      let handler event =
+        if
+          transition_event_from target event
+          && event_type event = "transitionend"
+        then begin
+          forget_property target (event_property_name event);
+          settle_if_complete ()
+        end
+      in
+      W.Element.addEventListener "transitionend" handler target;
+      detach :=
+        (fun () ->
+           W.Element.removeEventListener "transitionend" handler target)
+        :: !detach
     in
     let watch_cancel target =
       let handler event =
@@ -214,8 +260,9 @@ let after_surface_motion document targets ?(finish_on_cancel = false) ~fallback
           else begin
             let property = event_property_name event in
             if property <> "" then begin
+              forget_property target property;
               List.iter
-                (fun animation ->
+                (fun (_, animation) ->
                   if
                     transition_property_matches animation property
                     && animation_is_active animation
@@ -231,36 +278,56 @@ let after_surface_motion document targets ?(finish_on_cancel = false) ~fallback
            W.Element.removeEventListener "transitioncancel" handler target)
         :: !detach
     in
+    let arm_fallback () =
+      if (not !finished) && !timer = None then
+        timer := Some (Js.Global.setTimeout ~f:finish fallback)
+    in
+    let adopt_later_tracks () =
+      if not !finished then begin
+        List.iter
+          (fun target ->
+            List.iter (watch_track target) (finite_surface_animations target))
+          targets;
+        seen := true;
+        if !tracks = [] then
+          (* A positive declaration that never produced a track still uses
+             the historical timer. [transition: none] takes that path
+             immediately, before this frame. *)
+          arm_fallback ()
+        else settle_if_complete ()
+      end
+    in
     if finish_on_cancel then List.iter watch_cancel targets;
+    List.iter watch_transition_end targets;
     List.iter
-      (fun target -> List.iter watch_track (finite_surface_animations target))
+      (fun target ->
+        (match declared_positive_properties document target with
+         | None -> ()
+         | Some properties ->
+             pending :=
+               List.rev_append
+                 (List.rev_map (fun name -> (target, name)) properties)
+                 !pending);
+        List.iter (watch_track target) (finite_surface_animations target))
       targets;
-    match !tracks with
-    | [] ->
-        if
-          List.exists (zero_motion_transition document) targets
-          && not (List.exists (positive_motion_transition document) targets)
-        then Webapi.requestAnimationFrame (fun _ -> finish ())
-        else
-          (* transition: none never produces a track. The historical
-             fallback keeps the exiting surface mounted until that timer,
-             which is what submenu tests advance with a fake clock. *)
-          timer := Some (Js.Global.setTimeout ~f:finish fallback)
-    | _ ->
-        (* A running or already-finished finite track owns the exit. The
-           fallback must not cut off a longer or paused track. Look once
-           more on the next frame so a delayed transform that was not in
-           the first snapshot is adopted before any shorter track can
-           release the surface. *)
-        Webapi.requestAnimationFrame (fun _ ->
-            if not !finished then begin
-              List.iter
-                (fun target ->
-                  List.iter watch_track (finite_surface_animations target))
-                targets;
-              seen := true;
-              settle_if_complete ()
-            end)
+    if
+      !tracks = []
+      && List.exists (zero_motion_transition document) targets
+      && not (List.exists (positive_motion_transition document) targets)
+    then Webapi.requestAnimationFrame (fun _ -> finish ())
+    else if !tracks = [] && !pending = [] then
+      (* transition: none never produces a track. The historical fallback
+         keeps the exiting surface mounted until that timer, which is what
+         submenu tests advance with a fake clock. *)
+      arm_fallback ()
+    else begin
+      (* Look once more on the next frame so a delayed transform that was
+         not in the first snapshot is adopted before any shorter track can
+         release the surface. Declared tracks that are already present can
+         release on this turn. *)
+      Webapi.requestAnimationFrame (fun _ -> adopt_later_tracks ());
+      settle_if_complete ()
+    end
 
 
 (* The DOM is untyped: a "pointerdown" listener receives a Dom.event whose
