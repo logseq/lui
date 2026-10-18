@@ -1240,7 +1240,7 @@ let property_supported kind property =
     | Accordion ->
       property = TextValue || property = Selected
       || property = ToggleEnabled || property = HeightValue
-      || property = PointerEnabled
+      || property = PointerEnabled || property = StyleClass
     | Stepper ->
       property = ActiveIndex || property = AccessibilityLabel
       || property = PointerEnabled

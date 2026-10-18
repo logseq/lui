@@ -355,7 +355,7 @@ let property_name property =
 
 let kind_property_matrix kind =
   match kind with
-  | Accordion -> Some [ TextValue; Selected; ToggleEnabled; HeightValue; PointerEnabled ]
+  | Accordion -> Some [ TextValue; Selected; ToggleEnabled; HeightValue; PointerEnabled; StyleClass ]
   | Stepper -> Some [ ActiveIndex; AccessibilityLabel; PointerEnabled ]
   | Step -> Some [ TextValue; PointerEnabled ]
   | Timeline -> Some [ Gap; GrowValue; AccessibilityLabel; PointerEnabled ]
