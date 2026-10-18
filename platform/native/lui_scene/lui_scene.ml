@@ -49,9 +49,10 @@ let snap_point (x, y) = (snap x, snap y)
 
 let rect_snap r =
   let x0 = snap r.x and y0 = snap r.y in
-  rect x0 y0
-    (Float.max 0. (snap (r.x +. r.w) -. x0))
-    (Float.max 0. (snap (r.y +. r.h) -. y0))
+  let w = Float.max 0. (snap (r.x +. r.w) -. x0)
+  and h = Float.max 0. (snap (r.y +. r.h) -. y0) in
+  if r.x=x0 && r.y=y0 && r.w=w && r.h=h then r
+  else rect x0 y0 w h
 
 (* Integer rectangle, used by atlas change tracking and backdrops. *)
 type irect = { x0 : int; y0 : int; x1 : int; y1 : int }

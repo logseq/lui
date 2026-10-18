@@ -1380,8 +1380,9 @@ let test_deep_rect_refresh_budget () =
   let before = Gc.allocated_bytes () in
   Lui_layout.sync ~width:1000. ~height:600. layout store;
   let allocated = Gc.allocated_bytes () -. before in
+  Printf.printf "deep absolute geometry refresh: %.0f bytes\n%!" allocated;
   check bool (Printf.sprintf "deep absolute geometry refresh allocates %.0f bytes" allocated)
-    true (allocated < 2097152.);
+    true (allocated < 1_000_000.);
   check_some_rect "last leaf follows ancestor offset" 0. 128. 1000. 1.
     (Lui_layout.rect layout !last);
   Lui_store.apply_op store (SetProp (!last,HeightValue,IntValue 2));

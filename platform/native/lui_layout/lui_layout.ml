@@ -1674,18 +1674,18 @@ let scene_rect (r : Lui_flex.rect) : Lui_scene.rect =
      it differs from what consumers last saw. *)
 let update_rect (t : t) id r =
   let r' = scene_rect r in
-  (match Hashtbl.find_opt t.rects id with
-   | Some old when old = r' -> ()
-   | _ -> Hashtbl.replace t.rect_changed id ());
+  (match Hashtbl.find t.rects id with
+   | old when old = r' -> ()
+   | _ | exception Not_found -> Hashtbl.replace t.rect_changed id ());
   Hashtbl.replace t.rects id r'
 
 let absolute_reader (t : t) =
   let resolved = Hashtbl.create (Hashtbl.length t.nodes) in
   let frame = Lui_flex.layout (Option.get t.root) in
   let rec read id =
-    match Hashtbl.find_opt resolved id with
-    | Some rect -> rect
-    | None ->
+    match Hashtbl.find resolved id with
+    | rect -> rect
+    | exception Not_found ->
       let local = Lui_flex.layout (Hashtbl.find t.nodes id) in
       let owner = Hashtbl.find t.owner id in
       let parent = if owner=frame_id then frame else read owner in
@@ -2576,9 +2576,7 @@ let apply_journal_op ctx (op : patch_op) =
    moves its siblings, so the refresh root is the owner — the flex
    parent — not the changed node). [frame_id] dirties everything. *)
 let rec refresh_sub ctx read sid =
-  (match Hashtbl.find_opt ctx.nodes sid with
-   | Some _ -> update_rect ctx.eng sid (read sid)
-   | None -> ());
+  if Hashtbl.mem ctx.nodes sid then update_rect ctx.eng sid (read sid);
   List.iter
     (fun e -> List.iter (fun g -> refresh_sub ctx read g) e.gens)
     (pkids_of ctx sid)

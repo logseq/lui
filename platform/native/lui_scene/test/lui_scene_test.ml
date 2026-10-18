@@ -217,12 +217,30 @@ let test_rect_snap () =
   Alcotest.(check bool) "degenerate" true
     (rect_empty (rect_snap (rect 10.6 0. 0.2 4.)))
 
+let test_snapped_rect_allocation () =
+  let cases = [|rect 0. 0. 100. 20.; rect (-20.) 4. 0. 0.;
+    rect 10. 5. 30. 40.|] in
+  let before = Gc.allocated_bytes () in
+  for index = 0 to 99_999 do
+    let source = cases.(index mod Array.length cases) in
+    let result = Sys.opaque_identity (rect_snap source) in
+    if result <> source then Alcotest.fail "Snapping changed integer geometry"
+  done;
+  let allocated = Gc.allocated_bytes () -. before in
+  Printf.printf "integer rectangle snapping: %.0f bytes/100000 calls\n%!" allocated;
+  Alcotest.(check bool) "Repeated snapped geometry creates temporary rectangles" true
+    (allocated <= 4096.);
+  let negative = rect_snap (rect 10. 5. (-3.) (-2.)) in
+  fcheck "negative width stays clamped" 0. negative.w;
+  fcheck "negative height stays clamped" 0. negative.h
+
 let () =
   Alcotest.run "lui_scene"
     [ ( "snap",
         [ Alcotest.test_case "intersection allocation" `Quick test_rect_intersections;
           Alcotest.test_case "coordinate" `Quick test_snap;
-          Alcotest.test_case "rect edges" `Quick test_rect_snap ] );
+          Alcotest.test_case "rect edges" `Quick test_rect_snap;
+          Alcotest.test_case "snapped allocation" `Quick test_snapped_rect_allocation ] );
       ( "atlas",
         [ Alcotest.test_case "put clears padding" `Quick
             test_atlas_put_clears_padding;
