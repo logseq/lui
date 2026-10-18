@@ -385,17 +385,20 @@ let jump_pill pinned rows_s scroll_to scroll_animated : t =
 
 let list_el_of ~key ~container_kind ~anchored ?overscan ?item_extent
     ~on_visible_range ~request ~scroll_animated ~container_class
-    ~container_data_attrs ~container_data_attrs_signal rows : t =
+    ~container_data_attrs ~container_data_attrs_signal
+    ?on_scroll_completed rows : t =
   match container_kind, anchored with
   | `list, true ->
       list ?key ~grow:1.0 ~gap:12 ~cross:`stretch ~style:`plain
+        ~min_height:0 ~min_width:0
         ~track_visible_range:true ~on_visible_range
         ~scroll_anchor:`bottom
         ~scroll_target:(reactive (fun (k, _) -> k) (Signal.value request))
         ~scroll_token:(reactive (fun (_, t) -> t) (Signal.value request))
         ~scroll_animated ?style_class:container_class
         ?data_attrs:container_data_attrs
-        ?data_attrs_signal:container_data_attrs_signal [ rows ]
+        ?data_attrs_signal:container_data_attrs_signal
+        ?on_scroll_completed [ rows ]
   | `virtual_list, true ->
       virtual_list ?key ~grow:1.0 ~gap:12 ~cross:`stretch ?overscan
         ?item_extent ~min_height:0 ~min_width:0
@@ -405,7 +408,8 @@ let list_el_of ~key ~container_kind ~anchored ?overscan ?item_extent
         ~scroll_token:(reactive (fun (_, t) -> t) (Signal.value request))
         ~scroll_animated ?style_class:container_class
         ?data_attrs:container_data_attrs
-        ?data_attrs_signal:container_data_attrs_signal [ rows ]
+        ?data_attrs_signal:container_data_attrs_signal
+        ?on_scroll_completed [ rows ]
   | `list, false ->
       list ?key ~grow:1.0 ~gap:12 ~cross:`stretch ~style:`plain
         ~min_height:0 ~min_width:0 ?style_class:container_class
@@ -442,7 +446,7 @@ let transcript ?key ?(viewport = Anchored) ?overscan ?item_extent
     ?(retry_label = "Retry same message") ?on_load_full
     ?(load_full_label = fun _ -> "Load full item") ?on_reach_top
     ?(scroll_animated = false) ?container_data_attrs_signal
-    ~messages () : t =
+    ?on_scroll_completed ~messages () : t =
   scoped (fun context ->
     let context =
       Lui_ui.child_context context (Lui_ui.owner_name context "lui-ai")
@@ -494,7 +498,8 @@ let transcript ?key ?(viewport = Anchored) ?overscan ?item_extent
     let list_el =
       list_el_of ~key ~container_kind ~anchored ?overscan ?item_extent
         ~on_visible_range ~request ~scroll_animated ~container_class
-        ~container_data_attrs ~container_data_attrs_signal rows
+        ~container_data_attrs ~container_data_attrs_signal
+        ?on_scroll_completed rows
     in
     overlay ~grow:1.0 ~min_height:0 ~min_width:0
       [ list_el; jump_pill pinned rows_s scroll_to scroll_animated ])

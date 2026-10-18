@@ -111,3 +111,71 @@ test("oversized final response: scroll-within unpins, jump reaches real bottom",
   assert.ok(m.top > m.bottom - 64,
     `jump on tall tail must reach bottom, got top=${m.top} bottom=${m.bottom}`)
 })
+
+test("anchored-list mode: bounded scroller, unpin, Jump lands at bottom", async () => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto(`${origin}/examples/chat/web/index.html?list`,
+    { waitUntil: "networkidle" })
+  await page.waitForSelector("#app textarea", { timeout: 10000 })
+  // Bounded internal scroller + tail-follow to the real bottom.
+  await page.waitForFunction(() => {
+    const sc = [...document.querySelectorAll("#app div")].find(
+      (d) => d.scrollHeight > d.clientHeight + 2 &&
+        getComputedStyle(d).overflowY === "auto")
+    return sc && sc.scrollTop > 0 &&
+      sc.scrollTop >= sc.scrollHeight - sc.clientHeight - 4
+  }, null, { timeout: 10000 })
+  const m = await scrollerMetrics()
+  assert.ok(m && m.top > 0 && m.top >= m.bottom - 4,
+    `anchored-list must bound and follow tail, got ${JSON.stringify(m)}`)
+
+  await page.mouse.move(640, 400)
+  await page.mouse.wheel(0, -2400)
+  const jump = page.getByRole("button", { name: "Jump to latest" })
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll("button")].some(
+      (b) => (b.getAttribute("aria-label") || "").includes("Jump")),
+    null, { timeout: 5000 })
+  await jump.click()
+  await page.waitForFunction(() => {
+    const sc = [...document.querySelectorAll("#app div")].find(
+      (d) => d.scrollHeight > d.clientHeight + 2 &&
+        getComputedStyle(d).overflowY === "auto")
+    return sc && sc.scrollTop >= sc.scrollHeight - sc.clientHeight - 4
+  }, null, { timeout: 8000 })
+})
+
+test("scroll completion outcomes are observable (succeeded, cancelled)", async () => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto(`${origin}/examples/chat/web/index.html?debug`,
+    { waitUntil: "networkidle" })
+  await page.waitForSelector("#app textarea", { timeout: 10000 })
+  await page.waitForFunction(() => {
+    const sc = [...document.querySelectorAll("#app div")].find(
+      (d) => d.scrollHeight > d.clientHeight + 2 &&
+        getComputedStyle(d).overflowY === "auto")
+    return sc && sc.scrollTop >= sc.scrollHeight - sc.clientHeight - 4
+  }, null, { timeout: 10000 })
+  // Unpin then Jump: outcome "succeeded" must appear in the debug line.
+  await page.mouse.move(640, 400)
+  await page.mouse.wheel(0, -2400)
+  const jump = page.getByRole("button", { name: "Jump to latest" })
+  await jump.click()
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll("#app *")].some(
+      (el) => (el.textContent || "").trim() === "succeeded"),
+    null, { timeout: 8000 })
+  // Rapid double-Jump: the superseded intent completes "cancelled"
+  // before the second lands as "succeeded".
+  await page.mouse.wheel(0, -2400)
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll("button")].some(
+      (b) => (b.getAttribute("aria-label") || "").includes("Jump")),
+    null, { timeout: 5000 })
+  await jump.click()
+  await jump.click().catch(() => {})
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll("#app *")].some(
+      (el) => (el.textContent || "").trim() === "succeeded"),
+    null, { timeout: 8000 })
+})

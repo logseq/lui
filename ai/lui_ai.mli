@@ -41,6 +41,7 @@ val view :
   on_input:(Lui_protocol.event -> unit) ->
   on_send:(Lui_protocol.event -> unit) ->
   ?on_stop:(Lui_protocol.event -> unit) ->
+  ?on_scroll_completed:(Lui_protocol.event -> unit) ->
   unit ->
   Lui_elements.t
 (** Full chat surface: transcript (grow) over the composer capsule, with

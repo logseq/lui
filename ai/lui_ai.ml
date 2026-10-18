@@ -9,7 +9,8 @@ let view ?key ?viewport ?(content_width = 768) ?header ?placeholder
     ?picker ?render_item ?item_actions ?on_retry ?on_load_full
     ?on_reach_top ?on_remove_attachment ?on_picked ?on_attach
     ?composer_controls ?composer_trailing_controls ?status ~messages
-    ~draft ~attachments ~generating ~on_input ~on_send ?on_stop () : t =
+    ~draft ~attachments ~generating ~on_input ~on_send ?on_stop
+    ?on_scroll_completed () : t =
   let strip =
     reactive
       (fun (atts : Model.attachment list) ->
@@ -27,7 +28,7 @@ let view ?key ?viewport ?(content_width = 768) ?header ?placeholder
   in
   column ?key ~grow:1.0 ~cross:`stretch
     (Option.to_list header
-     @ [ Transcript.transcript ~messages ?viewport ~content_width
+     @ [ Transcript.transcript ~messages ?viewport ~content_width ?on_scroll_completed
            ?render_item ?item_actions ?on_retry ?on_load_full
            ?on_reach_top ()
        ; Composer.composer ~draft ~generating ?placeholder

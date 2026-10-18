@@ -52,6 +52,7 @@ val transcript :
   ?on_reach_top:(unit -> unit) ->
   ?scroll_animated:bool ->
   ?container_data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_scroll_completed:(Lui_protocol.event -> unit) ->
   messages:Model.item list Signal.signal ->
   unit ->
   t

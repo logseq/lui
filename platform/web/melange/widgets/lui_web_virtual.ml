@@ -47,7 +47,11 @@ let install renderer node ~materialize ~unmount =
     in
     let last_token = ref None in
     let last_range = ref None in
-    let last_edges = ref None in
+    (* Baseline: mounted at top and not yet at bottom — the first
+       computed edge state only emits on a real transition, so a
+       mount-time top position does not falsely unpin the tail-follow
+       before the initial scroll lands. *)
+    let last_edges = ref (Some (true, false)) in
         let document = W.Document.unsafeAsHtmlDocument renderer.web_document in
     let live_rows () =
       Hashtbl.fold (fun id _ rows -> id :: rows) mounted []
@@ -180,43 +184,41 @@ let install renderer node ~materialize ~unmount =
                 pending_scroll :=
                   Some (token, target_key, align, behavior, tries + 1)
           | Some index -> (
+              (* Real DOM geometry decides landing — scrollTop applies
+                 synchronously even for "auto" jumps. A pending intent
+                 survives until it lands, is superseded (cancelled), the
+                 row proves absent after committed children populate
+                 (missing-target), or the node disposes. scrollToIndex
+                 is idempotent while pending; repeated issues converge
+                 once the row is measured. *)
+              let row_id = !rows.(index) in
               let landed =
-                match
-                  ( Array.find_opt
-                      (fun it -> V.item_index it = index)
-                      (V.items virtualizer),
-                    Js.Nullable.toOption (V.scroll_offset virtualizer),
-                    Js.Nullable.toOption (V.scroll_rect virtualizer) ) with
-                | Some it, Some off, Some rect ->
-                    let bottom = off +. V.rect_height rect in
-                    (match align with
-                     | "end" -> bottom >= V.item_end it -. 2.
-                     | "start" -> V.item_start it >= off -. 2.
+                match Hashtbl.find_opt mounted row_id with
+                | Some wrapper ->
+                    let bounds = W.Element.getBoundingClientRect root
+                    and r = W.Element.getBoundingClientRect wrapper in
+                    W.DomRect.height r > 0.5
+                    && (match align with
+                     | "end" ->
+                         W.DomRect.bottom r
+                         <= W.DomRect.bottom bounds +. 2.
+                         || W.Element.scrollTop root
+                            >= float_of_int (W.Element.scrollHeight root)
+                               -. float_of_int
+                                    (W.Element.clientHeight root)
+                               -. 2.
+                     | "start" ->
+                         W.DomRect.top r >= W.DomRect.top bounds -. 2.
                      | _ -> true)
-                | _ -> false
+                | None -> false
               in
-              let off =
-                Js.Nullable.toOption (V.scroll_offset virtualizer)
-              in
-              (* Settled once the aligned edge is reached; cancelled
-                 when an issued scroll can no longer move the offset
-                 (clamped/unreachable) and the scroller is idle. *)
               if landed then complete_pending "succeeded"
-              else
-                match tries, off with
-                | last_off, Some off
-                  when last_off > 0
-                       && abs_float (off -. float_of_int last_off) < 1.
-                       && not (V.is_scrolling virtualizer) ->
-                    complete_pending "cancelled"
-                | _ ->
-                    V.scroll_to_index virtualizer index
-                      (V.scroll_to_index_options ~align ~behavior);
-                    pending_scroll :=
-                      Some
-                        (token, target_key, align, behavior,
-                         Option.value off ~default:0. |> int_of_float
-                         |> ( + ) 1)))
+              else begin
+                V.scroll_to_index virtualizer index
+                  (V.scroll_to_index_options ~align ~behavior);
+                pending_scroll :=
+                  Some (token, target_key, align, behavior, tries)
+              end))
     in
     let rec render () =
       if !updating then pending_render := true

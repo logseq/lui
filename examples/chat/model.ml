@@ -1,6 +1,9 @@
 open Lui_ai.Model
 
 type t = {
+  list_mode : bool;
+  debug : bool;
+  outcome : string;
   items : item list;
   draft : string;
   generating : bool;
@@ -8,7 +11,7 @@ type t = {
   next_id : int;
 }
 
-type action = Input of string | Send | Stop | Tick
+type action = Input of string | Send | Stop | Tick | ScrollOutcome of string
 
 let user id text = { (item id User) with text }
 let assistant id text = { (item id Assistant) with text }
@@ -45,7 +48,7 @@ let seed_items =
       else i) seed_items in
   with_tool @ [ assistant "s5" "" ]
 
-let initial ~tall =
+let initial ~tall ~list_mode ~debug =
   { items =
       List.filter (fun i -> i.id <> "s5") seed_items
       @ [ { (assistant "s5" "") with streaming = true } ]
@@ -58,7 +61,8 @@ let initial ~tall =
                          "Tall response line %d — enough content to exceed the viewport."
                          i))) ]
          else []);
-    draft = ""; generating = true;
+    draft = ""; generating = true; list_mode; debug;
+    outcome = "";
     queued =
       [ "Welcome to the lui-ai demo. ";
         "This message streams chunk by chunk into one keyed row; ";
@@ -72,6 +76,7 @@ let scripted_reply n =
 
 let update m = function
   | Input draft -> { m with draft }
+  | ScrollOutcome s -> { m with outcome = s }
   | Stop ->
       let items =
         List.map (fun (i : item) -> { i with streaming = false }) m.items in
@@ -85,7 +90,7 @@ let update m = function
           upsert
             (upsert m.items (user uid m.draft))
             { (assistant aid "") with streaming = true } in
-        { items; draft = ""; generating = true;
+        { m with items; draft = ""; generating = true;
           queued = scripted_reply n; next_id = n + 1 }
   | Tick ->
       (match m.queued with
