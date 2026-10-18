@@ -424,7 +424,10 @@ let initialize_menu_focus renderer container_id =
                && (not focus_already_inside) && trigger_owns_focus
              then begin
                let pointer_open =
-                 Store.standard_kind_is container DropdownMenu
+                 (Store.standard_kind_is container DropdownMenu
+                  || (Store.standard_kind_is container Popover
+                      && Store.property renderer.web_store container_id RoleValue
+                         = Some (StringValue "menu")))
                  &&
                  match
                    Lui_web_layers.layer_at renderer.web_layers container_id

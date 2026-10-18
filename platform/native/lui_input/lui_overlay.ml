@@ -113,7 +113,10 @@ let available_focus store id =
   && not (Lui_store.inert_in_chain store id)
 
 let ordinary_row_menu store menu =
-  Lui_query.kind_name store menu = "dropdown-menu"
+  (match Lui_query.kind_name store menu with
+   | "dropdown-menu" -> true
+   | "popover" -> Lui_store.string_prop store menu "role" = Some "menu"
+   | _ -> false)
   && Lui_gesture.menu_has_items store menu
   && Lui_query.picker_for_menu store menu = None
 

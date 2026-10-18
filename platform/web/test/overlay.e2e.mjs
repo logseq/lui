@@ -50,6 +50,17 @@ for (const trigger of ['Open ordinary menu', 'Open pressable menu']) {
   })
 }
 
+test('a row popover uses the same pointer and keyboard opening focus as a dropdown', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open ordinary popover')
+  await session.page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menu')
+  assert.equal(await session.page.getByRole('menu').locator('[data-highlighted]').count(), 0)
+  await session.page.keyboard.press('Escape')
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'Open ordinary popover')
+  await session.page.getByRole('button', {name: 'Open ordinary popover', exact: true}).press('Enter')
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'Choose ordinary action')
+})
+
 test('ordinary pointer opening navigates backward from no selection', async () => {
   await openLayerRegressionPage()
   await clickButton('Open ordinary menu')

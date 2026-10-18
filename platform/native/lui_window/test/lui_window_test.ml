@@ -3239,6 +3239,45 @@ let test_ordinary_menu_focus_ownership () =
        (function Press _ -> true | _ -> false)
        (press_actions (Assembly.handle asm (key Input.Return))))
 
+let test_popover_menu_focus_ownership () =
+  List.iter
+    (fun keyboard ->
+      let asm, apply = ordinary_menu_fixture () in
+      let ui = Assembly.ui asm and store = Assembly.store asm in
+      Ui.set_focused ui store 3;
+      if not keyboard then begin
+        let r = Rects.get (Assembly.rects asm) 3 in
+        ignore
+          (Assembly.handle asm
+             (Input.Button_down
+                (r.x +. 2., r.y +. 2., Input.Left, 1, Input.mods_none)));
+        ignore
+          (Assembly.handle asm
+             (Input.Button_up (r.x +. 2., r.y +. 2., Input.Left, Input.mods_none)))
+      end;
+      apply
+        (List.map
+           (function
+             | CreateNode (5, DropdownMenu) -> CreateNode (5, Popover)
+             | op -> op)
+           (ordinary_menu_ops false)
+        @ [ SetProp (5, RoleValue, StringValue "menu") ]);
+      Alcotest.(check int)
+        "a row popover owns focus using its opening method"
+        (if keyboard then 8 else 5)
+        (Ui.focused ui);
+      Alcotest.(check int)
+        "pointer-open popovers do not select a row"
+        (if keyboard then 8 else 0)
+        (Ui.hl_item ui);
+      ignore (Assembly.handle asm (key Input.End));
+      Alcotest.(check int)
+        "popover row navigation synchronizes actual focus" 9 (Ui.focused ui);
+      apply [ DropNode 5 ];
+      Alcotest.(check int)
+        "closing a row popover returns to its trigger" 3 (Ui.focused ui))
+    [ false; true ]
+
 let test_menu_edit_return () =
   List.iter
     (fun change_model ->
@@ -4421,6 +4460,7 @@ let () =
           Alcotest.test_case "file drop" `Quick test_file_drop ] );
       ( "overlay",
         [ Alcotest.test_case "ordinary menu focus ownership" `Quick test_ordinary_menu_focus_ownership;
+          Alcotest.test_case "popover menu focus ownership" `Quick test_popover_menu_focus_ownership;
           Alcotest.test_case "menu edit return" `Quick test_menu_edit_return;
           Alcotest.test_case "picker input ownership" `Quick test_picker_menu_input_ownership;
           Alcotest.test_case "menu row focus chrome" `Quick test_menu_row_focus_chrome;
