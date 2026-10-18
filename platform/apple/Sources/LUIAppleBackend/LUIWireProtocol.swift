@@ -300,7 +300,7 @@ enum LUIWireValue: Decodable, Equatable {
         case .target:
             guard let value = stringValue else { return false }
             return value == "_self" || value == "_blank"
-        case .opacity:
+        case .opacity, .labelOpacity:
             guard let value = doubleValue else { return false }
             return value.isFinite && value >= 0 && value <= 1
         case .display:
@@ -1239,6 +1239,7 @@ struct LUIRetainedTree {
         case .url: kind == .link || kind == .image
         case .target: kind == .link
         case .opacity: canContainChildren(kind)
+        case .labelOpacity: kind == .checkbox || kind == .radio
         case .display, .flexWrap: kind == .box || kind == .column || kind == .row
         case .listStyle:
             kind == .list || kind == .virtualList || kind == .listItem

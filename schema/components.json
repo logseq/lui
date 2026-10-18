@@ -1745,6 +1745,11 @@
       "lg": "GridColumnSpan",
       "wire": "grid-column-span",
       "swift": "gridColumnSpan"
+    },
+    {
+      "lg": "LabelOpacity",
+      "wire": "label-opacity",
+      "swift": "labelOpacity"
     }
   ],
   "events": [
@@ -2110,8 +2115,8 @@
     ]
   },
   "kindExtraProperties": {
-    "checkbox": ["gap"],
-    "radio": ["gap"],
+    "checkbox": ["gap", "label-opacity"],
+    "radio": ["gap", "label-opacity"],
     "grid": ["main", "cross"],
     "row": ["orientation"],
     "list-item": ["display"],

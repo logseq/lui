@@ -4023,6 +4023,37 @@ let test_margin_wire_props () =
   check "margin-bottom" (Lui_protocol.IntValue 3);
   check "margin-left" (Lui_protocol.IntValue (-4))
 
+let test_choice_label_opacity () =
+  let open Lui_protocol in
+  let property = match List.find_opt (fun property ->
+      Lui_wire_schema.property_name property = "label-opacity") Lui_wire_schema.all_properties with
+    | Some property -> property
+    | None -> Alcotest.fail "Choice labels need an independent opacity property" in
+  List.iter (fun kind -> Alcotest.(check bool) "choice admits label opacity" true
+    (property_supported kind property)) [Checkbox;Radio];
+  List.iter (fun kind -> Alcotest.(check bool) "unrelated kinds reject label opacity" false
+    (property_supported kind property)) [Text;Button;Column;SwitchControl];
+  List.iter (fun value -> Alcotest.(check bool) "finite unit opacity accepted" true
+    (property_value_supported property (FloatValue value))) [0.;0.7;1.];
+  List.iter (fun value -> Alcotest.(check bool) "invalid opacity rejected" false
+    (property_value_supported property value))
+    [FloatValue (-0.1);FloatValue 1.1;FloatValue nan;FloatValue infinity;
+     FloatValue neg_infinity;IntValue 1;StringValue "0.7"];
+  let batches=ref [] in
+    let backend={backend_profile=profile MacOS GenericHost;
+      apply_batch=(fun batch -> batches:=batch::!batches;true)} in
+    let app=Lui_app.create backend () (fun model () -> model)
+      (fun _ _ _ ctx parent ->
+        let node=Lui_elements.checkbox ~text:"Caption café 中文 😀" [] ctx parent in
+        Lui_ui.float_property ctx node property 0.7;node) in
+    Fun.protect ~finally:(fun () -> ignore (Lui_app.dispose app)) (fun () ->
+      ignore (Lui_app.start app);
+      ignore (Lui_app.flush app);
+      Alcotest.(check bool) "public choice constructor publishes caption opacity" true
+        (List.exists (fun batch -> List.exists (function
+          SetProp (_,p,FloatValue value) -> p=property && value=0.7 | _ -> false)
+          batch.ops) !batches))
+
 let test_toast_padding () =
   let open Lui_protocol in
   List.iter (fun property ->
@@ -4073,6 +4104,7 @@ let () =
         ] );
       ( "protocol",
         [
+          Alcotest.test_case "choice label opacity" `Quick test_choice_label_opacity;
           Alcotest.test_case "padding edge prop family" `Quick test_padding_edge_props;
           Alcotest.test_case "margin prop family" `Quick test_margin_props;
           Alcotest.test_case "margin wire props" `Quick test_margin_wire_props;

@@ -942,6 +942,7 @@ private struct LUINodeView: View {
                     #if os(iOS)
                     HStack {
                         Text(verbatim: model.text)
+                            .opacity(model.property(.labelOpacity)?.doubleValue ?? 1)
                         Spacer()
                         if model.isChecked {
                             Image(systemName: "checkmark")
@@ -950,7 +951,12 @@ private struct LUINodeView: View {
                         }
                     }
                     #else
-                    Label(model.text, systemImage: model.isChecked ? "circle.inset.filled" : "circle")
+                    Label {
+                        Text(model.text)
+                            .opacity(model.property(.labelOpacity)?.doubleValue ?? 1)
+                    } icon: {
+                        Image(systemName: model.isChecked ? "circle.inset.filled" : "circle")
+                    }
                     #endif
                 }
                 .buttonStyle(.plain)
@@ -7335,12 +7341,14 @@ private struct LUICheckboxView: View {
     var body: some View {
         #if os(macOS)
         Toggle(
-            model.text,
             isOn: Binding(
                 get: { model.isChecked },
                 set: { try? backend.performToggle(node: model.id, checked: $0) }
             )
-        )
+        ) {
+            Text(model.text)
+                .opacity(model.property(.labelOpacity)?.doubleValue ?? 1)
+        }
         .toggleStyle(.checkbox)
         .disabled(!model.isEnabled)
         #else
@@ -7352,6 +7360,7 @@ private struct LUICheckboxView: View {
         } label: {
             Label {
                 Text(model.text)
+                    .opacity(model.property(.labelOpacity)?.doubleValue ?? 1)
             } icon: {
                 Image(systemName: checkboxImageName)
                     .foregroundStyle(

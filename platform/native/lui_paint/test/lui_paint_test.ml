@@ -928,6 +928,37 @@ let test_choice_label_gap () =
       (10.+.(16.+.float_of_int (Option.value gap ~default:8))*.scale) label.x)
       [None;Some 0;Some 4;Some 16]) [1.;2.]) [Lui_protocol.Checkbox;Radio]
 
+let test_choice_label_opacity () =
+  let open Lui_protocol in
+  let property=match List.find_opt (fun property ->
+      Lui_wire_schema.property_name property="label-opacity") Lui_wire_schema.all_properties with
+    | Some property -> property
+    | None -> fail "Choice label opacity is missing" in
+  List.iter (fun kind -> List.iter (fun scale -> List.iter (fun checked ->
+    let t=store () in
+    apply t [CreateNode (1,Column);SetProp (1,ForegroundValue,StringValue "#171717");
+      SetProp (1,Opacity,FloatValue 0.5);CreateNode (2,kind);
+      SetProp (2,TextValue,StringValue "Caption café 中文 😀");
+      SetProp (2,Checked,BoolValue checked);SetProp (2,Opacity,FloatValue 0.8);
+      InsertChild (1,2,0)];
+    let h={(hooks ()) with text_ops=(fun _ _ ink text ->
+      if text="Caption café 中文 😀" then
+        [Glyphs {gstart=0;gend=0;gpaint=Solid;gcolor=ink;gcolor2=ink;
+          ggradient=(0.,0.,0.,0.);gwide2=0;gopacity=1.}]
+      else [])} in
+    List.iter (fun value ->
+      apply t [match value with None -> RemoveProp (2,property)
+        | Some value -> SetProp (2,property,FloatValue value)];
+      let painted=paint_with h t ~scale () in
+      let glyph=Option.get (List.find_map (function Glyphs g -> Some g | _ -> None) painted.ops) in
+      check bool "caption inherits its parent's foreground" true (glyph.gcolor=color 23 23 23 255);
+      check (float 0.0001) "caption opacity multiplies the existing control opacity"
+        (0.4*.Option.value value ~default:1.) glyph.gopacity;
+      List.iter (function Fill fill ->
+        check (float 0.0001) "caption opacity never fades control chrome" 0.4 fill.fopacity
+        | _ -> ()) painted.ops)
+      [None;Some 0.;Some 0.7;Some 1.;None]) [false;true]) [1.;2.]) [Checkbox;Radio]
+
 let test_choice_focus_bounds () =
   List.iter (fun kind -> List.iter (fun scale ->
     let t=store () in
@@ -1649,6 +1680,7 @@ let () =
          test_case "checkbox unchecked" `Quick test_checkbox_unchecked;
          test_case "checkbox primary palette" `Quick test_checkbox_primary_palette;
          test_case "choice label gap" `Quick test_choice_label_gap;
+         test_case "choice label opacity" `Quick test_choice_label_opacity;
          test_case "choice focus bounds" `Quick test_choice_focus_bounds;
          test_case "switch" `Quick test_switch;
          test_case "radio" `Quick test_radio;

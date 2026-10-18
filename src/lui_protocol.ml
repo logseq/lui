@@ -287,6 +287,7 @@ type property =
   | NavigateEnabled
   | FirstPaneWidth
   | GridColumnSpan
+  | LabelOpacity
 
 module Property_map =
   Map.Make
@@ -1164,6 +1165,7 @@ let common_property_supported kind property =
   | TargetValue -> kind = Link
   | Opacity ->
     can_contain_children kind || kind = Checkbox || kind = Radio || kind = Icon
+  | LabelOpacity -> kind = Checkbox || kind = Radio
   | DisplayValue -> kind = Box || kind = Column || kind = Row || kind = ListItem
   | FlexWrap -> kind = Box || kind = Column || kind = Row
   | ListStyle ->
@@ -1613,7 +1615,8 @@ let property_value_supported property value =
     || value = "strict-origin-when-cross-origin"
     || value = "unsafe-url"
   | TargetValue, StringValue value -> value = "_self" || value = "_blank"
-  | Opacity, FloatValue value -> is_finite value && value >= 0.0 && value <= 1.0
+  | (Opacity | LabelOpacity), FloatValue value ->
+    is_finite value && value >= 0.0 && value <= 1.0
   | DisplayValue, StringValue value ->
     List.mem value
       [ "contents"; "none"; "inline-flex"; "block"; "inline"; "inline-block" ]

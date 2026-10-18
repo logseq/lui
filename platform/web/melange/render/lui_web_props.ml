@@ -961,6 +961,8 @@ and apply_secondary_property renderer queue_split node kind dom_node
       set_style dom_node "opacity"
         ("var(--lui-current-disabled-opacity, var(--lui-current-pressed-opacity, var(--lui-current-hover-opacity, "
          ^ Js.Float.toString value ^ ")))" )
+  | LabelOpacity, FloatValue value ->
+      set_style (Util.child_element dom_node 1) "opacity" (Js.Float.toString value)
   | DisplayValue, StringValue value -> set_style dom_node "display" value
   | FontFamily, StringValue value -> set_style dom_node "font-family" value
   | FontStyle, StringValue value -> set_style dom_node "font-style" value
@@ -1210,6 +1212,7 @@ let remove_property renderer queue_split node kind dom_node property =
              W.Element.removeAttribute "target" dom_node
            end
        | Opacity -> set_style dom_node "opacity" ""
+       | LabelOpacity -> set_style (Util.child_element dom_node 1) "opacity" ""
        | DisplayValue -> set_style dom_node "display" ""
        | FontFamily -> set_style dom_node "font-family" ""
        | FontStyle -> set_style dom_node "font-style" ""

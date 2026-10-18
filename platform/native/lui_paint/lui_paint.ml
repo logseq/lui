@@ -153,6 +153,7 @@ let prop_coverage =
     ("referrer-policy", Host);
     ("target", Host);
     ("opacity", Painted); (* composites down the subtree *)
+    ("label-opacity", Painted);
     ("display", Painted); (* "contents" unboxes, "none" hides *)
     ("tooltip", Host);
     ("tooltip-keys", Host);
@@ -972,13 +973,14 @@ let leading_box ctx store id r side_logical =
   rect x (r.y +. ((r.h -. side) /. 2.)) side side
 
 (* Label text to the right of a leading control box, bounded by the
-   node's own rect, with the node's accumulated opacity folded in. *)
+   node's own rect, with caption and accumulated node opacity folded in. *)
 let label_after ctx store id r box gap_logical alpha =
   match pstr store id "text" with
   | Some s when s <> "" ->
     let gap = Option.value ~default:gap_logical (pnum store id "gap") in
     let x = box.x +. box.w +. (gap *. ctx.scale) in
-    scale_ops alpha
+    scale_ops
+      (alpha *. Option.value ~default:1. (pnum store id "label-opacity"))
       (ctx.hooks.text_ops id
          (rect x r.y (Float.max 0. (r.x +. r.w -. x)) r.h)
          (text_fg ctx store id) s)

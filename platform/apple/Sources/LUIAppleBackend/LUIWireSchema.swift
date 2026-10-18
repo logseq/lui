@@ -266,6 +266,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case navigateEnabled = "navigate-enabled"
     case firstPaneWidth = "first-pane-width"
     case gridColumnSpan = "grid-column-span"
+    case labelOpacity = "label-opacity"
 }
 
 enum LUISchemaMatrix {
@@ -291,8 +292,8 @@ enum LUISchemaMatrix {
     ]
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [
-        .checkbox: [.gap],
-        .radio: [.gap],
+        .checkbox: [.gap, .labelOpacity],
+        .radio: [.gap, .labelOpacity],
         .grid: [.main, .cross],
         .row: [.orientation],
         .listItem: [.display],

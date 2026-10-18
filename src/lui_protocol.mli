@@ -285,6 +285,7 @@ type property =
   | NavigateEnabled
   | FirstPaneWidth
   | GridColumnSpan
+  | LabelOpacity
 
 module Property_map : Map.S with type key = property
 
