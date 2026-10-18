@@ -324,7 +324,6 @@ type event =
   | ContextMenuPress of int * pointer_detail
   | Load of int
   | ScrollEdges of int * bool * bool
-  (** scroll container reached/left an edge: [(node, at_top, at_bottom)] *)
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =

@@ -1841,6 +1841,14 @@
       "fields": [
         ":int"
       ]
+    },
+    {
+      "lg": "ScrollEdges",
+      "fields": [
+        ":int",
+        ":bool",
+        ":bool"
+      ]
     }
   ],
   "kindProperties": {
