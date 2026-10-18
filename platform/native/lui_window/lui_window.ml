@@ -811,12 +811,17 @@ module Ui = struct
      static selection and editable undo reset — those are owned by
      the focused node. Callers emit [Focus_changed] when it moved. *)
   let focus_move ?(kbd = false) t store id =
-    if id <> Lui_focus.focused t.focus then begin
+    let moved = id <> Lui_focus.focused t.focus in
+    let kbd = kbd || (not moved && id <> 0 && Lui_focus.kbd_visible t.focus) in
+    if moved || kbd <> Lui_focus.kbd_visible t.focus then begin
       t.focus <- Lui_focus.set t.focus ~id ~kbd;
-      t.session <-
-        Lui_text_input.attach t.session ~node:id
-          ~text:(if id = 0 then "" else Lui_query.text_of store id);
-      t.selection <- Lui_selection.clear t.selection;
+      (* Changing focus visibility preserves the active edit session. *)
+      if moved then begin
+        t.session <-
+          Lui_text_input.attach t.session ~node:id
+            ~text:(if id = 0 then "" else Lui_query.text_of store id);
+        t.selection <- Lui_selection.clear t.selection
+      end;
       t.dirty <- true
     end
 
@@ -828,10 +833,9 @@ module Ui = struct
     | `Dispatch e -> [ Dispatch e ]
     | `Repaint -> t.dirty <- true; []
     | `Focus (id, kbd) ->
-      if id <> Lui_focus.focused t.focus then begin
-        focus_move ~kbd t store id;
-        [ Focus_changed id ]
-      end else []
+      let moved = id <> Lui_focus.focused t.focus in
+      focus_move ~kbd t store id;
+      if moved then [ Focus_changed id ] else []
     | `Clear_selection ->
       t.selection <- Lui_selection.clear t.selection;
       t.dirty <- true;
@@ -1034,6 +1038,11 @@ module Ui = struct
     { r with Lui_scene.x = r.x -. x; y = r.y -. y }
 
   let handle ?spatial ?(on_component_input = fun () -> ()) t store rects input =
+    (match input with
+     | Input.Key_down (_, mods, _)
+       when not (mods.Input.ctrl || mods.Input.meta || mods.Input.alt) ->
+         focus_move ~kbd:true t store (Lui_focus.focused t.focus)
+     | _ -> ());
     let suppress_space =
       match input with
       | Input.Text_input s ->
@@ -1172,10 +1181,9 @@ module Ui = struct
                | Some id -> id
                | None -> 0
              in
-             (if focus <> Lui_focus.focused t.focus then begin
-                focus_move t store focus;
-                emit_all [ Focus_changed focus ]
-              end);
+             let moved = focus <> Lui_focus.focused t.focus in
+             focus_move t store focus;
+             (if moved then emit_all [ Focus_changed focus ]);
              (* Selection: click sets the caret, shift-click
                 extends, double/triple click selects word/paragraph
                 — on editable fields and user-select=text nodes
@@ -1573,6 +1581,8 @@ module Ui = struct
         (Lui_pointer.pressed t.pointer = id
          || Lui_drag.source t.drag = id);
       focused = Lui_focus.focused t.focus = id;
+      focus_visible = Lui_focus.focused t.focus = id
+        && (Lui_focus.kbd_visible t.focus || Lui_text_input.editable store id);
       selected =
         (bool_prop store id "selected" || Lui_gesture.hl t.gesture = id);
       disabled = not (node_enabled store id) }

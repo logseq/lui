@@ -31,7 +31,7 @@ let kbd_visible st = st.kbd_visible
    re-attach, selection reset, Focus_changed dispatch) is the
    driver's — it composes the other machines. *)
 let set st ~id ~kbd =
-  if id = st.focused then st
+  if id = st.focused && kbd = st.kbd_visible then st
   else { st with focused = id; kbd_visible = kbd }
 
 (* Hidden ancestors exclude controls from initial focus and Tab order. *)

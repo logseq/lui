@@ -95,7 +95,7 @@ let test_form_control_chrome () =
                     {
                       h with
                       Lui_paint.state_of =
-                        (fun _ -> { Lui_paint.state_neutral with focused });
+                        (fun _ -> { Lui_paint.state_neutral with focused; focus_visible = focused });
                     }
                   in
                   let painted =
@@ -181,7 +181,7 @@ let test_form_control_chrome () =
                 {
                   h with
                   Lui_paint.state_of =
-                    (fun _ -> { Lui_paint.state_neutral with focused = true });
+                    (fun _ -> { Lui_paint.state_neutral with focused = true; focus_visible = true });
                 }
               in
               let painted =
@@ -1121,7 +1121,7 @@ let test_choice_focus_bounds () =
     apply t [Lui_protocol.CreateNode (1,kind);SetProp (1,TextValue,StringValue "Caption")];
     let h={(hooks ~layout:(fun _ -> Lui_paint.placement_of_rect
       (rect (10.*.scale) (20.*.scale) (200.*.scale) (28.*.scale))) ()) with
-      Lui_paint.state_of=(fun _ -> {Lui_paint.state_neutral with focused=true})} in
+      Lui_paint.state_of=(fun _ -> {Lui_paint.state_neutral with focused=true; focus_visible=true})} in
     let scene=paint_with h t ~scale () in
     let ring=List.find_map (function Fill f when f.fborder=(2.*.scale,2.*.scale,2.*.scale,2.*.scale)
       && f.fborder_color=color 37 99 235 140 -> Some f | _ -> None) scene.ops |> Option.get in

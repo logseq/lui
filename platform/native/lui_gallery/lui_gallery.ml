@@ -251,7 +251,7 @@ let hooks_of ?(text_ops = fun id r c s -> stub_text_ops id r c s) e =
 let hovered = { Lui_paint.state_neutral with hovered = true }
 let pressed = { Lui_paint.state_neutral with pressed = true }
 let selected = { Lui_paint.state_neutral with selected = true }
-let focused = { Lui_paint.state_neutral with focused = true }
+let focused = { Lui_paint.state_neutral with focused = true; focus_visible = true }
 
 let sized ?(w = 0.) ?(h = 0.) props =
   (if w > 0. then [ (WidthValue, fv w) ] else [])

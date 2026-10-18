@@ -405,12 +405,13 @@ type state = {
   pressed : bool;
   selected : bool;
   focused : bool;
+  focus_visible : bool; (* keyboard focus or a focused text entry *)
   disabled : bool;
 }
 
 let state_neutral =
   { hovered = false; pressed = false; selected = false; focused = false;
-    disabled = false }
+    focus_visible = false; disabled = false }
 
 (* What layout computed for a node. [p_override] is a device-px rect
    that replaces the node's placement outright (already-resolved
@@ -623,7 +624,7 @@ let resolve_style store id st =
     ifstr "selected-shadow" sh);
   if st.selected && st.hovered then ifstr "selected-hover-shadow" sh;
   if st.disabled then ifnum "disabled-opacity" op;
-  if st.focused then ifstr "focus-shadow" sh;
+  if st.focused && st.focus_visible then ifstr "focus-shadow" sh;
   { rs_background = !bg; rs_opacity = !op; rs_shadow = !sh }
 
 (* ---------- fills ---------- *)
@@ -2872,7 +2873,7 @@ let paint_own ctx store id st kind r rs alpha =
   @ own
   @
   if
-    st.focused && focusable kind
+    st.focused && st.focus_visible && focusable kind
     && not (prop_set store id "focus-shadow")
   then
     let region, radii = match kind with

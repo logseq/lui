@@ -2082,6 +2082,112 @@ let test_tab_activation () =
   press_field s rects ui 5. 40.;
   Alcotest.(check bool) "ptr focus" false (Ui.focus_visible ui)
 
+let test_focus_ring_modality () =
+  List.iter
+    (fun (kind, pointer_ring) ->
+      let store =
+        store_of
+          [
+            CreateNode (1, Root);
+            CreateNode (2, kind);
+            InsertChild (1, 2, 0);
+            SetProp (2, WidthValue, IntValue 120);
+            SetProp (2, HeightValue, IntValue 32);
+          ]
+      in
+      let rects =
+        rects_of [ (1, rect 0. 0. 200. 100.); (2, rect 10. 10. 120. 32.) ]
+      in
+      let ui = Ui.create () in
+      let ring_count () =
+        let scene =
+          Lui_scene.create
+            ~mask_atlas:(Lui_scene.Atlas.create ~bpp:1 ~w:1 ~h:1)
+            ~color_atlas:(Lui_scene.Atlas.create ~bpp:4 ~w:1 ~h:1)
+        in
+        Lui_paint.paint
+          {
+            Lui_paint.default_hooks with
+            layout =
+              (fun id -> Lui_paint.placement_of_rect (Rects.get rects id));
+            state_of = Ui.state_of ui store;
+          }
+          store scene ~width:200 ~height:100 ~scale:1. ~clear:(color 0 0 0 0);
+        List.length
+          (List.filter
+             (function
+               | Fill f -> f.fborder = (2., 2., 2., 2.) && f.frect.x < 10.
+               | _ -> false)
+             scene.ops)
+      in
+      let click () =
+        let down =
+          Ui.handle ui store rects
+            (Input.Button_down (20., 20., Input.Left, 1, Input.mods_none))
+        in
+        ignore
+          (Ui.handle ui store rects
+             (Input.Button_up (20., 20., Input.Left, Input.mods_none)));
+        down
+      in
+      ignore (click ());
+      Alcotest.(check int) "pointer retains logical focus" 2 (Ui.focused ui);
+      Alcotest.(check int)
+        "pointer shows a ring only on text entry"
+        (if pointer_ring then 2 else 0)
+        (ring_count ());
+      ignore (Ui.paint_hints ui store);
+      Ui.set_focused ~kbd:true ui store 2;
+      let changed, _ = Ui.paint_hints ui store in
+      Alcotest.(check bool)
+        "modality change invalidates retained focus paint" true
+        (Hashtbl.mem changed 2);
+      Alcotest.(check int)
+        "keyboard shows the ring on the same focused control" 2 (ring_count ());
+      let actions = click () in
+      Alcotest.(check bool)
+        "pointer on the focused control does not resend focus" false
+        (List.exists (function Focus_changed _ -> true | _ -> false) actions);
+      Alcotest.(check int)
+        "pointer preserves an existing ring on the same control" 2
+        (ring_count ());
+      ignore
+        (Ui.handle ui store rects
+           (Input.Button_down (180., 80., Input.Left, 1, Input.mods_none)));
+      ignore (click ());
+      Alcotest.(check int)
+        "new pointer focus omits keyboard-only chrome"
+        (if pointer_ring then 2 else 0)
+        (ring_count ());
+      ignore (Ui.handle ui store rects (key Input.Arrow_right));
+      Alcotest.(check int)
+        "keyboard interaction exposes focus without moving it" 2 (ring_count ());
+      Lui_store.apply_op store (SetProp (2, FocusShadow, StringValue "none"));
+      Alcotest.(check int)
+        "authored focus suppression remains authoritative" 0 (ring_count ()))
+    [
+      (Button, false);
+      (ToggleButton, false);
+      (Select, false);
+      (Checkbox, false);
+      (TextField, true);
+      (SecureField, true);
+      (Input, true);
+      (SearchField, true);
+      (Textarea, true);
+      (Combobox, true);
+    ];
+  let store, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  press_field store rects ui 5. 40.;
+  ignore (Ui.handle ui store rects (Input.Text_input "preserve selection"));
+  ignore (Ui.handle ui store rects (key ~mods:meta (Input.Other 4)));
+  let caret = Ui.caret ui and anchor = Ui.sel_anchor ui in
+  Ui.set_focused ~kbd:true ui store (Ui.focused ui);
+  Alcotest.(check int) "modality change preserves caret" caret (Ui.caret ui);
+  Alcotest.(check int)
+    "modality change preserves selection" anchor (Ui.sel_anchor ui)
+
 let test_control_keys () =
   let s =
     store_of
@@ -3822,7 +3928,8 @@ let () =
           Alcotest.test_case "capture admission" `Quick test_split_pointer_admission;
           Alcotest.test_case "nested scaled track" `Quick test_nested_split_pointer_resize ] );
       ( "keys",
-        [ Alcotest.test_case "tab activation" `Quick test_tab_activation;
+        [ Alcotest.test_case "focus ring modality" `Quick test_focus_ring_modality;
+          Alcotest.test_case "tab activation" `Quick test_tab_activation;
           Alcotest.test_case "control keys" `Quick test_control_keys ] );
       ( "list",
         [ Alcotest.test_case "typeahead" `Quick test_list_typeahead;
