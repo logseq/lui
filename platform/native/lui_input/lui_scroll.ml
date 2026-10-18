@@ -284,7 +284,7 @@ let scroll_align env store st a it anchor =
    content up (SDL convention), and Shift turns the vertical delta
    horizontal (the desktop's wheel-x gesture). Each container consumes
    its available range and passes unused distance to its ancestors
-   on the same axis. *)
+   on the same axis, stopping at the current presented overlay. *)
 let wheel env store st ~path ~scale ~dx ~dy ~(mods : Lui_input.mods) =
   let ix = dx +. if mods.Lui_input.shift then -.dy else 0. in
   let iy = if mods.Lui_input.shift then 0. else -.dy in
@@ -295,6 +295,9 @@ let wheel env store st ~path ~scale ~dx ~dy ~(mods : Lui_input.mods) =
         | [] -> (st, acts)
         | _ when abs_float remaining <= 0.001 -> (st, acts)
         | id :: rest ->
+            let rest =
+              if Lui_query.presented_overlay store id then [] else rest
+            in
             let before = offset st axis id in
             if
               scrollable store id
