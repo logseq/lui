@@ -289,7 +289,7 @@ let close_modal_shell ?(on_finish = fun () -> ()) renderer node parent layer
     | _ -> 170
   in
   Lui_web_util.after_surface_motion renderer.web_document [ backdrop; surface ]
-    ~fallback
+    ~finish_on_cancel:true ~fallback
     (fun () ->
       if
         Lui_web_layers.transition renderer.web_layers node = token

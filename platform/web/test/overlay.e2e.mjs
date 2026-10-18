@@ -457,7 +457,7 @@ test("modal focus includes links, skips hidden controls, handles an empty surfac
   await browser("wait", "--fn", "!document.querySelector('.lui-modal-layer')")
 
   await clickButton("Open dialog")
-  await evaluate(`document.querySelector('button')?.remove()`)
+  await evaluate(`[...document.querySelectorAll('#host button')].find((button) => button.textContent.trim() === 'Open dialog')?.remove()`)
   await browser("press", "Escape")
   await browser("wait", "--fn", "!document.querySelector('.lui-modal-layer')")
   await browser("wait", "--fn", "document.activeElement === document.body")
