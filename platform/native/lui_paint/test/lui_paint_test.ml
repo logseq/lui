@@ -1676,6 +1676,44 @@ let test_control_single_icon () =
         [ 1.; 2. ])
     [ Lui_protocol.Button; ToggleButton; Toggle; MenuTrigger ]
 
+let test_form_text_insets () =
+  List.iter
+    (fun kind ->
+      let t = store () in
+      apply t [ Lui_protocol.CreateNode (1, kind) ];
+      let check_insets label left right top bottom placement =
+        check (float 0.001) (label ^ " left") left
+          placement.Lui_paint.tp_pad_left;
+        check (float 0.001) (label ^ " right") right placement.tp_pad_right;
+        check (float 0.001) (label ^ " top") top placement.tp_pad_top;
+        check (float 0.001) (label ^ " bottom") bottom placement.tp_pad_bottom
+      in
+      check_insets "Web default paint insets" 12. 12. 8. 8.
+        (Lui_paint.text_placement_of t 1);
+      check_insets "intrinsic measure includes implicit insets" 12. 12. 8. 8.
+        (Lui_paint.text_measure_placement_of t 1);
+      apply t
+        [
+          SetProp (1, PaddingHorizontal, IntValue 0);
+          SetProp (1, PaddingTop, IntValue 3);
+        ];
+      check_insets "authored edges override only their axes" 0. 0. 3. 8.
+        (Lui_paint.text_placement_of t 1);
+      check_insets "flex owns explicit edges exactly once" 0. 0. 0. 8.
+        (Lui_paint.text_measure_placement_of t 1);
+      apply t [ RemoveProp (1, PaddingHorizontal); RemoveProp (1, PaddingTop) ];
+      check_insets "removing overrides restores Web defaults" 12. 12. 8. 8.
+        (Lui_paint.text_placement_of t 1))
+    [
+      Lui_protocol.TextField;
+      SecureField;
+      Input;
+      SearchField;
+      Textarea;
+      Select;
+      Combobox;
+    ]
+
 let test_text_edge_placement () =
   let t = store () in
   apply t
@@ -1851,7 +1889,8 @@ let () =
          test_case "menu selection placement" `Quick test_menu_selection_placement;
          test_case "menu measure padding" `Quick test_menu_measure_padding;
          test_case "control single icon" `Quick test_control_single_icon;
-         test_case "text edge placement" `Quick test_text_edge_placement ]);
+         test_case "text edge placement" `Quick test_text_edge_placement;
+         test_case "form text insets" `Quick test_form_text_insets ]);
       ("secure",
        [ test_case "masked paint" `Quick test_secure_masked;
          test_case "mask per grapheme" `Quick test_secure_masked_graphemes;

@@ -1035,9 +1035,9 @@ let text_placement ~layout_padding store id =
     | "table-cell" | "table-row" -> (Ta_start, 10., 6., false)
     | "step" -> (Ta_center, 8., 4., false)
     | "list-item" -> (Ta_start, 12., 6., false)
-    | "text-field" | "secure-field" | "input" | "search-field" -> (Ta_start, 10., 6., false)
+    | "text-field" | "secure-field" | "input" | "search-field" -> (Ta_start, 12., 8., false)
     | "select" | "combobox" -> (Ta_start, 12., 8., false)
-    | "textarea" -> (Ta_start, 10., 6., true)
+    | "textarea" -> (Ta_start, 12., 8., true)
     | _ -> (Ta_start, 0., 0., false)
   in
   let align =

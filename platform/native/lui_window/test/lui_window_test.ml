@@ -1470,7 +1470,7 @@ let test_headless_checksum () =
   (* This scene includes transparent fields, input-token borders and clipped
      select labels. Focused controls use the Web ring and offset geometry. *)
   Alcotest.(check string) "golden"
-    "headless done: frames=6 checksum=fefde462f7a86edd" c1
+    "headless done: frames=6 checksum=9fcd4eabb013e9dd" c1
 
 (* ---------- multi-window ---------- *)
 
@@ -1823,7 +1823,7 @@ let test_headless_multi () =
   let out1 = run () and out2 = run () in
   (match win_done_lines out1 with
    | [ w0; w1 ] ->
-     Alcotest.(check string) "win0 golden" "fefde462f7a86edd"
+     Alcotest.(check string) "win0 golden" "9fcd4eabb013e9dd"
        (checksum_value w0);
      Alcotest.(check bool) "independent checksums" true
        (checksum_value w0 <> checksum_value w1)
