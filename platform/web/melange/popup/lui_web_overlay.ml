@@ -241,7 +241,8 @@ let begin_popup_close_bang = begin_popup_close
 
 let finish_popup_close_after_transition renderer node token popup =
   ignore
-    (Lui_web_util.after_surface_motion renderer.web_document [ popup ] (fun () ->
+    (Lui_web_util.after_surface_motion renderer.web_document [ popup ]
+       ~fallback:120 (fun () ->
          if
            Lui_web_layers.transition renderer.web_layers node = token
            && not (Lui_web_layers.is_open renderer.web_layers node)
@@ -282,7 +283,13 @@ let close_modal_shell ?(on_finish = fun () -> ()) renderer node parent layer
   W.Element.setAttribute "inert" "" layer;
   W.Element.setAttribute "inert" "" surface;
   let backdrop = Lui_web_util.child_element layer 0 in
+  let fallback =
+    match Store.node renderer.web_store node with
+    | Some current when Store.standard_kind_is current Sheet -> 470
+    | _ -> 170
+  in
   Lui_web_util.after_surface_motion renderer.web_document [ backdrop; surface ]
+    ~finish_on_cancel:true ~fallback
     (fun () ->
       if
         Lui_web_layers.transition renderer.web_layers node = token
@@ -956,7 +963,8 @@ let remove_toast_after_exit renderer toast =
   W.Element.setAttribute "inert" "" toast;
   W.Element.removeAttribute "role" toast;
   refresh_toasts renderer;
-  ignore (Lui_web_util.after_surface_motion renderer.web_document [ toast ] (fun () ->
+  ignore (Lui_web_util.after_surface_motion renderer.web_document [ toast ]
+      ~fallback:500 (fun () ->
       (match W.Element.parentElement toast with
        | Some parent -> ignore (W.Element.removeChild (W.Element.asNode toast) parent)
        | None -> ());

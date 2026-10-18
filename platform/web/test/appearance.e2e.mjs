@@ -167,7 +167,9 @@ test("explicit base appearance composes with hover, press, selection and disable
   assert.equal((await read()).opacity, '0.7')
   await page.mouse.up()
   await page.getByRole('button', {name: 'Disable appearance', exact: true}).click()
-  await explicit.hover()
+  // Disabled buttons opt out of hit testing; the assertions below read the
+  // disabled base appearance, so the pointer only needs to reach the control.
+  await explicit.hover({ force: true })
   assert.equal((await read()).foreground, 'rgb(16, 32, 48)')
   assert.equal((await read()).border, 'rgb(48, 64, 80)')
   assert.equal((await read()).opacity, '0.4')

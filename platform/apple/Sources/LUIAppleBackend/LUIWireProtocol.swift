@@ -147,10 +147,11 @@ enum LUIWireValue: Decodable, Equatable {
         case .headingLevel:
             guard let value = intValue else { return false }
             return (1...6).contains(value)
-        case .checked, .selected, .autofocus, .submitOnEnter, .longPressEnabled,
+        case .checked, .selected, .autofocus, .submitOnEnter, .submitOnBlur,
+             .longPressEnabled,
              .changeEnabled, .toggleEnabled, .pressEnabled, .submitEnabled,
              .doublePressEnabled, .appearEnabled, .pointerEnabled, .connector,
-             .expanded, .enabled,
+             .expanded, .enabled, .inert, .navigateEnabled,
              .scrollAnimated, .trackVisibleRange:
             return boolValue != nil
         case .firstPaneWidth:
@@ -200,7 +201,7 @@ enum LUIWireValue: Decodable, Equatable {
         case .variant:
             guard let value = stringValue else { return false }
             return Self.buttonVariants.contains(value)
-        case .iconPlacement:
+        case .iconPlacement, .selectionPlacement:
             guard let value = stringValue else { return false }
             return value == "leading" || value == "trailing" || value == "top"
         case .title, .description, .meta, .indicator, .foreground, .borderColor,
@@ -217,6 +218,9 @@ enum LUIWireValue: Decodable, Equatable {
         case .anchor:
             guard let value = stringValue else { return false }
             return ["above", "below", "left", "right"].contains(value)
+        case .anchorTarget:
+            guard let value = stringValue else { return false }
+            return !value.trimmingCharacters(in: .whitespaces).isEmpty
         case .anchorAlignment:
             guard let value = stringValue else { return false }
             return ["start", "end", "stretch"].contains(value)
@@ -248,7 +252,7 @@ enum LUIWireValue: Decodable, Equatable {
             return value == "treeitem" || value == "navigation" ||
                 value == "navigation-heading" ||
                 (kind == .popover && value == "menu")
-        case .treeLevel:
+        case .treeLevel, .gridColumnSpan:
             guard let value = intValue else { return false }
             return value > 0
         case .theme:
@@ -1089,6 +1093,9 @@ struct LUIRetainedTree {
                 isHorizontalGroup(kind)
         case .grow: kind != .avatar && kind != .tooltip && !isModalSurface(kind)
         case .columns: kind == .grid
+        case .gridColumnSpan:
+            kind != .root && kind != .dialog && kind != .drawer && kind != .sheet
+                && kind != .tooltip
         case .padding, .paddingHorizontal, .paddingVertical,
              .paddingTop, .paddingRight, .paddingBottom, .paddingLeft,
              .margin, .marginHorizontal, .marginVertical,
@@ -1187,6 +1194,8 @@ struct LUIRetainedTree {
         case .iconPlacement:
             kind == .button || kind == .toggleButton || kind == .listItem ||
                 kind == .link
+        case .selectionPlacement:
+            kind == .menuItem
         case .longPressEnabled:
             kind == .button || kind == .toggleButton || kind == .listItem
         case .icon:
@@ -1199,6 +1208,9 @@ struct LUIRetainedTree {
         case .autofocus:
             kind == .button || kind == .toggleButton || isTextEntry(kind)
         case .submitOnEnter: kind == .textarea
+        case .submitOnBlur:
+            kind == .textField || kind == .secureField || kind == .input
+                || kind == .searchField || kind == .textarea
         case .changeEnabled: kind == .radio || isTreeRow(kind)
         case .toggleEnabled: kind == .radio || kind == .drawer || isTreeRow(kind)
         case .pressEnabled:
@@ -1208,6 +1220,9 @@ struct LUIRetainedTree {
                 kind == .combobox || kind == .menuItem || kind == .listItem
                 || kind == .tableCell || kind == .bottomTab ||
                 kind == .fileImage || isTreeRow(kind)
+        case .navigateEnabled:
+            kind == .textField || kind == .secureField || kind == .input
+                || kind == .searchField || kind == .textarea
         case .submitEnabled: kind == .combobox || kind == .listItem
         case .doublePressEnabled: kind == .listItem
         case .appearEnabled, .pointerEnabled: kind != .root
@@ -1217,6 +1232,8 @@ struct LUIRetainedTree {
             kind == .mediaSurface
         case .sourceX, .sourceY, .sourceWidth, .sourceHeight:
             kind == .avatar || kind == .image
+        case .anchorTarget:
+            kind == .popover
         case .anchor, .anchorAlignment, .anchorOffset:
             kind == .dropdownMenu || kind == .tooltip || kind == .popover
         case .popupX, .popupY: kind == .popover || kind == .dropdownMenu
@@ -1286,6 +1303,7 @@ struct LUIRetainedTree {
             kind != .root && kind != .tooltip && !isModalSurface(kind)
         case .cursor: kind != .root
         case .shadow: kind != .tooltip && !isModalSurface(kind)
+        case .inert: kind == .box
         case .hoverBackground, .hoverOpacity, .hoverShadow,
              .hoverForeground, .hoverBorder,
              .pressedBackground, .pressedOpacity, .pressedShadow,

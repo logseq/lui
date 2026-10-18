@@ -1937,6 +1937,13 @@ module Dmg = struct
     Proc.check "/usr/bin/xattr" [ "-wx"; "com.apple.FinderInfo";
                                   Buffer.contents hex; path ]
 
+  (* Shared runners unmount an image out from under detach. The
+     volume is already gone, so that is success rather than a failed
+     image. *)
+  let detach_already_gone output =
+    contains_sub output "No such file or directory"
+    || contains_sub output "not currently mounted"
+
   let detach mnt =
     let rec go i =
       let args =
@@ -1944,6 +1951,8 @@ module Dmg = struct
       in
       match Proc.check "hdiutil" args with
       | Ok _ -> Stdlib.Ok ()
+      | Error (Tool_failed { output; _ }) when detach_already_gone output ->
+        Stdlib.Ok ()
       | Error e ->
         if i >= 9 then Error e
         else begin

@@ -468,7 +468,7 @@ test("modal focus includes links, skips hidden controls, handles an empty surfac
   await browser("wait", "--fn", "!document.querySelector('.lui-modal-layer')")
 
   await clickButton("Open dialog")
-  await evaluate(`document.querySelector('button')?.remove()`)
+  await evaluate(`[...document.querySelectorAll('#host button')].find((button) => button.textContent.trim() === 'Open dialog')?.remove()`)
   await browser("press", "Escape")
   await browser("wait", "--fn", "!document.querySelector('.lui-modal-layer')")
   await browser("wait", "--fn", "document.activeElement === document.body")
@@ -1995,6 +1995,11 @@ test("ContextMenu long press follows the touch point and cancels after movement"
     }))
   })()`)
   await browser("wait", "550")
+  await browser(
+    "wait",
+    "--fn",
+    "(() => { const menu = document.querySelector('.lui-context-menu'); if (!menu?.hasAttribute('data-open')) return false; const transform = getComputedStyle(menu).transform; return transform === 'none' || transform === 'matrix(1, 0, 0, 1, 0, 0)'; })()",
+  )
   assert.deepEqual(
     await state(`(() => {
       const menu = document.querySelector('.lui-context-menu')
