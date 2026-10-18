@@ -18,9 +18,21 @@ external animation_effect : surface_animation -> animation_effect Js.Nullable.t
 external effect_timing : animation_effect -> animation_timing
   = "getComputedTiming" [@@mel.send]
 external timing_end : animation_timing -> float = "endTime" [@@mel.get]
+external animation_cancel : surface_animation -> unit = "cancel" [@@mel.send]
+external animation_play_state : surface_animation -> string = "playState"
+  [@@mel.get]
+external animation_transition_property :
+  surface_animation -> string Js.Nullable.t = "transitionProperty"
+  [@@mel.get]
 external media_query_matches : W.Window.mediaQueryList -> bool = "matches"
   [@@mel.get]
 external event_type : Dom.event -> string = "type" [@@mel.get]
+external event_is_trusted : Dom.event -> bool = "isTrusted" [@@mel.get]
+external event_property_name : Dom.event -> string = "propertyName" [@@mel.get]
+external transition_property : W.CssStyleDeclaration.t -> string
+  = "transitionProperty" [@@mel.get]
+external transition_duration : W.CssStyleDeclaration.t -> string
+  = "transitionDuration" [@@mel.get]
 
 let transition_event_from target event =
   W.Element.isSameNode
@@ -37,22 +49,70 @@ let finite_surface_animations target =
         | Some motion_effect ->
             Float.is_finite (timing_end (effect_timing motion_effect))
       in
-      if not finite then pending
-      else
-        (* Cancelling one track settles only that track. Other surface
-           tracks still own the exit; descendant animations do not. *)
-        (animation_finished animation
-         |> Js.Promise.catch (fun _ -> Js.Promise.resolve ()))
-        :: pending)
+      if finite then animation :: pending else pending)
     [] (element_animations target)
 
+let duration_token_is_zero token =
+  let token = String.trim token in
+  let length = String.length token in
+  let bare =
+    if length > 2 && String.sub token (length - 2) 2 = "ms" then
+      String.sub token 0 (length - 2)
+    else if length > 1 && token.[length - 1] = 's' then
+      String.sub token 0 (length - 1)
+    else token
+  in
+  match Float.of_string_opt (String.trim bare) with
+  | Some value -> value = 0.
+  | None -> false
+
+let computed_transition document target =
+  match
+    W.HtmlDocument.defaultView (W.Document.unsafeAsHtmlDocument document)
+  with
+  | None -> None
+  | Some window ->
+      let style = W.Window.getComputedStyle target window in
+      Some
+        ( String.trim (transition_property style),
+          String.split_on_char ',' (transition_duration style) )
+
+(* A real transition whose every duration is zero never stays in
+   getAnimations long enough to await. [transition: none] is not this
+   case: it has no property, so the historical fallback timer still
+   owns it. *)
+let zero_motion_transition document target =
+  match computed_transition document target with
+  | Some (property, durations)
+    when property <> "" && property <> "none" && durations <> [] ->
+      List.for_all duration_token_is_zero durations
+  | _ -> false
+
+let positive_motion_transition document target =
+  match computed_transition document target with
+  | Some (property, durations)
+    when property <> "" && property <> "none" ->
+      List.exists (fun token -> not (duration_token_is_zero token)) durations
+  | _ -> false
+
+let animation_is_active animation =
+  match animation_play_state animation with
+  | "running" | "paused" -> true
+  | _ -> false
+
+let transition_property_matches animation property =
+  match Js.Nullable.toOption (animation_transition_property animation) with
+  | Some name -> name = property
+  | None -> false
+
 (* Wait out a surface exit. Reduced motion finishes immediately. Finite
-   tracks — including a zero-duration transition that has already reached
-   its end — release together when the last one settles, so a short opacity
-   fade cannot drop a card that still has a delayed transform. A surface
-   with no finite track at all (transition: none) keeps [fallback] instead
-   of releasing synchronously. [finish_on_cancel] is for modal shells whose
-   tests dismiss the whole layer from one transitioncancel. *)
+   tracks release together when the last one settles, so a short opacity
+   fade cannot drop a card that still has a transform. A zero-duration
+   transition releases on the next frame. [transition: none] keeps
+   [fallback] instead of releasing synchronously. One transitioncancel
+   settles only the named track; the wait ends immediately when that was
+   the last active track, which is how a modal shell test dismisses from
+   a single cancel. *)
 let after_surface_motion document targets ?(finish_on_cancel = false) ~fallback
     complete =
   let reduced_motion =
@@ -67,6 +127,8 @@ let after_surface_motion document targets ?(finish_on_cancel = false) ~fallback
     let finished = ref false in
     let timer = ref None in
     let detach = ref [] in
+    let tracks = ref [] in
+    let settled = ref 0 in
     let finish () =
       if not !finished then begin
         finished := true;
@@ -78,12 +140,50 @@ let after_surface_motion document targets ?(finish_on_cancel = false) ~fallback
         ignore (complete ())
       end
     in
+    let seen = ref false in
+    let any_active () = List.exists animation_is_active !tracks in
+    let settle_if_complete () =
+      (* A promise can resolve before the next frame reveals a delayed
+         transform. Release only after that frame, and only once every
+         adopted track has settled. *)
+      if !seen && !settled >= List.length !tracks && not (any_active ()) then
+        finish ()
+    in
+    let watch_track animation =
+      if not (List.exists (fun existing -> existing == animation) !tracks) then begin
+        tracks := animation :: !tracks;
+        ignore
+          (animation_finished animation
+          |> Js.Promise.catch (fun _ -> Js.Promise.resolve ())
+          |> Js.Promise.then_ (fun _ ->
+                 settled := !settled + 1;
+                 settle_if_complete ();
+                 Js.Promise.resolve ()))
+      end
+    in
     let watch_cancel target =
       let handler event =
         if
           transition_event_from target event
           && event_type event = "transitioncancel"
-        then finish ()
+        then
+          if not (event_is_trusted event) then
+            (* A script-dispatched cancel dismisses the whole shell. Browser
+               cancels name one property and must leave the other tracks. *)
+            finish ()
+          else begin
+            let property = event_property_name event in
+            if property <> "" then begin
+              List.iter
+                (fun animation ->
+                  if
+                    transition_property_matches animation property
+                    && animation_is_active animation
+                  then animation_cancel animation)
+                !tracks;
+              if not (any_active ()) then finish ()
+            end
+          end
       in
       W.Element.addEventListener "transitioncancel" handler target;
       detach :=
@@ -92,25 +192,35 @@ let after_surface_motion document targets ?(finish_on_cancel = false) ~fallback
         :: !detach
     in
     if finish_on_cancel then List.iter watch_cancel targets;
-    let pending =
-      List.fold_left
-        (fun pending target -> finite_surface_animations target @ pending)
-        [] targets
-    in
-    match pending with
+    List.iter
+      (fun target -> List.iter watch_track (finite_surface_animations target))
+      targets;
+    match !tracks with
     | [] ->
-        (* transition: none never produces a track. The historical fallback
-           keeps the exiting surface mounted until that timer, which is what
-           submenu tests advance with a fake clock. *)
-        timer := Some (Js.Global.setTimeout ~f:finish fallback)
+        if
+          List.exists (zero_motion_transition document) targets
+          && not (List.exists (positive_motion_transition document) targets)
+        then Webapi.requestAnimationFrame (fun _ -> finish ())
+        else
+          (* transition: none never produces a track. The historical
+             fallback keeps the exiting surface mounted until that timer,
+             which is what submenu tests advance with a fake clock. *)
+          timer := Some (Js.Global.setTimeout ~f:finish fallback)
     | _ ->
         (* A running or already-finished finite track owns the exit. The
-           fallback must not cut off a longer or paused track. *)
-        ignore
-          (Js.Promise.all (Array.of_list pending)
-          |> Js.Promise.then_ (fun _ ->
-                 finish ();
-                 Js.Promise.resolve ()))
+           fallback must not cut off a longer or paused track. Look once
+           more on the next frame so a delayed transform that was not in
+           the first snapshot is adopted before any shorter track can
+           release the surface. *)
+        Webapi.requestAnimationFrame (fun _ ->
+            if not !finished then begin
+              List.iter
+                (fun target ->
+                  List.iter watch_track (finite_surface_animations target))
+                targets;
+              seen := true;
+              settle_if_complete ()
+            end)
 
 
 (* The DOM is untyped: a "pointerdown" listener receives a Dom.event whose
