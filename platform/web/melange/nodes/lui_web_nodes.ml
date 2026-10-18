@@ -322,7 +322,7 @@ let simple_node_attributes kind =
         ("role", "combobox");
         ("aria-haspopup", "listbox");
         ("aria-expanded", "false") ]
-  | ListItem -> [ ("type", "button"); ("aria-pressed", "false") ]
+  | ListItem -> [ ("type", "button") ]
   | Table -> [ ("role", "grid") ]
   | TableRow -> [ ("role", "row"); ("aria-selected", "false") ]
   | TableCell -> [ ("role", "gridcell") ]

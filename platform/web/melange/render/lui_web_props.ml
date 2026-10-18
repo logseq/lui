@@ -1136,6 +1136,11 @@ let remove_property renderer queue_split node kind dom_node property =
        | AppearEnabled -> Lui_web_events.release_appear renderer node
        | StyleValue -> W.Element.removeAttribute "data-list-style" dom_node
        | SizeValue -> W.Element.removeAttribute "data-size" dom_node
+       | Selected when kind = ListItem ->
+           Util.set_state_attribute dom_node "data-selected" false;
+           if Store.treeitem renderer node then
+             W.Element.setAttribute "aria-selected" "false" dom_node
+           else W.Element.removeAttribute "aria-pressed" dom_node
        | NavigateEnabled | SubmitOnBlur | ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange -> ()
        | TextValue -> apply_text_value renderer node kind dom_node ""
        | Enabled ->
