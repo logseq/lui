@@ -187,6 +187,6 @@ test('retained button content preserves owned slots and intrinsic spacing', asyn
   await page.goto(`${origin}/platform/web/test/fixtures/button-content-regression.html`)
   await page.getByRole('button', {name: 'Audit retained content', exact: true}).click()
   const audit = JSON.parse(await page.locator('#report').textContent())
-  assert.equal(audit.total, 43)
+  assert.equal(audit.total, 46)
   assert.deepEqual(audit.checks.filter(check => !check.pass), [])
 })

@@ -137,7 +137,6 @@ let create_button_node renderer kind =
   let document = renderer.web_document in
   let attributes =
     [ ("data-variant", "default");
-      ("data-size", "default");
       ("data-icon-placement", "leading");
       ("type", "button") ]
   in

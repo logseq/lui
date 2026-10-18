@@ -37,7 +37,7 @@ const create = (kind, parent, props = {}, index = 0) => {
 }
 const flush = () => {backend.apply_batch({generation:++generation, ops:list(ops)}); ops=[]}
 const element = id => document.getElementById(`lui-node-${id}`)
-const root = create('row', null, {gap:24})
+const root = create('row', null, {gap:24,cross:'center'})
 const samples = ['button','toggle-button','toggle','menu-item','menu-trigger'].map((kind,index) => {
   const props = kind === 'menu-item' ? {text:'Menu label'} : {'accessibility-label':`Control ${index}`}
   if (kind === 'menu-trigger') props.icon = 'check'
@@ -61,6 +61,17 @@ document.querySelector('#audit').onclick = () => {
     if (kind === 'button')
       check(`${kind}: custom content has no empty trailing gap`,
         Math.abs(button.getBoundingClientRect().width-content.getBoundingClientRect().width)<0.1)
+    if (kind === 'button') {
+      const contentHeight = content.getBoundingClientRect().height
+      check('button: absent size uses intrinsic content height',
+        Math.abs(button.getBoundingClientRect().height-contentHeight)<0.1)
+      set(id,'size','sm'); flush()
+      check('button: an explicit size still supplies its control height',
+        Math.abs(button.getBoundingClientRect().height-36)<0.1)
+      remove(id,'size'); flush()
+      check('button: removing size restores intrinsic height and retains content',
+        Math.abs(button.getBoundingClientRect().height-contentHeight)<0.1 && element(child)===content)
+    }
     const initialText = content?.textContent
     if (kind === 'menu-item') {
       const marker = button.querySelector(':scope > .lui-menu-item-check')

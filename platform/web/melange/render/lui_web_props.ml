@@ -1135,6 +1135,7 @@ let remove_property renderer queue_split node kind dom_node property =
                (inline_icon_node renderer node kind dom_node)
        | AppearEnabled -> Lui_web_events.release_appear renderer node
        | StyleValue -> W.Element.removeAttribute "data-list-style" dom_node
+       | SizeValue -> W.Element.removeAttribute "data-size" dom_node
        | NavigateEnabled | SubmitOnBlur | ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange -> ()
        | TextValue -> apply_text_value renderer node kind dom_node ""
        | Enabled ->
