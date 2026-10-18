@@ -47,6 +47,7 @@ let install renderer node ~materialize ~unmount =
     in
     let last_token = ref None in
     let last_range = ref None in
+    let last_edges = ref None in
         let document = W.Document.unsafeAsHtmlDocument renderer.web_document in
     let live_rows () =
       Hashtbl.fold (fun id _ rows -> id :: rows) mounted []
@@ -170,25 +171,52 @@ let install renderer node ~materialize ~unmount =
           let index =
             Option.bind index (fun id -> Hashtbl.find_opt positions id)
           in
+          (* An absent target resolves at the committed-tree boundary:
+             once rows are populated a missing key reports immediately. *)
           match index with
           | None ->
-              if tries >= 8 then complete_pending "missing-target"
+              if Array.length !rows > 0 then complete_pending "missing-target"
               else
                 pending_scroll :=
                   Some (token, target_key, align, behavior, tries + 1)
           | Some index -> (
-              match Js.Nullable.toOption (V.item_range virtualizer) with
-              | Some r
-                when index >= V.range_start r
-                     && index <= V.range_end r ->
-                  complete_pending "succeeded"
-              | _ ->
-                  V.scroll_to_index virtualizer index
-                    (V.scroll_to_index_options ~align ~behavior);
-                  if tries >= 60 then complete_pending "cancelled"
-                  else
+              let landed =
+                match
+                  ( Array.find_opt
+                      (fun it -> V.item_index it = index)
+                      (V.items virtualizer),
+                    Js.Nullable.toOption (V.scroll_offset virtualizer),
+                    Js.Nullable.toOption (V.scroll_rect virtualizer) ) with
+                | Some it, Some off, Some rect ->
+                    let bottom = off +. V.rect_height rect in
+                    (match align with
+                     | "end" -> bottom >= V.item_end it -. 2.
+                     | "start" -> V.item_start it >= off -. 2.
+                     | _ -> true)
+                | _ -> false
+              in
+              let off =
+                Js.Nullable.toOption (V.scroll_offset virtualizer)
+              in
+              (* Settled once the aligned edge is reached; cancelled
+                 when an issued scroll can no longer move the offset
+                 (clamped/unreachable) and the scroller is idle. *)
+              if landed then complete_pending "succeeded"
+              else
+                match tries, off with
+                | last_off, Some off
+                  when last_off > 0
+                       && abs_float (off -. float_of_int last_off) < 1.
+                       && not (V.is_scrolling virtualizer) ->
+                    complete_pending "cancelled"
+                | _ ->
+                    V.scroll_to_index virtualizer index
+                      (V.scroll_to_index_options ~align ~behavior);
                     pending_scroll :=
-                      Some (token, target_key, align, behavior, tries + 1)))
+                      Some
+                        (token, target_key, align, behavior,
+                         Option.value off ~default:0. |> int_of_float
+                         |> ( + ) 1)))
     in
     let rec render () =
       if !updating then pending_render := true
@@ -293,6 +321,20 @@ let install renderer node ~materialize ~unmount =
               | None -> ()
             end
             else last_range := None);
+            (match
+               ( Js.Nullable.toOption (V.scroll_offset virtualizer),
+                 Js.Nullable.toOption (V.scroll_rect virtualizer) ) with
+             | Some off, Some rect ->
+                 let bottom = off +. V.rect_height rect in
+                 let edges =
+                   (off <= 2., bottom >= V.total_size virtualizer -. 2.)
+                 in
+                 if !last_edges <> Some edges then begin
+                   last_edges := Some edges;
+                   emit
+                     (ScrollEdges (node, fst edges, snd edges))
+                 end
+             | _ -> ());
             attempt_scroll ();
         if !pending_render then begin
           pending_render := false;
@@ -332,7 +374,11 @@ let install renderer node ~materialize ~unmount =
         V.set_options virtualizer (make_options ());
         if connected root then V.will_update virtualizer;
         render ();
-        request ()
+        request ();
+        (* Committed-tree boundary: a pending intent whose row now
+           exists (or is known absent from the committed children)
+           resolves here without waiting on virtualizer renders. *)
+        attempt_scroll ()
       end
     in
     let on_focus _ = refresh () in

@@ -332,6 +332,7 @@ type event =
   | PointerLeave of int
   | ContextMenuPress of int * pointer_detail
   | Load of int
+  | ScrollEdges of int * bool * bool
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =
@@ -384,6 +385,7 @@ let event_node event =
   | PointerLeave node
   | ContextMenuPress (node, _)
   | Load node
+  | ScrollEdges (node, _, _)
   | ExtensionEvent (node, _, _, _) -> node
 
 let modal_surface kind = kind = Dialog || kind = Drawer || kind = Sheet
@@ -517,7 +519,7 @@ let event_supported kind event =
     | _ -> false)
   | DoublePress _ -> kind = ListItem
   | Appear _ -> kind <> Root
-  | ScrollCompleted _ | VisibleRange _ ->
+  | ScrollCompleted _ | VisibleRange _ | ScrollEdges _ ->
       kind = ListContainer || kind = VirtualList
   | Picked _ -> kind = FilePicker
   | PressDetail _ | PointerDown _ | PointerUp _ ->
@@ -541,6 +543,7 @@ let event_supported kind event =
   | PointerEnter _ | PointerLeave _ -> kind <> Root
   | ContextMenuPress _ -> context_menu_host_kind kind
   | Load _ -> kind = Image
+
   | ExtensionEvent _ -> false
 
 let true_property properties property =

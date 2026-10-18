@@ -65,3 +65,9 @@ external scroll_to_index : t -> int -> scroll_to_index_options -> unit
 external item_range : t -> range Js.Nullable.t = "range" [@@mel.get]
 external range_start : range -> int = "startIndex" [@@mel.get]
 external range_end : range -> int = "endIndex" [@@mel.get]
+
+external item_end : item -> float = "end" [@@mel.get]
+external scroll_offset : t -> float Js.Nullable.t = "scrollOffset" [@@mel.get]
+external scroll_rect : t -> rect Js.Nullable.t = "scrollRect" [@@mel.get]
+external rect_height : rect -> float = "height" [@@mel.get]
+external is_scrolling : t -> bool = "isScrolling" [@@mel.get]

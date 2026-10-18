@@ -358,17 +358,16 @@ let scroll_state context viewport =
   in
   (pinned, request, at_top, scroll_to)
 
-let on_visible_range_of rows_s pinned at_top on_reach_top
+let on_visible_range_of pinned at_top on_reach_top
     (ev : Lui_protocol.event) =
   match ev with
-  | Lui_protocol.VisibleRange (_, first, last) ->
-      let count = List.length (get rows_s) in
-      Signal.set pinned (count = 0 || last >= count - 1);
-      if first <= 0 && not (Signal.get_state at_top) then begin
+  | Lui_protocol.ScrollEdges (_, top, bottom) ->
+      Signal.set pinned bottom;
+      if top && not (Signal.get_state at_top) then begin
         Signal.set at_top true;
         Option.iter (fun f -> f ()) on_reach_top
       end
-      else if first > 0 then Signal.set at_top false
+      else if not top then Signal.set at_top false
   | _ -> ()
 
 let jump_pill pinned rows_s scroll_to scroll_animated : t =
@@ -481,7 +480,7 @@ let transcript ?key ?(viewport = Anchored) ?overscan ?item_extent
            (Signal.subscribe h.at_bottom (fun b -> Signal.set pinned b))
      | Anchored | Anchored_list -> ());
     let on_visible_range =
-      on_visible_range_of rows_s pinned at_top on_reach_top
+      on_visible_range_of pinned at_top on_reach_top
     in
     let anchored =
       match viewport with

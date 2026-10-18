@@ -45,10 +45,19 @@ let seed_items =
       else i) seed_items in
   with_tool @ [ assistant "s5" "" ]
 
-let initial =
+let initial ~tall =
   { items =
       List.filter (fun i -> i.id <> "s5") seed_items
-      @ [ { (assistant "s5" "") with streaming = true } ];
+      @ [ { (assistant "s5" "") with streaming = true } ]
+      @ (if tall then
+           [ assistant "tall"
+               (String.concat "\n"
+                  (List.init 120
+                     (fun i ->
+                       Printf.sprintf
+                         "Tall response line %d — enough content to exceed the viewport."
+                         i))) ]
+         else []);
     draft = ""; generating = true;
     queued =
       [ "Welcome to the lui-ai demo. ";

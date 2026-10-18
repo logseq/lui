@@ -71,3 +71,43 @@ test("jump-to-latest scrolls the virtual transcript to the real bottom", async (
   assert.equal(await jump.isVisible().catch(() => false), false,
     "pill stays hidden once pinned")
 })
+
+test("oversized final response: scroll-within unpins, jump reaches real bottom", async () => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto(`${origin}/examples/chat/web/index.html?tall`,
+    { waitUntil: "networkidle" })
+  await page.waitForSelector("#app textarea", { timeout: 10000 })
+  // Wait for settle: pinned at the true bottom of a >viewport tail row.
+  await page.waitForFunction(() => {
+    const sc = [...document.querySelectorAll("#app div")].find(
+      (d) => d.scrollHeight > d.clientHeight + 2 &&
+        getComputedStyle(d).overflowY === "auto")
+    return sc && sc.scrollTop > 0 &&
+      sc.scrollTop >= sc.scrollHeight - sc.clientHeight - 4
+  }, null, { timeout: 10000 })
+
+  // Scroll up ~1000px INSIDE the tall tail row — the same row stays the
+  // last visible, yet the tail edge is gone: must unpin.
+  const jump = page.getByRole("button", { name: "Jump to latest" })
+  await page.mouse.move(640, 400)
+  await page.mouse.wheel(0, -1000)
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll("button")].some(
+      (b) => b.getAttribute("aria-label") === "Jump to latest" ||
+        b.textContent.includes("Jump to latest")), null, { timeout: 5000 })
+  assert.ok(await jump.isVisible(),
+    "scrolling up inside the tall tail row must unpin")
+
+  // Rapid double-Jump: second token supersedes the first; the scroller
+  // still lands at the true bottom.
+  await jump.click(); await jump.click().catch(() => {})
+  await page.waitForFunction(() => {
+    const sc = [...document.querySelectorAll("#app div")].find(
+      (d) => d.scrollHeight > d.clientHeight + 2 &&
+        getComputedStyle(d).overflowY === "auto")
+    return sc && sc.scrollTop >= sc.scrollHeight - sc.clientHeight - 4
+  }, null, { timeout: 8000 })
+  const m = await scrollerMetrics()
+  assert.ok(m.top > m.bottom - 64,
+    `jump on tall tail must reach bottom, got top=${m.top} bottom=${m.bottom}`)
+})

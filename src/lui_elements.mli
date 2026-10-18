@@ -994,6 +994,10 @@ val list :
   ?track_visible_range:bool ->
   ?on_scroll_completed:(Lui_protocol.event -> unit) ->
   ?on_visible_range:(Lui_protocol.event -> unit) ->
+   (* Receives [VisibleRange] (intersecting row indices — overscan and
+      focus-retained rows excluded) and [ScrollEdges] (whether the
+      scroll viewport touches its top/bottom edges — the typed signal
+      for tail pinning). *)
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?list_marker:list_marker ->
@@ -1059,6 +1063,10 @@ val virtual_list :
   ?track_visible_range:bool ->
   ?on_scroll_completed:(Lui_protocol.event -> unit) ->
   ?on_visible_range:(Lui_protocol.event -> unit) ->
+   (* Receives [VisibleRange] (intersecting row indices — overscan and
+      focus-retained rows excluded) and [ScrollEdges] (whether the
+      scroll viewport touches its top/bottom edges — the typed signal
+      for tail pinning). *)
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?list_marker:list_marker ->

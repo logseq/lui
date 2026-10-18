@@ -204,7 +204,7 @@ let test_autoscroll_follow () =
     match node_prop (container_node s) "scroll-token" with
     | Some (IntValue v) -> v | _ -> -1 in
   Alcotest.(check bool) "token bumped" true (token () > 0);
-  send_event s (VisibleRange (list_el.Drive.Model.id, 0, 10));
+  send_event s (ScrollEdges (list_el.Drive.Model.id, true, false));
   let before = token () in
   drive_send_model s (fun m -> m @ [ user "later" "x" ]);
   Alcotest.(check bool) "no scroll while unpinned" true (before = token ());
@@ -222,10 +222,10 @@ let test_reach_top_hook () =
       ~on_reach_top:(fun () -> incr reached) () in
   let s = drive_mount ~initial:[ assistant "a1" "x" ] ~view in
   let list_el = container_node s in
-  send_event s (VisibleRange (list_el.Drive.Model.id, 0, 0));
-  send_event s (VisibleRange (list_el.Drive.Model.id, 0, 0));
-  send_event s (VisibleRange (list_el.Drive.Model.id, 2, 5));
-  send_event s (VisibleRange (list_el.Drive.Model.id, 0, 5));
+  send_event s (ScrollEdges (list_el.Drive.Model.id, true, false));
+  send_event s (ScrollEdges (list_el.Drive.Model.id, true, false));
+  send_event s (ScrollEdges (list_el.Drive.Model.id, false, false));
+  send_event s (ScrollEdges (list_el.Drive.Model.id, true, false));
   Alcotest.(check int) "top edge fires on rising edge only" 2 !reached;
   drive_dispose s
 
@@ -329,11 +329,11 @@ let test_grouped_pin () =
     [ user "u1" "go"; tool_item "t1" `in_progress; tool_item "t2" `pending ] in
   let s = drive_mount ~initial:items ~view:transcript_view in
   let list_el = container_node s in
-  send_event s (VisibleRange (list_el.Drive.Model.id, 0, 1));
+  send_event s (ScrollEdges (list_el.Drive.Model.id, false, true));
   drive_send_model s (fun m -> m @ [ assistant "a9" "ok" ]);
   Alcotest.(check (option string)) "still pinned at grouped tail"
     (Some "a9") (scroll_target s);
-  send_event s (VisibleRange ((container_node s).Drive.Model.id, 0, 0));
+  send_event s (ScrollEdges ((container_node s).Drive.Model.id, true, false));
   let before = scroll_target s in
   drive_send_model s (fun m -> m @ [ assistant "a10" "more" ]);
   Alcotest.(check (option string)) "unpinned stays put" before

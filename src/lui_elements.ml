@@ -491,7 +491,9 @@ let is_load = function Load _ -> true | _ -> false
 let is_appear = function Appear _ -> true | _ -> false
 let is_resize = function ValueChanged _ -> true | _ -> false
 let is_scroll_completed = function ScrollCompleted _ -> true | _ -> false
-let is_visible_range = function VisibleRange _ -> true | _ -> false
+let is_visible_range = function
+  | VisibleRange _ | ScrollEdges _ -> true
+  | _ -> false
 
 (* Fail loudly when a handler is registered for an event the node kind can
    never emit. Dispatch rejects such events anyway, so a registration that

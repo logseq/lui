@@ -1,10 +1,12 @@
 external set_timeout : (unit -> unit) -> int -> unit = "setTimeout"
   [@@mel.scope "window"]
 
+let location_search : string = [%mel.raw "window.location.search"]
+
 let main host =
   let renderer = Lui_web.create host in
   let app =
-    Lui_app.create (Lui_web.backend renderer) Model.initial Model.update
+    Lui_app.create (Lui_web.backend renderer) (Model.initial ~tall:(String.contains location_search 't')) Model.update
       View.view
   in
   ignore
