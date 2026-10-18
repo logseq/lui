@@ -187,3 +187,39 @@ test("mobile gallery controls and layout examples remain reachable without overf
     await page.locator(".lui-gallery-navigation-back").click()
   }
 })
+
+for (const width of [390, 1280]) {
+  test(`icon-only buttons center their icon at viewport ${width}`, async () => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto(`${origin}/platform/web/test/fixtures/button-alignment-regression.html`)
+    const buttons = page.locator("#host button")
+    assert.equal(await buttons.count(), 8)
+    for (const button of await buttons.all()) {
+      const metrics = await button.evaluate(el => {
+        const rect = el.getBoundingClientRect()
+        const icon = el.querySelector(".lui-button-icon").getBoundingClientRect()
+        return { x: icon.x + icon.width / 2 - rect.x - rect.width / 2,
+          y: icon.y + icon.height / 2 - rect.y - rect.height / 2,
+          label: el.getAttribute("aria-label") }
+      })
+      assert.ok(Math.abs(metrics.x) < 0.5, JSON.stringify(metrics))
+      assert.ok(Math.abs(metrics.y) < 0.5, JSON.stringify(metrics))
+    }
+  })
+}
+
+test("button text appears and disappears without retaining an empty flex gap", async () => {
+  await page.goto(`${origin}/platform/web/test/fixtures/button-alignment-regression.html`)
+  const label = page.locator("#host button").first().locator(".lui-button-label")
+  await page.evaluate(() => window.buttons.setText("Send"))
+  assert.equal(await label.isVisible(), true)
+  assert.equal(await label.textContent(), "Send")
+  const withText = await page.locator("#host button").first().boundingBox()
+  await page.evaluate(() => window.buttons.setText(""))
+  assert.equal(await label.evaluate(el => getComputedStyle(el).display), "none")
+  const withoutText = await page.locator("#host button").first().boundingBox()
+  assert.ok(withoutText.width < withText.width)
+  await page.evaluate(() => window.buttons.setText("Send again"))
+  assert.equal(await label.isVisible(), true)
+  assert.equal(await label.textContent(), "Send again")
+})
