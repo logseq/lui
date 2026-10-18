@@ -65,6 +65,9 @@ test('fixed-width split retains pixels while its parent resizes and can collapse
     Split.render_split(renderer, 1, root, 246, false)
     assert.match(panes.style.values.get('grid-template-columns'), /246px/, 'The first track is expressed in pixels')
     assert.match(divider.style.values.get('left'), /246px/, 'The divider follows the same pixel track')
+    assert.equal(first.style.values.get('grid-column'), '1', 'The first pane keeps its track when positioned outside flow')
+    assert.equal(second.style.values.get('grid-column'), '2', 'The second pane must not auto-place into a collapsed first track')
+    for (const pane of [first, second]) assert.equal(pane.style.values.get('grid-row'), '1')
   }
   Split.render_split(renderer, 1, root, 0, true)
   assert.match(panes.style.values.get('grid-template-columns'), /0px/, 'Controlled closure reaches zero despite its drag minimum')

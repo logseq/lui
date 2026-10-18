@@ -103,6 +103,10 @@ let render_split renderer node root value animated =
      constrain input, while the split owns clipping in both backends. *)
   for index = 0 to 1 do
     Option.iter (fun pane ->
+      (* Positioned panes leave grid auto-placement; their sibling must
+         retain its own track even when the first track is collapsed. *)
+      set_style pane "grid-column" (string_of_int (index + 1));
+      set_style pane "grid-row" "1";
       set_style pane "min-width" "0px";
       set_style pane "overflow" "hidden")
       (W.HtmlCollection.item index (W.Element.children panes))
