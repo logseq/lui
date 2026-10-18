@@ -2206,6 +2206,57 @@ let test_tab_activation () =
   press_field s rects ui 5. 40.;
   Alcotest.(check bool) "ptr focus" false (Ui.focus_visible ui)
 
+let test_input_time_kind () =
+  Alcotest.(check bool) "time is admitted by the typed input contract" true
+    (Lui_protocol.property_value_supported_for_kind Input InputType (StringValue "time"));
+  let store, _ = ui_store_fresh () in
+  Lui_store.apply_op store (CreateNode (10,Input));
+  Lui_store.apply_op store (SetProp (10,InputType,StringValue "time"));
+  Alcotest.(check (option string)) "time is a standard input kind" (Some "time")
+    (Lui_store.string_prop store 10 "input-type")
+
+let test_submit_on_blur () =
+  let property = match List.find_opt (fun p -> Lui_wire_schema.property_name p="submit-on-blur")
+      Lui_wire_schema.all_properties with
+    | Some p -> p | None -> Alcotest.fail "Text inputs need an explicit blur-submit capability" in
+  let store, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  let submits actions = List.filter_map (function Dispatch (Submit id) -> Some id | _ -> None) actions in
+  Ui.set_focused ui store 4;
+  Alcotest.(check (list int)) "blur submission is opt-in" []
+    (submits (Ui.handle ui store rects (key Input.Tab)));
+  Ui.set_focused ui store 4;
+  Lui_store.apply_op store (SetProp (4,property,BoolValue true));
+  Alcotest.(check (list int)) "Tab submits the field being left once" [4]
+    (submits (Ui.handle ui store rects (key Input.Tab)));
+  Alcotest.(check (list int)) "subsequent sync does not submit again" []
+    (submits (Ui.store_changed ui store));
+  Ui.set_focused ui store 4;
+  ignore (Ui.store_changed ui store);
+  Ui.set_focused ui store 3;
+  Alcotest.(check (list int)) "programmatic focus changes flush their blur action" [4]
+    (submits (Ui.store_changed ui store));
+  Ui.set_focused ui store 4;
+  Lui_store.apply_op store (SetProp (4,Enabled,BoolValue false));
+  Ui.set_focused ui store 3;
+  Alcotest.(check (list int)) "disabled controls do not submit on blur" []
+    (submits (Ui.store_changed ui store));
+  Lui_store.apply_op store (SetProp (4,Enabled,BoolValue true));
+  Ui.set_focused ui store 4;
+  ignore (Ui.handle ui store rects (Input.Text_editing ("ni",2,0)));
+  Ui.set_focused ui store 3;
+  Alcotest.(check (list int)) "marked composition does not submit on blur" []
+    (submits (Ui.store_changed ui store));
+  Ui.set_focused ui store 4;
+  Lui_store.apply_op store (RemoveProp (4,property));
+  Alcotest.(check (list int)) "removing opt-in preserves normal focus behavior" []
+    (submits (Ui.handle ui store rects (key Input.Tab)));
+  Lui_store.apply_op store (SetProp (4,property,BoolValue true));
+  Ui.set_focused ui store 4;
+  Lui_store.apply_op store (DropNode 4);
+  Alcotest.(check (list int)) "disposing a field does not submit a removed owner" []
+    (submits (Ui.store_changed ui store))
+
 let test_button_navigation_keys () =
   let store, rects = ui_store_fresh () in
   let ui = Ui.create () in
@@ -4534,6 +4585,8 @@ let () =
           Alcotest.test_case "tab activation" `Quick test_tab_activation;
           Alcotest.test_case "button navigation keys" `Quick test_button_navigation_keys;
           Alcotest.test_case "negative tabindex" `Quick test_negative_tabindex;
+          Alcotest.test_case "time input kind" `Quick test_input_time_kind;
+          Alcotest.test_case "submit on blur" `Quick test_submit_on_blur;
           Alcotest.test_case "control keys" `Quick test_control_keys ] );
       ( "list",
         [ Alcotest.test_case "typeahead" `Quick test_list_typeahead;

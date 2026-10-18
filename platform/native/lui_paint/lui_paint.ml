@@ -85,6 +85,7 @@ let prop_coverage =
     ("selected", Painted); (* folds into state.selected *)
     ("autofocus", Host);
     ("submit-on-enter", Host);
+    ("submit-on-blur", Host);
     ("long-press-enabled", Host);
     ("change-enabled", Host);
     ("toggle-enabled", Host);

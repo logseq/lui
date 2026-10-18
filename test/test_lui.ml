@@ -1347,6 +1347,23 @@ let test_button_navigation_callback () =
     (!received=[event]);
   drive_dispose s
 
+let test_input_blur_callback () =
+  List.iter (fun (kind,make) ->
+    let received = ref [] in
+    let s = drive_mount ~initial:() ~reducer:(fun model () -> model)
+      ~view:(fun _ _ _ -> make (fun event -> received:=event::!received)) () in
+    let node = drive_node s (Drive.Model.Kind kind) in
+    Alcotest.(check bool) "the public constructor enables blur submission" true
+      (Drive.Model.prop (drive_tree s) node.id "submit-on-blur"=Some (Lui_protocol.BoolValue true));
+    drive_send s (Lui_protocol.Submit node.id);
+    Alcotest.(check int) "the constructor retains its submit callback" 1 (List.length !received);
+    drive_dispose s)
+    ["text-field",(fun f -> Lui_elements.text_field ~submit_on_blur:true ~on_submit:f []);
+     "secure-field",(fun f -> Lui_elements.secure_field ~submit_on_blur:true ~on_submit:f []);
+     "input",(fun f -> Lui_elements.input ~kind:`time ~submit_on_blur:true ~on_submit:f []);
+     "search-field",(fun f -> Lui_elements.search_field ~submit_on_blur:true ~on_submit:f []);
+     "textarea",(fun f -> Lui_elements.textarea ~submit_on_blur:true ~on_submit:f [])]
+
 let test_pointer_events () =
   let open Lui_protocol in
   let detail =
@@ -4220,6 +4237,7 @@ let () =
         [
           Alcotest.test_case "text navigation callbacks" `Quick test_text_navigation_callbacks;
           Alcotest.test_case "button navigation callback" `Quick test_button_navigation_callback;
+          Alcotest.test_case "input blur callback" `Quick test_input_blur_callback;
           Alcotest.test_case "pointer events" `Quick test_pointer_events;
           Alcotest.test_case "pointer dispatch" `Quick test_pointer_dispatch;
           Alcotest.test_case "pixel split echoes" `Quick test_split_pixel_echoes;

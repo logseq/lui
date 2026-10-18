@@ -287,6 +287,7 @@ type property =
   | FirstPaneWidth
   | GridColumnSpan
   | LabelOpacity
+  | SubmitOnBlur
 
 module Property_map : Map.S with type key = property
 

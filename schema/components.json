@@ -1755,6 +1755,11 @@
       "lg": "LabelOpacity",
       "wire": "label-opacity",
       "swift": "labelOpacity"
+    },
+    {
+      "lg": "SubmitOnBlur",
+      "wire": "submit-on-blur",
+      "swift": "submitOnBlur"
     }
   ],
   "events": [

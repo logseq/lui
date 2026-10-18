@@ -555,6 +555,7 @@ module Ui = struct
     (* composed machine states — see platform/native/lui_input *)
     mutable pointer : Lui_pointer.state;
     mutable focus : Lui_focus.state;
+    mutable blur_actions : action list;
     mutable session : Lui_text_input.state;
     mutable selection : Lui_selection.state;
     mutable gesture : Lui_gesture.state;
@@ -607,6 +608,7 @@ module Ui = struct
       vlist_hook = None;
       pointer = Lui_pointer.initial;
       focus = Lui_focus.initial;
+      blur_actions = [];
       session = Lui_text_input.initial;
       selection = Lui_selection.initial;
       gesture = Lui_gesture.initial;
@@ -822,8 +824,25 @@ module Ui = struct
      dispatched, so local rollback is the whole of it), and the
      static selection and editable undo reset — those are owned by
      the focused node. Callers emit [Focus_changed] when it moved. *)
+  let take_blur_actions t store =
+    match t.blur_actions with
+    | [] -> []
+    | actions ->
+      t.blur_actions <- [];
+      List.filter (function
+        | Dispatch (Submit id) -> bool_prop store id "submit-on-blur"
+            && Lui_query.node_enabled store id && Lui_focus.chain_visible store id
+            && event_supported store id (Submit id)
+        | _ -> false) (List.rev actions)
+
   let focus_move ?(kbd = false) t store id =
     let moved = id <> Lui_focus.focused t.focus in
+    let previous = Lui_focus.focused t.focus in
+    if moved && bool_prop store previous "submit-on-blur"
+       && not (Lui_text_input.composing t.session)
+       && Lui_query.node_enabled store previous && Lui_focus.chain_visible store previous
+       && event_supported store previous (Submit previous) then
+      t.blur_actions <- Dispatch (Submit previous) :: t.blur_actions;
     let kbd = kbd || (not moved && id <> 0 && Lui_focus.kbd_visible t.focus) in
     if moved || kbd <> Lui_focus.kbd_visible t.focus then begin
       t.focus <- Lui_focus.set t.focus ~id ~kbd;
@@ -908,7 +927,7 @@ module Ui = struct
     if Lui_store.revision store = t.sync_rev
        && Lui_overlay.open_menu t.overlay = t.sync_menu
        && Lui_scroll.epoch t.scroll = t.sync_scroll_epoch
-       && t.rects_epoch = t.sync_rects_epoch then []
+       && t.rects_epoch = t.sync_rects_epoch then take_blur_actions t store
     else
     let acts = ref [] in
     let run m_acts =
@@ -1021,7 +1040,7 @@ module Ui = struct
      run m);
     t.sync_scroll_epoch <- Lui_scroll.epoch t.scroll;
     t.sync_rects_epoch <- t.rects_epoch;
-    List.rev !acts
+    take_blur_actions t store @ List.rev !acts
 
   let store_changed t store = sync t store
 
@@ -1631,7 +1650,7 @@ module Ui = struct
        t.drag <- d;
        run m
      | Input.Quit_input -> acts := Quit :: !acts);
-    List.rev !acts
+    take_blur_actions t store @ List.rev !acts
 
   let state_of t store id =
     let menu_highlight =

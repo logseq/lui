@@ -289,6 +289,7 @@ type property =
   | FirstPaneWidth
   | GridColumnSpan
   | LabelOpacity
+  | SubmitOnBlur
 
 module Property_map =
   Map.Make
@@ -1053,6 +1054,8 @@ let common_property_supported kind property =
     || kind = Input
     || kind = SearchField
     || kind = Textarea
+  | SubmitOnBlur ->
+    kind = TextField || kind = SecureField || kind = Input || kind = SearchField || kind = Textarea
   | SubmitOnEnter -> kind = Textarea
   | LongPressEnabled -> kind = Button || kind = ToggleButton || kind = ListItem
   | ChangeEnabled -> kind = Radio || tree_row_kind kind
@@ -1549,7 +1552,7 @@ let property_value_supported property value =
   | SelectionPlacementValue, StringValue value -> icon_placement_supported value
   | Selected, BoolValue _ -> true
   | Autofocus, BoolValue _ -> true
-  | SubmitOnEnter, BoolValue _ -> true
+  | SubmitOnEnter, BoolValue _ | SubmitOnBlur, BoolValue _ -> true
   | LongPressEnabled, BoolValue _ -> true
   | ChangeEnabled, BoolValue _ -> true
   | ToggleEnabled, BoolValue _ -> true
@@ -1632,7 +1635,7 @@ let property_value_supported property value =
     List.mem value
       [ "contents"; "none"; "inline-flex"; "block"; "inline"; "inline-block" ]
   | TooltipText, StringValue _ | TooltipKeys, StringValue _ -> true
-  | InputType, StringValue value -> value = "text" || value = "color"
+  | InputType, StringValue value -> value = "text" || value = "color" || value = "time"
   | PickerAccept, StringValue _ -> true
   | PickerDirectory, BoolValue _ -> true
   | PopupX, FloatValue value | PopupY, FloatValue value -> is_finite value
