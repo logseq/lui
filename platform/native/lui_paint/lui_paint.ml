@@ -691,7 +691,6 @@ let col_accent_hover ctx = theme ctx "accent-hover"
 let col_accent_text ctx = theme ctx "accent-text"
 let col_control_border ctx = theme ctx "control-border"
 let col_switch_track ctx = theme ctx "switch-track"
-let col_focus ctx = theme ctx "focus"
 let col_scrollbar ctx = theme ctx "scrollbar-thumb"
 let col_danger ctx = theme ctx "danger"
 let col_popover ctx = theme ctx "popover"
@@ -2012,20 +2011,23 @@ let scrollbar_ops ctx store id r alpha =
    defaults below only fill gaps explicit styling left. *)
 let prop_set store id name = Lui_store.prop store id name <> None
 
-(* The default focus ring: a 2px border drawn 1px outside the box,
-   corners grown to match. Emitted over the control when focused and
-   the view didn't supply its own focus-shadow. *)
-let focus_ring_op ctx r radii alpha =
-  let w = 2. *. ctx.scale and o = 1. *. ctx.scale in
-  let rr =
-    rect (r.x -. w -. o) (r.y -. w -. o)
-      (r.w +. (2. *. (w +. o))) (r.h +. (2. *. (w +. o)))
+(* Match the Web ring-2/ring-offset-2 contract. The offset paints the
+   background token; the outer ring keeps its independent theme token. *)
+let focus_ring_ops ctx r radii alpha =
+  let width = 2. *. ctx.scale and offset = 2. *. ctx.scale in
+  let outline grow ink =
+    let region =
+      rect (r.x -. grow) (r.y -. grow)
+        (r.w +. (2. *. grow)) (r.h +. (2. *. grow))
+    in
+    fill ~continuous:true region
+      (corners region (grow_radii radii grow) false)
+      ~paint:Solid ~c1:(color 0 0 0 0) ~c2:(color 0 0 0 0)
+      ~grad:(0., 0., 0., 0.) ~border:(width, width, width, width)
+      ~bcolor:ink ~dashed:false ~alpha
   in
-  fill ~continuous:true rr
-    (corners rr (grow_radii radii (w +. o)) false)
-    ~paint:Solid ~c1:(color 0 0 0 0) ~c2:(color 0 0 0 0)
-    ~grad:(0., 0., 0., 0.) ~border:(w, w, w, w)
-    ~bcolor:(col_focus ctx) ~dashed:false ~alpha
+  [ outline offset (col_background ctx)
+  ; outline (width +. offset) (theme ctx "ring") ]
 
 (* Kinds that show the default focus ring when focused. *)
 let focusable = function
@@ -2228,14 +2230,10 @@ let default_chrome ctx store id st kind r rs alpha =
   | "text-field" | "secure-field" | "input" | "search-field" | "textarea"
   | "select" | "combobox" ->
     let rad = rad (6. *. s) in
-    (if bg_styled then []
-     else [ face (col_surface ctx) rad zb zc ~dashed:false ])
+    (if bg_styled || (kind <> "select" && kind <> "combobox") then []
+     else [ face (col_background ctx) rad zb zc ~dashed:false ])
     @ (if border_styled || bg_styled then []
-       else
-         [ let bc =
-             if st.focused then col_accent ctx else col_control_border ctx
-           in
-           face zc rad bw1 bc ~dashed:false ])
+       else [ face zc rad bw1 (theme ctx "input") ~dashed:false ])
   | "menu-item" ->
     (if bg_styled || (not st.hovered && not st.focused) then []
      else [ face (col_accent ctx) (rad (6. *. s)) zb zc ~dashed:false ])
@@ -2880,8 +2878,10 @@ let paint_own ctx store id st kind r rs alpha =
     let region, radii = match kind with
       | "checkbox" -> leading_box ctx store id r 16., chrome_radii ctx store id (4. *. ctx.scale)
       | "radio" -> leading_box ctx store id r 16., chrome_radii ctx store id (8. *. ctx.scale)
+      | "text-field" | "secure-field" | "input" | "search-field" | "textarea"
+      | "select" | "combobox" -> r, chrome_radii ctx store id (6. *. ctx.scale)
       | _ -> r, radii_of ctx store id in
-    [ focus_ring_op ctx region radii alpha ]
+    focus_ring_ops ctx region radii alpha
   else []
 
 (* Inside a dead clip only the context still matters: a promoted

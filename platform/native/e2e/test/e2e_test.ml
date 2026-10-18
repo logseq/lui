@@ -75,7 +75,7 @@ let test_boot_pipeline () =
   let ops = E2e_harness.repaint h in
   check bool "repaint clears dirty" false (E2e_harness.wants_repaint h);
   check (list string) "op sequence"
-    [ "glyphs"; "fill"; "fill"; "glyphs"; "fill"; "glyphs"; "glyphs";
+    [ "glyphs"; "fill"; "glyphs"; "fill"; "glyphs"; "glyphs";
       "fill"; "fill"; "glyphs"; "fill"; "fill"; "glyphs"; "glyphs";
       "fill"; "fill"; "glyphs"; "fill"; "fill"; "glyphs" ]
     (E2e_harness.op_names ops);
@@ -143,7 +143,7 @@ let test_press_add_remove_promote () =
   check bool "new row dirty" true (List.mem gamma_row dirty);
   let ops = E2e_harness.repaint h in
   check (list string) "op sequence"
-    [ "glyphs"; "fill"; "fill"; "glyphs"; "fill"; "glyphs"; "glyphs";
+    [ "glyphs"; "fill"; "glyphs"; "fill"; "glyphs"; "glyphs";
       "fill"; "fill"; "glyphs"; "fill"; "fill"; "glyphs"; "glyphs";
       "fill"; "fill"; "glyphs"; "fill"; "fill"; "glyphs"; "glyphs";
       "fill"; "fill"; "glyphs"; "fill"; "fill"; "glyphs" ]

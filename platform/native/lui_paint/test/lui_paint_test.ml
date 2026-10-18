@@ -57,6 +57,162 @@ let test_link_theme () =
   ignore (paint_with h t ());
   check bool "an explicit neutral link color is retained" true (!ink = Some neutral)
 
+let test_form_control_chrome () =
+  List.iter
+    (fun (background, input, ring) ->
+      List.iter
+        (fun kind ->
+          List.iter
+            (fun scale ->
+              let t = store () in
+              apply t
+                [
+                  Lui_protocol.CreateNode (1, kind);
+                  SetProp (1, TextValue, StringValue "Value");
+                ];
+              let r =
+                rect (20. *. scale) (20. *. scale) (100. *. scale) (40. *. scale)
+              in
+              let h =
+                {
+                  (hooks ~layout:(fun _ -> Lui_paint.placement_of_rect r) ()) with
+                  Lui_paint.color_of =
+                    (function
+                    | "background" -> Some background
+                    | "input" -> Some input
+                    | "ring" -> Some ring
+                    | _ -> None);
+                }
+              in
+              let fills painted =
+                List.filter_map
+                  (function Fill f -> Some f | _ -> None)
+                  painted.ops
+              in
+              List.iter
+                (fun focused ->
+                  let h =
+                    {
+                      h with
+                      Lui_paint.state_of =
+                        (fun _ -> { Lui_paint.state_neutral with focused });
+                    }
+                  in
+                  let painted =
+                    paint_with h t ~width:400 ~height:200 ~scale ()
+                  in
+                  let controls =
+                    List.filter (fun f -> f.frect = r) (fills painted)
+                  in
+                  let filled = kind = Lui_protocol.Select || kind = Combobox in
+                  check bool
+                    "text entries remain transparent and pickers use background"
+                    true
+                    (List.for_all
+                       (fun f ->
+                         if f.fcolor.a = 0 then true
+                         else filled && f.fcolor = background)
+                       controls);
+                  check bool "picker keeps its background surface" true
+                    ((not filled)
+                    || List.exists (fun f -> f.fcolor = background) controls);
+                  check bool "field keeps the input border token when focused"
+                    true
+                    (List.exists
+                       (fun f ->
+                         f.fborder = (scale, scale, scale, scale)
+                         && f.fborder_color = input)
+                       controls);
+                  if focused then begin
+                    let outer =
+                      rect
+                        (r.x -. (4. *. scale))
+                        (r.y -. (4. *. scale))
+                        (r.w +. (8. *. scale))
+                        (r.h +. (8. *. scale))
+                    in
+                    let offset =
+                      rect
+                        (r.x -. (2. *. scale))
+                        (r.y -. (2. *. scale))
+                        (r.w +. (4. *. scale))
+                        (r.h +. (4. *. scale))
+                    in
+                    let border =
+                      (2. *. scale, 2. *. scale, 2. *. scale, 2. *. scale)
+                    in
+                    check bool
+                      "focus ring uses the ring token outside a two-point gap"
+                      true
+                      (List.exists
+                         (fun f ->
+                           f.frect = outer && f.fborder = border
+                           && f.fborder_color = ring)
+                         (fills painted));
+                    check bool "focus gap uses the background token" true
+                      (List.exists
+                         (fun f ->
+                           f.frect = offset && f.fborder = border
+                           && f.fborder_color = background)
+                         (fills painted));
+                    check bool
+                      "focus ring follows the field's default corner radius"
+                      true
+                      (List.exists
+                         (fun f ->
+                           f.frect = outer
+                           && f.fradii
+                              = ( 10. *. scale,
+                                  10. *. scale,
+                                  10. *. scale,
+                                  10. *. scale ))
+                         (fills painted))
+                  end)
+                [ false; true ];
+              apply t
+                [
+                  Lui_protocol.SetProp
+                    (1, BackgroundValue, StringValue "#010203");
+                  SetProp (1, BorderWidth, IntValue 2);
+                  SetProp (1, BorderColorValue, StringValue "#040506");
+                  SetProp (1, FocusShadow, StringValue "none");
+                ];
+              let focused =
+                {
+                  h with
+                  Lui_paint.state_of =
+                    (fun _ -> { Lui_paint.state_neutral with focused = true });
+                }
+              in
+              let painted =
+                paint_with focused t ~width:400 ~height:200 ~scale ()
+              in
+              check bool
+                "authored field appearance suppresses default focus chrome" true
+                (List.for_all (fun f -> f.frect = r) (fills painted));
+              check bool "authored field background and border remain intact"
+                true
+                (List.exists
+                   (fun f ->
+                     f.frect = r
+                     && f.fcolor = color 1 2 3 255
+                     && f.fborder_color = color 4 5 6 255)
+                   (fills painted)))
+            [ 1.; 2. ])
+        [
+          Lui_protocol.TextField;
+          SecureField;
+          Input;
+          SearchField;
+          Textarea;
+          Select;
+          Combobox;
+        ])
+    [
+      (color 250 248 246 255, color 120 110 100 255, color 10 80 170 255);
+      (color 20 24 28 255, color 70 80 90 255, color 120 180 240 255);
+    ]
+
 let test_button_icon_gap () =
   List.iter (fun scale -> List.iter (fun trailing -> List.iter (fun gap ->
     let t = store () in
@@ -967,9 +1123,10 @@ let test_choice_focus_bounds () =
       (rect (10.*.scale) (20.*.scale) (200.*.scale) (28.*.scale))) ()) with
       Lui_paint.state_of=(fun _ -> {Lui_paint.state_neutral with focused=true})} in
     let scene=paint_with h t ~scale () in
-    let ring=List.find_map (function Fill f when f.fborder=(2.*.scale,2.*.scale,2.*.scale,2.*.scale) -> Some f | _ -> None) scene.ops |> Option.get in
-    check (float 0.01) "choice focus ring surrounds its indicator" (22.*.scale) ring.frect.w;
-    check (float 0.01) "choice focus ring is square" (22.*.scale) ring.frect.h)
+    let ring=List.find_map (function Fill f when f.fborder=(2.*.scale,2.*.scale,2.*.scale,2.*.scale)
+      && f.fborder_color=color 37 99 235 140 -> Some f | _ -> None) scene.ops |> Option.get in
+    check (float 0.01) "choice focus ring surrounds its indicator" (24.*.scale) ring.frect.w;
+    check (float 0.01) "choice focus ring is square" (24.*.scale) ring.frect.h)
     [1.;2.]) [Lui_protocol.Checkbox;Radio]
 
 let test_switch () =
@@ -1624,7 +1781,8 @@ let test_toolbar_explicit_chrome () =
 let () =
   run "lui_paint"
     [ ("color",
-       [ test_case "toolbar explicit chrome" `Quick test_toolbar_explicit_chrome;
+       [ test_case "form control chrome" `Quick test_form_control_chrome;
+         test_case "toolbar explicit chrome" `Quick test_toolbar_explicit_chrome;
          test_case "choice chrome alignment" `Quick test_choice_chrome_alignment;
          test_case "hex" `Quick test_hex;
          test_case "select indicator" `Quick test_select_indicator;
