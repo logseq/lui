@@ -952,6 +952,129 @@ let test_wheel_x () =
   Alcotest.(check (float 0.001)) "x reveal" 200.
     (Ui.scroll_offset_x ui 2)
 
+let wheel_chain_fixture scale =
+  let store =
+    store_of
+      [
+        CreateNode (1, Root);
+        CreateNode (2, Scroll);
+        CreateNode (3, Scroll);
+        CreateNode (4, Scroll);
+        CreateNode (5, Text);
+        InsertChild (1, 2, 0);
+        InsertChild (2, 3, 0);
+        InsertChild (3, 4, 0);
+        InsertChild (4, 5, 0);
+      ]
+  in
+  let rects = Rects.create () and ui = Ui.create () in
+  Ui.set_scale ui scale;
+  List.iter
+    (fun id ->
+      Hashtbl.replace rects id (rect 0. 0. (100. *. scale) (100. *. scale)))
+    [ 1; 2; 3; 4; 5 ];
+  ignore (Ui.handle ui store rects (Input.Move (10., 10.)));
+  (store, rects, ui)
+
+let test_wheel_chain_remainder () =
+  List.iter
+    (fun scale ->
+      List.iter
+        (fun axis ->
+          let store, rects, ui = wheel_chain_fixture scale in
+          let set_cap, offset =
+            match axis with
+            | Ui.X -> (Ui.set_scroll_cap_x, Ui.scroll_offset_x)
+            | Ui.Y -> (Ui.set_scroll_cap, Ui.scroll_offset)
+          in
+          let wheel amount =
+            ignore
+              (Ui.handle ui store rects
+                 (match axis with
+                 | Ui.X -> Input.Wheel (amount, 0.)
+                 | Ui.Y -> Input.Wheel (0., -.amount)))
+          in
+          let expect label values =
+            List.iter
+              (fun (id, value) ->
+                Alcotest.(check (float 0.001))
+                  label (value *. scale) (offset ui id))
+              values
+          in
+          List.iter
+            (fun (id, cap) -> set_cap ui id (cap *. scale))
+            [ (2, 100.); (3, 71.); (4, 3.); (5, 999.) ];
+          wheel 1.;
+          expect "one wheel consumes the inner range and passes its remainder"
+            [ (4, 3.); (3, 41.); (2, 0.); (5, 0.) ];
+          wheel 1.;
+          expect "the same event can cross another ancestor boundary"
+            [ (4, 3.); (3, 71.); (2, 14.) ];
+          wheel (-1.);
+          expect "reversal consumes the deepest available range first"
+            [ (4, 0.); (3, 30.); (2, 14.) ];
+          wheel (-1000.);
+          expect "overshoot stops at the outer boundary"
+            [ (4, 0.); (3, 0.); (2, 0.) ];
+          set_cap ui 3 0.;
+          wheel 1.;
+          expect "zero-range ancestors cannot consume remaining distance"
+            [ (4, 3.); (3, 0.); (2, 41.) ];
+          wheel (-1000.);
+          set_cap ui 4 (1. *. scale);
+          set_cap ui 3 (71. *. scale);
+          wheel 0.03;
+          expect "fractional distance survives an inner boundary"
+            [ (4, 1.); (3, 0.32); (2, 0.) ];
+          wheel (-1000.);
+          set_cap ui 4 (0.0005 *. scale);
+          wheel 1.;
+          expect "a snapped-away inner sliver cannot discard a wheel step"
+            [ (4, 0.); (3, 44.); (2, 0.) ];
+          wheel (-1000.);
+          List.iter (fun id -> set_cap ui id 0.) [ 2; 3; 4 ];
+          let epoch = Ui.scroll_epoch ui in
+          wheel 1000.;
+          wheel (-1000.);
+          Alcotest.(check int)
+            "empty ranges do not change scroll state" epoch (Ui.scroll_epoch ui))
+        [ Ui.X; Ui.Y ])
+    [ 1.; 2. ]
+
+let test_wheel_chain_axes () =
+  List.iter
+    (fun scale ->
+      let store, rects, ui = wheel_chain_fixture scale in
+      List.iter
+        (fun (id, x, y) ->
+          Ui.set_scroll_cap_x ui id (x *. scale);
+          Ui.set_scroll_cap ui id (y *. scale))
+        [ (2, 100., 100.); (3, 7., 11.); (4, 3., 5.) ];
+      let expect label xs ys =
+        List.iter
+          (fun (id, x) ->
+            Alcotest.(check (float 0.001))
+              label (x *. scale) (Ui.scroll_offset_x ui id))
+          xs;
+        List.iter
+          (fun (id, y) ->
+            Alcotest.(check (float 0.001))
+              label (y *. scale) (Ui.scroll_offset ui id))
+          ys
+      in
+      ignore (Ui.handle ui store rects (Input.Wheel (1., -1.)));
+      expect "diagonal remainders stay on their own axis"
+        [ (4, 3.); (3, 7.); (2, 34.) ]
+        [ (4, 5.); (3, 11.); (2, 28.) ];
+      ignore (Ui.handle ui store rects (Input.Wheel (-1000., 1000.)));
+      ignore
+        (Ui.handle ui store rects
+           (Input.Wheel_mods (0., -1., { Input.mods_none with shift = true })));
+      expect "shift-wheel chains horizontally without moving vertically"
+        [ (4, 3.); (3, 7.); (2, 34.) ]
+        [ (4, 0.); (3, 0.); (2, 0.) ])
+    [ 1.; 2. ]
+
 (* ---------- pixel snapping contract ---------- *)
 
 (* The stub layout snaps stored rects to device-pixel edges at
@@ -3116,6 +3239,45 @@ let test_ordinary_menu_focus_ownership () =
        (function Press _ -> true | _ -> false)
        (press_actions (Assembly.handle asm (key Input.Return))))
 
+let test_popover_menu_focus_ownership () =
+  List.iter
+    (fun keyboard ->
+      let asm, apply = ordinary_menu_fixture () in
+      let ui = Assembly.ui asm and store = Assembly.store asm in
+      Ui.set_focused ui store 3;
+      if not keyboard then begin
+        let r = Rects.get (Assembly.rects asm) 3 in
+        ignore
+          (Assembly.handle asm
+             (Input.Button_down
+                (r.x +. 2., r.y +. 2., Input.Left, 1, Input.mods_none)));
+        ignore
+          (Assembly.handle asm
+             (Input.Button_up (r.x +. 2., r.y +. 2., Input.Left, Input.mods_none)))
+      end;
+      apply
+        (List.map
+           (function
+             | CreateNode (5, DropdownMenu) -> CreateNode (5, Popover)
+             | op -> op)
+           (ordinary_menu_ops false)
+        @ [ SetProp (5, RoleValue, StringValue "menu") ]);
+      Alcotest.(check int)
+        "a row popover owns focus using its opening method"
+        (if keyboard then 8 else 5)
+        (Ui.focused ui);
+      Alcotest.(check int)
+        "pointer-open popovers do not select a row"
+        (if keyboard then 8 else 0)
+        (Ui.hl_item ui);
+      ignore (Assembly.handle asm (key Input.End));
+      Alcotest.(check int)
+        "popover row navigation synchronizes actual focus" 9 (Ui.focused ui);
+      apply [ DropNode 5 ];
+      Alcotest.(check int)
+        "closing a row popover returns to its trigger" 3 (Ui.focused ui))
+    [ false; true ]
+
 let test_menu_edit_return () =
   List.iter
     (fun change_model ->
@@ -4254,7 +4416,9 @@ let () =
         [ Alcotest.test_case "ops" `Quick test_checksum ] );
       ( "scroll",
         [ Alcotest.test_case "wheel" `Quick test_scroll;
-          Alcotest.test_case "wheel-x" `Quick test_wheel_x ] );
+          Alcotest.test_case "wheel-x" `Quick test_wheel_x;
+          Alcotest.test_case "wheel remainder" `Quick test_wheel_chain_remainder;
+          Alcotest.test_case "wheel remainder axes" `Quick test_wheel_chain_axes ] );
       ( "snapping",
         [ Alcotest.test_case "stub layout" `Quick test_snap_stub_layout;
           Alcotest.test_case "phantom scroll" `Quick
@@ -4296,6 +4460,7 @@ let () =
           Alcotest.test_case "file drop" `Quick test_file_drop ] );
       ( "overlay",
         [ Alcotest.test_case "ordinary menu focus ownership" `Quick test_ordinary_menu_focus_ownership;
+          Alcotest.test_case "popover menu focus ownership" `Quick test_popover_menu_focus_ownership;
           Alcotest.test_case "menu edit return" `Quick test_menu_edit_return;
           Alcotest.test_case "picker input ownership" `Quick test_picker_menu_input_ownership;
           Alcotest.test_case "menu row focus chrome" `Quick test_menu_row_focus_chrome;

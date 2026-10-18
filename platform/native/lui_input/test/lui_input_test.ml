@@ -691,6 +691,110 @@ let test_wheel_boundary_chaining () =
         ])
     [ Lui_scroll.X; Y ]
 
+let test_wheel_overlay_boundary () =
+  List.iter
+    (fun kind ->
+      List.iter
+        (fun axis ->
+          List.iter
+            (fun range ->
+              let store =
+                store_of
+                  [
+                    CreateNode (1, Root);
+                    CreateNode (2, Scroll);
+                    CreateNode (3, kind);
+                    CreateNode (4, Scroll);
+                    InsertChild (1, 2, 0);
+                    InsertChild (2, 3, 0);
+                    InsertChild (3, 4, 0);
+                    SetProp (3, Overflow, StringValue "auto");
+                  ]
+              in
+              let env = scroll_env () in
+              let state, _ =
+                Lui_scroll.set_cap Lui_scroll.initial axis 2 200.
+              in
+              let state, _ = Lui_scroll.set_cap state axis 3 range in
+              let state, _ = Lui_scroll.set_cap state axis 4 3. in
+              let state, _ = Lui_scroll.set_offset env store state axis 2 50. in
+              let wheel state delta =
+                let dx, dy =
+                  match axis with
+                  | Lui_scroll.X -> (delta, 0.)
+                  | Y -> (0., -.delta)
+                in
+                fst
+                  (Lui_scroll.wheel env store state ~path:[ 4; 3; 2; 1 ]
+                     ~scale:1. ~dx ~dy ~mods:none)
+              in
+              let check_background state =
+                Alcotest.(check (float 0.001))
+                  "a presented overlay must contain wheel distance" 50.
+                  (Lui_scroll.offset state axis 2)
+              in
+              let state = wheel state 1000. in
+              check_background state;
+              Alcotest.(check (float 0.001))
+                "inner range consumed" 3.
+                (Lui_scroll.offset state axis 4);
+              Alcotest.(check (float 0.001))
+                "overlay range consumed" range
+                (Lui_scroll.offset state axis 3);
+              check_background (wheel state 1000.);
+              let state = wheel state (-1000.) in
+              check_background state;
+              Alcotest.(check (float 0.001))
+                "inner range reversed" 0.
+                (Lui_scroll.offset state axis 4);
+              Alcotest.(check (float 0.001))
+                "overlay range reversed" 0.
+                (Lui_scroll.offset state axis 3))
+            [ 0.; 7. ])
+        [ Lui_scroll.X; Y ])
+    [ Dialog; Sheet; Popover; DropdownMenu; ContextMenu; Toast; Drawer ];
+  List.iter
+    (fun (kind, props) ->
+      let store =
+        store_of
+          ([
+             CreateNode (1, Root);
+             CreateNode (2, Scroll);
+             CreateNode (3, kind);
+             CreateNode (4, Scroll);
+             InsertChild (1, 2, 0);
+             InsertChild (2, 3, 0);
+             InsertChild (3, 4, 0);
+             SetProp (3, Overflow, StringValue "auto");
+           ]
+          @ props)
+      in
+      let state, _ =
+        Lui_scroll.set_cap Lui_scroll.initial Lui_scroll.Y 2 200.
+      in
+      let state, _ = Lui_scroll.set_cap state Lui_scroll.Y 3 7. in
+      let state, _ = Lui_scroll.set_cap state Lui_scroll.Y 4 3. in
+      let state, _ =
+        Lui_scroll.wheel (scroll_env ()) store state ~path:[ 4; 3; 2; 1 ]
+          ~scale:1. ~dx:0. ~dy:(-1.) ~mods:none
+      in
+      Alcotest.(check (float 0.001))
+        "permanent overlay hosts and docked drawers retain ordinary chaining"
+        34.
+        (Lui_scroll.offset state Lui_scroll.Y 2))
+    [
+      (Drawer, [ SetProp (3, Selected, BoolValue false) ]);
+      ( Popover,
+        [
+          SetProp
+            ( 3,
+              DataAttrs,
+              StringValue
+                (Lui_protocol.data_attrs_encode
+                   [ ("data-overlay-layer", "true") ]) );
+        ] );
+    ]
+
 (* ---------- Lui_drag ---------- *)
 
 let test_drag_flow () =
@@ -1166,7 +1270,8 @@ let () =
         [ Alcotest.test_case "anchor alignment" `Quick test_scroll_anchor_alignment;
           Alcotest.test_case "offsets" `Quick test_scroll_offsets;
           Alcotest.test_case "wheel" `Quick test_wheel;
-          Alcotest.test_case "boundary chaining" `Quick test_wheel_boundary_chaining ] );
+          Alcotest.test_case "boundary chaining" `Quick test_wheel_boundary_chaining;
+          Alcotest.test_case "overlay boundary" `Quick test_wheel_overlay_boundary ] );
       ( "drag",
         [ Alcotest.test_case "flow" `Quick test_drag_flow ] );
       ( "pointer",
