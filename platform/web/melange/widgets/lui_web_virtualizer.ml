@@ -52,3 +52,12 @@ external measure : t -> Dom.element Js.Nullable.t -> unit = "measureElement"
 external item_index : item -> int = "index" [@@mel.get]
 external item_start : item -> float = "start" [@@mel.get]
 external resize_item : t -> int -> float -> unit = "resizeItem" [@@mel.send]
+
+type scroll_to_index_options
+
+external scroll_to_index_options :
+  align:string -> behavior:string -> scroll_to_index_options = ""
+[@@mel.obj]
+
+external scroll_to_index : t -> int -> scroll_to_index_options -> unit
+  = "scrollToIndex" [@@mel.send]

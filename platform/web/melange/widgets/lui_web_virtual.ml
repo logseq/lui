@@ -33,6 +33,15 @@ let install renderer node ~materialize ~unmount =
     let updating = ref false in
     let pending_render = ref false in
     let render_ref = ref (fun () -> ()) in
+    let emit event = ignore (!(renderer.web_event_handler) event) in
+    let property = Store.property renderer.web_store node in
+    let text prop fallback =
+      match property prop with
+      | Some (StringValue value) -> value
+      | _ -> fallback
+    in
+    let last_token = ref None in
+    let last_range = ref None in
     let document = W.Document.unsafeAsHtmlDocument renderer.web_document in
     let live_rows () =
       Hashtbl.fold (fun id _ rows -> id :: rows) mounted []
@@ -215,7 +224,19 @@ let install renderer node ~materialize ~unmount =
             V.measure virtualizer Js.Nullable.null;
             style spacer "height"
               (Js.Float.toString (V.total_size virtualizer) ^ "px");
-            sync_tree_roving ());
+            sync_tree_roving ();
+            if property TrackVisibleRange = Some (BoolValue true) then begin
+              let items = V.items virtualizer in
+              if Array.length items > 0 then begin
+                let first = V.item_index items.(0) in
+                let last = V.item_index items.(Array.length items - 1) in
+                if !last_range <> Some (first, last) then begin
+                  last_range := Some (first, last);
+                  emit (VisibleRange (node, first, last))
+                end
+              end
+            end
+            else last_range := None);
         if !pending_render then begin
           pending_render := false;
           render ()
@@ -224,12 +245,44 @@ let install renderer node ~materialize ~unmount =
     in
     render_ref := render;
     let cleanup = V.did_mount virtualizer in
+    let request () =
+      match property ScrollToken with
+      | Some (IntValue token) when !last_token <> Some token -> (
+          last_token := Some token;
+          let target_key = text ScrollTarget "" in
+          let index =
+            Array.find_opt
+              (fun id ->
+                Store.property renderer.web_store id KeyValue
+                = Some (StringValue target_key))
+              !rows
+            |> Option.map (fun id -> Hashtbl.find positions id)
+          in
+          match index with
+          | None -> emit (ScrollCompleted (node, token, "missing-target"))
+          | Some index ->
+              let align =
+                match text ScrollAnchor "top" with
+                | "center" -> "center"
+                | "bottom" -> "end"
+                | _ -> "start"
+              in
+              let behavior =
+                if property ScrollAnimated = Some (BoolValue true) then "smooth"
+                else "auto"
+              in
+              V.scroll_to_index virtualizer index
+                (V.scroll_to_index_options ~align ~behavior);
+              emit (ScrollCompleted (node, token, "succeeded")))
+      | _ -> ()
+    in
     let refresh () =
       if not !disposed then begin
         update_rows ();
         V.set_options virtualizer (make_options ());
         if connected root then V.will_update virtualizer;
-        render ()
+        render ();
+        request ()
       end
     in
     let on_focus _ = refresh () in

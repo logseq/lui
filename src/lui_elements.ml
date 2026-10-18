@@ -884,7 +884,7 @@ let list ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?pad
   mount_children context node children;
   node
 
-let virtual_list ?key ?overscan ?item_extent ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?opacity ?opacity_signal ?list_marker ?transition (children : t list) : t =
+let virtual_list ?key ?overscan ?item_extent ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?scroll_target ?scroll_anchor ?scroll_token ?scroll_target_signal ?scroll_token_signal ?scroll_animated ?track_visible_range ?on_scroll_completed ?on_visible_range ?opacity ?opacity_signal ?list_marker ?transition (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.virtual_list context in
   (* Virtualization config rides data-attrs: the schema does not model
@@ -910,6 +910,22 @@ let virtual_list ?key ?overscan ?item_extent ?gap ?main ?cross ?grow ?columns ?p
   Option.iter (Lui_ui.float_property_signal context node Opacity) opacity_signal;
   Option.iter (Lui_ui.string_property context node ListStyle)
     (Option.map list_marker_value list_marker);
+  Option.iter (Lui_ui.string_property context node ScrollTarget) scroll_target;
+  Option.iter (Lui_ui.string_property context node ScrollAnchor)
+    (Option.map scroll_anchor_value scroll_anchor);
+  Option.iter (Lui_ui.int_property context node ScrollToken) scroll_token;
+  Option.iter
+    (Lui_ui.string_property_signal context node ScrollTarget)
+    scroll_target_signal;
+  Option.iter
+    (Lui_ui.int_property_signal context node ScrollToken)
+    scroll_token_signal;
+  Option.iter (Lui_ui.bool_property context node ScrollAnimated)
+    scroll_animated;
+  Option.iter (Lui_ui.bool_property context node TrackVisibleRange)
+    track_visible_range;
+  Option.iter (register_scroll_completed context node) on_scroll_completed;
+  Option.iter (register_visible_range context node) on_visible_range;
   attach context parent node;
   mount_children context node children;
   node

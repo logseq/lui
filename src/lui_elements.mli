@@ -1003,7 +1003,11 @@ val list :
    virtualize — web and native). [?item_extent] is the estimated row
    main extent in logical px, used to size unmeasured rows on the
    native backend; both ride [data-attrs] as
-   [data-overscan]/[data-item-extent]. *)
+   [data-overscan]/[data-item-extent]. The scroll contract
+   ([?scroll_target]/[?scroll_anchor]/[?scroll_token],
+   [?track_visible_range]/[?on_visible_range]/[?on_scroll_completed])
+   matches {!list} and is implemented on the web backend; native
+   backends currently parse-accept these props without scrolling. *)
 val virtual_list :
   ?key:string ->
   ?overscan:int ->
@@ -1046,6 +1050,15 @@ val virtual_list :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?scroll_target:string ->
+  ?scroll_anchor:scroll_anchor ->
+  ?scroll_token:int ->
+  ?scroll_target_signal:string Signal.signal ->
+  ?scroll_token_signal:int Signal.signal ->
+  ?scroll_animated:bool ->
+  ?track_visible_range:bool ->
+  ?on_scroll_completed:(Lui_protocol.event -> unit) ->
+  ?on_visible_range:(Lui_protocol.event -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?list_marker:list_marker ->

@@ -517,7 +517,8 @@ let event_supported kind event =
     | _ -> false)
   | DoublePress _ -> kind = ListItem
   | Appear _ -> kind <> Root
-  | ScrollCompleted _ | VisibleRange _ -> kind = ListContainer
+  | ScrollCompleted _ | VisibleRange _ ->
+      kind = ListContainer || kind = VirtualList
   | Picked _ -> kind = FilePicker
   | PressDetail _ | PointerDown _ | PointerUp _ ->
     (match kind with
@@ -1061,7 +1062,7 @@ let common_property_supported kind property =
   | ScrollAnchor
   | ScrollToken
   | ScrollAnimated
-  | TrackVisibleRange -> kind = ListContainer
+  | TrackVisibleRange -> kind = ListContainer || kind = VirtualList
   | EdgeValue -> kind = SwipeAction || kind = EdgeInset
   | ResizeDuration | ResizeEasing | ResizeOrigin -> kind = Split
   | MinValue | MaxValue | StepValue -> kind = NumberStepper
@@ -1600,7 +1601,8 @@ let property_value_supported property value =
     String.trim value <> ""
   | Transition, StringValue value -> transition_supported value
   | ZIndex, IntValue _ -> true
-  | WhiteSpace, StringValue value -> List.mem value [ "normal"; "nowrap" ]
+  | WhiteSpace, StringValue value ->
+      List.mem value [ "normal"; "nowrap"; "pre-wrap"; "pre-line" ]
   | TextOverflow, StringValue value -> List.mem value [ "clip"; "ellipsis" ]
   | Overflow, StringValue value -> List.mem value [ "visible"; "hidden"; "auto" ]
   | UserSelect, StringValue value -> List.mem value [ "none"; "text" ]

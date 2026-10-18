@@ -4102,6 +4102,8 @@ let () =
             test_host_literals_in_sync;
           Alcotest.test_case "drift is caught" `Quick test_drift_is_caught;
         ] );
+      ( "lui_ai",
+        List.concat_map snd Test_lui_ai.tests );
       ( "split",
         [
           Alcotest.test_case "canonical fingerprints" `Quick
