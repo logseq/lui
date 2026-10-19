@@ -159,7 +159,17 @@ let position_at_point document popup x y =
 (* an anchored popup detached from its parent has no anchor to position
    against — a detached-but-open menu or tooltip is skipped rather than
    treated as an error *)
+external make_rect : float -> float -> float -> float -> W.DomRect.t = "DOMRect" [@@mel.new]
+
+let frozen_anchor renderer node =
+  match Store.property renderer.web_store node AnchorRect with
+  | Some (StringValue value) -> Option.map (fun (x, y, width, height) ->
+      make_rect x y width height) (anchor_rect_of_string value)
+  | _ -> None
+
 let anchored renderer node =
+  if frozen_anchor renderer node <> None then Store.node renderer.web_store node <> None
+  else
   match Nodes.explicit_anchor renderer node with
   | Some target -> Option.fold ~none:false ~some:Nodes.anchor_available target
   | None ->
@@ -172,12 +182,14 @@ let anchored renderer node =
 
 let track renderer node popup ~update ~on_invalid =
   if anchored renderer node then
-    Lui_web_popup_tracking.start ~document:renderer.web_document
+    Lui_web_popup_tracking.start ~frozen:(frozen_anchor renderer node <> None) ~document:renderer.web_document
       ~positioner:(Nodes.dom_node renderer node) ~popup
-      ~anchor:(Nodes.dropdown_anchor_node renderer node)
+      ~anchor:(match frozen_anchor renderer node with
+        | Some _ -> Nodes.dom_node renderer node
+        | None -> Nodes.dropdown_anchor_node renderer node)
       ~valid:(fun () -> anchored renderer node) ~update
       ~on_invalid:(fun () ->
-        if Store.node renderer.web_store node <> None then on_invalid ())
+        if Store.node renderer.web_store node <> None then on_invalid ()) ()
 
 let position_tooltip renderer node =
   if anchored renderer node then begin
@@ -411,8 +423,9 @@ let position_popover renderer node =
              Util.set_state_attribute positioner "hidden" true
            else begin
              let popup = Util.child_element positioner 0 in
-             let anchor = Nodes.dropdown_anchor_node renderer node in
-             let anchor_bounds = W.Element.getBoundingClientRect anchor in
+             let anchor_bounds = match frozen_anchor renderer node with
+               | Some bounds -> bounds
+               | None -> W.Element.getBoundingClientRect (Nodes.dropdown_anchor_node renderer node) in
              let visible =
                W.DomRect.width anchor_bounds > 0.0
                || W.DomRect.height anchor_bounds > 0.0

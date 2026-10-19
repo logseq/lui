@@ -108,6 +108,7 @@ let prop_coverage =
     ("source-height", Painted);
     ("anchor", Host); (* popup anchoring is host-owned *)
     ("anchor-target", Host);
+    ("anchor-rect", Host);
     ("anchor-alignment", Host);
     ("anchor-offset", Host);
     ("anchor-alignment-offset", Host);

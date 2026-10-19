@@ -692,7 +692,7 @@ let show_context_menu renderer menu x y =
                         | None -> false)
                    ~update ~on_invalid:(fun () ->
                      if !(renderer.web_open_context_menu) = Some menu then
-                       hide_context_menu renderer)
+                       hide_context_menu renderer) ()
              | None -> hide_context_menu renderer)
         | None -> hide_context_menu renderer)
    | None -> ());

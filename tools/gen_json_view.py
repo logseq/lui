@@ -133,6 +133,8 @@ def extra_arg(name, typ, element=None):
         return None
     if name in SKIP_ARGS or typ in SKIP_ARG_TYPES:
         return None
+    if name == 'anchor_rect':
+        return '?anchor_rect:(anchor_rect_prop props)'
     if typ == 'string':
         return f'?{name}:(v_str props "{j}")'
     if typ == 'int':
@@ -367,6 +369,15 @@ let v_int p n =
 let v_float p n = match get p n with Some (Num f) -> Some f | _ -> None
 let v_bool p n = match get p n with Some (Bool b) -> Some b | _ -> None
 
+let anchor_rect_prop props =
+  match get props "anchor-rect" with
+  | None -> None
+  | Some (Str value) ->
+      (match P.anchor_rect_of_string value with
+       | Some rect -> Some rect
+       | None -> invalid_arg "Invalid popover anchor rectangle")
+  | Some _ -> invalid_arg "Invalid popover anchor rectangle"
+
 let kind_of_node fields =
   match List.assoc_opt "kind" fields with Some (Str k) -> k | _ -> ""
 
@@ -436,6 +447,7 @@ let anchor_opt = function
 
 let anchor_align_opt = function
   | Some "start" -> Some `start
+  | Some "center" -> Some `center
   | Some ("end" | "end_") -> Some `end_
   | Some "stretch" -> Some `stretch
   | _ -> None

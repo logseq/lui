@@ -289,6 +289,7 @@ type property =
   | LabelOpacity
   | SubmitOnBlur
   | AnchorAlignmentOffset
+  | AnchorRect
 
 module Property_map : Map.S with type key = property
 
@@ -401,6 +402,7 @@ val is_finite : float -> bool
 val transition_segments : string -> string list list
 (** Tokenize CSS transition declarations, preserving functional easing arguments. *)
 
+val anchor_rect_of_string : string -> (float * float * float * float) option
 val property_value_supported : property -> wire_value -> bool
 val property_value_supported_for_kind : node_kind -> property -> wire_value -> bool
 val int_property : wire_value Property_map.t -> property -> int -> int

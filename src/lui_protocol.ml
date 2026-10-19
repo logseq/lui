@@ -291,6 +291,7 @@ type property =
   | LabelOpacity
   | SubmitOnBlur
   | AnchorAlignmentOffset
+  | AnchorRect
 
 module Property_map =
   Map.Make
@@ -1087,7 +1088,7 @@ let common_property_supported kind property =
   | ImageIdValue | SourceX | SourceY | SourceWidth | SourceHeight ->
     kind = Avatar || kind = Image
   | SurfaceIdValue -> kind = MediaSurface
-  | AnchorTarget -> kind = Popover
+  | AnchorTarget | AnchorRect -> kind = Popover
   | AnchorAlignmentOffset -> kind = Popover
   | AnchorValue | AnchorAlignmentValue | AnchorOffset ->
     kind = DropdownMenu || kind = Tooltip || kind = Popover
@@ -1505,6 +1506,17 @@ let text_decoration_supported value =
          (fun token -> List.mem token [ "underline"; "line-through"; "overline" ])
          tokens
 
+let anchor_rect_of_string value =
+  match String.split_on_char ' ' value with
+  | [x; y; width; height] ->
+      (match float_of_string_opt x, float_of_string_opt y,
+             float_of_string_opt width, float_of_string_opt height with
+       | Some x, Some y, Some width, Some height
+         when List.for_all is_finite [x; y; width; height]
+              && width >= 0. && height >= 0. -> Some (x, y, width, height)
+       | _ -> None)
+  | _ -> None
+
 let property_value_supported property value =
   match (property, value) with
   | TextValue, StringValue _ -> true
@@ -1579,8 +1591,9 @@ let property_value_supported property value =
   | AnchorValue, StringValue value ->
     value = "above" || value = "below" || value = "left" || value = "right"
   | AnchorTarget, StringValue value -> String.trim value <> ""
+  | AnchorRect, StringValue value -> Option.is_some (anchor_rect_of_string value)
   | AnchorAlignmentValue, StringValue value ->
-    value = "start" || value = "end" || value = "stretch"
+    value = "start" || value = "center" || value = "end" || value = "stretch"
   | AnchorOffset, FloatValue value | AnchorAlignmentOffset, FloatValue value -> is_finite value
   | TooltipDelay, IntValue value | DurationValue, IntValue value ->
     value >= 0 && value <= 2147483647
@@ -1814,8 +1827,10 @@ let node_properties_supported kind properties =
         then Property_map.mem AnchorValue properties
         else true
       else true)
-  && (if kind = Popover && Property_map.mem AnchorTarget properties then
+  && (if kind = Popover && (Property_map.mem AnchorTarget properties
+                             || Property_map.mem AnchorRect properties) then
         Property_map.mem AnchorValue properties
+        && not (Property_map.mem AnchorTarget properties && Property_map.mem AnchorRect properties)
       else true)
   && (if kind = Popover || kind = DropdownMenu then
         let has_x = Property_map.mem PopupX properties in

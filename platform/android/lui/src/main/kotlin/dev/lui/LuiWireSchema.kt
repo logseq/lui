@@ -277,6 +277,7 @@ enum class LuiProperty(val wireName: String) {
     labelOpacity("label-opacity"),
     submitOnBlur("submit-on-blur"),
     anchorAlignmentOffset("anchor-alignment-offset"),
+    anchorRect("anchor-rect"),
     ;
 
     companion object {

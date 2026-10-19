@@ -31,6 +31,11 @@ private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
 @MainActor
 @Suite("LUI SwiftUI backend", .serialized)
 struct LUISwiftUIBackendTests {
+    @Test("viewport anchors fail explicitly until retained positioning is available")
+    func unsupportedViewportAnchor() {
+        #expect(!LUIWireValue.string("0 0 40 20").matches(.anchorRect, on: .popover))
+    }
+
     @Test("popover alignment offsets retain finite signed values and require an anchor")
     func popoverAlignmentOffsets() throws {
         for value in [Double.nan, Double.infinity, -Double.infinity] {

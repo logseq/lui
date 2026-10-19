@@ -3128,6 +3128,21 @@ let test_json_view_render () =
      | _ -> false);
   drive_dispose s
 
+let test_json_view_anchor_rect () =
+  let mount value = drive_mount ~initial:() ~reducer:(fun model () -> model)
+    ~view:(fun _ _ _ -> Lui_json_view.render ~on_event:(fun ~id:_ ~kind:_ ~fields:_ -> ())
+      (Lui_json_view.Obj ["kind",Str "popover";"anchor",Str "below";"anchor-rect",value])) () in
+  let session=mount (Lui_json_view.Str "10 20 30 40") in
+  let node=drive_node session (Drive.Model.Kind "popover") in
+  Alcotest.(check (option string)) "JSON view keeps its rectangle anchor"
+    (Some "10. 20. 30. 40.") (Drive.Model.string_prop node "anchor-rect");
+  drive_dispose session;
+  List.iter (fun value ->
+    Alcotest.check_raises "Invalid JSON rectangle must fail instead of changing anchor mode"
+      (Invalid_argument "Invalid popover anchor rectangle")
+      (fun () -> let session=mount value in drive_dispose session))
+    [Lui_json_view.Str "0 0 -1 2";Str "nan 0 1 2";Str "0 0 1";Num 4.]
+
 let test_json_view_parse () =
   (* malformed input is rejected wholesale — never a partial mount *)
   Alcotest.(check bool) "trailing junk rejected" true
@@ -4293,6 +4308,7 @@ let () =
         [
           Alcotest.test_case "render + events" `Quick test_json_view_render;
           Alcotest.test_case "parse edge cases" `Quick test_json_view_parse;
+          Alcotest.test_case "rectangle anchors" `Quick test_json_view_anchor_rect;
         ] );
       ( "extension fingerprints",
         [

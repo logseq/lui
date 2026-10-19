@@ -29,7 +29,7 @@ type text_alignment = [ `start | `center | `end_ ]
 type orientation = [ `horizontal | `vertical ]
 type icon_placement = [ `leading | `trailing | `top ]
 type anchor = [ `above | `below | `left | `right ]
-type anchor_alignment = [ `start | `end_ | `stretch ]
+type anchor_alignment = [ `start | `center | `end_ | `stretch ]
 
 type edge = [ `top | `bottom | `leading | `trailing ]
 
@@ -3645,6 +3645,10 @@ val file_picker :
       [~anchor_target] names a retained control's accessibility identifier when
       the popover lives outside that control's subtree. It requires [~anchor]
       and uses the target's current geometry and ownership.
+      [~anchor_rect:(x, y, width, height)] uses a frozen viewport rectangle
+      in logical pixels, including after its source control unmounts.
+      It requires [~anchor] and is exclusive with [~anchor_target] and [~at].
+      Hosts retain alignment, viewport collision handling and resize tracking.
       [~anchor_alignment_offset] shifts the cross axis in logical pixels.
       Positive values move toward the start for end alignment and toward
       the end for start/stretch alignment; negative values reverse that shift.
@@ -3703,6 +3707,7 @@ val popover :
   ?at_signal:(float * float) Signal.signal ->
   ?anchor:anchor ->
   ?anchor_target:string ->
+  ?anchor_rect:(float * float * float * float) ->
   ?anchor_alignment:anchor_alignment ->
   ?anchor_offset:float ->
   ?anchor_alignment_offset:float ->

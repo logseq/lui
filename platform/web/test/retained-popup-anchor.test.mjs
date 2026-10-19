@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+// DOMRect is a browser primitive; the positioner is exercised under node:test.
+globalThis.DOMRect ??= class {
+  constructor(x, y, width, height) {
+    Object.assign(this, {x, y, width, height, left: x, top: y,
+      right: x + width, bottom: y + height})
+  }
+}
+
 const build = process.env.LUI_TEST_BUILD_DIR ?? '_build'
 const modules = new URL(`../../../${build}/default/examples/components/web/lui-components-web/node_modules/`, import.meta.url)
 const [Store, Protocol, Schema, Nodes, Position] = await Promise.all([
@@ -119,3 +127,50 @@ for (const side of ['above', 'below', 'left', 'right']) {
     })
   }
 }
+
+
+test('a frozen rectangle keeps a replacement picker anchored after its option unmounts', () => {
+  const viewport = {clientWidth: 1280, clientHeight: 720}
+  const popup = element({x: 0, y: 0, width: 310, height: 342})
+  const positioner = element({x: 0, y: 0, width: 310, height: 342}, [popup])
+  positioner.setAttribute('data-anchor', 'below')
+  positioner.setAttribute('data-anchor-alignment', 'center')
+  const document = {defaultView: null, documentElement: viewport,
+    getElementById: () => null}
+  const store = Store.create_store(), renderer = {web_store: store, web_document: document}
+  const rectProperty = (() => {
+    for (let rest = Schema.all_properties; rest; rest = rest.tl)
+      if (Schema.property_name(rest.hd) === 'anchor-rect') return rest.hd
+    return undefined
+  })()
+  assert.notEqual(rectProperty, undefined, 'the host must accept a frozen rectangle anchor')
+  let generation = 0
+  const rect = value => Protocol.set_prop_op(2, rectProperty, {TAG: 0, _0: value})
+  const apply = ops => Store.apply_batch(store, () => positioner,
+    {generation: ++generation, ops: list(ops)})
+  assert.equal(apply([Protocol.create_node_op(1, kind('column')),
+    Protocol.create_node_op(2, kind('popover')), Protocol.insert_child_op(1, 2, 0),
+    Protocol.set_prop_op(2, prop('anchor'), {TAG: 0, _0: 'below'}),
+    rect('961.5 341.953125 208 20')]), true)
+  assert.equal(Position.anchored(renderer, 2), true)
+  const check = (x, y, side) => {
+    Position.position_popover(renderer, 2)
+    assert.equal(positioner.styles.get('left'), `${x}px`)
+    assert.equal(positioner.styles.get('top'), `${y}px`)
+    assert.equal(positioner.attributes.get('data-side'), side)
+  }
+  check(910.5, 361.953125, 'below')
+  viewport.clientHeight = 500
+  check(910.5, 8, 'above')
+  viewport.clientWidth = 600
+  check(282, 8, 'above')
+  assert.equal(apply([rect('30 80 40 20')]), true)
+  viewport.clientHeight = 720
+  check(8, 100, 'below')
+  for (const malformed of ['0 0 -1 2', '0 0 1 -2', 'nan 0 1 2', '0 infinity 1 2',
+    '0 0 1', '0 0 1 2 3']) assert.throws(() => apply([rect(malformed)]))
+  assert.throws(() => apply([Protocol.set_prop_op(2, prop('anchor-target'),
+    {TAG: 0, _0: 'a-live-target'})]), 'live and frozen anchors are exclusive')
+  assert.throws(() => apply([Protocol.set_prop_op(2, prop('popup-x'), {TAG: 3, _0: 3}),
+    Protocol.set_prop_op(2, prop('popup-y'), {TAG: 3, _0: 4})]))
+})

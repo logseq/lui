@@ -40,7 +40,7 @@ let mask_has m f = m land f <> 0
 (* The props [Lui_layout] reads, directly or through a parent. Keep in
    sync with style_of/adjust/text_of/ordered_child_ids/refine_popups. *)
 let layout_prop_names =
-  [ "border-width"; "alignment"; "anchor"; "anchor-target"; "accessibility-identifier"; "anchor-alignment"; "anchor-offset"; "anchor-alignment-offset"; "x"; "y";
+  [ "border-width"; "alignment"; "anchor"; "anchor-target"; "anchor-rect"; "accessibility-identifier"; "anchor-alignment"; "anchor-offset"; "anchor-alignment-offset"; "x"; "y";
     "columns"; "container-relative-frame"; "container-relative-frame-inset";
     "cross"; "main"; "description"; "edge"; "flex-wrap"; "gap"; "row-gap";
     "column-gap"; "grow";
@@ -132,7 +132,7 @@ let input_props =
    superfluous one only costs a style recompute. *)
 let mask_of_prop name : dirty_mask =
   if name = "inert" then d_input lor d_semantics
-  else if name = "display" || name = "anchor-target" then d_structure lor d_layout lor d_paint
+  else if name = "display" || name = "anchor-target" || name = "anchor-rect" then d_structure lor d_layout lor d_paint
   (* Menu semantics change surface bounds, clipping, and child shrink. *)
   else if name = "role" then d_layout_kids lor d_layout lor d_paint lor d_semantics
   else if Hashtbl.mem child_props name then d_layout_kids lor d_layout lor d_paint

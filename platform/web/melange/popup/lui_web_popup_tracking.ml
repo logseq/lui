@@ -72,7 +72,7 @@ let geometry element =
   (W.DomRect.left rect, W.DomRect.top rect,
    W.DomRect.width rect, W.DomRect.height rect)
 
-let start ~document ~positioner ~popup ~anchor ~valid ~update ~on_invalid =
+let start ?(frozen=false) ~document ~positioner ~popup ~anchor ~valid ~update ~on_invalid () =
   stop positioner;
   match owner_window document with
   | None -> ()
@@ -83,14 +83,15 @@ let start ~document ~positioner ~popup ~anchor ~valid ~update ~on_invalid =
       let previous = ref None in
       let reveal = ref true in
       let previous_height = ref 0 in
-      let chain = ancestors anchor in
+      let chain = if frozen then [] else ancestors anchor in
       let viewport = visual_viewport window in
       let invalid () =
-        not (valid ()) || not (connected anchor) || not (connected positioner)
-        || let (_, _, width, height) = geometry anchor in
-           (width = 0.0 && height = 0.0)
-           || W.CssStyleDeclaration.getPropertyValue "visibility"
-                (W.Window.getComputedStyle anchor window) = "hidden"
+        not (valid ()) || not (connected positioner)
+        || (not frozen && (not (connected anchor)
+            || let (_, _, width, height) = geometry anchor in
+               (width = 0.0 && height = 0.0)
+               || W.CssStyleDeclaration.getPropertyValue "visibility"
+                    (W.Window.getComputedStyle anchor window) = "hidden"))
       in
       let refresh () =
         if !active then
@@ -98,7 +99,7 @@ let start ~document ~positioner ~popup ~anchor ~valid ~update ~on_invalid =
             stop positioner;
             on_invalid ()
           end else begin
-            previous := Some (geometry anchor);
+            if not frozen then previous := Some (geometry anchor);
             update ();
             let height = W.Element.clientHeight popup in
             if !reveal || height <> !previous_height then begin
@@ -143,7 +144,7 @@ let start ~document ~positioner ~popup ~anchor ~valid ~update ~on_invalid =
       let rec check_geometry () =
         if !active then begin
           if invalid () || !previous <> Some (geometry anchor) then schedule ();
-          poll := Some (Js.Global.setTimeout ~f:check_geometry 100)
+          if not frozen then poll := Some (Js.Global.setTimeout ~f:check_geometry 100)
         end
       in
       let cleanup () =
@@ -163,7 +164,7 @@ let start ~document ~positioner ~popup ~anchor ~valid ~update ~on_invalid =
       listen_document document "scroll" listener true;
       List.iter (fun ancestor ->
           Webapi.ResizeObserver.observe observer ancestor) chain;
-      Webapi.ResizeObserver.observe observer anchor;
+      if not frozen then Webapi.ResizeObserver.observe observer anchor;
       Webapi.ResizeObserver.observe observer popup;
       W.MutationObserver.observe (W.Element.asNode popup)
         ([%mel.obj { attributes = true; subtree = true;
@@ -174,4 +175,4 @@ let start ~document ~positioner ~popup ~anchor ~valid ~update ~on_invalid =
           viewport_listen viewport "resize" listener;
           viewport_listen viewport "scroll" listener) viewport;
       schedule ();
-      poll := Some (Js.Global.setTimeout ~f:check_geometry 100)
+      if not frozen then poll := Some (Js.Global.setTimeout ~f:check_geometry 100)

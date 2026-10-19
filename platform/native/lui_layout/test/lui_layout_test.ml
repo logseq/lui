@@ -1794,6 +1794,30 @@ let test_popover_available_height () =
       size 600. 32.)
     [ 1.; 2. ]
 
+let test_frozen_popover_anchor () =
+  let property = List.find_opt
+    (fun p -> Lui_wire_schema.property_name p = "anchor-rect")
+    Lui_wire_schema.all_properties in
+  check bool "frozen anchors are supported" true (Option.is_some property);
+  let property = Option.get property in
+  List.iter (fun scale ->
+    let store = Lui_store.create () and layout = Lui_layout.create () in
+    apply store [CreateNode (1, Root); CreateNode (2, Popover);
+      InsertChild (1, 2, 0); SetProp (2, AnchorValue, StringValue "below");
+      SetProp (2, property, StringValue "961.5 341.953125 208 20");
+      SetProp (2, AnchorAlignmentValue, StringValue "center");
+      SetProp (2, AnchorOffset, FloatValue 0.);
+      SetProp (2, WidthValue, IntValue 310); SetProp (2, HeightValue, IntValue 342)];
+    let geometry width height x y popup_height =
+      Lui_layout.sync ~scale ~width:(width *. scale) ~height:(height *. scale) layout store;
+      check_rect "frozen anchor geometry" (Float.round (x *. scale)) (Float.round (y *. scale))
+        (310. *. scale) (Float.round (popup_height *. scale)) (Option.get (Lui_layout.rect layout 2)) in
+    geometry 1280. 720. 910.5 361.953125 342.;
+    geometry 1280. 500. 910.5 8. 333.953125;
+    geometry 600. 500. 282. 8. 333.953125;
+    apply store [SetProp (2, property, StringValue "30 80 40 20")];
+    geometry 600. 720. 8. 100. 342.) [1.; 2.]
+
 let test_retained_popover_target () =
   List.iter
     (fun scale ->
@@ -2153,6 +2177,7 @@ let () =
          test_case "select menu alignment" `Quick test_select_menu_alignment;
          test_case "menu height cap" `Quick test_menu_height_cap;
          test_case "popover available height" `Quick test_popover_available_height;
+         test_case "frozen popover anchor" `Quick test_frozen_popover_anchor;
          test_case "retained popover target" `Quick test_retained_popover_target;
          test_case "anchor alignment offset" `Quick test_anchor_alignment_offset;
          test_case "anchored popover side height" `Quick test_anchored_popover_side_height;

@@ -270,6 +270,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case labelOpacity = "label-opacity"
     case submitOnBlur = "submit-on-blur"
     case anchorAlignmentOffset = "anchor-alignment-offset"
+    case anchorRect = "anchor-rect"
 }
 
 enum LUISchemaMatrix {

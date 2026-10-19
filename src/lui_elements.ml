@@ -23,7 +23,7 @@ type text_alignment = [ `start | `center | `end_ ]
 type orientation = [ `horizontal | `vertical ]
 type icon_placement = [ `leading | `trailing | `top ]
 type anchor = [ `above | `below | `left | `right ]
-type anchor_alignment = [ `start | `end_ | `stretch ]
+type anchor_alignment = [ `start | `center | `end_ | `stretch ]
 type edge = [ `top | `bottom | `leading | `trailing ]
 
 type alignment =
@@ -192,6 +192,7 @@ let anchor_value : anchor -> string = function
   | `right -> "right"
 
 let anchor_alignment_value : anchor_alignment -> string = function
+  | `center -> "center"
   | `start -> "start"
   | `end_ -> "end"
   | `stretch -> "stretch"
@@ -1800,7 +1801,7 @@ let dropdown_menu ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizo
   mount_children context node children;
   node
 
-let popover ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?opacity ?opacity_signal ?at ?at_signal ?anchor ?anchor_target ?anchor_alignment ?anchor_offset ?anchor_alignment_offset ?available_height ?available_height_signal ?role ?on_dismiss ?transition (children : t list) : t =
+let popover ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?opacity ?opacity_signal ?at ?at_signal ?anchor ?anchor_target ?anchor_rect ?anchor_alignment ?anchor_offset ?anchor_alignment_offset ?available_height ?available_height_signal ?role ?on_dismiss ?transition (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.popover context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~margin ~margin_horizontal ~margin_vertical ~margin_top ~margin_right ~margin_bottom ~margin_left ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave ~transition;
@@ -1820,6 +1821,9 @@ let popover ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?
     at_signal;
   Option.iter (Lui_ui.string_property context node AnchorValue) (Option.map anchor_value anchor);
   Option.iter (Lui_ui.string_property context node AnchorTarget) anchor_target;
+  Option.iter (fun (x, y, width, height) ->
+    Lui_ui.string_property context node AnchorRect
+      (String.concat " " (List.map string_of_float [x; y; width; height]))) anchor_rect;
   Option.iter (Lui_ui.string_property context node AnchorAlignmentValue) (Option.map anchor_alignment_value anchor_alignment);
   Option.iter (Lui_ui.float_property context node AnchorOffset) anchor_offset;
   Option.iter (Lui_ui.float_property context node AnchorAlignmentOffset) anchor_alignment_offset;

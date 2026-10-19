@@ -1299,6 +1299,9 @@ let refine_grids ctx ~relayout =
    names the preferred side (below default), [anchor-alignment] the
    cross-axis alignment (start default), [anchor-offset] the gap
    (4px default). *)
+let frozen_anchor store id =
+  Option.bind (pstr store id "anchor-rect") Lui_protocol.anchor_rect_of_string
+
 let anchor_rect_of ctx store id ~cb pr =
   let s = ctx.scale in
   let f name = Option.map (fun v -> v *. s) (pnum store id name) in
@@ -1352,8 +1355,9 @@ let anchored_xy ?resolved_side ctx store sid ar (prp : Lui_flex.rect) =
   (* Clamp inside the viewport so the popup stays on-screen — the
      containing block may be smaller than the panel (a menu
      trigger). *)
-  ( Float.max 0. (Float.min x (Float.max 0. (ctx.vw -. prp.w))),
-    Float.max 0. (Float.min y (Float.max 0. (ctx.vh -. prp.h))) )
+  let edge = if frozen_anchor store sid <> None then 8. *. s else 0. in
+  ( Float.max edge (Float.min x (Float.max edge (ctx.vw -. prp.w -. edge))),
+    Float.max edge (Float.min y (Float.max edge (ctx.vh -. prp.h -. edge))) )
 
 (* Center each default-placed popup in its containing block by giving
    its spec concrete [left]/[top] offsets. Position edges resolve
@@ -1464,8 +1468,14 @@ let refine_popups ctx =
             ( { Lui_flex.x = 0.; y = 0.; w = ctx.vw; h = ctx.vh },
               None )
         in
+        let snapshot = frozen_anchor ctx.store sid in
         let anchor_id, anchor_rect =
-          match pstr ctx.store sid "anchor-target" with
+          match snapshot with
+          | Some (x, y, width, height) ->
+              let px, py = ctx.eng.anchor_shift sid in
+              None, {Lui_flex.x=x *. ctx.scale -. px; y=y *. ctx.scale -. py;
+                     w=width *. ctx.scale; h=height *. ctx.scale}
+          | None -> match pstr ctx.store sid "anchor-target" with
           | None -> psid_opt, pr
           | Some identifier ->
               (match Lui_store.find_identifier ctx.store identifier with
@@ -1588,8 +1598,9 @@ let refine_popups ctx =
              remeasurement so shrinking cannot flip the decision back. *)
           let prp, resolved_side =
             match kind, pstr ctx.store sid "anchor", anchor_id with
-            | "popover", Some ("below" | "above" as preferred), Some owner
-              when Lui_store.kind ctx.store owner <> "root"
+            | "popover", Some ("below" | "above" as preferred), owner
+              when (snapshot <> None || Option.fold ~none:false
+                     ~some:(fun id -> Lui_store.kind ctx.store id <> "root") owner)
                    && not (has_prop ctx.store sid "x" || has_prop ctx.store sid "y") ->
               let offset = Option.value ~default:4. (pnum ctx.store sid "anchor-offset") *. ctx.scale in
               let above = Float.max 0. (anchor_rect.y -. offset -. 8. *. ctx.scale)

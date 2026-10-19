@@ -218,12 +218,15 @@ enum LUIWireValue: Decodable, Equatable {
         case .anchor:
             guard let value = stringValue else { return false }
             return ["above", "below", "left", "right"].contains(value)
+        case .anchorRect:
+            // This backend has no retained viewport positioning yet.
+            return false
         case .anchorTarget:
             guard let value = stringValue else { return false }
             return !value.trimmingCharacters(in: .whitespaces).isEmpty
         case .anchorAlignment:
             guard let value = stringValue else { return false }
-            return ["start", "end", "stretch"].contains(value)
+            return ["start", "center", "end", "stretch"].contains(value)
         case .tooltipDelay, .duration:
             guard let value = intValue else { return false }
             return (0...Int(Int32.max)).contains(value)
@@ -1232,6 +1235,7 @@ struct LUIRetainedTree {
             kind == .mediaSurface
         case .sourceX, .sourceY, .sourceWidth, .sourceHeight:
             kind == .avatar || kind == .image
+        case .anchorRect: false
         case .anchorTarget, .anchorAlignmentOffset:
             kind == .popover
         case .anchor, .anchorAlignment, .anchorOffset:

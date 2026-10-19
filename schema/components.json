@@ -1765,6 +1765,11 @@
       "lg": "AnchorAlignmentOffset",
       "wire": "anchor-alignment-offset",
       "swift": "anchorAlignmentOffset"
+    },
+    {
+      "lg": "AnchorRect",
+      "wire": "anchor-rect",
+      "swift": "anchorRect"
     }
   ],
   "events": [
