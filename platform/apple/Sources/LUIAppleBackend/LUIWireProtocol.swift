@@ -359,7 +359,7 @@ enum LUIWireValue: Decodable, Equatable {
             return intValue != nil
         case .whiteSpace:
             guard let value = stringValue else { return false }
-            return value == "normal" || value == "nowrap"
+            return value == "normal" || value == "nowrap" || value == "pre-wrap"
         case .textOverflow:
             guard let value = stringValue else { return false }
             return value == "clip" || value == "ellipsis"

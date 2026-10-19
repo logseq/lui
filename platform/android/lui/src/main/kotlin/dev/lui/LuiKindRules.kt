@@ -941,7 +941,7 @@ internal object LuiKindRules {
             "font-weight" -> value.intValue?.let { it in 1..1000 } == true
             "letter-spacing" -> value.numberValue?.isFinite() == true
             "text-decoration" -> textDecorationSupported(value.stringValue)
-            "white-space" -> value.stringValue in setOf("normal", "nowrap")
+            "white-space" -> value.stringValue in setOf("normal", "nowrap", "pre-wrap")
             "text-overflow" -> value.stringValue in setOf("clip", "ellipsis")
             "user-select" -> value.stringValue in setOf("none", "text")
             "cursor" -> value.stringValue in setOf("default", "pointer", "text")

@@ -2722,6 +2722,8 @@ let test_visual_appearance_props () =
     (property_value_supported ZIndex (IntValue 40));
   Alcotest.(check bool) "white-space enum" true
     (property_value_supported WhiteSpace (StringValue "nowrap"));
+  Alcotest.(check bool) "white-space preserves wrapping code text" true
+    (property_value_supported WhiteSpace (StringValue "pre-wrap"));
   Alcotest.(check bool) "white-space rejects pre" false
     (property_value_supported WhiteSpace (StringValue "pre"));
   Alcotest.(check bool) "text-overflow enum" true

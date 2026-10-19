@@ -31,6 +31,12 @@ private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
 @MainActor
 @Suite("LUI SwiftUI backend", .serialized)
 struct LUISwiftUIBackendTests {
+    @Test("wrapping code text retains its whitespace mode")
+    func wrappingCodeWhitespace() {
+        #expect(LUIWireValue.string("pre-wrap").matches(.whiteSpace, on: .text))
+        #expect(!LUIWireValue.string("pre").matches(.whiteSpace, on: .text))
+    }
+
     @Test("viewport anchors fail explicitly until retained positioning is available")
     func unsupportedViewportAnchor() {
         #expect(!LUIWireValue.string("0 0 40 20").matches(.anchorRect, on: .popover))

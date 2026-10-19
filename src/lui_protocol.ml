@@ -1690,7 +1690,7 @@ let property_value_supported property value =
   | Inert, BoolValue _ -> true
   | Transition, StringValue value -> transition_supported value
   | ZIndex, IntValue _ -> true
-  | WhiteSpace, StringValue value -> List.mem value [ "normal"; "nowrap" ]
+  | WhiteSpace, StringValue value -> List.mem value [ "normal"; "nowrap"; "pre-wrap" ]
   | TextOverflow, StringValue value -> List.mem value [ "clip"; "ellipsis" ]
   | Overflow, StringValue value -> List.mem value [ "visible"; "hidden"; "auto" ]
   | UserSelect, StringValue value -> List.mem value [ "none"; "text" ]
