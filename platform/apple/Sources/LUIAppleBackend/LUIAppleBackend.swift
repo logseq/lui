@@ -975,7 +975,12 @@ public final class LUIAppleBackend {
 
             var tC = tB
             var tD = tB
-            if coalescesCommits, CFAbsoluteTimeGetCurrent() < coalesceWindowUntil {
+            let updatesVirtualWindow = effects.touched.contains { id in
+                tree.nodes[id]?.properties[.dataAttrs]?.stringValue?
+                    .contains("data-virtual-count\u{1f}") == true
+            }
+            if coalescesCommits, !updatesVirtualWindow,
+               CFAbsoluteTimeGetCurrent() < coalesceWindowUntil {
                 // Inside a burst window: this patch's mutations merge into the
                 // pending commit and land as one view update once the stream
                 // quiets down. iOS's update-coalescing collection view replays
@@ -1066,7 +1071,9 @@ public final class LUIAppleBackend {
                 // No dialog/sheet/filePreview is mounted, so the DFS
                 // could only produce empty presentations — clear any
                 // stale state directly instead of walking the tree.
-                modalPresentation.nestedSheets = [:]
+                if !modalPresentation.nestedSheets.isEmpty {
+                    modalPresentation.nestedSheets = [:]
+                }
                 modalPresentation.synchronize(with: nil)
                 filePreviewPresentation.synchronize(with: nil)
             }
@@ -1765,7 +1772,9 @@ public final class LUIAppleBackend {
         for rootID in rootIDs {
             visit(rootID, rootID: rootID, dialogAnchorID: nil, parentSheetID: nil)
         }
-        modalPresentation.nestedSheets = nestedSheets
+        if modalPresentation.nestedSheets != nestedSheets {
+            modalPresentation.nestedSheets = nestedSheets
+        }
         modalPresentation.synchronize(with: presentation)
         filePreviewPresentation.synchronize(with: filePreview)
     }

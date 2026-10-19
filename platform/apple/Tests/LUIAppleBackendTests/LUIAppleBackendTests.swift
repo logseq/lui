@@ -31,6 +31,15 @@ private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
 @MainActor
 @Suite("LUI SwiftUI backend", .serialized)
 struct LUISwiftUIBackendTests {
+    @Test("virtual window replacement bypasses the collection burst delay")
+    func virtualWindowReplacementCommitsImmediately() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: #"{"generation":1,"ops":[{"op":"create-node","id":1,"kind":"list"},{"op":"set-prop","id":1,"property":"data-attrs","value":"data-virtual-count\u001f10000\u001edata-virtual-start\u001f0"}]}"#)
+        backend.coalescesCommits = true
+        try backend.apply(json: #"{"generation":2,"ops":[{"op":"set-prop","id":1,"property":"data-attrs","value":"data-virtual-count\u001f10000\u001edata-virtual-start\u001f9000"}]}"#)
+        #expect(backend.model(id: 1)?.property(.dataAttrs)?.stringValue?.contains("9000") == true)
+    }
+
     @Test("events raised during a retained batch wait for the commit boundary")
     func retainedBatchDefersEventsUntilCommitCompletes() throws {
         let backend = LUIAppleBackend()
@@ -4076,6 +4085,19 @@ struct LUISwiftUIBackendTests {
             """)
         }
         #expect(backend.generation == 3)
+    }
+
+    @Test("ordinary row replacement does not invalidate presentation stores")
+    func rowReplacementPreservesPresentationObservation() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: #"{"generation":1,"ops":[{"op":"create-node","id":1,"kind":"column"}]}"#)
+        let preview = ObservationFlag()
+        let sheets = ObservationFlag()
+        withObservationTracking { _ = backend.filePreviewPresentation.item } onChange: { preview.value = true }
+        withObservationTracking { _ = backend.modalPresentation.nestedSheets } onChange: { sheets.value = true }
+        try backend.apply(json: #"{"generation":2,"ops":[{"op":"create-node","id":2,"kind":"text"},{"op":"insert-child","parent":1,"child":2,"index":0}]}"#)
+        #expect(!preview.value)
+        #expect(!sheets.value)
     }
 
     @Test("file-preview presents through the store and dismiss emits an event")

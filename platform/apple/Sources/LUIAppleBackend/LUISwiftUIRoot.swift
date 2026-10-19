@@ -8,12 +8,16 @@ import AppKit
 import UIKit
 #endif
 
-struct LUIModalPresentation: Identifiable {
+struct LUIModalPresentation: Identifiable, Equatable {
     let model: LUINodeModel
     let rootID: Int
     let anchorID: Int
 
     var id: Int { model.id }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.model === rhs.model && lhs.rootID == rhs.rootID && lhs.anchorID == rhs.anchorID
+    }
 }
 
 @Observable
@@ -104,7 +108,7 @@ final class LUIModalPresentationStore {
     }
 }
 
-struct LUIFilePreviewPresentation: Identifiable {
+struct LUIFilePreviewPresentation: Identifiable, Equatable {
     let nodeID: Int
     let rootID: Int
     let url: URL
@@ -124,6 +128,7 @@ final class LUIFilePreviewStore {
     func synchronize(with item: LUIFilePreviewPresentation?) {
         if let pendingDismissalID, item?.id == pendingDismissalID { return }
         pendingDismissalID = nil
+        guard self.item != item else { return }
         self.item = item
     }
 
@@ -575,6 +580,7 @@ struct LUIAnyNodeView: View, Equatable {
     let nodeID: Int
     let backend: LUIAppleBackend
     private let retainedSnapshot: LUIRetainedNodeSnapshot
+    private static let probesEnabled = ProcessInfo.processInfo.environment["LOGSEQ_PERF"] != nil
 
     init(nodeID: Int, backend: LUIAppleBackend) {
         self.nodeID = nodeID
@@ -592,7 +598,7 @@ struct LUIAnyNodeView: View, Equatable {
     }
 
     private func perfProbe() -> Int {
-        guard ProcessInfo.processInfo.environment["LOGSEQ_PERF"] != nil else { return 0 }
+        guard Self.probesEnabled else { return 0 }
         let kind =
             backend.model(id: nodeID) != nil
             ? "n" : (backend.extensionModel(id: nodeID) != nil ? "e" : "nil")
@@ -654,9 +660,10 @@ private struct LUIFrameReportModifier: ViewModifier {
 private struct LUIExtensionNodeView: View {
     let model: LUIExtensionNodeModel
     let backend: LUIAppleBackend
+    private static let probesEnabled = ProcessInfo.processInfo.environment["LOGSEQ_PERF"] != nil
 
     private func perfProbe() -> Int {
-        guard ProcessInfo.processInfo.environment["LOGSEQ_PERF"] != nil else { return 0 }
+        guard Self.probesEnabled else { return 0 }
         let kids = model.children.prefix(6).map(String.init).joined(separator: ",")
         FileHandle.standardError.write(
             "PERF ext id=\(model.id) rev=\(model.revision) kids=[\(kids)] t=\(CFAbsoluteTimeGetCurrent())\n"
@@ -6132,7 +6139,7 @@ private struct LUIRowView: View {
         // Cross-axis stretch makes children accept any offered height, which
         // also makes the row greedy in a VStack. Keep it at its ideal height
         // unless the wire explicitly sizes it.
-        if model.derived.grow > 0
+        if cross != "stretch" || model.derived.grow > 0
             || model.surfaceHeight != nil || model.surfaceMinHeight != nil {
             rowContent
                 .modifier(LUIContainerPressModifier(model: model, backend: backend))
@@ -6888,11 +6895,30 @@ private struct LUIListSectionSeparatorModifier: ViewModifier {
     }
 }
 
+// Only cheap integer identities are enumerated by SwiftUI. Row descriptors
+// (and their child-model lookups) are resolved only for materialized slots.
+// The editor keeps one identity when a split moves it to a neighboring row.
+struct LUIVirtualRowIndices: RandomAccessCollection {
+    struct Slot {
+        let position: Int
+        let id: Int
+    }
+    let count: Int
+    let editor: (position: Int, source: Int)?
+    var startIndex: Int { 0 }
+    var endIndex: Int { count }
+    subscript(position: Int) -> Slot {
+        Slot(position: position, id: position == editor?.position ? -(editor!.source + 1) : position)
+    }
+}
+
 private struct LUIVirtualListView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     @State private var unobscuredHeight: CGFloat?
     @State private var titleTracker = LUIScrollSectionTitleTracker()
+    @State private var windowTracker = LUIVirtualWindowTracker()
+    @State private var firstSectionHeights: [SlotID: CGFloat] = [:]
 
     var body: some View {
         ScrollView {
@@ -6900,20 +6926,27 @@ private struct LUIVirtualListView: View {
                 alignment: .leading,
                 spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
             ) {
-                ForEach(sectionRows, id: \.id) { row in
-                    let rowView = LUIAnyNodeView(nodeID: row.id, backend: backend)
-                        .equatable()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    if tracksSectionTitles {
-                        rowView.modifier(LUIScrollSectionFrameModifier(
-                            index: row.index, title: row.title,
-                            coordinateSpace: titleCoordinateSpace,
-                            onVisibilityChange: { index, title in
-                                titleTracker.update(index: index, title: title)
-                            }
-                        ))
-                    } else {
-                        rowView
+                let rows = sectionRows
+                ForEach(LUIVirtualRowIndices(count: rows.endIndex, editor: rows.editor), id: \.id) { slot in
+                    // A concrete, single-view root keeps SwiftUI from asking
+                    // every virtual slot for its conditional view-list count.
+                    VStack(alignment: .leading, spacing: 0) {
+                        let row = rows[slot.position]
+                        let rowView = LUIVirtualListRow(row: row, backend: backend,
+                            tracker: windowTracker, coordinateSpace: titleCoordinateSpace,
+                            viewportHeight: unobscuredHeight ?? 600,
+                            onMeasure: { id, height in
+                                if firstSectionHeights[id] != height { firstSectionHeights[id] = height }
+                            })
+                        if tracksSectionTitles {
+                            rowView.modifier(LUIScrollSectionFrameModifier(
+                                index: row.index, title: row.title,
+                                coordinateSpace: titleCoordinateSpace,
+                                onVisibilityChange: { index, title in
+                                    titleTracker.update(index: index, title: title)
+                                }
+                            ))
+                        } else { rowView }
                     }
                 }
             }
@@ -6945,19 +6978,204 @@ private struct LUIVirtualListView: View {
         LUIScrollTitleCoordinateSpace(nodeID: model.id)
     }
 
-    private struct SectionRow {
-        let id: Int
-        let index: Int
-        let title: String?
+    struct SlotID: Hashable {
+        let source: Int
+        let offset: Int
     }
 
-    private var sectionRows: [SectionRow] {
-        let titles = model.childData.sectionTitles ?? [:]
-        return model.visibleChildren.enumerated().map { index, id in
-            SectionRow(id: id, index: index, title: titles[id])
+    struct SectionRow {
+        let id: SlotID
+        let nodeID: Int?
+        let windowID: Int?
+        let windowIndex: Int
+        let index: Int
+        let title: String?
+        let estimatedHeight: CGFloat
+        let tracksSectionHeight: Bool
+    }
+
+    // Random access keeps metadata lookup lazy too: a 10k-row collection
+    // must not allocate 10k strings and row descriptors on every viewport update.
+    struct SectionRows: RandomAccessCollection {
+        struct Segment {
+            let source: Int
+            let base: Int
+            let count: Int
+            let window: LUIVirtualWindow?
+            let children: [Int]
+            let title: String?
+            let padding: CGFloat
+            let tracksSectionHeight: Bool
+            let titles: [Int: String]
+        }
+        let segments: [Segment]
+        let endIndex: Int
+        var startIndex: Int { 0 }
+        var editor: (position: Int, source: Int)? {
+            for segment in segments {
+                if let window = segment.window, let index = window.pinnedIndex {
+                    return (segment.base + index + (segment.padding > 0 && index >= window.firstSectionCount ? 1 : 0), segment.source)
+                }
+            }
+            return nil
+        }
+        subscript(index: Int) -> SectionRow {
+            let segment = segments.first { index >= $0.base && index < $0.base + $0.count }!
+            var offset = index - segment.base
+            if let window = segment.window {
+                if segment.padding > 0, offset == window.firstSectionCount {
+                    return SectionRow(id: SlotID(source: segment.source, offset: -2),
+                        nodeID: nil, windowID: nil, windowIndex: 0, index: index,
+                        title: nil, estimatedHeight: segment.padding, tracksSectionHeight: false)
+                }
+                if segment.padding > 0, offset > window.firstSectionCount { offset -= 1 }
+                let childOffset = offset - window.start
+                return SectionRow(id: SlotID(source: segment.source, offset: offset),
+                    nodeID: segment.children.indices.contains(childOffset) ? segment.children[childOffset] : nil,
+                    windowID: segment.source, windowIndex: offset, index: index,
+                    title: segment.children.indices.contains(childOffset) ? segment.titles[segment.children[childOffset]] : nil,
+                    estimatedHeight: window.extent,
+                    tracksSectionHeight: segment.tracksSectionHeight && offset < window.firstSectionCount)
+            }
+            return SectionRow(id: SlotID(source: segment.source, offset: -1),
+                nodeID: segment.source, windowID: nil, windowIndex: 0,
+                index: index, title: segment.title, estimatedHeight: 0, tracksSectionHeight: false)
         }
     }
 
+    private var sectionRows: SectionRows {
+        let titles = model.childData.sectionTitles ?? [:]
+        var segments: [SectionRows.Segment] = []
+        var total = 0
+        for id in model.visibleChildren {
+            let source = backend.model(id: id)
+            let window = LUIVirtualWindow(source?.property(.dataAttrs)?.stringValue)
+            var padding: CGFloat = 0
+            var tracksHeight = false
+            if let window, window.firstSectionCount > 0,
+               window.firstSectionCount <= Int((unobscuredHeight ?? 0) / 16) + 1 {
+                tracksHeight = true
+                let measured = (0..<window.firstSectionCount).reduce(CGFloat(0)) { height, index in
+                    height + (firstSectionHeights[SlotID(source: id, offset: index)] ?? window.extent)
+                }
+                padding = max(0, (unobscuredHeight ?? 0) - window.firstSectionInset - measured)
+            }
+            let count = (window?.count ?? 1) + (padding > 0 ? 1 : 0)
+            segments.append(SectionRows.Segment(source: id, base: total, count: count,
+                window: window, children: window == nil ? [] : (source?.visibleChildren ?? []),
+                title: titles[id], padding: padding, tracksSectionHeight: tracksHeight,
+                titles: source?.childData.sectionTitles ?? [:]))
+            total += count
+        }
+        return SectionRows(segments: segments, endIndex: total)
+    }
+
+}
+
+// Window sources expose their total size independently of their mounted
+// children. Stable slot identities let LazyVStack retain measured heights
+// while distant OCaml scopes and native node models are evicted.
+fileprivate struct LUIVirtualWindow {
+    let count: Int
+    let start: Int
+    let extent: CGFloat
+    let firstSectionCount: Int
+    let firstSectionInset: CGFloat
+    let pinnedIndex: Int?
+
+    init?(_ encoded: String?) {
+        guard let encoded else { return nil }
+        var attributes: [String: String] = [:]
+        for record in encoded.split(separator: "\u{1e}") {
+            let pair = record.split(separator: "\u{1f}", maxSplits: 1)
+            if pair.count == 2 { attributes[String(pair[0])] = String(pair[1]) }
+        }
+        guard let count = attributes["data-virtual-count"].flatMap(Int.init), count >= 0,
+              let start = attributes["data-virtual-start"].flatMap(Int.init), start >= 0 else { return nil }
+        self.count = count
+        self.start = start
+        let pinned = attributes["data-pinned-index"].flatMap(Int.init) ?? -1
+        pinnedIndex = (0..<count).contains(pinned) ? pinned : nil
+        firstSectionCount = min(count, max(0, attributes["data-first-section-count"].flatMap(Int.init) ?? 0))
+        firstSectionInset = max(0, attributes["data-first-section-inset"].flatMap(Double.init) ?? 0)
+        extent = max(1, attributes["data-item-extent"].flatMap(Double.init) ?? 32)
+    }
+}
+
+// A measurement is consumed when a slot becomes a placeholder. Recording it
+// must not invalidate the same row immediately after its first layout.
+private final class LUIVirtualRowMeasurement {
+    var height: CGFloat?
+}
+
+private struct LUIVirtualListRow: View {
+    let row: LUIVirtualListView.SectionRow
+    let backend: LUIAppleBackend
+    let tracker: LUIVirtualWindowTracker
+    let coordinateSpace: LUIScrollTitleCoordinateSpace
+    let viewportHeight: CGFloat
+    let onMeasure: (LUIVirtualListView.SlotID, CGFloat) -> Void
+    @State private var measurement = LUIVirtualRowMeasurement()
+
+    var body: some View {
+        Group {
+            if let nodeID = row.nodeID {
+                LUIAnyNodeView(nodeID: nodeID, backend: backend)
+                    .equatable()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                        if height > 0 {
+                            measurement.height = height
+                            if row.tracksSectionHeight { onMeasure(row.id, height) }
+                        }
+                    }
+            } else {
+                Color.clear.frame(height: measurement.height ?? row.estimatedHeight)
+                    .accessibilityHidden(true)
+            }
+        }
+        .onGeometryChange(for: Bool.self) { geometry in
+            let frame = geometry.frame(in: .named(coordinateSpace))
+            return frame.maxY > -16 && frame.minY < viewportHeight + 16
+        } action: { visible in
+            if let windowID = row.windowID {
+                tracker.update(window: windowID, index: row.windowIndex,
+                    visible: visible, backend: backend)
+            }
+        }
+        .onDisappear {
+            if let windowID = row.windowID {
+                tracker.update(window: windowID, index: row.windowIndex,
+                    visible: false, backend: backend)
+            }
+        }
+    }
+}
+
+@MainActor
+private final class LUIVirtualWindowTracker {
+    private var visible: [Int: Set<Int>] = [:]
+    private var emitted: [Int: ClosedRange<Int>] = [:]
+    private var pending: Task<Void, Never>?
+
+    func update(window: Int, index: Int, visible isVisible: Bool, backend: LUIAppleBackend) {
+        if isVisible { visible[window, default: []].insert(index) }
+        else { visible[window]?.remove(index) }
+        guard pending == nil else { return }
+        pending = Task { @MainActor [weak self, weak backend] in
+            await Task.yield()
+            guard let self, let backend else { return }
+            self.pending = nil
+            for (window, indices) in self.visible {
+                guard let first = indices.min(), let last = indices.max() else { continue }
+                let range = first...last
+                if self.emitted[window] != range {
+                    self.emitted[window] = range
+                    backend.performVisibleRange(node: window, first: first, last: last)
+                }
+            }
+        }
+    }
 }
 
 // Each scroll axis needs its own stack: VStack for vertical, HStack for
@@ -7515,6 +7733,42 @@ private struct LUIBackgroundStyleModifier: ViewModifier {
     }
 }
 
+enum LUIPlainContainerSurfacePolicy {
+    private static let decoratedProperties: Set<LUIProperty> = [
+        .background, .foreground, .borderColor, .borderWidth, .cornerRadius,
+        .opacity, .tooltip, .minWidth, .maxWidth, .minHeight, .maxHeight,
+        .margin, .marginHorizontal, .marginVertical, .marginTop, .marginRight,
+        .marginBottom, .marginLeft, .containerRelativeFrame, .containerRelativeFrameInset
+    ]
+
+    static func applies(kind: LUINodeKind, properties: [LUIProperty: LUIWireValue], styleClass: String?) -> Bool {
+        guard kind == .row || kind == .column || kind == .box,
+              !properties.keys.contains(where: { decoratedProperties.contains($0) }) else { return false }
+        let classes = styleClass?.split(separator: " ") ?? []
+        return !classes.contains("body-line") && !classes.contains("composer-surface")
+    }
+}
+
+// Plain layout containers need padding and sizing, not transparent shapes,
+// empty overlays, zero-radius shadows and several unconstrained frame layers.
+private struct LUIPlainContainerSurfaceModifier: ViewModifier {
+    let model: LUINodeModel
+
+    @ViewBuilder func body(content: Content) -> some View {
+        let padding = model.property(.padding)?.intValue ?? 0
+        let horizontal = CGFloat(model.property(.paddingHorizontal)?.intValue ?? padding)
+        let vertical = CGFloat(model.property(.paddingVertical)?.intValue ?? padding)
+        let padded = content.padding(EdgeInsets(top: vertical, leading: horizontal, bottom: vertical, trailing: horizontal))
+        if model.surfaceWidth != nil || model.surfaceHeight != nil {
+            padded.frame(maxWidth: LUIIntrinsicSurfacePolicy.fillsWidth(kind: model.kind, grow: model.derived.grow) ? .infinity : nil,
+                         alignment: .leading)
+                .frame(width: model.surfaceWidth.map(CGFloat.init), height: model.surfaceHeight.map(CGFloat.init))
+        } else if LUIIntrinsicSurfacePolicy.fillsWidth(kind: model.kind, grow: model.derived.grow) {
+            padded.frame(maxWidth: .infinity, alignment: .leading)
+        } else { padded }
+    }
+}
+
 private struct LUISurfaceModifier: ViewModifier {
     let model: LUINodeModel
     let backend: LUIAppleBackend
@@ -7537,7 +7791,15 @@ private struct LUISurfaceModifier: ViewModifier {
         #endif
     }
 
-    func body(content: Content) -> some View {
+    @ViewBuilder func body(content: Content) -> some View {
+        if LUIPlainContainerSurfacePolicy.applies(kind: model.kind, properties: model.properties, styleClass: model.derived.styleClass) {
+            content.modifier(LUIPlainContainerSurfaceModifier(model: model))
+        } else {
+            decorated(content: content)
+        }
+    }
+
+    private func decorated(content: Content) -> some View {
         let isSurface = model.kind == .panel || model.kind == .card ||
             model.kind == .resizable || model.kind == .alert || model.kind == .bubble
         let isTabs = model.kind == .tabs &&
@@ -7578,7 +7840,7 @@ private struct LUISurfaceModifier: ViewModifier {
             inFusedCapsule: inFusedCapsule
         )
 
-        content
+        return content
             .padding(.horizontal, CGFloat(horizontal))
             .padding(.vertical, CGFloat(vertical))
             .opacity(model.property(.opacity)?.doubleValue ?? 1)
