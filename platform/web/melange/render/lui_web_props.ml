@@ -1051,6 +1051,7 @@ and apply_secondary_property renderer queue_split node kind dom_node
   | LetterSpacing, FloatValue spacing ->
       set_style dom_node "letter-spacing" (Js.Float.toString spacing ^ "px")
   | Position, StringValue position ->
+      W.Element.setAttribute "data-lui-position" position dom_node;
       set_style dom_node "position" position
   | Inset, FloatValue inset ->
       set_style dom_node "inset" (Js.Float.toString inset ^ "px")
@@ -1298,7 +1299,9 @@ let remove_property renderer queue_split node kind dom_node property =
        | FontWeight -> set_style dom_node "font-weight" ""
        | LineHeight -> set_style dom_node "line-height" ""
        | LetterSpacing -> set_style dom_node "letter-spacing" ""
-       | Position -> set_style dom_node "position" ""
+       | Position ->
+           W.Element.removeAttribute "data-lui-position" dom_node;
+           set_style dom_node "position" ""
        | Inset -> set_style dom_node "inset" ""
        | InsetTop -> set_style dom_node "top" ""
        | InsetRight -> set_style dom_node "right" ""
