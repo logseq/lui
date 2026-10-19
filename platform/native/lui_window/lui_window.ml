@@ -1676,6 +1676,8 @@ module Ui = struct
         (Lui_pointer.pressed t.pointer = id
          || Lui_drag.source t.drag = id);
       focused = Lui_focus.focused t.focus = id;
+      focus_within = (let focused=Lui_focus.focused t.focus in
+        focused <> 0 && (focused=id || Lui_query.is_desc store focused id));
       focus_visible = Lui_focus.focused t.focus = id
         && (Lui_focus.kbd_visible t.focus || Lui_text_input.editable store id);
       selected =
@@ -1702,7 +1704,16 @@ module Ui = struct
     and drop_target = Lui_drag.target t.drag in
     if s.ps_hovered <> hovered t then (mark s.ps_hovered; mark (hovered t));
     if s.ps_pressed <> pressed t then (mark s.ps_pressed; mark (pressed t));
-    if s.ps_focused <> focused t then (mark s.ps_focused; mark (focused t));
+    if s.ps_focused <> focused t then begin
+      let rec mark_group id =
+        if id <> 0 then begin
+          if Lui_store.prop store id "focus-within-background" <> None
+             || Lui_store.prop store id "focus-within-border" <> None then mark id;
+          Option.iter mark_group (Lui_store.parent store id)
+        end in
+      mark s.ps_focused;mark (focused t);
+      mark_group s.ps_focused;mark_group (focused t)
+    end;
     if s.ps_drop_target <> drop_target then
       (mark s.ps_drop_target; mark drop_target);
     if s.ps_drag_src <> drag_src then (mark s.ps_drag_src; mark drag_src);

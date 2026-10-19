@@ -3707,6 +3707,53 @@ let test_anchored_popover_handoff () =
   apply [DropNode 20];
   Alcotest.(check int) "closing the asynchronous surface returns to the original trigger" 2 (Ui.focused ui)
 
+let test_focus_within_paint () =
+  let property name=
+    let found=List.find_opt (fun prop -> Lui_wire_schema.property_name prop=name) Lui_wire_schema.all_properties in
+    Alcotest.(check bool) ("Shared focus appearance channel exists: " ^ name) true (Option.is_some found);
+    Option.get found in
+  let background=property "focus-within-background" and border=property "focus-within-border" in
+  let store=store_of
+    [CreateNode (1,Root);CreateNode (2,Row);InsertChild (1,2,0);
+     CreateNode (3,Row);InsertChild (2,3,0);
+     CreateNode (4,SearchField);InsertChild (3,4,0);
+     CreateNode (5,Button);InsertChild (1,5,1);
+     CreateNode (6,Button);InsertChild (2,6,1);
+     SetProp (2,BackgroundValue,StringValue "#ffffff");
+     SetProp (2,BorderColorValue,StringValue "#000000");SetProp (2,BorderWidth,IntValue 3);
+     SetProp (2,background,StringValue "#112233");SetProp (2,border,StringValue "#445566")] in
+  let ui=Ui.create () in
+  let paint ()=
+    let scene=Lui_scene.create ~mask_atlas:(Lui_scene.Atlas.create ~bpp:1 ~w:1 ~h:1)
+      ~color_atlas:(Lui_scene.Atlas.create ~bpp:4 ~w:1 ~h:1) in
+    Lui_paint.paint {Lui_paint.default_hooks with state_of=Ui.state_of ui store;
+      layout=(fun id -> Lui_paint.placement_of_rect
+        (if id=2 then rect 10. 10. 100. 40. else rect 0. 0. 0. 0.))}
+      store scene ~width:200 ~height:100 ~scale:1. ~clear:(color 0 0 0 0);
+    List.find_map (function Fill fill when fill.frect.x=10. && fill.frect.w=100. -> Some fill | _ -> None) scene.ops
+    |> Option.get in
+  let expect label bg edge=
+    let fill=paint () in
+    Alcotest.(check bool) (label ^ " background") true (fill.fcolor=bg);
+    Alcotest.(check bool) (label ^ " border") true (fill.fborder_color=edge) in
+  let move id=Ui.set_focused ui store id;ignore (Ui.paint_hints ui store) in
+  move 5;expect "Outside focus" (color 255 255 255 255) (color 0 0 0 255);
+  List.iter (fun id ->
+    Ui.set_focused ui store id;
+    let dirty,_=Ui.paint_hints ui store in
+    Alcotest.(check bool) "Focus movement invalidates the styled ancestor" true (Hashtbl.mem dirty 2);
+    expect "Descendant focus" (color 17 34 51 255) (color 68 85 102 255)) [4;6];
+  Ui.set_focused ui store 5;
+  let dirty,_=Ui.paint_hints ui store in
+  Alcotest.(check bool) "Leaving focus invalidates the old ancestor" true (Hashtbl.mem dirty 2);
+  expect "Focus leaves the group" (color 255 255 255 255) (color 0 0 0 255);
+  move 4;
+  Lui_store.apply_op store (RemoveProp (2,background));
+  expect "Removing the background channel preserves its focused border" (color 255 255 255 255) (color 68 85 102 255);
+  Lui_store.apply_op store (RemoveProp (2,border));
+  expect "Removing the border channel restores its base style" (color 255 255 255 255) (color 0 0 0 255);
+  move 0;expect "Blur" (color 255 255 255 255) (color 0 0 0 255)
+
 let test_action_menu_focus () =
   List.iter (fun (origin,kbd) ->
     let asm = assembly_of
@@ -4818,6 +4865,7 @@ let () =
           Alcotest.test_case "async popover focus return" `Quick test_async_popover_focus_return;
           Alcotest.test_case "control keyboard ownership" `Quick test_control_keyboard_ownership;
           Alcotest.test_case "anchored popover handoff" `Quick test_anchored_popover_handoff;
+          Alcotest.test_case "focus within paint" `Quick test_focus_within_paint;
           Alcotest.test_case "appear once" `Quick test_appear_once;
           Alcotest.test_case "autofocus" `Quick test_autofocus;
           Alcotest.test_case "modal focus scope" `Quick

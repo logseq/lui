@@ -470,6 +470,10 @@ let pressed_shadow context node value =
   string_property context node PressedShadow value
 let focus_shadow context node value =
   string_property context node FocusShadow value
+let focus_within_background context node value =
+  string_property context node FocusWithinBackground value
+let focus_within_border context node value =
+  string_property context node FocusWithinBorder value
 let selected_background context node color =
   string_property context node SelectedBackground color
 let selected_shadow context node value =

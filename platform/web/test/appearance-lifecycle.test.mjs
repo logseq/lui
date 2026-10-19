@@ -25,6 +25,20 @@ const text = value(Schema.all_properties, Schema.property_name, 'text')
 const bool = flag => ({TAG: 1, _0: flag})
 const settle = () => new Promise(resolve => setTimeout(resolve, 10))
 
+test('focus-within appearance crosses the protocol and clears independently', () => {
+  const f=fixture(),node=Lazy.force(Store.node(f.renderer.web_store,1).platform_node)
+  const styles=new Map()
+  node.style={setProperty(name,value){styles.set(name,value)}}
+  for(const [name,channel] of [['focus-within-background','--lui-focus-within-bg'],
+    ['focus-within-border','--lui-focus-within-border']]) {
+    const property=value(Schema.all_properties,Schema.property_name,name)
+    Props.apply_property(f.renderer,()=>{},1,column,node,property,{TAG:0,_0:'#112233'})
+    assert.equal(styles.get(channel),'#112233',`${name} reaches its rendering surface`)
+    Props.remove_property(f.renderer,()=>{},1,column,node,property)
+    assert.equal(styles.get(channel),'',`${name} retires independently`)
+  }
+})
+
 function fixture() {
   const store = Store.create_store()
   const elements = []

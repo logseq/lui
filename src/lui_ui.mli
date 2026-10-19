@@ -248,6 +248,8 @@ val pressed_background : ui_context -> int -> string -> unit
 val pressed_opacity : ui_context -> int -> float -> unit
 val pressed_shadow : ui_context -> int -> string -> unit
 val focus_shadow : ui_context -> int -> string -> unit
+val focus_within_background : ui_context -> int -> string -> unit
+val focus_within_border : ui_context -> int -> string -> unit
 val selected_background : ui_context -> int -> string -> unit
 val selected_shadow : ui_context -> int -> string -> unit
 val selected_hover_shadow : ui_context -> int -> string -> unit

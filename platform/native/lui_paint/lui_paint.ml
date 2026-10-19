@@ -193,6 +193,8 @@ let prop_coverage =
     ("pressed-opacity", Painted);
     ("pressed-shadow", Painted);
     ("focus-shadow", Painted);
+    ("focus-within-background", Painted);
+    ("focus-within-border", Painted);
     ("selected-background", Painted);
     ("selected-shadow", Painted);
     ("selected-hover-shadow", Painted);
@@ -411,12 +413,13 @@ type state = {
   pressed : bool;
   selected : bool;
   focused : bool;
+  focus_within : bool;
   focus_visible : bool; (* keyboard focus or a focused text entry *)
   disabled : bool;
 }
 
 let state_neutral =
-  { hovered = false; pressed = false; selected = false; focused = false;
+  { hovered = false; pressed = false; selected = false; focused = false; focus_within = false;
     focus_visible = false; disabled = false }
 
 (* What layout computed for a node. [p_override] is a device-px rect
@@ -596,6 +599,7 @@ let effective_state hooks store id =
 (* Base props after the state channels cascade through them. *)
 type resolved = {
   rs_background : string option;
+  rs_border : string option;
   rs_opacity : float;
   rs_shadow : string option;
 }
@@ -607,6 +611,7 @@ let opacity_of store id =
 
 let resolve_style store id st =
   let bg = ref (pstr store id "background")
+  and border = ref (pstr store id "border-color")
   and sh = ref (pstr store id "shadow")
   and op = ref (opacity_of store id) in
   let ifstr name r = match pstr store id name with
@@ -629,9 +634,12 @@ let resolve_style store id st =
     ifstr "selected-background" bg;
     ifstr "selected-shadow" sh);
   if st.selected && st.hovered then ifstr "selected-hover-shadow" sh;
+  if st.focus_within then (
+    ifstr "focus-within-background" bg;
+    ifstr "focus-within-border" border);
   if st.disabled then ifnum "disabled-opacity" op;
   if st.focused && st.focus_visible then ifstr "focus-shadow" sh;
-  { rs_background = !bg; rs_opacity = !op; rs_shadow = !sh }
+  { rs_background = !bg; rs_border = !border; rs_opacity = !op; rs_shadow = !sh }
 
 (* ---------- fills ---------- *)
 
@@ -852,8 +860,8 @@ let border_widths ctx store id =
 
 (* Border colors: the whole value resolves → uniform; otherwise each
    shorthand token resolves → per-edge. Unresolvable → no borders. *)
-let border_colors hooks store id =
-  match pstr store id "border-color" with
+let border_colors hooks value =
+  match value with
   | None -> []
   | Some s -> (
     match color_of_value hooks.color_of s with
@@ -890,7 +898,7 @@ let per_edge_border_fills r radii bw cs dashed alpha =
 let box_ops ctx store id rs r alpha =
   let radii = radii_of ctx store id in
   let bw = border_widths ctx store id in
-  let bcs = border_colors ctx.hooks store id in
+  let bcs = border_colors ctx.hooks rs.rs_border in
   let dashed = dashed_border store id in
   (* Every layer of the shadow spec paints: outsets under the box,
      insets over the fill. CSS draws shadows front-to-back — the first

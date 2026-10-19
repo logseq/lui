@@ -265,6 +265,8 @@ type property =
   | PressedOpacity
   | PressedShadow
   | FocusShadow
+  | FocusWithinBackground
+  | FocusWithinBorder
   | SelectedBackground
   | SelectedShadow
   | SelectedHoverShadow

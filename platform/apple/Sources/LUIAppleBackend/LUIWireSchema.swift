@@ -246,6 +246,8 @@ enum LUIProperty: String, Decodable, Hashable {
     case pressedOpacity = "pressed-opacity"
     case pressedShadow = "pressed-shadow"
     case focusShadow = "focus-shadow"
+    case focusWithinBackground = "focus-within-background"
+    case focusWithinBorder = "focus-within-border"
     case selectedBackground = "selected-background"
     case selectedShadow = "selected-shadow"
     case selectedHoverShadow = "selected-hover-shadow"
@@ -294,7 +296,7 @@ enum LUISchemaMatrix {
         .swipeAction: [.text, .icon, .variant, .edge, .enabled, .background, .pressEnabled, .pointerEnabled],
         .filePicker: [.request, .types, .multiple, .source, .completion, .pickerAccept, .pickerDirectory, .enabled, .appearEnabled, .pointerEnabled],
         .filePreview: [.path, .pointerEnabled],
-        .kbd: [.text, .styleClass, .dataAttrs, .pointerEnabled, .background, .borderColor, .borderWidth, .cornerRadius, .foreground, .grow, .padding, .paddingHorizontal, .paddingVertical, .paddingTop, .paddingRight, .paddingBottom, .paddingLeft, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight, .opacity, .fontSize, .fontWeight, .fontStyle, .lineHeight, .letterSpacing, .fontFamily, .textDecoration, .whiteSpace, .textOverflow, .userSelect, .cursor, .shadow, .hoverBackground, .hoverOpacity, .hoverShadow, .pressedBackground, .pressedOpacity, .pressedShadow, .focusShadow, .selectedBackground, .selectedShadow, .selectedHoverShadow, .disabledOpacity, .transition],
+        .kbd: [.text, .styleClass, .dataAttrs, .pointerEnabled, .background, .borderColor, .borderWidth, .cornerRadius, .foreground, .grow, .padding, .paddingHorizontal, .paddingVertical, .paddingTop, .paddingRight, .paddingBottom, .paddingLeft, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight, .opacity, .fontSize, .fontWeight, .fontStyle, .lineHeight, .letterSpacing, .fontFamily, .textDecoration, .whiteSpace, .textOverflow, .userSelect, .cursor, .shadow, .hoverBackground, .hoverOpacity, .hoverShadow, .pressedBackground, .pressedOpacity, .pressedShadow, .focusShadow, .focusWithinBackground, .focusWithinBorder, .selectedBackground, .selectedShadow, .selectedHoverShadow, .disabledOpacity, .transition],
     ]
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [

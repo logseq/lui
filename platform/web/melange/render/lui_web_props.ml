@@ -64,7 +64,7 @@ let property_surface kind dom_node property =
     | TextOverflow | Overflow | Opacity | Cursor | UserSelect | Shadow
     | HoverBackground | HoverForeground | HoverBorder | HoverOpacity
     | HoverShadow | PressedBackground | PressedOpacity | PressedShadow
-    | FocusShadow | SelectedBackground | SelectedShadow | SelectedHoverShadow
+    | FocusShadow | FocusWithinBackground | FocusWithinBorder | SelectedBackground | SelectedShadow | SelectedHoverShadow
     | DisabledOpacity | DataAttrs ->
         Util.child_element dom_node 0
     | _ -> dom_node
@@ -756,14 +756,14 @@ let rec apply_property renderer queue_split node kind dom_node property
       refresh_spacing renderer node dom_node ~margin:true
   | BackgroundValue, StringValue background ->
       set_style dom_node "background"
-        ("var(--lui-current-selected-bg, var(--lui-current-pressed-bg, var(--lui-current-hover-bg, "
-         ^ Util.web_color_value background ^ ")))" )
+        ("var(--lui-current-focus-within-bg, var(--lui-current-selected-bg, var(--lui-current-pressed-bg, var(--lui-current-hover-bg, "
+         ^ Util.web_color_value background ^ "))))" )
   | ForegroundValue, StringValue foreground ->
       set_style dom_node "color"
         ("var(--lui-current-hover-fg, " ^ Util.web_color_value foreground ^ ")")
   | BorderColorValue, StringValue border ->
       set_style dom_node "border-color"
-        ("var(--lui-current-hover-border, " ^ Util.web_color_value border ^ ")")
+        ("var(--lui-current-focus-within-border, var(--lui-current-hover-border, " ^ Util.web_color_value border ^ "))")
   | BorderWidth, IntValue width ->
       set_style dom_node "border-style" "solid";
       set_style dom_node "border-width" (string_of_int width ^ "px")
@@ -1096,7 +1096,12 @@ and apply_secondary_property renderer queue_split node kind dom_node
   | PressedShadow, StringValue shadow ->
       set_style dom_node "--lui-pressed-shadow" (Util.web_shadow_value shadow)
   | FocusShadow, StringValue shadow ->
-      set_style dom_node "--lui-focus-shadow" (Util.web_shadow_value shadow)
+      set_style dom_node "--lui-focus-shadow" (Util.web_shadow_value shadow);
+      set_style dom_node "box-shadow" "var(--lui-current-focus-shadow, revert-layer)"
+  | FocusWithinBackground, StringValue color ->
+      set_style dom_node "--lui-focus-within-bg" (Util.web_color_value color)
+  | FocusWithinBorder, StringValue color ->
+      set_style dom_node "--lui-focus-within-border" (Util.web_color_value color)
   | SelectedBackground, StringValue color ->
       set_style dom_node "--lui-selected-bg" (Util.web_color_value color)
   | SelectedShadow, StringValue shadow ->
@@ -1334,7 +1339,9 @@ let remove_property renderer queue_split node kind dom_node property =
        | PressedBackground -> set_style dom_node "--lui-pressed-bg" ""
        | PressedOpacity -> set_style dom_node "--lui-pressed-opacity" ""
        | PressedShadow -> set_style dom_node "--lui-pressed-shadow" ""
-       | FocusShadow -> set_style dom_node "--lui-focus-shadow" ""
+       | FocusShadow -> set_style dom_node "--lui-focus-shadow" "";set_style dom_node "box-shadow" ""
+       | FocusWithinBackground -> set_style dom_node "--lui-focus-within-bg" ""
+       | FocusWithinBorder -> set_style dom_node "--lui-focus-within-border" ""
        | SelectedBackground -> set_style dom_node "--lui-selected-bg" ""
        | SelectedShadow -> set_style dom_node "--lui-selected-shadow" ""
        | SelectedHoverShadow ->

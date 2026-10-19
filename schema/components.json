@@ -1647,6 +1647,16 @@
       "swift": "focusShadow"
     },
     {
+      "lg": "FocusWithinBackground",
+      "wire": "focus-within-background",
+      "swift": "focusWithinBackground"
+    },
+    {
+      "lg": "FocusWithinBorder",
+      "wire": "focus-within-border",
+      "swift": "focusWithinBorder"
+    },
+    {
       "lg": "SelectedBackground",
       "wire": "selected-background",
       "swift": "selectedBackground"
@@ -2141,6 +2151,8 @@
       "pressed-opacity",
       "pressed-shadow",
       "focus-shadow",
+      "focus-within-background",
+      "focus-within-border",
       "selected-background",
       "selected-shadow",
       "selected-hover-shadow",

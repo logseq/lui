@@ -267,6 +267,8 @@ type property =
   | PressedOpacity
   | PressedShadow
   | FocusShadow
+  | FocusWithinBackground
+  | FocusWithinBorder
   | SelectedBackground
   | SelectedShadow
   | SelectedHoverShadow
@@ -1250,7 +1252,7 @@ let common_property_supported kind property =
   | Shadow -> (not (modal_surface kind)) && kind <> Tooltip
   | HoverBackground | HoverOpacity | HoverShadow | HoverForeground
   | HoverBorder | PressedBackground
-  | PressedOpacity | PressedShadow | FocusShadow | SelectedBackground
+  | PressedOpacity | PressedShadow | FocusShadow | FocusWithinBackground | FocusWithinBorder | SelectedBackground
   | SelectedShadow | SelectedHoverShadow | DisabledOpacity ->
     (* Interactive-state appearance channels; no-op on hosts that do not
        resolve interaction states. *)
@@ -1361,6 +1363,7 @@ let property_supported kind property =
       || property = HoverOpacity || property = HoverShadow
       || property = PressedBackground || property = PressedOpacity
       || property = PressedShadow || property = FocusShadow
+      || property = FocusWithinBackground || property = FocusWithinBorder
       || property = SelectedBackground || property = SelectedShadow
       || property = SelectedHoverShadow || property = DisabledOpacity
       || property = Transition
@@ -1694,7 +1697,8 @@ let property_value_supported property value =
   | ListStyle, StringValue value ->
     List.mem value [ "none"; "disc"; "decimal" ]
   | FlexWrap, StringValue value -> List.mem value [ "nowrap"; "wrap" ]
-  | HoverForeground, StringValue value | HoverBorder, StringValue value ->
+  | HoverForeground, StringValue value | HoverBorder, StringValue value
+  | FocusWithinBackground, StringValue value | FocusWithinBorder, StringValue value ->
     String.trim value <> ""
   | Inert, BoolValue _ -> true
   | Transition, StringValue value -> transition_supported value
