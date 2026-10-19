@@ -41,6 +41,24 @@ let paint_with h t ?(width = 200) ?(height = 200) ?(scale = 1.)
     ~clear:(color 0 0 0 0);
   s
 
+let test_table_hover_requires_interaction () =
+  let t = store () in
+  apply t [Lui_protocol.CreateNode (1, Table);
+    CreateNode (2, TableRow); CreateNode (3, TableCell);
+    InsertChild (1, 2, 0); InsertChild (2, 3, 0)];
+  let render hovered =
+    let h = {(hooks ()) with Lui_paint.state_of = (fun id ->
+      {Lui_paint.state_neutral with hovered = hovered && id = 2})} in
+    (paint_with h t ()).ops in
+  check bool "read-only table rows retain their paint on hover" true
+    (render false = render true);
+  apply t [Lui_protocol.SetProp (3, PressEnabled, BoolValue true)];
+  check bool "interactive table rows retain hover feedback" true
+    (render false <> render true);
+  apply t [Lui_protocol.RemoveProp (3, PressEnabled)];
+  check bool "removing the action removes hover feedback" true
+    (render false = render true)
+
 let test_link_theme () =
   let t = store () in
   apply t [Lui_protocol.CreateNode (1,Link);
@@ -1961,6 +1979,7 @@ let () =
       ("kinds",
        [ test_case "empty editable hook" `Quick test_empty_editable_text_hook;
          test_case "text border insets" `Quick test_text_border_insets;
+         test_case "table hover requires interaction" `Quick test_table_hover_requires_interaction;
          test_case "link theme" `Quick test_link_theme;
          test_case "divider" `Quick test_divider;
          test_case "spacer" `Quick test_spacer;

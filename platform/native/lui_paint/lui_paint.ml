@@ -2174,7 +2174,9 @@ let default_chrome ctx store id st kind r rs alpha =
     (if bg_styled then []
      else if st.selected then
        [ face (col_accent ctx) (rad 0.) zb zc ~dashed:false ]
-     else if st.hovered then
+     else if st.hovered && List.exists
+       (fun cell -> Lui_store.bool_prop store cell "press-enabled")
+       (Lui_store.child_ids store id) then
        [ face (col_surface_hover ctx) (rad 0.) zb zc ~dashed:false ]
      else [])
     (* The final row has no divider. *)
