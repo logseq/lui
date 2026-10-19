@@ -1969,6 +1969,7 @@ val heading :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?level:int ->
   ?value:string -> ?value_signal:string Signal.signal ->
+  ?text_alignment:text_alignment ->
   ?font_size:string ->
   ?font_weight:int ->
   ?line_height:string ->
@@ -2022,6 +2023,7 @@ val paragraph :
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?value:string -> ?value_signal:string Signal.signal ->
+  ?text_alignment:text_alignment ->
   ?font_size:string ->
   ?font_weight:int ->
   ?line_height:string ->

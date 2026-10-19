@@ -1098,6 +1098,8 @@ let common_property_supported kind property =
   | DurationValue -> false
   | TextAlignment ->
     kind = Text
+    || kind = Heading
+    || kind = Paragraph
     || kind = Button
     || kind = ToggleButton
     || kind = TableCell

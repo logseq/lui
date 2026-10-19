@@ -2291,8 +2291,8 @@ let data_attrs_view context _model _send =
           (Signal.constant context.Lui_ui.ui_scheduler
              [ ("data-mood", "ok") ])
         [];
-      Lui_elements.heading ~level:2 ~as_:`H2 ~value:"Title" [];
-      Lui_elements.paragraph ~as_:`P ~value:"para" [];
+      Lui_elements.heading ~level:2 ~as_:`H2 ~text_alignment:`center ~value:"Title" [];
+      Lui_elements.paragraph ~as_:`P ~text_alignment:`end_ ~value:"para" [];
       Lui_elements.label ~as_:`Span ~value:"lbl" [];
       Lui_elements.kbd ~data_attrs:[ ("aria-label", "key") ] ~value:"esc" [];
     ]
@@ -2328,6 +2328,10 @@ let test_data_attrs_and_as_emit () =
     (emitted As (StringValue "h2"));
   Alcotest.(check bool) "paragraph as p" true
     (emitted As (StringValue "p"));
+  Alcotest.(check bool) "heading center alignment" true
+    (emitted TextAlignment (StringValue "center"));
+  Alcotest.(check bool) "paragraph end alignment" true
+    (emitted TextAlignment (StringValue "end"));
   Alcotest.(check bool) "label as span" true
     (emitted As (StringValue "span"))
 

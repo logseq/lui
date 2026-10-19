@@ -797,6 +797,7 @@ private struct LUINodeView: View {
             return AnyView(
                 Text(verbatim: model.text)
                     .luiTypography(typography)
+                    .multilineTextAlignment(textAlignment)
                     .font(
                         typography.font(
                             base: LUIHeadingTypography.isBold(level: headingLevel)
@@ -810,6 +811,7 @@ private struct LUINodeView: View {
             return AnyView(
                 Text(verbatim: model.text)
                     .luiTypography(typography)
+                    .multilineTextAlignment(textAlignment)
                     .font(typography.font(base: .body))
                     .luiTypographyMetrics(typography, baseSize: 17)
             )
@@ -1029,7 +1031,7 @@ private struct LUINodeView: View {
                 Text(verbatim: model.text)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(messageTextAlignment)
+                    .multilineTextAlignment(textAlignment)
                     .frame(maxWidth: .infinity, alignment: messageFrameAlignment)
             )
         case .kbd:
@@ -1124,7 +1126,7 @@ private struct LUINodeView: View {
         #endif
     }
 
-    private var messageTextAlignment: TextAlignment {
+    private var textAlignment: TextAlignment {
         switch model.property(.textAlignment)?.stringValue {
         case "center": .center
         case "end": .trailing

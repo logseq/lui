@@ -1245,7 +1245,8 @@ struct LUIRetainedTree {
         case .tooltipDelay: kind == .tooltip
         case .duration: false
         case .textAlignment:
-            kind == .text || kind == .button || kind == .toggleButton ||
+            kind == .text || kind == .heading || kind == .paragraph ||
+                kind == .button || kind == .toggleButton ||
                 kind == .tableCell || kind == .bubble || kind == .statusBar
         case .role: isTreeRow(kind) || kind == .listItem || kind == .popover
         case .treeLevel, .expanded: isTreeRow(kind)
