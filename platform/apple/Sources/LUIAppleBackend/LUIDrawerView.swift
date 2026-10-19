@@ -229,11 +229,6 @@ struct LUIDrawerView: View {
             )
             let progress = width > 0.0 ? visibleWidth / width : 0.0
             let isDragging = abs(dragOffset) > 0.0
-            let interactionsLocked = LUIDrawerInteractionPolicy.disablesInteraction(
-                isDragging: isDragging,
-                isAnimating: isAnimating,
-                isGestureActive: isGestureActive
-            )
             let contentControlsEnabled =
                 LUIDrawerInteractionPolicy.contentControlsAreEnabled(
                     isDragging: isDragging,
@@ -241,6 +236,9 @@ struct LUIDrawerView: View {
                     isGestureActive: isGestureActive
                 )
 
+            // Keep the descendant scroll environment stable during transitions.
+            // Hit testing, the shield, and the backend event lock block interaction
+            // without invalidating every scroll view in a long content tree.
             ZStack(alignment: .leading) {
                 // Retain the panel after its first reveal so closing preserves its state.
                 if hasLoadedPanel, let panelID = model.children.dropFirst().first {
@@ -251,7 +249,6 @@ struct LUIDrawerView: View {
                         .opacity(LUIDrawerInteractionPolicy.sidebarOpacity(progress: progress))
                         .scaleEffect(0.96 + (0.04 * Double(progress)))
                         .offset(x: -20.0 * (1.0 - progress))
-                        .scrollDisabled(interactionsLocked)
                         .allowsHitTesting(presented && contentControlsEnabled)
                         .accessibilityHidden(
                             LUIDrawerInteractionPolicy.panelIsAccessibilityHidden(
@@ -268,7 +265,6 @@ struct LUIDrawerView: View {
                             top: geometry.safeAreaInsets.top
                         ))
                         .modifier(LUIDrawerMainSurfaceModifier())
-                        .scrollDisabled(interactionsLocked)
                         .allowsHitTesting(contentControlsEnabled)
                         .overlay {
                             if presented {
