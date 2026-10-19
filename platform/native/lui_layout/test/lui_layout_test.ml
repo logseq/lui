@@ -1901,6 +1901,38 @@ let test_popover_capped_content () =
       check bool "capped popup contains its scroll viewport" true
         (body.y+.body.h<=panel.y+.panel.h-.scale+.0.6)) [720.;600.;900.]) [1.;2.]
 
+let test_positioned_overlay_child kind position () =
+  List.iter (fun parent_kind -> List.iter (fun scale ->
+    let store = Lui_store.create () and layout = Lui_layout.create () in
+    apply store [CreateNode (1, Root); CreateNode (2, parent_kind);
+      InsertChild (1,2,0); SetProp (2,PaddingValue,IntValue 0);
+      SetProp (2,BorderWidth,IntValue 0);
+      CreateNode (3,Box); InsertChild (2,3,0);
+      SetProp (3,HeightValue,IntValue 600);
+      CreateNode (4,kind); InsertChild (2,4,1);
+      SetProp (4,Position,StringValue position);
+      SetProp (4,InsetRight,FloatValue 32.); SetProp (4,InsetBottom,FloatValue 58.);
+      SetProp (4,WidthValue,IntValue 200); SetProp (4,HeightValue,IntValue 180);
+      SetProp (4,PaddingValue,IntValue 0); SetProp (4,BorderWidth,IntValue 0);
+      SetProp (4,Gap,IntValue 0);
+      CreateNode (5,Box); InsertChild (4,5,0);
+      SetProp (5,WidthValue,IntValue 40); SetProp (5,HeightValue,IntValue 32)];
+    let verify width height right top =
+      apply store [SetProp (2,WidthValue,IntValue width);SetProp (2,HeightValue,IntValue height)];
+      Lui_layout.sync ~scale ~width:(float_of_int width*.scale) ~height:(float_of_int height*.scale) layout store;
+      let panel=Option.get (Lui_layout.rect layout 4)
+      and child=Option.get (Lui_layout.rect layout 5) in
+      check_rect "authored edges survive shared-cell positioning"
+        ((float_of_int width-.200.-.right)*.scale) (top*.scale) (200.*.scale) (180.*.scale) panel;
+      check_rect "descendants share the positioned surface origin"
+        panel.x panel.y (40.*.scale) (32.*.scale) child in
+    verify 640 720 32. (720.-.180.-.58.);
+    verify 480 600 32. (600.-.180.-.58.);
+    apply store [SetProp (4,InsetRight,FloatValue 64.);
+      RemoveProp (4,InsetBottom); SetProp (4,InsetTop,FloatValue 20.)];
+    verify 640 720 64. 20.) [1.;2.])
+    [Stack;Overlay;Panel;Card;Resizable;ViewThatFits]
+
 let test_popover_available_height () =
   List.iter
     (fun scale ->
@@ -2358,6 +2390,10 @@ let () =
          test_case "menu height cap" `Quick test_menu_height_cap;
          test_case "popover available height" `Quick test_popover_available_height;
          test_case "popover capped content" `Quick test_popover_capped_content;
+         test_case "fixed popup in overlay" `Quick (test_positioned_overlay_child Popover "fixed");
+         test_case "absolute popup in overlay" `Quick (test_positioned_overlay_child Popover "absolute");
+         test_case "fixed box in overlay" `Quick (test_positioned_overlay_child Box "fixed");
+         test_case "absolute box in overlay" `Quick (test_positioned_overlay_child Box "absolute");
          test_case "frozen popover anchor" `Quick test_frozen_popover_anchor;
          test_case "retained popover target" `Quick test_retained_popover_target;
          test_case "anchor alignment offset" `Quick test_anchor_alignment_offset;

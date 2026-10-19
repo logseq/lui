@@ -663,7 +663,11 @@ let adjust ~scale ~pkind ~pid ~index store id (style : Lui_flex.style) : Lui_fle
     else style
   in
   let style =
-    if zstack_kind pkind && index > 0 then
+    if zstack_kind pkind && index > 0
+       && (match pstr store id "position" with
+           | Some ("absolute" | "fixed") -> false
+           | _ -> true) then
+      (* Shared-cell alignment must not overwrite authored position edges. *)
       { style with
         position_type = Lui_flex.Absolute;
         position = overlay_edges store id }
