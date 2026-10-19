@@ -32,6 +32,11 @@ let install renderer node =
        before the initial scroll lands. *)
     let last_edges = ref (Some (true, false)) in
     let last_edge_offset = ref (-1.) in
+    (* Pin ownership: only an issued bottom-aligned scroll intent
+       grants the widget a tail pin; plain lists and user-held
+       positions are never re-anchored on geometry-only changes. *)
+    let tail_pinned = ref false in
+    let prog_scroll = ref (-1.) in
     let emit event = ignore (!(renderer.web_event_handler) event) in
     let property = Store.property renderer.web_store node in
     let text prop fallback =
@@ -98,18 +103,31 @@ let install renderer node =
            following; user-unpinned positions are preserved because
            their offset does change. *)
         (match !last_edges with
-         | Some (_, true)
-           when (not (snd edges)) && !last_edge_offset = off ->
-             W.Element.setScrollTop root
-               (float_of_int (W.Element.scrollHeight root)
-                -. float_of_int (W.Element.clientHeight root))
+         | _
+           when !tail_pinned && (not (snd edges))
+                && (!last_edge_offset = off
+                    || (!prog_scroll >= 0.
+                        && abs_float (off -. !prog_scroll) < 2.)) ->
+             let dest =
+               float_of_int (W.Element.scrollHeight root)
+               -. float_of_int (W.Element.clientHeight root)
+             in
+             prog_scroll := dest;
+             W.Element.setScrollTop root dest
          | _ ->
              if off <> !last_edge_offset then begin
+               let programmatic =
+                 !pending_lookup <> None
+                 || (!prog_scroll >= 0.
+                     && abs_float (off -. !prog_scroll) < 2.)
+               in
                last_edge_offset := off;
                if !last_edges <> Some edges then begin
                  last_edges := Some edges;
                  emit (ScrollEdges (node, fst edges, snd edges))
-               end
+               end;
+               if (not programmatic) && not (snd edges) then
+                 tail_pinned := false
              end)
       end
       else last_range := None
@@ -123,6 +141,7 @@ let install renderer node =
       | None -> ()
       | Some token ->
           pending_token := None;
+          if outcome = "missing-target" then tail_pinned := false;
           emit (ScrollCompleted (node, token, outcome))
     in
     (* Persistent scroll intent, like the virtual widget: recomputes
@@ -182,10 +201,12 @@ let install renderer node =
                 pending_lookup := None;
                 emit (ScrollCompleted (node, token, "succeeded"))
               end
-              else
+              else begin
                 scroll_to root
                   (scroll_options ~top:destination
-                     ~behavior:(if animated then "smooth" else "instant")))
+                     ~behavior:(if animated then "smooth" else "instant"));
+                prog_scroll := W.Element.scrollTop root
+              end)
     in
     let rec request () =
       match property ScrollToken with
@@ -196,9 +217,11 @@ let install renderer node =
            | Some (prev, _, _, _) ->
                emit (ScrollCompleted (node, prev, "cancelled"))
            | None -> ());
+          let anchor = text ScrollAnchor "top" in
+          tail_pinned := anchor = "bottom";
           pending_lookup :=
             Some
-              (token, text ScrollTarget "", text ScrollAnchor "top",
+              (token, text ScrollTarget "", anchor,
                property ScrollAnimated = Some (BoolValue true));
           attempt ();
           settle 0

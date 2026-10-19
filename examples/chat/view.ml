@@ -19,6 +19,22 @@ let view _context model_s send =
            | _ -> ())
     else None
   in
+  if model.Model.plain then
+    column ~grow:1.
+      [ virtual_list ~height:400 ~grow:1.
+          [ keyed
+              ~source:
+                (model_s >|= fun (m : Model.t) ->
+                     List.init m.Model.vrows Fun.id)
+              ~key:Fun.id ~cmp:Int.compare
+              ~mount:(fun i_s ->
+                text ~height:24
+                  ~value_signal:
+                    (i_s >|= fun i -> Printf.sprintf "row %d" i)
+                  [])
+          ]
+      ]
+  else
   Lui_ai.view
     ?header:
       (match outcome_el with [ el ] -> Some el | _ -> None)

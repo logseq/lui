@@ -3,6 +3,9 @@ open Lui_ai.Model
 type t = {
   list_mode : bool;
   debug : bool;
+  plain : bool;
+  replay : bool;
+  vrows : int;
   outcome : string;
   items : item list;
   draft : string;
@@ -48,8 +51,9 @@ let seed_items =
       else i) seed_items in
   with_tool @ [ assistant "s5" "" ]
 
-let initial ~tall ~list_mode ~debug =
-  { items =
+let initial ~tall ~list_mode ~debug ~plain ~replay =
+  { plain; replay; vrows = 0; items =
+      if replay then [] else
       List.filter (fun i -> i.id <> "s5") seed_items
       @ [ { (assistant "s5" "") with streaming = true } ]
       @ (if tall then
@@ -93,6 +97,14 @@ let update m = function
         { m with items; draft = ""; generating = true;
           queued = scripted_reply n; next_id = n + 1 }
   | Tick ->
+      if m.plain then { m with vrows = min 400 (m.vrows + 40) }
+      else if m.replay then
+        if m.next_id >= 1050 then { m with generating = false }
+        else
+          { m with items =
+              m.items @ List.init 25 (fun i -> filler (m.next_id + i));
+            next_id = m.next_id + 25 }
+      else
       (match m.queued with
        | [] -> m
        | chunk :: rest ->
@@ -109,5 +121,6 @@ let update m = function
             | _ -> { m with queued = rest }))
 
 let items m = m.items
+let vrows m = m.vrows
 let draft m = m.draft
 let generating m = m.generating

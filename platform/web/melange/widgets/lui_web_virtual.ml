@@ -53,6 +53,13 @@ let install renderer node ~materialize ~unmount =
        before the initial scroll lands. *)
     let last_edges = ref (Some (true, false)) in
     let last_edge_offset = ref (-1.) in
+    (* Pin ownership: only an issued end-aligned scroll intent grants
+       the widget a tail pin. Plain lists and unpinned user positions
+       must never be re-anchored on geometry-only changes. *)
+    let tail_pinned = ref false in
+    (* The scrollTop most recently written programmatically, so real
+       user offsets can release the pin without false positives. *)
+    let prog_scroll = ref (-1.) in
         let document = W.Document.unsafeAsHtmlDocument renderer.web_document in
     let live_rows () =
       Hashtbl.fold (fun id _ rows -> id :: rows) mounted []
@@ -154,6 +161,7 @@ let install renderer node ~materialize ~unmount =
       match !pending_scroll with
       | Some (token, _, _, _, _) ->
           pending_scroll := None;
+          if outcome = "missing-target" then tail_pinned := false;
           emit (ScrollCompleted (node, token, outcome))
       | None -> ()
     in
@@ -225,6 +233,7 @@ let install renderer node ~materialize ~unmount =
               else begin
                 V.scroll_to_index virtualizer index
                   (V.scroll_to_index_options ~align ~behavior);
+                prog_scroll := W.Element.scrollTop root;
                 pending_scroll :=
                   Some (token, target_key, align, behavior, tries)
               end))
@@ -346,24 +355,43 @@ let install renderer node ~materialize ~unmount =
                     re-anchor the tail so pinned transcripts keep
                     following (user-unpinned positions are preserved
                     since their offset does change). *)
-                 let bottom_lost_at_same_offset =
-                   match !last_edges with
-                   | Some (_, true) ->
-                       not (snd edges)
-                       && !last_edge_offset = off
-                   | _ -> false
+                 (* A pinned tail that is no longer at the bottom while
+                    the offset stands still means geometry moved, not
+                    the user — re-anchor. [tail_pinned] is owned by
+                    issued end-aligned intents, so plain lists and
+                    user-held positions are unaffected. *)
+                 let tail_lost_at_same_offset =
+                   !tail_pinned && not (snd edges)
+                   && (!last_edge_offset = off
+                       || (!prog_scroll >= 0.
+                           && abs_float (off -. !prog_scroll) < 2.))
                  in
-                 if bottom_lost_at_same_offset then
-                   W.Element.setScrollTop root
-                     (float_of_int (W.Element.scrollHeight root)
-                      -. V.rect_height rect)
+                 if tail_lost_at_same_offset then begin
+                   let dest =
+                     float_of_int (W.Element.scrollHeight root)
+                     -. V.rect_height rect
+                   in
+                   prog_scroll := dest;
+                   W.Element.setScrollTop root dest
+                 end
                  else if off <> !last_edge_offset then begin
+                   (* Offset changes are ours while an intent is
+                      pending or when they land on the last
+                      programmatic write; anything else is user
+                      scroll and releases the tail pin. *)
+                   let programmatic =
+                     !pending_scroll <> None
+                     || (!prog_scroll >= 0.
+                         && abs_float (off -. !prog_scroll) < 2.)
+                   in
                    last_edge_offset := off;
                    if !last_edges <> Some edges then begin
                      last_edges := Some edges;
                      emit
                        (ScrollEdges (node, fst edges, snd edges))
-                   end
+                   end;
+                   if (not programmatic) && not (snd edges) then
+                     tail_pinned := false
                  end
              | _ -> ());
             attempt_scroll ();
@@ -394,6 +422,7 @@ let install renderer node ~materialize ~unmount =
             if property ScrollAnimated = Some (BoolValue true) then "smooth"
             else "auto"
           in
+          tail_pinned := align = "end";
           pending_scroll :=
             Some (token, text ScrollTarget "", align, behavior, 0);
           attempt_scroll ()

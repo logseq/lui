@@ -205,3 +205,45 @@ test("scroll completion outcomes are observable (succeeded, cancelled)", async (
   assert.ok(/succeeded/.test(t), `expected terminal outcome, got "${t}"`)
   assert.ok(!/pending|stalled/.test(t), "intent must not hang pending")
 })
+
+test("plain virtual_list keeps position while children arrive", async () => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto(`${origin}/examples/chat/web/index.html?v`,
+    { waitUntil: "networkidle" })
+  await page.waitForSelector("#app [data-index='0']", { timeout: 10000 })
+  // Rows grow 0 -> 400 in committed chunks; a non-following list must
+  // never be re-anchored to the bottom just because geometry changed.
+  await page.waitForFunction(() => {
+    const sc = [...document.querySelectorAll("#app div")].find(
+      (d) => d.scrollHeight > d.clientHeight + 2 &&
+        getComputedStyle(d).overflowY === "auto")
+    return sc && sc.scrollHeight >= 9500
+  }, { timeout: 15000 })
+  const m = await scrollerMetrics()
+  assert.ok(m, "expected a bounded virtual scroller")
+  assert.equal(m.top, 0,
+    `plain virtual_list yanked to ${m.top}; expected scrollTop 0`)
+  assert.ok(await page.$("#app [data-index='0']"),
+    "first row must stay mounted at the top")
+})
+
+test("chunked replay keeps the pinned transcript following the tail", async () => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto(`${origin}/examples/chat/web/index.html?r`,
+    { waitUntil: "networkidle" })
+  await page.waitForSelector("#app textarea", { timeout: 10000 })
+  // 1050 items arrive in committed chunks; the pinned transcript must
+  // land on and hold the real bottom — a stale mid-list success or a
+  // transit bottom=false must not permanently unpin it.
+  await page.waitForFunction(() => {
+    const sc = [...document.querySelectorAll("#app div")].find(
+      (d) => d.scrollHeight > d.clientHeight + 2 &&
+        getComputedStyle(d).overflowY === "auto")
+    if (!sc || sc.scrollHeight < 30000) return false
+    return Math.abs(sc.scrollTop - (sc.scrollHeight - sc.clientHeight)) < 2
+  }, { timeout: 30000 })
+  await page.waitForTimeout(400)
+  const m = await scrollerMetrics()
+  assert.ok(m.top >= m.bottom - 2,
+    `replay left transcript unpinned at ${m.top}/${m.bottom}`)
+})
