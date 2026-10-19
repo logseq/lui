@@ -3602,6 +3602,7 @@ struct LUISwiftUIBackendTests {
           {"op":"set-prop","id":1,"property":"text","value":"Document"},
           {"op":"set-prop","id":3,"property":"text","value":"Rename"},
           {"op":"set-prop","id":3,"property":"press-enabled","value":true},
+          {"op":"set-prop","id":3,"property":"pointer-enabled","value":true},
           {"op":"set-prop","id":3,"property":"icon","value":"trash"},
           {"op":"set-prop","id":3,"property":"foreground","value":"success-foreground"},
           {"op":"set-prop","id":3,"property":"accessibility-identifier","value":"menu.rename"},
@@ -3624,7 +3625,10 @@ struct LUISwiftUIBackendTests {
         #expect(menu.children == [3, 4, 5])
         _ = LUISwiftUIRoot(backend: backend, rootID: 1)
         try backend.performPress(node: 3)
-        #expect(events == [.press(node: 3)])
+        #expect(events == [
+            .press(node: 3),
+            .pressDetail(node: 3, x: 0, y: 0, modifiers: 0, button: 0, targetClass: ""),
+        ])
         #expect(throws: LUIBackendError.self) {
             try backend.performPress(node: 5)
         }

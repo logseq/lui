@@ -1526,6 +1526,7 @@ struct LUIRetainedTree {
                             .text,
                             .enabled,
                             .pressEnabled,
+                            .pointerEnabled,
                             .icon,
                             .foreground,
                             .variant,
