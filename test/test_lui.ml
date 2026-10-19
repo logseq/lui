@@ -1089,6 +1089,39 @@ let drive_prop s (n : Drive.Model.node) name =
 let drive_press s sel =
   Drive.Session.press s (drive_node s sel).Drive.Model.id
 
+let test_dynamic_root_key ?(keyed_child = false) old_key next_key retain () =
+  let view _context source _send context parent =
+    let host = Lui_ui.column context in
+    Option.iter (fun parent -> Lui_ui.append context parent host) parent;
+    ignore (Lui_dynamic.switch context host source ( = )
+      (fun branch (key, value) ->
+        let root = Lui_ui.scroll branch in
+        Option.iter (Lui_ui.key branch root) key;
+        let child = Lui_ui.create branch Lui_protocol.Text in
+        if keyed_child then Lui_ui.key branch child "stable-content";
+        Lui_ui.string_property branch child Lui_protocol.TextValue value;
+        Lui_ui.append branch root child;
+        root));
+    host
+  in
+  let session = drive_mount ~initial:(old_key, "first")
+    ~reducer:(fun _ next -> next) ~view () in
+  Fun.protect ~finally:(fun () -> drive_dispose session) (fun () ->
+    let root () = List.find (fun node -> node.Drive.Model.kind = "scroll")
+      (Drive.Model.all_nodes (drive_tree session)) in
+    let before = root () in
+    let before_child = List.hd (drive_children session before) in
+    ignore (Lui_app.send (drive_app session) (next_key, "second"));
+    drive_flush session;
+    let after = root () in
+    let after_child = List.hd (drive_children session after) in
+    Alcotest.(check bool) "root identity follows its explicit key" retain
+      (before.Drive.Model.id = after.Drive.Model.id);
+    Alcotest.(check bool) "descendant identity follows its explicit key" (retain || keyed_child)
+      (before_child.Drive.Model.id = after_child.Drive.Model.id);
+    Alcotest.(check (option string)) "replacement content is live" (Some "second")
+      (Drive.Model.string_prop after_child "text"))
+
 let test_glass_button_actions () =
   let single_presses = ref 0 in
   let information_presses = ref 0 in
@@ -4268,6 +4301,18 @@ let () =
         ] );
       ( "dyn",
         [
+          Alcotest.test_case "root changed key resets host identity" `Quick
+            (test_dynamic_root_key (Some "first") (Some "second") false);
+          Alcotest.test_case "root added key resets host identity" `Quick
+            (test_dynamic_root_key None (Some "second") false);
+          Alcotest.test_case "root removed key resets host identity" `Quick
+            (test_dynamic_root_key (Some "first") None false);
+          Alcotest.test_case "root stable key retains host identity" `Quick
+            (test_dynamic_root_key (Some "same") (Some "same") true);
+          Alcotest.test_case "root replacement preserves an explicitly keyed descendant" `Quick
+            (test_dynamic_root_key ~keyed_child:true (Some "first") (Some "second") false);
+          Alcotest.test_case "root without key retains host identity" `Quick
+            (test_dynamic_root_key None None true);
           Alcotest.test_case "equal skips remount" `Quick
             test_dyn_equal_skips_remount;
           Alcotest.test_case "default remounts" `Quick

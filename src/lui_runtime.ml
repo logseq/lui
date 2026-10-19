@@ -1212,10 +1212,12 @@ let reconcile_subtree application saved parent old_root candidate_root =
   List.iter
     (fun node -> Hashtbl.replace saved_children_node_set node ())
     old_nodes;
-  ignore
-    (collect_node_mapping application saved old_root candidate_root
-       old_global old_key_counts candidate_key_counts reparented claimed
-       saved_children_node_set mapping);
+  if Hashtbl.find_opt saved.checkpoint_reload_keys old_root
+     = Hashtbl.find_opt application.runtime_reload_keys candidate_root then
+    ignore
+      (collect_node_mapping application saved old_root candidate_root
+         old_global old_key_counts candidate_key_counts reparented claimed
+         saved_children_node_set mapping);
   if not (Hashtbl.mem mapping candidate_root) then
     (* the roots themselves could not pair up (a dynamic branch swapped to a
        different shape); still salvage keyed descendants of the candidate *)
