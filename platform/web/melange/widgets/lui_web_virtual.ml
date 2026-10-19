@@ -71,6 +71,11 @@ let install renderer node ~materialize ~unmount =
        focused element — scroll-driven onChange ticks leave all three
        alone, so identical inputs skip the pass entirely. *)
     let last_roving_inputs = ref None in
+    let parent_scope () =
+      Option.bind (Store.node renderer.web_store node)
+        (fun current -> current.retained_parent)
+    in
+    let last_parent_scope = ref (parent_scope ()) in
     let same_element a b =
       match (a, b) with
       | None, None -> true
@@ -157,6 +162,9 @@ let install renderer node ~materialize ~unmount =
     update_rows ();
     let virtualizer = V.make (make_options ()) in
     let pending_scroll = ref None in
+    let reading_anchor =
+      Lui_web_virtual_anchor.create root mounted positions virtualizer
+    in
     let complete_pending outcome =
       match !pending_scroll with
       | Some (token, _, _, _, _) ->
@@ -394,6 +402,9 @@ let install renderer node ~materialize ~unmount =
                      tail_pinned := false
                  end
              | _ -> ());
+            (if !pending_scroll = None then
+               Lui_web_virtual_anchor.restore reading_anchor
+                 ~scrolled:(fun top -> prog_scroll := top));
             attempt_scroll ();
         if !pending_render then begin
           pending_render := false;
@@ -411,6 +422,7 @@ let install renderer node ~materialize ~unmount =
       match property ScrollToken with
       | Some (IntValue token) when !last_token <> Some token ->
           last_token := Some token;
+          Lui_web_virtual_anchor.cancel reading_anchor;
           complete_pending "cancelled";
           let align =
             match text ScrollAnchor "top" with
@@ -430,7 +442,25 @@ let install renderer node ~materialize ~unmount =
     in
     let refresh () =
       if not !disposed then begin
+        (* Preserve measured retained identity only for a prepend. A later
+           append or reparent must not inherit an older reading position. *)
+        let current_parent_scope = parent_scope () in
+        let same_parent = current_parent_scope = !last_parent_scope in
+        last_parent_scope := current_parent_scope;
+        if not same_parent then Lui_web_virtual_anchor.cancel reading_anchor;
+        let previous_sequence = !sequence in
+        let previous_first =
+          if Array.length !rows = 0 then None else Some !rows.(0)
+        in
+        let anchor = Lui_web_virtual_anchor.capture reading_anchor in
         update_rows ();
+        if previous_sequence != !sequence then begin
+          Lui_web_virtual_anchor.cancel reading_anchor;
+          match Option.bind previous_first (Hashtbl.find_opt positions) with
+          | Some index when index > 0 && same_parent ->
+              Lui_web_virtual_anchor.preserve reading_anchor anchor
+          | _ -> ()
+        end;
         V.set_options virtualizer (make_options ());
         if connected root then V.will_update virtualizer;
         render ();
@@ -441,12 +471,21 @@ let install renderer node ~materialize ~unmount =
         attempt_scroll ()
       end
     in
+    let cancel_anchor _ = Lui_web_virtual_anchor.cancel reading_anchor in
+    let anchor_inputs = [ "wheel"; "touchstart"; "pointerdown"; "keydown" ] in
+    List.iter
+      (fun event -> W.Element.addEventListener event cancel_anchor root)
+      anchor_inputs;
     let on_focus _ = refresh () in
     W.Element.addEventListener "focusin" on_focus root;
     W.Element.addEventListener "focusout" on_focus root;
     let dispose () =
       disposed := true;
       cleanup ();
+      Lui_web_virtual_anchor.cancel reading_anchor;
+      List.iter
+        (fun event -> W.Element.removeEventListener event cancel_anchor root)
+        anchor_inputs;
       W.Element.removeEventListener "focusin" on_focus root;
       W.Element.removeEventListener "focusout" on_focus root;
       Hashtbl.remove renderer.web_virtual_lists node
