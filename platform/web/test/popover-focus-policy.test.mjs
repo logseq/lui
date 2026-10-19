@@ -98,3 +98,74 @@ for (const placement of ['anchor', 'point']) {
     assert.deepEqual(f.dismissed, [2, 2])
   })
 }
+
+const focusHandoffFixture = () => {
+  const registry = Layers.create(), document = {defaultView: null,
+    addEventListener() {}, removeEventListener() {}}
+  const node = (tag, parent = null) => {
+    const children = [], attributes = new Map()
+    const result = {tagName: tag, ownerDocument: document, parentElement: parent,
+      style: {setProperty() {}},
+      hasAttribute: name => attributes.has(name),
+      getAttribute: name => attributes.get(name) ?? null,
+      setAttribute: (name, value) => attributes.set(name, value),
+      removeAttribute: name => attributes.delete(name),
+      matches: () => false, isSameNode(other) { return this === other },
+      contains(other) { return this === other || children.some(child => child.contains(other)) },
+      focus() { document.activeElement = this }}
+    if (parent) parent.children.push(result)
+    result.children = children
+    return result
+  }
+  const root = node('HTML'), body = node('BODY', root), trigger = node('BUTTON', body)
+  const surface = node('DIV', body), invoked = node('BUTTON', surface), outside = node('INPUT', body)
+  Object.assign(document, {documentElement: root, body, activeElement: invoked})
+  Layers.install(registry, document, () => false, target => target)
+  const renderer = {web_layers: registry, web_document: document,
+    web_modal_return_focus: {contents: invoked}}
+  const add = (id, content, target) => Layers.register(registry, document, id,
+    undefined, target, content, list([content]), 1, () => {}, () => {}, () => {}, true, true)
+  add(1, surface, trigger)
+  const close = (id, content) => {
+    Layers.close_layer(registry, document, id)
+    Menu.restore_dropdown_focus(renderer, id, content)
+  }
+  return {registry, document, renderer, trigger, surface, invoked, outside, node, add, close}
+}
+const nextTask = () => new Promise(resolve => setTimeout(resolve, 0))
+
+test('a closing action popover hands its surviving trigger to the replacement surface', async () => {
+  const f = focusHandoffFixture()
+  f.close(1, f.surface)
+  assert.equal(f.renderer.web_modal_return_focus.contents, f.trigger,
+    'the replacement must not capture an action in the retiring surface')
+  const replacement = f.node('DIV', f.document.body), field = f.node('INPUT', replacement)
+  f.add(2, replacement, f.renderer.web_modal_return_focus.contents)
+  f.renderer.web_modal_return_focus.contents = undefined
+  f.document.activeElement = field
+  await nextTask()
+  assert.equal(f.document.activeElement, field, 'the old close must preserve replacement focus')
+  Layers.remove(f.registry, f.document, 1)
+  f.close(2, replacement)
+  await nextTask()
+  assert.equal(f.document.activeElement, f.trigger, 'Escape can return to the surviving trigger')
+})
+
+test('popover handoff preserves an unrelated invoker and deliberate outside focus', async () => {
+  const f = focusHandoffFixture()
+  f.renderer.web_modal_return_focus.contents = f.outside
+  f.document.activeElement = f.outside
+  f.close(1, f.surface)
+  assert.equal(f.renderer.web_modal_return_focus.contents, f.outside)
+  await nextTask()
+  assert.equal(f.document.activeElement, f.outside)
+})
+
+test('closing without a pending invocation restores focus without inventing a handoff', async () => {
+  const f = focusHandoffFixture()
+  f.renderer.web_modal_return_focus.contents = undefined
+  f.close(1, f.surface)
+  assert.equal(f.renderer.web_modal_return_focus.contents, undefined)
+  await nextTask()
+  assert.equal(f.document.activeElement, f.trigger)
+})

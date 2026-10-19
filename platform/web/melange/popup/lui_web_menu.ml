@@ -337,6 +337,12 @@ let restore_dropdown_focus renderer node positioner =
     Option.bind (Lui_web_layers.layer_at renderer.web_layers node) (fun layer ->
         layer.Lui_web_layers.trigger)
   in
+  (* An action can close its surface before opening the next one. Its
+     retiring control cannot own the replacement's return focus. *)
+  (match !(renderer.web_modal_return_focus) with
+   | Some invoked when W.Element.contains (W.Element.asNode invoked) positioner ->
+       renderer.web_modal_return_focus := trigger
+   | _ -> ());
   ignore
     (Js.Global.setTimeout
        ~f:(fun () ->
