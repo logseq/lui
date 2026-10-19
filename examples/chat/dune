@@ -1,0 +1,7 @@
+(library
+ (name chat_app)
+ (modules model view)
+ (modes byte native melange)
+ (libraries lui lui.ai ocaml-signal)
+ (preprocess (pps lui_ppx))
+ (wrapped false))

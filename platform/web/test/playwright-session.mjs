@@ -17,8 +17,12 @@ export async function createPlaywrightSession() {
   async function close() {
     if (closed) return
     closed = true
-    if (cdpEndpoint) await page.close()
-    else await browser.close()
+    // connectOverCDP keeps a websocket that pins the event loop;
+    // browser.close() disconnects it without killing the shared Chrome.
+    if (cdpEndpoint) {
+      await page.close()
+      await browser.close()
+    } else await browser.close()
   }
 
   async function command(...args) {

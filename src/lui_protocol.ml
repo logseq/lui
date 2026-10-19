@@ -332,6 +332,7 @@ type event =
   | PointerLeave of int
   | ContextMenuPress of int * pointer_detail
   | Load of int
+  | ScrollEdges of int * bool * bool
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =
@@ -384,6 +385,7 @@ let event_node event =
   | PointerLeave node
   | ContextMenuPress (node, _)
   | Load node
+  | ScrollEdges (node, _, _)
   | ExtensionEvent (node, _, _, _) -> node
 
 let modal_surface kind = kind = Dialog || kind = Drawer || kind = Sheet
@@ -517,7 +519,8 @@ let event_supported kind event =
     | _ -> false)
   | DoublePress _ -> kind = ListItem
   | Appear _ -> kind <> Root
-  | ScrollCompleted _ | VisibleRange _ -> kind = ListContainer
+  | ScrollCompleted _ | VisibleRange _ | ScrollEdges _ ->
+      kind = ListContainer || kind = VirtualList
   | Picked _ -> kind = FilePicker
   | PressDetail _ | PointerDown _ | PointerUp _ ->
     (match kind with
@@ -540,6 +543,7 @@ let event_supported kind event =
   | PointerEnter _ | PointerLeave _ -> kind <> Root
   | ContextMenuPress _ -> context_menu_host_kind kind
   | Load _ -> kind = Image
+
   | ExtensionEvent _ -> false
 
 let true_property properties property =
@@ -1061,7 +1065,7 @@ let common_property_supported kind property =
   | ScrollAnchor
   | ScrollToken
   | ScrollAnimated
-  | TrackVisibleRange -> kind = ListContainer
+  | TrackVisibleRange -> kind = ListContainer || kind = VirtualList
   | EdgeValue -> kind = SwipeAction || kind = EdgeInset
   | ResizeDuration | ResizeEasing | ResizeOrigin -> kind = Split
   | MinValue | MaxValue | StepValue -> kind = NumberStepper
@@ -1600,7 +1604,8 @@ let property_value_supported property value =
     String.trim value <> ""
   | Transition, StringValue value -> transition_supported value
   | ZIndex, IntValue _ -> true
-  | WhiteSpace, StringValue value -> List.mem value [ "normal"; "nowrap" ]
+  | WhiteSpace, StringValue value ->
+      List.mem value [ "normal"; "nowrap"; "pre-wrap"; "pre-line" ]
   | TextOverflow, StringValue value -> List.mem value [ "clip"; "ellipsis" ]
   | Overflow, StringValue value -> List.mem value [ "visible"; "hidden"; "auto" ]
   | UserSelect, StringValue value -> List.mem value [ "none"; "text" ]

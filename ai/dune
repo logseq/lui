@@ -1,0 +1,6 @@
+(library
+ (name lui_ai)
+ (public_name lui.ai)
+ (modes byte native melange)
+ (libraries lui ocaml-signal)
+ (preprocess (pps lui_ppx)))
