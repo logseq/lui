@@ -235,6 +235,11 @@ let rendered_body cfg fallback item_s =
   | Some view -> view
   | None -> fallback item_s
 
+let content_row cfg body =
+  row ~main:`center ~grow:1.0 ~min_width:0
+    [ column ~grow:1.0 ~max_width:cfg.content_width ~min_width:0
+        ~cross:`stretch ~padding_horizontal:8 ~padding_vertical:4 [ body ] ]
+
 let grouped_item cfg (item_s : item Signal.signal) : t =
   scoped (fun _context ->
     let item = sample item_s in
@@ -279,7 +284,7 @@ let tool_group cfg (row_s : row Signal.signal) : t =
       in
       Signal.set open_ (Some (not current))
     in
-    accordion
+    content_row cfg (accordion
       ~text:(reactive
                (fun (items : item list) (active : bool) ->
                   let n = List.length items in
@@ -292,7 +297,7 @@ let tool_group cfg (row_s : row Signal.signal) : t =
       ~accessibility_identifier:"lui-ai-tool-group"
       [ column ~cross:`stretch ~gap:6
           [ keyed ~source:items_s ~key:(fun (i : item) -> i.id)
-              ~cmp:String.compare ~mount:(grouped_item cfg) ] ])
+              ~cmp:String.compare ~mount:(grouped_item cfg) ] ]))
 
 let builtin_body cfg context (item_s : item Signal.signal) : t =
   ignore context;
@@ -315,9 +320,7 @@ let item_row_of cfg context (item_s : item Signal.signal) : t =
     ?style_class:
       (match cfg.item_class item with "" -> None | s -> Some s)
     ~data_attrs:(reactive cfg.item_data_attrs item_s)
-    [ row ~main:`center ~grow:1.0
-        [ column ~grow:1.0 ~max_width:cfg.content_width ~cross:`stretch
-            ~padding_horizontal:8 ~padding_vertical:4 [ body ] ] ]
+    [ content_row cfg body ]
 
 let row_of cfg (row_s : row Signal.signal) : t =
   scoped (fun context ->

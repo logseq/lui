@@ -607,6 +607,20 @@ let test_bounded_layout () =
   ignore bounded;
   drive_dispose s
 
+let test_group_bounded_layout () =
+  let view _ctx source _send =
+    Lui_ai.Transcript.transcript ~content_width:560 ~messages:source () in
+  let s = drive_mount
+      ~initial:[ tool_item "t1" `completed;
+                 tool_item "t2" `completed ] ~view in
+  ignore (find_node s (fun n ->
+      n.Drive.Model.kind = "row"
+      && node_prop n "main" = Some (StringValue "center")));
+  ignore (find_node s (fun n ->
+      n.Drive.Model.kind = "column"
+      && node_prop n "max-width" = Some (IntValue 560)));
+  drive_dispose s
+
 let test_container_data_attrs_signal () =
   let attrs_ref = ref None in
   let view _ctx model_s _send =
@@ -653,6 +667,7 @@ let tests =
       [ Alcotest.test_case "grouped tail key" `Quick test_grouped_tail_key;
         Alcotest.test_case "grouped pin" `Quick test_grouped_pin;
         Alcotest.test_case "bounded layout" `Quick test_bounded_layout;
+        Alcotest.test_case "group bounded layout" `Quick test_group_bounded_layout;
         Alcotest.test_case "container attrs signal" `Quick
           test_container_data_attrs_signal;
         Alcotest.test_case "streaming updates same row" `Quick
