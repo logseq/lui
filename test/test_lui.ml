@@ -3154,6 +3154,25 @@ let test_link_action () =
     Drive.Session.press session node.Drive.Model.id;
     Alcotest.(check int) "Link press reaches the mounted action" 1 !calls)
 
+let test_rich_text_containers () =
+  List.iter (fun kind ->
+    let value=match Lui_json_view_parse.parse (Printf.sprintf
+      {|{"kind":"%s","children":[{"kind":"text","value":"One "},{"kind":"text","value":"bold café 中文 😀","font-weight":700},{"kind":"link","url":"https://example.test","text":"Topic","id":"topic"}]}|} kind) with
+      | Ok value -> value | Error message -> failwith message in
+    let calls=ref 0 in
+    let session=drive_mount ~initial:() ~reducer:(fun model () -> model)
+      ~view:(fun _ _ _ -> Lui_json_view.render ~on_event:(fun ~id:_ ~kind:_ ~fields:_ -> incr calls) value) () in
+    Fun.protect ~finally:(fun () -> drive_dispose session) (fun () ->
+      let container=drive_node session (Drive.Model.Kind kind) in
+      let children=Drive.Model.children (drive_tree session) container.Drive.Model.id in
+      Alcotest.(check int) (kind ^ " retains every rich child") 3 (List.length children);
+      Alcotest.(check bool) (kind ^ " preserves Unicode emphasis") true
+        (Drive.Model.exists (drive_tree session) (Drive.Model.Text "bold café 中文 😀"));
+      let link=drive_node session (Drive.Model.Kind "link") in
+      Drive.Session.press session link.Drive.Model.id;
+      Alcotest.(check int) (kind ^ " nested link remains interactive") 1 !calls))
+    ["heading";"paragraph";"label"]
+
 let test_json_view_anchor_rect () =
   let mount value = drive_mount ~initial:() ~reducer:(fun model () -> model)
     ~view:(fun _ _ _ -> Lui_json_view.render ~on_event:(fun ~id:_ ~kind:_ ~fields:_ -> ())
@@ -4334,6 +4353,7 @@ let () =
         [
           Alcotest.test_case "render + events" `Quick test_json_view_render;
           Alcotest.test_case "Link actions" `Quick test_link_action;
+          Alcotest.test_case "rich text containers" `Quick test_rich_text_containers;
           Alcotest.test_case "parse edge cases" `Quick test_json_view_parse;
           Alcotest.test_case "rectangle anchors" `Quick test_json_view_anchor_rect;
         ] );

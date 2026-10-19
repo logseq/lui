@@ -1991,7 +1991,7 @@ val heading :
   ?white_space:string ->
   ?text_overflow:string ->
   ?overflow:string ->
-  ?transition:string -> nothing list -> t
+  ?transition:string -> t list -> t
 val paragraph :
   ?key:string ->
   ?gap:int ->
@@ -2045,7 +2045,7 @@ val paragraph :
   ?white_space:string ->
   ?text_overflow:string ->
   ?overflow:string ->
-  ?transition:string -> nothing list -> t
+  ?transition:string -> t list -> t
 val label :
   ?key:string ->
   ?gap:int ->
@@ -2098,7 +2098,7 @@ val label :
   ?white_space:string ->
   ?text_overflow:string ->
   ?overflow:string ->
-  ?transition:string -> nothing list -> t
+  ?transition:string -> t list -> t
 val kbd :
   ?key:string ->
   ?gap:int ->
