@@ -4124,6 +4124,8 @@ val media_surface :
   ?surface:int ->
   ?surface_signal:int Signal.signal -> ?label:string ->
   ?transition:string -> nothing list -> t
+(** A semantic URL link. An optional [on_press] owns primary activation while
+    retaining the URL for context menus and alternate navigation. *)
 val link :
   ?key:string ->
   ?gap:int ->
@@ -4174,6 +4176,7 @@ val link :
   ?icon_placement:icon_placement ->
   ?label:string ->
   ?disabled:bool -> ?disabled_signal:bool Signal.signal ->
+  ?on_press:(Lui_protocol.event -> unit) ->
   ?transition:string -> t list -> t
 
 (** Local file image. Fit preserves the whole image by default; fill crops to

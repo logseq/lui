@@ -151,6 +151,7 @@ let control_key store st ~node ~key ~mods:_ =
     radio_step store st node (-1)
   | "radio", (Lui_input.Arrow_right | Lui_input.Arrow_down) ->
     radio_step store st node 1
+  | "link", Lui_input.Space -> (st, [])
   | _, (Lui_input.Return | Lui_input.Space) ->
     (st, Lui_query.primary_press store node)
   | _ -> (st, [])

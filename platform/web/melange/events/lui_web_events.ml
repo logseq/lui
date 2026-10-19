@@ -264,6 +264,23 @@ let attach_pressable_text_events renderer node dom_node =
        end)
     dom_node
 
+let attach_link_events renderer node dom_node =
+  W.Element.addEventListener "click" (fun event ->
+    if not (enabled_node renderer node) then W.Event.preventDefault event
+    else if Util.click_button event=0 && Store.event_capability renderer node PressEnabled then begin
+      W.Event.preventDefault event;
+      Util.record_click_open_method dom_node event;
+      emit renderer (Press node)
+    end) dom_node;
+  W.Element.addKeyDownEventListener (fun event ->
+    if W.KeyboardEvent.key event="Enter" then
+      if not (enabled_node renderer node) then W.KeyboardEvent.preventDefault event
+      else if Store.event_capability renderer node PressEnabled then begin
+        W.KeyboardEvent.preventDefault event;
+        W.Element.setAttribute "data-lui-open-method" "keyboard" dom_node;
+        emit renderer (Press node)
+      end) dom_node
+
 let attach_list_item_events renderer node dom_node =
   W.Element.addEventListener "dblclick"
     (fun _event ->
@@ -655,6 +672,7 @@ let attach_events renderer node kind dom_node =
   if kind = Toolbar then
     ignore (Lui_web_focus.attach_toolbar_events renderer node dom_node);
   match kind with
+  | Link -> attach_link_events renderer node dom_node
   | Text | TableCell | TimelineItem | FileImage | Row | Box | Column ->
       attach_pressable_text_events renderer node dom_node
   | Button | ToggleButton | Toggle ->

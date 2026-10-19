@@ -82,6 +82,28 @@ let test_pointer_control_focus () =
     [Button;ToggleButton;Toggle;Checkbox;Radio;SwitchControl;Slider;NumberStepper;
      Select;Combobox;MenuItem;MenuTrigger;Link;ListItem;BottomTab]
 
+let test_link_actions () =
+  Alcotest.(check bool) "Link admits a custom action" true
+    (Lui_protocol.property_supported Link PressEnabled);
+  let store=store_of [CreateNode (1,Root);CreateNode (2,Link);InsertChild (1,2,0);
+    SetProp (2,UrlValue,StringValue "https://example.test/topic");
+    SetProp (2,PressEnabled,BoolValue true)] in
+  Alcotest.(check bool) "Link pointer activation emits its action" true
+    (Lui_query.primary_press store 2=[`Dispatch (Press 2)]);
+  let _,enter=Lui_gesture.control_key store Lui_gesture.initial ~node:2
+    ~key:Lui_input.Return ~mods:none in
+  Alcotest.(check bool) "Link Return activates once" true (enter=[`Dispatch (Press 2)]);
+  let _,space=Lui_gesture.control_key store Lui_gesture.initial ~node:2
+    ~key:Lui_input.Space ~mods:none in
+  Alcotest.(check bool) "Link Space keeps page navigation semantics" true (space=[]);
+  Lui_store.apply_op store (SetProp (2,Enabled,BoolValue false));
+  Alcotest.(check bool) "Disabled Link activation stays blocked" true
+    (Lui_query.primary_press store 2=[]);
+  Lui_store.apply_op store (SetProp (2,Enabled,BoolValue true));
+  Lui_store.apply_op store (RemoveProp (2,PressEnabled));
+  Alcotest.(check bool) "Removing the action restores a URL-only Link" true
+    (Lui_query.primary_press store 2=[])
+
 let test_focus_dead () =
   let store = store_of base_ops in
   let st = Lui_focus.set Lui_focus.initial ~id:4 ~kbd:false in
@@ -1244,7 +1266,8 @@ let () =
             test_modal_press_swallow_and_dismiss;
           Alcotest.test_case "escape" `Quick test_escape_peels ] );
       ( "gesture",
-        [ Alcotest.test_case "list nav" `Quick test_list_nav;
+        [ Alcotest.test_case "Link actions" `Quick test_link_actions;
+          Alcotest.test_case "list nav" `Quick test_list_nav;
           Alcotest.test_case "modal scope" `Quick
             test_list_modal_scope ] );
       ( "text input",

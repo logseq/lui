@@ -363,6 +363,7 @@ let event_target_class_name event =
   if Js.typeof name = "string" then name else ""
 
 external click_detail : Dom.event -> int = "detail" [@@mel.get]
+external click_button : Dom.event -> int = "button" [@@mel.get]
 
 let record_click_open_method element event =
   W.Element.setAttribute "data-lui-open-method"

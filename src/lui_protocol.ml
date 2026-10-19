@@ -465,6 +465,7 @@ let event_supported kind event =
   | Press _ | PressModifiers _ ->
     (match kind with
     | Button
+    | Link
     | Column
     | Row
     | Box
@@ -585,6 +586,7 @@ let event_supported_for_lookup kind lookup event =
     match lookup property with Some (BoolValue true) -> true | _ -> false
   in
   match event with
+  | (Press _ | PressModifiers _) when kind = Link -> enabled PressEnabled
   | NavigatePrevious _ | NavigateNext _ | NavigationKey _ ->
     enabled NavigateEnabled
     && lookup Enabled <> Some (BoolValue false)
@@ -1066,6 +1068,7 @@ let common_property_supported kind property =
   | ToggleEnabled -> kind = Radio || kind = Drawer || tree_row_kind kind
   | PressEnabled ->
     kind = Button
+    || kind = Link
     || kind = ToggleButton
     || kind = Text
     || kind = Row

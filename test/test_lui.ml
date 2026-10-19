@@ -3139,6 +3139,21 @@ let test_json_view_render () =
      | _ -> false);
   drive_dispose s
 
+let test_link_action () =
+  let calls=ref 0 in
+  let session=drive_mount ~initial:() ~reducer:(fun model () -> model)
+    ~view:(fun _ _ _ -> Lui_elements.column
+      [Lui_elements.link ~url:"https://example.test/topic" ~text:"Topic"
+         ~on_press:(fun _ -> incr calls) []]) () in
+  Fun.protect ~finally:(fun () -> drive_dispose session) (fun () ->
+    let node=drive_node session (Drive.Model.Kind "link") in
+    Alcotest.(check bool) "Link admits an application press action" true
+      (Lui_protocol.property_supported Lui_protocol.Link Lui_protocol.PressEnabled);
+    Alcotest.(check bool) "Link constructor enables its action" true
+      (Hashtbl.find_opt node.Drive.Model.props "press-enabled"=Some (Lui_protocol.BoolValue true));
+    Drive.Session.press session node.Drive.Model.id;
+    Alcotest.(check int) "Link press reaches the mounted action" 1 !calls)
+
 let test_json_view_anchor_rect () =
   let mount value = drive_mount ~initial:() ~reducer:(fun model () -> model)
     ~view:(fun _ _ _ -> Lui_json_view.render ~on_event:(fun ~id:_ ~kind:_ ~fields:_ -> ())
@@ -4318,6 +4333,7 @@ let () =
       ( "json_view",
         [
           Alcotest.test_case "render + events" `Quick test_json_view_render;
+          Alcotest.test_case "Link actions" `Quick test_link_action;
           Alcotest.test_case "parse edge cases" `Quick test_json_view_parse;
           Alcotest.test_case "rectangle anchors" `Quick test_json_view_anchor_rect;
         ] );
