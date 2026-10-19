@@ -1548,6 +1548,7 @@ module Ui = struct
                 ~scope:(Lui_overlay.modal_scope store t.overlay)
                 ~cur:(Lui_focus.focused t.focus) ~dir
             in
+            if next <> 0 then on_component_input ();
             if next <> 0 && next <> Lui_focus.focused t.focus
             then begin
               focus_move ~kbd:true t store next;
@@ -1584,6 +1585,10 @@ module Ui = struct
                   ~key:(conv_key key) ~mods:(conv_mods mods)
               in
               t.gesture <- g';
+              if m <> [] then begin
+                on_component_input ();
+                t.menu_space_commit <- key = Input.Space
+              end;
               run m
             end else begin
               let scope =

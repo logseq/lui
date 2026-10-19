@@ -407,7 +407,7 @@ module Ui : sig
 
   (** Map one input event to ordered actions. [?spatial] accelerates
       the rect hit-tests — see {!Lui_window.hit_path}.
-      [on_component_input] runs when a menu consumes the input; hosts
+      [on_component_input] runs when a control or menu consumes the input; hosts
       forwarding document events must suppress that duplicate delivery. *)
   val handle :
     ?spatial:Lui_spatial.t -> ?on_component_input:(unit -> unit) ->

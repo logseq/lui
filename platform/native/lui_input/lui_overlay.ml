@@ -156,8 +156,7 @@ let sync store st ~focused ~kbd ~keyboard =
     | Some (id, modal, _) -> (id, modal)
     | None -> (0, false)
   in
-  if ov_id = st.top then (st, [])
-  else
+  (* Loading surfaces can acquire autofocus after their first store sync. *)
     let present id =
       Lui_store.mem store id
       && (not (Lui_store.inert_in_chain store id))
@@ -225,7 +224,8 @@ let sync store st ~focused ~kbd ~keyboard =
     in
     let focus_kbd = if ordinary_row_menu store ov_id then keyboard else kbd in
     let initial =
-      if ov_modal then
+      if ov_id = st.top then []
+      else if ov_modal then
         `Clear_selection :: (if outside then [ `Focus (0, false) ] else [])
       else
         match action_focus with

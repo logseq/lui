@@ -3625,6 +3625,62 @@ let test_nested_popover_focus_return () =
         (Ui.focused ui))
     [ Popover; Dialog ]
 
+let test_async_popover_focus_return () =
+  let asm=assembly_of
+    [CreateNode (1,Root);CreateNode (2,Button);InsertChild (1,2,0);
+     CreateNode (3,Button);InsertChild (1,3,1)] in
+  let store=Assembly.store asm and ui=Assembly.ui asm and generation=ref 1 in
+  let apply ops=
+    incr generation;
+    Lui_store.apply_batch store {generation= !generation;ops};
+    ignore (Assembly.store_changed asm) in
+  List.iter (fun outside_focus ->
+    Ui.set_focused ~kbd:true ui store 2;
+    apply [CreateNode (10,Popover);InsertChild (1,10,2)];
+    Alcotest.(check int) "loading keeps the trigger focused" 2 (Ui.focused ui);
+    apply [CreateNode (11,SearchField);InsertChild (10,11,0);
+      SetProp (11,Autofocus,BoolValue true);
+      CreateNode (12,Button);InsertChild (10,12,1);
+      SetProp (12,PressEnabled,BoolValue true)];
+    Alcotest.(check int) "loaded search receives autofocus" 11 (Ui.focused ui);
+    ignore (Assembly.handle asm (key Input.Tab));
+    Alcotest.(check bool) "immediate Enter activates the next loaded control" true
+      (List.mem (Press 12) (press_actions (Assembly.handle asm (key Input.Return))));
+    if outside_focus then Ui.set_focused ui store 3;
+    apply [DropNode 10];
+    Alcotest.(check int) "async popover returns focus without overriding outside focus"
+      (if outside_focus then 3 else 2) (Ui.focused ui)) [false;true]
+
+let test_control_keyboard_ownership () =
+  let store=store_of
+    [CreateNode (1,Root);CreateNode (2,SearchField);InsertChild (1,2,0);
+     CreateNode (3,Button);InsertChild (1,3,1);SetProp (3,PressEnabled,BoolValue true)] in
+  let ui=Ui.create () and rects=Rects.create () in
+  let consumed=ref false in
+  let handle input=
+    consumed:=false;
+    Ui.handle ~on_component_input:(fun () -> consumed:=true) ui store rects input in
+  Ui.set_focused ui store 2;
+  ignore (handle (key Input.Tab));
+  Alcotest.(check int) "Tab focuses the button before the next queued input" 3 (Ui.focused ui);
+  Alcotest.(check bool) "focus navigation must not reach background shortcuts" true !consumed;
+  List.iter (fun activation ->
+    let actions=press_actions (handle (key activation)) in
+    Alcotest.(check bool) "control activation emits its press" true (List.mem (Press 3) actions);
+    Alcotest.(check bool) "handled activation must not be forwarded after its target unmounts" true !consumed)
+    [Input.Return;Input.Space];
+  Ui.set_focused ui store 2;
+  let text_actions=handle (Input.Text_input " ") in
+  Alcotest.(check string) "Space activation must not insert a commit into newly focused content" "" (Ui.shadow ui);
+  Alcotest.(check bool) "Space activation consumes its paired text commit" true (!consumed && text_actions=[]);
+  Ui.set_focused ui store 3;
+  ignore (handle (key (Input.Other 4)));
+  Alcotest.(check bool) "unhandled keys remain available to application shortcuts" false !consumed;
+  Lui_store.apply_op store (SetProp (2,Enabled,BoolValue false));
+  ignore (handle (key Input.Tab));
+  Alcotest.(check int) "a single available control retains Tab focus" 3 (Ui.focused ui);
+  Alcotest.(check bool) "wrapped Tab is still owned by focus navigation" true !consumed
+
 let test_action_menu_focus () =
   List.iter (fun (origin,kbd) ->
     let asm = assembly_of
@@ -4733,6 +4789,8 @@ let () =
           Alcotest.test_case "light dismiss" `Quick test_light_dismiss;
           Alcotest.test_case "action menu focus" `Quick test_action_menu_focus;
           Alcotest.test_case "nested popover focus return" `Quick test_nested_popover_focus_return;
+          Alcotest.test_case "async popover focus return" `Quick test_async_popover_focus_return;
+          Alcotest.test_case "control keyboard ownership" `Quick test_control_keyboard_ownership;
           Alcotest.test_case "appear once" `Quick test_appear_once;
           Alcotest.test_case "autofocus" `Quick test_autofocus;
           Alcotest.test_case "modal focus scope" `Quick
