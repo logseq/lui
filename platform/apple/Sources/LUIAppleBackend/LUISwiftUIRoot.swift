@@ -6915,59 +6915,95 @@ struct LUIVirtualRowIndices: RandomAccessCollection {
 private struct LUIVirtualListView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @State private var appliedScrollKey: String?
     @State private var unobscuredHeight: CGFloat?
     @State private var titleTracker = LUIScrollSectionTitleTracker()
     @State private var windowTracker = LUIVirtualWindowTracker()
     @State private var firstSectionHeights: [SlotID: CGFloat] = [:]
 
     var body: some View {
-        ScrollView {
-            LazyVStack(
-                alignment: .leading,
-                spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
-            ) {
-                let rows = sectionRows
-                ForEach(LUIVirtualRowIndices(count: rows.endIndex, editor: rows.editor), id: \.id) { slot in
-                    // A concrete, single-view root keeps SwiftUI from asking
-                    // every virtual slot for its conditional view-list count.
-                    VStack(alignment: .leading, spacing: 0) {
-                        let row = rows[slot.position]
-                        let rowView = LUIVirtualListRow(row: row, backend: backend,
-                            tracker: windowTracker, coordinateSpace: titleCoordinateSpace,
-                            viewportHeight: unobscuredHeight ?? 600,
-                            onMeasure: { id, height in
-                                if firstSectionHeights[id] != height { firstSectionHeights[id] = height }
-                            })
-                        if tracksSectionTitles {
-                            rowView.modifier(LUIScrollSectionFrameModifier(
-                                index: row.index, title: row.title,
-                                coordinateSpace: titleCoordinateSpace,
-                                onVisibilityChange: { index, title in
-                                    titleTracker.update(index: index, title: title)
-                                }
-                            ))
-                        } else { rowView }
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(
+                    alignment: .leading,
+                    spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
+                ) {
+                    let rows = sectionRows
+                    ForEach(LUIVirtualRowIndices(count: rows.endIndex, editor: rows.editor), id: \.id) { slot in
+                        // A concrete, single-view root keeps SwiftUI from asking
+                        // every virtual slot for its conditional view-list count.
+                        VStack(alignment: .leading, spacing: 0) {
+                            let row = rows[slot.position]
+                            let rowView = LUIVirtualListRow(row: row, backend: backend,
+                                tracker: windowTracker, coordinateSpace: titleCoordinateSpace,
+                                viewportHeight: unobscuredHeight ?? 600,
+                                onMeasure: { id, height in
+                                    if firstSectionHeights[id] != height { firstSectionHeights[id] = height }
+                                })
+                            if tracksSectionTitles {
+                                rowView.modifier(LUIScrollSectionFrameModifier(
+                                    index: row.index, title: row.title,
+                                    coordinateSpace: titleCoordinateSpace,
+                                    onVisibilityChange: { index, title in
+                                        titleTracker.update(index: index, title: title)
+                                    }
+                                ))
+                            } else { rowView }
+                        }
+                        .id(slot.id)
                     }
                 }
+                .environment(\.luiUnobscuredScrollHeight, unobscuredHeight)
             }
-            .environment(\.luiUnobscuredScrollHeight, unobscuredHeight)
-        }
-        .coordinateSpace(name: titleCoordinateSpace)
-        .environment(\.luiInsideScroll, true)
-        .background {
-            LUIScrollSectionTitleEmitter(tracker: titleTracker,
-                                         isActive: tracksSectionTitles && model.isSelected)
-        }
-        .background {
-            GeometryReader { _ in
-                // Minimum-height content uses the viewport before keyboard avoidance.
-                Color.clear
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                        unobscuredHeight = height
-                    }
+            .onAppear { revealTarget(using: proxy) }
+            .onChange(of: scrollRequest) { _, _ in revealTarget(using: proxy) }
+            .coordinateSpace(name: titleCoordinateSpace)
+            .environment(\.luiInsideScroll, true)
+            .background {
+                LUIScrollSectionTitleEmitter(tracker: titleTracker,
+                                             isActive: tracksSectionTitles && model.isSelected)
             }
-            .ignoresSafeArea(.keyboard, edges: .bottom)
+            .background {
+                GeometryReader { _ in
+                    // Minimum-height content uses the viewport before keyboard avoidance.
+                    Color.clear
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                            unobscuredHeight = height
+                        }
+                }
+                .ignoresSafeArea(.keyboard, edges: .bottom)
+            }
         }
+    }
+
+    private struct ScrollRequest: Equatable {
+        let key: String
+        let position: Int
+    }
+
+    private var scrollRequest: ScrollRequest? {
+        for segment in sectionRows.segments {
+            let sourceID = segment.source
+            guard let source = backend.model(id: sourceID),
+                  let encoded = source.property(.dataAttrs)?.stringValue else { continue }
+            var attributes: [String: String] = [:]
+            for record in encoded.split(separator: "\u{1e}") {
+                let pair = record.split(separator: "\u{1f}", maxSplits: 1)
+                if pair.count == 2 { attributes[String(pair[0])] = String(pair[1]) }
+            }
+            if let key = attributes["data-scroll-key"],
+               let index = attributes["data-scroll-index"].flatMap(Int.init), index >= 0 {
+                let paddingOffset = segment.padding > 0 && index >= (segment.window?.firstSectionCount ?? 0) ? 1 : 0
+                return ScrollRequest(key: key, position: segment.base + index + paddingOffset)
+            }
+        }
+        return nil
+    }
+
+    private func revealTarget(using proxy: ScrollViewProxy) {
+        guard let request = scrollRequest, appliedScrollKey != request.key else { return }
+        proxy.scrollTo(request.position, anchor: .top)
+        appliedScrollKey = request.key
     }
 
     private var tracksSectionTitles: Bool {
