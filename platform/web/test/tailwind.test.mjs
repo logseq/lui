@@ -514,3 +514,10 @@ test("the production stylesheet contains the Vercel Native Icon contract", async
   }
   await stat(new URL("../dist/icons/missing.svg", import.meta.url))
 })
+
+
+test("plain links stay inline while icon links retain flex alignment", async () => {
+  const css = await readFile(outputUrl, "utf8")
+  assert.match(css, /\.lui-link\{[^}]*display:inline(?:;|\})/)
+  assert.match(css, /\.lui-link:has\(>\.lui-link-icon\[data-name\]\)\{[^}]*display:inline-flex/)
+})

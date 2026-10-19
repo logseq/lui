@@ -1416,7 +1416,11 @@ body {
   }
 
   .lui-link {
-    @apply inline-flex items-center gap-1 text-primary underline underline-offset-4;
+    @apply inline text-primary underline underline-offset-4;
+  }
+
+  .lui-link:has(> .lui-link-icon[data-name]) {
+    @apply inline-flex items-center gap-1;
   }
 
   .lui-link-icon {
