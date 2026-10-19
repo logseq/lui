@@ -63,6 +63,10 @@ val transcript :
       steps" / "Worked through N steps" section ([group_tools], default
       [true]); the section auto-expands while any call is active and
       stays user-toggleable, keyed by the first member's id.
+    - [render_item] is consulted for both single items and grouped tool
+      children. Returning [None] uses the built-in body. Group children keep
+      their item identity and use non-interactive containers, so host tool
+      accordions and controls are not nested inside list-item buttons.
     - [on_retry] adds a resend control on [`uncertain] items (labelled
       [retry_label], default ["Retry same message"]); [item_actions]
       mounts host actions per row (copy, etc.) and receives the borrowed
@@ -74,7 +78,9 @@ val transcript :
       visible (history paging).
     - [container_class]/[container_data_attrs] land on the scroll
       container itself (list or virtual_list) for host CSS/locators;
-      [item_class]/[item_data_attrs] land on each row. *)
+      [item_class]/[item_data_attrs] land on each item, including grouped
+      children. Data attributes update from the current item signal without
+      remounting its body. *)
 
 val item_row : Model.item -> t
 (** A single message row mounted outside [transcript] (previews). *)

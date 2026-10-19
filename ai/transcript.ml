@@ -230,6 +230,20 @@ let tool_card cfg (item_s : item Signal.signal) : t =
       ~accessibility_identifier:"lui-ai-tool"
       [ tool_detail cfg item_s ])
 
+let rendered_body cfg fallback item_s =
+  match cfg.render_item item_s with
+  | Some view -> view
+  | None -> fallback item_s
+
+let grouped_item cfg (item_s : item Signal.signal) : t =
+  scoped (fun _context ->
+    let item = sample item_s in
+    column ~key:item.id ~cross:`stretch
+      ~accessibility_identifier:("lui-ai-item:" ^ item.id)
+      ?style_class:(match cfg.item_class item with "" -> None | value -> Some value)
+      ~data_attrs:(reactive cfg.item_data_attrs item_s)
+      [ rendered_body cfg (tool_card cfg) item_s ])
+
 (* Collapsible section around a run of Tool_call items. Auto-expands
    while any member is active; user toggles persist in row scope. *)
 let tool_group cfg (row_s : row Signal.signal) : t =
@@ -278,7 +292,7 @@ let tool_group cfg (row_s : row Signal.signal) : t =
       ~accessibility_identifier:"lui-ai-tool-group"
       [ column ~cross:`stretch ~gap:6
           [ keyed ~source:items_s ~key:(fun (i : item) -> i.id)
-              ~cmp:String.compare ~mount:(tool_card cfg) ] ])
+              ~cmp:String.compare ~mount:(grouped_item cfg) ] ])
 
 let builtin_body cfg context (item_s : item Signal.signal) : t =
   ignore context;
@@ -295,17 +309,12 @@ let builtin_body cfg context (item_s : item Signal.signal) : t =
 
 let item_row_of cfg context (item_s : item Signal.signal) : t =
   let item = sample item_s in
-  let body =
-    match cfg.render_item item_s with
-    | Some view -> view
-    | None -> builtin_body cfg context item_s
-  in
+  let body = rendered_body cfg (builtin_body cfg context) item_s in
   list_item ~key:item.id ~separator:`hidden
     ~accessibility_identifier:("lui-ai-item:" ^ item.id)
     ?style_class:
       (match cfg.item_class item with "" -> None | s -> Some s)
-    ?data_attrs:
-      (match cfg.item_data_attrs item with [] -> None | l -> Some l)
+    ~data_attrs:(reactive cfg.item_data_attrs item_s)
     [ row ~main:`center ~grow:1.0
         [ column ~grow:1.0 ~max_width:cfg.content_width ~cross:`stretch
             ~padding_horizontal:8 ~padding_vertical:4 [ body ] ] ]
