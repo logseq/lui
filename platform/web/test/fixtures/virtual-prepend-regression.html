@@ -1,0 +1,76 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LUI virtual prepend regressions</title>
+<link rel="stylesheet" href="/platform/web/dist/lui.css">
+<script type="importmap">{"imports":{
+  "@tanstack/virtual-core": "/platform/web/dist/tanstack-virtual.js",
+          "lui.web.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui.web.dom/",
+  "lui/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui/",
+  "melange-webapi/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange-webapi/",
+  "melange.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.dom/",
+  "melange.js/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.js/",
+  "melange/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange/",
+  "ocaml-signal/":"/_build/default/examples/components/web/lui-components-web/node_modules/ocaml-signal/"
+}}</script>
+<style>body { margin: 24px; font: 16px system-ui } #host { max-width: 720px }</style>
+<main id="host"></main>
+<script type="module">
+import * as Web from "lui.web.dom/shell/lui_web.js"
+import { Protocol, properties, kinds } from "./protocol-fixture.mjs"
+
+const host = document.querySelector("#host")
+const renderer = Web.create(undefined, host), backend = Web.backend(renderer)
+const list = items => items.reduceRight((tl, hd) => ({ hd, tl }), 0)
+let ops = [], generation = 0, id = 0, token = 0, first = 100, last = 199
+
+function set(node, name, value) {
+  const tag = typeof value === "string" ? 0 : typeof value === "boolean" ? 1 : 2
+  ops.push(Protocol.set_prop_op(node, properties.get(name), { TAG: tag, _0: value }))
+}
+function node(kind, props = {}) {
+  const result = ++id
+  ops.push(Protocol.create_node_op(result, kinds.get(kind)))
+  for (const [key, value] of Object.entries(props)) set(result, key, value)
+  return result
+}
+function flush() {
+  backend.apply_batch({ generation: ++generation, ops: list(ops) })
+  ops = []
+}
+const root = node("virtual-list", { width: 720, height: 420, gap: 4 })
+function row(index, at) {
+  // Actual row geometry deliberately differs from the virtual size estimate.
+  const height = index % 3 === 0 ? 160 : 80
+  const item = node("list-item", {
+    key: "row-" + index,
+    "data-attrs": `data-row\x1f${index}\x1estyle\x1fmin-height: ${height}px`,
+  })
+  const text = node("text", { text: "Reading row " + index })
+  ops.push(Protocol.insert_child_op(item, text, 0), Protocol.insert_child_op(root, item, at))
+}
+for (let i = first; i <= last; i++) row(i, i - first)
+flush()
+Web.mount(renderer, root, host)
+
+window.probe = {
+  prepend(count) {
+    const start = first - count
+    for (let i = start; i < first; i++) row(i, i - start)
+    first = start
+    flush()
+  },
+  append() {
+    last++
+    row(last, last - first)
+    flush()
+  },
+  jump(index) {
+    set(root, "scroll-target", "row-" + index)
+    set(root, "scroll-anchor", "top")
+    set(root, "scroll-animated", false)
+    set(root, "scroll-token", ++token)
+    flush()
+  },
+}
+</script>
