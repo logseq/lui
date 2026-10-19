@@ -186,6 +186,111 @@ let test_tool_group_rendering () =
     (List.exists (( = ) "Worked through 2 steps") (text_nodes s));
   drive_dispose s
 
+let host_attrs (item : M.item) =
+  [ "data-event-id", item.id; "data-current-text", item.text ]
+
+let host_tool ?(on_press = fun _ -> ()) item_s =
+  if (Lui_elements.sample item_s).M.id <> "host" then None
+  else
+    Some
+      (Lui_elements.button ~text:"Host tool details"
+         ~accessibility_identifier:"host-tool-details"
+         ~on_press:(fun _ -> on_press (Lui_elements.get item_s)) [])
+
+let host_transcript ?(group_tools = true) ?on_press () _ctx source _send =
+  Lui_ai.Transcript.transcript ~messages:source ~group_tools
+    ~render_item:(host_tool ?on_press) ~item_data_attrs:host_attrs
+    ~item_class:(fun _ -> "host-item") ()
+
+let test_grouped_host_renderer () =
+  let initial = [ tool_item "host" `in_progress; tool_item "fallback" `pending ] in
+  let s = drive_mount ~initial ~view:(host_transcript ()) in
+  Alcotest.(check bool) "host renderer is used inside the group" true
+    (List.mem "Host tool details" (text_nodes s));
+  Alcotest.(check bool) "default tool renderer remains available" true
+    (List.exists (fun text -> has_sub text "Run fallback") (text_nodes s));
+  let host = find_by_prop s "accessibility-identifier"
+      (StringValue "lui-ai-item:host") in
+  Alcotest.(check string) "group member is a noninteractive container" "column"
+    host.Drive.Model.kind;
+  Alcotest.(check (option string)) "host row class is preserved" (Some "host-item")
+    (match node_prop host "style-class" with Some (StringValue x) -> Some x | _ -> None);
+  Alcotest.(check bool) "host row metadata is preserved" true
+    (match node_prop host "data-attrs" with
+     | Some (StringValue x) -> has_sub x "data-event-id" && has_sub x "host"
+     | _ -> false);
+  drive_dispose s
+
+let test_grouped_host_updates () =
+  let clicked = ref "" in
+  let initial = [ tool_item "host" `in_progress; tool_item "fallback" `in_progress ] in
+  let view = host_transcript ~on_press:(fun item -> clicked := item.M.text) () in
+  let s = drive_mount ~initial ~view in
+  let host () = find_by_prop s "accessibility-identifier"
+      (StringValue "lui-ai-item:host") in
+  let before = (host ()).Drive.Model.id in
+  drive_send_model s (fun items -> M.append_text items "host" "fresh host content");
+  drive_send_model s (fun items ->
+      M.update_tool items (update "fallback" ~output:"fresh default output" ()));
+  Alcotest.(check int) "streaming retains grouped row identity" before (host ()).id;
+  Alcotest.(check bool) "grouped metadata follows the current item" true
+    (match node_prop (host ()) "data-attrs" with
+     | Some (StringValue x) -> has_sub x "fresh host content" | _ -> false);
+  Drive.Session.press s
+    (find_by_prop s "accessibility-identifier" (StringValue "host-tool-details")).id;
+  Alcotest.(check string) "host callback reads current borrowed item"
+    "fresh host content" !clicked;
+  Alcotest.(check bool) "default grouped tool content still updates" true
+    (List.mem "fresh default output" (text_nodes s));
+  drive_dispose s
+
+let test_single_host_metadata_updates () =
+  let initial = [ tool_item "host" `in_progress ] in
+  let s = drive_mount ~initial ~view:(host_transcript ~group_tools:false ()) in
+  let host () = find_by_prop s "accessibility-identifier"
+      (StringValue "lui-ai-item:host") in
+  let before = (host ()).Drive.Model.id in
+  drive_send_model s (fun items -> M.append_text items "host" "new single metadata");
+  Alcotest.(check int) "single row keeps identity" before (host ()).id;
+  Alcotest.(check bool) "single metadata follows the same item contract" true
+    (match node_prop (host ()) "data-attrs" with
+     | Some (StringValue x) -> has_sub x "new single metadata" | _ -> false);
+  drive_dispose s
+
+let test_grouped_host_lifetime () =
+  let mounted = ref 0 and disposed = ref [] in
+  let renderer source =
+    let id = (Lui_elements.sample source).M.id in
+    Some (Lui_elements.scoped (fun context ->
+        incr mounted;
+        Signal.on_dispose context.Lui_ui.ui_scope (fun () -> disposed := id :: !disposed);
+        Lui_elements.button ~text:id ~accessibility_identifier:("host:" ^ id) [])) in
+  let view _ctx source _send =
+    Lui_ai.Transcript.transcript ~messages:source ~render_item:renderer () in
+  let t1 = tool_item "t1" `in_progress and t2 = tool_item "t2" `pending in
+  let s = drive_mount ~initial:[t1;t2] ~view in
+  let group = find_by_prop s "accessibility-identifier"
+      (StringValue "lui-ai-tool-group") in
+  let t2_node = find_by_prop s "accessibility-identifier" (StringValue "host:t2") in
+  Drive.Session.toggle s group.id false;
+  drive_send_model s (fun _ -> [t1;tool_item "t3" `in_progress;t2]);
+  Alcotest.(check int) "group insertion retains custom tool" t2_node.id
+    (find_by_prop s "accessibility-identifier" (StringValue "host:t2")).id;
+  Alcotest.(check bool) "user disclosure survives active updates" true
+    (node_prop group "selected" = Some (BoolValue false));
+  Alcotest.(check int) "only the added custom child mounts" 3 !mounted;
+  drive_send_model s (fun items -> List.filter (fun item -> item.M.id <> "t2") items);
+  Alcotest.(check (list string)) "removed child is disposed once" ["t2"] !disposed;
+  drive_send_model s (fun _ -> []);
+  Alcotest.(check (list string)) "all group children are disposed" ["t1";"t2";"t3"]
+    (List.sort String.compare !disposed);
+  drive_send_model s (fun _ -> [assistant "after" "caller stream remains alive"]);
+  Alcotest.(check bool) "group disposal does not dispose caller source" true
+    (List.mem "after" (text_nodes s));
+  drive_dispose s;
+  Alcotest.(check int) "each mounted host view is disposed exactly once" 4
+    (List.length !disposed)
+
 (* {1 Anchored follow (virtual_list by default)} *)
 
 let test_autoscroll_follow () =
@@ -555,6 +660,10 @@ let tests =
         Alcotest.test_case "reorder/dup identity" `Quick
           test_keyed_reorder_dup;
         Alcotest.test_case "tool group" `Quick test_tool_group_rendering;
+        Alcotest.test_case "grouped host renderer" `Quick test_grouped_host_renderer;
+        Alcotest.test_case "grouped host updates" `Quick test_grouped_host_updates;
+        Alcotest.test_case "single host metadata updates" `Quick test_single_host_metadata_updates;
+        Alcotest.test_case "grouped host lifetime" `Quick test_grouped_host_lifetime;
         Alcotest.test_case "autoscroll follow" `Quick test_autoscroll_follow;
         Alcotest.test_case "reach-top hook" `Quick test_reach_top_hook;
         Alcotest.test_case "host-driven viewport" `Quick
