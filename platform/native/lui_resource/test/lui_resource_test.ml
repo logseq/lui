@@ -325,6 +325,38 @@ let test_recreated_key_rejects_old_completion () =
     check' bool "stale decoded value retires" true (List.mem "old" !retired);
     Signal.dispose_scope first;Signal.dispose_scope second;R.unregister cache) [false;true]
 
+let test_disposed_watcher_releases_capture () =
+  List.iter (fun owning ->
+    let cache,pump=qcache () in
+    let owner=scope () in
+    let entry=R.request cache ~scope:owner "ready" ~load:(fun _ -> Ok 1) in
+    ignore (pump ());ignore (R.drain cache);
+    let weak=Weak.create 1 in
+    let bind () =
+      let payload=Bytes.make 8192 'x' in
+      Weak.set weak 0 (Some payload);
+      let observer=scope () in
+      let callback _ = ignore (Sys.opaque_identity payload) in
+      if owning then ignore (R.request cache ~scope:observer ~on_state:callback "ready" ~load:(fun _ -> Ok 2))
+      else R.watch ~scope:observer entry callback;
+      Signal.dispose_scope observer in
+    bind ();Gc.full_major ();
+    check' bool "disposed watcher releases its captured data without another publish" true (Weak.get weak 0=None);
+    Signal.dispose_scope owner;R.unregister cache) [false;true]
+
+let test_bulk_watcher_disposal_allocation () =
+  let cache,pump=qcache () and owner=scope () in
+  let entry=R.request cache ~scope:owner "shared" ~load:(fun _ -> Ok 1) in
+  ignore (pump ());ignore (R.drain cache);
+  let observers=Array.init 2000 (fun _ -> let scope=scope () in R.watch ~scope entry (fun _ -> ());scope) in
+  let before=Gc.allocated_bytes () in
+  Array.iter Signal.dispose_scope observers;
+  let allocated=Gc.allocated_bytes () -. before in
+  Printf.printf "resource watcher disposal: %.0f bytes/%d scopes\n%!" allocated (Array.length observers);
+  check' bool "shared resource cleanup avoids quadratic temporary lists" true
+    (allocated<float_of_int (Array.length observers*4096));
+  Signal.dispose_scope owner;R.unregister cache
+
 let () =
   run "lui_resource"
     [
@@ -361,6 +393,8 @@ let () =
         ] );
       ( "watchers",
         [
+          test_case "bulk disposal allocation" `Quick test_bulk_watcher_disposal_allocation;
+          test_case "disposed capture released" `Quick test_disposed_watcher_releases_capture;
           test_case "dead scope pruned" `Quick test_watcher_dead_scope_pruned;
           test_case "late fires immediately" `Quick
             test_late_watcher_fires_immediately;
