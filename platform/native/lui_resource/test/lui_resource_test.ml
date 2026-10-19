@@ -312,11 +312,25 @@ let test_drain_all () =
   R.unregister c2;
   Signal.dispose_scope sc
 
+let test_recreated_key_rejects_old_completion () =
+  List.iter (fun clear ->
+    let retired=ref [] in
+    let cache,pump=qcache ~retire:(fun value -> retired:=value::!retired) () in
+    let first=scope () and second=scope () in
+    ignore (R.request cache ~scope:first "same" ~load:(fun _ -> Ok "old"));
+    if clear then R.clear cache else Signal.dispose_scope first;
+    let current=R.request cache ~scope:second "same" ~load:(fun _ -> Ok "new") in
+    ignore (pump ());ignore (R.drain cache);
+    check' (option string) "recreated entry accepts only its own completion" (Some "new") (ready current);
+    check' bool "stale decoded value retires" true (List.mem "old" !retired);
+    Signal.dispose_scope first;Signal.dispose_scope second;R.unregister cache) [false;true]
+
 let () =
   run "lui_resource"
     [
       ( "lifecycle",
         [
+          test_case "recreated key" `Quick test_recreated_key_rejects_old_completion;
           test_case "load ready" `Quick test_load_ready;
           test_case "immediate executor" `Quick test_immediate_executor;
           test_case "shared pending" `Quick test_shared_pending;

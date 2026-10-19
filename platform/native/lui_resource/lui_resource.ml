@@ -73,7 +73,7 @@ let executor_queued () =
   (exec, pump)
 
 type 'value completion = {
-  comp_key : key;
+  comp_entry : 'value entry;
   comp_generation : int;
   comp_result : ('value, string) result;
 }
@@ -140,8 +140,8 @@ let notify e =
 
 (* Foreground publish of one completion. *)
 let publish c comp =
-  match Hashtbl.find_opt c.entries comp.comp_key with
-  | Some e when e.generation = comp.comp_generation && e.state = Loading ->
+  match Hashtbl.find_opt c.entries comp.comp_entry.key with
+  | Some e when e == comp.comp_entry && e.generation = comp.comp_generation && e.state = Loading ->
       e.task <- None;
       (match comp.comp_result with
        | Ok v -> e.state <- Ready v
@@ -203,7 +203,7 @@ let spawn c e load =
       in
       Mutex.lock c.mutex;
       Queue.push
-        { comp_key = e.key; comp_generation = generation; comp_result = result }
+        { comp_entry = e; comp_generation = generation; comp_result = result }
         c.mailbox;
       Mutex.unlock c.mutex);
   Some task
