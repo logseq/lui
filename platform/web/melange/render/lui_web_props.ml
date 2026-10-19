@@ -1026,7 +1026,8 @@ and apply_secondary_property renderer queue_split node kind dom_node
         W.Element.setAttribute "data-reactions-alignment" alignment dom_node
       else set_style dom_node "text-align" alignment
   | ContainerRelativeFrameValue, StringValue axes ->
-      apply_frame_axes dom_node axes
+      apply_frame_axes dom_node axes;
+      if kind = Image then Widgets.update_image renderer node dom_node
   | ContainerRelativeFrameInset, IntValue inset ->
       apply_frame_inset dom_node inset
   | EdgeValue, StringValue edge ->
@@ -1103,10 +1104,12 @@ and apply_secondary_property renderer queue_split node kind dom_node
       set_style dom_node "--lui-disabled-opacity" (Js.Float.toString opacity)
   | WidthViewport, FloatValue width ->
       set_style dom_node "width"
-        (Printf.sprintf "%gdvw" (width *. 100.0))
+        (Printf.sprintf "%gdvw" (width *. 100.0));
+      if kind = Image then Widgets.update_image renderer node dom_node
   | HeightViewport, FloatValue height ->
       set_style dom_node "height"
-        (Printf.sprintf "%gdvh" (height *. 100.0))
+        (Printf.sprintf "%gdvh" (height *. 100.0));
+      if kind = Image then Widgets.update_image renderer node dom_node
   | MinWidthViewport, FloatValue width ->
       set_style dom_node "min-width"
         (Printf.sprintf "%gdvw" (width *. 100.0))
@@ -1178,8 +1181,10 @@ let remove_property renderer queue_split node kind dom_node property =
            set_style dom_node "border-style" "";
            set_style dom_node "border-width" ""
        | CornerRadius -> set_style dom_node "border-radius" ""
-       | WidthValue -> set_style dom_node "width" ""
-       | HeightValue -> set_style dom_node "height" ""
+       | WidthValue -> set_style dom_node "width" "";
+           if kind = Image then Widgets.update_image renderer node dom_node
+       | HeightValue -> set_style dom_node "height" "";
+           if kind = Image then Widgets.update_image renderer node dom_node
        | MinWidth -> set_style dom_node "min-width" ""
        | MaxWidth -> set_style dom_node "max-width" ""
        | MinHeight -> set_style dom_node "min-height" ""
@@ -1191,7 +1196,8 @@ let remove_property renderer queue_split node kind dom_node property =
            set_style dom_node "width" "";
            set_style dom_node "height" "";
            set_style dom_node "min-width" "";
-           set_style dom_node "min-height" ""
+           set_style dom_node "min-height" "";
+           if kind = Image then Widgets.update_image renderer node dom_node
        | ContainerRelativeFrameInset ->
            W.Element.removeAttribute "data-lui-frame-inset" dom_node
        | EdgeValue -> W.Element.removeAttribute "data-edge" dom_node
@@ -1228,6 +1234,8 @@ let remove_property renderer queue_split node kind dom_node property =
              W.Element.removeAttribute "href" dom_node;
              W.Element.removeAttribute "target" dom_node
            end
+       | ImageIdValue | SourceX | SourceY | SourceWidth | SourceHeight when kind = Image ->
+           Widgets.update_image renderer node dom_node
        | Opacity -> set_style dom_node "opacity" ""
        | LabelOpacity -> set_style (Util.child_element dom_node 1) "opacity" ""
        | DisplayValue -> set_style dom_node "display" ""
@@ -1329,8 +1337,10 @@ let remove_property renderer queue_split node kind dom_node property =
        | SelectedHoverShadow ->
            set_style dom_node "--lui-selected-hover-shadow" ""
        | DisabledOpacity -> set_style dom_node "--lui-disabled-opacity" ""
-       | WidthViewport -> set_style dom_node "width" ""
-       | HeightViewport -> set_style dom_node "height" ""
+       | WidthViewport -> set_style dom_node "width" "";
+           if kind = Image then Widgets.update_image renderer node dom_node
+       | HeightViewport -> set_style dom_node "height" "";
+           if kind = Image then Widgets.update_image renderer node dom_node
        | MinWidthViewport -> set_style dom_node "min-width" ""
        | MaxWidthViewport -> set_style dom_node "max-width" ""
        | MinHeightViewport -> set_style dom_node "min-height" ""
