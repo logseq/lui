@@ -75,9 +75,9 @@ type input_kind = [ `text | `color | `time ]
 type popover_role = [ `dialog | `menu ]
 type swipe_edge = [ `leading | `trailing ]
 
-(* [~as_] element-tag overrides for the phrasing kinds ([text], [heading],
-   [paragraph], [label]) on web. [Lui_protocol.element_tag_supported]
-   restricts each kind to its phrasing-appropriate subset, so a block tag
+(* [~as_] semantic element-tag overrides on web.
+   [Lui_protocol.element_tag_supported] restricts each kind to its
+   content-appropriate subset, so a block tag
    on [text] fails validation at emit instead of breaking inline layout. *)
 type element_tag =
   [ `Span
@@ -103,6 +103,9 @@ type element_tag =
   | `H6
   | `P
   | `Div
+  | `Ul
+  | `Ol
+  | `Li
   | `Label ]
 
 (** [~source] of [file_picker]: [`files] presents a document importer,
@@ -316,6 +319,9 @@ let element_tag_value : element_tag -> string = function
   | `H6 -> "h6"
   | `P -> "p"
   | `Div -> "div"
+  | `Ul -> "ul"
+  | `Ol -> "ol"
+  | `Li -> "li"
   | `Label -> "label"
 
 let file_picker_source_value : file_picker_source -> string = function
@@ -706,9 +712,10 @@ let apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding 
   Option.iter (register_pointer_leave context node) on_pointer_leave;
   Option.iter (Lui_ui.string_property context node Transition) transition
 
-let row ?key ?gap ?main ?cross ?grow ?columns ?orientation ?orientation_signal ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?opacity ?opacity_signal ?display ?flex_wrap ?transition (children : t list) : t =
+let row ?as_ ?key ?gap ?main ?cross ?grow ?columns ?orientation ?orientation_signal ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?opacity ?opacity_signal ?display ?flex_wrap ?transition (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.row context in
+  Option.iter (fun tag -> Lui_ui.string_property context node As (element_tag_value tag)) as_;
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~margin ~margin_horizontal ~margin_vertical ~margin_top ~margin_right ~margin_bottom ~margin_left ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave ~transition;
   Option.iter (Lui_ui.float_property context node Opacity) opacity;
   Option.iter (Lui_ui.float_property_signal context node Opacity) opacity_signal;
@@ -720,9 +727,10 @@ let row ?key ?gap ?main ?cross ?grow ?columns ?orientation ?orientation_signal ?
   mount_children context node children;
   node
 
-let column ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?min_width_signal ?max_width ?max_width_signal ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?on_press_detail ?on_pointer_down ?on_pointer_up ?opacity ?opacity_signal ?display ?flex_wrap ?transition (children : t list) : t =
+let column ?as_ ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?min_width_signal ?max_width ?max_width_signal ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?on_press_detail ?on_pointer_down ?on_pointer_up ?opacity ?opacity_signal ?display ?flex_wrap ?transition (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.column context in
+  Option.iter (fun tag -> Lui_ui.string_property context node As (element_tag_value tag)) as_;
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~margin ~margin_horizontal ~margin_vertical ~margin_top ~margin_right ~margin_bottom ~margin_left ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave ~transition;
   Option.iter (Lui_ui.int_property_signal context node MinWidth) min_width_signal;
   Option.iter (Lui_ui.int_property_signal context node MaxWidth) max_width_signal;

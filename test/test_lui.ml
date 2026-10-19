@@ -2275,7 +2275,16 @@ let test_data_attrs_protocol () =
 
 let test_as_protocol () =
   let open Lui_protocol in
-  (* phrasing kinds only *)
+  (* Semantic tags retain the layout kind and its child contract. *)
+  List.iter (fun tag ->
+    Alcotest.(check bool) ("column " ^ tag) true
+      (property_value_supported_for_kind Column As (StringValue tag))) ["div";"ul";"ol"];
+  Alcotest.(check bool) "row li" true
+    (property_value_supported_for_kind Row As (StringValue "li"));
+  Alcotest.(check bool) "row ul refused" false
+    (property_value_supported_for_kind Row As (StringValue "ul"));
+  Alcotest.(check bool) "column li refused" false
+    (property_value_supported_for_kind Column As (StringValue "li"));
   Alcotest.(check bool) "as on text" true (property_supported Text As);
   Alcotest.(check bool) "as on heading" true (property_supported Heading As);
   Alcotest.(check bool) "as on paragraph" true
@@ -2328,6 +2337,8 @@ let data_attrs_view context _model _send =
       Lui_elements.paragraph ~as_:`P ~text_alignment:`end_ ~value:"para" [];
       Lui_elements.label ~as_:`Span ~value:"lbl" [];
       Lui_elements.kbd ~data_attrs:[ ("aria-label", "key") ] ~value:"esc" [];
+      Lui_elements.column ~as_:`Ul [Lui_elements.row ~as_:`Li [Lui_elements.text ~value:"item" []]];
+      Lui_elements.column ~as_:`Ol [];
     ]
 
 let test_data_attrs_and_as_emit () =
@@ -2366,7 +2377,9 @@ let test_data_attrs_and_as_emit () =
   Alcotest.(check bool) "paragraph end alignment" true
     (emitted TextAlignment (StringValue "end"));
   Alcotest.(check bool) "label as span" true
-    (emitted As (StringValue "span"))
+    (emitted As (StringValue "span"));
+  List.iter (fun tag -> Alcotest.(check bool) ("document list as " ^ tag) true
+    (emitted As (StringValue tag))) ["ul";"ol";"li"]
 
 let test_vocab_batch2 () =
   let open Lui_protocol in

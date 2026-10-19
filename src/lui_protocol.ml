@@ -837,6 +837,8 @@ let element_tag_supported kind tag =
   | Heading -> List.mem tag [ "h1"; "h2"; "h3"; "h4"; "h5"; "h6" ]
   | Paragraph -> List.mem tag [ "p"; "span"; "div"; "pre" ]
   | Label -> List.mem tag [ "label"; "span"; "div" ]
+  | Column -> List.mem tag [ "div"; "ul"; "ol" ]
+  | Row -> List.mem tag [ "div"; "li" ]
   | _ -> false
 
 let element_tag_known tag =
@@ -844,6 +846,8 @@ let element_tag_known tag =
   || element_tag_supported Heading tag
   || element_tag_supported Paragraph tag
   || element_tag_supported Label tag
+  || element_tag_supported Column tag
+  || element_tag_supported Row tag
 
 let can_contain_children kind =
   if horizontal_container kind || context_menu_leaf_host_kind kind then true
@@ -976,6 +980,7 @@ let common_property_supported kind property =
   | StyleClass | DataAttrs -> kind <> Tooltip
   | As ->
       kind = Text || kind = Heading || kind = Paragraph || kind = Label
+      || kind = Column || kind = Row
   | AccessibilityLabel ->
     kind = Button
     || kind = MenuItem

@@ -88,9 +88,9 @@ type input_kind = [ `text | `color | `time ]
 type popover_role = [ `dialog | `menu ]
 type swipe_edge = [ `leading | `trailing ]
 
-(** [~as_] element-tag overrides for the phrasing kinds ([text],
-    [heading], [paragraph], [label]) on web. Each kind admits only its
-    phrasing-appropriate subset — see
+(** [~as_] semantic element-tag overrides on web. Textual kinds admit
+    phrasing-appropriate tags; columns admit [div], [ul], [ol], and rows
+    admit [div], [li]. Layout and child contracts remain unchanged. See
     {!Lui_protocol.element_tag_supported}; a mismatch fails validation at
     emit, and native hosts ignore the prop. *)
 type element_tag =
@@ -117,6 +117,9 @@ type element_tag =
   | `H6
   | `P
   | `Div
+  | `Ul
+  | `Ol
+  | `Li
   | `Label ]
 
 (** [~source] of {!file_picker}: [`files] presents a document importer,
@@ -351,6 +354,7 @@ val apply_universal :
   on_pointer_leave:(Lui_protocol.event -> unit) option ->
   transition:string option -> unit
 val row :
+  ?as_:element_tag ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -398,6 +402,7 @@ val row :
   ?flex_wrap:flex_wrap ->
   ?transition:string -> t list -> t
 val column :
+  ?as_:element_tag ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
