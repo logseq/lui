@@ -3127,7 +3127,7 @@ module Fake_layout = struct
     | Some (FloatValue f) -> f
     | _ -> 0.
 
-  let sync ?scale:_ ?measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ?anchor_shift:_
+  let sync ?scale:_ ?measure:_ ?image_measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ?anchor_shift:_
       ~width ~height t store =
     Hashtbl.reset t;
     let rec place id ~x ~y ~w =
@@ -4150,7 +4150,7 @@ let test_assembly_scroll_shows_in_paint () =
 let test_assembly_inset_scroll_caps () =
   let module Inset_layout = struct
     include Fake_layout
-    let sync ?scale:_ ?measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ?anchor_shift:_
+    let sync ?scale:_ ?measure:_ ?image_measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ?anchor_shift:_
         ~width:_ ~height:_ t _store =
       Hashtbl.reset t;
       List.iter (fun (id,r) -> Hashtbl.add t id r)
@@ -4180,7 +4180,7 @@ let test_assembly_resize_scroll_clamp () =
   let module Resize_layout = struct
     include Fake_layout
 
-    let sync ?scale ?measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ?anchor_shift:_ ~width ~height t
+    let sync ?scale ?measure:_ ?image_measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ?anchor_shift:_ ~width ~height t
         _store =
       let scale = Option.value ~default:1. scale in
       Hashtbl.reset t;
@@ -4246,7 +4246,7 @@ let test_assembly_nested_clip_caps () =
   let module Nested_layout = struct
     include Fake_layout
 
-    let sync ?scale:_ ?measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ?anchor_shift:_ ~width:_
+    let sync ?scale:_ ?measure:_ ?image_measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ?anchor_shift:_ ~width:_
         ~height:_ t store =
       let hidden = Lui_store.string_prop store 4 "display" = Some "none" in
       Hashtbl.reset t;

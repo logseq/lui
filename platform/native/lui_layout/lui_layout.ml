@@ -10,11 +10,13 @@ open Lui_protocol
 open Lui_flex
 
 type text_measure = int -> string -> float -> float -> (float * float) option
+type image_measure = int -> (float * float) option
 
 (* Shared defaults so the memo's physical-equality check on function
    inputs sees a stable identity: an inline [fun] default would
    allocate a fresh closure per call and never match. *)
 let no_measure _id _text _offered_w _offered_h = None
+let no_image_measure _id = None
 let show_all _id = false
 
 (* Content-space visible range fed to a virtual list: (start, extent)
@@ -80,6 +82,7 @@ type saved_ctx = {
   sc_vw : float;
   sc_vh : float;
   sc_tm : text_measure;
+  sc_image_measure : image_measure;
   sc_hidden : int -> bool;
   sc_anchor : (float * float) option;
   sc_store : Lui_store.t;
@@ -151,6 +154,7 @@ type t = {
   mutable synced_h : float;
   mutable synced_anchor : (float * float) option;
   mutable synced_measure : text_measure;
+  mutable synced_image_measure : image_measure;
   mutable synced_hidden : int -> bool;
   (* Instrumentation: [stat_syncs] counts syncs that rebuilt the mirror
      wholesale, [stat_steps] syncs that applied journal ops. Lets tests
@@ -184,6 +188,7 @@ let create () =
     synced_h = 0.;
     synced_anchor = None;
     synced_measure = no_measure;
+    synced_image_measure = no_image_measure;
     synced_hidden = show_all;
     stat_syncs = 0;
     stat_steps = 0 }
@@ -782,6 +787,7 @@ type ctx = {
   vw : float;
   vh : float;
   tm : text_measure;
+  image_measure : image_measure;
   hidden : int -> bool; (* host-owned transient visibility (menus) *)
   ctx_anchor : (float * float) option; (* pointer point for context menus *)
   store : Lui_store.t;
@@ -1090,6 +1096,28 @@ let popup_min_style ctx id cids kids (style : Lui_flex.style) : Lui_flex.style =
     | None -> style)
   | _ -> style
 
+let image_measure_of ctx id _node ~width ~width_mode ~height ~height_mode =
+  match ctx.image_measure id with
+  | None -> {Lui_flex.width=0.;height=0.}
+  | Some (natural_width,natural_height) ->
+      let source_width=Option.value (pnum ctx.store id "source-width") ~default:natural_width
+      and source_height=Option.value (pnum ctx.store id "source-height") ~default:natural_height in
+      let natural_width=source_width *. ctx.scale and natural_height=source_height *. ctx.scale in
+      let cap mode offered natural = match mode with
+        | Lui_flex.Measure_undefined -> natural
+        | Measure_exactly | Measure_at_most -> Float.min offered natural
+        | Measure_invalid -> invalid_arg "Invalid image measure mode" in
+      let width,height=match width_mode,height_mode with
+        | Lui_flex.Measure_exactly,Measure_exactly -> width,height
+        | Measure_exactly,_ -> width,cap height_mode height (width *. natural_height /. natural_width)
+        | _,Measure_exactly -> cap width_mode width (height *. natural_width /. natural_height),height
+        | _ ->
+            let factor=Float.min
+              (cap width_mode width natural_width /. natural_width)
+              (cap height_mode height natural_height /. natural_height) in
+            natural_width *. factor,natural_height *. factor in
+      {Lui_flex.width;height}
+
 let measure_for ctx id ~kids : Lui_flex.measure option =
   let choice =
     match Lui_store.kind ctx.store id with
@@ -1098,6 +1126,7 @@ let measure_for ctx id ~kids : Lui_flex.measure option =
   in
   let chrome = if choice then 16. *. ctx.scale else 0. in
   match (kids, text_of ctx.store id) with
+  | [], None when Lui_store.kind ctx.store id = "image" -> Some (image_measure_of ctx id)
   | [], None when choice ->
       Some
         (fun _ ~width:_ ~width_mode:_ ~height:_ ~height_mode:_ ->
@@ -2286,6 +2315,7 @@ let ctx_of_saved (t : t) (sc : saved_ctx) : ctx =
     vw = sc.sc_vw;
     vh = sc.sc_vh;
     tm = sc.sc_tm;
+    image_measure = sc.sc_image_measure;
     hidden = sc.sc_hidden;
     ctx_anchor = sc.sc_anchor;
     store = sc.sc_store;
@@ -2795,8 +2825,8 @@ let refresh_rects ctx =
   end;
   Hashtbl.reset ctx.eng.rect_dirty
 
-let ctx_of t store ~scale ~measure ~hidden ctx_anchor ~width ~height : ctx =
-  { scale; vw = width; vh = height; tm = measure; hidden; ctx_anchor;
+let ctx_of t store ~scale ~measure ~image_measure ~hidden ctx_anchor ~width ~height : ctx =
+  { scale; vw = width; vh = height; tm = measure; image_measure; hidden; ctx_anchor;
     store; eng = t; nodes = t.nodes; applied = t.applied;
     pkids = t.pkids; sparent = t.sparent; owner = t.owner;
     grids = t.grids; popups = t.popups;
@@ -2860,7 +2890,7 @@ let finish ctx (t : t) ~width ~height ~vport ~full =
        recomposed, never part of the scoped refresh. *)
     vlists_collect t
 
-let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
+let sync ?(scale = 1.) ?(measure = no_measure) ?(image_measure = no_image_measure) ?(hidden = show_all)
     ?ctx_anchor ?(vport = no_vport) ?(anchor_shift = fun _ -> (0.,0.)) ~width ~height (t : t) store =
   t.anchor_shift <- anchor_shift;
   let shifts = ref [] in
@@ -2879,6 +2909,7 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
     t.synced_scale <> scale
     || t.synced_anchor <> ctx_anchor
     || (not (t.synced_measure == measure))
+    || (not (t.synced_image_measure == image_measure))
     || (not (t.synced_hidden == hidden))
   in
   let inputs_changed = mirror_inputs_changed || viewport_changed || anchor_changed in
@@ -2897,7 +2928,7 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
   end
   else begin
     t.stat_syncs <- t.stat_syncs + 1;
-    let ctx = ctx_of t store ~scale ~measure ~hidden ctx_anchor ~width ~height in
+    let ctx = ctx_of t store ~scale ~measure ~image_measure ~hidden ctx_anchor ~width ~height in
     let full =
       if mirror_inputs_changed || t.synced_rev < 0 || t.root = None then true
       else
@@ -2993,11 +3024,12 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
     t.synced_h <- height;
     t.synced_anchor <- ctx_anchor;
     t.synced_measure <- measure;
+    t.synced_image_measure <- image_measure;
     t.synced_hidden <- hidden;
     t.vctx <-
       Some
         { sc_scale = scale; sc_vw = width; sc_vh = height;
-          sc_tm = measure; sc_hidden = hidden; sc_anchor = ctx_anchor;
+          sc_tm = measure; sc_image_measure = image_measure; sc_hidden = hidden; sc_anchor = ctx_anchor;
           sc_store = store }
   end
 

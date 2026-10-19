@@ -431,9 +431,79 @@ let test_host_flags_and_resize () =
   check int "scene width" 64 (E2e_harness.scene h).width;
   check (float 0.001) "scene scale" 2. (E2e_harness.scene h).scale
 
+let image_host scale bitmap =
+  let hooks={Lui_paint.default_hooks with image_of=(fun id -> if id=3 then !bitmap else None)} in
+  let host=Lui_host.create ~hooks ~layout:(module Lui_layout)
+    ~renderer:{name="image-test";render=(fun _ -> Bytes.empty)}
+    ~width:(int_of_float (640. *. scale)) ~height:(int_of_float (480. *. scale)) ~scale () in
+  ignore (Lui_host.apply_batch host {generation=1;ops=[CreateNode (1,Root);CreateNode (2,Column);
+    InsertChild (1,2,0);SetProp (2,CrossAlignment,StringValue "start");
+    CreateNode (3,Image);InsertChild (2,3,0);SetProp (3,UrlValue,StringValue "https://example.test/cover.png")]});
+  host
+
+let image_bitmap ()=Lui_scene.new_image ~w:192 ~h:144 (Bytes.make (192*144*4) '\255')
+let image_size host scale width height =
+  ignore (Lui_host.repaint host);
+  let rect=Option.get (Lui_host.layout_rect host 3) in
+  check (float 0.01) "image width" (Float.round (width *. scale)) rect.w;
+  check (float 0.01) "image height" (Float.round (height *. scale)) rect.h
+
+let test_image_intrinsic_frames () =
+  List.iter (fun scale ->
+    let host=image_host scale (ref (Some (image_bitmap ()))) in
+    let apply ops=ignore (Lui_host.apply_batch host {generation=1;ops}) in
+    image_size host scale 192. 144.;
+    apply [SetProp (3,WidthValue,IntValue 70)];image_size host scale 70. 52.5;
+    apply [SetProp (3,HeightValue,StringValue "auto")];image_size host scale 70. 52.5;
+    apply [RemoveProp (3,WidthValue);SetProp (3,HeightValue,IntValue 36)];
+    image_size host scale 48. 36.;
+    apply [SetProp (3,WidthValue,IntValue 70);SetProp (3,HeightValue,IntValue 20)];
+    image_size host scale 70. 20.;
+    apply [SetProp (3,HeightValue,IntValue 0)];image_size host scale 70. 0.;
+    apply [RemoveProp (3,WidthValue);RemoveProp (3,HeightValue);SetProp (3,MaxWidth,IntValue 96)];
+    image_size host scale 96. 72.;
+    apply [RemoveProp (3,MaxWidth);SetProp (3,MaxHeight,IntValue 36)];
+    image_size host scale 48. 36.) [1.;2.]
+
+let test_image_arrival_and_memo () =
+  List.iter (fun scale ->
+    let bitmap=ref None in
+    let host=image_host scale bitmap in
+    ignore (Lui_host.apply_batch host {generation=1;ops=[SetProp (3,WidthValue,IntValue 70)]});
+    image_size host scale 70. 0.;
+    bitmap:=Some (image_bitmap ());Lui_host.invalidate_layout host;Lui_host.note_paint host 3;
+    image_size host scale 70. 52.5;
+    check bool "ready image reaches scene" true
+      (List.exists (function Lui_scene.Image op -> op.iimage=Option.get !bitmap | _ -> false)
+        (Lui_host.scene host).ops);
+    let rect=Option.get (Lui_host.layout_rect host 3) in
+    for _=1 to 10 do ignore (Lui_host.repaint host) done;
+    check (float 0.01) "idle retains image geometry" rect.h
+      (Option.get (Lui_host.layout_rect host 3)).h;
+    bitmap:=None;Lui_host.invalidate_layout host;Lui_host.note_paint host 3;
+    image_size host scale 70. 0.) [1.;2.]
+
+let test_image_crop_intrinsic () =
+  List.iter (fun scale ->
+    let host=image_host scale (ref (Some (image_bitmap ()))) in
+    ignore (Lui_host.apply_batch host {generation=1;ops=[SetProp (3,WidthValue,IntValue 70)]});
+    image_size host scale 70. 52.5;
+    ignore (Lui_host.apply_batch host {generation=1;ops=[SetProp (3,SourceX,FloatValue 16.);SetProp (3,SourceY,FloatValue 8.);
+      SetProp (3,SourceWidth,FloatValue 80.);SetProp (3,SourceHeight,FloatValue 40.)]});
+    image_size host scale 70. 35.;
+    check bool "crop reaches scene" true (List.exists (function
+      | Lui_scene.Image op -> op.isrc=Lui_scene.rect 16. 8. 80. 40. | _ -> false)
+      (Lui_host.scene host).ops);
+    ignore (Lui_host.apply_batch host {generation=1;ops=[RemoveProp (3,SourceX);RemoveProp (3,SourceY);
+      RemoveProp (3,SourceWidth);RemoveProp (3,SourceHeight)]});
+    image_size host scale 70. 52.5) [1.;2.]
+
 let () =
   run "lui_e2e"
-    [ ("app",
+    [ ("images",[test_case "intrinsic frames" `Quick test_image_intrinsic_frames;
+        test_case "arrival and memo" `Quick test_image_arrival_and_memo;
+        test_case "intrinsic crop" `Quick test_image_crop_intrinsic]);
+      ("app",
        [ test_case "boot pipeline" `Quick test_boot_pipeline;
          test_case "text changed" `Quick test_text_changed;
          test_case "add/remove/promote" `Quick test_press_add_remove_promote;

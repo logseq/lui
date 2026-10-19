@@ -38,6 +38,9 @@
     to a zero box). *)
 type text_measure = int -> string -> float -> float -> (float * float) option
 
+(** Decoded image dimensions in logical pixels, before device scaling. *)
+type image_measure = int -> (float * float) option
+
 (** A flex mirror of a store plus the rects the last layout produced.
     The mirror is rebuilt wholesale by {!sync} — the store is small and
     rebuild-per-sync keeps invalidation trivial. *)
@@ -104,7 +107,7 @@ type viewport = float * float
     materialize every child like ordinary containers. *)
 
 val sync :
-  ?scale:float -> ?measure:text_measure -> ?hidden:(int -> bool) ->
+  ?scale:float -> ?measure:text_measure -> ?image_measure:image_measure -> ?hidden:(int -> bool) ->
   ?ctx_anchor:(float * float) ->
   ?vport:(int -> viewport option) ->
   ?anchor_shift:(int -> float * float) ->
