@@ -1784,7 +1784,9 @@ let mount_popover renderer node =
       W.Element.setAttribute "id"
         (Lui_web_util.node_dom_id node ^ "-popup") popup;
       let cover = Store.property renderer.web_store node PopupX = None
-         && Store.property renderer.web_store node AnchorValue = None in
+         && Store.property renderer.web_store node AnchorValue = None
+         && List.for_all (fun property -> Store.property renderer.web_store node property=None)
+              [Inset;InsetTop;InsetRight;InsetBottom;InsetLeft] in
       let positioned = popover_positioned renderer node in
       let invalidate () =
         Lui_web_util.set_state_attribute positioner "hidden" true;

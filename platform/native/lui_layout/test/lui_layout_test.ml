@@ -1877,6 +1877,30 @@ let test_menu_height_cap () =
         ])
     [ 1.; 2. ]
 
+let test_popover_capped_content () =
+  List.iter (fun scale ->
+    let store=Lui_store.create () and layout=Lui_layout.create () in
+    apply store [CreateNode (1,Root);CreateNode (2,Popover);InsertChild (1,2,0);
+      SetProp (2,Position,StringValue "fixed");SetProp (2,InsetRight,FloatValue 32.);
+      SetProp (2,InsetBottom,FloatValue 58.);SetProp (2,WidthValue,IntValue 420);
+      SetProp (2,HeightValue,IntValue 686);SetProp (2,MaxHeightViewport,FloatValue 0.86);
+      SetProp (2,Gap,IntValue 0);SetProp (2,PaddingValue,IntValue 0);
+      SetProp (2,BorderWidth,IntValue 1);
+      CreateNode (3,Row);InsertChild (2,3,0);SetProp (3,HeightValue,IntValue 48);
+      SetProp (3,MinHeight,IntValue 48);
+      CreateNode (4,Column);InsertChild (2,4,1);SetProp (4,GrowValue,FloatValue 1.);
+      SetProp (4,MinHeight,IntValue 0);
+      CreateNode (5,Scroll);InsertChild (4,5,0);SetProp (5,GrowValue,FloatValue 1.);
+      SetProp (5,MinHeight,IntValue 0);
+      CreateNode (6,Box);InsertChild (5,6,0);SetProp (6,HeightValue,IntValue 1000)];
+    List.iter (fun height ->
+      Lui_layout.sync ~scale ~width:(1280.*.scale) ~height:(height*.scale) layout store;
+      let panel=Option.get (Lui_layout.rect layout 2) and body=Option.get (Lui_layout.rect layout 5) in
+      let available=Float.round (min 686. (height*.0.86)*.scale) -.50.*.scale in
+      check (float 0.6) "capped popup reflows its scroll body" available body.h;
+      check bool "capped popup contains its scroll viewport" true
+        (body.y+.body.h<=panel.y+.panel.h-.scale+.0.6)) [720.;600.;900.]) [1.;2.]
+
 let test_popover_available_height () =
   List.iter
     (fun scale ->
@@ -2305,6 +2329,7 @@ let () =
          test_case "select menu alignment" `Quick test_select_menu_alignment;
          test_case "menu height cap" `Quick test_menu_height_cap;
          test_case "popover available height" `Quick test_popover_available_height;
+         test_case "popover capped content" `Quick test_popover_capped_content;
          test_case "frozen popover anchor" `Quick test_frozen_popover_anchor;
          test_case "retained popover target" `Quick test_retained_popover_target;
          test_case "anchor alignment offset" `Quick test_anchor_alignment_offset;

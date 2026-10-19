@@ -1983,11 +1983,18 @@ and layout_node_impl
       let margin_axis_column = get_margin_axis node Column in
 
       (* STEP 2: DETERMINE AVAILABLE SIZE IN MAIN AND CROSS DIRECTIONS *)
+      (* Bound the border box before distributing flex space. Clamping only
+         the final outer size leaves children laid out beyond a size cap. *)
+      let inner_size axis available margin padding =
+        let border_box=available -. margin in
+        let constrained=if is_defined border_box then bound_axis node axis border_box else border_box in
+        constrained -. padding
+      in
       let available_inner_width =
-        available_width -. margin_axis_row -. padding_and_border_axis_row
+        inner_size Row available_width margin_axis_row padding_and_border_axis_row
       in
       let available_inner_height =
-        available_height -. margin_axis_column -. padding_and_border_axis_column
+        inner_size Column available_height margin_axis_column padding_and_border_axis_column
       in
       let available_inner_main_dim =
         if is_main_axis_row then available_inner_width else available_inner_height
