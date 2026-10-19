@@ -7063,14 +7063,16 @@ private struct LUIVirtualListView: View {
                 if segment.padding > 0, offset == window.firstSectionCount {
                     return SectionRow(id: SlotID(source: segment.source, offset: -2),
                         nodeID: nil, windowID: nil, windowIndex: 0, index: index,
-                        title: nil, estimatedHeight: segment.padding, tracksSectionHeight: false)
+                        title: window.sectionTitle(at: window.firstSectionCount - 1),
+                        estimatedHeight: segment.padding, tracksSectionHeight: false)
                 }
                 if segment.padding > 0, offset > window.firstSectionCount { offset -= 1 }
                 let childOffset = offset - window.start
                 return SectionRow(id: SlotID(source: segment.source, offset: offset),
                     nodeID: segment.children.indices.contains(childOffset) ? segment.children[childOffset] : nil,
                     windowID: segment.source, windowIndex: offset, index: index,
-                    title: segment.children.indices.contains(childOffset) ? segment.titles[segment.children[childOffset]] : nil,
+                    title: window.sectionTitle(at: offset)
+                        ?? (segment.children.indices.contains(childOffset) ? segment.titles[segment.children[childOffset]] : nil),
                     estimatedHeight: window.extent,
                     tracksSectionHeight: segment.tracksSectionHeight && offset < window.firstSectionCount)
             }
@@ -7119,6 +7121,18 @@ fileprivate struct LUIVirtualWindow {
     let firstSectionCount: Int
     let firstSectionInset: CGFloat
     let pinnedIndex: Int?
+    let sectionTitles: [(index: Int, title: String)]
+
+    func sectionTitle(at index: Int) -> String? {
+        var lower = 0
+        var upper = sectionTitles.count
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2
+            if sectionTitles[middle].index <= index { lower = middle + 1 }
+            else { upper = middle }
+        }
+        return lower > 0 ? sectionTitles[lower - 1].title : nil
+    }
 
     init?(_ encoded: String?) {
         guard let encoded else { return nil }
@@ -7129,6 +7143,12 @@ fileprivate struct LUIVirtualWindow {
         }
         guard let count = attributes["data-virtual-count"].flatMap(Int.init), count >= 0,
               let start = attributes["data-virtual-start"].flatMap(Int.init), start >= 0 else { return nil }
+        sectionTitles = attributes.compactMap { key, title -> (index: Int, title: String)? in
+            let prefix = "data-section-title-"
+            guard key.hasPrefix(prefix), let index = Int(key.dropFirst(prefix.count)),
+                  index >= 0 else { return nil }
+            return (index: index, title: title)
+        }.sorted { $0.index < $1.index }
         self.count = count
         self.start = start
         let pinned = attributes["data-pinned-index"].flatMap(Int.init) ?? -1
