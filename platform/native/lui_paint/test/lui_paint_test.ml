@@ -539,6 +539,34 @@ let test_per_edge_border_colors () =
     check bool "top width" true (t'.fborder = (1., 0., 0., 0.))
   | _ -> fail "expected four edge fills"
 
+let test_hover_border_colors () =
+  List.iter (fun scale ->
+    let t=store () in
+    apply t [Lui_protocol.CreateNode (1,Button);
+      SetProp (1,TextValue,StringValue "Reference");
+      SetProp (1,BorderWidth,IntValue 1);
+      SetProp (1,BorderColorValue,StringValue "#112233");
+      SetProp (1,HoverBorder,StringValue "#445566")];
+    let expect label state expected =
+      let h={(hooks ()) with Lui_paint.state_of=(fun _ -> state)} in
+      let painted=paint_with h t ~scale () in
+      let edges=List.filter_map (function Fill fill
+        when fill.fborder<>(0.,0.,0.,0.) -> Some fill.fborder_color | _ -> None) painted.ops in
+      check bool label true (edges=[expected]) in
+    let neutral=Lui_paint.state_neutral in
+    let hovered={neutral with hovered=true} in
+    expect "base border" neutral (color 17 34 51 255);
+    expect "hover changes the emitted border" hovered (color 68 85 102 255);
+    expect "hover survives pressed selection" {hovered with pressed=true;selected=true} (color 68 85 102 255);
+    apply t [SetProp (1,FocusWithinBorder,StringValue "#778899")];
+    expect "descendant focus takes precedence over hover" {hovered with focus_within=true} (color 119 136 153 255);
+    expect "leaving focus restores hover" hovered (color 68 85 102 255);
+    apply t [SetProp (1,HoverBorder,StringValue "#aabbcc")];
+    expect "live hover color replacement" hovered (color 170 187 204 255);
+    apply t [RemoveProp (1,HoverBorder)];
+    expect "removing hover color restores the base border" hovered (color 17 34 51 255);
+    expect "leaving hover restores the base border" neutral (color 17 34 51 255)) [1.;2.]
+
 (* ---------- shadows ---------- *)
 
 let test_shadow_parse () =
@@ -1947,7 +1975,8 @@ let () =
          test_case "gradient variants" `Quick test_gradient_variants;
          test_case "dashed border" `Quick test_dashed_border;
          test_case "per-edge borders" `Quick test_per_edge_borders;
-         test_case "per-edge colors" `Quick test_per_edge_border_colors ]);
+         test_case "per-edge colors" `Quick test_per_edge_border_colors;
+         test_case "hover border colors" `Quick test_hover_border_colors ]);
       ("shadows",
        [ test_case "scroll surface clip" `Quick test_scroll_surface_shadow_clip;
          test_case "parse" `Quick test_shadow_parse;

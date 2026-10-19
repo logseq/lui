@@ -624,6 +624,7 @@ let resolve_style store id st =
   in
   if st.hovered then (
     ifstr "hover-background" bg;
+    ifstr "hover-border" border;
     ifstr "hover-shadow" sh;
     ifnum "hover-opacity" op);
   if st.pressed then (
