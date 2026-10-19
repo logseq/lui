@@ -3392,7 +3392,8 @@ private struct LUIToolbarGroupAnchor: View {
             // scrolling fused capsule so a pinned trailing sibling stays
             // reachable when the content overflows the bar.
             ScrollView(.horizontal, showsIndicators: false) {
-                capsuleView(childIDs, at: index)
+                HStack(spacing: 0) { capsuleChildren(childIDs, at: index) }
+                    .modifier(LUIToolbarMenuCapsule(enabled: childIDs.contains(where: containsMenu)))
             }
         case let .capsule(childIDs):
             // Consecutive interactive children fuse into one toolbar item so
