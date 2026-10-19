@@ -774,6 +774,9 @@ let rec apply_property renderer queue_split node kind dom_node property
       if kind = Image then Widgets.update_image renderer node dom_node;
       if kind = Bubble then
         W.Element.setAttribute "data-width" "explicit" dom_node
+  | HeightValue, StringValue "auto" ->
+      set_style dom_node "height" "auto";
+      if kind = Image then Widgets.update_image renderer node dom_node
   | HeightValue, IntValue height ->
       set_style dom_node "height" (string_of_int height ^ "px");
       if kind = Image then Widgets.update_image renderer node dom_node

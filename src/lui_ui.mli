@@ -211,6 +211,7 @@ val border_width : ui_context -> int -> int -> unit
 val corner_radius : ui_context -> int -> int -> unit
 val width : ui_context -> int -> int -> unit
 val height : ui_context -> int -> int -> unit
+val height_auto : ui_context -> int -> unit
 val min_width : ui_context -> int -> int -> unit
 val max_width : ui_context -> int -> int -> unit
 val min_height : ui_context -> int -> int -> unit

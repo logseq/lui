@@ -2286,6 +2286,33 @@ let test_choice_intrinsic_size () =
         [ 1.; 2. ])
     [ Checkbox; Radio ]
 
+let test_auto_field_height () =
+  List.iter (fun scale ->
+    List.iter (fun kind ->
+      let store = Lui_store.create () and layout = Lui_layout.create () in
+      apply store [CreateNode (1, Root); CreateNode (2, Column); InsertChild (1,2,0);
+        CreateNode (3,kind); InsertChild (2,3,0); SetProp (3,TextValue,StringValue "Search");
+        SetProp (3,HeightValue,IntValue 40); SetProp (3,PaddingVertical,IntValue 7);
+        SetProp (3,BorderWidth,IntValue 0)];
+      let measure _ _ _ _ = Some (80. *. scale,19.5 *. scale) in
+      let sync () = Lui_layout.sync ~scale ~measure ~width:(200. *. scale)
+        ~height:(300. *. scale) layout store in
+      let height () = (Option.get (Lui_layout.rect layout 3)).h in
+      sync ();
+      check (float eps) "explicit field height" (40. *. scale) (height ());
+      apply store [SetProp (3,HeightValue,StringValue "auto")]; sync ();
+      check (float eps) "auto height follows font plus padding"
+        (Float.round (33.5 *. scale)) (height ());
+      apply store [SetProp (3,MinHeight,IntValue 50);SetProp (3,MaxHeight,IntValue 60)]; sync ();
+      check (float eps) "auto honors minimum" (50. *. scale) (height ());
+      apply store [RemoveProp (3,MinHeight);SetProp (3,MaxHeight,IntValue 20)]; sync ();
+      check (float eps) "auto honors maximum" (20. *. scale) (height ());
+      apply store [RemoveProp (3,MaxHeight);SetProp (3,HeightValue,IntValue 0);SetProp (3,PaddingVertical,IntValue 0)]; sync ();
+      check (float eps) "zero remains explicit" 0. (height ());
+      apply store [SetProp (3,HeightValue,StringValue "auto");SetProp (3,PaddingVertical,IntValue 7)]; sync ();
+      check (float eps) "auto restored without remount" (Float.round (33.5 *. scale)) (height ()))
+      [Input;TextField;SearchField]) [1.;2.]
+
 let () =
   run "lui_layout"
     [ ("layout",
@@ -2294,6 +2321,7 @@ let () =
          test_case "nested table and empty cells" `Quick test_table_nested_and_empty_cells;
          test_case "table cell content alignment" `Quick test_table_cell_content_alignment;
          test_case "dialog viewport width" `Quick test_dialog_viewport_width;
+         test_case "auto field height" `Quick test_auto_field_height;
          test_case "choice intrinsic size" `Quick test_choice_intrinsic_size;
          test_case "column padding/gap" `Quick test_column_padding_gap;
          test_case "button custom content" `Quick test_button_custom_content;

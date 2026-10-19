@@ -108,3 +108,18 @@ test('registered and cropped resources keep their source geometry',()=>{
   assert.equal(f.pixels.attributes.get('src'),'https://example.test/cover.png')
   assert.throws(()=>f.remove('url'),error=>error._1.includes('image requires image or url'))
 })
+
+
+test('authored auto image height retains intrinsic pixels and rejects other strings',()=>{
+  const f=fixture()
+  f.set([['width',70],['height','auto']])
+  assert.equal(f.box.styles.get('height'),'auto')
+  assert.equal(f.pixels.styles.get('height'),'auto')
+  assert.equal(f.pixels.styles.get('position'),'relative')
+  f.set([['height',52]])
+  assert.equal(f.pixels.styles.get('position'),'absolute')
+  f.set([['height','auto']])
+  assert.equal(f.pixels.styles.get('position'),'relative')
+  for(const value of ['inherit','AUTO','33.5px',''])
+    assert.throws(()=>f.set([['height',value]]),`reject unsupported height ${value}`)
+})

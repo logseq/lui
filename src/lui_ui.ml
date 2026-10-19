@@ -415,6 +415,7 @@ let border_width context node width = int_property context node BorderWidth widt
 let corner_radius context node radius = int_property context node CornerRadius radius
 let width context node width = int_property context node WidthValue width
 let height context node height = int_property context node HeightValue height
+let height_auto context node = string_property context node HeightValue "auto"
 let min_width context node width = int_property context node MinWidth width
 let max_width context node width = int_property context node MaxWidth width
 let min_height context node height = int_property context node MinHeight height

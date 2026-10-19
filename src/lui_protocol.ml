@@ -1549,6 +1549,7 @@ let property_value_supported property value =
   | CornerRadius, IntValue value -> value >= 0
   | WidthValue, IntValue value -> value >= 0
   | HeightValue, IntValue value -> value >= 0
+  | HeightValue, StringValue "auto" -> true
   | MinWidth, IntValue value -> value >= 0
   | MaxWidth, IntValue value -> value >= 0
   | MinHeight, IntValue value -> value >= 0

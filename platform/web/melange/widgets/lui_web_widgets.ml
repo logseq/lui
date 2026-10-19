@@ -124,7 +124,8 @@ let update_avatar renderer node dom_node =
 let update_avatar_bang = update_avatar
 
 let image_dimensions renderer node =
-  let present property=Store.property renderer.web_store node property<>None in
+  let present property=match Store.property renderer.web_store node property with
+    | None | Some (StringValue "auto") -> false | Some _ -> true in
   let axes=match Store.property renderer.web_store node ContainerRelativeFrameValue with
     | Some (StringValue value) -> value | _ -> "" in
   (present WidthValue || present WidthViewport || axes="horizontal" || axes="both",
