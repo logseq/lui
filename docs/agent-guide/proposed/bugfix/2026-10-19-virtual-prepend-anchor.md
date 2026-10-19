@@ -61,3 +61,19 @@ with explicit outside-project ocamlformat support. Whole-repository @fmt still
 reports existing Dune formatting differences and absent ocamlformat config;
 no unrelated files or Dune declarations are modified. The consumer integration,
 additional regression cohort, CI and production rollout remain separate gates.
+
+### CI reparenting correction
+
+CI39212575627 passes six jobs and 135 of 136 browser cases. The unchanged
+virtual-tree focus case fails because a virtual list moved into a new tree
+inherits the reading position of its old container when tree rows are inserted
+at the front. The same existing test reproduces this locally before correction.
+Only preserve a prepend anchor within the same retained parent; a reparent
+also cancels any pending correction. Do not special-case tree IDs or weaken
+the bounded-DOM assertion. Focus, explicit scroll and consumer regressions must
+pass again on this source before release.
+
+After this correction all eighteen Chromium virtual-list, tree-focus,
+prepend and Chat-scroll cases pass together, including the unchanged failing
+CI assertion. Melange/install compilation passes. Exact-head CI is still
+required; this local correction does not erase the original failed run.

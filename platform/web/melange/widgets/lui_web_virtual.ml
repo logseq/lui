@@ -71,6 +71,11 @@ let install renderer node ~materialize ~unmount =
        focused element — scroll-driven onChange ticks leave all three
        alone, so identical inputs skip the pass entirely. *)
     let last_roving_inputs = ref None in
+    let parent_scope () =
+      Option.bind (Store.node renderer.web_store node)
+        (fun current -> current.retained_parent)
+    in
+    let last_parent_scope = ref (parent_scope ()) in
     let same_element a b =
       match (a, b) with
       | None, None -> true
@@ -438,7 +443,11 @@ let install renderer node ~materialize ~unmount =
     let refresh () =
       if not !disposed then begin
         (* Preserve measured retained identity only for a prepend. A later
-           append must not keep compensating geometry for an older change. *)
+           append or reparent must not inherit an older reading position. *)
+        let current_parent_scope = parent_scope () in
+        let same_parent = current_parent_scope = !last_parent_scope in
+        last_parent_scope := current_parent_scope;
+        if not same_parent then Lui_web_virtual_anchor.cancel reading_anchor;
         let previous_sequence = !sequence in
         let previous_first =
           if Array.length !rows = 0 then None else Some !rows.(0)
@@ -448,7 +457,7 @@ let install renderer node ~materialize ~unmount =
         if previous_sequence != !sequence then begin
           Lui_web_virtual_anchor.cancel reading_anchor;
           match Option.bind previous_first (Hashtbl.find_opt positions) with
-          | Some index when index > 0 ->
+          | Some index when index > 0 && same_parent ->
               Lui_web_virtual_anchor.preserve reading_anchor anchor
           | _ -> ()
         end;
