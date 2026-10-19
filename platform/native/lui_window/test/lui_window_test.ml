@@ -3681,6 +3681,32 @@ let test_control_keyboard_ownership () =
   Alcotest.(check int) "a single available control retains Tab focus" 3 (Ui.focused ui);
   Alcotest.(check bool) "wrapped Tab is still owned by focus navigation" true !consumed
 
+let test_anchored_popover_handoff () =
+  let asm=assembly_of
+    [CreateNode (1,Root);CreateNode (3,Button);InsertChild (1,3,0);
+     CreateNode (2,Button);InsertChild (1,2,1);
+     SetProp (2,AccessibilityIdentifier,StringValue "help-trigger")] in
+  let store=Assembly.store asm and ui=Assembly.ui asm and generation=ref 1 in
+  let apply ops=
+    incr generation;
+    Lui_store.apply_batch store {generation= !generation;ops};
+    ignore (Assembly.store_changed asm) in
+  Ui.set_focused ~kbd:true ui store 2;
+  apply [CreateNode (10,Popover);InsertChild (1,10,2);
+    SetProp (10,RoleValue,StringValue "dialog");
+    SetProp (10,AnchorTarget,StringValue "help-trigger");
+    CreateNode (11,Button);InsertChild (10,11,0);
+    SetProp (11,PressEnabled,BoolValue true)];
+  Alcotest.(check int) "anchored popover preserves its trigger until keyboard navigation" 2 (Ui.focused ui);
+  ignore (Assembly.handle asm (key Input.Tab));
+  Alcotest.(check int) "Tab enters the anchored action" 11 (Ui.focused ui);
+  apply [DropNode 10;CreateNode (20,Popover);InsertChild (1,20,2)];
+  Alcotest.(check int) "handoff retains the live trigger while the next surface loads" 2 (Ui.focused ui);
+  apply [CreateNode (21,SearchField);InsertChild (20,21,0);SetProp (21,Autofocus,BoolValue true)];
+  Alcotest.(check int) "the asynchronous surface receives focus" 21 (Ui.focused ui);
+  apply [DropNode 20];
+  Alcotest.(check int) "closing the asynchronous surface returns to the original trigger" 2 (Ui.focused ui)
+
 let test_action_menu_focus () =
   List.iter (fun (origin,kbd) ->
     let asm = assembly_of
@@ -4791,6 +4817,7 @@ let () =
           Alcotest.test_case "nested popover focus return" `Quick test_nested_popover_focus_return;
           Alcotest.test_case "async popover focus return" `Quick test_async_popover_focus_return;
           Alcotest.test_case "control keyboard ownership" `Quick test_control_keyboard_ownership;
+          Alcotest.test_case "anchored popover handoff" `Quick test_anchored_popover_handoff;
           Alcotest.test_case "appear once" `Quick test_appear_once;
           Alcotest.test_case "autofocus" `Quick test_autofocus;
           Alcotest.test_case "modal focus scope" `Quick

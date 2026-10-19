@@ -210,7 +210,9 @@ let sync store st ~focused ~kbd ~keyboard =
             then found := true);
         !found
     in
-    let focus_owned = ov_modal || Option.is_some action_focus || autofocus in
+    let anchored = Lui_query.kind_name store ov_id = "popover"
+      && Option.is_some (Lui_store.string_prop store ov_id "anchor-target") in
+    let focus_owned = ov_modal || Option.is_some action_focus || autofocus || anchored in
     let outside =
       focused <> 0 && focused <> ov_id
       && not (Lui_query.is_desc store focused ov_id)
