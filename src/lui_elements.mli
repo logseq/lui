@@ -1596,6 +1596,10 @@ val resizable :
 (** A horizontal split controlled by either [value] (a track fraction) or
     [first_width] (logical pixels, native OCaml and Web backends).
     These inputs are mutually exclusive.
+    [gap] reserves layout space between panes. [resize_handle_width] controls
+    the independent hit area; by default it uses the gap, or three logical
+    pixels for a zero gap. [resize_handle_offset] moves its center from the
+    gap center toward the second pane, without changing either pane width.
     [on_resize] reports [ValueChanged] in the units of the chosen input.
     Pane minima and maxima constrain user resizing; controlled closure may
     reach zero so opening and closing animations can complete. *)
@@ -1643,6 +1647,10 @@ val split :
   ?value_signal:float Signal.signal ->
   ?first_width:float ->
   ?first_width_signal:float Signal.signal ->
+  ?resize_handle_width:int ->
+  ?resize_handle_width_signal:int Signal.signal ->
+  ?resize_handle_offset:float ->
+  ?resize_handle_offset_signal:float Signal.signal ->
   ?resize_duration:int ->
   ?resize_easing:resize_easing ->
   ?resize_origin:float ->

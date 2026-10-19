@@ -122,6 +122,8 @@ let prop_coverage =
     ("resize-duration", Host);
     ("resize-easing", Host);
     ("resize-origin", Host);
+    ("resize-handle-width", Host);
+    ("resize-handle-offset", Host);
     ("theme", Host); (* input to the host color resolver *)
     ("theme-mode", Host);
     ("key", Layout); (* node identity *)

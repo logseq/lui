@@ -1770,6 +1770,16 @@
       "lg": "AnchorRect",
       "wire": "anchor-rect",
       "swift": "anchorRect"
+    },
+    {
+      "lg": "ResizeHandleWidth",
+      "wire": "resize-handle-width",
+      "swift": "resizeHandleWidth"
+    },
+    {
+      "lg": "ResizeHandleOffset",
+      "wire": "resize-handle-offset",
+      "swift": "resizeHandleOffset"
     }
   ],
   "events": [

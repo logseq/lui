@@ -117,7 +117,7 @@ test('pixel split drag and keyboard use pixel events, clamp endpoints and retain
     assert.equal(events.at(-1)._1, 240, 'Home reaches the drag minimum')
     key('End')
     assert.equal(events.at(-1)._1, 460, 'End reaches the drag maximum')
-    input.get('mousedown')({button: 0, preventDefault() {}})
+    input.get('mousedown')({button: 0, clientX: 461.5, preventDefault() {}})
     listeners.get('mousemove')({clientX: 301.5})
     assert.equal(events.at(-1)._1, 300)
     listeners.get('mousemove')({clientX: -100})
@@ -129,5 +129,54 @@ test('pixel split drag and keyboard use pixel events, clamp endpoints and retain
     assert.equal(panes.style.values.get('transition-property'), 'grid-template-columns', 'Parent resize keeps a fixed-width transition running')
   } finally {
     globalThis.ResizeObserver = previousObserver
+  }
+})
+
+
+test('overlay split handles keep zero layout gap, authored hit geometry and pointer grab offsets', () => {
+  for (const name of ['resize-handle-width', 'resize-handle-offset']) {
+    assert.ok(Array.from(function* () {for (let p = Schema.all_properties; p; p = p.tl) yield Schema.property_name(p.hd)}()).includes(name),
+      `The shared split protocol must expose ${name}`)
+  }
+  for (const offset of [0.5, 2.5]) {
+    for (const grip of [-1.4, 0, 1.4]) {
+      const store = Store.create_store(), events = [], listeners = new Map(), input = new Map()
+      const panes = element([element([]), element([])]), divider = element([]), root = element([panes, divider])
+      root.clientWidth = 1000
+      root.getBoundingClientRect = () => ({left: 0, width: 1000})
+      divider.addEventListener = (key, fn) => input.set(key, fn)
+      const renderer = {web_store: store, web_document: {addEventListener: (key, fn) => listeners.set(key, fn), removeEventListener() {}},
+        web_splits: Hash.create(undefined, 4), web_cleanups: Hash.create(undefined, 4),
+        web_event_handler: {contents: event => events.push(event)}}
+      Store.apply_batch(store, () => root, {generation: 1, ops: list([
+        Protocol.create_node_op(1, kind('split')), Protocol.create_node_op(2, kind('box')),
+        Protocol.create_node_op(3, kind('box')), Protocol.insert_child_op(1, 2, 0), Protocol.insert_child_op(1, 3, 1),
+        set(1, 'gap', 0), floatSet(1, 'first-pane-width', 246), set(1, 'resize-handle-width', 3),
+        floatSet(1, 'resize-handle-offset', offset),
+      ])})
+      const previous = globalThis.ResizeObserver
+      globalThis.ResizeObserver = class {observe() {} disconnect() {}}
+      try {
+        Split.reconcile_split(renderer, 1, root, 246)
+        Split.attach_split_events(renderer, 1, root)
+        assert.equal(panes.style.values.get('column-gap'), '0px')
+        assert.equal(divider.style.values.get('width'), '3px')
+        const x = 246 + offset + grip
+        input.get('mousedown')({button: 0, clientX: x, preventDefault() {}})
+        listeners.get('mousemove')({clientX: x})
+        assert.equal(events.at(-1)?._1 ?? 246, 246, 'Grabbing any point must not shift the split')
+        listeners.get('mousemove')({clientX: x + 20})
+        assert.ok(Math.abs(events.at(-1)._1 - 266) < 1e-8, 'Dragging preserves the pointer grab offset')
+        listeners.get('mouseup')({})
+        input.get('keydown')({key: 'ArrowRight', preventDefault() {}})
+        assert.ok(Math.abs(events.at(-1)._1 - 316) < 1e-8, 'Keyboard resizing uses the whole divider-free track')
+        Store.apply_batch(store, () => root, {generation: 2, ops: list([
+          Protocol.remove_prop_op(1, property('resize-handle-width')),
+          Protocol.remove_prop_op(1, property('resize-handle-offset')), set(1, 'gap', 9),
+        ])})
+        Split.render_split(renderer, 1, root, 246, false)
+        assert.equal(divider.style.values.get('width'), '9px', 'Removing authored handle geometry restores the gap-sized handle')
+      } finally {globalThis.ResizeObserver = previous}
+    }
   }
 })

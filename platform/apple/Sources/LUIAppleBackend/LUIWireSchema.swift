@@ -271,6 +271,8 @@ enum LUIProperty: String, Decodable, Hashable {
     case submitOnBlur = "submit-on-blur"
     case anchorAlignmentOffset = "anchor-alignment-offset"
     case anchorRect = "anchor-rect"
+    case resizeHandleWidth = "resize-handle-width"
+    case resizeHandleOffset = "resize-handle-offset"
 }
 
 enum LUISchemaMatrix {

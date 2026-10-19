@@ -43,6 +43,8 @@ let split_child_width renderer node index property =
    render, and every clientWidth read after a style write forced layout. *)
 type split_geometry = {
   geo_gap : int;
+  geo_handle_width : float;
+  geo_handle_offset : float;
   geo_first_min : float;
   geo_second_min : float;
   geo_first_max : float option;
@@ -52,7 +54,13 @@ type split_geometry = {
 
 let split_geometry renderer node root =
   let gap = split_int_property renderer node Gap 9 in
+  let handle_width=match Store.property renderer.web_store node ResizeHandleWidth with
+    | Some (IntValue value) -> Some (float_of_int value) | _ -> None in
+  let handle_offset=match Store.property renderer.web_store node ResizeHandleOffset with
+    | Some (FloatValue value) -> value | _ -> 0. in
   { geo_gap = gap;
+    geo_handle_width = Lui_split_geometry.handle_width ~gap:(float_of_int gap) handle_width;
+    geo_handle_offset = handle_offset;
     geo_first_min = Option.value (split_child_width renderer node 0 MinWidth) ~default:0.;
     geo_second_min = Option.value (split_child_width renderer node 1 MinWidth) ~default:0.;
     geo_first_max = split_child_width renderer node 0 MaxWidth;
@@ -124,8 +132,13 @@ let render_split renderer node root value animated =
   in
   set_style panes "grid-template-columns" columns;
   set_style panes "column-gap" (string_of_int geometry.geo_gap ^ "px");
-  set_style divider "left" first_track;
-  set_style divider "width" (string_of_int geometry.geo_gap ^ "px");
+  let handle_delta=Lui_split_geometry.handle_start ~first:0. ~gap:gap_float
+    ~width:geometry.geo_handle_width ~offset:geometry.geo_handle_offset in
+  let handle_left=if handle_delta=0. then first_track else
+    "calc(" ^ first_track ^ (if handle_delta<0. then " - " else " + ")
+      ^ float_string (Float.abs handle_delta) ^ "px)" in
+  set_style divider "left" handle_left;
+  set_style divider "width" (float_string geometry.geo_handle_width ^ "px");
   W.Element.setAttribute "aria-valuenow" (float_string value) divider
 
 let render_split_bang = render_split
@@ -206,7 +219,7 @@ let update_splits_under_bang = update_splits_under
 let attach_split_events renderer node root =
   let divider = Util.child_element root 1 in
   let document = renderer.web_document in
-  let dragging = ref false in
+  let dragging = ref false and grab_offset = ref 0. in
   let adjust delta =
     let current =
       match Hashtbl.find_opt renderer.web_splits node with
@@ -233,7 +246,7 @@ let attach_split_events renderer node root =
         Float.of_int (W.MouseEvent.clientX event) -. W.DomRect.left bounds
       in
       let raw =
-        (pointer -. (Float.of_int gap /. 2.0)) /. Float.max available 1.0
+        (pointer -. (Float.of_int gap /. 2.0) -. !grab_offset) /. Float.max available 1.0
       in
       let current = effective_split_fraction renderer node raw in
       let current = if split_uses_pixels renderer node then current *. available else current in
@@ -255,6 +268,15 @@ let attach_split_events renderer node root =
     (fun event ->
        if W.MouseEvent.button event = 0 then begin
          W.MouseEvent.preventDefault event;
+         let bounds=W.Element.getBoundingClientRect root in
+         let geometry=split_geometry renderer node root in
+         let current=match Hashtbl.find_opt renderer.web_splits node with
+           | Some state -> state.web_split_current
+           | None -> split_progress_source renderer node in
+         let first=if split_uses_pixels renderer node then current else
+           current *. float_of_int geometry.geo_available in
+         grab_offset := float_of_int (W.MouseEvent.clientX event) -. W.DomRect.left bounds
+           -. first -. (float_of_int geometry.geo_gap /. 2.);
          dragging := true
        end)
     divider;

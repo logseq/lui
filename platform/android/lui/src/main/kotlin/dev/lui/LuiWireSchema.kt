@@ -278,6 +278,8 @@ enum class LuiProperty(val wireName: String) {
     submitOnBlur("submit-on-blur"),
     anchorAlignmentOffset("anchor-alignment-offset"),
     anchorRect("anchor-rect"),
+    resizeHandleWidth("resize-handle-width"),
+    resizeHandleOffset("resize-handle-offset"),
     ;
 
     companion object {

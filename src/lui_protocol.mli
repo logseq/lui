@@ -290,6 +290,8 @@ type property =
   | SubmitOnBlur
   | AnchorAlignmentOffset
   | AnchorRect
+  | ResizeHandleWidth
+  | ResizeHandleOffset
 
 module Property_map : Map.S with type key = property
 

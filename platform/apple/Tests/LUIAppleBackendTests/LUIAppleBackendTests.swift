@@ -876,6 +876,35 @@ struct LUISwiftUIBackendTests {
         #expect(backend.model(id: 1)?.property(.textAlignment)?.stringValue == "center")
     }
 
+    @Test("split resize handles do not consume pane spacing")
+    func acceptsIndependentSplitHandles() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"split"},
+          {"op":"create-node","id":2,"kind":"box"},
+          {"op":"create-node","id":3,"kind":"box"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1},
+          {"op":"set-prop","id":1,"property":"gap","value":0},
+          {"op":"set-prop","id":1,"property":"value","value":0.6},
+          {"op":"set-prop","id":1,"property":"resize-handle-width","value":3},
+          {"op":"set-prop","id":1,"property":"resize-handle-offset","value":2.5}
+        ]}
+        """)
+        let width = try #require(LUIProperty(rawValue: "resize-handle-width"))
+        let offset = try #require(LUIProperty(rawValue: "resize-handle-offset"))
+        #expect(backend.model(id: 1)?.property(width)?.intValue == 3)
+        #expect(backend.model(id: 1)?.property(offset)?.doubleValue == 2.5)
+        #expect(throws: LUIBackendError.invalidBatch("unsupported property value")) {
+            try backend.apply(json: """
+            {"generation":2,"ops":[
+              {"op":"set-prop","id":1,"property":"resize-handle-width","value":0}
+            ]}
+            """)
+        }
+    }
+
     @Test("navigation list roles do not require tree ancestry")
     func acceptsNavigationListRoles() throws {
         let backend = LUIAppleBackend()

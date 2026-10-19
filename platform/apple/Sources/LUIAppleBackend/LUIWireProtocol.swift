@@ -154,6 +154,9 @@ enum LUIWireValue: Decodable, Equatable {
              .expanded, .enabled, .inert, .navigateEnabled,
              .scrollAnimated, .trackVisibleRange:
             return boolValue != nil
+        case .resizeHandleWidth:
+            guard let value = intValue else { return false }
+            return value > 0
         case .firstPaneWidth:
             guard let value = doubleValue else { return false }
             return value.isFinite && value >= 0
@@ -170,7 +173,7 @@ enum LUIWireValue: Decodable, Equatable {
         case .resizeEasing:
             guard let value = stringValue else { return false }
             return ["linear", "standard", "emphasized", "spring"].contains(value)
-        case .resizeOrigin, .sourceX, .sourceY, .sourceWidth, .sourceHeight,
+        case .resizeHandleOffset, .resizeOrigin, .sourceX, .sourceY, .sourceWidth, .sourceHeight,
              .anchorOffset, .anchorAlignmentOffset:
             guard let value = doubleValue else { return false }
             return value.isFinite
@@ -1181,7 +1184,7 @@ struct LUIRetainedTree {
             kind == .progress || kind == .slider || kind == .numberStepper ||
                 kind == .split
         case .firstPaneWidth: false
-        case .resizeDuration, .resizeEasing, .resizeOrigin: kind == .split
+        case .resizeDuration, .resizeEasing, .resizeOrigin, .resizeHandleWidth, .resizeHandleOffset: kind == .split
         case .orientation:
             kind == .divider || kind == .tabs || kind == .scroll ||
                 kind == .viewThatFits

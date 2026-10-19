@@ -292,6 +292,8 @@ type property =
   | SubmitOnBlur
   | AnchorAlignmentOffset
   | AnchorRect
+  | ResizeHandleWidth
+  | ResizeHandleOffset
 
 module Property_map =
   Map.Make
@@ -1117,7 +1119,7 @@ let common_property_supported kind property =
   | TrackVisibleRange -> kind = ListContainer
   | EdgeValue -> kind = SwipeAction || kind = EdgeInset
   | ResizeDuration | ResizeEasing | ResizeOrigin -> kind = Split
-  | FirstPaneWidth -> kind = Split
+  | FirstPaneWidth | ResizeHandleWidth | ResizeHandleOffset -> kind = Split
   | MinValue | MaxValue | StepValue -> kind = NumberStepper
   | Detents | Sizing -> kind = Sheet
   | ThemeValue | ThemeMode -> can_contain_children kind
@@ -1612,6 +1614,8 @@ let property_value_supported property value =
     || value = "spring"
   | ResizeOrigin, FloatValue value -> is_finite value
   | FirstPaneWidth, FloatValue value -> is_finite value && value >= 0.
+  | ResizeHandleWidth, IntValue value -> value > 0
+  | ResizeHandleOffset, FloatValue value -> is_finite value
   | ThemeValue, StringValue _ -> true
   | ThemeMode, StringValue value -> theme_mode_supported value
   | KeyValue, StringValue _ -> true

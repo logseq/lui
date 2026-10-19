@@ -4483,6 +4483,33 @@ let test_split_pointer_pixels () =
     Alcotest.(check (option (float 0.00001))) "pixel resize respects maximum on release" (Some 460.) (resized 1 acts))
     [1.;2.]
 
+let test_split_overlay_handle () =
+  let property name =
+    let found=List.find_opt (fun p -> Lui_wire_schema.property_name p=name) Lui_wire_schema.all_properties in
+    Alcotest.(check bool) ("Shared split property exists: "^name) true (Option.is_some found);
+    Option.get found in
+  let handle_width=property "resize-handle-width" and handle_offset=property "resize-handle-offset" in
+  List.iter (fun scale -> List.iter (fun pixels -> List.iter (fun offset ->
+    List.iter (fun grip ->
+      let store=store_of [CreateNode (1,Split);CreateNode (2,Column);CreateNode (3,Column);
+        InsertChild (1,2,0);InsertChild (1,3,1);SetProp(1,Gap,IntValue 0);
+        SetProp(1,handle_width,IntValue 3);SetProp(1,handle_offset,FloatValue offset);
+        (if pixels then SetProp(1,FirstPaneWidth,FloatValue 246.) else SetProp(1,ProgressValue,FloatValue 0.246))] in
+      let rects=Rects.create () in
+      List.iter (fun (id,x,w) -> Hashtbl.replace rects id (rect (x*.scale) (40.*.scale) (w*.scale) (600.*.scale)))
+        [1,50.,1000.;2,50.,246.;3,296.,754.];
+      let ui=Ui.create () in Ui.set_scale ui scale;
+      let input event=Ui.handle ui store rects event in
+      let x=296.+.offset+.grip and y=100. in
+      ignore (input (Input.Button_down(x,y,Input.Left,1,Input.mods_none)));
+      Alcotest.(check (option (float 0.00001))) "Grabbing an overlay handle does not move the boundary" None
+        (resized 1 (input (Input.Move(x,y))));
+      let expected=if pixels then 266. else 0.266 in
+      Alcotest.(check (option (float 0.00001))) "Overlay handle drag preserves its grab offset at either scale" (Some expected)
+        (resized 1 (input (Input.Move(x+.20.,y))));
+      ignore (input (Input.Button_up(x+.20.,y,Input.Left,Input.mods_none)))) [-1.4;0.;1.4])
+    [0.5;2.5]) [false;true]) [1.;2.]
+
 let test_split_pointer_minimums () =
   List.iter
     (fun scale ->
@@ -4672,6 +4699,7 @@ let () =
       ( "split resize",
         [ Alcotest.test_case "pointer feedback" `Quick test_split_pointer_resize;
           Alcotest.test_case "pixel pane resize" `Quick test_split_pointer_pixels;
+          Alcotest.test_case "overlay handle" `Quick test_split_overlay_handle;
           Alcotest.test_case "pane minimums" `Quick test_split_pointer_minimums;
           Alcotest.test_case "capture admission" `Quick test_split_pointer_admission;
           Alcotest.test_case "nested scaled track" `Quick test_nested_split_pointer_resize ] );

@@ -7912,7 +7912,8 @@ private struct LUISplitView: View {
     private var splitContent: some View {
         // NavigationSplitView owns a ScrollView; nested inside scrolling
         // content it fails to lay out, so the manual layout renders instead.
-        if insideScroll {
+        if insideScroll || model.property(.resizeHandleWidth) != nil
+            || model.property(.resizeHandleOffset) != nil {
             manualSplit
         } else if navSplitEligible {
             // The split renders as a NavigationSplitView so the divider,
@@ -8116,6 +8117,9 @@ private struct LUISplitView: View {
     private var manualSplit: some View {
         GeometryReader { geometry in
             let gap = max(CGFloat(model.splitGap), 0)
+            let handleWidth = model.property(.resizeHandleWidth)?.intValue.map(CGFloat.init)
+                ?? (gap > 0 ? gap : 3)
+            let handleOffset = CGFloat(model.property(.resizeHandleOffset)?.doubleValue ?? 0)
             let available = max(geometry.size.width - gap, 0)
             let firstID = model.children.first
             let secondID = model.children.dropFirst().first
@@ -8143,9 +8147,9 @@ private struct LUISplitView: View {
                 }
 
                 Color.clear
-                    .frame(width: gap, height: geometry.size.height)
+                    .frame(width: handleWidth, height: geometry.size.height)
                     .contentShape(Rectangle())
-                    .offset(x: firstWidth)
+                    .offset(x: firstWidth + gap / 2 - handleWidth / 2 + handleOffset)
                     .gesture(
                         DragGesture()
                             .onChanged { value in
