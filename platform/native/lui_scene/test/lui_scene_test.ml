@@ -234,9 +234,23 @@ let test_snapped_rect_allocation () =
   fcheck "negative width stays clamped" 0. negative.w;
   fcheck "negative height stays clamped" 0. negative.h
 
+let test_parallel_image_ids () =
+  let workers=4 and count=20000 in
+  let ready=Atomic.make 0 in
+  let pixels=Bytes.make 4 '\255' in
+  let tasks=Array.init workers (fun _ -> Domain.spawn (fun () ->
+    ignore (Atomic.fetch_and_add ready 1);
+    while Atomic.get ready<workers do Domain.cpu_relax () done;
+    Array.init count (fun _ -> (new_image ~w:1 ~h:1 pixels).iid))) in
+  let seen=Hashtbl.create (workers*count) in
+  Array.iter (fun task -> Array.iter (fun id -> Hashtbl.replace seen id ()) (Domain.join task)) tasks;
+  Alcotest.(check int) "concurrent decoded images have unique texture identities"
+    (workers*count) (Hashtbl.length seen)
+
 let () =
   Alcotest.run "lui_scene"
-    [ ( "snap",
+    [ ("images",[Alcotest.test_case "parallel identities" `Quick test_parallel_image_ids]);
+      ( "snap",
         [ Alcotest.test_case "intersection allocation" `Quick test_rect_intersections;
           Alcotest.test_case "coordinate" `Quick test_snap;
           Alcotest.test_case "rect edges" `Quick test_rect_snap;

@@ -438,10 +438,10 @@ type image = {
   ipix : Bytes.t; (* premultiplied RGBA, 4*W per row *)
 }
 
-let last_image_id = ref 0
+let last_image_id = Atomic.make 0
 let new_image ~w ~h pix =
-  incr last_image_id;
-  { iid = !last_image_id; iversion = 1; iw = w; ih = h; ipix = pix }
+  let iid = Atomic.fetch_and_add last_image_id 1 + 1 in
+  { iid; iversion = 1; iw = w; ih = h; ipix = pix }
 let image_changed i = i.iversion <- i.iversion + 1
 
 (* Ops — the display list, in paint order. *)
