@@ -188,7 +188,7 @@ body {
   }
 
   .lui-table {
-    @apply w-full table-fixed border-collapse;
+    @apply w-full table-auto border-collapse;
   }
 
   .lui-table-row {

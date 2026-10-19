@@ -1026,12 +1026,15 @@ let table_row ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal
   mount_children context node children;
   node
 
-let table_cell ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?text ?text_signal ?size ?text_alignment ?on_press ?on_press_detail ?on_pointer_down ?on_pointer_up ?on_context_menu ?transition (children : t list) : table_cell_el =
+let table_cell ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?text ?text_signal ?font_size ?font_weight ?line_height ?size ?text_alignment ?on_press ?on_press_detail ?on_pointer_down ?on_pointer_up ?on_context_menu ?transition (children : t list) : table_cell_el =
  fun context parent ->
   let node = Lui_ui.table_cell context in
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~margin ~margin_horizontal ~margin_vertical ~margin_top ~margin_right ~margin_bottom ~margin_left ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave ~transition;
   Option.iter (Lui_ui.string_property context node TextValue) text;
   Option.iter (Lui_ui.string_property_signal context node TextValue) text_signal;
+  Option.iter (Lui_ui.string_property context node FontSize) font_size;
+  Option.iter (Lui_ui.int_property context node FontWeight) font_weight;
+  Option.iter (Lui_ui.string_property context node LineHeight) line_height;
   Option.iter (Lui_ui.string_property context node SizeValue) (Option.map cell_size_value size);
   Option.iter (Lui_ui.string_property context node TextAlignment) (Option.map text_alignment_value text_alignment);
   (match on_press with

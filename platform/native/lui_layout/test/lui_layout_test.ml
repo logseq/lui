@@ -45,6 +45,130 @@ let check_some_rect msg x y w h = function
   | Some r -> check_rect msg x y w h r
   | None -> fail (msg ^ ": expected a rect")
 
+(* All rows participate in one table column sizing pass. *)
+let table_store () =
+  let store = Lui_store.create () in
+  apply store
+    [ CreateNode (1, Root); CreateNode (10, Table);
+      CreateNode (20, TableRow); CreateNode (30, TableRow);
+      InsertChild (1, 10, 0); InsertChild (10, 20, 0);
+      InsertChild (10, 30, 1) ];
+  List.iter
+    (fun (row, index, cell, label, value) ->
+      apply store
+        [ CreateNode (cell, TableCell); CreateNode (label, Text);
+          InsertChild (row, cell, index); InsertChild (cell, label, 0);
+          SetProp (label, TextValue, StringValue value);
+          SetProp (cell, GrowValue, FloatValue 1.) ])
+    [20, 0, 21, 121, "80"; 20, 1, 22, 122, "20";
+     30, 0, 31, 131, "40"; 30, 1, 32, 132, "60"];
+  store
+
+let table_measure scale _id text offered_w _offered_h =
+  let natural = float_of_string text *. scale in
+  let width = if Float.is_finite offered_w && offered_w > 0.
+    then min natural offered_w else natural in
+  Some (width, 20. *. scale *. ceil (natural /. max 1. width))
+
+let check_table_columns layout scale first second =
+  let rect id = Option.get (Lui_layout.rect layout id) in
+  let a = rect 21 and b = rect 22 and c = rect 31 and d = rect 32 in
+  check (float eps) "first column shared" a.w c.w;
+  check (float eps) "second column shared" b.w d.w;
+  check (float eps) "column boundary shared" b.x d.x;
+  check (float eps) "first column content share" (Float.round (first *. scale)) a.w;
+  check (float eps) "second column content share" (Float.round ((first +. second) *. scale) -. Float.round (first *. scale)) b.w;
+  check (float eps) "columns touch" (a.x +. a.w) b.x
+
+let test_table_shared_columns () =
+  List.iter (fun scale ->
+    let store = table_store () in
+    let layout = Lui_layout.create () in
+    let measure = table_measure scale in
+    let sync width = Lui_layout.sync ~scale ~measure
+      ~width:(width *. scale) ~height:(400. *. scale) layout store in
+    sync 280.;
+    check_table_columns layout scale 160. 120.;
+    sync 140.;
+    check_table_columns layout scale 80. 60.;
+    sync 70.;
+    check_table_columns layout scale 40. 30.;
+    check bool "narrow rows grow to wrapped content" true
+      ((Option.get (Lui_layout.rect layout 20)).h >= 40. *. scale);
+    apply store [SetProp (122, TextValue, StringValue "120")];
+    sync 280.;
+    check_table_columns layout scale 112. 168.;
+    apply store [SetProp (31, MinWidth, IntValue 140)];
+    sync 280.;
+    check_table_columns layout scale (280. *. 140. /. 260.) (280. *. 120. /. 260.);
+    sync 200.;
+    check_table_columns layout scale 140. 60.) [1.; 2.]
+
+let test_table_structure_and_memo () =
+  let store = table_store () in
+  let layout = Lui_layout.create () in
+  let natural_calls = ref 0 in
+  let measure id text w h =
+    if Float.is_nan w then incr natural_calls;
+    table_measure 1. id text w h in
+  let sync width = Lui_layout.sync ~measure ~width ~height:400. layout store in
+  sync 280.;
+  let before = !natural_calls in
+  for _ = 1 to 10 do sync 280. done;
+  check int "idle does not measure" before !natural_calls;
+  sync 560.;
+  check int "resize reuses natural column sizes" before !natural_calls;
+  check_table_columns layout 1. 320. 240.;
+  apply store [SetProp (30, DisplayValue, StringValue "none")];
+  sync 280.;
+  check_some_rect "hidden row changes column maxima" 0. 0. 224. 20.
+    (Lui_layout.rect layout 21);
+  check bool "hidden row has no geometry" true (Lui_layout.rect layout 30 = None);
+  apply store [RemoveProp (30, DisplayValue); RemoveChild (30, 32)];
+  sync 280.;
+  check (float eps) "ragged row keeps shared first column"
+    (Option.get (Lui_layout.rect layout 21)).w
+    (Option.get (Lui_layout.rect layout 31)).w;
+  apply store [RemoveChild (10, 20); RemoveChild (10, 30)];
+  sync 280.;
+  check_some_rect "empty table" 0. 0. 280. 0. (Lui_layout.rect layout 10)
+
+let test_table_nested_and_empty_cells () =
+  let store = table_store () in
+  apply store
+    [ RemoveChild (21, 121); CreateNode (40, Table);
+      CreateNode (50, TableRow); CreateNode (51, TableCell);
+      CreateNode (52, TableCell); InsertChild (21, 40, 0);
+      InsertChild (40, 50, 0); InsertChild (50, 51, 0);
+      InsertChild (50, 52, 1); InsertChild (51, 121, 0);
+      SetProp (21, PaddingValue, IntValue 5) ];
+  let layout = Lui_layout.create () in
+  let measure = table_measure 1. in
+  let sync width = Lui_layout.sync ~measure ~width ~height:400. layout store in
+  sync 300.;
+  check_table_columns layout 1. 180. 120.;
+  let cell = Option.get (Lui_layout.rect layout 21) in
+  let nested = Option.get (Lui_layout.rect layout 40) in
+  let leaf = Option.get (Lui_layout.rect layout 51) in
+  check (float eps) "nested table fills cell content" (cell.w -. 10.) nested.w;
+  check (float eps) "empty column remains finite" nested.w leaf.w;
+  sync 150.;
+  check_table_columns layout 1. 90. 60.;
+  check (float eps) "nested table resizes with outer table" 80.
+    (Option.get (Lui_layout.rect layout 51)).w
+
+let test_table_cell_content_alignment () =
+  let store = table_store () in
+  apply store [SetProp (122, HeightValue, IntValue 40);
+    SetProp (22, TextAlignment, StringValue "end")];
+  let layout = Lui_layout.create () in
+  Lui_layout.sync ~measure:(table_measure 1.) ~width:280. ~height:400. layout store;
+  let left = Option.get (Lui_layout.rect layout 121)
+  and right = Option.get (Lui_layout.rect layout 122) in
+  check (float eps) "short content is vertically centered" 10. left.y;
+  check (float eps) "cell aligns its inline content to the trailing edge" 260. right.x;
+  check (float eps) "inline content retains its natural width" 20. right.w
+
 (* Column container with padding 10, gap 5, two 20-high children. *)
 let test_column_padding_gap () =
   let store = Lui_store.create () in
@@ -2141,7 +2265,11 @@ let test_choice_intrinsic_size () =
 let () =
   run "lui_layout"
     [ ("layout",
-       [ test_case "dialog viewport width" `Quick test_dialog_viewport_width;
+       [ test_case "table shared columns" `Quick test_table_shared_columns;
+         test_case "table structure and memo" `Quick test_table_structure_and_memo;
+         test_case "nested table and empty cells" `Quick test_table_nested_and_empty_cells;
+         test_case "table cell content alignment" `Quick test_table_cell_content_alignment;
+         test_case "dialog viewport width" `Quick test_dialog_viewport_width;
          test_case "choice intrinsic size" `Quick test_choice_intrinsic_size;
          test_case "column padding/gap" `Quick test_column_padding_gap;
          test_case "button custom content" `Quick test_button_custom_content;

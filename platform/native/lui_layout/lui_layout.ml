@@ -97,6 +97,13 @@ type pkid = { raw : int; mutable gens : int list }
    [pkids]. Real store ids are >= 0. *)
 let frame_id = -1
 
+type table = {
+  mutable rows : int array array;
+  mutable natural : float array option;
+  mutable minima : float array;
+  mutable assigned_width : float;
+}
+
 type t = {
   mutable root : Lui_flex.node option;
   (* The mirror is persistent: maps below live across syncs and the
@@ -123,6 +130,7 @@ type t = {
   (* Produced store id → owner: the store id whose flex node is its
      flex parent ([frame_id] for frame children). *)
   owner : (int, int) Hashtbl.t;
+  tables : (int, table) Hashtbl.t;
   grids : (int * Lui_flex.node * Lui_flex.style * float) list ref;
   popups : (Lui_flex.node * int) list ref;
   mutable extent : float * float; (* frame extent the last layout used *)
@@ -164,6 +172,7 @@ let create () =
     pkids = Hashtbl.create 64;
     sparent = Hashtbl.create 64;
     owner = Hashtbl.create 64;
+    tables = Hashtbl.create 4;
     grids = ref [];
     popups = ref [];
     extent = (0., 0.);
@@ -542,7 +551,7 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
       justify_content =
         (match pstr store id "main" with
          | Some s -> justify_of_string s
-         | None -> d.justify_content);
+         | None -> if kind = "table-cell" then Justify_center else d.justify_content);
       align_items =
         (match pstr store id "cross" with
          | Some s -> align_of_string s
@@ -554,6 +563,10 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
            | "button" | "toggle-button" | "menu-item" | "list-item"
            | "button-group" | "toggle-group" | "input-group-actions"
            | "breadcrumb" | "pagination" | "toolbar" -> Align_center
+           | "table-cell" -> (match pstr store id "text-alignment" with
+               | Some "end" -> Align_flex_end
+               | Some "center" -> Align_center
+               | _ -> Align_flex_start)
            | _ -> d.align_items));
       position_type;
       flex_wrap =
@@ -566,7 +579,10 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
       width =
         (match viewport_len ~viewport store id ~name:"width-viewport" ~horizontal:true with
          | Unset -> (
-           match lp "width" with Unset -> size_w | l -> l)
+           match lp "width" with
+           | Unset when kind = "table" && size_w = Unset -> Percent 100.
+           | Unset -> size_w
+           | l -> l)
          | l -> l);
       height =
         (match viewport_len ~viewport store id ~name:"height-viewport" ~horizontal:false with
@@ -1120,6 +1136,9 @@ let measure_for ctx id ~kids : Lui_flex.measure option =
   | _ -> None
 
 let register ctx id kind node style =
+  (if kind = "table" then
+     Hashtbl.replace ctx.eng.tables id
+       { rows = [||]; natural = None; minima = [||]; assigned_width = Float.nan });
   (if kind = "grid" then
      match pnum ctx.store id "columns" with
      | Some n when n > 0. ->
@@ -1130,6 +1149,7 @@ let register ctx id kind node style =
   then ctx.popups := (node, id) :: !(ctx.popups)
 
 let unregister ctx id =
+  Hashtbl.remove ctx.eng.tables id;
   ctx.grids := List.filter (fun (g, _, _, _) -> g <> id) !(ctx.grids);
   ctx.popups := List.filter (fun (_, s) -> s <> id) !(ctx.popups)
 
@@ -1206,6 +1226,122 @@ and expand_children ctx ~owner ~pkind ~pid ~raw_parent ~first cids =
     cids;
   Hashtbl.replace ctx.pkids raw_parent (List.rev !entries);
   (List.rev !acc, ())
+
+(* A table owns its column widths. Row-local flex sizing would move each
+   boundary according to the contents of that particular row. Natural widths
+   are measured only when a table subtree changes, then retained on resize. *)
+let table_children ctx id =
+  List.fold_left (fun acc entry -> List.rev_append entry.gens acc)
+    [] (pkids_of ctx id) |> List.rev |> Array.of_list
+
+let ordered_tables ctx =
+  let depths = Hashtbl.create 8 in
+  let rec depth id =
+    if id = frame_id then 0
+    else match Hashtbl.find_opt depths id with
+    | Some d -> d
+    | None ->
+      let d = 1 + depth (Hashtbl.find ctx.owner id) in
+      Hashtbl.add depths id d;
+      d in
+  Hashtbl.fold (fun id table acc -> (depth id, id, table) :: acc)
+    ctx.eng.tables []
+  |> List.sort (fun (a, _, _) (b, _, _) -> Int.compare a b)
+
+let set_table_columns ctx table widths =
+  Array.iter (fun row ->
+    Array.iteri (fun index id ->
+      let style = Hashtbl.find ctx.applied id in
+      let width = Pt widths.(index) in
+      Lui_flex.set_style (Hashtbl.find ctx.nodes id)
+        { style with width; flex_basis = width; flex_grow = 0.;
+          flex_shrink = 0.; min_width = Pt 0.; max_width = Unset;
+          align_self = Align_stretch }) row) table.rows
+
+let prepare_tables ctx tables =
+  List.iter (fun (_, id, table) ->
+    if table.natural = None then begin
+      table.rows <- Array.map (table_children ctx) (table_children ctx id);
+      let count = Array.fold_left (fun n row -> max n (Array.length row))
+        0 table.rows in
+      let natural = Array.make count 0. in
+      let minima = Array.make count 0. in
+      Array.iter (fun row ->
+        Array.iteri (fun index cell ->
+          let node = Hashtbl.find ctx.nodes cell in
+          let style = Hashtbl.find ctx.applied cell in
+          Lui_flex.set_style node style;
+          Lui_flex.compute_layout node ~width:Lui_flex.undefined
+            ~height:Lui_flex.undefined ();
+          natural.(index) <- Float.max natural.(index) (Lui_flex.layout node).w;
+          let edge edges a b axis =
+            edge_px ~owner:ctx.vw a axis edges +.
+            edge_px ~owner:ctx.vw b axis edges in
+          let chrome = edge style.padding style.padding.left style.padding.right
+              style.padding.horizontal +.
+            edge style.border style.border.left style.border.right
+              style.border.horizontal in
+          minima.(index) <- Float.max minima.(index)
+            (Float.max chrome (len_px ~owner:ctx.vw style.min_width))) row)
+        table.rows;
+      table.natural <- Some natural;
+      table.minima <- minima;
+      table.assigned_width <- Float.nan;
+      set_table_columns ctx table natural
+    end) (List.rev tables)
+
+(* Proportional natural widths with shared lower bounds. Freeze constrained
+   columns in threshold order so many columns remain O(n log n). *)
+let table_widths natural minima available =
+  let count = Array.length natural in
+  let total = Array.fold_left (+.) 0. natural in
+  if total = 0. then Array.make count
+    (if count = 0 then 0. else available /. float_of_int count)
+  else begin
+    let remaining = ref available and weight = ref total in
+    let indices = Array.init count Fun.id in
+    let threshold i = if natural.(i) = 0. then 0.
+      else minima.(i) /. natural.(i) in
+    Array.sort (fun a b -> Float.compare (threshold b) (threshold a)) indices;
+    let widths = Array.make count 0. in
+    Array.iter (fun i ->
+      let share = if !weight = 0. then 0.
+        else Float.max 0. (!remaining /. !weight) in
+      if natural.(i) *. share < minima.(i) then begin
+        widths.(i) <- minima.(i);
+        remaining := !remaining -. minima.(i);
+        weight := !weight -. natural.(i)
+      end) indices;
+    let share = if !weight = 0. then 0.
+      else Float.max 0. (!remaining /. !weight) in
+    Array.iteri (fun i _ ->
+      widths.(i) <- Float.max minima.(i) (natural.(i) *. share)) widths;
+    widths
+  end
+
+let refine_tables ctx tables ~relayout =
+  let current_depth = ref (-1) and changed = ref false in
+  List.iter (fun (depth, id, table) ->
+    if depth <> !current_depth then begin
+      if !changed then relayout ();
+      changed := false;
+      current_depth := depth
+    end;
+    let style = Hashtbl.find ctx.applied id in
+    let rect = Lui_flex.layout (Hashtbl.find ctx.nodes id) in
+    let edge edges a b axis =
+      edge_px ~owner:rect.w a axis edges +.
+      edge_px ~owner:rect.w b axis edges in
+    let available = Float.max 0. (rect.w -.
+      edge style.padding style.padding.left style.padding.right style.padding.horizontal -.
+      edge style.border style.border.left style.border.right style.border.horizontal) in
+    if table.assigned_width <> available then begin
+      set_table_columns ctx table
+        (table_widths (Option.get table.natural) table.minima available);
+      table.assigned_width <- available;
+      changed := true
+    end) tables;
+  if !changed then relayout ()
 
 (* ---------- two-pass refinement ----------
 
@@ -2355,6 +2491,9 @@ let mark_frame_siblings_after ctx t =
    churn). *)
 let mark_affected ctx o =
   let rec top x =
+    (match Hashtbl.find_opt ctx.eng.tables x with
+     | Some table -> table.natural <- None
+     | None -> ());
     match Hashtbl.find_opt ctx.owner x with
     | Some p when p <> frame_id -> top p
     | _ -> x
@@ -2676,6 +2815,7 @@ let rebuild ctx (t : t) ~width ~height =
   Hashtbl.reset t.pkids;
   Hashtbl.reset t.sparent;
   Hashtbl.reset t.owner;
+  Hashtbl.reset t.tables;
   t.grids := [];
   t.popups := [];
   ignore
@@ -2693,9 +2833,18 @@ let finish ctx (t : t) ~width ~height ~vport ~full =
   match t.root with
   | None -> ()
   | Some root ->
+    let tables = ordered_tables ctx in
+    prepare_tables ctx tables;
     let ew, eh = layout_frame root ~width ~height in
     refine_grids ctx ~relayout:(fun () ->
       Lui_flex.compute_layout root ~width:ew ~height:eh ());
+    (if !(ctx.grids) <> [] then
+       Lui_flex.compute_layout root ~width:ew ~height:eh ());
+    refine_tables ctx tables ~relayout:(fun () ->
+      Lui_flex.compute_layout root ~width:ew ~height:eh ());
+    (* A table can resize a grid inside a cell. *)
+    (if tables <> [] then refine_grids ctx ~relayout:(fun () ->
+       Lui_flex.compute_layout root ~width:ew ~height:eh ()));
     refine_popups ctx;
     (if !(ctx.grids) <> [] || !(ctx.popups) <> [] then
        Lui_flex.compute_layout root ~width:ew ~height:eh ());
@@ -2825,7 +2974,8 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
         "min-height-viewport"; "max-height-viewport"] in
       Hashtbl.iter (fun id _ ->
         if List.exists (has_prop store id) viewport_props then
-          restyle_gen ctx (Hashtbl.find ctx.owner id) id) t.nodes;
+          (restyle_gen ctx (Hashtbl.find ctx.owner id) id;
+           mark_affected ctx id)) t.nodes;
       let popup_owners = List.filter_map (fun (_,id) -> Hashtbl.find_opt ctx.owner id) !(t.popups)
         |> List.sort_uniq Int.compare in
       List.iter (fun id -> if id <> frame_id then

@@ -1489,6 +1489,9 @@ val table_cell :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
+  ?font_size:string ->
+  ?font_weight:int ->
+  ?line_height:string ->
   ?size:cell_size ->
   ?text_alignment:text_alignment ->
   ?on_press:(Lui_protocol.event -> unit) ->

@@ -186,6 +186,8 @@ test("the production stylesheet contains the retained ListItem contract", async 
 test("Table uses semantic retained rows and cells with native interaction chrome", async () => {
   const css = await readFile(outputUrl, "utf8")
 
+  assert.match(css, /\.lui-table\{[^}]*table-layout:auto/)
+  assert.doesNotMatch(css, /\.lui-table\{[^}]*table-layout:fixed/)
   assert.match(css, /\.lui-table\{[^}]*width:100%/)
   assert.match(css, /\.lui-table\{[^}]*border-collapse:collapse/)
   assert.match(css, /\.lui-table-row\{[^}]*transition-property:color,background-color/)
