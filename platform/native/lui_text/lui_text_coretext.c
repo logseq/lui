@@ -424,11 +424,26 @@ static inline CFIndex lui_byte_of(const CFIndex *idx, CFIndex i, CFIndex n16)
   return idx[i];
 }
 
+typedef struct {
+  CGFloat width, ascent, descent;
+} lui_inline_object;
+
+static void lui_inline_dealloc(void *context) { free(context); }
+static CGFloat lui_inline_width(void *context) {
+  return ((lui_inline_object *)context)->width;
+}
+static CGFloat lui_inline_ascent(void *context) {
+  return ((lui_inline_object *)context)->ascent;
+}
+static CGFloat lui_inline_descent(void *context) {
+  return ((lui_inline_object *)context)->descent;
+}
+
 /* One shaped run: font, direction and positioned glyphs. The returned
    value is a record/block:
-   (font, start_byte, stop_byte, rtl, glyph array)
+   (font, start_byte, stop_byte, rtl, glyph array, color, underline, inline)
    where a glyph is (id, x, y_from_baseline, advance, cluster_byte). */
-static value lui_shape_run(CTRunRef run, const CFIndex *idx, CFIndex n16,
+static value lui_shape_run(CTLineRef line, CTRunRef run, const CFIndex *idx, CFIndex n16,
                            CFIndex base)
 {
   CAMLparam0();
@@ -437,14 +452,27 @@ static value lui_shape_run(CTRunRef run, const CFIndex *idx, CFIndex n16,
   CFIndex ng = CTRunGetGlyphCount(run);
 
   CFDictionaryRef attrs = CTRunGetAttributes(run);
+  CTRunDelegateRef delegate = (CTRunDelegateRef)CFDictionaryGetValue(
+      attrs, kCTRunDelegateAttributeName);
   int truncation_token = CFDictionaryContainsKey(attrs, CFSTR("lui.truncation-token"));
   CTFontRef rf =
     (CTFontRef)CFDictionaryGetValue(attrs, kCTFontAttributeName);
   CFRetain(rf);
   vfont = lui_font_wrap(rf);
 
-  vglyphs = caml_alloc((mlsize_t)ng, 0);
-  if (ng > 0) {
+  vglyphs = caml_alloc((mlsize_t)(delegate != NULL ? 1 : ng), 0);
+  if (delegate != NULL) {
+    lui_inline_object *object = CTRunDelegateGetRefCon(delegate);
+    CGFloat a = CTLineGetOffsetForStringIndex(line, rr.location, NULL);
+    CGFloat b = CTLineGetOffsetForStringIndex(line, rr.location + rr.length, NULL);
+    vg = caml_alloc(5, 0);
+    Store_field(vg, 0, Val_int(0));
+    Store_field(vg, 1, caml_copy_double(fmin(a, b)));
+    Store_field(vg, 2, caml_copy_double(0.));
+    Store_field(vg, 3, caml_copy_double(object->width));
+    Store_field(vg, 4, Val_int(lui_byte_of(idx, rr.location, n16) + base));
+    Store_field(vglyphs, 0, vg);
+  } else if (ng > 0) {
     CGGlyph *gids = malloc(sizeof(CGGlyph) * (size_t)ng);
     CGPoint *pos = malloc(sizeof(CGPoint) * (size_t)ng);
     CGSize *adv = malloc(sizeof(CGSize) * (size_t)ng);
@@ -503,7 +531,7 @@ static value lui_shape_run(CTRunRef run, const CFIndex *idx, CFIndex n16,
   int under = 0;
   if (un != NULL) CFNumberGetValue(un, kCFNumberIntType, &under);
 
-  vrun = caml_alloc(7, 0);
+  vrun = caml_alloc(8, 0);
   Store_field(vrun, 0, vfont);
   Store_field(vrun, 1, Val_int(
       (truncation_token ? idx[n16] : lui_byte_of(idx, rr.location, n16)) + base));
@@ -514,6 +542,7 @@ static value lui_shape_run(CTRunRef run, const CFIndex *idx, CFIndex n16,
   Store_field(vrun, 4, vglyphs);
   Store_field(vrun, 5, vcolor);
   Store_field(vrun, 6, Val_int(under));
+  Store_field(vrun, 7, Val_bool(delegate != NULL));
   tmp = vrun;
   CAMLreturn(tmp);
 }
@@ -533,7 +562,7 @@ static value lui_emit_line(CTLineRef line, const CFIndex *idx,
   vruns = caml_alloc((mlsize_t)nr, 0);
   for (CFIndex i = 0; i < nr; i++) {
     CTRunRef r = (CTRunRef)CFArrayGetValueAtIndex(runs, i);
-    Store_field(vruns, i, lui_shape_run(r, idx, n16, base));
+    Store_field(vruns, i, lui_shape_run(line, r, idx, n16, base));
   }
   vline = caml_alloc(7, 0);
   Store_field(vline, 0,
@@ -658,7 +687,7 @@ static CFIndex lui_u16_of_byte(const CFIndex *idx, CFIndex n16, CFIndex b)
 
 /* shape_spans : font -> utf8 -> width -> rtl -> base -> span_attr array
    -> line array. A span_attr is
-   (start_byte, stop_byte, font option, color option, kern, under);
+   (start_byte, stop_byte, font option, color option, kern, under, object option);
    ranges are byte offsets into the segment string. The attributed
    string gets the base font and paragraph style first, then each
    span's attributes over its range. */
@@ -760,6 +789,26 @@ CAMLprim value lui_ct_shape_spans(value vfont, value vstr, value vwidth,
                                          un);
           CFRelease(un);
         }
+      }
+      value vo = Field(vspan, 6);
+      if (vo != Val_int(0)) {
+        value metrics = Field(vo, 0);
+        lui_inline_object *object = malloc(sizeof(*object));
+        if (object == NULL) caml_failwith("lui_text: out of memory");
+        object->width = Double_field(metrics, 0);
+        object->ascent = Double_field(metrics, 1);
+        object->descent = Double_field(metrics, 2);
+        CTRunDelegateCallbacks callbacks = {
+          kCTRunDelegateVersion1, lui_inline_dealloc, lui_inline_ascent,
+          lui_inline_descent, lui_inline_width
+        };
+        CTRunDelegateRef delegate = CTRunDelegateCreate(&callbacks, object);
+        if (delegate == NULL) {
+          free(object);
+          caml_failwith("lui_text: inline object creation failed");
+        }
+        CFAttributedStringSetAttribute(attrstr, r, kCTRunDelegateAttributeName, delegate);
+        CFRelease(delegate);
       }
     }
 

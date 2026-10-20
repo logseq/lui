@@ -77,6 +77,8 @@ type run = {
   under : int;  (** underline style a {!span} set (0 none, 1 single,
                     2 thick, 9 double); painting it is the caller's
                     job *)
+  rinline : bool; (** Layout-only inline object; paint the host-owned content,
+                     rather than rasterizing its placeholder glyphs. *)
 }
 
 type line = {
@@ -160,6 +162,14 @@ val baseline : float -> float
 
 (** {3 Span styling} *)
 
+type inline_object = {
+  object_width : float;
+  object_ascent : float;
+  object_descent : float;
+}
+(** Finite, nonnegative object metrics in points. An object span replaces
+    exactly one U+FFFC character in the shared UTF-8 text. *)
+
 type span_style = {
   sfont : font option;  (** replaces the base font (size is a font
                             property, so size changes come through it) *)
@@ -168,6 +178,7 @@ type span_style = {
                       letter-spacing *)
   sunder : int;  (** underline style: 0 none, 1 single, 2 thick,
                      9 double *)
+  sobject : inline_object option;
 }
 
 val default_style : span_style

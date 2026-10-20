@@ -509,6 +509,7 @@ let text_ops t id r fg s =
        end;
        Array.iter
          (fun (run : Lui_text.run) ->
+            if not run.rinline then
             (* Subpixel positions are a (font, scale) constant — hoist
                out of the per-glyph loop. *)
             let nsub = Lui_text.subpixel_positions ~scale run.font in

@@ -303,7 +303,7 @@ let test_run_font_matches () =
 let fake_glyph x adv cluster = { id = 1; x; y = 0.; advance = adv; cluster }
 
 let fake_run start stop rtl glyphs =
-  { font = sys; start; stop; rtl; glyphs; rcolor = None; under = 0 }
+  { font = sys; start; stop; rtl; glyphs; rcolor = None; under = 0; rinline = false }
 
 let fake_line_r start stop runs =
   let w =
@@ -656,6 +656,70 @@ let test_layout_spans_api () =
   Alcotest.(check bool) "caret works" true
     ((caret_rect lay 3).rx > 0.)
 
+let object_span text range width ascent descent =
+  {text;range;style={default_style with sobject=Some
+    {object_width=width;object_ascent=ascent;object_descent=descent}}}
+
+let test_inline_object_metrics () =
+  let lay=layout_spans sys [object_span "a\xef\xbf\xbcb" (1,4) 12. 25. 7.] in
+  let object_runs=List.filter (fun r -> r.rinline) (all_runs (shape_spans sys
+    [object_span "a\xef\xbf\xbcb" (1,4) 12. 25. 7.])) in
+  Alcotest.(check int) "one measured object run" 1 (List.length object_runs);
+  let box=List.hd (selection_rects lay (1,4)) in
+  Alcotest.(check (float 0.01)) "object selection has its exact width" 12. box.rw;
+  Alcotest.(check bool) "object ascent/descent contribute to line metrics" true (lay.lay_height>=32.);
+  let start=caret_rect lay 1 and ending=caret_rect lay 4 in
+  Alcotest.(check (float 0.01)) "object advances following text" 12. (ending.rx-.start.rx);
+  Alcotest.(check int) "object has no interior caret" 4 (caret_after lay 1);
+  Alcotest.(check int) "object backspace is one grapheme" 1 (caret_before lay 4);
+  Alcotest.(check int) "left half hits source start" 1
+    (hit_test lay (start.rx+.2.,start.ry+.start.rh/.2.));
+  Alcotest.(check int) "right half hits source end" 4
+    (hit_test lay (ending.rx-.2.,ending.ry+.ending.rh/.2.))
+
+let test_inline_object_wrap () =
+  let a,_=measure sys "a" and b,_=measure sys "b" in
+  let text="a\xef\xbf\xbcb" in
+  let width=a+.20.+.b/.2. in
+  let lay=layout_spans ~width sys [object_span text (1,4) 20. 10. 3.] in
+  Alcotest.(check int) "attachment width participates in line breaking" 2 (Array.length lay.lay_lines);
+  Alcotest.(check bool) "following glyph wraps after the attachment" true
+    ((caret_rect lay 4).ry>0.);
+  let many="a\xef\xbf\xbc\xef\xbf\xbcb" in
+  let lay=layout_spans sys [object_span many (1,4) 7. 0. 0.;object_span many (4,7) 13. 0. 0.] in
+  Alcotest.(check (float 0.01)) "adjacent objects preserve distinct widths" 20.
+    ((caret_rect lay 7).rx-.(caret_rect lay 1).rx)
+
+let test_inline_object_unicode () =
+  let text="汉字 👋\xef\xbf\xbcé" in
+  List.iter (fun rtl ->
+    let lay=layout_spans ~rtl sys [object_span text (11,14) 15. 10. 3.] in
+    Alcotest.(check int) "emoji boundary before attachment" 11 (caret_after lay 7);
+    Alcotest.(check int) "UTF-8 attachment boundary" 14 (caret_after lay 11);
+    Alcotest.(check int) "accented text after attachment" 16 (caret_after lay 14);
+    let boxes=selection_rects lay (11,14) in
+    Alcotest.(check (float 0.01)) "object geometry survives direction changes" 15.
+      (List.fold_left (fun total (r:rect) -> total+.r.rw) 0. boxes)) [false;true]
+
+let test_inline_object_cache () =
+  let cache=Cache.create 4 in
+  let text="a\xef\xbf\xbcb" in
+  let get width=Cache.layout_spans cache sys [object_span text (1,4) width 10. 3.] in
+  let a=get 10. and b=get 30. in
+  Alcotest.(check (float 0.01)) "cache includes object metrics" 20. (b.lay_width-.a.lay_width);
+  Alcotest.(check bool) "same object dimensions reuse the layout" true (a==get 10.);
+  let zero=get 0. in
+  Alcotest.(check (float 0.01)) "zero-width object remains valid" 10. (a.lay_width-.zero.lay_width)
+
+let test_inline_object_validation () =
+  List.iter (fun (text,range,width,ascent,descent) ->
+    Alcotest.check_raises "invalid object metrics/range fail before native shaping"
+      (Invalid_argument "Inline objects require one U+FFFC and finite nonnegative metrics")
+      (fun () -> ignore (layout_spans sys [object_span text range width ascent descent])))
+    ["abc",(1,2),10.,0.,0.;"\xef\xbf\xbcx",(0,4),10.,0.,0.;
+     "\xef\xbf\xbc",(0,3),(-1.),0.,0.;"\xef\xbf\xbc",(0,3),Float.nan,0.,0.;
+     "\xef\xbf\xbc",(0,3),10.,Float.infinity,0.;"\xef\xbf\xbc",(0,3),10.,0.,(-1.)]
+
 let test_truncate_end () =
   let s = "the quick brown fox jumps over the lazy dog" in
   match truncate ~width:60. sys s with
@@ -870,7 +934,12 @@ let () =
           test_case "kern" `Quick test_spans_kern;
           test_case "under" `Quick test_spans_under;
           test_case "across paragraph" `Quick test_spans_across_paragraph;
-          test_case "layout_spans" `Quick test_layout_spans_api ] );
+          test_case "layout_spans" `Quick test_layout_spans_api;
+          test_case "inline object metrics" `Quick test_inline_object_metrics;
+          test_case "inline object wrap" `Quick test_inline_object_wrap;
+          test_case "inline object Unicode" `Quick test_inline_object_unicode;
+          test_case "inline object cache" `Quick test_inline_object_cache;
+          test_case "inline object validation" `Quick test_inline_object_validation ] );
       ( "truncate",
         [ test_case "end" `Quick test_truncate_end;
           test_case "modes" `Quick test_truncate_modes;

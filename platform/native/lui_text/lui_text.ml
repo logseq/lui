@@ -25,6 +25,7 @@ type run = {
   glyphs : glyph array;
   rcolor : int option;
   under : int;
+  rinline : bool;
 }
 
 type line = {
@@ -220,15 +221,18 @@ let baseline y = ceil (y -. 1e-3)
    ink color as [0xRRGGBBAA]; [skern] adds points of advance after each
    glyph (letter-spacing); [sunder] is the engine's underline style
    (0 none, 1 single, 2 thick, 9 double). *)
+type inline_object = { object_width : float; object_ascent : float; object_descent : float }
+
 type span_style = {
   sfont : font option;
   scolor : int option;
   skern : float;
   sunder : int;
+  sobject : inline_object option;
 }
 
 let default_style =
-  { sfont = None; scolor = None; skern = 0.; sunder = 0 }
+  { sfont = None; scolor = None; skern = 0.; sunder = 0; sobject = None }
 
 (* A styled byte range of a shared source string: every span passed to
    [shape_spans] carries the same [text], and [range] selects the bytes
@@ -248,7 +252,7 @@ let span_text = function
    a record — the C side reads the fields positionally and OCaml never
    does, so record labels would warn as unused. *)
 type span_attr =
-  int * int * font option * int option * float * int
+  int * int * font option * int option * float * int * inline_object option
 
 external c_shape_spans : font -> string -> float -> bool -> int ->
   span_attr array -> line array
@@ -261,6 +265,16 @@ external c_truncate : font -> string -> float -> int -> int ->
   = "lui_ct_truncate"
 
 let shape_spans ?(width = 0.) ?(rtl = false) f spans =
+  List.iter (fun span -> match span.style.sobject with
+    | None -> ()
+    | Some object_ ->
+      let first,last=span.range in
+      let valid value=Float.is_finite value && value>=0. in
+      if first<0 || last>String.length span.text || last-first<>3
+         || String.sub span.text first 3<>"\xef\xbf\xbc"
+         || not (valid object_.object_width && valid object_.object_ascent
+                 && valid object_.object_descent) then
+        invalid_arg "Inline objects require one U+FFFC and finite nonnegative metrics") spans;
   match spans with
   | [] -> shape ~width ~rtl f ""
   | { text = s; _ } :: _ ->
@@ -290,7 +304,7 @@ let shape_spans ?(width = 0.) ?(rtl = false) f spans =
                    Some
                      ( lo - i, hi - i, sp.style.sfont,
                        sp.style.scolor, sp.style.skern,
-                       sp.style.sunder ))
+                       sp.style.sunder,sp.style.sobject ))
               spans
           in
           List.rev_append
@@ -786,10 +800,10 @@ let truncate ?(mode = `End) ?(rtl = false) ~width f s =
    an entry whose text exceeds [max_bytes] is built but not kept, so a
    giant paragraph can't evict everything else. *)
 module Cache = struct
-  (* The span part of a key: (start, stop, font, color, kern, under)
-     per span, kern quantized to thousandths of a point. *)
+  (* Include object metrics in each span key; kern is quantized to
+     thousandths of a point. *)
   type span_sig =
-    (int * int * font option * int option * int * int) list
+    (int * int * font option * int option * int * int * inline_object option) list
 
   type key =
     | K_sentinel
@@ -887,7 +901,7 @@ module Cache = struct
       (fun sp ->
          let a, b = sp.range in
          (a, b, sp.style.sfont, sp.style.scolor,
-          int_of_float (sp.style.skern *. 1024.), sp.style.sunder))
+          int_of_float (sp.style.skern *. 1024.), sp.style.sunder,sp.style.sobject))
       spans
 
   let layout_spans t ?(rtl = false) ?(width = 0.) ?line_height f spans =
