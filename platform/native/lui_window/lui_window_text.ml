@@ -41,6 +41,7 @@ type text_style = {
   ts_kern : float;
   ts_lh : float;
   ts_nowrap : bool;
+  ts_max_lines : int option;
   ts_ellipsis : bool;
   ts_under : bool;
   ts_strike : bool;
@@ -241,6 +242,8 @@ let resolve_style store id =
       Option.value ~default:0.
         (inherited_num store id "letter-spacing");
     ts_lh = line_height_of store id ~size;
+    ts_max_lines = (match Lui_store.prop store id "line-clamp" with
+      | Some (IntValue value) -> Some value | _ -> None);
     ts_nowrap =
       (inherited_str store id "white-space" = Some "nowrap");
     (* text-overflow does not inherit. *)
@@ -265,10 +268,10 @@ let style_of t store id =
 (* The layout text_ops, measure and hit-testing share: letter-spacing
    rides in as a span so shaped runs carry the extra advance. *)
 let layout_of t (st : text_style) ~width s =
-  if st.ts_kern = 0. then
+  if st.ts_kern = 0. && st.ts_max_lines=None then
     Lui_text.Cache.layout t.shapes ~width st.ts_font s
   else
-    Lui_text.Cache.layout_spans t.shapes ~width st.ts_font
+    Lui_text.Cache.layout_spans t.shapes ~width ?max_lines:st.ts_max_lines st.ts_font
       [ { Lui_text.text = s;
           style =
             { Lui_text.default_style with Lui_text.skern = st.ts_kern };

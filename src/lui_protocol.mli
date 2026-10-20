@@ -297,6 +297,7 @@ type property =
   | IndicatorBorderColor
   | CheckedIndicatorBorderColor
   | CollisionPadding
+  | LineClamp
 
 module Property_map : Map.S with type key = property
 

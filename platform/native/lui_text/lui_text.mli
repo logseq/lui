@@ -359,7 +359,7 @@ module Cache : sig
 
   val layout : t -> ?rtl:bool -> ?width:float -> ?line_height:float -> font -> string ->
     layout
-  val layout_spans : t -> ?rtl:bool -> ?width:float -> ?line_height:float -> font ->
+  val layout_spans : t -> ?rtl:bool -> ?width:float -> ?line_height:float -> ?max_lines:int -> font ->
     span list -> layout
   (** The cached builders; on a miss they shape like the top-level
       functions. *)

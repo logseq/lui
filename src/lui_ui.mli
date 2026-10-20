@@ -230,6 +230,7 @@ val inset_right : ui_context -> int -> float -> unit
 val inset_bottom : ui_context -> int -> float -> unit
 val inset_left : ui_context -> int -> float -> unit
 val z_index : ui_context -> int -> int -> unit
+val line_clamp : ui_context -> int -> int -> unit
 val white_space : ui_context -> int -> string -> unit
 val text_overflow : ui_context -> int -> string -> unit
 val overflow : ui_context -> int -> string -> unit

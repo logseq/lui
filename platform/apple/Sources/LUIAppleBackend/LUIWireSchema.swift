@@ -278,6 +278,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case indicatorBorderColor = "indicator-border-color"
     case checkedIndicatorBorderColor = "checked-indicator-border-color"
     case collisionPadding = "collision-padding"
+    case lineClamp = "line-clamp"
 }
 
 enum LUISchemaMatrix {

@@ -285,6 +285,7 @@ enum class LuiProperty(val wireName: String) {
     indicatorBorderColor("indicator-border-color"),
     checkedIndicatorBorderColor("checked-indicator-border-color"),
     collisionPadding("collision-padding"),
+    lineClamp("line-clamp"),
     ;
 
     companion object {

@@ -1933,7 +1933,7 @@ val text :
   ?font_family:string ->
   ?font_style:string ->
   ?text_decoration:string ->
-  ?white_space:string ->
+  ?white_space:string -> ?line_clamp:int ->
   ?text_overflow:string ->
   ?overflow:string ->
   ?on_press:(Lui_protocol.event -> unit) ->
@@ -1993,7 +1993,7 @@ val heading :
   ?font_family:string ->
   ?font_style:string ->
   ?text_decoration:string ->
-  ?white_space:string ->
+  ?white_space:string -> ?line_clamp:int ->
   ?text_overflow:string ->
   ?overflow:string ->
   ?transition:string -> t list -> t
@@ -2047,7 +2047,7 @@ val paragraph :
   ?font_family:string ->
   ?font_style:string ->
   ?text_decoration:string ->
-  ?white_space:string ->
+  ?white_space:string -> ?line_clamp:int ->
   ?text_overflow:string ->
   ?overflow:string ->
   ?transition:string -> t list -> t
@@ -2100,7 +2100,7 @@ val label :
   ?font_family:string ->
   ?font_style:string ->
   ?text_decoration:string ->
-  ?white_space:string ->
+  ?white_space:string -> ?line_clamp:int ->
   ?text_overflow:string ->
   ?overflow:string ->
   ?transition:string -> t list -> t

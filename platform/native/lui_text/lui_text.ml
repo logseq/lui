@@ -799,6 +799,36 @@ let truncate ?(mode = `End) ?(rtl = false) ~width f s =
    (text, wrap width, direction, line height, font, span signature) live in an LRU;
    an entry whose text exceeds [max_bytes] is built but not kept, so a
    giant paragraph can't evict everything else. *)
+(* Clamp after shaping so styled runs and grapheme boundaries stay intact. *)
+let clamp_spans ~max_lines ~width ~rtl ?line_height font spans layout =
+  if max_lines <= 0 then invalid_arg "line clamp must be positive";
+  if Array.length layout.lay_lines <= max_lines then layout else
+  let text=layout.lay_text in
+  let last=layout.lay_lines.(max_lines-1).ll_line in
+  let cuts=Array.to_list (graphemes text)
+    |> List.filter (fun index -> index>=last.start && index<=last.stop)
+    |> Array.of_list in
+  let candidate stop =
+    let source=String.sub text 0 stop ^ "\xe2\x80\xa6" in
+    let prefix=List.filter_map (fun span ->
+      let first,last=span.range in
+      if first>=stop then None else Some {span with text=source;range=(first,min last stop)}) spans in
+    let style=List.fold_left (fun style span ->
+      let first,last=span.range in if first<stop && last>=stop then span.style else style)
+      default_style spans in
+    let ellipsis={text=source;range=(stop,String.length source);style={style with sobject=None}} in
+    layout_spans ~width ~rtl ?line_height font (prefix @ [ellipsis]) in
+  let best=ref (candidate last.start) in
+  let lo=ref 0 and hi=ref (Array.length cuts-1) in
+  while !lo<= !hi do
+    let mid=(!lo+ !hi)/2 in
+    let next=candidate cuts.(mid) in
+    if Array.length next.lay_lines<=max_lines && (width<=0. || next.lay_width<=width+.0.001) then begin
+      best:=next;lo:=mid+1
+    end else hi:=mid-1
+  done;
+  !best
+
 module Cache = struct
   (* Include object metrics in each span key; kern is quantized to
      thousandths of a point. *)
@@ -807,7 +837,7 @@ module Cache = struct
 
   type key =
     | K_sentinel
-    | K of string * float * bool * float option * font * span_sig
+    | K of string * float * bool * float option * font * span_sig * int option
 
   (* Intrusive doubly-linked list behind the table: head.next is the
      hottest entry, head.prev the eviction candidate. *)
@@ -889,7 +919,7 @@ module Cache = struct
       v
 
   let layout t ?(rtl = false) ?(width = 0.) ?line_height f s =
-    get t ~key:(K (s, width, rtl, line_height, f, [])) ~text_len:(String.length s)
+    get t ~key:(K (s, width, rtl, line_height, f, [], None)) ~text_len:(String.length s)
       (fun () -> layout ~width ~rtl ?line_height f s)
 
   let measure t ?(rtl = false) ?(width = 0.) ?line_height f s =
@@ -904,9 +934,12 @@ module Cache = struct
           int_of_float (sp.style.skern *. 1024.), sp.style.sunder,sp.style.sobject))
       spans
 
-  let layout_spans t ?(rtl = false) ?(width = 0.) ?line_height f spans =
+  let layout_spans t ?(rtl = false) ?(width = 0.) ?line_height ?max_lines f spans =
     let s = span_text spans in
-    get t ~key:(K (s, width, rtl, line_height, f, sig_of_spans spans))
+    get t ~key:(K (s, width, rtl, line_height, f, sig_of_spans spans, max_lines))
       ~text_len:(String.length s)
-      (fun () -> layout_spans ~width ~rtl ?line_height f spans)
+      (fun () ->
+        let layout=layout_spans ~width ~rtl ?line_height f spans in
+        match max_lines with None -> layout
+        | Some max_lines -> clamp_spans ~max_lines ~width ~rtl ?line_height f spans layout)
 end

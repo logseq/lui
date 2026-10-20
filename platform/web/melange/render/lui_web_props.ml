@@ -67,7 +67,7 @@ let property_surface kind dom_node property =
     | WidthViewport | HeightViewport | MinWidthViewport | MaxWidthViewport
     | MinHeightViewport | MaxHeightViewport | FontFamily | FontStyle | FontSize
     | FontWeight | LineHeight | LetterSpacing | TextDecoration | WhiteSpace
-    | TextOverflow | Overflow | Opacity | Cursor | UserSelect | Shadow
+    | TextOverflow | LineClamp | Overflow | Opacity | Cursor | UserSelect | Shadow
     | HoverBackground | HoverForeground | HoverBorder | HoverOpacity
     | HoverShadow | PressedBackground | PressedOpacity | PressedShadow
     | FocusShadow | FocusWithinBackground | FocusWithinBorder | SelectedBackground | SelectedShadow | SelectedHoverShadow
@@ -1089,6 +1089,9 @@ and apply_secondary_property renderer queue_split node kind dom_node
       set_style dom_node "left" (Js.Float.toString inset ^ "px")
   | ZIndex, IntValue index ->
       set_style dom_node "z-index" (string_of_int index)
+  | LineClamp, IntValue value ->
+      W.Element.setAttribute "data-lui-line-clamp" "" dom_node;
+      set_style dom_node "-webkit-line-clamp" (string_of_int value)
   | WhiteSpace, StringValue value ->
       set_style dom_node "white-space" value
   | TextOverflow, StringValue value ->
@@ -1353,6 +1356,9 @@ let remove_property renderer queue_split node kind dom_node property =
        | InsetBottom -> set_style dom_node "bottom" ""
        | InsetLeft -> set_style dom_node "left" ""
        | ZIndex -> set_style dom_node "z-index" ""
+       | LineClamp ->
+           W.Element.removeAttribute "data-lui-line-clamp" dom_node;
+           set_style dom_node "-webkit-line-clamp" ""
        | WhiteSpace -> set_style dom_node "white-space" ""
        | TextOverflow -> set_style dom_node "text-overflow" ""
        | Overflow -> set_style dom_node "overflow" ""

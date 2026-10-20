@@ -39,6 +39,7 @@ type coverage =
 
 let prop_coverage =
   [ ("text", Painted_by_text);
+    ("line-clamp", Painted_by_text);
     ("enabled", Painted); (* folds into state.disabled *)
     ("inert", Host); (* input and accessibility; paint stays retained *)
     ("gap", Layout);

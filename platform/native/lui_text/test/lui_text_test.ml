@@ -908,6 +908,38 @@ let test_explicit_line_height () =
         (fun () -> ignore (layout ~line_height:invalid sys text)))
     [ -1.; Float.nan; Float.infinity ]
 
+let test_multiline_clamp () =
+  let open Alcotest in
+  let font=Lui_text.system ~size:14. () in
+  let text="A very long title 汉字 café 👋 with enough words to fill several lines and preserve styled Unicode text" in
+  let spans=[{Lui_text.text;range=(0,String.length text);style={Lui_text.default_style with scolor=Some 0x445566ff}}] in
+  let cache=Lui_text.Cache.create 8 in
+  List.iter (fun width -> List.iter (fun max_lines ->
+    let layout=Lui_text.Cache.layout_spans cache ~width ~max_lines ~line_height:20. font spans in
+    check int "visible line count" max_lines (Array.length layout.Lui_text.lay_lines);
+    check (float 0.001) "clamped height" (20.*.float_of_int max_lines) layout.lay_height;
+    check bool "truncated result ends with an ellipsis" true (String.ends_with ~suffix:"…" layout.lay_text);
+    let prefix=String.sub layout.lay_text 0 (String.length layout.lay_text-3) in
+    check bool "visible prefix ends at a source grapheme" true
+      (Array.mem (String.length prefix) (Lui_text.graphemes text));
+    check bool "visible lines fit the offered width" true (layout.lay_width<=width+.0.001);
+    check bool "styled glyph runs retain their color" true
+      (Array.for_all (fun (line:Lui_text.line_layout) -> Array.for_all (fun (run:Lui_text.run) ->
+        run.rcolor=Some 0x445566ff) line.ll_line.runs) layout.lay_lines);
+    check bool "warm clamped shaping retains identity" true
+      (layout==Lui_text.Cache.layout_spans cache ~width ~max_lines ~line_height:20. font spans)) [1;2]) [100.;180.];
+  let hard="First line\nSecond line\nThird line" in
+  let hard_spans=[{Lui_text.text=hard;range=(0,String.length hard);style=Lui_text.default_style}] in
+  let hard_layout=Lui_text.Cache.layout_spans cache ~max_lines:2 ~line_height:20. font hard_spans in
+  check int "unconstrained paragraphs still honor the line limit" 2 (Array.length hard_layout.lay_lines);
+  check bool "hard paragraph truncation paints an ellipsis" true (String.ends_with ~suffix:"…" hard_layout.lay_text);
+  let short=[{Lui_text.text="Short";range=(0,5);style=Lui_text.default_style}] in
+  let normal=Lui_text.Cache.layout_spans cache ~width:180. ~max_lines:2 font short in
+  check string "short text is not changed" "Short" normal.lay_text;
+  check int "short text remains one line" 1 (Array.length normal.lay_lines);
+  check_raises "zero clamp fails" (Invalid_argument "line clamp must be positive")
+    (fun () -> ignore (Lui_text.Cache.layout_spans cache ~width:100. ~max_lines:0 font spans))
+
 let () =
   let open Alcotest in
   run "lui_text"
@@ -977,7 +1009,8 @@ let () =
           test_case "inline object cache" `Quick test_inline_object_cache;
           test_case "inline object validation" `Quick test_inline_object_validation ] );
       ( "truncate",
-        [ test_case "end" `Quick test_truncate_end;
+        [ test_case "multiline styled clamp" `Quick test_multiline_clamp;
+          test_case "end" `Quick test_truncate_end;
           test_case "visible token and UTF-8 boundaries" `Quick test_truncate_token;
           test_case "modes" `Quick test_truncate_modes;
           test_case "none" `Quick test_truncate_none ] );

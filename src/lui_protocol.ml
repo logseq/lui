@@ -299,6 +299,7 @@ type property =
   | IndicatorBorderColor
   | CheckedIndicatorBorderColor
   | CollisionPadding
+  | LineClamp
 
 module Property_map =
   Map.Make
@@ -1203,7 +1204,7 @@ let common_property_supported kind property =
   | LabelOpacity -> kind = Checkbox || kind = Radio
   | DisplayValue ->
     kind = Box || kind = Column || kind = Row || kind = ListItem
-    || kind = Text || kind = Paragraph
+    || kind = Text || kind = Paragraph || kind = Stack
   | FlexWrap -> kind = Box || kind = Column || kind = Row
   | ListStyle ->
     kind = ListContainer || kind = VirtualList || kind = ListItem
@@ -1240,6 +1241,7 @@ let common_property_supported kind property =
     || kind = EdgeInset
     || horizontal_container kind
   | Visible -> kind = EdgeInset
+  | LineClamp -> List.mem kind [Text;Heading;Paragraph;Label]
   | WhiteSpace | TextOverflow ->
     (* Kinds that render their own inline text; containers clip via
        [overflow] instead. *)
@@ -1712,6 +1714,7 @@ let property_value_supported property value =
   | Transition, StringValue value -> transition_supported value
   | ZIndex, IntValue _ -> true
   | WhiteSpace, StringValue value -> List.mem value [ "normal"; "nowrap"; "pre-wrap" ]
+  | LineClamp, IntValue value -> value > 0
   | TextOverflow, StringValue value -> List.mem value [ "clip"; "ellipsis" ]
   | Overflow, StringValue value -> List.mem value [ "visible"; "hidden"; "auto" ]
   | UserSelect, StringValue value -> List.mem value [ "none"; "text" ]

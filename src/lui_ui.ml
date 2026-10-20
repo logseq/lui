@@ -440,6 +440,7 @@ let inset_bottom context node inset =
   float_property context node InsetBottom inset
 let inset_left context node inset = float_property context node InsetLeft inset
 let z_index context node index = int_property context node ZIndex index
+let line_clamp context node value = int_property context node LineClamp value
 let white_space context node value = string_property context node WhiteSpace value
 let text_overflow context node value =
   string_property context node TextOverflow value

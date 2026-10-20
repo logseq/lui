@@ -1805,6 +1805,11 @@
       "lg": "CollisionPadding",
       "wire": "collision-padding",
       "swift": "collisionPadding"
+    },
+    {
+      "lg": "LineClamp",
+      "wire": "line-clamp",
+      "swift": "lineClamp"
     }
   ],
   "events": [
