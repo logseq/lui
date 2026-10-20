@@ -2429,8 +2429,10 @@ let test_vocab_batch2 () =
          true
          (property_value_supported DisplayValue (StringValue value)))
     [ "none"; "inline-flex"; "block"; "inline"; "inline-block" ];
-  Alcotest.(check bool) "display rejected on text" false
+  Alcotest.(check bool) "display allowed on text" true
     (property_supported Text DisplayValue);
+  Alcotest.(check bool) "display allowed on paragraph" true
+    (property_supported Paragraph DisplayValue);
   Alcotest.(check bool) "flex-wrap on row" true
     (property_supported Row FlexWrap);
   Alcotest.(check bool) "flex-wrap on column" true

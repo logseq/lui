@@ -1199,7 +1199,9 @@ let common_property_supported kind property =
     can_contain_children kind || kind = Checkbox || kind = Radio || kind = Icon
   | IndicatorBorderColor | CheckedIndicatorBorderColor -> kind = Checkbox
   | LabelOpacity -> kind = Checkbox || kind = Radio
-  | DisplayValue -> kind = Box || kind = Column || kind = Row || kind = ListItem
+  | DisplayValue ->
+    kind = Box || kind = Column || kind = Row || kind = ListItem
+    || kind = Text || kind = Paragraph
   | FlexWrap -> kind = Box || kind = Column || kind = Row
   | ListStyle ->
     kind = ListContainer || kind = VirtualList || kind = ListItem
