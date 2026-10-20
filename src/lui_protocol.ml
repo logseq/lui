@@ -1815,7 +1815,7 @@ let node_property_presence_supported kind ~definite ~possible =
     | Accordion | Drawer | Sheet -> [[TextValue]]
     | SwipeAction | MenuTrigger -> [[TextValue; InlineIconName]]
     | Tooltip -> [[TextValue]]
-    | Avatar -> [[TextValue]; [ImageIdValue; UrlValue]]
+    | Avatar -> [[TextValue]]
     | Image -> [[ImageIdValue; UrlValue]]
     | FileImage | FilePreview -> [[PathValue]]
     | MediaSurface -> [[SurfaceIdValue]]
