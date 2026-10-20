@@ -123,3 +123,23 @@ test('authored auto image height retains intrinsic pixels and rejects other stri
   for(const value of ['inherit','AUTO','33.5px',''])
     assert.throws(()=>f.set([['height',value]]),`reject unsupported height ${value}`)
 })
+
+for(const registered of [false,true]) {
+  test(`${registered?'registered':'URL'} image fitting updates pixels and restores stretch on removal`,()=>{
+    const f=fixture(),pixels=f.pixels
+    if(registered) {
+      Tables.replace(f.renderer.web_images,5,{web_image_url:'data:image/png;base64,fixture',web_image_width:160,web_image_height:92})
+      f.set([['image',5]])
+    }
+    f.set([['width',92],['height',63]])
+    for(const [value,expected] of [['fill','cover'],['fit','contain'],['fill','cover']]) {
+      f.set([['image-fit',value]])
+      assert.equal(pixels.styles.get('object-fit'),expected,'Fitting applies to the bitmap, not its wrapper')
+      f.refresh()
+      assert.equal(pixels.styles.get('object-fit'),expected,'Source refresh preserves authored fitting')
+      assert.equal(f.pixels,pixels,'Fit changes retain the decoded image element')
+    }
+    f.remove('image-fit')
+    assert.equal(pixels.styles.get('object-fit'),'fill','Removal restores the existing stretch default')
+  })
+}

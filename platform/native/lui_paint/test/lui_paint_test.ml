@@ -350,34 +350,36 @@ let test_select_indicator () =
     [ Lui_protocol.Select; Combobox ]
 
 let test_image_fill_crop () =
-  List.iter
+  List.iter (fun kind -> List.iter (fun scale -> List.iter
     (fun (width, height, expected) ->
       let t = store () in
       apply t
         [
-          Lui_protocol.CreateNode (1, FileImage);
+          Lui_protocol.CreateNode (1, kind);
+          SetProp (1, (if kind=Lui_protocol.Image then UrlValue else PathValue), StringValue "image.png");
           SetProp (1, ImageFitValue, StringValue "fill");
         ];
       let image =
         new_image ~w:width ~h:height (Bytes.make (width * height * 4) '\255')
       in
       let hooks =
-        { (hooks ()) with Lui_paint.image_of = (fun _ -> Some image) }
+        { (hooks ~layout:(fun _ -> Lui_paint.placement_of_rect
+            (rect 0. 0. (100.*.scale) (40.*.scale))) ()) with Lui_paint.image_of = (fun _ -> Some image) }
       in
-      let scene = paint_with hooks t () in
+      let scene = paint_with hooks t ~scale () in
       let op =
         List.find_map (function Image i -> Some i | _ -> None) scene.ops
         |> Option.get
       in
       check bool "fill preserves the destination" true
-        (op.irect2 = rect 0. 0. 100. 40.);
+        (op.irect2 = rect 0. 0. (100.*.scale) (40.*.scale));
       check bool "fill crops the source without distorting its aspect" true
         (op.isrc = expected))
     [
       (200, 40, rect 50. 0. 100. 40.);
       (100, 100, rect 0. 30. 100. 40.);
       (100, 40, rect 0. 0. 100. 40.);
-    ]
+    ]) [1.;2.]) [Lui_protocol.FileImage; Image]
 
 let test_fill_op () =
   let t = store () in

@@ -1019,8 +1019,11 @@ and apply_secondary_property renderer queue_split node kind dom_node
   | PathValue, StringValue path ->
       W.Element.setAttribute "data-path" path dom_node
   | ImageFitValue, StringValue value ->
-      W.Element.setAttribute "data-image-fit" value dom_node;
-      set_style dom_node "object-fit" (if value = "fill" then "cover" else "contain")
+      if kind = Image then Widgets.update_image renderer node dom_node
+      else begin
+        W.Element.setAttribute "data-image-fit" value dom_node;
+        set_style dom_node "object-fit" (if value = "fill" then "cover" else "contain")
+      end
   | MaxPixelSize, IntValue size ->
       W.Element.setAttribute "data-max-pixel-size" (string_of_int size)
         dom_node
@@ -1307,8 +1310,11 @@ let remove_property renderer queue_split node kind dom_node property =
              (Util.child_element dom_node 0)
        | PathValue -> W.Element.removeAttribute "data-path" dom_node
        | ImageFitValue ->
-           W.Element.removeAttribute "data-image-fit" dom_node;
-           set_style dom_node "object-fit" "contain"
+           if kind = Image then Widgets.update_image renderer node dom_node
+           else begin
+             W.Element.removeAttribute "data-image-fit" dom_node;
+             set_style dom_node "object-fit" "contain"
+           end
        | MaxPixelSize ->
            W.Element.removeAttribute "data-max-pixel-size" dom_node
        | AccessibilityIdentifier -> W.Element.removeAttribute "id" dom_node

@@ -143,7 +143,11 @@ let natural_image renderer node dom_node pixels =
   set_style pixels "max-width" "100%";
   set_style pixels "left" "0";
   set_style pixels "top" "0";
-  set_style pixels "object-fit" "fill"
+  let fitting = match Store.property renderer.web_store node ImageFitValue with
+    | Some (StringValue "fill") -> "cover"
+    | Some (StringValue "fit") -> "contain"
+    | _ -> "fill" in
+  set_style pixels "object-fit" fitting
 
 let update_image renderer node dom_node =
   let pixels = Util.child_element dom_node 0 in

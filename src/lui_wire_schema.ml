@@ -397,6 +397,7 @@ let kind_property_matrix kind =
 
 let kind_extra_properties kind =
   match kind with
+  | Image -> [ ImageFitValue ]
   | Checkbox -> [ Gap; LabelOpacity; IndicatorBorderColor; CheckedIndicatorBorderColor ]
   | Radio -> [ Gap; LabelOpacity ]
   | Grid -> [ MainAlignment; CrossAlignment ]

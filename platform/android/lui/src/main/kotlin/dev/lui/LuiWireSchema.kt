@@ -322,6 +322,7 @@ object LuiSchemaMatrix {
     )
 
     val extra: Map<LuiNodeKind, Set<LuiProperty>> = mapOf(
+        LuiNodeKind.image to setOf(LuiProperty.imageFit),
         LuiNodeKind.checkbox to setOf(LuiProperty.gap, LuiProperty.labelOpacity, LuiProperty.indicatorBorderColor, LuiProperty.checkedIndicatorBorderColor),
         LuiNodeKind.radio to setOf(LuiProperty.gap, LuiProperty.labelOpacity),
         LuiNodeKind.grid to setOf(LuiProperty.main, LuiProperty.cross),

@@ -1206,7 +1206,8 @@ let common_property_supported kind property =
   | TooltipText | TooltipKeys -> kind = Button || kind = Icon || kind = MenuItem
   | InputType -> kind = Input
   | AltValue | LoadingValue | ReferrerPolicy -> kind = Image
-  | MaxPixelSize | ImageFitValue -> kind = FileImage
+  | MaxPixelSize -> kind = FileImage
+  | ImageFitValue -> kind = FileImage || kind = Image
   | ActiveIndex | DescriptionValue | MetaValue | IndicatorValue | Connector
   | PickerRequest | PickerTypes | PickerMultiple | PickerSource
   | PickerCompletion | PickerAccept | PickerDirectory -> false

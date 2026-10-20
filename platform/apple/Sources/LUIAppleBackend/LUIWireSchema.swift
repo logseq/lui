@@ -302,6 +302,7 @@ enum LUISchemaMatrix {
     ]
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [
+        .image: [.imageFit],
         .checkbox: [.gap, .labelOpacity, .indicatorBorderColor, .checkedIndicatorBorderColor],
         .radio: [.gap, .labelOpacity],
         .grid: [.main, .cross],
