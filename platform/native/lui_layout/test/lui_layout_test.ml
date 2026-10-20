@@ -1694,6 +1694,30 @@ let test_nested_disposal_purges_geometry () =
   Lui_layout.sync ~width:100. ~height:40. layout store;
   check_some_rect "subsequent root fills frame" 0. 0. 100. 40. (Lui_layout.rect layout 6)
 
+let test_retained_child_through_disposed_parent () =
+  List.iter (fun scale -> List.iter (fun reverse ->
+    let store = Lui_store.create () and layout = Lui_layout.create () in
+    apply store [CreateNode (1,Column);CreateNode (2,Column);CreateNode (3,Text);
+      CreateNode (4,Text);InsertChild (1,2,0);InsertChild (2,3,0);InsertChild (1,4,1);
+      SetProp (3,HeightValue,IntValue 10);SetProp (4,HeightValue,IntValue 20)];
+    Lui_layout.sync ~scale ~width:200. ~height:100. layout store;
+    (* Filtering can reuse an existing result in an intermediate row that
+       is itself discarded before the next layout frame. *)
+    let drops = if reverse then [DetachSubtree 5;DetachSubtree 2]
+      else [DetachSubtree 2;DetachSubtree 5] in
+    apply store ([CreateNode (5,Column);InsertChild (1,5,1);
+      RemoveChild (2,3);InsertChild (5,3,0)] @ drops);
+    Lui_layout.sync ~scale ~width:200. ~height:100. layout store;
+    Lui_layout.sync ~scale ~width:180. ~height:100. layout store;
+    Lui_layout.sync ~scale ~width:200. ~height:100. layout store;
+    List.iter (fun id -> check (option reject) "discarded result has no geometry" None
+      (Lui_layout.rect layout id)) [2;3;5];
+    check_some_rect "surviving row stays usable" 0. 0. 200. (20.*.scale)
+      (Lui_layout.rect layout 4);
+    Lui_layout.sync ~scale ~width:180. ~height:100. layout store;
+    check_some_rect "surviving row resizes normally" 0. 0. 180. (20.*.scale)
+      (Lui_layout.rect layout 4)) [false;true]) [1.;2.]
+
 let test_fractional_ancestor_offsets () =
   let store = Lui_store.create () in
   apply store [CreateNode (1,Column);CreateNode (2,Column);CreateNode (3,Column);
@@ -2510,6 +2534,7 @@ let () =
          test_case "updates before subtree disposal" `Quick test_updates_before_subtree_disposal;
          test_case "transient links before disposal" `Quick test_transient_links_before_disposal;
          test_case "nested disposal purges geometry" `Quick test_nested_disposal_purges_geometry;
+         test_case "retained child through disposed parent" `Quick test_retained_child_through_disposed_parent;
          test_case "fractional ancestor offsets" `Quick test_fractional_ancestor_offsets;
          test_case "child restyle allocation" `Quick test_child_restyle_allocation;
          test_case "child restyle produced order" `Quick test_child_restyle_produced_order;

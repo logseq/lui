@@ -2900,7 +2900,13 @@ let apply_journal_op ctx (op : patch_op) =
     else attach_child ctx ~parent:p ~child:c
     end)
   | RemoveChild (p, c) ->
-    if in_vlist ctx p then () else detach_child ctx ~parent:p ~child:c
+    if in_vlist ctx p then () else begin
+      detach_child ctx ~parent:p ~child:c;
+      (* A retained child may pass through an intermediate parent that is
+         disposed before this frame. Its skipped attachment cannot own its
+         eventual purge, so release it when the final store no longer does. *)
+      if not (Lui_store.mem ctx.store c) then purge ctx c
+    end
 
 (* Rect refresh scoped to dirty owner subtrees: every produced
    descendant of a dirty owner gets its rect re-read (a resized node
