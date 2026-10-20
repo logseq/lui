@@ -2227,8 +2227,10 @@ body {
   :where([class*="lui-"]:focus-within) {
     --lui-current-focus-within-bg: var(--lui-focus-within-bg);
     --lui-current-focus-within-border: var(--lui-focus-within-border);
-    background-color: var(--lui-focus-within-bg, revert-layer);
-    border-color: var(--lui-focus-within-border, revert-layer);
+    background-color: var(--lui-focus-within-bg,
+      var(--lui-current-selected-bg,
+        var(--lui-current-pressed-bg, var(--lui-current-hover-bg, revert-layer))));
+    border-color: var(--lui-focus-within-border, var(--lui-current-hover-border, revert-layer));
   }
 
 }
