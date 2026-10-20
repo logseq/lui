@@ -438,6 +438,14 @@ let placement_of_rect r = { p_rect = r; p_override = None }
    no scrollbar is drawn. *)
 type scroll_metrics = { sm_offset : float; sm_extent : float }
 
+(* A shaped inline flow sizes as one paragraph while its retained descendants
+   keep ordinary device-pixel rectangles for input and accessibility. *)
+type text_flow_layout = {
+  flow_width : float;
+  flow_height : float;
+  flow_rects : (int * rect) list;
+}
+
 (* Host-injected lookups so paint stays platform-free. *)
 type hooks = {
   color_of : string -> color option; (* theme/resource name → color *)
@@ -451,6 +459,11 @@ type hooks = {
        virtual list touches ~30 rows, not 100k. [None] enumerates
        every child (ordinary containers). *)
   text_ops : int -> rect -> color -> string -> op list; (* text engine *)
+  text_flow : int -> float -> text_flow_layout option;
+  text_flow_ops : ctx -> int -> rect -> color -> op list option;
+    (* A composed paragraph replaces descendant painting. The rect is its
+       border box; use [text_flow_content_rect] for the measured origin.
+       Return [None] for ordinary nodes, without walking their subtrees. *)
   image_of : int -> image option;    (* node id → decoded image *)
   image_in : int -> rect -> image option;
     (* node id → target rect (logical px) → decoded image; for sources
@@ -469,7 +482,7 @@ and shadow_spec = {
 }
 
 (* Per-frame paint context handed to extension renderers. *)
-type ctx = {
+and ctx = {
   hooks : hooks;
   scale : float;    (* device px per logical px *)
   viewport : rect;  (* frame rect, device px — fixed-position containing block *)
@@ -498,6 +511,8 @@ let default_hooks =
     scroll_of = (fun _ -> None);
     mounted_children = (fun _ -> None);
     text_ops = (fun _ _ _ _ -> []);
+    text_flow = (fun _ _ -> None);
+    text_flow_ops = (fun _ _ _ _ -> None);
     image_of = (fun _ -> None);
     image_in = (fun _ _ -> None);
     shadow_of = (fun _ -> []) }
@@ -1103,6 +1118,14 @@ let text_placement ~layout_padding store id =
     tp_top = top }
 
 let text_placement_of store id = text_placement ~layout_padding:true store id
+
+(* Composed paragraphs measure, paint and expose hit geometry in the same
+   content box. The flex engine adds the paragraph's chrome to its measure. *)
+let text_flow_content_rect ~scale store id (r:rect) =
+  let placement=text_placement_of store id in
+  let left=placement.tp_pad_left*.scale and right=placement.tp_pad_right*.scale
+  and top=placement.tp_pad_top*.scale and bottom=placement.tp_pad_bottom*.scale in
+  {x=r.x+.left;y=r.y+.top;w=max 0. (r.w-.left-.right);h=max 0. (r.h-.top-.bottom)}
 
 (* Flex already adds explicit padding around its measured content box. Only
    implicit control chrome and built-in slots belong in the text measure. *)
@@ -2835,8 +2858,11 @@ let emit1 scene op = scene.ops <- op :: scene.ops
 (* Ops for a single node's own chrome. *)
 let paint_own ctx store id st kind r rs alpha =
   let fg = default_text_fg ctx store id kind st rs in
+  let flow = ctx.hooks.text_flow_ops ctx id r fg in
   let own =
-    match kind with
+    match flow with
+    | Some ops -> box_ops ctx store id rs r alpha @ scale_ops alpha ops
+    | None -> (match kind with
     | "spacer" -> []
     | "divider" -> divider_ops ctx store id rs r alpha
     | "progress" -> progress_ops ctx store id rs r alpha
@@ -2894,12 +2920,12 @@ let paint_own ctx store id st kind r rs alpha =
           | Some node -> scale_ops alpha (renderer.paint ctx store node r)
           | None -> box_ops ctx store id rs r alpha)
         | None -> box_ops ctx store id rs r alpha)
-      | _ -> box_ops ctx store id rs r alpha)
+      | _ -> box_ops ctx store id rs r alpha))
   in
   (* token chrome first (shadow + face + border underneath), then the
      node's own ops — prop fills sit on top of the defaults and the
      label is never covered by a chrome face. *)
-  default_chrome ctx store id st kind r rs alpha
+  let ops = default_chrome ctx store id st kind r rs alpha
   @ own
   @
   if
@@ -2913,7 +2939,8 @@ let paint_own ctx store id st kind r rs alpha =
       | "select" | "combobox" -> r, chrome_radii ctx store id (6. *. ctx.scale)
       | _ -> r, radii_of ctx store id in
     focus_ring_ops ctx region radii alpha
-  else []
+  else [] in
+  ops, Option.is_none flow
 
 (* Inside a dead clip only the context still matters: a promoted
    popup inherits its clipped-away ancestors' opacity, so the ghost
@@ -2960,7 +2987,7 @@ let paint_enter ctx store scene alpha f =
          || not (rect_empty (rect_intersect f.f_clipped ctx.viewport)))
     in
     if node_drawn then begin
-      let own = paint_own ctx store id st kind f.f_rect rs alpha in
+      let own, down = paint_own ctx store id st kind f.f_rect rs alpha in
       if f.f_clips then begin
         (* Outer shadows escape the node's overflow clip, while ancestor
            clips still constrain them. Inset shadows and content stay inside. *)
@@ -2978,7 +3005,7 @@ let paint_enter ctx store scene alpha f =
         emit scene inside
       end
       else emit scene own;
-      { b_emit = true; b_down = true; b_ctx = alpha }
+      { b_emit = true; b_down = down; b_ctx = alpha }
     end
     else { b_emit = false; b_down = true; b_ctx = alpha }
   end

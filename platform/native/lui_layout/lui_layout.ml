@@ -10,12 +10,14 @@ open Lui_protocol
 open Lui_flex
 
 type text_measure = int -> string -> float -> float -> (float * float) option
+type text_flow = int -> float -> Lui_paint.text_flow_layout option
 type image_measure = int -> (float * float) option
 
 (* Shared defaults so the memo's physical-equality check on function
    inputs sees a stable identity: an inline [fun] default would
    allocate a fresh closure per call and never match. *)
 let no_measure _id _text _offered_w _offered_h = None
+let no_text_flow _id _width = None
 let no_image_measure _id = None
 let show_all _id = false
 
@@ -82,6 +84,7 @@ type saved_ctx = {
   sc_vw : float;
   sc_vh : float;
   sc_tm : text_measure;
+  sc_text_flow : text_flow;
   sc_image_measure : image_measure;
   sc_hidden : int -> bool;
   sc_anchor : (float * float) option;
@@ -134,6 +137,8 @@ type t = {
      flex parent ([frame_id] for frame children). *)
   owner : (int, int) Hashtbl.t;
   tables : (int, table) Hashtbl.t;
+  flow_roots : (int, unit) Hashtbl.t;
+  flow_owners : (int, int) Hashtbl.t;
   grids : (int * Lui_flex.node * Lui_flex.style * float) list ref;
   popups : (Lui_flex.node * int) list ref;
   mutable extent : float * float; (* frame extent the last layout used *)
@@ -154,6 +159,7 @@ type t = {
   mutable synced_h : float;
   mutable synced_anchor : (float * float) option;
   mutable synced_measure : text_measure;
+  mutable synced_text_flow : text_flow;
   mutable synced_image_measure : image_measure;
   mutable synced_hidden : int -> bool;
   (* Instrumentation: [stat_syncs] counts syncs that rebuilt the mirror
@@ -177,6 +183,8 @@ let create () =
     sparent = Hashtbl.create 64;
     owner = Hashtbl.create 64;
     tables = Hashtbl.create 4;
+    flow_roots = Hashtbl.create 4;
+    flow_owners = Hashtbl.create 32;
     grids = ref [];
     popups = ref [];
     extent = (0., 0.);
@@ -188,6 +196,7 @@ let create () =
     synced_h = 0.;
     synced_anchor = None;
     synced_measure = no_measure;
+    synced_text_flow = no_text_flow;
     synced_image_measure = no_image_measure;
     synced_hidden = show_all;
     stat_syncs = 0;
@@ -807,6 +816,7 @@ type ctx = {
   vw : float;
   vh : float;
   tm : text_measure;
+  text_flow : text_flow;
   image_measure : image_measure;
   hidden : int -> bool; (* host-owned transient visibility (menus) *)
   ctx_anchor : (float * float) option; (* pointer point for context menus *)
@@ -1202,6 +1212,22 @@ let unregister ctx id =
   ctx.grids := List.filter (fun (g, _, _, _) -> g <> id) !(ctx.grids);
   ctx.popups := List.filter (fun (_, s) -> s <> id) !(ctx.popups)
 
+let rec index_flow_children ctx root parent =
+  let children = Lui_store.child_ids ctx.store parent in
+  Hashtbl.replace ctx.pkids parent (List.map (fun raw -> {raw;gens=[]}) children);
+  List.iter (fun child ->
+    Hashtbl.replace ctx.sparent child parent;
+    Hashtbl.replace ctx.eng.flow_owners child root;
+    index_flow_children ctx root child) children
+
+let flow_measure ctx id _node ~width ~width_mode ~height:_ ~height_mode:_ =
+  let width = match width_mode with
+    | Lui_flex.Measure_undefined -> Float.nan
+    | Measure_exactly | Measure_at_most -> width
+    | Measure_invalid -> invalid_arg "Invalid text-flow measure mode" in
+  let flow = Option.get (ctx.text_flow id width) in
+  {Lui_flex.width=flow.Lui_paint.flow_width;height=flow.flow_height}
+
 (* [build] expands a store node into (flex node, generator store id)
    pairs — a singleton for normal kinds, [] for display:none/hidden,
    the lifted produced pairs for display:contents. Every mirror map is
@@ -1219,12 +1245,24 @@ let rec build ctx ~owner_id ~pkind ~pid ~index id : (Lui_flex.node * int) list =
       (expand_children ctx ~owner:owner_id ~pkind ~pid ~raw_parent:id
          ~first:index cids)
   | N_normal ->
+    (* A retained span can leave its composed paragraph without changing id. *)
+    Hashtbl.remove ctx.eng.flow_owners id;
     let kind = Lui_store.kind ctx.store id in
     let style =
       style_of ~scale:ctx.scale ~viewport:(ctx.vw, ctx.vh) ctx.store id
       |> adjust ~scale:ctx.scale ~pkind ~pid ~index ctx.store id
     in
-    if kind = "virtual-list" && vlist_vertical ctx.store id then begin
+    if Option.is_some (ctx.text_flow id Float.nan) then begin
+      let node = Lui_flex.create ~style ~measure:(flow_measure ctx id) [] in
+      Hashtbl.replace ctx.nodes id node;
+      Hashtbl.replace ctx.applied id style;
+      Hashtbl.replace ctx.owner id owner_id;
+      Hashtbl.replace ctx.eng.flow_roots id ();
+      index_flow_children ctx id id;
+      register ctx id kind node style;
+      [node,id]
+    end
+    else if kind = "virtual-list" && vlist_vertical ctx.store id then begin
       (* Real virtualization: the list is a leaf in this mirror — only
          the mounted row window gets flex trees (side forest). Its
          produced child list stays empty; [pkids] records the leaf. *)
@@ -1950,6 +1988,24 @@ let collect (t : t) =
   let read = absolute_reader t in
   Hashtbl.iter (fun id _ -> update_rect t id (read id)) t.nodes
 
+let collect_text_flows ctx =
+  let live = Hashtbl.create (Hashtbl.length ctx.eng.flow_owners) in
+  Hashtbl.iter (fun root () ->
+    match Hashtbl.find_opt ctx.eng.rects root with
+    | None -> ()
+    | Some parent ->
+      let parent=Lui_paint.text_flow_content_rect ~scale:ctx.scale ctx.store root parent in
+      let flow = Option.get (ctx.text_flow root parent.Lui_scene.w) in
+      List.iter (fun (id,(local:Lui_scene.rect)) ->
+        Hashtbl.replace live id ();
+        update_rect ctx.eng id {Lui_flex.x=parent.x+.local.x;
+          y=parent.y+.local.y;w=local.w;h=local.h}) flow.flow_rects) ctx.eng.flow_roots;
+  Hashtbl.iter (fun id _ ->
+    if not (Hashtbl.mem live id) && Hashtbl.mem ctx.eng.rects id then begin
+      Hashtbl.remove ctx.eng.rects id;
+      Hashtbl.replace ctx.eng.rect_changed id ()
+    end) ctx.eng.flow_owners
+
 (* The set of ids whose absolute rect differed at the last rect
    refresh. Hands the table itself to the caller and installs a fresh
    one — ids a later refresh moves again simply re-mark. *)
@@ -1992,13 +2048,16 @@ let rec purge ctx id =
   (match Hashtbl.find_opt ctx.pkids id with
    | Some es ->
      Hashtbl.remove ctx.pkids id;
-     List.iter (fun e -> purge ctx e.raw) es
+     List.iter (fun e ->
+       if Hashtbl.find_opt ctx.sparent e.raw=Some id then purge ctx e.raw) es
    | None -> ());
   Hashtbl.remove ctx.nodes id;
   Hashtbl.remove ctx.applied id;
   Hashtbl.remove ctx.sparent id;
   Hashtbl.remove ctx.owner id;
   Hashtbl.remove ctx.eng.rects id;
+  Hashtbl.remove ctx.eng.flow_roots id;
+  Hashtbl.remove ctx.eng.flow_owners id;
   (* A dropped rect is a geometry change too: paint consumers holding
      the old box must re-derive (their layout hook now answers zero). *)
   Hashtbl.replace ctx.eng.rect_changed id ();
@@ -2335,6 +2394,7 @@ let ctx_of_saved (t : t) (sc : saved_ctx) : ctx =
     vw = sc.sc_vw;
     vh = sc.sc_vh;
     tm = sc.sc_tm;
+    text_flow = sc.sc_text_flow;
     image_measure = sc.sc_image_measure;
     hidden = sc.sc_hidden;
     ctx_anchor = sc.sc_anchor;
@@ -2374,7 +2434,8 @@ let vlists_update (t : t) ~vport =
              ignore (vlists_mount t ctx sc.sc_store ~vport)
            | None -> ())
         end;
-        vlists_collect t
+        vlists_collect t;
+        collect_text_flows ctx
       end
     | None -> ()
 
@@ -2385,6 +2446,7 @@ let compute t ~width ~height =
   | Some root ->
     t.extent <- layout_frame root ~width ~height;
     collect t;
+    Option.iter (fun saved -> collect_text_flows (ctx_of_saved t saved)) t.vctx;
     (* The rects now reflect a frame the memo never synced at — a
        later {!sync} at the memoized size would wrongly reuse them. *)
     invalidate t
@@ -2596,7 +2658,8 @@ let restyle_gen_at ctx o g index =
          ordered_child_ids ctx.store g (Lui_store.kind ctx.store g)
        in
        let style = popup_min_style ctx g cids kids style in
-       let m = measure_for ctx g ~kids in
+       let m = if Hashtbl.mem ctx.eng.flow_roots g then Some (flow_measure ctx g)
+         else measure_for ctx g ~kids in
        Lui_flex.set_style f style;
        Lui_flex.set_measure f m;
        Hashtbl.replace ctx.applied g style;
@@ -2846,8 +2909,8 @@ let refresh_rects ctx =
   end;
   Hashtbl.reset ctx.eng.rect_dirty
 
-let ctx_of t store ~scale ~measure ~image_measure ~hidden ctx_anchor ~width ~height : ctx =
-  { scale; vw = width; vh = height; tm = measure; image_measure; hidden; ctx_anchor;
+let ctx_of t store ~scale ~measure ~text_flow ~image_measure ~hidden ctx_anchor ~width ~height : ctx =
+  { scale; vw = width; vh = height; tm = measure; text_flow; image_measure; hidden; ctx_anchor;
     store; eng = t; nodes = t.nodes; applied = t.applied;
     pkids = t.pkids; sparent = t.sparent; owner = t.owner;
     grids = t.grids; popups = t.popups;
@@ -2867,6 +2930,8 @@ let rebuild ctx (t : t) ~width ~height =
   Hashtbl.reset t.sparent;
   Hashtbl.reset t.owner;
   Hashtbl.reset t.tables;
+  Hashtbl.reset t.flow_roots;
+  Hashtbl.reset t.flow_owners;
   t.grids := [];
   t.popups := [];
   ignore
@@ -2909,9 +2974,10 @@ let finish ctx (t : t) ~width ~height ~vport ~full =
     refresh_rects ctx;
     (* Row rects are composed off the final mirror geometry — always
        recomposed, never part of the scoped refresh. *)
-    vlists_collect t
+    vlists_collect t;
+    collect_text_flows ctx
 
-let sync ?(scale = 1.) ?(measure = no_measure) ?(image_measure = no_image_measure) ?(hidden = show_all)
+let sync ?(scale = 1.) ?(measure = no_measure) ?(text_flow = no_text_flow) ?(image_measure = no_image_measure) ?(hidden = show_all)
     ?ctx_anchor ?(vport = no_vport) ?(anchor_shift = fun _ -> (0.,0.)) ~width ~height (t : t) store =
   t.anchor_shift <- anchor_shift;
   let shifts = ref [] in
@@ -2930,6 +2996,7 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(image_measure = no_image_measur
     t.synced_scale <> scale
     || t.synced_anchor <> ctx_anchor
     || (not (t.synced_measure == measure))
+    || (not (t.synced_text_flow == text_flow))
     || (not (t.synced_image_measure == image_measure))
     || (not (t.synced_hidden == hidden))
   in
@@ -2949,7 +3016,7 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(image_measure = no_image_measur
   end
   else begin
     t.stat_syncs <- t.stat_syncs + 1;
-    let ctx = ctx_of t store ~scale ~measure ~image_measure ~hidden ctx_anchor ~width ~height in
+    let ctx = ctx_of t store ~scale ~measure ~text_flow ~image_measure ~hidden ctx_anchor ~width ~height in
     let full =
       if mirror_inputs_changed || t.synced_rev < 0 || t.root = None then true
       else
@@ -2957,6 +3024,26 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(image_measure = no_image_measur
         | None -> true
         | Some ops ->
           t.stat_steps <- t.stat_steps + 1;
+          let flow_dirty = Hashtbl.create 4 in
+          let rec flow_root id =
+            if Hashtbl.mem t.flow_roots id || Option.is_some (text_flow id Float.nan) then Some id
+            else match Hashtbl.find_opt t.flow_owners id with
+              | Some root -> Some root
+              | None -> Option.bind (Lui_store.parent store id) flow_root in
+          let apply op =
+            let primary, related = match op with
+              | SetProp (id,_,_) | RemoveProp (id,_) | SetExtensionProp (id,_,_)
+              | RemoveExtensionProp (id,_) | CreateNode (id,_) | CreateExtension (id,_,_)
+              | DropNode id | DetachSubtree id -> id,[]
+              | InsertChild (parent,child,_) | MoveChild (parent,child,_)
+              | RemoveChild (parent,child) -> parent,[child] in
+            let owner = flow_root primary in
+            List.iter (fun id -> Option.iter (fun root ->
+              if Lui_store.mem store root then Hashtbl.replace flow_dirty root ()) (flow_root id))
+              (primary::related);
+            match owner with
+            | Some root when Lui_store.mem store root -> ()
+            | _ -> apply_journal_op ctx op in
           (* The store already contains the final batch tree. Building a
              newly inserted ancestor also builds its new descendants.
              Purge old identities first so later create records cannot
@@ -2965,14 +3052,16 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(image_measure = no_image_measur
           List.iter (function
             | (CreateNode (id,_) | CreateExtension (id,_,_)) as op ->
               Hashtbl.replace created id ();
-              apply_journal_op ctx op
+              apply op
             | _ -> ()) ops;
           List.iter (function
             | CreateNode _ | CreateExtension _ -> ()
             | SetProp (id,_,_) | RemoveProp (id,_)
             | SetExtensionProp (id,_,_) | RemoveExtensionProp (id,_)
               when Hashtbl.mem created id || not (Lui_store.mem store id) -> ()
-            | op -> apply_journal_op ctx op) ops;
+            | op -> apply op) ops;
+          Hashtbl.iter (fun root () ->
+            if Lui_store.mem store root then reexpand ctx root) flow_dirty;
           (* Retained anchor references cross raw-parent boundaries. Reconcile
              their availability after the complete target batch is applied. *)
           Lui_store.iter_anchor_targets store (fun id ->
@@ -3045,12 +3134,14 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(image_measure = no_image_measur
     t.synced_h <- height;
     t.synced_anchor <- ctx_anchor;
     t.synced_measure <- measure;
+    t.synced_text_flow <- text_flow;
     t.synced_image_measure <- image_measure;
     t.synced_hidden <- hidden;
     t.vctx <-
       Some
         { sc_scale = scale; sc_vw = width; sc_vh = height;
-          sc_tm = measure; sc_image_measure = image_measure; sc_hidden = hidden; sc_anchor = ctx_anchor;
+          sc_tm = measure; sc_text_flow = text_flow;
+          sc_image_measure = image_measure; sc_hidden = hidden; sc_anchor = ctx_anchor;
           sc_store = store }
   end
 

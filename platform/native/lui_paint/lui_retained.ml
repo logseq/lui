@@ -426,6 +426,22 @@ let mark_parent_rekids rt store id =
   | Some p -> mark_rekids rt store p
   | None -> ()
 
+(* A composed surface paints its descendants in its own fragment. Child
+   mutations must invalidate that owner even when its outer rect stays put. *)
+let mark_composed_ancestor rt store id =
+  let mark owner =
+    match Hashtbl.find_opt rt.frags owner with
+     | Some owner when owner.born && owner.has_box && not owner.show_kids ->
+       mark_repaint rt owner.self
+     | _ -> () in
+  let rec above parent =
+    if parent <> id then begin
+      mark parent;
+      Option.iter above (Lui_store.parent store parent)
+    end in
+  mark id;
+  Option.iter above (paint_parent rt store id)
+
 (* [f]'s emit-status moved — its slot in the parent's piece list is
    stale. Culled parents carry no child slots to update: when they
    surface, their own rebuild enumerates children fresh. *)
@@ -481,6 +497,14 @@ let advance rt store =
     let retired = ref false in
     List.iter
       (fun (op : Lui_protocol.patch_op) ->
+        (match op with
+         | SetProp (id,_,_) | RemoveProp (id,_) | SetExtensionProp (id,_,_)
+         | RemoveExtensionProp (id,_) | CreateNode (id,_) | CreateExtension (id,_,_)
+         | DropNode id | DetachSubtree id -> mark_composed_ancestor rt store id
+         | InsertChild (parent,child,_) | MoveChild (parent,child,_)
+         | RemoveChild (parent,child) ->
+           mark_composed_ancestor rt store child;
+           mark_composed_ancestor rt store parent);
         match op with
         | SetProp (id, p, _) | RemoveProp (id, p) -> (
           let name = Lui_wire_schema.property_name p in
@@ -1141,7 +1165,10 @@ let paint_retained rt hooks store (scene : Lui_scene.t) ?moved ?hints ?vlists
    | None -> ());
   (match hints with
    | Some h -> Hashtbl.iter (fun id () ->
-       if Lui_store.mem store id then mark_repaint rt id) h
+       if Lui_store.mem store id then begin
+         mark_repaint rt id;
+         mark_composed_ancestor rt store id
+       end) h
    | None -> ());
   if rt.dirty || rt.motion_dirty then begin
     let refresh_surfaces = rt.dirty in

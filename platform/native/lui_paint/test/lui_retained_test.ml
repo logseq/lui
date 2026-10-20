@@ -778,10 +778,106 @@ let test_scroll_surface_shadow_clip () =
       done)
     [ 1.; 2. ]
 
+let test_composed_text_flow () =
+  let env=env () in
+  apply env.store [CreateNode (1,Column);CreateNode (2,Text);CreateNode (3,Text);
+    CreateNode (4,Text);CreateNode (8,Text);CreateNode (9,Text);
+    InsertChild (1,2,0);InsertChild (1,8,1);InsertChild (2,3,0);
+    InsertChild (2,4,1);InsertChild (8,9,0);
+    SetProp (2,WidthValue,IntValue 80);SetProp (8,WidthValue,IntValue 80);
+    SetProp (3,TextValue,StringValue "abc");SetProp (4,TextValue,StringValue "def");
+    SetProp (9,TextValue,StringValue "ghi")];
+  let flow id width =
+    if (id<>2 && id<>8) || List.exists (fun child ->
+      Lui_store.int_prop env.store child "padding"=Some 1)
+      (Lui_store.child_ids env.store id) then None else
+    let used=ref 0. in
+    let rects=List.filter_map (fun child ->
+      if Lui_store.string_prop env.store child "display"=Some "none" then None else
+      let text=Option.get (Lui_store.string_prop env.store child "text") in
+      let w=float_of_int (String.length text)*.8. in
+      let r=rect !used 0. w 16. in
+      used:= !used+.w;
+      Some (child,r)) (Lui_store.child_ids env.store id) in
+    let w=if Float.is_nan width then !used else min width !used in
+    Some {Lui_paint.flow_width=w;flow_height=16.;flow_rects=rects} in
+  let compose ctx id (r:rect) _fg =
+    let r=Lui_paint.text_flow_content_rect ~scale:1. env.store id r in
+    Option.map (fun flow -> List.concat_map (fun (child,(local:rect)) ->
+      text_ops env.cur child {local with x=r.x+.local.x;y=r.y+.local.y}
+        (Lui_paint.text_fg ctx env.store child)
+        (Option.get (Lui_store.string_prop env.store child "text"))) flow.Lui_paint.flow_rects)
+      (flow id r.w) in
+  let frame ?hints () =
+    Lui_layout.sync ~measure ~text_flow:flow ~width:200. ~height:200. env.eng env.store;
+    let moved=Lui_layout.take_rect_changes env.eng in
+    let h={(hooks env) with layout=Lui_layout.layout_hook env.eng;
+      text_flow=flow;text_flow_ops=compose} in
+    let full=scene () in
+    env.cur:=full;
+    Lui_paint.paint h env.store full ~width:200 ~height:200 ~scale:1.
+      ~clear:(color 0 0 0 0);
+    env.cur:=env.kept;
+    Lui_retained.paint_retained env.rt h env.store env.kept ~moved ?hints
+      ~width:200 ~height:200 ~scale:1. ~clear:(color 0 0 0 0) ();
+    check_scene full env.kept in
+  frame ();
+  check int "Composed children are painted exactly once" 9 (List.length env.kept.glyphs);
+  let child=Option.get (Lui_layout.rect env.eng 4) in
+  check (float 0.01) "Child hit rect follows preceding inline text" 24. child.x;
+  apply env.store [SetProp (3,TextValue,StringValue "ABC")];
+  frame ();
+  apply env.store [SetProp (4,ForegroundValue,StringValue "#ff0000")];
+  frame ();
+  check bool "Child color invalidates the composed owner" true
+    (List.exists (fun (g:glyph) -> g.gcolor=color 255 0 0 255) env.kept.glyphs);
+  apply env.store [SetProp (4,HoverForeground,StringValue "#0000ff")];
+  Hashtbl.replace env.state_tbl 4 {Lui_paint.state_neutral with hovered=true};
+  let hints=Hashtbl.create 1 in Hashtbl.add hints 4 ();
+  frame ~hints ();
+  check bool "Child interaction invalidates its composed owner" true
+    (List.exists (fun (g:glyph) -> g.gcolor=color 0 0 255 255) env.kept.glyphs);
+  apply env.store [SetProp (3,DisplayValue,StringValue "none")];
+  frame ();
+  check bool "Hidden inline children retire their hit rect" true (Lui_layout.rect env.eng 3=None);
+  check int "Hidden inline text consumes no glyphs" 6 (List.length env.kept.glyphs);
+  apply env.store [RemoveChild (2,4);InsertChild (8,4,1)];
+  frame ();
+  let moved=Option.get (Lui_layout.rect env.eng 4) and owner=Option.get (Lui_layout.rect env.eng 8) in
+  check (float 0.01) "Reparented span follows its new paragraph" owner.y moved.y;
+  apply env.store [RemoveChild (8,4);DropNode 4];
+  frame ();
+  check bool "Removed inline children retire their hit rect" true (Lui_layout.rect env.eng 4=None);
+  apply env.store [SetProp (8,PaddingValue,IntValue 4);SetProp (8,BorderWidth,IntValue 1)];
+  frame ();
+  let owner=Option.get (Lui_layout.rect env.eng 8) and child=Option.get (Lui_layout.rect env.eng 9) in
+  check (float 0.01) "Inline hit rect starts inside paragraph chrome" 5. (child.x-.owner.x);
+  let glyph=List.hd env.kept.glyphs in
+  check (float 0.01) "Composed ink shares the content origin" child.x glyph.gx;
+  apply env.store [SetProp (9,PaddingValue,IntValue 1)];
+  frame ();
+  check (float 0.01) "An inline widget can return to ordinary layout" 42.
+    (Option.get (Lui_layout.rect env.eng 9)).w;
+  apply env.store [SetProp (9,PaddingValue,IntValue 0)];
+  frame ();
+  check (float 0.01) "Removing an inline widget restores paragraph composition" 24.
+    (Option.get (Lui_layout.rect env.eng 9)).w;
+  apply env.store [SetProp (1,CrossAlignment,StringValue "end")];
+  frame ();
+  Lui_layout.compute env.eng ~width:300. ~height:200.;
+  let owner=Option.get (Lui_layout.rect env.eng 8) and child=Option.get (Lui_layout.rect env.eng 9) in
+  check (float 0.01) "Direct resize refreshes inline descendant hit rects" 5. (child.x-.owner.x);
+  frame ();
+  apply env.store [RemoveChild (8,9);InsertChild (1,9,2)];
+  frame ();
+  check bool "A span moved out of a paragraph keeps its ordinary hit rect" true
+    (Option.is_some (Lui_layout.rect env.eng 9))
+
 let () =
   run "lui_retained"
     [ ( "fragments",
-        [ test_case "scroll surface shadow clip" `Quick test_scroll_surface_shadow_clip;
+        [ test_case "composed text flow" `Quick test_composed_text_flow;
+          test_case "scroll surface shadow clip" `Quick test_scroll_surface_shadow_clip;
           test_case "fragment lookup allocation" `Quick test_fragment_lookup_allocation;
           test_case "static frame" `Quick test_static_frame;
           test_case "single paint update" `Quick test_single_paint_update;

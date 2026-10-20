@@ -2629,7 +2629,7 @@ module Assembly = struct
     in
     let hooks =
       Lui_paint.
-        { color_of = Theme.color_of;
+        { Lui_paint.default_hooks with color_of = Theme.color_of;
           hidden = (fun _ -> false);
           layout =
             (fun id -> Lui_paint.placement_of_rect (shifted_rect id));

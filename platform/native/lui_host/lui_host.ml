@@ -25,7 +25,9 @@ module type LAYOUT_ENGINE = sig
   val create : unit -> t
 
   val sync :
-    ?scale:float -> ?measure:text_measure -> ?image_measure:(int -> (float * float) option) -> ?hidden:(int -> bool) ->
+    ?scale:float -> ?measure:text_measure ->
+    ?text_flow:(int -> float -> Lui_paint.text_flow_layout option) ->
+    ?image_measure:(int -> (float * float) option) -> ?hidden:(int -> bool) ->
     ?ctx_anchor:(float * float) ->
     ?vport:(int -> (float * float) option) ->
     ?anchor_shift:(int -> float * float) ->
@@ -139,7 +141,7 @@ let create ~hooks ?layout ?(measure = no_measure) ~renderer ~width ~height ~scal
       Some
         { lsync =
             (fun ~scale ~measure ~hidden ~ctx_anchor ~vport ~anchor_shift ~width ~height store ->
-              L.sync ~scale ~measure ~image_measure ~hidden ?ctx_anchor ~vport ~anchor_shift ~width ~height
+              L.sync ~scale ~measure ~text_flow:hooks.text_flow ~image_measure ~hidden ?ctx_anchor ~vport ~anchor_shift ~width ~height
                 engine store);
           linvalidate = (fun () -> L.invalidate engine);
           lhook = L.layout_hook engine;
