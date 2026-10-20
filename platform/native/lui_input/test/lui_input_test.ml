@@ -894,6 +894,57 @@ let test_pointer_hover_press () =
        (function `Dispatch (PointerUp (2, _)) -> true | _ -> false)
        m2)
 
+let test_pointer_hover_ancestors () =
+  let store = store_of
+    [CreateNode (1,Root);CreateNode (2,Column);CreateNode (3,Button);
+     CreateNode (4,Button);CreateNode (5,Column);
+     InsertChild (1,2,0);InsertChild (2,3,0);InsertChild (2,4,1);InsertChild (1,5,1);
+     SetProp (2,PointerEnabled,BoolValue true);SetProp (3,PointerEnabled,BoolValue true);
+     SetProp (4,PointerEnabled,BoolValue true);SetProp (5,PointerEnabled,BoolValue true)] in
+  let state = ref Lui_pointer.initial in
+  let move path =
+    let next,actions = Lui_pointer.move store !state ~path ~x:5. ~y:5. in
+    state:=next;
+    List.filter_map (function `Dispatch (PointerEnter id) -> Some ("enter",id)
+      | `Dispatch (PointerLeave id) -> Some ("leave",id) | _ -> None) actions in
+  let check = Alcotest.(check (list (pair string int))) in
+  check "enter outer ancestors before the child" ["enter",2;"enter",3] (move [3;2;1]);
+  check "moving between siblings retains their shared hover owner"
+    ["leave",3;"enter",4] (move [4;2;1]);
+  check "moving onto a parent only leaves its child" ["leave",4] (move [2;1]);
+  check "moving back into a child does not reenter the parent" ["enter",3] (move [3;2;1]);
+  Lui_store.apply_op store (RemoveChild (2,3));
+  Lui_store.apply_op store (InsertChild (5,3,0));
+  check "reparenting the same hit node updates its ancestor boundary"
+    ["leave",2;"enter",5] (move [3;5;1]);
+  Lui_store.apply_op store (SetProp (5,PointerEnabled,BoolValue false));
+  check "removing ancestor pointer handling refreshes a stationary pointer"
+    ["leave",5] (move [3;5;1]);
+  check "leaving the entire subtree leaves the remaining target" ["leave",3] (move [1]);
+  check "remaining outside emits no pointer boundary events" [] (move [1])
+
+let test_pointer_hover_stable_allocation () =
+  let ops = ref [CreateNode (1,Root)] in
+  let path = ref [1] in
+  for id=2 to 32 do
+    ops:=SetProp (id,PointerEnabled,BoolValue true)::InsertChild (id-1,id,0)::
+      CreateNode (id,Column)::!ops;
+    path:=id::!path
+  done;
+  let store = store_of (List.rev !ops) in
+  let state,_ = Lui_pointer.move store Lui_pointer.initial ~path:!path ~x:0. ~y:0. in
+  let current = ref state in
+  Gc.full_major ();
+  let before = Gc.allocated_bytes () in
+  for i=1 to 1000 do
+    let next,actions = Lui_pointer.move store !current ~path:!path ~x:(float i) ~y:0. in
+    if actions<>[] then Alcotest.fail "stable hover emitted boundary or repaint actions";
+    current:=next
+  done;
+  let allocated = (Gc.allocated_bytes ()-.before)/.1000. in
+  Printf.printf "Stable nested hover allocation: %.0f bytes/move\n%!" allocated;
+  if allocated>256. then Alcotest.failf "Stable ancestor hover allocates %.0f bytes/move" allocated
+
 (* ---------- spatial index (P2-2) ---------- *)
 
 (* A tree exercising everything hit-testing must agree on: a scroll
@@ -1301,7 +1352,9 @@ let () =
         [ Alcotest.test_case "frontmost ancestry" `Quick test_frontmost_hit_ancestry;
           Alcotest.test_case "allocation" `Quick test_hit_path_allocation;
           Alcotest.test_case "hover+press" `Quick
-            test_pointer_hover_press ] );
+            test_pointer_hover_press;
+          Alcotest.test_case "ancestor boundaries" `Quick test_pointer_hover_ancestors;
+          Alcotest.test_case "stable ancestor allocation" `Quick test_pointer_hover_stable_allocation ] );
       ( "spatial",
         [ Alcotest.test_case "hit equivalence" `Quick
             test_spatial_hit_equiv;
