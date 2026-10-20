@@ -184,7 +184,10 @@ internal fun Modifier.luiChrome(node: LuiNodeLike): Modifier {
         )
     }
     if (radius > 0) modifier = modifier.clip(shape)
-    if (paddingH > 0 || paddingV > 0) {
+    // A ghost button owns its label padding so the entire painted capsule
+    // remains clickable and exposes one full-size accessibility target.
+    val buttonContentPadding = node.kind == LuiNodeKind.button && node.propString("variant") == "ghost"
+    if (!buttonContentPadding && (paddingH > 0 || paddingV > 0)) {
         modifier = modifier.padding(horizontal = paddingH.dp, vertical = paddingV.dp)
     }
     node.prop("opacity")?.numberValue?.let { opacity ->

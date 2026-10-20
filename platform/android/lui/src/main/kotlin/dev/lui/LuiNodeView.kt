@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -33,6 +35,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -60,8 +63,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -88,19 +89,26 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
  * Renders one node of the retained tree plus its subtree. Ported from the
@@ -135,7 +143,15 @@ private fun LuiChromeSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
     var contextMenuAt by remember(id) { mutableStateOf<Offset?>(null) }
     val contextMenuId =
         node.children.firstOrNull { backend.node(it)?.kind == LuiNodeKind.contextMenu }
-    val modifier = Modifier
+    val hidden = node.propString("display") == "none" ||
+        (node.kind == LuiNodeKind.virtualList && node.prop("selected")?.boolValue == false)
+    val retainedVisibility = if (hidden) {
+        Modifier.layout { measurable, constraints ->
+            val measured = measurable.measure(constraints)
+            layout(0, 0) { }
+        }
+    } else Modifier
+    val modifier = retainedVisibility
         .luiChrome(node)
         .luiGestures(backend, node, id) { offset -> contextMenuAt = offset }
 
@@ -329,12 +345,7 @@ private fun LuiNodeContent(
             }
         }
 
-        LuiNodeKind.virtualList -> LazyColumn(
-            modifier = modifier,
-            verticalArrangement = Arrangement.spacedBy(gapOf(node).dp),
-        ) {
-            items(children, key = { it }) { childId -> LuiNodeView(backend, childId) }
-        }
+        LuiNodeKind.virtualList -> LuiVirtualList(backend, node, id, modifier)
 
         LuiNodeKind.grid -> LuiGrid(backend, node, modifier, children)
 
@@ -371,7 +382,8 @@ private fun LuiNodeContent(
         LuiNodeKind.paragraph,
         LuiNodeKind.label,
         -> Text(
-            node.text(),
+            if (node.text().isEmpty() && node.propString("style-class").orEmpty().split(' ').contains("navigation-title"))
+                LocalLuiSectionTitle.current.orEmpty() else node.text(),
             modifier = modifier,
             color = luiThemeColor(node.propString("foreground"), foreground = true)
                 ?: Color.Unspecified,
@@ -921,10 +933,21 @@ private fun LuiButton(
         "lg", "icon" -> 24.dp
         else -> 18.dp
     }
+    val defaultContentPadding = androidx.compose.material3.ButtonDefaults.TextButtonContentPadding
+    val layoutDirection = LocalLayoutDirection.current
+    val horizontalPadding = node.prop("padding-horizontal")?.intValue ?: node.prop("padding")?.intValue
+    val verticalPadding = node.prop("padding-vertical")?.intValue ?: node.prop("padding")?.intValue
+    val contentPadding = androidx.compose.foundation.layout.PaddingValues(
+        start = horizontalPadding?.dp ?: defaultContentPadding.calculateStartPadding(layoutDirection),
+        end = horizontalPadding?.dp ?: defaultContentPadding.calculateEndPadding(layoutDirection),
+        top = verticalPadding?.dp ?: defaultContentPadding.calculateTopPadding(),
+        bottom = verticalPadding?.dp ?: defaultContentPadding.calculateBottomPadding(),
+    )
 
     val label: @Composable () -> Unit = {
         if (children.isNotEmpty()) {
             Row(
+                modifier = if (node.propString("text-alignment") != null) Modifier.fillMaxWidth() else Modifier,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -939,6 +962,11 @@ private fun LuiButton(
                 )
                 icon == null -> Text(
                     node.text(),
+                    modifier = if (node.propString("text-alignment") != null) Modifier.fillMaxWidth() else Modifier,
+                    textAlign = textAlignment(node.propString("text-alignment")),
+                    style = if (node.propString("style-class") != null) {
+                        LuiTypography.textStyle(node.propString("size"), node.propString("style-class"))
+                    } else MaterialTheme.typography.labelLarge.luiInherited(),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -1031,8 +1059,9 @@ private fun LuiButton(
             } else {
                 TextButton(
                     onClick = onClick,
-                    modifier = modifier,
+                    modifier = if (node.propDouble("grow") > 0) modifier.fillMaxWidth() else modifier,
                     enabled = enabled,
+                    contentPadding = contentPadding,
                     // Borderless buttons use the accent in Compose, but the Apple
                     // backend renders them with the dark foreground — match it so
                     // header/toolbar glyphs are not tinted primary.
@@ -1083,6 +1112,18 @@ private fun LuiTextControl(
     val grouped = node.parent?.let { backend.node(it)?.kind } == LuiNodeKind.inputGroup
     val borderless = (node.propString("style-class") ?: "").split(' ')
         .contains("composer-input")
+    val focusRequester = remember(id) { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val autofocus = node.prop("autofocus")?.boolValue == true
+    var observedAutofocus by remember(id) { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(autofocus) {
+        // The protocol toggles this flag to request focus again on an existing field.
+        if (enabled && (autofocus || observedAutofocus != null)) {
+            focusRequester.requestFocus()
+            keyboard?.show()
+        }
+        observedAutofocus = autofocus
+    }
 
     // Local text keeps typing responsive. The model echoes our own edits
     // back through the `text` prop, possibly one patch per keystroke, so a
@@ -1103,8 +1144,9 @@ private fun LuiTextControl(
 
     val fieldModifier = modifier.then(
         if (grouped || borderless) Modifier.fillMaxWidth() else Modifier.width(240.dp),
-    )
-    val fieldTextStyle = MaterialTheme.typography.bodyMedium.copy(
+    ).focusRequester(focusRequester)
+    val fieldTextStyle = (if (borderless) MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp)
+        else MaterialTheme.typography.bodyMedium).copy(
         color = luiThemeColor(node.propString("foreground"), foreground = true)
             ?: MaterialTheme.colorScheme.onSurface,
     ).luiInherited()
@@ -1139,25 +1181,27 @@ private fun LuiTextControl(
     }
 
     if (borderless) {
-        TextField(
+        BasicTextField(
             value = localText,
             onValueChange = onValueChange,
             modifier = fieldModifier,
             enabled = enabled,
-            placeholder = placeholderContent,
             singleLine = !multiline,
-            minLines = if (multiline) 3 else 1,
             visualTransformation = transformation,
-            trailingIcon = trailing,
             textStyle = fieldTextStyle,
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
-                unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
-                disabledContainerColor = androidx.compose.ui.graphics.Color.Transparent,
-                focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                disabledIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-            ),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            decorationBox = { innerTextField ->
+                Box(contentAlignment = Alignment.CenterStart) {
+                    if (localText.isEmpty()) {
+                        Text(
+                            node.propString("placeholder") ?: "",
+                            style = fieldTextStyle,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    innerTextField()
+                }
+            },
         )
     } else {
         OutlinedTextField(
@@ -1206,7 +1250,9 @@ internal fun LuiMenuEntry(backend: LuiBackend, childId: Long) {
     val child = backend.node(childId) ?: return
     when (child.kind) {
         LuiNodeKind.divider -> HorizontalDivider()
-        LuiNodeKind.menuItem -> LuiMenuItem(backend, child, childId, Modifier)
+        LuiNodeKind.menuItem -> LuiThemeScope(child) {
+            LuiMenuItem(backend, child, childId, Modifier.luiChrome(child))
+        }
         LuiNodeKind.menuTrigger -> LuiMenuTrigger(backend, child, childId, Modifier)
         else -> LuiNodeView(backend, childId)
     }
@@ -1220,15 +1266,18 @@ private fun LuiMenuItem(backend: LuiBackend, node: LuiNodeLike, id: Long, modifi
     val icon = node.propString("icon")?.let { backend.icons.icon(it) }
     val selected = node.propBool("selected")
     val destructive = node.propString("variant") == "destructive"
+    val iconTint = luiThemeColor(node.propString("foreground"), foreground = true)
+        ?: MaterialTheme.colorScheme.onSurface
+    val iconSize = if (node.propString("size") == "sm") 16.dp else 22.dp
 
     if (submenuId != null) {
         var submenuOpen by remember(id) { mutableStateOf(false) }
         Box {
             DropdownMenuItem(
-                text = { Text(node.text()) },
+                text = { Text(node.text(), style = LuiTypography.textStyle(null, node.propString("style-class"))) },
                 onClick = { submenuOpen = true },
                 enabled = enabled,
-                leadingIcon = icon?.let { { Icon(it, null, Modifier.size(16.dp)) } },
+                leadingIcon = icon?.let { { Icon(it, null, Modifier.size(iconSize), tint = iconTint) } },
                 trailingIcon = {
                     Icon(Icons.Filled.KeyboardArrowRight, null, Modifier.size(16.dp))
                 },
@@ -1250,13 +1299,14 @@ private fun LuiMenuItem(backend: LuiBackend, node: LuiNodeLike, id: Long, modifi
         text = {
             Text(
                 node.text(),
+                style = LuiTypography.textStyle(null, node.propString("style-class")),
                 color = if (destructive) MaterialTheme.colorScheme.error else Color.Unspecified,
             )
         },
         onClick = { if (enabled) backend.emit(LuiEvent.Press(id)) },
         enabled = enabled,
         modifier = modifier,
-        leadingIcon = icon?.let { { Icon(it, null, Modifier.size(16.dp)) } },
+        leadingIcon = icon?.let { { Icon(it, null, Modifier.size(iconSize), tint = iconTint) } },
         trailingIcon = if (selected) {
             { Icon(Icons.Filled.Check, null, Modifier.size(16.dp)) }
         } else {
@@ -1828,6 +1878,8 @@ private fun LuiDrawer(
     val presented = node.propBool("selected")
     val width = node.propInt("width", 320)
     val enabled = node.isEnabled()
+    var swiping by remember(id) { mutableStateOf(false) }
+    val threshold = with(LocalDensity.current) { 48.dp.toPx() }
     // Android back closes the drawer instead of leaving the app — mirrors
     // tapping the scrim.
     androidx.activity.compose.BackHandler(
@@ -1835,8 +1887,24 @@ private fun LuiDrawer(
     ) {
         backend.emit(LuiEvent.ToggleChanged(id, false))
     }
-    Box(modifier.fillMaxSize()) {
-        children.firstOrNull()?.let { LuiNodeView(backend, it) }
+    Box(modifier.fillMaxSize().pointerInput(id, enabled, presented) {
+        if (enabled && node.propBool("toggle-enabled")) {
+            var distance = 0f
+            detectHorizontalDragGestures(
+                onDragStart = { distance = 0f; swiping = true },
+                onDragCancel = { swiping = false },
+                onDragEnd = {
+                    if ((!presented && distance > threshold) || (presented && distance < -threshold)) {
+                        backend.emit(LuiEvent.ToggleChanged(id, !presented))
+                    }
+                    swiping = false
+                },
+            ) { change, amount -> change.consume(); distance += amount }
+        }
+    }) {
+        CompositionLocalProvider(LocalLuiScrollingEnabled provides (!presented && !swiping)) {
+            children.firstOrNull()?.let { LuiNodeView(backend, it) }
+        }
         if (presented) {
             Box(
                 Modifier.fillMaxSize()
