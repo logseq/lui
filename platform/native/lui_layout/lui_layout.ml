@@ -725,9 +725,12 @@ let adjust ~scale ~pkind ~pid ~index store id (style : Lui_flex.style) : Lui_fle
     else style
   in
   let style =
-    if pkind = "text" && text_nowrap store pid then
-      (* Inline fragments keep their ink width when wrapping is disabled.
-         Shrinking their boxes would paint adjacent runs on top of each other. *)
+    if (pkind = "text" && text_nowrap store pid)
+       || (Lui_store.kind store id = "text" && text_nowrap store id
+           && direction_of ~store ~id:pid pkind = Lui_flex.Row
+           && style.min_width = Lui_flex.Unset && style.overflow = Lui_flex.Visible) then
+      (* Nonwrapping inline ink keeps its natural width. A row label can
+         opt into shrinking with an explicit minimum or clipped overflow. *)
       { style with flex_shrink = 0. }
     else style
   in

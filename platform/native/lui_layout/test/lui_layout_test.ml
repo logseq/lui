@@ -615,6 +615,39 @@ let test_inline_white_space () =
           check (float eps) "ancestor-only changes refresh fragment widths"
             (float_of_int (width*3/4)*.scale) first.w) [true;false;true]) [80;200]) [1.;2.]
 
+(* Nonwrapping labels keep readable ink beside a shrinkable sibling. *)
+let test_nowrap_label_in_row () =
+  List.iter (fun scale ->
+    let store = Lui_store.create () in
+    apply store
+      [CreateNode (1,Root);CreateNode (2,Row);CreateNode (3,Text);CreateNode (4,Text);
+       InsertChild (1,2,0);InsertChild (2,3,0);InsertChild (2,4,1);
+       SetProp (2,Gap,IntValue 8);SetProp (3,MinWidth,IntValue 0);
+       SetProp (3,Overflow,StringValue "hidden");
+       SetProp (3,TextValue,StringValue "long path");
+       SetProp (4,TextValue,StringValue "badge");
+       SetProp (4,WhiteSpace,StringValue "nowrap")];
+    let layout = Lui_layout.create () in
+    let measure _id text _w _h =
+      Some ((if text="badge" then 80. else 800.) *. scale,16. *. scale) in
+    let sync () = Lui_layout.sync ~scale ~measure ~width:(200.*.scale)
+      ~height:(100.*.scale) layout store in
+    let width id = (Option.get (Lui_layout.rect layout id)).w in
+    List.iter (fun clipped ->
+      apply store (if clipped then [SetProp (4,MinWidth,IntValue 0)]
+        else [RemoveProp (4,MinWidth)]);
+      sync ();
+      if clipped then
+        check bool "explicit zero minimum permits label shrinking" true (width 4 < 80.*.scale)
+      else begin
+        check (float eps) "nowrap label retains its intrinsic width" (80.*.scale) (width 4);
+        check (float eps) "sibling takes the remaining width" (112.*.scale) (width 3)
+      end) [false;true;false];
+    apply store [SetProp (4,Overflow,StringValue "hidden")];sync ();
+    check bool "clipped label can shrink" true (width 4 < 80.*.scale);
+    apply store [RemoveProp (4,Overflow);SetProp (4,MaxWidth,IntValue 50)];sync ();
+    check (float eps) "authored maximum still caps the label" (50.*.scale) (width 4)) [1.;2.]
+
 (* 'NN%' string lengths resolve against the parent's inner extent. *)
 let test_percent_size () =
   let store = Lui_store.create () in
@@ -2481,6 +2514,7 @@ let () =
          test_case "absolute inset" `Quick test_absolute_inset;
          test_case "text measured" `Quick test_text_measured;
          test_case "inline white-space inheritance" `Quick test_inline_white_space;
+         test_case "nowrap label in row" `Quick test_nowrap_label_in_row;
          test_case "picker intrinsic width" `Quick test_picker_intrinsic_width;
          test_case "button icon gap" `Quick test_button_icon_gap;
          test_case "choice label gap" `Quick test_choice_label_gap;
