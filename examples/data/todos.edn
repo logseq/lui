@@ -1,32 +1,24 @@
 {:version 1
- :components
- {:todo-row
-  [:row {:gap 8 :cross :center}
-   [:checkbox {:checked {:bind [:props :done?]}
-               :accessibility-identifier {:bind [:props :toggle-id]}
-               :on {:toggle [:toggle {:bind [:props :id]}]}}]
-   [:text-field {:text {:bind [:props :title]}
-                 :grow 1
-                 :on {:input [:rename {:bind [:props :id]}]}}]
-   [:button {:text "Remove"
-             :on {:press [:remove {:bind [:props :id]}]}}]]}
+ :imports {:layout "frame.edn" :todos "todo-row.edn"}
  :view
- [:column {:gap 12 :padding 24}
-  [:heading {:text "EDN view / OCaml model + events" :heading-level 1}]
+ [:use :layout/panel {:caption "EDN view / OCaml model + events"}
+  {:body
+   [:column {:gap 12}
   [:row {:gap 8}
    [:text-field {:text {:bind [:model :draft]}
                  :placeholder "New task"
-                 :grow 1
+                 :grow 1.0
                  :accessibility-identifier "draft"
                  :on {:input :draft :submit :add}}]
    [:button {:text "Add" :enabled {:bind [:model :can-add?]}
              :accessibility-identifier "add" :on {:press :add}}]]
   [:text {:text {:bind [:model :summary]}}]
-  [:when {:bind [:model :empty?]}
-   [:text {:text "Nothing here yet"}]]
+  [:if {:bind [:model :empty?]}
+   [:text {:text "Nothing here yet"}]
+   [:text {:text "Task state lives in the OCaml reducer"}]]
   [:for {:items {:bind [:model :items]} :as :todo :key [:id]}
-   [:use :todo-row {:id {:bind [:todo :id]}
+   [:use :todos/row {:id {:bind [:todo :id]}
                     :title {:bind [:todo :title]}
                     :done? {:bind [:todo :done?]}
                     :toggle-id {:bind [:todo :toggle-id]}}]]
-  [:button {:text "Reverse" :accessibility-identifier "reverse" :on {:press :reverse}}]]}
+  [:button {:text "Reverse" :accessibility-identifier "reverse" :on {:press :reverse}}]]}]}

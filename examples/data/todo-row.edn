@@ -1,0 +1,14 @@
+{:version 1
+ :components
+ {:row
+  {:props {:id :string :title :string :done? :bool :toggle-id :string}
+   :view
+   [:row {:gap 8 :cross :center}
+    [:checkbox {:checked {:bind [:props :done?]}
+                :accessibility-identifier {:bind [:props :toggle-id]}
+                :on {:toggle [:toggle {:bind [:props :id]}]}}]
+    [:text-field {:text {:bind [:props :title]}
+                  :grow 1.0
+                  :on {:input [:rename {:bind [:props :id]}]}}]
+    [:button {:text "Remove"
+              :on {:press [:remove {:bind [:props :id]}]}}]]}}}

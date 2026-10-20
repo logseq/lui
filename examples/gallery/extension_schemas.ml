@@ -276,6 +276,86 @@ let gallery_accent_schema =
   Lui_extension.tweak "gallery-accent" [ { Lui_protocol.profile_os = IOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = MacOS; Lui_protocol.profile_host = SwiftUIHost }; { Lui_protocol.profile_os = WebOS; Lui_protocol.profile_host = WebHost }; { Lui_protocol.profile_os = AndroidOS; Lui_protocol.profile_host = KotlinHost } ]
     [  ]
 
+let view_contracts = [
+  ("apple-map", {
+    Lui_wire_schema.view_result = "t";
+    view_children = ViewList "t";
+    view_properties = [("latitude", Lui_wire_schema.ViewFloat, true); ("longitude", Lui_wire_schema.ViewFloat, true); ("latitude-delta", Lui_wire_schema.ViewFloat, true); ("longitude-delta", Lui_wire_schema.ViewFloat, true)];
+    view_events = [];
+    view_slots = [];
+  });
+  ("apple-map-marker", {
+    Lui_wire_schema.view_result = "t";
+    view_children = ViewList "nothing";
+    view_properties = [("title", Lui_wire_schema.ViewString, true); ("latitude", Lui_wire_schema.ViewFloat, true); ("longitude", Lui_wire_schema.ViewFloat, true)];
+    view_events = [];
+    view_slots = [];
+  });
+  ("simulator-map", {
+    Lui_wire_schema.view_result = "t";
+    view_children = ViewList "t";
+    view_properties = [("label", Lui_wire_schema.ViewString, true); ("latitude", Lui_wire_schema.ViewFloat, true); ("longitude", Lui_wire_schema.ViewFloat, true); ("latitude-delta", Lui_wire_schema.ViewFloat, true); ("longitude-delta", Lui_wire_schema.ViewFloat, true)];
+    view_events = ["region-change"];
+    view_slots = [];
+  });
+  ("simulator-map-marker", {
+    Lui_wire_schema.view_result = "t";
+    view_children = ViewList "nothing";
+    view_properties = [("title", Lui_wire_schema.ViewString, true); ("latitude", Lui_wire_schema.ViewFloat, true); ("longitude", Lui_wire_schema.ViewFloat, true)];
+    view_events = [];
+    view_slots = [];
+  });
+  ("simulator-camera", {
+    Lui_wire_schema.view_result = "t";
+    view_children = ViewList "nothing";
+    view_properties = [("label", Lui_wire_schema.ViewString, true); ("facing", Lui_wire_schema.ViewString, true)];
+    view_events = ["state-change"];
+    view_slots = [];
+  });
+  ("native-card", {
+    Lui_wire_schema.view_result = "t";
+    view_children = ViewList "nothing";
+    view_properties = [("title", Lui_wire_schema.ViewString, true)];
+    view_events = [];
+    view_slots = [];
+  });
+  ("split-view", {
+    Lui_wire_schema.view_result = "t";
+    view_children = ViewList "t";
+    view_properties = [("divider-thickness", Lui_wire_schema.ViewFloat, false); ("animation", Lui_wire_schema.ViewBool, false); ("accessibility-identifier", Lui_wire_schema.ViewString, false)];
+    view_events = [];
+    view_slots = [];
+  });
+  ("split-branch", {
+    Lui_wire_schema.view_result = "t";
+    view_children = ViewList "t";
+    view_properties = [("orientation", Lui_wire_schema.ViewString, true); ("ratio", Lui_wire_schema.ViewFloat, true)];
+    view_events = ["ratio-changed"];
+    view_slots = [];
+  });
+  ("split-pane", {
+    Lui_wire_schema.view_result = "t";
+    view_children = ViewList "t";
+    view_properties = [("pane-id", Lui_wire_schema.ViewString, true); ("selected", Lui_wire_schema.ViewString, false); ("focused", Lui_wire_schema.ViewBool, false); ("accessibility-identifier", Lui_wire_schema.ViewString, false)];
+    view_events = ["tab-selected"; "tab-closed"; "tab-moved"; "pane-focused"; "navigate"; "split-requested"; "split-drop"; "pane-closed"];
+    view_slots = [];
+  });
+  ("split-tab", {
+    Lui_wire_schema.view_result = "t";
+    view_children = ViewList "t";
+    view_properties = [("tab-id", Lui_wire_schema.ViewString, true); ("title", Lui_wire_schema.ViewString, true); ("icon", Lui_wire_schema.ViewString, false); ("dirty", Lui_wire_schema.ViewBool, false); ("closable", Lui_wire_schema.ViewBool, false); ("accessibility-identifier", Lui_wire_schema.ViewString, false)];
+    view_events = [];
+    view_slots = [];
+  });
+  ("gallery-accent", {
+    Lui_wire_schema.view_result = "t";
+    view_children = ViewArguments ["t"];
+    view_properties = [];
+    view_events = [];
+    view_slots = [];
+  })
+]
+
 let registry () =
   let registry = Lui_extension.registry () in
   Lui_extension.register_component registry apple_map_schema;

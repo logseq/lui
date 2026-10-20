@@ -158,6 +158,10 @@ let text_size_value : text_size -> string = function
   | `heading -> "heading"
   | `display -> "display"
 
+let image_fit_value : image_fit -> string = function
+  | `fit -> "fit"
+  | `fill -> "fill"
+
 let cell_size_value : cell_size -> string = function
   | #control_size as size -> control_size_value size
   | #text_size as size -> text_size_value size
@@ -2317,7 +2321,7 @@ let file_image ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizonta
   Option.iter (Lui_ui.string_property_signal context node PathValue) path_signal;
   Option.iter (Lui_ui.int_property context node MaxPixelSize) max_pixel_size;
   Option.iter (Lui_ui.string_property context node ImageFitValue)
-    (Option.map (function `fit -> "fit" | `fill -> "fill") fit);
+    (Option.map image_fit_value fit);
   Option.iter (Lui_ui.string_property context node AccessibilityLabel) label;
   (match on_press with
    | Some handler ->

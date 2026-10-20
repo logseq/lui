@@ -415,9 +415,11 @@ val int_property : wire_value Property_map.t -> property -> int -> int
 val float_property : wire_value Property_map.t -> property -> float -> float
 val size_axis_supported : wire_value Property_map.t -> property -> property -> property -> bool
 val surface_size_supported : wire_value Property_map.t -> bool
+val viewport_size_supported : wire_value Property_map.t -> bool
 val string_property_or : wire_value Property_map.t -> property -> string -> string
 val string_property_nonempty : wire_value Property_map.t -> property -> bool
 val float_property_of : wire_value Property_map.t -> property -> float -> float
+val node_property_presence_supported : node_kind -> definite:(property -> bool) -> possible:(property -> bool) -> bool
 val node_properties_supported : node_kind -> wire_value Property_map.t -> bool
 val can_contain_children : node_kind -> bool
 val child_kind_supported : node_kind -> node_kind -> bool

@@ -74,3 +74,4 @@ val split_pane : ?key:string -> pane_id:string -> ?selected:string -> ?focused:b
 val split_tab : ?key:string -> tab_id:string -> title:string -> ?icon:string -> ?dirty:bool -> ?closable:bool -> ?accessibility_identifier:string -> ?tab_id_signal:string Signal.signal -> ?title_signal:string Signal.signal -> ?icon_signal:string Signal.signal -> ?dirty_signal:bool Signal.signal -> ?closable_signal:bool Signal.signal -> ?accessibility_identifier_signal:string Signal.signal -> Lui_elements.t list -> Lui_elements.t
 
 val registry : unit -> Lui_extension.extension_registry
+val view_contracts : (string * string Lui_wire_schema.view_contract) list
