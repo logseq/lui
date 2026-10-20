@@ -951,7 +951,7 @@ let common_property_supported kind property =
     | Row | Column | Grid | Box | Panel | Card | Stack | Scroll | Avatar
     | EdgeInset | Overlay | ViewThatFits
     | Text | Heading | Paragraph | Label | Button | ToggleButton | TextField
-    | SecureField | Input | SearchField | Textarea | Checkbox | Toggle | Radio
+    | SecureField | Input | SearchField | Textarea | Checkbox | SwitchControl | Toggle | Radio
     | Slider | NumberStepper | Spinner | Icon | Select | Combobox | DropdownMenu | MenuItem
     | Popover
     | ListItem | TableCell | Resizable | Split | Alert | Bubble | StatusBar

@@ -2196,6 +2196,7 @@
     ],
     "popover": ["collision-padding"],
     "dropdown-menu": ["collision-padding"],
-    "tooltip": ["collision-padding"]
+    "tooltip": ["collision-padding"],
+    "switch": ["foreground"]
   }
 }

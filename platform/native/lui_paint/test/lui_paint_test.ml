@@ -1221,6 +1221,46 @@ let test_switch () =
     check bool "thumb right" true (thumb.frect.x = 82.)
   | _ -> fail "expected track + thumb shadow + thumb"
 
+let test_switch_typed_chrome () =
+  let open Lui_protocol in
+  check bool "switch admits its typed foreground" true
+    (property_supported SwitchControl ForegroundValue);
+  List.iter (fun scale ->
+    List.iter (fun (width,height,padding,border) ->
+      List.iter (fun checked ->
+        let t = store () in
+        apply t [CreateNode (1, SwitchControl); SetProp (1, Checked, BoolValue checked);
+          SetProp (1, WidthValue, IntValue width); SetProp (1, HeightValue, IntValue height);
+          SetProp (1, PaddingValue, IntValue padding); SetProp (1, BorderWidth, IntValue border);
+          SetProp (1, BackgroundValue, StringValue "#294556");
+          SetProp (1, ForegroundValue, StringValue "#002d38")];
+        let layout _ = Lui_paint.placement_of_rect
+          (rect 0. 0. (float_of_int width *. scale) (float_of_int height *. scale)) in
+        let h = {(hooks ~layout ()) with Lui_paint.color_of = Lui_paint.color_of_hex} in
+        let painted = paint_with h t ~scale () in
+        let fills = List.filter_map (function Fill f -> Some f | _ -> None) painted.ops in
+        let thumb, track = match List.rev fills with
+          | thumb :: track :: _ -> thumb, track
+          | _ -> fail "Expected the track and thumb paint layers" in
+        let diameter = float_of_int (height - 2 * (padding + border)) *. scale in
+        check bool "switch thumb honors its foreground" true
+          (thumb.fcolor = color 0 45 56 255);
+        check (float 0.01) "switch thumb respects typed insets" diameter thumb.frect.w;
+        check (float 0.01) "switch thumb remains square" diameter thumb.frect.h;
+        check (float 0.01) "switch thumb side follows checked state"
+          ((if checked then float_of_int width -. float_of_int (padding + border) -. diameter /. scale
+            else float_of_int (padding + border)) *. scale) thumb.frect.x;
+        check bool "switch track honors its background in both states" true
+          (track.frect.w = float_of_int width *. scale
+            && track.frect.h = float_of_int height *. scale && track.fcolor = color 41 69 86 255);
+        apply t [SetProp (1, BackgroundValue, StringValue "#037dba");
+          SetProp (1, ForegroundValue, StringValue "#ffffff")];
+        let updated = paint_with h t ~scale () in
+        check bool "switch recolors without recreating the control" true
+          (List.exists (function Fill f -> f.fcolor = color 3 125 186 255 | _ -> false) updated.ops
+           && List.exists (function Fill f -> f.fcolor = color 255 255 255 255 | _ -> false) updated.ops))
+        [false;true]) [32,18,3,0;44,24,0,2]) [1.;2.]
+
 let test_radio () =
   let t = store () in
   apply t
@@ -2053,6 +2093,7 @@ let () =
          test_case "choice label opacity" `Quick test_choice_label_opacity;
          test_case "choice focus bounds" `Quick test_choice_focus_bounds;
          test_case "switch" `Quick test_switch;
+         test_case "switch typed chrome" `Quick test_switch_typed_chrome;
          test_case "radio" `Quick test_radio;
          test_case "spinner" `Quick test_spinner;
          test_case "slider" `Quick test_slider;

@@ -334,5 +334,6 @@ object LuiSchemaMatrix {
         LuiNodeKind.popover to setOf(LuiProperty.collisionPadding),
         LuiNodeKind.dropdownMenu to setOf(LuiProperty.collisionPadding),
         LuiNodeKind.tooltip to setOf(LuiProperty.collisionPadding),
+        LuiNodeKind.switchControl to setOf(LuiProperty.foreground),
     )
 }

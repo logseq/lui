@@ -41,3 +41,34 @@ test('modal layout can distinguish positioned children throughout updates and re
   assert.equal(attributes.has('data-lui-position'), false)
   assert.equal(styles.get('position'), '')
 })
+
+
+test('switch chrome reaches its input while sizing retains its wrapper and clears on removal', () => {
+  const kind = named(Schema.all_node_kinds, Schema.node_kind_name, 'switch')
+  const property = name => named(Schema.all_properties, Schema.property_name, name)
+  const element = () => { const styles = new Map(); return {styles,
+    style: {setProperty: (name, value) => styles.set(name, value)}} }
+  const input = element(), root = element()
+  root.children = {item: index => index === 0 ? input : null}
+  const store = Store.create_store(), renderer = {web_store: store}
+  let generation = 0
+  const apply = ops => assert.equal(Store.apply_batch(store, () => root,
+    {generation: ++generation, ops: list(ops)}), true)
+  apply([Protocol.create_node_op(1, kind)])
+  for (const [name, value, css] of [
+    ['width', {TAG: 2, _0: 32}, 'width'], ['height', {TAG: 2, _0: 18}, 'height'],
+    ['padding', {TAG: 2, _0: 3}, 'padding-left'], ['border-width', {TAG: 2, _0: 0}, 'border-width'],
+    ['corner-radius', {TAG: 2, _0: 9}, 'border-radius'],
+    ['background', {TAG: 0, _0: '#294556'}, 'background'],
+  ]) {
+    const prop = property(name)
+    apply([Protocol.set_prop_op(1, prop, value)])
+    Props.apply_property(renderer, () => {}, 1, kind, root, prop, value)
+    assert.ok(input.styles.get(css), `${name} must style the input`)
+    if (name === 'width' || name === 'height') assert.equal(root.styles.get(css), input.styles.get(css))
+    else assert.equal(root.styles.has(css), false, `${name} must not add a second wrapper surface`)
+    apply([Protocol.remove_prop_op(1, prop)])
+    Props.remove_property(renderer, () => {}, 1, kind, root, prop)
+    assert.equal(input.styles.get(css), '', `${name} must clear from its actual surface`)
+  }
+})

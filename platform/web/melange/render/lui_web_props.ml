@@ -50,7 +50,13 @@ let popup_kind = function DropdownMenu | Popover -> true | _ -> false
 (* A positioner owns placement and lifecycle; its child is the retained
    component's painted, measured and scrollable box. *)
 let property_surface kind dom_node property =
-  if not (popup_kind kind) then dom_node
+  if kind = SwitchControl then
+    (match property with
+     | PaddingValue | PaddingHorizontal | PaddingVertical | PaddingTop
+     | PaddingRight | PaddingBottom | PaddingLeft | BackgroundValue
+     | BorderColorValue | BorderWidth | CornerRadius -> Util.child_element dom_node 0
+     | _ -> dom_node)
+  else if not (popup_kind kind) then dom_node
   else
     match property with
     | Gap | MainAlignment | CrossAlignment | GridColumns | PaddingValue
@@ -68,6 +74,10 @@ let property_surface kind dom_node property =
     | DisabledOpacity | DataAttrs ->
         Util.child_element dom_node 0
     | _ -> dom_node
+
+let set_dimension kind dom_node name value =
+  set_style dom_node name value;
+  if kind = SwitchControl then set_style (Util.child_element dom_node 0) name value
 
 let popup_limit axis value =
   "min(" ^ value ^ ", var(--lui-popup-available-" ^ axis ^ ", " ^ value ^ "))"
@@ -770,15 +780,15 @@ let rec apply_property renderer queue_split node kind dom_node property
   | CornerRadius, IntValue radius ->
       set_style dom_node "border-radius" (string_of_int radius ^ "px")
   | WidthValue, IntValue width ->
-      set_style dom_node "width" (string_of_int width ^ "px");
+      set_dimension kind dom_node "width" (string_of_int width ^ "px");
       if kind = Image then Widgets.update_image renderer node dom_node;
       if kind = Bubble then
         W.Element.setAttribute "data-width" "explicit" dom_node
   | HeightValue, StringValue "auto" ->
-      set_style dom_node "height" "auto";
+      set_dimension kind dom_node "height" "auto";
       if kind = Image then Widgets.update_image renderer node dom_node
   | HeightValue, IntValue height ->
-      set_style dom_node "height" (string_of_int height ^ "px");
+      set_dimension kind dom_node "height" (string_of_int height ^ "px");
       if kind = Image then Widgets.update_image renderer node dom_node
   | MinWidth, IntValue width ->
       set_style dom_node "min-width" (string_of_int width ^ "px")
@@ -1198,9 +1208,9 @@ let remove_property renderer queue_split node kind dom_node property =
            set_style dom_node "border-style" "";
            set_style dom_node "border-width" ""
        | CornerRadius -> set_style dom_node "border-radius" ""
-       | WidthValue -> set_style dom_node "width" "";
+       | WidthValue -> set_dimension kind dom_node "width" "";
            if kind = Image then Widgets.update_image renderer node dom_node
-       | HeightValue -> set_style dom_node "height" "";
+       | HeightValue -> set_dimension kind dom_node "height" "";
            if kind = Image then Widgets.update_image renderer node dom_node
        | MinWidth -> set_style dom_node "min-width" ""
        | MaxWidth -> set_style dom_node "max-width" ""

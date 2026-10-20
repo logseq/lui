@@ -314,5 +314,6 @@ enum LUISchemaMatrix {
         .popover: [.collisionPadding],
         .dropdownMenu: [.collisionPadding],
         .tooltip: [.collisionPadding],
+        .switchControl: [.foreground],
     ]
 }

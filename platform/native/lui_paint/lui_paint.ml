@@ -1689,26 +1689,38 @@ let radio_ops ctx store id st rs r alpha =
   in
   box_ops ctx store id rs r alpha @ chrome @ label_after ctx store id r b 8. alpha
 
-(* switch: trailing pill track with a white knob on the checked side;
-   the knob carries a small contact shadow so it reads as raised. *)
+(* The trailing switch track and thumb use typed colors and insets;
+   an unstyled control keeps the platform's default dimensions. *)
 let switch_ops ctx store id rs r alpha =
   let s = ctx.scale in
-  let tw = Float.min (36. *. s) r.w and th = Float.min (20. *. s) r.h in
+  let tw = Float.min (Option.value ~default:36. (pnum store id "width") *. s) r.w
+  and th = Float.min (Option.value ~default:20. (pnum store id "height") *. s) r.h in
   let tr = rect (r.x +. r.w -. tw) (r.y +. ((r.h -. th) /. 2.)) tw th in
   let checked = pbool store id "checked" in
   let track_c =
-    if checked then col_accent ctx
-    else
+    match pcolor ctx.hooks store id "background" with
+    | Some c -> c
+    | None -> if checked then col_accent ctx else
       match pcolor ctx.hooks store id "border-color" with
       | Some c -> c
       | None -> col_switch_track ctx
   in
-  let d = Float.max 0. (th -. (4. *. s)) in
+  let border = pnum store id "border-width" in
+  let inset side axis =
+    let padding = List.find_map (pnum store id) [side;axis;"padding"] in
+    (Option.value ~default:0. border +.
+     Option.value ~default:(if border = None then 2. else 0.) padding) *. s in
+  let left = inset "padding-left" "padding-horizontal"
+  and right = inset "padding-right" "padding-horizontal"
+  and top = inset "padding-top" "padding-vertical"
+  and bottom = inset "padding-bottom" "padding-vertical" in
+  let d = Float.max 0. (Float.min (th -. top -. bottom) (tw -. left -. right)) in
   let tx =
-    if checked then tr.x +. tr.w -. (2. *. s) -. d else tr.x +. (2. *. s)
+    if checked then tr.x +. tr.w -. right -. d else tr.x +. left
   in
-  let thumb_r = rect tx (tr.y +. ((tr.h -. d) /. 2.)) d d in
-  let thumb_c = color 255 255 255 255 in
+  let thumb_r = rect tx (tr.y +. top +. ((tr.h -. top -. bottom -. d) /. 2.)) d d in
+  let thumb_c = Option.value ~default:(color 255 255 255 255)
+      (pcolor ctx.hooks store id "foreground") in
   let thumb_radii = (d /. 2., d /. 2., d /. 2., d /. 2.) in
   box_ops ctx store id rs r alpha
   @ [ fill ~continuous:true tr (corners tr (th /. 2., th /. 2., th /. 2., th /. 2.) false)
