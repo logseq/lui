@@ -1525,6 +1525,7 @@ struct LUIRetainedTree {
                         let allowed: Set<LUIProperty> = [
                             .text,
                             .enabled,
+                            .selected,
                             .pressEnabled,
                             .pointerEnabled,
                             .icon,

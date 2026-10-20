@@ -3610,6 +3610,7 @@ struct LUISwiftUIBackendTests {
           {"op":"create-node","id":5,"kind":"menu-item"},
           {"op":"set-prop","id":1,"property":"text","value":"Document"},
           {"op":"set-prop","id":3,"property":"text","value":"Rename"},
+          {"op":"set-prop","id":3,"property":"selected","value":true},
           {"op":"set-prop","id":3,"property":"press-enabled","value":true},
           {"op":"set-prop","id":3,"property":"pointer-enabled","value":true},
           {"op":"set-prop","id":3,"property":"icon","value":"trash"},
@@ -3632,6 +3633,7 @@ struct LUISwiftUIBackendTests {
         #expect(menu.kind == .contextMenu)
         #expect(host.children == [2])
         #expect(menu.children == [3, 4, 5])
+        #expect(backend.model(id: 3)?.isSelected == true)
         _ = LUISwiftUIRoot(backend: backend, rootID: 1)
         try backend.performPress(node: 3)
         #expect(events == [
