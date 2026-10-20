@@ -568,6 +568,36 @@ let test_text_measured () =
   Lui_layout.sync ~measure ~width:200. ~height:100. t store;
   check_some_rect "text" 0. 0. 80. 12. (Lui_layout.rect t 3)
 
+let test_inline_white_space () =
+  List.iter (fun scale ->
+    List.iter (fun width ->
+      let store = Lui_store.create () in
+      apply store
+        [CreateNode (1,Root);CreateNode (2,Text);CreateNode (3,Text);
+         CreateNode (4,Text);CreateNode (5,Text);
+         InsertChild (1,2,0);InsertChild (2,3,0);
+         InsertChild (3,4,0);InsertChild (3,5,1);
+         SetProp (2,WidthValue,IntValue width);SetProp (3,WidthValue,IntValue width);
+         SetProp (4,WidthValue,IntValue (width*3/4));
+         SetProp (5,WidthValue,IntValue (width*3/4));
+         SetProp (4,HeightValue,IntValue 20);SetProp (5,HeightValue,IntValue 20)];
+      let layout = Lui_layout.create () in
+      List.iter (fun (parent,child,nowrap) ->
+        List.iter (fun (id,value) ->
+          apply store [match value with
+            | None -> RemoveProp (id,WhiteSpace)
+            | Some value -> SetProp (id,WhiteSpace,StringValue value)])
+          [2,parent;3,child];
+        Lui_layout.sync ~scale ~measure:no_measure4
+          ~width:(400.*.scale) ~height:(300.*.scale) layout store;
+        let first = Option.get (Lui_layout.rect layout 4)
+        and second = Option.get (Lui_layout.rect layout 5) in
+        check bool "inline fragments inherit and override white-space" nowrap
+          (abs_float (first.y-.second.y)<0.01))
+        [None,None,false;Some "nowrap",None,true;
+         Some "nowrap",Some "normal",false;Some "normal",Some "nowrap",true;
+         Some "nowrap",None,true;None,None,false]) [80;200]) [1.;2.]
+
 (* 'NN%' string lengths resolve against the parent's inner extent. *)
 let test_percent_size () =
   let store = Lui_store.create () in
@@ -2369,6 +2399,7 @@ let () =
          test_case "grid column spans" `Quick test_grid_column_spans;
          test_case "absolute inset" `Quick test_absolute_inset;
          test_case "text measured" `Quick test_text_measured;
+         test_case "inline white-space inheritance" `Quick test_inline_white_space;
          test_case "picker intrinsic width" `Quick test_picker_intrinsic_width;
          test_case "button icon gap" `Quick test_button_icon_gap;
          test_case "choice label gap" `Quick test_choice_label_gap;

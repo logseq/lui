@@ -201,6 +201,14 @@ let stat_steps (t : t) = t.stat_steps
 
 let pstr store id name = Lui_store.string_prop store id name
 
+let rec text_nowrap store id =
+  match pstr store id "white-space" with
+  | Some value -> value = "nowrap"
+  | None ->
+    match Lui_store.parent store id with
+    | Some parent -> text_nowrap store parent
+    | None -> false
+
 (* Numeric read that accepts Float/Int and numeric strings — the schema
    types most layout props, but staying permissive costs nothing. *)
 let pnum store id name =
@@ -575,7 +583,8 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
            | _ -> d.align_items));
       position_type;
       flex_wrap =
-        (match pstr store id "flex-wrap" with
+        (if kind = "text" && text_nowrap store id then No_wrap
+         else match pstr store id "flex-wrap" with
          | Some "wrap" -> Wrap
          | Some "nowrap" -> No_wrap
          | _ -> if kind = "grid" || kind = "text" then Wrap else No_wrap);
