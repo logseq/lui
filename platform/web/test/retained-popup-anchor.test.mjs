@@ -11,12 +11,13 @@ globalThis.DOMRect ??= class {
 
 const build = process.env.LUI_TEST_BUILD_DIR ?? '_build'
 const modules = new URL(`../../../${build}/default/examples/components/web/lui-components-web/node_modules/`, import.meta.url)
-const [Store, Protocol, Schema, Nodes, Position] = await Promise.all([
+const [Store, Protocol, Schema, Nodes, Position, Tracking] = await Promise.all([
   import(new URL('lui.web.dom/core/lui_web_store.js', modules)),
   import(new URL('lui/lui_protocol.js', modules)),
   import(new URL('lui/lui_wire_schema.js', modules)),
   import(new URL('lui.web.dom/nodes/lui_web_nodes.js', modules)),
   import(new URL('lui.web.dom/popup/lui_web_position.js', modules)),
+  import(new URL('lui.web.dom/popup/lui_web_popup_tracking.js', modules)),
 ])
 const list = values => values.reduceRight((tl, hd) => ({hd, tl}), 0)
 const named = (values, nameOf, name) => {
@@ -213,4 +214,98 @@ test('configured popup clearance follows resize, property updates and removal', 
   for (const value of [-1, NaN, Infinity, -Infinity]) {
     assert.throws(() => apply([set('collision-padding', {TAG: 3, _0: value})]))
   }
+})
+
+
+test('side measurement preserves scroll instead of clamping it to the temporary viewport cap', () => {
+  const viewport = {clientWidth: 1280, clientHeight: 300}
+  const anchor = element({x: 1210, y: 8, width: 32, height: 32})
+  const popup = element({x: 0, y: 0, width: 256, height: 255})
+  const positioner = element({x: 0, y: 0, width: 256, height: 255}, [popup])
+  const height = () => Math.min(339, parseFloat(popup.styles.get('--lui-popup-available-height')))
+  const bounds = () => ({x: 0, y: 0, left: 0, top: 0, right: 256,
+    bottom: height(), width: 256, height: height()})
+  positioner.getBoundingClientRect = bounds
+  popup.getBoundingClientRect = bounds
+  popup.styles.set('--lui-popup-available-height', '255px')
+  let scrollTop = 84
+  Object.defineProperty(popup, 'scrollTop', {
+    get: () => scrollTop,
+    set: value => { scrollTop = Math.max(0, Math.min(value, 339 - height())) },
+  })
+  popup.scrollLeft = 0
+  popup.style.setProperty = (key, value) => {
+    popup.styles.set(key, value)
+    // CSS layout clamps a scroll offset whenever its viewport expands.
+    if (key === '--lui-popup-available-height') popup.scrollTop = scrollTop
+  }
+  positioner.setAttribute('data-anchor', 'below')
+  const document = {defaultView: null, documentElement: viewport}
+  const store = Store.create_store(), renderer = {web_store: store, web_document: document}
+  const set = (name, value) => Protocol.set_prop_op(2, prop(name), value)
+  assert.equal(Store.apply_batch(store, name => name === kind('popover') ? positioner : anchor,
+    {generation: 1, ops: list([Protocol.create_node_op(1, kind('box')),
+      Protocol.create_node_op(2, kind('popover')), Protocol.insert_child_op(1, 2, 0),
+      set('anchor', {TAG: 0, _0: 'below'}), set('collision-padding', {TAG: 3, _0: 5})])}), true)
+  for (let repeat = 0; repeat < 3; repeat++) {
+    Position.position_popover(renderer, 2)
+    assert.equal(popup.scrollTop, 84, 'measurement must retain the reachable final row')
+  }
+  viewport.clientHeight = 720
+  Position.position_popover(renderer, 2)
+  assert.equal(popup.scrollTop, 0, 'a final larger viewport still clamps normally')
+  viewport.clientHeight = 300
+  Position.position_popover(renderer, 2)
+  assert.equal(popup.scrollTop, 0)
+})
+
+
+test('popup content scrolling does not schedule positioning but anchor scrolling still does', () => {
+  const oldResize = globalThis.ResizeObserver, oldMutation = globalThis.MutationObserver
+  globalThis.ResizeObserver = globalThis.MutationObserver = class {
+    observe() {}
+    disconnect() {}
+  }
+  const frames = new Map(), documentListeners = new Map(), windowListeners = new Map()
+  let nextFrame = 0, updates = 0
+  const window = {visualViewport: null,
+    requestAnimationFrame: callback => { frames.set(++nextFrame, callback); return nextFrame },
+    cancelAnimationFrame: id => frames.delete(id),
+    addEventListener: (name, callback) => windowListeners.set(name, callback),
+    removeEventListener: (name, callback) => { if (windowListeners.get(name) === callback) windowListeners.delete(name) },
+  }
+  const document = {defaultView: window,
+    addEventListener: (name, callback) => documentListeners.set(name, callback),
+    removeEventListener: (name, callback) => { if (documentListeners.get(name) === callback) documentListeners.delete(name) },
+  }
+  const nestedScroller = {}, ancestorScroller = {}
+  const positioner = element({x: 0, y: 0, width: 256, height: 255})
+  const popup = {...positioner, clientHeight: 253,
+    querySelector: () => null, addEventListener() {}, removeEventListener() {},
+    contains: target => target === popup || target === nestedScroller,
+  }
+  const flush = () => { const pending = [...frames.values()]; frames.clear(); for (const callback of pending) callback(0) }
+  try {
+    Tracking.start(true, document, positioner, popup, positioner, () => true,
+      () => { updates++ }, () => assert.fail('the retained popup is valid'), undefined)
+    flush()
+    assert.equal(updates, 1)
+    for (const target of [popup, nestedScroller]) {
+      documentListeners.get('scroll')({target})
+      assert.equal(frames.size, 0, 'scrolling popup content must not restart measurement')
+    }
+    documentListeners.get('scroll')({target: ancestorScroller})
+    flush()
+    assert.equal(updates, 2, 'scrolling the anchor container still repositions')
+    windowListeners.get('resize')({target: window})
+    flush()
+    assert.equal(updates, 3, 'window resizing still repositions')
+  } finally {
+    Tracking.stop(positioner)
+    globalThis.ResizeObserver = oldResize
+    globalThis.MutationObserver = oldMutation
+  }
+  assert.equal(documentListeners.size, 0)
+  assert.equal(windowListeners.size, 0)
+  assert.equal(frames.size, 0)
 })

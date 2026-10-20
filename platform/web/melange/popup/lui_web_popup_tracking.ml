@@ -132,6 +132,12 @@ let start ?(frozen=false) ~document ~positioner ~popup ~anchor ~valid ~update ~o
               refresh ()))
       in
       let listener _event = schedule () in
+      let scroll_listener event =
+        let target = W.EventTarget.unsafeAsElement (W.Event.target event) in
+        (* Content scrolling cannot move this popup's anchor. Ignoring it
+           also prevents measurement's restored scroll from scheduling itself. *)
+        if not (W.Element.contains (W.Element.asNode target) popup) then schedule ()
+      in
       let observer = Webapi.ResizeObserver.make (fun _ -> schedule ()) in
       let reveal_active () = reveal := true; schedule () in
       let focus_listener _event = reveal_active () in
@@ -154,14 +160,14 @@ let start ?(frozen=false) ~document ~positioner ~popup ~anchor ~valid ~update ~o
         Webapi.ResizeObserver.disconnect observer;
         W.MutationObserver.disconnect highlights;
         W.Element.removeEventListener "focusin" focus_listener popup;
-        unlisten_document document "scroll" listener true;
+        unlisten_document document "scroll" scroll_listener true;
         W.Window.removeEventListener "resize" listener window;
         Option.iter (fun viewport ->
             viewport_unlisten viewport "resize" listener;
             viewport_unlisten viewport "scroll" listener) viewport
       in
       set_tracker trackers positioner cleanup;
-      listen_document document "scroll" listener true;
+      listen_document document "scroll" scroll_listener true;
       List.iter (fun ancestor ->
           Webapi.ResizeObserver.observe observer ancestor) chain;
       if not frozen then Webapi.ResizeObserver.observe observer anchor;

@@ -55,6 +55,8 @@ let resolved_popup_side ~padding preferred anchor_bounds popup_width popup_heigh
 
 let position_anchored ?(padding = 8.0) ?(alignment_offset = 0.0) document positioner popup anchor_bounds preferred
     alignment offset =
+  let scroll_top = W.Element.scrollTop popup
+  and scroll_left = W.Element.scrollLeft popup in
   (* The undecorated positioner keeps fractional layout dimensions while
      its painted child scales. A tooltip is its own positioner, so use its
      untransformed offset dimensions instead of the animated bounds. *)
@@ -147,7 +149,12 @@ let position_anchored ?(padding = 8.0) ?(alignment_offset = 0.0) document positi
   if not (W.Element.isSameNode (W.Element.asNode popup) positioner) then
     W.Element.setAttribute "data-side" side popup;
   set_style positioner "left" (css_px left);
-  set_style positioner "top" (css_px top)
+  set_style positioner "top" (css_px top);
+  (* The temporary viewport cap can expand the scroller and truncate its
+     offset. Restore against the final side cap; normal DOM clamping still
+     applies when the finished viewport genuinely grows. *)
+  W.Element.setScrollTop popup scroll_top;
+  W.Element.setScrollLeft popup scroll_left
 
 let position_anchored_bang = position_anchored
 
