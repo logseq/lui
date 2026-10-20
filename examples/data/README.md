@@ -1,147 +1,182 @@
-# UI as data: EDN view experiment
+# EDN views with OCaml-owned state and events
 
-Conclusion: **EDN can serve as LUI's declarative view format, but should not become a business scripting language.**
-OCaml owns the typed model, actions, reducer, derived state and asynchronous tasks;
-EDN describes only structure, properties, bindings and event routing.
-This directory is an experiment, not a new public `lui` API. It changes no dune files or production dependencies.
+This is an experiment, not a public LUI API. EDN declares view structure, bindings,
+components, conditional/platform branches and action names. OCaml supplies the typed
+model, derived fields, action signatures, event decoder, reducer and asynchronous
+work. EDN does not evaluate functions or run business logic.
 
-## Running
+## Run
 
-Requires the project dependencies, `ocamlfind` and `melange-edn-core`. Validation used
-the OCaml `5.5.0` switch and the `ocaml-signal` pin from `lui.opam.locked`.
-If the EDN reader is not installed, pin the version used by this experiment:
+Use the project's OCaml 5.5.0 switch and its `melange-edn-core` pin. The script
+builds the existing `lui.cmxa` target and compiles this example into
+`_build/data-view`; it does not edit dune files or mount a graphical window.
 
 ```sh
-opam pin add --switch=5.5.0 melange-edn-core.0.5.0 \
-  'git+https://github.com/logseq/melange-edn.git#3cb79f278e972388a0a2b2ea1caec7a008a0b956' -y
 OPAMSWITCH=5.5.0 sh examples/data/run.sh
 OPAMSWITCH=5.5.0 sh examples/data/run.sh --check
 OPAMSWITCH=5.5.0 sh examples/data/run.sh examples/data/scenarios.edn --mount-only
+OPAMSWITCH=5.5.0 sh examples/data/run.sh examples/data/extensions.edn --profile web
+OPAMSWITCH=5.5.0 sh examples/data/run.sh examples/data/extensions.edn --profile ios --mount-only
+OPAMSWITCH=5.5.0 sh examples/data/run.sh examples/data/extensions.edn --profile android --mount-only
+OPAMSWITCH=5.5.0 sh examples/data/run.sh examples/data/extensions.edn --profile web --benchmark 250 --mount-only
 ```
 
-`run.sh` builds `lui.cmxa` through the existing dune target, then compiles the interpreter
-and example with `ocamlfind`. Artifacts are written only to `_build/data-view`.
-The default example uses a real `Lui_app` with a headless patch backend to simulate
-input, insertion, toggling and reordering. **It does not open a graphical window.**
-`--mount-only` starts with one sample item and mounts the supplied document without running the todo interactions.
+The default todo example scripts input, addition, toggling and reordering over a
+headless patch backend. `--mount-only` starts with a sample item and skips scripted
+interactions. `--profile` selects a declared host profile; it does **not** run that
+host's UI. `--benchmark N` reports in-memory root parse, filesystem module load
+and parse, static validation/compilation, cached graph recompilation and OCaml
+model-update/retained-render timings separately. These are development-machine
+measurements, not browser, iOS, Android or large-list benchmarks.
 
-## Data flow and boundaries
+## Module format
 
-```text
-OCaml typed model ── project ──> EDN-compatible read model
-                                     │
-EDN source ── compile ──> view plan ── bindings / keyed scopes ──> LUI retained patches
-                                     │
-                              action name + current arguments + native event
-                                     │
-OCaml dispatch ──> typed action ──> reducer ──> model signal
-```
-
-`main.ml` contains the OCaml model, reducer and action decoder; `todos.edn` contains no computation.
-For example, `can-add?`, `empty?` and summary text come from the OCaml `project` function,
-not expressions assembled in EDN. The projection should expose only what the view needs,
-rather than serializing the entire business model.
-
-```ocaml
-Data_view.compile ~actions:["remove"] source
-Data_view.render document ~model ~project ~dispatch
-```
-
-`compile` returns `(t, string) result`. `dispatch` receives an allowlisted action name,
-EDN arguments and the original `Lui_protocol.event`. OCaml checks argument types,
-arity and event payloads before constructing a typed action.
-The allowlist controls callable names; it does not replace business authorization.
-
-## View syntax
+`todos.edn` imports `frame.edn` and `todo-row.edn`; the frame imports `labels.edn`.
+Imports are explicit and aliases are local to each source document:
 
 ```edn
 {:version 1
+ :imports {:layout "frame.edn"}
  :components
- {:entry
-  [:row
-   [:text-field {:text {:bind [:props :title]}}]
-   [:button {:text "Remove"
-             :on {:press [:remove {:bind [:props :id]}]}}]]}
+ {:workspace
+  {:props {:caption :string}
+   :slots [:body]
+   :view [:column
+          [:text {:text {:bind [:props :caption]}}]
+          [:slot :body]]}}
  :view
- [:column {:gap 8 :padding 16}
-  [:when {:bind [:model :empty?]}
-   [:text {:text "Nothing here"}]]
-  [:for {:items {:bind [:model :items]} :as :item :key [:id]}
-   [:use :entry {:id {:bind [:item :id]}
-                 :title {:bind [:item :title]}}]]]]}
+ [:use :workspace {:caption "Tasks"}
+  {:body [:if {:bind [:model :empty?]}
+          [:text {:text "Empty"}]
+          [:text {:text "Tasks available"}]]}]}
 ```
 
-- Elements: `[:kind {:property value ...} child ...]`. The property map is optional;
-  children must be view vectors. Kinds and properties use `Lui_wire_schema` wire names,
-  not OCaml constructor parameter names.
-- Documents: a versioned map, or a single root view vector for fragment experiments.
-  `:root` is reserved for the runtime.
-- Bindings: `{:bind [:model :field]}`, `{:bind [:props :field]}` or `{:bind [:item :field]}`.
-  Paths support nested maps and integer vector indices. Missing paths are errors,
-  not silently converted to empty strings.
-- Properties: strings, keywords, booleans, integers and finite floats. Keywords become
-  wire strings; integers are promoted when the target property requires a float.
-  `nil` removes a property; it does not hide an element.
-- Conditions: `[:when boolean-expression child]`. No else branch or general expression
-  language; OCaml projects complex conditions.
-- Lists: `:items` must be a vector; `:key` is a path within each item. Keys must be unique
-  strings, keywords or integers. Aliases cannot replace `:model` or `:props`.
-  Nested lists can use different aliases to access outer items.
-- Reuse: `[:use :component props-map]`. Values passed by the caller are available through
-  `:props` inside the component. Recursive expansion is rejected.
-- Events: `:on {:press :add}` or `:on {:input [:rename {:bind [:props :id]}]}`.
-  Input text, checkbox values and pointer data reach OCaml through the original event,
-  not an EDN payload expression. Arguments sample the current scope **when the event fires**,
-  rather than capturing an item from the initial mount.
-- Extensions: `:ext/<registered-name>` delegates to the existing extension registry.
-  The LUI runtime ultimately validates the schema, platform capabilities, property types,
-  children and event admission. The prototype has no extension registration example.
+The real example uses `[:use :layout/panel ...]`. A component's `:props` are a
+shape declaration; its `:slots` enumerate required slots. Slots evaluate in the
+caller's scope, so a slot can bind to the caller's model or keyed row. Shape
+expressions include `:string`, `:keyword`, `:bool`, `:int`, `:float`, vectors,
+records, tuples, nullable values and finite enumerations. Module-local names can
+coexist; ambiguous references must be namespace-qualified. `:view` is optional
+in imported component-only documents, mandatory at the entry point. A standalone
+view vector remains valid for small single-file experiments.
 
-Common events include `:press`, `:input`, `:submit`, `:toggle`, `:value`, `:change` and `:dismiss`.
-`event_specs` also maps existing pointer, navigation, scrolling and file-picker protocol events.
-Standard kinds reject incompatible events. `:on` configures event admission flags automatically.
+The compiler takes a host-supplied `Sources.loader` callback returning canonical
+source identity and content. The native example resolves imports relative to the
+importer and normalizes their paths. Web clients can supply an already-fetched
+source map, without making core compilation depend on filesystems or async I/O.
+Only transitively imported documents are loaded. A `Sources.cache` reuses parsed
+units with the same canonical identity **and content**; changing content invalidates
+the unit. The compiled plan is reusable across model changes; no EDN is parsed
+or recompiled by a model signal update.
 
-## Validation and applicability
+## View vocabulary
 
-| Scenario | Result and evidence | Limitations |
+- Standard `[:kind {:property value ...} children ...]` nodes use generated
+  OCaml constructor contracts plus canonical protocol admission. A wire property
+  is not automatically a valid typed argument. `:root` and internal section
+  wrapper nodes are runtime-only.
+- `{:bind [:model :field]}` and `{:bind [:props :field]}` read typed contract
+  paths. `[:for {:items {:bind [:model :items]} :as :item :key [:id]} child]`
+  introduces a keyed row alias; nested lists can use different aliases.
+- `[:when condition child]`, `[:if condition then else]` and
+  `[:platform {:web view :ios view :macos view :android view :default view}]`
+  select retained views. Other supported profile keys include `:linux`,
+  `:windows` and `:generic`. All listed branches are compiled.
+- `:on {:press :add}` or `:on {:input [:rename {:bind [:item :id]}]}` refers
+  only to declared OCaml actions; arguments read the current scope at event
+  time. The original typed LUI event (input text, checkbox state, pointer
+  coordinates, extension fields) is decoded by OCaml, not by EDN.
+- `[:ext/split-view ...]`, `[:ext/split-tab ...]` and
+  `[:ext/gallery-accent ...]` in `extensions.edn` use the real gallery schema.
+  Its split event updates an OCaml-owned ratio; only `:split-tab` admits
+  standard children. `:platform` supplies a standard fallback for generic,
+  Linux and Windows profiles.
+
+## Contracts and validation boundary
+
+### Preserve OCaml view types
+
+`tooling/typed_view_schema.mjs` derives constructor contracts from
+`src/lui_elements.mli` and canonical value encoders in `lui_elements.ml`, rather
+than treating the broader wire schema as the typed API. Generation fails on an
+unknown signature or value domain. The compiler preserves constructor property
+surfaces, required labeled arguments, closed variants, abstract child categories,
+fixed child arity and named element slots. The typed `align` modifier is also
+available on standard nodes returning `t`. Components, slots, conditions, keyed
+collections and platform branches do not erase their children's result types.
+Branches must agree on that result type even in unused component definitions.
+
+Values do not silently coerce between OCaml types:
+
+```edn
+[:row {:grow 1.0}]                          ; float, not integer 1
+[:spinner {:size :sm}]                      ; closed variant, not string "sm"
+[:icon {:name [:app "company-logo"]}]       ; explicit open icon constructor
+[:file-picker {:request [:int 1]}]          ; explicitly tagged picker token
+[:column {:data-attrs [["data-id" "item"]]}] ; string-pair list, not wire text
+[:popover {:anchor :below :anchor-rect [0.0 0.0 12.0 12.0]}]
+[:input-group
+ {:slots {:actions [:input-group-actions [:button {:text "Send"}]]}}
+ [:textarea]]
+```
+
+Bindings must have the same domains: a general `:string` or `:keyword` binding
+cannot satisfy a finite variant; declare its exact keyword enumeration in the
+OCaml model contract. Optional arguments may be nullable, required ones may not.
+`split` and `drawer` need exactly two unconditional children, `input-group` one.
+Use `:slots` for `input-group`'s `:actions`, `list-section`'s `:header`/`:footer`
+and `list-item`'s `:swipe-actions`; structural wrappers cannot be supplied as raw
+wire nodes to bypass the typed API.
+
+The stronger `Lui_split.mli` contracts are generated separately: for example,
+`split-branch.orientation` accepts only `:horizontal` or `:vertical`, although
+its host wire schema carries strings. Other generated extension APIs export
+`view_contracts` from the same declarations as their typed constructors. Pass
+these to `Data_contract.create ~extension_contracts`; handwritten extensions need
+an authoritative typed contract too. A registry entry without a typed contract
+is rejected, and caller-supplied contracts cannot weaken built-in Split types.
+An unsupported OCaml API is rejected, not inferred from permissive wire scalars.
+
+### Static and runtime checks
+
+`Data_contract.create` freezes a model shape, action signatures, the existing
+`Lui_extension.extension_registry`, typed extension contracts and per-profile
+host fingerprint manifests.
+The native example reads literal split fingerprints from actual Web, Apple and
+Android host sources. The Web gallery accent adapter uses the shared OCaml
+registry rather than a separate host literal; its registered tweak fingerprint
+is supplied from that registry. Hosts must provide truthful registration data:
+static checks cannot prove that a host actually implements its adapter.
+
+`Data_view.compile_files ~contract ~load ~entry ()` resolves imports, checks
+cycles and duplicate declarations, and validates every component plus every
+reachable document view, including unused definitions and inactive branches.
+It checks binding shape/path, expression type, component props/slots, action
+arity and typed event support, standard kinds/properties/children/scalar ranges,
+structurally impossible property sets, extension profile/host/fingerprint,
+required extension properties, child admission and extension event names.
+Errors include source document and component/view context, not token-level
+line/column locations. Host manifests are checked before mounting the selected
+branch; inactive platform branches are schema-checked without requiring their
+host to be installed on the current platform. The runtime still validates
+rendered values against the canonical LUI protocol.
+
+Static validation cannot decide the actual values of nullable bindings,
+duplicate keys in live model lists, whether an external image/file exists,
+permission grants or real native UI behavior. OCaml must validate event payloads
+and business authorization. The source-size/expansion limits prevent accidents,
+not malicious EDN; do not treat remote documents as trusted executable content.
+
+| Scenario family | Declarative representation | Verification boundary |
 | --- | --- | --- |
-| Forms, enablement and input events | Todo example: bound draft, OCaml validation, input / submit / press routing | IME, focus and selection have not been tested through platform interaction |
-| Keyed editable lists | `check.ml`: reorder emits moves, text-field IDs survive, properties update in place, events read updated items, removal disposes nodes | Verifies the retained contract, not lossless focus across platforms |
-| Conditions / empty states | Initial todo empty state disappears when the first item is added | Single branch only; hidden branches do not retain local UI state |
-| Component reuse | Todo rows use `:use` / `:props`, exercising bindings and current event arguments | No slots, dynamic component names or local state |
-| Split, tabs, tables, trees, slider, select, virtual-list | `scenarios.edn` passes schema validation and mounting on the generic headless backend | Representation and mounting only, not complete interaction, virtualization performance or platform parity |
-| Dialogs, menus, asynchronous loading/error | OCaml can project switches, data and commands; EDN can use `:when` and standard kinds | Actual overlays, keyboard and asynchronous flows have not been tested end to end |
-| Files, media, custom editors | Wire scalars / resource IDs, or preregistered extensions | OCaml / host code still owns resource lifecycles and editor state; unverified |
+| Layout, forms, text fields, buttons, checkbox/toggle/radio, value controls, scroll | Standard kinds and bound properties/actions | Headless todo and scenario mounts; no real input/IME or focus test |
+| Keyed lists, virtual lists, tables, trees, tabs, split | `:for` and standard kinds | Keyed-node identity/reorder/action regression check; scenario mounts only for the rest |
+| Dialogs, menus, nested menus, sheets/overlays, loading/error | Standard kinds, `:if`, `:when`, projected OCaml state | Admission checked; native presentation and async workflows not exercised |
+| Files, media, resource IDs, accessibility, navigation/pointer events | Standard schema, OCaml resources/actions | Schema admission only; resources and permissions remain host-owned |
+| Custom cross-platform controls and tweaks | Extension registry and `:platform` fallback | Split example mounts in a headless profile; host UI parity not proven |
 
-The EDN experiment has not been tested through a browser, iOS or native GUI.
-It does not establish support for "all scenarios."
-
-## Validation rules and remaining work
-
-Compilation checks the document version, duplicate fields, unknown kinds / properties / actions,
-literal scalars, child-kind relationships and component expansion. Model-dependent paths,
-types, conditions and duplicate list keys are checked during projection.
-Standard property combinations and event admission are also checked before mounting/updating;
-the runtime still enforces platform validation. Errors are strings or runtime exceptions:
-there are no source locations, typed binding schemas or transactional rollback guarantees.
-Bindings in inactive conditions are checked only when activated; unused components are not expanded.
-
-The interpreter's `Signal.map` / `Lui_dynamic` usage is a scope-owned runtime bridge,
-not an application-authored reactive view. Applications supply only `project` / `dispatch`.
-The interpreter neither calls `Lui_elements.dyn` nor takes ownership of the caller's model signal.
-
-- No arithmetic, function calls, `eval`, closures, arbitrary OCaml function lookup or code loading.
-  Do not gradually turn the format into a second programming language.
-- No EDN document hot replacement or hot-reload state migration; `t` remains fixed while mounted.
-- No arbitrary map/vector wire properties. Structured properties must follow the existing
-  protocol encoding rather than accepting arbitrary EDN maps.
-- Each model change reprojects and traverses the active view. Lists pass the full environment
-  into row scopes. Measure projection, validation, key diffing and allocation costs on large
-  models/lists before introducing dependency slicing.
-- The 1 MiB source and 128-level view expansion limits discourage accidental misuse;
-  they are not a sandbox against malicious EDN input. Do not load untrusted remote documents
-  directly. Production use needs parser/AST/node budgets, permissions and error isolation.
-
-Next, validate a real page across actual backends before deciding whether to promote this
-format into a public library. Prioritize binding/action schemas, error locations and typed
-OCaml projection helpers over adding an EDN computation DSL.
+The `Signal.map`/`Lui_dynamic` implementation is a view-plan runtime bridge;
+applications supply `project` and `dispatch`. There is no EDN `eval`, arbitrary
+OCaml function lookup, hot replacement, transactional rollback or claim of
+complete browser/mobile/native GUI parity. Measure large models and run real
+host interaction suites before promoting this experiment to a production API.

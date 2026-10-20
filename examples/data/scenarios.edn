@@ -1,6 +1,6 @@
 {:version 1
  :view
- [:split {:first-pane-width 220}
+ [:split {:first-pane-width 220.0}
   [:column {:gap 12 :padding 16}
    [:heading {:text "Navigation"}]
    [:tabs

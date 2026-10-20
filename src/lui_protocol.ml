@@ -1795,8 +1795,74 @@ let float_property_of properties property fallback =
   | Some (FloatValue number) -> number
   | _ -> fallback
 
+let node_property_presence_supported kind ~definite ~possible =
+  let require_any properties = List.exists possible properties in
+  let paired first second =
+    (not (definite first) || possible second)
+    && (not (definite second) || possible first)
+  in
+  let exclusive first second = not (definite first && definite second) in
+  let required = match kind with
+    | Icon -> [[IconName]]
+    | Button | ToggleButton | Toggle | Radio ->
+      [[TextValue; AccessibilityLabel]]
+    | NumberStepper -> [[TextValue; AccessibilityLabel]; [ProgressValue]]
+    | RadioGroup | Tree | Toolbar -> [[AccessibilityLabel]]
+    | Slider -> [[AccessibilityLabel]; [ProgressValue]]
+    | Progress -> [[ProgressValue]]
+    | Select | Combobox -> [[TextValue; PlaceholderValue]]
+    | MenuItem -> [[TextValue; AccessibilityLabel]]
+    | Accordion | Drawer | Sheet -> [[TextValue]]
+    | SwipeAction | MenuTrigger -> [[TextValue; InlineIconName]]
+    | Tooltip -> [[TextValue]]
+    | Avatar -> [[TextValue]; [ImageIdValue; UrlValue]]
+    | Image -> [[ImageIdValue; UrlValue]]
+    | FileImage | FilePreview -> [[PathValue]]
+    | MediaSurface -> [[SurfaceIdValue]]
+    | EdgeInset -> [[EdgeValue]]
+    | Stepper -> [[ActiveIndex]]
+    | Step -> [[TextValue]]
+    | TimelineItem -> [[TitleValue]]
+    | BottomTabs -> [[AccessibilityLabel]]
+    | BottomTab -> [[TitleValue]; [PressEnabled]]
+    | _ -> []
+  in
+  List.for_all require_any required
+  && (if kind = Tooltip then
+        not (definite TooltipDelay) || possible AnchorValue
+      else true)
+  && (if kind = Tooltip || kind = DropdownMenu || kind = Popover then
+        (not (List.exists definite
+           [AnchorAlignmentValue; AnchorOffset; AnchorAlignmentOffset]))
+        || possible AnchorValue
+      else true)
+  && (if kind = Popover then
+        ((not (definite AnchorTarget || definite AnchorRect))
+         || possible AnchorValue)
+        && exclusive AnchorTarget AnchorRect
+      else true)
+  && (if kind = Popover || kind = DropdownMenu then
+        paired PopupX PopupY
+        && not (definite AnchorValue && (definite PopupX || definite PopupY))
+      else true)
+  && (if kind = Avatar || kind = Image then
+        let source = [SourceX; SourceY; SourceWidth; SourceHeight] in
+        (not (List.exists definite source)
+         || List.for_all possible source)
+        && (not (List.exists definite source)
+            || require_any [ImageIdValue; UrlValue])
+      else true)
+  && (if kind = Split then exclusive FirstPaneWidth ProgressValue else true)
+  && (if tree_row_kind kind then
+        ((not (definite TreeLevel || definite ChangeEnabled)) || possible RoleValue)
+        && ((not (definite Expanded)) || possible ToggleEnabled)
+      else true)
+
 let node_properties_supported kind properties =
-  surface_size_supported properties
+  node_property_presence_supported kind
+    ~definite:(fun property -> Property_map.mem property properties)
+    ~possible:(fun property -> Property_map.mem property properties)
+  && surface_size_supported properties
   && viewport_size_supported properties
   && (if kind = Icon then
         match Property_map.find_opt IconName properties with
