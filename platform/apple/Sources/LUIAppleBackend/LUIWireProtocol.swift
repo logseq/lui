@@ -208,6 +208,7 @@ enum LUIWireValue: Decodable, Equatable {
             guard let value = stringValue else { return false }
             return value == "leading" || value == "trailing" || value == "top"
         case .title, .description, .meta, .indicator, .foreground, .borderColor,
+             .indicatorBorderColor, .checkedIndicatorBorderColor,
              .text, .background, .placeholder, .accessibilityLabel,
              .accessibilityIdentifier, .styleClass, .dataAttrs, .asTag,
              .key, .scrollTarget:
@@ -327,7 +328,7 @@ enum LUIWireValue: Decodable, Equatable {
         case .fontSize, .lineHeight, .shadow, .hoverBackground, .pressedBackground,
              .selectedBackground, .hoverShadow, .pressedShadow, .focusShadow,
              .selectedShadow, .selectedHoverShadow, .fontFamily,
-             .hoverForeground, .hoverBorder:
+             .hoverForeground, .hoverBorder, .focusWithinBackground, .focusWithinBorder:
             guard let value = stringValue else { return false }
             return !value.trimmingCharacters(in: .whitespaces).isEmpty
         case .textDecoration:
@@ -1311,11 +1312,13 @@ struct LUIRetainedTree {
             kind != .root && kind != .tooltip && !isModalSurface(kind)
         case .cursor: kind != .root
         case .shadow: kind != .tooltip && !isModalSurface(kind)
+        case .indicatorBorderColor, .checkedIndicatorBorderColor: kind == .checkbox
         case .inert: kind == .box
         case .hoverBackground, .hoverOpacity, .hoverShadow,
              .hoverForeground, .hoverBorder,
              .pressedBackground, .pressedOpacity, .pressedShadow,
-             .focusShadow, .selectedBackground, .selectedShadow,
+             .focusShadow, .focusWithinBackground, .focusWithinBorder,
+             .selectedBackground, .selectedShadow,
              .selectedHoverShadow, .disabledOpacity, .transition:
             kind != .root && kind != .tooltip && !isModalSurface(kind)
         case .widthViewport, .heightViewport, .minWidthViewport, .maxWidthViewport,

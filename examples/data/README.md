@@ -1,13 +1,15 @@
-# UI as data：EDN view 实验
+# UI as data: EDN view experiment
 
-结论：**EDN 可以作为 LUI 的声明式 view 格式，但不应成为业务脚本语言。**
-OCaml 持有 typed model、action、reducer、派生状态、异步任务；EDN 只描述结构、属性、绑定和事件路由。
-本目录是实验，不是新增的正式 `lui` API；没有修改 dune 文件或生产依赖。
+Conclusion: **EDN can serve as LUI's declarative view format, but should not become a business scripting language.**
+OCaml owns the typed model, actions, reducer, derived state and asynchronous tasks;
+EDN describes only structure, properties, bindings and event routing.
+This directory is an experiment, not a new public `lui` API. It changes no dune files or production dependencies.
 
-## 运行
+## Running
 
-需要项目依赖、`ocamlfind` 和 `melange-edn-core`。本次验证使用 OCaml 5.5.0 switch，
-`ocaml-signal` 使用 `lui.opam.locked` 的 pin。若未安装 EDN reader，可固定到本实验使用的版本：
+Requires the project dependencies, `ocamlfind` and `melange-edn-core`. Validation used
+the OCaml `5.5.0` switch and the `ocaml-signal` pin from `lui.opam.locked`.
+If the EDN reader is not installed, pin the version used by this experiment:
 
 ```sh
 opam pin add --switch=5.5.0 melange-edn-core.0.5.0 \
@@ -17,12 +19,13 @@ OPAMSWITCH=5.5.0 sh examples/data/run.sh --check
 OPAMSWITCH=5.5.0 sh examples/data/run.sh examples/data/scenarios.edn --mount-only
 ```
 
-`run.sh` 用现有 dune target 构建 `lui.cmxa`，再以 `ocamlfind` 编译解释器和示例，
-产物只写入 `_build/data-view`。默认示例使用真实 `Lui_app` 和 headless patch backend，
-模拟输入、添加、勾选和重排，**不会打开图形窗口**。
-`--mount-only` 使用一个示例条目，只挂载指定文档，不执行默认 todo 交互。
+`run.sh` builds `lui.cmxa` through the existing dune target, then compiles the interpreter
+and example with `ocamlfind`. Artifacts are written only to `_build/data-view`.
+The default example uses a real `Lui_app` with a headless patch backend to simulate
+input, insertion, toggling and reordering. **It does not open a graphical window.**
+`--mount-only` starts with one sample item and mounts the supplied document without running the todo interactions.
 
-## 数据流与边界
+## Data flow and boundaries
 
 ```text
 OCaml typed model ── project ──> EDN-compatible read model
@@ -34,20 +37,22 @@ EDN source ── compile ──> view plan ── bindings / keyed scopes ─�
 OCaml dispatch ──> typed action ──> reducer ──> model signal
 ```
 
-`main.ml` 是完整的 OCaml model / reducer / action decoder；`todos.edn` 不含计算逻辑。
-例如 `can-add?`、`empty?` 和统计文案都由 OCaml `project` 产生，而不是在 EDN 中拼表达式。
-projection 应只暴露 view 所需的数据，不必序列化整个业务 model。
+`main.ml` contains the OCaml model, reducer and action decoder; `todos.edn` contains no computation.
+For example, `can-add?`, `empty?` and summary text come from the OCaml `project` function,
+not expressions assembled in EDN. The projection should expose only what the view needs,
+rather than serializing the entire business model.
 
 ```ocaml
 Data_view.compile ~actions:["remove"] source
 Data_view.render document ~model ~project ~dispatch
 ```
 
-`compile` 返回 `(t, string) result`。`dispatch` 接收白名单 action 名、EDN 参数列表和原始
-`Lui_protocol.event`，由 OCaml 检查参数类型、数量与事件 payload，再构造 typed action。
-白名单只控制可调用的名字，不代替业务授权。
+`compile` returns `(t, string) result`. `dispatch` receives an allowlisted action name,
+EDN arguments and the original `Lui_protocol.event`. OCaml checks argument types,
+arity and event payloads before constructing a typed action.
+The allowlist controls callable names; it does not replace business authorization.
 
-## View 语法
+## View syntax
 
 ```edn
 {:version 1
@@ -66,59 +71,77 @@ Data_view.render document ~model ~project ~dispatch
                  :title {:bind [:item :title]}}]]]]}
 ```
 
-- 元素：`[:kind {:property value ...} child ...]`；属性 map 可省略，children 必须是 view vector。
-  kind 和 property 使用 `Lui_wire_schema` 的 wire 名字，而非 OCaml 构造器参数名。
-- 文档：版本化 map；也接受单个根 view vector，方便片段实验。根 `:root` 保留给 runtime。
-- 绑定：`{:bind [:model :field]}`、`{:bind [:props :field]}`、`{:bind [:item :field]}`。
-  path 支持嵌套 map 和 vector 整数下标；缺失路径是错误，不会静默转成空字符串。
-- 属性：string、keyword、boolean、整数、有限浮点数；keyword 转 wire string，
-  整数在目标属性需要 float 时提升为 float。`nil` 删除属性，不表示隐藏元素。
-- 条件：`[:when boolean-expression child]`。无 else 或通用表达式，复杂条件由 OCaml 投影。
-- 列表：`:items` 必须是 vector，`:key` 是条目内路径；key 必须是 string、keyword 或整数且唯一。
-  列表别名不能占用 `:model` / `:props`；嵌套列表可使用不同别名访问外层条目。
-- 复用：`[:use :component props-map]`，调用时的值在组件里以 `:props` 读取；拒绝递归展开。
-- 事件：`:on {:press :add}` 或 `:on {:input [:rename {:bind [:props :id]}]}`。
-  输入文本、checkbox 值、pointer 数据等从原始 event 交给 OCaml，不发明 EDN payload 表达式。
-  参数在**事件触发时**采样当前 scope，不捕获初次挂载时的旧条目。
-- 扩展：`:ext/<registered-name>` 转发到现有 extension registry；schema、平台能力、属性类型、
-  children 和 event admission 最终由 LUI runtime 检查。原型未提供扩展注册示例。
+- Elements: `[:kind {:property value ...} child ...]`. The property map is optional;
+  children must be view vectors. Kinds and properties use `Lui_wire_schema` wire names,
+  not OCaml constructor parameter names.
+- Documents: a versioned map, or a single root view vector for fragment experiments.
+  `:root` is reserved for the runtime.
+- Bindings: `{:bind [:model :field]}`, `{:bind [:props :field]}` or `{:bind [:item :field]}`.
+  Paths support nested maps and integer vector indices. Missing paths are errors,
+  not silently converted to empty strings.
+- Properties: strings, keywords, booleans, integers and finite floats. Keywords become
+  wire strings; integers are promoted when the target property requires a float.
+  `nil` removes a property; it does not hide an element.
+- Conditions: `[:when boolean-expression child]`. No else branch or general expression
+  language; OCaml projects complex conditions.
+- Lists: `:items` must be a vector; `:key` is a path within each item. Keys must be unique
+  strings, keywords or integers. Aliases cannot replace `:model` or `:props`.
+  Nested lists can use different aliases to access outer items.
+- Reuse: `[:use :component props-map]`. Values passed by the caller are available through
+  `:props` inside the component. Recursive expansion is rejected.
+- Events: `:on {:press :add}` or `:on {:input [:rename {:bind [:props :id]}]}`.
+  Input text, checkbox values and pointer data reach OCaml through the original event,
+  not an EDN payload expression. Arguments sample the current scope **when the event fires**,
+  rather than capturing an item from the initial mount.
+- Extensions: `:ext/<registered-name>` delegates to the existing extension registry.
+  The LUI runtime ultimately validates the schema, platform capabilities, property types,
+  children and event admission. The prototype has no extension registration example.
 
-常用事件为 `:press`、`:input`、`:submit`、`:toggle`、`:value`、`:change`、`:dismiss`。
-也提供 pointer、导航、滚动、文件选择等已有 protocol event 的映射，见 `event_specs`；
-标准 kind 不接受不兼容事件。事件 admission flag 由 `:on` 自动配置。
+Common events include `:press`, `:input`, `:submit`, `:toggle`, `:value`, `:change` and `:dismiss`.
+`event_specs` also maps existing pointer, navigation, scrolling and file-picker protocol events.
+Standard kinds reject incompatible events. `:on` configures event admission flags automatically.
 
-## 已验证与适用范围
+## Validation and applicability
 
-| 场景 | 结果与证据 | 边界 |
+| Scenario | Result and evidence | Limitations |
 | --- | --- | --- |
-| 表单、启用状态、输入事件 | todo 示例：绑定 draft，OCaml 校验，input / submit / press 路由 | 输入法、焦点、selection 尚未做平台交互验证 |
-| keyed 编辑列表 | `check.ml`：重排产生 move；输入框 id 不变；属性原位更新；事件读取更新后的条目；删除条目释放节点 | 验证 retained contract，不等于证明焦点跨平台无损 |
-| 条件 / 空态 | todo 示例初始空态，添加首项后移除 | 只提供单分支；不保留隐藏分支的局部 UI 状态 |
-| 组件复用 | todo 行经过 `:use` / `:props`，覆盖绑定及最新事件参数 | 暂无 slots、动态组件名、局部 state |
-| split、tabs、表格、树、slider、select、virtual-list | `scenarios.edn` 在 generic headless backend 通过 schema 和挂载 | 只验证表示和挂载；不代表完整交互、虚拟化性能或平台 parity |
-| 对话框、菜单、异步 loading/error | 可由 OCaml model 投影开关、数据和命令，EDN 用 `:when` / 标准 kind 表示 | 实际弹层、键盘与 async 场景未端到端验证 |
-| 文件、媒体、自定义编辑器 | wire scalar / 资源 id，或预注册 extension 作为出口 | 资源生命周期、编辑器内部状态仍由 OCaml / host 管理；未验证 |
+| Forms, enablement and input events | Todo example: bound draft, OCaml validation, input / submit / press routing | IME, focus and selection have not been tested through platform interaction |
+| Keyed editable lists | `check.ml`: reorder emits moves, text-field IDs survive, properties update in place, events read updated items, removal disposes nodes | Verifies the retained contract, not lossless focus across platforms |
+| Conditions / empty states | Initial todo empty state disappears when the first item is added | Single branch only; hidden branches do not retain local UI state |
+| Component reuse | Todo rows use `:use` / `:props`, exercising bindings and current event arguments | No slots, dynamic component names or local state |
+| Split, tabs, tables, trees, slider, select, virtual-list | `scenarios.edn` passes schema validation and mounting on the generic headless backend | Representation and mounting only, not complete interaction, virtualization performance or platform parity |
+| Dialogs, menus, asynchronous loading/error | OCaml can project switches, data and commands; EDN can use `:when` and standard kinds | Actual overlays, keyboard and asynchronous flows have not been tested end to end |
+| Files, media, custom editors | Wire scalars / resource IDs, or preregistered extensions | OCaml / host code still owns resource lifecycles and editor state; unverified |
 
-本实验没有浏览器、iOS 或 native GUI 的验证结果。不能据此声称覆盖“所有场景”。
+The EDN experiment has not been tested through a browser, iOS or native GUI.
+It does not establish support for "all scenarios."
 
-## 校验与仍需解决的问题
+## Validation rules and remaining work
 
-编译期检查文档版本、重复字段、未知 kind / property / action、字面量 scalar、children 的 kind
-关系及组件展开；依赖 model 的路径、类型、条件和重复列表 key 在投影时检查。
-标准属性组合和 event admission 也在挂载/更新前检查，最终仍使用 runtime 的平台校验。
-错误目前是文本或运行时异常，没有文件行列、类型化 binding schema 或更新事务回滚保证。
-未激活条件里的绑定只在该条件激活时检查；未引用组件不会展开。
+Compilation checks the document version, duplicate fields, unknown kinds / properties / actions,
+literal scalars, child-kind relationships and component expansion. Model-dependent paths,
+types, conditions and duplicate list keys are checked during projection.
+Standard property combinations and event admission are also checked before mounting/updating;
+the runtime still enforces platform validation. Errors are strings or runtime exceptions:
+there are no source locations, typed binding schemas or transactional rollback guarantees.
+Bindings in inactive conditions are checked only when activated; unused components are not expanded.
 
-解释器中的 `Signal.map` / `Lui_dynamic` 是 scope-owned runtime 桥接，不是应用手写 reactive
-view；应用只提供 `project` / `dispatch`。不调用 `Lui_elements.dyn`，也不接管调用者 model signal。
+The interpreter's `Signal.map` / `Lui_dynamic` usage is a scope-owned runtime bridge,
+not an application-authored reactive view. Applications supply only `project` / `dispatch`.
+The interpreter neither calls `Lui_elements.dyn` nor takes ownership of the caller's model signal.
 
-- 没有算术、函数调用、`eval`、闭包、任意 OCaml 函数查找或代码加载；不要逐步加成第二门语言。
-- 没有热替换 EDN 文档 / 热重载状态迁移；当前 `t` 在挂载期间固定。
-- 没有任意 map/vector wire 属性；结构化属性须遵循现有 protocol 的编码，而非直接塞 EDN map。
-- 每次 model 变化会重新投影和遍历活动 view；列表把完整环境传入行 scope。
-  大 model / 大列表需测量 projection、validation、key diff 和分配成本，再做依赖切片。
-- 1 MiB 源码限制、128 层 view 展开限制只是实验防误用措施，不是抗恶意 EDN parser 的沙箱。
-  不应直接加载不可信远程文档；生产化需 parser/AST/node 数量预算、权限和错误隔离。
+- No arithmetic, function calls, `eval`, closures, arbitrary OCaml function lookup or code loading.
+  Do not gradually turn the format into a second programming language.
+- No EDN document hot replacement or hot-reload state migration; `t` remains fixed while mounted.
+- No arbitrary map/vector wire properties. Structured properties must follow the existing
+  protocol encoding rather than accepting arbitrary EDN maps.
+- Each model change reprojects and traverses the active view. Lists pass the full environment
+  into row scopes. Measure projection, validation, key diffing and allocation costs on large
+  models/lists before introducing dependency slicing.
+- The 1 MiB source and 128-level view expansion limits discourage accidental misuse;
+  they are not a sandbox against malicious EDN input. Do not load untrusted remote documents
+  directly. Production use needs parser/AST/node budgets, permissions and error isolation.
 
-建议下一步先选一个真实页面做实际 backend parity 验证，再决定是否把格式提升为正式 library。
-优先补 binding/action schema、错误定位和 typed OCaml projection 辅助；不优先添加 EDN 计算 DSL。
+Next, validate a real page across actual backends before deciding whether to promote this
+format into a public library. Prioritize binding/action schemas, error locations and typed
+OCaml projection helpers over adding an EDN computation DSL.
