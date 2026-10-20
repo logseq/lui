@@ -282,6 +282,8 @@ enum class LuiProperty(val wireName: String) {
     anchorRect("anchor-rect"),
     resizeHandleWidth("resize-handle-width"),
     resizeHandleOffset("resize-handle-offset"),
+    indicatorBorderColor("indicator-border-color"),
+    checkedIndicatorBorderColor("checked-indicator-border-color"),
     ;
 
     companion object {
@@ -320,7 +322,7 @@ object LuiSchemaMatrix {
     )
 
     val extra: Map<LuiNodeKind, Set<LuiProperty>> = mapOf(
-        LuiNodeKind.checkbox to setOf(LuiProperty.gap, LuiProperty.labelOpacity),
+        LuiNodeKind.checkbox to setOf(LuiProperty.gap, LuiProperty.labelOpacity, LuiProperty.indicatorBorderColor, LuiProperty.checkedIndicatorBorderColor),
         LuiNodeKind.radio to setOf(LuiProperty.gap, LuiProperty.labelOpacity),
         LuiNodeKind.grid to setOf(LuiProperty.main, LuiProperty.cross),
         LuiNodeKind.row to setOf(LuiProperty.orientation),

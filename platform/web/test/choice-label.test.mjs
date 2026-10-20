@@ -55,3 +55,29 @@ for (const name of ['checkbox', 'radio']) {
     assert.equal(indicator.styles.size, 0)
   })
 }
+
+for (const name of ['indicator-border-color', 'checked-indicator-border-color']) {
+  test(`checkbox ${name} updates and clears without decorating its caption`, () => {
+    const kind = named(Schema.all_node_kinds, Schema.node_kind_name, 'checkbox')
+    const property = named(Schema.all_properties, Schema.property_name, name)
+    const indicator = element([]), caption = element([]), root = element([indicator, caption])
+    const store = Store.create_store(), renderer = {web_store: store}
+    let generation = 0
+    const apply = ops => assert.equal(Store.apply_batch(store, () => root,
+      {generation: ++generation, ops: list(ops)}), true)
+    apply([Protocol.create_node_op(1, kind)])
+    for (const color of ['#171717', 'var(--neutral-edge)', '#a4b5b6']) {
+      const wire = {TAG: 0, _0: color}
+      apply([Protocol.set_prop_op(1, property, wire)])
+      Props.apply_property(renderer, () => {}, 1, kind, root, property, wire)
+      assert.equal(indicator.styles.get(`--lui-${name}`), color)
+      assert.equal(root.styles.size, 0, 'The whole labeled control stays borderless')
+      assert.equal(caption.styles.size, 0, 'The caption keeps its inherited ink')
+    }
+    apply([Protocol.remove_prop_op(1, property)])
+    Props.remove_property(renderer, () => {}, 1, kind, root, property)
+    assert.equal(indicator.styles.get(`--lui-${name}`), '')
+    if (name === 'checked-indicator-border-color')
+      assert.equal(indicator.styles.get('--lui-checked-indicator-border-width'), '')
+  })
+}

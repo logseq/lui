@@ -275,6 +275,8 @@ enum LUIProperty: String, Decodable, Hashable {
     case anchorRect = "anchor-rect"
     case resizeHandleWidth = "resize-handle-width"
     case resizeHandleOffset = "resize-handle-offset"
+    case indicatorBorderColor = "indicator-border-color"
+    case checkedIndicatorBorderColor = "checked-indicator-border-color"
 }
 
 enum LUISchemaMatrix {
@@ -300,7 +302,7 @@ enum LUISchemaMatrix {
     ]
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [
-        .checkbox: [.gap, .labelOpacity],
+        .checkbox: [.gap, .labelOpacity, .indicatorBorderColor, .checkedIndicatorBorderColor],
         .radio: [.gap, .labelOpacity],
         .grid: [.main, .cross],
         .row: [.orientation],

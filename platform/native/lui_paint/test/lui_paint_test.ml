@@ -1104,6 +1104,36 @@ let test_checkbox_primary_palette () =
       if checked then check bool "check mark uses primary foreground" true (!glyph=Some ink)
     | _ -> fail "expected one checkbox indicator") [false;true]
 
+let test_checkbox_indicator_borders () =
+  let open Lui_protocol in
+  List.iter (fun scale ->
+    List.iter (fun (edge, checked_edge) ->
+      let t = store () in
+      apply t [CreateNode (1, Checkbox); SetProp (1, TextValue, StringValue "Caption");
+        SetProp (1, IndicatorBorderColor, StringValue edge);
+        SetProp (1, CheckedIndicatorBorderColor, StringValue checked_edge)];
+      List.iter (fun checked ->
+        apply t [SetProp (1, Checked, BoolValue checked)];
+        let primary = color 3 125 186 255 in
+        let h = {(hooks ()) with Lui_paint.color_of = (function
+          | "primary" -> Some primary | value -> Lui_paint.color_of_hex value)} in
+        let face = match (paint_with h t ~scale ()).ops with
+          | [Fill face] -> face
+          | _ -> fail "Indicator styling must not add a border to the caption" in
+        let expected = Option.get (Lui_paint.color_of_hex (if checked then checked_edge else edge)) in
+        check bool "independent state border color" true (face.fborder_color = expected);
+        check bool "one logical point in either state" true
+          (face.fborder = (scale, scale, scale, scale));
+        check bool "checked fill remains primary; unchecked remains transparent" true
+          (if checked then face.fcolor = primary else face.fcolor.a = 0)) [false; true];
+      apply t [RemoveProp (1, IndicatorBorderColor); RemoveProp (1, CheckedIndicatorBorderColor)];
+      let face = match (paint_with (hooks ()) t ~scale ()).ops with
+        | [Fill face] -> face | _ -> fail "Expected only the indicator" in
+      check bool "removing checked border restores the default" true
+        (face.fborder = (0.,0.,0.,0.)))
+      ["#171717", "#ebeaeb"; "#a4b5b6", "#334447"])
+    [1.; 2.]
+
 let test_checkbox_unchecked () =
   let t = store () in
   apply t [ Lui_protocol.CreateNode (1, Checkbox) ];
@@ -2016,6 +2046,7 @@ let () =
          test_case "checkbox" `Quick test_checkbox;
          test_case "checkbox unchecked" `Quick test_checkbox_unchecked;
          test_case "checkbox primary palette" `Quick test_checkbox_primary_palette;
+         test_case "checkbox indicator borders" `Quick test_checkbox_indicator_borders;
          test_case "choice label gap" `Quick test_choice_label_gap;
          test_case "choice label opacity" `Quick test_choice_label_opacity;
          test_case "choice focus bounds" `Quick test_choice_focus_bounds;

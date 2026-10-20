@@ -1790,6 +1790,16 @@
       "lg": "ResizeHandleOffset",
       "wire": "resize-handle-offset",
       "swift": "resizeHandleOffset"
+    },
+    {
+      "lg": "IndicatorBorderColor",
+      "wire": "indicator-border-color",
+      "swift": "indicatorBorderColor"
+    },
+    {
+      "lg": "CheckedIndicatorBorderColor",
+      "wire": "checked-indicator-border-color",
+      "swift": "checkedIndicatorBorderColor"
     }
   ],
   "events": [
@@ -2161,7 +2171,7 @@
     ]
   },
   "kindExtraProperties": {
-    "checkbox": ["gap", "label-opacity"],
+    "checkbox": ["gap", "label-opacity", "indicator-border-color", "checked-indicator-border-color"],
     "radio": ["gap", "label-opacity"],
     "grid": ["main", "cross"],
     "row": ["orientation"],

@@ -294,6 +294,8 @@ type property =
   | AnchorRect
   | ResizeHandleWidth
   | ResizeHandleOffset
+  | IndicatorBorderColor
+  | CheckedIndicatorBorderColor
 
 module Property_map : Map.S with type key = property
 

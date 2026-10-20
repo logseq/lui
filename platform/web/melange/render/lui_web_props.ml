@@ -969,6 +969,12 @@ and apply_secondary_property renderer queue_split node kind dom_node
       set_style dom_node "opacity"
         ("var(--lui-current-disabled-opacity, var(--lui-current-pressed-opacity, var(--lui-current-hover-opacity, "
          ^ Js.Float.toString value ^ ")))" )
+  | IndicatorBorderColor, StringValue value ->
+      set_style (Util.child_element dom_node 0) "--lui-indicator-border-color" (Util.web_color_value value)
+  | CheckedIndicatorBorderColor, StringValue value ->
+      let indicator = Util.child_element dom_node 0 in
+      set_style indicator "--lui-checked-indicator-border-color" (Util.web_color_value value);
+      set_style indicator "--lui-checked-indicator-border-width" "1px"
   | LabelOpacity, FloatValue value ->
       set_style (Util.child_element dom_node 1) "opacity" (Js.Float.toString value)
   | DisplayValue, StringValue value -> set_style dom_node "display" value
@@ -1245,6 +1251,12 @@ let remove_property renderer queue_split node kind dom_node property =
        | ImageIdValue | SourceX | SourceY | SourceWidth | SourceHeight when kind = Image ->
            Widgets.update_image renderer node dom_node
        | Opacity -> set_style dom_node "opacity" ""
+       | IndicatorBorderColor ->
+           set_style (Util.child_element dom_node 0) "--lui-indicator-border-color" ""
+       | CheckedIndicatorBorderColor ->
+           let indicator = Util.child_element dom_node 0 in
+           set_style indicator "--lui-checked-indicator-border-color" "";
+           set_style indicator "--lui-checked-indicator-border-width" ""
        | LabelOpacity -> set_style (Util.child_element dom_node 1) "opacity" ""
        | DisplayValue -> set_style dom_node "display" ""
        | FontFamily -> set_style dom_node "font-family" ""

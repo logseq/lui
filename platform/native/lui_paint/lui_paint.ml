@@ -160,6 +160,8 @@ let prop_coverage =
     ("target", Host);
     ("opacity", Painted); (* composites down the subtree *)
     ("label-opacity", Painted);
+    ("indicator-border-color", Painted);
+    ("checked-indicator-border-color", Painted);
     ("display", Painted); (* "contents" unboxes, "none" hides *)
     ("tooltip", Host);
     ("tooltip-keys", Host);
@@ -1605,19 +1607,23 @@ let checkbox_ops ctx store id _st rs r alpha =
     | Some c -> c
     | None -> col_primary ctx
   in
+  let edge = Option.value (pcolor ctx.hooks store id "indicator-border-color") ~default:accent in
+  let checked_edge = pcolor ctx.hooks store id "checked-indicator-border-color" in
+  let checked_width = if Option.is_some checked_edge then s else 0. in
   let rad = chrome_radii ctx store id (4. *. s) in
   let chrome =
     if checked then
       fill ~continuous:true b (corners b rad false) ~paint:Solid ~c1:accent ~c2:accent
-        ~grad:(0., 0., 0., 0.) ~border:(0., 0., 0., 0.)
-        ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha
+        ~grad:(0., 0., 0., 0.)
+        ~border:(checked_width, checked_width, checked_width, checked_width)
+        ~bcolor:(Option.value checked_edge ~default:(color 0 0 0 0)) ~dashed:false ~alpha
       :: scale_ops alpha
            (ctx.hooks.text_ops id b (col_primary_fg ctx) "\xe2\x9c\x93")
     else
       [ fill ~continuous:true b (corners b rad false) ~paint:Solid
           ~c1:(color 0 0 0 0) ~c2:(color 0 0 0 0)
           ~grad:(0., 0., 0., 0.)
-          ~border:(1. *. s, 1. *. s, 1. *. s, 1. *. s) ~bcolor:accent
+          ~border:(1. *. s, 1. *. s, 1. *. s, 1. *. s) ~bcolor:edge
           ~dashed:false ~alpha ]
   in
   box_ops ctx store id rs r alpha @ chrome @ label_after ctx store id r b 8. alpha

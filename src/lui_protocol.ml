@@ -296,6 +296,8 @@ type property =
   | AnchorRect
   | ResizeHandleWidth
   | ResizeHandleOffset
+  | IndicatorBorderColor
+  | CheckedIndicatorBorderColor
 
 module Property_map =
   Map.Make
@@ -1195,6 +1197,7 @@ let common_property_supported kind property =
   | TargetValue -> kind = Link
   | Opacity ->
     can_contain_children kind || kind = Checkbox || kind = Radio || kind = Icon
+  | IndicatorBorderColor | CheckedIndicatorBorderColor -> kind = Checkbox
   | LabelOpacity -> kind = Checkbox || kind = Radio
   | DisplayValue -> kind = Box || kind = Column || kind = Row || kind = ListItem
   | FlexWrap -> kind = Box || kind = Column || kind = Row
@@ -1552,7 +1555,7 @@ let property_value_supported property value =
     true
   | BackgroundValue, StringValue _ -> true
   | ForegroundValue, StringValue _ -> true
-  | BorderColorValue, StringValue _ -> true
+  | (BorderColorValue | IndicatorBorderColor | CheckedIndicatorBorderColor), StringValue _ -> true
   | BorderWidth, IntValue value -> value >= 0
   | CornerRadius, IntValue value -> value >= 0
   | WidthValue, IntValue value -> value >= 0
