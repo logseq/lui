@@ -2252,6 +2252,46 @@ let test_anchored_popover_side_height () =
         ])
     [ 1.; 2. ]
 
+let test_popup_collision_padding () =
+  List.iter (fun value ->
+    check bool "collision padding rejects invalid extents" false
+      (property_value_supported CollisionPadding (FloatValue value)))
+    [-1.; Float.nan; Float.infinity; Float.neg_infinity];
+  List.iter (fun scale ->
+    let store = Lui_store.create () and layout = Lui_layout.create () in
+    apply store [CreateNode (1, Root); CreateNode (2, Box); CreateNode (3, Popover);
+      InsertChild (1, 2, 0); InsertChild (2, 3, 0);
+      SetProp (2, WidthValue, IntValue 120); SetProp (2, HeightValue, IntValue 32);
+      SetProp (2, MarginLeft, IntValue 64); SetProp (2, MarginTop, IntValue 96);
+      SetProp (3, WidthValue, IntValue 226); SetProp (3, MaxHeight, IntValue 288);
+      SetProp (3, AnchorValue, StringValue "below");
+      SetProp (3, CollisionPadding, FloatValue 5.)];
+    for index = 0 to 29 do
+      let id = index + 4 in
+      apply store [CreateNode (id, Box); InsertChild (3, id, index);
+        SetProp (id, HeightValue, IntValue 32)]
+    done;
+    let check_geometry width height x y w h =
+      Lui_layout.sync ~scale ~width:(width *. scale) ~height:(height *. scale) layout store;
+      check_rect "configured collision padding follows the live viewport"
+        (x *. scale) (y *. scale) (w *. scale) (h *. scale)
+        (Option.get (Lui_layout.rect layout 3)) in
+    List.iter (fun (height,y,h) -> check_geometry 640. height 64. y 226. h)
+      [932.,132.,288.;329.,132.,192.;220.,5.,87.;932.,132.,288.];
+    apply store [SetProp (3, CollisionPadding, FloatValue 12.)];
+    check_geometry 640. 220. 64. 12. 226. 80.;
+    apply store [RemoveProp (3, CollisionPadding)];
+    check_geometry 640. 220. 64. 8. 226. 84.;
+    apply store [SetProp (3, CollisionPadding, FloatValue 5.);
+      RemoveProp (3, AnchorValue); SetProp (3, PopupX, FloatValue 999.);
+      SetProp (3, PopupY, FloatValue 999.); SetProp (3, MaxHeight, IntValue 64)];
+    check_geometry 200. 100. 5. 31. 190. 64.;
+    apply store [SetProp (3, PopupX, FloatValue (-999.));
+      SetProp (3, PopupY, FloatValue (-999.))];
+    check_geometry 200. 100. 5. 5. 190. 64.;
+    apply store [SetProp (3, CollisionPadding, FloatValue 0.)];
+    check_geometry 200. 100. 0. 0. 200. 64.) [1.;2.]
+
 let test_menu_role_layout () =
   let store = Lui_store.create () and layout = Lui_layout.create () in
   apply store
@@ -2446,6 +2486,7 @@ let () =
          test_case "retained popover target" `Quick test_retained_popover_target;
          test_case "anchor alignment offset" `Quick test_anchor_alignment_offset;
          test_case "anchored popover side height" `Quick test_anchored_popover_side_height;
+         test_case "popup collision padding" `Quick test_popup_collision_padding;
          test_case "menu role layout" `Quick test_menu_role_layout;
          test_case "ac row" `Quick test_ac_row;
          test_case "vlist window" `Quick test_vlist_window_mounts_slice;

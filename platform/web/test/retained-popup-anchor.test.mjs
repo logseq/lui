@@ -174,3 +174,43 @@ test('a frozen rectangle keeps a replacement picker anchored after its option un
   assert.throws(() => apply([Protocol.set_prop_op(2, prop('popup-x'), {TAG: 3, _0: 3}),
     Protocol.set_prop_op(2, prop('popup-y'), {TAG: 3, _0: 4})]))
 })
+
+
+test('configured popup clearance follows resize, property updates and removal', () => {
+  const viewport = {clientWidth: 640, clientHeight: 932}
+  const anchor = element({x: 64, y: 96, width: 120, height: 32})
+  const popup = element({x: 0, y: 0, width: 226, height: 288})
+  const positioner = element({x: 0, y: 0, width: 226, height: 288}, [popup])
+  positioner.getBoundingClientRect = () => {
+    const width = Math.min(226, parseFloat(popup.styles.get('--lui-popup-available-width')))
+    const height = Math.min(288, parseFloat(popup.styles.get('--lui-popup-available-height')))
+    return {x: 0, y: 0, width, height, left: 0, top: 0, right: width, bottom: height}
+  }
+  positioner.setAttribute('data-anchor', 'below')
+  positioner.setAttribute('data-anchor-offset', '4')
+  const document = {defaultView: null, documentElement: viewport}
+  const store = Store.create_store(), renderer = {web_store: store, web_document: document}
+  let generation = 0
+  const set = (name, value) => Protocol.set_prop_op(2, prop(name), value)
+  const apply = ops => assert.equal(Store.apply_batch(store,
+    name => name === kind('popover') ? positioner : anchor,
+    {generation: ++generation, ops: list(ops)}), true)
+  apply([Protocol.create_node_op(1, kind('box')), Protocol.create_node_op(2, kind('popover')),
+    Protocol.insert_child_op(1, 2, 0), set('anchor', {TAG: 0, _0: 'below'}),
+    set('anchor-offset', {TAG: 3, _0: 4}), set('collision-padding', {TAG: 3, _0: 5})])
+  const check = (height, top, available) => {
+    viewport.clientHeight = height
+    Position.position_popover(renderer, 2)
+    assert.equal(positioner.styles.get('left'), '64px')
+    assert.equal(positioner.styles.get('top'), `${top}px`)
+    assert.equal(popup.styles.get('--lui-popup-available-height'), `${available}px`)
+  }
+  for (const row of [[932, 132, 795], [329, 132, 192], [220, 5, 87], [932, 132, 795]]) check(...row)
+  apply([set('collision-padding', {TAG: 3, _0: 12})])
+  check(220, 12, 80)
+  apply([Protocol.remove_prop_op(2, prop('collision-padding'))])
+  check(220, 8, 84)
+  for (const value of [-1, NaN, Infinity, -Infinity]) {
+    assert.throws(() => apply([set('collision-padding', {TAG: 3, _0: value})]))
+  }
+})

@@ -298,6 +298,7 @@ type property =
   | ResizeHandleOffset
   | IndicatorBorderColor
   | CheckedIndicatorBorderColor
+  | CollisionPadding
 
 module Property_map =
   Map.Make
@@ -1108,6 +1109,7 @@ let common_property_supported kind property =
     kind = DropdownMenu || kind = Tooltip || kind = Popover
   | PopupX | PopupY -> kind = Popover || kind = DropdownMenu
   | AvailableHeight -> kind = Popover
+  | CollisionPadding -> kind = Popover || kind = DropdownMenu || kind = Tooltip
   | TooltipDelay -> kind = Tooltip
   | DurationValue -> false
   | TextAlignment ->
@@ -1678,7 +1680,7 @@ let property_value_supported property value =
   | PickerAccept, StringValue _ -> true
   | PickerDirectory, BoolValue _ -> true
   | PopupX, FloatValue value | PopupY, FloatValue value -> is_finite value
-  | AvailableHeight, FloatValue value -> is_finite value && value >= 0.0
+  | (AvailableHeight | CollisionPadding), FloatValue value -> is_finite value && value >= 0.0
   | ImageFitValue, StringValue value -> value = "fit" || value = "fill"
   | MaxPixelSize, IntValue value -> value > 0
   | Visible, BoolValue _ -> true

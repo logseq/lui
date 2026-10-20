@@ -296,6 +296,7 @@ type property =
   | ResizeHandleOffset
   | IndicatorBorderColor
   | CheckedIndicatorBorderColor
+  | CollisionPadding
 
 module Property_map : Map.S with type key = property
 

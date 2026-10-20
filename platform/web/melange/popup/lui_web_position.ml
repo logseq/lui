@@ -17,20 +17,25 @@ let set_style element name value =
     (W.HtmlElement.style (W.Element.unsafeAsHtmlElement element))
     name value
 
-let clamp_popup_axis value size viewport_start viewport_size =
-  let edge = viewport_start +. 8.0 in
-  let maximum = max edge (viewport_start +. viewport_size -. size -. 8.0) in
+let collision_padding renderer node =
+  match Store.property renderer.web_store node CollisionPadding with
+  | Some (FloatValue value) -> value
+  | _ -> 8.0
+
+let clamp_popup_axis ~padding value size viewport_start viewport_size =
+  let edge = viewport_start +. padding in
+  let maximum = max edge (viewport_start +. viewport_size -. size -. padding) in
   max edge (min value maximum)
 
-let resolved_popup_side preferred anchor_bounds popup_width popup_height
+let resolved_popup_side ~padding preferred anchor_bounds popup_width popup_height
     viewport_left viewport_top viewport_width viewport_height offset =
-  let above_space = W.DomRect.top anchor_bounds -. viewport_top -. offset -. 8.0 in
+  let above_space = W.DomRect.top anchor_bounds -. viewport_top -. offset -. padding in
   let below_space =
-    viewport_top +. viewport_height -. W.DomRect.bottom anchor_bounds -. offset -. 8.0
+    viewport_top +. viewport_height -. W.DomRect.bottom anchor_bounds -. offset -. padding
   in
-  let left_space = W.DomRect.left anchor_bounds -. viewport_left -. offset -. 8.0 in
+  let left_space = W.DomRect.left anchor_bounds -. viewport_left -. offset -. padding in
   let right_space =
-    viewport_left +. viewport_width -. W.DomRect.right anchor_bounds -. offset -. 8.0
+    viewport_left +. viewport_width -. W.DomRect.right anchor_bounds -. offset -. padding
   in
   match preferred with
   | "above" ->
@@ -48,7 +53,7 @@ let resolved_popup_side preferred anchor_bounds popup_width popup_height
         "below"
       else "above"
 
-let position_anchored ?(alignment_offset = 0.0) document positioner popup anchor_bounds preferred
+let position_anchored ?(padding = 8.0) ?(alignment_offset = 0.0) document positioner popup anchor_bounds preferred
     alignment offset =
   (* The undecorated positioner keeps fractional layout dimensions while
      its painted child scales. A tooltip is its own positioner, so use its
@@ -65,24 +70,24 @@ let position_anchored ?(alignment_offset = 0.0) document positioner popup anchor
   let viewport_left, viewport_top, viewport_width, viewport_height =
     Lui_web_popup_tracking.viewport_bounds document
   in
-  let available_width = max 0.0 (viewport_width -. 16.0) in
-  let available_height = max 0.0 (viewport_height -. 16.0) in
+  let available_width = max 0.0 (viewport_width -. (2.0 *. padding)) in
+  let available_height = max 0.0 (viewport_height -. (2.0 *. padding)) in
   (* clamp to the viewport before the first measure so an oversized popup
      reports its constrained size *)
   set_style popup "--lui-popup-available-width" (css_px available_width);
   set_style popup "--lui-popup-available-height" (css_px available_height);
   let popup_width, popup_height = measure () in
   let side =
-    resolved_popup_side preferred anchor_bounds popup_width popup_height
+    resolved_popup_side ~padding preferred anchor_bounds popup_width popup_height
       viewport_left viewport_top viewport_width viewport_height offset
   in
   let vertical = side = "above" || side = "below" in
   let side_space = max 0.0
       (match side with
-       | "above" -> W.DomRect.top anchor_bounds -. viewport_top -. offset -. 8.0
-       | "below" -> viewport_top +. viewport_height -. W.DomRect.bottom anchor_bounds -. offset -. 8.0
-       | "left" -> W.DomRect.left anchor_bounds -. viewport_left -. offset -. 8.0
-       | _ -> viewport_left +. viewport_width -. W.DomRect.right anchor_bounds -. offset -. 8.0)
+       | "above" -> W.DomRect.top anchor_bounds -. viewport_top -. offset -. padding
+       | "below" -> viewport_top +. viewport_height -. W.DomRect.bottom anchor_bounds -. offset -. padding
+       | "left" -> W.DomRect.left anchor_bounds -. viewport_left -. offset -. padding
+       | _ -> viewport_left +. viewport_width -. W.DomRect.right anchor_bounds -. offset -. padding)
   in
   let side_available =
     min side_space
@@ -122,7 +127,7 @@ let position_anchored ?(alignment_offset = 0.0) document positioner popup anchor
   let aligned_left = aligned_left +. alignment_offset in
   let aligned_top = aligned_top +. alignment_offset in
   let left =
-    clamp_popup_axis
+    clamp_popup_axis ~padding
       (if vertical then aligned_left
        else if side = "left" then
          W.DomRect.left anchor_bounds -. popup_width -. offset
@@ -130,7 +135,7 @@ let position_anchored ?(alignment_offset = 0.0) document positioner popup anchor
       popup_width viewport_left viewport_width
   in
   let top =
-    clamp_popup_axis
+    clamp_popup_axis ~padding
       (if vertical then
          if side = "above" then
            W.DomRect.top anchor_bounds -. popup_height -. offset
@@ -146,15 +151,15 @@ let position_anchored ?(alignment_offset = 0.0) document positioner popup anchor
 
 let position_anchored_bang = position_anchored
 
-let position_at_point document popup x y =
+let position_at_point ?(padding = 8.0) document popup x y =
   let left, top, width, height = Lui_web_popup_tracking.viewport_bounds document in
-  set_style popup "--lui-popup-available-width" (css_px (max 0.0 (width -. 16.0)));
-  set_style popup "--lui-popup-available-height" (css_px (max 0.0 (height -. 16.0)));
+  set_style popup "--lui-popup-available-width" (css_px (max 0.0 (width -. (2.0 *. padding))));
+  set_style popup "--lui-popup-available-height" (css_px (max 0.0 (height -. (2.0 *. padding))));
   let element = W.Element.unsafeAsHtmlElement popup in
   let popup_width = float_of_int (W.HtmlElement.offsetWidth element) in
   let popup_height = float_of_int (W.HtmlElement.offsetHeight element) in
-  set_style popup "left" (css_px (clamp_popup_axis x popup_width left width));
-  set_style popup "top" (css_px (clamp_popup_axis y popup_height top height))
+  set_style popup "left" (css_px (clamp_popup_axis ~padding x popup_width left width));
+  set_style popup "top" (css_px (clamp_popup_axis ~padding y popup_height top height))
 
 (* an anchored popup detached from its parent has no anchor to position
    against — a detached-but-open menu or tooltip is skipped rather than
@@ -203,7 +208,7 @@ let position_tooltip renderer node =
       | Some value -> value
       | None -> "start"
     in
-    position_anchored renderer.web_document tooltip tooltip anchor_bounds
+    position_anchored ~padding:(collision_padding renderer node) renderer.web_document tooltip tooltip anchor_bounds
       side alignment offset
   end
 
@@ -289,6 +294,7 @@ let align_selected_menu_item renderer dropdown positioner popup anchor
   let viewport_left, viewport_top, viewport_width, viewport_height =
     Lui_web_popup_tracking.viewport_bounds renderer.web_document
   in
+  let padding = collision_padding renderer dropdown in
   let edge_threshold = 20.0 in
   if
     W.DomRect.top anchor_bounds < viewport_top +. edge_threshold
@@ -321,10 +327,10 @@ let align_selected_menu_item renderer dropdown positioner popup anchor
       W.DomRect.top positioner_bounds +. (value_center -. label_center)
     in
     let fits =
-      left >= viewport_left +. 8.0
-      && left +. W.DomRect.width popup_bounds <= viewport_left +. viewport_width -. 8.0
-      && top >= viewport_top +. 8.0
-      && top +. W.DomRect.height popup_bounds <= viewport_top +. viewport_height -. 8.0
+      left >= viewport_left +. padding
+      && left +. W.DomRect.width popup_bounds <= viewport_left +. viewport_width -. padding
+      && top >= viewport_top +. padding
+      && top +. W.DomRect.height popup_bounds <= viewport_top +. viewport_height -. padding
     in
     set_style popup "transform" "";
     set_style popup "transition" "";
@@ -374,7 +380,7 @@ let position_dropdown renderer node =
              (* programmatic point anchor (popover ~at parity): the menu
                 mounts at a computed point, not a DOM element *)
              Util.set_state_attribute positioner "hidden" false;
-             position_at_point renderer.web_document positioner x y
+             position_at_point ~padding:(collision_padding renderer node) renderer.web_document positioner x y
          | _ -> ())
     | _ ->
     let popup = Util.child_element positioner 0 in
@@ -393,7 +399,7 @@ let position_dropdown renderer node =
         | Some value -> value
         | None -> "start"
       in
-      position_anchored renderer.web_document positioner popup anchor_bounds
+      position_anchored ~padding:(collision_padding renderer node) renderer.web_document positioner popup anchor_bounds
         side alignment offset;
       ignore
         (align_select_item_with_trigger renderer node positioner popup
@@ -414,7 +420,7 @@ let position_popover renderer node =
       (match Store.property renderer.web_store node PopupY with
        | Some (FloatValue y) ->
            Util.set_state_attribute positioner "hidden" false;
-           position_at_point renderer.web_document positioner x y
+           position_at_point ~padding:(collision_padding renderer node) renderer.web_document positioner x y
        | _ -> ())
   | _ ->
       (match Store.property renderer.web_store node AnchorValue with
@@ -446,7 +452,7 @@ let position_popover renderer node =
                  | Some (FloatValue value) -> value
                  | _ -> 0.0
                in
-               position_anchored ~alignment_offset renderer.web_document positioner popup
+               position_anchored ~padding:(collision_padding renderer node) ~alignment_offset renderer.web_document positioner popup
                  anchor_bounds side alignment offset
              end
            end

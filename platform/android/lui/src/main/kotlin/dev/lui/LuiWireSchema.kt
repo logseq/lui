@@ -284,6 +284,7 @@ enum class LuiProperty(val wireName: String) {
     resizeHandleOffset("resize-handle-offset"),
     indicatorBorderColor("indicator-border-color"),
     checkedIndicatorBorderColor("checked-indicator-border-color"),
+    collisionPadding("collision-padding"),
     ;
 
     companion object {
@@ -330,5 +331,8 @@ object LuiSchemaMatrix {
         LuiNodeKind.listItem to setOf(LuiProperty.display),
         LuiNodeKind.dialog to setOf(LuiProperty.description, LuiProperty.background, LuiProperty.foreground, LuiProperty.borderColor, LuiProperty.borderWidth, LuiProperty.cornerRadius, LuiProperty.gap),
         LuiNodeKind.box to setOf(LuiProperty.inert),
+        LuiNodeKind.popover to setOf(LuiProperty.collisionPadding),
+        LuiNodeKind.dropdownMenu to setOf(LuiProperty.collisionPadding),
+        LuiNodeKind.tooltip to setOf(LuiProperty.collisionPadding),
     )
 }

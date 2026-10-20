@@ -212,7 +212,7 @@ let run_effects renderer effects =
 
 let refresh_parent_for_prop renderer effects node property =
   (match property with
-   | AnchorValue | AnchorTarget | AnchorRect | AnchorAlignmentValue | AnchorOffset | AnchorAlignmentOffset | PopupX | PopupY ->
+   | AnchorValue | AnchorTarget | AnchorRect | AnchorAlignmentValue | AnchorOffset | AnchorAlignmentOffset | CollisionPadding | PopupX | PopupY ->
        Hashtbl.replace effects.popups node ()
    | _ -> ());
   match Store.node renderer.web_store node with

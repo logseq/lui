@@ -277,6 +277,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case resizeHandleOffset = "resize-handle-offset"
     case indicatorBorderColor = "indicator-border-color"
     case checkedIndicatorBorderColor = "checked-indicator-border-color"
+    case collisionPadding = "collision-padding"
 }
 
 enum LUISchemaMatrix {
@@ -310,5 +311,8 @@ enum LUISchemaMatrix {
         .listItem: [.display],
         .dialog: [.description, .background, .foreground, .borderColor, .borderWidth, .cornerRadius, .gap],
         .box: [.inert],
+        .popover: [.collisionPadding],
+        .dropdownMenu: [.collisionPadding],
+        .tooltip: [.collisionPadding],
     ]
 }

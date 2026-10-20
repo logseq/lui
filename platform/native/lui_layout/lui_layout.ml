@@ -1578,7 +1578,8 @@ let anchored_xy ?resolved_side ctx store sid ar (prp : Lui_flex.rect) =
   (* Clamp inside the viewport so the popup stays on-screen — the
      containing block may be smaller than the panel (a menu
      trigger). *)
-  let edge = if frozen_anchor store sid <> None then 8. *. s else 0. in
+  let edge = Option.value (pnum store sid "collision-padding")
+    ~default:(if frozen_anchor store sid <> None then 8. else 0.) *. s in
   ( Float.max edge (Float.min x (Float.max edge (ctx.vw -. prp.w -. edge))),
     Float.max edge (Float.min y (Float.max edge (ctx.vh -. prp.h -. edge))) )
 
@@ -1658,13 +1659,14 @@ let refine_popups ctx =
             anchor.x +. (value.tp_pad_left *. s)
             -. (item.x -. popup.x +. (label.tp_pad_left *. s))
           and y = center anchor value -. (center item label -. popup.y) in
+          let padding = Option.value ~default:8. (pnum ctx.store sid "collision-padding") *. s in
           if
             anchor.y >= 20. *. s
             && anchor.y +. anchor.h <= ctx.vh -. (20. *. s)
-            && x >= 8. *. s
-            && x +. popup.w <= ctx.vw -. (8. *. s)
-            && y >= 8. *. s
-            && y +. popup.h <= ctx.vh -. (8. *. s)
+            && x >= padding
+            && x +. popup.w <= ctx.vw -. padding
+            && y >= padding
+            && y +. popup.h <= ctx.vh -. padding
           then Some (x, y)
           else None
       | _ -> None
@@ -1757,7 +1759,9 @@ let refine_popups ctx =
         | Some (pstyle : Lui_flex.style) ->
           let max_height =
             let menu = Lui_paint.menu_kind ctx.store sid (Lui_store.kind ctx.store sid) in
-            let viewport = Float.max 0. (ctx.vh -. (if menu then 16. *. ctx.scale else 0.)) in
+            let padding = Option.value (pnum ctx.store sid "collision-padding")
+              ~default:(if menu then 8. else 0.) *. ctx.scale in
+            let viewport = Float.max 0. (ctx.vh -. 2. *. padding) in
             let declared = match pstyle.max_height with
               | Unset -> if menu then 288. *. ctx.scale else viewport
               | limit -> len_px ~owner:ctx.vh limit in
@@ -1781,7 +1785,13 @@ let refine_popups ctx =
                      | Unset -> available
                      | limit -> len_px ~owner:ctx.vw limit in
                    Pt (Float.min available declared)
-                 | _ -> (match pstyle.max_width with Unset -> Pt ctx.vw | limit -> limit));
+                 | _ ->
+                   let padding = Option.value ~default:0. (pnum ctx.store sid "collision-padding") *. ctx.scale in
+                   let available = Float.max 0. (ctx.vw -. 2. *. padding) in
+                   let declared = match pstyle.max_width with
+                     | Unset -> available
+                     | limit -> len_px ~owner:ctx.vw limit in
+                   Pt (Float.min available declared));
               max_height }
           in
           Lui_flex.set_style pnode pstyle;
@@ -1826,8 +1836,9 @@ let refine_popups ctx =
                      ~some:(fun id -> Lui_store.kind ctx.store id <> "root") owner)
                    && not (has_prop ctx.store sid "x" || has_prop ctx.store sid "y") ->
               let offset = Option.value ~default:4. (pnum ctx.store sid "anchor-offset") *. ctx.scale in
-              let above = Float.max 0. (anchor_rect.y -. offset -. 8. *. ctx.scale)
-              and below = Float.max 0. (ctx.vh -. anchor_rect.y -. anchor_rect.h -. offset -. 8. *. ctx.scale) in
+              let padding = Option.value ~default:8. (pnum ctx.store sid "collision-padding") *. ctx.scale in
+              let above = Float.max 0. (anchor_rect.y -. offset -. padding)
+              and below = Float.max 0. (ctx.vh -. anchor_rect.y -. anchor_rect.h -. offset -. padding) in
               let first, other = if preferred = "above" then above, below else below, above in
               let side, available =
                 if prp.h <= first || first >= other then preferred, first

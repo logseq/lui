@@ -112,6 +112,7 @@ let prop_coverage =
     ("anchor-alignment", Host);
     ("anchor-offset", Host);
     ("anchor-alignment-offset", Host);
+    ("collision-padding", Host);
     ("tooltip-delay", Host);
     ("duration", Host);
     ("text-alignment", Painted_by_text);

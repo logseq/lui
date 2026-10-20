@@ -1800,6 +1800,11 @@
       "lg": "CheckedIndicatorBorderColor",
       "wire": "checked-indicator-border-color",
       "swift": "checkedIndicatorBorderColor"
+    },
+    {
+      "lg": "CollisionPadding",
+      "wire": "collision-padding",
+      "swift": "collisionPadding"
     }
   ],
   "events": [
@@ -2188,6 +2193,9 @@
     ],
     "box": [
       "inert"
-    ]
+    ],
+    "popover": ["collision-padding"],
+    "dropdown-menu": ["collision-padding"],
+    "tooltip": ["collision-padding"]
   }
 }
