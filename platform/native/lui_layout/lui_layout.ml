@@ -716,6 +716,13 @@ let adjust ~scale ~pkind ~pid ~index store id (style : Lui_flex.style) : Lui_fle
     else style
   in
   let style =
+    if pkind = "text" && text_nowrap store pid then
+      (* Inline fragments keep their ink width when wrapping is disabled.
+         Shrinking their boxes would paint adjacent runs on top of each other. *)
+      { style with flex_shrink = 0. }
+    else style
+  in
+  let style =
     if scroll_kind pkind || Lui_paint.menu_kind store pid pkind then
       (* A scroller's content keeps its natural main size so it
          overflows and scrolls — the default flex_shrink=1 would
@@ -2778,7 +2785,8 @@ let apply_journal_op ctx (op : patch_op) =
           (* A horizontal virtual-list turning vertical becomes a leaf —
              rebuild its produced expansion in place. *)
           reexpand ctx id
-        else if Lui_store.mask_has m Lui_store.d_structure then reexpand ctx id
+        (* White-space changes inherited flow and fragment shrink below this node. *)
+        else if p = WhiteSpace || Lui_store.mask_has m Lui_store.d_structure then reexpand ctx id
         else begin
           if Lui_store.mask_has m Lui_store.d_layout then restyle_self ctx id;
           if Lui_store.mask_has m Lui_store.d_layout_kids then

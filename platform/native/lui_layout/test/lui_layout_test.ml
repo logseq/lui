@@ -593,10 +593,27 @@ let test_inline_white_space () =
         let first = Option.get (Lui_layout.rect layout 4)
         and second = Option.get (Lui_layout.rect layout 5) in
         check bool "inline fragments inherit and override white-space" nowrap
-          (abs_float (first.y-.second.y)<0.01))
+          (abs_float (first.y-.second.y)<0.01);
+        if nowrap then begin
+          check (float eps) "nowrap fragments retain their authored width"
+            (float_of_int (width*3/4)*.scale) first.w;
+          check bool "nowrap fragments follow the preceding full width" true
+            (second.x >= first.x +. float_of_int (width*3/4)*.scale -. eps)
+        end)
         [None,None,false;Some "nowrap",None,true;
          Some "nowrap",Some "normal",false;Some "normal",Some "nowrap",true;
-         Some "nowrap",None,true;None,None,false]) [80;200]) [1.;2.]
+         Some "nowrap",None,true;None,None,false];
+      List.iter (fun nowrap ->
+        apply store [SetProp (2,WhiteSpace,StringValue (if nowrap then "nowrap" else "normal"))];
+        Lui_layout.sync ~scale ~measure:no_measure4
+          ~width:(400.*.scale) ~height:(300.*.scale) layout store;
+        let first = Option.get (Lui_layout.rect layout 4)
+        and second = Option.get (Lui_layout.rect layout 5) in
+        check bool "ancestor-only changes refresh nested inline flow" nowrap
+          (abs_float (first.y-.second.y)<0.01);
+        if nowrap then
+          check (float eps) "ancestor-only changes refresh fragment widths"
+            (float_of_int (width*3/4)*.scale) first.w) [true;false;true]) [80;200]) [1.;2.]
 
 (* 'NN%' string lengths resolve against the parent's inner extent. *)
 let test_percent_size () =
