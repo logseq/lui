@@ -232,7 +232,7 @@ struct LUIBackendParityTests {
         #expect(image.width <= 56)
     }
 
-    @Test("an open drawer pushes undimmed main content beside the sidebar")
+    @Test("an open drawer dims pushed main content and restores brightness when closed")
     func openDrawerPushesMainContent() throws {
         let backend = LUIAppleBackend()
         try backend.apply(json: """
@@ -283,12 +283,27 @@ struct LUIBackendParityTests {
         let bitmap = NSBitmapImageRep(cgImage: image)
 
         let pushedMainLeadingColor = try #require(bitmap.colorAt(x: 205, y: 100))
-        #expect(pushedMainLeadingColor.greenComponent > 0.65)
+        #expect(pushedMainLeadingColor.greenComponent > 0.55)
         #expect(pushedMainLeadingColor.redComponent < 0.2)
 
-        let undimmedMainColor = try #require(bitmap.colorAt(x: 300, y: 100))
-        #expect(undimmedMainColor.redComponent > 0.8)
-        #expect(undimmedMainColor.greenComponent < 0.3)
+        let dimmedMainColor = try #require(bitmap.colorAt(x: 300, y: 100))
+        #expect(dimmedMainColor.redComponent > 0.8)
+        #expect(dimmedMainColor.greenComponent < 0.3)
+        #expect(dimmedMainColor.redComponent < 0.94)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":1,"property":"selected","value":false}
+        ]}
+        """)
+        let closedRenderer = ImageRenderer(content: LUIDrawerView(
+            model: try #require(backend.model(id: 1)), backend: backend
+        ).environment(\.horizontalSizeClass, .compact).frame(width: 400, height: 200))
+        closedRenderer.scale = 1
+        let closedBitmap = NSBitmapImageRep(cgImage: try #require(closedRenderer.cgImage))
+        let restoredColor = try #require(closedBitmap.colorAt(x: 300, y: 100))
+        #expect(restoredColor.redComponent > 0.94)
+        #expect(restoredColor.redComponent > dimmedMainColor.redComponent + 0.02)
     }
 
     @Test("compact drawer leaves a wider main preview with a larger curved edge")
@@ -321,7 +336,7 @@ struct LUIBackendParityTests {
         renderer.scale = 1
         let bitmap = NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
         let mainEdge = try #require(bitmap.colorAt(x: 312, y: 150))
-        #expect(mainEdge.greenComponent > 0.65)
+        #expect(mainEdge.greenComponent > 0.55)
         #expect(mainEdge.greenComponent > mainEdge.blueComponent + 0.3)
         let roundedEdge = try #require(bitmap.colorAt(x: 321, y: 16))
         #expect(roundedEdge.blueComponent > 0.65)

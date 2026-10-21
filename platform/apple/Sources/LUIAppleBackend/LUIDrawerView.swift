@@ -265,6 +265,12 @@ struct LUIDrawerView: View {
                             top: geometry.safeAreaInsets.top
                         ))
                         .modifier(LUIDrawerMainSurfaceModifier())
+                        // Retain the scrim so opening and closing both interpolate
+                        // with the drawer without replacing the content subtree.
+                        .overlay {
+                            Color.black.opacity(0.12 * Double(progress))
+                                .allowsHitTesting(false)
+                        }
                         .allowsHitTesting(contentControlsEnabled)
                         .overlay {
                             if presented {
