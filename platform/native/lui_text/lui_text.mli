@@ -77,6 +77,8 @@ type run = {
   under : int;  (** underline style a {!span} set (0 none, 1 single,
                     2 thick, 9 double); painting it is the caller's
                     job *)
+  rinline : bool; (** Layout-only inline object; paint the host-owned content,
+                     rather than rasterizing its placeholder glyphs. *)
 }
 
 type line = {
@@ -160,6 +162,14 @@ val baseline : float -> float
 
 (** {3 Span styling} *)
 
+type inline_object = {
+  object_width : float;
+  object_ascent : float;
+  object_descent : float;
+}
+(** Finite, nonnegative object metrics in points. An object span replaces
+    exactly one U+FFFC character in the shared UTF-8 text. *)
+
 type span_style = {
   sfont : font option;  (** replaces the base font (size is a font
                             property, so size changes come through it) *)
@@ -168,6 +178,7 @@ type span_style = {
                       letter-spacing *)
   sunder : int;  (** underline style: 0 none, 1 single, 2 thick,
                      9 double *)
+  sobject : inline_object option;
 }
 
 val default_style : span_style
@@ -228,7 +239,7 @@ type cunit = private {
 type line_layout = private {
   ll_line : line;      (** the shaped line *)
   ll_top : float;      (** its top edge in layout coordinates *)
-  ll_height : float;   (** ascent + descent + leading *)
+  ll_height : float;   (** line box pitch; natural metrics unless overridden *)
   ll_baseline : float; (** its baseline's y in layout coordinates *)
   ll_units : cunit array;  (** caret units, byte-sorted; a trailing
                                [cnl] unit, when present, covers the
@@ -252,17 +263,20 @@ type layout = private {
     top-left; they stay fractional so subpixel glyph positions drive
     hit-testing exactly. *)
 
-val layout : ?width:float -> ?rtl:bool -> ?breaks:int array -> font ->
+val layout : ?width:float -> ?rtl:bool -> ?breaks:int array -> ?line_height:float -> font ->
   string -> layout
 (** [layout f s] shapes [s] ({!width}/{!rtl} as in {!shape}) and stacks
     its lines. [breaks] overrides the cluster table (tests and
-    foreign segmenters); default is {!graphemes}. *)
+    foreign segmenters); default is {!graphemes}. [line_height] overrides
+    the line box pitch with signed half-leading around the font metrics;
+    it must be finite and nonnegative. Carets, hit testing, and selection
+    share those line boxes. *)
 
-val layout_spans : ?width:float -> ?rtl:bool -> ?breaks:int array ->
+val layout_spans : ?width:float -> ?rtl:bool -> ?breaks:int array -> ?line_height:float ->
   font -> span list -> layout
 (** [layout_spans f spans] is {!layout} over {!shape_spans}. *)
 
-val layout_of_lines : ?breaks:int array -> ?width:float -> ?rtl:bool ->
+val layout_of_lines : ?breaks:int array -> ?width:float -> ?rtl:bool -> ?line_height:float ->
   font -> string -> line array -> layout
 (** [layout_of_lines f s lines] stacks already-shaped [lines] — what
     caches and tests use to reuse a [shape] result. *)
@@ -333,7 +347,7 @@ val truncate : ?mode:[ `End | `Start | `Middle ] -> ?rtl:bool ->
 
 module Cache : sig
   type t
-  (** An LRU over (text, wrap, direction, font, span signature) →
+  (** An LRU over (text, wrap, direction, line height, font, span signature) →
       {!layout}. Measure-first: {!measure} populates the same entry a
       later {!layout} reuses, so the common editing path
       (measure on every frame, layout when painted) pays one shape. *)
@@ -343,14 +357,14 @@ module Cache : sig
       text exceeds [max_bytes] (default 64 KiB) are built but not
       kept: a giant paragraph can't evict everything else. *)
 
-  val layout : t -> ?rtl:bool -> ?width:float -> font -> string ->
+  val layout : t -> ?rtl:bool -> ?width:float -> ?line_height:float -> font -> string ->
     layout
-  val layout_spans : t -> ?rtl:bool -> ?width:float -> font ->
+  val layout_spans : t -> ?rtl:bool -> ?width:float -> ?line_height:float -> ?max_lines:int -> font ->
     span list -> layout
   (** The cached builders; on a miss they shape like the top-level
       functions. *)
 
-  val measure : t -> ?rtl:bool -> ?width:float -> font -> string ->
+  val measure : t -> ?rtl:bool -> ?width:float -> ?line_height:float -> font -> string ->
     float * float
   (** [measure] is the entry's extent — a hit costs no shaping. *)
 

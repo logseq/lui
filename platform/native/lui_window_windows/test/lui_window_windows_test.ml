@@ -272,7 +272,7 @@ let test_focus_and_text () =
   (match press_actions acts with
    | [ TextChanged (4, "ab") ] -> ()
    | _ -> Alcotest.fail "expected TextChanged ab");
-  (* Escape blurs first, then quits *)
+  (* Escape blurs the field and leaves an unfocused window open. *)
   (match
      Ui.handle ui s rects
        (Input.Key_down (Input.Escape, Input.mods_none, false))
@@ -283,8 +283,11 @@ let test_focus_and_text () =
      Ui.handle ui s rects
        (Input.Key_down (Input.Escape, Input.mods_none, false))
    with
+   | [] -> ()
+   | _ -> Alcotest.fail "unfocused Escape must leave the window open");
+  (match Ui.handle ui s rects Input.Quit_input with
    | [ Quit ] -> ()
-   | _ -> Alcotest.fail "expected Quit")
+   | _ -> Alcotest.fail "explicit quit must still close the window")
 
 let test_ime_flow () =
   let s, rects = ui_store_fresh () in

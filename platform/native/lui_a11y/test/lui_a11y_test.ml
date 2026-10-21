@@ -415,6 +415,52 @@ let test_incremental_insert_allocation () =
   check (option string) "inserted text is accessible" (Some "new") (name_of tree 6002);
   check bool "insertion avoids rebuilding unchanged sibling records" true (allocated <= 524288.)
 
+let test_shared_ancestry_allocation () =
+  let store = Lui_store.create () in
+  apply store [ CreateNode (1, Button); CreateNode (1000, Column) ];
+  for id = 2 to 80 do
+    apply store [ CreateNode (id, Column); InsertChild (id - 1, id, 0) ]
+  done;
+  for id = 81 to 480 do
+    apply store
+      [
+        CreateNode (id, Text);
+        InsertChild (80, id, id - 81);
+        SetProp (id, TextValue, StringValue "before");
+      ]
+  done;
+  let tree = Lui_a11y.of_store store in
+  ignore (Lui_store.drain_dirty store);
+  for id = 81 to 480 do
+    apply store [ SetProp (id, TextValue, StringValue "after") ]
+  done;
+  let dirty = Lui_store.drain_dirty store in
+  let before = Gc.allocated_bytes () in
+  let changed = Lui_a11y.update tree (List.rev dirty @ dirty) in
+  let allocated = Gc.allocated_bytes () -. before in
+  let rebuilt = Lui_a11y.of_store store in
+  check bool "Shared ancestry retains the complete accessible tree" true
+    (Lui_a11y.flatten tree = Lui_a11y.flatten rebuilt);
+  check int "Changed leaf names and composite ancestor are reported" 401
+    (List.length changed);
+  Printf.printf
+    "Accessibility 400 changes under 80 ancestors allocated %.0f bytes\n%!"
+    allocated;
+  check bool "Accessibility repeats shared ancestor traversal" true
+    (allocated < 1048576.);
+  apply store
+    [ SetProp (1, Visible, BoolValue false); InsertChild (1000, 480, 0) ];
+  let dirty = Lui_store.drain_dirty store in
+  ignore (Lui_a11y.update tree (List.rev dirty @ dirty));
+  check bool "Visibility and old/new ancestry remain current" true
+    (Lui_a11y.flatten tree = Lui_a11y.flatten (Lui_a11y.of_store store));
+  check (option string) "Moved descendant escapes hidden ancestry"
+    (Some "after") (name_of tree 480);
+  apply store [ SetProp (1, Visible, BoolValue true) ];
+  ignore (Lui_a11y.sync tree);
+  check bool "Visibility results do not survive their update batch" true
+    (Lui_a11y.flatten tree = Lui_a11y.flatten (Lui_a11y.of_store store))
+
 let test_incremental_visibility () =
   let store = Lui_store.create () in
   apply store [CreateNode (1,Column); CreateNode (2,Column); CreateNode (3,Column);
@@ -446,6 +492,24 @@ let test_incremental_visibility () =
     [RemoveProp (2,Visible)];
   verify "recreating an existing root removes former descendants"
     [CreateNode (2,Row)]
+
+let test_inert_subtree () =
+  let store = Lui_store.create () in
+  apply store
+    [CreateNode (1,Column); CreateNode (2,Box); CreateNode (3,Button);
+     CreateNode (4,Text); InsertChild (1,2,0); InsertChild (2,3,0);
+     InsertChild (3,4,0); SetProp (4,TextValue,StringValue "Dock action")];
+  let tree = Lui_a11y.of_store store in
+  ignore (Lui_store.drain_dirty store);
+  apply store [SetProp (2,Inert,BoolValue true)];
+  ignore (Lui_a11y.sync tree);
+  check bool "inert descendant is excluded after incremental sync" false
+    (Lui_a11y.mem tree 3);
+  check bool "inert text is excluded" false (Lui_a11y.mem tree 4);
+  apply store [RemoveProp (2,Inert)];
+  ignore (Lui_a11y.sync tree);
+  check (option string) "same descendant and name return" (Some "Dock action")
+    (name_of tree 3)
 
 (* ---------- focus ---------- *)
 
@@ -489,7 +553,8 @@ let () =
           test_case "flags" `Quick test_state_flags;
           test_case "value" `Quick test_value ] );
       ( "tree",
-        [ test_case "build forest" `Quick test_build_forest;
+        [ test_case "inert subtree" `Quick test_inert_subtree;
+          test_case "build forest" `Quick test_build_forest;
           test_case "flatten preorder" `Quick test_flatten_preorder;
           test_case "hidden excluded" `Quick test_hidden_excluded;
           test_case "extension keeps id" `Quick test_extension_kept ] );
@@ -498,5 +563,6 @@ let () =
           test_case "structure" `Quick test_update_structure;
           test_case "visibility and reparenting" `Quick test_overlapping_dirty_trees;
           test_case "incremental insertion allocation" `Quick test_incremental_insert_allocation;
+          test_case "shared ancestry allocation" `Quick test_shared_ancestry_allocation;
           test_case "inherited visibility" `Quick test_incremental_visibility;
           test_case "focus" `Quick test_focus_tracking ] ) ]

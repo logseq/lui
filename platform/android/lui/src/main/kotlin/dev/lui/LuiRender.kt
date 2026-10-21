@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.absolutePadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
@@ -155,6 +156,10 @@ internal fun Modifier.luiChrome(node: LuiNodeLike): Modifier {
     val padding = node.prop("padding")?.intValue ?: defaultPadding(node.kind)
     val paddingH = node.prop("padding-horizontal")?.intValue ?: padding
     val paddingV = node.prop("padding-vertical")?.intValue ?: padding
+    val paddingLeft = node.prop("padding-left")?.intValue ?: paddingH
+    val paddingRight = node.prop("padding-right")?.intValue ?: paddingH
+    val paddingTop = node.prop("padding-top")?.intValue ?: paddingV
+    val paddingBottom = node.prop("padding-bottom")?.intValue ?: paddingV
     val radius = node.prop("corner-radius")?.intValue
         ?: if (isSurface) 12 else if (node.kind == LuiNodeKind.tabs) 8 else 0
     val borderWidth = node.prop("border-width")?.intValue ?: if (isSurface) 1 else 0
@@ -184,8 +189,11 @@ internal fun Modifier.luiChrome(node: LuiNodeLike): Modifier {
         )
     }
     if (radius > 0) modifier = modifier.clip(shape)
-    if (paddingH > 0 || paddingV > 0) {
-        modifier = modifier.padding(horizontal = paddingH.dp, vertical = paddingV.dp)
+    if (paddingLeft > 0 || paddingRight > 0 || paddingTop > 0 || paddingBottom > 0) {
+        modifier = modifier.absolutePadding(
+            left = paddingLeft.dp, top = paddingTop.dp,
+            right = paddingRight.dp, bottom = paddingBottom.dp,
+        )
     }
     node.prop("opacity")?.numberValue?.let { opacity ->
         if (opacity < 1) modifier = modifier.alpha(opacity.toFloat())

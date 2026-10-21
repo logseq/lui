@@ -186,11 +186,14 @@ test("the production stylesheet contains the retained ListItem contract", async 
 test("Table uses semantic retained rows and cells with native interaction chrome", async () => {
   const css = await readFile(outputUrl, "utf8")
 
+  assert.match(css, /\.lui-table\{[^}]*table-layout:auto/)
+  assert.doesNotMatch(css, /\.lui-table\{[^}]*table-layout:fixed/)
   assert.match(css, /\.lui-table\{[^}]*width:100%/)
   assert.match(css, /\.lui-table\{[^}]*border-collapse:collapse/)
   assert.match(css, /\.lui-table-row\{[^}]*transition-property:color,background-color/)
   assert.match(css, /\.lui-table-row\[data-selected\]/)
-  assert.match(css, /\.lui-table-row:hover/)
+  assert.match(css, /\.lui-table-row:has\(>\.lui-table-cell\[data-pressable\]\):hover/)
+  assert.doesNotMatch(css, /\.lui-table-row:hover/)
   assert.match(css, /\.lui-table-row:not\(:last-child\)>.lui-table-cell\{[^}]*border-bottom-width:1px/)
   assert.match(css, /\.lui-table-cell\[data-pressable\]\{[^}]*cursor:pointer/)
   assert.match(css, /\.lui-table-cell\[data-pressable\]:focus-visible/)
@@ -300,7 +303,7 @@ test("menus use the Base UI popup and transition contract", async () => {
   assert.match(css, /\.lui-dropdown-menu\[data-ending-style\]/)
   assert.match(css, /\.lui-context-menu\{[^}]*position:fixed/)
   assert.match(css, /\.lui-context-menu\{[^}]*display:none/)
-  assert.match(css, /\.lui-context-menu\[data-open\]\{[^}]*display:flex/)
+  assert.match(css, /\.lui-context-menu\[data-open\][^{]*\{[^}]*display:flex/)
   assert.match(css, /\.lui-menu-item\{[^}]*display:flex/)
   assert.match(css, /\.lui-menu-item\[data-highlighted\]/)
   assert.match(css, /\.lui-menu-item\[data-submenu-trigger\]/)
@@ -511,4 +514,11 @@ test("the production stylesheet contains the Vercel Native Icon contract", async
     assert.match(css, new RegExp(`\\.lui-icon\\[data-name=${name}\\]\\{[^}]*--lui-icon-image:`))
   }
   await stat(new URL("../dist/icons/missing.svg", import.meta.url))
+})
+
+
+test("plain links stay inline while icon links retain flex alignment", async () => {
+  const css = await readFile(outputUrl, "utf8")
+  assert.match(css, /\.lui-link\{[^}]*display:inline(?:;|\})/)
+  assert.match(css, /\.lui-link:has\(>\.lui-link-icon\[data-name\]\)\{[^}]*display:inline-flex/)
 })

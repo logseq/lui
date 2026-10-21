@@ -617,10 +617,12 @@ let parse_path_d s : pcmd list list =
       incr i;
       let rel = c >= 'a' && c <= 'z' in
       let cmd = Char.uppercase_ascii c in
-      let dx = if rel then !x else 0. and dy = if rel then !y else 0. in
+      let origin () = if rel then (!x, !y) else (0., 0.) in
       (match cmd with
        | 'M' ->
+         let dx, dy = origin () in
          let px = num () +. dx and py = num () +. dy in
+         close_sub ();
          emit (PMove (px, py)); x := px; y := py; open_sub px py;
          prev_ctrl := None; prev_qctrl := None;
          (* implicit lineto repetition *)
@@ -628,6 +630,7 @@ let parse_path_d s : pcmd list list =
            skip_ws ();
            match peek () with
            | Some c2 when not (iscmd c2) ->
+             let dx, dy = origin () in
              let px = num () +. dx and py = num () +. dy in
              emit (PLine (px, py)); x := px; y := py; more ()
            | _ -> ()
@@ -638,6 +641,7 @@ let parse_path_d s : pcmd list list =
            skip_ws ();
            match peek () with
            | Some c2 when not (iscmd c2) ->
+             let dx, dy = origin () in
              let px = num () +. dx and py = num () +. dy in
              emit (PLine (px, py)); x := px; y := py; more ()
            | _ -> ()
@@ -648,6 +652,7 @@ let parse_path_d s : pcmd list list =
            skip_ws ();
            match peek () with
            | Some c2 when not (iscmd c2) ->
+             let dx, _ = origin () in
              let px = num () +. dx in
              emit (PLine (px, !y)); x := px; more ()
            | _ -> ()
@@ -658,6 +663,7 @@ let parse_path_d s : pcmd list list =
            skip_ws ();
            match peek () with
            | Some c2 when not (iscmd c2) ->
+             let _, dy = origin () in
              let py = num () +. dy in
              emit (PLine (!x, py)); y := py; more ()
            | _ -> ()
@@ -668,6 +674,7 @@ let parse_path_d s : pcmd list list =
            skip_ws ();
            match peek () with
            | Some c2 when not (iscmd c2) ->
+             let dx, dy = origin () in
              let x1 = num () +. dx and y1 = num () +. dy in
              let x2 = num () +. dx and y2 = num () +. dy in
              let px = num () +. dx and py = num () +. dy in
@@ -681,6 +688,7 @@ let parse_path_d s : pcmd list list =
            skip_ws ();
            match peek () with
            | Some c2 when not (iscmd c2) ->
+             let dx, dy = origin () in
              let x1, y1 =
                match !prev_ctrl with
                | Some (cx, cy) -> (2. *. !x -. cx, 2. *. !y -. cy)
@@ -698,6 +706,7 @@ let parse_path_d s : pcmd list list =
            skip_ws ();
            match peek () with
            | Some c2 when not (iscmd c2) ->
+             let dx, dy = origin () in
              let x1 = num () +. dx and y1 = num () +. dy in
              let px = num () +. dx and py = num () +. dy in
              emit (PQuad ((x1, y1), (px, py)));
@@ -710,6 +719,7 @@ let parse_path_d s : pcmd list list =
            skip_ws ();
            match peek () with
            | Some c2 when not (iscmd c2) ->
+             let dx, dy = origin () in
              let x1, y1 =
                match !prev_qctrl with
                | Some (cx, cy) -> (2. *. !x -. cx, 2. *. !y -. cy)
@@ -726,6 +736,7 @@ let parse_path_d s : pcmd list list =
            skip_ws ();
            match peek () with
            | Some c2 when not (iscmd c2) ->
+             let dx, dy = origin () in
              let rx = num () and ry = num () in
              let phi = num () in
              let fa = num () and fs = num () in
@@ -772,8 +783,10 @@ let rec flatten_cubic_d p0 p1 p2 p3 tol depth acc =
     let p01 = mid p0 p1 and p12 = mid p1 p2 and p23 = mid p2 p3 in
     let p012 = mid p01 p12 and p123 = mid p12 p23 in
     let p0123 = mid p012 p123 in
-    let acc = flatten_cubic_d p0123 p123 p23 p3 tol (depth + 1) acc in
-    flatten_cubic_d p0 p01 p012 p0123 tol (depth + 1) acc
+    (* Points are prepended to a reversed accumulator. Visit the first
+       half before the second so the final reversal follows the curve. *)
+    let acc = flatten_cubic_d p0 p01 p012 p0123 tol (depth + 1) acc in
+    flatten_cubic_d p0123 p123 p23 p3 tol (depth + 1) acc
   end
 
 let flatten_cubic p0 p1 p2 p3 tol acc = flatten_cubic_d p0 p1 p2 p3 tol 0 acc

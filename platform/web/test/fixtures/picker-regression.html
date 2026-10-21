@@ -21,6 +21,7 @@ button{margin:4px}
 .picker-long-menu{max-height:136px;overflow-y:auto}
 </style>
 <h1>Picker lifecycle regressions</h1>
+<output id="background-escapes">Background Escape: 0</output>
 <main id="host"></main>
 <script type="module">
 import * as Web from "lui.web.dom/shell/lui_web.js";
@@ -28,6 +29,13 @@ import * as Layers from "lui.web.dom/core/lui_web_layers.js";
 import { Protocol, properties as props, kinds } from "./protocol-fixture.mjs";
 
 const host = document.querySelector("#host");
+let backgroundEscapes = 0;
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") {
+    backgroundEscapes++;
+    document.querySelector("#background-escapes").textContent = `Background Escape: ${backgroundEscapes}`;
+  }
+});
 const renderer = Web.create(undefined, host);
 const backend = Web.backend(renderer);
 const list = values => values.reduceRight((tail, head) => ({ hd: head, tl: tail }), 0);
@@ -109,6 +117,7 @@ function addItem(parent, text, options = {}) {
     enabled: options.enabled !== false,
     "press-enabled": true,
     selected: options.selected === true,
+    "hover-background": "rgb(232, 232, 232)",
   });
   const item = { id: nodeId, text, enabled: options.enabled !== false };
   currentItems.push(item);
@@ -230,6 +239,7 @@ Web.set_event_handler(renderer, event => {
 flush();
 Web.mount(renderer, root, host);
 window.audit = {
+  get backgroundEscapes() { return backgroundEscapes; },
   events,
   nodes,
   selectId,

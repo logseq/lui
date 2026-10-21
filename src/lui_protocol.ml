@@ -124,6 +124,10 @@ type property =
   | PaddingValue
   | PaddingHorizontal
   | PaddingVertical
+  | PaddingTop
+  | PaddingRight
+  | PaddingBottom
+  | PaddingLeft
   | MarginValue
   | MarginHorizontal
   | MarginVertical
@@ -158,6 +162,7 @@ type property =
   | VariantValue
   | InlineIconName
   | IconPlacementValue
+  | SelectionPlacementValue
   | Selected
   | Autofocus
   | SubmitOnEnter
@@ -181,6 +186,7 @@ type property =
   | SourceWidth
   | SourceHeight
   | AnchorValue
+  | AnchorTarget
   | AnchorAlignmentValue
   | AnchorOffset
   | TooltipDelay
@@ -261,6 +267,8 @@ type property =
   | PressedOpacity
   | PressedShadow
   | FocusShadow
+  | FocusWithinBackground
+  | FocusWithinBorder
   | SelectedBackground
   | SelectedShadow
   | SelectedHoverShadow
@@ -278,6 +286,20 @@ type property =
   | HoverForeground
   | HoverBorder
   | Transition
+  | Inert
+  | NavigateEnabled
+  | FirstPaneWidth
+  | GridColumnSpan
+  | LabelOpacity
+  | SubmitOnBlur
+  | AnchorAlignmentOffset
+  | AnchorRect
+  | ResizeHandleWidth
+  | ResizeHandleOffset
+  | IndicatorBorderColor
+  | CheckedIndicatorBorderColor
+  | CollisionPadding
+  | LineClamp
 
 module Property_map =
   Map.Make
@@ -332,6 +354,9 @@ type event =
   | PointerLeave of int
   | ContextMenuPress of int * pointer_detail
   | Load of int
+  | NavigatePrevious of int
+  | NavigateNext of int
+  | NavigationKey of int * string * bool
   | ScrollEdges of int * bool * bool
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
@@ -385,6 +410,9 @@ let event_node event =
   | PointerLeave node
   | ContextMenuPress (node, _)
   | Load node
+  | NavigatePrevious node
+  | NavigateNext node
+  | NavigationKey (node, _, _)
   | ScrollEdges (node, _, _)
   | ExtensionEvent (node, _, _, _) -> node
 
@@ -445,6 +473,7 @@ let event_supported kind event =
   | Press _ | PressModifiers _ ->
     (match kind with
     | Button
+    | Link
     | Column
     | Row
     | Box
@@ -466,6 +495,12 @@ let event_supported kind event =
     | ToggleButton
     | ListItem -> true
     | _ -> false)
+  | NavigatePrevious _ | NavigateNext _ ->
+    kind = TextField || kind = SecureField || kind = Input
+    || kind = SearchField || kind = Textarea
+  | NavigationKey (_, key, _) ->
+    kind = Button && List.mem key
+      ["ArrowLeft";"ArrowRight";"ArrowUp";"ArrowDown";"Home";"End";"PageUp";"PageDown"]
   | TextChanged _ ->
     (match kind with
     | TextField
@@ -556,23 +591,36 @@ let treeitem_properties properties =
   | Some (StringValue "treeitem") -> true
   | _ -> false
 
+let event_supported_for_lookup kind lookup event =
+  let enabled property =
+    match lookup property with Some (BoolValue true) -> true | _ -> false
+  in
+  match event with
+  | (Press _ | PressModifiers _) when kind = Link -> enabled PressEnabled
+  | NavigatePrevious _ | NavigateNext _ | NavigationKey _ ->
+    enabled NavigateEnabled
+    && lookup Enabled <> Some (BoolValue false)
+    && event_supported kind event
+  | _ ->
+    if
+      match event with
+      | Appear _ -> enabled AppearEnabled
+      | _ -> false
+    then true
+    else if lookup RoleValue = Some (StringValue "treeitem") then
+      match event with
+      | Press _ | PressModifiers _ ->
+        enabled PressEnabled
+      | PressDetail _ | PointerDown _ | PointerUp _ | PointerEnter _
+      | PointerLeave _ | ContextMenuPress _ ->
+        enabled PointerEnabled
+      | Change _ -> enabled ChangeEnabled
+      | ToggleChanged _ -> enabled ToggleEnabled
+      | _ -> event_supported kind event
+    else event_supported kind event
+
 let event_supported_for_properties kind properties event =
-  if
-    match event with
-    | Appear _ -> true_property properties AppearEnabled
-    | _ -> false
-  then true
-  else if treeitem_properties properties then
-    match event with
-    | Press _ | PressModifiers _ ->
-      true_property properties PressEnabled
-    | PressDetail _ | PointerDown _ | PointerUp _ | PointerEnter _
-    | PointerLeave _ | ContextMenuPress _ ->
-      true_property properties PointerEnabled
-    | Change _ -> true_property properties ChangeEnabled
-    | ToggleChanged _ -> true_property properties ToggleEnabled
-    | _ -> event_supported kind event
-  else event_supported kind event
+  event_supported_for_lookup kind (fun property -> Property_map.find_opt property properties) event
 
 let container_relative_frame_supported value =
   value = "horizontal"
@@ -799,6 +847,8 @@ let element_tag_supported kind tag =
   | Heading -> List.mem tag [ "h1"; "h2"; "h3"; "h4"; "h5"; "h6" ]
   | Paragraph -> List.mem tag [ "p"; "span"; "div"; "pre" ]
   | Label -> List.mem tag [ "label"; "span"; "div" ]
+  | Column -> List.mem tag [ "div"; "ul"; "ol" ]
+  | Row -> List.mem tag [ "div"; "li" ]
   | _ -> false
 
 let element_tag_known tag =
@@ -806,6 +856,8 @@ let element_tag_known tag =
   || element_tag_supported Heading tag
   || element_tag_supported Paragraph tag
   || element_tag_supported Label tag
+  || element_tag_supported Column tag
+  || element_tag_supported Row tag
 
 let can_contain_children kind =
   if horizontal_container kind || context_menu_leaf_host_kind kind then true
@@ -873,12 +925,15 @@ let common_property_supported kind property =
   | MainAlignment | CrossAlignment ->
     kind = Row
     || kind = Column
+    || kind = Grid
     || kind = ListContainer
     || kind = VirtualList
     || kind = Card
     || kind = Panel
     || kind = Box
     || kind = Button
+    || kind = Checkbox
+    || kind = Radio
     || kind = MenuItem
     || kind = ListItem
     || kind = Popover
@@ -887,7 +942,9 @@ let common_property_supported kind property =
   | GrowValue ->
     kind <> Avatar && (not (modal_surface kind)) && kind <> Tooltip
   | GridColumns -> kind = Grid
-  | PaddingValue | PaddingHorizontal | PaddingVertical ->
+  | GridColumnSpan -> kind <> Root && not (modal_surface kind) && kind <> Tooltip
+  | PaddingValue | PaddingHorizontal | PaddingVertical
+  | PaddingTop | PaddingRight | PaddingBottom | PaddingLeft ->
     kind <> Avatar && kind <> Tooltip
   | MarginValue | MarginHorizontal | MarginVertical | MarginTop
   | MarginRight | MarginBottom | MarginLeft ->
@@ -899,7 +956,7 @@ let common_property_supported kind property =
     | Row | Column | Grid | Box | Panel | Card | Stack | Scroll | Avatar
     | EdgeInset | Overlay | ViewThatFits
     | Text | Heading | Paragraph | Label | Button | ToggleButton | TextField
-    | SecureField | Input | SearchField | Textarea | Checkbox | Toggle | Radio
+    | SecureField | Input | SearchField | Textarea | Checkbox | SwitchControl | Toggle | Radio
     | Slider | NumberStepper | Spinner | Icon | Select | Combobox | DropdownMenu | MenuItem
     | Popover
     | ListItem | TableCell | Resizable | Split | Alert | Bubble | StatusBar
@@ -922,9 +979,7 @@ let common_property_supported kind property =
     | _ -> false)
   | WidthValue | HeightValue -> kind <> Tooltip
   | MinWidth | MaxWidth | MinHeight | MaxHeight ->
-    (* Dialogs carry px clamps alongside viewport fractions (e.g.
-       width:90vw + max-width:1246px); the host caps the default dialog
-       size only when the view did not set an explicit clamp. *)
+    (* Dialogs carry pixel clamps alongside viewport fractions. *)
     kind = Dialog || ((not (modal_surface kind)) && kind <> Tooltip)
   | ContainerRelativeFrameValue | ContainerRelativeFrameInset ->
     kind <> Root && not (modal_surface kind)
@@ -935,8 +990,10 @@ let common_property_supported kind property =
   | StyleClass | DataAttrs -> kind <> Tooltip
   | As ->
       kind = Text || kind = Heading || kind = Paragraph || kind = Label
+      || kind = Column || kind = Row
   | AccessibilityLabel ->
     kind = Button
+    || kind = MenuItem
     || kind = ToggleButton
     || kind = Select
     || kind = TextField
@@ -980,6 +1037,7 @@ let common_property_supported kind property =
   | ProgressValue ->
     kind = Progress || kind = Slider || kind = NumberStepper || kind = Split
   | OrientationValue ->
+    kind = Row ||
     kind = Divider || kind = Tabs || kind = Scroll || kind = ViewThatFits
   | PlacementValue -> kind = Toolbar
   | SizeValue ->
@@ -998,6 +1056,7 @@ let common_property_supported kind property =
     || kind = Link
   | IconPlacementValue ->
     kind = Button || kind = ToggleButton || kind = ListItem || kind = Link
+  | SelectionPlacementValue -> kind = MenuItem
   | Selected ->
     kind = Button
     || kind = ToggleButton
@@ -1016,12 +1075,15 @@ let common_property_supported kind property =
     || kind = Input
     || kind = SearchField
     || kind = Textarea
+  | SubmitOnBlur ->
+    kind = TextField || kind = SecureField || kind = Input || kind = SearchField || kind = Textarea
   | SubmitOnEnter -> kind = Textarea
   | LongPressEnabled -> kind = Button || kind = ToggleButton || kind = ListItem
   | ChangeEnabled -> kind = Radio || tree_row_kind kind
   | ToggleEnabled -> kind = Radio || kind = Drawer || tree_row_kind kind
   | PressEnabled ->
     kind = Button
+    || kind = Link
     || kind = ToggleButton
     || kind = Text
     || kind = Row
@@ -1036,6 +1098,9 @@ let common_property_supported kind property =
     || kind = BottomTab
     || kind = FileImage
     || tree_row_kind kind
+  | NavigateEnabled ->
+    kind = Button || kind = TextField || kind = SecureField || kind = Input
+    || kind = SearchField || kind = Textarea
   | SubmitEnabled -> kind = Combobox || kind = ListItem
   | DoublePressEnabled -> kind = ListItem
   | AppearEnabled -> kind <> Root
@@ -1043,14 +1108,19 @@ let common_property_supported kind property =
   | ImageIdValue | SourceX | SourceY | SourceWidth | SourceHeight ->
     kind = Avatar || kind = Image
   | SurfaceIdValue -> kind = MediaSurface
+  | AnchorTarget | AnchorRect -> kind = Popover
+  | AnchorAlignmentOffset -> kind = Popover
   | AnchorValue | AnchorAlignmentValue | AnchorOffset ->
     kind = DropdownMenu || kind = Tooltip || kind = Popover
   | PopupX | PopupY -> kind = Popover || kind = DropdownMenu
   | AvailableHeight -> kind = Popover
+  | CollisionPadding -> kind = Popover || kind = DropdownMenu || kind = Tooltip
   | TooltipDelay -> kind = Tooltip
   | DurationValue -> false
   | TextAlignment ->
     kind = Text
+    || kind = Heading
+    || kind = Paragraph
     || kind = Button
     || kind = ToggleButton
     || kind = TableCell
@@ -1068,6 +1138,7 @@ let common_property_supported kind property =
   | TrackVisibleRange -> kind = ListContainer || kind = VirtualList
   | EdgeValue -> kind = SwipeAction || kind = EdgeInset
   | ResizeDuration | ResizeEasing | ResizeOrigin -> kind = Split
+  | FirstPaneWidth | ResizeHandleWidth | ResizeHandleOffset -> kind = Split
   | MinValue | MaxValue | StepValue -> kind = NumberStepper
   | Detents | Sizing -> kind = Sheet
   | ThemeValue | ThemeMode -> can_contain_children kind
@@ -1131,24 +1202,37 @@ let common_property_supported kind property =
   | PathValue -> kind = FileImage || kind = FilePreview
   | UrlValue -> kind = Link || kind = Image
   | TargetValue -> kind = Link
-  | Opacity -> can_contain_children kind
-  | DisplayValue | FlexWrap -> kind = Box || kind = Column || kind = Row
+  | Opacity ->
+    can_contain_children kind || kind = Checkbox || kind = Radio || kind = Icon
+  | IndicatorBorderColor | CheckedIndicatorBorderColor -> kind = Checkbox
+  | LabelOpacity -> kind = Checkbox || kind = Radio
+  | DisplayValue ->
+    kind = Box || kind = Column || kind = Row || kind = ListItem
+    || kind = Text || kind = Paragraph || kind = Stack
+  | FlexWrap -> kind = Box || kind = Column || kind = Row
   | ListStyle ->
     kind = ListContainer || kind = VirtualList || kind = ListItem
   | TooltipText | TooltipKeys -> kind = Button || kind = Icon || kind = MenuItem
   | InputType -> kind = Input
   | AltValue | LoadingValue | ReferrerPolicy -> kind = Image
-  | MaxPixelSize | ImageFitValue -> kind = FileImage
+  | MaxPixelSize -> kind = FileImage
+  | ImageFitValue -> kind = FileImage || kind = Image
   | ActiveIndex | DescriptionValue | MetaValue | IndicatorValue | Connector
   | PickerRequest | PickerTypes | PickerMultiple | PickerSource
   | PickerCompletion | PickerAccept | PickerDirectory -> false
   | TitleValue -> kind = BottomTab
   | Gap ->
-    kind = Row
+    kind = Checkbox
+    || kind = Radio
+    || kind = Row
+    || kind = Button
+    || kind = Select
+    || kind = Combobox
     || kind = Column
     || kind = Grid
     || kind = ListContainer
     || kind = VirtualList
+    || kind = MenuItem
     || kind = DropdownMenu
     || kind = Popover
     || kind = TableRow
@@ -1161,6 +1245,7 @@ let common_property_supported kind property =
     || kind = EdgeInset
     || horizontal_container kind
   | Visible -> kind = EdgeInset
+  | LineClamp -> List.mem kind [Text;Heading;Paragraph;Label]
   | WhiteSpace | TextOverflow ->
     (* Kinds that render their own inline text; containers clip via
        [overflow] instead. *)
@@ -1181,11 +1266,12 @@ let common_property_supported kind property =
   | Shadow -> (not (modal_surface kind)) && kind <> Tooltip
   | HoverBackground | HoverOpacity | HoverShadow | HoverForeground
   | HoverBorder | PressedBackground
-  | PressedOpacity | PressedShadow | FocusShadow | SelectedBackground
+  | PressedOpacity | PressedShadow | FocusShadow | FocusWithinBackground | FocusWithinBorder | SelectedBackground
   | SelectedShadow | SelectedHoverShadow | DisabledOpacity ->
     (* Interactive-state appearance channels; no-op on hosts that do not
        resolve interaction states. *)
     kind <> Root && kind <> Tooltip && not (modal_surface kind)
+  | Inert -> kind = Box
   | Transition ->
     (* CSS transition shorthand; web-only visual sugar — other hosts
        apply state changes instantly. Same admission as the state
@@ -1211,7 +1297,8 @@ let property_supported kind property =
       || property = StyleClass || property = PointerEnabled
       || property = DataAttrs
       || property = PaddingValue || property = PaddingHorizontal
-      || property = PaddingVertical
+      || property = PaddingVertical || property = PaddingTop
+      || property = PaddingRight || property = PaddingBottom || property = PaddingLeft
       || property = MarginValue || property = MarginHorizontal
       || property = MarginVertical || property = MarginTop
       || property = MarginRight || property = MarginBottom
@@ -1220,6 +1307,8 @@ let property_supported kind property =
       property = OrientationValue || property = AccessibilityLabel
       || property = Gap || property = StyleClass || property = PlacementValue
       || property = PointerEnabled || property = DataAttrs
+      || property = HeightValue || property = PaddingValue
+      || property = BackgroundValue || property = BorderWidth || property = CornerRadius
     | BottomTabs ->
       property = AccessibilityLabel || property = StyleClass
       || property = GrowValue || property = WidthValue || property = HeightValue
@@ -1274,7 +1363,8 @@ let property_supported kind property =
       || property = BorderWidth || property = CornerRadius
       || property = ForegroundValue || property = GrowValue
       || property = PaddingValue || property = PaddingHorizontal
-      || property = PaddingVertical
+      || property = PaddingVertical || property = PaddingTop
+      || property = PaddingRight || property = PaddingBottom || property = PaddingLeft
       || property = WidthValue || property = HeightValue
       || property = MinWidth || property = MaxWidth
       || property = MinHeight || property = MaxHeight || property = Opacity
@@ -1287,6 +1377,7 @@ let property_supported kind property =
       || property = HoverOpacity || property = HoverShadow
       || property = PressedBackground || property = PressedOpacity
       || property = PressedShadow || property = FocusShadow
+      || property = FocusWithinBackground || property = FocusWithinBorder
       || property = SelectedBackground || property = SelectedShadow
       || property = SelectedHoverShadow || property = DisabledOpacity
       || property = Transition
@@ -1303,7 +1394,9 @@ let property_supported kind property =
         ; PointerEnabled
         ]
     | Dialog ->
-      property = DescriptionValue || common_property_supported kind property
+      List.mem property
+        [DescriptionValue; BackgroundValue; ForegroundValue; BorderColorValue; BorderWidth; CornerRadius; Gap]
+      || common_property_supported kind property
     | FilePreview ->
       property = PathValue || property = PointerEnabled
     | _ -> common_property_supported kind property
@@ -1336,22 +1429,19 @@ let css_ident_supported value =
     in
     tail 1
 
-(* CSS <time> token: a non-negative number with an `s`/`ms` unit;
-   a bare `0` is also valid. *)
+(* CSS <time> requires an `s`/`ms` unit even when its value is zero. *)
 let css_time_supported token =
-  if token = "0" then true
-  else
-    let len = String.length token in
-    let cut =
-      if len > 2 && String.sub token (len - 2) 2 = "ms" then 2
-      else if len > 1 && token.[len - 1] = 's' then 1
-      else 0
-    in
-    cut <> 0
-    &&
-    (match float_of_string_opt (String.sub token 0 (len - cut)) with
-     | Some number -> number >= 0.0 && is_finite number
-     | None -> false)
+  let len = String.length token in
+  let cut =
+    if len > 2 && String.sub token (len - 2) 2 = "ms" then 2
+    else if len > 1 && token.[len - 1] = 's' then 1
+    else 0
+  in
+  cut <> 0
+  &&
+  match float_of_string_opt (String.sub token 0 (len - cut)) with
+  | Some number -> number >= 0.0 && is_finite number
+  | None -> false
 
 (* Whitespace-separated tokens of a transition segment; parentheses keep
    functional easing argument lists (e.g. cubic-bezier(0.4, 0, 0.2, 1))
@@ -1383,37 +1473,7 @@ let css_tokens value =
    minimally: every segment needs a property identifier plus at least
    one <time>; extra tokens must be easing-shaped (identifier or
    identifier(args)). Commas inside easing parens do not split segments. *)
-let transition_supported value =
-  let segment_supported segment =
-    match css_tokens segment with
-    | property :: rest when rest <> [] ->
-      css_ident_supported property
-      && (let times =
-            List.filter (fun token -> css_time_supported token) rest
-          in
-          List.length times >= 1 && List.length times <= 2
-          && List.for_all
-               (fun token ->
-                  css_time_supported token
-                  ||
-                  (match String.index_opt token '(' with
-                   | Some open_paren ->
-                     (* functional easing: ident(arg-list) ending in ')' *)
-                     let len = String.length token in
-                     open_paren > 0
-                     && len > open_paren + 2
-                     && token.[len - 1] = ')'
-                     && css_ident_supported
-                          (String.sub token 0 open_paren)
-                     && String.sub token (open_paren + 1)
-                          (len - open_paren - 2)
-                          <> ""
-                   | None -> css_ident_supported token))
-               rest)
-    | _ -> false
-  in
-  String.trim value <> ""
-  &&
+let transition_segments value =
   let rec split_segments start depth acc i =
     if i = String.length value then
       List.rev (String.sub value start (i - start) :: acc)
@@ -1427,7 +1487,37 @@ let transition_supported value =
           (i + 1)
       else split_segments start depth acc (i + 1)
   in
-  List.for_all segment_supported (split_segments 0 0 [] 0)
+  List.map css_tokens (split_segments 0 0 [] 0)
+
+let transition_supported value =
+  let segment_supported tokens =
+    match tokens with
+    | property :: rest when rest <> [] ->
+        css_ident_supported property
+        &&
+        let times = List.filter (fun token -> css_time_supported token) rest in
+        List.length times >= 1
+        && List.length times <= 2
+        && List.for_all
+             (fun token ->
+               css_time_supported token
+               ||
+               match String.index_opt token '(' with
+               | Some open_paren ->
+                   (* functional easing: ident(arg-list) ending in ')' *)
+                   let len = String.length token in
+                   open_paren > 0
+                   && len > open_paren + 2
+                   && token.[len - 1] = ')'
+                   && css_ident_supported (String.sub token 0 open_paren)
+                   && String.sub token (open_paren + 1) (len - open_paren - 2)
+                      <> ""
+               | None -> css_ident_supported token)
+             rest
+    | _ -> false
+  in
+  String.trim value <> ""
+  && List.for_all segment_supported (transition_segments value)
 
 (* [text-decoration] accepts "none" alone, or a space-separated
    combination of underline/overline/line-through. *)
@@ -1445,6 +1535,17 @@ let text_decoration_supported value =
          (fun token -> List.mem token [ "underline"; "line-through"; "overline" ])
          tokens
 
+let anchor_rect_of_string value =
+  match String.split_on_char ' ' value with
+  | [x; y; width; height] ->
+      (match float_of_string_opt x, float_of_string_opt y,
+             float_of_string_opt width, float_of_string_opt height with
+       | Some x, Some y, Some width, Some height
+         when List.for_all is_finite [x; y; width; height]
+              && width >= 0. && height >= 0. -> Some (x, y, width, height)
+       | _ -> None)
+  | _ -> None
+
 let property_value_supported property value =
   match (property, value) with
   | TextValue, StringValue _ -> true
@@ -1454,9 +1555,10 @@ let property_value_supported property value =
   | CrossAlignment, StringValue value -> cross_alignment_supported value
   | GrowValue, FloatValue value -> is_finite value && value >= 0.0
   | GridColumns, IntValue value -> value >= 0
+  | GridColumnSpan, IntValue value -> value > 0
   | PaddingValue, IntValue _ -> true
   | PaddingHorizontal, IntValue value -> value >= 0
-  | PaddingVertical, IntValue value -> value >= 0
+  | (PaddingVertical | PaddingTop | PaddingRight | PaddingBottom | PaddingLeft), IntValue value -> value >= 0
   (* Margins may be negative — collapsing adjacent space is a legitimate
      use, unlike padding which is clamped inside the box. *)
   | ( MarginValue | MarginHorizontal | MarginVertical | MarginTop
@@ -1464,11 +1566,12 @@ let property_value_supported property value =
     true
   | BackgroundValue, StringValue _ -> true
   | ForegroundValue, StringValue _ -> true
-  | BorderColorValue, StringValue _ -> true
+  | (BorderColorValue | IndicatorBorderColor | CheckedIndicatorBorderColor), StringValue _ -> true
   | BorderWidth, IntValue value -> value >= 0
   | CornerRadius, IntValue value -> value >= 0
   | WidthValue, IntValue value -> value >= 0
   | HeightValue, IntValue value -> value >= 0
+  | (WidthValue | HeightValue), StringValue "auto" -> true
   | MinWidth, IntValue value -> value >= 0
   | MaxWidth, IntValue value -> value >= 0
   | MinHeight, IntValue value -> value >= 0
@@ -1489,14 +1592,16 @@ let property_value_supported property value =
   | IconName, StringValue value -> icon_name_supported value
   | VariantValue, StringValue value -> button_variant_supported value
   | InlineIconName, StringValue value -> icon_name_supported value
-  | IconPlacementValue, StringValue value -> icon_placement_supported value
+  | IconPlacementValue, StringValue value
+  | SelectionPlacementValue, StringValue value -> icon_placement_supported value
   | Selected, BoolValue _ -> true
   | Autofocus, BoolValue _ -> true
-  | SubmitOnEnter, BoolValue _ -> true
+  | SubmitOnEnter, BoolValue _ | SubmitOnBlur, BoolValue _ -> true
   | LongPressEnabled, BoolValue _ -> true
   | ChangeEnabled, BoolValue _ -> true
   | ToggleEnabled, BoolValue _ -> true
   | PressEnabled, BoolValue _ -> true
+  | NavigateEnabled, BoolValue _
   | SubmitEnabled, BoolValue _ -> true
   | DoublePressEnabled, BoolValue _ -> true
   | AppearEnabled, BoolValue _ -> true
@@ -1515,9 +1620,11 @@ let property_value_supported property value =
   | SourceHeight, FloatValue value -> is_finite value
   | AnchorValue, StringValue value ->
     value = "above" || value = "below" || value = "left" || value = "right"
+  | AnchorTarget, StringValue value -> String.trim value <> ""
+  | AnchorRect, StringValue value -> Option.is_some (anchor_rect_of_string value)
   | AnchorAlignmentValue, StringValue value ->
-    value = "start" || value = "end" || value = "stretch"
-  | AnchorOffset, FloatValue value -> is_finite value
+    value = "start" || value = "center" || value = "end" || value = "stretch"
+  | AnchorOffset, FloatValue value | AnchorAlignmentOffset, FloatValue value -> is_finite value
   | TooltipDelay, IntValue value | DurationValue, IntValue value ->
     value >= 0 && value <= 2147483647
   | TextAlignment, StringValue value ->
@@ -1532,6 +1639,9 @@ let property_value_supported property value =
     value = "linear" || value = "standard" || value = "emphasized"
     || value = "spring"
   | ResizeOrigin, FloatValue value -> is_finite value
+  | FirstPaneWidth, FloatValue value -> is_finite value && value >= 0.
+  | ResizeHandleWidth, IntValue value -> value >= 0
+  | ResizeHandleOffset, FloatValue value -> is_finite value
   | ThemeValue, StringValue _ -> true
   | ThemeMode, StringValue value -> theme_mode_supported value
   | KeyValue, StringValue _ -> true
@@ -1541,7 +1651,7 @@ let property_value_supported property value =
     value = "plain" || value = "inset" || value = "inset-grouped"
   | ScrollTarget, StringValue _ -> true
   | ScrollAnchor, StringValue value ->
-    value = "top" || value = "center" || value = "bottom"
+    value = "top" || value = "center" || value = "bottom" || value = "nearest"
   | ScrollToken, IntValue value -> value >= 0
   | ScrollAnimated, BoolValue _ -> true
   | TrackVisibleRange, BoolValue _ -> true
@@ -1566,16 +1676,17 @@ let property_value_supported property value =
     || value = "strict-origin-when-cross-origin"
     || value = "unsafe-url"
   | TargetValue, StringValue value -> value = "_self" || value = "_blank"
-  | Opacity, FloatValue value -> is_finite value && value >= 0.0 && value <= 1.0
+  | (Opacity | LabelOpacity), FloatValue value ->
+    is_finite value && value >= 0.0 && value <= 1.0
   | DisplayValue, StringValue value ->
     List.mem value
       [ "contents"; "none"; "inline-flex"; "block"; "inline"; "inline-block" ]
   | TooltipText, StringValue _ | TooltipKeys, StringValue _ -> true
-  | InputType, StringValue value -> value = "text" || value = "color"
+  | InputType, StringValue value -> value = "text" || value = "color" || value = "time"
   | PickerAccept, StringValue _ -> true
   | PickerDirectory, BoolValue _ -> true
   | PopupX, FloatValue value | PopupY, FloatValue value -> is_finite value
-  | AvailableHeight, FloatValue value -> is_finite value && value >= 0.0
+  | (AvailableHeight | CollisionPadding), FloatValue value -> is_finite value && value >= 0.0
   | ImageFitValue, StringValue value -> value = "fit" || value = "fill"
   | MaxPixelSize, IntValue value -> value > 0
   | Visible, BoolValue _ -> true
@@ -1600,12 +1711,15 @@ let property_value_supported property value =
   | ListStyle, StringValue value ->
     List.mem value [ "none"; "disc"; "decimal" ]
   | FlexWrap, StringValue value -> List.mem value [ "nowrap"; "wrap" ]
-  | HoverForeground, StringValue value | HoverBorder, StringValue value ->
+  | HoverForeground, StringValue value | HoverBorder, StringValue value
+  | FocusWithinBackground, StringValue value | FocusWithinBorder, StringValue value ->
     String.trim value <> ""
+  | Inert, BoolValue _ -> true
   | Transition, StringValue value -> transition_supported value
   | ZIndex, IntValue _ -> true
   | WhiteSpace, StringValue value ->
       List.mem value [ "normal"; "nowrap"; "pre-wrap"; "pre-line" ]
+  | LineClamp, IntValue value -> value > 0
   | TextOverflow, StringValue value -> List.mem value [ "clip"; "ellipsis" ]
   | Overflow, StringValue value -> List.mem value [ "visible"; "hidden"; "auto" ]
   | UserSelect, StringValue value -> List.mem value [ "none"; "text" ]
@@ -1624,7 +1738,8 @@ let property_value_supported property value =
   | _ -> false
 
 let property_value_supported_for_kind kind property value =
-  if property = RoleValue && kind = Popover then value = StringValue "menu"
+  if property = RoleValue && kind = Popover then
+    value = StringValue "menu" || value = StringValue "dialog"
   else if property = SizeValue then
     match value with
     | StringValue size ->
@@ -1690,8 +1805,74 @@ let float_property_of properties property fallback =
   | Some (FloatValue number) -> number
   | _ -> fallback
 
+let node_property_presence_supported kind ~definite ~possible =
+  let require_any properties = List.exists possible properties in
+  let paired first second =
+    (not (definite first) || possible second)
+    && (not (definite second) || possible first)
+  in
+  let exclusive first second = not (definite first && definite second) in
+  let required = match kind with
+    | Icon -> [[IconName]]
+    | Button | ToggleButton | Toggle | Radio ->
+      [[TextValue; AccessibilityLabel]]
+    | NumberStepper -> [[TextValue; AccessibilityLabel]; [ProgressValue]]
+    | RadioGroup | Tree | Toolbar -> [[AccessibilityLabel]]
+    | Slider -> [[AccessibilityLabel]; [ProgressValue]]
+    | Progress -> [[ProgressValue]]
+    | Select | Combobox -> [[TextValue; PlaceholderValue]]
+    | MenuItem -> [[TextValue; AccessibilityLabel]]
+    | Accordion | Drawer | Sheet -> [[TextValue]]
+    | SwipeAction | MenuTrigger -> [[TextValue; InlineIconName]]
+    | Tooltip -> [[TextValue]]
+    | Avatar -> [[TextValue]]
+    | Image -> [[ImageIdValue; UrlValue]]
+    | FileImage | FilePreview -> [[PathValue]]
+    | MediaSurface -> [[SurfaceIdValue]]
+    | EdgeInset -> [[EdgeValue]]
+    | Stepper -> [[ActiveIndex]]
+    | Step -> [[TextValue]]
+    | TimelineItem -> [[TitleValue]]
+    | BottomTabs -> [[AccessibilityLabel]]
+    | BottomTab -> [[TitleValue]; [PressEnabled]]
+    | _ -> []
+  in
+  List.for_all require_any required
+  && (if kind = Tooltip then
+        not (definite TooltipDelay) || possible AnchorValue
+      else true)
+  && (if kind = Tooltip || kind = DropdownMenu || kind = Popover then
+        (not (List.exists definite
+           [AnchorAlignmentValue; AnchorOffset; AnchorAlignmentOffset]))
+        || possible AnchorValue
+      else true)
+  && (if kind = Popover then
+        ((not (definite AnchorTarget || definite AnchorRect))
+         || possible AnchorValue)
+        && exclusive AnchorTarget AnchorRect
+      else true)
+  && (if kind = Popover || kind = DropdownMenu then
+        paired PopupX PopupY
+        && not (definite AnchorValue && (definite PopupX || definite PopupY))
+      else true)
+  && (if kind = Avatar || kind = Image then
+        let source = [SourceX; SourceY; SourceWidth; SourceHeight] in
+        (not (List.exists definite source)
+         || List.for_all possible source)
+        && (not (List.exists definite source)
+            || require_any [ImageIdValue; UrlValue])
+      else true)
+  && (if kind = Split then exclusive FirstPaneWidth ProgressValue else true)
+  && (if tree_row_kind kind then
+        ((not (definite TreeLevel || definite ChangeEnabled)) || possible RoleValue)
+        && ((not (definite Expanded)) || possible ToggleEnabled)
+      else true)
+
 let node_properties_supported kind properties =
-  surface_size_supported properties
+  node_property_presence_supported kind
+    ~definite:(fun property -> Property_map.mem property properties)
+    ~possible:(fun property -> Property_map.mem property properties)
+  && surface_size_supported properties
   && viewport_size_supported properties
   && (if kind = Icon then
         match Property_map.find_opt IconName properties with
@@ -1714,7 +1895,11 @@ let node_properties_supported kind properties =
         let placeholder = string_property_or properties PlaceholderValue "" in
         text <> "" || placeholder <> ""
       else true)
-  && (if kind = MenuItem || kind = Accordion then
+  && (if kind = MenuItem then
+        string_property_nonempty properties TextValue
+        || string_property_nonempty properties AccessibilityLabel
+      else true)
+  && (if kind = Accordion then
         string_property_nonempty properties TextValue
       else true)
   && (if kind = SwipeAction then
@@ -1739,8 +1924,14 @@ let node_properties_supported kind properties =
   && (if kind = DropdownMenu || kind = Tooltip || kind = Popover then
         if Property_map.mem AnchorAlignmentValue properties
            || Property_map.mem AnchorOffset properties
+           || Property_map.mem AnchorAlignmentOffset properties
         then Property_map.mem AnchorValue properties
         else true
+      else true)
+  && (if kind = Popover && (Property_map.mem AnchorTarget properties
+                             || Property_map.mem AnchorRect properties) then
+        Property_map.mem AnchorValue properties
+        && not (Property_map.mem AnchorTarget properties && Property_map.mem AnchorRect properties)
       else true)
   && (if kind = Popover || kind = DropdownMenu then
         let has_x = Property_map.mem PopupX properties in
@@ -1820,9 +2011,9 @@ let node_properties_supported kind properties =
       else true)
   && (if kind = Split then
         let duration = int_property properties ResizeDuration 0 in
-        (if Property_map.mem ResizeEasing properties then duration > 0 else true)
-        &&
-        if Property_map.mem ResizeOrigin properties then duration > 0 else true
+        not (Property_map.mem FirstPaneWidth properties && Property_map.mem ProgressValue properties)
+        && (if Property_map.mem ResizeEasing properties then duration > 0 else true)
+        && (if Property_map.mem ResizeOrigin properties then duration > 0 else true)
       else true)
   &&
   if tree_row_kind kind then

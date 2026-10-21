@@ -410,7 +410,7 @@ let review_library_derived_ownership () =
   for index = 1 to 20 do Signal.set branch index; ignore (Lui_runtime.flush app) done;
   Signal.set source ["accent", Lui_ui.Fixed "green"];
   Signal.stabilize context.ui_scheduler;
-  Alcotest.(check int) "only current derivations recompute" 3
+  Alcotest.(check int) "property conversion does not add reactive computations" 1
     (Signal.last_stabilization context.ui_scheduler).stabilization_dirty_tasks;
   Signal.dispose_scope owner;
   Signal.set source ["accent", Lui_ui.Fixed "red"];
@@ -569,6 +569,151 @@ let review_wide_reorder () =
   Alcotest.(check bool) "wide reconciliation scales subquadratically" true
     (large < small *. 9. +. 0.03)
 
+let property_binding_retention () =
+  let retained dynamic =
+    Gc.full_major ();
+    let before = (Gc.stat ()).Gc.live_words * 8 in
+    let app = runtime () in
+    let scope = Signal.scope "property-retention" in
+    let context = Lui_ui.context app scope in
+    let source = Signal.state context.ui_scheduler "initial" in
+    for _ = 1 to 2000 do
+      if dynamic then ignore (Lui_ui.text_signal context (Signal.value source))
+      else ignore (Lui_ui.text context "initial")
+    done;
+    ignore (Lui_runtime.flush app);
+    Gc.full_major ();
+    let bytes = (Gc.stat ()).Gc.live_words * 8 - before in
+    ignore (Sys.opaque_identity (app, context, source));
+    Signal.dispose_scope scope;
+    bytes in
+  let plain = retained false in
+  let bound = retained true in
+  let per_binding = float (bound - plain) /. 2000. in
+  Printf.printf "Reactive property retained overhead: %.0f bytes/binding\n%!" per_binding;
+  if per_binding > 768. then
+    Alcotest.failf "A scalar property binding retains %.0f extra bytes" per_binding
+
+let property_value app node property =
+  Property_map.find property (Hashtbl.find app.Lui_runtime.runtime_properties node)
+
+let property_binding_values () =
+  let batches = ref [] in
+  let app = Lui_runtime.create (Signal.scheduler ())
+    (backend (fun batch -> batches := batch :: !batches; true)) in
+  let scope = Signal.scope "typed-property-values" in
+  let context = Lui_ui.context app scope in
+  let text = Signal.state context.ui_scheduler "initial" in
+  let enabled = Signal.state context.ui_scheduler true in
+  let number = Signal.state context.ui_scheduler 0.25 in
+  let level = Signal.state context.ui_scheduler 1 in
+  let mode = Signal.state context.ui_scheduler `light in
+  let tokens = Signal.state context.ui_scheduler ["accent", Lui_ui.Fixed "blue"] in
+  let texts = [Lui_ui.text_signal context (Signal.value text);
+    Lui_ui.heading_signal context 2 (Signal.value text);
+    Lui_ui.paragraph_signal context (Signal.value text);
+    Lui_ui.label_signal context (Signal.value text)] in
+  let button = Lui_ui.button context and disabled = Lui_ui.button context in
+  Lui_ui.bool_property_signal context button Enabled (Signal.value enabled);
+  Lui_ui.disabled_signal context disabled (Signal.value enabled);
+  let panel = Lui_ui.column context in
+  Lui_ui.float_property_signal context panel Opacity (Signal.value number);
+  Lui_ui.theme_mode_signal context panel (Signal.value mode);
+  Lui_ui.theme_signal context panel (Signal.value tokens);
+  let heading = Lui_ui.heading context 1 "heading" in
+  Lui_ui.int_property_signal context heading HeadingLevel (Signal.value level);
+  let slider = Lui_ui.slider context (Signal.value number) in
+  ignore (Lui_runtime.flush app);
+  List.iter (fun id -> Alcotest.(check bool) "initial text is delivered" true
+    (property_value app id TextValue = StringValue "initial")) texts;
+  Alcotest.(check bool) "initial disabled conversion" true
+    (property_value app disabled Enabled = BoolValue false);
+  batches := [];
+  Signal.set text "intermediate";
+  Signal.set text "final";
+  Signal.set enabled false;
+  Signal.set number 0.75;
+  Signal.set level 3;
+  Signal.set mode `dark;
+  Signal.set tokens ["accent", Lui_ui.Fixed "green"];
+  ignore (Lui_runtime.flush app);
+  List.iter (fun id ->
+    Alcotest.(check bool) "latest text is delivered" true
+      (property_value app id TextValue = StringValue "final");
+    let updates = List.concat_map (fun (batch:patch_batch) -> batch.ops) !batches
+      |> List.filter (function SetProp (node, TextValue, _) -> node=id | _ -> false) in
+    Alcotest.(check int) "a batched property emits one final update" 1 (List.length updates)) texts;
+  List.iter (fun (node,property,value) ->
+    Alcotest.(check bool) "typed property updates" true (property_value app node property = value))
+    [button,Enabled,BoolValue false; disabled,Enabled,BoolValue true;
+     panel,Opacity,FloatValue 0.75; heading,HeadingLevel,IntValue 3;
+     slider,ProgressValue,FloatValue 0.75; panel,ThemeMode,StringValue "dark";
+     panel,ThemeValue,StringValue (Lui_ui.theme_tokens_json ["accent", Lui_ui.Fixed "green"])];
+  Signal.dispose_scope scope
+
+let property_binding_borrowed_source () =
+  let app = runtime () in
+  let first = Signal.scope "first-property-reader" and second = Signal.scope "second-property-reader" in
+  let a = Lui_ui.context app first and b = Lui_ui.context app second in
+  let source = Signal.state a.ui_scheduler "initial" in
+  let left = Lui_ui.text_signal a (Signal.value source) in
+  let right = Lui_ui.text_signal b (Signal.value source) in
+  ignore (Lui_runtime.flush app);
+  Signal.dispose_scope first;
+  Signal.set source "updated";
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "disposed binding stops writing" true
+    (property_value app left TextValue = StringValue "initial");
+  Alcotest.(check bool) "shared source still updates its other reader" true
+    (property_value app right TextValue = StringValue "updated");
+  Signal.dispose_scope second;
+  Signal.set source "after disposal";
+  Signal.stabilize a.ui_scheduler;
+  Alcotest.(check int) "disposed bindings retain no computations" 1
+    (Signal.last_stabilization a.ui_scheduler).stabilization_dirty_tasks;
+  Alcotest.(check bool) "the source is borrowed" false (Signal.signal_is_disposed (Signal.value source))
+
+let property_binding_diamond () =
+  let updates = ref [] in
+  let app = Lui_runtime.create (Signal.scheduler ()) (backend (fun batch ->
+    updates := List.rev_append batch.ops !updates; true)) in
+  let caller = Signal.scope "property-source-owner" and scope = Signal.scope "property-diamond" in
+  let context = Lui_ui.context app scope in
+  let left = Signal.state context.ui_scheduler "a" and right = Signal.state context.ui_scheduler "b" in
+  let joined = Signal.own_signal caller (Signal.map2 ( ^ ) (Signal.value left) (Signal.value right)) in
+  let node = Lui_ui.text_signal context joined in
+  ignore (Lui_runtime.flush app);
+  updates := [];
+  Signal.set left "A"; Signal.set right "B";
+  ignore (Lui_runtime.flush app);
+  Alcotest.(check bool) "a derived source publishes the settled value" true
+    (property_value app node TextValue = StringValue "AB");
+  let texts = List.filter_map (function SetProp (id,TextValue,StringValue text) when id=node -> Some text
+    | _ -> None) !updates in
+  Alcotest.(check (list string)) "a diamond emits no intermediate property values" ["AB"] (List.rev texts);
+  Signal.dispose_scope scope;
+  Alcotest.(check bool) "the derived source belongs to its caller" false (Signal.signal_is_disposed joined);
+  Signal.dispose_scope caller
+
+let property_binding_queued_disposal () =
+  List.iter (fun drop ->
+    let app = runtime () in
+    let scope = Signal.scope "queued-property-reader" in
+    let context = Lui_ui.context app scope in
+    let source = Signal.state context.ui_scheduler "initial" in
+    let node = Lui_ui.text context "initial" in
+    let retiring = Signal.subscribe ~emit_initial:false (Signal.value source) (fun _ ->
+      if drop then Lui_runtime.drop_node app node else Signal.dispose_scope scope) in
+    Lui_ui.string_property_signal context node TextValue (Signal.value source);
+    ignore (Lui_runtime.flush app);
+    Signal.set source "queued";
+    ignore (Lui_runtime.flush app);
+    if drop then Alcotest.(check bool) "retired node is not revived" false (Lui_runtime.node_live app node)
+    else Alcotest.(check bool) "retired scope discards its queued write" true
+      (property_value app node TextValue = StringValue "initial");
+    Signal.dispose_subscription retiring;
+    Signal.dispose_scope scope) [false;true]
+
 let tests = existing_tests @ List.map (fun (name, test) -> Alcotest.test_case name `Quick test)
   ["review wide child reorder", review_wide_reorder;
    "review sibling owner identity", review_sibling_state;
@@ -582,4 +727,9 @@ let tests = existing_tests @ List.map (fun (name, test) -> Alcotest.test_case na
    "review keyed locality", review_keyed_locality;
    "review unchanged keyed publication", review_keyed_unchanged;
    "keyed retained subtree allocation", keyed_retained_subtree_allocation;
-   "keyed removed subtree rollback", keyed_removed_subtree_rollback]
+   "keyed removed subtree rollback", keyed_removed_subtree_rollback;
+   "property binding retention", property_binding_retention;
+   "property binding values", property_binding_values;
+   "property binding borrowed source", property_binding_borrowed_source;
+   "property binding queued disposal", property_binding_queued_disposal;
+   "property binding diamond", property_binding_diamond]

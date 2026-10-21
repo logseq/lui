@@ -55,7 +55,7 @@ jobs:
       - name: Schema tests
         run: node --test tooling/test/*.mjs
       - name: OCaml tests
-        run: opam exec -- dune build --action-stderr-on-success=must-be-empty @runtest
+        run: make test-ocaml
       - name: Runtime performance qualification
         run: bash tooling/performance/qualify_runtime.sh
       - name: Trim dune cache
@@ -389,14 +389,15 @@ jobs:
       - name: Test platform/native
         # Tests skip what the runner cannot provide: no display -> GL/parity
         # skip, no dbus -> ax/shell skip, no lavapipe -> vulkan skip.
+        # Run frame-budget tests without competing test processes or compilers.
         # Windows: bound the whole suite while a hung test is diagnosed —
         # verbose lists each test command as it starts, so the last one
         # printed identifies the hang.
         run: |
           if [ "$RUNNER_OS" = "Windows" ]; then
-            timeout 600 opam exec -- dune runtest platform/native/ -f --verbose
+            timeout 600 opam exec -- dune runtest platform/native/ -j 1 -f --verbose
           else
-            opam exec -- dune runtest platform/native/ -f
+            opam exec -- dune runtest platform/native/ -j 1 -f
           fi
         shell: bash
       - name: Trim dune cache

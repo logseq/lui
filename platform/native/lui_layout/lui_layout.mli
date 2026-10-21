@@ -38,6 +38,19 @@
     to a zero box). *)
 type text_measure = int -> string -> float -> float -> (float * float) option
 
+(** A host-shaped paragraph owns its descendant text layout. [id width]
+    returns content dimensions and descendant rects relative to the content
+    origin, all in device px. [width] is the offered content width, or NaN
+    when unconstrained. [None] retains ordinary layout for this node.
+    Descendants keep store identity and hit rects without separate flex
+    boxes. Omitted descendant ids have no hit rect. The host must use the
+    same shaping in [Lui_paint.hooks.text_flow_ops] and input geometry;
+    {!Lui_paint.text_flow_content_rect} resolves the paragraph's chrome. *)
+type text_flow = int -> float -> Lui_paint.text_flow_layout option
+
+(** Decoded image dimensions in logical pixels, before device scaling. *)
+type image_measure = int -> (float * float) option
+
 (** A flex mirror of a store plus the rects the last layout produced.
     The mirror is rebuilt wholesale by {!sync} — the store is small and
     rebuild-per-sync keeps invalidation trivial. *)
@@ -104,9 +117,10 @@ type viewport = float * float
     materialize every child like ordinary containers. *)
 
 val sync :
-  ?scale:float -> ?measure:text_measure -> ?hidden:(int -> bool) ->
+    ?scale:float -> ?measure:text_measure -> ?text_flow:text_flow -> ?image_measure:image_measure -> ?hidden:(int -> bool) ->
   ?ctx_anchor:(float * float) ->
   ?vport:(int -> viewport option) ->
+  ?anchor_shift:(int -> float * float) ->
   width:float -> height:float -> t -> Lui_store.t -> unit
 
 (** {2 Virtual lists}

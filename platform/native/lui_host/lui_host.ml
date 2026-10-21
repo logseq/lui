@@ -25,9 +25,12 @@ module type LAYOUT_ENGINE = sig
   val create : unit -> t
 
   val sync :
-    ?scale:float -> ?measure:text_measure -> ?hidden:(int -> bool) ->
+    ?scale:float -> ?measure:text_measure ->
+    ?text_flow:(int -> float -> Lui_paint.text_flow_layout option) ->
+    ?image_measure:(int -> (float * float) option) -> ?hidden:(int -> bool) ->
     ?ctx_anchor:(float * float) ->
     ?vport:(int -> (float * float) option) ->
+    ?anchor_shift:(int -> float * float) ->
     width:float -> height:float -> t -> Lui_store.t -> unit
 
   val invalidate : t -> unit
@@ -60,6 +63,7 @@ type layout_state = {
     scale:float -> measure:text_measure -> hidden:(int -> bool) ->
     ctx_anchor:(float * float) option ->
     vport:(int -> (float * float) option) ->
+    anchor_shift:(int -> float * float) ->
     width:float -> height:float -> Lui_store.t -> unit;
   linvalidate : unit -> unit;
   lhook : int -> Lui_paint.placement;
@@ -77,6 +81,7 @@ type layout_state = {
 }
 
 type transition = {
+  property : Lui_protocol.property;
   from_value : float;
   target : float;
   started : float;
@@ -119,12 +124,15 @@ type t = {
   (* Virtual-list viewport feed: node id → content-space visible range
      (start, extent) evaluated during every layout sync. *)
   mutable vport : int -> (float * float) option;
+  mutable anchor_shift : int -> float * float;
 }
 
 let no_measure _id _text _offered_w _offered_h = None
 
 let create ~hooks ?layout ?(measure = no_measure) ~renderer ~width ~height ~scale () =
   let store = Lui_store.create () in
+  let image_measure id = Option.map (fun image ->
+    float_of_int image.iw,float_of_int image.ih) (hooks.Lui_paint.image_of id) in
   let layout =
     match layout with
     | None -> None
@@ -132,8 +140,8 @@ let create ~hooks ?layout ?(measure = no_measure) ~renderer ~width ~height ~scal
       let engine = L.create () in
       Some
         { lsync =
-            (fun ~scale ~measure ~hidden ~ctx_anchor ~vport ~width ~height store ->
-              L.sync ~scale ~measure ~hidden ?ctx_anchor ~vport ~width ~height
+            (fun ~scale ~measure ~hidden ~ctx_anchor ~vport ~anchor_shift ~width ~height store ->
+              L.sync ~scale ~measure ~text_flow:hooks.text_flow ~image_measure ~hidden ?ctx_anchor ~vport ~anchor_shift ~width ~height
                 engine store);
           linvalidate = (fun () -> L.invalidate engine);
           lhook = L.layout_hook engine;
@@ -160,11 +168,12 @@ let create ~hooks ?layout ?(measure = no_measure) ~renderer ~width ~height ~scal
     moved_hints = Hashtbl.create 16;
     hidden = (fun _ -> false);
     ctx_anchor = (fun () -> None); inv_count = 0;
-    vport = (fun _ -> None) }
+    vport = (fun _ -> None); anchor_shift = (fun _ -> (0.,0.)) }
 
 let store h = h.store
 let scene h = h.scene
 let wants_repaint h = h.dirty || Hashtbl.length h.transitions > 0
+  || Lui_retained.animating h.retained
 
 let set_hidden h pred =
   h.hidden <- (match pred with Some p -> p | None -> fun _ -> false);
@@ -182,6 +191,11 @@ let set_ctx_anchor h accessor =
    offset for a directly-scrolled list, the mapped clip for one nested
    in an outer scroller. Evaluated inside every layout sync. *)
 let set_vport h f = h.vport <- f
+let set_anchor_shift h read =
+  h.anchor_shift <- read;
+  h.inv_count <- h.inv_count + 1;
+  h.dirty <- true
+
 
 (* Virtual-list queries the driver needs for hit-test slicing, scroll
    caps and scroll-to-item: all forward to the layout engine and
@@ -262,9 +276,9 @@ let eased easing progress =
     coordinate y1 y2 ((!low +. !high) /. 2.)
   end
 
-let set_transition_value h id value =
+let set_transition_value h id property value =
   Lui_store.apply_op h.store (Lui_protocol.SetProp
-    (id,Lui_protocol.ProgressValue,Lui_protocol.FloatValue value));
+    (id,property,Lui_protocol.FloatValue value));
   h.dirty <- true
 
 let tick h ~now =
@@ -273,27 +287,32 @@ let tick h ~now =
    | Some previous when now < previous -> invalid_arg "Native animation clock moved backwards"
    | _ -> ());
   h.animation_time <- Some now;
+  if Lui_retained.tick h.retained ~now then h.dirty <- true;
   if Hashtbl.length h.transitions > 0 then
     Hashtbl.filter_map_inplace (fun id motion ->
       if not (Lui_store.mem h.store id) then None
       else begin
         let progress = min 1. ((now -. motion.started) /. motion.duration) in
         let value = if progress >= 1. then motion.target
-          else max 0. (min 1. (motion.from_value +.
-            (motion.target -. motion.from_value) *. eased motion.easing progress)) in
-        set_transition_value h id value;
+          else motion.from_value +.
+            (motion.target -. motion.from_value) *. eased motion.easing progress in
+        let value = if motion.property = Lui_protocol.ProgressValue
+          then max 0. (min 1. value) else max 0. value in
+        set_transition_value h id motion.property value;
         if progress >= 1. then None else Some motion
       end) h.transitions
 
 let set_reduced_motion h enabled =
+  if h.reduced_motion <> enabled then h.dirty <- true;
+  Lui_retained.set_reduced_motion h.retained enabled;
   h.reduced_motion <- enabled;
   if enabled && Hashtbl.length h.transitions > 0 then begin
     Hashtbl.iter (fun id motion ->
-      if Lui_store.mem h.store id then set_transition_value h id motion.target) h.transitions;
+      if Lui_store.mem h.store id then set_transition_value h id motion.property motion.target) h.transitions;
     Hashtbl.clear h.transitions
   end
 
-let apply_batch h (batch : Lui_protocol.patch_batch) =
+let apply_batch ?(animate_resize=true) h (batch : Lui_protocol.patch_batch) =
   let previous = Hashtbl.create 4 and created = Hashtbl.create 4 in
   List.iter (function
     | Lui_protocol.CreateNode (id,_) | CreateExtension (id,_,_)
@@ -301,30 +320,33 @@ let apply_batch h (batch : Lui_protocol.patch_batch) =
         Hashtbl.replace created id ();
         Hashtbl.remove previous id;
         Hashtbl.remove h.transitions id
-    | SetProp (id, ProgressValue, _) when not (Hashtbl.mem created id)
+    | RemoveProp (id, (ProgressValue | FirstPaneWidth)) ->
+        Hashtbl.remove previous id;
+        Hashtbl.remove h.transitions id
+    | SetProp (id, ((ProgressValue | FirstPaneWidth) as property), _) when not (Hashtbl.mem created id)
         && Lui_store.kind h.store id = "split" ->
+        if not animate_resize then Hashtbl.remove h.transitions id;
         if not (Hashtbl.mem previous id) then
-          (match Lui_store.prop h.store id "value" with
-           | Some (FloatValue value) -> Hashtbl.add previous id value
-           | Some (IntValue value) -> Hashtbl.add previous id (float value)
-           | _ -> ())
+          (match Lui_store.float_prop h.store id (Lui_wire_schema.property_name property) with
+           | Some value -> Hashtbl.add previous id (property, value)
+           | None -> ())
     | _ -> ()) batch.ops;
   Lui_store.apply_batch h.store batch;
   Hashtbl.filter_map_inplace (fun id motion ->
     if Lui_store.mem h.store id then Some motion else None) h.transitions;
-  Hashtbl.iter (fun id from_value ->
-    match h.animation_time, Lui_store.prop h.store id "value" with
+  Hashtbl.iter (fun id (property, from_value) ->
+    match h.animation_time, Lui_store.prop h.store id (Lui_wire_schema.property_name property) with
     | Some started, Some (Lui_protocol.FloatValue target)
-        when not h.reduced_motion && from_value <> target ->
+        when animate_resize && not h.reduced_motion && from_value <> target ->
         let duration = Option.value ~default:0 (Lui_store.int_prop h.store id "resize-duration") in
         if duration > 0 then begin
           let easing = Option.value ~default:"standard"
             (Lui_store.string_prop h.store id "resize-easing") in
           (match Hashtbl.find_opt h.transitions id with
-           | Some motion when motion.target = target -> ()
+           | Some motion when motion.property = property && motion.target = target -> ()
            | _ -> Hashtbl.replace h.transitions id
-               {from_value;target;started;duration=float duration /. 1000.;easing});
-          set_transition_value h id from_value
+               {property;from_value;target;started;duration=float duration /. 1000.;easing});
+          set_transition_value h id property from_value
         end else Hashtbl.remove h.transitions id
     | _ -> Hashtbl.remove h.transitions id) previous;
   h.dirty <- true;
@@ -354,7 +376,7 @@ let repaint h =
          paints) and the current frame size — layout is the single
          place that resolves both. *)
       l.lsync ~scale:h.scale ~measure:h.measure ~hidden:h.hidden
-        ~ctx_anchor:(h.ctx_anchor ()) ~vport:h.vport
+        ~ctx_anchor:(h.ctx_anchor ()) ~vport:h.vport ~anchor_shift:h.anchor_shift
         ~width:(float_of_int h.width) ~height:(float_of_int h.height)
         h.store;
       (* The engine hook yields to an explicitly supplied

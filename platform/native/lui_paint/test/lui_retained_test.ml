@@ -158,6 +158,22 @@ let build_rows env n =
   in
   apply env.store ops
 
+let test_fragment_lookup_allocation () =
+  let retained = Lui_retained.create () in
+  let originals = Array.init 1000 (fun id -> Lui_retained.frag_of retained id) in
+  let identities_match = ref true in
+  let before = Gc.allocated_bytes () in
+  for _ = 1 to 100 do
+    Array.iteri
+      (fun id expected ->
+        if Lui_retained.frag_of retained id != expected then identities_match := false)
+      originals
+  done;
+  let allocated = (Gc.allocated_bytes () -. before) /. 100. in
+  check bool "Existing fragments preserve physical identity" true !identities_match;
+  Printf.printf "Retained 1000-fragment lookup allocated %.0f bytes/pass\n%!" allocated;
+  check bool "Looking up live paint fragments allocates wrappers" true (allocated < 4096.)
+
 let test_static_frame () =
   let env = env () in
   build_rows env 10;
@@ -288,6 +304,59 @@ let test_popup_deferred () =
   apply env.store [ SetProp (61, TextValue, StringValue "item!") ];
   frame env ()
 
+let test_popup_motion_buffers () =
+  let env = env () in
+  apply env.store
+    [
+      CreateNode (1, Column);
+      CreateNode (60, Dialog);
+      InsertChild (1, 60, 0);
+      CreateNode (61, Text);
+      SetProp (61, TextValue, StringValue "dialog");
+      InsertChild (60, 61, 0);
+      CreateNode (62, Popover);
+      InsertChild (60, 62, 1);
+      CreateNode (63, Text);
+      SetProp (63, TextValue, StringValue "menu");
+      InsertChild (62, 63, 0);
+    ];
+  let paint now =
+    ignore (Lui_retained.tick env.rt ~now);
+    Lui_layout.sync ~scale:1. ~measure ~width:200. ~height:200. env.eng
+      env.store;
+    let moved = Lui_layout.take_rect_changes env.eng in
+    let h = { (hooks env) with layout = Lui_layout.layout_hook env.eng } in
+    env.cur := env.kept;
+    Lui_retained.paint_retained env.rt h env.store env.kept ~moved ~width:200
+      ~height:200 ~scale:1. ~clear:(color 0 0 0 0) ();
+    List.iter
+      (function
+        | Glyphs g ->
+            check bool "animated glyph references remain in range" true
+              (g.gstart >= 0 && g.gend <= List.length env.kept.glyphs)
+        | _ -> ())
+      env.kept.ops
+  in
+  paint 0.;
+  let planned = Lui_retained.stat_repaints env.rt in
+  paint 0.075;
+  check int "motion reuses the painted fragments" planned
+    (Lui_retained.stat_repaints env.rt);
+  check bool "nested glyphs fade" true
+    (List.exists
+       (function Glyphs g -> g.gopacity > 0. && g.gopacity < 1. | _ -> false)
+       env.kept.ops);
+  paint 0.25;
+  frame env ();
+  apply env.store [ DetachSubtree 60 ];
+  paint 0.25;
+  check bool "removed nested surface retains text during exit" true
+    (env.kept.glyphs <> []);
+  paint 0.5;
+  frame env ();
+  check bool "exit releases glyph buffers" true (env.kept.glyphs = []);
+  check bool "all popup motion is settled" false (Lui_retained.animating env.rt)
+
 let test_state_hint () =
   let env = env () in
   build_rows env 5;
@@ -314,8 +383,99 @@ let test_drop_subtree () =
   frame env ();
   apply env.store [ DropNode 1 ];
   frame env ();
-  (* store still carries the orphaned children as roots *)
+  (* A second clean frame must preserve the empty forest. *)
   frame env ()
+
+(* A cached page branch can be moved into its replacement before the old
+   owner is disposed, with all operations coalesced into one paint. *)
+let test_reparent_before_owner_disposal detach separate_batches () =
+  let env = env () in
+  apply env.store
+    [
+      CreateNode (1, Column);
+      CreateNode (2, Column);
+      CreateNode (3, Column);
+      CreateNode (4, Text);
+      SetProp (4, TextValue, StringValue "retained page");
+      CreateNode (5, Column);
+      CreateNode (6, Text);
+      SetProp (6, TextValue, StringValue "replacement owner");
+      SetProp (2, ForegroundValue, StringValue "#ff0000");
+      SetProp (5, ForegroundValue, StringValue "#0000ff");
+      InsertChild (1, 2, 0);
+      InsertChild (2, 3, 0);
+      InsertChild (3, 4, 0);
+      InsertChild (1, 5, 1);
+      InsertChild (5, 6, 0);
+    ];
+  frame env ();
+  let dispose = if detach then DetachSubtree 2 else DropNode 2 in
+  if separate_batches then begin
+    apply env.store [ InsertChild (5, 3, 1) ];
+    apply env.store [ dispose ]
+  end
+  else apply env.store [ InsertChild (5, 3, 1); dispose ];
+  frame env ();
+  check bool "Reparented text remains in the store" true
+    (Lui_store.mem env.store 4);
+  check bool "Reparented text remains in the scene" true (env.kept.glyphs <> []);
+  frame env ()
+
+let test_disposed_fragments () =
+  List.iter (fun painted ->
+    let env = env () in
+    apply env.store [CreateNode (1, Column)];
+    frame env ();
+    let baseline = (Gc.stat ()).live_words in
+    for turn=0 to 99 do
+      let parent=1000+turn*4 in
+      apply env.store [CreateNode (parent,Column); InsertChild (1,parent,0);
+        CreateNode (parent+1,Column); InsertChild (parent,parent+1,0);
+        CreateNode (parent+2,Button); SetProp (parent+2,TextValue,StringValue "temporary");
+        InsertChild (parent+1,parent+2,0);
+        CreateNode (parent+3,Button); InsertChild (parent,parent+3,1)];
+      if painted then frame env ();
+      (* Native viewport teardown can dispose an inner scope and then its
+         enclosing row before the next materialization. *)
+      apply env.store [RemoveChild (parent,parent+1); DetachSubtree (parent+1);
+        DetachSubtree parent];
+      frame env ()
+    done;
+    Gc.full_major (); Gc.full_major ();
+    let retained = ((Gc.stat ()).live_words-baseline)*(Sys.word_size/8) in
+    Printf.printf "Disposed paint fragments (painted=%b): fragments=%d parents=%d retained=%d bytes\n%!"
+      painted (Hashtbl.length env.rt.frags) (Hashtbl.length env.rt.fparent) retained;
+    check bool "Disposed viewport rows retain paint fragments"
+      true (Hashtbl.length env.rt.frags <= Lui_store.node_count env.store);
+    check bool "Disposed viewport rows retain paint parent links"
+      true (Hashtbl.length env.rt.fparent <= Lui_store.node_count env.store);
+    check bool "Disposed viewport rows retain virtual paint windows"
+      true (Hashtbl.length env.rt.vwin <= Lui_store.node_count env.store);
+    check bool "Disposed rows retain pending paint work"
+      true (Hashtbl.length env.rt.pend_segs=0 && Hashtbl.length env.rt.pend_kids=0)
+  ) [false;true]
+
+let test_removed_paint_hints () =
+  let env = env () in
+  build_rows env 4;
+  frame env ();
+  apply env.store [DetachSubtree 1];
+  let moved=Hashtbl.create 4 and hints=Hashtbl.create 4 in
+  for id=1 to 5 do Hashtbl.add moved id (); Hashtbl.add hints id () done;
+  let h=hooks env in
+  Lui_retained.paint_retained env.rt h env.store env.kept ~moved ~hints
+    ~width:200 ~height:200 ~scale:1. ~clear:(color 0 0 0 0) ();
+  check int "Deleted geometry and hover hints recreate paint resources"
+    0 (Hashtbl.length env.rt.frags);
+  check int "Deleted geometry leaves parent links" 0 (Hashtbl.length env.rt.fparent);
+  apply env.store [CreateNode (1,Column); CreateNode (2,Button);
+    SetProp (2,TextValue,StringValue "replacement"); InsertChild (1,2,0)];
+  frame env ();
+  Lui_retained.invalidate env.rt;
+  frame env ();
+  check bool "Invalidation retains obsolete parent links"
+    true (Hashtbl.length env.rt.fparent <= Lui_store.node_count env.store)
+
 
 (* Wide-child removals: 250 removed children land on the root list
    and re-emit there — one repaint per moved id, never a rebuild per
@@ -559,10 +719,167 @@ let test_invalidate_rebuilds_kids () =
   frame env ();
   check bool "frame not empty" true (env.kept.ops <> [])
 
+let test_scroll_surface_shadow_clip () =
+  List.iter
+    (fun scale ->
+      let t = Lui_store.create () and rt = Lui_retained.create () in
+      apply t
+        [
+          CreateNode (1, Column);
+          CreateNode (2, Box);
+          CreateNode (3, Box);
+          InsertChild (1, 2, 0);
+          InsertChild (2, 3, 0);
+          SetProp (1, Overflow, StringValue "hidden");
+          SetProp (2, Overflow, StringValue "auto");
+          SetProp (2, BackgroundValue, StringValue "#ffffff");
+          SetProp (2, Shadow, StringValue "0 2px 4px #00000080");
+          SetProp (3, BackgroundValue, StringValue "#ff0000");
+        ];
+      let r x y w h =
+        rect (x *. scale) (y *. scale) (w *. scale) (h *. scale)
+      in
+      let parent = r 0. 0. 200. 200. and surface = r 40. 40. 100. 80. in
+      let hooks =
+        {
+          Lui_paint.default_hooks with
+          layout =
+            (fun id ->
+              Lui_paint.placement_of_rect
+                (match id with
+                | 1 -> parent
+                | 2 -> surface
+                | _ -> r 30. 30. 160. 120.));
+          shadow_of = Lui_paint.parse_shadows (fun _ -> None);
+        }
+      in
+      let kept = scene () in
+      for _ = 0 to 1 do
+        Lui_retained.paint_retained rt hooks t kept
+          ~width:(int_of_float (200. *. scale))
+          ~height:(int_of_float (200. *. scale))
+          ~scale ~clear:(color 0 0 0 0) ();
+        let clips = ref [] and shadows = ref 0 in
+        List.iter
+          (function
+            | Push_clip c -> clips := c.crect :: !clips
+            | Pop_clip -> clips := List.tl !clips
+            | Shadow s when not s.sinset ->
+                incr shadows;
+                check bool "cached shadow remains outside its own scroll clip"
+                  true (!clips = [ parent ])
+            | Fill f when f.fcolor = color 255 0 0 255 ->
+                check bool "cached child retains its scroll clip" true
+                  (!clips = [ surface; parent ])
+            | _ -> ())
+          kept.ops;
+        check int "cached outer shadow remains present" 1 !shadows;
+        check bool "cached clip stack balances" true (!clips = [])
+      done)
+    [ 1.; 2. ]
+
+let test_composed_text_flow () =
+  let env=env () in
+  apply env.store [CreateNode (1,Column);CreateNode (2,Text);CreateNode (3,Text);
+    CreateNode (4,Text);CreateNode (8,Text);CreateNode (9,Text);
+    InsertChild (1,2,0);InsertChild (1,8,1);InsertChild (2,3,0);
+    InsertChild (2,4,1);InsertChild (8,9,0);
+    SetProp (2,WidthValue,IntValue 80);SetProp (8,WidthValue,IntValue 80);
+    SetProp (3,TextValue,StringValue "abc");SetProp (4,TextValue,StringValue "def");
+    SetProp (9,TextValue,StringValue "ghi")];
+  let flow id width =
+    if (id<>2 && id<>8) || List.exists (fun child ->
+      Lui_store.int_prop env.store child "padding"=Some 1)
+      (Lui_store.child_ids env.store id) then None else
+    let used=ref 0. in
+    let rects=List.filter_map (fun child ->
+      if Lui_store.string_prop env.store child "display"=Some "none" then None else
+      let text=Option.get (Lui_store.string_prop env.store child "text") in
+      let w=float_of_int (String.length text)*.8. in
+      let r=rect !used 0. w 16. in
+      used:= !used+.w;
+      Some (child,r)) (Lui_store.child_ids env.store id) in
+    let w=if Float.is_nan width then !used else min width !used in
+    Some {Lui_paint.flow_width=w;flow_height=16.;flow_rects=rects} in
+  let compose ctx id (r:rect) _fg =
+    let r=Lui_paint.text_flow_content_rect ~scale:1. env.store id r in
+    Option.map (fun flow -> List.concat_map (fun (child,(local:rect)) ->
+      text_ops env.cur child {local with x=r.x+.local.x;y=r.y+.local.y}
+        (Lui_paint.text_fg ctx env.store child)
+        (Option.get (Lui_store.string_prop env.store child "text"))) flow.Lui_paint.flow_rects)
+      (flow id r.w) in
+  let frame ?hints () =
+    Lui_layout.sync ~measure ~text_flow:flow ~width:200. ~height:200. env.eng env.store;
+    let moved=Lui_layout.take_rect_changes env.eng in
+    let h={(hooks env) with layout=Lui_layout.layout_hook env.eng;
+      text_flow=flow;text_flow_ops=compose} in
+    let full=scene () in
+    env.cur:=full;
+    Lui_paint.paint h env.store full ~width:200 ~height:200 ~scale:1.
+      ~clear:(color 0 0 0 0);
+    env.cur:=env.kept;
+    Lui_retained.paint_retained env.rt h env.store env.kept ~moved ?hints
+      ~width:200 ~height:200 ~scale:1. ~clear:(color 0 0 0 0) ();
+    check_scene full env.kept in
+  frame ();
+  check int "Composed children are painted exactly once" 9 (List.length env.kept.glyphs);
+  let child=Option.get (Lui_layout.rect env.eng 4) in
+  check (float 0.01) "Child hit rect follows preceding inline text" 24. child.x;
+  apply env.store [SetProp (3,TextValue,StringValue "ABC")];
+  frame ();
+  apply env.store [SetProp (4,ForegroundValue,StringValue "#ff0000")];
+  frame ();
+  check bool "Child color invalidates the composed owner" true
+    (List.exists (fun (g:glyph) -> g.gcolor=color 255 0 0 255) env.kept.glyphs);
+  apply env.store [SetProp (4,HoverForeground,StringValue "#0000ff")];
+  Hashtbl.replace env.state_tbl 4 {Lui_paint.state_neutral with hovered=true};
+  let hints=Hashtbl.create 1 in Hashtbl.add hints 4 ();
+  frame ~hints ();
+  check bool "Child interaction invalidates its composed owner" true
+    (List.exists (fun (g:glyph) -> g.gcolor=color 0 0 255 255) env.kept.glyphs);
+  apply env.store [SetProp (3,DisplayValue,StringValue "none")];
+  frame ();
+  check bool "Hidden inline children retire their hit rect" true (Lui_layout.rect env.eng 3=None);
+  check int "Hidden inline text consumes no glyphs" 6 (List.length env.kept.glyphs);
+  apply env.store [RemoveChild (2,4);InsertChild (8,4,1)];
+  frame ();
+  let moved=Option.get (Lui_layout.rect env.eng 4) and owner=Option.get (Lui_layout.rect env.eng 8) in
+  check (float 0.01) "Reparented span follows its new paragraph" owner.y moved.y;
+  apply env.store [RemoveChild (8,4);DropNode 4];
+  frame ();
+  check bool "Removed inline children retire their hit rect" true (Lui_layout.rect env.eng 4=None);
+  apply env.store [SetProp (8,PaddingValue,IntValue 4);SetProp (8,BorderWidth,IntValue 1)];
+  frame ();
+  let owner=Option.get (Lui_layout.rect env.eng 8) and child=Option.get (Lui_layout.rect env.eng 9) in
+  check (float 0.01) "Inline hit rect starts inside paragraph chrome" 5. (child.x-.owner.x);
+  let glyph=List.hd env.kept.glyphs in
+  check (float 0.01) "Composed ink shares the content origin" child.x glyph.gx;
+  apply env.store [SetProp (9,PaddingValue,IntValue 1)];
+  frame ();
+  check (float 0.01) "An inline widget can return to ordinary layout" 42.
+    (Option.get (Lui_layout.rect env.eng 9)).w;
+  apply env.store [SetProp (9,PaddingValue,IntValue 0)];
+  frame ();
+  check (float 0.01) "Removing an inline widget restores paragraph composition" 24.
+    (Option.get (Lui_layout.rect env.eng 9)).w;
+  apply env.store [SetProp (1,CrossAlignment,StringValue "end")];
+  frame ();
+  Lui_layout.compute env.eng ~width:300. ~height:200.;
+  let owner=Option.get (Lui_layout.rect env.eng 8) and child=Option.get (Lui_layout.rect env.eng 9) in
+  check (float 0.01) "Direct resize refreshes inline descendant hit rects" 5. (child.x-.owner.x);
+  frame ();
+  apply env.store [RemoveChild (8,9);InsertChild (1,9,2)];
+  frame ();
+  check bool "A span moved out of a paragraph keeps its ordinary hit rect" true
+    (Option.is_some (Lui_layout.rect env.eng 9))
+
 let () =
   run "lui_retained"
     [ ( "fragments",
-        [ test_case "static frame" `Quick test_static_frame;
+        [ test_case "composed text flow" `Quick test_composed_text_flow;
+          test_case "scroll surface shadow clip" `Quick test_scroll_surface_shadow_clip;
+          test_case "fragment lookup allocation" `Quick test_fragment_lookup_allocation;
+          test_case "static frame" `Quick test_static_frame;
           test_case "single paint update" `Quick test_single_paint_update;
           test_case "geom shift translates" `Quick test_geom_shift_translates;
           test_case "semantics-only skips" `Quick test_semantics_only_skips;
@@ -574,8 +891,19 @@ let () =
           test_case "display contents" `Quick test_display_contents;
           test_case "opacity cascade" `Quick test_opacity_cascade;
           test_case "popup deferred" `Quick test_popup_deferred;
+          test_case "popup motion buffers" `Quick test_popup_motion_buffers;
           test_case "state hint" `Quick test_state_hint;
           test_case "drop subtree" `Quick test_drop_subtree;
+          test_case "reparent before owner drop" `Quick
+            (test_reparent_before_owner_disposal false false);
+          test_case "reparent before owner detach" `Quick
+            (test_reparent_before_owner_disposal true false);
+          test_case "reparent before coalesced owner drop" `Quick
+            (test_reparent_before_owner_disposal false true);
+          test_case "reparent before coalesced owner detach" `Quick
+            (test_reparent_before_owner_disposal true true);
+          test_case "disposed fragments" `Quick test_disposed_fragments;
+          test_case "removed paint hints" `Quick test_removed_paint_hints;
           test_case "wide removal" `Quick test_wide_removal;
           test_case "vlist scroll" `Quick test_vlist_scroll;
           test_case "random equivalence" `Quick test_random_equivalence;

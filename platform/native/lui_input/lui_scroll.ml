@@ -68,13 +68,7 @@ let initial =
 (* Same scrollable rule as the paint pass: a scroll-kind node, or
    anything opting in through its overflow prop. *)
 let scrollable store id =
-  (match Lui_store.kind store id with
-   | "scroll" | "list" | "virtual-list" -> true
-   | _ -> false)
-  ||
-  (match Lui_query.string_prop store id "overflow" with
-   | "scroll" | "auto" -> true
-   | _ -> false)
+  Lui_paint.scrollable (Lui_store.kind store id) store id
 
 let offset st axis id =
   let t = match axis with Y -> st.off | X -> st.off_x in
@@ -272,10 +266,11 @@ let scroll_align env store st a it anchor =
     let top = nr.Lui_scene.y -. ar.Lui_scene.y in
     let off' =
       match anchor with
+      | "top" -> top
       | "center" -> top -. ((ar.Lui_scene.h -. nr.Lui_scene.h) /. 2.)
       | "bottom" -> top +. nr.Lui_scene.h -. ar.Lui_scene.h
       | _ ->
-        (* "top" / unset: minimal reveal *)
+        (* "nearest" / unset: minimal reveal. *)
         let off = offset st Y a in
         if top < off then top
         else if top +. nr.Lui_scene.h > off +. ar.Lui_scene.h then
@@ -287,33 +282,42 @@ let scroll_align env store st a it anchor =
 (* Wheel deltas scroll the deepest scrollable ancestor under the
    pointer per axis — a +x delta scrolls right, a +y delta scrolls
    content up (SDL convention), and Shift turns the vertical delta
-   horizontal (the desktop's wheel-x gesture). Each axis applies to
-   the first container on the hit path with range on that axis, so
-   an unscrollable-x container does not swallow a horizontal delta
-   for a deeper one. *)
+   horizontal (the desktop's wheel-x gesture). Each container consumes
+   its available range and passes unused distance to its ancestors
+   on the same axis, stopping at the current presented overlay. *)
 let wheel env store st ~path ~scale ~dx ~dy ~(mods : Lui_input.mods) =
-  let ix = dx +. if mods.Lui_input.shift then -. dy else 0. in
-  let iy = if mods.Lui_input.shift then 0. else -. dy in
+  let ix = dx +. if mods.Lui_input.shift then -.dy else 0. in
+  let iy = if mods.Lui_input.shift then 0. else -.dy in
   if ix = 0. && iy = 0. then (st, [])
   else begin
     let scroll_axis axis intent (st, acts) =
-      if intent = 0. then (st, acts)
-      else
-        match
-          List.find_opt
-            (fun id ->
-               scrollable store id && cap st axis id > 0.001)
-            path
-        with
-        | Some id ->
-          let st', acts' =
-            set_offset env store st axis id
-              (offset st axis id +. intent *. 44. *. scale)
-          in
-          (st', acts @ acts')
-        | None -> (st, acts)
+      let rec consume st acts remaining = function
+        | [] -> (st, acts)
+        | _ when abs_float remaining <= 0.001 -> (st, acts)
+        | id :: rest ->
+            let rest =
+              if Lui_query.presented_overlay store id then [] else rest
+            in
+            let before = offset st axis id in
+            if
+              scrollable store id
+              &&
+              if remaining > 0. then before < cap st axis id -. 0.001
+              else before > 0.001
+            then
+              let st', next =
+                set_offset env store st axis id (before +. remaining)
+              in
+              let consumed = offset st' axis id -. before in
+              consume st'
+                (List.rev_append next acts)
+                (remaining -. consumed) rest
+            else consume st acts remaining rest
+      in
+      consume st acts (intent *. 44. *. scale) path
     in
-    (st, []) |> scroll_axis X ix |> scroll_axis Y iy
+    let st, acts = (st, []) |> scroll_axis X ix |> scroll_axis Y iy in
+    (st, List.rev acts)
   end
 
 (* Store-sync half: handle scroll-target requests on list containers
@@ -322,7 +326,7 @@ let wheel env store st ~path ~scale ~dx ~dy ~(mods : Lui_input.mods) =
 let sync env store st =
   let st = ref st in
   let acts = ref [] in
-  List.iter
+  Lui_store.iter_preorder store
     (fun id ->
        if Lui_query.kind_name store id = "list" then
          match Lui_store.int_prop store id "scroll-token" with
@@ -400,23 +404,18 @@ let sync env store st =
                   acts :=
                     `Dispatch (ScrollCompleted (id, tok, "missing-target"))
                     :: !acts))
-           | _ -> ())
-    (Lui_store.preorder store);
+           | _ -> ());
   (* The tracked-list ids are store-derived too — refreshed under
      the same gate so the per-sync report loop only walks actual
      VisibleRange producers, not the whole tree. *)
-  st :=
-    { !st with
-      lists =
-        List.filter
-          (fun id ->
-             let k = Lui_query.kind_name store id in
-             (k = "list"
-              && Lui_store.bool_prop store id "track-visible-range")
-             || (k = "virtual-list"
-                && Lui_query.data_attr store id "data-track-visible-range"
-                   = Some "true"))
-          (Lui_store.preorder store) };
+  let lists = ref [] in
+  Lui_store.iter_preorder store (fun id ->
+    let kind = Lui_query.kind_name store id in
+    if (kind = "list" && Lui_store.bool_prop store id "track-visible-range")
+       || (kind = "virtual-list"
+           && Lui_query.data_attr store id "data-track-visible-range" = Some "true")
+    then lists := id :: !lists);
+  st := { !st with lists = List.rev !lists };
   (!st, List.rev !acts)
 
 (* Visible-range reports follow scroll offsets, which live here

@@ -16,6 +16,108 @@ let set_style dom_node name value =
   let scope = W.HtmlElement.style (W.Element.unsafeAsHtmlElement dom_node) in
   Util.set_style scope name value
 
+(* Typed edges have the same specificity on every host: side, axis, all.
+   CSS shorthand assignment order must not change that contract. *)
+let refresh_spacing renderer node dom_node ~margin =
+  let prefix, all, horizontal, vertical, top, right, bottom, left =
+    if margin then
+      "margin", MarginValue, MarginHorizontal, MarginVertical,
+      MarginTop, MarginRight, MarginBottom, MarginLeft
+    else
+      "padding", PaddingValue, PaddingHorizontal, PaddingVertical,
+      PaddingTop, PaddingRight, PaddingBottom, PaddingLeft
+  in
+  let value property =
+    match Store.property renderer.web_store node property with
+    | Some (IntValue number) -> Some (string_of_int number ^ "px")
+    | _ -> None
+  in
+  List.iter (fun (side, property, axis) ->
+    let resolved = List.find_map value [property;axis;all] in
+    set_style dom_node (prefix ^ "-" ^ side) (Option.value resolved ~default:""))
+    ["top",top,vertical;"right",right,horizontal;
+     "bottom",bottom,vertical;"left",left,horizontal];
+  if not margin then
+    set_style dom_node "--lui-content-padding" (Option.value (value all) ~default:"")
+
+let transition_surface kind dom_node =
+  match kind with
+  | DropdownMenu | Popover -> Util.child_element dom_node 0
+  | _ -> dom_node
+
+let popup_kind = function DropdownMenu | Popover -> true | _ -> false
+
+(* A positioner owns placement and lifecycle; its child is the retained
+   component's painted, measured and scrollable box. *)
+let property_surface kind dom_node property =
+  if kind = SwitchControl then
+    (match property with
+     | PaddingValue | PaddingHorizontal | PaddingVertical | PaddingTop
+     | PaddingRight | PaddingBottom | PaddingLeft | BackgroundValue
+     | BorderColorValue | BorderWidth | CornerRadius -> Util.child_element dom_node 0
+     | _ -> dom_node)
+  else if not (popup_kind kind) then dom_node
+  else
+    match property with
+    | Gap | MainAlignment | CrossAlignment | GridColumns | PaddingValue
+    | PaddingHorizontal | PaddingVertical | PaddingTop | PaddingRight
+    | PaddingBottom | PaddingLeft | BackgroundValue | ForegroundValue
+    | BorderColorValue | BorderWidth | CornerRadius | WidthValue | HeightValue
+    | MinWidth | MaxWidth | MinHeight | MaxHeight | AvailableHeight
+    | WidthViewport | HeightViewport | MinWidthViewport | MaxWidthViewport
+    | MinHeightViewport | MaxHeightViewport | FontFamily | FontStyle | FontSize
+    | FontWeight | LineHeight | LetterSpacing | TextDecoration | WhiteSpace
+    | TextOverflow | LineClamp | Overflow | Opacity | Cursor | UserSelect | Shadow
+    | HoverBackground | HoverForeground | HoverBorder | HoverOpacity
+    | HoverShadow | PressedBackground | PressedOpacity | PressedShadow
+    | FocusShadow | FocusWithinBackground | FocusWithinBorder | SelectedBackground | SelectedShadow | SelectedHoverShadow
+    | DisabledOpacity | DataAttrs ->
+        Util.child_element dom_node 0
+    | _ -> dom_node
+
+let set_dimension kind dom_node name value =
+  set_style dom_node name value;
+  if kind = SwitchControl then set_style (Util.child_element dom_node 0) name value
+
+let popup_limit axis value =
+  "min(" ^ value ^ ", var(--lui-popup-available-" ^ axis ^ ", " ^ value ^ "))"
+
+let refresh_popup_height renderer node kind surface =
+  let property = Store.property renderer.web_store node in
+  let declared =
+    List.filter_map Fun.id
+      [
+        (match property MaxHeight with
+        | Some (IntValue height) -> Some (string_of_int height ^ "px")
+        | _ -> None);
+        (match property MaxHeightViewport with
+        | Some (FloatValue height) ->
+            Some (Js.Float.toString (height *. 100.) ^ "dvh")
+        | _ -> None);
+      ]
+  in
+  let requested =
+    match property AvailableHeight with
+    | Some (FloatValue height) -> [ Js.Float.toString height ^ "px" ]
+    | _ -> []
+  in
+  if declared = [] && requested = [] then set_style surface "max-height" ""
+  else
+    let declared =
+      if
+        declared = []
+        && (kind = DropdownMenu
+           || property RoleValue = Some (StringValue "menu"))
+      then [ "18rem" ]
+      else declared
+    in
+    set_style surface "max-height"
+      ("min("
+      ^ String.concat ", "
+          (declared @ requested
+          @ [ "var(--lui-popup-available-height, 100dvh)" ])
+      ^ ")")
+
 (* webapi declares mediaQueryList but exposes no `matches` accessor; the LG
    source read it through a dict lookup on the same value. *)
 external media_query_matches : W.Window.mediaQueryList -> bool = "matches"
@@ -185,15 +287,15 @@ let set_text_control_value dom_node text =
       W.Element.setTextContent dom_node text)
 
 let set_visible_text kind dom_node text =
-  let target =
-    if Store.direct_toggle kind then Util.toggle_label_node dom_node
-    else if
-      Store.button_like kind || kind = MenuItem || kind = MenuTrigger
-    then Util.button_label_node dom_node
-    else dom_node
-  in
-  if text <> W.Element.textContent target then
-    W.Element.setTextContent target text
+  if Store.button_like kind || kind = MenuItem || kind = MenuTrigger then
+    Util.set_optional_text (Util.button_label_node dom_node) text
+  else
+    let target =
+      if Store.direct_toggle kind then Util.toggle_label_node dom_node
+      else dom_node
+    in
+    if text <> W.Element.textContent target then
+      W.Element.setTextContent target text
 
 let apply_text_value renderer node kind dom_node text =
   match kind with
@@ -327,23 +429,21 @@ let apply_progress_value renderer node kind dom_node value =
     W.HtmlInputElement.setValue (Util.text_control_node dom_node)
       (Js.Float.toString value)
 
-let apply_inline_icon_name renderer node kind dom_node name =
+let inline_icon_node renderer node kind dom_node =
   if kind = BottomTab then
-    (match Widgets.bottom_tab_trigger renderer node with
-     | Some trigger ->
-         let icon = Util.child_element trigger 0 in
-         W.Element.setAttribute "data-name" name icon;
-         Widgets.update_icon_name renderer icon name
-     | None -> ())
-  else if kind = TimelineItem then
+    Option.map (fun trigger -> Util.child_element trigger 0)
+      (Widgets.bottom_tab_trigger renderer node)
+  else
+    Some (if kind = ListItem then dom_node else Util.button_icon_node dom_node)
+
+let apply_inline_icon_name renderer node kind dom_node name =
+  if kind = TimelineItem then
     Widgets.update_timeline_indicator renderer node dom_node
-  else begin
-    let icon =
-      if kind = ListItem then dom_node else Util.button_icon_node dom_node
-    in
-    W.Element.setAttribute "data-name" name icon;
-    Widgets.update_icon_name renderer icon name
-  end
+  else
+    Option.iter (fun icon ->
+        W.Element.setAttribute "data-name" name icon;
+        Widgets.update_icon_name renderer icon name)
+      (inline_icon_node renderer node kind dom_node)
 
 let apply_selected renderer node kind dom_node selected =
   (* BottomTab selection lands on the trigger via the parent's refresh,
@@ -640,11 +740,13 @@ let apply_anchor_offset kind dom_node offset =
    per op on splits touched by several ops. *)
 let rec apply_property renderer queue_split node kind dom_node property
     value =
+  let dom_node = property_surface kind dom_node property in
   match (property, value) with
   | TextValue, StringValue text ->
       apply_text_value renderer node kind dom_node text
   | Enabled, BoolValue enabled ->
-      apply_enabled renderer node kind dom_node enabled
+      apply_enabled renderer node kind dom_node enabled;
+      Lui_web_events.update_appear renderer node
   | Gap, IntValue gap ->
       apply_gap renderer queue_split node kind dom_node gap
   | MainAlignment, StringValue alignment ->
@@ -654,55 +756,54 @@ let rec apply_property renderer queue_split node kind dom_node property
   | GrowValue, FloatValue grow ->
       set_style dom_node "flex-grow" (Js.Float.toString grow)
   | GridColumns, IntValue columns -> apply_grid_columns dom_node columns
-  | PaddingValue, IntValue padding ->
-      set_style dom_node "padding" (string_of_int padding ^ "px");
-      set_style dom_node "--lui-content-padding"
-        (string_of_int padding ^ "px")
-  | PaddingHorizontal, IntValue padding ->
-      set_style dom_node "padding-inline" (string_of_int padding ^ "px")
-  | PaddingVertical, IntValue padding ->
-      set_style dom_node "padding-block" (string_of_int padding ^ "px")
-  | MarginValue, IntValue margin ->
-      set_style dom_node "margin" (string_of_int margin ^ "px")
-  | MarginHorizontal, IntValue margin ->
-      set_style dom_node "margin-inline" (string_of_int margin ^ "px")
-  | MarginVertical, IntValue margin ->
-      set_style dom_node "margin-block" (string_of_int margin ^ "px")
-  | MarginTop, IntValue margin ->
-      set_style dom_node "margin-top" (string_of_int margin ^ "px")
-  | MarginRight, IntValue margin ->
-      set_style dom_node "margin-right" (string_of_int margin ^ "px")
-  | MarginBottom, IntValue margin ->
-      set_style dom_node "margin-bottom" (string_of_int margin ^ "px")
-  | MarginLeft, IntValue margin ->
-      set_style dom_node "margin-left" (string_of_int margin ^ "px")
+  | GridColumnSpan, IntValue span ->
+      set_style dom_node "grid-column" ("span " ^ string_of_int span ^ " / span " ^ string_of_int span)
+  | (PaddingValue | PaddingHorizontal | PaddingVertical | PaddingTop
+    | PaddingRight | PaddingBottom | PaddingLeft), IntValue _ ->
+      refresh_spacing renderer node dom_node ~margin:false
+  | (MarginValue | MarginHorizontal | MarginVertical | MarginTop
+    | MarginRight | MarginBottom | MarginLeft), IntValue _ ->
+      refresh_spacing renderer node dom_node ~margin:true
   | BackgroundValue, StringValue background ->
-      set_style dom_node "background" (Util.web_color_value background)
+      set_style dom_node "background"
+        ("var(--lui-current-focus-within-bg, var(--lui-current-selected-bg, var(--lui-current-pressed-bg, var(--lui-current-hover-bg, "
+         ^ Util.web_color_value background ^ "))))" )
   | ForegroundValue, StringValue foreground ->
-      set_style dom_node "color" (Util.web_color_value foreground)
+      set_style dom_node "color"
+        ("var(--lui-current-hover-fg, " ^ Util.web_color_value foreground ^ ")")
   | BorderColorValue, StringValue border ->
-      set_style dom_node "border-color" (Util.web_color_value border)
+      set_style dom_node "border-color"
+        ("var(--lui-current-focus-within-border, var(--lui-current-hover-border, " ^ Util.web_color_value border ^ "))")
   | BorderWidth, IntValue width ->
       set_style dom_node "border-style" "solid";
       set_style dom_node "border-width" (string_of_int width ^ "px")
   | CornerRadius, IntValue radius ->
       set_style dom_node "border-radius" (string_of_int radius ^ "px")
+  | WidthValue, StringValue "auto" ->
+      set_dimension kind dom_node "width" "auto";
+      if kind = Image then Widgets.update_image renderer node dom_node;
+      if kind = Bubble then W.Element.removeAttribute "data-width" dom_node
   | WidthValue, IntValue width ->
-      set_style dom_node "width" (string_of_int width ^ "px");
+      set_dimension kind dom_node "width" (string_of_int width ^ "px");
       if kind = Image then Widgets.update_image renderer node dom_node;
       if kind = Bubble then
         W.Element.setAttribute "data-width" "explicit" dom_node
+  | HeightValue, StringValue "auto" ->
+      set_dimension kind dom_node "height" "auto";
+      if kind = Image then Widgets.update_image renderer node dom_node
   | HeightValue, IntValue height ->
-      set_style dom_node "height" (string_of_int height ^ "px");
+      set_dimension kind dom_node "height" (string_of_int height ^ "px");
       if kind = Image then Widgets.update_image renderer node dom_node
   | MinWidth, IntValue width ->
       set_style dom_node "min-width" (string_of_int width ^ "px")
   | MaxWidth, IntValue width ->
-      set_style dom_node "max-width" (string_of_int width ^ "px")
+      let value = string_of_int width ^ "px" in
+      set_style dom_node "max-width" (if popup_kind kind then popup_limit "width" value else value)
   | MinHeight, IntValue height ->
       set_style dom_node "min-height" (string_of_int height ^ "px")
   | MaxHeight, IntValue height ->
-      set_style dom_node "max-height" (string_of_int height ^ "px")
+      if popup_kind kind then refresh_popup_height renderer node kind dom_node
+      else set_style dom_node "max-height" (string_of_int height ^ "px")
   | PlaceholderValue, StringValue placeholder ->
       apply_placeholder renderer node kind dom_node placeholder
   | AccessibilityLabel, StringValue label ->
@@ -775,9 +876,13 @@ and apply_secondary_property renderer queue_split node kind dom_node
   | ResizeDuration, IntValue _duration -> queue_split node
   | ResizeEasing, StringValue _easing -> queue_split node
   | ResizeOrigin, FloatValue _origin -> queue_split node
+  | FirstPaneWidth, FloatValue _ | ResizeHandleWidth, IntValue _
+  | ResizeHandleOffset, FloatValue _ -> queue_split node
   | OrientationValue, StringValue orientation ->
       W.Element.setAttribute "data-orientation" orientation dom_node;
-      W.Element.setAttribute "aria-orientation" orientation dom_node
+      if kind = Row then set_style dom_node "flex-direction"
+        (if orientation="vertical" then "column" else "row")
+      else W.Element.setAttribute "aria-orientation" orientation dom_node
   | SizeValue, StringValue size ->
       W.Element.setAttribute "data-size" size dom_node
   | IconName, StringValue name ->
@@ -789,9 +894,14 @@ and apply_secondary_property renderer queue_split node kind dom_node
       apply_inline_icon_name renderer node kind dom_node name
   | IconPlacementValue, StringValue placement ->
       W.Element.setAttribute "data-icon-placement" placement dom_node
+  | SelectionPlacementValue, StringValue placement ->
+      W.Element.setAttribute "data-selection-placement" placement dom_node;
+      set_style (Util.menu_item_check_node dom_node) "order"
+        (if placement = "leading" then "-4" else "1")
   | Selected, BoolValue selected ->
       apply_selected renderer node kind dom_node selected
   | Autofocus, BoolValue autofocus -> apply_autofocus dom_node autofocus
+  | AppearEnabled, BoolValue _ -> Lui_web_events.update_appear renderer node
   | SubmitOnEnter, BoolValue enabled ->
       Util.set_state_attribute dom_node "data-submit-on-enter" enabled
   | LongPressEnabled, BoolValue enabled ->
@@ -808,7 +918,12 @@ and apply_secondary_property renderer queue_split node kind dom_node
       W.Element.setAttribute "role" role
         (if kind = Popover then Util.child_element dom_node 0 else dom_node);
       W.Element.removeAttribute "aria-pressed" dom_node;
-      refresh_node_class renderer node kind dom_node
+      if kind = Popover then
+        Lui_web_layers.set_policy renderer.web_layers renderer.web_document node
+          (Lui_web_layers.popover_policy (Store.property renderer.web_store node));
+      refresh_node_class renderer node kind dom_node;
+      if popup_kind kind then
+        refresh_popup_height renderer node kind (transition_surface kind dom_node)
   | TreeLevel, IntValue level ->
       W.Element.setAttribute "aria-level" (string_of_int level) dom_node
   | Expanded, BoolValue expanded ->
@@ -817,6 +932,7 @@ and apply_secondary_property renderer queue_split node kind dom_node
         (if expanded then "true" else "false") dom_node
   | SubmitEnabled, BoolValue enabled ->
       Util.set_state_attribute dom_node "data-submit-enabled" enabled
+  | NavigateEnabled, BoolValue _ | SubmitOnBlur, BoolValue _ -> ()
   | DoublePressEnabled, BoolValue enabled ->
       Util.set_state_attribute dom_node "data-double-press-enabled" enabled
   | ImageIdValue, IntValue _image_id ->
@@ -847,11 +963,14 @@ and apply_secondary_property renderer queue_split node kind dom_node
   | SourceWidth, FloatValue _value | SourceHeight, FloatValue _value ->
       apply_media_source renderer node kind dom_node
   | AnchorValue, StringValue anchor ->
-      W.Element.setAttribute "data-anchor" anchor dom_node;
-      if kind = Tooltip then
-        W.Element.setAttribute "data-anchor-alignment" "start" dom_node
+      W.Element.setAttribute "data-anchor" anchor dom_node
+  | AnchorTarget, StringValue identifier ->
+      W.Element.setAttribute "data-anchor-target" identifier dom_node
+  | AnchorRect, StringValue value ->
+      W.Element.setAttribute "data-anchor-rect" value dom_node
   | AnchorAlignmentValue, StringValue alignment ->
       W.Element.setAttribute "data-anchor-alignment" alignment dom_node
+  | (AnchorAlignmentOffset | CollisionPadding), FloatValue _ -> ()
   | AnchorOffset, FloatValue offset ->
       apply_anchor_offset kind dom_node offset
   | UrlValue, StringValue url ->
@@ -861,7 +980,17 @@ and apply_secondary_property renderer queue_split node kind dom_node
         W.Element.setAttribute "target" "_blank" dom_node
       end
   | Opacity, FloatValue value ->
-      set_style dom_node "opacity" (Js.Float.toString value)
+      set_style dom_node "opacity"
+        ("var(--lui-current-disabled-opacity, var(--lui-current-pressed-opacity, var(--lui-current-hover-opacity, "
+         ^ Js.Float.toString value ^ ")))" )
+  | IndicatorBorderColor, StringValue value ->
+      set_style (Util.child_element dom_node 0) "--lui-indicator-border-color" (Util.web_color_value value)
+  | CheckedIndicatorBorderColor, StringValue value ->
+      let indicator = Util.child_element dom_node 0 in
+      set_style indicator "--lui-checked-indicator-border-color" (Util.web_color_value value);
+      set_style indicator "--lui-checked-indicator-border-width" "1px"
+  | LabelOpacity, FloatValue value ->
+      set_style (Util.child_element dom_node 1) "opacity" (Js.Float.toString value)
   | DisplayValue, StringValue value -> set_style dom_node "display" value
   | FontFamily, StringValue value -> set_style dom_node "font-family" value
   | FontStyle, StringValue value -> set_style dom_node "font-style" value
@@ -869,7 +998,8 @@ and apply_secondary_property renderer queue_split node kind dom_node
       set_style dom_node "text-decoration" value
   | ListStyle, StringValue value -> set_style dom_node "list-style" value
   | FlexWrap, StringValue value -> set_style dom_node "flex-wrap" value
-  | Transition, StringValue value -> set_style dom_node "transition" value
+  | Transition, StringValue value ->
+      set_style (transition_surface kind dom_node) "transition" value
   | TooltipText, StringValue value ->
       W.Element.setAttribute "data-tooltip" value dom_node
   | TooltipKeys, StringValue value ->
@@ -880,15 +1010,9 @@ and apply_secondary_property renderer queue_split node kind dom_node
       W.Element.setAttribute "data-accept" value dom_node
   | PickerDirectory, BoolValue value ->
       Util.set_state_attribute dom_node "data-directory" value
-  | PopupX, FloatValue _ | PopupY, FloatValue _ ->
-      if kind = DropdownMenu then
-        Lui_web_position.position_dropdown renderer node
-      else Lui_web_position.position_popover renderer node
-  | AvailableHeight, FloatValue value ->
-      let popup = Util.child_element dom_node 0 in
-      set_style popup "max-height" (Js.Float.toString value ^ "px");
-      set_style dom_node "--lui-popup-available-height"
-        (Js.Float.toString value ^ "px")
+  | PopupX, FloatValue _ | PopupY, FloatValue _ -> ()
+  | AvailableHeight, FloatValue _ ->
+      refresh_popup_height renderer node kind dom_node
   | TargetValue, StringValue target ->
       if kind = Link then begin
         W.Element.setAttribute "target" target dom_node;
@@ -909,8 +1033,11 @@ and apply_secondary_property renderer queue_split node kind dom_node
   | PathValue, StringValue path ->
       W.Element.setAttribute "data-path" path dom_node
   | ImageFitValue, StringValue value ->
-      W.Element.setAttribute "data-image-fit" value dom_node;
-      set_style dom_node "object-fit" (if value = "fill" then "cover" else "contain")
+      if kind = Image then Widgets.update_image renderer node dom_node
+      else begin
+        W.Element.setAttribute "data-image-fit" value dom_node;
+        set_style dom_node "object-fit" (if value = "fill" then "cover" else "contain")
+      end
   | MaxPixelSize, IntValue size ->
       W.Element.setAttribute "data-max-pixel-size" (string_of_int size)
         dom_node
@@ -925,11 +1052,13 @@ and apply_secondary_property renderer queue_split node kind dom_node
         W.Element.setAttribute "data-reactions-alignment" alignment dom_node
       else set_style dom_node "text-align" alignment
   | ContainerRelativeFrameValue, StringValue axes ->
-      apply_frame_axes dom_node axes
+      apply_frame_axes dom_node axes;
+      if kind = Image then Widgets.update_image renderer node dom_node
   | ContainerRelativeFrameInset, IntValue inset ->
       apply_frame_inset dom_node inset
   | EdgeValue, StringValue edge ->
       W.Element.setAttribute "data-edge" edge dom_node
+  | Inert, BoolValue inert -> Util.set_state_attribute dom_node "inert" inert
   | Visible, BoolValue visible ->
       Util.set_state_attribute dom_node "data-pinned-hidden" (not visible)
   | AlignmentValue, StringValue alignment ->
@@ -950,6 +1079,7 @@ and apply_secondary_property renderer queue_split node kind dom_node
   | LetterSpacing, FloatValue spacing ->
       set_style dom_node "letter-spacing" (Js.Float.toString spacing ^ "px")
   | Position, StringValue position ->
+      W.Element.setAttribute "data-lui-position" position dom_node;
       set_style dom_node "position" position
   | Inset, FloatValue inset ->
       set_style dom_node "inset" (Js.Float.toString inset ^ "px")
@@ -963,6 +1093,9 @@ and apply_secondary_property renderer queue_split node kind dom_node
       set_style dom_node "left" (Js.Float.toString inset ^ "px")
   | ZIndex, IntValue index ->
       set_style dom_node "z-index" (string_of_int index)
+  | LineClamp, IntValue value ->
+      W.Element.setAttribute "data-lui-line-clamp" "" dom_node;
+      set_style dom_node "-webkit-line-clamp" (string_of_int value)
   | WhiteSpace, StringValue value ->
       set_style dom_node "white-space" value
   | TextOverflow, StringValue value ->
@@ -989,7 +1122,12 @@ and apply_secondary_property renderer queue_split node kind dom_node
   | PressedShadow, StringValue shadow ->
       set_style dom_node "--lui-pressed-shadow" (Util.web_shadow_value shadow)
   | FocusShadow, StringValue shadow ->
-      set_style dom_node "--lui-focus-shadow" (Util.web_shadow_value shadow)
+      set_style dom_node "--lui-focus-shadow" (Util.web_shadow_value shadow);
+      set_style dom_node "box-shadow" "var(--lui-current-focus-shadow, revert-layer)"
+  | FocusWithinBackground, StringValue color ->
+      set_style dom_node "--lui-focus-within-bg" (Util.web_color_value color)
+  | FocusWithinBorder, StringValue color ->
+      set_style dom_node "--lui-focus-within-border" (Util.web_color_value color)
   | SelectedBackground, StringValue color ->
       set_style dom_node "--lui-selected-bg" (Util.web_color_value color)
   | SelectedShadow, StringValue shadow ->
@@ -1000,22 +1138,24 @@ and apply_secondary_property renderer queue_split node kind dom_node
       set_style dom_node "--lui-disabled-opacity" (Js.Float.toString opacity)
   | WidthViewport, FloatValue width ->
       set_style dom_node "width"
-        (Printf.sprintf "%gdvw" (width *. 100.0))
+        (Printf.sprintf "%gdvw" (width *. 100.0));
+      if kind = Image then Widgets.update_image renderer node dom_node
   | HeightViewport, FloatValue height ->
       set_style dom_node "height"
-        (Printf.sprintf "%gdvh" (height *. 100.0))
+        (Printf.sprintf "%gdvh" (height *. 100.0));
+      if kind = Image then Widgets.update_image renderer node dom_node
   | MinWidthViewport, FloatValue width ->
       set_style dom_node "min-width"
         (Printf.sprintf "%gdvw" (width *. 100.0))
   | MaxWidthViewport, FloatValue width ->
-      set_style dom_node "max-width"
-        (Printf.sprintf "%gdvw" (width *. 100.0))
+      let value = Printf.sprintf "%gdvw" (width *. 100.0) in
+      set_style dom_node "max-width" (if popup_kind kind then popup_limit "width" value else value)
   | MinHeightViewport, FloatValue height ->
       set_style dom_node "min-height"
         (Printf.sprintf "%gdvh" (height *. 100.0))
   | MaxHeightViewport, FloatValue height ->
-      set_style dom_node "max-height"
-        (Printf.sprintf "%gdvh" (height *. 100.0))
+      if popup_kind kind then refresh_popup_height renderer node kind dom_node
+      else set_style dom_node "max-height" (Printf.sprintf "%gdvh" (height *. 100.0))
   | _ ->
       invalid_arg
         ("invalid DOM property value: " ^ Lui_wire_schema.property_name property)
@@ -1023,15 +1163,35 @@ and apply_secondary_property renderer queue_split node kind dom_node
 let apply_property_bang = apply_property
 
 let remove_property renderer queue_split node kind dom_node property =
+  let dom_node = property_surface kind dom_node property in
   match Store.node renderer.web_store node with
   | Some _current ->
       (match property with
+       | SelectionPlacementValue ->
+           W.Element.removeAttribute "data-selection-placement" dom_node;
+           set_style (Util.menu_item_check_node dom_node) "order" ""
+       | InlineIconName ->
+           if kind = TimelineItem then
+             Widgets.update_timeline_indicator renderer node dom_node
+           else
+             Option.iter (fun icon ->
+                 W.Element.removeAttribute "data-name" icon;
+                 set_style icon "--lui-icon-image" "")
+               (inline_icon_node renderer node kind dom_node)
+       | AppearEnabled -> Lui_web_events.release_appear renderer node
        | StyleValue -> W.Element.removeAttribute "data-list-style" dom_node
-       | ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange -> ()
+       | SizeValue -> W.Element.removeAttribute "data-size" dom_node
+       | Selected when kind = ListItem ->
+           Util.set_state_attribute dom_node "data-selected" false;
+           if Store.treeitem renderer node then
+             W.Element.setAttribute "aria-selected" "false" dom_node
+           else W.Element.removeAttribute "aria-pressed" dom_node
+       | NavigateEnabled | SubmitOnBlur | ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange -> ()
        | TextValue -> apply_text_value renderer node kind dom_node ""
        | Enabled ->
            apply_property renderer queue_split node kind dom_node Enabled
              (BoolValue true)
+       | FirstPaneWidth | ProgressValue | ResizeHandleWidth | ResizeHandleOffset when kind = Split -> queue_split node
        | Gap ->
            if kind = Split then queue_split node
            else set_style dom_node "gap" ""
@@ -1042,18 +1202,12 @@ let remove_property renderer queue_split node kind dom_node property =
            set_style dom_node "grid-auto-flow" "";
            set_style dom_node "grid-auto-columns" "";
            set_style dom_node "grid-template-columns" ""
-       | PaddingValue ->
-           set_style dom_node "padding" "";
-           set_style dom_node "--lui-content-padding" ""
-       | PaddingHorizontal -> set_style dom_node "padding-inline" ""
-       | PaddingVertical -> set_style dom_node "padding-block" ""
-       | MarginValue -> set_style dom_node "margin" ""
-       | MarginHorizontal -> set_style dom_node "margin-inline" ""
-       | MarginVertical -> set_style dom_node "margin-block" ""
-       | MarginTop -> set_style dom_node "margin-top" ""
-       | MarginRight -> set_style dom_node "margin-right" ""
-       | MarginBottom -> set_style dom_node "margin-bottom" ""
-       | MarginLeft -> set_style dom_node "margin-left" ""
+       | PaddingValue | PaddingHorizontal | PaddingVertical | PaddingTop
+       | PaddingRight | PaddingBottom | PaddingLeft ->
+           refresh_spacing renderer node dom_node ~margin:false
+       | MarginValue | MarginHorizontal | MarginVertical | MarginTop
+       | MarginRight | MarginBottom | MarginLeft ->
+           refresh_spacing renderer node dom_node ~margin:true
        | BackgroundValue -> set_style dom_node "background" ""
        | ForegroundValue -> set_style dom_node "color" ""
        | BorderColorValue -> set_style dom_node "border-color" ""
@@ -1061,21 +1215,27 @@ let remove_property renderer queue_split node kind dom_node property =
            set_style dom_node "border-style" "";
            set_style dom_node "border-width" ""
        | CornerRadius -> set_style dom_node "border-radius" ""
-       | WidthValue -> set_style dom_node "width" ""
-       | HeightValue -> set_style dom_node "height" ""
+       | WidthValue -> set_dimension kind dom_node "width" "";
+           if kind = Image then Widgets.update_image renderer node dom_node
+       | HeightValue -> set_dimension kind dom_node "height" "";
+           if kind = Image then Widgets.update_image renderer node dom_node
        | MinWidth -> set_style dom_node "min-width" ""
        | MaxWidth -> set_style dom_node "max-width" ""
        | MinHeight -> set_style dom_node "min-height" ""
-       | MaxHeight -> set_style dom_node "max-height" ""
+       | MaxHeight ->
+           if popup_kind kind then refresh_popup_height renderer node kind dom_node
+           else set_style dom_node "max-height" ""
        | ContainerRelativeFrameValue ->
            W.Element.removeAttribute "data-lui-frame-axes" dom_node;
            set_style dom_node "width" "";
            set_style dom_node "height" "";
            set_style dom_node "min-width" "";
-           set_style dom_node "min-height" ""
+           set_style dom_node "min-height" "";
+           if kind = Image then Widgets.update_image renderer node dom_node
        | ContainerRelativeFrameInset ->
            W.Element.removeAttribute "data-lui-frame-inset" dom_node
        | EdgeValue -> W.Element.removeAttribute "data-edge" dom_node
+       | Inert -> W.Element.removeAttribute "inert" dom_node
        | Visible -> W.Element.removeAttribute "data-pinned-hidden" dom_node
        | AlignmentValue ->
            W.Element.removeAttribute "data-alignment" dom_node
@@ -1108,28 +1268,48 @@ let remove_property renderer queue_split node kind dom_node property =
              W.Element.removeAttribute "href" dom_node;
              W.Element.removeAttribute "target" dom_node
            end
+       | ImageIdValue | SourceX | SourceY | SourceWidth | SourceHeight when kind = Image ->
+           Widgets.update_image renderer node dom_node
        | Opacity -> set_style dom_node "opacity" ""
+       | IndicatorBorderColor ->
+           set_style (Util.child_element dom_node 0) "--lui-indicator-border-color" ""
+       | CheckedIndicatorBorderColor ->
+           let indicator = Util.child_element dom_node 0 in
+           set_style indicator "--lui-checked-indicator-border-color" "";
+           set_style indicator "--lui-checked-indicator-border-width" ""
+       | LabelOpacity -> set_style (Util.child_element dom_node 1) "opacity" ""
        | DisplayValue -> set_style dom_node "display" ""
        | FontFamily -> set_style dom_node "font-family" ""
        | FontStyle -> set_style dom_node "font-style" ""
        | TextDecoration -> set_style dom_node "text-decoration" ""
        | ListStyle -> set_style dom_node "list-style" ""
        | FlexWrap -> set_style dom_node "flex-wrap" ""
-       | Transition -> set_style dom_node "transition" ""
+       | Transition -> set_style (transition_surface kind dom_node) "transition" ""
        | TooltipText -> W.Element.removeAttribute "data-tooltip" dom_node
        | TooltipKeys -> W.Element.removeAttribute "data-tooltip-keys" dom_node
        | InputType -> W.Element.removeAttribute "type" dom_node
        | PickerAccept -> W.Element.removeAttribute "data-accept" dom_node
        | PickerDirectory ->
            W.Element.removeAttribute "data-directory" dom_node
-       | PopupX | PopupY ->
-           if kind = DropdownMenu then
-             Lui_web_position.position_dropdown renderer node
-           else Lui_web_position.position_popover renderer node
+       | PopupX | PopupY | AnchorAlignmentOffset | CollisionPadding -> ()
+       | AnchorTarget -> W.Element.removeAttribute "data-anchor-target" dom_node
+       | AnchorRect -> W.Element.removeAttribute "data-anchor-rect" dom_node
+       | AnchorAlignmentValue ->
+           W.Element.removeAttribute "data-anchor-alignment" dom_node
+       | AnchorOffset ->
+           set_style dom_node "--lui-anchor-offset" "";
+           if kind = Tooltip then
+             W.Element.removeAttribute "data-anchor-offset" dom_node
        | AvailableHeight ->
-           let popup = Util.child_element dom_node 0 in
-           set_style popup "max-height" "";
-           set_style dom_node "--lui-popup-available-height" ""
+           refresh_popup_height renderer node kind dom_node
+       | RoleValue ->
+           W.Element.removeAttribute "role" (transition_surface kind dom_node);
+           if kind = Popover then
+             Lui_web_layers.set_policy renderer.web_layers renderer.web_document node
+               (Lui_web_layers.popover_policy (Store.property renderer.web_store node));
+           refresh_node_class renderer node kind dom_node;
+           if popup_kind kind then
+             refresh_popup_height renderer node kind (transition_surface kind dom_node)
        | TargetValue ->
            if kind = Link then begin
              W.Element.removeAttribute "target" dom_node;
@@ -1147,29 +1327,42 @@ let remove_property renderer queue_split node kind dom_node property =
              (Util.child_element dom_node 0)
        | PathValue -> W.Element.removeAttribute "data-path" dom_node
        | ImageFitValue ->
-           W.Element.removeAttribute "data-image-fit" dom_node;
-           set_style dom_node "object-fit" "contain"
+           if kind = Image then Widgets.update_image renderer node dom_node
+           else begin
+             W.Element.removeAttribute "data-image-fit" dom_node;
+             set_style dom_node "object-fit" "contain"
+           end
        | MaxPixelSize ->
            W.Element.removeAttribute "data-max-pixel-size" dom_node
        | AccessibilityIdentifier -> W.Element.removeAttribute "id" dom_node
        | OrientationValue ->
+           if kind = Row then begin
+             W.Element.removeAttribute "data-orientation" dom_node;
+             set_style dom_node "flex-direction" ""
+           end else
            if kind = Tabs then begin
              W.Element.setAttribute "data-orientation" "horizontal" dom_node;
              W.Element.setAttribute "aria-orientation" "horizontal" dom_node
            end
+       | GridColumnSpan -> set_style dom_node "grid-column" ""
        | StyleClass -> refresh_node_class renderer node kind dom_node
        | DataAttrs -> remove_data_attrs dom_node
        | FontSize -> set_style dom_node "font-size" ""
        | FontWeight -> set_style dom_node "font-weight" ""
        | LineHeight -> set_style dom_node "line-height" ""
        | LetterSpacing -> set_style dom_node "letter-spacing" ""
-       | Position -> set_style dom_node "position" ""
+       | Position ->
+           W.Element.removeAttribute "data-lui-position" dom_node;
+           set_style dom_node "position" ""
        | Inset -> set_style dom_node "inset" ""
        | InsetTop -> set_style dom_node "top" ""
        | InsetRight -> set_style dom_node "right" ""
        | InsetBottom -> set_style dom_node "bottom" ""
        | InsetLeft -> set_style dom_node "left" ""
        | ZIndex -> set_style dom_node "z-index" ""
+       | LineClamp ->
+           W.Element.removeAttribute "data-lui-line-clamp" dom_node;
+           set_style dom_node "-webkit-line-clamp" ""
        | WhiteSpace -> set_style dom_node "white-space" ""
        | TextOverflow -> set_style dom_node "text-overflow" ""
        | Overflow -> set_style dom_node "overflow" ""
@@ -1184,19 +1377,89 @@ let remove_property renderer queue_split node kind dom_node property =
        | PressedBackground -> set_style dom_node "--lui-pressed-bg" ""
        | PressedOpacity -> set_style dom_node "--lui-pressed-opacity" ""
        | PressedShadow -> set_style dom_node "--lui-pressed-shadow" ""
-       | FocusShadow -> set_style dom_node "--lui-focus-shadow" ""
+       | FocusShadow -> set_style dom_node "--lui-focus-shadow" "";set_style dom_node "box-shadow" ""
+       | FocusWithinBackground -> set_style dom_node "--lui-focus-within-bg" ""
+       | FocusWithinBorder -> set_style dom_node "--lui-focus-within-border" ""
        | SelectedBackground -> set_style dom_node "--lui-selected-bg" ""
        | SelectedShadow -> set_style dom_node "--lui-selected-shadow" ""
        | SelectedHoverShadow ->
            set_style dom_node "--lui-selected-hover-shadow" ""
        | DisabledOpacity -> set_style dom_node "--lui-disabled-opacity" ""
-       | WidthViewport -> set_style dom_node "width" ""
-       | HeightViewport -> set_style dom_node "height" ""
+       | WidthViewport -> set_style dom_node "width" "";
+           if kind = Image then Widgets.update_image renderer node dom_node
+       | HeightViewport -> set_style dom_node "height" "";
+           if kind = Image then Widgets.update_image renderer node dom_node
        | MinWidthViewport -> set_style dom_node "min-width" ""
        | MaxWidthViewport -> set_style dom_node "max-width" ""
        | MinHeightViewport -> set_style dom_node "min-height" ""
-       | MaxHeightViewport -> set_style dom_node "max-height" ""
+       | MaxHeightViewport ->
+           if popup_kind kind then refresh_popup_height renderer node kind dom_node
+           else set_style dom_node "max-height" ""
        | _ -> ())
   | None -> invalid_arg "unknown DOM node"
 
 let remove_property_bang = remove_property
+
+(* Portals retain authored logical inheritance outside their DOM ancestry.
+   Keep tokens live and avoid separate application CSS inheritance rules. *)
+let refresh_portal_property renderer node dom_node property css_name =
+  let authored id =
+    match Store.property renderer.web_store id property with
+    | Some (StringValue value)
+      when value <> "inherit"
+           && (property <> ForegroundValue || value <> "currentColor") ->
+        Some
+          (if property = ForegroundValue then Util.web_color_value value
+           else value)
+    | _ -> None
+  in
+  let rec ancestor_value id =
+    match Store.node renderer.web_store id with
+    | None -> invalid_arg "unknown logical portal ancestor"
+    | Some current -> (
+        match authored id with
+        | Some value -> Some value
+        | None -> Option.bind current.retained_parent ancestor_value)
+  in
+  match Store.node renderer.web_store node with
+  | None -> ()
+  (* Logical detach precedes the transport's exit animation. *)
+  | Some { retained_parent = None; _ } -> ()
+  | Some current -> (
+      match Store.standard_kind current with
+      | None -> invalid_arg "portal index requires a standard node"
+      | Some kind ->
+          let wrapper =
+            modal_surface kind
+            || property = ForegroundValue
+               && (kind = DropdownMenu || kind = Popover)
+          in
+          let target =
+            if modal_surface kind then Util.modal_layer_node dom_node
+            else dom_node
+          in
+          let explicit = Option.is_some (authored node) in
+          if wrapper || not explicit then begin
+            let inherited =
+              Option.bind current.retained_parent ancestor_value
+            in
+            let value =
+              match inherited with
+              | None -> ""
+              | Some value when property = ForegroundValue && not wrapper ->
+                  "var(--lui-current-hover-fg, " ^ value ^ ")"
+              | Some value -> value
+            in
+            let style =
+              W.HtmlElement.style (W.Element.unsafeAsHtmlElement target)
+            in
+            if W.CssStyleDeclaration.getPropertyValue css_name style <> value
+            then Util.set_style style css_name value
+          end)
+
+let refresh_portal_inheritance renderer =
+  Hashtbl.iter
+    (fun node dom_node ->
+      refresh_portal_property renderer node dom_node ForegroundValue "color";
+      refresh_portal_property renderer node dom_node FontFamily "font-family")
+    renderer.web_portal_nodes

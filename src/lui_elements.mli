@@ -29,7 +29,7 @@ type text_alignment = [ `start | `center | `end_ ]
 type orientation = [ `horizontal | `vertical ]
 type icon_placement = [ `leading | `trailing | `top ]
 type anchor = [ `above | `below | `left | `right ]
-type anchor_alignment = [ `start | `end_ | `stretch ]
+type anchor_alignment = [ `start | `center | `end_ | `stretch ]
 
 type edge = [ `top | `bottom | `leading | `trailing ]
 
@@ -52,7 +52,7 @@ type list_style = [ `plain | `inset | `inset_grouped ]
     distinct from [list_style], the SwiftUI-style container appearance
     passed as [~style]. *)
 type list_marker = [ `none | `disc | `decimal ]
-type scroll_anchor = [ `top | `center | `bottom ]
+type scroll_anchor = [ `top | `center | `bottom | `nearest ]
 type separator_visibility = [ `visible | `hidden ]
 
 (** Platform vocabulary re-exported from {!Lui_protocol} so view code can
@@ -84,13 +84,13 @@ type display =
   [ `contents | `none | `block | `inline | `inline_block | `inline_flex ]
 
 type flex_wrap = [ `nowrap | `wrap ]
-type input_kind = [ `text | `color ]
-type popover_role = [ `menu ]
+type input_kind = [ `text | `color | `time ]
+type popover_role = [ `dialog | `menu ]
 type swipe_edge = [ `leading | `trailing ]
 
-(** [~as_] element-tag overrides for the phrasing kinds ([text],
-    [heading], [paragraph], [label]) on web. Each kind admits only its
-    phrasing-appropriate subset — see
+(** [~as_] semantic element-tag overrides on web. Textual kinds admit
+    phrasing-appropriate tags; columns admit [div], [ul], [ol], and rows
+    admit [div], [li]. Layout and child contracts remain unchanged. See
     {!Lui_protocol.element_tag_supported}; a mismatch fails validation at
     emit, and native hosts ignore the prop. *)
 type element_tag =
@@ -117,6 +117,9 @@ type element_tag =
   | `H6
   | `P
   | `Div
+  | `Ul
+  | `Ol
+  | `Li
   | `Label ]
 
 (** [~source] of {!file_picker}: [`files] presents a document importer,
@@ -266,6 +269,7 @@ val is_long_press : Lui_protocol.event -> bool
 val is_double_press : Lui_protocol.event -> bool
 val is_change : Lui_protocol.event -> bool
 val is_input : Lui_protocol.event -> bool
+val is_navigate : Lui_protocol.event -> bool
 val is_submit : Lui_protocol.event -> bool
 val is_toggle : Lui_protocol.event -> bool
 val is_dismiss : Lui_protocol.event -> bool
@@ -282,6 +286,15 @@ val register_change :
 val register_input :
   Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
 val register_submit :
+  Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
+
+(** Text inputs opt in to unmodified Up/Down as
+    [NavigatePrevious]/[NavigateNext]. Buttons opt in to arrow, Home/End and
+    PageUp/PageDown [NavigationKey] events, retaining the Shift flag.
+    Other modifier combinations keep their shortcut behavior.
+    For text inputs, Window and Web hosts retain focus and the text selection;
+    modified arrows and IME composition keep their editing behavior. *)
+val register_navigate :
   Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
 val register_toggle :
   Lui_ui.ui_context -> int -> (Lui_protocol.event -> unit) -> unit
@@ -341,12 +354,15 @@ val apply_universal :
   on_pointer_leave:(Lui_protocol.event -> unit) option ->
   transition:string option -> unit
 val row :
+  ?as_:element_tag ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
   ?cross:cross_alignment ->
   ?grow:float ->
   ?columns:int ->
+  ?orientation:orientation ->
+  ?orientation_signal:orientation Signal.signal ->
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->
@@ -386,6 +402,7 @@ val row :
   ?flex_wrap:flex_wrap ->
   ?transition:string -> t list -> t
 val column :
+  ?as_:element_tag ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -411,6 +428,7 @@ val column :
   ?width:int ->
   ?height:int ->
   ?min_width:int ->
+  ?min_width_signal:int Signal.signal ->
   ?max_width:int ->
   ?max_width_signal:int Signal.signal ->
   ?min_height:int ->
@@ -855,6 +873,9 @@ val bubble :
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?transition:string -> t list -> t
+
+(** [inert] suspends Web DOM and OCaml native subtree interaction while
+    retaining layout and paint. Floating surfaces keep their own lifecycle. *)
 val box :
   ?key:string ->
   ?gap:int ->
@@ -899,6 +920,8 @@ val box :
   ?opacity_signal:float Signal.signal ->
   ?display:display ->
   ?flex_wrap:flex_wrap ->
+  ?inert:bool ->
+  ?inert_signal:bool Signal.signal ->
   ?transition:string -> t list -> t
 val scroll :
   ?key:string ->
@@ -1494,6 +1517,9 @@ val table_cell :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?text:string ->
   ?text_signal:string Signal.signal ->
+  ?font_size:string ->
+  ?font_weight:int ->
+  ?line_height:string ->
   ?size:cell_size ->
   ?text_alignment:text_alignment ->
   ?on_press:(Lui_protocol.event -> unit) ->
@@ -1597,6 +1623,19 @@ val resizable :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?label:string -> ?resizable_width:int ->
   ?transition:string -> t list -> t
+
+(** A horizontal split controlled by either [value] (a track fraction) or
+    [first_width] (logical pixels, native OCaml and Web backends).
+    These inputs are mutually exclusive.
+    [gap] reserves layout space between panes. [resize_handle_width] controls
+    the independent hit area; by default it uses the gap, or three logical
+    pixels for a zero gap. [resize_handle_offset] moves its center from the
+    gap center toward the second pane, without changing either pane width.
+    [on_resize] reports [ValueChanged] in the units of the chosen input.
+    Pane minima and maxima constrain user resizing; controlled closure may
+    reach zero so opening and closing animations can complete.
+    A controlled split retains its pane layout and animation when
+    [resize_handle_width] is zero; its divider then accepts no input. *)
 val split :
   ?key:string ->
   ?gap:int ->
@@ -1639,6 +1678,12 @@ val split :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?value:float ->
   ?value_signal:float Signal.signal ->
+  ?first_width:float ->
+  ?first_width_signal:float Signal.signal ->
+  ?resize_handle_width:int ->
+  ?resize_handle_width_signal:int Signal.signal ->
+  ?resize_handle_offset:float ->
+  ?resize_handle_offset_signal:float Signal.signal ->
   ?resize_duration:int ->
   ?resize_easing:resize_easing ->
   ?resize_origin:float ->
@@ -1913,7 +1958,7 @@ val text :
   ?font_family:string ->
   ?font_style:string ->
   ?text_decoration:string ->
-  ?white_space:string ->
+  ?white_space:string -> ?line_clamp:int ->
   ?text_overflow:string ->
   ?overflow:string ->
   ?on_press:(Lui_protocol.event -> unit) ->
@@ -1965,6 +2010,7 @@ val heading :
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?level:int ->
   ?value:string -> ?value_signal:string Signal.signal ->
+  ?text_alignment:text_alignment ->
   ?font_size:string ->
   ?font_weight:int ->
   ?line_height:string ->
@@ -1972,10 +2018,10 @@ val heading :
   ?font_family:string ->
   ?font_style:string ->
   ?text_decoration:string ->
-  ?white_space:string ->
+  ?white_space:string -> ?line_clamp:int ->
   ?text_overflow:string ->
   ?overflow:string ->
-  ?transition:string -> nothing list -> t
+  ?transition:string -> t list -> t
 val paragraph :
   ?key:string ->
   ?gap:int ->
@@ -2018,6 +2064,7 @@ val paragraph :
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?value:string -> ?value_signal:string Signal.signal ->
+  ?text_alignment:text_alignment ->
   ?font_size:string ->
   ?font_weight:int ->
   ?line_height:string ->
@@ -2025,10 +2072,10 @@ val paragraph :
   ?font_family:string ->
   ?font_style:string ->
   ?text_decoration:string ->
-  ?white_space:string ->
+  ?white_space:string -> ?line_clamp:int ->
   ?text_overflow:string ->
   ?overflow:string ->
-  ?transition:string -> nothing list -> t
+  ?transition:string -> t list -> t
 val label :
   ?key:string ->
   ?gap:int ->
@@ -2078,10 +2125,10 @@ val label :
   ?font_family:string ->
   ?font_style:string ->
   ?text_decoration:string ->
-  ?white_space:string ->
+  ?white_space:string -> ?line_clamp:int ->
   ?text_overflow:string ->
   ?overflow:string ->
-  ?transition:string -> nothing list -> t
+  ?transition:string -> t list -> t
 val kbd :
   ?key:string ->
   ?gap:int ->
@@ -2174,9 +2221,11 @@ val button :
   ?label:string ->
   ?text_alignment:text_alignment ->
   ?selected:bool ->
+  ?selected_signal:bool Signal.signal ->
   ?autofocus:bool ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
+  ?on_navigate:(Lui_protocol.event -> unit) ->
   ?on_press:(Lui_protocol.event -> unit) ->
   ?on_long_press:(Lui_protocol.event -> unit) ->
   ?on_press_detail:(Lui_protocol.event -> unit) ->
@@ -2765,6 +2814,8 @@ val br :
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?transition:string -> nothing list -> t
+(* Text-entry constructors can opt into Submit on focus loss with
+   [submit_on_blur]. Unfinished composition never submits on blur. *)
 val text_field :
   ?key:string ->
   ?gap:int ->
@@ -2812,10 +2863,12 @@ val text_field :
   ?label:string ->
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
+  ?submit_on_blur:bool ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
+  ?on_navigate:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) ->
   ?transition:string -> t list -> t
 val secure_field :
@@ -2865,10 +2918,12 @@ val secure_field :
   ?label:string ->
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
+  ?submit_on_blur:bool ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
+  ?on_navigate:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) ->
   ?transition:string -> t list -> t
 val input :
@@ -2918,10 +2973,12 @@ val input :
   ?label:string ->
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
+  ?submit_on_blur:bool ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
+  ?on_navigate:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) ->
   ?kind:input_kind ->
   ?transition:string -> t list -> t
@@ -2972,10 +3029,12 @@ val search_field :
   ?label:string ->
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
+  ?submit_on_blur:bool ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
+  ?on_navigate:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) ->
   ?transition:string -> t list -> t
 val textarea :
@@ -3025,10 +3084,12 @@ val textarea :
   ?label:string ->
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
+  ?submit_on_blur:bool ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
+  ?on_navigate:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) ->
   ?transition:string -> t list -> t
 val input_group :
@@ -3624,11 +3685,22 @@ val file_picker :
     - [~anchor:`below] (optional [~anchor_alignment], [~anchor_offset]) —
       anchored to the element under the popover's retained parent, with
       viewport flipping and scroll/resize tracking.
+      [~anchor_target] names a retained control's accessibility identifier when
+      the popover lives outside that control's subtree. It requires [~anchor]
+      and uses the target's current geometry and ownership.
+      [~anchor_rect:(x, y, width, height)] uses a frozen viewport rectangle
+      in logical pixels, including after its source control unmounts.
+      It requires [~anchor] and is exclusive with [~anchor_target] and [~at].
+      Hosts retain alignment, viewport collision handling and resize tracking.
+      [~anchor_alignment_offset] shifts the cross axis in logical pixels.
+      Positive values move toward the start for end alignment and toward
+      the end for start/stretch alignment; negative values reverse that shift.
+      It requires [~anchor], defaults to zero, and remains viewport-clamped.
     - neither — cover mode: the positioner spans the viewport
       ([data-cover], inset:0) for fullscreen surfaces.
 
-    [~available_height] bounds the popup's max-height and feeds
-    [--lui-popup-available-height]. [~role:`menu] sets role=menu on the
+    [~available_height] bounds the popup's max-height together with the
+    positioner's measured collision space. [~role:`menu] sets role=menu on the
     inner element (other roles go through [~data_attrs], which also
     covers data-keep-selection). [~on_dismiss] fires on outside-press or
     Escape while open. *)
@@ -3658,6 +3730,7 @@ val popover :
   ?height:int ->
   ?min_width:int ->
   ?max_width:int ->
+  ?max_width_signal:int Signal.signal ->
   ?min_height:int ->
   ?max_height:int ->
   ?container_relative_frame:frame_axes ->
@@ -3677,8 +3750,11 @@ val popover :
   ?at:float * float ->
   ?at_signal:(float * float) Signal.signal ->
   ?anchor:anchor ->
+  ?anchor_target:string ->
+  ?anchor_rect:(float * float * float * float) ->
   ?anchor_alignment:anchor_alignment ->
   ?anchor_offset:float ->
+  ?anchor_alignment_offset:float ->
   ?available_height:float ->
   ?available_height_signal:float Signal.signal ->
   ?role:popover_role ->
@@ -3817,6 +3893,7 @@ val menu_item :
   ?text_signal:string Signal.signal ->
   ?icon:icon ->
   ?icon_signal:icon Signal.signal ->
+  ?selection_placement:icon_placement ->
   ?role:role ->
   ?variant:variant ->
   ?size:control_size ->
@@ -4078,6 +4155,9 @@ val media_surface :
   ?surface:int ->
   ?surface_signal:int Signal.signal -> ?label:string ->
   ?transition:string -> nothing list -> t
+
+(** A semantic URL link. An optional [on_press] owns primary activation while
+    retaining the URL for context menus and alternate navigation. *)
 val link :
   ?key:string ->
   ?gap:int ->
@@ -4128,6 +4208,7 @@ val link :
   ?icon_placement:icon_placement ->
   ?label:string ->
   ?disabled:bool -> ?disabled_signal:bool Signal.signal ->
+  ?on_press:(Lui_protocol.event -> unit) ->
   ?transition:string -> t list -> t
 
 (** Local file image. Fit preserves the whole image by default; fill crops to

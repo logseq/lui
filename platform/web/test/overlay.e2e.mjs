@@ -35,6 +35,219 @@ async function clickButton(name) {
   await browser("click-button", name)
 }
 
+for (const trigger of ['Open ordinary menu', 'Open pressable menu']) {
+  test(`${trigger}: pointer opening focuses the menu without highlighting a row`, async () => {
+    await openLayerRegressionPage()
+    await clickButton(trigger)
+    await session.page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menu')
+    assert.equal(await session.page.getByRole('menu').locator('[data-highlighted]').count(), 0)
+    await session.page.keyboard.press('ArrowDown')
+    assert.equal(await session.page.locator(':focus').textContent(), 'Choose ordinary action')
+    await session.page.keyboard.press('Escape')
+    await session.page.waitForFunction(name => document.activeElement?.textContent === name, trigger)
+    await session.page.getByRole('button', {name: trigger, exact: true}).press('Enter')
+    await session.page.waitForFunction(() => document.activeElement?.textContent === 'Choose ordinary action')
+  })
+}
+
+test('a row popover uses the same pointer and keyboard opening focus as a dropdown', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open ordinary popover')
+  await session.page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menu')
+  assert.equal(await session.page.getByRole('menu').locator('[data-highlighted]').count(), 0)
+  await session.page.keyboard.press('Escape')
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'Open ordinary popover')
+  await session.page.getByRole('button', {name: 'Open ordinary popover', exact: true}).press('Enter')
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'Choose ordinary action')
+})
+
+test('ordinary pointer opening navigates backward from no selection', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open ordinary menu')
+  await session.page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menu')
+  await session.page.keyboard.press('ArrowUp')
+  assert.equal(await session.page.locator(':focus').textContent(), 'Remove ordinary owner')
+})
+
+test('retained ordinary dropdown resets old highlights on pointer reopening', async () => {
+  await openLayerRegressionPage()
+  await session.page.getByRole('button', {name: 'Open retained ordinary menu', exact: true}).press('Enter')
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'Choose ordinary action')
+  await session.page.keyboard.press('ArrowDown')
+  await session.page.keyboard.press('Escape')
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'Open retained ordinary menu')
+  await clickButton('Open retained ordinary menu')
+  await session.page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menu')
+  assert.equal(await session.page.getByRole('menu').locator('[data-highlighted]').count(), 0)
+})
+
+test('ordinary initialization leaves picker selected-item focus intact', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open dialog')
+  await session.page.getByRole('combobox').click()
+  await session.page.getByRole('option', {name: 'Beta', exact: true}).click()
+  await session.page.getByRole('combobox').click()
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'Beta')
+})
+
+test('ordinary dropdown selection returns focus to its trigger', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open ordinary menu')
+  await session.page.getByRole('menuitem', {name: 'Choose ordinary action', exact: true}).click()
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'Open ordinary menu')
+})
+
+test('ordinary dropdown Escape returns focus to its trigger', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open ordinary menu')
+  await session.page.getByRole('menuitem', {name: 'Choose ordinary action', exact: true}).press('Escape')
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'Open ordinary menu')
+})
+
+test('ordinary dropdown closure preserves outside and newly opened dialog focus', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open ordinary menu')
+  await clickButton('Outside action')
+  await session.page.waitForTimeout(30)
+  assert.equal(await session.page.locator(':focus').textContent(), 'Outside action')
+  await clickButton('Open ordinary menu')
+  await session.page.getByRole('menuitem', {name: 'Open dialog from ordinary menu', exact: true}).click()
+  await session.page.getByPlaceholder('Dialog input', {exact: true}).waitFor({state: 'visible'})
+  await session.page.waitForFunction(() => document.activeElement?.getAttribute('placeholder') === 'Dialog input')
+})
+
+test('retained dropdown closure restores focus and reopening cancels stale restoration', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open retained ordinary menu')
+  await session.page.getByRole('menuitem', {name: 'Choose ordinary action', exact: true}).click()
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'Open retained ordinary menu')
+  await clickButton('Open retained ordinary menu')
+  await clickButton('Cycle retained menu')
+  await session.page.waitForTimeout(30)
+  assert.equal(await session.page.getByRole('menu').isVisible(), true)
+  assert.equal(await session.page.locator(':focus').textContent(), 'Cycle retained menu')
+})
+
+test('ordinary dropdown closure skips unavailable triggers', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open ordinary menu')
+  await session.page.getByRole('menuitem', {name: 'Disable ordinary trigger', exact: true}).click()
+  await session.page.waitForTimeout(30)
+  assert.equal(await session.page.getByRole('button', {name: 'Open ordinary menu', exact: true}).isDisabled(), true)
+  assert.equal(await session.page.locator(':focus').count(), 0)
+  await openLayerRegressionPage()
+  await clickButton('Open ordinary menu')
+  await session.page.getByRole('menuitem', {name: 'Remove ordinary owner', exact: true}).click()
+  await session.page.waitForTimeout(30)
+  assert.equal(await session.page.getByRole('button', {name: 'Open ordinary menu', exact: true}).count(), 0)
+  assert.equal(await session.page.locator(':focus').count(), 0)
+})
+
+test('popover button-only menus focus the first available action and activate once', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open popover action menu')
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'First action')
+  assert.equal(await session.page.locator('.action-menu-regression button[role="menuitem"]').count(), 0)
+  await session.page.keyboard.press('Enter')
+  await session.page.locator('.lui-dialog').waitFor({state:'visible'})
+  assert.equal(await session.page.locator('#action-activation-count').textContent(), '1')
+})
+
+test('popover deferred opening preserves focus moved inside the menu', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open popover action menu with preserved focus')
+  await session.page.waitForTimeout(30)
+  assert.equal(await session.page.locator(':focus').textContent(), 'Second action')
+})
+
+test('popover Escape returns focus to its available trigger', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open popover action menu')
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'First action')
+  await session.page.keyboard.press('Escape')
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'Open popover action menu')
+})
+
+test('popover outside press keeps the newly focused control', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open popover action menu')
+  await session.page.waitForFunction(() => document.activeElement?.textContent === 'First action')
+  await clickButton('Outside action')
+  assert.equal(await session.page.locator(':focus').textContent(), 'Outside action')
+})
+
+test('form popover closure returns focus through its structural anchor wrapper', async () => {
+  await openLayerRegressionPage()
+  for (const close of ['save', 'escape', 'outside']) {
+    await clickButton('Open form popover')
+    await session.page.getByPlaceholder('Popover draft', {exact: true}).waitFor({state: 'visible'})
+    await session.page.waitForFunction(() => document.activeElement?.placeholder === 'Popover draft')
+    if (close === 'save') await clickButton('Save popover draft')
+    else if (close === 'escape') await session.page.keyboard.press('Escape')
+    else await clickButton('Outside action')
+    await session.page.waitForFunction(expected => document.activeElement?.textContent === expected,
+      close === 'outside' ? 'Outside action' : 'Open form popover')
+  }
+})
+
+test('form popover stays open when keyboard focus leaves and preserves outside focus on Escape', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open form popover')
+  await session.page.waitForFunction(() => document.activeElement?.placeholder === 'Popover draft')
+  await session.page.keyboard.press('Shift+Tab')
+  assert.equal(await session.page.locator(':focus').textContent(), 'Outside action')
+  assert.equal(await session.page.getByPlaceholder('Popover draft', {exact: true}).isVisible(), true)
+  await session.page.keyboard.press('Escape')
+  await session.page.getByPlaceholder('Popover draft', {exact: true}).waitFor({state: 'hidden'})
+  assert.equal(await session.page.locator(':focus').textContent(), 'Outside action')
+})
+
+test("surface exits wait for all tracks without retaining zero-motion or reopened layers", async () => {
+  await openLayerRegressionPage()
+  await clickButton('Run surface exit audit')
+  await session.page.locator('#exit-audit-result').filter({hasText: 'Complete'}).waitFor()
+  const result = JSON.parse(await session.page.locator('#exit-audit-result').textContent())
+  assert.equal(result.pass, true, JSON.stringify(result, null, 2))
+})
+
+test('retained popover targets release hidden input scopes and dismiss once', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Run retained anchor audit')
+  await session.page.locator('#retained-anchor-result').filter({hasText: 'Complete'}).waitFor()
+  const result = JSON.parse(await session.page.locator('#retained-anchor-result').textContent())
+  assert.equal(result.pass, true, JSON.stringify(result, null, 2))
+})
+
+test("direct nested split input cancels eased geometry without disabling programmatic motion", async () => {
+  await openLayerRegressionPage()
+  await clickButton('Run split interaction audit')
+  await session.page.waitForFunction(() => document.querySelector('#split-audit-result')?.textContent.includes('"state":"Complete"'))
+  const result = JSON.parse(await session.page.locator('#split-audit-result').textContent())
+  assert.equal(result.pass, true, JSON.stringify(result, null, 2))
+})
+
+test("inert containers suspend descendant focus while retaining paint and identity", async () => {
+  await openLayerRegressionPage()
+  await clickButton('Run inert subtree audit')
+  const result = JSON.parse(await session.page.locator('#inert-audit-result').textContent())
+  assert.equal(result.pass, true, JSON.stringify(result, null, 2))
+})
+
+test("popup and dialog defaults use the centered shared motion policy", async () => {
+  await openLayerRegressionPage()
+  await clickButton('Run surface motion style audit')
+  const result = JSON.parse(await session.page.locator('#style-audit-result').textContent())
+  assert.equal(result.pass, true, JSON.stringify(result, null, 2))
+})
+
+test("context menus and tooltips retain interrupted exits until the current tracks finish", async () => {
+  await openLayerRegressionPage()
+  await clickButton('Run menu and tooltip interruption audit')
+  await session.page.waitForFunction(() => document.querySelector('#interruption-audit-result')?.textContent.includes('"state":"Complete"'))
+  const result = JSON.parse(await session.page.locator('#interruption-audit-result').textContent())
+  assert.equal(result.pass, true, JSON.stringify(result, null, 2))
+})
+
 test("Untitled dialog paints and focuses its content and dismisses on Escape", async () => {
   await openLayerRegressionPage()
   await evaluate('window.audit.openDialog("untitled")')
@@ -204,7 +417,16 @@ test("removing a modal closes owned portals without duplicate Dismiss events", a
   )
 })
 
-test("nested modal locks remain until the last modal exits and contain wheel scrolling", async () => {
+test("modal close releases input before visual exit and preserves the next modal", async () => {
+  await openLayerRegressionPage()
+  await clickButton('Run modal input release audit')
+  await session.page.locator('#modal-input-result').filter({hasText: 'Complete'}).waitFor()
+  const result = JSON.parse(await session.page.locator('#modal-input-result').textContent())
+  assert.deepEqual(result, {state: 'Complete', pass: true, activations: 1,
+    retainedExit: true, nestedFocus: true, newModalPreserved: true})
+})
+
+test("nested modal locks remain until the last modal closes and contain wheel scrolling", async () => {
   await openLayerRegressionPage()
   await evaluate("window.scrollTo(0, 140)")
   const originalScrollStyles = await state(`({
@@ -281,7 +503,7 @@ test("modal focus includes links, skips hidden controls, handles an empty surfac
   await browser("wait", "--fn", "!document.querySelector('.lui-modal-layer')")
 
   await clickButton("Open dialog")
-  await evaluate(`document.querySelector('button')?.remove()`)
+  await evaluate(`[...document.querySelectorAll('#host button')].find((button) => button.textContent.trim() === 'Open dialog')?.remove()`)
   await browser("press", "Escape")
   await browser("wait", "--fn", "!document.querySelector('.lui-modal-layer')")
   await browser("wait", "--fn", "document.activeElement === document.body")
@@ -1154,10 +1376,9 @@ test("Select keyboard navigation enters submenus and restores trigger focus", as
   await browser("press", "Escape")
   await evaluate(`(() => {
     const popup = document.getElementById(window.__selectPopupID)
-    popup?.dispatchEvent(new TransitionEvent('transitionend', {
-      bubbles: true,
-      propertyName: 'opacity',
-    }))
+    for (const animation of popup?.getAnimations() ?? []) {
+      if (Number.isFinite(animation.effect?.getComputedTiming().endTime)) animation.finish()
+    }
   })()`)
   assert.deepEqual(
     await state(`({
@@ -1423,10 +1644,9 @@ test("Combobox keeps DOM focus in the input while navigating its listbox", async
   await evaluate(`(() => {
     const control = document.querySelector(${JSON.stringify(input)})
     const popup = document.getElementById(control?.getAttribute('aria-controls'))
-    popup?.dispatchEvent(new TransitionEvent('transitionend', {
-      bubbles: true,
-      propertyName: 'opacity',
-    }))
+    for (const animation of popup?.getAnimations() ?? []) {
+      if (Number.isFinite(animation.effect?.getComputedTiming().endTime)) animation.finish()
+    }
   })()`)
   assert.deepEqual(
     await state(`(() => {
@@ -1810,6 +2030,11 @@ test("ContextMenu long press follows the touch point and cancels after movement"
     }))
   })()`)
   await browser("wait", "550")
+  await browser(
+    "wait",
+    "--fn",
+    "(() => { const menu = document.querySelector('.lui-context-menu'); if (!menu?.hasAttribute('data-open')) return false; const transform = getComputedStyle(menu).transform; return transform === 'none' || transform === 'matrix(1, 0, 0, 1, 0, 0)'; })()",
+  )
   assert.deepEqual(
     await state(`(() => {
       const menu = document.querySelector('.lui-context-menu')

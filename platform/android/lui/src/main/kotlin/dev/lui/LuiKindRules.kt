@@ -601,7 +601,8 @@ internal object LuiKindRules {
                 value.intValue != null &&
                     kind != LuiNodeKind.avatar &&
                     kind != LuiNodeKind.tooltip
-            "padding-horizontal", "padding-vertical" ->
+            "padding-horizontal", "padding-vertical",
+            "padding-top", "padding-right", "padding-bottom", "padding-left" ->
                 value.intValue?.let { it >= 0 } == true &&
                     kind != LuiNodeKind.avatar &&
                     kind != LuiNodeKind.tooltip
@@ -940,7 +941,7 @@ internal object LuiKindRules {
             "font-weight" -> value.intValue?.let { it in 1..1000 } == true
             "letter-spacing" -> value.numberValue?.isFinite() == true
             "text-decoration" -> textDecorationSupported(value.stringValue)
-            "white-space" -> value.stringValue in setOf("normal", "nowrap")
+            "white-space" -> value.stringValue in setOf("normal", "nowrap", "pre-wrap")
             "text-overflow" -> value.stringValue in setOf("clip", "ellipsis")
             "user-select" -> value.stringValue in setOf("none", "text")
             "cursor" -> value.stringValue in setOf("default", "pointer", "text")
@@ -950,7 +951,8 @@ internal object LuiKindRules {
             "pointer-enabled" -> value is LuiWireValue.Bool
             "height", "width", "min-width", "max-width", "min-height",
             "max-height", "active", "gap", "border-width", "corner-radius",
-            "padding-horizontal", "padding-vertical", "duration" ->
+            "padding-horizontal", "padding-vertical",
+            "padding-top", "padding-right", "padding-bottom", "padding-left", "duration" ->
                 value.intValue?.let { it >= 0 } == true
             "padding" -> value is LuiWireValue.IntValue
             "margin", "margin-horizontal", "margin-vertical", "margin-top",

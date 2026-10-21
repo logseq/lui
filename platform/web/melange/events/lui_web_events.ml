@@ -63,7 +63,8 @@ let combobox_keydown renderer node event =
 let text_keydown renderer node kind composing event =
   if enabled_node renderer node then begin
     let composing_now = !composing || W.KeyboardEvent.isComposing event in
-    let enter = W.KeyboardEvent.key event = "Enter" in
+    let key = W.KeyboardEvent.key event in
+    let enter = key = "Enter" in
     let shift = W.KeyboardEvent.shiftKey event in
     let primary =
       W.KeyboardEvent.metaKey event || W.KeyboardEvent.ctrlKey event
@@ -78,6 +79,13 @@ let text_keydown renderer node kind composing event =
           else true)
        else false)
     in
+    if not composing_now && not shift && not primary
+       && not (W.KeyboardEvent.altKey event)
+       && Store.true_property renderer node NavigateEnabled
+       && (key = "ArrowUp" || key = "ArrowDown") then begin
+      W.KeyboardEvent.preventDefault event;
+      emit renderer (if key = "ArrowUp" then NavigatePrevious node else NavigateNext node)
+    end;
     if submit && kind <> Combobox then begin
       W.KeyboardEvent.preventDefault event;
       emit renderer (Submit node)
@@ -134,6 +142,13 @@ let attach_text_events renderer node kind dom_node =
     dom_node;
   W.Element.addKeyDownEventListener
     (fun event -> text_keydown renderer node kind composing event)
+    dom_node;
+  W.Element.addEventListener "blur"
+    (fun _event ->
+      if not !composing && enabled_node renderer node
+         && Store.true_property renderer node SubmitOnBlur
+         && Store.event_admitted renderer node (Submit node)
+      then emit renderer (Submit node))
     dom_node
 
 let attach_toggle_event renderer node _kind dom_node =
@@ -230,9 +245,11 @@ let attach_accordion_event renderer node dom_node =
 
 let attach_pressable_text_events renderer node dom_node =
   W.Element.addEventListener "click"
-    (fun _event ->
-       if Store.event_capability renderer node PressEnabled then
-         emit renderer (Press node))
+    (fun event ->
+       if Store.event_capability renderer node PressEnabled then begin
+         Util.record_click_open_method dom_node event;
+         emit renderer (Press node)
+       end)
     dom_node;
   W.Element.addKeyDownEventListener
     (fun event ->
@@ -242,9 +259,27 @@ let attach_pressable_text_events renderer node dom_node =
          && (key = "Enter" || key = " ")
        then begin
          W.KeyboardEvent.preventDefault event;
+         W.Element.setAttribute "data-lui-open-method" "keyboard" dom_node;
          emit renderer (Press node)
        end)
     dom_node
+
+let attach_link_events renderer node dom_node =
+  W.Element.addEventListener "click" (fun event ->
+    if not (enabled_node renderer node) then W.Event.preventDefault event
+    else if Util.click_button event=0 && Store.event_capability renderer node PressEnabled then begin
+      W.Event.preventDefault event;
+      Util.record_click_open_method dom_node event;
+      emit renderer (Press node)
+    end) dom_node;
+  W.Element.addKeyDownEventListener (fun event ->
+    if W.KeyboardEvent.key event="Enter" then
+      if not (enabled_node renderer node) then W.KeyboardEvent.preventDefault event
+      else if Store.event_capability renderer node PressEnabled then begin
+        W.KeyboardEvent.preventDefault event;
+        W.Element.setAttribute "data-lui-open-method" "keyboard" dom_node;
+        emit renderer (Press node)
+      end) dom_node
 
 let attach_list_item_events renderer node dom_node =
   W.Element.addEventListener "dblclick"
@@ -280,6 +315,72 @@ let button_connected renderer dom_node =
   W.Element.contains
     (W.Element.asNode dom_node)
     (W.Document.documentElement renderer.web_document)
+
+let release_appear renderer node =
+  Hashtbl.remove renderer.web_appear_pending node;
+  Hashtbl.remove renderer.web_appear_seen node;
+  if Hashtbl.length renderer.web_appear_pending = 0 then begin
+    Option.iter Js.Global.clearTimeout !(renderer.web_appear_timer);
+    renderer.web_appear_timer := None
+  end
+
+let update_appear renderer node =
+  if
+    enabled_node renderer node
+    && Store.event_admitted renderer node (Appear node)
+  then
+    begin if not (Hashtbl.mem renderer.web_appear_seen node) then
+      Hashtbl.replace renderer.web_appear_pending node ()
+    end
+  else release_appear renderer node
+
+let appear_ready renderer node =
+  Hashtbl.mem renderer.web_appear_pending node
+  && enabled_node renderer node
+  && Store.event_admitted renderer node (Appear node)
+  &&
+  match Store.node renderer.web_store node with
+  | Some current when Lazy.is_val current.platform_node ->
+      button_connected renderer (Lazy.force current.platform_node)
+  | _ -> false
+
+(* Lifecycle callbacks run after the batch and root attachment. One shared
+   timeout coalesces mounts; unchanged patches and idle hosts queue none. *)
+let schedule_appear renderer =
+  if !(renderer.web_appear_timer) = None then begin
+    let ready = ref false in
+    Hashtbl.iter
+      (fun node () -> if appear_ready renderer node then ready := true)
+      renderer.web_appear_pending;
+    if !ready then
+      renderer.web_appear_timer :=
+        Some
+          (Js.Global.setTimeout
+             ~f:(fun () ->
+               renderer.web_appear_timer := None;
+               let candidates = ref [] in
+               let rec visit node =
+                 if appear_ready renderer node then
+                   candidates := node :: !candidates;
+                 match Store.node renderer.web_store node with
+                 | Some current ->
+                     Lui_sequence.iter visit current.retained_children
+                 | None -> ()
+               in
+               Hashtbl.fold
+                 (fun root _ roots -> root :: roots)
+                 renderer.web_mounted_roots []
+               |> List.sort Int.compare |> List.iter visit;
+               List.iter
+                 (fun node ->
+                   if appear_ready renderer node then begin
+                     Hashtbl.remove renderer.web_appear_pending node;
+                     Hashtbl.replace renderer.web_appear_seen node ();
+                     emit renderer (Appear node)
+                   end)
+                 (List.rev !candidates))
+             0)
+  end
 
 let button_cancel_timer state =
   (match !(state.button_timer) with
@@ -400,8 +501,21 @@ let button_click renderer node kind dom_node state event =
     W.Event.preventDefault event
   end
   else begin
+    Util.record_click_open_method dom_node event;
     emit_press_detail renderer node event;
     button_dispatch_primary renderer node kind dom_node
+  end
+
+let button_navigation_keydown renderer node event =
+  let key = W.KeyboardEvent.key event in
+  let candidate = NavigationKey (node,key,W.KeyboardEvent.shiftKey event) in
+  if enabled_node renderer node
+     && not (W.KeyboardEvent.isComposing event)
+     && not (W.KeyboardEvent.ctrlKey event || W.KeyboardEvent.metaKey event
+             || W.KeyboardEvent.altKey event)
+     && Store.event_admitted renderer node candidate then begin
+    W.KeyboardEvent.preventDefault event;
+    emit renderer candidate
   end
 
 let attach_button_events renderer node kind dom_node =
@@ -417,6 +531,7 @@ let attach_button_events renderer node kind dom_node =
   let pointer_cancel = button_pointer_cancel state in
   let context_menu = button_context_menu renderer node dom_node state in
   let click = button_click renderer node kind dom_node state in
+  let keydown = button_navigation_keydown renderer node in
   let previous_cleanup = Hashtbl.find_opt renderer.web_cleanups node in
   (* move/up/cancel only matter while a long-press candidate is armed, so
      they are bound on the qualifying pointerdown and removed when the press
@@ -455,6 +570,7 @@ let attach_button_events renderer node kind dom_node =
   W.Element.addEventListener "pointerdown" pointer_down dom_node;
   W.Element.addEventListener "contextmenu" context_menu dom_node;
   W.Element.addEventListener "click" click dom_node;
+  W.Element.addKeyDownEventListener keydown dom_node;
   Hashtbl.replace renderer.web_cleanups node (fun () ->
       (match previous_cleanup with
        | Some cleanup -> cleanup ()
@@ -463,7 +579,8 @@ let attach_button_events renderer node kind dom_node =
       detach_transient ();
       W.Element.removeEventListener "pointerdown" pointer_down dom_node;
       W.Element.removeEventListener "contextmenu" context_menu dom_node;
-      W.Element.removeEventListener "click" click dom_node)
+      W.Element.removeEventListener "click" click dom_node;
+      W.Element.removeKeyDownEventListener keydown dom_node)
 
 (* Kinds whose click path owns PressDetail emission (button family,
    pickers, radio): a suppressed click there must not still emit it, so the
@@ -503,6 +620,8 @@ let sync_pointer_events renderer node kind dom_node =
       in
       let pointer_down =
         emit_detail (fun event ->
+            W.Element.setAttribute "data-lui-open-method"
+              (Util.pointer_type event) dom_node;
             PointerDown (node, Util.pointer_detail_of event))
       in
       let pointer_up =
@@ -553,6 +672,7 @@ let attach_events renderer node kind dom_node =
   if kind = Toolbar then
     ignore (Lui_web_focus.attach_toolbar_events renderer node dom_node);
   match kind with
+  | Link -> attach_link_events renderer node dom_node
   | Text | TableCell | TimelineItem | FileImage | Row | Box | Column ->
       attach_pressable_text_events renderer node dom_node
   | Button | ToggleButton | Toggle ->

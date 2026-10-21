@@ -101,6 +101,9 @@ let mix_mask src dst cov =
   let v = src * cov + dst * (255 - cov) + 128 in
   (v + (v lsr 8)) lsr 8
 
+let[@inline always] mix_alpha src dst alpha =
+  iround (float src *. alpha +. float dst *. (1. -. alpha))
+
 (* Take the coverage cov of a premultiplied pixel away. *)
 let erase p i cov =
   let inv = 1. -. cov in
@@ -135,10 +138,17 @@ let blend_span p row x0 x1 (r_, g_, b_, a_) cov =
         and ga = Int64.of_int (pg lor (pa lsl 16)) in
         let rb = Int64.logor rb (Int64.shift_left rb 32)
         and ga = Int64.logor ga (Int64.shift_left ga 32) in
+        (* Flat backdrops repeat destination pairs. Reuse their exact blended
+           result within this span; changing pixels still take the full path. *)
+        let previous_input = ref 0L and previous_output = ref 0L in
+        let previous_valid = ref false in
         let x = ref x0 in
         while !x + 1 < x1 do
           let i = row + 4 * !x in
           let pixels = Bytes.get_int64_le p i in
+          if !previous_valid && Int64.equal pixels !previous_input then
+            Bytes.set_int64_le p i !previous_output
+          else begin
           (* Four independent 16-bit lanes hold a byte product and its
              rounding bias. A premultiplied source channel is at most pa,
              and the destination contribution is at most 255-pa, so the
@@ -151,7 +161,12 @@ let blend_span p row x0 x1 (r_, g_, b_, a_) cov =
           let dga = Int64.logand (Int64.shift_right_logical
             (Int64.add tga (Int64.logand (Int64.shift_right_logical tga 8) lanes)) 8) lanes in
           let srb = Int64.add rb drb and sga = Int64.add ga dga in
-          Bytes.set_int64_le p i (Int64.logor srb (Int64.shift_left sga 8));
+          let result = Int64.logor srb (Int64.shift_left sga 8) in
+          previous_input := pixels;
+          previous_output := result;
+          previous_valid := true;
+          Bytes.set_int64_le p i result
+          end;
           x := !x + 2
         done;
         if !x < x1 then begin
@@ -1016,11 +1031,12 @@ let r_inset_shadow r (op : shadow_op) =
     end
   end
 
-(* Ordinary opaque mask text blended by integer math: the same result
-   the floating-point path gives, without converting every destination
-   channel. Rounded clip edges still use the general coverage. *)
-let mask_opaque r a (g : glyph) gx gy x0 y0 x1 y1 =
+(* Solid mask text avoids per-glyph color tuples. Opaque runs keep the
+   integer path; faded runs blend unboxed scalar channels. Rounded clip
+   edges still use the general coverage. *)
+let mask_solid r a (g : glyph) opacity gx gy x0 y0 x1 y1 =
   let c = g.gcolor in
+  let alpha = if c.a = 255 then opacity else float c.a /. 255. *. opacity in
   for y = y0 to y1 - 1 do
     let clip_index = clip_row r y in
     let cl = r.clip_rows.(clip_index + 1) and ch = r.clip_rows.(clip_index + 2) in
@@ -1031,7 +1047,14 @@ let mask_opaque r a (g : glyph) gx gy x0 y0 x1 y1 =
       if m <> 0 then begin
         let p = row + 4 * (x0 + i) and x = x0 + i in
         if x < cl || x >= ch then
-          blend r.dst.Image.pix p (premul c 1.) (clip_coverage r x y *. (float m /. 255.))
+          blend r.dst.Image.pix p (premul c opacity) (clip_coverage r x y *. (float m /. 255.))
+        else if alpha <> 1. then begin
+          let coverage = float m /. 255. *. alpha in
+          Bytes.set r.dst.Image.pix p (Char.chr (mix_alpha c.b (byte_at r.dst.Image.pix p) coverage));
+          Bytes.set r.dst.Image.pix (p + 1) (Char.chr (mix_alpha c.g (byte_at r.dst.Image.pix (p + 1)) coverage));
+          Bytes.set r.dst.Image.pix (p + 2) (Char.chr (mix_alpha c.r (byte_at r.dst.Image.pix (p + 2)) coverage));
+          Bytes.set r.dst.Image.pix (p + 3) (Char.chr (mix_alpha 255 (byte_at r.dst.Image.pix (p + 3)) coverage))
+        end
         else if m = 255 then begin
           Bytes.set r.dst.Image.pix p (Char.chr c.b);
           Bytes.set r.dst.Image.pix (p + 1) (Char.chr c.g);
@@ -1049,9 +1072,9 @@ let mask_opaque r a (g : glyph) gx gy x0 y0 x1 y1 =
   done
 
 let r_glyphs r (op : glyphs_op) s glyphs =
+  let opacity = op.gopacity in
   let pt =
     if op.gpaint = Linear || op.gpaint = Oklab then begin
-      let opacity = if op.gopacity = 0. then 1. else op.gopacity in
       Some (new_painter ~paint_:op.gpaint ~c1:op.gcolor ~c2:op.gcolor2
               ~g:op.ggradient ~ox:0. ~oy:0. ~opacity)
     end
@@ -1066,15 +1089,16 @@ let r_glyphs r (op : glyphs_op) s glyphs =
     let x0 = Int.max gx r.rx0 and y0 = Int.max gy r.ry0 in
     let x1 = Int.min (gx + g.guw) r.rx1 and y1 = Int.min (gy + g.gvh) r.ry1 in
     if x0 < x1 && y0 < y1 then begin
-      let tint0 = premul g.gcolor 1. in
-      let alpha = float g.gcolor.a /. 255. in
       let contrast = if g.gsubpixel then text.subpixel_contrast else text.contrast in
       let boost = if g.gthin then thin_boost else 0. in
       let (g0, g1, g2, g3) = text.gamma_ratios in
-      let correct = contrast <> 0. || boost <> 0. || (g0, g1, g2, g3) <> (0., 0., 0., 0.) in
-      if (not g.gcolored) && (not g.gsubpixel) && Option.is_none pt && (not correct) && g.gcolor.a = 255 then
-        mask_opaque r atlas g gx gy x0 y0 x1 y1
-      else
+      let correct = contrast <> 0. || boost <> 0.
+        || g0 <> 0. || g1 <> 0. || g2 <> 0. || g3 <> 0. in
+      if (not g.gcolored) && (not g.gsubpixel) && Option.is_none pt && (not correct) then
+        mask_solid r atlas g opacity gx gy x0 y0 x1 y1
+      else begin
+        let tint0 = premul g.gcolor opacity in
+        let alpha = float g.gcolor.a /. 255. *. opacity in
         for y = y0 to y1 - 1 do
           let row = (y - r.origin_y) * r.dst.Image.stride in
           let clip_index = clip_row r y in
@@ -1131,6 +1155,7 @@ let r_glyphs r (op : glyphs_op) s glyphs =
             end
           done
         done
+      end
     end
   done
 
@@ -1561,9 +1586,7 @@ let draw d dst s area bounds workers =
 (* ---------- op bounds ---------- *)
 
 (* Where each operation of s draws, within the clips around it. *)
-let op_bounds s =
-  let ops = Array.of_list s.ops in
-  let glyphs = Array.of_list s.glyphs in
+let op_bounds_arrays ~prefix ~previous s ops glyphs =
   let n = Array.length ops in
   let out = Array.make n (irect 0 0 0 0) in
   let clip = ref (irect 0 0 s.width s.height) in
@@ -1571,22 +1594,8 @@ let op_bounds s =
   for i = 0 to n - 1 do
     let b =
       match ops.(i) with
-      | Fill f -> outset f.frect 1.
-      | Image f -> outset f.irect2 1.
-      | Effect f -> outset f.edrect 1.
-      | Hole f -> outset f.hrect 1.
-      | Shadow f ->
-        if f.sinset then outset f.scast 1. else outset f.srect (1.5 *. f.sblur +. 1.)
-      | Glyphs f ->
-        let gend = min f.gend (Array.length glyphs) in
-        let b = ref (irect 0 0 0 0) in
-        for gi = max f.gstart 0 to gend - 1 do
-          let g = glyphs.(gi) in
-          b := irect_union !b (outset (rect g.gx g.gy g.gw g.gh) 1.)
-        done;
-        !b
       | Push_clip f ->
-        (* A clip that changes changes everything it cuts. *)
+        (* Even a retained prefix must establish clipping for the changed tail. *)
         let b = outset f.crect 1. in
         stack := !clip :: !stack;
         clip := irect_intersect !clip b;
@@ -1598,10 +1607,38 @@ let op_bounds s =
           stack := rest;
           irect 0 0 0 0
         | [] -> irect 0 0 0 0)
+      | _ when i < prefix -> previous.(i)
+      | Fill f -> outset f.frect 1.
+      | Image f -> outset f.irect2 1.
+      | Effect f -> outset f.edrect 1.
+      | Hole f -> outset f.hrect 1.
+      | Shadow f ->
+        if f.sinset then outset f.scast 1. else outset f.srect (1.5 *. f.sblur +. 1.)
+      | Glyphs f ->
+        let gend = min f.gend (Array.length glyphs) in
+        let x0=ref 0 and y0=ref 0 and x1=ref 0 and y1=ref 0 in
+        for gi = max f.gstart 0 to gend - 1 do
+          let g = glyphs.(gi) in
+          let left=ifloor (g.gx -. 1.) and top=ifloor (g.gy -. 1.)
+          and right=iceil (g.gx +. g.gw +. 1.)
+          and bottom=iceil (g.gy +. g.gh +. 1.) in
+          if left < right && top < bottom then
+            if !x1 <= !x0 || !y1 <= !y0 then begin
+              x0 := left; y0 := top; x1 := right; y1 := bottom
+            end else begin
+              x0 := min !x0 left; y0 := min !y0 top;
+              x1 := max !x1 right; y1 := max !y1 bottom
+            end
+        done;
+        irect !x0 !y0 !x1 !y1
     in
-    out.(i) <- irect_intersect b !clip
+    out.(i) <- if i < prefix then previous.(i) else irect_intersect b !clip
   done;
   out
+
+let op_bounds s =
+  op_bounds_arrays ~prefix:0 ~previous:[||] s
+    (Array.of_list s.ops) (Array.of_list s.glyphs)
 
 (* ---------- damage: what of the next scene to repaint ---------- *)
 
@@ -1696,9 +1733,10 @@ let op_same prev_effects d ops_a i _s ops_b j glyphs_a glyphs_b fxs_b mask_rects
             && ga.gu = gb.gu && ga.gv = gb.gv && ga.guw = gb.guw && ga.gvh = gb.gvh
             && ga.gcolor = gb.gcolor && ga.gcolored = gb.gcolored
             && ga.gsubpixel = gb.gsubpixel && ga.gthin = gb.gthin
-            && (let at = irect gb.gu gb.gv (gb.gu + gb.guw) (gb.gv + gb.gvh) in
-                let rects = if gb.gcolored then color_rects else mask_rects in
-                not (List.exists (fun c -> irect_overlaps c at) rects))
+            && (let rects = if gb.gcolored then color_rects else mask_rects in
+                rects=[] ||
+                  let at = irect gb.gu gb.gv (gb.gu + gb.guw) (gb.gv + gb.gvh) in
+                  not (List.exists (fun c -> irect_overlaps c at) rects))
             && loop (k + 1)
           end
         in
@@ -1772,18 +1810,15 @@ let add_backdrops d s ops fxs =
     done
   end
 
-(* The damage between the last scene and s, and false when s must be
-   drawn whole. *)
-let diff d s =
+(* Compare a compatible frame, or return None when its atlas history expired. *)
+let diff d s ops glyphs_b fxs_b =
   let mask_rects, ok = mark_changes d.mask_mark s.mask_atlas in
-  if not ok then false
+  if not ok then None
   else begin
     let color_rects, ok = mark_changes d.color_mark s.color_atlas in
-    if not ok then false
+    if not ok then None
     else begin
-      let ops = Array.of_list s.ops in
-      let glyphs_a = d.prev_glyphs and glyphs_b = Array.of_list s.glyphs in
-      let fxs_b = Array.of_list s.effects in
+      let glyphs_a = d.prev_glyphs in
       let same i j =
         op_same d.prev_effects d d.prev_ops i s ops j glyphs_a glyphs_b fxs_b mask_rects color_rects
       in
@@ -1792,6 +1827,7 @@ let diff d s =
       while !pre < n && !pre < m && same !pre !pre do
         incr pre
       done;
+      d.next <- op_bounds_arrays ~prefix:!pre ~previous:d.bounds s ops glyphs_b;
       let suf = ref 0 in
       while !suf < n - !pre && !suf < m - !pre && same (n - 1 - !suf) (m - 1 - !suf) do
         incr suf
@@ -1814,20 +1850,20 @@ let diff d s =
       end;
       add_backdrops d s ops fxs_b;
       (* Past half the window, drawing it whole costs about the same. *)
-      area_sum d.damage * 2 < s.width * s.height
+      Some (area_sum d.damage * 2 < s.width * s.height)
     end
   end
 
 (* Keep what the next scene is compared with. *)
-let remember d s =
+let remember d s ops glyphs effects =
   d.valid <- true;
   d.dw <- s.width;
   d.dh <- s.height;
   d.dclear <- s.clear;
-  d.prev_ops <- Array.of_list s.ops;
-  d.prev_glyphs <- Array.of_list s.glyphs;
+  d.prev_ops <- ops;
+  d.prev_glyphs <- glyphs;
   d.prev_effects <-
-    Array.map (fun e -> { e with eparams = Array.copy e.eparams }) (Array.of_list s.effects);
+    Array.map (fun e -> { e with eparams = Array.copy e.eparams }) effects;
   let t = d.bounds in
   d.bounds <- d.next;
   d.next <- t;
@@ -1854,14 +1890,24 @@ module Damage = struct
   (* s against the last scene: the rectangles of it that changed, a
      full-size one when it must be drawn whole. *)
   let update d s =
-    d.next <- op_bounds s;
-    let whole =
-      (not d.valid) || s.width <> d.dw || s.height <> d.dh || s.clear <> d.dclear
-      || not (diff d s)
+    (* Bounds, comparison, and drawing use one snapshot of this frame.
+       Effect parameters remain copied when remembered because they are mutable. *)
+    let ops = Array.of_list s.ops and glyphs = Array.of_list s.glyphs in
+    let effects = Array.of_list s.effects in
+    let partial =
+      if d.valid && s.width = d.dw && s.height = d.dh && s.clear = d.dclear then
+        diff d s ops glyphs effects
+      else None
+    in
+    let whole = match partial with
+      | Some partial -> not partial
+      | None ->
+        d.next <- op_bounds_arrays ~prefix:0 ~previous:[||] s ops glyphs;
+        true
     in
     d.is_whole <- whole;
     if whole then d.damage <- [ irect 0 0 s.width s.height ];
-    remember d s;
+    remember d s ops glyphs effects;
     d.damage
 end
 
@@ -2072,7 +2118,7 @@ module Tile_renderer = struct
       invalid_arg "Tile rendering does not support shader effects";
     let damage = Damage.update t.damage s in
     if damage <> [] && s.width > 0 && s.height > 0 then begin
-      let ops = Array.of_list s.ops and glyphs = Array.of_list s.glyphs in
+      let ops = t.damage.prev_ops and glyphs = t.damage.prev_glyphs in
       let bounds = Damage.bounds t.damage in
       let count = (s.height + band_height - 1) / band_height in
       let changed = Array.make count false in

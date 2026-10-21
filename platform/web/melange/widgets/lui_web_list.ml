@@ -171,13 +171,23 @@ let install renderer node =
               let bounds = W.Element.getBoundingClientRect root in
               let rect = W.Element.getBoundingClientRect row in
               let viewport = float_of_int (W.Element.clientHeight root) in
-              let top =
-                W.Element.scrollTop root +. W.DomRect.top rect
-                -. W.DomRect.top bounds
+              let offset = W.Element.scrollTop root in
+              let layout_height =
+                float_of_int (W.HtmlElement.offsetHeight (W.Element.unsafeAsHtmlElement root))
               in
-              let height = W.DomRect.height rect in
+              let visual_height = W.DomRect.height bounds in
+              let scale =
+                if layout_height > 0. && visual_height > 0. then visual_height /. layout_height
+                else 1.
+              in
+              let top = offset +. (W.DomRect.top rect -. W.DomRect.top bounds) /. scale in
+              let height = W.DomRect.height rect /. scale in
               let position =
                 match anchor with
+                | "nearest" ->
+                    if top < offset then top
+                    else if top +. height > offset +. viewport then top -. viewport +. height
+                    else offset
                 | "center" -> top -. ((viewport -. height) /. 2.)
                 | "bottom" -> top -. viewport +. height
                 | _ -> top

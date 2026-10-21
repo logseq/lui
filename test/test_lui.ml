@@ -1089,6 +1089,39 @@ let drive_prop s (n : Drive.Model.node) name =
 let drive_press s sel =
   Drive.Session.press s (drive_node s sel).Drive.Model.id
 
+let test_dynamic_root_key ?(keyed_child = false) old_key next_key retain () =
+  let view _context source _send context parent =
+    let host = Lui_ui.column context in
+    Option.iter (fun parent -> Lui_ui.append context parent host) parent;
+    ignore (Lui_dynamic.switch context host source ( = )
+      (fun branch (key, value) ->
+        let root = Lui_ui.scroll branch in
+        Option.iter (Lui_ui.key branch root) key;
+        let child = Lui_ui.create branch Lui_protocol.Text in
+        if keyed_child then Lui_ui.key branch child "stable-content";
+        Lui_ui.string_property branch child Lui_protocol.TextValue value;
+        Lui_ui.append branch root child;
+        root));
+    host
+  in
+  let session = drive_mount ~initial:(old_key, "first")
+    ~reducer:(fun _ next -> next) ~view () in
+  Fun.protect ~finally:(fun () -> drive_dispose session) (fun () ->
+    let root () = List.find (fun node -> node.Drive.Model.kind = "scroll")
+      (Drive.Model.all_nodes (drive_tree session)) in
+    let before = root () in
+    let before_child = List.hd (drive_children session before) in
+    ignore (Lui_app.send (drive_app session) (next_key, "second"));
+    drive_flush session;
+    let after = root () in
+    let after_child = List.hd (drive_children session after) in
+    Alcotest.(check bool) "root identity follows its explicit key" retain
+      (before.Drive.Model.id = after.Drive.Model.id);
+    Alcotest.(check bool) "descendant identity follows its explicit key" (retain || keyed_child)
+      (before_child.Drive.Model.id = after_child.Drive.Model.id);
+    Alcotest.(check (option string)) "replacement content is live" (Some "second")
+      (Drive.Model.string_prop after_child "text"))
+
 let test_glass_button_actions () =
   let single_presses = ref 0 in
   let information_presses = ref 0 in
@@ -1331,6 +1364,68 @@ let test_dispatch_drops_value_echoes () =
   Alcotest.(check int) "changed toggle delivered" 1 !toggles;
   Alcotest.(check int) "press still delivered" 1 !presses;
   drive_dispose s
+
+let test_split_pixel_echoes () =
+  let received = ref [] in
+  let s = drive_mount ~initial:() ~reducer:(fun model () -> model)
+    ~view:(fun _ _ _ -> Lui_elements.split
+      ~first_width:246.
+      ~on_resize:(fun event -> received := event :: !received)
+      (Lui_elements.column []) (Lui_elements.column [])) () in
+  let id = (drive_node s (Drive.Model.Kind "split")).Drive.Model.id in
+  drive_send s (Lui_protocol.ValueChanged (id,246.));
+  Alcotest.(check int) "the sent pixel width is suppressed as an echo" 0 (List.length !received);
+  drive_send s (Lui_protocol.ValueChanged (id,300.));
+  drive_send s (Lui_protocol.ValueChanged (id,300.));
+  Alcotest.(check int) "a changed pixel width is delivered exactly once" 1 (List.length !received);
+  drive_dispose s
+
+let test_text_navigation_callbacks () =
+  let open Lui_protocol in
+  List.iter (fun (kind,make) ->
+    let received = ref [] in
+    let s = drive_mount ~initial:() ~reducer:(fun model () -> model)
+      ~view:(fun _ _ _ -> make (fun event -> received := event :: !received)) () in
+    let field = (drive_node s (Drive.Model.Kind kind)).Drive.Model.id in
+    drive_send s (NavigatePrevious field);
+    drive_send s (NavigateNext field);
+    Alcotest.(check bool) "typed handler receives both directions" true
+      (!received = [NavigateNext field;NavigatePrevious field]);
+    drive_dispose s)
+    ["text-field",(fun f -> Lui_elements.text_field ~on_navigate:f []);
+     "secure-field",(fun f -> Lui_elements.secure_field ~on_navigate:f []);
+     "input",(fun f -> Lui_elements.input ~on_navigate:f []);
+     "search-field",(fun f -> Lui_elements.search_field ~on_navigate:f []);
+     "textarea",(fun f -> Lui_elements.textarea ~on_navigate:f [])]
+
+let test_button_navigation_callback () =
+  let received = ref [] in
+  let s = drive_mount ~initial:() ~reducer:(fun model () -> model)
+      ~view:(fun _ _ _ -> Lui_elements.button ~text:"Day"
+        ~on_navigate:(fun event -> received := event :: !received) []) () in
+  let id = (drive_node s (Drive.Model.Kind "button")).Drive.Model.id in
+  let event = Lui_protocol.NavigationKey (id,"PageDown",true) in
+  drive_send s event;
+  Alcotest.(check bool) "the public button API delivers typed navigation" true
+    (!received=[event]);
+  drive_dispose s
+
+let test_input_blur_callback () =
+  List.iter (fun (kind,make) ->
+    let received = ref [] in
+    let s = drive_mount ~initial:() ~reducer:(fun model () -> model)
+      ~view:(fun _ _ _ -> make (fun event -> received:=event::!received)) () in
+    let node = drive_node s (Drive.Model.Kind kind) in
+    Alcotest.(check bool) "the public constructor enables blur submission" true
+      (Drive.Model.prop (drive_tree s) node.id "submit-on-blur"=Some (Lui_protocol.BoolValue true));
+    drive_send s (Lui_protocol.Submit node.id);
+    Alcotest.(check int) "the constructor retains its submit callback" 1 (List.length !received);
+    drive_dispose s)
+    ["text-field",(fun f -> Lui_elements.text_field ~submit_on_blur:true ~on_submit:f []);
+     "secure-field",(fun f -> Lui_elements.secure_field ~submit_on_blur:true ~on_submit:f []);
+     "input",(fun f -> Lui_elements.input ~kind:`time ~submit_on_blur:true ~on_submit:f []);
+     "search-field",(fun f -> Lui_elements.search_field ~submit_on_blur:true ~on_submit:f []);
+     "textarea",(fun f -> Lui_elements.textarea ~submit_on_blur:true ~on_submit:f [])]
 
 let test_pointer_events () =
   let open Lui_protocol in
@@ -2210,7 +2305,16 @@ let test_data_attrs_protocol () =
 
 let test_as_protocol () =
   let open Lui_protocol in
-  (* phrasing kinds only *)
+  (* Semantic tags retain the layout kind and its child contract. *)
+  List.iter (fun tag ->
+    Alcotest.(check bool) ("column " ^ tag) true
+      (property_value_supported_for_kind Column As (StringValue tag))) ["div";"ul";"ol"];
+  Alcotest.(check bool) "row li" true
+    (property_value_supported_for_kind Row As (StringValue "li"));
+  Alcotest.(check bool) "row ul refused" false
+    (property_value_supported_for_kind Row As (StringValue "ul"));
+  Alcotest.(check bool) "column li refused" false
+    (property_value_supported_for_kind Column As (StringValue "li"));
   Alcotest.(check bool) "as on text" true (property_supported Text As);
   Alcotest.(check bool) "as on heading" true (property_supported Heading As);
   Alcotest.(check bool) "as on paragraph" true
@@ -2259,10 +2363,12 @@ let data_attrs_view context _model _send =
           (Signal.constant context.Lui_ui.ui_scheduler
              [ ("data-mood", "ok") ])
         [];
-      Lui_elements.heading ~level:2 ~as_:`H2 ~value:"Title" [];
-      Lui_elements.paragraph ~as_:`P ~value:"para" [];
+      Lui_elements.heading ~level:2 ~as_:`H2 ~text_alignment:`center ~value:"Title" [];
+      Lui_elements.paragraph ~as_:`P ~text_alignment:`end_ ~value:"para" [];
       Lui_elements.label ~as_:`Span ~value:"lbl" [];
       Lui_elements.kbd ~data_attrs:[ ("aria-label", "key") ] ~value:"esc" [];
+      Lui_elements.column ~as_:`Ul [Lui_elements.row ~as_:`Li [Lui_elements.text ~value:"item" []]];
+      Lui_elements.column ~as_:`Ol [];
     ]
 
 let test_data_attrs_and_as_emit () =
@@ -2296,8 +2402,14 @@ let test_data_attrs_and_as_emit () =
     (emitted As (StringValue "h2"));
   Alcotest.(check bool) "paragraph as p" true
     (emitted As (StringValue "p"));
+  Alcotest.(check bool) "heading center alignment" true
+    (emitted TextAlignment (StringValue "center"));
+  Alcotest.(check bool) "paragraph end alignment" true
+    (emitted TextAlignment (StringValue "end"));
   Alcotest.(check bool) "label as span" true
-    (emitted As (StringValue "span"))
+    (emitted As (StringValue "span"));
+  List.iter (fun tag -> Alcotest.(check bool) ("document list as " ^ tag) true
+    (emitted As (StringValue tag))) ["ul";"ol";"li"]
 
 let test_vocab_batch2 () =
   let open Lui_protocol in
@@ -2329,7 +2441,7 @@ let test_vocab_batch2 () =
   (* ~opacity *)
   Alcotest.(check bool) "opacity allowed on column" true
     (property_supported Column Opacity);
-  Alcotest.(check bool) "opacity rejected on leaf" false
+  Alcotest.(check bool) "opacity allowed on icon" true
     (property_supported Icon Opacity);
   Alcotest.(check bool) "opacity range check" false
     (property_value_supported Opacity (FloatValue 1.5));
@@ -2347,8 +2459,10 @@ let test_vocab_batch2 () =
          true
          (property_value_supported DisplayValue (StringValue value)))
     [ "none"; "inline-flex"; "block"; "inline"; "inline-block" ];
-  Alcotest.(check bool) "display rejected on text" false
+  Alcotest.(check bool) "display allowed on text" true
     (property_supported Text DisplayValue);
+  Alcotest.(check bool) "display allowed on paragraph" true
+    (property_supported Paragraph DisplayValue);
   Alcotest.(check bool) "flex-wrap on row" true
     (property_supported Row FlexWrap);
   Alcotest.(check bool) "flex-wrap on column" true
@@ -2363,6 +2477,30 @@ let test_vocab_batch2 () =
     (property_value_supported FlexWrap (StringValue "nowrap"));
   Alcotest.(check bool) "flex-wrap rejects wrap-reverse" false
     (property_value_supported FlexWrap (StringValue "wrap-reverse"));
+  Alcotest.(check bool) "menu rows accept typed slot spacing" true
+    (property_supported MenuItem Gap);
+  Alcotest.(check bool) "custom menu rows accept an accessible label" true
+    (property_supported MenuItem AccessibilityLabel);
+  let menu_properties entries =
+    List.fold_left (fun properties (key,value) -> Property_map.add key value properties)
+      Property_map.empty entries
+  in
+  Alcotest.(check bool) "custom menu labels satisfy the naming contract" true
+    (node_properties_supported MenuItem
+      (menu_properties [AccessibilityLabel,StringValue "Columns visibility"]));
+  Alcotest.(check bool) "ordinary menu text still satisfies the naming contract" true
+    (node_properties_supported MenuItem
+      (menu_properties [TextValue,StringValue "Action"]));
+  Alcotest.(check bool) "empty custom menu labels remain invalid" false
+    (node_properties_supported MenuItem
+      (menu_properties [AccessibilityLabel,StringValue ""]));
+  Alcotest.(check bool) "unnamed menu rows remain invalid" false
+    (node_properties_supported MenuItem Property_map.empty);
+  Alcotest.(check bool) "menu rows accept leading selection placement" true
+    (property_supported MenuItem SelectionPlacementValue
+     && property_value_supported SelectionPlacementValue (StringValue "leading"));
+  Alcotest.(check bool) "selection placement rejects invalid values" false
+    (property_value_supported SelectionPlacementValue (StringValue "center"));
   (* ~tooltip/~shortcut_hint *)
   Alcotest.(check bool) "tooltip on button" true
     (property_supported Button TooltipText);
@@ -2402,11 +2540,31 @@ let test_vocab_batch2 () =
   Alcotest.(check bool) "menu role accepted on popover" true
     (property_value_supported_for_kind Popover RoleValue
        (StringValue "menu"));
+  Alcotest.(check bool) "dialog role accepted on popover" true
+    (property_value_supported_for_kind Popover RoleValue
+       (StringValue "dialog"));
+  Alcotest.(check bool) "dialog role rejected on ordinary rows" false
+    (property_value_supported_for_kind Row RoleValue
+       (StringValue "dialog"));
   Alcotest.(check bool) "treeitem role rejected on popover" false
     (property_value_supported_for_kind Popover RoleValue
        (StringValue "treeitem"));
   Alcotest.(check bool) "gap on popover" true
     (property_supported Popover Gap);
+  Alcotest.(check bool) "retained target on popover" true
+    (property_supported Popover AnchorTarget);
+  Alcotest.(check bool) "retained target rejects empty identifiers" false
+    (property_value_supported_for_kind Popover AnchorTarget (StringValue ""));
+  let target_only = Property_map.add AnchorTarget (StringValue "filter-trigger") Property_map.empty in
+  Alcotest.(check bool) "retained target requires an anchor side" false
+    (node_properties_supported Popover target_only);
+  let target = Property_map.add AnchorValue (StringValue "below") target_only in
+  Alcotest.(check bool) "retained target and side accepted" true
+    (node_properties_supported Popover target);
+  Alcotest.(check bool) "retained target and point are distinct modes" false
+    (node_properties_supported Popover
+       (target |> Property_map.add PopupX (FloatValue 10.)
+               |> Property_map.add PopupY (FloatValue 20.)));
   let with_x =
     Property_map.add PopupX (FloatValue 10.0) Property_map.empty
   in
@@ -2420,7 +2578,7 @@ let test_vocab_batch2 () =
   in
   Alcotest.(check bool) "point + anchor rejected" false
     (node_properties_supported Popover with_xy_anchor);
-  let popover_node = ref 0 in
+  let popover_node = ref 0 and target_node = ref 0 in
   let app =
     Lui_app.create (recording_backend ()) ()
       (fun model _action -> model)
@@ -2428,7 +2586,10 @@ let test_vocab_batch2 () =
          Lui_elements.column
            [ capture_node popover_node
                (Lui_elements.popover ~at:(10.0, 20.0)
-                  ~available_height:200.0 ~role:`menu ~gap:8 []) ])
+                  ~available_height:200.0 ~role:`menu ~gap:8 [])
+           ; Lui_elements.button ~accessibility_identifier:"filter-trigger" ~text:"Filter" []
+           ; capture_node target_node
+               (Lui_elements.popover ~anchor:`below ~anchor_target:"filter-trigger" []) ])
   in
   ignore (Lui_app.start app);
   flush_app app;
@@ -2448,6 +2609,10 @@ let test_vocab_batch2 () =
             id = !popover_node
           | _ -> false)
        ops);
+  Alcotest.(check bool) "retained target emitted" true
+    (List.exists (function
+      | SetProp (id, AnchorTarget, StringValue "filter-trigger") -> id = !target_node
+      | _ -> false) ops);
   Alcotest.(check bool) "x emitted" true
     (emitted PopupX (FloatValue 10.0));
   Alcotest.(check bool) "y emitted" true
@@ -2635,6 +2800,8 @@ let test_visual_appearance_props () =
     (property_value_supported ZIndex (IntValue 40));
   Alcotest.(check bool) "white-space enum" true
     (property_value_supported WhiteSpace (StringValue "nowrap"));
+  Alcotest.(check bool) "white-space preserves wrapping code text" true
+    (property_value_supported WhiteSpace (StringValue "pre-wrap"));
   Alcotest.(check bool) "white-space rejects pre" false
     (property_value_supported WhiteSpace (StringValue "pre"));
   Alcotest.(check bool) "text-overflow enum" true
@@ -2702,6 +2869,18 @@ let test_visual_appearance_props () =
   Alcotest.(check bool) "viewport sizes on dialog" true
     (property_supported Dialog WidthViewport
      && property_supported Dialog MaxHeightViewport);
+  Alcotest.(check bool) "dialog constructor supports typed spacing and inherited ink" true
+    (property_supported Dialog Gap && property_supported Dialog ForegroundValue);
+  Alcotest.(check bool) "dialog supports content clipping" true
+    (property_supported Dialog Overflow);
+  Alcotest.(check bool) "rows support responsive orientation" true
+    (property_supported Row OrientationValue);
+  Alcotest.(check bool) "list items support responsive visibility" true
+    (property_supported ListItem DisplayValue);
+  Alcotest.(check bool) "choice constructors support their typed label gap" true
+    (property_supported Checkbox Gap && property_supported Radio Gap);
+  Alcotest.(check bool) "grid constructor supports its alignment properties" true
+    (property_supported Grid CrossAlignment && property_supported Grid MainAlignment);
   Alcotest.(check bool) "min-viewport <= max-viewport" true
     (node_properties_supported Row
        (Property_map.add MinHeightViewport (FloatValue 0.3)
@@ -2780,6 +2959,37 @@ let test_visual_appearance_props () =
       (SelectedShadow, StringValue "inset 0 0 0 1px var(--color-primary)");
       (DisabledOpacity, FloatValue 0.5);
       (MaxHeightViewport, FloatValue 0.65) ]
+
+let test_dialog_chrome_props () =
+  let open Lui_protocol in
+  let node = ref 0 in
+  let app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _ -> model)
+      (fun _ _ _ ->
+        capture_node node
+          (Lui_elements.dialog ~background:"#ffffff" ~border_color:"#ebeaeb"
+             ~border_width:1 ~corner_radius:8 []))
+  in
+  ignore (Lui_app.start app);
+  flush_app app;
+  List.iter
+    (fun (property, value) ->
+      Alcotest.(check bool)
+        ("dialog emits " ^ Lui_wire_schema.property_name property)
+        true
+        (List.exists
+           (function
+             | SetProp (id, p, v) -> id = !node && p = property && v = value
+             | _ -> false)
+           (all_ops ())))
+    [
+      (BackgroundValue, StringValue "#ffffff");
+      (BorderColorValue, StringValue "#ebeaeb");
+      (BorderWidth, IntValue 1);
+      (CornerRadius, IntValue 8);
+    ];
+  ignore (Lui_app.dispose app)
 
 let test_property_matrix_sync () =
   (* property_supported's restrictive arms and additive extras must mirror
@@ -2958,7 +3168,7 @@ let json_view_json =
       {"kind":"input-group","children":[
         {"kind":"textarea","id":"tf"},
         {"kind":"input-group-actions","children":[{"kind":"button","text":"a"}]}]},
-      {"kind":"split","children":[{"kind":"text","value":"l"},{"kind":"text","value":"r"}]},
+      {"kind":"split","gap":0,"resize-handle-width":0,"resize-handle-offset":2.5,"children":[{"kind":"text","value":"l"},{"kind":"text","value":"r"}]},
       {"kind":"totally-bogus"}
     ]}|}
 
@@ -2987,6 +3197,13 @@ let test_json_view_render () =
       "table"; "table-row"; "table-cell"; "radio-group"; "radio";
       "stepper"; "step"; "bottom-tabs"; "bottom-tab"; "input-group";
       "input-group-actions"; "button"; "split"; "textarea"; "text" ];
+  let split=drive_node s (Drive.Model.Kind "split") in
+  Alcotest.(check bool) "A controlled split can omit its resize handle" true
+    (Hashtbl.find_opt split.Drive.Model.props "resize-handle-width"=Some (Lui_protocol.IntValue 0));
+  Alcotest.(check bool) "Negative resize handle widths remain invalid" false
+    (Lui_protocol.property_value_supported Lui_protocol.ResizeHandleWidth (Lui_protocol.IntValue (-1)));
+  Alcotest.(check bool) "Split handle offset is a logical distance from the track center" true
+    (Hashtbl.find_opt split.Drive.Model.props "resize-handle-offset"=Some (Lui_protocol.FloatValue 2.5));
   (* unknown kinds render a visible placeholder, never a blank/raise *)
   Alcotest.(check bool) "placeholder text" true
     (Drive.Model.exists tree (Drive.Model.Text "unsupported component"));
@@ -3001,6 +3218,55 @@ let test_json_view_render () =
      | [ (_, _, [ ("checked", Lui_json_view.Bool true) ]) ] -> true
      | _ -> false);
   drive_dispose s
+
+let test_link_action () =
+  let calls=ref 0 in
+  let session=drive_mount ~initial:() ~reducer:(fun model () -> model)
+    ~view:(fun _ _ _ -> Lui_elements.column
+      [Lui_elements.link ~url:"https://example.test/topic" ~text:"Topic"
+         ~on_press:(fun _ -> incr calls) []]) () in
+  Fun.protect ~finally:(fun () -> drive_dispose session) (fun () ->
+    let node=drive_node session (Drive.Model.Kind "link") in
+    Alcotest.(check bool) "Link admits an application press action" true
+      (Lui_protocol.property_supported Lui_protocol.Link Lui_protocol.PressEnabled);
+    Alcotest.(check bool) "Link constructor enables its action" true
+      (Hashtbl.find_opt node.Drive.Model.props "press-enabled"=Some (Lui_protocol.BoolValue true));
+    Drive.Session.press session node.Drive.Model.id;
+    Alcotest.(check int) "Link press reaches the mounted action" 1 !calls)
+
+let test_rich_text_containers () =
+  List.iter (fun kind ->
+    let value=match Lui_json_view_parse.parse (Printf.sprintf
+      {|{"kind":"%s","children":[{"kind":"text","value":"One "},{"kind":"text","value":"bold café 中文 😀","font-weight":700},{"kind":"link","url":"https://example.test","text":"Topic","id":"topic"}]}|} kind) with
+      | Ok value -> value | Error message -> failwith message in
+    let calls=ref 0 in
+    let session=drive_mount ~initial:() ~reducer:(fun model () -> model)
+      ~view:(fun _ _ _ -> Lui_json_view.render ~on_event:(fun ~id:_ ~kind:_ ~fields:_ -> incr calls) value) () in
+    Fun.protect ~finally:(fun () -> drive_dispose session) (fun () ->
+      let container=drive_node session (Drive.Model.Kind kind) in
+      let children=Drive.Model.children (drive_tree session) container.Drive.Model.id in
+      Alcotest.(check int) (kind ^ " retains every rich child") 3 (List.length children);
+      Alcotest.(check bool) (kind ^ " preserves Unicode emphasis") true
+        (Drive.Model.exists (drive_tree session) (Drive.Model.Text "bold café 中文 😀"));
+      let link=drive_node session (Drive.Model.Kind "link") in
+      Drive.Session.press session link.Drive.Model.id;
+      Alcotest.(check int) (kind ^ " nested link remains interactive") 1 !calls))
+    ["heading";"paragraph";"label"]
+
+let test_json_view_anchor_rect () =
+  let mount value = drive_mount ~initial:() ~reducer:(fun model () -> model)
+    ~view:(fun _ _ _ -> Lui_json_view.render ~on_event:(fun ~id:_ ~kind:_ ~fields:_ -> ())
+      (Lui_json_view.Obj ["kind",Str "popover";"anchor",Str "below";"anchor-rect",value])) () in
+  let session=mount (Lui_json_view.Str "10 20 30 40") in
+  let node=drive_node session (Drive.Model.Kind "popover") in
+  Alcotest.(check (option string)) "JSON view keeps its rectangle anchor"
+    (Some "10. 20. 30. 40.") (Drive.Model.string_prop node "anchor-rect");
+  drive_dispose session;
+  List.iter (fun value ->
+    Alcotest.check_raises "Invalid JSON rectangle must fail instead of changing anchor mode"
+      (Invalid_argument "Invalid popover anchor rectangle")
+      (fun () -> let session=mount value in drive_dispose session))
+    [Lui_json_view.Str "0 0 -1 2";Str "nan 0 1 2";Str "0 0 1";Num 4.]
 
 let test_json_view_parse () =
   (* malformed input is rejected wholesale — never a partial mount *)
@@ -3885,6 +4151,45 @@ let test_drive_scenarios () =
   run_drive_scenario "counter.drive"
     (drive_mount ~initial:0 ~reducer:counter_reducer ~view:counter_view ())
 
+let test_padding_edge_props () =
+  let open Lui_protocol in
+  List.iter
+    (fun name ->
+      let property =
+        match
+          List.find_opt
+            (fun p -> Lui_wire_schema.property_name p = name)
+            Lui_wire_schema.all_properties
+        with
+        | Some property -> property
+        | None -> Alcotest.fail ("Missing typed property: " ^ name)
+      in
+      List.iter
+        (fun kind ->
+          Alcotest.(check bool)
+            "padding side supported" true
+            (property_supported kind property))
+        [ Box; SearchField; Kbd; Toast ];
+      List.iter
+        (fun kind ->
+          Alcotest.(check bool)
+            "padding side rejected" false
+            (property_supported kind property))
+        [ Avatar; Tooltip ];
+      List.iter
+        (fun n ->
+          Alcotest.(check bool)
+            "nonnegative padding" true
+            (property_value_supported property (IntValue n)))
+        [ 0; 28 ];
+      Alcotest.(check bool)
+        "negative padding rejected" false
+        (property_value_supported property (IntValue (-1)));
+      Alcotest.(check bool)
+        "string padding rejected" false
+        (property_value_supported property (StringValue "28")))
+    [ "padding-top"; "padding-right"; "padding-bottom"; "padding-left" ]
+
 let test_margin_props () =
   let open Lui_protocol in
   let margins =
@@ -3930,6 +4235,37 @@ let test_margin_wire_props () =
   check "margin-right" (Lui_protocol.IntValue 2);
   check "margin-bottom" (Lui_protocol.IntValue 3);
   check "margin-left" (Lui_protocol.IntValue (-4))
+
+let test_choice_label_opacity () =
+  let open Lui_protocol in
+  let property = match List.find_opt (fun property ->
+      Lui_wire_schema.property_name property = "label-opacity") Lui_wire_schema.all_properties with
+    | Some property -> property
+    | None -> Alcotest.fail "Choice labels need an independent opacity property" in
+  List.iter (fun kind -> Alcotest.(check bool) "choice admits label opacity" true
+    (property_supported kind property)) [Checkbox;Radio];
+  List.iter (fun kind -> Alcotest.(check bool) "unrelated kinds reject label opacity" false
+    (property_supported kind property)) [Text;Button;Column;SwitchControl];
+  List.iter (fun value -> Alcotest.(check bool) "finite unit opacity accepted" true
+    (property_value_supported property (FloatValue value))) [0.;0.7;1.];
+  List.iter (fun value -> Alcotest.(check bool) "invalid opacity rejected" false
+    (property_value_supported property value))
+    [FloatValue (-0.1);FloatValue 1.1;FloatValue nan;FloatValue infinity;
+     FloatValue neg_infinity;IntValue 1;StringValue "0.7"];
+  let batches=ref [] in
+    let backend={backend_profile=profile MacOS GenericHost;
+      apply_batch=(fun batch -> batches:=batch::!batches;true)} in
+    let app=Lui_app.create backend () (fun model () -> model)
+      (fun _ _ _ ctx parent ->
+        let node=Lui_elements.checkbox ~text:"Caption café 中文 😀" [] ctx parent in
+        Lui_ui.float_property ctx node property 0.7;node) in
+    Fun.protect ~finally:(fun () -> ignore (Lui_app.dispose app)) (fun () ->
+      ignore (Lui_app.start app);
+      ignore (Lui_app.flush app);
+      Alcotest.(check bool) "public choice constructor publishes caption opacity" true
+        (List.exists (fun batch -> List.exists (function
+          SetProp (_,p,FloatValue value) -> p=property && value=0.7 | _ -> false)
+          batch.ops) !batches))
 
 let test_toast_padding () =
   let open Lui_protocol in
@@ -3981,6 +4317,8 @@ let () =
         ] );
       ( "protocol",
         [
+          Alcotest.test_case "choice label opacity" `Quick test_choice_label_opacity;
+          Alcotest.test_case "padding edge prop family" `Quick test_padding_edge_props;
           Alcotest.test_case "margin prop family" `Quick test_margin_props;
           Alcotest.test_case "margin wire props" `Quick test_margin_wire_props;
           Alcotest.test_case "toast padding" `Quick test_toast_padding;
@@ -3999,6 +4337,7 @@ let () =
             test_property_matrix_sync;
           Alcotest.test_case "visual appearance props" `Quick
             test_visual_appearance_props;
+          Alcotest.test_case "dialog chrome props" `Quick test_dialog_chrome_props;
           Alcotest.test_case "data-attrs protocol" `Quick
             test_data_attrs_protocol;
           Alcotest.test_case "finite float encoding" `Quick
@@ -4009,6 +4348,18 @@ let () =
         ] );
       ( "dyn",
         [
+          Alcotest.test_case "root changed key resets host identity" `Quick
+            (test_dynamic_root_key (Some "first") (Some "second") false);
+          Alcotest.test_case "root added key resets host identity" `Quick
+            (test_dynamic_root_key None (Some "second") false);
+          Alcotest.test_case "root removed key resets host identity" `Quick
+            (test_dynamic_root_key (Some "first") None false);
+          Alcotest.test_case "root stable key retains host identity" `Quick
+            (test_dynamic_root_key (Some "same") (Some "same") true);
+          Alcotest.test_case "root replacement preserves an explicitly keyed descendant" `Quick
+            (test_dynamic_root_key ~keyed_child:true (Some "first") (Some "second") false);
+          Alcotest.test_case "root without key retains host identity" `Quick
+            (test_dynamic_root_key None None true);
           Alcotest.test_case "equal skips remount" `Quick
             test_dyn_equal_skips_remount;
           Alcotest.test_case "default remounts" `Quick
@@ -4045,8 +4396,12 @@ let () =
             test_styled_accordion_mounts ] );
       ( "dispatch",
         [
+          Alcotest.test_case "text navigation callbacks" `Quick test_text_navigation_callbacks;
+          Alcotest.test_case "button navigation callback" `Quick test_button_navigation_callback;
+          Alcotest.test_case "input blur callback" `Quick test_input_blur_callback;
           Alcotest.test_case "pointer events" `Quick test_pointer_events;
           Alcotest.test_case "pointer dispatch" `Quick test_pointer_dispatch;
+          Alcotest.test_case "pixel split echoes" `Quick test_split_pixel_echoes;
           Alcotest.test_case "value echoes dropped" `Quick
             test_dispatch_drops_value_echoes;
           Alcotest.test_case "unset default echoes dropped" `Quick
@@ -4092,7 +4447,10 @@ let () =
       ( "json_view",
         [
           Alcotest.test_case "render + events" `Quick test_json_view_render;
+          Alcotest.test_case "Link actions" `Quick test_link_action;
+          Alcotest.test_case "rich text containers" `Quick test_rich_text_containers;
           Alcotest.test_case "parse edge cases" `Quick test_json_view_parse;
+          Alcotest.test_case "rectangle anchors" `Quick test_json_view_anchor_rect;
         ] );
       ( "extension fingerprints",
         [

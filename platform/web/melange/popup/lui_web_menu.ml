@@ -7,60 +7,7 @@ open Lui_web_types
 module W = Webapi.Dom
 module Store = Lui_web_store
 
-(* Popup transition helpers. These belong to the popup-transition vocabulary
-   owned by Lui_web_position, but that module is still a stub, so the port
-   keeps local copies here; switch to the shared versions when they exist. *)
-external media_query_list_matches : W.Window.mediaQueryList -> bool = "matches"
-  [@@mel.get]
-
-external click_detail : Dom.event -> int = "detail" [@@mel.get]
-
 let emit renderer event = ignore (!(renderer.web_event_handler) event)
-
-let transition_event_from target event =
-  W.Element.isSameNode
-    (W.Element.asNode
-       (Lui_web_util.event_target_to_element (W.Event.target event)))
-    target
-
-let prefers_reduced_motion document =
-  let html_document = W.Document.unsafeAsHtmlDocument document in
-  match W.HtmlDocument.defaultView html_document with
-  | Some window ->
-      media_query_list_matches
-        (W.Window.matchMedia "(prefers-reduced-motion: reduce)" window)
-  | None -> false
-
-let after_transition document target fallback_duration finish_on_cancel
-    complete =
-  if prefers_reduced_motion document then complete ()
-  else begin
-    let finished = ref false in
-    let timer = ref None in
-    let finish_ref = ref (fun () -> ()) in
-    let transition_handler event =
-      if transition_event_from target event then !finish_ref ()
-    in
-    let finish () =
-      if not !finished then begin
-        finished := true;
-        (match !timer with
-         | Some timer_id -> Js.Global.clearTimeout timer_id
-         | None -> ());
-        W.Element.removeEventListener "transitionend" transition_handler
-          target;
-        if finish_on_cancel then
-          W.Element.removeEventListener "transitioncancel" transition_handler
-            target;
-        complete ()
-      end
-    in
-    finish_ref := finish;
-    W.Element.addEventListener "transitionend" transition_handler target;
-    if finish_on_cancel then
-      W.Element.addEventListener "transitioncancel" transition_handler target;
-    timer := Some (Js.Global.setTimeout ~f:finish fallback_duration)
-  end
 
 let begin_popup_open popup =
   W.Element.removeAttribute "aria-hidden" popup;
@@ -385,6 +332,210 @@ let activate_menu_item_bang = activate_menu_item
 
 (* --- dropdown open/close --- *)
 
+(* Return after the close batch publishes its next focus owner. A retained
+   menu reopened in that batch must keep its current focus. *)
+let restore_dropdown_focus renderer node positioner =
+  let trigger =
+    Option.bind (Lui_web_layers.layer_at renderer.web_layers node) (fun layer ->
+        layer.Lui_web_layers.trigger)
+  in
+  (* An action can close its surface before opening the next one. Its
+     retiring control cannot own the replacement's return focus. *)
+  (match !(renderer.web_modal_return_focus) with
+   | Some invoked when W.Element.contains (W.Element.asNode invoked) positioner ->
+       renderer.web_modal_return_focus := trigger
+   | _ -> ());
+  ignore
+    (Js.Global.setTimeout
+       ~f:(fun () ->
+         if not (Lui_web_layers.is_open renderer.web_layers node) then
+           Lui_web_focus.restore_focus_if_unmoved renderer ~closing:positioner
+             trigger)
+       0)
+
+(* Ordinary pointer-open dropdowns focus their container. Keyboard opens
+   highlight the first enabled row; pickers and submenus own their focus. *)
+let initialize_menu_focus renderer container_id =
+  match Store.node renderer.web_store container_id with
+  | None -> ()
+  | Some container ->
+      ignore
+        (Js.Global.setTimeout
+           ~f:(fun () ->
+             (* Closed containers (e.g. a nested submenu that mounts
+                eagerly inside an open menu) must not steal focus when a
+                parent menu mounts. A dropdown's platform node is its
+                positioner; data-open lives on the popup child while the
+                menu is presented (menus that are their own popup, e.g.
+                context menus, carry it on the node itself). *)
+             let presented =
+               W.Element.hasAttribute "data-open"
+                 (Lazy.force container.platform_node)
+               ||
+               match
+                 W.HtmlCollection.item 0
+                   (W.Element.children (Lazy.force container.platform_node))
+               with
+               | Some popup -> W.Element.hasAttribute "data-open" popup
+               | None -> false
+             in
+             (* Submenus (a dropdown nested under a menu row) open on
+                hover/focus of their trigger; focusing their items here
+                would steal focus from the parent menu's highlighted row.
+                Picker dropdowns place initial focus themselves in
+                mount_picker_dropdown. *)
+             let submenu_or_picker =
+               (match container.retained_parent with
+                 | Some parent -> (
+                     match Store.node renderer.web_store parent with
+                     | Some parent_node -> Store.menu_item_row parent_node
+                     | None -> false)
+                 | None -> false)
+               || picker_for_dropdown renderer container_id <> None
+             in
+             (* Keyboard input can reach the menu before this deferred
+                initialization. Preserve focus already moved into the menu
+                or one of its owned portals. *)
+             let focus_already_inside =
+               let document =
+                 W.Document.unsafeAsHtmlDocument renderer.web_document
+               in
+               match W.HtmlDocument.activeElement document with
+               | Some active ->
+                   List.exists
+                     (fun root ->
+                       W.Element.contains (W.Element.asNode active) root)
+                     (Lui_web_layers.focus_roots renderer.web_layers
+                        container_id)
+               | None -> false
+             in
+             let trigger_owns_focus =
+               match
+                 Lui_web_layers.layer_at renderer.web_layers container_id
+               with
+               | Some layer -> (
+                   match layer.Lui_web_layers.trigger with
+                   | Some trigger -> (
+                       let document =
+                         W.Document.unsafeAsHtmlDocument renderer.web_document
+                       in
+                       match W.HtmlDocument.activeElement document with
+                       | Some active ->
+                           W.Element.contains (W.Element.asNode active) trigger
+                           || Lui_web_focus.document_body_focused renderer
+                       | None -> true)
+                   | None -> true)
+               | None -> false
+             in
+             if
+               presented && (not submenu_or_picker)
+               && (not focus_already_inside) && trigger_owns_focus
+             then begin
+               let pointer_open =
+                 (Store.standard_kind_is container DropdownMenu
+                  || (Store.standard_kind_is container Popover
+                      && Store.property renderer.web_store container_id RoleValue
+                         = Some (StringValue "menu")))
+                 &&
+                 match
+                   Lui_web_layers.layer_at renderer.web_layers container_id
+                 with
+                 | Some layer -> (
+                     match
+                       Option.bind layer.Lui_web_layers.trigger
+                         (W.Element.getAttribute "data-lui-open-method")
+                     with
+                     | Some "mouse" | Some "touch" | Some "pen" -> true
+                     | _ -> false)
+                 | None -> false
+               in
+               let nodes =
+                 W.Element.querySelectorAll
+                   "[role=menuitem]:not([data-disabled]):not([aria-disabled='true']):not([data-menu-tail])"
+                   (Lazy.force container.platform_node)
+               in
+               let n = W.NodeList.length nodes in
+               let rec in_submenu element =
+                 match W.Element.parentElement element with
+                 | None -> false
+                 | Some parent -> (
+                     if
+                       W.Element.isSameNode (W.Element.asNode parent)
+                         (Lazy.force container.platform_node)
+                     then false
+                     else
+                       match W.Element.getAttribute "data-submenu" parent with
+                       | Some _ -> true
+                       | None -> in_submenu parent)
+               in
+               let rec collect index acc =
+                 if index < 0 then acc
+                 else
+                   collect (index - 1)
+                     (match W.NodeList.item index nodes with
+                     | Some item -> (
+                         match W.Element.ofNode item with
+                         | Some element ->
+                             if in_submenu element then acc else element :: acc
+                         | None -> acc)
+                     | None -> acc)
+               in
+               let items = collect (n - 1) [] in
+               match items with
+               | [] ->
+                   let controls =
+                     W.Element.querySelectorAll
+                       "button, input, select, textarea, a[href], [tabindex], \
+                        [contenteditable]"
+                       (Lazy.force container.platform_node)
+                   in
+                   let rec focus_first index =
+                     if index < W.NodeList.length controls then
+                       match
+                         Option.bind
+                           (W.NodeList.item index controls)
+                           W.Element.ofNode
+                       with
+                       | Some element
+                         when (not (in_submenu element))
+                              && Lui_web_focus.sequential_focus_target_available
+                                   element ->
+                           Lui_web_util.focus_element_without_scroll element
+                       | _ -> focus_first (index + 1)
+                   in
+                   focus_first 0
+               | _ ->
+                   List.iter
+                     (fun element ->
+                       W.Element.removeAttribute "data-highlighted" element;
+                       W.Element.setAttribute "tabindex" "-1" element)
+                     items;
+                   if pointer_open then
+                     Lui_web_util.focus_element_without_scroll
+                       (Lui_web_util.child_element
+                          (Lazy.force container.platform_node)
+                          0)
+                   else begin
+                     let target =
+                       match
+                         List.find_opt
+                           (fun element ->
+                             W.Element.getAttribute "data-selected" element
+                             <> None)
+                           items
+                       with
+                       | Some element -> element
+                       (* items is collected in DOM order; with no selected
+                       row the highlight lands on the first item. *)
+                       | None -> List.hd items
+                     in
+                     W.Element.setAttribute "data-highlighted" "" target;
+                     W.Element.setAttribute "tabindex" "0" target;
+                     Lui_web_util.focus_element_without_scroll target
+                   end
+             end)
+           0)
+
 let rec set_dropdown_open renderer node open_ =
   let positioner = Lui_web_nodes.dom_node renderer node in
   let popup = Lui_web_util.child_element positioner 0 in
@@ -397,6 +548,7 @@ let rec set_dropdown_open renderer node open_ =
        | None -> None);
     Lui_web_layers.open_layer renderer.web_layers renderer.web_document node;
     begin_popup_open popup;
+    initialize_menu_focus renderer node;
     ignore (Lui_web_position.position_dropdown renderer node);
     (* Point-anchored menus (~at) have no DOM anchor to follow — like
        popover ~at they skip geometry tracking; the model re-emits x/y to
@@ -413,7 +565,9 @@ let rec set_dropdown_open renderer node open_ =
     in
     begin_popup_close popup;
     W.Element.setAttribute "inert" "" popup;
-    after_transition renderer.web_document popup 130 true (fun () ->
+    restore_dropdown_focus renderer node positioner;
+    Lui_web_util.after_surface_motion renderer.web_document [ popup ]
+      ~fallback:130 (fun () ->
         if Lui_web_layers.transition renderer.web_layers node = token
            && not (Lui_web_layers.is_open renderer.web_layers node)
         then begin
@@ -461,16 +615,24 @@ let direct_dropdown_menu renderer node =
 let hide_context_menu renderer =
   match !(renderer.web_open_context_menu) with
   | Some menu ->
-      Lui_web_popup_tracking.stop (Lui_web_nodes.dom_node renderer menu);
+      let popup = Lui_web_nodes.dom_node renderer menu in
+      Lui_web_popup_tracking.stop popup;
+      renderer.web_open_context_menu := None;
       let token =
         Lui_web_layers.close_layer renderer.web_layers renderer.web_document
           menu
       in
-      W.Element.removeAttribute "data-open"
-        (Lui_web_nodes.dom_node renderer menu);
-      Lui_web_layers.finish_present renderer.web_layers renderer.web_document
-        menu token;
-      renderer.web_open_context_menu := None
+      begin_popup_close popup;
+      Lui_web_util.after_surface_motion renderer.web_document [ popup ]
+        ~fallback:130 (fun () ->
+          if
+            Lui_web_layers.transition renderer.web_layers menu = token
+            && not (Lui_web_layers.is_open renderer.web_layers menu)
+          then begin
+            W.Element.removeAttribute "data-ending-style" popup;
+            Lui_web_layers.finish_present renderer.web_layers
+              renderer.web_document menu token
+          end)
   | None -> ()
 
 let context_menu_focus_items renderer menu =
@@ -509,7 +671,7 @@ let focus_context_menu_host renderer menu =
 let show_context_menu renderer menu x y =
   hide_context_menu renderer;
   let menu_node = Lui_web_nodes.dom_node renderer menu in
-  W.Element.setAttribute "data-open" "" menu_node;
+  begin_popup_open menu_node;
   Lui_web_layers.reconcile_owner renderer.web_layers renderer.web_document
     menu
     (match Store.node renderer.web_store menu with
@@ -538,7 +700,7 @@ let show_context_menu renderer menu x y =
                         | None -> false)
                    ~update ~on_invalid:(fun () ->
                      if !(renderer.web_open_context_menu) = Some menu then
-                       hide_context_menu renderer)
+                       hide_context_menu renderer) ()
              | None -> hide_context_menu renderer)
         | None -> hide_context_menu renderer)
    | None -> ());
@@ -568,8 +730,9 @@ let rec topmost_dropdown renderer node =
 
 let attach_picker_press_event renderer node dom_node =
   W.Element.addEventListener "click"
-    (fun _event ->
+    (fun event ->
       if Store.event_capability renderer node PressEnabled then begin
+        Lui_web_util.record_click_open_method dom_node event;
         emit renderer (Press node);
         (* Activating an item in a plain dropdown dismisses the whole
            menu, matching base-ui/context-menu behaviour. Picker items
@@ -681,7 +844,7 @@ let attach_picker_trigger_events renderer node dom_node =
     dom_node;
   W.Element.addEventListener "click"
     (fun event ->
-      let keyboard = click_detail event = 0 in
+      let keyboard = Lui_web_util.click_detail event = 0 in
       if !suppress_click && not keyboard then suppress_click := false
       else begin
         suppress_click := false;
@@ -783,7 +946,8 @@ let close_submenu_to_trigger renderer node trigger =
 let dropdown_navigate renderer node items current_index key event =
   let navigation_key =
     if key = "ArrowDown" then "ArrowRight"
-    else if key = "ArrowUp" then "ArrowLeft"
+    else if key = "ArrowUp" then
+      (if current_index = None then "End" else "ArrowLeft")
     else key
   in
   match
@@ -922,7 +1086,7 @@ let dropdown_key_handler renderer node typeahead_buffer typeahead_timer
     W.KeyboardEvent.preventDefault event;
     focus_context_menu_item renderer node 0
   end
-  else if current_index <> None then begin
+  else begin
     if key = "ArrowDown" || key = "ArrowUp" || key = "Home" || key = "End"
     then dropdown_navigate renderer node items current_index key event
     else if key = "ArrowRight" then begin
@@ -979,6 +1143,13 @@ let attach_dropdown_events renderer node _dropdown_node =
   in
   let positioner = Lui_web_nodes.dom_node renderer node in
   let popup = Lui_web_util.child_element positioner 0 in
+  (* Resolve Escape at the popup before application document handlers can
+     dismiss an ancestor. Target-local editors still receive it first. *)
+  let escape_handler event =
+    if W.KeyboardEvent.key event = "Escape" then
+      Lui_web_layers.dispatch_key renderer.web_layers event
+  in
+  W.Element.addKeyDownEventListener escape_handler positioner;
   let owner =
     match Store.node renderer.web_store node with
     | Some current -> current.retained_parent
@@ -1014,6 +1185,7 @@ let attach_dropdown_events renderer node _dropdown_node =
        ~close:(fun () -> set_dropdown_open renderer node false)
        ~key_handler ~present:false ~open_:false);
   Hashtbl.replace renderer.web_cleanups node (fun () ->
+      W.Element.removeKeyDownEventListener escape_handler positioner;
       cancel_typeahead typeahead_timer;
       Lui_web_popup_tracking.stop positioner;
       if not (Lui_web_layers.is_present renderer.web_layers node) then
@@ -1486,132 +1658,6 @@ let mount_picker_dropdown renderer node =
           end)
   | None -> ()
 
-(* base-ui parity: a menu opens with an item highlighted and focused
-   (useListNavigation's initial sync). A [data-selected] item wins —
-   select-style menus reopen on the current value; otherwise the first
-   enabled item is highlighted. Items owned by a
-   nested submenu (inside a [data-submenu] positioner) and
-   [data-menu-tail] items (e.g. a session block appended after the menu
-   body mounts) are excluded — cljs-side they mount after the nav list
-   syncs, so they never receive the initial highlight; arrow-key
-   navigation still reaches them. Deferred to a timeout so it lands
-   after the trigger's own click-focus and after the mount batch
-   completes. *)
-let highlight_initial_menu_item renderer container_id =
-  match Store.node renderer.web_store container_id with
-  | None -> ()
-  | Some container ->
-      ignore
-        (Js.Global.setTimeout
-           ~f:(fun () ->
-             (* Closed containers (e.g. a nested submenu that mounts
-                eagerly inside an open menu) must not steal focus when a
-                parent menu mounts. A dropdown's platform node is its
-                positioner; data-open lives on the popup child while the
-                menu is presented (menus that are their own popup, e.g.
-                context menus, carry it on the node itself). *)
-             let presented =
-               W.Element.hasAttribute "data-open" (Lazy.force container.platform_node)
-               ||
-               (match
-                  W.HtmlCollection.item 0
-                    (W.Element.children (Lazy.force container.platform_node))
-                with
-                | Some popup -> W.Element.hasAttribute "data-open" popup
-                | None -> false)
-             in
-             (* Submenus (a dropdown nested under a menu row) open on
-                hover/focus of their trigger; focusing their items here
-                would steal focus from the parent menu's highlighted row.
-                Picker dropdowns place initial focus themselves in
-                mount_picker_dropdown. *)
-             let submenu_or_picker =
-               (match container.retained_parent with
-                | Some parent ->
-                    (match Store.node renderer.web_store parent with
-                     | Some parent_node -> Store.menu_item_row parent_node
-                     | None -> false)
-                | None -> false)
-               || picker_for_dropdown renderer container_id <> None
-             in
-             (* Keyboard input can reach the menu before this deferred
-                initialization. Preserve focus already moved into the menu
-                or one of its owned portals. *)
-             let focus_already_inside =
-               let document =
-                 W.Document.unsafeAsHtmlDocument renderer.web_document
-               in
-               match W.HtmlDocument.activeElement document with
-               | Some active ->
-                   List.exists
-                     (fun root ->
-                       W.Element.contains (W.Element.asNode active) root)
-                     (Lui_web_layers.focus_roots renderer.web_layers
-                        container_id)
-               | None -> false
-             in
-             if presented && not submenu_or_picker
-                && not focus_already_inside then begin
-             let nodes =
-               W.Element.querySelectorAll
-                 "[role=menuitem]:not([data-disabled]):not([aria-disabled='true']):not([data-menu-tail])"
-                 (Lazy.force container.platform_node)
-             in
-             let n = W.NodeList.length nodes in
-             let rec in_submenu element =
-               match W.Element.parentElement element with
-               | None -> false
-               | Some parent ->
-                   if
-                     W.Element.isSameNode
-                       (W.Element.asNode parent)
-                       (Lazy.force container.platform_node)
-                   then false
-                   else
-                     (match W.Element.getAttribute "data-submenu" parent with
-                      | Some _ -> true
-                      | None -> in_submenu parent)
-             in
-             let rec collect index acc =
-               if index < 0 then acc
-               else
-                 collect (index - 1)
-                   (match W.NodeList.item index nodes with
-                    | Some item -> (
-                        match W.Element.ofNode item with
-                        | Some element ->
-                            if in_submenu element then acc else element :: acc
-                        | None -> acc)
-                    | None -> acc)
-             in
-             let items = collect (n - 1) [] in
-             (match items with
-              | [] -> ()
-              | _ ->
-                  List.iter
-                    (fun element ->
-                      W.Element.removeAttribute "data-highlighted" element;
-                      W.Element.setAttribute "tabindex" "-1" element)
-                    items;
-                  let target =
-                    match
-                      List.find_opt
-                        (fun element ->
-                          W.Element.getAttribute "data-selected" element
-                          <> None)
-                        items
-                    with
-                    | Some element -> element
-                    (* items is collected in DOM order; with no selected
-                       row the highlight lands on the first item. *)
-                    | None -> List.hd items
-                  in
-                  W.Element.setAttribute "data-highlighted" "" target;
-                  W.Element.setAttribute "tabindex" "0" target;
-                  Lui_web_util.focus_element_without_scroll target)
-             end)
-           0)
-
 let mount_dropdown renderer node =
   match Store.node renderer.web_store node with
   | Some current ->
@@ -1642,7 +1688,7 @@ let mount_dropdown renderer node =
                      generic highlight would race it and read stale
                      selection state. *)
                   if not listbox && picker_for_dropdown renderer node = None
-                  then highlight_initial_menu_item renderer node;
+                  then initialize_menu_focus renderer node;
                   mount_picker_dropdown renderer node
                 end
             | None -> invalid_arg "dropdown parent is unavailable")
@@ -1688,7 +1734,9 @@ let remove_dropdown_after_exit renderer node parent positioner =
     in
     begin_popup_close popup;
     W.Element.setAttribute "inert" "" popup;
-    after_transition renderer.web_document popup 130 true (fun () ->
+    restore_dropdown_focus renderer node positioner;
+    Lui_web_util.after_surface_motion renderer.web_document [ popup ]
+      ~fallback:130 (fun () ->
         if
           Lui_web_layers.transition renderer.web_layers node = token
           && not (Lui_web_layers.is_open renderer.web_layers node)
@@ -1723,7 +1771,8 @@ let attach_popover_events renderer node _popover_node =
     (Lui_web_layers.register renderer.web_layers
        ~document ~id:node ~owner ~trigger:None ~content:positioner
        ~style_targets:[positioner; popup]
-       ~policy:Lui_web_layers.Nonblocking
+       ~policy:(Lui_web_layers.popover_policy
+         (Store.property renderer.web_store node))
        ~dismiss:(fun () -> emit renderer (Dismiss node))
        ~close:(fun () -> ())
        ~key_handler:(fun _event -> ())
@@ -1743,16 +1792,39 @@ let mount_popover renderer node =
       W.Element.setAttribute "id"
         (Lui_web_util.node_dom_id node ^ "-popup") popup;
       let cover = Store.property renderer.web_store node PopupX = None
-         && Store.property renderer.web_store node AnchorValue = None in
+         && Store.property renderer.web_store node AnchorValue = None
+         && List.for_all (fun property -> Store.property renderer.web_store node property=None)
+              [Inset;InsetTop;InsetRight;InsetBottom;InsetLeft] in
+      let positioned = popover_positioned renderer node in
+      let invalidate () =
+        Lui_web_util.set_state_attribute positioner "hidden" true;
+        if Lui_web_layers.is_open renderer.web_layers node then begin
+          let token =
+            Lui_web_layers.close_layer renderer.web_layers
+              renderer.web_document node
+          in
+          begin_popup_close popup;
+          Lui_web_layers.finish_present renderer.web_layers
+            renderer.web_document node token;
+          emit renderer (Dismiss node)
+        end
+      in
       if cover then W.Element.setAttribute "data-cover" "" positioner;
       Lui_web_layers.set_policy renderer.web_layers renderer.web_document node
-        (if cover then Lui_web_layers.Blocking else Lui_web_layers.Nonblocking);
+        (Lui_web_layers.popover_policy (Store.property renderer.web_store node));
       W.Element.removeAttribute "inert" popup;
       Lui_web_layers.reconcile_owner renderer.web_layers
         renderer.web_document node current.retained_parent;
       let trigger =
-        if popover_positioned renderer node then
-          Some (Lui_web_nodes.dropdown_anchor_node renderer node)
+        let invoked = !(renderer.web_modal_return_focus) in
+        renderer.web_modal_return_focus := None;
+        match invoked with
+        | Some element when not cover
+            && Lui_web_focus.focus_target_available element -> Some element
+        | _ -> if positioned then
+          if Lui_web_position.anchored renderer node then
+            Some (Lui_web_nodes.dropdown_anchor_node renderer node)
+          else None
         else if cover then None
         else
           (* press fires on pointerdown, before the browser's default
@@ -1780,15 +1852,18 @@ let mount_popover renderer node =
         node;
       begin_popup_open popup;
       Lui_web_position.position_popover renderer node;
-      if popover_positioned renderer node then
-        Lui_web_position.track renderer node popup
-          ~update:(fun () -> Lui_web_position.position_popover renderer node)
-          ~on_invalid:(fun () ->
-            Lui_web_util.set_state_attribute positioner "hidden" true);
+      if positioned then begin
+        if Lui_web_position.anchored renderer node then
+          Lui_web_position.track renderer node popup
+            ~update:(fun () -> Lui_web_position.position_popover renderer node)
+            ~on_invalid:invalidate
+        else invalidate ()
+      end;
       if
-        Store.property renderer.web_store node RoleValue
+        Lui_web_layers.is_open renderer.web_layers node
+        && Store.property renderer.web_store node RoleValue
         = Some (StringValue "menu")
-      then highlight_initial_menu_item renderer node
+      then initialize_menu_focus renderer node
   | None -> invalid_arg "unknown popover node"
 
 let mount_popover_bang = mount_popover
@@ -1808,7 +1883,9 @@ let remove_popover_after_exit renderer node parent positioner =
     in
     begin_popup_close popup;
     W.Element.setAttribute "inert" "" popup;
-    after_transition renderer.web_document popup 130 true (fun () ->
+    restore_dropdown_focus renderer node positioner;
+    Lui_web_util.after_surface_motion renderer.web_document [ popup ]
+      ~fallback:130 (fun () ->
         if
           Lui_web_layers.transition renderer.web_layers node = token
           && not (Lui_web_layers.is_open renderer.web_layers node)

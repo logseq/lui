@@ -10,11 +10,15 @@ open Lui_protocol
 open Lui_flex
 
 type text_measure = int -> string -> float -> float -> (float * float) option
+type text_flow = int -> float -> Lui_paint.text_flow_layout option
+type image_measure = int -> (float * float) option
 
 (* Shared defaults so the memo's physical-equality check on function
    inputs sees a stable identity: an inline [fun] default would
    allocate a fresh closure per call and never match. *)
 let no_measure _id _text _offered_w _offered_h = None
+let no_text_flow _id _width = None
+let no_image_measure _id = None
 let show_all _id = false
 
 (* Content-space visible range fed to a virtual list: (start, extent)
@@ -80,6 +84,8 @@ type saved_ctx = {
   sc_vw : float;
   sc_vh : float;
   sc_tm : text_measure;
+  sc_text_flow : text_flow;
+  sc_image_measure : image_measure;
   sc_hidden : int -> bool;
   sc_anchor : (float * float) option;
   sc_store : Lui_store.t;
@@ -96,6 +102,13 @@ type pkid = { raw : int; mutable gens : int list }
    in the [sparent] shadow and the key of their produced list in
    [pkids]. Real store ids are >= 0. *)
 let frame_id = -1
+
+type table = {
+  mutable rows : int array array;
+  mutable natural : float array option;
+  mutable minima : float array;
+  mutable assigned_width : float;
+}
 
 type t = {
   mutable root : Lui_flex.node option;
@@ -123,6 +136,9 @@ type t = {
   (* Produced store id → owner: the store id whose flex node is its
      flex parent ([frame_id] for frame children). *)
   owner : (int, int) Hashtbl.t;
+  tables : (int, table) Hashtbl.t;
+  flow_roots : (int, unit) Hashtbl.t;
+  flow_owners : (int, int) Hashtbl.t;
   grids : (int * Lui_flex.node * Lui_flex.style * float) list ref;
   popups : (Lui_flex.node * int) list ref;
   mutable extent : float * float; (* frame extent the last layout used *)
@@ -134,6 +150,8 @@ type t = {
      caller whose measure/hidden closure keeps its identity but
      changes its answers (e.g. a text engine that finishes loading
      fonts) must {!invalidate}. *)
+  mutable anchor_shift : int -> float * float;
+  mutable synced_anchor_shifts : (int * float * float) list;
   mutable synced_rev : int;
   mutable synced_lrev : int;
   mutable synced_scale : float;
@@ -141,6 +159,8 @@ type t = {
   mutable synced_h : float;
   mutable synced_anchor : (float * float) option;
   mutable synced_measure : text_measure;
+  mutable synced_text_flow : text_flow;
+  mutable synced_image_measure : image_measure;
   mutable synced_hidden : int -> bool;
   (* Instrumentation: [stat_syncs] counts syncs that rebuilt the mirror
      wholesale, [stat_steps] syncs that applied journal ops. Lets tests
@@ -162,9 +182,13 @@ let create () =
     pkids = Hashtbl.create 64;
     sparent = Hashtbl.create 64;
     owner = Hashtbl.create 64;
+    tables = Hashtbl.create 4;
+    flow_roots = Hashtbl.create 4;
+    flow_owners = Hashtbl.create 32;
     grids = ref [];
     popups = ref [];
     extent = (0., 0.);
+    anchor_shift = (fun _ -> (0.,0.)); synced_anchor_shifts = [];
     synced_rev = -1;
     synced_lrev = -1;
     synced_scale = 0.;
@@ -172,6 +196,8 @@ let create () =
     synced_h = 0.;
     synced_anchor = None;
     synced_measure = no_measure;
+    synced_text_flow = no_text_flow;
+    synced_image_measure = no_image_measure;
     synced_hidden = show_all;
     stat_syncs = 0;
     stat_steps = 0 }
@@ -183,6 +209,14 @@ let stat_steps (t : t) = t.stat_steps
 (* ---------- wire value access ---------- *)
 
 let pstr store id name = Lui_store.string_prop store id name
+
+let rec text_nowrap store id =
+  match pstr store id "white-space" with
+  | Some value -> value = "nowrap"
+  | None ->
+    match Lui_store.parent store id with
+    | Some parent -> text_nowrap store parent
+    | None -> false
 
 (* Numeric read that accepts Float/Int and numeric strings — the schema
    types most layout props, but staying permissive costs nothing. *)
@@ -253,37 +287,36 @@ let shorthand_lengths ~scale s =
   | [ t; r; b; l ] -> Some (t, r, b, l)
   | _ -> None
 
-(* padding / padding-horizontal / padding-vertical → flex padding edges.
-   The uniform prop also accepts a string shorthand. *)
-let padding_edges ~scale store id : Lui_flex.edges =
+(* Uniform edge props accept either a number or the CSS 1–4-value shorthand. *)
+let uniform_edges ~scale store id name : Lui_flex.edges =
   let base = Lui_flex.edges_auto in
-  let base =
-    match Lui_store.prop store id "padding" with
-    | Some (StringValue s) -> (
-      match shorthand_lengths ~scale s with
-      | Some (t, r, b, l) -> { base with top = t; right = r; bottom = b; left = l }
-      | None -> base)
-    | Some _ -> { base with all = length_prop ~scale store id "padding" }
-    | None -> base
+  match Lui_store.prop store id name with
+  | Some (StringValue s) -> (
+    match shorthand_lengths ~scale s with
+    | Some (t, r, b, l) -> { base with top = t; right = r; bottom = b; left = l }
+    | None -> base)
+  | Some _ -> { base with all = length_prop ~scale store id name }
+  | None -> base
+
+(* Axis props override the uniform padding shorthand. *)
+let padding_edges ~scale store id : Lui_flex.edges =
+  let base = uniform_edges ~scale store id "padding" in
+  let side name uniform =
+    match Lui_store.prop store id name with
+    | None -> uniform
+    | Some _ -> length_prop ~scale store id name
   in
   { base with
     horizontal = length_prop ~scale store id "padding-horizontal";
-    vertical = length_prop ~scale store id "padding-vertical" }
+    vertical = length_prop ~scale store id "padding-vertical";
+    top = side "padding-top" base.top;
+    right = side "padding-right" base.right;
+    bottom = side "padding-bottom" base.bottom;
+    left = side "padding-left" base.left }
 
-(* margin family → flex margin edges, same resolution order as
-   padding: shorthand on the uniform prop, then per-axis and per-side
-   props win. *)
+(* Axis and side props override the uniform margin shorthand. *)
 let margin_edges ~scale store id : Lui_flex.edges =
-  let base = Lui_flex.edges_auto in
-  let base =
-    match Lui_store.prop store id "margin" with
-    | Some (StringValue s) -> (
-      match shorthand_lengths ~scale s with
-      | Some (t, r, b, l) -> { base with top = t; right = r; bottom = b; left = l }
-      | None -> base)
-    | Some _ -> { base with all = length_prop ~scale store id "margin" }
-    | None -> base
-  in
+  let base = uniform_edges ~scale store id "margin" in
   let base =
     { base with
       horizontal = length_prop ~scale store id "margin-horizontal";
@@ -406,7 +439,7 @@ let direction_of ~store ~id kind : Lui_flex.flex_direction =
   | Some "vertical" -> Column
   | _ -> (
     match kind with
-    | "row" | "grid" | "button" | "toggle-button" | "menu-item"
+    | "row" | "grid" | "button" | "toggle-button" | "menu-item" | "list-item"
     | "button-group" | "toggle-group"
     | "input-group-actions" | "table-row" | "tabs" | "bottom-tabs"
     | "toolbar" | "swipe-actions" | "stepper" | "breadcrumb"
@@ -422,7 +455,9 @@ let overflow_of ~store ~id kind : Lui_flex.overflow =
   | Some ("auto" | "scroll") -> Scroll
   | Some ("hidden" | "clip") -> Hidden
   | Some "visible" -> Visible
-  | _ -> if scroll_kind kind then Scroll else Visible
+  | _ ->
+    if scroll_kind kind || Lui_paint.menu_kind store id kind then Scroll
+    else Visible
 
 (* container-relative-frame(+ -inset): fills the container along the
    named axes (min-* variants floor it instead); the inset becomes a
@@ -482,7 +517,7 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
       | "input-group-actions" -> Pt (6. *. scale)
       | "pagination" -> Pt (2. *. scale)
       | "dialog" | "sheet" -> Pt (16. *. scale)
-      | "popover" | "alert" -> Pt (8. *. scale)
+      | "popover" | "alert" | "list-item" -> Pt (8. *. scale)
       | _ -> Unset)
     | l -> l
   in
@@ -501,6 +536,7 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
         not (blank (pstr store id "icon"))
         && blank (pstr store id "text")
         && blank (pstr store id "label")
+        && Lui_store.children store id = []
       in
       if icon_only then
         let dfl =
@@ -537,7 +573,7 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
       justify_content =
         (match pstr store id "main" with
          | Some s -> justify_of_string s
-         | None -> d.justify_content);
+         | None -> if kind = "table-cell" then Justify_center else d.justify_content);
       align_items =
         (match pstr store id "cross" with
          | Some s -> align_of_string s
@@ -546,13 +582,18 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
               on the cross axis — .lui-button / .lui-menu-item are
               items-center flex rows on the web. *)
            match kind with
-           | "button" | "toggle-button" | "menu-item"
+           | "button" | "toggle-button" | "menu-item" | "list-item"
            | "button-group" | "toggle-group" | "input-group-actions"
            | "breadcrumb" | "pagination" | "toolbar" -> Align_center
+           | "table-cell" -> (match pstr store id "text-alignment" with
+               | Some "end" -> Align_flex_end
+               | Some "center" -> Align_center
+               | _ -> Align_flex_start)
            | _ -> d.align_items));
       position_type;
       flex_wrap =
-        (match pstr store id "flex-wrap" with
+        (if kind = "text" && text_nowrap store id then No_wrap
+         else match pstr store id "flex-wrap" with
          | Some "wrap" -> Wrap
          | Some "nowrap" -> No_wrap
          | _ -> if kind = "grid" || kind = "text" then Wrap else No_wrap);
@@ -561,7 +602,10 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
       width =
         (match viewport_len ~viewport store id ~name:"width-viewport" ~horizontal:true with
          | Unset -> (
-           match lp "width" with Unset -> size_w | l -> l)
+           match lp "width" with
+           | Unset when kind = "table" && size_w = Unset -> Percent 100.
+           | Unset -> size_w
+           | l -> l)
          | l -> l);
       height =
         (match viewport_len ~viewport store id ~name:"height-viewport" ~horizontal:false with
@@ -595,6 +639,7 @@ let style_of ?(scale = 1.) ?(viewport = (0., 0.)) store id : Lui_flex.style =
          | Unset -> lp "max-height"
          | l -> l);
       padding = title_pad ~scale store id kind (padding_edges ~scale store id);
+      border = uniform_edges ~scale store id "border-width";
       margin = margin_edges ~scale store id;
       position;
       row_gap =
@@ -628,7 +673,7 @@ let overlay_edges store id : Lui_flex.edges =
    for parent-level contracts: shared-cell overlays, grid cells, the
    edge-inset content child and frame-fill roots. [pkind] is the
    parent's wire kind, or "frame" for the synthetic frame root. *)
-let adjust ~pkind ~pid ~index store id (style : Lui_flex.style) : Lui_flex.style =
+let adjust ~scale ~pkind ~pid ~index store id (style : Lui_flex.style) : Lui_flex.style =
   let style =
     if pkind = "frame" && not (popup_kind (Lui_store.kind store id)) then
       (* Non-popup store roots fill the frame. *)
@@ -636,7 +681,11 @@ let adjust ~pkind ~pid ~index store id (style : Lui_flex.style) : Lui_flex.style
     else style
   in
   let style =
-    if zstack_kind pkind && index > 0 then
+    if zstack_kind pkind && index > 0
+       && (match pstr store id "position" with
+           | Some ("absolute" | "fixed") -> false
+           | _ -> true) then
+      (* Shared-cell alignment must not overwrite authored position edges. *)
       { style with
         position_type = Lui_flex.Absolute;
         position = overlay_edges store id }
@@ -646,40 +695,47 @@ let adjust ~pkind ~pid ~index store id (style : Lui_flex.style) : Lui_flex.style
     if pkind = "grid" then
       let basis =
         match pnum store pid "columns" with
-        | Some n when n > 0. -> Lui_flex.Percent (100. /. n)
+        | Some n when n > 0. ->
+          let span = Option.value (pnum store id "grid-column-span") ~default:1. in
+          if span>n then invalid_arg "grid column span exceeds column count";
+          Lui_flex.Percent (100. *. span /. n)
         | _ -> Pt 0.
       in
-      (* Cells stay at exactly 1/n of the row — no grow, else a lone
-         cell on the last line would stretch to full width. *)
+      (* Cells keep their declared column share; an incomplete final
+         row must not stretch to fill unused columns. *)
       { style with flex_basis = basis }
     else style
   in
   let style =
     if pkind = "split" then
-      (* The split kind's ~value is the first pane's fraction of the
-         track. The second pane grows into the remainder; the gap is
-         the divider. *)
       match Lui_store.child_ids store pid with
-      | first :: second :: _ ->
-        if id = first then (
-          match pnum store pid "value" with
-          | Some v ->
-            (* Panes clip like the web resizer: a collapsed track
-               hides its content instead of letting it leak into the
-               sibling pane, and min-width:0 lets the track actually
-               reach the fraction instead of its content's floor. *)
-            { style with
-              flex_basis = Lui_flex.Percent (v *. 100.); flex_grow = 0.;
+      | first :: second :: _ when id = first || id = second ->
+          let pane_style basis grow =
+            { style with flex_basis = basis; flex_grow = grow;
               min_width = Pt 0.; overflow = Hidden }
-          | None -> style)
-        else if id = second then
-          { style with flex_grow = 1.; min_width = Pt 0.; overflow = Hidden }
-        else style
+          in
+          (match pnum store pid "first-pane-width", pnum store pid "value" with
+           | Some width, _ ->
+               pane_style (Pt (if id = first then width *. scale else 0.))
+                 (if id = first then 0. else 1.)
+           | None, Some fraction ->
+               pane_style (Pt 0.) (if id = first then fraction else 1. -. fraction)
+           | None, None -> style)
       | _ -> style
     else style
   in
   let style =
-    if scroll_kind pkind then
+    if (pkind = "text" && text_nowrap store pid)
+       || (Lui_store.kind store id = "text" && text_nowrap store id
+           && direction_of ~store ~id:pid pkind = Lui_flex.Row
+           && style.min_width = Lui_flex.Unset && style.overflow = Lui_flex.Visible) then
+      (* Nonwrapping inline ink keeps its natural width. A row label can
+         opt into shrinking with an explicit minimum or clipped overflow. *)
+      { style with flex_shrink = 0. }
+    else style
+  in
+  let style =
+    if scroll_kind pkind || Lui_paint.menu_kind store pid pkind then
       (* A scroller's content keeps its natural main size so it
          overflows and scrolls — the default flex_shrink=1 would
          compress children into the clipped viewport instead. *)
@@ -763,6 +819,8 @@ type ctx = {
   vw : float;
   vh : float;
   tm : text_measure;
+  text_flow : text_flow;
+  image_measure : image_measure;
   hidden : int -> bool; (* host-owned transient visibility (menus) *)
   ctx_anchor : (float * float) option; (* pointer point for context menus *)
   store : Lui_store.t;
@@ -1018,7 +1076,8 @@ let kind_of ctx id = if id = frame_id then "frame" else Lui_store.kind ctx.store
 type nstatus = N_hidden | N_contents | N_normal
 
 let status_of ctx id =
-  if display_none ctx.store id || ctx.hidden id then N_hidden
+  if display_none ctx.store id || ctx.hidden id
+     || not (Lui_store.anchor_available ctx.store id) then N_hidden
   else if display_contents ctx.store id then N_contents
   else N_normal
 
@@ -1070,25 +1129,78 @@ let popup_min_style ctx id cids kids (style : Lui_flex.style) : Lui_flex.style =
     | None -> style)
   | _ -> style
 
+let image_measure_of ctx id _node ~width ~width_mode ~height ~height_mode =
+  match ctx.image_measure id with
+  | None -> {Lui_flex.width=0.;height=0.}
+  | Some (natural_width,natural_height) ->
+      let source_width=Option.value (pnum ctx.store id "source-width") ~default:natural_width
+      and source_height=Option.value (pnum ctx.store id "source-height") ~default:natural_height in
+      let natural_width=source_width *. ctx.scale and natural_height=source_height *. ctx.scale in
+      let cap mode offered natural = match mode with
+        | Lui_flex.Measure_undefined -> natural
+        | Measure_exactly | Measure_at_most -> Float.min offered natural
+        | Measure_invalid -> invalid_arg "Invalid image measure mode" in
+      let width,height=match width_mode,height_mode with
+        | Lui_flex.Measure_exactly,Measure_exactly -> width,height
+        | Measure_exactly,_ -> width,cap height_mode height (width *. natural_height /. natural_width)
+        | _,Measure_exactly -> cap width_mode width (height *. natural_width /. natural_height),height
+        | _ ->
+            let factor=Float.min
+              (cap width_mode width natural_width /. natural_width)
+              (cap height_mode height natural_height /. natural_height) in
+            natural_width *. factor,natural_height *. factor in
+      {Lui_flex.width;height}
+
 let measure_for ctx id ~kids : Lui_flex.measure option =
+  let choice =
+    match Lui_store.kind ctx.store id with
+    | "checkbox" | "radio" -> true
+    | _ -> false
+  in
+  let chrome = if choice then 16. *. ctx.scale else 0. in
   match (kids, text_of ctx.store id) with
-  | [], Some t -> (
-    match Lui_store.prop ctx.store id "icon" with
-    | Some (StringValue s) when s <> "" ->
-      (* labeled_content_ops paints a 16px icon slot + 6px gap —
-         reserve them so the label doesn't overflow the chrome *)
-      let icon_extra = 22. *. ctx.scale in
+  | [], None when Lui_store.kind ctx.store id = "image" -> Some (image_measure_of ctx id)
+  | [], None when choice ->
       Some
-        (fun node ~width ~width_mode ~height ~height_mode ->
-          let d =
-            measure_of ctx.tm ~id ~text:t node ~width ~width_mode
-              ~height ~height_mode
-          in
-          { d with Lui_flex.width = d.Lui_flex.width +. icon_extra })
-    | _ -> Some (measure_of ctx.tm ~id ~text:t))
+        (fun _ ~width:_ ~width_mode:_ ~height:_ ~height_mode:_ ->
+          { Lui_flex.width = chrome; height = chrome })
+  | [], Some t ->
+      let icon_extra =
+        match Lui_store.string_prop ctx.store id "icon" with
+        | Some name when name <> "" ->
+            16. +. Option.value ~default:6. (pnum ctx.store id "gap")
+        | _ -> 0.
+      in
+      let indicator_extra =
+        match Lui_store.kind ctx.store id with
+        | "select" | "combobox" ->
+            16. +. Option.value ~default:8. (pnum ctx.store id "gap")
+        | _ -> 0.
+      in
+      (* Picker indicators reserve their width and requested label gap. *)
+      let choice_extra = if choice then
+        16. +. Option.value ~default:8. (pnum ctx.store id "gap") else 0. in
+      let extra =
+        (icon_extra +. indicator_extra +. choice_extra) *. ctx.scale
+      in
+      if extra > 0. then
+        Some
+          (fun node ~width ~width_mode ~height ~height_mode ->
+            let d =
+              measure_of ctx.tm ~id ~text:t node ~width ~width_mode ~height
+                ~height_mode
+            in
+            {
+              Lui_flex.width = Float.max chrome (d.Lui_flex.width +. extra);
+              height = Float.max chrome d.Lui_flex.height;
+            })
+      else Some (measure_of ctx.tm ~id ~text:t)
   | _ -> None
 
 let register ctx id kind node style =
+  (if kind = "table" then
+     Hashtbl.replace ctx.eng.tables id
+       { rows = [||]; natural = None; minima = [||]; assigned_width = Float.nan });
   (if kind = "grid" then
      match pnum ctx.store id "columns" with
      | Some n when n > 0. ->
@@ -1099,8 +1211,25 @@ let register ctx id kind node style =
   then ctx.popups := (node, id) :: !(ctx.popups)
 
 let unregister ctx id =
+  Hashtbl.remove ctx.eng.tables id;
   ctx.grids := List.filter (fun (g, _, _, _) -> g <> id) !(ctx.grids);
   ctx.popups := List.filter (fun (_, s) -> s <> id) !(ctx.popups)
+
+let rec index_flow_children ctx root parent =
+  let children = Lui_store.child_ids ctx.store parent in
+  Hashtbl.replace ctx.pkids parent (List.map (fun raw -> {raw;gens=[]}) children);
+  List.iter (fun child ->
+    Hashtbl.replace ctx.sparent child parent;
+    Hashtbl.replace ctx.eng.flow_owners child root;
+    index_flow_children ctx root child) children
+
+let flow_measure ctx id _node ~width ~width_mode ~height:_ ~height_mode:_ =
+  let width = match width_mode with
+    | Lui_flex.Measure_undefined -> Float.nan
+    | Measure_exactly | Measure_at_most -> width
+    | Measure_invalid -> invalid_arg "Invalid text-flow measure mode" in
+  let flow = Option.get (ctx.text_flow id width) in
+  {Lui_flex.width=flow.Lui_paint.flow_width;height=flow.flow_height}
 
 (* [build] expands a store node into (flex node, generator store id)
    pairs — a singleton for normal kinds, [] for display:none/hidden,
@@ -1119,12 +1248,24 @@ let rec build ctx ~owner_id ~pkind ~pid ~index id : (Lui_flex.node * int) list =
       (expand_children ctx ~owner:owner_id ~pkind ~pid ~raw_parent:id
          ~first:index cids)
   | N_normal ->
+    (* A retained span can leave its composed paragraph without changing id. *)
+    Hashtbl.remove ctx.eng.flow_owners id;
     let kind = Lui_store.kind ctx.store id in
     let style =
       style_of ~scale:ctx.scale ~viewport:(ctx.vw, ctx.vh) ctx.store id
-      |> adjust ~pkind ~pid ~index ctx.store id
+      |> adjust ~scale:ctx.scale ~pkind ~pid ~index ctx.store id
     in
-    if kind = "virtual-list" && vlist_vertical ctx.store id then begin
+    if Option.is_some (ctx.text_flow id Float.nan) then begin
+      let node = Lui_flex.create ~style ~measure:(flow_measure ctx id) [] in
+      Hashtbl.replace ctx.nodes id node;
+      Hashtbl.replace ctx.applied id style;
+      Hashtbl.replace ctx.owner id owner_id;
+      Hashtbl.replace ctx.eng.flow_roots id ();
+      index_flow_children ctx id id;
+      register ctx id kind node style;
+      [node,id]
+    end
+    else if kind = "virtual-list" && vlist_vertical ctx.store id then begin
       (* Real virtualization: the list is a leaf in this mirror — only
          the mounted row window gets flex trees (side forest). Its
          produced child list stays empty; [pkids] records the leaf. *)
@@ -1176,6 +1317,122 @@ and expand_children ctx ~owner ~pkind ~pid ~raw_parent ~first cids =
   Hashtbl.replace ctx.pkids raw_parent (List.rev !entries);
   (List.rev !acc, ())
 
+(* A table owns its column widths. Row-local flex sizing would move each
+   boundary according to the contents of that particular row. Natural widths
+   are measured only when a table subtree changes, then retained on resize. *)
+let table_children ctx id =
+  List.fold_left (fun acc entry -> List.rev_append entry.gens acc)
+    [] (pkids_of ctx id) |> List.rev |> Array.of_list
+
+let ordered_tables ctx =
+  let depths = Hashtbl.create 8 in
+  let rec depth id =
+    if id = frame_id then 0
+    else match Hashtbl.find_opt depths id with
+    | Some d -> d
+    | None ->
+      let d = 1 + depth (Hashtbl.find ctx.owner id) in
+      Hashtbl.add depths id d;
+      d in
+  Hashtbl.fold (fun id table acc -> (depth id, id, table) :: acc)
+    ctx.eng.tables []
+  |> List.sort (fun (a, _, _) (b, _, _) -> Int.compare a b)
+
+let set_table_columns ctx table widths =
+  Array.iter (fun row ->
+    Array.iteri (fun index id ->
+      let style = Hashtbl.find ctx.applied id in
+      let width = Pt widths.(index) in
+      Lui_flex.set_style (Hashtbl.find ctx.nodes id)
+        { style with width; flex_basis = width; flex_grow = 0.;
+          flex_shrink = 0.; min_width = Pt 0.; max_width = Unset;
+          align_self = Align_stretch }) row) table.rows
+
+let prepare_tables ctx tables =
+  List.iter (fun (_, id, table) ->
+    if table.natural = None then begin
+      table.rows <- Array.map (table_children ctx) (table_children ctx id);
+      let count = Array.fold_left (fun n row -> max n (Array.length row))
+        0 table.rows in
+      let natural = Array.make count 0. in
+      let minima = Array.make count 0. in
+      Array.iter (fun row ->
+        Array.iteri (fun index cell ->
+          let node = Hashtbl.find ctx.nodes cell in
+          let style = Hashtbl.find ctx.applied cell in
+          Lui_flex.set_style node style;
+          Lui_flex.compute_layout node ~width:Lui_flex.undefined
+            ~height:Lui_flex.undefined ();
+          natural.(index) <- Float.max natural.(index) (Lui_flex.layout node).w;
+          let edge edges a b axis =
+            edge_px ~owner:ctx.vw a axis edges +.
+            edge_px ~owner:ctx.vw b axis edges in
+          let chrome = edge style.padding style.padding.left style.padding.right
+              style.padding.horizontal +.
+            edge style.border style.border.left style.border.right
+              style.border.horizontal in
+          minima.(index) <- Float.max minima.(index)
+            (Float.max chrome (len_px ~owner:ctx.vw style.min_width))) row)
+        table.rows;
+      table.natural <- Some natural;
+      table.minima <- minima;
+      table.assigned_width <- Float.nan;
+      set_table_columns ctx table natural
+    end) (List.rev tables)
+
+(* Proportional natural widths with shared lower bounds. Freeze constrained
+   columns in threshold order so many columns remain O(n log n). *)
+let table_widths natural minima available =
+  let count = Array.length natural in
+  let total = Array.fold_left (+.) 0. natural in
+  if total = 0. then Array.make count
+    (if count = 0 then 0. else available /. float_of_int count)
+  else begin
+    let remaining = ref available and weight = ref total in
+    let indices = Array.init count Fun.id in
+    let threshold i = if natural.(i) = 0. then 0.
+      else minima.(i) /. natural.(i) in
+    Array.sort (fun a b -> Float.compare (threshold b) (threshold a)) indices;
+    let widths = Array.make count 0. in
+    Array.iter (fun i ->
+      let share = if !weight = 0. then 0.
+        else Float.max 0. (!remaining /. !weight) in
+      if natural.(i) *. share < minima.(i) then begin
+        widths.(i) <- minima.(i);
+        remaining := !remaining -. minima.(i);
+        weight := !weight -. natural.(i)
+      end) indices;
+    let share = if !weight = 0. then 0.
+      else Float.max 0. (!remaining /. !weight) in
+    Array.iteri (fun i _ ->
+      widths.(i) <- Float.max minima.(i) (natural.(i) *. share)) widths;
+    widths
+  end
+
+let refine_tables ctx tables ~relayout =
+  let current_depth = ref (-1) and changed = ref false in
+  List.iter (fun (depth, id, table) ->
+    if depth <> !current_depth then begin
+      if !changed then relayout ();
+      changed := false;
+      current_depth := depth
+    end;
+    let style = Hashtbl.find ctx.applied id in
+    let rect = Lui_flex.layout (Hashtbl.find ctx.nodes id) in
+    let edge edges a b axis =
+      edge_px ~owner:rect.w a axis edges +.
+      edge_px ~owner:rect.w b axis edges in
+    let available = Float.max 0. (rect.w -.
+      edge style.padding style.padding.left style.padding.right style.padding.horizontal -.
+      edge style.border style.border.left style.border.right style.border.horizontal) in
+    if table.assigned_width <> available then begin
+      set_table_columns ctx table
+        (table_widths (Option.get table.natural) table.minima available);
+      table.assigned_width <- available;
+      changed := true
+    end) tables;
+  if !changed then relayout ()
+
 (* ---------- two-pass refinement ----------
 
    Two contracts the engine cannot express in a single pass get patched
@@ -1196,35 +1453,71 @@ and expand_children ctx ~owner ~pkind ~pid ~raw_parent ~first cids =
    the row so [n] cells plus [(n-1)] gaps fit one line. The produced
    children come from pkids — the mirror is persistent, so a reverse
    flex→store lookup is no longer needed. *)
-let refine_grids ctx =
-  List.iter
-    (fun (gsid, gnode, (gstyle : Lui_flex.style), ncols) ->
-      let gr = Lui_flex.absolute_layout gnode in
-      let pl = edge_px ~owner:gr.w gstyle.padding.left gstyle.padding.horizontal gstyle.padding in
-      let pr = edge_px ~owner:gr.w gstyle.padding.right gstyle.padding.horizontal gstyle.padding in
-      let bl = edge_px ~owner:gr.w gstyle.border.left gstyle.border.horizontal gstyle.border in
-      let br = edge_px ~owner:gr.w gstyle.border.right gstyle.border.horizontal gstyle.border in
-      let inner_w = Float.max 0. (gr.w -. pl -. pr -. bl -. br) in
-      let gap = len_px ~owner:inner_w gstyle.column_gap in
-      (* The tiny epsilon guards the wrap test against float rounding
-         pushing the last cell onto the next line. *)
-      let basis =
-        Float.max 0. ((inner_w -. (ncols -. 1.) *. gap) /. ncols -. 0.001)
-      in
-      List.iter
-        (fun e ->
-          List.iter
-            (fun sid ->
-              match
-                (Hashtbl.find_opt ctx.applied sid,
-                 Hashtbl.find_opt ctx.nodes sid)
-              with
-              | Some s, Some f ->
-                Lui_flex.set_style f { s with flex_basis = Pt basis }
-              | _ -> ())
-            e.gens)
-        (pkids_of ctx gsid))
-    !(ctx.grids)
+let refine_grids ctx ~relayout =
+  let refine (gsid, gnode, (gstyle : Lui_flex.style), ncols) =
+    let gr = Lui_flex.absolute_layout gnode in
+    let pl = edge_px ~owner:gr.w gstyle.padding.left gstyle.padding.horizontal gstyle.padding in
+    let pr = edge_px ~owner:gr.w gstyle.padding.right gstyle.padding.horizontal gstyle.padding in
+    let bl = edge_px ~owner:gr.w gstyle.border.left gstyle.border.horizontal gstyle.border in
+    let br = edge_px ~owner:gr.w gstyle.border.right gstyle.border.horizontal gstyle.border in
+    let inner_w = Float.max 0. (gr.w -. pl -. pr -. bl -. br) in
+    let gap = len_px ~owner:inner_w gstyle.column_gap in
+    (* The tiny epsilon guards the wrap test against float rounding
+       pushing the last cell onto the next line. *)
+    let basis =
+      Float.max 0. ((inner_w -. (ncols -. 1.) *. gap) /. ncols -. 0.001)
+    in
+    List.iter
+      (fun e ->
+        List.iter
+          (fun sid ->
+            match
+              (Hashtbl.find_opt ctx.applied sid,
+               Hashtbl.find_opt ctx.nodes sid)
+            with
+            | Some s, Some f ->
+              let span = Option.value (pnum ctx.store sid "grid-column-span") ~default:1. in
+              if span>ncols then invalid_arg "grid column span exceeds column count";
+              Lui_flex.set_style f
+                { s with flex_basis = Pt (basis *. span +. gap *. (span -. 1.)) }
+            | _ -> ())
+          e.gens)
+      (pkids_of ctx gsid)
+  in
+  (* A parent grid can change a descendant grid width during refinement.
+     Resolve each ancestor level before measuring its descendants. Peers
+     share a pass, and callers combine the final pass with popup layout. *)
+  match !(ctx.grids) with
+  | [] -> ()
+  | [grid] -> refine grid
+  | grids ->
+    let members = Hashtbl.create (List.length grids) in
+    List.iter (fun (id, _, _, _) -> Hashtbl.add members id ()) !(ctx.grids);
+    let depths = Hashtbl.create (Hashtbl.length members) in
+    let rec depth id =
+      match Hashtbl.find_opt depths id with
+      | Some value -> value
+      | None ->
+        let value = match Lui_store.parent ctx.store id with
+          | None -> 0
+          | Some parent -> depth parent + (if Hashtbl.mem members parent then 1 else 0)
+        in
+        Hashtbl.add depths id value;
+        value
+    in
+    let ordered = List.stable_sort
+      (fun (a, _, _, _) (b, _, _, _) -> Int.compare (depth a) (depth b))
+      !(ctx.grids) in
+    let rec apply = function
+      | [] -> ()
+      | ((id, _, _, _) as grid) :: rest ->
+        refine grid;
+        (match rest with
+         | (next, _, _, _) :: _ when depth next <> depth id -> relayout ()
+         | _ -> ());
+        apply rest
+    in
+    apply ordered
 
 (* Popup anchoring: [x]/[y] supply an anchor point (a zero-size anchor
    box inside the containing block); bare [anchor] uses the parent rect
@@ -1232,6 +1525,9 @@ let refine_grids ctx =
    names the preferred side (below default), [anchor-alignment] the
    cross-axis alignment (start default), [anchor-offset] the gap
    (4px default). *)
+let frozen_anchor store id =
+  Option.bind (pstr store id "anchor-rect") Lui_protocol.anchor_rect_of_string
+
 let anchor_rect_of ctx store id ~cb pr =
   let s = ctx.scale in
   let f name = Option.map (fun v -> v *. s) (pnum store id name) in
@@ -1239,11 +1535,11 @@ let anchor_rect_of ctx store id ~cb pr =
   | Some x, Some y -> { Lui_flex.x = cb.x +. x; y = cb.y +. y; w = 0.; h = 0. }
   | _ -> pr
 
-let anchored_xy ctx store sid ar (prp : Lui_flex.rect) =
+let anchored_xy ?resolved_side ctx store sid ar (prp : Lui_flex.rect) =
   let s = ctx.scale in
   let offset = Option.value ~default:4. (pnum store sid "anchor-offset") *. s in
   let side =
-    match pstr store sid "anchor" with
+    match (match resolved_side with Some side -> Some side | None -> pstr store sid "anchor") with
     | Some ("above" | "left" | "right" as v) -> v
     | _ -> "below"
   in
@@ -1255,11 +1551,17 @@ let anchored_xy ctx store sid ar (prp : Lui_flex.rect) =
   in
   let vertical = side = "above" || side = "below" in
   let main =
-    match side with
-    | "above" -> ar.y -. offset -. prp.h
-    | "left" -> ar.x -. offset -. prp.w
-    | "right" -> ar.x +. ar.w +. offset
-    | _ -> ar.y +. ar.h +. offset
+    let start, finish, extent, viewport =
+      if vertical then ar.y, ar.y +. ar.h, prp.h, ctx.vh
+      else ar.x, ar.x +. ar.w, prp.w, ctx.vw in
+    let before = start -. offset and after = viewport -. finish -. offset in
+    let preferred_before = side = "above" || side = "left" in
+    let preferred, opposite =
+      if preferred_before then before, after else after, before in
+    let place_before =
+      if resolved_side = None && extent > preferred && opposite > preferred
+      then not preferred_before else preferred_before in
+    if place_before then start -. offset -. extent else finish +. offset
   in
   let cross =
     if vertical then
@@ -1273,12 +1575,16 @@ let anchored_xy ctx store sid ar (prp : Lui_flex.rect) =
       | "end" -> ar.y +. ar.h -. prp.h
       | _ -> ar.y
   in
+  let alignment_offset = Option.value ~default:0. (pnum store sid "anchor-alignment-offset") *. s in
+  let cross = cross +. (if alignment = "end" then -.alignment_offset else alignment_offset) in
   let x, y = if vertical then (cross, main) else (main, cross) in
   (* Clamp inside the viewport so the popup stays on-screen — the
      containing block may be smaller than the panel (a menu
      trigger). *)
-  ( Float.max 0. (Float.min x (Float.max 0. (ctx.vw -. prp.w))),
-    Float.max 0. (Float.min y (Float.max 0. (ctx.vh -. prp.h))) )
+  let edge = Option.value (pnum store sid "collision-padding")
+    ~default:(if frozen_anchor store sid <> None then 8. else 0.) *. s in
+  ( Float.max edge (Float.min x (Float.max edge (ctx.vw -. prp.w -. edge))),
+    Float.max edge (Float.min y (Float.max edge (ctx.vh -. prp.h -. edge))) )
 
 (* Center each default-placed popup in its containing block by giving
    its spec concrete [left]/[top] offsets. Position edges resolve
@@ -1289,8 +1595,86 @@ let refine_popups ctx =
   (* Bottom y of the last placed toast per containing block, so a
      viewport's toasts stack downward like the web viewport. *)
   let toast_next = Hashtbl.create 2 in
-  List.iter
-    (fun (pnode, sid) ->
+  (* Ancestor surfaces are positioned before the final flex pass. Resolve
+     descendant anchors in that final coordinate space, especially when a
+     viewport collision clamps a menu inside a newly centered dialog. *)
+  let placed = Hashtbl.create 4 in
+  let final_rect sid node =
+    match Hashtbl.find_opt placed sid with
+    | Some r -> r
+    | None ->
+      let r = Lui_flex.absolute_layout node in
+      let rec displacement id =
+        match Hashtbl.find_opt ctx.owner id with
+        | None -> 0.,0.
+        | Some parent when parent = frame_id -> 0.,0.
+        | Some parent ->
+          match Hashtbl.find_opt placed parent with
+          | None -> displacement parent
+          | Some target ->
+            let before = Lui_flex.absolute_layout (Hashtbl.find ctx.nodes parent) in
+            target.Lui_flex.x -. before.x, target.y -. before.y
+      in
+      let dx,dy = displacement sid in
+      {r with Lui_flex.x=r.x+.dx; y=r.y+.dy}
+  in
+  let select_alignment sid parent (popup : Lui_flex.rect) =
+    if
+      Lui_store.kind ctx.store sid <> "dropdown-menu"
+      || has_prop ctx.store sid "x" || has_prop ctx.store sid "y"
+    then None
+    else
+      let picker =
+        List.find_opt
+          (fun id ->
+            Lui_store.kind ctx.store id = "select" && Hashtbl.mem ctx.nodes id)
+          (Lui_store.child_ids ctx.store parent)
+      in
+      let items =
+        List.filter
+          (fun id ->
+            Lui_store.kind ctx.store id = "menu-item"
+            && Lui_store.prop ctx.store id "enabled" <> Some (BoolValue false)
+            && Hashtbl.mem ctx.nodes id)
+          (Lui_store.child_ids ctx.store sid)
+      in
+      let selected =
+        match
+          List.find_opt
+            (fun id -> Lui_store.bool_prop ctx.store id "selected")
+            items
+        with
+        | Some id -> Some id
+        | None -> List.nth_opt items 0
+      in
+      match (picker, selected) with
+      | Some picker, Some selected ->
+          let anchor = final_rect picker (Hashtbl.find ctx.nodes picker)
+          and item = Lui_flex.absolute_layout (Hashtbl.find ctx.nodes selected) in
+          let value = Lui_paint.text_placement_of ctx.store picker
+          and label = Lui_paint.text_placement_of ctx.store selected in
+          let s = ctx.scale in
+          let center (r : Lui_flex.rect) p =
+            r.y
+            +. ((r.h +. ((p.Lui_paint.tp_pad_top -. p.tp_pad_bottom) *. s)) /. 2.)
+          in
+          let x =
+            anchor.x +. (value.tp_pad_left *. s)
+            -. (item.x -. popup.x +. (label.tp_pad_left *. s))
+          and y = center anchor value -. (center item label -. popup.y) in
+          let padding = Option.value ~default:8. (pnum ctx.store sid "collision-padding") *. s in
+          if
+            anchor.y >= 20. *. s
+            && anchor.y +. anchor.h <= ctx.vh -. (20. *. s)
+            && x >= padding
+            && x +. popup.w <= ctx.vw -. padding
+            && y >= padding
+            && y +. popup.h <= ctx.vh -. padding
+          then Some (x, y)
+          else None
+      | _ -> None
+  in
+  let refine (pnode, sid) =
       match Lui_flex.parent pnode with
       | None -> ()
       | Some parent -> (
@@ -1304,13 +1688,34 @@ let refine_popups ctx =
         let pr, pstyle_opt =
           match psid_opt with
           | Some psid ->
-            ( Lui_flex.absolute_layout parent,
+            ( final_rect psid parent,
               Hashtbl.find_opt ctx.applied psid )
           | None ->
             (* The frame root is no store node's containing block —
                default to the offered frame, not the grown extent. *)
             ( { Lui_flex.x = 0.; y = 0.; w = ctx.vw; h = ctx.vh },
               None )
+        in
+        let snapshot = frozen_anchor ctx.store sid in
+        let anchor_id, anchor_rect =
+          match snapshot with
+          | Some (x, y, width, height) ->
+              let px, py = ctx.eng.anchor_shift sid in
+              None, {Lui_flex.x=x *. ctx.scale -. px; y=y *. ctx.scale -. py;
+                     w=width *. ctx.scale; h=height *. ctx.scale}
+          | None -> match pstr ctx.store sid "anchor-target" with
+          | None -> psid_opt, pr
+          | Some identifier ->
+              (match Lui_store.find_identifier ctx.store identifier with
+               | Some target ->
+                   (match Hashtbl.find_opt ctx.nodes target with
+                    | Some target_node ->
+                        let region = final_rect target target_node in
+                        let tx,ty = ctx.eng.anchor_shift target
+                        and px,py = ctx.eng.anchor_shift sid in
+                        Some target, { region with x=region.x +. tx -. px; y=region.y +. ty -. py }
+                    | None -> None, { Lui_flex.x=0.; y=0.; w=0.; h=0. })
+               | None -> None, { Lui_flex.x=0.; y=0.; w=0.; h=0. })
         in
         let bor_l, bor_t, bor_r, _bor_b =
           match pstyle_opt with
@@ -1339,7 +1744,7 @@ let refine_popups ctx =
             | Some (a : Lui_flex.style)
               when a.position_type = Lui_flex.Absolute -> (
               match Hashtbl.find_opt ctx.nodes id with
-              | Some n -> Some (Lui_flex.absolute_layout n)
+              | Some n -> Some (final_rect id n)
               | None -> None)
             | _ -> (
               match Lui_store.parent ctx.store id with
@@ -1355,15 +1760,42 @@ let refine_popups ctx =
         match Hashtbl.find_opt ctx.applied sid with
         | None -> ()
         | Some (pstyle : Lui_flex.style) ->
+          let max_height =
+            let menu = Lui_paint.menu_kind ctx.store sid (Lui_store.kind ctx.store sid) in
+            let padding = Option.value (pnum ctx.store sid "collision-padding")
+              ~default:(if menu then 8. else 0.) *. ctx.scale in
+            let viewport = Float.max 0. (ctx.vh -. 2. *. padding) in
+            let declared = match pstyle.max_height with
+              | Unset -> if menu then 288. *. ctx.scale else viewport
+              | limit -> len_px ~owner:ctx.vh limit in
+            let available = match pnum ctx.store sid "available-height" with
+              | Some height -> height *. ctx.scale
+              | None -> viewport in
+            (* AvailableHeight is a popover contract, independent of its
+               semantic role. Intersect every limit on each resize. *)
+            Pt (Float.max 0. (Float.min viewport (Float.min declared available)))
+          in
           let pstyle =
             (* A popup measures against the viewport, not its
                (possibly tiny) parent — bound its max extents and
                re-measure the subtree before placing it. *)
             { pstyle with
               max_width =
-                (match pstyle.max_width with Unset -> Pt ctx.vw | m -> m);
-              max_height =
-                (match pstyle.max_height with Unset -> Pt ctx.vh | m -> m) }
+                (match Lui_store.kind ctx.store sid with
+                 | "dialog" | "modal" ->
+                   let available = Float.max 0. (ctx.vw -. (32. *. ctx.scale)) in
+                   let declared = match pstyle.max_width with
+                     | Unset -> available
+                     | limit -> len_px ~owner:ctx.vw limit in
+                   Pt (Float.min available declared)
+                 | _ ->
+                   let padding = Option.value ~default:0. (pnum ctx.store sid "collision-padding") *. ctx.scale in
+                   let available = Float.max 0. (ctx.vw -. 2. *. padding) in
+                   let declared = match pstyle.max_width with
+                     | Unset -> available
+                     | limit -> len_px ~owner:ctx.vw limit in
+                   Pt (Float.min available declared));
+              max_height }
           in
           Lui_flex.set_style pnode pstyle;
           Lui_flex.compute_layout pnode ~width:Lui_flex.undefined
@@ -1387,8 +1819,7 @@ let refine_popups ctx =
           if (not anchored) && popup_has_edges ctx.store sid then ()
           else
           let kind = Lui_store.kind ctx.store sid in
-          (* Web overlay caps: .lui-toast-viewport is 22.5rem wide,
-             .lui-dialog is min(42rem, 100vw-2rem) (48rem ≥1024px). *)
+          (* Toasts keep the shared 22.5rem viewport cap. *)
           (match kind with
            | "toast" ->
              let w = Float.min (360. *. ctx.scale) ctx.vw in
@@ -1396,26 +1827,32 @@ let refine_popups ctx =
                { pstyle with max_width = Pt w };
              Lui_flex.compute_layout pnode ~width:Lui_flex.undefined
                ~height:Lui_flex.undefined ()
-           | "dialog" | "modal" ->
-             (* Web default cap applies only when the view did not set an
-                explicit max-width/max-width-viewport — typed clamps like
-                plugins-dashboard's 1246px take precedence. *)
-             (match pstyle.max_width with
-              | Unset ->
-                let rem =
-                  if ctx.vw >= 1024. *. ctx.scale then 768. else 672.
-                in
-                let w =
-                  Float.min (rem *. ctx.scale)
-                    (ctx.vw -. (32. *. ctx.scale))
-                in
-                Lui_flex.set_style pnode
-                  { pstyle with max_width = Pt w };
-                Lui_flex.compute_layout pnode ~width:Lui_flex.undefined
-                  ~height:Lui_flex.undefined ()
-              | _ -> ())
            | _ -> ());
           let prp = Lui_flex.absolute_layout pnode in
+          (* Element-owned popovers shrink on their chosen side before
+             placement, as the Web positioner does. Keep that side after
+             remeasurement so shrinking cannot flip the decision back. *)
+          let prp, resolved_side =
+            match kind, pstr ctx.store sid "anchor", anchor_id with
+            | "popover", Some ("below" | "above" as preferred), owner
+              when (snapshot <> None || Option.fold ~none:false
+                     ~some:(fun id -> Lui_store.kind ctx.store id <> "root") owner)
+                   && not (has_prop ctx.store sid "x" || has_prop ctx.store sid "y") ->
+              let offset = Option.value ~default:4. (pnum ctx.store sid "anchor-offset") *. ctx.scale in
+              let padding = Option.value ~default:8. (pnum ctx.store sid "collision-padding") *. ctx.scale in
+              let above = Float.max 0. (anchor_rect.y -. offset -. padding)
+              and below = Float.max 0. (ctx.vh -. anchor_rect.y -. anchor_rect.h -. offset -. padding) in
+              let first, other = if preferred = "above" then above, below else below, above in
+              let side, available =
+                if prp.h <= first || first >= other then preferred, first
+                else (if preferred = "above" then "below" else "above"), other in
+              if available < prp.h then begin
+                Lui_flex.set_style pnode {pstyle with max_height = Pt available};
+                Lui_flex.compute_layout pnode ~width:Lui_flex.undefined ~height:Lui_flex.undefined ();
+                Lui_flex.absolute_layout pnode, Some side
+              end else prp, Some side
+            | _ -> prp, None
+          in
           (* Placement targets live in the containing block [cb] but the
              position edges resolve against the flex parent's padding
              box — express them as offsets from that origin. *)
@@ -1430,8 +1867,10 @@ let refine_popups ctx =
           let left, top =
             if anchored then
               abs_of
-                (anchored_xy ctx ctx.store sid
-                   (anchor_rect_of ctx ctx.store sid ~cb pr) prp)
+                (match Option.bind psid_opt (fun parent -> select_alignment sid parent prp) with
+                 | Some xy -> xy
+                 | None -> anchored_xy ?resolved_side ctx ctx.store sid
+                     (anchor_rect_of ctx ctx.store sid ~cb anchor_rect) prp)
             else
               (* Unanchored popups take their platform placement —
                  the web stylesheet's fixed rules: a context menu
@@ -1479,15 +1918,40 @@ let refine_popups ctx =
               | h -> h)
             | _ -> Pt prp.h
           in
+          Hashtbl.replace placed sid
+            {prp with Lui_flex.x=pr.x+.bor_l+.ml+.left;
+              y=pr.y+.bor_t+.mt+.top};
           Lui_flex.set_style pnode
             { pstyle with
               width = Pt prp.w;
               height;
               position =
-                { pstyle.position with left = Pt left; top = Pt top } }))
-    (* Mount order: the list is prepended during build; oldest first so
-       a toast stack grows downward like the web viewport. *)
-    (List.rev !(ctx.popups))
+                { pstyle.position with left = Pt left; top = Pt top } })
+  in
+  let ordered = List.rev !(ctx.popups) in
+  let pending = Hashtbl.create (List.length ordered)
+  and visited = Hashtbl.create (List.length ordered) in
+  List.iter (fun ((_,id) as popup) -> Hashtbl.add pending id popup) ordered;
+  let rec visit ((_,sid) as popup) =
+    if not (Hashtbl.mem visited sid) then begin
+      let rec ancestor id =
+        match Hashtbl.find_opt ctx.owner id with
+        | None -> ()
+        | Some parent when parent = frame_id -> ()
+        | Some parent ->
+          (match Hashtbl.find_opt pending parent with
+           | Some popup -> visit popup
+           | None -> ancestor parent)
+      in
+      ancestor sid;
+      Hashtbl.add visited sid ();
+      refine popup
+    end
+  in
+  (* Full rebuilds register children before parents; incremental mounts
+     can do the reverse. Respect ancestor dependencies in both cases,
+     preserving registration order for unrelated surfaces and toasts. *)
+  List.iter visit ordered
 
 (* Union of the frame children's absolute rect edges — the extent the
    laid-out content actually occupies. *)
@@ -1512,18 +1976,18 @@ let scene_rect (r : Lui_flex.rect) : Lui_scene.rect =
      it differs from what consumers last saw. *)
 let update_rect (t : t) id r =
   let r' = scene_rect r in
-  (match Hashtbl.find_opt t.rects id with
-   | Some old when old = r' -> ()
-   | _ -> Hashtbl.replace t.rect_changed id ());
+  (match Hashtbl.find t.rects id with
+   | old when old = r' -> ()
+   | _ | exception Not_found -> Hashtbl.replace t.rect_changed id ());
   Hashtbl.replace t.rects id r'
 
 let absolute_reader (t : t) =
   let resolved = Hashtbl.create (Hashtbl.length t.nodes) in
   let frame = Lui_flex.layout (Option.get t.root) in
   let rec read id =
-    match Hashtbl.find_opt resolved id with
-    | Some rect -> rect
-    | None ->
+    match Hashtbl.find resolved id with
+    | rect -> rect
+    | exception Not_found ->
       let local = Lui_flex.layout (Hashtbl.find t.nodes id) in
       let owner = Hashtbl.find t.owner id in
       let parent = if owner=frame_id then frame else read owner in
@@ -1537,6 +2001,24 @@ let absolute_reader (t : t) =
 let collect (t : t) =
   let read = absolute_reader t in
   Hashtbl.iter (fun id _ -> update_rect t id (read id)) t.nodes
+
+let collect_text_flows ctx =
+  let live = Hashtbl.create (Hashtbl.length ctx.eng.flow_owners) in
+  Hashtbl.iter (fun root () ->
+    match Hashtbl.find_opt ctx.eng.rects root with
+    | None -> ()
+    | Some parent ->
+      let parent=Lui_paint.text_flow_content_rect ~scale:ctx.scale ctx.store root parent in
+      let flow = Option.get (ctx.text_flow root parent.Lui_scene.w) in
+      List.iter (fun (id,(local:Lui_scene.rect)) ->
+        Hashtbl.replace live id ();
+        update_rect ctx.eng id {Lui_flex.x=parent.x+.local.x;
+          y=parent.y+.local.y;w=local.w;h=local.h}) flow.flow_rects) ctx.eng.flow_roots;
+  Hashtbl.iter (fun id _ ->
+    if not (Hashtbl.mem live id) && Hashtbl.mem ctx.eng.rects id then begin
+      Hashtbl.remove ctx.eng.rects id;
+      Hashtbl.replace ctx.eng.rect_changed id ()
+    end) ctx.eng.flow_owners
 
 (* The set of ids whose absolute rect differed at the last rect
    refresh. Hands the table itself to the caller and installs a fresh
@@ -1580,13 +2062,16 @@ let rec purge ctx id =
   (match Hashtbl.find_opt ctx.pkids id with
    | Some es ->
      Hashtbl.remove ctx.pkids id;
-     List.iter (fun e -> purge ctx e.raw) es
+     List.iter (fun e ->
+       if Hashtbl.find_opt ctx.sparent e.raw=Some id then purge ctx e.raw) es
    | None -> ());
   Hashtbl.remove ctx.nodes id;
   Hashtbl.remove ctx.applied id;
   Hashtbl.remove ctx.sparent id;
   Hashtbl.remove ctx.owner id;
   Hashtbl.remove ctx.eng.rects id;
+  Hashtbl.remove ctx.eng.flow_roots id;
+  Hashtbl.remove ctx.eng.flow_owners id;
   (* A dropped rect is a geometry change too: paint consumers holding
      the old box must re-derive (their layout hook now answers zero). *)
   Hashtbl.replace ctx.eng.rect_changed id ();
@@ -1715,7 +2200,9 @@ let build_vrows _t ctx store (v : vlist) ~first ~last =
         in
         Lui_flex.compute_layout root ~width:v.cross_size
           ~height:Lui_flex.undefined ();
-        refine_grids rctx;
+        refine_grids rctx ~relayout:(fun () ->
+          Lui_flex.compute_layout root ~width:v.cross_size
+            ~height:Lui_flex.undefined ());
         refine_popups rctx;
         (if !(rctx.grids) <> [] || !(rctx.popups) <> [] then
            Lui_flex.compute_layout root ~width:v.cross_size
@@ -1921,6 +2408,8 @@ let ctx_of_saved (t : t) (sc : saved_ctx) : ctx =
     vw = sc.sc_vw;
     vh = sc.sc_vh;
     tm = sc.sc_tm;
+    text_flow = sc.sc_text_flow;
+    image_measure = sc.sc_image_measure;
     hidden = sc.sc_hidden;
     ctx_anchor = sc.sc_anchor;
     store = sc.sc_store;
@@ -1959,7 +2448,8 @@ let vlists_update (t : t) ~vport =
              ignore (vlists_mount t ctx sc.sc_store ~vport)
            | None -> ())
         end;
-        vlists_collect t
+        vlists_collect t;
+        collect_text_flows ctx
       end
     | None -> ()
 
@@ -1970,6 +2460,7 @@ let compute t ~width ~height =
   | Some root ->
     t.extent <- layout_frame root ~width ~height;
     collect t;
+    Option.iter (fun saved -> collect_text_flows (ctx_of_saved t saved)) t.vctx;
     (* The rects now reflect a frame the memo never synced at — a
        later {!sync} at the memoized size would wrongly reuse them. *)
     invalidate t
@@ -2126,6 +2617,9 @@ let mark_frame_siblings_after ctx t =
    churn). *)
 let mark_affected ctx o =
   let rec top x =
+    (match Hashtbl.find_opt ctx.eng.tables x with
+     | Some table -> table.natural <- None
+     | None -> ());
     match Hashtbl.find_opt ctx.owner x with
     | Some p when p <> frame_id -> top p
     | _ -> x
@@ -2152,13 +2646,12 @@ let produced_index ctx o g =
 
 (* Recompute g's style and measure against its current owner and index
    — the incremental equivalent of rebuilding its flex node. *)
-let restyle_gen ctx o g =
+let restyle_gen_at ctx o g index =
   match Hashtbl.find_opt ctx.nodes g with
   | Some f ->
-    let index = produced_index ctx o g in
     let style =
       style_of ~scale:ctx.scale ~viewport:(ctx.vw, ctx.vh) ctx.store g
-      |> adjust ~pkind:(kind_of ctx o) ~pid:o ~index ctx.store g
+      |> adjust ~scale:ctx.scale ~pkind:(kind_of ctx o) ~pid:o ~index ctx.store g
     in
     (match Hashtbl.find_opt ctx.vlists g with
      | Some v ->
@@ -2179,7 +2672,8 @@ let restyle_gen ctx o g =
          ordered_child_ids ctx.store g (Lui_store.kind ctx.store g)
        in
        let style = popup_min_style ctx g cids kids style in
-       let m = measure_for ctx g ~kids in
+       let m = if Hashtbl.mem ctx.eng.flow_roots g then Some (flow_measure ctx g)
+         else measure_for ctx g ~kids in
        Lui_flex.set_style f style;
        Lui_flex.set_measure f m;
        Hashtbl.replace ctx.applied g style;
@@ -2188,6 +2682,22 @@ let restyle_gen ctx o g =
        unregister ctx g;
        register ctx g kind f style)
   | None -> ()
+
+let restyle_gen ctx o g =
+  restyle_gen_at ctx o g (produced_index ctx o g)
+
+(* An expansion occupies consecutive positions in its flex owner's produced
+   children, including when transparent raw parents lift those children. *)
+let iter_produced_indices ctx o entries f =
+  let rec first_index = function
+    | [] -> 0
+    | {gens=[]; _} :: rest -> first_index rest
+    | {gens=g::_; _} :: _ -> produced_index ctx o g
+  in
+  let index = ref (first_index entries) in
+  List.iter (fun e -> List.iter (fun g ->
+    f g !index;
+    incr index) e.gens) entries
 
 (* Parent kinds whose child adjustment depends on sibling position:
    membership or order churn under them rewrites sibling styles, not
@@ -2198,9 +2708,13 @@ let index_sensitive = function
   | _ -> false
 
 let restyle_children_of ctx o =
-  List.iter
-    (fun e -> List.iter (fun g -> restyle_gen ctx o g) e.gens)
-    (pkids_of ctx o)
+  iter_produced_indices ctx o (pkids_of ctx o) (restyle_gen_at ctx o)
+
+let restyle_content_owner ctx o =
+  match kind_of ctx o with
+  | "button" | "toggle-button" ->
+    restyle_gen ctx (Hashtbl.find ctx.owner o) o
+  | _ -> ()
 
 (* Insert/MoveChild: detach the shadow entry from the old raw parent,
    ensure the child's produced set exists, then let [sync_entries]
@@ -2210,6 +2724,7 @@ let attach_child ctx ~parent:p ~child:c =
    | Some op when op <> p ->
      sync_entries ctx op;
      commit ctx op;
+     restyle_content_owner ctx (children_owner ctx op);
      mark_affected ctx (children_owner ctx op)
    | _ -> ());
   let o = children_owner ctx p in
@@ -2219,6 +2734,7 @@ let attach_child ctx ~parent:p ~child:c =
   (* Commit before restyling: gens indices inside the owner's produced
      list only read correctly once the parent chain has propagated. *)
   commit ctx p;
+  restyle_content_owner ctx o;
   List.iter
     (fun g ->
       Hashtbl.replace ctx.owner g o;
@@ -2234,6 +2750,7 @@ let detach_child ctx ~parent:p ~child:c =
   Hashtbl.replace ctx.pkids p (List.filter (fun e -> e.raw <> c) (pkids_of ctx p));
   commit ctx p;
   let o = children_owner ctx p in
+  restyle_content_owner ctx o;
   (if index_sensitive (kind_of ctx o) then restyle_children_of ctx o);
   mark_affected ctx o
 
@@ -2245,6 +2762,7 @@ let detach_from_parent ctx id =
     Hashtbl.remove ctx.sparent id;
     Hashtbl.replace ctx.pkids par (List.filter (fun e -> e.raw <> id) (pkids_of ctx par));
     commit ctx par;
+    restyle_content_owner ctx (children_owner ctx par);
     mark_affected ctx (children_owner ctx par)
   | None -> ()
 
@@ -2286,14 +2804,9 @@ let restyle_children ctx id =
   let o = children_owner ctx id in
   sync_entries ctx id;
   commit ctx id;
-  List.iter
-    (fun e ->
-      List.iter
-        (fun g ->
-          Hashtbl.replace ctx.owner g o;
-          restyle_gen ctx o g)
-        e.gens)
-    (pkids_of ctx id);
+  iter_produced_indices ctx o (pkids_of ctx id) (fun g index ->
+    Hashtbl.replace ctx.owner g o;
+    restyle_gen_at ctx o g index);
   mark_affected ctx o
 
 (* A journal op landed on a live virtual list or inside one: rows
@@ -2314,7 +2827,7 @@ let resync_vlist ctx (v : vlist) =
     let index = produced_index ctx o v.vid in
     let style =
       style_of ~scale:ctx.scale ~viewport:(ctx.vw, ctx.vh) ctx.store v.vid
-      |> adjust ~pkind:(kind_of ctx o) ~pid:o ~index ctx.store v.vid
+      |> adjust ~scale:ctx.scale ~pkind:(kind_of ctx o) ~pid:o ~index ctx.store v.vid
     in
     vlist_configure ctx ctx.store v style;
     let style = vlist_leaf_style ctx v style in
@@ -2349,7 +2862,8 @@ let apply_journal_op ctx (op : patch_op) =
           (* A horizontal virtual-list turning vertical becomes a leaf —
              rebuild its produced expansion in place. *)
           reexpand ctx id
-        else if Lui_store.mask_has m Lui_store.d_structure then reexpand ctx id
+        (* White-space changes inherited flow and fragment shrink below this node. *)
+        else if p = WhiteSpace || Lui_store.mask_has m Lui_store.d_structure then reexpand ctx id
         else begin
           if Lui_store.mask_has m Lui_store.d_layout then restyle_self ctx id;
           if Lui_store.mask_has m Lui_store.d_layout_kids then
@@ -2379,25 +2893,30 @@ let apply_journal_op ctx (op : patch_op) =
     (match Hashtbl.find_opt ctx.sparent c with
      | Some op when op <> p -> ignore (in_vlist ctx op)
      | _ -> ());
-    if in_vlist ctx p then begin
-      (* The child is list data now: detach its old mirror slot and
-         scrub its shadow — the resync materializes rows itself. *)
+    if in_vlist ctx p || not (Hashtbl.mem ctx.pkids p) then begin
+      (* Virtual rows materialize during resync; an unmounted parent
+         materializes its final subtree on attachment. Building either
+         child here would leave stale grid and popup registrations. *)
       detach_from_parent ctx c;
       purge ctx c
     end
     else attach_child ctx ~parent:p ~child:c
     end)
   | RemoveChild (p, c) ->
-    if in_vlist ctx p then () else detach_child ctx ~parent:p ~child:c
+    if in_vlist ctx p then () else begin
+      detach_child ctx ~parent:p ~child:c;
+      (* A retained child may pass through an intermediate parent that is
+         disposed before this frame. Its skipped attachment cannot own its
+         eventual purge, so release it when the final store no longer does. *)
+      if not (Lui_store.mem ctx.store c) then purge ctx c
+    end
 
 (* Rect refresh scoped to dirty owner subtrees: every produced
    descendant of a dirty owner gets its rect re-read (a resized node
    moves its siblings, so the refresh root is the owner — the flex
    parent — not the changed node). [frame_id] dirties everything. *)
 let rec refresh_sub ctx read sid =
-  (match Hashtbl.find_opt ctx.nodes sid with
-   | Some _ -> update_rect ctx.eng sid (read sid)
-   | None -> ());
+  if Hashtbl.mem ctx.nodes sid then update_rect ctx.eng sid (read sid);
   List.iter
     (fun e -> List.iter (fun g -> refresh_sub ctx read g) e.gens)
     (pkids_of ctx sid)
@@ -2410,8 +2929,8 @@ let refresh_rects ctx =
   end;
   Hashtbl.reset ctx.eng.rect_dirty
 
-let ctx_of t store ~scale ~measure ~hidden ctx_anchor ~width ~height : ctx =
-  { scale; vw = width; vh = height; tm = measure; hidden; ctx_anchor;
+let ctx_of t store ~scale ~measure ~text_flow ~image_measure ~hidden ctx_anchor ~width ~height : ctx =
+  { scale; vw = width; vh = height; tm = measure; text_flow; image_measure; hidden; ctx_anchor;
     store; eng = t; nodes = t.nodes; applied = t.applied;
     pkids = t.pkids; sparent = t.sparent; owner = t.owner;
     grids = t.grids; popups = t.popups;
@@ -2430,6 +2949,9 @@ let rebuild ctx (t : t) ~width ~height =
   Hashtbl.reset t.pkids;
   Hashtbl.reset t.sparent;
   Hashtbl.reset t.owner;
+  Hashtbl.reset t.tables;
+  Hashtbl.reset t.flow_roots;
+  Hashtbl.reset t.flow_owners;
   t.grids := [];
   t.popups := [];
   ignore
@@ -2447,8 +2969,18 @@ let finish ctx (t : t) ~width ~height ~vport ~full =
   match t.root with
   | None -> ()
   | Some root ->
+    let tables = ordered_tables ctx in
+    prepare_tables ctx tables;
     let ew, eh = layout_frame root ~width ~height in
-    refine_grids ctx;
+    refine_grids ctx ~relayout:(fun () ->
+      Lui_flex.compute_layout root ~width:ew ~height:eh ());
+    (if !(ctx.grids) <> [] then
+       Lui_flex.compute_layout root ~width:ew ~height:eh ());
+    refine_tables ctx tables ~relayout:(fun () ->
+      Lui_flex.compute_layout root ~width:ew ~height:eh ());
+    (* A table can resize a grid inside a cell. *)
+    (if tables <> [] then refine_grids ctx ~relayout:(fun () ->
+       Lui_flex.compute_layout root ~width:ew ~height:eh ()));
     refine_popups ctx;
     (if !(ctx.grids) <> [] || !(ctx.popups) <> [] then
        Lui_flex.compute_layout root ~width:ew ~height:eh ());
@@ -2462,18 +2994,33 @@ let finish ctx (t : t) ~width ~height ~vport ~full =
     refresh_rects ctx;
     (* Row rects are composed off the final mirror geometry — always
        recomposed, never part of the scoped refresh. *)
-    vlists_collect t
+    vlists_collect t;
+    collect_text_flows ctx
 
-let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
-    ?ctx_anchor ?(vport = no_vport) ~width ~height (t : t) store =
+let sync ?(scale = 1.) ?(measure = no_measure) ?(text_flow = no_text_flow) ?(image_measure = no_image_measure) ?(hidden = show_all)
+    ?ctx_anchor ?(vport = no_vport) ?(anchor_shift = fun _ -> (0.,0.)) ~width ~height (t : t) store =
+  t.anchor_shift <- anchor_shift;
+  let shifts = ref [] in
+  Lui_store.iter_anchor_targets store (fun popup ->
+    match Lui_store.string_prop store popup "anchor-target" with
+    | Some identifier ->
+        (match Lui_store.find_identifier store identifier with
+         | Some target ->
+             let tx,ty = anchor_shift target and px,py = anchor_shift popup in
+             shifts := (popup,tx-.px,ty-.py) :: !shifts
+         | None -> ())
+    | None -> ());
+  let anchor_changed = !shifts <> t.synced_anchor_shifts in
   let viewport_changed = t.synced_w <> width || t.synced_h <> height in
   let mirror_inputs_changed =
     t.synced_scale <> scale
     || t.synced_anchor <> ctx_anchor
     || (not (t.synced_measure == measure))
+    || (not (t.synced_text_flow == text_flow))
+    || (not (t.synced_image_measure == image_measure))
     || (not (t.synced_hidden == hidden))
   in
-  let inputs_changed = mirror_inputs_changed || viewport_changed in
+  let inputs_changed = mirror_inputs_changed || viewport_changed || anchor_changed in
   (* Fast path: inputs stable and the store's layout revision
      unmoved — paint-only churn, scroll-only and idle frames all skip
      the mirror entirely. The store-revision cursor still advances so
@@ -2489,7 +3036,7 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
   end
   else begin
     t.stat_syncs <- t.stat_syncs + 1;
-    let ctx = ctx_of t store ~scale ~measure ~hidden ctx_anchor ~width ~height in
+    let ctx = ctx_of t store ~scale ~measure ~text_flow ~image_measure ~hidden ctx_anchor ~width ~height in
     let full =
       if mirror_inputs_changed || t.synced_rev < 0 || t.root = None then true
       else
@@ -2497,6 +3044,26 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
         | None -> true
         | Some ops ->
           t.stat_steps <- t.stat_steps + 1;
+          let flow_dirty = Hashtbl.create 4 in
+          let rec flow_root id =
+            if Hashtbl.mem t.flow_roots id || Option.is_some (text_flow id Float.nan) then Some id
+            else match Hashtbl.find_opt t.flow_owners id with
+              | Some root -> Some root
+              | None -> Option.bind (Lui_store.parent store id) flow_root in
+          let apply op =
+            let primary, related = match op with
+              | SetProp (id,_,_) | RemoveProp (id,_) | SetExtensionProp (id,_,_)
+              | RemoveExtensionProp (id,_) | CreateNode (id,_) | CreateExtension (id,_,_)
+              | DropNode id | DetachSubtree id -> id,[]
+              | InsertChild (parent,child,_) | MoveChild (parent,child,_)
+              | RemoveChild (parent,child) -> parent,[child] in
+            let owner = flow_root primary in
+            List.iter (fun id -> Option.iter (fun root ->
+              if Lui_store.mem store root then Hashtbl.replace flow_dirty root ()) (flow_root id))
+              (primary::related);
+            match owner with
+            | Some root when Lui_store.mem store root -> ()
+            | _ -> apply_journal_op ctx op in
           (* The store already contains the final batch tree. Building a
              newly inserted ancestor also builds its new descendants.
              Purge old identities first so later create records cannot
@@ -2505,14 +3072,22 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
           List.iter (function
             | (CreateNode (id,_) | CreateExtension (id,_,_)) as op ->
               Hashtbl.replace created id ();
-              apply_journal_op ctx op
+              apply op
             | _ -> ()) ops;
           List.iter (function
             | CreateNode _ | CreateExtension _ -> ()
             | SetProp (id,_,_) | RemoveProp (id,_)
             | SetExtensionProp (id,_,_) | RemoveExtensionProp (id,_)
               when Hashtbl.mem created id || not (Lui_store.mem store id) -> ()
-            | op -> apply_journal_op ctx op) ops;
+            | op -> apply op) ops;
+          Hashtbl.iter (fun root () ->
+            if Lui_store.mem store root then reexpand ctx root) flow_dirty;
+          (* Retained anchor references cross raw-parent boundaries. Reconcile
+             their availability after the complete target batch is applied. *)
+          Lui_store.iter_anchor_targets store (fun id ->
+            if Hashtbl.mem ctx.sparent id then
+              let produced = status_of ctx id <> N_hidden in
+              if produced <> Hashtbl.mem ctx.nodes id then reexpand ctx id);
           (* Detach/drop can leave a built node as a fresh store root —
              resync the frame level so new roots appear and removed
              ones vanish. Membership churn dirties the whole frame. *)
@@ -2560,14 +3135,18 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
         "min-height-viewport"; "max-height-viewport"] in
       Hashtbl.iter (fun id _ ->
         if List.exists (has_prop store id) viewport_props then
-          restyle_gen ctx (Hashtbl.find ctx.owner id) id) t.nodes;
+          (restyle_gen ctx (Hashtbl.find ctx.owner id) id;
+           mark_affected ctx id)) t.nodes;
       let popup_owners = List.filter_map (fun (_,id) -> Hashtbl.find_opt ctx.owner id) !(t.popups)
         |> List.sort_uniq Int.compare in
       List.iter (fun id -> if id <> frame_id then
         restyle_gen ctx (Hashtbl.find ctx.owner id) id) popup_owners;
       Hashtbl.replace t.rect_dirty frame_id ()
     end;
+    if anchor_changed then
+      List.iter (fun (popup,_,_) -> Hashtbl.replace t.rect_dirty popup ()) !shifts;
     finish ctx t ~width ~height ~vport ~full;
+    t.synced_anchor_shifts <- !shifts;
     t.synced_rev <- Lui_store.revision store;
     t.synced_lrev <- Lui_store.layout_rev store;
     t.synced_scale <- scale;
@@ -2575,11 +3154,14 @@ let sync ?(scale = 1.) ?(measure = no_measure) ?(hidden = show_all)
     t.synced_h <- height;
     t.synced_anchor <- ctx_anchor;
     t.synced_measure <- measure;
+    t.synced_text_flow <- text_flow;
+    t.synced_image_measure <- image_measure;
     t.synced_hidden <- hidden;
     t.vctx <-
       Some
         { sc_scale = scale; sc_vw = width; sc_vh = height;
-          sc_tm = measure; sc_hidden = hidden; sc_anchor = ctx_anchor;
+          sc_tm = measure; sc_text_flow = text_flow;
+          sc_image_measure = image_measure; sc_hidden = hidden; sc_anchor = ctx_anchor;
           sc_store = store }
   end
 

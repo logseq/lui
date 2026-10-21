@@ -8,6 +8,43 @@
 open Lui_scene
 open Lui_protocol
 
+type content_edges = {
+  mutable left : float;
+  mutable top : float;
+  mutable right : float;
+  mutable bottom : float;
+}
+
+let content_bounds ~store ~rect_of id =
+  let bounds =
+    {
+      left = Float.max_float;
+      top = Float.max_float;
+      right = -.Float.max_float;
+      bottom = -.Float.max_float;
+    }
+  in
+  Lui_store.iter_preorder ~root:id
+    ~descend:(fun child ->
+      Lui_paint.node_shown store child
+      && (child = id
+         || Lui_paint.unboxed store child
+         || not (Lui_paint.clips (Lui_store.kind store child) store child)))
+    store
+    (fun child ->
+      if
+        child <> id
+        && Lui_paint.node_shown store child
+        && not (Lui_paint.unboxed store child)
+      then begin
+        let r : Lui_scene.rect = rect_of child in
+        bounds.left <- Float.min bounds.left r.x;
+        bounds.top <- Float.min bounds.top r.y;
+        bounds.right <- Float.max bounds.right (r.x +. r.w);
+        bounds.bottom <- Float.max bounds.bottom (r.y +. r.h)
+      end);
+  (bounds.left, bounds.top, bounds.right, bounds.bottom)
+
 type config = {
   width : int;
   height : int;
@@ -319,7 +356,13 @@ module Layout = struct
       | Vertical -> "padding-vertical"
       | Horizontal -> "padding-horizontal"
     in
-    Option.value ~default:uniform (len_prop store id name ~scale)
+    let axis_padding = Option.value ~default:uniform (len_prop store id name ~scale) in
+    let before, after = match axis with
+      | Vertical -> "padding-top", "padding-bottom"
+      | Horizontal -> "padding-left", "padding-right"
+    in
+    (Option.value ~default:axis_padding (len_prop store id before ~scale),
+     Option.value ~default:axis_padding (len_prop store id after ~scale))
 
   let gap_px store id ~scale =
     Option.value ~default:0. (len_prop store id "gap" ~scale)
@@ -364,7 +407,8 @@ module Layout = struct
           | Vertical -> if mh > 0. then mh else dh
           | Horizontal -> if mw > 0. then mw else max dw 24.)
        | children ->
-         let pm = 2. *. pad_axis store id ~scale dir in
+         let before, after = pad_axis store id ~scale dir in
+         let pm = before +. after in
          let gap = gap_px store id ~scale in
          let n = List.length children in
          let sum =
@@ -394,8 +438,8 @@ module Layout = struct
     | children ->
       let dir = direction store id in
       let gap = gap_px store id ~scale in
-      let pm = pad_axis store id ~scale dir in
-      let pc =
+      let pm, pm_end = pad_axis store id ~scale dir in
+      let pc, pc_end =
         pad_axis store id ~scale
           (match dir with Vertical -> Horizontal | Horizontal -> Vertical)
       in
@@ -403,10 +447,10 @@ module Layout = struct
         match dir with
         | Vertical ->
           ( r.x +. pc, r.y +. pm,
-            max 0. (r.w -. (2. *. pc)), max 0. (r.h -. (2. *. pm)) )
+            max 0. (r.w -. pc -. pc_end), max 0. (r.h -. pm -. pm_end) )
         | Horizontal ->
           ( r.x +. pm, r.y +. pc,
-            max 0. (r.w -. (2. *. pm)), max 0. (r.h -. (2. *. pc)) )
+            max 0. (r.w -. pm -. pm_end), max 0. (r.h -. pc -. pc_end) )
       in
       let n = List.length children in
       let entries =
@@ -511,6 +555,7 @@ module Ui = struct
     (* composed machine states — see platform/native/lui_input *)
     mutable pointer : Lui_pointer.state;
     mutable focus : Lui_focus.state;
+    mutable blur_actions : action list;
     mutable session : Lui_text_input.state;
     mutable selection : Lui_selection.state;
     mutable gesture : Lui_gesture.state;
@@ -519,6 +564,14 @@ module Ui = struct
     scrollbar_deadlines : (int, float) Hashtbl.t;
     mutable drag : Lui_drag.state;
     mutable overlay : Lui_overlay.state;
+    mutable menu_scope : int;
+    mutable menu_reveal : int; (* Initial highlight waiting for layout geometry. *)
+    mutable menu_picker : int;
+    mutable pending_picker : (int * Input.key) option;
+    mutable keyboard_input : bool;
+    mutable overlay_edit : Lui_text_input.state option;
+    (* Space activation may dispose the menu before its text commit arrives. *)
+    mutable menu_space_commit : bool;
     (* Paint-hint channels for the retained fragment pass: scroll
        containers whose offset moved this frame (their whole subtree
        re-derives — ops embed shifted rects), containers whose
@@ -555,6 +608,7 @@ module Ui = struct
       vlist_hook = None;
       pointer = Lui_pointer.initial;
       focus = Lui_focus.initial;
+      blur_actions = [];
       session = Lui_text_input.initial;
       selection = Lui_selection.initial;
       gesture = Lui_gesture.initial;
@@ -563,6 +617,8 @@ module Ui = struct
       scrollbar_deadlines = Hashtbl.create 8;
       drag = Lui_drag.initial;
       overlay = Lui_overlay.initial;
+      menu_scope = 0; menu_reveal = 0; menu_picker = 0; pending_picker = None;
+      menu_space_commit = false; keyboard_input = true; overlay_edit = None;
       scrolled = Hashtbl.create 8;
       scroll_metrics = Hashtbl.create 8;
       paint_snap =
@@ -615,11 +671,22 @@ module Ui = struct
   type axis = X | Y
 
   let conv_axis = function X -> Lui_scroll.X | Y -> Lui_scroll.Y
-  let scroll_offset t = Lui_scroll.offset t.scroll Lui_scroll.Y
+  (* Retained callbacks read the current state when supplied an id. *)
+  let scroll_offset t id = Lui_scroll.offset t.scroll Lui_scroll.Y id
   let scroll_epoch t = Lui_scroll.epoch t.scroll
-  let scroll_cap t = Lui_scroll.cap t.scroll Lui_scroll.Y
-  let scroll_offset_x t = Lui_scroll.offset t.scroll Lui_scroll.X
-  let scroll_cap_x t = Lui_scroll.cap t.scroll Lui_scroll.X
+  let scroll_cap t id = Lui_scroll.cap t.scroll Lui_scroll.Y id
+  let scroll_offset_x t id = Lui_scroll.offset t.scroll Lui_scroll.X id
+  let scroll_cap_x t id = Lui_scroll.cap t.scroll Lui_scroll.X id
+
+  let anchor_shift t store id =
+    let rec collect current x y =
+      if Lui_store.string_prop store current "position" = Some "fixed" then (-.x,-.y)
+      else match Lui_store.parent store current with
+        | None -> (-.x,-.y)
+        | Some ancestor -> collect ancestor
+            (x +. scroll_offset_x t ancestor) (y +. scroll_offset t ancestor) in
+    collect id 0. 0.
+
 
   let tick_scrollbars t ~now_ms =
     if not (Float.is_finite now_ms) || now_ms < t.scroll_clock_ms then
@@ -757,13 +824,35 @@ module Ui = struct
      dispatched, so local rollback is the whole of it), and the
      static selection and editable undo reset — those are owned by
      the focused node. Callers emit [Focus_changed] when it moved. *)
+  let take_blur_actions t store =
+    match t.blur_actions with
+    | [] -> []
+    | actions ->
+      t.blur_actions <- [];
+      List.filter (function
+        | Dispatch (Submit id) -> bool_prop store id "submit-on-blur"
+            && Lui_query.node_enabled store id && Lui_focus.chain_visible store id
+            && event_supported store id (Submit id)
+        | _ -> false) (List.rev actions)
+
   let focus_move ?(kbd = false) t store id =
-    if id <> Lui_focus.focused t.focus then begin
+    let moved = id <> Lui_focus.focused t.focus in
+    let previous = Lui_focus.focused t.focus in
+    if moved && bool_prop store previous "submit-on-blur"
+       && not (Lui_text_input.composing t.session)
+       && Lui_query.node_enabled store previous && Lui_focus.chain_visible store previous
+       && event_supported store previous (Submit previous) then
+      t.blur_actions <- Dispatch (Submit previous) :: t.blur_actions;
+    let kbd = kbd || (not moved && id <> 0 && Lui_focus.kbd_visible t.focus) in
+    if moved || kbd <> Lui_focus.kbd_visible t.focus then begin
       t.focus <- Lui_focus.set t.focus ~id ~kbd;
-      t.session <-
-        Lui_text_input.attach t.session ~node:id
-          ~text:(if id = 0 then "" else Lui_query.text_of store id);
-      t.selection <- Lui_selection.clear t.selection;
+      (* Changing focus visibility preserves the active edit session. *)
+      if moved then begin
+        t.session <-
+          Lui_text_input.attach t.session ~node:id
+            ~text:(if id = 0 then "" else Lui_query.text_of store id);
+        t.selection <- Lui_selection.clear t.selection
+      end;
       t.dirty <- true
     end
 
@@ -775,10 +864,9 @@ module Ui = struct
     | `Dispatch e -> [ Dispatch e ]
     | `Repaint -> t.dirty <- true; []
     | `Focus (id, kbd) ->
-      if id <> Lui_focus.focused t.focus then begin
-        focus_move ~kbd t store id;
-        [ Focus_changed id ]
-      end else []
+      let moved = id <> Lui_focus.focused t.focus in
+      focus_move ~kbd t store id;
+      if moved then [ Focus_changed id ] else []
     | `Clear_selection ->
       t.selection <- Lui_selection.clear t.selection;
       t.dirty <- true;
@@ -824,11 +912,22 @@ module Ui = struct
      focus-scope transition, autofocus inside the top overlay's
      scope, the Appear lifecycle and scroll bookkeeping. Intents go
      through [perform]; dispatches land in action order. *)
+  let sync_menu_focus t store ~kbd =
+    let menu = t.menu_scope and focused = Lui_focus.focused t.focus in
+    if Lui_overlay.ordinary_row_menu store menu
+       && (focused = 0 || focused = menu || Lui_query.is_desc store focused menu)
+       && not (Lui_text_input.editable store focused) then begin
+      let target = if t.gesture.hl = 0 then menu else t.gesture.hl in
+      let moved = target <> focused in
+      focus_move ~kbd t store target;
+      if moved then [Focus_changed target] else []
+    end else []
+
   let sync t store =
     if Lui_store.revision store = t.sync_rev
        && Lui_overlay.open_menu t.overlay = t.sync_menu
        && Lui_scroll.epoch t.scroll = t.sync_scroll_epoch
-       && t.rects_epoch = t.sync_rects_epoch then []
+       && t.rects_epoch = t.sync_rects_epoch then take_blur_actions t store
     else
     let acts = ref [] in
     let run m_acts =
@@ -853,12 +952,57 @@ module Ui = struct
          t.session <- s';
          run m
        end);
-      (let ov', m =
-         Lui_overlay.sync store t.overlay
-           ~focused:(Lui_focus.focused t.focus)
-       in
+      (let old_saved = Lui_overlay.saved_focus t.overlay in
+       let focused = Lui_focus.focused t.focus in
+       let ov', m =
+         Lui_overlay.sync store t.overlay ~focused
+           ~kbd:(Lui_focus.kbd_visible t.focus) ~keyboard:t.keyboard_input in
+       let saved = Lui_overlay.saved_focus ov' in
+       if old_saved = 0 && saved <> 0 then
+         t.overlay_edit <-
+           (if Lui_text_input.editable store focused then Some t.session else None);
        t.overlay <- ov';
-       run m);
+       run m;
+       match saved, t.overlay_edit with
+       | 0, Some edit ->
+           if List.exists (function `Focus (id, _) -> id = Lui_text_input.node edit | _ -> false) m
+              && Lui_focus.focused t.focus = Lui_text_input.node edit then
+             t.session <- Lui_text_input.restore_edit t.session edit;
+           t.overlay_edit <- None
+       | _ -> ());
+      (let id = Lui_overlay.top t.overlay in
+       let scope =
+         if id <> 0 && Lui_paint.menu_kind store id (Lui_store.kind store id)
+            && Lui_gesture.menu_has_items store id then id else 0
+       in
+       if scope <> t.menu_scope then begin
+         let previous_picker = t.menu_picker in
+         t.menu_scope <- scope;
+         t.menu_picker <- Option.value ~default:0 (Lui_query.picker_for_menu store scope);
+         t.gesture <-
+           if scope = 0 then Lui_gesture.initial
+           else if not t.keyboard_input && Lui_overlay.ordinary_row_menu store scope
+           then Lui_gesture.menu_state Lui_gesture.initial scope
+           else Lui_gesture.menu_open store ~menu:scope;
+         (match t.pending_picker with
+          | Some (picker, Input.Arrow_up) when picker = t.menu_picker
+              && not (List.exists (fun id -> bool_prop store id "selected")
+                (Lui_gesture.menu_items store scope)) ->
+              let gesture, actions = Lui_gesture.menu_key store t.gesture
+                ~menu:scope ~rect_of:t.content_rect ~scale:t.scale
+                ~key:Lui_input.End ~mods:(conv_mods Input.mods_none) in
+              t.gesture <- gesture;run actions
+          | _ -> ());
+         if scope <> 0 then t.pending_picker <- None;
+         let picker = if t.menu_picker <> 0 then t.menu_picker else previous_picker in
+         if picker <> 0 && Lui_store.mem store picker
+            && (t.menu_picker <> 0 || Lui_focus.focused t.focus = 0) then begin
+           focus_move ~kbd:true t store picker;
+           acts := Focus_changed picker :: !acts
+         end;
+         t.menu_reveal <- Lui_gesture.hl t.gesture;
+         t.dirty <- true
+       end);
       (let f', cand =
          Lui_focus.scan_autofocus store t.focus
            ~scope:(Lui_overlay.top t.overlay)
@@ -876,6 +1020,18 @@ module Ui = struct
       set_scroll t s';
       run m
     end;
+    (* New menu rows may not have geometry during the opening store sync.
+       Reveal once layout supplies it; later pointer/keyboard choices win. *)
+    if t.menu_reveal <> 0 then begin
+      let id = t.menu_reveal in
+      if id <> Lui_gesture.hl t.gesture || not (Lui_store.mem store id) then
+        t.menu_reveal <- 0
+      else if not (rect_empty (t.content_rect id))
+              && not (rect_empty (t.content_rect t.menu_scope)) then begin
+        t.menu_reveal <- 0;
+        run [`Scroll_show id]
+      end
+    end;
     (* visible-range reports follow scroll offsets, which live in
        the machine rather than the store — they run on every sync,
        memoized on their inputs *)
@@ -884,20 +1040,116 @@ module Ui = struct
      run m);
     t.sync_scroll_epoch <- Lui_scroll.epoch t.scroll;
     t.sync_rects_epoch <- t.rects_epoch;
-    List.rev !acts
+    take_blur_actions t store @ List.rev !acts
 
   let store_changed t store = sync t store
 
-  let handle ?spatial t store rects input =
+  let resizing_split t = Lui_pointer.resizing t.pointer
+
+  let split_handle t store rects id ~x ~y =
+    Lui_store.kind store id = "split" && Lui_query.node_enabled store id
+    && (Option.is_some (Lui_store.float_prop store id "value")
+        || Option.is_some (Lui_store.float_prop store id "first-pane-width"))
+    && match Lui_store.child_ids store id with
+       | first :: second :: _ ->
+         let a=Rects.get rects first and b=Rects.get rects second in
+         let px=x*.t.scale and py=y*.t.scale in
+         let gap=(b.x-.a.x-.a.w)/.t.scale in
+         let width=Lui_split_geometry.handle_width ~gap
+           (Option.map float_of_int (Lui_store.int_prop store id "resize-handle-width")) in
+         let offset=Option.value (Lui_store.float_prop store id "resize-handle-offset") ~default:0. in
+         let start=Lui_split_geometry.handle_start ~first:((a.x+.a.w)/.t.scale) ~gap ~width ~offset in
+         width > 0. && a.w >= t.scale && b.w >= t.scale
+         && px >= start*.t.scale && px <= (start+.width)*.t.scale
+         && py >= max a.y b.y && py <= min (a.y+.a.h) (b.y+.b.h)
+       | _ -> false
+
+  let split_target t store rects path ~x ~y =
+    if List.exists (Lui_query.presented_overlay store) path then None
+    else List.find_opt (fun id -> split_handle t store rects id ~x ~y) path
+
+  let menu_input_active t store =
+    let id = t.menu_scope and focused = Lui_focus.focused t.focus in
+    id <> 0
+    && not
+         (focused <> 0
+         && Lui_text_input.editable store focused
+         && Lui_query.is_desc store focused id)
+
+  let active_menu t store =
+    if menu_input_active t store then Some t.menu_scope else None
+
+  let visible_rect t store id =
+    let rec offsets id x y =
+      match Lui_store.parent store id with
+      | None -> (x, y)
+      | Some parent ->
+          offsets parent
+            (x +. scroll_offset_x t parent)
+            (y +. scroll_offset t parent)
+    in
+    let x, y = offsets id 0. 0. in
+    let r = t.content_rect id in
+    { r with Lui_scene.x = r.x -. x; y = r.y -. y }
+
+  let handle ?spatial ?(on_component_input = fun () -> ()) t store rects input =
+    (match input with
+     | Input.Move _ | Input.Button_down _ | Input.Wheel _ | Input.Wheel_mods _ ->
+         t.keyboard_input <- false
+     | Input.Key_down _ -> t.keyboard_input <- true
+     | _ -> ());
+    (match input with
+     | Input.Key_down (_, mods, _)
+       when not (mods.Input.ctrl || mods.Input.meta || mods.Input.alt) ->
+         focus_move ~kbd:true t store (Lui_focus.focused t.focus)
+     | _ -> ());
+    let suppress_space =
+      match input with
+      | Input.Text_input s ->
+        let pending = t.menu_space_commit in
+        t.menu_space_commit <- false;
+        pending && s = " "
+      | Input.Key_down _ | Input.Button_down _ ->
+        t.menu_space_commit <- false;
+        false
+      | _ -> false
+    in
     let acts = ref [] in
     let emit_all l = acts := List.rev_append l !acts in
     let run m_acts = emit_all (perform_all t store m_acts) in
+    let resize_split x =
+      let pointer,update=Lui_pointer.resize store t.pointer ~x in
+      t.pointer <- pointer;
+      match update with
+      | None -> ()
+      | Some (id,value) ->
+        let first, second = match Lui_store.child_ids store id with
+          | first :: second :: _ -> first, second
+          | _ -> assert false in
+        let available = ((Rects.get rects first).w +. (Rects.get rects second).w) /. t.scale in
+        let minimum child =
+          float_of_int (Option.value (Lui_store.int_prop store child "min-width") ~default:0) in
+        let maximum child = Option.map float_of_int (Lui_store.int_prop store child "max-width") in
+        let value = Lui_split_geometry.constrain_fraction ~available
+          ~first_min:(minimum first) ~second_min:(minimum second)
+          ?first_max:(maximum first) ?second_max:(maximum second) value in
+        let property, name, value =
+          match Lui_store.float_prop store id "first-pane-width" with
+          | Some _ -> FirstPaneWidth, "first-pane-width", value *. available
+          | None -> ProgressValue, "value", value in
+        if Lui_store.float_prop store id name <> Some value then begin
+          Lui_store.apply_op store (SetProp (id,property,FloatValue value));
+          t.dirty <- true;
+          emit_all [Dispatch (ValueChanged (id,value))]
+        end
+    in
     emit_all (sync t store);
     (match input with
      | Input.Move (x, y) ->
        t.pointer <- Lui_pointer.note_pos t.pointer ~x ~y;
        let dx, dy = x *. t.scale, y *. t.scale in
-       if Lui_drag.active t.drag then begin
+       if resizing_split t then resize_split x
+       else if Lui_drag.active t.drag then begin
          (* live drop-target tracking while a drag is in flight *)
          let path = hit_path ?spatial store rects ~x:dx ~y:dy in
          let d, m = Lui_drag.track store t.drag ~path in
@@ -937,6 +1189,15 @@ module Ui = struct
              let path = hit_path ?spatial store rects ~x:dx ~y:dy in
              let p, m = Lui_pointer.move store t.pointer ~path ~x ~y in
              t.pointer <- p;
+             (match active_menu t store with
+              | Some menu ->
+                let gesture = Lui_gesture.menu_hover store t.gesture ~menu path in
+                if gesture != t.gesture then begin
+                  t.gesture <- gesture;
+                  emit_all (sync_menu_focus t store ~kbd:false);
+                  t.dirty <- true
+                end
+              | None -> ());
              run m
            end
        end
@@ -962,20 +1223,34 @@ module Ui = struct
            | ov', `Proceed dismiss ->
              t.overlay <- ov';
              emit_all (perform_all t store dismiss);
+             match split_target t store rects path ~x ~y with
+             | Some id ->
+               let first,second=match Lui_store.child_ids store id with
+                 | first :: second :: _ -> Rects.get rects first,Rects.get rects second
+                 | _ -> assert false in
+               let span=(first.w+.second.w)/.t.scale in
+               let fraction = match Lui_store.float_prop store id "first-pane-width" with
+                 | Some width -> if span > 0. then width /. span else 0.
+                 | None -> Option.get (Lui_store.float_prop store id "value") in
+               t.pointer <- Lui_pointer.start_resize t.pointer ~node:id ~x ~fraction ~span;
+               t.drag <- Lui_drag.clear_arm t.drag;
+               t.selection <- Lui_selection.clear_drag t.selection;
+               t.dirty <- true
+             | None ->
              let focus =
                match Lui_query.focus_target store path with
                | Some id -> id
                | None -> 0
              in
-             (if focus <> Lui_focus.focused t.focus then begin
-                focus_move t store focus;
-                emit_all [ Focus_changed focus ]
-              end);
+             let moved = focus <> Lui_focus.focused t.focus in
+             focus_move t store focus;
+             (if moved then emit_all [ Focus_changed focus ]);
              (* Selection: click sets the caret, shift-click
                 extends, double/triple click selects word/paragraph
                 — on editable fields and user-select=text nodes
                 alike. *)
-             (if focus <> 0 && List.mem focus path then begin
+             (if focus <> 0 && List.mem focus path
+                 && Lui_query.event_supported store focus (Lui_query.ev_text focus) then begin
                 let s', _m =
                   Lui_text_input.press (hooks t) store rects t.session
                     ~x:dx ~y:dy ~clicks ~shift:mods.Input.shift
@@ -985,7 +1260,7 @@ module Ui = struct
                   Lui_selection.arm_drag
                     (Lui_selection.clear t.selection) focus
               end
-              else if
+              else if focus = 0 &&
                 List.exists
                   (fun i -> Lui_query.selectable_text store i) path
               then begin
@@ -1026,6 +1301,12 @@ module Ui = struct
      | Input.Button_up (x, y, btn, mods) ->
        t.pointer <- Lui_pointer.note_pos t.pointer ~x ~y;
        (match btn with
+        | Input.Left when resizing_split t ->
+          resize_split x;
+          t.pointer <- Lui_pointer.clear_press t.pointer;
+          t.drag <- Lui_drag.clear_arm t.drag;
+          t.selection <- Lui_selection.clear_drag t.selection;
+          t.dirty <- true
         | Input.Left when Lui_drag.active t.drag ->
           (* the drop completes on the accepting target under the
              pointer; the click it rode on is consumed *)
@@ -1103,12 +1384,24 @@ module Ui = struct
           t.pointer <- Lui_pointer.clear_press t.pointer;
           t.dirty <- true
         | _ -> ())
+     | Input.Text_input _ when suppress_space -> on_component_input ()
+     | Input.Text_input s when Option.is_some (active_menu t store)
+         && kind_name store (focused t) <> "combobox" ->
+       on_component_input ();
+       let g,m = Lui_gesture.menu_text store t.gesture
+         ~menu:(Option.get (active_menu t store)) s in
+       t.gesture <- g;
+       run m;
+       emit_all (sync_menu_focus t store ~kbd:true)
      | Input.Text_input s ->
        let s', m =
          Lui_text_input.feed_ime store t.session (`Commit s)
        in
        t.session <- s';
        run m
+     | Input.Text_editing _ when Option.is_some (active_menu t store)
+         && kind_name store (focused t) <> "combobox" ->
+       on_component_input ()
      | Input.Text_editing (text, start, len) ->
        let s', m =
          Lui_text_input.feed_ime store t.session
@@ -1131,6 +1424,48 @@ module Ui = struct
          let s', m = Lui_text_input.insert t.session s in
          t.session <- s';
          run m
+       end
+     | Input.Key_down (key, mods, _repeat)
+       when not (mods.Input.ctrl || mods.Input.meta || mods.Input.alt)
+         && Option.is_some (active_menu t store)
+         && (if kind_name store (focused t) = "combobox" then
+               List.mem key [Input.Arrow_up; Input.Arrow_down; Input.Return]
+             else match key with
+             | Input.Arrow_down | Input.Arrow_up | Input.Home | Input.End
+             | Input.Page_down | Input.Page_up | Input.Return | Input.Space -> true
+             | Input.Other scan -> Option.is_some (Input.char_of_scancode scan)
+             | _ -> false) ->
+       on_component_input ();
+       t.menu_space_commit <- key = Input.Space;
+       let g,m = Lui_gesture.menu_key store t.gesture
+         ~menu:(Option.get (active_menu t store))
+         ~rect_of:(visible_rect t store) ~scale:t.scale
+         ~key:(conv_key key) ~mods:(conv_mods mods) in
+       t.gesture <- g;
+       run m;
+       emit_all (sync_menu_focus t store ~kbd:true)
+     | Input.Key_down
+         ((Input.Arrow_left | Input.Arrow_right | Input.Arrow_up | Input.Arrow_down
+          | Input.Home | Input.End | Input.Page_up | Input.Page_down) as key, mods, _repeat)
+       when kind_name store (focused t)="button"
+         && bool_prop store (focused t) "navigate-enabled"
+         && not (mods.Input.ctrl || mods.Input.meta || mods.Input.alt)
+         && not (Lui_text_input.composing t.session) ->
+       let target = focused t in
+       let name = match key with
+         | Input.Arrow_left -> "ArrowLeft" | Input.Arrow_right -> "ArrowRight"
+         | Input.Arrow_up -> "ArrowUp" | Input.Arrow_down -> "ArrowDown"
+         | Input.Home -> "Home" | Input.End -> "End"
+         | Input.Page_up -> "PageUp" | Input.Page_down -> "PageDown"
+         | _ -> assert false in
+       let event = NavigationKey (target,name,mods.Input.shift) in
+       let in_scope = match Lui_overlay.modal_scope store t.overlay with
+         | None -> true
+         | Some scope -> target=scope || Lui_query.is_desc store target scope in
+       if in_scope && Lui_focus.chain_visible store target
+          && event_supported store target event then begin
+         on_component_input ();
+         acts:=Dispatch event::!acts
        end
      | Input.Key_down (key, mods, _repeat) ->
        (* While marked text is on screen the keys belong to the
@@ -1156,15 +1491,16 @@ module Ui = struct
               let ov', res = Lui_overlay.escape store t.overlay in
               t.overlay <- ov';
               (match res with
-               | `Closed_menu -> t.dirty <- true
+               | `Closed_menu -> on_component_input ();t.dirty <- true
                | `Dismissed oid ->
+                 on_component_input ();
                  acts := Dispatch (Dismiss oid) :: !acts
-               | `Blocked -> ()
+               | `Blocked -> on_component_input ()
                | `Pass ->
                  if Lui_focus.focused t.focus <> 0 then begin
                    focus_move t store 0;
                    acts := Focus_changed 0 :: !acts
-                 end else acts := Quit :: !acts)
+                 end)
             end
           | Input.Other 4 when prim ->
             (* A: select all — the editable range, or every
@@ -1212,6 +1548,7 @@ module Ui = struct
                 ~scope:(Lui_overlay.modal_scope store t.overlay)
                 ~cur:(Lui_focus.focused t.focus) ~dir
             in
+            if next <> 0 then on_component_input ();
             if next <> 0 && next <> Lui_focus.focused t.focus
             then begin
               focus_move ~kbd:true t store next;
@@ -1222,7 +1559,17 @@ module Ui = struct
               set_scroll t s';
               run m
             end
+          | (Input.Arrow_up | Input.Arrow_down)
+              when not (mods.Input.shift || mods.Input.ctrl || mods.Input.meta || mods.Input.alt)
+                && List.mem (kind_name store (focused t)) ["select";"combobox"]
+                && Lui_query.node_enabled store (focused t) ->
+            on_component_input ();
+            t.pending_picker <- Some (focused t,key);
+            run (Lui_query.primary_press store (focused t))
           | _ ->
+            let focused_list = kind_name store (focused t) = "list-item"
+              && t.gesture.list_scope <> 0
+              && Lui_query.is_desc store (focused t) t.gesture.list_scope in
             if Lui_text_input.editable store (focused t) then begin
               let s', m =
                 Lui_text_input.key (hooks t) store rects t.session
@@ -1231,13 +1578,17 @@ module Ui = struct
               t.session <- s';
               run m
             end
-            else if Lui_focus.focused t.focus <> 0 then begin
+            else if Lui_focus.focused t.focus <> 0 && not focused_list then begin
               let g', m =
                 Lui_gesture.control_key store t.gesture
                   ~node:(Lui_focus.focused t.focus)
                   ~key:(conv_key key) ~mods:(conv_mods mods)
               in
               t.gesture <- g';
+              if m <> [] then begin
+                on_component_input ();
+                t.menu_space_commit <- key = Input.Space
+              end;
               run m
             end else begin
               let scope =
@@ -1250,6 +1601,10 @@ module Ui = struct
                   ~mods:(conv_mods mods)
               in
               t.gesture <- g';
+              if focused_list && g'.hl <> 0 && g'.hl <> focused t then begin
+                focus_move ~kbd:true t store g'.hl;
+                emit_all [Focus_changed g'.hl]
+              end;
               run m
             end)
        end
@@ -1305,16 +1660,26 @@ module Ui = struct
        t.drag <- d;
        run m
      | Input.Quit_input -> acts := Quit :: !acts);
-    List.rev !acts
+    take_blur_actions t store @ List.rev !acts
 
   let state_of t store id =
+    let menu_highlight =
+      kind_name store id = "menu-item"
+      && t.gesture.Lui_gesture.hl <> 0
+      && active_menu t store = Some t.gesture.Lui_gesture.list_scope
+    in
     { Lui_paint.hovered =
-        (Lui_pointer.hovered t.pointer = id
+        ((if menu_highlight then Lui_gesture.hl t.gesture = id
+          else Lui_pointer.hovered t.pointer = id)
          || Lui_drag.target t.drag = id);
       pressed =
         (Lui_pointer.pressed t.pointer = id
          || Lui_drag.source t.drag = id);
       focused = Lui_focus.focused t.focus = id;
+      focus_within = (let focused=Lui_focus.focused t.focus in
+        focused <> 0 && (focused=id || Lui_query.is_desc store focused id));
+      focus_visible = Lui_focus.focused t.focus = id
+        && (Lui_focus.kbd_visible t.focus || Lui_text_input.editable store id);
       selected =
         (bool_prop store id "selected" || Lui_gesture.hl t.gesture = id);
       disabled = not (node_enabled store id) }
@@ -1339,7 +1704,16 @@ module Ui = struct
     and drop_target = Lui_drag.target t.drag in
     if s.ps_hovered <> hovered t then (mark s.ps_hovered; mark (hovered t));
     if s.ps_pressed <> pressed t then (mark s.ps_pressed; mark (pressed t));
-    if s.ps_focused <> focused t then (mark s.ps_focused; mark (focused t));
+    if s.ps_focused <> focused t then begin
+      let rec mark_group id =
+        if id <> 0 then begin
+          if Lui_store.prop store id "focus-within-background" <> None
+             || Lui_store.prop store id "focus-within-border" <> None then mark id;
+          Option.iter mark_group (Lui_store.parent store id)
+        end in
+      mark s.ps_focused;mark (focused t);
+      mark_group s.ps_focused;mark_group (focused t)
+    end;
     if s.ps_drop_target <> drop_target then
       (mark s.ps_drop_target; mark drop_target);
     if s.ps_drag_src <> drag_src then (mark s.ps_drag_src; mark drag_src);
@@ -1506,7 +1880,7 @@ module Theme = struct
         float_of_string_opt
           (if pct then String.sub t 0 (String.length t - 1) else t)
       with
-      | Some v -> Some (int_of_float (Float.round (if pct then v *. 2.55 else v)))
+      | Some v -> Some (int_of_float (Float.round (if pct then v /. 100. *. 255. else v)))
       | None -> None
     in
     let alpha t =
@@ -1515,14 +1889,14 @@ module Theme = struct
         float_of_string_opt
           (if pct then String.sub t 0 (String.length t - 1) else t)
       with
-      | Some v ->
+      | Some v when Float.is_finite v ->
         Some
           (int_of_float
              (Float.round
-                (if pct then v *. 2.55
+                (if pct then v /. 100. *. 255.
                  else if v <= 1. then v *. 255.
                  else v)))
-      | None -> None
+      | _ -> None
     in
     let emit comps a =
       match List.map chan comps with
@@ -1530,26 +1904,32 @@ module Theme = struct
         Some (color r g b (Option.value a ~default:255))
       | _ -> None
     in
-    (* CSS hsl()/hsla() — comma-separated (hsla(10, 78%, 54%, 0.9)) and
-       modern space/slash forms; hue in degrees, s/l percents. *)
-    let pct_num t =
+    (* Modern HSL accepts independent number/percentage saturation and
+       lightness channels; comma-separated HSL requires percentages. *)
+    let hsl_channel modern t =
       let n = String.length t in
-      if n > 0 && t.[n - 1] = '%' then
-        float_of_string_opt (String.sub t 0 (n - 1))
-      else None
+      let percentage = n > 0 && t.[n - 1] = '%' in
+      if not (percentage || modern) then None
+      else
+        match float_of_string_opt
+          (if percentage then String.sub t 0 (n - 1) else t) with
+        | Some value when Float.is_finite value -> Some value
+        | _ -> None
     in
-    let hsl_emit comps a =
+    let hsl_emit modern comps a =
       let hue t =
         let t =
           if String.ends_with ~suffix:"deg" t then
             String.sub t 0 (String.length t - 3)
           else t
         in
-        float_of_string_opt t
+        match float_of_string_opt t with
+        | Some value when Float.is_finite value -> Some value
+        | _ -> None
       in
       match comps with
       | [ h; s; l ] -> (
-        match hue h, pct_num s, pct_num l with
+        match hue h, hsl_channel modern s, hsl_channel modern l with
         | Some h, Some s, Some l ->
           let h =
             let h = Float.rem h 360. in
@@ -1585,15 +1965,20 @@ module Theme = struct
     match pre with
     | None -> None
     | Some p -> (
-      let emit = if is_hsl then hsl_emit else emit in
+      let emit_color modern comps opacity =
+        if is_hsl then hsl_emit modern comps opacity else emit comps opacity in
+      let with_alpha modern comps raw =
+        match alpha raw with
+        | Some opacity -> emit_color modern comps (Some opacity)
+        | None -> None in
       let inner = inner p in
       match split ',' inner with
-      | [ a; b; c ] -> emit [ a; b; c ] None
-      | [ a; b; c; d ] -> emit [ a; b; c ] (alpha d)
+      | [ a; b; c ] -> emit_color false [ a; b; c ] None
+      | [ a; b; c; d ] -> with_alpha false [ a; b; c ] d
       | _ -> (
         match split '/' inner with
-        | [ core ] -> emit (split ' ' core) None
-        | [ core; a ] -> emit (split ' ' core) (alpha a)
+        | [ core ] -> emit_color true (split ' ' core) None
+        | [ core; a ] -> with_alpha true (split ' ' core) a
         | _ -> None))
 
   let color_of name =
@@ -2205,18 +2590,7 @@ module Assembly = struct
       let sx, sy = scroll_shift_of id in
       { r with x = r.x -. sx; y = r.y -. sy }
     in
-    let content_box id =
-      List.fold_left
-        (fun (l, t, rgt, b) d ->
-           if d = id then (l, t, rgt, b)
-           else
-             let r = engine_rect d in
-             (Float.min l r.x, Float.min t r.y,
-              Float.max rgt (r.x +. r.w), Float.max b (r.y +. r.h)))
-        (Float.max_float, Float.max_float,
-         Float.min_float, Float.min_float)
-        (Lui_store.preorder ~root:id (store_of ()))
-    in
+    let content_box id = content_bounds ~store:(store_of ()) ~rect_of:engine_rect id in
     (* Virtual-list viewport feed: the node's content-space visible
        range — its own scroll offset plus how far the frame clip has
        scrolled into its (shifted) box. Outer scroller clips are not
@@ -2255,7 +2629,7 @@ module Assembly = struct
     in
     let hooks =
       Lui_paint.
-        { color_of = Theme.color_of;
+        { Lui_paint.default_hooks with color_of = Theme.color_of;
           hidden = (fun _ -> false);
           layout =
             (fun id -> Lui_paint.placement_of_rect (shifted_rect id));
@@ -2284,8 +2658,8 @@ module Assembly = struct
                    with
                    | Some ext -> Float.max ext 0.001
                    | None ->
-                     let _, top, _, bot = content_box id in
-                     Float.max (bot -. top) 0.001
+                     let _, _, _, bot = content_box id in
+                     Float.max (bot -. cr.y) 0.001
                  in
                  Some
                    Lui_paint.
@@ -2356,21 +2730,20 @@ module Assembly = struct
     in
     let host =
       Lui_host.create ~hooks ?layout
-        (* Measure the text the engine selected (label/title/text per
-           kind) plus the placement padding it will paint around it —
-           feeding the raw glyph metric collapses every labeled
-           control to bare-text size (buttons, fields, kbd...). *)
+        (* Measure the selected label/title/text plus implicit control slots.
+           Flex adds authored padding and borders around that content once. *)
         ~measure:(fun id s _w _h ->
           let w, h = measure id s in
-          let tp = Lui_paint.text_placement_of (store_of ()) id in
+          let tp = Lui_paint.text_measure_placement_of (store_of ()) id in
           let sc = !scale_cell in
           Some
-            (w +. (2. *. tp.tp_pad_x *. sc),
-             h +. (2. *. tp.tp_pad_y *. sc)))
+            (w +. ((tp.tp_pad_left +. tp.tp_pad_right) *. sc),
+             h +. ((tp.tp_pad_top +. tp.tp_pad_bottom) *. sc)))
         ~renderer ~width ~height ~scale:!scale_cell ()
     in
     host_cell := Some host;
     let store = Lui_host.store host in
+    Lui_host.set_anchor_shift host (Ui.anchor_shift ui store);
     (* Trigger-owned menu panels stay hidden until opened; the
        predicate reads the interaction state's mutable open-menu slot
        each sync. *)
@@ -2489,9 +2862,6 @@ module Assembly = struct
              visit c ~sx:sx' ~sy:sy' ~parent_r:child_parent)
           cids
       in
-      List.iter
-        (fun id -> visit id ~sx:0. ~sy:0. ~parent_r:viewport)
-        (Lui_store.root_ids store);
       let srev = Lui_store.revision store in
       let sids =
         match !scrollables with
@@ -2516,12 +2886,18 @@ module Assembly = struct
                (Float.max 0. (ext -. cr.Lui_scene.h));
              Ui.set_scroll_cap_x ui id 0.
            | None ->
-             let l, t, rgt, b = content_box id in
+             let _, _, rgt, b = content_box id in
              Ui.set_scroll_cap ui id
-               (Float.max 0. (b -. t -. cr.Lui_scene.h));
+               (Float.max 0. (b -. cr.Lui_scene.y -. cr.Lui_scene.h));
              Ui.set_scroll_cap_x ui id
-               (Float.max 0. (rgt -. l -. cr.Lui_scene.w)))
+               (Float.max 0. (rgt -. cr.Lui_scene.x -. cr.Lui_scene.w)))
         sids;
+      (* Range changes can clamp offsets during resize. Build the hit
+         mirror only after those clamps, using the same current offsets
+         as its geometry stamp and the following paint. *)
+      List.iter
+        (fun id -> visit id ~sx:0. ~sy:0. ~parent_r:viewport)
+        (Lui_store.root_ids store);
       (* Rects were just rebuilt — visible-range memos key on the
          epoch. *)
       Ui.notify_layout ui;

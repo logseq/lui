@@ -173,10 +173,8 @@ let switch_control context = create context SwitchControl
 
 let bind_float_prop context node property source =
   ignore
-    (Lui_runtime.bind_prop context.ui_scope context.ui_application node
-       property
-       (Signal.own_signal context.ui_scope
-          (Signal.map (fun value -> FloatValue value) source)))
+    (Lui_runtime.bind_prop_map context.ui_scope context.ui_application node
+       property (fun value -> FloatValue value) source)
 
 let split context source =
   let node = create context Split in
@@ -211,10 +209,8 @@ let heading context level text =
 
 let bind_string_prop context node property source =
   ignore
-    (Lui_runtime.bind_prop context.ui_scope context.ui_application node
-       property
-       (Signal.own_signal context.ui_scope
-          (Signal.map (fun text -> StringValue text) source)))
+    (Lui_runtime.bind_prop_map context.ui_scope context.ui_application node
+       property (fun text -> StringValue text) source)
 
 let heading_value context level source =
   let node = create context Heading in
@@ -226,9 +222,10 @@ let heading_value context level source =
   node
 
 let heading_signal context level source =
-  heading_value context level
-    (Signal.own_signal context.ui_scope
-       (Signal.map (fun text -> StringValue text) source))
+  let node = create context Heading in
+  Lui_runtime.set_prop context.ui_application node HeadingLevel (IntValue level);
+  bind_string_prop context node TextValue source;
+  node
 
 let paragraph context text =
   let node = create context Paragraph in
@@ -244,9 +241,9 @@ let paragraph_value context source =
   node
 
 let paragraph_signal context source =
-  paragraph_value context
-    (Signal.own_signal context.ui_scope
-       (Signal.map (fun text -> StringValue text) source))
+  let node = create context Paragraph in
+  bind_string_prop context node TextValue source;
+  node
 
 let label context text =
   let node = create context Label in
@@ -262,9 +259,9 @@ let label_value context source =
   node
 
 let label_signal context source =
-  label_value context
-    (Signal.own_signal context.ui_scope
-       (Signal.map (fun text -> StringValue text) source))
+  let node = create context Label in
+  bind_string_prop context node TextValue source;
+  node
 
 let text_value context source =
   let node = create context Text in
@@ -274,9 +271,9 @@ let text_value context source =
   node
 
 let text_signal context source =
-  text_value context
-    (Signal.own_signal context.ui_scope
-       (Signal.map (fun text -> StringValue text) source))
+  let node = create context Text in
+  bind_string_prop context node TextValue source;
+  node
 
 let slider context source =
   let node = create context Slider in
@@ -302,28 +299,20 @@ let bool_property context node property value =
 
 let bool_property_signal context node property source =
   ignore
-    (Lui_runtime.bind_prop context.ui_scope context.ui_application node
-       property
-       (Signal.own_signal context.ui_scope
-          (Signal.map (fun value -> BoolValue value) source)))
+    (Lui_runtime.bind_prop_map context.ui_scope context.ui_application node
+       property (fun value -> BoolValue value) source)
 
 let float_property context node property value =
   Lui_runtime.set_prop context.ui_application node property
     (FloatValue value)
 
 let float_property_signal context node property source =
-  ignore
-    (Lui_runtime.bind_prop context.ui_scope context.ui_application node
-       property
-       (Signal.own_signal context.ui_scope
-          (Signal.map (fun value -> FloatValue value) source)))
+  bind_float_prop context node property source
 
 let int_property_signal context node property source =
   ignore
-    (Lui_runtime.bind_prop context.ui_scope context.ui_application node
-       property
-       (Signal.own_signal context.ui_scope
-          (Signal.map (fun value -> IntValue value) source)))
+    (Lui_runtime.bind_prop_map context.ui_scope context.ui_application node
+       property (fun value -> IntValue value) source)
 
 let int_property context node property value =
   Lui_runtime.set_prop context.ui_application node property
@@ -342,10 +331,8 @@ let disabled context node disabled =
 
 let disabled_signal context node source =
   ignore
-    (Lui_runtime.bind_prop context.ui_scope context.ui_application node
-       Enabled
-       (Signal.own_signal context.ui_scope
-          (Signal.map (fun disabled -> BoolValue (not disabled)) source)))
+    (Lui_runtime.bind_prop_map context.ui_scope context.ui_application node
+       Enabled (fun disabled -> BoolValue (not disabled)) source)
 
 let checked_signal context node source =
   bool_property_signal context node Checked source
@@ -400,6 +387,14 @@ let padding_horizontal context node padding =
   int_property context node PaddingHorizontal padding
 let padding_vertical context node padding =
   int_property context node PaddingVertical padding
+let padding_top context node padding =
+  int_property context node PaddingTop padding
+let padding_right context node padding =
+  int_property context node PaddingRight padding
+let padding_bottom context node padding =
+  int_property context node PaddingBottom padding
+let padding_left context node padding =
+  int_property context node PaddingLeft padding
 let margin context node margin = int_property context node MarginValue margin
 let margin_horizontal context node margin =
   int_property context node MarginHorizontal margin
@@ -420,6 +415,7 @@ let border_width context node width = int_property context node BorderWidth widt
 let corner_radius context node radius = int_property context node CornerRadius radius
 let width context node width = int_property context node WidthValue width
 let height context node height = int_property context node HeightValue height
+let height_auto context node = string_property context node HeightValue "auto"
 let min_width context node width = int_property context node MinWidth width
 let max_width context node width = int_property context node MaxWidth width
 let min_height context node height = int_property context node MinHeight height
@@ -444,6 +440,7 @@ let inset_bottom context node inset =
   float_property context node InsetBottom inset
 let inset_left context node inset = float_property context node InsetLeft inset
 let z_index context node index = int_property context node ZIndex index
+let line_clamp context node value = int_property context node LineClamp value
 let white_space context node value = string_property context node WhiteSpace value
 let text_overflow context node value =
   string_property context node TextOverflow value
@@ -474,6 +471,10 @@ let pressed_shadow context node value =
   string_property context node PressedShadow value
 let focus_shadow context node value =
   string_property context node FocusShadow value
+let focus_within_background context node value =
+  string_property context node FocusWithinBackground value
+let focus_within_border context node value =
+  string_property context node FocusWithinBorder value
 let selected_background context node color =
   string_property context node SelectedBackground color
 let selected_shadow context node value =
@@ -542,12 +543,12 @@ let theme context node tokens =
   string_property context node ThemeValue (theme_tokens_json tokens)
 
 let theme_signal context node source =
-  string_property_signal context node ThemeValue
-    (Signal.own_signal context.ui_scope (Signal.map theme_tokens_json source))
+  ignore (Lui_runtime.bind_prop_map context.ui_scope context.ui_application node
+    ThemeValue (fun tokens -> StringValue (theme_tokens_json tokens)) source)
 
 let theme_mode context node mode =
   string_property context node ThemeMode (theme_mode_value mode)
 
 let theme_mode_signal context node source =
-  string_property_signal context node ThemeMode
-    (Signal.own_signal context.ui_scope (Signal.map theme_mode_value source))
+  ignore (Lui_runtime.bind_prop_map context.ui_scope context.ui_application node
+    ThemeMode (fun mode -> StringValue (theme_mode_value mode)) source)

@@ -25,6 +25,7 @@ type run = {
   glyphs : glyph array;
   rcolor : int option;
   under : int;
+  rinline : bool;
 }
 
 type line = {
@@ -220,15 +221,18 @@ let baseline y = ceil (y -. 1e-3)
    ink color as [0xRRGGBBAA]; [skern] adds points of advance after each
    glyph (letter-spacing); [sunder] is the engine's underline style
    (0 none, 1 single, 2 thick, 9 double). *)
+type inline_object = { object_width : float; object_ascent : float; object_descent : float }
+
 type span_style = {
   sfont : font option;
   scolor : int option;
   skern : float;
   sunder : int;
+  sobject : inline_object option;
 }
 
 let default_style =
-  { sfont = None; scolor = None; skern = 0.; sunder = 0 }
+  { sfont = None; scolor = None; skern = 0.; sunder = 0; sobject = None }
 
 (* A styled byte range of a shared source string: every span passed to
    [shape_spans] carries the same [text], and [range] selects the bytes
@@ -248,7 +252,7 @@ let span_text = function
    a record — the C side reads the fields positionally and OCaml never
    does, so record labels would warn as unused. *)
 type span_attr =
-  int * int * font option * int option * float * int
+  int * int * font option * int option * float * int * inline_object option
 
 external c_shape_spans : font -> string -> float -> bool -> int ->
   span_attr array -> line array
@@ -261,6 +265,16 @@ external c_truncate : font -> string -> float -> int -> int ->
   = "lui_ct_truncate"
 
 let shape_spans ?(width = 0.) ?(rtl = false) f spans =
+  List.iter (fun span -> match span.style.sobject with
+    | None -> ()
+    | Some object_ ->
+      let first,last=span.range in
+      let valid value=Float.is_finite value && value>=0. in
+      if first<0 || last>String.length span.text || last-first<>3
+         || String.sub span.text first 3<>"\xef\xbf\xbc"
+         || not (valid object_.object_width && valid object_.object_ascent
+                 && valid object_.object_descent) then
+        invalid_arg "Inline objects require one U+FFFC and finite nonnegative metrics") spans;
   match spans with
   | [] -> shape ~width ~rtl f ""
   | { text = s; _ } :: _ ->
@@ -290,7 +304,7 @@ let shape_spans ?(width = 0.) ?(rtl = false) f spans =
                    Some
                      ( lo - i, hi - i, sp.style.sfont,
                        sp.style.scolor, sp.style.skern,
-                       sp.style.sunder ))
+                       sp.style.sunder,sp.style.sobject ))
               spans
           in
           List.rev_append
@@ -454,8 +468,11 @@ let units_of_line ~em ~wrap ~rtl ~next_start ~breaks (l : line) =
   end
   else base_arr
 
-let layout_of_lines ?breaks ?(width = 0.) ?(rtl = false) f s
+let layout_of_lines ?breaks ?(width = 0.) ?(rtl = false) ?line_height f s
     (lines : line array) =
+  Option.iter (fun value ->
+    if not (Float.is_finite value) || value < 0. then
+      invalid_arg "line_height must be finite and nonnegative") line_height;
   let breaks =
     match breaks with
     | Some b -> b
@@ -468,7 +485,8 @@ let layout_of_lines ?breaks ?(width = 0.) ?(rtl = false) f s
     Array.init n
       (fun i ->
          let l = lines.(i) in
-         let h = l.ascent +. l.descent +. l.leading in
+         let natural = l.ascent +. l.descent +. l.leading in
+         let h = Option.value ~default:natural line_height in
          let next_start =
            if i + 1 < n then lines.(i + 1).start else -1
          in
@@ -476,7 +494,7 @@ let layout_of_lines ?breaks ?(width = 0.) ?(rtl = false) f s
            ~breaks l in
          let lb =
            { ll_line = l; ll_top = !y; ll_height = h;
-             ll_baseline = !y +. l.ascent; ll_units = units }
+             ll_baseline = !y +. (h -. natural) /. 2. +. l.ascent; ll_units = units }
          in
          if l.width > !w then w := l.width;
          y := !y +. h;
@@ -486,11 +504,11 @@ let layout_of_lines ?breaks ?(width = 0.) ?(rtl = false) f s
     lay_lines = lbs; lay_width = !w; lay_height = !y;
     lay_breaks = breaks }
 
-let layout ?(width = 0.) ?(rtl = false) ?breaks f s =
-  layout_of_lines ?breaks ~width ~rtl f s (shape ~width ~rtl f s)
+let layout ?(width = 0.) ?(rtl = false) ?breaks ?line_height f s =
+  layout_of_lines ?breaks ~width ~rtl ?line_height f s (shape ~width ~rtl f s)
 
-let layout_spans ?(width = 0.) ?(rtl = false) ?breaks f spans =
-  layout_of_lines ?breaks ~width ~rtl f (span_text spans)
+let layout_spans ?(width = 0.) ?(rtl = false) ?breaks ?line_height f spans =
+  layout_of_lines ?breaks ~width ~rtl ?line_height f (span_text spans)
     (shape_spans ~width ~rtl f spans)
 
 (* ---- caret, hit-testing, selection ---- *)
@@ -778,18 +796,48 @@ let truncate ?(mode = `End) ?(rtl = false) ~width f s =
 (* Shaped layouts are expensive; editing paths measure often and paint
    sometimes, so the cache is measure-first: [measure] populates the
    same entry a later [layout] reuses. Entries keyed by
-   (text, wrap width, direction, font, span signature) live in an LRU;
+   (text, wrap width, direction, line height, font, span signature) live in an LRU;
    an entry whose text exceeds [max_bytes] is built but not kept, so a
    giant paragraph can't evict everything else. *)
+(* Clamp after shaping so styled runs and grapheme boundaries stay intact. *)
+let clamp_spans ~max_lines ~width ~rtl ?line_height font spans layout =
+  if max_lines <= 0 then invalid_arg "line clamp must be positive";
+  if Array.length layout.lay_lines <= max_lines then layout else
+  let text=layout.lay_text in
+  let last=layout.lay_lines.(max_lines-1).ll_line in
+  let cuts=Array.to_list (graphemes text)
+    |> List.filter (fun index -> index>=last.start && index<=last.stop)
+    |> Array.of_list in
+  let candidate stop =
+    let source=String.sub text 0 stop ^ "\xe2\x80\xa6" in
+    let prefix=List.filter_map (fun span ->
+      let first,last=span.range in
+      if first>=stop then None else Some {span with text=source;range=(first,min last stop)}) spans in
+    let style=List.fold_left (fun style span ->
+      let first,last=span.range in if first<stop && last>=stop then span.style else style)
+      default_style spans in
+    let ellipsis={text=source;range=(stop,String.length source);style={style with sobject=None}} in
+    layout_spans ~width ~rtl ?line_height font (prefix @ [ellipsis]) in
+  let best=ref (candidate last.start) in
+  let lo=ref 0 and hi=ref (Array.length cuts-1) in
+  while !lo<= !hi do
+    let mid=(!lo+ !hi)/2 in
+    let next=candidate cuts.(mid) in
+    if Array.length next.lay_lines<=max_lines && (width<=0. || next.lay_width<=width+.0.001) then begin
+      best:=next;lo:=mid+1
+    end else hi:=mid-1
+  done;
+  !best
+
 module Cache = struct
-  (* The span part of a key: (start, stop, font, color, kern, under)
-     per span, kern quantized to thousandths of a point. *)
+  (* Include object metrics in each span key; kern is quantized to
+     thousandths of a point. *)
   type span_sig =
-    (int * int * font option * int option * int * int) list
+    (int * int * font option * int option * int * int * inline_object option) list
 
   type key =
     | K_sentinel
-    | K of string * float * bool * font * span_sig
+    | K of string * float * bool * float option * font * span_sig * int option
 
   (* Intrusive doubly-linked list behind the table: head.next is the
      hottest entry, head.prev the eviction candidate. *)
@@ -870,12 +918,12 @@ module Cache = struct
       end;
       v
 
-  let layout t ?(rtl = false) ?(width = 0.) f s =
-    get t ~key:(K (s, width, rtl, f, [])) ~text_len:(String.length s)
-      (fun () -> layout ~width ~rtl f s)
+  let layout t ?(rtl = false) ?(width = 0.) ?line_height f s =
+    get t ~key:(K (s, width, rtl, line_height, f, [], None)) ~text_len:(String.length s)
+      (fun () -> layout ~width ~rtl ?line_height f s)
 
-  let measure t ?(rtl = false) ?(width = 0.) f s =
-    let l = layout t ~rtl ~width f s in
+  let measure t ?(rtl = false) ?(width = 0.) ?line_height f s =
+    let l = layout t ~rtl ~width ?line_height f s in
     (l.lay_width, l.lay_height)
 
   let sig_of_spans spans =
@@ -883,12 +931,15 @@ module Cache = struct
       (fun sp ->
          let a, b = sp.range in
          (a, b, sp.style.sfont, sp.style.scolor,
-          int_of_float (sp.style.skern *. 1024.), sp.style.sunder))
+          int_of_float (sp.style.skern *. 1024.), sp.style.sunder,sp.style.sobject))
       spans
 
-  let layout_spans t ?(rtl = false) ?(width = 0.) f spans =
+  let layout_spans t ?(rtl = false) ?(width = 0.) ?line_height ?max_lines f spans =
     let s = span_text spans in
-    get t ~key:(K (s, width, rtl, f, sig_of_spans spans))
+    get t ~key:(K (s, width, rtl, line_height, f, sig_of_spans spans, max_lines))
       ~text_len:(String.length s)
-      (fun () -> layout_spans ~width ~rtl f spans)
+      (fun () ->
+        let layout=layout_spans ~width ~rtl ?line_height f spans in
+        match max_lines with None -> layout
+        | Some max_lines -> clamp_spans ~max_lines ~width ~rtl ?line_height f spans layout)
 end

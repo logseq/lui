@@ -142,3 +142,68 @@ test("typed appearance props land as styles and state channels", async () => {
   assert.match(hoverStyle.shadow, /^rgba\(0, 0, 0, 0\.2\) 0px 2px 4px( 0px)?$/)
   assert.equal(hoverStyle.opacity, "0.9")
 })
+
+test("explicit base appearance composes with hover, press, selection and disablement", async () => {
+  await page.goto(`${origin}/platform/web/test/fixtures/appearance-regression.html`)
+  const explicit = page.getByRole('button', {name: 'Explicit appearance', exact: true})
+  const read = () => explicit.evaluate(el => {
+    const style = getComputedStyle(el)
+    return {background: style.backgroundColor, image: style.backgroundImage,
+      foreground: style.color, border: style.borderTopColor, opacity: style.opacity}
+  })
+  assert.equal((await read()).opacity, '0.6')
+  assert.match((await read()).image, /^linear-gradient/)
+  await explicit.hover()
+  assert.deepEqual(await read(), {background: 'rgb(171, 205, 239)', image: 'none',
+    foreground: 'rgb(18, 52, 86)', border: 'rgb(101, 67, 33)', opacity: '0.9'})
+  await page.mouse.down()
+  assert.equal((await read()).background, 'rgb(119, 136, 153)')
+  assert.equal((await read()).opacity, '0.7')
+  await page.mouse.up()
+  await page.getByRole('button', {name: 'Select appearance', exact: true}).click()
+  await explicit.hover()
+  await page.mouse.down()
+  assert.equal((await read()).background, 'rgb(153, 136, 119)')
+  assert.equal((await read()).opacity, '0.7')
+  await page.mouse.up()
+  await page.getByRole('button', {name: 'Disable appearance', exact: true}).click()
+  // Disabled buttons opt out of hit testing; the assertions below read the
+  // disabled base appearance, so the pointer only needs to reach the control.
+  await explicit.hover({ force: true })
+  assert.equal((await read()).foreground, 'rgb(16, 32, 48)')
+  assert.equal((await read()).border, 'rgb(48, 64, 80)')
+  assert.equal((await read()).opacity, '0.4')
+  assert.match((await read()).image, /^linear-gradient/)
+  await page.getByRole('button', {name: 'Enable appearance', exact: true}).click()
+  await page.getByRole('button', {name: 'Remove base appearance', exact: true}).click()
+  assert.equal((await read()).opacity, '1')
+  await explicit.hover()
+  assert.equal((await read()).background, 'rgb(171, 205, 239)')
+  assert.equal((await read()).foreground, 'rgb(18, 52, 86)')
+  assert.equal((await read()).opacity, '0.9')
+})
+
+test('retained button content preserves owned slots and intrinsic spacing', async () => {
+  await page.goto(`${origin}/platform/web/test/fixtures/button-content-regression.html`)
+  await page.getByRole('button', {name: 'Audit retained content', exact: true}).click()
+  const audit = JSON.parse(await page.locator('#report').textContent())
+  assert.equal(audit.total, 46)
+  assert.deepEqual(audit.checks.filter(check => !check.pass), [])
+})
+
+test("shared-cell containers preserve child paint and hit order", async () => {
+  await page.goto(`${origin}/platform/web/test/fixtures/appearance-regression.html`)
+  const topLayer = kind => page.locator(`#${kind}-frame`).evaluate(frame => {
+    const r = frame.getBoundingClientRect()
+    return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.id
+  })
+  for (const kind of ["stack", "panel", "card", "resizable"]) {
+    assert.equal(await topLayer(kind), `${kind}-upper`,
+      "Later overlays cover earlier positioned children and spacers stay hit-transparent")
+  }
+  await page.getByRole("button", { name: "Raise lower layers", exact: true }).click()
+  for (const kind of ["stack", "panel", "card", "resizable"]) {
+    assert.equal(await topLayer(kind), `${kind}-lower`,
+      "An explicit typed z-index must still override child order")
+  }
+})

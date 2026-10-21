@@ -103,6 +103,10 @@ enum LUIProperty: String, Decodable, Hashable {
     case padding = "padding"
     case paddingHorizontal = "padding-horizontal"
     case paddingVertical = "padding-vertical"
+    case paddingTop = "padding-top"
+    case paddingRight = "padding-right"
+    case paddingBottom = "padding-bottom"
+    case paddingLeft = "padding-left"
     case margin = "margin"
     case marginHorizontal = "margin-horizontal"
     case marginVertical = "margin-vertical"
@@ -137,6 +141,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case variant = "variant"
     case icon = "icon"
     case iconPlacement = "icon-placement"
+    case selectionPlacement = "selection-placement"
     case selected = "selected"
     case autofocus = "autofocus"
     case submitOnEnter = "submit-on-enter"
@@ -160,6 +165,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case sourceWidth = "source-width"
     case sourceHeight = "source-height"
     case anchor = "anchor"
+    case anchorTarget = "anchor-target"
     case anchorAlignment = "anchor-alignment"
     case anchorOffset = "anchor-offset"
     case tooltipDelay = "tooltip-delay"
@@ -240,6 +246,8 @@ enum LUIProperty: String, Decodable, Hashable {
     case pressedOpacity = "pressed-opacity"
     case pressedShadow = "pressed-shadow"
     case focusShadow = "focus-shadow"
+    case focusWithinBackground = "focus-within-background"
+    case focusWithinBorder = "focus-within-border"
     case selectedBackground = "selected-background"
     case selectedShadow = "selected-shadow"
     case selectedHoverShadow = "selected-hover-shadow"
@@ -257,6 +265,20 @@ enum LUIProperty: String, Decodable, Hashable {
     case hoverForeground = "hover-foreground"
     case hoverBorder = "hover-border"
     case transition = "transition"
+    case inert = "inert"
+    case navigateEnabled = "navigate-enabled"
+    case firstPaneWidth = "first-pane-width"
+    case gridColumnSpan = "grid-column-span"
+    case labelOpacity = "label-opacity"
+    case submitOnBlur = "submit-on-blur"
+    case anchorAlignmentOffset = "anchor-alignment-offset"
+    case anchorRect = "anchor-rect"
+    case resizeHandleWidth = "resize-handle-width"
+    case resizeHandleOffset = "resize-handle-offset"
+    case indicatorBorderColor = "indicator-border-color"
+    case checkedIndicatorBorderColor = "checked-indicator-border-color"
+    case collisionPadding = "collision-padding"
+    case lineClamp = "line-clamp"
 }
 
 enum LUISchemaMatrix {
@@ -268,8 +290,8 @@ enum LUISchemaMatrix {
         .timelineItem: [.title, .description, .meta, .indicator, .icon, .variant, .connector, .selected, .pressEnabled, .pointerEnabled],
         .inputGroup: [.accessibilityLabel, .width, .height, .minWidth, .grow, .pointerEnabled],
         .inputGroupActions: [.gap, .pointerEnabled],
-        .toast: [.duration, .accessibilityLabel, .styleClass, .dataAttrs, .pointerEnabled, .padding, .paddingHorizontal, .paddingVertical, .margin, .marginHorizontal, .marginVertical, .marginTop, .marginRight, .marginBottom, .marginLeft],
-        .toolbar: [.orientation, .accessibilityLabel, .gap, .styleClass, .dataAttrs, .placement, .pointerEnabled],
+        .toast: [.duration, .accessibilityLabel, .styleClass, .dataAttrs, .pointerEnabled, .padding, .paddingHorizontal, .paddingVertical, .paddingTop, .paddingRight, .paddingBottom, .paddingLeft, .margin, .marginHorizontal, .marginVertical, .marginTop, .marginRight, .marginBottom, .marginLeft],
+        .toolbar: [.height, .padding, .background, .borderWidth, .cornerRadius, .orientation, .accessibilityLabel, .gap, .styleClass, .dataAttrs, .placement, .pointerEnabled],
         .bottomTabs: [.accessibilityLabel, .styleClass, .dataAttrs, .grow, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight, .pointerEnabled],
         .bottomTab: [.title, .icon, .selected, .enabled, .pressEnabled, .pointerEnabled],
         .menuTrigger: [.text, .icon, .accessibilityLabel, .enabled, .foreground, .styleClass, .dataAttrs, .pointerEnabled],
@@ -278,10 +300,21 @@ enum LUISchemaMatrix {
         .swipeAction: [.text, .icon, .variant, .edge, .enabled, .background, .pressEnabled, .pointerEnabled],
         .filePicker: [.request, .types, .multiple, .source, .completion, .pickerAccept, .pickerDirectory, .enabled, .appearEnabled, .pointerEnabled],
         .filePreview: [.path, .pointerEnabled],
-        .kbd: [.text, .styleClass, .dataAttrs, .pointerEnabled, .background, .borderColor, .borderWidth, .cornerRadius, .foreground, .grow, .padding, .paddingHorizontal, .paddingVertical, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight, .opacity, .fontSize, .fontWeight, .fontStyle, .lineHeight, .letterSpacing, .fontFamily, .textDecoration, .whiteSpace, .textOverflow, .userSelect, .cursor, .shadow, .hoverBackground, .hoverOpacity, .hoverShadow, .pressedBackground, .pressedOpacity, .pressedShadow, .focusShadow, .selectedBackground, .selectedShadow, .selectedHoverShadow, .disabledOpacity, .transition],
+        .kbd: [.text, .styleClass, .dataAttrs, .pointerEnabled, .background, .borderColor, .borderWidth, .cornerRadius, .foreground, .grow, .padding, .paddingHorizontal, .paddingVertical, .paddingTop, .paddingRight, .paddingBottom, .paddingLeft, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight, .opacity, .fontSize, .fontWeight, .fontStyle, .lineHeight, .letterSpacing, .fontFamily, .textDecoration, .whiteSpace, .textOverflow, .userSelect, .cursor, .shadow, .hoverBackground, .hoverOpacity, .hoverShadow, .pressedBackground, .pressedOpacity, .pressedShadow, .focusShadow, .focusWithinBackground, .focusWithinBorder, .selectedBackground, .selectedShadow, .selectedHoverShadow, .disabledOpacity, .transition],
     ]
 
     static let extra: [LUINodeKind: Set<LUIProperty>] = [
-        .dialog: [.description],
+        .image: [.imageFit],
+        .checkbox: [.gap, .labelOpacity, .indicatorBorderColor, .checkedIndicatorBorderColor],
+        .radio: [.gap, .labelOpacity],
+        .grid: [.main, .cross],
+        .row: [.orientation],
+        .listItem: [.display],
+        .dialog: [.description, .background, .foreground, .borderColor, .borderWidth, .cornerRadius, .gap],
+        .box: [.inert],
+        .popover: [.collisionPadding],
+        .dropdownMenu: [.collisionPadding],
+        .tooltip: [.collisionPadding],
+        .switchControl: [.foreground],
     ]
 }

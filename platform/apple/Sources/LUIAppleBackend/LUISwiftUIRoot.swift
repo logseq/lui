@@ -797,6 +797,7 @@ private struct LUINodeView: View {
             return AnyView(
                 Text(verbatim: model.text)
                     .luiTypography(typography)
+                    .multilineTextAlignment(textAlignment)
                     .font(
                         typography.font(
                             base: LUIHeadingTypography.isBold(level: headingLevel)
@@ -810,6 +811,7 @@ private struct LUINodeView: View {
             return AnyView(
                 Text(verbatim: model.text)
                     .luiTypography(typography)
+                    .multilineTextAlignment(textAlignment)
                     .font(typography.font(base: .body))
                     .luiTypographyMetrics(typography, baseSize: 17)
             )
@@ -942,6 +944,7 @@ private struct LUINodeView: View {
                     #if os(iOS)
                     HStack {
                         Text(verbatim: model.text)
+                            .opacity(model.property(.labelOpacity)?.doubleValue ?? 1)
                         Spacer()
                         if model.isChecked {
                             Image(systemName: "checkmark")
@@ -950,7 +953,12 @@ private struct LUINodeView: View {
                         }
                     }
                     #else
-                    Label(model.text, systemImage: model.isChecked ? "circle.inset.filled" : "circle")
+                    Label {
+                        Text(model.text)
+                            .opacity(model.property(.labelOpacity)?.doubleValue ?? 1)
+                    } icon: {
+                        Image(systemName: model.isChecked ? "circle.inset.filled" : "circle")
+                    }
                     #endif
                 }
                 .buttonStyle(.plain)
@@ -1023,7 +1031,7 @@ private struct LUINodeView: View {
                 Text(verbatim: model.text)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(messageTextAlignment)
+                    .multilineTextAlignment(textAlignment)
                     .frame(maxWidth: .infinity, alignment: messageFrameAlignment)
             )
         case .kbd:
@@ -1118,7 +1126,7 @@ private struct LUINodeView: View {
         #endif
     }
 
-    private var messageTextAlignment: TextAlignment {
+    private var textAlignment: TextAlignment {
         switch model.property(.textAlignment)?.stringValue {
         case "center": .center
         case "end": .trailing
@@ -7335,12 +7343,14 @@ private struct LUICheckboxView: View {
     var body: some View {
         #if os(macOS)
         Toggle(
-            model.text,
             isOn: Binding(
                 get: { model.isChecked },
                 set: { try? backend.performToggle(node: model.id, checked: $0) }
             )
-        )
+        ) {
+            Text(model.text)
+                .opacity(model.property(.labelOpacity)?.doubleValue ?? 1)
+        }
         .toggleStyle(.checkbox)
         .disabled(!model.isEnabled)
         #else
@@ -7352,6 +7362,7 @@ private struct LUICheckboxView: View {
         } label: {
             Label {
                 Text(model.text)
+                    .opacity(model.property(.labelOpacity)?.doubleValue ?? 1)
             } icon: {
                 Image(systemName: checkboxImageName)
                     .foregroundStyle(
@@ -7553,6 +7564,12 @@ private struct LUISurfaceModifier: ViewModifier {
             ? 0
             : model.property(.paddingHorizontal)?.intValue ?? padding
         let vertical = model.property(.paddingVertical)?.intValue ?? padding
+        let insets = EdgeInsets(
+            top: CGFloat(model.property(.paddingTop)?.intValue ?? vertical),
+            leading: CGFloat(model.property(.paddingLeft)?.intValue ?? horizontal),
+            bottom: CGFloat(model.property(.paddingBottom)?.intValue ?? vertical),
+            trailing: CGFloat(model.property(.paddingRight)?.intValue ?? horizontal)
+        )
         let radius = CGFloat(
             model.property(.cornerRadius)?.intValue ?? (isSurface ? 12 : (isTabs ? 8 : 0))
         )
@@ -7579,8 +7596,7 @@ private struct LUISurfaceModifier: ViewModifier {
         )
 
         content
-            .padding(.horizontal, CGFloat(horizontal))
-            .padding(.vertical, CGFloat(vertical))
+            .padding(insets)
             .opacity(model.property(.opacity)?.doubleValue ?? 1)
             .modifier(LUITooltipModifier(
                 text: model.property(.tooltip)?.stringValue))
@@ -7896,7 +7912,8 @@ private struct LUISplitView: View {
     private var splitContent: some View {
         // NavigationSplitView owns a ScrollView; nested inside scrolling
         // content it fails to lay out, so the manual layout renders instead.
-        if insideScroll {
+        if insideScroll || model.property(.resizeHandleWidth) != nil
+            || model.property(.resizeHandleOffset) != nil {
             manualSplit
         } else if navSplitEligible {
             // The split renders as a NavigationSplitView so the divider,
@@ -8100,6 +8117,9 @@ private struct LUISplitView: View {
     private var manualSplit: some View {
         GeometryReader { geometry in
             let gap = max(CGFloat(model.splitGap), 0)
+            let handleWidth = model.property(.resizeHandleWidth)?.intValue.map(CGFloat.init)
+                ?? (gap > 0 ? gap : 3)
+            let handleOffset = CGFloat(model.property(.resizeHandleOffset)?.doubleValue ?? 0)
             let available = max(geometry.size.width - gap, 0)
             let firstID = model.children.first
             let secondID = model.children.dropFirst().first
@@ -8127,9 +8147,9 @@ private struct LUISplitView: View {
                 }
 
                 Color.clear
-                    .frame(width: gap, height: geometry.size.height)
+                    .frame(width: handleWidth, height: geometry.size.height)
                     .contentShape(Rectangle())
-                    .offset(x: firstWidth)
+                    .offset(x: firstWidth + gap / 2 - handleWidth / 2 + handleOffset)
                     .gesture(
                         DragGesture()
                             .onChanged { value in

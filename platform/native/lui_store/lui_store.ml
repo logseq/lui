@@ -40,7 +40,7 @@ let mask_has m f = m land f <> 0
 (* The props [Lui_layout] reads, directly or through a parent. Keep in
    sync with style_of/adjust/text_of/ordered_child_ids/refine_popups. *)
 let layout_prop_names =
-  [ "alignment"; "anchor"; "anchor-alignment"; "anchor-offset"; "x"; "y";
+  [ "border-width"; "alignment"; "anchor"; "anchor-target"; "anchor-rect"; "accessibility-identifier"; "anchor-alignment"; "anchor-offset"; "anchor-alignment-offset"; "collision-padding"; "x"; "y";
     "columns"; "container-relative-frame"; "container-relative-frame-inset";
     "cross"; "main"; "description"; "edge"; "flex-wrap"; "gap"; "row-gap";
     "column-gap"; "grow";
@@ -52,8 +52,8 @@ let layout_prop_names =
     "inset-left"; "label"; "margin"; "margin-top"; "margin-right";
     "margin-bottom"; "margin-left"; "margin-horizontal"; "margin-vertical";
     "orientation"; "overflow"; "padding"; "padding-horizontal";
-    "padding-vertical"; "placeholder"; "position"; "selected"; "size";
-    "text"; "title"; "value" ]
+    "padding-vertical"; "padding-top"; "padding-right"; "padding-bottom"; "padding-left"; "placeholder"; "position"; "selected"; "size";
+    "text"; "title"; "value"; "first-pane-width" ]
 
 let layout_props =
   let t = Hashtbl.create 64 in
@@ -63,7 +63,7 @@ let layout_props =
 (* Props whose change ripples into produced children. [display] is the
    only prop that rewrites the produced set itself (none/contents lift);
    the three rest restyle or reorder the children a parent produced. *)
-let child_prop_names = [ "columns"; "value"; "edge" ]
+let child_prop_names = [ "columns"; "value"; "first-pane-width"; "edge" ]
 let child_props =
   let t = Hashtbl.create 8 in
   List.iter (fun n -> Hashtbl.replace t n ()) child_prop_names;
@@ -76,7 +76,7 @@ let child_props =
    conservative layout|paint default. *)
 let paint_prop_names =
   [ "background"; "foreground"; "opacity"; "shadow"; "corner-radius";
-    "border-color"; "border-width"; "border-style"; "z-index";
+    "border-color"; "border-style"; "z-index";
     "cursor"; "caret-color"; "tint"; "image"; "name"; "src"; "fit";
     "blend-mode"; "secure"; "style-class"; "variant"; "placement";
     "autofocus"; "submit-on-enter"; "scroll-x"; "scroll-y";
@@ -109,7 +109,7 @@ let has_prefix s p =
 
 (* Semantics-only props: the a11y tree cares, paint and layout do not. *)
 let semantics_prop_names =
-  [ "accessibility-label"; "accessibility-identifier"; "role"; "expanded";
+  [ "accessibility-label"; "accessibility-identifier"; "expanded";
     "level"; "sort" ]
 
 let semantics_props =
@@ -131,7 +131,10 @@ let input_props =
    the conservative default: a missed layout bit is a stale frame, a
    superfluous one only costs a style recompute. *)
 let mask_of_prop name : dirty_mask =
-  if name = "display" then d_structure lor d_layout lor d_paint
+  if name = "inert" then d_input lor d_semantics
+  else if name = "display" || name = "anchor-target" || name = "anchor-rect" then d_structure lor d_layout lor d_paint
+  (* Menu semantics change surface bounds, clipping, and child shrink. *)
+  else if name = "role" then d_layout_kids lor d_layout lor d_paint lor d_semantics
   else if Hashtbl.mem child_props name then d_layout_kids lor d_layout lor d_paint
   else if Hashtbl.mem layout_props name then d_layout lor d_paint
   else if Hashtbl.mem semantics_props name then d_semantics
@@ -166,6 +169,8 @@ type change = { crev : int; cop : patch_op }
 
 type t = {
   nodes : (int, node) Hashtbl.t;
+  identifiers : (string, int) Hashtbl.t;
+  anchor_targets : (int, string) Hashtbl.t;
   roots : (int, unit) Hashtbl.t;
     (* Ids whose node is stored with no live parent — kept
        incrementally so [root_ids] does not fold the whole table on
@@ -190,7 +195,7 @@ type t = {
 let journal_cap = 8192
 
 let create () =
-  { nodes = Hashtbl.create 64; roots = Hashtbl.create 8;
+  { nodes = Hashtbl.create 64; identifiers = Hashtbl.create 16; anchor_targets = Hashtbl.create 4; roots = Hashtbl.create 8;
     dirty = Hashtbl.create 64; extension_masks = Hashtbl.create 16;
     generation = 0; revision = 0; layout_rev = 0;
     journal = Queue.create (); journal_len = 0; journal_base = -1 }
@@ -337,6 +342,22 @@ let insert_at (p : node) (c : node) index =
     | None -> push_back p c
   end
 
+let find_identifier t identifier = Hashtbl.find_opt t.identifiers identifier
+let iter_anchor_targets t f = Hashtbl.iter (fun id _ -> f id) t.anchor_targets
+
+let forget_identifier t node =
+  match Hashtbl.find_opt node.props "accessibility-identifier" with
+  | Some (StringValue identifier) ->
+      if Hashtbl.find_opt t.identifiers identifier = Some node.id then
+        Hashtbl.remove t.identifiers identifier
+  | _ -> ()
+
+let record_identifier t node =
+  match Hashtbl.find_opt node.props "accessibility-identifier" with
+  | Some (StringValue identifier) ->
+      Hashtbl.replace t.identifiers identifier node.id
+  | _ -> ()
+
 (* Drop a subtree: remove every descendant from the table and unlink the
    node from its parent. Marks the parent's children changed and every
    removed id dirty so repaint can forget it. Children are detached
@@ -363,6 +384,8 @@ let rec drop t id =
          mark_dirty_mask t pid (d_structure lor d_layout lor d_paint)
        | None -> ())
      | None -> ());
+    Hashtbl.remove t.anchor_targets id;
+    forget_identifier t node;
     Hashtbl.remove t.nodes id;
     Hashtbl.remove t.roots id;
     mark_dirty_mask t id (d_structure lor d_paint)
@@ -430,16 +453,30 @@ let apply_op t = function
     let name = Lui_wire_schema.property_name p in
     match Hashtbl.find_opt t.nodes id with
     | Some n ->
+      if p = AccessibilityIdentifier then forget_identifier t n;
       Hashtbl.replace n.props name v;
-      mark_dirty_mask t id (mask_of_prop name)
+      if p = AccessibilityIdentifier then record_identifier t n;
+      (match p, v with
+       | AnchorTarget, StringValue identifier ->
+           Hashtbl.replace t.anchor_targets id identifier
+       | _ -> ());
+      let base_mask = mask_of_prop name in
+      let mask = if (p = Inert || p = Visible) && Hashtbl.length t.anchor_targets > 0
+        then base_mask lor d_layout else base_mask in
+      mark_dirty_mask t id mask
     | None -> ());
     journal_push t op
   | RemoveProp (id, p) as op -> (
     let name = Lui_wire_schema.property_name p in
     match Hashtbl.find_opt t.nodes id with
     | Some n ->
+      if p = AccessibilityIdentifier then forget_identifier t n;
+      if p = AnchorTarget then Hashtbl.remove t.anchor_targets id;
       Hashtbl.remove n.props name;
-      mark_dirty_mask t id (mask_of_prop name)
+      let base_mask = mask_of_prop name in
+      let mask = if (p = Inert || p = Visible) && Hashtbl.length t.anchor_targets > 0
+        then base_mask lor d_layout else base_mask in
+      mark_dirty_mask t id mask
     | None -> ());
     journal_push t op
   | SetExtensionProp (id, name, v) as op -> (
@@ -589,11 +626,33 @@ let bool_prop t id name =
   | BoolValue b -> b
   | StringValue _ | FloatValue _ | IntValue _ -> false
   | exception Not_found -> false
+let rec inert_in_chain t id =
+  bool_prop t id "inert"
+  || match parent t id with
+     | Some parent_id -> inert_in_chain t parent_id
+     | None -> false
+
 let string_prop t id name =
   match find_prop t id name with
   | StringValue s -> Some s
   | BoolValue _ | FloatValue _ | IntValue _ -> None
   | exception Not_found -> None
+let anchor_available t id =
+  if kind t id <> "popover" then true
+  else match string_prop t id "anchor-target" with
+    | None -> true
+    | Some identifier ->
+        (match find_identifier t identifier with
+         | None -> false
+         | Some target ->
+             let rec visible current =
+               not (bool_prop t current "inert")
+               && prop t current "visible" <> Some (BoolValue false)
+               && string_prop t current "display" <> Some "none"
+               && match parent t current with
+                  | None -> true | Some ancestor -> visible ancestor in
+             visible target)
+
 let float_prop t id name =
   match find_prop t id name with
   | FloatValue f -> Some f
@@ -620,15 +679,15 @@ let root_ids t =
 
 (* Follow intrusive child/sibling links directly. Climbing parent links
    avoids a recursive stack and temporary child lists, even for deep trees. *)
-let iter_preorder ?root t f =
+let iter_preorder ?root ?(descend = fun _ -> true) t f =
   let visit root =
     let current = ref root and ancestor = ref root in
     let finished = ref false and found = ref false in
     while not !finished do
       f (!current).id;
       match (!current).first_child with
-      | Some child -> current := child
-      | None ->
+      | Some child when descend (!current).id -> current := child
+      | Some _ | None ->
         ancestor := !current;
         found := false;
         while not !found && not !finished do

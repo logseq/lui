@@ -1,0 +1,10 @@
+{:version 1
+ :imports {:labels "labels.edn"}
+ :components
+ {:panel
+  {:props {:caption :string}
+   :slots [:body]
+   :view
+   [:column {:gap 12 :padding 24}
+    [:use :labels/heading {:text {:bind [:props :caption]}}]
+    [:slot :body]]}}}

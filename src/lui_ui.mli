@@ -193,6 +193,10 @@ val columns : ui_context -> int -> int -> unit
 val padding : ui_context -> int -> int -> unit
 val padding_horizontal : ui_context -> int -> int -> unit
 val padding_vertical : ui_context -> int -> int -> unit
+val padding_top : ui_context -> int -> int -> unit
+val padding_right : ui_context -> int -> int -> unit
+val padding_bottom : ui_context -> int -> int -> unit
+val padding_left : ui_context -> int -> int -> unit
 val margin : ui_context -> int -> int -> unit
 val margin_horizontal : ui_context -> int -> int -> unit
 val margin_vertical : ui_context -> int -> int -> unit
@@ -207,6 +211,7 @@ val border_width : ui_context -> int -> int -> unit
 val corner_radius : ui_context -> int -> int -> unit
 val width : ui_context -> int -> int -> unit
 val height : ui_context -> int -> int -> unit
+val height_auto : ui_context -> int -> unit
 val min_width : ui_context -> int -> int -> unit
 val max_width : ui_context -> int -> int -> unit
 val min_height : ui_context -> int -> int -> unit
@@ -225,6 +230,7 @@ val inset_right : ui_context -> int -> float -> unit
 val inset_bottom : ui_context -> int -> float -> unit
 val inset_left : ui_context -> int -> float -> unit
 val z_index : ui_context -> int -> int -> unit
+val line_clamp : ui_context -> int -> int -> unit
 val white_space : ui_context -> int -> string -> unit
 val text_overflow : ui_context -> int -> string -> unit
 val overflow : ui_context -> int -> string -> unit
@@ -243,6 +249,8 @@ val pressed_background : ui_context -> int -> string -> unit
 val pressed_opacity : ui_context -> int -> float -> unit
 val pressed_shadow : ui_context -> int -> string -> unit
 val focus_shadow : ui_context -> int -> string -> unit
+val focus_within_background : ui_context -> int -> string -> unit
+val focus_within_border : ui_context -> int -> string -> unit
 val selected_background : ui_context -> int -> string -> unit
 val selected_shadow : ui_context -> int -> string -> unit
 val selected_hover_shadow : ui_context -> int -> string -> unit

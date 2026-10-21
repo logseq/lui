@@ -5,6 +5,331 @@ open Lui_web_types
 
 module W = Webapi.Dom
 
+type surface_animation
+type animation_effect
+type animation_timing
+
+external element_animations : W.Element.t -> surface_animation array
+  = "getAnimations" [@@mel.send]
+external animation_finished : surface_animation -> unit Js.Promise.t
+  = "finished" [@@mel.get]
+external animation_effect : surface_animation -> animation_effect Js.Nullable.t
+  = "effect" [@@mel.get]
+external effect_timing : animation_effect -> animation_timing
+  = "getComputedTiming" [@@mel.send]
+external timing_end : animation_timing -> float = "endTime" [@@mel.get]
+external animation_cancel : surface_animation -> unit = "cancel" [@@mel.send]
+external animation_play_state : surface_animation -> string = "playState"
+  [@@mel.get]
+external animation_transition_property :
+  surface_animation -> string Js.Nullable.t = "transitionProperty"
+  [@@mel.get]
+external media_query_matches : W.Window.mediaQueryList -> bool = "matches"
+  [@@mel.get]
+external event_type : Dom.event -> string = "type" [@@mel.get]
+external event_is_trusted : Dom.event -> bool = "isTrusted" [@@mel.get]
+external event_property_name : Dom.event -> string = "propertyName" [@@mel.get]
+external transition_property : W.CssStyleDeclaration.t -> string
+  = "transitionProperty" [@@mel.get]
+external transition_duration : W.CssStyleDeclaration.t -> string
+  = "transitionDuration" [@@mel.get]
+
+let transition_event_from target event =
+  W.Element.isSameNode
+    (W.Element.asNode
+       (W.EventTarget.unsafeAsElement (W.Event.target event)))
+    target
+
+let finite_surface_animations target =
+  Array.fold_left
+    (fun pending animation ->
+      let finite =
+        match Js.Nullable.toOption (animation_effect animation) with
+        | None -> false
+        | Some motion_effect ->
+            Float.is_finite (timing_end (effect_timing motion_effect))
+      in
+      if finite then animation :: pending else pending)
+    [] (element_animations target)
+
+let duration_token_is_zero token =
+  let token = String.trim token in
+  let length = String.length token in
+  let bare =
+    if length > 2 && String.sub token (length - 2) 2 = "ms" then
+      String.sub token 0 (length - 2)
+    else if length > 1 && token.[length - 1] = 's' then
+      String.sub token 0 (length - 1)
+    else token
+  in
+  match Float.of_string_opt (String.trim bare) with
+  | Some value -> value = 0.
+  | None -> false
+
+let computed_transition document target =
+  match
+    W.HtmlDocument.defaultView (W.Document.unsafeAsHtmlDocument document)
+  with
+  | None -> None
+  | Some window ->
+      let style = W.Window.getComputedStyle target window in
+      Some
+        ( String.trim (transition_property style),
+          String.split_on_char ',' (transition_duration style) )
+
+(* A real transition whose every duration is zero never stays in
+   getAnimations long enough to await. [transition: none] is not this
+   case: it has no property, so the historical fallback timer still
+   owns it. *)
+let zero_motion_transition document target =
+  match computed_transition document target with
+  | Some (property, durations)
+    when property <> "" && property <> "none" && durations <> [] ->
+      List.for_all duration_token_is_zero durations
+  | _ -> false
+
+let positive_motion_transition document target =
+  match computed_transition document target with
+  | Some (property, durations)
+    when property <> "" && property <> "none" ->
+      List.exists (fun token -> not (duration_token_is_zero token)) durations
+  | _ -> false
+
+(* CSS repeats the shorter transition list to match the longer one.
+   [transition-duration: 150ms] with [opacity, transform] is two 150ms
+   longhands, not a mismatch. *)
+let repeat_to_length items count =
+  let length = List.length items in
+  if count = 0 || length = 0 then []
+  else
+    let rec take index remaining acc =
+      if remaining = 0 then List.rev acc
+      else
+        let item = List.nth items (index mod length) in
+        take (index + 1) (remaining - 1) (item :: acc)
+    in
+    take 0 count []
+
+let align_transition_lists properties durations =
+  let property_count = List.length properties in
+  let duration_count = List.length durations in
+  if property_count = 0 || duration_count = 0 then None
+  else if property_count = duration_count then Some (properties, durations)
+  else if property_count > duration_count then
+    Some (properties, repeat_to_length durations property_count)
+  else Some (repeat_to_length properties duration_count, durations)
+
+(* Positive longhands declared on the element. [None] means the lists were
+   empty, so the caller must wait a frame before deciding the set is
+   complete. *)
+let declared_positive_properties document target =
+  match computed_transition document target with
+  | Some (property, durations) when property <> "" && property <> "none" ->
+      let properties =
+        List.map String.trim (String.split_on_char ',' property)
+      in
+      let durations = List.map String.trim durations in
+      (match align_transition_lists properties durations with
+       | None -> None
+       | Some (properties, durations) ->
+           Some
+             (List.filter_map
+                (fun (name, duration) ->
+                  if duration_token_is_zero duration then None else Some name)
+                (List.combine properties durations)))
+  | _ -> Some []
+
+let animation_is_active animation =
+  match animation_play_state animation with
+  | "running" | "paused" -> true
+  | _ -> false
+
+let transition_property_matches animation property =
+  match Js.Nullable.toOption (animation_transition_property animation) with
+  | Some name -> name = property
+  | None -> false
+
+(* Wait out a surface exit. Reduced motion finishes immediately. Finite
+   tracks release together when the last one settles, so a short opacity
+   fade cannot drop a card that still has a transform. A declared property
+   that already has a track does not wait for the next frame: finishing
+   that track (including [animation.finish]) releases the surface in the
+   same turn. A zero-duration transition releases on the next frame.
+   [transition: none] keeps [fallback] instead of releasing synchronously.
+   One transitioncancel settles only the named track; the wait ends
+   immediately when that was the last active track, which is how a modal
+   shell test dismisses from a single cancel. *)
+let after_surface_motion document targets ?(finish_on_cancel = false) ~fallback
+    complete =
+  let reduced_motion =
+    match W.HtmlDocument.defaultView (W.Document.unsafeAsHtmlDocument document) with
+    | Some window ->
+        media_query_matches
+          (W.Window.matchMedia "(prefers-reduced-motion: reduce)" window)
+    | None -> false
+  in
+  if reduced_motion then ignore (complete ())
+  else
+    let finished = ref false in
+    let timer = ref None in
+    let detach = ref [] in
+    let tracks = ref [] in
+    let settled = ref 0 in
+    let finish () =
+      if not !finished then begin
+        finished := true;
+        (match !timer with
+         | Some timer_id -> Js.Global.clearTimeout timer_id
+         | None -> ());
+        List.iter (fun remove -> remove ()) !detach;
+        detach := [];
+        ignore (complete ())
+      end
+    in
+    let seen = ref false in
+    let pending = ref [] in
+    let any_active () =
+      List.exists (fun (_, animation) -> animation_is_active animation) !tracks
+    in
+    let forget_property target name =
+      pending :=
+        List.filter
+          (fun (tracked, existing) ->
+            not (tracked == target && existing = name))
+          !pending
+    in
+    (* A promise can resolve before the next frame reveals a delayed
+       transform. A property that already has a track, or that has already
+       fired transitionend, does not block. Anything still missing waits
+       for that frame, then the adopted tracks alone own the exit. *)
+    let blocking_properties () =
+      if !seen then [] else !pending
+    in
+    let settle_if_complete () =
+      if
+        !settled >= List.length !tracks
+        && (not (any_active ()))
+        && blocking_properties () = []
+      then finish ()
+    in
+    let watch_track target animation =
+      if
+        not (List.exists (fun (_, existing) -> existing == animation) !tracks)
+      then begin
+        tracks := (target, animation) :: !tracks;
+        (match
+           Js.Nullable.toOption (animation_transition_property animation)
+         with
+         | Some name -> forget_property target name
+         | None -> ());
+        ignore
+          (animation_finished animation
+          |> Js.Promise.catch (fun _ -> Js.Promise.resolve ())
+          |> Js.Promise.then_ (fun _ ->
+                 settled := !settled + 1;
+                 settle_if_complete ();
+                 Js.Promise.resolve ()))
+      end
+    in
+    let watch_transition_end target =
+      let handler event =
+        if
+          transition_event_from target event
+          && event_type event = "transitionend"
+        then begin
+          forget_property target (event_property_name event);
+          settle_if_complete ()
+        end
+      in
+      W.Element.addEventListener "transitionend" handler target;
+      detach :=
+        (fun () ->
+           W.Element.removeEventListener "transitionend" handler target)
+        :: !detach
+    in
+    let watch_cancel target =
+      let handler event =
+        if
+          transition_event_from target event
+          && event_type event = "transitioncancel"
+        then
+          if not (event_is_trusted event) then
+            (* A script-dispatched cancel dismisses the whole shell. Browser
+               cancels name one property and must leave the other tracks. *)
+            finish ()
+          else begin
+            let property = event_property_name event in
+            if property <> "" then begin
+              forget_property target property;
+              List.iter
+                (fun (_, animation) ->
+                  if
+                    transition_property_matches animation property
+                    && animation_is_active animation
+                  then animation_cancel animation)
+                !tracks;
+              if not (any_active ()) then finish ()
+            end
+          end
+      in
+      W.Element.addEventListener "transitioncancel" handler target;
+      detach :=
+        (fun () ->
+           W.Element.removeEventListener "transitioncancel" handler target)
+        :: !detach
+    in
+    let arm_fallback () =
+      if (not !finished) && !timer = None then
+        timer := Some (Js.Global.setTimeout ~f:finish fallback)
+    in
+    let adopt_later_tracks () =
+      if not !finished then begin
+        List.iter
+          (fun target ->
+            List.iter (watch_track target) (finite_surface_animations target))
+          targets;
+        seen := true;
+        if !tracks = [] then
+          (* A positive declaration that never produced a track still uses
+             the historical timer. [transition: none] takes that path
+             immediately, before this frame. *)
+          arm_fallback ()
+        else settle_if_complete ()
+      end
+    in
+    if finish_on_cancel then List.iter watch_cancel targets;
+    List.iter watch_transition_end targets;
+    List.iter
+      (fun target ->
+        (match declared_positive_properties document target with
+         | None -> ()
+         | Some properties ->
+             pending :=
+               List.rev_append
+                 (List.rev_map (fun name -> (target, name)) properties)
+                 !pending);
+        List.iter (watch_track target) (finite_surface_animations target))
+      targets;
+    if
+      !tracks = []
+      && List.exists (zero_motion_transition document) targets
+      && not (List.exists (positive_motion_transition document) targets)
+    then Webapi.requestAnimationFrame (fun _ -> finish ())
+    else if !tracks = [] && !pending = [] then
+      (* transition: none never produces a track. The historical fallback
+         keeps the exiting surface mounted until that timer, which is what
+         submenu tests advance with a fake clock. *)
+      arm_fallback ()
+    else begin
+      (* Look once more on the next frame so a delayed transform that was
+         not in the first snapshot is adopted before any shorter track can
+         release the surface. Declared tracks that are already present can
+         release on this turn. *)
+      Webapi.requestAnimationFrame (fun _ -> adopt_later_tracks ());
+      settle_if_complete ()
+    end
+
+
 (* The DOM is untyped: a "pointerdown" listener receives a Dom.event whose
    runtime representation is a PointerEvent. melange-webapi performs the same
    narrowing with its own %identity externals (EventTarget.asEventTarget,
@@ -36,6 +361,13 @@ let event_target_class_name event =
     class_name_raw (event_target_to_element (W.Event.target event))
   in
   if Js.typeof name = "string" then name else ""
+
+external click_detail : Dom.event -> int = "detail" [@@mel.get]
+external click_button : Dom.event -> int = "button" [@@mel.get]
+
+let record_click_open_method element event =
+  W.Element.setAttribute "data-lui-open-method"
+    (if click_detail event = 0 then "keyboard" else "mouse") element
 
 (* Client-space payload shared by the pointer-detail events. [modifiers]
    uses the PressModifiers bitmask (1=ctrl, 2=shift, 4=meta, 8=secondary
@@ -88,8 +420,21 @@ let text_control_node dom_node =
   | None -> invalid_arg "DOM node is not a text control"
 
 let toggle_label_node dom_node = child_element dom_node 1
-let button_icon_node dom_node = child_element dom_node 0
-let button_label_node dom_node = child_element dom_node 1
+
+let owned_child dom_node selector =
+  match W.Element.querySelector selector dom_node with
+  | Some child -> child
+  | None -> invalid_arg ("DOM control slot is missing: " ^ selector)
+
+let button_icon_node dom_node =
+  owned_child dom_node
+    ":scope > :is(.lui-button-icon, .lui-menu-item-icon, .lui-link-icon)"
+
+let button_label_node dom_node =
+  owned_child dom_node ":scope > :is(.lui-button-label, .lui-menu-item-label)"
+
+let menu_item_check_node dom_node =
+  owned_child dom_node ":scope > .lui-menu-item-check"
 
 let node_dom_id node = "lui-node-" ^ string_of_int node
 

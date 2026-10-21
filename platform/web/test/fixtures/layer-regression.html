@@ -13,24 +13,50 @@
 "melange/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange/",
 "ocaml-signal/":"/_build/default/examples/components/web/lui-components-web/node_modules/ocaml-signal/"
 }}</script>
-<style>body{margin:24px;font:16px system-ui}#host{min-height:1400px}#host>.lui-column{position:sticky;top:0;z-index:1}button{margin:4px}.fixture-hidden{display:none}</style>
+<style>body{margin:24px;font:16px system-ui}#host{min-height:1400px}#host>.lui-column{position:sticky;top:0;z-index:1}button{margin:4px}.fixture-hidden{display:none}.exit-audit-spinner{animation:exit-audit-spin 1s linear infinite}@keyframes exit-audit-spin{to{transform:rotate(360deg)}}</style>
 <h1>Retained layer regressions</h1>
+<style>.anchor-audit-hidden{visibility:hidden}</style>
+<button id="run-exit-audit">Run surface exit audit</button>
+<output id="exit-audit-result" role="status">Not run</output>
+<button id="run-style-audit">Run surface motion style audit</button>
+<output id="style-audit-result" role="status">Not run</output>
+<button id="run-interruption-audit">Run menu and tooltip interruption audit</button>
+<output id="interruption-audit-result" role="status">Not run</output>
+<button id="run-split-audit">Run split interaction audit</button>
+<output id="split-audit-result" role="status">Not run</output>
+<button id="run-inert-audit">Run inert subtree audit</button>
+<output id="inert-audit-result" role="status">Not run</output>
+<output id="action-activation-count">0</output>
+<button id="run-responsive-layout-audit">Run responsive layout audit</button>
+<output id="responsive-layout-result" role="status">Not run</output>
+<button id="run-retained-anchor-audit">Run retained anchor audit</button>
+<output id="retained-anchor-result" role="status">Not run</output>
+<button id="run-modal-input-audit">Run modal input release audit</button>
+<output id="modal-input-result" role="status">Not run</output>
 <main id="host"></main>
 <script type="module">
 import * as Web from "lui.web.dom/shell/lui_web.js";
+import * as Menu from "lui.web.dom/popup/lui_web_menu.js";
+import * as Overlay from "lui.web.dom/popup/lui_web_overlay.js";
+import * as Layers from "lui.web.dom/core/lui_web_layers.js";
 import { Protocol, properties as props, kinds } from "./protocol-fixture.mjs";
 const host=document.querySelector("#host"), renderer=Web.create(undefined,host), backend=Web.backend(renderer);
 const list=a=>a.reduceRight((tl,hd)=>({hd,tl}),0);
-const nodes=new Map(),handlers=new Map(),events=[];let ops=[],generation=0,id=0,dialog=null,nestedDialog=null,menu=null,submenu=null,select=null,sheet=null,sheetInput=null;
+const nodes=new Map(),handlers=new Map(),pickerValues=new Map(),events=[];let ops=[],generation=0,id=0,dialog=null,nestedDialog=null,menu=null,submenu=null,select=null,sheet=null,sheetInput=null;
 const set=(n,name,value)=>ops.push(Protocol.set_prop_op(n,props.get(name),{TAG:typeof value==="string"?0:typeof value==="boolean"?1:2,_0:value}));
 function node(kind,parent,p={}){const n=++id;ops.push(Protocol.create_node_op(n,kinds.get(kind)));nodes.set(n,{parent,children:[]});for(const [k,v]of Object.entries(p))set(n,k,v);if(parent){const siblings=nodes.get(parent).children;ops.push(Protocol.insert_child_op(parent,n,siblings.length));siblings.push(n);}return n;}
-function flush(){if(ops.length){backend.apply_batch({generation:++generation,ops:list(ops)});ops=[];}}
-function drop(n){if(!n||!nodes.has(n))return;for(const c of [...nodes.get(n).children])drop(c);const p=nodes.get(n).parent;if(p){ops.push(Protocol.remove_child_op(p,n));nodes.get(p).children=nodes.get(p).children.filter(x=>x!==n);}ops.push(Protocol.drop_node_op(n));nodes.delete(n);handlers.delete(n);}
+function flush(){
+  if(ops.length){
+    const batch=ops;ops=[];
+    backend.apply_batch({generation:++generation,ops:list(batch)});
+  }
+}
+function drop(n){if(!n||!nodes.has(n))return;for(const c of [...nodes.get(n).children])drop(c);const p=nodes.get(n).parent;if(p){ops.push(Protocol.remove_child_op(p,n));nodes.get(p).children=nodes.get(p).children.filter(x=>x!==n);}ops.push(Protocol.drop_node_op(n));nodes.delete(n);handlers.delete(n);pickerValues.delete(n);}
 function button(parent,text,fn){const n=node("button",parent,{text});handlers.set(n,fn);return n;}
 function closeSubmenu(){if(submenu){drop(submenu);submenu=null;flush();}}
 function closeMenu(){if(menu){drop(menu);menu=null;submenu=null;flush();}}
-function openMenu(parent,picker){if(menu)return;select=picker;menu=node("dropdown-menu",parent,{"min-width":220});for(const text of ["Alpha","Beta","Gamma"]){const n=node("menu-item",menu,{text,"press-enabled":true});handlers.set(n,()=>{set(picker,"text",text);closeMenu();});}const more=node("menu-trigger",menu,{text:"More"});submenu=node("dropdown-menu",more,{"min-width":180});const nested=node("menu-trigger",submenu,{text:"Nested option"});const deep=node("dropdown-menu",nested,{"min-width":160});node("menu-item",deep,{text:"Deepest option","press-enabled":true});handlers.set(submenu,closeSubmenu);handlers.set(menu,closeMenu);flush();}
-function picker(parent){const stack=node("stack",parent),s=node("select",stack,{text:"Alpha","press-enabled":true});handlers.set(s,()=>openMenu(stack,s));return s;}
+function openMenu(parent,picker){if(menu)return;select=picker;menu=node("dropdown-menu",parent,{"min-width":220});for(const text of ["Alpha","Beta","Gamma"]){const n=node("menu-item",menu,{text,"press-enabled":true,selected:pickerValues.get(picker)===text});handlers.set(n,()=>{pickerValues.set(picker,text);set(picker,"text",text);closeMenu();});}const more=node("menu-trigger",menu,{text:"More"});submenu=node("dropdown-menu",more,{"min-width":180});const nested=node("menu-trigger",submenu,{text:"Nested option"});const deep=node("dropdown-menu",nested,{"min-width":160});node("menu-item",deep,{text:"Deepest option","press-enabled":true});handlers.set(submenu,closeSubmenu);handlers.set(menu,closeMenu);flush();}
+function picker(parent){const stack=node("stack",parent),s=node("select",stack,{text:"Alpha","press-enabled":true});pickerValues.set(s,"Alpha");handlers.set(s,()=>openMenu(stack,s));return s;}
 function closeDialog(which="main"){const target=which==="nested"?nestedDialog:dialog;if(target){drop(target);if(which==="nested")nestedDialog=null;else{dialog=null;nestedDialog=null;menu=null;submenu=null;select=null;}flush();}}
 function addScrollContent(parent){const scroller=node("scroll",parent,{height:120,width:300,"accessibility-identifier":"inner-scroll"});const content=node("column",scroller,{gap:8});node("text",content,{text:"Inner scroll start"});node("box",content,{height:480});node("text",content,{text:"Inner scroll end"});}
 function closeSheet(){if(sheet){drop(sheet);sheet=null;sheetInput=null;if(window.audit)window.audit.sheetInput=null;flush();}}
@@ -42,8 +68,80 @@ button(root,"Open dialog",()=>openDialog());
 button(root,"Open focus dialog",()=>openDialog("focus"));
 button(root,"Open empty dialog",()=>openDialog("empty"));
 button(root,"Open regression sheet",openSheet);
-Web.set_event_handler(renderer,e=>{events.push(e);if(e.TAG===0||e.TAG===7){handlers.get(e._0)?.();flush();}else if(e.TAG===2&&e._0===sheetInput){set(sheetInput,"text",e._1);flush();}return true;});
+Web.set_event_handler(renderer,e=>{events.push(e);if(e.TAG===0||e.TAG===7){handlers.get(e._0)?.();flush();}else if(e.TAG===6){handlers.get(e._0)?.(e._1);flush();}else if(e.TAG===2&&e._0===sheetInput){set(sheetInput,"text",e._1);flush();}return true;});
 flush();Web.mount(renderer,root,host);
+document.querySelector('#run-modal-input-audit').addEventListener('click',async()=>{
+  const result=document.querySelector('#modal-input-result');let fixture,retained,next;
+  try{
+    const expect=(condition,message)=>{if(!condition)throw Error(message);};
+    const frame=()=>new Promise(requestAnimationFrame);
+    const settle=async predicate=>{const deadline=performance.now()+2000;while(!predicate()&&performance.now()<deadline)await frame();expect(predicate(),'Exit did not finish');};
+    const originalOverflow=document.documentElement.style.overflow;
+    fixture=node('column',root);let activations=0;
+    const target=button(fixture,'Modal input target',()=>{activations++;next=node('dialog',fixture,{text:'Next modal',width:240,height:120});node('input',next,{placeholder:'Next field'});flush();});flush();
+    const trigger=document.querySelector(`#lui-node-${target}`);trigger.focus();
+    retained=node('dialog',fixture,{text:'Input release',width:320,height:200});
+    const field=node('input',retained,{placeholder:'Exit field'});
+    const nestedTrigger=button(retained,'Nested target',()=>{});flush();await frame();await frame();
+    const surface=document.querySelector(`#lui-node-${retained}`),layer=surface.parentElement;
+    const nestedButton=document.querySelector(`#lui-node-${nestedTrigger}`);nestedButton.focus();
+    const nested=node('dialog',retained,{text:'Nested input release',width:240,height:120});node('input',nested,{placeholder:'Nested field'});flush();await frame();await frame();
+    drop(nested);flush();
+    expect(host.hasAttribute('inert'),'Closing a child unlocked the background');
+    expect(!layer.hasAttribute('inert'),'Closing a child did not release the parent');
+    expect(document.activeElement===nestedButton,'Closing a child did not restore focus immediately');
+    document.querySelector(`#lui-node-${field}`).focus();
+    ops.push(Protocol.remove_child_op(fixture,retained));nodes.get(fixture).children=nodes.get(fixture).children.filter(id=>id!==retained);nodes.get(retained).parent=null;flush();
+    expect(layer.isConnected&&layer.hasAttribute('data-ending-style'),'Closing removed visual exit presence');
+    expect(!host.hasAttribute('inert'),'Closing modal still blocks background input');
+    expect(document.documentElement.style.overflow===originalOverflow,'Closing modal still locks scrolling');
+    expect(document.activeElement===trigger,'Retained modal did not restore focus immediately');
+    trigger.click();expect(activations===1&&next,'Immediate next action was lost');
+    expect(host.hasAttribute('inert'),'The next modal did not acquire its input scope');
+    await frame();await frame();
+    const nextSurface=document.querySelector(`#lui-node-${next}`),nextInput=nextSurface.querySelector('input');nextInput.focus();
+    await settle(()=>!layer.isConnected);
+    expect(host.hasAttribute('inert')&&document.activeElement===nextInput,'Old exit cleanup disrupted the next modal');
+    drop(next);next=null;flush();
+    result.textContent=JSON.stringify({state:'Complete',pass:true,activations,retainedExit:true,nestedFocus:true,newModalPreserved:true});
+  }catch(error){result.textContent=JSON.stringify({state:'Complete',pass:false,error:String(error)});}
+  finally{if(next)drop(next);if(retained)drop(retained);if(fixture)drop(fixture);flush();}
+});
+document.querySelector('#run-responsive-layout-audit').addEventListener('click',async()=>{
+  const result=document.querySelector('#responsive-layout-result');let fixture;
+  try{
+    const expect=(condition,message)=>{if(!condition)throw Error(message);};
+    expect(props.has('grid-column-span'),'Missing typed grid-column-span property');
+    fixture=node('column',root);
+    const grid=node('grid',fixture,{width:600,columns:3,gap:24});
+    const label=node('box',grid,{height:20,'accessibility-identifier':'span-label'});
+    const input=node('input',grid,{height:30,'grid-column-span':2,'accessibility-identifier':'span-input'});
+    const axis=node('row',fixture,{width:200,height:100,gap:8,orientation:'horizontal'});
+    node('box',axis,{width:20,height:30,'accessibility-identifier':'axis-first'});
+    node('box',axis,{width:40,height:50,'accessibility-identifier':'axis-second'});flush();
+    const original=document.querySelector('#span-input');original.value='Retained café 中文 😀';original.focus();
+    for(const columns of [3,1,3]){
+      set(grid,'columns',columns);set(input,'grid-column-span',columns===1?1:2);
+      set(axis,'orientation',columns===1?'vertical':'horizontal');flush();
+      await new Promise(requestAnimationFrame);
+      const a=document.querySelector('#span-label').getBoundingClientRect();
+      const b=original.getBoundingClientRect();
+      expect(Math.abs(a.width-(columns===1?600:184))<.1,'Incorrect label column width');
+      expect(Math.abs(b.width-(columns===1?600:392))<.1,'Incorrect control span width');
+      expect(columns===1?b.y>=a.bottom:Math.abs(b.x-a.right-24)<.1,'Incorrect grid placement');
+      const first=document.querySelector('#axis-first').getBoundingClientRect();
+      const second=document.querySelector('#axis-second').getBoundingClientRect();
+      expect(columns===1?Math.abs(second.y-first.bottom-8)<.1:Math.abs(second.x-first.right-8)<.1,'Incorrect responsive row axis');
+      expect(document.querySelector('#span-input')===original&&original.value==='Retained café 中文 😀'&&document.activeElement===original,'Resize replaced input state or focus');
+    }
+    set(axis,'orientation','vertical');flush();ops.push(Protocol.remove_prop_op(axis,props.get('orientation')));flush();
+    await new Promise(requestAnimationFrame);
+    const first=document.querySelector('#axis-first').getBoundingClientRect(),second=document.querySelector('#axis-second').getBoundingClientRect();
+    expect(Math.abs(second.x-first.right-8)<.1,'Removing orientation did not restore the row axis');
+    result.textContent='Passed: spans, gaps, repeated axes, retained input and focus';result.dataset.state='passed';
+  }catch(error){result.textContent=String(error);result.dataset.state='failed';}
+  finally{if(fixture){drop(fixture);flush();}}
+});
 function setupTracking(count=4,tooltip=false){
   const scroller=node("column",root,{width:440,height:300,"style-class":"tracking-scroll"});
   const content=node("column",scroller,{"style-class":"tracking-content"});
@@ -75,5 +173,383 @@ function addToast(text,duration=0){const toast=node("toast",root,{duration,paddi
 function openCover(name){const cover=node("popover",root);const body=node("column",cover,{padding:24,width:400});node("input",body,{placeholder:name,autofocus:true});handlers.set(cover,()=>{drop(cover);flush();});flush();return cover;}
 function alignedOverlays(){for(const alignment of ['top-leading','top','top-trailing','leading','center','trailing','bottom-leading','bottom','bottom-trailing']){const overlay=node('overlay',root,{width:200,height:100,'accessibility-identifier':`overlay-${alignment}`});node('box',overlay,{width:200,height:100});node('box',overlay,{width:20,height:20,alignment});}flush();}
 function togglePopover(){const stack=node('row',root);let popup=null;function close(){if(popup){drop(popup);popup=null;flush();}}button(stack,'Toggle anchored popup',()=>{if(popup){close();return;}popup=node('popover',stack,{anchor:'below'});node('text',popup,{text:'Anchored popup content'});handlers.set(popup,close);flush();});flush();}
-window.audit={renderer,nodes,events,openDialog,closeDialog,setupTracking,setupContextTracking,openSheet,closeSheet,addToast,openCover,alignedOverlays,togglePopover,sheetInput:null};
+function setupActionMenu(kind, preserveFocus=false){
+  const owner=node('row',root);let popup=null;
+  function close(){if(popup){drop(popup);popup=null;flush();}}
+  const trigger=button(owner,`Open ${kind} action menu${preserveFocus?' with preserved focus':''}`,()=>{
+    if(popup){close();return;}
+    popup=node(kind,owner,{anchor:'below',role:'menu',width:260,'style-class':'action-menu-regression'});
+    const disabled=button(popup,'Disabled action',()=>{});set(disabled,'enabled',false);
+    const hidden=node('column',popup,{'style-class':'fixture-hidden'});button(hidden,'Hidden action',()=>{});
+    const inert=node('box',popup,{inert:true});button(inert,'Inert action',()=>{});
+    button(popup,'First action',()=>{document.querySelector('#action-activation-count').textContent=String(++window.audit.actionActivations);close();openDialog();});
+    const second=button(popup,'Second action',()=>{});
+    handlers.set(popup,close);flush();
+    if(preserveFocus)document.getElementById(`lui-node-${second}`).focus();
+  });
+  flush();return trigger;
+}
+window.audit={renderer,nodes,events,openDialog,closeDialog,setupTracking,setupContextTracking,openSheet,closeSheet,addToast,openCover,alignedOverlays,togglePopover,setupActionMenu,actionActivations:0,sheetInput:null};
+function setupOrdinaryMenu(retained=false,pressable=false,popover=false){
+  const owner=node('row',root);let popup=null;
+  function close(){if(popup){if(retained){Menu.set_dropdown_open(renderer,popup,false);}else{drop(popup);popup=null;flush();}}}
+  const name=popover?'Open ordinary popover':pressable?'Open pressable menu':retained?'Open retained ordinary menu':'Open ordinary menu';
+  const open=()=>{
+    if(popup){if(retained){Menu.set_dropdown_open(renderer,popup,!Layers.is_open(renderer.web_layers,popup));}else close();return;}
+    popup=node(popover?'popover':'dropdown-menu',owner,{anchor:'below',...(popover?{role:'menu'}:{}),'min-width':220});
+    function action(text,run){const item=node('menu-item',popup,{text,'press-enabled':true});handlers.set(item,run);}
+    action('Choose ordinary action',close);
+    action('Open dialog from ordinary menu',()=>{close();openDialog();});
+    action('Disable ordinary trigger',()=>{set(trigger,'enabled',false);close();});
+    action('Remove ordinary owner',()=>{drop(owner);popup=null;flush();});
+    handlers.set(popup,close);flush();
+  };
+  const trigger=pressable?node('text',owner,{'press-enabled':true,text:name}):button(owner,name,open);
+  if(pressable)handlers.set(trigger,open);
+  if(retained)button(root,'Cycle retained menu',()=>{if(popup){close();Menu.set_dropdown_open(renderer,popup,true);}});
+  flush();
+}
+setupActionMenu('popover');setupActionMenu('popover',true);
+setupOrdinaryMenu();setupOrdinaryMenu(true);setupOrdinaryMenu(false,true);
+setupOrdinaryMenu(false,false,true);
+function setupFormPopover(){
+  const owner=node('column',root);let wrapper=null;
+  const close=()=>{if(wrapper){drop(wrapper);wrapper=null;flush();}};
+  button(owner,'Open form popover',()=>{
+    wrapper=node('box',owner);
+    const popup=node('popover',wrapper,{anchor:'below',role:'dialog',width:260});
+    const content=node('column',popup);
+    node('input',content,{placeholder:'Popover draft',autofocus:true});
+    button(content,'Save popover draft',close);handlers.set(popup,close);flush();
+  });
+}
+setupFormPopover();
+button(root,'Outside action',()=>{});flush();
+
+function runInertAudit(){
+  const output=document.querySelector('#inert-audit-result'),checks=[];
+  const check=(label,pass)=>checks.push({label,pass:!!pass});
+  let scope;
+  try{
+    scope=node('box',root,{width:240,height:100,'accessibility-identifier':'inert-audit-scope'});
+    const inner=node('box',scope,{inert:false});
+    const child=button(inner,'Retained inert action',()=>{});set(child,'accessibility-identifier','inert-audit-action');
+    node('input',scope,{placeholder:'Retained inert input'});
+    flush();
+    const element=document.querySelector('#inert-audit-scope'),control=document.querySelector('#inert-audit-action');
+    control.focus();check('active controls accept focus',document.activeElement===control);
+    const before=element.getBoundingClientRect();
+    set(scope,'inert',true);flush();
+    document.querySelector('#run-inert-audit').focus();control.focus();
+    check('inert excludes descendant focus',document.activeElement!==control);
+    check('typed inert reaches the host',element.hasAttribute('inert'));
+    const during=element.getBoundingClientRect();
+    check('inert preserves layout and paint',before.width===during.width&&before.height===during.height&&getComputedStyle(element).visibility==='visible');
+    set(scope,'inert',false);flush();control.focus();
+    check('reopening restores the same control',document.querySelector('#inert-audit-action')===control&&document.activeElement===control);
+    check('false removes native HTML inert',!element.hasAttribute('inert'));
+    set(scope,'inert',true);flush();
+    ops.push(Protocol.remove_prop_op(scope,props.get('inert')));flush();control.focus();
+    check('removing the property restores focus',document.activeElement===control&&!element.hasAttribute('inert'));
+  }catch(error){check(String(error._1??error.stack??error),false);}
+  finally{if(scope){drop(scope);flush();}}
+  output.textContent=JSON.stringify({state:'Complete',pass:checks.every(c=>c.pass),checks});
+}
+document.querySelector('#run-inert-audit').addEventListener('click',runInertAudit);
+
+const frames=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+document.querySelector('#run-retained-anchor-audit').addEventListener('click',async()=>{
+  const output=document.querySelector('#retained-anchor-result'),checks=[];
+  const check=(label,pass)=>checks.push({label,pass:!!pass});
+  const until=async predicate=>{
+    const deadline=performance.now()+1200;
+    while(!predicate()&&performance.now()<deadline)await new Promise(resolve=>setTimeout(resolve,20));
+    return predicate();
+  };
+  output.textContent='Running';
+  for(const mode of ['inert','hidden','display-none','removed','initial-inert','initial-removed','removed-and-closed','initial-inert-and-closed']){
+    let fixture,popup;
+    try{
+      fixture=node('column',root,{width:320});
+      const owner=node('box',fixture);
+      const identifier=`retained-anchor-${mode}`;
+      const trigger=button(owner,`Anchor ${mode}`,()=>{});set(trigger,'accessibility-identifier',identifier);
+      const initiallyUnavailable=mode.startsWith('initial-');
+      if(mode.startsWith('initial-inert'))set(owner,'inert',true);
+      if(mode==='initial-removed')drop(trigger);
+      popup=node('popover',fixture,{anchor:'below','anchor-target':identifier,width:280,role:'menu'});
+      const content=node('column',popup,{gap:8,padding:8});
+      node('input',content,{placeholder:`Draft ${mode}`,autofocus:true});
+      let dismissed=0;handlers.set(popup,()=>{
+        dismissed++;
+        if(mode.endsWith('-closed')){drop(popup);flush();}
+      });flush();await frames();
+      const positioner=document.querySelector(`[data-anchor-target="${identifier}"]`);
+      if(!positioner&&mode.endsWith('-closed')){
+        check(`${mode}: dismissal can synchronously remove its popup`,!nodes.has(popup)&&dismissed===1&&!Layers.is_open(renderer.web_layers,popup)&&!Layers.is_present(renderer.web_layers,popup));
+        continue;
+      }
+      const field=positioner.querySelector('input');
+      if(initiallyUnavailable)check(`${mode}: an unavailable target cannot take focus`,document.activeElement!==field);
+      else{
+        field.focus();
+        check(`${mode}: popup starts open and focused`,Layers.is_open(renderer.web_layers,popup)&&document.activeElement===field);
+        if(mode==='inert')set(owner,'inert',true);
+        else if(mode==='hidden')set(owner,'style-class','anchor-audit-hidden');
+        else if(mode==='display-none')set(owner,'display','none');
+        else drop(trigger);
+        flush();
+      }
+      check(`${mode}: unavailable target hides the surface`,await until(()=>positioner.hasAttribute('hidden')));
+      check(`${mode}: hidden popup releases its open input scope`,!Layers.is_open(renderer.web_layers,popup));
+      check(`${mode}: hidden popup releases layer presence`,!Layers.is_present(renderer.web_layers,popup));
+      check(`${mode}: focus does not remain in a hidden field`,document.activeElement!==field);
+      check(`${mode}: target invalidation dismisses exactly once`,dismissed===1);
+      await new Promise(resolve=>setTimeout(resolve,140));
+      check(`${mode}: stopped tracking cannot dismiss twice`,dismissed===1);
+    }catch(error){check(`${mode}: ${String(error._1??error.stack??error)}`,false);}
+    finally{if(fixture){drop(fixture);flush();}}
+  }
+  output.textContent=JSON.stringify({state:'Complete',pass:checks.every(c=>c.pass),checks});
+});
+const finiteAnimations=el=>el.getAnimations().filter(a=>Number.isFinite(a.effect?.getComputedTiming().endTime));
+async function runSplitAudit(){
+  const output=document.querySelector('#split-audit-result'),checks=[];
+  output.textContent='Running';
+  const check=(label,pass)=>checks.push({label,pass:!!pass});
+  let outer;
+  try{
+    outer=node('split',root,{width:1000,height:240,gap:0,'resize-duration':300,'accessibility-identifier':'audit-outer-split'});
+    const inner=node('split',outer,{gap:0,'resize-duration':300,'accessibility-identifier':'audit-inner-split'});
+    const left=node('column',inner,{'accessibility-identifier':'audit-fixed-pane'});
+    node('text',left,{text:'Fixed left pane'});
+    node('column',inner);node('column',outer);
+    const fraction=(n,value)=>ops.push(Protocol.set_prop_op(n,props.get('value'),{TAG:3,_0:value}));
+    const target=value=>{fraction(outer,value);fraction(inner,0.21/value);flush();};
+    handlers.set(outer,value=>target(value));
+    target(0.7);await frames();
+    const outerEl=document.querySelector('#audit-outer-split'),innerEl=document.querySelector('#audit-inner-split');
+    const pane=document.querySelector('#audit-fixed-pane'),divider=outerEl.querySelector(':scope > .lui-split-divider');
+    const tracks=()=>[...finiteAnimations(outerEl.firstElementChild),...finiteAnimations(innerEl.firstElementChild)];
+    const close=(actual,expected)=>Math.abs(actual-expected)<1;
+    check('initial fixed pane is 210px',close(pane.getBoundingClientRect().width,210));
+    for(const key of ['ArrowLeft','ArrowRight','ArrowLeft']){
+      divider.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));
+      await frames();
+      check(`${key} keeps the dependent pane fixed`,close(pane.getBoundingClientRect().width,210));
+      check(`${key} leaves no easing behind direct input`,tracks().length===0);
+    }
+    target(0.8);await frames();
+    check('programmatic split changes still animate',finiteAnimations(outerEl.firstElementChild).length>0);
+    for(const animation of tracks())animation.finish();await frames();
+    check('programmatic resize reaches its target',close(innerEl.getBoundingClientRect().width,800));
+    target(0.55);await frames();
+    for(const animation of tracks()){animation.pause();animation.currentTime=150;}
+    divider.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));
+    await frames();
+    check('direct input interrupts an existing resize transition',tracks().length===0);
+    check('interrupted outer track reaches the input target immediately',close(innerEl.getBoundingClientRect().width,600));
+    check('interrupted dependent pane keeps its width',close(pane.getBoundingClientRect().width,210));
+    set(outer,'width',800);fraction(inner,210/(800*0.6));flush();await frames();
+    check('container resize applies dependent geometry immediately',close(pane.getBoundingClientRect().width,210));
+    check('container resize leaves no running transitions',tracks().length===0);
+  }catch(error){check(String(error._1??error),false);}
+  finally{if(outer){drop(outer);flush();}}
+  output.textContent=JSON.stringify({state:'Complete',pass:checks.every(c=>c.pass),checks});
+}
+document.querySelector('#run-split-audit').addEventListener('click',runSplitAudit);
+async function runExitAudit(){
+  const output=document.querySelector('#exit-audit-result'),results=[];
+  output.textContent='Running';
+  async function scenario(name,run){
+    const checks=[];
+    const check=(label,condition)=>checks.push({label,pass:!!condition});
+    try{await run(check);}catch(error){checks.push({label:String(error._1??error),pass:false});}
+    results.push({name,checks});
+  }
+  function surface(kind,transition){
+    const holder=node('row',root);
+    button(holder,'Exit audit anchor',()=>{});
+    const n=node(kind,holder,{...(kind==='dialog'?{text:'Exit audit surface'}:{anchor:'below',transition}),width:240,height:120,
+      'style-class':'exit-audit-surface'});
+    node('paragraph',n,{text:'Exit audit content'});
+    flush();
+    const el=document.querySelector('.exit-audit-surface');
+    if(kind==='dialog')el.style.transition=transition;
+    return {n,holder,el};
+  }
+  async function settle(item){
+    await frames();
+    for(const animation of finiteAnimations(item.el))animation.finish();
+    await frames();
+  }
+  function close(item){
+    const backdrop=item.el.closest('.lui-modal-layer')?.querySelector('.lui-modal-backdrop');
+    drop(item.n);flush();
+    item.tracks=[...finiteAnimations(item.el),...(backdrop?finiteAnimations(backdrop):[])];
+    for(const animation of item.tracks)animation.pause();
+  }
+  function finish(item,property){
+    for(const animation of item.tracks){
+      if(!property||animation.transitionProperty===property)animation.finish();
+    }
+  }
+  function dispose(item){drop(item.holder);flush();}
+  await scenario('popup waits for its longest track',async check=>{
+    const item=surface('popover','opacity 60ms linear, transform 400ms linear');
+    await settle(item);
+    check('typed transition reaches the visual popup',getComputedStyle(item.el).transitionDuration==='0.06s, 0.4s');
+    close(item);finish(item,'opacity');await frames();
+    check('short opacity cannot remove the popup',item.el.isConnected);
+    check('exiting popup is noninteractive',getComputedStyle(item.el).pointerEvents==='none');
+    finish(item);await frames();check('popup releases after transform',!item.el.isConnected);dispose(item);
+  });
+  await scenario('modal waits for card and backdrop',async check=>{
+    const item=surface('dialog','opacity 80ms linear, transform 400ms linear 100ms');
+    await settle(item);close(item);finish(item,'opacity');await frames();
+    check('card survives the shorter backdrop',item.el.isConnected);
+    check('exiting modal is inert',item.el.hasAttribute('inert'));
+    finish(item);await frames();check('modal releases after its delay and transform',!item.el.isConnected);dispose(item);
+  });
+  await scenario('zero motion has no fixed timeout',async check=>{
+    const item=surface('popover','opacity 0ms, transform 0ms');
+    await settle(item);close(item);await frames();
+    check('zero duration releases on the next frame',!item.el.isConnected);dispose(item);
+  });
+  await scenario('cancelling one track still waits for another',async check=>{
+    const item=surface('popover','opacity 200ms linear, transform 400ms linear');
+    await settle(item);close(item);
+    const opacity=item.tracks.find(a=>a.transitionProperty==='opacity');
+    check('opacity transition exists',!!opacity);opacity?.cancel();await frames();
+    check('cancellation cannot remove the other track',item.el.isConnected);
+    finish(item);await frames();check('remaining transition releases the popup',!item.el.isConnected);dispose(item);
+  });
+  await scenario('reopen survives old completion and ignores child animation',async check=>{
+    const item=surface('dialog','opacity 200ms linear, transform 200ms linear');
+    const spinner=document.createElement('span');spinner.className='exit-audit-spinner';spinner.textContent='Spinner';item.el.append(spinner);
+    await settle(item);
+    const index=nodes.get(item.holder).children.indexOf(item.n);
+    backend.apply_batch({generation:++generation,ops:list([Protocol.remove_child_op(item.holder,item.n)])});
+    for(const animation of finiteAnimations(item.el))animation.pause();
+    backend.apply_batch({generation:++generation,ops:list([Protocol.insert_child_op(item.holder,item.n,index)])});
+    await settle(item);check('old close cannot remove the reopened dialog',item.el.isConnected&&!item.el.hasAttribute('data-ending-style'));
+    close(item);finish(item);await frames();check('infinite child animation cannot retain the modal',!item.el.isConnected);dispose(item);
+  });
+  output.textContent=JSON.stringify({state:'Complete',pass:results.every(r=>r.checks.every(c=>c.pass)),results});
+}
+document.querySelector('#run-exit-audit').addEventListener('click',()=>{runExitAudit().catch(error=>{document.querySelector('#exit-audit-result').textContent=JSON.stringify({state:'Complete',pass:false,error:String(error)});});});
+function runStyleAudit(){
+  const results=[];
+  for(const kind of ['popover','dropdown-menu','dialog']){
+    const holder=node('row',root);
+    button(holder,'Style audit anchor',()=>{});
+    const className='motion-style-audit-'+kind;
+    const n=node(kind,holder,{...(kind==='dialog'?{text:'Style audit dialog'}:{anchor:'below'}),width:240,height:120,'style-class':className});
+    node(kind==='dropdown-menu'?'menu-item':'paragraph',n,{text:'Motion style content'});
+    flush();
+    const el=document.querySelector('.'+className),style=getComputedStyle(el);
+    const scale=new DOMMatrixReadOnly(style.transform).a;
+    const origin=style.transformOrigin.split(' ').map(parseFloat);
+    const duration=kind==='dialog'?0.2:0.15,easing=kind==='dialog'?'ease-out':'ease';
+    const checks=[
+      {label:'declared default duration',pass:style.transitionDuration.split(',').every(v=>Math.abs(parseFloat(v)-duration)<0.00001)},
+      {label:'declared default curve',pass:style.transitionTimingFunction.split(',').every(v=>v.trim()===easing)},
+      {label:'entrance scale is 95 percent',pass:Math.abs(scale-0.95)<0.00001},
+      {label:'zoom origin is centered',pass:Math.abs(origin[0]-el.offsetWidth/2)<0.51&&Math.abs(origin[1]-el.offsetHeight/2)<0.51}
+    ];
+    results.push({kind,scale,origin,duration:style.transitionDuration,easing:style.transitionTimingFunction,checks});
+    drop(holder);flush();
+  }
+  document.querySelector('#style-audit-result').textContent=JSON.stringify({state:'Complete',pass:results.every(r=>r.checks.every(c=>c.pass)),results});
+}
+document.querySelector('#run-style-audit').addEventListener('click',runStyleAudit);
+
+async function runInterruptionAudit(){
+  const output=document.querySelector('#interruption-audit-result'),results=[];
+  output.textContent='Running';
+  async function scenario(name,run){
+    const checks=[];
+    const check=(label,condition)=>checks.push({label,pass:!!condition});
+    try{await run(check);}catch(error){checks.push({label:String(error._1??error),pass:false});}
+    results.push({name,checks});
+  }
+  function surface(kind,transition='opacity 200ms linear, transform 600ms linear'){
+    const holder=kind==='context-menu'?node('list-item',root,{text:'Interruption context host'}):node('row',root);
+    if(kind==='tooltip')button(holder,'Interruption anchor',()=>{});
+    const n=node(kind,holder,kind==='tooltip'?{anchor:'below',text:'Interruption tip'}:{});
+    if(kind==='context-menu')node('menu-item',n,{text:'Interruption action','press-enabled':true});
+    flush();
+    const el=document.querySelector('#lui-node-'+n);
+    if(transition!==null)el.style.transition=transition;
+    return {n,holder,el};
+  }
+  const open=item=>item.el.classList.contains('lui-tooltip')
+    ?Overlay.set_tooltip_open(renderer,item.n,true):Menu.show_context_menu(renderer,item.n,80,180);
+  const close=item=>item.el.classList.contains('lui-tooltip')
+    ?Overlay.set_tooltip_open(renderer,item.n,false):Menu.hide_context_menu(renderer);
+  const pause=item=>{item.tracks=finiteAnimations(item.el);for(const animation of item.tracks)animation.pause();};
+  const finish=(item,property)=>{for(const animation of item.tracks??finiteAnimations(item.el))if(!property||animation.transitionProperty===property)animation.finish();};
+  async function settle(item){await frames();finish(item);await frames();}
+  function dispose(item){drop(item.holder);flush();}
+  await scenario('context menu shares popup motion',async check=>{
+    const item=surface('context-menu',null);
+    open(item);
+    const style=getComputedStyle(item.el),origin=style.transformOrigin.split(' ').map(parseFloat);
+    check('context defaults use 150 ms ease',style.transitionDuration.split(',').every(v=>parseFloat(v)===0.15)
+      &&style.transitionTimingFunction.split(',').every(v=>v.trim()==='ease'));
+    check('context entrance uses the centered 95 percent zoom',new DOMMatrixReadOnly(style.transform).a===0.95
+      &&Math.abs(origin[0]-item.el.offsetWidth/2)<0.51&&Math.abs(origin[1]-item.el.offsetHeight/2)<0.51);
+    await settle(item);close(item);pause(item);
+    check('context close retains visible inert content',item.el.hasAttribute('data-ending-style')
+      &&item.el.hasAttribute('inert')&&getComputedStyle(item.el).display!=='none');
+    finish(item);await frames();
+    check('context close releases presentation and hides content',!Layers.is_present(renderer.web_layers,item.n)
+      &&getComputedStyle(item.el).display==='none');
+    dispose(item);
+  });
+  await scenario('context menu waits for all exit tracks',async check=>{
+    const item=surface('context-menu');open(item);await settle(item);close(item);pause(item);
+    check('context exit owns opacity and transform',item.tracks.length===2);
+    finish(item,'opacity');await frames();
+    check('short opacity cannot hide the pending transform',Layers.is_present(renderer.web_layers,item.n)
+      &&item.el.hasAttribute('data-ending-style')&&getComputedStyle(item.el).display!=='none');
+    finish(item);await frames();
+    check('longest context track releases presentation',!Layers.is_present(renderer.web_layers,item.n)
+      &&getComputedStyle(item.el).display==='none');dispose(item);
+  });
+  for(const kind of ['context-menu','tooltip']){
+    await scenario(kind+' old close cannot finish a newer close',async check=>{
+      const item=surface(kind);open(item);await settle(item);
+      // An independent finite surface track survives CSS transition reversal.
+      const previousMotion=item.el.animate([{filter:'blur(0px)'},{filter:'blur(1px)'}],{duration:1000});
+      previousMotion.pause();close(item);pause(item);
+      open(item);await frames();
+      for(const animation of finiteAnimations(item.el))if(animation!==previousMotion)animation.finish();
+      await frames();
+      close(item);pause(item);await frames();
+      previousMotion.finish();await frames();
+      check('new exit still owns its pending tracks',item.tracks.length>0&&Layers.is_present(renderer.web_layers,item.n)
+        &&item.el.hasAttribute('data-ending-style')&&getComputedStyle(item.el).display!=='none');
+      finish(item);await frames();
+      check('new exit eventually hides content',!Layers.is_present(renderer.web_layers,item.n)
+        &&!item.el.hasAttribute('data-ending-style')&&getComputedStyle(item.el).display==='none');dispose(item);
+    });
+    await scenario(kind+' switching surfaces preserves the newer surface',async check=>{
+      const first=surface(kind),second=surface(kind);open(first);await settle(first);
+      open(second);pause(first);await settle(second);finish(first);await frames();
+      check('previous surface settles without closing its replacement',!Layers.is_present(renderer.web_layers,first.n)
+        &&Layers.is_open(renderer.web_layers,second.n)&&second.el.hasAttribute('data-open'));
+      close(second);pause(second);finish(second);await frames();dispose(first);dispose(second);
+    });
+  }
+  await scenario('zero duration context menu closes immediately',async check=>{
+    const item=surface('context-menu','opacity 0ms, transform 0ms');open(item);await settle(item);close(item);await frames();
+    check('zero motion leaves no presented menu',!Layers.is_present(renderer.web_layers,item.n)
+      &&getComputedStyle(item.el).display==='none');dispose(item);
+  });
+  output.textContent=JSON.stringify({state:'Complete',pass:results.every(r=>r.checks.every(c=>c.pass)),results});
+}
+document.querySelector('#run-interruption-audit').addEventListener('click',()=>{runInterruptionAudit().catch(error=>{
+  document.querySelector('#interruption-audit-result').textContent=JSON.stringify({state:'Complete',pass:false,error:String(error)});
+});});
 </script>

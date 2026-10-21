@@ -130,53 +130,24 @@ body {
 @property --lui-selected-shadow { syntax: "*"; inherits: false; }
 @property --lui-selected-hover-shadow { syntax: "*"; inherits: false; }
 @property --lui-focus-shadow { syntax: "*"; inherits: false; }
+@property --lui-focus-within-bg { syntax: "*"; inherits: false; }
+@property --lui-focus-within-border { syntax: "*"; inherits: false; }
+@property --lui-current-focus-shadow { syntax: "*"; inherits: false; }
+@property --lui-current-focus-within-bg { syntax: "*"; inherits: false; }
+@property --lui-current-focus-within-border { syntax: "*"; inherits: false; }
 @property --lui-disabled-opacity { syntax: "*"; inherits: false; }
+@property --lui-current-hover-bg { syntax: "*"; inherits: false; }
+@property --lui-current-hover-fg { syntax: "*"; inherits: false; }
+@property --lui-current-hover-border { syntax: "*"; inherits: false; }
+@property --lui-current-hover-opacity { syntax: "*"; inherits: false; }
+@property --lui-current-pressed-bg { syntax: "*"; inherits: false; }
+@property --lui-current-pressed-opacity { syntax: "*"; inherits: false; }
+@property --lui-current-selected-bg { syntax: "*"; inherits: false; }
+@property --lui-current-disabled-opacity { syntax: "*"; inherits: false; }
 
 @layer components {
   .lui-root {
     display: contents;
-  }
-
-  /* Typed appearance/state channels. Recipes emit --lui-* custom
-     properties (and the matching typed props for position, typography,
-     overflow, sizing). These zero-specificity rules bind the channels so
-     they always lose to per-kind chrome rules — recipes compose them on
-     unstyled kinds like box/row/text. */
-  :where([class*="lui-"]) {
-    box-shadow: var(--lui-shadow, none);
-  }
-
-  :where([class*="lui-"]:hover) {
-    background-color: var(--lui-hover-bg, revert-layer);
-    color: var(--lui-hover-fg, revert-layer);
-    border-color: var(--lui-hover-border, revert-layer);
-    box-shadow: var(--lui-hover-shadow, var(--lui-shadow, revert-layer));
-    opacity: var(--lui-hover-opacity, revert-layer);
-  }
-
-  :where([class*="lui-"]:active) {
-    background-color: var(--lui-pressed-bg, revert-layer);
-    box-shadow: var(--lui-pressed-shadow, revert-layer);
-    opacity: var(--lui-pressed-opacity, revert-layer);
-  }
-
-  :where([class*="lui-"][data-selected]) {
-    background-color: var(--lui-selected-bg, revert-layer);
-    box-shadow: var(--lui-selected-shadow, var(--lui-shadow, revert-layer));
-  }
-
-  :where([class*="lui-"][data-selected]:hover) {
-    box-shadow: var(--lui-selected-hover-shadow,
-      var(--lui-selected-shadow, var(--lui-hover-shadow, var(--lui-shadow, revert-layer))));
-  }
-
-  :where([class*="lui-"][data-disabled]) {
-    opacity: var(--lui-disabled-opacity, revert-layer);
-  }
-
-  :where([class*="lui-"]:focus-visible):where([data-pressable], [data-press-enabled]) {
-    box-shadow: var(--lui-focus-shadow,
-      var(--lui-selected-shadow, var(--lui-shadow, revert-layer)));
   }
 
   .lui-row {
@@ -194,7 +165,7 @@ body {
   }
 
   .lui-list {
-    @apply flex flex-col;
+    @apply flex flex-col overflow-y-auto;
   }
 
   .lui-list-item {
@@ -222,14 +193,14 @@ body {
   }
 
   .lui-table {
-    @apply w-full table-fixed border-collapse;
+    @apply w-full table-auto border-collapse;
   }
 
   .lui-table-row {
     @apply transition-colors;
   }
 
-  .lui-table-row:hover,
+  .lui-table-row:has(> .lui-table-cell[data-pressable]):hover,
   .lui-table-row[data-selected] {
     @apply bg-accent text-accent-foreground;
   }
@@ -429,11 +400,15 @@ body {
 
   .lui-split {
     @apply relative grid overflow-hidden;
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .lui-split-panes {
     @apply grid size-full;
+    min-inline-size: 0;
+    min-block-size: 0;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .lui-split-divider {
@@ -672,12 +647,16 @@ body {
 
   .lui-stack > *,
   .lui-panel > *,
-  .lui-card > * {
-    grid-area: 1 / 1;
-  }
-
+  .lui-card > *,
   .lui-resizable > * {
     grid-area: 1 / 1;
+    /* Equal stacking contexts preserve child order when a child is positioned. */
+    z-index: 0;
+  }
+
+  /* Spacers are layout voids, matching native hit testing. */
+  .lui-spacer {
+    pointer-events: none;
   }
 
   .lui-panel {
@@ -800,13 +779,13 @@ body {
     overscroll-behavior: contain;
     opacity: 1;
     transform: scale(1);
-    transition: transform 100ms ease-out, opacity 100ms ease-out;
+    transition: transform 200ms ease-out, opacity 200ms ease-out;
   }
 
   .lui-dialog[data-starting-style],
   .lui-dialog[data-ending-style] {
     opacity: 0;
-    transform: scale(0.98);
+    transform: scale(0.95);
   }
 
   .lui-dialog-title {
@@ -817,7 +796,7 @@ body {
     @apply grid;
   }
 
-  .lui-dialog-body > * {
+  .lui-dialog-body > :not([data-lui-position="absolute"], [data-lui-position="fixed"]) {
     grid-area: 1 / 1;
   }
 
@@ -960,6 +939,10 @@ body {
     @apply inline-flex h-10 min-w-40 items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background;
   }
 
+  .lui-select-value {
+    @apply min-w-0 truncate;
+  }
+
   .lui-select::after,
   .lui-combobox-trigger::after {
     @apply size-4 shrink-0 bg-current;
@@ -1027,10 +1010,10 @@ body {
     box-shadow: 0.25rem 0.25rem 0 var(--lui-foreground);
     pointer-events: auto;
     z-index: 1;
-    transform-origin: top left;
+    transform-origin: center;
     transition-property: opacity, transform;
-    transition-duration: 120ms;
-    transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+    transition-duration: 150ms;
+    transition-timing-function: ease;
   }
 
   .lui-dropdown-menu:not([data-open]):not([data-ending-style]) {
@@ -1044,7 +1027,7 @@ body {
   .lui-dropdown-menu[data-starting-style],
   .lui-dropdown-menu[data-ending-style] {
     opacity: 0;
-    transform: scale(0.96);
+    transform: scale(0.95);
   }
 
   .lui-combobox-status {
@@ -1064,10 +1047,14 @@ body {
     overflow: auto;
     pointer-events: auto;
     z-index: 1;
-    transform-origin: top left;
+    transform-origin: center;
     transition-property: opacity, transform;
-    transition-duration: 120ms;
-    transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+    transition-duration: 150ms;
+    transition-timing-function: ease;
+  }
+
+  .lui-popover[role="menu"] {
+    max-height: min(18rem, var(--lui-popup-available-height, calc(100vh - 1rem)));
   }
 
   .lui-popover:not([data-open]):not([data-ending-style]) {
@@ -1081,7 +1068,7 @@ body {
   .lui-popover[data-starting-style],
   .lui-popover[data-ending-style] {
     opacity: 0;
-    transform: scale(0.96);
+    transform: scale(0.95);
   }
 
   /* cover mode: a popover with no position props spans the viewport */
@@ -1105,10 +1092,25 @@ body {
     max-height: min(18rem, var(--lui-popup-available-height, calc(100vh - 1rem)));
     max-width: var(--lui-popup-available-width, calc(100vw - 1rem));
     min-width: min(10rem, var(--lui-popup-available-width, calc(100vw - 1rem)));
+    opacity: 1;
+    transform: scale(1);
+    transform-origin: center;
+    transition: opacity 150ms ease, transform 150ms ease;
   }
 
-  .lui-context-menu[data-open] {
+  .lui-context-menu[data-open],
+  .lui-context-menu[data-ending-style] {
     @apply flex;
+  }
+
+  .lui-context-menu[data-ending-style] {
+    pointer-events: none;
+  }
+
+  .lui-context-menu[data-starting-style],
+  .lui-context-menu[data-ending-style] {
+    opacity: 0;
+    transform: scale(0.95);
   }
 
   .lui-menu-item {
@@ -1135,7 +1137,7 @@ body {
   }
 
   .lui-menu-item-icon,
-  .lui-menu-item-check {
+  .lui-menu-item > .lui-menu-item-check {
     @apply size-4 shrink-0;
   }
 
@@ -1154,6 +1156,7 @@ body {
 
   .lui-checkbox-control {
     @apply relative size-4 shrink-0 cursor-pointer appearance-none rounded-sm border border-primary text-primary-foreground ring-offset-background transition-colors;
+    border-color: var(--lui-indicator-border-color, var(--color-primary));
   }
 
   .lui-checkbox-control:focus-visible {
@@ -1165,7 +1168,9 @@ body {
   }
 
   .lui-checkbox-control:checked {
-    @apply border-0 bg-primary;
+    @apply bg-primary;
+    border-width: var(--lui-checked-indicator-border-width, 0px);
+    border-color: var(--lui-checked-indicator-border-color, var(--color-primary));
   }
 
   .lui-checkbox-control::after {
@@ -1427,7 +1432,11 @@ body {
   }
 
   .lui-link {
-    @apply inline-flex items-center gap-1 text-primary underline underline-offset-4;
+    @apply inline text-primary underline underline-offset-4;
+  }
+
+  .lui-link:has(> .lui-link-icon[data-name]) {
+    @apply inline-flex items-center gap-1;
   }
 
   .lui-link-icon {
@@ -2168,4 +2177,75 @@ body {
     background: var(--lui-background);
     backdrop-filter: none;
   }
+}
+
+@layer utilities {
+  /* Explicit typed appearance overrides component defaults. Missing
+     channels fall through to their ordinary component chrome. */
+  :where([class*="lui-"]) {
+    box-shadow: var(--lui-shadow, revert-layer);
+  }
+
+  :where([class*="lui-"]:hover:not(:disabled, [data-disabled]),
+    .lui-menu-item[data-highlighted]:not([data-disabled])) {
+    --lui-current-hover-bg: var(--lui-hover-bg);
+    --lui-current-hover-fg: var(--lui-hover-fg);
+    --lui-current-hover-border: var(--lui-hover-border);
+    --lui-current-hover-opacity: var(--lui-hover-opacity);
+    background-color: var(--lui-hover-bg, revert-layer);
+    color: var(--lui-hover-fg, revert-layer);
+    border-color: var(--lui-hover-border, revert-layer);
+    box-shadow: var(--lui-hover-shadow, var(--lui-shadow, revert-layer));
+    opacity: var(--lui-hover-opacity, revert-layer);
+  }
+
+  :where([class*="lui-"]:active:not(:disabled, [data-disabled])) {
+    --lui-current-pressed-bg: var(--lui-pressed-bg);
+    --lui-current-pressed-opacity: var(--lui-pressed-opacity);
+    background-color: var(--lui-pressed-bg, revert-layer);
+    box-shadow: var(--lui-pressed-shadow, revert-layer);
+    opacity: var(--lui-pressed-opacity, revert-layer);
+  }
+
+  :where([class*="lui-"][data-selected]) {
+    --lui-current-selected-bg: var(--lui-selected-bg);
+    background-color: var(--lui-selected-bg, revert-layer);
+    box-shadow: var(--lui-selected-shadow, var(--lui-shadow, revert-layer));
+  }
+
+  :where([class*="lui-"][data-selected]:hover:not(:disabled, [data-disabled]),
+    .lui-menu-item[data-selected][data-highlighted]:not([data-disabled])) {
+    background-color: var(--lui-selected-bg, var(--lui-hover-bg, revert-layer));
+    box-shadow: var(--lui-selected-hover-shadow,
+      var(--lui-selected-shadow, var(--lui-hover-shadow, var(--lui-shadow, revert-layer))));
+  }
+
+  :where([class*="lui-"][data-disabled]),
+  :where([class*="lui-"]:disabled) {
+    --lui-current-disabled-opacity: var(--lui-disabled-opacity);
+    opacity: var(--lui-disabled-opacity, revert-layer);
+  }
+
+  :where([class*="lui-"]:focus-visible) {
+    --lui-current-focus-shadow: var(--lui-focus-shadow);
+    box-shadow: var(--lui-focus-shadow,
+      var(--lui-selected-shadow, var(--lui-shadow, revert-layer)));
+  }
+
+  :where([class*="lui-"]:focus-within) {
+    --lui-current-focus-within-bg: var(--lui-focus-within-bg);
+    --lui-current-focus-within-border: var(--lui-focus-within-border);
+    background-color: var(--lui-focus-within-bg,
+      var(--lui-current-selected-bg,
+        var(--lui-current-pressed-bg, var(--lui-current-hover-bg, revert-layer))));
+    border-color: var(--lui-focus-within-border, var(--lui-current-hover-border, revert-layer));
+  }
+
+}
+
+/* The typed line-clamp property owns the block formatting contract. */
+[data-lui-line-clamp] {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }

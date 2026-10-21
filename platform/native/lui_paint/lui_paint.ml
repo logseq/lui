@@ -39,19 +39,26 @@ type coverage =
 
 let prop_coverage =
   [ ("text", Painted_by_text);
+    ("line-clamp", Painted_by_text);
     ("enabled", Painted); (* folds into state.disabled *)
+    ("inert", Host); (* input and accessibility; paint stays retained *)
     ("gap", Layout);
     ("main", Layout);
     ("cross", Layout);
     ("grow", Layout);
     ("columns", Layout);
+    ("grid-column-span", Layout);
     ("padding", Layout);
     ("padding-horizontal", Layout);
     ("padding-vertical", Layout);
+    ("padding-top", Layout);
+    ("padding-right", Layout);
+    ("padding-bottom", Layout);
+    ("padding-left", Layout);
     ("background", Painted);
     ("foreground", Painted);
     ("border-color", Painted); (* CSS shorthand, 1–4 colors *)
-    ("border-width", Painted); (* CSS shorthand, 1–4 lengths *)
+    ("border-width", Painted); (* CSS shorthand, 1–4 lengths; also insets layout *)
     ("corner-radius", Painted);
     ("width", Layout);
     ("height", Layout);
@@ -75,14 +82,17 @@ let prop_coverage =
     ("variant", Host);    (* styling hint; resolved upstream to props *)
     ("icon", Painted_by_image);
     ("icon-placement", Layout);
+    ("selection-placement", Layout);
     ("selected", Painted); (* folds into state.selected *)
     ("autofocus", Host);
     ("submit-on-enter", Host);
+    ("submit-on-blur", Host);
     ("long-press-enabled", Host);
     ("change-enabled", Host);
     ("toggle-enabled", Host);
     ("press-enabled", Host);
     ("submit-enabled", Host);
+    ("navigate-enabled", Host);
     ("double-press-enabled", Host);
     ("appear-enabled", Host);
     ("image", Painted_by_image);
@@ -98,17 +108,24 @@ let prop_coverage =
     ("source-width", Painted);
     ("source-height", Painted);
     ("anchor", Host); (* popup anchoring is host-owned *)
+    ("anchor-target", Host);
+    ("anchor-rect", Host);
     ("anchor-alignment", Host);
     ("anchor-offset", Host);
+    ("anchor-alignment-offset", Host);
+    ("collision-padding", Host);
     ("tooltip-delay", Host);
     ("duration", Host);
     ("text-alignment", Painted_by_text);
-    ("role", Host);
+    ("role", Layout);
     ("tree-level", Layout); (* row indent *)
     ("expanded", Unmapped "disclosure chevron glyph");
+    ("first-pane-width", Layout);
     ("resize-duration", Host);
     ("resize-easing", Host);
     ("resize-origin", Host);
+    ("resize-handle-width", Host);
+    ("resize-handle-offset", Host);
     ("theme", Host); (* input to the host color resolver *)
     ("theme-mode", Host);
     ("key", Layout); (* node identity *)
@@ -144,6 +161,9 @@ let prop_coverage =
     ("referrer-policy", Host);
     ("target", Host);
     ("opacity", Painted); (* composites down the subtree *)
+    ("label-opacity", Painted);
+    ("indicator-border-color", Painted);
+    ("checked-indicator-border-color", Painted);
     ("display", Painted); (* "contents" unboxes, "none" hides *)
     ("tooltip", Host);
     ("tooltip-keys", Host);
@@ -177,6 +197,8 @@ let prop_coverage =
     ("pressed-opacity", Painted);
     ("pressed-shadow", Painted);
     ("focus-shadow", Painted);
+    ("focus-within-background", Painted);
+    ("focus-within-border", Painted);
     ("selected-background", Painted);
     ("selected-shadow", Painted);
     ("selected-hover-shadow", Painted);
@@ -395,12 +417,14 @@ type state = {
   pressed : bool;
   selected : bool;
   focused : bool;
+  focus_within : bool;
+  focus_visible : bool; (* keyboard focus or a focused text entry *)
   disabled : bool;
 }
 
 let state_neutral =
-  { hovered = false; pressed = false; selected = false; focused = false;
-    disabled = false }
+  { hovered = false; pressed = false; selected = false; focused = false; focus_within = false;
+    focus_visible = false; disabled = false }
 
 (* What layout computed for a node. [p_override] is a device-px rect
    that replaces the node's placement outright (already-resolved
@@ -416,6 +440,14 @@ let placement_of_rect r = { p_rect = r; p_override = None }
    no scrollbar is drawn. *)
 type scroll_metrics = { sm_offset : float; sm_extent : float }
 
+(* A shaped inline flow sizes as one paragraph while its retained descendants
+   keep ordinary device-pixel rectangles for input and accessibility. *)
+type text_flow_layout = {
+  flow_width : float;
+  flow_height : float;
+  flow_rects : (int * rect) list;
+}
+
 (* Host-injected lookups so paint stays platform-free. *)
 type hooks = {
   color_of : string -> color option; (* theme/resource name → color *)
@@ -429,6 +461,11 @@ type hooks = {
        virtual list touches ~30 rows, not 100k. [None] enumerates
        every child (ordinary containers). *)
   text_ops : int -> rect -> color -> string -> op list; (* text engine *)
+  text_flow : int -> float -> text_flow_layout option;
+  text_flow_ops : ctx -> int -> rect -> color -> op list option;
+    (* A composed paragraph replaces descendant painting. The rect is its
+       border box; use [text_flow_content_rect] for the measured origin.
+       Return [None] for ordinary nodes, without walking their subtrees. *)
   image_of : int -> image option;    (* node id → decoded image *)
   image_in : int -> rect -> image option;
     (* node id → target rect (logical px) → decoded image; for sources
@@ -447,7 +484,7 @@ and shadow_spec = {
 }
 
 (* Per-frame paint context handed to extension renderers. *)
-type ctx = {
+and ctx = {
   hooks : hooks;
   scale : float;    (* device px per logical px *)
   viewport : rect;  (* frame rect, device px — fixed-position containing block *)
@@ -476,6 +513,8 @@ let default_hooks =
     scroll_of = (fun _ -> None);
     mounted_children = (fun _ -> None);
     text_ops = (fun _ _ _ _ -> []);
+    text_flow = (fun _ _ -> None);
+    text_flow_ops = (fun _ _ _ _ -> None);
     image_of = (fun _ -> None);
     image_in = (fun _ _ -> None);
     shadow_of = (fun _ -> []) }
@@ -579,6 +618,7 @@ let effective_state hooks store id =
 (* Base props after the state channels cascade through them. *)
 type resolved = {
   rs_background : string option;
+  rs_border : string option;
   rs_opacity : float;
   rs_shadow : string option;
 }
@@ -590,6 +630,7 @@ let opacity_of store id =
 
 let resolve_style store id st =
   let bg = ref (pstr store id "background")
+  and border = ref (pstr store id "border-color")
   and sh = ref (pstr store id "shadow")
   and op = ref (opacity_of store id) in
   let ifstr name r = match pstr store id name with
@@ -602,6 +643,7 @@ let resolve_style store id st =
   in
   if st.hovered then (
     ifstr "hover-background" bg;
+    ifstr "hover-border" border;
     ifstr "hover-shadow" sh;
     ifnum "hover-opacity" op);
   if st.pressed then (
@@ -612,9 +654,12 @@ let resolve_style store id st =
     ifstr "selected-background" bg;
     ifstr "selected-shadow" sh);
   if st.selected && st.hovered then ifstr "selected-hover-shadow" sh;
+  if st.focus_within then (
+    ifstr "focus-within-background" bg;
+    ifstr "focus-within-border" border);
   if st.disabled then ifnum "disabled-opacity" op;
-  if st.focused then ifstr "focus-shadow" sh;
-  { rs_background = !bg; rs_opacity = !op; rs_shadow = !sh }
+  if st.focused && st.focus_visible then ifstr "focus-shadow" sh;
+  { rs_background = !bg; rs_border = !border; rs_opacity = !op; rs_shadow = !sh }
 
 (* ---------- fills ---------- *)
 
@@ -681,7 +726,6 @@ let col_accent_hover ctx = theme ctx "accent-hover"
 let col_accent_text ctx = theme ctx "accent-text"
 let col_control_border ctx = theme ctx "control-border"
 let col_switch_track ctx = theme ctx "switch-track"
-let col_focus ctx = theme ctx "focus"
 let col_scrollbar ctx = theme ctx "scrollbar-thumb"
 let col_danger ctx = theme ctx "danger"
 let col_popover ctx = theme ctx "popover"
@@ -828,17 +872,16 @@ let radii_of ctx store id =
     let (t, r, b, l) = edges_of_floats l in
     (t *. ctx.scale, r *. ctx.scale, b *. ctx.scale, l *. ctx.scale)
 
+let border_insets store id = edges_of_or 0. (pnums store id "border-width")
+
 let border_widths ctx store id =
-  match pnums store id "border-width" with
-  | [] -> (0., 0., 0., 0.)
-  | l ->
-    let (t, r, b, l) = edges_of_floats l in
-    (t *. ctx.scale, r *. ctx.scale, b *. ctx.scale, l *. ctx.scale)
+  let t, r, b, l = border_insets store id in
+  (t *. ctx.scale, r *. ctx.scale, b *. ctx.scale, l *. ctx.scale)
 
 (* Border colors: the whole value resolves → uniform; otherwise each
    shorthand token resolves → per-edge. Unresolvable → no borders. *)
-let border_colors hooks store id =
-  match pstr store id "border-color" with
+let border_colors hooks value =
+  match value with
   | None -> []
   | Some s -> (
     match color_of_value hooks.color_of s with
@@ -875,7 +918,7 @@ let per_edge_border_fills r radii bw cs dashed alpha =
 let box_ops ctx store id rs r alpha =
   let radii = radii_of ctx store id in
   let bw = border_widths ctx store id in
-  let bcs = border_colors ctx.hooks store id in
+  let bcs = border_colors ctx.hooks rs.rs_border in
   let dashed = dashed_border store id in
   (* Every layer of the shadow spec paints: outsets under the box,
      insets over the fill. CSS draws shadows front-to-back — the first
@@ -922,33 +965,55 @@ let box_ops ctx store id rs r alpha =
 
 (* ---------- helpers for control chrome ---------- *)
 
+let node_foreground hooks store id st =
+  let hovered =
+    if st.hovered && not st.disabled then pcolor hooks store id "hover-foreground"
+    else None in
+  match hovered with Some _ -> hovered | None -> pcolor hooks store id "foreground"
+
+(* Resolve declared color through the same interaction state and ancestry for
+   text and host-rasterized currentColor images. An undeclared chain returns
+   None so the caller can apply its kind-specific theme color. *)
+let rec declared_foreground hooks store id =
+  match node_foreground hooks store id (effective_state hooks store id) with
+  | Some _ as ink -> ink
+  | None ->
+      (match Lui_store.parent store id with
+       | Some parent when parent <> id -> declared_foreground hooks store parent
+       | _ -> None)
+
 let text_fg ctx store id =
-  (* CSS color inherits: nearest ancestor carrying a foreground wins,
-     falling back to the theme text color. *)
-  let rec walk id =
-    match pcolor ctx.hooks store id "foreground" with
-    | Some c -> Some c
-    | None -> (
-      match Lui_store.parent store id with
-      | Some pid when pid <> id -> walk pid
-      | _ -> None)
-  in
-  match walk id with
-  | Some c -> c
+  match declared_foreground ctx.hooks store id with
+  | Some ink -> ink
   | None -> theme ctx "foreground"
 
-(* Leading-edge square used by checkbox and radio. *)
-let leading_box ctx r side_logical =
+(* Choice chrome stays beside labels and follows alignment without a label. *)
+let leading_box ctx store id r side_logical =
   let side = Float.min (side_logical *. ctx.scale) (Float.min r.w r.h) in
-  rect r.x (r.y +. ((r.h -. side) /. 2.)) side side
+  let has_label =
+    match pstr store id "text" with
+    | Some text when text <> "" -> true
+    | _ -> false
+  in
+  let x =
+    if has_label then r.x
+    else
+      match pstr store id "main" with
+      | Some "center" -> r.x +. ((r.w -. side) /. 2.)
+      | Some "end" -> r.x +. r.w -. side
+      | _ -> r.x
+  in
+  rect x (r.y +. ((r.h -. side) /. 2.)) side side
 
 (* Label text to the right of a leading control box, bounded by the
-   node's own rect, with the node's accumulated opacity folded in. *)
+   node's own rect, with caption and accumulated node opacity folded in. *)
 let label_after ctx store id r box gap_logical alpha =
   match pstr store id "text" with
   | Some s when s <> "" ->
-    let x = box.x +. box.w +. (gap_logical *. ctx.scale) in
-    scale_ops alpha
+    let gap = Option.value ~default:gap_logical (pnum store id "gap") in
+    let x = box.x +. box.w +. (gap *. ctx.scale) in
+    scale_ops
+      (alpha *. Option.value ~default:1. (pnum store id "label-opacity"))
       (ctx.hooks.text_ops id
          (rect x r.y (Float.max 0. (r.x +. r.w -. x)) r.h)
          (text_fg ctx store id) s)
@@ -977,8 +1042,10 @@ type text_align = Ta_start | Ta_center | Ta_end
 
 type text_placement = {
   tp_align : text_align;
-  tp_pad_x : float; (* logical px inset on each side *)
-  tp_pad_y : float; (* logical px measure adds top and bottom *)
+  tp_pad_left : float; (* logical px insets *)
+  tp_pad_right : float;
+  tp_pad_top : float;
+  tp_pad_bottom : float;
   tp_top : bool;    (* anchor first line at pad-y instead of centering *)
 }
 
@@ -987,7 +1054,7 @@ type text_placement = {
    edge. The text-alignment and padding props win over the table.
    Every text engine feeds this into its pen math so all backends
    place glyphs identically. *)
-let text_placement_of store id =
+let text_placement ~layout_padding store id =
   let align, pad_x, pad_y, top =
     match Lui_store.kind store id with
     | "button" | "toggle-button" | "toggle" | "menu-trigger"
@@ -998,16 +1065,13 @@ let text_placement_of store id =
     | "bottom-tab" | "tab" -> (Ta_center, 12., 5., false)
     | "tooltip" | "toast" -> (Ta_center, 8., 4., false)
     | "alert" | "bubble" -> (Ta_start, 10., 6., false)
-    | "menu-item" ->
-      (* icon slot [x+8, x+26] + 4px gap shifts the label — the web
-         stylesheet's icon+gap-1 inside px-2 *)
-      (Ta_start, (if pstr store id "icon" = None then 8. else 30.), 6., false)
+    | "menu-item" -> (Ta_start, 8., 6., false)
     | "table-cell" | "table-row" -> (Ta_start, 10., 6., false)
     | "step" -> (Ta_center, 8., 4., false)
     | "list-item" -> (Ta_start, 12., 6., false)
-    | "text-field" | "secure-field" | "input" | "search-field"
-    | "select" | "combobox" -> (Ta_start, 10., 6., false)
-    | "textarea" -> (Ta_start, 10., 6., true)
+    | "text-field" | "secure-field" | "input" | "search-field" -> (Ta_start, 12., 8., false)
+    | "select" | "combobox" -> (Ta_start, 12., 8., false)
+    | "textarea" -> (Ta_start, 12., 8., true)
     | _ -> (Ta_start, 0., 0., false)
   in
   let align =
@@ -1026,7 +1090,48 @@ let text_placement_of store id =
     | None, Some p, v -> (p, Option.value ~default:p v)
     | None, None, v -> (pad_x, Option.value ~default:pad_y v)
   in
-  { tp_align = align; tp_pad_x = pad_x; tp_pad_y = pad_y; tp_top = top }
+  let leading, trailing =
+    if Lui_store.kind store id <> "menu-item" then (0., 0.)
+    else
+      let zone = 16. +. Option.value ~default:8. (pnum store id "gap") in
+      let icon = if pstr store id "icon" = None then 0. else zone in
+      if Lui_store.prop store id "selected" = None then (icon, 0.)
+      else if pstr store id "selection-placement" = Some "leading" then
+        (icon +. zone, 0.)
+      else (icon, zone)
+  in
+  let inset side axis default =
+    if not layout_padding
+       && (Lui_store.prop store id side <> None
+          || Lui_store.prop store id axis <> None
+          || Lui_store.prop store id "padding" <> None) then 0.
+    else Option.value ~default (pnum store id side)
+  in
+  (* Paint starts inside the border box; flex already adds these edges to
+     intrinsic measurements, independently of the content's padding. *)
+  let bt, br, bb, bl =
+    if layout_padding then border_insets store id else (0., 0., 0., 0.)
+  in
+  { tp_align = align;
+    tp_pad_left = bl +. inset "padding-left" "padding-horizontal" pad_x +. leading;
+    tp_pad_right = br +. inset "padding-right" "padding-horizontal" pad_x +. trailing;
+    tp_pad_top = bt +. inset "padding-top" "padding-vertical" pad_y;
+    tp_pad_bottom = bb +. inset "padding-bottom" "padding-vertical" pad_y;
+    tp_top = top }
+
+let text_placement_of store id = text_placement ~layout_padding:true store id
+
+(* Composed paragraphs measure, paint and expose hit geometry in the same
+   content box. The flex engine adds the paragraph's chrome to its measure. *)
+let text_flow_content_rect ~scale store id (r:rect) =
+  let placement=text_placement_of store id in
+  let left=placement.tp_pad_left*.scale and right=placement.tp_pad_right*.scale
+  and top=placement.tp_pad_top*.scale and bottom=placement.tp_pad_bottom*.scale in
+  {x=r.x+.left;y=r.y+.top;w=max 0. (r.w-.left-.right);h=max 0. (r.h-.top-.bottom)}
+
+(* Flex already adds explicit padding around its measured content box. Only
+   implicit control chrome and built-in slots belong in the text measure. *)
+let text_measure_placement_of store id = text_placement ~layout_padding:false store id
 
 (* ---------- secure-field masking ---------- *)
 
@@ -1408,7 +1513,63 @@ let text_ops ?fg ctx store id r alpha ~placeholder_ok =
   in
   match s with
   | Some (s, fg) -> scale_ops alpha (ctx.hooks.text_ops id r fg s)
+  | None when (ctx.hooks.state_of id).focused
+      && (Lui_store.is_editable_text_kind (Lui_store.kind store id)
+          || Lui_store.kind store id = "combobox") ->
+      scale_ops alpha (ctx.hooks.text_ops id r fg "")
   | None -> []
+
+(* Select indicators use the host's existing image decoder, including its
+   scale-aware SVG cache. Clip labels before the trailing icon slot. *)
+let select_ops ctx store id rs r alpha fg =
+  let tp = text_placement_of store id in
+  let pad_left = tp.tp_pad_left *. ctx.scale in
+  let pad = tp.tp_pad_right *. ctx.scale in
+  let size =
+    Float.min (16. *. ctx.scale)
+      (Float.min r.h (Float.max 0. (r.w -. pad_left -. pad)))
+  in
+  let label = { r with w = Float.max 0. (r.w -. pad -. size) } in
+  let indicator =
+    if size <= 0. then []
+    else
+      let slot =
+        rect
+          (r.x +. r.w -. pad -. size)
+          (r.y +. ((r.h -. size) /. 2.))
+          size size
+      in
+      let logical =
+        {
+          x = slot.x /. ctx.scale;
+          y = slot.y /. ctx.scale;
+          w = slot.w /. ctx.scale;
+          h = slot.h /. ctx.scale;
+        }
+      in
+      match ctx.hooks.image_in id logical with
+      | None -> []
+      | Some image ->
+          [
+            Image
+              {
+                irect2 = slot;
+                iradii = (0., 0., 0., 0.);
+                icontinuous = false;
+                iimage = image;
+                isrc = rect 0. 0. (float image.iw) (float image.ih);
+                igrayscale = false;
+                iopacity = alpha;
+              };
+          ]
+  in
+  box_ops ctx store id rs r alpha
+  @ [
+      Push_clip
+        { crect = label; cradii = (0., 0., 0., 0.); ccontinuous = false };
+    ]
+  @ text_ops ~fg ctx store id label alpha ~placeholder_ok:true
+  @ [ Pop_clip ] @ indicator
 
 (* divider: a 1 logical px line centered on the node's minor axis. *)
 let divider_ops ctx store id rs r alpha =
@@ -1460,30 +1621,32 @@ let progress_ops ctx store id rs r alpha =
         ~c2:fill_c ~grad:(0., 0., 0., 0.) ~border:(0., 0., 0., 0.)
         ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha ]
 
-(* checkbox: leading square; neutral-bordered page box when
-   unchecked (accent edge on hover), accent fill + check glyph through
-   the text hook when checked. *)
-let checkbox_ops ctx store id st rs r alpha =
+(* Checkbox uses the same primary indicator and transparent unchecked
+   face as the Web component. *)
+let checkbox_ops ctx store id _st rs r alpha =
   let s = ctx.scale in
-  let b = leading_box ctx r 16. in
+  let b = leading_box ctx store id r 16. in
   let checked = pbool store id "checked" in
   let accent =
     match pcolor ctx.hooks store id "border-color" with
     | Some c -> c
-    | None -> col_accent ctx
+    | None -> col_primary ctx
   in
+  let edge = Option.value (pcolor ctx.hooks store id "indicator-border-color") ~default:accent in
+  let checked_edge = pcolor ctx.hooks store id "checked-indicator-border-color" in
+  let checked_width = if Option.is_some checked_edge then s else 0. in
   let rad = chrome_radii ctx store id (4. *. s) in
   let chrome =
     if checked then
       fill ~continuous:true b (corners b rad false) ~paint:Solid ~c1:accent ~c2:accent
-        ~grad:(0., 0., 0., 0.) ~border:(0., 0., 0., 0.)
-        ~bcolor:(color 0 0 0 0) ~dashed:false ~alpha
+        ~grad:(0., 0., 0., 0.)
+        ~border:(checked_width, checked_width, checked_width, checked_width)
+        ~bcolor:(Option.value checked_edge ~default:(color 0 0 0 0)) ~dashed:false ~alpha
       :: scale_ops alpha
-           (ctx.hooks.text_ops id b (col_accent_text ctx) "\xe2\x9c\x93")
+           (ctx.hooks.text_ops id b (col_primary_fg ctx) "\xe2\x9c\x93")
     else
-      [ let edge = if st.hovered then accent else col_control_border ctx in
-        fill ~continuous:true b (corners b rad false) ~paint:Solid
-          ~c1:(col_background ctx) ~c2:(col_background ctx)
+      [ fill ~continuous:true b (corners b rad false) ~paint:Solid
+          ~c1:(color 0 0 0 0) ~c2:(color 0 0 0 0)
           ~grad:(0., 0., 0., 0.)
           ~border:(1. *. s, 1. *. s, 1. *. s, 1. *. s) ~bcolor:edge
           ~dashed:false ~alpha ]
@@ -1494,7 +1657,7 @@ let checkbox_ops ctx store id st rs r alpha =
    (accent edge on hover), accent ring + small on-accent dot checked. *)
 let radio_ops ctx store id st rs r alpha =
   let s = ctx.scale in
-  let b = leading_box ctx r 16. in
+  let b = leading_box ctx store id r 16. in
   let half = b.w /. 2. in
   let checked = pbool store id "checked" in
   let accent =
@@ -1527,26 +1690,38 @@ let radio_ops ctx store id st rs r alpha =
   in
   box_ops ctx store id rs r alpha @ chrome @ label_after ctx store id r b 8. alpha
 
-(* switch: trailing pill track with a white knob on the checked side;
-   the knob carries a small contact shadow so it reads as raised. *)
+(* The trailing switch track and thumb use typed colors and insets;
+   an unstyled control keeps the platform's default dimensions. *)
 let switch_ops ctx store id rs r alpha =
   let s = ctx.scale in
-  let tw = Float.min (36. *. s) r.w and th = Float.min (20. *. s) r.h in
+  let tw = Float.min (Option.value ~default:36. (pnum store id "width") *. s) r.w
+  and th = Float.min (Option.value ~default:20. (pnum store id "height") *. s) r.h in
   let tr = rect (r.x +. r.w -. tw) (r.y +. ((r.h -. th) /. 2.)) tw th in
   let checked = pbool store id "checked" in
   let track_c =
-    if checked then col_accent ctx
-    else
+    match pcolor ctx.hooks store id "background" with
+    | Some c -> c
+    | None -> if checked then col_accent ctx else
       match pcolor ctx.hooks store id "border-color" with
       | Some c -> c
       | None -> col_switch_track ctx
   in
-  let d = Float.max 0. (th -. (4. *. s)) in
+  let border = pnum store id "border-width" in
+  let inset side axis =
+    let padding = List.find_map (pnum store id) [side;axis;"padding"] in
+    (Option.value ~default:0. border +.
+     Option.value ~default:(if border = None then 2. else 0.) padding) *. s in
+  let left = inset "padding-left" "padding-horizontal"
+  and right = inset "padding-right" "padding-horizontal"
+  and top = inset "padding-top" "padding-vertical"
+  and bottom = inset "padding-bottom" "padding-vertical" in
+  let d = Float.max 0. (Float.min (th -. top -. bottom) (tw -. left -. right)) in
   let tx =
-    if checked then tr.x +. tr.w -. (2. *. s) -. d else tr.x +. (2. *. s)
+    if checked then tr.x +. tr.w -. right -. d else tr.x +. left
   in
-  let thumb_r = rect tx (tr.y +. ((tr.h -. d) /. 2.)) d d in
-  let thumb_c = color 255 255 255 255 in
+  let thumb_r = rect tx (tr.y +. top +. ((tr.h -. top -. bottom -. d) /. 2.)) d d in
+  let thumb_c = Option.value ~default:(color 255 255 255 255)
+      (pcolor ctx.hooks store id "foreground") in
   let thumb_radii = (d /. 2., d /. 2., d /. 2., d /. 2.) in
   box_ops ctx store id rs r alpha
   @ [ fill ~continuous:true tr (corners tr (th /. 2., th /. 2., th /. 2., th /. 2.) false)
@@ -1665,6 +1840,14 @@ let image_ops ctx store id r alpha radii =
         rect sx sy sw' sh'
       | _ -> rect 0. 0. sw sh
     in
+    let isrc =
+      if pstr store id "image-fit" = Some "fill" && r.w > 0. && r.h > 0. then
+        let scale = Float.max (r.w /. isrc.w) (r.h /. isrc.h) in
+        let width = r.w /. scale and height = r.h /. scale in
+        rect (isrc.x +. (isrc.w -. width) /. 2.)
+          (isrc.y +. (isrc.h -. height) /. 2.) width height
+      else isrc
+    in
     let dst =
       match pstr store id "image-fit" with
       | Some "fit" ->
@@ -1692,18 +1875,20 @@ let control_icon_ops ctx store id r alpha =
   | None -> []
   | Some img -> (
     match Lui_store.child_ids store id with
-    | _ :: _ -> []
-    | [] ->
+    | _ :: _ when Lui_store.kind store id <> "menu-item" -> []
+    | _ ->
       let s = ctx.scale in
-      let size = Float.min (18. *. s) (Float.min r.w r.h) in
+      let icon_size = if Lui_store.kind store id = "menu-item" then 16. else 18. in
+      let size = Float.min (icon_size *. s) (Float.min r.w r.h) in
       if size <= 0. then []
       else
         let dst =
           match Lui_store.kind store id with
           | "menu-item" ->
-            (* leading icon slot: 8px in, vertically centered —
-               .lui-menu-item's icon span *)
-            rect (r.x +. (8. *. s))
+            (* The icon follows the optional leading check and outer padding. *)
+            let tp = text_placement_of store id in
+            let gap = Option.value ~default:8. (pnum store id "gap") in
+            rect (r.x +. ((tp.tp_pad_left -. 16. -. gap) *. s))
               (r.y +. ((r.h -. size) /. 2.)) size size
           | _ ->
             rect (r.x +. ((r.w -. size) /. 2.))
@@ -1715,6 +1900,84 @@ let control_icon_ops ctx store id r alpha =
               isrc =
                 { x = 0.; y = 0.; w = float img.iw; h = float img.ih };
               igrayscale = false; iopacity = alpha } ]))
+
+(* A single immutable bitmap is reused across rows and frames. The bounded
+   cache also allows theme or display-scale changes without retaining old sizes. *)
+let menu_check_cache = ref None
+
+let menu_check_image size c =
+  match !menu_check_cache with
+  | Some (cached_size, cached_color, image)
+    when cached_size = size && cached_color = c ->
+      image
+  | _ ->
+      let distance x y ax ay bx by =
+        let dx = bx -. ax and dy = by -. ay in
+        let t =
+          Float.max 0.
+            (Float.min 1.
+               ((((x -. ax) *. dx) +. ((y -. ay) *. dy))
+               /. ((dx *. dx) +. (dy *. dy))))
+        in
+        Float.hypot (x -. ax -. (t *. dx)) (y -. ay -. (t *. dy))
+      in
+      let pixels = Bytes.make (size * size * 4) '\000' in
+      let step = 24. /. float size in
+      for y = 0 to size - 1 do
+        for x = 0 to size - 1 do
+          let coverage = ref 0 in
+          for sy = 0 to 3 do
+            for sx = 0 to 3 do
+              let px = (float x +. ((float sx +. 0.5) /. 4.)) *. step in
+              let py = (float y +. ((float sy +. 0.5) /. 4.)) *. step in
+              if
+                Float.min
+                  (distance px py 5. 12. 10. 17.)
+                  (distance px py 10. 17. 20. 7.)
+                <= 1.
+              then incr coverage
+            done
+          done;
+          let alpha = ((c.a * !coverage) + 8) / 16 in
+          let offset = ((y * size) + x) * 4 in
+          Bytes.set pixels offset (Char.chr (((c.r * alpha) + 127) / 255));
+          Bytes.set pixels (offset + 1) (Char.chr (((c.g * alpha) + 127) / 255));
+          Bytes.set pixels (offset + 2) (Char.chr (((c.b * alpha) + 127) / 255));
+          Bytes.set pixels (offset + 3) (Char.chr alpha)
+        done
+      done;
+      let image = new_image ~w:size ~h:size pixels in
+      menu_check_cache := Some (size, c, image);
+      image
+
+let menu_selection_ops ctx store id r alpha fg =
+  if not (pbool store id "selected") then []
+  else
+    let s = ctx.scale in
+    let size = 16. *. s in
+    let tp = text_placement_of store id in
+    let gap = Option.value ~default:8. (pnum store id "gap") in
+    let x =
+      if pstr store id "selection-placement" = Some "leading" then
+        let icon_zone =
+          if pstr store id "icon" = None then 0. else 16. +. gap
+        in
+        r.x +. ((tp.tp_pad_left -. 16. -. gap -. icon_zone) *. s)
+      else r.x +. r.w -. ((tp.tp_pad_right -. gap) *. s)
+    in
+    let image = menu_check_image (max 1 (int_of_float (Float.ceil size))) fg in
+    [
+      Image
+        {
+          irect2 = rect x (r.y +. ((r.h -. size) /. 2.)) size size;
+          iradii = (0., 0., 0., 0.);
+          icontinuous = false;
+          iimage = image;
+          isrc = rect 0. 0. (float image.iw) (float image.ih);
+          igrayscale = false;
+          iopacity = alpha;
+        };
+    ]
 
 (* Labeled chrome carrying an [icon] prop and no children paints the
    glyph in a side slot — on the web the icon is a flex child sitting
@@ -1755,9 +2018,9 @@ let labeled_content_ops ctx store id r alpha ~fg ~placeholder_ok =
       if size <= 0. then []
       else
         let tp = text_placement_of store id in
-        let pad = tp.tp_pad_x *. s in
-        let gap = 6. *. s in
         let trailing = pstr store id "icon-placement" = Some "trailing" in
+        let pad = (if trailing then tp.tp_pad_right else tp.tp_pad_left) *. s in
+        let gap = Option.value ~default:6. (pnum store id "gap") *. s in
         let ix =
           if trailing then r.x +. r.w -. pad -. size else r.x +. pad
         in
@@ -1814,24 +2077,27 @@ let scrollbar_ops ctx store id r alpha =
    defaults below only fill gaps explicit styling left. *)
 let prop_set store id name = Lui_store.prop store id name <> None
 
-(* The default focus ring: a 2px border drawn 1px outside the box,
-   corners grown to match. Emitted over the control when focused and
-   the view didn't supply its own focus-shadow. *)
-let focus_ring_op ctx r radii alpha =
-  let w = 2. *. ctx.scale and o = 1. *. ctx.scale in
-  let rr =
-    rect (r.x -. w -. o) (r.y -. w -. o)
-      (r.w +. (2. *. (w +. o))) (r.h +. (2. *. (w +. o)))
+(* Match the Web ring-2/ring-offset-2 contract. The offset paints the
+   background token; the outer ring keeps its independent theme token. *)
+let focus_ring_ops ctx r radii alpha =
+  let width = 2. *. ctx.scale and offset = 2. *. ctx.scale in
+  let outline grow ink =
+    let region =
+      rect (r.x -. grow) (r.y -. grow)
+        (r.w +. (2. *. grow)) (r.h +. (2. *. grow))
+    in
+    fill ~continuous:true region
+      (corners region (grow_radii radii grow) false)
+      ~paint:Solid ~c1:(color 0 0 0 0) ~c2:(color 0 0 0 0)
+      ~grad:(0., 0., 0., 0.) ~border:(width, width, width, width)
+      ~bcolor:ink ~dashed:false ~alpha
   in
-  fill ~continuous:true rr
-    (corners rr (grow_radii radii (w +. o)) false)
-    ~paint:Solid ~c1:(color 0 0 0 0) ~c2:(color 0 0 0 0)
-    ~grad:(0., 0., 0., 0.) ~border:(w, w, w, w)
-    ~bcolor:(col_focus ctx) ~dashed:false ~alpha
+  [ outline offset (col_background ctx)
+  ; outline (width +. offset) (theme ctx "ring") ]
 
 (* Kinds that show the default focus ring when focused. *)
 let focusable = function
-  | "button" | "toggle-button" | "toggle" | "menu-trigger" | "menu-item"
+  | "button" | "toggle-button" | "toggle"
   | "bottom-tab" | "tab" | "list-item" | "link" | "select" | "combobox"
   | "text-field" | "secure-field" | "input" | "search-field" | "textarea"
   | "checkbox" | "radio" | "switch" | "slider" | "number-stepper" -> true
@@ -1954,12 +2220,15 @@ let default_chrome ctx store id st kind r rs alpha =
     @ [ hairline r.x r.y r.w ]
   | "toolbar" ->
     (if bg_styled then [] else [ face (col_surface ctx) (rad 0.) zb zc ~dashed:false ])
-    @ [ hairline r.x (r.y +. r.h -. Float.max 1. (1. *. s)) r.w ]
+    @ (if border_styled then []
+       else [ hairline r.x (r.y +. r.h -. Float.max 1. (1. *. s)) r.w ])
   | "table-row" ->
     (if bg_styled then []
      else if st.selected then
        [ face (col_accent ctx) (rad 0.) zb zc ~dashed:false ]
-     else if st.hovered then
+     else if st.hovered && List.exists
+       (fun cell -> Lui_store.bool_prop store cell "press-enabled")
+       (Lui_store.child_ids store id) then
        [ face (col_surface_hover ctx) (rad 0.) zb zc ~dashed:false ]
      else [])
     (* The final row has no divider. *)
@@ -2023,18 +2292,16 @@ let default_chrome ctx store id st kind r rs alpha =
           || List.mem variant [ "primary"; "destructive"; "secondary" ]
        then []
        else [ face zc rad bw1 (col_control_border ctx) ~dashed:false ])
-    @ control_icon_ops ctx store id r alpha
+    (* Button-like kinds paint content through labeled_content_ops. *)
+    @ (if kind = "number-stepper" then control_icon_ops ctx store id r alpha
+       else [])
   | "text-field" | "secure-field" | "input" | "search-field" | "textarea"
   | "select" | "combobox" ->
     let rad = rad (6. *. s) in
-    (if bg_styled then []
-     else [ face (col_surface ctx) rad zb zc ~dashed:false ])
+    (if bg_styled || (kind <> "select" && kind <> "combobox") then []
+     else [ face (col_background ctx) rad zb zc ~dashed:false ])
     @ (if border_styled || bg_styled then []
-       else
-         [ let bc =
-             if st.focused then col_accent ctx else col_control_border ctx
-           in
-           face zc rad bw1 bc ~dashed:false ])
+       else [ face zc rad bw1 (theme ctx "input") ~dashed:false ])
   | "menu-item" ->
     (if bg_styled || (not st.hovered && not st.focused) then []
      else [ face (col_accent ctx) (rad (6. *. s)) zb zc ~dashed:false ])
@@ -2164,11 +2431,11 @@ let default_chrome ctx store id st kind r rs alpha =
    keeps the view's ink. *)
 let default_text_fg ctx store id kind st rs =
   let bg_styled = rs.rs_background <> None in
-  match pcolor ctx.hooks store id "foreground" with
+  match node_foreground ctx.hooks store id st with
   | Some c -> c
   | None -> (
     match kind with
-    | "link" -> col_accent ctx
+    | "link" -> col_primary ctx
     | "kbd" -> col_muted_fg ctx
     | "menu-item" when st.hovered || st.focused ->
       if bg_styled then text_fg ctx store id else col_accent_text ctx
@@ -2227,12 +2494,18 @@ let disabled_alpha store id st =
 
 (* ---------- node paint ---------- *)
 
+let menu_kind store id = function
+  | "dropdown-menu" | "context-menu" -> true
+  | "popover" -> pstr store id "role" = Some "menu"
+  | _ -> false
+
 let scroll_kind = function
   | "scroll" | "list" | "virtual-list" -> true
   | _ -> false
 
 let scrollable kind store id =
   scroll_kind kind
+  || menu_kind store id kind
   || match pstr store id "overflow" with
      | Some ("auto" | "scroll") -> true
      | _ -> false
@@ -2599,8 +2872,11 @@ let emit1 scene op = scene.ops <- op :: scene.ops
 (* Ops for a single node's own chrome. *)
 let paint_own ctx store id st kind r rs alpha =
   let fg = default_text_fg ctx store id kind st rs in
+  let flow = ctx.hooks.text_flow_ops ctx id r fg in
   let own =
-    match kind with
+    match flow with
+    | Some ops -> box_ops ctx store id rs r alpha @ scale_ops alpha ops
+    | None -> (match kind with
     | "spacer" -> []
     | "divider" -> divider_ops ctx store id rs r alpha
     | "progress" -> progress_ops ctx store id rs r alpha
@@ -2633,11 +2909,15 @@ let paint_own ctx store id st kind r rs alpha =
     | "text" | "label" | "heading" | "paragraph" | "br" | "link" | "kbd" ->
       box_ops ctx store id rs r alpha
       @ labeled_content_ops ctx store id r alpha ~fg ~placeholder_ok:false
-    | "text-field" | "secure-field" | "input" | "search-field" | "textarea"
-    | "select" | "combobox" ->
+    | "select" | "combobox" -> select_ops ctx store id rs r alpha fg
+    | "text-field" | "secure-field" | "input" | "search-field" | "textarea" ->
       box_ops ctx store id rs r alpha
       @ text_ops ~fg ctx store id r alpha ~placeholder_ok:true
-    | "button" | "toggle-button" | "toggle" | "menu-item" | "menu-trigger"
+    | "menu-item" ->
+      box_ops ctx store id rs r alpha
+      @ labeled_content_ops ctx store id r alpha ~fg ~placeholder_ok:false
+      @ menu_selection_ops ctx store id r alpha fg
+    | "button" | "toggle-button" | "toggle" | "menu-trigger"
     | "bottom-tab" | "list-item" | "swipe-action" | "file-picker" | "step"
     | "list-section-header" | "list-section-footer" | "tab" | "table-cell" ->
       (* labeled chrome: box decoration plus the label through the text
@@ -2654,19 +2934,27 @@ let paint_own ctx store id st kind r rs alpha =
           | Some node -> scale_ops alpha (renderer.paint ctx store node r)
           | None -> box_ops ctx store id rs r alpha)
         | None -> box_ops ctx store id rs r alpha)
-      | _ -> box_ops ctx store id rs r alpha)
+      | _ -> box_ops ctx store id rs r alpha))
   in
   (* token chrome first (shadow + face + border underneath), then the
      node's own ops — prop fills sit on top of the defaults and the
      label is never covered by a chrome face. *)
-  default_chrome ctx store id st kind r rs alpha
+  let ops = default_chrome ctx store id st kind r rs alpha
   @ own
   @
   if
-    st.focused && focusable kind
+    st.focused && st.focus_visible && focusable kind
     && not (prop_set store id "focus-shadow")
-  then [ focus_ring_op ctx r (radii_of ctx store id) alpha ]
-  else []
+  then
+    let region, radii = match kind with
+      | "checkbox" -> leading_box ctx store id r 16., chrome_radii ctx store id (4. *. ctx.scale)
+      | "radio" -> leading_box ctx store id r 16., chrome_radii ctx store id (8. *. ctx.scale)
+      | "text-field" | "secure-field" | "input" | "search-field" | "textarea"
+      | "select" | "combobox" -> r, chrome_radii ctx store id (6. *. ctx.scale)
+      | _ -> r, radii_of ctx store id in
+    focus_ring_ops ctx region radii alpha
+  else [] in
+  ops, Option.is_none flow
 
 (* Inside a dead clip only the context still matters: a promoted
    popup inherits its clipped-away ancestors' opacity, so the ghost
@@ -2710,18 +2998,28 @@ let paint_enter ctx store scene alpha f =
     let node_drawn =
       (not contents)
       && (rect_empty f.f_rect
-          || not (rect_empty (rect_intersect f.f_clipped ctx.viewport)))
+         || not (rect_empty (rect_intersect f.f_clipped ctx.viewport)))
     in
     if node_drawn then begin
-      if f.f_clips then
+      let own, down = paint_own ctx store id st kind f.f_rect rs alpha in
+      if f.f_clips then begin
+        (* Outer shadows escape the node's overflow clip, while ancestor
+           clips still constrain them. Inset shadows and content stay inside. *)
+        let outer, inside =
+          List.partition (function Shadow s -> not s.sinset | _ -> false) own
+        in
+        emit scene outer;
         emit1 scene
           (Push_clip
-             { crect = f.f_rect;
+             {
+               crect = f.f_rect;
                cradii = corners f.f_rect (radii_of ctx store id) false;
-               ccontinuous = false });
-      if not contents then
-        emit scene (paint_own ctx store id st kind f.f_rect rs alpha);
-      { b_emit = true; b_down = true; b_ctx = alpha }
+               ccontinuous = false;
+             });
+        emit scene inside
+      end
+      else emit scene own;
+      { b_emit = true; b_down = down; b_ctx = alpha }
     end
     else { b_emit = false; b_down = true; b_ctx = alpha }
   end
