@@ -102,6 +102,9 @@ runs:
           _opam
           C:/.opam
         key: ${{ steps.environment.outputs.cache-primary-key }}
+    - name: Export active switch for subprocesses outside the workspace
+      shell: bash
+      run: echo "OPAMSWITCH=$(opam switch show)" >> "$GITHUB_ENV"
     - name: Check active compiler
       shell: bash
       run: opam exec -- ocamlc -version
