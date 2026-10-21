@@ -233,3 +233,25 @@ test('overlay split handles keep zero layout gap, authored hit geometry and poin
     }
   }
 })
+
+
+test('split updates preserve explicit pane overflow and restore clipping after removal', () => {
+  const store = Store.create_store(), renderer = {web_store: store}
+  const first = element([]), second = element([]), panes = element([first, second]), divider = element([])
+  const root = element([panes, divider]); root.clientWidth = 1000
+  let generation = 0
+  const apply = ops => Store.apply_batch(store, () => root, {generation: ++generation, ops: list(ops)})
+  const overflow = value => Protocol.set_prop_op(2, property('overflow'), {TAG: 0, _0: value})
+  apply([Protocol.create_node_op(1, kind('split')), Protocol.create_node_op(2, kind('box')),
+    Protocol.create_node_op(3, kind('box')), Protocol.insert_child_op(1, 2, 0), Protocol.insert_child_op(1, 3, 1),
+    overflow('visible')])
+  for (const value of [0.5, 0, 1, 0.7]) {
+    Split.render_split(renderer, 1, root, value, true)
+    assert.equal(first.style.values.get('overflow'), 'visible', 'A viewport drawer may extend beyond its pane')
+    assert.equal(second.style.values.get('overflow'), 'hidden', 'Unauthored panes retain default clipping')
+  }
+  apply([overflow('auto')]); Split.render_split(renderer, 1, root, 0.7, false)
+  assert.equal(first.style.values.get('overflow'), 'auto')
+  apply([Protocol.remove_prop_op(2, property('overflow'))]); Split.render_split(renderer, 1, root, 0.7, false)
+  assert.equal(first.style.values.get('overflow'), 'hidden')
+})

@@ -138,8 +138,8 @@ type property =
   | BorderColorValue
   | BorderWidth
   | CornerRadius
-  | WidthValue
-  | HeightValue
+  | WidthValue (* Nonnegative logical pixels or StringValue "auto". *)
+  | HeightValue (* Nonnegative logical pixels or StringValue "auto". *)
   | MinWidth
   | MaxWidth
   | MinHeight

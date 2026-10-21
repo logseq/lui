@@ -2462,6 +2462,28 @@ let test_choice_intrinsic_size () =
         [ 1.; 2. ])
     [ Checkbox; Radio ]
 
+let test_auto_container_width () =
+  List.iter (fun scale -> List.iter (fun kind ->
+    let store=Lui_store.create () and layout=Lui_layout.create () in
+    apply store [CreateNode (1,Root);CreateNode (2,Column);InsertChild (1,2,0);
+      SetProp (2,CrossAlignment,StringValue "start");
+      CreateNode (3,kind);InsertChild (2,3,0);SetProp (3,WidthValue,IntValue 120);
+      CreateNode (4,Box);InsertChild (3,4,0);SetProp (4,WidthValue,IntValue 73);
+      SetProp (4,HeightValue,IntValue 18)];
+    let sync ()=Lui_layout.sync ~scale ~width:(200.*.scale) ~height:(300.*.scale) layout store in
+    let width ()=(Option.get (Lui_layout.rect layout 3)).w in
+    sync ();check (float eps) "explicit width" (120.*.scale) (width ());
+    apply store [SetProp (3,WidthValue,StringValue "auto")];sync ();
+    check (float eps) "auto follows its content" (73.*.scale) (width ());
+    apply store [SetProp (3,MinWidth,IntValue 90);SetProp (3,MaxWidth,IntValue 100)];sync ();
+    check (float eps) "auto honors minimum" (90.*.scale) (width ());
+    apply store [RemoveProp (3,MinWidth);SetProp (3,MaxWidth,IntValue 60)];sync ();
+    check (float eps) "auto honors maximum" (60.*.scale) (width ());
+    apply store [RemoveProp (3,MaxWidth);SetProp (3,WidthValue,IntValue 0)];sync ();
+    check (float eps) "zero remains explicit" 0. (width ());
+    apply store [SetProp (3,WidthValue,StringValue "auto")];sync ();
+    check (float eps) "auto restored without remount" (73.*.scale) (width ())) [Row;Column]) [1.;2.]
+
 let test_auto_field_height () =
   List.iter (fun scale ->
     List.iter (fun kind ->
@@ -2497,6 +2519,7 @@ let () =
          test_case "nested table and empty cells" `Quick test_table_nested_and_empty_cells;
          test_case "table cell content alignment" `Quick test_table_cell_content_alignment;
          test_case "dialog viewport width" `Quick test_dialog_viewport_width;
+         test_case "auto container width" `Quick test_auto_container_width;
          test_case "auto field height" `Quick test_auto_field_height;
          test_case "choice intrinsic size" `Quick test_choice_intrinsic_size;
          test_case "column padding/gap" `Quick test_column_padding_gap;

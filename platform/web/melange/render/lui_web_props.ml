@@ -779,6 +779,10 @@ let rec apply_property renderer queue_split node kind dom_node property
       set_style dom_node "border-width" (string_of_int width ^ "px")
   | CornerRadius, IntValue radius ->
       set_style dom_node "border-radius" (string_of_int radius ^ "px")
+  | WidthValue, StringValue "auto" ->
+      set_dimension kind dom_node "width" "auto";
+      if kind = Image then Widgets.update_image renderer node dom_node;
+      if kind = Bubble then W.Element.removeAttribute "data-width" dom_node
   | WidthValue, IntValue width ->
       set_dimension kind dom_node "width" (string_of_int width ^ "px");
       if kind = Image then Widgets.update_image renderer node dom_node;

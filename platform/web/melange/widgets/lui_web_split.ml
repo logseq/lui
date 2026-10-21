@@ -27,16 +27,17 @@ let split_int_property renderer node property fallback =
   | Some (IntValue value) -> value
   | _ -> fallback
 
-let split_child_width renderer node index property =
+let split_child_property renderer node index property =
   match Store.node renderer.web_store node with
-  | Some current ->
-      if index < Lui_sequence.length current.retained_children then
-        match Store.property renderer.web_store
-          (Lui_sequence.get current.retained_children index) property with
-        | Some (IntValue value) -> Some (float_of_int value)
-        | _ -> None
-      else None
-  | None -> None
+  | Some current when index < Lui_sequence.length current.retained_children ->
+      Store.property renderer.web_store
+        (Lui_sequence.get current.retained_children index) property
+  | _ -> None
+
+let split_child_width renderer node index property =
+  match split_child_property renderer node index property with
+  | Some (IntValue value) -> Some (float_of_int value)
+  | _ -> None
 
 (* Gap, minima, and the layout read are captured once per update — the old
    code rebuilt the children list and re-queried the gap three times per
@@ -116,7 +117,10 @@ let render_split renderer node root value animated =
       set_style pane "grid-column" (string_of_int (index + 1));
       set_style pane "grid-row" "1";
       set_style pane "min-width" "0px";
-      set_style pane "overflow" "hidden")
+      set_style pane "overflow"
+        (match split_child_property renderer node index Overflow with
+         | Some (StringValue value) -> value
+         | _ -> "hidden"))
       (W.HtmlCollection.item index (W.Element.children panes))
   done;
   let first_track, columns =

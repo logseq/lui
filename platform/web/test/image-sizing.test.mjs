@@ -143,3 +143,16 @@ for(const registered of [false,true]) {
     assert.equal(pixels.styles.get('object-fit'),'fill','Removal restores the existing stretch default')
   })
 }
+
+test('authored auto image width restores intrinsic pixels after an explicit frame',()=>{
+  const f=fixture(),pixels=f.pixels
+  f.set([['width',70],['height',35]])
+  f.set([['width','auto']])
+  assert.equal(pixels.styles.get('width'),'auto')
+  assert.equal(pixels.styles.get('height'),'100%')
+  f.set([['height','auto']])
+  assert.equal(pixels.styles.get('position'),'relative')
+  assert.equal(pixels.styles.get('width'),'auto')
+  assert.equal(pixels.styles.get('height'),'auto')
+  assert.equal(f.pixels,pixels)
+})
