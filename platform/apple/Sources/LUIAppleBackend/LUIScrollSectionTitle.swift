@@ -62,7 +62,7 @@ final class LUIScrollSectionTitleTracker {
     private func deriveTitle() {
         let candidate = visibleSections.min(by: { $0.key < $1.key })?.value
         let next = candidate.flatMap { candidate in
-            let past = headingStates[candidate.title] ?? !candidate.startsSection
+            let past = !candidate.startsSection || headingStates[candidate.title] == true
             return past ? candidate.title : nil
         }
         if title != next { title = next }

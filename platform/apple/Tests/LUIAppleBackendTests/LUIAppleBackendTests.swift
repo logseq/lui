@@ -43,16 +43,31 @@ struct LUISwiftUIBackendTests {
         tracker.update(index: 0, title: nil)
         tracker.update(index: 1, title: "Today")
         #expect(tracker.title == "Today")
+        tracker.update(index: 0, title: "Today", startsSection: true)
         tracker.updateHeading(title: "Today", isPastTop: false)
         #expect(tracker.title == nil)
         tracker.updateHeading(title: "Today", isPastTop: true)
-        tracker.update(index: 2, title: "Yesterday")
+        tracker.update(index: 0, title: nil)
+        tracker.update(index: 2, title: "Yesterday", startsSection: true)
         tracker.updateHeading(title: "Yesterday", isPastTop: false)
         #expect(tracker.title == "Today")
         tracker.update(index: 1, title: nil)
         #expect(tracker.title == nil)
         tracker.updateHeading(title: "Yesterday", isPastTop: true)
         #expect(tracker.title == "Yesterday")
+    }
+
+    @Test("evicting a standalone heading exposes the visible section body")
+    func evictedStandaloneHeading() {
+        let tracker = LUIScrollSectionTitleTracker()
+        tracker.update(index: 0, title: "Project", startsSection: true)
+        tracker.updateHeading(title: "Project", isPastTop: false)
+        tracker.update(index: 1, title: "Project")
+        #expect(tracker.title == nil)
+        tracker.update(index: 0, title: nil)
+        #expect(tracker.title == "Project")
+        tracker.update(index: 0, title: "Project", startsSection: true)
+        #expect(tracker.title == nil)
     }
 
     @Test("virtual window replacement bypasses the collection burst delay")
