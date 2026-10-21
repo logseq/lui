@@ -77,8 +77,9 @@ class LuiBackend(
     /** Resolver hook for `file-image` paths (e.g. remap asset paths). */
     var filePathResolver: ((String) -> String)? = null
 
-    internal var lastError: String? = null
+    var lastError: String? = null
         private set
+    internal val scrollPositions = mutableMapOf<String, LuiScrollPosition>()
 
     private fun observed(id: Long): NodeObservation = observedNodes.getOrPut(id) {
         NodeObservation().also { refresh(it, id) }

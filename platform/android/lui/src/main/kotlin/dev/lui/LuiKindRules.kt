@@ -448,6 +448,7 @@ internal object LuiKindRules {
                         kind == LuiNodeKind.menuItem ||
                         kind == LuiNodeKind.listItem ||
                         kind == LuiNodeKind.tableRow ||
+                        kind == LuiNodeKind.virtualList ||
                         kind == LuiNodeKind.drawer ||
                         isTreeRowKind(kind))
             "long-press-enabled" ->

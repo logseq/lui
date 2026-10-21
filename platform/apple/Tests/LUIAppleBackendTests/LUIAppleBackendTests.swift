@@ -31,6 +31,54 @@ private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
 @MainActor
 @Suite("LUI SwiftUI backend", .serialized)
 struct LUISwiftUIBackendTests {
+    @Test("scroll titles wait for the heading to pass the viewport top")
+    func scrollTitleWaitsForHeading() {
+        let tracker = LUIScrollSectionTitleTracker()
+        tracker.update(index: 0, title: "Today", startsSection: true)
+        #expect(tracker.title == nil)
+        tracker.updateHeading(title: "Today", isPastTop: false)
+        #expect(tracker.title == nil)
+        tracker.updateHeading(title: "Today", isPastTop: true)
+        #expect(tracker.title == "Today")
+        tracker.update(index: 0, title: nil)
+        tracker.update(index: 1, title: "Today")
+        #expect(tracker.title == "Today")
+        tracker.update(index: 0, title: "Today", startsSection: true)
+        tracker.updateHeading(title: "Today", isPastTop: false)
+        #expect(tracker.title == nil)
+        tracker.updateHeading(title: "Today", isPastTop: true)
+        tracker.update(index: 0, title: nil)
+        tracker.update(index: 2, title: "Yesterday", startsSection: true)
+        tracker.updateHeading(title: "Yesterday", isPastTop: false)
+        #expect(tracker.title == "Today")
+        tracker.update(index: 1, title: nil)
+        #expect(tracker.title == nil)
+        tracker.updateHeading(title: "Yesterday", isPastTop: true)
+        #expect(tracker.title == "Yesterday")
+    }
+
+    @Test("evicting a standalone heading exposes the visible section body")
+    func evictedStandaloneHeading() {
+        let tracker = LUIScrollSectionTitleTracker()
+        tracker.update(index: 0, title: "Project", startsSection: true)
+        tracker.updateHeading(title: "Project", isPastTop: false)
+        tracker.update(index: 1, title: "Project")
+        #expect(tracker.title == nil)
+        tracker.update(index: 0, title: nil)
+        #expect(tracker.title == "Project")
+        tracker.update(index: 0, title: "Project", startsSection: true)
+        #expect(tracker.title == nil)
+    }
+
+    @Test("virtual window replacement bypasses the collection burst delay")
+    func virtualWindowReplacementCommitsImmediately() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: #"{"generation":1,"ops":[{"op":"create-node","id":1,"kind":"list"},{"op":"set-prop","id":1,"property":"data-attrs","value":"data-virtual-count\u001f10000\u001edata-virtual-start\u001f0"}]}"#)
+        backend.coalescesCommits = true
+        try backend.apply(json: #"{"generation":2,"ops":[{"op":"set-prop","id":1,"property":"data-attrs","value":"data-virtual-count\u001f10000\u001edata-virtual-start\u001f9000"}]}"#)
+        #expect(backend.model(id: 1)?.property(.dataAttrs)?.stringValue?.contains("9000") == true)
+    }
+
     @Test("wrapping code text retains its whitespace mode")
     func wrappingCodeWhitespace() {
         #expect(LUIWireValue.string("pre-wrap").matches(.whiteSpace, on: .text))
@@ -1936,8 +1984,8 @@ struct LUISwiftUIBackendTests {
         #expect(LUIDrawerInteractionPolicy.sidebarOpacity(progress: 0.5) == 0.675)
         #expect(LUIDrawerInteractionPolicy.sidebarOpacity(progress: 1) == 1)
         #expect(LUIDrawerInteractionPolicy.mainCornerRadius(progress: 0) == 0)
-        #expect(LUIDrawerInteractionPolicy.mainCornerRadius(progress: 0.5) == 20)
-        #expect(LUIDrawerInteractionPolicy.mainCornerRadius(progress: 1) == 40)
+        #expect(LUIDrawerInteractionPolicy.mainCornerRadius(progress: 0.5) == 26)
+        #expect(LUIDrawerInteractionPolicy.mainCornerRadius(progress: 1) == 52)
         #expect(LUIDrawerInteractionPolicy.shadowOpacity == 0.18)
         #expect(LUIDrawerInteractionPolicy.panelIsAccessibilityHidden(
             isPresented: false,
@@ -3672,7 +3720,9 @@ struct LUISwiftUIBackendTests {
           {"op":"create-node","id":5,"kind":"menu-item"},
           {"op":"set-prop","id":1,"property":"text","value":"Document"},
           {"op":"set-prop","id":3,"property":"text","value":"Rename"},
+          {"op":"set-prop","id":3,"property":"selected","value":true},
           {"op":"set-prop","id":3,"property":"press-enabled","value":true},
+          {"op":"set-prop","id":3,"property":"pointer-enabled","value":true},
           {"op":"set-prop","id":3,"property":"icon","value":"trash"},
           {"op":"set-prop","id":3,"property":"foreground","value":"success-foreground"},
           {"op":"set-prop","id":3,"property":"accessibility-identifier","value":"menu.rename"},
@@ -3693,9 +3743,13 @@ struct LUISwiftUIBackendTests {
         #expect(menu.kind == .contextMenu)
         #expect(host.children == [2])
         #expect(menu.children == [3, 4, 5])
+        #expect(backend.model(id: 3)?.isSelected == true)
         _ = LUISwiftUIRoot(backend: backend, rootID: 1)
         try backend.performPress(node: 3)
-        #expect(events == [.press(node: 3)])
+        #expect(events == [
+            .press(node: 3),
+            .pressDetail(node: 3, x: 0, y: 0, modifiers: 0, button: 0, targetClass: ""),
+        ])
         #expect(throws: LUIBackendError.self) {
             try backend.performPress(node: 5)
         }
@@ -4143,6 +4197,19 @@ struct LUISwiftUIBackendTests {
             """)
         }
         #expect(backend.generation == 3)
+    }
+
+    @Test("ordinary row replacement does not invalidate presentation stores")
+    func rowReplacementPreservesPresentationObservation() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: #"{"generation":1,"ops":[{"op":"create-node","id":1,"kind":"column"}]}"#)
+        let preview = ObservationFlag()
+        let sheets = ObservationFlag()
+        withObservationTracking { _ = backend.filePreviewPresentation.item } onChange: { preview.value = true }
+        withObservationTracking { _ = backend.modalPresentation.nestedSheets } onChange: { sheets.value = true }
+        try backend.apply(json: #"{"generation":2,"ops":[{"op":"create-node","id":2,"kind":"text"},{"op":"insert-child","parent":1,"child":2,"index":0}]}"#)
+        #expect(!preview.value)
+        #expect(!sheets.value)
     }
 
     @Test("file-preview presents through the store and dismiss emits an event")

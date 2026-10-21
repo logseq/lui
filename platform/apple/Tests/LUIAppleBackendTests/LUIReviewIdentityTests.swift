@@ -67,5 +67,52 @@ struct LUIReviewIdentityTests {
         #expect(!lifetime.appearances.isEmpty)
         #expect(lifetime.appearances.allSatisfy { $0 == initial })
     }
+    @Test("Adding and removing overlays preserves base-local SwiftUI state")
+    func overlayUpdatesPreserveBaseState() async throws {
+        let lifetime = ReviewRowLifetime()
+        let registry = LUIAppleExtensionRegistry()
+        try registry.register(LUIAppleExtension(
+            identifier: "review-stateful-row", fingerprint: "review-v1"
+        ) { _ in AnyView(ReviewStatefulRow(lifetime: lifetime)) })
+        let backend = try LUIAppleBackend(extensionRegistry: registry)
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"overlay"},
+          {"op":"create-extension","id":2,"identifier":"review-stateful-row","fingerprint":"review-v1"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"create-node","id":3,"kind":"text"},
+          {"op":"set-prop","id":3,"property":"text","value":"Confirmation"},
+          {"op":"create-node","id":4,"kind":"text"},
+          {"op":"set-prop","id":4,"property":"text","value":"Another overlay"}
+        ]}
+        """)
+        _ = NSApplication.shared
+        let hosting = NSHostingView(rootView: LUISwiftUIRoot(backend: backend, rootID: 1))
+        let window = NSWindow(contentRect: NSRect(x: -10_000, y: 0, width: 400, height: 300),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = hosting
+        window.orderFrontRegardless()
+        defer { window.orderOut(nil); window.contentView = nil }
+        for _ in 0..<50 where lifetime.appearances.isEmpty {
+            hosting.layoutSubtreeIfNeeded()
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        _ = try #require(lifetime.appearances.first)
+        let updates = [
+            #"{"op":"insert-child","parent":1,"child":3,"index":1}"#,
+            #"{"op":"insert-child","parent":1,"child":4,"index":2}"#,
+            #"{"op":"remove-child","parent":1,"child":3}"#,
+            #"{"op":"remove-child","parent":1,"child":4}"#,
+        ]
+        for (index, update) in updates.enumerated() {
+            try backend.apply(json: "{\"generation\":\(index + 2),\"ops\":[\(update)]}")
+            for _ in 0..<20 {
+                hosting.layoutSubtreeIfNeeded()
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            #expect(lifetime.appearances.count == 1)
+        }
+    }
+
 }
 #endif

@@ -319,7 +319,7 @@ object LuiTypography {
             4 -> theme.titleMedium.copy(fontSize = 20.sp)
             5 -> theme.bodyLarge.copy(fontSize = 17.sp)
             else -> theme.titleSmall.copy(fontSize = 15.sp)
-        }.luiInherited()
+        }.copy(fontWeight = FontWeight.Bold).luiInherited()
     }
 
     @Composable

@@ -259,7 +259,7 @@ enum LUIWireValue: Decodable, Equatable {
             return value == "treeitem" || value == "navigation" ||
                 value == "navigation-heading" ||
                 (kind == .popover && ["menu", "dialog"].contains(value))
-        case .treeLevel, .gridColumnSpan:
+        case .treeLevel, .gridColumnSpan, .lineClamp:
             guard let value = intValue else { return false }
             return value > 0
         case .theme:
@@ -383,7 +383,7 @@ enum LUIWireValue: Decodable, Equatable {
         case .popupX, .popupY:
             guard let value = doubleValue else { return false }
             return value.isFinite
-        case .availableHeight:
+        case .availableHeight, .collisionPadding:
             guard let value = doubleValue else { return false }
             return value.isFinite && value >= 0
         }
@@ -1246,6 +1246,8 @@ struct LUIRetainedTree {
             kind == .dropdownMenu || kind == .tooltip || kind == .popover
         case .popupX, .popupY: kind == .popover || kind == .dropdownMenu
         case .availableHeight: kind == .popover
+        case .collisionPadding: kind == .popover || kind == .dropdownMenu || kind == .tooltip
+        case .lineClamp: kind == .text || kind == .heading || kind == .paragraph || kind == .label
         case .tooltipDelay: kind == .tooltip
         case .duration: false
         case .textAlignment:
@@ -1562,7 +1564,9 @@ struct LUIRetainedTree {
                         let allowed: Set<LUIProperty> = [
                             .text,
                             .enabled,
+                            .selected,
                             .pressEnabled,
+                            .pointerEnabled,
                             .icon,
                             .foreground,
                             .variant,

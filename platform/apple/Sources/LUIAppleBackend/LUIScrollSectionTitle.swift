@@ -8,7 +8,7 @@ public struct LUIScrollTitlePreferenceKey: PreferenceKey {
     }
 }
 
-struct LUIScrollTitleCoordinateSpace: Hashable {
+struct LUIScrollTitleCoordinateSpace: Hashable, Sendable {
     let nodeID: Int
 }
 
@@ -41,13 +41,31 @@ final class LUIScrollSectionTitleTracker {
     private(set) var title: String?
     // Row visibility must not invalidate LazyVStack while it is calculating layout.
     // Only the separate title emitter observes the derived title.
-    @ObservationIgnored private var visibleSections: [Int: String] = [:]
+    @ObservationIgnored private var visibleSections: [Int: (title: String, startsSection: Bool)] = [:]
+    @ObservationIgnored private var headingStates: [String: Bool] = [:]
 
-    func update(index: Int, title: String?) {
-        guard visibleSections[index] != title else { return }
-        visibleSections[index] = title
-        let next = visibleSections.min(by: { $0.key < $1.key })?.value
-        if self.title != next { self.title = next }
+    func updateHeading(title: String, isPastTop: Bool) {
+        guard headingStates[title] != isPastTop else { return }
+        headingStates[title] = isPastTop
+        deriveTitle()
+    }
+
+    func update(index: Int, title: String?, startsSection: Bool = false) {
+        if let title {
+            if let previous = visibleSections[index], previous.title == title,
+               previous.startsSection == startsSection { return }
+            visibleSections[index] = (title, startsSection)
+        } else if visibleSections.removeValue(forKey: index) == nil { return }
+        deriveTitle()
+    }
+
+    private func deriveTitle() {
+        let candidate = visibleSections.min(by: { $0.key < $1.key })?.value
+        let next = candidate.flatMap { candidate in
+            let past = !candidate.startsSection || headingStates[candidate.title] == true
+            return past ? candidate.title : nil
+        }
+        if title != next { title = next }
     }
 }
 
@@ -58,5 +76,37 @@ struct LUIScrollSectionTitleEmitter: View {
     var body: some View {
         Color.clear.preference(key: LUIScrollTitlePreferenceKey.self,
                                value: isActive ? tracker.title : nil)
+    }
+}
+
+struct LUIScrollHeadingContext: Sendable {
+    let coordinateSpace: LUIScrollTitleCoordinateSpace
+    let tracker: LUIScrollSectionTitleTracker
+}
+
+private struct LUIScrollHeadingContextKey: EnvironmentKey {
+    static let defaultValue: LUIScrollHeadingContext? = nil
+}
+
+extension EnvironmentValues {
+    var luiScrollHeadingContext: LUIScrollHeadingContext? {
+        get { self[LUIScrollHeadingContextKey.self] }
+        set { self[LUIScrollHeadingContextKey.self] = newValue }
+    }
+}
+
+struct LUIScrollHeadingModifier: ViewModifier {
+    let title: String
+    let enabled: Bool
+    @Environment(\.luiScrollHeadingContext) private var context
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if enabled, let context {
+            content.onGeometryChange(for: Bool.self) { geometry in
+                geometry.frame(in: .named(context.coordinateSpace)).maxY <= 0
+            } action: { past in
+                context.tracker.updateHeading(title: title, isPastTop: past)
+            }
+        } else { content }
     }
 }

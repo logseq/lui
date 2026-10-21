@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 enum LUIDrawerGeometry {
     static func gestureIsEligible(
@@ -105,7 +108,7 @@ enum LUIDrawerInteractionPolicy {
     }
 
     static func mainCornerRadius(progress: CGFloat) -> CGFloat {
-        40.0 * progress
+        52.0 * progress
     }
 }
 
@@ -117,7 +120,6 @@ struct LUIDrawerView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var presented: Bool
-    @State private var hasLoadedPanel: Bool
     @State private var dragOffset: CGFloat = 0
     @State private var isGestureActive = false
     @State private var rejectedGesture = false
@@ -131,7 +133,6 @@ struct LUIDrawerView: View {
         self.model = model
         self.backend = backend
         _presented = State(initialValue: model.isSelected)
-        _hasLoadedPanel = State(initialValue: model.isSelected)
     }
 
     /// On regular-width windows (iPad, the iPhone Duo inner display) the panel
@@ -156,7 +157,7 @@ struct LUIDrawerView: View {
         GeometryReader { geometry in
             let width = min(
                 CGFloat(model.property(.width)?.intValue ?? 360),
-                geometry.size.width * 0.84
+                geometry.size.width * 0.79
             )
             if pinsSidebar {
                 pinnedBody(width: width, geometry: geometry)
@@ -187,7 +188,7 @@ struct LUIDrawerView: View {
     @ViewBuilder
     private func pinnedBody(width: CGFloat, geometry: GeometryProxy) -> some View {
         NavigationSplitView(columnVisibility: splitColumnVisibility) {
-            if hasLoadedPanel, let panelID = model.children.dropFirst().first {
+            if let panelID = model.children.dropFirst().first {
                 LUIAnyNodeView(nodeID: panelID, backend: backend)
                     .frame(maxHeight: .infinity, alignment: .leading)
                     .navigationSplitViewColumnWidth(
@@ -229,11 +230,6 @@ struct LUIDrawerView: View {
             )
             let progress = width > 0.0 ? visibleWidth / width : 0.0
             let isDragging = abs(dragOffset) > 0.0
-            let interactionsLocked = LUIDrawerInteractionPolicy.disablesInteraction(
-                isDragging: isDragging,
-                isAnimating: isAnimating,
-                isGestureActive: isGestureActive
-            )
             let contentControlsEnabled =
                 LUIDrawerInteractionPolicy.contentControlsAreEnabled(
                     isDragging: isDragging,
@@ -241,9 +237,11 @@ struct LUIDrawerView: View {
                     isGestureActive: isGestureActive
                 )
 
+            // Native scroll locking preserves the descendant SwiftUI environment,
+            // so drawer transitions do not invalidate a long content tree.
             ZStack(alignment: .leading) {
                 // Retain the panel after its first reveal so closing preserves its state.
-                if hasLoadedPanel, let panelID = model.children.dropFirst().first {
+                if let panelID = model.children.dropFirst().first {
                     LUIAnyNodeView(nodeID: panelID, backend: backend)
                         .frame(width: width)
                         .frame(maxHeight: CGFloat.infinity, alignment: Alignment.leading)
@@ -251,7 +249,6 @@ struct LUIDrawerView: View {
                         .opacity(LUIDrawerInteractionPolicy.sidebarOpacity(progress: progress))
                         .scaleEffect(0.96 + (0.04 * Double(progress)))
                         .offset(x: -20.0 * (1.0 - progress))
-                        .scrollDisabled(interactionsLocked)
                         .allowsHitTesting(presented && contentControlsEnabled)
                         .accessibilityHidden(
                             LUIDrawerInteractionPolicy.panelIsAccessibilityHidden(
@@ -268,7 +265,13 @@ struct LUIDrawerView: View {
                             top: geometry.safeAreaInsets.top
                         ))
                         .modifier(LUIDrawerMainSurfaceModifier())
-                        .scrollDisabled(interactionsLocked)
+                        // Fade content toward the page background while preserving
+                        // the surface color and the retained content subtree.
+                        .overlay {
+                            (semanticColors["background"] ?? LUIThemeColorResolver.systemBackground)
+                                .opacity(0.5 * Double(progress))
+                                .allowsHitTesting(false)
+                        }
                         .allowsHitTesting(contentControlsEnabled)
                         .overlay {
                             if presented {
@@ -288,6 +291,9 @@ struct LUIDrawerView: View {
                                 progress: progress
                             )
                         ))
+                        // Shadow the combined panel once so the translucent fade
+                        // does not cast another shadow onto the content below it.
+                        .compositingGroup()
                         .shadow(
                             color: Color.black.opacity(
                                 LUIDrawerInteractionPolicy.shadowOpacity
@@ -310,63 +316,80 @@ struct LUIDrawerView: View {
                         .modifier(LUIDrawerInteractionShieldModifier())
                 }
             }
+            #if os(iOS)
+            .background(LUIDrawerNativeInteraction(
+                isEnabled: (presented || model.isEnabled) && !isAnimating,
+                isPresented: presented,
+                isLocked: !contentControlsEnabled,
+                onChanged: { updateDrag(translation: $0) },
+                onEnded: { translation, predicted in
+                    finishDrag(translation: translation, predicted: predicted, width: width)
+                },
+                onCancelled: {
+                    animatePresentation(presented)
+                    isGestureActive = false
+                }
+            ))
+            .sensoryFeedback(.impact(weight: .light), trigger: presented)
+            #else
             .simultaneousGesture(
                 drawerGesture(width: width),
                 isEnabled: (presented || model.isEnabled) && !isAnimating
             )
-            #if os(iOS)
-            .sensoryFeedback(.impact(weight: .light), trigger: presented)
             #endif
     }
 
-    private func drawerGesture(width: CGFloat) -> some Gesture {
-        let gesture = DragGesture(minimumDistance: 10, coordinateSpace: .global)
-        return gesture
-            .onChanged { value in
-                guard !isAnimating, !rejectedGesture else { return }
-                // Once a drag commits to scrolling, never turn it into a drawer swipe.
-                if !isGestureActive, abs(value.translation.height) >= 10,
-                   abs(value.translation.width) <= abs(value.translation.height) * 2 {
-                    rejectedGesture = true
-                    return
-                }
-                let activationAllowed = presented || model.isEnabled
-                let gestureIsEligible = LUIDrawerGeometry.gestureIsEligible(
-                    enabled: activationAllowed,
-                    translationX: Double(value.translation.width),
-                    translationY: Double(value.translation.height)
-                )
-                if isGestureActive || gestureIsEligible {
-                    backend.setDrawerInteractionLocked(true, node: model.id)
-                    var transaction = Transaction()
-                    transaction.animation = nil
-                    withTransaction(transaction) {
-                        if value.translation.width > 0 { hasLoadedPanel = true }
-                        isGestureActive = true
-                        dragOffset = CGFloat(LUIDrawerGeometry.dragOffset(
-                            isPresented: presented,
-                            translation: Double(value.translation.width),
-                            width: Double(width)
-                        ))
-                    }
-                } else {
-                    dragOffset = 0
-                }
-            }
-            .onEnded { value in
-                rejectedGesture = false
-                guard !isAnimating else { return }
-                guard isGestureActive else {
-                    dragOffset = 0
-                    return
-                }
-                updatePresentation(LUIDrawerGeometry.targetIsPresented(
+    private func updateDrag(translation: CGSize) {
+        guard !isAnimating, !rejectedGesture else { return }
+        if !isGestureActive, abs(translation.height) >= 10,
+           abs(translation.width) <= abs(translation.height) * 2 {
+            rejectedGesture = true
+            return
+        }
+        let gestureIsEligible = LUIDrawerGeometry.gestureIsEligible(
+            enabled: presented || model.isEnabled,
+            translationX: Double(translation.width),
+            translationY: Double(translation.height)
+        )
+        if isGestureActive || gestureIsEligible {
+            backend.setDrawerInteractionLocked(true, node: model.id)
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                isGestureActive = true
+                dragOffset = CGFloat(LUIDrawerGeometry.dragOffset(
                     isPresented: presented,
-                    translation: Double(value.translation.width),
-                    predictedTranslation: Double(value.predictedEndTranslation.width),
-                    width: Double(width)
+                    translation: Double(translation.width),
+                    width: 0
                 ))
-                isGestureActive = false
+            }
+        } else {
+            dragOffset = 0
+        }
+    }
+
+    private func finishDrag(translation: CGSize, predicted: CGSize, width: CGFloat) {
+        rejectedGesture = false
+        guard !isAnimating else { return }
+        guard isGestureActive else {
+            dragOffset = 0
+            return
+        }
+        updatePresentation(LUIDrawerGeometry.targetIsPresented(
+            isPresented: presented,
+            translation: Double(translation.width),
+            predictedTranslation: Double(predicted.width),
+            width: Double(width)
+        ))
+        isGestureActive = false
+    }
+
+    private func drawerGesture(width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 10, coordinateSpace: .global)
+            .onChanged { updateDrag(translation: $0.translation) }
+            .onEnded {
+                finishDrag(translation: $0.translation,
+                    predicted: $0.predictedEndTranslation, width: width)
             }
     }
 
@@ -382,7 +405,6 @@ struct LUIDrawerView: View {
     }
 
     private func animatePresentation(_ selected: Bool) {
-        if selected { hasLoadedPanel = true }
         transitionGeneration += 1
         let generation = transitionGeneration
         isAnimating = true
@@ -464,3 +486,151 @@ private struct LUIDrawerMainSurfaceModifier: ViewModifier {
         content.background(.ultraThinMaterial)
     }
 }
+
+#if os(iOS)
+/// Arbitrate drawer pans before descendant scroll views begin, without changing
+/// SwiftUI's scroll environment and reevaluating every mounted row.
+private struct LUIDrawerNativeInteraction: UIViewRepresentable {
+    let isEnabled: Bool
+    let isPresented: Bool
+    let isLocked: Bool
+    let onChanged: (CGSize) -> Void
+    let onEnded: (CGSize, CGSize) -> Void
+    let onCancelled: () -> Void
+
+    func makeUIView(context: Context) -> DrawerInteractionView {
+        DrawerInteractionView(configuration: self)
+    }
+
+    func updateUIView(_ view: DrawerInteractionView, context: Context) {
+        view.configuration = self
+        view.updateInteraction()
+        // Descendant ScrollViews commit their UIKit configuration in this update.
+        DispatchQueue.main.async { [weak view] in view?.updateInteraction() }
+    }
+
+    static func dismantleUIView(_ view: DrawerInteractionView, coordinator: ()) {
+        view.detach()
+    }
+
+    final class DrawerInteractionView: UIView, UIGestureRecognizerDelegate {
+        var configuration: LUIDrawerNativeInteraction
+        private weak var gestureRoot: UIView?
+        private var registeredScrollViews = NSHashTable<UIScrollView>.weakObjects()
+        private struct ScrollState {
+            let scroll: UIScrollView
+            let enabled: Bool
+            let verticalIndicator: Bool
+            let horizontalIndicator: Bool
+            let offset: CGPoint
+        }
+        private var suspended: [ObjectIdentifier: ScrollState] = [:]
+        private lazy var pan = UIPanGestureRecognizer(target: self, action: #selector(dragged))
+
+        init(configuration: LUIDrawerNativeInteraction) {
+            self.configuration = configuration
+            super.init(frame: .zero)
+            isUserInteractionEnabled = false
+            pan.delegate = self
+            pan.name = "lui.drawer"
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if window == nil { detach() } else { updateInteraction() }
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            updateInteraction()
+        }
+
+        func updateInteraction() {
+            guard window != nil else { return }
+            if gestureRoot == nil {
+                var responder: UIResponder? = self
+                while let current = responder {
+                    if let controller = current as? UIViewController {
+                        gestureRoot = controller.view
+                        controller.view.addGestureRecognizer(pan)
+                        break
+                    }
+                    responder = current.next
+                }
+            }
+            guard let root = gestureRoot else { return }
+            let dragging = pan.state == .began || pan.state == .changed
+            let locked = configuration.isLocked || dragging
+            var pending = [root]
+            while let view = pending.popLast() {
+                pending.append(contentsOf: view.subviews)
+                guard let scroll = view as? UIScrollView else { continue }
+                if !registeredScrollViews.contains(scroll) {
+                    scroll.panGestureRecognizer.require(toFail: pan)
+                    registeredScrollViews.add(scroll)
+                }
+                if locked {
+                    let id = ObjectIdentifier(scroll)
+                    let state = suspended[id] ?? ScrollState(scroll: scroll,
+                        enabled: scroll.isScrollEnabled,
+                        verticalIndicator: scroll.showsVerticalScrollIndicator,
+                        horizontalIndicator: scroll.showsHorizontalScrollIndicator,
+                        offset: scroll.contentOffset)
+                    suspended[id] = state
+                    scroll.setContentOffset(state.offset, animated: false)
+                    scroll.showsVerticalScrollIndicator = false
+                    scroll.showsHorizontalScrollIndicator = false
+                    scroll.isScrollEnabled = false
+                    scroll.contentOffset = state.offset
+                }
+            }
+            if !locked { restoreScrolling() }
+        }
+
+        private func restoreScrolling() {
+            for state in suspended.values {
+                state.scroll.isScrollEnabled = state.enabled
+                state.scroll.showsVerticalScrollIndicator = state.verticalIndicator
+                state.scroll.showsHorizontalScrollIndicator = state.horizontalIndicator
+                state.scroll.contentOffset = state.offset
+            }
+            suspended.removeAll()
+        }
+
+        func detach() {
+            restoreScrolling()
+            gestureRoot?.removeGestureRecognizer(pan)
+            gestureRoot = nil
+            registeredScrollViews.removeAllObjects()
+        }
+
+        override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard configuration.isEnabled, !configuration.isLocked else { return false }
+            let velocity = pan.velocity(in: gestureRoot)
+            guard abs(velocity.x) > abs(velocity.y) * 2 else { return false }
+            return configuration.isPresented ? velocity.x < 0 : velocity.x > 0
+        }
+
+        @objc private func dragged() {
+            let translation = pan.translation(in: gestureRoot)
+            let size = CGSize(width: translation.x, height: translation.y)
+            switch pan.state {
+            case .began, .changed:
+                updateInteraction()
+                configuration.onChanged(size)
+            case .ended:
+                let velocity = pan.velocity(in: gestureRoot)
+                configuration.onEnded(size, CGSize(width: translation.x + velocity.x * 0.2,
+                    height: translation.y + velocity.y * 0.2))
+                updateInteraction()
+            case .cancelled, .failed:
+                configuration.onCancelled()
+                updateInteraction()
+            default: break
+            }
+        }
+    }
+}
+#endif
