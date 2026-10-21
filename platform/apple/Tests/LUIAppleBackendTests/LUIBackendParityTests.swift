@@ -232,7 +232,7 @@ struct LUIBackendParityTests {
         #expect(image.width <= 56)
     }
 
-    @Test("an open drawer dims pushed main content and restores brightness when closed")
+    @Test("an open drawer fades pushed main content and restores its contrast when closed")
     func openDrawerPushesMainContent() throws {
         let backend = LUIAppleBackend()
         try backend.apply(json: """
@@ -283,13 +283,11 @@ struct LUIBackendParityTests {
         let bitmap = NSBitmapImageRep(cgImage: image)
 
         let pushedMainLeadingColor = try #require(bitmap.colorAt(x: 205, y: 100))
-        #expect(pushedMainLeadingColor.greenComponent > 0.55)
-        #expect(pushedMainLeadingColor.redComponent < 0.2)
+        #expect(pushedMainLeadingColor.greenComponent > pushedMainLeadingColor.redComponent + 0.1)
 
-        let dimmedMainColor = try #require(bitmap.colorAt(x: 300, y: 100))
-        #expect(dimmedMainColor.redComponent > 0.8)
-        #expect(dimmedMainColor.greenComponent < 0.3)
-        #expect(dimmedMainColor.redComponent < 0.94)
+        let fadedMainColor = try #require(bitmap.colorAt(x: 300, y: 100))
+        #expect(fadedMainColor.redComponent > fadedMainColor.greenComponent + 0.2)
+        #expect(fadedMainColor.greenComponent > 0.35)
 
         try backend.apply(json: """
         {"generation":2,"ops":[
@@ -303,7 +301,67 @@ struct LUIBackendParityTests {
         let closedBitmap = NSBitmapImageRep(cgImage: try #require(closedRenderer.cgImage))
         let restoredColor = try #require(closedBitmap.colorAt(x: 300, y: 100))
         #expect(restoredColor.redComponent > 0.94)
-        #expect(restoredColor.redComponent > dimmedMainColor.redComponent + 0.02)
+        #expect(restoredColor.greenComponent + 0.1 < fadedMainColor.greenComponent)
+    }
+
+    @Test("drawer fades foreground while preserving the background in light and dark themes")
+    func drawerPreservesBackgroundWhileFadingContent() throws {
+        let themes: [(ColorScheme, Color, Color)] = [
+            (.light, Color(red: 0.95, green: 0.96, blue: 0.97), .black),
+            (.dark, Color(red: 0, green: 0.18, blue: 0.22), .white),
+        ]
+        for (scheme, background, foreground) in themes {
+            let registry = LUIAppleExtensionRegistry()
+            try registry.register(LUIAppleExtension(
+                identifier: "drawer-contrast-probe", fingerprint: "drawer-contrast-v1"
+            ) { _ in
+                AnyView(background.overlay(alignment: .top) {
+                    foreground.frame(height: 40).padding(.top, 80)
+                }.frame(width: 400, height: 240))
+            })
+            let backend = try LUIAppleBackend(extensionRegistry: registry)
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"drawer"},
+              {"op":"set-prop","id":1,"property":"width","value":200},
+              {"op":"create-extension","id":2,"identifier":"drawer-contrast-probe","fingerprint":"drawer-contrast-v1"},
+              {"op":"create-node","id":3,"kind":"box"},
+              {"op":"insert-child","parent":1,"child":2,"index":0},
+              {"op":"insert-child","parent":1,"child":3,"index":1}
+            ]}
+            """)
+            func render(selected: Bool, generation: Int) throws -> NSBitmapImageRep {
+                try backend.apply(json: """
+                {"generation":\(generation),"ops":[
+                  {"op":"set-prop","id":1,"property":"selected","value":\(selected)}
+                ]}
+                """)
+                let renderer = ImageRenderer(content: LUIDrawerView(
+                    model: try #require(backend.model(id: 1)), backend: backend
+                ).environment(\.horizontalSizeClass, .compact)
+                    .environment(\.colorScheme, scheme)
+                    .luiSemanticColors(["background": background])
+                    .frame(width: 400, height: 240))
+                renderer.scale = 1
+                return NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
+            }
+            let closed = try render(selected: false, generation: 2)
+            let opened = try render(selected: true, generation: 3)
+            let restored = try render(selected: false, generation: 4)
+            let closedBackground = try #require(closed.colorAt(x: 300, y: 180))
+            let openedBackground = try #require(opened.colorAt(x: 300, y: 180))
+            let closedForeground = try #require(closed.colorAt(x: 300, y: 100))
+            let openedForeground = try #require(opened.colorAt(x: 300, y: 100))
+            let restoredForeground = try #require(restored.colorAt(x: 300, y: 100))
+            for component in [\NSColor.redComponent, \NSColor.greenComponent, \NSColor.blueComponent] {
+                #expect(abs(closedBackground[keyPath: component] - openedBackground[keyPath: component]) < 0.01)
+                #expect(abs(closedForeground[keyPath: component] - restoredForeground[keyPath: component]) < 0.01)
+            }
+            let originalContrast = abs(closedForeground.redComponent - closedBackground.redComponent)
+            let fadedContrast = abs(openedForeground.redComponent - openedBackground.redComponent)
+            #expect(fadedContrast > originalContrast * 0.35)
+            #expect(fadedContrast < originalContrast * 0.65)
+        }
     }
 
     @Test("compact drawer leaves a wider main preview with a larger curved edge")
@@ -337,7 +395,7 @@ struct LUIBackendParityTests {
         let bitmap = NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
         let mainEdge = try #require(bitmap.colorAt(x: 312, y: 150))
         #expect(mainEdge.greenComponent > 0.55)
-        #expect(mainEdge.greenComponent > mainEdge.blueComponent + 0.3)
+        #expect(mainEdge.greenComponent > mainEdge.blueComponent + 0.15)
         let roundedEdge = try #require(bitmap.colorAt(x: 321, y: 16))
         #expect(roundedEdge.blueComponent > 0.65)
         #expect(roundedEdge.blueComponent > roundedEdge.greenComponent + 0.2)

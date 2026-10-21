@@ -265,10 +265,11 @@ struct LUIDrawerView: View {
                             top: geometry.safeAreaInsets.top
                         ))
                         .modifier(LUIDrawerMainSurfaceModifier())
-                        // Retain the scrim so opening and closing both interpolate
-                        // with the drawer without replacing the content subtree.
+                        // Fade content toward the page background while preserving
+                        // the surface color and the retained content subtree.
                         .overlay {
-                            Color.black.opacity(0.12 * Double(progress))
+                            (semanticColors["background"] ?? LUIThemeColorResolver.systemBackground)
+                                .opacity(0.5 * Double(progress))
                                 .allowsHitTesting(false)
                         }
                         .allowsHitTesting(contentControlsEnabled)
@@ -290,6 +291,9 @@ struct LUIDrawerView: View {
                                 progress: progress
                             )
                         ))
+                        // Shadow the combined panel once so the translucent fade
+                        // does not cast another shadow onto the content below it.
+                        .compositingGroup()
                         .shadow(
                             color: Color.black.opacity(
                                 LUIDrawerInteractionPolicy.shadowOpacity
