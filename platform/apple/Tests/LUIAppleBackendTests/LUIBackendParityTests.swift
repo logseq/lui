@@ -291,6 +291,43 @@ struct LUIBackendParityTests {
         #expect(undimmedMainColor.greenComponent < 0.3)
     }
 
+    @Test("compact drawer leaves a wider main preview with a larger curved edge")
+    func compactDrawerMatchesPhoneProportions() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"drawer"},
+          {"op":"set-prop","id":1,"property":"selected","value":true},
+          {"op":"set-prop","id":1,"property":"width","value":360},
+          {"op":"create-node","id":2,"kind":"panel"},
+          {"op":"set-prop","id":2,"property":"width","value":393},
+          {"op":"set-prop","id":2,"property":"height","value":300},
+          {"op":"set-prop","id":2,"property":"background","value":"green"},
+          {"op":"set-prop","id":2,"property":"border-width","value":0},
+          {"op":"set-prop","id":2,"property":"corner-radius","value":0},
+          {"op":"create-node","id":3,"kind":"panel"},
+          {"op":"set-prop","id":3,"property":"width","value":360},
+          {"op":"set-prop","id":3,"property":"height","value":300},
+          {"op":"set-prop","id":3,"property":"background","value":"blue"},
+          {"op":"set-prop","id":3,"property":"border-width","value":0},
+          {"op":"set-prop","id":3,"property":"corner-radius","value":0},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+        let renderer = ImageRenderer(content: LUIDrawerView(
+            model: try #require(backend.model(id: 1)), backend: backend
+        ).environment(\.horizontalSizeClass, .compact).frame(width: 393, height: 300))
+        renderer.scale = 1
+        let bitmap = NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
+        let mainEdge = try #require(bitmap.colorAt(x: 312, y: 150))
+        #expect(mainEdge.greenComponent > 0.65)
+        #expect(mainEdge.greenComponent > mainEdge.blueComponent + 0.3)
+        let roundedEdge = try #require(bitmap.colorAt(x: 321, y: 16))
+        #expect(roundedEdge.blueComponent > 0.65)
+        #expect(roundedEdge.blueComponent > roundedEdge.greenComponent + 0.2)
+    }
+
     @Test("an open drawer main surface spans the container safe areas")
     func openDrawerMainSurfaceSpansContainerSafeAreas() throws {
         let backend = LUIAppleBackend()

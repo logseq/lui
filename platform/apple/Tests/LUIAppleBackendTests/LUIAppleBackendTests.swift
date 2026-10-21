@@ -1984,8 +1984,8 @@ struct LUISwiftUIBackendTests {
         #expect(LUIDrawerInteractionPolicy.sidebarOpacity(progress: 0.5) == 0.675)
         #expect(LUIDrawerInteractionPolicy.sidebarOpacity(progress: 1) == 1)
         #expect(LUIDrawerInteractionPolicy.mainCornerRadius(progress: 0) == 0)
-        #expect(LUIDrawerInteractionPolicy.mainCornerRadius(progress: 0.5) == 20)
-        #expect(LUIDrawerInteractionPolicy.mainCornerRadius(progress: 1) == 40)
+        #expect(LUIDrawerInteractionPolicy.mainCornerRadius(progress: 0.5) == 26)
+        #expect(LUIDrawerInteractionPolicy.mainCornerRadius(progress: 1) == 52)
         #expect(LUIDrawerInteractionPolicy.shadowOpacity == 0.18)
         #expect(LUIDrawerInteractionPolicy.panelIsAccessibilityHidden(
             isPresented: false,

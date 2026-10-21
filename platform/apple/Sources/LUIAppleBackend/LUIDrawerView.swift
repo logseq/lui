@@ -108,7 +108,7 @@ enum LUIDrawerInteractionPolicy {
     }
 
     static func mainCornerRadius(progress: CGFloat) -> CGFloat {
-        40.0 * progress
+        52.0 * progress
     }
 }
 
@@ -157,7 +157,7 @@ struct LUIDrawerView: View {
         GeometryReader { geometry in
             let width = min(
                 CGFloat(model.property(.width)?.intValue ?? 360),
-                geometry.size.width * 0.84
+                geometry.size.width * 0.79
             )
             if pinsSidebar {
                 pinnedBody(width: width, geometry: geometry)
