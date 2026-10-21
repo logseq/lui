@@ -122,6 +122,10 @@ type property =
   | PaddingValue
   | PaddingHorizontal
   | PaddingVertical
+  | PaddingTop
+  | PaddingRight
+  | PaddingBottom
+  | PaddingLeft
   | MarginValue
   | MarginHorizontal
   | MarginVertical
@@ -156,6 +160,7 @@ type property =
   | VariantValue
   | InlineIconName
   | IconPlacementValue
+  | SelectionPlacementValue
   | Selected
   | Autofocus
   | SubmitOnEnter
@@ -179,6 +184,7 @@ type property =
   | SourceWidth
   | SourceHeight
   | AnchorValue
+  | AnchorTarget
   | AnchorAlignmentValue
   | AnchorOffset
   | TooltipDelay
@@ -259,6 +265,8 @@ type property =
   | PressedOpacity
   | PressedShadow
   | FocusShadow
+  | FocusWithinBackground
+  | FocusWithinBorder
   | SelectedBackground
   | SelectedShadow
   | SelectedHoverShadow
@@ -276,6 +284,20 @@ type property =
   | HoverForeground
   | HoverBorder
   | Transition
+  | Inert
+  | NavigateEnabled
+  | FirstPaneWidth
+  | GridColumnSpan
+  | LabelOpacity
+  | SubmitOnBlur
+  | AnchorAlignmentOffset
+  | AnchorRect
+  | ResizeHandleWidth
+  | ResizeHandleOffset
+  | IndicatorBorderColor
+  | CheckedIndicatorBorderColor
+  | CollisionPadding
+  | LineClamp
 
 module Property_map : Map.S with type key = property
 
@@ -323,6 +345,10 @@ type event =
   | PointerLeave of int
   | ContextMenuPress of int * pointer_detail
   | Load of int
+  | NavigatePrevious of int
+  | NavigateNext of int
+  | NavigationKey of int * string * bool
+  | ScrollEdges of int * bool * bool
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =
@@ -358,6 +384,7 @@ val context_menu_leaf_host_kind : node_kind -> bool
 val event_supported : node_kind -> event -> bool
 val true_property : wire_value Property_map.t -> property -> bool
 val treeitem_properties : wire_value Property_map.t -> bool
+val event_supported_for_lookup : node_kind -> (property -> wire_value option) -> event -> bool
 val event_supported_for_properties : node_kind -> wire_value Property_map.t -> event -> bool
 val container_relative_frame_supported : string -> bool
 val orientation_supported : string -> bool
@@ -381,15 +408,21 @@ val horizontal_container : node_kind -> bool
 val common_property_supported : node_kind -> property -> bool
 val property_supported : node_kind -> property -> bool
 val is_finite : float -> bool
+val transition_segments : string -> string list list
+(** Tokenize CSS transition declarations, preserving functional easing arguments. *)
+
+val anchor_rect_of_string : string -> (float * float * float * float) option
 val property_value_supported : property -> wire_value -> bool
 val property_value_supported_for_kind : node_kind -> property -> wire_value -> bool
 val int_property : wire_value Property_map.t -> property -> int -> int
 val float_property : wire_value Property_map.t -> property -> float -> float
 val size_axis_supported : wire_value Property_map.t -> property -> property -> property -> bool
 val surface_size_supported : wire_value Property_map.t -> bool
+val viewport_size_supported : wire_value Property_map.t -> bool
 val string_property_or : wire_value Property_map.t -> property -> string -> string
 val string_property_nonempty : wire_value Property_map.t -> property -> bool
 val float_property_of : wire_value Property_map.t -> property -> float -> float
+val node_property_presence_supported : node_kind -> definite:(property -> bool) -> possible:(property -> bool) -> bool
 val node_properties_supported : node_kind -> wire_value Property_map.t -> bool
 val can_contain_children : node_kind -> bool
 val child_kind_supported : node_kind -> node_kind -> bool

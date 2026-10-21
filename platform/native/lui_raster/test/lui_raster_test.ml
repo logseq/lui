@@ -67,6 +67,30 @@ let test_pixel_checks () =
   Alcotest.(check bool) "border red low" true (let r, _, _, _ = px 13 30 in r < 40);
   Alcotest.(check (list int)) "outside corner" [ 255; 255; 255; 255 ] (rgba (px 13 11))
 
+let test_glyph_run_opacity () =
+  List.iter (fun (colored,subpixel) -> List.iter (fun paint -> List.iter (fun glyph_alpha ->
+    let mask=Atlas.create ~bpp:1 ~w:1 ~h:1
+    and color_atlas=Atlas.create ~bpp:4 ~w:1 ~h:1 in
+    Atlas.put mask ~x:0 ~y:0 ~w:1 ~h:1 ~src:(Bytes.make 1 '\255') ~stride:1;
+    let pixel=if colored then Bytes.of_string "\000\000\000\255" else Bytes.make 4 '\255' in
+    Atlas.put color_atlas ~x:0 ~y:0 ~w:1 ~h:1 ~src:pixel ~stride:4;
+    let black=color 0 0 0 glyph_alpha in
+    let s=scene ~w:1 ~h:1 ~mask ~color_atlas
+      ~glyphs:[glyph ~colored ~subpixel ~x:0. ~y:0. ~w:1. ~h:1. ~u:0 ~v:0 ~uw:1 ~vh:1 black] [] in
+    let renderer=Lui_raster.Renderer.create () in
+    Fun.protect ~finally:(fun () -> Lui_raster.Renderer.release renderer) (fun () ->
+      List.iter (fun opacity ->
+        s.ops <- [iglyphs ~paint ~c:black ~c2:black ~opacity 0 1];
+        ignore (Lui_raster.Renderer.render renderer s);
+        let pixel=(Lui_raster.Renderer.image renderer).Lui_raster.Image.pix in
+        let expected=int_of_float (Float.round (255.-.float glyph_alpha*.opacity)) in
+        List.iter (fun channel -> Alcotest.(check int)
+          (Printf.sprintf "glyph opacity %.2f and alpha %d, color=%b subpixel=%b"
+            opacity glyph_alpha colored subpixel) expected (Char.code (Bytes.get pixel channel))) [0;1;2];
+        Alcotest.(check int) "opaque destination stays opaque" 255 (Char.code (Bytes.get pixel 3)))
+        [0.;0.25;0.5;1.;0.25;0.])) [255;128]) [Solid;Linear;Oklab])
+    [false,false;false,true;true,false]
+
 (* ---------- random scenes for damage and multicore ---------- *)
 
 let bytes_of img = img.Lui_raster.Image.pix
@@ -655,6 +679,62 @@ let test_native_tile_scroll_budget ?(workers=1) path () =
   Alcotest.(check bool) "native tiled redraw and pixel copy meets its frame budget" true
     (times.(57) <= budget)
 
+let test_modal_fade_budget ?(workers = 4) () =
+  let width = 2880 and height = 1864 in
+  let output = Lui_raster.Image.create ~w:width ~h:height in
+  let renderer = Lui_raster.Tile_renderer.create () in
+  Fun.protect
+    ~finally:(fun () -> Lui_raster.Tile_renderer.release renderer)
+    (fun () ->
+      let emit (area : irect) (tile : Lui_raster.Image.t) =
+        for y = area.y0 to area.y1 - 1 do
+          Bytes.blit tile.pix
+            ((y - area.y0) * tile.stride)
+            output.pix (y * output.stride) (4 * width)
+        done
+      in
+      let paint alpha =
+        let s =
+          scene ~w:width ~h:height ~clear:(color 255 255 255 255)
+            [
+              ifill (rect 0. 0. 480. (float height)) (color 238 238 240 255);
+              ifill
+                (rect 0. 0. (float width) (float height))
+                (color 0 0 0 (alpha / 2));
+              ishadow ~radii:(radii 16.) ~blur:24.
+                (rect 416. 360. 2048. 1144.)
+                (color 0 0 0 (alpha / 5));
+              ifill ~radii:(radii 16.)
+                (rect 416. 360. 2048. 1144.)
+                (color 255 255 255 alpha);
+            ]
+        in
+        Lui_raster.Tile_renderer.render ~workers renderer s ~emit;
+        s
+      in
+      ignore (paint 255);
+      let times =
+        Array.init 30 (fun frame ->
+            let started = Unix.gettimeofday () in
+            ignore (paint (250 - (frame * 7)));
+            (Unix.gettimeofday () -. started) *. 1000.)
+      in
+      let final = paint 47 in
+      let expected = Lui_raster.render ~workers:1 ~scene:final () in
+      Alcotest.(check bool)
+        "modal fade tiles match complete rendering" true
+        (Bytes.equal expected.pix output.pix);
+      Array.sort Float.compare times;
+      Printf.printf "Retina modal fade p50=%.2fms p95=%.2fms\n%!" times.(15)
+        times.(28);
+      (* The 20 ms ceiling is calibrated to a reference machine. Shared
+         CI runners are several times slower, so the timing check is
+         meaningless there; the pixel comparison above still runs. *)
+      if Sys.getenv_opt "GITHUB_ACTIONS" = None then
+        Alcotest.(check bool)
+          "Retina modal compositing p95 fits the 20 ms frame budget" true
+          (times.(28) <= 20.))
+
 let test_translucent_byte_rounding () =
   let premul channel alpha = (channel * alpha + 127) / 255 in
   let over source dest inv =
@@ -705,14 +785,20 @@ let test_parallel_redraw_gc () =
     Alcotest.(check bool) "Release and worker changes preserve rendering" true !pixels_ok)
 
 let test_translucent_span_allocation () =
-  let s = scene ~w:512 ~h:128 [ifill (rect 0. 0. 512. 128.) (color 37 151 243 128)] in
-  let image = Lui_raster.Image.create ~w:512 ~h:128 in
-  let before = Gc.allocated_bytes () in
-  Lui_raster.render_into ~workers:1 ~image ~scene:s ();
-  let allocated = Gc.allocated_bytes () -. before in
-  Printf.printf "translucent span allocated %.0f bytes\n%!" allocated;
-  Alcotest.(check bool) "translucent pixel operations do not allocate per pixel" true
-    (allocated < 131_072.)
+  let source = new_image ~w:512 ~h:128
+      (Bytes.init (512 * 128 * 4) (fun index ->
+           Char.chr (if index mod 4 = 3 then 255 else (index / 4 + index mod 4 * 71) mod 256))) in
+  List.iter (fun (name, background) ->
+      let s = scene ~w:512 ~h:128
+          (background @ [ifill (rect 0. 0. 512. 128.) (color 37 151 243 128)]) in
+      let image = Lui_raster.Image.create ~w:512 ~h:128 in
+      let before = Gc.allocated_bytes () in
+      Lui_raster.render_into ~workers:1 ~image ~scene:s ();
+      let allocated = Gc.allocated_bytes () -. before in
+      Printf.printf "%s translucent span allocated %.0f bytes\n%!" name allocated;
+      Alcotest.(check bool) "translucent pixel operations do not allocate per pixel" true
+        (allocated < 131_072.))
+    ["flat", []; "varying", [iimage (rect 0. 0. 512. 128.) source (rect 0. 0. 512. 128.)]]
 
 let test_opaque_span_edges () =
   List.iter (fun height -> List.iter (fun width -> List.iter (fun offset ->
@@ -746,6 +832,34 @@ let test_translucent_span_channels () =
         Int.min 255 (src + (dest*(255-alpha)+127)/255) in
       Char.chr value) in
     Alcotest.(check bool) "Translucent spans preserve every destination byte and alpha"
+      true (Bytes.equal expected image.pix)
+  done
+
+let test_translucent_repeated_runs () =
+  let width = 259 and height = 3 in
+  let channel x y c =
+    if c = 3 then 255
+    else if x mod 64 < 48 then 255
+    else ((x / (y + 1)) + (2 - c) * 71 + y * 17) mod 256 in
+  let source = new_image ~w:width ~h:height
+      (Bytes.init (width * height * 4) (fun index ->
+           let pixel = index / 4 in
+           Char.chr (channel (pixel mod width) (pixel / width) (index mod 4)))) in
+  for alpha = 1 to 254 do
+    let s = scene ~w:width ~h:height
+        [ iimage (rect 0. 0. (float width) (float height)) source
+            (rect 0. 0. (float width) (float height));
+          ifill (rect 1. 0. 257. (float height)) (color 255 151 37 alpha) ] in
+    let image = Lui_raster.render ~workers:1 ~scene:s () in
+    let expected = Bytes.init (Bytes.length image.pix) (fun index ->
+        let pixel = index / 4 and c = index mod 4 in
+        let x = pixel mod width and y = pixel / width in
+        let dest = channel x y (if c = 3 then 3 else 2 - c) in
+        let value = if x = 0 || x = 258 then dest else
+            let src = ([|37;151;255;255|].(c) * alpha + 127) / 255 in
+            Int.min 255 (src + (dest * (255 - alpha) + 127) / 255) in
+        Char.chr value) in
+    Alcotest.(check bool) "Repeated and changing destination runs match scalar blending"
       true (Bytes.equal expected image.pix)
   done
 
@@ -793,6 +907,199 @@ let test_image_fractional_coverage () =
     assert_pixels_close "Bilinear image fractional edge coverage" expected actual
   ) [false;true]) [0.;0.5]
 
+let test_glyph_damage_allocation () =
+  let glyphs =
+    List.init 1000 (fun i ->
+        glyph
+          ~x:(float (i mod 40) *. 10.)
+          ~y:(float (i / 40) *. 20.)
+          ~w:8. ~h:16. ~u:0 ~v:0 ~uw:8 ~vh:16 black)
+  in
+  let mask = Atlas.create ~bpp:1 ~w:8 ~h:16 in
+  Atlas.put mask ~x:0 ~y:0 ~w:8 ~h:16 ~src:(Bytes.make 128 '\128') ~stride:8;
+  let color_atlas = Atlas.create ~bpp:4 ~w:8 ~h:16 in
+  let scenes =
+    Array.init 31 (fun n ->
+        scene ~w:512 ~h:640 ~mask ~color_atlas ~glyphs
+          [ iglyphs 0 1000; ifill (rect 450. 8. 20. 16.) (color n 0 0 255) ])
+  in
+  let damage = Lui_raster.Damage.create () in
+  ignore (Lui_raster.Damage.update damage scenes.(0));
+  let before = Gc.allocated_bytes () in
+  for frame = 1 to 100 do
+    ignore
+      (Lui_raster.Damage.update damage scenes.(frame mod Array.length scenes))
+  done;
+  let allocated = (Gc.allocated_bytes () -. before) /. 100. in
+  Printf.printf "Retained glyph damage allocated %.0f bytes/frame\n%!" allocated;
+  Alcotest.(check bool)
+    "Damage checks copy the same glyph snapshot repeatedly" true
+    (allocated < 16_384.);
+  Alcotest.(check bool)
+    "A changed panel forces the whole static body to redraw" false
+    (Lui_raster.Damage.whole damage)
+
+let test_prefix_bounds_allocation () =
+  let body = List.init 1000 (fun i ->
+    ifill (rect (float (i mod 40) *. 10.) (float (i / 40) *. 20.) 8. 16.) black) in
+  let mask, color_atlas = atlases () in
+  let scenes = Array.init 31 (fun n ->
+    scene ~w:512 ~h:640 ~mask ~color_atlas
+      (iclip (rect 0. 0. 512. 640.) :: body @
+        [ifill (rect 450. 8. 20. 16.) (color n 0 0 255); Pop_clip])) in
+  let damage = Lui_raster.Damage.create () in
+  ignore (Lui_raster.Damage.update damage scenes.(0));
+  let before = Gc.allocated_bytes () in
+  for frame = 1 to 100 do
+    ignore (Lui_raster.Damage.update damage scenes.(frame mod Array.length scenes))
+  done;
+  let allocated = (Gc.allocated_bytes () -. before) /. 100. in
+  Printf.printf "Unchanged prefix bounds allocated %.0f bytes/frame\n%!" allocated;
+  Alcotest.(check bool) "Unchanged body bounds stay below 40 KiB per frame" true
+    (allocated < 40_960.);
+  Alcotest.(check bool) "Only the changed overlay needs repainting" false
+    (Lui_raster.Damage.whole damage)
+
+let test_prefix_bounds_pixels () =
+  let mask = Atlas.create ~bpp:1 ~w:8 ~h:16 in
+  let put_mask value = Atlas.put mask ~x:0 ~y:0 ~w:8 ~h:16
+    ~src:(Bytes.make 128 value) ~stride:8 in
+  put_mask '\128';
+  let color_atlas = Atlas.create ~bpp:4 ~w:8 ~h:16 in
+  let damage = Lui_raster.Damage.create () in
+  let renderer = Lui_raster.Renderer.create () in
+  let glyph_at x = glyph ~x ~y:12. ~w:8. ~h:16.
+    ~u:0 ~v:0 ~uw:8 ~vh:16 black in
+  let body = ifill (rect 2. 3. 22. 27.) (color 37 99 235 255) in
+  let tail n = ifill (rect (float n) 39. 10. 8.) black in
+  let frame ?(w=64) ?(clear=white) ?(x=13.) clip ops =
+    scene ~w ~h:64 ~mask ~color_atlas ~clear ~glyphs:[glyph_at x]
+      (iclip clip :: body :: iclip (rect 9. 8. 31. 30.) :: iglyphs 0 1 ::
+        Pop_clip :: ops @ [Pop_clip]) in
+  let clip = rect 1. 1. 55. 55. in
+  let steps = [
+    frame clip [tail 30];
+    frame clip [tail 31];
+    frame (rect 5. 5. 22. 39.) [tail 32];
+    frame ~x:23. clip [tail 33];
+    frame clip [tail 34; tail 45];
+    frame clip [];
+    frame ~w:72 clip [tail 35];
+    frame ~w:72 ~clear:(color 19 31 73 255) clip [tail 36];
+  ] in
+  let verify s =
+    ignore (Lui_raster.Damage.update damage s);
+    let fresh = Lui_raster.Damage.create () in
+    ignore (Lui_raster.Damage.update fresh s);
+    Alcotest.(check bool) "Retained bounds equal a fresh clipped traversal" true
+      (Lui_raster.Damage.bounds damage = Lui_raster.Damage.bounds fresh);
+    ignore (Lui_raster.Renderer.render renderer s);
+    let expected = Lui_raster.render ~scene:s () in
+    Alcotest.(check bool) "Partial repaint equals a full render" true
+      (Bytes.equal (Lui_raster.Renderer.image renderer).pix expected.pix)
+  in
+  List.iter verify steps;
+  verify (List.hd steps);
+  put_mask '\255';
+  verify (List.hd steps);
+  Lui_raster.Damage.invalidate damage;
+  Lui_raster.Renderer.invalidate renderer;
+  verify (List.hd steps)
+
+let test_mutable_scene_snapshots () =
+  let mask = Atlas.create ~bpp:1 ~w:8 ~h:16 in
+  Atlas.put mask ~x:0 ~y:0 ~w:8 ~h:16 ~src:(Bytes.make 128 '\128') ~stride:8;
+  let s = scene ~w:64 ~h:265 ~mask [] in
+  let output = Lui_raster.Image.create ~w:64 ~h:265 in
+  let paint,release = window_painter () in
+  Fun.protect ~finally:release (fun () ->
+    List.iteri (fun frame positions ->
+      s.glyphs <- List.map (fun (x,y) ->
+        glyph ~x ~y ~w:8. ~h:16. ~u:0 ~v:0 ~uw:8 ~vh:16
+          (color (30*frame) 17 93 255)) positions;
+      s.ops <- [iclip (rect 1. 1. 61. 263.); iglyphs 0 (List.length positions); Pop_clip;
+        ifill (rect (float frame) 240. 8. 8.) black];
+      if frame=2 then Atlas.put mask ~x:0 ~y:0 ~w:8 ~h:16
+        ~src:(Bytes.make 128 '\255') ~stride:8;
+      paint s (fun (area : irect) (tile : Lui_raster.Image.t) ->
+        for y=area.y0 to area.y1-1 do
+          Bytes.blit tile.pix ((y-area.y0)*tile.stride) output.pix (y*output.stride) (4*s.width)
+        done);
+      let expected = Lui_raster.render ~scene:s () in
+      Alcotest.(check bool) "Changed scene lists and atlas pixels replace prior snapshots" true
+        (Bytes.equal output.pix expected.pix))
+      [[2.,120.]; [19.,128.; 40.,250.]; [7.,-4.]; []; [31.,129.]])
+
+let test_glyph_damage_bounds () =
+  let glyphs =
+    List.map
+      (fun (x, y, w, h) -> glyph ~x ~y ~w ~h ~u:0 ~v:0 ~uw:8 ~vh:16 black)
+      [
+        (-0.25, 2.75, 7.5, 9.25);
+        (31.75, -0.5, 0., 0.);
+        (20.125, 20.875, -3., 8.);
+      ]
+  in
+  let damage = Lui_raster.Damage.create () in
+  let s = scene ~w:64 ~h:64 ~glyphs [ iglyphs 0 3 ] in
+  ignore (Lui_raster.Damage.update damage s);
+  let fields r = [ r.x0; r.y0; r.x1; r.y1 ] in
+  Alcotest.(check (list int))
+    "Fractional, zero and empty glyph bounds" [ 0; 0; 33; 13 ]
+    (fields (Lui_raster.Damage.bounds damage).(0));
+  s.ops <-
+    [
+      iclip (rect 1.25 2.25 20.5 10.5);
+      iclip (rect 5.5 5.5 8. 8.);
+      iglyphs 0 3;
+      Pop_clip;
+      Pop_clip;
+      iglyphs 0 0;
+    ];
+  ignore (Lui_raster.Damage.update damage s);
+  Alcotest.(check (list int))
+    "Glyph bounds preserve nested clip intersections" [ 4; 4; 15; 13 ]
+    (fields (Lui_raster.Damage.bounds damage).(2));
+  Alcotest.(check bool)
+    "Empty glyph range became visible" true
+    (irect_empty (Lui_raster.Damage.bounds damage).(5))
+
+let test_glyph_atlas_damage () =
+  List.iter
+    (fun colored ->
+      let mask = Atlas.create ~bpp:1 ~w:8 ~h:16
+      and color_atlas = Atlas.create ~bpp:4 ~w:8 ~h:16 in
+      let glyphs =
+        [
+          glyph ~colored ~x:4.25 ~y:4.75 ~w:8. ~h:16. ~u:0 ~v:0 ~uw:8 ~vh:16
+            black;
+        ]
+      in
+      let s = scene ~w:64 ~h:32 ~mask ~color_atlas ~glyphs [ iglyphs 0 1 ] in
+      let renderer = Lui_raster.Renderer.create () in
+      ignore (Lui_raster.Renderer.render renderer s);
+      let before = Bytes.copy (Lui_raster.Renderer.image renderer).pix in
+      let atlas, bpp = if colored then (color_atlas, 4) else (mask, 1) in
+      let source =
+        Bytes.init (128 * bpp) (fun i ->
+            if bpp = 1 || i mod 4 = 3 then '\255'
+            else Char.chr (17 + (i mod 3 * 31)))
+      in
+      Atlas.put atlas ~x:0 ~y:0 ~w:8 ~h:16 ~src:source ~stride:(8 * bpp);
+      let dirty = Lui_raster.Renderer.render renderer s in
+      let actual = (Lui_raster.Renderer.image renderer).pix in
+      let expected = (Lui_raster.render ~scene:s ()).pix in
+      Alcotest.(check bool)
+        "Unchanged glyphs ignore changed atlas pixels" true (dirty <> []);
+      Alcotest.(check bool)
+        "Atlas changes did not repaint visible glyph pixels" false
+        (Bytes.equal before actual);
+      Alcotest.(check bool)
+        "Atlas damage differs from a complete redraw" true
+        (Bytes.equal actual expected);
+      Lui_raster.Renderer.release renderer)
+    [ false; true ]
+
 let redraw_allocation scene =
   let renderer=Lui_raster.Renderer.create () in
   ignore (Lui_raster.Renderer.render ~workers:1 renderer scene);
@@ -804,6 +1111,29 @@ let redraw_allocation scene =
   let allocated=(Gc.allocated_bytes ()-.before)/.10. in
   Lui_raster.Renderer.release renderer;
   allocated
+
+let test_opaque_glyph_allocation () =
+  let mask = Atlas.create ~bpp:1 ~w:1 ~h:1 in
+  Atlas.put mask ~x:0 ~y:0 ~w:1 ~h:1 ~src:(Bytes.make 1 '\128') ~stride:1;
+  let glyphs = List.init 1000 (fun i ->
+    glyph ~x:(float (i mod 40) *. 2.) ~y:(float (i / 40) *. 2.)
+      ~w:1. ~h:1. ~u:0 ~v:0 ~uw:1 ~vh:1 (color 37 99 235 255)) in
+  let s = scene ~w:80 ~h:50 ~mask ~glyphs [iglyphs 0 1000] in
+  let allocated = redraw_allocation s in
+  Printf.printf "Opaque glyph redraw allocated %.0f bytes/frame\n%!" allocated;
+  Alcotest.(check bool) "Integer mask text stays below 32 KiB per frame" true
+    (allocated <= 32_768.)
+
+let test_translucent_glyph_allocation () =
+  let mask=Atlas.create ~bpp:1 ~w:1 ~h:1 in
+  Atlas.put mask ~x:0 ~y:0 ~w:1 ~h:1 ~src:(Bytes.make 1 '\128') ~stride:1;
+  let glyphs=List.init 1000 (fun index ->
+    glyph ~x:(float (index mod 40)*.2.) ~y:(float (index/40)*.2.)
+      ~w:1. ~h:1. ~u:0 ~v:0 ~uw:1 ~vh:1 (color 37 99 235 255)) in
+  let s=scene ~w:80 ~h:50 ~mask ~glyphs [iglyphs ~opacity:0.5 0 1000] in
+  let allocated=redraw_allocation s in
+  Printf.printf "Translucent glyph redraw allocated %.0f bytes/frame\n%!" allocated;
+  Alcotest.(check bool) "Faded mask text stays below 32 KiB per frame" true (allocated<=32_768.)
 
 let test_shared_clip_rows_allocation () =
   let mask=Atlas.create ~bpp:1 ~w:8 ~h:16 in
@@ -933,7 +1263,13 @@ let () =
           Alcotest.test_case "redraws effects" `Slow test_damage_redraws_effects;
           Alcotest.test_case "skips unchanged" `Quick test_damage_skips;
           Alcotest.test_case "merge cap" `Quick test_damage_merge;
-          Alcotest.test_case "damage bands" `Slow test_damage_bands ] )
+          Alcotest.test_case "damage bands" `Slow test_damage_bands;
+          Alcotest.test_case "glyph allocation" `Quick test_glyph_damage_allocation;
+          Alcotest.test_case "prefix bounds allocation" `Quick test_prefix_bounds_allocation;
+          Alcotest.test_case "prefix bounds pixels" `Quick test_prefix_bounds_pixels;
+          Alcotest.test_case "mutable scene snapshots" `Quick test_mutable_scene_snapshots;
+          Alcotest.test_case "glyph bounds" `Quick test_glyph_damage_bounds;
+          Alcotest.test_case "glyph atlas updates" `Quick test_glyph_atlas_damage ] )
       ; ("window pixels", [
           Alcotest.test_case "staging retention" `Slow test_window_pixel_retention;
           Alcotest.test_case "bands and resize" `Slow test_window_tiles_match_whole;
@@ -949,7 +1285,12 @@ let () =
       ; ("compositing", [
           Alcotest.test_case "translucent rounding" `Slow test_translucent_byte_rounding;
           Alcotest.test_case "span allocation" `Quick test_translucent_span_allocation;
+          Alcotest.test_case "modal fade budget" `Slow test_modal_fade_budget;
+          Alcotest.test_case "translucent repeated runs" `Quick test_translucent_repeated_runs;
           Alcotest.test_case "opaque span edges" `Quick test_opaque_span_edges;
+          Alcotest.test_case "opaque glyph allocation" `Quick test_opaque_glyph_allocation;
+          Alcotest.test_case "translucent glyph allocation" `Quick test_translucent_glyph_allocation;
+          Alcotest.test_case "glyph run opacity" `Quick test_glyph_run_opacity;
           Alcotest.test_case "translucent span channels" `Quick test_translucent_span_channels;
           Alcotest.test_case "image sampling allocation" `Quick test_image_sampling_allocation;
           Alcotest.test_case "empty inset allocation" `Quick test_empty_inset_allocation;

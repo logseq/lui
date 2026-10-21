@@ -86,6 +86,15 @@ let attach st ~node ~text =
     model = text; dirty_since_model = false; response = `None;
     caret; anchor = caret; undo = []; redo = []; ime }
 
+(* Resume an editor after an owning overlay without reusing its old session id. *)
+let restore_edit st saved =
+  if st.node <> saved.node then invalid_arg "restoring a different text control";
+  let caret = Lui_query.clamp_boundary st.text saved.caret
+  and anchor = Lui_query.clamp_boundary st.text saved.anchor in
+  if st.text = saved.text then
+    { st with caret; anchor; undo = saved.undo; redo = saved.redo }
+  else { st with caret; anchor }
+
 let set_caret st ~off ~extend =
   if st.caret = off && (extend || st.anchor = off) then st
   else
@@ -188,7 +197,7 @@ let point_move hooks store rects st ~x ~y =
    text the painter resolves — grapheme clusters horizontally,
    visual (soft-wrapped) lines vertically; the codepoint/paragraph
    fallbacks keep tests text-engine free. *)
-let key hooks store rects st ~(k : Lui_input.key)
+let edit_key hooks store rects st ~(k : Lui_input.key)
     ~(mods : Lui_input.mods) ~prim =
   let n = st.node in
   let ops =
@@ -257,6 +266,23 @@ let key hooks store rects st ~(k : Lui_input.key)
     ( set_caret st ~off:(String.length st.text) ~extend:mods.shift,
       [ `Repaint ] )
   | _ -> (st, [])
+
+(* Opt-in list navigation keeps input focus, text and selection intact. *)
+let key hooks store rects st ~(k : Lui_input.key)
+    ~(mods : Lui_input.mods) ~prim =
+  if composing st || not (Lui_query.node_enabled store st.node) then (st, [])
+  else
+    let navigation =
+      if mods.ctrl || mods.meta || mods.alt || mods.shift then None
+      else match k with
+        | Lui_input.Arrow_up -> Some (NavigatePrevious st.node)
+        | Lui_input.Arrow_down -> Some (NavigateNext st.node)
+        | _ -> None
+    in
+    match navigation with
+    | Some event when Lui_query.event_supported store st.node event ->
+      (st, [`Dispatch event])
+    | _ -> edit_key hooks store rects st ~k ~mods ~prim
 
 (* Translate one lui_ime action into domain actions plus the state
    updates they imply. [`Commit_text] splices through the exact path

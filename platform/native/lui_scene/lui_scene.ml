@@ -49,9 +49,10 @@ let snap_point (x, y) = (snap x, snap y)
 
 let rect_snap r =
   let x0 = snap r.x and y0 = snap r.y in
-  rect x0 y0
-    (Float.max 0. (snap (r.x +. r.w) -. x0))
-    (Float.max 0. (snap (r.y +. r.h) -. y0))
+  let w = Float.max 0. (snap (r.x +. r.w) -. x0)
+  and h = Float.max 0. (snap (r.y +. r.h) -. y0) in
+  if r.x=x0 && r.y=y0 && r.w=w && r.h=h then r
+  else rect x0 y0 w h
 
 (* Integer rectangle, used by atlas change tracking and backdrops. *)
 type irect = { x0 : int; y0 : int; x1 : int; y1 : int }
@@ -437,10 +438,10 @@ type image = {
   ipix : Bytes.t; (* premultiplied RGBA, 4*W per row *)
 }
 
-let last_image_id = ref 0
+let last_image_id = Atomic.make 0
 let new_image ~w ~h pix =
-  incr last_image_id;
-  { iid = !last_image_id; iversion = 1; iw = w; ih = h; ipix = pix }
+  let iid = Atomic.fetch_and_add last_image_id 1 + 1 in
+  { iid; iversion = 1; iw = w; ih = h; ipix = pix }
 let image_changed i = i.iversion <- i.iversion + 1
 
 (* Ops — the display list, in paint order. *)
@@ -490,7 +491,7 @@ and glyphs_op = {
   gcolor2 : color;
   ggradient : float * float * float * float;
   gwide2 : int;
-  gopacity : float;
+  gopacity : float; (** Run opacity: zero is transparent, one is opaque. *)
 }
 
 and image_op = {

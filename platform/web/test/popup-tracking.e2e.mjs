@@ -44,6 +44,9 @@ async function setup(count = 4, tooltip = false) {
     content.style.alignItems = "flex-end"
     const select = document.querySelector(".tracking-anchor .lui-select")
     if (select) select.setAttribute("data-lui-open-method", "touch")
+    // The fixture stacks this anchor below a tall host. Bring it into the
+    // viewport before opening so a menu still has room to sit below it.
+    document.querySelector(".tracking-anchor").scrollIntoView({ block: "center", inline: "nearest" })
   }, { count, tooltip })
   if (tooltip) await session.page.getByRole("button", { name: "Tracking tooltip" }).focus()
   else await session.page.evaluate(() => window.audit.tracking.open())
@@ -186,6 +189,12 @@ async function setupContext() {
   })
   await session.page.mouse.click(880, 690, { button: "right" })
   await session.page.getByRole("menu").waitFor({ state: "visible" })
+  await session.page.waitForFunction(() => {
+    const menu = document.querySelector(".lui-context-menu")
+    if (!menu) return false
+    const transform = getComputedStyle(menu).transform
+    return transform === "none" || transform === "matrix(1, 0, 0, 1, 0, 0)"
+  })
 }
 
 test("ContextMenu tracking clamps the invocation point after async growth and viewport changes", async () => {

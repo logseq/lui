@@ -110,7 +110,7 @@ let checkbox_radius = 4.
 (* Focus ring: a [focus_width] border drawn [focus_offset] outside the
    control's own box, corners grown to match. *)
 let focus_width = 2.
-let focus_offset = 1.
+let focus_offset = 2.
 
 (* Overlay scrollbar: a slim full-round thumb hugging the clip edge. *)
 let scrollbar_width = 6.

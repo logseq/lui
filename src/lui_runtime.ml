@@ -1212,10 +1212,12 @@ let reconcile_subtree application saved parent old_root candidate_root =
   List.iter
     (fun node -> Hashtbl.replace saved_children_node_set node ())
     old_nodes;
-  ignore
-    (collect_node_mapping application saved old_root candidate_root
-       old_global old_key_counts candidate_key_counts reparented claimed
-       saved_children_node_set mapping);
+  if Hashtbl.find_opt saved.checkpoint_reload_keys old_root
+     = Hashtbl.find_opt application.runtime_reload_keys candidate_root then
+    ignore
+      (collect_node_mapping application saved old_root candidate_root
+         old_global old_key_counts candidate_key_counts reparented claimed
+         saved_children_node_set mapping);
   if not (Hashtbl.mem mapping candidate_root) then
     (* the roots themselves could not pair up (a dynamic branch swapped to a
        different shape); still salvage keyed descendants of the candidate *)
@@ -1767,7 +1769,7 @@ let note_sent_echo application node property value =
     | TextValue, StringValue text -> { state with echo_text = Some text }
     | (Checked | Expanded | Selected), BoolValue flag ->
       { state with echo_toggle = Some flag }
-    | ProgressValue, FloatValue number ->
+    | (ProgressValue | FirstPaneWidth), FloatValue number ->
       { state with echo_value = Some number }
     | _ -> state
   in
@@ -1779,7 +1781,7 @@ let note_removed_echo application node property =
     match property with
     | TextValue -> { state with echo_text = None }
     | Checked | Expanded | Selected -> { state with echo_toggle = None }
-    | ProgressValue -> { state with echo_value = None }
+    | ProgressValue | FirstPaneWidth -> { state with echo_value = None }
     | _ -> state
   in
   put_echo application node state
@@ -2033,11 +2035,14 @@ let move_child application parent child index =
    outlive its node: a dyn remount dropped mid-round disposes the scope lazily,
    so the callback still fires on a stale id. Live nodes keep their writes;
    dropped ones are skipped rather than failing on the host's behalf. *)
-let bind_prop scope application node property source =
+let bind_prop_map scope application node property convert source =
   Signal.own scope
     (Signal.observe source (fun value ->
          if node_live application node then
-           set_prop application node property value))
+           set_prop application node property (convert value)))
+
+let bind_prop scope application node property source =
+  bind_prop_map scope application node property Fun.id source
 
 let bind_extension_prop scope application node property source =
   Signal.own scope

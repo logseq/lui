@@ -79,6 +79,41 @@ after(async () => {
   }
 })
 
+test("constrained lists reveal targets in layout pixels and retain visible rows", async () => {
+  await session.command("open", `${origin}/platform/web/test/fixtures/list-scroll-regression.html`)
+  const geometry = name => state(`(() => {
+    const list = document.getElementById('${name}-results')
+    const row = document.getElementById('${name}-row-19')
+    const viewport = list.getBoundingClientRect(), item = row.getBoundingClientRect()
+    return {offset:list.scrollTop, visible:item.top >= viewport.top-1 && item.bottom <= viewport.bottom+1,
+      height:list.clientHeight, total:list.scrollHeight, page:window.scrollY}
+  })()`)
+  for (const name of ["normal", "scaled"]) {
+    await session.page.getByRole("button", {name:`Reveal final ${name}`, exact:true}).click()
+    const last = await geometry(name)
+    assert.ok(last.offset > 0 && last.visible, JSON.stringify(last))
+    await session.page.getByRole("button", {name:`Reveal previous ${name}`, exact:true}).click()
+    assert.equal((await geometry(name)).offset, last.offset, "A visible target must not move the viewport")
+    await session.page.getByRole("button", {name:`Reveal first ${name}`, exact:true}).click()
+    assert.equal((await geometry(name)).offset, 0)
+  }
+  const unbounded = await geometry("unbounded")
+  assert.equal(unbounded.height, unbounded.total, "An unconstrained list must retain its natural height")
+})
+
+test("picker Escape is owned before earlier document handlers", async () => {
+  await openPickerPage()
+  await openSelectWithKey()
+  assert.equal(await session.page.getByRole("option", {name:"Beta",exact:true})
+    .evaluate(element => getComputedStyle(element).backgroundColor), "rgb(232, 232, 232)")
+  assert.equal(await session.page.getByRole("option", {name:"Beta",exact:true})
+    .locator(".lui-menu-item-check").evaluate(element => element.getBoundingClientRect().width), 16)
+  await session.command("press", "Escape")
+  await waitFor("!document.querySelector('.lui-dropdown-menu[data-open]')")
+  assert.equal(await state("window.audit.backgroundEscapes"), 0)
+  assert.equal(await state("document.activeElement.id"), "picker-select")
+})
+
 test("Select keyboard navigation uses selected and enabled rows, typeahead and Enter press", async () => {
   await openPickerPage()
   await openSelectWithKey()

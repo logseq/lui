@@ -1,0 +1,31 @@
+{:version 1
+ :imports {:layout "frame.edn"}
+ :components
+ {:workspace
+  {:slots [:content]
+   :view
+   [:ext/gallery-accent
+    [:ext/split-view {:divider-thickness 2.0 :animation true}
+     [:ext/split-branch {:orientation :horizontal
+                         :ratio {:bind [:model :split-ratio]}
+                         :on {:ratio-changed :resize}}
+      [:ext/split-pane {:pane-id "navigation" :selected "tasks"}
+       [:ext/split-tab {:tab-id "tasks" :title "Tasks"}
+        [:text {:text "A cross-platform extension tree"}]]]
+      [:ext/split-pane {:pane-id "content" :selected "view"}
+       [:ext/split-tab {:tab-id "view" :title "EDN view"}
+        [:slot :content]]]]]]}}
+ :view
+ [:platform
+  {:generic [:text {:text "Choose --profile web, ios, macos or android for extensions"}]
+   :linux [:text {:text "No matching extension host; standard view fallback"}]
+   :windows [:text {:text "No matching extension host; standard view fallback"}]
+   :default
+   [:use :workspace {}
+    {:content
+     [:use :layout/panel {:caption "Schema-checked extension + standard content"}
+      {:body
+       [:column
+        [:text {:text {:bind [:model :summary]}}]
+        [:for {:items {:bind [:model :items]} :as :task :key [:id]}
+         [:text {:text {:bind [:task :title]}}]]]}]}]}]}

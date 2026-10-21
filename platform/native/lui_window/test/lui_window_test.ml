@@ -8,6 +8,39 @@ open Lui_protocol
 open Lui_window
 open Lui_window_demo
 
+let test_css_percentage_colors () =
+  List.iter
+    (fun (css, (r, g, b, a)) ->
+      let actual = match Theme.color_of css with
+        | Some color -> color
+        | None -> Alcotest.failf "Valid CSS color was rejected: %s" css in
+      Alcotest.(check int) (css ^ " alpha") a actual.a;
+      Alcotest.(check int) (css ^ " red") r actual.r;
+      Alcotest.(check int) (css ^ " green") g actual.g;
+      Alcotest.(check int) (css ^ " blue") b actual.b)
+    [
+      ("rgb(18 52 86 / 50%)", (18, 52, 86, 128));
+      ("rgba(18, 52, 86, 0.5)", (18, 52, 86, 128));
+      ("hsl(0 0% 100% / 50%)", (255, 255, 255, 128));
+      ("hsla(0, 0%, 100%, 0.5)", (255, 255, 255, 128));
+      ("hsl(0 0 95%)", (242, 242, 242, 255));
+      ("hsl(0 0 95% / 0.75)", (242, 242, 242, 191));
+      ("hsla(0 0 95% / 75%)", (242, 242, 242, 191));
+      ("hsl(120 100 50)", (0, 255, 0, 255));
+      ("hsl(240 100% 50)", (0, 0, 255, 255));
+      ("hsl(0 -20 120)", (255, 255, 255, 255));
+      ("hsl(0 150 50)", (255, 0, 0, 255));
+      ("rgb(50% 50% 50%)", (128, 128, 128, 255));
+      ("rgb(0% 50% 100% / 0%)", (0, 128, 255, 0));
+      ("rgb(0% 50% 100% / 100%)", (0, 128, 255, 255));
+    ];
+  List.iter (fun css ->
+    Alcotest.(check bool) (css ^ " is rejected") true (Theme.color_of css=None))
+    ["hsl(0, 0, 95%)";"hsla(0, 0%, 95, 0.5)";
+     "hsl(0 0 95% / invalid)";"hsl(0 0% 95% / invalid)";
+     "hsl(nan 100% 50%)";"hsl(0 infinity 50%)";
+     "hsl(0 0% nan)";"hsl(0 0% 95% / nan)"]
+
 (* ---------- store helpers ---------- *)
 
 let store_of ops =
@@ -175,6 +208,46 @@ let test_layout () =
   Alcotest.(check (float 0.001)) "scaled btn h" 64. r3'.h;
   Alcotest.(check (float 0.001)) "scaled field y" 72. (Rects.get rects 4).y
 
+let test_layout_padding_edges () =
+  List.iter
+    (fun scale ->
+      List.iter
+        (fun kind ->
+          let store =
+            store_of
+              [
+                CreateNode (1, Root);
+                CreateNode (2, kind);
+                CreateNode (3, Box);
+                InsertChild (1, 2, 0);
+                InsertChild (2, 3, 0);
+                SetProp (2, WidthValue, IntValue 100);
+                SetProp (2, HeightValue, IntValue 80);
+                SetProp (2, PaddingHorizontal, IntValue 10);
+                SetProp (2, PaddingVertical, IntValue 6);
+                SetProp (2, PaddingTop, IntValue 3);
+                SetProp (2, PaddingRight, IntValue 8);
+                SetProp (2, PaddingBottom, IntValue 9);
+                SetProp (2, PaddingLeft, IntValue 28);
+                SetProp (3, GrowValue, FloatValue 1.);
+              ]
+          in
+          let rects = Rects.create () in
+          Layout.refresh store rects ~width:200 ~height:120 ~scale
+            ~measure:Layout.default_measure;
+          let child = Rects.get rects 3 in
+          List.iter
+            (fun (label, expected, actual) ->
+              Alcotest.(check (float 0.001)) label (expected *. scale) actual)
+            [
+              ("child left", 28., child.x);
+              ("child top", 3., child.y);
+              ("child width", 64., child.w);
+              ("child height", 68., child.h);
+            ])
+        [ Column; Row ])
+    [ 1.; 2. ]
+
 let test_layout_props () =
   let s =
     store_of
@@ -332,6 +405,67 @@ let test_click_release_elsewhere () =
    | [ PointerUp (3, _) ] -> ()
    | _ -> Alcotest.fail "expected lone PointerUp")
 
+let test_modal_pointer_scope () =
+  List.iter
+    (fun scale ->
+      let s =
+        store_of
+          [
+            CreateNode (1, Root);
+            CreateNode (2, Button);
+            CreateNode (3, Dialog);
+            CreateNode (4, TextField);
+            InsertChild (1, 2, 0);
+            InsertChild (1, 3, 1);
+            InsertChild (3, 4, 0);
+            SetProp (2, TextValue, StringValue "Background action");
+            SetProp (2, PressEnabled, BoolValue true);
+            SetProp (2, PointerEnabled, BoolValue true);
+          ]
+      in
+      let r x y w h =
+        rect (x *. scale) (y *. scale) (w *. scale) (h *. scale)
+      in
+      let rects =
+        rects_of
+          [
+            (1, r 0. 0. 400. 300.);
+            (2, r 0. 0. 300. 150.);
+            (3, r 10. 10. 250. 100.);
+            (4, r 20. 20. 200. 40.);
+          ]
+      in
+      let ui = Ui.create () in
+      Ui.set_scale ui scale;
+      ignore (Ui.store_changed ui s);
+      let click x y =
+        let down =
+          Ui.handle ui s rects
+            (Input.Button_down (x, y, Input.Left, 1, Input.mods_none))
+        in
+        let up =
+          Ui.handle ui s rects
+            (Input.Button_up (x, y, Input.Left, Input.mods_none))
+        in
+        Alcotest.(check bool)
+          "modal click cannot dispatch to covered controls" false
+          (List.exists
+             (function
+               | Dispatch (Press 2 | PressDetail (2, _) | PointerDown (2, _)) ->
+                   true
+               | _ -> false)
+             (down @ up))
+      in
+      click 50. 40.;
+      Alcotest.(check int)
+        "modal input receives pointer focus" 4 (Ui.focused ui);
+      Alcotest.(check bool)
+        "typing reaches only the modal field" true
+        (press_actions (Ui.handle ui s rects (Input.Text_input "fast"))
+        = [ TextChanged (4, "fast") ]);
+      click 230. 80.)
+    [ 1.; 2. ]
+
 let test_click_focus () =
   let s, rects = ui_store_fresh () in
   let ui = Ui.create () in
@@ -406,7 +540,7 @@ let test_text_input_and_keys () =
   ignore (Ui.handle ui s rects (Input.Text_input "x"));
   Alcotest.(check (option string)) "typing after a UTF-8 model update stays valid"
     (Some "x字") (Lui_store.string_prop s 4 "text");
-  (* Escape blurs first, then quits *)
+  (* Escape blurs the field and leaves an unfocused window open. *)
   (match
      Ui.handle ui s rects
        (Input.Key_down (Input.Escape, Input.mods_none, false))
@@ -417,8 +551,11 @@ let test_text_input_and_keys () =
      Ui.handle ui s rects
        (Input.Key_down (Input.Escape, Input.mods_none, false))
    with
+   | [] -> ()
+   | _ -> Alcotest.fail "unfocused Escape must leave the window open");
+  (match Ui.handle ui s rects Input.Quit_input with
    | [ Quit ] -> ()
-   | _ -> Alcotest.fail "expected Quit")
+   | _ -> Alcotest.fail "explicit quit must still close the window")
 
 let test_caret_ops_wiring () =
   (* C7: with a caret model wired, keyboard moves and deletes consult
@@ -742,6 +879,35 @@ let test_scroll () =
   Ui.set_scroll_cap ui 2 30.;
   Alcotest.(check (float 0.001)) "cap shrink" 0. (Ui.scroll_offset ui 2)
 
+let test_live_scroll_readers () =
+  let store =
+    store_of
+      [ CreateNode (1, Root); CreateNode (2, Scroll); InsertChild (1, 2, 0) ]
+  in
+  let ui = Ui.create () in
+  (* Drivers retain these callbacks before the first layout and wheel. *)
+  let offset_y = Ui.scroll_offset ui and offset_x = Ui.scroll_offset_x ui in
+  let cap_y = Ui.scroll_cap ui and cap_x = Ui.scroll_cap_x ui in
+  List.iter
+    (fun (axis, set_cap, offset, cap) ->
+      List.iter
+        (fun range ->
+          set_cap ui 2 range;
+          Alcotest.(check (float 0.001))
+            "retained reader sees new range" range (cap 2);
+          List.iter
+            (fun target ->
+              ignore (Ui.scroll_to ~axis ui store 2 target);
+              Alcotest.(check (float 0.001))
+                "retained reader sees movement and reversal"
+                (Float.min range target) (offset 2))
+            [ 0.; 44.; 200.; 12.; 0. ])
+        [ 80.; 30.; 0. ])
+    [
+      (Ui.Y, Ui.set_scroll_cap, offset_y, cap_y);
+      (Ui.X, Ui.set_scroll_cap_x, offset_x, cap_x);
+    ]
+
 let test_wheel_x () =
   (* a scroll container with horizontal range: wheel-x deltas and
      shift+wheel move the x offset; the y offset is untouched *)
@@ -800,6 +966,129 @@ let test_wheel_x () =
   ignore (Ui.scroll_show ui s 4);
   Alcotest.(check (float 0.001)) "x reveal" 200.
     (Ui.scroll_offset_x ui 2)
+
+let wheel_chain_fixture scale =
+  let store =
+    store_of
+      [
+        CreateNode (1, Root);
+        CreateNode (2, Scroll);
+        CreateNode (3, Scroll);
+        CreateNode (4, Scroll);
+        CreateNode (5, Text);
+        InsertChild (1, 2, 0);
+        InsertChild (2, 3, 0);
+        InsertChild (3, 4, 0);
+        InsertChild (4, 5, 0);
+      ]
+  in
+  let rects = Rects.create () and ui = Ui.create () in
+  Ui.set_scale ui scale;
+  List.iter
+    (fun id ->
+      Hashtbl.replace rects id (rect 0. 0. (100. *. scale) (100. *. scale)))
+    [ 1; 2; 3; 4; 5 ];
+  ignore (Ui.handle ui store rects (Input.Move (10., 10.)));
+  (store, rects, ui)
+
+let test_wheel_chain_remainder () =
+  List.iter
+    (fun scale ->
+      List.iter
+        (fun axis ->
+          let store, rects, ui = wheel_chain_fixture scale in
+          let set_cap, offset =
+            match axis with
+            | Ui.X -> (Ui.set_scroll_cap_x, Ui.scroll_offset_x)
+            | Ui.Y -> (Ui.set_scroll_cap, Ui.scroll_offset)
+          in
+          let wheel amount =
+            ignore
+              (Ui.handle ui store rects
+                 (match axis with
+                 | Ui.X -> Input.Wheel (amount, 0.)
+                 | Ui.Y -> Input.Wheel (0., -.amount)))
+          in
+          let expect label values =
+            List.iter
+              (fun (id, value) ->
+                Alcotest.(check (float 0.001))
+                  label (value *. scale) (offset ui id))
+              values
+          in
+          List.iter
+            (fun (id, cap) -> set_cap ui id (cap *. scale))
+            [ (2, 100.); (3, 71.); (4, 3.); (5, 999.) ];
+          wheel 1.;
+          expect "one wheel consumes the inner range and passes its remainder"
+            [ (4, 3.); (3, 41.); (2, 0.); (5, 0.) ];
+          wheel 1.;
+          expect "the same event can cross another ancestor boundary"
+            [ (4, 3.); (3, 71.); (2, 14.) ];
+          wheel (-1.);
+          expect "reversal consumes the deepest available range first"
+            [ (4, 0.); (3, 30.); (2, 14.) ];
+          wheel (-1000.);
+          expect "overshoot stops at the outer boundary"
+            [ (4, 0.); (3, 0.); (2, 0.) ];
+          set_cap ui 3 0.;
+          wheel 1.;
+          expect "zero-range ancestors cannot consume remaining distance"
+            [ (4, 3.); (3, 0.); (2, 41.) ];
+          wheel (-1000.);
+          set_cap ui 4 (1. *. scale);
+          set_cap ui 3 (71. *. scale);
+          wheel 0.03;
+          expect "fractional distance survives an inner boundary"
+            [ (4, 1.); (3, 0.32); (2, 0.) ];
+          wheel (-1000.);
+          set_cap ui 4 (0.0005 *. scale);
+          wheel 1.;
+          expect "a snapped-away inner sliver cannot discard a wheel step"
+            [ (4, 0.); (3, 44.); (2, 0.) ];
+          wheel (-1000.);
+          List.iter (fun id -> set_cap ui id 0.) [ 2; 3; 4 ];
+          let epoch = Ui.scroll_epoch ui in
+          wheel 1000.;
+          wheel (-1000.);
+          Alcotest.(check int)
+            "empty ranges do not change scroll state" epoch (Ui.scroll_epoch ui))
+        [ Ui.X; Ui.Y ])
+    [ 1.; 2. ]
+
+let test_wheel_chain_axes () =
+  List.iter
+    (fun scale ->
+      let store, rects, ui = wheel_chain_fixture scale in
+      List.iter
+        (fun (id, x, y) ->
+          Ui.set_scroll_cap_x ui id (x *. scale);
+          Ui.set_scroll_cap ui id (y *. scale))
+        [ (2, 100., 100.); (3, 7., 11.); (4, 3., 5.) ];
+      let expect label xs ys =
+        List.iter
+          (fun (id, x) ->
+            Alcotest.(check (float 0.001))
+              label (x *. scale) (Ui.scroll_offset_x ui id))
+          xs;
+        List.iter
+          (fun (id, y) ->
+            Alcotest.(check (float 0.001))
+              label (y *. scale) (Ui.scroll_offset ui id))
+          ys
+      in
+      ignore (Ui.handle ui store rects (Input.Wheel (1., -1.)));
+      expect "diagonal remainders stay on their own axis"
+        [ (4, 3.); (3, 7.); (2, 34.) ]
+        [ (4, 5.); (3, 11.); (2, 28.) ];
+      ignore (Ui.handle ui store rects (Input.Wheel (-1000., 1000.)));
+      ignore
+        (Ui.handle ui store rects
+           (Input.Wheel_mods (0., -1., { Input.mods_none with shift = true })));
+      expect "shift-wheel chains horizontally without moving vertically"
+        [ (4, 3.); (3, 7.); (2, 34.) ]
+        [ (4, 0.); (3, 0.); (2, 0.) ])
+    [ 1.; 2. ]
 
 (* ---------- pixel snapping contract ---------- *)
 
@@ -1316,10 +1605,11 @@ let test_headless_checksum () =
      with Not_found -> false);
   let c1 = checksum_of out1 and c2 = checksum_of out2 in
   Alcotest.(check string) "deterministic" c1 c2;
-  (* the recorded value pins the demo's initial scene: any render-path
-     change shows up here *)
+  (* Border-box text placement includes authored border widths while flex owns
+     intrinsic border and padding measurement. The scene also covers focused
+     control rings and clipped select labels. *)
   Alcotest.(check string) "golden"
-    "headless done: frames=6 checksum=7b8b9dbbe6351aa5" c1
+    "headless done: frames=6 checksum=65134b6799add55d" c1
 
 (* ---------- multi-window ---------- *)
 
@@ -1672,7 +1962,7 @@ let test_headless_multi () =
   let out1 = run () and out2 = run () in
   (match win_done_lines out1 with
    | [ w0; w1 ] ->
-     Alcotest.(check string) "win0 golden" "7b8b9dbbe6351aa5"
+     Alcotest.(check string) "win0 golden" "65134b6799add55d"
        (checksum_value w0);
      Alcotest.(check bool) "independent checksums" true
        (checksum_value w0 <> checksum_value w1)
@@ -1931,6 +2221,247 @@ let test_tab_activation () =
   press_field s rects ui 5. 40.;
   Alcotest.(check bool) "ptr focus" false (Ui.focus_visible ui)
 
+let test_input_time_kind () =
+  Alcotest.(check bool) "time is admitted by the typed input contract" true
+    (Lui_protocol.property_value_supported_for_kind Input InputType (StringValue "time"));
+  let store, _ = ui_store_fresh () in
+  Lui_store.apply_op store (CreateNode (10,Input));
+  Lui_store.apply_op store (SetProp (10,InputType,StringValue "time"));
+  Alcotest.(check (option string)) "time is a standard input kind" (Some "time")
+    (Lui_store.string_prop store 10 "input-type")
+
+let test_submit_on_blur () =
+  let property = match List.find_opt (fun p -> Lui_wire_schema.property_name p="submit-on-blur")
+      Lui_wire_schema.all_properties with
+    | Some p -> p | None -> Alcotest.fail "Text inputs need an explicit blur-submit capability" in
+  let store, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  let submits actions = List.filter_map (function Dispatch (Submit id) -> Some id | _ -> None) actions in
+  Ui.set_focused ui store 4;
+  Alcotest.(check (list int)) "blur submission is opt-in" []
+    (submits (Ui.handle ui store rects (key Input.Tab)));
+  Ui.set_focused ui store 4;
+  Lui_store.apply_op store (SetProp (4,property,BoolValue true));
+  Alcotest.(check (list int)) "Tab submits the field being left once" [4]
+    (submits (Ui.handle ui store rects (key Input.Tab)));
+  Alcotest.(check (list int)) "subsequent sync does not submit again" []
+    (submits (Ui.store_changed ui store));
+  Ui.set_focused ui store 4;
+  ignore (Ui.store_changed ui store);
+  Ui.set_focused ui store 3;
+  Alcotest.(check (list int)) "programmatic focus changes flush their blur action" [4]
+    (submits (Ui.store_changed ui store));
+  Ui.set_focused ui store 4;
+  Lui_store.apply_op store (SetProp (4,Enabled,BoolValue false));
+  Ui.set_focused ui store 3;
+  Alcotest.(check (list int)) "disabled controls do not submit on blur" []
+    (submits (Ui.store_changed ui store));
+  Lui_store.apply_op store (SetProp (4,Enabled,BoolValue true));
+  Ui.set_focused ui store 4;
+  ignore (Ui.handle ui store rects (Input.Text_editing ("ni",2,0)));
+  Ui.set_focused ui store 3;
+  Alcotest.(check (list int)) "marked composition does not submit on blur" []
+    (submits (Ui.store_changed ui store));
+  Ui.set_focused ui store 4;
+  Lui_store.apply_op store (RemoveProp (4,property));
+  Alcotest.(check (list int)) "removing opt-in preserves normal focus behavior" []
+    (submits (Ui.handle ui store rects (key Input.Tab)));
+  Lui_store.apply_op store (SetProp (4,property,BoolValue true));
+  Ui.set_focused ui store 4;
+  Lui_store.apply_op store (DropNode 4);
+  Alcotest.(check (list int)) "disposing a field does not submit a removed owner" []
+    (submits (Ui.store_changed ui store))
+
+let test_button_navigation_keys () =
+  let store, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  Ui.set_focused ui store 3;
+  let dispatched input =
+    Ui.handle ui store rects input
+    |> List.filter_map (function Dispatch event -> Some event | _ -> None)
+  in
+  Alcotest.(check int) "button navigation is opt-in" 0
+    (List.length (dispatched (key Input.Arrow_right)));
+  Lui_store.apply_op store (SetProp (3,NavigateEnabled,BoolValue true));
+  List.iter (fun navigation ->
+    let events=dispatched (key navigation) in
+    Alcotest.(check (list int)) "navigation reaches only its focused button" [3]
+      (List.map Lui_protocol.event_node events))
+    [Input.Arrow_left;Input.Arrow_right;Input.Arrow_up;Input.Arrow_down;
+     Input.Home;Input.End;Input.Page_up;Input.Page_down];
+  Alcotest.(check int) "shifted page navigation remains available" 1
+    (List.length (dispatched (key ~mods:shift Input.Page_up)));
+  List.iter (fun mods ->
+    Alcotest.(check int) "modified navigation remains owned by the shortcut" 0
+      (List.length (dispatched (key ~mods Input.Arrow_right))))
+    [{Input.mods_none with ctrl=true};{Input.mods_none with meta=true};
+     {Input.mods_none with alt=true}];
+  List.iter (fun activation ->
+    Alcotest.(check bool) "navigation does not replace button activation" true
+      (List.exists (function Press 3 -> true | _ -> false)
+        (dispatched (key activation)))) [Input.Return;Input.Space];
+  Lui_store.apply_op store (SetProp (3,Enabled,BoolValue false));
+  Alcotest.(check int) "disabled buttons do not navigate" 0
+    (List.length (dispatched (key Input.Arrow_right)));
+  Lui_store.apply_op store (SetProp (3,Enabled,BoolValue true));
+  Lui_store.apply_op store (SetProp (3,Visible,BoolValue false));
+  Alcotest.(check int) "hidden buttons do not navigate" 0
+    (List.length (dispatched (key Input.Arrow_right)));
+  Lui_store.apply_op store (RemoveProp (3,Visible));
+  Lui_store.apply_op store (SetProp (2,Inert,BoolValue true));
+  Alcotest.(check int) "inert ancestors suppress navigation" 0
+    (List.length (dispatched (key Input.Arrow_right)));
+  Lui_store.apply_op store (RemoveProp (2,Inert));
+  List.iter (Lui_store.apply_op store)
+    [CreateNode (8,Dialog);CreateNode (9,Button);InsertChild (1,8,1);
+     InsertChild (8,9,0);SetProp (9,TextValue,StringValue "Modal day");
+     SetProp (9,NavigateEnabled,BoolValue true)];
+  ignore (Ui.store_changed ui store);
+  Ui.set_focused ui store 3;
+  Alcotest.(check int) "a modal blocks background navigation" 0
+    (List.length (dispatched (key Input.Arrow_right)));
+  Ui.set_focused ui store 9;
+  Alcotest.(check (list int)) "the modal retains its own navigation" [9]
+    (List.map Lui_protocol.event_node (dispatched (key Input.Arrow_right)));
+  Lui_store.apply_op store (DropNode 8);
+  ignore (Ui.store_changed ui store);
+  Ui.set_focused ui store 3;
+  Lui_store.apply_op store (SetProp (3,NavigateEnabled,BoolValue false));
+  Alcotest.(check int) "false opt-in stops navigation" 0
+    (List.length (dispatched (key Input.Arrow_right)));
+  Lui_store.apply_op store (RemoveProp (3,NavigateEnabled));
+  Ui.set_focused ui store 3;
+  Alcotest.(check int) "removing opt-in stops navigation" 0
+    (List.length (dispatched (key Input.Arrow_right)));
+  Lui_store.apply_op store (SetProp (3,NavigateEnabled,BoolValue true));
+  Lui_store.apply_op store (DropNode 3);
+  Alcotest.(check int) "removed controls cannot navigate" 0
+    (List.length (dispatched (key Input.Arrow_right)))
+
+let test_negative_tabindex () =
+  let store, rects = ui_store_fresh () in
+  let ui=Ui.create () in
+  Lui_store.apply_op store (SetProp (3,DataAttrs,
+    StringValue (data_attrs_encode ["tabindex","-1"])));
+  ignore (Ui.handle ui store rects (key Input.Tab));
+  Alcotest.(check int) "Tab skips a negative tabindex" 4 (Ui.focused ui);
+  Ui.set_focused ui store 3;
+  Alcotest.(check int) "direct focus still reaches the roving item" 3 (Ui.focused ui);
+  Alcotest.(check bool) "directly focused roving items still activate" true
+    (List.exists (function Dispatch (Press 3) -> true | _ -> false)
+      (Ui.handle ui store rects (key Input.Return)));
+  Lui_store.apply_op store (SetProp (3,DataAttrs,
+    StringValue (data_attrs_encode ["tabindex","0"])));
+  Ui.set_focused ui store 4;
+  ignore (Ui.handle ui store rects (key ~mods:shift Input.Tab));
+  Alcotest.(check int) "zero tabindex restores sequential focus" 3 (Ui.focused ui)
+
+let test_focus_ring_modality () =
+  List.iter
+    (fun (kind, pointer_ring) ->
+      let store =
+        store_of
+          [
+            CreateNode (1, Root);
+            CreateNode (2, kind);
+            InsertChild (1, 2, 0);
+            SetProp (2, WidthValue, IntValue 120);
+            SetProp (2, HeightValue, IntValue 32);
+          ]
+      in
+      let rects =
+        rects_of [ (1, rect 0. 0. 200. 100.); (2, rect 10. 10. 120. 32.) ]
+      in
+      let ui = Ui.create () in
+      let ring_count () =
+        let scene =
+          Lui_scene.create
+            ~mask_atlas:(Lui_scene.Atlas.create ~bpp:1 ~w:1 ~h:1)
+            ~color_atlas:(Lui_scene.Atlas.create ~bpp:4 ~w:1 ~h:1)
+        in
+        Lui_paint.paint
+          {
+            Lui_paint.default_hooks with
+            layout =
+              (fun id -> Lui_paint.placement_of_rect (Rects.get rects id));
+            state_of = Ui.state_of ui store;
+          }
+          store scene ~width:200 ~height:100 ~scale:1. ~clear:(color 0 0 0 0);
+        List.length
+          (List.filter
+             (function
+               | Fill f -> f.fborder = (2., 2., 2., 2.) && f.frect.x < 10.
+               | _ -> false)
+             scene.ops)
+      in
+      let click () =
+        let down =
+          Ui.handle ui store rects
+            (Input.Button_down (20., 20., Input.Left, 1, Input.mods_none))
+        in
+        ignore
+          (Ui.handle ui store rects
+             (Input.Button_up (20., 20., Input.Left, Input.mods_none)));
+        down
+      in
+      ignore (click ());
+      Alcotest.(check int) "pointer retains logical focus" 2 (Ui.focused ui);
+      Alcotest.(check int)
+        "pointer shows a ring only on text entry"
+        (if pointer_ring then 2 else 0)
+        (ring_count ());
+      ignore (Ui.paint_hints ui store);
+      Ui.set_focused ~kbd:true ui store 2;
+      let changed, _ = Ui.paint_hints ui store in
+      Alcotest.(check bool)
+        "modality change invalidates retained focus paint" true
+        (Hashtbl.mem changed 2);
+      Alcotest.(check int)
+        "keyboard shows the ring on the same focused control" 2 (ring_count ());
+      let actions = click () in
+      Alcotest.(check bool)
+        "pointer on the focused control does not resend focus" false
+        (List.exists (function Focus_changed _ -> true | _ -> false) actions);
+      Alcotest.(check int)
+        "pointer preserves an existing ring on the same control" 2
+        (ring_count ());
+      ignore
+        (Ui.handle ui store rects
+           (Input.Button_down (180., 80., Input.Left, 1, Input.mods_none)));
+      ignore (click ());
+      Alcotest.(check int)
+        "new pointer focus omits keyboard-only chrome"
+        (if pointer_ring then 2 else 0)
+        (ring_count ());
+      ignore (Ui.handle ui store rects (key Input.Arrow_right));
+      Alcotest.(check int)
+        "keyboard interaction exposes focus without moving it" 2 (ring_count ());
+      Lui_store.apply_op store (SetProp (2, FocusShadow, StringValue "none"));
+      Alcotest.(check int)
+        "authored focus suppression remains authoritative" 0 (ring_count ()))
+    [
+      (Button, false);
+      (ToggleButton, false);
+      (Select, false);
+      (Checkbox, false);
+      (TextField, true);
+      (SecureField, true);
+      (Input, true);
+      (SearchField, true);
+      (Textarea, true);
+      (Combobox, true);
+    ];
+  let store, rects = ui_store_fresh () in
+  let ui = Ui.create () in
+  press_field store rects ui 5. 40.;
+  ignore (Ui.handle ui store rects (Input.Text_input "preserve selection"));
+  ignore (Ui.handle ui store rects (key ~mods:meta (Input.Other 4)));
+  let caret = Ui.caret ui and anchor = Ui.sel_anchor ui in
+  Ui.set_focused ~kbd:true ui store (Ui.focused ui);
+  Alcotest.(check int) "modality change preserves caret" caret (Ui.caret ui);
+  Alcotest.(check int)
+    "modality change preserves selection" anchor (Ui.sel_anchor ui)
+
 let test_control_keys () =
   let s =
     store_of
@@ -1985,6 +2516,25 @@ let list_store () =
       SetProp (4, TextValue, StringValue "banana");
       SetProp (5, KeyValue, StringValue "item-c");
       SetProp (5, TextValue, StringValue "cherry") ]
+
+let test_focused_list_typeahead () =
+  let store=list_store () and rects=Rects.create () in
+  List.iter (fun id -> Lui_store.apply_op store (SetProp (id,PressEnabled,BoolValue true))) [3;4;5];
+  Layout.refresh store rects ~width:100 ~height:40 ~scale:1. ~measure:Layout.default_measure;
+  let ui=Ui.create () in
+  Ui.set_content_rect ui (fun id -> Rects.get rects id);
+  let first=Rects.get rects 3 in
+  ignore (Ui.handle ui store rects (Input.Button_down
+    (first.x+.2.,first.y+.2.,Input.Left,1,Input.mods_none)));
+  Alcotest.(check int) "clicked interactive list row receives focus" 3 (Ui.focused ui);
+  ignore (Ui.handle ui store rects (key (Input.Other 5)));
+  Alcotest.(check int) "focused list preserves typeahead" 4 (Ui.hl_item ui);
+  ignore (Ui.handle ui store rects (key Input.Arrow_down));
+  Alcotest.(check int) "focused list preserves arrow navigation" 5 (Ui.hl_item ui);
+  Alcotest.(check int) "keyboard focus follows the highlighted interactive row" 5 (Ui.focused ui);
+  Alcotest.(check bool) "Enter activates the highlighted row" true
+    (List.exists (function Dispatch (Press 5) -> true | _ -> false)
+      (Ui.handle ui store rects (key Input.Return)))
 
 let test_list_typeahead () =
   let s = list_store () in
@@ -2282,6 +2832,104 @@ let test_overlay_close () =
    | [ Dispatch (Dismiss 4) ] -> ()
    | _ -> Alcotest.fail "esc dialog")
 
+let test_retained_anchor_scroll_shift () =
+  let store =
+    store_of
+      [
+        CreateNode (1, Root);
+        CreateNode (2, Scroll);
+        CreateNode (6, Column);
+        CreateNode (4, Scroll);
+        CreateNode (7, Box);
+        CreateNode (8, Button);
+        InsertChild (1, 2, 0);
+        InsertChild (2, 6, 0);
+        InsertChild (6, 4, 0);
+        InsertChild (4, 7, 0);
+        InsertChild (7, 8, 0);
+      ]
+  in
+  let ui = Ui.create () in
+  List.iter
+    (fun id ->
+      Ui.set_scroll_cap ui id 200.;
+      Ui.set_scroll_cap_x ui id 200.)
+    [ 2; 4 ];
+  List.iter
+    (fun (id, x, y) ->
+      ignore (Ui.scroll_to ~axis:Ui.X ui store id x);
+      ignore (Ui.scroll_to ui store id y))
+    [ (2, 25., 40.); (4, 15., 30.) ];
+  let check_shift label expected =
+    Alcotest.(check (pair (float 0.001) (float 0.001)))
+      label expected
+      (Ui.anchor_shift ui store 8)
+  in
+  check_shift "nested anchor uses both scroll axes" (-40., -70.);
+  Lui_store.apply_op store (SetProp (8, Position, StringValue "fixed"));
+  check_shift "a fixed anchor ignores ancestor scrolling" (0., 0.);
+  Lui_store.apply_op store (RemoveProp (8, Position));
+  Lui_store.apply_op store (SetProp (6, Position, StringValue "fixed"));
+  check_shift "scrolling stops at a fixed containing block" (-15., -30.)
+
+let test_retained_popover_input () =
+  let store =
+    store_of
+      [
+        CreateNode (1, Root);
+        CreateNode (2, Button);
+        CreateNode (3, Popover);
+        CreateNode (4, Button);
+        CreateNode (5, Input);
+        InsertChild (1, 2, 0);
+        InsertChild (1, 3, 1);
+        InsertChild (1, 4, 2);
+        InsertChild (3, 5, 0);
+        SetProp (2, AccessibilityIdentifier, StringValue "filter-trigger");
+        SetProp (3, AnchorValue, StringValue "below");
+        SetProp (3, AnchorTarget, StringValue "filter-trigger");
+        SetProp (5, Autofocus, BoolValue true);
+      ]
+  in
+  let rects = Rects.create () in
+  List.iter
+    (fun (id, region) -> Hashtbl.replace rects id region)
+    [
+      (1, rect 0. 0. 640. 400.);
+      (2, rect 500. 80. 24. 24.);
+      (3, rect 290. 108. 234. 178.);
+      (4, rect 10. 10. 24. 24.);
+      (5, rect 294. 112. 220. 32.);
+    ];
+  let ui = Ui.create () in
+  Ui.set_focused ui store 2;
+  ignore (Ui.store_changed ui store);
+  let down x y =
+    Ui.handle ui store rects
+      (Input.Button_down (x, y, Input.Left, 1, Input.mods_none))
+  in
+  let dismiss actions =
+    List.exists (function Dispatch (Dismiss 3) -> true | _ -> false) actions
+  in
+  Alcotest.(check bool)
+    "retained trigger belongs to its popup's press scope" false
+    (dismiss (down 510. 90.));
+  ignore
+    (Ui.handle ui store rects
+       (Input.Button_up (510., 90., Input.Left, Input.mods_none)));
+  Alcotest.(check bool)
+    "unrelated trigger remains outside the popup" true
+    (dismiss (down 20. 20.));
+  Ui.set_focused ui store 5;
+  Lui_store.apply_op store (DropNode 2);
+  ignore (Ui.store_changed ui store);
+  Alcotest.(check int)
+    "a missing target cannot retain overlay focus ownership" 0
+    (Ui.overlay_top ui);
+  Alcotest.(check bool)
+    "a hidden popup cannot retain editable focus" false
+    (Ui.focused ui = 5)
+
 let test_light_dismiss () =
   let s =
     store_of
@@ -2479,7 +3127,7 @@ module Fake_layout = struct
     | Some (FloatValue f) -> f
     | _ -> 0.
 
-  let sync ?scale:_ ?measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_
+  let sync ?scale:_ ?measure:_ ?text_flow:_ ?image_measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ?anchor_shift:_
       ~width ~height t store =
     Hashtbl.reset t;
     let rec place id ~x ~y ~w =
@@ -2604,6 +3252,1001 @@ let test_assembly_scroll_caps () =
   Alcotest.(check (option int)) "scrolled hit" (Some 4)
     (hit (Assembly.store asm) (Assembly.rects asm) ~x:10. ~y:90.)
 
+let ordinary_menu_ops selected =
+  [
+    CreateNode (5, DropdownMenu);
+    InsertChild (2, 5, 2);
+    SetProp (5, HeightValue, IntValue 100);
+    CreateNode (6, MenuItem);
+    InsertChild (5, 6, 0);
+    SetProp (6, TextValue, StringValue "Disabled");
+    SetProp (6, Enabled, BoolValue false);
+    SetProp (6, HeightValue, IntValue 16);
+    CreateNode (7, MenuItem);
+    InsertChild (5, 7, 1);
+    SetProp (7, TextValue, StringValue "Hidden");
+    SetProp (7, Visible, BoolValue false);
+    SetProp (7, HeightValue, IntValue 16);
+    CreateNode (8, MenuItem);
+    InsertChild (5, 8, 2);
+    SetProp (8, TextValue, StringValue "First");
+    SetProp (8, HeightValue, IntValue 24);
+    CreateNode (9, MenuItem);
+    InsertChild (5, 9, 3);
+    SetProp (9, TextValue, StringValue "Last");
+    SetProp (9, HeightValue, IntValue 24);
+    SetProp (9, Selected, BoolValue selected);
+  ]
+
+let ordinary_menu_fixture () =
+  let asm =
+    assembly_of
+      [
+        CreateNode (1, Root);
+        CreateNode (2, Column);
+        InsertChild (1, 2, 0);
+        CreateNode (3, Button);
+        InsertChild (2, 3, 0);
+        SetProp (3, TextValue, StringValue "Trigger");
+        SetProp (3, HeightValue, IntValue 32);
+        CreateNode (4, TextField);
+        InsertChild (2, 4, 1);
+        SetProp (4, HeightValue, IntValue 32);
+        SetProp (4, TextValue, StringValue "draft");
+      ]
+  in
+  let generation = ref 1 in
+  let apply ops =
+    incr generation;
+    Lui_store.apply_batch (Assembly.store asm) { generation = !generation; ops };
+    ignore (Assembly.store_changed asm);
+    ignore (Assembly.repaint asm)
+  in
+  (asm, apply)
+
+let test_ordinary_menu_focus_ownership () =
+  List.iter
+    (fun keyboard ->
+      List.iter
+        (fun selected ->
+          List.iter
+            (fun origin ->
+              let asm, apply = ordinary_menu_fixture () in
+              let ui = Assembly.ui asm and store = Assembly.store asm in
+              Ui.set_focused ~kbd:true ui store origin;
+              let r = Rects.get (Assembly.rects asm) origin in
+              ignore
+                (Assembly.handle asm
+                   (Input.Button_down
+                      (r.x +. 2., r.y +. 2., Input.Left, 1, Input.mods_none)));
+              ignore
+                (Assembly.handle asm
+                   (Input.Button_up
+                      (r.x +. 2., r.y +. 2., Input.Left, Input.mods_none)));
+              if keyboard then ignore (Assembly.handle asm (key Input.Return));
+              apply (ordinary_menu_ops selected);
+              let initial = if keyboard then if selected then 9 else 8 else 0 in
+              Alcotest.(check int)
+                "opening method determines initial highlight" initial
+                (Ui.hl_item ui);
+              Alcotest.(check int)
+                "ordinary menu owns logical focus"
+                (if initial = 0 then 5 else initial)
+                (Ui.focused ui);
+              ignore (Assembly.handle asm (key Input.Home));
+              Alcotest.(check int)
+                "Home focuses the first enabled visible row" 8 (Ui.focused ui);
+              ignore (Assembly.handle asm (key Input.End));
+              Alcotest.(check int)
+                "End moves logical focus with the highlight" 9 (Ui.focused ui);
+              Alcotest.(check bool)
+                "old row loses keyboard hover styling" false
+                (Ui.state_of ui store 8).Lui_paint.hovered;
+              ignore (Assembly.handle asm (Input.Text_input "Fir"));
+              Alcotest.(check int)
+                "typeahead moves logical focus" 8 (Ui.focused ui);
+              let row = Rects.get (Assembly.rects asm) 9 in
+              ignore
+                (Assembly.handle asm
+                   (Input.Move (row.x +. (row.w /. 2.), row.y +. (row.h /. 2.))));
+              Alcotest.(check int)
+                "pointer hover owns its menu row focus" 9 (Ui.focused ui);
+              let events =
+                press_actions (Assembly.handle asm (key Input.Return))
+              in
+              Alcotest.(check int)
+                "menu activation dispatches once" 1
+                (List.length (List.filter (( = ) (Press 9)) events));
+              apply [ DropNode 5 ];
+              Alcotest.(check int)
+                "menu close restores its original focus" origin (Ui.focused ui);
+              Alcotest.(check int)
+                "menu close clears its highlight" 0 (Ui.hl_item ui);
+              apply (ordinary_menu_ops false);
+              Ui.set_focused ui store (if origin = 3 then 4 else 3);
+              apply [ DropNode 5 ];
+              Alcotest.(check int)
+                "outside focus survives menu closure"
+                (if origin = 3 then 4 else 3)
+                (Ui.focused ui))
+            [ 3; 4 ])
+        [ false; true ])
+    [ false; true ];
+  let asm, apply = ordinary_menu_fixture () in
+  let ui = Assembly.ui asm in
+  Ui.set_focused ui (Assembly.store asm) 3;
+  apply
+    (ordinary_menu_ops false
+    @ [
+        SetProp (8, Enabled, BoolValue false);
+        SetProp (9, Enabled, BoolValue false);
+      ]);
+  Alcotest.(check int)
+    "a menu with no available rows focuses its container" 5 (Ui.focused ui);
+  Alcotest.(check bool)
+    "an unavailable menu cannot activate its trigger" false
+    (List.exists
+       (function Press _ -> true | _ -> false)
+       (press_actions (Assembly.handle asm (key Input.Return))))
+
+let test_popover_menu_focus_ownership () =
+  List.iter
+    (fun keyboard ->
+      let asm, apply = ordinary_menu_fixture () in
+      let ui = Assembly.ui asm and store = Assembly.store asm in
+      Ui.set_focused ui store 3;
+      if not keyboard then begin
+        let r = Rects.get (Assembly.rects asm) 3 in
+        ignore
+          (Assembly.handle asm
+             (Input.Button_down
+                (r.x +. 2., r.y +. 2., Input.Left, 1, Input.mods_none)));
+        ignore
+          (Assembly.handle asm
+             (Input.Button_up (r.x +. 2., r.y +. 2., Input.Left, Input.mods_none)))
+      end;
+      apply
+        (List.map
+           (function
+             | CreateNode (5, DropdownMenu) -> CreateNode (5, Popover)
+             | op -> op)
+           (ordinary_menu_ops false)
+        @ [ SetProp (5, RoleValue, StringValue "menu") ]);
+      Alcotest.(check int)
+        "a row popover owns focus using its opening method"
+        (if keyboard then 8 else 5)
+        (Ui.focused ui);
+      Alcotest.(check int)
+        "pointer-open popovers do not select a row"
+        (if keyboard then 8 else 0)
+        (Ui.hl_item ui);
+      ignore (Assembly.handle asm (key Input.End));
+      Alcotest.(check int)
+        "popover row navigation synchronizes actual focus" 9 (Ui.focused ui);
+      apply [ DropNode 5 ];
+      Alcotest.(check int)
+        "closing a row popover returns to its trigger" 3 (Ui.focused ui))
+    [ false; true ]
+
+let test_menu_edit_return () =
+  List.iter
+    (fun change_model ->
+      let asm, apply = ordinary_menu_fixture () in
+      let ui = Assembly.ui asm and store = Assembly.store asm in
+      Ui.set_focused ui store 4;
+      ignore (Assembly.handle asm (key Input.Home));
+      ignore (Assembly.handle asm (key ~mods:shift Input.Arrow_right));
+      ignore (Assembly.handle asm (Input.Text_input "X"));
+      ignore (Assembly.handle asm (key ~mods:shift Input.Arrow_right));
+      let caret = Ui.caret ui and anchor = Ui.sel_anchor ui in
+      apply (ordinary_menu_ops false);
+      Alcotest.(check int)
+        "the menu suspends the background editor focus" 8 (Ui.focused ui);
+      if change_model then apply [ SetProp (4, TextValue, StringValue "中") ];
+      apply [ DropNode 5 ];
+      Alcotest.(check int) "closing returns the editor focus" 4 (Ui.focused ui);
+      Alcotest.(check int)
+        "return restores or clamps the selection caret"
+        (if change_model then 0 else caret)
+        (Ui.caret ui);
+      Alcotest.(check int)
+        "return restores or clamps the selection anchor"
+        (if change_model then 0 else anchor)
+        (Ui.sel_anchor ui);
+      ignore (Assembly.handle asm (key ~mods:meta (Input.Other 29)));
+      Alcotest.(check string)
+        "undo survives menu focus but never replays stale model history"
+        (if change_model then "中" else "draft")
+        (Ui.shadow ui))
+    [ false; true ]
+
+let test_picker_menu_input_ownership () =
+  List.iter
+    (fun kind ->
+      let asm =
+        assembly_of
+          [
+            CreateNode (1, Root);
+            CreateNode (2, Column);
+            InsertChild (1, 2, 0);
+            CreateNode (3, kind);
+            InsertChild (2, 3, 0);
+            SetProp (3, TextValue, StringValue "draft");
+            SetProp (3, PressEnabled, BoolValue true);
+          ]
+      in
+      let ui = Assembly.ui asm and store = Assembly.store asm in
+      Ui.set_focused ui store 3;
+      Alcotest.(check bool)
+        "Down opens a focused picker" true
+        (List.mem (Press 3)
+           (press_actions (Assembly.handle asm (key Input.Arrow_down))));
+      Lui_store.apply_batch store
+        {
+          generation = 2;
+          ops =
+            [
+              CreateNode (5, DropdownMenu);
+              InsertChild (2, 5, 1);
+              CreateNode (8, MenuItem);
+              InsertChild (5, 8, 0);
+              SetProp (8, TextValue, StringValue "Alpha");
+              CreateNode (9, MenuItem);
+              InsertChild (5, 9, 1);
+              SetProp (9, TextValue, StringValue "Beta");
+              SetProp (9, Selected, BoolValue true);
+            ];
+        };
+      ignore (Assembly.store_changed asm);
+      Alcotest.(check int)
+        "picker retains its own logical focus" 3 (Ui.focused ui);
+      Alcotest.(check int)
+        "picker retains selected-row initialization" 9 (Ui.hl_item ui);
+      ignore (Assembly.handle asm (key Input.Arrow_down));
+      Alcotest.(check int)
+        "picker navigation leaves focus on its control" 3 (Ui.focused ui);
+      if kind = Combobox then begin
+        ignore (Assembly.handle asm (Input.Text_input "x"));
+        Alcotest.(check string)
+          "combobox typing belongs to its input" "draftx" (Ui.shadow ui);
+        ignore (Assembly.handle asm (key Input.Home));
+        Alcotest.(check int)
+          "combobox Home belongs to its caret" 0 (Ui.caret ui)
+      end)
+    [ Select; Combobox ]
+
+let test_menu_row_focus_chrome () =
+  List.iter
+    (fun kind ->
+      let store =
+        store_of
+          [ CreateNode (1, Root); CreateNode (2, kind); InsertChild (1, 2, 0) ]
+      in
+      let ui = Ui.create () in
+      Ui.set_focused ~kbd:true ui store 2;
+      let scene =
+        Lui_scene.create
+          ~mask_atlas:(Lui_scene.Atlas.create ~bpp:1 ~w:1 ~h:1)
+          ~color_atlas:(Lui_scene.Atlas.create ~bpp:4 ~w:1 ~h:1)
+      in
+      Lui_paint.paint
+        {
+          Lui_paint.default_hooks with
+          state_of = Ui.state_of ui store;
+          layout =
+            (fun _ -> Lui_paint.placement_of_rect (rect 10. 10. 100. 32.));
+        }
+        store scene ~width:200 ~height:100 ~scale:1. ~clear:(color 0 0 0 0);
+      Alcotest.(check bool)
+        "menu focus uses its row highlight without a button outline" false
+        (List.exists
+           (function
+             | Fill f -> f.frect.x < 10. && f.frect.w > 100. | _ -> false)
+           scene.ops))
+    [ MenuItem; MenuTrigger ]
+
+let test_nested_popover_focus_return () =
+  List.iter
+    (fun outer_kind ->
+      let asm =
+        assembly_of
+          [
+            CreateNode (1, Root);
+            CreateNode (2, Button);
+            CreateNode (3, Button);
+            InsertChild (1, 2, 0);
+            InsertChild (1, 3, 1);
+            SetProp (2, TextValue, StringValue "Open");
+            SetProp (3, TextValue, StringValue "Outside");
+          ]
+      in
+      let store = Assembly.store asm
+      and ui = Assembly.ui asm
+      and generation = ref 1 in
+      let apply ops =
+        incr generation;
+        Lui_store.apply_batch store { generation = !generation; ops };
+        ignore (Assembly.store_changed asm)
+      in
+      let open_outer () =
+        apply
+          [
+            CreateNode (10, outer_kind);
+            InsertChild (1, 10, 2);
+            CreateNode (11, Button);
+            InsertChild (10, 11, 0);
+            SetProp (11, TextValue, StringValue "Next date");
+            SetProp (11, Autofocus, BoolValue true);
+          ]
+      in
+      let open_inner () =
+        apply
+          [
+            CreateNode (20, Popover);
+            InsertChild (10, 20, 1);
+            CreateNode (21, TextField);
+            InsertChild (20, 21, 0);
+            SetProp (21, Autofocus, BoolValue true);
+          ]
+      in
+      Ui.set_focused ui store 2;
+      open_outer ();
+      Alcotest.(check int) "outer control autofocus" 11 (Ui.focused ui);
+      open_inner ();
+      Alcotest.(check int) "nested search autofocus" 21 (Ui.focused ui);
+      apply [ DropNode 20 ];
+      Alcotest.(check int)
+        "nested close returns to its own trigger" 11 (Ui.focused ui);
+      apply [ DropNode 10 ];
+      Alcotest.(check int)
+        "outer close returns to its original trigger" 2 (Ui.focused ui);
+      open_outer ();
+      open_inner ();
+      apply [ DropNode 10 ];
+      Alcotest.(check int)
+        "closing both surfaces skips their removed return target" 2
+        (Ui.focused ui);
+      open_outer ();
+      open_inner ();
+      Ui.set_focused ui store 3;
+      apply [ DropNode 10 ];
+      Alcotest.(check int)
+        "closing surfaces preserves deliberate outside focus" 3 (Ui.focused ui);
+      Ui.set_focused ui store 2;
+      open_outer ();
+      open_inner ();
+      apply [ SetProp (11, Enabled, BoolValue false); DropNode 20 ];
+      Alcotest.(check bool)
+        "a disabled trigger cannot receive returned focus" true
+        (Ui.focused ui <> 11);
+      apply [ DropNode 10 ];
+      Alcotest.(check int)
+        "outer close still retains the original available trigger" 2
+        (Ui.focused ui))
+    [ Popover; Dialog ]
+
+let test_async_popover_focus_return () =
+  let asm=assembly_of
+    [CreateNode (1,Root);CreateNode (2,Button);InsertChild (1,2,0);
+     CreateNode (3,Button);InsertChild (1,3,1)] in
+  let store=Assembly.store asm and ui=Assembly.ui asm and generation=ref 1 in
+  let apply ops=
+    incr generation;
+    Lui_store.apply_batch store {generation= !generation;ops};
+    ignore (Assembly.store_changed asm) in
+  List.iter (fun outside_focus ->
+    Ui.set_focused ~kbd:true ui store 2;
+    apply [CreateNode (10,Popover);InsertChild (1,10,2)];
+    Alcotest.(check int) "loading keeps the trigger focused" 2 (Ui.focused ui);
+    apply [CreateNode (11,SearchField);InsertChild (10,11,0);
+      SetProp (11,Autofocus,BoolValue true);
+      CreateNode (12,Button);InsertChild (10,12,1);
+      SetProp (12,PressEnabled,BoolValue true)];
+    Alcotest.(check int) "loaded search receives autofocus" 11 (Ui.focused ui);
+    ignore (Assembly.handle asm (key Input.Tab));
+    Alcotest.(check bool) "immediate Enter activates the next loaded control" true
+      (List.mem (Press 12) (press_actions (Assembly.handle asm (key Input.Return))));
+    if outside_focus then Ui.set_focused ui store 3;
+    apply [DropNode 10];
+    Alcotest.(check int) "async popover returns focus without overriding outside focus"
+      (if outside_focus then 3 else 2) (Ui.focused ui)) [false;true]
+
+let test_control_keyboard_ownership () =
+  let store=store_of
+    [CreateNode (1,Root);CreateNode (2,SearchField);InsertChild (1,2,0);
+     CreateNode (3,Button);InsertChild (1,3,1);SetProp (3,PressEnabled,BoolValue true)] in
+  let ui=Ui.create () and rects=Rects.create () in
+  let consumed=ref false in
+  let handle input=
+    consumed:=false;
+    Ui.handle ~on_component_input:(fun () -> consumed:=true) ui store rects input in
+  Ui.set_focused ui store 2;
+  ignore (handle (key Input.Tab));
+  Alcotest.(check int) "Tab focuses the button before the next queued input" 3 (Ui.focused ui);
+  Alcotest.(check bool) "focus navigation must not reach background shortcuts" true !consumed;
+  List.iter (fun activation ->
+    let actions=press_actions (handle (key activation)) in
+    Alcotest.(check bool) "control activation emits its press" true (List.mem (Press 3) actions);
+    Alcotest.(check bool) "handled activation must not be forwarded after its target unmounts" true !consumed)
+    [Input.Return;Input.Space];
+  Ui.set_focused ui store 2;
+  let text_actions=handle (Input.Text_input " ") in
+  Alcotest.(check string) "Space activation must not insert a commit into newly focused content" "" (Ui.shadow ui);
+  Alcotest.(check bool) "Space activation consumes its paired text commit" true (!consumed && text_actions=[]);
+  Ui.set_focused ui store 3;
+  ignore (handle (key (Input.Other 4)));
+  Alcotest.(check bool) "unhandled keys remain available to application shortcuts" false !consumed;
+  Lui_store.apply_op store (SetProp (2,Enabled,BoolValue false));
+  ignore (handle (key Input.Tab));
+  Alcotest.(check int) "a single available control retains Tab focus" 3 (Ui.focused ui);
+  Alcotest.(check bool) "wrapped Tab is still owned by focus navigation" true !consumed
+
+let test_anchored_popover_handoff () =
+  let asm=assembly_of
+    [CreateNode (1,Root);CreateNode (3,Button);InsertChild (1,3,0);
+     CreateNode (2,Button);InsertChild (1,2,1);
+     SetProp (2,AccessibilityIdentifier,StringValue "help-trigger")] in
+  let store=Assembly.store asm and ui=Assembly.ui asm and generation=ref 1 in
+  let apply ops=
+    incr generation;
+    Lui_store.apply_batch store {generation= !generation;ops};
+    ignore (Assembly.store_changed asm) in
+  Ui.set_focused ~kbd:true ui store 2;
+  apply [CreateNode (10,Popover);InsertChild (1,10,2);
+    SetProp (10,RoleValue,StringValue "dialog");
+    SetProp (10,AnchorTarget,StringValue "help-trigger");
+    CreateNode (11,Button);InsertChild (10,11,0);
+    SetProp (11,PressEnabled,BoolValue true)];
+  Alcotest.(check int) "anchored popover preserves its trigger until keyboard navigation" 2 (Ui.focused ui);
+  ignore (Assembly.handle asm (key Input.Tab));
+  Alcotest.(check int) "Tab enters the anchored action" 11 (Ui.focused ui);
+  apply [DropNode 10;CreateNode (20,Popover);InsertChild (1,20,2)];
+  Alcotest.(check int) "handoff retains the live trigger while the next surface loads" 2 (Ui.focused ui);
+  apply [CreateNode (21,SearchField);InsertChild (20,21,0);SetProp (21,Autofocus,BoolValue true)];
+  Alcotest.(check int) "the asynchronous surface receives focus" 21 (Ui.focused ui);
+  apply [DropNode 20];
+  Alcotest.(check int) "closing the asynchronous surface returns to the original trigger" 2 (Ui.focused ui)
+
+let test_focus_within_paint () =
+  let property name=
+    let found=List.find_opt (fun prop -> Lui_wire_schema.property_name prop=name) Lui_wire_schema.all_properties in
+    Alcotest.(check bool) ("Shared focus appearance channel exists: " ^ name) true (Option.is_some found);
+    Option.get found in
+  let background=property "focus-within-background" and border=property "focus-within-border" in
+  let store=store_of
+    [CreateNode (1,Root);CreateNode (2,Row);InsertChild (1,2,0);
+     CreateNode (3,Row);InsertChild (2,3,0);
+     CreateNode (4,SearchField);InsertChild (3,4,0);
+     CreateNode (5,Button);InsertChild (1,5,1);
+     CreateNode (6,Button);InsertChild (2,6,1);
+     SetProp (2,BackgroundValue,StringValue "#ffffff");
+     SetProp (2,BorderColorValue,StringValue "#000000");SetProp (2,BorderWidth,IntValue 3);
+     SetProp (2,background,StringValue "#112233");SetProp (2,border,StringValue "#445566")] in
+  let ui=Ui.create () in
+  let paint ()=
+    let scene=Lui_scene.create ~mask_atlas:(Lui_scene.Atlas.create ~bpp:1 ~w:1 ~h:1)
+      ~color_atlas:(Lui_scene.Atlas.create ~bpp:4 ~w:1 ~h:1) in
+    Lui_paint.paint {Lui_paint.default_hooks with state_of=Ui.state_of ui store;
+      layout=(fun id -> Lui_paint.placement_of_rect
+        (if id=2 then rect 10. 10. 100. 40. else rect 0. 0. 0. 0.))}
+      store scene ~width:200 ~height:100 ~scale:1. ~clear:(color 0 0 0 0);
+    List.find_map (function Fill fill when fill.frect.x=10. && fill.frect.w=100. -> Some fill | _ -> None) scene.ops
+    |> Option.get in
+  let expect label bg edge=
+    let fill=paint () in
+    Alcotest.(check bool) (label ^ " background") true (fill.fcolor=bg);
+    Alcotest.(check bool) (label ^ " border") true (fill.fborder_color=edge) in
+  let move id=Ui.set_focused ui store id;ignore (Ui.paint_hints ui store) in
+  move 5;expect "Outside focus" (color 255 255 255 255) (color 0 0 0 255);
+  List.iter (fun id ->
+    Ui.set_focused ui store id;
+    let dirty,_=Ui.paint_hints ui store in
+    Alcotest.(check bool) "Focus movement invalidates the styled ancestor" true (Hashtbl.mem dirty 2);
+    expect "Descendant focus" (color 17 34 51 255) (color 68 85 102 255)) [4;6];
+  Ui.set_focused ui store 5;
+  let dirty,_=Ui.paint_hints ui store in
+  Alcotest.(check bool) "Leaving focus invalidates the old ancestor" true (Hashtbl.mem dirty 2);
+  expect "Focus leaves the group" (color 255 255 255 255) (color 0 0 0 255);
+  move 4;
+  Lui_store.apply_op store (RemoveProp (2,background));
+  expect "Removing the background channel preserves its focused border" (color 255 255 255 255) (color 68 85 102 255);
+  Lui_store.apply_op store (RemoveProp (2,border));
+  expect "Removing the border channel restores its base style" (color 255 255 255 255) (color 0 0 0 255);
+  move 0;expect "Blur" (color 255 255 255 255) (color 0 0 0 255)
+
+let test_action_menu_focus () =
+  List.iter (fun (origin,kbd) ->
+    let asm = assembly_of
+      [ CreateNode (1, Root); CreateNode (2, Button); CreateNode (8, TextField);
+        InsertChild (1,2,0); InsertChild (1,8,1);
+        SetProp (2,TextValue,StringValue "Trigger");
+        SetProp (8,TextValue,StringValue "Outside") ] in
+    let ui=Assembly.ui asm and store=Assembly.store asm and generation=ref 1 in
+    let apply ops = incr generation;
+      Lui_store.apply_batch store {generation= !generation;ops};
+      ignore (Assembly.store_changed asm) in
+    let open_menu () = apply
+      [ CreateNode (3,Popover); InsertChild (1,3,2);
+        SetProp (3,RoleValue,StringValue "menu");
+        CreateNode (4,Button); InsertChild (3,4,0);
+        SetProp (4,Enabled,BoolValue false);
+        CreateNode (5,Box); InsertChild (3,5,1);
+        SetProp (5,DisplayValue,StringValue "none");
+        CreateNode (6,Button); InsertChild (5,6,0);
+        CreateNode (10,Box); InsertChild (3,10,2);
+        SetProp (10,Inert,BoolValue true);
+        CreateNode (11,Button); InsertChild (10,11,0);
+        CreateNode (12,Box); InsertChild (3,12,3);
+        SetProp (12,Visible,BoolValue false);
+        CreateNode (13,Button); InsertChild (12,13,0);
+        CreateNode (7,Button); InsertChild (3,7,4);
+        SetProp (7,TextValue,StringValue "First action");
+        CreateNode (9,Button); InsertChild (3,9,5);
+        SetProp (9,TextValue,StringValue "Second action") ] in
+    Ui.set_focused ~kbd ui store origin;
+    open_menu ();
+    Alcotest.(check int) "button-only menu focuses its first available action" 7 (Ui.focused ui);
+    Alcotest.(check bool) "initial menu focus preserves input modality" kbd (Ui.focus_visible ui);
+    let events=press_actions (Assembly.handle asm (key Input.Return)) in
+    Alcotest.(check int) "Enter activates the first action once" 1
+      (List.length (List.filter ((=) (Press 7)) events));
+    Ui.set_focused ui store 9;
+    apply [SetProp (7,TextValue,StringValue "Updated action")];
+    Alcotest.(check int) "updates preserve focus moved within the menu" 9 (Ui.focused ui);
+    Alcotest.(check bool) "Escape dismisses the action menu" true
+      (List.mem (Dismiss 3) (press_actions (Assembly.handle asm (key Input.Escape))));
+    apply [DropNode 3];
+    Alcotest.(check int) "closing restores the original available focus" origin (Ui.focused ui);
+    open_menu ();
+    Ui.set_focused ui store 8;
+    apply [DropNode 3];
+    Alcotest.(check int) "outside dismissal preserves newly moved focus" 8 (Ui.focused ui);
+    Ui.set_focused ui store origin;
+    open_menu ();
+    apply [CreateNode (20,Dialog); InsertChild (1,20,3);
+      CreateNode (21,Input); InsertChild (20,21,0)];
+    Alcotest.(check int) "nested dialog releases the background menu action" 0 (Ui.focused ui);
+    Ui.set_focused ui store 21;
+    apply [DropNode 20];
+    Alcotest.(check int) "closing a nested dialog returns to the action menu" 7 (Ui.focused ui);
+    apply [DropNode 3];
+    Alcotest.(check int) "nested dismissal retains the original return target" origin (Ui.focused ui))
+    [0,false;2,false;2,true]
+
+let test_assembly_menu_scroll () =
+  List.iter
+    (fun (kind, props) ->
+      let asm =
+        assembly_of
+          [
+            CreateNode (1, Root);
+            CreateNode (2, kind);
+            CreateNode (3, MenuItem);
+            CreateNode (4, MenuItem);
+            InsertChild (1, 2, 0);
+            InsertChild (2, 3, 0);
+            InsertChild (2, 4, 1);
+            SetProp (2, HeightValue, IntValue 100);
+            SetProp (3, HeightValue, IntValue 120);
+            SetProp (4, HeightValue, IntValue 80);
+          ]
+      in
+      Lui_store.apply_batch (Assembly.store asm) { generation = 2; ops = props };
+      ignore (Assembly.store_changed asm);
+      ignore (Assembly.repaint asm);
+      let ui = Assembly.ui asm and store = Assembly.store asm in
+      Alcotest.(check (float 0.001))
+        "menus scroll without an overflow override" 100. (Ui.scroll_cap ui 2);
+      Alcotest.(check bool)
+        "offscreen menu option cannot be hit" true
+        (hit store (Assembly.rects asm) ~x:10. ~y:150. <> Some 4);
+      ignore (Assembly.handle asm (Input.Move (10., 10.)));
+      ignore (Assembly.handle asm (Input.Wheel (0., -100.)));
+      ignore (Assembly.repaint asm);
+      Alcotest.(check (float 0.001))
+        "wheel reaches the final option" 100. (Ui.scroll_offset ui 2);
+      let final = Rects.get (Assembly.rects asm) 4 in
+      Alcotest.(check (float 0.001))
+        "final option is fully visible" 100. (final.y +. final.h);
+      Alcotest.(check (option int))
+        "final option receives hits" (Some 4)
+        (hit store (Assembly.rects asm) ~x:10. ~y:60.);
+      ignore
+        (Ui.handle ui store (Assembly.rects asm)
+           (Input.Button_down (10., 60., Input.Left, 1, Input.mods_none)));
+      let events =
+        press_actions
+          (Ui.handle ui store (Assembly.rects asm)
+             (Input.Button_up (10., 60., Input.Left, Input.mods_none)))
+      in
+      Alcotest.(check bool)
+        "final option remains clickable" true
+        (List.mem (Press 4) events))
+    [
+      (DropdownMenu, []);
+      (ContextMenu, []);
+      (Popover, [ SetProp (2, RoleValue, StringValue "menu") ]);
+    ]
+
+let test_assembly_menu_keyboard () =
+  List.iter
+    (fun (kind, props) ->
+      let asm =
+        assembly_of
+          [
+            CreateNode (1, Root);
+            CreateNode (2, kind);
+            CreateNode (3, TextField);
+            InsertChild (1, 3, 0);
+            InsertChild (1, 2, 1);
+            SetProp (3, HeightValue, IntValue 30);
+            SetProp (3, TextValue, StringValue "background");
+            SetProp (2, HeightValue, IntValue 100);
+          ]
+      in
+      let ui = Assembly.ui asm and store = Assembly.store asm in
+      Lui_store.apply_batch store { generation = 2; ops = props };
+      for index = 0 to 19 do
+        let id = index + 4 in
+        Lui_store.apply_batch store
+          {
+            generation = index + 3;
+            ops =
+              [
+                CreateNode (id, MenuItem);
+                InsertChild (2, id, index);
+                SetProp (id, HeightValue, IntValue 32);
+                SetProp
+                  ( id,
+                    TextValue,
+                    StringValue (if id = 23 then "Last item" else "Option") );
+                SetProp (id, Enabled, BoolValue (id <> 5));
+              ];
+          }
+      done;
+      ignore (Assembly.store_changed asm);
+      ignore (Assembly.repaint asm);
+      Ui.set_focused ui store 3;
+      let input key =
+        Assembly.handle asm (Input.Key_down (key, Input.mods_none, false))
+      in
+      List.iter
+        (fun (key, expected) ->
+          ignore (input key);
+          Alcotest.(check int)
+            "menu keys navigate enabled options before the background field"
+            expected (Ui.hl_item ui))
+        [
+          (Input.Home, 4);
+          (Input.Arrow_down, 6);
+          (Input.Arrow_up, 4);
+          (Input.Arrow_up, 23);
+          (Input.Arrow_down, 4);
+          (Input.End, 23);
+        ];
+      Alcotest.(check string)
+        "menu navigation preserves the background field" "background"
+        (Ui.shadow ui);
+      Alcotest.(check bool)
+        "keyboard highlight paints as hovered" true
+        (Ui.state_of ui store 23).Lui_paint.hovered;
+      ignore (Assembly.repaint asm);
+      let panel = Rects.get (Assembly.rects asm) 2
+      and last = Rects.get (Assembly.rects asm) 23 in
+      Alcotest.(check bool)
+        "End reveals the entire final option" true
+        (Ui.scroll_offset ui 2 > 0.
+        && last.y >= panel.y
+        && last.y +. last.h <= panel.y +. panel.h);
+      List.iter
+        (fun key ->
+          let events =
+            press_actions
+              (Ui.handle ui store (Assembly.rects asm)
+                 (Input.Key_down (key, Input.mods_none, false)))
+          in
+          Alcotest.(check int)
+            "keyboard activation dispatches Press exactly once" 1
+            (List.length (List.filter (( = ) (Press 23)) events));
+          Alcotest.(check bool)
+            "detail-only menu actions receive keyboard activation" true
+            (List.exists
+               (function
+                 | PressDetail (23, d) ->
+                     d.x >= last.x
+                     && d.x <= last.x +. last.w
+                     && d.y >= last.y
+                     && d.y <= last.y +. last.h
+                 | _ -> false)
+               events))
+        [ Input.Return; Input.Space ];
+      let previous = Rects.get (Assembly.rects asm) 22 in
+      ignore
+        (Assembly.handle asm
+           (Input.Move
+              ( previous.x +. (previous.w /. 2.),
+                previous.y +. (previous.h /. 2.) )));
+      Alcotest.(check int)
+        "pointer and keyboard share one menu highlight" 22 (Ui.hl_item ui);
+      Alcotest.(check bool)
+        "moving the pointer clears the previous keyboard highlight" false
+        (Ui.state_of ui store 23).Lui_paint.hovered;
+      ignore (input Input.Home);
+      ignore (input Input.End);
+      Alcotest.(check bool)
+        "keyboard navigation clears the previous pointer highlight" false
+        (Ui.state_of ui store 22).Lui_paint.hovered;
+      ignore (input Input.Home);
+      ignore (Assembly.handle asm (Input.Text_input "La"));
+      Alcotest.(check int)
+        "typeahead finds a matching menu option" 23 (Ui.hl_item ui);
+      Alcotest.(check string)
+        "menu typeahead cannot edit the background field" "background"
+        (Ui.shadow ui);
+      Lui_store.apply_batch store { generation = 30; ops = [ DropNode 2 ] };
+      ignore (Assembly.store_changed asm);
+      ignore (Assembly.handle asm (Input.Text_input "x"));
+      Alcotest.(check string)
+        "typing resumes after the menu is disposed" "backgroundx" (Ui.shadow ui))
+    [
+      (DropdownMenu, []);
+      (ContextMenu, []);
+      (Popover, [ SetProp (2, RoleValue, StringValue "menu") ]);
+    ]
+
+let test_menu_open_selection () =
+  List.iter
+    (fun (selected, navigate_early) ->
+      let asm =
+        assembly_of
+          [
+            CreateNode (1, Root);
+            CreateNode (2, TextField);
+            SetProp (2, TextValue, StringValue "draft");
+            InsertChild (1, 2, 0);
+          ]
+      in
+      let ui = Assembly.ui asm and store = Assembly.store asm in
+      Ui.set_focused ui store 2;
+      let rows =
+        List.init 20 (fun index ->
+            let id = index + 4 in
+            [
+              CreateNode (id, MenuItem);
+              InsertChild (3, id, index);
+              SetProp
+                (id, TextValue, StringValue (Printf.sprintf "Option %d" index));
+              SetProp (id, HeightValue, IntValue 32);
+              SetProp (id, Selected, BoolValue (id = selected));
+              SetProp (id, Enabled, BoolValue (id <> 4));
+              SetProp (id, Visible, BoolValue (id <> 5));
+            ])
+      in
+      Lui_store.apply_batch store
+        {
+          generation = 2;
+          ops =
+            [
+              CreateNode (3, DropdownMenu);
+              InsertChild (1, 3, 1);
+              SetProp (3, HeightValue, IntValue 100);
+            ]
+            @ List.concat rows;
+        };
+      ignore (Assembly.store_changed asm);
+      let expected = if selected = 23 then 23 else 6 in
+      Alcotest.(check int)
+        "open highlights the enabled selected row or first enabled row" expected
+        (Ui.hl_item ui);
+      Alcotest.(check bool)
+        "initial selection uses the menu highlight style" true
+        (Ui.state_of ui store expected).Lui_paint.hovered;
+      Alcotest.(check int)
+        "keyboard opening focuses the initially highlighted row" expected
+        (Ui.focused ui);
+      let events = press_actions (Assembly.handle asm (key Input.Return)) in
+      Alcotest.(check bool)
+        "Enter activates the initial selection" true
+        (List.mem (Press expected) events);
+      if navigate_early then ignore (Assembly.handle asm (key Input.Home));
+      ignore (Assembly.repaint asm);
+      ignore (Assembly.store_changed asm);
+      ignore (Assembly.repaint asm);
+      if expected = 23 && not navigate_early then begin
+        let panel = Rects.get (Assembly.rects asm) 3 in
+        let row = Rects.get (Assembly.rects asm) expected in
+        Alcotest.(check bool)
+          "opening reveals the entire selected row after layout" true
+          (Ui.scroll_offset ui 3 > 0.
+           && row.y >= panel.y && row.y +. row.h <= panel.y +. panel.h)
+      end;
+      if navigate_early then
+        Alcotest.(check (float 0.01))
+          "navigation cancels the deferred initial reveal" 0.
+          (Ui.scroll_offset ui 3);
+      ignore (Assembly.handle asm (key Input.Arrow_down));
+      let next = if expected = 23 && not navigate_early then 6 else 7 in
+      Alcotest.(check int)
+        "Down continues from the initial selection" next (Ui.hl_item ui);
+      Lui_store.apply_batch store
+        {
+          generation = 3;
+          ops = [ SetProp (3, BackgroundValue, StringValue "#fff") ];
+        };
+      ignore (Assembly.store_changed asm);
+      Alcotest.(check int)
+        "unrelated patches preserve keyboard navigation" next (Ui.hl_item ui);
+      Lui_store.apply_batch store { generation = 4; ops = [ DropNode 3 ] };
+      ignore (Assembly.store_changed asm);
+      ignore (Assembly.handle asm (Input.Text_input "x"));
+      Alcotest.(check string)
+        "closing restores editing without losing its draft" "draftx"
+        (Ui.shadow ui))
+    [ (23, false); (23, true); (4, false); (5, false); (0, false) ]
+
+let test_select_keyboard_lifecycle () =
+  let asm = assembly_of
+    [CreateNode (1, Root);CreateNode (2, Popover);CreateNode (3, Box);
+     CreateNode (4, Select);CreateNode (9, Button);
+     InsertChild (1,2,0);InsertChild (2,3,0);InsertChild (3,4,0);InsertChild (2,9,1);
+     SetProp (4, PressEnabled, BoolValue true)] in
+  let store = Assembly.store asm and ui = Assembly.ui asm in
+  let mount generation =
+    Lui_store.apply_batch store {generation;ops=
+      [CreateNode (5,DropdownMenu);InsertChild (3,5,1)]
+      @ List.concat_map (fun (id,label,enabled) ->
+          [CreateNode (id,MenuItem);InsertChild (5,id,id-6);
+           SetProp (id,TextValue,StringValue label);SetProp (id,Enabled,BoolValue enabled)])
+        [6,"Text",true;7,"Number",false;8,"URL",true]};
+    ignore (Assembly.store_changed asm) in
+  let unmount generation =
+    Lui_store.apply_batch store {generation;ops=[DropNode 5]};
+    ignore (Assembly.store_changed asm) in
+  mount 2;
+  Alcotest.(check int) "auto-opened select owns keyboard focus" 4 (Ui.focused ui);
+  Alcotest.(check int) "auto-opened select highlights its first option" 6 (Ui.hl_item ui);
+  ignore (Assembly.handle asm (key Input.Arrow_down));
+  Alcotest.(check int) "picker skips disabled options" 8 (Ui.hl_item ui);
+  let consumed = ref 0 in
+  let escape () = Ui.handle ~on_component_input:(fun () -> incr consumed)
+    ui store (Assembly.rects asm) (key Input.Escape) in
+  Alcotest.(check bool) "Escape dismisses the inner picker only" true
+    (List.mem (Dismiss 5) (press_actions (escape ())));
+  Alcotest.(check int) "owned Escape cannot reach document handlers" 1 !consumed;
+  unmount 3;
+  Alcotest.(check int) "dismissal preserves the select's focus" 4 (Ui.focused ui);
+  Alcotest.(check bool) "Up requests reopening the focused select" true
+    (List.mem (Press 4) (press_actions (Assembly.handle asm (key Input.Arrow_up))));
+  mount 4;
+  Alcotest.(check int) "Up opens on the final enabled option" 8 (Ui.hl_item ui);
+  Ui.set_focused ui store 8;
+  unmount 5;
+  Alcotest.(check int) "removing a focused option restores its select" 4 (Ui.focused ui);
+  Alcotest.(check bool) "Down requests reopening the focused select" true
+    (List.mem (Press 4) (press_actions (Assembly.handle asm (key Input.Arrow_down))));
+  mount 6;
+  Alcotest.(check int) "Down opens on the first enabled option" 6 (Ui.hl_item ui);
+  unmount 7;
+  Alcotest.(check bool) "outer Escape still reaches the parent" true
+    (List.mem (Dismiss 2) (press_actions (escape ())));
+  Alcotest.(check int) "parent dismissal also consumes Escape exactly once" 2 !consumed
+
+let test_menu_keyboard_scope () =
+  let store =
+    store_of
+      [
+        CreateNode (1, Root);
+        CreateNode (2, TextField);
+        InsertChild (1, 2, 0);
+        SetProp (2, TextValue, StringValue "background");
+        CreateNode (3, DropdownMenu);
+        InsertChild (1, 3, 1);
+        CreateNode (4, MenuItem);
+        InsertChild (3, 4, 0);
+        CreateNode (5, Popover);
+        InsertChild (4, 5, 0);
+        SetProp (5, RoleValue, StringValue "menu");
+        CreateNode (6, MenuItem);
+        InsertChild (5, 6, 0);
+        CreateNode (7, MenuItem);
+        InsertChild (5, 7, 1);
+        SetProp (6, Enabled, BoolValue false);
+      ]
+  in
+  let ui = Ui.create () and rects = Rects.create () in
+  ignore (Ui.store_changed ui store);
+  Ui.set_focused ui store 2;
+  ignore (Ui.handle ui store rects (key Input.End));
+  Alcotest.(check int) "only the top nested menu navigates" 7 (Ui.hl_item ui);
+  let events = press_actions (Ui.handle ui store rects (key Input.Return)) in
+  Alcotest.(check bool)
+    "nested activation cannot reach the parent action" true
+    (List.mem (Press 7) events && not (List.mem (Press 4) events));
+  Lui_store.apply_batch store
+    { generation = 2; ops = [ SetProp (7, Enabled, BoolValue false) ] };
+  let events = press_actions (Ui.handle ui store rects (key Input.Return)) in
+  Alcotest.(check bool)
+    "disabling the highlighted option prevents stale activation" true
+    (not
+       (List.exists
+          (function Press _ | PressDetail _ -> true | _ -> false)
+          events));
+  let consumed = ref 0 in
+  ignore
+    (Ui.handle
+       ~on_component_input:(fun () -> incr consumed)
+       ui store rects
+       (Input.Text_editing ("ni", 2, 0)));
+  Alcotest.(check string)
+    "menu composition cannot attach to the background editor" "" (Ui.marked ui);
+  Alcotest.(check int)
+    "menu composition suppresses duplicate document delivery" 1 !consumed;
+  ignore (Ui.handle ui store rects (Input.Text_input "x"));
+  Alcotest.(check string)
+    "a disabled menu still owns text input" "background" (Ui.shadow ui);
+  Lui_store.apply_batch store { generation = 3; ops = [ DropNode 5 ] };
+  ignore (Ui.handle ui store rects (key Input.Home));
+  Alcotest.(check int)
+    "dismissing the submenu restores parent navigation" 4 (Ui.hl_item ui);
+  Lui_store.apply_batch store
+    {
+      generation = 4;
+      ops = [ CreateNode (8, TextField); InsertChild (3, 8, 1) ];
+    };
+  ignore (Ui.store_changed ui store);
+  Ui.set_focused ui store 8;
+  ignore (Ui.handle ui store rects (Input.Text_editing ("ni", 2, 0)));
+  Alcotest.(check string)
+    "an editor inside a menu retains composition" "ni" (Ui.marked ui);
+  ignore (Ui.handle ui store rects (Input.Text_input "ni"));
+  Alcotest.(check string)
+    "an editor inside a menu retains text input" "ni" (Ui.shadow ui)
+
+let test_menu_activation_text_commit () =
+  List.iter
+    (fun commit ->
+      let store =
+        store_of
+          [
+            CreateNode (1, Root);
+            CreateNode (2, TextField);
+            InsertChild (1, 2, 0);
+            SetProp (2, TextValue, StringValue "background");
+            CreateNode (3, DropdownMenu);
+            InsertChild (1, 3, 1);
+            CreateNode (4, MenuItem);
+            InsertChild (3, 4, 0);
+          ]
+      in
+      let ui = Ui.create () and rects = Rects.create () in
+      ignore (Ui.store_changed ui store);
+      Ui.set_focused ui store 2;
+      ignore (Ui.handle ui store rects (key Input.Home));
+      let activation = Ui.handle ui store rects (key Input.Space) in
+      Alcotest.(check bool)
+        "Space activates the menu item" true
+        (List.mem (Press 4) (press_actions activation));
+      Lui_store.apply_batch store { generation = 2; ops = [ DropNode 3 ] };
+      ignore (Ui.store_changed ui store);
+      if commit then begin
+        let consumed = ref false in
+        ignore
+          (Ui.handle
+             ~on_component_input:(fun () -> consumed := true)
+             ui store rects (Input.Text_input " "));
+        Alcotest.(check string)
+          "activation cannot insert behind the closed menu" "background"
+          (Ui.shadow ui);
+        Alcotest.(check bool)
+          "activation consumes its trailing text commit" true !consumed
+      end;
+      ignore (Ui.handle ui store rects (key Input.Space));
+      ignore (Ui.handle ui store rects (Input.Text_input " "));
+      Alcotest.(check string)
+        "the next ordinary Space still edits the field" "background "
+        (Ui.shadow ui))
+    [ true; false ]
+
 let test_assembly_scroll_shows_in_paint () =
   (* scroll_of feeds the scrollbar: a container with range reports
      metrics; one without reports none. *)
@@ -2632,6 +4275,187 @@ let test_assembly_scroll_shows_in_paint () =
     List.length (Lui_host.scene (Assembly.host plain)).ops
   in
   Alcotest.(check bool) "scrollbar ops" true (scroll_ops > plain_ops)
+
+let test_assembly_inset_scroll_caps () =
+  let module Inset_layout = struct
+    include Fake_layout
+    let sync ?scale:_ ?measure:_ ?text_flow:_ ?image_measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ?anchor_shift:_
+        ~width:_ ~height:_ t _store =
+      Hashtbl.reset t;
+      List.iter (fun (id,r) -> Hashtbl.add t id r)
+        [1,Lui_scene.rect 0. 0. 200. 200.;2,Lui_scene.rect 20. 30. 100. 100.;
+         3,Lui_scene.rect 28. 38. 180. 200.]
+  end in
+  let asm=Assembly.create ~layout:(module Inset_layout)
+    ~scale_cell:(ref 1.) ~text:assembly_text ~renderer:assembly_renderer
+    ~width:200 ~height:200 () in
+  Lui_store.apply_batch (Assembly.store asm) {generation=1;ops=
+    [CreateNode (1,Root);CreateNode (2,Scroll);CreateNode (3,Box);
+     InsertChild (1,2,0);InsertChild (2,3,0)]};
+  ignore (Assembly.repaint asm);
+  let ui=Assembly.ui asm in
+  Alcotest.(check (float 0.001)) "vertical inset remains reachable" 108.
+    (Ui.scroll_cap ui 2);
+  Alcotest.(check (float 0.001)) "horizontal inset remains reachable" 88.
+    (Ui.scroll_cap_x ui 2);
+  ignore (Ui.scroll_to ui (Assembly.store asm) 2 1000.);
+  ignore (Ui.scroll_to ~axis:X ui (Assembly.store asm) 2 1000.);
+  ignore (Assembly.repaint asm);
+  let last=Rects.get (Assembly.rects asm) 3 in
+  Alcotest.(check (float 0.001)) "last content bottom is visible" 130. (last.y+.last.h);
+  Alcotest.(check (float 0.001)) "last content right is visible" 120. (last.x+.last.w)
+
+let test_assembly_resize_scroll_clamp () =
+  let module Resize_layout = struct
+    include Fake_layout
+
+    let sync ?scale ?measure:_ ?text_flow:_ ?image_measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ?anchor_shift:_ ~width ~height t
+        _store =
+      let scale = Option.value ~default:1. scale in
+      Hashtbl.reset t;
+      List.iter
+        (fun (id, r) -> Hashtbl.add t id r)
+        [
+          (1, Lui_scene.rect 0. 0. width height);
+          (2, Lui_scene.rect 0. 0. width height);
+          (3, Lui_scene.rect 0. 0. width (32. *. scale));
+          (4, Lui_scene.rect 0. (32. *. scale) width (368. *. scale));
+        ]
+  end in
+  List.iter
+    (fun scale ->
+      let asm =
+        Assembly.create
+          ~layout:(module Resize_layout)
+          ~scale_cell:(ref scale) ~text:assembly_text
+          ~renderer:assembly_renderer
+          ~width:(int_of_float (200. *. scale))
+          ~height:(int_of_float (100. *. scale))
+          ()
+      in
+      let store = Assembly.store asm and ui = Assembly.ui asm in
+      Lui_store.apply_batch store
+        {
+          generation = 1;
+          ops =
+            [
+              CreateNode (1, Root);
+              CreateNode (2, Scroll);
+              CreateNode (3, TextField);
+              CreateNode (4, Box);
+              InsertChild (1, 2, 0);
+              InsertChild (2, 3, 0);
+              InsertChild (2, 4, 1);
+            ];
+        };
+      ignore (Assembly.repaint asm);
+      ignore (Ui.scroll_to ui store 2 (300. *. scale));
+      ignore (Assembly.repaint asm);
+      Lui_host.resize (Assembly.host asm)
+        ~width:(int_of_float (200. *. scale))
+        ~height:(int_of_float (500. *. scale))
+        ~scale;
+      ignore (Assembly.repaint asm);
+      Alcotest.(check (float 0.001))
+        "resize clamps the obsolete offset" 0. (Ui.scroll_offset ui 2);
+      Alcotest.(check (float 0.001))
+        "first resized hit mirror uses the clamped offset" 0.
+        (Rects.get (Assembly.rects asm) 3).y;
+      ignore
+        (Assembly.handle asm
+           (Input.Button_down (10., 10., Input.Left, 1, Input.mods_none)));
+      ignore
+        (Assembly.handle asm
+           (Input.Button_up (10., 10., Input.Left, Input.mods_none)));
+      Alcotest.(check int)
+        "input receives focus immediately after resize" 3 (Ui.focused ui))
+    [ 1.; 2. ]
+
+let test_assembly_nested_clip_caps () =
+  let module Nested_layout = struct
+    include Fake_layout
+
+    let sync ?scale:_ ?measure:_ ?text_flow:_ ?image_measure:_ ?hidden:_ ?ctx_anchor:_ ?vport:_ ?anchor_shift:_ ~width:_
+        ~height:_ t store =
+      let hidden = Lui_store.string_prop store 4 "display" = Some "none" in
+      Hashtbl.reset t;
+      List.iter
+        (fun (id, r) -> Hashtbl.add t id r)
+        [
+          (1, Lui_scene.rect 0. 0. 300. 300.);
+          (2, Lui_scene.rect 20. 30. 100. 100.);
+          (3, Lui_scene.rect 20. 30. 100. 200.);
+          (4, Lui_scene.rect 20. 30. 100. 40.);
+          ( 5,
+            Lui_scene.rect 20. 30.
+              (if hidden then nan else 400.)
+              (if hidden then nan else 500.) );
+          (6, Lui_scene.rect 20. 70. 100. 160.);
+        ]
+  end in
+  List.iter
+    (fun (name, kind, props, clipped) ->
+      let asm =
+        Assembly.create
+          ~layout:(module Nested_layout)
+          ~scale_cell:(ref 1.) ~text:assembly_text ~renderer:assembly_renderer
+          ~width:300 ~height:300 ()
+      in
+      Lui_store.apply_batch (Assembly.store asm)
+        {
+          generation = 1;
+          ops =
+            [
+              CreateNode (1, Root);
+              CreateNode (2, Scroll);
+              CreateNode (3, Column);
+              CreateNode (4, kind);
+              CreateNode (5, Box);
+              CreateNode (6, Box);
+              InsertChild (1, 2, 0);
+              InsertChild (2, 3, 0);
+              InsertChild (3, 4, 0);
+              InsertChild (4, 5, 0);
+              InsertChild (3, 6, 1);
+            ]
+            @ props;
+        };
+      ignore (Assembly.repaint asm);
+      let ui = Assembly.ui asm in
+      Alcotest.(check (float 0.001))
+        (name ^ " outer horizontal range")
+        (if clipped then 0. else 300.)
+        (Ui.scroll_cap_x ui 2);
+      Alcotest.(check (float 0.001))
+        (name ^ " outer vertical range includes its sibling")
+        (if clipped then 100. else 400.)
+        (Ui.scroll_cap ui 2);
+      if kind = Scroll then begin
+        Alcotest.(check (float 0.001))
+          "inner horizontal range survives" 300. (Ui.scroll_cap_x ui 4);
+        Alcotest.(check (float 0.001))
+          "inner vertical range survives" 460. (Ui.scroll_cap ui 4)
+      end)
+    [
+      ("nested scroll", Scroll, [], true);
+      ( "hidden overflow",
+        Box,
+        [ SetProp (4, Overflow, StringValue "hidden") ],
+        true );
+      ("auto overflow", Box, [ SetProp (4, Overflow, StringValue "auto") ], true);
+      ("visible overflow", Box, [], false);
+      ( "display-none subtree",
+        Box,
+        [ SetProp (4, DisplayValue, StringValue "none") ],
+        true );
+      ( "unboxed overflow",
+        Box,
+        [
+          SetProp (4, Overflow, StringValue "hidden");
+          SetProp (4, DisplayValue, StringValue "contents");
+        ],
+        false );
+    ]
 
 let test_assembly_autofocus () =
   let asm =
@@ -2731,6 +4555,220 @@ let test_idle_scrollbar_allocations () =
   let bytes = Gc.allocated_bytes () -. before in
   Alcotest.(check bool) "Hidden scrollbar polling exceeds 16 bytes per poll" true (bytes < 160000.)
 
+let split_fixture () =
+  let store = store_of [CreateNode (1,Split);CreateNode (2,Column);CreateNode (3,Column);
+    SetProp (1,ProgressValue,FloatValue 0.25);SetProp (1,Gap,IntValue 3);
+    InsertChild (1,2,0);InsertChild (1,3,1)] in
+  let rects = Rects.create () in
+  List.iter (fun (id,rect) -> Hashtbl.add rects id rect)
+    [1,rect 50. 40. 1000. 600.;2,rect 50. 40. 250. 600.;3,rect 306. 40. 744. 600.];
+  let ui=Ui.create () in
+  Ui.set_scale ui 2.;
+  store,rects,ui
+
+let split_fraction store id = Option.get (Lui_store.float_prop store id "value")
+let resized id acts = List.find_map (function
+    | Dispatch (ValueChanged (node,value)) when node=id -> Some value
+    | _ -> None) acts
+
+let test_split_pointer_resize () =
+  let store,rects,ui=split_fixture () in
+  let input event=Ui.handle ui store rects event in
+  ignore (input (Input.Move (151.5,100.)));
+  Alcotest.(check (float 0.00001)) "hover does not resize" 0.25 (split_fraction store 1);
+  ignore (input (Input.Button_down (151.5,100.,Input.Left,1,Input.mods_none)));
+  Alcotest.(check (float 0.00001)) "grabbing the divider does not jump" 0.25 (split_fraction store 1);
+  let acts=input (Input.Move (201.5,100.)) in
+  let moved=0.25+.50./.497. in
+  Alcotest.(check (option (float 0.00001))) "drag dispatches the divider-free fraction" (Some moved) (resized 1 acts);
+  Alcotest.(check (float 0.00001)) "drag mirrors geometry before application feedback" moved (split_fraction store 1);
+  ignore (input (Input.Move (-500.,-100.)));
+  Alcotest.(check (float 0.00001)) "captured drag clamps at the first endpoint" 0. (split_fraction store 1);
+  ignore (input (Input.Move (2000.,1000.)));
+  Alcotest.(check (float 0.00001)) "captured drag clamps at the second endpoint" 1. (split_fraction store 1);
+  let acts=input (Input.Button_up (226.5,100.,Input.Left,Input.mods_none)) in
+  let released=0.25+.75./.497. in
+  Alcotest.(check (option (float 0.00001))) "release uses its final pointer coordinate" (Some released) (resized 1 acts);
+  ignore (input (Input.Move (500.,100.)));
+  Alcotest.(check (float 0.00001)) "release ends resize capture" released (split_fraction store 1)
+
+let test_split_pointer_pixels () =
+  List.iter (fun scale ->
+    let store,rects,ui=split_fixture () in
+    Ui.set_scale ui scale;
+    List.iter (Lui_store.apply_op store)
+      [RemoveProp (1,ProgressValue); SetProp (1,FirstPaneWidth,FloatValue 246.);
+       SetProp (2,MinWidth,IntValue 240);SetProp (2,MaxWidth,IntValue 460)];
+    let x=303./.scale and y=200./.scale in
+    let input event=Ui.handle ui store rects event in
+    ignore (input (Input.Button_down (x,y,Input.Left,1,Input.mods_none)));
+    let acts=input (Input.Move (x+.20.,y)) in
+    Alcotest.(check (option (float 0.00001))) "pixel resize reports logical pixels" (Some 266.) (resized 1 acts);
+    Alcotest.(check (option (float 0.00001))) "pixel resize updates the active width property" (Some 266.)
+      (Lui_store.float_prop store 1 "first-pane-width");
+    Alcotest.(check (option (float 0.00001))) "pixel resize does not create a second control input" None
+      (Lui_store.float_prop store 1 "value");
+    let acts=input (Input.Button_up (x+.1000.,y,Input.Left,Input.mods_none)) in
+    Alcotest.(check (option (float 0.00001))) "pixel resize respects maximum on release" (Some 460.) (resized 1 acts))
+    [1.;2.]
+
+let test_split_overlay_handle () =
+  let property name =
+    let found=List.find_opt (fun p -> Lui_wire_schema.property_name p=name) Lui_wire_schema.all_properties in
+    Alcotest.(check bool) ("Shared split property exists: "^name) true (Option.is_some found);
+    Option.get found in
+  let handle_width=property "resize-handle-width" and handle_offset=property "resize-handle-offset" in
+  List.iter (fun scale -> List.iter (fun pixels -> List.iter (fun offset ->
+    List.iter (fun grip ->
+      let store=store_of [CreateNode (1,Split);CreateNode (2,Column);CreateNode (3,Column);
+        InsertChild (1,2,0);InsertChild (1,3,1);SetProp(1,Gap,IntValue 0);
+        SetProp(1,handle_width,IntValue 3);SetProp(1,handle_offset,FloatValue offset);
+        (if pixels then SetProp(1,FirstPaneWidth,FloatValue 246.) else SetProp(1,ProgressValue,FloatValue 0.246))] in
+      let rects=Rects.create () in
+      List.iter (fun (id,x,w) -> Hashtbl.replace rects id (rect (x*.scale) (40.*.scale) (w*.scale) (600.*.scale)))
+        [1,50.,1000.;2,50.,246.;3,296.,754.];
+      let ui=Ui.create () in Ui.set_scale ui scale;
+      let input event=Ui.handle ui store rects event in
+      let x=296.+.offset+.grip and y=100. in
+      ignore (input (Input.Button_down(x,y,Input.Left,1,Input.mods_none)));
+      Alcotest.(check (option (float 0.00001))) "Grabbing an overlay handle does not move the boundary" None
+        (resized 1 (input (Input.Move(x,y))));
+      let expected=if pixels then 266. else 0.266 in
+      Alcotest.(check (option (float 0.00001))) "Overlay handle drag preserves its grab offset at either scale" (Some expected)
+        (resized 1 (input (Input.Move(x+.20.,y))));
+      ignore (input (Input.Button_up(x+.20.,y,Input.Left,Input.mods_none)))) [-1.4;0.;1.4])
+    [0.5;2.5]) [false;true]) [1.;2.]
+
+let test_split_without_handle () =
+  List.iter (fun scale -> List.iter (fun pixels ->
+    let store,rects,ui=split_fixture () in
+    Ui.set_scale ui scale;
+    if pixels then Lui_store.apply_op store (RemoveProp(1,ProgressValue));
+    List.iter (fun (id,x,w) -> Hashtbl.replace rects id (rect (x*.scale) (40.*.scale) (w*.scale) (600.*.scale)))
+      [1,50.,1000.;2,50.,246.;3,296.,754.];
+    List.iter (Lui_store.apply_op store)
+      [SetProp(1,Gap,IntValue 0); SetProp(1,ResizeHandleWidth,IntValue 0);
+       (if pixels then SetProp(1,FirstPaneWidth,FloatValue 246.) else SetProp(1,ProgressValue,FloatValue 0.246))];
+    let input event=Ui.handle ui store rects event in
+    List.iter (fun x ->
+      ignore (input (Input.Button_down(x,100.,Input.Left,1,Input.mods_none)));
+      Alcotest.(check bool) "A zero-width divider never captures even its exact boundary" false (Ui.resizing_split ui);
+      Alcotest.(check (option (float 0.00001))) "A hidden divider emits no pointer resize" None
+        (resized 1 (input (Input.Move(x+.20.,100.))));
+      ignore (input (Input.Button_up(x+.20.,100.,Input.Left,Input.mods_none)))) [295.;296.;297.];
+    Lui_store.apply_op store (SetProp(1,ResizeHandleWidth,IntValue 3));
+    ignore (input (Input.Button_down(296.,100.,Input.Left,1,Input.mods_none)));
+    Alcotest.(check bool) "Restoring the handle restores input" true (Ui.resizing_split ui);
+    Lui_store.apply_op store (SetProp(1,ResizeHandleWidth,IntValue 0));
+    Alcotest.(check (option (float 0.00001))) "Hiding the divider cancels an existing drag" None
+      (resized 1 (input (Input.Move(316.,100.))));
+    Alcotest.(check bool) "A hidden divider releases resize capture" false (Ui.resizing_split ui))
+    [false;true]) [1.;2.]
+
+let test_split_pointer_minimums () =
+  List.iter
+    (fun scale ->
+      let store, rects, ui = split_fixture () in
+      Ui.set_scale ui scale;
+      let input event = Ui.handle ui store rects event in
+      let x = 303. /. scale and y = 200. /. scale in
+      List.iter (Lui_store.apply_op store)
+        [
+          SetProp (2, MinWidth, IntValue 100);
+          SetProp (3, MinWidth, IntValue 150);
+        ];
+      ignore (input (Input.Button_down (x, y, Input.Left, 1, Input.mods_none)));
+      ignore (input (Input.Move (-2000., y)));
+      let available = 994. /. scale in
+      Alcotest.(check (float 0.00001))
+        "drag preserves the first pane minimum" (100. /. available)
+        (split_fraction store 1);
+      Alcotest.(check (option (float 0.00001)))
+        "dragging beyond the same minimum emits no duplicate resize" None
+        (resized 1 (input (Input.Move (-2100., y))));
+      let acts =
+        input (Input.Button_up (2000., y, Input.Left, Input.mods_none))
+      in
+      Alcotest.(check (option (float 0.00001)))
+        "release preserves the second pane minimum"
+        (Some (1. -. (150. /. available)))
+        (resized 1 acts);
+      List.iter (Lui_store.apply_op store)
+        [
+          SetProp (2, MinWidth, IntValue 600);
+          SetProp (3, MinWidth, IntValue 900);
+        ];
+      ignore (input (Input.Button_down (x, y, Input.Left, 1, Input.mods_none)));
+      ignore (input (Input.Move (-2000., y)));
+      Alcotest.(check (float 0.00001))
+        "infeasible minimums share the track proportionally" 0.4
+        (split_fraction store 1);
+      ignore (input (Input.Button_up (2000., y, Input.Left, Input.mods_none)));
+      Alcotest.(check (float 0.00001))
+        "infeasible minimums remain stable on release" 0.4
+        (split_fraction store 1);
+      List.iter (Lui_store.apply_op store)
+        [SetProp (2,MinWidth,IntValue 50);SetProp (3,MinWidth,IntValue 50);
+         SetProp (2,MaxWidth,IntValue 200)];
+      ignore (input (Input.Button_down (x,y,Input.Left,1,Input.mods_none)));
+      ignore (input (Input.Move (2000.,y)));
+      Alcotest.(check (float 0.00001)) "drag honors the first pane maximum"
+        (200./.available) (split_fraction store 1);
+      Alcotest.(check (option (float 0.00001))) "repeated capped motion emits no resize" None
+        (resized 1 (input (Input.Move (2100.,y))));
+      ignore (input (Input.Button_up (2100.,y,Input.Left,Input.mods_none)));
+      Lui_store.apply_op store (RemoveProp (2,MaxWidth));
+      Lui_store.apply_op store (SetProp (3,MaxWidth,IntValue 300));
+      ignore (input (Input.Button_down (x,y,Input.Left,1,Input.mods_none)));
+      ignore (input (Input.Button_up (-2000.,y,Input.Left,Input.mods_none)));
+      Alcotest.(check (float 0.00001)) "release honors the second pane maximum"
+        (1.-.300./.available) (split_fraction store 1);
+      List.iter (Lui_store.apply_op store)
+        [SetProp (2,MaxWidth,IntValue 100);SetProp (3,MaxWidth,IntValue 150)];
+      ignore (input (Input.Button_down (x,y,Input.Left,1,Input.mods_none)));
+      ignore (input (Input.Button_up (2000.,y,Input.Left,Input.mods_none)));
+      Alcotest.(check (float 0.00001)) "infeasible maximums share the track proportionally"
+        0.4 (split_fraction store 1))
+    [ 1.; 2. ]
+
+let test_split_pointer_admission () =
+  let store,rects,ui=split_fixture () in
+  let input event=Ui.handle ui store rects event in
+  let down button x=ignore (input (Input.Button_down (x,100.,button,1,Input.mods_none))) in
+  let up button x=ignore (input (Input.Button_up (x,100.,button,Input.mods_none))) in
+  List.iter (fun (button,x) -> down button x;ignore (input (Input.Move (201.5,100.)));up button 201.5)
+    [Input.Right,151.5;Input.Middle,151.5;Input.Left,100.];
+  Alcotest.(check (float 0.00001)) "other buttons and pane content do not resize" 0.25 (split_fraction store 1);
+  Lui_store.apply_op store (SetProp (1,Enabled,BoolValue false));
+  down Input.Left 151.5;ignore (input (Input.Move (201.5,100.)));up Input.Left 201.5;
+  Alcotest.(check (float 0.00001)) "disabled split cannot capture a drag" 0.25 (split_fraction store 1);
+  Lui_store.apply_op store (SetProp (1,Enabled,BoolValue true));
+  Lui_store.apply_op store (CreateNode (9,Dialog));
+  Hashtbl.add rects 9 (rect 250. 40. 200. 600.);
+  down Input.Left 151.5;ignore (input (Input.Move (201.5,100.)));up Input.Left 201.5;
+  Alcotest.(check (float 0.00001)) "modal overlay masks a divider behind it" 0.25 (split_fraction store 1);
+  Lui_store.apply_op store (DropNode 9);
+  down Input.Left 151.5;
+  Lui_store.apply_op store (DropNode 1);
+  Alcotest.(check (option (float 0.00001))) "removed split emits no captured resize" None
+    (resized 1 (input (Input.Move (201.5,100.))));
+  up Input.Left 201.5
+
+let test_nested_split_pointer_resize () =
+  let store,rects,ui=split_fixture () in
+  List.iter (Lui_store.apply_op store)
+    [DropNode 3;CreateNode (3,Split);SetProp (3,ProgressValue,FloatValue 0.5);
+     CreateNode (5,Column);CreateNode (6,Column);InsertChild (1,3,1);
+     InsertChild (3,5,0);InsertChild (3,6,1)];
+  Hashtbl.replace rects 3 (rect 306. 40. 744. 600.);
+  Hashtbl.add rects 5 (rect 306. 40. 400. 600.);
+  Hashtbl.add rects 6 (rect 712. 40. 338. 600.);
+  ignore (Ui.handle ui store rects (Input.Button_down (354.5,100.,Input.Left,1,Input.mods_none)));
+  let acts=Ui.handle ui store rects (Input.Move (364.5,100.)) in
+  Alcotest.(check (option (float 0.00001))) "innermost divider uses its own divider-free scaled track" (Some (0.5+.20./.738.))
+    (resized 3 acts);
+  Alcotest.(check (float 0.00001)) "nested resize leaves the outer split unchanged" 0.25 (split_fraction store 1)
+
 let () =
   Alcotest.run "lui_window"
     [ ("config", [ Alcotest.test_case "parse_args" `Quick test_parse_args ]);
@@ -2740,7 +4778,8 @@ let () =
         [ Alcotest.test_case "event_supported" `Quick test_event_supported ] );
       ( "layout",
         [ Alcotest.test_case "stack" `Quick test_layout;
-          Alcotest.test_case "props" `Quick test_layout_props ] );
+          Alcotest.test_case "props" `Quick test_layout_props;
+          Alcotest.test_case "padding edges" `Quick test_layout_padding_edges ] );
       ( "hit",
         [ Alcotest.test_case "path" `Quick test_hit;
           Alcotest.test_case "z-order" `Quick test_hit_z_order;
@@ -2751,6 +4790,7 @@ let () =
       ( "events",
         [ Alcotest.test_case "idle allocations" `Quick test_idle_sync_allocations;
           Alcotest.test_case "idle scrollbar allocations" `Quick test_idle_scrollbar_allocations;
+          Alcotest.test_case "live scroll readers" `Quick test_live_scroll_readers;
           Alcotest.test_case "click" `Quick test_click_press;
           Alcotest.test_case "release elsewhere" `Quick
             test_click_release_elsewhere;
@@ -2788,7 +4828,9 @@ let () =
         [ Alcotest.test_case "ops" `Quick test_checksum ] );
       ( "scroll",
         [ Alcotest.test_case "wheel" `Quick test_scroll;
-          Alcotest.test_case "wheel-x" `Quick test_wheel_x ] );
+          Alcotest.test_case "wheel-x" `Quick test_wheel_x;
+          Alcotest.test_case "wheel remainder" `Quick test_wheel_chain_remainder;
+          Alcotest.test_case "wheel remainder axes" `Quick test_wheel_chain_axes ] );
       ( "snapping",
         [ Alcotest.test_case "stub layout" `Quick test_snap_stub_layout;
           Alcotest.test_case "phantom scroll" `Quick
@@ -2809,11 +4851,25 @@ let () =
       ( "clipboard",
         [ Alcotest.test_case "cut/copy/paste" `Quick test_clipboard_cycle;
           Alcotest.test_case "undo/redo" `Quick test_undo_redo ] );
+      ( "split resize",
+        [ Alcotest.test_case "pointer feedback" `Quick test_split_pointer_resize;
+          Alcotest.test_case "pixel pane resize" `Quick test_split_pointer_pixels;
+          Alcotest.test_case "overlay handle" `Quick test_split_overlay_handle;
+          Alcotest.test_case "no handle" `Quick test_split_without_handle;
+          Alcotest.test_case "pane minimums" `Quick test_split_pointer_minimums;
+          Alcotest.test_case "capture admission" `Quick test_split_pointer_admission;
+          Alcotest.test_case "nested scaled track" `Quick test_nested_split_pointer_resize ] );
       ( "keys",
-        [ Alcotest.test_case "tab activation" `Quick test_tab_activation;
+        [ Alcotest.test_case "focus ring modality" `Quick test_focus_ring_modality;
+          Alcotest.test_case "tab activation" `Quick test_tab_activation;
+          Alcotest.test_case "button navigation keys" `Quick test_button_navigation_keys;
+          Alcotest.test_case "negative tabindex" `Quick test_negative_tabindex;
+          Alcotest.test_case "time input kind" `Quick test_input_time_kind;
+          Alcotest.test_case "submit on blur" `Quick test_submit_on_blur;
           Alcotest.test_case "control keys" `Quick test_control_keys ] );
       ( "list",
         [ Alcotest.test_case "typeahead" `Quick test_list_typeahead;
+          Alcotest.test_case "focused typeahead" `Quick test_focused_list_typeahead;
           Alcotest.test_case "scroll request" `Quick test_scroll_request;
           Alcotest.test_case "vlist scroll request" `Quick
             test_vlist_scroll_request ] );
@@ -2821,8 +4877,22 @@ let () =
         [ Alcotest.test_case "drag drop" `Quick test_drag_drop;
           Alcotest.test_case "file drop" `Quick test_file_drop ] );
       ( "overlay",
-        [ Alcotest.test_case "modal+esc" `Quick test_overlay_close;
+        [ Alcotest.test_case "ordinary menu focus ownership" `Quick test_ordinary_menu_focus_ownership;
+          Alcotest.test_case "popover menu focus ownership" `Quick test_popover_menu_focus_ownership;
+          Alcotest.test_case "menu edit return" `Quick test_menu_edit_return;
+          Alcotest.test_case "picker input ownership" `Quick test_picker_menu_input_ownership;
+          Alcotest.test_case "menu row focus chrome" `Quick test_menu_row_focus_chrome;
+          Alcotest.test_case "pointer scope" `Quick test_modal_pointer_scope;
+          Alcotest.test_case "modal+esc" `Quick test_overlay_close;
+          Alcotest.test_case "retained anchor scroll shift" `Quick test_retained_anchor_scroll_shift;
+          Alcotest.test_case "retained popover input" `Quick test_retained_popover_input;
           Alcotest.test_case "light dismiss" `Quick test_light_dismiss;
+          Alcotest.test_case "action menu focus" `Quick test_action_menu_focus;
+          Alcotest.test_case "nested popover focus return" `Quick test_nested_popover_focus_return;
+          Alcotest.test_case "async popover focus return" `Quick test_async_popover_focus_return;
+          Alcotest.test_case "control keyboard ownership" `Quick test_control_keyboard_ownership;
+          Alcotest.test_case "anchored popover handoff" `Quick test_anchored_popover_handoff;
+          Alcotest.test_case "focus within paint" `Quick test_focus_within_paint;
           Alcotest.test_case "appear once" `Quick test_appear_once;
           Alcotest.test_case "autofocus" `Quick test_autofocus;
           Alcotest.test_case "modal focus scope" `Quick
@@ -2843,13 +4913,23 @@ let () =
           Alcotest.test_case "drop-file" `Quick test_headless_drop;
           Alcotest.test_case "two windows" `Quick test_headless_multi ] );
       ( "assembly",
-        [ Alcotest.test_case "scroll caps" `Quick
+        [ Alcotest.test_case "resize scroll clamp" `Quick test_assembly_resize_scroll_clamp;
+          Alcotest.test_case "scroll caps" `Quick
             test_assembly_scroll_caps;
+          Alcotest.test_case "inset scroll caps" `Quick test_assembly_inset_scroll_caps;
+          Alcotest.test_case "nested clip scroll caps" `Quick test_assembly_nested_clip_caps;
+          Alcotest.test_case "intrinsic menu scroll" `Quick test_assembly_menu_scroll;
+          Alcotest.test_case "intrinsic menu keyboard" `Quick test_assembly_menu_keyboard;
+          Alcotest.test_case "menu initial selection" `Quick test_menu_open_selection;
+          Alcotest.test_case "select keyboard lifecycle" `Quick test_select_keyboard_lifecycle;
+          Alcotest.test_case "nested menu keyboard scope" `Quick test_menu_keyboard_scope;
+          Alcotest.test_case "menu activation text commit" `Quick test_menu_activation_text_commit;
           Alcotest.test_case "scrollbar paint" `Quick
             test_assembly_scroll_shows_in_paint;
           Alcotest.test_case "autofocus" `Quick test_assembly_autofocus ] );
       ( "parity",
-        [ Alcotest.test_case "win32 key table" `Quick
+        [ Alcotest.test_case "CSS percentage colors" `Quick test_css_percentage_colors;
+          Alcotest.test_case "win32 key table" `Quick
             test_win32_key_parity;
           Alcotest.test_case "win32 accelerators" `Quick
             test_win32_accelerators ] ) ]

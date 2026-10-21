@@ -932,6 +932,26 @@
       "swift": "paddingVertical"
     },
     {
+      "lg": "PaddingTop",
+      "wire": "padding-top",
+      "swift": "paddingTop"
+    },
+    {
+      "lg": "PaddingRight",
+      "wire": "padding-right",
+      "swift": "paddingRight"
+    },
+    {
+      "lg": "PaddingBottom",
+      "wire": "padding-bottom",
+      "swift": "paddingBottom"
+    },
+    {
+      "lg": "PaddingLeft",
+      "wire": "padding-left",
+      "swift": "paddingLeft"
+    },
+    {
       "lg": "MarginValue",
       "wire": "margin",
       "swift": "margin"
@@ -1102,6 +1122,11 @@
       "swift": "iconPlacement"
     },
     {
+      "lg": "SelectionPlacementValue",
+      "wire": "selection-placement",
+      "swift": "selectionPlacement"
+    },
+    {
       "lg": "Selected",
       "wire": "selected",
       "swift": "selected"
@@ -1215,6 +1240,11 @@
       "lg": "AnchorValue",
       "wire": "anchor",
       "swift": "anchor"
+    },
+    {
+      "lg": "AnchorTarget",
+      "wire": "anchor-target",
+      "swift": "anchorTarget"
     },
     {
       "lg": "AnchorAlignmentValue",
@@ -1617,6 +1647,16 @@
       "swift": "focusShadow"
     },
     {
+      "lg": "FocusWithinBackground",
+      "wire": "focus-within-background",
+      "swift": "focusWithinBackground"
+    },
+    {
+      "lg": "FocusWithinBorder",
+      "wire": "focus-within-border",
+      "swift": "focusWithinBorder"
+    },
+    {
       "lg": "SelectedBackground",
       "wire": "selected-background",
       "swift": "selectedBackground"
@@ -1700,6 +1740,76 @@
       "lg": "Transition",
       "wire": "transition",
       "swift": "transition"
+    },
+    {
+      "lg": "Inert",
+      "wire": "inert",
+      "swift": "inert"
+    },
+    {
+      "lg": "NavigateEnabled",
+      "wire": "navigate-enabled",
+      "swift": "navigateEnabled"
+    },
+    {
+      "lg": "FirstPaneWidth",
+      "wire": "first-pane-width",
+      "swift": "firstPaneWidth"
+    },
+    {
+      "lg": "GridColumnSpan",
+      "wire": "grid-column-span",
+      "swift": "gridColumnSpan"
+    },
+    {
+      "lg": "LabelOpacity",
+      "wire": "label-opacity",
+      "swift": "labelOpacity"
+    },
+    {
+      "lg": "SubmitOnBlur",
+      "wire": "submit-on-blur",
+      "swift": "submitOnBlur"
+    },
+    {
+      "lg": "AnchorAlignmentOffset",
+      "wire": "anchor-alignment-offset",
+      "swift": "anchorAlignmentOffset"
+    },
+    {
+      "lg": "AnchorRect",
+      "wire": "anchor-rect",
+      "swift": "anchorRect"
+    },
+    {
+      "lg": "ResizeHandleWidth",
+      "wire": "resize-handle-width",
+      "swift": "resizeHandleWidth"
+    },
+    {
+      "lg": "ResizeHandleOffset",
+      "wire": "resize-handle-offset",
+      "swift": "resizeHandleOffset"
+    },
+    {
+      "lg": "IndicatorBorderColor",
+      "wire": "indicator-border-color",
+      "swift": "indicatorBorderColor"
+    },
+    {
+      "lg": "CheckedIndicatorBorderColor",
+      "wire": "checked-indicator-border-color",
+      "swift": "checkedIndicatorBorderColor"
+    },
+    {
+      "lg": "CollisionPadding",
+      "wire": "collision-padding",
+      "swift": "collisionPadding"
+    },
+    {
+      "lg": "LineClamp",
+      "wire": "line-clamp",
+      "swift": "lineClamp"
     }
   ],
   "events": [
@@ -1841,6 +1951,26 @@
       "fields": [
         ":int"
       ]
+    },
+    {
+      "lg": "NavigatePrevious",
+      "fields": [":int"]
+    },
+    {
+      "lg": "NavigateNext",
+      "fields": [":int"]
+    },
+    {
+      "lg": "NavigationKey",
+      "fields": [":int", ":string", ":bool"]
+    },
+    {
+      "lg": "ScrollEdges",
+      "fields": [
+        ":int",
+        ":bool",
+        ":bool"
+      ]
     }
   ],
   "kindProperties": {
@@ -1908,6 +2038,10 @@
       "padding",
       "padding-horizontal",
       "padding-vertical",
+      "padding-top",
+      "padding-right",
+      "padding-bottom",
+      "padding-left",
       "margin",
       "margin-horizontal",
       "margin-vertical",
@@ -1918,6 +2052,11 @@
     ],
     "toolbar": [
 
+      "height",
+      "padding",
+      "background",
+      "border-width",
+      "corner-radius",
       "orientation",
       "accessibility-label",
       "gap",
@@ -2011,6 +2150,10 @@
       "padding",
       "padding-horizontal",
       "padding-vertical",
+      "padding-top",
+      "padding-right",
+      "padding-bottom",
+      "padding-left",
       "width",
       "height",
       "min-width",
@@ -2037,6 +2180,8 @@
       "pressed-opacity",
       "pressed-shadow",
       "focus-shadow",
+      "focus-within-background",
+      "focus-within-border",
       "selected-background",
       "selected-shadow",
       "selected-hover-shadow",
@@ -2045,8 +2190,27 @@
     ]
   },
   "kindExtraProperties": {
+    "image": ["image-fit"],
+    "checkbox": ["gap", "label-opacity", "indicator-border-color", "checked-indicator-border-color"],
+    "radio": ["gap", "label-opacity"],
+    "grid": ["main", "cross"],
+    "row": ["orientation"],
+    "list-item": ["display"],
     "dialog": [
-      "description"
-    ]
+      "description",
+      "background",
+      "foreground",
+      "border-color",
+      "border-width",
+      "corner-radius",
+      "gap"
+    ],
+    "box": [
+      "inert"
+    ],
+    "popover": ["collision-padding"],
+    "dropdown-menu": ["collision-padding"],
+    "tooltip": ["collision-padding"],
+    "switch": ["foreground"]
   }
 }

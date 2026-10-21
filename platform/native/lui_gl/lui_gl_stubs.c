@@ -1,3 +1,11 @@
+/* glibc before 2.36 exposes RTLD_DEFAULT only when _GNU_SOURCE is defined
+   before the first libc header. Other libcs declare it unconditionally.
+   Linux-only so the macOS dlfcn.h and the Windows GetProcAddress path stay
+   unchanged. */
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE
+#endif
+
 /* Byte copies between OCaml Bytes and the bigarrays the GL bindings
    consume, so atlas, image and framebuffer pixels cross as one memcpy
    instead of an elementwise loop. */

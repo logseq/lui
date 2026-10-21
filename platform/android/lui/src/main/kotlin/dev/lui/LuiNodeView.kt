@@ -88,6 +88,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -441,7 +442,7 @@ private fun LuiNodeContent(
                 },
                 enabled = enabled,
             )
-            Text(node.text())
+            Text(node.text(), Modifier.alpha(node.propDouble("label-opacity", 1.0).toFloat()))
         }
 
         LuiNodeKind.slider -> Slider(
@@ -489,7 +490,7 @@ private fun LuiNodeContent(
                 },
                 enabled = enabled,
             )
-            Text(node.text())
+            Text(node.text(), Modifier.alpha(node.propDouble("label-opacity", 1.0).toFloat()))
         }
 
         LuiNodeKind.switchControl -> Row(

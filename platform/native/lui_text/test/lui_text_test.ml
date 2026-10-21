@@ -330,7 +330,7 @@ let test_fonts_many_sizes () =
 let fake_glyph x adv cluster = { id = 1; x; y = 0.; advance = adv; cluster }
 
 let fake_run start stop rtl glyphs =
-  { font = sys; start; stop; rtl; glyphs; rcolor = None; under = 0 }
+  { font = sys; start; stop; rtl; glyphs; rcolor = None; under = 0; rinline = false }
 
 let fake_line_r start stop runs =
   let w =
@@ -647,6 +647,70 @@ let test_layout_spans_api () =
   Alcotest.(check bool) "caret works" true
     ((caret_rect lay 3).rx > 0.)
 
+let object_span text range width ascent descent =
+  {text;range;style={default_style with sobject=Some
+    {object_width=width;object_ascent=ascent;object_descent=descent}}}
+
+let test_inline_object_metrics () =
+  let lay=layout_spans sys [object_span "a\xef\xbf\xbcb" (1,4) 12. 25. 7.] in
+  let object_runs=List.filter (fun r -> r.rinline) (all_runs (shape_spans sys
+    [object_span "a\xef\xbf\xbcb" (1,4) 12. 25. 7.])) in
+  Alcotest.(check int) "one measured object run" 1 (List.length object_runs);
+  let box=List.hd (selection_rects lay (1,4)) in
+  Alcotest.(check (float 0.01)) "object selection has its exact width" 12. box.rw;
+  Alcotest.(check bool) "object ascent/descent contribute to line metrics" true (lay.lay_height>=32.);
+  let start=caret_rect lay 1 and ending=caret_rect lay 4 in
+  Alcotest.(check (float 0.01)) "object advances following text" 12. (ending.rx-.start.rx);
+  Alcotest.(check int) "object has no interior caret" 4 (caret_after lay 1);
+  Alcotest.(check int) "object backspace is one grapheme" 1 (caret_before lay 4);
+  Alcotest.(check int) "left half hits source start" 1
+    (hit_test lay (start.rx+.2.,start.ry+.start.rh/.2.));
+  Alcotest.(check int) "right half hits source end" 4
+    (hit_test lay (ending.rx-.2.,ending.ry+.ending.rh/.2.))
+
+let test_inline_object_wrap () =
+  let a,_=measure sys "a" and b,_=measure sys "b" in
+  let text="a\xef\xbf\xbcb" in
+  let width=a+.20.+.b/.2. in
+  let lay=layout_spans ~width sys [object_span text (1,4) 20. 10. 3.] in
+  Alcotest.(check int) "attachment width participates in line breaking" 2 (Array.length lay.lay_lines);
+  Alcotest.(check bool) "following glyph wraps after the attachment" true
+    ((caret_rect lay 4).ry>0.);
+  let many="a\xef\xbf\xbc\xef\xbf\xbcb" in
+  let lay=layout_spans sys [object_span many (1,4) 7. 0. 0.;object_span many (4,7) 13. 0. 0.] in
+  Alcotest.(check (float 0.01)) "adjacent objects preserve distinct widths" 20.
+    ((caret_rect lay 7).rx-.(caret_rect lay 1).rx)
+
+let test_inline_object_unicode () =
+  let text="汉字 👋\xef\xbf\xbcé" in
+  List.iter (fun rtl ->
+    let lay=layout_spans ~rtl sys [object_span text (11,14) 15. 10. 3.] in
+    Alcotest.(check int) "emoji boundary before attachment" 11 (caret_after lay 7);
+    Alcotest.(check int) "UTF-8 attachment boundary" 14 (caret_after lay 11);
+    Alcotest.(check int) "accented text after attachment" 16 (caret_after lay 14);
+    let boxes=selection_rects lay (11,14) in
+    Alcotest.(check (float 0.01)) "object geometry survives direction changes" 15.
+      (List.fold_left (fun total (r:rect) -> total+.r.rw) 0. boxes)) [false;true]
+
+let test_inline_object_cache () =
+  let cache=Cache.create 4 in
+  let text="a\xef\xbf\xbcb" in
+  let get width=Cache.layout_spans cache sys [object_span text (1,4) width 10. 3.] in
+  let a=get 10. and b=get 30. in
+  Alcotest.(check (float 0.01)) "cache includes object metrics" 20. (b.lay_width-.a.lay_width);
+  Alcotest.(check bool) "same object dimensions reuse the layout" true (a==get 10.);
+  let zero=get 0. in
+  Alcotest.(check (float 0.01)) "zero-width object remains valid" 10. (a.lay_width-.zero.lay_width)
+
+let test_inline_object_validation () =
+  List.iter (fun (text,range,width,ascent,descent) ->
+    Alcotest.check_raises "invalid object metrics/range fail before native shaping"
+      (Invalid_argument "Inline objects require one U+FFFC and finite nonnegative metrics")
+      (fun () -> ignore (layout_spans sys [object_span text range width ascent descent])))
+    ["abc",(1,2),10.,0.,0.;"\xef\xbf\xbcx",(0,4),10.,0.,0.;
+     "\xef\xbf\xbc",(0,3),(-1.),0.,0.;"\xef\xbf\xbc",(0,3),Float.nan,0.,0.;
+     "\xef\xbf\xbc",(0,3),10.,Float.infinity,0.;"\xef\xbf\xbc",(0,3),10.,0.,(-1.)]
+
 let test_truncate_end () =
   let s = "the quick brown fox jumps over the lazy dog" in
   match truncate ~width:60. sys s with
@@ -666,6 +730,49 @@ let test_truncate_modes () =
          Alcotest.(check bool) "fits" true (l.width <= 60.01)
        | None -> Alcotest.fail "expected a truncated line")
     [ `Start; `Middle ]
+
+let test_truncate_token () =
+  let marker = "\xe2\x80\xa6" in
+  List.iter (fun font ->
+    let signatures = all_runs (shape font marker)
+      |> List.concat_map (fun r -> Array.to_list r.glyphs
+        |> List.map (fun g -> family r.font,g.id)) in
+    List.iter (fun text -> List.iter (fun rtl -> List.iter (fun mode ->
+      let width=64. in
+      match truncate ~mode ~rtl ~width font text with
+      | None -> Alcotest.fail "overflowing captions must retain an ellipsis token"
+      | Some line ->
+        Alcotest.(check bool) "truncated line fits its content width" true
+          (line.width<=width+.eps);
+        let token=ref false in
+        Array.iter (fun r -> Array.iter (fun g ->
+          if List.mem (family r.font,g.id) signatures then begin
+            token:=true;
+            Alcotest.(check int) "token cluster belongs to the source end"
+              (String.length text) g.cluster;
+            Alcotest.(check int) "token run starts at source end" (String.length text) r.start;
+            Alcotest.(check int) "token run ends at source end" (String.length text) r.stop
+          end else begin
+            Alcotest.(check bool) "retained glyph has a source byte offset" true
+              (g.cluster>=0 && g.cluster<String.length text);
+            Alcotest.(check bool) "retained glyph never starts inside UTF-8" true
+              (Char.code text.[g.cluster] land 0xc0<>0x80)
+          end) r.glyphs) line.runs;
+        Alcotest.(check bool) "overflowing text visibly contains its ellipsis" true !token)
+      [`End;`Start;`Middle]) [false;true])
+      ["WWWWWWWWWWWWWWWWWWWWWWWW";
+       "café e\xcc\x81 中文 \xf0\x9f\x98\x80 café e\xcc\x81 中文 \xf0\x9f\x98\x80"];
+    let short="Short" in
+    let width=fst (measure font short)+.1. in
+    let full=all_glyphs (shape font short) in
+    let fitted=Option.get (truncate ~width font short) in
+    Alcotest.(check int) "a fitting caption does not add a token"
+      (Array.length full) (Array.length (all_glyphs [|fitted|]));
+    Array.iter (fun g -> Alcotest.(check bool) "fitting captions keep source clusters" true
+      (g.cluster<String.length short)) (all_glyphs [|fitted|]);
+    Alcotest.(check bool) "a width narrower than the token cannot draw a truncated line" true
+      (truncate ~width:0.001 font "WWWWWWWWWWWWWWWW"=None))
+    [sys;create ~families:["Helvetica"] ~size:16. ();system ~monospace:true ~size:16. ()]
 
 let test_truncate_none () =
   Alcotest.(check bool) "zero width" true
@@ -741,6 +848,98 @@ let test_cache_span_keys () =
   let _, misses = Cache.stats c in
   Alcotest.(check int) "both missed" 2 misses
 
+let test_explicit_line_height () =
+  let text = "a\na" in
+  let natural = layout sys text in
+  List.iter
+    (fun pitch ->
+      let styled = layout ~line_height:pitch sys text in
+      Alcotest.(check bool)
+        "line count preserved" true
+        (Array.length styled.lay_lines = Array.length natural.lay_lines);
+      Array.iteri
+        (fun i line ->
+          Alcotest.(check bool)
+            "line boxes use the requested pitch" true
+            (near line.ll_top (float i *. pitch) && near line.ll_height pitch);
+          let original = natural.lay_lines.(i) in
+          let h = original.ll_height in
+          Alcotest.(check bool)
+            "baseline includes signed half-leading" true
+            (near line.ll_baseline
+               ((float i *. pitch)
+               +. ((pitch -. h) /. 2.)
+               +. original.ll_line.ascent)))
+        styled.lay_lines;
+      Alcotest.(check bool)
+        "total height follows the line boxes" true
+        (near styled.lay_height (2. *. pitch));
+      let caret = caret_rect styled 2 in
+      Alcotest.(check bool)
+        "caret follows the second line box" true
+        (near caret.ry pitch && near caret.rh pitch);
+      if pitch > 0. then
+        Alcotest.(check int)
+          "hit follows styled line box" 2
+          (hit_test styled (0., pitch *. 1.5)))
+    [ 0.; 10.; 28.; 40. ];
+  let cache = Cache.create 4 in
+  let first = Cache.layout cache ~line_height:28. sys text in
+  let second = Cache.layout cache ~line_height:40. sys text in
+  Alcotest.(check bool)
+    "line height participates in the cache key" true
+    (first != second && near second.lay_height 80.);
+  Alcotest.(check bool)
+    "unchanged styles reuse their cached layout" true
+    (first == Cache.layout cache ~line_height:28. sys text);
+  let _, height = Cache.measure cache ~line_height:40. sys text in
+  Alcotest.(check bool)
+    "cached measure shares styled height" true (near height 80.);
+  let spans =
+    [ { text; style = default_style; range = (0, String.length text) } ]
+  in
+  let sp = Cache.layout_spans cache ~line_height:30. sys spans in
+  Alcotest.(check bool)
+    "rich spans retain styled line boxes" true (near sp.lay_height 60.);
+  List.iter
+    (fun invalid ->
+      Alcotest.check_raises "invalid line height fails fast"
+        (Invalid_argument "line_height must be finite and nonnegative")
+        (fun () -> ignore (layout ~line_height:invalid sys text)))
+    [ -1.; Float.nan; Float.infinity ]
+
+let test_multiline_clamp () =
+  let open Alcotest in
+  let font=Lui_text.system ~size:14. () in
+  let text="A very long title 汉字 café 👋 with enough words to fill several lines and preserve styled Unicode text" in
+  let spans=[{Lui_text.text;range=(0,String.length text);style={Lui_text.default_style with scolor=Some 0x445566ff}}] in
+  let cache=Lui_text.Cache.create 8 in
+  List.iter (fun width -> List.iter (fun max_lines ->
+    let layout=Lui_text.Cache.layout_spans cache ~width ~max_lines ~line_height:20. font spans in
+    check int "visible line count" max_lines (Array.length layout.Lui_text.lay_lines);
+    check (float 0.001) "clamped height" (20.*.float_of_int max_lines) layout.lay_height;
+    check bool "truncated result ends with an ellipsis" true (String.ends_with ~suffix:"…" layout.lay_text);
+    let prefix=String.sub layout.lay_text 0 (String.length layout.lay_text-3) in
+    check bool "visible prefix ends at a source grapheme" true
+      (Array.mem (String.length prefix) (Lui_text.graphemes text));
+    check bool "visible lines fit the offered width" true (layout.lay_width<=width+.0.001);
+    check bool "styled glyph runs retain their color" true
+      (Array.for_all (fun (line:Lui_text.line_layout) -> Array.for_all (fun (run:Lui_text.run) ->
+        run.rcolor=Some 0x445566ff) line.ll_line.runs) layout.lay_lines);
+    check bool "warm clamped shaping retains identity" true
+      (layout==Lui_text.Cache.layout_spans cache ~width ~max_lines ~line_height:20. font spans)) [1;2]) [100.;180.];
+  let hard="First line\nSecond line\nThird line" in
+  let hard_spans=[{Lui_text.text=hard;range=(0,String.length hard);style=Lui_text.default_style}] in
+  let hard_layout=Lui_text.Cache.layout_spans cache ~max_lines:2 ~line_height:20. font hard_spans in
+  check int "unconstrained paragraphs still honor the line limit" 2 (Array.length hard_layout.lay_lines);
+  check bool "hard paragraph truncation paints an ellipsis" true (String.ends_with ~suffix:"…" hard_layout.lay_text);
+  let short=[{Lui_text.text="Short";range=(0,5);style=Lui_text.default_style}] in
+  let normal=Lui_text.Cache.layout_spans cache ~width:180. ~max_lines:2 font short in
+  check string "short text is not changed" "Short" normal.lay_text;
+  check int "short text remains one line" 1 (Array.length normal.lay_lines);
+  check_raises "zero clamp fails" (Invalid_argument "line clamp must be positive")
+    (fun () -> ignore (Lui_text.Cache.layout_spans cache ~width:100. ~max_lines:0 font spans))
+
 let () =
   let open Alcotest in
   run "lui_text"
@@ -777,7 +976,8 @@ let () =
           test_case "thick" `Quick test_glyph_thick;
           test_case "many sizes" `Quick test_fonts_many_sizes ] );
       ( "editing",
-        [ test_case "caret edges" `Quick test_caret_edges;
+        [ test_case "explicit line height" `Quick test_explicit_line_height;
+          test_case "caret edges" `Quick test_caret_edges;
           test_case "hit edges" `Quick test_hit_edges;
           test_case "ligature" `Quick test_ligature;
           test_case "rtl model" `Quick test_rtl_model;
@@ -802,9 +1002,16 @@ let () =
           test_case "kern" `Quick test_spans_kern;
           test_case "under" `Quick test_spans_under;
           test_case "across paragraph" `Quick test_spans_across_paragraph;
-          test_case "layout_spans" `Quick test_layout_spans_api ] );
+          test_case "layout_spans" `Quick test_layout_spans_api;
+          test_case "inline object metrics" `Quick test_inline_object_metrics;
+          test_case "inline object wrap" `Quick test_inline_object_wrap;
+          test_case "inline object Unicode" `Quick test_inline_object_unicode;
+          test_case "inline object cache" `Quick test_inline_object_cache;
+          test_case "inline object validation" `Quick test_inline_object_validation ] );
       ( "truncate",
-        [ test_case "end" `Quick test_truncate_end;
+        [ test_case "multiline styled clamp" `Quick test_multiline_clamp;
+          test_case "end" `Quick test_truncate_end;
+          test_case "visible token and UTF-8 boundaries" `Quick test_truncate_token;
           test_case "modes" `Quick test_truncate_modes;
           test_case "none" `Quick test_truncate_none ] );
       ( "utf16", [ test_case "mapping" `Quick test_utf16 ] );

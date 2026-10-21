@@ -44,7 +44,7 @@ UNIVERSAL_ARG = {
 EVENT_NAME = {
     'on_press': 'press', 'on_long_press': 'long-press',
     'on_double_press': 'double-press', 'on_toggle': 'toggle',
-    'on_input': 'input', 'on_submit': 'submit', 'on_change': 'change',
+    'on_input': 'input', 'on_submit': 'submit', 'on_navigate': 'navigate', 'on_change': 'change',
     'on_dismiss': 'dismiss', 'on_resize': 'resize', 'on_appear': 'appear',
 }
 
@@ -107,7 +107,7 @@ keyed_swipe_action press on_input on_event
 is_press is_long_press is_double_press is_change is_input is_submit
 is_toggle is_dismiss is_appear is_resize register_press
 register_long_press register_double_press register_change
-register_input register_submit register_toggle register_dismiss
+is_navigate register_navigate register_input register_submit register_toggle register_dismiss
 appear_handler register_resize apply_universal scoped align'''.split())
 
 
@@ -133,6 +133,8 @@ def extra_arg(name, typ, element=None):
         return None
     if name in SKIP_ARGS or typ in SKIP_ARG_TYPES:
         return None
+    if name == 'anchor_rect':
+        return '?anchor_rect:(anchor_rect_prop props)'
     if typ == 'string':
         return f'?{name}:(v_str props "{j}")'
     if typ == 'int':
@@ -367,6 +369,15 @@ let v_int p n =
 let v_float p n = match get p n with Some (Num f) -> Some f | _ -> None
 let v_bool p n = match get p n with Some (Bool b) -> Some b | _ -> None
 
+let anchor_rect_prop props =
+  match get props "anchor-rect" with
+  | None -> None
+  | Some (Str value) ->
+      (match P.anchor_rect_of_string value with
+       | Some rect -> Some rect
+       | None -> invalid_arg "Invalid popover anchor rectangle")
+  | Some _ -> invalid_arg "Invalid popover anchor rectangle"
+
 let kind_of_node fields =
   match List.assoc_opt "kind" fields with Some (Str k) -> k | _ -> ""
 
@@ -436,6 +447,7 @@ let anchor_opt = function
 
 let anchor_align_opt = function
   | Some "start" -> Some `start
+  | Some "center" -> Some `center
   | Some ("end" | "end_") -> Some `end_
   | Some "stretch" -> Some `stretch
   | _ -> None
@@ -625,6 +637,9 @@ let ev name (emit : event_sink) props =
          let fields =
            match e with
            | P.ToggleChanged (_, checked) -> [ ("checked", Bool checked) ]
+           | P.NavigatePrevious _ -> [ ("direction", Str "previous") ]
+           | P.NavigateNext _ -> [ ("direction", Str "next") ]
+           | P.NavigationKey (_, key, shift) -> [ ("key", Str key); ("shift", Bool shift) ]
            | P.TextChanged (_, text) -> [ ("text", Str text) ]
            | P.ValueChanged (_, v) -> [ ("value", Num v) ]
            | _ -> []

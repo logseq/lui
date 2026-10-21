@@ -24,6 +24,14 @@ after(async () => {
   }
 })
 
+test('responsive grid spans and row axes preserve the input and focus', async () => {
+  await page.goto(`${origin}/platform/web/test/fixtures/layer-regression.html`)
+  await page.getByRole('button', { name: 'Run responsive layout audit', exact: true }).click()
+  await page.waitForFunction(() => document.querySelector('#responsive-layout-result').dataset.state)
+  const result = page.locator('#responsive-layout-result')
+  assert.equal(await result.getAttribute('data-state'), 'passed', await result.textContent())
+})
+
 test("composer action overflow keeps full touch height and a stationary Send", async () => {
   const css = await readFile(new URL("../dist/lui.css", import.meta.url), "utf8")
   await page.setContent(`<style>${css}

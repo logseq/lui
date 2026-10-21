@@ -64,6 +64,48 @@ struct LUISwiftUIBackendTests {
         #expect(backend.model(id: 1)?.property(.dataAttrs)?.stringValue?.contains("9000") == true)
     }
 
+    @Test("wrapping code text retains its whitespace mode")
+    func wrappingCodeWhitespace() {
+        #expect(LUIWireValue.string("pre-wrap").matches(.whiteSpace, on: .text))
+        #expect(!LUIWireValue.string("pre").matches(.whiteSpace, on: .text))
+    }
+
+    @Test("viewport anchors fail explicitly until retained positioning is available")
+    func unsupportedViewportAnchor() {
+        #expect(!LUIWireValue.string("0 0 40 20").matches(.anchorRect, on: .popover))
+    }
+
+    @Test("popover alignment offsets retain finite signed values and require an anchor")
+    func popoverAlignmentOffsets() throws {
+        for value in [Double.nan, Double.infinity, -Double.infinity] {
+            #expect(!LUIWireValue.double(value).matches(.anchorAlignmentOffset, on: .popover))
+        }
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"box"},
+          {"op":"create-node","id":2,"kind":"popover"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"set-prop","id":2,"property":"anchor","value":"below"},
+          {"op":"set-prop","id":2,"property":"anchor-alignment-offset","value":-5.5}
+        ]}
+        """)
+        #expect(backend.model(id: 2)?.property(.anchorAlignmentOffset) == .double(-5.5))
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":2,"property":"anchor-alignment-offset","value":5}
+        ]}
+        """)
+        #expect(backend.model(id: 2)?.property(.anchorAlignmentOffset) == .double(5))
+        #expect(throws: (any Error).self) {
+            try backend.apply(json: """
+            {"generation":3,"ops":[
+              {"op":"remove-prop","id":2,"property":"anchor"}
+            ]}
+            """)
+        }
+    }
+
     @Test("events raised during a retained batch wait for the commit boundary")
     func retainedBatchDefersEventsUntilCommitCompletes() throws {
         let backend = LUIAppleBackend()
@@ -871,6 +913,35 @@ struct LUISwiftUIBackendTests {
         """)
 
         #expect(backend.model(id: 1)?.property(.textAlignment)?.stringValue == "center")
+    }
+
+    @Test("split resize handles do not consume pane spacing")
+    func acceptsIndependentSplitHandles() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"split"},
+          {"op":"create-node","id":2,"kind":"box"},
+          {"op":"create-node","id":3,"kind":"box"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1},
+          {"op":"set-prop","id":1,"property":"gap","value":0},
+          {"op":"set-prop","id":1,"property":"value","value":0.6},
+          {"op":"set-prop","id":1,"property":"resize-handle-width","value":3},
+          {"op":"set-prop","id":1,"property":"resize-handle-offset","value":2.5}
+        ]}
+        """)
+        let width = try #require(LUIProperty(rawValue: "resize-handle-width"))
+        let offset = try #require(LUIProperty(rawValue: "resize-handle-offset"))
+        #expect(backend.model(id: 1)?.property(width)?.intValue == 3)
+        #expect(backend.model(id: 1)?.property(offset)?.doubleValue == 2.5)
+        #expect(throws: LUIBackendError.invalidBatch("unsupported property value")) {
+            try backend.apply(json: """
+            {"generation":2,"ops":[
+              {"op":"set-prop","id":1,"property":"resize-handle-width","value":0}
+            ]}
+            """)
+        }
     }
 
     @Test("navigation list roles do not require tree ancestry")

@@ -45,6 +45,10 @@ val layout_rev : t -> int
     reaches that far back (consumer must resync wholesale). *)
 val changes_since : t -> int -> Lui_protocol.patch_op list option
 
+val find_identifier : t -> string -> int option
+val anchor_available : t -> int -> bool
+val iter_anchor_targets : t -> (int -> unit) -> unit
+
 val find_opt : t -> int -> node option
 val mem : t -> int -> bool
 val node_id : node -> int
@@ -91,13 +95,18 @@ val child_id_at : t -> int -> int -> int
 val last_child_id : t -> int -> int option
 val prop : t -> int -> string -> Lui_protocol.wire_value option
 val bool_prop : t -> int -> string -> bool
+
+(** Whether the node or an ancestor suspends subtree interaction. *)
+val inert_in_chain : t -> int -> bool
 val string_prop : t -> int -> string -> string option
 val float_prop : t -> int -> string -> float option
 val int_prop : t -> int -> string -> int option
 val depth : t -> int -> int
 val root_ids : t -> int list
-(* Visit each node once in preorder without materializing child lists. *)
-val iter_preorder : ?root:int -> t -> (int -> unit) -> unit
+
+(** Visit each node once in preorder without materializing child lists.
+    [descend id = false] visits [id] but skips its descendants. *)
+val iter_preorder : ?root:int -> ?descend:(int -> bool) -> t -> (int -> unit) -> unit
 
 val preorder : ?root:int -> t -> int list
 val all_nodes : t -> node list

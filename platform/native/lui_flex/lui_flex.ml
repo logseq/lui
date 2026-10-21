@@ -315,10 +315,10 @@ type node = {
   mutable res_margin_bottom : float;
   (* Resolved-spec fingerprint: owner inputs the current [style]
      scalars reflect. A percent-free spec resolves identically under
-     any owner dims, so [res_uses_owner] exempts it from the dims
-     compare. *)
+     any owner dims. [res_owner_axes] records only the scalar inputs
+     used by percentage specs: width=1, height=2, main axis=4. *)
   mutable res_valid : bool;
-  mutable res_uses_owner : bool;
+  mutable res_owner_axes : int;
   mutable res_owner_w : float;
   mutable res_owner_h : float;
   mutable res_owner_main : float;
@@ -516,7 +516,7 @@ let rec null_node : node = {
   res_margin_right = zero;
   res_margin_bottom = zero;
   res_valid = false;
-  res_uses_owner = false;
+  res_owner_axes = 0;
   res_owner_w = zero;
   res_owner_h = zero;
   res_owner_main = zero;
@@ -586,6 +586,19 @@ let fresh_layout () : ilayout = {
   width = undefined;
   height = undefined;
 }
+
+let clear_measurement_offers (layout : ilayout) =
+  Measurement_cache.clear layout.offer_cache;
+  layout.natural_cache <- None;
+  layout.natural_height <- None
+
+let invalidate_measurements (layout : ilayout) =
+  layout.next_cached_measurements_index <- 0;
+  layout.cached_layout.width_measure_mode <- Measure_invalid;
+  layout.cached_layout.height_measure_mode <- Measure_invalid;
+  layout.cached_layout.computed_width <- negativeOne;
+  layout.cached_layout.computed_height <- negativeOne;
+  clear_measurement_offers layout
 
 let style_of_spec (s : style) : istyle =
   (* Scalar fields start unresolved; [resolve_specs] fills them in on
@@ -910,25 +923,34 @@ let uses_owner_edges (e : edges) : bool =
   || uses_owner_len e.horizontal || uses_owner_len e.vertical
   || uses_owner_len e.all
 
+let spec_owner_axes (s : style) =
+  let position = s.position in
+  let width =
+    uses_owner_len s.width || uses_owner_len s.min_width
+    || uses_owner_len s.max_width || uses_owner_edges s.margin
+    || uses_owner_edges s.padding || uses_owner_edges s.border
+    || uses_owner_len position.all || uses_owner_len position.horizontal
+    || uses_owner_len position.left || uses_owner_len position.right
+    || uses_owner_len position.start || uses_owner_len position.end_ in
+  let height =
+    uses_owner_len s.height || uses_owner_len s.min_height
+    || uses_owner_len s.max_height || uses_owner_len position.vertical
+    || uses_owner_len position.top || uses_owner_len position.bottom in
+  (if width then 1 else 0) lor (if height then 2 else 0)
+  lor (if uses_owner_len s.flex_basis then 4 else 0)
+
 let spec_uses_owner (s : style) : bool =
-  uses_owner_len s.flex_basis || uses_owner_len s.width
-  || uses_owner_len s.height || uses_owner_len s.min_width
-  || uses_owner_len s.min_height || uses_owner_len s.max_width
-  || uses_owner_len s.max_height || uses_owner_len s.row_gap
-  || uses_owner_len s.column_gap
-  || uses_owner_edges s.margin || uses_owner_edges s.padding
-  || uses_owner_edges s.border || uses_owner_edges s.position
+  spec_owner_axes s <> 0 || uses_owner_len s.row_gap || uses_owner_len s.column_gap
 
 (* Resolve a node's specs against the owner's inner dims. Returns
    [true] when the resolved scalars were (re)written, [false] when the
    previous resolution still applies — a percent-free spec never
-   needs re-resolution, a percent spec only when an owner dim moved. *)
+   needs re-resolution, a percent spec only when its owner axis moved. *)
 let resolve_specs (n : node) ~owner_w ~owner_h ~owner_main : bool =
   if n.res_valid
-     && ((not n.res_uses_owner)
-         || (same_dim n.res_owner_w owner_w
-             && same_dim n.res_owner_h owner_h
-             && same_dim n.res_owner_main owner_main))
+     && (n.res_owner_axes land 1 = 0 || same_dim n.res_owner_w owner_w)
+     && (n.res_owner_axes land 2 = 0 || same_dim n.res_owner_h owner_h)
+     && (n.res_owner_axes land 4 = 0 || same_dim n.res_owner_main owner_main)
   then false
   else begin
   let s = n.spec in
@@ -1011,12 +1033,15 @@ let resolve_specs (n : node) ~owner_w ~owner_h ~owner_main : bool =
     (if st.margin_auto_top then zero else computed_edge_margin st Top zero)
     +.
     (if st.margin_auto_bottom then zero else computed_edge_margin st Bottom zero);
-  n.res_uses_owner <- spec_uses_owner s;
+  n.res_owner_axes <- spec_owner_axes s;
   n.res_owner_w <- owner_w;
   n.res_owner_h <- owner_h;
   n.res_owner_main <- owner_main;
   n.res_valid <- true;
   n.res_gen <- n.res_gen + 1;
+  (* Old offers and the measurement ring describe the previous resolved
+     edges, including when the offered dimensions themselves did not move. *)
+  invalidate_measurements n.layout;
   (* The stored position seeds derive from the resolved scalars just
      overwritten — re-seeding is mandatory before the clean lane may
      use them again. *)
@@ -1511,23 +1536,12 @@ let rec layout_node_internal
     (node.is_dirty && layout.generation_count <> !g_current_generation_count)
     || layout.last_parent_direction <> Some parent_direction
   in
-  if need_to_visit_node then begin
-    (* Invalidate the cached results. *)
-    layout.next_cached_measurements_index <- 0;
-    layout.cached_layout.width_measure_mode <- Measure_invalid;
-    layout.cached_layout.height_measure_mode <- Measure_invalid;
-    layout.cached_layout.computed_width <- negativeOne;
-    layout.cached_layout.computed_height <- negativeOne
-  end;
-  (* Keep every distinct offer within a pass and retain a bounded cache
-     between passes. Dirty nodes discard all previous measurements. *)
-  if need_to_visit_node
-     || (layout.generation_count <> !g_current_generation_count
-         && Measurement_cache.length layout.offer_cache > 32) then begin
-    Measurement_cache.clear layout.offer_cache;
-    layout.natural_cache <- None;
-    layout.natural_height <- None
-  end;
+  (* A new resolution has already discarded its old offers. Dirty nodes
+     also invalidate the ring; unchanged nodes retain their bounded history. *)
+  if need_to_visit_node then invalidate_measurements layout
+  else if layout.generation_count <> !g_current_generation_count
+          && Measurement_cache.length layout.offer_cache > 32 then
+    clear_measurement_offers layout;
   let key_dim d = if Float.is_nan d then Float.nan else d in
   let offer = (key_dim available_width, key_dim available_height,
                width_measure_mode, height_measure_mode, node.res_gen) in
@@ -1868,7 +1882,26 @@ and absolute_layout_child
        (layout_measured_dimension_for_axis node cross_axis
         -. layout_measured_dimension_for_axis child cross_axis
         -. get_trailing_border node cross_axis
-        -. get_trailing_position child cross_axis))
+        -. get_trailing_position child cross_axis)
+   else if not (is_leading_pos_defined child cross_axis) then begin
+     (* Static cross-axis alignment needs the absolute child's final
+        content size, which is not available during the flex-line pass. *)
+     let leading = get_leading_padding_and_border node cross_axis in
+     let trailing = get_trailing_padding_and_border node cross_axis in
+     let remaining =
+       layout_measured_dimension_for_axis node cross_axis
+       -. leading -. trailing
+       -. layout_measured_dimension_for_axis child cross_axis
+       -. get_margin_axis child cross_axis
+     in
+     let offset = match get_align_item node child with
+       | Align_center -> remaining /. 2.
+       | Align_flex_end -> remaining
+       | Align_auto | Align_flex_start | Align_stretch -> 0.
+     in
+     set_layout_leading_position_for_axis child cross_axis
+       (leading +. get_leading_margin child cross_axis +. offset)
+   end)
 
 and layout_node_impl
     (node : node)
@@ -1950,11 +1983,18 @@ and layout_node_impl
       let margin_axis_column = get_margin_axis node Column in
 
       (* STEP 2: DETERMINE AVAILABLE SIZE IN MAIN AND CROSS DIRECTIONS *)
+      (* Bound the border box before distributing flex space. Clamping only
+         the final outer size leaves children laid out beyond a size cap. *)
+      let inner_size axis available margin padding =
+        let border_box=available -. margin in
+        let constrained=if is_defined border_box then bound_axis node axis border_box else border_box in
+        constrained -. padding
+      in
       let available_inner_width =
-        available_width -. margin_axis_row -. padding_and_border_axis_row
+        inner_size Row available_width margin_axis_row padding_and_border_axis_row
       in
       let available_inner_height =
-        available_height -. margin_axis_column -. padding_and_border_axis_column
+        inner_size Column available_height margin_axis_column padding_and_border_axis_column
       in
       let available_inner_main_dim =
         if is_main_axis_row then available_inner_width else available_inner_height

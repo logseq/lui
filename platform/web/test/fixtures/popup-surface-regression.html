@@ -1,0 +1,186 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LUI popup surface regression</title>
+<link rel="stylesheet" href="/platform/web/dist/lui.css">
+<script type="importmap">{"imports":{
+  "@tanstack/virtual-core":"/platform/web/dist/tanstack-virtual.js",
+  "lui.web.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui.web.dom/",
+  "lui/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui/",
+  "melange-webapi/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange-webapi/",
+  "melange.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.dom/",
+  "melange.js/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.js/",
+  "melange/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange/",
+  "ocaml-signal/":"/_build/default/examples/components/web/lui-components-web/node_modules/ocaml-signal/"
+}}</script>
+<style>body{margin:24px;font:16px system-ui}.surface-holder{position:fixed;left:40px;top:100px}.surface-holder>button{margin:0;width:120px;height:32px}.surface-holder.alignment-holder{left:400px;top:320px}</style>
+<button id="run-audit">Run popup surface audit</button>
+<output id="result" role="status">Not run</output>
+<main id="host"></main>
+<script type="module">
+import * as Web from 'lui.web.dom/shell/lui_web.js';
+import { Protocol, properties, kinds } from './protocol-fixture.mjs';
+const list = values => values.reduceRight((tl,hd) => ({hd,tl}),0);
+const renderer = Web.create(undefined,document.querySelector('#host'));
+const backend = Web.backend(renderer);
+let id = 0, generation = 0, ops = [];
+const children = new Map();
+const floats = new Set(['anchor-offset','opacity','available-height','disabled-opacity']);
+function set(node,name,value) {
+  ops.push(Protocol.set_prop_op(node,properties.get(name),{
+    TAG:typeof value==='string'?0:typeof value==='boolean'?1:floats.has(name)?3:2,_0:value
+  }));
+}
+function unset(node,name) { ops.push(Protocol.remove_prop_op(node,properties.get(name))); }
+function node(kind,parent,props={}) {
+  const n=++id;
+  ops.push(Protocol.create_node_op(n,kinds.get(kind)));
+  children.set(n,[]);
+  for(const [key,value] of Object.entries(props)) set(n,key,value);
+  if(parent) {
+    const siblings=children.get(parent);
+    ops.push(Protocol.insert_child_op(parent,n,siblings.length));siblings.push(n);
+  }
+  return n;
+}
+function flush() { backend.apply_batch({generation:++generation,ops:list(ops)});ops=[]; }
+function drop(n) {
+  for(const child of children.get(n)) {
+    ops.push(Protocol.remove_child_op(n,child));drop(child);
+  }
+  ops.push(Protocol.drop_node_op(n));children.delete(n);
+}
+const root=node('column',null);flush();Web.mount(renderer,root,document.querySelector('#host'));
+const frames=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+async function audit() {
+  const checks=[];
+  const check=(label,pass,actual)=>checks.push({label,pass:!!pass,actual});
+  for(const kind of ['popover','dropdown-menu']) {
+    const holder=node('row',root,{'style-class':'surface-holder'});
+    const anchor=node('button',holder,{text:'Surface anchor'});
+    const popup=node(kind,holder,{
+      anchor:'below','anchor-offset':0,width:226,'max-height':180,
+      padding:8,'border-width':3,'border-color':'rgb(10, 20, 30)',
+      'corner-radius':9,background:'rgb(240, 230, 220)',
+      'style-class':'surface-under-test',transition:'opacity 0ms, transform 0ms',
+      'data-attrs':Protocol.data_attrs_encode(list([['data-surface-audit','retained']]))
+    });
+    if(kind==='popover') set(popup,'available-height',96.5);
+    const first=node(kind==='popover'?'paragraph':'menu-item',popup,{text:'First option',height:32});
+    for(let i=1;i<30;i++) node(kind==='popover'?'paragraph':'menu-item',popup,{text:'Option '+i,height:32});
+    flush();await frames();
+    const surface=document.querySelector('.surface-under-test');
+    const positioner=surface.parentElement;
+    const row=document.querySelector('#lui-node-'+first);
+    const target=document.querySelector('#lui-node-'+anchor);
+    const close=(a,b)=>Math.abs(a-b)<0.6;
+    const geometry=()=>{
+      const r=surface.getBoundingClientRect(),p=positioner.getBoundingClientRect();
+      const style=getComputedStyle(surface),outer=getComputedStyle(positioner);
+      return {r:r.toJSON(),p:p.toJSON(),background:style.backgroundColor,border:style.borderWidth,
+        radius:style.borderRadius,padding:style.padding,outerBorder:outer.borderWidth,outerPadding:outer.padding};
+    };
+    let g=geometry();
+    check(kind+' styles the visual surface',g.background==='rgb(240, 230, 220)'
+      &&g.border==='3px'&&g.radius==='9px'&&g.padding==='8px',g);
+    check(kind+' keeps its positioner undecorated',g.outerBorder==='0px'&&g.outerPadding==='0px',g);
+    check(kind+' preserves the declared surface width',close(g.r.width,226),g);
+    check(kind+' anchors the actual surface',close(g.r.left,target.getBoundingClientRect().left)
+      &&close(g.r.top,target.getBoundingClientRect().bottom),g);
+    check(kind+' applies padding inside its border',close(row.getBoundingClientRect().left-g.r.left,11),g);
+    check(kind+' intersects height constraints',close(g.r.height,kind==='popover'?96.5:180),g);
+    check(kind+' puts semantic attributes on content',surface.getAttribute('data-surface-audit')==='retained'
+      &&positioner.getAttribute('data-surface-audit')===null);
+    set(holder,'style-class','surface-holder alignment-holder');
+    for(const [width,height] of [[226,80],[300,100]]) {
+      set(popup,'width',width);set(popup,'height',height);
+      for(const side of ['below','above','left','right']) {
+        for(const align of ['start','end']) {
+          set(popup,'anchor',side);set(popup,'anchor-alignment',align);
+          flush();await frames();g=geometry();
+          const a=target.getBoundingClientRect(),p=g.r;
+          const vertical=side==='above'||side==='below';
+          const aligned=(start,extent,size)=>align==='end'?start+extent-size:start;
+          const x=vertical?aligned(a.left,a.width,p.width)
+            :side==='left'?a.left-p.width:a.right;
+          const y=vertical?(side==='above'?a.top-p.height:a.bottom)
+            :aligned(a.top,a.height,p.height);
+          check(`${kind} ${side}/${align} uses its actual ${width}x${height} border box`,
+            Math.abs(p.left-x)<0.05&&Math.abs(p.top-y)<0.05,{...g,expected:{x,y}});
+        }
+      }
+    }
+    set(popup,'anchor','above');set(popup,'anchor-alignment','end');set(popup,'anchor-offset',7);
+    flush();await frames();g=geometry();
+    let anchorRect=target.getBoundingClientRect();
+    check(kind+' updates side, alignment and offset together without remounting',
+      surface===document.querySelector('.surface-under-test')
+      &&Math.abs(g.r.right-anchorRect.right)<0.05
+      &&Math.abs(g.r.bottom-(anchorRect.top-7))<0.05,g);
+    set(popup,'anchor','below');unset(popup,'anchor-alignment');unset(popup,'anchor-offset');
+    flush();await frames();g=geometry();anchorRect=target.getBoundingClientRect();
+    check(kind+' removes authored alignment and offset without remounting',
+      Math.abs(g.r.left-anchorRect.left)<0.05&&Math.abs(g.r.top-anchorRect.bottom)<0.05
+      &&positioner.getAttribute('data-anchor')==='below'
+      &&positioner.getAttribute('data-anchor-alignment')===null
+      &&positioner.style.getPropertyValue('--lui-anchor-offset')==='',g);
+    set(popup,'anchor-offset',0);
+    set(holder,'style-class','surface-holder');unset(popup,'height');
+    set(popup,'width',226);set(popup,'anchor','below');set(popup,'anchor-alignment','start');
+    flush();await frames();
+    set(popup,'width',300);set(popup,'padding',4);set(popup,'border-width',1);
+    set(popup,'background','rgb(220, 230, 240)');set(popup,'corner-radius',4);
+    set(popup,'opacity',0.75);set(popup,'shadow','0 2px 4px rgb(0 0 0 / 0.1)');
+    flush();await frames();g=geometry();
+    check(kind+' updates the retained surface',surface===document.querySelector('.surface-under-test')
+      &&close(g.r.width,300)&&g.background==='rgb(220, 230, 240)'&&g.border==='1px'
+      &&g.padding==='4px'&&getComputedStyle(surface).opacity==='0.75',g);
+    check(kind+' paints one shadow',getComputedStyle(positioner).boxShadow==='none'
+      &&getComputedStyle(surface).boxShadow!=='none');
+    check(kind+' uses its requested shadow',getComputedStyle(surface).boxShadow.includes('0px 2px 4px 0px'),
+      getComputedStyle(surface).boxShadow);
+    set(popup,'max-height',2000);
+    if(kind==='popover') set(popup,'available-height',2000.5);
+    flush();await frames();g=geometry();
+    check(kind+' retains viewport collision bounds',g.r.top>=7.5&&g.r.bottom<=innerHeight-7.5,g);
+    if(kind==='popover') {
+      unset(popup,'max-height');set(popup,'available-height',500.5);set(popup,'role','menu');
+      flush();await frames();
+      check('menu role retains its default cap',close(surface.getBoundingClientRect().height,288));
+      unset(popup,'role');flush();await frames();
+      check('removing menu role restores ordinary requested height',surface.getAttribute('role')===null
+        &&close(surface.getBoundingClientRect().height,500.5),geometry());
+    }
+    for(const name of ['width','padding','border-width','border-color','corner-radius','background','opacity','shadow','max-height','data-attrs']) unset(popup,name);
+    if(kind==='popover') unset(popup,'available-height');
+    flush();await frames();
+    check(kind+' removes styles from that same surface',surface.style.width===''&&surface.style.padding===''
+      &&surface.style.borderWidth===''&&surface.style.background===''&&surface.style.opacity===''
+      &&surface.style.maxHeight===''&&surface.getAttribute('data-surface-audit')===null);
+    if(kind==='dropdown-menu') check('unstyled dropdown retains its default shadow',getComputedStyle(surface).boxShadow!=='none');
+    ops.push(Protocol.remove_child_op(root,holder));
+    children.set(root,children.get(root).filter(n=>n!==holder));
+    drop(holder);flush();await frames();
+  }
+  const selected=node('list-item',root,{text:'Selected appearance probe',selected:true,
+    'selected-background':'rgb(201, 202, 203)'});
+  const field=node('text-field',root,{placeholder:'Focus appearance probe','focus-shadow':'none'});
+  const disabled=node('button',root,{text:'Disabled appearance probe',enabled:false,'disabled-opacity':0.2});
+  flush();await frames();
+  const row=document.querySelector('#lui-node-'+selected),input=document.querySelector('#lui-node-'+field);
+  check('selected channel overrides default list chrome',getComputedStyle(row).backgroundColor==='rgb(201, 202, 203)',getComputedStyle(row).backgroundColor);
+  check('disabled channel overrides default button chrome',getComputedStyle(document.querySelector('#lui-node-'+disabled)).opacity==='0.2');
+  input.focus();await frames();
+  check('focus probe owns visible keyboard focus',input.matches(':focus-visible'));
+  check('explicit focus shadow overrides default input ring',getComputedStyle(input).boxShadow==='none',getComputedStyle(input).boxShadow);
+  unset(selected,'selected-background');unset(field,'focus-shadow');unset(disabled,'disabled-opacity');
+  flush();await frames();
+  check('removing selected channel restores list chrome',getComputedStyle(row).backgroundColor!=='rgb(201, 202, 203)');
+  check('removing focus channel restores input chrome',getComputedStyle(input).boxShadow!=='none');
+  document.querySelector('#result').textContent=JSON.stringify({state:'Complete',pass:checks.every(c=>c.pass),checks});
+}
+document.querySelector('#run-audit').addEventListener('click',()=>{
+  document.querySelector('#result').textContent='Running';
+  audit().catch(error=>document.querySelector('#result').textContent=JSON.stringify({state:'Complete',pass:false,error:String(error._1??error.stack??error)}));
+});
+</script>

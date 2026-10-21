@@ -136,7 +136,8 @@ let with_bool_prop_signal prop signal_ (elem : t) : t =
    node
 ;;
 
-let composer_send_button context ?send_icon send_disabled on_send : t =
+let composer_send_button context ?send_icon ?(send_label = "Send")
+    send_disabled on_send : t =
   let android_icon = Option.value send_icon ~default:(`send : icon) in
   let apple_icon = Option.value send_icon ~default:(`arrow_up : icon) in
   if Lui_ui.platform context = Lui_protocol.AndroidOS
@@ -144,14 +145,14 @@ let composer_send_button context ?send_icon send_disabled on_send : t =
       button
         ~icon:android_icon ~variant:`ghost ~width:36 ~height:36
         ~background:"black" ~foreground:"white" ~corner_radius:18
-        ~label:"Send" ~accessibility_identifier:"button.send"
+        ~label:send_label ~accessibility_identifier:"button.send"
         ?disabled_signal:send_disabled ~on_press:on_send []
   else
     button
       ~icon:apple_icon ~variant:`ghost ~width:36 ~height:36
-      ~background:"black" ~foreground:"white" ~corner_radius:18 ~label:"Send"
-      ~accessibility_identifier:"button.send" ?disabled_signal:send_disabled
-      ~on_press:on_send []
+      ~background:"black" ~foreground:"white" ~corner_radius:18
+      ~label:send_label ~accessibility_identifier:"button.send"
+      ?disabled_signal:send_disabled ~on_press:on_send []
 ;;
 
 let composer
@@ -170,7 +171,10 @@ let composer
       ?autofocus_signal
       ?submit_on_enter
       ?send_icon
+      ?(send_label = "Send")
       ?send_disabled_signal
+      ?disabled
+      ?disabled_signal
       ?on_input
       ?on_submit
       ?on_send
@@ -192,13 +196,35 @@ let composer
           | Some test -> if_ ~test strip)
        ]
    in
+   (* Enter/Submit shares the send-allowed gate with the send button:
+      a disabled composer must not dispatch submits it cannot honour. *)
+   let gated_on_submit =
+     match on_submit with
+     | None -> None
+     | Some submit ->
+       Some
+         (fun event ->
+           let field_disabled =
+             match disabled, disabled_signal with
+             | Some b, _ -> b
+             | _, Some signal_ -> Signal.get signal_
+             | _ -> false
+           and send_disabled =
+             match send_disabled_signal with
+             | Some signal_ -> Signal.get signal_
+             | None -> false
+           in
+           if not (field_disabled || send_disabled) then submit event)
+   in
    let field =
      textarea
        ~grow:1.0 ~min_width:0 ~min_height:0 ~max_height:168
        ~style_class:"composer-input" ~placeholder
        ~label:(match label with Some value -> value | None -> placeholder)
        ?text ?text_signal ~autofocus ?submit_on_enter
-       ~accessibility_identifier:"field.composer" ?on_input ?on_submit []
+       ?disabled ?disabled_signal
+       ~accessibility_identifier:"field.composer" ?on_input
+       ?on_submit:gated_on_submit []
    in
    let field =
      match autofocus_signal with
@@ -210,7 +236,7 @@ let composer
      match on_send with
      | None -> []
      | Some on_send ->
-      [ composer_send_button context ?send_icon send_disabled_signal on_send ]
+      [ composer_send_button context ?send_icon ~send_label send_disabled_signal on_send ]
    in
   let controls =
     if actions = [] && send_button = [] then []

@@ -34,6 +34,7 @@ let create_with_extensions host app_icons registry adapters =
     web_document = document;
     web_host = host;
     web_portal_root = portal_root;
+    web_portal_nodes = Hashtbl.create 8;
     web_simulator_platform = ref None;
     web_simulator_device = ref None;
     web_simulator_keyboard_visible = ref false;
@@ -56,6 +57,9 @@ let create_with_extensions host app_icons registry adapters =
     web_splits = Hashtbl.create 4;
     web_context_hosts = Hashtbl.create 4;
     web_menu_highlights = Hashtbl.create 4;
+    web_appear_pending = Hashtbl.create 4;
+    web_appear_seen = Hashtbl.create 4;
+    web_appear_timer = ref None;
     web_extension_registry = registry;
     web_extension_adapters }
   in
@@ -130,6 +134,7 @@ let backend renderer =
                   invalid_arg
                     ("DOM recovery failed after " ^ Printexc.to_string original_error
                      ^ ": " ^ Printexc.to_string recovery_error)));
+          if applied then Lui_web_events.schedule_appear renderer;
           true
         with Js.Exn.Error error ->
           (* DOM calls and platform node creation throw JS exceptions, not
@@ -151,7 +156,8 @@ let mount renderer root host =
     host;
   Lui_web_split.update_splits_under renderer root;
   Hashtbl.iter (fun _ state -> state.refresh_virtual ()) renderer.web_virtual_lists;
-  Hashtbl.iter (fun _ refresh -> refresh false) renderer.web_lists
+  Hashtbl.iter (fun _ refresh -> refresh false) renderer.web_lists;
+  Lui_web_events.schedule_appear renderer
 
 let rec first_section_title renderer node =
   match Store.node renderer.web_store node with

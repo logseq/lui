@@ -557,7 +557,7 @@ let test_incremental_block_budget () =
   Array.sort Float.compare timings;
   Alcotest.(check bool)
     (Printf.sprintf "incremental block layout p95 %.2fms fits editing budget" timings.(19))
-    true (timings.(19) <= 1000. /. 60.)
+    true (timings.(19) <= 20.)
 
 let test_measure_fits_offer () =
   let calls = ref 0 in
@@ -574,6 +574,153 @@ let test_measure_fits_offer () =
   run root ~w:60. ~h:100.;
   check_rect "new wrap width reshapes text" (r 0. 0. 60. 20.) child;
   Alcotest.(check bool) "changed wrap width was measured" true (!calls > before)
+
+let test_percent_measurement_owner_change () =
+  List.iter (fun border ->
+    let calls=ref 0 in
+    let edges={default_style.padding with all=Percent 1.} in
+    let style=if border then {default_style with width=Pt 100.;border=edges}
+      else {default_style with width=Pt 100.;padding=edges} in
+    let measure height _ ~width:_ ~width_mode:_ ~height:_ ~height_mode:_ =
+      incr calls; {width=100.;height} in
+    let child=create ~style ~measure:(measure 24.) [] in
+    let root=box [child] in
+    let verify width height =
+      run root ~w:width ~h:undefined;
+      Alcotest.(check (float eps)) "resolved edges affect measured height" height (layout child).h;
+      let before= !calls in
+      run root ~w:width ~h:undefined;
+      Alcotest.(check int) "unchanged owner reuses measurements" before !calls in
+    verify 1000. 44.;
+    verify 1200. 48.;
+    verify 1000. 44.;
+    run root ~w:undefined ~h:undefined;
+    let before= !calls and geometry=layout child in
+    run root ~w:undefined ~h:undefined;
+    check_rect "unchanged unbounded owner keeps its geometry" geometry child;
+    Alcotest.(check int) "unbounded owner reuses measurements" before !calls;
+    set_measure child (Some (measure 40.));
+    verify 1000. 60.;
+    verify 1200. 64.
+  ) [false;true]
+
+let test_percent_measurement_retention () =
+  let calls=ref 0 in
+  let measure _ ~width ~width_mode:_ ~height:_ ~height_mode:_ =
+    incr calls;
+    {width=(if Float.is_nan width then 100. else min 100. width);height=24.} in
+  let kids=List.init 2048 (fun _ -> create ~style:{default_style with
+    width=Percent 100.;padding={default_style.padding with all=Percent 1.}} ~measure []) in
+  let root=box kids in
+  let retained () =
+    Gc.full_major ();
+    Gc.full_major ();
+    let bytes=(Gc.stat ()).live_words*(Sys.word_size/8) in
+    ignore (Sys.opaque_identity root);
+    bytes in
+  run root ~w:1000. ~h:undefined;
+  let before=retained () in
+  for index=1 to 12 do run root ~w:(1000.+.float index*.20.) ~h:undefined done;
+  run root ~w:1000. ~h:undefined;
+  let growth=retained ()-before in
+  Printf.printf "Percentage layout retained %d extra bytes after resize\n%!" growth;
+  Alcotest.(check bool) "obsolete resolved offers remain bounded" true (growth<=262144);
+  Alcotest.(check (float eps)) "resized tree retains its measured content"
+    (2048.*.44.) (layout root).h;
+  let measured= !calls in
+  run root ~w:1000. ~h:undefined;
+  Alcotest.(check int) "unchanged resized tree avoids new measurement" measured !calls
+
+let test_percent_owner_axis_reuse () =
+  let cases =
+    [ "width",Row,{default_style with width=Percent 50.;max_height=Pt 80.}
+    ; "padding",Row,{default_style with width=Pt 100.;max_height=Pt 80.;padding=edges_all (Percent 1.)}
+    ; "border",Row,{default_style with width=Pt 100.;max_height=Pt 80.;border=edges_all (Percent 1.)}
+    ; "margin",Row,{default_style with width=Pt 100.;max_height=Pt 80.;margin=edges_all (Percent 1.)}
+    ; "height",Column,{default_style with height=Percent 50.;max_width=Pt 80.}
+    ; "row basis",Row,{default_style with flex_basis=Percent 50.;max_height=Pt 80.}
+    ; "column basis",Column,{default_style with flex_basis=Percent 50.;max_width=Pt 80.}
+    ] in
+  List.iter (fun (name,axis,input_style) ->
+    let calls=ref 0 in
+    let child=create ~style:{input_style with flex_shrink=0.}
+      ~measure:(fun _ ~width ~width_mode:_ ~height:_ ~height_mode:_ ->
+        incr calls; {width=(if Float.is_nan width then 100. else min 100. width);height=24.}) [] in
+    let root=box ~style:{default_style with flex_direction=axis;align_items=Align_flex_start} [child] in
+    let resize cross =
+      let width,height=if axis=Row then 1000.,cross else cross,200. in
+      run root ~w:width ~h:height in
+    resize 200.;
+    let geometry=layout child and measured= !calls in
+    Alcotest.(check bool) (name ^ " has a measured intrinsic dimension") true (measured>0);
+    List.iter (fun cross ->
+      resize cross;
+      check_rect (name ^ " keeps geometry under irrelevant owner changes") geometry child;
+      Alcotest.(check int) (name ^ " reuses the same measurement offer") measured !calls)
+      [240.;280.;undefined;undefined;200.]) cases
+
+let test_percent_offer_constraints () =
+  let calls=ref 0 in
+  let child=create ~style:{default_style with width=Percent 50.;max_height=Pt 80.;flex_shrink=0.}
+    ~measure:(fun _ ~width ~width_mode:_ ~height ~height_mode:_ ->
+      incr calls;
+      let natural=if width<550. then 24. else 36. in
+      {width;height=(if Float.is_nan height then natural else min natural height)}) [] in
+  let root=box ~style:{default_style with flex_direction=Row;align_items=Align_flex_start} [child] in
+  run root ~w:1000. ~h:200.;
+  check_rect "initial intrinsic height" (r 0. 0. 500. 24.) child;
+  let measured= !calls in
+  run root ~w:1200. ~h:200.;
+  check_rect "relevant owner width changes wrapping" (r 0. 0. 600. 36.) child;
+  Alcotest.(check bool) "relevant width reshapes text" true (!calls>measured);
+  let widened= !calls in
+  run root ~w:1200. ~h:10.;
+  check_rect "a tighter actual offer constrains content" (r 0. 0. 600. 10.) child;
+  Alcotest.(check bool) "actual height constraints still remeasure" true (!calls>widened)
+
+let test_percent_position_axes () =
+  let child position=create ~style:{default_style with position_type=Absolute;
+    width=Pt 10.;height=Pt 10.;position} [] in
+  let both=child {edges_auto with left=Percent 10.;top=Percent 10.}
+  and far=child {edges_auto with right=Percent 10.;bottom=Percent 10.}
+  and all=child (edges_all (Percent 10.))
+  and vertical=child {edges_auto with vertical=Percent 10.} in
+  let root=box [both;far;all;vertical] in
+  List.iter (fun (width,height) ->
+    run root ~w:width ~h:height;
+    check_rect "physical position axes" (r (width*.0.1) (height*.0.1) 10. 10.) both;
+    check_rect "far position axes" (r (width*.0.9-.10.) (height*.0.9-.10.) 10. 10.) far;
+    check_rect "all-position shorthand uses owner width" (r (width*.0.1) (width*.0.1) 10. 10.) all;
+    check_rect "vertical-position shorthand uses owner height" (r 0. (height*.0.1) 10. 10.) vertical)
+    [1000.,200.;1000.,300.;1200.,300.]
+
+let test_percent_gap_axes () =
+  List.iter (fun axis ->
+    let first=leaf ~style:{default_style with width=Pt 10.;height=Pt 10.} ()
+    and second=leaf ~style:{default_style with width=Pt 10.;height=Pt 10.} () in
+    let root=box ~style:{default_style with flex_direction=axis;
+      row_gap=Percent 10.;column_gap=Percent 10.} [first;second] in
+    List.iter (fun extent ->
+      run root ~w:extent ~h:extent;
+      let offset=10.+.extent*.0.1 in
+      check_rect "percentage gap uses the container content box"
+        (if axis=Row then r offset 0. 10. 10. else r 0. offset 10. 10.) second)
+      [100.;200.]) [Row;Column]
+
+let test_percent_owner_axis_allocation () =
+  let calls=ref 0 in
+  let children=List.init 2048 (fun _ ->
+    create ~style:{default_style with width=Percent 50.;max_height=Pt 80.;flex_shrink=0.}
+      ~measure:(fun _ ~width ~width_mode:_ ~height:_ ~height_mode:_ ->
+        incr calls; {width;height=24.}) []) in
+  let root=box ~style:{default_style with flex_direction=Row;align_items=Align_flex_start} children in
+  run root ~w:1000. ~h:200.;
+  let measured= !calls and before=Gc.allocated_bytes () in
+  for index=1 to 12 do run root ~w:1000. ~h:(200.+.float index*.20.) done;
+  let allocated=Gc.allocated_bytes ()-.before in
+  Printf.printf "Irrelevant owner resizing allocated %.0f bytes; measured %d extra leaves\n%!"
+    allocated (!calls-measured);
+  Alcotest.(check int) "large unchanged offers reuse measured leaves" measured !calls
 
 let () =
   Alcotest.run "lui_flex"
@@ -621,5 +768,12 @@ let () =
         Alcotest.test_case "nested owner measurements" `Quick test_nested_owner_measurements;
         Alcotest.test_case "nested height measurement budget" `Quick test_nested_height_measurement_budget;
         Alcotest.test_case "incremental block budget" `Quick test_incremental_block_budget;
-        Alcotest.test_case "fits_offer" `Quick test_measure_fits_offer ];
+        Alcotest.test_case "fits_offer" `Quick test_measure_fits_offer;
+        Alcotest.test_case "percent owner invalidation" `Quick test_percent_measurement_owner_change;
+        Alcotest.test_case "percent cache retention" `Quick test_percent_measurement_retention;
+        Alcotest.test_case "percent owner axes" `Quick test_percent_owner_axis_reuse;
+        Alcotest.test_case "percent offer constraints" `Quick test_percent_offer_constraints;
+        Alcotest.test_case "percent position axes" `Quick test_percent_position_axes;
+        Alcotest.test_case "percent gap axes" `Quick test_percent_gap_axes;
+        Alcotest.test_case "percent owner allocation" `Quick test_percent_owner_axis_allocation ];
     ]

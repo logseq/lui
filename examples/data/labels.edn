@@ -1,0 +1,5 @@
+{:version 1
+ :components
+ {:heading
+  {:props {:text :string}
+   :view [:heading {:text {:bind [:props :text]} :heading-level 1}]}}}

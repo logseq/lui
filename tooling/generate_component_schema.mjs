@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { typedViewSchema, typedViewSignature } from './typed_view_schema.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const defaultManifest = resolve(repository, 'schema/components.json');
@@ -195,6 +196,7 @@ val context_menu_leaf_host_kind : node_kind -> bool
 val event_supported : node_kind -> event -> bool
 val true_property : wire_value Property_map.t -> property -> bool
 val treeitem_properties : wire_value Property_map.t -> bool
+val event_supported_for_lookup : node_kind -> (property -> wire_value option) -> event -> bool
 val event_supported_for_properties : node_kind -> wire_value Property_map.t -> event -> bool
 val container_relative_frame_supported : string -> bool
 val orientation_supported : string -> bool
@@ -218,15 +220,21 @@ val horizontal_container : node_kind -> bool
 val common_property_supported : node_kind -> property -> bool
 val property_supported : node_kind -> property -> bool
 val is_finite : float -> bool
+val transition_segments : string -> string list list
+(** Tokenize CSS transition declarations, preserving functional easing arguments. *)
+
+val anchor_rect_of_string : string -> (float * float * float * float) option
 val property_value_supported : property -> wire_value -> bool
 val property_value_supported_for_kind : node_kind -> property -> wire_value -> bool
 val int_property : wire_value Property_map.t -> property -> int -> int
 val float_property : wire_value Property_map.t -> property -> float -> float
 val size_axis_supported : wire_value Property_map.t -> property -> property -> property -> bool
 val surface_size_supported : wire_value Property_map.t -> bool
+val viewport_size_supported : wire_value Property_map.t -> bool
 val string_property_or : wire_value Property_map.t -> property -> string -> string
 val string_property_nonempty : wire_value Property_map.t -> property -> bool
 val float_property_of : wire_value Property_map.t -> property -> float -> float
+val node_property_presence_supported : node_kind -> definite:(property -> bool) -> possible:(property -> bool) -> bool
 val node_properties_supported : node_kind -> wire_value Property_map.t -> bool
 val can_contain_children : node_kind -> bool
 val child_kind_supported : node_kind -> node_kind -> bool
@@ -291,6 +299,14 @@ ${extraCases}
 let all_node_kinds = [ ${schema.nodeKinds.map(({ lg }) => lg).join('; ')} ]
 
 let all_properties = [ ${schema.properties.map(({ lg }) => lg).join('; ')} ]
+
+${typedViewSchema(schema,
+  readFileSync(resolve(repository, 'src/lui_elements.mli'), 'utf8'),
+  readFileSync(resolve(repository, 'src/lui_elements.ml'), 'utf8')).trimEnd()}
+
+${typedViewSchema({properties: [], nodeKinds: ['split-view', 'split-branch', 'split-pane', 'split-tab'].map(wire => ({wire, lg: JSON.stringify(wire)}))},
+  readFileSync(resolve(repository, 'src/lui_split.mli'), 'utf8'),
+  readFileSync(resolve(repository, 'src/lui_split.ml'), 'utf8'), {extension: true}).trimEnd()}
 `;
 }
 
@@ -306,6 +322,10 @@ val kind_property_matrix : node_kind -> property list option
 val kind_extra_properties : node_kind -> property list
 val all_node_kinds : node_kind list
 val all_properties : property list
+
+${typedViewSignature}
+val view_contract : node_kind -> property view_contract option
+val extension_view_contract : string -> string view_contract option
 `;
 }
 

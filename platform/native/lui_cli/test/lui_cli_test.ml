@@ -257,7 +257,27 @@ let lib_installed pkg =
   | None -> false
   | Some _ -> (C.Proc.run "ocamlfind" [ "query"; pkg ]).status = 0
 
-let test_scaffold_builds () =
+let with_installed_libraries f =
+  match Sys.getenv_opt "INSIDE_DUNE", Sys.getenv_opt "OCAMLPATH" with
+  | Some context, Some search_path when context <> "" ->
+    (* Dune's local install tree can contain links to artifacts that
+       this test does not depend on. Keep user paths, but resolve the
+       standalone scaffold against installed libraries. *)
+    let local_lib =
+      Filename.dirname context / "install" / Filename.basename context / "lib"
+    in
+    let separator = if Sys.win32 then ';' else ':' in
+    let installed_path =
+      String.split_on_char separator search_path
+      |> List.filter (fun path -> path <> local_lib)
+      |> String.concat (String.make 1 separator)
+    in
+    Fun.protect
+      ~finally:(fun () -> Unix.putenv "OCAMLPATH" search_path)
+      (fun () -> Unix.putenv "OCAMLPATH" installed_path; f ())
+  | _ -> f ()
+
+let build_installed_scaffold () =
   match C.Proc.which "dune" with
   | None -> () (* no toolchain in this context — nothing to verify *)
   | Some _
@@ -284,6 +304,27 @@ let test_scaffold_builds () =
            (String.length run.stdout > 0
             && String.sub run.stdout 0 5 = "frame"));
     C.Fs.rm_rf dir
+
+let test_scaffold_builds () = with_installed_libraries build_installed_scaffold
+
+let test_scaffold_builds_with_incomplete_local_install () =
+  let root = C.Fs.temp_dir ~prefix:"lui-cli-overlay-" () in
+  let context = root / "default" in
+  let local_lib = root / "install" / "default" / "lib" in
+  let ocamlpath = Sys.getenv_opt "OCAMLPATH"
+  and inside_dune = Sys.getenv_opt "INSIDE_DUNE" in
+  C.Fs.mkdir_p (local_lib / "lui");
+  C.Fs.write_file (local_lib / "lui" / "META")
+    "requires = \"ocaml-signal\"\narchive(native) = \"lui.cmxa\"\n";
+  Fun.protect
+    ~finally:(fun () ->
+      Unix.putenv "OCAMLPATH" (Option.value ocamlpath ~default:"");
+      Unix.putenv "INSIDE_DUNE" (Option.value inside_dune ~default:"");
+      C.Fs.rm_rf root)
+    (fun () ->
+      Unix.putenv "INSIDE_DUNE" context;
+      Unix.putenv "OCAMLPATH" local_lib;
+      test_scaffold_builds ())
 
 (* {1 doctor} *)
 
@@ -409,7 +450,9 @@ let () =
       ("init",
        [ Alcotest.test_case "sanitize" `Quick test_sanitize;
          Alcotest.test_case "scaffold" `Quick test_scaffold;
-         Alcotest.test_case "scaffold builds" `Slow test_scaffold_builds ]);
+         Alcotest.test_case "scaffold builds" `Slow test_scaffold_builds;
+         Alcotest.test_case "scaffold ignores incomplete local install" `Slow
+           test_scaffold_builds_with_incomplete_local_install ]);
       ("doctor",
        [ Alcotest.test_case "parse_version" `Quick test_parse_version;
          Alcotest.test_case "version_at_least" `Quick test_version_at_least;

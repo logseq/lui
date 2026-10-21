@@ -523,7 +523,7 @@ static value lui_shape_run(PangoGlyphItem *gi, int base, gint *pen,
      color packs back to 0xRRGGBBAA; Pango channels are the 8-bit
      value replicated across 16 bits, so the top byte is the channel. */
   vcolor = Val_int(0);
-  int under = 0;
+  int under = 0, inline_object = 0;
   int r = -1, g = 0, b = 0, a = 255;
   for (GSList *l = item->analysis.extra_attrs; l != NULL; l = l->next) {
     PangoAttribute *at = (PangoAttribute *)l->data;
@@ -536,6 +536,8 @@ static value lui_shape_run(PangoGlyphItem *gi, int base, gint *pen,
       a = ((PangoAttrInt *)at)->value >> 8;
     } else if (at->klass == &lui_under_klass) {
       under = ((LuiIntAttr *)at)->value;
+    } else if (at->klass->type == PANGO_ATTR_SHAPE) {
+      inline_object = 1;
     }
   }
   if (r >= 0) {
@@ -545,7 +547,7 @@ static value lui_shape_run(PangoGlyphItem *gi, int base, gint *pen,
     Store_field(vcolor, 0, Val_int(packed));
   }
 
-  vrun = caml_alloc(7, 0);
+  vrun = caml_alloc(8, 0);
   Store_field(vrun, 0, vfont);
   Store_field(vrun, 1, Val_int(item->offset + base));
   Store_field(vrun, 2, Val_int(item->offset + item->length + base));
@@ -553,6 +555,7 @@ static value lui_shape_run(PangoGlyphItem *gi, int base, gint *pen,
   Store_field(vrun, 4, vglyphs);
   Store_field(vrun, 5, vcolor);
   Store_field(vrun, 6, Val_int(under));
+  Store_field(vrun, 7, Val_bool(inline_object));
   tmp = vrun;
   CAMLreturn(tmp);
 }
@@ -572,6 +575,14 @@ static void lui_line_height(PangoLayoutLine *ll, struct lui_font *base,
     any = 1;
     double fa = (double)pango_font_metrics_get_ascent(m) / PANGO_SCALE;
     double fd = (double)pango_font_metrics_get_descent(m) / PANGO_SCALE;
+    for (GSList *at = gi->item->analysis.extra_attrs; at != NULL; at = at->next) {
+      PangoAttribute *attribute = (PangoAttribute *)at->data;
+      if (attribute->klass->type == PANGO_ATTR_SHAPE) {
+        PangoRectangle r = ((PangoAttrShape *)attribute)->logical_rect;
+        fa = fmax(fa, -r.y / (double)PANGO_SCALE);
+        fd = fmax(fd, (r.y + r.height) / (double)PANGO_SCALE);
+      }
+    }
     if (fa > a) a = fa;
     if (fd > d) d = fd;
     pango_font_metrics_unref(m);
@@ -711,7 +722,7 @@ CAMLprim value lui_pango_shape(value vfont, value vstr, value vwidth,
 
 /* shape_spans : font -> utf8 -> width -> rtl -> base -> span_attr array
    -> line array. A span_attr is
-   (start_byte, stop_byte, font option, color option, kern, under);
+   (start_byte, stop_byte, font option, color option, kern, under, object option);
    ranges are byte offsets into the segment string. The layout's own
    font description is the base; each span's attributes go on its
    range in the attr list. */
@@ -784,6 +795,21 @@ CAMLprim value lui_pango_shape_spans(value vfont, value vstr,
     int under = (int)Long_val(Field(vspan, 5));
     if (under != 0) {
       pango_attr_list_insert(attrs, lui_under_new(under, a, b));
+    }
+    value vo = Field(vspan, 6);
+    if (vo != Val_int(0)) {
+      value metrics = Field(vo, 0);
+      double w = Double_field(metrics, 0) * PANGO_SCALE;
+      double ascent = Double_field(metrics, 1) * PANGO_SCALE;
+      double descent = Double_field(metrics, 2) * PANGO_SCALE;
+      if (w > G_MAXINT || ascent + descent > G_MAXINT)
+        caml_invalid_argument("Inline object exceeds Pango coordinate range");
+      PangoRectangle logical = {0, -(int)lround(ascent), (int)lround(w),
+                                (int)lround(ascent + descent)};
+      PangoAttribute *at = pango_attr_shape_new(&logical, &logical);
+      at->start_index = a;
+      at->end_index = b;
+      pango_attr_list_insert(attrs, at);
     }
   }
   pango_layout_set_attributes(layout, attrs);

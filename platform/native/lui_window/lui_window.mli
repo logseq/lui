@@ -164,6 +164,12 @@ module Rects : sig
   val zero : rect
 end
 
+val content_bounds :
+  store:Lui_store.t -> rect_of:(int -> rect) -> int -> float * float * float * float
+(** Descendant bounds in layout coordinates, excluding the root's box.
+    Nested clipping containers contribute their own box, not the content
+    they clip. Unboxed containers pass their descendants through. *)
+
 val kind_name : Lui_store.t -> int -> string
 val kind_of : Lui_store.t -> int -> Lui_protocol.node_kind option
 
@@ -270,6 +276,14 @@ module Ui : sig
 
   (** A data-attrs drag session is in flight. *)
   val drag_active : t -> bool
+
+  (** A split divider owns the current pointer capture. *)
+  val resizing_split : t -> bool
+
+  (** Whether logical pointer coordinates lie on this split's divider.
+      [rects] contains device-pixel pane bounds at the current scale. *)
+  val split_handle :
+    t -> Lui_store.t -> Rects.t -> int -> x:float -> y:float -> bool
 
   (** Topmost overlay-kind node currently tracked (0 = none). *)
   val overlay_top : t -> int
@@ -387,10 +401,17 @@ module Ui : sig
       before each input too. *)
   val store_changed : t -> Lui_store.t -> action list
 
+  (** Whether a live menu owns text commits for typeahead. Hosts must
+      keep platform text input enabled while this is true. *)
+  val menu_input_active : t -> Lui_store.t -> bool
+
   (** Map one input event to ordered actions. [?spatial] accelerates
-      the rect hit-tests — see {!Lui_window.hit_path}. *)
+      the rect hit-tests — see {!Lui_window.hit_path}.
+      [on_component_input] runs when a control or menu consumes the input; hosts
+      forwarding document events must suppress that duplicate delivery. *)
   val handle :
-    ?spatial:Lui_spatial.t -> t -> Lui_store.t -> Rects.t ->
+    ?spatial:Lui_spatial.t -> ?on_component_input:(unit -> unit) ->
+    t -> Lui_store.t -> Rects.t ->
     Input.t -> action list
 
   (** [state_of] hook for the paint pipeline: folds hover/press/focus
@@ -408,6 +429,9 @@ module Ui : sig
   (** Whether the node is a scroll container (scroll/list kinds or a
       scrollable [overflow] prop) — the same rule the paint pass uses
       to clip and draw a scrollbar. *)
+
+  (** Visual translation from ancestor scroll offsets, in device pixels. *)
+  val anchor_shift : t -> Lui_store.t -> int -> float * float
 
   (** Scroll axes: [Y] is the vertical path, [X] the horizontal one
       (wheel-x / shift+wheel deltas, horizontal reveal). *)

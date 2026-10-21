@@ -16,50 +16,66 @@ let set_style element property value =
     (W.HtmlElement.style (W.Element.unsafeAsHtmlElement element))
     property value
 
+let split_uses_pixels renderer node =
+  Store.property renderer.web_store node FirstPaneWidth <> None
+
 let split_base_fraction value =
-  if Float.is_finite value && value > 0.0 then Float.min value 1.0 else 0.5
+  Float.max 0. (Float.min value 1.0)
 
 let split_int_property renderer node property fallback =
   match Store.property renderer.web_store node property with
   | Some (IntValue value) -> value
   | _ -> fallback
 
-let split_child_minimum renderer node index =
+let split_child_property renderer node index property =
   match Store.node renderer.web_store node with
-  | Some current ->
-      if index < Lui_sequence.length current.retained_children then
-        split_int_property renderer
-          (Lui_sequence.get current.retained_children index)
-          MinWidth 0
-      else 0
-  | None -> 0
+  | Some current when index < Lui_sequence.length current.retained_children ->
+      Store.property renderer.web_store
+        (Lui_sequence.get current.retained_children index) property
+  | _ -> None
+
+let split_child_width renderer node index property =
+  match split_child_property renderer node index property with
+  | Some (IntValue value) -> Some (float_of_int value)
+  | _ -> None
 
 (* Gap, minima, and the layout read are captured once per update — the old
    code rebuilt the children list and re-queried the gap three times per
    render, and every clientWidth read after a style write forced layout. *)
 type split_geometry = {
   geo_gap : int;
-  geo_first_min : int;
-  geo_second_min : int;
+  geo_handle_width : float;
+  geo_handle_offset : float;
+  geo_first_min : float;
+  geo_second_min : float;
+  geo_first_max : float option;
+  geo_second_max : float option;
   geo_available : int;
 }
 
 let split_geometry renderer node root =
   let gap = split_int_property renderer node Gap 9 in
+  let handle_width=match Store.property renderer.web_store node ResizeHandleWidth with
+    | Some (IntValue value) -> Some (float_of_int value) | _ -> None in
+  let handle_offset=match Store.property renderer.web_store node ResizeHandleOffset with
+    | Some (FloatValue value) -> value | _ -> 0. in
   { geo_gap = gap;
-    geo_first_min = split_child_minimum renderer node 0;
-    geo_second_min = split_child_minimum renderer node 1;
+    geo_handle_width = Lui_split_geometry.handle_width ~gap:(float_of_int gap) handle_width;
+    geo_handle_offset = handle_offset;
+    geo_first_min = Option.value (split_child_width renderer node 0 MinWidth) ~default:0.;
+    geo_second_min = Option.value (split_child_width renderer node 1 MinWidth) ~default:0.;
+    geo_first_max = split_child_width renderer node 0 MaxWidth;
+    geo_second_max = split_child_width renderer node 1 MaxWidth;
     geo_available = W.Element.clientWidth root - gap }
 
 let effective_fraction geometry value =
-  if geometry.geo_available <= 0 then 0.5
-  else
-    let available = Float.of_int geometry.geo_available in
-    let low = Float.of_int geometry.geo_first_min /. available in
-    let high = 1.0 -. (Float.of_int geometry.geo_second_min /. available) in
-    if low > high then
-      low /. Float.max (low +. (1.0 -. high)) 0.0001
-    else Float.min (Float.max (split_base_fraction value) low) high
+  Lui_split_geometry.constrain_fraction ~available:(float_of_int geometry.geo_available)
+    ~first_min:geometry.geo_first_min ~second_min:geometry.geo_second_min
+    ?first_max:geometry.geo_first_max ?second_max:geometry.geo_second_max
+    (Float.max 0. (Float.min 1. value))
+
+let normalize_value renderer node value =
+  if split_uses_pixels renderer node then Float.max 0. value else split_base_fraction value
 
 let effective_split_fraction renderer node value =
   let root = Lui_web_nodes.dom_node renderer node in
@@ -74,58 +90,95 @@ let split_timing_function renderer node =
 
 let render_split renderer node root value animated =
   let geometry = split_geometry renderer node root in
-  let fraction = effective_fraction geometry value in
+  let fraction = split_base_fraction value in
   let gap_float = Float.of_int geometry.geo_gap in
   let panes = Util.child_element root 0 in
   let divider = Util.child_element root 1 in
   let duration =
     if animated then split_int_property renderer node ResizeDuration 0 else 0
   in
-  set_style panes "grid-template-columns"
-    ("minmax(" ^ string_of_int geometry.geo_first_min ^ "px, "
-     ^ float_string fraction ^ "fr) minmax("
-     ^ string_of_int geometry.geo_second_min ^ "px, "
-     ^ float_string (1.0 -. fraction) ^ "fr)");
-  set_style panes "column-gap" (string_of_int geometry.geo_gap ^ "px");
-  set_style divider "left"
-    ("calc(" ^ float_string (fraction *. 100.0) ^ "% - "
-     ^ float_string (fraction *. gap_float) ^ "px)");
-  set_style divider "width" (string_of_int geometry.geo_gap ^ "px");
-  set_style panes "transition-property" "grid-template-columns";
-  set_style divider "transition-property" "left";
+  (* A zero duration only affects new transitions. Direct input and resize
+     observations must also cancel a transition already changing geometry. *)
+  set_style panes "transition-property"
+    (if animated then "grid-template-columns" else "none");
+  set_style divider "transition-property" (if animated then "left" else "none");
   set_style panes "transition-duration" (string_of_int duration ^ "ms");
   set_style divider "transition-duration" (string_of_int duration ^ "ms");
   set_style panes "transition-timing-function"
     (split_timing_function renderer node);
   set_style divider "transition-timing-function"
     (split_timing_function renderer node);
-  W.Element.setAttribute "aria-valuenow" (float_string fraction) divider
+  (* Controlled tracks can pass through zero during closure. Pane bounds
+     constrain input, while the split owns clipping in both backends. *)
+  for index = 0 to 1 do
+    Option.iter (fun pane ->
+      (* Positioned panes leave grid auto-placement; their sibling must
+         retain its own track even when the first track is collapsed. *)
+      set_style pane "grid-column" (string_of_int (index + 1));
+      set_style pane "grid-row" "1";
+      set_style pane "min-width" "0px";
+      set_style pane "overflow"
+        (match split_child_property renderer node index Overflow with
+         | Some (StringValue value) -> value
+         | _ -> "hidden"))
+      (W.HtmlCollection.item index (W.Element.children panes))
+  done;
+  let first_track, columns =
+    if split_uses_pixels renderer node then
+      let width = "min(" ^ float_string (Float.max 0. value) ^ "px, max(0px, calc(100% - "
+        ^ string_of_int geometry.geo_gap ^ "px)))" in
+      width, width ^ " minmax(0, 1fr)"
+    else
+      "calc(" ^ float_string (fraction *. 100.0) ^ "% - "
+        ^ float_string (fraction *. gap_float) ^ "px)",
+      "minmax(0, " ^ float_string fraction ^ "fr) minmax(0, "
+        ^ float_string (1.0 -. fraction) ^ "fr)"
+  in
+  set_style panes "grid-template-columns" columns;
+  set_style panes "column-gap" (string_of_int geometry.geo_gap ^ "px");
+  let handle_delta=Lui_split_geometry.handle_start ~first:0. ~gap:gap_float
+    ~width:geometry.geo_handle_width ~offset:geometry.geo_handle_offset in
+  let handle_left=if handle_delta=0. then first_track else
+    "calc(" ^ first_track ^ (if handle_delta<0. then " - " else " + ")
+      ^ float_string (Float.abs handle_delta) ^ "px)" in
+  set_style divider "left" handle_left;
+  set_style divider "width" (float_string geometry.geo_handle_width ^ "px");
+  let enabled=geometry.geo_handle_width>0. in
+  set_style divider "display" (if enabled then "" else "none");
+  W.Element.setAttribute "tabindex" (if enabled then "0" else "-1") divider;
+  W.Element.setAttribute "aria-hidden" (if enabled then "false" else "true") divider;
+  W.Element.setAttribute "aria-valuenow" (float_string value) divider
 
 let render_split_bang = render_split
 
 let split_progress_source renderer node =
-  match Store.property renderer.web_store node ProgressValue with
+  let property = if split_uses_pixels renderer node then FirstPaneWidth else ProgressValue in
+  match Store.property renderer.web_store node property with
   | Some (FloatValue value) -> value
-  | _ -> 0.0
+  | _ -> 0.5
 
 let replace_split_state renderer node source current =
   Hashtbl.replace renderer.web_splits node
-    { web_split_source = source; web_split_current = current }
+    { web_split_pixels = split_uses_pixels renderer node;
+      web_split_source = source; web_split_current = current }
 
 let reconcile_split renderer node root source =
   match Hashtbl.find_opt renderer.web_splits node with
   | Some state ->
-      let source_changed = source <> state.web_split_source in
+      let source_changed = source <> state.web_split_source
+        || state.web_split_pixels <> split_uses_pixels renderer node in
       let current = state.web_split_current in
       let next_current =
         if source_changed then
-          if Float.abs (split_base_fraction source -. current) < 0.000001 then
+          if Float.abs (normalize_value renderer node source -. current) < 0.000001 then
             current
-          else split_base_fraction source
+          else normalize_value renderer node source
         else current
       in
       replace_split_state renderer node source next_current;
-      render_split renderer node root next_current source_changed
+      (* A second update in the same batch must preserve the controlled
+         transition. Direct input and viewport resize cancel it explicitly. *)
+      render_split renderer node root next_current true
   | None ->
       let duration = split_int_property renderer node ResizeDuration 0 in
       let origin =
@@ -136,17 +189,17 @@ let reconcile_split renderer node root source =
       let start =
         match origin with
         | Some value ->
-            if duration > 0 then split_base_fraction value
-            else split_base_fraction source
-        | None -> split_base_fraction source
+            if duration > 0 then normalize_value renderer node value
+            else normalize_value renderer node source
+        | None -> normalize_value renderer node source
       in
       replace_split_state renderer node source start;
       render_split renderer node root start false;
-      if duration > 0 && start <> split_base_fraction source then
+      if duration > 0 && start <> normalize_value renderer node source then
         Webapi.requestAnimationFrame (fun _time ->
             replace_split_state renderer node source
-              (split_base_fraction source);
-            render_split renderer node root (split_base_fraction source) true)
+              (normalize_value renderer node source);
+            render_split renderer node root (normalize_value renderer node source) true)
 
 let reconcile_split_bang = reconcile_split
 
@@ -174,20 +227,29 @@ let update_splits_under_bang = update_splits_under
 let attach_split_events renderer node root =
   let divider = Util.child_element root 1 in
   let document = renderer.web_document in
-  let dragging = ref false in
+  let dragging = ref false and grab_offset = ref 0. in
+  let enabled () = match Store.property renderer.web_store node ResizeHandleWidth with
+    | Some (IntValue 0) -> false
+    | _ -> true in
   let adjust delta =
     let current =
       match Hashtbl.find_opt renderer.web_splits node with
       | Some state -> state.web_split_current
       | None -> 0.5
     in
-    let next = effective_split_fraction renderer node (current +. delta) in
+    let geometry = split_geometry renderer node root in
+    let available = float_of_int geometry.geo_available in
+    let pixels = split_uses_pixels renderer node in
+    let fraction = if pixels then current /. Float.max 1. available else current in
+    let next = effective_fraction geometry (fraction +. delta) in
+    let next = if pixels then next *. available else next in
     let source = split_progress_source renderer node in
     replace_split_state renderer node source next;
     render_split renderer node root next false;
     ignore (!(renderer.web_event_handler) (ValueChanged (node, next)))
   in
   let move event =
+    if !dragging && not (enabled ()) then dragging := false;
     if !dragging then begin
       let bounds = W.Element.getBoundingClientRect root in
       let gap = split_int_property renderer node Gap 9 in
@@ -196,9 +258,10 @@ let attach_split_events renderer node root =
         Float.of_int (W.MouseEvent.clientX event) -. W.DomRect.left bounds
       in
       let raw =
-        (pointer -. (Float.of_int gap /. 2.0)) /. Float.max available 1.0
+        (pointer -. (Float.of_int gap /. 2.0) -. !grab_offset) /. Float.max available 1.0
       in
       let current = effective_split_fraction renderer node raw in
+      let current = if split_uses_pixels renderer node then current *. available else current in
       let source = split_progress_source renderer node in
       replace_split_state renderer node source current;
       render_split renderer node root current false;
@@ -209,14 +272,23 @@ let attach_split_events renderer node root =
   let resize_observer =
     Webapi.ResizeObserver.make (fun _entries ->
         match Hashtbl.find_opt renderer.web_splits node with
-        | Some state ->
+        | Some state when not (split_uses_pixels renderer node) ->
             render_split renderer node root state.web_split_current false
-        | None -> ())
+        | Some _ | None -> ())
   in
   W.Element.addMouseDownEventListener
     (fun event ->
-       if W.MouseEvent.button event = 0 then begin
+       if W.MouseEvent.button event = 0 && enabled () then begin
          W.MouseEvent.preventDefault event;
+         let bounds=W.Element.getBoundingClientRect root in
+         let geometry=split_geometry renderer node root in
+         let current=match Hashtbl.find_opt renderer.web_splits node with
+           | Some state -> state.web_split_current
+           | None -> split_progress_source renderer node in
+         let first=if split_uses_pixels renderer node then current else
+           current *. float_of_int geometry.geo_available in
+         grab_offset := float_of_int (W.MouseEvent.clientX event) -. W.DomRect.left bounds
+           -. first -. (float_of_int geometry.geo_gap /. 2.);
          dragging := true
        end)
     divider;
@@ -225,7 +297,7 @@ let attach_split_events renderer node root =
   Webapi.ResizeObserver.observe resize_observer root;
   W.Element.addKeyDownEventListener
     (fun event ->
-       (match W.KeyboardEvent.key event with
+       if enabled () then (match W.KeyboardEvent.key event with
         | "ArrowLeft" ->
             W.KeyboardEvent.preventDefault event;
             adjust (-0.05)

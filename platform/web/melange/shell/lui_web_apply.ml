@@ -64,6 +64,8 @@ let portal_parent renderer previous_nodes parent child =
       (Nodes.dom_node_before renderer previous_nodes parent)
 
 let cleanup_node renderer node =
+  Hashtbl.remove renderer.web_portal_nodes node;
+  Lui_web_events.release_appear renderer node;
   (match Hashtbl.find_opt renderer.web_virtual_lists node with
    | Some state -> state.dispose_virtual ()
    | None -> ());
@@ -158,6 +160,7 @@ type batch_effects = {
   dropdowns : (int, unit) Hashtbl.t;
   comboboxes : (int, unit) Hashtbl.t;
   splits : (int, unit) Hashtbl.t;
+  popups : (int, unit) Hashtbl.t;
   bottom_tabs : (int, unit) Hashtbl.t;
 }
 
@@ -165,11 +168,13 @@ let new_effects () =
   { dropdowns = Hashtbl.create 4;
     comboboxes = Hashtbl.create 4;
     splits = Hashtbl.create 4;
+    popups = Hashtbl.create 4;
     bottom_tabs = Hashtbl.create 4 }
 
 let queue_split effects node = Hashtbl.replace effects.splits node ()
 
 let run_effects renderer effects =
+  Lui_web_props.refresh_portal_inheritance renderer;
   Hashtbl.iter
     (fun parent () -> refresh_dropdown_parent renderer parent)
     effects.dropdowns;
@@ -189,9 +194,27 @@ let run_effects renderer effects =
     effects.splits;
   Hashtbl.iter
     (fun parent () -> Lui_web_widgets.refresh_bottom_tabs renderer parent)
-    effects.bottom_tabs
+    effects.bottom_tabs;
+  (* Anchor changes can leave every observed size unchanged. Position once
+     after the batch's final styles and split geometry have landed. *)
+  Hashtbl.iter
+    (fun node () ->
+      match Store.node renderer.web_store node with
+      | Some current ->
+          (match Store.standard_kind current with
+           | Some DropdownMenu -> Lui_web_position.position_dropdown renderer node
+           | Some Popover -> Lui_web_position.position_popover renderer node
+           | Some Tooltip when Store.anchored_tooltip current ->
+               Lui_web_position.position_tooltip renderer node
+           | _ -> ())
+      | None -> ())
+    effects.popups
 
 let refresh_parent_for_prop renderer effects node property =
+  (match property with
+   | AnchorValue | AnchorTarget | AnchorRect | AnchorAlignmentValue | AnchorOffset | AnchorAlignmentOffset | CollisionPadding | PopupX | PopupY ->
+       Hashtbl.replace effects.popups node ()
+   | _ -> ());
   match Store.node renderer.web_store node with
   | Some current -> (
       match current.retained_parent with
@@ -270,7 +293,7 @@ let insert_menu_item_role renderer _child current parent =
         W.Element.setAttribute "role" "menuitem" (Lazy.force current.platform_node);
         W.Element.setAttribute "tabindex" "-1" (Lazy.force current.platform_node);
         W.Element.removeAttribute "aria-selected" (Lazy.force current.platform_node);
-        Lui_web_menu.highlight_initial_menu_item renderer container_id
+        Lui_web_menu.initialize_menu_focus renderer container_id
     | _ -> ()
 
 (* a child removed or reparented by a later op in the same batch has no
@@ -305,6 +328,9 @@ let insert_child_dom renderer previous_nodes children_of effects parent
          remove op finds the element where the op stream put it *)
       Util.insert_dom_child parent_dom child_dom index
   | Some current -> (
+      if Store.portal_surface_node renderer.web_store child
+         || Store.standard_kind_is current Popover then
+        Hashtbl.replace renderer.web_portal_nodes child child_dom;
       match Store.standard_kind current with
       | Some BottomTab -> (
           match Store.node renderer.web_store parent with
@@ -405,11 +431,10 @@ let apply_remove_child renderer previous_nodes effects parent child =
   (if bottom_tab && bottom_tabs then remove_bottom_tab renderer parent child
    else if modal then
      match prev_node previous_nodes child with
-     | Some previous ->
+     | Some _ ->
            ignore
              (Lui_web_overlay.remove_modal_layer_after_exit
-              renderer child parent_node child_node surface
-              (Store.standard_kind previous))
+              renderer child parent_node child_node surface)
      | None -> ()
    else if prev_kind_is previous_nodes child DropdownMenu then
      Lui_web_menu.remove_dropdown_after_exit renderer child parent_node

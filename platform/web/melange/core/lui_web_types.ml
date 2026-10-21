@@ -22,6 +22,7 @@ type web_image_resource = {
 }
 
 type web_split_state = {
+  web_split_pixels : bool;
   web_split_source : float;
   web_split_current : float;
 }
@@ -100,6 +101,7 @@ type web_renderer = {
   web_document : Dom.document;
   web_host : web_node;
   web_portal_root : web_node;
+  web_portal_nodes : (int, web_node) Hashtbl.t;
   web_simulator_platform : operating_system option ref;
   web_simulator_device : web_simulator_device option ref;
   web_simulator_keyboard_visible : bool ref;
@@ -127,6 +129,9 @@ type web_renderer = {
   (* container ids with a pending initial-highlight timer — each timer
      runs a full querySelectorAll scan, so multi-item mounts share one *)
   web_menu_highlights : (int, unit) Hashtbl.t;
+  web_appear_pending : (int, unit) Hashtbl.t;
+  web_appear_seen : (int, unit) Hashtbl.t;
+  web_appear_timer : Js.Global.timeoutId option ref;
   web_extension_registry : Lui_extension.extension_registry;
   web_extension_adapters : (string, web_extension_adapter) Hashtbl.t;
 }

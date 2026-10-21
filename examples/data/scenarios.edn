@@ -1,0 +1,37 @@
+{:version 1
+ :view
+ [:split {:first-pane-width 220.0}
+  [:column {:gap 12 :padding 16}
+   [:heading {:text "Navigation"}]
+   [:tabs
+    [:button {:text "Form" :selected true}]
+    [:button {:text "Table"}]]
+   [:tree {:accessibility-label "Tasks"}
+    [:for {:items {:bind [:model :items]} :as :task :key [:id]}
+     [:list-item {:text {:bind [:task :title]} :role :treeitem :tree-level 1}]]]]
+  [:scroll
+   [:column {:gap 16 :padding 16}
+    [:heading {:text "Form controls"}]
+    [:text-field {:text {:bind [:model :draft]} :placeholder "Draft"
+                  :on {:input :draft}}]
+    [:checkbox {:checked false :text "Accept"}]
+    [:slider {:value 0.5 :accessibility-label "Volume"}]
+    [:select {:text "one"}
+     [:text {:text "one"}]
+     [:text {:text "two"}]]
+    [:when {:bind [:model :empty?]}
+     [:dialog {:text "Empty state" :description "Model-owned presentation"}
+      [:column [:text {:text "Add tasks in the OCaml reducer"}]]]]
+    [:heading {:text "Keyed table"}]
+    [:table
+     [:table-row
+      [:table-cell [:text {:text "Title"}]]
+      [:table-cell [:text {:text "Done"}]]]
+     [:for {:items {:bind [:model :items]} :as :task :key [:id]}
+      [:table-row
+       [:table-cell [:text {:text {:bind [:task :title]}}]]
+       [:table-cell [:checkbox {:checked {:bind [:task :done?]}}]]]]]
+    [:heading {:text "Virtual-list vocabulary (not a performance qualification)"}]
+    [:virtual-list {:height 200}
+     [:for {:items {:bind [:model :items]} :as :task :key [:id]}
+      [:row [:text {:text {:bind [:task :title]}}]]]]]]]}

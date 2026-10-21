@@ -27,9 +27,12 @@ module type LAYOUT_ENGINE = sig
   val create : unit -> t
 
   val sync :
-    ?scale:float -> ?measure:text_measure -> ?hidden:(int -> bool) ->
+    ?scale:float -> ?measure:text_measure ->
+    ?text_flow:(int -> float -> Lui_paint.text_flow_layout option) ->
+    ?image_measure:(int -> (float * float) option) -> ?hidden:(int -> bool) ->
     ?ctx_anchor:(float * float) ->
     ?vport:(int -> (float * float) option) ->
+    ?anchor_shift:(int -> float * float) ->
     width:float -> height:float -> t -> Lui_store.t -> unit
 
   val invalidate : t -> unit
@@ -64,6 +67,11 @@ end
 type t
 
 val tick : t -> now:float -> unit
+(** Advance the monotonic presentation clock before input and repaint.
+    Promoted surfaces fade and zoom in over 150 ms (200 ms for modal
+    surfaces); dismissal retains only an inert display-list snapshot until
+    exit finishes. Split transitions share this clock. *)
+
 val set_reduced_motion : t -> bool -> unit
 
 val create :
@@ -149,7 +157,9 @@ val invalidate_paint : t -> unit
     {!note_paint} for inputs that moved globally (a theme swap under
     a stable store). *)
 
-val apply_batch : t -> Lui_protocol.patch_batch -> bool
+val apply_batch : ?animate_resize:bool -> t -> Lui_protocol.patch_batch -> bool
+(** [animate_resize=false] applies direct manipulation feedback, including
+    dependent split corrections, without scheduling eased catch-up. *)
 
 val resize : t -> width:int -> height:int -> scale:float -> unit
 
@@ -169,6 +179,10 @@ val set_vport : t -> (int -> (float * float) option) -> unit
     offset for a directly-scrolled list, or the on-screen clip mapped
     into the list's content when an outer scroller clips it. Evaluated
     inside every engine sync, including memo hits. *)
+
+val set_anchor_shift : t -> (int -> float * float) -> unit
+(** Supply each node's visual translation in device pixels. Retained anchor
+    positioning reads this on repaint without rebuilding the document. *)
 
 (** {2 Virtual lists}
 

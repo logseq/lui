@@ -32,9 +32,8 @@ type 'value entry = {
   (* attached owner scopes, by scope id — the entry lives while the
      table is non-empty *)
   entry_scopes : (int, Signal.scope) Hashtbl.t;
-  (* (scope id, scope, callback): scope lets dead watchers be pruned
-     at notify time without waiting for the cleanup to run *)
-  mutable watchers : (int * Signal.scope * ('value entry -> unit)) list;
+  (* Scope buckets release captured callbacks without walking other owners. *)
+  watchers : (int, (Signal.scope * ('value entry -> unit)) list) Hashtbl.t;
 }
 
 let key e = e.key
@@ -73,7 +72,7 @@ let executor_queued () =
   (exec, pump)
 
 type 'value completion = {
-  comp_key : key;
+  comp_entry : 'value entry;
   comp_generation : int;
   comp_result : ('value, string) result;
 }
@@ -105,7 +104,7 @@ let drop_entry c e =
     (match e.task with Some t -> task_cancel t | None -> ());
     e.task <- None;
     (match e.state with Ready v -> (try c.retire v with _ -> ()) | _ -> ());
-    e.watchers <- [];
+    Hashtbl.clear e.watchers;
     Hashtbl.reset e.entry_scopes
   end
 
@@ -126,22 +125,15 @@ let attach c e scope =
   end
 
 let notify e =
-  (* iterate a snapshot so watchers registered inside a callback are
-     not called this round, then prune dead scopes from the current
-     list — which keeps those new watchers *)
-  List.iter
-    (fun (_, scope, f) ->
-      if not (Signal.scope_is_disposed scope) then (try f e with _ -> ()))
-    e.watchers;
-  e.watchers <-
-    List.filter
-      (fun (_, scope, _) -> not (Signal.scope_is_disposed scope))
-      e.watchers
+  (* Snapshot registration membership before callbacks can add or dispose scopes. *)
+  let watchers=Hashtbl.fold (fun _ callbacks acc -> List.rev_append callbacks acc) e.watchers [] in
+  List.iter (fun (scope,f) ->
+    if not (Signal.scope_is_disposed scope) then (try f e with _ -> ())) watchers
 
 (* Foreground publish of one completion. *)
 let publish c comp =
-  match Hashtbl.find_opt c.entries comp.comp_key with
-  | Some e when e.generation = comp.comp_generation && e.state = Loading ->
+  match Hashtbl.find_opt c.entries comp.comp_entry.key with
+  | Some e when e == comp.comp_entry && e.generation = comp.comp_generation && e.state = Loading ->
       e.task <- None;
       (match comp.comp_result with
        | Ok v -> e.state <- Ready v
@@ -203,7 +195,7 @@ let spawn c e load =
       in
       Mutex.lock c.mutex;
       Queue.push
-        { comp_key = e.key; comp_generation = generation; comp_result = result }
+        { comp_entry = e; comp_generation = generation; comp_result = result }
         c.mailbox;
       Mutex.unlock c.mutex);
   Some task
@@ -211,7 +203,13 @@ let spawn c e load =
 let add_watcher e scope = function
   | None -> ()
   | Some f ->
-      e.watchers <- (Signal.scope_id scope, scope, f) :: e.watchers;
+      let scope_id=Signal.scope_id scope in
+      let callbacks=match Hashtbl.find_opt e.watchers scope_id with
+        | Some callbacks -> callbacks
+        | None ->
+            Signal.on_dispose scope (fun () -> Hashtbl.remove e.watchers scope_id);
+            [] in
+      Hashtbl.replace e.watchers scope_id ((scope,f)::callbacks);
       (* already published: notify now so a late watcher cannot miss
          the value that raced its request *)
       (match e.state with
@@ -234,7 +232,7 @@ let request c ~scope ?on_state key ~load =
           owner_scope = scope;
           task = None;
           entry_scopes = Hashtbl.create 4;
-          watchers = [];
+          watchers = Hashtbl.create 4;
         }
       in
       Hashtbl.replace c.entries key e;

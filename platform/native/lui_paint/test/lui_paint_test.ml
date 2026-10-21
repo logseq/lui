@@ -41,6 +41,346 @@ let paint_with h t ?(width = 200) ?(height = 200) ?(scale = 1.)
     ~clear:(color 0 0 0 0);
   s
 
+let test_table_hover_requires_interaction () =
+  let t = store () in
+  apply t [Lui_protocol.CreateNode (1, Table);
+    CreateNode (2, TableRow); CreateNode (3, TableCell);
+    InsertChild (1, 2, 0); InsertChild (2, 3, 0)];
+  let render hovered =
+    let h = {(hooks ()) with Lui_paint.state_of = (fun id ->
+      {Lui_paint.state_neutral with hovered = hovered && id = 2})} in
+    (paint_with h t ()).ops in
+  check bool "read-only table rows retain their paint on hover" true
+    (render false = render true);
+  apply t [Lui_protocol.SetProp (3, PressEnabled, BoolValue true)];
+  check bool "interactive table rows retain hover feedback" true
+    (render false <> render true);
+  apply t [Lui_protocol.RemoveProp (3, PressEnabled)];
+  check bool "removing the action removes hover feedback" true
+    (render false = render true)
+
+let test_link_theme () =
+  let t = store () in
+  apply t [Lui_protocol.CreateNode (1,Link);
+    SetProp (1,TextValue,StringValue "Changelog")];
+  let primary = color 211 77 12 255 and neutral = color 40 42 45 255 in
+  let ink = ref None in
+  let h = {(hooks ()) with
+    Lui_paint.color_of = (function "primary" -> Some primary
+      | "accent" -> Some neutral | _ -> None);
+    text_ops = (fun _ _ foreground _ -> ink := Some foreground; [])} in
+  ignore (paint_with h t ());
+  check bool "link uses the primary color like Web" true (!ink = Some primary);
+  apply t [Lui_protocol.SetProp (1,ForegroundValue,StringValue "accent")];
+  ignore (paint_with h t ());
+  check bool "an explicit neutral link color is retained" true (!ink = Some neutral)
+
+let test_form_control_chrome () =
+  List.iter
+    (fun (background, input, ring) ->
+      List.iter
+        (fun kind ->
+          List.iter
+            (fun scale ->
+              let t = store () in
+              apply t
+                [
+                  Lui_protocol.CreateNode (1, kind);
+                  SetProp (1, TextValue, StringValue "Value");
+                ];
+              let r =
+                rect (20. *. scale) (20. *. scale) (100. *. scale) (40. *. scale)
+              in
+              let h =
+                {
+                  (hooks ~layout:(fun _ -> Lui_paint.placement_of_rect r) ()) with
+                  Lui_paint.color_of =
+                    (function
+                    | "background" -> Some background
+                    | "input" -> Some input
+                    | "ring" -> Some ring
+                    | _ -> None);
+                }
+              in
+              let fills painted =
+                List.filter_map
+                  (function Fill f -> Some f | _ -> None)
+                  painted.ops
+              in
+              List.iter
+                (fun focused ->
+                  let h =
+                    {
+                      h with
+                      Lui_paint.state_of =
+                        (fun _ -> { Lui_paint.state_neutral with focused; focus_visible = focused });
+                    }
+                  in
+                  let painted =
+                    paint_with h t ~width:400 ~height:200 ~scale ()
+                  in
+                  let controls =
+                    List.filter (fun f -> f.frect = r) (fills painted)
+                  in
+                  let filled = kind = Lui_protocol.Select || kind = Combobox in
+                  check bool
+                    "text entries remain transparent and pickers use background"
+                    true
+                    (List.for_all
+                       (fun f ->
+                         if f.fcolor.a = 0 then true
+                         else filled && f.fcolor = background)
+                       controls);
+                  check bool "picker keeps its background surface" true
+                    ((not filled)
+                    || List.exists (fun f -> f.fcolor = background) controls);
+                  check bool "field keeps the input border token when focused"
+                    true
+                    (List.exists
+                       (fun f ->
+                         f.fborder = (scale, scale, scale, scale)
+                         && f.fborder_color = input)
+                       controls);
+                  if focused then begin
+                    let outer =
+                      rect
+                        (r.x -. (4. *. scale))
+                        (r.y -. (4. *. scale))
+                        (r.w +. (8. *. scale))
+                        (r.h +. (8. *. scale))
+                    in
+                    let offset =
+                      rect
+                        (r.x -. (2. *. scale))
+                        (r.y -. (2. *. scale))
+                        (r.w +. (4. *. scale))
+                        (r.h +. (4. *. scale))
+                    in
+                    let border =
+                      (2. *. scale, 2. *. scale, 2. *. scale, 2. *. scale)
+                    in
+                    check bool
+                      "focus ring uses the ring token outside a two-point gap"
+                      true
+                      (List.exists
+                         (fun f ->
+                           f.frect = outer && f.fborder = border
+                           && f.fborder_color = ring)
+                         (fills painted));
+                    check bool "focus gap uses the background token" true
+                      (List.exists
+                         (fun f ->
+                           f.frect = offset && f.fborder = border
+                           && f.fborder_color = background)
+                         (fills painted));
+                    check bool
+                      "focus ring follows the field's default corner radius"
+                      true
+                      (List.exists
+                         (fun f ->
+                           f.frect = outer
+                           && f.fradii
+                              = ( 10. *. scale,
+                                  10. *. scale,
+                                  10. *. scale,
+                                  10. *. scale ))
+                         (fills painted))
+                  end)
+                [ false; true ];
+              apply t
+                [
+                  Lui_protocol.SetProp
+                    (1, BackgroundValue, StringValue "#010203");
+                  SetProp (1, BorderWidth, IntValue 2);
+                  SetProp (1, BorderColorValue, StringValue "#040506");
+                  SetProp (1, FocusShadow, StringValue "none");
+                ];
+              let focused =
+                {
+                  h with
+                  Lui_paint.state_of =
+                    (fun _ -> { Lui_paint.state_neutral with focused = true; focus_visible = true });
+                }
+              in
+              let painted =
+                paint_with focused t ~width:400 ~height:200 ~scale ()
+              in
+              check bool
+                "authored field appearance suppresses default focus chrome" true
+                (List.for_all (fun f -> f.frect = r) (fills painted));
+              check bool "authored field background and border remain intact"
+                true
+                (List.exists
+                   (fun f ->
+                     f.frect = r
+                     && f.fcolor = color 1 2 3 255
+                     && f.fborder_color = color 4 5 6 255)
+                   (fills painted)))
+            [ 1.; 2. ])
+        [
+          Lui_protocol.TextField;
+          SecureField;
+          Input;
+          SearchField;
+          Textarea;
+          Select;
+          Combobox;
+        ])
+    [
+      (color 250 248 246 255, color 120 110 100 255, color 10 80 170 255);
+      (color 20 24 28 255, color 70 80 90 255, color 120 180 240 255);
+    ]
+
+let test_button_icon_gap () =
+  List.iter (fun scale -> List.iter (fun trailing -> List.iter (fun gap ->
+    let t = store () in
+    apply t ([Lui_protocol.CreateNode (1,Button);
+      SetProp (1,TextValue,StringValue "Add property");
+      SetProp (1,InlineIconName,StringValue "plus");
+      SetProp (1,PaddingHorizontal,IntValue 12);
+      SetProp (1,PaddingVertical,IntValue 4);
+      SetProp (1,IconPlacementValue,StringValue (if trailing then "trailing" else "leading"))]
+      @ Option.fold ~none:[] ~some:(fun value -> [Lui_protocol.SetProp (1,Gap,IntValue value)]) gap);
+    let image = new_image ~w:1 ~h:1 (Bytes.make 4 '\255') in
+    let label = ref None in
+    let h = {(hooks ~layout:(fun _ -> Lui_paint.placement_of_rect
+      (rect 0. 0. (160.*.scale) (28.*.scale))) ()) with
+      Lui_paint.image_of=(fun _ -> Some image);image_in=(fun _ _ -> Some image);
+      text_ops=(fun _ region _ _ -> label:=Some region;[])} in
+    let painted = paint_with h t ~width:400 ~height:100 ~scale () in
+    let icon = List.find_map (function Image i -> Some i.irect2 | _ -> None) painted.ops |> Option.get in
+    let label = Option.get !label in
+    let actual = (if trailing then icon.x-.label.x-.label.w else label.x-.icon.x-.icon.w)
+      +.12.*.scale in
+    check (float 0.1) "button label and icon honor the requested gap"
+      (float_of_int (Option.value gap ~default:6)*.scale) actual)
+    [None;Some 0;Some 4;Some 16]) [false;true]) [1.;2.]
+
+let test_icon_opacity () =
+  let t = store () in
+  apply t
+    [ Lui_protocol.CreateNode (1, Row)
+    ; SetProp (1, Opacity, FloatValue 0.5)
+    ; CreateNode (2, Icon)
+    ; SetProp (2, IconName, StringValue "chevron_down")
+    ; SetProp (2, Opacity, FloatValue 0.4)
+    ; InsertChild (1, 2, 0) ];
+  let image = new_image ~w:1 ~h:1 (Bytes.make 4 '\255') in
+  let h = { (hooks ()) with Lui_paint.image_of = (fun _ -> Some image);
+    image_in = (fun _ _ -> Some image) } in
+  let painted = paint_with h t () in
+  let images = List.filter_map (function Image i -> Some i | _ -> None) painted.ops in
+  check int "icon paints once" 1 (List.length images);
+  check (float 0.0001) "icon multiplies its own and inherited opacity" 0.2
+    (List.hd images).iopacity
+
+let test_select_indicator () =
+  List.iter
+    (fun kind ->
+      List.iter
+        (fun scale ->
+          let t = store () in
+          apply t
+            [
+              Lui_protocol.CreateNode (1, kind);
+              SetProp (1, BorderWidth, IntValue 1);
+              SetProp (1, TextValue, StringValue "A very long language name");
+            ];
+          let image = new_image ~w:1 ~h:1 (Bytes.make 4 '\255') in
+          let requested = ref None and text_rect = ref None in
+          let r =
+            rect (20. *. scale) (10. *. scale) (256. *. scale) (32. *. scale)
+          in
+          let h =
+            {
+              (hooks ~layout:(fun _ -> Lui_paint.placement_of_rect r) ()) with
+              Lui_paint.image_in =
+                (fun _ slot ->
+                  requested := Some slot;
+                  Some image);
+              text_ops =
+                (fun _ region _ _ ->
+                  text_rect := Some region;
+                  []);
+            }
+          in
+          let s = paint_with h t ~width:600 ~height:160 ~scale () in
+          let expected =
+            rect (247. *. scale) (18. *. scale) (16. *. scale) (16. *. scale)
+          in
+          check bool "select requests a trailing sixteen-point indicator" true
+            (!requested = Some (rect 247. 18. 16. 16.));
+          let images =
+            List.filter_map (function Image i -> Some i | _ -> None) s.ops
+          in
+          check int "indicator painted exactly once" 1 (List.length images);
+          check bool "indicator retains the requested slot" true
+            ((List.hd images).irect2 = expected);
+          let label = Option.get !text_rect in
+          check bool "label ends before the icon" true
+            (label.x +. label.w <= expected.x);
+          check bool "label is clipped away from the icon" true
+            (List.exists
+               (function Push_clip c -> c.crect = label | _ -> false)
+               s.ops);
+          apply t [ SetProp (1, Enabled, BoolValue false) ];
+          let disabled = paint_with h t ~width:600 ~height:160 ~scale () in
+          let opacity =
+            List.find_map
+              (function Image i -> Some i.iopacity | _ -> None)
+              disabled.ops
+          in
+          check bool "disabled indicator follows control opacity" true
+            (Option.get opacity < 1.);
+          requested := None;
+          let narrow =
+            {
+              h with
+              Lui_paint.layout =
+                (fun _ ->
+                  Lui_paint.placement_of_rect
+                    (rect (20. *. scale) (10. *. scale) (20. *. scale)
+                       (32. *. scale)));
+            }
+          in
+          ignore (paint_with narrow t ~width:600 ~height:160 ~scale ());
+          check bool "a narrow control does not request an out-of-bounds icon"
+            true (!requested = None))
+        [ 1.; 2. ])
+    [ Lui_protocol.Select; Combobox ]
+
+let test_image_fill_crop () =
+  List.iter (fun kind -> List.iter (fun scale -> List.iter
+    (fun (width, height, expected) ->
+      let t = store () in
+      apply t
+        [
+          Lui_protocol.CreateNode (1, kind);
+          SetProp (1, (if kind=Lui_protocol.Image then UrlValue else PathValue), StringValue "image.png");
+          SetProp (1, ImageFitValue, StringValue "fill");
+        ];
+      let image =
+        new_image ~w:width ~h:height (Bytes.make (width * height * 4) '\255')
+      in
+      let hooks =
+        { (hooks ~layout:(fun _ -> Lui_paint.placement_of_rect
+            (rect 0. 0. (100.*.scale) (40.*.scale))) ()) with Lui_paint.image_of = (fun _ -> Some image) }
+      in
+      let scene = paint_with hooks t ~scale () in
+      let op =
+        List.find_map (function Image i -> Some i | _ -> None) scene.ops
+        |> Option.get
+      in
+      check bool "fill preserves the destination" true
+        (op.irect2 = rect 0. 0. (100.*.scale) (40.*.scale));
+      check bool "fill crops the source without distorting its aspect" true
+        (op.isrc = expected))
+    [
+      (200, 40, rect 50. 0. 100. 40.);
+      (100, 100, rect 0. 30. 100. 40.);
+      (100, 40, rect 0. 0. 100. 40.);
+    ]) [1.;2.]) [Lui_protocol.FileImage; Image]
+
 let test_fill_op () =
   let t = store () in
   apply t
@@ -201,6 +541,34 @@ let test_per_edge_border_colors () =
     check bool "top width" true (t'.fborder = (1., 0., 0., 0.))
   | _ -> fail "expected four edge fills"
 
+let test_hover_border_colors () =
+  List.iter (fun scale ->
+    let t=store () in
+    apply t [Lui_protocol.CreateNode (1,Button);
+      SetProp (1,TextValue,StringValue "Reference");
+      SetProp (1,BorderWidth,IntValue 1);
+      SetProp (1,BorderColorValue,StringValue "#112233");
+      SetProp (1,HoverBorder,StringValue "#445566")];
+    let expect label state expected =
+      let h={(hooks ()) with Lui_paint.state_of=(fun _ -> state)} in
+      let painted=paint_with h t ~scale () in
+      let edges=List.filter_map (function Fill fill
+        when fill.fborder<>(0.,0.,0.,0.) -> Some fill.fborder_color | _ -> None) painted.ops in
+      check bool label true (edges=[expected]) in
+    let neutral=Lui_paint.state_neutral in
+    let hovered={neutral with hovered=true} in
+    expect "base border" neutral (color 17 34 51 255);
+    expect "hover changes the emitted border" hovered (color 68 85 102 255);
+    expect "hover survives pressed selection" {hovered with pressed=true;selected=true} (color 68 85 102 255);
+    apply t [SetProp (1,FocusWithinBorder,StringValue "#778899")];
+    expect "descendant focus takes precedence over hover" {hovered with focus_within=true} (color 119 136 153 255);
+    expect "leaving focus restores hover" hovered (color 68 85 102 255);
+    apply t [SetProp (1,HoverBorder,StringValue "#aabbcc")];
+    expect "live hover color replacement" hovered (color 170 187 204 255);
+    apply t [RemoveProp (1,HoverBorder)];
+    expect "removing hover color restores the base border" hovered (color 17 34 51 255);
+    expect "leaving hover restores the base border" neutral (color 17 34 51 255)) [1.;2.]
+
 (* ---------- shadows ---------- *)
 
 let test_shadow_parse () =
@@ -226,6 +594,66 @@ let test_shadow_parse () =
    | _ -> fail "multi-layer parse failed");
   check bool "none" true
     (Lui_paint.parse_shadows resolve "none" = [])
+
+let test_scroll_surface_shadow_clip () =
+  List.iter
+    (fun scale ->
+      let t = store () in
+      apply t
+        [
+          Lui_protocol.CreateNode (1, Column);
+          CreateNode (2, Box);
+          CreateNode (3, Box);
+          InsertChild (1, 2, 0);
+          InsertChild (2, 3, 0);
+          SetProp (1, Overflow, StringValue "hidden");
+          SetProp (2, Overflow, StringValue "auto");
+          SetProp (2, BackgroundValue, StringValue "#ffffff");
+          SetProp
+            ( 2,
+              Shadow,
+              StringValue "0 2px 4px #00000080, inset 0 0 0 1px #000000" );
+          SetProp (3, BackgroundValue, StringValue "#ff0000");
+        ];
+      let r x y w h =
+        rect (x *. scale) (y *. scale) (w *. scale) (h *. scale)
+      in
+      let parent = r 0. 0. 200. 200. and surface = r 40. 40. 100. 80. in
+      let layout id =
+        Lui_paint.placement_of_rect
+          (match id with
+          | 1 -> parent
+          | 2 -> surface
+          | _ -> r 30. 30. 160. 120.)
+      in
+      let s =
+        paint_with (hooks ~layout ()) t
+          ~width:(int_of_float (200. *. scale))
+          ~height:(int_of_float (200. *. scale))
+          ~scale ()
+      in
+      let clips = ref [] and outside = ref 0 and inside = ref 0 in
+      List.iter
+        (function
+          | Push_clip c -> clips := c.crect :: !clips
+          | Pop_clip -> clips := List.tl !clips
+          | Shadow shadow when not shadow.sinset ->
+              incr outside;
+              check bool "outer shadow retains only ancestor clipping" true
+                (!clips = [ parent ])
+          | Shadow _ ->
+              incr inside;
+              check bool "inset shadow retains surface clipping" true
+                (!clips = [ surface; parent ])
+          | Fill f when f.fcolor = color 255 0 0 255 ->
+              check bool "overflowing child remains clipped" true
+                (!clips = [ surface; parent ])
+          | _ -> ())
+        s.ops;
+      check int "one outer shadow" 1 !outside;
+      check int "one inset shadow" 1 !inside;
+      check bool "clip stack is balanced" true (!clips = []))
+    [ 1.; 2. ]
 
 let test_shadow_op () =
   let t = store () in
@@ -273,6 +701,34 @@ let test_state_background () =
   match s.ops with
   | [ Fill f ] -> check int "hover green" 255 f.fcolor.g
   | _ -> fail "expected one Fill op"
+
+let test_hover_foreground () =
+  let t = store () in
+  apply t [Lui_protocol.CreateNode (1,Column);CreateNode (2,Button);
+    CreateNode (3,Text);CreateNode (4,Text);InsertChild (1,2,0);
+    InsertChild (2,3,0);InsertChild (2,4,1);
+    SetProp (1,ForegroundValue,StringValue "#112233");
+    SetProp (2,ForegroundValue,StringValue "inherit");
+    SetProp (2,HoverForeground,StringValue "#abcdef");
+    SetProp (2,TextValue,StringValue "button");
+    SetProp (3,TextValue,StringValue "inherited child");
+    SetProp (4,TextValue,StringValue "explicit child");
+    SetProp (4,ForegroundValue,StringValue "#456789")];
+  let verify ~hovered ~disabled expected =
+    let inks=Hashtbl.create 4 in
+    let h={ (hooks ()) with
+      Lui_paint.state_of=(fun id -> if id=2 then {Lui_paint.state_neutral with hovered;disabled} else Lui_paint.state_neutral);
+      text_ops=(fun id _ ink _ -> Hashtbl.replace inks id ink;[])} in
+    ignore (paint_with h t ());
+    List.iter (fun id -> check bool "control and inherited label share the active foreground" true
+      (Hashtbl.find_opt inks id=Some expected)) [2;3];
+    check bool "a child declared color keeps its own foreground" true
+      (Hashtbl.find_opt inks 4=Some (color 69 103 137 255)) in
+  verify ~hovered:false ~disabled:false (color 17 34 51 255);
+  verify ~hovered:true ~disabled:false (color 171 205 239 255);
+  verify ~hovered:true ~disabled:true (color 17 34 51 255);
+  apply t [RemoveProp (2,HoverForeground)];
+  verify ~hovered:true ~disabled:false (color 17 34 51 255)
 
 let test_state_precedence () =
   let t = store () in
@@ -632,6 +1088,54 @@ let test_checkbox () =
    | _ -> fail "expected control fill");
   check bool "check glyph" true (List.mem "\xe2\x9c\x93" !calls)
 
+let test_checkbox_primary_palette () =
+  List.iter (fun checked ->
+    let t=store () in
+    apply t [Lui_protocol.CreateNode (1,Checkbox);SetProp (1,Checked,BoolValue checked)];
+    let primary=color 12 131 67 255 and ink=color 245 241 224 255 in
+    let glyph=ref None in
+    let h={(hooks ()) with Lui_paint.color_of=(function
+      | "primary" -> Some primary | "primary-foreground" -> Some ink
+      | "accent" -> Some (color 200 20 30 255) | _ -> None);
+      text_ops=(fun _ _ foreground _ -> glyph:=Some foreground;[])} in
+    let scene=paint_with h t () in
+    match scene.ops with
+    | [Fill face] ->
+      check bool "checkbox chrome uses primary rather than accent" true
+        ((if checked then face.fcolor else face.fborder_color)=primary);
+      if checked then check bool "check mark uses primary foreground" true (!glyph=Some ink)
+    | _ -> fail "expected one checkbox indicator") [false;true]
+
+let test_checkbox_indicator_borders () =
+  let open Lui_protocol in
+  List.iter (fun scale ->
+    List.iter (fun (edge, checked_edge) ->
+      let t = store () in
+      apply t [CreateNode (1, Checkbox); SetProp (1, TextValue, StringValue "Caption");
+        SetProp (1, IndicatorBorderColor, StringValue edge);
+        SetProp (1, CheckedIndicatorBorderColor, StringValue checked_edge)];
+      List.iter (fun checked ->
+        apply t [SetProp (1, Checked, BoolValue checked)];
+        let primary = color 3 125 186 255 in
+        let h = {(hooks ()) with Lui_paint.color_of = (function
+          | "primary" -> Some primary | value -> Lui_paint.color_of_hex value)} in
+        let face = match (paint_with h t ~scale ()).ops with
+          | [Fill face] -> face
+          | _ -> fail "Indicator styling must not add a border to the caption" in
+        let expected = Option.get (Lui_paint.color_of_hex (if checked then checked_edge else edge)) in
+        check bool "independent state border color" true (face.fborder_color = expected);
+        check bool "one logical point in either state" true
+          (face.fborder = (scale, scale, scale, scale));
+        check bool "checked fill remains primary; unchecked remains transparent" true
+          (if checked then face.fcolor = primary else face.fcolor.a = 0)) [false; true];
+      apply t [RemoveProp (1, IndicatorBorderColor); RemoveProp (1, CheckedIndicatorBorderColor)];
+      let face = match (paint_with (hooks ()) t ~scale ()).ops with
+        | [Fill face] -> face | _ -> fail "Expected only the indicator" in
+      check bool "removing checked border restores the default" true
+        (face.fborder = (0.,0.,0.,0.)))
+      ["#171717", "#ebeaeb"; "#a4b5b6", "#334447"])
+    [1.; 2.]
+
 let test_checkbox_unchecked () =
   let t = store () in
   apply t [ Lui_protocol.CreateNode (1, Checkbox) ];
@@ -639,9 +1143,69 @@ let test_checkbox_unchecked () =
   match s.ops with
   | [ Fill f ] ->
     check bool "bordered" true (f.fborder = (1., 1., 1., 1.));
-    (* unchecked box now paints the page face inside its border *)
-    check bool "page face" true (f.fcolor.a = 255)
+    check bool "unchecked face remains transparent" true (f.fcolor.a = 0);
+    check int "unchecked edge uses primary" 235 f.fborder_color.b
   | _ -> fail "expected bordered box"
+
+let test_choice_label_gap () =
+  List.iter (fun kind -> List.iter (fun scale -> List.iter (fun gap ->
+    let t=store () and label=ref None in
+    apply t ([Lui_protocol.CreateNode (1,kind);
+      SetProp (1,TextValue,StringValue "Retained café 中文 😀")]
+      @ Option.fold ~none:[] ~some:(fun value -> [Lui_protocol.SetProp (1,Gap,IntValue value)]) gap);
+    let h={(hooks ~layout:(fun _ -> Lui_paint.placement_of_rect
+      (rect 10. 20. (200.*.scale) (28.*.scale))) ()) with
+      Lui_paint.text_ops=(fun _ bounds _ _ -> label:=Some bounds;[])} in
+    ignore (paint_with h t ~width:500 ~height:200 ~scale ());
+    let label=Option.get !label in
+    check (float 0.01) "choice paints its label after the requested gap"
+      (10.+.(16.+.float_of_int (Option.value gap ~default:8))*.scale) label.x)
+      [None;Some 0;Some 4;Some 16]) [1.;2.]) [Lui_protocol.Checkbox;Radio]
+
+let test_choice_label_opacity () =
+  let open Lui_protocol in
+  let property=match List.find_opt (fun property ->
+      Lui_wire_schema.property_name property="label-opacity") Lui_wire_schema.all_properties with
+    | Some property -> property
+    | None -> fail "Choice label opacity is missing" in
+  List.iter (fun kind -> List.iter (fun scale -> List.iter (fun checked ->
+    let t=store () in
+    apply t [CreateNode (1,Column);SetProp (1,ForegroundValue,StringValue "#171717");
+      SetProp (1,Opacity,FloatValue 0.5);CreateNode (2,kind);
+      SetProp (2,TextValue,StringValue "Caption café 中文 😀");
+      SetProp (2,Checked,BoolValue checked);SetProp (2,Opacity,FloatValue 0.8);
+      InsertChild (1,2,0)];
+    let h={(hooks ()) with text_ops=(fun _ _ ink text ->
+      if text="Caption café 中文 😀" then
+        [Glyphs {gstart=0;gend=0;gpaint=Solid;gcolor=ink;gcolor2=ink;
+          ggradient=(0.,0.,0.,0.);gwide2=0;gopacity=1.}]
+      else [])} in
+    List.iter (fun value ->
+      apply t [match value with None -> RemoveProp (2,property)
+        | Some value -> SetProp (2,property,FloatValue value)];
+      let painted=paint_with h t ~scale () in
+      let glyph=Option.get (List.find_map (function Glyphs g -> Some g | _ -> None) painted.ops) in
+      check bool "caption inherits its parent's foreground" true (glyph.gcolor=color 23 23 23 255);
+      check (float 0.0001) "caption opacity multiplies the existing control opacity"
+        (0.4*.Option.value value ~default:1.) glyph.gopacity;
+      List.iter (function Fill fill ->
+        check (float 0.0001) "caption opacity never fades control chrome" 0.4 fill.fopacity
+        | _ -> ()) painted.ops)
+      [None;Some 0.;Some 0.7;Some 1.;None]) [false;true]) [1.;2.]) [Checkbox;Radio]
+
+let test_choice_focus_bounds () =
+  List.iter (fun kind -> List.iter (fun scale ->
+    let t=store () in
+    apply t [Lui_protocol.CreateNode (1,kind);SetProp (1,TextValue,StringValue "Caption")];
+    let h={(hooks ~layout:(fun _ -> Lui_paint.placement_of_rect
+      (rect (10.*.scale) (20.*.scale) (200.*.scale) (28.*.scale))) ()) with
+      Lui_paint.state_of=(fun _ -> {Lui_paint.state_neutral with focused=true; focus_visible=true})} in
+    let scene=paint_with h t ~scale () in
+    let ring=List.find_map (function Fill f when f.fborder=(2.*.scale,2.*.scale,2.*.scale,2.*.scale)
+      && f.fborder_color=color 37 99 235 140 -> Some f | _ -> None) scene.ops |> Option.get in
+    check (float 0.01) "choice focus ring surrounds its indicator" (24.*.scale) ring.frect.w;
+    check (float 0.01) "choice focus ring is square" (24.*.scale) ring.frect.h)
+    [1.;2.]) [Lui_protocol.Checkbox;Radio]
 
 let test_switch () =
   let t = store () in
@@ -656,6 +1220,46 @@ let test_switch () =
        (d=16) sits 2px off the right edge → x=82, wearing a shadow *)
     check bool "thumb right" true (thumb.frect.x = 82.)
   | _ -> fail "expected track + thumb shadow + thumb"
+
+let test_switch_typed_chrome () =
+  let open Lui_protocol in
+  check bool "switch admits its typed foreground" true
+    (property_supported SwitchControl ForegroundValue);
+  List.iter (fun scale ->
+    List.iter (fun (width,height,padding,border) ->
+      List.iter (fun checked ->
+        let t = store () in
+        apply t [CreateNode (1, SwitchControl); SetProp (1, Checked, BoolValue checked);
+          SetProp (1, WidthValue, IntValue width); SetProp (1, HeightValue, IntValue height);
+          SetProp (1, PaddingValue, IntValue padding); SetProp (1, BorderWidth, IntValue border);
+          SetProp (1, BackgroundValue, StringValue "#294556");
+          SetProp (1, ForegroundValue, StringValue "#002d38")];
+        let layout _ = Lui_paint.placement_of_rect
+          (rect 0. 0. (float_of_int width *. scale) (float_of_int height *. scale)) in
+        let h = {(hooks ~layout ()) with Lui_paint.color_of = Lui_paint.color_of_hex} in
+        let painted = paint_with h t ~scale () in
+        let fills = List.filter_map (function Fill f -> Some f | _ -> None) painted.ops in
+        let thumb, track = match List.rev fills with
+          | thumb :: track :: _ -> thumb, track
+          | _ -> fail "Expected the track and thumb paint layers" in
+        let diameter = float_of_int (height - 2 * (padding + border)) *. scale in
+        check bool "switch thumb honors its foreground" true
+          (thumb.fcolor = color 0 45 56 255);
+        check (float 0.01) "switch thumb respects typed insets" diameter thumb.frect.w;
+        check (float 0.01) "switch thumb remains square" diameter thumb.frect.h;
+        check (float 0.01) "switch thumb side follows checked state"
+          ((if checked then float_of_int width -. float_of_int (padding + border) -. diameter /. scale
+            else float_of_int (padding + border)) *. scale) thumb.frect.x;
+        check bool "switch track honors its background in both states" true
+          (track.frect.w = float_of_int width *. scale
+            && track.frect.h = float_of_int height *. scale && track.fcolor = color 41 69 86 255);
+        apply t [SetProp (1, BackgroundValue, StringValue "#037dba");
+          SetProp (1, ForegroundValue, StringValue "#ffffff")];
+        let updated = paint_with h t ~scale () in
+        check bool "switch recolors without recreating the control" true
+          (List.exists (function Fill f -> f.fcolor = color 3 125 186 255 | _ -> false) updated.ops
+           && List.exists (function Fill f -> f.fcolor = color 255 255 255 255 | _ -> false) updated.ops))
+        [false;true]) [32,18,3,0;44,24,0,2]) [1.;2.]
 
 let test_radio () =
   let t = store () in
@@ -1006,13 +1610,432 @@ let test_menu_item_single_icon () =
   in
   check int "one icon image" 1 (List.length images);
   match images with
-  | [ i ] -> check (float 0.01) "leading slot x" 8. i.irect2.x
+  | [ i ] ->
+    check (float 0.01) "leading slot x" 8. i.irect2.x;
+    apply t [CreateNode (2, Kbd); SetProp (2, TextValue, StringValue "K"); InsertChild (1, 2, 0)];
+    let images = List.filter_map (function Image i -> Some i | _ -> None) (paint_with h t ()).ops in
+    check int "shortcut children preserve the menu icon" 1 (List.length images)
   | _ -> ()
+
+let test_menu_selection_indicator () =
+  List.iter
+    (fun scale ->
+      let t = store () in
+      apply t
+        [
+          Lui_protocol.CreateNode (1, MenuItem);
+          SetProp (1, TextValue, StringValue "English");
+          SetProp (1, Selected, BoolValue true);
+        ];
+      let r =
+        rect (20. *. scale) (10. *. scale) (200. *. scale) (32. *. scale)
+      in
+      let h = hooks ~layout:(fun _ -> Lui_paint.placement_of_rect r) () in
+      let images scene =
+        List.filter_map (function Image i -> Some i | _ -> None) scene.ops
+      in
+      let selected = images (paint_with h t ~width:500 ~height:100 ~scale ()) in
+      check int "selected menu row paints one check" 1 (List.length selected);
+      let mark = List.hd selected in
+      check bool "check contains ink" true
+        (Bytes.exists (fun byte -> byte <> '\000') mark.iimage.ipix);
+      let repeated =
+        List.hd (images (paint_with h t ~width:500 ~height:100 ~scale ()))
+      in
+      check bool "unchanged rows reuse the check bitmap" true
+        (mark.iimage == repeated.iimage);
+      check bool "selection check occupies the trailing sixteen-point slot" true
+        (mark.irect2
+        = rect (196. *. scale) (18. *. scale) (16. *. scale) (16. *. scale));
+      let tp = Lui_paint.text_placement_of t 1 in
+      check (float 0.01) "selection reserves label space" 32. tp.tp_pad_right;
+      apply t [ SetProp (1, Selected, BoolValue false) ];
+      check int "unchecked menu row hides its check" 0
+        (List.length (images (paint_with h t ~width:500 ~height:100 ~scale ())));
+      let tp = Lui_paint.text_placement_of t 1 in
+      check (float 0.01) "unchecked options preserve alignment" 32.
+        tp.tp_pad_right;
+      apply t [ RemoveProp (1, Selected) ];
+      check (float 0.01) "ordinary actions need no selection slot" 8.
+        (Lui_paint.text_placement_of t 1).tp_pad_right)
+    [ 1.; 2. ]
+
+let test_empty_editable_text_hook () =
+  List.iter
+    (fun kind ->
+      List.iter
+        (fun focused ->
+          let t = store () in
+          apply t [ Lui_protocol.CreateNode (1, kind) ];
+          let calls = ref [] in
+          let h =
+            {
+              (hooks ()) with
+              Lui_paint.state_of =
+                (fun _ -> { Lui_paint.state_neutral with focused });
+              text_ops =
+                (fun _ _ _ value ->
+                  calls := value :: !calls;
+                  []);
+            }
+          in
+          ignore (paint_with h t ());
+          let editable = kind <> Lui_protocol.Button in
+          check (list string)
+            "focused empty editors still paint their text overlay"
+            (if editable && focused then [ "" ] else [])
+            !calls)
+        [ false; true ])
+    [
+      Lui_protocol.TextField;
+      SecureField;
+      Input;
+      SearchField;
+      Textarea;
+      Combobox;
+      Button;
+    ]
+
+let test_text_border_insets () =
+  List.iter
+    (fun kind ->
+      let t = store () in
+      apply t
+        [
+          CreateNode (1, kind);
+          SetProp (1, PaddingHorizontal, IntValue 12);
+          SetProp (1, PaddingVertical, IntValue 8);
+        ];
+      List.iter
+        (fun (border, (top, right, bottom, left)) ->
+          apply t [ SetProp (1, BorderWidth, StringValue border) ];
+          let paint = Lui_paint.text_placement_of t 1
+          and measured = Lui_paint.text_measure_placement_of t 1 in
+          List.iter
+            (fun (label, expected, actual) ->
+              check (float 0.01) label expected actual)
+            [
+              ( "text begins inside the left border",
+                12. +. left,
+                paint.tp_pad_left );
+              ( "text stops inside the right border",
+                12. +. right,
+                paint.tp_pad_right );
+              ("text begins inside the top border", 8. +. top, paint.tp_pad_top);
+              ( "text stops inside the bottom border",
+                8. +. bottom,
+                paint.tp_pad_bottom );
+              ( "flex owns horizontal border and padding measurement",
+                0.,
+                measured.tp_pad_left );
+              ( "flex owns vertical border and padding measurement",
+                0.,
+                measured.tp_pad_top );
+            ])
+        [
+          ("0", (0., 0., 0., 0.));
+          ("1", (1., 1., 1., 1.));
+          ("1 2 3 4", (1., 2., 3., 4.));
+          ("0", (0., 0., 0., 0.));
+        ])
+    [
+      Button;
+      TextField;
+      SecureField;
+      Input;
+      SearchField;
+      Textarea;
+      Select;
+      Combobox;
+      MenuItem;
+      Text;
+    ]
+
+let test_menu_measure_padding () =
+  let t = store () in
+  apply t [CreateNode (1, MenuItem); SetProp (1, TextValue, StringValue "English");
+    SetProp (1, Selected, BoolValue true); SetProp (1, SelectionPlacementValue, StringValue "leading");
+    SetProp (1, PaddingHorizontal, IntValue 8); SetProp (1, PaddingVertical, IntValue 6)];
+  let painted = Lui_paint.text_placement_of t 1 in
+  let measured = Lui_paint.text_measure_placement_of t 1 in
+  check (float 0.01) "paint includes the outer padding" 6. painted.tp_pad_top;
+  check (float 0.01) "measurement leaves vertical padding to flex" 0. measured.tp_pad_top;
+  check (float 0.01) "measurement retains only the selection slot" 24. measured.tp_pad_left;
+  check (float 0.01) "measurement leaves trailing padding to flex" 0. measured.tp_pad_right
+
+let test_menu_selection_placement () =
+  let property =
+    List.find_opt
+      (fun p -> Lui_wire_schema.property_name p = "selection-placement")
+      Lui_wire_schema.all_properties
+  in
+  check bool "selection placement has a typed wire property" true
+    (Option.is_some property);
+  let property = Option.get property in
+  List.iter
+    (fun scale ->
+      let t = store () in
+      apply t
+        [
+          Lui_protocol.CreateNode (1, MenuItem);
+          SetProp (1, TextValue, StringValue "English");
+          SetProp (1, Selected, BoolValue true);
+          SetProp (1, property, StringValue "leading");
+          SetProp (1, PaddingHorizontal, IntValue 12);
+          SetProp (1, Gap, IntValue 4);
+        ];
+      let r =
+        rect (20. *. scale) (10. *. scale) (200. *. scale) (32. *. scale)
+      in
+      let h = hooks ~layout:(fun _ -> Lui_paint.placement_of_rect r) () in
+      let images scene =
+        List.filter_map (function Image i -> Some i | _ -> None) scene.ops
+      in
+      let first =
+        List.hd (images (paint_with h t ~width:500 ~height:100 ~scale ()))
+      in
+      check bool "leading selection honors typed padding" true
+        (first.irect2
+        = rect (32. *. scale) (18. *. scale) (16. *. scale) (16. *. scale));
+      let tp = Lui_paint.text_placement_of t 1 in
+      check (float 0.01) "leading check and gap reserve label space" 32.
+        tp.tp_pad_left;
+      check (float 0.01) "leading check leaves trailing padding intact" 12.
+        tp.tp_pad_right;
+      apply t [ SetProp (1, Enabled, BoolValue false) ];
+      let disabled =
+        List.hd (images (paint_with h t ~width:500 ~height:100 ~scale ()))
+      in
+      check bool "disabled check follows row opacity" true
+        (disabled.iopacity > 0. && disabled.iopacity < first.iopacity);
+      apply t [ SetProp (1, property, StringValue "trailing") ];
+      check (float 0.01) "placement changes update trailing label space" 32.
+        (Lui_paint.text_placement_of t 1).tp_pad_right)
+    [ 1.; 2. ]
+
+let test_control_single_icon () =
+  List.iter
+    (fun kind ->
+      List.iter
+        (fun scale ->
+          List.iter
+            (fun label ->
+              List.iter
+                (fun placement ->
+                  let t = store () in
+                  apply t
+                    ([
+                       Lui_protocol.CreateNode (1, kind);
+                       SetProp (1, InlineIconName, StringValue "keyboard");
+                       SetProp (1, IconPlacementValue, StringValue placement);
+                     ]
+                    @
+                    match label with
+                    | None -> []
+                    | Some value ->
+                        [ SetProp (1, TextValue, StringValue value) ]);
+                  let image = new_image ~w:4 ~h:4 (Bytes.make 64 '\255') in
+                  let label_rect = ref None in
+                  let r =
+                    rect (20. *. scale) (10. *. scale) (240. *. scale)
+                      (40. *. scale)
+                  in
+                  let h =
+                    {
+                      (hooks
+                         ~layout:(fun _ -> Lui_paint.placement_of_rect r)
+                         ())
+                      with
+                      Lui_paint.image_of = (fun _ -> Some image);
+                      image_in = (fun _ _ -> Some image);
+                      text_ops =
+                        (fun _ region _ _ ->
+                          label_rect := Some region;
+                          []);
+                    }
+                  in
+                  let painted =
+                    paint_with h t ~width:600 ~height:160 ~scale ()
+                  in
+                  let images =
+                    List.filter_map
+                      (function Image value -> Some value | _ -> None)
+                      painted.ops
+                  in
+                  check int "a control paints its icon once" 1
+                    (List.length images);
+                  let slot = (List.hd images).irect2 in
+                  match label with
+                  | Some value when value <> "" ->
+                      let ink = Option.get !label_rect in
+                      let pad =
+                        (Lui_paint.text_placement_of t 1).tp_pad_left *. scale
+                      in
+                      check bool "the label leaves the icon slot clear" true
+                        (if placement = "trailing" then
+                           ink.x +. ink.w -. pad <= slot.x
+                         else ink.x +. pad >= slot.x +. slot.w)
+                  | _ ->
+                      check bool "an icon-only control stays centered" true
+                        (abs_float
+                           (slot.x +. (slot.w /. 2.) -. (r.x +. (r.w /. 2.)))
+                        < 0.01))
+                [ "leading"; "trailing" ])
+            [ None; Some ""; Some "Search by keys" ])
+        [ 1.; 2. ])
+    [ Lui_protocol.Button; ToggleButton; Toggle; MenuTrigger ]
+
+let test_form_text_insets () =
+  List.iter
+    (fun kind ->
+      let t = store () in
+      apply t [ Lui_protocol.CreateNode (1, kind) ];
+      let check_insets label left right top bottom placement =
+        check (float 0.001) (label ^ " left") left
+          placement.Lui_paint.tp_pad_left;
+        check (float 0.001) (label ^ " right") right placement.tp_pad_right;
+        check (float 0.001) (label ^ " top") top placement.tp_pad_top;
+        check (float 0.001) (label ^ " bottom") bottom placement.tp_pad_bottom
+      in
+      check_insets "Web default paint insets" 12. 12. 8. 8.
+        (Lui_paint.text_placement_of t 1);
+      check_insets "intrinsic measure includes implicit insets" 12. 12. 8. 8.
+        (Lui_paint.text_measure_placement_of t 1);
+      apply t
+        [
+          SetProp (1, PaddingHorizontal, IntValue 0);
+          SetProp (1, PaddingTop, IntValue 3);
+        ];
+      check_insets "authored edges override only their axes" 0. 0. 3. 8.
+        (Lui_paint.text_placement_of t 1);
+      check_insets "flex owns explicit edges exactly once" 0. 0. 0. 8.
+        (Lui_paint.text_measure_placement_of t 1);
+      apply t [ RemoveProp (1, PaddingHorizontal); RemoveProp (1, PaddingTop) ];
+      check_insets "removing overrides restores Web defaults" 12. 12. 8. 8.
+        (Lui_paint.text_placement_of t 1))
+    [
+      Lui_protocol.TextField;
+      SecureField;
+      Input;
+      SearchField;
+      Textarea;
+      Select;
+      Combobox;
+    ]
+
+let test_text_edge_placement () =
+  let t = store () in
+  apply t
+    [
+      Lui_protocol.CreateNode (1, SearchField);
+      SetProp (1, PaddingHorizontal, IntValue 10);
+      SetProp (1, PaddingVertical, IntValue 6);
+      SetProp (1, PaddingLeft, IntValue 28);
+      SetProp (1, PaddingRight, IntValue 8);
+      SetProp (1, PaddingTop, IntValue 3);
+      SetProp (1, PaddingBottom, IntValue 9);
+    ];
+  let placement = Lui_paint.text_placement_of t 1 in
+  check (float 0.001) "text starts at its left edge inset" 28.
+    placement.tp_pad_left;
+  check (float 0.001) "text starts at its top edge inset" 3.
+    placement.tp_pad_top
+
+let test_choice_chrome_alignment () =
+  List.iter
+    (fun kind ->
+      List.iter
+        (fun scale ->
+          List.iter
+            (fun (alignment, offset) ->
+              let t = store () in
+              apply t
+                [
+                  Lui_protocol.CreateNode (1, kind);
+                  SetProp (1, MainAlignment, StringValue alignment);
+                ];
+              let r =
+                rect (10. *. scale) (20. *. scale) (32. *. scale) (32. *. scale)
+              in
+              let s =
+                paint_with
+                  (hooks ~layout:(fun _ -> Lui_paint.placement_of_rect r) ())
+                  t ~scale ()
+              in
+              let chrome =
+                List.find_map
+                  (function
+                    | Fill f
+                      when abs_float (f.frect.w -. (16. *. scale)) < 0.01
+                           && abs_float (f.frect.h -. (16. *. scale)) < 0.01 ->
+                        Some f.frect
+                    | _ -> None)
+                  s.ops
+                |> Option.get
+              in
+              check (float 0.01) "choice chrome follows main alignment"
+                ((10. +. offset) *. scale)
+                chrome.x;
+              check (float 0.01) "choice chrome stays vertically centered"
+                (28. *. scale) chrome.y)
+            [ ("start", 0.); ("center", 8.); ("end", 16.) ])
+        [ 1.; 2. ])
+    [ Lui_protocol.Checkbox; Lui_protocol.Radio ]
+
+let test_toolbar_explicit_chrome () =
+  let open Lui_protocol in
+  let props =
+    [
+      (HeightValue, IntValue 32);
+      (PaddingValue, IntValue 0);
+      (BackgroundValue, StringValue "#ffffff");
+      (BorderWidth, IntValue 0);
+      (CornerRadius, IntValue 0);
+    ]
+  in
+  List.iter
+    (fun (prop, _) ->
+      check bool
+        ("toolbar admits " ^ Lui_wire_schema.property_name prop)
+        true
+        (property_supported Toolbar prop))
+    props;
+  List.iter
+    (fun scale ->
+      let t = store () in
+      apply t
+        ([
+           CreateNode (1, Toolbar);
+           SetProp (1, AccessibilityLabel, StringValue "Actions");
+         ]
+        @ List.map (fun (prop, value) -> SetProp (1, prop, value)) props);
+      let r = rect 0. 0. (200. *. scale) (32. *. scale) in
+      let s =
+        paint_with
+          (hooks ~layout:(fun _ -> Lui_paint.placement_of_rect r) ())
+          t ~scale ()
+      in
+      check bool
+        "an explicitly borderless toolbar must not paint a default divider"
+        false
+        (List.exists
+           (function
+             | Fill f -> f.frect.h <= 2. *. scale && f.fopacity > 0.
+             | _ -> false)
+           s.ops))
+    [ 1.; 2. ]
 
 let () =
   run "lui_paint"
     [ ("color",
-       [ test_case "hex" `Quick test_hex;
+       [ test_case "form control chrome" `Quick test_form_control_chrome;
+         test_case "toolbar explicit chrome" `Quick test_toolbar_explicit_chrome;
+         test_case "choice chrome alignment" `Quick test_choice_chrome_alignment;
+         test_case "hex" `Quick test_hex;
+         test_case "select indicator" `Quick test_select_indicator;
+         test_case "button icon gap" `Quick test_button_icon_gap;
+         test_case "icon opacity" `Quick test_icon_opacity;
+         test_case "image fill crop" `Quick test_image_fill_crop;
          test_case "edges" `Quick test_edges ]);
       ("ops",
        [ test_case "fill" `Quick test_fill_op;
@@ -1024,13 +2047,16 @@ let () =
          test_case "gradient variants" `Quick test_gradient_variants;
          test_case "dashed border" `Quick test_dashed_border;
          test_case "per-edge borders" `Quick test_per_edge_borders;
-         test_case "per-edge colors" `Quick test_per_edge_border_colors ]);
+         test_case "per-edge colors" `Quick test_per_edge_border_colors;
+         test_case "hover border colors" `Quick test_hover_border_colors ]);
       ("shadows",
-       [ test_case "parse" `Quick test_shadow_parse;
+       [ test_case "scroll surface clip" `Quick test_scroll_surface_shadow_clip;
+         test_case "parse" `Quick test_shadow_parse;
          test_case "op" `Quick test_shadow_op;
          test_case "inset op" `Quick test_inset_shadow_op ]);
       ("state",
        [ test_case "hover bg" `Quick test_state_background;
+         test_case "hover foreground inheritance" `Quick test_hover_foreground;
          test_case "precedence" `Quick test_state_precedence;
          test_case "selected+hover" `Quick test_selected_shadow;
          test_case "disabled opacity" `Quick test_disabled_opacity ]);
@@ -1052,18 +2078,34 @@ let () =
          test_case "popup xy" `Quick test_popup_xy;
          test_case "layout override" `Quick test_layout_override ]);
       ("kinds",
-       [ test_case "divider" `Quick test_divider;
+       [ test_case "empty editable hook" `Quick test_empty_editable_text_hook;
+         test_case "text border insets" `Quick test_text_border_insets;
+         test_case "table hover requires interaction" `Quick test_table_hover_requires_interaction;
+         test_case "link theme" `Quick test_link_theme;
+         test_case "divider" `Quick test_divider;
          test_case "spacer" `Quick test_spacer;
          test_case "progress" `Quick test_progress;
          test_case "checkbox" `Quick test_checkbox;
          test_case "checkbox unchecked" `Quick test_checkbox_unchecked;
+         test_case "checkbox primary palette" `Quick test_checkbox_primary_palette;
+         test_case "checkbox indicator borders" `Quick test_checkbox_indicator_borders;
+         test_case "choice label gap" `Quick test_choice_label_gap;
+         test_case "choice label opacity" `Quick test_choice_label_opacity;
+         test_case "choice focus bounds" `Quick test_choice_focus_bounds;
          test_case "switch" `Quick test_switch;
+         test_case "switch typed chrome" `Quick test_switch_typed_chrome;
          test_case "radio" `Quick test_radio;
          test_case "spinner" `Quick test_spinner;
          test_case "slider" `Quick test_slider;
          test_case "scrollbar" `Quick test_scrollbar;
          test_case "extension" `Quick test_extension;
-         test_case "menu item single icon" `Quick test_menu_item_single_icon ]);
+         test_case "menu item single icon" `Quick test_menu_item_single_icon;
+         test_case "menu selection indicator" `Quick test_menu_selection_indicator;
+         test_case "menu selection placement" `Quick test_menu_selection_placement;
+         test_case "menu measure padding" `Quick test_menu_measure_padding;
+         test_case "control single icon" `Quick test_control_single_icon;
+         test_case "text edge placement" `Quick test_text_edge_placement;
+         test_case "form text insets" `Quick test_form_text_insets ]);
       ("secure",
        [ test_case "masked paint" `Quick test_secure_masked;
          test_case "mask per grapheme" `Quick test_secure_masked_graphemes;

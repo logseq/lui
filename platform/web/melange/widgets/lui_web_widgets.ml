@@ -123,6 +123,32 @@ let update_avatar renderer node dom_node =
 
 let update_avatar_bang = update_avatar
 
+let image_dimensions renderer node =
+  let present property=match Store.property renderer.web_store node property with
+    | None | Some (StringValue "auto") -> false | Some _ -> true in
+  let axes=match Store.property renderer.web_store node ContainerRelativeFrameValue with
+    | Some (StringValue value) -> value | _ -> "" in
+  (present WidthValue || present WidthViewport || axes="horizontal" || axes="both",
+   present HeightValue || present HeightViewport || axes="vertical" || axes="both")
+
+let natural_image renderer node dom_node pixels =
+  let width,height=image_dimensions renderer node in
+  set_style dom_node "aspect-ratio" "";
+  if not width then set_style dom_node "width" "fit-content";
+  (* An unbounded axis comes from the decoded image itself. Absolute pixels
+     cannot contribute that intrinsic size to their wrapper. *)
+  set_style pixels "position" (if width && height then "absolute" else "relative");
+  set_style pixels "width" (if width then "100%" else "auto");
+  set_style pixels "height" (if height then "100%" else "auto");
+  set_style pixels "max-width" "100%";
+  set_style pixels "left" "0";
+  set_style pixels "top" "0";
+  let fitting = match Store.property renderer.web_store node ImageFitValue with
+    | Some (StringValue "fill") -> "cover"
+    | Some (StringValue "fit") -> "contain"
+    | _ -> "fill" in
+  set_style pixels "object-fit" fitting
+
 let update_image renderer node dom_node =
   let pixels = Util.child_element dom_node 0 in
   match registered_image renderer node with
@@ -134,24 +160,25 @@ let update_image renderer node dom_node =
       W.Element.setAttribute "src" resource.web_image_url pixels;
       Util.set_state_attribute pixels "hidden" false;
       if cropped then begin
-        let target_width =
-          media_size renderer node WidthValue source_width
-        in
-        let target_height =
-          media_size renderer node HeightValue source_height
-        in
-        let scale_x = target_width /. source_width in
-        let scale_y = target_height /. source_height in
-        apply_crop pixels resource source_x source_y scale_x scale_y;
+        let width,height=image_dimensions renderer node in
+        set_style dom_node "aspect-ratio" (float_string source_width ^ " / " ^ float_string source_height);
+        if not width then set_style dom_node "width"
+          (if height then "auto" else float_string source_width ^ "px");
+        set_style pixels "position" "absolute";
+        set_style pixels "max-width" "none";
+        set_style pixels "width" (float_string (resource.web_image_width /. source_width *. 100.) ^ "%");
+        set_style pixels "height" (float_string (resource.web_image_height /. source_height *. 100.) ^ "%");
+        set_style pixels "left" (float_string (Float.neg source_x /. source_width *. 100.) ^ "%");
+        set_style pixels "top" (float_string (Float.neg source_y /. source_height *. 100.) ^ "%");
         set_style pixels "object-fit" "fill"
       end
-      else fill_image pixels "fill"
+      else natural_image renderer node dom_node pixels
   | None ->
       (match Store.property renderer.web_store node UrlValue with
        | Some (StringValue url) when url <> "" ->
            W.Element.setAttribute "src" url pixels;
            Util.set_state_attribute pixels "hidden" false;
-           fill_image pixels "fill"
+           natural_image renderer node dom_node pixels
        | _ ->
            W.Element.removeAttribute "src" pixels;
            Util.set_state_attribute pixels "hidden" true)
