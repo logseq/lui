@@ -120,6 +120,7 @@ struct LUIDrawerView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var presented: Bool
+    @State private var hasLoadedPanel: Bool
     @State private var dragOffset: CGFloat = 0
     @State private var isGestureActive = false
     @State private var rejectedGesture = false
@@ -133,6 +134,7 @@ struct LUIDrawerView: View {
         self.model = model
         self.backend = backend
         _presented = State(initialValue: model.isSelected)
+        _hasLoadedPanel = State(initialValue: model.isSelected)
     }
 
     /// On regular-width windows (iPad, the iPhone Duo inner display) the panel
@@ -241,7 +243,7 @@ struct LUIDrawerView: View {
             // so drawer transitions do not invalidate a long content tree.
             ZStack(alignment: .leading) {
                 // Retain the panel after its first reveal so closing preserves its state.
-                if let panelID = model.children.dropFirst().first {
+                if hasLoadedPanel, let panelID = model.children.dropFirst().first {
                     LUIAnyNodeView(nodeID: panelID, backend: backend)
                         .frame(width: width)
                         .frame(maxHeight: CGFloat.infinity, alignment: Alignment.leading)
@@ -356,6 +358,7 @@ struct LUIDrawerView: View {
             var transaction = Transaction()
             transaction.animation = nil
             withTransaction(transaction) {
+                if translation.width > 0 { hasLoadedPanel = true }
                 isGestureActive = true
                 dragOffset = CGFloat(LUIDrawerGeometry.dragOffset(
                     isPresented: presented,
@@ -405,6 +408,7 @@ struct LUIDrawerView: View {
     }
 
     private func animatePresentation(_ selected: Bool) {
+        if selected { hasLoadedPanel = true }
         transitionGeneration += 1
         let generation = transitionGeneration
         isAnimating = true
