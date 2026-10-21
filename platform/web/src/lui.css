@@ -1415,6 +1415,10 @@ body {
     @apply cursor-not-allowed opacity-50;
   }
 
+  .lui-button-label:empty {
+    @apply hidden;
+  }
+
   .lui-button-icon {
     @apply pointer-events-none size-4 shrink-0;
   }

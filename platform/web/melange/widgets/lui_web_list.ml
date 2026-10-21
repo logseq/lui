@@ -14,12 +14,29 @@ external scroll_to : W.Element.t -> scroll_options -> unit = "scrollTo"
 let install renderer node =
   if not (Hashtbl.mem renderer.web_lists node) then begin
     let root = Lui_web_nodes.dom_node renderer node in
+    let style element name value =
+      Lui_web_util.set_style
+        (W.HtmlElement.style (W.Element.unsafeAsHtmlElement element))
+        name value
+    in
     let rows = ref [||] in
     let last_token = ref None in
     let pending_token = ref None in
+    let pending_lookup = ref None in
     let pending_frame = ref None in
     let disposed = ref false in
     let last_range = ref None in
+    (* Baseline: mounted at top and not yet at bottom — the first
+       computed edge state only emits on a real transition, so a
+       mount-time top position does not falsely unpin the tail-follow
+       before the initial scroll lands. *)
+    let last_edges = ref (Some (true, false)) in
+    let last_edge_offset = ref (-1.) in
+    (* Pin ownership: only an issued bottom-aligned scroll intent
+       grants the widget a tail pin; plain lists and user-held
+       positions are never re-anchored on geometry-only changes. *)
+    let tail_pinned = ref false in
+    let prog_scroll = ref (-1.) in
     let emit event = ignore (!(renderer.web_event_handler) event) in
     let property = Store.property renderer.web_store node in
     let text prop fallback =
@@ -27,6 +44,17 @@ let install renderer node =
       | Some (StringValue value) -> value
       | _ -> fallback
     in
+    (* The list IS the scroll container when scroll anchoring or
+       visible-range tracking is in play; plain lists stay in flow. *)
+    if
+      property TrackVisibleRange = Some (BoolValue true)
+      || property ScrollAnchor <> None
+      || property ScrollTarget <> None
+    then begin
+      style root "overflow" "auto";
+      style root "min-height" "0";
+      style root "min-width" "0"
+    end;
     let rec collect node tail =
       match Store.node renderer.web_store node with
       | Some current when Store.standard_kind_is current ListItem ->
@@ -62,7 +90,45 @@ let install renderer node =
         if !last_range <> Some (first, last) then begin
           last_range := Some (first, last);
           emit (VisibleRange (node, first, last))
-        end
+        end;
+        let off = W.Element.scrollTop root in
+        let edges =
+          ( off <= 2.
+          , off +. float_of_int (W.Element.clientHeight root)
+            >= float_of_int (W.Element.scrollHeight root) -. 2. )
+        in
+        (* Only real offset transitions emit. When the bottom edge is
+           lost while the offset is unchanged, the cause is geometry
+           growth — re-anchor the tail so pinned transcripts keep
+           following; user-unpinned positions are preserved because
+           their offset does change. *)
+        (match !last_edges with
+         | _
+           when !tail_pinned && (not (snd edges))
+                && (!last_edge_offset = off
+                    || (!prog_scroll >= 0.
+                        && abs_float (off -. !prog_scroll) < 2.)) ->
+             let dest =
+               float_of_int (W.Element.scrollHeight root)
+               -. float_of_int (W.Element.clientHeight root)
+             in
+             prog_scroll := dest;
+             W.Element.setScrollTop root dest
+         | _ ->
+             if off <> !last_edge_offset then begin
+               let programmatic =
+                 !pending_lookup <> None
+                 || (!prog_scroll >= 0.
+                     && abs_float (off -. !prog_scroll) < 2.)
+               in
+               last_edge_offset := off;
+               if !last_edges <> Some edges then begin
+                 last_edges := Some edges;
+                 emit (ScrollEdges (node, fst edges, snd edges))
+               end;
+               if (not programmatic) && not (snd edges) then
+                 tail_pinned := false
+             end)
       end
       else last_range := None
     in
@@ -75,15 +141,18 @@ let install renderer node =
       | None -> ()
       | Some token ->
           pending_token := None;
+          if outcome = "missing-target" then tail_pinned := false;
           emit (ScrollCompleted (node, token, outcome))
     in
-    let request () =
-      match property ScrollToken with
-      | Some (IntValue token) when !last_token <> Some token -> (
-          last_token := Some token;
-          cancel_frame ();
-          complete "superseded";
-          let target_key = text ScrollTarget "" in
+    (* Persistent scroll intent, like the virtual widget: recomputes
+       the target's live geometry on each attempt and retries on
+       scroll/frame boundaries until the aligned edge is reached, the
+       token is superseded, the row proves absent after committed
+       children populate, or the settle budget elapses. *)
+    let attempt () =
+      match !pending_lookup with
+      | None -> ()
+      | Some (token, target_key, anchor, animated) -> (
           let target =
             Array.find_opt
               (fun id ->
@@ -92,9 +161,12 @@ let install renderer node =
               !rows
           in
           match target with
-          | None -> emit (ScrollCompleted (node, token, "missing-target"))
+          | None ->
+              if Array.length !rows > 0 then begin
+                pending_lookup := None;
+                emit (ScrollCompleted (node, token, "missing-target"))
+              end
           | Some target ->
-              pending_token := Some token;
               let row = Lui_web_nodes.dom_node renderer target in
               let bounds = W.Element.getBoundingClientRect root in
               let rect = W.Element.getBoundingClientRect row in
@@ -111,7 +183,7 @@ let install renderer node =
               let top = offset +. (W.DomRect.top rect -. W.DomRect.top bounds) /. scale in
               let height = W.DomRect.height rect /. scale in
               let position =
-                match text ScrollAnchor "top" with
+                match anchor with
                 | "nearest" ->
                     if top < offset then top
                     else if top +. height > offset +. viewport then top -. viewport +. height
@@ -125,33 +197,71 @@ let install renderer node =
                   (min position
                      (float_of_int (W.Element.scrollHeight root) -. viewport))
               in
-              let animated = property ScrollAnimated = Some (BoolValue true) in
-              scroll_to root
-                (scroll_options ~top:destination
-                   ~behavior:(if animated then "smooth" else "instant"));
-              let rec settle frames =
-                pending_frame :=
-                  Some
-                    (Webapi.requestCancellableAnimationFrame (fun _ ->
-                         pending_frame := None;
-                         if (not !disposed) && !pending_token = Some token then begin
-                           range ();
-                           if
-                             abs_float (W.Element.scrollTop root -. destination)
-                             < 1.
-                           then complete "succeeded"
-                           else if frames >= 120 then complete "cancelled"
-                           else settle (frames + 1)
-                         end))
+              (* Definitive landing: the scroller reaches the clamped
+                 destination for the requested anchor — one-sided edge
+                 tests accept targets on the wrong side of the viewport
+                 and unmeasured (zero-height) rows can never satisfy
+                 them. *)
+              let landed =
+                W.DomRect.height rect > 0.5
+                && abs_float (W.Element.scrollTop root -. destination)
+                   < 1.
               in
-              settle 0)
-      | _ -> ()
+              if landed then begin
+                pending_lookup := None;
+                emit (ScrollCompleted (node, token, "succeeded"))
+              end
+              else begin
+                scroll_to root
+                  (scroll_options ~top:destination
+                     ~behavior:(if animated then "smooth" else "instant"));
+                prog_scroll := W.Element.scrollTop root
+              end)
     in
-    rows := Array.of_list (collect node []);
+    let rec request () =
+      match property ScrollToken with
+      | Some (IntValue token) when !last_token <> Some token ->
+          last_token := Some token;
+          cancel_frame ();
+          (match !pending_lookup with
+           | Some (prev, _, _, _) ->
+               emit (ScrollCompleted (node, prev, "cancelled"))
+           | None -> ());
+          let anchor = text ScrollAnchor "top" in
+          tail_pinned := anchor = "bottom";
+          pending_lookup :=
+            Some
+              (token, text ScrollTarget "", anchor,
+               property ScrollAnimated = Some (BoolValue true));
+          attempt ();
+          settle 0
+      | _ -> ()
+    and settle frames =
+      pending_frame :=
+        Some
+          (Webapi.requestCancellableAnimationFrame (fun _ ->
+               pending_frame := None;
+               if (not !disposed) && !pending_lookup <> None then begin
+                 range ();
+                 attempt ();
+                 if !pending_lookup <> None then
+                   if frames >= 120 then begin
+                     let (token, _, _, _) = Option.get !pending_lookup in
+                     pending_lookup := None;
+                     emit (ScrollCompleted (node, token, "cancelled"))
+                   end
+                   else settle (frames + 1)
+               end))
+    in
+        rows := Array.of_list (collect node []);
+    (* A lookup deferred while children committed re-runs the request:
+       the target may now exist (retry) or be confirmed absent. *)
+
     let refresh structural =
       if not !disposed then begin
         if structural then rows := Array.of_list (collect node []);
         request ();
+        attempt ();
         range ()
       end
     in

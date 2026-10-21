@@ -283,7 +283,7 @@ enum LUIProperty: String, Decodable, Hashable {
 
 enum LUISchemaMatrix {
     static let restrictive: [LUINodeKind: Set<LUIProperty>] = [
-        .accordion: [.text, .selected, .toggleEnabled, .height, .pointerEnabled],
+        .accordion: [.text, .selected, .toggleEnabled, .height, .pointerEnabled, .styleClass],
         .stepper: [.active, .accessibilityLabel, .pointerEnabled],
         .step: [.text, .pointerEnabled],
         .timeline: [.gap, .grow, .accessibilityLabel, .pointerEnabled],

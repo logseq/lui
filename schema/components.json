@@ -1963,6 +1963,14 @@
     {
       "lg": "NavigationKey",
       "fields": [":int", ":string", ":bool"]
+    },
+    {
+      "lg": "ScrollEdges",
+      "fields": [
+        ":int",
+        ":bool",
+        ":bool"
+      ]
     }
   ],
   "kindProperties": {
@@ -1972,7 +1980,8 @@
       "selected",
       "toggle-enabled",
       "height",
-      "pointer-enabled"
+      "pointer-enabled",
+      "style-class"
     ],
     "stepper": [
 

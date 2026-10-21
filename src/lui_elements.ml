@@ -510,7 +510,9 @@ let is_load = function Load _ -> true | _ -> false
 let is_appear = function Appear _ -> true | _ -> false
 let is_resize = function ValueChanged _ -> true | _ -> false
 let is_scroll_completed = function ScrollCompleted _ -> true | _ -> false
-let is_visible_range = function VisibleRange _ -> true | _ -> false
+let is_visible_range = function
+  | VisibleRange _ | ScrollEdges _ -> true
+  | _ -> false
 
 (* Fail loudly when a handler is registered for an event the node kind can
    never emit. Dispatch rejects such events anyway, so a registration that
@@ -732,16 +734,18 @@ let row ?as_ ?key ?gap ?main ?cross ?grow ?columns ?orientation ?orientation_sig
   mount_children context node children;
   node
 
-let column ?as_ ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?min_width_signal ?max_width ?max_width_signal ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?on_press_detail ?on_pointer_down ?on_pointer_up ?opacity ?opacity_signal ?display ?flex_wrap ?transition (children : t list) : t =
+let column ?as_ ?key ?gap ?main ?cross ?grow ?grow_signal ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?min_width_signal ?max_width ?max_width_signal ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?on_press_detail ?on_pointer_down ?on_pointer_up ?opacity ?opacity_signal ?display ?display_signal ?flex_wrap ?transition (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.column context in
   Option.iter (fun tag -> Lui_ui.string_property context node As (element_tag_value tag)) as_;
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~margin ~margin_horizontal ~margin_vertical ~margin_top ~margin_right ~margin_bottom ~margin_left ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave ~transition;
+  Option.iter (Lui_ui.float_property_signal context node GrowValue) grow_signal;
   Option.iter (Lui_ui.int_property_signal context node MinWidth) min_width_signal;
   Option.iter (Lui_ui.int_property_signal context node MaxWidth) max_width_signal;
   Option.iter (Lui_ui.float_property context node Opacity) opacity;
   Option.iter (Lui_ui.float_property_signal context node Opacity) opacity_signal;
   Option.iter (Lui_ui.string_property context node DisplayValue) (Option.map display_value display);
+  Option.iter (fun signal_ -> Lui_ui.string_property_signal context node DisplayValue (owned_map context display_value signal_)) display_signal;
   Option.iter (Lui_ui.string_property context node FlexWrap) (Option.map flex_wrap_value flex_wrap);
   apply_pointer_events context node ?on_press_detail ?on_pointer_down ?on_pointer_up ();
   attach context parent node;
@@ -915,7 +919,7 @@ let list ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?pad
   mount_children context node children;
   node
 
-let virtual_list ?key ?overscan ?item_extent ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?opacity ?opacity_signal ?list_marker ?transition (children : t list) : t =
+let virtual_list ?key ?overscan ?item_extent ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?scroll_target ?scroll_anchor ?scroll_token ?scroll_target_signal ?scroll_token_signal ?scroll_animated ?track_visible_range ?on_scroll_completed ?on_visible_range ?opacity ?opacity_signal ?list_marker ?transition (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.virtual_list context in
   (* Virtualization config rides data-attrs: the schema does not model
@@ -941,6 +945,22 @@ let virtual_list ?key ?overscan ?item_extent ?gap ?main ?cross ?grow ?columns ?p
   Option.iter (Lui_ui.float_property_signal context node Opacity) opacity_signal;
   Option.iter (Lui_ui.string_property context node ListStyle)
     (Option.map list_marker_value list_marker);
+  Option.iter (Lui_ui.string_property context node ScrollTarget) scroll_target;
+  Option.iter (Lui_ui.string_property context node ScrollAnchor)
+    (Option.map scroll_anchor_value scroll_anchor);
+  Option.iter (Lui_ui.int_property context node ScrollToken) scroll_token;
+  Option.iter
+    (Lui_ui.string_property_signal context node ScrollTarget)
+    scroll_target_signal;
+  Option.iter
+    (Lui_ui.int_property_signal context node ScrollToken)
+    scroll_token_signal;
+  Option.iter (Lui_ui.bool_property context node ScrollAnimated)
+    scroll_animated;
+  Option.iter (Lui_ui.bool_property context node TrackVisibleRange)
+    track_visible_range;
+  Option.iter (register_scroll_completed context node) on_scroll_completed;
+  Option.iter (register_visible_range context node) on_visible_range;
   attach context parent node;
   mount_children context node children;
   node

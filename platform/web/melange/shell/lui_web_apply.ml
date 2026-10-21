@@ -834,6 +834,9 @@ let apply_detach_subtree renderer previous_nodes children_of effects node =
     Lui_indexed_sequence.iter visit (children_of node_id).items
   in
   visit node;
+  (* Layer cleanup restores its inert snapshot. Retained exit visuals no longer
+     own live nodes, so keep their whole boundary inactive until removal. *)
+  Option.iter (W.Element.setAttribute "inert" "") exit_boundary;
   (* parent-side follow-ups mirror apply_remove_child *)
   match (exit_boundary, prev_node previous_nodes node) with
   | None, Some previous ->

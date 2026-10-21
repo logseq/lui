@@ -138,8 +138,8 @@ type property =
   | BorderColorValue
   | BorderWidth
   | CornerRadius
-  | WidthValue (* Nonnegative logical pixels or StringValue "auto". *)
-  | HeightValue (* Nonnegative logical pixels or StringValue "auto". *)
+  | WidthValue
+  | HeightValue
   | MinWidth
   | MaxWidth
   | MinHeight
@@ -348,6 +348,7 @@ type event =
   | NavigatePrevious of int
   | NavigateNext of int
   | NavigationKey of int * string * bool
+  | ScrollEdges of int * bool * bool
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =

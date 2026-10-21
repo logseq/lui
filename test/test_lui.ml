@@ -1172,6 +1172,36 @@ let test_glass_buttons_require_an_action () =
   in
   Alcotest.(check bool) "empty group rejected" true rejected
 
+let test_styled_accordion_mounts () =
+  let view _context _model _send =
+    Lui_elements.column
+      [ Lui_elements.accordion ~text:"Thinking" ~style_class:"thought"
+          [ Lui_elements.text ~value:"Inspect the repository." [] ] ]
+  in
+  let app =
+    Lui_app.create (recording_backend ()) ()
+      (fun model _action -> model) view
+  in
+  Alcotest.(check bool) "starts" true (Lui_app.start app);
+  flush_app app;
+  let ops = all_ops () in
+  let accordion =
+    List.find_map
+      (function
+        | Lui_protocol.CreateNode (id, Lui_protocol.Accordion) -> Some id
+        | _ -> None)
+      ops
+    |> Option.get
+  in
+  Alcotest.(check bool) "accordion receives its public style class" true
+    (List.exists
+       (function
+         | Lui_protocol.SetProp (id, Lui_protocol.StyleClass,
+             Lui_protocol.StringValue "thought") -> id = accordion
+         | _ -> false)
+       ops);
+  ignore (Lui_app.dispose app)
+
 let test_glass_button_text_is_optional () =
   let action : Lui_element_combine.action =
     Lui_element_combine.Press
@@ -4361,6 +4391,9 @@ let () =
           Alcotest.test_case "keyed mount failure keeps rows" `Quick
             test_keyed_mount_failure_keeps_previous_rows;
         ] );
+      ( "accordion styling",
+        [ Alcotest.test_case "public style class mounts" `Quick
+            test_styled_accordion_mounts ] );
       ( "dispatch",
         [
           Alcotest.test_case "text navigation callbacks" `Quick test_text_navigation_callbacks;
@@ -4427,6 +4460,8 @@ let () =
             test_host_literals_in_sync;
           Alcotest.test_case "drift is caught" `Quick test_drift_is_caught;
         ] );
+      ( "lui_ai",
+        List.concat_map snd Test_lui_ai.tests );
       ( "split",
         [
           Alcotest.test_case "canonical fingerprints" `Quick

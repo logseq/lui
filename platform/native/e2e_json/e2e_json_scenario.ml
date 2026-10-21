@@ -225,6 +225,10 @@ let event_json (e : event) : J.t =
        `Assoc (("kind", `String "context-menu-press") :: n id :: a)
      | j -> j)
   | Load id -> `Assoc [ k "load"; n id ]
+  | ScrollEdges (id, at_top, at_bottom) ->
+    `Assoc
+      [ k "scroll-edges"; n id; ("top", `Bool at_top)
+      ; ("bottom", `Bool at_bottom) ]
   | ExtensionEvent (id, ident, name, values) ->
     `Assoc
       [ k "extension-event"; n id; ("identifier", `String ident)

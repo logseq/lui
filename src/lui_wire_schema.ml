@@ -377,7 +377,7 @@ let property_name property =
 
 let kind_property_matrix kind =
   match kind with
-  | Accordion -> Some [ TextValue; Selected; ToggleEnabled; HeightValue; PointerEnabled ]
+  | Accordion -> Some [ TextValue; Selected; ToggleEnabled; HeightValue; PointerEnabled; StyleClass ]
   | Stepper -> Some [ ActiveIndex; AccessibilityLabel; PointerEnabled ]
   | Step -> Some [ TextValue; PointerEnabled ]
   | Timeline -> Some [ Gap; GrowValue; AccessibilityLabel; PointerEnabled ]
@@ -709,8 +709,8 @@ let view_contract = function
   | VirtualList -> Some {
       view_result = "t";
       view_children = ViewList "t";
-      view_properties = [(KeyValue, ViewString, false); (Gap, ViewInt, false); (MainAlignment, view_main_alignment, false); (CrossAlignment, view_cross_alignment, false); (GrowValue, ViewFloat, false); (GridColumns, ViewInt, false); (PaddingValue, ViewInt, false); (PaddingHorizontal, ViewInt, false); (PaddingVertical, ViewInt, false); (MarginValue, ViewInt, false); (MarginHorizontal, ViewInt, false); (MarginVertical, ViewInt, false); (MarginTop, ViewInt, false); (MarginRight, ViewInt, false); (MarginBottom, ViewInt, false); (MarginLeft, ViewInt, false); (BackgroundValue, ViewString, false); (ForegroundValue, ViewString, false); (BorderColorValue, ViewString, false); (BorderWidth, ViewInt, false); (CornerRadius, ViewInt, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (MinWidth, ViewInt, false); (MaxWidth, ViewInt, false); (MinHeight, ViewInt, false); (MaxHeight, ViewInt, false); (ContainerRelativeFrameValue, view_frame_axes, false); (ContainerRelativeFrameInset, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (Opacity, ViewFloat, false); (ListStyle, view_list_marker, false); (Transition, ViewString, false); (AlignmentValue, view_alignment, false)];
-      view_events = ["appear"; "pointer-enter"; "pointer-leave"];
+      view_properties = [(KeyValue, ViewString, false); (Gap, ViewInt, false); (MainAlignment, view_main_alignment, false); (CrossAlignment, view_cross_alignment, false); (GrowValue, ViewFloat, false); (GridColumns, ViewInt, false); (PaddingValue, ViewInt, false); (PaddingHorizontal, ViewInt, false); (PaddingVertical, ViewInt, false); (MarginValue, ViewInt, false); (MarginHorizontal, ViewInt, false); (MarginVertical, ViewInt, false); (MarginTop, ViewInt, false); (MarginRight, ViewInt, false); (MarginBottom, ViewInt, false); (MarginLeft, ViewInt, false); (BackgroundValue, ViewString, false); (ForegroundValue, ViewString, false); (BorderColorValue, ViewString, false); (BorderWidth, ViewInt, false); (CornerRadius, ViewInt, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (MinWidth, ViewInt, false); (MaxWidth, ViewInt, false); (MinHeight, ViewInt, false); (MaxHeight, ViewInt, false); (ContainerRelativeFrameValue, view_frame_axes, false); (ContainerRelativeFrameInset, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (ScrollTarget, ViewString, false); (ScrollAnchor, view_scroll_anchor, false); (ScrollToken, ViewInt, false); (ScrollAnimated, ViewBool, false); (TrackVisibleRange, ViewBool, false); (Opacity, ViewFloat, false); (ListStyle, view_list_marker, false); (Transition, ViewString, false); (AlignmentValue, view_alignment, false)];
+      view_events = ["appear"; "pointer-enter"; "pointer-leave"; "scroll-completed"; "visible-range"];
       view_slots = [];
     }
   | Tabs -> Some {
