@@ -4639,6 +4639,32 @@ let test_split_overlay_handle () =
       ignore (input (Input.Button_up(x+.20.,y,Input.Left,Input.mods_none)))) [-1.4;0.;1.4])
     [0.5;2.5]) [false;true]) [1.;2.]
 
+let test_split_without_handle () =
+  List.iter (fun scale -> List.iter (fun pixels ->
+    let store,rects,ui=split_fixture () in
+    Ui.set_scale ui scale;
+    if pixels then Lui_store.apply_op store (RemoveProp(1,ProgressValue));
+    List.iter (fun (id,x,w) -> Hashtbl.replace rects id (rect (x*.scale) (40.*.scale) (w*.scale) (600.*.scale)))
+      [1,50.,1000.;2,50.,246.;3,296.,754.];
+    List.iter (Lui_store.apply_op store)
+      [SetProp(1,Gap,IntValue 0); SetProp(1,ResizeHandleWidth,IntValue 0);
+       (if pixels then SetProp(1,FirstPaneWidth,FloatValue 246.) else SetProp(1,ProgressValue,FloatValue 0.246))];
+    let input event=Ui.handle ui store rects event in
+    List.iter (fun x ->
+      ignore (input (Input.Button_down(x,100.,Input.Left,1,Input.mods_none)));
+      Alcotest.(check bool) "A zero-width divider never captures even its exact boundary" false (Ui.resizing_split ui);
+      Alcotest.(check (option (float 0.00001))) "A hidden divider emits no pointer resize" None
+        (resized 1 (input (Input.Move(x+.20.,100.))));
+      ignore (input (Input.Button_up(x+.20.,100.,Input.Left,Input.mods_none)))) [295.;296.;297.];
+    Lui_store.apply_op store (SetProp(1,ResizeHandleWidth,IntValue 3));
+    ignore (input (Input.Button_down(296.,100.,Input.Left,1,Input.mods_none)));
+    Alcotest.(check bool) "Restoring the handle restores input" true (Ui.resizing_split ui);
+    Lui_store.apply_op store (SetProp(1,ResizeHandleWidth,IntValue 0));
+    Alcotest.(check (option (float 0.00001))) "Hiding the divider cancels an existing drag" None
+      (resized 1 (input (Input.Move(316.,100.))));
+    Alcotest.(check bool) "A hidden divider releases resize capture" false (Ui.resizing_split ui))
+    [false;true]) [1.;2.]
+
 let test_split_pointer_minimums () =
   List.iter
     (fun scale ->
@@ -4829,6 +4855,7 @@ let () =
         [ Alcotest.test_case "pointer feedback" `Quick test_split_pointer_resize;
           Alcotest.test_case "pixel pane resize" `Quick test_split_pointer_pixels;
           Alcotest.test_case "overlay handle" `Quick test_split_overlay_handle;
+          Alcotest.test_case "no handle" `Quick test_split_without_handle;
           Alcotest.test_case "pane minimums" `Quick test_split_pointer_minimums;
           Alcotest.test_case "capture admission" `Quick test_split_pointer_admission;
           Alcotest.test_case "nested scaled track" `Quick test_nested_split_pointer_resize ] );

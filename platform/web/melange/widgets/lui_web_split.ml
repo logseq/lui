@@ -139,6 +139,10 @@ let render_split renderer node root value animated =
       ^ float_string (Float.abs handle_delta) ^ "px)" in
   set_style divider "left" handle_left;
   set_style divider "width" (float_string geometry.geo_handle_width ^ "px");
+  let enabled=geometry.geo_handle_width>0. in
+  set_style divider "display" (if enabled then "" else "none");
+  W.Element.setAttribute "tabindex" (if enabled then "0" else "-1") divider;
+  W.Element.setAttribute "aria-hidden" (if enabled then "false" else "true") divider;
   W.Element.setAttribute "aria-valuenow" (float_string value) divider
 
 let render_split_bang = render_split
@@ -220,6 +224,9 @@ let attach_split_events renderer node root =
   let divider = Util.child_element root 1 in
   let document = renderer.web_document in
   let dragging = ref false and grab_offset = ref 0. in
+  let enabled () = match Store.property renderer.web_store node ResizeHandleWidth with
+    | Some (IntValue 0) -> false
+    | _ -> true in
   let adjust delta =
     let current =
       match Hashtbl.find_opt renderer.web_splits node with
@@ -238,6 +245,7 @@ let attach_split_events renderer node root =
     ignore (!(renderer.web_event_handler) (ValueChanged (node, next)))
   in
   let move event =
+    if !dragging && not (enabled ()) then dragging := false;
     if !dragging then begin
       let bounds = W.Element.getBoundingClientRect root in
       let gap = split_int_property renderer node Gap 9 in
@@ -266,7 +274,7 @@ let attach_split_events renderer node root =
   in
   W.Element.addMouseDownEventListener
     (fun event ->
-       if W.MouseEvent.button event = 0 then begin
+       if W.MouseEvent.button event = 0 && enabled () then begin
          W.MouseEvent.preventDefault event;
          let bounds=W.Element.getBoundingClientRect root in
          let geometry=split_geometry renderer node root in
@@ -285,7 +293,7 @@ let attach_split_events renderer node root =
   Webapi.ResizeObserver.observe resize_observer root;
   W.Element.addKeyDownEventListener
     (fun event ->
-       (match W.KeyboardEvent.key event with
+       if enabled () then (match W.KeyboardEvent.key event with
         | "ArrowLeft" ->
             W.KeyboardEvent.preventDefault event;
             adjust (-0.05)

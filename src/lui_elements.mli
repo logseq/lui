@@ -1610,7 +1610,9 @@ val resizable :
     gap center toward the second pane, without changing either pane width.
     [on_resize] reports [ValueChanged] in the units of the chosen input.
     Pane minima and maxima constrain user resizing; controlled closure may
-    reach zero so opening and closing animations can complete. *)
+    reach zero so opening and closing animations can complete.
+    A controlled split retains its pane layout and animation when
+    [resize_handle_width] is zero; its divider then accepts no input. *)
 val split :
   ?key:string ->
   ?gap:int ->

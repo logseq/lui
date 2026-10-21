@@ -1059,7 +1059,7 @@ module Ui = struct
            (Option.map float_of_int (Lui_store.int_prop store id "resize-handle-width")) in
          let offset=Option.value (Lui_store.float_prop store id "resize-handle-offset") ~default:0. in
          let start=Lui_split_geometry.handle_start ~first:((a.x+.a.w)/.t.scale) ~gap ~width ~offset in
-         a.w >= t.scale && b.w >= t.scale
+         width > 0. && a.w >= t.scale && b.w >= t.scale
          && px >= start*.t.scale && px <= (start+.width)*.t.scale
          && py >= max a.y b.y && py <= min (a.y+.a.h) (b.y+.b.h)
        | _ -> false

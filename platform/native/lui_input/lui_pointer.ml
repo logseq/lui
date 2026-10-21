@@ -44,7 +44,9 @@ let resize store st ~x =
   match st.resize with
   | None -> st,None
   | Some drag when not (Lui_store.mem store drag.node)
-      || not (Lui_query.node_enabled store drag.node) -> {st with resize=None},None
+      || not (Lui_query.node_enabled store drag.node)
+      || Lui_store.int_prop store drag.node "resize-handle-width" = Some 0 ->
+      {st with resize=None},None
   | Some drag ->
     let value = max 0. (min 1. (drag.fraction +. (x -. drag.origin) /. drag.span)) in
     if Lui_store.float_prop store drag.node "value" = Some value then st,None

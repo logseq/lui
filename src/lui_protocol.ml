@@ -1636,7 +1636,7 @@ let property_value_supported property value =
     || value = "spring"
   | ResizeOrigin, FloatValue value -> is_finite value
   | FirstPaneWidth, FloatValue value -> is_finite value && value >= 0.
-  | ResizeHandleWidth, IntValue value -> value > 0
+  | ResizeHandleWidth, IntValue value -> value >= 0
   | ResizeHandleOffset, FloatValue value -> is_finite value
   | ThemeValue, StringValue _ -> true
   | ThemeMode, StringValue value -> theme_mode_supported value

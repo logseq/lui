@@ -44,7 +44,8 @@ test('split geometry honors both pane maximums, updates and removal', () => {
 const floatSet = (id, name, value) => Protocol.set_prop_op(id, property(name), {TAG: 3, _0: value})
 const element = children => ({
   style: {values: new Map(), setProperty(name, value) { this.values.set(name, value) }},
-  setAttribute() {}, children: {item: index => children[index] ?? null},
+  attributes: new Map(), setAttribute(name, value) {this.attributes.set(name, value)},
+  children: {item: index => children[index] ?? null},
 })
 
 test('fixed-width split retains pixels while its parent resizes and can collapse below drag minima', () => {
@@ -82,6 +83,58 @@ test('fixed-width split retains pixels while its parent resizes and can collapse
 })
 
 const Hash = await import(new URL('melange/hashtbl.js', modules))
+
+test('zero-width split handles keep controlled layout and disable all divider input', () => {
+  const store = Store.create_store(), events = [], listeners = new Map(), input = new Map()
+  const panes = element([element([]), element([])]), divider = element([]), root = element([panes, divider])
+  root.clientWidth = 1000
+  root.getBoundingClientRect = () => ({left: 0, width: 1000})
+  divider.addEventListener = (key, fn) => input.set(key, fn)
+  const renderer = {web_store: store,
+    web_document: {addEventListener: (key, fn) => listeners.set(key, fn), removeEventListener() {}},
+    web_splits: Hash.create(undefined, 4), web_cleanups: Hash.create(undefined, 4),
+    web_event_handler: {contents: event => events.push(event)}}
+  let generation = 0
+  const apply = ops => Store.apply_batch(store, () => root, {generation: ++generation, ops: list(ops)})
+  assert.doesNotThrow(() => apply([
+    Protocol.create_node_op(1, kind('split')), Protocol.create_node_op(2, kind('box')),
+    Protocol.create_node_op(3, kind('box')), Protocol.insert_child_op(1, 2, 0), Protocol.insert_child_op(1, 3, 1),
+    set(1, 'gap', 0), floatSet(1, 'first-pane-width', 246), set(1, 'resize-handle-width', 0),
+  ]), 'A controlled split must accept a zero-width handle')
+  const previous = globalThis.ResizeObserver
+  globalThis.ResizeObserver = class {observe() {} disconnect() {}}
+  const down = () => input.get('mousedown')({button: 0, clientX: 246, preventDefault() {}})
+  const move = () => listeners.get('mousemove')({clientX: 266})
+  const key = value => input.get('keydown')({key: value, preventDefault() {}})
+  try {
+    Split.reconcile_split(renderer, 1, root, 246)
+    Split.attach_split_events(renderer, 1, root)
+    assert.match(panes.style.values.get('grid-template-columns'), /246px/)
+    assert.equal(divider.style.values.get('display'), 'none')
+    assert.equal(divider.attributes.get('tabindex'), '-1')
+    assert.equal(divider.attributes.get('aria-hidden'), 'true')
+    down(); move()
+    for (const value of ['ArrowLeft', 'ArrowRight', 'Home', 'End']) key(value)
+    assert.equal(events.length, 0, 'A hidden divider cannot emit pointer or keyboard resize events')
+    apply([set(1, 'resize-handle-width', 3)])
+    Split.render_split(renderer, 1, root, 246, false)
+    assert.notEqual(divider.style.values.get('display'), 'none')
+    assert.equal(divider.attributes.get('tabindex'), '0')
+    assert.equal(divider.attributes.get('aria-hidden'), 'false')
+    key('ArrowRight')
+    assert.equal(events.at(-1)._1, 296)
+    Split.reconcile_split(renderer, 1, root, 246)
+    down()
+    apply([set(1, 'resize-handle-width', 0)])
+    Split.render_split(renderer, 1, root, 246, false)
+    const count = events.length
+    move()
+    assert.equal(events.length, count, 'Hiding the divider cancels a captured drag')
+    apply([set(1, 'resize-handle-width', 3)])
+    move()
+    assert.equal(events.length, count, 'Showing the divider cannot revive an old drag')
+  } finally {globalThis.ResizeObserver = previous}
+})
 
 test('pixel split drag and keyboard use pixel events, clamp endpoints and retain active animation on parent resize', () => {
   const store = Store.create_store(), events = [], listeners = new Map()

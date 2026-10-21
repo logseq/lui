@@ -3138,7 +3138,7 @@ let json_view_json =
       {"kind":"input-group","children":[
         {"kind":"textarea","id":"tf"},
         {"kind":"input-group-actions","children":[{"kind":"button","text":"a"}]}]},
-      {"kind":"split","gap":0,"resize-handle-width":3,"resize-handle-offset":2.5,"children":[{"kind":"text","value":"l"},{"kind":"text","value":"r"}]},
+      {"kind":"split","gap":0,"resize-handle-width":0,"resize-handle-offset":2.5,"children":[{"kind":"text","value":"l"},{"kind":"text","value":"r"}]},
       {"kind":"totally-bogus"}
     ]}|}
 
@@ -3168,8 +3168,10 @@ let test_json_view_render () =
       "stepper"; "step"; "bottom-tabs"; "bottom-tab"; "input-group";
       "input-group-actions"; "button"; "split"; "textarea"; "text" ];
   let split=drive_node s (Drive.Model.Kind "split") in
-  Alcotest.(check bool) "Split handle width is independent of its layout gap" true
-    (Hashtbl.find_opt split.Drive.Model.props "resize-handle-width"=Some (Lui_protocol.IntValue 3));
+  Alcotest.(check bool) "A controlled split can omit its resize handle" true
+    (Hashtbl.find_opt split.Drive.Model.props "resize-handle-width"=Some (Lui_protocol.IntValue 0));
+  Alcotest.(check bool) "Negative resize handle widths remain invalid" false
+    (Lui_protocol.property_value_supported Lui_protocol.ResizeHandleWidth (Lui_protocol.IntValue (-1)));
   Alcotest.(check bool) "Split handle offset is a logical distance from the track center" true
     (Hashtbl.find_opt split.Drive.Model.props "resize-handle-offset"=Some (Lui_protocol.FloatValue 2.5));
   (* unknown kinds render a visible placeholder, never a blank/raise *)
