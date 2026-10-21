@@ -1347,7 +1347,11 @@ private struct LUIContextMenuModifier: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if let menuID = model.childData.contextMenuID,
+        // Buttons consume their context-menu children as a primary native Menu.
+        // Do not attach a second, long-press menu to the same control.
+        if model.kind == .button || model.kind == .toggleButton {
+            content
+        } else if let menuID = model.childData.contextMenuID,
            let menu = backend.model(id: menuID) {
             #if os(macOS)
             // `.contextMenu` never sees right-clicks that land on Button/Menu
@@ -7698,15 +7702,13 @@ enum LUIClipRenderingPolicy {
         return isSemanticSurface || hasVisibleBackground || cornerRadius > 0 || borderWidth > 0
     }
 
-    /// Interactive Liquid Glass scales the whole surface on press; a clip
-    /// applied outside `glassEffect` pins the capsule to its unpressed bounds,
-    /// so a glass surface clips its content inside the glass instead. The
-    /// same applies to `glass-container`, whose descendants each carry their
-    /// own interactive glass.
+    /// Clip the content before applying its glass background, so the outer
+    /// clip does not trim the material's outline and shadows. A glass
+    /// container follows the same order for its descendant glass surfaces.
     static func clipsInsideGlass(background: String?, inFusedCapsule: Bool) -> Bool {
-        let isInteractiveGlass = background == "glass-container" ||
+        let isGlassSurface = background == "glass-container" ||
             (background == "glass" && !inFusedCapsule)
-        guard isInteractiveGlass else { return false }
+        guard isGlassSurface else { return false }
         if #available(iOS 26.0, macOS 26.0, *) { return true }
         return false
     }
@@ -7765,7 +7767,9 @@ private struct LUIBackgroundStyleModifier: ViewModifier {
                         cornerRadius: clipRadius,
                         clipsContent: clipsContent
                     ))
-                    .glassEffect(.regular.interactive(), in: glassShape)
+                    // A background decorates its descendants; it must not own
+                    // a glass gesture over their presented native menus.
+                    .glassEffect(.regular, in: glassShape)
             } else {
                 content.background(.regularMaterial, in: glassShape)
             }
