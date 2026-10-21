@@ -4845,7 +4845,8 @@ private struct LUIListItemView: View {
             ) {
                 Spacer(minLength: 8)
             }
-            if let contextMenu, swipeMenu == nil {
+            if let contextMenu, !contextMenu.children.isEmpty, swipeMenu == nil,
+               !model.derived.styleClassTokens.contains("context-menu-only") {
                 Menu {
                     LUINativeMenuActions(model: contextMenu, backend: backend)
                 } label: {
@@ -5004,21 +5005,20 @@ private struct LUIListItemView: View {
     }
 
     /// Whether the row should keep a `.swipeActions` slot at all, decided only
-    /// by node kinds (immutable), so an item's enabled/disabled flips never
-    /// attach or detach the modifier. Toggling `.swipeActions` on a live
+    /// by the context-menu node's lifetime, so action membership and enabled
+    /// changes never attach or detach the modifier. Toggling `.swipeActions` on a live
     /// collection cell makes SwiftUI re-create the cell; when that races a
     /// row-delete coalesced into the same batch update, the collection sees a
     /// stale item count and throws NSInternalInconsistencyException.
     private var swipeActionsAnchor: LUINodeModel? {
         #if os(iOS)
-        guard isNativeListRow, let contextMenu else { return nil }
+        guard isNativeListRow,
+              !model.derived.styleClassTokens.contains("context-menu-only"),
+              let contextMenu else { return nil }
         // An explicit swipe-actions child takes over the edges; the context
         // menu is not consumed and stays reachable via the ellipsis button.
         guard !model.children.contains(where: {
             backend.model(id: $0)?.kind == .swipeActions
-        }) else { return nil }
-        guard contextMenu.children.contains(where: {
-            backend.model(id: $0)?.kind == .menuItem
         }) else { return nil }
         return contextMenu
         #else
