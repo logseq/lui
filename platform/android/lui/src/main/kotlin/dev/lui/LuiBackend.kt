@@ -100,6 +100,9 @@ class LuiBackend(
         return if (obs.structure.value != null) obs.nodeView else null
     }
 
+    /** Read a retained kind without creating a composition observation. */
+    fun nodeKind(id: Long): LuiNodeKind? = tree.node(id)?.kind
+
     fun extensionNode(id: Long): LuiExtensionNode? {
         val obs = observed(id)
         // Read both states so callers stay subscribed to structural and
@@ -135,7 +138,7 @@ class LuiBackend(
 
     /** Apply an already-decoded patch batch (the bridge parses off the main
      * thread and posts the batch for apply+publish here). */
-    internal fun applyBatch(batch: LuiPatchBatch): Boolean = try {
+    fun applyBatch(batch: LuiPatchBatch): Boolean = try {
         tree.apply(batch)
         publish(tree.lastChanged)
         lastError = null
