@@ -4,6 +4,7 @@ import android.graphics.Typeface
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -60,7 +61,9 @@ fun luiHexColor(name: String): Color? {
     if (value.length == 3 || value.length == 4) {
         value = value.map { "$it$it" }.joinToString("")
     }
-    if (value.length == 6) value = "ff$value"
+    if (value.length == 6) {
+        return value.toLongOrNull(16)?.let { Color(0xff000000L or it) }
+    }
     if (value.length != 8) return null
     val rgba = value.toULongOrNull(16) ?: return null
     // CSS hex is #rrggbbaa; Color() takes ARGB.
@@ -103,10 +106,8 @@ private fun resolveLuiThemeColor(
         "surface-container-highest" -> scheme.surfaceContainerHighest
         "surface-variant" -> scheme.surfaceContainerHighest
         "autocomplete-row-background" -> scheme.surfaceContainerHigh
-        "glass" -> scheme.surface.copy(alpha = 0.75f)
-        "glass-fallback" -> scheme.surface.copy(alpha = 0.9f)
-        // Apple Material.bar approximation: mostly-opaque theme surface.
-        "bar" -> scheme.surface.copy(alpha = 0.85f)
+        "glass", "glass-fallback" -> scheme.surfaceContainerHigh
+        "bar" -> scheme.surfaceContainer
         "primary" -> scheme.primary
         "primary-foreground" -> scheme.onPrimary
         "accent" -> if (foreground) scheme.primary else scheme.secondaryContainer
@@ -164,7 +165,7 @@ fun LuiTheme(
 ) {
     // An explicit [dark] wins, then an app-provided local, then the system.
     val effectiveDark = dark ?: LocalLuiThemeDark.current ?: isSystemInDarkTheme()
-    MaterialTheme(colorScheme = if (effectiveDark) darkScheme else light) {
+    MaterialExpressiveTheme(colorScheme = if (effectiveDark) darkScheme else light) {
         val inherited = LocalLuiSemanticColors.current
         CompositionLocalProvider(
             LocalLuiThemeDark provides effectiveDark,
@@ -222,13 +223,13 @@ object LuiTypography {
         "letter-spacing", "font-family", "text-decoration",
     )
 
-    /** `font-size` can't take relative units — resolve em/rem against
-     * the 17sp body default both mobile hosts share. */
-    private fun fontSizeSpec(value: String?): TextUnit? =
+    /** Resolve relative sizes against inherited and Material body typography. */
+    private fun fontSizeSpec(value: String?, inheritedSize: TextUnit, rootSize: TextUnit): TextUnit? =
         cssLength.matchEntire(value ?: return null)?.let { m ->
             val amount = m.groupValues[1].toFloatOrNull() ?: return null
             when (m.groupValues[2]) {
-                "em", "rem" -> (amount * 17).sp
+                "em" -> inheritedSize * amount
+                "rem" -> rootSize * amount
                 else -> amount.sp
             }
         }
@@ -277,8 +278,12 @@ object LuiTypography {
     /** Typography delta contributed by a node's own props, merged over
      * the inherited spec in `LuiThemeScope`. Null when the node sets no
      * typography props. */
-    fun nodeSpec(properties: Map<String, LuiWireValue>): TextStyle? {
-        val size = fontSizeSpec(properties["font-size"]?.stringValue)
+    fun nodeSpec(
+        properties: Map<String, LuiWireValue>,
+        inheritedSize: TextUnit = 16.sp,
+        rootSize: TextUnit = 16.sp,
+    ): TextStyle? {
+        val size = fontSizeSpec(properties["font-size"]?.stringValue, inheritedSize, rootSize)
         val lineHeight = lineHeightSpec(properties["line-height"]?.stringValue)
         val weight = properties["font-weight"]?.intValue
             ?.let { FontWeight(it.coerceIn(1, 1000)) }
@@ -306,57 +311,49 @@ object LuiTypography {
         )
     }
 
-    // Apple font sizes (SwiftUI text styles), mirrored 1pt = 1sp:
-    // largeTitle 34, title 28, title2 22, title3 20, headline 17,
-    // body 17, subheadline 15, footnote 13, caption 12, caption2 11.
     @Composable
     fun headingStyle(level: Int): TextStyle {
         val theme = MaterialTheme.typography
         return when (level) {
-            1 -> theme.headlineLarge.copy(fontSize = 34.sp)
-            2 -> theme.headlineMedium.copy(fontSize = 28.sp)
-            3 -> theme.titleLarge.copy(fontSize = 22.sp)
-            4 -> theme.titleMedium.copy(fontSize = 20.sp)
-            5 -> theme.bodyLarge.copy(fontSize = 17.sp)
-            else -> theme.titleSmall.copy(fontSize = 15.sp)
-        }.copy(fontWeight = FontWeight.Bold).luiInherited()
+            1 -> theme.headlineLarge
+            2 -> theme.headlineMedium
+            3 -> theme.headlineSmall
+            4 -> theme.titleLarge
+            5 -> theme.titleMedium
+            else -> theme.titleSmall
+        }.luiInherited()
     }
 
     @Composable
     fun textStyleForSize(size: String?): TextStyle {
         val theme = MaterialTheme.typography
         return when (size) {
-            "sm" -> theme.bodySmall.copy(fontSize = 12.sp)
-            "lg" -> theme.titleMedium.copy(fontSize = 20.sp)
-            "heading" -> theme.headlineSmall.copy(fontSize = 28.sp)
-            "display" -> theme.displaySmall.copy(fontSize = 34.sp)
-            else -> theme.bodyLarge.copy(fontSize = 17.sp)
+            "sm" -> theme.bodySmall
+            "lg" -> theme.titleLarge
+            "heading" -> theme.headlineSmall
+            "display" -> theme.displaySmall
+            else -> theme.bodyLarge
         }
     }
 
     /**
-     * Mirrors the Apple backend's `LUITextView.font`: `style-class` tokens
-     * pick the text style (title2/headline/subheadline/caption/footnote),
-     * headline and subheadline render semibold, `semibold` forces it, and
-     * `mono` switches to a monospaced family. `size` remains the base
-     * mapping when no style-class token matches.
+     * Maps shared semantic style names to Material typography roles.
+     * Explicit typography props are merged afterward, so hosts can customize
+     * their theme without an implicit Apple point-size override.
      */
     @Composable
     fun textStyle(size: String?, styleClass: String?): TextStyle {
         val theme = MaterialTheme.typography
         val classes = styleClass?.split(' ') ?: emptyList()
         var style: TextStyle = when {
-            classes.contains("title2") -> theme.titleLarge.copy(fontSize = 22.sp)
-            classes.contains("headline") -> theme.bodyLarge.copy(fontSize = 17.sp)
-            classes.contains("subheadline") -> theme.titleSmall.copy(fontSize = 15.sp)
-            classes.contains("caption") -> theme.bodySmall.copy(fontSize = 12.sp)
-            classes.contains("footnote") -> theme.labelMedium.copy(fontSize = 13.sp)
+            classes.contains("title2") -> theme.titleLarge
+            classes.contains("headline") -> theme.titleMedium
+            classes.contains("subheadline") -> theme.bodyMedium
+            classes.contains("caption") -> theme.bodySmall
+            classes.contains("footnote") -> theme.labelMedium
             else -> textStyleForSize(size)
         }
-        if (classes.contains("semibold") ||
-            classes.contains("headline") ||
-            classes.contains("subheadline")
-        ) {
+        if (classes.contains("semibold")) {
             style = style.copy(fontWeight = FontWeight.SemiBold)
         }
         if (classes.contains("mono")) {

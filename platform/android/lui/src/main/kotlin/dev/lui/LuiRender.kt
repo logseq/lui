@@ -57,7 +57,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 
 internal fun LuiNodeLike.prop(name: String): LuiWireValue? = properties[name]
@@ -313,9 +315,14 @@ internal fun LuiThemeScope(node: LuiNodeLike, content: @Composable () -> Unit) {
     val themeMode = props["theme-mode"]?.stringValue
     // Decode once per changed property map, not once per recomposition:
     // nodeSpec runs regexes, string splits and a native Typeface lookup.
-    val typography = remember(props) {
+    val relativeSize = props["font-size"]?.stringValue?.trim()?.endsWith("em") == true
+    val bodySize = if (relativeSize) MaterialTheme.typography.bodyLarge.fontSize else 16.sp
+    val inheritedSize = if (relativeSize) {
+        LocalLuiTypography.current.fontSize.let { if (it == TextUnit.Unspecified) bodySize else it }
+    } else bodySize
+    val typography = remember(props, inheritedSize, bodySize) {
         if (props.keys.any { it in LuiTypography.propNames }) {
-            LuiTypography.nodeSpec(props)
+            LuiTypography.nodeSpec(props, inheritedSize, bodySize)
         } else {
             null
         }

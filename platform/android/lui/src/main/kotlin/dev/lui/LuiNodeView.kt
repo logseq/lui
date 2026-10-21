@@ -1,5 +1,6 @@
 package dev.lui
 
+import android.view.WindowManager
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -32,10 +33,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -47,19 +50,36 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuPopup
+import androidx.compose.material3.DropdownMenuGroup
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.SelectableDropdownMenuItem
+import androidx.compose.material3.MenuAnchorPosition
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.HorizontalFloatingToolbar
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Tab
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
@@ -86,6 +106,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.drop
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -95,7 +117,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -104,12 +125,15 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.PopupProperties
 
 /**
  * Renders one node of the retained tree plus its subtree. Ported from the
@@ -141,7 +165,8 @@ fun LuiNodeView(backend: LuiBackend, id: Long) {
  */
 @Composable
 private fun LuiChromeSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
-    var contextMenuAt by remember(id) { mutableStateOf<Offset?>(null) }
+    var contextMenuAt by remember(id) { mutableStateOf(Offset.Zero) }
+    var contextMenuOpen by remember(id) { mutableStateOf(false) }
     val contextMenuId =
         node.children.firstOrNull { backend.node(it)?.kind == LuiNodeKind.contextMenu }
     val hidden = node.propString("display") == "none" ||
@@ -154,25 +179,29 @@ private fun LuiChromeSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
     } else Modifier
     val modifier = retainedVisibility
         .luiChrome(node)
-        .luiGestures(backend, node, id) { offset -> contextMenuAt = offset }
+        .luiGestures(backend, node, id) { offset ->
+            contextMenuAt = offset
+            contextMenuOpen = true
+        }
 
     Box {
         LuiNodeContent(backend, node, id, modifier)
         val menuId = contextMenuId
         val anchor = contextMenuAt
-        if (anchor != null && menuId != null) {
+        if (menuId != null) {
             val menu = backend.node(menuId)
             if (menu != null) {
-                DropdownMenu(
-                    expanded = true,
+                LuiMenuPopup(
+                    expanded = contextMenuOpen,
                     onDismissRequest = {
-                        contextMenuAt = null
+                        contextMenuOpen = false
                         backend.emit(LuiEvent.Dismiss(menuId))
                     },
                     offset = with(LocalDensity.current) { DpOffset(anchor.x.toDp(), 0.dp) },
-                ) {
-                    menu.children.forEachNode { childId -> LuiMenuEntry(backend, childId) }
-                }
+                    backend = backend,
+                    menu = menu,
+                    onSelect = { contextMenuOpen = false },
+                )
             }
         }
     }
@@ -291,7 +320,6 @@ private fun LuiNodeContent(
         LuiNodeKind.listSectionFooter,
         LuiNodeKind.swipeActions,
         LuiNodeKind.link,
-        LuiNodeKind.popover,
         LuiNodeKind.tree,
         LuiNodeKind.timeline,
         -> Column(
@@ -362,6 +390,21 @@ private fun LuiNodeContent(
 
         LuiNodeKind.overlay -> LuiOverlay(backend, node, modifier, children)
 
+        LuiNodeKind.popover -> DropdownMenuPopup(
+            expanded = true,
+            onDismissRequest = { backend.emit(LuiEvent.Dismiss(id)) },
+            popupPositionProvider = MenuDefaults.rememberDropdownMenuPopupPositionProvider(
+                menuAnchorPosition(node),
+                DpOffset(node.propDouble("x").dp, node.propDouble("y").dp),
+            ),
+        ) {
+            Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(gapOf(node).dp)) {
+                    children.forEachNode { LuiNodeView(backend, it) }
+                }
+            }
+        }
+
         LuiNodeKind.viewThatFits -> Box(modifier) {
             children.firstOrNull()?.let { LuiNodeView(backend, it) }
         }
@@ -417,29 +460,30 @@ private fun LuiNodeContent(
             enabled = enabled,
         )
 
-        LuiNodeKind.radioGroup -> Row(modifier) {
+        LuiNodeKind.radioGroup -> Row(modifier.selectableGroup()) {
             children.forEachNode { LuiNodeView(backend, it) }
         }
 
         LuiNodeKind.radio -> Row(
-            modifier,
+            modifier.selectable(
+                selected = node.propBool("checked"),
+                enabled = enabled,
+                role = Role.RadioButton,
+                onClick = {
+                    if (node.propBool("change-enabled")) {
+                        backend.emit(LuiEvent.Change(id))
+                    } else if (node.propBool("toggle-enabled")) {
+                        backend.emit(LuiEvent.ToggleChanged(id, true))
+                    } else {
+                        backend.emit(LuiEvent.Press(id))
+                    }
+                },
+            ).minimumInteractiveComponentSize(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             RadioButton(
                 selected = node.propBool("checked"),
-                onClick = if (enabled) {
-                    {
-                        if (node.propBool("change-enabled")) {
-                            backend.emit(LuiEvent.Change(id))
-                        } else if (node.propBool("toggle-enabled")) {
-                            backend.emit(LuiEvent.ToggleChanged(id, true))
-                        } else {
-                            backend.emit(LuiEvent.Press(id))
-                        }
-                    }
-                } else {
-                    null
-                },
+                onClick = null,
                 enabled = enabled,
             )
             Text(node.text(), Modifier.alpha(node.propDouble("label-opacity", 1.0).toFloat()))
@@ -480,30 +524,36 @@ private fun LuiNodeContent(
         -> LuiTextControl(backend, node, id, modifier)
 
         LuiNodeKind.checkbox -> Row(
-            modifier,
+            modifier.toggleable(
+                value = node.propBool("checked"),
+                enabled = enabled,
+                role = Role.Checkbox,
+                onValueChange = { backend.emit(LuiEvent.ToggleChanged(id, it)) },
+            ).minimumInteractiveComponentSize(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Checkbox(
                 checked = node.propBool("checked"),
-                onCheckedChange = { value ->
-                    if (enabled) backend.emit(LuiEvent.ToggleChanged(id, value))
-                },
+                onCheckedChange = null,
                 enabled = enabled,
             )
             Text(node.text(), Modifier.alpha(node.propDouble("label-opacity", 1.0).toFloat()))
         }
 
         LuiNodeKind.switchControl -> Row(
-            modifier,
+            modifier.toggleable(
+                value = node.propBool("checked"),
+                enabled = enabled,
+                role = Role.Switch,
+                onValueChange = { backend.emit(LuiEvent.ToggleChanged(id, it)) },
+            ).minimumInteractiveComponentSize(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (node.text().isNotEmpty()) Text(node.text())
             Switch(
                 checked = node.propBool("checked"),
-                onCheckedChange = { value ->
-                    if (enabled) backend.emit(LuiEvent.ToggleChanged(id, value))
-                },
+                onCheckedChange = null,
                 enabled = enabled,
             )
         }
@@ -534,7 +584,16 @@ private fun LuiNodeContent(
             }
         }
 
-        LuiNodeKind.tabs,
+        LuiNodeKind.tabs -> {
+            if (children.isNotEmpty()) {
+                val selectedIndex = children.indexOfFirst { backend.node(it)?.propBool("selected") == true }
+                    .coerceAtLeast(0)
+                PrimaryTabRow(selectedTabIndex = selectedIndex, modifier = modifier) {
+                    children.forEachNode { LuiNodeView(backend, it) }
+                }
+            }
+        }
+
         LuiNodeKind.buttonGroup,
         LuiNodeKind.toggleGroup,
         LuiNodeKind.breadcrumb,
@@ -799,12 +858,13 @@ private fun LuiStackLike(
         Box {
             withTooltip()
             if (menu != null) {
-                DropdownMenu(
+                LuiMenuPopup(
                     expanded = true,
                     onDismissRequest = { backend.emit(LuiEvent.Dismiss(menuId)) },
-                ) {
-                    menu.children.forEachNode { childId -> LuiMenuEntry(backend, childId) }
-                }
+                    backend = backend,
+                    menu = menu,
+                    onSelect = { backend.emit(LuiEvent.Dismiss(menuId)) },
+                )
             }
         }
     }
@@ -911,8 +971,7 @@ private fun LuiBubble(
 }
 
 /**
- * button / tab-trigger: variant and size mapping ported from the Flutter
- * backend; tab triggers render as compact surface chips inside `tabs`.
+ * Buttons use Material variants; buttons inside tabs use native tab semantics.
  */
 @Composable
 private fun LuiButton(
@@ -990,41 +1049,77 @@ private fun LuiButton(
     val onClick = { backend.emit(LuiEvent.Press(id)) }
 
     if (isTabTrigger) {
-        TextButton(
+        Tab(
             onClick = onClick,
-            modifier = modifier.height(32.dp),
+            modifier = modifier,
             enabled = enabled,
-            shape = RoundedCornerShape(6.dp),
-            colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                containerColor = if (selected) {
-                    MaterialTheme.colorScheme.surface
-                } else {
-                    Color.Transparent
-                },
-                contentColor = foreground ?: MaterialTheme.colorScheme.onSurface,
-            ),
-        ) { label() }
+            selected = selected,
+            text = label,
+        )
+        return
+    }
+
+    if (icon != null && node.text().isEmpty() && children.isEmpty()) {
+        val content: @Composable () -> Unit = {
+            Icon(icon, contentDescription = node.propString("accessibility-label"), modifier = Modifier.size(24.dp))
+        }
+        when (variant) {
+            "primary", "destructive" -> FilledIconButton(
+                onClick = onClick, modifier = modifier, enabled = enabled,
+                shapes = IconButtonDefaults.shapes(),
+                colors = if (variant == "destructive") IconButtonDefaults.filledIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError,
+                ) else if (foreground != null) IconButtonDefaults.filledIconButtonColors(contentColor = foreground)
+                    else IconButtonDefaults.filledIconButtonColors(),
+                content = content,
+            )
+            "secondary" -> FilledTonalIconButton(
+                onClick = onClick, modifier = modifier, enabled = enabled,
+                shapes = IconButtonDefaults.shapes(),
+                colors = if (foreground != null) IconButtonDefaults.filledTonalIconButtonColors(contentColor = foreground)
+                    else IconButtonDefaults.filledTonalIconButtonColors(),
+                content = content,
+            )
+            "outline" -> OutlinedIconButton(
+                onClick = onClick, modifier = modifier, enabled = enabled,
+                shapes = IconButtonDefaults.shapes(),
+                colors = if (foreground != null) IconButtonDefaults.outlinedIconButtonColors(contentColor = foreground)
+                    else IconButtonDefaults.outlinedIconButtonColors(),
+                content = content,
+            )
+            else -> IconButton(
+                onClick = onClick, modifier = modifier, enabled = enabled,
+                shapes = IconButtonDefaults.shapes(),
+                colors = if (foreground != null) IconButtonDefaults.iconButtonColors(contentColor = foreground)
+                    else IconButtonDefaults.iconButtonColors(),
+                content = content,
+            )
+        }
         return
     }
 
     when (variant) {
         "primary" -> androidx.compose.material3.Button(
             onClick = onClick,
+            shapes = ButtonDefaults.shapes(),
             modifier = modifier,
             enabled = enabled,
         ) { label() }
         "secondary" -> androidx.compose.material3.FilledTonalButton(
             onClick = onClick,
+            shapes = ButtonDefaults.shapes(),
             modifier = modifier,
             enabled = enabled,
         ) { label() }
         "outline" -> androidx.compose.material3.OutlinedButton(
             onClick = onClick,
+            shapes = ButtonDefaults.shapes(),
             modifier = modifier,
             enabled = enabled,
         ) { label() }
         "destructive" -> androidx.compose.material3.Button(
             onClick = onClick,
+            shapes = ButtonDefaults.shapes(),
             modifier = modifier,
             enabled = enabled,
             colors = androidx.compose.material3.ButtonDefaults.buttonColors(
@@ -1033,44 +1128,15 @@ private fun LuiButton(
             ),
         ) { label() }
         else -> {
-            // Icon-only ghost buttons are icon controls: the Apple backend
-            // sizes them at the 40pt touch target with no label padding,
-            // while a TextButton would enforce M3 min-width + padding and
-            // inflate glass capsules like the header's sync/overflow group.
-            if (icon != null && node.text().isEmpty() && children.isEmpty()) {
-                val sized =
-                    if (node.prop("width") != null || node.prop("height") != null) {
-                        modifier
-                    } else {
-                        modifier.size(40.dp)
-                    }
-                Box(
-                    sized
-                        .clip(CircleShape)
-                        .clickable(enabled = enabled, onClick = onClick),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        icon,
-                        contentDescription = node.propString("accessibility-label"),
-                        modifier = Modifier.size(iconSize),
-                        tint = foreground ?: MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-            } else {
                 TextButton(
                     onClick = onClick,
+                    shapes = ButtonDefaults.shapes(),
                     modifier = if (node.propDouble("grow") > 0) modifier.fillMaxWidth() else modifier,
                     enabled = enabled,
                     contentPadding = contentPadding,
-                    // Borderless buttons use the accent in Compose, but the Apple
-                    // backend renders them with the dark foreground — match it so
-                    // header/toolbar glyphs are not tinted primary.
-                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                        contentColor = foreground ?: MaterialTheme.colorScheme.onSurface,
-                    ),
+                    colors = if (foreground == null) androidx.compose.material3.ButtonDefaults.textButtonColors()
+                        else androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = foreground),
                 ) { label() }
-            }
         }
     }
 }
@@ -1146,7 +1212,7 @@ private fun LuiTextControl(
     val fieldModifier = modifier.then(
         if (grouped || borderless) Modifier.fillMaxWidth() else Modifier.width(240.dp),
     ).focusRequester(focusRequester)
-    val fieldTextStyle = (if (borderless) MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp)
+    val fieldTextStyle = (if (borderless) MaterialTheme.typography.bodyLarge
         else MaterialTheme.typography.bodyMedium).copy(
         color = luiThemeColor(node.propString("foreground"), foreground = true)
             ?: MaterialTheme.colorScheme.onSurface,
@@ -1182,27 +1248,16 @@ private fun LuiTextControl(
     }
 
     if (borderless) {
-        BasicTextField(
+        androidx.compose.material3.TextField(
             value = localText,
             onValueChange = onValueChange,
             modifier = fieldModifier,
             enabled = enabled,
             singleLine = !multiline,
+            maxLines = if (multiline) 5 else 1,
+            placeholder = placeholderContent,
             visualTransformation = transformation,
             textStyle = fieldTextStyle,
-            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-            decorationBox = { innerTextField ->
-                Box(contentAlignment = Alignment.CenterStart) {
-                    if (localText.isEmpty()) {
-                        Text(
-                            node.propString("placeholder") ?: "",
-                            style = fieldTextStyle,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    innerTextField()
-                }
-            },
         )
     } else {
         OutlinedTextField(
@@ -1245,14 +1300,55 @@ private fun LuiSelect(backend: LuiBackend, node: LuiNodeLike, id: Long, modifier
     )
 }
 
+/** Share the official Expressive popup and group across retained menu entry points. */
+@Composable
+private fun LuiMenuPopup(
+    backend: LuiBackend,
+    menu: LuiNodeLike,
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    onSelect: () -> Unit,
+    anchorPosition: MenuAnchorPosition = menuAnchorPosition(menu),
+    offset: DpOffset = DpOffset(0.dp, 0.dp),
+) {
+    DropdownMenuPopup(
+        expanded = expanded,
+        onDismissRequest = onDismissRequest,
+        popupPositionProvider = MenuDefaults.rememberDropdownMenuPopupPositionProvider(anchorPosition, offset),
+        // Keep native Back/outside handling without making a non-editable menu an IME target.
+        properties = PopupProperties(
+            flags = WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
+                WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM,
+        ),
+    ) {
+        DropdownMenuGroup(
+            shapes = MenuDefaults.groupShapes(),
+            modifier = Modifier.verticalScroll(rememberScrollState()),
+        ) {
+            menu.children.forEachIndexedNode { index, childId ->
+                CompositionLocalProvider(LocalLuiChildSlot provides LuiChildSlot(index, menu.children.size)) {
+                    LuiMenuEntry(backend, childId, onSelect)
+                }
+            }
+        }
+    }
+}
+
+private fun menuAnchorPosition(node: LuiNodeLike): MenuAnchorPosition = when (node.propString("anchor")) {
+    "above" -> MenuAnchorPosition.Above
+    "left" -> MenuAnchorPosition.Left
+    "right" -> MenuAnchorPosition.Right
+    else -> MenuAnchorPosition.Below
+}
+
 /** A menu entry (used both inside dropdown menus and context menus). */
 @Composable
-internal fun LuiMenuEntry(backend: LuiBackend, childId: Long) {
+internal fun LuiMenuEntry(backend: LuiBackend, childId: Long, onSelect: () -> Unit = {}) {
     val child = backend.node(childId) ?: return
     when (child.kind) {
         LuiNodeKind.divider -> HorizontalDivider()
         LuiNodeKind.menuItem -> LuiThemeScope(child) {
-            LuiMenuItem(backend, child, childId, Modifier.luiChrome(child))
+            LuiMenuItem(backend, child, childId, Modifier.luiChrome(child), onSelect)
         }
         LuiNodeKind.menuTrigger -> LuiMenuTrigger(backend, child, childId, Modifier)
         else -> LuiNodeView(backend, childId)
@@ -1260,60 +1356,90 @@ internal fun LuiMenuEntry(backend: LuiBackend, childId: Long) {
 }
 
 @Composable
-private fun LuiMenuItem(backend: LuiBackend, node: LuiNodeLike, id: Long, modifier: Modifier) {
+private fun LuiMenuItem(
+    backend: LuiBackend,
+    node: LuiNodeLike,
+    id: Long,
+    modifier: Modifier,
+    onSelect: () -> Unit = {},
+) {
     val submenuId =
         node.children.firstOrNull { backend.node(it)?.kind == LuiNodeKind.dropdownMenu }
     val enabled = node.isEnabled()
     val icon = node.propString("icon")?.let { backend.icons.icon(it) }
     val selected = node.propBool("selected")
     val destructive = node.propString("variant") == "destructive"
-    val iconTint = luiThemeColor(node.propString("foreground"), foreground = true)
-        ?: MaterialTheme.colorScheme.onSurface
-    val iconSize = if (node.propString("size") == "sm") 16.dp else 22.dp
+    val iconTint = luiThemeColor(node.propString("foreground"), foreground = true) ?: Color.Unspecified
+    val slot = LocalLuiChildSlot.current
+    val shapes = if (slot != null) MenuDefaults.itemShape(slot.index, slot.count) else MenuDefaults.itemShapes()
+    val leadingIcon: (@Composable () -> Unit)? = icon?.let {
+        { Icon(it, null, Modifier.size(MenuDefaults.LeadingIconSize), tint = iconTint) }
+    }
+    val text: @Composable () -> Unit = {
+        Text(
+            node.text(),
+            style = LuiTypography.textStyle(null, node.propString("style-class")),
+            color = if (destructive) MaterialTheme.colorScheme.error else Color.Unspecified,
+        )
+    }
 
     if (submenuId != null) {
         var submenuOpen by remember(id) { mutableStateOf(false) }
         Box {
             DropdownMenuItem(
-                text = { Text(node.text(), style = LuiTypography.textStyle(null, node.propString("style-class"))) },
+                text = text,
                 onClick = { submenuOpen = true },
                 enabled = enabled,
-                leadingIcon = icon?.let { { Icon(it, null, Modifier.size(iconSize), tint = iconTint) } },
-                trailingIcon = {
-                    Icon(Icons.Filled.KeyboardArrowRight, null, Modifier.size(16.dp))
+                modifier = modifier,
+                shape = shapes.shape,
+                leadingIcon = leadingIcon,
+                trailingContent = {
+                    Icon(Icons.Filled.KeyboardArrowRight, null, Modifier.size(MenuDefaults.TrailingIconSize))
                 },
             )
             val submenu = backend.node(submenuId)
             if (submenu != null) {
-                DropdownMenu(
+                LuiMenuPopup(
                     expanded = submenuOpen,
                     onDismissRequest = { submenuOpen = false },
-                ) {
-                    submenu.children.forEachNode { LuiMenuEntry(backend, it) }
-                }
+                    backend = backend,
+                    menu = submenu,
+                    anchorPosition = MenuAnchorPosition.End,
+                    onSelect = {
+                        submenuOpen = false
+                        onSelect()
+                    },
+                )
             }
         }
         return
     }
 
-    DropdownMenuItem(
-        text = {
-            Text(
-                node.text(),
-                style = LuiTypography.textStyle(null, node.propString("style-class")),
-                color = if (destructive) MaterialTheme.colorScheme.error else Color.Unspecified,
-            )
-        },
-        onClick = { if (enabled) backend.emit(LuiEvent.Press(id)) },
-        enabled = enabled,
-        modifier = modifier,
-        leadingIcon = icon?.let { { Icon(it, null, Modifier.size(iconSize), tint = iconTint) } },
-        trailingIcon = if (selected) {
-            { Icon(Icons.Filled.Check, null, Modifier.size(16.dp)) }
-        } else {
-            null
-        },
-    )
+    val onClick = {
+        onSelect()
+        backend.emit(LuiEvent.Press(id))
+    }
+    if (node.prop("selected") != null) {
+        SelectableDropdownMenuItem(
+            selected = selected,
+            onClick = onClick,
+            text = text,
+            shapes = shapes,
+            modifier = modifier,
+            enabled = enabled,
+            leadingIcon = leadingIcon,
+            selectedLeadingIcon = { Icon(Icons.Filled.Check, null, Modifier.size(MenuDefaults.LeadingIconSize)) },
+        )
+    } else {
+        DropdownMenuItem(
+            onClick = onClick,
+            text = text,
+            shape = shapes.shape,
+            modifier = modifier,
+            enabled = enabled,
+            leadingIcon = leadingIcon,
+        )
+    }
 }
 
 @Composable
@@ -1323,45 +1449,32 @@ private fun LuiMenuTrigger(backend: LuiBackend, node: LuiNodeLike, id: Long, mod
     val icon = node.propString("icon")?.let { backend.icons.icon(it) }
     val iconSize = if (node.text().isEmpty()) 24.dp else 16.dp
     var open by remember(id) { mutableStateOf(false) }
-    val triggerForeground =
-        luiThemeColor(node.propString("foreground"), foreground = true)
-            ?: MaterialTheme.colorScheme.onSurface
+    val triggerForeground = luiThemeColor(node.propString("foreground"), foreground = true)
 
     Box {
         if (icon != null && node.text().isEmpty()) {
-            // Icon-only triggers are icon controls like the Apple backend's
-            // 40pt capsule cells — a TextButton's M3 min-width + padding
-            // would inflate the enclosing glass capsule.
-            val sized =
-                if (node.prop("width") != null || node.prop("height") != null) {
-                    modifier
-                } else {
-                    modifier.size(40.dp)
-                }
-            Box(
-                sized
-                    .clip(CircleShape)
-                    .clickable(enabled = enabled) { open = !open },
-                contentAlignment = Alignment.Center,
+            IconButton(
+                onClick = { open = !open },
+                shapes = IconButtonDefaults.shapes(),
+                modifier = modifier,
+                enabled = enabled,
+                colors = if (triggerForeground == null) IconButtonDefaults.iconButtonColors()
+                    else IconButtonDefaults.iconButtonColors(contentColor = triggerForeground),
             ) {
                 Icon(
                     icon,
                     contentDescription = node.propString("accessibility-label"),
                     modifier = Modifier.size(iconSize),
-                    tint = triggerForeground,
                 )
             }
         } else {
             TextButton(
                 onClick = { open = !open },
+                shapes = ButtonDefaults.shapes(),
                 enabled = enabled,
                 modifier = modifier,
-                // TextButton contentColor defaults to primary; the Apple backend
-                // renders menu triggers with the dark foreground, so keep glyphs
-                // like the header overflow icon from being tinted.
-                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                    contentColor = triggerForeground,
-                ),
+                colors = if (triggerForeground == null) androidx.compose.material3.ButtonDefaults.textButtonColors()
+                    else androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = triggerForeground),
             ) {
                 if (icon != null) {
                     Row(
@@ -1377,16 +1490,17 @@ private fun LuiMenuTrigger(backend: LuiBackend, node: LuiNodeLike, id: Long, mod
             }
         }
         val menu = menuId?.let { backend.node(it) }
-        if (menu != null && menuId != null) {
-            DropdownMenu(
+        if (menu != null) {
+            LuiMenuPopup(
                 expanded = open,
                 onDismissRequest = {
                     open = false
                     backend.emit(LuiEvent.Dismiss(menuId))
                 },
-            ) {
-                menu.children.forEachNode { LuiMenuEntry(backend, it) }
-            }
+                backend = backend,
+                menu = menu,
+                onSelect = { open = false },
+            )
         }
     }
 }
@@ -1402,49 +1516,69 @@ private fun LuiListItem(
 ) {
     val enabled = node.isEnabled()
     val icon = node.propString("icon")?.let { backend.icons.icon(it) }
-    ListItem(
-        headlineContent = {
-            if (children.isEmpty()) {
-                Text(node.text())
-            } else {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    if (node.text().isNotEmpty()) Text(node.text())
-                    children.forEachNode { LuiNodeView(backend, it) }
-                }
+    val content: @Composable () -> Unit = {
+        if (children.isEmpty()) {
+            Text(node.text())
+        } else {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (node.text().isNotEmpty()) Text(node.text())
+                children.forEachNode { LuiNodeView(backend, it) }
             }
-        },
-        leadingContent = icon?.let { { Icon(it, null, Modifier.size(16.dp)) } },
-        modifier = modifier.combinedClickable(
+        }
+    }
+    val leading: (@Composable () -> Unit)? = icon?.let { { Icon(it, null) } }
+    val onClick = {
+        if (node.propString("role") == "treeitem") {
+            if (node.propBool("press-enabled")) {
+                backend.emit(LuiEvent.Press(id))
+            } else if (node.propBool("change-enabled")) {
+                backend.emit(LuiEvent.Change(id))
+            }
+            if (node.propBool("toggle-enabled")) {
+                backend.emit(LuiEvent.ToggleChanged(id, !node.propBool("expanded")))
+            }
+        } else if (node.propBool("press-enabled")) {
+            backend.emit(LuiEvent.Press(id))
+        }
+    }
+    val onLongClick: (() -> Unit)? = if (node.propBool("long-press-enabled")) {
+        { backend.emit(LuiEvent.LongPress(id)) }
+    } else {
+        null
+    }
+    when {
+        node.propBool("double-press-enabled") -> ListItem(
+            modifier = modifier.combinedClickable(
+                enabled = enabled,
+                onClick = onClick,
+                onLongClick = onLongClick,
+                onDoubleClick = { backend.emit(LuiEvent.DoublePress(id)) },
+            ),
             enabled = enabled,
-            onClick = {
-                if (node.propString("role") == "treeitem") {
-                    if (node.propBool("press-enabled")) {
-                        backend.emit(LuiEvent.Press(id))
-                    } else if (node.propBool("change-enabled")) {
-                        backend.emit(LuiEvent.Change(id))
-                    }
-                    if (node.propBool("toggle-enabled")) {
-                        backend.emit(LuiEvent.ToggleChanged(id, !node.propBool("expanded")))
-                    }
-                } else if (node.propBool("press-enabled")) {
-                    backend.emit(LuiEvent.Press(id))
-                }
-            },
-            onLongClick = if (node.propBool("long-press-enabled")) {
-                { backend.emit(LuiEvent.LongPress(id)) }
-            } else {
-                null
-            },
-            onDoubleClick = if (node.propBool("double-press-enabled")) {
-                { backend.emit(LuiEvent.DoublePress(id)) }
-            } else {
-                null
-            },
-        ),
-    )
+            leadingContent = leading,
+            content = content,
+        )
+        node.prop("selected") != null -> ListItem(
+            selected = node.propBool("selected"),
+            onClick = onClick,
+            onLongClick = onLongClick,
+            modifier = modifier,
+            enabled = enabled,
+            leadingContent = leading,
+            content = content,
+        )
+        else -> ListItem(
+            onClick = onClick,
+            onLongClick = onLongClick,
+            modifier = modifier,
+            enabled = enabled,
+            leadingContent = leading,
+            content = content,
+        )
+    }
 }
 
 @Composable
@@ -1877,58 +2011,33 @@ private fun LuiDrawer(
     children: List<Long>,
 ) {
     val presented = node.propBool("selected")
-    val width = node.propInt("width", 320)
-    val enabled = node.isEnabled()
-    var swiping by remember(id) { mutableStateOf(false) }
-    val threshold = with(LocalDensity.current) { 48.dp.toPx() }
-    // Android back closes the drawer instead of leaving the app — mirrors
-    // tapping the scrim.
-    androidx.activity.compose.BackHandler(
-        enabled = presented && enabled && node.propBool("toggle-enabled"),
-    ) {
-        backend.emit(LuiEvent.ToggleChanged(id, false))
+    val modelPresented by rememberUpdatedState(presented)
+    val toggleEnabled by rememberUpdatedState(node.propBool("toggle-enabled"))
+    val drawerState = rememberDrawerState(if (presented) DrawerValue.Open else DrawerValue.Closed)
+    LaunchedEffect(presented) {
+        if (presented) drawerState.open() else drawerState.close()
     }
-    Box(modifier.fillMaxSize().pointerInput(id, enabled, presented) {
-        if (enabled && node.propBool("toggle-enabled")) {
-            var distance = 0f
-            detectHorizontalDragGestures(
-                onDragStart = { distance = 0f; swiping = true },
-                onDragCancel = { swiping = false },
-                onDragEnd = {
-                    if ((!presented && distance > threshold) || (presented && distance < -threshold)) {
-                        backend.emit(LuiEvent.ToggleChanged(id, !presented))
-                    }
-                    swiping = false
-                },
-            ) { change, amount -> change.consume(); distance += amount }
+    LaunchedEffect(drawerState) {
+        snapshotFlow { drawerState.currentValue }.drop(1).collect { value ->
+            val open = value == DrawerValue.Open
+            if (open != modelPresented && toggleEnabled) backend.emit(LuiEvent.ToggleChanged(id, open))
         }
-    }) {
-        CompositionLocalProvider(LocalLuiScrollingEnabled provides (!presented && !swiping)) {
-            children.firstOrNull()?.let { LuiNodeView(backend, it) }
-        }
-        if (presented) {
-            Box(
-                Modifier.fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0f))
-                    .pointerInput(id) {
-                        detectTapGestures {
-                            if (enabled && node.propBool("toggle-enabled")) {
-                                backend.emit(LuiEvent.ToggleChanged(id, false))
-                            }
-                        }
-                    },
-            )
-            Surface(
-                modifier = Modifier.fillMaxHeight()
-                    .width(width.dp.coerceAtMost(360.dp))
-                    .align(Alignment.CenterStart),
-                color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 8.dp,
+    }
+    ModalNavigationDrawer(
+        modifier = modifier,
+        drawerState = drawerState,
+        gesturesEnabled = node.isEnabled() && toggleEnabled,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerState = drawerState,
+                modifier = node.prop("width")?.intValue?.let { Modifier.width(it.dp) } ?: Modifier,
             ) {
-                Column {
-                    children.drop(1).forEachNode { LuiNodeView(backend, it) }
-                }
+                children.drop(1).forEachNode { LuiNodeView(backend, it) }
             }
+        },
+    ) {
+        CompositionLocalProvider(LocalLuiScrollingEnabled provides (drawerState.isClosed && !drawerState.isAnimationRunning)) {
+            children.firstOrNull()?.let { LuiNodeView(backend, it) }
         }
     }
 }
@@ -2030,21 +2139,23 @@ private fun LuiToolbar(
     val pinTrailing = (node.propString("style-class") ?: "")
         .split(" ").contains("scroll-leading") && children.size >= 2
     if (!pinTrailing) {
-        Row(
-            modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(gap.dp),
-        ) {
-            children.forEachNode { LuiNodeView(backend, it) }
+        HorizontalFloatingToolbar(expanded = true, modifier = modifier) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(gap.dp)) {
+                children.forEachNode { LuiNodeView(backend, it) }
+            }
         }
     } else {
-        Row(modifier, horizontalArrangement = Arrangement.spacedBy(gap.dp)) {
-            Row(
-                Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(gap.dp),
-            ) {
-                children.dropLast(1).forEachNode { LuiNodeView(backend, it) }
+        HorizontalFloatingToolbar(expanded = true, modifier = modifier) {
+            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(gap.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(gap.dp),
+                ) {
+                    children.dropLast(1).forEachNode { LuiNodeView(backend, it) }
+                }
+                LuiNodeView(backend, children.last())
             }
-            LuiNodeView(backend, children.last())
         }
     }
 }
