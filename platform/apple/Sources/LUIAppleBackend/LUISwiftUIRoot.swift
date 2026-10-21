@@ -2210,12 +2210,19 @@ private struct LUIOverlayView: View {
         } else {
             base = AnyView(EmptyView())
         }
-        return model.children.dropFirst().reduce(base) { content, childID in
-            AnyView(
-                content.overlay(alignment: alignment(of: childID)) {
+        // Keep the base at the same structural position as overlays appear and
+        // disappear, preserving native controls and their first responder.
+        return base.overlay {
+            ZStack {
+                ForEach(Array(model.children.dropFirst()), id: \.self) { childID in
                     LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                        .frame(
+                            maxWidth: .infinity,
+                            maxHeight: .infinity,
+                            alignment: alignment(of: childID)
+                        )
                 }
-            )
+            }
         }
     }
 }
