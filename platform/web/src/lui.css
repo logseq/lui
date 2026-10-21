@@ -400,11 +400,15 @@ body {
 
   .lui-split {
     @apply relative grid overflow-hidden;
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .lui-split-panes {
     @apply grid size-full;
+    min-inline-size: 0;
+    min-block-size: 0;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .lui-split-divider {
