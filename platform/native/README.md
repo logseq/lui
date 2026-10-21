@@ -95,8 +95,12 @@ Plugins (JSON-in/JSON-out services under the `plugin:<name>` namespace):
 
 ```sh
 OPAMSWITCH=5.5.0 opam exec -- dune build platform/native/
-OPAMSWITCH=5.5.0 opam exec -- dune runtest platform/native/ --force
+OPAMSWITCH=5.5.0 opam exec -- dune runtest platform/native/ -j 1 --force
 ```
+
+Run tests with one Dune job so frame-budget measurements do not compete with
+other tests or compilation. The CLI scaffold test uses installed libraries,
+excluding Dune's temporary local install tree from its library search path.
 
 System deps (macOS): `brew install sdl2 sdl2_ttf`; opam: `tsdl tsdl-ttf tgls
 alcotest imagelib`. Platform libs build everywhere — real implementations are

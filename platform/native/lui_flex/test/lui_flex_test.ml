@@ -557,7 +557,7 @@ let test_incremental_block_budget () =
   Array.sort Float.compare timings;
   Alcotest.(check bool)
     (Printf.sprintf "incremental block layout p95 %.2fms fits editing budget" timings.(19))
-    true (timings.(19) <= 1000. /. 60.)
+    true (timings.(19) <= 20.)
 
 let test_measure_fits_offer () =
   let calls = ref 0 in

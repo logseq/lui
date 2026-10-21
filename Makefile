@@ -12,7 +12,8 @@ generate-json-view:
 	python3 tools/gen_json_view.py
 
 test-ocaml:
-	opam exec -- dune build --action-stderr-on-success=must-be-empty @runtest
+	# Run frame-budget tests without competing Dune jobs.
+	opam exec -- dune build --action-stderr-on-success=must-be-empty @runtest -j 1
 
 test-apple:
 	swift test
