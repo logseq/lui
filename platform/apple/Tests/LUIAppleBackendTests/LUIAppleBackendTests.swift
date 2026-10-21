@@ -70,6 +70,31 @@ struct LUISwiftUIBackendTests {
         #expect(tracker.title == nil)
     }
 
+    @Test("removing the last context action retains its native row anchor")
+    func emptyContextMenuRetainsRowAnchor() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"list-item"},
+          {"op":"set-prop","id":1,"property":"text","value":"Local graph"},
+          {"op":"create-node","id":2,"kind":"context-menu"},
+          {"op":"create-node","id":3,"kind":"menu-item"},
+          {"op":"set-prop","id":3,"property":"text","value":"Delete local graph"},
+          {"op":"set-prop","id":3,"property":"press-enabled","value":true},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """)
+        let row = try #require(backend.model(id: 1))
+        #expect(row.childData.contextMenuID == 2)
+        try backend.apply(json: """
+        {"generation":2,"ops":[{"op":"remove-child","parent":2,"child":3},{"op":"detach-subtree","id":3}]}
+        """)
+        #expect(backend.model(id: 1) === row)
+        #expect(row.childData.contextMenuID == 2)
+        #expect(backend.model(id: 2)?.children.isEmpty == true)
+    }
+
     @Test("virtual window replacement bypasses the collection burst delay")
     func virtualWindowReplacementCommitsImmediately() throws {
         let backend = LUIAppleBackend()

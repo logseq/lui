@@ -171,7 +171,7 @@ struct LUIChildData: Equatable {
     /// Per-child layout fields keyed by child id; extension and unmounted
     /// children have no entry.
     var layout: [Int: LUIChildLayout] = [:]
-    /// First `context-menu` child containing at least one `menu-item`.
+    /// First `context-menu` child, retained even while its actions are empty.
     var contextMenuID: Int?
     /// First `dropdown-menu` / `tooltip` child carrying an `anchor` prop.
     var anchoredMenuID: Int?
@@ -1635,9 +1635,10 @@ public final class LUIAppleBackend {
             case .contextMenu:
                 if !sawContextMenu {
                     sawContextMenu = true
-                    if child.children.contains(where: { models[$0]?.kind == .menuItem }) {
-                        data.contextMenuID = childID
-                    }
+                    // Menu membership can change before a native list row
+                    // is removed. Its presentation anchor must retain the
+                    // same lifetime as the context-menu node itself.
+                    data.contextMenuID = childID
                 }
             case .swipeActions, .listSectionHeader, .listSectionFooter:
                 break
