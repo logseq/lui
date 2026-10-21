@@ -76,6 +76,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.currentCompositionLocalContext
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.key
 import androidx.compose.foundation.lazy.items
@@ -93,6 +94,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
@@ -104,6 +107,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -118,6 +122,10 @@ import androidx.compose.ui.unit.sp
  */
 @Composable
 fun LuiNodeView(backend: LuiBackend, id: Long) {
+    if (LocalLuiContextMenus.current?.view !== LocalView.current) {
+        LuiContextMenuRoot(backend, id) { LuiNodeView(backend, id) }
+        return
+    }
     val node = backend.node(id)
     if (node == null) {
         LuiExtensionView(backend, id)
@@ -134,48 +142,37 @@ fun LuiNodeView(backend: LuiBackend, id: Long) {
     }
 }
 
-/**
- * Applies the shared chrome (sizing/background/border/padding/gestures)
- * around the kind-specific content, and renders an attached context-menu
- * child as a popup anchored to the long-press point.
- */
+private class LuiContextMenuAnchor {
+    var coordinates: LayoutCoordinates? = null
+}
+
+/** Applies shared chrome directly; the root owns context-menu popups. */
 @Composable
 private fun LuiChromeSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
-    var contextMenuAt by remember(id) { mutableStateOf<Offset?>(null) }
-    val contextMenuId =
-        node.children.firstOrNull { backend.node(it)?.kind == LuiNodeKind.contextMenu }
+    val menuId = node.children.firstOrNull { backend.node(it)?.kind == LuiNodeKind.contextMenu }
     val hidden = node.propString("display") == "none" ||
         (node.kind == LuiNodeKind.virtualList && node.prop("selected")?.boolValue == false)
     val retainedVisibility = if (hidden) {
         Modifier.layout { measurable, constraints ->
-            val measured = measurable.measure(constraints)
+            measurable.measure(constraints)
             layout(0, 0) { }
         }
     } else Modifier
-    val modifier = retainedVisibility
-        .luiChrome(node)
-        .luiGestures(backend, node, id) { offset -> contextMenuAt = offset }
-
-    Box {
-        LuiNodeContent(backend, node, id, modifier)
-        val menuId = contextMenuId
-        val anchor = contextMenuAt
-        if (anchor != null && menuId != null) {
-            val menu = backend.node(menuId)
-            if (menu != null) {
-                DropdownMenu(
-                    expanded = true,
-                    onDismissRequest = {
-                        contextMenuAt = null
-                        backend.emit(LuiEvent.Dismiss(menuId))
-                    },
-                    offset = with(LocalDensity.current) { DpOffset(anchor.x.toDp(), 0.dp) },
-                ) {
-                    menu.children.forEachNode { childId -> LuiMenuEntry(backend, childId) }
+    val chrome = retainedVisibility.luiChrome(node)
+    val modifier = if (menuId == null) {
+        chrome.luiGestures(backend, node, id)
+    } else {
+        val anchor = remember(id) { LuiContextMenuAnchor() }
+        val menus = requireNotNull(LocalLuiContextMenus.current)
+        val locals = currentCompositionLocalContext
+        chrome.onGloballyPositioned { anchor.coordinates = it }
+            .luiGestures(backend, node, id) { offset ->
+                anchor.coordinates?.takeIf { it.isAttached }?.let { coordinates ->
+                    menus.popup = LuiContextMenuPopup(id, menuId, coordinates.localToWindow(offset), locals)
                 }
             }
-        }
     }
+    LuiNodeContent(backend, node, id, modifier)
 }
 
 /**
