@@ -812,6 +812,8 @@ private struct LUINodeView: View {
                     )
                     .luiTypographyMetrics(typography, baseSize: headingSize)
                     .accessibilityAddTraits(.isHeader)
+                    .modifier(LUIScrollHeadingModifier(title: model.text,
+                        enabled: model.derived.styleClassTokens.contains("scroll-section-title")))
             )
         case .paragraph:
             return AnyView(
@@ -6950,7 +6952,7 @@ private struct LUIVirtualListView: View {
                                     index: row.index, title: row.title,
                                     coordinateSpace: titleCoordinateSpace,
                                     onVisibilityChange: { index, title in
-                                        titleTracker.update(index: index, title: title)
+                                        titleTracker.update(index: index, title: title, startsSection: row.startsSection)
                                     }
                                 ))
                             } else { rowView }
@@ -6963,6 +6965,8 @@ private struct LUIVirtualListView: View {
             .onAppear { revealTarget(using: proxy) }
             .onChange(of: scrollRequest) { _, _ in revealTarget(using: proxy) }
             .coordinateSpace(name: titleCoordinateSpace)
+            .environment(\.luiScrollHeadingContext, tracksSectionTitles
+                ? LUIScrollHeadingContext(coordinateSpace: titleCoordinateSpace, tracker: titleTracker) : nil)
             .environment(\.luiInsideScroll, true)
             .background {
                 LUIScrollSectionTitleEmitter(tracker: titleTracker,
@@ -7031,6 +7035,7 @@ private struct LUIVirtualListView: View {
         let windowIndex: Int
         let index: Int
         let title: String?
+        var startsSection = false
         let estimatedHeight: CGFloat
         let tracksSectionHeight: Bool
     }
@@ -7045,6 +7050,7 @@ private struct LUIVirtualListView: View {
             let window: LUIVirtualWindow?
             let children: [Int]
             let title: String?
+            let startsSection: Bool
             let padding: CGFloat
             let tracksSectionHeight: Bool
             let titles: [Int: String]
@@ -7076,13 +7082,15 @@ private struct LUIVirtualListView: View {
                     nodeID: segment.children.indices.contains(childOffset) ? segment.children[childOffset] : nil,
                     windowID: segment.source, windowIndex: offset, index: index,
                     title: window.sectionTitle(at: offset)
-                        ?? (segment.children.indices.contains(childOffset) ? segment.titles[segment.children[childOffset]] : nil),
+                        ?? (segment.children.indices.contains(childOffset) ? segment.titles[segment.children[childOffset]] : nil)
+                        ?? segment.title,
+                    startsSection: window.sectionTitles.contains(where: { $0.index == offset }),
                     estimatedHeight: window.extent,
                     tracksSectionHeight: segment.tracksSectionHeight && offset < window.firstSectionCount)
             }
             return SectionRow(id: SlotID(source: segment.source, offset: -1),
                 nodeID: segment.source, windowID: nil, windowIndex: 0,
-                index: index, title: segment.title, estimatedHeight: 0, tracksSectionHeight: false)
+                index: index, title: segment.title, startsSection: segment.startsSection, estimatedHeight: 0, tracksSectionHeight: false)
         }
     }
 
@@ -7090,6 +7098,7 @@ private struct LUIVirtualListView: View {
         let titles = model.childData.sectionTitles ?? [:]
         var segments: [SectionRows.Segment] = []
         var total = 0
+        var inheritedTitle: String?
         for id in model.visibleChildren {
             let source = backend.model(id: id)
             let window = LUIVirtualWindow(source?.property(.dataAttrs)?.stringValue)
@@ -7104,9 +7113,11 @@ private struct LUIVirtualListView: View {
                 padding = max(0, (unobscuredHeight ?? 0) - window.firstSectionInset - measured)
             }
             let count = (window?.count ?? 1) + (padding > 0 ? 1 : 0)
+            let startsSection = titles[id] != nil && titles[id] != inheritedTitle
+            if let title = titles[id] { inheritedTitle = title }
             segments.append(SectionRows.Segment(source: id, base: total, count: count,
                 window: window, children: window == nil ? [] : (source?.visibleChildren ?? []),
-                title: titles[id], padding: padding, tracksSectionHeight: tracksHeight,
+                title: inheritedTitle, startsSection: startsSection, padding: padding, tracksSectionHeight: tracksHeight,
                 titles: source?.childData.sectionTitles ?? [:]))
             total += count
         }

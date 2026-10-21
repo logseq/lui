@@ -31,6 +31,30 @@ private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
 @MainActor
 @Suite("LUI SwiftUI backend", .serialized)
 struct LUISwiftUIBackendTests {
+    @Test("scroll titles wait for the heading to pass the viewport top")
+    func scrollTitleWaitsForHeading() {
+        let tracker = LUIScrollSectionTitleTracker()
+        tracker.update(index: 0, title: "Today", startsSection: true)
+        #expect(tracker.title == nil)
+        tracker.updateHeading(title: "Today", isPastTop: false)
+        #expect(tracker.title == nil)
+        tracker.updateHeading(title: "Today", isPastTop: true)
+        #expect(tracker.title == "Today")
+        tracker.update(index: 0, title: nil)
+        tracker.update(index: 1, title: "Today")
+        #expect(tracker.title == "Today")
+        tracker.updateHeading(title: "Today", isPastTop: false)
+        #expect(tracker.title == nil)
+        tracker.updateHeading(title: "Today", isPastTop: true)
+        tracker.update(index: 2, title: "Yesterday")
+        tracker.updateHeading(title: "Yesterday", isPastTop: false)
+        #expect(tracker.title == "Today")
+        tracker.update(index: 1, title: nil)
+        #expect(tracker.title == nil)
+        tracker.updateHeading(title: "Yesterday", isPastTop: true)
+        #expect(tracker.title == "Yesterday")
+    }
+
     @Test("virtual window replacement bypasses the collection burst delay")
     func virtualWindowReplacementCommitsImmediately() throws {
         let backend = LUIAppleBackend()
