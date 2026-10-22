@@ -438,8 +438,8 @@ let dynamic mount : t =
     node
   | None ->
     (* A dynamic rendered as the branch of another dynamic has no anchor of
-       its own: mount under a transparent stack so it still has a home. *)
-    let anchor = Lui_ui.stack context in
+       its own: mount under a transparent box supported by every backend. *)
+    let anchor = Lui_ui.box context in
     Lui_ui.string_property context anchor DisplayValue "contents";
     ignore (mount context anchor);
     anchor

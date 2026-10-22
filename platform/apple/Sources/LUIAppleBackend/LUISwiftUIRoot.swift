@@ -2849,7 +2849,10 @@ private struct LUIModalSurfaceContent: View {
 
     var body: some View {
         surfaceContent
+            .environment(\.luiSemanticColors, effectiveSemanticColors)
+            .preferredColorScheme(effectiveColorScheme)
             .modifier(LUIModalPresentationStyle(model: model))
+            .presentationBackground(modalBackground)
             .sheet(item: Binding(
             get: { backend.modalPresentation.nestedSheets[model.id] },
             set: { value in
@@ -2862,7 +2865,7 @@ private struct LUIModalSurfaceContent: View {
             LUIModalSurfaceContent(model: presentation.model, backend: backend)
                 .luiSheetScope(
                     semanticColors: effectiveSemanticColors,
-                    colorScheme: colorScheme
+                    colorScheme: effectiveColorScheme
                 )
         }
     }
@@ -2871,18 +2874,31 @@ private struct LUIModalSurfaceContent: View {
     /// ancestors never reach it through the environment — walk the chain and
     /// apply each ancestor's commit-decoded tokens the same way
     /// `LUIThemeScopeModifier` does (outermost-first, inner wins).
-    private var effectiveSemanticColors: [String: Color] {
+    private var themeAncestors: [LUINodeModel] {
         var ancestors: [LUINodeModel] = []
         var cursor = model.parent
-        while let parentID = cursor,
-              let parent = backend.model(id: parentID) {
-            ancestors.append(parent)
-            cursor = parent.parent
+        while let parentID = cursor {
+            if let parent = backend.model(id: parentID) {
+                ancestors.append(parent)
+                cursor = parent.parent
+            } else {
+                cursor = backend.extensionModel(id: parentID)?.parent
+            }
         }
+        return ancestors.reversed()
+    }
+
+    private var effectiveColorScheme: ColorScheme {
+        themeAncestors.reduce(colorScheme) { $1.derived.themeScope.scheme ?? $0 }
+    }
+
+    private var effectiveSemanticColors: [String: Color] {
         var colors = semanticColors
-        for ancestor in ancestors.reversed() {
+        var scheme = colorScheme
+        for ancestor in themeAncestors {
+            scheme = ancestor.derived.themeScope.scheme ?? scheme
             colors.merge(
-                ancestor.derived.themeScope.colors(dark: colorScheme == .dark)
+                ancestor.derived.themeScope.colors(dark: scheme == .dark)
             ) { _, new in new }
         }
         return colors
@@ -2936,7 +2952,7 @@ private struct LUIModalSurfaceContent: View {
         if LUIModalBackgroundPolicy.usesGroupedSystemBackground(
             styleClass: model.derived.styleClass
         ) {
-            return modalGroupedSystemBackground
+            return effectiveSemanticColors["background"] ?? modalGroupedSystemBackground
         }
         return LUIModalBackgroundPolicy.color(
             semanticColors: effectiveSemanticColors,
@@ -6711,6 +6727,7 @@ private struct LUIListView: View {
             .modifier(LUIListRowSeparatorModifier(
                 visibility: backend.model(id: childID)?.separatorVisibility
             ))
+            .environment(\.luiIsNativeFormRow, true)
             .listRowBackground(semanticColors["surface"])
         }
     }
@@ -7447,7 +7464,11 @@ private struct LUITextControlView: View {
             .submitLabel(model.property(.submitOnEnter)?.boolValue == true ? .send : .return)
         } else if model.kind == .searchField {
             #if os(iOS)
-            iosSearchFieldRow.textFieldStyle(.roundedBorder)
+            iosSearchFieldRow
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
             #else
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
