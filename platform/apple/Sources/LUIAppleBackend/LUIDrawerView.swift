@@ -3,6 +3,23 @@ import SwiftUI
 import UIKit
 #endif
 
+#if os(iOS)
+enum LUIDrawerScrollInteractionPolicy {
+    static func defersToHorizontalScroll(from view: UIView?) -> Bool {
+        var candidate = view
+        while let current = candidate {
+            if let scroll = current as? UIScrollView, scroll.isScrollEnabled,
+               scroll.alwaysBounceHorizontal || scroll.contentSize.width + scroll.adjustedContentInset.left
+                + scroll.adjustedContentInset.right > scroll.bounds.width + 1 {
+                return true
+            }
+            candidate = current.superview
+        }
+        return false
+    }
+}
+#endif
+
 enum LUIDrawerGeometry {
     static func gestureIsEligible(
         enabled: Bool,
@@ -608,6 +625,14 @@ private struct LUIDrawerNativeInteraction: UIViewRepresentable {
 
         override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
             guard configuration.isEnabled, !configuration.isLocked else { return false }
+            if !configuration.isPresented, let root = gestureRoot {
+                let location = pan.location(in: root)
+                let translation = pan.translation(in: root)
+                let origin = CGPoint(x: location.x - translation.x, y: location.y - translation.y)
+                if LUIDrawerScrollInteractionPolicy.defersToHorizontalScroll(from: root.hitTest(origin, with: nil)) {
+                    return false
+                }
+            }
             let velocity = pan.velocity(in: gestureRoot)
             guard abs(velocity.x) > abs(velocity.y) * 2 else { return false }
             return configuration.isPresented ? velocity.x < 0 : velocity.x > 0
