@@ -2849,7 +2849,9 @@ private struct LUIModalSurfaceContent: View {
 
     var body: some View {
         surfaceContent
+            .environment(\.luiSemanticColors, effectiveSemanticColors)
             .modifier(LUIModalPresentationStyle(model: model))
+            .presentationBackground(modalBackground)
             .sheet(item: Binding(
             get: { backend.modalPresentation.nestedSheets[model.id] },
             set: { value in
@@ -2936,7 +2938,7 @@ private struct LUIModalSurfaceContent: View {
         if LUIModalBackgroundPolicy.usesGroupedSystemBackground(
             styleClass: model.derived.styleClass
         ) {
-            return modalGroupedSystemBackground
+            return effectiveSemanticColors["background"] ?? modalGroupedSystemBackground
         }
         return LUIModalBackgroundPolicy.color(
             semanticColors: effectiveSemanticColors,
