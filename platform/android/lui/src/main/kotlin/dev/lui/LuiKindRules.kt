@@ -944,6 +944,7 @@ internal object LuiKindRules {
             "text-decoration" -> textDecorationSupported(value.stringValue)
             "white-space" -> value.stringValue in setOf("normal", "nowrap", "pre-wrap")
             "text-overflow" -> value.stringValue in setOf("clip", "ellipsis")
+            "text-alignment" -> value.stringValue in textAlignments
             "user-select" -> value.stringValue in setOf("none", "text")
             "cursor" -> value.stringValue in setOf("default", "pointer", "text")
             "data-attrs" -> value.stringValue?.let { dataAttrsValueOk(it) } == true
