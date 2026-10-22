@@ -302,8 +302,8 @@ private fun LuiNodeContent(
         LuiNodeKind.root -> children.firstOrNull()?.let { LuiNodeView(backend, it) }
 
         LuiNodeKind.row -> Row(
-            modifier = modifier,
-            horizontalArrangement = Arrangement.spacedBy(
+            modifier = if (node.propString("main") == "space_between") modifier.fillMaxWidth() else modifier,
+            horizontalArrangement = if (node.propString("main") == "space_between") Arrangement.SpaceBetween else Arrangement.spacedBy(
                 gapOf(node).dp,
                 alignment = mainHorizontalAlignment(node.propString("main")),
             ),
@@ -1423,8 +1423,9 @@ private fun LuiMenuItem(
     }
 
     val onClick = {
-        onSelect()
+        // A shared dismissal can unmount this option and its event handler.
         backend.emit(LuiEvent.Press(id))
+        onSelect()
     }
     if (node.prop("selected") != null) {
         SelectableDropdownMenuItem(
