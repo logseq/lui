@@ -264,10 +264,11 @@ private fun emitValueChange(backend: LuiBackend, node: LuiNodeLike, id: Long, va
 
 /** Applies `grow` to a child inside a Row. */
 @Composable
-private fun RowScope.GrowChildRow(backend: LuiBackend, childId: Long) {
+private fun RowScope.GrowChildRow(backend: LuiBackend, childId: Long, stretch: Boolean = false) {
     val grow = backend.node(childId)?.prop("grow")?.numberValue ?: 0.0
-    if (grow > 0) {
-        Box(Modifier.weight(grow.toFloat().coerceAtLeast(0.001f)), propagateMinConstraints = true) {
+    if (grow > 0 || stretch) {
+        val sizing = if (grow > 0) Modifier.weight(grow.toFloat().coerceAtLeast(0.001f)) else Modifier
+        Box(if (stretch) sizing.fillMaxHeight() else sizing, propagateMinConstraints = true) {
             LuiNodeView(backend, childId)
         }
     } else {
@@ -309,7 +310,9 @@ private fun LuiNodeContent(
         LuiNodeKind.root -> children.firstOrNull()?.let { LuiNodeView(backend, it) }
 
         LuiNodeKind.row -> Row(
-            modifier = if (node.propString("main") == "space_between") modifier.fillMaxWidth() else modifier,
+            modifier = modifier
+                .then(if (node.propString("main") == "space_between") Modifier.fillMaxWidth() else Modifier)
+                .then(if (node.propString("cross") == "stretch") Modifier.height(IntrinsicSize.Min) else Modifier),
             horizontalArrangement = if (node.propString("main") == "space_between") Arrangement.SpaceBetween else Arrangement.spacedBy(
                 gapOf(node).dp,
                 alignment = mainHorizontalAlignment(node.propString("main")),
@@ -320,7 +323,7 @@ private fun LuiNodeContent(
                 else -> Alignment.CenterVertically
             },
         ) {
-            children.forEachNode { childId -> GrowChildRow(backend, childId) }
+            children.forEachNode { childId -> GrowChildRow(backend, childId, node.propString("cross") == "stretch") }
         }
 
         LuiNodeKind.column,
