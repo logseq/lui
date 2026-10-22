@@ -71,6 +71,7 @@ internal fun LuiVirtualList(backend: LuiBackend, node: LuiNodeLike, id: Long, mo
     val pinned = attributes["data-pinned-index"]?.toIntOrNull() ?: -1
     val extent = attributes["data-item-extent"]?.toIntOrNull() ?: 32
     val rows = window?.children.orEmpty()
+    val length = attributes["data-virtual-length"]?.toIntOrNull() ?: rows.size
     val initial = remember(identity) { backend.scrollPositions[identity] ?: LuiScrollPosition() }
     val state = remember(identity) { LazyListState(initial.index, initial.offset) }
     val heights = remember(identity) { mutableMapOf<Int, Int>() }
@@ -134,7 +135,8 @@ internal fun LuiVirtualList(backend: LuiBackend, node: LuiNodeLike, id: Long, mo
         content.before.forEach { id -> item(key = "fixed:$id") { LuiNodeView(backend, id) } }
         // Preserve the active editor and its input connection when a split moves it.
         items(count, key = { if (it == pinned) "editor:${content.window}" else "row:$it" }) { index ->
-            val id = rows.getOrNull(index - start)
+            val slot = if (index == pinned && index !in start until start + length) length else index - start
+            val id = rows.getOrNull(slot)
             if (id != null) {
                 Box(Modifier.fillMaxWidth().onSizeChanged { heights[index] = it.height }) {
                     LuiNodeView(backend, id)
