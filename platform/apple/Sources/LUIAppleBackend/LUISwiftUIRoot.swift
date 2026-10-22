@@ -6976,37 +6976,68 @@ private struct LUIVirtualListView: View {
     @State private var titleTracker = LUIScrollSectionTitleTracker()
     @State private var windowTracker = LUIVirtualWindowTracker()
     @State private var firstSectionHeights: [SlotID: CGFloat] = [:]
+    @State private var rowFrames = LUIVirtualRowFrames()
+    @State private var pinnedFrame: PinnedFrame?
+    @State private var pinnedSize: PinnedSize?
+
+    private struct ContentSpace: Hashable { let nodeID: Int }
+    private struct PinnedFrame: Equatable { let id: SlotID; let frame: CGRect }
+    private struct PinnedSize: Equatable { let id: SlotID; let height: CGFloat }
 
     var body: some View {
+        let rows = sectionRows
+        let editor = rows.editor
+        let contentSpace = ContentSpace(nodeID: model.id)
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(
                     alignment: .leading,
                     spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
                 ) {
-                    let rows = sectionRows
                     ForEach(LUIVirtualRowIndices(count: rows.endIndex, editor: rows.editor), id: \.id) { slot in
                         // A concrete, single-view root keeps SwiftUI from asking
                         // every virtual slot for its conditional view-list count.
                         VStack(alignment: .leading, spacing: 0) {
                             let row = rows[slot.position]
-                            let rowView = LUIVirtualListRow(row: row, backend: backend,
-                                tracker: windowTracker, coordinateSpace: titleCoordinateSpace,
-                                viewportHeight: unobscuredHeight ?? 600,
-                                onMeasure: { id, height in
-                                    if firstSectionHeights[id] != height { firstSectionHeights[id] = height }
-                                })
-                            if tracksSectionTitles {
-                                rowView.modifier(LUIScrollSectionFrameModifier(
-                                    index: row.index, title: row.title,
-                                    coordinateSpace: titleCoordinateSpace,
-                                    onVisibilityChange: { index, title in
-                                        titleTracker.update(index: index, title: title, startsSection: row.startsSection)
-                                    }
-                                ))
-                            } else { rowView }
+                            if slot.position == editor?.position {
+                                Color.clear
+                                    .frame(height: pinnedSize?.id == row.id ? pinnedSize!.height
+                                        : rowFrames.frames[row.id]?.height ?? row.estimatedHeight)
+                            } else { virtualRow(row) }
+                        }
+                        .onGeometryChange(for: CGRect.self) { geometry in
+                            geometry.frame(in: .named(contentSpace))
+                        } action: { frame in
+                            let id = rows[slot.position].id
+                            rowFrames.frames[id] = frame
+                            if slot.position == editor?.position {
+                                let next = PinnedFrame(id: id, frame: frame)
+                                if pinnedFrame != next { pinnedFrame = next }
+                            }
                         }
                         .id(slot.id)
+                    }
+                }
+                .coordinateSpace(name: contentSpace)
+                .overlay(alignment: .topLeading) {
+                    if let editor {
+                        let row = rows[editor.position]
+                        let frame = pinnedFrame?.id == row.id ? pinnedFrame?.frame : rowFrames.frames[row.id]
+                        if row.nodeID != nil, let frame {
+                            // A focused native control cannot live inside a lazy
+                            // slot: offscreen eviction removes it from the window
+                            // and resigns first responder. Keep one real row in
+                            // this persistent overlay, reserving its slot above.
+                            virtualRow(row)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .onGeometryChange(for: PinnedSize.self) {
+                                    PinnedSize(id: row.id, height: $0.size.height)
+                                } action: { size in
+                                    if pinnedSize != size { pinnedSize = size }
+                                }
+                                .offset(y: frame.minY)
+                                .id(editor.source)
+                        }
                     }
                 }
                 .environment(\.luiUnobscuredScrollHeight, unobscuredHeight)
@@ -7032,6 +7063,24 @@ private struct LUIVirtualListView: View {
                 .ignoresSafeArea(.keyboard, edges: .bottom)
             }
         }
+    }
+
+    @ViewBuilder private func virtualRow(_ row: SectionRow) -> some View {
+        let content = LUIVirtualListRow(row: row, backend: backend,
+            tracker: windowTracker, coordinateSpace: titleCoordinateSpace,
+            viewportHeight: unobscuredHeight ?? 600,
+            onMeasure: { id, height in
+                if firstSectionHeights[id] != height { firstSectionHeights[id] = height }
+            })
+        if tracksSectionTitles {
+            content.modifier(LUIScrollSectionFrameModifier(
+                index: row.index, title: row.title,
+                coordinateSpace: titleCoordinateSpace,
+                onVisibilityChange: { index, title in
+                    titleTracker.update(index: index, title: title, startsSection: row.startsSection)
+                }
+            ))
+        } else { content }
     }
 
     private struct ScrollRequest: Equatable {
@@ -7126,7 +7175,15 @@ private struct LUIVirtualListView: View {
                         estimatedHeight: segment.padding, tracksSectionHeight: false)
                 }
                 if segment.padding > 0, offset > window.firstSectionCount { offset -= 1 }
-                let childOffset = offset - window.start
+                let childOffset: Int
+                if offset >= window.start, offset < window.start + window.length {
+                    childOffset = offset - window.start
+                } else if offset == window.pinnedIndex {
+                    // The focused row stays mounted after the bounded window.
+                    childOffset = window.length
+                } else {
+                    childOffset = -1
+                }
                 return SectionRow(id: SlotID(source: segment.source, offset: offset),
                     nodeID: segment.children.indices.contains(childOffset) ? segment.children[childOffset] : nil,
                     windowID: segment.source, windowIndex: offset, index: index,
@@ -7175,12 +7232,17 @@ private struct LUIVirtualListView: View {
 
 }
 
+private final class LUIVirtualRowFrames {
+    var frames: [LUIVirtualListView.SlotID: CGRect] = [:]
+}
+
 // Window sources expose their total size independently of their mounted
 // children. Stable slot identities let LazyVStack retain measured heights
 // while distant OCaml scopes and native node models are evicted.
 fileprivate struct LUIVirtualWindow {
     let count: Int
     let start: Int
+    let length: Int
     let extent: CGFloat
     let firstSectionCount: Int
     let firstSectionInset: CGFloat
@@ -7215,6 +7277,8 @@ fileprivate struct LUIVirtualWindow {
         }.sorted { $0.index < $1.index }
         self.count = count
         self.start = start
+        length = min(max(0, count - start), max(0,
+            attributes["data-virtual-length"].flatMap(Int.init) ?? (count - start)))
         let pinned = attributes["data-pinned-index"].flatMap(Int.init) ?? -1
         pinnedIndex = (0..<count).contains(pinned) ? pinned : nil
         firstSectionCount = min(count, max(0, attributes["data-first-section-count"].flatMap(Int.init) ?? 0))
