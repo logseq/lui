@@ -1224,7 +1224,7 @@ private fun LuiTextControl(
     }
 
     val fieldModifier = modifier.then(
-        if (grouped || borderless || formField) Modifier.fillMaxWidth() else Modifier.width(240.dp),
+        if (grouped || borderless || formField || search) Modifier.fillMaxWidth() else Modifier.width(240.dp),
     ).focusRequester(focusRequester)
     val fieldTextStyle = (if (borderless) MaterialTheme.typography.bodyLarge
         else MaterialTheme.typography.bodyMedium).copy(

@@ -270,4 +270,20 @@ class LuiScreenshotTest {
 
     @Test fun scrollableTabsLight() = scrollableTabs(dark = false)
     @Test fun scrollableTabsDark() = scrollableTabs(dark = true)
+
+    private fun searchFieldWidth(dark: Boolean) {
+        val backend = backendFor("""{"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"root"},
+          {"op":"create-node","id":2,"kind":"column"},
+          {"op":"set-prop","id":2,"property":"width","value":320},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"create-node","id":3,"kind":"search-field"},
+          {"op":"set-prop","id":3,"property":"placeholder","value":"Search values"},
+          {"op":"insert-child","parent":2,"child":3,"index":0}
+        ]}""")
+        snapshot(if (dark) "search-width-dark" else "search-width-light", backend, dark)
+    }
+
+    @Test fun searchFieldWidthLight() = searchFieldWidth(dark = false)
+    @Test fun searchFieldWidthDark() = searchFieldWidth(dark = true)
 }
