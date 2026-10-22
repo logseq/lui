@@ -74,6 +74,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.ModalBottomSheet
@@ -590,8 +591,14 @@ private fun LuiNodeContent(
             if (children.isNotEmpty()) {
                 val selectedIndex = children.indexOfFirst { backend.node(it)?.propBool("selected") == true }
                     .coerceAtLeast(0)
-                PrimaryTabRow(selectedTabIndex = selectedIndex, modifier = modifier) {
-                    children.forEachNode { LuiNodeView(backend, it) }
+                if (node.propString("style-class").orEmpty().split(' ').contains("scrollable")) {
+                    PrimaryScrollableTabRow(selectedTabIndex = selectedIndex, modifier = modifier, edgePadding = 0.dp) {
+                        children.forEachNode { LuiNodeView(backend, it) }
+                    }
+                } else {
+                    PrimaryTabRow(selectedTabIndex = selectedIndex, modifier = modifier) {
+                        children.forEachNode { LuiNodeView(backend, it) }
+                    }
                 }
             }
         }

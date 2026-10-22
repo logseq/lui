@@ -237,4 +237,37 @@ class LuiScreenshotTest {
 
     @Test
     fun controlsDark() = controlsScreen(dark = true)
+
+    private fun scrollableTabs(dark: Boolean) {
+        val backend = backendFor("""{"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"root"},
+          {"op":"create-node","id":2,"kind":"column"},
+          {"op":"set-prop","id":2,"property":"width","value":220},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"create-node","id":3,"kind":"tabs"},
+          {"op":"set-prop","id":3,"property":"style-class","value":"scrollable"},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"create-node","id":4,"kind":"button"},
+          {"op":"set-prop","id":4,"property":"text","value":"List"},
+          {"op":"set-prop","id":4,"property":"press-enabled","value":true},
+          {"op":"insert-child","parent":3,"child":4,"index":0},
+          {"op":"create-node","id":5,"kind":"button"},
+          {"op":"set-prop","id":5,"property":"text","value":"Table"},
+          {"op":"set-prop","id":5,"property":"selected","value":true},
+          {"op":"set-prop","id":5,"property":"press-enabled","value":true},
+          {"op":"insert-child","parent":3,"child":5,"index":1},
+          {"op":"create-node","id":6,"kind":"button"},
+          {"op":"set-prop","id":6,"property":"text","value":"Gallery"},
+          {"op":"set-prop","id":6,"property":"press-enabled","value":true},
+          {"op":"insert-child","parent":3,"child":6,"index":2},
+          {"op":"create-node","id":7,"kind":"button"},
+          {"op":"set-prop","id":7,"property":"text","value":"Projects"},
+          {"op":"set-prop","id":7,"property":"press-enabled","value":true},
+          {"op":"insert-child","parent":3,"child":7,"index":3}
+        ]}""")
+        snapshot(if (dark) "scrollable-tabs-dark" else "scrollable-tabs-light", backend, dark)
+    }
+
+    @Test fun scrollableTabsLight() = scrollableTabs(dark = false)
+    @Test fun scrollableTabsDark() = scrollableTabs(dark = true)
 }
