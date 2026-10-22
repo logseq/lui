@@ -314,7 +314,7 @@ object LuiSchemaMatrix {
         LuiNodeKind.toolbar to setOf(LuiProperty.height, LuiProperty.padding, LuiProperty.background, LuiProperty.borderWidth, LuiProperty.cornerRadius, LuiProperty.orientation, LuiProperty.accessibilityLabel, LuiProperty.gap, LuiProperty.styleClass, LuiProperty.dataAttrs, LuiProperty.placement, LuiProperty.pointerEnabled),
         LuiNodeKind.bottomTabs to setOf(LuiProperty.accessibilityLabel, LuiProperty.styleClass, LuiProperty.dataAttrs, LuiProperty.grow, LuiProperty.width, LuiProperty.height, LuiProperty.minWidth, LuiProperty.maxWidth, LuiProperty.minHeight, LuiProperty.maxHeight, LuiProperty.pointerEnabled),
         LuiNodeKind.bottomTab to setOf(LuiProperty.title, LuiProperty.icon, LuiProperty.selected, LuiProperty.enabled, LuiProperty.pressEnabled, LuiProperty.pointerEnabled),
-        LuiNodeKind.menuTrigger to setOf(LuiProperty.text, LuiProperty.icon, LuiProperty.accessibilityLabel, LuiProperty.enabled, LuiProperty.foreground, LuiProperty.styleClass, LuiProperty.dataAttrs, LuiProperty.pointerEnabled),
+        LuiNodeKind.menuTrigger to setOf(LuiProperty.text, LuiProperty.textAlignment, LuiProperty.icon, LuiProperty.accessibilityLabel, LuiProperty.enabled, LuiProperty.foreground, LuiProperty.styleClass, LuiProperty.dataAttrs, LuiProperty.pointerEnabled),
         LuiNodeKind.listSection to setOf(LuiProperty.key, LuiProperty.separator, LuiProperty.pointerEnabled),
         LuiNodeKind.swipeActions to setOf(),
         LuiNodeKind.swipeAction to setOf(LuiProperty.text, LuiProperty.icon, LuiProperty.variant, LuiProperty.edge, LuiProperty.enabled, LuiProperty.background, LuiProperty.pressEnabled, LuiProperty.pointerEnabled),

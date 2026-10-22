@@ -388,7 +388,7 @@ let kind_property_matrix kind =
   | Toolbar -> Some [ HeightValue; PaddingValue; BackgroundValue; BorderWidth; CornerRadius; OrientationValue; AccessibilityLabel; Gap; StyleClass; DataAttrs; PlacementValue; PointerEnabled ]
   | BottomTabs -> Some [ AccessibilityLabel; StyleClass; DataAttrs; GrowValue; WidthValue; HeightValue; MinWidth; MaxWidth; MinHeight; MaxHeight; PointerEnabled ]
   | BottomTab -> Some [ TitleValue; InlineIconName; Selected; Enabled; PressEnabled; PointerEnabled ]
-  | MenuTrigger -> Some [ TextValue; InlineIconName; AccessibilityLabel; Enabled; ForegroundValue; StyleClass; DataAttrs; PointerEnabled ]
+  | MenuTrigger -> Some [ TextValue; TextAlignment; InlineIconName; AccessibilityLabel; Enabled; ForegroundValue; StyleClass; DataAttrs; PointerEnabled ]
   | ListSection -> Some [ KeyValue; SeparatorValue; PointerEnabled ]
   | SwipeActions -> Some [  ]
   | SwipeAction -> Some [ TextValue; InlineIconName; VariantValue; EdgeValue; Enabled; BackgroundValue; PressEnabled; PointerEnabled ]

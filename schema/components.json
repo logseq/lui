@@ -2091,6 +2091,7 @@
     "menu-trigger": [
 
       "text",
+      "text-alignment",
       "icon",
       "accessibility-label",
       "enabled",

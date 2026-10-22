@@ -4572,6 +4572,12 @@ private struct LUIMenuTriggerView: View {
         return fixed == nil && maximum == nil ? 44 : nil
     }
 
+    private var labelAlignment: Alignment {
+        LUIButtonVisualPolicy.labelAlignment(
+            textAlignment: model.property(.textAlignment)?.stringValue ?? "center"
+        )
+    }
+
     var body: some View {
         #if os(iOS)
         if inHoistedToolbar {
@@ -4616,12 +4622,14 @@ private struct LUIMenuTriggerView: View {
             .padding(.horizontal, capsuleCell && !iconOnly ? 12 : 0)
             .frame(
                 maxWidth: capsuleCell && iconOnly ? .infinity : nil,
-                maxHeight: capsuleCell ? .infinity : nil
+                maxHeight: capsuleCell ? .infinity : nil,
+                alignment: labelAlignment
             )
             #if os(iOS)
             .frame(
                 width: sizingCell?.surfaceWidth.map(CGFloat.init),
-                height: sizingCell?.surfaceHeight.map(CGFloat.init)
+                height: sizingCell?.surfaceHeight.map(CGFloat.init),
+                alignment: labelAlignment
             )
             .frame(
                 minWidth: minimumExtent(
@@ -4635,7 +4643,8 @@ private struct LUIMenuTriggerView: View {
                     minimum: sizingCell?.surfaceMinHeight,
                     maximum: sizingCell?.surfaceMaxHeight
                 ),
-                maxHeight: sizingCell?.surfaceMaxHeight.map(CGFloat.init)
+                maxHeight: sizingCell?.surfaceMaxHeight.map(CGFloat.init),
+                alignment: labelAlignment
             )
             #endif
             .contentShape(Rectangle())
