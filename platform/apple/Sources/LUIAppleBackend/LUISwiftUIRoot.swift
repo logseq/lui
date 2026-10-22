@@ -7486,6 +7486,7 @@ private struct LUITextControlView: View {
     let backend: LUIAppleBackend
     let grouped: Bool
     @Environment(\.luiIsNativeFormRow) private var isNativeFormRow
+    @Environment(\.luiSemanticColors) private var semanticColors
     @State private var draftState: LUITextDraftState
     @FocusState private var focused: Bool
 
@@ -7549,7 +7550,8 @@ private struct LUITextControlView: View {
                 .textFieldStyle(.plain)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+                .background(semanticColors["surface"] ?? Color(uiColor: .tertiarySystemFill),
+                            in: RoundedRectangle(cornerRadius: 10))
             #else
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
