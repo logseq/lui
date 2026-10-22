@@ -4730,7 +4730,9 @@ private struct LUIListItemView: View {
                 } label: {
                     rowContent
                 }
-            } else if suppressesPrimaryAction {
+            } else if suppressesPrimaryAction || (!model.supportsPress && !model.isTreeItem) {
+                // A content-only row must not install a tap recognizer above
+                // native controls such as the graphical date/time picker.
                 rowContent
             } else {
                 switch LUIListItemInteractionPolicy.style(
@@ -6728,8 +6730,23 @@ private struct LUIListView: View {
                 visibility: backend.model(id: childID)?.separatorVisibility
             ))
             .environment(\.luiIsNativeFormRow, true)
+            .listRowInsets(explicitRowInsets(childID))
             .listRowBackground(semanticColors["surface"])
         }
+    }
+
+    private func explicitRowInsets(_ id: Int) -> EdgeInsets? {
+        guard let row = backend.model(id: id) else { return nil }
+        let keys: [LUIProperty] = [.padding, .paddingHorizontal, .paddingVertical,
+                                   .paddingTop, .paddingBottom, .paddingLeft, .paddingRight]
+        guard keys.contains(where: { row.property($0) != nil }) else { return nil }
+        let all = row.property(.padding)?.intValue
+        let horizontal = row.property(.paddingHorizontal)?.intValue ?? all ?? 20
+        let vertical = row.property(.paddingVertical)?.intValue ?? all ?? 8
+        return EdgeInsets(top: CGFloat(row.property(.paddingTop)?.intValue ?? vertical),
+                          leading: CGFloat(row.property(.paddingLeft)?.intValue ?? horizontal),
+                          bottom: CGFloat(row.property(.paddingBottom)?.intValue ?? vertical),
+                          trailing: CGFloat(row.property(.paddingRight)?.intValue ?? horizontal))
     }
 
     private var sections: [LUIListSection] {
@@ -7657,6 +7674,12 @@ private struct LUIRadioGroupView: View {
 private struct LUICheckboxView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @Environment(\.luiSemanticColors) private var semanticColors
+
+    private var indicatorColor: Color {
+        LUIThemeColorResolver.color(model.property(.foreground)?.stringValue, semanticColors: semanticColors)
+            ?? (model.isChecked ? .accentColor : .secondary)
+    }
 
     var body: some View {
         #if os(macOS)
@@ -7670,6 +7693,7 @@ private struct LUICheckboxView: View {
                 .opacity(model.property(.labelOpacity)?.doubleValue ?? 1)
         }
         .toggleStyle(.checkbox)
+        .tint(indicatorColor)
         .disabled(!model.isEnabled)
         #else
         Button {
@@ -7683,9 +7707,7 @@ private struct LUICheckboxView: View {
                     .opacity(model.property(.labelOpacity)?.doubleValue ?? 1)
             } icon: {
                 Image(systemName: checkboxImageName)
-                    .foregroundStyle(
-                        model.isChecked ? Color.accentColor : Color.secondary
-                    )
+                    .foregroundStyle(indicatorColor)
             }
         }
         .buttonStyle(.plain)

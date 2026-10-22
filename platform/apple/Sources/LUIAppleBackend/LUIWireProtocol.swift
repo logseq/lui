@@ -1661,6 +1661,7 @@ struct LUIRetainedTree {
                 let disclosure = node.properties[.expanded] != nil
                 let hasText = !(node.properties[.text]?.stringValue ?? "").isEmpty
                 let hasChildren = node.children.contains { childID in
+                    if extensionNodes[childID] != nil { return true }
                     guard let child = nodes[childID] else { return false }
                     if child.kind == .contextMenu || child.kind == .swipeActions {
                         return false
