@@ -122,6 +122,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.layout
@@ -144,6 +147,8 @@ import androidx.compose.ui.window.PopupProperties
  * Flutter backend's `_buildNode` so event dispatch and visual defaults
  * match the mobile reference behavior.
  */
+private val LocalHorizontalScrollGesture = androidx.compose.runtime.staticCompositionLocalOf<(Boolean) -> Unit> { {} }
+
 @Composable
 fun LuiNodeView(backend: LuiBackend, id: Long) {
     val node = backend.node(id)
@@ -584,7 +589,17 @@ private fun LuiNodeContent(
             Box(
                 modifier = modifier.then(
                     if (horizontal) {
-                        Modifier.horizontalScroll(rememberScrollState())
+                        val report = LocalHorizontalScrollGesture.current
+                        Modifier.pointerInput(report) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                report(true)
+                                try {
+                                    do { val event = awaitPointerEvent(PointerEventPass.Initial) }
+                                    while (event.changes.any { it.pressed })
+                                } finally { report(false) }
+                            }
+                        }.horizontalScroll(rememberScrollState())
                     } else {
                         Modifier.verticalScroll(rememberScrollState())
                     },
@@ -2032,6 +2047,8 @@ private fun LuiDrawer(
     modifier: Modifier,
     children: List<Long>,
 ) {
+    var horizontalChildActive by remember { mutableStateOf(false) }
+    val reportHorizontalChild: (Boolean) -> Unit = remember { { horizontalChildActive = it } }
     val presented = node.propBool("selected")
     val modelPresented by rememberUpdatedState(presented)
     val toggleEnabled by rememberUpdatedState(node.propBool("toggle-enabled"))
@@ -2048,7 +2065,7 @@ private fun LuiDrawer(
     ModalNavigationDrawer(
         modifier = modifier,
         drawerState = drawerState,
-        gesturesEnabled = node.isEnabled() && toggleEnabled,
+        gesturesEnabled = node.isEnabled() && toggleEnabled && !horizontalChildActive,
         drawerContent = {
             ModalDrawerSheet(
                 drawerState = drawerState,
@@ -2058,7 +2075,10 @@ private fun LuiDrawer(
             }
         },
     ) {
-        CompositionLocalProvider(LocalLuiScrollingEnabled provides (drawerState.isClosed && !drawerState.isAnimationRunning)) {
+        CompositionLocalProvider(
+            LocalLuiScrollingEnabled provides (drawerState.isClosed && !drawerState.isAnimationRunning),
+            LocalHorizontalScrollGesture provides reportHorizontalChild,
+        ) {
             children.firstOrNull()?.let { LuiNodeView(backend, it) }
         }
     }

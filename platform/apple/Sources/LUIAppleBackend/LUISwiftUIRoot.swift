@@ -6728,8 +6728,23 @@ private struct LUIListView: View {
                 visibility: backend.model(id: childID)?.separatorVisibility
             ))
             .environment(\.luiIsNativeFormRow, true)
+            .listRowInsets(explicitRowInsets(childID))
             .listRowBackground(semanticColors["surface"])
         }
+    }
+
+    private func explicitRowInsets(_ id: Int) -> EdgeInsets? {
+        guard let row = backend.model(id: id) else { return nil }
+        let keys: [LUIProperty] = [.padding, .paddingHorizontal, .paddingVertical,
+                                   .paddingTop, .paddingBottom, .paddingLeft, .paddingRight]
+        guard keys.contains(where: { row.property($0) != nil }) else { return nil }
+        let all = row.property(.padding)?.intValue
+        let horizontal = row.property(.paddingHorizontal)?.intValue ?? all ?? 20
+        let vertical = row.property(.paddingVertical)?.intValue ?? all ?? 8
+        return EdgeInsets(top: CGFloat(row.property(.paddingTop)?.intValue ?? vertical),
+                          leading: CGFloat(row.property(.paddingLeft)?.intValue ?? horizontal),
+                          bottom: CGFloat(row.property(.paddingBottom)?.intValue ?? vertical),
+                          trailing: CGFloat(row.property(.paddingRight)?.intValue ?? horizontal))
     }
 
     private var sections: [LUIListSection] {
