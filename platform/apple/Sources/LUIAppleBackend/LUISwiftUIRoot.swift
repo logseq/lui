@@ -6727,6 +6727,7 @@ private struct LUIListView: View {
             .modifier(LUIListRowSeparatorModifier(
                 visibility: backend.model(id: childID)?.separatorVisibility
             ))
+            .environment(\.luiIsNativeFormRow, true)
             .listRowBackground(semanticColors["surface"])
         }
     }

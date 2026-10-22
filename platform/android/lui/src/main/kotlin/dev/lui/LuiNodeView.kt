@@ -2195,7 +2195,11 @@ private fun LuiModalSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
         )
         LuiNodeKind.sheet -> ModalBottomSheet(
             onDismissRequest = onDismiss,
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            sheetState = rememberModalBottomSheetState(
+                skipPartiallyExpanded = node.prop("detents")?.stringValue
+                    ?.split(",")?.map { it.trim() }?.contains("medium") != true,
+            ),
+            containerColor = LocalLuiSemanticColors.current["background"] ?: MaterialTheme.colorScheme.surface,
         ) {
             Column(Modifier.fillMaxWidth().heightIn(max = node.prop("height")?.intValue?.dp ?: Dp.Infinity)) {
                 if (node.text().isNotEmpty()) {
