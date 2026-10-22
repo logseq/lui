@@ -68,6 +68,7 @@ internal fun LuiVirtualList(backend: LuiBackend, node: LuiNodeLike, id: Long, mo
     val attributes = window?.dataAttributes().orEmpty()
     val count = attributes["data-virtual-count"]?.toIntOrNull() ?: 0
     val start = attributes["data-virtual-start"]?.toIntOrNull() ?: 0
+    val pinned = attributes["data-pinned-index"]?.toIntOrNull() ?: -1
     val extent = attributes["data-item-extent"]?.toIntOrNull() ?: 32
     val rows = window?.children.orEmpty()
     val initial = remember(identity) { backend.scrollPositions[identity] ?: LuiScrollPosition() }
@@ -96,6 +97,17 @@ internal fun LuiVirtualList(backend: LuiBackend, node: LuiNodeLike, id: Long, mo
             state.scrollToItem(content.before.size + targetIndex.coerceIn(0, count - 1))
         }
     }
+    LaunchedEffect(identity, pinned) {
+        if (pinned in 0 until count) {
+            val index = content.before.size + pinned
+            val layout = state.layoutInfo
+            val item = layout.visibleItemsInfo.firstOrNull { it.index == index }
+            if (item == null || item.offset < layout.viewportStartOffset ||
+                item.offset + item.size > layout.viewportEndOffset) {
+                state.scrollToItem(index)
+            }
+        }
+    }
     LaunchedEffect(identity, state) {
         var previousRange: Pair<Int, Int>? = null
         snapshotFlow {
@@ -120,7 +132,8 @@ internal fun LuiVirtualList(backend: LuiBackend, node: LuiNodeLike, id: Long, mo
     }
     LazyColumn(modifier = modifier, state = state, userScrollEnabled = visible && LocalLuiScrollingEnabled.current) {
         content.before.forEach { id -> item(key = "fixed:$id") { LuiNodeView(backend, id) } }
-        items(count, key = { "row:$it" }) { index ->
+        // Preserve the active editor and its input connection when a split moves it.
+        items(count, key = { if (it == pinned) "editor:${content.window}" else "row:$it" }) { index ->
             val id = rows.getOrNull(index - start)
             if (id != null) {
                 Box(Modifier.fillMaxWidth().onSizeChanged { heights[index] = it.height }) {
