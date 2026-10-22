@@ -15,6 +15,22 @@ class LuiStoreTest {
         LuiPatchBatch(generation, ops.toList())
 
     @Test
+    fun `native menu accepts semantic label alignments and rejects invalid values`() {
+        fun apply(value: LuiWireValue) {
+            tree().apply(batch(1,
+                LuiPatchOp.CreateNode(1L, LuiNodeKind.root),
+                LuiPatchOp.CreateNode(2L, LuiNodeKind.menuTrigger),
+                LuiPatchOp.InsertChild(1L, 2L, 0),
+                LuiPatchOp.SetProp(2L, "text", LuiWireValue.Str("All")),
+                LuiPatchOp.SetProp(2L, "text-alignment", value),
+            ))
+        }
+        for (alignment in listOf("start", "center", "end")) apply(LuiWireValue.Str(alignment))
+        assertThrows(LuiBackendException::class.java) { apply(LuiWireValue.Str("left")) }
+        assertThrows(LuiBackendException::class.java) { apply(LuiWireValue.IntValue(1)) }
+    }
+
+    @Test
     fun `applies create insert set-prop and drop in order`() {
         val tree = tree()
         tree.apply(
