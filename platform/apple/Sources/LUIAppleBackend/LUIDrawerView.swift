@@ -9,7 +9,7 @@ enum LUIDrawerScrollInteractionPolicy {
         var candidate = view
         while let current = candidate {
             if let scroll = current as? UIScrollView, scroll.isScrollEnabled,
-               scroll.alwaysBounceHorizontal || scroll.contentSize.width + scroll.adjustedContentInset.left
+               scroll.contentSize.width + scroll.adjustedContentInset.left
                 + scroll.adjustedContentInset.right > scroll.bounds.width + 1 {
                 return true
             }
