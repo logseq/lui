@@ -18,7 +18,10 @@ import XCTest
         XCTAssertFalse(LUIDrawerScrollInteractionPolicy.defersToHorizontalScroll(from: cell))
         table.isScrollEnabled = true
         table.contentSize.width = 320
+        table.alwaysBounceHorizontal = true
         XCTAssertFalse(LUIDrawerScrollInteractionPolicy.defersToHorizontalScroll(from: cell))
+        table.contentInset = UIEdgeInsets(top: 0, left: 8, bottom: 0, right: 8)
+        XCTAssertTrue(LUIDrawerScrollInteractionPolicy.defersToHorizontalScroll(from: cell))
     }
 }
 #endif
