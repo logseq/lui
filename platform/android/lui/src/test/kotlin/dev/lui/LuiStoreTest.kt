@@ -31,6 +31,42 @@ class LuiStoreTest {
     }
 
     @Test
+    fun `buttons retain custom labels alongside context menu metadata`() {
+        for (kind in listOf(LuiNodeKind.button, LuiNodeKind.toggleButton)) {
+            val tree = tree()
+            tree.apply(batch(1,
+                LuiPatchOp.CreateNode(1L, LuiNodeKind.root),
+                LuiPatchOp.CreateNode(2L, kind),
+                LuiPatchOp.CreateNode(3L, LuiNodeKind.row),
+                LuiPatchOp.CreateNode(4L, LuiNodeKind.icon),
+                LuiPatchOp.CreateNode(5L, LuiNodeKind.text),
+                LuiPatchOp.CreateNode(6L, LuiNodeKind.contextMenu),
+                LuiPatchOp.InsertChild(1L, 2L, 0),
+                LuiPatchOp.InsertChild(2L, 3L, 0),
+                LuiPatchOp.InsertChild(3L, 4L, 0),
+                LuiPatchOp.InsertChild(3L, 5L, 1),
+                LuiPatchOp.InsertChild(2L, 6L, 1),
+                LuiPatchOp.SetProp(4L, "name", LuiWireValue.Str("app:disclosure-right")),
+                LuiPatchOp.SetProp(5L, "text", LuiWireValue.Str("Results")),
+            ))
+            assertEquals(listOf(3L, 6L), tree.nodes[2L]!!.children)
+        }
+    }
+
+    @Test
+    fun `text fields still reject custom container children`() {
+        assertThrows(LuiBackendException::class.java) {
+            tree().apply(batch(1,
+                LuiPatchOp.CreateNode(1L, LuiNodeKind.root),
+                LuiPatchOp.CreateNode(2L, LuiNodeKind.textField),
+                LuiPatchOp.CreateNode(3L, LuiNodeKind.row),
+                LuiPatchOp.InsertChild(1L, 2L, 0),
+                LuiPatchOp.InsertChild(2L, 3L, 0),
+            ))
+        }
+    }
+
+    @Test
     fun `applies create insert set-prop and drop in order`() {
         val tree = tree()
         tree.apply(

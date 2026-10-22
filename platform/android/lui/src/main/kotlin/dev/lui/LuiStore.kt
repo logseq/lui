@@ -409,6 +409,7 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
             throw LuiBackendException("menu-item accepts only nested menu metadata")
         }
         if (parent.kind != LuiNodeKind.menuItem &&
+            !LuiKindRules.isButtonKind(parent.kind) &&
             LuiKindRules.isContextMenuLeafHost(parent.kind) &&
             child.kind != LuiNodeKind.contextMenu
         ) {
