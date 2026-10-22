@@ -423,6 +423,14 @@ let test_dyn_nested_bare () =
   flush_app app;
   Alcotest.(check bool) "nested dyn mounts text" true
     (creates_text (all_ops ()));
+  let kinds = Hashtbl.create 8 in
+  List.iter (function
+    | Lui_protocol.CreateNode (id, kind) -> Hashtbl.replace kinds id kind
+    | Lui_protocol.SetProp (id, Lui_protocol.DisplayValue, _) ->
+      Alcotest.(check bool) "transparent anchors support native display properties" true
+        (List.mem (Hashtbl.find kinds id)
+          [Lui_protocol.Box; Lui_protocol.Column; Lui_protocol.Row])
+    | _ -> ()) (all_ops ());
   batches := [];
   ignore (Lui_app.send app (`Inner "updated"));
   flush_app app;
