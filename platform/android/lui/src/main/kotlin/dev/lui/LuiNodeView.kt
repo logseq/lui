@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.height
@@ -132,6 +133,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.PopupProperties
 
@@ -184,7 +186,7 @@ private fun LuiChromeSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
             contextMenuOpen = true
         }
 
-    Box {
+    Box(propagateMinConstraints = true) {
         LuiNodeContent(backend, node, id, modifier)
         val menuId = contextMenuId
         val anchor = contextMenuAt
@@ -258,7 +260,7 @@ private fun emitValueChange(backend: LuiBackend, node: LuiNodeLike, id: Long, va
 private fun RowScope.GrowChildRow(backend: LuiBackend, childId: Long) {
     val grow = backend.node(childId)?.prop("grow")?.numberValue ?: 0.0
     if (grow > 0) {
-        Box(Modifier.weight(grow.toFloat().coerceAtLeast(0.001f))) {
+        Box(Modifier.weight(grow.toFloat().coerceAtLeast(0.001f)), propagateMinConstraints = true) {
             LuiNodeView(backend, childId)
         }
     } else {
@@ -271,7 +273,7 @@ private fun RowScope.GrowChildRow(backend: LuiBackend, childId: Long) {
 private fun ColumnScope.GrowChildColumn(backend: LuiBackend, childId: Long) {
     val grow = backend.node(childId)?.prop("grow")?.numberValue ?: 0.0
     if (grow > 0) {
-        Box(Modifier.weight(grow.toFloat().coerceAtLeast(0.001f))) {
+        Box(Modifier.weight(grow.toFloat().coerceAtLeast(0.001f)), propagateMinConstraints = true) {
             LuiNodeView(backend, childId)
         }
     } else {
@@ -541,7 +543,7 @@ private fun LuiNodeContent(
         }
 
         LuiNodeKind.switchControl -> Row(
-            modifier.toggleable(
+            modifier.then(if (node.text().isNotEmpty()) Modifier.fillMaxWidth() else Modifier).toggleable(
                 value = node.propBool("checked"),
                 enabled = enabled,
                 role = Role.Switch,
@@ -550,7 +552,7 @@ private fun LuiNodeContent(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (node.text().isNotEmpty()) Text(node.text())
+            if (node.text().isNotEmpty()) Text(node.text(), Modifier.weight(1f))
             Switch(
                 checked = node.propBool("checked"),
                 onCheckedChange = null,
@@ -986,6 +988,9 @@ private fun LuiButton(
     val isTabTrigger = node.parent?.let { backend.node(it)?.kind } == LuiNodeKind.tabs
     val selected = node.propBool("selected")
     val foreground = luiThemeColor(node.propString("foreground"), foreground = true)
+        ?: if (variant !in setOf("primary", "secondary", "outline", "destructive") && node.text().isNotEmpty()) {
+            LocalLuiSemanticColors.current["link"]
+        } else null
 
     val icon = node.propString("icon")?.let { backend.icons.icon(it) }
     val iconSize = when (node.propString("size")) {
@@ -1177,6 +1182,8 @@ private fun LuiTextControl(
     val combobox = node.kind == LuiNodeKind.combobox
     val enabled = node.isEnabled()
     val grouped = node.parent?.let { backend.node(it)?.kind } == LuiNodeKind.inputGroup
+    val formField = node.parent?.let { backend.node(it)?.propString("style-class") }
+        ?.split(' ')?.contains("form") == true
     val borderless = (node.propString("style-class") ?: "").split(' ')
         .contains("composer-input")
     val focusRequester = remember(id) { FocusRequester() }
@@ -1210,7 +1217,7 @@ private fun LuiTextControl(
     }
 
     val fieldModifier = modifier.then(
-        if (grouped || borderless) Modifier.fillMaxWidth() else Modifier.width(240.dp),
+        if (grouped || borderless || formField) Modifier.fillMaxWidth() else Modifier.width(240.dp),
     ).focusRequester(focusRequester)
     val fieldTextStyle = (if (borderless) MaterialTheme.typography.bodyLarge
         else MaterialTheme.typography.bodyMedium).copy(
@@ -2180,10 +2187,14 @@ private fun LuiModalSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
         )
         LuiNodeKind.sheet -> ModalBottomSheet(
             onDismissRequest = onDismiss,
-            sheetState = rememberModalBottomSheetState(),
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         ) {
-            Column {
-                node.children.forEachNode { LuiNodeView(backend, it) }
+            Column(Modifier.fillMaxWidth().heightIn(max = node.prop("height")?.intValue?.dp ?: Dp.Infinity)) {
+                if (node.text().isNotEmpty()) {
+                    Text(node.text(), Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.headlineSmall)
+                }
+                node.children.forEachNode { GrowChildColumn(backend, it) }
             }
         }
         else -> Unit

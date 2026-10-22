@@ -108,7 +108,7 @@ private fun resolveLuiThemeColor(
         "autocomplete-row-background" -> scheme.surfaceContainerHigh
         "glass", "glass-fallback" -> scheme.surfaceContainerHigh
         "bar" -> scheme.surfaceContainer
-        "primary" -> scheme.primary
+        "primary", "link" -> scheme.primary
         "primary-foreground" -> scheme.onPrimary
         "accent" -> if (foreground) scheme.primary else scheme.secondaryContainer
         "accent-foreground" ->
