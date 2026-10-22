@@ -4730,7 +4730,9 @@ private struct LUIListItemView: View {
                 } label: {
                     rowContent
                 }
-            } else if suppressesPrimaryAction {
+            } else if suppressesPrimaryAction || (!model.supportsPress && !model.isTreeItem) {
+                // A content-only row must not install a tap recognizer above
+                // native controls such as the graphical date/time picker.
                 rowContent
             } else {
                 switch LUIListItemInteractionPolicy.style(
