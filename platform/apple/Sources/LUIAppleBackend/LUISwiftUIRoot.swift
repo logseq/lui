@@ -7447,7 +7447,11 @@ private struct LUITextControlView: View {
             .submitLabel(model.property(.submitOnEnter)?.boolValue == true ? .send : .return)
         } else if model.kind == .searchField {
             #if os(iOS)
-            iosSearchFieldRow.textFieldStyle(.roundedBorder)
+            iosSearchFieldRow
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
             #else
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
