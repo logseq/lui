@@ -1490,6 +1490,7 @@ private fun LuiMenuTrigger(backend: LuiBackend, node: LuiNodeLike, id: Long, mod
     val iconSize = if (node.text().isEmpty()) 24.dp else 16.dp
     var open by remember(id) { mutableStateOf(false) }
     val triggerForeground = luiThemeColor(node.propString("foreground"), foreground = true)
+    val labelAlignment = node.propString("text-alignment")
 
     Box {
         if (icon != null && node.text().isEmpty()) {
@@ -1512,20 +1513,31 @@ private fun LuiMenuTrigger(backend: LuiBackend, node: LuiNodeLike, id: Long, mod
                 onClick = { open = !open },
                 shapes = ButtonDefaults.shapes(),
                 enabled = enabled,
-                modifier = modifier,
+                modifier = if (labelAlignment != null) modifier.width(IntrinsicSize.Max) else modifier,
+                contentPadding = if (labelAlignment != null) androidx.compose.foundation.layout.PaddingValues(0.dp)
+                    else ButtonDefaults.TextButtonContentPadding,
                 colors = if (triggerForeground == null) androidx.compose.material3.ButtonDefaults.textButtonColors()
                     else androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = triggerForeground),
             ) {
-                if (icon != null) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(icon, null, Modifier.size(iconSize))
-                        if (node.text().isNotEmpty()) Text(node.text())
+                Box(
+                    modifier = if (labelAlignment != null) Modifier.fillMaxWidth() else Modifier,
+                    contentAlignment = when (labelAlignment) {
+                        "start" -> Alignment.CenterStart
+                        "end" -> Alignment.CenterEnd
+                        else -> Alignment.Center
+                    },
+                ) {
+                    if (icon != null) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(icon, null, Modifier.size(iconSize))
+                            if (node.text().isNotEmpty()) Text(node.text())
+                        }
+                    } else {
+                        Text(node.text())
                     }
-                } else {
-                    Text(node.text())
                 }
             }
         }

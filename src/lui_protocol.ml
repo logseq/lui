@@ -1321,6 +1321,7 @@ let property_supported kind property =
       || property = PointerEnabled
     | MenuTrigger ->
       property = TextValue || property = InlineIconName
+      || property = TextAlignment
       || property = AccessibilityLabel || property = Enabled
       || property = ForegroundValue || property = StyleClass
       || property = PointerEnabled || property = DataAttrs

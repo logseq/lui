@@ -1875,6 +1875,8 @@ let test_menu_trigger_rules () =
     (property_supported MenuTrigger TextValue);
   Alcotest.(check bool) "trigger allows icon" true
     (property_supported MenuTrigger InlineIconName);
+  Alcotest.(check bool) "trigger allows explicit text alignment" true
+    (property_supported MenuTrigger TextAlignment);
   Alcotest.(check bool) "trigger allows label" true
     (property_supported MenuTrigger AccessibilityLabel);
   Alcotest.(check bool) "trigger drops width" false

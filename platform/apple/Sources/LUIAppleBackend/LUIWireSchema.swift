@@ -294,7 +294,7 @@ enum LUISchemaMatrix {
         .toolbar: [.height, .padding, .background, .borderWidth, .cornerRadius, .orientation, .accessibilityLabel, .gap, .styleClass, .dataAttrs, .placement, .pointerEnabled],
         .bottomTabs: [.accessibilityLabel, .styleClass, .dataAttrs, .grow, .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight, .pointerEnabled],
         .bottomTab: [.title, .icon, .selected, .enabled, .pressEnabled, .pointerEnabled],
-        .menuTrigger: [.text, .icon, .accessibilityLabel, .enabled, .foreground, .styleClass, .dataAttrs, .pointerEnabled],
+        .menuTrigger: [.text, .textAlignment, .icon, .accessibilityLabel, .enabled, .foreground, .styleClass, .dataAttrs, .pointerEnabled],
         .listSection: [.key, .separator, .pointerEnabled],
         .swipeActions: [],
         .swipeAction: [.text, .icon, .variant, .edge, .enabled, .background, .pressEnabled, .pointerEnabled],
