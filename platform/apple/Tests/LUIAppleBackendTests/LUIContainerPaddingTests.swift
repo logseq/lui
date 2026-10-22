@@ -15,7 +15,7 @@ final class LUIContainerPaddingTests: XCTestCase {
                     ["op": "create-node", "id": 2, "kind": "box"],
                     ["op": "set-prop", "id": 2, "property": "width", "value": 10],
                     ["op": "set-prop", "id": 2, "property": "height", "value": 12],
-                    ["op": "append-child", "parent": 1, "child": 2]
+                    ["op": "insert-child", "parent": 1, "child": 2, "index": 0]
                 ]
                 for (property, value) in ["padding": 2, "padding-horizontal": 5, "padding-vertical": 7,
                                           "padding-left": 26, "padding-right": 8, "padding-top": 3, "padding-bottom": 4] {
