@@ -53,6 +53,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuPopup
 import androidx.compose.material3.DropdownMenuGroup
@@ -539,6 +540,12 @@ private fun LuiNodeContent(
                 checked = node.propBool("checked"),
                 onCheckedChange = null,
                 enabled = enabled,
+                colors = luiThemeColor(node.propString("foreground"), foreground = true)?.let { foreground ->
+                    CheckboxDefaults.colors(
+                        checkedColor = foreground,
+                        uncheckedColor = foreground,
+                    )
+                } ?: CheckboxDefaults.colors(),
             )
             Text(node.text(), Modifier.alpha(node.propDouble("label-opacity", 1.0).toFloat()))
         }

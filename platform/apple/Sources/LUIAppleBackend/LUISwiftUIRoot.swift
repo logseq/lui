@@ -7657,6 +7657,12 @@ private struct LUIRadioGroupView: View {
 private struct LUICheckboxView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @Environment(\.luiSemanticColors) private var semanticColors
+
+    private var indicatorColor: Color {
+        LUIThemeColorResolver.color(model.property(.foreground)?.stringValue, semanticColors: semanticColors)
+            ?? (model.isChecked ? .accentColor : .secondary)
+    }
 
     var body: some View {
         #if os(macOS)
@@ -7670,6 +7676,7 @@ private struct LUICheckboxView: View {
                 .opacity(model.property(.labelOpacity)?.doubleValue ?? 1)
         }
         .toggleStyle(.checkbox)
+        .tint(indicatorColor)
         .disabled(!model.isEnabled)
         #else
         Button {
@@ -7683,9 +7690,7 @@ private struct LUICheckboxView: View {
                     .opacity(model.property(.labelOpacity)?.doubleValue ?? 1)
             } icon: {
                 Image(systemName: checkboxImageName)
-                    .foregroundStyle(
-                        model.isChecked ? Color.accentColor : Color.secondary
-                    )
+                    .foregroundStyle(indicatorColor)
             }
         }
         .buttonStyle(.plain)
