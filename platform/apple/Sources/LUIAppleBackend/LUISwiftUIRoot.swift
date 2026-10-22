@@ -7889,9 +7889,13 @@ private struct LUIPlainContainerSurfaceModifier: ViewModifier {
 
     @ViewBuilder func body(content: Content) -> some View {
         let padding = model.property(.padding)?.intValue ?? 0
-        let horizontal = CGFloat(model.property(.paddingHorizontal)?.intValue ?? padding)
-        let vertical = CGFloat(model.property(.paddingVertical)?.intValue ?? padding)
-        let padded = content.padding(EdgeInsets(top: vertical, leading: horizontal, bottom: vertical, trailing: horizontal))
+        let horizontal = model.property(.paddingHorizontal)?.intValue ?? padding
+        let vertical = model.property(.paddingVertical)?.intValue ?? padding
+        let padded = content.padding(EdgeInsets(
+            top: CGFloat(model.property(.paddingTop)?.intValue ?? vertical),
+            leading: CGFloat(model.property(.paddingLeft)?.intValue ?? horizontal),
+            bottom: CGFloat(model.property(.paddingBottom)?.intValue ?? vertical),
+            trailing: CGFloat(model.property(.paddingRight)?.intValue ?? horizontal)))
         if model.surfaceWidth != nil || model.surfaceHeight != nil {
             padded.frame(maxWidth: LUIIntrinsicSurfacePolicy.fillsWidth(kind: model.kind, grow: model.derived.grow) ? .infinity : nil,
                          alignment: .leading)
