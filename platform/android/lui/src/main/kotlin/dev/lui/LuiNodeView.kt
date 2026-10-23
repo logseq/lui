@@ -194,7 +194,14 @@ private fun LuiChromeSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
         }
 
     Box(propagateMinConstraints = true) {
-        LuiNodeContent(backend, node, id, modifier)
+        LuiNodeContent(backend, node, id, modifier,
+            onContextMenu = if (contextMenuId == null) null else {
+                {
+                    contextMenuAt = Offset.Zero
+                    contextMenuOpen = true
+                    backend.emit(LuiEvent.ContextMenuPress(id, LuiPointerDetail()))
+                }
+            })
         val menuId = contextMenuId
         val anchor = contextMenuAt
         if (menuId != null) {
@@ -299,6 +306,7 @@ private fun LuiNodeContent(
     node: LuiNodeLike,
     id: Long,
     modifier: Modifier,
+    onContextMenu: (() -> Unit)?,
 ) {
     val children = node.children.filter { childId ->
         val kind = backend.node(childId)?.kind
@@ -700,7 +708,7 @@ private fun LuiNodeContent(
 
         LuiNodeKind.menuTrigger -> LuiMenuTrigger(backend, node, id, modifier)
 
-        LuiNodeKind.listItem -> LuiListItem(backend, node, id, modifier, children)
+        LuiNodeKind.listItem -> LuiListItem(backend, node, id, modifier, children, onContextMenu)
 
         LuiNodeKind.avatar -> LuiAvatar(backend, node, modifier)
 
@@ -1565,6 +1573,7 @@ private fun LuiListItem(
     id: Long,
     modifier: Modifier,
     children: List<Long>,
+    onContextMenu: (() -> Unit)?,
 ) {
     val enabled = node.isEnabled()
     val icon = node.propString("icon")?.let { backend.icons.icon(it) }
@@ -1596,7 +1605,7 @@ private fun LuiListItem(
             backend.emit(LuiEvent.Press(id))
         }
     }
-    val onLongClick: (() -> Unit)? = if (node.propBool("long-press-enabled")) {
+    val onLongClick: (() -> Unit)? = onContextMenu ?: if (node.propBool("long-press-enabled")) {
         { backend.emit(LuiEvent.LongPress(id)) }
     } else {
         null
