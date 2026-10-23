@@ -121,7 +121,9 @@ internal fun Modifier.luiChrome(node: LuiNodeLike): Modifier {
     // always fills its parent. Mirrors the SwiftUI backend where width only
     // reaches the panel.
     val width = if (node.kind == LuiNodeKind.drawer) null else node.prop("width")?.intValue
-    val height = node.prop("height")?.intValue
+    // Sheets constrain their content height inside the native surface. A fixed
+    // outer height also constrains Material's IME padding and can erase the body.
+    val height = if (node.kind == LuiNodeKind.sheet) null else node.prop("height")?.intValue
     val minWidth = node.prop("min-width")?.intValue ?: 0
     val maxWidth = node.prop("max-width")?.intValue ?: Int.MAX_VALUE
     val minHeight = node.prop("min-height")?.intValue ?: 0
