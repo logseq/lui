@@ -73,6 +73,7 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.PrimaryScrollableTabRow
@@ -148,6 +149,7 @@ import androidx.compose.ui.window.PopupProperties
  * match the mobile reference behavior.
  */
 private val LocalHorizontalScrollGesture = androidx.compose.runtime.staticCompositionLocalOf<(Boolean) -> Unit> { {} }
+private val LocalNavigationDrawerContent = compositionLocalOf { false }
 
 @Composable
 fun LuiNodeView(backend: LuiBackend, id: Long) {
@@ -1576,6 +1578,12 @@ private fun LuiListItem(
     onContextMenu: (() -> Unit)?,
 ) {
     val enabled = node.isEnabled()
+    val colors = if (LocalNavigationDrawerContent.current) {
+        ListItemDefaults.colors(
+            containerColor = Color.Transparent,
+            disabledContainerColor = Color.Transparent,
+        )
+    } else ListItemDefaults.colors()
     val icon = node.propString("icon")?.let { backend.icons.icon(it) }
     val content: @Composable () -> Unit = {
         if (children.isEmpty()) {
@@ -1612,6 +1620,7 @@ private fun LuiListItem(
     }
     when {
         node.propBool("double-press-enabled") -> ListItem(
+            colors = colors,
             modifier = modifier.combinedClickable(
                 enabled = enabled,
                 onClick = onClick,
@@ -1623,6 +1632,7 @@ private fun LuiListItem(
             content = content,
         )
         node.prop("selected") != null -> ListItem(
+            colors = colors,
             selected = node.propBool("selected"),
             onClick = onClick,
             onLongClick = onLongClick,
@@ -1632,6 +1642,7 @@ private fun LuiListItem(
             content = content,
         )
         else -> ListItem(
+            colors = colors,
             onClick = onClick,
             onLongClick = onLongClick,
             modifier = modifier,
@@ -2095,7 +2106,9 @@ private fun LuiDrawer(
                 drawerState = drawerState,
                 modifier = node.prop("width")?.intValue?.let { Modifier.width(it.dp) } ?: Modifier,
             ) {
-                children.drop(1).forEachNode { LuiNodeView(backend, it) }
+                CompositionLocalProvider(LocalNavigationDrawerContent provides true) {
+                    children.drop(1).forEachNode { LuiNodeView(backend, it) }
+                }
             }
         },
     ) {
