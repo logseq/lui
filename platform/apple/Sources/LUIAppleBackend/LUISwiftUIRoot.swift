@@ -7039,6 +7039,16 @@ private struct LUIVirtualListView: View {
                     }
                 }
                 .coordinateSpace(name: contentSpace)
+                .background {
+                    #if os(iOS)
+                    if let first = rows.segments.first(where: { $0.window != nil }), let window = first.window, window.count > 0 {
+                        LUIVirtualScrollTopBridge(prepared: window.start == 0) {
+                            backend.performVisibleRange(node: first.source, first: 0, last: min(31, window.count - 1))
+                        }
+                        .frame(width: 0, height: 0)
+                    }
+                    #endif
+                }
                 .overlay(alignment: .topLeading) {
                     if let editor {
                         let row = rows[editor.position]
