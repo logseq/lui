@@ -5530,9 +5530,20 @@ private struct LUIButtonView: View {
             .flatMap { backend.model(id: $0) }
     }
 
+    private var labelChildren: [Int] {
+        model.children.filter { model.childData.layout[$0]?.kind != .contextMenu }
+    }
+
     @ViewBuilder
     private var label: some View {
-        if model.buttonIconName.isEmpty {
+        if !labelChildren.isEmpty {
+            HStack(spacing: 0) {
+                ForEach(labelChildren, id: \.self) { childID in
+                    LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                }
+            }
+            .allowsHitTesting(false)
+        } else if model.buttonIconName.isEmpty {
             Text(verbatim: model.text)
         } else if model.text.isEmpty {
             icon
@@ -5617,7 +5628,7 @@ private struct LUIButtonView: View {
     }
 
     private var isIconOnly: Bool {
-        !model.buttonIconName.isEmpty && model.text.isEmpty
+        labelChildren.isEmpty && !model.buttonIconName.isEmpty && model.text.isEmpty
     }
 
     private var usesDefaultTouchCell: Bool {
