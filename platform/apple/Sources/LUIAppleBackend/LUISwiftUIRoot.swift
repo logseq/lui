@@ -1,6 +1,5 @@
 import Foundation
 import Observation
-import QuickLook
 import SwiftUI
 #if os(macOS)
 import AppKit
@@ -166,7 +165,7 @@ public struct LUISwiftUIRoot: View {
                 LUIModalSurfaceContent(model: presentation.model, backend: backend)
                     .luiSheetScope(semanticColors: semanticColors, colorScheme: colorScheme)
             }
-            .quickLookPreview(filePreviewBinding)
+            .luiFilePreview(filePreviewBinding)
             .modifier(LUIDialogPresentationModifier(anchorID: rootID, backend: backend))
     }
 
@@ -230,7 +229,7 @@ public struct LUIModalHostModifier: ViewModifier {
                 LUIModalSurfaceContent(model: presentation.model, backend: backend)
                     .luiSheetScope(semanticColors: semanticColors, colorScheme: colorScheme)
             }
-            .quickLookPreview(filePreviewBinding)
+            .luiFilePreview(filePreviewBinding)
             .modifier(LUIDialogPresentationModifier(anchorID: rootID, backend: backend))
     }
 

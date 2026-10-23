@@ -137,6 +137,7 @@ struct LUIDrawerView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var presented: Bool
+    @State private var hasRevealedPanel = false
     @State private var dragOffset: CGFloat = 0
     @State private var isGestureActive = false
     @State private var rejectedGesture = false
@@ -258,8 +259,10 @@ struct LUIDrawerView: View {
             // so drawer transitions do not invalidate a long content tree.
             ZStack(alignment: .leading) {
                 // Retain the panel after its first reveal so closing preserves its state.
-                if let panelID = model.children.dropFirst().first {
+                if (hasRevealedPanel || visibleWidth > 0),
+                   let panelID = model.children.dropFirst().first {
                     LUIAnyNodeView(nodeID: panelID, backend: backend)
+                        .onAppear { hasRevealedPanel = true }
                         .frame(width: width)
                         .frame(maxHeight: CGFloat.infinity, alignment: Alignment.leading)
                         .background(Color.black.opacity(0.001))
