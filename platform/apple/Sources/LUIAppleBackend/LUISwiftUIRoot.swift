@@ -7311,6 +7311,7 @@ fileprivate struct LUIVirtualWindow {
 // must not invalidate the same row immediately after its first layout.
 private final class LUIVirtualRowMeasurement {
     var height: CGFloat?
+    var isVisible = false
 }
 
 private struct LUIVirtualListRow: View {
@@ -7343,9 +7344,18 @@ private struct LUIVirtualListRow: View {
             let frame = geometry.frame(in: .named(coordinateSpace))
             return frame.maxY > -16 && frame.minY < viewportHeight + 16
         } action: { visible in
+            measurement.isVisible = visible
             if let windowID = row.windowID {
                 tracker.update(window: windowID, index: row.windowIndex,
                     visible: visible, backend: backend)
+            }
+        }
+        .onAppear {
+            // Lazy stacks can reuse a previously visible slot without another
+            // geometry change. Restore its registration after onDisappear.
+            if measurement.isVisible, let windowID = row.windowID {
+                tracker.update(window: windowID, index: row.windowIndex,
+                    visible: true, backend: backend)
             }
         }
         .onDisappear {
