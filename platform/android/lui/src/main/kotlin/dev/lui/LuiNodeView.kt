@@ -2230,21 +2230,38 @@ private fun LuiToolbar(
  * Modal surfaces (dialog, sheet): shown while the node exists; dismissal
  * emits Dismiss so the model drops the node.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun LuiModalSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
     val onDismiss = { backend.emit(LuiEvent.Dismiss(id)) }
     when (node.kind) {
-        LuiNodeKind.dialog -> AlertDialog(
-            onDismissRequest = onDismiss,
-            confirmButton = {},
-            text = {
-                Column {
-                    node.children.forEachNode { LuiNodeView(backend, it) }
-                }
-            },
-        )
+        LuiNodeKind.dialog -> {
+            val actions = node.children.filter { backend.node(it)?.kind == LuiNodeKind.button }
+            val iconId = node.children.firstOrNull { backend.node(it)?.kind == LuiNodeKind.icon }
+            val body = node.children.filter { it != iconId && backend.node(it)?.kind != LuiNodeKind.button }
+            AlertDialog(
+                modifier = Modifier.luiChrome(node),
+                onDismissRequest = onDismiss,
+                icon = if (iconId == null) null else { { LuiNodeView(backend, iconId) } },
+                title = if (node.text().isEmpty()) null else { { Text(node.text()) } },
+                confirmButton = { actions.lastOrNull()?.let { LuiNodeView(backend, it) } },
+                dismissButton = if (actions.size <= 1) null else {
+                    {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                            actions.dropLast(1).forEachNode { LuiNodeView(backend, it) }
+                        }
+                    }
+                },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        body.forEachNode { LuiNodeView(backend, it) }
+                    }
+                },
+            )
+        }
         LuiNodeKind.sheet -> ModalBottomSheet(
+            modifier = Modifier.luiChrome(node),
             onDismissRequest = onDismiss,
             sheetState = rememberModalBottomSheetState(
                 skipPartiallyExpanded = node.prop("detents")?.stringValue
