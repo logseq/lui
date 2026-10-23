@@ -203,18 +203,18 @@ internal fun Modifier.luiChrome(node: LuiNodeLike): Modifier {
     node.prop("opacity")?.numberValue?.let { opacity ->
         if (opacity < 1) modifier = modifier.alpha(opacity.toFloat())
     }
-    node.propString("accessibility-identifier")?.let { identifier ->
+    val identifier = node.propString("accessibility-identifier")
+    val label = node.propString("accessibility-label")
+    if (identifier != null || label != null) {
         // Dialogs and sheets own separate semantics roots, so the activity's
         // testTagsAsResourceId setting does not reach their controls.
         modifier = modifier.semantics {
-            testTag = identifier
-            testTagsAsResourceId = true
-        }.semantics {
-            contentDescription = identifier
+            if (identifier != null) {
+                testTag = identifier
+                testTagsAsResourceId = true
+            }
+            if (label != null) contentDescription = label
         }
-    }
-    node.propString("accessibility-label")?.let { label ->
-        modifier = modifier.semantics { contentDescription = label }
     }
     return modifier
 }
