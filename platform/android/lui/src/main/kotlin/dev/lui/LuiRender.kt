@@ -51,6 +51,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -203,7 +204,12 @@ internal fun Modifier.luiChrome(node: LuiNodeLike): Modifier {
         if (opacity < 1) modifier = modifier.alpha(opacity.toFloat())
     }
     node.propString("accessibility-identifier")?.let { identifier ->
-        modifier = modifier.semantics { testTag = identifier }.semantics {
+        // Dialogs and sheets own separate semantics roots, so the activity's
+        // testTagsAsResourceId setting does not reach their controls.
+        modifier = modifier.semantics {
+            testTag = identifier
+            testTagsAsResourceId = true
+        }.semantics {
             contentDescription = identifier
         }
     }
