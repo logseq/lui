@@ -6,7 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -237,21 +239,7 @@ internal fun Modifier.luiGestures(
     val enabled = node.isEnabled()
 
     val contextMenuId = node.children.firstOrNull { backend.node(it)?.kind == LuiNodeKind.contextMenu }
-    if (contextMenuId != null && enabled) {
-        modifier = modifier.pointerInput(id, contextMenuId) {
-            detectTapGestures(
-                onLongPress = { offset ->
-                    onContextMenu(offset)
-                    backend.emit(
-                        LuiEvent.ContextMenuPress(
-                            id,
-                            LuiPointerDetail(x = offset.x.toDouble(), y = offset.y.toDouble()),
-                        ),
-                    )
-                },
-            )
-        }
-    }
+    var contextMenuPosition by remember(id) { mutableStateOf(Offset.Zero) }
 
     val pressable = enabled &&
         (node.propBool("press-enabled") ||
@@ -259,7 +247,7 @@ internal fun Modifier.luiGestures(
             (node.propBool("toggle-enabled") && LuiKindRules.isTreeRowKind(node.kind)))
     val longPressable = enabled && node.propBool("long-press-enabled")
     val doublePressable = enabled && node.propBool("double-press-enabled")
-    if (pressable || longPressable || doublePressable) {
+    if (pressable || longPressable || doublePressable || (enabled && contextMenuId != null)) {
         modifier = modifier.combinedClickable(
             onClick = {
                 if (node.propBool("press-enabled")) {
@@ -271,7 +259,13 @@ internal fun Modifier.luiGestures(
                     backend.emit(LuiEvent.ToggleChanged(id, !node.propBool("expanded")))
                 }
             },
-            onLongClick = if (longPressable) {
+            onLongClick = if (contextMenuId != null && enabled) {
+                {
+                    onContextMenu(contextMenuPosition)
+                    backend.emit(LuiEvent.ContextMenuPress(id,
+                        LuiPointerDetail(x = contextMenuPosition.x.toDouble(), y = contextMenuPosition.y.toDouble())))
+                }
+            } else if (longPressable) {
                 { backend.emit(LuiEvent.LongPress(id)) }
             } else {
                 null
@@ -283,19 +277,22 @@ internal fun Modifier.luiGestures(
             },
         )
     }
-    if (enabled && node.propBool("pointer-enabled")) {
+    if (enabled && (node.propBool("pointer-enabled") || contextMenuId != null)) {
         modifier = modifier.pointerInput(id) {
-            detectTapGestures(
-                onPress = { offset ->
-                    val detail = LuiPointerDetail(
-                        x = offset.x.toDouble(),
-                        y = offset.y.toDouble(),
-                    )
-                    backend.emit(LuiEvent.PointerDown(id, detail))
-                    tryAwaitRelease()
-                    backend.emit(LuiEvent.PointerUp(id, detail))
-                },
-            )
+            awaitEachGesture {
+                // Observe without consuming the touch needed by native click handlers.
+                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                val detail = LuiPointerDetail(x = down.position.x.toDouble(), y = down.position.y.toDouble())
+                contextMenuPosition = down.position
+                val reportPointer = node.propBool("pointer-enabled")
+                if (reportPointer) backend.emit(LuiEvent.PointerDown(id, detail))
+                try {
+                    do { val event = awaitPointerEvent(PointerEventPass.Initial) }
+                    while (event.changes.any { it.pressed })
+                } finally {
+                    if (reportPointer) backend.emit(LuiEvent.PointerUp(id, detail))
+                }
+            }
         }
     }
     return modifier
