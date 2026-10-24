@@ -172,9 +172,14 @@ body {
     @apply flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm ring-offset-background;
   }
 
-  .lui-list-item:hover,
   .lui-list-item[data-selected] {
     @apply bg-accent text-accent-foreground;
+  }
+
+  @media (hover: hover) {
+    .lui-list-item:hover:not(:disabled, [data-disabled]) {
+      @apply bg-accent text-accent-foreground;
+    }
   }
 
   .lui-list-item:focus-visible {
@@ -200,9 +205,14 @@ body {
     @apply transition-colors;
   }
 
-  .lui-table-row:has(> .lui-table-cell[data-pressable]):hover,
   .lui-table-row[data-selected] {
     @apply bg-accent text-accent-foreground;
+  }
+
+  @media (hover: hover) {
+    .lui-table-row:has(> .lui-table-cell[data-pressable]):hover {
+      @apply bg-accent text-accent-foreground;
+    }
   }
 
   .lui-table-cell {
@@ -230,9 +240,14 @@ body {
     @apply rounded-md outline-0 transition-colors;
   }
 
-  .lui-tree-item:hover,
   .lui-tree-item[data-selected] {
     @apply bg-accent text-accent-foreground;
+  }
+
+  @media (hover: hover) {
+    .lui-tree-item:hover:not([aria-disabled="true"]) {
+      @apply bg-accent text-accent-foreground;
+    }
   }
 
   .lui-tree-item:focus-visible {
@@ -431,6 +446,8 @@ body {
     .lui-dialog,
     .lui-sheet,
     .lui-dropdown-menu,
+    .lui-popover,
+    .lui-context-menu,
     .lui-tooltip[data-anchor],
     .lui-accordion-content,
     .lui-accordion-chevron {
@@ -623,11 +640,28 @@ body {
   }
 
   .lui-accordion-summary {
-    @apply flex w-full cursor-pointer items-center justify-between bg-transparent py-4 text-left text-sm font-medium outline-none;
+    @apply flex w-full cursor-pointer items-center justify-between gap-4 border-0 bg-transparent px-3 py-2 text-left text-sm font-normal outline-none;
+    font-family: inherit;
+    color: inherit;
+  }
+
+  @media (hover: hover) {
+    .lui-accordion-summary:hover:not(:disabled, [data-disabled]) {
+      @apply bg-accent text-accent-foreground;
+    }
+  }
+
+  .lui-accordion-summary:focus-visible {
+    @apply relative z-[1] outline-2 outline-offset-[-2px] outline-foreground;
+  }
+
+  .lui-accordion-summary:disabled,
+  .lui-accordion-summary[data-disabled] {
+    @apply cursor-not-allowed text-muted-foreground;
   }
 
   .lui-accordion-chevron {
-    @apply size-4 shrink-0 transition-transform duration-200;
+    @apply size-4 shrink-0 transition-transform duration-100 ease-out;
   }
 
   .lui-accordion[data-open] .lui-accordion-chevron {
@@ -756,10 +790,16 @@ body {
   }
 
   .lui-modal-backdrop {
-    @apply absolute inset-0 bg-black/50;
+    @apply absolute inset-0;
     z-index: 0;
+    background-color: rgb(0 0 0 / 20%);
     opacity: var(--drawer-swipe-progress, 1);
     transition: opacity 150ms ease-out;
+  }
+
+  .dark .lui-modal-backdrop,
+  [data-kb-theme="dark"] .lui-modal-backdrop {
+    background-color: rgb(0 0 0 / 50%);
   }
 
   .lui-modal-description {
@@ -772,20 +812,25 @@ body {
   }
 
   .lui-dialog {
-    @apply fixed inset-0 m-auto grid rounded-xl border bg-card text-card-foreground shadow-lg;
+    @apply fixed grid rounded-xl border bg-card p-4 text-card-foreground shadow-lg;
     z-index: 1;
+    top: 50%;
+    left: 50%;
+    width: min(24rem, calc(100vw - 3rem));
+    max-width: calc(100vw - 3rem);
     max-height: calc(100dvh - 2rem);
+    margin: 0;
     overflow: auto;
     overscroll-behavior: contain;
     opacity: 1;
-    transform: scale(1);
-    transition: transform 200ms ease-out, opacity 200ms ease-out;
+    transform: translate(-50%, -50%) scale(1);
+    transition: transform 100ms ease-out, opacity 100ms ease-out;
   }
 
   .lui-dialog[data-starting-style],
   .lui-dialog[data-ending-style] {
     opacity: 0;
-    transform: scale(0.95);
+    transform: translate(-50%, -50%) scale(0.98);
   }
 
   .lui-dialog-title {
@@ -874,6 +919,22 @@ body {
     @apply text-sm font-medium leading-none;
   }
 
+  .lui-number-stepper {
+    @apply inline-flex items-center gap-2 text-sm;
+  }
+
+  .lui-number-stepper-control {
+    @apply h-10 w-24 rounded-md border border-input bg-transparent px-3 text-sm;
+  }
+
+  .lui-number-stepper-control:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2;
+  }
+
+  .lui-number-stepper-control:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
   .lui-text-field,
   .lui-input,
   .lui-search-field,
@@ -936,11 +997,28 @@ body {
   }
 
   .lui-select {
-    @apply inline-flex h-10 min-w-40 items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background;
+    @apply inline-flex h-10 min-w-40 items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-left text-sm ring-offset-background;
   }
 
   .lui-select-value {
     @apply min-w-0 truncate;
+  }
+
+  .lui-select[data-placeholder] .lui-select-value {
+    @apply text-muted-foreground;
+  }
+
+  @media (hover: hover) {
+    .lui-select:hover:not(:disabled, [data-disabled]),
+    .lui-combobox:hover:not([data-disabled]) {
+      @apply bg-accent;
+    }
+  }
+
+  .lui-select:active:not(:disabled, [data-disabled]),
+  .lui-select[aria-expanded="true"]:not(:disabled, [data-disabled]),
+  .lui-combobox:has([aria-expanded="true"]) {
+    @apply border-ring bg-accent;
   }
 
   .lui-select::after,
@@ -977,6 +1055,12 @@ body {
     @apply inline-flex h-full items-center justify-center px-2;
   }
 
+  @media (hover: hover) {
+    .lui-combobox-trigger:hover:not(:disabled) {
+      @apply bg-accent;
+    }
+  }
+
   .lui-popup-portal {
     position: fixed;
     inset: 0;
@@ -1007,13 +1091,13 @@ body {
     background: var(--lui-background);
     color: var(--lui-foreground);
     padding: 0.25rem;
-    box-shadow: 0.25rem 0.25rem 0 var(--lui-foreground);
+    box-shadow: 0.25rem 0.25rem 0 rgb(0 0 0 / 12%);
     pointer-events: auto;
     z-index: 1;
-    transform-origin: center;
+    transform-origin: var(--transform-origin, center);
     transition-property: opacity, transform;
-    transition-duration: 150ms;
-    transition-timing-function: ease;
+    transition-duration: 100ms;
+    transition-timing-function: ease-out;
   }
 
   .lui-dropdown-menu:not([data-open]):not([data-ending-style]) {
@@ -1027,7 +1111,7 @@ body {
   .lui-dropdown-menu[data-starting-style],
   .lui-dropdown-menu[data-ending-style] {
     opacity: 0;
-    transform: scale(0.95);
+    transform: scale(0.98);
   }
 
   .lui-combobox-status {
@@ -1045,12 +1129,17 @@ body {
     max-height: var(--lui-popup-available-height, calc(100vh - 1rem));
     max-width: var(--lui-popup-available-width, calc(100vw - 1rem));
     overflow: auto;
+    border: 1px solid var(--lui-foreground);
+    border-radius: 0;
+    background: var(--lui-background);
+    color: var(--lui-foreground);
+    box-shadow: 0.25rem 0.25rem 0 rgb(0 0 0 / 12%);
     pointer-events: auto;
     z-index: 1;
-    transform-origin: center;
+    transform-origin: var(--transform-origin, center);
     transition-property: opacity, transform;
-    transition-duration: 150ms;
-    transition-timing-function: ease;
+    transition-duration: 100ms;
+    transition-timing-function: ease-out;
   }
 
   .lui-popover[role="menu"] {
@@ -1068,7 +1157,7 @@ body {
   .lui-popover[data-starting-style],
   .lui-popover[data-ending-style] {
     opacity: 0;
-    transform: scale(0.95);
+    transform: scale(0.98);
   }
 
   /* cover mode: a popover with no position props spans the viewport */
@@ -1085,7 +1174,16 @@ body {
   }
 
   .lui-context-menu {
-    @apply fixed hidden flex-col overflow-auto rounded-md border bg-card p-1 text-card-foreground shadow-md;
+    position: fixed;
+    display: none;
+    flex-direction: column;
+    overflow: auto;
+    border: 1px solid var(--lui-foreground);
+    border-radius: 0;
+    background: var(--lui-background);
+    color: var(--lui-foreground);
+    padding: 0.25rem;
+    box-shadow: 0.25rem 0.25rem 0 rgb(0 0 0 / 12%);
     pointer-events: auto;
     --lui-layer-base: 100;
     z-index: calc(var(--lui-layer-base) + var(--lui-layer-index, 0));
@@ -1094,8 +1192,8 @@ body {
     min-width: min(10rem, var(--lui-popup-available-width, calc(100vw - 1rem)));
     opacity: 1;
     transform: scale(1);
-    transform-origin: center;
-    transition: opacity 150ms ease, transform 150ms ease;
+    transform-origin: var(--transform-origin, center);
+    transition: opacity 100ms ease-out, transform 100ms ease-out;
   }
 
   .lui-context-menu[data-open],
@@ -1110,7 +1208,12 @@ body {
   .lui-context-menu[data-starting-style],
   .lui-context-menu[data-ending-style] {
     opacity: 0;
-    transform: scale(0.95);
+    transform: scale(0.98);
+  }
+
+  .dark :is(.lui-dropdown-menu, .lui-popover, .lui-context-menu),
+  [data-kb-theme="dark"] :is(.lui-dropdown-menu, .lui-popover, .lui-context-menu) {
+    box-shadow: none;
   }
 
   .lui-menu-item {
@@ -1119,21 +1222,44 @@ body {
     border-radius: 0;
   }
 
-  .lui-menu-item:hover,
-  .lui-menu-item:focus-visible,
-  .lui-menu-item[data-highlighted] {
+  .lui-menu-item[data-selected]:not([data-highlighted]) {
+    background-color: var(--color-accent);
+    color: var(--color-accent-foreground);
+  }
+
+  .lui-menu-item[aria-expanded="true"]:not([data-highlighted], :disabled, [data-disabled]) {
     @apply bg-accent text-accent-foreground;
   }
 
-  .lui-menu-item[data-submenu-trigger]::after {
-    content: "›";
-    margin-left: auto;
-    font-size: 1rem;
-    line-height: 1;
+  .lui-menu-item[data-variant="destructive"]:not(:disabled, [data-disabled], [aria-disabled="true"]) {
+    color: var(--color-destructive);
   }
 
-  .lui-menu-item:disabled {
-    @apply pointer-events-none opacity-50;
+  .lui-menu-item[data-submenu-trigger]::after {
+    content: "";
+    width: 1rem;
+    height: 1rem;
+    margin-left: auto;
+    background-color: currentColor;
+    mask: url("./icons/chevron-right.svg") center / contain no-repeat;
+    -webkit-mask: url("./icons/chevron-right.svg") center / contain no-repeat;
+  }
+
+  [dir="rtl"] .lui-menu-item[data-submenu-trigger]::after {
+    transform: scaleX(-1);
+  }
+
+  :is(.lui-dropdown-menu, .lui-context-menu, .lui-popover) > .lui-separator {
+    width: auto;
+    height: 1px;
+    margin: 0.25rem;
+    background: var(--lui-foreground);
+  }
+
+  .lui-menu-item:disabled,
+  .lui-menu-item[data-disabled],
+  .lui-menu-item[aria-disabled="true"] {
+    @apply cursor-not-allowed text-muted-foreground;
   }
 
   .lui-menu-item-icon,
@@ -1141,13 +1267,30 @@ body {
     @apply size-4 shrink-0;
   }
 
-  .lui-menu-item-icon:not([data-name]),
+  .lui-menu-item-icon:not([data-name]) {
+    @apply hidden;
+  }
+
   .lui-menu-item:not([data-selected]) .lui-menu-item-check {
-    @apply invisible;
+    @apply hidden;
+  }
+
+  :is(.lui-dropdown-menu, .lui-context-menu, .lui-popover):has(.lui-menu-item[data-selected])
+    .lui-menu-item:not([data-selected]) .lui-menu-item-check {
+    @apply invisible block;
+  }
+
+  .lui-menu-item-shortcut {
+    @apply ml-auto text-xs text-muted-foreground;
+  }
+
+  .lui-menu-item:is([data-highlighted], :focus-visible, :hover) .lui-menu-item-shortcut,
+  .lui-menu-item[data-variant="destructive"] .lui-menu-item-shortcut {
+    color: inherit;
   }
 
   .lui-menu-item-label {
-    @apply flex-1;
+    @apply min-w-0 flex-1;
   }
 
   .lui-checkbox {
@@ -1182,6 +1325,7 @@ body {
     @apply block h-2 w-1 rotate-45 border-b-2 border-r-2;
     top: 0.125rem;
     left: 0.3125rem;
+    border-color: var(--color-primary-foreground);
   }
 
   .lui-switch {
@@ -1397,7 +1541,7 @@ body {
   }
 
   .lui-button:disabled {
-    @apply pointer-events-none opacity-50;
+    @apply cursor-not-allowed opacity-50;
   }
 
   .lui-button[data-disabled] {
@@ -1456,48 +1600,65 @@ body {
   }
 
   .lui-button[data-variant="default"] {
-    @apply bg-background text-foreground;
-  }
-
-  .lui-button[data-variant="default"]:hover {
-    @apply bg-accent text-accent-foreground;
+    @apply border border-input bg-background text-foreground;
   }
 
   .lui-button[data-variant="primary"] {
     @apply bg-primary text-primary-foreground;
   }
 
-  .lui-button[data-variant="primary"]:hover {
-    @apply bg-primary/90;
-  }
-
   .lui-button[data-variant="destructive"] {
     @apply bg-destructive text-destructive-foreground;
-  }
-
-  .lui-button[data-variant="destructive"]:hover {
-    @apply bg-destructive/90;
   }
 
   .lui-button[data-variant="outline"] {
     @apply border border-input;
   }
 
-  .lui-button[data-variant="outline"]:hover,
-  .lui-button[data-variant="ghost"]:hover {
-    @apply bg-accent text-accent-foreground;
-  }
-
   .lui-button[data-variant="secondary"] {
     @apply bg-secondary text-secondary-foreground;
   }
 
-  .lui-button[data-variant="secondary"]:hover {
-    @apply bg-secondary/80;
-  }
-
   .lui-button[data-variant="ghost"] {
     @apply bg-transparent text-foreground;
+  }
+
+  @media (hover: hover) {
+    .lui-button[data-variant="default"]:hover:not(:disabled, [data-disabled]),
+    .lui-button[data-variant="outline"]:hover:not(:disabled, [data-disabled]),
+    .lui-button[data-variant="ghost"]:hover:not(:disabled, [data-disabled]) {
+      @apply bg-accent text-accent-foreground;
+    }
+
+    .lui-button[data-variant="primary"]:hover:not(:disabled, [data-disabled]) {
+      @apply bg-primary/90;
+    }
+
+    .lui-button[data-variant="destructive"]:hover:not(:disabled, [data-disabled]) {
+      @apply bg-destructive/90;
+    }
+
+    .lui-button[data-variant="secondary"]:hover:not(:disabled, [data-disabled]) {
+      @apply bg-secondary/80;
+    }
+  }
+
+  .lui-button[data-variant="default"]:active:not(:disabled, [data-disabled]),
+  .lui-button[data-variant="outline"]:active:not(:disabled, [data-disabled]),
+  .lui-button[data-variant="ghost"]:active:not(:disabled, [data-disabled]) {
+    background-color: var(--lui-border);
+  }
+
+  .lui-button[data-variant="primary"]:active:not(:disabled, [data-disabled]) {
+    @apply bg-primary/80;
+  }
+
+  .lui-button[data-variant="destructive"]:active:not(:disabled, [data-disabled]) {
+    @apply bg-destructive/80;
+  }
+
+  .lui-button[data-variant="secondary"]:active:not(:disabled, [data-disabled]) {
+    @apply bg-secondary/70;
   }
 
   .lui-button[data-selected] {
@@ -1520,12 +1681,32 @@ body {
     @apply inline-flex h-9 cursor-pointer items-center justify-center rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground transition-colors;
   }
 
+  @media (hover: hover) {
+    .lui-toggle:hover:not(:disabled, [data-disabled], [aria-pressed="true"]) {
+      @apply bg-accent text-accent-foreground;
+    }
+  }
+
+  .lui-toggle:active:not(:disabled, [data-disabled]) {
+    background-color: var(--lui-border);
+  }
+
   .lui-toggle[aria-pressed="true"] {
-    @apply bg-accent text-accent-foreground;
+    background-color: var(--lui-foreground);
+    color: var(--lui-background);
+  }
+
+  .lui-toggle:focus-visible {
+    @apply outline-2 outline-offset-2 outline-foreground;
+  }
+
+  .lui-toggle:disabled,
+  .lui-toggle[data-disabled] {
+    @apply cursor-not-allowed text-muted-foreground opacity-100;
   }
 
   .lui-radio-group {
-    @apply flex items-center gap-2;
+    @apply flex flex-col items-start gap-1;
   }
 
   .lui-radio {
@@ -1542,6 +1723,11 @@ body {
 
   .lui-radio-control:focus-visible {
     @apply outline-none ring-2 ring-ring ring-offset-2;
+  }
+
+  .lui-radio-control:disabled,
+  .lui-radio-control[data-disabled] {
+    @apply cursor-not-allowed opacity-50;
   }
 
   @media (pointer: coarse) {
@@ -1565,7 +1751,38 @@ body {
   }
 
   .lui-slider {
-    @apply w-full cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-50;
+    @apply h-6 w-full cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .lui-slider::-webkit-slider-thumb {
+    appearance: none;
+    width: 1rem;
+    height: 1rem;
+    border: 1px solid var(--lui-foreground);
+    border-radius: 0;
+    background: var(--lui-background);
+  }
+
+  .lui-slider::-moz-range-thumb {
+    width: 1rem;
+    height: 1rem;
+    border: 1px solid var(--lui-foreground);
+    border-radius: 0;
+    background: var(--lui-background);
+  }
+
+  .lui-slider:focus-visible::-webkit-slider-thumb,
+  .lui-slider:focus-visible::-moz-range-thumb {
+    outline: 2px solid var(--lui-foreground);
+    outline-offset: 2px;
+  }
+
+  [data-lui-platform="ios"] .lui-slider::-webkit-slider-thumb,
+  [data-lui-platform="ios"] .lui-slider::-moz-range-thumb,
+  [data-lui-platform="android"] .lui-slider::-webkit-slider-thumb,
+  [data-lui-platform="android"] .lui-slider::-moz-range-thumb {
+    border-radius: 9999px;
+    border-color: var(--lui-platform-accent);
   }
 
   .lui-button[data-size="default"] {
@@ -1614,11 +1831,13 @@ body {
   }
 
   .lui-tabs > .lui-button {
-    @apply h-8 rounded-md bg-transparent px-3 py-1 text-sm shadow-none;
+    @apply h-8 rounded-md border-0 bg-transparent px-3 py-1 text-sm shadow-none;
   }
 
-  .lui-tabs > .lui-button:hover {
-    @apply bg-background/60 text-foreground;
+  @media (hover: hover) {
+    .lui-tabs > .lui-button:hover:not(:disabled, [data-disabled]) {
+      @apply bg-background/60 text-foreground;
+    }
   }
 
   .lui-tabs > .lui-button[data-selected] {
@@ -2239,6 +2458,33 @@ body {
       var(--lui-current-selected-bg,
         var(--lui-current-pressed-bg, var(--lui-current-hover-bg, revert-layer))));
     border-color: var(--lui-focus-within-border, var(--lui-current-hover-border, revert-layer));
+  }
+
+  /* Default menu highlight is the Base UI inverted row. An authored
+     hover-background stays in the inline style and keeps the ordinary
+     fallback text color, so a custom light highlight does not turn white. */
+  .lui-menu-item:is([data-highlighted], :focus-visible):not(:disabled, [data-disabled], [aria-disabled="true"], [style*="--lui-hover-bg"]) {
+    background-color: var(--lui-foreground);
+    color: var(--lui-background);
+  }
+
+  @media (hover: hover) {
+    .lui-menu-item:hover:not(:disabled, [data-disabled], [aria-disabled="true"], [style*="--lui-hover-bg"]) {
+      background-color: var(--lui-foreground);
+      color: var(--lui-background);
+    }
+  }
+
+  .lui-menu-item[data-variant="destructive"]:is([data-highlighted], :focus-visible):not(:disabled, [data-disabled], [aria-disabled="true"], [style*="--lui-hover-bg"]) {
+    background-color: var(--color-destructive);
+    color: var(--color-destructive-foreground);
+  }
+
+  @media (hover: hover) {
+    .lui-menu-item[data-variant="destructive"]:hover:not(:disabled, [data-disabled], [aria-disabled="true"], [style*="--lui-hover-bg"]) {
+      background-color: var(--color-destructive);
+      color: var(--color-destructive-foreground);
+    }
   }
 
 }

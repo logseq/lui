@@ -450,11 +450,11 @@ function runStyleAudit(){
     const el=document.querySelector('.'+className),style=getComputedStyle(el);
     const scale=new DOMMatrixReadOnly(style.transform).a;
     const origin=style.transformOrigin.split(' ').map(parseFloat);
-    const duration=kind==='dialog'?0.2:0.15,easing=kind==='dialog'?'ease-out':'ease';
+    const duration=0.1,easing='ease-out';
     const checks=[
       {label:'declared default duration',pass:style.transitionDuration.split(',').every(v=>Math.abs(parseFloat(v)-duration)<0.00001)},
       {label:'declared default curve',pass:style.transitionTimingFunction.split(',').every(v=>v.trim()===easing)},
-      {label:'entrance scale is 95 percent',pass:Math.abs(scale-0.95)<0.00001},
+      {label:'entrance scale is 98 percent',pass:Math.abs(scale-0.98)<0.00001},
       {label:'zoom origin is centered',pass:Math.abs(origin[0]-el.offsetWidth/2)<0.51&&Math.abs(origin[1]-el.offsetHeight/2)<0.51}
     ];
     results.push({kind,scale,origin,duration:style.transitionDuration,easing:style.transitionTimingFunction,checks});
@@ -495,9 +495,9 @@ async function runInterruptionAudit(){
     const item=surface('context-menu',null);
     open(item);
     const style=getComputedStyle(item.el),origin=style.transformOrigin.split(' ').map(parseFloat);
-    check('context defaults use 150 ms ease',style.transitionDuration.split(',').every(v=>parseFloat(v)===0.15)
-      &&style.transitionTimingFunction.split(',').every(v=>v.trim()==='ease'));
-    check('context entrance uses the centered 95 percent zoom',new DOMMatrixReadOnly(style.transform).a===0.95
+    check('context defaults use 100 ms ease-out',style.transitionDuration.split(',').every(v=>parseFloat(v)===0.1)
+      &&style.transitionTimingFunction.split(',').every(v=>v.trim()==='ease-out'));
+    check('context entrance uses the centered 98 percent zoom',new DOMMatrixReadOnly(style.transform).a===0.98
       &&Math.abs(origin[0]-item.el.offsetWidth/2)<0.51&&Math.abs(origin[1]-item.el.offsetHeight/2)<0.51);
     await settle(item);close(item);pause(item);
     check('context close retains visible inert content',item.el.hasAttribute('data-ending-style')

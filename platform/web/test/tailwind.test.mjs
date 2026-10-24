@@ -306,8 +306,22 @@ test("menus use the Base UI popup and transition contract", async () => {
   assert.match(css, /\.lui-context-menu\[data-open\][^{]*\{[^}]*display:flex/)
   assert.match(css, /\.lui-menu-item\{[^}]*display:flex/)
   assert.match(css, /\.lui-menu-item\[data-highlighted\]/)
+  assert.match(
+    css,
+    /\.lui-menu-item:is\(\[data-highlighted\],:focus-visible\):not\([^)]*\)\{[^}]*background-color:var\(--lui-foreground\)/,
+  )
   assert.match(css, /\.lui-menu-item\[data-submenu-trigger\]/)
+  assert.match(css, /\.lui-menu-item\[data-variant=destructive\]/)
+  assert.match(css, /\.lui-menu-item-shortcut/)
   assert.match(css, /\.lui-menu-item:not\(\[data-selected\]\) \.lui-menu-item-check/)
+  assert.match(css, /\.lui-context-menu\{[^}]*border-radius:0/)
+  assert.match(css, /\.lui-dropdown-menu\{[^}]*transition-duration:(?:100ms|\.1s|0\.1s)/)
+  assert.match(css, /\.lui-dialog\{[^}]*scale\(1\)/)
+  assert.match(css, /\.lui-select\[data-placeholder\]/)
+  assert.match(css, /\.lui-accordion-summary:focus-visible/)
+  assert.match(css, /\.lui-toggle:focus-visible/)
+  assert.match(css, /\.lui-toggle:disabled/)
+  assert.match(css, /@media \(hover:hover\)/)
 })
 
 test("Tooltip uses the shared portal without taking flow space", async () => {
