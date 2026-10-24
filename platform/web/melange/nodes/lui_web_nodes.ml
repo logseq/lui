@@ -193,6 +193,8 @@ let create_menu_item_node renderer =
     [ ("type", "button"); ("role", "option"); ("aria-selected", "false") ]
     [ Util.element document "span" "lui-menu-item-icon lui-icon" hidden [];
       Util.element document "span" "lui-menu-item-label" [ ("hidden", "") ] [];
+      Util.element document "span" "lui-menu-item-shortcut"
+        [ ("hidden", "") ] [];
       Util.element document "span" "lui-menu-item-check lui-icon"
         [ ("aria-hidden", "true"); ("data-name", "check") ]
         [] ]

@@ -258,6 +258,26 @@ let select_display_text renderer node =
        | Some (StringValue placeholder) -> placeholder
        | _ -> "")
 
+(* An empty Select value shows its placeholder in the same slot. Mark that
+   state so the placeholder reads as a hint rather than a committed value. *)
+let sync_select_value renderer node dom_node =
+  let showing_placeholder =
+    match Store.property renderer.web_store node TextValue with
+    | Some (StringValue text) when text <> "" -> false
+    | _ -> (
+        match Store.property renderer.web_store node PlaceholderValue with
+        | Some (StringValue placeholder) -> placeholder <> ""
+        | _ -> false)
+  in
+  W.Element.setTextContent
+    (Util.child_element dom_node 0)
+    (select_display_text renderer node);
+  Util.set_state_attribute dom_node "data-placeholder" showing_placeholder
+
+let apply_menu_shortcut kind dom_node value =
+  if kind = MenuItem || kind = MenuTrigger then
+    Util.set_optional_text (Util.menu_item_shortcut_node dom_node) value
+
 let refresh_node_class renderer node kind dom_node =
   let style_class =
     match Store.property renderer.web_store node StyleClass with
@@ -314,10 +334,7 @@ let apply_text_value renderer node kind dom_node text =
   | Avatar ->
       W.Element.setTextContent (Util.child_element dom_node 1) text;
       Widgets.update_avatar renderer node dom_node
-  | Select ->
-      W.Element.setTextContent
-        (Util.child_element dom_node 0)
-        (select_display_text renderer node)
+  | Select -> sync_select_value renderer node dom_node
   | Link ->
       W.Element.setTextContent (Util.child_element dom_node 1) text
   | TextField | SecureField | Input | SearchField | Textarea | Combobox ->
@@ -388,10 +405,7 @@ let apply_gap _renderer queue_split node kind dom_node gap =
     set_style dom_node "--lui-table-gap" (string_of_int gap ^ "px")
 
 let apply_placeholder renderer node kind dom_node placeholder =
-  if kind = Select then
-    W.Element.setTextContent
-      (Util.child_element dom_node 0)
-      (select_display_text renderer node)
+  if kind = Select then sync_select_value renderer node dom_node
   else
     W.HtmlInputElement.setPlaceholder (Util.text_control_node dom_node)
       placeholder
@@ -1003,7 +1017,8 @@ and apply_secondary_property renderer queue_split node kind dom_node
   | TooltipText, StringValue value ->
       W.Element.setAttribute "data-tooltip" value dom_node
   | TooltipKeys, StringValue value ->
-      W.Element.setAttribute "data-tooltip-keys" value dom_node
+      W.Element.setAttribute "data-tooltip-keys" value dom_node;
+      apply_menu_shortcut kind dom_node value
   | InputType, StringValue value ->
       W.Element.setAttribute "type" value dom_node
   | PickerAccept, StringValue value ->
@@ -1240,8 +1255,10 @@ let remove_property renderer queue_split node kind dom_node property =
        | AlignmentValue ->
            W.Element.removeAttribute "data-alignment" dom_node
        | PlaceholderValue ->
-           W.HtmlInputElement.setPlaceholder (Util.text_control_node dom_node)
-             ""
+           if kind = Select then sync_select_value renderer node dom_node
+           else
+             W.HtmlInputElement.setPlaceholder
+               (Util.text_control_node dom_node) ""
        | AccessibilityLabel ->
            W.Element.removeAttribute "aria-label"
              (if Store.direct_toggle kind || kind = NumberStepper then
@@ -1286,7 +1303,9 @@ let remove_property renderer queue_split node kind dom_node property =
        | FlexWrap -> set_style dom_node "flex-wrap" ""
        | Transition -> set_style (transition_surface kind dom_node) "transition" ""
        | TooltipText -> W.Element.removeAttribute "data-tooltip" dom_node
-       | TooltipKeys -> W.Element.removeAttribute "data-tooltip-keys" dom_node
+       | TooltipKeys ->
+           W.Element.removeAttribute "data-tooltip-keys" dom_node;
+           apply_menu_shortcut kind dom_node ""
        | InputType -> W.Element.removeAttribute "type" dom_node
        | PickerAccept -> W.Element.removeAttribute "data-accept" dom_node
        | PickerDirectory ->
