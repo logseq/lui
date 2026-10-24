@@ -128,10 +128,20 @@ test("DOM-anchored dropdown-menu still follows its sibling anchor", async () => 
   const menu = page.locator(".lui-dropdown-menu[data-open]")
   await menu.waitFor()
 
-  // The anchored menu keeps positioning relative to its trigger sibling —
-  // the point path did not steal the anchor path.
+  // The anchored menu stays on its trigger sibling. A select aligns the
+  // highlighted option with the value when that shift fits; otherwise the
+  // popup remains below the trigger. Either way the point path did not
+  // steal the anchor.
   const selectRect = await page.locator(`#lui-node-${select}`).evaluate((el) => el.getBoundingClientRect())
   const popupRect = await openPositioner().evaluate((el) => el.getBoundingClientRect())
-  assert.ok(popupRect.top >= selectRect.bottom - 1,
-    `expected popup below trigger (top ${popupRect.top} >= bottom ${selectRect.bottom})`)
+  assert.ok(Math.abs(popupRect.left - selectRect.left) <= 1,
+    `expected popup aligned to trigger left (${popupRect.left} vs ${selectRect.left})`)
+  const linedUp = await page.evaluate(() => {
+    const value = document.querySelector(".lui-select-value")?.getBoundingClientRect()
+    const label = document.querySelector(".lui-menu-item-label")?.getBoundingClientRect()
+    return value != null && label != null && Math.abs(value.top - label.top) <= 1
+  })
+  const below = popupRect.top >= selectRect.bottom - 1
+  assert.ok(linedUp || below,
+    `expected option aligned to the value or popup below the trigger (top ${popupRect.top}, bottom ${selectRect.bottom})`)
 })
