@@ -2660,6 +2660,55 @@ test("Tooltip owns delayed pointer, immediate focus, Escape, ARIA, and static-la
   assert.equal(await state(`document.querySelector('.lui-tooltip[data-anchor]')?.hasAttribute('data-open')`), false)
 })
 
+test("Dialog stays inside a short viewport and above the keyboard", async () => {
+  await openGalleryPage("Dialog")
+  await browser("set", "viewport", "390", "480")
+  await clickButton("Open dialog")
+  await browser("wait", "--fn", "document.querySelector('.lui-dialog')")
+
+  const fitted = await state(`(() => {
+    const dialog = document.querySelector('.lui-dialog')
+    dialog.style.height = '2000px'
+    const bounds = dialog.getBoundingClientRect()
+    const layer = dialog.closest('.lui-modal-layer')?.getBoundingClientRect()
+    const limitTop = layer?.top ?? 0
+    const limitBottom = layer?.bottom ?? innerHeight
+    return {
+      top: bounds.top,
+      bottom: bounds.bottom,
+      height: bounds.height,
+      overflow: getComputedStyle(dialog).overflowY,
+      limitTop,
+      limitBottom,
+    }
+  })()`)
+  assert.equal(fitted.overflow, "auto")
+  assert.ok(fitted.height < fitted.limitBottom - fitted.limitTop,
+    `dialog height ${fitted.height} must be capped by the visible viewport`)
+  assert.ok(fitted.top >= fitted.limitTop - 1, `dialog top ${fitted.top}`)
+  assert.ok(fitted.bottom <= fitted.limitBottom + 1, `dialog bottom ${fitted.bottom}`)
+
+  const aboveKeyboard = await state(`(() => {
+    const portal = document.querySelector('.lui-popup-portal')
+    portal?.style.setProperty('--lui-keyboard-height', '180px')
+    document.documentElement.style.setProperty('--lui-keyboard-height', '180px')
+    const dialog = document.querySelector('.lui-dialog')
+    const bounds = dialog.getBoundingClientRect()
+    const layer = dialog.closest('.lui-modal-layer')?.getBoundingClientRect()
+    const limitBottom = (layer?.bottom ?? innerHeight) - 180
+    return {
+      top: bounds.top,
+      bottom: bounds.bottom,
+      limitTop: layer?.top ?? 0,
+      limitBottom,
+    }
+  })()`)
+  assert.ok(aboveKeyboard.top >= aboveKeyboard.limitTop - 1,
+    `dialog top ${aboveKeyboard.top} under the keyboard`)
+  assert.ok(aboveKeyboard.bottom <= aboveKeyboard.limitBottom + 1,
+    `dialog bottom ${aboveKeyboard.bottom} should clear a 180px keyboard at ${aboveKeyboard.limitBottom}`)
+})
+
 test("Tooltip flips and shifts inside compact viewport edges", async () => {
   await openGalleryPage("Tooltip")
   await browser("set", "viewport", "320", "640")
