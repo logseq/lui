@@ -162,9 +162,9 @@ test('a frozen rectangle keeps a replacement picker anchored after its option un
   }
   check(910.5, 361.953125, 'below')
   viewport.clientHeight = 500
-  check(910.5, 8, 'above')
+  check(651.5, 150, 'left')
   viewport.clientWidth = 600
-  check(282, 8, 'above')
+  check(282, 150, 'left')
   assert.equal(apply([rect('30 80 40 20')]), true)
   viewport.clientHeight = 720
   check(8, 100, 'below')
@@ -199,32 +199,104 @@ test('configured popup clearance follows resize, property updates and removal', 
   apply([Protocol.create_node_op(1, kind('box')), Protocol.create_node_op(2, kind('popover')),
     Protocol.insert_child_op(1, 2, 0), set('anchor', {TAG: 0, _0: 'below'}),
     set('anchor-offset', {TAG: 3, _0: 4}), set('collision-padding', {TAG: 3, _0: 5})])
-  const check = (height, top, available) => {
+  const check = (height, left, top, side, available) => {
     viewport.clientHeight = height
     Position.position_popover(renderer, 2)
-    assert.equal(positioner.styles.get('left'), '64px')
+    assert.equal(positioner.styles.get('left'), `${left}px`)
     assert.equal(positioner.styles.get('top'), `${top}px`)
+    assert.equal(positioner.attributes.get('data-side'), side)
     assert.equal(popup.styles.get('--lui-popup-available-height'), `${available}px`)
   }
-  for (const row of [[932, 132, 795], [329, 132, 192], [220, 5, 87], [932, 132, 795]]) check(...row)
+  // 932px still fits below. Shorter viewports cannot fit either vertical side,
+  // so the popup moves to the right, matching popup collision fallback.
+  for (const row of [
+    [932, 64, 132, 'below', 795],
+    [329, 188, 36, 'right', 319],
+    [220, 188, 5, 'right', 210],
+    [932, 64, 132, 'below', 795],
+  ]) check(...row)
   apply([set('collision-padding', {TAG: 3, _0: 12})])
-  check(220, 12, 80)
+  check(220, 188, 12, 'right', 196)
   apply([Protocol.remove_prop_op(2, prop('collision-padding'))])
-  check(220, 8, 84)
+  check(220, 188, 8, 'right', 204)
   for (const value of [-1, NaN, Infinity, -Infinity]) {
     assert.throws(() => apply([set('collision-padding', {TAG: 3, _0: value})]))
   }
 })
 
 
+test('dropdown roots flip alignment and stay on the preferred axis', () => {
+  const viewport = {clientWidth: 400, clientHeight: 400}
+  const anchorBounds = {x: 280, y: 40, width: 80, height: 32}
+  const popupBounds = {x: 0, y: 0, width: 180, height: 40}
+  const anchor = element(anchorBounds)
+  const popup = element(popupBounds)
+  const positioner = element(popupBounds, [popup])
+  positioner.setAttribute('data-anchor', 'below')
+  positioner.setAttribute('data-anchor-alignment', 'start')
+  const document = {defaultView: null, documentElement: viewport}
+  const store = Store.create_store(), renderer = {web_store: store, web_document: document}
+  const set = (name, value) => Protocol.set_prop_op(2, prop(name), value)
+  assert.equal(Store.apply_batch(store,
+    name => name === kind('dropdown-menu') ? positioner : anchor,
+    {generation: 1, ops: list([Protocol.create_node_op(1, kind('box')),
+      Protocol.create_node_op(2, kind('dropdown-menu')), Protocol.insert_child_op(1, 2, 0),
+      set('anchor', {TAG: 0, _0: 'below'}),
+      set('anchor-alignment', {TAG: 0, _0: 'start'})])}), true)
+  Position.position_dropdown(renderer, 2)
+  assert.equal(positioner.attributes.get('data-side'), 'below')
+  assert.equal(positioner.styles.get('left'), '180px')
+  assert.equal(positioner.styles.get('top'), '72px')
+
+  viewport.clientHeight = 120
+  anchorBounds.x = 160
+  popupBounds.width = 100
+  popupBounds.height = 100
+  positioner.getBoundingClientRect = () => ({
+    x: 0, y: 0, width: popupBounds.width, height: popupBounds.height,
+    left: 0, top: 0, right: popupBounds.width, bottom: popupBounds.height,
+  })
+  Position.position_dropdown(renderer, 2)
+  assert.equal(positioner.attributes.get('data-side'), 'below')
+  assert.equal(popup.styles.get('--lui-popup-available-height'), '40px')
+  assert.equal(positioner.styles.get('top'), '12px')
+})
+
+
+test('a nested menu falls back to the perpendicular end when neither side fits', () => {
+  const viewport = {clientWidth: 200, clientHeight: 600}
+  const anchor = element({x: 80, y: 40, width: 40, height: 24})
+  const popup = element({x: 0, y: 0, width: 160, height: 80})
+  const positioner = element({x: 0, y: 0, width: 160, height: 80}, [popup])
+  positioner.setAttribute('data-anchor', 'right')
+  positioner.setAttribute('data-anchor-alignment', 'start')
+  positioner.setAttribute('data-submenu', '')
+  const document = {defaultView: null, documentElement: viewport}
+  const store = Store.create_store(), renderer = {web_store: store, web_document: document}
+  const set = (name, value) => Protocol.set_prop_op(2, prop(name), value)
+  assert.equal(Store.apply_batch(store,
+    name => name === kind('dropdown-menu') ? positioner : anchor,
+    {generation: 1, ops: list([Protocol.create_node_op(1, kind('box')),
+      Protocol.create_node_op(2, kind('dropdown-menu')), Protocol.insert_child_op(1, 2, 0),
+      set('anchor', {TAG: 0, _0: 'right'}),
+      set('anchor-alignment', {TAG: 0, _0: 'start'})])}), true)
+  Position.position_dropdown(renderer, 2)
+  assert.equal(positioner.attributes.get('data-side'), 'below')
+  assert.equal(positioner.styles.get('top'), '64px')
+  assert.equal(positioner.styles.get('left'), '32px')
+})
+
+
 test('side measurement preserves scroll instead of clamping it to the temporary viewport cap', () => {
   const viewport = {clientWidth: 1280, clientHeight: 300}
   const anchor = element({x: 1210, y: 8, width: 32, height: 32})
-  const popup = element({x: 0, y: 0, width: 256, height: 255})
-  const positioner = element({x: 0, y: 0, width: 256, height: 255}, [popup])
+  // Wider than either horizontal side, so popup collision stays on the
+  // vertical axis and the side cap still has to restore the scroll offset.
+  const popup = element({x: 0, y: 0, width: 1400, height: 255})
+  const positioner = element({x: 0, y: 0, width: 1400, height: 255}, [popup])
   const height = () => Math.min(339, parseFloat(popup.styles.get('--lui-popup-available-height')))
-  const bounds = () => ({x: 0, y: 0, left: 0, top: 0, right: 256,
-    bottom: height(), width: 256, height: height()})
+  const bounds = () => ({x: 0, y: 0, left: 0, top: 0, right: 1400,
+    bottom: height(), width: 1400, height: height()})
   positioner.getBoundingClientRect = bounds
   popup.getBoundingClientRect = bounds
   popup.styles.set('--lui-popup-available-height', '255px')

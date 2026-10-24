@@ -814,11 +814,13 @@ body {
   .lui-dialog {
     @apply fixed grid rounded-xl border bg-card p-4 text-card-foreground shadow-lg;
     z-index: 1;
-    top: 50%;
+    /* Center in the visual viewport, above a simulated keyboard, and keep a
+       too-tall dialog scrollable instead of sliding its top off screen. */
+    top: calc(var(--lui-visual-top, 0px) + (var(--lui-visual-height, 100dvh) - var(--lui-keyboard-height, 0px)) / 2);
     left: 50%;
     width: min(24rem, calc(100vw - 3rem));
     max-width: calc(100vw - 3rem);
-    max-height: calc(100dvh - 2rem);
+    max-height: calc(var(--lui-visual-height, 100dvh) - var(--lui-keyboard-height, 0px) - 2rem);
     margin: 0;
     overflow: auto;
     overscroll-behavior: contain;
@@ -1986,6 +1988,8 @@ body {
 
 .lui-popup-portal[data-lui-form-factor] .lui-dialog {
   position: absolute;
+  top: calc(50% - var(--lui-keyboard-height, 0px) / 2);
+  max-height: calc(100% - var(--lui-keyboard-height, 0px) - 2rem);
 }
 
 .lui-popup-portal[data-lui-form-factor="phone"] .lui-sheet {
