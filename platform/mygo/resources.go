@@ -108,6 +108,44 @@ func (b *Backend) UnregisterImage(id int64) {
 	b.resources.services.Invalidate()
 }
 
+// NaturalImageSize reports cached decoded pixel dimensions for a retained image,
+// file-image or avatar. Call on the UI goroutine. It does not start decoding or
+// use layout, crop dimensions, avatar fallbacks or assets from retired nodes.
+func (b *Backend) NaturalImageSize(id int64) (width, height float32, ready bool) {
+	if b.closed || b.resources.closed || b.probing {
+		return 0, 0, false
+	}
+	n, exists := b.nodes[id]
+	if !exists {
+		return 0, 0, false
+	}
+	var asset *resourceAsset
+	var source string
+	switch n.Kind {
+	case "image", "avatar":
+		source = n.String("url")
+		if source == "" {
+			asset = b.resources.images[int64(n.Number("image", 0))]
+		}
+	case "file-image":
+		source = n.String("path")
+	default:
+		return 0, 0, false
+	}
+	if source != "" {
+		state := b.states[id]
+		if state == nil || state.resource.source != source || state.resource.maxPixel != int(n.Number("max-pixel-size", 0)) {
+			return 0, 0, false
+		}
+		asset = state.resource.asset
+	}
+	if asset == nil || asset.pixels == nil {
+		return 0, 0, false
+	}
+	bounds := asset.pixels.Bounds()
+	return float32(bounds.Dx()), float32(bounds.Dy()), true
+}
+
 // PresentMediaSurfaceFrame copies an immutable frame into the named surface.
 // Replacement keeps the existing toolkit texture allocation where possible.
 func (b *Backend) PresentMediaSurfaceFrame(id int64, pixels image.Image) error {

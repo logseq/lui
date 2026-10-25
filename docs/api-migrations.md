@@ -14,6 +14,21 @@ covered separately.
 
 ## Unreleased: component API and MyGo parity
 
+### MyGo decoded image dimensions
+
+Embedding hosts can call `Backend.NaturalImageSize(id)` on the UI goroutine to
+read `(width, height, ready)` for standard `image`, `file-image` and `avatar`
+nodes. Dimensions come from the current decoded pixels, including any
+`max-pixel-size` downsampling, not layout size, cropping or avatar placeholders.
+URL/path assets must match the current retained node's source and decode limit;
+drop/recreation and snapshots discard that node's decoded state. Host-registered
+images use the current image registration only when no URL takes precedence.
+
+The query performs no I/O and starts no decode. Pending, lazy/unloaded, failed,
+stale, unsupported, missing and closed resources return `(0, 0, false)`. Query
+again after a frame processes the renderer's normal decode completion; do not
+acknowledge an unavailable result as a guessed size or decode the source again.
+
 ### MyGo host theme defaults and authored variables
 
 Embedding hosts can install per-window defaults with
