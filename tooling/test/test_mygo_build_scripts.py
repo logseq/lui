@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class MyGoBuildScriptsTest(unittest.TestCase):
+    @unittest.skipUnless(os.name == "posix", "Linux/macOS build scripts require a POSIX shell; Linux CI also builds the real shared libraries")
     def test_linux_builds_every_linked_archive_from_empty_build_directory(self):
         for application in ("todos", "components"):
             with self.subTest(application=application), tempfile.TemporaryDirectory() as directory:
@@ -36,7 +37,8 @@ elif args[:2] == ["ocamlfind", "ocamlopt"]:
     for target in args:
         if target.endswith(".cmxa") and not Path(target).is_file():
             sys.exit("Archive missing from fresh Dune build: " + target)
-    Path(args[args.index("-o") + 1]).touch()
+    variant = args[args.index("-runtime-variant") + 1] if "-runtime-variant" in args else ""
+    Path(args[args.index("-o") + 1]).write_text("pic" if variant == "_pic" else "non-pic")
 elif args == ["ocamlc", "-where"]:
     print("/ocaml/include")
 else:
@@ -45,6 +47,13 @@ else:
                     "cc": '''#!/usr/bin/env python3
 from pathlib import Path
 import sys
+args = sys.argv[1:]
+for value in args:
+    if value.endswith("_complete.o"):
+        if Path(value).read_text() != "pic":
+            sys.exit("OCaml runtime has non-PIC TLS relocations in shared library")
+if "-fPIC" not in args:
+    sys.exit("C bridge must use position-independent code for a shared library")
 Path(sys.argv[sys.argv.index("-o") + 1]).touch()
 ''',
                 }

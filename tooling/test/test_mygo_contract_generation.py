@@ -77,7 +77,7 @@ class ContractGenerationTest(unittest.TestCase):
         contract = json.loads((self.root / "schema/mygo-manifest.json").read_text())
         for name in contract["sourceHashes"]:
             path = self.root / name
-            path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+            path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
         result = self.check()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

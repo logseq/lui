@@ -14,12 +14,13 @@ case "$(uname -s)" in
     output_dir="$repo_root/_build/mygo"
     mkdir -p "$output_dir"
     opam exec -- ocamlfind ocamlopt -linkpkg -linkall -package ocaml-signal \
+      -runtime-variant _pic -ccopt -fPIC \
       _build/default/src/lui.cmxa \
       _build/default/examples/gallery/gallery_app.cmxa \
       _build/default/examples/components/native/components_bridge.cmxa \
       -output-complete-obj -o "$output_dir/components_complete.o"
     ocaml_include=$(opam exec -- ocamlc -where)
-    cc -shared -o "$output_dir/liblui_components.so" \
+    cc -fPIC -shared -o "$output_dir/liblui_components.so" \
       platform/native/lui_ocaml_bridge.c "$output_dir/components_complete.o" \
       -I"$ocaml_include" -lpthread -ldl -lm
     printf '%s\n' "$output_dir/liblui_components.so"
