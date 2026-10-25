@@ -201,6 +201,36 @@ value when it belongs to the same text run. Do not register a custom standard
 `br` renderer: it does not restore a removed protocol kind. Raw HTML extensions
 keep their independent HTML element rules.
 
+## MyGo production host services
+
+Desktop adapters can use `Backend.Bounds`, `RequestFocus`, `ScrollTo` and
+`ScrollOffset` on the UI thread instead of relying on demo-only geometry hooks
+or inspecting backend state. `Bounds(c, id)` reports window DIPs from committed
+layout, with `false` for missing, hidden, unmounted or closed nodes. Measure
+after a committed frame; do not treat unavailable geometry as a zero rectangle.
+
+`RequestFocus(id)` requests focus for the current retained node, including before
+its first render. It is not a focus acknowledgement. Unknown or dropped nodes
+are errors; requests do not survive drop/recreation or a replacement snapshot.
+`ScrollTo(id, x, y)` accepts finite DIPs on scroll/list/virtual-list nodes and
+clamps to the content at layout. It rejects an active token-controlled scroll;
+replace those requests through the standard scroll-token protocol instead.
+
+Extensions and custom renderers opt into host services by binding their primary
+control during rendering:
+
+```go
+element := ui.Box(c).Focusable()
+if err := backend.BindHostElement(node.ID, element); err != nil {
+    // Propagate this adapter error; do not claim a focus or geometry result.
+    panic(err)
+}
+```
+
+Standard nodes are already bound. Existing extension renderer signatures and
+wire schemas do not change. No model-controlled text/selection is mutated by
+these services; editors must obtain source and selection from their model.
+
 ## Upgrade checks for application maintainers
 
 1. Update generated wire schemas and custom host decoders together with LUI.
