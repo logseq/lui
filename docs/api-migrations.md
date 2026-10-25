@@ -17,9 +17,13 @@ covered separately.
 ### Large-batch memory and handle ownership
 
 The shared OCaml encoder and MyGo decoder now process large batches without
-retaining per-operation JSON copies. Wire bytes, validation, integer precision
-and application APIs are unchanged. Rebuild application libraries to include
-the encoder improvement.
+retaining per-operation JSON copies. MyGo applies JSON operations directly in
+its rollback journal instead of retaining a complete operation array, and the
+native receiver reads its owned wire string without another full byte copy.
+Duplicate fields, final generation checks and complete-document validation
+retain their existing atomic semantics. Wire bytes, integer precision and
+application APIs are unchanged. Rebuild application libraries to include the
+encoder improvement.
 
 MyGo also releases abandoned handle bindings while preserving live hidden
 handles and pending focus. Embedded Go applications must update their root

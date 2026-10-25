@@ -23,76 +23,86 @@ func DecodeBatch(data []byte) (Batch, error) {
 	return decodeBatchReader(bytes.NewReader(data), min(bytes.Count(data, []byte(`"op"`)), len(data)/48))
 }
 
-func decodeBatchString(data string) (Batch, error) {
-	return decodeBatchReader(strings.NewReader(data), min(strings.Count(data, `"op"`), len(data)/48))
+func decodeBatchReader(source io.Reader, capacity int) (Batch, error) {
+	var batch Batch
+	generation, err := decodeBatchInto(source, func() { batch.Ops = nil }, func(op Operation, _ int) {
+		// This is only a capacity hint; escaped keys and duplicates keep their
+		// normal semantics, and an empty final array remains nil.
+		if batch.Ops == nil {
+			batch.Ops = make([]Operation, 0, capacity)
+		}
+		batch.Ops = append(batch.Ops, op)
+	})
+	if err != nil {
+		return Batch{}, err
+	}
+	batch.Generation = generation
+	return batch, nil
 }
 
-func decodeBatchReader(source io.Reader, capacity int) (Batch, error) {
+func decodeBatchInto(source io.Reader, begin func(), visit func(Operation, int)) (int64, error) {
 	dec := json.NewDecoder(source)
 	dec.UseNumber()
 	opening, err := dec.Token()
 	if err != nil || opening != json.Delim('{') {
-		return Batch{}, fmt.Errorf("lui: batch requires an object: %v", err)
+		return 0, fmt.Errorf("lui: batch requires an object: %v", err)
 	}
 	var generation *int64
-	var batch Batch
 	var hasOps bool
-	// Canonical wire uses one "op" key per operation. This is only a capacity
-	// hint: escaped keys, unknown fields and duplicates retain normal semantics.
 	for dec.More() {
 		key, err := dec.Token()
 		if err != nil {
-			return Batch{}, fmt.Errorf("lui: decode batch: %w", err)
+			return 0, fmt.Errorf("lui: decode batch: %w", err)
 		}
 		switch {
 		case strings.EqualFold(key.(string), "generation"):
 			if err := dec.Decode(&generation); err != nil {
-				return Batch{}, fmt.Errorf("lui: decode generation: %w", err)
+				return 0, fmt.Errorf("lui: decode generation: %w", err)
 			}
 		case strings.EqualFold(key.(string), "ops"):
 			opening, err := dec.Token()
 			if err != nil {
-				return Batch{}, fmt.Errorf("lui: decode ops: %w", err)
+				return 0, fmt.Errorf("lui: decode ops: %w", err)
 			}
-			batch.Ops, hasOps = nil, opening != nil
+			hasOps = opening != nil
 			if opening == nil {
+				begin()
 				continue
 			}
 			if opening != json.Delim('[') {
-				return Batch{}, fmt.Errorf("lui: ops requires an array")
+				return 0, fmt.Errorf("lui: ops requires an array")
 			}
-			if dec.More() {
-				batch.Ops = make([]Operation, 0, capacity)
-			}
+			begin()
+			index := 0
 			for dec.More() {
 				op, err := decodeOperation(dec)
 				if err != nil {
-					return Batch{}, fmt.Errorf("lui: operation %d: %w", len(batch.Ops), err)
+					return 0, fmt.Errorf("lui: operation %d: %w", index, err)
 				}
-				batch.Ops = append(batch.Ops, op)
+				visit(op, index)
+				index++
 			}
 			if _, err := dec.Token(); err != nil {
-				return Batch{}, fmt.Errorf("lui: decode ops: %w", err)
+				return 0, fmt.Errorf("lui: decode ops: %w", err)
 			}
 		default:
 			var ignored any
 			if err := dec.Decode(&ignored); err != nil {
-				return Batch{}, fmt.Errorf("lui: decode batch field: %w", err)
+				return 0, fmt.Errorf("lui: decode batch field: %w", err)
 			}
 		}
 	}
 	if _, err := dec.Token(); err != nil {
-		return Batch{}, fmt.Errorf("lui: decode batch: %w", err)
+		return 0, fmt.Errorf("lui: decode batch: %w", err)
 	}
 	if generation == nil || !hasOps {
-		return Batch{}, fmt.Errorf("lui: batch requires generation and ops")
+		return 0, fmt.Errorf("lui: batch requires generation and ops")
 	}
 	var trailing any
 	if err := dec.Decode(&trailing); err != io.EOF {
-		return Batch{}, fmt.Errorf("lui: trailing data after batch")
+		return 0, fmt.Errorf("lui: trailing data after batch")
 	}
-	batch.Generation = *generation
-	return batch, nil
+	return *generation, nil
 }
 
 func decodeOperation(dec *json.Decoder) (Operation, error) {

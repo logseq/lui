@@ -193,11 +193,7 @@ func cString(ptr unsafe.Pointer) string {
 }
 func (r *Runtime) receive(batches []string, snapshot bool) error {
 	for i, source := range batches {
-		batch, err := decodeBatchString(source)
-		if err != nil {
-			return err
-		}
-		if err := r.backend.apply(batch, snapshot && i == 0); err != nil {
+		if err := r.backend.applyJSONString(source, snapshot && i == 0); err != nil {
 			return err
 		}
 	}
