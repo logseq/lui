@@ -758,6 +758,10 @@ let rec apply_property renderer queue_split node kind dom_node property
   match (property, value) with
   | TextValue, StringValue text ->
       apply_text_value renderer node kind dom_node text
+  | ReadOnly, BoolValue read_only ->
+      let control = Util.text_control_node dom_node in
+      W.HtmlInputElement.setReadOnly control read_only
+  | (VirtualOverscan | VirtualItemExtent), _ -> ()
   | Enabled, BoolValue enabled ->
       apply_enabled renderer node kind dom_node enabled;
       Lui_web_events.update_appear renderer node
@@ -1203,6 +1207,8 @@ let remove_property renderer queue_split node kind dom_node property =
            else W.Element.removeAttribute "aria-pressed" dom_node
        | NavigateEnabled | SubmitOnBlur | ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange -> ()
        | TextValue -> apply_text_value renderer node kind dom_node ""
+       | ReadOnly -> W.HtmlInputElement.setReadOnly (Util.text_control_node dom_node) false
+       | VirtualOverscan | VirtualItemExtent -> ()
        | Enabled ->
            apply_property renderer queue_split node kind dom_node Enabled
              (BoolValue true)

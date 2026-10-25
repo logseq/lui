@@ -1222,6 +1222,7 @@ private fun LuiTextControl(
     val search = node.kind == LuiNodeKind.searchField
     val combobox = node.kind == LuiNodeKind.combobox
     val enabled = node.isEnabled()
+    val readOnly = node.prop("read-only")?.boolValue == true
     val grouped = node.parent?.let { backend.node(it)?.kind } == LuiNodeKind.inputGroup
     val formField = node.parent?.let { backend.node(it)?.propString("style-class") }
         ?.split(' ')?.contains("form") == true
@@ -1266,9 +1267,11 @@ private fun LuiTextControl(
             ?: MaterialTheme.colorScheme.onSurface,
     ).luiInherited()
     val onValueChange: (String) -> Unit = { value ->
-        localText = value
-        emitted.add(value)
-        backend.emit(LuiEvent.TextChanged(id, value))
+        if (!readOnly) {
+            localText = value
+            emitted.add(value)
+            backend.emit(LuiEvent.TextChanged(id, value))
+        }
     }
     val placeholderContent: (@Composable () -> Unit)? =
         node.propString("placeholder")?.let { p -> { Text(p) } }
@@ -1301,6 +1304,7 @@ private fun LuiTextControl(
             onValueChange = onValueChange,
             modifier = fieldModifier,
             enabled = enabled,
+            readOnly = readOnly,
             singleLine = !multiline,
             maxLines = if (multiline) 5 else 1,
             placeholder = placeholderContent,
@@ -1313,6 +1317,7 @@ private fun LuiTextControl(
             onValueChange = onValueChange,
             modifier = fieldModifier,
             enabled = enabled,
+            readOnly = readOnly,
             placeholder = placeholderContent,
             singleLine = !multiline,
             minLines = if (multiline) 3 else 1,

@@ -297,6 +297,9 @@ type property =
   | CheckedIndicatorBorderColor
   | CollisionPadding
   | LineClamp
+  | ReadOnly
+  | VirtualOverscan
+  | VirtualItemExtent
 
 module Property_map : Map.S with type key = property
 

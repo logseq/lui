@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LUI editor and virtual tuning regressions</title>
+<link rel="stylesheet" href="/platform/web/dist/lui.css">
+<script type="importmap">{"imports":{
+  "@tanstack/virtual-core": "/platform/web/dist/tanstack-virtual.js",
+          "lui.web.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui.web.dom/",
+  "lui/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui/",
+  "melange-webapi/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange-webapi/",
+  "melange.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.dom/",
+  "melange.js/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.js/",
+  "melange/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange/",
+  "ocaml-signal/":"/_build/default/examples/components/web/lui-components-web/node_modules/ocaml-signal/"
+}}</script>
+<style>body { margin: 24px; font: 16px system-ui } #host { max-width: 720px }</style>
+<main id="host"></main>
+<script type="module">
+import * as Web from "lui.web.dom/shell/lui_web.js"
+import {Protocol, properties, kinds} from "./protocol-fixture.mjs"
+try {
+const host=document.querySelector('#host'), renderer=Web.create(undefined,host), backend=Web.backend(renderer)
+let generation=0, ops=[], id=0
+const events=[]
+Web.set_event_handler(renderer,event=>{events.push(event);return true})
+const list=items=>items.reduceRight((tl,hd)=>({hd,tl}),0)
+function set(node,name,value){const tag=typeof value==='string'?0:typeof value==='boolean'?1:name==='item-extent'?3:2;ops.push(Protocol.set_prop_op(node,properties.get(name),{TAG:tag,_0:value}))}
+function create(kind,props={}){const node=++id;ops.push(Protocol.create_node_op(node,kinds.get(kind)));for(const [name,value]of Object.entries(props))set(node,name,value);return node}
+function flush(){backend.apply_batch({generation:++generation,ops:list(ops)});ops=[]}
+const root=create('column')
+const editors={}
+for(const kind of ['text-field','secure-field','input','search-field','textarea','combobox']){
+ const node=create(kind,{text:'preserved','placeholder':kind,'accessibility-identifier':kind,'read-only':true})
+ if(kind!=='combobox')set(node,'navigate-enabled',true);editors[kind]=node;ops.push(Protocol.insert_child_op(root,node,Object.keys(editors).length-1))
+}
+const virtual=create('virtual-list',{height:160,width:400,'data-attrs':'data-overscan\x1f0\x1edata-item-extent\x1f40'})
+ops.push(Protocol.insert_child_op(root,virtual,6))
+for(let row=0;row<100;row++){const child=create('box',{'accessibility-identifier':'row-'+row,'data-attrs':'style\x1fheight:40px'});ops.push(Protocol.insert_child_op(virtual,child,row))}
+flush();Web.mount(renderer,root,host)
+window.probe={editors,virtual,events,set(node,name,value){set(node,name,value);flush()},remove(node,name){ops.push(Protocol.remove_prop_op(node,properties.get(name)));flush()}}
+} catch(error) { window.fixtureError=JSON.stringify(error);throw error }
+</script>

@@ -285,6 +285,9 @@ enum class LuiProperty(val wireName: String) {
     checkedIndicatorBorderColor("checked-indicator-border-color"),
     collisionPadding("collision-padding"),
     lineClamp("line-clamp"),
+    readOnly("read-only"),
+    overscan("overscan"),
+    itemExtent("item-extent"),
     ;
 
     companion object {
@@ -335,5 +338,12 @@ object LuiSchemaMatrix {
         LuiNodeKind.dropdownMenu to setOf(LuiProperty.collisionPadding),
         LuiNodeKind.tooltip to setOf(LuiProperty.collisionPadding),
         LuiNodeKind.switchControl to setOf(LuiProperty.foreground),
+        LuiNodeKind.virtualList to setOf(LuiProperty.overscan, LuiProperty.itemExtent),
+        LuiNodeKind.textField to setOf(LuiProperty.readOnly),
+        LuiNodeKind.secureField to setOf(LuiProperty.readOnly),
+        LuiNodeKind.input to setOf(LuiProperty.readOnly),
+        LuiNodeKind.searchField to setOf(LuiProperty.readOnly),
+        LuiNodeKind.textarea to setOf(LuiProperty.readOnly),
+        LuiNodeKind.combobox to setOf(LuiProperty.readOnly),
     )
 }

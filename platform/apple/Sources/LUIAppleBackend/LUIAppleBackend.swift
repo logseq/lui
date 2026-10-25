@@ -1212,6 +1212,7 @@ public final class LUIAppleBackend {
               Self.isTextEntry(model.kind), model.isEnabled else {
             throw invalid("node \(node) is not an editable text control")
         }
+        guard model.property(.readOnly)?.boolValue != true else { return }
         emit(.textChanged(node: node, text: text))
     }
 

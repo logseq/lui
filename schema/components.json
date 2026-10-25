@@ -1801,6 +1801,21 @@
       "lg": "LineClamp",
       "wire": "line-clamp",
       "swift": "lineClamp"
+    },
+    {
+      "lg": "ReadOnly",
+      "wire": "read-only",
+      "swift": "readOnly"
+    },
+    {
+      "lg": "VirtualOverscan",
+      "wire": "overscan",
+      "swift": "overscan"
+    },
+    {
+      "lg": "VirtualItemExtent",
+      "wire": "item-extent",
+      "swift": "itemExtent"
     }
   ],
   "events": [
@@ -1945,15 +1960,23 @@
     },
     {
       "lg": "NavigatePrevious",
-      "fields": [":int"]
+      "fields": [
+        ":int"
+      ]
     },
     {
       "lg": "NavigateNext",
-      "fields": [":int"]
+      "fields": [
+        ":int"
+      ]
     },
     {
       "lg": "NavigationKey",
-      "fields": [":int", ":string", ":bool"]
+      "fields": [
+        ":int",
+        ":string",
+        ":bool"
+      ]
     },
     {
       "lg": "ScrollEdges",
@@ -1966,7 +1989,6 @@
   ],
   "kindProperties": {
     "accordion": [
-
       "text",
       "selected",
       "toggle-enabled",
@@ -1975,25 +1997,21 @@
       "style-class"
     ],
     "stepper": [
-
       "active",
       "accessibility-label",
       "pointer-enabled"
     ],
     "step": [
-
       "text",
       "pointer-enabled"
     ],
     "timeline": [
-
       "gap",
       "grow",
       "accessibility-label",
       "pointer-enabled"
     ],
     "timeline-item": [
-
       "title",
       "description",
       "meta",
@@ -2006,7 +2024,6 @@
       "pointer-enabled"
     ],
     "input-group": [
-
       "accessibility-label",
       "width",
       "height",
@@ -2015,12 +2032,10 @@
       "pointer-enabled"
     ],
     "input-group-actions": [
-
       "gap",
       "pointer-enabled"
     ],
     "toast": [
-
       "duration",
       "accessibility-label",
       "style-class",
@@ -2042,7 +2057,6 @@
       "margin-left"
     ],
     "toolbar": [
-
       "height",
       "padding",
       "background",
@@ -2057,7 +2071,6 @@
       "pointer-enabled"
     ],
     "bottom-tabs": [
-
       "accessibility-label",
       "style-class",
       "data-attrs",
@@ -2071,7 +2084,6 @@
       "pointer-enabled"
     ],
     "bottom-tab": [
-
       "title",
       "icon",
       "selected",
@@ -2080,7 +2092,6 @@
       "pointer-enabled"
     ],
     "menu-trigger": [
-
       "text",
       "text-alignment",
       "icon",
@@ -2092,14 +2103,12 @@
       "pointer-enabled"
     ],
     "list-section": [
-
       "key",
       "separator",
       "pointer-enabled"
     ],
     "swipe-actions": [],
     "swipe-action": [
-
       "text",
       "icon",
       "variant",
@@ -2110,7 +2119,6 @@
       "pointer-enabled"
     ],
     "file-picker": [
-
       "request",
       "types",
       "multiple",
@@ -2123,12 +2131,10 @@
       "pointer-enabled"
     ],
     "file-preview": [
-
       "path",
       "pointer-enabled"
     ],
     "kbd": [
-
       "text",
       "style-class",
       "data-attrs",
@@ -2182,12 +2188,29 @@
     ]
   },
   "kindExtraProperties": {
-    "image": ["image-fit"],
-    "checkbox": ["gap", "label-opacity", "indicator-border-color", "checked-indicator-border-color"],
-    "radio": ["gap", "label-opacity"],
-    "grid": ["main", "cross"],
-    "row": ["orientation"],
-    "list-item": ["display"],
+    "image": [
+      "image-fit"
+    ],
+    "checkbox": [
+      "gap",
+      "label-opacity",
+      "indicator-border-color",
+      "checked-indicator-border-color"
+    ],
+    "radio": [
+      "gap",
+      "label-opacity"
+    ],
+    "grid": [
+      "main",
+      "cross"
+    ],
+    "row": [
+      "orientation"
+    ],
+    "list-item": [
+      "display"
+    ],
     "dialog": [
       "description",
       "background",
@@ -2200,9 +2223,39 @@
     "box": [
       "inert"
     ],
-    "popover": ["collision-padding"],
-    "dropdown-menu": ["collision-padding"],
-    "tooltip": ["collision-padding"],
-    "switch": ["foreground"]
+    "popover": [
+      "collision-padding"
+    ],
+    "dropdown-menu": [
+      "collision-padding"
+    ],
+    "tooltip": [
+      "collision-padding"
+    ],
+    "switch": [
+      "foreground"
+    ],
+    "virtual-list": [
+      "overscan",
+      "item-extent"
+    ],
+    "text-field": [
+      "read-only"
+    ],
+    "secure-field": [
+      "read-only"
+    ],
+    "input": [
+      "read-only"
+    ],
+    "search-field": [
+      "read-only"
+    ],
+    "textarea": [
+      "read-only"
+    ],
+    "combobox": [
+      "read-only"
+    ]
   }
 }

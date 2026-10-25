@@ -102,7 +102,7 @@ let attach_text_events renderer node kind dom_node =
     W.HtmlInputElement.value (Util.text_control_node dom_node)
   in
   let emit_value value =
-    if enabled_node renderer node then begin
+    if enabled_node renderer node && not (Store.true_property renderer node ReadOnly) then begin
       if
         kind = Combobox
         && Store.true_property renderer node PressEnabled
@@ -113,7 +113,8 @@ let attach_text_events renderer node kind dom_node =
   in
   W.Element.addEventListener "beforeinput"
     (fun event ->
-       if not (enabled_node renderer node) then W.Event.preventDefault event)
+       if not (enabled_node renderer node) || Store.true_property renderer node ReadOnly
+       then W.Event.preventDefault event)
     dom_node;
   W.Element.addEventListener "compositionstart"
     (fun _event ->

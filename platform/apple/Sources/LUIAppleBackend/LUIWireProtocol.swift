@@ -147,7 +147,7 @@ enum LUIWireValue: Decodable, Equatable {
         case .headingLevel:
             guard let value = intValue else { return false }
             return (1...6).contains(value)
-        case .checked, .selected, .autofocus, .submitOnEnter, .submitOnBlur,
+        case .readOnly, .checked, .selected, .autofocus, .submitOnEnter, .submitOnBlur,
              .longPressEnabled,
              .changeEnabled, .toggleEnabled, .pressEnabled, .submitEnabled,
              .doublePressEnabled, .appearEnabled, .pointerEnabled, .connector,
@@ -157,12 +157,15 @@ enum LUIWireValue: Decodable, Equatable {
         case .resizeHandleWidth:
             guard let value = intValue else { return false }
             return value > 0
+        case .itemExtent:
+            guard let value = doubleValue else { return false }
+            return value.isFinite && value > 0
         case .firstPaneWidth:
             guard let value = doubleValue else { return false }
             return value.isFinite && value >= 0
         case .progressValue:
             return doubleValue != nil
-        case .resizeDuration, .image, .surface, .active, .columns,
+        case .overscan, .resizeDuration, .image, .surface, .active, .columns,
              .paddingHorizontal, .paddingVertical,
              .paddingTop, .paddingRight, .paddingBottom, .paddingLeft,
              .borderWidth, .cornerRadius,
@@ -1088,6 +1091,8 @@ struct LUIRetainedTree {
         if kind == .root { return property == .theme || property == .themeMode }
         if kind == .contextMenu { return false }
         return switch property {
+        case .readOnly: isTextEntry(kind)
+        case .overscan, .itemExtent: kind == .virtualList
         case .theme, .themeMode:
             // Mirrors OCaml common_property_supported: theme props are
             // admitted on every non-restrictive container kind.
@@ -1218,8 +1223,13 @@ struct LUIRetainedTree {
         case .submitOnBlur:
             kind == .textField || kind == .secureField || kind == .input
                 || kind == .searchField || kind == .textarea
-        case .changeEnabled: kind == .radio || isTreeRow(kind)
-        case .toggleEnabled: kind == .radio || kind == .drawer || isTreeRow(kind)
+        case .changeEnabled:
+            kind == .radio || isTextEntry(kind) || kind == .slider ||
+                kind == .numberStepper || kind == .split || isTreeRow(kind)
+        case .toggleEnabled:
+            kind == .toggleButton || kind == .checkbox || kind == .switchControl ||
+                kind == .toggle || kind == .radio || kind == .accordion ||
+                kind == .drawer || isTreeRow(kind)
         case .pressEnabled:
             kind == .button || kind == .toggleButton || kind == .text ||
                 kind == .row || kind == .column || kind == .box ||
@@ -1230,7 +1240,7 @@ struct LUIRetainedTree {
         case .navigateEnabled:
             kind == .textField || kind == .secureField || kind == .input
                 || kind == .searchField || kind == .textarea
-        case .submitEnabled: kind == .combobox || kind == .listItem
+        case .submitEnabled: isTextEntry(kind) || kind == .listItem
         case .doublePressEnabled: kind == .listItem
         case .appearEnabled, .pointerEnabled: kind != .root
         case .image:

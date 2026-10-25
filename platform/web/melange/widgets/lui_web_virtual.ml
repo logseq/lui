@@ -122,10 +122,36 @@ let install renderer node ~materialize ~unmount =
       | _ -> indices
     in
     let key = ref (fun index -> string_of_int !rows.(index)) in
+    let legacy_tuning name =
+      match property DataAttrs with
+      | Some (StringValue encoded) -> List.assoc_opt name (data_attrs_decode encoded)
+      | _ -> None
+    in
+    let item_extent () =
+      match property VirtualItemExtent with
+      | Some (FloatValue extent) -> Some extent
+      | _ -> Option.bind (legacy_tuning "data-item-extent") (fun value ->
+          match float_of_string_opt value with
+          | Some extent when is_finite extent && extent > 0. -> Some extent
+          | _ -> None)
+    in
+    let overscan () =
+      match property VirtualOverscan with
+      | Some (IntValue count) -> count
+      | _ -> Option.value ~default:5
+          (Option.bind (legacy_tuning "data-overscan") (fun value ->
+            match int_of_string_opt value with
+            | Some count when count >= 0 -> Some count
+            | _ -> None))
+    in
+    let estimated_extent = ref (item_extent ()) in
     let estimate index =
-      match Store.property renderer.web_store !rows.(index) HeightValue with
-      | Some (IntValue height) when height > 0 -> float_of_int height
-      | _ -> 32.
+      match !estimated_extent with
+      | Some extent -> extent
+      | None ->
+          match Store.property renderer.web_store !rows.(index) HeightValue with
+          | Some (IntValue height) when height > 0 -> float_of_int height
+          | _ -> 32.
     in
     let update_rows () =
       match Store.node renderer.web_store node with
@@ -139,6 +165,7 @@ let install renderer node ~materialize ~unmount =
       | _ -> ()
     in
     let make_options () =
+      estimated_extent := item_extent ();
       let height =
         match Store.property renderer.web_store node HeightValue with
         | Some (IntValue height) when height > 0 -> float_of_int height
@@ -157,10 +184,11 @@ let install renderer node ~materialize ~unmount =
         ~onChange:(fun _ _ -> !render_ref ())
         ~rangeExtractor:(fun range -> range_extractor range)
         ~initialRect:(V.rect ~width:400. ~height)
-        ~overscan:5 ~gap ()
+        ~overscan:(overscan ()) ~gap ()
     in
     update_rows ();
     let virtualizer = V.make (make_options ()) in
+    let last_extent = ref !estimated_extent in
     let pending_scroll = ref None in
     let reading_anchor =
       Lui_web_virtual_anchor.create root mounted positions virtualizer
@@ -462,6 +490,11 @@ let install renderer node ~materialize ~unmount =
           | _ -> ()
         end;
         V.set_options virtualizer (make_options ());
+        let extent = !estimated_extent in
+        if extent <> !last_extent then begin
+          last_extent := extent;
+          V.reset_measurements virtualizer
+        end;
         if connected root then V.will_update virtualizer;
         render ();
         request ();

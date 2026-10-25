@@ -299,6 +299,9 @@ type property =
   | CheckedIndicatorBorderColor
   | CollisionPadding
   | LineClamp
+  | ReadOnly
+  | VirtualOverscan
+  | VirtualItemExtent
 
 module Property_map =
   Map.Make
@@ -858,8 +861,8 @@ let element_tag_known tag =
   || element_tag_supported Column tag
   || element_tag_supported Row tag
 
-let can_contain_children kind =
-  if horizontal_container kind || context_menu_leaf_host_kind kind then true
+let regular_child_container kind =
+  if horizontal_container kind then true
   else
     match kind with
     | Root
@@ -893,6 +896,7 @@ let can_contain_children kind =
     | Accordion
     | Table
     | TableRow
+    | TableCell
     | Tree
     | Resizable
     | Split
@@ -919,8 +923,13 @@ let can_contain_children kind =
     | Popover -> true
     | _ -> false
 
+let can_contain_children kind =
+  context_menu_leaf_host_kind kind || regular_child_container kind
+
 let common_property_supported kind property =
   match property with
+  | ReadOnly -> List.mem kind [TextField; SecureField; Input; SearchField; Textarea; Combobox]
+  | VirtualOverscan | VirtualItemExtent -> kind = VirtualList
   | MainAlignment | CrossAlignment ->
     kind = Row
     || kind = Column
@@ -1078,8 +1087,8 @@ let common_property_supported kind property =
     kind = TextField || kind = SecureField || kind = Input || kind = SearchField || kind = Textarea
   | SubmitOnEnter -> kind = Textarea
   | LongPressEnabled -> kind = Button || kind = ToggleButton || kind = ListItem
-  | ChangeEnabled -> kind = Radio || tree_row_kind kind
-  | ToggleEnabled -> kind = Radio || kind = Drawer || tree_row_kind kind
+  | ChangeEnabled -> event_supported kind (Change 0) || event_supported kind (TextChanged (0, "")) || event_supported kind (ValueChanged (0, 0.)) || tree_row_kind kind
+  | ToggleEnabled -> event_supported kind (ToggleChanged (0, false)) || tree_row_kind kind
   | PressEnabled ->
     kind = Button
     || kind = Link
@@ -1100,7 +1109,7 @@ let common_property_supported kind property =
   | NavigateEnabled ->
     kind = Button || kind = TextField || kind = SecureField || kind = Input
     || kind = SearchField || kind = Textarea
-  | SubmitEnabled -> kind = Combobox || kind = ListItem
+  | SubmitEnabled -> event_supported kind (Submit 0)
   | DoublePressEnabled -> kind = ListItem
   | AppearEnabled -> kind <> Root
   | PointerEnabled -> kind <> Root
@@ -1280,7 +1289,9 @@ let common_property_supported kind property =
   | MinHeightViewport | MaxHeightViewport -> kind <> Tooltip
 
 let property_supported kind property =
-  if property = AccessibilityIdentifier then true
+  if property = ReadOnly then List.mem kind [TextField; SecureField; Input; SearchField; Textarea; Combobox]
+  else if property = VirtualOverscan || property = VirtualItemExtent then kind = VirtualList
+  else if property = AccessibilityIdentifier then true
   (* Position hint honored on [overlay] children and on [overlay] itself;
      admitted before the restrictive arms so e.g. an aligned [menu_trigger]
      child still carries it. Inert elsewhere, like [container-relative-frame]. *)
@@ -1548,6 +1559,9 @@ let anchor_rect_of_string value =
 
 let property_value_supported property value =
   match (property, value) with
+  | ReadOnly, BoolValue _ -> true
+  | VirtualOverscan, IntValue n -> n >= 0
+  | VirtualItemExtent, FloatValue f -> is_finite f && f > 0.
   | TextValue, StringValue _ -> true
   | Enabled, BoolValue _ -> true
   | Gap, IntValue value -> value >= 0
@@ -2048,7 +2062,7 @@ let child_kind_supported parent_kind child_kind =
   then
     (* Leaf hosts take a context-menu child only; a leaf host that is also
        a container (button) keeps its regular children alongside. *)
-    child_kind = ContextMenu || can_contain_children parent_kind
+    child_kind = ContextMenu || regular_child_container parent_kind
   else if child_kind = ListSection then parent_kind = ListContainer
   else if child_kind = ListSectionHeader || child_kind = ListSectionFooter
   then parent_kind = ListSection

@@ -69,7 +69,10 @@ internal fun LuiVirtualList(backend: LuiBackend, node: LuiNodeLike, id: Long, mo
     val count = attributes["data-virtual-count"]?.toIntOrNull() ?: 0
     val start = attributes["data-virtual-start"]?.toIntOrNull() ?: 0
     val pinned = attributes["data-pinned-index"]?.toIntOrNull() ?: -1
-    val extent = attributes["data-item-extent"]?.toIntOrNull() ?: 32
+    val extent = node.prop("item-extent")?.numberValue
+        ?: node.dataAttributes()["data-item-extent"]?.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 }
+        ?: attributes["data-item-extent"]?.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 }
+        ?: 32.0
     val rows = window?.children.orEmpty()
     val length = attributes["data-virtual-length"]?.toIntOrNull() ?: rows.size
     val initial = remember(identity) { backend.scrollPositions[identity] ?: LuiScrollPosition() }
@@ -142,7 +145,7 @@ internal fun LuiVirtualList(backend: LuiBackend, node: LuiNodeLike, id: Long, mo
                     LuiNodeView(backend, id)
                 }
             } else {
-                val height = heights[index]?.let { with(density) { it.toDp() } } ?: extent.dp
+                val height = heights[index]?.let { with(density) { it.toDp() } } ?: extent.toFloat().dp
                 Spacer(Modifier.fillMaxWidth().height(height))
             }
         }
