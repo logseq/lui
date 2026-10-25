@@ -134,6 +134,10 @@ Kotlin ordinary lists use intrinsic column layout when their parent provides
 unbounded vertical space, preserving the outer scroll owner. Finite viewports
 retain native lazy-list scrolling and row targets. Applications can keep an
 ordinary list inside `scroll` without adding an artificial fixed height.
+Authored compact list-item heights preserve readable text by removing native
+vertical content padding while retaining horizontal insets and native input.
+Sparse Kotlin collections expose the supported native forward/backward scroll
+actions on their viewport even when interactive rows cover its content.
 
 The Apple C bridge now closes its ARC-owned window safely during reset.
 The existing reset entry point and application lifecycle API are unchanged.

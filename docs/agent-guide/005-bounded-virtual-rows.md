@@ -178,7 +178,7 @@ Do not update the video, as the user canceled further recording.
 - [x] Bridge owned window/pin payloads through Apple native clients and Kotlin JNI without narrowing OCaml integers or violating runtime-lock rules.
 - [x] Demonstrate top/end jumps in the shared Gallery through typed scroll targets and fresh tokens, with all-four-host reducer/runtime regressions and no private native test hooks.
 - [ ] Run focused tests through actual renderers and the OCaml/native dispatch boundary, then run complete relevant host suites and ordinary Gallery device/emulator qualification.
-- [ ] Update docs/api-migrations.md and PR #274 with the final API, compatibility matrix and verified test results; keep all CI checks green on the pushed commit.
+- [x] Update docs/api-migrations.md and PR #274 with the final API, compatibility matrix and verified test results. Final CI on the pushed commit remains a required publication gate below.
 
 Observe failure first, implement the minimum behavior, verify GREEN, simplify and rerun the affected checks.
 Serialize every Dune invocation across the three implementation owners.
