@@ -58,6 +58,7 @@ type flush_diagnostics = {
 type application = {
   runtime_scheduler : Signal.scheduler;
   runtime_backend : backend;
+  runtime_virtual_rows : bool;
   runtime_extension_registry : Lui_extension.extension_registry;
   next_node_id : int ref;
   next_virtual_generation : int ref;
@@ -165,11 +166,17 @@ let empty_diagnostics () =
     flush_signal_dirty_task_count = 0;
   }
 
-let create_with_extensions scheduler backend registry =
+let create_with_extensions ?virtual_rows scheduler backend registry =
+  let virtual_rows = match virtual_rows with
+    | Some supported -> supported
+    | None -> (match backend.backend_profile.profile_host with
+      | WebHost | SwiftUIHost | KotlinHost | MyGoHost -> true
+      | GenericHost -> false) in
   Lui_extension.freeze registry;
   {
     runtime_scheduler = scheduler;
     runtime_backend = backend;
+    runtime_virtual_rows = virtual_rows;
     runtime_extension_registry = registry;
     next_node_id = ref 0;
     next_virtual_generation = ref 0;
@@ -203,8 +210,8 @@ let create_with_extensions scheduler backend registry =
     runtime_flush_dirty = ref false;
   }
 
-let create scheduler backend =
-  create_with_extensions scheduler backend (Lui_extension.registry ())
+let create ?virtual_rows scheduler backend =
+  create_with_extensions ?virtual_rows scheduler backend (Lui_extension.registry ())
 
 let remove_alias application candidate =
   match Hashtbl.find_opt application.runtime_node_aliases candidate with

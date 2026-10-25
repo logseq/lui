@@ -24,6 +24,12 @@
 
 typedef void (*lui_patch_callback)(const char *json);
 
+/* Probe before startup: codes 258/260 retain the native host identity while
+   declaring support for bounded virtual-row feedback. */
+LUI_EXPORT int32_t lui_ocaml_virtual_rows_version(void) {
+  return 1;
+}
+
 static int runtime_started = 0;
 static lui_patch_callback patch_callback = NULL;
 

@@ -34,7 +34,8 @@ virtual_list ~height:400 ~overscan:5 ~item_extent:32. [
 ]
 ```
 
-The business data source and its key index remain complete. On Web and MyGo,
+The business data source and its key index remain complete. On Web, MyGo,
+SwiftUI and Kotlin hosts that advertise window feedback,
 only requested rows, overscan and active interaction pins own mounted scopes,
 signals, handlers and host controls. Overlapping windows preserve row identity;
 eviction disposes the row and a later visit creates a fresh incarnation.
@@ -49,17 +50,65 @@ created and disposed per mount by the PPX, following the same ownership rule as
 lazy parent uses a nonempty `scroll_target`; it resolves targets without mounting
 intermediate rows. Duplicate item keys or scroll keys are errors.
 
-This version implements window feedback on Web and MyGo. SwiftUI, Kotlin and
-Generic hosts render `virtual_rows` eagerly for compatibility; their generic
-helper path does not yet bound LUI node memory. SwiftUI's existing application
-window-source convention remains separate. An individual row may still own a
-large descendant subtree, and host geometry caches may scale with source size.
+Updated SwiftUI and Kotlin hosts implement the same bounded source contract.
+Literal children and the older application-managed window conventions retain
+their existing behavior. An individual row may still own a large descendant
+subtree, and host geometry caches may scale with source size.
+Virtual rows require positive logical geometry: a zero-height or empty root
+keeps a positive estimate or a host minimum of one pixel. This avoids
+repeatedly expanding the mounted window when blank rows collapse during layout;
+positive compact rows retain their measured heights.
 
 Custom hosts must recognize the new `MyGoHost` case when matching
 `host_kind`. Existing host cases keep their order; native host code 5 selects
 MyGo. The MyGo loader selects that profile only if the optional
 `lui_ocaml_virtual_window(node,generation,first,last,pins,count)` export exists;
 older application libraries keep the Generic eager profile.
+
+SwiftUI and Kotlin retain their semantic platform profiles, including native
+extension selection. Their native startup handshake uses these codes:
+
+| Host | Legacy code | Bounded-row code |
+| --- | --- | --- |
+| SwiftUI | 2 | 258 |
+| Kotlin | 4 | 260 |
+
+The new C export `lui_ocaml_virtual_rows_version()` returns 1 and is safe to
+probe before starting the runtime. Updated Swift loaders select code 258 only
+when this optional export is available. The Android JNI bridge exposes the
+corresponding optional version probe before selecting code 260. Older libraries
+and older host clients keep codes 2/4 and receive the complete eager collection.
+Rebuild the OCaml application, native bridge and updated host together to enable
+bounded rows. An unrelated or unknown host code does not enable this capability.
+
+`Lui_app.create`, `create_with_extensions`, `create_reloadable` and
+`create_reloadable_with_extensions`, and both `Lui_runtime.create` constructors,
+accept an optional `~virtual_rows:bool` override. The default is true for Web,
+MyGo, SwiftUI and Kotlin profiles and false for Generic. The override is fixed
+before mounting the view and persists through reload without changing the host
+profile. Custom native initializers must pass the negotiated capability:
+
+```ocaml
+let host_profile = Lui_native_bridge.profile platform_code host_code in
+Lui_app.create
+  ~virtual_rows:(Lui_native_bridge.virtual_rows_supported host_code)
+  (Lui_native_bridge.backend bridge host_profile)
+  initial_model reducer view
+```
+
+A custom Generic host may explicitly opt in after implementing the complete
+window protocol. Passing false preserves eager behavior on any semantic host.
+Code constructing a runtime record directly must account for its new immutable
+`runtime_virtual_rows` capability; prefer the runtime constructors.
+
+Custom Swift event switches and Kotlin sealed-event handlers must forward the
+new `virtualWindow` / `VirtualWindow` maintenance event to the native window
+entry point, independently of application visible-range subscriptions.
+Apple's legacy C event callback appends kind 20 with legacy node argument 0;
+its JSON object carries authoritative integer `node`, `generation`, `first`,
+`last` and `pins` fields so IDs are never narrowed to the callback's Int32 node.
+The typed Swift event and the native OCaml window ABI retain full native integer
+precision. Existing ordinary callback kinds remain unchanged.
 
 Sparse wire producers set `virtual-total-count`, `virtual-generation` and
 `virtual-indices` together on the existing `virtual-list` node. The indices are
@@ -70,6 +119,24 @@ the entire batch. Internal `VirtualWindow` feedback uses a half-open interval
 and direct row node IDs for pins. Public `VisibleRange` keeps its inclusive
 range convention. The new event precedes `ExtensionEvent`; native consumers of
 raw OCaml variant tags must rebuild for its shifted extension-event tag.
+
+### Native host compatibility
+
+Updated Apple hosts accept the existing `navigate-enabled` flag on buttons and
+the canonical text-entry kinds. Updated Kotlin hosts accept the existing
+`navigation` and `navigation-heading` list-item roles, with native selected-item
+and heading accessibility semantics. These properties already come from LUI
+constructors and the shared Gallery; applications need no source changes.
+Custom native validators must preserve the canonical finite kind and role sets
+when accepting sparse virtual-list metadata.
+
+Kotlin ordinary lists use intrinsic column layout when their parent provides
+unbounded vertical space, preserving the outer scroll owner. Finite viewports
+retain native lazy-list scrolling and row targets. Applications can keep an
+ordinary list inside `scroll` without adding an artificial fixed height.
+
+The Apple C bridge now closes its ARC-owned window safely during reset.
+The existing reset entry point and application lifecycle API are unchanged.
 
 ### Large-batch memory and handle ownership
 

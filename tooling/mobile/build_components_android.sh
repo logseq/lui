@@ -53,11 +53,8 @@ ndk_bin="$ndk_root/toolchains/llvm/prebuilt/$ndk_host/bin"
 mkdir -p "$build_dir" "$(dirname "$jni_library")"
 gallery_object=${LUI_GALLERY_OCAML_OBJECT:-}
 if [[ -z $gallery_object ]]; then
-  native_root="$repo_root/_build/mobile-components/lg-android"
-  "$repo_root/tooling/mobile/build_components_lg.sh" \
-    android \
-    --output-dir "$native_root" >/dev/null
-  gallery_object="$native_root/android/$android_abi/mobile_app_complete.o"
+  gallery_object=$(python3 "$repo_root/tooling/mobile/build_ocaml_object.py" \
+    --target-prefix "$target_prefix" --output-dir "$build_dir/ocaml-object")
 fi
 [[ -f $gallery_object ]] || {
   echo "error: LG mobile object is missing: $gallery_object" >&2

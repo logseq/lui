@@ -4463,7 +4463,11 @@ let fixture ?(host = WebHost) ?(count = 100_000) ?height
     ?(overscan = 2) ?(scroll_target = "") ?(resolver = true) ?on_visible_range () =
   let batches = ref [] in
   let mounts = ref 0 and disposals = ref 0 and fail_row = ref None in
-  let backend = { backend_profile = profile WebOS host;
+  let operating_system = match host with
+    | SwiftUIHost | MyGoHost -> MacOS
+    | KotlinHost -> AndroidOS
+    | WebHost | GenericHost -> WebOS in
+  let backend = { backend_profile = profile operating_system host;
     apply_batch = (fun batch -> batches := batch :: !batches; true) } in
   let view _context source send =
     Lui_elements.virtual_list ?height ~overscan ~item_extent:20.
@@ -4504,14 +4508,14 @@ let window ?pins ?generation:requested fixture first last =
                     Option.value pins ~default:[])));
   flush fixture
 
-let test_initial_tree_is_bounded () =
-  List.iter (fun host ->
+let test_initial_tree_is_bounded_for_host host () =
     let fixture = fixture ~host ~height:100 () in
     Fun.protect (fun () ->
       let runtime = runtime fixture in
       Alcotest.(check int) "business data remains complete" 100_000
         (List.length (Lui_app.model fixture.app));
-      Alcotest.(check bool) "only initial viewport plus overscan constructed"
+      Alcotest.(check bool)
+        (Printf.sprintf "only initial viewport plus overscan constructed (%d rows)" !(fixture.mounts))
         true (!(fixture.mounts) <= 9 && !(fixture.mounts) > 0);
       Alcotest.(check bool) "logical UI nodes stay bounded" true
         (Lui_runtime.mounted_count runtime <= 12);
@@ -4522,10 +4526,13 @@ let test_initial_tree_is_bounded () =
       let bytes = List.fold_left (fun total batch ->
         total + String.length (Lui_wire.encode_batch batch)) 0 !(fixture.batches) in
       Alcotest.(check bool) "initial wire excludes offscreen rows" true (bytes < 32_768))
-      ~finally:(fun () -> dispose fixture)) [WebHost; MyGoHost]
+      ~finally:(fun () -> dispose fixture)
 
-let test_unmeasured_bootstrap_is_bounded () =
-  let fixture = fixture () in
+let test_initial_tree_is_bounded () =
+  List.iter (fun host -> test_initial_tree_is_bounded_for_host host ()) [WebHost; MyGoHost]
+
+let test_unmeasured_bootstrap_is_bounded_for_host host () =
+  let fixture = fixture ~host () in
   Fun.protect (fun () ->
     Alcotest.(check bool) "unknown viewport never constructs the dataset" true
       (!(fixture.mounts) > 0 && !(fixture.mounts) <= 5);
@@ -4536,8 +4543,10 @@ let test_unmeasured_bootstrap_is_bounded () =
       (Option.is_some (row_by_text (runtime fixture) fixture.list "row-50000")))
     ~finally:(fun () -> dispose fixture)
 
-let test_window_overlap_retains_identity_and_disposes_evictions () =
-  let fixture = fixture ~height:100 () in
+let test_unmeasured_bootstrap_is_bounded () = test_unmeasured_bootstrap_is_bounded_for_host WebHost ()
+
+let test_window_overlap_retains_identity_and_disposes_evictions_for_host host () =
+  let fixture = fixture ~host ~height:100 () in
   Fun.protect (fun () ->
     window fixture 100 109;
     let overlap = Option.get (row_by_text (runtime fixture) fixture.list "row-105") in
@@ -4560,8 +4569,10 @@ let test_window_overlap_retains_identity_and_disposes_evictions () =
         | _ -> false) batch.ops) !(fixture.batches)))
     ~finally:(fun () -> dispose fixture)
 
-let test_pins_follow_mounted_keys_across_source_reorder () =
-  let fixture = fixture ~height:100 () in
+let test_window_overlap_retains_identity_and_disposes_evictions () = test_window_overlap_retains_identity_and_disposes_evictions_for_host WebHost ()
+
+let test_pins_follow_mounted_keys_across_source_reorder_for_host host () =
+  let fixture = fixture ~host ~height:100 () in
   Fun.protect (fun () ->
     window fixture 100 109;
     let focused = Option.get (row_by_text (runtime fixture) fixture.list "row-105") in
@@ -4586,8 +4597,10 @@ let test_pins_follow_mounted_keys_across_source_reorder () =
       (Lui_runtime.node_live (runtime fixture) focused))
     ~finally:(fun () -> dispose fixture)
 
-let test_stale_generation_and_deleted_pin_are_ignored () =
-  let fixture = fixture ~count:200 ~height:100 () in
+let test_pins_follow_mounted_keys_across_source_reorder () = test_pins_follow_mounted_keys_across_source_reorder_for_host WebHost ()
+
+let test_stale_generation_and_deleted_pin_are_ignored_for_host host () =
+  let fixture = fixture ~host ~count:200 ~height:100 () in
   Fun.protect (fun () ->
     window fixture 100 109;
     let doomed = Option.get (row_by_text (runtime fixture) fixture.list "row-105") in
@@ -4604,8 +4617,10 @@ let test_stale_generation_and_deleted_pin_are_ignored () =
       (int_prop (runtime fixture) fixture.list "virtual-total-count"))
     ~finally:(fun () -> dispose fixture)
 
-let test_controlled_editor_survives_eviction_in_business_model () =
-  let fixture = fixture ~height:100 () in
+let test_stale_generation_and_deleted_pin_are_ignored () = test_stale_generation_and_deleted_pin_are_ignored_for_host WebHost ()
+
+let test_controlled_editor_survives_eviction_in_business_model_for_host host () =
+  let fixture = fixture ~host ~height:100 () in
   Fun.protect (fun () ->
     window fixture 100 109;
     let editor = Option.get (row_by_text (runtime fixture) fixture.list "row-105") in
@@ -4624,8 +4639,10 @@ let test_controlled_editor_survives_eviction_in_business_model () =
         (Lui_app.model fixture.app)))
     ~finally:(fun () -> dispose fixture)
 
-let test_failed_window_mount_restores_rows_and_metadata () =
-  let fixture = fixture ~height:100 () in
+let test_controlled_editor_survives_eviction_in_business_model () = test_controlled_editor_survives_eviction_in_business_model_for_host WebHost ()
+
+let test_failed_window_mount_restores_rows_and_metadata_for_host host () =
+  let fixture = fixture ~host ~height:100 () in
   Fun.protect (fun () ->
     window fixture 100 109;
     let before = direct_rows (runtime fixture) fixture.list in
@@ -4645,8 +4662,10 @@ let test_failed_window_mount_restores_rows_and_metadata () =
       (Option.is_some (row_by_text (runtime fixture) fixture.list "row-503")))
     ~finally:(fun () -> dispose fixture)
 
-let test_target_resolves_without_intermediate_mounts () =
-  let fixture = fixture ~height:100 ~scroll_target:"99990" () in
+let test_failed_window_mount_restores_rows_and_metadata () = test_failed_window_mount_restores_rows_and_metadata_for_host WebHost ()
+
+let test_target_resolves_without_intermediate_mounts_for_host host () =
+  let fixture = fixture ~host ~height:100 ~scroll_target:"99990" () in
   Fun.protect (fun () ->
     Alcotest.(check int) "business target converted to logical index" 99_990
       (int_prop (runtime fixture) fixture.list "virtual-scroll-index");
@@ -4657,8 +4676,10 @@ let test_target_resolves_without_intermediate_mounts () =
       (Option.is_some (row_by_text (runtime fixture) fixture.list "row-99990")))
     ~finally:(fun () -> dispose fixture)
 
-let test_empty_clear_and_disposal_release_every_row () =
-  let fixture = fixture ~height:100 () in
+let test_target_resolves_without_intermediate_mounts () = test_target_resolves_without_intermediate_mounts_for_host WebHost ()
+
+let test_empty_clear_and_disposal_release_every_row_for_host host () =
+  let fixture = fixture ~host ~height:100 () in
   window fixture 100 109;
   ignore (Lui_app.send fixture.app (Replace [])); flush fixture;
   Alcotest.(check int) "empty source has no UI rows" 0
@@ -4672,6 +4693,8 @@ let test_empty_clear_and_disposal_release_every_row () =
     !(fixture.disposals);
   Alcotest.(check int) "all handlers removed" 0 (Lui_runtime.handler_count runtime);
   Alcotest.(check int) "all segments removed" 0 (Lui_runtime.dynamic_segment_count runtime)
+
+let test_empty_clear_and_disposal_release_every_row () = test_empty_clear_and_disposal_release_every_row_for_host WebHost ()
 
 let tests = [
   "100k rows retain bounded UI tree and wire", test_initial_tree_is_bounded;
@@ -4742,8 +4765,8 @@ let test_invalid_window_is_rejected_without_mutation () =
       (List.length (direct_rows (runtime fixture) fixture.list)))
     ~finally:(fun () -> dispose fixture)
 
-let test_source_handshake_remains_bounded_before_host_acknowledgement () =
-  let fixture = fixture ~height:100 () in
+let test_source_handshake_remains_bounded_before_host_acknowledgement_for_host host () =
+  let fixture = fixture ~host ~height:100 () in
   Fun.protect (fun () ->
     window fixture 50_000 50_009;
     let retained = Option.get (row_by_text (runtime fixture) fixture.list "row-50004") in
@@ -4760,6 +4783,8 @@ let test_source_handshake_remains_bounded_before_host_acknowledgement () =
     Alcotest.(check int) "handshake settles to requested row count" 9
       (List.length (direct_rows (runtime fixture) fixture.list)))
     ~finally:(fun () -> dispose fixture)
+
+let test_source_handshake_remains_bounded_before_host_acknowledgement () = test_source_handshake_remains_bounded_before_host_acknowledgement_for_host WebHost ()
 
 let test_legacy_hosts_keep_eager_compatibility () =
   let fixture = fixture ~host:GenericHost ~count:20 ~height:100 () in
@@ -5079,8 +5104,8 @@ let tests = tests @ [
   "hot reload cannot reuse retired source generation", test_reload_cannot_reuse_a_retired_source_generation;
 ]
 
-let test_rejected_source_restores_generation_allocation () =
-  let fixture = fixture ~count:1000 ~height:100 () in
+let test_rejected_source_restores_generation_allocation_for_host host () =
+  let fixture = fixture ~host ~count:1000 ~height:100 () in
   Fun.protect (fun () ->
     let previous = generation fixture in
     let before = direct_rows (runtime fixture) fixture.list in
@@ -5099,13 +5124,15 @@ let test_rejected_source_restores_generation_allocation () =
       (generation fixture))
     ~finally:(fun () -> dispose fixture)
 
+let test_rejected_source_restores_generation_allocation () = test_rejected_source_restores_generation_allocation_for_host WebHost ()
+
 let tests = tests @ [
   "rejected source restores generation allocation", test_rejected_source_restores_generation_allocation;
 ]
 
-let test_internal_window_does_not_escape_as_public_visible_range () =
+let test_internal_window_does_not_escape_as_public_visible_range_for_host host () =
   let callbacks = ref 0 in
-  let fixture = fixture ~count:1000 ~height:100
+  let fixture = fixture ~host ~count:1000 ~height:100
     ~on_visible_range:(fun _event -> incr callbacks) () in
   Fun.protect (fun () ->
     window fixture 500 509;
@@ -5117,8 +5144,432 @@ let test_internal_window_does_not_escape_as_public_visible_range () =
     Alcotest.(check int) "public visible range invokes application callback once" 1 !callbacks)
     ~finally:(fun () -> dispose fixture)
 
+let test_internal_window_does_not_escape_as_public_visible_range () = test_internal_window_does_not_escape_as_public_visible_range_for_host WebHost ()
+
 let tests = tests @ [
   "internal windows stay separate from public visible range", test_internal_window_does_not_escape_as_public_visible_range;
+]
+
+
+let native_host_tests =
+  let cases = [
+    "100k initial tree and wire are bounded", test_initial_tree_is_bounded_for_host;
+    "unmeasured viewport bootstraps bounded rows", test_unmeasured_bootstrap_is_bounded_for_host;
+    "overlap retains identity and evictions dispose", test_window_overlap_retains_identity_and_disposes_evictions_for_host;
+    "source reorder preserves generation and keyed pins", test_pins_follow_mounted_keys_across_source_reorder_for_host;
+    "stale generation and deleted pins cannot resurrect rows", test_stale_generation_and_deleted_pin_are_ignored_for_host;
+    "controlled values survive eviction and remount", test_controlled_editor_survives_eviction_in_business_model_for_host;
+    "failed row mount restores complete window", test_failed_window_mount_restores_rows_and_metadata_for_host;
+    "offscreen target resolves without intermediate nodes", test_target_resolves_without_intermediate_mounts_for_host;
+    "clear and scope disposal release every row", test_empty_clear_and_disposal_release_every_row_for_host;
+    "source handshake retains bounded matched nodes", test_source_handshake_remains_bounded_before_host_acknowledgement_for_host;
+    "rejected source restores generation allocation", test_rejected_source_restores_generation_allocation_for_host;
+    "internal windows never invoke public callback", test_internal_window_does_not_escape_as_public_visible_range_for_host;
+  ] in
+  List.concat_map (fun (name, host) ->
+    List.map (fun (behavior, run) -> name ^ ": " ^ behavior, run host) cases)
+    ["SwiftUI", SwiftUIHost; "Kotlin", KotlinHost]
+
+
+type startup_constructor = Startup_plain | Startup_extensions
+  | Startup_reloadable | Startup_reloadable_extensions
+
+let startup_view ~with_extension ~observed_profile ~probe _context source _send =
+  fun context parent ->
+    observed_profile := Some context.Lui_ui.ui_profile;
+    let extension context parent =
+      let node = Lui_ui.extension context "startup-host-probe" in
+      probe := Some node;
+      Option.iter (fun parent -> Lui_ui.append context parent node) parent;
+      node in
+    Lui_elements.column
+      (Lui_elements.virtual_list ~height:100 ~item_extent:20. ~overscan:2
+        [Lui_elements.virtual_rows ~source ~key:(fun row -> row.identity)
+           ~cmp:Int.compare ~mount:(fun source ->
+             let row = Signal.sample source in
+             Lui_elements.text_field ~key:(string_of_int row.identity) ~text:row.text []) ()]
+       :: if with_extension then [extension] else []) context parent
+
+let startup_application ?virtual_rows ~backend ~count constructor =
+  let observed_profile = ref None and probe = ref None in
+  let with_extension = match constructor with
+    | Startup_extensions | Startup_reloadable_extensions -> true
+    | _ -> false in
+  let view = startup_view ~with_extension ~observed_profile ~probe in
+  let registry = Lui_extension.registry () in
+  Lui_extension.register_component registry
+    (Lui_extension.component "startup-host-probe" [backend.backend_profile]
+       false [] [] []);
+  Lui_extension.freeze registry;
+  let app = match constructor with
+    | Startup_plain -> Lui_app.create ?virtual_rows backend (rows count) reducer view
+    | Startup_extensions -> Lui_app.create_with_extensions ?virtual_rows
+        backend registry (rows count) reducer view
+    | Startup_reloadable -> Lui_app.create_reloadable ?virtual_rows
+        backend "startup-old" "startup-contract" (rows count) reducer view
+    | Startup_reloadable_extensions -> Lui_app.create_reloadable_with_extensions
+        ?virtual_rows backend registry "startup-old" "startup-contract"
+        (rows count) reducer view in
+  app, view, observed_profile, probe
+
+let startup_list runtime =
+  Hashtbl.fold (fun node kind found ->
+    if kind = VirtualList then Some node else found) runtime.Lui_runtime.mounted_nodes None
+  |> Option.get
+
+let native_startup_codes = [1, 2, 258, SwiftUIHost; 3, 4, 260, KotlinHost]
+
+let test_native_capability_flag_grammar () =
+  List.iter (fun (code, expected, supported) ->
+    Alcotest.(check bool) "host identity survives supported capability flags" true
+      (Lui_native_bridge.host_kind code = expected);
+    Alcotest.(check bool) "window feedback capability follows exact handshake" supported
+      (Lui_native_bridge.virtual_rows_supported code))
+    [0, GenericHost, false; 1, WebHost, true;
+     2, SwiftUIHost, false; 258, SwiftUIHost, true;
+     4, KotlinHost, false; 260, KotlinHost, true; 5, MyGoHost, true;
+     3, GenericHost, false; 256, GenericHost, false; 257, GenericHost, false;
+     261, GenericHost, false; 514, GenericHost, false; -254, GenericHost, false];
+  List.iter (fun (os, plain, flagged, host) ->
+    let expected = Lui_native_bridge.profile os plain in
+    Alcotest.(check bool) "flagged profile preserves OS and native host" true
+      (Lui_native_bridge.profile os flagged = expected
+       && expected.profile_host = host)) native_startup_codes
+
+let test_explicit_legacy_native_startup_keeps_complete_eager_tree () =
+  List.iter (fun (os, plain, _flagged, host) ->
+    let host_profile = Lui_native_bridge.profile os plain in
+    let backend = {backend_profile = host_profile; apply_batch = (fun _ -> true)} in
+    let app, _view, observed_profile, probe = startup_application ~virtual_rows:false
+      ~backend ~count:100_000 Startup_extensions in
+    Fun.protect (fun () ->
+      ignore (Lui_app.start app); ignore (Lui_app.flush app);
+      let runtime = Lui_app.runtime app in
+      let list = startup_list runtime in
+      Alcotest.(check int) "old native host receives all100k eager rows" 100_000
+        (List.length (direct_rows runtime list));
+      Alcotest.(check bool) "legacy startup has no sparse metadata" true
+        (prop runtime list "virtual-total-count" = None);
+      Alcotest.(check bool) "capability override does not change host semantics" true
+        (!observed_profile = Some host_profile && host_profile.profile_host = host);
+      Alcotest.(check bool) "host-specific extension keeps its identity" true
+        (Hashtbl.find_opt runtime.runtime_extension_nodes (Option.get !probe)
+           = Some "startup-host-probe"))
+      ~finally:(fun () -> ignore (Lui_app.dispose app))) native_startup_codes
+
+let test_constructor_capability_survives_reload_and_extensions () =
+  List.iter (fun (os, plain, _flagged, _host) ->
+    let profile = Lui_native_bridge.profile os plain in
+    let backend = {backend_profile = profile; apply_batch = (fun _ -> true)} in
+    List.iter (fun constructor ->
+      let app, view, observed_profile, probe = startup_application ~virtual_rows:false
+        ~backend ~count:32 constructor in
+      Fun.protect (fun () ->
+        ignore (Lui_app.start app); ignore (Lui_app.flush app);
+        let runtime = Lui_app.runtime app in
+        let assert_eager () =
+          let list = startup_list runtime in
+          Alcotest.(check int) "constructor preserves explicit eager capability" 32
+            (List.length (direct_rows runtime list));
+          Alcotest.(check bool) "constructor keeps native profile" true
+            (!observed_profile = Some profile);
+          Alcotest.(check bool) "constructor emits no lazy metadata" true
+            (prop runtime list "virtual-total-count" = None);
+          Option.iter (fun probe -> Alcotest.(check bool) "extension remains native" true
+            (Hashtbl.mem runtime.runtime_extension_nodes
+               (Lui_runtime.canonical_node runtime probe))) !probe in
+        assert_eager ();
+        (match constructor with
+         | Startup_reloadable | Startup_reloadable_extensions ->
+           let request = Lui_app.request_reload app in
+           ignore (Lui_app.reload_view app request "startup-new" "startup-contract" view 0);
+           let session = (Option.get app.Lui_app.app_reload_state).reload_session in
+           Alcotest.(check string) "real reload accepted" "startup-new"
+             (Lui_hot_reload.source_hash session);
+           assert_eager ()
+         | _ -> ()))
+        ~finally:(fun () -> ignore (Lui_app.dispose app)))
+      [Startup_plain; Startup_extensions; Startup_reloadable; Startup_reloadable_extensions])
+    native_startup_codes
+
+let test_explicit_capability_enables_bounded_generic_app () =
+  List.iter (fun constructor ->
+    let backend = {backend_profile = generic_profile (); apply_batch = (fun _ -> true)} in
+    let app, _view, observed_profile, _probe = startup_application ~virtual_rows:true
+      ~backend ~count:100_000 constructor in
+    Fun.protect (fun () ->
+      ignore (Lui_app.start app); ignore (Lui_app.flush app);
+      let runtime = Lui_app.runtime app in
+      let list = startup_list runtime in
+      Alcotest.(check bool) "explicit capability produces bounded initial rows" true
+        (List.length (direct_rows runtime list) <= 9);
+      Alcotest.(check int) "logical dataset count remains complete" 100_000
+        (int_prop runtime list "virtual-total-count");
+      Alcotest.(check bool) "explicit capability does not rewrite GenericHost" true
+        (!observed_profile = Some (generic_profile ())))
+      ~finally:(fun () -> ignore (Lui_app.dispose app)))
+    [Startup_plain; Startup_extensions; Startup_reloadable; Startup_reloadable_extensions]
+
+let test_native_bridge_negotiation_drives_real_source_windows () =
+  List.iter (fun (os, _plain, flagged, host) ->
+    let bridge = Lui_native_bridge.create "startup-window" in
+    let registered = ref [] in
+    Lui_native_bridge.register ~register_named:(fun name _ -> registered := name :: !registered)
+      "startup-window" bridge;
+    List.iter (fun callback -> Alcotest.(check bool) "callback registration remains complete" true
+      (List.mem ("startup-window_" ^ callback) !registered))
+      ["virtual_window"; "visible_range"; "text_changed"; "dispose"];
+    let profile = Lui_native_bridge.profile os flagged in
+    let backend = Lui_native_bridge.backend bridge profile in
+    let app, _view, observed_profile, probe = startup_application
+      ~virtual_rows:(Lui_native_bridge.virtual_rows_supported flagged)
+      ~backend ~count:100_000 Startup_extensions in
+    Fun.protect (fun () ->
+      let startup = Lui_native_bridge.boot bridge app in
+      let runtime = Lui_app.runtime app in
+      let list = startup_list runtime in
+      Alcotest.(check bool) "new native host receives bounded boot nodes" true
+        (List.length (direct_rows runtime list) <= 9);
+      Alcotest.(check bool) "native profile is preserved through bridge boot" true
+        (!observed_profile = Some profile && profile.profile_host = host);
+      Alcotest.(check bool) "native extension survives flagged boot" true
+        (Hashtbl.mem runtime.runtime_extension_nodes (Option.get !probe));
+      let decode wire = String.split_on_char '\n' wire
+        |> List.filter (fun line -> line <> "") |> List.map Lui_wire.decode_batch in
+      Alcotest.(check bool) "bridge boot delivers real encoded batches" true (decode startup <> []);
+      let epoch = int_prop runtime list "virtual-generation" in
+      let delta = Lui_native_bridge.dispatch_event bridge
+        (VirtualWindow (list, epoch, 50_000, 50_009, [])) in
+      Alcotest.(check bool) "window feedback mounts distant source data" true
+        (Option.is_some (row_by_text runtime list "row-50005"));
+      Alcotest.(check int) "bridge window stays bounded" 9
+        (List.length (direct_rows runtime list));
+      Alcotest.(check bool) "host receives row creation patches" true
+        (List.exists (fun batch -> List.exists (function CreateNode _ -> true | _ -> false)
+          batch.ops) (decode delta));
+      let pinned = Option.get (row_by_text runtime list "row-50005") in
+      ignore (Lui_native_bridge.dispatch_event bridge
+        (VirtualWindow (list, epoch, 0, 9, [pinned])));
+      Alcotest.(check bool) "native bridge preserves interaction pin" true
+        (Lui_runtime.node_live runtime pinned);
+      ignore (Lui_app.send app (Replace (List.rev (Lui_app.model app))));
+      ignore (Lui_app.flush app);
+      let next_epoch = int_prop runtime list "virtual-generation" in
+      Alcotest.(check bool) "source revision advances negotiated generation" true (next_epoch > epoch);
+      let before = direct_rows runtime list in
+      ignore (Lui_native_bridge.dispatch_event bridge
+        (VirtualWindow (list, epoch, 100, 109, [pinned])));
+      Alcotest.(check (list int)) "stale host request cannot replace current rows" before
+        (direct_rows runtime list);
+      ignore (Lui_native_bridge.dispatch_event bridge
+        (VirtualWindow (list, next_epoch, 100, 109, [pinned])));
+      Alcotest.(check bool) "pin follows key through negotiated source reorder" true
+        (Lui_runtime.node_live runtime pinned);
+      let restored = Drive.Model.create () in
+      let snapshot = (Option.get bridge.Lui_native_bridge.resync) ()
+        |> Lui_wire.decode_batch in
+      Drive.Model.apply_batch restored snapshot;
+      let restored_list = Hashtbl.find restored.Drive.Model.nodes list in
+      Alcotest.(check (list int)) "bridge resync restores exact sparse child identities"
+        (direct_rows runtime list) (Drive.Model.node_children restored_list))
+      ~finally:(fun () -> ignore (Lui_native_bridge.dispose bridge))) native_startup_codes
+
+let test_runtime_constructor_capability_is_immutable_and_owned () =
+  List.iter (fun (host_profile, capability, count) ->
+    List.iter (fun with_extension ->
+      let scheduler = Signal.scheduler () and scope = Signal.scope "startup-runtime" in
+      let backend = {backend_profile = host_profile; apply_batch = (fun _ -> true)} in
+      let registry = Lui_extension.registry () in
+      Lui_extension.register_component registry
+        (Lui_extension.component "startup-host-probe" [host_profile] false [] [] []);
+      Lui_extension.freeze registry;
+      let runtime = if with_extension then
+        Lui_runtime.create_with_extensions ~virtual_rows:capability scheduler backend registry
+      else Lui_runtime.create ~virtual_rows:capability scheduler backend in
+      let context = Lui_ui.context runtime scope in
+      let source = Signal.state scheduler (rows count) in
+      let observed_profile = ref None and probe = ref None in
+      let root = (startup_view ~with_extension ~observed_profile ~probe context
+        (Signal.value source) (fun _ -> false)) context None in
+      Fun.protect (fun () ->
+        Signal.mount scope; ignore (Lui_runtime.flush runtime);
+        let list = startup_list runtime in
+        Alcotest.(check bool) "runtime capability preserves host profile" true
+          (!observed_profile = Some host_profile);
+        if capability then begin
+          Alcotest.(check bool) "explicit runtime capability mounts bounded rows" true
+            (List.length (direct_rows runtime list) <= 9);
+          let epoch = int_prop runtime list "virtual-generation" in
+          ignore (Lui_runtime.dispatch runtime (VirtualWindow (list, epoch, 100, 109, [])));
+          ignore (Lui_runtime.flush runtime);
+          Alcotest.(check bool) "runtime feedback materializes actual source row" true
+            (Option.is_some (row_by_text runtime list "row-105"))
+        end else begin
+          Alcotest.(check int) "explicit legacy runtime keeps complete eager rows" count
+            (List.length (direct_rows runtime list));
+          Alcotest.(check bool) "legacy runtime sends no sparse metadata" true
+            (prop runtime list "virtual-total-count" = None)
+        end;
+        Signal.set source [];
+        ignore (Lui_runtime.flush runtime);
+        Alcotest.(check int) "source clear retires all row scopes" 0
+          (List.length (direct_rows runtime list)))
+        ~finally:(fun () ->
+          Signal.dispose_scope scope;
+          Lui_runtime.drop_subtree runtime root;
+          ignore (Lui_runtime.flush runtime);
+          Signal.dispose_signal (Signal.value source));
+      Alcotest.(check int) "direct runtime disposal removes all handlers" 0
+        (Lui_runtime.handler_count runtime)) [false; true])
+    [profile MacOS SwiftUIHost, false, 32;
+     profile AndroidOS KotlinHost, false, 32;
+     generic_profile (), true, 1000]
+
+let startup_compat_tests = [
+  "native host capability flag grammar", test_native_capability_flag_grammar;
+  "old native host keeps100k rows and extension identity", test_explicit_legacy_native_startup_keeps_complete_eager_tree;
+  "all constructors preserve capability through reload", test_constructor_capability_survives_reload_and_extensions;
+  "explicit capability enables bounded GenericHost", test_explicit_capability_enables_bounded_generic_app;
+  "negotiated native bridge drives real windows and pins", test_native_bridge_negotiation_drives_real_source_windows;
+  "runtime constructors preserve immutable capability and lifecycle", test_runtime_constructor_capability_is_immutable_and_owned;
+]
+
+let with_gallery_virtual_section host run =
+  let operating_system = match host with
+    | SwiftUIHost | MyGoHost -> MacOS
+    | KotlinHost -> AndroidOS
+    | WebHost | GenericHost -> WebOS in
+  let backend = { backend_profile = profile operating_system host;
+    apply_batch = (fun _ -> true) } in
+  let app = Lui_app.create backend Model.initial Model.update
+    (fun _context source send -> View.virtual_list_section source send) in
+  ignore (Lui_app.start app);
+  ignore (Lui_app.flush app);
+  let runtime = Lui_app.runtime app in
+  let find kind property value =
+    match Hashtbl.fold (fun node node_kind found ->
+      if node_kind = kind && prop runtime node property = Some (StringValue value)
+      then Some node else found) runtime.mounted_nodes None with
+    | Some node -> node
+    | None -> Alcotest.failf "Gallery is missing %s %S"
+        (Lui_wire_schema.node_kind_name kind) value in
+  let button text = find Button "text" text in
+  let list = Hashtbl.fold (fun node kind found ->
+    if kind = VirtualList then Some node else found) runtime.mounted_nodes None
+    |> Option.get in
+  let press text =
+    Alcotest.(check bool) ("real Gallery button dispatch: " ^ text) true
+      (Lui_app.dispatch_event app (Press (button text)));
+    ignore (Lui_app.flush app) in
+  let window epoch first last =
+    ignore (Lui_app.dispatch_event app (VirtualWindow (list, epoch, first, last, [])));
+    ignore (Lui_app.flush app) in
+  Fun.protect (fun () -> run app runtime list button find press window)
+    ~finally:(fun () -> ignore (Lui_app.dispose app))
+
+let test_gallery_virtual_jump_controls_and_row_actions () =
+  List.iter (fun host -> with_gallery_virtual_section host
+    (fun app runtime list button find press window ->
+      List.iter (fun text ->
+        Alcotest.(check bool) (text ^ " is disabled while empty") true
+          (prop runtime (button text) "enabled" = Some (BoolValue false)))
+        ["Jump to last"; "Back to top"];
+      press "Load 100k";
+      List.iter (fun text ->
+        Alcotest.(check bool) (text ^ " is enabled after Load") false
+          (prop runtime (button text) "enabled" = Some (BoolValue false)))
+        ["Jump to last"; "Back to top"];
+      Alcotest.(check int) "actual Gallery loads the full business source" 100_000
+        (int_prop runtime list "virtual-total-count");
+      Alcotest.(check bool) "actual Gallery initially mounts only its viewport" true
+        (Lui_runtime.mounted_count runtime < 200 &&
+         List.length (direct_rows runtime list) < 80);
+      let before = direct_rows runtime list in
+      press "Jump to last";
+      Alcotest.(check int) "typed target resolves the last source key" 99_999
+        (int_prop runtime list "virtual-scroll-index");
+      Alcotest.(check bool) "jump publishes a nonempty public scroll target" true
+        (match prop runtime list "scroll-target" with
+         | Some (StringValue target) -> target <> "" | _ -> false);
+      let token = int_prop runtime list "scroll-token" in
+      Alcotest.(check (list int)) "jump does not mount intervening rows" before
+        (direct_rows runtime list);
+      let epoch = int_prop runtime list "virtual-generation" in
+      window epoch 99_986 100_000;
+      let last = find ListItem "key" "row-99999" in
+      Alcotest.(check bool) "materialized row has a real reducer action" true
+        (Lui_app.dispatch_event app (Press last));
+      ignore (Lui_app.flush app);
+      let summary = Model.virtual_summary (Lui_app.model app) in
+      ignore (find Text "text" summary);
+      Alcotest.(check bool) "pressed distant row reaches the shared summary" true
+        (String.ends_with ~suffix:"row 99999" summary);
+      press "Back to top";
+      Alcotest.(check int) "back to top resolves the first source key" 0
+        (int_prop runtime list "virtual-scroll-index");
+      Alcotest.(check bool) "back to top uses a fresh request token" true
+        (int_prop runtime list "scroll-token" > token);
+      window epoch 0 16;
+      ignore (find ListItem "key" "row-0");
+      Alcotest.(check bool) "round trip retains a bounded logical tree" true
+        (Lui_runtime.mounted_count runtime < 200);
+      press "Clear";
+      Alcotest.(check int) "clear empties logical source" 0
+        (int_prop runtime list "virtual-total-count");
+      Alcotest.(check (list int)) "clear retires every mounted row" []
+        (direct_rows runtime list);
+      List.iter (fun text ->
+        Alcotest.(check bool) (text ^ " is disabled after Clear") true
+          (prop runtime (button text) "enabled" = Some (BoolValue false)))
+        ["Jump to last"; "Back to top"]))
+    [SwiftUIHost; KotlinHost; WebHost; MyGoHost]
+
+let test_gallery_virtual_jump_repeats_and_count_changes () =
+  List.iter (fun host -> with_gallery_virtual_section host
+    (fun _app runtime list button find press window ->
+      ignore (button "Jump to last");
+      press "Load 100k";
+      let old_epoch = int_prop runtime list "virtual-generation" in
+      let before = direct_rows runtime list in
+      press "Jump to last";
+      let first_token = int_prop runtime list "scroll-token" in
+      press "Jump to last";
+      let second_token = int_prop runtime list "scroll-token" in
+      Alcotest.(check bool) "repeated identical jump creates a new request" true
+        (second_token > first_token);
+      Alcotest.(check (list int)) "repeated requests do not eagerly mount targets" before
+        (direct_rows runtime list);
+      press "10k";
+      Alcotest.(check int) "count change reaches the actual source" 10_000
+        (int_prop runtime list "virtual-total-count");
+      Alcotest.(check bool) "count change cancels the old last-row request" true
+        (match prop runtime list "virtual-scroll-index" with
+         | None | Some (IntValue (-1)) -> true | _ -> false);
+      let after_count_change = direct_rows runtime list in
+      window old_epoch 99_986 100_000;
+      Alcotest.(check (list int)) "stale old-source feedback cannot mount rows" after_count_change
+        (direct_rows runtime list);
+      press "Jump to last";
+      Alcotest.(check int) "new jump resolves the current last row" 9999
+        (int_prop runtime list "virtual-scroll-index");
+      Alcotest.(check bool) "new source jump receives a fresh token" true
+        (int_prop runtime list "scroll-token" > second_token);
+      Alcotest.(check (list int)) "retarget waits for host window feedback" after_count_change
+        (direct_rows runtime list);
+      window (int_prop runtime list "virtual-generation") 9986 10_000;
+      ignore (find ListItem "key" "row-9999");
+      Alcotest.(check bool) "only current source indices are materialized" true
+        (List.for_all (fun row ->
+          match prop runtime row "key" with
+          | Some (StringValue key) -> key <> "row-99999"
+          | _ -> false) (direct_rows runtime list));
+      Alcotest.(check bool) "count-change requests remain bounded" true
+        (Lui_runtime.mounted_count runtime < 200)))
+    [SwiftUIHost; KotlinHost; WebHost; MyGoHost]
+
+let tests = tests @ [
+  "Gallery jump controls drive actual source and row actions", test_gallery_virtual_jump_controls_and_row_actions;
+  "Gallery repeated jumps and count changes preserve request semantics", test_gallery_virtual_jump_repeats_and_count_changes;
 ]
 
 end
@@ -5126,6 +5577,10 @@ end
 let () =
   Alcotest.run "lui"
     [
+      ("virtual row startup", List.map (fun (name, test) ->
+        Alcotest.test_case name `Quick test) Virtual_rows_acceptance.startup_compat_tests);
+      ("native virtual rows", List.map (fun (name, test) ->
+        Alcotest.test_case name `Quick test) Virtual_rows_acceptance.native_host_tests);
       ("virtual rows", List.map (fun (name, test) ->
         Alcotest.test_case name `Quick test) Virtual_rows_acceptance.tests);
       ( "wire encoding",

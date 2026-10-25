@@ -199,6 +199,11 @@ func (b *Backend) renderCollections(c *ui.Context, n Node, s *controlState, appe
 		}
 		c.Key(id)
 		wrapper := ui.Column(c).FillWidth().MinWidth(0).Bind(handle)
+		if source.lazy {
+			// A zero-height row would collapse the lazy window onto the entire
+			// source. Keep positive logical geometry for empty row roots.
+			wrapper.MinHeight(1)
+		}
 		grouped := n.String("style") == "inset-grouped"
 		if grouped {
 			wrapper.Background(c.Theme().Surface).Radius(8)

@@ -11,7 +11,7 @@ project(lui_components_bridge C)
 # stub exports instead so the app still builds and launches (the bridge
 # reports "not accepted" and the gallery shows a placeholder).
 
-set(LUI_BACKEND_DIR "${CMAKE_SOURCE_DIR}/../../../../../../platform/android/lui")
+set(LUI_BACKEND_DIR "${CMAKE_SOURCE_DIR}/../../../../../../../platform/android/lui")
 set(LUI_COMPONENTS_SO "${CMAKE_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/liblui_components.so")
 
 find_library(log_lib log)

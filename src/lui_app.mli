@@ -31,7 +31,13 @@ val restore_state_scopes :
   ('a, Signal.scope) Hashtbl.t -> ('a, Signal.scope) Hashtbl.t -> bool
 val prune_state_scopes :
   ('a, Signal.scope) Hashtbl.t -> ('a, 'b) Hashtbl.t -> bool
+
+(** [virtual_rows] overrides bounded row-source support without changing the
+    backend's semantic platform profile. It defaults to true for Web, MyGo,
+    SwiftUI and Kotlin, and false for Generic hosts. Native embedding code must
+    pass its negotiated capability before the view is mounted. *)
 val create_with_extensions :
+  ?virtual_rows:bool ->
   Lui_protocol.backend ->
   Lui_extension.extension_registry ->
   'a ->
@@ -39,12 +45,14 @@ val create_with_extensions :
   (Lui_ui.ui_context -> 'a Signal.signal -> ('b -> bool) -> Lui_elements.t) ->
   ('a, 'b) reducer_app
 val create :
+  ?virtual_rows:bool ->
   Lui_protocol.backend ->
   'a ->
   ('a -> 'b -> 'a) ->
   (Lui_ui.ui_context -> 'a Signal.signal -> ('b -> bool) -> Lui_elements.t) ->
   ('a, 'b) reducer_app
 val create_reloadable_with_extensions :
+  ?virtual_rows:bool ->
   Lui_protocol.backend ->
   Lui_extension.extension_registry ->
   string ->
@@ -54,6 +62,7 @@ val create_reloadable_with_extensions :
   (Lui_ui.ui_context -> 'a Signal.signal -> ('b -> bool) -> Lui_elements.t) ->
   ('a, 'b) reducer_app
 val create_reloadable :
+  ?virtual_rows:bool ->
   Lui_protocol.backend ->
   string ->
   string ->

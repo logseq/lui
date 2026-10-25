@@ -436,10 +436,7 @@ let virtual_rows (type key) ?scroll_key context parent source
   let application = context.Lui_ui.ui_application in
   let segment = Lui_runtime.register_dynamic_segment ~exclusive:true application parent in
   let reconcile, keyed = keyed_controller context parent segment key_fn compare mount in
-  let lazy_host = match context.Lui_ui.ui_profile.profile_host with
-    | Lui_protocol.WebHost | Lui_protocol.MyGoHost -> true
-    | _ -> false in
-  if not lazy_host then begin
+  if not application.Lui_runtime.runtime_virtual_rows then begin
     reconcile (Signal.sample source);
     let subscription = Signal.subscribe ~emit_initial:false source (fun items -> reconcile items) in
     ignore (Signal.own context.Lui_ui.ui_scope subscription);

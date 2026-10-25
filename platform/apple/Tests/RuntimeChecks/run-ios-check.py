@@ -11,6 +11,7 @@ BUNDLE = "dev.lui.nativePresentationCheck"
 CHECKS = {
     "file-preview": ("FilePreviewLaunch.swift", "FilePreviewLaunchCheck"),
     "drawer-first-reveal": ("DrawerFirstReveal.swift", "DrawerFirstRevealCheck"),
+    "bounded-virtual-rows": ("BoundedVirtualRows.swift", "BoundedVirtualRowsCheck"),
 }
 
 

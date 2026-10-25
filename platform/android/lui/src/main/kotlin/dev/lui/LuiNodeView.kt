@@ -13,6 +13,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -132,6 +133,8 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.CollectionInfo
+import androidx.compose.ui.semantics.collectionInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
@@ -355,26 +358,27 @@ private fun LuiNodeContent(
             children.forEachNode { childId -> GrowChildColumn(backend, childId) }
         }
 
-        LuiNodeKind.list -> LazyColumn(
-            modifier = modifier,
-            verticalArrangement = Arrangement.spacedBy(
-                gapOf(node).dp,
-                alignment = mainVerticalAlignment(node.propString("main")),
-            ),
-            horizontalAlignment = crossHorizontalAlignment(node.propString("cross")),
-        ) {
-            children.forEach { childId ->
+        LuiNodeKind.list -> {
+            val rows = children.flatMap { childId ->
                 if (backend.node(childId)?.kind == LuiNodeKind.listSection) {
-                    // Expand section children so rows compose lazily like
-                    // the Apple backend's native list; headers/footers
-                    // stay inline items (not pinned) to keep wire order.
-                    backend.node(childId)?.children?.forEach { sectionChildId ->
-                        item(key = sectionChildId) {
-                            LuiNodeView(backend, sectionChildId)
-                        }
+                    backend.node(childId)?.children.orEmpty()
+                } else listOf(childId)
+            }
+            val arrangement = Arrangement.spacedBy(gapOf(node).dp,
+                alignment = mainVerticalAlignment(node.propString("main")))
+            val alignment = crossHorizontalAlignment(node.propString("cross"))
+            BoxWithConstraints(modifier = modifier, propagateMinConstraints = true) {
+                if (constraints.hasBoundedHeight) {
+                    LazyColumn(verticalArrangement = arrangement, horizontalAlignment = alignment) {
+                        rows.forEach { childId -> item(key = childId) { LuiNodeView(backend, childId) } }
                     }
                 } else {
-                    item(key = childId) { LuiNodeView(backend, childId) }
+                    // An ordinary list may participate in its parent's intrinsic
+                    // content flow; only a bounded viewport can own lazy scrolling.
+                    Column(Modifier.semantics { collectionInfo = CollectionInfo(rows.size, 1) },
+                        verticalArrangement = arrangement, horizontalAlignment = alignment) {
+                        rows.forEachNode { LuiNodeView(backend, it) }
+                    }
                 }
             }
         }
@@ -420,6 +424,7 @@ private fun LuiNodeContent(
                 DpOffset(node.propDouble("x").dp, node.propDouble("y").dp),
             ),
         ) {
+            LuiVirtualPortalLifetime()
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
                 Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(gapOf(node).dp)) {
                     children.forEachNode { LuiNodeView(backend, it) }
@@ -1378,6 +1383,7 @@ private fun LuiMenuPopup(
             shapes = MenuDefaults.groupShapes(),
             modifier = Modifier.verticalScroll(rememberScrollState()),
         ) {
+            LuiVirtualPortalLifetime()
             menu.children.forEachIndexedNode { index, childId ->
                 CompositionLocalProvider(LocalLuiChildSlot provides LuiChildSlot(index, menu.children.size)) {
                     LuiMenuEntry(backend, childId, onSelect)
@@ -1588,6 +1594,16 @@ private fun LuiListItem(
             disabledContainerColor = Color.Transparent,
         )
     } else ListItemDefaults.colors()
+    val defaultPadding = ListItemDefaults.ContentPadding
+    val direction = LocalLayoutDirection.current
+    val contentPadding = if (node.prop("height") != null) {
+        // Authored compact geometry owns the available vertical space; retain
+        // native horizontal insets and interaction instead of clipping the label.
+        androidx.compose.foundation.layout.PaddingValues(
+            start = defaultPadding.calculateStartPadding(direction),
+            end = defaultPadding.calculateEndPadding(direction),
+        )
+    } else defaultPadding
     val icon = node.propString("icon")?.let { backend.icons.icon(it) }
     val content: @Composable () -> Unit = {
         if (children.isEmpty()) {
@@ -1625,6 +1641,7 @@ private fun LuiListItem(
     when {
         node.propBool("double-press-enabled") -> ListItem(
             colors = colors,
+            contentPadding = contentPadding,
             modifier = modifier.combinedClickable(
                 enabled = enabled,
                 onClick = onClick,
@@ -1637,6 +1654,7 @@ private fun LuiListItem(
         )
         node.prop("selected") != null -> ListItem(
             colors = colors,
+            contentPadding = contentPadding,
             selected = node.propBool("selected"),
             onClick = onClick,
             onLongClick = onLongClick,
@@ -1647,6 +1665,7 @@ private fun LuiListItem(
         )
         else -> ListItem(
             colors = colors,
+            contentPadding = contentPadding,
             onClick = onClick,
             onLongClick = onLongClick,
             modifier = modifier,
@@ -2250,6 +2269,7 @@ private fun LuiToolbar(
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun LuiModalSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
+    LuiVirtualPortalLifetime()
     val onDismiss = { backend.emit(LuiEvent.Dismiss(id)) }
     when (node.kind) {
         LuiNodeKind.dialog -> {

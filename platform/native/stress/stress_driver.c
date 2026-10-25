@@ -6,6 +6,7 @@
 #include <caml/memory.h>
 #include <caml/signals.h>
 #include <caml/fail.h>
+#include <dlfcn.h>
 
 extern int32_t lui_ocaml_press_detail(int64_t node, double x, double y,
                                       int32_t modifiers, int32_t button,
@@ -28,6 +29,10 @@ value stress_press_detail(value count) {
 
 value stress_virtual_window(value count) {
   CAMLparam1(count);
+  int32_t (*virtual_rows_version)(void) =
+    (int32_t (*)(void))dlsym(RTLD_DEFAULT, "lui_ocaml_virtual_rows_version");
+  if (virtual_rows_version == NULL || virtual_rows_version() != 1)
+    caml_failwith("native host cannot negotiate bounded virtual rows");
   int iterations = Int_val(count);
   int64_t node = INT64_C(9007199254740993);
   int64_t pins[2048];

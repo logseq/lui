@@ -3,10 +3,10 @@
 Goal: Keep LUI and host UI nodes proportional to the visible window and active interaction pins while retaining the complete application data source.
 
 Architecture: Add a structural lazy row source inside the existing VirtualList component and reconcile only its requested window through the existing keyed lifecycle.
-Web and MyGo request bounded windows with stable row pins; older hosts retain eager behavior through an explicit capability fallback.
+Web, MyGo, SwiftUI and Kotlin request bounded windows with stable row pins; older hosts retain eager behavior through an explicit capability fallback.
 Retain the completed encoder and streaming transaction improvements, and exclude active collection policies from this fix.
 
-Tech Stack: OCaml, ocaml-signal, Melange, the existing Web virtualizer, Go, MyGo ListColumn, and the shared native C ABI.
+Tech Stack: OCaml, ocaml-signal, Melange, the existing Web virtualizer, Go, MyGo ListColumn, SwiftUI, Jetpack Compose, JNI and the shared native C ABI.
 
 Related: Builds on [004-component-api-mygo-parity.md](004-component-api-mygo-parity.md) and the follow-up memory PR #274.
 
@@ -36,6 +36,8 @@ Keep initial test drafts outside the repository until their target interfaces ar
 | Protocol | Counts, generation and sparse index vectors validate atomically, including extension-root rows, invalid pins and duplicate/out-of-range indices. |
 | MyGo | Real ListColumn scrolling and bottom jumps preserve full logical extent with bounded LUI/backend/control counts and interaction pins. |
 | Web | Chromium, Firefox and WebKit verify full scroll extent, window convergence, variable row measurement, anchors, focus, pointer hold, composition and portal owners. |
+| SwiftUI | Actual native scrolling and bounded row rendering, far jumps, viewport feedback, focused editor identity, composition and pointer/popup ownership preserve a bounded committed tree across reorder and resync. |
+| Kotlin | Actual Compose LazyColumn scrolling, focused far reorder, selection and pointer/popup pins preserve native interaction and a bounded committed tree. |
 | Compatibility | Literal/eager virtual_list children still work; old shared libraries and hosts fall back without silently displaying an incomplete collection. |
 | Release | Ordinary release Gallery loading, scrolling and clearing 100,000 rows shows bounded counts and substantially reduced physical footprint without externally forced collection or an active GC policy. |
 
@@ -65,9 +67,13 @@ The structural source must be the sole direct child of VirtualList and must reje
 Existing eager children and keyed collections retain their existing behavior.
 
 Append MyGoHost to the existing host vocabulary without reordering earlier cases.
-Map native host code 5 to it and use lazy generation only for WebHost and MyGoHost.
+Map native host code 5 to it and support lazy generation on all four implemented host families.
 MyGo advertises code 5 only when the new optional window ABI is available.
-SwiftUI, Kotlin and unknown Generic hosts use the eager source fallback until their hosts implement window feedback.
+Keep semantic SwiftUIHost and KotlinHost profiles unchanged.
+Native codes 258 and 260 advertise bounded-row support in addition to the existing SwiftUI code 2 and Kotlin code 4.
+Updated native clients probe the optional version entry point and retain codes 2/4 with older libraries.
+The application constructors accept an optional virtual_rows capability override before mounting the view; native initializers pass the negotiated capability explicitly.
+Old native hosts remain eager with a new library, and unknown Generic hosts remain eager unless explicitly opted in by an implementing host.
 Document the additional exhaustive host case and the opt-in row source in docs/api-migrations.md.
 
 ## Wire contract
@@ -160,6 +166,23 @@ Never vendor the toolkit or commit build/cache artifacts.
 The existing no-idle-GC streaming release control is frozen outside Git and is a comparison, not proof of bounded generation.
 Do not update the video, as the user canceled further recording.
 
+## Task 6: SwiftUI and Kotlin bounded collections
+
+- [x] Write every native-host and startup-compatibility regression before implementation, including real behavioral RED results rather than missing-symbol or rejected-property errors.
+- [x] Add optional capability arguments in src/lui_app.ml and .mli and src/lui_runtime.ml; select bounded generation through the runtime capability in src/lui_dynamic.ml.
+- [x] Extend src/lui_native_bridge.ml and all examples/*/native/*_bridge.ml initializers to preserve semantic host profiles while negotiating bounded-row support.
+- [x] Export the optional version marker from platform/native/lui_ocaml_bridge.c and qualify both old/new host-library combinations.
+- [x] Implement atomic sparse metadata validation and internal window events in platform/apple/Sources/LUIAppleBackend and platform/android/lui/src/main, retaining eager literal children.
+- [x] Reuse SwiftUI native scrolling geometry and stable committed-row ownership; preserve the native editor object throughout focus, composition, scrolling and source reorder.
+- [x] Reuse Compose LazyColumn and public pin-container ownership; verify a focused row survives a reorder far outside the nearest-key cache range.
+- [x] Bridge owned window/pin payloads through Apple native clients and Kotlin JNI without narrowing OCaml integers or violating runtime-lock rules.
+- [x] Demonstrate top/end jumps in the shared Gallery through typed scroll targets and fresh tokens, with all-four-host reducer/runtime regressions and no private native test hooks.
+- [ ] Run focused tests through actual renderers and the OCaml/native dispatch boundary, then run complete relevant host suites and ordinary Gallery device/emulator qualification.
+- [ ] Update docs/api-migrations.md and PR #274 with the final API, compatibility matrix and verified test results; keep all CI checks green on the pushed commit.
+
+Observe failure first, implement the minimum behavior, verify GREEN, simplify and rerun the affected checks.
+Serialize every Dune invocation across the three implementation owners.
+
 ## Testing Details
 
 Use real OCaml application/runtime lifecycles and host input rather than tests that only inspect metadata shapes.
@@ -181,10 +204,10 @@ Require all final PR checks to pass on the actual final commit.
 - Keep third-party source, recordings, caches and build output outside commits.
 - Maintain migration examples alongside implementation.
 
-## Question
+## Resolved contract decisions
 
 The missing-target index sentinel is -1, and the internal window interval is half-open.
-Confirm the actual MyGo APIs needed to expose pending window and interaction pins; add a focused fork capability if they are not already public.
+The pinned MyGo fork exposes actual requested windows, active interaction pins and authoritative source key lookup without changing its upstream module identity.
 An individual row may contain an arbitrarily large subtree, so bounds are stated in mounted rows plus their descendant nodes, not a universal absolute node count.
 
 ---

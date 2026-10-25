@@ -1822,8 +1822,19 @@ let virtual_list_section model_source send : t =
         ; button ~variant:`destructive ~text:"Clear"
             ~on_press:(press send (Model.SetVirtualCount 0)) []
         ]
+    ; row ~gap:8
+        [ button ~variant:`outline ~text:"Jump to last"
+            ~disabled:(reactive (fun (m : Model.t) -> m.virtual_count = 0) model_source)
+            ~on_press:(press send Model.ScrollVirtualToLast) []
+        ; button ~variant:`outline ~text:"Back to top"
+            ~disabled:(reactive (fun (m : Model.t) -> m.virtual_count = 0) model_source)
+            ~on_press:(press send Model.ScrollVirtualToTop) []
+        ]
     ; text ~value:(reactive Model.virtual_summary model_source) []
     ; virtual_list ~height:400
+        ~scroll_target:(reactive (fun (m : Model.t) -> m.virtual_scroll_target) model_source)
+        ~scroll_token:(reactive (fun (m : Model.t) -> m.virtual_scroll_token) model_source)
+        ~scroll_animated:false
         [ virtual_rows
             ~source:
               (reactive
@@ -1833,6 +1844,7 @@ let virtual_list_section model_source send : t =
                        a.Model.virtual_count = b.Model.virtual_count)
                     model_source))
             ~key:Fun.id ~cmp:Int.compare
+            ~scroll_key:(fun i -> Printf.sprintf "row-%d" i)
             ~mount:(virtual_row send)
             ()
         ]

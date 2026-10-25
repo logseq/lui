@@ -296,9 +296,9 @@ internal object LuiKindRules {
     /** Ported from the Flutter backend's `_supports`: whether a `set-prop`
      * op is admissible for the node's kind. */
     fun supports(kind: LuiNodeKind, property: String, value: LuiWireValue): Boolean {
-        // This host uses eager virtual_rows until it implements window feedback.
         when (property) {
-            "virtual-total-count", "virtual-generation", "virtual-indices", "virtual-scroll-index" -> return false
+            "virtual-total-count", "virtual-generation", "virtual-indices", "virtual-scroll-index" ->
+                return kind == LuiNodeKind.virtualList && schemaValueSupported(property, value)
             else -> Unit
         }
         if (property == "accessibility-identifier") return value is LuiWireValue.Str
@@ -497,6 +497,11 @@ internal object LuiKindRules {
             "submit-enabled" ->
                 value is LuiWireValue.Bool &&
                     (isTextControl(kind) || kind == LuiNodeKind.listItem)
+            "navigate-enabled" ->
+                value is LuiWireValue.Bool &&
+                    (kind == LuiNodeKind.button || kind == LuiNodeKind.textField ||
+                        kind == LuiNodeKind.secureField || kind == LuiNodeKind.input ||
+                        kind == LuiNodeKind.searchField || kind == LuiNodeKind.textarea)
             "double-press-enabled" ->
                 value is LuiWireValue.Bool && kind == LuiNodeKind.listItem
             "appear-enabled" -> value is LuiWireValue.Bool
@@ -747,6 +752,7 @@ internal object LuiKindRules {
                         kind == LuiNodeKind.statusBar)
             "role" ->
                 (value.stringValue == "treeitem" && isTreeRowKind(kind)) ||
+                    (value.stringValue in setOf("navigation", "navigation-heading") && kind == LuiNodeKind.listItem) ||
                     (value.stringValue == "menu" && kind == LuiNodeKind.popover)
             "tree-level" ->
                 value.intValue?.let { it > 0 } == true && isTreeRowKind(kind)
@@ -760,14 +766,14 @@ internal object LuiKindRules {
             "style" ->
                 value.stringValue in setOf("plain", "inset", "inset-grouped") &&
                     kind == LuiNodeKind.list
-            "scroll-target" -> value is LuiWireValue.Str && kind == LuiNodeKind.list
+            "scroll-target" -> value is LuiWireValue.Str && (kind == LuiNodeKind.list || kind == LuiNodeKind.virtualList)
             "scroll-anchor" ->
                 value.stringValue in setOf("top", "center", "bottom") &&
-                    kind == LuiNodeKind.list
+                    (kind == LuiNodeKind.list || kind == LuiNodeKind.virtualList)
             "scroll-token" ->
-                value.intValue?.let { it >= 0 } == true && kind == LuiNodeKind.list
+                (value as? LuiWireValue.IntValue)?.value?.let { it >= 0 && it <= Long.MAX_VALUE / 2 } == true && (kind == LuiNodeKind.list || kind == LuiNodeKind.virtualList)
             "scroll-animated", "track-visible-range" ->
-                value is LuiWireValue.Bool && kind == LuiNodeKind.list
+                value is LuiWireValue.Bool && (kind == LuiNodeKind.list || kind == LuiNodeKind.virtualList)
             "font-size", "line-height", "font-family" ->
                 value is LuiWireValue.Str &&
                     value.stringValue?.isNotBlank() == true &&
@@ -942,7 +948,14 @@ internal object LuiKindRules {
     // `Lui_protocol.property_value_supported`.
     private fun schemaValueSupported(property: String, value: LuiWireValue): Boolean =
         when (property) {
-            "virtual-total-count", "virtual-generation", "virtual-indices", "virtual-scroll-index" -> false
+            "virtual-total-count" -> value.intValue?.let { it >= 0 } == true
+            "virtual-generation" -> (value as? LuiWireValue.IntValue)?.value?.let { it > 0 && it <= Long.MAX_VALUE / 2 } == true
+            "virtual-indices" -> value.stringValue?.let { luiVirtualIndices(it) != null } == true
+            "virtual-scroll-index" -> value.intValue?.let { it >= -1 } == true
+            "scroll-target" -> value is LuiWireValue.Str
+            "scroll-anchor" -> value.stringValue in setOf("top", "center", "bottom")
+            "scroll-token" -> (value as? LuiWireValue.IntValue)?.value?.let { it >= 0 && it <= Long.MAX_VALUE / 2 } == true
+            "scroll-animated", "track-visible-range" -> value is LuiWireValue.Bool
             "overscan" -> value.intValue?.let { it >= 0 } == true
             "item-extent" -> value.numberValue?.let { it.isFinite() && it > 0 } == true
             "text", "title", "description", "meta", "indicator", "key",
