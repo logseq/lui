@@ -1,6 +1,14 @@
 #include <stdint.h>
 #include <string.h>
 
+#if !defined(_WIN32)
+#include <errno.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#endif
+
 #include <caml/callback.h>
 #include <caml/mlvalues.h>
 #include <caml/signals.h>
@@ -18,6 +26,70 @@ typedef void (*lui_patch_callback)(const char *json);
 
 static int runtime_started = 0;
 static lui_patch_callback patch_callback = NULL;
+
+#if !defined(_WIN32)
+static void signal_ownership_failure(const char *operation, int error) {
+  /* Returning to an embedding runtime with a damaged signal stack is unsafe.
+     No OCaml or host callback may run on this infrastructure failure path. */
+  fprintf(stderr, "lui bridge: %s: %s\n", operation, strerror(error));
+  abort();
+}
+
+static void startup_preserving_host_signals(char **arguments) {
+  stack_t host_stack;
+  sigset_t startup_mask, host_mask;
+  int error;
+
+  if (sigaltstack(NULL, &host_stack) != 0) {
+    signal_ownership_failure("query host alternate signal stack", errno);
+  }
+  if ((host_stack.ss_flags & SS_ONSTACK) != 0) {
+    signal_ownership_failure("initialize OCaml from an active signal stack",
+                             EINVAL);
+  }
+
+  /* OCaml startup installs its own alternate stack and disables that stack
+     when its program's registration code returns. Defer asynchronous signals
+     until the embedding host's stack has been restored, including the short
+     interval between OCaml's cleanup and this function regaining control.
+     Synchronous faults must remain deliverable during foreign execution. */
+  if (sigfillset(&startup_mask) != 0 ||
+      sigdelset(&startup_mask, SIGSEGV) != 0 ||
+      sigdelset(&startup_mask, SIGBUS) != 0 ||
+      sigdelset(&startup_mask, SIGILL) != 0 ||
+      sigdelset(&startup_mask, SIGFPE) != 0 ||
+      sigdelset(&startup_mask, SIGTRAP) != 0) {
+    signal_ownership_failure("prepare OCaml startup signal mask", errno);
+  }
+#if defined(SIGSYS)
+  if (sigdelset(&startup_mask, SIGSYS) != 0) {
+    signal_ownership_failure("preserve synchronous system-call signal", errno);
+  }
+#endif
+#if defined(SIGEMT)
+  if (sigdelset(&startup_mask, SIGEMT) != 0) {
+    signal_ownership_failure("preserve synchronous emulator signal", errno);
+  }
+#endif
+  error = pthread_sigmask(SIG_BLOCK, &startup_mask, &host_mask);
+  if (error != 0) {
+    signal_ownership_failure("defer OCaml startup signals", error);
+  }
+
+  caml_startup(arguments);
+
+  /* Originally disabled stacks stay disabled. Restoring a disabled stack's
+     unspecified pointer/size is invalid on some Unix implementations. */
+  if ((host_stack.ss_flags & SS_DISABLE) == 0 &&
+      sigaltstack(&host_stack, NULL) != 0) {
+    signal_ownership_failure("restore host alternate signal stack", errno);
+  }
+  error = pthread_sigmask(SIG_SETMASK, &host_mask, NULL);
+  if (error != 0) {
+    signal_ownership_failure("restore host signal mask", error);
+  }
+}
+#endif
 
 /* Lock discipline: after lui_ocaml_start the host thread does NOT hold the
    OCaml runtime lock between calls, so OCaml worker domains keep running
@@ -55,10 +127,11 @@ LUI_EXPORT int32_t lui_ocaml_start(lui_patch_callback callback,
   if (!runtime_started) {
 #if defined(_WIN32)
     char_os *arguments[] = {(char_os *)L"lui_ocaml", NULL};
+    caml_startup(arguments);
 #else
     char *arguments[] = {"lui_ocaml", NULL};
+    startup_preserving_host_signals(arguments);
 #endif
-    caml_startup(arguments);
     runtime_started = 1;
   } else {
     caml_leave_blocking_section();

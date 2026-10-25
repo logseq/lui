@@ -1921,15 +1921,15 @@ let view context model_source send : t =
     ]
   in
   let sections =
-    match Lui_ui.platform context with
-    | IOS | MacOS ->
+    match Lui_ui.platform context, Lui_ui.host context with
+    | (IOS | MacOS), SwiftUIHost ->
       sections
       @ [
           native_extension_section;
           tweak_section;
           split_panes_section model_source send;
         ]
-    | WebOS -> sections @ [ native_extension_section; tweak_section ]
+    | WebOS, WebHost -> sections @ [ native_extension_section; tweak_section ]
     | _ -> sections
   in
   column sections

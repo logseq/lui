@@ -267,7 +267,9 @@ func TestRuntimeStartupProcess(t *testing.T) {
 	}
 	defer pprof.StopCPUProfile()
 	for session := 0; session < 3; session++ {
-		b := New(Config{})
+		// Startup qualification isolates the native parser/runtime boundary.
+		// Component rendering is verified separately without these overrides.
+		b := protocolBackend()
 		r, err := OpenRuntime(path, b)
 		if err != nil {
 			t.Fatal(err)

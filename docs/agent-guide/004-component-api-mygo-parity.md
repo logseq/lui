@@ -10,6 +10,19 @@ Tech Stack: OCaml, the shared LUI JSON/C protocol, Go, MyGo, MyGo Tester, the ex
 
 Related: Builds on [003-mygo-capabilities_report.md](003-mygo-capabilities_report.md), the canonical [component schema](../../schema/components.json) and [public element API](../../src/lui_elements.mli).
 
+## Execution status
+
+Active goal, branch `feat/mygo-component-parity`, based on merged PR #271.
+Native OCaml rendering and Metal/GPU work are excluded by the user's updated scope; the OCaml-to-MyGo application bridge remains in scope.
+
+| Phase | Status | Evidence |
+| --- | --- | --- |
+| 1 | In progress | Behavioral acceptance committed in `58452eb7`; missing widget, layout, resource, event and validation behavior reproduced. Timed and native service cases follow dependency qualification. |
+| 2 | In progress | OCaml 5.5 startup signal-stack ownership defect identified and fixed in the shared bridge. Both the previous pin and MyGo 0.6.4/Go 1.27.3 passed 20 fresh processes for each real application, three sessions per process, with profiling/preemption and pending signals: 80 processes total, no retries. Release dependency selected. |
+| 3–9 | In progress | Component families are being implemented in parallel with shared protocol/runtime integration. No full-parity claim yet. |
+
+Frozen decisions: automatic activation for ordinary tabs; bottom tabs own selected-page visibility; scroll outcomes `succeeded`, `cancelled`, `missing-target`; typed `overscan` and `item-extent` override legacy semantic attributes; read-only editors preserve focus/copy/navigation; registered image/media frames copy caller pixels and use positive resource IDs.
+
 ## Problem statement
 
 The existing backend accepts many standard kinds but does not implement their complete properties, child contracts or interactions.

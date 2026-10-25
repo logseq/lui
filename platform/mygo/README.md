@@ -7,7 +7,7 @@ There is no HTML or JavaScript frontend.
 
 ## Run Todos
 
-Requirements: Go 1.27.2 or later and the repository's configured OCaml/opam
+Requirements: Go 1.27.3 or later and the repository's configured OCaml/opam
 environment. Linux windows also need GTK 3; headless rendering needs Pango,
 Cairo and installed fonts. The module pins MyGo to commit `43c624d77fdb` and commits `go.sum`.
 
