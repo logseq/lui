@@ -6,7 +6,25 @@ default, event or compatibility change must receive an entry before release.
 Changes below are unreleased work following PR #271; host qualification is
 tracked in [the MyGo parity plan](agent-guide/004-component-api-mygo-parity.md).
 
+The Native OCaml renderer is outside this parity update. Its paint-property
+inventory check is temporarily deferred until that inventory recognizes
+`read-only`, `overscan` and `item-extent`; these features are not qualified on
+that renderer. The MyGo, Web, Apple, Android and shared ABI regressions remain
+covered separately.
+
 ## Unreleased: component API and MyGo parity
+
+### Toast keyboard dismissal
+
+On Web, Escape now dismisses the open toast containing keyboard focus, matching
+MyGo. Escape outside a toast, during IME composition, or after another handler
+consumes the event leaves notifications open. Applications should handle the
+existing dismiss event by removing that toast from their model. Independent
+notifications retain their own lifetimes.
+
+The Gallery now demonstrates one notification per activation and disables its
+trigger while open. Its four-second duration is demo configuration; component
+defaults are unchanged.
 
 ### Virtual-list configuration becomes typed
 

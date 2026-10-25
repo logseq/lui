@@ -520,7 +520,7 @@ func (d *driver) interact(page section) error {
 	case "Avatar":
 		return click("Toggle registered image")
 	case "Toast":
-		if err := click("Show notifications"); err != nil {
+		if err := click("Show notification"); err != nil {
 			return err
 		}
 		return d.escape()

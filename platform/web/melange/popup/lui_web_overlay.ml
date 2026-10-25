@@ -1164,14 +1164,30 @@ let toast_pointer_cancel ctx event =
   | _ -> ()
 
 let toast_key ctx event =
+  let key = W.KeyboardEvent.key event in
   if
-    W.KeyboardEvent.key event = "F6"
+    key = "F6"
     && frontmost_toast_node ctx.toast_renderer ctx.toast_element
   then begin
     W.KeyboardEvent.preventDefault event;
     W.HtmlElement.focus
       (W.Element.unsafeAsHtmlElement ctx.toast_element)
   end
+  else if
+    key = "Escape"
+    && not (W.KeyboardEvent.defaultPrevented event)
+    && not (W.KeyboardEvent.isComposing event)
+    && W.Element.hasAttribute "data-open" ctx.toast_element
+  then
+    match
+      W.HtmlDocument.activeElement
+        (W.Document.unsafeAsHtmlDocument ctx.toast_renderer.web_document)
+    with
+    | Some active
+      when W.Element.contains (W.Element.asNode active) ctx.toast_element ->
+        W.KeyboardEvent.preventDefault event;
+        toast_dismiss ctx
+    | _ -> ()
 
 let mount_toast renderer node toast =
   let document = renderer.web_document in

@@ -2391,6 +2391,32 @@ test("Overlay alignment clears the centered inset on trailing and bottom edges",
   assert.deepEqual(positions, [[0,0],[90,0],[180,0],[0,40],[90,40],[180,40],[0,80],[90,80],[180,80]])
 })
 
+test("Toast Escape dismisses only its focused notification", async () => {
+  await openLayerRegressionPage()
+  await evaluate(`window.audit.addToast('Older notification'); window.audit.addToast('Newest notification')`)
+  await session.page.locator('#run-exit-audit').focus()
+  await browser('press', 'Escape')
+  assert.equal(await session.page.locator('.lui-toast[data-open]').count(), 2)
+  await browser('press', 'F6')
+  assert.equal(await state(`document.activeElement.textContent`), 'Newest notification')
+  await evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'Escape', bubbles: true, cancelable: true, isComposing: true,
+  }))`)
+  assert.equal(await session.page.locator('.lui-toast[data-open]').count(), 2)
+  await evaluate(`(() => {
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    event.preventDefault()
+    document.activeElement.dispatchEvent(event)
+  })()`)
+  assert.equal(await session.page.locator('.lui-toast[data-open]').count(), 2)
+  await browser('press', 'Escape')
+  assert.equal(await session.page.locator('.lui-toast[data-open]').count(), 1)
+  assert.equal(await state(`document.querySelector('.lui-toast[data-open]')?.textContent`), 'Older notification')
+  await session.page.locator('.lui-toast[data-open]').focus()
+  await browser('press', 'Escape')
+  assert.equal(await session.page.locator('.lui-toast[data-open]').count(), 0)
+})
+
 test("Toast F6 focuses the newest active notification", async () => {
   await openLayerRegressionPage()
   await evaluate(`window.audit.addToast('Older notification'); window.audit.addToast('Newest notification')`)
@@ -2398,9 +2424,49 @@ test("Toast F6 focuses the newest active notification", async () => {
   assert.equal(await state(`document.activeElement.textContent`), 'Newest notification')
 })
 
-test("Toast owns measured stacking and retains its content through exit", async () => {
+test("Gallery Toast keeps one four-second notification through update, pause, dismissal, and reopening", async () => {
   await openGalleryPage("Toast")
-  await clickButton("Show notifications")
+  const trigger = session.page.getByRole("button", { name: /^Show notifications?$/ })
+  await trigger.dblclick()
+  assert.equal(await session.page.locator(".lui-toast").count(), 1)
+  assert.equal(await trigger.textContent(), "Show notification")
+  assert.equal(await trigger.isDisabled(), true)
+  await evaluate(`window.__singleGalleryToast = document.querySelector('.lui-toast')`)
+  await clickButton("Update notification")
+  assert.deepEqual(await state(`({
+    retained: window.__singleGalleryToast === document.querySelector('.lui-toast'),
+    text: document.querySelector('.lui-toast .lui-text')?.textContent.trim(),
+  })`), { retained: true, text: "Updated" })
+
+  await browser("press", "F6")
+  assert.equal(await state(`document.querySelector('.lui-toast')?.contains(document.activeElement)`), true)
+  await session.page.getByRole("heading", { name: "Toast", exact: true }).hover()
+  await browser("wait", "4200")
+  assert.equal(await session.page.locator(".lui-toast[data-open]").count(), 1)
+  assert.equal(await trigger.isDisabled(), true)
+  await session.page.getByRole("button", { name: "Close", exact: true }).focus()
+  await browser("press", "Escape")
+  await session.page.waitForFunction(() => !document.querySelector(".lui-toast"))
+  assert.equal(await trigger.isEnabled(), true)
+
+  await trigger.click()
+  assert.equal(await session.page.locator(".lui-toast[data-open]").count(), 1)
+  assert.equal(await state(`window.__singleGalleryToast === document.querySelector('.lui-toast')`), false)
+  await clickButton("Close")
+  await session.page.waitForFunction(() => !document.querySelector(".lui-toast"))
+  assert.equal(await trigger.isEnabled(), true)
+
+  await trigger.click()
+  await session.page.getByRole("heading", { name: "Toast", exact: true }).hover()
+  await browser("wait", "2200")
+  assert.equal(await session.page.locator(".lui-toast[data-open]").count(), 1)
+  await session.page.waitForFunction(() => !document.querySelector(".lui-toast"), null, { timeout: 3500 })
+  assert.equal(await trigger.isEnabled(), true)
+})
+
+test("Toast owns measured stacking and retains its content through exit", async () => {
+  await openLayerRegressionPage()
+  await evaluate(`window.audit.addToast('Older notification'); window.audit.addToast('Newest notification')`)
   await browser('wait', '--fn', "document.querySelector('.lui-toast')?.style.getPropertyValue('--toast-height')")
   const metrics = await state(`Array.from(document.querySelectorAll('.lui-toast')).map(toast => ({
     index: toast.style.getPropertyValue('--toast-index'),
@@ -2412,16 +2478,19 @@ test("Toast owns measured stacking and retains its content through exit", async 
   assert.equal(metrics[1].offset, 0)
   await browser('hover', '.lui-toast:last-child')
   assert.equal(await state(`document.querySelectorAll('.lui-toast[data-expanded]').length`), 2)
-  await evaluate(`document.querySelector('.lui-toast:last-child button').click()`)
-  assert.equal(await state(`Array.from(document.querySelectorAll('.lui-toast[data-ending-style]')).some(toast => toast.textContent.includes('Synced'))`), true)
+  await browser('press', 'F6')
+  await browser('press', 'Escape')
+  assert.equal(await state(`Array.from(document.querySelectorAll('.lui-toast[data-ending-style]')).some(toast => toast.textContent.includes('Newest notification'))`), true)
   await browser('wait', '600')
   assert.equal(await state(`document.querySelectorAll('.lui-toast[data-ending-style]').length`), 0)
+  assert.equal(await state(`document.querySelectorAll('.lui-toast[data-open]').length`), 1)
+  assert.equal(await state(`document.querySelector('.lui-toast[data-open]')?.textContent`), 'Older notification')
 })
 
 test("Toast enters over rendered frames and reduced motion exits immediately", async () => {
-  await openGalleryPage('Toast')
+  await openLayerRegressionPage()
   const startingOpacity = await state(`(() => {
-    Array.from(document.querySelectorAll('button')).find(button => button.textContent.trim() === 'Show notifications').click()
+    window.audit.addToast('Entering notification')
     return Number(getComputedStyle(document.querySelector('.lui-toast:last-child')).opacity)
   })()`)
   assert.equal(startingOpacity, 0)
@@ -2431,13 +2500,14 @@ test("Toast enters over rendered frames and reduced motion exits immediately", a
   await browser('wait', '300')
   assert.equal(await state(`Number(getComputedStyle(document.querySelector('.lui-toast:last-child')).opacity)`), 1)
   await browser('set', 'media', 'light', 'reduced-motion')
-  await evaluate(`document.querySelector('.lui-toast:last-child button').click()`)
+  await browser('press', 'F6')
+  await browser('press', 'Escape')
   assert.equal(await state(`document.querySelectorAll('.lui-toast').length`), 0)
 })
 
 test("Toast portals stable updates and supports Base UI down/right touch dismissal", async () => {
   await openGalleryPage("Toast")
-  await clickButton("Show notifications")
+  await clickButton("Show notification")
 
   assert.deepEqual(
     await state(`(() => {
@@ -2458,7 +2528,6 @@ test("Toast portals stable updates and supports Base UI down/right touch dismiss
       portaled: true,
       messages: [
         ["Saved", "Draft saved locally", "Update notification", "Close"],
-        ["Synced", "Changes are available on every device", "Close"],
       ],
     },
   )
@@ -2485,17 +2554,17 @@ test("Toast portals stable updates and supports Base UI down/right touch dismiss
   await evaluate(`document.activeElement?.blur()`)
 
   await browser("hover", ".lui-toast:first-child")
-  await browser("wait", "2100")
-  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 2)
+  await browser("wait", "4100")
+  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 1)
   await browser("hover", '[role="heading"]')
-  await browser("wait", "2100")
+  await session.page.waitForFunction(() => !document.querySelector('[role=status]'), null, { timeout: 5000 })
   assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 0)
 
-  await clickButton("Show notifications")
+  await clickButton("Show notification")
   await clickButton("Close")
   assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 0)
 
-  await clickButton("Show notifications")
+  await clickButton("Show notification")
   await evaluate(`(() => {
     const toast = document.querySelector('[role=status]')
     const action = [...toast.querySelectorAll('button')]
@@ -2515,7 +2584,7 @@ test("Toast portals stable updates and supports Base UI down/right touch dismiss
     action.dispatchEvent(event('pointermove', 180))
     action.dispatchEvent(event('pointerup', 180))
   })()`)
-  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 2)
+  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 1)
   await evaluate(`(() => {
     const toast = document.querySelector('[role=status]')
     const event = (name, x) => new PointerEvent(name, {
@@ -2533,7 +2602,7 @@ test("Toast portals stable updates and supports Base UI down/right touch dismiss
     toast.dispatchEvent(event('pointermove', 180))
     toast.dispatchEvent(event('pointercancel', 180))
   })()`)
-  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 2)
+  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 1)
   await evaluate(`(() => {
     const toast = document.querySelector('[role=status]')
     const event = (name, x, y) => new PointerEvent(name, {
@@ -2551,7 +2620,7 @@ test("Toast portals stable updates and supports Base UI down/right touch dismiss
     toast.dispatchEvent(event('pointermove', 20, 20))
     toast.dispatchEvent(event('pointerup', 20, 20))
   })()`)
-  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 2)
+  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 1)
   await evaluate(`(() => {
     const toast = document.querySelector('[role=status]')
     const event = (name, y) => new PointerEvent(name, {
@@ -3097,7 +3166,7 @@ test("every Gallery page fits the compact one-page mobile shell", async () => {
     failures,
   }
 
-  assert.equal(audit.count, 77)
+  assert.equal(audit.count, 78)
   assert.ok(audit.minNavigationHeight >= 44, JSON.stringify(audit))
   assert.equal(audit.mountedPages, 1)
   assert.deepEqual(audit.failures, [])

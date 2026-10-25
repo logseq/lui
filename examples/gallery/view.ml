@@ -989,36 +989,25 @@ let toast_section model_source send : t =
   let open_ = model_source >|= Model.toast_open in
   section "Toast"
     [ button_row
-        [ button ~variant:`outline ~text:"Show notifications"
+        [ button ~variant:`outline ~text:"Show notification"
+            ~disabled:(reactive open_)
             ~on_press:(press send Model.ShowToasts) []
         ]
     ; if_ ~test:open_
-        (column
-           [ toast ~duration:2000 ~label:"Draft saved"
-               ~on_dismiss:(press send Model.CloseToasts)
-               [ column ~gap:2
-                   [ text ~value:(reactive Model.toast_message model_source) []
-                   ; paragraph
-                       ~value:(reactive Model.toast_description model_source) []
-                   ]
-               ; button ~variant:`outline ~text:"Update notification"
-                   ~on_press:(press send Model.UpdateToast) []
-               ; button ~variant:`ghost ~text:"Close"
-                   ~on_press:(press send Model.CloseToasts) []
+        (toast ~duration:4000 ~label:"Draft saved"
+           ~on_dismiss:(press send Model.CloseToasts)
+           [ column ~gap:2
+               [ text ~value:(reactive Model.toast_message model_source) []
+               ; paragraph
+                   ~value:(reactive Model.toast_description model_source) []
                ]
-           ; toast ~duration:0 ~label:"Changes synced"
-               ~on_dismiss:(press send Model.CloseToasts)
-               [ column ~gap:2
-                   [ text ~value:"Synced" []
-                   ; paragraph
-                       ~value:"Changes are available on every device" []
-                   ]
-               ; button ~variant:`ghost ~text:"Close"
-                   ~on_press:(press send Model.CloseToasts) []
-               ]
+           ; button ~variant:`outline ~text:"Update notification"
+               ~on_press:(press send Model.UpdateToast) []
+           ; button ~variant:`ghost ~text:"Close"
+               ~on_press:(press send Model.CloseToasts) []
            ])
     ; paragraph
-        ~value:"Toasts share one application viewport, pause on interaction, and dismiss by timer or swipe."
+        ~value:"Shows one notification for four seconds. Update keeps the same notification; hover or keyboard focus pauses its timer. Close it, press Escape while focused, or let it expire before showing another."
         []
     ]
 
@@ -1932,7 +1921,8 @@ let event_payloads_section model_source send : t =
     ; watch "events-row" [ DoublePressEnabled; PointerEnabled ]
         (list_item ~text:"Double-click event" [])
     ; watch "events-image" [] (image ~image:0 ~width:32 ~height:32 [])
-    ; watch "events-picker" [] (file_picker ~request:(`Int 0) [])
+    (* Retain the native event target without requesting a file dialog. *)
+    ; watch "events-picker" [] (file_picker [])
     ]
 
 let view context model_source send : t =
