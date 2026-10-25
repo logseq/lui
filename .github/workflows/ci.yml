@@ -191,6 +191,7 @@ jobs:
         run: |
           python3 - <<'PYTHON'
           import json
+          import os
           import subprocess
           import sys
           data = json.loads(subprocess.check_output(
@@ -202,8 +203,16 @@ jobs:
               subprocess.run(["xcrun", "simctl", "boot", device["udid"]], check=True)
           subprocess.run(["xcrun", "simctl", "bootstatus", device["udid"], "-b"], check=True)
           subprocess.run([sys.executable, "platform/apple/Tests/RuntimeChecks/run-ios-check.py",
-              "bounded-virtual-rows", "--simulator", device["udid"]], check=True)
+              "bounded-virtual-rows", "--simulator", device["udid"],
+              "--diagnostics-dir", os.path.join(os.environ["RUNNER_TEMP"], "lui-uikit-diagnostics")], check=True)
           PYTHON
+      - name: Preserve UIKit failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uikit-runtime-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/lui-uikit-diagnostics
+          if-no-files-found: ignore
 
   android-tests:
     runs-on: ubuntu-latest

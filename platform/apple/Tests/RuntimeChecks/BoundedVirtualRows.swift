@@ -106,6 +106,7 @@ import UIKit
 
 @main struct BoundedVirtualRowsCheck {
   @MainActor static func main() async throws {
+    nativePresentationCheckpoint("BOUNDED_BEGIN")
     func require(_ value: Bool, _ message: String) throws {
       if !value {
         throw NSError(
@@ -135,6 +136,7 @@ import UIKit
       abs(geometry.viewportHeight - 260) < 0.1, "UIKit viewport must exclude obscured inset area")
     probe.disconnect()
 
+    nativePresentationCheckpoint("BOUNDED_INSETS_PASS scenes=\(UIApplication.shared.connectedScenes.count)")
     let previous = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
       .flatMap(\.windows).first { $0.isKeyWindow }!
     let window = UIWindow(windowScene: previous.windowScene!)
@@ -142,6 +144,7 @@ import UIKit
     let hosting = UIHostingController(rootView: LUISwiftUIRoot(backend: source.backend, rootID: 1))
     window.rootViewController = hosting
     window.makeKeyAndVisible()
+    nativePresentationCheckpoint("BOUNDED_WINDOW_VISIBLE")
     defer {
       window.isHidden = true
       source.backend.onEvent = nil
@@ -158,6 +161,7 @@ import UIKit
       return editor() != nil
     }
     let native = editor()!
+    nativePresentationCheckpoint("BOUNDED_INITIAL_ROWS count=\(source.mounted.count)")
     let list = descendants(UIScrollView.self, hosting.view).first {
       $0.contentSize.height > 3_000_000
     }!
@@ -177,6 +181,7 @@ import UIKit
     try require(
       native.isFirstResponder && native.markedTextRange != nil,
       "far reorder preserves native focus and composition")
+    nativePresentationCheckpoint("BOUNDED_FAR_REORDER_PASS")
     try source.reorder()
     try await wait("focused row returns without remount") {
       hosting.view.layoutIfNeeded()
@@ -203,6 +208,7 @@ import UIKit
       source.mounted.isEmpty && source.backend.model(id: 1)?.children.isEmpty == true
     }
     try require(source.errors.isEmpty, "feedback batches remain valid: \(source.errors)")
+    nativePresentationCheckpoint("BOUNDED_CLEAR_PASS")
     print(
       "PASS: adjusted-inset geometry, 100k bounded native views, real far/top scrolling, focused UIKit IME reorder, and Clear"
     )
