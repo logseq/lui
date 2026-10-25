@@ -192,8 +192,12 @@ func cString(ptr unsafe.Pointer) string {
 	return string(unsafe.Slice((*byte)(p), size))
 }
 func (r *Runtime) receive(batches []string, snapshot bool) error {
-	for i, batch := range batches {
-		if err := r.backend.ApplyJSON([]byte(batch), snapshot && i == 0); err != nil {
+	for i, source := range batches {
+		batch, err := decodeBatchString(source)
+		if err != nil {
+			return err
+		}
+		if err := r.backend.apply(batch, snapshot && i == 0); err != nil {
 			return err
 		}
 	}

@@ -20,7 +20,15 @@ const (
 // DecodeBatch keeps integer IDs exact, including IDs beyond JavaScript's
 // float64 integer range. Required fields must be present even when zero.
 func DecodeBatch(data []byte) (Batch, error) {
-	dec := json.NewDecoder(bytes.NewReader(data))
+	return decodeBatchReader(bytes.NewReader(data), min(bytes.Count(data, []byte(`"op"`)), len(data)/48))
+}
+
+func decodeBatchString(data string) (Batch, error) {
+	return decodeBatchReader(strings.NewReader(data), min(strings.Count(data, `"op"`), len(data)/48))
+}
+
+func decodeBatchReader(source io.Reader, capacity int) (Batch, error) {
+	dec := json.NewDecoder(source)
 	dec.UseNumber()
 	opening, err := dec.Token()
 	if err != nil || opening != json.Delim('{') {
@@ -31,7 +39,6 @@ func DecodeBatch(data []byte) (Batch, error) {
 	var hasOps bool
 	// Canonical wire uses one "op" key per operation. This is only a capacity
 	// hint: escaped keys, unknown fields and duplicates retain normal semantics.
-	capacity := min(bytes.Count(data, []byte(`"op"`)), len(data)/48)
 	for dec.More() {
 		key, err := dec.Token()
 		if err != nil {
