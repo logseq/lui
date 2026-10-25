@@ -2865,6 +2865,31 @@ struct LUISwiftUIBackendTests {
         #expect(LUIDialogContentPolicy.role(for: try #require(backend.model(id: 7))) == .destructive)
     }
 
+    @Test("native dialog cancellation uses a semantic class before localized labels")
+    func localizedDialogCancellation() throws {
+        for label in ["取消", "キャンセル", "Annuler", "Cancel"] {
+            let backend = LUIAppleBackend()
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"dialog"},
+              {"op":"create-node","id":2,"kind":"button"},
+              {"op":"create-node","id":3,"kind":"button"},
+              {"op":"set-prop","id":2,"property":"text","value":"\(label)"},
+              {"op":"set-prop","id":2,"property":"style-class","value":"quiet cancellation-action"},
+              {"op":"set-prop","id":3,"property":"text","value":"删除"},
+              {"op":"set-prop","id":3,"property":"variant","value":"destructive"},
+              {"op":"insert-child","parent":1,"child":2,"index":0},
+              {"op":"insert-child","parent":1,"child":3,"index":1}
+            ]}
+            """)
+            let dialog = try #require(backend.model(id: 1))
+            #expect(LUIDialogContentPolicy.cancelActionID(dialog: dialog, backend: backend) == 2)
+            #expect(LUIDialogContentPolicy.nonCancelActionIDs(dialog: dialog, backend: backend) == [3])
+            #expect(LUIDialogContentPolicy.role(for: try #require(backend.model(id: 2))) == .cancel)
+            #expect(LUIDialogContentPolicy.role(for: try #require(backend.model(id: 3))) == .destructive)
+        }
+    }
+
     @Test("native dialog policy selects alert presentation declaratively")
     func nativeDialogPresentationPolicy() {
         #expect(LUIDialogContentPolicy.presentationStyle(styleClass: "alert") == .alert)

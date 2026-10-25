@@ -440,6 +440,11 @@ enum LUIDialogContentPolicy {
     }
 
     static func role(for action: LUINodeModel) -> ButtonRole? {
+        if action.property(.styleClass)?.stringValue?
+            .split(whereSeparator: \.isWhitespace)
+            .contains("cancellation-action") == true {
+            return .cancel
+        }
         if action.text.localizedCaseInsensitiveCompare("Cancel") == .orderedSame {
             return .cancel
         }
