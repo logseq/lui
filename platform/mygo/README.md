@@ -17,7 +17,7 @@ not by itself evidence that every property has been verified.
 Requirements: Go 1.27.3 or later and the repository's OCaml/opam environment.
 Linux windows need GTK3; headless text needs Pango, Cairo and installed fonts.
 Chinese, Japanese and Korean text also requires installed CJK fonts; on Debian/Ubuntu install `fonts-noto-cjk` so native font fallback can render these glyphs.
-The module pins the [logseq/mygo compatibility branch](https://github.com/logseq/mygo/tree/4d51d7aa50eaba68e81a20531c18bca26c79a32e),
+The module pins the [logseq/mygo compatibility branch](https://github.com/logseq/mygo/tree/2949164d2beec7ad8ca9a2d0a26b2b1bba97ef01),
 based on MyGo 0.6.4, for local fitting, list tuning, frame completion, overlay
 anchoring and native lifecycle fixes, including abandoned handle bindings.
 Go downloads it as a normal versioned
@@ -79,7 +79,7 @@ checkout from another module:
 
 ```sh
 go mod edit -replace github.com/logseq/lui/platform/mygo=/path/to/lui/platform/mygo
-go mod edit -replace github.com/egoist/mygo=github.com/logseq/mygo@v0.0.0-20261025171223-4d51d7aa50ea
+go mod edit -replace github.com/egoist/mygo=github.com/logseq/mygo@v0.0.0-20261025182610-2949164d2bee
 go get github.com/logseq/lui/platform/mygo
 go mod tidy
 ```
@@ -101,10 +101,31 @@ feature qualification remains tracked by the parity plan.
 
 LUI's model supplies retained selection, menu membership and popup lifetime.
 MyGo behavior bases supply native focus, keyboard interaction and accessibility.
-Stable node incarnation keys preserve editors across moves. Virtualized-out rows
-retain their identity; detached nodes cancel owned work immediately after commit.
+Stable node incarnation keys preserve editors across moves. Eager virtual lists
+retain every logical row. With `virtual_rows`, rows outside the requested window
+are disposed unless an active interaction pins them; persistent row state belongs
+in the application model. Detached nodes cancel owned work immediately after commit.
 Events from late row builders and fitting layouts dispatch after committed
 layout, while callbacks from retired incarnations are ignored.
+
+For large application data sources, opt into bounded LUI row generation:
+
+```ocaml
+virtual_list ~height:400 ~overscan:5 ~item_extent:32. [
+  virtual_rows ~source:rows ~key:(fun row -> row.id) ~cmp:Int.compare
+    ~scroll_key:(fun row -> Printf.sprintf "row-%d" row.id)
+    ~mount:row_view ()
+]
+```
+
+`virtual_rows` must be the sole direct child. The full business source and compact
+key index remain available while only the window, overscan and active interaction
+pins own UI nodes. `scroll_key` is required when using string scroll targets.
+Focus, pointer holds, composition and owned menus retain their rows through the
+toolkit's existing lifecycle. Evicted rows mount afresh, so bind editor values
+and selection to application data. Rebuild the application library to enable the
+optional window-feedback ABI; older libraries keep eager behavior. Web also
+supports the helper; SwiftUI and Kotlin currently use its eager fallback.
 
 Image hosts call `RegisterImage(id,pixels)` or
 `PresentMediaSurfaceFrame(id,pixels)` on the UI goroutine. The backend copies
@@ -155,7 +176,7 @@ Generation drift tests reject stale sources and edited output.
 Integration mode requires OCaml, generates and checks the canonical oracle,
 builds both application libraries, runs Todos and
 Components in separate Go processes, then runs the fresh-process startup soak.
-Components verifies every standard event family through real retained
+Components verifies bounded 100,000-row generation and every standard event family through real retained
 subscriptions and its reducer, including UTF-8, embedded NULs and exact large
 integer payloads. Todos covers real editing, actions, resync, disposal and restart.
 Startup qualification preserves signal-stack/mask/handler ownership and exercises

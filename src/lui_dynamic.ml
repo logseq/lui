@@ -243,11 +243,10 @@ type 'item keyed_entry = {
   keyed_item_node : int;
 }
 
-let keyed (type key) context parent source (key_fn : _ -> key) compare mount =
+let keyed_controller (type key) context parent segment (key_fn : _ -> key) compare mount =
   let module Keys = Map.Make (struct type t = key let compare = compare end) in
   let application = context.Lui_ui.ui_application in
   let scheduler = context.Lui_ui.ui_scheduler in
-  let segment = Lui_runtime.register_dynamic_segment application parent in
   let entries = ref Keys.empty in
   let ordered = ref [||] in
   let nodes_ref = ref [] in
@@ -266,7 +265,7 @@ let keyed (type key) context parent source (key_fn : _ -> key) compare mount =
   let remove_entry index entry =
     detach_entry index entry;
     dispose_entry entry in
-  let reconcile items =
+  let reconcile ?commit items =
     if not !disposed && Lui_runtime.node_live application parent then begin
       let items = Array.of_list items in
       let old = !ordered in
@@ -278,7 +277,14 @@ let keyed (type key) context parent source (key_fn : _ -> key) compare mount =
           && items.(!index) == Signal.get_state entry.keyed_item_state;
         incr index
       done;
-      if not !unchanged then begin
+      if !unchanged then
+        Option.iter (fun commit ->
+          let saved = Lui_runtime.checkpoint
+            ~nodes:[Lui_runtime.canonical_node application parent] application in
+          try commit () with failure ->
+            Lui_runtime.restore application saved;
+            raise failure) commit
+      else begin
       let desired = ref Keys.empty in
       Array.iteri (fun index item ->
         let key = key_fn item in
@@ -294,8 +300,10 @@ let keyed (type key) context parent source (key_fn : _ -> key) compare mount =
         [Lui_runtime.canonical_node application parent] old in
       let saved = Lui_runtime.checkpoint ~nodes application in
       let previous_entries = !entries in
+      let previous_ordered = !ordered and previous_nodes = !nodes_ref in
       let mounted = ref [] in
       let retired = ref [] in
+      let updates = ref [] in
       let cleanup_candidates () = List.iter (fun entry ->
         try dispose_entry entry with _ -> ()) !mounted in
       (try
@@ -360,7 +368,7 @@ let keyed (type key) context parent source (key_fn : _ -> key) compare mount =
                (* Physical equality: structural [<>] raises when an item
                   contains a closure. *)
                if item != Signal.get_state entry.keyed_item_state then
-                 Signal.set entry.keyed_item_state item;
+                 updates := (entry, item) :: !updates;
                entry
              | None ->
                let entry = match fresh.(index) with
@@ -373,12 +381,16 @@ let keyed (type key) context parent source (key_fn : _ -> key) compare mount =
                entry in
            key, entry) items in
          ordered := next;
-         nodes_ref := Array.to_list (Array.map (fun (key, entry) -> { ui_key = key; ui_node = entry.keyed_item_node }) next)
+         nodes_ref := Array.to_list (Array.map (fun (key, entry) -> { ui_key = key; ui_node = entry.keyed_item_node }) next);
+         Option.iter (fun commit -> commit ()) commit
        with failure ->
          Lui_runtime.restore application saved;
          entries := previous_entries;
+         ordered := previous_ordered; nodes_ref := previous_nodes;
          cleanup_candidates ();
          raise failure);
+      List.iter (fun (entry, item) -> Signal.set entry.keyed_item_state item)
+        (List.rev !updates);
       (* Structural ownership commits before fallible retirement callbacks. *)
       let failure = ref None in
       List.iter (fun entry -> try dispose_entry entry with error ->
@@ -387,13 +399,9 @@ let keyed (type key) context parent source (key_fn : _ -> key) compare mount =
        | Some error -> raise error)
       end
     end in
-  reconcile (Signal.sample source);
-  let subscription = Signal.subscribe ~emit_initial:false source reconcile in
-  ignore (Signal.own context.Lui_ui.ui_scope subscription);
   let dispose_callback () =
     if not !disposed then begin
       disposed := true;
-      Signal.dispose_subscription subscription;
       let previous = !ordered in
       ordered := [||]; entries := Keys.empty; nodes_ref := [];
       let failure = ref None in
@@ -409,7 +417,156 @@ let keyed (type key) context parent source (key_fn : _ -> key) compare mount =
       match !failure with None -> () | Some error -> raise error
     end in
   Signal.on_dispose context.Lui_ui.ui_scope dispose_callback;
-  { dispose_dynamic_keyed = dispose_callback; key_nodes = nodes_ref; key_compare = compare }
+  reconcile, { dispose_dynamic_keyed = dispose_callback; key_nodes = nodes_ref; key_compare = compare }
+
+
+let keyed context parent source key_fn compare mount =
+  let segment = Lui_runtime.register_dynamic_segment context.Lui_ui.ui_application parent in
+  let reconcile, keyed = keyed_controller context parent segment key_fn compare mount in
+  reconcile (Signal.sample source);
+  let subscription = Signal.subscribe ~emit_initial:false source (fun items -> reconcile items) in
+  ignore (Signal.own context.Lui_ui.ui_scope subscription);
+  { keyed with dispose_dynamic_keyed = (fun () ->
+      Signal.dispose_subscription subscription;
+      keyed.dispose_dynamic_keyed ()) }
+
+let virtual_rows (type key) ?scroll_key context parent source
+    (key_fn : _ -> key) compare mount =
+  let module Keys = Map.Make (struct type t = key let compare = compare end) in
+  let application = context.Lui_ui.ui_application in
+  let segment = Lui_runtime.register_dynamic_segment ~exclusive:true application parent in
+  let reconcile, keyed = keyed_controller context parent segment key_fn compare mount in
+  let lazy_host = match context.Lui_ui.ui_profile.profile_host with
+    | Lui_protocol.WebHost | Lui_protocol.MyGoHost -> true
+    | _ -> false in
+  if not lazy_host then begin
+    reconcile (Signal.sample source);
+    let subscription = Signal.subscribe ~emit_initial:false source (fun items -> reconcile items) in
+    ignore (Signal.own context.Lui_ui.ui_scope subscription);
+    { keyed with dispose_dynamic_keyed = (fun () ->
+        Signal.dispose_subscription subscription;
+        keyed.dispose_dynamic_keyed ()) }
+  end else begin
+    let dataset = ref [||] in
+    let positions = ref Keys.empty in
+    let scroll_positions = ref Lui_protocol.String_map.empty in
+    let revision = ref 0 and stopped = ref false in
+    let properties () = Option.value
+      (Hashtbl.find_opt application.Lui_runtime.runtime_properties
+         (Lui_runtime.canonical_node application parent))
+      ~default:Lui_protocol.Property_map.empty in
+    let property name = Lui_protocol.Property_map.find_opt name (properties ()) in
+    let target positions value =
+      match value with
+      | None | Some (Lui_protocol.StringValue "") -> -1
+      | Some (Lui_protocol.StringValue key) ->
+        (match scroll_key with
+         | None -> invalid_arg "virtual_rows requires scroll_key for scroll_target"
+         | Some _ -> Option.value (Lui_protocol.String_map.find_opt key positions) ~default:(-1))
+      | Some _ -> invalid_arg "invalid virtual-list scroll target" in
+    let bootstrap count =
+      let overscan = match property Lui_protocol.VirtualOverscan with
+        | Some (Lui_protocol.IntValue value) -> value
+        | _ -> 2 in
+      let extent = match property Lui_protocol.VirtualItemExtent with
+        | Some (Lui_protocol.FloatValue value) -> value
+        | _ -> 24. in
+      let visible = match property Lui_protocol.HeightValue with
+        | Some (Lui_protocol.IntValue height) ->
+          int_of_float (min (float count) (ceil (float height /. extent)))
+        | _ -> min count 1 in
+      let limit = visible + min (count - visible) overscan in
+      let limit = limit + min (count - limit) overscan in
+      List.init limit Fun.id in
+    let build items =
+      let items = Array.of_list items in
+      let indices = ref Keys.empty and targets = ref Lui_protocol.String_map.empty in
+      Array.iteri (fun index item ->
+        let key = key_fn item in
+        if Keys.mem key !indices then invalid_arg "keyed collection contains a duplicate key";
+        indices := Keys.add key index !indices;
+        Option.iter (fun scroll_key ->
+          let key = scroll_key item in
+          if Lui_protocol.String_map.mem key !targets then
+            invalid_arg "virtual_rows contains a duplicate scroll_key";
+          targets := Lui_protocol.String_map.add key index !targets) scroll_key) items;
+      items, !indices, !targets in
+    let reconcile_indices items indices targets epoch selected =
+      let target_index = target targets (property Lui_protocol.ScrollTarget) in
+      let selected_items = List.map (Array.get items) selected in
+      reconcile selected_items ~commit:(fun () ->
+        List.iter (fun (name, value) -> Lui_runtime.set_prop application parent name value)
+          [ Lui_protocol.VirtualTotalCount, Lui_protocol.IntValue (Array.length items);
+            Lui_protocol.VirtualGeneration, Lui_protocol.IntValue epoch;
+            Lui_protocol.VirtualIndices,
+              Lui_protocol.StringValue (Lui_protocol.virtual_indices_to_string selected);
+            Lui_protocol.VirtualScrollIndex, Lui_protocol.IntValue target_index ];
+        Lui_runtime.validate_virtual_list application parent;
+        dataset := items; positions := indices; scroll_positions := targets;
+        revision := epoch) in
+    let update_source items =
+      if not !stopped && Lui_runtime.node_live application parent then begin
+        let items, indices, targets = build items in
+        (* Keep matched mounted keys through the generation handshake. A new
+           bootstrap is needed only if no old row remains, avoiding growth
+           across repeated source revisions before the host responds. *)
+        let selected = List.filter_map (fun entry -> Keys.find_opt entry.ui_key indices)
+          !(keyed.key_nodes) |> List.sort_uniq Int.compare in
+        let selected = if selected = [] then bootstrap (Array.length items) else selected in
+        let saved = Lui_runtime.checkpoint
+          ~nodes:[Lui_runtime.canonical_node application parent] application in
+        let previous_revision = !revision in
+        if !(application.Lui_runtime.next_virtual_generation) = max_int then
+          invalid_arg "virtual_rows generation overflow";
+        incr application.Lui_runtime.next_virtual_generation;
+        let epoch = !(application.Lui_runtime.next_virtual_generation) in
+        (try reconcile_indices items indices targets epoch selected with failure ->
+          (* A retirement callback can fail after the new revision committed;
+             that accepted revision must keep its allocated identity. *)
+          if !revision = previous_revision then Lui_runtime.restore application saved;
+          raise failure)
+      end in
+    update_source (Signal.sample source);
+    segment.Lui_runtime.dynamic_segment_on_property := Some (fun name value ->
+      if name = Lui_protocol.ScrollTarget && not !stopped then
+        Lui_runtime.set_prop application parent Lui_protocol.VirtualScrollIndex
+          (Lui_protocol.IntValue (target !scroll_positions value)));
+    let subscription = Signal.subscribe ~emit_initial:false source update_source in
+    ignore (Signal.own context.Lui_ui.ui_scope subscription);
+    Lui_ui.on_event context parent (function
+      | Lui_protocol.VirtualWindow (_, epoch, first, last, pins)
+        when not !stopped && epoch = !revision ->
+        if first < 0 || last < first then invalid_arg "invalid virtual row window";
+        let count = Array.length !dataset in
+        let first = min count first and last = min count last in
+        let selected = ref Lui_protocol.Int_map.empty in
+        for index = first to last - 1 do
+          selected := Lui_protocol.Int_map.add index () !selected
+        done;
+        List.iter (fun node ->
+          match List.find_opt (fun entry ->
+            Lui_runtime.canonical_node application entry.ui_node
+              = Lui_runtime.canonical_node application node
+            && Lui_runtime.node_live application node) !(keyed.key_nodes) with
+          | None -> ()
+          | Some entry -> Option.iter (fun index ->
+              selected := Lui_protocol.Int_map.add index () !selected)
+              (Keys.find_opt entry.ui_key !positions)) pins;
+        let selected = Lui_protocol.Int_map.bindings !selected |> List.map fst in
+        reconcile_indices !dataset !positions !scroll_positions !revision selected
+      | _ -> ());
+    let dispose () =
+      if not !stopped then begin
+        stopped := true;
+        Signal.dispose_subscription subscription;
+        segment.Lui_runtime.dynamic_segment_on_property := None;
+        dataset := [||]; positions := Keys.empty;
+        scroll_positions := Lui_protocol.String_map.empty;
+        keyed.dispose_dynamic_keyed ()
+      end in
+    Signal.on_dispose context.Lui_ui.ui_scope dispose;
+    { keyed with dispose_dynamic_keyed = dispose }
+  end
 
 let keyed_node keyed_value key =
   match

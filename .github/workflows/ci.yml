@@ -128,10 +128,11 @@ jobs:
             fi
           done
           node --test --test-concurrency=2 "${tests[@]}"
-      - name: Firefox and WebKit overlay ownership
+      - name: Firefox and WebKit overlay ownership and virtual rows
         run: |
           for browser in firefox webkit; do
             LUI_WEB_BROWSER="$browser" node --test --test-name-pattern='^(owned picker|clicking an owned|removing a modal|nested modal locks|modal focus|rapidly reopened)' platform/web/test/overlay.e2e.mjs
+            LUI_WEB_BROWSER="$browser" node --test platform/web/test/virtual-rows.e2e.mjs
           done
       - name: WebKit retained Gallery regressions
         run: LUI_WEB_BROWSER=webkit node --test platform/web/test/firefox.e2e.mjs

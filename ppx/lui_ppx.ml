@@ -183,8 +183,8 @@ let scoped_expression ~loc build =
   apply ~loc scoped [lam ~loc [pvar ~loc context] (build own_generated)]
 
 let structural_constructor expression = match expression.pexp_desc with
-  | Pexp_ident { txt = Lident ("if_" | "keyed")
-      | Ldot (Lident "Lui_elements", ("if_" | "keyed")); _ } -> true
+  | Pexp_ident { txt = Lident ("if_" | "keyed" | "virtual_rows")
+      | Ldot (Lident "Lui_elements", ("if_" | "keyed" | "virtual_rows")); _ } -> true
   | _ -> false
 
 class mapper =

@@ -1824,7 +1824,7 @@ let virtual_list_section model_source send : t =
         ]
     ; text ~value:(reactive Model.virtual_summary model_source) []
     ; virtual_list ~height:400
-        [ keyed
+        [ virtual_rows
             ~source:
               (reactive
                  (fun (m : Model.t) -> List.init m.Model.virtual_count Fun.id)
@@ -1834,6 +1834,7 @@ let virtual_list_section model_source send : t =
                     model_source))
             ~key:Fun.id ~cmp:Int.compare
             ~mount:(virtual_row send)
+            ()
         ]
     ]
 
@@ -1885,6 +1886,8 @@ let event_payload = function
     Printf.sprintf "scroll-completed:%d:%s" token outcome
   | VisibleRange (_, first, last) -> Printf.sprintf "visible-range:%d:%d" first last
   | ScrollEdges (_, at_start, at_end) -> Printf.sprintf "scroll-edges:%b:%b" at_start at_end
+  | VirtualWindow (_, generation, first, last, _) ->
+    Printf.sprintf "virtual-window:%d:%d:%d" generation first last
   | ExtensionEvent (_, identifier, name, _) -> "extension:" ^ identifier ^ ":" ^ name
 
 let event_payloads_section model_source send : t =
@@ -2019,5 +2022,5 @@ let view context model_source send : t =
     | _ -> sections
   in
   match Lui_ui.host context with
-  | GenericHost -> scroll ~grow:1. [ column sections ]
+  | GenericHost | MyGoHost -> scroll ~grow:1. [ column sections ]
   | WebHost | SwiftUIHost | KotlinHost -> column sections

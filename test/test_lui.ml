@@ -4417,9 +4417,717 @@ let test_wire_large_batch_allocation () =
   Alcotest.(check int) "all operations survive the native wire boundary" 20000
     (List.length (Lui_wire.decode_batch encoded).ops)
 
+module Virtual_rows_acceptance = struct
+(* Core acceptance for bounded row generation. Internal ranges are half-open. *)
+open Lui_protocol
+
+type row = { identity : int; text : string }
+type action = Replace of row list | Edit of int * string
+
+let rows count = List.init count (fun identity ->
+  { identity; text = "row-" ^ string_of_int identity })
+
+let reducer model = function
+  | Replace next -> next
+  | Edit (identity, text) -> List.map (fun row ->
+      if row.identity = identity then { row with text } else row) model
+
+let prop runtime node name =
+  match Hashtbl.find_opt runtime.Lui_runtime.runtime_properties node with
+  | None -> None
+  | Some properties ->
+    Property_map.bindings properties
+    |> List.find_map (fun (property, value) ->
+      if Lui_wire_schema.property_name property = name then Some value else None)
+
+let int_prop runtime node name = match prop runtime node name with
+  | Some (IntValue value) -> value
+  | _ -> failwith ("Missing integer property: " ^ name)
+
+let direct_rows runtime parent = Lui_runtime.children runtime parent
+
+let row_by_text runtime parent text =
+  direct_rows runtime parent |> List.find_opt (fun node ->
+    prop runtime node "text" = Some (StringValue text))
+
+type fixture = {
+  app : (row list, action) Lui_app.reducer_app;
+  list : int;
+  batches : patch_batch list ref;
+  mounts : int ref;
+  disposals : int ref;
+  fail_row : int option ref;
+}
+
+let fixture ?(host = WebHost) ?(count = 100_000) ?height
+    ?(overscan = 2) ?(scroll_target = "") ?(resolver = true) ?on_visible_range () =
+  let batches = ref [] in
+  let mounts = ref 0 and disposals = ref 0 and fail_row = ref None in
+  let backend = { backend_profile = profile WebOS host;
+    apply_batch = (fun batch -> batches := batch :: !batches; true) } in
+  let view _context source send =
+    Lui_elements.virtual_list ?height ~overscan ~item_extent:20.
+      ~scroll_target ?on_visible_range
+      [Lui_elements.virtual_rows
+         ?scroll_key:(if resolver then Some (fun row -> string_of_int row.identity)
+                     else None)
+         ~source ~key:(fun row -> row.identity) ~cmp:Int.compare
+         ~mount:(fun item_source -> fun context parent ->
+           let row = Signal.sample item_source in
+           if !fail_row = Some row.identity then failwith "row constructor failed";
+           incr mounts;
+           Signal.on_dispose context.Lui_ui.ui_scope (fun () -> incr disposals);
+           let text = Signal.own_signal context.Lui_ui.ui_scope
+             (Signal.map (fun row -> row.text) item_source) in
+           Lui_elements.text_field ~text_signal:text
+             ~on_input:(function
+               | TextChanged (_, text) -> ignore (send (Edit (row.identity, text)))
+               | _ -> ()) [] context parent)
+         ()] in
+  let app = Lui_app.create backend (rows count) reducer view in
+  ignore (Lui_app.start app);
+  ignore (Lui_app.flush app);
+  let runtime = Lui_app.runtime app in
+  let list = Hashtbl.fold (fun node kind found ->
+    if kind = VirtualList then Some node else found) runtime.mounted_nodes None
+    |> Option.get in
+  { app; list; batches; mounts; disposals; fail_row }
+
+let flush fixture = ignore (Lui_app.flush fixture.app)
+let runtime fixture = Lui_app.runtime fixture.app
+let dispose fixture = ignore (Lui_app.dispose fixture.app)
+let generation fixture = int_prop (runtime fixture) fixture.list "virtual-generation"
+let window ?pins ?generation:requested fixture first last =
+  let epoch = Option.value requested ~default:(generation fixture) in
+  ignore (Lui_app.dispatch_event fixture.app
+    (VirtualWindow (fixture.list, epoch, first, last,
+                    Option.value pins ~default:[])));
+  flush fixture
+
+let test_initial_tree_is_bounded () =
+  List.iter (fun host ->
+    let fixture = fixture ~host ~height:100 () in
+    Fun.protect (fun () ->
+      let runtime = runtime fixture in
+      Alcotest.(check int) "business data remains complete" 100_000
+        (List.length (Lui_app.model fixture.app));
+      Alcotest.(check bool) "only initial viewport plus overscan constructed"
+        true (!(fixture.mounts) <= 9 && !(fixture.mounts) > 0);
+      Alcotest.(check bool) "logical UI nodes stay bounded" true
+        (Lui_runtime.mounted_count runtime <= 12);
+      Alcotest.(check bool) "event handlers stay bounded" true
+        (Lui_runtime.handler_count runtime <= 15);
+      Alcotest.(check int) "logical count is published" 100_000
+        (int_prop runtime fixture.list "virtual-total-count");
+      let bytes = List.fold_left (fun total batch ->
+        total + String.length (Lui_wire.encode_batch batch)) 0 !(fixture.batches) in
+      Alcotest.(check bool) "initial wire excludes offscreen rows" true (bytes < 32_768))
+      ~finally:(fun () -> dispose fixture)) [WebHost; MyGoHost]
+
+let test_unmeasured_bootstrap_is_bounded () =
+  let fixture = fixture () in
+  Fun.protect (fun () ->
+    Alcotest.(check bool) "unknown viewport never constructs the dataset" true
+      (!(fixture.mounts) > 0 && !(fixture.mounts) <= 5);
+    window fixture 49_998 50_007;
+    Alcotest.(check int) "host window materializes exact requested count" 9
+      (List.length (direct_rows (runtime fixture) fixture.list));
+    Alcotest.(check bool) "distant row exists" true
+      (Option.is_some (row_by_text (runtime fixture) fixture.list "row-50000")))
+    ~finally:(fun () -> dispose fixture)
+
+let test_window_overlap_retains_identity_and_disposes_evictions () =
+  let fixture = fixture ~height:100 () in
+  Fun.protect (fun () ->
+    window fixture 100 109;
+    let overlap = Option.get (row_by_text (runtime fixture) fixture.list "row-105") in
+    let evicted = Option.get (row_by_text (runtime fixture) fixture.list "row-100") in
+    let before = !(fixture.disposals) in
+    window fixture 104 113;
+    Alcotest.(check (option int)) "overlap preserves node identity" (Some overlap)
+      (row_by_text (runtime fixture) fixture.list "row-105");
+    Alcotest.(check bool) "evicted nodes leave retained tree" false
+      (Lui_runtime.node_live (runtime fixture) evicted);
+    Alcotest.(check int) "only evicted row scopes disposed" 4
+      (!(fixture.disposals) - before);
+    let mounts = !(fixture.mounts) in
+    fixture.batches := [];
+    window fixture 104 113;
+    Alcotest.(check int) "duplicate window constructs nothing" mounts !(fixture.mounts);
+    Alcotest.(check bool) "duplicate window emits no structural patches" false
+      (List.exists (fun batch -> List.exists (function
+        | CreateNode _ | DropNode _ | InsertChild _ | RemoveChild _ | MoveChild _ -> true
+        | _ -> false) batch.ops) !(fixture.batches)))
+    ~finally:(fun () -> dispose fixture)
+
+let test_pins_follow_mounted_keys_across_source_reorder () =
+  let fixture = fixture ~height:100 () in
+  Fun.protect (fun () ->
+    window fixture 100 109;
+    let focused = Option.get (row_by_text (runtime fixture) fixture.list "row-105") in
+    window ~pins:[focused; focused] fixture 50_000 50_009;
+    Alcotest.(check bool) "focused row survives distant scroll" true
+      (Lui_runtime.node_live (runtime fixture) focused);
+    let previous_generation = generation fixture in
+    let source = Lui_app.model fixture.app in
+    ignore (Lui_app.send fixture.app (Replace (List.rev source)));
+    flush fixture;
+    Alcotest.(check bool) "source increments generation" true
+      (generation fixture > previous_generation);
+    Alcotest.(check bool) "matched mounted keys survive source handshake" true
+      (Lui_runtime.node_live (runtime fixture) focused);
+    window ~pins:[focused] fixture 0 9;
+    Alcotest.(check (option int)) "node pin follows key, not old source index"
+      (Some focused) (row_by_text (runtime fixture) fixture.list "row-105");
+    Alcotest.(check bool) "bounded request plus one pin" true
+      (List.length (direct_rows (runtime fixture) fixture.list) <= 10);
+    window fixture 0 9;
+    Alcotest.(check bool) "releasing pin retires old row" false
+      (Lui_runtime.node_live (runtime fixture) focused))
+    ~finally:(fun () -> dispose fixture)
+
+let test_stale_generation_and_deleted_pin_are_ignored () =
+  let fixture = fixture ~count:200 ~height:100 () in
+  Fun.protect (fun () ->
+    window fixture 100 109;
+    let doomed = Option.get (row_by_text (runtime fixture) fixture.list "row-105") in
+    let old_generation = generation fixture in
+    ignore (Lui_app.send fixture.app (Replace (rows 10)));
+    flush fixture;
+    let mounts = !(fixture.mounts) in
+    window ~generation:old_generation ~pins:[doomed] fixture 100 109;
+    Alcotest.(check int) "stale request mounts nothing" mounts !(fixture.mounts);
+    window ~pins:[doomed] fixture 0 9;
+    Alcotest.(check bool) "deleted key cannot be resurrected by pin" false
+      (Lui_runtime.node_live (runtime fixture) doomed);
+    Alcotest.(check int) "count shrink is published" 10
+      (int_prop (runtime fixture) fixture.list "virtual-total-count"))
+    ~finally:(fun () -> dispose fixture)
+
+let test_controlled_editor_survives_eviction_in_business_model () =
+  let fixture = fixture ~height:100 () in
+  Fun.protect (fun () ->
+    window fixture 100 109;
+    let editor = Option.get (row_by_text (runtime fixture) fixture.list "row-105") in
+    ignore (Lui_app.dispatch_event fixture.app (TextChanged (editor, "edited")));
+    flush fixture;
+    window fixture 500 509;
+    Alcotest.(check bool) "editor evicted" false (Lui_runtime.node_live (runtime fixture) editor);
+    window fixture 100 109;
+    let remounted = Option.get (row_by_text (runtime fixture) fixture.list "edited") in
+    Alcotest.(check bool) "new incarnation after eviction" true (remounted <> editor);
+    Alcotest.(check bool) "retired incarnation cannot send an edit" false
+      (Lui_app.dispatch_event fixture.app (TextChanged (editor, "stale")));
+    flush fixture;
+    Alcotest.(check bool) "model owns saved editor value" true
+      (List.exists (fun row -> row.identity = 105 && row.text = "edited")
+        (Lui_app.model fixture.app)))
+    ~finally:(fun () -> dispose fixture)
+
+let test_failed_window_mount_restores_rows_and_metadata () =
+  let fixture = fixture ~height:100 () in
+  Fun.protect (fun () ->
+    window fixture 100 109;
+    let before = direct_rows (runtime fixture) fixture.list in
+    let old_indices = prop (runtime fixture) fixture.list "virtual-indices" in
+    let old_generation = generation fixture in
+    fixture.fail_row := Some 503;
+    Alcotest.check_raises "candidate mount rejects atomically"
+      (Failure "row constructor failed") (fun () -> window fixture 500 509);
+    Alcotest.(check (list int)) "previous node identities restored" before
+      (direct_rows (runtime fixture) fixture.list);
+    Alcotest.(check bool) "sparse indices restored" true
+      (old_indices = prop (runtime fixture) fixture.list "virtual-indices");
+    Alcotest.(check int) "source generation unchanged" old_generation (generation fixture);
+    fixture.fail_row := None;
+    window fixture 500 509;
+    Alcotest.(check bool) "retry succeeds after failed constructor" true
+      (Option.is_some (row_by_text (runtime fixture) fixture.list "row-503")))
+    ~finally:(fun () -> dispose fixture)
+
+let test_target_resolves_without_intermediate_mounts () =
+  let fixture = fixture ~height:100 ~scroll_target:"99990" () in
+  Fun.protect (fun () ->
+    Alcotest.(check int) "business target converted to logical index" 99_990
+      (int_prop (runtime fixture) fixture.list "virtual-scroll-index");
+    Alcotest.(check bool) "target lookup does not materialize skipped rows" true
+      (!(fixture.mounts) <= 18);
+    window fixture 99_988 99_997;
+    Alcotest.(check bool) "offscreen target constructed on host request" true
+      (Option.is_some (row_by_text (runtime fixture) fixture.list "row-99990")))
+    ~finally:(fun () -> dispose fixture)
+
+let test_empty_clear_and_disposal_release_every_row () =
+  let fixture = fixture ~height:100 () in
+  window fixture 100 109;
+  ignore (Lui_app.send fixture.app (Replace [])); flush fixture;
+  Alcotest.(check int) "empty source has no UI rows" 0
+    (List.length (direct_rows (runtime fixture) fixture.list));
+  Alcotest.(check int) "empty logical count" 0
+    (int_prop (runtime fixture) fixture.list "virtual-total-count");
+  window fixture 0 0;
+  let runtime = runtime fixture in
+  dispose fixture;
+  Alcotest.(check int) "all constructed row scopes disposed" !(fixture.mounts)
+    !(fixture.disposals);
+  Alcotest.(check int) "all handlers removed" 0 (Lui_runtime.handler_count runtime);
+  Alcotest.(check int) "all segments removed" 0 (Lui_runtime.dynamic_segment_count runtime)
+
+let tests = [
+  "100k rows retain bounded UI tree and wire", test_initial_tree_is_bounded;
+  "unknown height bootstraps bounded rows", test_unmeasured_bootstrap_is_bounded;
+  "overlap retains identity and evictions dispose", test_window_overlap_retains_identity_and_disposes_evictions;
+  "node pins follow keys through source reorder", test_pins_follow_mounted_keys_across_source_reorder;
+  "stale requests and deleted pins cannot resurrect rows", test_stale_generation_and_deleted_pin_are_ignored;
+  "controlled editing persists in model across eviction", test_controlled_editor_survives_eviction_in_business_model;
+  "failed row mount rolls back window and metadata", test_failed_window_mount_restores_rows_and_metadata;
+  "offscreen targets resolve without intermediate rows", test_target_resolves_without_intermediate_mounts;
+  "clear and disposal release owned resources", test_empty_clear_and_disposal_release_every_row;
+]
+
+let invalid label run =
+  let raised = try run (); false with Invalid_argument _ -> true in
+  Alcotest.(check bool) label true raised
+
+let test_virtual_rows_requires_exclusive_virtual_list_parent () =
+  let check children =
+    let backend = { backend_profile = profile WebOS WebHost;
+                    apply_batch = (fun _ -> true) } in
+    let view _context source _send =
+      let structural () = Lui_elements.virtual_rows ~source
+        ~key:(fun row -> row.identity) ~cmp:Int.compare
+        ~mount:(fun source ->
+          Lui_elements.text ~value:(Signal.sample source).text []) () in
+      children structural in
+    invalid "invalid ownership rejects mount" (fun () ->
+      let app = Lui_app.create backend (rows 10) reducer view in
+      ignore (Lui_app.start app); ignore (Lui_app.dispose app))
+  in
+  check (fun structural -> Lui_elements.column [structural ()]);
+  check (fun structural -> Lui_elements.virtual_list
+    [structural (); Lui_elements.text ~value:"sibling" []]);
+  check (fun structural -> Lui_elements.virtual_list
+    [Lui_elements.text ~value:"sibling" []; structural ()]);
+  check (fun structural -> Lui_elements.virtual_list [structural (); structural ()]);
+  check (fun structural -> structural ())
+
+let test_duplicate_business_keys_are_checked_offscreen () =
+  let fixture = fixture ~count:20 ~height:100 () in
+  Fun.protect (fun () ->
+    let before = direct_rows (runtime fixture) fixture.list in
+    let old_generation = generation fixture in
+    let next = rows 1000 @ [{ identity = 999; text = "duplicate-offscreen" }] in
+    invalid "duplicate keys rejected outside requested viewport" (fun () ->
+      ignore (Lui_app.send fixture.app (Replace next)); flush fixture);
+    Alcotest.(check (list int)) "duplicate source preserves previous UI identities"
+      before (direct_rows (runtime fixture) fixture.list);
+    Alcotest.(check int) "duplicate source preserves previous epoch"
+      old_generation (generation fixture))
+    ~finally:(fun () -> dispose fixture)
+
+let test_invalid_window_is_rejected_without_mutation () =
+  let fixture = fixture ~count:20 ~height:100 () in
+  Fun.protect (fun () ->
+    let before = direct_rows (runtime fixture) fixture.list in
+    List.iter (fun (first,last) ->
+      invalid "malformed window rejected" (fun () -> window fixture first last);
+      Alcotest.(check (list int)) "malformed range cannot replace rows"
+        before (direct_rows (runtime fixture) fixture.list))
+      [(-1, 5); (9, 2)];
+    window fixture 18 30;
+    Alcotest.(check int) "valid request clamps at current count" 2
+      (List.length (direct_rows (runtime fixture) fixture.list));
+    window fixture 100 110;
+    Alcotest.(check int) "request after end contains no rows" 0
+      (List.length (direct_rows (runtime fixture) fixture.list)))
+    ~finally:(fun () -> dispose fixture)
+
+let test_source_handshake_remains_bounded_before_host_acknowledgement () =
+  let fixture = fixture ~height:100 () in
+  Fun.protect (fun () ->
+    window fixture 50_000 50_009;
+    let retained = Option.get (row_by_text (runtime fixture) fixture.list "row-50004") in
+    let source = Lui_app.model fixture.app in
+    ignore (Lui_app.send fixture.app (Replace ({ identity = -1; text = "inserted" } :: source)));
+    flush fixture;
+    Alcotest.(check bool) "old mounted identity retained while host observes source epoch"
+      true (Lui_runtime.node_live (runtime fixture) retained);
+    Alcotest.(check bool) "old window union bootstrap remains bounded" true
+      (List.length (direct_rows (runtime fixture) fixture.list) <= 18);
+    window fixture 50_001 50_010;
+    Alcotest.(check (option int)) "inserted source index preserves overlapping key"
+      (Some retained) (row_by_text (runtime fixture) fixture.list "row-50004");
+    Alcotest.(check int) "handshake settles to requested row count" 9
+      (List.length (direct_rows (runtime fixture) fixture.list)))
+    ~finally:(fun () -> dispose fixture)
+
+let test_legacy_hosts_keep_eager_compatibility () =
+  let fixture = fixture ~host:GenericHost ~count:20 ~height:100 () in
+  Fun.protect (fun () ->
+    Alcotest.(check int) "legacy host still receives eager children" 20
+      (List.length (direct_rows (runtime fixture) fixture.list));
+    Alcotest.(check int) "legacy host constructs every supplied row" 20 !(fixture.mounts);
+    Alcotest.(check bool) "lazy wire fields never reach unsupported host" true
+      (prop (runtime fixture) fixture.list "virtual-total-count" = None))
+    ~finally:(fun () -> dispose fixture)
+
+let test_missing_scroll_resolver_is_explicit () =
+  invalid "lazy offscreen target requires source resolver" (fun () ->
+    let fixture = fixture ~height:100 ~scroll_target:"99990" ~resolver:false () in
+    dispose fixture)
+
+let test_comparator_identity_accepts_function_valued_items () =
+  let count = ref 0 in
+  let backend = { backend_profile = profile WebOS WebHost;
+                  apply_batch = (fun _ -> true) } in
+  let key item = fst item in
+  let view _context source _send = Lui_elements.virtual_list ~height:100 ~item_extent:20.
+    [Lui_elements.virtual_rows ~source ~key ~cmp:(fun left right ->
+       String.compare (String.lowercase_ascii left) (String.lowercase_ascii right))
+       ~mount:(fun item ->
+         incr count;
+         Lui_elements.text ~value:(fst (Signal.sample item)) []) ()] in
+  let app = Lui_app.create backend ["alpha", (fun () -> 1)] (fun _ next -> next) view in
+  Fun.protect (fun () ->
+    ignore (Lui_app.start app); ignore (Lui_app.flush app);
+    let runtime = Lui_app.runtime app in
+    let node = Hashtbl.fold (fun node kind found ->
+      if kind = Text then Some node else found) runtime.mounted_nodes None |> Option.get in
+    ignore (Lui_app.send app ["ALPHA", (fun () -> 2)]); ignore (Lui_app.flush app);
+    Alcotest.(check int) "comparator-equal key does not remount" 1 !count;
+    Alcotest.(check bool) "closure-valued item does not use structural equality" true
+      (Lui_runtime.node_live runtime node))
+    ~finally:(fun () -> ignore (Lui_app.dispose app))
+
+let tests = tests @ [
+  "virtual_rows requires exclusive virtual-list ownership", test_virtual_rows_requires_exclusive_virtual_list_parent;
+  "offscreen duplicate business keys reject atomically", test_duplicate_business_keys_are_checked_offscreen;
+  "malformed ranges reject and valid ranges clamp", test_invalid_window_is_rejected_without_mutation;
+  "source handshake remains bounded before host acknowledgement", test_source_handshake_remains_bounded_before_host_acknowledgement;
+  "legacy hosts keep eager compatibility", test_legacy_hosts_keep_eager_compatibility;
+  "offscreen targets require explicit resolver", test_missing_scroll_resolver_is_explicit;
+  "generic comparator keys support function-valued items", test_comparator_identity_accepts_function_valued_items;
+]
+
+let test_extension_roots_need_no_wrapper_or_foreign_properties () =
+  let backend = { backend_profile = profile WebOS WebHost;
+                  apply_batch = (fun _ -> true) } in
+  let registry = Lui_extension.registry () in
+  Lui_extension.register_component registry
+    (Lui_extension.component "virtual-test-row"
+       [profile WebOS WebHost] false [] [] []);
+  Lui_extension.freeze registry;
+  let view _context source _send =
+    Lui_elements.virtual_list ~height:100 ~item_extent:20. ~overscan:2
+      [Lui_elements.virtual_rows ~source ~key:(fun row -> row.identity)
+         ~cmp:Int.compare ~mount:(fun _source -> fun context parent ->
+           let node = Lui_ui.extension context "virtual-test-row" in
+           Option.iter (fun parent -> Lui_ui.append context parent node) parent;
+           node) ()] in
+  let app = Lui_app.create_with_extensions backend registry (rows 100_000) reducer view in
+  Fun.protect (fun () ->
+    ignore (Lui_app.start app); ignore (Lui_app.flush app);
+    let runtime = Lui_app.runtime app in
+    let list = Hashtbl.fold (fun node kind found ->
+      if kind = VirtualList then Some node else found) runtime.mounted_nodes None
+      |> Option.get in
+    let epoch = int_prop runtime list "virtual-generation" in
+    ignore (Lui_app.dispatch_event app (VirtualWindow (list, epoch, 100, 103, [])));
+    ignore (Lui_app.flush app);
+    let children = direct_rows runtime list in
+    Alcotest.(check int) "extension roots remain direct rows" 3 (List.length children);
+    Alcotest.(check bool) "no wrapper changes layout or marker semantics" true
+      (List.for_all (Hashtbl.mem runtime.runtime_extension_nodes) children);
+    Alcotest.(check bool) "sparse indices parallel the bounded direct row sequence" true
+      (prop runtime list "virtual-indices" = Some (StringValue "[100,101,102]")))
+    ~finally:(fun () -> ignore (Lui_app.dispose app))
+
+let test_foreign_and_dead_pin_nodes_are_not_materialization_requests () =
+  let fixture = fixture ~height:100 () in
+  Fun.protect (fun () ->
+    window fixture 100 109;
+    let dead = Option.get (row_by_text (runtime fixture) fixture.list "row-105") in
+    window fixture 500 509;
+    window ~pins:[fixture.list; dead; 999_999; dead] fixture 700 709;
+    Alcotest.(check int) "only live direct row IDs may add pins" 9
+      (List.length (direct_rows (runtime fixture) fixture.list));
+    Alcotest.(check bool) "dead row key was not resurrected" false
+      (Lui_runtime.node_live (runtime fixture) dead))
+    ~finally:(fun () -> dispose fixture)
+
+let test_original_eager_constructor_keeps_all_logical_rows () =
+  let backend = { backend_profile = profile WebOS WebHost;
+                  apply_batch = (fun _ -> true) } in
+  let view _context source _send = Lui_elements.virtual_list ~height:100 ~item_extent:20.
+    [Lui_elements.keyed ~source ~key:(fun row -> row.identity) ~cmp:Int.compare
+       ~mount:(fun item -> Lui_elements.text ~value:(Signal.sample item).text [])] in
+  let app = Lui_app.create backend (rows 100) reducer view in
+  Fun.protect (fun () ->
+    ignore (Lui_app.start app); ignore (Lui_app.flush app);
+    let runtime = Lui_app.runtime app in
+    let list = Hashtbl.fold (fun node kind found ->
+      if kind = VirtualList then Some node else found) runtime.mounted_nodes None
+      |> Option.get in
+    Alcotest.(check int) "existing eager keyed mode keeps full logical children" 100
+      (List.length (direct_rows runtime list));
+    Alcotest.(check bool) "existing eager list is not reclassified as lazy source" true
+      (prop runtime list "virtual-total-count" = None))
+    ~finally:(fun () -> ignore (Lui_app.dispose app))
+
+let test_changed_scroll_target_requires_resolver () =
+  let backend = { backend_profile = profile WebOS WebHost;
+                  apply_batch = (fun _ -> true) } in
+  let view context source _send =
+    let target = Signal.own_signal context.Lui_ui.ui_scope
+      (Signal.map (fun enabled -> if enabled then "99" else "") source) in
+    let items = Signal.own_signal context.Lui_ui.ui_scope
+      (Signal.map (fun _ -> rows 100) source) in
+    Lui_elements.virtual_list ~height:100 ~item_extent:20. ~scroll_target_signal:target
+      [Lui_elements.virtual_rows ~source:items ~key:(fun row -> row.identity)
+         ~cmp:Int.compare ~mount:(fun item ->
+           Lui_elements.text ~value:(Signal.sample item).text []) ()] in
+  let app = Lui_app.create backend false (fun _ enabled -> enabled) view in
+  Fun.protect (fun () ->
+    ignore (Lui_app.start app); ignore (Lui_app.flush app);
+    invalid "later scroll target cannot silently become unsupported" (fun () ->
+      ignore (Lui_app.send app true); ignore (Lui_app.flush app)))
+    ~finally:(fun () -> ignore (Lui_app.dispose app))
+
+let tests = tests @ [
+  "extension row roots preserve direct-child semantics", test_extension_roots_need_no_wrapper_or_foreign_properties;
+  "dead and foreign node pins cannot mount rows", test_foreign_and_dead_pin_nodes_are_not_materialization_requests;
+  "original virtual_list keyed constructor remains eager", test_original_eager_constructor_keeps_all_logical_rows;
+  "later scroll target requires explicit source resolver", test_changed_scroll_target_requires_resolver;
+]
+
+let test_protocol_virtual_metadata_and_internal_event_contract () =
+  let properties = [VirtualTotalCount; VirtualGeneration; VirtualIndices; VirtualScrollIndex] in
+  List.iter (fun property ->
+    Alcotest.(check bool) "virtual list accepts source metadata" true
+      (property_supported VirtualList property);
+    List.iter (fun kind ->
+      Alcotest.(check bool) "source metadata rejected on ordinary components" false
+        (property_supported kind property)) [Column; ListContainer; Text; TextField]) properties;
+  List.iter (fun (property, value) ->
+    Alcotest.(check bool) "valid virtual source scalar accepted" true
+      (property_value_supported_for_kind VirtualList property value))
+    [VirtualTotalCount, IntValue 0; VirtualTotalCount, IntValue 100_000;
+     VirtualGeneration, IntValue 1; VirtualIndices, StringValue "[]";
+     VirtualIndices, StringValue "[0,2,99999]";
+     VirtualScrollIndex, IntValue (-1); VirtualScrollIndex, IntValue 0];
+  List.iter (fun (property, value) ->
+    Alcotest.(check bool) "malformed source scalar rejected" false
+      (property_value_supported_for_kind VirtualList property value))
+    [VirtualTotalCount, IntValue (-1); VirtualTotalCount, FloatValue 1.;
+     VirtualGeneration, IntValue 0; VirtualGeneration, IntValue (-1);
+     VirtualScrollIndex, IntValue (-2); VirtualIndices, StringValue "[1,1]";
+     VirtualIndices, StringValue "[2,1]"; VirtualIndices, StringValue "[-1]";
+     VirtualIndices, StringValue "[1.0]"; VirtualIndices, StringValue "[true]";
+     VirtualIndices, StringValue "[0, 1]"; VirtualIndices, StringValue "[01]";
+     VirtualIndices, StringValue "[0,]"; VirtualIndices, StringValue "{}";
+     VirtualIndices, StringValue "[0] trailing"];
+  Alcotest.(check bool) "internal window routes on virtual list" true
+    (event_supported VirtualList (VirtualWindow (0, 1, 0, 2, [])));
+  List.iter (fun kind ->
+    Alcotest.(check bool) "internal window rejected on other components" false
+      (event_supported kind (VirtualWindow (0, 1, 0, 2, []))))
+    [Column; ListContainer; Text; TextField]
+
+let tests = tests @ [
+  "virtual source scalar and internal routing contract", test_protocol_virtual_metadata_and_internal_event_contract;
+]
+
+let test_final_sparse_metadata_matches_committed_children () =
+  let batches = ref [] and list = ref (-1) in
+  let backend = { backend_profile = profile WebOS WebHost;
+    apply_batch = (fun batch -> batches := batch :: !batches; true) } in
+  let view _context _source _send =
+    fun context parent ->
+      let node = Lui_elements.virtual_list
+        [Lui_elements.text ~value:"first" []; Lui_elements.text ~value:"second" []]
+        context parent in
+      list := node;
+      List.iter (fun (property,value) ->
+        Lui_runtime.set_prop context.Lui_ui.ui_application node property value)
+        [VirtualTotalCount, IntValue 100; VirtualGeneration, IntValue 1;
+         VirtualIndices, StringValue "[0,99]"; VirtualScrollIndex, IntValue (-1)];
+      node in
+  let app = Lui_app.create backend () (fun model _ -> model) view in
+  Fun.protect (fun () ->
+    ignore (Lui_app.start app); ignore (Lui_app.flush app);
+    let runtime = Lui_app.runtime app in
+    let before = direct_rows runtime !list in
+    List.iter (fun (property, malformed, repair) ->
+      batches := [];
+      Lui_runtime.set_prop runtime !list property malformed;
+      invalid "inconsistent complete metadata rejected before delivery" (fun () ->
+        ignore (Lui_app.flush app));
+      Alcotest.(check int) "invalid candidate never reaches host" 0 (List.length !batches);
+      Alcotest.(check (list int)) "retained child identity unchanged" before
+        (direct_rows runtime !list);
+      Lui_runtime.set_prop runtime !list property repair;
+      ignore (Lui_app.flush app))
+      [VirtualTotalCount, IntValue 99, IntValue 100;
+       VirtualIndices, StringValue "[0]", StringValue "[0,99]";
+       VirtualScrollIndex, IntValue 100, IntValue (-1)])
+    ~finally:(fun () -> ignore (Lui_app.dispose app))
+
+let tests = tests @ [
+  "committed sparse metadata matches child count and logical bounds", test_final_sparse_metadata_matches_committed_children;
+]
+
+let test_unchanged_rows_roll_back_a_failed_metadata_commit () =
+  let fixture = fixture ~count:10 ~height:100 () in
+  Fun.protect (fun () ->
+    let runtime = runtime fixture in
+    let previous_generation = generation fixture in
+    let unrelated = Lui_runtime.create_node runtime Text in
+    Lui_runtime.insert_child runtime fixture.list unrelated
+      (List.length (direct_rows runtime fixture.list));
+    invalid "exclusive ownership rejects an outside static child" (fun () ->
+      ignore (Lui_app.send fixture.app
+        (Replace (List.map Fun.id (Lui_app.model fixture.app))));
+      flush fixture);
+    Alcotest.(check int) "unchanged keyed rows still roll back rejected source metadata"
+      previous_generation (generation fixture))
+    ~finally:(fun () -> dispose fixture)
+
+let tests = tests @ [
+  "unchanged rows roll back rejected metadata commit", test_unchanged_rows_roll_back_a_failed_metadata_commit;
+]
+
+let test_source_metadata_allows_an_absent_scroll_index () =
+  let fixture = fixture ~count:10 ~height:100 () in
+  Fun.protect (fun () ->
+    Lui_runtime.remove_prop (runtime fixture) fixture.list VirtualScrollIndex;
+    flush fixture;
+    Alcotest.(check bool) "source metadata is valid without optional target index" true
+      (prop (runtime fixture) fixture.list "virtual-scroll-index" = None))
+    ~finally:(fun () -> dispose fixture)
+
+let tests = tests @ [
+  "source metadata allows optional scroll index to be absent", test_source_metadata_allows_an_absent_scroll_index;
+]
+
+let test_reload_aliases_preserve_direct_row_pins () =
+  let backend = { backend_profile = profile WebOS WebHost;
+                  apply_batch = (fun _ -> true) } in
+  let view _context source _send = Lui_elements.virtual_list
+    ~key:"reload-rows" ~height:100 ~item_extent:20. ~overscan:2
+    [Lui_elements.virtual_rows ~source ~key:(fun row -> row.identity) ~cmp:Int.compare
+       ~mount:(fun source ->
+         let row = Signal.sample source in
+         Lui_elements.text_field ~key:(string_of_int row.identity) ~text:row.text []) ()] in
+  let app = Lui_app.create_reloadable backend "old" "contract" (rows 1000) reducer view in
+  Fun.protect (fun () ->
+    ignore (Lui_app.start app); ignore (Lui_app.flush app);
+    let runtime = Lui_app.runtime app in
+    let list = Hashtbl.fold (fun node kind found ->
+      if kind = VirtualList then Some node else found) runtime.mounted_nodes None
+      |> Option.get in
+    let pinned = Option.get (row_by_text runtime list "row-3") in
+    let request = Lui_app.request_reload app in
+    ignore (Lui_app.reload_view app request "new" "contract" view 0);
+    let session = (Option.get app.Lui_app.app_reload_state).reload_session in
+    Alcotest.(check string) "real view reload accepted" "new"
+      (Lui_hot_reload.source_hash session);
+    Alcotest.(check (option int)) "host row identity retained through reload" (Some pinned)
+      (row_by_text runtime list "row-3");
+    let epoch = int_prop runtime list "virtual-generation" in
+    ignore (Lui_app.dispatch_event app (VirtualWindow (list, epoch, 100, 109, [pinned])));
+    ignore (Lui_app.flush app);
+    Alcotest.(check bool) "host pin recognizes aliased keyed row identity" true
+      (Lui_runtime.node_live runtime pinned);
+    Alcotest.(check (option int)) "focused row survives distant scroll after reload"
+      (Some pinned) (row_by_text runtime list "row-3"))
+    ~finally:(fun () -> ignore (Lui_app.dispose app))
+
+let tests = tests @ [
+  "hot reload aliases preserve host row pins", test_reload_aliases_preserve_direct_row_pins;
+]
+
+let test_reload_cannot_reuse_a_retired_source_generation () =
+  let backend = { backend_profile = profile WebOS WebHost;
+                  apply_batch = (fun _ -> true) } in
+  let view _context source _send = Lui_elements.virtual_list
+    ~key:"reload-rows" ~height:100 ~item_extent:20. ~overscan:2
+    [Lui_elements.virtual_rows ~source ~key:(fun row -> row.identity) ~cmp:Int.compare
+       ~mount:(fun source ->
+         let row = Signal.sample source in
+         Lui_elements.text_field ~key:(string_of_int row.identity) ~text:row.text []) ()] in
+  let app = Lui_app.create_reloadable backend "old" "contract" (rows 1000) reducer view in
+  Fun.protect (fun () ->
+    ignore (Lui_app.start app); ignore (Lui_app.flush app);
+    let runtime = Lui_app.runtime app in
+    let list = Hashtbl.fold (fun node kind found ->
+      if kind = VirtualList then Some node else found) runtime.mounted_nodes None
+      |> Option.get in
+    let retired_epoch = int_prop runtime list "virtual-generation" in
+    let request = Lui_app.request_reload app in
+    ignore (Lui_app.reload_view app request "new" "contract" view 0);
+    let before = direct_rows runtime list in
+    ignore (Lui_app.dispatch_event app
+      (VirtualWindow (list, retired_epoch, 500, 509, [])));
+    ignore (Lui_app.flush app);
+    Alcotest.(check (list int)) "delayed old owner request cannot replace reloaded rows"
+      before (direct_rows runtime list);
+    Alcotest.(check bool) "new source owner never reuses retired epoch" true
+      (int_prop runtime list "virtual-generation" > retired_epoch))
+    ~finally:(fun () -> ignore (Lui_app.dispose app))
+
+let tests = tests @ [
+  "hot reload cannot reuse retired source generation", test_reload_cannot_reuse_a_retired_source_generation;
+]
+
+let test_rejected_source_restores_generation_allocation () =
+  let fixture = fixture ~count:1000 ~height:100 () in
+  Fun.protect (fun () ->
+    let previous = generation fixture in
+    let before = direct_rows (runtime fixture) fixture.list in
+    let next = List.init 10 (fun offset ->
+      {identity = 500 + offset; text = "replacement-" ^ string_of_int offset}) in
+    fixture.fail_row := Some 503;
+    Alcotest.check_raises "replacement constructor rejects source revision"
+      (Failure "row constructor failed") (fun () ->
+        ignore (Lui_app.send fixture.app (Replace next)); flush fixture);
+    Alcotest.(check int) "rejected source keeps its accepted epoch" previous (generation fixture);
+    Alcotest.(check (list int)) "rejected source restores mounted rows" before
+      (direct_rows (runtime fixture) fixture.list);
+    fixture.fail_row := None;
+    ignore (Lui_app.send fixture.app (Replace (List.map Fun.id next))); flush fixture;
+    Alcotest.(check int) "retry consumes the next accepted epoch only" (previous + 1)
+      (generation fixture))
+    ~finally:(fun () -> dispose fixture)
+
+let tests = tests @ [
+  "rejected source restores generation allocation", test_rejected_source_restores_generation_allocation;
+]
+
+let test_internal_window_does_not_escape_as_public_visible_range () =
+  let callbacks = ref 0 in
+  let fixture = fixture ~count:1000 ~height:100
+    ~on_visible_range:(fun _event -> incr callbacks) () in
+  Fun.protect (fun () ->
+    window fixture 500 509;
+    Alcotest.(check bool) "internal request still materializes requested rows" true
+      (Option.is_some (row_by_text (runtime fixture) fixture.list "row-505"));
+    Alcotest.(check int) "window maintenance never invokes application callback" 0 !callbacks;
+    ignore (Lui_app.dispatch_event fixture.app (VisibleRange (fixture.list, 502, 507)));
+    flush fixture;
+    Alcotest.(check int) "public visible range invokes application callback once" 1 !callbacks)
+    ~finally:(fun () -> dispose fixture)
+
+let tests = tests @ [
+  "internal windows stay separate from public visible range", test_internal_window_does_not_escape_as_public_visible_range;
+]
+
+end
+
 let () =
   Alcotest.run "lui"
     [
+      ("virtual rows", List.map (fun (name, test) ->
+        Alcotest.test_case name `Quick test) Virtual_rows_acceptance.tests);
       ( "wire encoding",
         [ Alcotest.test_case "exact bytes and all operations" `Quick test_wire_encoding_exact_bytes;
           Alcotest.test_case "nonfinite entrypoints" `Quick test_wire_nonfinite_all_entrypoints;

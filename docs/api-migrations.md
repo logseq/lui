@@ -14,6 +14,63 @@ covered separately.
 
 ## Unreleased: component API and MyGo parity
 
+### Bounded row generation for virtual lists
+
+`virtual_list` continues to accept literal children and `keyed` sources. Those
+forms retain every LUI row even when the host virtualizes its views. Applications
+with large collections can opt into `virtual_rows` as the sole direct child:
+
+```ocaml
+(* Before: every item owns a mounted LUI row. *)
+virtual_list ~height:400 [
+  keyed ~source:rows ~key:(fun row -> row.id) ~cmp:Int.compare ~mount:row_view
+]
+
+(* After: the host requests a window of rows. *)
+virtual_list ~height:400 ~overscan:5 ~item_extent:32. [
+  virtual_rows ~source:rows ~key:(fun row -> row.id) ~cmp:Int.compare
+    ~scroll_key:(fun row -> Printf.sprintf "row-%d" row.id)
+    ~mount:row_view ()
+]
+```
+
+The business data source and its key index remain complete. On Web and MyGo,
+only requested rows, overscan and active interaction pins own mounted scopes,
+signals, handlers and host controls. Overlapping windows preserve row identity;
+eviction disposes the row and a later visit creates a fresh incarnation.
+Store persistent editor values, selection and other row state in application
+data and bind them as controlled values. Late events cannot target a replacement
+incarnation. Source reorders preserve still-existing mounted keys until the host
+acknowledges the new source generation.
+
+The source signal is borrowed. A `reactive` derivation passed as `~source` is
+created and disposed per mount by the PPX, following the same ownership rule as
+`keyed`. Rebuild the PPX together with LUI. `scroll_key` is optional unless a
+lazy parent uses a nonempty `scroll_target`; it resolves targets without mounting
+intermediate rows. Duplicate item keys or scroll keys are errors.
+
+This version implements window feedback on Web and MyGo. SwiftUI, Kotlin and
+Generic hosts render `virtual_rows` eagerly for compatibility; their generic
+helper path does not yet bound LUI node memory. SwiftUI's existing application
+window-source convention remains separate. An individual row may still own a
+large descendant subtree, and host geometry caches may scale with source size.
+
+Custom hosts must recognize the new `MyGoHost` case when matching
+`host_kind`. Existing host cases keep their order; native host code 5 selects
+MyGo. The MyGo loader selects that profile only if the optional
+`lui_ocaml_virtual_window(node,generation,first,last,pins,count)` export exists;
+older application libraries keep the Generic eager profile.
+
+Sparse wire producers set `virtual-total-count`, `virtual-generation` and
+`virtual-indices` together on the existing `virtual-list` node. The indices are
+a canonical JSON integer vector parallel to committed children, strictly
+increasing and within the logical count. Optional `virtual-scroll-index` is -1
+for a missing target or a valid logical index. Invalid final metadata rejects
+the entire batch. Internal `VirtualWindow` feedback uses a half-open interval
+and direct row node IDs for pins. Public `VisibleRange` keeps its inclusive
+range convention. The new event precedes `ExtensionEvent`; native consumers of
+raw OCaml variant tags must rebuild for its shifted extension-event tag.
+
 ### Large-batch memory and handle ownership
 
 The shared OCaml encoder and MyGo decoder now process large batches without
@@ -27,7 +84,7 @@ encoder improvement.
 
 MyGo also releases abandoned handle bindings while preserving live hidden
 handles and pending focus. Embedded Go applications must update their root
-replacement to `github.com/logseq/mygo@v0.0.0-20261025171223-4d51d7aa50ea`, as shown
+replacement to `github.com/logseq/mygo@v0.0.0-20261025182610-2949164d2bee`, as shown
 in the [embedding guide](../platform/mygo/README.md#embed-a-backend). The upstream
 module path and application imports remain unchanged.
 
@@ -158,7 +215,7 @@ media nodes no longer need application renderer registrations.
 
 ### MyGo compatibility module and custom icons
 
-The desktop adapter pins the [logseq/mygo compatibility fork](https://github.com/logseq/mygo/tree/lui-virtual-list-memory)
+The desktop adapter pins the [logseq/mygo compatibility fork](https://github.com/logseq/mygo/tree/lui-bounded-virtual-rows)
 for measured fitting, tunable lists, frame completion and native lifecycle
 behavior. The fork preserves the upstream `github.com/egoist/mygo` module path,
 Go imports and upstream documentation links. Existing Go and OCaml application

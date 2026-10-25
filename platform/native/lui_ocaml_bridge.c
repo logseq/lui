@@ -293,6 +293,23 @@ LUI_EXPORT int32_t lui_ocaml_visible_range(int64_t node, int64_t first,
   return accepted;
 }
 
+LUI_EXPORT int32_t lui_ocaml_virtual_window(int64_t node, int64_t generation,
+                                           int64_t first, int64_t last,
+                                           const int64_t *pins, int32_t count) {
+  int32_t accepted;
+  if (node <= 0 || node > Max_long || generation <= 0 || generation > Max_long ||
+      first < 0 || last < first || last > Max_long || count < 0 ||
+      (count > 0 && pins == NULL)) return 0;
+  for (int32_t index = 0; index < count; index++) {
+    if (pins[index] <= 0 || pins[index] > Max_long) return 0;
+  }
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_virtual_window("lui_ocaml_virtual_window", node,
+      generation, first, last, pins, count, deliver);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
 LUI_EXPORT int32_t lui_ocaml_scroll_completed(int64_t node, int64_t token,
                                               const char *outcome) {
   int32_t accepted;

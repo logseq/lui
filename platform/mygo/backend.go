@@ -72,6 +72,8 @@ type Event struct {
 	TargetClass string         `json:"target-class,omitempty"`
 	Token       int64          `json:"token,omitempty"`
 	Outcome     string         `json:"outcome,omitempty"`
+	Generation  int64          `json:"generation,omitempty"`
+	Pins        []int64        `json:"pins,omitempty"`
 	First       int64          `json:"first"`
 	Last        int64          `json:"last"`
 	AtStart     bool           `json:"at-start"`
@@ -348,6 +350,9 @@ func (t *batchTransaction) commit(generation int64) error {
 		}
 		if err := validateNode(n); err != nil {
 			return fmt.Errorf("lui: node %d (%s): %w", id, n.Kind, err)
+		}
+		if err := validateVirtualSource(n); err != nil {
+			return err
 		}
 	}
 	b.generation = generation

@@ -126,6 +126,7 @@ type host_kind =
   | WebHost
   | SwiftUIHost
   | KotlinHost
+  | MyGoHost
 
 type platform_profile = {
   profile_os : operating_system;
@@ -224,6 +225,8 @@ val transition_segments : string -> string list list
 (** Tokenize CSS transition declarations, preserving functional easing arguments. *)
 
 val anchor_rect_of_string : string -> (float * float * float * float) option
+val virtual_indices_of_string : string -> int list option
+val virtual_indices_to_string : int list -> string
 val property_value_supported : property -> wire_value -> bool
 val property_value_supported_for_kind : node_kind -> property -> wire_value -> bool
 val int_property : wire_value Property_map.t -> property -> int -> int

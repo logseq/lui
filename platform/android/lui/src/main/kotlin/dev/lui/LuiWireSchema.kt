@@ -288,6 +288,10 @@ enum class LuiProperty(val wireName: String) {
     readOnly("read-only"),
     overscan("overscan"),
     itemExtent("item-extent"),
+    virtualTotalCount("virtual-total-count"),
+    virtualGeneration("virtual-generation"),
+    virtualIndices("virtual-indices"),
+    virtualScrollIndex("virtual-scroll-index"),
     ;
 
     companion object {
@@ -338,7 +342,7 @@ object LuiSchemaMatrix {
         LuiNodeKind.dropdownMenu to setOf(LuiProperty.collisionPadding),
         LuiNodeKind.tooltip to setOf(LuiProperty.collisionPadding),
         LuiNodeKind.switchControl to setOf(LuiProperty.foreground),
-        LuiNodeKind.virtualList to setOf(LuiProperty.overscan, LuiProperty.itemExtent),
+        LuiNodeKind.virtualList to setOf(LuiProperty.overscan, LuiProperty.itemExtent, LuiProperty.virtualTotalCount, LuiProperty.virtualGeneration, LuiProperty.virtualIndices, LuiProperty.virtualScrollIndex),
         LuiNodeKind.textField to setOf(LuiProperty.readOnly),
         LuiNodeKind.secureField to setOf(LuiProperty.readOnly),
         LuiNodeKind.input to setOf(LuiProperty.readOnly),

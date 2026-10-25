@@ -1087,7 +1087,8 @@ and apply_secondary_property renderer queue_split node kind dom_node
       W.Element.setAttribute "data-key" key dom_node
   | StyleValue, StringValue style ->
       W.Element.setAttribute "data-list-style" style dom_node
-  | (ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange), _ -> ()
+  | (ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange
+     | VirtualTotalCount | VirtualGeneration | VirtualIndices | VirtualScrollIndex), _ -> ()
   | SeparatorValue, StringValue separator ->
       W.Element.setAttribute "data-separator" separator dom_node
   | FontSize, StringValue size -> set_style dom_node "font-size" size
@@ -1208,7 +1209,8 @@ let remove_property renderer queue_split node kind dom_node property =
        | NavigateEnabled | SubmitOnBlur | ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange -> ()
        | TextValue -> apply_text_value renderer node kind dom_node ""
        | ReadOnly -> W.HtmlInputElement.setReadOnly (Util.text_control_node dom_node) false
-       | VirtualOverscan | VirtualItemExtent -> ()
+       | VirtualOverscan | VirtualItemExtent | VirtualTotalCount
+       | VirtualGeneration | VirtualIndices | VirtualScrollIndex -> ()
        | Enabled ->
            apply_property renderer queue_split node kind dom_node Enabled
              (BoolValue true)

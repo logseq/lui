@@ -1,13 +1,13 @@
 {
   "version": 1,
   "sourceHashes": {
-    "schema/components.json": "551a39183f8d6266bdd6f0012924e4cf5c46612eb044dc4c5a0b93f727cf35ec",
-    "src/lui_protocol.ml": "4fb4165b4e1f8eb24a507d9473e36690e28f58af08215c596a1425b8ba4c0f24",
-    "src/lui_protocol.mli": "af3eaf83936b9fc1e5693fb71905cb01d5f10373a022951bde99701789f55b65",
-    "src/lui_wire_schema.ml": "885ca4fadf62f8542361d0aac022ccaa52f109a33a616567e942289cfa87d42e",
-    "tooling/export_mygo_contract.ml": "e138d99b58e724405b58ca21a9a858a397fb3c59ca98469e752520364a7eb8ac"
+    "schema/components.json": "52e1773b8db28aafed5b360f4440d332ebdfa163f13f89ee583fa3375e3b2367",
+    "src/lui_protocol.ml": "04d176839abb43a0014d0f4ca7fd39b6f947f767bfe5ab75a8dea507fb207946",
+    "src/lui_protocol.mli": "dda70651e53c5bcbb569c972e453eb4c541f28c2bebd488b81ef3965ed545795",
+    "src/lui_wire_schema.ml": "ebcd8ba5f7b1dd0cdb0e5b4b95123b3d2bd5ef2f1a3d557237713d4a010b3ecf",
+    "tooling/export_mygo_contract.ml": "ad62116af31cfcce2c3fb4dd9aac22f44e00a4c6591c8a8e021fc58e46345f04"
   },
-  "generatedGoHash": "7df2ccf3602c6cfd458a26ca18809e60f64b745ebf29143b040a5db5ae6bed5c",
+  "generatedGoHash": "b2fadcbf822bbf8878de5551188338ad051705f8d4b4da348f00e66d2506e667",
   "kinds": {
     "root": {
       "contractHash": "1cda829a4bd05ddb79ca21f04ed1d7a51dae8bf3d388bb7eecdf8d5e2f3ec1eb",
@@ -308,10 +308,10 @@
       "baseline": {}
     },
     "virtual-list": {
-      "contractHash": "e5be253fa5659756e460c7b8c8447cba5518b03e4771c6c95c2d2fc04d470396",
-      "propertyCount": 81,
+      "contractHash": "50a35792596025ef24adbe77e9092981e278ff2e1a350223083eec1d945d5d11",
+      "propertyCount": 85,
       "childCount": 81,
-      "eventCount": 6,
+      "eventCount": 7,
       "baseline": {}
     },
     "tabs": {

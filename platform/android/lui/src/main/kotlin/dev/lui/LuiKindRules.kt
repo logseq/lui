@@ -296,6 +296,11 @@ internal object LuiKindRules {
     /** Ported from the Flutter backend's `_supports`: whether a `set-prop`
      * op is admissible for the node's kind. */
     fun supports(kind: LuiNodeKind, property: String, value: LuiWireValue): Boolean {
+        // This host uses eager virtual_rows until it implements window feedback.
+        when (property) {
+            "virtual-total-count", "virtual-generation", "virtual-indices", "virtual-scroll-index" -> return false
+            else -> Unit
+        }
         if (property == "accessibility-identifier") return value is LuiWireValue.Str
         if (kind == LuiNodeKind.root) {
             return (property == "theme" && value is LuiWireValue.Str) ||
@@ -937,6 +942,7 @@ internal object LuiKindRules {
     // `Lui_protocol.property_value_supported`.
     private fun schemaValueSupported(property: String, value: LuiWireValue): Boolean =
         when (property) {
+            "virtual-total-count", "virtual-generation", "virtual-indices", "virtual-scroll-index" -> false
             "overscan" -> value.intValue?.let { it >= 0 } == true
             "item-extent" -> value.numberValue?.let { it.isFinite() && it > 0 } == true
             "text", "title", "description", "meta", "indicator", "key",

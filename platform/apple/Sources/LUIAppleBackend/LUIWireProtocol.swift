@@ -144,6 +144,9 @@ enum LUIWireValue: Decodable, Equatable {
 
     func matches(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
         switch property {
+        case .virtualTotalCount, .virtualGeneration, .virtualIndices, .virtualScrollIndex:
+            // This host uses eager virtual_rows until it implements window feedback.
+            return false
         case .headingLevel:
             guard let value = intValue else { return false }
             return (1...6).contains(value)
@@ -1076,6 +1079,12 @@ struct LUIRetainedTree {
     }
 
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
+        switch property {
+        case .virtualTotalCount, .virtualGeneration, .virtualIndices, .virtualScrollIndex:
+            // Reject before generated additive rules can admit sparse-only metadata.
+            return false
+        default: break
+        }
         if property == .accessibilityIdentifier { return true }
         // Position hint honored on overlay children and the overlay itself;
         // admitted before the restrictive matrix so e.g. an aligned
@@ -1091,6 +1100,7 @@ struct LUIRetainedTree {
         if kind == .root { return property == .theme || property == .themeMode }
         if kind == .contextMenu { return false }
         return switch property {
+        case .virtualTotalCount, .virtualGeneration, .virtualIndices, .virtualScrollIndex: false
         case .readOnly: isTextEntry(kind)
         case .overscan, .itemExtent: kind == .virtualList
         case .theme, .themeMode:
