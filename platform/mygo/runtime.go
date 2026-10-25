@@ -180,7 +180,16 @@ func (w *runtimeWorker) load(path string) error {
 	if ptr, lookupErr := librarySymbol(handle, "lui_ocaml_virtual_window"); lookupErr == nil {
 		purego.RegisterFunc(&f.virtualWindow, ptr)
 	}
-	w.callback = purego.NewCallback(func(ptr unsafe.Pointer) { w.pending = append(w.pending, cString(ptr)) })
+	if goruntime.GOOS == "windows" {
+		// Windows requires a pointer-sized callback result. The C void
+		// callback ignores it; CDecl preserves the bridge's calling convention.
+		w.callback = purego.NewCallback(func(_ purego.CDecl, ptr unsafe.Pointer) uintptr {
+			w.pending = append(w.pending, cString(ptr))
+			return 0
+		})
+	} else {
+		w.callback = purego.NewCallback(func(ptr unsafe.Pointer) { w.pending = append(w.pending, cString(ptr)) })
+	}
 	w.functions = f
 	w.library = handle
 	w.path = path
