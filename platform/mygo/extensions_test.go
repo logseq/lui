@@ -1,8 +1,11 @@
 package luimygo
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/egoist/mygo/ui"
+	"os"
+	"slices"
 	"testing"
 )
 
@@ -65,10 +68,39 @@ func TestAppearAndEventGates(t *testing.T) {
 	}
 }
 func TestAllSupportedKindsRender(t *testing.T) {
+	data, err := os.ReadFile("../../schema/mygo-manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var canonical struct {
+		Kinds map[string]struct {
+			Baseline map[string]oracleValue `json:"baseline"`
+		} `json:"kinds"`
+	}
+	if err := json.Unmarshal(data, &canonical); err != nil {
+		t.Fatal(err)
+	}
+	if len(SupportedKinds()) != len(canonical.Kinds) {
+		t.Fatal("built-in kinds differ from the canonical schema")
+	}
+	for kind := range canonical.Kinds {
+		if !supportedKind(kind) {
+			t.Fatalf("canonical kind %q lacks a built-in adapter", kind)
+		}
+	}
+
 	for _, kind := range SupportedKinds() {
 		t.Run(kind, func(t *testing.T) {
 			b := New(Config{})
 			ops := []Operation{create(1, kind)}
+			names := make([]string, 0, len(canonical.Kinds[kind].Baseline))
+			for name := range canonical.Kinds[kind].Baseline {
+				names = append(names, name)
+			}
+			slices.Sort(names)
+			for _, name := range names {
+				ops = append(ops, prop(1, name, canonical.Kinds[kind].Baseline[name].raw()))
+			}
 
 			apply(t, b, 1, ops...)
 			tester := ui.NewTester(b.View, 320, 240)
@@ -165,7 +197,7 @@ func TestModalDismissAndDisabledInheritance(t *testing.T) {
 	if len(events) != 1 || events[0].Kind != "dismiss" || events[0].Node != 3 {
 		t.Fatal(events)
 	}
-	apply(t, b, 3, Operation{Op: "detach-subtree", ID: 3}, create(5, "column"), prop(5, "enabled", false), insert(2, 5, 0), create(6, "button"), prop(6, "text", "Disabled child"), prop(6, "press-enabled", true), insert(5, 6, 0))
+	apply(t, b, 3, Operation{Op: "detach-subtree", ID: 3}, create(5, "box"), prop(5, "inert", true), insert(2, 5, 0), create(6, "button"), prop(6, "text", "Disabled child"), prop(6, "press-enabled", true), insert(5, 6, 0))
 	tester.Frame()
 	_ = tester.Click("Disabled child")
 	if len(events) != 1 {
@@ -174,7 +206,20 @@ func TestModalDismissAndDisabledInheritance(t *testing.T) {
 }
 func TestNumericControlsAndToggle(t *testing.T) {
 	var events []Event
-	b := mounted(t, func(e Event) error { events = append(events, e); return nil })
+	var b *Backend
+	b = mounted(t, func(e Event) error {
+		events = append(events, e)
+		var op Operation
+		switch e.Kind {
+		case "value-changed":
+			op = prop(e.Node, "value", e.Value)
+		case "toggle-changed":
+			op = prop(e.Node, "selected", e.Checked)
+		default:
+			return nil
+		}
+		return b.ApplyBatch(Batch{Generation: b.Generation() + 1, Ops: []Operation{op}})
+	})
 	apply(t, b, 2, create(3, "slider"), prop(3, "value", 0.0), prop(3, "accessibility-label", "Volume"), insert(2, 3, 0), create(4, "toggle-button"), prop(4, "text", "Bold"), prop(4, "toggle-enabled", true), insert(2, 4, 1))
 	tester := ui.NewTester(b.View, 400, 200)
 	_ = tester.Click("Volume")
@@ -190,20 +235,32 @@ func TestNumericControlsAndToggle(t *testing.T) {
 }
 func TestCustomRendererEventsAreDeliveredAfterBuild(t *testing.T) {
 	building := false
-	b := New(Config{Dispatch: func(Event) error {
+	emitted := false
+	count := 0
+	b := New(Config{Dispatch: func(e Event) error {
 		if building {
 			t.Fatal("dispatch reentered an unfinished build")
 		}
+		if e.Kind != "pointer-enter" || e.Node != 1 {
+			t.Fatalf("wrong admitted event: %+v", e)
+		}
+		count++
 		return nil
 	}, Renderers: map[string]Renderer{"icon": func(c *ui.Context, n Node, children func(), emit func(Event)) {
 		building = true
 		ui.Text(c, "custom icon")
-		emit(Event{Kind: "press", Node: n.ID})
+		if !emitted {
+			emitted = true
+			emit(Event{Kind: "pointer-enter", Node: n.ID})
+		}
 		building = false
 	}}})
-	apply(t, b, 1, create(1, "icon"))
+	apply(t, b, 1, create(1, "icon"), prop(1, "name", "check"), prop(1, "pointer-enabled", true))
 	tester := ui.NewTester(b.View, 200, 100)
 	if !tester.HasText("custom icon") {
 		t.Fatal(tester.Texts())
+	}
+	if count != 1 {
+		t.Fatalf("admitted callbacks = %d, want 1", count)
 	}
 }

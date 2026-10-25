@@ -1,5 +1,8 @@
 # LUI
 
+Updating an existing application? See the [API migration guide](docs/api-migrations.md)
+for constructor, wire-contract and behavior changes.
+
 LUI is a retained, cross-platform UI runtime written in OCaml and powered by
 [`ocaml-signal`](https://github.com/logseq/ocaml-signal). Application code,
 state, diffing, and patch generation stay in OCaml; each backend applies those

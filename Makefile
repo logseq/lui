@@ -7,7 +7,8 @@ test-schema:
 
 generate-component-schema:
 	node tooling/generate_component_schema.mjs
-	python3 tooling/generate_mygo_schema.py
+	opam exec -- dune build src/lui.cmxa
+	python3 tooling/generate_mygo_schema.py --export
 
 generate-json-view:
 	python3 tools/gen_json_view.py

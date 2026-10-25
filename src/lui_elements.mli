@@ -1029,8 +1029,9 @@ val list :
    only the visible window plus [?overscan] rows (backends that
    virtualize — web and native). [?item_extent] is the estimated row
    main extent in logical px, used to size unmeasured rows on the
-   native backend; both ride [data-attrs] as
-   [data-overscan]/[data-item-extent]. The scroll contract
+   virtualizing host. Typed properties take precedence over legacy
+   [data-overscan]/[data-item-extent] attributes. Zero overscan is valid;
+   item extents must be positive finite logical pixels. The scroll contract
    ([?scroll_target]/[?scroll_anchor]/[?scroll_token],
    [?track_visible_range]/[?on_visible_range]/[?on_scroll_completed])
    matches {!list} and is implemented on the web backend; native
@@ -2822,6 +2823,8 @@ val text_field :
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
   ?submit_on_blur:bool ->
+  ?read_only:bool ->
+  ?read_only_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
@@ -2877,6 +2880,8 @@ val secure_field :
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
   ?submit_on_blur:bool ->
+  ?read_only:bool ->
+  ?read_only_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
@@ -2932,6 +2937,8 @@ val input :
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
   ?submit_on_blur:bool ->
+  ?read_only:bool ->
+  ?read_only_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
@@ -2988,6 +2995,8 @@ val search_field :
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
   ?submit_on_blur:bool ->
+  ?read_only:bool ->
+  ?read_only_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
@@ -3043,6 +3052,8 @@ val textarea :
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
   ?submit_on_blur:bool ->
+  ?read_only:bool ->
+  ?read_only_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
@@ -3230,6 +3241,8 @@ val combobox :
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
   ?placeholder_signal:string Signal.signal ->
+  ?read_only:bool ->
+  ?read_only_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_press:(Lui_protocol.event -> unit) ->

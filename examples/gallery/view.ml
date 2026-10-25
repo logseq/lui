@@ -10,6 +10,9 @@ let section title children : t =
   column ~gap:16 ~padding:32
     (heading ~level:2 ~value:title [] :: children)
 
+let button_row children =
+  row ~gap:12 ~max_width:560 ~flex_wrap:`wrap children
+
 let noop _event = ()
 
 let on_toggle send make event =
@@ -69,25 +72,31 @@ let spacer_section : t =
 let button_section model_source send : t =
   let disabled = model_source >|= Model.disabled in
   section "Button"
-    [ button ~variant:`outline ~text:"Toggle disabled"
-        ~on_press:(press send Model.ToggleDisabled) []
-    ; if_ ~test:disabled (paragraph ~value:"Controls are disabled." [])
-    ; grid ~columns:2 ~gap:12
-        [ button ~text:"Default" ~disabled:(reactive disabled)
-            ~on_press:noop []
-        ; button ~variant:`primary ~icon:`download ~text:"Primary"
-            ~disabled:(reactive disabled) ~on_press:noop
-            ~on_long_press:(press send Model.ToggleDisabled) []
-        ; button ~variant:`secondary ~text:"Secondary"
-            ~disabled:(reactive disabled) ~on_press:noop []
-        ; button ~variant:`outline ~text:"Outline"
-            ~disabled:(reactive disabled) ~on_press:noop []
-        ; button ~variant:`ghost ~text:"Selected" ~selected:true
-            ~disabled:(reactive disabled) ~on_press:noop []
-        ; button ~variant:`destructive ~text:"Destructive"
-            ~disabled:(reactive disabled) ~on_press:noop []
+    [ button_row
+        [ button ~variant:`outline ~text:"Toggle disabled"
+            ~on_press:(press send Model.ToggleDisabled) []
         ]
-    ; row ~gap:12
+    ; if_ ~test:disabled (paragraph ~value:"Controls are disabled." [])
+    ; column ~gap:12
+        [ button_row
+            [ button ~text:"Default" ~disabled:(reactive disabled)
+                ~on_press:noop []
+            ; button ~variant:`primary ~icon:`download ~text:"Primary"
+                ~disabled:(reactive disabled) ~on_press:noop
+                ~on_long_press:(press send Model.ToggleDisabled) []
+            ; button ~variant:`secondary ~text:"Secondary"
+                ~disabled:(reactive disabled) ~on_press:noop []
+            ]
+        ; button_row
+            [ button ~variant:`outline ~text:"Outline"
+                ~disabled:(reactive disabled) ~on_press:noop []
+            ; button ~variant:`ghost ~text:"Selected" ~selected:true
+                ~disabled:(reactive disabled) ~on_press:noop []
+            ; button ~variant:`destructive ~text:"Destructive"
+                ~disabled:(reactive disabled) ~on_press:noop []
+            ]
+        ]
+    ; button_row
         [ button ~size:`sm ~text:"Small" ~disabled:(reactive disabled)
             ~on_press:noop []
         ; button ~text:"Default" ~disabled:(reactive disabled)
@@ -117,14 +126,14 @@ let toggle_button_section model_source send : t =
                 ~on_toggle:(on_toggle send (fun v -> Model.SetChecked v))
                 ~on_long_press:(press send Model.ToggleDisabled) [])
             model_source
-        ; toggle_button ~variant:`ghost ~text:"Backend-owned"
+        ; toggle_button ~variant:`ghost ~text:"Rejected proposal"
             ~disabled:(reactive disabled) ~on_toggle:noop []
         ; toggle_button ~size:`icon ~icon:`check
             ~label:"Toggle approval" ~disabled:(reactive disabled)
             ~on_toggle:noop []
         ]
     ; paragraph
-        ~value:"Controlled selection follows one Signal; backend-owned selection survives unrelated patches."
+        ~value:"Selection follows the model. A handler that leaves the model unchanged rejects the proposal."
         []
     ]
 
@@ -372,8 +381,10 @@ let progress_section model_source send : t =
     [ paragraph ~value:"Uploading files" []
     ; progress ~value:(reactive progress_value) ~width:280 []
     ; text ~value:(reactive Model.progress_label model_source) []
-    ; button ~variant:`outline ~text:"Advance progress"
-        ~on_press:(press send Model.AdvanceProgress) []
+    ; button_row
+        [ button ~variant:`outline ~text:"Advance progress"
+            ~on_press:(press send Model.AdvanceProgress) []
+        ]
     ]
 
 let stepper_steps =
@@ -387,8 +398,10 @@ let stepper_section model_source send : t =
   section "Stepper"
     [ stepper ~active:(reactive active) ~label:"Release progress"
         stepper_steps
-    ; button ~variant:`outline ~text:"Advance stage"
-        ~on_press:(press send Model.AdvanceStep) []
+    ; button_row
+        [ button ~variant:`outline ~text:"Advance stage"
+            ~on_press:(press send Model.AdvanceStep) []
+        ]
     ]
 
 let step_section model_source : t =
@@ -588,8 +601,10 @@ let split_section model_source send : t =
 let dialog_section model_source send : t =
   let open_ = model_source >|= Model.dialog_open in
   section "Dialog"
-    [ button ~variant:`outline ~text:"Open dialog"
-        ~on_press:(press send Model.OpenDialog) []
+    [ button_row
+        [ button ~variant:`outline ~text:"Open dialog"
+            ~on_press:(press send Model.OpenDialog) []
+        ]
     ; paragraph
         ~value:"The same model-owned conditional drives the native modal on every host."
         []
@@ -614,8 +629,10 @@ let dialog_section model_source send : t =
 let sheet_section model_source send : t =
   let open_ = model_source >|= Model.sheet_open in
   section "Sheet"
-    [ button ~variant:`outline ~text:"Open sheet"
-        ~on_press:(press send Model.OpenSheet) []
+    [ button_row
+        [ button ~variant:`outline ~text:"Open sheet"
+            ~on_press:(press send Model.OpenSheet) []
+        ]
     ; paragraph
         ~value:"Sheet uses the host platform's native modal presentation." []
     ; if_ ~test:open_
@@ -844,8 +861,10 @@ let avatar_section model_source send : t =
             ~label:"Registered profile image" []
         ; avatar ~text:"CT" []
         ]
-    ; button ~variant:`outline ~text:"Toggle registered image"
-        ~on_press:(press send Model.ToggleAvatarImage) []
+    ; button_row
+        [ button ~variant:`outline ~text:"Toggle registered image"
+            ~on_press:(press send Model.ToggleAvatarImage) []
+        ]
     ; paragraph
         ~value:"The host owns image resources; changing the ImageId Signal retains the Avatar node."
         []
@@ -969,35 +988,26 @@ let tooltip_section : t =
 let toast_section model_source send : t =
   let open_ = model_source >|= Model.toast_open in
   section "Toast"
-    [ button ~variant:`outline ~text:"Show notifications"
-        ~on_press:(press send Model.ShowToasts) []
+    [ button_row
+        [ button ~variant:`outline ~text:"Show notification"
+            ~disabled:(reactive open_)
+            ~on_press:(press send Model.ShowToasts) []
+        ]
     ; if_ ~test:open_
-        (column
-           [ toast ~duration:2000 ~label:"Draft saved"
-               ~on_dismiss:(press send Model.CloseToasts)
-               [ column ~gap:2
-                   [ text ~value:(reactive Model.toast_message model_source) []
-                   ; paragraph
-                       ~value:(reactive Model.toast_description model_source) []
-                   ]
-               ; button ~variant:`outline ~text:"Update notification"
-                   ~on_press:(press send Model.UpdateToast) []
-               ; button ~variant:`ghost ~text:"Close"
-                   ~on_press:(press send Model.CloseToasts) []
+        (toast ~duration:4000 ~label:"Draft saved"
+           ~on_dismiss:(press send Model.CloseToasts)
+           [ column ~gap:2
+               [ text ~value:(reactive Model.toast_message model_source) []
+               ; paragraph
+                   ~value:(reactive Model.toast_description model_source) []
                ]
-           ; toast ~duration:0 ~label:"Changes synced"
-               ~on_dismiss:(press send Model.CloseToasts)
-               [ column ~gap:2
-                   [ text ~value:"Synced" []
-                   ; paragraph
-                       ~value:"Changes are available on every device" []
-                   ]
-               ; button ~variant:`ghost ~text:"Close"
-                   ~on_press:(press send Model.CloseToasts) []
-               ]
+           ; button ~variant:`outline ~text:"Update notification"
+               ~on_press:(press send Model.UpdateToast) []
+           ; button ~variant:`ghost ~text:"Close"
+               ~on_press:(press send Model.CloseToasts) []
            ])
     ; paragraph
-        ~value:"Toasts share one application viewport, pause on interaction, and dismiss by timer or swipe."
+        ~value:"Shows one notification for four seconds. Update keeps the same notification; hover or keyboard focus pauses its timer. Close it, press Escape while focused, or let it expire before showing another."
         []
     ]
 
@@ -1606,10 +1616,12 @@ let combine_section ?(picker_available = false) model_source send : t =
         ~icon:(fun _ -> `file_text)
         ~on_select:(fun item _ -> ignore (send (Model.SelectEnvironment item)))
         ()
-    ; button ~variant:`outline ~text:"Open confirm dialog"
-        ~on_press:(press send Model.OpenCombineDialog) []
-    ; button ~variant:`outline ~text:"Open form sheet"
-        ~on_press:(press send Model.OpenCombineSheet) []
+    ; button_row
+        [ button ~variant:`outline ~text:"Open confirm dialog"
+            ~on_press:(press send Model.OpenCombineDialog) []
+        ; button ~variant:`outline ~text:"Open form sheet"
+            ~on_press:(press send Model.OpenCombineSheet) []
+        ]
     ; if_ ~test:dialog_open_
         (confirm_dialog ~title:"Delete note?"
            ~message:"This cannot be undone." ~destructive:true
@@ -1840,6 +1852,79 @@ let editor_section model_source send : t =
         ]
     ]
 
+(* The event page exposes payloads in the model so every host can verify the
+   same retained subscription and reducer loop, including its native bridge. *)
+let event_payload = function
+  | Press _ -> "press"
+  | PressModifiers (_, modifiers) -> Printf.sprintf "press-modifiers:%d" modifiers
+  | LongPress _ -> "long-press"
+  | DoublePress _ -> "double-press"
+  | Appear _ -> "appear"
+  | TextChanged (_, value) -> "text-changed:" ^ value
+  | Submit _ -> "submit"
+  | ToggleChanged (_, value) -> "toggle-changed:" ^ string_of_bool value
+  | Change _ -> "change"
+  | ValueChanged (_, value) -> Printf.sprintf "value-changed:%.3f" value
+  | Dismiss _ -> "dismiss"
+  | Picked (_, value) -> "picked:" ^ value
+  | (PressDetail (_, detail) | PointerDown (_, detail) | PointerUp (_, detail)
+    | ContextMenuPress (_, detail)) as event ->
+    let name = match event with
+      | PressDetail _ -> "press-detail" | PointerDown _ -> "pointer-down"
+      | PointerUp _ -> "pointer-up" | _ -> "context-menu-press" in
+    Printf.sprintf "%s:%.2f,%.2f:%d:%d:%s" name detail.x detail.y
+      detail.modifiers detail.button detail.target_class
+  | PointerEnter _ -> "pointer-enter"
+  | PointerLeave _ -> "pointer-leave"
+  | Load _ -> "load"
+  | NavigatePrevious _ -> "navigate-previous"
+  | NavigateNext _ -> "navigate-next"
+  | NavigationKey (_, key, shift) ->
+    Printf.sprintf "navigation-key:%s:%b" key shift
+  | ScrollCompleted (_, token, outcome) ->
+    Printf.sprintf "scroll-completed:%d:%s" token outcome
+  | VisibleRange (_, first, last) -> Printf.sprintf "visible-range:%d:%d" first last
+  | ScrollEdges (_, at_start, at_end) -> Printf.sprintf "scroll-edges:%b:%b" at_start at_end
+  | ExtensionEvent (_, identifier, name, _) -> "extension:" ^ identifier ^ ":" ^ name
+
+let event_payloads_section model_source send : t =
+  let record event = ignore (send (Model.RecordEvent (event_payload event))) in
+  let watch identifier properties build : t =
+    fun context parent ->
+      let node = build context parent in
+      Lui_ui.string_property context node AccessibilityIdentifier identifier;
+      List.iter (fun property -> Lui_ui.bool_property context node property true)
+        properties;
+      Lui_ui.on_event context node record;
+      node
+  in
+  section "Event payloads"
+    [ text ~accessibility_identifier:"events-status"
+        ~value:(reactive (fun model -> "Event: " ^ model.Model.event_message) model_source) []
+    ; button_row
+        [ watch "events-button"
+            [ PressEnabled; PointerEnabled; LongPressEnabled; AppearEnabled; NavigateEnabled ]
+            (button ~text:"Inspect event" [])
+        ]
+    ; watch "events-editor" [ ChangeEnabled; SubmitEnabled; NavigateEnabled; PointerEnabled ]
+        (text_field ~text:"Editable event" ~placeholder:"Event input" [])
+    ; watch "events-toggle" [ ToggleEnabled; PointerEnabled ]
+        (checkbox ~text:"Toggle event" [])
+    ; radio_group ~label:"Event radio"
+        [ radio ~accessibility_identifier:"events-radio" ~text:"Radio event"
+            ~on_change:record [] ]
+    ; watch "events-slider" [ ChangeEnabled; PointerEnabled ]
+        (slider ~value:0. ~label:"Event value" [])
+    ; watch "events-list" [ PointerEnabled ]
+        (virtual_list ~overscan:0 ~item_extent:32. ~height:96
+           [ text ~value:"Retained event row" [] ])
+    ; watch "events-row" [ DoublePressEnabled; PointerEnabled ]
+        (list_item ~text:"Double-click event" [])
+    ; watch "events-image" [] (image ~image:0 ~width:32 ~height:32 [])
+    (* Retain the native event target without requesting a file dialog. *)
+    ; watch "events-picker" [] (file_picker [])
+    ]
+
 let view context model_source send : t =
   let sections =
     [ (* Maestro-tested components first, in .maestro/ios-components-interactions.yaml order *)
@@ -1918,18 +2003,21 @@ let view context model_source send : t =
     ; blocks_section model_source send
     ; virtual_list_section model_source send
     ; editor_section model_source send
+    ; event_payloads_section model_source send
     ]
   in
   let sections =
-    match Lui_ui.platform context with
-    | IOS | MacOS ->
+    match Lui_ui.platform context, Lui_ui.host context with
+    | (IOS | MacOS), SwiftUIHost ->
       sections
       @ [
           native_extension_section;
           tweak_section;
           split_panes_section model_source send;
         ]
-    | WebOS -> sections @ [ native_extension_section; tweak_section ]
+    | WebOS, WebHost -> sections @ [ native_extension_section; tweak_section ]
     | _ -> sections
   in
-  column sections
+  match Lui_ui.host context with
+  | GenericHost -> scroll ~grow:1. [ column sections ]
+  | WebHost | SwiftUIHost | KotlinHost -> column sections

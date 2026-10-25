@@ -168,6 +168,8 @@ let register ~(register_named : 'a. string -> 'a -> unit) prefix bridge =
       dispatch_event bridge (VisibleRange (id, first, last)));
   register "scroll_completed" (fun id token outcome ->
       dispatch_event bridge (ScrollCompleted (id, token, outcome)));
+  register "scroll_edges" (fun id at_start at_end ->
+      dispatch_event bridge (ScrollEdges (id, at_start, at_end)));
   register "extension_event" (fun id identifier name json_values ->
       (match bridge.note_extension with
       | Some note -> note name json_values

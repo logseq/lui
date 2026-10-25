@@ -3296,6 +3296,37 @@ let test_json_view_anchor_rect () =
       (fun () -> let session=mount value in drive_dispose session))
     [Lui_json_view.Str "0 0 -1 2";Str "nan 0 1 2";Str "0 0 1";Num 4.]
 
+let test_context_only_leaf_children () =
+  Alcotest.(check bool) "rich table cells keep regular controls" true
+    (Lui_protocol.child_kind_supported Lui_protocol.TableCell Lui_protocol.Button);
+  Alcotest.(check bool) "text fields accept context menus" true
+    (Lui_protocol.child_kind_supported Lui_protocol.TextField Lui_protocol.ContextMenu);
+  Alcotest.(check bool) "text fields reject arbitrary controls" false
+    (Lui_protocol.child_kind_supported Lui_protocol.TextField Lui_protocol.Button)
+
+let test_portable_editor_and_virtual_tuning () =
+  let view _context _source _send =
+    let json = Lui_json_view.Obj
+      [ "kind", Lui_json_view.Str "text-field"
+      ; "text", Lui_json_view.Str "Readable"
+      ; "read-only", Lui_json_view.Bool true
+      ] in
+    Lui_elements.column
+      [ Lui_elements.virtual_list ~overscan:0 ~item_extent:24.
+          [ Lui_elements.text ~value:"Row" [] ]
+      ; Lui_json_view.render ~on_event:(fun ~id:_ ~kind:_ ~fields:_ -> ()) json
+      ]
+  in
+  let s = drive_mount ~initial:() ~reducer:(fun model _ -> model) ~view () in
+  let list = drive_node s (Drive.Model.Kind "virtual-list") in
+  Alcotest.(check bool) "typed zero overscan is retained" true
+    (Hashtbl.find_opt list.Drive.Model.props "overscan" = Some (Lui_protocol.IntValue 0));
+  Alcotest.(check bool) "typed row estimate is retained" true
+    (Hashtbl.find_opt list.Drive.Model.props "item-extent" = Some (Lui_protocol.FloatValue 24.));
+  let editor = drive_node s (Drive.Model.Kind "text-field") in
+  Alcotest.(check bool) "read-only editor contract is retained" true
+    (Hashtbl.find_opt editor.Drive.Model.props "read-only" = Some (Lui_protocol.BoolValue true))
+
 let test_json_view_parse () =
   (* malformed input is rejected wholesale — never a partial mount *)
   Alcotest.(check bool) "trailing junk rejected" true
@@ -4479,6 +4510,8 @@ let () =
             test_json_view_removed_line_break;
           Alcotest.test_case "Link actions" `Quick test_link_action;
           Alcotest.test_case "rich text containers" `Quick test_rich_text_containers;
+          Alcotest.test_case "context-only leaf children" `Quick test_context_only_leaf_children;
+          Alcotest.test_case "portable editor and virtual tuning" `Quick test_portable_editor_and_virtual_tuning;
           Alcotest.test_case "parse edge cases" `Quick test_json_view_parse;
           Alcotest.test_case "rectangle anchors" `Quick test_json_view_anchor_rect;
         ] );

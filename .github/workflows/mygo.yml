@@ -29,9 +29,17 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangocairo-1.0-0 libpangoft2-1.0-0 libcairo2 libfontconfig1 fonts-dejavu-core
       - name: Check generated wire schema
         run: python tooling/generate_mygo_schema.py --check
+      - name: Check contract and support inventory regression tests
+        run: python -m unittest discover -s tooling/test -p 'test_mygo_*.py'
       - name: Backend and rendering tests
         working-directory: platform/mygo
         run: go test -race -count=1 ./...
+      - name: Pinned MyGo menu image bridge regression
+        working-directory: platform/mygo
+        run: go test -race -count=1 -run '^TestContentNativeMenuPreservesOwnedImagesThroughHostSnapshots$' github.com/egoist/mygo
+      - name: Pinned MyGo explicit line-height regressions
+        working-directory: platform/mygo
+        run: go test -race -count=1 -run '^TestLUIExplicitLine' github.com/egoist/mygo/internal/text github.com/egoist/mygo/ui
       - name: Wire fuzz smoke test
         working-directory: platform/mygo
         run: go test -run '^$' -fuzz FuzzApplyJSON -fuzztime 10s
@@ -40,7 +48,11 @@ jobs:
         run: go vet ./...
 
   ocaml-integration:
-    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-26]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -48,5 +60,44 @@ jobs:
           go-version-file: platform/mygo/go.mod
           cache-dependency-path: platform/mygo/go.sum
       - uses: ./.github/actions/setup-lui-ocaml
+      - name: Install headless text dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y libpango-1.0-0 libpangocairo-1.0-0 libpangoft2-1.0-0 libcairo2 libfontconfig1 fonts-dejavu-core
       - name: OCaml reducer, C ABI and native MyGo interaction tests
         run: ./tooling/test_mygo.sh
+
+  native-host-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: platform/mygo/go.mod
+          cache-dependency-path: platform/mygo/go.sum
+      - name: Install native Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-0 libwebkit2gtk-4.1-0 xvfb dbus-x11 libxtst6 libpango-1.0-0 libpangocairo-1.0-0 libpangoft2-1.0-0 libcairo2 libfontconfig1 fonts-dejavu-core fonts-noto-cjk
+      - name: Real GTK window, input, ATK and native services
+        if: runner.os == 'Linux'
+        working-directory: platform/mygo
+        run: xvfb-run -a dbus-run-session -- env GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 go run -race -tags lui_native_smoke ./cmd/lui-mygo-native-smoke -evidence "${{ runner.temp }}/lui-mygo-native-smoke"
+      - name: Real Win32 window, input, UIA and native services
+        if: runner.os == 'Windows'
+        working-directory: platform/mygo
+        run: go run -race -tags lui_native_smoke ./cmd/lui-mygo-native-smoke -evidence "${{ runner.temp }}/lui-mygo-native-smoke"
+      - name: Windows IME document-feed buffer boundaries
+        if: runner.os == 'Windows'
+        working-directory: platform/mygo
+        run: go test -race -count=1 -run '^TestLUIIMERequestDocumentFeedBufferBoundaries$' github.com/egoist/mygo/internal/windows
+      - name: Preserve native host evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mygo-native-${{ runner.os }}
+          path: ${{ runner.temp }}/lui-mygo-native-smoke
+          if-no-files-found: warn

@@ -4369,11 +4369,13 @@ private struct LUIComboboxView: View {
             text: Binding(
                 get: { draftState.text },
                 set: { next in
+                    guard model.property(.readOnly)?.boolValue != true else { return }
                     draftState.edit(next)
                     try? backend.performTextChange(node: model.id, text: next)
                 }
             )
         )
+        .modifier(LUIReadOnlyTextControl(readOnly: model.property(.readOnly)?.boolValue == true))
         .autocorrectionDisabled()
         #if os(iOS)
         .textInputAutocapitalization(.never)
@@ -7226,14 +7228,27 @@ private struct LUIVirtualListView: View {
         }
     }
 
+    private var configuredItemExtent: Double? {
+        if let typed = model.property(.itemExtent)?.doubleValue { return typed }
+        guard let encoded = model.property(.dataAttrs)?.stringValue else { return nil }
+        for record in encoded.split(separator: "\u{1e}") {
+            let pair = record.split(separator: "\u{1f}", maxSplits: 1)
+            if pair.count == 2, pair[0] == "data-item-extent",
+               let extent = Double(pair[1]), extent.isFinite, extent > 0 { return extent }
+        }
+        return nil
+    }
+
     private var sectionRows: SectionRows {
+        let itemExtent = configuredItemExtent
         let titles = model.childData.sectionTitles ?? [:]
         var segments: [SectionRows.Segment] = []
         var total = 0
         var inheritedTitle: String?
         for id in model.visibleChildren {
             let source = backend.model(id: id)
-            let window = LUIVirtualWindow(source?.property(.dataAttrs)?.stringValue)
+            let window = LUIVirtualWindow(source?.property(.dataAttrs)?.stringValue,
+                                          itemExtent: itemExtent)
             var padding: CGFloat = 0
             var tracksHeight = false
             if let window, window.firstSectionCount > 0,
@@ -7286,7 +7301,7 @@ fileprivate struct LUIVirtualWindow {
         return lower > 0 ? sectionTitles[lower - 1].title : nil
     }
 
-    init?(_ encoded: String?) {
+    init?(_ encoded: String?, itemExtent: Double? = nil) {
         guard let encoded else { return nil }
         var attributes: [String: String] = [:]
         for record in encoded.split(separator: "\u{1e}") {
@@ -7309,7 +7324,8 @@ fileprivate struct LUIVirtualWindow {
         pinnedIndex = (0..<count).contains(pinned) ? pinned : nil
         firstSectionCount = min(count, max(0, attributes["data-first-section-count"].flatMap(Int.init) ?? 0))
         firstSectionInset = max(0, attributes["data-first-section-inset"].flatMap(Double.init) ?? 0)
-        extent = max(1, attributes["data-item-extent"].flatMap(Double.init) ?? 32)
+        let legacy = attributes["data-item-extent"].flatMap(Double.init)
+        extent = itemExtent ?? (legacy.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? 32)
     }
 }
 
@@ -7543,6 +7559,7 @@ private struct LUITextControlView: View {
                 field.textFieldStyle(.roundedBorder)
             }
         }
+            .modifier(LUIReadOnlyTextControl(readOnly: model.property(.readOnly)?.boolValue == true))
             .disabled(!model.isEnabled)
             .focused($focused)
             .onSubmit { try? backend.performSubmit(node: model.id) }
@@ -7596,7 +7613,7 @@ private struct LUITextControlView: View {
                     model.property(.placeholder)?.stringValue ?? "",
                     text: binding
                 )
-                if !draftState.text.isEmpty {
+                if !draftState.text.isEmpty && model.property(.readOnly)?.boolValue != true {
                     Button {
                         draftState.edit("")
                         try? backend.performTextChange(node: model.id, text: "")
@@ -7625,7 +7642,7 @@ private struct LUITextControlView: View {
                 model.property(.placeholder)?.stringValue ?? "",
                 text: binding
             )
-            if !draftState.text.isEmpty {
+            if !draftState.text.isEmpty && model.property(.readOnly)?.boolValue != true {
                 Button {
                     draftState.edit("")
                     try? backend.performTextChange(node: model.id, text: "")
@@ -7643,6 +7660,7 @@ private struct LUITextControlView: View {
         Binding(
             get: { draftState.text },
             set: { next in
+                guard model.property(.readOnly)?.boolValue != true else { return }
                 draftState.edit(next)
                 try? backend.performTextChange(node: model.id, text: next)
             }
@@ -7689,6 +7707,7 @@ private struct LUISearchableNodeModifier: ViewModifier {
                     text: Binding(
                         get: { draft.text },
                         set: { next in
+                            guard model.property(.readOnly)?.boolValue != true else { return }
                             draft.edit(next)
                             try? backend.performTextChange(node: model.id, text: next)
                         }
@@ -7696,6 +7715,8 @@ private struct LUISearchableNodeModifier: ViewModifier {
                     isPresented: $presented,
                     prompt: Text(verbatim: model.property(.placeholder)?.stringValue ?? "")
                 )
+                .modifier(LUIReadOnlyTextControl(readOnly: model.property(.readOnly)?.boolValue == true,
+                                               nativeSearch: true))
                 .onSubmit(of: .search) {
                     try? backend.performSubmit(node: model.id)
                 }

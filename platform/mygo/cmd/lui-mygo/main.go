@@ -32,6 +32,7 @@ func run() error {
 		return fmt.Errorf("width and height must be positive")
 	}
 	b := luimygo.New(luimygo.Config{})
+	defer b.Close()
 	r, err := luimygo.OpenRuntime(*library, b)
 	if err != nil {
 		return err

@@ -278,6 +278,9 @@ enum LUIProperty: String, Decodable, Hashable {
     case checkedIndicatorBorderColor = "checked-indicator-border-color"
     case collisionPadding = "collision-padding"
     case lineClamp = "line-clamp"
+    case readOnly = "read-only"
+    case overscan = "overscan"
+    case itemExtent = "item-extent"
 }
 
 enum LUISchemaMatrix {
@@ -315,5 +318,12 @@ enum LUISchemaMatrix {
         .dropdownMenu: [.collisionPadding],
         .tooltip: [.collisionPadding],
         .switchControl: [.foreground],
+        .virtualList: [.overscan, .itemExtent],
+        .textField: [.readOnly],
+        .secureField: [.readOnly],
+        .input: [.readOnly],
+        .searchField: [.readOnly],
+        .textarea: [.readOnly],
+        .combobox: [.readOnly],
     ]
 }

@@ -10,6 +10,21 @@ Tech Stack: OCaml, the shared LUI JSON/C protocol, Go, MyGo, MyGo Tester, the ex
 
 Related: Builds on [003-mygo-capabilities_report.md](003-mygo-capabilities_report.md), the canonical [component schema](../../schema/components.json) and [public element API](../../src/lui_elements.mli).
 
+## Execution status
+
+Implementation branch `feat/mygo-component-parity`, based on merged PR #271.
+The current validation results and complete Gallery recording are linked from [PR #273](https://github.com/logseq/lui/pull/273).
+Native OCaml rendering and Metal/GPU work are excluded by the user's updated scope; the OCaml-to-MyGo application bridge remains in scope.
+
+| Phase | Status | Evidence |
+| --- | --- | --- |
+| 1 | Implemented and verified | Behavioral acceptance committed in `7b2bb596`; exact canonical kind/property/child/event export, per-feature support inventory and generator rejection tests are implemented. Public typed virtual-list tuning and read-only editors are documented in the migration guide. |
+| 2 | Qualified | OCaml 5.5 startup signal-stack ownership defect fixed in `36d0b843`. Both the previous pin and MyGo 0.6.4/Go 1.27.3 passed 20 fresh processes for each real application, three sessions per process, with profiling/preemption and pending signals: 80 processes total, no retries. The final integration runner also passed 40 fresh processes and 120 sessions on the pinned fork. The compatibility runtime preserves the upstream module identity and is pinned through a Go replacement to `logseq/mygo`; embedding applications copy that replacement. Third-party sources are excluded from LUI commits. |
+| 3–8 | Implemented and verified | All standard kinds have built-in adapters. Family tests cover real layout, input, pixels, resource ownership, controlled no-patch rejection, menus, file previews and cancellation. Core OCaml 172, Swift 188, Android 41 and Web 156 regression tests passed; shared-schema checks passed. |
+| 9 | Implemented; CI results linked from PR | Real Todos and all 25 Components event families pass with race checks. Real Gallery scrolling, conditional updates, modal dismissal, menu selection and resync pass. macOS native window/IME/NSAccessibility API and OS dialog cancellation checks passed. Real GTK/Win32 windows, native composition callbacks, ATK/UIA roles/actions, menu images/selection and file-dialog cancellation passed; audible screen readers and keyboard candidate UI remain outside the recorded API-level checks. CI includes headless macOS/Linux/Windows and real Linux/macOS OCaml integration. Full local race/oracle/integration/startup regression passed. The complete 76-section Gallery recording is embedded and playback-verified in PR #273; the three-host Go race/fuzz/vet and real Linux/Windows native smoke jobs passed. The current PR checks publish the final OCaml integration/startup results. |
+
+Frozen decisions: automatic activation for ordinary tabs; bottom tabs own selected-page visibility; scroll outcomes `succeeded`, `cancelled`, `missing-target`; typed `overscan` and `item-extent` override legacy semantic attributes; read-only editors preserve focus/copy/navigation; registered image/media frames copy caller pixels and use positive resource IDs.
+
 ## Problem statement
 
 The existing backend accepts many standard kinds but does not implement their complete properties, child contracts or interactions.
@@ -338,6 +353,7 @@ Add runner checks that fail if its required library variable is absent, while pr
 | Layout and performance | True fitting/overlay geometry, bounded virtual construction work and no quadratic collection update paths. |
 | Host qualification | Passing desktop matrix and recorded live-service, IME and accessibility checks for each claimed platform. |
 | User review | Visible GitHub usage instructions, reproducible tests and an accurate PR support summary. |
+| Recorded demo | A complete Gallery demo recorded after completion, linked or embedded in the created PR description, covering component families and representative interactions. |
 
 ## Testing Details
 

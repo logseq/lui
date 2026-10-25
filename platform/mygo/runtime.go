@@ -11,6 +11,13 @@ import (
 )
 
 type nativeFunctions struct {
+	pointer         map[string]func(int64, float64, float64, int32, int32, string, int32) int32
+	picked          func(int64, string, int32) int32
+	visibleRange    func(int64, int64, int64) int32
+	scrollCompleted func(int64, int64, string) int32
+	scrollEdges     func(int64, int32, int32) int32
+	navigationKey   func(int64, string, int32, int32) int32
+
 	pressEx      func(int64, int32) int32
 	start        func(uintptr, int32, int32) int32
 	stop, resync func() int32
@@ -127,9 +134,20 @@ func (w *runtimeWorker) load(path string) error {
 		"press": "press", "long-press": "long_press", "submit": "submit", "dismiss": "dismiss",
 		"double-press": "double_press", "appear": "appear", "change": "radio_changed",
 		"pointer-enter": "pointer_enter", "pointer-leave": "pointer_leave", "load": "load",
+		"navigate-previous": "navigate_previous", "navigate-next": "navigate_next",
 	}
-	f := nativeFunctions{node: map[string]func(int64) int32{}}
+	f := nativeFunctions{node: map[string]func(int64) int32{}, pointer: map[string]func(int64, float64, float64, int32, int32, string, int32) int32{}}
 	bindings := map[string]any{"press_ex": &f.pressEx, "start": &f.start, "stop": &f.stop, "resync": &f.resync, "text_changed_utf8": &f.text, "toggle_changed": &f.toggle, "slider_changed": &f.value, "extension_event_utf8": &f.extension}
+	bindings["picked_utf8"] = &f.picked
+	bindings["visible_range"] = &f.visibleRange
+	bindings["scroll_completed"] = &f.scrollCompleted
+	bindings["scroll_edges"] = &f.scrollEdges
+	bindings["navigation_key_utf8"] = &f.navigationKey
+	pointerNames := map[string]string{"press-detail": "press_detail_utf8", "pointer-down": "pointer_down_utf8", "pointer-up": "pointer_up_utf8", "context-menu-press": "context_menu_press_utf8"}
+	for _, suffix := range pointerNames {
+		var fn func(int64, float64, float64, int32, int32, string, int32) int32
+		bindings[suffix] = &fn
+	}
 	for _, suffix := range names {
 		var fn func(int64) int32
 		bindings[suffix] = &fn
@@ -150,6 +168,9 @@ func (w *runtimeWorker) load(path string) error {
 	}
 	for event, suffix := range names {
 		f.node[event] = *bindings[suffix].(*func(int64) int32)
+	}
+	for event, suffix := range pointerNames {
+		f.pointer[event] = *bindings[suffix].(*func(int64, float64, float64, int32, int32, string, int32) int32)
 	}
 	w.callback = purego.NewCallback(func(ptr unsafe.Pointer) { w.pending = append(w.pending, cString(ptr)) })
 	w.functions = f
@@ -197,6 +218,9 @@ func (r *Runtime) invoke(fn func(nativeFunctions) int32) ([]string, error) {
 	return batches, err
 }
 func (r *Runtime) Dispatch(e Event) error {
+	if err := validateEvent(e); err != nil {
+		return err
+	}
 	// Encode extension values before entering native code, preserving UTF-8 and
 	// embedded NULs through the length-carrying ABI.
 	payload, err := extensionPayload(e)
@@ -206,6 +230,18 @@ func (r *Runtime) Dispatch(e Event) error {
 	var unknown bool
 	batches, err := r.invoke(func(f nativeFunctions) int32 {
 		switch e.Kind {
+		case "press-detail", "pointer-down", "pointer-up", "context-menu-press":
+			return f.pointer[e.Kind](e.Node, e.X, e.Y, e.Modifiers, e.Button, e.TargetClass, int32(len(e.TargetClass)))
+		case "picked":
+			return f.picked(e.Node, e.Payload, int32(len(e.Payload)))
+		case "visible-range":
+			return f.visibleRange(e.Node, e.First, e.Last)
+		case "scroll-completed":
+			return f.scrollCompleted(e.Node, e.Token, e.Outcome)
+		case "scroll-edges":
+			return f.scrollEdges(e.Node, nativeBool(e.AtStart), nativeBool(e.AtEnd))
+		case "navigation-key":
+			return f.navigationKey(e.Node, e.Key, int32(len(e.Key)), nativeBool(e.Shift))
 		case "press-modifiers":
 			return f.pressEx(e.Node, e.Modifiers)
 		case "text-changed":
@@ -269,4 +305,11 @@ func (r *Runtime) Close() error {
 		return err
 	}
 	return r.receive(batches, false)
+}
+
+func nativeBool(value bool) int32 {
+	if value {
+		return 1
+	}
+	return 0
 }

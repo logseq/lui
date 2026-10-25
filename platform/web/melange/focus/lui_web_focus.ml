@@ -529,35 +529,38 @@ let element_direction renderer element =
   | None -> "ltr"
 
 let refresh_horizontal_group_roving renderer node kind =
-  let all_children = horizontal_all_focus_children renderer node kind in
-  let children = horizontal_focus_children renderer node kind in
-  let document =
-    W.Document.unsafeAsHtmlDocument renderer.web_document
-  in
-  let focused_index =
-    match W.HtmlDocument.activeElement document with
-    | Some focused -> focused_child_index renderer children focused
-    | None -> None
-  in
-  let target =
-    match focused_index with
-    | Some index -> index
-    | None ->
-        (match horizontal_tab_stop_index renderer children with
-         | Some index -> index
-         | None -> 0)
-  in
-  List.iter
-    (fun child ->
-       W.Element.setAttribute "tabindex" "-1"
-         (Lui_web_nodes.dom_node renderer child))
-    all_children;
-  (match children with
-   | [] -> ()
-   | _ ->
-       W.Element.setAttribute "tabindex" "0"
-         (Lui_web_nodes.dom_node renderer (List.nth children target)));
-  true
+  if Store.node_has_ancestor_kind renderer.web_store node Toolbar then true
+  else begin
+    let all_children = horizontal_all_focus_children renderer node kind in
+    let children = horizontal_focus_children renderer node kind in
+    let document =
+      W.Document.unsafeAsHtmlDocument renderer.web_document
+    in
+    let focused_index =
+      match W.HtmlDocument.activeElement document with
+      | Some focused -> focused_child_index renderer children focused
+      | None -> None
+    in
+    let target =
+      match focused_index with
+      | Some index -> index
+      | None ->
+          (match horizontal_tab_stop_index renderer children with
+           | Some index -> index
+           | None -> 0)
+    in
+    List.iter
+      (fun child ->
+         W.Element.setAttribute "tabindex" "-1"
+           (Lui_web_nodes.dom_node renderer child))
+      all_children;
+    (match children with
+     | [] -> ()
+     | _ ->
+         W.Element.setAttribute "tabindex" "0"
+           (Lui_web_nodes.dom_node renderer (List.nth children target)));
+    true
+  end
 
 let refresh_horizontal_group_roving_bang = refresh_horizontal_group_roving
 

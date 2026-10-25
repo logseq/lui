@@ -72,13 +72,18 @@ func (b *Backend) scopeTheme(c *ui.Context, n Node) func() {
 		return func() {}
 	}
 	slots := map[string]*ui.Color{"primary": &next.Accent, "primary-foreground": &next.AccentText, "background": &next.Background, "foreground": &next.Text, "muted": &next.Surface, "muted-foreground": &next.TextMuted, "border": &next.Border, "destructive": &next.Danger}
-	for name, slot := range slots {
-		if value := tokenValue(b.tokens[name], next.Dark); value != "" {
-			if validHex(value) {
-				*slot = ui.Hex(value)
-			}
+
+	c.SetTheme(&next)
+	resolved := map[string]ui.Color{}
+	for name := range slots {
+		if tokenValue(b.tokens[name], next.Dark) != "" {
+			resolved[name] = b.color(c, name)
 		}
 	}
+	for name, color := range resolved {
+		*slots[name] = color
+	}
+
 	c.SetTheme(&next)
 	return func() { b.tokens = oldTokens; c.SetTheme(oldTheme) }
 }

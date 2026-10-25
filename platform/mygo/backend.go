@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -53,15 +54,29 @@ func (n Node) clone() Node {
 }
 
 type Event struct {
-	Kind       string         `json:"kind"`
-	Node       int64          `json:"node"`
-	Text       string         `json:"text,omitempty"`
-	Checked    bool           `json:"checked,omitempty"`
-	Value      float64        `json:"value,omitempty"`
-	Modifiers  int32          `json:"modifiers,omitempty"`
-	Identifier string         `json:"identifier,omitempty"`
-	Name       string         `json:"name,omitempty"`
-	Values     map[string]any `json:"values,omitempty"`
+	Kind        string         `json:"kind"`
+	Node        int64          `json:"node"`
+	Text        string         `json:"text,omitempty"`
+	Checked     bool           `json:"checked,omitempty"`
+	Value       float64        `json:"value,omitempty"`
+	Modifiers   int32          `json:"modifiers,omitempty"`
+	Identifier  string         `json:"identifier,omitempty"`
+	Name        string         `json:"name,omitempty"`
+	Values      map[string]any `json:"values,omitempty"`
+	X           float64        `json:"x,omitempty"`
+	Y           float64        `json:"y,omitempty"`
+	Button      int32          `json:"button,omitempty"`
+	TargetClass string         `json:"target-class,omitempty"`
+	Token       int64          `json:"token,omitempty"`
+	Outcome     string         `json:"outcome,omitempty"`
+	First       int64          `json:"first"`
+	Last        int64          `json:"last"`
+	AtStart     bool           `json:"at-start"`
+	AtEnd       bool           `json:"at-end"`
+	Key         string         `json:"key,omitempty"`
+	Shift       bool           `json:"shift,omitempty"`
+	Payload     string         `json:"payload,omitempty"`
+	incarnation uint64
 }
 
 // Renderer builds a custom control, calling children within its container.
@@ -73,30 +88,48 @@ type Extension struct {
 	Render      Renderer
 }
 type Config struct {
+	FileServices FileServices
+	// Dispatch synchronously delivers a model-owned interaction proposal.
+	// Apply accepted or normalized property updates before returning. If the
+	// controlled property is unchanged, the native proposal is rejected.
 	Dispatch   func(Event) error
 	Extensions map[string]Extension
-	// Renderers overrides a standard kind, or supplies a resource-backed kind.
+	// Renderers deliberately overrides built-in standard component behavior.
 	Renderers map[string]Renderer
 }
 type controlState struct {
+	collection        collectionState
+	layout            layoutState
+	pressedAt         time.Time
+	longPressFired    bool
+	lastPointer       Event
 	text              string
 	checked           bool
 	value             float64
 	appeared, focused bool
 	identity          uint64
+	handle            ui.Handle
+	resource          nodeResourceState
+	hovered           bool
 	scroll            ui.ScrollState
 }
 type Backend struct {
-	config       Config
-	nodes        map[int64]Node
-	generation   int64
-	states       map[int64]*controlState
-	err          error
-	nextIdentity uint64
-	building     bool
-	queued       []Event
-	tokens       map[string]any
-	systemTheme  *ui.Theme
+	closed            bool
+	files             fileStore
+	config            Config
+	nodes             map[int64]Node
+	generation        int64
+	states            map[int64]*controlState
+	err               error
+	nextIdentity      uint64
+	building          bool
+	probing           bool
+	queued            []Event
+	widgets           map[int64]*widgetState
+	resources         resourceStore
+	widgetToastsBuilt bool
+	tokens            map[string]any
+	systemTheme       *ui.Theme
 }
 
 func New(config Config) *Backend {
@@ -123,6 +156,21 @@ func (b *Backend) Generation() int64 { return b.generation }
 
 // Err reports the first asynchronous event-dispatch failure.
 func (b *Backend) Err() error { return b.err }
+
+// Close releases node services and registered host resources. Call it on the
+// UI goroutine after closing the OCaml session; repeated calls are harmless.
+func (b *Backend) Close() {
+	if b.closed {
+		return
+	}
+	b.closed = true
+	b.closeFiles()
+	b.closeResources()
+	b.resetWidgets()
+	clear(b.nodes)
+	clear(b.states)
+	b.queued = nil
+}
 func (b *Backend) ApplyJSON(data []byte, snapshot bool) error {
 	batch, err := DecodeBatch(data)
 	if err != nil {
@@ -136,6 +184,9 @@ func (b *Backend) ApplyJSON(data []byte, snapshot bool) error {
 func (b *Backend) ApplySnapshot(batch Batch) error { return b.apply(batch, true) }
 func (b *Backend) ApplyBatch(batch Batch) error    { return b.apply(batch, false) }
 func (b *Backend) apply(batch Batch, snapshot bool) error {
+	if b.closed {
+		return fmt.Errorf("lui: backend is closed")
+	}
 	if batch.Generation < 1 || (!snapshot && batch.Generation != b.generation+1) {
 		return fmt.Errorf("lui: expected generation %d, received %d", b.generation+1, batch.Generation)
 	}
@@ -159,27 +210,48 @@ func (b *Backend) apply(batch Batch, snapshot bool) error {
 			b.nodes[id] = n.clone()
 		}
 	}
+	rollback := func() {
+		if snapshot {
+			b.nodes = oldNodes
+			return
+		}
+		for id, n := range previous {
+			if existed[id] {
+				b.nodes[id] = n
+			} else {
+				delete(b.nodes, id)
+			}
+		}
+	}
 	for i, op := range batch.Ops {
 		if err := b.applyOp(op, touch, retired); err != nil {
-			if snapshot {
-				b.nodes = oldNodes
-			} else {
-				for id, n := range previous {
-					if existed[id] {
-						b.nodes[id] = n
-					} else {
-						delete(b.nodes, id)
-					}
-				}
-			}
+			rollback()
 			return fmt.Errorf("lui: operation %d (%s): %w", i, op.Op, err)
+		}
+	}
+	// Validate complete final contracts, permitting arbitrary property order and
+	// transient incompleteness within one atomic wire batch.
+	for id := range previous {
+		n, exists := b.nodes[id]
+		if !exists || n.Kind == "extension" {
+			continue
+		}
+		if err := validateNode(n); err != nil {
+			rollback()
+			return fmt.Errorf("lui: node %d (%s): %w", id, n.Kind, err)
 		}
 	}
 	b.generation = batch.Generation
 	if snapshot {
+		b.resetFiles()
+		b.resetResources()
+		b.resetWidgets()
 		b.states = map[int64]*controlState{}
 	} else {
 		for id := range retired {
+			b.retireFile(id)
+			b.retireResource(id)
+			b.retireWidget(id)
 			delete(b.states, id)
 		}
 	}
@@ -264,6 +336,9 @@ func (b *Backend) applyOp(op Operation, touch func(int64), retired map[int64]boo
 			if _, ok := wireProperties[op.Property]; !ok {
 				return fmt.Errorf("unknown property %q", op.Property)
 			}
+			if !propertySupported(n.Kind, op.Property) {
+				return fmt.Errorf("property %q is unsupported on %s", op.Property, n.Kind)
+			}
 		}
 		setting := op.Op == "set-prop" || op.Op == "set-extension-prop"
 		if setting {
@@ -296,8 +371,11 @@ func (b *Backend) applyOp(op Operation, touch func(int64), retired map[int64]boo
 		index := slices.Index(p.Children, op.Child)
 		switch op.Op {
 		case "insert-child":
-			if !wireKinds[p.Kind] && p.Kind != "extension" {
-				return fmt.Errorf("kind %s cannot contain children", p.Kind)
+			if p.Kind != "extension" && ch.Kind != "extension" && !childKindSupported(p.Kind, ch.Kind) {
+				return fmt.Errorf("kind %s cannot contain %s", p.Kind, ch.Kind)
+			}
+			if p.Kind != "extension" && ch.Kind == "extension" && !wireKinds[p.Kind] {
+				return fmt.Errorf("kind %s cannot contain extensions", p.Kind)
 			}
 			if ch.Parent != 0 || index >= 0 {
 				return fmt.Errorf("child already attached")
