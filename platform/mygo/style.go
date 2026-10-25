@@ -1,6 +1,7 @@
 package luimygo
 
 import (
+	"fmt"
 	"github.com/egoist/mygo/ui"
 	"math"
 	"strconv"
@@ -334,59 +335,88 @@ func length(s string) float32 {
 	return float32(v * mult)
 }
 func (b *Backend) color(c *ui.Context, s string) ui.Color {
-	for i := 0; i < 8; i++ {
-		resolved := tokenValue(b.tokens[s], c.Theme().Dark)
-		if resolved == "" || resolved == s {
-			break
+	color, err := b.ResolveColor(c, s)
+	if err != nil {
+		return c.Theme().Text
+	}
+	return color
+}
+
+// ResolveColor uses the same current scoped tokens as standard typed paint
+// properties. Call from a renderer while building; do not retain Context.
+// Unlike the internal legacy paint fallback, an unresolved value is an error.
+func (b *Backend) ResolveColor(c *ui.Context, s string) (ui.Color, error) {
+	original := s
+	lookup := themeVariableLookup(nil, func(name string) (string, bool) {
+		value, ok := b.tokens[name]
+		return tokenValue(value, c.Theme().Dark), ok
+	})
+	seen := map[string]bool{}
+	for {
+		s = strings.TrimSpace(s)
+		if seen[s] {
+			return ui.Color{}, fmt.Errorf("lui: cyclic color token %q", original)
 		}
-		s = resolved
+		seen[s] = true
+		value, valid := substituteThemeValue(s, lookup)
+		if !valid {
+			return ui.Color{}, fmt.Errorf("lui: unresolved color variables in %q", original)
+		}
+		s = strings.TrimSpace(value)
+		if resolved := tokenValue(b.tokens[s], c.Theme().Dark); resolved != "" {
+			s = resolved
+			continue
+		}
+		break
 	}
 	if parsed, ok := styleColor(s); ok {
-		return parsed
+		return parsed, nil
 	}
 	t := c.Theme()
+	var color ui.Color
 	switch s {
 	case "primary", "accent":
-		return t.Accent
+		color = t.Accent
 	case "primary-foreground":
-		return t.AccentText
+		color = t.AccentText
 	case "background":
-		return t.Background
+		color = t.Background
 	case "foreground", "card-foreground", "secondary-foreground", "accent-foreground":
-		return t.Text
+		color = t.Text
 	case "card":
-		return t.Background
+		color = t.Background
 	case "muted", "secondary":
-		return t.Surface
+		color = t.Surface
 	case "muted-foreground":
-		return t.TextMuted
+		color = t.TextMuted
 	case "border":
-		return t.Border
+		color = t.Border
 	case "destructive", "danger", "error-foreground":
-		return t.Danger
+		color = t.Danger
 	case "destructive-foreground":
-		return t.AccentText
+		color = t.AccentText
 	case "success":
-		return t.Success.Alpha(.15)
+		color = t.Success.Alpha(.15)
 	case "success-foreground":
-		return t.Success
+		color = t.Success
 	case "warning":
-		return t.Warning.Alpha(.15)
+		color = t.Warning.Alpha(.15)
 	case "warning-foreground":
-		return t.Warning
+		color = t.Warning
 	case "error":
-		return t.Danger.Alpha(.15)
+		color = t.Danger.Alpha(.15)
 	case "input":
-		return t.Border
+		color = t.Border
 	case "ring":
-		return t.Focus
+		color = t.Focus
 	case "glass-fallback":
-		return ui.Transparent
+		color = ui.Transparent
 	case "transparent":
-		return ui.Transparent
+		color = ui.Transparent
 	default:
-		return t.Text
+		return ui.Color{}, fmt.Errorf("lui: unknown color %q", original)
 	}
+	return color, nil
 }
 
 func (b *Backend) applyShadow(c *ui.Context, e ui.Element, value string) {

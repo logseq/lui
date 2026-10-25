@@ -14,6 +14,46 @@ covered separately.
 
 ## Unreleased: component API and MyGo parity
 
+### MyGo host theme defaults and authored variables
+
+Embedding hosts can install per-window defaults with
+`Backend.SetThemeDefaults(map[string]string)` between frames on the UI goroutine.
+The map is copied and replaces previous host defaults; `nil` clears it. These
+defaults do not change model-owned nodes or emit patches. Scoped `theme` props
+override them only inside that subtree. Native widget semantic slots now use
+the same defaults as explicit typed paint properties, including focus/status
+colors. No application migration is required when host defaults are unused.
+
+`ComputeThemeVariables(parent, declarations)` computes custom properties before
+inheritance, invalidates cycles (including unused fallback references), and
+handles `initial`, `inherit` and `unset`. `ResolveThemeValue(value, computed)`
+substitutes nested `var()` expressions and empty fallbacks. These APIs process
+declarations, not selectors, layout, utility classes or a stylesheet cascade.
+Hosts must supply their authored palette and application layers explicitly.
+
+Custom renderers can call `Backend.ResolveColor(context, value)` during their
+build to use the current scoped tokens, adaptive colors and functional CSS
+colors. Unknown values/cycles return an error rather than a successful default.
+The existing internal fallback for unresolved standard paint values is unchanged.
+
+### MyGo document input capture
+
+Hosts can install `ui.Context.CaptureInput` once per view build and resolve its
+opaque target with `Backend.InputNode`. This matches the actual committed focus
+or hit ancestry, including internal children of standard controls and extension
+elements registered with `BindHostElement`; it never infers targets from boxes.
+The resulting `InputNode.Node` is a snapshot. Check `InputNode.Current()` before
+using a saved press or deferred event: removing and remounting the same numeric
+node ID invalidates it. Use only on the UI thread. The MyGo target itself expires
+as soon as its capture callback returns.
+
+This API needs MyGo's public `CaptureInput`/`InputTarget.Distance` API. Hosts must
+update that dependency alongside this change. Existing element input callbacks
+continue to run unless capture returns true. Observational capture must return
+false so focused controls retain editing, IME, clipboard and native menu commands.
+Do not also forward the same DOM event from a local extension handler: dispatch
+once through the application's existing document capture/bubble implementation.
+
 ### Nested toolbar focus ownership
 
 On Web, a toolbar owns one keyboard Tab stop across its nested button and toggle
@@ -230,6 +270,24 @@ if err := backend.BindHostElement(node.ID, element); err != nil {
 Standard nodes are already bound. Existing extension renderer signatures and
 wire schemas do not change. No model-controlled text/selection is mutated by
 these services; editors must obtain source and selection from their model.
+
+## MyGo committed text geometry
+
+`Backend.TextGeometry(context, nodeID)` exposes the retained text actually
+painted by MyGo, including a text node's range in a rich inline paragraph.
+Use it after layout (`Context.AfterFrame`) or between frames on the UI thread.
+It returns `(ui.CommittedText, bool)`: missing, hidden, unmounted, closed or
+patched-but-not-committed nodes report false. The value expires at the next
+MyGo build; every query then reports false. Do not retain it across builds.
+
+`Text`, `Caret`, `SelectionRects`, `IndexAt` and `Lines` use rune offsets
+relative to the bound text node, and window-space DIPs including scrolling
+and transforms. Applications with UTF-8 byte or UTF-16 model offsets must
+convert at their own boundary, and map atomic/decorative runs explicitly.
+The API never shapes a second approximation or owns an editable document.
+Requires MyGo's public `Handle.TextGeometry` / `CommittedText` API.
+`Backend.CommittedBounds(context, nodeID)` follows the same generation guard
+and reports the transformed window-space box for non-text container origins.
 
 ## Upgrade checks for application maintainers
 
