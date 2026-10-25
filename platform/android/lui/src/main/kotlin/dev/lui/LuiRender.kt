@@ -51,6 +51,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.semantics.testTagsAsResourceId
@@ -208,6 +211,10 @@ internal fun Modifier.luiChrome(node: LuiNodeLike): Modifier {
         if (opacity < 1) modifier = modifier.alpha(opacity.toFloat())
     }
     val identifier = node.propString("accessibility-identifier")
+    when (node.propString("role")) {
+        "navigation" -> modifier = modifier.semantics { role = Role.Tab }
+        "navigation-heading" -> modifier = modifier.semantics { heading() }
+    }
     val label = node.propString("accessibility-label")
     if (identifier != null || label != null) {
         // Dialogs and sheets own separate semantics roots, so the activity's

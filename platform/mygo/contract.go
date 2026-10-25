@@ -50,6 +50,30 @@ func propertySupported(kind, property string) bool { return contractKindProperti
 func childKindSupported(parent, child string) bool { return contractKindChildren[parent][child] }
 func eventSupported(kind, event string) bool       { return contractKindEvents[kind][event] }
 
+func contract_virtual_indices_of_string(value string) bool {
+	_, ok := parseVirtualIndices(value)
+	return ok
+}
+
+func parseVirtualIndices(value string) ([]int, bool) {
+	if len(value) < 2 || value[0] != '[' || value[len(value)-1] != ']' {
+		return nil, false
+	}
+	var indices []int
+	if json.Unmarshal([]byte(value), &indices) != nil {
+		return nil, false
+	}
+	previous := -1
+	for _, index := range indices {
+		if index <= previous || int64(index) > (1<<62)-1 {
+			return nil, false
+		}
+		previous = index
+	}
+	canonical, err := json.Marshal(indices)
+	return indices, err == nil && string(canonical) == value
+}
+
 func propertyValueSupported(kind, property string, value any) bool {
 	v := contractValue(value)
 	// Go's JSON decoder preserves integer syntax; a canonical floating property
@@ -71,6 +95,43 @@ func validateNode(n Node) error {
 	}
 	if !contract_node_properties_supported(n.Kind, n.Props) {
 		return fmt.Errorf("lui: invalid final properties for %s node %d", n.Kind, n.ID)
+	}
+	return nil
+}
+
+func validateVirtualSource(n Node) error {
+	if n.Kind != "virtual-list" {
+		return nil
+	}
+	_, countPresent := n.Props["virtual-total-count"]
+	_, generationPresent := n.Props["virtual-generation"]
+	_, indicesPresent := n.Props["virtual-indices"]
+	_, targetPresent := n.Props["virtual-scroll-index"]
+	if !countPresent && !generationPresent && !indicesPresent && !targetPresent {
+		return nil
+	}
+	invalid := func() error { return fmt.Errorf("lui: inconsistent virtual source on node %d", n.ID) }
+	if !countPresent || !generationPresent || !indicesPresent {
+		return invalid()
+	}
+	indices, ok := parseVirtualIndices(n.String("virtual-indices"))
+	if !ok || len(indices) != len(n.Children) {
+		return invalid()
+	}
+	count, ok := integer(n.Props["virtual-total-count"])
+	if !ok {
+		return invalid()
+	}
+	for _, index := range indices {
+		if int64(index) >= count {
+			return invalid()
+		}
+	}
+	if targetPresent {
+		target, ok := integer(n.Props["virtual-scroll-index"])
+		if !ok || target >= count {
+			return invalid()
+		}
 	}
 	return nil
 }

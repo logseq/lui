@@ -7,6 +7,10 @@ import SwiftUI
 
 private typealias PatchCallback = @convention(c) (UnsafePointer<CChar>?) -> Void
 private typealias StartFunction = @convention(c) (PatchCallback?, Int32, Int32) -> Int32
+private typealias VirtualRowsVersionFunction = @convention(c) () -> Int32
+private typealias VirtualWindowFunction = @convention(c) (Int64, Int64, Int64, Int64, UnsafePointer<Int64>?, Int32) -> Int32
+private typealias VisibleRangeFunction = @convention(c) (Int64, Int64, Int64) -> Int32
+private typealias ScrollCompletedFunction = @convention(c) (Int64, Int64, UnsafePointer<CChar>?) -> Int32
 private typealias StopFunction = @convention(c) () -> Int32
 private typealias AppearFunction = @convention(c) (Int64) -> Int32
 private typealias PressFunction = @convention(c) (Int64) -> Int32
@@ -81,6 +85,10 @@ private func luiExtensionValuesJSON(_ values: [String: LUIExtensionValue]) -> St
 @MainActor
 private final class NativeSplitRuntime {
     private let handle: UnsafeMutableRawPointer
+    private let nativeHostCode: Int32
+    private let virtualWindowFunction: VirtualWindowFunction?
+    private let visibleRangeFunction: VisibleRangeFunction?
+    private let scrollCompletedFunction: ScrollCompletedFunction?
     private let startFunction: StartFunction
     private let stopFunction: StopFunction
     private let appearFunction: AppearFunction
@@ -107,6 +115,19 @@ private final class NativeSplitRuntime {
             throw RuntimeError(String(cString: dlerror()))
         }
         self.handle = handle
+        let version = dlsym(handle, "lui_ocaml_virtual_rows_version").map {
+            unsafeBitCast($0, to: VirtualRowsVersionFunction.self)()
+        } ?? 0
+        virtualWindowFunction = dlsym(handle, "lui_ocaml_virtual_window").map {
+            unsafeBitCast($0, to: VirtualWindowFunction.self)
+        }
+        nativeHostCode = version == 1 && virtualWindowFunction != nil ? 258 : 2
+        visibleRangeFunction = dlsym(handle, "lui_ocaml_visible_range").map {
+            unsafeBitCast($0, to: VisibleRangeFunction.self)
+        }
+        scrollCompletedFunction = dlsym(handle, "lui_ocaml_scroll_completed").map {
+            unsafeBitCast($0, to: ScrollCompletedFunction.self)
+        }
         startFunction = try Self.load("lui_ocaml_start", from: handle)
         stopFunction = try Self.load("lui_ocaml_stop", from: handle)
         appearFunction = try Self.load("lui_ocaml_appear", from: handle)
@@ -130,13 +151,28 @@ private final class NativeSplitRuntime {
     }
 
     func start() throws {
-        guard startFunction(receivePatch, 1, 2) == 1 else {
+        guard startFunction(receivePatch, 1, nativeHostCode) == 1 else {
             throw RuntimeError("LUI Split initialization failed")
         }
     }
 
     func stop() {
         _ = stopFunction()
+    }
+
+    func virtualWindow(node: Int, generation: Int, first: Int, last: Int, pins: [Int]) {
+        let ids = pins.map(Int64.init)
+        ids.withUnsafeBufferPointer {
+            _ = virtualWindowFunction?(Int64(node), Int64(generation), Int64(first), Int64(last), $0.baseAddress, Int32($0.count))
+        }
+    }
+
+    func visibleRange(node: Int, first: Int, last: Int) {
+        _ = visibleRangeFunction?(Int64(node), Int64(first), Int64(last))
+    }
+
+    func scrollCompleted(node: Int, token: Int, outcome: String) {
+        outcome.withCString { _ = scrollCompletedFunction?(Int64(node), Int64(token), $0) }
     }
 
     func appear(node: Int) { _ = appearFunction(Int64(node)) }
@@ -325,9 +361,12 @@ private final class SplitDemoHost: NSObject, NSApplicationDelegate, NSWindowDele
                     self?.runtime?.extensionEvent(
                         node: node, identifier: identifier, name: name,
                         values: values)
-                case .scrollCompleted, .visibleRange:
-                    // The C bridge exports no scroll/visible-range entry points.
-                    break
+                case let .virtualWindow(node, generation, first, last, pins):
+                    self?.runtime?.virtualWindow(node: node, generation: generation, first: first, last: last, pins: pins)
+                case let .scrollCompleted(node, token, outcome):
+                    self?.runtime?.scrollCompleted(node: node, token: token, outcome: outcome)
+                case let .visibleRange(node, first, last):
+                    self?.runtime?.visibleRange(node: node, first: first, last: last)
                 }
             }
             makeWindow()

@@ -34,6 +34,12 @@ jobs:
       - name: Backend and rendering tests
         working-directory: platform/mygo
         run: go test -race -count=1 ./...
+      - name: Production allocation budgets
+        working-directory: platform/mygo
+        run: go test -count=1 -run 'AllocationBudget$' .
+      - name: Pinned MyGo handle ownership regressions
+        working-directory: platform/mygo
+        run: go test -race -count=1 -run '^TestLUI(EphemeralHandle|HiddenLiveHandle|TransientHandle|LiveHandle)' github.com/egoist/mygo/ui
       - name: Pinned MyGo menu image bridge regression
         working-directory: platform/mygo
         run: go test -race -count=1 -run '^TestContentNativeMenuPreservesOwnedImagesThroughHostSnapshots$' github.com/egoist/mygo

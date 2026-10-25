@@ -7,6 +7,7 @@ let initialize platform_code host_code =
   try
     let app =
       Lui_app.create_with_extensions
+        ~virtual_rows:(Lui_native_bridge.virtual_rows_supported host_code)
         (Lui_native_bridge.backend bridge
            (Lui_native_bridge.profile platform_code host_code))
         (Extension_schemas.registry ())

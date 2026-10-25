@@ -65,12 +65,17 @@ let operating_system = function
 
 let host_kind = function
   | 1 -> WebHost
-  | 2 -> SwiftUIHost
-  | 4 -> KotlinHost
+  | 2 | 258 -> SwiftUIHost
+  | 4 | 260 -> KotlinHost
+  | 5 -> MyGoHost
   | _ -> GenericHost
 
 let profile platform_code host_code =
   Lui_protocol.profile (operating_system platform_code) (host_kind host_code)
+
+let virtual_rows_supported = function
+  | 1 | 5 | 258 | 260 -> true
+  | _ -> false
 
 let backend bridge host_profile =
   {backend_profile = host_profile; apply_batch = record bridge}
@@ -170,6 +175,8 @@ let register ~(register_named : 'a. string -> 'a -> unit) prefix bridge =
       dispatch_event bridge (ScrollCompleted (id, token, outcome)));
   register "scroll_edges" (fun id at_start at_end ->
       dispatch_event bridge (ScrollEdges (id, at_start, at_end)));
+  register "virtual_window" (fun id generation first last pins ->
+      dispatch_event bridge (VirtualWindow (id, generation, first, last, pins)));
   register "extension_event" (fun id identifier name json_values ->
       (match bridge.note_extension with
       | Some note -> note name json_values

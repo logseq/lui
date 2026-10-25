@@ -72,7 +72,7 @@
       "contractHash": "95a58fdfb87b07fc9fcdc0141e7163c0959a93a88e396e27223d6d81899cce66"
     },
     "view-that-fits": {
-      "route": "layout.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/lui_layout.go",
+      "route": "layout.go; https://github.com/logseq/mygo/blob/2949164d2beec7ad8ca9a2d0a26b2b1bba97ef01/ui/lui_layout.go",
       "evidence": [
         "layout_test.go:TestLayoutViewThatFitsMeasuresLocalAxisWithoutCandidateEffects",
         "layout_test.go:TestLayoutViewThatFitsOnlyConstrainsSelectedAxisAndFallsBack"
@@ -285,13 +285,16 @@
       "contractHash": "388572bf793ee9dec4d7dfad18e4952e8fe2482444a00b94967531132e5999fb"
     },
     "virtual-list": {
-      "route": "collections.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/list.go",
+      "route": "collections.go; https://github.com/logseq/mygo/blob/2949164d2beec7ad8ca9a2d0a26b2b1bba97ef01/ui/list.go",
       "evidence": [
         "collections_test.go:TestCollectionsVirtualListBuildsOnlyViewportAndReportsTrueRange",
         "collections_test.go:TestCollectionsVirtualReorderPreservesEditorFocusAndCaret",
-        "collections_test.go:TestCollectionsAnimatedScrollSupersedesAndSettlesExactlyOnce"
+        "collections_test.go:TestCollectionsAnimatedScrollSupersedesAndSettlesExactlyOnce",
+        "collections_sparse_test.go:TestCollectionsSparseWindowFeedbackAndDistantScroll",
+        "virtual_contract_test.go:TestVirtualSourceContractIsAtomic",
+        "runtime_virtual_test.go:TestOCamlComponentsVirtualRowsStayBounded"
       ],
-      "contractHash": "e5be253fa5659756e460c7b8c8447cba5518b03e4771c6c95c2d2fc04d470396"
+      "contractHash": "50a35792596025ef24adbe77e9092981e278ff2e1a350223083eec1d945d5d11"
     },
     "tabs": {
       "route": "controls.go",
@@ -1716,7 +1719,7 @@
       "evidence": []
     },
     "opacity": {
-      "route": "style.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/lui_style.go",
+      "route": "style.go; https://github.com/logseq/mygo/blob/2949164d2beec7ad8ca9a2d0a26b2b1bba97ef01/ui/lui_style.go",
       "evidence": [
         "style_test.go:TestLayoutStyleShadowOpacityStatesAndRemoval"
       ]
@@ -1804,7 +1807,7 @@
       ]
     },
     "font-style": {
-      "route": "style.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/lui_style.go",
+      "route": "style.go; https://github.com/logseq/mygo/blob/2949164d2beec7ad8ca9a2d0a26b2b1bba97ef01/ui/lui_style.go",
       "evidence": [
         "style_test.go:TestLayoutStyleExplicitNormalTypographyOverridesInheritedStyle",
         "style_test.go:TestLayoutStyleLogicalAndUnitlessLineHeightAndDecoration"
@@ -1870,7 +1873,7 @@
       ]
     },
     "white-space": {
-      "route": "style.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/lui_style.go",
+      "route": "style.go; https://github.com/logseq/mygo/blob/2949164d2beec7ad8ca9a2d0a26b2b1bba97ef01/ui/lui_style.go",
       "evidence": [
         "style_test.go:TestLayoutStyleWhiteSpaceModesHaveDistinctFlow",
         "layout_test.go:TestLayoutSharedTextWrappingAndRemoval"
@@ -1883,7 +1886,7 @@
       ]
     },
     "overflow": {
-      "route": "style.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/lui_style.go",
+      "route": "style.go; https://github.com/logseq/mygo/blob/2949164d2beec7ad8ca9a2d0a26b2b1bba97ef01/ui/lui_style.go",
       "evidence": [
         "style_test.go:TestLayoutStyleOverflowAutoScrollsAndHiddenClips",
         "style_test.go:TestLayoutStyleOverflowAutoAlsoScrollsHorizontalOverflow"
@@ -1928,7 +1931,7 @@
       }
     },
     "hover-opacity": {
-      "route": "style.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/lui_style.go",
+      "route": "style.go; https://github.com/logseq/mygo/blob/2949164d2beec7ad8ca9a2d0a26b2b1bba97ef01/ui/lui_style.go",
       "evidence": [
         "style_test.go:TestLayoutStyleShadowOpacityStatesAndRemoval"
       ]
@@ -1960,7 +1963,7 @@
       }
     },
     "pressed-opacity": {
-      "route": "style.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/lui_style.go",
+      "route": "style.go; https://github.com/logseq/mygo/blob/2949164d2beec7ad8ca9a2d0a26b2b1bba97ef01/ui/lui_style.go",
       "evidence": [
         "style_test.go:TestLayoutStyleShadowOpacityStatesAndRemoval"
       ]
@@ -2056,7 +2059,7 @@
       }
     },
     "disabled-opacity": {
-      "route": "style.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/lui_style.go",
+      "route": "style.go; https://github.com/logseq/mygo/blob/2949164d2beec7ad8ca9a2d0a26b2b1bba97ef01/ui/lui_style.go",
       "evidence": [
         "style_test.go:TestLayoutStyleShadowOpacityStatesAndRemoval"
       ]
@@ -2104,7 +2107,7 @@
       ]
     },
     "text-decoration": {
-      "route": "style.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/lui_style.go",
+      "route": "style.go; https://github.com/logseq/mygo/blob/2949164d2beec7ad8ca9a2d0a26b2b1bba97ef01/ui/lui_style.go",
       "evidence": [
         "style_test.go:TestLayoutStyleExplicitNormalTypographyOverridesInheritedStyle",
         "style_test.go:TestLayoutStyleLogicalAndUnitlessLineHeightAndDecoration"
@@ -2161,7 +2164,7 @@
       "evidence": []
     },
     "inert": {
-      "route": "style.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/lui_style.go",
+      "route": "style.go; https://github.com/logseq/mygo/blob/2949164d2beec7ad8ca9a2d0a26b2b1bba97ef01/ui/lui_style.go",
       "evidence": [
         "style_test.go:TestLayoutStyleInertPreservesPixelsAndBlocksSubtreeInteraction"
       ]
@@ -2273,17 +2276,45 @@
       ]
     },
     "overscan": {
-      "route": "collections.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/list.go",
+      "route": "collections.go; https://github.com/logseq/mygo/blob/2949164d2beec7ad8ca9a2d0a26b2b1bba97ef01/ui/list.go",
       "evidence": [
         "collections_test.go:TestCollectionsVirtualListHonorsLegacyOverscanAndBoundsActualBuildWork",
         "protocol_test.go:TestProtocolTypedVirtualTuning"
       ]
     },
     "item-extent": {
-      "route": "collections.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/list.go",
+      "route": "collections.go; https://github.com/logseq/mygo/blob/2949164d2beec7ad8ca9a2d0a26b2b1bba97ef01/ui/list.go",
       "evidence": [
         "collections_test.go:TestCollectionsVirtualListHonorsLegacyOverscanAndBoundsActualBuildWork",
         "protocol_test.go:TestProtocolTypedVirtualTuning"
+      ]
+    },
+    "virtual-total-count": {
+      "route": "collections.go; contract.go",
+      "evidence": [
+        "collections_sparse_test.go:TestCollectionsSparseWindowFeedbackAndDistantScroll",
+        "runtime_virtual_test.go:TestOCamlComponentsVirtualRowsStayBounded"
+      ]
+    },
+    "virtual-generation": {
+      "route": "collections.go; contract.go",
+      "evidence": [
+        "collections_sparse_test.go:TestCollectionsSparseWindowFeedbackAndDistantScroll",
+        "runtime_virtual_test.go:TestOCamlComponentsVirtualRowsStayBounded"
+      ]
+    },
+    "virtual-indices": {
+      "route": "collections.go; contract.go",
+      "evidence": [
+        "collections_sparse_test.go:TestCollectionsSparseWindowFeedbackAndDistantScroll",
+        "runtime_virtual_test.go:TestOCamlComponentsVirtualRowsStayBounded"
+      ]
+    },
+    "virtual-scroll-index": {
+      "route": "collections.go; contract.go",
+      "evidence": [
+        "collections_sparse_test.go:TestCollectionsSparseWindowFeedbackAndDistantScroll",
+        "runtime_virtual_test.go:TestOCamlComponentsVirtualRowsStayBounded"
       ]
     }
   },
@@ -2436,6 +2467,13 @@
       "route": "events.go; runtime_events.go; runtime.go",
       "evidence": [
         "runtime_components_test.go:TestOCamlComponentsEventRoundTrip"
+      ]
+    },
+    "virtual-window": {
+      "route": "collections.go; runtime_events.go; runtime.go",
+      "evidence": [
+        "collections_sparse_test.go:TestCollectionsSparseFeedbackIgnoresUserEventFlagsAndCoalesces",
+        "collections_sparse_test.go:TestVirtualWindowEventValidation"
       ]
     }
   }

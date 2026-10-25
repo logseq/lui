@@ -35,6 +35,8 @@ private final class LUIAppleBridge {
                 backing: .buffered,
                 defer: false
             )
+            // ARC owns this window; closing it must not consume that ownership.
+            created.isReleasedWhenClosed = false
             created.title = "LUI"
             window = created
         }
@@ -97,6 +99,12 @@ private final class LUIAppleBridge {
                 guard let data = try? JSONSerialization.data(withJSONObject: payload),
                       let json = String(data: data, encoding: .utf8) else { return }
                 json.withCString { callback(11, Self.nodeArg(node), $0) }
+            case let .virtualWindow(node, generation, first, last, pins):
+                let payload: [String: Any] = ["node": node, "generation": generation,
+                                              "first": first, "last": last, "pins": pins]
+                guard let data = try? JSONSerialization.data(withJSONObject: payload),
+                      let json = String(data: data, encoding: .utf8) else { return }
+                json.withCString { callback(20, 0, $0) }
             case let .visibleRange(node, first, last):
                 let payload: [String: Any] = [
                     "first": first,

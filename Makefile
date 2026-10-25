@@ -28,6 +28,7 @@ build-web-css: platform/web/node_modules/.package-lock.json
 
 test-mygo:
 	python3 tooling/generate_mygo_schema.py --check
+	cd platform/mygo && go test -count=1 -run 'AllocationBudget$$' .
 	cd platform/mygo && go test -race ./...
 
 test-mygo-integration:

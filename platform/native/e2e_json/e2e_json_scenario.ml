@@ -201,6 +201,11 @@ let event_json (e : event) : J.t =
     `Assoc
       [ k "visible-range"; n id; ("first", `Int first)
       ; ("last", `Int last) ]
+  | VirtualWindow (id, generation, first, last, pins) ->
+    `Assoc
+      [ k "virtual-window"; n id; ("generation", `Int generation)
+      ; ("first", `Int first); ("last", `Int last)
+      ; ("pins", `List (List.map (fun node -> `Int node) pins)) ]
   | Picked (id, p) ->
     `Assoc [ k "picked"; n id; ("payload", `String p) ]
   | PressModifiers (id, m) ->

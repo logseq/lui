@@ -62,6 +62,10 @@ private fun windowedChildren(backend: LuiBackend, children: List<Long>): Windowe
 /** One native lazy list owns headers, virtual rows and pagination sentinels. */
 @Composable
 internal fun LuiVirtualList(backend: LuiBackend, node: LuiNodeLike, id: Long, modifier: Modifier) {
+    if (node.prop("virtual-total-count") != null) {
+        LuiSparseVirtualList(backend, node, id, modifier)
+        return
+    }
     val identity = node.dataAttributes()["data-scroll-identity"] ?: "node:$id"
     val content = windowedChildren(backend, node.children)
     val window = content.window?.let { backend.node(it) }

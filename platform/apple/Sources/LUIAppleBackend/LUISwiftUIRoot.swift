@@ -772,6 +772,9 @@ private struct LUINodeView: View {
         case .column:
             return AnyView(LUIColumnView(model: model, backend: backend))
         case .virtualList:
+            if model.property(.virtualTotalCount) != nil {
+                return AnyView(LUISparseVirtualListView(model: model, backend: backend))
+            }
             return AnyView(LUIVirtualListView(model: model, backend: backend))
         case .grid:
             return AnyView(LUIGridView(model: model, backend: backend))
@@ -1412,13 +1415,17 @@ final class LUIContextMenuNSView: NSView {
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
-        buildMenu()
+        let built = buildMenu()
+        menu = built
+        return built
     }
 
     // ctrl+click arrives as leftMouseDown on AppKit — show the same menu
     // programmatically at the pointer.
     override func mouseDown(with event: NSEvent) {
         if event.modifierFlags.contains(.control), let menu = buildMenu() {
+            self.menu = menu
+            defer { self.menu = nil }
             NSMenu.popUpContextMenu(menu, with: event, for: self)
         } else {
             super.mouseDown(with: event)
@@ -2283,6 +2290,7 @@ private struct LUIAnchoredComboboxMenuHost<Content: View>: View {
                 .onChange(of: model?.revision, initial: true) { _, _ in
                     isPresented = model != nil
                 }
+                .modifier(LUIVirtualPopupOwnership(presented: isPresented))
         }
         #else
         anchoredLayout
@@ -2302,6 +2310,7 @@ private struct LUIAnchoredComboboxMenuHost<Content: View>: View {
             }
         }
         .zIndex(model == nil ? 0 : 1)
+        .modifier(LUIVirtualPopupOwnership(presented: model != nil))
     }
 
     #if os(iOS)
@@ -2466,6 +2475,7 @@ private struct LUIAnchoredMenuHost<Content: View>: View {
                     // still reopens on the next trigger press.
                     isPresented = model != nil
                 }
+                .modifier(LUIVirtualPopupOwnership(presented: isPresented))
         } else {
             content
                 .confirmationDialog(
@@ -2480,6 +2490,7 @@ private struct LUIAnchoredMenuHost<Content: View>: View {
                 .onChange(of: model?.revision, initial: true) { _, _ in
                     isPresented = model != nil
                 }
+                .modifier(LUIVirtualPopupOwnership(presented: isPresented))
         }
         #else
         content
@@ -2501,6 +2512,7 @@ private struct LUIAnchoredMenuHost<Content: View>: View {
             .onChange(of: model?.revision, initial: true) { _, _ in
                 isPresented = model != nil
             }
+            .modifier(LUIVirtualPopupOwnership(presented: isPresented))
         #endif
     }
 
