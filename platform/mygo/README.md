@@ -69,6 +69,9 @@ complete behavior, and records source findings and reproducible probes.
 The target is built-in support for all portable LUI components; application
 renderers are an extension point, not the intended solution for missing standard
 components.
+The [component API and parity implementation plan](../../docs/agent-guide/004-component-api-mygo-parity.md)
+defines API improvements, feature-level platform exceptions, implementation
+phases and behavior-based completion gates.
 
 `SupportedKinds()` returns the built-in kind list. The backend provides rows,
 columns, grids, surfaces, typography, buttons and groups, text/password/multiline
