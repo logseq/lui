@@ -11,8 +11,8 @@ This inventory records implementation routes and behavioral test references. It 
 | Host | Automated checks | Live checks |
 | --- | --- | --- |
 | macOS | OCaml172/Swift188/Android41/Web156 regression suites, full Go race, 24 tooling checks, mandatory canonical oracle, actual Todos and Components, and 30-second fuzz passed. Final startup runner passed 40 fresh processes and 120 sessions with profiling/preemption and pending signals. | Real App.Run GPU window and WindowServer capture, native NSTextInputClient IME/read-only, NSAccessibility roles/values/actions, and NSOpenPanel cancellation passed. Audible VoiceOver not exercised. |
-| Linux | CI headless race/fuzz/vet and real OCaml integration configured; final CI result pending. | Not yet qualified. |
-| Windows | CI headless race/fuzz/vet configured; final CI result pending. | Not yet qualified. |
+| Linux | CI headless race/fuzz/vet and pinned MyGo menu/text regressions passed. Real OCaml Todos/Components integration passed on Linux; current PR checks publish the latest startup-soak result. | Real GTK window, ATK roles/focus/values/actions, native composition/surrounding-text callbacks, read-only input, named menu images/selection and file-dialog deadline cancellation passed under Xvfb. Native evidence is uploaded by CI. Audible Orca and keyboard IME candidate UI are not exercised. |
+| Windows | CI headless race/fuzz/vet and pinned MyGo menu/text regressions passed; native IME empty/Unicode document-feed buffer boundary regression passed. | Real Win32 window, UIA roles/focus/values/actions, native composition/document-feed callbacks, read-only input, named menu images/selection and file-dialog deadline cancellation passed. Native evidence is uploaded by CI. Audible Narrator and keyboard IME candidate UI are not exercised. |
 
 ## Components
 

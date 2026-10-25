@@ -81,7 +81,7 @@ jobs:
           cache-dependency-path: platform/mygo/go.sum
       - name: Install native Linux desktop dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libgtk-3-0 libwebkit2gtk-4.1-0 xvfb dbus-x11 libxtst6 libpango-1.0-0 libpangocairo-1.0-0 libpangoft2-1.0-0 libcairo2 libfontconfig1 fonts-dejavu-core
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-0 libwebkit2gtk-4.1-0 xvfb dbus-x11 libxtst6 libpango-1.0-0 libpangocairo-1.0-0 libpangoft2-1.0-0 libcairo2 libfontconfig1 fonts-dejavu-core fonts-noto-cjk
       - name: Real GTK window, input, ATK and native services
         if: runner.os == 'Linux'
         working-directory: platform/mygo

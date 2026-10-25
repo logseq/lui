@@ -6,11 +6,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"image"
+	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -24,16 +28,22 @@ import (
 )
 
 type evidence struct {
-	Started       string              `json:"started"`
-	Host          string              `json:"host"`
-	Scope         string              `json:"scope"`
-	Passed        []string            `json:"passed"`
-	Accessibility []native.AccessNode `json:"nativeAccessibility"`
-	Document      string              `json:"nativeInputDocument"`
-	Selection     [2]int              `json:"nativeInputSelectionRunes"`
-	PopupImages   []string            `json:"nativePopupImageLabels"`
-	Capture       string              `json:"contentCapture"`
-	Error         string              `json:"error,omitempty"`
+	Started        string              `json:"started"`
+	Host           string              `json:"host"`
+	Scope          string              `json:"scope"`
+	Passed         []string            `json:"passed"`
+	Accessibility  []native.AccessNode `json:"nativeAccessibility"`
+	GlyphInkPixels int                 `json:"committedGlyphInkPixels"`
+	Document       string              `json:"nativeInputDocument"`
+	Selection      [2]int              `json:"nativeInputSelectionRunes"`
+	PopupImages    []string            `json:"nativePopupImageLabels"`
+	Capture        string              `json:"contentCapture"`
+	Error          string              `json:"error,omitempty"`
+}
+
+type nativeGeometry struct {
+	Editor, Action ui.Rect
+	Width, Height  float32
 }
 
 func main() {
@@ -93,21 +103,24 @@ func run() error {
 	done := make(chan error, 1)
 	mygo.App.SetName("LUI Native Qualification")
 	mygo.App.WhenReady(func() {
-		var action ui.Rect
-		window := mygo.NewWindow(mygo.WindowOptions{Title: "LUI Native Qualification", Width: 560, Height: 400, UseContentSize: true, Content: ui.View(func(c *ui.Context) { b.View(c); action = b.NativeDemoBounds(c, 5) })})
+		var geometry nativeGeometry
+		window := mygo.NewWindow(mygo.WindowOptions{Title: "LUI Native Qualification", Width: 560, Height: 400, UseContentSize: true, Content: ui.View(func(c *ui.Context) {
+			b.View(c)
+			geometry.Editor, geometry.Action = b.NativeDemoBounds(c, 3), b.NativeDemoBounds(c, 5)
+			geometry.Width, geometry.Height = c.Size()
+		})})
 		window.Focus()
 		go func() {
-			err := qualify(window, b, &report, func() int { return readonlyEvents }, func() ui.Rect { return action })
+			err := qualify(window, b, &report, func() int { return readonlyEvents }, func() nativeGeometry { return geometry })
 			mygo.RunOnMain(func() { report.Accessibility = native.Accessibility(window.NativeHandle()) })
-			if err == nil {
-				png, e := window.CapturePage()
-				if e != nil {
-					err = e
-				} else {
-					report.Capture = filepath.Join(*directory, "content.png")
-					err = os.WriteFile(report.Capture, png, 0644)
-				}
+			// Capture failures too, so missing glyphs or other native regressions
+			// retain the actual rendered window alongside their report.
+			capture, captureError := window.CapturePage()
+			if captureError == nil {
+				report.Capture = filepath.Join(*directory, "content.png")
+				captureError = os.WriteFile(report.Capture, capture, 0644)
 			}
+			err = errors.Join(err, captureError)
 			if err != nil {
 				report.Error = err.Error()
 			}
@@ -137,7 +150,7 @@ func run() error {
 	}
 }
 
-func qualify(window *mygo.Window, b *luimygo.Backend, report *evidence, readonlyEvents func() int, actionBounds func() ui.Rect) error {
+func qualify(window *mygo.Window, b *luimygo.Backend, report *evidence, readonlyEvents func() int, geometry func() nativeGeometry) error {
 	handle := window.NativeHandle()
 	act := func(name string, fn func() bool) error {
 		ok := false
@@ -249,6 +262,37 @@ func qualify(window *mygo.Window, b *luimygo.Backend, report *evidence, readonly
 	}); err != nil {
 		return err
 	}
+	if err := await("committed Unicode glyph has foreground ink in the unfocused native editor", func() error {
+		editor, _ := find("Native editor")
+		if editor.Focused {
+			return fmt.Errorf("editor must be unfocused so a caret cannot satisfy glyph coverage")
+		}
+		capture, err := window.CapturePage()
+		if err != nil {
+			return err
+		}
+		pixels, err := png.Decode(bytes.NewReader(capture))
+		if err != nil {
+			return err
+		}
+		g := geometry()
+		if g.Width <= 0 || g.Height <= 0 || g.Editor.W <= 8 || g.Editor.H <= 8 {
+			return fmt.Errorf("editor geometry is not committed: %+v", g)
+		}
+		// CapturePage may use physical pixels; convert the committed logical
+		// bounds using the actual view size, then remove borders on every side.
+		sx, sy := float64(pixels.Bounds().Dx())/float64(g.Width), float64(pixels.Bounds().Dy())/float64(g.Height)
+		inner := image.Rect(int(math.Ceil(float64(g.Editor.X+4)*sx)), int(math.Ceil(float64(g.Editor.Y+4)*sy)),
+			int(math.Floor(float64(g.Editor.X+g.Editor.W-4)*sx)), int(math.Floor(float64(g.Editor.Y+g.Editor.H-4)*sy)))
+		count, span := darkGlyphInk(pixels, inner)
+		report.GlyphInkPixels = count
+		if count < 8 || span < 3 {
+			return fmt.Errorf("committed Unicode glyph has no sufficient foreground ink: pixels=%d span=%d; install CJK font coverage", count, span)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
 	if err := act("attempt composition on readonly field", func() bool { return native.Compose(handle, "bad", 3, true) }); err != nil {
 		return err
 	}
@@ -290,7 +334,7 @@ func qualify(window *mygo.Window, b *luimygo.Backend, report *evidence, readonly
 		return err
 	}
 	if err := act("open native menu with image", func() bool {
-		r := actionBounds()
+		r := geometry().Action
 		return r.W > 0 && native.RightClick(handle, float64(r.X+r.W/2), float64(r.Y+r.H/2))
 	}); err != nil {
 		return err
@@ -334,4 +378,24 @@ func qualify(window *mygo.Window, b *luimygo.Backend, report *evidence, readonly
 		}
 		return nil
 	})
+}
+
+// darkGlyphInk excludes the light field background and borders. Luminance
+// admits dark subpixel-antialiased strokes; the inset removes any focus ring.
+func darkGlyphInk(pixels image.Image, inner image.Rectangle) (int, int) {
+	inner = inner.Intersect(pixels.Bounds())
+	count, left, right := 0, inner.Max.X, inner.Min.X
+	for y := inner.Min.Y; y < inner.Max.Y; y++ {
+		for x := inner.Min.X; x < inner.Max.X; x++ {
+			r, g, b, a := pixels.At(x, y).RGBA()
+			if a >= 0xc000 && (299*r+587*g+114*b)/1000 < 140*257 {
+				count++
+				left, right = min(left, x), max(right, x)
+			}
+		}
+	}
+	if count == 0 {
+		return 0, 0
+	}
+	return count, right - left + 1
 }

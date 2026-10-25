@@ -16,6 +16,7 @@ not by itself evidence that every property has been verified.
 
 Requirements: Go 1.27.3 or later and the repository's OCaml/opam environment.
 Linux windows need GTK3; headless text needs Pango, Cairo and installed fonts.
+Chinese, Japanese and Korean text also requires installed CJK fonts; on Debian/Ubuntu install `fonts-noto-cjk` so native font fallback can render these glyphs.
 The module pins the [logseq/mygo compatibility branch](https://github.com/logseq/mygo/tree/1c0a4ceeb21b62e243776489ade2d6ee0e912887),
 based on MyGo 0.6.4, for local fitting, list tuning, frame completion, overlay
 anchoring and native lifecycle fixes. Go downloads it as a normal versioned
