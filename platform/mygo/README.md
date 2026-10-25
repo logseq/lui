@@ -16,7 +16,7 @@ not by itself evidence that every property has been verified.
 
 Requirements: Go 1.27.3 or later and the repository's OCaml/opam environment.
 Linux windows need GTK3; headless text needs Pango, Cairo and installed fonts.
-The module pins the [logseq/mygo compatibility branch](https://github.com/logseq/mygo/tree/eed47c5888e73c0bd722baf4d722b65ac2929143),
+The module pins the [logseq/mygo compatibility branch](https://github.com/logseq/mygo/tree/1c0a4ceeb21b62e243776489ade2d6ee0e912887),
 based on MyGo 0.6.4, for local fitting, list tuning, frame completion, overlay
 anchoring and native lifecycle fixes. Go downloads it as a normal versioned
 dependency; LUI does not include a copy of the third-party source tree.
@@ -77,7 +77,7 @@ checkout from another module:
 
 ```sh
 go mod edit -replace github.com/logseq/lui/platform/mygo=/path/to/lui/platform/mygo
-go mod edit -replace github.com/egoist/mygo=github.com/logseq/mygo@v0.0.0-20261025154713-eed47c5888e7
+go mod edit -replace github.com/egoist/mygo=github.com/logseq/mygo@v0.0.0-20261025160040-1c0a4ceeb21b
 go get github.com/logseq/lui/platform/mygo
 go mod tidy
 ```

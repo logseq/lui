@@ -101,7 +101,9 @@ under model control.
 Scroll completion outcomes are `succeeded`, `cancelled` and `missing-target`.
 Visible ranges use inclusive `first`/`last` indices and `0`/`-1` for an empty
 viewport. Request tokens and appearance events are scoped to a node incarnation;
-reusing an ID after removal does not revive old queued callbacks.
+reusing an ID after removal does not revive old queued callbacks. Scroll request
+tokens preserve exact OCaml integers, including neighboring values above 2^53;
+each distinct token starts a new request.
 
 ### MyGo image and media ownership
 

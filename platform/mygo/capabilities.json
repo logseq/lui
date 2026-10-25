@@ -3,7 +3,7 @@
   "scope": "Desktop MyGo; Native OCaml rendering and MyGo browser hosting excluded.",
   "qualification": {
     "macOS": {
-      "automated": "OCaml172/Swift188/Android41/Web156 regression suites passed; Go family race, actual Todos and Components, schema and 30-second fuzz passed. Final full race/soak pending.",
+      "automated": "OCaml172/Swift188/Android41/Web156 regression suites, full Go race, 24 tooling checks, mandatory canonical oracle, actual Todos and Components, and 30-second fuzz passed. Final startup runner passed 40 fresh processes and 120 sessions with profiling/preemption and pending signals.",
       "live": "Real App.Run GPU window and WindowServer capture, native NSTextInputClient IME/read-only, NSAccessibility roles/values/actions, and NSOpenPanel cancellation passed. Audible VoiceOver not exercised."
     },
     "Linux": {
@@ -72,7 +72,7 @@
       "contractHash": "95a58fdfb87b07fc9fcdc0141e7163c0959a93a88e396e27223d6d81899cce66"
     },
     "view-that-fits": {
-      "route": "layout.go; https://github.com/logseq/mygo/blob/eed47c5888e73c0bd722baf4d722b65ac2929143/ui/lui_layout.go",
+      "route": "layout.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/lui_layout.go",
       "evidence": [
         "layout_test.go:TestLayoutViewThatFitsMeasuresLocalAxisWithoutCandidateEffects",
         "layout_test.go:TestLayoutViewThatFitsOnlyConstrainsSelectedAxisAndFallsBack"
@@ -285,7 +285,7 @@
       "contractHash": "388572bf793ee9dec4d7dfad18e4952e8fe2482444a00b94967531132e5999fb"
     },
     "virtual-list": {
-      "route": "collections.go; https://github.com/logseq/mygo/blob/eed47c5888e73c0bd722baf4d722b65ac2929143/ui/list.go",
+      "route": "collections.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/list.go",
       "evidence": [
         "collections_test.go:TestCollectionsVirtualListBuildsOnlyViewportAndReportsTrueRange",
         "collections_test.go:TestCollectionsVirtualReorderPreservesEditorFocusAndCaret",
@@ -1710,7 +1710,7 @@
       "evidence": []
     },
     "opacity": {
-      "route": "style.go; https://github.com/logseq/mygo/blob/eed47c5888e73c0bd722baf4d722b65ac2929143/ui/lui_style.go",
+      "route": "style.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/lui_style.go",
       "evidence": [
         "style_test.go:TestLayoutStyleShadowOpacityStatesAndRemoval"
       ]
@@ -1798,7 +1798,7 @@
       ]
     },
     "font-style": {
-      "route": "style.go; https://github.com/logseq/mygo/blob/eed47c5888e73c0bd722baf4d722b65ac2929143/ui/lui_style.go",
+      "route": "style.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/lui_style.go",
       "evidence": [
         "style_test.go:TestLayoutStyleExplicitNormalTypographyOverridesInheritedStyle",
         "style_test.go:TestLayoutStyleLogicalAndUnitlessLineHeightAndDecoration"
@@ -1864,7 +1864,7 @@
       ]
     },
     "white-space": {
-      "route": "style.go; https://github.com/logseq/mygo/blob/eed47c5888e73c0bd722baf4d722b65ac2929143/ui/lui_style.go",
+      "route": "style.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/lui_style.go",
       "evidence": [
         "style_test.go:TestLayoutStyleWhiteSpaceModesHaveDistinctFlow",
         "layout_test.go:TestLayoutSharedTextWrappingAndRemoval"
@@ -1877,7 +1877,7 @@
       ]
     },
     "overflow": {
-      "route": "style.go; https://github.com/logseq/mygo/blob/eed47c5888e73c0bd722baf4d722b65ac2929143/ui/lui_style.go",
+      "route": "style.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/lui_style.go",
       "evidence": [
         "style_test.go:TestLayoutStyleOverflowAutoScrollsAndHiddenClips",
         "style_test.go:TestLayoutStyleOverflowAutoAlsoScrollsHorizontalOverflow"
@@ -1922,7 +1922,7 @@
       }
     },
     "hover-opacity": {
-      "route": "style.go; https://github.com/logseq/mygo/blob/eed47c5888e73c0bd722baf4d722b65ac2929143/ui/lui_style.go",
+      "route": "style.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/lui_style.go",
       "evidence": [
         "style_test.go:TestLayoutStyleShadowOpacityStatesAndRemoval"
       ]
@@ -1954,7 +1954,7 @@
       }
     },
     "pressed-opacity": {
-      "route": "style.go; https://github.com/logseq/mygo/blob/eed47c5888e73c0bd722baf4d722b65ac2929143/ui/lui_style.go",
+      "route": "style.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/lui_style.go",
       "evidence": [
         "style_test.go:TestLayoutStyleShadowOpacityStatesAndRemoval"
       ]
@@ -2050,7 +2050,7 @@
       }
     },
     "disabled-opacity": {
-      "route": "style.go; https://github.com/logseq/mygo/blob/eed47c5888e73c0bd722baf4d722b65ac2929143/ui/lui_style.go",
+      "route": "style.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/lui_style.go",
       "evidence": [
         "style_test.go:TestLayoutStyleShadowOpacityStatesAndRemoval"
       ]
@@ -2098,7 +2098,7 @@
       ]
     },
     "text-decoration": {
-      "route": "style.go; https://github.com/logseq/mygo/blob/eed47c5888e73c0bd722baf4d722b65ac2929143/ui/lui_style.go",
+      "route": "style.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/lui_style.go",
       "evidence": [
         "style_test.go:TestLayoutStyleExplicitNormalTypographyOverridesInheritedStyle",
         "style_test.go:TestLayoutStyleLogicalAndUnitlessLineHeightAndDecoration"
@@ -2155,7 +2155,7 @@
       "evidence": []
     },
     "inert": {
-      "route": "style.go; https://github.com/logseq/mygo/blob/eed47c5888e73c0bd722baf4d722b65ac2929143/ui/lui_style.go",
+      "route": "style.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/lui_style.go",
       "evidence": [
         "style_test.go:TestLayoutStyleInertPreservesPixelsAndBlocksSubtreeInteraction"
       ]
@@ -2267,14 +2267,14 @@
       ]
     },
     "overscan": {
-      "route": "collections.go; https://github.com/logseq/mygo/blob/eed47c5888e73c0bd722baf4d722b65ac2929143/ui/list.go",
+      "route": "collections.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/list.go",
       "evidence": [
         "collections_test.go:TestCollectionsVirtualListHonorsLegacyOverscanAndBoundsActualBuildWork",
         "protocol_test.go:TestProtocolTypedVirtualTuning"
       ]
     },
     "item-extent": {
-      "route": "collections.go; https://github.com/logseq/mygo/blob/eed47c5888e73c0bd722baf4d722b65ac2929143/ui/list.go",
+      "route": "collections.go; https://github.com/logseq/mygo/blob/1c0a4ceeb21b62e243776489ade2d6ee0e912887/ui/list.go",
       "evidence": [
         "collections_test.go:TestCollectionsVirtualListHonorsLegacyOverscanAndBoundsActualBuildWork",
         "protocol_test.go:TestProtocolTypedVirtualTuning"

@@ -10,6 +10,9 @@ let section title children : t =
   column ~gap:16 ~padding:32
     (heading ~level:2 ~value:title [] :: children)
 
+let button_row children =
+  row ~gap:12 ~max_width:560 ~flex_wrap:`wrap children
+
 let noop _event = ()
 
 let on_toggle send make event =
@@ -69,25 +72,31 @@ let spacer_section : t =
 let button_section model_source send : t =
   let disabled = model_source >|= Model.disabled in
   section "Button"
-    [ button ~variant:`outline ~text:"Toggle disabled"
-        ~on_press:(press send Model.ToggleDisabled) []
-    ; if_ ~test:disabled (paragraph ~value:"Controls are disabled." [])
-    ; grid ~columns:2 ~gap:12
-        [ button ~text:"Default" ~disabled:(reactive disabled)
-            ~on_press:noop []
-        ; button ~variant:`primary ~icon:`download ~text:"Primary"
-            ~disabled:(reactive disabled) ~on_press:noop
-            ~on_long_press:(press send Model.ToggleDisabled) []
-        ; button ~variant:`secondary ~text:"Secondary"
-            ~disabled:(reactive disabled) ~on_press:noop []
-        ; button ~variant:`outline ~text:"Outline"
-            ~disabled:(reactive disabled) ~on_press:noop []
-        ; button ~variant:`ghost ~text:"Selected" ~selected:true
-            ~disabled:(reactive disabled) ~on_press:noop []
-        ; button ~variant:`destructive ~text:"Destructive"
-            ~disabled:(reactive disabled) ~on_press:noop []
+    [ button_row
+        [ button ~variant:`outline ~text:"Toggle disabled"
+            ~on_press:(press send Model.ToggleDisabled) []
         ]
-    ; row ~gap:12
+    ; if_ ~test:disabled (paragraph ~value:"Controls are disabled." [])
+    ; column ~gap:12
+        [ button_row
+            [ button ~text:"Default" ~disabled:(reactive disabled)
+                ~on_press:noop []
+            ; button ~variant:`primary ~icon:`download ~text:"Primary"
+                ~disabled:(reactive disabled) ~on_press:noop
+                ~on_long_press:(press send Model.ToggleDisabled) []
+            ; button ~variant:`secondary ~text:"Secondary"
+                ~disabled:(reactive disabled) ~on_press:noop []
+            ]
+        ; button_row
+            [ button ~variant:`outline ~text:"Outline"
+                ~disabled:(reactive disabled) ~on_press:noop []
+            ; button ~variant:`ghost ~text:"Selected" ~selected:true
+                ~disabled:(reactive disabled) ~on_press:noop []
+            ; button ~variant:`destructive ~text:"Destructive"
+                ~disabled:(reactive disabled) ~on_press:noop []
+            ]
+        ]
+    ; button_row
         [ button ~size:`sm ~text:"Small" ~disabled:(reactive disabled)
             ~on_press:noop []
         ; button ~text:"Default" ~disabled:(reactive disabled)
@@ -372,8 +381,10 @@ let progress_section model_source send : t =
     [ paragraph ~value:"Uploading files" []
     ; progress ~value:(reactive progress_value) ~width:280 []
     ; text ~value:(reactive Model.progress_label model_source) []
-    ; button ~variant:`outline ~text:"Advance progress"
-        ~on_press:(press send Model.AdvanceProgress) []
+    ; button_row
+        [ button ~variant:`outline ~text:"Advance progress"
+            ~on_press:(press send Model.AdvanceProgress) []
+        ]
     ]
 
 let stepper_steps =
@@ -387,8 +398,10 @@ let stepper_section model_source send : t =
   section "Stepper"
     [ stepper ~active:(reactive active) ~label:"Release progress"
         stepper_steps
-    ; button ~variant:`outline ~text:"Advance stage"
-        ~on_press:(press send Model.AdvanceStep) []
+    ; button_row
+        [ button ~variant:`outline ~text:"Advance stage"
+            ~on_press:(press send Model.AdvanceStep) []
+        ]
     ]
 
 let step_section model_source : t =
@@ -588,8 +601,10 @@ let split_section model_source send : t =
 let dialog_section model_source send : t =
   let open_ = model_source >|= Model.dialog_open in
   section "Dialog"
-    [ button ~variant:`outline ~text:"Open dialog"
-        ~on_press:(press send Model.OpenDialog) []
+    [ button_row
+        [ button ~variant:`outline ~text:"Open dialog"
+            ~on_press:(press send Model.OpenDialog) []
+        ]
     ; paragraph
         ~value:"The same model-owned conditional drives the native modal on every host."
         []
@@ -614,8 +629,10 @@ let dialog_section model_source send : t =
 let sheet_section model_source send : t =
   let open_ = model_source >|= Model.sheet_open in
   section "Sheet"
-    [ button ~variant:`outline ~text:"Open sheet"
-        ~on_press:(press send Model.OpenSheet) []
+    [ button_row
+        [ button ~variant:`outline ~text:"Open sheet"
+            ~on_press:(press send Model.OpenSheet) []
+        ]
     ; paragraph
         ~value:"Sheet uses the host platform's native modal presentation." []
     ; if_ ~test:open_
@@ -844,8 +861,10 @@ let avatar_section model_source send : t =
             ~label:"Registered profile image" []
         ; avatar ~text:"CT" []
         ]
-    ; button ~variant:`outline ~text:"Toggle registered image"
-        ~on_press:(press send Model.ToggleAvatarImage) []
+    ; button_row
+        [ button ~variant:`outline ~text:"Toggle registered image"
+            ~on_press:(press send Model.ToggleAvatarImage) []
+        ]
     ; paragraph
         ~value:"The host owns image resources; changing the ImageId Signal retains the Avatar node."
         []
@@ -969,8 +988,10 @@ let tooltip_section : t =
 let toast_section model_source send : t =
   let open_ = model_source >|= Model.toast_open in
   section "Toast"
-    [ button ~variant:`outline ~text:"Show notifications"
-        ~on_press:(press send Model.ShowToasts) []
+    [ button_row
+        [ button ~variant:`outline ~text:"Show notifications"
+            ~on_press:(press send Model.ShowToasts) []
+        ]
     ; if_ ~test:open_
         (column
            [ toast ~duration:2000 ~label:"Draft saved"
@@ -1606,10 +1627,12 @@ let combine_section ?(picker_available = false) model_source send : t =
         ~icon:(fun _ -> `file_text)
         ~on_select:(fun item _ -> ignore (send (Model.SelectEnvironment item)))
         ()
-    ; button ~variant:`outline ~text:"Open confirm dialog"
-        ~on_press:(press send Model.OpenCombineDialog) []
-    ; button ~variant:`outline ~text:"Open form sheet"
-        ~on_press:(press send Model.OpenCombineSheet) []
+    ; button_row
+        [ button ~variant:`outline ~text:"Open confirm dialog"
+            ~on_press:(press send Model.OpenCombineDialog) []
+        ; button ~variant:`outline ~text:"Open form sheet"
+            ~on_press:(press send Model.OpenCombineSheet) []
+        ]
     ; if_ ~test:dialog_open_
         (confirm_dialog ~title:"Delete note?"
            ~message:"This cannot be undone." ~destructive:true
@@ -1889,9 +1912,11 @@ let event_payloads_section model_source send : t =
   section "Event payloads"
     [ text ~accessibility_identifier:"events-status"
         ~value:(reactive (fun model -> "Event: " ^ model.Model.event_message) model_source) []
-    ; watch "events-button"
-        [ PressEnabled; PointerEnabled; LongPressEnabled; AppearEnabled; NavigateEnabled ]
-        (button ~text:"Inspect event" [])
+    ; button_row
+        [ watch "events-button"
+            [ PressEnabled; PointerEnabled; LongPressEnabled; AppearEnabled; NavigateEnabled ]
+            (button ~text:"Inspect event" [])
+        ]
     ; watch "events-editor" [ ChangeEnabled; SubmitEnabled; NavigateEnabled; PointerEnabled ]
         (text_field ~text:"Editable event" ~placeholder:"Event input" [])
     ; watch "events-toggle" [ ToggleEnabled; PointerEnabled ]

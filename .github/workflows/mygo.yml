@@ -34,6 +34,12 @@ jobs:
       - name: Backend and rendering tests
         working-directory: platform/mygo
         run: go test -race -count=1 ./...
+      - name: Pinned MyGo menu image bridge regression
+        working-directory: platform/mygo
+        run: go test -race -count=1 -run '^TestContentNativeMenuPreservesOwnedImagesThroughHostSnapshots$' github.com/egoist/mygo
+      - name: Pinned MyGo explicit line-height regressions
+        working-directory: platform/mygo
+        run: go test -race -count=1 -run '^TestLUIExplicitLine' github.com/egoist/mygo/internal/text github.com/egoist/mygo/ui
       - name: Wire fuzz smoke test
         working-directory: platform/mygo
         run: go test -run '^$' -fuzz FuzzApplyJSON -fuzztime 10s
@@ -84,6 +90,10 @@ jobs:
         if: runner.os == 'Windows'
         working-directory: platform/mygo
         run: go run -race -tags lui_native_smoke ./cmd/lui-mygo-native-smoke -evidence "${{ runner.temp }}/lui-mygo-native-smoke"
+      - name: Windows IME document-feed buffer boundaries
+        if: runner.os == 'Windows'
+        working-directory: platform/mygo
+        run: go test -race -count=1 -run '^TestLUIIMERequestDocumentFeedBufferBoundaries$' github.com/egoist/mygo/internal/windows
       - name: Preserve native host evidence
         if: always()
         uses: actions/upload-artifact@v4
