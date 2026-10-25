@@ -5,6 +5,7 @@
     "revision": "4e015e925fc9974e2ab92840d6f8bb5a8f201c2d",
     "source": "src/primitives/canvas/ui_schema.zig",
     "excluded": [
+      "br",
       "chart",
       "code",
       "markdown",
@@ -339,10 +340,6 @@
     },
     {
       "name": "file-preview",
-      "status": "supported"
-    },
-    {
-      "name": "br",
       "status": "supported"
     },
     {
@@ -865,12 +862,6 @@
       "lg": "FilePreview",
       "wire": "file-preview",
       "swift": "filePreview",
-      "container": false
-    },
-    {
-      "lg": "Br",
-      "wire": "br",
-      "swift": "br",
       "container": false
     },
     {

@@ -100,7 +100,6 @@ let base_class_name kind =
   | Link -> "lui-link"
   | FileImage -> "lui-file-image"
   | FilePreview -> "lui-file-preview"
-  | Br -> "lui-br"
   | Popover -> "lui-popover"
 
 let create_split_node renderer =
@@ -295,7 +294,6 @@ let simple_node_tag kind =
   | Toolbar -> "div"
   | Slider -> "input"
   | Divider -> "hr"
-  | Br -> "br"
   | Tooltip -> "span"
   | _ -> "div"
 

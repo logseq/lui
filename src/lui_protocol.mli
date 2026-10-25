@@ -88,7 +88,6 @@ type node_kind =
   | Link
   | FileImage
   | FilePreview
-  | Br
   | Popover
 
 type operating_system =

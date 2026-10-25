@@ -88,7 +88,6 @@ enum class LuiNodeKind(val wireName: String, val isContainer: Boolean) {
     link("link", true),
     fileImage("file-image", false),
     filePreview("file-preview", false),
-    br("br", false),
     popover("popover", true),
     ;
 

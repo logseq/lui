@@ -295,9 +295,6 @@ let cells : cell list =
       (chrome Kbd "cmd K" [] |> fun s -> { s with cov = true });
     cell "link" "link" "anchor text"
       (n Link ~cov:true ~props:(sized ~h:12. [ (TextValue, sv "https://logseq.com"); (ForegroundValue, sv "#2563eb") ]) ());
-    cell "br" "br" "line break between runs"
-      (n Column ~props:(sized ~h:30. [])
-         ~kids:[ txt "alpha"; n Br ~cov:true ~props:(sized ~h:4. []) (); txt "beta" ] ());
     (* ----- buttons and toggles ----- *)
     cell "button" "button" "normal"
       (n Button ~cov:true ~props:(sized ~h:28. ([ (TextValue, sv "Button") ] @ primary_btn)) ());
@@ -804,7 +801,7 @@ let wrap_cell c =
 
 (* Group cells into named sections by prefix. *)
 let categories =
-  [ ("Text", [ "text"; "heading"; "paragraph"; "label"; "kbd"; "link"; "br" ]);
+  [ ("Text", [ "text"; "heading"; "paragraph"; "label"; "kbd"; "link" ]);
     ("Buttons & toggles",
      [ "button"; "button_hover"; "button_pressed"; "button_disabled";
        "toggle_button"; "toggle"; "menu_item"; "menu_trigger";

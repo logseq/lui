@@ -108,7 +108,7 @@ let kind_role_table =
     ("panel", Group); ("card", Group); ("bubble", Group); ("box", Group);
     ("alert", Dialog);
     ("text", Static_text); ("paragraph", Static_text);
-    ("label", Static_text); ("kbd", Static_text); ("br", Static_text);
+    ("label", Static_text); ("kbd", Static_text);
     ("heading", Heading);
     ("button", Button); ("menu-trigger", Button);
     ("swipe-action", Button); ("file-picker", Button);

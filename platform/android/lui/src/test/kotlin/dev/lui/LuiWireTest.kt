@@ -6,6 +6,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LuiWireTest {
+    @Test
+    fun `rejects the removed line-break component in a patch batch`() {
+        assertThrows(LuiBackendException::class.java) {
+            LuiPatchBatch.parse(
+                """{"generation":1,"ops":[{"op":"create-node","id":1,"kind":"br"}]}""",
+            )
+        }
+    }
 
     @Test
     fun `parses a patch batch with every op kind`() {

@@ -31,6 +31,23 @@ private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
 @MainActor
 @Suite("LUI SwiftUI backend", .serialized)
 struct LUISwiftUIBackendTests {
+    @Test("removed line-break nodes reject the batch without changing the tree")
+    func removedLineBreakNode() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: #"{"generation":1,"ops":[{"op":"create-node","id":1,"kind":"column"}]}"#)
+        #expect(throws: (any Error).self) {
+            try backend.apply(json: """
+            {"generation":2,"ops":[
+              {"op":"create-node","id":2,"kind":"text"},
+              {"op":"create-node","id":3,"kind":"br"}
+            ]}
+            """)
+        }
+        #expect(backend.model(id: 1) != nil)
+        #expect(backend.model(id: 2) == nil)
+        #expect(backend.model(id: 3) == nil)
+    }
+
     @Test("scroll titles wait for the heading to pass the viewport top")
     func scrollTitleWaitsForHeading() {
         let tracker = LUIScrollSectionTitleTracker()

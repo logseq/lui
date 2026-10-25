@@ -88,7 +88,6 @@ var wireKinds = map[string]bool{
 	"link":                true,
 	"file-image":          false,
 	"file-preview":        false,
-	"br":                  false,
 	"popover":             true,
 }
 

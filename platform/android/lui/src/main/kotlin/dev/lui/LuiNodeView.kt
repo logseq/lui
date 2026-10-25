@@ -788,7 +788,6 @@ private fun LuiNodeContent(
         }
 
         LuiNodeKind.filePreview,
-        LuiNodeKind.br,
         -> Unit
 
         LuiNodeKind.dialog, LuiNodeKind.sheet -> Unit // modal surfaces handled above

@@ -1,6 +1,6 @@
 # MyGo capabilities and LUI component parity
 
-Research date: 2026-10-25. This is a source and behavior investigation, not a
+Research date: 2026-10-25. Updated after removal of the `br` component. This is a source and behavior investigation, not a
 claim that the adapter implements the capabilities described below.
 
 ## Findings
@@ -15,9 +15,9 @@ The official [component catalog](https://mygo.egoist.dev/docs/ui) and
 [base widgets](https://mygo.egoist.dev/docs/ui/custom-widgets) establish these
 capabilities; implementation feasibility still requires matching LUI semantics.
 
-The current schema contains **88 node kinds, including root, 186 properties,
+The current schema contains **87 node kinds, including root, 186 properties,
 and 25 event variants**. The adapter accepts **60** kinds without a custom
-renderer and rejects **28**. Acceptance is not semantic parity: several of
+renderer and rejects **27**. Acceptance is not semantic parity: several of
 the accepted kinds currently use generic rows, buttons or containers.
 Sources: [schema](../../schema/components.json),
 [rendering](../../platform/mygo/render.go), and
@@ -93,7 +93,6 @@ the intended backend implementation, with unresolved points called out.
 | `view-that-fits` | U | First candidate fitting the selected axis. No public arbitrary-subtree measurement hook found; needs further layout API work, not a window-width heuristic. |
 | `box`, `panel`, `card`, `alert`, `bubble` | M | Styled containers; audit content slots, variants and interaction rather than treating every surface identically. |
 | `text`, `heading`, `paragraph`, `label`, `kbd` | M | Text and RichText; preserve nested inline content, typography, heading roles and wrapping. |
-| `br` | U | Web inline line break. MyGo text supports newlines; decide native paragraph translation rather than rejecting all containing text. |
 | `button` | M | ButtonBase/Button; preserve child content, inline icons and pointer details. |
 | `link` | M | Link and inline text primitives; preserve URL activation, child content, disabled behavior and press handlers. |
 | `button-group`, `toggle-group`, `toggle-button` | M | Group layout and Toggle/Segmented bases where semantics match; keyboard and selection must follow LUI. |
@@ -256,9 +255,6 @@ No entire missing component family has been approved for exclusion by this
 investigation. The following are specific cases to document before finalizing
 the support contract:
 
-- `br` represents Web inline flow in the current implementations. A newline
-  translation may still be appropriate for native text; emitting nothing must
-  not accidentally collapse two lines into one.
 - FilePicker's `camera` and platform photo-library source are distinct from
   portable desktop file selection. The existing Apple backend explicitly
   treats camera as iOS-only.
