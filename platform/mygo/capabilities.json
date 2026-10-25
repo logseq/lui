@@ -498,7 +498,10 @@
       "route": "collections.go; style.go",
       "evidence": [
         "collections_test.go:TestCollectionsTableSharesColumnTracksAndPreservesCells",
-        "collections_test.go:TestCollectionsTableRichCellsRenderRetainedControlsAndReorderIdentity"
+        "collections_test.go:TestCollectionsTableRichCellsRenderRetainedControlsAndReorderIdentity",
+        "collections_test.go:TestCollectionsTableTracksUpdateAfterWidestRowChanges",
+        "collections_test.go:TestCollectionsTableTrackMeasurementVisitsEachRowOnce",
+        "collections_test.go:TestCollectionsCustomTableKeepsBuiltInRowsSharedTracks"
       ],
       "contractHash": "d16a8c4aa60d0eaaeb624350bced7a093e81671791c8568cc9b6f3520de84d86"
     },
@@ -506,7 +509,10 @@
       "route": "collections.go; style.go",
       "evidence": [
         "collections_test.go:TestCollectionsTableSharesColumnTracksAndPreservesCells",
-        "collections_test.go:TestCollectionsTableRichCellsRenderRetainedControlsAndReorderIdentity"
+        "collections_test.go:TestCollectionsTableRichCellsRenderRetainedControlsAndReorderIdentity",
+        "collections_test.go:TestCollectionsTableTracksUpdateAfterWidestRowChanges",
+        "collections_test.go:TestCollectionsTableTrackMeasurementVisitsEachRowOnce",
+        "collections_test.go:TestCollectionsCustomTableKeepsBuiltInRowsSharedTracks"
       ],
       "contractHash": "a8526858a2cf38b548d4ff2c206c64980887aab1bc3488c54bc71645b1e6ccbc"
     },

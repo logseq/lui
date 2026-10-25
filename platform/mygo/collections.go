@@ -20,6 +20,17 @@ type collectionState struct {
 	rangeSet, edgesSet          bool
 	atStart, atEnd              bool
 	issued                      bool
+	tableColumns                int
+}
+
+// Measure shared tracks once before building rows. Row construction reads the
+// retained result instead of rescanning its siblings.
+func collectionTableColumns(rows []int64, row func(int64) Node) int {
+	columns := 1
+	for _, id := range rows {
+		columns = max(columns, len(row(id).Children))
+	}
+	return columns
 }
 
 func collectionTuning(n Node) (int, float32) {
@@ -78,10 +89,7 @@ func (b *Backend) renderCollections(c *ui.Context, n Node, s *controlState, appe
 		if parent.Kind != "table" {
 			return ui.Element{}, false
 		}
-		columns := 1
-		for _, id := range parent.Children {
-			columns = max(columns, len(b.nodes[id].Children))
-		}
+		columns := b.state(parent).collection.tableColumns
 		e := ui.Grid(c).Columns(columns).FillWidth()
 		if n.Bool("selected") {
 			e.Background(c.Theme().Accent)

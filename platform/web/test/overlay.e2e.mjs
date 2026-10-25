@@ -2218,7 +2218,27 @@ test("Toolbar flattens nested control groups into one roving sequence", async ()
   for (const expected of ["Italic", "Underline", "Redo", "More"]) {
     await browser("press", "ArrowRight")
     assert.equal(await state(`document.activeElement?.textContent.trim()`), expected)
+    assert.deepEqual(
+      await state(`(() => {
+        const root = document.querySelector(${JSON.stringify(toolbar)})
+        return [...root.querySelectorAll('[tabindex="0"]')]
+          .map((control) => control.textContent.trim())
+      })()`),
+      [expected],
+    )
   }
+
+  await evaluate(`(() => {
+    const root = document.querySelector(${JSON.stringify(toolbar)})
+    const input = root.querySelector('input')
+    input.value = 'Patched formatting'
+    input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
+  })()`)
+  assert.deepEqual(
+    await state(`[...document.querySelector(${JSON.stringify(toolbar)}).querySelectorAll('[tabindex="0"]')]
+      .map((control) => control.textContent.trim())`),
+    ["More"],
+  )
 })
 
 test("Toolbar input keeps editing keys until its caret reaches a boundary", async () => {

@@ -129,6 +129,9 @@ func (b *Backend) render(c *ui.Context, id int64, appearances *[]Event) {
 		b.config.Extensions[n.Identifier].Render(c, n.clone(), children, emit)
 		return
 	}
+	if n.Kind == "table" {
+		s.collection.tableColumns = collectionTableColumns(n.Children, func(id int64) Node { return b.nodes[id] })
+	}
 	if custom := b.config.Renderers[n.Kind]; custom != nil {
 		custom(c, n.clone(), children, emit)
 		return

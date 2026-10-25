@@ -14,6 +14,13 @@ covered separately.
 
 ## Unreleased: component API and MyGo parity
 
+### Nested toolbar focus ownership
+
+On Web, a toolbar owns one keyboard Tab stop across its nested button and toggle
+groups. Group refreshes no longer create additional stops after model updates;
+arrow navigation continues through the complete toolbar sequence. Standalone
+groups retain their own roving focus behavior. Applications need no source change.
+
 ### Toast keyboard dismissal
 
 On Web, Escape now dismisses the open toast containing keyboard focus, matching

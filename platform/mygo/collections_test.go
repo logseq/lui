@@ -400,3 +400,107 @@ func TestCollectionsTableCellHeadingSizeRespectsExplicitTypography(t *testing.T)
 		t.Fatal("heading size overrode explicit font size/weight")
 	}
 }
+
+func TestCollectionsTableTracksUpdateAfterWidestRowChanges(t *testing.T) {
+	b := layoutBackend(t, "table", nil, prop(2, "width", 360),
+		create(3, "table-row"), insert(2, 3, 0),
+		create(4, "table-cell"), prop(4, "text", "First"), insert(3, 4, 0),
+		create(5, "table-cell"), prop(5, "text", "Second"), insert(3, 5, 1),
+		create(6, "table-row"), insert(2, 6, 1))
+	tester := ui.NewTester(b.View, 400, 300)
+	first := layoutRect(t, tester, "First")
+	layoutNear(t, "two equal tracks", layoutRect(t, tester, "Second").X-first.X, 180)
+
+	apply(t, b, 2, create(7, "table-cell"), prop(7, "text", "Third"), insert(3, 7, 2))
+	tester.Frame()
+	layoutNear(t, "new column updates existing rows immediately", layoutRect(t, tester, "Second").X-first.X, 120)
+
+	apply(t, b, 3, Operation{Op: "move-child", Parent: 2, Child: 3, Index: 1})
+	tester.Frame()
+	layoutNear(t, "empty row before widest row retains tracks", layoutRect(t, tester, "Second").X-first.X, 120)
+
+	apply(t, b, 4, Operation{Op: "detach-subtree", ID: 7})
+	tester.Frame()
+	layoutNear(t, "removed widest column shrinks track count", layoutRect(t, tester, "Second").X-first.X, 180)
+	apply(t, b, 5, Operation{Op: "detach-subtree", ID: 3})
+	tester.Frame()
+	if tester.HasText("Second") {
+		t.Fatal("removed widest row remained rendered")
+	}
+	apply(t, b, 6, create(8, "table-cell"), prop(8, "text", "Only"), insert(6, 8, 0))
+	tester.Frame()
+	layoutRect(t, tester, "Only")
+}
+
+func TestCollectionsTableTrackMeasurementVisitsEachRowOnce(t *testing.T) {
+	for _, count := range []int{0, 1, 32, 4096} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			rows := make([]int64, count)
+			for i := range rows {
+				rows[i] = int64(i + 1)
+			}
+			visits := make(map[int64]int)
+			columns := collectionTableColumns(rows, func(id int64) Node {
+				visits[id]++
+				return Node{Children: make([]int64, int(id)%4)}
+			})
+			want := min(max(1, count), 3)
+			if columns != want {
+				t.Fatalf("column count=%d, want %d", columns, want)
+			}
+			if len(visits) != count {
+				t.Fatalf("visited %d distinct rows, want %d", len(visits), count)
+			}
+			for id, times := range visits {
+				if times != 1 {
+					t.Fatalf("row %d visited %d times in one table measurement", id, times)
+				}
+			}
+		})
+	}
+}
+
+func TestCollectionsCustomTableKeepsBuiltInRowsSharedTracks(t *testing.T) {
+	b := New(Config{Renderers: map[string]Renderer{
+		"table": func(c *ui.Context, n Node, children func(), _ func(Event)) {
+			ui.Column(c).Width(float32(n.Number("width", 0))).Children(children)
+		},
+	}})
+	apply(t, b, 1, create(1, "root"), create(2, "table"), prop(2, "width", 360), insert(1, 2, 0),
+		create(3, "table-row"), insert(2, 3, 0),
+		create(4, "table-cell"), prop(4, "text", "Custom first"), insert(3, 4, 0),
+		create(5, "table-cell"), prop(5, "text", "Custom second"), insert(3, 5, 1),
+		create(6, "table-row"), insert(2, 6, 1),
+		create(7, "table-cell"), prop(7, "text", "Other row"), insert(6, 7, 0))
+	tester := ui.NewTester(b.View, 400, 300)
+	first := layoutRect(t, tester, "Custom first")
+	layoutNear(t, "custom parent retains two shared tracks", layoutRect(t, tester, "Custom second").X-first.X, 180)
+	apply(t, b, 2, create(8, "table-cell"), prop(8, "text", "Third track"), insert(6, 8, 1),
+		create(9, "table-cell"), prop(9, "text", "Last track"), insert(6, 9, 2))
+	tester.Frame()
+	layoutNear(t, "custom parent refreshes shared tracks", layoutRect(t, tester, "Custom second").X-first.X, 120)
+}
+
+// Exercise the actual table renderer, including retained row/cell construction.
+// Compare scaling and CPU profiles; elapsed time is not a correctness assertion.
+func BenchmarkCollectionsTableBuild(b *testing.B) {
+	for _, count := range []int{64, 256, 1024, 4096} {
+		b.Run(fmt.Sprint(count), func(b *testing.B) {
+			backend := New(Config{})
+			ops := []Operation{create(1, "root"), create(2, "table"), prop(2, "width", 240), insert(1, 2, 0)}
+			for i := 0; i < count; i++ {
+				row, cell := int64(3+2*i), int64(4+2*i)
+				ops = append(ops, create(row, "table-row"), prop(row, "height", 1), insert(2, row, i),
+					create(cell, "table-cell"), insert(row, cell, 0))
+			}
+			if err := backend.ApplyBatch(Batch{Generation: 1, Ops: ops}); err != nil {
+				b.Fatal(err)
+			}
+			tester := ui.NewTester(backend.View, 300, 300)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				tester.Frame()
+			}
+		})
+	}
+}
