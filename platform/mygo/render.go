@@ -69,6 +69,8 @@ func (b *Backend) View(c *ui.Context) {
 	if b.closed {
 		return
 	}
+	textGeneration := b.generation
+	c.AfterFrame(func() { b.textGeneration = textGeneration })
 	var appearances []Event
 	b.systemTheme = c.Theme()
 	b.beginWidgets(c)

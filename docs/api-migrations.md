@@ -231,6 +231,24 @@ Standard nodes are already bound. Existing extension renderer signatures and
 wire schemas do not change. No model-controlled text/selection is mutated by
 these services; editors must obtain source and selection from their model.
 
+## MyGo committed text geometry
+
+`Backend.TextGeometry(context, nodeID)` exposes the retained text actually
+painted by MyGo, including a text node's range in a rich inline paragraph.
+Use it after layout (`Context.AfterFrame`) or between frames on the UI thread.
+It returns `(ui.CommittedText, bool)`: missing, hidden, unmounted, closed or
+patched-but-not-committed nodes report false. The value expires at the next
+MyGo build; every query then reports false. Do not retain it across builds.
+
+`Text`, `Caret`, `SelectionRects`, `IndexAt` and `Lines` use rune offsets
+relative to the bound text node, and window-space DIPs including scrolling
+and transforms. Applications with UTF-8 byte or UTF-16 model offsets must
+convert at their own boundary, and map atomic/decorative runs explicitly.
+The API never shapes a second approximation or owns an editable document.
+Requires MyGo's public `Handle.TextGeometry` / `CommittedText` API.
+`Backend.CommittedBounds(context, nodeID)` follows the same generation guard
+and reports the transformed window-space box for non-text container origins.
+
 ## Upgrade checks for application maintainers
 
 1. Update generated wire schemas and custom host decoders together with LUI.
