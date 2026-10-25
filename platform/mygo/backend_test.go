@@ -128,6 +128,33 @@ func TestGenerationAndSnapshot(t *testing.T) {
 	}
 	apply(t, b, 21, prop(7, "text", "updated"))
 }
+func TestRemovedLineBreakKind(t *testing.T) {
+	for _, snapshot := range []bool{false, true} {
+		name := "delta"
+		if snapshot {
+			name = "snapshot"
+		}
+		t.Run(name, func(t *testing.T) {
+			b := New(Config{Renderers: map[string]Renderer{
+				"br": func(c *ui.Context, _ Node, _ func(), _ func(Event)) {
+					ui.Text(c, "legacy line break")
+				},
+			}})
+			apply(t, b, 1, create(1, "root"))
+			payload := []byte(`{"generation":2,"ops":[{"op":"create-node","id":3,"kind":"column"},{"op":"create-node","id":4,"kind":"br"},{"op":"insert-child","parent":3,"child":4,"index":0}]}`)
+			if err := b.ApplyJSON(payload, snapshot); err == nil {
+				t.Fatal("renderer registration revived a removed standard kind")
+			}
+			if _, ok := b.Node(1); !ok || b.Generation() != 1 {
+				t.Fatal("rejected batch changed the existing tree")
+			}
+			if _, ok := b.Node(3); ok {
+				t.Fatal("rejected batch leaked a node")
+			}
+		})
+	}
+}
+
 func TestMalformedWire(t *testing.T) {
 	for _, s := range []string{
 		`{}`, `null`, `[]`, `{"generation":1}`, `{"generation":1,"ops":null}`, `{"generation":1.5,"ops":[]}`,

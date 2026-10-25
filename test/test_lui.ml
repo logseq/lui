@@ -2423,8 +2423,6 @@ let test_data_attrs_and_as_emit () =
 
 let test_vocab_batch2 () =
   let open Lui_protocol in
-  (* br leaf kind *)
-  Alcotest.(check bool) "br is a leaf" false (can_contain_children Br);
   (* image url source + alt/loading/referrer-policy/on_load *)
   Alcotest.(check bool) "url allowed on image" true
     (property_supported Image UrlValue);
@@ -3228,6 +3226,26 @@ let test_json_view_render () =
      | [ (_, _, [ ("checked", Lui_json_view.Bool true) ]) ] -> true
      | _ -> false);
   drive_dispose s
+
+let test_json_view_removed_line_break () =
+  let session =
+    drive_mount ~initial:() ~reducer:(fun model () -> model)
+      ~view:(fun _ _ _ ->
+        Lui_json_view.render ~on_event:(fun ~id:_ ~kind:_ ~fields:_ -> ())
+          (Lui_json_view.Obj
+             [ "kind", Str "column";
+               "children", Arr
+                 [ Obj [ "kind", Str "br" ];
+                   Obj [ "kind", Str "text"; "value", Str "alpha\nbeta" ] ] ])) ()
+  in
+  Fun.protect ~finally:(fun () -> drive_dispose session) (fun () ->
+    let tree = drive_tree session in
+    Alcotest.(check bool) "removed kind never reaches the host" false
+      (Drive.Model.exists tree (Drive.Model.Kind "br"));
+    Alcotest.(check bool) "removed kind uses the unsupported component fallback" true
+      (Drive.Model.exists tree (Drive.Model.Text "unsupported component"));
+    Alcotest.(check bool) "newlines remain ordinary text content" true
+      (Drive.Model.exists tree (Drive.Model.Text "alpha\nbeta")))
 
 let test_link_action () =
   let calls=ref 0 in
@@ -4457,6 +4475,8 @@ let () =
       ( "json_view",
         [
           Alcotest.test_case "render + events" `Quick test_json_view_render;
+          Alcotest.test_case "removed line-break component" `Quick
+            test_json_view_removed_line_break;
           Alcotest.test_case "Link actions" `Quick test_link_action;
           Alcotest.test_case "rich text containers" `Quick test_rich_text_containers;
           Alcotest.test_case "parse edge cases" `Quick test_json_view_parse;

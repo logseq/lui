@@ -910,9 +910,6 @@ private struct LUINodeView: View {
             return AnyView(LUIFileImageView(model: model, backend: backend))
         case .filePreview:
             return AnyView(EmptyView())
-        case .br:
-            // Line-break leaf: no native representation; renders nothing.
-            return AnyView(EmptyView())
         case .popover:
             // Native popover positioning is not implemented yet: render the
             // children inline so the content stays reachable.

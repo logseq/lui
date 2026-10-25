@@ -88,7 +88,6 @@ enum LUINodeKind: String, Decodable, Equatable {
     case link = "link"
     case fileImage = "file-image"
     case filePreview = "file-preview"
-    case br = "br"
     case popover = "popover"
 }
 

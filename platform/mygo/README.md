@@ -64,7 +64,7 @@ The library stays loaded because OCaml domains and callbacks outlive the app.
 
 The current implementation is partial. The
 [MyGo capability and parity report](../../docs/agent-guide/003-mygo-capabilities_report.md)
-accounts for all 88 standard node kinds, distinguishes current mappings from
+accounts for all 87 standard node kinds, distinguishes current mappings from
 complete behavior, and records source findings and reproducible probes.
 The target is built-in support for all portable LUI components; application
 renderers are an extension point, not the intended solution for missing standard

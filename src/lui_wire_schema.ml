@@ -91,7 +91,6 @@ let node_kind_name kind =
   | Link -> "link"
   | FileImage -> "file-image"
   | FilePreview -> "file-preview"
-  | Br -> "br"
   | Popover -> "popover"
 
 let standard_node_name name =
@@ -182,7 +181,6 @@ let standard_node_name name =
   | "link" -> true
   | "file-image" -> true
   | "file-preview" -> true
-  | "br" -> true
   | "popover" -> true
   | _ -> false
 
@@ -413,7 +411,7 @@ let kind_extra_properties kind =
   | SwitchControl -> [ ForegroundValue ]
   | _ -> []
 
-let all_node_kinds = [ Root; Row; Column; Grid; Stack; EdgeInset; Overlay; ViewThatFits; Panel; Card; Alert; Bubble; Box; Text; Heading; Paragraph; Label; Button; ToggleButton; Toggle; RadioGroup; Radio; Slider; NumberStepper; TextField; SecureField; Input; SearchField; Textarea; Checkbox; SwitchControl; Progress; Divider; Scroll; ListContainer; VirtualList; Tabs; BottomTabs; BottomTab; ButtonGroup; ToggleGroup; Spacer; Spinner; Icon; Select; Combobox; DropdownMenu; ContextMenu; MenuItem; MenuTrigger; ListItem; Avatar; Image; MediaSurface; Stepper; Step; Timeline; TimelineItem; InputGroup; InputGroupActions; Breadcrumb; Pagination; Accordion; Table; TableRow; TableCell; Tree; Resizable; Split; Dialog; Drawer; Sheet; Tooltip; Toast; Toolbar; StatusBar; ListSection; ListSectionHeader; ListSectionFooter; SwipeActions; SwipeAction; FilePicker; Kbd; Link; FileImage; FilePreview; Br; Popover ]
+let all_node_kinds = [ Root; Row; Column; Grid; Stack; EdgeInset; Overlay; ViewThatFits; Panel; Card; Alert; Bubble; Box; Text; Heading; Paragraph; Label; Button; ToggleButton; Toggle; RadioGroup; Radio; Slider; NumberStepper; TextField; SecureField; Input; SearchField; Textarea; Checkbox; SwitchControl; Progress; Divider; Scroll; ListContainer; VirtualList; Tabs; BottomTabs; BottomTab; ButtonGroup; ToggleGroup; Spacer; Spinner; Icon; Select; Combobox; DropdownMenu; ContextMenu; MenuItem; MenuTrigger; ListItem; Avatar; Image; MediaSurface; Stepper; Step; Timeline; TimelineItem; InputGroup; InputGroupActions; Breadcrumb; Pagination; Accordion; Table; TableRow; TableCell; Tree; Resizable; Split; Dialog; Drawer; Sheet; Tooltip; Toast; Toolbar; StatusBar; ListSection; ListSectionHeader; ListSectionFooter; SwipeActions; SwipeAction; FilePicker; Kbd; Link; FileImage; FilePreview; Popover ]
 
 let all_properties = [ TextValue; Enabled; Gap; MainAlignment; CrossAlignment; GrowValue; GridColumns; PaddingValue; PaddingHorizontal; PaddingVertical; PaddingTop; PaddingRight; PaddingBottom; PaddingLeft; MarginValue; MarginHorizontal; MarginVertical; MarginTop; MarginRight; MarginBottom; MarginLeft; BackgroundValue; ForegroundValue; BorderColorValue; BorderWidth; CornerRadius; WidthValue; HeightValue; MinWidth; MaxWidth; MinHeight; MaxHeight; ContainerRelativeFrameValue; ContainerRelativeFrameInset; PlaceholderValue; AccessibilityLabel; AccessibilityIdentifier; StyleClass; HeadingLevel; Checked; ProgressValue; OrientationValue; PlacementValue; SizeValue; IconName; VariantValue; InlineIconName; IconPlacementValue; SelectionPlacementValue; Selected; Autofocus; SubmitOnEnter; LongPressEnabled; ChangeEnabled; ToggleEnabled; PressEnabled; SubmitEnabled; DoublePressEnabled; AppearEnabled; ImageIdValue; SurfaceIdValue; ActiveIndex; TitleValue; DescriptionValue; MetaValue; IndicatorValue; Connector; SourceX; SourceY; SourceWidth; SourceHeight; AnchorValue; AnchorTarget; AnchorAlignmentValue; AnchorOffset; TooltipDelay; DurationValue; TextAlignment; RoleValue; TreeLevel; Expanded; ResizeDuration; ResizeEasing; ResizeOrigin; ThemeValue; ThemeMode; KeyValue; SeparatorValue; StyleValue; ScrollTarget; ScrollAnchor; ScrollToken; ScrollAnimated; TrackVisibleRange; EdgeValue; PickerRequest; PickerTypes; PickerMultiple; PickerSource; PickerCompletion; MinValue; MaxValue; StepValue; Detents; Sizing; PathValue; UrlValue; MaxPixelSize; ImageFitValue; Visible; AlignmentValue; PointerEnabled; DataAttrs; As; AltValue; LoadingValue; ReferrerPolicy; TargetValue; Opacity; DisplayValue; TooltipText; TooltipKeys; InputType; PickerAccept; PickerDirectory; PopupX; PopupY; AvailableHeight; FontSize; FontWeight; FontStyle; LineHeight; LetterSpacing; Position; Inset; InsetTop; InsetRight; InsetBottom; InsetLeft; ZIndex; WhiteSpace; TextOverflow; Overflow; UserSelect; Cursor; Shadow; HoverBackground; HoverOpacity; HoverShadow; PressedBackground; PressedOpacity; PressedShadow; FocusShadow; FocusWithinBackground; FocusWithinBorder; SelectedBackground; SelectedShadow; SelectedHoverShadow; DisabledOpacity; WidthViewport; HeightViewport; MinWidthViewport; MaxWidthViewport; MinHeightViewport; MaxHeightViewport; FontFamily; TextDecoration; ListStyle; FlexWrap; HoverForeground; HoverBorder; Transition; Inert; NavigateEnabled; FirstPaneWidth; GridColumnSpan; LabelOpacity; SubmitOnBlur; AnchorAlignmentOffset; AnchorRect; ResizeHandleWidth; ResizeHandleOffset; IndicatorBorderColor; CheckedIndicatorBorderColor; CollisionPadding; LineClamp ]
 
@@ -1049,13 +1047,6 @@ let view_contract = function
       view_children = ViewList "nothing";
       view_properties = [(KeyValue, ViewString, false); (PathValue, ViewString, false); (AccessibilityIdentifier, ViewString, false); (AlignmentValue, view_alignment, false)];
       view_events = ["dismiss"];
-      view_slots = [];
-    }
-  | Br -> Some {
-      view_result = "t";
-      view_children = ViewList "nothing";
-      view_properties = [(KeyValue, ViewString, false); (Gap, ViewInt, false); (MainAlignment, view_main_alignment, false); (CrossAlignment, view_cross_alignment, false); (GrowValue, ViewFloat, false); (GridColumns, ViewInt, false); (PaddingValue, ViewInt, false); (PaddingHorizontal, ViewInt, false); (PaddingVertical, ViewInt, false); (MarginValue, ViewInt, false); (MarginHorizontal, ViewInt, false); (MarginVertical, ViewInt, false); (MarginTop, ViewInt, false); (MarginRight, ViewInt, false); (MarginBottom, ViewInt, false); (MarginLeft, ViewInt, false); (BackgroundValue, ViewString, false); (ForegroundValue, ViewString, false); (BorderColorValue, ViewString, false); (BorderWidth, ViewInt, false); (CornerRadius, ViewInt, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (MinWidth, ViewInt, false); (MaxWidth, ViewInt, false); (MinHeight, ViewInt, false); (MaxHeight, ViewInt, false); (ContainerRelativeFrameValue, view_frame_axes, false); (ContainerRelativeFrameInset, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (Transition, ViewString, false); (AlignmentValue, view_alignment, false)];
-      view_events = ["appear"; "pointer-enter"; "pointer-leave"];
       view_slots = [];
     }
   | Popover -> Some {
