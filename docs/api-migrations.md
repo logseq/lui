@@ -24,10 +24,27 @@ subscription changes are required. For example, `stack [button; spacer []]`
 now lets the button receive native activation and document click capture;
 preventing that capture still cancels the activation.
 
-Ordinary transparent `box` nodes retain their existing hit behavior. This
-change does not implement inherited `pointer-enabled=false` or descendant
-opt-in semantics on MyGo; those remain a separate host parity gap. Do not use
+Ordinary transparent `box` nodes retain their existing hit behavior. Do not use
 `spacer` as an interactive surface; use a container or control instead.
+
+### MyGo inherited pointer policy
+
+The MyGo adapter now maps the existing `pointer-enabled` protocol to MyGo's
+public `Element.PointerEvents(bool)`: false suppresses the entire native
+subtree, including internal captions; unset descendants inherit; explicit true
+opts a subtree back in. This applies to standard nodes and raw extensions
+bound with `Backend.BindHostElement`. No wire changes or Logseq-specific
+workarounds are needed.
+
+As on Native, presented `dialog`, `sheet`, `popover`, `dropdown-menu`,
+`context-menu`, `toast` and drawers without a `selected` prop default to enabled
+below a disabled ancestor. Explicit false still wins, and a permanent host
+marked `data-overlay-layer=true` never implicitly opts in. For example,
+`overlay ~pointer_enabled:false [button ~pointer_enabled:true ...]` accepts
+input only in the opted-in button; other controls and native labels remain
+transparent. Existing ordinary containers without a pointer policy retain
+their previous hit behavior. Capture returning true still cancels activation;
+paint, layout and keyboard focus are unchanged by the pointer policy.
 
 ### MyGo decoded image dimensions
 

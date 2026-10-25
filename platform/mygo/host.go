@@ -17,6 +17,7 @@ func (b *Backend) BindHostElement(id int64, element ui.Element) error {
 	if !element.Valid() {
 		return fmt.Errorf("mygo: host element for node %d is invalid", id)
 	}
+	pointerPolicy(n, element)
 	if !b.probing {
 		element.Bind(&b.state(n).handle)
 	}
