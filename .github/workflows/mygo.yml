@@ -1,0 +1,52 @@
+name: MyGo backend
+
+on:
+  push:
+    branches: [main, feat/ml-backend]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-26, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: platform/mygo/go.mod
+          cache-dependency-path: platform/mygo/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install headless text dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangocairo-1.0-0 libpangoft2-1.0-0 libcairo2 libfontconfig1 fonts-dejavu-core
+      - name: Check generated wire schema
+        run: python tooling/generate_mygo_schema.py --check
+      - name: Backend and rendering tests
+        working-directory: platform/mygo
+        run: go test -race -count=1 ./...
+      - name: Wire fuzz smoke test
+        working-directory: platform/mygo
+        run: go test -run '^$' -fuzz FuzzApplyJSON -fuzztime 10s
+      - name: Go vet
+        working-directory: platform/mygo
+        run: go vet ./...
+
+  ocaml-integration:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: platform/mygo/go.mod
+          cache-dependency-path: platform/mygo/go.sum
+      - uses: ./.github/actions/setup-lui-ocaml
+      - name: OCaml reducer, C ABI and native MyGo interaction tests
+        run: ./tooling/test_mygo.sh
