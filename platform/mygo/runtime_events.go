@@ -37,6 +37,17 @@ func validateEvent(e Event) error {
 		if math.IsNaN(e.Value) || math.IsInf(e.Value, 0) {
 			return invalid("nonfinite value")
 		}
+	case "virtual-window":
+		if e.Generation <= 0 || e.Generation > maxOCamlInt || e.First < 0 || e.First > maxOCamlInt || e.Last < e.First || e.Last > maxOCamlInt || len(e.Pins) > math.MaxInt32 {
+			return invalid("invalid virtual source generation or half-open window")
+		}
+		seen := make(map[int64]bool, len(e.Pins))
+		for _, id := range e.Pins {
+			if id <= 0 || id > maxOCamlInt || seen[id] {
+				return invalid("invalid virtual row pin")
+			}
+			seen[id] = true
+		}
 	case "visible-range":
 		if e.First < 0 || e.First > maxOCamlInt || e.Last > maxOCamlInt || e.Last < -1 || e.Last < e.First && !(e.First == 0 && e.Last == -1) {
 			return invalid("invalid inclusive visible range")

@@ -5,6 +5,7 @@ module Store = Lui_web_store
 module V = Lui_web_virtualizer
 
 external connected : W.Element.t -> bool = "isConnected" [@@mel.get]
+external pointer_id : Dom.event -> int = "pointerId" [@@mel.get]
 
 external next_element : W.Element.t -> W.Element.t Js.Nullable.t
   = "nextElementSibling"
@@ -34,12 +35,39 @@ let install renderer node ~materialize ~unmount =
     let sequence = ref Lui_sequence.empty in
     let positions = Hashtbl.create 16 in
     let mounted = Hashtbl.create 16 in
+    let indexed = Hashtbl.create 16 in
+    let placeholders = Hashtbl.create 16 in
+    let held_rows = Hashtbl.create 2 in
+    let composing_row = ref None in
     let disposed = ref false in
     let updating = ref false in
     let pending_render = ref false in
     let render_ref = ref (fun () -> ()) in
     let emit event = ignore (!(renderer.web_event_handler) event) in
     let property = Store.property renderer.web_store node in
+    let logical_count () =
+      match property VirtualTotalCount with
+      | Some (IntValue count) -> count
+      | _ -> Array.length !rows
+    in
+    let source_generation () =
+      match property VirtualGeneration with
+      | Some (IntValue generation) -> Some generation
+      | _ -> None
+    in
+    let row_at index = Hashtbl.find_opt indexed index in
+    let last_metadata = ref None in
+    let last_window = ref None in
+    let window_scheduled = ref false in
+    let request_window = ref (fun () -> ()) in
+    let schedule_window () =
+      if source_generation () <> None && not !window_scheduled then begin
+        window_scheduled := true;
+        Webapi.requestAnimationFrame (fun _ ->
+          window_scheduled := false;
+          if not !disposed then !request_window ())
+      end
+    in
     let text prop fallback =
       match property prop with
       | Some (StringValue value) -> value
@@ -60,7 +88,7 @@ let install renderer node ~materialize ~unmount =
     (* The scrollTop most recently written programmatically, so real
        user offsets can release the pin without false positives. *)
     let prog_scroll = ref (-1.) in
-        let document = W.Document.unsafeAsHtmlDocument renderer.web_document in
+    let document = W.Document.unsafeAsHtmlDocument renderer.web_document in
     let live_rows () =
       Hashtbl.fold (fun id _ rows -> id :: rows) mounted []
       |> List.sort (fun a b ->
@@ -101,27 +129,36 @@ let install renderer node ~materialize ~unmount =
           end
       | None -> last_roving_inputs := None
     in
-    let focused_index () =
-      match W.HtmlDocument.activeElement document with
-      | None -> None
-      | Some active ->
-          Hashtbl.fold
-            (fun id wrapper result ->
-              if W.Element.contains (W.Element.asNode active) wrapper then
-                Hashtbl.find_opt positions id
-              else result)
-            mounted None
+    let row_containing element =
+      Hashtbl.fold
+        (fun id wrapper found ->
+          if W.Element.contains (W.Element.asNode element) wrapper then Some id
+          else found)
+        mounted None
+    in
+    let pinned_rows () =
+      let active = W.HtmlDocument.activeElement document in
+      Hashtbl.fold
+        (fun id wrapper pinned ->
+          let focused = Option.fold ~none:false
+            ~some:(fun active -> W.Element.contains (W.Element.asNode active) wrapper) active in
+          let held = Hashtbl.fold (fun _ row found -> found || row = id) held_rows false in
+          let portal = Lui_web_layers.retains_owner renderer.web_layers
+            ~node:(fun target -> Store.descendant renderer.web_store.retained_nodes id target)
+            ~element:(fun target -> W.Element.contains (W.Element.asNode target) wrapper) in
+          if focused || held || !composing_row = Some id || portal then id :: pinned
+          else pinned)
+        mounted []
+      |> List.filter (fun id -> Hashtbl.mem positions id)
+      |> List.sort_uniq Int.compare
     in
     let range_extractor range =
       let indices = V.default_range range in
-      match focused_index () with
-      | Some index when not (Array.exists (( = ) index) indices) ->
-          let result = Array.append indices [| index |] in
-          Array.sort Int.compare result;
-          result
-      | _ -> indices
+      let pins = List.filter_map (Hashtbl.find_opt positions) (pinned_rows ()) in
+      Array.of_list (List.sort_uniq Int.compare (Array.to_list indices @ pins))
     in
-    let key = ref (fun index -> string_of_int !rows.(index)) in
+    let key = ref (fun index -> string_of_int index) in
+    let key_generation = ref None in
     let legacy_tuning name =
       match property DataAttrs with
       | Some (StringValue encoded) -> List.assoc_opt name (data_attrs_decode encoded)
@@ -149,19 +186,41 @@ let install renderer node ~materialize ~unmount =
       match !estimated_extent with
       | Some extent -> extent
       | None ->
-          match Store.property renderer.web_store !rows.(index) HeightValue with
+          match Option.bind (row_at index)
+            (fun id -> Store.property renderer.web_store id HeightValue) with
           | Some (IntValue height) when height > 0 -> float_of_int height
           | _ -> 32.
     in
     let update_rows () =
+      let metadata = (source_generation (), property VirtualIndices) in
       match Store.node renderer.web_store node with
-      | Some current when current.retained_children != !sequence ->
+      | Some current when current.retained_children != !sequence || !last_metadata <> Some metadata ->
           sequence := current.retained_children;
+          last_metadata := Some metadata;
           rows := Array.of_list (Lui_sequence.to_list !sequence);
-          let current_rows = !rows in
-          (key := fun index -> string_of_int current_rows.(index));
           Hashtbl.clear positions;
-          Array.iteri (fun index id -> Hashtbl.replace positions id index) !rows
+          Hashtbl.clear indexed;
+          let indices =
+            match property VirtualIndices with
+            | Some (StringValue value) ->
+                Option.value ~default:[] (virtual_indices_of_string value)
+            | _ -> List.init (Array.length !rows) Fun.id
+          in
+          List.iteri (fun offset index ->
+            let id = !rows.(offset) in
+            Hashtbl.replace positions id index;
+            Hashtbl.replace indexed index id) indices;
+          (match source_generation () with
+           | Some generation when !key_generation <> Some generation ->
+               key_generation := Some generation;
+               key := (fun index -> string_of_int generation ^ ":" ^ string_of_int index)
+           (* Preserve function identity so window-only changes reuse the
+              toolkit's logical measurements instead of rebuilding them. *)
+           | Some _ -> ()
+           | None ->
+               last_window := None;
+               key_generation := None;
+               key := (fun index -> string_of_int !rows.(index)))
       | _ -> ()
     in
     let make_options () =
@@ -176,7 +235,7 @@ let install renderer node ~materialize ~unmount =
         | Some (IntValue value) -> float_of_int value
         | _ -> 0.
       in
-      V.options ~count:(Array.length !rows)
+      V.options ~count:(logical_count ())
         ~getScrollElement:(fun () -> Js.Nullable.return root)
         ~estimateSize:estimate ~getItemKey:!key ~scrollToFn:V.element_scroll
         ~observeElementRect:V.observe_element_rect
@@ -189,6 +248,27 @@ let install renderer node ~materialize ~unmount =
     update_rows ();
     let virtualizer = V.make (make_options ()) in
     let last_extent = ref !estimated_extent in
+    let last_generation = ref (source_generation ()) in
+    request_window := (fun () ->
+      match source_generation () with
+      | None -> last_window := None
+      | Some generation ->
+          let first, last =
+            match Js.Nullable.toOption (V.item_range virtualizer) with
+            | Some range ->
+                (max 0 (V.range_start range - overscan ()),
+                 min (logical_count ()) (V.range_end range + 1 + overscan ()))
+            | None -> 0, 0
+          in
+          let pins = List.filter (fun id ->
+            match Hashtbl.find_opt positions id with
+            | Some index -> index < first || index >= last
+            | None -> false) (pinned_rows ()) in
+          let window = (generation, first, last, pins) in
+          if !last_window <> Some window then begin
+            last_window := Some window;
+            emit (VirtualWindow (node, generation, first, last, pins))
+          end);
     let pending_scroll = ref None in
     let reading_anchor =
       Lui_web_virtual_anchor.create root mounted positions virtualizer
@@ -211,20 +291,22 @@ let install renderer node ~materialize ~unmount =
       | None -> ()
       | Some (token, target_key, align, behavior, tries) -> (
           let index =
-            Array.find_opt
-              (fun id ->
-                Store.property renderer.web_store id KeyValue
-                = Some (StringValue target_key))
-              !rows
-          in
-          let index =
-            Option.bind index (fun id -> Hashtbl.find_opt positions id)
+            match source_generation () with
+            | Some _ -> (match property VirtualScrollIndex with
+                | Some (IntValue index) when index >= 0 -> Some index
+                | _ -> None)
+            | None ->
+                Option.bind
+                  (Array.find_opt (fun id ->
+                    Store.property renderer.web_store id KeyValue
+                    = Some (StringValue target_key)) !rows)
+                  (Hashtbl.find_opt positions)
           in
           (* An absent target resolves at the committed-tree boundary:
              once rows are populated a missing key reports immediately. *)
           match index with
           | None ->
-              if Array.length !rows > 0 then complete_pending "missing-target"
+              if source_generation () <> None || Array.length !rows > 0 then complete_pending "missing-target"
               else
                 pending_scroll :=
                   Some (token, target_key, align, behavior, tries + 1)
@@ -236,9 +318,8 @@ let install renderer node ~materialize ~unmount =
                  (missing-target), or the node disposes. scrollToIndex
                  is idempotent while pending; repeated issues converge
                  once the row is measured. *)
-              let row_id = !rows.(index) in
               let landed =
-                match Hashtbl.find_opt mounted row_id with
+                match Option.bind (row_at index) (Hashtbl.find_opt mounted) with
                 | Some wrapper ->
                     let bounds = W.Element.getBoundingClientRect root
                     and r = W.Element.getBoundingClientRect wrapper in
@@ -283,56 +364,69 @@ let install renderer node ~materialize ~unmount =
           (fun () ->
             let items = V.items virtualizer in
             let keep = Hashtbl.create (Array.length items) in
+            let pending = Hashtbl.create (Array.length items) in
+            let wrappers = Hashtbl.create (Array.length items) in
             Array.iter
               (fun item ->
                 let index = V.item_index item in
-                let id = !rows.(index) in
-                Hashtbl.replace keep id ();
                 let wrapper =
-                  match Hashtbl.find_opt mounted id with
-                  | Some wrapper -> wrapper
+                  match row_at index with
                   | None ->
-                      let wrapper =
-                        W.Document.createElement "div" renderer.web_document
-                      in
-                      style wrapper "position" "absolute";
-                      style wrapper "top" "0";
-                      style wrapper "left" "0";
-                      style wrapper "width" "100%";
-                      (* Publish membership before initializing the row, including
-                   nested virtual lists and extension event listeners. *)
-                      Hashtbl.replace mounted id wrapper;
-                      W.Element.appendChild
-                        (W.Element.asNode (materialize id))
-                        wrapper;
-                      W.Element.appendChild (W.Element.asNode wrapper) spacer;
-                      wrapper
+                      Hashtbl.replace pending index ();
+                      (match Hashtbl.find_opt placeholders index with
+                       | Some wrapper -> wrapper
+                       | None ->
+                           let wrapper = W.Document.createElement "div" renderer.web_document in
+                           W.Element.setAttribute "aria-hidden" "true" wrapper;
+                           Hashtbl.replace placeholders index wrapper;
+                           W.Element.appendChild (W.Element.asNode wrapper) spacer;
+                           wrapper)
+                  | Some id ->
+                      Hashtbl.replace keep id ();
+                      (match Hashtbl.find_opt mounted id with
+                       | Some wrapper -> wrapper
+                       | None ->
+                           let wrapper = W.Document.createElement "div" renderer.web_document in
+                           (* Publish membership before initializing nested virtual rows. *)
+                           Hashtbl.replace mounted id wrapper;
+                           W.Element.appendChild (W.Element.asNode (materialize id)) wrapper;
+                           W.Element.appendChild (W.Element.asNode wrapper) spacer;
+                           wrapper)
                 in
-                W.Element.setAttribute "data-index" (string_of_int index)
-                  wrapper;
+                style wrapper "position" "absolute";
+                style wrapper "top" "0";
+                style wrapper "left" "0";
+                style wrapper "width" "100%";
+                W.Element.setAttribute "data-index" (string_of_int index) wrapper;
                 style wrapper "transform"
                   ("translateY(" ^ Js.Float.toString (V.item_start item) ^ "px)");
-                if
-                  connected root
-                  && W.DomRect.height (W.Element.getBoundingClientRect wrapper)
-                     > 0.
+                Hashtbl.replace wrappers index wrapper;
+                if row_at index = None then
+                  style wrapper "height" (Js.Float.toString (estimate index) ^ "px");
+                if row_at index <> None && connected root
+                   && W.DomRect.height (W.Element.getBoundingClientRect wrapper) > 0.
                 then V.measure virtualizer (Js.Nullable.return wrapper))
               items;
             Hashtbl.fold
-              (fun id wrapper acc ->
-                if Hashtbl.mem keep id then acc else (id, wrapper) :: acc)
+              (fun id wrapper acc -> if Hashtbl.mem keep id then acc else (id, wrapper) :: acc)
               mounted []
             |> List.iter (fun (id, wrapper) ->
                 Hashtbl.remove mounted id;
                 ignore (W.Element.removeChild (W.Element.asNode wrapper) spacer);
                 unmount id);
+            Hashtbl.fold
+              (fun index wrapper acc -> if Hashtbl.mem pending index then acc else (index, wrapper) :: acc)
+              placeholders []
+            |> List.iter (fun (index, wrapper) ->
+                Hashtbl.remove placeholders index;
+                ignore (W.Element.removeChild (W.Element.asNode wrapper) spacer));
             (* Keep native Tab order in retained order. Move siblings around a
                focused row so inserting earlier rows does not blur it. *)
             let active = W.HtmlDocument.activeElement document in
             let anchor = ref None in
             for index = Array.length items - 1 downto 0 do
               let wrapper =
-                Hashtbl.find mounted !rows.(V.item_index items.(index))
+                Hashtbl.find wrappers (V.item_index items.(index))
               in
               let focused =
                 Option.fold ~none:false
@@ -374,9 +468,14 @@ let install renderer node ~materialize ~unmount =
                     last_range := Some (first, last);
                     emit (VisibleRange (node, first, last))
                   end
-              | None -> ()
+              | None ->
+                  if !last_range <> Some (0, -1) then begin
+                    last_range := Some (0, -1);
+                    emit (VisibleRange (node, 0, -1))
+                  end
             end
             else last_range := None);
+            schedule_window ();
             (match
                ( Js.Nullable.toOption (V.scroll_offset virtualizer),
                  Js.Nullable.toOption (V.scroll_rect virtualizer) ) with
@@ -470,8 +569,8 @@ let install renderer node ~materialize ~unmount =
     in
     let refresh () =
       if not !disposed then begin
-        (* Preserve measured retained identity only for a prepend. A later
-           append or reparent must not inherit an older reading position. *)
+        (* Sparse source revisions follow the visible row's retained identity.
+           Eager lists preserve their existing prepend-only anchor behavior. *)
         let current_parent_scope = parent_scope () in
         let same_parent = current_parent_scope = !last_parent_scope in
         last_parent_scope := current_parent_scope;
@@ -482,17 +581,23 @@ let install renderer node ~materialize ~unmount =
         in
         let anchor = Lui_web_virtual_anchor.capture reading_anchor in
         update_rows ();
-        if previous_sequence != !sequence then begin
+        let generation = source_generation () in
+        let revised = generation <> !last_generation in
+        if previous_sequence != !sequence || revised then begin
           Lui_web_virtual_anchor.cancel reading_anchor;
-          match Option.bind previous_first (Hashtbl.find_opt positions) with
-          | Some index when index > 0 && same_parent ->
-              Lui_web_virtual_anchor.preserve reading_anchor anchor
-          | _ -> ()
+          if revised && same_parent then
+            Lui_web_virtual_anchor.preserve reading_anchor anchor
+          else
+            match Option.bind previous_first (Hashtbl.find_opt positions) with
+            | Some index when index > 0 && same_parent ->
+                Lui_web_virtual_anchor.preserve reading_anchor anchor
+            | _ -> ()
         end;
         V.set_options virtualizer (make_options ());
         let extent = !estimated_extent in
-        if extent <> !last_extent then begin
+        if extent <> !last_extent || revised then begin
           last_extent := extent;
+          last_generation := generation;
           V.reset_measurements virtualizer
         end;
         if connected root then V.will_update virtualizer;
@@ -509,11 +614,44 @@ let install renderer node ~materialize ~unmount =
     List.iter
       (fun event -> W.Element.addEventListener event cancel_anchor root)
       anchor_inputs;
-    let on_focus _ = refresh () in
+    let refresh_scheduled = ref false in
+    let schedule_refresh () =
+      if not !refresh_scheduled then begin
+        refresh_scheduled := true;
+        Webapi.requestAnimationFrame (fun _ ->
+          refresh_scheduled := false;
+          if not !disposed then refresh ())
+      end
+    in
+    let on_focus _ = schedule_refresh () in
+    let target_row event =
+      row_containing (Lui_web_util.event_target_to_element (W.Event.target event))
+    in
+    let on_down event =
+      Option.iter (fun id -> Hashtbl.replace held_rows (pointer_id event) id) (target_row event);
+      schedule_refresh ()
+    in
+    let on_up event =
+      Hashtbl.remove held_rows (pointer_id event);
+      schedule_refresh ()
+    in
+    let on_composition_start event = composing_row := target_row event; schedule_refresh () in
+    let on_composition_end _ = composing_row := None; schedule_refresh () in
+    let document_inputs =
+      [ "pointerdown", on_down; "pointerup", on_up; "pointercancel", on_up;
+        "lostpointercapture", on_up; "compositionstart", on_composition_start;
+        "compositionend", on_composition_end ]
+    in
+    List.iter (fun (name, listener) ->
+      Lui_web_layers.document_listen renderer.web_document name listener true) document_inputs;
+    let stop_layers = Lui_web_layers.observe renderer.web_layers schedule_refresh in
     W.Element.addEventListener "focusin" on_focus root;
     W.Element.addEventListener "focusout" on_focus root;
     let dispose () =
       disposed := true;
+      stop_layers ();
+      List.iter (fun (name, listener) ->
+        Lui_web_layers.document_unlisten renderer.web_document name listener true) document_inputs;
       cleanup ();
       Lui_web_virtual_anchor.cancel reading_anchor;
       List.iter

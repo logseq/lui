@@ -1816,6 +1816,26 @@
       "lg": "VirtualItemExtent",
       "wire": "item-extent",
       "swift": "itemExtent"
+    },
+    {
+      "lg": "VirtualTotalCount",
+      "wire": "virtual-total-count",
+      "swift": "virtualTotalCount"
+    },
+    {
+      "lg": "VirtualGeneration",
+      "wire": "virtual-generation",
+      "swift": "virtualGeneration"
+    },
+    {
+      "lg": "VirtualIndices",
+      "wire": "virtual-indices",
+      "swift": "virtualIndices"
+    },
+    {
+      "lg": "VirtualScrollIndex",
+      "wire": "virtual-scroll-index",
+      "swift": "virtualScrollIndex"
     }
   ],
   "events": [
@@ -1984,6 +2004,16 @@
         ":int",
         ":bool",
         ":bool"
+      ]
+    },
+    {
+      "lg": "VirtualWindow",
+      "fields": [
+        ":int",
+        ":int",
+        ":int",
+        ":int",
+        ":int list"
       ]
     }
   ],
@@ -2237,7 +2267,11 @@
     ],
     "virtual-list": [
       "overscan",
-      "item-extent"
+      "item-extent",
+      "virtual-total-count",
+      "virtual-generation",
+      "virtual-indices",
+      "virtual-scroll-index"
     ],
     "text-field": [
       "read-only"

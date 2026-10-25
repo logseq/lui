@@ -9,6 +9,12 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.atomic.AtomicLong
 
+internal fun luiVirtualHostCode(host: Int, version: () -> Int): Int {
+    if (host != 4) return host
+    val supported = try { version() == 1 } catch (_: UnsatisfiedLinkError) { false }
+    return if (supported) host or 0x100 else host
+}
+
 /**
  * JNI bridge to the OCaml LUI runtime, porting the semantics of
  * `platform/flutter/native/lui_ocaml_bridge.c` for Android.
@@ -108,7 +114,9 @@ object LuiBridge {
     /** Start a session with a retained backend that can apply both deltas and snapshots. */
     fun start(libraryName: String, hostCode: Int = HOST_KOTLIN, backend: LuiBackend): Boolean =
         start(libraryName, hostCode, PatchSink { batch, snapshot ->
-            if (snapshot) backend.applySnapshot(batch) else backend.applyBatch(batch)
+            val accepted = if (snapshot) backend.applySnapshot(batch) else backend.applyBatch(batch)
+            if (!accepted) android.util.Log.e("LuiBridge", "Rejected ${if (snapshot) "snapshot" else "batch"}: ${backend.lastError}")
+            accepted
         })
 
     /** Start an ordered runtime session and retire any previous receiver. */
@@ -121,7 +129,9 @@ object LuiBridge {
         try {
             System.loadLibrary(libraryName)
             nativeLoaded = true
-            val accepted = dispatchOnRuntime(30) { nativeStart(PLATFORM_ANDROID, hostCode) == 1 }
+            val accepted = dispatchOnRuntime(30) {
+                nativeStart(PLATFORM_ANDROID, luiVirtualHostCode(hostCode, ::nativeVirtualRowsVersion)) == 1
+            }
             started = accepted
             return accepted
         } finally {
@@ -239,6 +249,11 @@ object LuiBridge {
         nativeVisibleRange(node, first, last)
     }
 
+    fun virtualWindow(node: Long, generation: Long, first: Long, last: Long, pinnedRows: List<Long>) {
+        val pins = pinnedRows.toLongArray()
+        dispatch { nativeVirtualWindow(node, generation, first, last, pins) }
+    }
+
     fun scrollCompleted(node: Long, token: Long, outcome: String) = dispatch {
         nativeScrollCompleted(node, token, utf8(outcome))
     }
@@ -264,6 +279,10 @@ object LuiBridge {
     // ------------------------------------------------------------------
 
     private external fun nativeStart(platformCode: Int, hostCode: Int): Int
+
+    private external fun nativeVirtualRowsVersion(): Int
+
+    private external fun nativeVirtualWindow(node: Long, generation: Long, first: Long, last: Long, pins: LongArray): Int
 
     private external fun nativeAppear(node: Long): Int
 
@@ -389,6 +408,7 @@ fun LuiEvent.dispatchToBridge() {
         is LuiEvent.PressModifiers -> bridge.pressModifiers(node, modifiers)
         is LuiEvent.ScrollCompleted -> bridge.scrollCompleted(node, token, outcome)
         is LuiEvent.VisibleRange -> bridge.visibleRange(node, first, last)
+        is LuiEvent.VirtualWindow -> bridge.virtualWindow(node, generation, first, last, pinnedRows)
         is LuiEvent.Load -> bridge.load(node)
     }
 }

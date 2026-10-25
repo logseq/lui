@@ -1,8 +1,10 @@
 package luimygo
 
 import (
+	"encoding/json"
 	"github.com/egoist/mygo/ui"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -21,7 +23,54 @@ type collectionState struct {
 	atStart, atEnd              bool
 	issued                      bool
 	tableColumns                int
+	windowSet                   bool
+	windowGeneration            int64
+	windowFirst, windowLast     int
+	windowPins                  []int64
 }
+
+// sparseCollection describes committed row roots; source data and unmounted
+// rows remain in the application. Missing rows receive only host geometry.
+type sparseCollection struct {
+	lazy       bool
+	total      int
+	generation int64
+	rows       map[int]int64
+	indices    map[int64]int
+}
+
+func collectionSource(n Node) sparseCollection {
+	generation, lazy := integer(n.Props["virtual-generation"])
+	result := sparseCollection{lazy: lazy, total: len(n.Children), generation: generation}
+	if !lazy {
+		return result
+	}
+	count, _ := integer(n.Props["virtual-total-count"])
+	result.total = int(count)
+	var indices []int
+	_ = json.Unmarshal([]byte(n.String("virtual-indices")), &indices)
+	result.rows = make(map[int]int64, len(indices))
+	result.indices = make(map[int64]int, len(indices))
+	for position, index := range indices {
+		if position < len(n.Children) {
+			result.rows[index] = n.Children[position]
+			result.indices[n.Children[position]] = index
+		}
+	}
+	return result
+}
+func (source sparseCollection) row(n Node, index int) int64 {
+	if source.lazy {
+		return source.rows[index]
+	}
+	if index < 0 || index >= len(n.Children) {
+		return 0
+	}
+	return n.Children[index]
+}
+
+// Placeholder keys cannot collide with mounted wire node IDs.
+type collectionPlaceholderIndex int
 
 // Measure shared tracks once before building rows. Row construction reads the
 // retained result instead of rescanning its siblings.
@@ -105,6 +154,7 @@ func (b *Backend) renderCollections(c *ui.Context, n Node, s *controlState, appe
 		return ui.Element{}, false
 	}
 	state := &s.collection
+	source := collectionSource(n)
 	if state.rows == nil {
 		state.rows = map[int64]*ui.Handle{}
 	}
@@ -132,9 +182,16 @@ func (b *Backend) renderCollections(c *ui.Context, n Node, s *controlState, appe
 			}
 		}
 	}
+	if source.lazy && state.pending {
+		state.targetIndex = int(n.Number("virtual-scroll-index", -1))
+	}
 	overscan, extent := collectionTuning(n)
 	row := func(index int) {
-		id := n.Children[index]
+		id := source.row(n, index)
+		if id == 0 {
+			ui.Box(c).Height(extent).Shrink(0).FillWidth()
+			return
+		}
 		handle := state.rows[id]
 		if handle == nil {
 			handle = &ui.Handle{}
@@ -142,6 +199,11 @@ func (b *Backend) renderCollections(c *ui.Context, n Node, s *controlState, appe
 		}
 		c.Key(id)
 		wrapper := ui.Column(c).FillWidth().MinWidth(0).Bind(handle)
+		if source.lazy {
+			// A zero-height row would collapse the lazy window onto the entire
+			// source. Keep positive logical geometry for empty row roots.
+			wrapper.MinHeight(1)
+		}
 		grouped := n.String("style") == "inset-grouped"
 		if grouped {
 			wrapper.Background(c.Theme().Surface).Radius(8)
@@ -171,7 +233,24 @@ func (b *Backend) renderCollections(c *ui.Context, n Node, s *controlState, appe
 	virtual := n.Kind == "virtual-list"
 	var e ui.Element
 	if virtual {
-		state.list.Key = func(index int) any { return n.Children[index] }
+		state.list.Key = func(index int) any {
+			if id := source.row(n, index); id != 0 {
+				return id
+			}
+			return collectionPlaceholderIndex(index)
+		}
+		if source.lazy {
+			state.list.SetKeyIndex(func(key any) (int, bool) {
+				id, ok := key.(int64)
+				if !ok {
+					return 0, false
+				}
+				index, found := source.indices[id]
+				return index, found
+			})
+		} else {
+			state.list.SetKeyIndex(nil)
+		}
 		state.list.SetOverscan(overscan)
 		state.list.SetItemExtent(extent)
 		if state.pending && state.targetIndex >= 0 && !state.issued {
@@ -204,9 +283,12 @@ func (b *Backend) renderCollections(c *ui.Context, n Node, s *controlState, appe
 			}
 			state.issued = true
 		}
-		e = ui.List(c, &state.list, len(n.Children), row).FillWidth().TrackScroll(&s.scroll).Bind(&state.viewport)
+		e = ui.List(c, &state.list, source.total, row).FillWidth().TrackScroll(&s.scroll).Bind(&state.viewport)
 		// Reading subscribes the builder to committed range changes.
 		state.list.Visible()
+		if source.lazy {
+			state.list.Requested()
+		}
 	} else {
 		if n.String("orientation") == "horizontal" {
 			e = ui.ScrollHorizontal(c)
@@ -232,6 +314,26 @@ func (b *Backend) renderCollections(c *ui.Context, n Node, s *controlState, appe
 			current, ok := b.nodes[n.ID]
 			if !ok {
 				return
+			}
+			if source.lazy {
+				currentGeneration, _ := integer(current.Props["virtual-generation"])
+				if currentGeneration != source.generation {
+					c.Invalidate()
+					return
+				}
+				requestedFirst, requestedLast, pinnedIndices := state.list.Requested()
+				pins := make([]int64, 0, len(pinnedIndices))
+				for _, index := range pinnedIndices {
+					if id := source.row(n, index); id != 0 {
+						pins = append(pins, id)
+					}
+				}
+				slices.Sort(pins)
+				if !state.windowSet || state.windowGeneration != source.generation || state.windowFirst != requestedFirst || state.windowLast != requestedLast || !slices.Equal(pins, state.windowPins) {
+					state.windowSet, state.windowGeneration, state.windowFirst, state.windowLast, state.windowPins = true, source.generation, requestedFirst, requestedLast, slices.Clone(pins)
+					b.emit(Event{Kind: "virtual-window", Node: n.ID, Generation: source.generation, First: int64(requestedFirst), Last: int64(requestedLast), Pins: pins})
+					c.Invalidate()
+				}
 			}
 			viewport := state.viewport.Bounds(c)
 			first, last := 0, -1
@@ -277,6 +379,9 @@ func (b *Backend) renderCollections(c *ui.Context, n Node, s *controlState, appe
 					break
 				}
 			}
+			if source.lazy {
+				index = int(current.Number("virtual-scroll-index", -1))
+			}
 			if index < 0 {
 				complete("missing-target")
 				return
@@ -313,7 +418,7 @@ func (b *Backend) renderCollections(c *ui.Context, n Node, s *controlState, appe
 			if s.scroll.Scrolling() {
 				return
 			}
-			if index >= first && index <= last {
+			if index >= first && index <= last && source.row(n, index) != 0 {
 				complete("succeeded")
 			}
 		})

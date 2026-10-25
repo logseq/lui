@@ -113,7 +113,7 @@ let view _context path_signal send =
         context parent)
     ()
 
-let initialize _platform _host =
+let initialize _platform host_code =
   bridge.Lui_native_bridge.trace <-
     Some
       (fun batch ->
@@ -123,6 +123,7 @@ let initialize _platform _host =
       (fun name json -> Printf.eprintf "NAV host event %s %s\n%!" name json);
   let app =
     Lui_app.create_with_extensions
+      ~virtual_rows:(Lui_native_bridge.virtual_rows_supported host_code)
       (Lui_native_bridge.backend bridge (profile IOS SwiftUIHost))
       (Lui_navigation.registry ())
       Lui_navigation.Path.empty

@@ -106,6 +106,7 @@ type host_kind =
   | WebHost
   | SwiftUIHost
   | KotlinHost
+  | MyGoHost
 
 type platform_profile = {
   profile_os : operating_system;
@@ -302,6 +303,10 @@ type property =
   | ReadOnly
   | VirtualOverscan
   | VirtualItemExtent
+  | VirtualTotalCount
+  | VirtualGeneration
+  | VirtualIndices
+  | VirtualScrollIndex
 
 module Property_map =
   Map.Make
@@ -360,6 +365,7 @@ type event =
   | NavigateNext of int
   | NavigationKey of int * string * bool
   | ScrollEdges of int * bool * bool
+  | VirtualWindow of int * int * int * int * int list
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =
@@ -416,6 +422,7 @@ let event_node event =
   | NavigateNext node
   | NavigationKey (node, _, _)
   | ScrollEdges (node, _, _)
+  | VirtualWindow (node, _, _, _, _)
   | ExtensionEvent (node, _, _, _) -> node
 
 let modal_surface kind = kind = Dialog || kind = Drawer || kind = Sheet
@@ -558,6 +565,7 @@ let event_supported kind event =
   | Appear _ -> kind <> Root
   | ScrollCompleted _ | VisibleRange _ | ScrollEdges _ ->
       kind = ListContainer || kind = VirtualList
+  | VirtualWindow _ -> kind = VirtualList
   | Picked _ -> kind = FilePicker
   | PressDetail _ | PointerDown _ | PointerUp _ ->
     (match kind with
@@ -929,7 +937,8 @@ let can_contain_children kind =
 let common_property_supported kind property =
   match property with
   | ReadOnly -> List.mem kind [TextField; SecureField; Input; SearchField; Textarea; Combobox]
-  | VirtualOverscan | VirtualItemExtent -> kind = VirtualList
+  | VirtualOverscan | VirtualItemExtent | VirtualTotalCount | VirtualGeneration
+  | VirtualIndices | VirtualScrollIndex -> kind = VirtualList
   | MainAlignment | CrossAlignment ->
     kind = Row
     || kind = Column
@@ -1290,7 +1299,8 @@ let common_property_supported kind property =
 
 let property_supported kind property =
   if property = ReadOnly then List.mem kind [TextField; SecureField; Input; SearchField; Textarea; Combobox]
-  else if property = VirtualOverscan || property = VirtualItemExtent then kind = VirtualList
+  else if List.mem property [VirtualOverscan; VirtualItemExtent; VirtualTotalCount;
+    VirtualGeneration; VirtualIndices; VirtualScrollIndex] then kind = VirtualList
   else if property = AccessibilityIdentifier then true
   (* Position hint honored on [overlay] children and on [overlay] itself;
      admitted before the restrictive arms so e.g. an aligned [menu_trigger]
@@ -1557,11 +1567,36 @@ let anchor_rect_of_string value =
        | _ -> None)
   | _ -> None
 
+let virtual_indices_of_string value =
+  let length = String.length value in
+  if value = "[]" then Some []
+  else if length < 3 || value.[0] <> '[' || value.[length - 1] <> ']'
+  then None
+  else
+    let rec parse previous accumulated = function
+      | [] -> Some (List.rev accumulated)
+      | part :: rest ->
+        (match int_of_string_opt part with
+         | Some index when index > previous && string_of_int index = part ->
+           parse index (index :: accumulated) rest
+         | _ -> None)
+    in
+    parse (-1) []
+      (String.split_on_char ',' (String.sub value 1 (length - 2)))
+
+let virtual_indices_to_string indices =
+  "[" ^ String.concat "," (List.map string_of_int indices) ^ "]"
+
 let property_value_supported property value =
   match (property, value) with
   | ReadOnly, BoolValue _ -> true
   | VirtualOverscan, IntValue n -> n >= 0
   | VirtualItemExtent, FloatValue f -> is_finite f && f > 0.
+  | VirtualTotalCount, IntValue n -> n >= 0
+  | VirtualGeneration, IntValue n -> n > 0
+  | VirtualIndices, StringValue indices ->
+    Option.is_some (virtual_indices_of_string indices)
+  | VirtualScrollIndex, IntValue n -> n >= -1
   | TextValue, StringValue _ -> true
   | Enabled, BoolValue _ -> true
   | Gap, IntValue value -> value >= 0

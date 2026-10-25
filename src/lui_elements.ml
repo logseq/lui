@@ -58,6 +58,7 @@ type host_kind = Lui_protocol.host_kind =
   | WebHost
   | SwiftUIHost
   | KotlinHost
+  | MyGoHost
 
 type image_loading = [ `eager | `lazy_ ]
 
@@ -469,6 +470,15 @@ let keyed ~source ~key ~cmp ~mount : t =
          (fun item_context item_source ->
             mount item_source item_context None))
     context parent
+
+let virtual_rows ?scroll_key ~source ~key ~cmp ~mount () : t =
+ fun context parent ->
+  match parent with
+  | None -> invalid_arg "virtual_rows requires a virtual-list parent"
+  | Some node ->
+    ignore (Lui_dynamic.virtual_rows ?scroll_key context node source key cmp
+      (fun item_context item_source -> mount item_source item_context None));
+    node
 
 (* Every *_el is a t underneath, so the same keyed collection mounts
    children directly under the restricted parent; the .mli signatures
@@ -947,6 +957,13 @@ let virtual_list ?key ?overscan ?item_extent ?gap ?main ?cross ?grow ?columns ?p
   Option.iter (register_visible_range context node) on_visible_range;
   attach context parent node;
   mount_children context node children;
+  let segments = Option.value
+    (Hashtbl.find_opt context.Lui_ui.ui_application.Lui_runtime.dynamic_segments node)
+    ~default:[] in
+  if List.exists (fun segment -> segment.Lui_runtime.dynamic_segment_exclusive) segments
+     && List.length children <> 1 then
+    invalid_arg "virtual_rows must be the sole virtual-list child";
+  Lui_runtime.validate_virtual_list context.Lui_ui.ui_application node;
   node
 
 let tabs ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?label ?orientation ?transition (children : t list) : t =

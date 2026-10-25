@@ -20,6 +20,9 @@ type dynamic_segment = {
   dynamic_segment_base : int ref;
   dynamic_segment_size : int ref;
   dynamic_segment_active : bool ref;
+  dynamic_segment_exclusive : bool;
+  dynamic_segment_on_property :
+    (property -> wire_value option -> unit) option ref;
 }
 
 type flush_status =
@@ -55,8 +58,10 @@ type flush_diagnostics = {
 type application = {
   runtime_scheduler : Signal.scheduler;
   runtime_backend : backend;
+  runtime_virtual_rows : bool;
   runtime_extension_registry : Lui_extension.extension_registry;
   next_node_id : int ref;
+  next_virtual_generation : int ref;
   mounted_nodes : (int, node_kind) Hashtbl.t;
   runtime_extension_nodes : (int, string) Hashtbl.t;
   (* identifiers whose schema fingerprint already went out on the wire —
@@ -109,6 +114,7 @@ type runtime_checkpoint = {
   checkpoint_nodes : int list option;
   checkpoint_generation : int;
   checkpoint_next_node_id : int;
+  checkpoint_next_virtual_generation : int;
   checkpoint_mounted_nodes : (int, node_kind) Hashtbl.t;
   checkpoint_extension_nodes : (int, string) Hashtbl.t;
   checkpoint_properties : (int, wire_value Property_map.t) Hashtbl.t;
@@ -126,7 +132,9 @@ type runtime_checkpoint = {
   checkpoint_event_handlers : (int, event_handler list) Hashtbl.t;
   checkpoint_next_dynamic_segment_id : int;
   checkpoint_dynamic_segments : (int, dynamic_segment list) Hashtbl.t;
-  checkpoint_segment_values : (dynamic_segment * int * int * bool) list;
+  checkpoint_segment_values :
+    (dynamic_segment * int * int * bool
+     * (property -> wire_value option -> unit) option) list;
   checkpoint_reload_keys : (int, string) Hashtbl.t;
   checkpoint_node_aliases : (int, int) Hashtbl.t;
   checkpoint_handler_count : int;
@@ -158,13 +166,20 @@ let empty_diagnostics () =
     flush_signal_dirty_task_count = 0;
   }
 
-let create_with_extensions scheduler backend registry =
+let create_with_extensions ?virtual_rows scheduler backend registry =
+  let virtual_rows = match virtual_rows with
+    | Some supported -> supported
+    | None -> (match backend.backend_profile.profile_host with
+      | WebHost | SwiftUIHost | KotlinHost | MyGoHost -> true
+      | GenericHost -> false) in
   Lui_extension.freeze registry;
   {
     runtime_scheduler = scheduler;
     runtime_backend = backend;
+    runtime_virtual_rows = virtual_rows;
     runtime_extension_registry = registry;
     next_node_id = ref 0;
+    next_virtual_generation = ref 0;
     mounted_nodes = Hashtbl.create 16;
     runtime_extension_nodes = Hashtbl.create 16;
     runtime_fingerprint_sent = Hashtbl.create 16;
@@ -195,8 +210,8 @@ let create_with_extensions scheduler backend registry =
     runtime_flush_dirty = ref false;
   }
 
-let create scheduler backend =
-  create_with_extensions scheduler backend (Lui_extension.registry ())
+let create ?virtual_rows scheduler backend =
+  create_with_extensions ?virtual_rows scheduler backend (Lui_extension.registry ())
 
 let remove_alias application candidate =
   match Hashtbl.find_opt application.runtime_node_aliases candidate with
@@ -243,6 +258,7 @@ let checkpoint ?nodes application =
     checkpoint_nodes = nodes;
     checkpoint_generation = !(application.runtime_generation);
     checkpoint_next_node_id = !(application.next_node_id);
+    checkpoint_next_virtual_generation = !(application.next_virtual_generation);
     checkpoint_mounted_nodes = copy application.mounted_nodes;
     checkpoint_extension_nodes = copy application.runtime_extension_nodes;
     checkpoint_properties =
@@ -273,7 +289,8 @@ let checkpoint ?nodes application =
     checkpoint_segment_values = Hashtbl.fold (fun _ segments values ->
       List.fold_left (fun values segment ->
         (segment, !(segment.dynamic_segment_base), !(segment.dynamic_segment_size),
-         !(segment.dynamic_segment_active)) :: values) values segments) segments [];
+         !(segment.dynamic_segment_active), !(segment.dynamic_segment_on_property))
+        :: values) values segments) segments [];
     checkpoint_reload_keys = copy application.runtime_reload_keys;
     checkpoint_node_aliases = (match nodes with
       | None -> Hashtbl.copy application.runtime_node_aliases
@@ -359,6 +376,7 @@ let restore application saved =
         (fun index -> saved.checkpoint_next_node_id + index + 1) in
       Some (nodes @ created) in
   application.next_node_id := saved.checkpoint_next_node_id;
+  application.next_virtual_generation := saved.checkpoint_next_virtual_generation;
   let replace target source =
     (match affected with None -> Hashtbl.reset target
     | Some nodes -> List.iter (Hashtbl.remove target) nodes);
@@ -398,10 +416,12 @@ let restore application saved =
   application.next_dynamic_segment_id :=
     saved.checkpoint_next_dynamic_segment_id;
   replace application.dynamic_segments saved.checkpoint_dynamic_segments;
-  List.iter (fun (segment, base, size, active) ->
+  List.iter (fun (segment, base, size, active, on_property) ->
     segment.dynamic_segment_base := base;
     segment.dynamic_segment_size := size;
-    segment.dynamic_segment_active := active) saved.checkpoint_segment_values;
+    segment.dynamic_segment_active := active;
+    segment.dynamic_segment_on_property := on_property)
+    saved.checkpoint_segment_values;
   replace application.runtime_reload_keys saved.checkpoint_reload_keys;
   (match affected with
   | None -> Hashtbl.reset application.runtime_node_aliases; Hashtbl.reset application.runtime_alias_targets
@@ -1797,6 +1817,14 @@ let note_reported_echo application node event =
   in
   put_echo application node state
 
+let notify_segment_property application node property value =
+  match Hashtbl.find_opt application.dynamic_segments node with
+  | None -> ()
+  | Some segments -> List.iter (fun segment ->
+      if !(segment.dynamic_segment_active) then
+        Option.iter (fun notify -> notify property value)
+          !(segment.dynamic_segment_on_property)) segments
+
 let set_prop application node property value =
   let node = canonical_node application node in
   let kind = require_standard_node_kind application node in
@@ -1821,6 +1849,10 @@ let set_prop application node property value =
     | None -> Property_map.empty
   in
   if Property_map.find_opt property current <> Some value then begin
+    notify_segment_property application node property (Some value);
+    (* A segment callback may have updated another property on this node. *)
+    let current = Option.value
+      (Hashtbl.find_opt application.runtime_properties node) ~default:Property_map.empty in
     Hashtbl.replace application.runtime_properties node
       (Property_map.add property value current);
     note_sent_echo application node property value;
@@ -1838,6 +1870,9 @@ let remove_prop application node property =
     | None -> Property_map.empty
   in
   if Property_map.mem property current then begin
+    notify_segment_property application node property None;
+    let current = Option.value
+      (Hashtbl.find_opt application.runtime_properties node) ~default:Property_map.empty in
     Hashtbl.replace application.runtime_properties node
       (Property_map.remove property current);
     note_removed_echo application node property;
@@ -2174,6 +2209,59 @@ let validate_extension_nodes application =
        then invalid_arg "platform tweak requires exactly one child")
     application.runtime_extension_nodes
 
+let virtual_source_property = function
+  | VirtualTotalCount | VirtualGeneration | VirtualIndices | VirtualScrollIndex -> true
+  | _ -> false
+
+let validate_virtual_list application node =
+  let node = canonical_node application node in
+  if Hashtbl.find_opt application.mounted_nodes node = Some VirtualList then begin
+    let children = children application node in
+    (match Hashtbl.find_opt application.dynamic_segments node with
+     | Some segments -> List.iter (fun segment ->
+         if segment.dynamic_segment_exclusive
+            && (List.length segments <> 1
+                || !(segment.dynamic_segment_base) <> 0
+                || !(segment.dynamic_segment_size) <> List.length children) then
+           invalid_arg "virtual_rows must exclusively own the virtual-list children") segments
+     | None -> ());
+    let values = Option.value
+      (Hashtbl.find_opt application.runtime_properties node) ~default:Property_map.empty in
+    let metadata = [VirtualTotalCount; VirtualGeneration; VirtualIndices; VirtualScrollIndex] in
+    if List.exists (fun property -> Property_map.mem property values) metadata then begin
+      let integer property = match Property_map.find_opt property values with
+        | Some (IntValue value) -> value
+        | _ -> invalid_arg "virtual-list source metadata is incomplete" in
+      let total = integer VirtualTotalCount in
+      let generation = integer VirtualGeneration in
+      let target = match Property_map.find_opt VirtualScrollIndex values with
+        | None -> None
+        | Some (IntValue value) -> Some value
+        | Some _ -> invalid_arg "invalid virtual-list scroll index" in
+      let indices = match Property_map.find_opt VirtualIndices values with
+        | Some (StringValue encoded) ->
+          (match virtual_indices_of_string encoded with
+           | Some indices -> indices
+           | None -> invalid_arg "invalid virtual-list sparse indices")
+        | _ -> invalid_arg "virtual-list source metadata is incomplete" in
+      if total < 0 || generation <= 0
+         || Option.fold ~none:false ~some:(fun target -> target < -1 || target >= total) target
+         || List.length indices <> List.length children
+         || List.exists (fun index -> index >= total) indices then
+        invalid_arg "virtual-list source metadata does not match its children"
+    end
+  end
+
+let validate_virtual_list_operations application operations =
+  let parents = Hashtbl.create 4 in
+  List.iter (function
+    | SetProp (node, property, _) | RemoveProp (node, property)
+      when virtual_source_property property -> Hashtbl.replace parents node ()
+    | InsertChild (parent, _, _) | RemoveChild (parent, _) | MoveChild (parent, _, _) ->
+      Hashtbl.replace parents parent ()
+    | _ -> ()) operations;
+  Hashtbl.iter (fun parent () -> validate_virtual_list application parent) parents
+
 let handler_count application = !(application.runtime_handler_count)
 
 let dynamic_segment_count application =
@@ -2258,6 +2346,7 @@ let rec flush application =
             List.rev !(application.pending_ops)
           else elide_pending_ops application
         in
+        validate_virtual_list_operations application operations;
         (* detach before apply: ops queued while the backend applies
            this batch (emits re-entering through event dispatch) land
            in the next batch instead of being re-sent under a stale
@@ -2300,9 +2389,17 @@ let find_dynamic_segment_index segments segment_id =
   in
   loop segments 0
 
-let register_dynamic_segment application parent =
+let register_dynamic_segment ?(exclusive = false) application parent =
   let parent = canonical_node application parent in
   require_node application parent;
+  let current = Option.value
+    (Hashtbl.find_opt application.dynamic_segments parent) ~default:[] in
+  if List.exists (fun segment -> segment.dynamic_segment_exclusive) current then
+    invalid_arg "virtual_rows must be the sole dynamic owner";
+  if exclusive
+     && (Hashtbl.find_opt application.mounted_nodes parent <> Some VirtualList
+         || current <> [] || child_count application parent <> 0) then
+    invalid_arg "virtual_rows requires an empty virtual-list parent";
   let segment =
     {
       dynamic_segment_id =
@@ -2312,6 +2409,8 @@ let register_dynamic_segment application parent =
       dynamic_segment_base = ref (child_count application parent);
       dynamic_segment_size = ref 0;
       dynamic_segment_active = ref true;
+      dynamic_segment_exclusive = exclusive;
+      dynamic_segment_on_property = ref None;
     }
   in
   let current =

@@ -36,7 +36,7 @@ func (b *Backend) interactionBlocked(n Node, e Event) bool {
 	// is inert or disabled. Interactive events use the current retained tree,
 	// including ancestors updated by earlier events in the same frame.
 	switch e.Kind {
-	case "appear", "load", "scroll-completed", "visible-range", "scroll-edges":
+	case "appear", "load", "scroll-completed", "visible-range", "scroll-edges", "virtual-window":
 		return false
 	}
 	for {
@@ -182,6 +182,9 @@ func (b *Backend) bindEvents(c *ui.Context, n Node, s *controlState, e ui.Elemen
 // OCaml runtime. PointerEnabled also subscribes non-pointer notifications, so
 // it alone never grants a leaf editor pointer-detail events.
 func eventAllowed(n Node, e Event) bool {
+	if e.Kind == "virtual-window" {
+		return n.Kind == "virtual-list" && n.Props["virtual-generation"] != nil
+	}
 	if n.Kind == "extension" {
 		return e.Kind == "extension-event" && e.Identifier == n.Identifier
 	}

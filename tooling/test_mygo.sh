@@ -5,6 +5,9 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo_root"
 python3 tooling/generate_mygo_schema.py --check
 python3 -m unittest discover -s tooling/test -p 'test_mygo_*.py'
+# Allocation budgets use the shipping configuration; behavioral tests also run
+# with the race detector, whose instrumentation changes allocation counts.
+go -C platform/mygo test -count=1 -run 'AllocationBudget$' .
 case "${1:-integration}" in
   --unit)
     go -C platform/mygo test -race -count=1 ./...

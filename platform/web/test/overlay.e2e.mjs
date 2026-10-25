@@ -1225,87 +1225,133 @@ test("Nested menu keeps its right-side submenu open through the pointer corridor
 })
 
 test("Nested menu corridor follows a submenu that flips to the left", async () => {
-  await openGalleryPage("Select")
+  await openLayerRegressionPage()
   await browser("set", "viewport", "480", "720")
-  await evaluate(`(() => {
-    const select = document.querySelector('.lui-select')
-    Object.assign(select.style, {
-      position: 'fixed',
-      right: '4px',
-      bottom: '160px',
-      width: '180px',
-      zIndex: '1',
+  await session.page.evaluate(async () => {
+    const [Web, { Protocol, properties, kinds }] = await Promise.all([
+      import("lui.web.dom/shell/lui_web.js"),
+      import("/platform/web/test/fixtures/protocol-fixture.mjs"),
+    ])
+    const host = document.createElement("div")
+    Object.assign(host.style, {
+      position: "fixed", right: "4px", bottom: "160px", width: "180px",
     })
-    select.focus()
-  })()`)
-  await browser("press", "Enter")
-  await browser("wait", "30")
-
-  assert.equal(
-    await state(`(() => {
-      const rootPopup = document.getElementById(
-        document.querySelector('.lui-select')?.getAttribute('aria-controls'),
-      )
-      const trigger = [...(rootPopup?.querySelectorAll('.lui-menu-item') ?? [])]
-        .find((item) => item.textContent.includes('More environments'))
-      trigger?.dispatchEvent(new MouseEvent('mouseenter', {
-        clientX: trigger.getBoundingClientRect().left,
-        clientY: trigger.getBoundingClientRect().top
-          + trigger.getBoundingClientRect().height / 2,
-      }))
-      return trigger?.getAttribute('aria-expanded')
-    })()`),
-    "true",
-  )
-  await browser("wait", "30")
-
-  assert.equal(
-    await state(`(() => {
-      const rootPopup = document.getElementById(
-        document.querySelector('.lui-select')?.getAttribute('aria-controls'),
-      )
-      const trigger = [...(rootPopup?.querySelectorAll('.lui-menu-item') ?? [])]
-        .find((item) => item.textContent.includes('More environments'))
-      const submenu = [...document.querySelectorAll('.lui-popup-positioner[data-submenu]')]
-        .find((node) => !node.hasAttribute('hidden')
-          && node.textContent.includes('Production region'))
-      const popup = submenu?.querySelector('.lui-dropdown-menu')
-      const triggerBounds = trigger?.getBoundingClientRect()
-      const popupBounds = popup?.getBoundingClientRect()
-      window.__flippedSubmenuCorridor = {
-        startX: triggerBounds?.left,
-        startY: (triggerBounds?.top ?? 0) + (triggerBounds?.height ?? 0) / 2,
-        endX: popupBounds?.right,
-        endY: (popupBounds?.top ?? 0) + (popupBounds?.height ?? 0) / 2,
+    host.setAttribute("data-flipped-corridor", "")
+    document.body.append(host)
+    const renderer = Web.create(undefined, host)
+    const backend = Web.backend(renderer)
+    const ops = []
+    const childCounts = new Map()
+    let next = 1000000
+    const node = (kind, parent, props = {}) => {
+      const id = ++next
+      ops.push(Protocol.create_node_op(id, kinds.get(kind)))
+      for (const [name, value] of Object.entries(props)) {
+        const tag = typeof value === "string" ? 0 : typeof value === "boolean" ? 1
+          : name === "anchor-offset" ? 3 : 2
+        ops.push(Protocol.set_prop_op(id, properties.get(name), { TAG: tag, _0: value }))
       }
-      trigger?.dispatchEvent(new MouseEvent('mouseleave', {
-        clientX: window.__flippedSubmenuCorridor.startX,
-        clientY: window.__flippedSubmenuCorridor.startY,
-        relatedTarget: document.body,
-      }))
-      ;[0.4, 0.8].forEach((progress, index) => {
-        setTimeout(() => {
-          const point = window.__flippedSubmenuCorridor
-          document.dispatchEvent(new MouseEvent('mousemove', {
-            bubbles: true,
-            clientX: point.startX + (point.endX - point.startX) * progress,
-            clientY: point.startY + (point.endY - point.startY) * progress,
-          }))
-        }, index * 70)
-      })
-      setTimeout(() => {
-        window.__flippedSubmenuCorridorOpen = popup?.hasAttribute('data-open')
-      }, 180)
-      return submenu?.getAttribute('data-side')
-    })()`),
-    "left",
-  )
-  await browser("wait", "230")
-
-  assert.equal(
-    await state(`window.__flippedSubmenuCorridorOpen`),
-    true,
-  )
+      if (parent) {
+        const index = childCounts.get(parent) ?? 0
+        ops.push(Protocol.insert_child_op(parent, id, index))
+        childCounts.set(parent, index + 1)
+      }
+      return id
+    }
+    const root = node("column", null)
+    const stack = node("stack", root)
+    const select = node("select", stack, { text: "Alpha", "press-enabled": true })
+    const list = (values) => values.reduceRight((tl, hd) => ({ hd, tl }), 0)
+    let generation = 0, menu
+    const flush = () => backend.apply_batch({ generation: ++generation, ops: list(ops.splice(0)) })
+    Web.set_event_handler(renderer, (event) => {
+      if ((event.TAG === 0 || event.TAG === 7) && event._0 === select && !menu) {
+        menu = node("dropdown-menu", stack, { "min-width": 220 })
+        node("menu-item", menu, { text: "Alpha", selected: true })
+        const more = node("menu-trigger", menu, { text: "More environments" })
+        const submenu = node("dropdown-menu", more, {
+          anchor: "right", "anchor-offset": 32, "min-width": 180,
+        })
+        node("menu-item", submenu, { text: "Production region" })
+        flush()
+        const trigger = document.getElementById(`lui-node-${more}`)
+        const positioner = document.getElementById(`lui-node-${submenu}`)
+        const popup = positioner.querySelector(".lui-dropdown-menu")
+        const rootPopup = document.getElementById(`lui-node-${menu}`)
+          .querySelector(".lui-dropdown-menu")
+        const events = []
+        for (const [element, name] of [[trigger, "trigger"], [popup, "popup"]]) {
+          element.addEventListener("mouseenter", () => events.push(`${name}:enter`))
+          element.addEventListener("mouseleave", () => events.push(`${name}:leave`))
+        }
+        window.__flippedCorridor = { trigger, positioner, popup, rootPopup, events }
+      }
+      return true
+    })
+    flush()
+    Web.mount(renderer, root, host)
+  })
+  await session.page.locator("[data-flipped-corridor] .lui-select").click()
+  await session.page.waitForFunction(() => {
+    const { rootPopup } = window.__flippedCorridor
+    return rootPopup.hasAttribute("data-open")
+      && !rootPopup.hasAttribute("data-starting-style")
+      && rootPopup.getAnimations().every((animation) => animation.playState !== "running" && !animation.pending)
+  })
+  const trigger = await session.page.evaluate(() => {
+    const rect = window.__flippedCorridor.trigger.getBoundingClientRect()
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+  })
+  await session.page.mouse.move(trigger.x, trigger.y)
+  // Observe completed CSS motion and stable geometry, rather than guessing
+  // which frame a 30ms delay reaches on a loaded CI runner.
+  await session.page.waitForFunction(() => {
+    const fixture = window.__flippedCorridor
+    const { trigger, positioner, popup, rootPopup } = fixture
+    const elements = [trigger, popup, rootPopup]
+    if (!popup.hasAttribute("data-open") || positioner.getAttribute("data-side") !== "left"
+      || elements.some((element) => element.hasAttribute("data-starting-style")
+        || element.getAnimations().some((animation) => animation.playState === "running" || animation.pending))) return false
+    const bounds = elements.map((element) => {
+      const { x, y, width, height } = element.getBoundingClientRect()
+      return [x, y, width, height]
+    })
+    const key = JSON.stringify(bounds)
+    const stable = fixture.bounds === key
+    fixture.bounds = key
+    return stable
+  })
+  const corridor = await session.page.evaluate(() => {
+    const { trigger, popup, positioner } = window.__flippedCorridor
+    const a = trigger.getBoundingClientRect(), b = popup.getBoundingClientRect()
+    return { side: positioner.getAttribute("data-side"), startX: a.left,
+      startY: a.y + a.height / 2, endX: b.right, endY: b.y + b.height / 2,
+      popupX: b.x + b.width / 2, popupY: b.y + b.height / 2 }
+  })
+  assert.equal(corridor.side, "left")
+  assert.ok(corridor.startX - corridor.endX >= 30, "the public anchor offset creates a real pointer gap")
+  // Four real moves keep the pointer in the gap longer than the 120ms close
+  // grace period. Entering the popup cannot mask a broken corridor here.
+  for (const progress of [0.2, 0.4, 0.6, 0.8]) {
+    await session.page.mouse.move(
+      corridor.startX + (corridor.endX - corridor.startX) * progress,
+      corridor.startY + (corridor.endY - corridor.startY) * progress,
+    )
+    await session.page.waitForTimeout(70)
+    assert.deepEqual(await session.page.evaluate(() => ({
+      open: window.__flippedCorridor.popup.hasAttribute("data-open"),
+      enteredPopup: window.__flippedCorridor.events.includes("popup:enter"),
+    })), { open: true, enteredPopup: false })
+  }
+  await session.page.mouse.move(corridor.popupX, corridor.popupY)
+  assert.equal(await session.page.evaluate(() =>
+    window.__flippedCorridor.events.includes("popup:enter")), true)
+  assert.equal(await session.page.evaluate(() =>
+    window.__flippedCorridor.popup.hasAttribute("data-open")), true)
+  await session.page.mouse.move(8, 8)
+  await session.page.waitForFunction(() => !window.__flippedCorridor.popup.hasAttribute("data-open"))
+  assert.equal(await session.page.evaluate(() =>
+    window.__flippedCorridor.trigger.getAttribute("aria-expanded")), "false")
 })
 
 test("Select keyboard navigation enters submenus and restores trigger focus", async () => {

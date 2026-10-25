@@ -281,6 +281,10 @@ enum LUIProperty: String, Decodable, Hashable {
     case readOnly = "read-only"
     case overscan = "overscan"
     case itemExtent = "item-extent"
+    case virtualTotalCount = "virtual-total-count"
+    case virtualGeneration = "virtual-generation"
+    case virtualIndices = "virtual-indices"
+    case virtualScrollIndex = "virtual-scroll-index"
 }
 
 enum LUISchemaMatrix {
@@ -318,7 +322,7 @@ enum LUISchemaMatrix {
         .dropdownMenu: [.collisionPadding],
         .tooltip: [.collisionPadding],
         .switchControl: [.foreground],
-        .virtualList: [.overscan, .itemExtent],
+        .virtualList: [.overscan, .itemExtent, .virtualTotalCount, .virtualGeneration, .virtualIndices, .virtualScrollIndex],
         .textField: [.readOnly],
         .secureField: [.readOnly],
         .input: [.readOnly],

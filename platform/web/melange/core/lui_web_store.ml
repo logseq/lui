@@ -561,6 +561,27 @@ let validate_root current =
       invalid_arg "runtime root requires exactly one child"
   end
 
+let validate_virtual_source current kind =
+  if kind = VirtualList then begin
+    let property key = Property_map.find_opt key current.retained_properties in
+    match property VirtualTotalCount, property VirtualGeneration, property VirtualIndices with
+    | None, None, None ->
+        if property VirtualScrollIndex <> None then
+          invalid_arg "virtual scroll index requires sparse source metadata"
+    | Some (IntValue count), Some (IntValue generation), Some (StringValue encoded)
+        when count >= 0 && generation > 0 ->
+        (match virtual_indices_of_string encoded with
+         | Some indices
+             when List.length indices = Lui_sequence.length current.retained_children
+                  && List.for_all (fun index -> index < count) indices -> ()
+         | _ -> invalid_arg "virtual indices must match committed children and logical count");
+        (match property VirtualScrollIndex with
+         | None -> ()
+         | Some (IntValue index) when index = -1 || (index >= 0 && index < count) -> ()
+         | _ -> invalid_arg "virtual scroll index is outside logical count")
+    | _ -> invalid_arg "virtual source requires count, generation and indices together"
+  end
+
 let validate_standard_node nodes _registry current kind =
   if kind = Dialog
      && string_property_of current.retained_properties TextValue = ""
@@ -578,6 +599,7 @@ let validate_standard_node nodes _registry current kind =
   validate_tree_item nodes current;
   validate_split current;
   validate_drawer current;
+  validate_virtual_source current kind;
   validate_root current;
   if not (node_properties_supported kind current.retained_properties) then
     invalid_arg (node_properties_error current)

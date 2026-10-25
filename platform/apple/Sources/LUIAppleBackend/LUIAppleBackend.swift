@@ -976,6 +976,7 @@ public final class LUIAppleBackend {
             var tC = tB
             var tD = tB
             let updatesVirtualWindow = effects.touched.contains { id in
+                tree.nodes[id]?.properties[.virtualTotalCount] != nil ||
                 tree.nodes[id]?.properties[.dataAttrs]?.stringValue?
                     .contains("data-virtual-count\u{1f}") == true
             }
@@ -1247,6 +1248,22 @@ public final class LUIAppleBackend {
 
     func performVisibleRange(node: Int, first: Int, last: Int) {
         emit(.visibleRange(node: node, first: first, last: last))
+    }
+
+    func performVirtualWindow(model: LUINodeModel, generation: Int, first: Int, last: Int, pins: [Int]) {
+        guard models[model.id] === model, model.property(.virtualGeneration)?.intValue == generation,
+              let count = model.property(.virtualTotalCount)?.intValue,
+              first >= 0, first <= last, last <= count else { return }
+        let children = Set(model.children)
+        emit(.virtualWindow(node: model.id, generation: generation, first: first, last: last,
+                            pins: pins.filter { $0 > 0 && children.contains($0) }))
+    }
+
+    var virtualPresentationIDs: [Int] {
+        var ids = modalPresentation.nestedSheets.values.map(\.id)
+        if let item = modalPresentation.item { ids.append(item.id) }
+        if let item = filePreviewPresentation.item { ids.append(item.id) }
+        return ids.sorted()
     }
 
     public func performExtensionEvent(

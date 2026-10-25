@@ -14,6 +14,7 @@ type nativeFunctions struct {
 	pointer         map[string]func(int64, float64, float64, int32, int32, string, int32) int32
 	picked          func(int64, string, int32) int32
 	visibleRange    func(int64, int64, int64) int32
+	virtualWindow   func(int64, int64, int64, int64, *int64, int32) int32
 	scrollCompleted func(int64, int64, string) int32
 	scrollEdges     func(int64, int32, int32) int32
 	navigationKey   func(int64, string, int32, int32) int32
@@ -104,7 +105,11 @@ func OpenRuntime(path string, b *Backend) (*Runtime, error) {
 		case "windows":
 			platform = 5
 		}
-		if w.functions.start(w.callback, platform, 0) != 1 {
+		host := int32(0)
+		if w.functions.virtualWindow != nil {
+			host = 5
+		}
+		if w.functions.start(w.callback, platform, host) != 1 {
 			w.functions.stop()
 			w.pending = nil
 			err = fmt.Errorf("lui: OCaml runtime initialization failed")
@@ -172,7 +177,19 @@ func (w *runtimeWorker) load(path string) error {
 	for event, suffix := range pointerNames {
 		f.pointer[event] = *bindings[suffix].(*func(int64, float64, float64, int32, int32, string, int32) int32)
 	}
-	w.callback = purego.NewCallback(func(ptr unsafe.Pointer) { w.pending = append(w.pending, cString(ptr)) })
+	if ptr, lookupErr := librarySymbol(handle, "lui_ocaml_virtual_window"); lookupErr == nil {
+		purego.RegisterFunc(&f.virtualWindow, ptr)
+	}
+	if goruntime.GOOS == "windows" {
+		// Windows requires a pointer-sized callback result. The C void
+		// callback ignores it; CDecl preserves the bridge's calling convention.
+		w.callback = purego.NewCallback(func(_ purego.CDecl, ptr unsafe.Pointer) uintptr {
+			w.pending = append(w.pending, cString(ptr))
+			return 0
+		})
+	} else {
+		w.callback = purego.NewCallback(func(ptr unsafe.Pointer) { w.pending = append(w.pending, cString(ptr)) })
+	}
 	w.functions = f
 	w.library = handle
 	w.path = path
@@ -192,8 +209,8 @@ func cString(ptr unsafe.Pointer) string {
 	return string(unsafe.Slice((*byte)(p), size))
 }
 func (r *Runtime) receive(batches []string, snapshot bool) error {
-	for i, batch := range batches {
-		if err := r.backend.ApplyJSON([]byte(batch), snapshot && i == 0); err != nil {
+	for i, source := range batches {
+		if err := r.backend.applyJSONString(source, snapshot && i == 0); err != nil {
 			return err
 		}
 	}
@@ -234,6 +251,16 @@ func (r *Runtime) Dispatch(e Event) error {
 			return f.pointer[e.Kind](e.Node, e.X, e.Y, e.Modifiers, e.Button, e.TargetClass, int32(len(e.TargetClass)))
 		case "picked":
 			return f.picked(e.Node, e.Payload, int32(len(e.Payload)))
+		case "virtual-window":
+			if f.virtualWindow == nil {
+				unknown = true
+				return 0
+			}
+			var pins *int64
+			if len(e.Pins) > 0 {
+				pins = &e.Pins[0]
+			}
+			return f.virtualWindow(e.Node, e.Generation, e.First, e.Last, pins, int32(len(e.Pins)))
 		case "visible-range":
 			return f.visibleRange(e.Node, e.First, e.Last)
 		case "scroll-completed":
@@ -264,6 +291,7 @@ func (r *Runtime) Dispatch(e Event) error {
 			return 0
 		}
 	})
+	goruntime.KeepAlive(e.Pins)
 	if unknown {
 		return fmt.Errorf("lui: unsupported runtime event %q", e.Kind)
 	}

@@ -72,6 +72,7 @@ type host_kind = Lui_protocol.host_kind =
   | WebHost
   | SwiftUIHost
   | KotlinHost
+  | MyGoHost
 
 type image_loading = [ `eager | `lazy_ ]
 
@@ -204,6 +205,19 @@ val keyed :
   key:('a -> 'b) ->
   cmp:('b -> 'b -> int) ->
   mount:('a Signal.signal -> t) -> t
+
+(** A viewport-managed keyed source. Use as the sole child of
+    {!virtual_list}. Business data remains in [source]; only the requested
+    window and active interaction pins own mounted row scopes. Persistent
+    editor state belongs in the application model. [scroll_key] maps the
+    existing string scroll targets to source items and is required when a
+    lazy parent has a nonempty scroll target. Older hosts render eagerly. *)
+val virtual_rows :
+  ?scroll_key:('a -> string) ->
+  source:'a list Signal.signal ->
+  key:('a -> 'b) ->
+  cmp:('b -> 'b -> int) ->
+  mount:('a Signal.signal -> t) -> unit -> t
 
 (** [keyed_*] are {!keyed} specialised to the abstract child types: a
     keyed collection mounts its items directly under the restricted

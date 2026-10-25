@@ -4,9 +4,12 @@
 package luimygo
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"maps"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -69,6 +72,8 @@ type Event struct {
 	TargetClass string         `json:"target-class,omitempty"`
 	Token       int64          `json:"token,omitempty"`
 	Outcome     string         `json:"outcome,omitempty"`
+	Generation  int64          `json:"generation,omitempty"`
+	Pins        []int64        `json:"pins,omitempty"`
 	First       int64          `json:"first"`
 	Last        int64          `json:"last"`
 	AtStart     bool           `json:"at-start"`
@@ -173,108 +178,218 @@ func (b *Backend) Close() {
 	b.queued = nil
 }
 func (b *Backend) ApplyJSON(data []byte, snapshot bool) error {
-	batch, err := DecodeBatch(data)
+	return b.applyJSONReader(bytes.NewReader(data), snapshot)
+}
+
+func (b *Backend) applyJSONString(data string, snapshot bool) error {
+	return b.applyJSONReader(strings.NewReader(data), snapshot)
+}
+
+// JSON fields may be reordered or repeated. Every ops field replaces the prior
+// candidate, and only the complete, valid document may commit native effects.
+func (b *Backend) applyJSONReader(source io.Reader, snapshot bool) (result error) {
+	var transaction *batchTransaction
+	var operationError error
+	defer func() {
+		if result != nil && transaction != nil {
+			transaction.rollback()
+		}
+	}()
+	generation, err := decodeBatchInto(source, func() {
+		if transaction != nil {
+			transaction.rollback()
+			transaction = nil
+		}
+		operationError = nil
+		if !b.closed {
+			transaction = b.beginTransaction(snapshot)
+		}
+	}, func(op Operation, index int) {
+		// A later duplicate ops array can replace a semantic error. Structural
+		// decoding still checks all remaining input before accepting anything.
+		if transaction != nil && operationError == nil {
+			operationError = transaction.apply(op, index)
+		}
+	})
 	if err != nil {
 		return err
 	}
-	if snapshot {
-		return b.ApplySnapshot(batch)
+	if err := b.checkGeneration(generation, snapshot); err != nil {
+		return err
 	}
-	return b.ApplyBatch(batch)
+	if operationError != nil {
+		return operationError
+	}
+	return transaction.commit(generation)
 }
+
 func (b *Backend) ApplySnapshot(batch Batch) error { return b.apply(batch, true) }
 func (b *Backend) ApplyBatch(batch Batch) error    { return b.apply(batch, false) }
-func (b *Backend) apply(batch Batch, snapshot bool) error {
+
+func (b *Backend) checkGeneration(generation int64, snapshot bool) error {
 	if b.closed {
 		return fmt.Errorf("lui: backend is closed")
 	}
-	if batch.Generation < 1 || (!snapshot && batch.Generation != b.generation+1) {
-		return fmt.Errorf("lui: expected generation %d, received %d", b.generation+1, batch.Generation)
+	if generation < 1 || (!snapshot && generation != b.generation+1) {
+		return fmt.Errorf("lui: expected generation %d, received %d", b.generation+1, generation)
 	}
-	// Copy on write: an invalid operation restores only touched nodes, preserving
-	// batch atomicity without cloning the entire tree for a one-property update.
-	oldNodes := b.nodes
+	return nil
+}
+
+func (b *Backend) apply(batch Batch, snapshot bool) error {
+	if err := b.checkGeneration(batch.Generation, snapshot); err != nil {
+		return err
+	}
+	transaction := b.beginTransaction(snapshot)
+	for i, op := range batch.Ops {
+		if err := transaction.apply(op, i); err != nil {
+			transaction.rollback()
+			return err
+		}
+	}
+	if err := transaction.commit(batch.Generation); err != nil {
+		transaction.rollback()
+		return err
+	}
+	return nil
+}
+
+type controlPropertyUpdate struct {
+	text, value bool
+	checked     string
+}
+
+type batchTransaction struct {
+	backend      *Backend
+	snapshot     bool
+	oldNodes     map[int64]Node
+	previous     map[int64]Node
+	existed      map[int64]bool
+	retired      map[int64]bool
+	stateUpdates map[int64]controlPropertyUpdate
+}
+
+func (b *Backend) beginTransaction(snapshot bool) *batchTransaction {
+	transaction := &batchTransaction{
+		backend: b, snapshot: snapshot,
+		previous: map[int64]Node{}, existed: map[int64]bool{}, retired: map[int64]bool{},
+	}
 	if snapshot {
+		transaction.oldNodes = b.nodes
 		b.nodes = map[int64]Node{}
 	}
-	previous := map[int64]Node{}
-	existed := map[int64]bool{}
-	retired := map[int64]bool{}
-	touch := func(id int64) {
-		if _, ok := existed[id]; ok {
-			return
-		}
-		n, ok := b.nodes[id]
-		previous[id] = n
-		existed[id] = ok
-		if ok {
-			b.nodes[id] = n.clone()
+	return transaction
+}
+
+// Journal original nodes for rollback; clone their mutable data only before
+// a write. Pure deletion keeps the originals without copying discarded data.
+func (t *batchTransaction) remember(id int64) bool {
+	if _, ok := t.existed[id]; ok {
+		return false
+	}
+	n, ok := t.backend.nodes[id]
+	t.previous[id] = n
+	t.existed[id] = ok
+	return true
+}
+
+func (t *batchTransaction) touch(id int64) {
+	if t.remember(id) && t.existed[id] {
+		t.backend.nodes[id] = t.backend.nodes[id].clone()
+	}
+}
+
+func (t *batchTransaction) rollback() {
+	if t.snapshot {
+		t.backend.nodes = t.oldNodes
+		return
+	}
+	for id, n := range t.previous {
+		if t.existed[id] {
+			t.backend.nodes[id] = n
+		} else {
+			delete(t.backend.nodes, id)
 		}
 	}
-	rollback := func() {
-		if snapshot {
-			b.nodes = oldNodes
-			return
-		}
-		for id, n := range previous {
-			if existed[id] {
-				b.nodes[id] = n
-			} else {
-				delete(b.nodes, id)
-			}
-		}
+}
+
+func (t *batchTransaction) apply(op Operation, index int) error {
+	b := t.backend
+	if err := b.applyOp(op, t.touch, t.remember, t.retired); err != nil {
+		return fmt.Errorf("lui: operation %d (%s): %w", index, op.Op, err)
 	}
-	for i, op := range batch.Ops {
-		if err := b.applyOp(op, touch, retired); err != nil {
-			rollback()
-			return fmt.Errorf("lui: operation %d (%s): %w", i, op.Op, err)
-		}
+	if t.snapshot || b.states[op.ID] == nil {
+		return nil
 	}
-	// Validate complete final contracts, permitting arbitrary property order and
-	// transient incompleteness within one atomic wire batch.
-	for id := range previous {
+	update := t.stateUpdates[op.ID]
+	switch op.Property {
+	case "text":
+		update.text = true
+	case "checked", "selected", "expanded":
+		// These properties share native checked state; the last one wins.
+		update.checked = op.Property
+	case "value":
+		update.value = true
+	default:
+		return nil
+	}
+	if t.stateUpdates == nil {
+		t.stateUpdates = map[int64]controlPropertyUpdate{}
+	}
+	t.stateUpdates[op.ID] = update
+	return nil
+}
+
+func (t *batchTransaction) commit(generation int64) error {
+	b := t.backend
+	// Validate final contracts, permitting transient incompleteness and any
+	// property order within one atomic batch.
+	for id := range t.previous {
 		n, exists := b.nodes[id]
 		if !exists || n.Kind == "extension" {
 			continue
 		}
 		if err := validateNode(n); err != nil {
-			rollback()
 			return fmt.Errorf("lui: node %d (%s): %w", id, n.Kind, err)
 		}
+		if err := validateVirtualSource(n); err != nil {
+			return err
+		}
 	}
-	b.generation = batch.Generation
-	if snapshot {
+	b.generation = generation
+	if t.snapshot {
 		b.resetFiles()
 		b.resetResources()
 		b.resetWidgets()
 		b.states = map[int64]*controlState{}
 	} else {
-		for id := range retired {
+		for id := range t.retired {
 			b.retireFile(id)
 			b.retireResource(id)
 			b.retireWidget(id)
 			delete(b.states, id)
 		}
 	}
-	for _, op := range batch.Ops {
-		if s := b.states[op.ID]; s != nil {
-			n, ok := b.nodes[op.ID]
+	for id, update := range t.stateUpdates {
+		if state := b.states[id]; state != nil {
+			n, ok := b.nodes[id]
 			if !ok {
 				continue
 			}
-			switch op.Property {
-			case "text":
-				s.text = n.String("text")
-			case "checked", "selected", "expanded":
-				s.checked = n.Bool(op.Property)
-			case "value":
-				s.value = n.Number("value", 0)
+			if update.text {
+				state.text = n.String("text")
+			}
+			if update.checked != "" {
+				state.checked = n.Bool(update.checked)
+			}
+			if update.value {
+				state.value = n.Number("value", 0)
 			}
 		}
 	}
 	return nil
 }
-func (b *Backend) applyOp(op Operation, touch func(int64), retired map[int64]bool) error {
+func (b *Backend) applyOp(op Operation, touch func(int64), remember func(int64) bool, retired map[int64]bool) error {
 	node := func(id int64) (Node, error) {
 		n, ok := b.nodes[id]
 		if !ok {
@@ -369,7 +484,10 @@ func (b *Backend) applyOp(op Operation, touch func(int64), retired map[int64]boo
 		if err != nil {
 			return err
 		}
-		index := slices.Index(p.Children, op.Child)
+		index := -1
+		if op.Op != "insert-child" {
+			index = slices.Index(p.Children, op.Child)
+		}
 		switch op.Op {
 		case "insert-child":
 			if p.Kind != "extension" && ch.Kind != "extension" && !childKindSupported(p.Kind, ch.Kind) {
@@ -378,7 +496,9 @@ func (b *Backend) applyOp(op Operation, touch func(int64), retired map[int64]boo
 			if p.Kind != "extension" && ch.Kind == "extension" && !wireKinds[p.Kind] {
 				return fmt.Errorf("kind %s cannot contain extensions", p.Kind)
 			}
-			if ch.Parent != 0 || index >= 0 {
+			// Committed mutations keep both sides of the parent link in sync.
+			// Parent alone proves attachment without scanning every sibling.
+			if ch.Parent != 0 {
 				return fmt.Errorf("child already attached")
 			}
 			if op.Index < 0 || op.Index > len(p.Children) {
@@ -428,7 +548,7 @@ func (b *Backend) applyOp(op Operation, touch func(int64), retired map[int64]boo
 		if n.Parent != 0 || len(n.Children) > 0 {
 			return fmt.Errorf("cannot drop attached node")
 		}
-		touch(op.ID)
+		remember(op.ID)
 		delete(b.nodes, op.ID)
 		retired[op.ID] = true
 	case "detach-subtree":
@@ -448,7 +568,7 @@ func (b *Backend) applyOp(op Operation, touch func(int64), retired map[int64]boo
 			id := pending[len(pending)-1]
 			pending = pending[:len(pending)-1]
 			pending = append(pending, b.nodes[id].Children...)
-			touch(id)
+			remember(id)
 			delete(b.nodes, id)
 			retired[id] = true
 		}

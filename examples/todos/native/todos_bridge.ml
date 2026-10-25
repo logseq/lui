@@ -5,6 +5,7 @@ let bridge = Lui_native_bridge.create "Todos"
 let initialize platform_code host_code =
   let app =
     Lui_app.create
+      ~virtual_rows:(Lui_native_bridge.virtual_rows_supported host_code)
       (Lui_native_bridge.backend bridge
          (Lui_native_bridge.profile platform_code host_code))
       Model.initial Model.update View.view
