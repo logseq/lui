@@ -69,7 +69,7 @@ func (b *Backend) applyThemeSlots(c *ui.Context, next *ui.Theme) {
 		"background": &next.Background, "foreground": &next.Text,
 		"muted": &next.Surface, "muted-foreground": &next.TextMuted,
 		"border": &next.Border, "destructive": &next.Danger,
-		"success-foreground": &next.Success, "warning-foreground": &next.Warning,
+		"success": &next.Success, "warning": &next.Warning,
 		"ring": &next.Focus,
 	}
 	c.SetTheme(next)
