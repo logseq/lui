@@ -250,7 +250,7 @@ func (b *Backend) render(c *ui.Context, id int64, appearances *[]Event) {
 		case "spinner":
 			e = ui.Spinner(c)
 		case "spacer":
-			e = ui.Spacer(c)
+			e = ui.Spacer(c).PassThrough()
 		case "divider":
 			e = ui.Divider(c)
 		case "scroll", "list":

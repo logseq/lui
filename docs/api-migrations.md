@@ -14,6 +14,21 @@ covered separately.
 
 ## Unreleased: component API and MyGo parity
 
+### MyGo spacer hit transparency
+
+`spacer` is a layout void and no longer owns pointer hits, matching the Native
+and Web hosts. Internal `stack` and `overlay` placement wrappers are also
+hit-transparent; real descendants still receive input normally. This fixes
+full-window placeholders covering otherwise active controls. No wire or event
+subscription changes are required. For example, `stack [button; spacer []]`
+now lets the button receive native activation and document click capture;
+preventing that capture still cancels the activation.
+
+Ordinary transparent `box` nodes retain their existing hit behavior. This
+change does not implement inherited `pointer-enabled=false` or descendant
+opt-in semantics on MyGo; those remain a separate host parity gap. Do not use
+`spacer` as an interactive surface; use a container or control instead.
+
 ### MyGo decoded image dimensions
 
 Embedding hosts can call `Backend.NaturalImageSize(id)` on the UI goroutine to
