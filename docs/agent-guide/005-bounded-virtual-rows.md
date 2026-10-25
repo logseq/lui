@@ -177,8 +177,15 @@ Do not update the video, as the user canceled further recording.
 - [x] Reuse Compose LazyColumn and public pin-container ownership; verify a focused row survives a reorder far outside the nearest-key cache range.
 - [x] Bridge owned window/pin payloads through Apple native clients and Kotlin JNI without narrowing OCaml integers or violating runtime-lock rules.
 - [x] Demonstrate top/end jumps in the shared Gallery through typed scroll targets and fresh tokens, with all-four-host reducer/runtime regressions and no private native test hooks.
-- [ ] Run focused tests through actual renderers and the OCaml/native dispatch boundary, then run complete relevant host suites and ordinary Gallery device/emulator qualification.
+- [x] Run focused tests through actual renderers and the OCaml/native dispatch boundary, then run complete relevant host suites and ordinary Gallery device/emulator qualification.
 - [x] Update docs/api-migrations.md and PR #274 with the final API, compatibility matrix and verified test results. Final CI on the pushed commit remains a required publication gate below.
+
+Local native acceptance: 235 OCaml core cases, 211 Swift Testing cases plus one XCTest,
+and 69 Android store/Compose cases passed. Actual iOS and Android Gallery runs each
+completed two 100,000-row load, far jump, row activation, return-to-top and Clear cycles.
+The JNI, SwiftUI/OCaml and UIKit qualifiers passed independently; the final PR description
+records the CI results for the pushed commit. Release footprint samples remain frozen
+at `04486a5d` and are not measurements of later native-host changes.
 
 Observe failure first, implement the minimum behavior, verify GREEN, simplify and rerun the affected checks.
 Serialize every Dune invocation across the three implementation owners.
