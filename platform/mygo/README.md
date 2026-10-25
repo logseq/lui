@@ -62,6 +62,14 @@ The library stays loaded because OCaml domains and callbacks outlive the app.
 
 ## Components and extension points
 
+The current implementation is partial. The
+[MyGo capability and parity report](../../docs/agent-guide/003-mygo-capabilities_report.md)
+accounts for all 88 standard node kinds, distinguishes current mappings from
+complete behavior, and records source findings and reproducible probes.
+The target is built-in support for all portable LUI components; application
+renderers are an extension point, not the intended solution for missing standard
+components.
+
 `SupportedKinds()` returns the built-in kind list. The backend provides rows,
 columns, grids, surfaces, typography, buttons and groups, text/password/multiline
 fields, toggles, checkboxes, radios, switches, sliders, number steppers, progress,

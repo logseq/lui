@@ -1,0 +1,59 @@
+MyGo capability investigation: 2026-10-25, macOS arm64
+
+LUI implementation baseline: e4e73a10fb3884ec77dd3b0e0b01de0c6bde9978
+Current MyGo pin: v0.4.9-0.20261013132844-43c624d77fdb
+Release studied: v0.6.4 (6255ea40139d06e0762a7c4a32626148ba410478)
+Release toolchain: Go 1.27.3
+
+Schema inventory checked against schema/components.json and nativeKinds:
+  88 unique kinds, including root; 60 currently accepted, 28 require renderers.
+  186 properties and 25 event variants.
+  The inventory is not a semantic-support test.
+
+Capability probes, using the checked-in isolated runner:
+  python3 docs/agent-guide/review-probes/2026-10-25/run_mygo.py
+
+  TestResearchVirtualList: PASS
+    initial built=10 visible=0..4
+    after jump built=25 visible=9995..9999
+    The builder counts include settling passes, not unique retained items.
+  TestResearchLocalLayers: PASS
+    stack={X:0 Y:0 W:80 H:90}
+    overlay={X:0 Y:90 W:120 H:60}
+  TestResearchSourceRegion: PASS
+    cropped pixel=0,0,65535,65535
+  The host command package also compiled; it has no package-local tests.
+
+Initial isolated adapter suite, release dependency, Go race detection: PASS
+  OCaml integration skipped because LUI_MYGO_TEST_LIBRARY was unset.
+
+Focused real-library integration, release dependency, Go 1.27.3:
+  First fresh-process attempt: FAIL during runtime startup
+    signal 16 received on thread with no signal stack
+    fatal error: non-Go code disabled sigaltstack
+    runtime.noSignalStack
+    runtime.adjustSignalStack2
+    runtime.adjustSignalStack
+    runtime.sigtrampgo
+  Three subsequent fresh-process attempts: PASS, PASS, PASS
+
+Focused real-library comparison, current dependency:
+  Go 1.27.2: PASS
+  Go 1.27.3: PASS, then PASS, PASS, PASS
+
+Final isolated complete suite, release dependency, including real OCaml:
+  python3 docs/agent-guide/review-probes/2026-10-25/run_mygo.py --all \
+    --library _build/default/examples/todos/native/liblui_todos.dylib
+  PASS with Go race detection; OCaml integration did not skip.
+  This is one additional successful process after the three focused reruns.
+
+The initial crash remains an unresolved observation. The comparison does not
+establish whether the cause is a MyGo change, a Go change, an existing bridge
+problem, or another timing-dependent interaction. Later passes do not erase it.
+No preemption/signal workaround, dependency change, or adapter implementation
+change was applied as part of this investigation.
+
+Scope limits:
+  No Linux/Windows execution of the release probes in this investigation.
+  No live OS file dialogs or assistive-technology smoke tests.
+  Existing adapter tests and framework probes do not prove full LUI parity.
