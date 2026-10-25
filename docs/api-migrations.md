@@ -304,6 +304,35 @@ Requires MyGo's public `Handle.TextGeometry` / `CommittedText` API.
 `Backend.CommittedBounds(context, nodeID)` follows the same generation guard
 and reports the transformed window-space box for non-text container origins.
 
+## MyGo live native-input snapshots
+
+`Backend.InputTextSnapshot(context, nodeID)` returns `(text, anchor, caret, ok)`
+from the actual native TextInput/TextArea edit state. Unlike committed geometry,
+it includes already-consumed edits before the next layout/bound-value update.
+It does not process queued input, mutate selection, or cache model text. Text
+excludes marked/preedit content; anchor/caret count runes, retain direction,
+and must be converted explicitly for UTF-8/UTF-16 application protocols.
+This trusted host query also reads secure-field text without redaction.
+
+The window-stable `ui.Context` may be retained for this specific UI-thread query
+in `CaptureInput` before default handling or `OnChange` after input. This does
+not make build APIs or retained `ui.Element` queries safe in callbacks.
+Requires MyGo's public `Handle.TextSnapshot` API; no wire schema changes.
+
+```go
+if text, anchor, caret, ok := backend.InputTextSnapshot(windowContext, nodeID); ok {
+    dispatchInputSnapshot(text, anchor, caret)
+}
+```
+
+Standard native fields are bound automatically. A raw/custom renderer must call
+`backend.BindHostElement(node.ID, input)` on its actual native input each build,
+before registering handlers; do not bind an enclosing box or a substitute buffer.
+Unavailable, hidden, disabled, retired, remounted-before-commit, non-input and
+closed nodes report `ok=false`. There is no stale-model fallback. Ordinary patch
+generation changes do not invalidate this live query; drop/recreate and snapshot
+replacement retire the binding immediately. Re-render to bind the new incarnation.
+
 ## Upgrade checks for application maintainers
 
 1. Update generated wire schemas and custom host decoders together with LUI.
