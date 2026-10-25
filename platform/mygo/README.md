@@ -17,9 +17,10 @@ not by itself evidence that every property has been verified.
 Requirements: Go 1.27.3 or later and the repository's OCaml/opam environment.
 Linux windows need GTK3; headless text needs Pango, Cairo and installed fonts.
 Chinese, Japanese and Korean text also requires installed CJK fonts; on Debian/Ubuntu install `fonts-noto-cjk` so native font fallback can render these glyphs.
-The module pins the [logseq/mygo compatibility branch](https://github.com/logseq/mygo/tree/2949164d2beec7ad8ca9a2d0a26b2b1bba97ef01),
+The module pins the [logseq/mygo compatibility branch](https://github.com/logseq/mygo/tree/f8afc1cf118c6d8607c65acc7b8cff91752cbb66),
 based on MyGo 0.6.4, for local fitting, list tuning, frame completion, overlay
-anchoring and native lifecycle fixes, including abandoned handle bindings.
+anchoring and native lifecycle fixes, including abandoned handle bindings. The
+pin also preserves committed input capture and text/container geometry APIs.
 Go downloads it as a normal versioned
 dependency; LUI does not include a copy of the third-party source tree.
 
@@ -79,7 +80,7 @@ checkout from another module:
 
 ```sh
 go mod edit -replace github.com/logseq/lui/platform/mygo=/path/to/lui/platform/mygo
-go mod edit -replace github.com/egoist/mygo=github.com/logseq/mygo@v0.0.0-20261025182610-2949164d2bee
+go mod edit -replace github.com/egoist/mygo=github.com/logseq/mygo@v0.0.0-20261025210037-f8afc1cf118c
 go get github.com/logseq/lui/platform/mygo
 go mod tidy
 ```

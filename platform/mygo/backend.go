@@ -124,6 +124,7 @@ type Backend struct {
 	config            Config
 	nodes             map[int64]Node
 	generation        int64
+	textGeneration    int64
 	states            map[int64]*controlState
 	err               error
 	nextIdentity      uint64
