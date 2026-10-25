@@ -14,6 +14,28 @@ covered separately.
 
 ## Unreleased: component API and MyGo parity
 
+### MyGo host theme defaults and authored variables
+
+Embedding hosts can install per-window defaults with
+`Backend.SetThemeDefaults(map[string]string)` between frames on the UI goroutine.
+The map is copied and replaces previous host defaults; `nil` clears it. These
+defaults do not change model-owned nodes or emit patches. Scoped `theme` props
+override them only inside that subtree. Native widget semantic slots now use
+the same defaults as explicit typed paint properties, including focus/status
+colors. No application migration is required when host defaults are unused.
+
+`ComputeThemeVariables(parent, declarations)` computes custom properties before
+inheritance, invalidates cycles (including unused fallback references), and
+handles `initial`, `inherit` and `unset`. `ResolveThemeValue(value, computed)`
+substitutes nested `var()` expressions and empty fallbacks. These APIs process
+declarations, not selectors, layout, utility classes or a stylesheet cascade.
+Hosts must supply their authored palette and application layers explicitly.
+
+Custom renderers can call `Backend.ResolveColor(context, value)` during their
+build to use the current scoped tokens, adaptive colors and functional CSS
+colors. Unknown values/cycles return an error rather than a successful default.
+The existing internal fallback for unresolved standard paint values is unchanged.
+
 ### Nested toolbar focus ownership
 
 On Web, a toolbar owns one keyboard Tab stop across its nested button and toggle

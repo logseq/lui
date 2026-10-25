@@ -44,6 +44,48 @@ func decodeTokens(s string) (map[string]any, error) {
 	}
 	return tokens, nil
 }
+
+// SetThemeDefaults replaces this window's host-owned tokens. It does not emit
+// patches or modify application nodes. Nested theme props override these values
+// only for their subtree. Call between frames on the UI goroutine; nil clears.
+func (b *Backend) SetThemeDefaults(tokens map[string]string) error {
+	if b.closed || b.building {
+		return fmt.Errorf("lui: cannot install theme defaults while closed or building")
+	}
+	next := make(map[string]any, len(tokens))
+	for name, value := range tokens {
+		if strings.TrimSpace(name) == "" || (value == "" && !strings.HasPrefix(name, "--")) || !tokenHexValid(value) {
+			return fmt.Errorf("lui: invalid host theme token %q", name)
+		}
+		next[name] = value
+	}
+	b.tokens = next
+	return nil
+}
+
+func (b *Backend) applyThemeSlots(c *ui.Context, next *ui.Theme) {
+	slots := map[string]*ui.Color{
+		"primary": &next.Accent, "primary-foreground": &next.AccentText,
+		"background": &next.Background, "foreground": &next.Text,
+		"muted": &next.Surface, "muted-foreground": &next.TextMuted,
+		"border": &next.Border, "destructive": &next.Danger,
+		"success-foreground": &next.Success, "warning-foreground": &next.Warning,
+		"ring": &next.Focus,
+	}
+	c.SetTheme(next)
+	resolved := map[string]ui.Color{}
+	for name := range slots {
+		if tokenValue(b.tokens[name], next.Dark) != "" {
+			if color, err := b.ResolveColor(c, name); err == nil {
+				resolved[name] = color
+			}
+		}
+	}
+	for name, color := range resolved {
+		*slots[name] = color
+	}
+}
+
 func (b *Backend) scopeTheme(c *ui.Context, n Node) func() {
 	oldTheme, oldTokens := c.Theme(), b.tokens
 	next := *oldTheme
@@ -71,20 +113,7 @@ func (b *Backend) scopeTheme(c *ui.Context, n Node) func() {
 	if !changed {
 		return func() {}
 	}
-	slots := map[string]*ui.Color{"primary": &next.Accent, "primary-foreground": &next.AccentText, "background": &next.Background, "foreground": &next.Text, "muted": &next.Surface, "muted-foreground": &next.TextMuted, "border": &next.Border, "destructive": &next.Danger}
-
-	c.SetTheme(&next)
-	resolved := map[string]ui.Color{}
-	for name := range slots {
-		if tokenValue(b.tokens[name], next.Dark) != "" {
-			resolved[name] = b.color(c, name)
-		}
-	}
-	for name, color := range resolved {
-		*slots[name] = color
-	}
-
-	c.SetTheme(&next)
+	b.applyThemeSlots(c, &next)
 	return func() { b.tokens = oldTokens; c.SetTheme(oldTheme) }
 }
 

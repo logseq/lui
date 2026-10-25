@@ -71,6 +71,12 @@ func (b *Backend) View(c *ui.Context) {
 	}
 	var appearances []Event
 	b.systemTheme = c.Theme()
+	previousTheme := c.Theme()
+	if len(b.tokens) > 0 {
+		next := *previousTheme
+		b.applyThemeSlots(c, &next)
+		defer c.SetTheme(previousTheme)
+	}
 	b.beginWidgets(c)
 	b.prepareResources(c)
 	b.prepareFiles(c)
