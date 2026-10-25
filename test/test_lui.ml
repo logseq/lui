@@ -4333,9 +4333,97 @@ let test_toast_padding () =
         (property_supported Toast property))
     [ PaddingValue; PaddingHorizontal; PaddingVertical ]
 
+let test_wire_encoding_exact_bytes () =
+  let open Lui_protocol in
+  let cases =
+    [ CreateNode (1, Text), {|{"op":"create-node","id":1,"kind":"text"}|}
+    ; CreateExtension (2, "app:\"你好", "a\\b"),
+      {|{"op":"create-extension","id":2,"identifier":"app:\"你好","fingerprint":"a\\b"}|}
+    ; DropNode 3, {|{"op":"drop-node","id":3}|}
+    ; DetachSubtree 4, {|{"op":"detach-subtree","id":4}|}
+    ; SetProp (5, TextValue, StringValue "\000\b\012\n\r\t\"\\你好🌍"),
+      {|{"op":"set-prop","id":5,"property":"text","value":"\u0000\u0008\u000c\n\r\t\"\\你好🌍"}|}
+    ; SetProp (5, Enabled, BoolValue false),
+      {|{"op":"set-prop","id":5,"property":"enabled","value":false}|}
+    ; SetProp (5, Enabled, BoolValue true),
+      {|{"op":"set-prop","id":5,"property":"enabled","value":true}|}
+    ; SetProp (5, WidthValue, IntValue (-42)),
+      {|{"op":"set-prop","id":5,"property":"width","value":-42}|}
+    ; SetProp (5, Opacity, FloatValue 1.),
+      {|{"op":"set-prop","id":5,"property":"opacity","value":1.0}|}
+    ; RemoveProp (6, TextValue), {|{"op":"remove-prop","id":6,"property":"text"}|}
+    ; SetExtensionProp (7, "label\n\"", StringValue "value\000"),
+      {|{"op":"set-extension-prop","id":7,"property":"label\n\"","value":"value\u0000"}|}
+    ; RemoveExtensionProp (8, "x\\y"),
+      {|{"op":"remove-extension-prop","id":8,"property":"x\\y"}|}
+    ; InsertChild (9, 10, 0), {|{"op":"insert-child","parent":9,"child":10,"index":0}|}
+    ; RemoveChild (11, 12), {|{"op":"remove-child","parent":11,"child":12}|}
+    ; MoveChild (13, 14, 2), {|{"op":"move-child","parent":13,"child":14,"index":2}|}
+    ] in
+  List.iter (fun (op, expected) ->
+    Alcotest.(check string) "operation bytes" expected (Lui_wire.encode_op op)) cases;
+  let ops = List.map fst cases in
+  let expected_ops = String.concat "," (List.map snd cases) in
+  let batch = {generation=7;ops} in
+  let expected = "{\"generation\":7,\"ops\":[" ^ expected_ops ^ "]}" in
+  Alcotest.(check string) "operation list bytes" expected_ops (Lui_wire.encode_ops ops);
+  Alcotest.(check string) "batch bytes" expected (Lui_wire.encode_batch batch);
+  Alcotest.(check bool) "all operation variants decode unchanged" true
+    (Lui_wire.decode_batch expected = batch);
+  Alcotest.(check string) "empty operation list" "" (Lui_wire.encode_ops []);
+  Alcotest.(check string) "empty batch" {|{"generation":0,"ops":[]}|}
+    (Lui_wire.encode_batch {generation=0;ops=[]});
+  let controls = String.init 32 Char.chr in
+  let escaped = {|\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008\t\n\u000b\u000c\r\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f|} in
+  Alcotest.(check string) "all JSON controls" escaped (Lui_wire.escape_json controls);
+  Alcotest.(check string) "quoted controls" ("\"" ^ escaped ^ "\"") (Lui_wire.quoted controls);
+  List.iter (fun (value, expected) ->
+    Alcotest.(check string) "float representation" expected (Lui_wire.encode_value (FloatValue value)))
+    [0.,"0.0"; -0.,"-0.0"; 1. +. epsilon_float,"1.0000000000000002";
+     1e20,"1e+20"; Float.next_after 0. 1.,"4.9406564584124654e-324";
+     Float.max_float,"1.7976931348623157e+308"];
+  List.iter (fun value ->
+    Alcotest.(check string) "full-width integer" (string_of_int value)
+      (Lui_wire.encode_value (IntValue value))) [min_int;max_int]
+
+let test_wire_nonfinite_all_entrypoints () =
+  let open Lui_protocol in
+  List.iter (fun value ->
+    let op = SetProp (1, Opacity, FloatValue value) in
+    List.iter (fun encode ->
+      Alcotest.check_raises "non-finite value remains rejected"
+        (Invalid_argument "float value is not finite") (fun () -> ignore (encode ())))
+      [ (fun () -> Lui_wire.encode_value (FloatValue value))
+      ; (fun () -> Lui_wire.encode_op op)
+      ; (fun () -> Lui_wire.encode_ops [op])
+      ; (fun () -> Lui_wire.encode_batch {generation=1;ops=[op]}) ])
+    [nan;infinity;neg_infinity]
+
+let test_wire_large_batch_allocation () =
+  let open Lui_protocol in
+  let value = StringValue (String.make 64 'x' ^ "\000\n你好") in
+  let batch = {generation=1;ops=List.init 20000 (fun i -> SetProp (i+1, TextValue, value))} in
+  let before = Gc.allocated_bytes () in
+  let encoded = Lui_wire.encode_batch batch in
+  let allocated = Gc.allocated_bytes () -. before in
+  let output = String.length encoded in
+  Printf.printf "wire batch: output=%d allocated=%.0f bytes\n%!" output allocated;
+  (* Allow amortized Buffer growth, the returned copy, scalar formatting and
+     fixed setup. Per-operation JSON strings and whole-batch intermediate
+     strings exceed this output-proportional budget. No timing or GC policy is
+     part of the assertion. *)
+  Alcotest.(check bool) "large batch encoding has bounded temporary allocation" true
+    (allocated <= float (8 * output + 131072));
+  Alcotest.(check int) "all operations survive the native wire boundary" 20000
+    (List.length (Lui_wire.decode_batch encoded).ops)
+
 let () =
   Alcotest.run "lui"
     [
+      ( "wire encoding",
+        [ Alcotest.test_case "exact bytes and all operations" `Quick test_wire_encoding_exact_bytes;
+          Alcotest.test_case "nonfinite entrypoints" `Quick test_wire_nonfinite_all_entrypoints;
+          Alcotest.test_case "bounded large batch allocation" `Quick test_wire_large_batch_allocation ] );
       ("audit regressions", Test_audit.tests);
       ("multi-window", Test_multi_window.tests);
       ("navigation", [

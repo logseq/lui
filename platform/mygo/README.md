@@ -17,9 +17,10 @@ not by itself evidence that every property has been verified.
 Requirements: Go 1.27.3 or later and the repository's OCaml/opam environment.
 Linux windows need GTK3; headless text needs Pango, Cairo and installed fonts.
 Chinese, Japanese and Korean text also requires installed CJK fonts; on Debian/Ubuntu install `fonts-noto-cjk` so native font fallback can render these glyphs.
-The module pins the [logseq/mygo compatibility branch](https://github.com/logseq/mygo/tree/1c0a4ceeb21b62e243776489ade2d6ee0e912887),
+The module pins the [logseq/mygo compatibility branch](https://github.com/logseq/mygo/tree/4d51d7aa50eaba68e81a20531c18bca26c79a32e),
 based on MyGo 0.6.4, for local fitting, list tuning, frame completion, overlay
-anchoring and native lifecycle fixes. Go downloads it as a normal versioned
+anchoring and native lifecycle fixes, including abandoned handle bindings.
+Go downloads it as a normal versioned
 dependency; LUI does not include a copy of the third-party source tree.
 
 From the repository root on macOS or Linux:
@@ -78,7 +79,7 @@ checkout from another module:
 
 ```sh
 go mod edit -replace github.com/logseq/lui/platform/mygo=/path/to/lui/platform/mygo
-go mod edit -replace github.com/egoist/mygo=github.com/logseq/mygo@v0.0.0-20261025160040-1c0a4ceeb21b
+go mod edit -replace github.com/egoist/mygo=github.com/logseq/mygo@v0.0.0-20261025171223-4d51d7aa50ea
 go get github.com/logseq/lui/platform/mygo
 go mod tidy
 ```
@@ -142,7 +143,8 @@ make test-mygo-integration
 ```
 
 Unit mode checks schema freshness and runs real MyGo input/layout/pixel tests
-with the race detector. It covers controlled rejection/normalization, focus,
+with the race detector. Wire allocation budgets run separately in the production
+configuration because race instrumentation changes allocation counts. It covers controlled rejection/normalization, focus,
 keyboard and timed gestures, menus, local fitting, 10,000-row virtualization,
 scroll tokens/ranges, resource pixels/retirement and actual PDF pages. Generated
 validation is checked against more than a million actual OCaml decisions in

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strconv"
 	"strings"
 )
 
@@ -19,62 +20,207 @@ const (
 // DecodeBatch keeps integer IDs exact, including IDs beyond JavaScript's
 // float64 integer range. Required fields must be present even when zero.
 func DecodeBatch(data []byte) (Batch, error) {
-	var raw struct {
-		Generation *int64             `json:"generation"`
-		Ops        *[]json.RawMessage `json:"ops"`
-	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
-	if err := dec.Decode(&raw); err != nil {
+	opening, err := dec.Token()
+	if err != nil || opening != json.Delim('{') {
+		return Batch{}, fmt.Errorf("lui: batch requires an object: %v", err)
+	}
+	var generation *int64
+	var batch Batch
+	var hasOps bool
+	// Canonical wire uses one "op" key per operation. This is only a capacity
+	// hint: escaped keys, unknown fields and duplicates retain normal semantics.
+	capacity := min(bytes.Count(data, []byte(`"op"`)), len(data)/48)
+	for dec.More() {
+		key, err := dec.Token()
+		if err != nil {
+			return Batch{}, fmt.Errorf("lui: decode batch: %w", err)
+		}
+		switch {
+		case strings.EqualFold(key.(string), "generation"):
+			if err := dec.Decode(&generation); err != nil {
+				return Batch{}, fmt.Errorf("lui: decode generation: %w", err)
+			}
+		case strings.EqualFold(key.(string), "ops"):
+			opening, err := dec.Token()
+			if err != nil {
+				return Batch{}, fmt.Errorf("lui: decode ops: %w", err)
+			}
+			batch.Ops, hasOps = nil, opening != nil
+			if opening == nil {
+				continue
+			}
+			if opening != json.Delim('[') {
+				return Batch{}, fmt.Errorf("lui: ops requires an array")
+			}
+			if dec.More() {
+				batch.Ops = make([]Operation, 0, capacity)
+			}
+			for dec.More() {
+				op, err := decodeOperation(dec)
+				if err != nil {
+					return Batch{}, fmt.Errorf("lui: operation %d: %w", len(batch.Ops), err)
+				}
+				batch.Ops = append(batch.Ops, op)
+			}
+			if _, err := dec.Token(); err != nil {
+				return Batch{}, fmt.Errorf("lui: decode ops: %w", err)
+			}
+		default:
+			var ignored any
+			if err := dec.Decode(&ignored); err != nil {
+				return Batch{}, fmt.Errorf("lui: decode batch field: %w", err)
+			}
+		}
+	}
+	if _, err := dec.Token(); err != nil {
 		return Batch{}, fmt.Errorf("lui: decode batch: %w", err)
 	}
-	if raw.Generation == nil || raw.Ops == nil {
+	if generation == nil || !hasOps {
 		return Batch{}, fmt.Errorf("lui: batch requires generation and ops")
 	}
 	var trailing any
 	if err := dec.Decode(&trailing); err != io.EOF {
 		return Batch{}, fmt.Errorf("lui: trailing data after batch")
 	}
-	batch := Batch{Generation: *raw.Generation}
-	for i, data := range *raw.Ops {
-		var fields map[string]json.RawMessage
-		if err := json.Unmarshal(data, &fields); err != nil {
-			return Batch{}, fmt.Errorf("lui: operation %d: %w", i, err)
+	batch.Generation = *generation
+	return batch, nil
+}
+
+func decodeOperation(dec *json.Decoder) (Operation, error) {
+	var op Operation
+	opening, err := dec.Token()
+	if err != nil || opening != json.Delim('{') {
+		return op, fmt.Errorf("patch operation requires an object: %v", err)
+	}
+	// Required presence uses exact wire names; field assignment remains case
+	// insensitive, matching encoding/json and the original decoder.
+	const (
+		fieldOp uint16 = 1 << iota
+		fieldID
+		fieldKind
+		fieldIdentifier
+		fieldFingerprint
+		fieldProperty
+		fieldValue
+		fieldParent
+		fieldChild
+		fieldIndex
+	)
+	var present uint16
+	for dec.More() {
+		key, err := dec.Token()
+		if err != nil {
+			return op, err
 		}
-		var op Operation
-		d := json.NewDecoder(bytes.NewReader(data))
-		d.UseNumber()
-		if err := d.Decode(&op); err != nil {
-			return Batch{}, fmt.Errorf("lui: operation %d: %w", i, err)
+		name := key.(string)
+		var value any
+		if err := dec.Decode(&value); err != nil {
+			return op, err
 		}
-		required := []string{"op"}
-		switch op.Op {
-		case "create-node":
-			required = append(required, "id", "kind")
-		case "create-extension":
-			required = append(required, "id", "identifier", "fingerprint")
-		case "drop-node", "detach-subtree":
-			required = append(required, "id")
-		case "set-prop", "set-extension-prop":
-			required = append(required, "id", "property", "value")
-		case "remove-prop", "remove-extension-prop":
-			required = append(required, "id", "property")
-		case "insert-child", "move-child":
-			required = append(required, "parent", "child", "index")
-		case "remove-child":
-			required = append(required, "parent", "child")
-		default:
-			return Batch{}, fmt.Errorf("lui: unknown patch operation %q", op.Op)
-		}
-		for _, k := range required {
-			value, ok := fields[k]
-			if !ok || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
-				return Batch{}, fmt.Errorf("lui: operation %d requires %s", i, k)
+		var bit uint16
+		var targetString *string
+		var targetInt *int64
+		field := operationField(name)
+		switch field {
+		case "op":
+			bit, targetString = fieldOp, &op.Op
+		case "id":
+			bit, targetInt = fieldID, &op.ID
+		case "kind":
+			bit, targetString = fieldKind, &op.Kind
+		case "identifier":
+			bit, targetString = fieldIdentifier, &op.Identifier
+		case "fingerprint":
+			bit, targetString = fieldFingerprint, &op.Fingerprint
+		case "property":
+			bit, targetString = fieldProperty, &op.Property
+		case "value":
+			bit, op.Value = fieldValue, value
+		case "parent":
+			bit, targetInt = fieldParent, &op.Parent
+		case "child":
+			bit, targetInt = fieldChild, &op.Child
+		case "index":
+			bit = fieldIndex
+			if value != nil {
+				n, ok := value.(json.Number)
+				if !ok {
+					return op, fmt.Errorf("index requires an integer")
+				}
+				parsed, err := strconv.Atoi(string(n))
+				if err != nil {
+					return op, err
+				}
+				op.Index = parsed
 			}
 		}
-		batch.Ops = append(batch.Ops, op)
+		if name == field {
+			if value == nil {
+				present &^= bit
+			} else {
+				present |= bit
+			}
+		}
+		if value != nil && targetString != nil {
+			parsed, ok := value.(string)
+			if !ok {
+				return op, fmt.Errorf("%s requires a string", name)
+			}
+			*targetString = parsed
+		}
+		if value != nil && targetInt != nil {
+			n, ok := value.(json.Number)
+			if !ok {
+				return op, fmt.Errorf("%s requires an integer", name)
+			}
+			parsed, err := n.Int64()
+			if err != nil {
+				return op, err
+			}
+			*targetInt = parsed
+		}
 	}
-	return batch, nil
+	if _, err := dec.Token(); err != nil {
+		return op, err
+	}
+	required := fieldOp
+	switch op.Op {
+	case "create-node":
+		required |= fieldID | fieldKind
+	case "create-extension":
+		required |= fieldID | fieldIdentifier | fieldFingerprint
+	case "drop-node", "detach-subtree":
+		required |= fieldID
+	case "set-prop", "set-extension-prop":
+		required |= fieldID | fieldProperty | fieldValue
+	case "remove-prop", "remove-extension-prop":
+		required |= fieldID | fieldProperty
+	case "insert-child", "move-child":
+		required |= fieldParent | fieldChild | fieldIndex
+	case "remove-child":
+		required |= fieldParent | fieldChild
+	default:
+		return op, fmt.Errorf("unknown patch operation %q", op.Op)
+	}
+	if present&required != required {
+		return op, fmt.Errorf("patch operation %q is missing a required non-null field", op.Op)
+	}
+	return op, nil
+}
+
+func operationField(name string) string {
+	switch name {
+	case "op", "id", "kind", "identifier", "fingerprint", "property", "value", "parent", "child", "index":
+		return name
+	}
+	for _, field := range [...]string{"op", "id", "kind", "identifier", "fingerprint", "property", "value", "parent", "child", "index"} {
+		if strings.EqualFold(name, field) {
+			return field
+		}
+	}
+	return ""
 }
 func integer(v any) (int64, bool) {
 	switch v := v.(type) {

@@ -190,8 +190,8 @@ func (b *Backend) apply(batch Batch, snapshot bool) error {
 	if batch.Generation < 1 || (!snapshot && batch.Generation != b.generation+1) {
 		return fmt.Errorf("lui: expected generation %d, received %d", b.generation+1, batch.Generation)
 	}
-	// Copy on write: an invalid operation restores only touched nodes, preserving
-	// batch atomicity without cloning the entire tree for a one-property update.
+	// Journal original nodes for rollback; clone their mutable data only before
+	// a write. Pure deletion keeps the originals without copying discarded data.
 	oldNodes := b.nodes
 	if snapshot {
 		b.nodes = map[int64]Node{}
@@ -199,15 +199,18 @@ func (b *Backend) apply(batch Batch, snapshot bool) error {
 	previous := map[int64]Node{}
 	existed := map[int64]bool{}
 	retired := map[int64]bool{}
-	touch := func(id int64) {
+	remember := func(id int64) bool {
 		if _, ok := existed[id]; ok {
-			return
+			return false
 		}
 		n, ok := b.nodes[id]
 		previous[id] = n
 		existed[id] = ok
-		if ok {
-			b.nodes[id] = n.clone()
+		return true
+	}
+	touch := func(id int64) {
+		if remember(id) && existed[id] {
+			b.nodes[id] = b.nodes[id].clone()
 		}
 	}
 	rollback := func() {
@@ -224,7 +227,7 @@ func (b *Backend) apply(batch Batch, snapshot bool) error {
 		}
 	}
 	for i, op := range batch.Ops {
-		if err := b.applyOp(op, touch, retired); err != nil {
+		if err := b.applyOp(op, touch, remember, retired); err != nil {
 			rollback()
 			return fmt.Errorf("lui: operation %d (%s): %w", i, op.Op, err)
 		}
@@ -273,7 +276,7 @@ func (b *Backend) apply(batch Batch, snapshot bool) error {
 	}
 	return nil
 }
-func (b *Backend) applyOp(op Operation, touch func(int64), retired map[int64]bool) error {
+func (b *Backend) applyOp(op Operation, touch func(int64), remember func(int64) bool, retired map[int64]bool) error {
 	node := func(id int64) (Node, error) {
 		n, ok := b.nodes[id]
 		if !ok {
@@ -368,7 +371,10 @@ func (b *Backend) applyOp(op Operation, touch func(int64), retired map[int64]boo
 		if err != nil {
 			return err
 		}
-		index := slices.Index(p.Children, op.Child)
+		index := -1
+		if op.Op != "insert-child" {
+			index = slices.Index(p.Children, op.Child)
+		}
 		switch op.Op {
 		case "insert-child":
 			if p.Kind != "extension" && ch.Kind != "extension" && !childKindSupported(p.Kind, ch.Kind) {
@@ -377,7 +383,9 @@ func (b *Backend) applyOp(op Operation, touch func(int64), retired map[int64]boo
 			if p.Kind != "extension" && ch.Kind == "extension" && !wireKinds[p.Kind] {
 				return fmt.Errorf("kind %s cannot contain extensions", p.Kind)
 			}
-			if ch.Parent != 0 || index >= 0 {
+			// Committed mutations keep both sides of the parent link in sync.
+			// Parent alone proves attachment without scanning every sibling.
+			if ch.Parent != 0 {
 				return fmt.Errorf("child already attached")
 			}
 			if op.Index < 0 || op.Index > len(p.Children) {
@@ -427,7 +435,7 @@ func (b *Backend) applyOp(op Operation, touch func(int64), retired map[int64]boo
 		if n.Parent != 0 || len(n.Children) > 0 {
 			return fmt.Errorf("cannot drop attached node")
 		}
-		touch(op.ID)
+		remember(op.ID)
 		delete(b.nodes, op.ID)
 		retired[op.ID] = true
 	case "detach-subtree":
@@ -447,7 +455,7 @@ func (b *Backend) applyOp(op Operation, touch func(int64), retired map[int64]boo
 			id := pending[len(pending)-1]
 			pending = pending[:len(pending)-1]
 			pending = append(pending, b.nodes[id].Children...)
-			touch(id)
+			remember(id)
 			delete(b.nodes, id)
 			retired[id] = true
 		}

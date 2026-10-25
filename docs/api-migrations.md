@@ -14,6 +14,19 @@ covered separately.
 
 ## Unreleased: component API and MyGo parity
 
+### Large-batch memory and handle ownership
+
+The shared OCaml encoder and MyGo decoder now process large batches without
+retaining per-operation JSON copies. Wire bytes, validation, integer precision
+and application APIs are unchanged. Rebuild application libraries to include
+the encoder improvement.
+
+MyGo also releases abandoned handle bindings while preserving live hidden
+handles and pending focus. Embedded Go applications must update their root
+replacement to `github.com/logseq/mygo@v0.0.0-20261025171223-4d51d7aa50ea`, as shown
+in the [embedding guide](../platform/mygo/README.md#embed-a-backend). The upstream
+module path and application imports remain unchanged.
+
 ### Nested toolbar focus ownership
 
 On Web, a toolbar owns one keyboard Tab stop across its nested button and toggle
@@ -141,7 +154,7 @@ media nodes no longer need application renderer registrations.
 
 ### MyGo compatibility module and custom icons
 
-The desktop adapter pins the [logseq/mygo compatibility fork](https://github.com/logseq/mygo/tree/lui-component-parity)
+The desktop adapter pins the [logseq/mygo compatibility fork](https://github.com/logseq/mygo/tree/lui-virtual-list-memory)
 for measured fitting, tunable lists, frame completion and native lifecycle
 behavior. The fork preserves the upstream `github.com/egoist/mygo` module path,
 Go imports and upstream documentation links. Existing Go and OCaml application
