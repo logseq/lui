@@ -279,6 +279,37 @@ internal fun Modifier.luiGestures(
             },
         )
     }
+    // Material buttons install an inner clickable that owns the Main pass.
+    // Observe their long press in Initial, then consume the remaining gesture
+    // so releasing a context menu cannot also activate the button.
+    if (enabled && (contextMenuId != null || longPressable) &&
+        node.kind in setOf(LuiNodeKind.button, LuiNodeKind.toggleButton)) {
+        modifier = modifier.pointerInput(id, contextMenuId, longPressable) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                val releasedOrMoved = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val pointer = event.changes.firstOrNull { it.id == down.id }
+                        if (pointer == null || !pointer.pressed ||
+                            (pointer.position - down.position).getDistance() > viewConfiguration.touchSlop) break
+                    }
+                    true
+                }
+                if (releasedOrMoved == null) {
+                    if (contextMenuId != null) {
+                        onContextMenu(down.position)
+                        backend.emit(LuiEvent.ContextMenuPress(id,
+                            LuiPointerDetail(x = down.position.x.toDouble(), y = down.position.y.toDouble())))
+                    } else backend.emit(LuiEvent.LongPress(id))
+                    do {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        event.changes.forEach { it.consume() }
+                    } while (event.changes.any { it.pressed })
+                }
+            }
+        }
+    }
     if (enabled && (node.propBool("pointer-enabled") || contextMenuId != null)) {
         modifier = modifier.pointerInput(id) {
             awaitEachGesture {
