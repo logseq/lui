@@ -9,6 +9,8 @@ patches to real UI objects:
   `LUIAppleBackend` Swift package).
 - **Web**: a Melange companion library (`platform/web/melange`) plus the
   shared stylesheet and icon set (`platform/web/src`).
+- **MyGo**: a Go native desktop backend (`platform/mygo`) using the shared
+  OCaml C ABI, with a runnable Todos host and headless interaction tests.
 - **Android**: a Kotlin backend (`platform/android`, package `dev.lui`)
   applying patches to native Android views.
 
@@ -30,6 +32,7 @@ examples/gallery/     headless component-gallery demo
 platform/apple/       SwiftUI backend (SwiftPM package + tests)
 platform/web/         Melange DOM library, stylesheet, icons
 platform/android/     Kotlin Android backend (Gradle, dev.lui package)
+platform/mygo/        MyGo native desktop backend (Go module + host + tests)
 platform/native/      shared lui_ocaml_* C ABI used by native hosts
 schema/               canonical component schema (components.json)
 tooling/              schema code generator and tests
@@ -112,6 +115,8 @@ opam install . --deps-only --with-test --locked
 make test        # schema contract tests + dune @runtest
 make test-ocaml  # alcotest suite only
 make test-apple  # SwiftUI backend tests (macOS)
+make test-mygo   # MyGo backend tests with race detection
+make test-mygo-integration # actual OCaml Todos through MyGo
 ```
 
 Per-platform backend builds and test recipes are documented under each
