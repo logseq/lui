@@ -25,8 +25,9 @@ using a saved press or deferred event: removing and remounting the same numeric
 node ID invalidates it. Use only on the UI thread. The MyGo target itself expires
 as soon as its capture callback returns.
 
-This API needs MyGo's public `CaptureInput`/`InputTarget.Distance` API. Hosts must
-update that dependency alongside this change. Existing element input callbacks
+This API needs MyGo's public `CaptureInput`/`InputTarget.Distance` API, pinned here
+at `v0.0.0-20261025203821-7875529a3c4d`. Hosts must update that dependency alongside
+this change. Existing element input callbacks
 continue to run unless capture returns true. Observational capture must return
 false so focused controls retain editing, IME, clipboard and native menu commands.
 Do not also forward the same DOM event from a local extension handler: dispatch
