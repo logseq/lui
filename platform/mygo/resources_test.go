@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -98,7 +99,7 @@ func TestResourcesRegisteredImageCropReplacementRemovalAndOwnership(t *testing.T
 	if err := host.RegisterImage(7, pixels); err != nil {
 		t.Fatal(err)
 	}
-	apply(t, b, 1, create(1, "root"), prop(1, "cross", "start"), create(2, "image"), prop(2, "image", 7), prop(2, "width", 80), prop(2, "height", 40), prop(2, "accessibility-label", "registered image"), insert(1, 2, 0))
+	apply(t, b, 1, create(1, "column"), prop(1, "cross", "start"), create(2, "image"), prop(2, "image", 7), prop(2, "width", 80), prop(2, "height", 40), prop(2, "accessibility-label", "registered image"), insert(1, 2, 0))
 	tester := ui.NewTester(b.View, 300, 200)
 	layoutWantColor(t, tester, "registered image", .25, .5, layoutRed)
 	layoutWantColor(t, tester, "registered image", .75, .5, layoutBlue)
@@ -147,7 +148,7 @@ func TestResourcesMediaFramesReplaceCopyAndRetire(t *testing.T) {
 	if err := host.PresentMediaSurfaceFrame(9, pixels); err != nil {
 		t.Fatal(err)
 	}
-	apply(t, b, 1, create(1, "root"), prop(1, "cross", "start"), create(2, "media-surface"), prop(2, "surface", 9), prop(2, "width", 80), prop(2, "height", 40), prop(2, "accessibility-label", "video frame"), insert(1, 2, 0))
+	apply(t, b, 1, create(1, "column"), prop(1, "cross", "start"), create(2, "media-surface"), prop(2, "surface", 9), prop(2, "width", 80), prop(2, "height", 40), prop(2, "accessibility-label", "video frame"), insert(1, 2, 0))
 	tester := ui.NewTester(b.View, 300, 200)
 	layoutWantColor(t, tester, "video frame", .5, .5, layoutBlue)
 	for y := 0; y < 2; y++ {
@@ -192,7 +193,7 @@ func TestResourcesAvatarUsesRegisteredImageCropAndReturnsToFallback(t *testing.T
 	if err := host.RegisterImage(12, layoutPixels(layoutRed, layoutBlue)); err != nil {
 		t.Fatal(err)
 	}
-	apply(t, b, 1, create(1, "root"), prop(1, "cross", "start"), create(2, "avatar"), prop(2, "text", "AB"), prop(2, "image", 12), prop(2, "width", 40), prop(2, "height", 40), prop(2, "accessibility-label", "person avatar"), prop(2, "source-x", 2.0), prop(2, "source-y", 0.0), prop(2, "source-width", 2.0), prop(2, "source-height", 2.0), insert(1, 2, 0))
+	apply(t, b, 1, create(1, "column"), prop(1, "cross", "start"), create(2, "avatar"), prop(2, "text", "AB"), prop(2, "image", 12), prop(2, "width", 40), prop(2, "height", 40), prop(2, "accessibility-label", "person avatar"), prop(2, "source-x", 2.0), prop(2, "source-y", 0.0), prop(2, "source-width", 2.0), prop(2, "source-height", 2.0), insert(1, 2, 0))
 	tester := ui.NewTester(b.View, 300, 200)
 	layoutWantColor(t, tester, "person avatar", .5, .5, layoutBlue)
 	host.UnregisterImage(12)
@@ -206,7 +207,7 @@ func TestResourcesAvatarUsesRegisteredImageCropAndReturnsToFallback(t *testing.T
 }
 
 func TestResourcesBuiltInIconActuallyDrawsAndUpdates(t *testing.T) {
-	b := layoutBackend(t, "icon", nil, prop(2, "name", "check"), prop(2, "width", 64), prop(2, "height", 64), prop(2, "foreground", "#ff00ff"), prop(2, "accessibility-label", "built-in icon"))
+	b := layoutBackend(t, "icon", nil, prop(2, "name", "check"), prop(2, "width", 64), prop(2, "height", 64), prop(2, "foreground", "#ff00ff"), Operation{Op: "remove-child", Parent: 1, Child: 2}, create(3, "box"), prop(3, "accessibility-label", "built-in icon"), insert(1, 3, 0), insert(3, 2, 0))
 	tester := ui.NewTester(b.View, 200, 120)
 	countMagenta := func() int {
 		bounds := layoutRect(t, tester, "built-in icon")
@@ -305,4 +306,211 @@ func TestResourcesImageURLDiscardsStaleLoadAndEmitsCurrentLoadOnce(t *testing.T)
 	if _, ok := tester.Find("remote image"); ok {
 		t.Fatal("disposed URI completion revived image")
 	}
+}
+
+func TestResourcesDetachCancelsRequestWithoutAnotherView(t *testing.T) {
+	started, cancelled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		select {
+		case <-r.Context().Done():
+			close(cancelled)
+		case <-release:
+		}
+	}))
+	defer server.Close()
+	defer close(release)
+	b := layoutBackend(t, "image", nil, prop(2, "url", server.URL+"/slow.png"), prop(2, "width", 20), prop(2, "height", 20))
+	tester := ui.NewTester(b.View, 200, 100)
+	layoutWait(t, tester, "HTTP image request", func() bool {
+		select {
+		case <-started:
+			return true
+		default:
+			return false
+		}
+	})
+	// An invalid batch must keep the in-flight operation alive.
+	if b.ApplyBatch(Batch{Generation: 2, Ops: []Operation{{Op: "detach-subtree", ID: 2}, prop(999, "text", "invalid")}}) == nil {
+		t.Fatal("accepted invalid retirement batch")
+	}
+	select {
+	case <-cancelled:
+		t.Fatal("rollback canceled retained image work")
+	default:
+	}
+	apply(t, b, 2, Operation{Op: "detach-subtree", ID: 2})
+	// Do not call Frame: successful disposal itself must cancel native work.
+	select {
+	case <-cancelled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("detached image request remained active without another view")
+	}
+}
+
+func TestResourcesSnapshotRetainsHostImagesAndBackendCloseReleasesThem(t *testing.T) {
+	b := New(Config{})
+	host := layoutResources(t, b)
+	if err := host.RegisterImage(7, layoutPixels(layoutBlue, layoutBlue)); err != nil {
+		t.Fatal(err)
+	}
+	fixture := []Operation{create(1, "column"), create(2, "image"), prop(2, "image", 7), prop(2, "width", 40), prop(2, "height", 20), prop(2, "accessibility-label", "persistent image"), insert(1, 2, 0)}
+	apply(t, b, 1, fixture...)
+	tester := ui.NewTester(b.View, 200, 100)
+	layoutWantColor(t, tester, "persistent image", .5, .5, layoutBlue)
+	if err := b.ApplySnapshot(Batch{Generation: 8, Ops: fixture}); err != nil {
+		t.Fatal(err)
+	}
+	tester.Frame()
+	layoutWantColor(t, tester, "persistent image", .5, .5, layoutBlue)
+	closer, ok := any(b).(interface{ Close() })
+	if !ok {
+		t.Fatal("backend must expose UI-thread resource disposal")
+	}
+	closer.Close()
+	closer.Close()
+	if err := host.RegisterImage(9, layoutPixels(layoutRed, layoutRed)); err == nil {
+		t.Fatal("closed backend accepted a new resource")
+	}
+}
+
+func TestResourcesCustomIconRegistrationOwnsBytesUpdatesAndUnregisters(t *testing.T) {
+	b := New(Config{})
+	host, ok := any(b).(interface {
+		RegisterIcon(string, []byte) error
+		UnregisterIcon(string)
+	})
+	if !ok {
+		t.Fatal("standard app: icons require host registration without custom renderers")
+	}
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="currentColor"/></svg>`)
+	if err := host.RegisterIcon("app:solid", svg); err != nil {
+		t.Fatal(err)
+	}
+	for i := range svg {
+		svg[i] = 0
+	}
+	apply(t, b, 1, create(1, "column"), create(2, "box"), prop(2, "accessibility-label", "app icon"), prop(2, "width", 40), prop(2, "height", 40), insert(1, 2, 0), create(3, "icon"), prop(3, "name", "app:solid"), prop(3, "width", 40), prop(3, "height", 40), prop(3, "foreground", "#0000ff"), insert(2, 3, 0))
+	tester := ui.NewTester(b.View, 100, 100)
+	layoutWantColor(t, tester, "app icon", .5, .5, layoutBlue)
+	if err := host.RegisterIcon("app:solid", []byte("invalid")); err == nil {
+		t.Fatal("invalid replacement was accepted")
+	}
+	tester.Frame()
+	layoutWantColor(t, tester, "app icon", .5, .5, layoutBlue)
+	if err := host.RegisterIcon("app:solid", []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="#ff0000"/></svg>`)); err != nil {
+		t.Fatal(err)
+	}
+	tester.Frame()
+	layoutWantColor(t, tester, "app icon", .5, .5, layoutRed)
+	host.UnregisterIcon("app:solid")
+	tester.Frame()
+	if layoutSameColor(layoutColorAt(t, tester, "app icon", .5, .5), layoutRed) {
+		t.Fatal("unregistered app icon retained pixels")
+	}
+	if err := host.RegisterIcon("check", []byte(`<svg/>`)); err == nil {
+		t.Fatal("host registration replaced a built-in icon")
+	}
+	if err := host.RegisterIcon("app:../bad", []byte(`<svg/>`)); err == nil {
+		t.Fatal("accepted noncanonical app icon slug")
+	}
+}
+
+func TestResourcesLazyImageWaitsForVisibleViewportAndEagerOverride(t *testing.T) {
+	pixels := layoutPNG(t, layoutPixels(layoutBlue, layoutBlue))
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(pixels)
+	}))
+	defer server.Close()
+	b := layoutBackend(t, "scroll", nil, prop(2, "width", 100), prop(2, "height", 50),
+		create(3, "box"), prop(3, "height", 150), prop(3, "min-height", 150), insert(2, 3, 0), create(4, "image"), prop(4, "url", server.URL+"/lazy.png"), prop(4, "loading", "lazy"), prop(4, "width", 40), prop(4, "height", 30), prop(4, "min-height", 30), prop(4, "accessibility-label", "lazy picture"), insert(2, 4, 1))
+	tester := ui.NewTester(b.View, 200, 300)
+	for range 25 {
+		tester.Frame()
+		time.Sleep(time.Millisecond)
+	}
+	if n := requests.Load(); n != 0 {
+		t.Fatalf("offscreen lazy image issued %d requests", n)
+	}
+	tester.Scroll(20, 20, 0, 160)
+	layoutWait(t, tester, "lazy image appears in scroll viewport", func() bool {
+		return requests.Load() == 1 && layoutSameColor(layoutColorAt(t, tester, "lazy picture", .5, .5), layoutBlue)
+	})
+	tester.Scroll(20, 20, 0, -160)
+	apply(t, b, 2, prop(4, "url", server.URL+"/eager.png"), prop(4, "loading", "eager"))
+	layoutWait(t, tester, "eager override loads outside viewport", func() bool { return requests.Load() == 2 })
+}
+
+func TestResourcesQueuedOldURLCompletionCannotEmitLoadAfterSourceChange(t *testing.T) {
+	oldPixels := layoutPNG(t, layoutPixels(layoutRed, layoutRed))
+	newPixels := layoutPNG(t, layoutPixels(layoutBlue, layoutBlue))
+	oldWritten, newStarted, newRelease := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		if r.URL.Path == "/old" {
+			w.Write(oldPixels)
+			close(oldWritten)
+			return
+		}
+		close(newStarted)
+		select {
+		case <-newRelease:
+			w.Write(newPixels)
+		case <-r.Context().Done():
+		}
+	}))
+	defer server.Close()
+	defer close(newRelease)
+	var events []Event
+	b := layoutBackend(t, "image", &events, prop(2, "url", server.URL+"/old"), prop(2, "width", 40), prop(2, "height", 20), prop(2, "accessibility-label", "current source"))
+	tester := ui.NewTester(b.View, 100, 100)
+	select {
+	case <-oldWritten:
+	case <-time.After(time.Second):
+		t.Fatal("old image request did not finish")
+	}
+	// Let the completed decode queue while deliberately committing no new frame.
+	time.Sleep(40 * time.Millisecond)
+	apply(t, b, 2, prop(2, "url", server.URL+"/new"))
+	tester.Frame()
+	if loads := layoutEvents(events, "load", 2); len(loads) != 0 {
+		t.Fatalf("source already changed but stale queued completion emitted load: %+v", loads)
+	}
+	select {
+	case <-newStarted:
+	case <-time.After(time.Second):
+		t.Fatal("new image request did not start")
+	}
+}
+
+func TestResourcesIconSizesAndRemovalChangeActualGeometry(t *testing.T) {
+	b := layoutBackend(t, "icon", nil, prop(2, "name", "check"), prop(2, "size", "sm"), Operation{Op: "remove-child", Parent: 1, Child: 2}, create(3, "box"), prop(3, "accessibility-label", "sized icon"), insert(1, 3, 0), insert(3, 2, 0))
+	tester := ui.NewTester(b.View, 160, 100)
+	small := layoutRect(t, tester, "sized icon")
+	layoutNear(t, "small icon extent", small.W, 16)
+	apply(t, b, 2, prop(2, "size", "lg"))
+	tester.Frame()
+	large := layoutRect(t, tester, "sized icon")
+	layoutNear(t, "large icon extent", large.W, 24)
+	apply(t, b, 3, Operation{Op: "remove-prop", ID: 2, Property: "size"})
+	tester.Frame()
+	layoutNear(t, "removed icon size restores default", layoutRect(t, tester, "sized icon").W, 18)
+}
+
+func TestResourcesFileImageMaxPixelSizeChangesNaturalDecodedSize(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "natural.png")
+	if err := os.WriteFile(path, layoutPNG(t, layoutPixels(layoutRed, layoutBlue)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	b := layoutBackend(t, "file-image", nil, prop(2, "path", path), prop(2, "accessibility-label", "natural decoded"))
+	tester := ui.NewTester(b.View, 100, 100)
+	layoutWait(t, tester, "natural file decode", func() bool { return layoutRect(t, tester, "natural decoded").W == 4 })
+	apply(t, b, 2, prop(2, "max-pixel-size", 2))
+	layoutWait(t, tester, "constrained file decode", func() bool { return layoutRect(t, tester, "natural decoded").W == 2 })
+	layoutNear(t, "max pixel size preserves aspect", layoutRect(t, tester, "natural decoded").H, 1)
+	apply(t, b, 3, Operation{Op: "remove-prop", ID: 2, Property: "max-pixel-size"})
+	layoutWait(t, tester, "removed decode constraint", func() bool { return layoutRect(t, tester, "natural decoded").W == 4 })
 }

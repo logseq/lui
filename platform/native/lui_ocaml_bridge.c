@@ -152,6 +152,29 @@ LUI_NODE_EXPORT(lui_ocaml_dismiss, "lui_ocaml_dismiss")
 LUI_NODE_EXPORT(lui_ocaml_double_press, "lui_ocaml_double_press")
 LUI_NODE_EXPORT(lui_ocaml_radio_changed, "lui_ocaml_radio_changed")
 LUI_NODE_EXPORT(lui_ocaml_load, "lui_ocaml_load")
+LUI_NODE_EXPORT(lui_ocaml_navigate_previous, "lui_ocaml_navigate_previous")
+LUI_NODE_EXPORT(lui_ocaml_navigate_next, "lui_ocaml_navigate_next")
+
+LUI_EXPORT int32_t lui_ocaml_navigation_key_utf8(int64_t node, const char *key,
+                                                 int32_t length, int32_t shift) {
+  int32_t accepted;
+  if (key == NULL || length < 0) return 0;
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_text_bool("lui_ocaml_navigation_key", node, key,
+                                     length, shift, deliver);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
+LUI_EXPORT int32_t lui_ocaml_scroll_edges(int64_t node, int32_t at_start,
+                                         int32_t at_end) {
+  int32_t accepted;
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_node_bools("lui_ocaml_scroll_edges", node, at_start,
+                                      at_end, deliver);
+  caml_enter_blocking_section();
+  return accepted;
+}
 
 LUI_EXPORT int32_t lui_ocaml_stop(void) {
   int32_t accepted;
@@ -178,54 +201,35 @@ LUI_EXPORT int32_t lui_ocaml_press_ex(int64_t node, int32_t modifiers) {
   return accepted;
 }
 
-LUI_EXPORT int32_t lui_ocaml_press_detail(int64_t node, double x, double y,
-                                          int32_t modifiers, int32_t button,
-                                          const char *target_class) {
-  int32_t accepted;
-  caml_leave_blocking_section();
-  accepted = lui_dispatch_pointer(
-      "lui_ocaml_press_detail", node, x, y, modifiers, button, target_class,
-      target_class != NULL ? (int32_t)strlen(target_class) : 0, deliver);
-  caml_enter_blocking_section();
-  return accepted;
-}
+/* Keep the original C-string exports for existing Swift hosts. Length-carrying
+ * exports preserve embedded NULs for runtimes using the complete wire payload. */
+#define LUI_POINTER_EXPORT(function_name, callback_name)                         \
+  LUI_EXPORT int32_t function_name##_utf8(                                       \
+      int64_t node, double x, double y, int32_t modifiers, int32_t button,        \
+      const char *target_class, int32_t class_length) {                          \
+    int32_t accepted;                                                          \
+    if (class_length < 0 || (target_class == NULL && class_length != 0))        \
+      return 0;                                                               \
+    caml_leave_blocking_section();                                             \
+    accepted = lui_dispatch_pointer(callback_name, node, x, y, modifiers,       \
+                                     button, target_class, class_length, deliver); \
+    caml_enter_blocking_section();                                             \
+    return accepted;                                                          \
+  }                                                                           \
+  LUI_EXPORT int32_t function_name(                                             \
+      int64_t node, double x, double y, int32_t modifiers, int32_t button,        \
+      const char *target_class) {                                              \
+    return function_name##_utf8(                                               \
+        node, x, y, modifiers, button, target_class,                            \
+        target_class != NULL ? (int32_t)strlen(target_class) : 0);               \
+  }
 
-LUI_EXPORT int32_t lui_ocaml_pointer_down(int64_t node, double x, double y,
-                                          int32_t modifiers, int32_t button,
-                                          const char *target_class) {
-  int32_t accepted;
-  caml_leave_blocking_section();
-  accepted = lui_dispatch_pointer(
-      "lui_ocaml_pointer_down", node, x, y, modifiers, button, target_class,
-      target_class != NULL ? (int32_t)strlen(target_class) : 0, deliver);
-  caml_enter_blocking_section();
-  return accepted;
-}
+LUI_POINTER_EXPORT(lui_ocaml_press_detail, "lui_ocaml_press_detail")
+LUI_POINTER_EXPORT(lui_ocaml_pointer_down, "lui_ocaml_pointer_down")
+LUI_POINTER_EXPORT(lui_ocaml_pointer_up, "lui_ocaml_pointer_up")
+LUI_POINTER_EXPORT(lui_ocaml_context_menu_press, "lui_ocaml_context_menu_press")
 
-LUI_EXPORT int32_t lui_ocaml_pointer_up(int64_t node, double x, double y,
-                                        int32_t modifiers, int32_t button,
-                                        const char *target_class) {
-  int32_t accepted;
-  caml_leave_blocking_section();
-  accepted = lui_dispatch_pointer(
-      "lui_ocaml_pointer_up", node, x, y, modifiers, button, target_class,
-      target_class != NULL ? (int32_t)strlen(target_class) : 0, deliver);
-  caml_enter_blocking_section();
-  return accepted;
-}
-
-LUI_EXPORT int32_t lui_ocaml_context_menu_press(int64_t node, double x, double y,
-                                                int32_t modifiers, int32_t button,
-                                                const char *target_class) {
-  int32_t accepted;
-  caml_leave_blocking_section();
-  accepted = lui_dispatch_pointer(
-      "lui_ocaml_context_menu_press", node, x, y, modifiers, button,
-      target_class, target_class != NULL ? (int32_t)strlen(target_class) : 0,
-      deliver);
-  caml_enter_blocking_section();
-  return accepted;
-}
+#undef LUI_POINTER_EXPORT
 
 LUI_EXPORT int32_t lui_ocaml_text_changed_utf8(int64_t node, const char *text,
                                                int32_t byte_length) {

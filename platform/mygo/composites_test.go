@@ -190,3 +190,71 @@ func TestCompositesRowActionsHaveKeyboardAccessibleDesktopPath(t *testing.T) {
 		t.Fatal("removed row action remained active")
 	}
 }
+
+func TestCompositesStandaloneAndNestedSectionListMarkers(t *testing.T) {
+	b := mounted(t, nil)
+	apply(t, b, 2, create(3, "list-item"), prop(3, "text", "Standalone"), prop(3, "list-style", "disc"), insert(2, 3, 0),
+		create(4, "list"), prop(4, "list-style", "decimal"), insert(2, 4, 1),
+		create(5, "list-section"), insert(4, 5, 0), create(6, "list-item"), prop(6, "text", "Section first"), insert(5, 6, 0),
+		create(7, "list-item"), prop(7, "text", "Section second"), insert(5, 7, 1))
+	tt := ui.NewTester(b.View, 600, 500)
+	if !tt.HasText("•") {
+		t.Fatal("standalone disc marker was not rendered")
+	}
+	if !tt.HasText("2.") {
+		t.Fatalf("nested section did not inherit ordered markers: %v", tt.Texts())
+	}
+	apply(t, b, 3, prop(7, "list-style", "disc"))
+	tt.Frame()
+	if tt.HasText("2.") {
+		t.Fatal("explicit nested row marker did not override inherited decimal")
+	}
+}
+
+func TestCompositesTimelineInlineIcon(t *testing.T) {
+	b := mounted(t, nil)
+	apply(t, b, 2, create(3, "timeline"), insert(2, 3, 0), create(4, "timeline-item"), prop(4, "title", "Shipped"), prop(4, "icon", "folder"), insert(3, 4, 0))
+	tt := ui.NewTester(b.View, 600, 400)
+	before := append([]byte(nil), tt.Image().Pix...)
+	apply(t, b, 3, prop(4, "icon", "check"))
+	tt.Frame()
+	if bytes.Equal(before, tt.Image().Pix) {
+		t.Fatal("timeline inline icon did not affect rendered pixels")
+	}
+}
+
+func TestCompositesToolbarBottomPlacement(t *testing.T) {
+	b := mounted(t, nil)
+	apply(t, b, 2, prop(2, "height", 300), create(3, "toolbar"), prop(3, "accessibility-label", "Actions"), prop(3, "placement", "bottom"), insert(2, 3, 0), create(4, "button"), prop(4, "text", "Save"), insert(3, 4, 0))
+	tt, box := widgetTesterBounds(b, 600, 500)
+	row := box(3)
+	parent := box(2)
+	if row.Y+row.H < parent.Y+parent.H-13 {
+		t.Fatalf("bottom toolbar remained at top: row=%+v parent=%+v", row, parent)
+	}
+	apply(t, b, 3, prop(3, "placement", "automatic"))
+	tt.Frame()
+	if box(3).Y > parent.Y+20 {
+		t.Fatal("removing bottom placement did not restore normal flow")
+	}
+}
+
+func TestCompositesListItemDisclosureRetainsControlledChildren(t *testing.T) {
+	var events []Event
+	b := mounted(t, func(e Event) error { events = append(events, e); return nil })
+	apply(t, b, 2, create(3, "list-item"), prop(3, "text", "Details"), prop(3, "expanded", false), prop(3, "toggle-enabled", true), insert(2, 3, 0), create(4, "text"), prop(4, "text", "Expanded details"), insert(3, 4, 0))
+	tt := ui.NewTester(b.View, 500, 400)
+	tt.SetPreferences(ui.Preferences{ReduceMotion: true, TextScale: 1})
+	if tt.HasText("Expanded details") {
+		t.Fatal("collapsed list disclosure showed its body")
+	}
+	widgetClick(t, tt, "Details")
+	if !widgetLast(t, events, "toggle-changed", 3).Checked {
+		t.Fatal("list disclosure did not propose opening")
+	}
+	apply(t, b, 3, prop(3, "expanded", true))
+	tt.Frame()
+	if !tt.HasText("Expanded details") {
+		t.Fatal("expanded list disclosure hid its retained body")
+	}
+}

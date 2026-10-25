@@ -3,6 +3,7 @@ package luimygo
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -18,6 +19,52 @@ func eventRecords(events []Event, kind string, node int64) []map[string]any {
 		}
 	}
 	return records
+}
+
+func TestEventsTimedGesturesAndCancellation(t *testing.T) {
+	var events []Event
+	b := mounted(t, func(e Event) error { events = append(events, e); return nil })
+	apply(t, b, 2, create(3, "list-item"), prop(3, "text", "Gestures"), prop(3, "press-enabled", true), prop(3, "long-press-enabled", true), prop(3, "double-press-enabled", true), insert(2, 3, 0))
+	tester := ui.NewTester(b.View, 360, 240)
+	r, _ := tester.Find("Gestures")
+	x, y := r.X+r.W/2, r.Y+r.H/2
+	tester.Press(x, y)
+	tester.Advance(349 * time.Millisecond)
+	if len(events) != 0 {
+		t.Fatal("long press fired early", events)
+	}
+	tester.Advance(time.Millisecond)
+	if len(eventRecords(events, "long-press", 3)) != 1 {
+		t.Fatal("missing long press", events)
+	}
+	tester.Advance(time.Second)
+	tester.Release(x, y)
+	if len(eventRecords(events, "long-press", 3)) != 1 || len(eventRecords(events, "press", 3)) != 0 {
+		t.Fatal("held gesture repeated or release activated", events)
+	}
+	events = nil
+	tester.Advance(time.Second)
+	_ = tester.Click("Gestures")
+	tester.Advance(50 * time.Millisecond)
+	_ = tester.Click("Gestures")
+	if len(eventRecords(events, "double-press", 3)) != 1 {
+		t.Fatal("double gesture missing", events)
+	}
+	events = nil
+	tester.Advance(time.Second)
+	tester.Press(x, y)
+	tester.Release(350, 230)
+	tester.Advance(time.Second)
+	if len(eventRecords(events, "long-press", 3)) != 0 {
+		t.Fatal("cancelled gesture fired", events)
+	}
+	tester.Press(x, y)
+	apply(t, b, 3, Operation{Op: "detach-subtree", ID: 3})
+	tester.Frame()
+	tester.Advance(time.Second)
+	if len(eventRecords(events, "long-press", 3)) != 0 {
+		t.Fatal("detached gesture fired", events)
+	}
 }
 
 func TestEventsPointerPayloadAndHover(t *testing.T) {

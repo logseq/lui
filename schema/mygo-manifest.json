@@ -1,0 +1,793 @@
+{
+  "version": 1,
+  "sourceHashes": {
+    "schema/components.json": "551a39183f8d6266bdd6f0012924e4cf5c46612eb044dc4c5a0b93f727cf35ec",
+    "src/lui_protocol.ml": "4fb4165b4e1f8eb24a507d9473e36690e28f58af08215c596a1425b8ba4c0f24",
+    "src/lui_protocol.mli": "af3eaf83936b9fc1e5693fb71905cb01d5f10373a022951bde99701789f55b65",
+    "src/lui_wire_schema.ml": "885ca4fadf62f8542361d0aac022ccaa52f109a33a616567e942289cfa87d42e",
+    "tooling/export_mygo_contract.ml": "e138d99b58e724405b58ca21a9a858a397fb3c59ca98469e752520364a7eb8ac"
+  },
+  "generatedGoHash": "7df2ccf3602c6cfd458a26ca18809e60f64b745ebf29143b040a5db5ae6bed5c",
+  "kinds": {
+    "root": {
+      "contractHash": "1cda829a4bd05ddb79ca21f04ed1d7a51dae8bf3d388bb7eecdf8d5e2f3ec1eb",
+      "propertyCount": 3,
+      "childCount": 86,
+      "eventCount": 0,
+      "baseline": {}
+    },
+    "row": {
+      "contractHash": "7f93f2d46a22898ff45a6616f9c2316b8857963eca3ad71d79b53e2a14ff7ae7",
+      "propertyCount": 93,
+      "childCount": 81,
+      "eventCount": 8,
+      "baseline": {}
+    },
+    "column": {
+      "contractHash": "d1625463275eac1a39011cec61b6bf07997f116c26977792579c7fdb6f2a1507",
+      "propertyCount": 92,
+      "childCount": 81,
+      "eventCount": 8,
+      "baseline": {}
+    },
+    "grid": {
+      "contractHash": "34de5bd26a4e3b7ab8d08bb16fd87de47af5d2ef8a0f31fd283be3f35c3aef59",
+      "propertyCount": 82,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "stack": {
+      "contractHash": "dfc45544e76f9d41e5a992e7798c279133fcab730181a94564b0604e31f62409",
+      "propertyCount": 79,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "edge-inset": {
+      "contractHash": "43306718b4711723374bdbafb772baa1739c6387a5dfc91aa93a14e3f242ff08",
+      "propertyCount": 81,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {
+        "edge": {
+          "type": "string",
+          "value": "bottom"
+        }
+      }
+    },
+    "overlay": {
+      "contractHash": "95a58fdfb87b07fc9fcdc0141e7163c0959a93a88e396e27223d6d81899cce66",
+      "propertyCount": 78,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "view-that-fits": {
+      "contractHash": "ee043c6727d1606fa18fd3179d7b193fd65bec49b3c6c1bfd6289c8f498e046b",
+      "propertyCount": 79,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "panel": {
+      "contractHash": "b18a73a4b16013b8a296b15f98182d800e872a63df1caf6a66070322882c343e",
+      "propertyCount": 89,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "card": {
+      "contractHash": "b18a73a4b16013b8a296b15f98182d800e872a63df1caf6a66070322882c343e",
+      "propertyCount": 89,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "alert": {
+      "contractHash": "a563b3a424c8ac04660e6b7c1e246d77603137a6b9a3a34c191facaa27216dd2",
+      "propertyCount": 83,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "bubble": {
+      "contractHash": "8cdd221a9328a5ca2a5435162e733613d877f1f7226a7d97404d4a0f52dd6113",
+      "propertyCount": 84,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "box": {
+      "contractHash": "6c54923d16642cb7014cbf834642f009746a3fae45bf6d17268af5f932e597cb",
+      "propertyCount": 92,
+      "childCount": 81,
+      "eventCount": 8,
+      "baseline": {}
+    },
+    "text": {
+      "contractHash": "74f89dd61c080a7dac08711c8644bedb45a57eb5f356951b6ada1388b62ff009",
+      "propertyCount": 86,
+      "childCount": 86,
+      "eventCount": 9,
+      "baseline": {}
+    },
+    "heading": {
+      "contractHash": "8ba6bebad06c8d0cc6003b2f195556266d7eedb6160916a35024df4858c8887f",
+      "propertyCount": 85,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "paragraph": {
+      "contractHash": "a6df6d2834a7a3f1fe745324f1ac10ede119730660926df49a26492d2687a8e5",
+      "propertyCount": 85,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "label": {
+      "contractHash": "8b218db484735afd0fff59cea6b18203b2ec519c40b6e4aa076f8eb80a834c5c",
+      "propertyCount": 83,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "button": {
+      "contractHash": "90108977c0445ab4bebdc19e5ce2eda1bf740bd134068246d16bc4ac1144f230",
+      "propertyCount": 98,
+      "childCount": 86,
+      "eventCount": 11,
+      "baseline": {
+        "accessibility-label": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "toggle-button": {
+      "contractHash": "3dca82043f3c0023f0b5a6452f3fc0ad6595c64cc6a54ec455b2b0d221ae135a",
+      "propertyCount": 93,
+      "childCount": 1,
+      "eventCount": 6,
+      "baseline": {
+        "accessibility-label": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "toggle": {
+      "contractHash": "4161e4c1072e65e5a9d38f8d0648e276705f6bce60532e1bf4d486985b8fd818",
+      "propertyCount": 83,
+      "childCount": 1,
+      "eventCount": 5,
+      "baseline": {
+        "accessibility-label": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "radio-group": {
+      "contractHash": "96becfcf0e1a2e9a0270b0eb945e8a29393517e4f81424b3bca728543c911556",
+      "propertyCount": 70,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {
+        "accessibility-label": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "radio": {
+      "contractHash": "3c9d66e04400835165734e00c4d471cffbf2451c0c9911a85ebbed4e88ac8ace",
+      "propertyCount": 89,
+      "childCount": 1,
+      "eventCount": 11,
+      "baseline": {
+        "accessibility-label": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "slider": {
+      "contractHash": "4070e8c5114036a9fd82f142cbe375c2a960da0df693b5843990cb8a8ed0357f",
+      "propertyCount": 82,
+      "childCount": 1,
+      "eventCount": 5,
+      "baseline": {
+        "accessibility-label": {
+          "type": "string",
+          "value": "sample"
+        },
+        "value": {
+          "type": "float",
+          "value": 1.0
+        }
+      }
+    },
+    "number-stepper": {
+      "contractHash": "3767d72e46f012963accc4adf1089634dab608cf579b041dfc4200aa3952df89",
+      "propertyCount": 86,
+      "childCount": 1,
+      "eventCount": 5,
+      "baseline": {
+        "accessibility-label": {
+          "type": "string",
+          "value": "sample"
+        },
+        "value": {
+          "type": "float",
+          "value": 1.0
+        }
+      }
+    },
+    "text-field": {
+      "contractHash": "5c9b0b141775a84fe5bdfd064ad275d86c8a0911cb16acc7d1946d2d28104213",
+      "propertyCount": 88,
+      "childCount": 1,
+      "eventCount": 8,
+      "baseline": {}
+    },
+    "secure-field": {
+      "contractHash": "5c9b0b141775a84fe5bdfd064ad275d86c8a0911cb16acc7d1946d2d28104213",
+      "propertyCount": 88,
+      "childCount": 1,
+      "eventCount": 8,
+      "baseline": {}
+    },
+    "input": {
+      "contractHash": "0fbe9c8d784874306d5fcb0df9587324e28616bdc3c05836aa85322c3e046593",
+      "propertyCount": 89,
+      "childCount": 1,
+      "eventCount": 8,
+      "baseline": {}
+    },
+    "search-field": {
+      "contractHash": "5c9b0b141775a84fe5bdfd064ad275d86c8a0911cb16acc7d1946d2d28104213",
+      "propertyCount": 88,
+      "childCount": 1,
+      "eventCount": 8,
+      "baseline": {}
+    },
+    "textarea": {
+      "contractHash": "980c9ca90bc989048e5371b44b4b01afbbe8d31c9b16aa34b4598a8244677d92",
+      "propertyCount": 89,
+      "childCount": 1,
+      "eventCount": 8,
+      "baseline": {}
+    },
+    "checkbox": {
+      "contractHash": "6a051c9cf1df792fbb96ed37ce73223eb789d2b8ed1303178f13d13f1095d74f",
+      "propertyCount": 89,
+      "childCount": 1,
+      "eventCount": 5,
+      "baseline": {}
+    },
+    "switch": {
+      "contractHash": "30bf8687ba1e6e10785500450dac1dac66b8751809004d827e530f5e3f13e44d",
+      "propertyCount": 75,
+      "childCount": 1,
+      "eventCount": 5,
+      "baseline": {}
+    },
+    "progress": {
+      "contractHash": "d0f254819a99b5df9b8189648133bb26b0d22e643487eaf3cb702719f008886d",
+      "propertyCount": 66,
+      "childCount": 0,
+      "eventCount": 3,
+      "baseline": {
+        "value": {
+          "type": "float",
+          "value": 1.0
+        }
+      }
+    },
+    "divider": {
+      "contractHash": "3846ab5e51391c89c80c7eeee182b7baed3c6e1e604b5ed611b9417cb86028f5",
+      "propertyCount": 66,
+      "childCount": 0,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "scroll": {
+      "contractHash": "dbe08c8e249a97883d9de88a49549c2412418cd3c212665510a4233ae427e05f",
+      "propertyCount": 79,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "list": {
+      "contractHash": "388572bf793ee9dec4d7dfad18e4952e8fe2482444a00b94967531132e5999fb",
+      "propertyCount": 78,
+      "childCount": 82,
+      "eventCount": 6,
+      "baseline": {}
+    },
+    "virtual-list": {
+      "contractHash": "e5be253fa5659756e460c7b8c8447cba5518b03e4771c6c95c2d2fc04d470396",
+      "propertyCount": 81,
+      "childCount": 81,
+      "eventCount": 6,
+      "baseline": {}
+    },
+    "tabs": {
+      "contractHash": "2ab7e0588fbee325fd45f472c75920fe31710aea0b165af9cb262e6d9d504935",
+      "propertyCount": 74,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "bottom-tabs": {
+      "contractHash": "24a1eb1349c931b782dee29d7e82794d08ba87e4b1790c075f647662b90c3023",
+      "propertyCount": 13,
+      "childCount": 1,
+      "eventCount": 3,
+      "baseline": {
+        "accessibility-label": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "bottom-tab": {
+      "contractHash": "147278f3f859972daaa5b1e4c585c3c0c1abd66c34f073d67af0dacd9c70ca05",
+      "propertyCount": 8,
+      "childCount": 80,
+      "eventCount": 8,
+      "baseline": {
+        "press-enabled": {
+          "type": "bool",
+          "value": true
+        },
+        "title": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "button-group": {
+      "contractHash": "a1edc3ae1d2730ae4575c4455913f066e07bb436384ab83cf52b79f19a093353",
+      "propertyCount": 73,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "toggle-group": {
+      "contractHash": "a1edc3ae1d2730ae4575c4455913f066e07bb436384ab83cf52b79f19a093353",
+      "propertyCount": 73,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "spacer": {
+      "contractHash": "63787ce4ca853a5dd5800fa7eb8b07d066136aadd625c031bc0a6e9a63f01469",
+      "propertyCount": 65,
+      "childCount": 0,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "spinner": {
+      "contractHash": "e6319eecee2d89dcaf799eeebc7eff3f48f2d184c040a9f13d69623d69019a9e",
+      "propertyCount": 67,
+      "childCount": 0,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "icon": {
+      "contractHash": "1f25ec10577d99a89eb4de670dc8f03e5ae41f15e3e823ddd7e65f85ce0ec421",
+      "propertyCount": 71,
+      "childCount": 0,
+      "eventCount": 3,
+      "baseline": {
+        "name": {
+          "type": "string",
+          "value": "alert"
+        }
+      }
+    },
+    "select": {
+      "contractHash": "c76d7f7076bf8d2998dc144b019a99bacf5aaa467cb00bda9a8b6f07af1e1c3f",
+      "propertyCount": 84,
+      "childCount": 86,
+      "eventCount": 10,
+      "baseline": {
+        "placeholder": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "combobox": {
+      "contractHash": "44a0080d2766075b88fd8e5d90ec57193b264c5edacf764661224fe3d5cbf1a0",
+      "propertyCount": 86,
+      "childCount": 86,
+      "eventCount": 12,
+      "baseline": {
+        "placeholder": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "dropdown-menu": {
+      "contractHash": "2ec0f890f2caf77e20bc27d31fe556cf8c38c28792b59f1053348c4e60c2712d",
+      "propertyCount": 85,
+      "childCount": 3,
+      "eventCount": 4,
+      "baseline": {}
+    },
+    "context-menu": {
+      "contractHash": "60a6d694ab76d7c745a82dd2748d6e36513f1879c5f25415710741ea846cf23b",
+      "propertyCount": 2,
+      "childCount": 2,
+      "eventCount": 4,
+      "baseline": {}
+    },
+    "menu-item": {
+      "contractHash": "25a317fd1da04af6547544ce7a59c58af6d46be1378960e6916453eb03eb07bb",
+      "propertyCount": 94,
+      "childCount": 86,
+      "eventCount": 9,
+      "baseline": {
+        "accessibility-label": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "menu-trigger": {
+      "contractHash": "113f56b02ab2c819e4d5c177654432f79ba3874414d36d97b1991166613ea709",
+      "propertyCount": 11,
+      "childCount": 1,
+      "eventCount": 3,
+      "baseline": {
+        "text": {
+          "type": "string",
+          "value": "sample"
+        },
+        "icon": {
+          "type": "string",
+          "value": "alert"
+        }
+      }
+    },
+    "list-item": {
+      "contractHash": "41fda82ca75a72a14f252097f79dcf40e9c9e0dce3826024f6f8d5fde0fcbfc5",
+      "propertyCount": 101,
+      "childCount": 82,
+      "eventCount": 13,
+      "baseline": {}
+    },
+    "avatar": {
+      "contractHash": "7785613fcc9abf4bb52944611e40f0a81bdd2f2c50b096f7fdedd7515aae8fcb",
+      "propertyCount": 66,
+      "childCount": 0,
+      "eventCount": 3,
+      "baseline": {
+        "text": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "image": {
+      "contractHash": "ebf78dcf653d50f9fc3e63621db36fbe879d457e0ab500292a4970412b064ddd",
+      "propertyCount": 76,
+      "childCount": 0,
+      "eventCount": 4,
+      "baseline": {
+        "url": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "media-surface": {
+      "contractHash": "bcf9a6340af55b2d5ecf180c9454e6f929e52d16643cdbb7e6b397af5857802c",
+      "propertyCount": 67,
+      "childCount": 0,
+      "eventCount": 3,
+      "baseline": {
+        "surface": {
+          "type": "int",
+          "value": 1
+        }
+      }
+    },
+    "stepper": {
+      "contractHash": "92fb4015b69dee2d16bed9b0d7e9a29827c6c5b3246327e8c1bf4451481342f3",
+      "propertyCount": 5,
+      "childCount": 1,
+      "eventCount": 3,
+      "baseline": {
+        "active": {
+          "type": "int",
+          "value": 1
+        }
+      }
+    },
+    "step": {
+      "contractHash": "0d2be862d065817bd5639b3b2b7dc396a95ba7f4a4f17d29400a08af811be6d2",
+      "propertyCount": 4,
+      "childCount": 0,
+      "eventCount": 3,
+      "baseline": {
+        "text": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "timeline": {
+      "contractHash": "b9612916cc29597204bc510b47e0be8a8c45107e6629b6324e4c7cf1a735375d",
+      "propertyCount": 6,
+      "childCount": 1,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "timeline-item": {
+      "contractHash": "dd23d8dec199ec598941fcb13ca4a57cc646211314a5fff907830347c6d5fa07",
+      "propertyCount": 12,
+      "childCount": 0,
+      "eventCount": 8,
+      "baseline": {
+        "title": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "input-group": {
+      "contractHash": "8bd696882dd568ae44d51f729e567ecdddace60aabf416cf0523fb9910947972",
+      "propertyCount": 8,
+      "childCount": 2,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "input-group-actions": {
+      "contractHash": "35dc1712d588f7c092dd0386bc7583e0eb9da56c6d7366969e67734d0763a9b8",
+      "propertyCount": 4,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "breadcrumb": {
+      "contractHash": "a1edc3ae1d2730ae4575c4455913f066e07bb436384ab83cf52b79f19a093353",
+      "propertyCount": 73,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "pagination": {
+      "contractHash": "a1edc3ae1d2730ae4575c4455913f066e07bb436384ab83cf52b79f19a093353",
+      "propertyCount": 73,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "accordion": {
+      "contractHash": "6ca675b33234ff7c27a79ef6d4f39515fce31dfbb123b787d9f4b26d8b58750e",
+      "propertyCount": 8,
+      "childCount": 81,
+      "eventCount": 5,
+      "baseline": {
+        "text": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "table": {
+      "contractHash": "d16a8c4aa60d0eaaeb624350bced7a093e81671791c8568cc9b6f3520de84d86",
+      "propertyCount": 69,
+      "childCount": 1,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "table-row": {
+      "contractHash": "a8526858a2cf38b548d4ff2c206c64980887aab1bc3488c54bc71645b1e6ccbc",
+      "propertyCount": 71,
+      "childCount": 1,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "table-cell": {
+      "contractHash": "8bb28d77880b4103d4aa32adbb8d2dd5645cace3f52a3a60f54da694ff23f24d",
+      "propertyCount": 84,
+      "childCount": 86,
+      "eventCount": 9,
+      "baseline": {}
+    },
+    "tree": {
+      "contractHash": "39021458e2c24bbf45c268b24ee7c6f63f7cc2f51ea980708aaa9f0e5c9ec799",
+      "propertyCount": 71,
+      "childCount": 7,
+      "eventCount": 3,
+      "baseline": {
+        "accessibility-label": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "resizable": {
+      "contractHash": "f2b0ee3a883b42f3fed00408bf332378aec48c31996ddbea576a6598f591e167",
+      "propertyCount": 79,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "split": {
+      "contractHash": "242442f05fc95fe6553c8001d05b4f92abbc8ed9aea1a83f6b3270ca791e2e15",
+      "propertyCount": 88,
+      "childCount": 81,
+      "eventCount": 4,
+      "baseline": {}
+    },
+    "dialog": {
+      "contractHash": "2789ec3393265c707f18340dffe10bd71d4dfaf6d9e3407490e50af43df82ec2",
+      "propertyCount": 45,
+      "childCount": 81,
+      "eventCount": 4,
+      "baseline": {}
+    },
+    "drawer": {
+      "contractHash": "c986051a335051d2fb7a30cde8995602f1d7197e2db9bcf75d74c0fecb66e650",
+      "propertyCount": 38,
+      "childCount": 81,
+      "eventCount": 5,
+      "baseline": {
+        "text": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "sheet": {
+      "contractHash": "e0053ae3a0ec84e60fac7dbca8891eb844c97123d8a04ac9358844bf601dde2a",
+      "propertyCount": 36,
+      "childCount": 81,
+      "eventCount": 4,
+      "baseline": {
+        "text": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "tooltip": {
+      "contractHash": "46ebfa3d3857d3da6d87d9518a1f9e1d0743a6aa1c6c0284e8f9e3c48216f1bc",
+      "propertyCount": 13,
+      "childCount": 0,
+      "eventCount": 3,
+      "baseline": {
+        "text": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "toast": {
+      "contractHash": "20c43534bc2f46d346a2b618b30db91977f711544e41573113855ba089c7f21f",
+      "propertyCount": 21,
+      "childCount": 81,
+      "eventCount": 4,
+      "baseline": {}
+    },
+    "toolbar": {
+      "contractHash": "bf9c4be6824dd8300093142a031e53dadf2c8a8e60379c92c007eb10406db344",
+      "propertyCount": 14,
+      "childCount": 19,
+      "eventCount": 3,
+      "baseline": {
+        "accessibility-label": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "status-bar": {
+      "contractHash": "7283ffdbf5b89f5b3cc75d5741c4d868b7d33f0816dd5ea849db1ae10a8d7043",
+      "propertyCount": 78,
+      "childCount": 0,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "list-section": {
+      "contractHash": "0e7830025a6f60d6e2810ed98fdf73d07bf309358bd014dc2acab03cea860cf0",
+      "propertyCount": 5,
+      "childCount": 3,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "list-section-header": {
+      "contractHash": "aa1e0aef52f6309346753108168ea0514c7714dc7607d4726c57a38dd77c5904",
+      "propertyCount": 69,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "list-section-footer": {
+      "contractHash": "aa1e0aef52f6309346753108168ea0514c7714dc7607d4726c57a38dd77c5904",
+      "propertyCount": 69,
+      "childCount": 81,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "swipe-actions": {
+      "contractHash": "d2e70ddba9f3c93ba1c8c2ae5074f637bd3d144625a6e6471d708330e5646300",
+      "propertyCount": 2,
+      "childCount": 1,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "swipe-action": {
+      "contractHash": "9c8be850962f9e30f7c17b7a6c72ff51c9de3cd938e3c0f992a9975ba3210ac6",
+      "propertyCount": 10,
+      "childCount": 0,
+      "eventCount": 8,
+      "baseline": {
+        "icon": {
+          "type": "string",
+          "value": "alert"
+        }
+      }
+    },
+    "file-picker": {
+      "contractHash": "718a6be17ecd23b44f7b4e03bef3fe7a89561901a3e79c6116c1f0e3128c9847",
+      "propertyCount": 12,
+      "childCount": 81,
+      "eventCount": 5,
+      "baseline": {}
+    },
+    "kbd": {
+      "contractHash": "defb69b4cfc63ca2736b8309da3da0254252d388cfb54faf8757d167324fc8ea",
+      "propertyCount": 52,
+      "childCount": 0,
+      "eventCount": 3,
+      "baseline": {}
+    },
+    "link": {
+      "contractHash": "3ed11c5e242ab652581e6e2b5d047a3ab462702842d724e08262e222240fa20b",
+      "propertyCount": 90,
+      "childCount": 81,
+      "eventCount": 5,
+      "baseline": {}
+    },
+    "file-image": {
+      "contractHash": "2cca4a1c873be296b145bd30f7af33a91795009372d98d0235f81a0298b1394d",
+      "propertyCount": 71,
+      "childCount": 0,
+      "eventCount": 8,
+      "baseline": {
+        "path": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "file-preview": {
+      "contractHash": "4d9f83ee788382662b46684264f0ee60347476b7207845d2559f402ad1d4f713",
+      "propertyCount": 4,
+      "childCount": 0,
+      "eventCount": 4,
+      "baseline": {
+        "path": {
+          "type": "string",
+          "value": "sample"
+        }
+      }
+    },
+    "popover": {
+      "contractHash": "50803aa6935ce35f0e285aae01d5d57d2cf5bbb364ca062c3b8b1866d3db4e81",
+      "propertyCount": 92,
+      "childCount": 81,
+      "eventCount": 4,
+      "baseline": {}
+    }
+  }
+}

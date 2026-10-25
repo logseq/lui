@@ -228,12 +228,19 @@ func TestRenderAndEvents(t *testing.T) {
 }
 func TestRenderReorderDetachAndIdentity(t *testing.T) {
 	var events []Event
-	b := mounted(t, func(e Event) error { events = append(events, e); return nil })
+	var b *Backend
+	b = mounted(t, func(e Event) error {
+		events = append(events, e)
+		if e.Kind == "text-changed" {
+			return b.ApplyBatch(Batch{Generation: b.Generation() + 1, Ops: []Operation{prop(e.Node, "text", e.Text)}})
+		}
+		return nil
+	})
 	apply(t, b, 2, create(3, "text-field"), prop(3, "placeholder", "First"), create(4, "text-field"), prop(4, "placeholder", "Second"), insert(2, 3, 0), insert(2, 4, 1))
 	tester := ui.NewTester(b.View, 400, 300)
 	_ = tester.Click("First")
 	tester.Type("retained")
-	apply(t, b, 3, Operation{Op: "move-child", Parent: 2, Child: 3, Index: 1})
+	apply(t, b, b.Generation()+1, Operation{Op: "move-child", Parent: 2, Child: 3, Index: 1})
 	tester.Frame()
 	if !tester.Focused("First") {
 		t.Fatal("move lost focus/identity")
@@ -242,7 +249,7 @@ func TestRenderReorderDetachAndIdentity(t *testing.T) {
 	if events[len(events)-1].Text != "retained!" {
 		t.Fatal("move lost editor state")
 	}
-	apply(t, b, 4, Operation{Op: "detach-subtree", ID: 3})
+	apply(t, b, b.Generation()+1, Operation{Op: "detach-subtree", ID: 3})
 	tester.Frame()
 	if _, ok := tester.Find("First"); ok {
 		t.Fatal("detached node still rendered")

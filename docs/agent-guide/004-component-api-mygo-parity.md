@@ -17,9 +17,10 @@ Native OCaml rendering and Metal/GPU work are excluded by the user's updated sco
 
 | Phase | Status | Evidence |
 | --- | --- | --- |
-| 1 | In progress | Behavioral acceptance committed in `58452eb7`; missing widget, layout, resource, event and validation behavior reproduced. Timed and native service cases follow dependency qualification. |
-| 2 | In progress | OCaml 5.5 startup signal-stack ownership defect identified and fixed in the shared bridge. Both the previous pin and MyGo 0.6.4/Go 1.27.3 passed 20 fresh processes for each real application, three sessions per process, with profiling/preemption and pending signals: 80 processes total, no retries. Release dependency selected. |
-| 3–9 | In progress | Component families are being implemented in parallel with shared protocol/runtime integration. No full-parity claim yet. |
+| 1 | Implemented; final regression pending | Behavioral acceptance committed in `7b2bb596`; exact canonical kind/property/child/event export, per-feature support inventory and generator rejection tests are implemented. Public typed virtual-list tuning and read-only editors are documented in the migration guide. |
+| 2 | Qualified; final soak pending | OCaml 5.5 startup signal-stack ownership defect fixed in `36d0b843`. Both the previous pin and MyGo 0.6.4/Go 1.27.3 passed 20 fresh processes for each real application, three sessions per process, with profiling/preemption and pending signals: 80 processes total, no retries. The compatibility runtime preserves the upstream module identity and is pinned through a Go replacement to `logseq/mygo`; embedding applications copy that replacement. Third-party sources are excluded from LUI commits. |
+| 3–8 | Implemented; final audit pending | All standard kinds have built-in adapters. Family tests cover real layout, input, pixels, resource ownership, controlled no-patch rejection, menus, file previews and cancellation. Core OCaml 172, Swift 188, Android 41 and Web 156 regression tests passed; shared-schema checks passed. |
+| 9 | In progress | Real Todos and all 25 Components event families pass with race checks. Real Gallery scrolling, conditional updates, modal dismissal, menu selection and resync pass. macOS native window/IME/NSAccessibility API and OS dialog cancellation checks passed; live Linux/Windows and audible screen-reader qualification remain unverified. CI includes headless macOS/Linux/Windows and real Linux/macOS OCaml integration. Final regression, full demo recording and PR delivery remain pending. |
 
 Frozen decisions: automatic activation for ordinary tabs; bottom tabs own selected-page visibility; scroll outcomes `succeeded`, `cancelled`, `missing-target`; typed `overscan` and `item-extent` override legacy semantic attributes; read-only editors preserve focus/copy/navigation; registered image/media frames copy caller pixels and use positive resource IDs.
 
@@ -351,6 +352,7 @@ Add runner checks that fail if its required library variable is absent, while pr
 | Layout and performance | True fitting/overlay geometry, bounded virtual construction work and no quadratic collection update paths. |
 | Host qualification | Passing desktop matrix and recorded live-service, IME and accessibility checks for each claimed platform. |
 | User review | Visible GitHub usage instructions, reproducible tests and an accurate PR support summary. |
+| Recorded demo | A complete Gallery demo recorded after completion, linked or embedded in the created PR description, covering component families and representative interactions. |
 
 ## Testing Details
 

@@ -9,7 +9,8 @@ case "$(uname -s)" in
     printf '%s\n' "$repo_root/_build/default/examples/todos/native/liblui_todos.dylib"
     ;;
   Linux)
-    opam exec -- dune build examples/todos/native/todos_bridge.cmxa
+    opam exec -- dune build src/lui.cmxa examples/todos/todos_app.cmxa \
+      examples/todos/native/todos_bridge.cmxa
     output_dir="$repo_root/_build/mygo"
     mkdir -p "$output_dir"
     opam exec -- ocamlfind ocamlopt -linkpkg -linkall -package ocaml-signal \

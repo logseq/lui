@@ -12,6 +12,7 @@ type block = {
 }
 
 type t = {
+  event_message : string;
   disabled : bool;
   field_value : string;
   checked : bool;
@@ -98,6 +99,7 @@ let starter_editor_text =
    preview re-render from the same signal."
 
 type action =
+  | RecordEvent of string
   | ToggleDisabled
   | SetFieldValue of string
   | SetChecked of bool
@@ -155,6 +157,7 @@ type action =
 
 let initial =
   {
+    event_message = "none";
     disabled = false;
     field_value = "";
     checked = false;
@@ -200,6 +203,7 @@ let initial =
 
 let update model action =
   match action with
+  | RecordEvent event_message -> { model with event_message }
   | ToggleDisabled -> { model with disabled = not model.disabled }
   | SetFieldValue value -> { model with field_value = value }
   | SetChecked checked -> { model with checked }

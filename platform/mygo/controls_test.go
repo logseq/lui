@@ -1,6 +1,7 @@
 package luimygo
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -108,7 +109,13 @@ func TestControlsBottomTabsShowOnlySelectedRetainedPage(t *testing.T) {
 	}
 	apply(t, b, 4, prop(4, "selected", true), prop(6, "selected", false))
 	tt.Frame()
-	widgetTexts(t, tt, []string{"Draft"}, []string{"Search results"})
+	widgetTexts(t, tt, []string{"Home editor"}, []string{"Search results"})
+	widgetClick(t, tt, "Home editor")
+	tt.Key(0, ui.KeyEnd)
+	tt.Type("!")
+	if got := widgetLast(t, events, "text-changed", 5).Text; got != "Draft!" {
+		t.Fatalf("retained page lost editor text: %q", got)
+	}
 }
 
 func TestControlsTreeKeyboardProposesExpansionAndMovesFocus(t *testing.T) {
@@ -366,4 +373,230 @@ func TestControlsSliderControlledKeyboardAndDisabled(t *testing.T) {
 	if len(events) != before {
 		t.Fatal("disabled slider emitted proposal")
 	}
+}
+
+func TestControlsPickerArrowRequestsModelOwnedMenu(t *testing.T) {
+	for _, kind := range []string{"select", "combobox"} {
+		t.Run(kind, func(t *testing.T) {
+			var events []Event
+			b := mounted(t, func(e Event) error { events = append(events, e); return nil })
+			apply(t, b, 2, create(3, kind), prop(3, "text", "Production"), prop(3, "placeholder", "Environment"), prop(3, "press-enabled", true), insert(2, 3, 0))
+			tt := ui.NewTester(b.View, 500, 250)
+			target := "Production"
+			if kind == "combobox" {
+				target = "Environment"
+			}
+			widgetClick(t, tt, target)
+			events = nil
+			tt.Key(0, ui.KeyDown)
+			if widgetCount(events, "press", 3) != 1 {
+				t.Fatalf("ArrowDown must request the retained menu once: %+v", events)
+			}
+			apply(t, b, 3, prop(3, "enabled", false))
+			tt.Frame()
+			events = nil
+			tt.Key(0, ui.KeyDown)
+			if len(events) != 0 {
+				t.Fatal("disabled picker requested popup")
+			}
+		})
+	}
+}
+
+func TestControlsTextareaSubmitPolicyAndBlur(t *testing.T) {
+	var events []Event
+	b := mounted(t, func(e Event) error { events = append(events, e); return nil })
+	apply(t, b, 2, create(3, "textarea"), prop(3, "text", "Draft"), prop(3, "placeholder", "Composer"), prop(3, "submit-enabled", true), prop(3, "submit-on-enter", true), prop(3, "submit-on-blur", true), insert(2, 3, 0), create(4, "button"), prop(4, "text", "Outside"), insert(2, 4, 1))
+	tt := ui.NewTester(b.View, 600, 400)
+	widgetClick(t, tt, "Composer")
+	tt.Key(0, ui.KeyEnter)
+	if widgetCount(events, "submit", 3) != 1 {
+		t.Fatalf("Enter did not submit textarea: %+v", events)
+	}
+	if widgetCount(events, "text-changed", 3) != 0 {
+		t.Fatal("submit-on-enter inserted newline")
+	}
+	tt.Key(ui.Shift, ui.KeyEnter)
+	if got := widgetLast(t, events, "text-changed", 3).Text; got != "Draft\n" {
+		t.Fatalf("Shift+Enter must insert newline: %q", got)
+	}
+	widgetClick(t, tt, "Outside")
+	if widgetCount(events, "submit", 3) != 2 {
+		t.Fatalf("blur did not submit once: %+v", events)
+	}
+	tt.Frame()
+	if widgetCount(events, "submit", 3) != 2 {
+		t.Fatal("blur replayed submission")
+	}
+}
+
+func TestControlsInputColorAndTimeUseNativeBehavior(t *testing.T) {
+	t.Run("color", func(t *testing.T) {
+		var events []Event
+		b := mounted(t, func(e Event) error { events = append(events, e); return nil })
+		apply(t, b, 2, create(3, "input"), prop(3, "input-type", "color"), prop(3, "text", "#000000"), prop(3, "accessibility-label", "Accent color"), insert(2, 3, 0))
+		tt := ui.NewTester(b.View, 700, 600)
+		widgetClick(t, tt, "Accent color")
+		widgetClick(t, tt, "Red")
+		if got := widgetLast(t, events, "text-changed", 3).Text; got != "#ef4444" {
+			t.Fatalf("native color proposal: %q", got)
+		}
+	})
+	t.Run("time", func(t *testing.T) {
+		var events []Event
+		b := mounted(t, func(e Event) error { events = append(events, e); return nil })
+		apply(t, b, 2, create(3, "input"), prop(3, "input-type", "time"), prop(3, "text", "13:30"), prop(3, "accessibility-label", "Appointment"), insert(2, 3, 0))
+		tt := ui.NewTester(b.View, 600, 300)
+		widgetClick(t, tt, "hours")
+		tt.Key(0, ui.KeyUp)
+		if got := widgetLast(t, events, "text-changed", 3).Text; got != "14:30" {
+			t.Fatalf("native time proposal: %q", got)
+		}
+	})
+}
+
+func TestControlsButtonSizesAndInlineIconPlacement(t *testing.T) {
+	b := mounted(t, nil)
+	apply(t, b, 2, prop(2, "cross", "start"), create(3, "button"), prop(3, "text", "Action"), prop(3, "size", "sm"), prop(3, "icon", "folder"), prop(3, "icon-placement", "leading"), insert(2, 3, 0))
+	tt, box := widgetTesterBounds(b, 600, 400)
+	small := box(3)
+	label, _ := tt.Find("Action")
+	apply(t, b, 3, prop(3, "size", "lg"))
+	tt.Frame()
+	large := box(3)
+	if large.H <= small.H+4 || large.W <= small.W+4 {
+		t.Fatalf("size property did not affect geometry: small=%+v large=%+v", small, large)
+	}
+	apply(t, b, 4, prop(3, "size", "sm"), prop(3, "icon-placement", "trailing"))
+	tt.Frame()
+	trailingLabel, _ := tt.Find("Action")
+	if trailingLabel.X >= label.X-8 {
+		t.Fatalf("inline icon did not move from leading to trailing: leading=%+v trailing=%+v", label, trailingLabel)
+	}
+	apply(t, b, 5, prop(3, "icon-placement", "top"))
+	tt.Frame()
+	top := box(3)
+	if top.H <= small.H+8 {
+		t.Fatalf("top icon did not stack over label: top=%+v small=%+v", top, small)
+	}
+}
+
+func TestControlsCheckboxIndicatorAndLabelAppearance(t *testing.T) {
+	b := mounted(t, nil)
+	apply(t, b, 2, create(3, "checkbox"), prop(3, "text", "Notification label"), prop(3, "checked", false), prop(3, "indicator-border-color", "#ff0000"), prop(3, "checked-indicator-border-color", "#0000ff"), insert(2, 3, 0))
+	tt := ui.NewTester(b.View, 600, 300)
+	count := func(red bool) int {
+		total := 0
+		img := tt.Image()
+		for y := range img.Bounds().Dy() {
+			for x := range img.Bounds().Dx() {
+				p := img.RGBAAt(x, y)
+				if red && p.R > 220 && p.G < 30 && p.B < 30 || !red && p.B > 220 && p.R < 30 && p.G < 30 {
+					total++
+				}
+			}
+		}
+		return total
+	}
+	if count(true) < 10 {
+		t.Fatal("unchecked indicator color was ignored")
+	}
+	apply(t, b, 3, prop(3, "checked", true))
+	tt.Frame()
+	if count(false) < 10 {
+		t.Fatal("checked indicator color was ignored")
+	}
+	label, _ := tt.Find("Notification label")
+	before := append([]byte(nil), tt.Image().Pix...)
+	apply(t, b, 4, prop(3, "label-opacity", 0.0))
+	tt.Frame()
+	changed := false
+	after := tt.Image()
+	for y := int(label.Y); y < int(label.Y+label.H); y++ {
+		for x := int(label.X); x < int(label.X+label.W); x++ {
+			i := after.PixOffset(x, y)
+			for k := range 4 {
+				if before[i+k] != after.Pix[i+k] {
+					changed = true
+				}
+			}
+		}
+	}
+	if !changed {
+		t.Fatal("label-opacity had no rendered effect")
+	}
+	if count(false) < 10 {
+		t.Fatal("label opacity incorrectly faded indicator")
+	}
+}
+
+func TestControlsNativeInputRejectedProposalAndReadonly(t *testing.T) {
+	var events []Event
+	b := mounted(t, func(e Event) error { events = append(events, e); return nil })
+	apply(t, b, 2, create(3, "input"), prop(3, "input-type", "time"), prop(3, "text", "13:30"), insert(2, 3, 0))
+	tt := ui.NewTester(b.View, 600, 300)
+	widgetClick(t, tt, "hours")
+	tt.Key(0, ui.KeyUp)
+	apply(t, b, 3, prop(3, "text", "13:30"))
+	tt.Frame()
+	tt.Key(0, ui.KeyUp)
+	if got := widgetLast(t, events, "text-changed", 3).Text; got != "14:30" {
+		t.Fatalf("rejected native time proposal leaked: %q", got)
+	}
+	apply(t, b, 4, prop(3, "read-only", true))
+	tt.Frame()
+	previous := widgetCount(events, "text-changed", 3)
+	tt.Key(0, ui.KeyUp)
+	tt.Type("9")
+	if widgetCount(events, "text-changed", 3) != previous {
+		t.Fatal("read-only native input emitted change")
+	}
+}
+
+func TestControlsToggleButtonIconAndSizeKeepNativeToggleBehavior(t *testing.T) {
+	var events []Event
+	b := mounted(t, func(e Event) error { events = append(events, e); return nil })
+	apply(t, b, 2, prop(2, "cross", "start"), create(3, "toggle-button"), prop(3, "text", "Pin"), prop(3, "selected", false), prop(3, "toggle-enabled", true), prop(3, "size", "sm"), prop(3, "icon", "folder"), insert(2, 3, 0))
+	tt, box := widgetTesterBounds(b, 600, 300)
+	initial := box(3)
+	widgetClick(t, tt, "Pin")
+	if !widgetLast(t, events, "toggle-changed", 3).Checked {
+		t.Fatal("toggle behavior was lost")
+	}
+	apply(t, b, 3, prop(3, "size", "lg"))
+	tt.Frame()
+	if box(3).H < initial.H+4 {
+		t.Fatal("toggle button size was ignored")
+	}
+}
+
+func TestControlsTreeInlineIconKeepsDisclosureKeyboard(t *testing.T) {
+	b := mounted(t, nil)
+	apply(t, b, 2, create(3, "tree"), prop(3, "accessibility-label", "Documents"), insert(2, 3, 0), create(4, "list-item"), prop(4, "role", "treeitem"), prop(4, "text", "Folder"), prop(4, "tree-level", 1), prop(4, "expanded", true), prop(4, "toggle-enabled", true), prop(4, "icon", "folder"), insert(3, 4, 0))
+	tt := ui.NewTester(b.View, 600, 300)
+	before := append([]byte(nil), tt.Image().Pix...)
+	apply(t, b, 3, prop(4, "icon", "check"))
+	tt.Frame()
+	if bytes.Equal(before, tt.Image().Pix) {
+		t.Fatal("tree item icon did not render")
+	}
+	widgetClick(t, tt, "Folder")
+	tt.Key(0, ui.KeyLeft)
+}
+
+func TestControlsLinkInlineIcon(t *testing.T) {
+	b := mounted(t, nil)
+	apply(t, b, 2, create(3, "link"), prop(3, "text", "Docs"), prop(3, "url", "https://example.test"), prop(3, "icon", "folder"), insert(2, 3, 0))
+	tt := ui.NewTester(b.View, 500, 300)
+	before := append([]byte(nil), tt.Image().Pix...)
+	apply(t, b, 3, prop(3, "icon", "check"))
+	tt.Frame()
+	if bytes.Equal(before, tt.Image().Pix) {
+		t.Fatal("link inline icon was ignored")
+	}
+	widgetClick(t, tt, "Docs")
+	if len(tt.OpenedURLs()) != 1 || tt.OpenedURLs()[0] != "https://example.test" {
+		t.Fatal("inline link lost native URL activation")
+	}
+
 }

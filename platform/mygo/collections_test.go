@@ -1,6 +1,7 @@
 package luimygo
 
 import (
+	"bytes"
 	"fmt"
 	"testing"
 	"time"
@@ -211,7 +212,7 @@ func TestCollectionsVisibleRangeSubscriptionRemovalAndDispose(t *testing.T) {
 
 func TestCollectionsTableSharesColumnTracksAndPreservesCells(t *testing.T) {
 	var events []Event
-	b := layoutBackend(t, "table", &events, prop(2, "width", 400), prop(2, "gap", 0),
+	b := layoutBackend(t, "table", &events, prop(2, "width", 400),
 		create(3, "table-row"), insert(2, 3, 0),
 		create(4, "table-cell"), prop(4, "text", "Name"), prop(4, "font-weight", 700), insert(3, 4, 0),
 		create(5, "table-cell"), prop(5, "text", "Status"), prop(5, "font-weight", 700), insert(3, 5, 1),
@@ -280,5 +281,122 @@ func TestCollectionsVirtualListHonorsLegacyOverscanAndBoundsActualBuildWork(t *t
 				t.Fatalf("distant scroll built intervening rows: %d", len(built))
 			}
 		})
+	}
+}
+
+func TestCollectionsTableRichCellsRenderRetainedControlsAndReorderIdentity(t *testing.T) {
+	var events []Event
+	b := layoutBackend(t, "table", &events, prop(2, "width", 400),
+		create(3, "table-row"), insert(2, 3, 0),
+		create(4, "table-cell"), prop(4, "text", "First row"), insert(3, 4, 0),
+		create(5, "table-cell"), insert(3, 5, 1),
+		create(6, "button"), prop(6, "text", "Cell action"), prop(6, "press-enabled", true), insert(5, 6, 0),
+		create(7, "text-field"), prop(7, "placeholder", "Cell editor"), prop(7, "text", "abc"), insert(5, 7, 1),
+		create(8, "table-row"), insert(2, 8, 1), create(9, "table-cell"), prop(9, "text", "Second row"), insert(8, 9, 0), create(10, "table-cell"), prop(10, "text", "Other cell"), insert(8, 10, 1))
+	tester := ui.NewTester(b.View, 500, 300)
+	if err := tester.Click("Cell action"); err != nil {
+		t.Fatal(err)
+	}
+	if len(layoutEvents(events, "press", 6)) != 1 {
+		t.Fatalf("nested cell action lost handler: %+v", events)
+	}
+	if err := tester.Click("Cell editor"); err != nil {
+		t.Fatal(err)
+	}
+	tester.Key(0, ui.KeyHome)
+	tester.Key(0, ui.KeyRight)
+	apply(t, b, 2, Operation{Op: "move-child", Parent: 2, Child: 3, Index: 1})
+	tester.Frame()
+	if !tester.Focused("Cell editor") {
+		t.Fatal("table row reorder lost rich editor identity")
+	}
+	tester.Type("X")
+	changes := layoutEvents(events, "text-changed", 7)
+	if len(changes) == 0 || changes[len(changes)-1].Text != "aXbc" {
+		t.Fatalf("rich editor lost caret: %+v", changes)
+	}
+	layoutNear(t, "rich cell retains shared second-column origin", layoutRect(t, tester, "Cell editor").X, layoutRect(t, tester, "Other cell").X)
+}
+
+func TestCollectionsListDecorationStyleSeparatorAndRemoval(t *testing.T) {
+	b := layoutBackend(t, "list", nil, prop(2, "width", 200), prop(2, "height", 120), prop(2, "list-style", "decimal"), prop(2, "style", "inset-grouped"),
+		create(3, "list-item"), prop(3, "text", "first decorated row"), prop(3, "separator", "visible"), prop(3, "height", 40), insert(2, 3, 0), create(4, "list-item"), prop(4, "text", "second decorated row"), prop(4, "height", 40), insert(2, 4, 1))
+	tester := ui.NewTester(b.View, 300, 200)
+	first := layoutRect(t, tester, "first decorated row")
+	if first.X < 12 {
+		t.Fatalf("inset grouped style and marker did not inset row content: %+v", first)
+	}
+	if _, ok := tester.Find("1."); !ok {
+		t.Fatalf("decimal list marker not rendered: %v", tester.Texts())
+	}
+	if _, ok := tester.Find("2."); !ok {
+		t.Fatalf("second decimal marker not rendered: %v", tester.Texts())
+	}
+	before := append([]byte(nil), tester.Image().Pix...)
+	apply(t, b, 2, prop(3, "separator", "hidden"))
+	tester.Frame()
+	if bytes.Equal(before, tester.Image().Pix) {
+		t.Fatal("separator removal did not change rendered pixels")
+	}
+	apply(t, b, 3, prop(2, "list-style", "disc"))
+	tester.Frame()
+	if _, ok := tester.Find("•"); !ok {
+		t.Fatalf("disc marker not rendered: %v", tester.Texts())
+	}
+	apply(t, b, 4, Operation{Op: "remove-prop", ID: 2, Property: "list-style"}, Operation{Op: "remove-prop", ID: 2, Property: "style"})
+	tester.Frame()
+	if _, ok := tester.Find("•"); ok {
+		t.Fatal("removed marker still rendered")
+	}
+	if x := layoutRect(t, tester, "first decorated row").X; x >= first.X {
+		t.Fatalf("removed inset style did not restore row position: %g >= %g", x, first.X)
+	}
+}
+
+func TestCollectionsHorizontalScrollUsesIntrinsicChildrenAndScrollsXAxis(t *testing.T) {
+	b := layoutBackend(t, "scroll", nil, prop(2, "orientation", "horizontal"), prop(2, "width", 100), prop(2, "height", 50),
+		create(3, "box"), prop(3, "width", 80), prop(3, "height", 30), prop(3, "background", "#ff0000"), prop(3, "accessibility-label", "horizontal first"), insert(2, 3, 0),
+		create(4, "box"), prop(4, "width", 80), prop(4, "height", 30), prop(4, "background", "#0000ff"), prop(4, "accessibility-label", "horizontal second"), insert(2, 4, 1))
+	tester := ui.NewTester(b.View, 200, 100)
+	first, second := layoutRect(t, tester, "horizontal first"), layoutRect(t, tester, "horizontal second")
+	layoutNear(t, "horizontal intrinsic child spacing", second.X-first.X, 80)
+	tester.Scroll(50, 20, 80, 0)
+	if after := layoutRect(t, tester, "horizontal second"); after.X > 25 {
+		t.Fatalf("horizontal scroll failed to reveal second child: %+v", after)
+	}
+}
+
+func TestCollectionsTableCellSizeChangesTypographyAndRemoval(t *testing.T) {
+	b := layoutBackend(t, "table-cell", nil, prop(2, "text", "Cell typography"), prop(2, "size", "sm"))
+	tester := ui.NewTester(b.View, 400, 180)
+	small := layoutRect(t, tester, "Cell typography")
+	apply(t, b, 2, prop(2, "size", "lg"))
+	tester.Frame()
+	large := layoutRect(t, tester, "Cell typography")
+	if large.H <= small.H {
+		t.Fatalf("large cell size ignored: sm=%+v lg=%+v", small, large)
+	}
+	apply(t, b, 3, prop(2, "size", "display"))
+	tester.Frame()
+	display := layoutRect(t, tester, "Cell typography")
+	if display.H <= large.H {
+		t.Fatalf("display cell size ignored: %+v", display)
+	}
+	apply(t, b, 4, Operation{Op: "remove-prop", ID: 2, Property: "size"})
+	tester.Frame()
+	normal := layoutRect(t, tester, "Cell typography")
+	if normal.H <= small.H || normal.H >= large.H {
+		t.Fatalf("removed cell size did not restore default typography: sm=%+v normal=%+v lg=%+v", small, normal, large)
+	}
+}
+
+func TestCollectionsTableCellHeadingSizeRespectsExplicitTypography(t *testing.T) {
+	b := layoutBackend(t, "table-cell", nil, prop(2, "text", "Explicit cell"), prop(2, "font-size", "24px"), prop(2, "font-weight", 400))
+	tester := ui.NewTester(b.View, 400, 100)
+	before := append([]byte(nil), tester.Image().Pix...)
+	apply(t, b, 2, prop(2, "size", "heading"))
+	tester.Frame()
+	if !bytes.Equal(before, tester.Image().Pix) {
+		t.Fatal("heading size overrode explicit font size/weight")
 	}
 }

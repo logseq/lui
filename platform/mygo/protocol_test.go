@@ -41,7 +41,7 @@ func TestProtocolRejectsInvalidNodeContractsAtomically(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			b := protocolBackend()
-			apply(t, b, 1, create(1, "root"), prop(1, "padding", 4))
+			apply(t, b, 1, create(1, "column"), prop(1, "padding", 4))
 			ops := append([]Operation{prop(1, "padding", 9)}, tc.ops...)
 			if err := b.ApplyBatch(Batch{Generation: 2, Ops: ops}); err == nil {
 				t.Fatal("accepted an invalid final node contract")

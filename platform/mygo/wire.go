@@ -76,6 +76,22 @@ func DecodeBatch(data []byte) (Batch, error) {
 	}
 	return batch, nil
 }
+func integer(v any) (int64, bool) {
+	switch v := v.(type) {
+	case int:
+		return int64(v), true
+	case int32:
+		return int64(v), true
+	case int64:
+		return v, true
+	case json.Number:
+		n, err := v.Int64()
+		return n, err == nil
+	default:
+		return 0, false
+	}
+}
+
 func number(v any) (float64, bool) {
 	var n float64
 	switch v := v.(type) {

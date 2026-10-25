@@ -2,8 +2,10 @@ package luimygo
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -15,7 +17,7 @@ func layoutBackend(t *testing.T, kind string, events *[]Event, ops ...Operation)
 		config.Dispatch = func(e Event) error { *events = append(*events, e); return nil }
 	}
 	b := New(config)
-	base := []Operation{create(1, "root"), prop(1, "cross", "start"), create(2, kind), insert(1, 2, 0)}
+	base := []Operation{create(1, "column"), prop(1, "cross", "start"), create(2, kind), insert(1, 2, 0)}
 	apply(t, b, 1, append(base, ops...)...)
 	return b
 }
@@ -62,7 +64,7 @@ func layoutEvents(events []Event, kind string, node int64) []Event {
 func TestLayoutStackUsesLargestIntrinsicChildAndRetainsOrder(t *testing.T) {
 	var events []Event
 	b := layoutBackend(t, "stack", &events,
-		prop(2, "accessibility-label", "layers"),
+		Operation{Op: "remove-child", Parent: 1, Child: 2}, create(8, "box"), prop(8, "accessibility-label", "layers"), insert(1, 8, 0), insert(8, 2, 0),
 		create(3, "box"), prop(3, "width", 60), prop(3, "height", 20), prop(3, "background", "#ff0000"), prop(3, "accessibility-label", "small layer"), insert(2, 3, 0),
 		create(4, "box"), prop(4, "width", 90), prop(4, "height", 70), prop(4, "background", "#0000ff"), prop(4, "accessibility-label", "large layer"), prop(4, "press-enabled", true), insert(2, 4, 1))
 	tester := ui.NewTester(b.View, 400, 200)
@@ -88,13 +90,13 @@ func TestLayoutStackUsesLargestIntrinsicChildAndRetainsOrder(t *testing.T) {
 
 func TestLayoutOverlayUsesFirstChildSizeAndLocalAlignment(t *testing.T) {
 	b := layoutBackend(t, "column", nil,
-		create(3, "overlay"), prop(3, "accessibility-label", "local overlay"), prop(3, "alignment", "bottom-trailing"), insert(2, 3, 0),
+		create(8, "box"), prop(8, "accessibility-label", "local overlay"), insert(2, 8, 0), create(3, "overlay"), prop(3, "alignment", "bottom-trailing"), insert(8, 3, 0),
 		create(4, "box"), prop(4, "width", 120), prop(4, "height", 60), prop(4, "accessibility-label", "base"), insert(3, 4, 0),
 		create(5, "box"), prop(5, "width", 300), prop(5, "height", 100), prop(5, "accessibility-label", "oversized overlay"), insert(3, 5, 1),
-		create(6, "button"), prop(6, "text", "badge"), prop(6, "width", 40), prop(6, "height", 20), insert(3, 6, 2),
+		create(6, "button"), prop(6, "text", "badge"), prop(6, "accessibility-label", "badge control"), prop(6, "width", 40), prop(6, "height", 20), insert(3, 6, 2),
 		create(7, "box"), prop(7, "width", 10), prop(7, "height", 10), prop(7, "accessibility-label", "following sibling"), insert(2, 7, 1))
 	tester := ui.NewTester(b.View, 500, 300)
-	parent, base, badge := layoutRect(t, tester, "local overlay"), layoutRect(t, tester, "base"), layoutRect(t, tester, "badge")
+	parent, base, badge := layoutRect(t, tester, "local overlay"), layoutRect(t, tester, "base"), layoutRect(t, tester, "badge control")
 	layoutNear(t, "overlay width follows first child", parent.W, 120)
 	layoutNear(t, "overlay height follows first child", parent.H, 60)
 	layoutNear(t, "trailing alignment is local", badge.X+badge.W, base.X+base.W)
@@ -102,7 +104,7 @@ func TestLayoutOverlayUsesFirstChildSizeAndLocalAlignment(t *testing.T) {
 	layoutNear(t, "overlay does not consume sibling space", layoutRect(t, tester, "following sibling").Y, base.Y+60)
 	apply(t, b, 2, prop(6, "alignment", "top-leading"))
 	tester.Frame()
-	badge = layoutRect(t, tester, "badge")
+	badge = layoutRect(t, tester, "badge control")
 	layoutNear(t, "child alignment overrides parent", badge.X, base.X)
 	layoutNear(t, "child alignment top", badge.Y, base.Y)
 }
@@ -213,7 +215,7 @@ func TestLayoutViewThatFitsOnlyConstrainsSelectedAxisAndFallsBack(t *testing.T) 
 
 func TestLayoutSharedTypographyAndSpacingRestoreInheritedValues(t *testing.T) {
 	b := layoutBackend(t, "column", nil,
-		prop(2, "font-size", "24px"), prop(2, "foreground", "#0000ff"), prop(2, "gap", 10),
+		prop(2, "cross", "start"), prop(2, "font-size", "24px"), prop(2, "foreground", "#0000ff"), prop(2, "gap", 10),
 		create(3, "text"), prop(3, "text", "MMMM"), prop(3, "font-size", "12px"), prop(3, "letter-spacing", 8.0), insert(2, 3, 0),
 		create(4, "text"), prop(4, "text", "following"), insert(2, 4, 1))
 	tester := ui.NewTester(b.View, 400, 300)
@@ -316,7 +318,7 @@ func TestLayoutResizableWidthAndRemoval(t *testing.T) {
 	}
 }
 
-func TestLayoutSharedTextWrappingAndClampRemoval(t *testing.T) {
+func TestLayoutSharedTextWrappingAndRemoval(t *testing.T) {
 	b := layoutBackend(t, "column", nil,
 		create(3, "text"), prop(3, "text", "one two three four five six seven eight"), prop(3, "width", 90), prop(3, "font-size", "18px"), prop(3, "white-space", "normal"), insert(2, 3, 0))
 	tester := ui.NewTester(b.View, 300, 300)
@@ -334,20 +336,162 @@ func TestLayoutSharedTextWrappingAndClampRemoval(t *testing.T) {
 
 func TestLayoutInteractionBackgroundsAndRemovalAffectPixels(t *testing.T) {
 	b := layoutBackend(t, "button", nil,
-		prop(2, "text", "X"), prop(2, "width", 100), prop(2, "height", 40), prop(2, "background", "#ff0000"), prop(2, "hover-background", "#0000ff"), prop(2, "pressed-background", "#00ff00"))
+		prop(2, "text", "X"), prop(2, "accessibility-label", "style control"), prop(2, "width", 100), prop(2, "height", 40), prop(2, "background", "#ff0000"), prop(2, "hover-background", "#0000ff"), prop(2, "pressed-background", "#00ff00"))
 	tester := ui.NewTester(b.View, 300, 200)
 	tester.Move(250, 150)
-	layoutWantColor(t, tester, "X", .2, .5, layoutRed)
-	r := layoutRect(t, tester, "X")
+	layoutWantColor(t, tester, "style control", .2, .5, layoutRed)
+	r := layoutRect(t, tester, "style control")
 	tester.Move(r.X+r.W*.5, r.Y+r.H*.5)
-	layoutWantColor(t, tester, "X", .2, .5, layoutBlue)
+	layoutWantColor(t, tester, "style control", .2, .5, layoutBlue)
 	tester.Press(r.X+r.W*.5, r.Y+r.H*.5)
-	layoutWantColor(t, tester, "X", .2, .5, layoutGreen)
+	layoutWantColor(t, tester, "style control", .2, .5, layoutGreen)
 	tester.Release(r.X+r.W*.5, r.Y+r.H*.5)
 	apply(t, b, 2, Operation{Op: "remove-prop", ID: 2, Property: "hover-background"}, Operation{Op: "remove-prop", ID: 2, Property: "pressed-background"})
 	tester.Frame()
-	layoutWantColor(t, tester, "X", .2, .5, layoutRed)
+	layoutWantColor(t, tester, "style control", .2, .5, layoutRed)
 	tester.Press(r.X+r.W*.5, r.Y+r.H*.5)
-	layoutWantColor(t, tester, "X", .2, .5, layoutRed)
+	layoutWantColor(t, tester, "style control", .2, .5, layoutRed)
 	tester.Release(r.X+r.W*.5, r.Y+r.H*.5)
+}
+
+func TestLayoutSplitResizeAnimationOriginEasingAndRemoval(t *testing.T) {
+	for _, pixels := range []bool{false, true} {
+		t.Run(map[bool]string{false: "fraction", true: "pixels"}[pixels], func(t *testing.T) {
+			mode, origin, target := "value", .1, .9
+			if pixels {
+				mode, origin, target = "first-pane-width", 40, 360
+			}
+			b := layoutBackend(t, "split", nil, prop(2, "width", 408), prop(2, "height", 80), prop(2, "gap", 8), prop(2, mode, target), prop(2, "resize-origin", origin), prop(2, "resize-duration", 1000), prop(2, "resize-easing", "linear"), create(3, "box"), prop(3, "accessibility-label", "animated first"), insert(2, 3, 0), create(4, "box"), insert(2, 4, 1))
+			tester := ui.NewTester(b.View, 500, 200)
+			layoutNear(t, "animation starts at declared origin", layoutRect(t, tester, "animated first").W, 40)
+			tester.Advance(500 * time.Millisecond)
+			layoutNear(t, "linear half duration", layoutRect(t, tester, "animated first").W, 200)
+			tester.Advance(500 * time.Millisecond)
+			layoutNear(t, "animation reaches target", layoutRect(t, tester, "animated first").W, 360)
+			apply(t, b, 2, prop(2, mode, origin), prop(2, "resize-easing", "emphasized"))
+			tester.Frame()
+			tester.Advance(250 * time.Millisecond)
+			if w := layoutRect(t, tester, "animated first").W; w >= 280 || w <= 40 {
+				t.Fatalf("emphasized easing not applied at quarter duration: width=%g", w)
+			}
+			apply(t, b, 3, Operation{Op: "remove-prop", ID: 2, Property: "resize-origin"}, Operation{Op: "remove-prop", ID: 2, Property: "resize-duration"}, Operation{Op: "remove-prop", ID: 2, Property: "resize-easing"})
+			tester.Frame()
+			layoutNear(t, "duration removal settles current target", layoutRect(t, tester, "animated first").W, 40)
+		})
+	}
+}
+
+func TestLayoutEdgeInsetSurfaceBelongsOnlyToPinnedRegion(t *testing.T) {
+	b := layoutBackend(t, "edge-inset", nil, prop(2, "edge", "bottom"), prop(2, "width", 200), prop(2, "height", 100), prop(2, "padding", 5), prop(2, "border-width", 2), prop(2, "border-color", "#00ff00"), prop(2, "background", "#0000ff"),
+		create(3, "box"), prop(3, "grow", 1), prop(3, "background", "#ffffff"), prop(3, "accessibility-label", "edge content"), insert(2, 3, 0),
+		create(4, "box"), prop(4, "height", 20), prop(4, "accessibility-label", "pinned content"), insert(2, 4, 1))
+	tester := ui.NewTester(b.View, 300, 200)
+	content, pinned := layoutRect(t, tester, "edge content"), layoutRect(t, tester, "pinned content")
+	layoutNear(t, "main content has no pinned surface padding", content.X, 0)
+	layoutNear(t, "main content fills width", content.W, 200)
+	layoutNear(t, "pinned surface padding", pinned.X, 7)
+	layoutNear(t, "pinned surface consumes correct height", content.H, 66)
+	if got := tester.Image().RGBAAt(1, 80); !layoutSameColor(got, layoutGreen) {
+		t.Fatalf("pinned border color missing: %#v", got)
+	}
+	if got := tester.Image().RGBAAt(4, 80); !layoutSameColor(got, layoutBlue) {
+		t.Fatalf("pinned background missing: %#v", got)
+	}
+	apply(t, b, 2, prop(2, "visible", false))
+	tester.Frame()
+	content = layoutRect(t, tester, "edge content")
+	layoutNear(t, "hidden surface restores all room", content.H, 100)
+}
+
+func TestLayoutProgressPixelsAndSpacerConsumeRemainingRoom(t *testing.T) {
+	b := layoutBackend(t, "column", nil, prop(2, "width", 200), prop(2, "height", 100), prop(2, "cross", "start"),
+		create(3, "progress"), prop(3, "value", .25), prop(3, "width", 100), prop(3, "height", 10), insert(2, 3, 0),
+		create(4, "spacer"), insert(2, 4, 1), create(5, "box"), prop(5, "width", 10), prop(5, "height", 10), prop(5, "accessibility-label", "spaced footer"), insert(2, 5, 2))
+	tester := ui.NewTester(b.View, 300, 150)
+	layoutNear(t, "spacer pushes footer to bottom", layoutRect(t, tester, "spaced footer").Y, 90)
+	before := tester.Image().RGBAAt(50, 5)
+	apply(t, b, 2, prop(3, "value", .75))
+	tester.Frame()
+	after := tester.Image().RGBAAt(50, 5)
+	if before == after {
+		t.Fatal("progress value did not update actual fill pixels")
+	}
+	apply(t, b, 3, Operation{Op: "detach-subtree", ID: 4})
+	tester.Frame()
+	layoutNear(t, "removed spacer restores intrinsic flow", layoutRect(t, tester, "spaced footer").Y, 10)
+}
+
+func TestLayoutSplitAcknowledgesRejectedAcceptedAndNormalizedProposals(t *testing.T) {
+	for _, pixelMode := range []bool{false, true} {
+		for _, input := range []string{"pointer", "keyboard"} {
+			for _, ack := range []string{"reject", "accept", "normalize"} {
+				for _, duration := range []int{0, 400} {
+					t.Run(fmt.Sprintf("pixels=%v/%s/%s/duration=%d", pixelMode, input, ack, duration), func(t *testing.T) {
+						var events []Event
+						mode, initial := "value", .25
+						if pixelMode {
+							mode, initial = "first-pane-width", 100
+						}
+						var b *Backend
+						b = New(Config{Dispatch: func(e Event) error {
+							events = append(events, e)
+							if e.Kind != "value-changed" || ack == "reject" {
+								return nil
+							}
+							value := e.Value
+							if ack == "normalize" {
+								value = .5
+								if pixelMode {
+									value = 200
+								}
+							}
+							return b.ApplyBatch(Batch{Generation: b.Generation() + 1, Ops: []Operation{prop(2, mode, value)}})
+						}})
+						apply(t, b, 1, create(1, "column"), prop(1, "cross", "start"), create(2, "split"), insert(1, 2, 0), prop(2, "width", 408), prop(2, "height", 100), prop(2, "gap", 8), prop(2, mode, initial), prop(2, "resize-duration", duration), prop(2, "resize-handle-width", 8), prop(2, "change-enabled", true),
+							create(3, "box"), prop(3, "accessibility-label", "controlled first"), insert(2, 3, 0), create(4, "box"), insert(2, 4, 1))
+						tester := ui.NewTester(b.View, 500, 200)
+						layoutNear(t, "initial controlled pane", layoutRect(t, tester, "controlled first").W, 100)
+						for attempt := 0; attempt < 2; attempt++ {
+							current := layoutRect(t, tester, "controlled first").W
+							before := len(layoutEvents(events, "value-changed", 2))
+							if input == "pointer" {
+								tester.Press(current+4, 50)
+								tester.Move(current+44, 50)
+								tester.Release(current+44, 50)
+							} else {
+								if err := tester.Click("Resize panes"); err != nil {
+									t.Fatal(err)
+								}
+								tester.Key(0, ui.KeyRight)
+							}
+							tester.Frame()
+							proposals := layoutEvents(events, "value-changed", 2)
+							if len(proposals) <= before {
+								t.Fatal("input did not propose pane resize")
+							}
+							delta := float64(10)
+							if input == "pointer" {
+								delta = 40
+							}
+							want := (float64(current) + delta) / 400
+							if pixelMode {
+								want = float64(current) + delta
+							}
+							got := proposals[len(proposals)-1].Value
+							if math.Abs(got-want) > .01 {
+								t.Fatalf("proposal %d ignored acknowledged geometry: got %g want %g", attempt, got, want)
+							}
+							width := float32(100)
+							if ack == "accept" {
+								width = current + float32(delta)
+							} else if ack == "normalize" {
+								width = 200
+							}
+							layoutNear(t, "synchronous acknowledgement determines immediate geometry", layoutRect(t, tester, "controlled first").W, width)
+						}
+					})
+				}
+			}
+		}
+	}
 }

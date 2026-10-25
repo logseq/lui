@@ -239,6 +239,37 @@ static int32_t lui_dispatch_scroll_completed(const char *name, int64_t node,
   CAMLreturnT(int32_t, accepted);
 }
 
+static int32_t lui_dispatch_node_bools(const char *name, int64_t node,
+                                     int first, int second,
+                                     lui_deliver_fn deliver) {
+  CAMLparam0();
+  CAMLlocal1(result);
+  int32_t accepted = 0;
+  const value *callback = caml_named_value(name);
+  if (callback != NULL) {
+    result = caml_callback3_exn(*callback, Val_long(node), Val_bool(first != 0),
+                                Val_bool(second != 0));
+    accepted = lui_emit_value(result, deliver);
+  }
+  CAMLreturnT(int32_t, accepted);
+}
+
+static int32_t lui_dispatch_text_bool(const char *name, int64_t node,
+                                     const char *text, int32_t length, int flag,
+                                     lui_deliver_fn deliver) {
+  CAMLparam0();
+  CAMLlocal2(text_value, result);
+  int32_t accepted = 0;
+  const value *callback = caml_named_value(name);
+  if (callback != NULL && text != NULL && length >= 0) {
+    text_value = caml_alloc_initialized_string(length, text);
+    result = caml_callback3_exn(*callback, Val_long(node), text_value,
+                                Val_bool(flag != 0));
+    accepted = lui_emit_value(result, deliver);
+  }
+  CAMLreturnT(int32_t, accepted);
+}
+
 static int32_t lui_dispatch_init(const char *name, int32_t platform_code,
                                  int32_t host_code, lui_deliver_fn deliver) {
   CAMLparam0();

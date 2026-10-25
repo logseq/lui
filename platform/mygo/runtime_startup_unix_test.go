@@ -200,7 +200,7 @@ func TestRuntimeFreshProcessStartup(t *testing.T) {
 		path string
 	}{
 		{"todos", os.Getenv("LUI_MYGO_TEST_LIBRARY")},
-		{"components", os.Getenv("LUI_MYGO_COMPONENTS_TEST_LIBRARY")},
+		{"components", os.Getenv("LUI_MYGO_COMPONENTS_LIBRARY")},
 	}
 	if paths[0].path == "" && paths[1].path == "" {
 		t.Skip("set native integration library paths to run startup qualification")
