@@ -7,6 +7,7 @@ import plistlib
 import subprocess
 import tempfile
 import time
+import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
 BUNDLE = "dev.lui.nativePresentationCheck"
@@ -21,7 +22,7 @@ def run(args, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
 
 
-def collect_failure(simulator, destination):
+def collect_failure(simulator, destination, checkpoint_name):
     """Preserve this check's native launch evidence before uninstalling it."""
     destination.mkdir(parents=True, exist_ok=True)
     commands = {
@@ -34,7 +35,7 @@ def collect_failure(simulator, destination):
     container = subprocess.run(["xcrun", "simctl", "get_app_container", simulator, BUNDLE, "data"],
                                capture_output=True, text=True)
     if container.returncode == 0:
-        log = Path(container.stdout.strip()) / "Documents/native-check.log"
+        log = Path(container.stdout.strip()) / "Documents" / checkpoint_name
         if log.exists():
             (destination / "checkpoints.txt").write_bytes(log.read_bytes())
             print(log.read_text(), flush=True)
@@ -65,6 +66,7 @@ def main():
     build = ROOT / ".build/arm64-apple-ios-simulator/release"
     with tempfile.TemporaryDirectory(prefix="lui-native-check-") as temporary:
         directory = Path(temporary)
+        checkpoint_name = f"native-check-{uuid.uuid4().hex}.log"
         source = directory / "Check.swift"
         check = Path(__file__).with_name(filename).read_text().replace("@main", "", 1)
         source.write_text(check + r"""
@@ -73,7 +75,7 @@ def main():
     print(message)
     let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    let file = directory.appendingPathComponent("native-check.log")
+    let file = directory.appendingPathComponent("CHECKPOINT_NAME")
     let previous = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
     try? (previous + message + "\n").write(to: file, atomically: true, encoding: .utf8)
 }
@@ -95,7 +97,7 @@ def main():
         }
     }
 }
-""".replace("CHECK_TYPE", check_type))
+""".replace("CHECK_TYPE", check_type).replace("CHECKPOINT_NAME", checkpoint_name))
         app = directory / "NativePresentationCheck.app"
         app.mkdir()
         run(["xcrun", "--sdk", "iphonesimulator", "swiftc", "-O", "-parse-as-library",
@@ -112,21 +114,26 @@ def main():
         run(["xcrun", "simctl", "install", args.simulator, str(app)])
         diagnostics = args.diagnostics_dir or Path(tempfile.mkdtemp(prefix="lui-check-failure-"))
         try:
+            container = subprocess.check_output(
+                ["xcrun", "simctl", "get_app_container", args.simulator, BUNDLE, "data"], text=True).strip()
+            checkpoint = Path(container) / "Documents" / checkpoint_name
             output = subprocess.run(["xcrun", "simctl", "launch", "--console", "--terminate-running-process",
                                      args.simulator, BUNDLE], capture_output=True, text=True, timeout=30)
             print(output.stdout + output.stderr)
-            if output.returncode != 0 or "NATIVE_PRESENTATION_CHECK_COMPLETE" not in output.stdout:
+            checkpoints = checkpoint.read_text(encoding="utf-8").splitlines() if checkpoint.exists() else []
+            if output.returncode != 0 or checkpoints[-1:] != ["NATIVE_PRESENTATION_CHECK_COMPLETE"]:
                 diagnostics.mkdir(parents=True, exist_ok=True)
                 (diagnostics / "launch.json").write_text(json.dumps({
                     "returncode": output.returncode, "stdout": output.stdout, "stderr": output.stderr,
                 }, indent=2))
-                collect_failure(args.simulator, diagnostics)
+                collect_failure(args.simulator, diagnostics, checkpoint_name)
                 raise SystemExit("Native presentation check did not complete")
+            print(f"Native check committed: {checkpoint_name}", flush=True)
         except subprocess.TimeoutExpired as error:
             diagnostics.mkdir(parents=True, exist_ok=True)
             (diagnostics / "launch-timeout.txt").write_text(
                 f"{error}\nstdout={error.stdout!r}\nstderr={error.stderr!r}\n")
-            collect_failure(args.simulator, diagnostics)
+            collect_failure(args.simulator, diagnostics, checkpoint_name)
             raise
         finally:
             run(["xcrun", "simctl", "uninstall", args.simulator, BUNDLE])
