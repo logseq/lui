@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -448,9 +449,16 @@ func TestResourcesQueuedOldURLCompletionCannotEmitLoadAfterSourceChange(t *testi
 	oldPixels := layoutPNG(t, layoutPixels(layoutRed, layoutRed))
 	newPixels := layoutPNG(t, layoutPixels(layoutBlue, layoutBlue))
 	oldWritten, newStarted, newRelease := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	oldRelease := make(chan struct{})
+	releaseOld := sync.OnceFunc(func() { close(oldRelease) })
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		if r.URL.Path == "/old" {
+			select {
+			case <-oldRelease:
+			case <-r.Context().Done():
+				return
+			}
 			w.Write(oldPixels)
 			close(oldWritten)
 			return
@@ -463,17 +471,31 @@ func TestResourcesQueuedOldURLCompletionCannotEmitLoadAfterSourceChange(t *testi
 		}
 	}))
 	defer server.Close()
+	defer releaseOld()
 	defer close(newRelease)
 	var events []Event
 	b := layoutBackend(t, "image", &events, prop(2, "url", server.URL+"/old"), prop(2, "width", 40), prop(2, "height", 20), prop(2, "accessibility-label", "current source"))
 	tester := ui.NewTester(b.View, 100, 100)
+	releaseOld()
 	select {
 	case <-oldWritten:
 	case <-time.After(time.Second):
 		t.Fatal("old image request did not finish")
 	}
-	// Let the completed decode queue while deliberately committing no new frame.
-	time.Sleep(40 * time.Millisecond)
+	// Queue the old decode after initial settling, without building another frame.
+	deadline := time.Now().Add(time.Minute)
+	for {
+		b.resources.mu.Lock()
+		_, queued := b.resources.results[2]
+		b.resources.mu.Unlock()
+		if queued {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("old image decode did not queue")
+		}
+		runtime.Gosched()
+	}
 	apply(t, b, 2, prop(2, "url", server.URL+"/new"))
 	tester.Frame()
 	if loads := layoutEvents(events, "load", 2); len(loads) != 0 {

@@ -14,6 +14,46 @@ covered separately.
 
 ## Unreleased: component API and MyGo parity
 
+### MyGo spacer hit transparency
+
+`spacer` is a layout void and no longer owns pointer hits, matching the Native
+and Web hosts. Internal `stack` and `overlay` placement wrappers are also
+hit-transparent; real descendants still receive input normally. This fixes
+full-window placeholders covering otherwise active controls. No wire or event
+subscription changes are required. For example, `stack [button; spacer []]`
+now lets the button receive native activation and document click capture;
+preventing that capture still cancels the activation.
+
+Ordinary transparent `box` nodes retain their existing hit behavior. Do not use
+`spacer` as an interactive surface; use a container or control instead.
+
+### MyGo inherited pointer policy
+
+The MyGo adapter now maps the existing `pointer-enabled` protocol to MyGo's
+public `Element.PointerEvents(bool)`: false suppresses the entire native
+subtree, including internal captions; unset descendants inherit; explicit true
+opts a subtree back in. This applies to standard nodes and raw extensions
+bound with `Backend.BindHostElement`. No wire changes or Logseq-specific
+workarounds are needed.
+
+As on Native, presented `dialog`, `sheet`, `popover`, `dropdown-menu`,
+`context-menu`, `toast` and drawers without a `selected` prop default to enabled
+below a disabled ancestor. Explicit false still wins, and a permanent host
+marked `data-overlay-layer=true` never implicitly opts in. For example,
+`overlay ~pointer_enabled:false [button ~pointer_enabled:true ...]` accepts
+input only in the opted-in button; other controls and native labels remain
+transparent. Existing ordinary containers without a pointer policy retain
+their previous hit behavior. Capture returning true still cancels activation;
+paint, layout and keyboard focus are unchanged by the pointer policy.
+
+Embedding hosts must select the same MyGo fork version as this adapter in
+their root `go.mod`; Go does not inherit dependency replacements. The fork
+must provide both `Element.PointerEvents` and the bounded-row
+`ListState.Requested`/`SetKeyIndex` APIs. The integrated pin retains both
+contracts, plain-hit document click capture and the native handle-lifetime
+fixes; choosing an older pointer-only or bounded-row-only candidate is not a
+compatible substitute.
+
 ### MyGo decoded image dimensions
 
 Embedding hosts can call `Backend.NaturalImageSize(id)` on the UI goroutine to
@@ -79,6 +119,96 @@ continue to run unless capture returns true. Observational capture must return
 false so focused controls retain editing, IME, clipboard and native menu commands.
 Do not also forward the same DOM event from a local extension handler: dispatch
 once through the application's existing document capture/bubble implementation.
+
+The pinned MyGo also reports one capture-only `InputClick` on ordinary live hits
+without native gestures, such as a `column` or a bound raw `ui.Box`. The same
+committed hit incarnation must remain enabled and hit-testable through release;
+a drag, prevented down/up, window blur, removed capture or retired hit cancels
+the candidate. Native buttons retain their existing activation/default rules.
+Hosts that synthesized clicks for plain nodes or attached placeholder `OnClick`
+handlers solely for document delegation must remove those workarounds. Keep one
+`CaptureInput` -> `Backend.InputNode` -> document dispatch route; do not add native
+press/focus semantics to ordinary content just to observe its click. Embedding
+root modules must select the adapter's updated MyGo replacement as well.
+
+The pinned MyGo also keeps built-in inspector input private to developer tools.
+Application `CaptureInput` no longer observes inspector-focused key down/up,
+text, composition or commands, or pointer/scroll hits in the committed inspector
+subtree. A press on an inspector control stays isolated when moving or releasing
+outside the panel. Inspector native controls still receive their input even if
+application capture would prevent it; application targets retain their normal
+capture and default-prevention behavior. Remove host-side forwarding of inspector
+input to document shortcuts; do not install application handlers on the inspector
+to work around this boundary. No LUI wire schema or host callback change is needed.
+As Go does not inherit replacements, embedding applications must update their
+root `go.mod` along with this adapter, for example:
+
+```go
+replace github.com/egoist/mygo => github.com/logseq/mygo v0.0.0-20261026012209-183f6afcb33a
+```
+
+### MyGo committed menu owners and scroll observation
+
+`Backend.OpenMenuOwners(c)` returns unique, ID-sorted `InputNode` snapshots for
+actual still-open native menus, retained context menus, dropdowns and popovers.
+Call after final layout (for example in `AfterFrame`) or between frames on the
+UI thread. An `AfterFrame` callback may be registered before `Backend.View`;
+reading committed ownership does not depend on text-record callback ordering.
+Only actual presentation builders register candidates; the query
+checks native active/committed-pending presentation state or retained dismissal
+state plus committed panel and owner identities. It does not scan the retained
+tree, infer opening from widget existence, measure bounds, or change input.
+Probes, omitted panels, hidden/inert/disabled owners, closed presentations and
+retired incarnations do not resolve. Before a changed model has committed, the
+query returns no owners rather than mixing model and presentation generations.
+
+Native/context menus report their host. Dropdowns report the actual trigger or
+placement anchor; a popover's `anchor-target` resolves outside its portal too.
+A coordinate-only popup has no retained external anchor, so its own retained
+popup node is the presentation owner. Supply a real `anchor-target` when a host
+must protect a triggering row; coordinates never imply that row's identity.
+Do not retain the result as an open-state cache: query each committed frame and
+check `InputNode.Current()` before using a saved snapshot. Same-ID recreation
+does not revive an earlier incarnation. Protect only the returned owners and
+their actual retained ancestors, not every menu/widget node or the whole tree:
+
+```go
+c.AfterFrame(func() {
+    for _, owner := range backend.OpenMenuOwners(c) {
+        if owner.Current() {
+            pinRetainedAncestors(owner.Node.ID)
+        }
+    }
+})
+```
+
+`Backend.CommittedScrollOffset(c, id)` returns `(x, y float32, known bool)` for
+any actual committed scroll host, including a normal `box` with `overflow:auto`.
+It reads MyGo's public `Handle.ScrollOffset(c)`, not private engine state or
+geometry differences. Call after layout on the UI thread. Non-scrollers,
+probes, hidden, missing, stale and uncommitted hosts report `known == false`;
+zero with `known == true` is a real scroll start. The axes match `ScrollState`.
+Do not infer scroll end from an unknown value:
+
+```go
+if x, y, known := backend.CommittedScrollOffset(c, containerID); known {
+    observeCommittedOffset(containerID, x, y)
+}
+```
+
+The older `Backend.ScrollOffset(id)` still reads retained typed scroll state,
+including an unapplied `ScrollTo`; its errors and all scroll command/token
+semantics are unchanged. Migrate viewport observations to the new committed
+query, but do not replace command handling. These APIs need the adapter's new
+MyGo pin (`Context.NativeMenuOpen` and `Handle.ScrollOffset`); embedding root
+modules must update their replacement too, since Go does not inherit it. No
+LUI wire schema, default input or event forwarding changes are required.
+
+The same MyGo pin finalizes Handle identity only after actual committed layout,
+including deferred `view-that-fits` and virtual rows. Hosts can read public
+`Bounds`/`FocusWithin` from `AfterFrame` without replaying input or focus, eagerly
+building rejected candidates, or fabricating geometry. Omitted bindings and
+same-ID recreated owners cannot keep an old committed identity alive.
 
 ### Bounded row generation for virtual lists
 

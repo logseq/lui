@@ -9,6 +9,7 @@ import (
 )
 
 func (b *Backend) style(c *ui.Context, n Node, e ui.Element) {
+	pointerPolicy(n, e)
 	if n.Kind == "edge-inset" {
 		n = n.clone()
 		for name := range n.Props {

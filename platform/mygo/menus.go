@@ -30,6 +30,11 @@ func (b *Backend) renderMenus(c *ui.Context, n Node, children func(), emit func(
 				panel.Left(float32(n.Number("x", 0))).Top(float32(n.Number("y", 0)))
 			}
 			panel.Children(children)
+			owner := b.menuAnchorNode(n)
+			if owner.ID == 0 {
+				owner = n
+			}
+			panel.Bind(&b.recordMenuOwner(n, owner, false, false).panel)
 			if !w.popupDismissed && (panel.OverlayShortcut(0, ui.KeyEscape) || panel.PressedOutside()) {
 				w.popupDismissed = true
 				if parent, ok := b.nodes[n.Parent]; ok && (parent.Kind == "menu-trigger" || parent.Kind == "menu-item") {
@@ -211,20 +216,27 @@ func (b *Backend) renderMenus(c *ui.Context, n Node, children func(), emit func(
 }
 
 func (b *Backend) menuAnchor(c *ui.Context, n Node) ui.Element {
-	parent, ok := b.nodes[n.Parent]
-	if !ok {
+	owner := b.menuAnchorNode(n)
+	if owner.ID == 0 {
 		return ui.Element{}
 	}
+	return c.Resolve(b.state(owner).handle)
+}
+
+func (b *Backend) menuAnchorNode(n Node) Node {
+	parent, ok := b.nodes[n.Parent]
+	if !ok {
+		return Node{}
+	}
 	if parent.Kind == "menu-trigger" || parent.Kind == "menu-item" {
-		return c.Resolve(b.state(parent).handle)
+		return parent
 	}
 	for i, id := range parent.Children {
 		if id == n.ID && i > 0 {
-			anchor := b.nodes[parent.Children[i-1]]
-			return c.Resolve(b.state(anchor).handle)
+			return b.nodes[parent.Children[i-1]]
 		}
 	}
-	return ui.Element{}
+	return Node{}
 }
 
 func (b *Backend) placeWidgetPopup(n Node, panel, anchor ui.Element) {
@@ -320,6 +332,7 @@ func (b *Backend) decorateWidget(c *ui.Context, n Node, e ui.Element) {
 		}
 		w := b.widget(n)
 		e.ContextMenu(func(m *ui.Menu) {
+			b.recordMenuOwner(n, n, true, false)
 			if w.nativeItems == nil {
 				w.nativeItems = make(map[int64]uint64)
 				w.nativeOwners = make(map[int64]uint64)
@@ -463,6 +476,7 @@ func (b *Backend) decorateRetainedContext(c *ui.Context, host Node, e ui.Element
 		c.Key("context-" + strconv.FormatInt(host.ID, 10))
 		width, height := c.Size()
 		panel := ui.Scroll(c).Column().AttachTo(anchor, ui.AnchorBottomStart, ui.AnchorTopStart).CollisionPadding(8).MaxWidth(width-16).MaxHeight(height-16).Role(ui.RoleMenu).FocusGroup(ui.Vertical).Modal().Padding(4).Gap(2).Radius(c.Theme().Radius).Background(c.Theme().Surface).Border(1, c.Theme().Border)
+		panel.Bind(&b.recordMenuOwner(host, host, false, true).panel)
 		panel.Children(func() {
 			for _, owner := range []int64{menuID, actionsID} {
 				if node, ok := b.nodes[owner]; ok {

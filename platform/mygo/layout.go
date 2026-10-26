@@ -57,7 +57,7 @@ func (b *Backend) renderLayout(c *ui.Context, n Node, s *controlState, appearanc
 		e.Children(func() {
 			for _, id := range n.Children {
 				c.Key(fmt.Sprintf("stack:%d", id))
-				ui.Box(c).ColumnStart(1).RowStart(1).ZIndex(int(b.nodes[id].Number("z-index", 0))).Children(func() { child(id) })
+				ui.Box(c).PassThrough().ColumnStart(1).RowStart(1).ZIndex(int(b.nodes[id].Number("z-index", 0))).Children(func() { child(id) })
 			}
 		})
 		return e, true
@@ -66,7 +66,7 @@ func (b *Backend) renderLayout(c *ui.Context, n Node, s *controlState, appearanc
 		e.Children(func() {
 			for i, id := range n.Children {
 				c.Key(fmt.Sprintf("overlay:%d", id))
-				wrapper := ui.Box(c).ZIndex(int(b.nodes[id].Number("z-index", 0)))
+				wrapper := ui.Box(c).PassThrough().ZIndex(int(b.nodes[id].Number("z-index", 0)))
 				if i > 0 {
 					alignment := b.nodes[id].String("alignment")
 					if alignment == "" {

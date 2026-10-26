@@ -66,6 +66,7 @@ func (b *Backend) emit(e Event) {
 	}
 }
 func (b *Backend) View(c *ui.Context) {
+	b.viewGeneration = b.generation
 	if b.closed {
 		return
 	}
@@ -102,6 +103,11 @@ func (b *Backend) View(c *ui.Context) {
 		}
 		if len(pending) > 0 {
 			c.Invalidate()
+		}
+		for key, owner := range b.menuOwners {
+			if !owner.current(b, c) {
+				delete(b.menuOwners, key)
+			}
 		}
 	})
 }
@@ -250,7 +256,7 @@ func (b *Backend) render(c *ui.Context, id int64, appearances *[]Event) {
 		case "spinner":
 			e = ui.Spinner(c)
 		case "spacer":
-			e = ui.Spacer(c)
+			e = ui.Spacer(c).PassThrough()
 		case "divider":
 			e = ui.Divider(c)
 		case "scroll", "list":
