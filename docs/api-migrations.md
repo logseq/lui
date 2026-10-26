@@ -50,8 +50,9 @@ Embedding hosts must select the same MyGo fork version as this adapter in
 their root `go.mod`; Go does not inherit dependency replacements. The fork
 must provide both `Element.PointerEvents` and the bounded-row
 `ListState.Requested`/`SetKeyIndex` APIs. The integrated pin retains both
-contracts and the native handle-lifetime fixes; choosing an older pointer-only
-or bounded-row-only candidate is not a compatible substitute.
+contracts, plain-hit document click capture and the native handle-lifetime
+fixes; choosing an older pointer-only or bounded-row-only candidate is not a
+compatible substitute.
 
 ### MyGo decoded image dimensions
 
@@ -118,6 +119,17 @@ continue to run unless capture returns true. Observational capture must return
 false so focused controls retain editing, IME, clipboard and native menu commands.
 Do not also forward the same DOM event from a local extension handler: dispatch
 once through the application's existing document capture/bubble implementation.
+
+The pinned MyGo also reports one capture-only `InputClick` on ordinary live hits
+without native gestures, such as a `column` or a bound raw `ui.Box`. The same
+committed hit incarnation must remain enabled and hit-testable through release;
+a drag, prevented down/up, window blur, removed capture or retired hit cancels
+the candidate. Native buttons retain their existing activation/default rules.
+Hosts that synthesized clicks for plain nodes or attached placeholder `OnClick`
+handlers solely for document delegation must remove those workarounds. Keep one
+`CaptureInput` -> `Backend.InputNode` -> document dispatch route; do not add native
+press/focus semantics to ordinary content just to observe its click. Embedding
+root modules must select the adapter's updated MyGo replacement as well.
 
 ### Bounded row generation for virtual lists
 
