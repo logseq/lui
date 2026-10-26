@@ -99,7 +99,7 @@ func (b *Backend) style(c *ui.Context, n Node, e ui.Element) {
 	if v := n.String("text-decoration"); v != "" {
 		e.TextDecorations(strings.Contains(v, "underline"), strings.Contains(v, "line-through"))
 	}
-	if v := n.String("font-family"); v != "" {
+	if v, ok := b.styleValue(c, n.String("font-family")); ok && v != "" {
 		e.Font(v)
 	}
 	if n.Kind == "table-cell" {
@@ -120,12 +120,14 @@ func (b *Backend) style(c *ui.Context, n Node, e ui.Element) {
 		e.FontWeight(int(v))
 	}
 
-	if v := length(n.String("font-size")); v > 0 {
-		e.FontSize(v)
+	if value, ok := b.styleValue(c, n.String("font-size")); ok {
+		if v := length(value); v > 0 {
+			e.FontSize(v)
+		}
 	}
-	if line := strings.TrimSpace(n.String("line-height")); line != "" {
+	if line, ok := b.styleValue(c, n.String("line-height")); ok && line != "" {
 		if v := length(line); v > 0 {
-			if strings.HasSuffix(line, "px") || strings.HasSuffix(line, "rem") {
+			if strings.HasSuffix(line, "px") || strings.HasSuffix(line, "em") {
 				e.FixedLineHeight(v)
 			} else {
 				e.LineHeight(v)
@@ -322,10 +324,14 @@ func alignment(s string) ui.Align {
 	}
 }
 func length(s string) float32 {
+	s = strings.TrimSpace(s)
 	mult := float64(1)
 	if strings.HasSuffix(s, "rem") {
 		mult = 16
 		s = strings.TrimSuffix(s, "rem")
+	} else if strings.HasSuffix(s, "em") {
+		mult = 16
+		s = strings.TrimSuffix(s, "em")
 	}
 	s = strings.TrimSuffix(s, "px")
 	v, err := strconv.ParseFloat(s, 32)
@@ -334,6 +340,16 @@ func length(s string) float32 {
 	}
 	return float32(v * mult)
 }
+
+func (b *Backend) styleValue(c *ui.Context, value string) (string, bool) {
+	lookup := themeVariableLookup(nil, func(name string) (string, bool) {
+		value, ok := b.tokens[name]
+		return tokenValue(value, c.Theme().Dark), ok
+	})
+	resolved, ok := substituteThemeValue(value, lookup)
+	return strings.TrimSpace(resolved), ok
+}
+
 func (b *Backend) color(c *ui.Context, s string) ui.Color {
 	color, err := b.ResolveColor(c, s)
 	if err != nil {
@@ -347,10 +363,6 @@ func (b *Backend) color(c *ui.Context, s string) ui.Color {
 // Unlike the internal legacy paint fallback, an unresolved value is an error.
 func (b *Backend) ResolveColor(c *ui.Context, s string) (ui.Color, error) {
 	original := s
-	lookup := themeVariableLookup(nil, func(name string) (string, bool) {
-		value, ok := b.tokens[name]
-		return tokenValue(value, c.Theme().Dark), ok
-	})
 	seen := map[string]bool{}
 	for {
 		s = strings.TrimSpace(s)
@@ -358,7 +370,7 @@ func (b *Backend) ResolveColor(c *ui.Context, s string) (ui.Color, error) {
 			return ui.Color{}, fmt.Errorf("lui: cyclic color token %q", original)
 		}
 		seen[s] = true
-		value, valid := substituteThemeValue(s, lookup)
+		value, valid := b.styleValue(c, s)
 		if !valid {
 			return ui.Color{}, fmt.Errorf("lui: unresolved color variables in %q", original)
 		}

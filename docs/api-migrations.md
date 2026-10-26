@@ -51,6 +51,17 @@ build to use the current scoped tokens, adaptive colors and functional CSS
 colors. Unknown values/cycles return an error rather than a successful default.
 The existing internal fallback for unresolved standard paint values is unchanged.
 
+Authored `font-family`, `font-size` and `line-height` now substitute `var()`
+against those same scoped tokens before calling native typography APIs. This
+includes nested fallbacks and adaptive values. Invalid substitutions leave the
+native inherited/default typography unchanged instead of passing unresolved
+expressions as font names. No host API or wire changes are required.
+
+MyGo also accepts `em` typography lengths on the existing native 16-DIP baseline,
+matching its `rem` handling and the OCaml native text adapter. These units are
+not browser-style ancestor-relative computed lengths. Unitless `line-height`
+remains a font-size multiplier; `px`, `em` and `rem` line heights are fixed DIPs.
+
 ### MyGo document input capture
 
 Hosts can install `ui.Context.CaptureInput` once per view build and resolve its
