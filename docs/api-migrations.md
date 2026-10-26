@@ -14,6 +14,31 @@ covered separately.
 
 ## Unreleased: component API and MyGo parity
 
+### MyGo transparent dynamic anchors
+
+`box` nodes with `display="contents"` now render their children directly into
+the current native parent, without creating a MyGo `Column` or consuming a
+native element key. These are the transparent structural anchors emitted when
+reactive, conditional or keyed branches nest. For example, the retained tree
+`text -> box(display=contents) -> text` renders as inline text rather than
+panicking when MyGo encounters a box inside a text paragraph.
+
+The retained anchor, parent links, descendant order and incarnation keys remain
+intact. Appearance still dispatches once per committed incarnation, never from
+an unselected fitting probe; hidden anchors suppress their subtree and retired
+incarnations remain stale. The anchor has no native bounds, focus target or
+independent pointer surface. Box layout and paint properties do not create a
+surface for it; put those properties and direct native interactions on a real
+container or descendant instead. Retained ancestry remains available to hosts
+and continues to enforce disabled/inert event filtering.
+
+No OCaml API, wire format, dependency pin or application migration is required
+for generated dynamic anchors. Do not replace the enclosing `text` with a
+column or flatten arbitrary boxes as a workaround. A real `box`, `icon` or
+other non-text child remains invalid inside native text, even through a contents
+anchor; put it beside the text in a typed row. This change applies specifically
+to structural `box` anchors, not to all component kinds with a display prop.
+
 ### MyGo authored switch chrome
 
 Switches with authored dimensions, padding, foreground, background, border or
