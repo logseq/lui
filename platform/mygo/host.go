@@ -89,6 +89,21 @@ func (b *Backend) ScrollOffset(id int64) (x, y float32, err error) {
 	return s.scroll.X, s.scroll.Y, nil
 }
 
+// CommittedScrollOffset reads an actual committed scroll host's offset in
+// DIPs, including ordinary overflow:auto containers. Unlike ScrollOffset it
+// never reports unapplied commands. Non-scrollers, missing, hidden, stale or
+// uncommitted nodes report known=false. Call after layout on the UI thread.
+func (b *Backend) CommittedScrollOffset(c *ui.Context, id int64) (x, y float32, known bool) {
+	if c == nil || b.closed || b.probing || b.viewGeneration != b.generation {
+		return 0, 0, false
+	}
+	s := b.states[id]
+	if s == nil {
+		return 0, 0, false
+	}
+	return s.handle.ScrollOffset(c)
+}
+
 func (b *Backend) hostNode(id int64) (Node, error) {
 	if b.closed {
 		return Node{}, fmt.Errorf("mygo: backend is closed")

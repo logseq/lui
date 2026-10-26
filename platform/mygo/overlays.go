@@ -15,13 +15,14 @@ func (b *Backend) renderOverlays(c *ui.Context, n Node, children func(), emit fu
 		if b.probing {
 			return ui.Element{}, true
 		}
-		anchor, handle, ok := b.popoverAnchor(c, n)
+		anchor, handle, owner, ok := b.popoverAnchor(c, n)
 		if !ok {
 			return ui.Element{}, true
 		}
 		w := b.widget(n)
 		open := true
 		panel := ui.PopoverBase(c, anchor, &open, func(panel ui.Element) {
+			panel.Bind(&b.recordMenuOwner(n, owner, false, false).panel)
 			panel.Column().Padding(12).Gap(8).Radius(c.Theme().Radius).Background(c.Theme().Surface).Border(1, c.Theme().Border)
 			b.placeWidgetPopup(n, panel, anchor)
 			if handle != nil {
@@ -140,11 +141,11 @@ func sheetDetent(value string) float32 {
 
 // Forward references attach through stable handles. The toolkit resolves the
 // actual target after construction, before geometry and focus are committed.
-func (b *Backend) popoverAnchor(c *ui.Context, n Node) (ui.Element, *ui.Handle, bool) {
+func (b *Backend) popoverAnchor(c *ui.Context, n Node) (ui.Element, *ui.Handle, Node, bool) {
 	var bounds ui.Rect
 	if rectangle := n.String("anchor-rect"); rectangle != "" {
 		if _, err := fmt.Sscanf(rectangle, "%f %f %f %f", &bounds.X, &bounds.Y, &bounds.W, &bounds.H); err != nil {
-			return ui.Element{}, nil, false
+			return ui.Element{}, nil, Node{}, false
 		}
 	} else if _, point := n.Props["x"]; point {
 		bounds.X, bounds.Y = float32(n.Number("x", 0)), float32(n.Number("y", 0))
@@ -154,20 +155,20 @@ func (b *Backend) popoverAnchor(c *ui.Context, n Node) (ui.Element, *ui.Handle, 
 				continue
 			}
 			if target.String("display") == "none" {
-				return ui.Element{}, nil, false
+				return ui.Element{}, nil, Node{}, false
 			}
 			handle := &b.state(target).handle
-			return c.Resolve(*handle), handle, true
+			return c.Resolve(*handle), handle, target, true
 		}
-		return ui.Element{}, nil, false
+		return ui.Element{}, nil, Node{}, false
 	} else {
 		anchor := b.menuAnchor(c, n)
-		return anchor, nil, anchor.Valid()
+		return anchor, nil, b.menuAnchorNode(n), anchor.Valid()
 	}
 	var proxy ui.Element
 	ui.Overlay(c, func() {
 		c.Key("popover-anchor-" + strconv.FormatInt(n.ID, 10))
 		proxy = ui.Box(c).Absolute().PassThrough().Role(ui.RoleNone).Left(bounds.X).Top(bounds.Y).Size(bounds.W, bounds.H)
 	})
-	return proxy, nil, true
+	return proxy, nil, n, true
 }

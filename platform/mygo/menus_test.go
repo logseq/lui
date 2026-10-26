@@ -32,6 +32,106 @@ func widgetMenuHas(tt *ui.Tester, text string) bool {
 	return false
 }
 
+func TestOpenMenuOwnersUseCommittedPresentations(t *testing.T) {
+	for _, route := range []string{"native", "retained", "dropdown", "popover"} {
+		t.Run(route, func(t *testing.T) {
+			b := mounted(t, nil)
+			ownerOps := func() []Operation {
+				kind := "button"
+				if route == "dropdown" {
+					kind = "menu-trigger"
+				}
+				ops := []Operation{create(3, kind), prop(3, "text", "Owner"), prop(3, "accessibility-identifier", "owner"), insert(2, 3, 0)}
+				if route != "popover" {
+					menu := "context-menu"
+					if route == "dropdown" {
+						menu = "dropdown-menu"
+					}
+					ops = append(ops, create(4, menu), insert(3, 4, 0), create(5, "menu-item"), prop(5, "text", "Action"), prop(5, "press-enabled", true), insert(4, 5, 0))
+					if route == "retained" {
+						ops = append(ops, prop(5, "accessibility-label", "Custom action"))
+					}
+				}
+				return ops
+			}
+			ops := []Operation{create(9, "view-that-fits"), prop(9, "width", 200), prop(9, "height", 120), insert(2, 9, 0),
+				create(10, "column"), prop(10, "width", 200), prop(10, "height", 120), insert(9, 10, 0),
+				create(11, "column"), prop(11, "width", 900), prop(11, "height", 900), insert(9, 11, 1),
+				create(30, "popover"), prop(30, "anchor", "below"), prop(30, "anchor-target", "owner"), insert(11, 30, 0)}
+			if route == "popover" {
+				ops = append(ops, create(20, "overlay"), prop(20, "pointer-enabled", false), insert(2, 20, 1))
+			}
+			apply(t, b, 2, append(ops, ownerOps()...)...)
+			var owners []InputNode
+			checkFirstCommit := false
+			tt := ui.NewTester(func(c *ui.Context) {
+				c.AfterFrame(func() {
+					owners = b.OpenMenuOwners(c)
+					if checkFirstCommit {
+						checkFirstCommit = false
+						if len(owners) != 1 || owners[0].Node.ID != 3 {
+							t.Errorf("first final AfterFrame missed the committed popup owner: %+v", owners)
+						}
+					}
+				})
+				b.View(c)
+			}, 400, 300)
+			if len(owners) != 0 {
+				t.Fatalf("closed or probe-only presentation returned owners: %+v", owners)
+			}
+			generation := int64(3)
+			open := func() {
+				switch route {
+				case "native", "retained":
+					if err := tt.RightClick("Owner"); err != nil {
+						t.Fatal(err)
+					}
+				case "dropdown":
+					widgetClick(t, tt, "Owner")
+				case "popover":
+					if _, exists := b.Node(4); !exists {
+						apply(t, b, generation, create(4, "popover"), prop(4, "anchor", "below"), prop(4, "anchor-target", "owner"), prop(4, "pointer-enabled", true), insert(20, 4, 0), create(5, "button"), prop(5, "text", "Action"), insert(4, 5, 0))
+						generation++
+					}
+					checkFirstCommit = true
+					tt.Frame()
+				}
+				if route == "native" && !widgetMenuHas(tt, "Action") || route != "native" && !tt.HasText("Action") {
+					t.Fatal("precondition: actual menu did not present")
+				}
+				if len(owners) != 1 || owners[0].Node.ID != 3 || !owners[0].Current() {
+					t.Fatalf("open presentation did not identify its actual owner: %+v", owners)
+				}
+			}
+			open()
+			retired := owners[0]
+			apply(t, b, generation, Operation{Op: "detach-subtree", ID: 3})
+			generation++
+			tt.Frame()
+			if retired.Current() || len(owners) != 0 {
+				t.Fatalf("retired owner stayed current/open: current=%v owners=%+v", retired.Current(), owners)
+			}
+			apply(t, b, generation, ownerOps()...)
+			generation++
+			tt.Frame()
+			open()
+			if retired.Current() {
+				t.Fatal("same-ID recreation revived the old owner")
+			}
+			if route == "native" {
+				if err := tt.ChooseMenuItem("Action"); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				tt.Key(0, ui.KeyEscape)
+			}
+			if len(owners) != 0 {
+				t.Fatalf("closed presentation returned an owner: %+v", owners)
+			}
+		})
+	}
+}
+
 func TestMenusDropdownRetainedItemsAndDismissal(t *testing.T) {
 	var events []Event
 	b := mounted(t, func(e Event) error { events = append(events, e); return nil })

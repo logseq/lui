@@ -124,6 +124,7 @@ type Backend struct {
 	config            Config
 	nodes             map[int64]Node
 	generation        int64
+	viewGeneration    int64
 	textGeneration    int64
 	states            map[int64]*controlState
 	err               error
@@ -132,6 +133,7 @@ type Backend struct {
 	probing           bool
 	queued            []Event
 	widgets           map[int64]*widgetState
+	menuOwners        map[uint64]*menuOwner
 	resources         resourceStore
 	widgetToastsBuilt bool
 	tokens            map[string]any
@@ -176,6 +178,7 @@ func (b *Backend) Close() {
 	clear(b.nodes)
 	clear(b.states)
 	b.queued = nil
+	clear(b.menuOwners)
 }
 func (b *Backend) ApplyJSON(data []byte, snapshot bool) error {
 	return b.applyJSONReader(bytes.NewReader(data), snapshot)
