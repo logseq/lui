@@ -97,31 +97,23 @@ func (b *Backend) style(c *ui.Context, n Node, e ui.Element) {
 	if v, ok := b.styleValue(c, n.String("font-family")); ok && v != "" {
 		e.Font(v)
 	}
-	if n.Kind == "table-cell" {
-		switch n.String("size") {
-		case "sm":
-			e.FontSize(12)
-		case "lg":
-			e.FontSize(18)
-		case "icon":
-			e.FontSize(18)
-		case "heading":
-			e.FontSize(24).Bold()
-		case "display":
-			e.FontSize(32).Bold()
-		}
+	if size := fontSizePreset(n); size > 0 {
+		e.FontSize(size)
+	}
+	if n.Kind == "table-cell" && (n.String("size") == "heading" || n.String("size") == "display") {
+		e.Bold()
 	}
 	if v := n.Number("font-weight", 0); v > 0 {
 		e.FontWeight(int(v))
 	}
 
 	if value, ok := b.styleValue(c, n.String("font-size")); ok {
-		if v := length(value); v > 0 {
-			e.FontSize(v)
+		if fontLength(value, c.Theme().Rem(1), b.rootFontSize(c)) > 0 {
+			e.FontSize(c.Theme().Rem(1))
 		}
 	}
 	if line, ok := b.styleValue(c, n.String("line-height")); ok && line != "" {
-		if v := length(line); v > 0 {
+		if v := fontLength(line, c.Theme().Rem(1), b.rootFontSize(c)); v > 0 {
 			if strings.HasSuffix(line, "px") || strings.HasSuffix(line, "em") {
 				e.FixedLineHeight(v)
 			} else {
@@ -326,14 +318,40 @@ func alignment(s string) ui.Align {
 		return ui.Start
 	}
 }
-func length(s string) float32 {
+func fontSizePreset(n Node) float32 {
+	if n.Kind == "heading" {
+		return float32(30 - n.Number("heading-level", 2)*2)
+	}
+	if n.Kind == "table-cell" {
+		switch n.String("size") {
+		case "sm":
+			return 12
+		case "lg", "icon":
+			return 18
+		case "heading":
+			return 24
+		case "display":
+			return 32
+		}
+	}
+	return 0
+}
+
+func (b *Backend) rootFontSize(c *ui.Context) float32 {
+	if b.systemTheme != nil {
+		return b.systemTheme.Rem(1)
+	}
+	return c.Theme().Rem(1)
+}
+
+func fontLength(s string, em, rem float32) float32 {
 	s = strings.TrimSpace(s)
 	mult := float64(1)
 	if strings.HasSuffix(s, "rem") {
-		mult = 16
+		mult = float64(rem)
 		s = strings.TrimSuffix(s, "rem")
 	} else if strings.HasSuffix(s, "em") {
-		mult = 16
+		mult = float64(em)
 		s = strings.TrimSuffix(s, "em")
 	}
 	s = strings.TrimSuffix(s, "px")

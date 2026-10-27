@@ -101,6 +101,7 @@ func (b *Backend) scopeTheme(c *ui.Context, n Node) func() {
 		next = *ui.LightTheme()
 		changed = true
 	}
+	next.Font, next.FontSize = oldTheme.Font, oldTheme.FontSize
 	if encoded := n.String("theme"); encoded != "" {
 		added, _ := decodeTokens(encoded)
 		b.tokens = maps.Clone(b.tokens)
@@ -109,6 +110,23 @@ func (b *Backend) scopeTheme(c *ui.Context, n Node) func() {
 		}
 		maps.Copy(b.tokens, added)
 		changed = true
+	}
+	if changed {
+		c.SetTheme(&next)
+	}
+	if family, ok := b.styleValue(c, n.String("font-family")); ok && family != "" {
+		next.Font = family
+		changed = true
+	}
+	if size := fontSizePreset(n); size > 0 {
+		next.FontSize = size
+		changed = true
+	}
+	if value, ok := b.styleValue(c, n.String("font-size")); ok {
+		if size := fontLength(value, oldTheme.Rem(1), b.rootFontSize(c)); size > 0 {
+			next.FontSize = size
+			changed = true
+		}
 	}
 	if !changed {
 		return func() {}

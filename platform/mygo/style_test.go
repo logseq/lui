@@ -88,7 +88,7 @@ func TestLayoutStyleLogicalAndUnitlessLineHeightAndDecoration(t *testing.T) {
 	layoutNear(t, "unitless line-height multiplier", layoutRect(t, tester, "first\nsecond").H, absolute.H)
 	apply(t, b, 3, prop(3, "line-height", "2rem"))
 	tester.Frame()
-	layoutNear(t, "rem resolves logical units", layoutRect(t, tester, "first\nsecond").H, 64)
+	layoutNear(t, "rem resolves host root units", layoutRect(t, tester, "first\nsecond").H, 2*ui.LightTheme().Rem(2))
 	before := append([]byte(nil), tester.Image().Pix...)
 	apply(t, b, 4, prop(3, "text-decoration", "underline line-through"))
 	tester.Frame()
@@ -99,6 +99,62 @@ func TestLayoutStyleLogicalAndUnitlessLineHeightAndDecoration(t *testing.T) {
 	tester.Frame()
 	if !reflect.DeepEqual(before, tester.Image().Pix) {
 		t.Fatal("removed decoration retained ink")
+	}
+}
+
+func TestTypographyRelativeLengthsRetainSelectionAcrossThemeUpdates(t *testing.T) {
+	b := layoutBackend(t, "column", nil, prop(1, "font-size", "var(--size)"), prop(1, "font-family", "var(--family)"),
+		prop(2, "font-size", "1.5em"), prop(2, "theme-mode", "dark"),
+		create(3, "text"), prop(3, "text", "first\nsecond"), prop(3, "font-size", "2em"), prop(3, "line-height", "1.5em"), prop(3, "white-space", "pre-wrap"), insert(2, 3, 0),
+		create(4, "text"), prop(4, "text", "root relative"), prop(4, "font-size", "2rem"), prop(4, "line-height", "1em"), insert(2, 4, 1),
+		create(5, "input"), prop(5, "text", "retained selection"), prop(5, "accessibility-label", "editor"), insert(2, 5, 2),
+		create(6, "heading"), prop(6, "text", "Heading"), prop(6, "line-height", "1.5em"), insert(2, 6, 3))
+	defer b.Close()
+	if err := b.SetThemeDefaults(map[string]string{"--size": "20px", "--family": "serif, system-ui"}); err != nil {
+		t.Fatal(err)
+	}
+	var context *ui.Context
+	rootSize := float32(20)
+	tester := ui.NewTester(func(c *ui.Context) {
+		context = c
+		theme := *c.Theme()
+		theme.FontSize = rootSize
+		c.SetTheme(&theme)
+		b.View(c)
+	}, 800, 600)
+	layoutNear(t, "em uses inherited font size", layoutRect(t, tester, "first\nsecond").H, 180)
+	layoutNear(t, "rem uses root font size", layoutRect(t, tester, "root relative").H, 40)
+	layoutNear(t, "em line height uses heading preset", layoutRect(t, tester, "Heading").H, 39)
+	state := b.states[5]
+	tester.Click("editor")
+	tester.Key(ui.Ctrl, ui.KeyA)
+	tester.Key(ui.Cmd, ui.KeyA)
+	text, anchor, caret, ok := b.InputTextSnapshot(context, 5)
+	if !ok || anchor == caret {
+		t.Fatal("precondition: input has no native selection")
+	}
+	width := layoutRect(t, tester, "first\nsecond").W
+	if err := b.SetThemeDefaults(map[string]string{"--size": "20px", "--family": "monospace, serif"}); err != nil {
+		t.Fatal(err)
+	}
+	tester.Frame()
+	if layoutRect(t, tester, "first\nsecond").W == width {
+		t.Fatal("font family update did not change consumed text metrics")
+	}
+	if err := b.SetThemeDefaults(map[string]string{"--size": "24px", "--family": "monospace, serif"}); err != nil {
+		t.Fatal(err)
+	}
+	tester.Frame()
+	layoutNear(t, "inherited font size updates", layoutRect(t, tester, "first\nsecond").H, 216)
+	layoutNear(t, "body font size does not change rem", layoutRect(t, tester, "root relative").H, 40)
+	rootSize = 24
+	tester.Frame()
+	layoutNear(t, "root font size updates", layoutRect(t, tester, "root relative").H, 48)
+	if b.states[5] != state {
+		t.Fatal("typography update replaced retained input state")
+	}
+	if gotText, gotAnchor, gotCaret, gotOK := b.InputTextSnapshot(context, 5); !gotOK || gotText != text || gotAnchor != anchor || gotCaret != caret {
+		t.Fatalf("typography update changed text/selection to %q %d:%d", gotText, gotAnchor, gotCaret)
 	}
 }
 
@@ -343,7 +399,7 @@ func TestLayoutStyleOklchColorUsesNativeColorConversion(t *testing.T) {
 }
 
 func TestLayoutStyleUserSelectionCursorAndRemoval(t *testing.T) {
-	b := layoutBackend(t, "box", nil, prop(2, "user-select", "text"), prop(2, "cursor", "pointer"), prop(2,"pressed-background","#00ff00"), create(3, "text"), prop(3, "text", "copy words"), prop(3, "font-size", "24px"), insert(2, 3, 0))
+	b := layoutBackend(t, "box", nil, prop(2, "user-select", "text"), prop(2, "cursor", "pointer"), prop(2, "pressed-background", "#00ff00"), create(3, "text"), prop(3, "text", "copy words"), prop(3, "font-size", "24px"), insert(2, 3, 0))
 	tester := ui.NewTester(b.View, 300, 120)
 	r := layoutRect(t, tester, "copy words")
 	tester.Move(r.X+10, r.Y+r.H/2)
