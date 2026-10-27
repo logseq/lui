@@ -529,7 +529,18 @@ let button_click renderer node kind dom_node state event =
 let button_navigation_keydown renderer node event =
   let key = W.KeyboardEvent.key event in
   let candidate = NavigationKey (node,key,W.KeyboardEvent.shiftKey event) in
-  if enabled_node renderer node
+  let owner = match Store.node renderer.web_store node with
+    | Some current when Store.standard_kind_is current Row || Store.standard_kind_is current Box ->
+        W.KeyboardEvent.target event == W.KeyboardEvent.currentTarget event
+    | Some _ -> true
+    | None -> false in
+  let rec interactive node =
+    match Store.node renderer.web_store node with
+    | Some current ->
+        enabled_node renderer node && not (Store.true_property renderer node Inert) &&
+        (match current.retained_parent with None -> true | Some parent -> interactive parent)
+    | None -> false in
+  if owner && interactive node
      && List.mem key ["ArrowLeft"; "ArrowRight"; "ArrowUp"; "ArrowDown";
                       "Home"; "End"; "PageUp"; "PageDown"; "Enter"; " "; "Escape"]
      && not (W.KeyboardEvent.isComposing event)
@@ -537,6 +548,7 @@ let button_navigation_keydown renderer node event =
              || W.KeyboardEvent.altKey event)
      && Store.event_admitted renderer node candidate then begin
     W.KeyboardEvent.preventDefault event;
+    W.KeyboardEvent.stopPropagation event;
     emit renderer candidate
   end
 

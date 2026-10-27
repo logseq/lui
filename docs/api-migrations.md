@@ -54,6 +54,21 @@ arrows, Home/End, PageUp/PageDown, Enter, Space and Escape, preserving Shift.
 No handler means no navigation subscription. Keyboard focus still belongs to
 the application's normal typed focus/role configuration.
 
+### Row and Box navigation focus ownership
+
+On Web and MyGo, Row/Box navigation callbacks only receive keys owned by
+that focused container, never keys from a descendant checkbox or editor.
+Web stops propagation after an admitted navigation event. MyGo makes an
+interactive navigation-enabled container focusable and registers shortcuts
+only while its handle owns focus; filtering only inside a subtree shortcut
+callback would still consume the child's default key behavior.
+Disabled and inert ancestors block navigation. Other controls retain their
+existing navigation behavior; no handler still means no subscription.
+Applications can replace a container's raw keydown bridge with
+`row ~on_navigation_key:handle_row_key ...` without intercepting keys typed
+inside child controls. Web containers retain the application's normal
+focus configuration, such as `~data_attrs:["tabindex", "0"]`.
+
 ### Checkbox mixed state and modifier-aware proposals
 
 Checkbox gains `?indeterminate:bool` and its reactive binding, defaulting to

@@ -217,14 +217,31 @@ func (b *Backend) bindEvents(c *ui.Context, n Node, s *controlState, e ui.Elemen
 			e.OnShortcut(0, ui.KeyDown, func() { emit(Event{Kind: "navigate-next"}) })
 		}
 		if eventSupported(n.Kind, "navigation-key") {
-			for key, name := range map[ui.Key]string{ui.KeyLeft: "ArrowLeft", ui.KeyRight: "ArrowRight", ui.KeyUp: "ArrowUp", ui.KeyDown: "ArrowDown", ui.KeyHome: "Home", ui.KeyEnd: "End", ui.KeyPageUp: "PageUp", ui.KeyPageDown: "PageDown"} {
-				e.OnShortcut(0, key, func() { emit(Event{Kind: "navigation-key", Key: name}) })
-				e.OnShortcut(ui.Shift, key, func() { emit(Event{Kind: "navigation-key", Key: name, Shift: true}) })
+			container := n.Kind == "row" || n.Kind == "box"
+			if container {
+				if b.interactionBlocked(n, Event{Kind: "navigation-key"}) {
+					return
+				}
+				e.Focusable()
+				// Subtree shortcuts claim a key before a child's default handling.
+				// Do not register them while a descendant owns focus.
+				if !s.handle.Focused(c) {
+					return
+				}
 			}
-			if n.Kind == "row" || n.Kind == "box" {
+			navigate := func(name string, shift bool) {
+				if !container || s.handle.Focused(c) {
+					emit(Event{Kind: "navigation-key", Key: name, Shift: shift})
+				}
+			}
+			for key, name := range map[ui.Key]string{ui.KeyLeft: "ArrowLeft", ui.KeyRight: "ArrowRight", ui.KeyUp: "ArrowUp", ui.KeyDown: "ArrowDown", ui.KeyHome: "Home", ui.KeyEnd: "End", ui.KeyPageUp: "PageUp", ui.KeyPageDown: "PageDown"} {
+				e.OnShortcut(0, key, func() { navigate(name, false) })
+				e.OnShortcut(ui.Shift, key, func() { navigate(name, true) })
+			}
+			if container {
 				for key, name := range map[ui.Key]string{ui.KeyEnter: "Enter", ui.KeySpace: " ", ui.KeyEscape: "Escape"} {
-					e.OnShortcut(0, key, func() { emit(Event{Kind: "navigation-key", Key: name}) })
-					e.OnShortcut(ui.Shift, key, func() { emit(Event{Kind: "navigation-key", Key: name, Shift: true}) })
+					e.OnShortcut(0, key, func() { navigate(name, false) })
+					e.OnShortcut(ui.Shift, key, func() { navigate(name, true) })
 				}
 			}
 		}
