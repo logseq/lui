@@ -56,13 +56,7 @@ func (b *Backend) style(c *ui.Context, n Node, e ui.Element) {
 	}
 	for _, name := range []string{"padding", "margin"} {
 		if _, ok := n.Props[name]; ok || hasSpacing(n, name) {
-			base := n.Number(name, 0)
-			x := n.Number(name+"-horizontal", base)
-			y := n.Number(name+"-vertical", base)
-			t := float32(n.Number(name+"-top", y))
-			r := float32(n.Number(name+"-right", x))
-			d := float32(n.Number(name+"-bottom", y))
-			l := float32(n.Number(name+"-left", x))
+			t, r, d, l := spacing(n, name, 0)
 			if name == "padding" {
 				e.Padding(t, r, d, l)
 			} else {
@@ -297,6 +291,14 @@ func (b *Backend) style(c *ui.Context, n Node, e ui.Element) {
 	}
 	b.applyShadow(c, e, shadow)
 
+}
+
+func spacing(n Node, name string, fallback float64) (top, right, bottom, left float32) {
+	base := n.Number(name, fallback)
+	x := n.Number(name+"-horizontal", base)
+	y := n.Number(name+"-vertical", base)
+	return float32(n.Number(name+"-top", y)), float32(n.Number(name+"-right", x)),
+		float32(n.Number(name+"-bottom", y)), float32(n.Number(name+"-left", x))
 }
 func hasSpacing(n Node, prefix string) bool {
 	for _, s := range []string{"-horizontal", "-vertical", "-top", "-right", "-bottom", "-left"} {
