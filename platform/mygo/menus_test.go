@@ -182,6 +182,21 @@ func TestMenusDropdownKeyboardSkipsDisabledItems(t *testing.T) {
 	}
 }
 
+func TestMenusDropdownKeepsGrowingContentInsideViewport(t *testing.T) {
+	b := mounted(t, nil)
+	apply(t, b, 2, create(3, "dropdown-menu"), prop(3, "x", 499.0), prop(3, "y", 299.0), prop(3, "collision-padding", 8.0), prop(3, "width", 160), insert(2, 3, 0),
+		create(4, "menu-item"), prop(4, "text", "First command"), insert(3, 4, 0))
+	tt, box := widgetTesterBounds(b, 500, 300)
+	for step, height := range []int{40, 700, 80} {
+		apply(t, b, int64(step+3), prop(4, "height", height))
+		tt.Frame()
+		r := box(3)
+		if r.W == 0 || r.H == 0 || r.X < 8 || r.Y < 8 || r.X+r.W > 492 || r.Y+r.H > 292 {
+			t.Fatalf("dropdown escaped viewport after content height %d: %+v", height, r)
+		}
+	}
+}
+
 func TestMenusContextMenuOnLeafHostRoutesPerItem(t *testing.T) {
 	var events []Event
 	b := mounted(t, func(e Event) error { events = append(events, e); return nil })
@@ -231,6 +246,36 @@ func TestMenusSubmenuUsesRetainedTriggerAndChildHandlers(t *testing.T) {
 	tt.Frame()
 	if widgetMenuHas(tt, "Production region") {
 		t.Fatal("removed submenu survived")
+	}
+}
+
+func TestMenusSubmenuClosesTopLayerAndRestoresTrigger(t *testing.T) {
+	var events []Event
+	b := mounted(t, func(e Event) error { events = append(events, e); return nil })
+	apply(t, b, 2, create(3, "dropdown-menu"), prop(3, "x", 20.0), prop(3, "y", 20.0), insert(2, 3, 0),
+		create(4, "menu-trigger"), prop(4, "text", "More actions"), insert(3, 4, 0), create(5, "dropdown-menu"), insert(4, 5, 0),
+		create(6, "menu-item"), prop(6, "text", "Nested action"), prop(6, "press-enabled", true), insert(5, 6, 0))
+	tt := ui.NewTester(b.View, 600, 400)
+	widgetClick(t, tt, "More actions")
+	tt.Key(0, ui.KeyLeft)
+	if tt.HasText("Nested action") || !tt.HasText("More actions") || !tt.Focused("More actions") {
+		t.Fatal("Left must close only the submenu and return focus to its trigger")
+	}
+	if widgetCount(events, "dismiss", 5) != 1 || widgetCount(events, "dismiss", 3) != 0 {
+		t.Fatalf("Left reached the wrong menu: %+v", events)
+	}
+	tt.Key(0, ui.KeyRight)
+	if !tt.HasText("Nested action") {
+		t.Fatal("submenu could not reopen after dismissal")
+	}
+	tt.ClickAt(590, 390)
+	if tt.HasText("Nested action") || !tt.HasText("More actions") || widgetCount(events, "dismiss", 3) != 0 {
+		t.Fatalf("outside press must close the top submenu only: %+v", events)
+	}
+	tt.Key(0, ui.KeyRight)
+	tt.Key(0, ui.KeyEscape)
+	if tt.HasText("Nested action") || widgetCount(events, "dismiss", 5) != 3 || widgetCount(events, "dismiss", 3) != 0 {
+		t.Fatalf("Escape dismissal must reset for each submenu opening: %+v", events)
 	}
 }
 

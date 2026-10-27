@@ -72,3 +72,32 @@ func TestMenusMultipleToastsKeepIndependentLifetimes(t *testing.T) {
 		t.Fatal("application disposal emitted a late user dismissal")
 	}
 }
+
+func TestMenusToastNewNodeReplacementKeepsIndependentDeadlines(t *testing.T) {
+	var events []Event
+	b := mounted(t, func(e Event) error { events = append(events, e); return nil })
+	apply(t, b, 2,
+		create(3, "toast"), prop(3, "duration", 500), insert(2, 3, 0), create(4, "text"), prop(4, "text", "Original notification"), insert(3, 4, 0),
+		create(5, "toast"), prop(5, "duration", 800), insert(2, 5, 1), create(6, "text"), prop(6, "text", "Unrelated notification"), insert(5, 6, 0))
+	tt := ui.NewTester(b.View, 600, 400)
+	tt.SetFocused(true)
+	tt.Advance(200 * time.Millisecond)
+	apply(t, b, 3, Operation{Op: "detach-subtree", ID: 3}, create(7, "toast"), prop(7, "duration", 1000), insert(2, 7, 0),
+		create(8, "text"), prop(8, "text", "Replacement notification"), insert(7, 8, 0))
+	tt.Frame()
+	tt.Advance(300 * time.Millisecond)
+	widgetTexts(t, tt, []string{"Replacement notification", "Unrelated notification"}, []string{"Original notification"})
+	if widgetCount(events, "dismiss", 3) != 0 || widgetCount(events, "dismiss", 7) != 0 {
+		t.Fatalf("old timer dismissed a replacement: %+v", events)
+	}
+	tt.Advance(300 * time.Millisecond)
+	widgetTexts(t, tt, []string{"Replacement notification"}, []string{"Unrelated notification"})
+	if widgetCount(events, "dismiss", 5) != 1 {
+		t.Fatal("replacement restarted the unrelated timer")
+	}
+	tt.Advance(400 * time.Millisecond)
+	widgetTexts(t, tt, nil, []string{"Replacement notification"})
+	if widgetCount(events, "dismiss", 7) != 1 || widgetCount(events, "dismiss", 3) != 0 {
+		t.Fatalf("replacement must own exactly one new deadline: %+v", events)
+	}
+}

@@ -21,24 +21,31 @@ func (b *Backend) renderMenus(c *ui.Context, n Node, children func(), emit func(
 		w := b.widget(n)
 		var panel ui.Element
 		ui.Overlay(c, func() {
-			c.Key(b.state(n).identity)
-			panel = ui.Column(c).Absolute().Role(ui.RoleMenu).FocusGroup(ui.Vertical).Padding(4).Gap(2).Radius(c.Theme().Radius).Background(c.Theme().Surface).Border(1, c.Theme().Border).Modal()
 			anchor := b.menuAnchor(c, n)
-			if anchor.Valid() {
-				b.placeWidgetPopup(n, panel, anchor)
-			} else {
-				panel.Left(float32(n.Number("x", 0))).Top(float32(n.Number("y", 0)))
+			if !anchor.Valid() {
+				c.Key("menu-point-" + strconv.FormatInt(n.ID, 10))
+				anchor = ui.Box(c).Absolute().PassThrough().Role(ui.RoleNone).Left(float32(n.Number("x", 0))).Top(float32(n.Number("y", 0))).Size(0, 0)
 			}
+			c.Key(b.state(n).identity)
+			width, height := c.Size()
+			padding := float32(n.Number("collision-padding", 8))
+			panel = ui.Scroll(c).Column().Role(ui.RoleMenu).FocusGroup(ui.Vertical).Padding(4).Gap(2).Radius(c.Theme().Radius).Background(c.Theme().Surface).Border(1, c.Theme().Border).Modal().CollisionPadding(padding).MaxWidth(max(0, width-2*padding)).MaxHeight(max(0, height-2*padding))
+			b.placeWidgetPopup(n, panel, anchor)
+			childOpen := b.widgetSubmenuOpen(n)
 			panel.Children(children)
 			owner := b.menuAnchorNode(n)
 			if owner.ID == 0 {
 				owner = n
 			}
 			panel.Bind(&b.recordMenuOwner(n, owner, false, false).panel)
-			if !w.popupDismissed && (panel.OverlayShortcut(0, ui.KeyEscape) || panel.PressedOutside()) {
+			parent, nested := b.nodes[n.Parent]
+			nested = nested && (parent.Kind == "menu-trigger" || parent.Kind == "menu-item")
+			back := nested && panel.OverlayShortcut(0, ui.KeyLeft)
+			if !w.popupDismissed && (back || panel.OverlayShortcut(0, ui.KeyEscape) || !childOpen && panel.PressedOutside()) {
 				w.popupDismissed = true
-				if parent, ok := b.nodes[n.Parent]; ok && (parent.Kind == "menu-trigger" || parent.Kind == "menu-item") {
+				if nested {
 					b.widget(parent).submenuOpen = false
+					c.Resolve(b.state(parent).handle).Focus()
 				}
 				emit(Event{Kind: "dismiss"})
 			}
@@ -87,9 +94,7 @@ func (b *Backend) renderMenus(c *ui.Context, n Node, children func(), emit func(
 		}
 		if branch {
 			e.Role(ui.RoleMenuButton)
-			e.OnClick(func() { w.submenuOpen = !w.submenuOpen })
-			e.OnShortcut(0, ui.KeyRight, func() { w.submenuOpen = true })
-			e.OnShortcut(0, ui.KeyDown, func() { w.submenuOpen = true })
+			b.widgetSubmenuTrigger(c, n, e)
 		} else if host, menu, ok := b.widgetContextOwner(n); ok {
 			e.OnClick(func() { b.closeWidgetContext(host, menu) })
 		}
@@ -97,9 +102,7 @@ func (b *Backend) renderMenus(c *ui.Context, n Node, children func(), emit func(
 	case "menu-trigger":
 		w := b.widget(n)
 		e := b.widgetButton(c, n, n.String("text"), nil).Role(ui.RoleMenuButton).Bind(&b.state(n).handle)
-		e.OnClick(func() { w.submenuOpen = !w.submenuOpen })
-		e.OnShortcut(0, ui.KeyRight, func() { w.submenuOpen = true })
-		e.OnShortcut(0, ui.KeyDown, func() { w.submenuOpen = true })
+		b.widgetSubmenuTrigger(c, n, e)
 		e.Children(func() {
 			if w.submenuOpen {
 				children()
@@ -477,6 +480,7 @@ func (b *Backend) decorateRetainedContext(c *ui.Context, host Node, e ui.Element
 		width, height := c.Size()
 		panel := ui.Scroll(c).Column().AttachTo(anchor, ui.AnchorBottomStart, ui.AnchorTopStart).CollisionPadding(8).MaxWidth(width-16).MaxHeight(height-16).Role(ui.RoleMenu).FocusGroup(ui.Vertical).Modal().Padding(4).Gap(2).Radius(c.Theme().Radius).Background(c.Theme().Surface).Border(1, c.Theme().Border)
 		panel.Bind(&b.recordMenuOwner(host, host, false, true).panel)
+		childOpen := b.widgetSubmenuOpen(b.nodes[menuID]) || b.widgetSubmenuOpen(b.nodes[actionsID])
 		panel.Children(func() {
 			for _, owner := range []int64{menuID, actionsID} {
 				if node, ok := b.nodes[owner]; ok {
@@ -486,7 +490,7 @@ func (b *Backend) decorateRetainedContext(c *ui.Context, host Node, e ui.Element
 				}
 			}
 		})
-		if panel.OverlayShortcut(0, ui.KeyEscape) || !w.contextJustOpened && panel.PressedOutside() {
+		if panel.OverlayShortcut(0, ui.KeyEscape) || !childOpen && !w.contextJustOpened && panel.PressedOutside() {
 			b.closeWidgetContext(host, b.nodes[menuID])
 		}
 	})
@@ -545,4 +549,38 @@ func (b *Backend) widgetHasSubmenu(n Node) bool {
 		}
 	}
 	return false
+}
+
+func (b *Backend) widgetSubmenuOpen(n Node) bool {
+	for _, id := range n.Children {
+		child := b.nodes[id]
+		if b.widgetHasSubmenu(child) && b.widget(child).submenuOpen || b.widgetSubmenuOpen(child) {
+			return true
+		}
+	}
+	return false
+}
+
+func (b *Backend) widgetSubmenuTrigger(_ *ui.Context, n Node, e ui.Element) {
+	w := b.widget(n)
+	open := func() {
+		if n.Props["enabled"] == false || n.Bool("inert") || w.submenuOpen {
+			return
+		}
+		for _, child := range n.Children {
+			b.resetWidgetMenu(child)
+		}
+		w.submenuOpen = true
+	}
+	e.OnClick(func() {
+		if w.submenuOpen {
+			w.submenuOpen = false
+		} else {
+			open()
+		}
+	})
+	e.OnShortcut(0, ui.KeyRight, open)
+	if parent := b.nodes[n.Parent]; parent.Kind != "dropdown-menu" && parent.Kind != "context-menu" {
+		e.OnShortcut(0, ui.KeyDown, open)
+	}
 }
