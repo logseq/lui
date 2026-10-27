@@ -103,6 +103,39 @@ let test_backend_receives_patches () =
        !batches);
   ignore (Lui_app.dispose app)
 
+let test_model_reads_pending_reductions () =
+  let constructors =
+    [ "plain", (fun backend ->
+        Lui_app.create backend 0 counter_reducer counter_view)
+    ; "extensions", (fun backend ->
+        Lui_app.create_with_extensions backend (Lui_extension.registry ())
+          0 counter_reducer counter_view)
+    ; "reloadable", (fun backend ->
+        Lui_app.create_reloadable backend "source" "contract"
+          0 counter_reducer counter_view)
+    ; "reloadable extensions", (fun backend ->
+        Lui_app.create_reloadable_with_extensions backend
+          (Lui_extension.registry ()) "source" "contract"
+          0 counter_reducer counter_view)
+    ]
+  in
+  List.iter
+    (fun (name, create) ->
+       let app = create (recording_backend ()) in
+       ignore (Lui_app.start app);
+       let batch_count = List.length !batches in
+       ignore (Lui_app.send app `Increment);
+       ignore (Lui_app.send app `Increment);
+       Alcotest.(check int) (name ^ ": pending reductions")
+         2 (Lui_app.model app);
+       Alcotest.(check int) (name ^ ": reading does not flush")
+         batch_count (List.length !batches);
+       flush_app app;
+       Alcotest.(check int) (name ^ ": published reductions")
+         2 (Lui_app.model app);
+       ignore (Lui_app.dispose app))
+    constructors
+
 (* A node mounted and dropped inside one pending batch has its ops
    elided; surviving insert/move indices it offset must be renumbered so
    the stream stays incrementally valid for the backend. *)
@@ -5610,6 +5643,8 @@ let () =
           Alcotest.test_case "ordered picked file batches" `Quick test_picked_files_batch;
           Alcotest.test_case "gallery composer batches" `Quick test_gallery_composer_batches;
           Alcotest.test_case "lifecycle" `Quick test_app_lifecycle;
+          Alcotest.test_case "pending model reads" `Quick
+            test_model_reads_pending_reductions;
           Alcotest.test_case "backend patches" `Quick
             test_backend_receives_patches;
           Alcotest.test_case "same-batch create+drop renumbers" `Quick
