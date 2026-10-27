@@ -214,7 +214,7 @@ func (b *Backend) render(c *ui.Context, id int64, appearances *[]Event) {
 				}
 			})
 		case "switch":
-			e = ui.Switch(c, &s.checked).Label(n.String("text"))
+			e = b.switchControl(c, n, &s.checked)
 			e.OnChange(func() {
 				defer b.reconcileControl(Event{Node: id, Kind: "toggle-changed", incarnation: s.identity})
 				if n.Bool("toggle-enabled") {
