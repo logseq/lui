@@ -122,7 +122,6 @@ func (b *Backend) render(c *ui.Context, id int64, appearances *[]Event) {
 	restoreTheme := b.scopeTheme(c, n)
 	defer restoreTheme()
 	s := b.state(n)
-	c.Key(s.identity)
 	children := func() {
 		for _, child := range n.Children {
 			b.render(c, child, appearances)
@@ -139,6 +138,11 @@ func (b *Backend) render(c *ui.Context, id int64, appearances *[]Event) {
 	if !b.probing && n.Bool("appear-enabled") && !s.appeared {
 		*appearances = append(*appearances, Event{Kind: "appear", Node: id, incarnation: s.identity})
 	}
+	if n.Kind == "box" && n.String("display") == "contents" {
+		children()
+		return
+	}
+	c.Key(s.identity)
 	if n.Kind == "extension" {
 		b.config.Extensions[n.Identifier].Render(c, n.clone(), children, emit)
 		return

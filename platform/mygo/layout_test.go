@@ -61,6 +61,87 @@ func layoutEvents(events []Event, kind string, node int64) []Event {
 	return result
 }
 
+func TestLayoutContentsPreservesInlineRetainedLifecycle(t *testing.T) {
+	var events []Event
+	b := New(Config{Dispatch: func(e Event) error { events = append(events, e); return nil }})
+	defer b.Close()
+	segment := func() []Operation {
+		return []Operation{create(2, "box"), prop(2, "display", "contents"), prop(2, "appear-enabled", true), insert(1, 2, 0),
+			create(3, "text"), prop(3, "as", "mark"), prop(3, "text", "C"), prop(3, "appear-enabled", true), insert(2, 3, 0)}
+	}
+	apply(t, b, 1, append([]Operation{create(10, "column"), create(1, "text"), prop(1, "as", "span"), insert(10, 1, 0),
+		create(4, "box"), prop(4, "display", "contents"), insert(1, 4, 0),
+		create(5, "text"), prop(5, "text", "aret 036c gamma"), insert(4, 5, 0)}, segment()...)...)
+	var text string
+	var anchorBox bool
+	tester := ui.NewTester(func(c *ui.Context) {
+		b.View(c)
+		c.AfterFrame(func() {
+			geometry, ok := b.TextGeometry(c, 1)
+			text = ""
+			if ok {
+				text, _ = geometry.Text()
+			}
+			_, anchorBox = b.Bounds(c, 2)
+		})
+	}, 400, 240)
+	if text != "Caret 036c gamma" || anchorBox {
+		t.Fatalf("contents did not preserve inline text without a box: text=%q box=%v", text, anchorBox)
+	}
+	anchor, _ := b.Node(2)
+	child, _ := b.Node(3)
+	if child.Parent != 2 || anchor.Parent != 1 || len(layoutEvents(events, "appear", 2)) != 1 || len(layoutEvents(events, "appear", 3)) != 1 {
+		t.Fatalf("lost retained ancestry or committed appearance: anchor=%+v child=%+v events=%+v", anchor, child, events)
+	}
+	identity := b.states[3].identity
+	old := InputNode{Node: child, backend: b, identity: identity}
+	apply(t, b, 2, Operation{Op: "move-child", Parent: 1, Child: 2, Index: 1},
+		create(6, "box"), prop(6, "display", "contents"), insert(2, 6, 0),
+		Operation{Op: "remove-child", Parent: 2, Child: 3}, insert(6, 3, 0))
+	tester.Frame()
+	child, _ = b.Node(3)
+	if text != "aret 036c gammaC" || !old.Current() || child.Parent != 6 || b.states[3].identity != identity || len(layoutEvents(events, "appear", 3)) != 1 {
+		t.Fatalf("nested contents/reorder changed identity, order or appearance: %q %+v", text, events)
+	}
+	apply(t, b, 3, prop(2, "display", "none"))
+	tester.Frame()
+	if text != "aret 036c gamma" || old.Current() {
+		t.Fatalf("hidden contents still contributed text/input: %q", text)
+	}
+	apply(t, b, 4, prop(2, "display", "contents"), prop(2, "inert", true))
+	tester.Frame()
+	if text != "aret 036c gammaC" || old.Current() {
+		t.Fatal("contents lost text or inert retained ancestry")
+	}
+	apply(t, b, 5, Operation{Op: "remove-prop", ID: 2, Property: "inert"})
+	if !old.Current() {
+		t.Fatal("contents toggle replaced the retained incarnation")
+	}
+	apply(t, b, 6, Operation{Op: "detach-subtree", ID: 2})
+	apply(t, b, 7, segment()...)
+	tester.Frame()
+	if old.Current() || text != "Caret 036c gamma" || len(layoutEvents(events, "appear", 2)) != 2 || len(layoutEvents(events, "appear", 3)) != 2 {
+		t.Fatalf("same-ID recreation revived stale identity or lost appearance: %q %+v", text, events)
+	}
+	apply(t, b, 8, create(11, "view-that-fits"), prop(11, "width", 350), prop(11, "height", 80), insert(10, 11, 0),
+		create(20, "box"), prop(20, "width", 900), insert(11, 20, 0),
+		create(21, "text"), insert(20, 21, 0), create(22, "box"), prop(22, "display", "contents"), prop(22, "appear-enabled", true), insert(21, 22, 0),
+		create(23, "text"), prop(23, "text", "probe only"), prop(23, "appear-enabled", true), insert(22, 23, 0),
+		Operation{Op: "remove-child", Parent: 10, Child: 1}, insert(11, 1, 1))
+	tester.Frame()
+	if text != "Caret 036c gamma" || tester.HasText("probe only") || len(layoutEvents(events, "appear", 22)) != 0 || len(layoutEvents(events, "appear", 23)) != 0 {
+		t.Fatalf("contents probe escaped into committed rendering/lifecycle: %q %+v", text, events)
+	}
+	// A real box remains invalid inside Text; contents must not flatten it.
+	defer func() {
+		if got := recover(); got != "ui: only text elements (Text, Link, RichText) go inside a text" {
+			t.Fatalf("real non-text child did not fail fast: %v", got)
+		}
+	}()
+	apply(t, b, 9, create(30, "box"), insert(2, 30, 1))
+	tester.Frame()
+}
+
 func TestLayoutStackUsesLargestIntrinsicChildAndRetainsOrder(t *testing.T) {
 	var events []Event
 	b := layoutBackend(t, "stack", &events,
