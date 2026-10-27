@@ -288,6 +288,9 @@ enum class LuiProperty(val wireName: String) {
     readOnly("read-only"),
     overscan("overscan"),
     itemExtent("item-extent"),
+    pointerCapture("pointer-capture"),
+    indeterminate("indeterminate"),
+    toggleDetailEnabled("toggle-detail-enabled"),
     ;
 
     companion object {

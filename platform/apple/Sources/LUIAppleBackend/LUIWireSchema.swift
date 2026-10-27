@@ -281,6 +281,9 @@ enum LUIProperty: String, Decodable, Hashable {
     case readOnly = "read-only"
     case overscan = "overscan"
     case itemExtent = "item-extent"
+    case pointerCapture = "pointer-capture"
+    case indeterminate = "indeterminate"
+    case toggleDetailEnabled = "toggle-detail-enabled"
 }
 
 enum LUISchemaMatrix {

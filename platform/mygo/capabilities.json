@@ -30,7 +30,7 @@
         "extensions_test.go:TestLayoutGeometry",
         "layout_test.go:TestLayoutSharedTypographyAndSpacingRestoreInheritedValues"
       ],
-      "contractHash": "7f93f2d46a22898ff45a6616f9c2316b8857963eca3ad71d79b53e2a14ff7ae7"
+      "contractHash": "8607888dd0b74341aaf93b9a2007d4400d8654129b0a6bca393b82eb27b53b13"
     },
     "column": {
       "route": "render.go; style.go",
@@ -117,7 +117,7 @@
         "style_test.go:TestLayoutStyleViewportFractionsAndContainerFrameRemoval",
         "style_test.go:TestLayoutStyleShadowOpacityStatesAndRemoval"
       ],
-      "contractHash": "6c54923d16642cb7014cbf834642f009746a3fae45bf6d17268af5f932e597cb"
+      "contractHash": "53c3f165be3a92e51235e68b433156fc4b1594d4ee6845cc2ab1d4dc1a270b64"
     },
     "text": {
       "route": "render.go; style.go",
@@ -245,7 +245,7 @@
         "controls_test.go:TestControlsCheckboxRejectedProposalDoesNotBecomeNextValue",
         "controls_test.go:TestControlsCheckboxIndicatorAndLabelAppearance"
       ],
-      "contractHash": "6a051c9cf1df792fbb96ed37ce73223eb789d2b8ed1303178f13d13f1095d74f"
+      "contractHash": "83dfb5b9d277ad82a3f8f0a3c191f3701b6acbd25718e493482b776ba973f1fb"
     },
     "switch": {
       "route": "render.go",
@@ -2285,6 +2285,24 @@
         "collections_test.go:TestCollectionsVirtualListHonorsLegacyOverscanAndBoundsActualBuildWork",
         "protocol_test.go:TestProtocolTypedVirtualTuning"
       ]
+    },
+    "indeterminate": {
+      "route": "controls.go",
+      "evidence": [
+        "controls_test.go:TestControlsCheckboxMixedDetail"
+      ]
+    },
+    "toggle-detail-enabled": {
+      "route": "controls.go; events.go",
+      "evidence": [
+        "controls_test.go:TestControlsCheckboxMixedDetail"
+      ]
+    },
+    "pointer-capture": {
+      "route": "events.go",
+      "evidence": [
+        "events_test.go:TestEventsCapturedPointerCancel"
+      ]
     }
   },
   "events": {
@@ -2436,6 +2454,24 @@
       "route": "events.go; runtime_events.go; runtime.go",
       "evidence": [
         "runtime_components_test.go:TestOCamlComponentsEventRoundTrip"
+      ]
+    },
+    "pointer-move": {
+      "route": "events.go; runtime_events.go; runtime.go",
+      "evidence": [
+        "events_test.go:TestEventsCapturedPointerCancel"
+      ]
+    },
+    "pointer-cancel": {
+      "route": "events.go; runtime_events.go; runtime.go",
+      "evidence": [
+        "events_test.go:TestEventsCapturedPointerCancel"
+      ]
+    },
+    "toggle-changed-detail": {
+      "route": "controls.go; runtime_events.go; runtime.go",
+      "evidence": [
+        "controls_test.go:TestControlsCheckboxMixedDetail"
       ]
     }
   }

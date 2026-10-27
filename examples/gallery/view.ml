@@ -1886,6 +1886,10 @@ let event_payload = function
   | VisibleRange (_, first, last) -> Printf.sprintf "visible-range:%d:%d" first last
   | ScrollEdges (_, at_start, at_end) -> Printf.sprintf "scroll-edges:%b:%b" at_start at_end
   | ExtensionEvent (_, identifier, name, _) -> "extension:" ^ identifier ^ ":" ^ name
+  | PointerMove _ -> "pointer-move"
+  | PointerCancel _ -> "pointer-cancel"
+  | ToggleChangedDetail (_, checked, modifiers) ->
+    Printf.sprintf "toggle-detail:%b:%d" checked modifiers
 
 let event_payloads_section model_source send : t =
   let record event = ignore (send (Model.RecordEvent (event_payload event))) in

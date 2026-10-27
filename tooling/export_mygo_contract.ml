@@ -95,6 +95,8 @@ let events = [
   "visible-range", VisibleRange (0, 0, 0); "scroll-completed", ScrollCompleted (0, 0, "");
   "picked", Picked (0, ""); "press-detail", PressDetail (0, pointer);
   "pointer-down", PointerDown (0, pointer); "pointer-up", PointerUp (0, pointer);
+  "pointer-move", PointerMove (0, pointer); "pointer-cancel", PointerCancel (0, pointer);
+  "toggle-changed-detail", ToggleChangedDetail (0, false, 0);
   "pointer-enter", PointerEnter 0; "pointer-leave", PointerLeave 0;
   "context-menu-press", ContextMenuPress (0, pointer); "load", Load 0;
   "navigate-previous", NavigatePrevious 0; "navigate-next", NavigateNext 0;

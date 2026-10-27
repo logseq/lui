@@ -103,6 +103,7 @@ type controlState struct {
 	pressedAt         time.Time
 	longPressFired    bool
 	lastPointer       Event
+	captureActive     bool
 	text              string
 	checked           bool
 	value             float64

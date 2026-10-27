@@ -227,6 +227,8 @@ LUI_EXPORT int32_t lui_ocaml_press_ex(int64_t node, int32_t modifiers) {
 LUI_POINTER_EXPORT(lui_ocaml_press_detail, "lui_ocaml_press_detail")
 LUI_POINTER_EXPORT(lui_ocaml_pointer_down, "lui_ocaml_pointer_down")
 LUI_POINTER_EXPORT(lui_ocaml_pointer_up, "lui_ocaml_pointer_up")
+LUI_POINTER_EXPORT(lui_ocaml_pointer_move, "lui_ocaml_pointer_move")
+LUI_POINTER_EXPORT(lui_ocaml_pointer_cancel, "lui_ocaml_pointer_cancel")
 LUI_POINTER_EXPORT(lui_ocaml_context_menu_press, "lui_ocaml_context_menu_press")
 
 #undef LUI_POINTER_EXPORT
@@ -270,6 +272,16 @@ LUI_EXPORT int32_t lui_ocaml_toggle_changed(int64_t node, int32_t checked) {
   caml_leave_blocking_section();
   accepted = lui_dispatch_node_bool("lui_ocaml_toggle_changed", node, checked,
                                     deliver);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
+LUI_EXPORT int32_t lui_ocaml_toggle_changed_detail(int64_t node, int32_t checked,
+                                                   int32_t modifiers) {
+  int32_t accepted;
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_node_bool_int("lui_ocaml_toggle_changed_detail", node,
+                                         checked, modifiers, deliver);
   caml_enter_blocking_section();
   return accepted;
 }

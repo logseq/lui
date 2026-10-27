@@ -1816,6 +1816,21 @@
       "lg": "VirtualItemExtent",
       "wire": "item-extent",
       "swift": "itemExtent"
+    },
+    {
+      "lg": "PointerCapture",
+      "wire": "pointer-capture",
+      "swift": "pointerCapture"
+    },
+    {
+      "lg": "Indeterminate",
+      "wire": "indeterminate",
+      "swift": "indeterminate"
+    },
+    {
+      "lg": "ToggleDetailEnabled",
+      "wire": "toggle-detail-enabled",
+      "swift": "toggleDetailEnabled"
     }
   ],
   "events": [
@@ -1985,6 +2000,18 @@
         ":bool",
         ":bool"
       ]
+    },
+    {
+      "lg": "PointerMove",
+      "fields": [":int", ":pointer_detail"]
+    },
+    {
+      "lg": "PointerCancel",
+      "fields": [":int", ":pointer_detail"]
+    },
+    {
+      "lg": "ToggleChangedDetail",
+      "fields": [":int", ":bool", ":int"]
     }
   ],
   "kindProperties": {

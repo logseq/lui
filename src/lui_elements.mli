@@ -396,6 +396,12 @@ val row :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?pointer_capture:bool ->
+  ?on_pointer_down:(Lui_protocol.event -> unit) ->
+  ?on_pointer_move:(Lui_protocol.event -> unit) ->
+  ?on_pointer_up:(Lui_protocol.event -> unit) ->
+  ?on_pointer_cancel:(Lui_protocol.event -> unit) ->
+  ?on_navigation_key:(Lui_protocol.event -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?display:display ->
@@ -916,6 +922,12 @@ val box :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?pointer_capture:bool ->
+  ?on_pointer_down:(Lui_protocol.event -> unit) ->
+  ?on_pointer_move:(Lui_protocol.event -> unit) ->
+  ?on_pointer_up:(Lui_protocol.event -> unit) ->
+  ?on_pointer_cancel:(Lui_protocol.event -> unit) ->
+  ?on_navigation_key:(Lui_protocol.event -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?display:display ->
@@ -2342,10 +2354,13 @@ val checkbox :
   ?text_signal:string Signal.signal ->
   ?checked:bool ->
   ?checked_signal:bool Signal.signal ->
+  ?indeterminate:bool ->
+  ?indeterminate_signal:bool Signal.signal ->
   ?label:string ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_toggle:(Lui_protocol.event -> unit) ->
+  ?on_toggle_detail:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) ->
   ?transition:string -> t list -> t
 val switch_ :

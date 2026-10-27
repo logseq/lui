@@ -401,9 +401,13 @@ func (b *Backend) styleWidgetButton(c *ui.Context, n Node, e ui.Element, label s
 func (b *Backend) widgetCheck(c *ui.Context, n Node, children func(), emit func(Event)) ui.Element {
 	s := b.state(n)
 	t := c.Theme()
+	mixed := n.Kind == "checkbox" && n.Bool("indeterminate")
 	var e ui.Element
 	if n.Kind == "radio" {
 		e = ui.RadioBase(c, &s.checked, true)
+	} else if mixed {
+		proposal := false
+		e = ui.CheckboxBase(c, &proposal).Mixed()
 	} else {
 		e = ui.CheckboxBase(c, &s.checked)
 	}
@@ -423,10 +427,12 @@ func (b *Backend) widgetCheck(c *ui.Context, n Node, children func(), emit func(
 			border = b.color(c, value)
 		}
 		box := ui.Box(c).Size(16, 16).Radius(radius).Border(1, border).Center()
-		if s.checked {
+		if s.checked || mixed {
 			box.Background(t.Accent).Children(func() {
 				if n.Kind == "radio" {
 					ui.Box(c).Size(6, 6).Radius(3).Background(t.AccentText)
+				} else if mixed {
+					ui.Text(c, "−").FontSize(12).TextColor(t.AccentText)
 				} else {
 					ui.Text(c, "✓").FontSize(12).TextColor(t.AccentText)
 				}
@@ -440,11 +446,17 @@ func (b *Backend) widgetCheck(c *ui.Context, n Node, children func(), emit func(
 	e.OnChange(func() {
 		defer b.reconcileControl(Event{Node: n.ID, Kind: "toggle-changed", incarnation: s.identity})
 		checked := s.checked
+		if mixed {
+			checked = true
+		}
 		if n.Kind == "radio" && n.Bool("change-enabled") {
 			emit(Event{Kind: "change"})
 		}
 		if n.Bool("toggle-enabled") {
 			emit(Event{Kind: "toggle-changed", Checked: checked})
+		}
+		if n.Kind == "checkbox" && n.Bool("toggle-detail-enabled") {
+			emit(Event{Kind: "toggle-changed-detail", Checked: checked, Modifiers: toggleModifiers(e.ClickModifiers())})
 		}
 	})
 	return e

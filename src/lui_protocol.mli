@@ -300,6 +300,9 @@ type property =
   | ReadOnly
   | VirtualOverscan
   | VirtualItemExtent
+  | PointerCapture
+  | Indeterminate
+  | ToggleDetailEnabled
 
 module Property_map : Map.S with type key = property
 
@@ -351,6 +354,9 @@ type event =
   | NavigateNext of int
   | NavigationKey of int * string * bool
   | ScrollEdges of int * bool * bool
+  | PointerMove of int * pointer_detail
+  | PointerCancel of int * pointer_detail
+  | ToggleChangedDetail of int * bool * int
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =

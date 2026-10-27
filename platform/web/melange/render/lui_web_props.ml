@@ -423,6 +423,8 @@ let apply_accessibility_label kind dom_node label =
          Util.child_element dom_node 0
        else dom_node)
 
+external set_input_indeterminate : W.HtmlInputElement.t_htmlInputElement -> bool -> unit = "indeterminate" [@@mel.set]
+
 let apply_checked kind dom_node checked =
   if kind = Toggle then begin
     Util.set_state_attribute dom_node "data-checked" checked;
@@ -873,7 +875,16 @@ and apply_sheet_sizing dom_node value =
 and apply_secondary_property renderer queue_split node kind dom_node
     property value =
   match (property, value) with
-  | Checked, BoolValue checked -> apply_checked kind dom_node checked
+  | Checked, BoolValue checked ->
+      apply_checked kind dom_node checked;
+      if Store.true_property renderer node Indeterminate then
+        W.Element.setAttribute "aria-checked" "mixed" (Util.child_element dom_node 0)
+  | Indeterminate, BoolValue mixed ->
+      W.Element.setAttribute "aria-checked" (if mixed then "mixed" else
+          if W.HtmlInputElement.checked (Util.text_control_node dom_node) then "true" else "false")
+        (Util.child_element dom_node 0);
+      Util.set_state_attribute dom_node "data-indeterminate" mixed;
+      set_input_indeterminate (Util.text_control_node dom_node) mixed
   | ProgressValue, FloatValue value ->
       apply_progress_value renderer node kind dom_node value
   | MinValue, FloatValue value ->

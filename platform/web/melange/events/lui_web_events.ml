@@ -2,11 +2,16 @@
    attach_events! dispatcher. Source: web.cljc — see PORTING.md. *)
 
 open Lui_protocol
+
+external has_pointer_capture : Dom.element -> int -> bool = "hasPointerCapture" [@@mel.send]
+external release_pointer_capture : Dom.element -> int -> unit = "releasePointerCapture" [@@mel.send]
 open Lui_web_types
 
 module W = Webapi.Dom
 module Store = Lui_web_store
 module Util = Lui_web_util
+
+external event_key : Dom.event -> string = "key" [@@mel.get]
 
 (* web.cljc enabled-node? — a node is interactive unless Enabled is
    explicitly BoolValue false; an absent property means enabled. *)
@@ -154,9 +159,15 @@ let attach_text_events renderer node kind dom_node =
 
 let attach_toggle_event renderer node _kind dom_node =
   let control = Util.child_element dom_node 0 in
+  let modifiers = ref 0 in
   W.Element.addEventListener "click"
     (fun event ->
-       if not (enabled_node renderer node) then W.Event.preventDefault event)
+       if not (enabled_node renderer node) then W.Event.preventDefault event
+       else
+         let mouse = Util.pointer_mouse_event event in
+         modifiers :=
+           ((Util.pointer_detail_of event).modifiers land 7)
+           lor (if W.MouseEvent.altKey mouse then 8 else 0))
     control;
   W.Element.addEventListener "change"
     (fun _event ->
@@ -164,7 +175,14 @@ let attach_toggle_event renderer node _kind dom_node =
          let checked =
            W.HtmlInputElement.checked (Util.text_control_node dom_node)
          in
-         emit renderer (ToggleChanged (node, checked)))
+         let mixed = Store.true_property renderer node Indeterminate in
+         let checked = if mixed then true else checked in
+         if mixed then W.HtmlInputElement.setChecked (Util.text_control_node dom_node) true;
+         if Store.true_property renderer node ToggleEnabled then
+           emit renderer (ToggleChanged (node, checked));
+         if Store.true_property renderer node ToggleDetailEnabled then
+           emit renderer (ToggleChangedDetail (node, checked, !modifiers));
+         modifiers := 0)
     control
 
 (* Emits PressDetail for a real click only when the runtime would admit it
@@ -247,7 +265,8 @@ let attach_accordion_event renderer node dom_node =
 let attach_pressable_text_events renderer node dom_node =
   W.Element.addEventListener "click"
     (fun event ->
-       if Store.event_capability renderer node PressEnabled then begin
+       if not (Store.true_property renderer node PointerCapture)
+          && Store.event_capability renderer node PressEnabled then begin
          Util.record_click_open_method dom_node event;
          emit renderer (Press node)
        end)
@@ -511,6 +530,8 @@ let button_navigation_keydown renderer node event =
   let key = W.KeyboardEvent.key event in
   let candidate = NavigationKey (node,key,W.KeyboardEvent.shiftKey event) in
   if enabled_node renderer node
+     && List.mem key ["ArrowLeft"; "ArrowRight"; "ArrowUp"; "ArrowDown";
+                      "Home"; "End"; "PageUp"; "PageDown"; "Enter"; " "; "Escape"]
      && not (W.KeyboardEvent.isComposing event)
      && not (W.KeyboardEvent.ctrlKey event || W.KeyboardEvent.metaKey event
              || W.KeyboardEvent.altKey event)
@@ -597,7 +618,7 @@ let press_detail_via_click kind =
    kind/property mismatches stay silent instead of crashing dispatch. *)
 let release_pointer_events renderer node =
   match Hashtbl.find_opt renderer.web_pointer_cleanups node with
-  | Some cleanup ->
+  | Some (_, cleanup) ->
       cleanup ();
       Hashtbl.remove renderer.web_pointer_cleanups node
   | None -> ()
@@ -605,13 +626,31 @@ let release_pointer_events renderer node =
 (* Pointer listeners follow the PointerEnabled prop, including updates after
    the node was created. A second sync while already attached is a no-op so
    hot reload does not stack listeners. *)
-let sync_pointer_events renderer node kind dom_node =
-  let enabled = Store.true_property renderer node PointerEnabled in
+let rec sync_pointer_events renderer node kind dom_node =
+  let enabled = Store.true_property renderer node PointerEnabled
+    && enabled_node renderer node in
+  let captured = Store.true_property renderer node PointerCapture in
   match Hashtbl.find_opt renderer.web_pointer_cleanups node with
-  | Some _ when enabled -> ()
-  | Some _ -> release_pointer_events renderer node
+  | Some (previous_capture, _) when enabled && captured = previous_capture -> ()
+  | Some _ ->
+      release_pointer_events renderer node;
+      sync_pointer_events renderer node kind dom_node
   | None when not enabled -> ()
   | None ->
+      let active = ref None in
+      let last_detail = ref None in
+      let release_capture = ref (fun () -> ()) in
+      let cancel () =
+        match !active, !last_detail with
+        | Some _, Some detail ->
+            active := None;
+            last_detail := None;
+            let release = !release_capture in
+            release_capture := (fun () -> ());
+            release ();
+            emit renderer (PointerCancel (node, detail))
+        | _ -> active := None
+      in
       let emit_detail make_event event =
         let candidate = make_event event in
         if
@@ -620,40 +659,113 @@ let sync_pointer_events renderer node kind dom_node =
         then emit renderer candidate
       in
       let pointer_down =
-        emit_detail (fun event ->
-            W.Element.setAttribute "data-lui-open-method"
-              (Util.pointer_type event) dom_node;
-            PointerDown (node, Util.pointer_detail_of event))
+        (fun event ->
+           W.Element.setAttribute "data-lui-open-method"
+             (Util.pointer_type event) dom_node;
+           let detail = Util.pointer_detail_of event in
+           if captured && detail.button = 0 && !active = None
+              && Store.event_admitted renderer node (PointerDown (node, detail))
+              && enabled_node renderer node then begin
+             active := Some (Util.pointer_id event);
+             last_detail := Some detail;
+             W.Event.preventDefault event;
+             W.Event.stopPropagation event;
+             if W.Event.isTrusted event then begin
+               let pointer_id = W.PointerEvent.pointerId (Util.as_pointer_event event) in
+               W.Element.setPointerCapture
+                 pointer_id dom_node;
+               release_capture := (fun () ->
+                 let id = Util.pointer_id event in
+                 if has_pointer_capture dom_node id then
+                   release_pointer_capture dom_node id)
+             end
+           end;
+           emit_detail (fun _ -> PointerDown (node, detail)) event)
       in
       let pointer_up =
-        emit_detail (fun event -> PointerUp (node, Util.pointer_detail_of event))
+        (fun event ->
+           if not captured then
+             emit_detail (fun event -> PointerUp (node, Util.pointer_detail_of event)) event
+           else if !active = Some (Util.pointer_id event) then begin
+             let detail = Util.pointer_detail_of event in
+             active := None;
+             last_detail := None;
+             release_capture := (fun () -> ());
+             W.Event.stopPropagation event;
+             emit_detail (fun _ -> PointerUp (node, detail)) event
+           end)
+      in
+      let pointer_move event =
+        if captured && !active = Some (Util.pointer_id event) then begin
+          let detail = Util.pointer_detail_of event in
+          last_detail := Some detail;
+          emit_detail (fun _ -> PointerMove (node, detail)) event
+        end
+      in
+      let pointer_cancel event =
+        if captured && !active = Some (Util.pointer_id event) then cancel ()
+      in
+      let lost_pointer_capture event = pointer_cancel event in
+      let window = W.HtmlDocument.defaultView
+          (W.Document.unsafeAsHtmlDocument renderer.web_document) in
+      let blur _event = cancel () in
+      let escape event =
+        if captured && !active <> None && event_key event = "Escape" then begin
+          W.Event.preventDefault event;
+          W.Event.stopPropagation event;
+          cancel ()
+        end
       in
       let pointer_enter = emit_detail (fun _event -> PointerEnter node) in
       let pointer_leave = emit_detail (fun _event -> PointerLeave node) in
       let context_menu =
-        emit_detail
-          (fun event -> ContextMenuPress (node, Util.pointer_detail_of event))
+        (fun event ->
+          if captured then begin
+            W.Event.preventDefault event;
+            W.Event.stopPropagation event
+          end
+          else emit_detail
+            (fun event -> ContextMenuPress (node, Util.pointer_detail_of event)) event)
       in
       let click =
-        emit_detail
-          (fun event -> PressDetail (node, Util.pointer_detail_of event))
+        (fun event ->
+           if captured then begin
+             W.Event.preventDefault event;
+             W.Event.stopPropagation event
+           end else
+             emit_detail (fun event -> PressDetail (node, Util.pointer_detail_of event)) event)
       in
       let attach_click = not (press_detail_via_click kind) in
       W.Element.addEventListener "pointerdown" pointer_down dom_node;
       W.Element.addEventListener "pointerup" pointer_up dom_node;
+      if captured then begin
+        W.Element.addEventListener "pointermove" pointer_move dom_node;
+        W.Element.addEventListener "pointercancel" pointer_cancel dom_node;
+        W.Element.addEventListener "lostpointercapture" lost_pointer_capture dom_node;
+        Option.iter (W.Window.addEventListener "blur" blur) window
+        ; Option.iter (W.Window.addEventListener "keydown" escape) window
+      end;
       W.Element.addEventListener "pointerenter" pointer_enter dom_node;
       W.Element.addEventListener "pointerleave" pointer_leave dom_node;
       W.Element.addEventListener "contextmenu" context_menu dom_node;
       if attach_click then
         W.Element.addEventListener "click" click dom_node;
-      Hashtbl.replace renderer.web_pointer_cleanups node (fun () ->
+      Hashtbl.replace renderer.web_pointer_cleanups node (captured, (fun () ->
+          cancel ();
           W.Element.removeEventListener "pointerdown" pointer_down dom_node;
           W.Element.removeEventListener "pointerup" pointer_up dom_node;
+          if captured then begin
+            W.Element.removeEventListener "pointermove" pointer_move dom_node;
+            W.Element.removeEventListener "pointercancel" pointer_cancel dom_node;
+            W.Element.removeEventListener "lostpointercapture" lost_pointer_capture dom_node;
+            Option.iter (W.Window.removeEventListener "blur" blur) window
+            ; Option.iter (W.Window.removeEventListener "keydown" escape) window
+          end;
           W.Element.removeEventListener "pointerenter" pointer_enter dom_node;
           W.Element.removeEventListener "pointerleave" pointer_leave dom_node;
           W.Element.removeEventListener "contextmenu" context_menu dom_node;
           if attach_click then
-            W.Element.removeEventListener "click" click dom_node)
+            W.Element.removeEventListener "click" click dom_node))
 
 let attach_pointer_events renderer node kind dom_node =
   sync_pointer_events renderer node kind dom_node
@@ -674,7 +786,11 @@ let attach_events renderer node kind dom_node =
     ignore (Lui_web_focus.attach_toolbar_events renderer node dom_node);
   match kind with
   | Link -> attach_link_events renderer node dom_node
-  | Text | TableCell | TimelineItem | FileImage | Row | Box | Column ->
+  | Row | Box ->
+      attach_pressable_text_events renderer node dom_node;
+      W.Element.addKeyDownEventListener
+        (button_navigation_keydown renderer node) dom_node
+  | Text | TableCell | TimelineItem | FileImage | Column ->
       attach_pressable_text_events renderer node dom_node
   | Button | ToggleButton | Toggle ->
       attach_button_events renderer node kind dom_node

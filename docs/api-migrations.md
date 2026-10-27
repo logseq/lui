@@ -14,6 +14,71 @@ covered separately.
 
 ## Unreleased: component API and MyGo parity
 
+### Owned pointer gestures on Row and Box
+
+`row` and `box` now accept `?pointer_capture:bool`, `?on_pointer_down`,
+`?on_pointer_move`, `?on_pointer_up` and `?on_pointer_cancel`. Capture defaults
+to false. The new wire property is `pointer-capture`; the new events are
+`PointerMove (node, detail)` and `PointerCancel (node, detail)`. Both use the
+existing `pointer_detail` payload and client-space coordinates. Its modifier
+mask is unchanged: Ctrl=1, Shift=2, Meta=4, secondary pointer button=8.
+
+With capture enabled, an admitted primary down owns movement and completion
+outside the handle. `PointerUp` means successful release; Escape, host blur,
+capture loss, pointer cancellation, disablement and removal cancel instead.
+A captured gesture does not activate Press, PressDetail or a context menu.
+Handle cancellation by discarding the preview, never by committing it:
+
+```ocaml
+box ~pointer_capture:true
+  ~on_pointer_down:begin_preview
+  ~on_pointer_move:update_preview
+  ~on_pointer_up:commit_preview
+  ~on_pointer_cancel:discard_preview []
+```
+
+Applications should also discard owned preview state when their view unmounts;
+a removed node cannot receive subsequent application events. Existing nodes
+without capture retain their pointer/press behavior and do not subscribe to
+movement or cancellation. The feature is implemented on Web and MyGo; adding
+the shared vocabulary does not qualify other native hosts for captured gestures.
+
+MyGo's toolkit adds `HandleCapturedPointer` and `InputPointerCancel`. Use this
+handler instead of `HandleInput` when successful release must differ from
+cancellation. A primary down returning true owns the gesture. Existing
+`HandleInput` consumers retain their legacy synthetic-release deactivation
+behavior; they are not silently migrated to cancellation.
+
+Row and Box also admit `NavigationKey` when `?on_navigation_key` is provided:
+arrows, Home/End, PageUp/PageDown, Enter, Space and Escape, preserving Shift.
+No handler means no navigation subscription. Keyboard focus still belongs to
+the application's normal typed focus/role configuration.
+
+### Checkbox mixed state and modifier-aware proposals
+
+Checkbox gains `?indeterminate:bool` and its reactive binding, defaulting to
+false. The wire property is `indeterminate`. This is presentation and
+accessibility state; it never changes accepted `checked`. Activating a mixed
+checkbox proposes true. The next model update decides whether to retain or
+clear the mixed state.
+
+`?on_toggle_detail` opts in to `ToggleChangedDetail (node, checked, modifiers)`
+through `toggle-detail-enabled`. Its independent physical-key modifier mask is
+Ctrl=1, Shift=2, Meta=4, Alt=8; it must not be interpreted as the legacy
+PressModifiers/pointer mask, whose bit 8 denotes a secondary pointer button.
+The existing `?on_toggle`, bool `checked`, and `ToggleChanged` event are
+unchanged. If both handlers are installed each receives one proposal; do not
+apply the same state transition twice. With no detail handler no detail event
+is emitted.
+
+```ocaml
+checkbox ~checked:all_selected ~indeterminate:some_selected
+  ~on_toggle_detail:(function
+    | ToggleChangedDetail (_, checked, modifiers) ->
+        select_rows ~range:(modifiers land 2 <> 0) checked
+    | _ -> ()) []
+```
+
 ### Nested toolbar focus ownership
 
 On Web, a toolbar owns one keyboard Tab stop across its nested button and toggle
