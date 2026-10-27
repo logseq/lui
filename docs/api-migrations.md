@@ -14,6 +14,24 @@ covered separately.
 
 ## Unreleased: component API and MyGo parity
 
+### MyGo authored switch chrome
+
+Switches with authored dimensions, padding, foreground, background, border or
+corner radius now use MyGo's public `SwitchBase` for their input, focus and
+accessibility behavior. The shared renderer sizes the thumb inside the authored
+padding and resolves its color from `foreground`, including scoped theme tokens
+and existing state foreground overrides. The track continues to consume the
+ordinary background, border and radius properties. Layout-only placement and
+semantic class names do not select this rendering path.
+
+For example, a `switch` with `width=32`, `height=18`, `padding=3` and
+`foreground="var(--background)"` now has a 12-DIP thumb painted in the resolved
+background color, rather than MyGo's default white thumb. Its checked state,
+`toggle-enabled` subscription, disabled behavior and `toggle-changed` proposal
+and acknowledgement contract are unchanged. Removing the authored chrome
+properties restores the default MyGo `Switch`; switches without those properties
+retain their existing native look. No wire or dependency-pin changes are needed.
+
 ### MyGo spacer hit transparency
 
 `spacer` is a layout void and no longer owns pointer hits, matching the Native
