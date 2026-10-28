@@ -307,6 +307,9 @@ type property =
   | VirtualGeneration
   | VirtualIndices
   | VirtualScrollIndex
+  | PointerCapture
+  | Indeterminate
+  | ToggleDetailEnabled
 
 module Property_map =
   Map.Make
@@ -366,6 +369,9 @@ type event =
   | NavigationKey of int * string * bool
   | ScrollEdges of int * bool * bool
   | VirtualWindow of int * int * int * int * int list
+  | PointerMove of int * pointer_detail
+  | PointerCancel of int * pointer_detail
+  | ToggleChangedDetail of int * bool * int
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =
@@ -414,6 +420,9 @@ let event_node event =
   | PressDetail (node, _)
   | PointerDown (node, _)
   | PointerUp (node, _)
+  | PointerMove (node, _)
+  | PointerCancel (node, _)
+  | ToggleChangedDetail (node, _, _)
   | PointerEnter node
   | PointerLeave node
   | ContextMenuPress (node, _)
@@ -508,8 +517,10 @@ let event_supported kind event =
     kind = TextField || kind = SecureField || kind = Input
     || kind = SearchField || kind = Textarea
   | NavigationKey (_, key, _) ->
-    kind = Button && List.mem key
+    (kind = Button || kind = Row || kind = Box) &&
+    (List.mem key
       ["ArrowLeft";"ArrowRight";"ArrowUp";"ArrowDown";"Home";"End";"PageUp";"PageDown"]
+    || (kind = Row || kind = Box) && List.mem key ["Enter";" ";"Escape"])
   | TextChanged _ ->
     (match kind with
     | TextField
@@ -529,6 +540,7 @@ let event_supported kind event =
     | Combobox
     | ListItem -> true
     | _ -> false)
+  | ToggleChangedDetail _ -> kind = Checkbox
   | ToggleChanged _ ->
     (match kind with
     | ToggleButton
@@ -567,6 +579,7 @@ let event_supported kind event =
       kind = ListContainer || kind = VirtualList
   | VirtualWindow _ -> kind = VirtualList
   | Picked _ -> kind = FilePicker
+  | PointerMove _ | PointerCancel _ -> kind = Row || kind = Box
   | PressDetail _ | PointerDown _ | PointerUp _ ->
     (match kind with
     | Button
@@ -621,11 +634,13 @@ let event_supported_for_lookup kind lookup event =
       match event with
       | Press _ | PressModifiers _ ->
         enabled PressEnabled
-      | PressDetail _ | PointerDown _ | PointerUp _ | PointerEnter _
+      | PressDetail _ | PointerDown _ | PointerUp _ | PointerMove _
+      | PointerCancel _ | PointerEnter _
       | PointerLeave _ | ContextMenuPress _ ->
         enabled PointerEnabled
       | Change _ -> enabled ChangeEnabled
       | ToggleChanged _ -> enabled ToggleEnabled
+      | ToggleChangedDetail _ -> enabled ToggleDetailEnabled
       | _ -> event_supported kind event
     else event_supported kind event
 
@@ -1049,6 +1064,8 @@ let common_property_supported kind property =
     || kind = Select
     || kind = Combobox
   | HeadingLevel -> kind = Heading
+  | Indeterminate | ToggleDetailEnabled -> kind = Checkbox
+  | PointerCapture -> kind = Row || kind = Box
   | Checked ->
     kind = Checkbox || kind = SwitchControl || kind = Toggle || kind = Radio
   | ProgressValue ->
@@ -1116,7 +1133,8 @@ let common_property_supported kind property =
     || kind = FileImage
     || tree_row_kind kind
   | NavigateEnabled ->
-    kind = Button || kind = TextField || kind = SecureField || kind = Input
+    kind = Button || kind = Row || kind = Box
+    || kind = TextField || kind = SecureField || kind = Input
     || kind = SearchField || kind = Textarea
   | SubmitEnabled -> event_supported kind (Submit 0)
   | DoublePressEnabled -> kind = ListItem
@@ -1634,6 +1652,9 @@ let property_value_supported property value =
   | StyleClass, StringValue _ -> true
   | HeadingLevel, IntValue value -> value >= 1 && value <= 6
   | Checked, BoolValue _ -> true
+  | PointerCapture, BoolValue _ -> true
+  | Indeterminate, BoolValue _ -> true
+  | ToggleDetailEnabled, BoolValue _ -> true
   | ProgressValue, FloatValue value -> is_finite value
   | OrientationValue, StringValue value -> orientation_supported value
   | PlacementValue, StringValue value -> placement_supported value

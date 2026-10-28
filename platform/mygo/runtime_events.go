@@ -26,7 +26,11 @@ func validateEvent(e Event) error {
 		if e.Modifiers < 0 || e.Modifiers&^15 != 0 {
 			return invalid("unknown modifier bits")
 		}
-	case "press-detail", "pointer-down", "pointer-up", "context-menu-press":
+	case "toggle-changed-detail":
+		if e.Modifiers < 0 || e.Modifiers&^15 != 0 {
+			return invalid("unknown modifier bits")
+		}
+	case "press-detail", "pointer-down", "pointer-up", "pointer-move", "pointer-cancel", "context-menu-press":
 		if math.IsNaN(e.X) || math.IsNaN(e.Y) || math.IsInf(e.X, 0) || math.IsInf(e.Y, 0) {
 			return invalid("nonfinite pointer coordinates")
 		}
@@ -57,7 +61,7 @@ func validateEvent(e Event) error {
 			return invalid("invalid scroll token or outcome")
 		}
 	case "navigation-key":
-		if !slices.Contains([]string{"ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"}, e.Key) {
+		if !slices.Contains([]string{"ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown", "Enter", " ", "Escape"}, e.Key) {
 			return invalid("unknown navigation key")
 		}
 	case "extension-event":

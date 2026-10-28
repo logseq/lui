@@ -21,7 +21,7 @@ Contract counts and hashes come from the canonical OCaml export in [the manifest
 | Kind | Built-in route | Properties | Allowed child kinds | Events | Behavior evidence |
 | --- | --- | --- | --- | --- | --- |
 | `root` | render.go; theme.go | 3 | 86 | 0 | [TestRenderAndEvents](backend_test.go), [TestThemeScopeAndMode](extensions_test.go) |
-| `row` | render.go; style.go | 93 | 81 | 8 | [TestLayoutGeometry](extensions_test.go), [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go) |
+| `row` | render.go; style.go | 95 | 81 | 11 | [TestLayoutGeometry](extensions_test.go), [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go) |
 | `column` | render.go; style.go | 92 | 81 | 8 | [TestLayoutGeometry](extensions_test.go), [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go) |
 | `grid` | render.go; style.go | 82 | 81 | 3 | [TestLayoutGeometry](extensions_test.go), [TestLayoutGridSpansAndPropertyRemovalChangeGeometry](layout_test.go) |
 | `stack` | layout.go; style.go | 79 | 81 | 3 | [TestLayoutStackUsesLargestIntrinsicChildAndRetainsOrder](layout_test.go), [TestLayoutStyleZOrderChangesPaintAndPressWithoutChangingLayout](style_test.go) |
@@ -32,7 +32,7 @@ Contract counts and hashes come from the canonical OCaml export in [the manifest
 | `card` | render.go; style.go | 89 | 81 | 3 | [TestLayoutStyleViewportFractionsAndContainerFrameRemoval](style_test.go), [TestLayoutStyleShadowOpacityStatesAndRemoval](style_test.go) |
 | `alert` | render.go; style.go | 83 | 81 | 3 | [TestLayoutStyleViewportFractionsAndContainerFrameRemoval](style_test.go), [TestLayoutStyleShadowOpacityStatesAndRemoval](style_test.go) |
 | `bubble` | render.go; style.go | 84 | 81 | 3 | [TestLayoutStyleViewportFractionsAndContainerFrameRemoval](style_test.go), [TestLayoutStyleShadowOpacityStatesAndRemoval](style_test.go) |
-| `box` | render.go; style.go | 92 | 81 | 8 | [TestLayoutStyleViewportFractionsAndContainerFrameRemoval](style_test.go), [TestLayoutStyleShadowOpacityStatesAndRemoval](style_test.go) |
+| `box` | render.go; style.go | 94 | 81 | 11 | [TestLayoutStyleViewportFractionsAndContainerFrameRemoval](style_test.go), [TestLayoutStyleShadowOpacityStatesAndRemoval](style_test.go) |
 | `text` | render.go; style.go | 86 | 86 | 9 | [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go), [TestLayoutSharedTextWrappingAndRemoval](layout_test.go), [TestLayoutStyleLogicalAndUnitlessLineHeightAndDecoration](style_test.go) |
 | `heading` | render.go; style.go | 85 | 81 | 3 | [TestLayoutStyleAccessibleHeadingAndNavigationSemantics](style_test.go) |
 | `paragraph` | render.go; style.go | 85 | 81 | 3 | [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go), [TestLayoutSharedTextWrappingAndRemoval](layout_test.go), [TestLayoutStyleLogicalAndUnitlessLineHeightAndDecoration](style_test.go) |
@@ -49,7 +49,7 @@ Contract counts and hashes come from the canonical OCaml export in [the manifest
 | `input` | controls.go | 89 | 1 | 8 | [TestControlsInputColorAndTimeUseNativeBehavior](controls_test.go), [TestControlsNativeInputRejectedProposalAndReadonly](controls_test.go) |
 | `search-field` | controls.go | 88 | 1 | 8 | [TestControlsReadOnlyEditorsAllowFocusCopyAndResumeEditing](controls_test.go) |
 | `textarea` | controls.go | 89 | 1 | 8 | [TestControlsTextareaSubmitPolicyAndBlur](controls_test.go) |
-| `checkbox` | controls.go | 89 | 1 | 5 | [TestControlsCheckboxRejectedProposalDoesNotBecomeNextValue](controls_test.go), [TestControlsCheckboxIndicatorAndLabelAppearance](controls_test.go) |
+| `checkbox` | controls.go | 91 | 1 | 6 | [TestControlsCheckboxRejectedProposalDoesNotBecomeNextValue](controls_test.go), [TestControlsCheckboxIndicatorAndLabelAppearance](controls_test.go) |
 | `switch` | render.go | 75 | 1 | 5 | [TestControlledTogglesRejectWithoutPatchAndAcceptEcho](controlled_test.go) |
 | `progress` | render.go | 66 | 0 | 3 | [TestLayoutProgressPixelsAndSpacerConsumeRemainingRoom](layout_test.go) |
 | `divider` | render.go; style.go | 66 | 0 | 3 | [TestLayoutStyleDividerOrientation](style_test.go) |
@@ -305,6 +305,9 @@ Contract counts and hashes come from the canonical OCaml export in [the manifest
 | `virtual-generation` | collections.go; contract.go | — | [TestCollectionsSparseWindowFeedbackAndDistantScroll](collections_sparse_test.go), [TestOCamlComponentsVirtualRowsStayBounded](runtime_virtual_test.go) |
 | `virtual-indices` | collections.go; contract.go | — | [TestCollectionsSparseWindowFeedbackAndDistantScroll](collections_sparse_test.go), [TestOCamlComponentsVirtualRowsStayBounded](runtime_virtual_test.go) |
 | `virtual-scroll-index` | collections.go; contract.go | — | [TestCollectionsSparseWindowFeedbackAndDistantScroll](collections_sparse_test.go), [TestOCamlComponentsVirtualRowsStayBounded](runtime_virtual_test.go) |
+| `pointer-capture` | events.go | — | [TestEventsCapturedPointerCancel](events_test.go) |
+| `indeterminate` | controls.go | — | [TestControlsCheckboxMixedDetail](controls_test.go) |
+| `toggle-detail-enabled` | controls.go; events.go | — | [TestControlsCheckboxMixedDetail](controls_test.go) |
 
 ## Event bridge
 
@@ -338,5 +341,8 @@ All event families round-trip through the real OCaml Components application. Pay
 | `value-changed` | events.go; runtime_events.go; runtime.go | [TestOCamlComponentsEventRoundTrip](runtime_components_test.go) |
 | `visible-range` | events.go; runtime_events.go; runtime.go | [TestOCamlComponentsEventRoundTrip](runtime_components_test.go) |
 | `virtual-window` | collections.go; runtime_events.go; runtime.go | [TestCollectionsSparseFeedbackIgnoresUserEventFlagsAndCoalesces](collections_sparse_test.go), [TestVirtualWindowEventValidation](collections_sparse_test.go) |
+| `pointer-move` | events.go; runtime_events.go; runtime.go | [TestEventsCapturedPointerCancel](events_test.go) |
+| `pointer-cancel` | events.go; runtime_events.go; runtime.go | [TestEventsCapturedPointerCancel](events_test.go) |
+| `toggle-changed-detail` | controls.go; runtime_events.go; runtime.go | [TestControlsCheckboxMixedDetail](controls_test.go) |
 
 Regenerate with `python3 tooling/generate_mygo_schema.py`; CI checks exact sets, evidence references, exception sources and this document.

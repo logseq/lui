@@ -72,7 +72,7 @@ int32_t lui_ocaml_start(void (*callback)(const char *),int32_t platform,int32_t 
  send_batch(batch);return 1;
 }
 `
-			for _, name := range strings.Fields("stop resync press_ex text_changed_utf8 toggle_changed slider_changed extension_event_utf8 picked_utf8 visible_range scroll_completed scroll_edges navigation_key_utf8 press_detail_utf8 pointer_down_utf8 pointer_up_utf8 context_menu_press_utf8 press long_press submit dismiss double_press appear radio_changed pointer_enter pointer_leave load navigate_previous navigate_next") {
+			for _, name := range strings.Fields("stop resync press_ex text_changed_utf8 toggle_changed toggle_changed_detail slider_changed extension_event_utf8 picked_utf8 visible_range scroll_completed scroll_edges navigation_key_utf8 press_detail_utf8 pointer_down_utf8 pointer_up_utf8 pointer_move_utf8 pointer_cancel_utf8 context_menu_press_utf8 press long_press submit dismiss double_press appear radio_changed pointer_enter pointer_leave load navigate_previous navigate_next") {
 				code += "int32_t lui_ocaml_" + name + "(void) {return 1;}\n"
 			}
 			if capable {

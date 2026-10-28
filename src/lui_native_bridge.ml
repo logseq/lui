@@ -150,6 +150,8 @@ let register ~(register_named : 'a. string -> 'a -> unit) prefix bridge =
   register "double_press" (node (fun id -> DoublePress id));
   register "toggle_changed" (fun id checked ->
       dispatch_event bridge (ToggleChanged (id, checked)));
+  register "toggle_changed_detail" (fun id checked modifiers ->
+      dispatch_event bridge (ToggleChangedDetail (id, checked, modifiers)));
   register "radio_changed" (node (fun id -> Change id));
   register "slider_changed" (fun id value ->
       dispatch_event bridge (ValueChanged (id, value)));
@@ -162,6 +164,12 @@ let register ~(register_named : 'a. string -> 'a -> unit) prefix bridge =
   register "pointer_up" (fun id x y modifiers button target_class ->
       dispatch_event bridge
         (PointerUp (id, pointer_detail x y modifiers button target_class)));
+  register "pointer_move" (fun id x y modifiers button target_class ->
+      dispatch_event bridge
+        (PointerMove (id, pointer_detail x y modifiers button target_class)));
+  register "pointer_cancel" (fun id x y modifiers button target_class ->
+      dispatch_event bridge
+        (PointerCancel (id, pointer_detail x y modifiers button target_class)));
   register "pointer_enter" (node (fun id -> PointerEnter id));
   register "pointer_leave" (node (fun id -> PointerLeave id));
   register "context_menu_press" (fun id x y modifiers button target_class ->

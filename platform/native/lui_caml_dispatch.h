@@ -119,6 +119,21 @@ static int32_t lui_dispatch_node_bool(const char *name, int64_t node,
   CAMLreturnT(int32_t, accepted);
 }
 
+static int32_t lui_dispatch_node_bool_int(const char *name, int64_t node,
+                                          int checked, int32_t extra,
+                                          lui_deliver_fn deliver) {
+  CAMLparam0();
+  CAMLlocal1(result);
+  int32_t accepted = 0;
+  const value *callback = caml_named_value(name);
+  if (callback != NULL) {
+    result = caml_callback3_exn(*callback, Val_long(node), Val_bool(checked != 0),
+                                Val_long(extra));
+    accepted = lui_emit_value(result, deliver);
+  }
+  CAMLreturnT(int32_t, accepted);
+}
+
 static int32_t lui_dispatch_node_double(const char *name, int64_t node,
                                         double number, lui_deliver_fn deliver) {
   CAMLparam0();

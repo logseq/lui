@@ -24,6 +24,7 @@ type nativeFunctions struct {
 	stop, resync func() int32
 	text         func(int64, string, int32) int32
 	toggle       func(int64, int32) int32
+	toggleDetail func(int64, int32, int32) int32
 	value        func(int64, float64) int32
 	extension    func(int64, string, int32, string, int32, string, int32) int32
 	node         map[string]func(int64) int32
@@ -148,7 +149,8 @@ func (w *runtimeWorker) load(path string) error {
 	bindings["scroll_completed"] = &f.scrollCompleted
 	bindings["scroll_edges"] = &f.scrollEdges
 	bindings["navigation_key_utf8"] = &f.navigationKey
-	pointerNames := map[string]string{"press-detail": "press_detail_utf8", "pointer-down": "pointer_down_utf8", "pointer-up": "pointer_up_utf8", "context-menu-press": "context_menu_press_utf8"}
+	bindings["toggle_changed_detail"] = &f.toggleDetail
+	pointerNames := map[string]string{"press-detail": "press_detail_utf8", "pointer-down": "pointer_down_utf8", "pointer-up": "pointer_up_utf8", "pointer-move": "pointer_move_utf8", "pointer-cancel": "pointer_cancel_utf8", "context-menu-press": "context_menu_press_utf8"}
 	for _, suffix := range pointerNames {
 		var fn func(int64, float64, float64, int32, int32, string, int32) int32
 		bindings[suffix] = &fn
@@ -247,7 +249,7 @@ func (r *Runtime) Dispatch(e Event) error {
 	var unknown bool
 	batches, err := r.invoke(func(f nativeFunctions) int32 {
 		switch e.Kind {
-		case "press-detail", "pointer-down", "pointer-up", "context-menu-press":
+		case "press-detail", "pointer-down", "pointer-up", "pointer-move", "pointer-cancel", "context-menu-press":
 			return f.pointer[e.Kind](e.Node, e.X, e.Y, e.Modifiers, e.Button, e.TargetClass, int32(len(e.TargetClass)))
 		case "picked":
 			return f.picked(e.Node, e.Payload, int32(len(e.Payload)))
@@ -279,6 +281,8 @@ func (r *Runtime) Dispatch(e Event) error {
 				checked = 1
 			}
 			return f.toggle(e.Node, checked)
+		case "toggle-changed-detail":
+			return f.toggleDetail(e.Node, nativeBool(e.Checked), e.Modifiers)
 		case "value-changed":
 			return f.value(e.Node, e.Value)
 		case "extension-event":
