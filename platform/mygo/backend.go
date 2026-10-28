@@ -101,6 +101,12 @@ type Config struct {
 	Extensions map[string]Extension
 	// Renderers deliberately overrides built-in standard component behavior.
 	Renderers map[string]Renderer
+	// InputValue applies host-owned text commands before a standard text editor
+	// is constructed. InputControl then binds its native focus and selection.
+	// Both run during live construction on the UI thread, never fitting probes.
+	// Do not retain the value pointer or Element; neither hook emits model events.
+	InputValue   func(Node, *string)
+	InputControl func(Node, ui.Element, string)
 }
 type controlState struct {
 	collection        collectionState

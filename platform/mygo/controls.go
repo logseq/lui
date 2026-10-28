@@ -302,6 +302,9 @@ func (b *Backend) renderControls(c *ui.Context, n Node, children func(), emit fu
 				return e, true
 			}
 		}
+		if !b.probing && b.config.InputValue != nil {
+			b.config.InputValue(n.clone(), &s.text)
+		}
 		var e ui.Element
 		if n.Kind == "textarea" {
 			e = ui.TextArea(c, &s.text)
@@ -328,6 +331,9 @@ func (b *Backend) renderControls(c *ui.Context, n Node, children func(), emit fu
 				}
 				return true
 			})
+		}
+		if !b.probing && b.config.InputControl != nil {
+			b.config.InputControl(n.clone(), e, s.text)
 		}
 		focused := e.Focused()
 		if w.editorFocused && !focused && n.Bool("submit-on-blur") && n.Bool("submit-enabled") && n.Props["enabled"] != false {
