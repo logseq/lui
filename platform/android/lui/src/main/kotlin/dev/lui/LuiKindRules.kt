@@ -339,6 +339,10 @@ internal object LuiKindRules {
         }
         return when (property) {
             "read-only" -> value is LuiWireValue.Bool && isTextControl(kind)
+            "pointer-capture" ->
+                value is LuiWireValue.Bool && (kind == LuiNodeKind.row || kind == LuiNodeKind.box)
+            "indeterminate", "toggle-detail-enabled" ->
+                value is LuiWireValue.Bool && kind == LuiNodeKind.checkbox
             "overscan" -> kind == LuiNodeKind.virtualList && value.intValue?.let { it >= 0 } == true
             "item-extent" -> kind == LuiNodeKind.virtualList && value.numberValue?.let { it.isFinite() && it > 0 } == true
 
@@ -978,7 +982,8 @@ internal object LuiKindRules {
             "data-attrs" -> value.stringValue?.let { dataAttrsValueOk(it) } == true
             "selected", "toggle-enabled", "enabled", "press-enabled",
             "connector", "multiple", "appear-enabled", "directory",
-            "pointer-enabled", "read-only" -> value is LuiWireValue.Bool
+            "pointer-enabled", "read-only", "pointer-capture", "indeterminate",
+            "toggle-detail-enabled" -> value is LuiWireValue.Bool
             "height", "width", "min-width", "max-width", "min-height",
             "max-height", "active", "gap", "border-width", "corner-radius",
             "padding-horizontal", "padding-vertical",
