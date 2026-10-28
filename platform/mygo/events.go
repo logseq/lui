@@ -68,11 +68,20 @@ func eventModifiers(mods ui.Modifiers) int32 {
 	return flags
 }
 
+func toggleModifiers(mods ui.Modifiers) int32 {
+	flags := eventModifiers(mods)
+	if mods&ui.Alt != 0 {
+		flags |= 8
+	}
+	return flags
+}
+
 func (b *Backend) bindEvents(c *ui.Context, n Node, s *controlState, e ui.Element, emit func(Event)) {
 	if b.probing {
 		return
 	}
 	pointer := n.Bool("pointer-enabled")
+	captured := pointer && n.Bool("pointer-capture")
 	if pointer {
 		hover := e.Hovered()
 		if hover != s.hovered {
@@ -87,12 +96,15 @@ func (b *Backend) bindEvents(c *ui.Context, n Node, s *controlState, e ui.Elemen
 		s.hovered = false
 	}
 	if pointer || n.Bool("long-press-enabled") {
-		e.HandleInput(func(input ui.InputEvent) bool {
-			if input.Kind != ui.InputPointerDown && input.Kind != ui.InputPointerUp && input.Kind != ui.InputPointerMove {
+		handle := func(input ui.InputEvent) bool {
+			if input.Kind != ui.InputPointerDown && input.Kind != ui.InputPointerUp && input.Kind != ui.InputPointerMove && input.Kind != ui.InputPointerCancel {
 				return false
 			}
 			rect := s.handle.Bounds(c)
 			event := Event{X: float64(rect.X + input.X), Y: float64(rect.Y + input.Y), Modifiers: eventModifiers(input.Mods), Button: int32(input.Button)}
+			if input.Kind == ui.InputPointerMove && input.Button < 0 {
+				event.Button = s.lastPointer.Button
+			}
 			// MyGo numbers the secondary button as one; the shared protocol uses
 			// the DOM convention, where secondary is two and middle is one.
 			if input.Button == 1 {
@@ -103,6 +115,10 @@ func (b *Backend) bindEvents(c *ui.Context, n Node, s *controlState, e ui.Elemen
 			}
 			switch input.Kind {
 			case ui.InputPointerDown:
+				if captured && input.Button != 0 {
+					return true
+				}
+				s.captureActive = captured
 				s.lastPointer = event
 				if input.Button == 0 {
 					s.longPressFired = false
@@ -113,7 +129,12 @@ func (b *Backend) bindEvents(c *ui.Context, n Node, s *controlState, e ui.Elemen
 					event.Kind = "pointer-down"
 					emit(event)
 				}
+				return captured && input.Button == 0
 			case ui.InputPointerUp:
+				if captured && !s.captureActive {
+					return false
+				}
+				s.captureActive = false
 				s.lastPointer = event
 				s.pressedAt = time.Time{}
 				if pointer {
@@ -125,12 +146,38 @@ func (b *Backend) bindEvents(c *ui.Context, n Node, s *controlState, e ui.Elemen
 					}
 				}
 			case ui.InputPointerMove:
+				if captured && s.captureActive {
+					s.lastPointer = event
+					event.Kind = "pointer-move"
+					emit(event)
+				}
 				if input.X < 0 || input.Y < 0 || input.X > rect.W || input.Y > rect.H {
 					s.pressedAt = time.Time{}
 				}
+			case ui.InputPointerCancel:
+				s.pressedAt = time.Time{}
+				if captured && s.captureActive {
+					s.captureActive = false
+					event.X, event.Y = s.lastPointer.X, s.lastPointer.Y
+					event.Kind = "pointer-cancel"
+					event.Node, event.incarnation = n.ID, s.identity
+					// Cancellation belongs to the admitted gesture, even when its
+					// retained node has just been removed or made inert.
+					current := b.states[n.ID]
+					if !b.closed && (current == nil || current == s) && b.config.Dispatch != nil {
+						if err := b.config.Dispatch(event); err != nil && b.err == nil {
+							b.err = err
+						}
+					}
+				}
 			}
 			return false
-		})
+		}
+		if captured {
+			e.HandleCapturedPointer(handle)
+		} else {
+			e.HandleInput(handle)
+		}
 	}
 	if n.Bool("long-press-enabled") && !s.pressedAt.IsZero() && !s.longPressFired {
 		remaining := 350*time.Millisecond - c.Now().Sub(s.pressedAt)
@@ -144,7 +191,7 @@ func (b *Backend) bindEvents(c *ui.Context, n Node, s *controlState, e ui.Elemen
 	if n.Bool("double-press-enabled") && e.DoubleClicked() {
 		emit(Event{Kind: "double-press"})
 	}
-	if n.Bool("press-enabled") || pointer {
+	if !captured && (n.Bool("press-enabled") || pointer) {
 		e.OnClick(func() {
 			if s.longPressFired {
 				return
@@ -170,9 +217,32 @@ func (b *Backend) bindEvents(c *ui.Context, n Node, s *controlState, e ui.Elemen
 			e.OnShortcut(0, ui.KeyDown, func() { emit(Event{Kind: "navigate-next"}) })
 		}
 		if eventSupported(n.Kind, "navigation-key") {
+			container := n.Kind == "row" || n.Kind == "box"
+			if container {
+				if b.interactionBlocked(n, Event{Kind: "navigation-key"}) {
+					return
+				}
+				e.Focusable()
+				// Subtree shortcuts claim a key before a child's default handling.
+				// Do not register them while a descendant owns focus.
+				if !s.handle.Focused(c) {
+					return
+				}
+			}
+			navigate := func(name string, shift bool) {
+				if !container || s.handle.Focused(c) {
+					emit(Event{Kind: "navigation-key", Key: name, Shift: shift})
+				}
+			}
 			for key, name := range map[ui.Key]string{ui.KeyLeft: "ArrowLeft", ui.KeyRight: "ArrowRight", ui.KeyUp: "ArrowUp", ui.KeyDown: "ArrowDown", ui.KeyHome: "Home", ui.KeyEnd: "End", ui.KeyPageUp: "PageUp", ui.KeyPageDown: "PageDown"} {
-				e.OnShortcut(0, key, func() { emit(Event{Kind: "navigation-key", Key: name}) })
-				e.OnShortcut(ui.Shift, key, func() { emit(Event{Kind: "navigation-key", Key: name, Shift: true}) })
+				e.OnShortcut(0, key, func() { navigate(name, false) })
+				e.OnShortcut(ui.Shift, key, func() { navigate(name, true) })
+			}
+			if container {
+				for key, name := range map[ui.Key]string{ui.KeyEnter: "Enter", ui.KeySpace: " ", ui.KeyEscape: "Escape"} {
+					e.OnShortcut(0, key, func() { navigate(name, false) })
+					e.OnShortcut(ui.Shift, key, func() { navigate(name, true) })
+				}
 			}
 		}
 	}
@@ -204,7 +274,15 @@ func eventAllowed(n Node, e Event) bool {
 			return n.Bool("change-enabled")
 		case "toggle-changed":
 			return n.Bool("toggle-enabled")
+		case "toggle-changed-detail":
+			return n.Bool("toggle-detail-enabled")
 		}
+	}
+	if e.Kind == "pointer-move" || e.Kind == "pointer-cancel" {
+		return n.Bool("pointer-capture") && n.Bool("pointer-enabled") && eventSupported(n.Kind, e.Kind)
+	}
+	if e.Kind == "toggle-changed-detail" {
+		return n.Bool("toggle-detail-enabled") && eventSupported(n.Kind, e.Kind)
 	}
 	return eventSupported(n.Kind, e.Kind)
 }

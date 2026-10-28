@@ -110,6 +110,58 @@ func TestEventsPointerPayloadAndHover(t *testing.T) {
 	}
 }
 
+func TestEventsCapturedPointerCancel(t *testing.T) {
+	var events []Event
+	b := mounted(t, func(e Event) error { events = append(events, e); return nil })
+	apply(t, b, 2, create(3, "row"), prop(3, "pointer-enabled", true), prop(3, "pointer-capture", true), prop(3, "press-enabled", true), insert(2, 3, 0), create(4, "text"), prop(4, "text", "Resize grip"), insert(3, 4, 0))
+	tester := ui.NewTester(b.View, 360, 240)
+	r, ok := tester.Find("Resize grip")
+	if !ok {
+		t.Fatal(tester.Texts())
+	}
+	x, y := r.X+r.W/2, r.Y+r.H/2
+	tester.Press(x, y)
+	tester.Move(350, 230)
+	tester.Release(350, 230)
+	if len(eventRecords(events, "pointer-down", 3)) != 1 || len(eventRecords(events, "pointer-move", 3)) == 0 || len(eventRecords(events, "pointer-up", 3)) != 1 || len(eventRecords(events, "pointer-cancel", 3)) != 0 || len(eventRecords(events, "press", 3)) != 0 || len(eventRecords(events, "press-detail", 3)) != 0 {
+		t.Fatalf("normal captured release: %+v", events)
+	}
+	events = nil
+	tester.Press(x, y)
+	tester.Key(0, ui.KeyEscape)
+	tester.Release(350, 230)
+	if len(eventRecords(events, "pointer-down", 3)) != 1 || len(eventRecords(events, "pointer-cancel", 3)) != 1 || len(eventRecords(events, "pointer-up", 3)) != 0 || len(eventRecords(events, "press", 3)) != 0 {
+		t.Fatalf("canceled capture became release or press: %+v", events)
+	}
+	for _, ending := range []string{"blur", "disabled", "removed"} {
+		t.Run(ending, func(t *testing.T) {
+			var events []Event
+			b := mounted(t, func(e Event) error { events = append(events, e); return nil })
+			apply(t, b, 2, create(3, "box"), prop(3, "pointer-enabled", true), prop(3, "pointer-capture", true), insert(2, 3, 0), create(4, "text"), prop(4, "text", "Resize grip"), insert(3, 4, 0))
+			tt := ui.NewTester(b.View, 360, 240)
+			r, ok := tt.Find("Resize grip")
+			if !ok {
+				t.Fatal(tt.Texts())
+			}
+			tt.Press(r.X+r.W/2, r.Y+r.H/2)
+			switch ending {
+			case "blur":
+				tt.SetFocused(false)
+			case "disabled":
+				apply(t, b, 3, prop(3, "inert", true))
+				tt.Frame()
+			case "removed":
+				apply(t, b, 3, Operation{Op: "detach-subtree", ID: 3})
+				tt.Frame()
+			}
+			tt.Release(350, 230)
+			if len(eventRecords(events, "pointer-cancel", 3)) != 1 || len(eventRecords(events, "pointer-up", 3)) != 0 || len(eventRecords(events, "press", 3)) != 0 {
+				t.Fatalf("capture lifetime: %+v", events)
+			}
+		})
+	}
+}
+
 func TestEventsNavigationSubscriptionAndDisabled(t *testing.T) {
 	var events []Event
 	b := mounted(t, func(e Event) error { events = append(events, e); return nil })

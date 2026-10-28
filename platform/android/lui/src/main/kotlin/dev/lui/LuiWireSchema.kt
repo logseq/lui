@@ -292,6 +292,9 @@ enum class LuiProperty(val wireName: String) {
     virtualGeneration("virtual-generation"),
     virtualIndices("virtual-indices"),
     virtualScrollIndex("virtual-scroll-index"),
+    pointerCapture("pointer-capture"),
+    indeterminate("indeterminate"),
+    toggleDetailEnabled("toggle-detail-enabled"),
     ;
 
     companion object {

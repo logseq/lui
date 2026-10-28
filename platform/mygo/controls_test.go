@@ -203,6 +203,28 @@ func TestControlsCheckboxRejectedProposalDoesNotBecomeNextValue(t *testing.T) {
 	}
 }
 
+func TestControlsCheckboxMixedDetail(t *testing.T) {
+	var events []Event
+	b := mounted(t, func(e Event) error { events = append(events, e); return nil })
+	apply(t, b, 2, create(3, "checkbox"), prop(3, "text", "Mixed choice"), prop(3, "checked", true), prop(3, "indeterminate", true), prop(3, "toggle-enabled", true), prop(3, "toggle-detail-enabled", true), insert(2, 3, 0))
+	tt := ui.NewTester(b.View, 400, 200)
+	if err := tt.ClickWith(ui.Ctrl|ui.Shift|ui.Super|ui.Alt, "Mixed choice"); err != nil {
+		t.Fatal(err)
+	}
+	legacy := widgetLast(t, events, "toggle-changed", 3)
+	detail := widgetLast(t, events, "toggle-changed-detail", 3)
+	if !legacy.Checked || !detail.Checked || detail.Modifiers != 15 || widgetCount(events, "toggle-changed", 3) != 1 || widgetCount(events, "toggle-changed-detail", 3) != 1 {
+		t.Fatalf("mixed toggle proposal: %+v", events)
+	}
+	apply(t, b, 3, prop(3, "indeterminate", false), prop(3, "toggle-detail-enabled", false))
+	tt.Frame()
+	events = nil
+	widgetClick(t, tt, "Mixed choice")
+	if widgetLast(t, events, "toggle-changed", 3).Checked || widgetCount(events, "toggle-changed-detail", 3) != 0 {
+		t.Fatalf("mixed state changed accepted checked value or leaked detail: %+v", events)
+	}
+}
+
 func TestControlsTextInputNormalizationDisabledAndPropertyRemoval(t *testing.T) {
 	for _, kind := range []string{"text-field", "secure-field", "input", "search-field", "textarea", "combobox"} {
 		t.Run(kind, func(t *testing.T) {
