@@ -86,6 +86,11 @@ unchanged. If both handlers are installed each receives one proposal; do not
 apply the same state transition twice. With no detail handler no detail event
 is emitted.
 
+Mixed rendering, accessibility state, mixed-to-true proposals and
+`ToggleChangedDetail` events are currently implemented only on Web and MyGo.
+Apple and Android recognize the shared property vocabulary and perform typed
+admission; this does not qualify them for these behaviors.
+
 ```ocaml
 checkbox ~checked:all_selected ~indeterminate:some_selected
   ~on_toggle_detail:(function
