@@ -14,6 +14,22 @@ covered separately.
 
 ## Unreleased: component API and MyGo parity
 
+### Pending-aware application model reads
+
+`Lui_app.model app` now returns the latest reduced model even before a pending
+signal update is published. This applies to regular, extension-enabled and
+reloadable application constructors. Reading the model does not flush the
+scheduler, run view updates or emit patches; view signals keep their existing
+batched publication semantics.
+
+An async context fence can capture `(Lui_app.model app).context_revision` before
+starting a request and read it again before accepting the response. The revision
+must be incremented by the reducer for every context publication, including an
+A-to-B-to-A sequence in one flush. A published view signal cannot replace this
+fresh read because intermediate updates may be coalesced. Existing callers that
+read after `Lui_app.flush` require no changes; callers that intentionally need a
+published view snapshot must read their borrowed model signal instead.
+
 ### MyGo transparent dynamic anchors
 
 `box` nodes with `display="contents"` now render their children directly into

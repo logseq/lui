@@ -32,6 +32,11 @@ type ('model, 'action) reducer_app = {
 let reduce model_state reducer action =
   Signal.update model_state (fun current -> reducer current action)
 
+let latest_model model_state =
+  match Signal.state_pending model_state with
+  | Some model -> model
+  | None -> Signal.get_state model_state
+
 let restore_state_scopes state_scopes saved =
   Hashtbl.iter
     (fun path scope ->
@@ -82,7 +87,7 @@ let create_with_extensions ?virtual_rows backend registry initial_model reducer 
     app_scheduler = scheduler;
     app_runtime = application;
     app_scope = scope;
-    app_read_model = (fun () -> Signal.get_state model_state);
+    app_read_model = (fun () -> latest_model model_state);
     app_send_action = send_action;
     app_root_node = root;
     app_lifecycle_state = lifecycle;
@@ -128,7 +133,7 @@ let create_reloadable_with_extensions ?virtual_rows backend registry source_hash
       app_scheduler = scheduler;
       app_runtime = application;
       app_scope = scope;
-      app_read_model = (fun () -> Signal.get_state model_state);
+      app_read_model = (fun () -> latest_model model_state);
       app_send_action = send_action;
       app_root_node = root;
       app_lifecycle_state = lifecycle;
