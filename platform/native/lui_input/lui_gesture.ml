@@ -139,7 +139,7 @@ let radio_step store st n dir =
 
 (* Keyboard on a focused non-editable control: sliders/steppers
    step, radios arrow within their group, Space/Return presses. *)
-let control_key store st ~node ~key ~mods:_ =
+let control_key store st ~node ~key ~mods =
   match Lui_query.kind_name store node, key with
   | ("slider" | "number-stepper"), Lui_input.Arrow_left
   | ("slider" | "number-stepper"), Lui_input.Arrow_down ->
@@ -153,7 +153,7 @@ let control_key store st ~node ~key ~mods:_ =
     radio_step store st node 1
   | "link", Lui_input.Space -> (st, [])
   | _, (Lui_input.Return | Lui_input.Space) ->
-    (st, Lui_query.primary_press store node)
+    (st, Lui_query.primary_press ~mods store node)
   | _ -> (st, [])
 
 (* Keyboard on lists with no focused widget: arrows move the

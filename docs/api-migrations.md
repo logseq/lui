@@ -6,7 +6,8 @@ default, event or compatibility change must receive an entry before release.
 Changes below are unreleased work following PR #271; host qualification is
 tracked in [the MyGo parity plan](agent-guide/004-component-api-mygo-parity.md).
 
-The Native OCaml renderer is outside this parity update. Its paint-property
+The Native OCaml renderer is outside this parity update except for the
+input contracts explicitly qualified below. Its paint-property
 inventory check is temporarily deferred until that inventory recognizes
 `read-only`, `overscan` and `item-extent`; these features are not qualified on
 that renderer. The MyGo, Web, Apple, Android and shared ABI regressions remain
@@ -56,8 +57,9 @@ the application's normal typed focus/role configuration.
 
 ### Row and Box navigation focus ownership
 
-On Web and MyGo, Row/Box navigation callbacks only receive keys owned by
-that focused container, never keys from a descendant checkbox or editor.
+On Web, MyGo and the Native OCaml window hosts, Row/Box navigation callbacks
+only receive keys owned by that focused container, never keys from a descendant
+checkbox or editor.
 Web stops propagation after an admitted navigation event. MyGo makes an
 interactive navigation-enabled container focusable and registers shortcuts
 only while its handle owns focus; filtering only inside a subtree shortcut
@@ -68,6 +70,13 @@ Applications can replace a container's raw keydown bridge with
 `row ~on_navigation_key:handle_row_key ...` without intercepting keys typed
 inside child controls. Web containers retain the application's normal
 focus configuration, such as `~data_attrs:["tabindex", "0"]`.
+
+Native OCaml makes navigation-enabled Row/Box containers focusable for pointer
+and Tab focus. Only the actually focused node receives navigation; child
+checkboxes and editors keep their default keys. Disabled/inert ancestors,
+hidden containers, modal scope and IME composition block container navigation.
+Ctrl/Meta/Alt combinations remain outside this navigation subscription; Shift
+is preserved. Existing button navigation and Enter/Space activation are unchanged.
 
 ### Checkbox mixed state and modifier-aware proposals
 
@@ -86,10 +95,23 @@ unchanged. If both handlers are installed each receives one proposal; do not
 apply the same state transition twice. With no detail handler no detail event
 is emitted.
 
-Mixed rendering, accessibility state, mixed-to-true proposals and
-`ToggleChangedDetail` events are currently implemented only on Web and MyGo.
+Mixed rendering and accessibility state are currently implemented only on Web
+and MyGo. Those hosts also implement mixed-to-true proposals and
+`ToggleChangedDetail` events.
 Apple and Android recognize the shared property vocabulary and perform typed
 admission; this does not qualify them for these behaviors.
+
+The Native OCaml window input path now supports mixed-to-true proposals and
+opt-in `ToggleChangedDetail` for primary clicks and focused Enter/Space
+activation, including the physical Ctrl/Shift/Meta/Alt mask above. It does not
+mutate accepted `checked` or `indeterminate`; a model echo decides the state.
+Disabled/inert ancestors suppress checkbox activation. Legacy bool-event
+admission is preserved, and without `toggle-detail-enabled=true` no detail event
+is emitted. This qualifies only the window pointer/keyboard input contract,
+not native mixed painting, accessibility state or accessibility-action producers.
+Native consumers can use the typed `~on_toggle_detail` example below without
+an application-level event fallback; handlers that also subscribe to `~on_toggle`
+must still avoid applying the proposal twice.
 
 ```ocaml
 checkbox ~checked:all_selected ~indeterminate:some_selected
