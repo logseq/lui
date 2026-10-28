@@ -2480,7 +2480,7 @@ struct LUISwiftUIBackendTests {
         #expect(throws: LUIBackendError.self) {
             try backend.apply(json: """
             {"generation":3,"ops":[
-              {"op":"set-prop","id":1,"property":"indeterminate","value":true}
+              {"op":"set-prop","id":2,"property":"indeterminate","value":true}
             ]}
             """)
         }
