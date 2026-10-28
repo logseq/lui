@@ -15,6 +15,26 @@ covered separately.
 
 ## Unreleased: component API and MyGo parity
 
+### Bounded and content-sized Stacks on MyGo
+
+The MyGo `stack` adapter now passes its allocated width and height through
+each synthetic layer wrapper to its children. A bounded Stack no longer lets
+an automatic content-height floor enlarge a nested Stack beyond that allocation.
+Stacks without a bounded size still measure to their largest intrinsic child,
+and removing that child lets the Stack shrink. Explicit child sizes, minimums,
+maximums and margins remain effective; layer order, `z-index`, pointer
+pass-through and retained child identity are unchanged.
+
+Keep the finite shell constraint on the outer Stack, and use `grow: 1` and
+`min-height: 0` on the inner flow Column and Scroll that share its height.
+For example, an outer Stack with `height-viewport: 1` in an 897-DIP viewport,
+containing a nested Stack and a Column with a 48-DIP header, now gives its
+growing Scroll the remaining 849 DIPs even when the Scroll content is 1280
+DIPs tall. Do not repeat the full viewport height on the Scroll: that would
+ignore the header's share. Applications that require a content-sized Stack
+should continue to leave its size unconstrained rather than add viewport
+or fill constraints. No wire vocabulary or other host behavior changes.
+
 ### Owned pointer gestures on Row and Box
 
 `row` and `box` now accept `?pointer_capture:bool`, `?on_pointer_down`,
