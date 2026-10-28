@@ -2484,7 +2484,7 @@ struct LUISwiftUIBackendTests {
             ]}
             """)
         }
-        #expect(backend.generation == 2)
+        #expect(backend.generation == 3)
     }
 
     @Test("maps Progress to a clamped retained SwiftUI value")
