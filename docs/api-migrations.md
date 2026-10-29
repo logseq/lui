@@ -15,6 +15,45 @@ covered separately.
 
 ## Unreleased: component API and MyGo parity
 
+### Retained MyGo menu row slots
+
+Retained MyGo menu items and triggers now fill their available width and use
+the Web menu row slot layout. Nonempty owned text grows into that width,
+leaving shortcuts and selection marks at the trailing edge. Empty owned text
+creates no label or spacer, so
+custom child rows continue to own their layout. Missing icons create no gutter.
+
+Selection marks now default to trailing placement. Explicit `leading` places
+the mark before the icon; other placements, including `top`, follow the Web
+trailing layout rather than stacking a mark above the label. A dropdown,
+context menu or popover containing a selected menu item reserves the same
+16-DIP check slot in its unselected rows. Removing the final selection removes
+that reserved slot. Native OS menus retain their OS-controlled presentation.
+
+The existing typed `~shortcut_hint` / `~shortcut_hint_signal` properties lower
+to the canonical `tooltip-keys` wire property. Retained MyGo menus now render
+that value in a visible trailing shortcut slot, as Web does. No alternate
+`shortcut-hint` wire property or compatibility alias is introduced. Removing
+the property removes the visible shortcut.
+
+Typed menu rows owning a dropdown now draw a trailing chevron, including
+`MenuTrigger`. Dropdown panels still build only while open, but custom label
+children remain visible while the dropdown is closed.
+Application-owned custom rows and manually positioned popovers do not acquire
+an inferred submenu arrow.
+
+Before updating, remove custom spacer children used only to push an owned
+label's shortcut to the right. Use, for example,
+`menu_item ~text:"Open" ~shortcut_hint:"Ctrl+O" []` instead of adding an
+extra shortcut text child. Applications intentionally using a leading check
+must specify ``~selection_placement:`leading``; omitted placement is now
+trailing. An accessibility-labeled menu item with no owned `text` may continue
+to provide a growing custom row as its child. Keep application-specific
+variant, alignment, padding, gap, radius, minimum height and dynamic background
+in shared typed recipes; these are not imposed by the host. Constructor and
+wire admission, mutation validation, focus, activation and dismissal contracts
+are unchanged. No application schema or persisted-data migration is required.
+
 ### Host commands on standard MyGo text editors
 
 MyGo `Config` now accepts two optional, typed hooks:

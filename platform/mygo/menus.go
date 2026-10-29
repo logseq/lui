@@ -47,32 +47,7 @@ func (b *Backend) renderMenus(c *ui.Context, n Node, children func(), emit func(
 	case "menu-item":
 		branch := b.widgetHasSubmenu(n)
 		w := b.widget(n)
-		e := b.widgetButton(c, n, "", func() {
-			selected := n.Bool("selected") || n.Bool("checked")
-			placement := n.String("selection-placement")
-			if placement == "top" {
-				ui.Column(c).AlignItems(ui.Center).Children(func() {
-					if selected {
-						ui.Text(c, "✓")
-					}
-					ui.Text(c, n.String("text"))
-				})
-			} else {
-				if selected && placement != "trailing" {
-					ui.Text(c, "✓")
-				}
-				ui.Text(c, n.String("text"))
-				if selected && placement == "trailing" {
-					ui.Text(c, "✓")
-				}
-			}
-			if !branch || w.submenuOpen {
-				children()
-			}
-		}).Role(ui.RoleMenuItem).Label(n.String("text")).Selected(n.Bool("selected") || n.Bool("checked"))
-		if n.String("shortcut-hint") != "" {
-			e.Description(n.String("shortcut-hint"))
-		}
+		e := b.menuButton(c, n, branch, children).Role(ui.RoleMenuItem).Label(n.String("text")).Selected(n.Bool("selected") || n.Bool("checked"))
 		if parent, ok := b.nodes[n.Parent]; ok && (parent.Kind == "dropdown-menu" || parent.Kind == "context-menu") {
 			for _, id := range parent.Children {
 				candidate := b.nodes[id]
@@ -96,15 +71,10 @@ func (b *Backend) renderMenus(c *ui.Context, n Node, children func(), emit func(
 		return e, true
 	case "menu-trigger":
 		w := b.widget(n)
-		e := b.widgetButton(c, n, n.String("text"), nil).Role(ui.RoleMenuButton).Bind(&b.state(n).handle)
+		e := b.menuButton(c, n, b.widgetHasSubmenu(n), children).Role(ui.RoleMenuButton)
 		e.OnClick(func() { w.submenuOpen = !w.submenuOpen })
 		e.OnShortcut(0, ui.KeyRight, func() { w.submenuOpen = true })
 		e.OnShortcut(0, ui.KeyDown, func() { w.submenuOpen = true })
-		e.Children(func() {
-			if w.submenuOpen {
-				children()
-			}
-		})
 		return e, true
 	case "context-menu":
 		// Its parent owns presentation through decorateWidget's native menu.
@@ -536,6 +506,104 @@ func (b *Backend) resetWidgetMenu(id int64) {
 	for _, child := range n.Children {
 		b.resetWidgetMenu(child)
 	}
+}
+
+// Menu rows own flexible label and trailing slots; ordinary buttons do not.
+func (b *Backend) menuButton(c *ui.Context, n Node, submenu bool, children func()) ui.Element {
+	var e ui.Element
+	if n.String("variant") == "primary" {
+		e = ui.PrimaryButton(c, "")
+	} else {
+		e = ui.Button(c, "")
+	}
+	e.Bind(&b.state(n).handle).Gap(6).FillWidth()
+	switch n.String("size") {
+	case "sm":
+		e.Padding(3, 8)
+	case "lg":
+		e.Padding(10, 20)
+	case "icon":
+		e.Padding(6).MinWidth(30).MinHeight(30)
+	}
+	switch n.String("variant") {
+	case "outline":
+		e.Background(ui.Color{}).Border(1, c.Theme().Border)
+	case "secondary":
+		e.Background(c.Theme().SurfaceHover)
+	case "ghost":
+		e.Background(ui.Color{}).Border(0, ui.Color{})
+	case "destructive":
+		e.Background(c.Theme().Danger).TextColor(ui.RGB(255, 255, 255))
+	}
+	selected := n.Bool("selected") || n.Bool("checked")
+	checkSlot := selected || b.menuSelectionGutter(n)
+	placement := n.String("selection-placement")
+	leading := placement == "leading"
+	hint := n.String("tooltip-keys")
+	if hint != "" {
+		e.Description(hint)
+	}
+	e.Children(func() {
+		drawCheck := func() {
+			if !checkSlot {
+				return
+			}
+			mark := ui.Text(c, "✓").Size(16, 16).Shrink(0).TextAlign(ui.Center)
+			if !selected {
+				mark.Invisible()
+			}
+		}
+		if leading {
+			drawCheck()
+		}
+		if icon := b.icon(n.String("icon")); icon != nil {
+			ui.Icon(c, icon).Size(16, 16).Shrink(0)
+		}
+		if label := n.String("text"); label != "" {
+			ui.Text(c, label).SingleLine().Grow(1).MinWidth(0)
+		}
+		if hint != "" {
+			shortcut := ui.Text(c, hint).SingleLine().FontSize(12).Shrink(0).Margin(0, 0, 0, ui.Auto)
+			if !e.Hovered() && !(e.Focused() && e.FocusVisible()) && n.String("variant") != "destructive" {
+				shortcut.TextColor(c.Theme().TextMuted)
+			}
+		}
+		if placement == "" {
+			drawCheck()
+		}
+		// A closed dropdown suppresses its own panel, not custom row content.
+		children()
+		if submenu {
+			ui.Icon(c, b.icon("chevron-right")).Size(16, 16).Shrink(0).Margin(0, 0, 0, ui.Auto)
+		}
+		if placement != "" && !leading {
+			drawCheck()
+		}
+	})
+	return e
+}
+
+func (b *Backend) menuSelectionGutter(n Node) bool {
+	for parent := b.nodes[n.Parent]; parent.ID != 0; parent = b.nodes[parent.Parent] {
+		if parent.Kind == "dropdown-menu" || parent.Kind == "context-menu" || parent.Kind == "popover" {
+			if b.menuHasSelection(parent) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (b *Backend) menuHasSelection(n Node) bool {
+	if (n.Kind == "menu-item" || n.Kind == "menu-trigger") && (n.Bool("selected") || n.Bool("checked")) {
+		return true
+	}
+	for _, id := range n.Children {
+		if b.menuHasSelection(b.nodes[id]) {
+			return true
+		}
+	}
+	return false
 }
 
 func (b *Backend) widgetHasSubmenu(n Node) bool {
