@@ -15,6 +15,82 @@ covered separately.
 
 ## Unreleased: component API and MyGo parity
 
+### Host commands on standard MyGo text editors
+
+MyGo `Config` now accepts two optional, typed hooks:
+
+```go
+InputValue   func(Node, *string)
+InputControl func(Node, ui.Element, string)
+```
+
+`InputValue` runs after ordinary model text reconciliation and immediately
+before constructing the native `TextInput` or `TextArea`. It may update that
+build's text through the pointer. `InputControl` runs after construction and
+input-handler setup, receiving the resulting text for focus and selection
+binding. It runs before the existing focus-transition sample, retained handle
+binding and autofocus logic; their relative order is unchanged.
+
+Both hooks run synchronously on the UI thread during live construction, never
+in `view-that-fits` measurement probes. Do not retain the text pointer, Element
+or its Context beyond the call. Nodes are detached read snapshots. Hooks cover
+the text-editing paths of `text-field`, `secure-field`, `input`, `search-field`,
+`textarea` and `combobox`. They do not run for specialized ColorWell/TimeInput
+branches or custom renderers that replace the standard control. Nil hooks
+preserve existing behavior; wire vocabulary and other platforms are unchanged.
+Existing keyed Config literals need no changes; positional literals must be
+updated for the added fields, preferably by switching to keyed initialization.
+
+An imperative value command does not synthesize `OnChange`, `TextChanged` or
+Dispatch, and does not persist a new model value. Keep the existing controlled
+reducer and ordinary text reconciliation. The host still owns command queues,
+node incarnation/epoch checks, invalidation and post-layout `AfterFrame`
+acknowledgement/retirement. Publish and apply a node's creation before sending
+commands for it; these hooks do not buffer missing references or repair message
+ordering. Apply selection to the actual Element during construction. MyGo
+selection offsets count runes: DOM-style UTF-16 offsets must be converted by
+the host against the text passed to `InputControl`, without splitting surrogate
+pairs. Any returned DOM offsets are build-time observations, not a substitute
+for querying the native selection during an input event.
+
+For a host with existing incarnation-scoped helpers, configure the standard
+renderer rather than copying it or adding component-specific exceptions:
+
+```go
+backend := luimygo.New(luimygo.Config{
+    Dispatch: runtime.Dispatch,
+    InputValue: services.BindInputValue,
+    InputControl: func(n luimygo.Node, e ui.Element, text string) {
+        services.BindInputControl(n, e, text)
+    },
+})
+```
+
+Here `BindInputValue` has signature `func(luimygo.Node, *string)` and
+`BindInputControl` may return UTF-16 `(start, end int)`; the closure deliberately
+discards those results. Existing raw/extension renderers retain their own
+bindings; the hooks do not duplicate their dispatch or command ownership.
+
+### Bounded and content-sized Stacks on MyGo
+
+The MyGo `stack` adapter now passes its allocated width and height through
+each synthetic layer wrapper to its children. A bounded Stack no longer lets
+an automatic content-height floor enlarge a nested Stack beyond that allocation.
+Stacks without a bounded size still measure to their largest intrinsic child,
+and removing that child lets the Stack shrink. Explicit child sizes, minimums,
+maximums and margins remain effective; layer order, `z-index`, pointer
+pass-through and retained child identity are unchanged.
+
+Keep the finite shell constraint on the outer Stack, and use `grow: 1` and
+`min-height: 0` on the inner flow Column and Scroll that share its height.
+For example, an outer Stack with `height-viewport: 1` in an 897-DIP viewport,
+containing a nested Stack and a Column with a 48-DIP header, now gives its
+growing Scroll the remaining 849 DIPs even when the Scroll content is 1280
+DIPs tall. Do not repeat the full viewport height on the Scroll: that would
+ignore the header's share. Applications that require a content-sized Stack
+should continue to leave its size unconstrained rather than add viewport
+or fill constraints. No wire vocabulary or other host behavior changes.
+
 ### Owned pointer gestures on Row and Box
 
 `row` and `box` now accept `?pointer_capture:bool`, `?on_pointer_down`,
