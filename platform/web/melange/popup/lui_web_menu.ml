@@ -1780,7 +1780,10 @@ let attach_popover_events renderer node _popover_node =
        ~policy:(Lui_web_layers.popover_policy
          (Store.property renderer.web_store node))
        ~dismiss:(fun () -> emit renderer (Dismiss node))
-       ~close:(fun () -> ())
+       ~close:(fun () ->
+         Lui_web_popup_tracking.stop positioner;
+         begin_popup_close popup;
+         emit renderer (Dismiss node))
        ~key_handler:(fun _event -> ())
        ~present:false ~open_:false);
   Hashtbl.replace renderer.web_cleanups node (fun () ->
@@ -1824,7 +1827,12 @@ let mount_popover renderer node =
       let trigger =
         let invoked = !(renderer.web_modal_return_focus) in
         renderer.web_modal_return_focus := None;
-        match invoked with
+        match Lui_web_nodes.explicit_anchor renderer node with
+        | Some target ->
+            Option.bind target (fun element ->
+              if Lui_web_nodes.anchor_available element then Some element
+              else None)
+        | None -> match invoked with
         | Some element when not cover
             && Lui_web_focus.focus_target_available element -> Some element
         | _ -> if positioned then

@@ -281,34 +281,51 @@ let layer_at registry id = Hashtbl.find_opt registry.layers id
 
 let down_target registry = registry.down_target
 
-let layer_contains layer element =
+let surface_contains layer element =
   W.Element.contains (W.Element.asNode element) layer.content
   || List.exists
        (fun target -> W.Element.contains (W.Element.asNode element) target)
        layer.style_targets
+
+let layer_contains layer element =
+  surface_contains layer element
   || match layer.trigger with
      | Some trigger ->
          W.Element.contains (W.Element.asNode element) trigger
      | None -> false
 
 let owner_contains is_descendant parent child =
-  match child.owner with
-  | Some owner -> owner = parent.id || is_descendant parent.id owner
-  | None -> false
+  (match child.owner with
+   | Some owner -> owner = parent.id || is_descendant parent.id owner
+   | None -> false)
+  (* A surface can own a trigger; a shared external invoker cannot. *)
+  || match child.trigger with
+     | Some trigger -> surface_contains parent trigger
+     | None -> false
+
+let owned_layers registry is_descendant root =
+  let visited = Hashtbl.create 16 in
+  let rec collect parent result =
+    Hashtbl.add visited parent.id ();
+    Hashtbl.fold
+      (fun _ child result ->
+        if child.open_ && child.present
+           && not (Hashtbl.mem visited child.id)
+           && owner_contains is_descendant parent child
+        then collect child (child :: result)
+        else result)
+      registry.layers result
+  in
+  collect root []
 
 let owned_target registry is_descendant layer target =
   layer_contains layer target
-  || Hashtbl.fold
-       (fun _ other found ->
-         found
-         || (other.open_ && other.present
-            && owner_contains is_descendant layer other
-            && layer_contains other target))
-       registry.layers false
+  || List.exists (fun other -> layer_contains other target)
+       (owned_layers registry is_descendant layer)
 
 let owns_target registry id target =
   match layer_at registry id, registry.is_descendant with
-  | Some layer, Some is_descendant ->
+  | Some layer, Some is_descendant when layer.open_ && layer.present ->
       owned_target registry is_descendant layer target
   | _ -> false
 
@@ -585,16 +602,7 @@ let close_layer registry document id =
           | Some predicate -> predicate
           | None -> fun _ _ -> false
         in
-        let descendants =
-          Hashtbl.fold
-            (fun _ child result ->
-              if
-                child.id <> id && child.open_ && child.present
-                && owner_contains is_descendant layer child
-              then child :: result
-              else result)
-            registry.layers []
-        in
+        let descendants = owned_layers registry is_descendant layer in
         List.iter
           (fun child ->
             child.open_ <- false;
@@ -630,14 +638,8 @@ let focus_roots registry id =
         match registry.is_descendant with
         | None -> []
         | Some is_descendant ->
-            Hashtbl.fold
-              (fun _ layer result ->
-                if
-                  layer.open_ && layer.present && layer.id <> root.id
-                  && owner_contains is_descendant root layer
-                then layer.content :: result
-                else result)
-              registry.layers []
+            List.map (fun layer -> layer.content)
+              (owned_layers registry is_descendant root)
       in
       root.content :: descendants
 
@@ -650,6 +652,7 @@ let finish_present registry document id token =
   | _ -> ()
 
 let remove registry document id =
+  ignore (close_layer registry document id);
   (match layer_at registry id with
    | Some layer -> set_layer_inert layer false
    | None -> ());

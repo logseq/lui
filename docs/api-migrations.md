@@ -54,6 +54,30 @@ in shared typed recipes; these are not imposed by the host. Constructor and
 wire admission, mutation validation, focus, activation and dismissal contracts
 are unchanged. No application schema or persisted-data migration is required.
 
+### Web ownership across anchored sibling portals
+
+Web layers now treat a live portal as owned by a layer whose surface contains
+the portal's resolved trigger, even when their retained nodes are siblings.
+This relationship is transitive across nested portals and is shared by focus
+and outside-pointer dismissal, modal focus scopes, and ancestor close/removal.
+A shared external trigger alone does not establish a parent/child relationship.
+Closing or removed layers and their exit-only surfaces grant no descendant
+ownership. Ancestor teardown closes owned descendants; owned popovers begin
+their exit and emit their existing `Dismiss` event.
+
+An explicit typed `~anchor_target` takes precedence over a recorded invoking
+element for the popover trigger and subsequent focus restoration. An unavailable
+explicit target is not replaced with a different trigger. For example, a picker
+rendered beside its context menu may use `popover ~anchor:\`below
+~anchor_target:"icon-menu-row" [...]` with the menu row's typed
+`~accessibility_identifier:"icon-menu-row"`.
+Its autofocus no longer dismisses the parent menu. Keep autofocus enabled and
+handle the existing dismissal callback to retire a picker when its owner closes;
+remove application workarounds that suppress outside-focus dismissal. Unrelated
+outside focus still dismisses nonblocking menus, and Escape still targets the
+topmost open layer. No constructor, wire, schema, pin or persisted-data change
+is required. Other backends are unchanged.
+
 ### Host commands on standard MyGo text editors
 
 MyGo `Config` now accepts two optional, typed hooks:
