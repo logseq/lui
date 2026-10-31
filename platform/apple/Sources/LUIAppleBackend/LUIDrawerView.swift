@@ -266,8 +266,9 @@ struct LUIDrawerView: View {
                         .frame(width: width)
                         .frame(maxHeight: CGFloat.infinity, alignment: Alignment.leading)
                         .background(Color.black.opacity(0.001))
+                        // Scaling a native navigation host changes its window safe
+                        // areas and reflows scrolled content during the transition.
                         .opacity(LUIDrawerInteractionPolicy.sidebarOpacity(progress: progress))
-                        .scaleEffect(0.96 + (0.04 * Double(progress)))
                         .offset(x: -20.0 * (1.0 - progress))
                         .allowsHitTesting(presented && contentControlsEnabled)
                         .accessibilityHidden(
