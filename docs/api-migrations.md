@@ -15,6 +15,21 @@ covered separately.
 
 ## Unreleased: component API and MyGo parity
 
+### Apple drawer swipes can interrupt transitions
+
+Compact Apple drawers now accept a reverse swipe while an opening or closing
+animation is in progress. Previously, those swipes were discarded until the
+transition completed. The new drag owns the interaction lock, so completion
+callbacks and delayed model acknowledgements from the previous transition cannot
+unlock descendant controls during it. Vertical gestures and outward swipes keep
+their existing rejection rules.
+
+No wire or application code migration is required. Continue acknowledging each
+`ToggleChanged` event through the drawer's controlled `selected` property. For
+example, after an opening gesture emits `checked=true`, publishing `selected=true`
+while the user has begun closing acknowledges that opening gesture without
+restarting its animation or cancelling the closing drag.
+
 ### Host commands on standard MyGo text editors
 
 MyGo `Config` now accepts two optional, typed hooks:
