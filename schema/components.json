@@ -1836,6 +1836,21 @@
       "lg": "VirtualScrollIndex",
       "wire": "virtual-scroll-index",
       "swift": "virtualScrollIndex"
+    },
+    {
+      "lg": "PointerCapture",
+      "wire": "pointer-capture",
+      "swift": "pointerCapture"
+    },
+    {
+      "lg": "Indeterminate",
+      "wire": "indeterminate",
+      "swift": "indeterminate"
+    },
+    {
+      "lg": "ToggleDetailEnabled",
+      "wire": "toggle-detail-enabled",
+      "swift": "toggleDetailEnabled"
     }
   ],
   "events": [
@@ -2015,6 +2030,18 @@
         ":int",
         ":int list"
       ]
+    },
+    {
+      "lg": "PointerMove",
+      "fields": [":int", ":pointer_detail"]
+    },
+    {
+      "lg": "PointerCancel",
+      "fields": [":int", ":pointer_detail"]
+    },
+    {
+      "lg": "ToggleChangedDetail",
+      "fields": [":int", ":bool", ":int"]
     }
   ],
   "kindProperties": {

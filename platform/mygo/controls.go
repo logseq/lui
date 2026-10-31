@@ -9,6 +9,62 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+func (b *Backend) switchControl(c *ui.Context, n Node, checked *bool) ui.Element {
+	authored := hasSpacing(n, "padding")
+	for _, name := range []string{"width", "height", "min-width", "max-width", "min-height", "max-height",
+		"width-viewport", "min-width-viewport", "max-width-viewport", "height-viewport", "min-height-viewport", "max-height-viewport",
+		"padding", "foreground", "background", "corner-radius", "border-width", "border-color",
+		"selected-foreground", "hover-foreground", "focus-within-foreground", "pressed-foreground"} {
+		if _, ok := n.Props[name]; ok {
+			authored = true
+			break
+		}
+	}
+	if !authored {
+		return ui.Switch(c, checked).Label(n.String("text"))
+	}
+	theme := c.Theme()
+	e := ui.SwitchBase(c, checked).Label(n.String("text"))
+	e.Size(theme.Space(9), theme.Space(5)).Radius(theme.Space(2.5))
+	target := float32(0)
+	if *checked {
+		target = 1
+	}
+	position := e.Animate("knob", target, 140*time.Millisecond)
+	e.Background(theme.Border.Mix(theme.Text, 0.15).Mix(theme.Accent, position))
+	foreground := n.String("foreground")
+	for _, state := range []struct {
+		active bool
+		prefix string
+	}{
+		{n.Bool("selected"), "selected"}, {e.FocusWithin(), "focus-within"},
+		{e.Hovered(), "hover"}, {hasPressedStyle(n) && e.Pressed(), "pressed"},
+	} {
+		if value := n.String(state.prefix + "-foreground"); state.active && value != "" {
+			foreground = value
+		}
+	}
+	thumb := ui.RGB(255, 255, 255)
+	if foreground != "" {
+		thumb = b.color(c, foreground)
+	}
+	top, right, bottom, left := spacing(n, "padding", float64(theme.Space(0.5)))
+	rtl := c.Direction() == ui.RightToLeft
+	e.Draw(func(p *ui.Painter, rect ui.Rect) {
+		width := max(float32(0), rect.W-left-right)
+		height := max(float32(0), rect.H-top-bottom)
+		diameter := min(width, height)
+		at := position
+		if rtl {
+			at = 1 - at
+		}
+		knob := ui.Rect{X: rect.X + left + at*(width-diameter), Y: rect.Y + top + (height-diameter)/2, W: diameter, H: diameter}
+		p.Shadow(knob, diameter/2, 0, 1, 3, 0, ui.RGBA(0, 0, 0, 0.25))
+		p.Fill(knob, thumb, diameter/2)
+	})
+	return e
+}
+
 // widgetState contains host state whose lifetime follows one retained node.
 // Handles are persistent identities; Elements and Contexts belong to one pass.
 type widgetState struct {
@@ -246,6 +302,9 @@ func (b *Backend) renderControls(c *ui.Context, n Node, children func(), emit fu
 				return e, true
 			}
 		}
+		if !b.probing && b.config.InputValue != nil {
+			b.config.InputValue(n.clone(), &s.text)
+		}
 		var e ui.Element
 		if n.Kind == "textarea" {
 			e = ui.TextArea(c, &s.text)
@@ -272,6 +331,9 @@ func (b *Backend) renderControls(c *ui.Context, n Node, children func(), emit fu
 				}
 				return true
 			})
+		}
+		if !b.probing && b.config.InputControl != nil {
+			b.config.InputControl(n.clone(), e, s.text)
 		}
 		focused := e.Focused()
 		if w.editorFocused && !focused && n.Bool("submit-on-blur") && n.Bool("submit-enabled") && n.Props["enabled"] != false {
@@ -401,9 +463,13 @@ func (b *Backend) styleWidgetButton(c *ui.Context, n Node, e ui.Element, label s
 func (b *Backend) widgetCheck(c *ui.Context, n Node, children func(), emit func(Event)) ui.Element {
 	s := b.state(n)
 	t := c.Theme()
+	mixed := n.Kind == "checkbox" && n.Bool("indeterminate")
 	var e ui.Element
 	if n.Kind == "radio" {
 		e = ui.RadioBase(c, &s.checked, true)
+	} else if mixed {
+		proposal := false
+		e = ui.CheckboxBase(c, &proposal).Mixed()
 	} else {
 		e = ui.CheckboxBase(c, &s.checked)
 	}
@@ -423,10 +489,12 @@ func (b *Backend) widgetCheck(c *ui.Context, n Node, children func(), emit func(
 			border = b.color(c, value)
 		}
 		box := ui.Box(c).Size(16, 16).Radius(radius).Border(1, border).Center()
-		if s.checked {
+		if s.checked || mixed {
 			box.Background(t.Accent).Children(func() {
 				if n.Kind == "radio" {
 					ui.Box(c).Size(6, 6).Radius(3).Background(t.AccentText)
+				} else if mixed {
+					ui.Text(c, "−").FontSize(12).TextColor(t.AccentText)
 				} else {
 					ui.Text(c, "✓").FontSize(12).TextColor(t.AccentText)
 				}
@@ -440,11 +508,17 @@ func (b *Backend) widgetCheck(c *ui.Context, n Node, children func(), emit func(
 	e.OnChange(func() {
 		defer b.reconcileControl(Event{Node: n.ID, Kind: "toggle-changed", incarnation: s.identity})
 		checked := s.checked
+		if mixed {
+			checked = true
+		}
 		if n.Kind == "radio" && n.Bool("change-enabled") {
 			emit(Event{Kind: "change"})
 		}
 		if n.Bool("toggle-enabled") {
 			emit(Event{Kind: "toggle-changed", Checked: checked})
+		}
+		if n.Kind == "checkbox" && n.Bool("toggle-detail-enabled") {
+			emit(Event{Kind: "toggle-changed-detail", Checked: checked, Modifiers: toggleModifiers(e.ClickModifiers())})
 		}
 	})
 	return e

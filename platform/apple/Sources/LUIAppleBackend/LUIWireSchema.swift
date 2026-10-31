@@ -285,6 +285,9 @@ enum LUIProperty: String, Decodable, Hashable {
     case virtualGeneration = "virtual-generation"
     case virtualIndices = "virtual-indices"
     case virtualScrollIndex = "virtual-scroll-index"
+    case pointerCapture = "pointer-capture"
+    case indeterminate = "indeterminate"
+    case toggleDetailEnabled = "toggle-detail-enabled"
 }
 
 enum LUISchemaMatrix {

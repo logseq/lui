@@ -1359,7 +1359,7 @@ module Ui = struct
               run m);
              emit_all
                (perform_all t store
-                  (Lui_query.primary_press store n));
+                  (Lui_query.primary_press ~mods:(conv_mods mods) store n));
              (* a toggle-only container owns the click even when a
                 kind-pressable child was the deepest target — the
                 container bubbles up *)
@@ -1446,8 +1446,11 @@ module Ui = struct
        emit_all (sync_menu_focus t store ~kbd:true)
      | Input.Key_down
          ((Input.Arrow_left | Input.Arrow_right | Input.Arrow_up | Input.Arrow_down
-          | Input.Home | Input.End | Input.Page_up | Input.Page_down) as key, mods, _repeat)
-       when kind_name store (focused t)="button"
+          | Input.Home | Input.End | Input.Page_up | Input.Page_down
+          | Input.Return | Input.Space | Input.Escape) as key, mods, _repeat)
+       when (List.mem (kind_name store (focused t)) ["row"; "box"]
+             || kind_name store (focused t) = "button"
+                && not (List.mem key [Input.Return; Input.Space; Input.Escape]))
          && bool_prop store (focused t) "navigate-enabled"
          && not (mods.Input.ctrl || mods.Input.meta || mods.Input.alt)
          && not (Lui_text_input.composing t.session) ->
@@ -1457,12 +1460,14 @@ module Ui = struct
          | Input.Arrow_up -> "ArrowUp" | Input.Arrow_down -> "ArrowDown"
          | Input.Home -> "Home" | Input.End -> "End"
          | Input.Page_up -> "PageUp" | Input.Page_down -> "PageDown"
+         | Input.Return -> "Enter" | Input.Space -> " " | Input.Escape -> "Escape"
          | _ -> assert false in
        let event = NavigationKey (target,name,mods.Input.shift) in
        let in_scope = match Lui_overlay.modal_scope store t.overlay with
          | None -> true
          | Some scope -> target=scope || Lui_query.is_desc store target scope in
        if in_scope && Lui_focus.chain_visible store target
+          && (kind_name store target = "button" || Lui_query.chain_enabled store target)
           && event_supported store target event then begin
          on_component_input ();
          acts:=Dispatch event::!acts

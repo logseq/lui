@@ -6,13 +6,282 @@ default, event or compatibility change must receive an entry before release.
 Changes below are unreleased work following PR #271; host qualification is
 tracked in [the MyGo parity plan](agent-guide/004-component-api-mygo-parity.md).
 
-The Native OCaml renderer is outside this parity update. Its paint-property
+The Native OCaml renderer is outside this parity update except for the
+input contracts explicitly qualified below. Its paint-property
 inventory check is temporarily deferred until that inventory recognizes
 `read-only`, `overscan` and `item-extent`; these features are not qualified on
 that renderer. The MyGo, Web, Apple, Android and shared ABI regressions remain
 covered separately.
 
+## Unreleased: Linux native clipboard ownership result
+
+`Lui_shell_linux.clipboard_write : string -> bool` keeps its signature but
+now returns the synchronous `gtk_clipboard_set_with_data` ownership result.
+Previously `true` only meant a GTK clipboard object existed after calling
+the void `gtk_clipboard_set_text` function. It was not an ownership ACK.
+There is no new checked/compatibility API or wire change. Existing
+platform-selected `Shell.clipboard_write` callers keep compiling; callers
+that ignore the result still do not receive a guarantee.
+
+On Linux, `false` means missing clipboard support, ownership refusal,
+allocation failure, or rejected text: invalid UTF-8, embedded NUL, or
+`INT_MAX` bytes or more. The maximum accepted length is `INT_MAX - 1` bytes.
+Rejected text is not silently truncated. Empty text is valid. The
+implementation copies the entire accepted UTF-8 string before
+acquisition, advertises GTK's text targets, serves requests through that
+owned copy, and frees it on ownership loss/clear/replacement. Failed
+acquisition frees the new copy immediately without first clearing the
+clipboard. The result is not inferred from a readback, change counter,
+transport enqueue, or SDL return value.
+
+Replace an unchecked destructive continuation:
+
+```ocaml
+ignore (Shell.clipboard_write selected_text);
+delete_selected_text ()
+```
+
+with an ownership-gated continuation using the existing platform-selected
+Shell module:
+
+```ocaml
+if Shell.clipboard_write selected_text then
+  delete_selected_text ()
+else
+  report_clipboard_write_failure ()
+```
+
+If the application forwards this result asynchronously, its success
+continuation must additionally revalidate the original editor/selection
+owner before deleting; an ownership result does not authorize a stale edit.
+Keep failure handling explicit and never acknowledge an unhandled request.
+
+Call the Linux Shell on the GTK UI thread and continue running `Shell.pump`
+there while owning the selection, including when no frame needs repainting.
+The existing pump iterates GLib's default main context and serves the data
+and clear callbacks; no extra loop, thread, or event API is introduced.
+`true` does not promise external paste success, indefinite ownership, or
+clipboard-manager persistence after exit. Successful acquisition retains
+the old `gtk_clipboard_set_text` helper's `gtk_clipboard_set_can_store`
+hint; that void capability hint is not a persistence ACK. No explicit
+store/manager handoff is added. macOS retains its existing
+`NSPasteboard.setString` BOOL result; other backends and their input limits
+are unchanged and are not newly qualified by this Linux change.
+
 ## Unreleased: component API and MyGo parity
+
+### Apple drawer swipes can interrupt transitions
+
+Compact Apple drawers now accept a reverse swipe while an opening or closing
+animation is in progress. Previously, those swipes were discarded until the
+transition completed. The new drag owns the interaction lock, so completion
+callbacks and delayed model acknowledgements from the previous transition cannot
+unlock descendant controls during it. Vertical gestures and outward swipes keep
+their existing rejection rules.
+
+No wire or application code migration is required. Continue acknowledging each
+`ToggleChanged` event through the drawer's controlled `selected` property. For
+example, after an opening gesture emits `checked=true`, publishing `selected=true`
+while the user has begun closing acknowledges that opening gesture without
+restarting its animation or cancelling the closing drag.
+
+### Host commands on standard MyGo text editors
+
+MyGo `Config` now accepts two optional, typed hooks:
+
+```go
+InputValue   func(Node, *string)
+InputControl func(Node, ui.Element, string)
+```
+
+`InputValue` runs after ordinary model text reconciliation and immediately
+before constructing the native `TextInput` or `TextArea`. It may update that
+build's text through the pointer. `InputControl` runs after construction and
+input-handler setup, receiving the resulting text for focus and selection
+binding. It runs before the existing focus-transition sample, retained handle
+binding and autofocus logic; their relative order is unchanged.
+
+Both hooks run synchronously on the UI thread during live construction, never
+in `view-that-fits` measurement probes. Do not retain the text pointer, Element
+or its Context beyond the call. Nodes are detached read snapshots. Hooks cover
+the text-editing paths of `text-field`, `secure-field`, `input`, `search-field`,
+`textarea` and `combobox`. They do not run for specialized ColorWell/TimeInput
+branches or custom renderers that replace the standard control. Nil hooks
+preserve existing behavior; wire vocabulary and other platforms are unchanged.
+Existing keyed Config literals need no changes; positional literals must be
+updated for the added fields, preferably by switching to keyed initialization.
+
+An imperative value command does not synthesize `OnChange`, `TextChanged` or
+Dispatch, and does not persist a new model value. Keep the existing controlled
+reducer and ordinary text reconciliation. The host still owns command queues,
+node incarnation/epoch checks, invalidation and post-layout `AfterFrame`
+acknowledgement/retirement. Publish and apply a node's creation before sending
+commands for it; these hooks do not buffer missing references or repair message
+ordering. Apply selection to the actual Element during construction. MyGo
+selection offsets count runes: DOM-style UTF-16 offsets must be converted by
+the host against the text passed to `InputControl`, without splitting surrogate
+pairs. Any returned DOM offsets are build-time observations, not a substitute
+for querying the native selection during an input event.
+
+For a host with existing incarnation-scoped helpers, configure the standard
+renderer rather than copying it or adding component-specific exceptions:
+
+```go
+backend := luimygo.New(luimygo.Config{
+    Dispatch: runtime.Dispatch,
+    InputValue: services.BindInputValue,
+    InputControl: func(n luimygo.Node, e ui.Element, text string) {
+        services.BindInputControl(n, e, text)
+    },
+})
+```
+
+Here `BindInputValue` has signature `func(luimygo.Node, *string)` and
+`BindInputControl` may return UTF-16 `(start, end int)`; the closure deliberately
+discards those results. Existing raw/extension renderers retain their own
+bindings; the hooks do not duplicate their dispatch or command ownership.
+
+### Bounded and content-sized Stacks on MyGo
+
+The MyGo `stack` adapter now passes its allocated width and height through
+each synthetic layer wrapper to its children. A bounded Stack no longer lets
+an automatic content-height floor enlarge a nested Stack beyond that allocation.
+Stacks without a bounded size still measure to their largest intrinsic child,
+and removing that child lets the Stack shrink. Explicit child sizes, minimums,
+maximums and margins remain effective; layer order, `z-index`, pointer
+pass-through and retained child identity are unchanged.
+
+Keep the finite shell constraint on the outer Stack, and use `grow: 1` and
+`min-height: 0` on the inner flow Column and Scroll that share its height.
+For example, an outer Stack with `height-viewport: 1` in an 897-DIP viewport,
+containing a nested Stack and a Column with a 48-DIP header, now gives its
+growing Scroll the remaining 849 DIPs even when the Scroll content is 1280
+DIPs tall. Do not repeat the full viewport height on the Scroll: that would
+ignore the header's share. Applications that require a content-sized Stack
+should continue to leave its size unconstrained rather than add viewport
+or fill constraints. No wire vocabulary or other host behavior changes.
+
+### Owned pointer gestures on Row and Box
+
+`row` and `box` now accept `?pointer_capture:bool`, `?on_pointer_down`,
+`?on_pointer_move`, `?on_pointer_up` and `?on_pointer_cancel`. Capture defaults
+to false. The new wire property is `pointer-capture`; the new events are
+`PointerMove (node, detail)` and `PointerCancel (node, detail)`. Both use the
+existing `pointer_detail` payload and client-space coordinates. Its modifier
+mask is unchanged: Ctrl=1, Shift=2, Meta=4, secondary pointer button=8.
+
+With capture enabled, an admitted primary down owns movement and completion
+outside the handle. `PointerUp` means successful release; Escape, host blur,
+capture loss, pointer cancellation, disablement and removal cancel instead.
+A captured gesture does not activate Press, PressDetail or a context menu.
+Handle cancellation by discarding the preview, never by committing it:
+
+```ocaml
+box ~pointer_capture:true
+  ~on_pointer_down:begin_preview
+  ~on_pointer_move:update_preview
+  ~on_pointer_up:commit_preview
+  ~on_pointer_cancel:discard_preview []
+```
+
+Applications should also discard owned preview state when their view unmounts;
+a removed node cannot receive subsequent application events. Existing nodes
+without capture retain their pointer/press behavior and do not subscribe to
+movement or cancellation. The feature is implemented on Web and MyGo; adding
+the shared vocabulary does not qualify other native hosts for captured gestures.
+
+MyGo's toolkit adds `HandleCapturedPointer` and `InputPointerCancel`. Use this
+handler instead of `HandleInput` when successful release must differ from
+cancellation. A primary down returning true owns the gesture. Existing
+`HandleInput` consumers retain their legacy synthetic-release deactivation
+behavior; they are not silently migrated to cancellation.
+
+Row and Box also admit `NavigationKey` when `?on_navigation_key` is provided:
+arrows, Home/End, PageUp/PageDown, Enter, Space and Escape, preserving Shift.
+No handler means no navigation subscription. Keyboard focus still belongs to
+the application's normal typed focus/role configuration.
+
+### Row and Box navigation focus ownership
+
+On Web, MyGo and the Native OCaml window hosts, Row/Box navigation callbacks
+only receive keys owned by that focused container, never keys from a descendant
+checkbox or editor.
+Web stops propagation after an admitted navigation event. MyGo makes an
+interactive navigation-enabled container focusable and registers shortcuts
+only while its handle owns focus; filtering only inside a subtree shortcut
+callback would still consume the child's default key behavior.
+Disabled and inert ancestors block navigation. Other controls retain their
+existing navigation behavior; no handler still means no subscription.
+Applications can replace a container's raw keydown bridge with
+`row ~on_navigation_key:handle_row_key ...` without intercepting keys typed
+inside child controls. Web containers retain the application's normal
+focus configuration, such as `~data_attrs:["tabindex", "0"]`.
+
+Native OCaml makes navigation-enabled Row/Box containers focusable for pointer
+and Tab focus. Only the actually focused node receives navigation; child
+checkboxes and editors keep their default keys. Disabled/inert ancestors,
+hidden containers, modal scope and IME composition block container navigation.
+Ctrl/Meta/Alt combinations remain outside this navigation subscription; Shift
+is preserved. Existing button navigation and Enter/Space activation are unchanged.
+
+### Checkbox mixed state and modifier-aware proposals
+
+Checkbox gains `?indeterminate:bool` and its reactive binding, defaulting to
+false. The wire property is `indeterminate`. This is presentation and
+accessibility state; it never changes accepted `checked`. Activating a mixed
+checkbox proposes true. The next model update decides whether to retain or
+clear the mixed state.
+
+`?on_toggle_detail` opts in to `ToggleChangedDetail (node, checked, modifiers)`
+through `toggle-detail-enabled`. Its independent physical-key modifier mask is
+Ctrl=1, Shift=2, Meta=4, Alt=8; it must not be interpreted as the legacy
+PressModifiers/pointer mask, whose bit 8 denotes a secondary pointer button.
+The existing `?on_toggle`, bool `checked`, and `ToggleChanged` event are
+unchanged. If both handlers are installed each receives one proposal; do not
+apply the same state transition twice. With no detail handler no detail event
+is emitted.
+
+Mixed rendering and accessibility state are currently implemented only on Web
+and MyGo. Those hosts also implement mixed-to-true proposals and
+`ToggleChangedDetail` events.
+Apple and Android recognize the shared property vocabulary and perform typed
+admission; this does not qualify them for these behaviors.
+
+The Native OCaml window input path now supports mixed-to-true proposals and
+opt-in `ToggleChangedDetail` for primary clicks and focused Enter/Space
+activation, including the physical Ctrl/Shift/Meta/Alt mask above. It does not
+mutate accepted `checked` or `indeterminate`; a model echo decides the state.
+Disabled/inert ancestors suppress checkbox activation. Legacy bool-event
+admission is preserved, and without `toggle-detail-enabled=true` no detail event
+is emitted. This qualifies only the window pointer/keyboard input contract,
+not native mixed painting, accessibility state or accessibility-action producers.
+Native consumers can use the typed `~on_toggle_detail` example below without
+an application-level event fallback; handlers that also subscribe to `~on_toggle`
+must still avoid applying the proposal twice.
+
+```ocaml
+checkbox ~checked:all_selected ~indeterminate:some_selected
+  ~on_toggle_detail:(function
+    | ToggleChangedDetail (_, checked, modifiers) ->
+        select_rows ~range:(modifiers land 2 <> 0) checked
+    | _ -> ()) []
+```
+
+### Pending-aware application model reads
+
+`Lui_app.model app` now returns the latest reduced model even before a pending
+signal update is published. This applies to regular, extension-enabled and
+reloadable application constructors. Reading the model does not flush the
+scheduler, run view updates or emit patches; view signals keep their existing
+batched publication semantics.
+
+An async context fence can capture `(Lui_app.model app).context_revision` before
+starting a request and read it again before accepting the response. The revision
+must be incremented by the reducer for every context publication, including an
+A-to-B-to-A sequence in one flush. A published view signal cannot replace this
+fresh read because intermediate updates may be coalesced. Existing callers that
+read after `Lui_app.flush` require no changes; callers that intentionally need a
+published view snapshot must read their borrowed model signal instead.
 
 ### MyGo transparent dynamic anchors
 
@@ -38,6 +307,24 @@ column or flatten arbitrary boxes as a workaround. A real `box`, `icon` or
 other non-text child remains invalid inside native text, even through a contents
 anchor; put it beside the text in a typed row. This change applies specifically
 to structural `box` anchors, not to all component kinds with a display prop.
+
+### MyGo authored switch chrome
+
+Switches with authored dimensions, padding, foreground, background, border or
+corner radius now use MyGo's public `SwitchBase` for their input, focus and
+accessibility behavior. The shared renderer sizes the thumb inside the authored
+padding and resolves its color from `foreground`, including scoped theme tokens
+and existing state foreground overrides. The track continues to consume the
+ordinary background, border and radius properties. Layout-only placement and
+semantic class names do not select this rendering path.
+
+For example, a `switch` with `width=32`, `height=18`, `padding=3` and
+`foreground="var(--background)"` now has a 12-DIP thumb painted in the resolved
+background color, rather than MyGo's default white thumb. Its checked state,
+`toggle-enabled` subscription, disabled behavior and `toggle-changed` proposal
+and acknowledgement contract are unchanged. Removing the authored chrome
+properties restores the default MyGo `Switch`; switches without those properties
+retain their existing native look. No wire or dependency-pin changes are needed.
 
 ### MyGo spacer hit transparency
 

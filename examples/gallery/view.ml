@@ -1901,6 +1901,10 @@ let event_payload = function
   | VirtualWindow (_, generation, first, last, _) ->
     Printf.sprintf "virtual-window:%d:%d:%d" generation first last
   | ExtensionEvent (_, identifier, name, _) -> "extension:" ^ identifier ^ ":" ^ name
+  | PointerMove _ -> "pointer-move"
+  | PointerCancel _ -> "pointer-cancel"
+  | ToggleChangedDetail (_, checked, modifiers) ->
+    Printf.sprintf "toggle-detail:%b:%d" checked modifiers
 
 let event_payloads_section model_source send : t =
   let record event = ignore (send (Model.RecordEvent (event_payload event))) in

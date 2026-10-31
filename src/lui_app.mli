@@ -74,6 +74,9 @@ val start : ('a, 'b) reducer_app -> bool
 val flush : ('a, 'b) reducer_app -> bool
 val dispose : ('a, 'b) reducer_app -> bool
 val disposed : ('a, 'b) reducer_app -> bool
+
+(** Read the latest reduced model, including pending actions, without flushing
+    signal publication or rendering patches. *)
 val model : ('a, 'b) reducer_app -> 'a
 val root_node : ('a, 'b) reducer_app -> int
 val runtime : ('a, 'b) reducer_app -> Lui_runtime.application

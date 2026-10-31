@@ -53,11 +53,11 @@ func (b *Backend) renderLayout(c *ui.Context, n Node, s *controlState, appearanc
 	child := func(id int64) { b.render(c, id, appearances) }
 	switch n.Kind {
 	case "stack":
-		e := ui.Grid(c).ColumnTracks(ui.FitContent()).RowTracks(ui.FitContent())
+		e := ui.Grid(c).ColumnTracks(ui.Fr(1)).RowTracks(ui.Fr(1))
 		e.Children(func() {
 			for _, id := range n.Children {
 				c.Key(fmt.Sprintf("stack:%d", id))
-				ui.Box(c).PassThrough().ColumnStart(1).RowStart(1).ZIndex(int(b.nodes[id].Number("z-index", 0))).Children(func() { child(id) })
+				ui.Grid(c).ColumnTracks(ui.Fr(1)).RowTracks(ui.Fr(1)).PassThrough().ColumnStart(1).RowStart(1).ZIndex(int(b.nodes[id].Number("z-index", 0))).Children(func() { child(id) })
 			}
 		})
 		return e, true

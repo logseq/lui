@@ -157,6 +157,7 @@ enum LUIWireValue: Decodable, Equatable {
             guard let value = intValue else { return false }
             return (1...6).contains(value)
         case .readOnly, .checked, .selected, .autofocus, .submitOnEnter, .submitOnBlur,
+             .pointerCapture, .indeterminate, .toggleDetailEnabled,
              .longPressEnabled,
              .changeEnabled, .toggleEnabled, .pressEnabled, .submitEnabled,
              .doublePressEnabled, .appearEnabled, .pointerEnabled, .connector,
@@ -1199,6 +1200,8 @@ struct LUIRetainedTree {
                 kind == .link || kind == .fileImage ||
                 isTreeRow(kind)
         case .headingLevel: kind == .heading
+        case .pointerCapture: kind == .row || kind == .box
+        case .indeterminate, .toggleDetailEnabled: kind == .checkbox
         case .checked:
             kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio
         case .progressValue:
