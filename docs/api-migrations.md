@@ -13,6 +13,61 @@ inventory check is temporarily deferred until that inventory recognizes
 that renderer. The MyGo, Web, Apple, Android and shared ABI regressions remain
 covered separately.
 
+## Unreleased: Linux native clipboard ownership result
+
+`Lui_shell_linux.clipboard_write : string -> bool` keeps its signature but
+now returns the synchronous `gtk_clipboard_set_with_data` ownership result.
+Previously `true` only meant a GTK clipboard object existed after calling
+the void `gtk_clipboard_set_text` function. It was not an ownership ACK.
+There is no new checked/compatibility API or wire change. Existing
+platform-selected `Shell.clipboard_write` callers keep compiling; callers
+that ignore the result still do not receive a guarantee.
+
+On Linux, `false` means missing clipboard support, ownership refusal,
+allocation failure, or rejected text: invalid UTF-8, embedded NUL, or
+`INT_MAX` bytes or more. The maximum accepted length is `INT_MAX - 1` bytes.
+Rejected text is not silently truncated. Empty text is valid. The
+implementation copies the entire accepted UTF-8 string before
+acquisition, advertises GTK's text targets, serves requests through that
+owned copy, and frees it on ownership loss/clear/replacement. Failed
+acquisition frees the new copy immediately without first clearing the
+clipboard. The result is not inferred from a readback, change counter,
+transport enqueue, or SDL return value.
+
+Replace an unchecked destructive continuation:
+
+```ocaml
+ignore (Shell.clipboard_write selected_text);
+delete_selected_text ()
+```
+
+with an ownership-gated continuation using the existing platform-selected
+Shell module:
+
+```ocaml
+if Shell.clipboard_write selected_text then
+  delete_selected_text ()
+else
+  report_clipboard_write_failure ()
+```
+
+If the application forwards this result asynchronously, its success
+continuation must additionally revalidate the original editor/selection
+owner before deleting; an ownership result does not authorize a stale edit.
+Keep failure handling explicit and never acknowledge an unhandled request.
+
+Call the Linux Shell on the GTK UI thread and continue running `Shell.pump`
+there while owning the selection, including when no frame needs repainting.
+The existing pump iterates GLib's default main context and serves the data
+and clear callbacks; no extra loop, thread, or event API is introduced.
+`true` does not promise external paste success, indefinite ownership, or
+clipboard-manager persistence after exit. Successful acquisition retains
+the old `gtk_clipboard_set_text` helper's `gtk_clipboard_set_can_store`
+hint; that void capability hint is not a persistence ACK. No explicit
+store/manager handoff is added. macOS retains its existing
+`NSPasteboard.setString` BOOL result; other backends and their input limits
+are unchanged and are not newly qualified by this Linux change.
+
 ## Unreleased: component API and MyGo parity
 
 ### Apple drawer swipes can interrupt transitions
