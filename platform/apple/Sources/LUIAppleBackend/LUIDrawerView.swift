@@ -188,7 +188,7 @@ struct LUIDrawerView: View {
             backend.setDrawerInteractionLocked(false, node: model.id)
         }
         .onChange(of: model.isSelected) { _, selected in
-            guard selected != presented || abs(dragOffset) > 0.0 else { return }
+            guard selected != presented else { return }
             animatePresentation(selected)
         }
         .onChange(of: model.isEnabled) { _, enabled in
@@ -338,7 +338,7 @@ struct LUIDrawerView: View {
             }
             #if os(iOS)
             .background(LUIDrawerNativeInteraction(
-                isEnabled: (presented || model.isEnabled) && !isAnimating,
+                isEnabled: presented || model.isEnabled,
                 isPresented: presented,
                 isLocked: !contentControlsEnabled,
                 onChanged: { updateDrag(translation: $0) },
@@ -348,19 +348,20 @@ struct LUIDrawerView: View {
                 onCancelled: {
                     animatePresentation(presented)
                     isGestureActive = false
+                    rejectedGesture = false
                 }
             ))
             .sensoryFeedback(.impact(weight: .light), trigger: presented)
             #else
             .simultaneousGesture(
                 drawerGesture(width: width),
-                isEnabled: (presented || model.isEnabled) && !isAnimating
+                isEnabled: presented || model.isEnabled
             )
             #endif
     }
 
     private func updateDrag(translation: CGSize) {
-        guard !isAnimating, !rejectedGesture else { return }
+        guard !rejectedGesture else { return }
         if !isGestureActive, abs(translation.height) >= 10,
            abs(translation.width) <= abs(translation.height) * 2 {
             rejectedGesture = true
@@ -376,6 +377,12 @@ struct LUIDrawerView: View {
             var transaction = Transaction()
             transaction.animation = nil
             withTransaction(transaction) {
+                if !isGestureActive {
+                    // The new drag owns the lock; an interrupted transition must
+                    // not release it through its completion or fallback timer.
+                    transitionGeneration += 1
+                    isAnimating = false
+                }
                 isGestureActive = true
                 dragOffset = CGFloat(LUIDrawerGeometry.dragOffset(
                     isPresented: presented,
@@ -390,7 +397,6 @@ struct LUIDrawerView: View {
 
     private func finishDrag(translation: CGSize, predicted: CGSize, width: CGFloat) {
         rejectedGesture = false
-        guard !isAnimating else { return }
         guard isGestureActive else {
             dragOffset = 0
             return
@@ -453,7 +459,7 @@ struct LUIDrawerView: View {
     }
 
     private func finishAnimation(generation: Int, selected: Bool) {
-        guard isAnimating,
+        guard isAnimating, !isGestureActive,
               transitionGeneration == generation,
               presented == selected else { return }
         isAnimating = false
@@ -545,7 +551,7 @@ private struct LUIDrawerNativeInteraction: UIViewRepresentable {
             let offset: CGPoint
         }
         private var suspended: [ObjectIdentifier: ScrollState] = [:]
-        private lazy var pan = UIPanGestureRecognizer(target: self, action: #selector(dragged))
+        private lazy var pan = UIPanGestureRecognizer(target: self, action: #selector(dragged(_:)))
 
         init(configuration: LUIDrawerNativeInteraction) {
             self.configuration = configuration
@@ -627,7 +633,8 @@ private struct LUIDrawerNativeInteraction: UIViewRepresentable {
         }
 
         override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            guard configuration.isEnabled, !configuration.isLocked else { return false }
+            guard configuration.isEnabled,
+                  let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
             if !configuration.isPresented, let root = gestureRoot {
                 let location = pan.location(in: root)
                 let translation = pan.translation(in: root)
@@ -641,7 +648,7 @@ private struct LUIDrawerNativeInteraction: UIViewRepresentable {
             return configuration.isPresented ? velocity.x < 0 : velocity.x > 0
         }
 
-        @objc private func dragged() {
+        @objc private func dragged(_ pan: UIPanGestureRecognizer) {
             let translation = pan.translation(in: gestureRoot)
             let size = CGSize(width: translation.x, height: translation.y)
             switch pan.state {
