@@ -15,6 +15,28 @@ class LuiStoreTest {
         LuiPatchBatch(generation, ops.toList())
 
     @Test
+    fun `wrapping text retains pre-wrap and rejects unsupported whitespace modes`() {
+        fun apply(value: LuiWireValue): LuiRetainedTree = tree().also {
+            it.apply(batch(1,
+                LuiPatchOp.CreateNode(1L, LuiNodeKind.text),
+                LuiPatchOp.SetProp(1L, "white-space", value),
+            ))
+        }
+        for (mode in listOf("normal", "nowrap", "pre-wrap")) {
+            val value = LuiWireValue.Str(mode)
+            assertEquals(value, apply(value).node(1L)!!.properties["white-space"])
+        }
+        for (value in listOf(
+            LuiWireValue.Str("pre"),
+            LuiWireValue.Str("pre-line"),
+            LuiWireValue.Str("wrap"),
+            LuiWireValue.IntValue(1),
+        )) {
+            assertThrows(LuiBackendException::class.java) { apply(value) }
+        }
+    }
+
+    @Test
     fun `native menu accepts semantic label alignments and rejects invalid values`() {
         fun apply(value: LuiWireValue) {
             tree().apply(batch(1,
