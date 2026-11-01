@@ -1871,15 +1871,21 @@ struct LUIRetainedTree {
 
 extension LUIWireValue {
     func normalized(for property: LUIProperty) -> LUIWireValue {
-        if property == .itemExtent || property == .grow || property == .anchorOffset || property == .anchorAlignmentOffset ||
-            property == .sourceX || property == .sourceY ||
-            property == .sourceWidth || property == .sourceHeight ||
-            property == .progressValue || property == .minValue ||
-            property == .maxValue || property == .stepValue,
-           case let .int(value) = self {
+        guard case .int(let value) = self else { return self }
+        switch property {
+        case .itemExtent, .grow, .anchorOffset, .anchorAlignmentOffset,
+            .sourceX, .sourceY, .sourceWidth, .sourceHeight, .progressValue,
+            .minValue, .maxValue, .stepValue, .firstPaneWidth,
+            .resizeOrigin, .resizeHandleOffset, .opacity, .labelOpacity,
+            .letterSpacing, .inset, .insetTop, .insetRight, .insetBottom, .insetLeft,
+            .hoverOpacity, .pressedOpacity, .disabledOpacity,
+            .widthViewport, .heightViewport, .minWidthViewport, .maxWidthViewport,
+            .minHeightViewport, .maxHeightViewport,
+            .popupX, .popupY, .availableHeight, .collisionPadding:
             return .double(Double(value))
+        default:
+            return self
         }
-        return self
     }
 
     var intValue: Int? {
