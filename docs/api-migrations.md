@@ -13,6 +13,66 @@ inventory check is temporarily deferred until that inventory recognizes
 that renderer. The MyGo, Web, Apple, Android and shared ABI regressions remain
 covered separately.
 
+## Unreleased: Web scoped theme mode
+
+The Melange DOM backend now consumes the existing `theme-mode` property instead
+of rejecting it during DOM application. `light` and `dark` select the default
+Web palette and native control color scheme for the node's subtree; `system`
+follows `prefers-color-scheme`, even inside a forced light or dark ancestor.
+Nested modes override outer modes, including an explicit `light` mode under a
+host `.dark` class. Removing the property restores the nearest enclosing mode
+or the existing host appearance when no enclosing mode is present. Unthemed
+hosts keep their existing default appearance.
+
+For example, keep sending
+`{"op":"set-prop","id":1,"property":"theme-mode","value":"dark"}`
+to switch a mounted root to dark mode, or use `"light"` / `"system"` for the
+other modes. Send
+`{"op":"remove-prop","id":1,"property":"theme-mode"}`
+to stop overriding its inherited mode. No wire, schema or application API
+migration is required. Rebuild and deploy the Web stylesheet together with the
+Melange backend; updating only the DOM code does not provide the scoped palette.
+
+Open sheets and other portals follow their retained logical ancestry across
+mode updates, property removal and reparenting, rather than the portal's physical
+DOM parent. An explicitly themed portal keeps its own mode, and a detached
+portal retains its last mode while exiting. Theme mode only selects palette
+tokens: it does not rewrite explicit foregrounds, author colors, disabled states
+or responsive styles. Custom token tables (`theme`) are a separate contract and
+remain outside this Web receiver change.
+
+## Unreleased: Android inherited foreground and scoped appearance
+
+Android now applies a container's `foreground` to uncolored plain text in its
+subtree, with the nearest explicit container color winning. An explicit text
+leaf `foreground` still wins; an absent, empty, or whitespace-only value
+inherits rather than resolving to transparent. Use `foreground: "transparent"`
+or `"#00000000"` when transparency is intentional. Node colors resolve after
+the node's own `theme` tokens and effective appearance, so a foreground token
+on the same node uses the newly supplied palette. Removing a container's
+`foreground` restores the nearest ancestor's color without remounting.
+
+For example, set `{"op":"set-prop","id":2,"property":"foreground","value":"#EAE4DA"}`
+on a Night tools column to color uncolored descendant text, and use
+`{"op":"remove-prop","id":2,"property":"foreground"}` to resume inheritance.
+Applications that relied on uncolored child text ignoring a container's
+foreground should set a color explicitly on those leaves. This does not apply
+the inherited color to every `TextStyle` or override Material buttons' native
+enabled, disabled, selected, focus, and accessibility behavior.
+
+Android `theme-mode: "dark"` and `"light"` now switch the scoped Material 3
+color scheme as well as adaptive semantic tokens. `"system"` restores the
+host's effective appearance, even under an explicitly dark/light parent;
+removing `theme-mode` inherits the nearest parent again. Scoped schemes retain
+the host's custom `LuiTheme(light = ..., darkScheme = ...)` palettes rather than
+replacing them with defaults. For example, set a child node to `"system"` to
+use the host palette inside a dark subtree, then remove that property to return
+to the parent's dark palette. Applications that relied on an explicit `system`
+silently inheriting the parent should remove that property instead. Material
+controls and sheet chrome now follow the effective scoped scheme; their native
+state colors remain owned by Material. No shared schema, wire format, or event
+contract changes are required.
+
 ## Unreleased: Android text line clamps
 
 Android now accepts the existing positive-integer `line-clamp` property on

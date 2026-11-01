@@ -77,7 +77,7 @@ fun luiHexColor(name: String): Color? {
  * tokens like `accent`/`secondary`/`warning`/`success`/`error`. */
 @Composable
 fun luiThemeColor(name: String?, foreground: Boolean = false): Color? {
-    if (name == null) return null
+    if (name == null || (foreground && name.isBlank())) return null
     val tokens = LocalLuiSemanticColors.current
     val scheme = MaterialTheme.colorScheme
     // Cache the lowercasing + table lookup + hex parse per name against
@@ -86,6 +86,16 @@ fun luiThemeColor(name: String?, foreground: Boolean = false): Color? {
         resolveLuiThemeColor(name.lowercase(), foreground, tokens, scheme)
     }
 }
+
+internal data class LuiHostPalette(
+    val light: ColorScheme,
+    val dark: ColorScheme,
+    val effectiveDark: Boolean,
+)
+
+internal val LocalLuiHostPalette = compositionLocalOf<LuiHostPalette?> { null }
+
+internal val LocalLuiInheritedForeground = compositionLocalOf<Color?> { null }
 
 private fun resolveLuiThemeColor(
     lower: String,
@@ -168,6 +178,9 @@ fun LuiTheme(
     MaterialExpressiveTheme(colorScheme = if (effectiveDark) darkScheme else light) {
         val inherited = LocalLuiSemanticColors.current
         CompositionLocalProvider(
+            LocalLuiHostPalette provides remember(light, darkScheme, effectiveDark) {
+                LuiHostPalette(light, darkScheme, effectiveDark)
+            },
             LocalLuiThemeDark provides effectiveDark,
             LocalLuiSemanticColors provides inherited + semanticColors,
         ) {
