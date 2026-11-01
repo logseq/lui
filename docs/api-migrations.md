@@ -35,3 +35,10 @@ password masking remains native. No wire-schema migration is required.
 Apple modal surfaces also honor `theme` and `theme-mode` on the modal node
 itself, in addition to ancestor scopes; the modal scope wins. This fixes
 `themed ~tokens (sheet ...)` without requiring a wrapper node.
+
+Navigation sheet actions now honor `icon`, `min-width`, and `min-height`.
+An icon-only action must supply an accessibility label, for example
+`button ~icon:(`app "close") ~label:"Close" ~min_width:44 ~min_height:44
+~style_class:"confirmation-action plain-action" []`. The optional `plain-action`
+class hides the shared toolbar background on Apple platforms 26 and later.
+Existing actions retain their system toolbar appearance.

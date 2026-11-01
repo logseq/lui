@@ -3180,14 +3180,21 @@ private struct LUINavigationFormToolbar: ToolbarContent {
     @ToolbarContentBuilder
     var body: some ToolbarContent {
         if let cancellationActionID {
-            ToolbarItem(placement: .cancellationAction) {
-                actionView(cancellationActionID)
-            }
+            actionItem(cancellationActionID, placement: .cancellationAction)
         }
         if let confirmationActionID {
-            ToolbarItem(placement: .confirmationAction) {
-                actionView(confirmationActionID)
-            }
+            actionItem(confirmationActionID, placement: .confirmationAction)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private func actionItem(_ id: Int, placement: ToolbarItemPlacement) -> some ToolbarContent {
+        if #available(iOS 26.0, macOS 26.0, *),
+           (backend.model(id: id)?.derived.styleClass ?? "").split(separator: " ").contains("plain-action") {
+            ToolbarItem(placement: placement) { actionView(id) }
+                .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: placement) { actionView(id) }
         }
     }
 
@@ -5998,7 +6005,7 @@ private struct LUISelectedButtonModifier: ViewModifier {
     }
 }
 
-private struct LUIIconImage: View {
+struct LUIIconImage: View {
     let source: LUIAppleIconSource
     let bundle: Bundle?
     var size: CGFloat = 16
