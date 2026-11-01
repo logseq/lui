@@ -41,6 +41,38 @@ tokens: it does not rewrite explicit foregrounds, author colors, disabled states
 or responsive styles. Custom token tables (`theme`) are a separate contract and
 remain outside this Web receiver change.
 
+## Unreleased: Android inherited foreground and scoped appearance
+
+Android now applies a container's `foreground` to uncolored plain text in its
+subtree, with the nearest explicit container color winning. An explicit text
+leaf `foreground` still wins; an absent, empty, or whitespace-only value
+inherits rather than resolving to transparent. Use `foreground: "transparent"`
+or `"#00000000"` when transparency is intentional. Node colors resolve after
+the node's own `theme` tokens and effective appearance, so a foreground token
+on the same node uses the newly supplied palette. Removing a container's
+`foreground` restores the nearest ancestor's color without remounting.
+
+For example, set `{"op":"set-prop","id":2,"property":"foreground","value":"#EAE4DA"}`
+on a Night tools column to color uncolored descendant text, and use
+`{"op":"remove-prop","id":2,"property":"foreground"}` to resume inheritance.
+Applications that relied on uncolored child text ignoring a container's
+foreground should set a color explicitly on those leaves. This does not apply
+the inherited color to every `TextStyle` or override Material buttons' native
+enabled, disabled, selected, focus, and accessibility behavior.
+
+Android `theme-mode: "dark"` and `"light"` now switch the scoped Material 3
+color scheme as well as adaptive semantic tokens. `"system"` restores the
+host's effective appearance, even under an explicitly dark/light parent;
+removing `theme-mode` inherits the nearest parent again. Scoped schemes retain
+the host's custom `LuiTheme(light = ..., darkScheme = ...)` palettes rather than
+replacing them with defaults. For example, set a child node to `"system"` to
+use the host palette inside a dark subtree, then remove that property to return
+to the parent's dark palette. Applications that relied on an explicit `system`
+silently inheriting the parent should remove that property instead. Material
+controls and sheet chrome now follow the effective scoped scheme; their native
+state colors remain owned by Material. No shared schema, wire format, or event
+contract changes are required.
+
 ## Unreleased: Android text line clamps
 
 Android now accepts the existing positive-integer `line-clamp` property on
