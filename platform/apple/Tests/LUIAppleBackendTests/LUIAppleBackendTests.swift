@@ -31,6 +31,48 @@ private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
 @MainActor
 @Suite("LUI SwiftUI backend", .serialized)
 struct LUISwiftUIBackendTests {
+    @Test("floating wire properties admit integral JSON numbers without weakening validation")
+    func floatingWireNumbers() throws {
+        let properties: [LUIProperty] = [
+            .itemExtent, .grow, .anchorOffset, .anchorAlignmentOffset,
+            .sourceX, .sourceY, .sourceWidth, .sourceHeight, .progressValue,
+            .minValue, .maxValue, .stepValue, .firstPaneWidth,
+            .resizeOrigin, .resizeHandleOffset, .opacity, .labelOpacity,
+            .letterSpacing, .inset, .insetTop, .insetRight, .insetBottom, .insetLeft,
+            .hoverOpacity, .pressedOpacity, .disabledOpacity,
+            .widthViewport, .heightViewport, .minWidthViewport, .maxWidthViewport,
+            .minHeightViewport, .maxHeightViewport,
+            .popupX, .popupY, .availableHeight, .collisionPadding,
+        ]
+        for property in properties {
+            for (json, expected) in [("1", 1.0), ("1.0", 1.0), ("1e0", 1.0), ("0.5", 0.5)] {
+                let decoded = try JSONDecoder().decode(LUIWireValue.self, from: Data(json.utf8))
+                let value = decoded.normalized(for: property)
+                #expect(value == .double(expected), "\(property.rawValue): \(json)")
+                #expect(value.matches(property, on: .box), "\(property.rawValue): \(json)")
+            }
+            for json in ["true", "\"1\""] {
+                let decoded = try JSONDecoder().decode(LUIWireValue.self, from: Data(json.utf8))
+                #expect(!decoded.normalized(for: property).matches(property, on: .box))
+            }
+            if property != .progressValue {
+                for number in [Double.nan, .infinity, -.infinity] {
+                    #expect(!LUIWireValue.double(number).normalized(for: property).matches(property, on: .box))
+                }
+            }
+        }
+        for (property, number): (LUIProperty, Int) in [
+            (.grow, -1), (.firstPaneWidth, -1), (.stepValue, 0), (.itemExtent, 0),
+            (.opacity, 2), (.labelOpacity, -1), (.hoverOpacity, 2),
+            (.pressedOpacity, -1), (.disabledOpacity, 2),
+            (.widthViewport, 0), (.heightViewport, 2), (.minWidthViewport, 0),
+            (.maxWidthViewport, 2), (.minHeightViewport, 0), (.maxHeightViewport, 2),
+            (.availableHeight, -1), (.collisionPadding, -1),
+        ] {
+            #expect(!LUIWireValue.int(number).normalized(for: property).matches(property, on: .box))
+        }
+    }
+
     @Test("removed line-break nodes reject the batch without changing the tree")
     func removedLineBreakNode() throws {
         let backend = LUIAppleBackend()
