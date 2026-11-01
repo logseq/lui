@@ -248,6 +248,8 @@ struct LUIDrawerView: View {
             )
             let progress = width > 0.0 ? visibleWidth / width : 0.0
             let isDragging = abs(dragOffset) > 0.0
+            let parked = !presented && !isAnimating && !isGestureActive
+                && dragOffset == 0 && visibleWidth == 0
             let contentControlsEnabled =
                 LUIDrawerInteractionPolicy.contentControlsAreEnabled(
                     isDragging: isDragging,
@@ -270,6 +272,7 @@ struct LUIDrawerView: View {
                         // areas and reflows scrolled content during the transition.
                         .opacity(LUIDrawerInteractionPolicy.sidebarOpacity(progress: progress))
                         .offset(x: -20.0 * (1.0 - progress))
+                        .modifier(LUIDrawerParkingEffect(translation: parked ? 20 - width : 0))
                         .allowsHitTesting(presented && contentControlsEnabled)
                         .accessibilityHidden(
                             LUIDrawerInteractionPolicy.panelIsAccessibilityHidden(
@@ -511,6 +514,17 @@ private struct LUIDrawerMainSurfaceModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         content.background(.ultraThinMaterial)
+    }
+}
+
+private struct LUIDrawerParkingEffect: GeometryEffect {
+    let translation: CGFloat
+    var animatableData: EmptyAnimatableData {
+        get { EmptyAnimatableData() }
+        set {}
+    }
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        ProjectionTransform(CGAffineTransform(translationX: translation, y: 0))
     }
 }
 
