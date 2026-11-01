@@ -16,7 +16,8 @@ struct LUIScrollSectionFrameModifier: ViewModifier {
     let index: Int
     let title: String?
     let coordinateSpace: LUIScrollTitleCoordinateSpace
-    let onVisibilityChange: (Int, String?) -> Void
+    let onVisibilityChange: (Int, String?, UUID) -> Void
+    @State private var registration = UUID()
     @State private var isBelowTop = true
 
     func body(content: Content) -> some View {
@@ -25,13 +26,13 @@ struct LUIScrollSectionFrameModifier: ViewModifier {
                 geometry.frame(in: .named(coordinateSpace)).maxY > 0
             } action: { belowTop in
                 isBelowTop = belowTop
-                onVisibilityChange(index, belowTop ? title : nil)
+                onVisibilityChange(index, belowTop ? title : nil, registration)
             }
-            .onAppear { onVisibilityChange(index, isBelowTop ? title : nil) }
+            .onAppear { onVisibilityChange(index, isBelowTop ? title : nil, registration) }
             .onChange(of: title) { _, title in
-                onVisibilityChange(index, isBelowTop ? title : nil)
+                onVisibilityChange(index, isBelowTop ? title : nil, registration)
             }
-            .onDisappear { onVisibilityChange(index, nil) }
+            .onDisappear { onVisibilityChange(index, nil, registration) }
     }
 }
 
@@ -41,7 +42,7 @@ final class LUIScrollSectionTitleTracker {
     private(set) var title: String?
     // Row visibility must not invalidate LazyVStack while it is calculating layout.
     // Only the separate title emitter observes the derived title.
-    @ObservationIgnored private var visibleSections: [Int: (title: String, startsSection: Bool)] = [:]
+    @ObservationIgnored private var visibleSections: [Int: (title: String, startsSection: Bool, registration: UUID)] = [:]
     @ObservationIgnored private var headingStates: [String: Bool] = [:]
 
     func updateHeading(title: String, isPastTop: Bool) {
@@ -50,12 +51,16 @@ final class LUIScrollSectionTitleTracker {
         deriveTitle()
     }
 
-    func update(index: Int, title: String?, startsSection: Bool = false) {
+    func update(index: Int, title: String?, startsSection: Bool = false, registration: UUID) {
         if let title {
             if let previous = visibleSections[index], previous.title == title,
-               previous.startsSection == startsSection { return }
-            visibleSections[index] = (title, startsSection)
-        } else if visibleSections.removeValue(forKey: index) == nil { return }
+               previous.startsSection == startsSection, previous.registration == registration { return }
+            visibleSections[index] = (title, startsSection, registration)
+        } else {
+            // A replaced row may disappear after its replacement has registered.
+            guard visibleSections[index]?.registration == registration else { return }
+            visibleSections.removeValue(forKey: index)
+        }
         deriveTitle()
     }
 

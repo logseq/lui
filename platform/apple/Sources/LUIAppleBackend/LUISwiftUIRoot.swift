@@ -6979,16 +6979,32 @@ private struct LUIListSectionSeparatorModifier: ViewModifier {
 // (and their child-model lookups) are resolved only for materialized slots.
 // The editor keeps one identity when a split moves it to a neighboring row.
 struct LUIVirtualRowIndices: RandomAccessCollection {
+    struct Section {
+        let range: Range<Int>
+        let minimumHeight: CGFloat
+    }
     struct Slot {
         let position: Int
         let id: Int
+        let section: Section?
     }
     let count: Int
     let editor: (position: Int, source: Int)?
+    let sections: [Section]
     var startIndex: Int { 0 }
-    var endIndex: Int { count }
-    subscript(position: Int) -> Slot {
-        Slot(position: position, id: position == editor?.position ? -(editor!.source + 1) : position)
+    var endIndex: Int { count - sections.reduce(0) { $0 + $1.range.count - 1 } }
+    subscript(index: Int) -> Slot {
+        var position = index
+        for section in sections {
+            if position < section.range.lowerBound { break }
+            if position == section.range.lowerBound {
+                return Slot(position: position, id: position, section: section)
+            }
+            position += section.range.count - 1
+        }
+        return Slot(position: position,
+                    id: position == editor?.position ? -(editor!.source + 1) : position,
+                    section: nil)
     }
 }
 
@@ -7018,25 +7034,24 @@ private struct LUIVirtualListView: View {
                     alignment: .leading,
                     spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
                 ) {
-                    ForEach(LUIVirtualRowIndices(count: rows.endIndex, editor: rows.editor), id: \.id) { slot in
+                    ForEach(LUIVirtualRowIndices(count: rows.endIndex, editor: rows.editor,
+                                                sections: rows.minimumHeightSections), id: \.id) { slot in
                         // A concrete, single-view root keeps SwiftUI from asking
                         // every virtual slot for its conditional view-list count.
                         VStack(alignment: .leading, spacing: 0) {
-                            let row = rows[slot.position]
-                            if slot.position == editor?.position {
-                                Color.clear
-                                    .frame(height: pinnedSize?.id == row.id ? pinnedSize!.height
-                                        : rowFrames.frames[row.id]?.height ?? row.estimatedHeight)
-                            } else { virtualRow(row) }
-                        }
-                        .onGeometryChange(for: CGRect.self) { geometry in
-                            geometry.frame(in: .named(contentSpace))
-                        } action: { frame in
-                            let id = rows[slot.position].id
-                            rowFrames.frames[id] = frame
-                            if slot.position == editor?.position {
-                                let next = PinnedFrame(id: id, frame: frame)
-                                if pinnedFrame != next { pinnedFrame = next }
+                            if let section = slot.section {
+                                // A bounded first section measures its content and
+                                // fills the viewport in the same layout pass.
+                                VStack(alignment: .leading, spacing: CGFloat(model.property(.gap)?.intValue ?? 0)) {
+                                    ForEach(LUIVirtualRowIndices(count: section.range.count,
+                                                                editor: nil, sections: []), id: \.id) { child in
+                                        measuredRow(at: section.range.lowerBound + child.position,
+                                                    rows: rows, contentSpace: contentSpace)
+                                    }
+                                }
+                                .frame(minHeight: section.minimumHeight, alignment: .topLeading)
+                            } else {
+                                measuredRow(at: slot.position, rows: rows, contentSpace: contentSpace)
                             }
                         }
                         .id(slot.id)
@@ -7099,6 +7114,29 @@ private struct LUIVirtualListView: View {
         }
     }
 
+    private func measuredRow(at position: Int, rows: SectionRows, contentSpace: ContentSpace) -> some View {
+        let row = rows[position]
+        let editor = rows.editor
+        return VStack(alignment: .leading, spacing: 0) {
+            if position == editor?.position {
+                Color.clear.frame(height: pinnedSize?.id == row.id ? pinnedSize!.height
+                    : rowFrames.frames[row.id]?.height ?? row.estimatedHeight)
+            } else {
+                virtualRow(row)
+            }
+        }
+        .onGeometryChange(for: CGRect.self) { geometry in
+            geometry.frame(in: .named(contentSpace))
+        } action: { frame in
+            rowFrames.frames[row.id] = frame
+            if position == editor?.position {
+                let next = PinnedFrame(id: row.id, frame: frame)
+                if pinnedFrame != next { pinnedFrame = next }
+            }
+        }
+        .id(position == editor?.position ? -(editor!.source + 1) : position)
+    }
+
     @ViewBuilder private func virtualRow(_ row: SectionRow) -> some View {
         let content = LUIVirtualListRow(row: row, backend: backend,
             tracker: windowTracker, coordinateSpace: titleCoordinateSpace,
@@ -7110,8 +7148,8 @@ private struct LUIVirtualListView: View {
             content.modifier(LUIScrollSectionFrameModifier(
                 index: row.index, title: row.title,
                 coordinateSpace: titleCoordinateSpace,
-                onVisibilityChange: { index, title in
-                    titleTracker.update(index: index, title: title, startsSection: row.startsSection)
+                onVisibilityChange: { index, title, registration in
+                    titleTracker.update(index: index, title: title, startsSection: row.startsSection, registration: registration)
                 }
             ))
         } else { content }
@@ -7134,8 +7172,7 @@ private struct LUIVirtualListView: View {
             }
             if let key = attributes["data-scroll-key"],
                let index = attributes["data-scroll-index"].flatMap(Int.init), index >= 0 {
-                let paddingOffset = segment.padding > 0 && index >= (segment.window?.firstSectionCount ?? 0) ? 1 : 0
-                return ScrollRequest(key: key, position: segment.base + index + paddingOffset)
+                return ScrollRequest(key: key, position: segment.base + index)
             }
         }
         return nil
@@ -7183,32 +7220,34 @@ private struct LUIVirtualListView: View {
             let children: [Int]
             let title: String?
             let startsSection: Bool
-            let padding: CGFloat
+            let minimumHeight: CGFloat
             let tracksSectionHeight: Bool
             let titles: [Int: String]
         }
         let segments: [Segment]
+        let measuredHeights: [SlotID: CGFloat]
         let endIndex: Int
         var startIndex: Int { 0 }
+        var minimumHeightSections: [LUIVirtualRowIndices.Section] {
+            segments.compactMap { segment in
+                guard let window = segment.window, segment.minimumHeight > 0 else { return nil }
+                return LUIVirtualRowIndices.Section(
+                    range: segment.base..<(segment.base + window.firstSectionCount),
+                    minimumHeight: segment.minimumHeight)
+            }
+        }
         var editor: (position: Int, source: Int)? {
             for segment in segments {
                 if let window = segment.window, let index = window.pinnedIndex {
-                    return (segment.base + index + (segment.padding > 0 && index >= window.firstSectionCount ? 1 : 0), segment.source)
+                    return (segment.base + index, segment.source)
                 }
             }
             return nil
         }
         subscript(index: Int) -> SectionRow {
             let segment = segments.first { index >= $0.base && index < $0.base + $0.count }!
-            var offset = index - segment.base
+            let offset = index - segment.base
             if let window = segment.window {
-                if segment.padding > 0, offset == window.firstSectionCount {
-                    return SectionRow(id: SlotID(source: segment.source, offset: -2),
-                        nodeID: nil, windowID: nil, windowIndex: 0, index: index,
-                        title: window.sectionTitle(at: window.firstSectionCount - 1),
-                        estimatedHeight: segment.padding, tracksSectionHeight: false)
-                }
-                if segment.padding > 0, offset > window.firstSectionCount { offset -= 1 }
                 let childOffset: Int
                 if offset >= window.start, offset < window.start + window.length {
                     childOffset = offset - window.start
@@ -7225,7 +7264,7 @@ private struct LUIVirtualListView: View {
                         ?? (segment.children.indices.contains(childOffset) ? segment.titles[segment.children[childOffset]] : nil)
                         ?? segment.title,
                     startsSection: window.sectionTitles.contains(where: { $0.index == offset }),
-                    estimatedHeight: window.extent,
+                    estimatedHeight: measuredHeights[SlotID(source: segment.source, offset: offset)] ?? window.extent,
                     tracksSectionHeight: segment.tracksSectionHeight && offset < window.firstSectionCount)
             }
             return SectionRow(id: SlotID(source: segment.source, offset: -1),
@@ -7242,26 +7281,23 @@ private struct LUIVirtualListView: View {
         for id in model.visibleChildren {
             let source = backend.model(id: id)
             let window = LUIVirtualWindow(source?.property(.dataAttrs)?.stringValue)
-            var padding: CGFloat = 0
+            var minimumHeight: CGFloat = 0
             var tracksHeight = false
             if let window, window.firstSectionCount > 0,
                window.firstSectionCount <= Int((unobscuredHeight ?? 0) / 16) + 1 {
                 tracksHeight = true
-                let measured = (0..<window.firstSectionCount).reduce(CGFloat(0)) { height, index in
-                    height + (firstSectionHeights[SlotID(source: id, offset: index)] ?? window.extent)
-                }
-                padding = max(0, (unobscuredHeight ?? 0) - window.firstSectionInset - measured)
+                minimumHeight = max(0, (unobscuredHeight ?? 0) - window.firstSectionInset)
             }
-            let count = (window?.count ?? 1) + (padding > 0 ? 1 : 0)
+            let count = window?.count ?? 1
             let startsSection = titles[id] != nil && titles[id] != inheritedTitle
             if let title = titles[id] { inheritedTitle = title }
             segments.append(SectionRows.Segment(source: id, base: total, count: count,
                 window: window, children: window == nil ? [] : (source?.visibleChildren ?? []),
-                title: inheritedTitle, startsSection: startsSection, padding: padding, tracksSectionHeight: tracksHeight,
+                title: inheritedTitle, startsSection: startsSection, minimumHeight: minimumHeight, tracksSectionHeight: tracksHeight,
                 titles: source?.childData.sectionTitles ?? [:]))
             total += count
         }
-        return SectionRows(segments: segments, endIndex: total)
+        return SectionRows(segments: segments, measuredHeights: firstSectionHeights, endIndex: total)
     }
 
 }
