@@ -1279,7 +1279,13 @@ private fun LuiTextControl(
         }
     }
     val placeholderContent: (@Composable () -> Unit)? =
-        node.propString("placeholder")?.let { p -> { Text(p) } }
+        node.propString("placeholder")?.let { p -> {
+            Text(
+                p,
+                maxLines = if (multiline) Int.MAX_VALUE else 1,
+                overflow = if (multiline) TextOverflow.Clip else TextOverflow.Ellipsis,
+            )
+        } }
     val transformation = if (secure) {
         androidx.compose.ui.text.input.PasswordVisualTransformation()
     } else {

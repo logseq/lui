@@ -13,6 +13,21 @@ inventory check is temporarily deferred until that inventory recognizes
 that renderer. The MyGo, Web, Apple, Android and shared ABI regressions remain
 covered separately.
 
+## Unreleased: Android single-line text placeholders
+
+Android placeholders now follow their control's line policy: `text-field`,
+`secure-field`, `input`, `search-field` and `combobox` keep placeholders on one
+line and ellipsize overflow. `textarea` placeholders continue to wrap. Previously
+a narrow or zero-width field could wrap its placeholder character by character,
+inflating a single-line control and its containing row to hundreds of dp even
+though the editable text itself was single-line.
+
+The wire format, default control height and `grow` behavior are unchanged. For
+example, keep sending `{"op":"set-prop","id":2,"property":"placeholder","value":"Search this book…"}`;
+no fixed height or placeholder rewrite is necessary. Applications must still
+provide usable width or responsive toolbar alternatives: this correction does
+not make a field usable when other row children consume all available width.
+
 ## Unreleased: Apple normalizes all floating wire properties
 
 Apple now normalizes integral JSON numbers to its floating retained value for
