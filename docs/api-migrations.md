@@ -985,6 +985,31 @@ closed nodes report `ok=false`. There is no stale-model fallback. Ordinary patch
 generation changes do not invalidate this live query; drop/recreate and snapshot
 replacement retire the binding immediately. Re-render to bind the new incarnation.
 
+## MyGo 0.7.3 text layout compatibility
+
+The MyGo compatibility fork keeps upstream's `ui.TextLine` for
+`TextLayout.Lines()`. Its offsets count UTF-16 code units and its rectangles
+are layout-local DIPs. The fork's committed-text result is now explicitly
+named `ui.CommittedTextLine`: `Backend.TextGeometry(...).Lines()` still uses
+node-relative rune offsets and window-space DIPs. Its behavior, frame expiry
+and unavailable-result rules are unchanged.
+
+Code that inferred the committed line type needs no change. Migrate explicit
+type annotations instead of substituting a `TextLayout` query:
+
+```go
+// Before: var lines []ui.TextLine
+var lines []ui.CommittedTextLine
+geometry, ok := backend.TextGeometry(context, textNodeID)
+if ok {
+    lines, ok = geometry.Lines()
+}
+```
+
+Applications using UTF-16 canonical locations must still convert committed
+rune offsets at their boundary. Do not share an offset or rectangle between
+these two APIs without an explicit text/coordinate mapping.
+
 ## Upgrade checks for application maintainers
 
 1. Update generated wire schemas and custom host decoders together with LUI.

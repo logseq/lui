@@ -4,7 +4,7 @@ go 1.27.3
 
 require (
 	github.com/ebitengine/purego v0.11.1
-	github.com/egoist/mygo v0.6.4
+	github.com/egoist/mygo v0.7.3
 	github.com/go-pdfkit/reader v0.9.0
 	github.com/go-pdfkit/render v0.69.0
 	golang.org/x/image v0.47.0
@@ -28,4 +28,4 @@ require (
 	golang.org/x/text v0.43.0 // indirect
 )
 
-replace github.com/egoist/mygo => github.com/logseq/mygo v0.0.0-20261028002945-63195e6c2f59
+replace github.com/egoist/mygo => github.com/logseq/mygo v0.0.0-20261101020701-a352c16ec201
