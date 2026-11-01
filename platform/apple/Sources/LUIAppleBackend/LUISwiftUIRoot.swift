@@ -2876,7 +2876,7 @@ private struct LUIModalSurfaceContent: View {
 
     /// Modal content renders outside the node tree, so `theme` props on its
     /// ancestors never reach it through the environment — walk the chain and
-    /// apply each ancestor's commit-decoded tokens the same way
+    /// include the modal itself, applying commit-decoded tokens the same way
     /// `LUIThemeScopeModifier` does (outermost-first, inner wins).
     private var themeAncestors: [LUINodeModel] {
         var ancestors: [LUINodeModel] = []
@@ -2889,7 +2889,7 @@ private struct LUIModalSurfaceContent: View {
                 cursor = backend.extensionModel(id: parentID)?.parent
             }
         }
-        return ancestors.reversed()
+        return ancestors.reversed() + [model]
     }
 
     private var effectiveColorScheme: ColorScheme {
@@ -7579,7 +7579,7 @@ private struct LUITextControlView: View {
 
     var body: some View {
         Group {
-            if grouped || isNativeFormRow {
+            if grouped || isNativeFormRow || (model.derived.styleClass ?? "").split(separator: " ").contains("plain-input") {
                 field.textFieldStyle(.plain)
             } else if model.kind == .searchField || model.kind == .textarea {
                 field

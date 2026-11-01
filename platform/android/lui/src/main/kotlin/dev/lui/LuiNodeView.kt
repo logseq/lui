@@ -1226,6 +1226,7 @@ private fun LuiTextControl(
     val grouped = node.parent?.let { backend.node(it)?.kind } == LuiNodeKind.inputGroup
     val formField = node.parent?.let { backend.node(it)?.propString("style-class") }
         ?.split(' ')?.contains("form") == true
+    val plain = (node.propString("style-class") ?: "").split(' ').contains("plain-input")
     val borderless = (node.propString("style-class") ?: "").split(' ')
         .contains("composer-input")
     val focusRequester = remember(id) { FocusRequester() }
@@ -1259,9 +1260,9 @@ private fun LuiTextControl(
     }
 
     val fieldModifier = modifier.then(
-        if (grouped || borderless || formField || search) Modifier.fillMaxWidth() else Modifier.width(240.dp),
+        if (plain || grouped || borderless || formField || search) Modifier.fillMaxWidth() else Modifier.width(240.dp),
     ).focusRequester(focusRequester)
-    val fieldTextStyle = (if (borderless) MaterialTheme.typography.bodyLarge
+    val fieldTextStyle = (if (plain || borderless) MaterialTheme.typography.bodyLarge
         else MaterialTheme.typography.bodyMedium).copy(
         color = luiThemeColor(node.propString("foreground"), foreground = true)
             ?: MaterialTheme.colorScheme.onSurface,
@@ -1296,7 +1297,24 @@ private fun LuiTextControl(
         null
     }
 
-    if (borderless) {
+    if (plain) {
+        androidx.compose.foundation.text.BasicTextField(
+            value = localText,
+            onValueChange = onValueChange,
+            modifier = fieldModifier,
+            enabled = enabled,
+            singleLine = !multiline,
+            visualTransformation = transformation,
+            textStyle = fieldTextStyle,
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+            decorationBox = { innerField ->
+                Box {
+                    if (localText.isEmpty()) placeholderContent?.invoke()
+                    innerField()
+                }
+            },
+        )
+    } else if (borderless) {
         androidx.compose.material3.TextField(
             value = localText,
             onValueChange = onValueChange,
