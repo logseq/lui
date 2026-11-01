@@ -81,6 +81,25 @@ internal object LuiKindRules {
     fun isButtonKind(kind: LuiNodeKind): Boolean =
         kind == LuiNodeKind.button || kind == LuiNodeKind.toggleButton
 
+    fun supportsPointerDownUp(kind: LuiNodeKind): Boolean = when (kind) {
+        LuiNodeKind.button,
+        LuiNodeKind.column,
+        LuiNodeKind.row,
+        LuiNodeKind.box,
+        LuiNodeKind.radio,
+        LuiNodeKind.select,
+        LuiNodeKind.combobox,
+        LuiNodeKind.menuItem,
+        LuiNodeKind.listItem,
+        LuiNodeKind.text,
+        LuiNodeKind.tableCell,
+        LuiNodeKind.timelineItem,
+        LuiNodeKind.fileImage,
+        LuiNodeKind.bottomTab,
+        LuiNodeKind.swipeAction -> true
+        else -> false
+    }
+
     fun isHorizontalGroupKind(kind: LuiNodeKind): Boolean =
         kind == LuiNodeKind.tabs ||
             kind == LuiNodeKind.buttonGroup ||

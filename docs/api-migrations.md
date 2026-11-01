@@ -13,6 +13,29 @@ inventory check is temporarily deferred until that inventory recognizes
 that renderer. The MyGo, Web, Apple, Android and shared ABI regressions remain
 covered separately.
 
+## Unreleased: Android pointer event capability checks
+
+Android now checks the existing shared node-kind contract before emitting
+`PointerDown` or `PointerUp`. The `pointer-enabled` property is also set by
+ordinary input, submit, toggle and hover subscriptions; it does not grant every
+pointer event to every node kind. Text fields and other unsupported kinds no
+longer emit a rejected down/up pair before their native interaction. Supported
+pointer kinds and the existing `role="treeitem"` opt-in continue to receive
+down/up events when `pointer-enabled` is true. Disabled nodes remain inactive.
+
+For example, an existing `text_field ~on_input:handle_input []` requires no
+application change: native editing still emits `TextChanged`, without synthetic
+down/up events. Existing `row ~on_pointer_down:handle_down
+~on_pointer_up:handle_up []` handlers keep their shared event contract. Context
+menu position observation remains independent of down/up capability, so an
+attached context menu still observes its long-press location on a text control.
+
+Pointer input restarts when the down/up capability changes. `PointerUp` is sent
+only after the observed gesture releases, not from coroutine cancellation during
+recomposition or removal. The shared receiver's strict unsupported-event checks,
+wire schema, handler subscriptions and other platforms are unchanged. Rebuild
+the Android host with this renderer; no source or wire migration is required.
+
 ## Unreleased: Web scoped theme mode
 
 The Melange DOM backend now consumes the existing `theme-mode` property instead

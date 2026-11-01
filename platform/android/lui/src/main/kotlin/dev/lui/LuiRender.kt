@@ -319,21 +319,19 @@ internal fun Modifier.luiGestures(
             }
         }
     }
-    if (enabled && (node.propBool("pointer-enabled") || contextMenuId != null)) {
-        modifier = modifier.pointerInput(id) {
+    val reportPointer = node.propBool("pointer-enabled") &&
+        (LuiKindRules.supportsPointerDownUp(node.kind) || node.propString("role") == "treeitem")
+    if (enabled && (reportPointer || contextMenuId != null)) {
+        modifier = modifier.pointerInput(id, reportPointer) {
             awaitEachGesture {
                 // Observe without consuming the touch needed by native click handlers.
                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                 val detail = LuiPointerDetail(x = down.position.x.toDouble(), y = down.position.y.toDouble())
                 contextMenuPosition = down.position
-                val reportPointer = node.propBool("pointer-enabled")
                 if (reportPointer) backend.emit(LuiEvent.PointerDown(id, detail))
-                try {
-                    do { val event = awaitPointerEvent(PointerEventPass.Initial) }
-                    while (event.changes.any { it.pressed })
-                } finally {
-                    if (reportPointer) backend.emit(LuiEvent.PointerUp(id, detail))
-                }
+                do { val event = awaitPointerEvent(PointerEventPass.Initial) }
+                while (event.changes.any { it.pressed })
+                if (reportPointer) backend.emit(LuiEvent.PointerUp(id, detail))
             }
         }
     }
