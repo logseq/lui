@@ -69,6 +69,7 @@ type application = {
      so subsequent creates send "" instead of ~1.4KB each *)
   runtime_fingerprint_sent : (string, unit) Hashtbl.t;
   runtime_properties : (int, wire_value Property_map.t) Hashtbl.t;
+  runtime_width_subscriptions : (int, unit ref) Hashtbl.t;
   runtime_extension_properties : (int, wire_value String_map.t) Hashtbl.t;
   runtime_children : (int, int Lui_sequence.t) Hashtbl.t;
   runtime_parents : (int, int) Hashtbl.t;
@@ -118,6 +119,7 @@ type runtime_checkpoint = {
   checkpoint_mounted_nodes : (int, node_kind) Hashtbl.t;
   checkpoint_extension_nodes : (int, string) Hashtbl.t;
   checkpoint_properties : (int, wire_value Property_map.t) Hashtbl.t;
+  checkpoint_width_subscriptions : (int, unit ref) Hashtbl.t;
   checkpoint_extension_properties : (int, wire_value String_map.t) Hashtbl.t;
   checkpoint_children : (int, int Lui_sequence.t) Hashtbl.t;
   checkpoint_parents : (int, int) Hashtbl.t;
@@ -184,6 +186,7 @@ let create_with_extensions ?virtual_rows scheduler backend registry =
     runtime_extension_nodes = Hashtbl.create 16;
     runtime_fingerprint_sent = Hashtbl.create 16;
     runtime_properties = Hashtbl.create 16;
+    runtime_width_subscriptions = Hashtbl.create 16;
     runtime_extension_properties = Hashtbl.create 16;
     runtime_children = Hashtbl.create 16;
     runtime_parents = Hashtbl.create 16;
@@ -263,6 +266,7 @@ let checkpoint ?nodes application =
     checkpoint_extension_nodes = copy application.runtime_extension_nodes;
     checkpoint_properties =
       copy application.runtime_properties;
+    checkpoint_width_subscriptions = copy application.runtime_width_subscriptions;
     checkpoint_extension_properties =
       copy application.runtime_extension_properties;
     checkpoint_children = copy application.runtime_children;
@@ -385,6 +389,7 @@ let restore application saved =
   replace application.mounted_nodes saved.checkpoint_mounted_nodes;
   replace application.runtime_extension_nodes saved.checkpoint_extension_nodes;
   replace application.runtime_properties saved.checkpoint_properties;
+  replace application.runtime_width_subscriptions saved.checkpoint_width_subscriptions;
   replace application.runtime_extension_properties
     saved.checkpoint_extension_properties;
   replace application.runtime_children saved.checkpoint_children;
@@ -1288,6 +1293,12 @@ let reconcile_subtree application saved parent old_root candidate_root =
   let desired_echo =
     remap_node_values application.runtime_echo candidate_nodes mapping base_echo
   in
+  let base_width_subscriptions = Hashtbl.copy saved.checkpoint_width_subscriptions in
+  remove_node_keys base_width_subscriptions old_nodes;
+  let desired_width_subscriptions =
+    remap_node_values application.runtime_width_subscriptions candidate_nodes mapping
+      base_width_subscriptions
+  in
   let desired_extension_properties =
     remap_node_values application.runtime_extension_properties candidate_nodes
       mapping base_extension_properties
@@ -1449,6 +1460,7 @@ let reconcile_subtree application saved parent old_root candidate_root =
   replace application.runtime_extension_nodes desired_extensions;
   replace application.runtime_properties desired_properties;
   replace application.runtime_echo desired_echo;
+  replace application.runtime_width_subscriptions desired_width_subscriptions;
   replace application.runtime_extension_properties
     desired_extension_properties;
   replace application.runtime_children desired_children;
@@ -1736,6 +1748,7 @@ and unmount_node application node =
   Hashtbl.remove application.mounted_nodes node;
   Hashtbl.remove application.runtime_extension_nodes node;
   Hashtbl.remove application.runtime_properties node;
+  Hashtbl.remove application.runtime_width_subscriptions node;
   Hashtbl.remove application.runtime_extension_properties node;
   Hashtbl.remove application.runtime_children node;
   Hashtbl.remove application.runtime_parents node;
@@ -1855,6 +1868,10 @@ let set_prop application node property value =
       (Hashtbl.find_opt application.runtime_properties node) ~default:Property_map.empty in
     Hashtbl.replace application.runtime_properties node
       (Property_map.add property value current);
+    if property = AvailableWidthEnabled then
+      (match value with
+       | BoolValue true -> Hashtbl.replace application.runtime_width_subscriptions node (ref ())
+       | _ -> Hashtbl.remove application.runtime_width_subscriptions node);
     note_sent_echo application node property value;
     enqueue application (set_prop_op node property value)
   end
@@ -1875,6 +1892,8 @@ let remove_prop application node property =
       (Hashtbl.find_opt application.runtime_properties node) ~default:Property_map.empty in
     Hashtbl.replace application.runtime_properties node
       (Property_map.remove property current);
+    if property = AvailableWidthEnabled then
+      Hashtbl.remove application.runtime_width_subscriptions node;
     note_removed_echo application node property;
     enqueue application (remove_prop_op node property)
   end
@@ -2175,6 +2194,7 @@ let dispatch application event =
     note_reported_echo application node event;
     match Hashtbl.find_opt application.event_handlers node with
     | Some handlers ->
+      let width_subscription = Hashtbl.find_opt application.runtime_width_subscriptions node in
       List.iter
         (fun handler ->
            Signal.enqueue_effect application.runtime_scheduler (fun () ->
@@ -2182,6 +2202,18 @@ let dispatch application event =
                  (Hashtbl.find_opt application.event_handlers node) ~default:[] in
                if node_live application node
                   && List.exists (fun registered -> registered == handler) current
+                  && (match event with
+                      | AvailableWidthChanged _ ->
+                          let properties = Option.value
+                            (Hashtbl.find_opt application.runtime_properties node)
+                            ~default:Property_map.empty in
+                          (match width_subscription,
+                              Hashtbl.find_opt application.runtime_width_subscriptions node with
+                           | Some expected, Some current -> expected == current
+                           | _ -> false) &&
+                          event_supported_for_properties
+                            (require_standard_node_kind application node) properties event
+                      | _ -> true)
                then handler.handler_callback event))
         handlers;
       true

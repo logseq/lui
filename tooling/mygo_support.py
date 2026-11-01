@@ -92,7 +92,8 @@ def support_document(root, manifest, schema):
                       " ([contract](../../" + exception["source"] + "))")
         lines.append("| " + " | ".join(map(cell, ["`" + name + "`", info["route"], detail, refs(info)])) + " |")
     lines += ["", "## Event bridge", "",
-              "All event families round-trip through the real OCaml Components application. "
+              "Qualified event families round-trip through the real OCaml Components application; "
+              "routes explicitly marked pending are protocol-only and not implemented. "
               "Payload checks include Unicode, embedded NUL, large integer tokens, "
               "pointer metadata, empty visible ranges and scroll outcomes.", "",
               "| Event | Route | Behavior evidence |", "| --- | --- | --- |"]

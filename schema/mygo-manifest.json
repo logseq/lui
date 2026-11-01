@@ -1,13 +1,13 @@
 {
   "version": 1,
   "sourceHashes": {
-    "schema/components.json": "9ee03185501b5b1cb8301d115fc0eb57860bf63b597f2722e9dfde655e9b74bc",
-    "src/lui_protocol.ml": "15bc871257c8fbeabfa5c599d8c4bd822756de969e634985f1afb8527e7141ff",
-    "src/lui_protocol.mli": "ee29ca26d1d39dae08699aefa525acdaa9c7047ada6804ca72d7761bd3608242",
-    "src/lui_wire_schema.ml": "cb938b5abc712817ef9ce37070f29185812dd123d0e0a3390df8472e01ab5128",
-    "tooling/export_mygo_contract.ml": "a055e72c226d0825664551aa073f3cf709a55ae648fcbab62b5c42eac23882ba"
+    "schema/components.json": "a140aedc26528638374467d256a55177c4c05ae6ad13933c9ff1a4617aab71d2",
+    "src/lui_protocol.ml": "0a8c500cad8d34f6c47e937a4a23ae72879bb5e0bb5d024ea7f6f63a1de4991c",
+    "src/lui_protocol.mli": "3135f19376a203ee1497cb13450c82e72345ba21cb645b885393cc7e5600e8b2",
+    "src/lui_wire_schema.ml": "46c8669e2f142bb459b05405deb4df6d4b1e18b901afb82dab2d43116ce157a7",
+    "tooling/export_mygo_contract.ml": "50079cbd5af0510ad317b606311b177a9679df22e96e46dba75378b1b2338597"
   },
-  "generatedGoHash": "c9ff2f8278b076ec88ae2df42c638f522dfaed6e0c60d70f26c01bfdf8bbbe71",
+  "generatedGoHash": "6f4997fb2f26f47437853f7d16e1fb49b29d76500dcb2f16f168a7f1810de1f8",
   "kinds": {
     "root": {
       "contractHash": "1cda829a4bd05ddb79ca21f04ed1d7a51dae8bf3d388bb7eecdf8d5e2f3ec1eb",
@@ -17,17 +17,17 @@
       "baseline": {}
     },
     "row": {
-      "contractHash": "8607888dd0b74341aaf93b9a2007d4400d8654129b0a6bca393b82eb27b53b13",
-      "propertyCount": 95,
+      "contractHash": "c2bb841afee9a6aadf86870f9c2bd37199a310c08b7f213915029c4f2f31bfd6",
+      "propertyCount": 96,
       "childCount": 81,
-      "eventCount": 11,
+      "eventCount": 12,
       "baseline": {}
     },
     "column": {
-      "contractHash": "d1625463275eac1a39011cec61b6bf07997f116c26977792579c7fdb6f2a1507",
-      "propertyCount": 92,
+      "contractHash": "f74162daa3087282c789ea9e84d464eb8a3ac5bc8bc71a335dd676f9299dc7bd",
+      "propertyCount": 93,
       "childCount": 81,
-      "eventCount": 8,
+      "eventCount": 9,
       "baseline": {}
     },
     "grid": {

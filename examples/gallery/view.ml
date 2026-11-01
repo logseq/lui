@@ -1905,6 +1905,7 @@ let event_payload = function
   | PointerCancel _ -> "pointer-cancel"
   | ToggleChangedDetail (_, checked, modifiers) ->
     Printf.sprintf "toggle-detail:%b:%d" checked modifiers
+  | AvailableWidthChanged (_, width) -> Printf.sprintf "available-width:%g" width
 
 let event_payloads_section model_source send : t =
   let record event = ignore (send (Model.RecordEvent (event_payload event))) in

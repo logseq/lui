@@ -1851,6 +1851,11 @@
       "lg": "ToggleDetailEnabled",
       "wire": "toggle-detail-enabled",
       "swift": "toggleDetailEnabled"
+    },
+    {
+      "lg": "AvailableWidthEnabled",
+      "wire": "available-width-enabled",
+      "swift": "availableWidthEnabled"
     }
   ],
   "events": [
@@ -2042,6 +2047,10 @@
     {
       "lg": "ToggleChangedDetail",
       "fields": [":int", ":bool", ":int"]
+    },
+    {
+      "lg": "AvailableWidthChanged",
+      "fields": [":int", ":float"]
     }
   ],
   "kindProperties": {
@@ -2263,7 +2272,11 @@
       "cross"
     ],
     "row": [
-      "orientation"
+      "orientation",
+      "available-width-enabled"
+    ],
+    "column": [
+      "available-width-enabled"
     ],
     "list-item": [
       "display"

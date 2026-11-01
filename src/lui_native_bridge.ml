@@ -179,6 +179,8 @@ let register ~(register_named : 'a. string -> 'a -> unit) prefix bridge =
   register "load" (node (fun id -> Load id));
   register "visible_range" (fun id first last ->
       dispatch_event bridge (VisibleRange (id, first, last)));
+  register "available_width_changed" (fun id width ->
+      dispatch_event bridge (AvailableWidthChanged (id, width)));
   register "scroll_completed" (fun id token outcome ->
       dispatch_event bridge (ScrollCompleted (id, token, outcome)));
   register "scroll_edges" (fun id at_start at_end ->

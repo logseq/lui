@@ -367,6 +367,11 @@ val apply_universal :
   on_pointer_enter:(Lui_protocol.event -> unit) option ->
   on_pointer_leave:(Lui_protocol.event -> unit) option ->
   transition:string option -> unit
+(* [on_available_width] opts into post-layout content-box width feedback.
+    Only row/column support it. Widths use host logical units, rounded with
+    [floor (width +. 0.5)]; no callback means no measurement subscription.
+    Hosts must defer/coalesce delivery and cancel stale subscriptions.
+    Before the first real layout, callers should retain a safe narrow layout. *)
 val row :
   ?as_:element_tag ->
   ?key:string ->
@@ -407,6 +412,7 @@ val row :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_available_width:(float -> unit) ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
@@ -462,6 +468,7 @@ val column :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_available_width:(float -> unit) ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->

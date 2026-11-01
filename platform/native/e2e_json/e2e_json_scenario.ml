@@ -197,6 +197,8 @@ let event_json (e : event) : J.t =
     `Assoc
       [ k "scroll-completed"; n id; ("token", `Int token)
       ; ("outcome", `String outcome) ]
+  | AvailableWidthChanged (id, width) ->
+    `Assoc [ k "available-width-changed"; n id; ("width", `Float width) ]
   | VisibleRange (id, first, last) ->
     `Assoc
       [ k "visible-range"; n id; ("first", `Int first)

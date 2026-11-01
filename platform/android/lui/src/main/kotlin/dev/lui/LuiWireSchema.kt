@@ -295,6 +295,7 @@ enum class LuiProperty(val wireName: String) {
     pointerCapture("pointer-capture"),
     indeterminate("indeterminate"),
     toggleDetailEnabled("toggle-detail-enabled"),
+    availableWidthEnabled("available-width-enabled"),
     ;
 
     companion object {
@@ -337,7 +338,8 @@ object LuiSchemaMatrix {
         LuiNodeKind.checkbox to setOf(LuiProperty.gap, LuiProperty.labelOpacity, LuiProperty.indicatorBorderColor, LuiProperty.checkedIndicatorBorderColor),
         LuiNodeKind.radio to setOf(LuiProperty.gap, LuiProperty.labelOpacity),
         LuiNodeKind.grid to setOf(LuiProperty.main, LuiProperty.cross),
-        LuiNodeKind.row to setOf(LuiProperty.orientation),
+        LuiNodeKind.row to setOf(LuiProperty.orientation, LuiProperty.availableWidthEnabled),
+        LuiNodeKind.column to setOf(LuiProperty.availableWidthEnabled),
         LuiNodeKind.listItem to setOf(LuiProperty.display),
         LuiNodeKind.dialog to setOf(LuiProperty.description, LuiProperty.background, LuiProperty.foreground, LuiProperty.borderColor, LuiProperty.borderWidth, LuiProperty.cornerRadius, LuiProperty.gap),
         LuiNodeKind.box to setOf(LuiProperty.inert),

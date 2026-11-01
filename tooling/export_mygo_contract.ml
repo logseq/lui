@@ -102,7 +102,8 @@ let events = [
   "navigate-previous", NavigatePrevious 0; "navigate-next", NavigateNext 0;
   "navigation-key", NavigationKey (0, "ArrowDown", false);
   "scroll-edges", ScrollEdges (0, false, false);
-  "virtual-window", VirtualWindow (0, 1, 0, 0, [])]
+  "virtual-window", VirtualWindow (0, 1, 0, 0, []);
+  "available-width-changed", AvailableWidthChanged (0, 0.)]
 
 let wire_json = function
   | StringValue value -> obj ["type", str "string"; "value", str value]

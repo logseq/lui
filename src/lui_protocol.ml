@@ -310,6 +310,7 @@ type property =
   | PointerCapture
   | Indeterminate
   | ToggleDetailEnabled
+  | AvailableWidthEnabled
 
 module Property_map =
   Map.Make
@@ -372,6 +373,7 @@ type event =
   | PointerMove of int * pointer_detail
   | PointerCancel of int * pointer_detail
   | ToggleChangedDetail of int * bool * int
+  | AvailableWidthChanged of int * float
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =
@@ -414,6 +416,7 @@ let event_node event =
   | Dismiss node
   | DoublePress node
   | Appear node
+  | AvailableWidthChanged (node, _)
   | ScrollCompleted (node, _, _)
   | VisibleRange (node, _, _)
   | Picked (node, _)
@@ -575,6 +578,8 @@ let event_supported kind event =
     | _ -> false)
   | DoublePress _ -> kind = ListItem
   | Appear _ -> kind <> Root
+  | AvailableWidthChanged (_, width) ->
+      (kind = Row || kind = Column) && Float.is_finite width && width >= 0.
   | ScrollCompleted _ | VisibleRange _ | ScrollEdges _ ->
       kind = ListContainer || kind = VirtualList
   | VirtualWindow _ -> kind = VirtualList
@@ -619,6 +624,8 @@ let event_supported_for_lookup kind lookup event =
     match lookup property with Some (BoolValue true) -> true | _ -> false
   in
   match event with
+  | AvailableWidthChanged _ ->
+      enabled AvailableWidthEnabled && event_supported kind event
   | (Press _ | PressModifiers _) when kind = Link -> enabled PressEnabled
   | NavigatePrevious _ | NavigateNext _ | NavigationKey _ ->
     enabled NavigateEnabled
@@ -1139,6 +1146,7 @@ let common_property_supported kind property =
   | SubmitEnabled -> event_supported kind (Submit 0)
   | DoublePressEnabled -> kind = ListItem
   | AppearEnabled -> kind <> Root
+  | AvailableWidthEnabled -> kind = Row || kind = Column
   | PointerEnabled -> kind <> Root
   | ImageIdValue | SourceX | SourceY | SourceWidth | SourceHeight ->
     kind = Avatar || kind = Image
@@ -1675,6 +1683,7 @@ let property_value_supported property value =
   | SubmitEnabled, BoolValue _ -> true
   | DoublePressEnabled, BoolValue _ -> true
   | AppearEnabled, BoolValue _ -> true
+  | AvailableWidthEnabled, BoolValue _ -> true
   | PointerEnabled, BoolValue _ -> true
   | ImageIdValue, IntValue value -> value >= 0
   | SurfaceIdValue, IntValue value -> value >= 0

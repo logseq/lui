@@ -5607,9 +5607,50 @@ let tests = tests @ [
 
 end
 
+let test_available_width_contract () =
+  let open Lui_protocol in
+  let enabled = Property_map.singleton AvailableWidthEnabled (BoolValue true) in
+  List.iter (fun (kind, subscribed, width, expected) ->
+    let properties = if subscribed then enabled else Property_map.empty in
+    Alcotest.(check bool) "width event admission" expected
+      (event_supported_for_properties kind properties (AvailableWidthChanged (1, width))))
+    [ Row, true, 0., true; Column, true, 320., true;
+      Row, false, 320., false; Column, true, -1., false;
+      Row, true, Float.nan, false; Column, true, Float.infinity, false;
+      Box, true, 320., false; Root, true, 320., false ];
+  let widths = ref [] in
+  let app = Lui_app.create (recording_backend ()) () (fun () () -> ())
+    (fun _ _ _ -> Lui_elements.column ~on_available_width:(fun w -> widths := w :: !widths) []) in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let node = List.find_map (function CreateNode (id, Column) -> Some id | _ -> None) (all_ops ()) |> Option.get in
+  ignore (Lui_app.dispatch_event app (AvailableWidthChanged (node, 320.)));
+  flush_app app;
+  Alcotest.(check (list (float 0.))) "typed callback" [320.] !widths;
+  ignore (Lui_app.dispatch_event app (AvailableWidthChanged (node, 400.)));
+  Lui_runtime.set_prop (Lui_app.runtime app) node AvailableWidthEnabled (BoolValue false);
+  flush_app app;
+  Alcotest.(check (list (float 0.))) "disable cancels pending callback" [320.] !widths;
+  Lui_runtime.set_prop (Lui_app.runtime app) node AvailableWidthEnabled (BoolValue true);
+  ignore (Lui_app.dispatch_event app (AvailableWidthChanged (node, 400.)));
+  Lui_runtime.remove_prop (Lui_app.runtime app) node AvailableWidthEnabled;
+  Lui_runtime.set_prop (Lui_app.runtime app) node AvailableWidthEnabled (BoolValue true);
+  flush_app app;
+  Alcotest.(check (list (float 0.))) "re-enable does not revive an old callback" [320.] !widths;
+  ignore (Lui_app.dispatch_event app (AvailableWidthChanged (node, 400.)));
+  Lui_runtime.drop_subtree (Lui_app.runtime app) node;
+  flush_app app;
+  Alcotest.(check (list (float 0.))) "drop cancels pending callback" [320.] !widths;
+  Alcotest.(check bool) "dropped rejects width event" false
+    (Lui_app.dispatch_event app (AvailableWidthChanged (node, 400.)));
+  ignore (Lui_app.dispose app);
+  Alcotest.(check bool) "disposed rejects width event" false
+    (Lui_app.dispatch_event app (AvailableWidthChanged (node, 400.)))
+
 let () =
   Alcotest.run "lui"
     [
+      ("available width", [Alcotest.test_case "opt-in admission and lifetime" `Quick test_available_width_contract]);
       ("virtual row startup", List.map (fun (name, test) ->
         Alcotest.test_case name `Quick test) Virtual_rows_acceptance.startup_compat_tests);
       ("native virtual rows", List.map (fun (name, test) ->

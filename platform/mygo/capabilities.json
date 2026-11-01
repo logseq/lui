@@ -30,7 +30,7 @@
         "extensions_test.go:TestLayoutGeometry",
         "layout_test.go:TestLayoutSharedTypographyAndSpacingRestoreInheritedValues"
       ],
-      "contractHash": "8607888dd0b74341aaf93b9a2007d4400d8654129b0a6bca393b82eb27b53b13"
+      "contractHash": "c2bb841afee9a6aadf86870f9c2bd37199a310c08b7f213915029c4f2f31bfd6"
     },
     "column": {
       "route": "render.go; style.go",
@@ -38,7 +38,7 @@
         "extensions_test.go:TestLayoutGeometry",
         "layout_test.go:TestLayoutSharedTypographyAndSpacingRestoreInheritedValues"
       ],
-      "contractHash": "d1625463275eac1a39011cec61b6bf07997f116c26977792579c7fdb6f2a1507"
+      "contractHash": "f74162daa3087282c789ea9e84d464eb8a3ac5bc8bc71a335dd676f9299dc7bd"
     },
     "grid": {
       "route": "render.go; style.go",
@@ -2334,6 +2334,15 @@
       "evidence": [
         "controls_test.go:TestControlsCheckboxMixedDetail"
       ]
+    },
+    "available-width-enabled": {
+      "route": "Protocol baseline only; measurement adapter pending",
+      "evidence": [],
+      "exception": {
+        "scope": "Local available-width observation",
+        "reason": "No MyGo measurement or event dispatch implementation in the core baseline; wait for the host adapter.",
+        "source": "docs/api-migrations.md"
+      }
     }
   },
   "events": {
@@ -2511,6 +2520,15 @@
       "evidence": [
         "controls_test.go:TestControlsCheckboxMixedDetail"
       ]
+    },
+    "available-width-changed": {
+      "route": "Protocol baseline only; measurement adapter pending",
+      "evidence": [],
+      "exception": {
+        "scope": "Local available-width observation",
+        "reason": "No MyGo measurement or event dispatch implementation in the core baseline; wait for the host adapter.",
+        "source": "docs/api-migrations.md"
+      }
     }
   }
 }

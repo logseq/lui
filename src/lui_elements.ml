@@ -615,6 +615,12 @@ let appear_handler context node handler =
   enable context node AppearEnabled;
   ignore (on_event context node is_appear handler)
 
+let available_width_handler context node handler =
+  enable context node AvailableWidthEnabled;
+  ignore (on_event context node
+    (function AvailableWidthChanged _ -> true | _ -> false)
+    (function AvailableWidthChanged (_, width) -> handler width | _ -> ()))
+
 let register_resize context node handler =
   enable context node ChangeEnabled;
   require_event_supported context node (ValueChanged (node, 0.)) "resize";
@@ -748,7 +754,7 @@ let apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding 
   Option.iter (register_pointer_leave context node) on_pointer_leave;
   Option.iter (Lui_ui.string_property context node Transition) transition
 
-let row ?as_ ?key ?gap ?main ?cross ?grow ?columns ?orientation ?orientation_signal ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?pointer_capture ?on_pointer_down ?on_pointer_move ?on_pointer_up ?on_pointer_cancel ?on_navigation_key ?opacity ?opacity_signal ?display ?flex_wrap ?transition (children : t list) : t =
+let row ?as_ ?key ?gap ?main ?cross ?grow ?columns ?orientation ?orientation_signal ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_available_width ?on_appear ?on_pointer_enter ?on_pointer_leave ?pointer_capture ?on_pointer_down ?on_pointer_move ?on_pointer_up ?on_pointer_cancel ?on_navigation_key ?opacity ?opacity_signal ?display ?flex_wrap ?transition (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.row context in
   Option.iter (fun tag -> Lui_ui.string_property context node As (element_tag_value tag)) as_;
@@ -765,11 +771,12 @@ let row ?as_ ?key ?gap ?main ?cross ?grow ?columns ?orientation ?orientation_sig
   Option.iter (register_pointer_up context node) on_pointer_up;
   Option.iter (register_pointer_cancel context node) on_pointer_cancel;
   Option.iter (fun handler -> ignore (register_navigate context node handler)) on_navigation_key;
+  Option.iter (available_width_handler context node) on_available_width;
   attach context parent node;
   mount_children context node children;
   node
 
-let column ?as_ ?key ?gap ?main ?cross ?grow ?grow_signal ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?min_width_signal ?max_width ?max_width_signal ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?on_press_detail ?on_pointer_down ?on_pointer_up ?opacity ?opacity_signal ?display ?display_signal ?flex_wrap ?transition (children : t list) : t =
+let column ?as_ ?key ?gap ?main ?cross ?grow ?grow_signal ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?min_width_signal ?max_width ?max_width_signal ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_available_width ?on_appear ?on_pointer_enter ?on_pointer_leave ?on_press_detail ?on_pointer_down ?on_pointer_up ?opacity ?opacity_signal ?display ?display_signal ?flex_wrap ?transition (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.column context in
   Option.iter (fun tag -> Lui_ui.string_property context node As (element_tag_value tag)) as_;
@@ -783,6 +790,7 @@ let column ?as_ ?key ?gap ?main ?cross ?grow ?grow_signal ?columns ?padding ?pad
   Option.iter (fun signal_ -> Lui_ui.string_property_signal context node DisplayValue (owned_map context display_value signal_)) display_signal;
   Option.iter (Lui_ui.string_property context node FlexWrap) (Option.map flex_wrap_value flex_wrap);
   apply_pointer_events context node ?on_press_detail ?on_pointer_down ?on_pointer_up ();
+  Option.iter (available_width_handler context node) on_available_width;
   attach context parent node;
   mount_children context node children;
   node

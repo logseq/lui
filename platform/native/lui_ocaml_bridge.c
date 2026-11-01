@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <math.h>
 #include <string.h>
 
 #if !defined(_WIN32)
@@ -307,6 +308,16 @@ LUI_EXPORT int32_t lui_ocaml_visible_range(int64_t node, int64_t first,
   caml_leave_blocking_section();
   accepted = lui_dispatch_visible_range("lui_ocaml_visible_range", node, first,
                                         last, deliver);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
+LUI_EXPORT int32_t lui_ocaml_available_width_changed(int64_t node, double width) {
+  int32_t accepted;
+  if (node <= 0 || node > Max_long || !isfinite(width) || width < 0) return 0;
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_node_double("lui_ocaml_available_width_changed", node,
+                                      width, deliver);
   caml_enter_blocking_section();
   return accepted;
 }

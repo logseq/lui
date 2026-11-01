@@ -13,6 +13,55 @@ inventory check is temporarily deferred until that inventory recognizes
 that renderer. The MyGo, Web, Apple, Android and shared ABI regressions remain
 covered separately.
 
+## Unreleased: opt-in local available-width feedback
+
+`row` and `column` accept `?on_available_width:(float -> unit)`. Registering
+the callback emits `AvailableWidthEnabled=true` (`available-width-enabled`);
+omitting it leaves observation disabled. Other kinds do not support this prop
+or `AvailableWidthChanged (node_id, width)`. The shared runtime rejects events
+without the flag or with negative/nonfinite widths, and ignores dropped nodes.
+Queued callbacks are checked again against their subscription before execution
+and cancelled on drop or disable, even if re-enabled before the queue drains.
+This adds no viewport, height measurement, candidate probing, or
+application-specific breakpoint policy.
+
+The measured horizontal width is the stable container's final layout
+content-box: exclude margin, border, padding, and any layout-reserved scrollbar.
+An overlay scrollbar reserves nothing. Use CSS pixels on Web, points on Apple,
+dp on Android, and MyGo logical units, not physical pixels, screen/window width,
+transformed bounds, overflowing content width, or the width of a squeezed child.
+Validate the raw width as finite and nonnegative, then quantize with
+`floor(width + 0.5)` to the nearest one logical unit; the payload stays a float.
+Only an actual layout can produce the initial event. A real zero-width box is
+valid, but an unmeasured, detached, or non-laid-out box must not synthesize zero.
+
+Hosts collect final-layout observations, coalesce to the latest width per node,
+and dispatch asynchronously through their existing event/actor queue, never
+from measurement, rendering, or patch application. Compare against the last
+**sent** quantized width, not intermediate observations. Mark it sent before
+calling out; changes caused by that call are scheduled in a later queue turn.
+The initial valid width is always sent, and subsequent equal widths are not.
+Disable, prop removal, node teardown, snapshot replacement, and app disposal
+cancel pending observations and invalidate their subscription/instance epoch.
+Re-enabling starts a new subscription and reports the next valid layout even
+when its width equals the previous subscription's. Re-check current node
+identity, kind, flag, layout eligibility, and epoch before dispatch. Hidden
+subtrees without layout do not report. Interactive `enabled` is not this opt-in.
+
+For example, keep one stable outer container and update local presentation
+state from `column ~on_available_width:(fun width -> set_wide (width >= 760.))
+children`. Start narrow until measured. Do not measure a child whose width
+changes when its own sidebar opens, and do not rewrite persisted user settings
+on resize. Existing views do not subscribe merely by having IDs.
+
+Native hosts append `lui_ocaml_available_width_changed(int64_t node, double width)`
+to the generic ABI; the corresponding OCaml named callback is
+`lui_<prefix>_available_width_changed`. Existing entry points and standard
+event/property constructor ordinals are unchanged. The protocol/API baseline
+alone does not implement measurement in any backend: downstream applications
+must wait for their host's adapter before relying on feedback. No legacy view
+needs migration.
+
 ## Unreleased: Android accepts wrapping preserved text
 
 Android's retained text-flow validator now accepts `white-space: "pre-wrap"`,

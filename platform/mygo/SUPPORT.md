@@ -21,8 +21,8 @@ Contract counts and hashes come from the canonical OCaml export in [the manifest
 | Kind | Built-in route | Properties | Allowed child kinds | Events | Behavior evidence |
 | --- | --- | --- | --- | --- | --- |
 | `root` | render.go; theme.go | 3 | 86 | 0 | [TestRenderAndEvents](backend_test.go), [TestThemeScopeAndMode](extensions_test.go) |
-| `row` | render.go; style.go | 95 | 81 | 11 | [TestLayoutGeometry](extensions_test.go), [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go) |
-| `column` | render.go; style.go | 92 | 81 | 8 | [TestLayoutGeometry](extensions_test.go), [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go) |
+| `row` | render.go; style.go | 96 | 81 | 12 | [TestLayoutGeometry](extensions_test.go), [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go) |
+| `column` | render.go; style.go | 93 | 81 | 9 | [TestLayoutGeometry](extensions_test.go), [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go) |
 | `grid` | render.go; style.go | 82 | 81 | 3 | [TestLayoutGeometry](extensions_test.go), [TestLayoutGridSpansAndPropertyRemovalChangeGeometry](layout_test.go) |
 | `stack` | layout.go; style.go | 79 | 81 | 3 | [TestLayoutStackUsesLargestIntrinsicChildAndRetainsOrder](layout_test.go), [TestLayoutStyleZOrderChangesPaintAndPressWithoutChangingLayout](style_test.go) |
 | `edge-inset` | layout.go; style.go | 81 | 81 | 3 | [TestLayoutEdgeInsetIncludesEveryPinnedChildAndVisibility](layout_test.go), [TestLayoutEdgeInsetSurfaceBelongsOnlyToPinnedRegion](layout_test.go) |
@@ -308,10 +308,11 @@ Contract counts and hashes come from the canonical OCaml export in [the manifest
 | `pointer-capture` | events.go | — | [TestEventsCapturedPointerCancel](events_test.go) |
 | `indeterminate` | controls.go | — | [TestControlsCheckboxMixedDetail](controls_test.go) |
 | `toggle-detail-enabled` | controls.go; events.go | — | [TestControlsCheckboxMixedDetail](controls_test.go) |
+| `available-width-enabled` | Protocol baseline only; measurement adapter pending | Local available-width observation: No MyGo measurement or event dispatch implementation in the core baseline; wait for the host adapter. ([contract](../../docs/api-migrations.md)) |  |
 
 ## Event bridge
 
-All event families round-trip through the real OCaml Components application. Payload checks include Unicode, embedded NUL, large integer tokens, pointer metadata, empty visible ranges and scroll outcomes.
+Qualified event families round-trip through the real OCaml Components application; routes explicitly marked pending are protocol-only and not implemented. Payload checks include Unicode, embedded NUL, large integer tokens, pointer metadata, empty visible ranges and scroll outcomes.
 
 | Event | Route | Behavior evidence |
 | --- | --- | --- |
@@ -344,5 +345,6 @@ All event families round-trip through the real OCaml Components application. Pay
 | `pointer-move` | events.go; runtime_events.go; runtime.go | [TestEventsCapturedPointerCancel](events_test.go) |
 | `pointer-cancel` | events.go; runtime_events.go; runtime.go | [TestEventsCapturedPointerCancel](events_test.go) |
 | `toggle-changed-detail` | controls.go; runtime_events.go; runtime.go | [TestControlsCheckboxMixedDetail](controls_test.go) |
+| `available-width-changed` | Protocol baseline only; measurement adapter pending |  |
 
 Regenerate with `python3 tooling/generate_mygo_schema.py`; CI checks exact sets, evidence references, exception sources and this document.
