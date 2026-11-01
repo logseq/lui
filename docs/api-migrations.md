@@ -18,7 +18,7 @@ covered separately.
 Apple now honors the existing `row` property `flex-wrap: "wrap"`. Previously it
 was decoded but rows always used a single HStack. No constructor, wire schema or
 extension fingerprint changes. Rebuild the Apple host to enable the behavior;
-existing `row ~flex_wrap:\`wrap ~gap:16 children` needs no source migration.
+existing ``row ~flex_wrap:`wrap ~gap:16 children`` needs no source migration.
 Absent/`nowrap` retains the existing HStack path. This change is row-only: it
 does not implement wrapping for `box` or `column`.
 
