@@ -797,7 +797,7 @@ internal object LuiKindRules {
             "user-select" ->
                 value.stringValue in setOf("none", "text") && isTextAppearanceKind(kind)
             "white-space" ->
-                value.stringValue in setOf("normal", "nowrap") && isTextFlowKind(kind)
+                value.stringValue in setOf("normal", "nowrap", "pre-wrap") && isTextFlowKind(kind)
             "text-overflow" ->
                 value.stringValue in setOf("clip", "ellipsis") && isTextFlowKind(kind)
             "overflow" ->

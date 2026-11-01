@@ -13,6 +13,19 @@ inventory check is temporarily deferred until that inventory recognizes
 that renderer. The MyGo, Web, Apple, Android and shared ABI regressions remain
 covered separately.
 
+## Unreleased: Android accepts wrapping preserved text
+
+Android's retained text-flow validator now accepts `white-space: "pre-wrap"`,
+matching the existing shared OCaml and Apple vocabulary for this mode. Previously
+a valid batch such as `{"op":"set-prop","id":2,"property":"white-space","value":"pre-wrap"}`
+was rejected atomically, including authoritative snapshots, even though Compose
+`Text` already preserves the supplied text and wraps by default.
+
+No application wire rewrite is required: keep sending `pre-wrap` for canonical
+text whose whitespace must be retained. This only corrects validation; it does
+not add CSS whitespace processing or change rendering of `normal`/`nowrap`.
+Android still rejects `pre-line`, `pre`, unknown strings and non-string values.
+
 ## Unreleased: Linux native clipboard ownership result
 
 `Lui_shell_linux.clipboard_write : string -> bool` keeps its signature but
