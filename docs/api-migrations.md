@@ -28,6 +28,32 @@ no fixed height or placeholder rewrite is necessary. Applications must still
 provide usable width or responsive toolbar alternatives: this correction does
 not make a field usable when other row children consume all available width.
 
+## Unreleased: Apple normalizes all floating wire properties
+
+Apple now normalizes integral JSON numbers to its floating retained value for
+every shared `FloatValue` property, not just the previously covered subset.
+JSONDecoder can decode `2.0` or `2e0` as an integer; previously, for example,
+`{"op":"set-prop","id":4,"property":"letter-spacing","value":2.0}`
+rejected the entire batch even though the OCaml producer emitted a valid float.
+
+Existing normalization remains for `item-extent`, `grow`, `anchor-offset`,
+`anchor-alignment-offset`, `source-x`, `source-y`, `source-width`, `source-height`,
+`value`, `min`, `max`, and `step`.
+Newly covered properties are `first-pane-width`, `resize-origin`,
+`resize-handle-offset`, `opacity`, `label-opacity`, `letter-spacing`, `inset`,
+`inset-top`, `inset-right`, `inset-bottom`, `inset-left`, `hover-opacity`,
+`pressed-opacity`, `disabled-opacity`, `width-viewport`, `height-viewport`,
+`min-width-viewport`, `max-width-viewport`, `min-height-viewport`,
+`max-height-viewport`, `popup-x`, `popup-y`, `available-height`, and
+`collision-padding`.
+
+No application migration or JSON rewriting is needed: continue emitting numeric
+values, including integral floats such as `letter-spacing: 2.0` or `opacity: 1.0`.
+Fractional numbers keep their existing behavior. Boolean and string values are
+not converted; integer-only properties are unchanged. Property/kind admission,
+finite-value checks, numeric bounds, and atomic batch rollback are unchanged.
+The OCaml protocol and generic native ABI are unchanged.
+
 ## Unreleased: Android accepts wrapping preserved text
 
 Android's retained text-flow validator now accepts `white-space: "pre-wrap"`,
