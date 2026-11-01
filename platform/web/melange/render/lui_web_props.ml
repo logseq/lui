@@ -16,6 +16,12 @@ let set_style dom_node name value =
   let scope = W.HtmlElement.style (W.Element.unsafeAsHtmlElement dom_node) in
   Util.set_style scope name value
 
+let set_theme_mode dom_node mode =
+  if W.Element.getAttribute "data-kb-theme" dom_node <> mode then
+    match mode with
+    | Some value -> W.Element.setAttribute "data-kb-theme" value dom_node
+    | None -> W.Element.removeAttribute "data-kb-theme" dom_node
+
 (* Typed edges have the same specificity on every host: side, axis, all.
    CSS shorthand assignment order must not change that contract. *)
 let refresh_spacing renderer node dom_node ~margin =
@@ -758,6 +764,7 @@ let rec apply_property renderer queue_split node kind dom_node property
     value =
   let dom_node = property_surface kind dom_node property in
   match (property, value) with
+  | ThemeMode, StringValue mode -> set_theme_mode dom_node (Some mode)
   | TextValue, StringValue text ->
       apply_text_value renderer node kind dom_node text
   | ReadOnly, BoolValue read_only ->
@@ -1198,6 +1205,7 @@ let remove_property renderer queue_split node kind dom_node property =
   match Store.node renderer.web_store node with
   | Some _current ->
       (match property with
+       | ThemeMode -> set_theme_mode dom_node None
        | SelectionPlacementValue ->
            W.Element.removeAttribute "data-selection-placement" dom_node;
            set_style (Util.menu_item_check_node dom_node) "order" ""
@@ -1495,9 +1503,31 @@ let refresh_portal_property renderer node dom_node property css_name =
             then Util.set_style style css_name value
           end)
 
+let refresh_portal_theme_mode renderer node dom_node =
+  let rec nearest_mode id =
+    match Store.node renderer.web_store id with
+    | None -> invalid_arg "unknown logical portal ancestor"
+    | Some current -> (
+        match Store.property renderer.web_store id ThemeMode with
+        | Some (StringValue mode) -> Some mode
+        | _ -> Option.bind current.retained_parent nearest_mode)
+  in
+  match Store.node renderer.web_store node with
+  | None | Some { retained_parent = None; _ } -> ()
+  | Some current -> (
+      match Store.standard_kind current with
+      | None -> invalid_arg "portal index requires a standard node"
+      | Some kind ->
+          let target =
+            if modal_surface kind then Util.modal_layer_node dom_node
+            else dom_node
+          in
+          set_theme_mode target (nearest_mode node))
+
 let refresh_portal_inheritance renderer =
   Hashtbl.iter
     (fun node dom_node ->
       refresh_portal_property renderer node dom_node ForegroundValue "color";
-      refresh_portal_property renderer node dom_node FontFamily "font-family")
+      refresh_portal_property renderer node dom_node FontFamily "font-family";
+      refresh_portal_theme_mode renderer node dom_node)
     renderer.web_portal_nodes

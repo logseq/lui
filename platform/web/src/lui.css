@@ -3,6 +3,13 @@
 @custom-variant dark (&:where(.dark, .dark *, [data-kb-theme=dark], [data-kb-theme=dark] *));
 
 :root {
+  --lui-radius: 0.5rem;
+}
+
+:root,
+[data-kb-theme="light"],
+[data-kb-theme="system"] {
+  color-scheme: light;
   --lui-background: oklch(1 0 0);
   --lui-foreground: oklch(0.145 0 0);
   --lui-card: oklch(1 0 0);
@@ -25,11 +32,13 @@
   --lui-input: oklch(0.922 0 0);
   --lui-border: oklch(0.922 0 0);
   --lui-ring: oklch(0.708 0 0);
-  --lui-radius: 0.5rem;
+  --lui-modal-shade: rgb(0 0 0 / 20%);
+  --lui-popup-shadow: 0.25rem 0.25rem 0 rgb(0 0 0 / 12%);
 }
 
-.dark,
+.dark:not([data-kb-theme]),
 [data-kb-theme="dark"] {
+  color-scheme: dark;
   --lui-background: oklch(0.145 0 0);
   --lui-foreground: oklch(0.985 0 0);
   --lui-card: oklch(0.145 0 0);
@@ -52,6 +61,65 @@
   --lui-input: oklch(0.269 0 0);
   --lui-border: oklch(0.269 0 0);
   --lui-ring: oklch(0.439 0 0);
+  --lui-modal-shade: rgb(0 0 0 / 50%);
+  --lui-popup-shadow: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-kb-theme="system"] {
+    color-scheme: dark;
+    --lui-background: oklch(0.145 0 0);
+    --lui-foreground: oklch(0.985 0 0);
+    --lui-card: oklch(0.145 0 0);
+    --lui-card-foreground: oklch(0.985 0 0);
+    --lui-primary: oklch(0.985 0 0);
+    --lui-primary-foreground: oklch(0.205 0 0);
+    --lui-secondary: oklch(0.269 0 0);
+    --lui-secondary-foreground: oklch(0.985 0 0);
+    --lui-accent: oklch(0.269 0 0);
+    --lui-accent-foreground: oklch(0.985 0 0);
+    --lui-muted-foreground: oklch(0.708 0 0);
+    --lui-destructive: oklch(0.396 0.141 25.723);
+    --lui-destructive-foreground: oklch(0.637 0.237 25.331);
+    --lui-error: oklch(0.26 0.0886 26.05);
+    --lui-error-foreground: oklch(0.64 0.2082 25.38);
+    --lui-success: oklch(0.26 0.0487 172.54);
+    --lui-success-foreground: oklch(0.69 0.1481 162.37);
+    --lui-warning: oklch(0.29 0.0638 53.82);
+    --lui-warning-foreground: oklch(0.71 0.186 48.13);
+    --lui-input: oklch(0.269 0 0);
+    --lui-border: oklch(0.269 0 0);
+    --lui-ring: oklch(0.439 0 0);
+    --lui-modal-shade: rgb(0 0 0 / 50%);
+    --lui-popup-shadow: none;
+  }
+}
+
+/* Tailwind aliases must resolve at the scope, not at the document root. */
+.dark,
+[data-kb-theme] {
+  --color-background: var(--lui-background);
+  --color-foreground: var(--lui-foreground);
+  --color-card: var(--lui-card);
+  --color-card-foreground: var(--lui-card-foreground);
+  --color-primary: var(--lui-primary);
+  --color-primary-foreground: var(--lui-primary-foreground);
+  --color-secondary: var(--lui-secondary);
+  --color-secondary-foreground: var(--lui-secondary-foreground);
+  --color-accent: var(--lui-accent);
+  --color-accent-foreground: var(--lui-accent-foreground);
+  --color-muted-foreground: var(--lui-muted-foreground);
+  --color-destructive: var(--lui-destructive);
+  --color-destructive-foreground: var(--lui-destructive-foreground);
+  --color-error: var(--lui-error);
+  --color-error-foreground: var(--lui-error-foreground);
+  --color-success: var(--lui-success);
+  --color-success-foreground: var(--lui-success-foreground);
+  --color-warning: var(--lui-warning);
+  --color-warning-foreground: var(--lui-warning-foreground);
+  --color-input: var(--lui-input);
+  --color-border: var(--lui-border);
+  --color-ring: var(--lui-ring);
 }
 
 body {
@@ -792,14 +860,9 @@ body {
   .lui-modal-backdrop {
     @apply absolute inset-0;
     z-index: 0;
-    background-color: rgb(0 0 0 / 20%);
+    background-color: var(--lui-modal-shade);
     opacity: var(--drawer-swipe-progress, 1);
     transition: opacity 150ms ease-out;
-  }
-
-  .dark .lui-modal-backdrop,
-  [data-kb-theme="dark"] .lui-modal-backdrop {
-    background-color: rgb(0 0 0 / 50%);
   }
 
   .lui-modal-description {
@@ -1093,7 +1156,7 @@ body {
     background: var(--lui-background);
     color: var(--lui-foreground);
     padding: 0.25rem;
-    box-shadow: 0.25rem 0.25rem 0 rgb(0 0 0 / 12%);
+    box-shadow: var(--lui-popup-shadow);
     pointer-events: auto;
     z-index: 1;
     transform-origin: var(--transform-origin, center);
@@ -1135,7 +1198,7 @@ body {
     border-radius: 0;
     background: var(--lui-background);
     color: var(--lui-foreground);
-    box-shadow: 0.25rem 0.25rem 0 rgb(0 0 0 / 12%);
+    box-shadow: var(--lui-popup-shadow);
     pointer-events: auto;
     z-index: 1;
     transform-origin: var(--transform-origin, center);
@@ -1185,7 +1248,7 @@ body {
     background: var(--lui-background);
     color: var(--lui-foreground);
     padding: 0.25rem;
-    box-shadow: 0.25rem 0.25rem 0 rgb(0 0 0 / 12%);
+    box-shadow: var(--lui-popup-shadow);
     pointer-events: auto;
     --lui-layer-base: 100;
     z-index: calc(var(--lui-layer-base) + var(--lui-layer-index, 0));
@@ -1211,11 +1274,6 @@ body {
   .lui-context-menu[data-ending-style] {
     opacity: 0;
     transform: scale(0.98);
-  }
-
-  .dark :is(.lui-dropdown-menu, .lui-popover, .lui-context-menu),
-  [data-kb-theme="dark"] :is(.lui-dropdown-menu, .lui-popover, .lui-context-menu) {
-    box-shadow: none;
   }
 
   .lui-menu-item {

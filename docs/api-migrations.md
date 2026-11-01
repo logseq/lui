@@ -13,6 +13,34 @@ inventory check is temporarily deferred until that inventory recognizes
 that renderer. The MyGo, Web, Apple, Android and shared ABI regressions remain
 covered separately.
 
+## Unreleased: Web scoped theme mode
+
+The Melange DOM backend now consumes the existing `theme-mode` property instead
+of rejecting it during DOM application. `light` and `dark` select the default
+Web palette and native control color scheme for the node's subtree; `system`
+follows `prefers-color-scheme`, even inside a forced light or dark ancestor.
+Nested modes override outer modes, including an explicit `light` mode under a
+host `.dark` class. Removing the property restores the nearest enclosing mode
+or the existing host appearance when no enclosing mode is present. Unthemed
+hosts keep their existing default appearance.
+
+For example, keep sending
+`{"op":"set-prop","id":1,"property":"theme-mode","value":"dark"}`
+to switch a mounted root to dark mode, or use `"light"` / `"system"` for the
+other modes. Send
+`{"op":"remove-prop","id":1,"property":"theme-mode"}`
+to stop overriding its inherited mode. No wire, schema or application API
+migration is required. Rebuild and deploy the Web stylesheet together with the
+Melange backend; updating only the DOM code does not provide the scoped palette.
+
+Open sheets and other portals follow their retained logical ancestry across
+mode updates, property removal and reparenting, rather than the portal's physical
+DOM parent. An explicitly themed portal keeps its own mode, and a detached
+portal retains its last mode while exiting. Theme mode only selects palette
+tokens: it does not rewrite explicit foregrounds, author colors, disabled states
+or responsive styles. Custom token tables (`theme`) are a separate contract and
+remain outside this Web receiver change.
+
 ## Unreleased: Android text line clamps
 
 Android now accepts the existing positive-integer `line-clamp` property on
