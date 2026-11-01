@@ -798,6 +798,10 @@ internal object LuiKindRules {
                 value.stringValue in setOf("none", "text") && isTextAppearanceKind(kind)
             "white-space" ->
                 value.stringValue in setOf("normal", "nowrap", "pre-wrap") && isTextFlowKind(kind)
+            "line-clamp" ->
+                value.intValue?.let { it > 0 } == true &&
+                    (kind == LuiNodeKind.text || kind == LuiNodeKind.heading ||
+                        kind == LuiNodeKind.paragraph || kind == LuiNodeKind.label)
             "text-overflow" ->
                 value.stringValue in setOf("clip", "ellipsis") && isTextFlowKind(kind)
             "overflow" ->

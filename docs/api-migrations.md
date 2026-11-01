@@ -13,6 +13,22 @@ inventory check is temporarily deferred until that inventory recognizes
 that renderer. The MyGo, Web, Apple, Android and shared ABI regressions remain
 covered separately.
 
+## Unreleased: Android text line clamps
+
+Android now accepts the existing positive-integer `line-clamp` property on
+`text`, `heading`, `paragraph` and `label`, matching the shared OCaml contract,
+and passes it to those Compose text nodes as `maxLines`. Previously the Android
+validator rejected this property, including in authoritative snapshots, and the
+renderer had no line-limit consumer. This is not a numeric normalization change.
+
+For example, keep sending
+`{"op":"set-prop","id":2,"property":"line-clamp","value":1}`
+to limit a text node to one line. Sending
+`{"op":"remove-prop","id":2,"property":"line-clamp"}`
+restores its original unlimited-line default. Nodes without the property keep
+their previous behavior; button labels, text controls and other text consumers
+are unchanged. No shared schema, wire, event or application rewrite is required.
+
 ## Unreleased: Android single-line text placeholders
 
 Android placeholders now follow their control's line policy: `text-field`,

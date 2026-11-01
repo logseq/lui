@@ -459,6 +459,7 @@ private fun LuiNodeContent(
             color = luiThemeColor(node.propString("foreground"), foreground = true)
                 ?: Color.Unspecified,
             textAlign = textAlignment(node.propString("text-alignment")),
+            maxLines = node.propInt("line-clamp", Int.MAX_VALUE),
             style = LuiTypography.textStyle(
                 node.propString("size"),
                 node.propString("style-class"),
@@ -471,6 +472,7 @@ private fun LuiNodeContent(
             color = luiThemeColor(node.propString("foreground"), foreground = true)
                 ?: Color.Unspecified,
             style = LuiTypography.headingStyle(node.propInt("heading-level", 1)),
+            maxLines = node.propInt("line-clamp", Int.MAX_VALUE),
         )
 
         LuiNodeKind.button -> LuiButton(backend, node, id, modifier, children)
