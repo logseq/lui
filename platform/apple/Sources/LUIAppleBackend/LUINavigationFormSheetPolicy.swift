@@ -98,9 +98,9 @@ struct LUINavigationFormActionView: View {
     private var actionButton: some View {
         Button(action: performPress) {
             actionLabel
+                .frame(minWidth: model.surfaceMinWidth.map(CGFloat.init), minHeight: model.surfaceMinHeight.map(CGFloat.init))
+                .contentShape(Rectangle())
         }
-        .frame(minWidth: model.surfaceMinWidth.map(CGFloat.init), minHeight: model.surfaceMinHeight.map(CGFloat.init))
-        .contentShape(Rectangle())
         .disabled(!model.isEnabled)
         #if os(macOS)
         .foregroundStyle(model.isEnabled ? .primary : .secondary)
