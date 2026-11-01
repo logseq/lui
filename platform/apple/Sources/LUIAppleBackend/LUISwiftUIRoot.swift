@@ -6204,6 +6204,7 @@ enum LUIRowLayoutPolicy {
 private struct LUIRowView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @Environment(\.layoutDirection) private var layoutDirection
 
     var body: some View {
         // Cross-axis stretch makes children accept any offered height, which
@@ -6220,7 +6221,33 @@ private struct LUIRowView: View {
         }
     }
 
+    @ViewBuilder
     private var rowContent: some View {
+        if model.property(.flexWrap)?.stringValue == "wrap" {
+            LUIWrappingRowLayout(
+                gap: gap, main: model.property(.main)?.stringValue ?? "start",
+                cross: cross, rightToLeft: layoutDirection == .rightToLeft
+            ) {
+                ForEach(model.children, id: \.self) { childID in
+                    let child = model.childData.layout[childID]
+                    LUIAnyNodeView(nodeID: childID, backend: backend)
+                        .equatable()
+                        .frame(
+                            maxWidth: (child?.grow ?? 0) > 0 ? .infinity : nil,
+                            maxHeight: cross == "stretch" ? .infinity : nil
+                        )
+                        .layoutValue(
+                            key: LUIWrappingRowTraits.self,
+                            value: .init(grow: CGFloat(child?.grow ?? 0), spacer: child?.kind == .spacer)
+                        )
+                }
+            }
+        } else {
+            nonWrappingRowContent
+        }
+    }
+
+    private var nonWrappingRowContent: some View {
         HStack(alignment: alignment, spacing: spacing) {
             if (model.property(.main)?.stringValue == "center" ||
                 model.property(.main)?.stringValue == "end") && !hasGrowingChild {
