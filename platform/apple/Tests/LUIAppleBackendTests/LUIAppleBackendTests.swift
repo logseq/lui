@@ -2879,6 +2879,7 @@ struct LUISwiftUIBackendTests {
             try backend.apply(json: """
             {"generation":1,"ops":[
               {"op":"create-node","id":1,"kind":"dialog"},
+              {"op":"set-prop","id":1,"property":"text","value":"Confirm"},
               {"op":"create-node","id":2,"kind":"button"},
               {"op":"create-node","id":3,"kind":"button"},
               {"op":"set-prop","id":2,"property":"text","value":"\(label)"},
