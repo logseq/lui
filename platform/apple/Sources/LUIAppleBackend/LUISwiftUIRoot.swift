@@ -7694,6 +7694,8 @@ private struct LUITextControlView: View {
                     model.property(.placeholder)?.stringValue ?? "",
                     text: binding
                 )
+                .autocorrectionDisabled()
+                .submitLabel(.search)
                 if !draftState.text.isEmpty && model.property(.readOnly)?.boolValue != true {
                     Button {
                         draftState.edit("")
@@ -7723,6 +7725,9 @@ private struct LUITextControlView: View {
                 model.property(.placeholder)?.stringValue ?? "",
                 text: binding
             )
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .submitLabel(.search)
             if !draftState.text.isEmpty && model.property(.readOnly)?.boolValue != true {
                 Button {
                     draftState.edit("")
@@ -7796,6 +7801,8 @@ private struct LUISearchableNodeModifier: ViewModifier {
                     isPresented: $presented,
                     prompt: Text(verbatim: model.property(.placeholder)?.stringValue ?? "")
                 )
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
                 .modifier(LUIReadOnlyTextControl(readOnly: model.property(.readOnly)?.boolValue == true,
                                                nativeSearch: true))
                 .onSubmit(of: .search) {
