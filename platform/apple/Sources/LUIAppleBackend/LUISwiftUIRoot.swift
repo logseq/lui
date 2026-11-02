@@ -5451,10 +5451,10 @@ private struct LUIButtonView: View {
     @available(iOS 26.0, macOS 26.0, *)
     @ViewBuilder
     private var glassButton: some View {
-        if inHoistedToolbar {
-            button
-        } else if inFusedCapsule {
+        if inFusedCapsule {
             button.buttonStyle(.borderless)
+        } else if inHoistedToolbar {
+            button.buttonStyle(.automatic)
         } else if LUINavigationFormRowPolicy.usesAutomaticButtonStyle(
             isNativeFormRow: usesNativeWholeFormRow,
             variant: model.buttonVariant
