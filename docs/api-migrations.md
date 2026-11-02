@@ -1145,3 +1145,16 @@ replacement retire the binding immediately. Re-render to bind the new incarnatio
 The existing DOM backend remains available. MyGo's browser renderer requires a
 separate browser runtime bridge; the desktop dynamic-library bridge cannot be
 used directly in a browser.
+
+## Apple search input traits
+
+Apple `search-field` controls disable automatic capitalization and spelling
+correction so a literal query is not silently changed by the keyboard. Inline
+controls use the Search return key; navigation/list-hosted native search retains
+its existing search submission. Ordinary `text-field` and `textarea` behavior is
+unchanged. No schema, event, query normalization or matching semantics change.
+
+Applications should use `Lui_elements.search_field ~on_submit:run_search []` for
+search rather than `text_field`. Keep `on_input` bound to the shared query and
+`on_submit` to the search action. Do not set `submit_on_enter` on either
+single-line kind; that property belongs only to `textarea`.
