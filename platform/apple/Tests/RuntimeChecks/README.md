@@ -1,5 +1,23 @@
 # Native presentation regression checks
 
+## Wrapping row geometry (macOS, no simulator)
+
+```sh
+mkdir -p _build
+xcrun swiftc -parse-as-library -target "$(uname -m)-apple-macosx14.0" \
+  platform/apple/Sources/LUIAppleBackend/LUIWrappingRowLayout.swift \
+  platform/apple/Tests/RuntimeChecks/RowWrapGeometry.swift \
+  -o _build/row-wrap-geometry
+_build/row-wrap-geometry
+```
+
+This standalone `@main` table checks the production wrapping planner's finite,
+zero and unbounded proposals, oversize remeasurement, line gap/height, per-line
+alignment/stretch, RTL, proportional grow and spacer allocation. It invokes
+neither XCTest nor `swift test`; real-host presentation remains a separate check.
+
+## Native presentation (iOS)
+
 Run these on a booted iOS simulator on an Apple silicon Mac with Xcode:
 
 ```sh

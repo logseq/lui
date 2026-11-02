@@ -13,6 +13,31 @@ inventory check is temporarily deferred until that inventory recognizes
 that renderer. The MyGo, Web, Apple, Android and shared ABI regressions remain
 covered separately.
 
+## Unreleased: Apple wrapping rows
+
+Apple now honors the existing `row` property `flex-wrap: "wrap"`. Previously it
+was decoded but rows always used a single HStack. No constructor, wire schema or
+extension fingerprint changes. Rebuild the Apple host to enable the behavior;
+existing ``row ~flex_wrap:`wrap ~gap:16 children`` needs no source migration.
+Absent/`nowrap` retains the existing HStack path. This change is row-only: it
+does not implement wrapping for `box` or `column`.
+
+A finite width proposal (including zero) bounds each line; nil/infinite width
+uses one natural-width line. Children are measured before breaking lines, and
+an oversized child is remeasured with the bounded proposal. An explicitly fixed
+child that cannot shrink occupies its own line and may overflow that line; it
+does not widen the reported bounded row. Empty rows have zero size. `gap` is the
+minimum space between items and between lines; no gap precedes the first item or
+follows the last line.
+
+`main` start/center/end/space_between applies independently to each line, with
+logical horizontal placement mirrored in RTL. `cross` start/center/end/stretch
+uses that line's maximum measured height. Positive `grow` shares remaining line
+width proportionally after intrinsic bases and gaps; a `spacer` has a zero basis
+and grow at least one. Growing children are remeasured at their allocated width
+before line heights are finalized. Unbounded proposals do not allocate infinite
+grow space. There is no geometry-to-state feedback or application-specific grid.
+
 ## Unreleased: Android pointer event capability checks
 
 Android now checks the existing shared node-kind contract before emitting
