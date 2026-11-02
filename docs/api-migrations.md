@@ -13,6 +13,30 @@ inventory check is temporarily deferred until that inventory recognizes
 that renderer. The MyGo, Web, Apple, Android and shared ABI regressions remain
 covered separately.
 
+## Unreleased: Apple native button styles on OS 26
+
+On iOS/iPadOS 26 and macOS 26, independent `button` and `toggle_button`
+controls use the system's Liquid Glass button styles: absent/default, outline
+and secondary variants use `.glass` (secondary keeps its secondary tint), while
+primary and destructive use `.glassProminent` (destructive keeps its red tint).
+Prominent labels retain readable white foreground ink when the application
+sets an inherited foreground style. Standalone icon-only default buttons also
+use `.glass`, rather than the former borderless style. The native styles supply
+the glass material and interaction; applications should remove custom action
+backgrounds, corner radii and padding that would cover the system treatment.
+
+Ghost/content buttons remain borderless. Tab triggers keep their tab styling;
+the default whole-row Form action remains automatic, and default icon-only
+controls in native List rows remain borderless. Hoisted toolbar children retain
+the system toolbar style, while cells inside an existing glass capsule remain unadorned
+instead of drawing a second glass surface. Button actions, disabled/focus state,
+selection tint and declared hit-target dimensions are unchanged. Earlier Apple
+OS releases retain their existing bordered/borderless/automatic mapping. This
+is a host presentation change only: there is no OCaml constructor, wire schema
+or fingerprint migration. For example, existing
+``button ~variant:`primary ~text:"Save" ~on_press:save []`` needs no source
+change; remove any separately supplied background to see native prominent glass.
+
 ## Unreleased: Apple wrapping rows
 
 Apple now honors the existing `row` property `flex-wrap: "wrap"`. Previously it

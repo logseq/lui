@@ -5325,6 +5325,7 @@ private struct LUIButtonView: View {
     @Environment(\.luiIsNativeFormRow) private var isNativeFormRow
     @Environment(\.luiIsNativeListRow) private var isNativeListRow
     @Environment(\.luiInHoistedToolbar) private var inHoistedToolbar
+    @Environment(\.luiInFusedCapsule) private var inFusedCapsule
     init(model: LUINodeModel, backend: LUIAppleBackend, isToggle: Bool = false) {
         self.model = model
         self.backend = backend
@@ -5440,8 +5441,50 @@ private struct LUIButtonView: View {
                     radius: model.isSelected ? 1 : 0,
                     y: model.isSelected ? 1 : 0
                 )
+        } else if #available(iOS 26.0, macOS 26.0, *) {
+            glassButton
+        } else {
+            legacyButton
+        }
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    @ViewBuilder
+    private var glassButton: some View {
+        if inFusedCapsule {
+            button.buttonStyle(.borderless)
+        } else if inHoistedToolbar {
+            button.buttonStyle(.automatic)
+        } else if LUINavigationFormRowPolicy.usesAutomaticButtonStyle(
+            isNativeFormRow: usesNativeWholeFormRow,
+            variant: model.buttonVariant
+        ) {
+            button.foregroundStyle(.tint)
+        } else if isNativeListRow && isIconOnly
+            && (model.buttonVariant.isEmpty || model.buttonVariant == "default")
+        {
+            button.buttonStyle(.borderless)
         } else {
             switch model.buttonVariant {
+            case "primary":
+                button.buttonStyle(.glassProminent).foregroundStyle(.white)
+            case "secondary":
+                button.buttonStyle(.glass).tint(.secondary)
+            case "outline":
+                button.buttonStyle(.glass)
+            case "destructive":
+                button.buttonStyle(.glassProminent).tint(.red).foregroundStyle(.white)
+            case "ghost":
+                button.buttonStyle(.borderless)
+            default:
+                button.buttonStyle(.glass)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var legacyButton: some View {
+        switch model.buttonVariant {
         case "primary":
             // Prominent buttons pin the label to white: an ambient
             // `foregroundStyle` from the host app would otherwise bleed
@@ -5471,7 +5514,6 @@ private struct LUIButtonView: View {
                 button.buttonStyle(.borderless)
             } else {
                 button.buttonStyle(.bordered)
-            }
             }
         }
     }
