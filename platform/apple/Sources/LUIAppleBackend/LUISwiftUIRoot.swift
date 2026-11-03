@@ -5623,16 +5623,27 @@ private struct LUIButtonView: View {
         }
     }
 
-    private var icon: some View {
-        LUIIconImage(
-            source: backend.iconSource(for: model.buttonIconName),
-            bundle: backend.appIconBundle
-        )
-            .scaledToFit()
-            .frame(
-                width: iconExtent,
-                height: iconExtent
+    @ViewBuilder private var icon: some View {
+        if (model.property(.styleClass)?.stringValue ?? "").split(separator: " ").contains("system-toolbar-icon"),
+           case let .systemName(name) = backend.iconSource(for: model.buttonIconName) {
+            // Preserve SF Symbols' optical sizing rather than stretching every
+            // glyph to fill a square (which makes plus/search look oversized).
+            Image(systemName: name)
+                .font(.system(size: 20, weight: .regular))
+                .imageScale(.medium)
+                .symbolRenderingMode(.monochrome)
+                .frame(width: 24, height: 24)
+        } else {
+            LUIIconImage(
+                source: backend.iconSource(for: model.buttonIconName),
+                bundle: backend.appIconBundle
             )
+                .scaledToFit()
+                .frame(
+                    width: iconExtent,
+                    height: iconExtent
+                )
+        }
     }
 
     private var iconExtent: CGFloat {

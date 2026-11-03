@@ -25,6 +25,8 @@ python3 platform/apple/Tests/RuntimeChecks/run-ios-check.py file-preview --simul
 python3 platform/apple/Tests/RuntimeChecks/run-ios-check.py drawer-first-reveal --simulator booted
 python3 platform/apple/Tests/RuntimeChecks/run-ios-check.py drawer-rapid-swipes --simulator booted
 python3 platform/apple/Tests/RuntimeChecks/run-ios-check.py bounded-virtual-rows --simulator booted
+
+python3 platform/apple/Tests/RuntimeChecks/run-ios-check.py drawer-vertical-bars --simulator booted
 ```
 
 The runner builds the Release static backend, launches an isolated app host, and
@@ -64,3 +66,10 @@ survive while row models stay bounded; active interaction pins remain separate
 from the requested viewport. The application driver answers real maintenance
 events through the public backend; the separate OCaml integration test exercises
 the shared native runtime boundary.
+
+`drawer-vertical-bars` repeatedly opens and closes a compact drawer while a native
+journal stays scrolled. On iPhone Duo's outer display, the page frame, toolbar
+axis and toolbar position must remain fixed throughout each transition. Ordinary
+iPhones retain the existing push transition. Both paths must preserve the scroll
+position and the main view's SwiftUI state identity. Set
+`SIMCTL_CHILD_LUI_DRAWER_REQUIRE_VERTICAL_BAR=1` to require the Duo path.
