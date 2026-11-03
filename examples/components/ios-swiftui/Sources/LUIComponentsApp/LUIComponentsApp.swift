@@ -40,6 +40,15 @@ private func luiOCamlRadioChanged(_ node: Int64) -> Int32
 private func luiOCamlSliderChanged(_ node: Int64, _ value: Double) -> Int32
 @_silgen_name("lui_ocaml_appear")
 private func luiOCamlAppear(_ node: Int64) -> Int32
+@_silgen_name("lui_ocaml_virtual_rows_version")
+private func luiOCamlVirtualRowsVersion() -> Int32
+@_silgen_name("lui_ocaml_virtual_window")
+private func luiOCamlVirtualWindow(_ node: Int64, _ generation: Int64, _ first: Int64, _ last: Int64,
+                                   _ pins: UnsafePointer<Int64>?, _ count: Int32) -> Int32
+@_silgen_name("lui_ocaml_visible_range")
+private func luiOCamlVisibleRange(_ node: Int64, _ first: Int64, _ last: Int64) -> Int32
+@_silgen_name("lui_ocaml_scroll_completed")
+private func luiOCamlScrollCompleted(_ node: Int64, _ token: Int64, _ outcome: UnsafePointer<CChar>?) -> Int32
 
 nonisolated(unsafe) private var activeHost: GalleryHost?
 
@@ -99,7 +108,16 @@ private final class GalleryHost {
             case let .appear(node): _ = luiOCamlAppear(Int64(node))
             case .extension:
                 assertionFailure("Gallery extensions do not declare LG events")
-            case .scrollCompleted, .visibleRange, .pressDetail, .pointerDown,
+            case let .virtualWindow(node, generation, first, last, pins):
+                let ids = pins.map(Int64.init)
+                ids.withUnsafeBufferPointer {
+                    _ = luiOCamlVirtualWindow(Int64(node), Int64(generation), Int64(first), Int64(last), $0.baseAddress, Int32($0.count))
+                }
+            case let .scrollCompleted(node, token, outcome):
+                outcome.withCString { _ = luiOCamlScrollCompleted(Int64(node), Int64(token), $0) }
+            case let .visibleRange(node, first, last):
+                _ = luiOCamlVisibleRange(Int64(node), Int64(first), Int64(last))
+            case .pressDetail, .pointerDown,
                  .pointerUp, .pointerEnter, .pointerLeave, .contextMenuPress:
                 break
             }
@@ -109,7 +127,7 @@ private final class GalleryHost {
     func start() {
         guard !started else { return }
         activeHost = self
-        guard luiOCamlStart(receivePatch, 2, 2) == 1 else {
+        guard luiOCamlStart(receivePatch, 2, luiOCamlVirtualRowsVersion() == 1 ? 258 : 2) == 1 else {
             fatalError("LG Gallery initialization failed")
         }
         started = true

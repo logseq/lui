@@ -1,0 +1,133 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LUI bounded virtual rows regressions</title>
+<link rel="stylesheet" href="/platform/web/dist/lui.css">
+<script type="importmap">{"imports":{
+  "@tanstack/virtual-core": "/platform/web/dist/tanstack-virtual.js",
+          "lui.web.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui.web.dom/",
+  "lui/":"/_build/default/examples/components/web/lui-components-web/node_modules/lui/",
+  "melange-webapi/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange-webapi/",
+  "melange.dom/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.dom/",
+  "melange.js/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange.js/",
+  "melange/":"/_build/default/examples/components/web/lui-components-web/node_modules/melange/",
+  "ocaml-signal/":"/_build/default/examples/components/web/lui-components-web/node_modules/ocaml-signal/"
+}}</script>
+<style>body { margin:24px; font:16px system-ui } #host { width:520px } [data-vrow] { box-sizing:border-box }</style>
+<button id="outside">Outside focus</button><main id="host"></main>
+<script type="module">
+import * as Web from "lui.web.dom/shell/lui_web.js"
+import * as Apply from "lui.web.dom/shell/lui_web_apply.js"
+import * as Extension from "lui/lui_extension.js"
+import {Protocol, properties, kinds} from "./protocol-fixture.mjs"
+try {
+const host=document.querySelector('#host')
+const list=items=>items.reduceRight((tl,hd)=>({hd,tl}),0)
+const array=items=>{const result=[];for(let rest=items;rest;rest=rest.tl)result.push(rest.hd);return result}
+const extended=new URLSearchParams(location.search).has('extension')
+const registry=Extension.registry()
+const schema=Extension.component('virtual-extension-row',list([Protocol.profile(1,1)]),true,0,0,0)
+Extension.register_component(registry,schema)
+const adapter={
+ web_extension_create(id,document,_emit){const element=document.createElement('div');element.dataset.vrow=nodes.get(id).rowKey;element.dataset.extensionRow='true';element.style.cssText='display:flex;height:32px';return element},
+ web_extension_set_property(_element,_name,_value){},web_extension_remove_property(_element,_name){},web_extension_cleanup(_element){}
+}
+const renderer=extended?Web.create_with_extensions(host,Protocol.String_map.empty,registry,Protocol.String_map.singleton('virtual-extension-row',adapter)):Web.create(undefined,host)
+const backend=Web.backend(renderer)
+
+const nodes=new Map(), rows=new Map(), handlers=new Map(), values=new Map(), events=[], requests=[]
+let ops=[], batch=0, nextId=0, token=0, revision=1, total=100000, shifted=0, scrollIndex=-1, variable=false, paused=false, queued=null
+function set(id,name,value){
+ if(!properties.has(name))throw Error('Missing property '+name)
+ const tag=typeof value==='string'?0:typeof value==='boolean'?1:name==='item-extent'?3:2
+ ops.push(Protocol.set_prop_op(id,properties.get(name),{TAG:tag,_0:value}))
+}
+function node(kind,parent,props={}){
+ const id=++nextId;ops.push(Protocol.create_node_op(id,kinds.get(kind)));nodes.set(id,{parent,children:[]})
+ for(const [name,value]of Object.entries(props))set(id,name,value)
+ if(parent){const siblings=nodes.get(parent).children;ops.push(Protocol.insert_child_op(parent,id,siblings.length));siblings.push(id)}
+ return id
+}
+function drop(id){
+ const current=nodes.get(id);if(!current)return
+ for(const child of [...current.children])drop(child)
+ if(current.parent){const siblings=nodes.get(current.parent).children;ops.push(Protocol.remove_child_op(current.parent,id));siblings.splice(siblings.indexOf(id),1)}
+ ops.push(Protocol.drop_node_op(id));nodes.delete(id);handlers.delete(id)
+}
+function flush(){if(ops.length){const pending=ops;ops=[];backend.apply_batch({generation:++batch,ops:list(pending)})}}
+const root=node('virtual-list',null,{width:520,height:224,overscan:2,'item-extent':32,'pointer-enabled':true,'track-visible-range':true})
+const logicalKey=index=>index-shifted
+function closePopup(row){if(row.popup){drop(row.popup);row.popup=null;flush()}}
+function makeRow(index){
+ const key=logicalKey(index), height=variable?(key%3===0?64:32):32
+ let id
+ if(extended){id=++nextId;ops.push(Protocol.create_extension_op(id,'virtual-extension-row',Extension.fingerprint(schema)));nodes.set(id,{parent:root,children:[],rowKey:key});const siblings=nodes.get(root).children;ops.push(Protocol.insert_child_op(root,id,siblings.length));siblings.push(id)}
+ else id=node('row',root,{height,'data-attrs':`data-vrow\x1f${key}`})
+ const text=node('text',id,{text:'Row '+key,'data-attrs':`data-hold\x1f${key}`})
+ const input=node('text-field',id,{text:values.get(key)||'Value '+key,'accessibility-identifier':'editor-'+key,'change-enabled':true})
+ const button=node('button',id,{text:'Menu '+key,'press-enabled':true,'accessibility-identifier':'menu-'+key})
+ const row={id,key,input,button,popup:null};rows.set(key,row)
+ handlers.set(input,value=>{values.set(key,value);set(input,'text',value);flush()})
+ handlers.set(button,()=>{
+  if(row.popup)return
+  row.popup=node('popover',id,{anchor:'below','anchor-target':'menu-'+key,role:'dialog',width:180})
+  node('input',row.popup,{placeholder:'Popup editor','accessibility-identifier':'popup-editor',autofocus:true})
+  handlers.set(row.popup,()=>closePopup(row));flush()
+ })
+ return row
+}
+function metadata(){
+ const children=nodes.get(root).children
+ const indices=children.map(id=>[...rows.values()].find(row=>row.id===id).key+shifted)
+ set(root,'virtual-total-count',total);set(root,'virtual-generation',revision);set(root,'virtual-indices',JSON.stringify(indices));set(root,'virtual-scroll-index',scrollIndex)
+}
+function reconcile(first,last,pins=[]){
+ const keep=new Set(pins)
+ for(let index=first;index<last;index++){const key=logicalKey(index);if(rows.has(key))keep.add(rows.get(key).id)}
+ for(const [key,row]of [...rows])if(!keep.has(row.id)&&(key+shifted<first||key+shifted>=last)){drop(row.id);rows.delete(key)}
+ for(let index=first;index<last;index++)if(!rows.has(logicalKey(index)))makeRow(index)
+ const ordered=[...rows.values()].sort((a,b)=>a.key-b.key)
+ const siblings=nodes.get(root).children
+ ordered.forEach((row,index)=>{const previous=siblings.indexOf(row.id);if(previous!==index){ops.push(Protocol.move_child_op(root,row.id,index));siblings.splice(previous,1);siblings.splice(index,0,row.id)}})
+ metadata();flush()
+}
+function applyRequest(event){
+ if(event._1!==revision)return
+ requests.push({generation:event._1,first:event._2,last:event._3,pins:array(event._4)})
+ if(paused){queued=event;return}
+ reconcile(event._2,event._3,array(event._4))
+}
+Web.set_event_handler(renderer,event=>{
+ events.push(event)
+ if(event.TAG===25){queueMicrotask(()=>{try{applyRequest(event)}catch(error){window.fixtureError=JSON.stringify(error);throw error}})}
+ else if(event.TAG===0||event.TAG===7){handlers.get(event._0)?.();flush()}
+ else if(event.TAG===2){handlers.get(event._0)?.(event._1)}
+ return true
+})
+for(let index=0;index<9;index++)makeRow(index)
+metadata();flush();Web.mount(renderer,root,host)
+window.probe={renderer,root,events,requests,rows,nodes,values,
+ invalid(changes){
+  set(rows.get(2).input,'text','Invalid batch changed this text')
+  for(const [name,value]of changes){if(value===null)ops.push(Protocol.remove_prop_op(root,properties.get(name)));else set(root,name,value)}
+  try{flush();return false}catch(error){return String(error)}
+ },
+ rebind(){
+  for(const name of ['virtual-total-count','virtual-generation','virtual-indices','virtual-scroll-index'])ops.push(Protocol.remove_prop_op(root,properties.get(name)))
+  flush();metadata();flush()
+ },
+ appendMetadataFirst(){
+  const indices=nodes.get(root).children.map(id=>[...rows.values()].find(row=>row.id===id).key+shifted)
+  set(root,'virtual-indices',JSON.stringify([...indices,100]));makeRow(100);flush()
+ },
+ jump(index){scrollIndex=index<total?index:-1;set(root,'scroll-target','row-'+logicalKey(index));set(root,'virtual-scroll-index',scrollIndex);set(root,'scroll-anchor','top');set(root,'scroll-token',++token);flush();return token},
+ pause(){paused=true},resume(){paused=false;if(queued){const event=queued;queued=null;applyRequest(event)}},
+ prepend(count){shifted+=count;total+=count;if(scrollIndex>=0)scrollIndex+=count;revision++;metadata();flush()},
+ shrink(count){for(const [key,row]of [...rows])if(key+shifted>=count){drop(row.id);rows.delete(key)}total=count;if(scrollIndex>=count)scrollIndex=-1;revision++;metadata();flush()},
+ variable(){variable=true;revision++;for(const row of rows.values())set(row.id,'height',row.key%3===0?64:32);metadata();flush()},
+ resize(height){set(root,'height',height);flush()},
+ recover(){Apply.recover_dom(renderer)},
+ state(){return{total,revision,retainedRows:rows.size,nodes:nodes.size,last:requests.at(-1),requests:requests.length}}
+}
+} catch(error){window.fixtureError=JSON.stringify(error);throw error}
+</script>

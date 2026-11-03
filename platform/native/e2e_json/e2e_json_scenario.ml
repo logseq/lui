@@ -201,6 +201,11 @@ let event_json (e : event) : J.t =
     `Assoc
       [ k "visible-range"; n id; ("first", `Int first)
       ; ("last", `Int last) ]
+  | VirtualWindow (id, generation, first, last, pins) ->
+    `Assoc
+      [ k "virtual-window"; n id; ("generation", `Int generation)
+      ; ("first", `Int first); ("last", `Int last)
+      ; ("pins", `List (List.map (fun node -> `Int node) pins)) ]
   | Picked (id, p) ->
     `Assoc [ k "picked"; n id; ("payload", `String p) ]
   | PressModifiers (id, m) ->
@@ -217,6 +222,15 @@ let event_json (e : event) : J.t =
     (match detail_json d with
      | `Assoc a -> `Assoc (("kind", `String "pointer-up") :: n id :: a)
      | j -> j)
+  | PointerMove (id, d) | PointerCancel (id, d) as event ->
+    (match detail_json d with
+     | `Assoc fields ->
+       let kind = match event with PointerMove _ -> "pointer-move" | _ -> "pointer-cancel" in
+       `Assoc (("kind", `String kind) :: n id :: fields)
+     | json -> json)
+  | ToggleChangedDetail (id, checked, modifiers) ->
+    `Assoc [ k "toggle-changed-detail"; n id; ("checked", `Bool checked);
+             ("modifiers", `Int modifiers) ]
   | PointerEnter id -> `Assoc [ k "pointer-enter"; n id ]
   | PointerLeave id -> `Assoc [ k "pointer-leave"; n id ]
   | ContextMenuPress (id, d) ->

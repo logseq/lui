@@ -90,7 +90,6 @@ type node_kind =
   | Link
   | FileImage
   | FilePreview
-  | Br
   | Popover
 
 type operating_system =
@@ -107,6 +106,7 @@ type host_kind =
   | WebHost
   | SwiftUIHost
   | KotlinHost
+  | MyGoHost
 
 type platform_profile = {
   profile_os : operating_system;
@@ -300,6 +300,16 @@ type property =
   | CheckedIndicatorBorderColor
   | CollisionPadding
   | LineClamp
+  | ReadOnly
+  | VirtualOverscan
+  | VirtualItemExtent
+  | VirtualTotalCount
+  | VirtualGeneration
+  | VirtualIndices
+  | VirtualScrollIndex
+  | PointerCapture
+  | Indeterminate
+  | ToggleDetailEnabled
 
 module Property_map =
   Map.Make
@@ -358,6 +368,10 @@ type event =
   | NavigateNext of int
   | NavigationKey of int * string * bool
   | ScrollEdges of int * bool * bool
+  | VirtualWindow of int * int * int * int * int list
+  | PointerMove of int * pointer_detail
+  | PointerCancel of int * pointer_detail
+  | ToggleChangedDetail of int * bool * int
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =
@@ -406,6 +420,9 @@ let event_node event =
   | PressDetail (node, _)
   | PointerDown (node, _)
   | PointerUp (node, _)
+  | PointerMove (node, _)
+  | PointerCancel (node, _)
+  | ToggleChangedDetail (node, _, _)
   | PointerEnter node
   | PointerLeave node
   | ContextMenuPress (node, _)
@@ -414,6 +431,7 @@ let event_node event =
   | NavigateNext node
   | NavigationKey (node, _, _)
   | ScrollEdges (node, _, _)
+  | VirtualWindow (node, _, _, _, _)
   | ExtensionEvent (node, _, _, _) -> node
 
 let modal_surface kind = kind = Dialog || kind = Drawer || kind = Sheet
@@ -499,8 +517,10 @@ let event_supported kind event =
     kind = TextField || kind = SecureField || kind = Input
     || kind = SearchField || kind = Textarea
   | NavigationKey (_, key, _) ->
-    kind = Button && List.mem key
+    (kind = Button || kind = Row || kind = Box) &&
+    (List.mem key
       ["ArrowLeft";"ArrowRight";"ArrowUp";"ArrowDown";"Home";"End";"PageUp";"PageDown"]
+    || (kind = Row || kind = Box) && List.mem key ["Enter";" ";"Escape"])
   | TextChanged _ ->
     (match kind with
     | TextField
@@ -520,6 +540,7 @@ let event_supported kind event =
     | Combobox
     | ListItem -> true
     | _ -> false)
+  | ToggleChangedDetail _ -> kind = Checkbox
   | ToggleChanged _ ->
     (match kind with
     | ToggleButton
@@ -556,7 +577,9 @@ let event_supported kind event =
   | Appear _ -> kind <> Root
   | ScrollCompleted _ | VisibleRange _ | ScrollEdges _ ->
       kind = ListContainer || kind = VirtualList
+  | VirtualWindow _ -> kind = VirtualList
   | Picked _ -> kind = FilePicker
+  | PointerMove _ | PointerCancel _ -> kind = Row || kind = Box
   | PressDetail _ | PointerDown _ | PointerUp _ ->
     (match kind with
     | Button
@@ -611,11 +634,13 @@ let event_supported_for_lookup kind lookup event =
       match event with
       | Press _ | PressModifiers _ ->
         enabled PressEnabled
-      | PressDetail _ | PointerDown _ | PointerUp _ | PointerEnter _
+      | PressDetail _ | PointerDown _ | PointerUp _ | PointerMove _
+      | PointerCancel _ | PointerEnter _
       | PointerLeave _ | ContextMenuPress _ ->
         enabled PointerEnabled
       | Change _ -> enabled ChangeEnabled
       | ToggleChanged _ -> enabled ToggleEnabled
+      | ToggleChangedDetail _ -> enabled ToggleDetailEnabled
       | _ -> event_supported kind event
     else event_supported kind event
 
@@ -859,8 +884,8 @@ let element_tag_known tag =
   || element_tag_supported Column tag
   || element_tag_supported Row tag
 
-let can_contain_children kind =
-  if horizontal_container kind || context_menu_leaf_host_kind kind then true
+let regular_child_container kind =
+  if horizontal_container kind then true
   else
     match kind with
     | Root
@@ -894,6 +919,7 @@ let can_contain_children kind =
     | Accordion
     | Table
     | TableRow
+    | TableCell
     | Tree
     | Resizable
     | Split
@@ -920,8 +946,14 @@ let can_contain_children kind =
     | Popover -> true
     | _ -> false
 
+let can_contain_children kind =
+  context_menu_leaf_host_kind kind || regular_child_container kind
+
 let common_property_supported kind property =
   match property with
+  | ReadOnly -> List.mem kind [TextField; SecureField; Input; SearchField; Textarea; Combobox]
+  | VirtualOverscan | VirtualItemExtent | VirtualTotalCount | VirtualGeneration
+  | VirtualIndices | VirtualScrollIndex -> kind = VirtualList
   | MainAlignment | CrossAlignment ->
     kind = Row
     || kind = Column
@@ -1032,6 +1064,8 @@ let common_property_supported kind property =
     || kind = Select
     || kind = Combobox
   | HeadingLevel -> kind = Heading
+  | Indeterminate | ToggleDetailEnabled -> kind = Checkbox
+  | PointerCapture -> kind = Row || kind = Box
   | Checked ->
     kind = Checkbox || kind = SwitchControl || kind = Toggle || kind = Radio
   | ProgressValue ->
@@ -1079,8 +1113,8 @@ let common_property_supported kind property =
     kind = TextField || kind = SecureField || kind = Input || kind = SearchField || kind = Textarea
   | SubmitOnEnter -> kind = Textarea
   | LongPressEnabled -> kind = Button || kind = ToggleButton || kind = ListItem
-  | ChangeEnabled -> kind = Radio || tree_row_kind kind
-  | ToggleEnabled -> kind = Radio || kind = Drawer || tree_row_kind kind
+  | ChangeEnabled -> event_supported kind (Change 0) || event_supported kind (TextChanged (0, "")) || event_supported kind (ValueChanged (0, 0.)) || tree_row_kind kind
+  | ToggleEnabled -> event_supported kind (ToggleChanged (0, false)) || tree_row_kind kind
   | PressEnabled ->
     kind = Button
     || kind = Link
@@ -1099,9 +1133,10 @@ let common_property_supported kind property =
     || kind = FileImage
     || tree_row_kind kind
   | NavigateEnabled ->
-    kind = Button || kind = TextField || kind = SecureField || kind = Input
+    kind = Button || kind = Row || kind = Box
+    || kind = TextField || kind = SecureField || kind = Input
     || kind = SearchField || kind = Textarea
-  | SubmitEnabled -> kind = Combobox || kind = ListItem
+  | SubmitEnabled -> event_supported kind (Submit 0)
   | DoublePressEnabled -> kind = ListItem
   | AppearEnabled -> kind <> Root
   | PointerEnabled -> kind <> Root
@@ -1281,7 +1316,10 @@ let common_property_supported kind property =
   | MinHeightViewport | MaxHeightViewport -> kind <> Tooltip
 
 let property_supported kind property =
-  if property = AccessibilityIdentifier then true
+  if property = ReadOnly then List.mem kind [TextField; SecureField; Input; SearchField; Textarea; Combobox]
+  else if List.mem property [VirtualOverscan; VirtualItemExtent; VirtualTotalCount;
+    VirtualGeneration; VirtualIndices; VirtualScrollIndex] then kind = VirtualList
+  else if property = AccessibilityIdentifier then true
   (* Position hint honored on [overlay] children and on [overlay] itself;
      admitted before the restrictive arms so e.g. an aligned [menu_trigger]
      child still carries it. Inert elsewhere, like [container-relative-frame]. *)
@@ -1547,8 +1585,36 @@ let anchor_rect_of_string value =
        | _ -> None)
   | _ -> None
 
+let virtual_indices_of_string value =
+  let length = String.length value in
+  if value = "[]" then Some []
+  else if length < 3 || value.[0] <> '[' || value.[length - 1] <> ']'
+  then None
+  else
+    let rec parse previous accumulated = function
+      | [] -> Some (List.rev accumulated)
+      | part :: rest ->
+        (match int_of_string_opt part with
+         | Some index when index > previous && string_of_int index = part ->
+           parse index (index :: accumulated) rest
+         | _ -> None)
+    in
+    parse (-1) []
+      (String.split_on_char ',' (String.sub value 1 (length - 2)))
+
+let virtual_indices_to_string indices =
+  "[" ^ String.concat "," (List.map string_of_int indices) ^ "]"
+
 let property_value_supported property value =
   match (property, value) with
+  | ReadOnly, BoolValue _ -> true
+  | VirtualOverscan, IntValue n -> n >= 0
+  | VirtualItemExtent, FloatValue f -> is_finite f && f > 0.
+  | VirtualTotalCount, IntValue n -> n >= 0
+  | VirtualGeneration, IntValue n -> n > 0
+  | VirtualIndices, StringValue indices ->
+    Option.is_some (virtual_indices_of_string indices)
+  | VirtualScrollIndex, IntValue n -> n >= -1
   | TextValue, StringValue _ -> true
   | Enabled, BoolValue _ -> true
   | Gap, IntValue value -> value >= 0
@@ -1586,6 +1652,9 @@ let property_value_supported property value =
   | StyleClass, StringValue _ -> true
   | HeadingLevel, IntValue value -> value >= 1 && value <= 6
   | Checked, BoolValue _ -> true
+  | PointerCapture, BoolValue _ -> true
+  | Indeterminate, BoolValue _ -> true
+  | ToggleDetailEnabled, BoolValue _ -> true
   | ProgressValue, FloatValue value -> is_finite value
   | OrientationValue, StringValue value -> orientation_supported value
   | PlacementValue, StringValue value -> placement_supported value
@@ -2049,7 +2118,7 @@ let child_kind_supported parent_kind child_kind =
   then
     (* Leaf hosts take a context-menu child only; a leaf host that is also
        a container (button) keeps its regular children alongside. *)
-    child_kind = ContextMenu || can_contain_children parent_kind
+    child_kind = ContextMenu || regular_child_container parent_kind
   else if child_kind = ListSection then parent_kind = ListContainer
   else if child_kind = ListSectionHeader || child_kind = ListSectionFooter
   then parent_kind = ListSection

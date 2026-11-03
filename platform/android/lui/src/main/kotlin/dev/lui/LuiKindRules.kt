@@ -81,6 +81,25 @@ internal object LuiKindRules {
     fun isButtonKind(kind: LuiNodeKind): Boolean =
         kind == LuiNodeKind.button || kind == LuiNodeKind.toggleButton
 
+    fun supportsPointerDownUp(kind: LuiNodeKind): Boolean = when (kind) {
+        LuiNodeKind.button,
+        LuiNodeKind.column,
+        LuiNodeKind.row,
+        LuiNodeKind.box,
+        LuiNodeKind.radio,
+        LuiNodeKind.select,
+        LuiNodeKind.combobox,
+        LuiNodeKind.menuItem,
+        LuiNodeKind.listItem,
+        LuiNodeKind.text,
+        LuiNodeKind.tableCell,
+        LuiNodeKind.timelineItem,
+        LuiNodeKind.fileImage,
+        LuiNodeKind.bottomTab,
+        LuiNodeKind.swipeAction -> true
+        else -> false
+    }
+
     fun isHorizontalGroupKind(kind: LuiNodeKind): Boolean =
         kind == LuiNodeKind.tabs ||
             kind == LuiNodeKind.buttonGroup ||
@@ -296,6 +315,11 @@ internal object LuiKindRules {
     /** Ported from the Flutter backend's `_supports`: whether a `set-prop`
      * op is admissible for the node's kind. */
     fun supports(kind: LuiNodeKind, property: String, value: LuiWireValue): Boolean {
+        when (property) {
+            "virtual-total-count", "virtual-generation", "virtual-indices", "virtual-scroll-index" ->
+                return kind == LuiNodeKind.virtualList && schemaValueSupported(property, value)
+            else -> Unit
+        }
         if (property == "accessibility-identifier") return value is LuiWireValue.Str
         if (kind == LuiNodeKind.root) {
             return (property == "theme" && value is LuiWireValue.Str) ||
@@ -333,6 +357,14 @@ internal object LuiKindRules {
             return value.stringValue in themeModes && canContainChildren(kind)
         }
         return when (property) {
+            "read-only" -> value is LuiWireValue.Bool && isTextControl(kind)
+            "pointer-capture" ->
+                value is LuiWireValue.Bool && (kind == LuiNodeKind.row || kind == LuiNodeKind.box)
+            "indeterminate", "toggle-detail-enabled" ->
+                value is LuiWireValue.Bool && kind == LuiNodeKind.checkbox
+            "overscan" -> kind == LuiNodeKind.virtualList && value.intValue?.let { it >= 0 } == true
+            "item-extent" -> kind == LuiNodeKind.virtualList && value.numberValue?.let { it.isFinite() && it > 0 } == true
+
             "main" ->
                 value.stringValue in mainAlignments && isMainCrossKind(kind)
             "cross" ->
@@ -459,12 +491,15 @@ internal object LuiKindRules {
             "submit-on-enter" -> value is LuiWireValue.Bool && kind == LuiNodeKind.textarea
             "change-enabled" ->
                 value is LuiWireValue.Bool &&
-                    (kind == LuiNodeKind.radio || isTreeRowKind(kind))
+                    (kind == LuiNodeKind.radio || isTextControl(kind) ||
+                        kind == LuiNodeKind.slider || kind == LuiNodeKind.numberStepper ||
+                        kind == LuiNodeKind.split || isTreeRowKind(kind))
             "toggle-enabled" ->
                 value is LuiWireValue.Bool &&
-                    (kind == LuiNodeKind.radio ||
-                        kind == LuiNodeKind.drawer ||
-                        isTreeRowKind(kind))
+                    (kind == LuiNodeKind.toggleButton || kind == LuiNodeKind.checkbox ||
+                        kind == LuiNodeKind.switchControl || kind == LuiNodeKind.toggle ||
+                        kind == LuiNodeKind.radio || kind == LuiNodeKind.accordion ||
+                        kind == LuiNodeKind.drawer || isTreeRowKind(kind))
             "press-enabled" ->
                 value is LuiWireValue.Bool &&
                     (kind == LuiNodeKind.button ||
@@ -484,7 +519,12 @@ internal object LuiKindRules {
                         isTreeRowKind(kind))
             "submit-enabled" ->
                 value is LuiWireValue.Bool &&
-                    (kind == LuiNodeKind.combobox || kind == LuiNodeKind.listItem)
+                    (isTextControl(kind) || kind == LuiNodeKind.listItem)
+            "navigate-enabled" ->
+                value is LuiWireValue.Bool &&
+                    (kind == LuiNodeKind.button || kind == LuiNodeKind.textField ||
+                        kind == LuiNodeKind.secureField || kind == LuiNodeKind.input ||
+                        kind == LuiNodeKind.searchField || kind == LuiNodeKind.textarea)
             "double-press-enabled" ->
                 value is LuiWireValue.Bool && kind == LuiNodeKind.listItem
             "appear-enabled" -> value is LuiWireValue.Bool
@@ -735,6 +775,7 @@ internal object LuiKindRules {
                         kind == LuiNodeKind.statusBar)
             "role" ->
                 (value.stringValue == "treeitem" && isTreeRowKind(kind)) ||
+                    (value.stringValue in setOf("navigation", "navigation-heading") && kind == LuiNodeKind.listItem) ||
                     (value.stringValue == "menu" && kind == LuiNodeKind.popover)
             "tree-level" ->
                 value.intValue?.let { it > 0 } == true && isTreeRowKind(kind)
@@ -748,14 +789,14 @@ internal object LuiKindRules {
             "style" ->
                 value.stringValue in setOf("plain", "inset", "inset-grouped") &&
                     kind == LuiNodeKind.list
-            "scroll-target" -> value is LuiWireValue.Str && kind == LuiNodeKind.list
+            "scroll-target" -> value is LuiWireValue.Str && (kind == LuiNodeKind.list || kind == LuiNodeKind.virtualList)
             "scroll-anchor" ->
                 value.stringValue in setOf("top", "center", "bottom") &&
-                    kind == LuiNodeKind.list
+                    (kind == LuiNodeKind.list || kind == LuiNodeKind.virtualList)
             "scroll-token" ->
-                value.intValue?.let { it >= 0 } == true && kind == LuiNodeKind.list
+                (value as? LuiWireValue.IntValue)?.value?.let { it >= 0 && it <= Long.MAX_VALUE / 2 } == true && (kind == LuiNodeKind.list || kind == LuiNodeKind.virtualList)
             "scroll-animated", "track-visible-range" ->
-                value is LuiWireValue.Bool && kind == LuiNodeKind.list
+                value is LuiWireValue.Bool && (kind == LuiNodeKind.list || kind == LuiNodeKind.virtualList)
             "font-size", "line-height", "font-family" ->
                 value is LuiWireValue.Str &&
                     value.stringValue?.isNotBlank() == true &&
@@ -775,7 +816,11 @@ internal object LuiKindRules {
             "user-select" ->
                 value.stringValue in setOf("none", "text") && isTextAppearanceKind(kind)
             "white-space" ->
-                value.stringValue in setOf("normal", "nowrap") && isTextFlowKind(kind)
+                value.stringValue in setOf("normal", "nowrap", "pre-wrap") && isTextFlowKind(kind)
+            "line-clamp" ->
+                value.intValue?.let { it > 0 } == true &&
+                    (kind == LuiNodeKind.text || kind == LuiNodeKind.heading ||
+                        kind == LuiNodeKind.paragraph || kind == LuiNodeKind.label)
             "text-overflow" ->
                 value.stringValue in setOf("clip", "ellipsis") && isTextFlowKind(kind)
             "overflow" ->
@@ -930,6 +975,16 @@ internal object LuiKindRules {
     // `Lui_protocol.property_value_supported`.
     private fun schemaValueSupported(property: String, value: LuiWireValue): Boolean =
         when (property) {
+            "virtual-total-count" -> value.intValue?.let { it >= 0 } == true
+            "virtual-generation" -> (value as? LuiWireValue.IntValue)?.value?.let { it > 0 && it <= Long.MAX_VALUE / 2 } == true
+            "virtual-indices" -> value.stringValue?.let { luiVirtualIndices(it) != null } == true
+            "virtual-scroll-index" -> value.intValue?.let { it >= -1 } == true
+            "scroll-target" -> value is LuiWireValue.Str
+            "scroll-anchor" -> value.stringValue in setOf("top", "center", "bottom")
+            "scroll-token" -> (value as? LuiWireValue.IntValue)?.value?.let { it >= 0 && it <= Long.MAX_VALUE / 2 } == true
+            "scroll-animated", "track-visible-range" -> value is LuiWireValue.Bool
+            "overscan" -> value.intValue?.let { it >= 0 } == true
+            "item-extent" -> value.numberValue?.let { it.isFinite() && it > 0 } == true
             "text", "title", "description", "meta", "indicator", "key",
             "path", "style-class", "accessibility-label", "background",
             "foreground", "border-color", "types", "accept", "shadow",
@@ -950,7 +1005,8 @@ internal object LuiKindRules {
             "data-attrs" -> value.stringValue?.let { dataAttrsValueOk(it) } == true
             "selected", "toggle-enabled", "enabled", "press-enabled",
             "connector", "multiple", "appear-enabled", "directory",
-            "pointer-enabled" -> value is LuiWireValue.Bool
+            "pointer-enabled", "read-only", "pointer-capture", "indeterminate",
+            "toggle-detail-enabled" -> value is LuiWireValue.Bool
             "height", "width", "min-width", "max-width", "min-height",
             "max-height", "active", "gap", "border-width", "corner-radius",
             "padding-horizontal", "padding-vertical",

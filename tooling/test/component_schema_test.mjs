@@ -31,6 +31,7 @@ test('schema summary preserves the pinned public API boundary', () => {
     '4e015e925fc9974e2ab92840d6f8bb5a8f201c2d',
   );
   assert.deepEqual(summary.excluded, [
+    'br',
     'chart',
     'code',
     'markdown',

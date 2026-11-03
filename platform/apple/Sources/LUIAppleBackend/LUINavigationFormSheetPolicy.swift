@@ -98,8 +98,6 @@ struct LUINavigationFormActionView: View {
     private var actionButton: some View {
         Button(action: performPress) {
             actionLabel
-                .frame(minWidth: model.surfaceMinWidth.map(CGFloat.init), minHeight: model.surfaceMinHeight.map(CGFloat.init))
-                .contentShape(Rectangle())
         }
         .disabled(!model.isEnabled)
         #if os(macOS)
@@ -124,13 +122,6 @@ struct LUINavigationFormActionView: View {
             model.derived.styleClass
         ) {
             Image(systemName: "chevron.backward")
-        } else if !model.buttonIconName.isEmpty {
-            HStack(spacing: 8) {
-                LUIIconImage(source: backend.iconSource(for: model.buttonIconName), bundle: backend.appIconBundle)
-                    .scaledToFit()
-                    .frame(width: 20, height: 20)
-                if !model.text.isEmpty { Text(verbatim: model.text) }
-            }
         } else {
             Text(verbatim: model.text)
         }

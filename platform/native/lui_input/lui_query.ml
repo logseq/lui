@@ -37,6 +37,12 @@ let node_enabled store id =
   | Some (StringValue "false") -> false
   | _ -> true
 
+let rec chain_enabled store id =
+  node_enabled store id
+  && (match Lui_store.parent store id with
+      | Some parent -> chain_enabled store parent
+      | None -> true)
+
 let picker_for_menu store menu =
   Option.bind (Lui_store.parent store menu) (fun parent ->
       List.find_opt
@@ -288,6 +294,11 @@ let ev_submit n : event = Submit n
 let dummy_detail =
   { x = 0.; y = 0.; modifiers = 0; button = 0; target_class = "" }
 
+let container_navigation_enabled store id =
+  (kind_name store id = "row" || kind_name store id = "box")
+  && chain_enabled store id
+  && event_supported store id (NavigationKey (id, "ArrowDown", false))
+
 (* Pointer and keyboard focus use the same control eligibility. *)
 let focus_candidate store id =
   event_supported store id (ev_text id)
@@ -296,6 +307,7 @@ let focus_candidate store id =
      | "radio" | "slider" | "number-stepper" | "select" | "combobox"
      | "menu-item" | "menu-trigger" | "link" | "bottom-tab" -> true
      | "list-item" -> bool_prop store id "press-enabled" || bool_prop store id "toggle-enabled"
+     | "row" | "box" -> container_navigation_enabled store id
      | _ -> false
 
 let focus_target store path =
@@ -330,7 +342,7 @@ let detail_target store path make =
 
 (* Click on a pressable node, mirroring the web click dispatch:
    toggle kinds flip their state instead of emitting Press. *)
-let primary_press store id =
+let primary_press ?(mods = Lui_input.mods_none) store id =
   let dispatch e =
     if node_enabled store id && event_supported store id e
     then [ `Dispatch e ] else []
@@ -338,7 +350,20 @@ let primary_press store id =
   match kind_name store id with
   | "toggle-button" | "toggle" | "drawer" ->
     dispatch (ToggleChanged (id, not (bool_prop store id "selected")))
-  | "checkbox" | "switch" ->
+  | "checkbox" ->
+    if not (chain_enabled store id) then []
+    else
+      let checked = bool_prop store id "indeterminate"
+        || not (bool_prop store id "checked") in
+      let detail =
+        if bool_prop store id "toggle-detail-enabled" then
+          let modifiers = Lui_input.mods_to_int mods
+            lor (if mods.Lui_input.alt then 8 else 0) in
+          dispatch (ToggleChangedDetail (id, checked, modifiers))
+        else []
+      in
+      dispatch (ToggleChanged (id, checked)) @ detail
+  | "switch" ->
     dispatch (ToggleChanged (id, not (bool_prop store id "checked")))
   | "radio" ->
     if event_supported store id (Change id) then [ `Dispatch (Change id) ]

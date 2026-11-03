@@ -65,12 +65,17 @@ let operating_system = function
 
 let host_kind = function
   | 1 -> WebHost
-  | 2 -> SwiftUIHost
-  | 4 -> KotlinHost
+  | 2 | 258 -> SwiftUIHost
+  | 4 | 260 -> KotlinHost
+  | 5 -> MyGoHost
   | _ -> GenericHost
 
 let profile platform_code host_code =
   Lui_protocol.profile (operating_system platform_code) (host_kind host_code)
+
+let virtual_rows_supported = function
+  | 1 | 5 | 258 | 260 -> true
+  | _ -> false
 
 let backend bridge host_profile =
   {backend_profile = host_profile; apply_batch = record bridge}
@@ -145,6 +150,8 @@ let register ~(register_named : 'a. string -> 'a -> unit) prefix bridge =
   register "double_press" (node (fun id -> DoublePress id));
   register "toggle_changed" (fun id checked ->
       dispatch_event bridge (ToggleChanged (id, checked)));
+  register "toggle_changed_detail" (fun id checked modifiers ->
+      dispatch_event bridge (ToggleChangedDetail (id, checked, modifiers)));
   register "radio_changed" (node (fun id -> Change id));
   register "slider_changed" (fun id value ->
       dispatch_event bridge (ValueChanged (id, value)));
@@ -157,6 +164,12 @@ let register ~(register_named : 'a. string -> 'a -> unit) prefix bridge =
   register "pointer_up" (fun id x y modifiers button target_class ->
       dispatch_event bridge
         (PointerUp (id, pointer_detail x y modifiers button target_class)));
+  register "pointer_move" (fun id x y modifiers button target_class ->
+      dispatch_event bridge
+        (PointerMove (id, pointer_detail x y modifiers button target_class)));
+  register "pointer_cancel" (fun id x y modifiers button target_class ->
+      dispatch_event bridge
+        (PointerCancel (id, pointer_detail x y modifiers button target_class)));
   register "pointer_enter" (node (fun id -> PointerEnter id));
   register "pointer_leave" (node (fun id -> PointerLeave id));
   register "context_menu_press" (fun id x y modifiers button target_class ->
@@ -168,6 +181,10 @@ let register ~(register_named : 'a. string -> 'a -> unit) prefix bridge =
       dispatch_event bridge (VisibleRange (id, first, last)));
   register "scroll_completed" (fun id token outcome ->
       dispatch_event bridge (ScrollCompleted (id, token, outcome)));
+  register "scroll_edges" (fun id at_start at_end ->
+      dispatch_event bridge (ScrollEdges (id, at_start, at_end)));
+  register "virtual_window" (fun id generation first last pins ->
+      dispatch_event bridge (VirtualWindow (id, generation, first, last, pins)));
   register "extension_event" (fun id identifier name json_values ->
       (match bridge.note_extension with
       | Some note -> note name json_values

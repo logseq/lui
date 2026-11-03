@@ -88,7 +88,6 @@ enum class LuiNodeKind(val wireName: String, val isContainer: Boolean) {
     link("link", true),
     fileImage("file-image", false),
     filePreview("file-preview", false),
-    br("br", false),
     popover("popover", true),
     ;
 
@@ -286,6 +285,16 @@ enum class LuiProperty(val wireName: String) {
     checkedIndicatorBorderColor("checked-indicator-border-color"),
     collisionPadding("collision-padding"),
     lineClamp("line-clamp"),
+    readOnly("read-only"),
+    overscan("overscan"),
+    itemExtent("item-extent"),
+    virtualTotalCount("virtual-total-count"),
+    virtualGeneration("virtual-generation"),
+    virtualIndices("virtual-indices"),
+    virtualScrollIndex("virtual-scroll-index"),
+    pointerCapture("pointer-capture"),
+    indeterminate("indeterminate"),
+    toggleDetailEnabled("toggle-detail-enabled"),
     ;
 
     companion object {
@@ -336,5 +345,12 @@ object LuiSchemaMatrix {
         LuiNodeKind.dropdownMenu to setOf(LuiProperty.collisionPadding),
         LuiNodeKind.tooltip to setOf(LuiProperty.collisionPadding),
         LuiNodeKind.switchControl to setOf(LuiProperty.foreground),
+        LuiNodeKind.virtualList to setOf(LuiProperty.overscan, LuiProperty.itemExtent, LuiProperty.virtualTotalCount, LuiProperty.virtualGeneration, LuiProperty.virtualIndices, LuiProperty.virtualScrollIndex),
+        LuiNodeKind.textField to setOf(LuiProperty.readOnly),
+        LuiNodeKind.secureField to setOf(LuiProperty.readOnly),
+        LuiNodeKind.input to setOf(LuiProperty.readOnly),
+        LuiNodeKind.searchField to setOf(LuiProperty.readOnly),
+        LuiNodeKind.textarea to setOf(LuiProperty.readOnly),
+        LuiNodeKind.combobox to setOf(LuiProperty.readOnly),
     )
 }

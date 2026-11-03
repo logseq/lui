@@ -1488,7 +1488,13 @@ let attach_submenu_hover renderer node current trigger =
    | Some _ -> ()
    | None ->
        if nested_submenu renderer current then
-         W.Element.setAttribute "data-anchor" "right" positioner);
+         (* Base UI nested menus prefer logical inline-end, then fall back
+            through popup collision. LTR stays on the right. *)
+         let side =
+           if Lui_web_focus.element_direction renderer trigger = "rtl" then "left"
+           else "right"
+         in
+         W.Element.setAttribute "data-anchor" side positioner);
   let close_timer = ref None in
   let grace_active = ref false in
   let grace_x = ref 0.0 in

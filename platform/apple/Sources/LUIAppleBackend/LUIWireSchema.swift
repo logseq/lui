@@ -88,7 +88,6 @@ enum LUINodeKind: String, Decodable, Equatable {
     case link = "link"
     case fileImage = "file-image"
     case filePreview = "file-preview"
-    case br = "br"
     case popover = "popover"
 }
 
@@ -279,6 +278,16 @@ enum LUIProperty: String, Decodable, Hashable {
     case checkedIndicatorBorderColor = "checked-indicator-border-color"
     case collisionPadding = "collision-padding"
     case lineClamp = "line-clamp"
+    case readOnly = "read-only"
+    case overscan = "overscan"
+    case itemExtent = "item-extent"
+    case virtualTotalCount = "virtual-total-count"
+    case virtualGeneration = "virtual-generation"
+    case virtualIndices = "virtual-indices"
+    case virtualScrollIndex = "virtual-scroll-index"
+    case pointerCapture = "pointer-capture"
+    case indeterminate = "indeterminate"
+    case toggleDetailEnabled = "toggle-detail-enabled"
 }
 
 enum LUISchemaMatrix {
@@ -316,5 +325,12 @@ enum LUISchemaMatrix {
         .dropdownMenu: [.collisionPadding],
         .tooltip: [.collisionPadding],
         .switchControl: [.foreground],
+        .virtualList: [.overscan, .itemExtent, .virtualTotalCount, .virtualGeneration, .virtualIndices, .virtualScrollIndex],
+        .textField: [.readOnly],
+        .secureField: [.readOnly],
+        .input: [.readOnly],
+        .searchField: [.readOnly],
+        .textarea: [.readOnly],
+        .combobox: [.readOnly],
     ]
 }

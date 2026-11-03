@@ -436,6 +436,9 @@ let button_label_node dom_node =
 let menu_item_check_node dom_node =
   owned_child dom_node ":scope > .lui-menu-item-check"
 
+let menu_item_shortcut_node dom_node =
+  owned_child dom_node ":scope > .lui-menu-item-shortcut"
+
 let node_dom_id node = "lui-node-" ^ string_of_int node
 
 let accordion_trigger_node dom_node = child_element dom_node 0

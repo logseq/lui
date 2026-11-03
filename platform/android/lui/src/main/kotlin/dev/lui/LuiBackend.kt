@@ -29,6 +29,8 @@ class LuiBackend(
 ) {
     internal var tree = LuiRetainedTree(extensions)
         private set
+    internal var snapshotEpoch by mutableStateOf(0L)
+        private set
     /** Structural half of a published node: kind, parent link and child
      * order. A batch that only mutates properties leaves this state
      * untouched, so parent scans of `kind`/`children` are not invalidated
@@ -161,6 +163,7 @@ class LuiBackend(
         replacement.applyInitialSnapshot(batch)
         val observed = observedNodes.keys.toSet()
         tree = replacement
+        snapshotEpoch++
         publish(
             changed = observed,
             dropped = observed.filterNotTo(mutableSetOf()) { replacement.contains(it) },

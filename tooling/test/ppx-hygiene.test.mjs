@@ -130,3 +130,81 @@ let () =
     assert.equal(run([join(dir, "layout")]).trim(), "retained")
   } finally { rmSync(dir, {recursive: true, force: true}) }
 })
+
+test("virtual_rows owns reactive sources for each mount and borrows caller signals", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lui-virtual-source-test-"))
+  const run = args => {
+    const result = spawnSync("opam", ["exec", "--", ...args], {cwd: root, encoding: "utf8"})
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+    return result.stdout
+  }
+  try {
+    run(["dune", "build", "--root", root, "ppx/lui_ppx.cmxa", "src/lui.cmxa"])
+    writeFileSync(join(dir, "driver.ml"), "let () = Ppxlib.Driver.standalone ()\n")
+    run(["ocamlfind", "ocamlopt", "-package", "ppxlib", "-linkpkg", "-linkall",
+      "_build/default/ppx/lui_ppx.cmxa", join(dir, "driver.ml"), "-o", join(dir, "driver")])
+    writeFileSync(join(dir, "virtual_source.ml"), `
+let observed_sources : string list Signal.signal list ref = ref []
+module Actual_elements = Lui_elements
+module Lui_elements = struct
+  include Actual_elements
+  let virtual_rows ?scroll_key ~source ~key ~cmp ~mount () =
+    observed_sources := source :: !observed_sources;
+    Actual_elements.virtual_rows ?scroll_key ~source ~key ~cmp ~mount ()
+end
+open Lui_elements
+let () =
+  List.iter (fun fully_applied ->
+    observed_sources := [];
+    let conversions = ref 0 and borrowed = ref None in
+    let project rows = incr conversions; rows in
+    let backend = { Lui_protocol.backend_profile =
+      Lui_protocol.profile Lui_protocol.WebOS Lui_protocol.WebHost;
+      apply_batch = (fun _ -> true) } in
+    let view context shown _send =
+      let rows = Signal.state context.Lui_ui.ui_scheduler ["initial"] in
+      borrowed := Some rows;
+      let child =
+        if fully_applied then
+          (fun context parent ->
+            Lui_elements.virtual_rows ~source:(reactive project (Signal.value rows))
+              ~key:(fun row -> row) ~cmp:String.compare
+              ~mount:(fun source -> text ~value_signal:source []) () context parent)
+        else
+          virtual_rows ~source:(reactive project (Signal.value rows))
+            ~key:(fun row -> row) ~cmp:String.compare
+            ~mount:(fun source -> text ~value_signal:source []) () in
+      column [if_ ~test:shown (virtual_list ~height:100 ~item_extent:20. [child])] in
+    let app = Lui_app.create backend true (fun _ shown -> shown) view in
+    ignore (Lui_app.start app); ignore (Lui_app.flush app);
+    let rows = Option.get !borrowed in
+    for cycle = 1 to 20 do
+      ignore (Lui_app.send app false); ignore (Lui_app.flush app);
+      if not (List.for_all Signal.signal_is_disposed !observed_sources) then
+        failwith "unmounted virtual_rows did not dispose its derived source";
+      let before = !conversions in
+      Signal.set rows ["hidden-" ^ string_of_int cycle];
+      ignore (Lui_app.flush app);
+      if !conversions <> before then failwith "unmounted virtual source is retained";
+      ignore (Lui_app.send app true); ignore (Lui_app.flush app);
+      let before = !conversions in
+      Signal.set rows ["visible-" ^ string_of_int cycle];
+      ignore (Lui_app.flush app);
+      if !conversions - before <> 1 then failwith "virtual source derivations accumulate"
+    done;
+    ignore (Lui_app.dispose app);
+    Signal.set rows ["borrowed survives"];
+    Signal.stabilize app.Lui_app.app_scheduler;
+    if Signal.sample (Signal.value rows) <> ["borrowed survives"] then
+      failwith "virtual_rows disposed borrowed signal";
+    Signal.dispose_signal (Signal.value rows)
+  ) [false; true];
+  print_endline "owned"
+`)
+    run(["ocamlfind", "ocamlopt", "-package", "ocaml-signal", "-linkpkg", "-ppx",
+      `${join(dir, "driver")} --as-ppx`, "-I", "_build/default/src/.lui.objs/byte",
+      "-I", "_build/default/src/.lui.objs/native", "_build/default/src/lui.cmxa",
+      join(dir, "virtual_source.ml"), "-o", join(dir, "virtual_source")])
+    assert.equal(run([join(dir, "virtual_source")]).trim(), "owned")
+  } finally { rmSync(dir, {recursive: true, force: true}) }
+})

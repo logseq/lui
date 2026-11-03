@@ -239,8 +239,17 @@ val set_notification_handler : (string -> unit) option -> unit
 (** {1 Clipboard} *)
 
 val clipboard_write : string -> bool
-(** Writes a plain string to the CLIPBOARD selection; [false] when no
-    clipboard exists. *)
+(** [clipboard_write text] synchronously acquires the CLIPBOARD selection
+    through GTK. [true] means GTK accepted ownership, not that another
+    application pasted the text or a clipboard manager persisted it.
+    [false] means no clipboard, ownership refusal, allocation failure, or
+    text that is not valid UTF-8, contains NUL, or is at least [INT_MAX] bytes.
+    The maximum accepted length is [INT_MAX - 1] bytes. The text is copied and
+    retained until GTK releases ownership.
+
+    Call on the GTK UI thread, as for [pump]. Keep servicing [pump] on that
+    thread while owning the clipboard so GTK can answer data requests and
+    release the copy when ownership changes. No worker thread is started. *)
 
 val clipboard_read : unit -> string option
 (** The current plain string, if any. *)

@@ -581,7 +581,7 @@ let apply_set_prop renderer effects node property value =
                Lui_web_props.apply_property renderer (queue_split effects)
                  node kind
                  (Lazy.force current.platform_node) property value);
-          if property = PointerEnabled then
+          if property = PointerEnabled || property = PointerCapture || property = Enabled then
             Lui_web_events.sync_pointer_events renderer node kind
               (Lazy.force current.platform_node);
           refresh_parent_for_prop renderer effects node property
@@ -604,7 +604,7 @@ let apply_remove_prop renderer effects node property =
                 Lui_web_props.remove_property renderer (queue_split effects)
                   node kind
                   (Lazy.force current.platform_node) property);
-           if property = PointerEnabled then
+           if property = PointerEnabled || property = PointerCapture || property = Enabled then
              Lui_web_events.sync_pointer_events renderer node kind
                (Lazy.force current.platform_node);
            refresh_parent_for_prop renderer effects node property

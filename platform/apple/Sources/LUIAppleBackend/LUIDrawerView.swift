@@ -256,8 +256,6 @@ struct LUIDrawerView: View {
             )
             let progress = width > 0.0 ? visibleWidth / width : 0.0
             let isDragging = abs(dragOffset) > 0.0
-            let parked = !presented && !isAnimating && !isGestureActive
-                && dragOffset == 0 && visibleWidth == 0
             let contentControlsEnabled =
                 LUIDrawerInteractionPolicy.contentControlsAreEnabled(
                     isDragging: isDragging,
@@ -276,11 +274,9 @@ struct LUIDrawerView: View {
                         .frame(width: width)
                         .frame(maxHeight: CGFloat.infinity, alignment: Alignment.leading)
                         .background(Color.black.opacity(0.001))
-                        // Scaling a native navigation host changes its window safe
-                        // areas and reflows scrolled content during the transition.
                         .opacity(LUIDrawerInteractionPolicy.sidebarOpacity(progress: progress))
+                        .scaleEffect(hasVerticalBarScene ? 1 : 0.96 + (0.04 * Double(progress)))
                         .offset(x: -(hasVerticalBarScene ? width : 20) * (1.0 - progress))
-                        .modifier(LUIDrawerParkingEffect(translation: !hasVerticalBarScene && parked ? 20 - width : 0))
                         .zIndex(hasVerticalBarScene ? 1 : 0)
                         .allowsHitTesting(presented && contentControlsEnabled)
                         .accessibilityHidden(
@@ -525,17 +521,6 @@ private struct LUIDrawerMainSurfaceModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         content.background(.ultraThinMaterial)
-    }
-}
-
-private struct LUIDrawerParkingEffect: GeometryEffect {
-    let translation: CGFloat
-    var animatableData: EmptyAnimatableData {
-        get { EmptyAnimatableData() }
-        set {}
-    }
-    func effectValue(size: CGSize) -> ProjectionTransform {
-        ProjectionTransform(CGAffineTransform(translationX: translation, y: 0))
     }
 }
 

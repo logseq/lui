@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <limits.h>
 #include <unistd.h>
 #include <dlfcn.h>
 #include <dirent.h>
@@ -191,6 +192,7 @@ typedef struct _GSList { void *data; struct _GSList *next; } GSList;
 typedef struct { int domain; int code; char *message; } GError;
 
 static void (*p_g_free)(void *) = 0;
+static int (*p_g_utf8_validate)(const char *, intptr_t, const char **) = 0;
 static void (*p_g_slist_free)(GSList *) = 0;
 static int (*p_g_main_context_iteration)(void *, int) = 0;
 static void (*p_g_object_unref)(void *) = 0;
@@ -204,10 +206,26 @@ static int (*p_g_app_info_launch_default_for_uri)(const char *, void *,
 
 /* ---- Minimal gtk/gdk declarations ---- */
 
+typedef struct {
+  char *target;
+  unsigned int flags;
+  unsigned int info;
+} GtkTargetEntry;
+
 static int (*p_gtk_init_check)(int *, char ***) = 0;
 static void *(*p_gdk_atom_intern)(const char *, int) = 0;
 static void *(*p_gtk_clipboard_get)(void *) = 0;
-static void (*p_gtk_clipboard_set_text)(void *, const char *, int) = 0;
+static int (*p_gtk_clipboard_set_with_data)(void *, const GtkTargetEntry *,
+    unsigned int, void (*)(void *, void *, unsigned int, void *),
+    void (*)(void *, void *), void *) = 0;
+static void (*p_gtk_clipboard_set_can_store)(void *, const GtkTargetEntry *,
+                                            int) = 0;
+static int (*p_gtk_selection_data_set_text)(void *, const char *, int) = 0;
+static void *(*p_gtk_target_list_new)(const GtkTargetEntry *, unsigned int) = 0;
+static void (*p_gtk_target_list_add_text_targets)(void *, unsigned int) = 0;
+static GtkTargetEntry *(*p_gtk_target_table_new_from_list)(void *, int *) = 0;
+static void (*p_gtk_target_list_unref)(void *) = 0;
+static void (*p_gtk_target_table_free)(GtkTargetEntry *, int) = 0;
 static char *(*p_gtk_clipboard_wait_for_text)(void *) = 0;
 static void (*p_gtk_clipboard_clear)(void *) = 0;
 static void *(*p_gtk_file_chooser_native_new)(const char *, void *,
@@ -648,6 +666,7 @@ static int probe_glib(void)
   h = dlopen("libglib-2.0.so.0", RTLD_NOW | RTLD_GLOBAL);
   if (h == 0) return 0;
   ok &= sym(h, "g_free", (void **) &p_g_free);
+  ok &= sym(h, "g_utf8_validate", (void **) &p_g_utf8_validate);
   ok &= sym(h, "g_slist_free", (void **) &p_g_slist_free);
   ok &= sym(h, "g_main_context_iteration",
             (void **) &p_g_main_context_iteration);
@@ -678,8 +697,19 @@ static int probe_gtk(void)
   if (h == 0) return 0;
   ok &= sym(h, "gtk_init_check", (void **) &p_gtk_init_check);
   ok &= sym(h, "gtk_clipboard_get", (void **) &p_gtk_clipboard_get);
-  ok &= sym(h, "gtk_clipboard_set_text",
-            (void **) &p_gtk_clipboard_set_text);
+  ok &= sym(h, "gtk_clipboard_set_with_data",
+            (void **) &p_gtk_clipboard_set_with_data);
+  ok &= sym(h, "gtk_clipboard_set_can_store",
+            (void **) &p_gtk_clipboard_set_can_store);
+  ok &= sym(h, "gtk_selection_data_set_text",
+            (void **) &p_gtk_selection_data_set_text);
+  ok &= sym(h, "gtk_target_list_new", (void **) &p_gtk_target_list_new);
+  ok &= sym(h, "gtk_target_list_add_text_targets",
+            (void **) &p_gtk_target_list_add_text_targets);
+  ok &= sym(h, "gtk_target_table_new_from_list",
+            (void **) &p_gtk_target_table_new_from_list);
+  ok &= sym(h, "gtk_target_list_unref", (void **) &p_gtk_target_list_unref);
+  ok &= sym(h, "gtk_target_table_free", (void **) &p_gtk_target_table_free);
   ok &= sym(h, "gtk_clipboard_wait_for_text",
             (void **) &p_gtk_clipboard_wait_for_text);
   ok &= sym(h, "gtk_clipboard_clear",
@@ -1061,17 +1091,58 @@ CAMLprim value lui_shx_status_set_on_click(value v, value von)
 
 /* ---- Clipboard ---- */
 
+typedef struct {
+  int length;
+  char text[];
+} clip_text_t;
+
+static void clip_get_text(void *board, void *selection,
+                          unsigned int info, void *data)
+{
+  clip_text_t *text = data;
+  (void) board; (void) info;
+  p_gtk_selection_data_set_text(selection, text->text, text->length);
+}
+
+static void clip_clear_text(void *board, void *data)
+{
+  (void) board;
+  free(data);
+}
+
 CAMLprim value lui_shx_clip_write(value vstr)
 {
   CAMLparam1(vstr);
+  mlsize_t length = caml_string_length(vstr);
   void *board = clip_board();
-  int ok = 0;
-  if (board != 0) {
-    p_gtk_clipboard_clear(board);
-    p_gtk_clipboard_set_text(board, String_val(vstr),
-                             (int) caml_string_length(vstr));
+  clip_text_t *text;
+  void *list;
+  GtkTargetEntry *targets;
+  int n_targets, ok;
+  if (board == 0 || length >= INT_MAX
+      || memchr(String_val(vstr), '\0', length) != 0
+      || !p_g_utf8_validate(String_val(vstr), (intptr_t) length, 0))
+    CAMLreturn(Val_false);
+
+  text = malloc(sizeof(*text) + length + 1);
+  if (text == 0) CAMLreturn(Val_false);
+  text->length = (int) length;
+  memcpy(text->text, String_val(vstr), length);
+  text->text[length] = '\0';
+
+  list = p_gtk_target_list_new(0, 0);
+  p_gtk_target_list_add_text_targets(list, 0);
+  targets = p_gtk_target_table_new_from_list(list, &n_targets);
+  p_gtk_target_list_unref(list);
+  ok = p_gtk_clipboard_set_with_data(board, targets,
+      (unsigned int) n_targets, clip_get_text, clip_clear_text, text);
+  p_gtk_target_table_free(targets, n_targets);
+  /* GTK ignores both callbacks on failure; otherwise clear owns the copy. */
+  if (ok) {
+    p_gtk_clipboard_set_can_store(board, 0, 0);
     clip_generation++;
-    ok = 1;
+  } else {
+    free(text);
   }
   CAMLreturn(Val_bool(ok));
 }

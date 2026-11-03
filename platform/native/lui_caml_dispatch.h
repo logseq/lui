@@ -119,6 +119,21 @@ static int32_t lui_dispatch_node_bool(const char *name, int64_t node,
   CAMLreturnT(int32_t, accepted);
 }
 
+static int32_t lui_dispatch_node_bool_int(const char *name, int64_t node,
+                                          int checked, int32_t extra,
+                                          lui_deliver_fn deliver) {
+  CAMLparam0();
+  CAMLlocal1(result);
+  int32_t accepted = 0;
+  const value *callback = caml_named_value(name);
+  if (callback != NULL) {
+    result = caml_callback3_exn(*callback, Val_long(node), Val_bool(checked != 0),
+                                Val_long(extra));
+    accepted = lui_emit_value(result, deliver);
+  }
+  CAMLreturnT(int32_t, accepted);
+}
+
 static int32_t lui_dispatch_node_double(const char *name, int64_t node,
                                         double number, lui_deliver_fn deliver) {
   CAMLparam0();
@@ -219,6 +234,33 @@ static int32_t lui_dispatch_visible_range(const char *name, int64_t node,
   CAMLreturnT(int32_t, accepted);
 }
 
+static inline int32_t lui_dispatch_virtual_window(
+    const char *name, int64_t node, int64_t generation, int64_t first,
+    int64_t last, const int64_t *pins, int32_t count, lui_deliver_fn deliver) {
+  CAMLparam0();
+  CAMLlocal3(list, cell, result);
+  CAMLlocalN(arguments, 5);
+  int32_t accepted = 0;
+  const value *callback = caml_named_value(name);
+  if (callback != NULL) {
+    list = Val_emptylist;
+    for (int32_t index = count; index > 0; index--) {
+      cell = caml_alloc_small(2, 0);
+      Field(cell, 0) = Val_long(pins[index - 1]);
+      Field(cell, 1) = list;
+      list = cell;
+    }
+    arguments[0] = Val_long(node);
+    arguments[1] = Val_long(generation);
+    arguments[2] = Val_long(first);
+    arguments[3] = Val_long(last);
+    arguments[4] = list;
+    result = caml_callbackN_exn(*callback, 5, arguments);
+    accepted = lui_emit_value(result, deliver);
+  }
+  CAMLreturnT(int32_t, accepted);
+}
+
 static int32_t lui_dispatch_scroll_completed(const char *name, int64_t node,
                                              int64_t token, const char *outcome,
                                              int32_t outcome_len,
@@ -234,6 +276,37 @@ static int32_t lui_dispatch_scroll_completed(const char *name, int64_t node,
     arguments[1] = Val_long(token);
     arguments[2] = outcome_value;
     result = caml_callbackN_exn(*callback, 3, arguments);
+    accepted = lui_emit_value(result, deliver);
+  }
+  CAMLreturnT(int32_t, accepted);
+}
+
+static int32_t lui_dispatch_node_bools(const char *name, int64_t node,
+                                     int first, int second,
+                                     lui_deliver_fn deliver) {
+  CAMLparam0();
+  CAMLlocal1(result);
+  int32_t accepted = 0;
+  const value *callback = caml_named_value(name);
+  if (callback != NULL) {
+    result = caml_callback3_exn(*callback, Val_long(node), Val_bool(first != 0),
+                                Val_bool(second != 0));
+    accepted = lui_emit_value(result, deliver);
+  }
+  CAMLreturnT(int32_t, accepted);
+}
+
+static int32_t lui_dispatch_text_bool(const char *name, int64_t node,
+                                     const char *text, int32_t length, int flag,
+                                     lui_deliver_fn deliver) {
+  CAMLparam0();
+  CAMLlocal2(text_value, result);
+  int32_t accepted = 0;
+  const value *callback = caml_named_value(name);
+  if (callback != NULL && text != NULL && length >= 0) {
+    text_value = caml_alloc_initialized_string(length, text);
+    result = caml_callback3_exn(*callback, Val_long(node), text_value,
+                                Val_bool(flag != 0));
     accepted = lui_emit_value(result, deliver);
   }
   CAMLreturnT(int32_t, accepted);

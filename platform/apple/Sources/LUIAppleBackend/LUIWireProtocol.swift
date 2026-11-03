@@ -17,6 +17,7 @@ public enum LUIEvent: Equatable, Sendable {
     case appear(node: Int)
     case scrollCompleted(node: Int, token: Int, outcome: String)
     case visibleRange(node: Int, first: Int, last: Int)
+    case virtualWindow(node: Int, generation: Int, first: Int, last: Int, pins: [Int])
     case picked(node: Int, payload: String)
     // Pointer-detail payloads share one record across the wire. On SwiftUI
     // gestures that expose no hit position the host emits zero coordinates —
@@ -144,10 +145,19 @@ enum LUIWireValue: Decodable, Equatable {
 
     func matches(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
         switch property {
+        case .virtualTotalCount:
+            return intValue.map { $0 >= 0 } ?? false
+        case .virtualGeneration:
+            return intValue.map { $0 > 0 } ?? false
+        case .virtualScrollIndex:
+            return intValue.map { $0 >= -1 } ?? false
+        case .virtualIndices:
+            return stringValue.flatMap(LUISparseVirtualMetadata.canonicalIndices) != nil
         case .headingLevel:
             guard let value = intValue else { return false }
             return (1...6).contains(value)
-        case .checked, .selected, .autofocus, .submitOnEnter, .submitOnBlur,
+        case .readOnly, .checked, .selected, .autofocus, .submitOnEnter, .submitOnBlur,
+             .pointerCapture, .indeterminate, .toggleDetailEnabled,
              .longPressEnabled,
              .changeEnabled, .toggleEnabled, .pressEnabled, .submitEnabled,
              .doublePressEnabled, .appearEnabled, .pointerEnabled, .connector,
@@ -157,12 +167,15 @@ enum LUIWireValue: Decodable, Equatable {
         case .resizeHandleWidth:
             guard let value = intValue else { return false }
             return value > 0
+        case .itemExtent:
+            guard let value = doubleValue ?? intValue.map(Double.init) else { return false }
+            return value.isFinite && value > 0
         case .firstPaneWidth:
             guard let value = doubleValue else { return false }
             return value.isFinite && value >= 0
         case .progressValue:
             return doubleValue != nil
-        case .resizeDuration, .image, .surface, .active, .columns,
+        case .overscan, .resizeDuration, .image, .surface, .active, .columns,
              .paddingHorizontal, .paddingVertical,
              .paddingTop, .paddingRight, .paddingBottom, .paddingLeft,
              .borderWidth, .cornerRadius,
@@ -1073,6 +1086,11 @@ struct LUIRetainedTree {
     }
 
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
+        switch property {
+        case .virtualTotalCount, .virtualGeneration, .virtualIndices, .virtualScrollIndex:
+            return kind == .virtualList
+        default: break
+        }
         if property == .accessibilityIdentifier { return true }
         // Position hint honored on overlay children and the overlay itself;
         // admitted before the restrictive matrix so e.g. an aligned
@@ -1088,6 +1106,9 @@ struct LUIRetainedTree {
         if kind == .root { return property == .theme || property == .themeMode }
         if kind == .contextMenu { return false }
         return switch property {
+        case .virtualTotalCount, .virtualGeneration, .virtualIndices, .virtualScrollIndex: kind == .virtualList
+        case .readOnly: isTextEntry(kind)
+        case .overscan, .itemExtent: kind == .virtualList
         case .theme, .themeMode:
             // Mirrors OCaml common_property_supported: theme props are
             // admitted on every non-restrictive container kind.
@@ -1179,6 +1200,8 @@ struct LUIRetainedTree {
                 kind == .link || kind == .fileImage ||
                 isTreeRow(kind)
         case .headingLevel: kind == .heading
+        case .pointerCapture: kind == .row || kind == .box
+        case .indeterminate, .toggleDetailEnabled: kind == .checkbox
         case .checked:
             kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio
         case .progressValue:
@@ -1218,8 +1241,13 @@ struct LUIRetainedTree {
         case .submitOnBlur:
             kind == .textField || kind == .secureField || kind == .input
                 || kind == .searchField || kind == .textarea
-        case .changeEnabled: kind == .radio || isTreeRow(kind)
-        case .toggleEnabled: kind == .radio || kind == .drawer || isTreeRow(kind)
+        case .changeEnabled:
+            kind == .radio || isTextEntry(kind) || kind == .slider ||
+                kind == .numberStepper || kind == .split || isTreeRow(kind)
+        case .toggleEnabled:
+            kind == .toggleButton || kind == .checkbox || kind == .switchControl ||
+                kind == .toggle || kind == .radio || kind == .accordion ||
+                kind == .drawer || isTreeRow(kind)
         case .pressEnabled:
             kind == .button || kind == .toggleButton || kind == .text ||
                 kind == .row || kind == .column || kind == .box ||
@@ -1228,9 +1256,9 @@ struct LUIRetainedTree {
                 || kind == .tableCell || kind == .bottomTab ||
                 kind == .fileImage || isTreeRow(kind)
         case .navigateEnabled:
-            kind == .textField || kind == .secureField || kind == .input
+            kind == .button || kind == .textField || kind == .secureField || kind == .input
                 || kind == .searchField || kind == .textarea
-        case .submitEnabled: kind == .combobox || kind == .listItem
+        case .submitEnabled: isTextEntry(kind) || kind == .listItem
         case .doublePressEnabled: kind == .listItem
         case .appearEnabled, .pointerEnabled: kind != .root
         case .image:
@@ -1257,9 +1285,10 @@ struct LUIRetainedTree {
         case .role: isTreeRow(kind) || kind == .listItem || kind == .popover
         case .treeLevel, .expanded: isTreeRow(kind)
         case .key, .separator: kind == .listItem || kind == .listSection
-        case .style, .scrollTarget, .scrollAnchor, .scrollToken,
+        case .style: kind == .list
+        case .scrollTarget, .scrollAnchor, .scrollToken,
              .scrollAnimated, .trackVisibleRange:
-            kind == .list
+            kind == .list || kind == .virtualList
         case .edge: kind == .swipeAction || kind == .edgeInset
         case .minValue, .maxValue, .stepValue: kind == .numberStepper
         case .detents, .sizing: kind == .sheet
@@ -1429,6 +1458,9 @@ struct LUIRetainedTree {
     }
 
     private func validateNode(_ node: LUINodeState) throws {
+            if node.kind == .virtualList {
+                _ = try LUISparseVirtualMetadata(properties: node.properties, children: node.children)
+            }
             if node.kind == .root {
                 guard node.parent == nil else {
                     throw invalid("runtime root cannot have a parent")
@@ -1839,15 +1871,21 @@ struct LUIRetainedTree {
 
 extension LUIWireValue {
     func normalized(for property: LUIProperty) -> LUIWireValue {
-        if property == .grow || property == .anchorOffset || property == .anchorAlignmentOffset ||
-            property == .sourceX || property == .sourceY ||
-            property == .sourceWidth || property == .sourceHeight ||
-            property == .progressValue || property == .minValue ||
-            property == .maxValue || property == .stepValue,
-           case let .int(value) = self {
+        guard case .int(let value) = self else { return self }
+        switch property {
+        case .itemExtent, .grow, .anchorOffset, .anchorAlignmentOffset,
+            .sourceX, .sourceY, .sourceWidth, .sourceHeight, .progressValue,
+            .minValue, .maxValue, .stepValue, .firstPaneWidth,
+            .resizeOrigin, .resizeHandleOffset, .opacity, .labelOpacity,
+            .letterSpacing, .inset, .insetTop, .insetRight, .insetBottom, .insetLeft,
+            .hoverOpacity, .pressedOpacity, .disabledOpacity,
+            .widthViewport, .heightViewport, .minWidthViewport, .maxWidthViewport,
+            .minHeightViewport, .maxHeightViewport,
+            .popupX, .popupY, .availableHeight, .collisionPadding:
             return .double(Double(value))
+        default:
+            return self
         }
-        return self
     }
 
     var intValue: Int? {

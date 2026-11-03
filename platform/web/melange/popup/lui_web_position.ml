@@ -27,34 +27,114 @@ let clamp_popup_axis ~padding value size viewport_start viewport_size =
   let maximum = max edge (viewport_start +. viewport_size -. size -. padding) in
   max edge (min value maximum)
 
-let resolved_popup_side ~padding preferred anchor_bounds popup_width popup_height
-    viewport_left viewport_top viewport_width viewport_height offset =
-  let above_space = W.DomRect.top anchor_bounds -. viewport_top -. offset -. padding in
-  let below_space =
+(* Base UI collision, with LUI's 8px default gutter left intact.
+   Dropdown, select, and combobox roots flip only on the preferred axis
+   (fallbackAxisSide none), then flip start/end alignment before a last
+   resort shift. Popovers, tooltips, and nested menus may leave that axis
+   when neither side fits, trying the perpendicular end side first. *)
+let placement_spaces ~padding anchor_bounds viewport_left viewport_top
+    viewport_width viewport_height offset =
+  let above = W.DomRect.top anchor_bounds -. viewport_top -. offset -. padding in
+  let below =
     viewport_top +. viewport_height -. W.DomRect.bottom anchor_bounds -. offset -. padding
   in
-  let left_space = W.DomRect.left anchor_bounds -. viewport_left -. offset -. padding in
-  let right_space =
+  let left = W.DomRect.left anchor_bounds -. viewport_left -. offset -. padding in
+  let right =
     viewport_left +. viewport_width -. W.DomRect.right anchor_bounds -. offset -. padding
   in
-  match preferred with
-  | "above" ->
-      if popup_height <= above_space || above_space >= below_space then
-        "above"
-      else "below"
-  | "left" ->
-      if popup_width <= left_space || left_space >= right_space then "left"
-      else "right"
-  | "right" ->
-      if popup_width <= right_space || right_space >= left_space then "right"
-      else "left"
-  | _ ->
-      if popup_height <= below_space || below_space >= above_space then
-        "below"
-      else "above"
+  (above, below, left, right)
 
-let position_anchored ?(padding = 8.0) ?(alignment_offset = 0.0) document positioner popup anchor_bounds preferred
-    alignment offset =
+let side_space side (above, below, left, right) =
+  match side with
+  | "above" -> above
+  | "left" -> left
+  | "right" -> right
+  | _ -> below
+
+let side_main_size side popup_width popup_height =
+  if side = "left" || side = "right" then popup_width else popup_height
+
+let side_fits side popup_width popup_height spaces =
+  side_main_size side popup_width popup_height <= side_space side spaces
+
+let main_axis_side preferred popup_width popup_height spaces =
+  let choose preferred_side opposite size =
+    let preferred_space = side_space preferred_side spaces in
+    let opposite_space = side_space opposite spaces in
+    if size <= preferred_space || preferred_space >= opposite_space then
+      preferred_side
+    else opposite
+  in
+  match preferred with
+  | "above" -> choose "above" "below" popup_height
+  | "left" -> choose "left" "right" popup_width
+  | "right" -> choose "right" "left" popup_width
+  | _ -> choose "below" "above" popup_height
+
+let perpendicular_sides preferred rtl =
+  match preferred with
+  | "left" | "right" -> [ "below"; "above" ]
+  | _ -> if rtl then [ "left"; "right" ] else [ "right"; "left" ]
+
+let resolved_popup_side ~padding ~fallback ~rtl preferred anchor_bounds
+    popup_width popup_height viewport_left viewport_top viewport_width
+    viewport_height offset =
+  let spaces =
+    placement_spaces ~padding anchor_bounds viewport_left viewport_top
+      viewport_width viewport_height offset
+  in
+  let main = main_axis_side preferred popup_width popup_height spaces in
+  if (not fallback) || side_fits main popup_width popup_height spaces then main
+  else
+    let rec first_fit = function
+      | [] -> main
+      | side :: rest ->
+          if side_fits side popup_width popup_height spaces then side
+          else first_fit rest
+    in
+    first_fit (perpendicular_sides preferred rtl)
+
+let cross_aligned alignment origin anchor_size popup_size =
+  match alignment with
+  | "center" -> origin +. (anchor_size /. 2.0) -. (popup_size /. 2.0)
+  | "end" -> origin +. anchor_size -. popup_size
+  | _ -> origin
+
+let cross_overflow ~padding value popup_size viewport_start viewport_size =
+  let edge = viewport_start +. padding in
+  let limit = viewport_start +. viewport_size -. padding in
+  max 0.0 (edge -. value) +. max 0.0 (value +. popup_size -. limit)
+
+let resolved_alignment ~padding alignment vertical anchor_bounds popup_width
+    popup_height viewport_left viewport_top viewport_width viewport_height =
+  if alignment = "center" then alignment
+  else
+    let origin, anchor_size, popup_size, view_start, view_size =
+      if vertical then
+        (W.DomRect.left anchor_bounds, W.DomRect.width anchor_bounds, popup_width,
+         viewport_left, viewport_width)
+      else
+        (W.DomRect.top anchor_bounds, W.DomRect.height anchor_bounds, popup_height,
+         viewport_top, viewport_height)
+    in
+    let overflow alignment =
+      cross_overflow ~padding
+        (cross_aligned alignment origin anchor_size popup_size)
+        popup_size view_start view_size
+    in
+    let opposite = if alignment = "end" then "start" else "end" in
+    if overflow opposite < overflow alignment then opposite else alignment
+
+let document_rtl document =
+  match W.HtmlDocument.defaultView (W.Document.unsafeAsHtmlDocument document) with
+  | None -> false
+  | Some window ->
+      W.CssStyleDeclaration.direction
+        (W.Window.getComputedStyle (W.Document.documentElement document) window)
+      = "rtl"
+
+let position_anchored ?(padding = 8.0) ?(alignment_offset = 0.0) ?(fallback = false)
+    document positioner popup anchor_bounds preferred alignment offset =
   let scroll_top = W.Element.scrollTop popup
   and scroll_left = W.Element.scrollLeft popup in
   (* The undecorated positioner keeps fractional layout dimensions while
@@ -80,11 +160,12 @@ let position_anchored ?(padding = 8.0) ?(alignment_offset = 0.0) document positi
   set_style popup "--lui-popup-available-height" (css_px available_height);
   let popup_width, popup_height = measure () in
   let side =
-    resolved_popup_side ~padding preferred anchor_bounds popup_width popup_height
-      viewport_left viewport_top viewport_width viewport_height offset
+    resolved_popup_side ~padding ~fallback ~rtl:(document_rtl document) preferred
+      anchor_bounds popup_width popup_height viewport_left viewport_top
+      viewport_width viewport_height offset
   in
   let vertical = side = "above" || side = "below" in
-  let side_space = max 0.0
+  let side_room = max 0.0
       (match side with
        | "above" -> W.DomRect.top anchor_bounds -. viewport_top -. offset -. padding
        | "below" -> viewport_top +. viewport_height -. W.DomRect.bottom anchor_bounds -. offset -. padding
@@ -92,7 +173,7 @@ let position_anchored ?(padding = 8.0) ?(alignment_offset = 0.0) document positi
        | _ -> viewport_left +. viewport_width -. W.DomRect.right anchor_bounds -. offset -. padding)
   in
   let side_available =
-    min side_space
+    min side_room
       (if vertical then available_height else available_width)
   in
   set_style popup
@@ -109,21 +190,20 @@ let position_anchored ?(padding = 8.0) ?(alignment_offset = 0.0) document positi
     then measure ()
     else (popup_width, popup_height)
   in
+  (* Flip start/end only when the opposite edge stays closer to the anchor.
+     The alignment offset is applied afterwards, so an explicit offset still
+     shifts and then clamps instead of becoming a reason to flip. *)
+  let alignment =
+    resolved_alignment ~padding alignment vertical anchor_bounds popup_width
+      popup_height viewport_left viewport_top viewport_width viewport_height
+  in
   let aligned_left =
-    match alignment with
-    | "center" ->
-        W.DomRect.left anchor_bounds +. (W.DomRect.width anchor_bounds /. 2.0)
-        -. (popup_width /. 2.0)
-    | "end" -> W.DomRect.right anchor_bounds -. popup_width
-    | _ -> W.DomRect.left anchor_bounds
+    cross_aligned alignment (W.DomRect.left anchor_bounds)
+      (W.DomRect.width anchor_bounds) popup_width
   in
   let aligned_top =
-    match alignment with
-    | "center" ->
-        W.DomRect.top anchor_bounds +. (W.DomRect.height anchor_bounds /. 2.0)
-        -. (popup_height /. 2.0)
-    | "end" -> W.DomRect.bottom anchor_bounds -. popup_height
-    | _ -> W.DomRect.top anchor_bounds
+    cross_aligned alignment (W.DomRect.top anchor_bounds)
+      (W.DomRect.height anchor_bounds) popup_height
   in
   let alignment_offset = if alignment = "end" then -.alignment_offset else alignment_offset in
   let aligned_left = aligned_left +. alignment_offset in
@@ -215,8 +295,8 @@ let position_tooltip renderer node =
       | Some value -> value
       | None -> "start"
     in
-    position_anchored ~padding:(collision_padding renderer node) renderer.web_document tooltip tooltip anchor_bounds
-      side alignment offset
+    position_anchored ~padding:(collision_padding renderer node) ~fallback:true
+      renderer.web_document tooltip tooltip anchor_bounds side alignment offset
   end
 
 let position_tooltip_bang = position_tooltip
@@ -406,8 +486,13 @@ let position_dropdown renderer node =
         | Some value -> value
         | None -> "start"
       in
-      position_anchored ~padding:(collision_padding renderer node) renderer.web_document positioner popup anchor_bounds
-        side alignment offset;
+      let fallback =
+        match W.Element.getAttribute "data-submenu" positioner with
+        | Some _ -> true
+        | None -> false
+      in
+      position_anchored ~padding:(collision_padding renderer node) ~fallback
+        renderer.web_document positioner popup anchor_bounds side alignment offset;
       ignore
         (align_select_item_with_trigger renderer node positioner popup
            anchor anchor_bounds)
@@ -459,7 +544,8 @@ let position_popover renderer node =
                  | Some (FloatValue value) -> value
                  | _ -> 0.0
                in
-               position_anchored ~padding:(collision_padding renderer node) ~alignment_offset renderer.web_document positioner popup
+               position_anchored ~padding:(collision_padding renderer node) ~alignment_offset
+                 ~fallback:true renderer.web_document positioner popup
                  anchor_bounds side alignment offset
              end
            end

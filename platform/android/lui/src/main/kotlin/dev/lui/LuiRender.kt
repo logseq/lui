@@ -28,6 +28,8 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -51,6 +53,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.semantics.testTagsAsResourceId
@@ -208,6 +213,10 @@ internal fun Modifier.luiChrome(node: LuiNodeLike): Modifier {
         if (opacity < 1) modifier = modifier.alpha(opacity.toFloat())
     }
     val identifier = node.propString("accessibility-identifier")
+    when (node.propString("role")) {
+        "navigation" -> modifier = modifier.semantics { role = Role.Tab }
+        "navigation-heading" -> modifier = modifier.semantics { heading() }
+    }
     val label = node.propString("accessibility-label")
     if (identifier != null || label != null) {
         // Dialogs and sheets own separate semantics roots, so the activity's
@@ -310,21 +319,19 @@ internal fun Modifier.luiGestures(
             }
         }
     }
-    if (enabled && (node.propBool("pointer-enabled") || contextMenuId != null)) {
-        modifier = modifier.pointerInput(id) {
+    val reportPointer = node.propBool("pointer-enabled") &&
+        (LuiKindRules.supportsPointerDownUp(node.kind) || node.propString("role") == "treeitem")
+    if (enabled && (reportPointer || contextMenuId != null)) {
+        modifier = modifier.pointerInput(id, reportPointer) {
             awaitEachGesture {
                 // Observe without consuming the touch needed by native click handlers.
                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                 val detail = LuiPointerDetail(x = down.position.x.toDouble(), y = down.position.y.toDouble())
                 contextMenuPosition = down.position
-                val reportPointer = node.propBool("pointer-enabled")
                 if (reportPointer) backend.emit(LuiEvent.PointerDown(id, detail))
-                try {
-                    do { val event = awaitPointerEvent(PointerEventPass.Initial) }
-                    while (event.changes.any { it.pressed })
-                } finally {
-                    if (reportPointer) backend.emit(LuiEvent.PointerUp(id, detail))
-                }
+                do { val event = awaitPointerEvent(PointerEventPass.Initial) }
+                while (event.changes.any { it.pressed })
+                if (reportPointer) backend.emit(LuiEvent.PointerUp(id, detail))
             }
         }
     }
@@ -340,15 +347,14 @@ internal fun LuiAppear(backend: LuiBackend, node: LuiNodeLike, id: Long) {
 }
 
 /**
- * Applies a node's `theme`/`theme-mode` props: merges decoded tokens over
- * the inherited semantic colors and optionally overrides the subtree
- * appearance — a port of `LUIThemeScopeModifier`.
+ * Applies a node's theme, foreground, and typography to its subtree.
  */
 @Composable
 internal fun LuiThemeScope(node: LuiNodeLike, content: @Composable () -> Unit) {
     val props = node.properties
     val themeSource = props["theme"]?.stringValue
     val themeMode = props["theme-mode"]?.stringValue
+    val foreground = props["foreground"]?.stringValue?.takeUnless { it.isBlank() }
     // Decode once per changed property map, not once per recomposition:
     // nodeSpec runs regexes, string splits and a native Typeface lookup.
     val relativeSize = props["font-size"]?.stringValue?.trim()?.endsWith("em") == true
@@ -363,34 +369,54 @@ internal fun LuiThemeScope(node: LuiNodeLike, content: @Composable () -> Unit) {
             null
         }
     }
-    // Nodes contributing no theme or typography must not subscribe to the
-    // ambient locals — reading them here would let an ancestor
-    // theme/font-* change invalidate the whole subtree. Typography props
-    // inherit like CSS: merged over the accumulated spec and pushed
-    // through LocalTextStyle so `Text` calls without an explicit style
-    // inherit them. Text leaves pick the values up via `luiInherited()`.
-    if (themeSource == null && themeMode == null && typography == null) {
-        content()
-        return
-    }
     val inherited = LocalLuiSemanticColors.current
     val ambientDark = LocalLuiThemeDark.current
-    val schemeOverride = LuiThemeTokenDecoder.colorScheme(themeMode)
-    val dark = schemeOverride ?: (ambientDark ?: isSystemInDarkTheme())
+    val host = LocalLuiHostPalette.current
+    val dark = when (themeMode) {
+        "system" -> host?.effectiveDark ?: isSystemInDarkTheme()
+        else -> LuiThemeTokenDecoder.colorScheme(themeMode)
+            ?: (ambientDark ?: isSystemInDarkTheme())
+    }
+    val scopedScheme = if (themeMode != null && dark != ambientDark) {
+        if (dark) host?.dark ?: LuiThemeDefaults.darkScheme()
+        else host?.light ?: LuiThemeDefaults.lightScheme()
+    } else null
     // colors() is a full JSON DOM parse — decode once per (source, dark).
     val own = remember(themeSource, dark) {
         LuiThemeTokenDecoder.colors(themeSource, dark)
     }
-    CompositionLocalProvider(
-        LocalLuiSemanticColors provides inherited + own,
-        LocalLuiThemeDark provides dark,
-        LocalLuiTypography provides LocalLuiTypography.current.merge(
-            typography ?: TextStyle(),
-        ),
-        LocalTextStyle provides LocalTextStyle.current.merge(
-            typography ?: TextStyle(),
-        ),
-    ) {
-        content()
+    val inheritedForeground = LocalLuiInheritedForeground.current
+    val contentColor = if (scopedScheme != null) {
+        inheritedForeground ?: scopedScheme.onSurface
+    } else LocalContentColor.current
+    val inheritedTypography = LocalLuiTypography.current
+    val inheritedTextStyle = LocalTextStyle.current
+    val themedContent: @Composable () -> Unit = {
+        CompositionLocalProvider(
+            LocalLuiSemanticColors provides if (own.isEmpty()) inherited else inherited + own,
+            LocalLuiThemeDark provides dark,
+            LocalLuiTypography provides inheritedTypography.merge(
+                typography ?: TextStyle(),
+            ),
+            LocalTextStyle provides inheritedTextStyle.merge(
+                typography ?: TextStyle(),
+            ),
+        ) {
+            val resolved = luiThemeColor(foreground, foreground = true)
+            CompositionLocalProvider(
+                LocalLuiInheritedForeground provides (resolved ?: inheritedForeground),
+                LocalContentColor provides (resolved ?: contentColor),
+            ) { content() }
+        }
+    }
+    // Keep provider structure stable across set/remove to retain mounted controls.
+    if (LuiKindRules.canContainChildren(node.kind)) {
+        MaterialExpressiveTheme(
+            colorScheme = scopedScheme ?: MaterialTheme.colorScheme,
+            typography = MaterialTheme.typography,
+            shapes = MaterialTheme.shapes,
+        ) { themedContent() }
+    } else {
+        themedContent()
     }
 }

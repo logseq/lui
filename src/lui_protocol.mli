@@ -88,7 +88,6 @@ type node_kind =
   | Link
   | FileImage
   | FilePreview
-  | Br
   | Popover
 
 type operating_system =
@@ -105,6 +104,7 @@ type host_kind =
   | WebHost
   | SwiftUIHost
   | KotlinHost
+  | MyGoHost
 
 type platform_profile = {
   profile_os : operating_system;
@@ -298,6 +298,16 @@ type property =
   | CheckedIndicatorBorderColor
   | CollisionPadding
   | LineClamp
+  | ReadOnly
+  | VirtualOverscan
+  | VirtualItemExtent
+  | VirtualTotalCount
+  | VirtualGeneration
+  | VirtualIndices
+  | VirtualScrollIndex
+  | PointerCapture
+  | Indeterminate
+  | ToggleDetailEnabled
 
 module Property_map : Map.S with type key = property
 
@@ -349,6 +359,10 @@ type event =
   | NavigateNext of int
   | NavigationKey of int * string * bool
   | ScrollEdges of int * bool * bool
+  | VirtualWindow of int * int * int * int * int list
+  | PointerMove of int * pointer_detail
+  | PointerCancel of int * pointer_detail
+  | ToggleChangedDetail of int * bool * int
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =
@@ -412,6 +426,8 @@ val transition_segments : string -> string list list
 (** Tokenize CSS transition declarations, preserving functional easing arguments. *)
 
 val anchor_rect_of_string : string -> (float * float * float * float) option
+val virtual_indices_of_string : string -> int list option
+val virtual_indices_to_string : int list -> string
 val property_value_supported : property -> wire_value -> bool
 val property_value_supported_for_kind : node_kind -> property -> wire_value -> bool
 val int_property : wire_value Property_map.t -> property -> int -> int

@@ -2,8 +2,7 @@
 
 open Lui_protocol
 
-let escape_json value =
-  let buffer = Buffer.create (String.length value + 8) in
+let add_escaped_json buffer value =
   String.iter
     (fun c ->
        match c with
@@ -13,15 +12,27 @@ let escape_json value =
        | '\r' -> Buffer.add_string buffer "\\r"
        | '\t' -> Buffer.add_string buffer "\\t"
        | c when Char.code c < 0x20 ->
-         (* JSON requires every remaining control character (NUL, form
-            feed, ...) to be escaped; emitting it raw makes the whole
-            batch undecodable on the host. *)
-         Buffer.add_string buffer (Printf.sprintf "\\u%04x" (Char.code c))
+         let code = Char.code c in
+         Buffer.add_string buffer "\\u00";
+         Buffer.add_char buffer "0123456789abcdef".[code lsr 4];
+         Buffer.add_char buffer "0123456789abcdef".[code land 15]
        | c -> Buffer.add_char buffer c)
-    value;
+    value
+
+let escape_json value =
+  let buffer = Buffer.create (String.length value + 8) in
+  add_escaped_json buffer value;
   Buffer.contents buffer
 
-let quoted value = "\"" ^ escape_json value ^ "\""
+let add_quoted buffer value =
+  Buffer.add_char buffer '"';
+  add_escaped_json buffer value;
+  Buffer.add_char buffer '"'
+
+let quoted value =
+  let buffer = Buffer.create (String.length value + 8) in
+  add_quoted buffer value;
+  Buffer.contents buffer
 
 let encode_value value =
   match value with
@@ -41,51 +52,107 @@ let encode_value value =
     then encoded
     else encoded ^ ".0"
 
-let encode_op operation =
-  match operation with
+let add_int buffer value = Buffer.add_string buffer (string_of_int value)
+
+let add_value buffer = function
+  | StringValue value -> add_quoted buffer value
+  | value -> Buffer.add_string buffer (encode_value value)
+
+let add_property buffer prefix node property =
+  Buffer.add_string buffer prefix;
+  add_int buffer node;
+  Buffer.add_string buffer ",\"property\":";
+  add_quoted buffer property
+
+let add_op buffer = function
   | CreateNode (node, kind) ->
-    Printf.sprintf "{\"op\":\"create-node\",\"id\":%d,\"kind\":%s}" node
-      (quoted (Lui_wire_schema.node_kind_name kind))
+    Buffer.add_string buffer "{\"op\":\"create-node\",\"id\":";
+    add_int buffer node;
+    Buffer.add_string buffer ",\"kind\":";
+    add_quoted buffer (Lui_wire_schema.node_kind_name kind);
+    Buffer.add_char buffer '}'
   | CreateExtension (node, identifier, fingerprint) ->
-    Printf.sprintf "{\"op\":\"create-extension\",\"id\":%d,\"identifier\":%s,\"fingerprint\":%s}"
-      node (quoted identifier) (quoted fingerprint)
-  | DropNode node -> Printf.sprintf "{\"op\":\"drop-node\",\"id\":%d}" node
+    Buffer.add_string buffer "{\"op\":\"create-extension\",\"id\":";
+    add_int buffer node;
+    Buffer.add_string buffer ",\"identifier\":";
+    add_quoted buffer identifier;
+    Buffer.add_string buffer ",\"fingerprint\":";
+    add_quoted buffer fingerprint;
+    Buffer.add_char buffer '}'
+  | DropNode node ->
+    Buffer.add_string buffer "{\"op\":\"drop-node\",\"id\":";
+    add_int buffer node;
+    Buffer.add_char buffer '}'
   | DetachSubtree node ->
-    Printf.sprintf "{\"op\":\"detach-subtree\",\"id\":%d}" node
+    Buffer.add_string buffer "{\"op\":\"detach-subtree\",\"id\":";
+    add_int buffer node;
+    Buffer.add_char buffer '}'
   | SetProp (node, property, value) ->
-    Printf.sprintf "{\"op\":\"set-prop\",\"id\":%d,\"property\":%s,\"value\":%s}"
-      node
-      (quoted (Lui_wire_schema.property_name property))
-      (encode_value value)
+    add_property buffer "{\"op\":\"set-prop\",\"id\":" node
+      (Lui_wire_schema.property_name property);
+    Buffer.add_string buffer ",\"value\":";
+    add_value buffer value;
+    Buffer.add_char buffer '}'
   | RemoveProp (node, property) ->
-    Printf.sprintf "{\"op\":\"remove-prop\",\"id\":%d,\"property\":%s}" node
-      (quoted (Lui_wire_schema.property_name property))
+    add_property buffer "{\"op\":\"remove-prop\",\"id\":" node
+      (Lui_wire_schema.property_name property);
+    Buffer.add_char buffer '}'
   | SetExtensionProp (node, property, value) ->
-    Printf.sprintf
-      "{\"op\":\"set-extension-prop\",\"id\":%d,\"property\":%s,\"value\":%s}"
-      node (quoted property) (encode_value value)
+    add_property buffer "{\"op\":\"set-extension-prop\",\"id\":" node property;
+    Buffer.add_string buffer ",\"value\":";
+    add_value buffer value;
+    Buffer.add_char buffer '}'
   | RemoveExtensionProp (node, property) ->
-    Printf.sprintf
-      "{\"op\":\"remove-extension-prop\",\"id\":%d,\"property\":%s}" node
-      (quoted property)
+    add_property buffer "{\"op\":\"remove-extension-prop\",\"id\":" node property;
+    Buffer.add_char buffer '}'
   | InsertChild (parent, child, index) ->
-    Printf.sprintf
-      "{\"op\":\"insert-child\",\"parent\":%d,\"child\":%d,\"index\":%d}" parent
-      child index
+    Buffer.add_string buffer "{\"op\":\"insert-child\",\"parent\":";
+    add_int buffer parent;
+    Buffer.add_string buffer ",\"child\":";
+    add_int buffer child;
+    Buffer.add_string buffer ",\"index\":";
+    add_int buffer index;
+    Buffer.add_char buffer '}'
   | RemoveChild (parent, child) ->
-    Printf.sprintf "{\"op\":\"remove-child\",\"parent\":%d,\"child\":%d}" parent
-      child
+    Buffer.add_string buffer "{\"op\":\"remove-child\",\"parent\":";
+    add_int buffer parent;
+    Buffer.add_string buffer ",\"child\":";
+    add_int buffer child;
+    Buffer.add_char buffer '}'
   | MoveChild (parent, child, index) ->
-    Printf.sprintf
-      "{\"op\":\"move-child\",\"parent\":%d,\"child\":%d,\"index\":%d}" parent
-      child index
+    Buffer.add_string buffer "{\"op\":\"move-child\",\"parent\":";
+    add_int buffer parent;
+    Buffer.add_string buffer ",\"child\":";
+    add_int buffer child;
+    Buffer.add_string buffer ",\"index\":";
+    add_int buffer index;
+    Buffer.add_char buffer '}'
+
+let encode_op operation =
+  let buffer = Buffer.create 128 in
+  add_op buffer operation;
+  Buffer.contents buffer
+
+let add_ops buffer operations =
+  List.iteri (fun index operation ->
+    if index <> 0 then Buffer.add_char buffer ',';
+    add_op buffer operation) operations
 
 let encode_ops operations =
-  String.concat "," (List.map encode_op operations)
+  let buffer = Buffer.create 256 in
+  add_ops buffer operations;
+  Buffer.contents buffer
 
 let encode_batch batch =
-  Printf.sprintf "{\"generation\":%d,\"ops\":[%s]}" batch.generation
-    (encode_ops batch.ops)
+  (* One growing buffer avoids retaining a JSON string for every operation
+     alongside another complete operations string and the final batch. *)
+  let buffer = Buffer.create 256 in
+  Buffer.add_string buffer "{\"generation\":";
+  add_int buffer batch.generation;
+  Buffer.add_string buffer ",\"ops\":[";
+  add_ops buffer batch.ops;
+  Buffer.add_string buffer "]}";
+  Buffer.contents buffer
 
 (* ---------- decoding ----------
 

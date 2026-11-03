@@ -12,6 +12,7 @@ type block = {
 }
 
 type t = {
+  event_message : string;
   disabled : bool;
   field_value : string;
   checked : bool;
@@ -54,6 +55,8 @@ type t = {
   block_edits : int;
   virtual_count : int;
   virtual_last : string;
+  virtual_scroll_target : string;
+  virtual_scroll_token : int;
   editor_text : string;
 }
 
@@ -98,6 +101,7 @@ let starter_editor_text =
    preview re-render from the same signal."
 
 type action =
+  | RecordEvent of string
   | ToggleDisabled
   | SetFieldValue of string
   | SetChecked of bool
@@ -151,10 +155,13 @@ type action =
   | InsertBlock
   | SetVirtualCount of int
   | PressVirtualRow of int
+  | ScrollVirtualToTop
+  | ScrollVirtualToLast
   | SetEditorText of string
 
 let initial =
   {
+    event_message = "none";
     disabled = false;
     field_value = "";
     checked = false;
@@ -195,11 +202,14 @@ let initial =
     block_edits = 0;
     virtual_count = 0;
     virtual_last = "none";
+    virtual_scroll_target = "";
+    virtual_scroll_token = 0;
     editor_text = starter_editor_text;
   }
 
 let update model action =
   match action with
+  | RecordEvent event_message -> { model with event_message }
   | ToggleDisabled -> { model with disabled = not model.disabled }
   | SetFieldValue value -> { model with field_value = value }
   | SetChecked checked -> { model with checked }
@@ -374,9 +384,20 @@ let update model action =
       blocks = go (List.length model.blocks / 2) [] model.blocks;
       block_next_id = id + 1;
     }
-  | SetVirtualCount virtual_count -> { model with virtual_count }
+  | SetVirtualCount virtual_count ->
+    { model with virtual_count;
+      virtual_scroll_target = "";
+      virtual_scroll_token = model.virtual_scroll_token + 1 }
   | PressVirtualRow row ->
     { model with virtual_last = Printf.sprintf "row %d" row }
+  | ScrollVirtualToTop when model.virtual_count > 0 ->
+    { model with virtual_scroll_target = "row-0";
+      virtual_scroll_token = model.virtual_scroll_token + 1 }
+  | ScrollVirtualToLast when model.virtual_count > 0 ->
+    { model with
+      virtual_scroll_target = Printf.sprintf "row-%d" (model.virtual_count - 1);
+      virtual_scroll_token = model.virtual_scroll_token + 1 }
+  | ScrollVirtualToTop | ScrollVirtualToLast -> model
   | SetEditorText editor_text -> { model with editor_text }
 
 let progress_label model =

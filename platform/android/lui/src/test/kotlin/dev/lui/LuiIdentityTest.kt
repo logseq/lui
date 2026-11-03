@@ -5,8 +5,10 @@ import app.cash.paparazzi.Paparazzi
 import androidx.compose.material3.Text
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -23,8 +25,9 @@ class LuiIdentityTest {
     private fun reorder(kind: String) {
         val registry = LuiExtensionRegistry()
         var allocated = 0
-        val drafts = mutableMapOf<Long, Int>()
-        val positions = mutableMapOf<Long, Float>()
+        val drafts = mutableStateMapOf<Long, Int>()
+        val positions = mutableStateMapOf<Long, Float>()
+        var settled = false
         registry.register("review-row", "review-fingerprint", builder = { context ->
             val draft = remember { ++allocated }
             SideEffect { drafts[context.nodeId] = draft }
@@ -45,18 +48,20 @@ class LuiIdentityTest {
         val view = ComposeView(paparazzi.context).apply { setContent {
             LuiTheme { backend.Content() }
             LaunchedEffect(Unit) {
-                repeat(2) { withFrameNanos {} }
+                snapshotFlow { positions.toMap() }.first { it.size == 2 && it.getValue(2) < it.getValue(3) }
                 before.putAll(drafts)
                 assertTrue(backend.applyBatch("""{"generation":2,"ops":[
                     {"op":"move-child","parent":1,"child":3,"index":0}
                 ]}"""))
+                snapshotFlow { positions.toMap() }.first { it.getValue(3) < it.getValue(2) }
+                settled = true
             }
         } }
-        paparazzi.gif(view, name = "review-$kind-reorder", end = 200, fps = 30)
+        paparazzi.luiFrames(view, name = "review-$kind-reorder", end = 200, fps = 30)
         assertEquals("both rows rendered", 2, before.size)
         assertEquals("row drafts survive retained moves", before, drafts)
         assertEquals("reorder does not create replacement row state", 2, allocated)
-        assertTrue("rendered order follows the committed child order", positions.getValue(3) < positions.getValue(2))
+        assertTrue("rendered order follows the committed child order: $positions", settled)
     }
 
     @Test

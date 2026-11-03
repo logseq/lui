@@ -488,6 +488,25 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
             }
             validateSizeAxis(state, "width", "min-width", "max-width")
             validateSizeAxis(state, "height", "min-height", "max-height")
+            if (state.kind == LuiNodeKind.virtualList) validateVirtualSource(state)
+        }
+    }
+
+    private fun validateVirtualSource(state: LuiNode) {
+        val props = state.properties
+        val present = listOf("virtual-total-count", "virtual-generation", "virtual-indices").count { it in props }
+        if (present == 0) {
+            if ("virtual-scroll-index" in props) throw LuiBackendException("virtual target requires a source")
+            return
+        }
+        if (present != 3) throw LuiBackendException("incomplete virtual source")
+        val count = props.getValue("virtual-total-count").intValue!!
+        val indices = luiVirtualIndices(props.getValue("virtual-indices").stringValue!!)!!
+        if (indices.size != state.children.size || indices.any { it >= count }) {
+            throw LuiBackendException("virtual indices do not match source children")
+        }
+        props["virtual-scroll-index"]?.intValue?.let {
+            if (it < -1 || it >= count) throw LuiBackendException("virtual target outside source")
         }
     }
 
@@ -505,4 +524,20 @@ class LuiRetainedTree(private val registry: LuiExtensionRegistry) {
             throw LuiBackendException("$min above $max")
         }
     }
+}
+
+/** Canonical decimal indices, kept linear in the bounded committed window. */
+internal fun luiVirtualIndices(text: String): List<Int>? {
+    if (text == "[]") return emptyList()
+    if (!text.startsWith('[') || !text.endsWith(']')) return null
+    val result = mutableListOf<Int>()
+    var previous = -1
+    for (part in text.substring(1, text.length - 1).split(',')) {
+        if (part.isEmpty() || (part.length > 1 && part[0] == '0') || part.any { it !in '0'..'9' }) return null
+        val value = part.toIntOrNull() ?: return null
+        if (value <= previous) return null
+        result.add(value)
+        previous = value
+    }
+    return result
 }

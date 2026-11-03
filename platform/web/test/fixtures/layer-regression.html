@@ -169,7 +169,19 @@ function setupContextTracking(){
   window.audit.context={host,menu,grow,activations:[],remove:()=>{drop(host);flush();}};
   grow(2);
 }
-function addToast(text,duration=0){const toast=node("toast",root,{duration,padding:16});node("text",toast,{text});handlers.set(toast,()=>{drop(toast);flush();});flush();return toast;}
+function addToast(text,duration=0){
+  const toast=node("toast",root,{duration,padding:16});
+  const content=node("text",toast,{text});
+  handlers.set(toast,()=>{
+    if(!nodes.has(toast))return;
+    // Detach the owned subtree so the exit retains its original content.
+    ops.push(Protocol.detach_subtree_op(toast));
+    nodes.get(root).children=nodes.get(root).children.filter(child=>child!==toast);
+    nodes.delete(content);nodes.delete(toast);handlers.delete(toast);
+    flush();
+  });
+  flush();return toast;
+}
 function openCover(name){const cover=node("popover",root);const body=node("column",cover,{padding:24,width:400});node("input",body,{placeholder:name,autofocus:true});handlers.set(cover,()=>{drop(cover);flush();});flush();return cover;}
 function alignedOverlays(){for(const alignment of ['top-leading','top','top-trailing','leading','center','trailing','bottom-leading','bottom','bottom-trailing']){const overlay=node('overlay',root,{width:200,height:100,'accessibility-identifier':`overlay-${alignment}`});node('box',overlay,{width:200,height:100});node('box',overlay,{width:20,height:20,alignment});}flush();}
 function togglePopover(){const stack=node('row',root);let popup=null;function close(){if(popup){drop(popup);popup=null;flush();}}button(stack,'Toggle anchored popup',()=>{if(popup){close();return;}popup=node('popover',stack,{anchor:'below'});node('text',popup,{text:'Anchored popup content'});handlers.set(popup,close);flush();});flush();}
@@ -450,11 +462,11 @@ function runStyleAudit(){
     const el=document.querySelector('.'+className),style=getComputedStyle(el);
     const scale=new DOMMatrixReadOnly(style.transform).a;
     const origin=style.transformOrigin.split(' ').map(parseFloat);
-    const duration=kind==='dialog'?0.2:0.15,easing=kind==='dialog'?'ease-out':'ease';
+    const duration=0.1,easing='ease-out';
     const checks=[
       {label:'declared default duration',pass:style.transitionDuration.split(',').every(v=>Math.abs(parseFloat(v)-duration)<0.00001)},
       {label:'declared default curve',pass:style.transitionTimingFunction.split(',').every(v=>v.trim()===easing)},
-      {label:'entrance scale is 95 percent',pass:Math.abs(scale-0.95)<0.00001},
+      {label:'entrance scale is 98 percent',pass:Math.abs(scale-0.98)<0.00001},
       {label:'zoom origin is centered',pass:Math.abs(origin[0]-el.offsetWidth/2)<0.51&&Math.abs(origin[1]-el.offsetHeight/2)<0.51}
     ];
     results.push({kind,scale,origin,duration:style.transitionDuration,easing:style.transitionTimingFunction,checks});
@@ -495,9 +507,9 @@ async function runInterruptionAudit(){
     const item=surface('context-menu',null);
     open(item);
     const style=getComputedStyle(item.el),origin=style.transformOrigin.split(' ').map(parseFloat);
-    check('context defaults use 150 ms ease',style.transitionDuration.split(',').every(v=>parseFloat(v)===0.15)
-      &&style.transitionTimingFunction.split(',').every(v=>v.trim()==='ease'));
-    check('context entrance uses the centered 95 percent zoom',new DOMMatrixReadOnly(style.transform).a===0.95
+    check('context defaults use 100 ms ease-out',style.transitionDuration.split(',').every(v=>parseFloat(v)===0.1)
+      &&style.transitionTimingFunction.split(',').every(v=>v.trim()==='ease-out'));
+    check('context entrance uses the centered 98 percent zoom',new DOMMatrixReadOnly(style.transform).a===0.98
       &&Math.abs(origin[0]-item.el.offsetWidth/2)<0.51&&Math.abs(origin[1]-item.el.offsetHeight/2)<0.51);
     await settle(item);close(item);pause(item);
     check('context close retains visible inert content',item.el.hasAttribute('data-ending-style')

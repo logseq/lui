@@ -45,6 +45,7 @@ external will_update : t -> unit = "_willUpdate" [@@mel.send]
 external set_options : t -> options -> unit = "setOptions" [@@mel.send]
 external items : t -> item array = "getVirtualItems" [@@mel.send]
 external total_size : t -> float = "getTotalSize" [@@mel.send]
+external reset_measurements : t -> unit = "measure" [@@mel.send]
 
 external measure : t -> Dom.element Js.Nullable.t -> unit = "measureElement"
 [@@mel.send]

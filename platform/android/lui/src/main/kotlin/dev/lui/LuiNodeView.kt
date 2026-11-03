@@ -13,6 +13,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -132,6 +133,8 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.CollectionInfo
+import androidx.compose.ui.semantics.collectionInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
@@ -355,26 +358,27 @@ private fun LuiNodeContent(
             children.forEachNode { childId -> GrowChildColumn(backend, childId) }
         }
 
-        LuiNodeKind.list -> LazyColumn(
-            modifier = modifier,
-            verticalArrangement = Arrangement.spacedBy(
-                gapOf(node).dp,
-                alignment = mainVerticalAlignment(node.propString("main")),
-            ),
-            horizontalAlignment = crossHorizontalAlignment(node.propString("cross")),
-        ) {
-            children.forEach { childId ->
+        LuiNodeKind.list -> {
+            val rows = children.flatMap { childId ->
                 if (backend.node(childId)?.kind == LuiNodeKind.listSection) {
-                    // Expand section children so rows compose lazily like
-                    // the Apple backend's native list; headers/footers
-                    // stay inline items (not pinned) to keep wire order.
-                    backend.node(childId)?.children?.forEach { sectionChildId ->
-                        item(key = sectionChildId) {
-                            LuiNodeView(backend, sectionChildId)
-                        }
+                    backend.node(childId)?.children.orEmpty()
+                } else listOf(childId)
+            }
+            val arrangement = Arrangement.spacedBy(gapOf(node).dp,
+                alignment = mainVerticalAlignment(node.propString("main")))
+            val alignment = crossHorizontalAlignment(node.propString("cross"))
+            BoxWithConstraints(modifier = modifier, propagateMinConstraints = true) {
+                if (constraints.hasBoundedHeight) {
+                    LazyColumn(verticalArrangement = arrangement, horizontalAlignment = alignment) {
+                        rows.forEach { childId -> item(key = childId) { LuiNodeView(backend, childId) } }
                     }
                 } else {
-                    item(key = childId) { LuiNodeView(backend, childId) }
+                    // An ordinary list may participate in its parent's intrinsic
+                    // content flow; only a bounded viewport can own lazy scrolling.
+                    Column(Modifier.semantics { collectionInfo = CollectionInfo(rows.size, 1) },
+                        verticalArrangement = arrangement, horizontalAlignment = alignment) {
+                        rows.forEachNode { LuiNodeView(backend, it) }
+                    }
                 }
             }
         }
@@ -420,6 +424,7 @@ private fun LuiNodeContent(
                 DpOffset(node.propDouble("x").dp, node.propDouble("y").dp),
             ),
         ) {
+            LuiVirtualPortalLifetime()
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
                 Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(gapOf(node).dp)) {
                     children.forEachNode { LuiNodeView(backend, it) }
@@ -454,6 +459,7 @@ private fun LuiNodeContent(
             color = luiThemeColor(node.propString("foreground"), foreground = true)
                 ?: Color.Unspecified,
             textAlign = textAlignment(node.propString("text-alignment")),
+            maxLines = node.propInt("line-clamp", Int.MAX_VALUE),
             style = LuiTypography.textStyle(
                 node.propString("size"),
                 node.propString("style-class"),
@@ -466,6 +472,7 @@ private fun LuiNodeContent(
             color = luiThemeColor(node.propString("foreground"), foreground = true)
                 ?: Color.Unspecified,
             style = LuiTypography.headingStyle(node.propInt("heading-level", 1)),
+            maxLines = node.propInt("line-clamp", Int.MAX_VALUE),
         )
 
         LuiNodeKind.button -> LuiButton(backend, node, id, modifier, children)
@@ -788,7 +795,6 @@ private fun LuiNodeContent(
         }
 
         LuiNodeKind.filePreview,
-        LuiNodeKind.br,
         -> Unit
 
         LuiNodeKind.dialog, LuiNodeKind.sheet -> Unit // modal surfaces handled above
@@ -1223,10 +1229,10 @@ private fun LuiTextControl(
     val search = node.kind == LuiNodeKind.searchField
     val combobox = node.kind == LuiNodeKind.combobox
     val enabled = node.isEnabled()
+    val readOnly = node.prop("read-only")?.boolValue == true
     val grouped = node.parent?.let { backend.node(it)?.kind } == LuiNodeKind.inputGroup
     val formField = node.parent?.let { backend.node(it)?.propString("style-class") }
         ?.split(' ')?.contains("form") == true
-    val plain = (node.propString("style-class") ?: "").split(' ').contains("plain-input")
     val borderless = (node.propString("style-class") ?: "").split(' ')
         .contains("composer-input")
     val focusRequester = remember(id) { FocusRequester() }
@@ -1260,20 +1266,28 @@ private fun LuiTextControl(
     }
 
     val fieldModifier = modifier.then(
-        if (plain || grouped || borderless || formField || search) Modifier.fillMaxWidth() else Modifier.width(240.dp),
+        if (grouped || borderless || formField || search) Modifier.fillMaxWidth() else Modifier.width(240.dp),
     ).focusRequester(focusRequester)
-    val fieldTextStyle = (if (plain || borderless) MaterialTheme.typography.bodyLarge
+    val fieldTextStyle = (if (borderless) MaterialTheme.typography.bodyLarge
         else MaterialTheme.typography.bodyMedium).copy(
         color = luiThemeColor(node.propString("foreground"), foreground = true)
             ?: MaterialTheme.colorScheme.onSurface,
     ).luiInherited()
     val onValueChange: (String) -> Unit = { value ->
-        localText = value
-        emitted.add(value)
-        backend.emit(LuiEvent.TextChanged(id, value))
+        if (!readOnly) {
+            localText = value
+            emitted.add(value)
+            backend.emit(LuiEvent.TextChanged(id, value))
+        }
     }
     val placeholderContent: (@Composable () -> Unit)? =
-        node.propString("placeholder")?.let { p -> { Text(p) } }
+        node.propString("placeholder")?.let { p -> {
+            Text(
+                p,
+                maxLines = if (multiline) Int.MAX_VALUE else 1,
+                overflow = if (multiline) TextOverflow.Clip else TextOverflow.Ellipsis,
+            )
+        } }
     val transformation = if (secure) {
         androidx.compose.ui.text.input.PasswordVisualTransformation()
     } else {
@@ -1297,29 +1311,13 @@ private fun LuiTextControl(
         null
     }
 
-    if (plain) {
-        androidx.compose.foundation.text.BasicTextField(
-            value = localText,
-            onValueChange = onValueChange,
-            modifier = fieldModifier,
-            enabled = enabled,
-            singleLine = !multiline,
-            visualTransformation = transformation,
-            textStyle = fieldTextStyle,
-            cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
-            decorationBox = { innerField ->
-                Box {
-                    if (localText.isEmpty()) placeholderContent?.invoke()
-                    innerField()
-                }
-            },
-        )
-    } else if (borderless) {
+    if (borderless) {
         androidx.compose.material3.TextField(
             value = localText,
             onValueChange = onValueChange,
             modifier = fieldModifier,
             enabled = enabled,
+            readOnly = readOnly,
             singleLine = !multiline,
             maxLines = if (multiline) 5 else 1,
             placeholder = placeholderContent,
@@ -1332,6 +1330,7 @@ private fun LuiTextControl(
             onValueChange = onValueChange,
             modifier = fieldModifier,
             enabled = enabled,
+            readOnly = readOnly,
             placeholder = placeholderContent,
             singleLine = !multiline,
             minLines = if (multiline) 3 else 1,
@@ -1392,6 +1391,7 @@ private fun LuiMenuPopup(
             shapes = MenuDefaults.groupShapes(),
             modifier = Modifier.verticalScroll(rememberScrollState()),
         ) {
+            LuiVirtualPortalLifetime()
             menu.children.forEachIndexedNode { index, childId ->
                 CompositionLocalProvider(LocalLuiChildSlot provides LuiChildSlot(index, menu.children.size)) {
                     LuiMenuEntry(backend, childId, onSelect)
@@ -1602,6 +1602,16 @@ private fun LuiListItem(
             disabledContainerColor = Color.Transparent,
         )
     } else ListItemDefaults.colors()
+    val defaultPadding = ListItemDefaults.ContentPadding
+    val direction = LocalLayoutDirection.current
+    val contentPadding = if (node.prop("height") != null) {
+        // Authored compact geometry owns the available vertical space; retain
+        // native horizontal insets and interaction instead of clipping the label.
+        androidx.compose.foundation.layout.PaddingValues(
+            start = defaultPadding.calculateStartPadding(direction),
+            end = defaultPadding.calculateEndPadding(direction),
+        )
+    } else defaultPadding
     val icon = node.propString("icon")?.let { backend.icons.icon(it) }
     val content: @Composable () -> Unit = {
         if (children.isEmpty()) {
@@ -1639,6 +1649,7 @@ private fun LuiListItem(
     when {
         node.propBool("double-press-enabled") -> ListItem(
             colors = colors,
+            contentPadding = contentPadding,
             modifier = modifier.combinedClickable(
                 enabled = enabled,
                 onClick = onClick,
@@ -1651,6 +1662,7 @@ private fun LuiListItem(
         )
         node.prop("selected") != null -> ListItem(
             colors = colors,
+            contentPadding = contentPadding,
             selected = node.propBool("selected"),
             onClick = onClick,
             onLongClick = onLongClick,
@@ -1661,6 +1673,7 @@ private fun LuiListItem(
         )
         else -> ListItem(
             colors = colors,
+            contentPadding = contentPadding,
             onClick = onClick,
             onLongClick = onLongClick,
             modifier = modifier,
@@ -2264,6 +2277,7 @@ private fun LuiToolbar(
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun LuiModalSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
+    LuiVirtualPortalLifetime()
     val onDismiss = { backend.emit(LuiEvent.Dismiss(id)) }
     when (node.kind) {
         LuiNodeKind.dialog -> {

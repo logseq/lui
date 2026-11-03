@@ -16,6 +16,12 @@ let set_style dom_node name value =
   let scope = W.HtmlElement.style (W.Element.unsafeAsHtmlElement dom_node) in
   Util.set_style scope name value
 
+let set_theme_mode dom_node mode =
+  if W.Element.getAttribute "data-kb-theme" dom_node <> mode then
+    match mode with
+    | Some value -> W.Element.setAttribute "data-kb-theme" value dom_node
+    | None -> W.Element.removeAttribute "data-kb-theme" dom_node
+
 (* Typed edges have the same specificity on every host: side, axis, all.
    CSS shorthand assignment order must not change that contract. *)
 let refresh_spacing renderer node dom_node ~margin =
@@ -258,6 +264,26 @@ let select_display_text renderer node =
        | Some (StringValue placeholder) -> placeholder
        | _ -> "")
 
+(* An empty Select value shows its placeholder in the same slot. Mark that
+   state so the placeholder reads as a hint rather than a committed value. *)
+let sync_select_value renderer node dom_node =
+  let showing_placeholder =
+    match Store.property renderer.web_store node TextValue with
+    | Some (StringValue text) when text <> "" -> false
+    | _ -> (
+        match Store.property renderer.web_store node PlaceholderValue with
+        | Some (StringValue placeholder) -> placeholder <> ""
+        | _ -> false)
+  in
+  W.Element.setTextContent
+    (Util.child_element dom_node 0)
+    (select_display_text renderer node);
+  Util.set_state_attribute dom_node "data-placeholder" showing_placeholder
+
+let apply_menu_shortcut kind dom_node value =
+  if kind = MenuItem || kind = MenuTrigger then
+    Util.set_optional_text (Util.menu_item_shortcut_node dom_node) value
+
 let refresh_node_class renderer node kind dom_node =
   let style_class =
     match Store.property renderer.web_store node StyleClass with
@@ -314,10 +340,7 @@ let apply_text_value renderer node kind dom_node text =
   | Avatar ->
       W.Element.setTextContent (Util.child_element dom_node 1) text;
       Widgets.update_avatar renderer node dom_node
-  | Select ->
-      W.Element.setTextContent
-        (Util.child_element dom_node 0)
-        (select_display_text renderer node)
+  | Select -> sync_select_value renderer node dom_node
   | Link ->
       W.Element.setTextContent (Util.child_element dom_node 1) text
   | TextField | SecureField | Input | SearchField | Textarea | Combobox ->
@@ -388,10 +411,7 @@ let apply_gap _renderer queue_split node kind dom_node gap =
     set_style dom_node "--lui-table-gap" (string_of_int gap ^ "px")
 
 let apply_placeholder renderer node kind dom_node placeholder =
-  if kind = Select then
-    W.Element.setTextContent
-      (Util.child_element dom_node 0)
-      (select_display_text renderer node)
+  if kind = Select then sync_select_value renderer node dom_node
   else
     W.HtmlInputElement.setPlaceholder (Util.text_control_node dom_node)
       placeholder
@@ -408,6 +428,8 @@ let apply_accessibility_label kind dom_node label =
       (if Store.direct_toggle kind || kind = NumberStepper then
          Util.child_element dom_node 0
        else dom_node)
+
+external set_input_indeterminate : W.HtmlInputElement.t_htmlInputElement -> bool -> unit = "indeterminate" [@@mel.set]
 
 let apply_checked kind dom_node checked =
   if kind = Toggle then begin
@@ -742,8 +764,13 @@ let rec apply_property renderer queue_split node kind dom_node property
     value =
   let dom_node = property_surface kind dom_node property in
   match (property, value) with
+  | ThemeMode, StringValue mode -> set_theme_mode dom_node (Some mode)
   | TextValue, StringValue text ->
       apply_text_value renderer node kind dom_node text
+  | ReadOnly, BoolValue read_only ->
+      let control = Util.text_control_node dom_node in
+      W.HtmlInputElement.setReadOnly control read_only
+  | (VirtualOverscan | VirtualItemExtent), _ -> ()
   | Enabled, BoolValue enabled ->
       apply_enabled renderer node kind dom_node enabled;
       Lui_web_events.update_appear renderer node
@@ -855,7 +882,16 @@ and apply_sheet_sizing dom_node value =
 and apply_secondary_property renderer queue_split node kind dom_node
     property value =
   match (property, value) with
-  | Checked, BoolValue checked -> apply_checked kind dom_node checked
+  | Checked, BoolValue checked ->
+      apply_checked kind dom_node checked;
+      if Store.true_property renderer node Indeterminate then
+        W.Element.setAttribute "aria-checked" "mixed" (Util.child_element dom_node 0)
+  | Indeterminate, BoolValue mixed ->
+      W.Element.setAttribute "aria-checked" (if mixed then "mixed" else
+          if W.HtmlInputElement.checked (Util.text_control_node dom_node) then "true" else "false")
+        (Util.child_element dom_node 0);
+      Util.set_state_attribute dom_node "data-indeterminate" mixed;
+      set_input_indeterminate (Util.text_control_node dom_node) mixed
   | ProgressValue, FloatValue value ->
       apply_progress_value renderer node kind dom_node value
   | MinValue, FloatValue value ->
@@ -1003,7 +1039,8 @@ and apply_secondary_property renderer queue_split node kind dom_node
   | TooltipText, StringValue value ->
       W.Element.setAttribute "data-tooltip" value dom_node
   | TooltipKeys, StringValue value ->
-      W.Element.setAttribute "data-tooltip-keys" value dom_node
+      W.Element.setAttribute "data-tooltip-keys" value dom_node;
+      apply_menu_shortcut kind dom_node value
   | InputType, StringValue value ->
       W.Element.setAttribute "type" value dom_node
   | PickerAccept, StringValue value ->
@@ -1068,7 +1105,8 @@ and apply_secondary_property renderer queue_split node kind dom_node
       W.Element.setAttribute "data-key" key dom_node
   | StyleValue, StringValue style ->
       W.Element.setAttribute "data-list-style" style dom_node
-  | (ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange), _ -> ()
+  | (ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange
+     | VirtualTotalCount | VirtualGeneration | VirtualIndices | VirtualScrollIndex), _ -> ()
   | SeparatorValue, StringValue separator ->
       W.Element.setAttribute "data-separator" separator dom_node
   | FontSize, StringValue size -> set_style dom_node "font-size" size
@@ -1167,6 +1205,7 @@ let remove_property renderer queue_split node kind dom_node property =
   match Store.node renderer.web_store node with
   | Some _current ->
       (match property with
+       | ThemeMode -> set_theme_mode dom_node None
        | SelectionPlacementValue ->
            W.Element.removeAttribute "data-selection-placement" dom_node;
            set_style (Util.menu_item_check_node dom_node) "order" ""
@@ -1188,6 +1227,9 @@ let remove_property renderer queue_split node kind dom_node property =
            else W.Element.removeAttribute "aria-pressed" dom_node
        | NavigateEnabled | SubmitOnBlur | ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange -> ()
        | TextValue -> apply_text_value renderer node kind dom_node ""
+       | ReadOnly -> W.HtmlInputElement.setReadOnly (Util.text_control_node dom_node) false
+       | VirtualOverscan | VirtualItemExtent | VirtualTotalCount
+       | VirtualGeneration | VirtualIndices | VirtualScrollIndex -> ()
        | Enabled ->
            apply_property renderer queue_split node kind dom_node Enabled
              (BoolValue true)
@@ -1240,8 +1282,10 @@ let remove_property renderer queue_split node kind dom_node property =
        | AlignmentValue ->
            W.Element.removeAttribute "data-alignment" dom_node
        | PlaceholderValue ->
-           W.HtmlInputElement.setPlaceholder (Util.text_control_node dom_node)
-             ""
+           if kind = Select then sync_select_value renderer node dom_node
+           else
+             W.HtmlInputElement.setPlaceholder
+               (Util.text_control_node dom_node) ""
        | AccessibilityLabel ->
            W.Element.removeAttribute "aria-label"
              (if Store.direct_toggle kind || kind = NumberStepper then
@@ -1286,7 +1330,9 @@ let remove_property renderer queue_split node kind dom_node property =
        | FlexWrap -> set_style dom_node "flex-wrap" ""
        | Transition -> set_style (transition_surface kind dom_node) "transition" ""
        | TooltipText -> W.Element.removeAttribute "data-tooltip" dom_node
-       | TooltipKeys -> W.Element.removeAttribute "data-tooltip-keys" dom_node
+       | TooltipKeys ->
+           W.Element.removeAttribute "data-tooltip-keys" dom_node;
+           apply_menu_shortcut kind dom_node ""
        | InputType -> W.Element.removeAttribute "type" dom_node
        | PickerAccept -> W.Element.removeAttribute "data-accept" dom_node
        | PickerDirectory ->
@@ -1457,9 +1503,31 @@ let refresh_portal_property renderer node dom_node property css_name =
             then Util.set_style style css_name value
           end)
 
+let refresh_portal_theme_mode renderer node dom_node =
+  let rec nearest_mode id =
+    match Store.node renderer.web_store id with
+    | None -> invalid_arg "unknown logical portal ancestor"
+    | Some current -> (
+        match Store.property renderer.web_store id ThemeMode with
+        | Some (StringValue mode) -> Some mode
+        | _ -> Option.bind current.retained_parent nearest_mode)
+  in
+  match Store.node renderer.web_store node with
+  | None | Some { retained_parent = None; _ } -> ()
+  | Some current -> (
+      match Store.standard_kind current with
+      | None -> invalid_arg "portal index requires a standard node"
+      | Some kind ->
+          let target =
+            if modal_surface kind then Util.modal_layer_node dom_node
+            else dom_node
+          in
+          set_theme_mode target (nearest_mode node))
+
 let refresh_portal_inheritance renderer =
   Hashtbl.iter
     (fun node dom_node ->
       refresh_portal_property renderer node dom_node ForegroundValue "color";
-      refresh_portal_property renderer node dom_node FontFamily "font-family")
+      refresh_portal_property renderer node dom_node FontFamily "font-family";
+      refresh_portal_theme_mode renderer node dom_node)
     renderer.web_portal_nodes

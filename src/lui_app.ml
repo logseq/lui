@@ -32,6 +32,11 @@ type ('model, 'action) reducer_app = {
 let reduce model_state reducer action =
   Signal.update model_state (fun current -> reducer current action)
 
+let latest_model model_state =
+  match Signal.state_pending model_state with
+  | Some model -> model
+  | None -> Signal.get_state model_state
+
 let restore_state_scopes state_scopes saved =
   Hashtbl.iter
     (fun path scope ->
@@ -59,10 +64,10 @@ let prune_state_scopes state_scopes active =
   Hashtbl.iter (Hashtbl.replace state_scopes) retained;
   true
 
-let create_with_extensions backend registry initial_model reducer view =
+let create_with_extensions ?virtual_rows backend registry initial_model reducer view =
   let scheduler = Signal.scheduler () in
   let application =
-    Lui_runtime.create_with_extensions scheduler backend registry
+    Lui_runtime.create_with_extensions ?virtual_rows scheduler backend registry
   in
   let scope = Signal.scope "app" in
   let context = Lui_ui.context application scope in
@@ -82,22 +87,22 @@ let create_with_extensions backend registry initial_model reducer view =
     app_scheduler = scheduler;
     app_runtime = application;
     app_scope = scope;
-    app_read_model = (fun () -> Signal.get_state model_state);
+    app_read_model = (fun () -> latest_model model_state);
     app_send_action = send_action;
     app_root_node = root;
     app_lifecycle_state = lifecycle;
     app_reload_state = None;
   }
 
-let create backend initial_model reducer view =
-  create_with_extensions backend (Lui_extension.registry ()) initial_model
+let create ?virtual_rows backend initial_model reducer view =
+  create_with_extensions ?virtual_rows backend (Lui_extension.registry ()) initial_model
     reducer view
 
-let create_reloadable_with_extensions backend registry source_hash
+let create_reloadable_with_extensions ?virtual_rows backend registry source_hash
     contract_hash initial_model reducer view =
   let scheduler = Signal.scheduler () in
   let application =
-    Lui_runtime.create_with_extensions scheduler backend registry
+    Lui_runtime.create_with_extensions ?virtual_rows scheduler backend registry
   in
   let scope = Signal.scope "app" in
   let view_scope = Signal.child_scope "app-view-0" scope in
@@ -128,7 +133,7 @@ let create_reloadable_with_extensions backend registry source_hash
       app_scheduler = scheduler;
       app_runtime = application;
       app_scope = scope;
-      app_read_model = (fun () -> Signal.get_state model_state);
+      app_read_model = (fun () -> latest_model model_state);
       app_send_action = send_action;
       app_root_node = root;
       app_lifecycle_state = lifecycle;
@@ -147,9 +152,9 @@ let create_reloadable_with_extensions backend registry source_hash
   Lui_runtime.insert_child application root view_node 0;
   app
 
-let create_reloadable backend source_hash contract_hash initial_model
+let create_reloadable ?virtual_rows backend source_hash contract_hash initial_model
     reducer view =
-  create_reloadable_with_extensions backend (Lui_extension.registry ())
+  create_reloadable_with_extensions ?virtual_rows backend (Lui_extension.registry ())
     source_hash contract_hash initial_model reducer view
 
 let start app =

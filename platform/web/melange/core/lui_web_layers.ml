@@ -91,6 +91,7 @@ type t = {
      (not activeElement) to learn its real trigger *)
   mutable down_target : Dom.element option;
   mutable target_listeners : (Dom.event -> unit) list;
+  mutable change_listeners : (unit -> unit) list;
 }
 
 let style_properties =
@@ -273,7 +274,8 @@ let create () =
     scroll_lock_held = false;
     is_descendant = None;
     down_target = None;
-    target_listeners = [] }
+    target_listeners = [];
+    change_listeners = [] }
 
 let layer_at registry id = Hashtbl.find_opt registry.layers id
 
@@ -406,7 +408,24 @@ let refresh registry document =
   sync_listeners registry document;
   refresh_order registry;
   update_inert registry;
-  update_scroll_lock registry document
+  update_scroll_lock registry document;
+  List.iter (fun listener -> listener ()) registry.change_listeners
+
+(* A virtual row can own a portal even while focus is outside its DOM subtree. *)
+let retains_owner registry ~node ~element =
+  Hashtbl.fold
+    (fun _ layer retained ->
+      retained || (layer.open_ && layer.present
+        && (node layer.id
+            || Option.fold ~none:false ~some:node layer.owner
+            || Option.fold ~none:false ~some:element layer.trigger)))
+    registry.layers false
+
+let observe registry listener =
+  registry.change_listeners <- listener :: registry.change_listeners;
+  fun () ->
+    registry.change_listeners <-
+      List.filter (fun current -> current != listener) registry.change_listeners
 
 let dispatch_key registry (event : Dom.keyboardEvent) =
   if

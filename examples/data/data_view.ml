@@ -239,6 +239,8 @@ let event_name = function
   | P.Appear _ -> "appear"
   | P.ScrollCompleted _ -> "scroll-completed"
   | P.VisibleRange _ -> "visible-range"
+  | P.ScrollEdges _ -> "scroll-edges"
+  | P.VirtualWindow _ -> "virtual-window"
   | P.Picked _ -> "picked"
   | P.PressModifiers _ -> "press-modifiers"
   | P.PressDetail _ -> "press-detail"

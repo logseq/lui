@@ -56,6 +56,14 @@ jobs:
         run: node --test tooling/test/*.mjs
       - name: OCaml tests
         run: make test-ocaml
+      - name: Build portable OCaml bounded-row application
+        run: bash tooling/test/build_bounded_virtual_fixture.sh "$RUNNER_TEMP/lui-bounded-native-fixture"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Real JVM, JNI and OCaml bounded-row lifecycle
+        run: python3 platform/android/test_native_virtual_rows.py "$RUNNER_TEMP/lui-bounded-native-fixture"
       - name: Runtime performance qualification
         run: bash tooling/performance/qualify_runtime.sh
       - name: Trim dune cache
@@ -128,10 +136,11 @@ jobs:
             fi
           done
           node --test --test-concurrency=2 "${tests[@]}"
-      - name: Firefox and WebKit overlay ownership
+      - name: Firefox and WebKit overlay ownership and virtual rows
         run: |
           for browser in firefox webkit; do
             LUI_WEB_BROWSER="$browser" node --test --test-name-pattern='^(owned picker|clicking an owned|removing a modal|nested modal locks|modal focus|rapidly reopened)' platform/web/test/overlay.e2e.mjs
+            LUI_WEB_BROWSER="$browser" node --test platform/web/test/virtual-rows.e2e.mjs
           done
       - name: WebKit retained Gallery regressions
         run: LUI_WEB_BROWSER=webkit node --test platform/web/test/firefox.e2e.mjs
@@ -161,12 +170,68 @@ jobs:
           restore-keys: |
             swiftpm-${{ runner.os }}-${{ hashFiles('Package.swift') }}-
       - run: swift test
+      - uses: ./.github/actions/setup-lui-ocaml
+        with:
+          scope: compiler
+      - name: Install portable fixture dependencies
+        run: opam install -y dune ppxlib ocaml-signal melange
+      - name: Build portable OCaml bounded-row application
+        run: bash tooling/test/build_bounded_virtual_fixture.sh "$RUNNER_TEMP/lui-bounded-native-fixture"
+      - name: Actual OCaml and SwiftUI bounded-row lifecycle
+        env:
+          LUI_APPLE_BOUNDED_LIBRARY: ${{ runner.temp }}/lui-bounded-native-fixture/liblui_bounded_virtual.dylib
+        run: swift test --filter LUISparseVirtualNativeTests
       - name: Compile iOS backend and tests
         run: >-
           xcodebuild -scheme LUI-Package
           -destination 'generic/platform=iOS Simulator'
           -derivedDataPath "$RUNNER_TEMP/lui-ios-build"
           build-for-testing
+      - name: Actual UIKit bounded-row lifecycle
+        run: |
+          python3 - <<'PYTHON'
+          import json
+          import os
+          import subprocess
+          import sys
+          data = json.loads(subprocess.check_output(
+              ["xcrun", "simctl", "list", "devices", "available", "--json"], text=True))
+          device = next(device for runtime, devices in data["devices"].items()
+              if runtime.rsplit(".", 1)[-1].startswith("iOS-")
+              for device in devices if device["name"].startswith("iPhone"))
+          if device["state"] != "Booted":
+              subprocess.run(["xcrun", "simctl", "boot", device["udid"]], check=True)
+          subprocess.run(["xcrun", "simctl", "bootstatus", device["udid"], "-b"], check=True)
+          subprocess.run([sys.executable, "platform/apple/Tests/RuntimeChecks/run-ios-check.py",
+              "bounded-virtual-rows", "--simulator", device["udid"],
+              "--diagnostics-dir", os.path.join(os.environ["RUNNER_TEMP"], "lui-uikit-diagnostics")], check=True)
+          PYTHON
+      - name: Preserve UIKit failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uikit-runtime-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/lui-uikit-diagnostics
+          if-no-files-found: ignore
+
+  android-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install Android compile SDK
+        run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
+      - name: Android store and actual Compose regressions
+        working-directory: platform/android
+        run: ./gradlew --no-daemon :lui:testDebugUnitTest
 
   c-bridge-stress:
     runs-on: ubuntu-latest

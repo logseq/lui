@@ -1225,87 +1225,133 @@ test("Nested menu keeps its right-side submenu open through the pointer corridor
 })
 
 test("Nested menu corridor follows a submenu that flips to the left", async () => {
-  await openGalleryPage("Select")
+  await openLayerRegressionPage()
   await browser("set", "viewport", "480", "720")
-  await evaluate(`(() => {
-    const select = document.querySelector('.lui-select')
-    Object.assign(select.style, {
-      position: 'fixed',
-      right: '4px',
-      bottom: '160px',
-      width: '180px',
-      zIndex: '1',
+  await session.page.evaluate(async () => {
+    const [Web, { Protocol, properties, kinds }] = await Promise.all([
+      import("lui.web.dom/shell/lui_web.js"),
+      import("/platform/web/test/fixtures/protocol-fixture.mjs"),
+    ])
+    const host = document.createElement("div")
+    Object.assign(host.style, {
+      position: "fixed", right: "4px", bottom: "160px", width: "180px",
     })
-    select.focus()
-  })()`)
-  await browser("press", "Enter")
-  await browser("wait", "30")
-
-  assert.equal(
-    await state(`(() => {
-      const rootPopup = document.getElementById(
-        document.querySelector('.lui-select')?.getAttribute('aria-controls'),
-      )
-      const trigger = [...(rootPopup?.querySelectorAll('.lui-menu-item') ?? [])]
-        .find((item) => item.textContent.includes('More environments'))
-      trigger?.dispatchEvent(new MouseEvent('mouseenter', {
-        clientX: trigger.getBoundingClientRect().left,
-        clientY: trigger.getBoundingClientRect().top
-          + trigger.getBoundingClientRect().height / 2,
-      }))
-      return trigger?.getAttribute('aria-expanded')
-    })()`),
-    "true",
-  )
-  await browser("wait", "30")
-
-  assert.equal(
-    await state(`(() => {
-      const rootPopup = document.getElementById(
-        document.querySelector('.lui-select')?.getAttribute('aria-controls'),
-      )
-      const trigger = [...(rootPopup?.querySelectorAll('.lui-menu-item') ?? [])]
-        .find((item) => item.textContent.includes('More environments'))
-      const submenu = [...document.querySelectorAll('.lui-popup-positioner[data-submenu]')]
-        .find((node) => !node.hasAttribute('hidden')
-          && node.textContent.includes('Production region'))
-      const popup = submenu?.querySelector('.lui-dropdown-menu')
-      const triggerBounds = trigger?.getBoundingClientRect()
-      const popupBounds = popup?.getBoundingClientRect()
-      window.__flippedSubmenuCorridor = {
-        startX: triggerBounds?.left,
-        startY: (triggerBounds?.top ?? 0) + (triggerBounds?.height ?? 0) / 2,
-        endX: popupBounds?.right,
-        endY: (popupBounds?.top ?? 0) + (popupBounds?.height ?? 0) / 2,
+    host.setAttribute("data-flipped-corridor", "")
+    document.body.append(host)
+    const renderer = Web.create(undefined, host)
+    const backend = Web.backend(renderer)
+    const ops = []
+    const childCounts = new Map()
+    let next = 1000000
+    const node = (kind, parent, props = {}) => {
+      const id = ++next
+      ops.push(Protocol.create_node_op(id, kinds.get(kind)))
+      for (const [name, value] of Object.entries(props)) {
+        const tag = typeof value === "string" ? 0 : typeof value === "boolean" ? 1
+          : name === "anchor-offset" ? 3 : 2
+        ops.push(Protocol.set_prop_op(id, properties.get(name), { TAG: tag, _0: value }))
       }
-      trigger?.dispatchEvent(new MouseEvent('mouseleave', {
-        clientX: window.__flippedSubmenuCorridor.startX,
-        clientY: window.__flippedSubmenuCorridor.startY,
-        relatedTarget: document.body,
-      }))
-      ;[0.4, 0.8].forEach((progress, index) => {
-        setTimeout(() => {
-          const point = window.__flippedSubmenuCorridor
-          document.dispatchEvent(new MouseEvent('mousemove', {
-            bubbles: true,
-            clientX: point.startX + (point.endX - point.startX) * progress,
-            clientY: point.startY + (point.endY - point.startY) * progress,
-          }))
-        }, index * 70)
-      })
-      setTimeout(() => {
-        window.__flippedSubmenuCorridorOpen = popup?.hasAttribute('data-open')
-      }, 180)
-      return submenu?.getAttribute('data-side')
-    })()`),
-    "left",
-  )
-  await browser("wait", "230")
-
-  assert.equal(
-    await state(`window.__flippedSubmenuCorridorOpen`),
-    true,
-  )
+      if (parent) {
+        const index = childCounts.get(parent) ?? 0
+        ops.push(Protocol.insert_child_op(parent, id, index))
+        childCounts.set(parent, index + 1)
+      }
+      return id
+    }
+    const root = node("column", null)
+    const stack = node("stack", root)
+    const select = node("select", stack, { text: "Alpha", "press-enabled": true })
+    const list = (values) => values.reduceRight((tl, hd) => ({ hd, tl }), 0)
+    let generation = 0, menu
+    const flush = () => backend.apply_batch({ generation: ++generation, ops: list(ops.splice(0)) })
+    Web.set_event_handler(renderer, (event) => {
+      if ((event.TAG === 0 || event.TAG === 7) && event._0 === select && !menu) {
+        menu = node("dropdown-menu", stack, { "min-width": 220 })
+        node("menu-item", menu, { text: "Alpha", selected: true })
+        const more = node("menu-trigger", menu, { text: "More environments" })
+        const submenu = node("dropdown-menu", more, {
+          anchor: "right", "anchor-offset": 32, "min-width": 180,
+        })
+        node("menu-item", submenu, { text: "Production region" })
+        flush()
+        const trigger = document.getElementById(`lui-node-${more}`)
+        const positioner = document.getElementById(`lui-node-${submenu}`)
+        const popup = positioner.querySelector(".lui-dropdown-menu")
+        const rootPopup = document.getElementById(`lui-node-${menu}`)
+          .querySelector(".lui-dropdown-menu")
+        const events = []
+        for (const [element, name] of [[trigger, "trigger"], [popup, "popup"]]) {
+          element.addEventListener("mouseenter", () => events.push(`${name}:enter`))
+          element.addEventListener("mouseleave", () => events.push(`${name}:leave`))
+        }
+        window.__flippedCorridor = { trigger, positioner, popup, rootPopup, events }
+      }
+      return true
+    })
+    flush()
+    Web.mount(renderer, root, host)
+  })
+  await session.page.locator("[data-flipped-corridor] .lui-select").click()
+  await session.page.waitForFunction(() => {
+    const { rootPopup } = window.__flippedCorridor
+    return rootPopup.hasAttribute("data-open")
+      && !rootPopup.hasAttribute("data-starting-style")
+      && rootPopup.getAnimations().every((animation) => animation.playState !== "running" && !animation.pending)
+  })
+  const trigger = await session.page.evaluate(() => {
+    const rect = window.__flippedCorridor.trigger.getBoundingClientRect()
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+  })
+  await session.page.mouse.move(trigger.x, trigger.y)
+  // Observe completed CSS motion and stable geometry, rather than guessing
+  // which frame a 30ms delay reaches on a loaded CI runner.
+  await session.page.waitForFunction(() => {
+    const fixture = window.__flippedCorridor
+    const { trigger, positioner, popup, rootPopup } = fixture
+    const elements = [trigger, popup, rootPopup]
+    if (!popup.hasAttribute("data-open") || positioner.getAttribute("data-side") !== "left"
+      || elements.some((element) => element.hasAttribute("data-starting-style")
+        || element.getAnimations().some((animation) => animation.playState === "running" || animation.pending))) return false
+    const bounds = elements.map((element) => {
+      const { x, y, width, height } = element.getBoundingClientRect()
+      return [x, y, width, height]
+    })
+    const key = JSON.stringify(bounds)
+    const stable = fixture.bounds === key
+    fixture.bounds = key
+    return stable
+  })
+  const corridor = await session.page.evaluate(() => {
+    const { trigger, popup, positioner } = window.__flippedCorridor
+    const a = trigger.getBoundingClientRect(), b = popup.getBoundingClientRect()
+    return { side: positioner.getAttribute("data-side"), startX: a.left,
+      startY: a.y + a.height / 2, endX: b.right, endY: b.y + b.height / 2,
+      popupX: b.x + b.width / 2, popupY: b.y + b.height / 2 }
+  })
+  assert.equal(corridor.side, "left")
+  assert.ok(corridor.startX - corridor.endX >= 30, "the public anchor offset creates a real pointer gap")
+  // Four real moves keep the pointer in the gap longer than the 120ms close
+  // grace period. Entering the popup cannot mask a broken corridor here.
+  for (const progress of [0.2, 0.4, 0.6, 0.8]) {
+    await session.page.mouse.move(
+      corridor.startX + (corridor.endX - corridor.startX) * progress,
+      corridor.startY + (corridor.endY - corridor.startY) * progress,
+    )
+    await session.page.waitForTimeout(70)
+    assert.deepEqual(await session.page.evaluate(() => ({
+      open: window.__flippedCorridor.popup.hasAttribute("data-open"),
+      enteredPopup: window.__flippedCorridor.events.includes("popup:enter"),
+    })), { open: true, enteredPopup: false })
+  }
+  await session.page.mouse.move(corridor.popupX, corridor.popupY)
+  assert.equal(await session.page.evaluate(() =>
+    window.__flippedCorridor.events.includes("popup:enter")), true)
+  assert.equal(await session.page.evaluate(() =>
+    window.__flippedCorridor.popup.hasAttribute("data-open")), true)
+  await session.page.mouse.move(8, 8)
+  await session.page.waitForFunction(() => !window.__flippedCorridor.popup.hasAttribute("data-open"))
+  assert.equal(await session.page.evaluate(() =>
+    window.__flippedCorridor.trigger.getAttribute("aria-expanded")), "false")
 })
 
 test("Select keyboard navigation enters submenus and restores trigger focus", async () => {
@@ -2218,7 +2264,27 @@ test("Toolbar flattens nested control groups into one roving sequence", async ()
   for (const expected of ["Italic", "Underline", "Redo", "More"]) {
     await browser("press", "ArrowRight")
     assert.equal(await state(`document.activeElement?.textContent.trim()`), expected)
+    assert.deepEqual(
+      await state(`(() => {
+        const root = document.querySelector(${JSON.stringify(toolbar)})
+        return [...root.querySelectorAll('[tabindex="0"]')]
+          .map((control) => control.textContent.trim())
+      })()`),
+      [expected],
+    )
   }
+
+  await evaluate(`(() => {
+    const root = document.querySelector(${JSON.stringify(toolbar)})
+    const input = root.querySelector('input')
+    input.value = 'Patched formatting'
+    input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
+  })()`)
+  assert.deepEqual(
+    await state(`[...document.querySelector(${JSON.stringify(toolbar)}).querySelectorAll('[tabindex="0"]')]
+      .map((control) => control.textContent.trim())`),
+    ["More"],
+  )
 })
 
 test("Toolbar input keeps editing keys until its caret reaches a boundary", async () => {
@@ -2391,6 +2457,32 @@ test("Overlay alignment clears the centered inset on trailing and bottom edges",
   assert.deepEqual(positions, [[0,0],[90,0],[180,0],[0,40],[90,40],[180,40],[0,80],[90,80],[180,80]])
 })
 
+test("Toast Escape dismisses only its focused notification", async () => {
+  await openLayerRegressionPage()
+  await evaluate(`window.audit.addToast('Older notification'); window.audit.addToast('Newest notification')`)
+  await session.page.locator('#run-exit-audit').focus()
+  await browser('press', 'Escape')
+  assert.equal(await session.page.locator('.lui-toast[data-open]').count(), 2)
+  await browser('press', 'F6')
+  assert.equal(await state(`document.activeElement.textContent`), 'Newest notification')
+  await evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'Escape', bubbles: true, cancelable: true, isComposing: true,
+  }))`)
+  assert.equal(await session.page.locator('.lui-toast[data-open]').count(), 2)
+  await evaluate(`(() => {
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    event.preventDefault()
+    document.activeElement.dispatchEvent(event)
+  })()`)
+  assert.equal(await session.page.locator('.lui-toast[data-open]').count(), 2)
+  await browser('press', 'Escape')
+  assert.equal(await session.page.locator('.lui-toast[data-open]').count(), 1)
+  assert.equal(await state(`document.querySelector('.lui-toast[data-open]')?.textContent`), 'Older notification')
+  await session.page.locator('.lui-toast[data-open]').focus()
+  await browser('press', 'Escape')
+  assert.equal(await session.page.locator('.lui-toast[data-open]').count(), 0)
+})
+
 test("Toast F6 focuses the newest active notification", async () => {
   await openLayerRegressionPage()
   await evaluate(`window.audit.addToast('Older notification'); window.audit.addToast('Newest notification')`)
@@ -2398,9 +2490,49 @@ test("Toast F6 focuses the newest active notification", async () => {
   assert.equal(await state(`document.activeElement.textContent`), 'Newest notification')
 })
 
-test("Toast owns measured stacking and retains its content through exit", async () => {
+test("Gallery Toast keeps one four-second notification through update, pause, dismissal, and reopening", async () => {
   await openGalleryPage("Toast")
-  await clickButton("Show notifications")
+  const trigger = session.page.getByRole("button", { name: /^Show notifications?$/ })
+  await trigger.dblclick()
+  assert.equal(await session.page.locator(".lui-toast").count(), 1)
+  assert.equal(await trigger.textContent(), "Show notification")
+  assert.equal(await trigger.isDisabled(), true)
+  await evaluate(`window.__singleGalleryToast = document.querySelector('.lui-toast')`)
+  await clickButton("Update notification")
+  assert.deepEqual(await state(`({
+    retained: window.__singleGalleryToast === document.querySelector('.lui-toast'),
+    text: document.querySelector('.lui-toast .lui-text')?.textContent.trim(),
+  })`), { retained: true, text: "Updated" })
+
+  await browser("press", "F6")
+  assert.equal(await state(`document.querySelector('.lui-toast')?.contains(document.activeElement)`), true)
+  await session.page.getByRole("heading", { name: "Toast", exact: true }).hover()
+  await browser("wait", "4200")
+  assert.equal(await session.page.locator(".lui-toast[data-open]").count(), 1)
+  assert.equal(await trigger.isDisabled(), true)
+  await session.page.getByRole("button", { name: "Close", exact: true }).focus()
+  await browser("press", "Escape")
+  await session.page.waitForFunction(() => !document.querySelector(".lui-toast"))
+  assert.equal(await trigger.isEnabled(), true)
+
+  await trigger.click()
+  assert.equal(await session.page.locator(".lui-toast[data-open]").count(), 1)
+  assert.equal(await state(`window.__singleGalleryToast === document.querySelector('.lui-toast')`), false)
+  await clickButton("Close")
+  await session.page.waitForFunction(() => !document.querySelector(".lui-toast"))
+  assert.equal(await trigger.isEnabled(), true)
+
+  await trigger.click()
+  await session.page.getByRole("heading", { name: "Toast", exact: true }).hover()
+  await browser("wait", "2200")
+  assert.equal(await session.page.locator(".lui-toast[data-open]").count(), 1)
+  await session.page.waitForFunction(() => !document.querySelector(".lui-toast"), null, { timeout: 3500 })
+  assert.equal(await trigger.isEnabled(), true)
+})
+
+test("Toast owns measured stacking and retains its content through exit", async () => {
+  await openLayerRegressionPage()
+  await evaluate(`window.audit.addToast('Older notification'); window.audit.addToast('Newest notification')`)
   await browser('wait', '--fn', "document.querySelector('.lui-toast')?.style.getPropertyValue('--toast-height')")
   const metrics = await state(`Array.from(document.querySelectorAll('.lui-toast')).map(toast => ({
     index: toast.style.getPropertyValue('--toast-index'),
@@ -2412,16 +2544,19 @@ test("Toast owns measured stacking and retains its content through exit", async 
   assert.equal(metrics[1].offset, 0)
   await browser('hover', '.lui-toast:last-child')
   assert.equal(await state(`document.querySelectorAll('.lui-toast[data-expanded]').length`), 2)
-  await evaluate(`document.querySelector('.lui-toast:last-child button').click()`)
-  assert.equal(await state(`Array.from(document.querySelectorAll('.lui-toast[data-ending-style]')).some(toast => toast.textContent.includes('Synced'))`), true)
+  await browser('press', 'F6')
+  await browser('press', 'Escape')
+  assert.equal(await state(`Array.from(document.querySelectorAll('.lui-toast[data-ending-style]')).some(toast => toast.textContent.includes('Newest notification'))`), true)
   await browser('wait', '600')
   assert.equal(await state(`document.querySelectorAll('.lui-toast[data-ending-style]').length`), 0)
+  assert.equal(await state(`document.querySelectorAll('.lui-toast[data-open]').length`), 1)
+  assert.equal(await state(`document.querySelector('.lui-toast[data-open]')?.textContent`), 'Older notification')
 })
 
 test("Toast enters over rendered frames and reduced motion exits immediately", async () => {
-  await openGalleryPage('Toast')
+  await openLayerRegressionPage()
   const startingOpacity = await state(`(() => {
-    Array.from(document.querySelectorAll('button')).find(button => button.textContent.trim() === 'Show notifications').click()
+    window.audit.addToast('Entering notification')
     return Number(getComputedStyle(document.querySelector('.lui-toast:last-child')).opacity)
   })()`)
   assert.equal(startingOpacity, 0)
@@ -2431,13 +2566,14 @@ test("Toast enters over rendered frames and reduced motion exits immediately", a
   await browser('wait', '300')
   assert.equal(await state(`Number(getComputedStyle(document.querySelector('.lui-toast:last-child')).opacity)`), 1)
   await browser('set', 'media', 'light', 'reduced-motion')
-  await evaluate(`document.querySelector('.lui-toast:last-child button').click()`)
+  await browser('press', 'F6')
+  await browser('press', 'Escape')
   assert.equal(await state(`document.querySelectorAll('.lui-toast').length`), 0)
 })
 
 test("Toast portals stable updates and supports Base UI down/right touch dismissal", async () => {
   await openGalleryPage("Toast")
-  await clickButton("Show notifications")
+  await clickButton("Show notification")
 
   assert.deepEqual(
     await state(`(() => {
@@ -2458,7 +2594,6 @@ test("Toast portals stable updates and supports Base UI down/right touch dismiss
       portaled: true,
       messages: [
         ["Saved", "Draft saved locally", "Update notification", "Close"],
-        ["Synced", "Changes are available on every device", "Close"],
       ],
     },
   )
@@ -2485,17 +2620,17 @@ test("Toast portals stable updates and supports Base UI down/right touch dismiss
   await evaluate(`document.activeElement?.blur()`)
 
   await browser("hover", ".lui-toast:first-child")
-  await browser("wait", "2100")
-  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 2)
+  await browser("wait", "4100")
+  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 1)
   await browser("hover", '[role="heading"]')
-  await browser("wait", "2100")
+  await session.page.waitForFunction(() => !document.querySelector('[role=status]'), null, { timeout: 5000 })
   assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 0)
 
-  await clickButton("Show notifications")
+  await clickButton("Show notification")
   await clickButton("Close")
   assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 0)
 
-  await clickButton("Show notifications")
+  await clickButton("Show notification")
   await evaluate(`(() => {
     const toast = document.querySelector('[role=status]')
     const action = [...toast.querySelectorAll('button')]
@@ -2515,7 +2650,7 @@ test("Toast portals stable updates and supports Base UI down/right touch dismiss
     action.dispatchEvent(event('pointermove', 180))
     action.dispatchEvent(event('pointerup', 180))
   })()`)
-  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 2)
+  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 1)
   await evaluate(`(() => {
     const toast = document.querySelector('[role=status]')
     const event = (name, x) => new PointerEvent(name, {
@@ -2533,7 +2668,7 @@ test("Toast portals stable updates and supports Base UI down/right touch dismiss
     toast.dispatchEvent(event('pointermove', 180))
     toast.dispatchEvent(event('pointercancel', 180))
   })()`)
-  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 2)
+  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 1)
   await evaluate(`(() => {
     const toast = document.querySelector('[role=status]')
     const event = (name, x, y) => new PointerEvent(name, {
@@ -2551,7 +2686,7 @@ test("Toast portals stable updates and supports Base UI down/right touch dismiss
     toast.dispatchEvent(event('pointermove', 20, 20))
     toast.dispatchEvent(event('pointerup', 20, 20))
   })()`)
-  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 2)
+  assert.equal(await state(`document.querySelectorAll('[role=status]').length`), 1)
   await evaluate(`(() => {
     const toast = document.querySelector('[role=status]')
     const event = (name, y) => new PointerEvent(name, {
@@ -2658,6 +2793,55 @@ test("Tooltip owns delayed pointer, immediate focus, Escape, ARIA, and static-la
   await evaluate(`document.querySelector('button[aria-label="Edit document"]')?.blur()`)
   await browser("wait", "80")
   assert.equal(await state(`document.querySelector('.lui-tooltip[data-anchor]')?.hasAttribute('data-open')`), false)
+})
+
+test("Dialog stays inside a short viewport and above the keyboard", async () => {
+  await openGalleryPage("Dialog")
+  await browser("set", "viewport", "390", "480")
+  await clickButton("Open dialog")
+  await browser("wait", "--fn", "document.querySelector('.lui-dialog')")
+
+  const fitted = await state(`(() => {
+    const dialog = document.querySelector('.lui-dialog')
+    dialog.style.height = '2000px'
+    const bounds = dialog.getBoundingClientRect()
+    const layer = dialog.closest('.lui-modal-layer')?.getBoundingClientRect()
+    const limitTop = layer?.top ?? 0
+    const limitBottom = layer?.bottom ?? innerHeight
+    return {
+      top: bounds.top,
+      bottom: bounds.bottom,
+      height: bounds.height,
+      overflow: getComputedStyle(dialog).overflowY,
+      limitTop,
+      limitBottom,
+    }
+  })()`)
+  assert.equal(fitted.overflow, "auto")
+  assert.ok(fitted.height < fitted.limitBottom - fitted.limitTop,
+    `dialog height ${fitted.height} must be capped by the visible viewport`)
+  assert.ok(fitted.top >= fitted.limitTop - 1, `dialog top ${fitted.top}`)
+  assert.ok(fitted.bottom <= fitted.limitBottom + 1, `dialog bottom ${fitted.bottom}`)
+
+  const aboveKeyboard = await state(`(() => {
+    const portal = document.querySelector('.lui-popup-portal')
+    portal?.style.setProperty('--lui-keyboard-height', '180px')
+    document.documentElement.style.setProperty('--lui-keyboard-height', '180px')
+    const dialog = document.querySelector('.lui-dialog')
+    const bounds = dialog.getBoundingClientRect()
+    const layer = dialog.closest('.lui-modal-layer')?.getBoundingClientRect()
+    const limitBottom = (layer?.bottom ?? innerHeight) - 180
+    return {
+      top: bounds.top,
+      bottom: bounds.bottom,
+      limitTop: layer?.top ?? 0,
+      limitBottom,
+    }
+  })()`)
+  assert.ok(aboveKeyboard.top >= aboveKeyboard.limitTop - 1,
+    `dialog top ${aboveKeyboard.top} under the keyboard`)
+  assert.ok(aboveKeyboard.bottom <= aboveKeyboard.limitBottom + 1,
+    `dialog bottom ${aboveKeyboard.bottom} should clear a 180px keyboard at ${aboveKeyboard.limitBottom}`)
 })
 
 test("Tooltip flips and shifts inside compact viewport edges", async () => {
@@ -3048,7 +3232,7 @@ test("every Gallery page fits the compact one-page mobile shell", async () => {
     failures,
   }
 
-  assert.equal(audit.count, 77)
+  assert.equal(audit.count, 78)
   assert.ok(audit.minNavigationHeight >= 44, JSON.stringify(audit))
   assert.equal(audit.mountedPages, 1)
   assert.deepEqual(audit.failures, [])

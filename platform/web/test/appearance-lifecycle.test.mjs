@@ -23,7 +23,14 @@ const appear = value(Schema.all_properties, Schema.property_name, 'appear-enable
 const enabled = value(Schema.all_properties, Schema.property_name, 'enabled')
 const text = value(Schema.all_properties, Schema.property_name, 'text')
 const bool = flag => ({TAG: 1, _0: flag})
-const settle = () => new Promise(resolve => setTimeout(resolve, 10))
+const settle = async renderer => {
+  const deadline = performance.now() + 1000
+  do {
+    await new Promise(resolve => setTimeout(resolve, 0))
+    if (renderer.web_appear_timer.contents === undefined) return
+  } while (performance.now() < deadline)
+  assert.fail('Appearance lifecycle timer did not drain')
+}
 
 test('focus-within appearance crosses the protocol and clears independently', () => {
   const f=fixture(),node=Lazy.force(Store.node(f.renderer.web_store,1).platform_node)
@@ -76,15 +83,15 @@ test('appearance runs once in tree order after DOM attachment and outside batch 
   f.set(2, appear, true)
   f.set(1, appear, true)
   Events.schedule_appear(f.renderer)
-  await settle()
+  await settle(f.renderer)
   assert.deepEqual(f.events, [], 'Unattached elements must not appear')
   f.mount()
   Events.schedule_appear(f.renderer)
   assert.deepEqual(f.events, [], 'Appearance must not reenter batch application')
-  await settle()
+  await settle(f.renderer)
   assert.deepEqual(f.events, [1, 2])
   Events.schedule_appear(f.renderer)
-  await settle()
+  await settle(f.renderer)
   assert.deepEqual(f.events, [1, 2], 'Unrelated updates must not repeat appearance')
   assert.equal(f.renderer.web_appear_timer.contents, undefined, 'No timer may remain while idle')
 })
@@ -95,22 +102,22 @@ test('appearance respects enablement, property removal and disposal before deliv
   f.set(1, appear, true)
   f.set(1, enabled, false)
   Events.schedule_appear(f.renderer)
-  await settle()
+  await settle(f.renderer)
   assert.deepEqual(f.events, [])
   f.set(1, enabled, true)
   Events.schedule_appear(f.renderer)
-  await settle()
+  await settle(f.renderer)
   assert.deepEqual(f.events, [1])
   f.apply([Protocol.remove_prop_op(1, appear)])
   Props.remove_property(f.renderer, () => {}, 1, row, {}, appear)
   f.set(1, appear, true)
   Events.schedule_appear(f.renderer)
-  await settle()
+  await settle(f.renderer)
   assert.deepEqual(f.events, [1, 1], 'Re-enabling the lifecycle must announce it again')
   f.set(2, appear, true)
   Events.schedule_appear(f.renderer)
   f.apply([Protocol.remove_child_op(1, 2), Protocol.drop_node_op(2)])
-  await settle()
+  await settle(f.renderer)
   assert.deepEqual(f.events, [1, 1], 'Disposed nodes must not deliver stale callbacks')
 })
 
@@ -127,9 +134,14 @@ test('appearance callbacks may change lifecycle membership without replay or ite
     return true
   }
   Events.schedule_appear(f.renderer)
-  await settle()
+  const settled = settle(f.renderer)
+  // Both the first callback and the fixed-delay assertion can become due
+  // before the event loop resumes; nested lifecycle work needs another turn.
+  const resume = performance.now() + 25
+  while (performance.now() < resume) {}
+  await settled
   assert.deepEqual(f.events, [1, 2])
   Events.schedule_appear(f.renderer)
-  await settle()
+  await settle(f.renderer)
   assert.deepEqual(f.events, [1, 2])
 })

@@ -24,6 +24,7 @@
 #include <caml/mlvalues.h>
 #include <caml/signals.h>
 #include <caml/startup.h>
+#include <caml/threads.h>
 
 #include "../../../../../native/lui_caml_dispatch.h"
 
@@ -32,6 +33,22 @@ static jmethodID lui_dispatch_patch = NULL;
 static int runtime_started = 0;
 
 #define LUI_JNI_NAME(name) Java_dev_lui_LuiBridge_##name
+
+/* JNI and the component runtime are separate libraries. New JNI must keep
+ * the eager Kotlin profile when linked to an older component library. */
+#ifdef __APPLE__
+extern int32_t lui_ocaml_virtual_rows_version(void) __attribute__((weak_import));
+#else
+extern int32_t lui_ocaml_virtual_rows_version(void) __attribute__((weak));
+#endif
+
+JNIEXPORT jint JNICALL LUI_JNI_NAME(nativeVirtualRowsVersion)(JNIEnv *env,
+                                                            jclass clazz) {
+  (void)env;
+  (void)clazz;
+  return lui_ocaml_virtual_rows_version != NULL &&
+                 lui_ocaml_virtual_rows_version() == 1 ? 1 : 0;
+}
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
   (void)reserved;
@@ -63,7 +80,11 @@ static void dispatch_patch_to_jvm(const char *json) {
     return;
   }
   if ((*lui_jvm)->GetEnv(lui_jvm, (void **)&env, JNI_VERSION_1_6) != JNI_OK) {
+#ifdef __ANDROID__
     if ((*lui_jvm)->AttachCurrentThread(lui_jvm, &env, NULL) != JNI_OK) {
+#else
+    if ((*lui_jvm)->AttachCurrentThread(lui_jvm, (void **)&env, NULL) != JNI_OK) {
+#endif
       return;
     }
     attached = 1;
@@ -387,6 +408,35 @@ JNIEXPORT jint JNICALL LUI_JNI_NAME(nativeVisibleRange)(
   accepted = lui_dispatch_visible_range("lui_kotlin_visible_range", node, first,
                                         last, dispatch_patch_to_jvm);
   caml_enter_blocking_section();
+  return accepted;
+}
+
+JNIEXPORT jint JNICALL LUI_JNI_NAME(nativeVirtualWindow)(
+    JNIEnv *env, jclass clazz, jlong node, jlong generation, jlong first,
+    jlong last, jlongArray pinned_rows) {
+  int32_t accepted;
+  jsize count;
+  int64_t *pins = NULL;
+  (void)clazz;
+  if (!runtime_started || node <= 0 || node > Max_long || generation <= 0 ||
+      generation > Max_long || first < 0 || last < first || last > Max_long ||
+      pinned_rows == NULL) return 0;
+  count = (*env)->GetArrayLength(env, pinned_rows);
+  if (count < 0 || (size_t)count > SIZE_MAX / sizeof(int64_t)) return 0;
+  if (count > 0) {
+    pins = malloc((size_t)count * sizeof(int64_t));
+    if (pins == NULL) return 0;
+    (*env)->GetLongArrayRegion(env, pinned_rows, 0, count, (jlong *)pins);
+    if ((*env)->ExceptionCheck(env)) { free(pins); return 0; }
+    for (jsize i = 0; i < count; i++) {
+      if (pins[i] <= 0 || pins[i] > Max_long) { free(pins); return 0; }
+    }
+  }
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_virtual_window("lui_kotlin_virtual_window", node,
+      generation, first, last, pins, count, dispatch_patch_to_jvm);
+  caml_enter_blocking_section();
+  free(pins);
   return accepted;
 }
 

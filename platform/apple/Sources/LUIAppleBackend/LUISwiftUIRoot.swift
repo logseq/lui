@@ -440,11 +440,6 @@ enum LUIDialogContentPolicy {
     }
 
     static func role(for action: LUINodeModel) -> ButtonRole? {
-        if action.property(.styleClass)?.stringValue?
-            .split(whereSeparator: \.isWhitespace)
-            .contains("cancellation-action") == true {
-            return .cancel
-        }
         if action.text.localizedCaseInsensitiveCompare("Cancel") == .orderedSame {
             return .cancel
         }
@@ -777,6 +772,9 @@ private struct LUINodeView: View {
         case .column:
             return AnyView(LUIColumnView(model: model, backend: backend))
         case .virtualList:
+            if model.property(.virtualTotalCount) != nil {
+                return AnyView(LUISparseVirtualListView(model: model, backend: backend))
+            }
             return AnyView(LUIVirtualListView(model: model, backend: backend))
         case .grid:
             return AnyView(LUIGridView(model: model, backend: backend))
@@ -914,9 +912,6 @@ private struct LUINodeView: View {
         case .fileImage:
             return AnyView(LUIFileImageView(model: model, backend: backend))
         case .filePreview:
-            return AnyView(EmptyView())
-        case .br:
-            // Line-break leaf: no native representation; renders nothing.
             return AnyView(EmptyView())
         case .popover:
             // Native popover positioning is not implemented yet: render the
@@ -1420,13 +1415,17 @@ final class LUIContextMenuNSView: NSView {
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
-        buildMenu()
+        let built = buildMenu()
+        menu = built
+        return built
     }
 
     // ctrl+click arrives as leftMouseDown on AppKit — show the same menu
     // programmatically at the pointer.
     override func mouseDown(with event: NSEvent) {
         if event.modifierFlags.contains(.control), let menu = buildMenu() {
+            self.menu = menu
+            defer { self.menu = nil }
             NSMenu.popUpContextMenu(menu, with: event, for: self)
         } else {
             super.mouseDown(with: event)
@@ -2291,6 +2290,7 @@ private struct LUIAnchoredComboboxMenuHost<Content: View>: View {
                 .onChange(of: model?.revision, initial: true) { _, _ in
                     isPresented = model != nil
                 }
+                .modifier(LUIVirtualPopupOwnership(presented: isPresented))
         }
         #else
         anchoredLayout
@@ -2310,6 +2310,7 @@ private struct LUIAnchoredComboboxMenuHost<Content: View>: View {
             }
         }
         .zIndex(model == nil ? 0 : 1)
+        .modifier(LUIVirtualPopupOwnership(presented: model != nil))
     }
 
     #if os(iOS)
@@ -2474,6 +2475,7 @@ private struct LUIAnchoredMenuHost<Content: View>: View {
                     // still reopens on the next trigger press.
                     isPresented = model != nil
                 }
+                .modifier(LUIVirtualPopupOwnership(presented: isPresented))
         } else {
             content
                 .confirmationDialog(
@@ -2488,6 +2490,7 @@ private struct LUIAnchoredMenuHost<Content: View>: View {
                 .onChange(of: model?.revision, initial: true) { _, _ in
                     isPresented = model != nil
                 }
+                .modifier(LUIVirtualPopupOwnership(presented: isPresented))
         }
         #else
         content
@@ -2509,6 +2512,7 @@ private struct LUIAnchoredMenuHost<Content: View>: View {
             .onChange(of: model?.revision, initial: true) { _, _ in
                 isPresented = model != nil
             }
+            .modifier(LUIVirtualPopupOwnership(presented: isPresented))
         #endif
     }
 
@@ -2876,7 +2880,7 @@ private struct LUIModalSurfaceContent: View {
 
     /// Modal content renders outside the node tree, so `theme` props on its
     /// ancestors never reach it through the environment — walk the chain and
-    /// include the modal itself, applying commit-decoded tokens the same way
+    /// apply each ancestor's commit-decoded tokens the same way
     /// `LUIThemeScopeModifier` does (outermost-first, inner wins).
     private var themeAncestors: [LUINodeModel] {
         var ancestors: [LUINodeModel] = []
@@ -2889,7 +2893,7 @@ private struct LUIModalSurfaceContent: View {
                 cursor = backend.extensionModel(id: parentID)?.parent
             }
         }
-        return ancestors.reversed() + [model]
+        return ancestors.reversed()
     }
 
     private var effectiveColorScheme: ColorScheme {
@@ -3180,21 +3184,14 @@ private struct LUINavigationFormToolbar: ToolbarContent {
     @ToolbarContentBuilder
     var body: some ToolbarContent {
         if let cancellationActionID {
-            actionItem(cancellationActionID, placement: .cancellationAction)
+            ToolbarItem(placement: .cancellationAction) {
+                actionView(cancellationActionID)
+            }
         }
         if let confirmationActionID {
-            actionItem(confirmationActionID, placement: .confirmationAction)
-        }
-    }
-
-    @ToolbarContentBuilder
-    private func actionItem(_ id: Int, placement: ToolbarItemPlacement) -> some ToolbarContent {
-        if #available(iOS 26.0, macOS 26.0, *),
-           (backend.model(id: id)?.derived.styleClass ?? "").split(separator: " ").contains("plain-action") {
-            ToolbarItem(placement: placement) { actionView(id) }
-                .sharedBackgroundVisibility(.hidden)
-        } else {
-            ToolbarItem(placement: placement) { actionView(id) }
+            ToolbarItem(placement: .confirmationAction) {
+                actionView(confirmationActionID)
+            }
         }
     }
 
@@ -4384,11 +4381,13 @@ private struct LUIComboboxView: View {
             text: Binding(
                 get: { draftState.text },
                 set: { next in
+                    guard model.property(.readOnly)?.boolValue != true else { return }
                     draftState.edit(next)
                     try? backend.performTextChange(node: model.id, text: next)
                 }
             )
         )
+        .modifier(LUIReadOnlyTextControl(readOnly: model.property(.readOnly)?.boolValue == true))
         .autocorrectionDisabled()
         #if os(iOS)
         .textInputAutocapitalization(.never)
@@ -5326,6 +5325,7 @@ private struct LUIButtonView: View {
     @Environment(\.luiIsNativeFormRow) private var isNativeFormRow
     @Environment(\.luiIsNativeListRow) private var isNativeListRow
     @Environment(\.luiInHoistedToolbar) private var inHoistedToolbar
+    @Environment(\.luiInFusedCapsule) private var inFusedCapsule
     init(model: LUINodeModel, backend: LUIAppleBackend, isToggle: Bool = false) {
         self.model = model
         self.backend = backend
@@ -5441,8 +5441,50 @@ private struct LUIButtonView: View {
                     radius: model.isSelected ? 1 : 0,
                     y: model.isSelected ? 1 : 0
                 )
+        } else if #available(iOS 26.0, macOS 26.0, *) {
+            glassButton
+        } else {
+            legacyButton
+        }
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    @ViewBuilder
+    private var glassButton: some View {
+        if inFusedCapsule {
+            button.buttonStyle(.borderless)
+        } else if inHoistedToolbar {
+            button.buttonStyle(.automatic)
+        } else if LUINavigationFormRowPolicy.usesAutomaticButtonStyle(
+            isNativeFormRow: usesNativeWholeFormRow,
+            variant: model.buttonVariant
+        ) {
+            button.foregroundStyle(.tint)
+        } else if isNativeListRow && isIconOnly
+            && (model.buttonVariant.isEmpty || model.buttonVariant == "default")
+        {
+            button.buttonStyle(.borderless)
         } else {
             switch model.buttonVariant {
+            case "primary":
+                button.buttonStyle(.glassProminent).foregroundStyle(.white)
+            case "secondary":
+                button.buttonStyle(.glass).tint(.secondary)
+            case "outline":
+                button.buttonStyle(.glass)
+            case "destructive":
+                button.buttonStyle(.glassProminent).tint(.red).foregroundStyle(.white)
+            case "ghost":
+                button.buttonStyle(.borderless)
+            default:
+                button.buttonStyle(.glass)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var legacyButton: some View {
+        switch model.buttonVariant {
         case "primary":
             // Prominent buttons pin the label to white: an ambient
             // `foregroundStyle` from the host app would otherwise bleed
@@ -5472,7 +5514,6 @@ private struct LUIButtonView: View {
                 button.buttonStyle(.borderless)
             } else {
                 button.buttonStyle(.bordered)
-            }
             }
         }
     }
@@ -6016,7 +6057,7 @@ private struct LUISelectedButtonModifier: ViewModifier {
     }
 }
 
-struct LUIIconImage: View {
+private struct LUIIconImage: View {
     let source: LUIAppleIconSource
     let bundle: Bundle?
     var size: CGFloat = 16
@@ -6216,6 +6257,7 @@ enum LUIRowLayoutPolicy {
 private struct LUIRowView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @Environment(\.layoutDirection) private var layoutDirection
 
     var body: some View {
         // Cross-axis stretch makes children accept any offered height, which
@@ -6232,7 +6274,33 @@ private struct LUIRowView: View {
         }
     }
 
+    @ViewBuilder
     private var rowContent: some View {
+        if model.property(.flexWrap)?.stringValue == "wrap" {
+            LUIWrappingRowLayout(
+                gap: gap, main: model.property(.main)?.stringValue ?? "start",
+                cross: cross, rightToLeft: layoutDirection == .rightToLeft
+            ) {
+                ForEach(model.children, id: \.self) { childID in
+                    let child = model.childData.layout[childID]
+                    LUIAnyNodeView(nodeID: childID, backend: backend)
+                        .equatable()
+                        .frame(
+                            maxWidth: (child?.grow ?? 0) > 0 ? .infinity : nil,
+                            maxHeight: cross == "stretch" ? .infinity : nil
+                        )
+                        .layoutValue(
+                            key: LUIWrappingRowTraits.self,
+                            value: .init(grow: CGFloat(child?.grow ?? 0), spacer: child?.kind == .spacer)
+                        )
+                }
+            }
+        } else {
+            nonWrappingRowContent
+        }
+    }
+
+    private var nonWrappingRowContent: some View {
         HStack(alignment: alignment, spacing: spacing) {
             if (model.property(.main)?.stringValue == "center" ||
                 model.property(.main)?.stringValue == "end") && !hasGrowingChild {
@@ -6997,32 +7065,16 @@ private struct LUIListSectionSeparatorModifier: ViewModifier {
 // (and their child-model lookups) are resolved only for materialized slots.
 // The editor keeps one identity when a split moves it to a neighboring row.
 struct LUIVirtualRowIndices: RandomAccessCollection {
-    struct Section {
-        let range: Range<Int>
-        let minimumHeight: CGFloat
-    }
     struct Slot {
         let position: Int
         let id: Int
-        let section: Section?
     }
     let count: Int
     let editor: (position: Int, source: Int)?
-    let sections: [Section]
     var startIndex: Int { 0 }
-    var endIndex: Int { count - sections.reduce(0) { $0 + $1.range.count - 1 } }
-    subscript(index: Int) -> Slot {
-        var position = index
-        for section in sections {
-            if position < section.range.lowerBound { break }
-            if position == section.range.lowerBound {
-                return Slot(position: position, id: position, section: section)
-            }
-            position += section.range.count - 1
-        }
-        return Slot(position: position,
-                    id: position == editor?.position ? -(editor!.source + 1) : position,
-                    section: nil)
+    var endIndex: Int { count }
+    subscript(position: Int) -> Slot {
+        Slot(position: position, id: position == editor?.position ? -(editor!.source + 1) : position)
     }
 }
 
@@ -7052,24 +7104,25 @@ private struct LUIVirtualListView: View {
                     alignment: .leading,
                     spacing: CGFloat(model.property(.gap)?.intValue ?? 0)
                 ) {
-                    ForEach(LUIVirtualRowIndices(count: rows.endIndex, editor: rows.editor,
-                                                sections: rows.minimumHeightSections), id: \.id) { slot in
+                    ForEach(LUIVirtualRowIndices(count: rows.endIndex, editor: rows.editor), id: \.id) { slot in
                         // A concrete, single-view root keeps SwiftUI from asking
                         // every virtual slot for its conditional view-list count.
                         VStack(alignment: .leading, spacing: 0) {
-                            if let section = slot.section {
-                                // A bounded first section measures its content and
-                                // fills the viewport in the same layout pass.
-                                VStack(alignment: .leading, spacing: CGFloat(model.property(.gap)?.intValue ?? 0)) {
-                                    ForEach(LUIVirtualRowIndices(count: section.range.count,
-                                                                editor: nil, sections: []), id: \.id) { child in
-                                        measuredRow(at: section.range.lowerBound + child.position,
-                                                    rows: rows, contentSpace: contentSpace)
-                                    }
-                                }
-                                .frame(minHeight: section.minimumHeight, alignment: .topLeading)
-                            } else {
-                                measuredRow(at: slot.position, rows: rows, contentSpace: contentSpace)
+                            let row = rows[slot.position]
+                            if slot.position == editor?.position {
+                                Color.clear
+                                    .frame(height: pinnedSize?.id == row.id ? pinnedSize!.height
+                                        : rowFrames.frames[row.id]?.height ?? row.estimatedHeight)
+                            } else { virtualRow(row) }
+                        }
+                        .onGeometryChange(for: CGRect.self) { geometry in
+                            geometry.frame(in: .named(contentSpace))
+                        } action: { frame in
+                            let id = rows[slot.position].id
+                            rowFrames.frames[id] = frame
+                            if slot.position == editor?.position {
+                                let next = PinnedFrame(id: id, frame: frame)
+                                if pinnedFrame != next { pinnedFrame = next }
                             }
                         }
                         .id(slot.id)
@@ -7132,29 +7185,6 @@ private struct LUIVirtualListView: View {
         }
     }
 
-    private func measuredRow(at position: Int, rows: SectionRows, contentSpace: ContentSpace) -> some View {
-        let row = rows[position]
-        let editor = rows.editor
-        return VStack(alignment: .leading, spacing: 0) {
-            if position == editor?.position {
-                Color.clear.frame(height: pinnedSize?.id == row.id ? pinnedSize!.height
-                    : rowFrames.frames[row.id]?.height ?? row.estimatedHeight)
-            } else {
-                virtualRow(row)
-            }
-        }
-        .onGeometryChange(for: CGRect.self) { geometry in
-            geometry.frame(in: .named(contentSpace))
-        } action: { frame in
-            rowFrames.frames[row.id] = frame
-            if position == editor?.position {
-                let next = PinnedFrame(id: row.id, frame: frame)
-                if pinnedFrame != next { pinnedFrame = next }
-            }
-        }
-        .id(position == editor?.position ? -(editor!.source + 1) : position)
-    }
-
     @ViewBuilder private func virtualRow(_ row: SectionRow) -> some View {
         let content = LUIVirtualListRow(row: row, backend: backend,
             tracker: windowTracker, coordinateSpace: titleCoordinateSpace,
@@ -7166,8 +7196,8 @@ private struct LUIVirtualListView: View {
             content.modifier(LUIScrollSectionFrameModifier(
                 index: row.index, title: row.title,
                 coordinateSpace: titleCoordinateSpace,
-                onVisibilityChange: { index, title, registration in
-                    titleTracker.update(index: index, title: title, startsSection: row.startsSection, registration: registration)
+                onVisibilityChange: { index, title in
+                    titleTracker.update(index: index, title: title, startsSection: row.startsSection)
                 }
             ))
         } else { content }
@@ -7190,7 +7220,8 @@ private struct LUIVirtualListView: View {
             }
             if let key = attributes["data-scroll-key"],
                let index = attributes["data-scroll-index"].flatMap(Int.init), index >= 0 {
-                return ScrollRequest(key: key, position: segment.base + index)
+                let paddingOffset = segment.padding > 0 && index >= (segment.window?.firstSectionCount ?? 0) ? 1 : 0
+                return ScrollRequest(key: key, position: segment.base + index + paddingOffset)
             }
         }
         return nil
@@ -7238,34 +7269,32 @@ private struct LUIVirtualListView: View {
             let children: [Int]
             let title: String?
             let startsSection: Bool
-            let minimumHeight: CGFloat
+            let padding: CGFloat
             let tracksSectionHeight: Bool
             let titles: [Int: String]
         }
         let segments: [Segment]
-        let measuredHeights: [SlotID: CGFloat]
         let endIndex: Int
         var startIndex: Int { 0 }
-        var minimumHeightSections: [LUIVirtualRowIndices.Section] {
-            segments.compactMap { segment in
-                guard let window = segment.window, segment.minimumHeight > 0 else { return nil }
-                return LUIVirtualRowIndices.Section(
-                    range: segment.base..<(segment.base + window.firstSectionCount),
-                    minimumHeight: segment.minimumHeight)
-            }
-        }
         var editor: (position: Int, source: Int)? {
             for segment in segments {
                 if let window = segment.window, let index = window.pinnedIndex {
-                    return (segment.base + index, segment.source)
+                    return (segment.base + index + (segment.padding > 0 && index >= window.firstSectionCount ? 1 : 0), segment.source)
                 }
             }
             return nil
         }
         subscript(index: Int) -> SectionRow {
             let segment = segments.first { index >= $0.base && index < $0.base + $0.count }!
-            let offset = index - segment.base
+            var offset = index - segment.base
             if let window = segment.window {
+                if segment.padding > 0, offset == window.firstSectionCount {
+                    return SectionRow(id: SlotID(source: segment.source, offset: -2),
+                        nodeID: nil, windowID: nil, windowIndex: 0, index: index,
+                        title: window.sectionTitle(at: window.firstSectionCount - 1),
+                        estimatedHeight: segment.padding, tracksSectionHeight: false)
+                }
+                if segment.padding > 0, offset > window.firstSectionCount { offset -= 1 }
                 let childOffset: Int
                 if offset >= window.start, offset < window.start + window.length {
                     childOffset = offset - window.start
@@ -7282,7 +7311,7 @@ private struct LUIVirtualListView: View {
                         ?? (segment.children.indices.contains(childOffset) ? segment.titles[segment.children[childOffset]] : nil)
                         ?? segment.title,
                     startsSection: window.sectionTitles.contains(where: { $0.index == offset }),
-                    estimatedHeight: measuredHeights[SlotID(source: segment.source, offset: offset)] ?? window.extent,
+                    estimatedHeight: window.extent,
                     tracksSectionHeight: segment.tracksSectionHeight && offset < window.firstSectionCount)
             }
             return SectionRow(id: SlotID(source: segment.source, offset: -1),
@@ -7291,31 +7320,47 @@ private struct LUIVirtualListView: View {
         }
     }
 
+    private var configuredItemExtent: Double? {
+        if let typed = model.property(.itemExtent)?.doubleValue { return typed }
+        guard let encoded = model.property(.dataAttrs)?.stringValue else { return nil }
+        for record in encoded.split(separator: "\u{1e}") {
+            let pair = record.split(separator: "\u{1f}", maxSplits: 1)
+            if pair.count == 2, pair[0] == "data-item-extent",
+               let extent = Double(pair[1]), extent.isFinite, extent > 0 { return extent }
+        }
+        return nil
+    }
+
     private var sectionRows: SectionRows {
+        let itemExtent = configuredItemExtent
         let titles = model.childData.sectionTitles ?? [:]
         var segments: [SectionRows.Segment] = []
         var total = 0
         var inheritedTitle: String?
         for id in model.visibleChildren {
             let source = backend.model(id: id)
-            let window = LUIVirtualWindow(source?.property(.dataAttrs)?.stringValue)
-            var minimumHeight: CGFloat = 0
+            let window = LUIVirtualWindow(source?.property(.dataAttrs)?.stringValue,
+                                          itemExtent: itemExtent)
+            var padding: CGFloat = 0
             var tracksHeight = false
             if let window, window.firstSectionCount > 0,
                window.firstSectionCount <= Int((unobscuredHeight ?? 0) / 16) + 1 {
                 tracksHeight = true
-                minimumHeight = max(0, (unobscuredHeight ?? 0) - window.firstSectionInset)
+                let measured = (0..<window.firstSectionCount).reduce(CGFloat(0)) { height, index in
+                    height + (firstSectionHeights[SlotID(source: id, offset: index)] ?? window.extent)
+                }
+                padding = max(0, (unobscuredHeight ?? 0) - window.firstSectionInset - measured)
             }
-            let count = window?.count ?? 1
+            let count = (window?.count ?? 1) + (padding > 0 ? 1 : 0)
             let startsSection = titles[id] != nil && titles[id] != inheritedTitle
             if let title = titles[id] { inheritedTitle = title }
             segments.append(SectionRows.Segment(source: id, base: total, count: count,
                 window: window, children: window == nil ? [] : (source?.visibleChildren ?? []),
-                title: inheritedTitle, startsSection: startsSection, minimumHeight: minimumHeight, tracksSectionHeight: tracksHeight,
+                title: inheritedTitle, startsSection: startsSection, padding: padding, tracksSectionHeight: tracksHeight,
                 titles: source?.childData.sectionTitles ?? [:]))
             total += count
         }
-        return SectionRows(segments: segments, measuredHeights: firstSectionHeights, endIndex: total)
+        return SectionRows(segments: segments, endIndex: total)
     }
 
 }
@@ -7348,7 +7393,7 @@ fileprivate struct LUIVirtualWindow {
         return lower > 0 ? sectionTitles[lower - 1].title : nil
     }
 
-    init?(_ encoded: String?) {
+    init?(_ encoded: String?, itemExtent: Double? = nil) {
         guard let encoded else { return nil }
         var attributes: [String: String] = [:]
         for record in encoded.split(separator: "\u{1e}") {
@@ -7371,7 +7416,8 @@ fileprivate struct LUIVirtualWindow {
         pinnedIndex = (0..<count).contains(pinned) ? pinned : nil
         firstSectionCount = min(count, max(0, attributes["data-first-section-count"].flatMap(Int.init) ?? 0))
         firstSectionInset = max(0, attributes["data-first-section-inset"].flatMap(Double.init) ?? 0)
-        extent = max(1, attributes["data-item-extent"].flatMap(Double.init) ?? 32)
+        let legacy = attributes["data-item-extent"].flatMap(Double.init)
+        extent = itemExtent ?? (legacy.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? 32)
     }
 }
 
@@ -7597,7 +7643,7 @@ private struct LUITextControlView: View {
 
     var body: some View {
         Group {
-            if grouped || isNativeFormRow || (model.derived.styleClass ?? "").split(separator: " ").contains("plain-input") {
+            if grouped || isNativeFormRow {
                 field.textFieldStyle(.plain)
             } else if model.kind == .searchField || model.kind == .textarea {
                 field
@@ -7605,6 +7651,7 @@ private struct LUITextControlView: View {
                 field.textFieldStyle(.roundedBorder)
             }
         }
+            .modifier(LUIReadOnlyTextControl(readOnly: model.property(.readOnly)?.boolValue == true))
             .disabled(!model.isEnabled)
             .focused($focused)
             .onSubmit { try? backend.performSubmit(node: model.id) }
@@ -7658,7 +7705,9 @@ private struct LUITextControlView: View {
                     model.property(.placeholder)?.stringValue ?? "",
                     text: binding
                 )
-                if !draftState.text.isEmpty {
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                if !draftState.text.isEmpty && model.property(.readOnly)?.boolValue != true {
                     Button {
                         draftState.edit("")
                         try? backend.performTextChange(node: model.id, text: "")
@@ -7687,7 +7736,10 @@ private struct LUITextControlView: View {
                 model.property(.placeholder)?.stringValue ?? "",
                 text: binding
             )
-            if !draftState.text.isEmpty {
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .submitLabel(.search)
+            if !draftState.text.isEmpty && model.property(.readOnly)?.boolValue != true {
                 Button {
                     draftState.edit("")
                     try? backend.performTextChange(node: model.id, text: "")
@@ -7705,6 +7757,7 @@ private struct LUITextControlView: View {
         Binding(
             get: { draftState.text },
             set: { next in
+                guard model.property(.readOnly)?.boolValue != true else { return }
                 draftState.edit(next)
                 try? backend.performTextChange(node: model.id, text: next)
             }
@@ -7751,6 +7804,7 @@ private struct LUISearchableNodeModifier: ViewModifier {
                     text: Binding(
                         get: { draft.text },
                         set: { next in
+                            guard model.property(.readOnly)?.boolValue != true else { return }
                             draft.edit(next)
                             try? backend.performTextChange(node: model.id, text: next)
                         }
@@ -7758,6 +7812,10 @@ private struct LUISearchableNodeModifier: ViewModifier {
                     isPresented: $presented,
                     prompt: Text(verbatim: model.property(.placeholder)?.stringValue ?? "")
                 )
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .modifier(LUIReadOnlyTextControl(readOnly: model.property(.readOnly)?.boolValue == true,
+                                               nativeSearch: true))
                 .onSubmit(of: .search) {
                     try? backend.performSubmit(node: model.id)
                 }

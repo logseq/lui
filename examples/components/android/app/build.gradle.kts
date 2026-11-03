@@ -17,7 +17,7 @@ val ocamlInclude = providers.gradleProperty("lui.ocaml.include")
 
 android {
     namespace = "dev.lui.components"
-    compileSdk = 35
+    compileSdk { version = release(37) { minorApiLevel = 0 } }
 
     defaultConfig {
         applicationId = "dev.lui.components"

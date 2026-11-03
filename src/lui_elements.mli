@@ -72,6 +72,7 @@ type host_kind = Lui_protocol.host_kind =
   | WebHost
   | SwiftUIHost
   | KotlinHost
+  | MyGoHost
 
 type image_loading = [ `eager | `lazy_ ]
 
@@ -204,6 +205,19 @@ val keyed :
   key:('a -> 'b) ->
   cmp:('b -> 'b -> int) ->
   mount:('a Signal.signal -> t) -> t
+
+(** A viewport-managed keyed source. Use as the sole child of
+    {!virtual_list}. Business data remains in [source]; only the requested
+    window and active interaction pins own mounted row scopes. Persistent
+    editor state belongs in the application model. [scroll_key] maps the
+    existing string scroll targets to source items and is required when a
+    lazy parent has a nonempty scroll target. Older hosts render eagerly. *)
+val virtual_rows :
+  ?scroll_key:('a -> string) ->
+  source:'a list Signal.signal ->
+  key:('a -> 'b) ->
+  cmp:('b -> 'b -> int) ->
+  mount:('a Signal.signal -> t) -> unit -> t
 
 (** [keyed_*] are {!keyed} specialised to the abstract child types: a
     keyed collection mounts its items directly under the restricted
@@ -396,6 +410,12 @@ val row :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?pointer_capture:bool ->
+  ?on_pointer_down:(Lui_protocol.event -> unit) ->
+  ?on_pointer_move:(Lui_protocol.event -> unit) ->
+  ?on_pointer_up:(Lui_protocol.event -> unit) ->
+  ?on_pointer_cancel:(Lui_protocol.event -> unit) ->
+  ?on_navigation_key:(Lui_protocol.event -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?display:display ->
@@ -916,6 +936,12 @@ val box :
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
+  ?pointer_capture:bool ->
+  ?on_pointer_down:(Lui_protocol.event -> unit) ->
+  ?on_pointer_move:(Lui_protocol.event -> unit) ->
+  ?on_pointer_up:(Lui_protocol.event -> unit) ->
+  ?on_pointer_cancel:(Lui_protocol.event -> unit) ->
+  ?on_navigation_key:(Lui_protocol.event -> unit) ->
   ?opacity:float ->
   ?opacity_signal:float Signal.signal ->
   ?display:display ->
@@ -1029,8 +1055,9 @@ val list :
    only the visible window plus [?overscan] rows (backends that
    virtualize — web and native). [?item_extent] is the estimated row
    main extent in logical px, used to size unmeasured rows on the
-   native backend; both ride [data-attrs] as
-   [data-overscan]/[data-item-extent]. The scroll contract
+   virtualizing host. Typed properties take precedence over legacy
+   [data-overscan]/[data-item-extent] attributes. Zero overscan is valid;
+   item extents must be positive finite logical pixels. The scroll contract
    ([?scroll_target]/[?scroll_anchor]/[?scroll_token],
    [?track_visible_range]/[?on_visible_range]/[?on_scroll_completed])
    matches {!list} and is implemented on the web backend; native
@@ -2341,10 +2368,13 @@ val checkbox :
   ?text_signal:string Signal.signal ->
   ?checked:bool ->
   ?checked_signal:bool Signal.signal ->
+  ?indeterminate:bool ->
+  ?indeterminate_signal:bool Signal.signal ->
   ?label:string ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_toggle:(Lui_protocol.event -> unit) ->
+  ?on_toggle_detail:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) ->
   ?transition:string -> t list -> t
 val switch_ :
@@ -2772,48 +2802,6 @@ val separator :
   ?orientation:orientation ->
   ?transition:string -> nothing list -> t
 
-(** Line-break leaf: emits `<br>` on web; a no-op on native backends. *)
-val br :
-  ?key:string ->
-  ?gap:int ->
-  ?main:main_alignment ->
-  ?cross:cross_alignment ->
-  ?grow:float ->
-  ?columns:int ->
-  ?padding:int ->
-  ?padding_horizontal:int ->
-  ?padding_vertical:int ->
-  ?margin:int ->
-  ?margin_horizontal:int ->
-  ?margin_vertical:int ->
-  ?margin_top:int ->
-  ?margin_right:int ->
-  ?margin_bottom:int ->
-  ?margin_left:int ->
-  ?background:string ->
-  ?foreground:string ->
-  ?border_color:string ->
-  ?border_width:int ->
-  ?corner_radius:int ->
-  ?width:int ->
-  ?height:int ->
-  ?min_width:int ->
-  ?max_width:int ->
-  ?min_height:int ->
-  ?max_height:int ->
-  ?container_relative_frame:frame_axes ->
-  ?container_relative_frame_inset:int ->
-  ?accessibility_identifier:string ->
-  ?accessibility_identifier_signal:string Signal.signal ->
-  ?foreground_signal:string Signal.signal ->
-  ?background_signal:string Signal.signal ->
-  ?style_class:string ->
-  ?data_attrs:(string * string) list ->
-  ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?on_appear:(Lui_protocol.event -> unit) ->
-  ?on_pointer_enter:(Lui_protocol.event -> unit) ->
-  ?on_pointer_leave:(Lui_protocol.event -> unit) ->
-  ?transition:string -> nothing list -> t
 (* Text-entry constructors can opt into Submit on focus loss with
    [submit_on_blur]. Unfinished composition never submits on blur. *)
 val text_field :
@@ -2864,6 +2852,8 @@ val text_field :
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
   ?submit_on_blur:bool ->
+  ?read_only:bool ->
+  ?read_only_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
@@ -2919,6 +2909,8 @@ val secure_field :
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
   ?submit_on_blur:bool ->
+  ?read_only:bool ->
+  ?read_only_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
@@ -2974,6 +2966,8 @@ val input :
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
   ?submit_on_blur:bool ->
+  ?read_only:bool ->
+  ?read_only_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
@@ -3030,6 +3024,8 @@ val search_field :
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
   ?submit_on_blur:bool ->
+  ?read_only:bool ->
+  ?read_only_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
@@ -3085,6 +3081,8 @@ val textarea :
   ?autofocus:bool ->
   ?submit_on_enter:bool ->
   ?submit_on_blur:bool ->
+  ?read_only:bool ->
+  ?read_only_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
@@ -3272,6 +3270,8 @@ val combobox :
   ?text_signal:string Signal.signal ->
   ?placeholder:string ->
   ?placeholder_signal:string Signal.signal ->
+  ?read_only:bool ->
+  ?read_only_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
   ?on_press:(Lui_protocol.event -> unit) ->

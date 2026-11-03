@@ -31,6 +31,65 @@ private let captureAppleEvent: LUIAppleEventCallback = { kind, node, text in
 @MainActor
 @Suite("LUI SwiftUI backend", .serialized)
 struct LUISwiftUIBackendTests {
+    @Test("floating wire properties admit integral JSON numbers without weakening validation")
+    func floatingWireNumbers() throws {
+        let properties: [LUIProperty] = [
+            .itemExtent, .grow, .anchorOffset, .anchorAlignmentOffset,
+            .sourceX, .sourceY, .sourceWidth, .sourceHeight, .progressValue,
+            .minValue, .maxValue, .stepValue, .firstPaneWidth,
+            .resizeOrigin, .resizeHandleOffset, .opacity, .labelOpacity,
+            .letterSpacing, .inset, .insetTop, .insetRight, .insetBottom, .insetLeft,
+            .hoverOpacity, .pressedOpacity, .disabledOpacity,
+            .widthViewport, .heightViewport, .minWidthViewport, .maxWidthViewport,
+            .minHeightViewport, .maxHeightViewport,
+            .popupX, .popupY, .availableHeight, .collisionPadding,
+        ]
+        for property in properties {
+            for (json, expected) in [("1", 1.0), ("1.0", 1.0), ("1e0", 1.0), ("0.5", 0.5)] {
+                let decoded = try JSONDecoder().decode(LUIWireValue.self, from: Data(json.utf8))
+                let value = decoded.normalized(for: property)
+                #expect(value == .double(expected), "\(property.rawValue): \(json)")
+                #expect(value.matches(property, on: .box), "\(property.rawValue): \(json)")
+            }
+            for json in ["true", "\"1\""] {
+                let decoded = try JSONDecoder().decode(LUIWireValue.self, from: Data(json.utf8))
+                #expect(!decoded.normalized(for: property).matches(property, on: .box))
+            }
+            if property != .progressValue {
+                for number in [Double.nan, .infinity, -.infinity] {
+                    #expect(!LUIWireValue.double(number).normalized(for: property).matches(property, on: .box))
+                }
+            }
+        }
+        for (property, number): (LUIProperty, Int) in [
+            (.grow, -1), (.firstPaneWidth, -1), (.stepValue, 0), (.itemExtent, 0),
+            (.opacity, 2), (.labelOpacity, -1), (.hoverOpacity, 2),
+            (.pressedOpacity, -1), (.disabledOpacity, 2),
+            (.widthViewport, 0), (.heightViewport, 2), (.minWidthViewport, 0),
+            (.maxWidthViewport, 2), (.minHeightViewport, 0), (.maxHeightViewport, 2),
+            (.availableHeight, -1), (.collisionPadding, -1),
+        ] {
+            #expect(!LUIWireValue.int(number).normalized(for: property).matches(property, on: .box))
+        }
+    }
+
+    @Test("removed line-break nodes reject the batch without changing the tree")
+    func removedLineBreakNode() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: #"{"generation":1,"ops":[{"op":"create-node","id":1,"kind":"column"}]}"#)
+        #expect(throws: (any Error).self) {
+            try backend.apply(json: """
+            {"generation":2,"ops":[
+              {"op":"create-node","id":2,"kind":"text"},
+              {"op":"create-node","id":3,"kind":"br"}
+            ]}
+            """)
+        }
+        #expect(backend.model(id: 1) != nil)
+        #expect(backend.model(id: 2) == nil)
+        #expect(backend.model(id: 3) == nil)
+    }
+
     @Test("scroll titles wait for the heading to pass the viewport top")
     func scrollTitleWaitsForHeading() {
         let tracker = LUIScrollSectionTitleTracker()
@@ -2463,11 +2522,11 @@ struct LUISwiftUIBackendTests {
         #expect(throws: LUIBackendError.self) {
             try backend.apply(json: """
             {"generation":3,"ops":[
-              {"op":"set-prop","id":1,"property":"indeterminate","value":true}
+              {"op":"set-prop","id":2,"property":"indeterminate","value":true}
             ]}
             """)
         }
-        #expect(backend.generation == 2)
+        #expect(backend.generation == 3)
     }
 
     @Test("maps Progress to a clamped retained SwiftUI value")
@@ -2863,31 +2922,6 @@ struct LUISwiftUIBackendTests {
         )
         #expect(LUIDialogContentPolicy.role(for: try #require(backend.model(id: 6))) == .cancel)
         #expect(LUIDialogContentPolicy.role(for: try #require(backend.model(id: 7))) == .destructive)
-    }
-
-    @Test("native dialog cancellation uses a semantic class before localized labels")
-    func localizedDialogCancellation() throws {
-        for label in ["取消", "キャンセル", "Annuler", "Cancel"] {
-            let backend = LUIAppleBackend()
-            try backend.apply(json: """
-            {"generation":1,"ops":[
-              {"op":"create-node","id":1,"kind":"dialog"},
-              {"op":"create-node","id":2,"kind":"button"},
-              {"op":"create-node","id":3,"kind":"button"},
-              {"op":"set-prop","id":2,"property":"text","value":"\(label)"},
-              {"op":"set-prop","id":2,"property":"style-class","value":"quiet cancellation-action"},
-              {"op":"set-prop","id":3,"property":"text","value":"删除"},
-              {"op":"set-prop","id":3,"property":"variant","value":"destructive"},
-              {"op":"insert-child","parent":1,"child":2,"index":0},
-              {"op":"insert-child","parent":1,"child":3,"index":1}
-            ]}
-            """)
-            let dialog = try #require(backend.model(id: 1))
-            #expect(LUIDialogContentPolicy.cancelActionID(dialog: dialog, backend: backend) == 2)
-            #expect(LUIDialogContentPolicy.nonCancelActionIDs(dialog: dialog, backend: backend) == [3])
-            #expect(LUIDialogContentPolicy.role(for: try #require(backend.model(id: 2))) == .cancel)
-            #expect(LUIDialogContentPolicy.role(for: try #require(backend.model(id: 3))) == .destructive)
-        }
     }
 
     @Test("native dialog policy selects alert presentation declaratively")

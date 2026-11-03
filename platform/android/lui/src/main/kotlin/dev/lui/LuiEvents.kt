@@ -28,6 +28,14 @@ sealed class LuiEvent {
     data class ValueChanged(override val node: Long, val value: Double) : LuiEvent()
     data class Picked(override val node: Long, val payload: String) : LuiEvent()
     data class VisibleRange(override val node: Long, val first: Long, val last: Long) : LuiEvent()
+    /** Internal half-open materialization window; public VisibleRange excludes overscan. */
+    data class VirtualWindow(
+        override val node: Long,
+        val generation: Long,
+        val first: Long,
+        val last: Long,
+        val pinnedRows: List<Long>,
+    ) : LuiEvent()
     data class ScrollCompleted(
         override val node: Long,
         val token: Long,

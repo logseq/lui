@@ -1,6 +1,14 @@
 #include <stdint.h>
 #include <string.h>
 
+#if !defined(_WIN32)
+#include <errno.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#endif
+
 #include <caml/callback.h>
 #include <caml/mlvalues.h>
 #include <caml/signals.h>
@@ -16,8 +24,78 @@
 
 typedef void (*lui_patch_callback)(const char *json);
 
+/* Probe before startup: codes 258/260 retain the native host identity while
+   declaring support for bounded virtual-row feedback. */
+LUI_EXPORT int32_t lui_ocaml_virtual_rows_version(void) {
+  return 1;
+}
+
 static int runtime_started = 0;
 static lui_patch_callback patch_callback = NULL;
+
+#if !defined(_WIN32)
+static void signal_ownership_failure(const char *operation, int error) {
+  /* Returning to an embedding runtime with a damaged signal stack is unsafe.
+     No OCaml or host callback may run on this infrastructure failure path. */
+  fprintf(stderr, "lui bridge: %s: %s\n", operation, strerror(error));
+  abort();
+}
+
+static void startup_preserving_host_signals(char **arguments) {
+  stack_t host_stack;
+  sigset_t startup_mask, host_mask;
+  int error;
+
+  if (sigaltstack(NULL, &host_stack) != 0) {
+    signal_ownership_failure("query host alternate signal stack", errno);
+  }
+  if ((host_stack.ss_flags & SS_ONSTACK) != 0) {
+    signal_ownership_failure("initialize OCaml from an active signal stack",
+                             EINVAL);
+  }
+
+  /* OCaml startup installs its own alternate stack and disables that stack
+     when its program's registration code returns. Defer asynchronous signals
+     until the embedding host's stack has been restored, including the short
+     interval between OCaml's cleanup and this function regaining control.
+     Synchronous faults must remain deliverable during foreign execution. */
+  if (sigfillset(&startup_mask) != 0 ||
+      sigdelset(&startup_mask, SIGSEGV) != 0 ||
+      sigdelset(&startup_mask, SIGBUS) != 0 ||
+      sigdelset(&startup_mask, SIGILL) != 0 ||
+      sigdelset(&startup_mask, SIGFPE) != 0 ||
+      sigdelset(&startup_mask, SIGTRAP) != 0) {
+    signal_ownership_failure("prepare OCaml startup signal mask", errno);
+  }
+#if defined(SIGSYS)
+  if (sigdelset(&startup_mask, SIGSYS) != 0) {
+    signal_ownership_failure("preserve synchronous system-call signal", errno);
+  }
+#endif
+#if defined(SIGEMT)
+  if (sigdelset(&startup_mask, SIGEMT) != 0) {
+    signal_ownership_failure("preserve synchronous emulator signal", errno);
+  }
+#endif
+  error = pthread_sigmask(SIG_BLOCK, &startup_mask, &host_mask);
+  if (error != 0) {
+    signal_ownership_failure("defer OCaml startup signals", error);
+  }
+
+  caml_startup(arguments);
+
+  /* Originally disabled stacks stay disabled. Restoring a disabled stack's
+     unspecified pointer/size is invalid on some Unix implementations. */
+  if ((host_stack.ss_flags & SS_DISABLE) == 0 &&
+      sigaltstack(&host_stack, NULL) != 0) {
+    signal_ownership_failure("restore host alternate signal stack", errno);
+  }
+  error = pthread_sigmask(SIG_SETMASK, &host_mask, NULL);
+  if (error != 0) {
+    signal_ownership_failure("restore host signal mask", error);
+  }
+}
+#endif
 
 /* Lock discipline: after lui_ocaml_start the host thread does NOT hold the
    OCaml runtime lock between calls, so OCaml worker domains keep running
@@ -55,10 +133,11 @@ LUI_EXPORT int32_t lui_ocaml_start(lui_patch_callback callback,
   if (!runtime_started) {
 #if defined(_WIN32)
     char_os *arguments[] = {(char_os *)L"lui_ocaml", NULL};
+    caml_startup(arguments);
 #else
     char *arguments[] = {"lui_ocaml", NULL};
+    startup_preserving_host_signals(arguments);
 #endif
-    caml_startup(arguments);
     runtime_started = 1;
   } else {
     caml_leave_blocking_section();
@@ -79,6 +158,29 @@ LUI_NODE_EXPORT(lui_ocaml_dismiss, "lui_ocaml_dismiss")
 LUI_NODE_EXPORT(lui_ocaml_double_press, "lui_ocaml_double_press")
 LUI_NODE_EXPORT(lui_ocaml_radio_changed, "lui_ocaml_radio_changed")
 LUI_NODE_EXPORT(lui_ocaml_load, "lui_ocaml_load")
+LUI_NODE_EXPORT(lui_ocaml_navigate_previous, "lui_ocaml_navigate_previous")
+LUI_NODE_EXPORT(lui_ocaml_navigate_next, "lui_ocaml_navigate_next")
+
+LUI_EXPORT int32_t lui_ocaml_navigation_key_utf8(int64_t node, const char *key,
+                                                 int32_t length, int32_t shift) {
+  int32_t accepted;
+  if (key == NULL || length < 0) return 0;
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_text_bool("lui_ocaml_navigation_key", node, key,
+                                     length, shift, deliver);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
+LUI_EXPORT int32_t lui_ocaml_scroll_edges(int64_t node, int32_t at_start,
+                                         int32_t at_end) {
+  int32_t accepted;
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_node_bools("lui_ocaml_scroll_edges", node, at_start,
+                                      at_end, deliver);
+  caml_enter_blocking_section();
+  return accepted;
+}
 
 LUI_EXPORT int32_t lui_ocaml_stop(void) {
   int32_t accepted;
@@ -105,54 +207,37 @@ LUI_EXPORT int32_t lui_ocaml_press_ex(int64_t node, int32_t modifiers) {
   return accepted;
 }
 
-LUI_EXPORT int32_t lui_ocaml_press_detail(int64_t node, double x, double y,
-                                          int32_t modifiers, int32_t button,
-                                          const char *target_class) {
-  int32_t accepted;
-  caml_leave_blocking_section();
-  accepted = lui_dispatch_pointer(
-      "lui_ocaml_press_detail", node, x, y, modifiers, button, target_class,
-      target_class != NULL ? (int32_t)strlen(target_class) : 0, deliver);
-  caml_enter_blocking_section();
-  return accepted;
-}
+/* Keep the original C-string exports for existing Swift hosts. Length-carrying
+ * exports preserve embedded NULs for runtimes using the complete wire payload. */
+#define LUI_POINTER_EXPORT(function_name, callback_name)                         \
+  LUI_EXPORT int32_t function_name##_utf8(                                       \
+      int64_t node, double x, double y, int32_t modifiers, int32_t button,        \
+      const char *target_class, int32_t class_length) {                          \
+    int32_t accepted;                                                          \
+    if (class_length < 0 || (target_class == NULL && class_length != 0))        \
+      return 0;                                                               \
+    caml_leave_blocking_section();                                             \
+    accepted = lui_dispatch_pointer(callback_name, node, x, y, modifiers,       \
+                                     button, target_class, class_length, deliver); \
+    caml_enter_blocking_section();                                             \
+    return accepted;                                                          \
+  }                                                                           \
+  LUI_EXPORT int32_t function_name(                                             \
+      int64_t node, double x, double y, int32_t modifiers, int32_t button,        \
+      const char *target_class) {                                              \
+    return function_name##_utf8(                                               \
+        node, x, y, modifiers, button, target_class,                            \
+        target_class != NULL ? (int32_t)strlen(target_class) : 0);               \
+  }
 
-LUI_EXPORT int32_t lui_ocaml_pointer_down(int64_t node, double x, double y,
-                                          int32_t modifiers, int32_t button,
-                                          const char *target_class) {
-  int32_t accepted;
-  caml_leave_blocking_section();
-  accepted = lui_dispatch_pointer(
-      "lui_ocaml_pointer_down", node, x, y, modifiers, button, target_class,
-      target_class != NULL ? (int32_t)strlen(target_class) : 0, deliver);
-  caml_enter_blocking_section();
-  return accepted;
-}
+LUI_POINTER_EXPORT(lui_ocaml_press_detail, "lui_ocaml_press_detail")
+LUI_POINTER_EXPORT(lui_ocaml_pointer_down, "lui_ocaml_pointer_down")
+LUI_POINTER_EXPORT(lui_ocaml_pointer_up, "lui_ocaml_pointer_up")
+LUI_POINTER_EXPORT(lui_ocaml_pointer_move, "lui_ocaml_pointer_move")
+LUI_POINTER_EXPORT(lui_ocaml_pointer_cancel, "lui_ocaml_pointer_cancel")
+LUI_POINTER_EXPORT(lui_ocaml_context_menu_press, "lui_ocaml_context_menu_press")
 
-LUI_EXPORT int32_t lui_ocaml_pointer_up(int64_t node, double x, double y,
-                                        int32_t modifiers, int32_t button,
-                                        const char *target_class) {
-  int32_t accepted;
-  caml_leave_blocking_section();
-  accepted = lui_dispatch_pointer(
-      "lui_ocaml_pointer_up", node, x, y, modifiers, button, target_class,
-      target_class != NULL ? (int32_t)strlen(target_class) : 0, deliver);
-  caml_enter_blocking_section();
-  return accepted;
-}
-
-LUI_EXPORT int32_t lui_ocaml_context_menu_press(int64_t node, double x, double y,
-                                                int32_t modifiers, int32_t button,
-                                                const char *target_class) {
-  int32_t accepted;
-  caml_leave_blocking_section();
-  accepted = lui_dispatch_pointer(
-      "lui_ocaml_context_menu_press", node, x, y, modifiers, button,
-      target_class, target_class != NULL ? (int32_t)strlen(target_class) : 0,
-      deliver);
-  caml_enter_blocking_section();
-  return accepted;
-}
+#undef LUI_POINTER_EXPORT
 
 LUI_EXPORT int32_t lui_ocaml_text_changed_utf8(int64_t node, const char *text,
                                                int32_t byte_length) {
@@ -197,6 +282,16 @@ LUI_EXPORT int32_t lui_ocaml_toggle_changed(int64_t node, int32_t checked) {
   return accepted;
 }
 
+LUI_EXPORT int32_t lui_ocaml_toggle_changed_detail(int64_t node, int32_t checked,
+                                                   int32_t modifiers) {
+  int32_t accepted;
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_node_bool_int("lui_ocaml_toggle_changed_detail", node,
+                                         checked, modifiers, deliver);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
 LUI_EXPORT int32_t lui_ocaml_slider_changed(int64_t node, double fraction) {
   int32_t accepted;
   caml_leave_blocking_section();
@@ -212,6 +307,23 @@ LUI_EXPORT int32_t lui_ocaml_visible_range(int64_t node, int64_t first,
   caml_leave_blocking_section();
   accepted = lui_dispatch_visible_range("lui_ocaml_visible_range", node, first,
                                         last, deliver);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
+LUI_EXPORT int32_t lui_ocaml_virtual_window(int64_t node, int64_t generation,
+                                           int64_t first, int64_t last,
+                                           const int64_t *pins, int32_t count) {
+  int32_t accepted;
+  if (node <= 0 || node > Max_long || generation <= 0 || generation > Max_long ||
+      first < 0 || last < first || last > Max_long || count < 0 ||
+      (count > 0 && pins == NULL)) return 0;
+  for (int32_t index = 0; index < count; index++) {
+    if (pins[index] <= 0 || pins[index] > Max_long) return 0;
+  }
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_virtual_window("lui_ocaml_virtual_window", node,
+      generation, first, last, pins, count, deliver);
   caml_enter_blocking_section();
   return accepted;
 }
