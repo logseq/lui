@@ -143,6 +143,7 @@ struct LUIDrawerView: View {
     @State private var rejectedGesture = false
     @State private var isAnimating = false
     @State private var transitionGeneration = 0
+    @State private var hasVerticalBarScene = false
     #if DEBUG
     @State private var transitionStartedAt = 0.0
     #endif
@@ -184,6 +185,13 @@ struct LUIDrawerView: View {
             }
         }
         .modifier(LUIDrawerFullScreenModifier())
+        #if os(iOS)
+        .background {
+            if #available(iOS 27.1, *) {
+                LUIDrawerVerticalBarSceneReader { hasVerticalBarScene = $0 }
+            }
+        }
+        #endif
         .onDisappear {
             backend.setDrawerInteractionLocked(false, node: model.id)
         }
@@ -271,8 +279,9 @@ struct LUIDrawerView: View {
                         // Scaling a native navigation host changes its window safe
                         // areas and reflows scrolled content during the transition.
                         .opacity(LUIDrawerInteractionPolicy.sidebarOpacity(progress: progress))
-                        .offset(x: -20.0 * (1.0 - progress))
-                        .modifier(LUIDrawerParkingEffect(translation: parked ? 20 - width : 0))
+                        .offset(x: -(hasVerticalBarScene ? width : 20) * (1.0 - progress))
+                        .modifier(LUIDrawerParkingEffect(translation: !hasVerticalBarScene && parked ? 20 - width : 0))
+                        .zIndex(hasVerticalBarScene ? 1 : 0)
                         .allowsHitTesting(presented && contentControlsEnabled)
                         .accessibilityHidden(
                             LUIDrawerInteractionPolicy.panelIsAccessibilityHidden(
@@ -312,7 +321,7 @@ struct LUIDrawerView: View {
                         }
                         .clipShape(RoundedRectangle(
                             cornerRadius: LUIDrawerInteractionPolicy.mainCornerRadius(
-                                progress: progress
+                                progress: hasVerticalBarScene ? 0 : progress
                             )
                         ))
                         // Shadow the combined panel once so the translucent fade
@@ -325,7 +334,9 @@ struct LUIDrawerView: View {
                             radius: 16,
                             x: -6
                         )
-                        .offset(x: visibleWidth)
+                        // Moving the native navigation container off the display
+                        // edge makes the system relocate its vertical bars.
+                        .offset(x: hasVerticalBarScene ? 0 : visibleWidth)
                 }
 
                 if LUIDrawerInteractionPolicy.showsInteractionShield(
@@ -529,6 +540,64 @@ private struct LUIDrawerParkingEffect: GeometryEffect {
 }
 
 #if os(iOS)
+@available(iOS 27.1, *)
+private struct LUIDrawerVerticalBarSceneReader: UIViewRepresentable {
+    let update: (Bool) -> Void
+
+    func makeUIView(context: Context) -> Probe { Probe(update: update) }
+    func updateUIView(_ view: Probe, context: Context) {
+        view.update = update
+        view.observeWindow()
+    }
+
+    final class Probe: UIView {
+        var update: (Bool) -> Void
+        private weak var observedWindow: UIWindow?
+        private var registration: UITraitChangeRegistration?
+        private var reported: Bool?
+
+        init(update: @escaping (Bool) -> Void) {
+            self.update = update
+            super.init(frame: .zero)
+            isUserInteractionEnabled = false
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            observeWindow()
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            report()
+        }
+
+        func observeWindow() {
+            if observedWindow !== window {
+                if let registration { observedWindow?.unregisterForTraitChanges(registration) }
+                observedWindow = window
+                registration = window?.registerForTraitChanges(
+                    UITraitCollection.systemTraitsAffectingVerticalBarEdge
+                ) { [weak self] (_: UIWindow, _: UITraitCollection) in
+                    self?.report()
+                }
+            }
+            report()
+        }
+
+        private func report() {
+            guard let window else { return }
+            // Use the window's preference, independent of bars in the moving panel.
+            let value = window.traitCollection.verticalBarEdge != .unspecified
+            guard reported != value else { return }
+            reported = value
+            DispatchQueue.main.async { [weak self] in self?.update(value) }
+        }
+    }
+}
+
 /// Arbitrate drawer pans before descendant scroll views begin, without changing
 /// SwiftUI's scroll environment and reevaluating every mounted row.
 private struct LUIDrawerNativeInteraction: UIViewRepresentable {

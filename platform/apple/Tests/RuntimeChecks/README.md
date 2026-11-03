@@ -5,6 +5,7 @@ Run these on a booted iOS simulator on an Apple silicon Mac with Xcode:
 ```sh
 python3 platform/apple/Tests/RuntimeChecks/run-ios-check.py file-preview --simulator booted
 python3 platform/apple/Tests/RuntimeChecks/run-ios-check.py drawer-first-reveal --simulator booted
+python3 platform/apple/Tests/RuntimeChecks/run-ios-check.py drawer-vertical-bars --simulator booted
 ```
 
 The runner builds the Release static backend, launches an isolated app host, and
@@ -19,3 +20,10 @@ native dismissal emits exactly one wire event without immediately reopening.
 An unopened panel must not mount; its first reveal must use the latest wire data;
 closing and reopening must preserve the panel's SwiftUI state identity. The
 regular-width NavigationSplitView path continues to mount its sidebar normally.
+
+`drawer-vertical-bars` repeatedly opens and closes a compact drawer while a native
+journal stays scrolled. On iPhone Duo's outer display, the page frame, toolbar
+axis and toolbar position must remain fixed throughout each transition. Ordinary
+iPhones retain the existing push transition. Both paths must preserve the scroll
+position and the main view's SwiftUI state identity. Set
+`SIMCTL_CHILD_LUI_DRAWER_REQUIRE_VERTICAL_BAR=1` to require the Duo path.

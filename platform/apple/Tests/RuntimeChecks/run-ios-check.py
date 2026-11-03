@@ -11,6 +11,7 @@ BUNDLE = "dev.lui.nativePresentationCheck"
 CHECKS = {
     "file-preview": ("FilePreviewLaunch.swift", "FilePreviewLaunchCheck"),
     "drawer-first-reveal": ("DrawerFirstReveal.swift", "DrawerFirstRevealCheck"),
+    "drawer-vertical-bars": ("DrawerVerticalBars.swift", "DrawerVerticalBarsCheck"),
 }
 
 
@@ -25,7 +26,7 @@ def main():
     args = parser.parse_args()
     filename, check_type = CHECKS[args.check]
     sdk = subprocess.check_output(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"], text=True).strip()
-    run(["swift", "build", "--package-path", str(ROOT), "--configuration", "release",
+    run(["swift", "build", "--build-system", "native", "--package-path", str(ROOT), "--configuration", "release",
          "--disable-sandbox", "--disable-keychain", "--product", "LUIAppleBackendStatic",
          "--triple", "arm64-apple-ios17.0-simulator", "--sdk", sdk, "-Xswiftc", "-enable-testing"])
     build = ROOT / ".build/arm64-apple-ios-simulator/release"
