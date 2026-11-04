@@ -981,6 +981,8 @@ and apply_secondary_property renderer queue_split node kind dom_node
       apply_press_enabled kind dom_node enabled
   | PointerEnabled, BoolValue enabled ->
       Util.set_state_attribute dom_node "data-pointer-enabled" enabled
+  | PointerCapture, BoolValue capture ->
+      Util.set_state_attribute dom_node "data-pointer-capture" capture
   | RoleValue, StringValue role ->
       W.Element.setAttribute "role" role
         (if kind = Popover then Util.child_element dom_node 0 else dom_node);
@@ -1259,6 +1261,8 @@ let remove_property renderer queue_split node kind dom_node property =
        | NavigateEnabled | SubmitOnBlur | ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange -> ()
        | ToggleDetailEnabled ->
            W.Element.removeAttribute "data-toggle-detail-enabled" dom_node
+       | PointerCapture ->
+           W.Element.removeAttribute "data-pointer-capture" dom_node
        | TextValue -> apply_text_value renderer node kind dom_node ""
        | ReadOnly -> W.HtmlInputElement.setReadOnly (Util.text_control_node dom_node) false
        | VirtualOverscan | VirtualItemExtent | VirtualTotalCount
