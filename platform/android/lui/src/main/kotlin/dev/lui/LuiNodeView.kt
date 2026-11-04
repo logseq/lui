@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -1438,6 +1439,24 @@ internal fun LuiMenuEntry(backend: LuiBackend, childId: Long, onSelect: () -> Un
 }
 
 @Composable
+private fun nativeContentPadding(node: LuiNodeLike, defaults: PaddingValues): PaddingValues {
+    val direction = LocalLayoutDirection.current
+    val horizontal = node.prop("padding-horizontal")?.intValue ?: node.prop("padding")?.intValue
+    val vertical = node.prop("padding-vertical")?.intValue ?: node.prop("padding")?.intValue
+    val compact = node.prop("height") != null
+    return PaddingValues.Absolute(
+        left = (node.prop("padding-left")?.intValue ?: horizontal)?.dp
+            ?: defaults.calculateLeftPadding(direction),
+        right = (node.prop("padding-right")?.intValue ?: horizontal)?.dp
+            ?: defaults.calculateRightPadding(direction),
+        top = (node.prop("padding-top")?.intValue ?: vertical)?.dp
+            ?: if (compact) 0.dp else defaults.calculateTopPadding(),
+        bottom = (node.prop("padding-bottom")?.intValue ?: vertical)?.dp
+            ?: if (compact) 0.dp else defaults.calculateBottomPadding(),
+    )
+}
+
+@Composable
 private fun LuiMenuItem(
     backend: LuiBackend,
     node: LuiNodeLike,
@@ -1451,6 +1470,7 @@ private fun LuiMenuItem(
     val icon = node.propString("icon")?.let { backend.icons.icon(it) }
     val selected = node.propBool("selected")
     val destructive = node.propString("variant") == "destructive"
+    val contentPadding = nativeContentPadding(node, MenuDefaults.DropdownMenuSelectableItemContentPadding)
     val iconTint = luiThemeColor(node.propString("foreground"), foreground = true) ?: Color.Unspecified
     val slot = LocalLuiChildSlot.current
     val shapes = if (slot != null) MenuDefaults.itemShape(slot.index, slot.count) else MenuDefaults.itemShapes()
@@ -1473,6 +1493,7 @@ private fun LuiMenuItem(
                 onClick = { submenuOpen = true },
                 enabled = enabled,
                 modifier = modifier,
+                contentPadding = contentPadding,
                 shape = shapes.shape,
                 leadingIcon = leadingIcon,
                 trailingContent = {
@@ -1509,6 +1530,7 @@ private fun LuiMenuItem(
             text = text,
             shapes = shapes,
             modifier = modifier,
+            contentPadding = contentPadding,
             enabled = enabled,
             leadingIcon = leadingIcon,
             selectedLeadingIcon = { Icon(Icons.Filled.Check, null, Modifier.size(MenuDefaults.LeadingIconSize)) },
@@ -1519,6 +1541,7 @@ private fun LuiMenuItem(
             text = text,
             shape = shapes.shape,
             modifier = modifier,
+            contentPadding = contentPadding,
             enabled = enabled,
             leadingIcon = leadingIcon,
         )
@@ -1617,6 +1640,7 @@ private fun LuiListItem(
             disabledContainerColor = Color.Transparent,
         )
     } else ListItemDefaults.colors()
+    val contentPadding = nativeContentPadding(node, ListItemDefaults.ContentPadding)
     val icon = node.propString("icon")?.let { backend.icons.icon(it) }
     val content: @Composable () -> Unit = {
         if (children.isEmpty()) {
@@ -1654,6 +1678,7 @@ private fun LuiListItem(
     when {
         node.propBool("double-press-enabled") -> ListItem(
             colors = colors,
+            contentPadding = contentPadding,
             modifier = modifier.combinedClickable(
                 enabled = enabled,
                 onClick = onClick,
@@ -1666,6 +1691,7 @@ private fun LuiListItem(
         )
         node.prop("selected") != null -> ListItem(
             colors = colors,
+            contentPadding = contentPadding,
             selected = node.propBool("selected"),
             onClick = onClick,
             onLongClick = onLongClick,
@@ -1676,6 +1702,7 @@ private fun LuiListItem(
         )
         else -> ListItem(
             colors = colors,
+            contentPadding = contentPadding,
             onClick = onClick,
             onLongClick = onLongClick,
             modifier = modifier,

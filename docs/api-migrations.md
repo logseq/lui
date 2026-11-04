@@ -1,5 +1,25 @@
 # LUI API migration guide
 
+## Unreleased: Android list and menu content padding
+
+Android `list-item` and `menu-item` apply authored padding inside their native
+Material controls, replacing native padding on each specified edge rather than
+adding a second outer inset. Unspecified edges retain Material defaults. An
+authored fixed height removes unspecified native vertical padding so compact
+nested controls do not consume the label's entire height.
+
+Compact selection rows can keep their existing geometry:
+
+```ocaml
+list_item ~height:44 ~padding_vertical:0 [
+  menu_item ~height:44 ~padding_vertical:0 ~text:"Choice" ~selected:true []
+]
+```
+
+Remove explicit padding or height to use the corresponding Material defaults.
+Native selection, press events, disabled states and other hosts are unchanged;
+no wire or schema migration is required.
+
 ## Unreleased: Android button content alignment
 
 Android buttons center their label or icon/label group using the native Material
