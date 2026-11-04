@@ -4,6 +4,7 @@ import UIKit
 #endif
 
 #if os(iOS)
+@MainActor
 enum LUIDrawerScrollInteractionPolicy {
     static func defersToHorizontalScroll(from view: UIView?) -> Bool {
         var candidate = view
@@ -185,7 +186,7 @@ struct LUIDrawerView: View {
             }
         }
         .modifier(LUIDrawerFullScreenModifier())
-        #if os(iOS)
+        #if os(iOS) && !targetEnvironment(macCatalyst) && canImport(SwiftUI, _version: 8.1)
         .background {
             if #available(iOS 27.1, *) {
                 LUIDrawerVerticalBarSceneReader { hasVerticalBarScene = $0 }
@@ -525,6 +526,8 @@ private struct LUIDrawerMainSurfaceModifier: ViewModifier {
 }
 
 #if os(iOS)
+// Runtime availability alone cannot hide these APIs from pre-iOS 27.1 SDKs.
+#if !targetEnvironment(macCatalyst) && canImport(SwiftUI, _version: 8.1)
 @available(iOS 27.1, *)
 private struct LUIDrawerVerticalBarSceneReader: UIViewRepresentable {
     let update: (Bool) -> Void
@@ -582,6 +585,7 @@ private struct LUIDrawerVerticalBarSceneReader: UIViewRepresentable {
         }
     }
 }
+#endif
 
 /// Arbitrate drawer pans before descendant scroll views begin, without changing
 /// SwiftUI's scroll environment and reevaluating every mounted row.
