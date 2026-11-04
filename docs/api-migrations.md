@@ -1,5 +1,28 @@
 # LUI API migration guide
 
+## Unreleased: MyGo links in text flow
+
+MyGo now renders portable `link` nodes with the text-compatible native `Link`
+primitive when the actual build parent is text, including text hosts created by
+registered extensions. Standalone links retain `LinkBase` layout, icons and
+arbitrary children. Label and rich-text children are rendered once, and both
+paths retain native URL activation and the adapter's existing event bindings.
+Non-text children inside text remain invalid: icons and layout children must
+stay on the standalone path, not be flattened or silently dropped.
+
+No portable constructor or wire changes are required. Applications must select
+the adapter's published compatibility SDK in their root Go module (dependency
+module replacements do not propagate):
+
+```go
+replace github.com/egoist/mygo => github.com/logseq/mygo v0.0.0-20261104233121-982f5a6791f0
+```
+
+For example, an extension that builds `ui.Text(c, "Read ").Children(children)`
+can keep its portable link child unchanged; it no longer needs an application
+link workaround. Do not infer text flow from retained node kinds or cache the
+SDK's build-time `Context.InTextFlow()` result. Other hosts are unchanged.
+
 ## Unreleased: Web idle context menus on capture-enabled nodes
 
 `row` and `box` with `pointer_capture:true` no longer consume an idle secondary

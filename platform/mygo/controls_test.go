@@ -606,6 +606,40 @@ func TestControlsTreeInlineIconKeepsDisclosureKeyboard(t *testing.T) {
 	tt.Key(0, ui.KeyLeft)
 }
 
+func TestControlsLinkInActualTextFlow(t *testing.T) {
+	for _, hostKind := range []string{"text", "extension"} {
+		t.Run(hostKind, func(t *testing.T) {
+			b := New(Config{Extensions: map[string]Extension{
+				"text-host": {Fingerprint: "v1", Render: func(c *ui.Context, n Node, children func(), emit func(Event)) {
+					ui.Text(c, "Read ").Children(children)
+				}},
+			}})
+			defer b.Close()
+			host := create(2, "text")
+			if hostKind == "extension" {
+				host = Operation{Op: "create-extension", ID: 2, Identifier: "text-host", Fingerprint: "v1"}
+			}
+			ops := []Operation{create(1, "column"), host, insert(1, 2, 0)}
+			if hostKind == "text" {
+				ops = append(ops, prop(2, "text", "Read "))
+			}
+			ops = append(ops,
+				create(3, "link"), prop(3, "text", "Docs"), prop(3, "url", "https://example.test/guide"), insert(2, 3, 0),
+				create(4, "text"), prop(4, "text", " guide"), prop(4, "font-weight", 700), insert(3, 4, 0),
+				create(5, "text"), prop(5, "text", "."), insert(2, 5, 1))
+			apply(t, b, 1, ops...)
+			tt := ui.NewTester(b.View, 500, 300)
+			if !tt.HasText("Read Docs guide.") {
+				t.Fatalf("inline text lost or duplicated: %v", tt.Texts())
+			}
+			widgetClick(t, tt, "Docs guide")
+			if got := tt.OpenedURLs(); len(got) != 1 || got[0] != "https://example.test/guide" {
+				t.Fatalf("inline link activation: %v", got)
+			}
+		})
+	}
+}
+
 func TestControlsLinkInlineIcon(t *testing.T) {
 	b := mounted(t, nil)
 	apply(t, b, 2, create(3, "link"), prop(3, "text", "Docs"), prop(3, "url", "https://example.test"), prop(3, "icon", "folder"), insert(2, 3, 0))
