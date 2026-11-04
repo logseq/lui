@@ -29,6 +29,12 @@ statically resolved local values, nonrecursive helpers, `List.map`/`concat_map`,
 list concatenation, conditional/match/exception branches and structural wrappers.
 `separator`, `menu` and `submenu` use their actual underlying node contracts.
 
+Correlated branches over immutable booleans or `Lui_ui.host context` retain their
+relationship, including aliases, negation and boolean matches. For example,
+`let child = if android then dropdown_menu [] else context_menu [] in
+if android then menu_trigger [child] else button [child]` remains valid.
+Separate effectful condition calls are not assumed to return the same value.
+
 Structural `reactive`, `if_` and `keyed` callbacks mount without an anchor; when
 one returns another structural primitive, the runtime creates a transparent Box.
 The checker accounts for that Box rather than treating every dynamic wrapper as

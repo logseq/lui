@@ -233,6 +233,23 @@ let () =
   check false ("open Lui_elements let _ = virtual_list [if_ ~test:source (" ^ rows ^ ")]");
   check false "open Lui_elements let _ = context_menu [if_ ~test:source (if_ ~test:source (menu_item []))]";
   check true "open Lui_elements let _ = column [if_ ~test:source (if_ ~test:source (menu_item []))]";
+  check true "open Lui_elements let f flag = let child = if flag then dropdown_menu [] else context_menu [] in if flag then menu_trigger [child] else button [child]";
+  check true "open Lui_elements let f context = let child = if Lui_ui.host context = KotlinHost then dropdown_menu [] else context_menu [] in if Lui_ui.host context = KotlinHost then menu_trigger [child] else button [child]";
+  check true "open Lui_elements let f flag = let child = if flag then dropdown_menu [] else context_menu [] in let same = flag in if not same then button [child] else menu_trigger [child]";
+  check true "open Lui_elements let f flag = let child = if flag then dropdown_menu [] else context_menu [] in match flag with true -> menu_trigger [child] | false -> button [child]";
+  check false "open Lui_elements let f flag other = let child = if flag then dropdown_menu [] else context_menu [] in let flag = other in if flag then menu_trigger [child] else button [child]";
+  check false "open Lui_elements let f () = let child = if Random.bool () then dropdown_menu [] else context_menu [] in if Random.bool () then menu_trigger [child] else button [child]";
+  check false "open Lui_elements let f flag = let child = if flag then context_menu [] else dropdown_menu [] in if flag then menu_trigger [child] else button [child]";
+  for _ = 1 to 2000 do
+    let pick () = List.nth constructors (Random.State.int random (List.length constructors)) in
+    let p1 = pick () and p2 = pick () and c1 = pick () and c2 = pick () in
+    let _, _, pk1, _ = p1 and _, _, pk2, _ = p2 in
+    let _, ck1, _, _ = c1 and _, ck2, _, _ = c2 in
+    let source = "open Lui_elements let f flag = let child = if flag then (" ^ element c1 ^
+      ") else (" ^ element c2 ^ ") in if flag then (" ^ parent p1 "child" "[child]" ^
+      ") else (" ^ parent p2 "child" "[child]" ^ ")" in
+    check (allowed pk1 ck1 && allowed pk2 ck2) source
+  done;
   Printf.printf "%d property checks; seed=%d; failures=%d\\n" !checks seed !failures;
   if !failures <> 0 then exit 1
 `)

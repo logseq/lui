@@ -2,13 +2,17 @@ open Ppxlib
 module Schema = Lui_nesting_schema
 module Names = Map.Make (String)
 
-type module_kind = Elements | Lists | Standard | Other
+type module_kind = Elements | Lists | Standard | Ui | Other
 
 type scope = {
   opened : bool;
   values : value Names.t;
   modules : module_kind Names.t;
   budget : int ref;
+  serial : int ref;
+  symbols : int Names.t;
+  namespace : int;
+  assumptions : bool Names.t ref;
 }
 
 and value =
@@ -22,6 +26,21 @@ let initial_scope () =
     values = Names.empty;
     modules = Names.empty;
     budget = ref 0;
+    serial = ref 0;
+    symbols = Names.empty;
+    namespace = 0;
+    assumptions = ref Names.empty;
+  }
+
+let fresh scope =
+  incr scope.serial;
+  !(scope.serial)
+
+let store scope name value =
+  {
+    scope with
+    values = Names.add name value scope.values;
+    symbols = Names.add name (fresh scope) scope.symbols;
   }
 
 let consume scope fuel =
@@ -33,6 +52,7 @@ let consume scope fuel =
 let bind scope pattern =
   let values = ref scope.values in
   let modules = ref scope.modules in
+  let symbols = ref scope.symbols in
   let visitor =
     object
       inherit Ast_traverse.iter as super
@@ -40,7 +60,8 @@ let bind scope pattern =
       method! pattern pattern =
         (match pattern.ppat_desc with
         | Ppat_var name | Ppat_alias (_, name) ->
-            values := Names.add name.txt Unknown !values
+            values := Names.add name.txt Unknown !values;
+            symbols := Names.add name.txt (fresh scope) !symbols
         | Ppat_unpack { txt = Some name; _ } ->
             modules := Names.add name Other !modules
         | _ -> ());
@@ -48,16 +69,13 @@ let bind scope pattern =
     end
   in
   visitor#pattern pattern;
-  { scope with values = !values; modules = !modules }
+  { scope with values = !values; modules = !modules; symbols = !symbols }
 
 let rec bind_value scope pattern value =
   match (pattern.ppat_desc, value) with
-  | Ppat_var name, _ ->
-      { scope with values = Names.add name.txt value scope.values }
+  | Ppat_var name, _ -> store scope name.txt value
   | Ppat_alias (pattern, name), _ ->
-      bind_value
-        { scope with values = Names.add name.txt value scope.values }
-        pattern value
+      bind_value (store scope name.txt value) pattern value
   | Ppat_constraint (pattern, _), _ -> bind_value scope pattern value
   | ( Ppat_tuple patterns,
       Bound (captured, { pexp_desc = Pexp_tuple expressions; _ }) )
@@ -90,6 +108,7 @@ let rec module_kind scope = function
           | "Lui_elements" -> Elements
           | "List" -> Lists
           | "Stdlib" -> Standard
+          | "Lui_ui" -> Ui
           | _ -> Other)
   | Ldot (parent, "List") when module_kind scope parent = Standard -> Lists
   | _ -> Other
@@ -111,7 +130,105 @@ let open_module scope expression =
       Names.filter (fun name _ -> not (Schema.exports name)) scope.values
     else Names.empty
   in
-  { scope with opened; values }
+  let symbols =
+    if opened then
+      Names.filter (fun name _ -> not (Schema.exports name)) scope.symbols
+    else Names.empty
+  in
+  {
+    scope with
+    opened;
+    values;
+    symbols;
+    namespace = (if opened then scope.namespace else fresh scope);
+  }
+
+let symbol scope name =
+  match Names.find_opt name scope.symbols with
+  | Some id -> "local:" ^ string_of_int id
+  | None -> Printf.sprintf "global:%d:%s" scope.namespace name
+
+let rec reference fuel scope name =
+  if fuel = 0 then symbol scope name
+  else
+    match Names.find_opt name scope.values with
+    | Some
+        (Bound
+           (captured, { pexp_desc = Pexp_ident { txt = Lident alias; _ }; _ }))
+      ->
+        reference (fuel - 1) captured alias
+    | _ -> symbol scope name
+
+let host_key scope expression =
+  match expression.pexp_desc with
+  | Pexp_apply
+      ( { pexp_desc = Pexp_ident { txt = Ldot (parent, "host"); _ }; _ },
+        [ (Nolabel, { pexp_desc = Pexp_ident { txt = Lident context; _ }; _ }) ]
+      )
+    when module_kind scope parent = Ui ->
+      Some ("host:" ^ reference 32 scope context)
+  | _ -> None
+
+let constructor_key expression =
+  match expression.pexp_desc with
+  | Pexp_construct ({ txt = Lident name; _ }, None) -> Some name
+  | _ -> None
+
+let rec condition fuel scope expression =
+  if fuel = 0 then None
+  else
+    let next = condition (fuel - 1) in
+    match expression.pexp_desc with
+    | Pexp_ident { txt = Lident name; _ } ->
+        let aliased =
+          match Names.find_opt name scope.values with
+          | Some (Bound (captured, value)) -> next captured value
+          | _ -> None
+        in
+        Some (Option.value aliased ~default:(symbol scope name, true))
+    | Pexp_apply
+        ( { pexp_desc = Pexp_ident { txt = Lident "not"; _ }; _ },
+          [ (Nolabel, value) ] )
+      when not (Names.mem "not" scope.values) ->
+        Option.map
+          (fun (key, positive) -> (key, not positive))
+          (next scope value)
+    | Pexp_apply
+        ( { pexp_desc = Pexp_ident { txt = Lident (("=" | "<>") as op); _ }; _ },
+          [ (Nolabel, left); (Nolabel, right) ] )
+      when not (Names.mem op scope.values) -> (
+        let pair left right =
+          match (host_key scope left, constructor_key right) with
+          | Some host, Some kind -> Some (host ^ "=" ^ kind, op = "=")
+          | _ -> None
+        in
+        match pair left right with
+        | Some _ as key -> key
+        | None -> pair right left)
+    | Pexp_constraint (value, _) | Pexp_coerce (value, _, _) -> next scope value
+    | _ -> None
+
+(* Captured bindings share branch facts; lexical identities prevent shadowed or
+   separately evaluated booleans from being conflated. Host reads are pure. *)
+let in_branch scope test truth ~none visit =
+  match condition 32 scope test with
+  | None -> visit ()
+  | Some (key, positive) -> (
+      let truth = truth = positive in
+      match Names.find_opt key !(scope.assumptions) with
+      | Some known when known <> truth -> none
+      | _ ->
+          let previous = !(scope.assumptions) in
+          scope.assumptions := Names.add key truth previous;
+          Fun.protect visit ~finally:(fun () -> scope.assumptions := previous))
+
+let rec in_case scope value pattern ~none visit =
+  match pattern.ppat_desc with
+  | Ppat_construct ({ txt = Lident (("true" | "false") as name); _ }, None) ->
+      in_branch scope value (name = "true") ~none visit
+  | Ppat_constraint (pattern, _) | Ppat_alias (pattern, _) ->
+      in_case scope value pattern ~none visit
+  | _ -> visit ()
 
 let dsl_name scope expression =
   match expression.pexp_desc with
@@ -162,17 +279,23 @@ let rec roots ?(detached = false) fuel scope expression =
         ( { txt = Lident "::"; _ },
           Some { pexp_desc = Pexp_tuple [ head; tail ]; _ } ) ->
         roots ~detached fuel scope head @ roots ~detached (fuel + 1) scope tail
-    | Pexp_ifthenelse (_, yes, no) ->
-        roots ~detached fuel scope yes
-        @ Option.fold ~none:[] ~some:(roots ~detached fuel scope) no
+    | Pexp_ifthenelse (test, yes, no) ->
+        in_branch scope test true ~none:[] (fun () ->
+            roots ~detached fuel scope yes)
+        @ Option.fold ~none:[]
+            ~some:(fun no ->
+              in_branch scope test false ~none:[] (fun () ->
+                  roots ~detached fuel scope no))
+            no
     | Pexp_try (body, cases) ->
         roots ~detached fuel scope body @ case_roots ~detached fuel scope cases
     | Pexp_match (value, cases) ->
         List.concat_map
           (fun case ->
-            roots ~detached fuel
-              (bind_value scope case.pc_lhs (Bound (scope, value)))
-              case.pc_rhs)
+            in_case scope value case.pc_lhs ~none:[] (fun () ->
+                roots ~detached fuel
+                  (bind_value scope case.pc_lhs (Bound (scope, value)))
+                  case.pc_rhs))
           cases
     | Pexp_let (recursive, bindings, body) ->
         roots ~detached fuel (definitions scope recursive bindings) body
@@ -303,17 +426,21 @@ and apply_roots ?(detached = false) fuel scope fn args =
         apply_roots ~detached fuel
           (definitions scope recursive bindings)
           body args
-    | Pexp_ifthenelse (_, yes, no) ->
-        apply_roots ~detached fuel scope yes args
+    | Pexp_ifthenelse (test, yes, no) ->
+        in_branch scope test true ~none:[] (fun () ->
+            apply_roots ~detached fuel scope yes args)
         @ Option.fold ~none:[]
-            ~some:(fun no -> apply_roots ~detached fuel scope no args)
+            ~some:(fun no ->
+              in_branch scope test false ~none:[] (fun () ->
+                  apply_roots ~detached fuel scope no args))
             no
     | Pexp_match (value, cases) ->
         List.concat_map
           (fun case ->
-            apply_roots ~detached fuel
-              (bind_value scope case.pc_lhs (Bound (scope, value)))
-              case.pc_rhs args)
+            in_case scope value case.pc_lhs ~none:[] (fun () ->
+                apply_roots ~detached fuel
+                  (bind_value scope case.pc_lhs (Bound (scope, value)))
+                  case.pc_rhs args))
           cases
     | Pexp_open (declaration, body) ->
         apply_roots ~detached fuel
@@ -388,8 +515,7 @@ and apply_roots ?(detached = false) fuel scope fn args =
                 | ( Pexp_ident { txt = Ldot (parent, ("map" | "concat_map")); _ },
                     [ fn; values ] )
                   when module_kind scope parent = Lists ->
-                    call_roots ~detached fuel fn
-                      [ (Nolabel, Nodes (value_roots ~detached fuel values)) ]
+                    call_roots ~detached fuel fn [ (Nolabel, values) ]
                 | _ -> [])))
 
 and dynamic_roots detached loc nodes =
@@ -441,18 +567,22 @@ and list_variants fuel = function
             List.map
               (fun children -> Bound (scope, head) :: children)
               (list_variants (fuel + 1) (Bound (scope, tail)))
-        | Pexp_ifthenelse (_, yes, no) ->
-            variants (Bound (scope, yes))
+        | Pexp_ifthenelse (test, yes, no) ->
+            in_branch scope test true ~none:[] (fun () ->
+                variants (Bound (scope, yes)))
             @ Option.fold ~none:[ [] ]
-                ~some:(fun no -> variants (Bound (scope, no)))
+                ~some:(fun no ->
+                  in_branch scope test false ~none:[] (fun () ->
+                      variants (Bound (scope, no))))
                 no
         | Pexp_match (value, cases) ->
             List.concat_map
               (fun case ->
-                variants
-                  (Bound
-                     ( bind_value scope case.pc_lhs (Bound (scope, value)),
-                       case.pc_rhs )))
+                in_case scope value case.pc_lhs ~none:[] (fun () ->
+                    variants
+                      (Bound
+                         ( bind_value scope case.pc_lhs (Bound (scope, value)),
+                           case.pc_rhs ))))
               cases
         | Pexp_let (recursive, bindings, body) ->
             variants (Bound (definitions scope recursive bindings, body))
@@ -556,6 +686,20 @@ class checker =
           ignore (roots 128 scope expression)
       | _ -> ());
       match expression.pexp_desc with
+      | Pexp_ifthenelse (test, yes, no) ->
+          self#expression test;
+          in_branch scope test true ~none:() (fun () -> self#expression yes);
+          Option.iter
+            (fun no ->
+              in_branch scope test false ~none:() (fun () -> self#expression no))
+            no
+      | Pexp_match (value, cases) ->
+          self#expression value;
+          List.iter
+            (fun case ->
+              in_case scope value case.pc_lhs ~none:() (fun () ->
+                  self#case case))
+            cases
       | Pexp_open (declaration, body) ->
           self#module_expr declaration.popen_expr;
           self#within (open_module scope declaration.popen_expr) (fun () ->
