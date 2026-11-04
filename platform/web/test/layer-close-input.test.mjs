@@ -9,23 +9,35 @@ const [Layers, Overlay] = await Promise.all([
 ])
 const list = values => values.reduceRight((tl, hd) => ({hd, tl}), 0)
 const element = () => {
-  const attributes = new Map()
+  const attributes = new Map(), listeners = new Map()
   return {
     style: {setProperty() {}},
     hasAttribute: name => attributes.has(name),
     setAttribute: (name, value) => attributes.set(name, value),
     removeAttribute: name => attributes.delete(name),
+    addEventListener(name, handler) {
+      listeners.set(name, [...listeners.get(name) ?? [], handler])
+    },
+    removeEventListener(name, handler) {
+      listeners.set(name, (listeners.get(name) ?? []).filter(value => value !== handler))
+    },
+    dispatch(event) {
+      for (const handler of listeners.get(event.type) ?? []) {
+        if (event.stopped) break
+        handler(event)
+      }
+    },
   }
 }
 const fixture = () => {
   const root = element(), registry = Layers.create()
-  const document = {documentElement: root, addEventListener() {}, removeEventListener() {}}
+  const document = {...element(), documentElement: root}
   Layers.install(registry, document, () => false, target => target)
   const renderer = {web_layers: registry, web_document: document, web_host: root}
-  const add = (id, owner, policy = 2) => {
+  const add = (id, owner, policy = 2, dismiss = () => {}) => {
     const content = element()
     Layers.register(registry, document, id, owner, undefined, content, list([content]),
-      policy, () => {}, () => {}, () => {}, true, true)
+      policy, dismiss, () => {}, () => {}, true, true)
     Overlay.refresh_modal_host_inert(renderer)
     return content
   }
@@ -36,6 +48,36 @@ const fixture = () => {
   }
   return {root, registry, document, renderer, add, close}
 }
+
+test('nested Escape is consumed before earlier application document shortcuts', () => {
+  for (const focusInChild of [false, true]) {
+    const f = fixture(), dismissed = []
+    let applicationEscapes = 0
+    f.document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !event.defaultPrevented) {
+        applicationEscapes++
+        f.close(1)
+      }
+    })
+    const outer = f.add(1, undefined, 2, () => {dismissed.push(1); f.close(1)})
+    const child = f.add(2, 1, 0, () => {dismissed.push(2); f.close(2)})
+    const escape = target => {
+      const event = {type: 'keydown', key: 'Escape', defaultPrevented: false, isComposing: false,
+        preventDefault() {this.defaultPrevented = true},
+        stopImmediatePropagation() {this.stopped = true}}
+      target.dispatch(event)
+      if (!event.stopped) f.document.dispatch(event)
+    }
+    escape(focusInChild ? child : outer)
+    assert.deepEqual(dismissed, [2], 'Only the topmost layer owns the first Escape')
+    assert.equal(Layers.is_open(f.registry, 1), true, 'Its modal owner must stay open')
+    assert.equal(Layers.is_open(f.registry, 2), false)
+    escape(outer)
+    assert.deepEqual(dismissed, [2, 1], 'The next Escape belongs to the remaining modal')
+    assert.equal(Layers.is_open(f.registry, 1), false)
+    assert.equal(applicationEscapes, 0, 'Consumed Escape must not reach document shortcuts')
+  }
+})
 
 test('closing the last modal releases host input and scrolling while retaining exit presence', () => {
   const f = fixture(), surface = f.add(1)

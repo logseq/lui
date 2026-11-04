@@ -1,5 +1,20 @@
 # LUI API migration guide
 
+## Unreleased: Web nested-layer Escape ownership
+
+Web layers now route Escape from their content through the shared topmost-layer
+dispatcher before application document shortcuts run, even when those shortcuts
+were registered before the layer opened. With a popover inside a dialog, the
+first Escape dismisses only the popover; the next dismisses the dialog. This also
+works when focus remains on the popover trigger inside the dialog. Target-local
+handlers still run first, and `defaultPrevented` and composition guards remain
+unchanged. Consumed Escape does not reach document shortcuts.
+
+Applications should keep `dialog ~on_dismiss:close_dialog` and
+`popover ~on_dismiss:close_popover` as the owners of dismissal rather than closing
+both in a document Escape shortcut. No constructor, wire, native-host or other
+keyboard behavior changes are required.
+
 ## Unreleased: MyGo select trigger chrome
 
 Standard MyGo `select` triggers now align their label to the leading edge and

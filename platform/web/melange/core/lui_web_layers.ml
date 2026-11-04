@@ -56,6 +56,7 @@ type layer = {
   mutable dismiss : unit -> unit;
   mutable close : unit -> unit;
   mutable key_handler : Dom.keyboardEvent -> unit;
+  escape_listener : Dom.keyboardEvent -> unit;
   mutable open_ : bool;
   mutable present : bool;
   mutable transition : int;
@@ -507,6 +508,7 @@ let register registry ~document ~id ~owner ~trigger ~content ~style_targets ~pol
   let layer =
     match layer_at registry id with
     | Some layer ->
+        W.Element.removeKeyDownEventListener layer.escape_listener layer.content;
         layer.owner <- owner;
         layer.trigger <- trigger;
         layer.content <- content;
@@ -530,6 +532,9 @@ let register registry ~document ~id ~owner ~trigger ~content ~style_targets ~pol
           dismiss;
           close;
           key_handler;
+          escape_listener = (fun event ->
+              if W.KeyboardEvent.key event = "Escape" then
+                dispatch_key registry event);
           open_;
           present;
           transition = 0;
@@ -537,6 +542,9 @@ let register registry ~document ~id ~owner ~trigger ~content ~style_targets ~pol
           inert_snapshot = [] }
   in
   Hashtbl.replace registry.layers id layer;
+  (* Resolve Escape after target-local handlers, before application document
+     shortcuts can dismiss an owner ahead of the topmost nested layer. *)
+  W.Element.addKeyDownEventListener layer.escape_listener content;
   List.iter (fun target -> set_layer_style target order) style_targets;
   refresh registry document
 
@@ -651,7 +659,9 @@ let finish_present registry document id token =
 
 let remove registry document id =
   (match layer_at registry id with
-   | Some layer -> set_layer_inert layer false
+   | Some layer ->
+       W.Element.removeKeyDownEventListener layer.escape_listener layer.content;
+       set_layer_inert layer false
    | None -> ());
   Hashtbl.remove registry.layers id;
   refresh registry document
