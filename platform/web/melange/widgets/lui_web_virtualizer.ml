@@ -28,6 +28,7 @@ external options :
   scrollToFn:fn ->
   observeElementRect:fn ->
   observeElementOffset:fn ->
+  useAnimationFrameWithResizeObserver:bool ->
   onChange:(t -> bool -> unit) ->
   rangeExtractor:(range -> int array) ->
   initialRect:rect ->
