@@ -1,5 +1,19 @@
 # LUI API migration guide
 
+## Unreleased: Web idle context menus on capture-enabled nodes
+
+`row` and `box` with `pointer_capture:true` no longer consume an idle secondary
+context-menu event merely because capture is enabled. With no owned primary
+gesture active, Web emits the admitted `ContextMenuPress` and leaves the DOM
+event available to delegated application handlers or the browser's native menu.
+During an owned primary gesture, context-menu events remain consumed.
+
+For example, keep a row's context-menu handler alongside its existing
+`on_pointer_down`, `on_pointer_up` and `on_pointer_cancel` owners; no synthetic
+right-click or application fallback is needed. Primary down still captures
+immediately, and captured completion still uses `PointerUp`, not `Press` or
+`PressDetail`. No constructor, wire, default or other-host behavior changes.
+
 ## Unreleased: Web nested-layer Escape ownership
 
 Web layers now route Escape from their content through the shared topmost-layer
