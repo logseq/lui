@@ -1,5 +1,23 @@
 # LUI API migration guide
 
+## Unreleased: Android text wrapping and overflow
+
+Android text, labels and paragraphs now honor the existing `white-space` and
+`text-overflow` properties. For example, `text ~white_space:"nowrap"
+~text_overflow:"ellipsis" ~value:"Long title" []` stays on one ellipsized line
+inside a constrained row. `pre` disables soft wrapping while preserving explicit
+line breaks; omitted properties retain wrapping and clipping. Existing
+`line-clamp` limits remain supported. No wire/schema migration is required;
+other hosts are unchanged.
+
+## Unreleased: Android sheets expand for text input
+
+Android sheets that support the medium detent now expand when the software
+keyboard is visible, keeping form fields and actions above the IME. Hiding the
+keyboard leaves the sheet expanded; dismissal and explicit height constraints
+are unchanged. Existing `sheet ~detents:"medium,large" [...]` forms need no
+application workaround or wire/API migration. Apple and other hosts are unchanged.
+
 ## Unreleased: compact Apple drawer resting geometry
 
 A compact drawer's retained sidebar now rests outside the viewport when fully
