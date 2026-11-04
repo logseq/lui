@@ -7425,6 +7425,7 @@ fileprivate struct LUIVirtualWindow {
 // must not invalidate the same row immediately after its first layout.
 private final class LUIVirtualRowMeasurement {
     var height: CGFloat?
+    var frame: CGRect?
     var isVisible = false
 }
 
@@ -7454,16 +7455,13 @@ private struct LUIVirtualListRow: View {
                     .accessibilityHidden(true)
             }
         }
-        .onGeometryChange(for: Bool.self) { geometry in
-            let frame = geometry.frame(in: .named(coordinateSpace))
-            return frame.maxY > -16 && frame.minY < viewportHeight + 16
-        } action: { visible in
-            measurement.isVisible = visible
-            if let windowID = row.windowID {
-                tracker.update(window: windowID, index: row.windowIndex,
-                    visible: visible, backend: backend)
-            }
+        .onGeometryChange(for: CGRect.self) { geometry in
+            geometry.frame(in: .named(coordinateSpace))
+        } action: { frame in
+            measurement.frame = frame
+            updateVisibility()
         }
+        .onChange(of: viewportHeight) { _, _ in updateVisibility() }
         .onAppear {
             // Lazy stacks can reuse a previously visible slot without another
             // geometry change. Restore its registration after onDisappear.
@@ -7477,6 +7475,17 @@ private struct LUIVirtualListRow: View {
                 tracker.update(window: windowID, index: row.windowIndex,
                     visible: false, backend: backend)
             }
+        }
+    }
+
+    private func updateVisibility() {
+        guard let frame = measurement.frame else { return }
+        let visible = frame.maxY > -16 && frame.minY < viewportHeight + 16
+        guard measurement.isVisible != visible else { return }
+        measurement.isVisible = visible
+        if let windowID = row.windowID {
+            tracker.update(window: windowID, index: row.windowIndex,
+                visible: visible, backend: backend)
         }
     }
 }

@@ -1306,6 +1306,15 @@ The existing DOM backend remains available. MyGo's browser renderer requires a
 separate browser runtime bridge; the desktop dynamic-library bridge cannot be
 used directly in a browser.
 
+## Apple virtual-list viewport changes
+
+Apple virtual lists now recompute row visibility when the viewport height changes,
+even when the row's frame stays unchanged. Initial layout and keyboard/viewport
+transitions no longer leave visible top rows outside the emitted `VisibleRange`.
+The event shape and virtual-window metadata are unchanged; applications need no
+API migration. Applications with bounded windows should verify initial page load
+and keyboard transitions without scrolling to repair the visible window.
+
 ## Apple search input traits
 
 Apple `search-field` controls disable automatic capitalization and spelling
