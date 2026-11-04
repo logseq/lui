@@ -3,9 +3,12 @@
 ## Unreleased: Apple closed drawer visibility
 
 An overlay drawer's retained panel is hidden once closed. On iOS the panel uses
-a retained UIKit hosting boundary: closing sets `accessibilityElementsHidden`,
-then hides the native view when the animation completes. SwiftUI opacity and
-`accessibilityHidden` alone can leave native navigation descendants exposed.
+a retained hosting controller inside a plain UIKit container. Closing sets the
+container's `accessibilityElementsHidden`, then detaches the hosted view from the
+window when the animation completes. Reopening attaches the same hosted view.
+The hosting controller and its SwiftUI content remain retained throughout;
+hidden hosting views can otherwise leave virtual accessibility proxies in the
+window despite SwiftUI and UIKit visibility flags.
 The panel remains mounted after its first reveal, preserving scroll position,
 native state and the inherited SwiftUI environment when reopened. Pinned
 split-view drawers, wire props and drawer events are unchanged; no application

@@ -20,21 +20,57 @@ enum LUIDrawerScrollInteractionPolicy {
     }
 }
 
+private final class LUIDrawerPanelController: UIViewController {
+    let hostingController = UIHostingController(rootView: AnyView(EmptyView()))
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
+        hostingController.safeAreaRegions = []
+        addChild(hostingController)
+        attachContent()
+        hostingController.didMove(toParent: self)
+    }
+
+    func setPanelVisible(_ isVisible: Bool) {
+        if isVisible {
+            attachContent()
+        } else {
+            // Hidden hosting views can retain virtual accessibility proxies in the window.
+            hostingController.view.removeFromSuperview()
+        }
+        view.isHidden = !isVisible
+    }
+
+    private func attachContent() {
+        let contentView = hostingController.view!
+        guard contentView.superview !== view else { return }
+        contentView.backgroundColor = .clear
+        contentView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(contentView)
+        NSLayoutConstraint.activate([
+            contentView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            contentView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            contentView.topAnchor.constraint(equalTo: view.topAnchor),
+            contentView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+    }
+}
+
 private struct LUIDrawerPanelHost<Content: View>: UIViewControllerRepresentable {
     let isVisible: Bool
     let isAccessibilityHidden: Bool
     let content: Content
 
-    func makeUIViewController(context: Context) -> UIHostingController<AnyView> {
-        let controller = UIHostingController(rootView: rootView(context: context))
-        controller.safeAreaRegions = []
-        controller.view.backgroundColor = .clear
+    func makeUIViewController(context: Context) -> LUIDrawerPanelController {
+        let controller = LUIDrawerPanelController()
+        controller.hostingController.rootView = rootView(context: context)
         updateVisibility(controller)
         return controller
     }
 
-    func updateUIViewController(_ controller: UIHostingController<AnyView>, context: Context) {
-        controller.rootView = rootView(context: context)
+    func updateUIViewController(_ controller: LUIDrawerPanelController, context: Context) {
+        controller.hostingController.rootView = rootView(context: context)
         updateVisibility(controller)
     }
 
@@ -42,10 +78,9 @@ private struct LUIDrawerPanelHost<Content: View>: UIViewControllerRepresentable 
         AnyView(content.environment(\.self, context.environment))
     }
 
-    private func updateVisibility(_ controller: UIHostingController<AnyView>) {
-        // Native navigation descendants can escape SwiftUI accessibility modifiers.
+    private func updateVisibility(_ controller: LUIDrawerPanelController) {
         controller.view.accessibilityElementsHidden = isAccessibilityHidden
-        controller.view.isHidden = !isVisible
+        controller.setPanelVisible(isVisible)
     }
 }
 #endif
