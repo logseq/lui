@@ -13,6 +13,20 @@ inventory check is temporarily deferred until that inventory recognizes
 that renderer. The MyGo, Web, Apple, Android and shared ABI regressions remain
 covered separately.
 
+## Unreleased: Apple drawer SDK compatibility
+
+The Apple drawer builds with the existing Xcode 26 / Swift 6.2 toolchain again.
+Its iOS 27.1 vertical-bar scene reader is compiled only when the SDK supplies
+SwiftUI 8.1 or later, excluding Mac Catalyst, whose SDK lacks these iOS-only APIs.
+The existing runtime iOS 27.1 availability check still applies. Older SDK builds
+and Mac Catalyst retain the standard drawer presentation, even when run on a
+newer OS; builds using a supported SDK retain the vertical-bar-aware presentation.
+
+No constructor, wire schema, event or application source migration is required.
+For example, an existing `drawer ~selected:is_open main sidebar` is unchanged;
+rebuild its Apple host with the iOS 27.1 SDK or later to enable vertical-bar
+adaptation on supported devices.
+
 ## Unreleased: Apple native button styles on OS 26
 
 On iOS/iPadOS 26 and macOS 26, independent `button` and `toggle_button`
