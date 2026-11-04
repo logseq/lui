@@ -28,6 +28,7 @@ const element = (children = []) => {
     setAttribute: (key, value) => attributes.set(key, value),
     getAttribute: key => attributes.get(key) ?? null,
     removeAttribute: key => attributes.delete(key),
+    addEventListener() {}, removeEventListener() {},
     contains(target) { return target === this || children.some(child => child.contains(target)) },
   }
 }
@@ -110,6 +111,7 @@ const focusHandoffFixture = () => {
       getAttribute: name => attributes.get(name) ?? null,
       setAttribute: (name, value) => attributes.set(name, value),
       removeAttribute: name => attributes.delete(name),
+      addEventListener() {}, removeEventListener() {},
       matches: () => false, isSameNode(other) { return this === other },
       contains(other) { return this === other || children.some(child => child.contains(other)) },
       focus() { document.activeElement = this }}
