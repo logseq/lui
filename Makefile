@@ -18,7 +18,8 @@ test-ocaml:
 	opam exec -- dune build --action-stderr-on-success=must-be-empty @runtest -j 1
 
 test-apple:
-	swift test
+	# AppKit focus and field editors are process-global; .serialized only isolates one suite.
+	swift test --no-parallel
 
 platform/web/node_modules/.package-lock.json: platform/web/package.json platform/web/package-lock.json
 	npm --prefix platform/web ci
