@@ -975,6 +975,8 @@ and apply_secondary_property renderer queue_split node kind dom_node
       Util.set_state_attribute dom_node "data-change-enabled" enabled
   | ToggleEnabled, BoolValue enabled ->
       Util.set_state_attribute dom_node "data-toggle-enabled" enabled
+  | ToggleDetailEnabled, BoolValue enabled ->
+      Util.set_state_attribute dom_node "data-toggle-detail-enabled" enabled
   | PressEnabled, BoolValue enabled ->
       apply_press_enabled kind dom_node enabled
   | PointerEnabled, BoolValue enabled ->
@@ -1255,6 +1257,8 @@ let remove_property renderer queue_split node kind dom_node property =
              W.Element.setAttribute "aria-selected" "false" dom_node
            else W.Element.removeAttribute "aria-pressed" dom_node
        | NavigateEnabled | SubmitOnBlur | ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange -> ()
+       | ToggleDetailEnabled ->
+           W.Element.removeAttribute "data-toggle-detail-enabled" dom_node
        | TextValue -> apply_text_value renderer node kind dom_node ""
        | ReadOnly -> W.HtmlInputElement.setReadOnly (Util.text_control_node dom_node) false
        | VirtualOverscan | VirtualItemExtent | VirtualTotalCount
