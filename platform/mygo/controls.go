@@ -437,6 +437,9 @@ func (b *Backend) styleWidgetButton(c *ui.Context, n Node, e ui.Element, label s
 		e.Column()
 	}
 	e.Gap(6)
+	if n.Kind == "select" {
+		e.Justify(ui.Start)
+	}
 	e.Children(func() {
 		icon := b.icon(n.String("icon"))
 		drawIcon := func() {
@@ -447,14 +450,20 @@ func (b *Backend) styleWidgetButton(c *ui.Context, n Node, e ui.Element, label s
 		if n.String("icon-placement") != "trailing" {
 			drawIcon()
 		}
-		if label != "" {
-			ui.Text(c, label).SingleLine()
+		if label != "" || n.Kind == "select" {
+			text := ui.Text(c, label).SingleLine()
+			if n.Kind == "select" {
+				text.Grow(1).MinWidth(0)
+			}
 		}
 		if n.String("icon-placement") == "trailing" {
 			drawIcon()
 		}
 		if children != nil {
 			children()
+		}
+		if n.Kind == "select" {
+			ui.Icon(c, b.icon("chevron-down")).Size(16, 16).Shrink(0)
 		}
 	})
 	return e

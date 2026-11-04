@@ -1,5 +1,17 @@
 # LUI API migration guide
 
+## Unreleased: MyGo select trigger chrome
+
+Standard MyGo `select` triggers now align their label to the leading edge and
+reserve space for one built-in trailing chevron. The label can shrink within
+authored dimensions; the chevron inherits the control's foreground and disabled
+appearance. Existing size, padding, variant and icon props still apply.
+
+Use `select ~text:current ~on_press:open_menu []` without adding an application
+chevron. Remove a previously authored arrow workaround to avoid duplicate arrows.
+Press, Down-key activation, disabled behavior, popup-button accessibility and
+model-owned menu lifetime are unchanged. No wire or schema migration is required.
+
 ## Unreleased: Apple closed drawer visibility
 
 An overlay drawer's retained panel is hidden once closed. On iOS the panel uses
