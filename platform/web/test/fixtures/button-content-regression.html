@@ -62,15 +62,14 @@ document.querySelector('#audit').onclick = () => {
       check(`${kind}: custom content has no empty trailing gap`,
         Math.abs(button.getBoundingClientRect().width-content.getBoundingClientRect().width)<0.1)
     if (kind === 'button') {
-      const contentHeight = content.getBoundingClientRect().height
-      check('button: absent size uses intrinsic content height',
-        Math.abs(button.getBoundingClientRect().height-contentHeight)<0.1)
+      check('button: absent size uses the default control height',
+        Math.abs(button.getBoundingClientRect().height-40)<0.1)
       set(id,'size','sm'); flush()
       check('button: an explicit size still supplies its control height',
         Math.abs(button.getBoundingClientRect().height-36)<0.1)
       remove(id,'size'); flush()
-      check('button: removing size restores intrinsic height and retains content',
-        Math.abs(button.getBoundingClientRect().height-contentHeight)<0.1 && element(child)===content)
+      check('button: removing size restores default height and retains content',
+        Math.abs(button.getBoundingClientRect().height-40)<0.1 && element(child)===content)
     }
     const initialText = content?.textContent
     if (kind === 'menu-item') {
