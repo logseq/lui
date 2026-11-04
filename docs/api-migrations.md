@@ -13,6 +13,38 @@ inventory check is temporarily deferred until that inventory recognizes
 that renderer. The MyGo, Web, Apple, Android and shared ABI regressions remain
 covered separately.
 
+## Unreleased: Web component defaults and interruptible Accordion motion
+
+Web buttons without `size` now use the same height and padding as `size:default`.
+On the iOS simulator profile, small buttons retain a smaller label while icon
+buttons have a square 44px target. Separators without `orientation` now render
+horizontally; vertical separators stretch across their row and have a one-em
+minimum height when their parent has no definite height. Explicit typed sizes
+and spacing remain supported; set `~min_height:0` when intentionally requesting
+a shorter vertical separator. For example, `button ~text:"Save" []`
+no longer needs ``~size:`default``, and `separator []` no longer needs
+``~orientation:`horizontal`` to be visible. Remove padding or separator-height
+workarounds added only to compensate for the missing defaults.
+
+Web dialogs now separate their title and body, use the theme border color and
+respect the simulated device width rather than the desktop browser width.
+Explicit dialog heights remain supported and scroll when content does not fit;
+omit `~height` for content-sized forms, as in `dialog ~width:380 ~padding:24 [...]`.
+The gallery's rename form now follows this content-sized pattern. Simulated
+keyboard space is still reserved while a field has focus, but is labelled as a
+noninteractive placeholder instead of displaying striped keyboard chrome.
+Use the host keyboard for text entry; this is not a software keyboard or IME.
+
+Accordion expansion and collapse now transition from the current rendered
+height, including when reversed mid-animation. Completion callbacks from an
+older transition cannot hide or resize a newer one. The retained panel and
+children, controlled `selected`/`on_toggle` behavior, linked accessibility
+semantics and reduced-motion behavior are unchanged. Panel padding now belongs
+to an internal `.lui-accordion-body` wrapper, allowing the animated panel to reach
+zero height without a final padding jump. Applications styling that internal
+panel's padding should move it to their content or the body wrapper. No OCaml
+constructor, event payload or wire-schema migration is required.
+
 ## Unreleased: Apple drawer SDK compatibility
 
 The Apple drawer builds with the existing Xcode 26 / Swift 6.2 toolchain again.

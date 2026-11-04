@@ -275,7 +275,7 @@ let create_accordion_node renderer =
             [] ];
       Util.element document "div" "lui-accordion-content"
         [ ("role", "region"); ("data-closed", ""); ("hidden", "") ]
-        [] ]
+        [ Util.element document "div" "lui-accordion-body" [] [] ] ]
 
 let simple_node_tag kind =
   match kind with

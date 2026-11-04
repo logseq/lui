@@ -3135,6 +3135,24 @@ test("Accordion keeps a linked retained panel through controlled motion", async 
     { expanded: "false", ending: false, hidden: true },
   )
   await browser("set", "media", "light")
+
+  const motion = await session.page.evaluate(async () => {
+    const trigger = document.querySelector('.lui-accordion-summary')
+    const panel = document.querySelector('.lui-accordion-content')
+    trigger.click()
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    const opening = panel.getAnimations().find(animation => animation.transitionProperty === 'height')
+    if (!opening) return { animated: false }
+    opening.pause()
+    opening.currentTime = opening.effect.getTiming().duration / 2
+    const before = panel.getBoundingClientRect().height
+    const full = panel.scrollHeight
+    trigger.click()
+    const after = panel.getBoundingClientRect().height
+    return { animated: true, intermediate: before > 0 && before < full, continuous: Math.abs(after - before) < 1 }
+  })
+  assert.deepEqual(motion, { animated: true, intermediate: true, continuous: true })
+  await session.page.waitForFunction(() => document.querySelector('.lui-accordion-content').hidden)
 })
 
 test("ToggleGroup keeps plain Buttons in its accessible roving control set", async () => {

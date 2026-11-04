@@ -576,7 +576,7 @@ let content_container kind dom_node =
   | Lui_protocol.Link -> child_element dom_node 1
   | Lui_protocol.Alert -> child_element dom_node 1
   | Lui_protocol.Bubble -> child_element dom_node 0
-  | Lui_protocol.Accordion -> accordion_panel_node dom_node
+  | Lui_protocol.Accordion -> child_element (accordion_panel_node dom_node) 0
   | kind when Lui_protocol.modal_surface kind -> child_element dom_node 1
   | _ -> dom_node
 

@@ -737,9 +737,13 @@ body {
   }
 
   .lui-accordion-content {
-    @apply overflow-hidden pb-4 pt-0 text-sm;
+    @apply overflow-hidden text-sm;
     height: var(--lui-accordion-panel-height, auto);
     transition: height 150ms ease-out;
+  }
+
+  .lui-accordion-body {
+    @apply flow-root pb-4;
   }
 
   .lui-accordion-content[data-starting-style],
@@ -875,7 +879,7 @@ body {
   }
 
   .lui-dialog {
-    @apply fixed grid rounded-xl border bg-card p-4 text-card-foreground shadow-lg;
+    @apply fixed grid content-start gap-4 rounded-xl border border-border bg-card p-4 text-card-foreground shadow-lg;
     z-index: 1;
     /* Center in the visual viewport, above a simulated keyboard, and keep a
        too-tall dialog scrollable instead of sliding its top off screen. */
@@ -1487,12 +1491,14 @@ body {
     @apply shrink-0 border-0 bg-border;
   }
 
+  .lui-separator:not([data-orientation]),
   .lui-separator[data-orientation="horizontal"] {
     @apply h-px w-full;
   }
 
   .lui-separator[data-orientation="vertical"] {
-    @apply h-full w-px;
+    @apply h-full self-stretch w-px;
+    min-height: 1em;
   }
 
   .lui-skeleton {
@@ -1845,6 +1851,7 @@ body {
     border-color: var(--lui-platform-accent);
   }
 
+  .lui-button:not([data-size]),
   .lui-button[data-size="default"] {
     @apply h-10 px-4 py-2;
   }
@@ -1942,6 +1949,15 @@ body {
   border-radius: var(--lui-platform-control-radius);
   font-size: 17px;
   font-weight: 600;
+}
+
+[data-lui-platform="ios"] .lui-button[data-size="sm"] {
+  font-size: 15px;
+}
+
+[data-lui-platform="ios"] .lui-button[data-size="icon"] {
+  width: 44px;
+  padding: 0;
 }
 
 [data-lui-platform="ios"] .lui-toggle-group > .lui-button {
@@ -2047,6 +2063,7 @@ body {
 .lui-popup-portal[data-lui-form-factor] .lui-dialog {
   position: absolute;
   top: calc(50% - var(--lui-keyboard-height, 0px) / 2);
+  max-width: calc(100% - 2rem);
   max-height: calc(100% - var(--lui-keyboard-height, 0px) - 2rem);
 }
 
@@ -2099,12 +2116,22 @@ body {
   transform: translateX(100%);
 }
 
-/* Simulated on-screen keyboard: the simulator marks data-lui-keyboard while
-   a text entry holds focus and reserves --lui-keyboard-height at the bottom
-   of the device viewport, so the keyboard chrome is drawn in that space —
-   above app content and the modal backdrop, below presented surfaces. */
+/* Reserve keyboard space without pretending to provide an interactive IME. */
+.lui-popup-portal[data-lui-keyboard="visible"]::before,
 .lui-popup-portal[data-lui-keyboard="visible"] .lui-modal-layer::before {
-  content: "";
+  content: "Simulated keyboard · Use your keyboard to type";
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: var(--color-muted-foreground);
+  background: var(--color-secondary);
+  border-top: 1px solid var(--color-border);
+  font-size: 13px;
+  text-align: center;
+}
+
+.lui-popup-portal[data-lui-keyboard="visible"] .lui-modal-layer::before {
   position: absolute;
   left: 0;
   right: 0;
@@ -2112,21 +2139,11 @@ body {
   z-index: 1;
   height: var(--lui-keyboard-height, 0px);
   pointer-events: none;
-  background:
-    repeating-linear-gradient(
-      to bottom,
-      rgb(255 255 255 / 8%) 0 30px,
-      rgb(0 0 0 / 12%) 30px 34px
-    ),
-    rgb(38 38 42 / 92%);
-  border-top: 1px solid rgb(0 0 0 / 35%);
-  box-shadow: 0 -8px 24px rgb(0 0 0 / 18%);
 }
 
 /* The same keyboard chrome outside a modal presentation: anchored to the
    device viewport's bottom edge and painted beneath any presented layer. */
 .lui-popup-portal[data-lui-keyboard="visible"]::before {
-  content: "";
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
@@ -2140,15 +2157,6 @@ body {
   );
   height: var(--lui-keyboard-height, 0px);
   pointer-events: none;
-  background:
-    repeating-linear-gradient(
-      to bottom,
-      rgb(255 255 255 / 8%) 0 30px,
-      rgb(0 0 0 / 12%) 30px 34px
-    ),
-    rgb(38 38 42 / 92%);
-  border-top: 1px solid rgb(0 0 0 / 35%);
-  box-shadow: 0 -8px 24px rgb(0 0 0 / 18%);
 }
 
 .lui-simulator-map {
