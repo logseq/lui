@@ -510,9 +510,9 @@ let blocks_summary model =
   else Printf.sprintf "%d blocks mounted" (List.length model.blocks)
 
 let virtual_summary model =
-  if model.virtual_count = 0 then "virtual list empty — load rows to mount"
+  if model.virtual_count = 0 then {js|virtual list empty — load rows to mount|js}
   else
-    Printf.sprintf "%d logical rows · last pressed: %s" model.virtual_count
+    Printf.sprintf {js|%d logical rows · last pressed: %s|js} model.virtual_count
       model.virtual_last
 
 let editor_stats model =
@@ -528,5 +528,5 @@ let editor_stats model =
          end
        | _ -> in_word := false)
     model.editor_text;
-  Printf.sprintf "%d chars · %d words · %d lines" (String.length model.editor_text)
+  Printf.sprintf {js|%d chars · %d words · %d lines|js} (String.length model.editor_text)
     !words !lines

@@ -1753,7 +1753,7 @@ let todos_section model_source send : t =
 
 let block_row _send item_source : t =
   row ~gap:8 ~height:20 ~cross:`center
-    [ text ~value:"•" []
+    [ text ~value:{js|•|js} []
     ; text
         ~value:(reactive (fun (b : Model.block) -> b.Model.block_text)
                   item_source)
@@ -1763,9 +1763,9 @@ let block_row _send item_source : t =
 let blocks_section model_source send : t =
   section "10k Blocks"
     [ paragraph
-        ~value:"A keyed outliner-style list. Load mounts 10,000 blocks; \
+        ~value:("A keyed outliner-style list. Load mounts 10,000 blocks; \
                 Edit rewrites one block's text and Insert splices a sibling \
-                mid-list — both exercise the incremental patch path."
+                mid-list " ^ {js|— both exercise the incremental patch path.|js})
         []
     ; row ~gap:8
         [ reactive
@@ -1786,23 +1786,25 @@ let blocks_section model_source send : t =
         ]
     ; text ~value:(reactive Model.blocks_summary model_source) []
     ; scroll ~height:320
-        [ keyed
-            ~source:
-              (reactive Model.blocks
-                 (Signal.cutoff
-                    (fun (a : Model.t) (b : Model.t) ->
-                       a.Model.blocks == b.Model.blocks)
-                    model_source))
-            ~key:(fun (b : Model.block) -> b.Model.block_id)
-            ~cmp:Int.compare
-            ~mount:(block_row send)
+        [ column
+            [ keyed
+                ~source:
+                  (reactive Model.blocks
+                     (Signal.cutoff
+                        (fun (a : Model.t) (b : Model.t) ->
+                           a.Model.blocks == b.Model.blocks)
+                        model_source))
+                ~key:(fun (b : Model.block) -> b.Model.block_id)
+                ~cmp:Int.compare
+                ~mount:(block_row send)
+            ]
         ]
     ]
 
 let virtual_row send item_source : t =
   let i = sample item_source in
   list_item ~key:(Printf.sprintf "row-%d" i) ~height:28
-    ~text:(Printf.sprintf "row %d — virtualized item" i)
+    ~text:(Printf.sprintf {js|row %d — virtualized item|js} i)
     ~on_press:(press send (Model.PressVirtualRow i))
     []
 
@@ -1853,7 +1855,7 @@ let editor_section model_source send : t =
   section "Editor Input"
     [ textarea ~grow:1. ~height:160
         ~text:(reactive Model.editor_text model_source)
-        ~placeholder:"Type here — every keystroke round-trips the reducer"
+        ~placeholder:{js|Type here — every keystroke round-trips the reducer|js}
         ~label:"Document"
         ~on_input:(on_input send (fun text -> Model.SetEditorText text)) []
     ; text ~value:(reactive Model.editor_stats model_source) []
