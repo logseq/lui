@@ -169,7 +169,7 @@ jobs:
           key: swiftpm-${{ runner.os }}-${{ hashFiles('Package.swift') }}-${{ github.sha }}
           restore-keys: |
             swiftpm-${{ runner.os }}-${{ hashFiles('Package.swift') }}-
-      - run: swift test
+      - run: make test-apple
       - uses: ./.github/actions/setup-lui-ocaml
         with:
           scope: compiler
