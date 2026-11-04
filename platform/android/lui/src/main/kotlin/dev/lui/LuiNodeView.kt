@@ -156,6 +156,7 @@ import androidx.compose.ui.window.PopupProperties
  */
 private val LocalHorizontalScrollGesture = androidx.compose.runtime.staticCompositionLocalOf<(Boolean) -> Unit> { {} }
 private val LocalNavigationDrawerContent = compositionLocalOf { false }
+private val LocalButtonTextAlignment = compositionLocalOf { "start" }
 
 @Composable
 fun LuiNodeView(backend: LuiBackend, id: Long) {
@@ -461,7 +462,7 @@ private fun LuiNodeContent(
             modifier = modifier,
             color = luiThemeColor(node.propString("foreground"), foreground = true)
                 ?: Color.Unspecified,
-            textAlign = textAlignment(node.propString("text-alignment")),
+            textAlign = textAlignment(node.propString("text-alignment") ?: LocalButtonTextAlignment.current),
             maxLines = if (node.propString("white-space") == "nowrap") 1
                 else node.propInt("line-clamp", Int.MAX_VALUE),
             softWrap = node.propString("white-space") !in setOf("nowrap", "pre"),
@@ -1066,12 +1067,15 @@ private fun LuiButton(
 
     val label: @Composable () -> Unit = {
         if (children.isNotEmpty()) {
-            Row(
-                modifier = if (node.propString("text-alignment") != null) Modifier.fillMaxWidth() else Modifier,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            CompositionLocalProvider(
+                LocalButtonTextAlignment provides (node.propString("text-alignment") ?: "center"),
             ) {
-                children.forEachNode { LuiNodeView(backend, it) }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    children.forEachNode { GrowChildRow(backend, it) }
+                }
             }
         } else {
             when {
@@ -1082,8 +1086,7 @@ private fun LuiButton(
                 )
                 icon == null -> Text(
                     node.text(),
-                    modifier = if (node.propString("text-alignment") != null) Modifier.fillMaxWidth() else Modifier,
-                    textAlign = textAlignment(node.propString("text-alignment")),
+                    textAlign = textAlignment(node.propString("text-alignment") ?: "center"),
                     style = if (node.propString("style-class") != null) {
                         LuiTypography.textStyle(node.propString("size"), node.propString("style-class"))
                     } else MaterialTheme.typography.labelLarge.luiInherited(),
@@ -1091,15 +1094,19 @@ private fun LuiButton(
                     overflow = TextOverflow.Ellipsis,
                 )
                 else -> Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (node.propString("icon-placement") == "trailing") {
-                        Text(node.text(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(node.text(), modifier = Modifier.weight(1f, fill = false),
+                            textAlign = textAlignment(node.propString("text-alignment") ?: "center"),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Icon(icon, contentDescription = null, modifier = Modifier.size(iconSize))
                     } else {
                         Icon(icon, contentDescription = null, modifier = Modifier.size(iconSize))
-                        Text(node.text(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(node.text(), modifier = Modifier.weight(1f, fill = false),
+                            textAlign = textAlignment(node.propString("text-alignment") ?: "center"),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }

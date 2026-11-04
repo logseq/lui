@@ -13,6 +13,26 @@ inventory check is temporarily deferred until that inventory recognizes
 that renderer. The MyGo, Web, Apple, Android and shared ABI regressions remain
 covered separately.
 
+## Unreleased: Android button content alignment
+
+Android buttons center their label or icon/label group using the native Material
+control. Custom child content now honors child `grow`; descendant text inherits
+the button's `text-alignment` (center by default) unless it declares its own.
+Icon/label pairs reserve space for either leading or trailing icons and ellipsize
+long labels within the remaining width. Other hosts and press events are unchanged.
+
+`text-alignment` no longer implicitly expands a label or its button to the full
+available width. Adjacent aligned buttons therefore keep their natural widths.
+Use explicit sizing when expansion is intended:
+
+```ocaml
+button ~grow:1.0 ~text_alignment:`center ~text:"Continue" []
+button ~grow:1.0 [text ~grow:1.0 ~value:"Continue" []]
+```
+
+An explicit child `text_alignment` still takes precedence. No wire/schema
+migration is required.
+
 ## Unreleased: Compile-time element nesting diagnostics
 
 With `lui.ppx` enabled, statically resolved illegal element nesting now fails
