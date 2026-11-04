@@ -178,9 +178,14 @@ func (b *Backend) renderControls(c *ui.Context, n Node, children func(), emit fu
 	case "bottom-tab":
 		return b.widgetButton(c, n, n.String("title"), nil).Role(ui.RoleTab).Selected(n.Bool("selected")), true
 	case "link":
-		e := ui.LinkBase(c, n.String("url")).Row().AlignItems(ui.Center).Gap(6)
-		if n.String("icon-placement") == "top" {
-			e.Column()
+		var e ui.Element
+		if c.InTextFlow() {
+			e = ui.Link(c, "", n.String("url"))
+		} else {
+			e = ui.LinkBase(c, n.String("url")).Row().AlignItems(ui.Center).Gap(6)
+			if n.String("icon-placement") == "top" {
+				e.Column()
+			}
 		}
 		e.Children(func() {
 			draw := func() {
