@@ -201,9 +201,10 @@ internal fun Modifier.luiChrome(node: LuiNodeLike): Modifier {
         )
     }
     if (radius > 0) modifier = modifier.clip(shape)
-    // Ghost buttons own their label padding so the full painted surface stays clickable.
-    val buttonContentPadding = node.kind == LuiNodeKind.button && node.propString("variant") == "ghost"
-    if (!buttonContentPadding && (paddingLeft > 0 || paddingRight > 0 || paddingTop > 0 || paddingBottom > 0)) {
+    // Native controls own content padding so their full surface stays interactive.
+    val ownsContentPadding = node.kind == LuiNodeKind.listItem || node.kind == LuiNodeKind.menuItem ||
+        (node.kind == LuiNodeKind.button && node.propString("variant") == "ghost")
+    if (!ownsContentPadding && (paddingLeft > 0 || paddingRight > 0 || paddingTop > 0 || paddingBottom > 0)) {
         modifier = modifier.absolutePadding(
             left = paddingLeft.dp, top = paddingTop.dp,
             right = paddingRight.dp, bottom = paddingBottom.dp,
