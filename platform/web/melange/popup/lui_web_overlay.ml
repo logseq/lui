@@ -535,7 +535,17 @@ let attach_modal_events renderer node dom_node =
       swipe_axis = ref None;
     };
   } in
-  let click_handler _event = ignore (modal_dismiss ctx) in
+  let backdrop_press_owned = ref false in
+  let backdrop_pointer_down_handler _event =
+    backdrop_press_owned :=
+      match Lui_web_layers.topmost renderer.web_layers with
+      | Some layer -> layer.id = node
+      | None -> false
+  in
+  let click_handler _event =
+    if !backdrop_press_owned then ignore (modal_dismiss ctx);
+    backdrop_press_owned := false
+  in
   let pointer_down_handler event = modal_pointer_down ctx event in
   let pointer_move_handler event = modal_pointer_move ctx event in
   let pointer_end_handler event = modal_pointer_end ctx event in
@@ -556,6 +566,8 @@ let attach_modal_events renderer node dom_node =
          ignore
            (close_modal_shell renderer node renderer.web_portal_root layer dom_node))
        ~key_handler ~present:false ~open_:false);
+  W.Element.addEventListener "pointerdown" backdrop_pointer_down_handler
+    ctx.modal_backdrop;
   W.Element.addEventListener "click" click_handler ctx.modal_backdrop;
   if ctx.modal_sheet then begin
     W.Element.addEventListener "pointerdown" pointer_down_handler dom_node;
@@ -579,6 +591,8 @@ let attach_modal_events renderer node dom_node =
       W.Element.setAttribute "data-ending-style" "" dom_node;
       W.Element.setAttribute "inert" "" layer;
       ignore (refresh_modal_host_inert renderer);
+      W.Element.removeEventListener "pointerdown" backdrop_pointer_down_handler
+        ctx.modal_backdrop;
       W.Element.removeEventListener "click" click_handler
         ctx.modal_backdrop;
       if ctx.modal_sheet then begin

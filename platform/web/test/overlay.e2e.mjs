@@ -61,6 +61,20 @@ test('a row popover uses the same pointer and keyboard opening focus as a dropdo
   await session.page.waitForFunction(() => document.activeElement?.textContent === 'Choose ordinary action')
 })
 
+test('an outside pointer gesture dismisses the picker before its modal owner', async () => {
+  await openLayerRegressionPage()
+  await clickButton('Open dialog')
+  await session.page.getByRole('combobox').click()
+  await session.page.waitForFunction("document.querySelector('.lui-dropdown-menu[data-open]')")
+
+  await session.page.mouse.click(4, 4)
+  await session.page.waitForFunction("!document.querySelector('.lui-dropdown-menu[data-open]')")
+  assert.equal(await session.page.locator('.lui-modal-layer[data-open]').count(), 1)
+
+  await session.page.locator('.lui-modal-backdrop').click({ position: { x: 4, y: 4 } })
+  await session.page.waitForFunction("!document.querySelector('.lui-modal-layer[data-open]')")
+})
+
 test('ordinary pointer opening navigates backward from no selection', async () => {
   await openLayerRegressionPage()
   await clickButton('Open ordinary menu')

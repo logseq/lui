@@ -15,6 +15,20 @@ Applications should keep `dialog ~on_dismiss:close_dialog` and
 both in a document Escape shortcut. No constructor, wire, native-host or other
 keyboard behavior changes are required.
 
+## Unreleased: Web nested-layer outside pointer ownership
+
+Modal backdrops now dismiss only when their modal was the topmost layer at the
+start of the pointer press. A dropdown or popover inside a dialog can close on
+`pointerdown`; the same gesture's later backdrop `click` must not also dismiss
+the dialog. Pressing outside both surfaces therefore closes only the nested
+popup. A subsequent backdrop press can dismiss the dialog normally.
+
+For example, keep `dialog ~on_dismiss:close_dialog` and
+`dropdown_menu ~on_dismiss:close_menu` as separate owners. Do not close the dialog
+from the menu's dismissal callback or synthesize backdrop clicks for programmatic
+closure; invoke the application's close action instead. No constructor or wire
+changes are required. Escape handling and other hosts are unchanged.
+
 ## Unreleased: MyGo select trigger chrome
 
 Standard MyGo `select` triggers now align their label to the leading edge and
