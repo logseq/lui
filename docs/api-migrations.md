@@ -568,6 +568,13 @@ without capture retain their pointer/press behavior and do not subscribe to
 movement or cancellation. The feature is implemented on Web and MyGo; adding
 the shared vocabulary does not qualify other native hosts for captured gestures.
 
+The Web DOM setter now accepts `pointer-capture` and clears its capability marker
+on removal. The retained property continues to control gesture ownership;
+changing or removing it resynchronizes the existing pointer listeners and cancels
+any active preview. Native DOM capture still begins only on an admitted trusted
+primary down, not when the property is applied. Existing typed handles, including
+the example above, require no migration or application fallback.
+
 MyGo's toolkit adds `HandleCapturedPointer` and `InputPointerCancel`. Use this
 handler instead of `HandleInput` when successful release must differ from
 cancellation. A primary down returning true owns the gesture. Existing
