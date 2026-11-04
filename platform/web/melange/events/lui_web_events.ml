@@ -732,7 +732,7 @@ let rec sync_pointer_events renderer node kind dom_node =
       let pointer_leave = emit_detail (fun _event -> PointerLeave node) in
       let context_menu =
         (fun event ->
-          if captured then begin
+          if !active <> None then begin
             W.Event.preventDefault event;
             W.Event.stopPropagation event
           end

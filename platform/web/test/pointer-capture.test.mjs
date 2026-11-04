@@ -62,11 +62,23 @@ test('Row/Box capture survives DOM apply, opt-out, removal and subscription clea
     apply([Protocol.create_node_op(1, kind)])
     set('pointer-enabled', true)
     set('pointer-capture', true)
+    let prevented = 0, stopped = 0
+    const secondary = {button: 2,
+      preventDefault() { prevented++ }, stopPropagation() { stopped++ }}
+    element.send('pointerdown', secondary)
+    expect(['PointerDown'])
+    element.send('contextmenu', secondary)
+    assert.deepEqual([prevented, stopped], [0, 0])
+
     element.send('pointerdown')
+    element.send('contextmenu', secondary)
+    assert.deepEqual([prevented, stopped], [1, 1])
     element.send('pointermove', {clientX: 35})
     element.send('click')
     element.send('pointerup')
     expect(['PointerDown', 'PointerMove', 'PointerUp'])
+    element.send('contextmenu', secondary)
+    assert.deepEqual([prevented, stopped], [1, 1])
 
     element.send('pointerdown')
     set('pointer-capture', false)
