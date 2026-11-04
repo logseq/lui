@@ -1095,6 +1095,7 @@ private fun LuiButton(
                     overflow = TextOverflow.Ellipsis,
                 )
                 else -> Row(
+                    modifier = Modifier.width(IntrinsicSize.Max),
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
