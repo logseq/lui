@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -90,6 +92,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -459,7 +462,11 @@ private fun LuiNodeContent(
             color = luiThemeColor(node.propString("foreground"), foreground = true)
                 ?: Color.Unspecified,
             textAlign = textAlignment(node.propString("text-alignment")),
-            maxLines = node.propInt("line-clamp", Int.MAX_VALUE),
+            maxLines = if (node.propString("white-space") == "nowrap") 1
+                else node.propInt("line-clamp", Int.MAX_VALUE),
+            softWrap = node.propString("white-space") !in setOf("nowrap", "pre"),
+            overflow = if (node.propString("text-overflow") == "ellipsis") TextOverflow.Ellipsis
+                else TextOverflow.Clip,
             style = LuiTypography.textStyle(
                 node.propString("size"),
                 node.propString("style-class"),
@@ -2305,21 +2312,30 @@ private fun LuiModalSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
                 },
             )
         }
-        LuiNodeKind.sheet -> ModalBottomSheet(
-            modifier = Modifier.luiChrome(node),
-            onDismissRequest = onDismiss,
-            sheetState = rememberModalBottomSheetState(
+        LuiNodeKind.sheet -> {
+            val sheetState = rememberModalBottomSheetState(
                 skipPartiallyExpanded = node.prop("detents")?.stringValue
                     ?.split(",")?.map { it.trim() }?.contains("medium") != true,
-            ),
-            containerColor = LocalLuiSemanticColors.current["background"] ?: MaterialTheme.colorScheme.surface,
-        ) {
-            Column(Modifier.fillMaxWidth().heightIn(max = node.prop("height")?.intValue?.dp ?: Dp.Infinity)) {
-                if (node.text().isNotEmpty()) {
-                    Text(node.text(), Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-                        style = MaterialTheme.typography.headlineSmall)
+            )
+            ModalBottomSheet(
+                modifier = Modifier.luiChrome(node),
+                onDismissRequest = onDismiss,
+                sheetState = sheetState,
+                containerColor = LocalLuiSemanticColors.current["background"] ?: MaterialTheme.colorScheme.surface,
+            ) {
+                val imeVisible = WindowInsets.isImeVisible
+                LaunchedEffect(imeVisible, sheetState.currentValue) {
+                    if (imeVisible && sheetState.currentValue == SheetValue.PartiallyExpanded) {
+                        sheetState.expand()
+                    }
                 }
-                node.children.forEachNode { GrowChildColumn(backend, it) }
+                Column(Modifier.fillMaxWidth().heightIn(max = node.prop("height")?.intValue?.dp ?: Dp.Infinity)) {
+                    if (node.text().isNotEmpty()) {
+                        Text(node.text(), Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.headlineSmall)
+                    }
+                    node.children.forEachNode { GrowChildColumn(backend, it) }
+                }
             }
         }
         else -> Unit
