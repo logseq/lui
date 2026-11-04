@@ -1,5 +1,14 @@
 # LUI API migration guide
 
+## Unreleased: Android button labels in horizontal scrolls
+
+Android icon/label buttons measure their natural content width before allocating
+space to the label. Both leading and trailing icon groups therefore retain their
+text in horizontal scroll containers instead of reducing a weighted label to zero
+width. Explicitly constrained buttons still reserve icon space and ellipsize long
+labels; no application workaround or new props are required. Other hosts and
+press events are unchanged.
+
 ## Unreleased: Android list and menu content padding
 
 Android `list-item` and `menu-item` apply authored padding inside their native
