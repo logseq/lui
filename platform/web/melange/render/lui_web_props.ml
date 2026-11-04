@@ -180,39 +180,68 @@ let finish_accordion_close panel =
     W.Element.setAttribute "hidden" "" panel
   end
 
+let accordion_transition panel =
+  let attribute = "data-lui-accordion-transition" in
+  let previous =
+    Option.bind (W.Element.getAttribute attribute panel) int_of_string_opt
+    |> Option.value ~default:0
+  in
+  let token = string_of_int (previous + 1) in
+  W.Element.setAttribute attribute token panel;
+  fun () -> W.Element.getAttribute attribute panel = Some token
+
+let accordion_height panel =
+  if W.Element.hasAttribute "hidden" panel then "0px"
+  else
+    Js.Float.toString
+      (W.DomRect.height (W.Element.getBoundingClientRect panel)) ^ "px"
+
 let open_accordion renderer dom_node panel =
+  let current = accordion_transition panel in
+  let height = accordion_height panel in
   W.Element.removeAttribute "data-closed" dom_node;
   W.Element.setAttribute "data-open" "" dom_node;
   W.Element.removeAttribute "hidden" panel;
   W.Element.removeAttribute "data-closed" panel;
   W.Element.removeAttribute "data-ending-style" panel;
   W.Element.setAttribute "data-open" "" panel;
-  set_style panel "--lui-accordion-panel-height"
-    (string_of_int (W.Element.scrollHeight panel) ^ "px");
-  W.Element.setAttribute "data-starting-style" "" panel;
-  Webapi.requestAnimationFrame (fun _time ->
-      if W.Element.hasAttribute "data-open" panel then
-        W.Element.removeAttribute "data-starting-style" panel);
-  if prefers_reduced_motion renderer.web_document then
+  set_style panel "--lui-accordion-panel-height" height;
+  if height = "0px" then W.Element.setAttribute "data-starting-style" "" panel
+  else W.Element.removeAttribute "data-starting-style" panel;
+  ignore (W.HtmlElement.offsetHeight (W.Element.unsafeAsHtmlElement panel));
+  if prefers_reduced_motion renderer.web_document then begin
+    W.Element.removeAttribute "data-starting-style" panel;
     set_style panel "--lui-accordion-panel-height" "auto"
-  else
-    ignore
-      (Js.Global.setTimeout
-         ~f:(fun () ->
-           if W.Element.hasAttribute "data-open" panel then
-             set_style panel "--lui-accordion-panel-height" "auto")
-         190)
+  end
+  else begin
+    let measure () =
+      set_style panel "--lui-accordion-panel-height"
+        (string_of_int (W.Element.scrollHeight (Util.child_element panel 0)) ^ "px")
+    in
+    measure ();
+    Webapi.requestAnimationFrame (fun _time ->
+        if current () then begin
+          measure ();
+          W.Element.removeAttribute "data-starting-style" panel;
+          after_transition renderer.web_document panel 190 false
+            (fun () ->
+               if current () then
+                 set_style panel "--lui-accordion-panel-height" "auto")
+        end)
+  end
 
 let close_accordion renderer dom_node panel =
+  let current = accordion_transition panel in
+  let height = accordion_height panel in
   W.Element.removeAttribute "data-open" dom_node;
   W.Element.setAttribute "data-closed" "" dom_node;
   if not (W.Element.hasAttribute "hidden" panel) then begin
-    set_style panel "--lui-accordion-panel-height"
-      (string_of_int (W.Element.scrollHeight panel) ^ "px");
+    W.Element.removeAttribute "data-starting-style" panel;
+    W.Element.removeAttribute "data-ending-style" panel;
+    set_style panel "--lui-accordion-panel-height" height;
     ignore
       (W.HtmlElement.offsetHeight (W.Element.unsafeAsHtmlElement panel));
     W.Element.removeAttribute "data-open" panel;
-    W.Element.removeAttribute "data-starting-style" panel;
     W.Element.setAttribute "data-closed" "" panel;
     if prefers_reduced_motion renderer.web_document then begin
       W.Element.setAttribute "data-ending-style" "" panel;
@@ -220,7 +249,7 @@ let close_accordion renderer dom_node panel =
     end
     else begin
       after_transition renderer.web_document panel 190 false
-        (fun () -> finish_accordion_close panel);
+        (fun () -> if current () then finish_accordion_close panel);
       W.Element.setAttribute "data-ending-style" "" panel
     end
   end

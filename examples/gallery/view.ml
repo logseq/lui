@@ -611,11 +611,10 @@ let dialog_section model_source send : t =
     ; if_ ~test:open_
         (dialog ~text:"Rename note"
            ~description:"Choose a new name for this note."
-           ~width:380 ~height:240 ~padding:24
+           ~width:380 ~padding:24
            ~on_dismiss:(press send Model.CloseDialog)
            [ column ~gap:16
-               [ box ~height:24 []
-               ; input ~placeholder:"Note name" ~autofocus:true []
+               [ input ~placeholder:"Note name" ~autofocus:true []
                ; row ~gap:8 ~main:`end_
                    [ button ~variant:`ghost ~text:"Cancel"
                        ~on_press:(press send Model.CloseDialog) []
