@@ -2,13 +2,14 @@
 
 ## Unreleased: Apple closed drawer visibility
 
-An overlay drawer's retained panel is fully transparent once closed. Previously
-the panel kept its transition opacity behind the main surface, which could leave
-native navigation descendants exposed to iOS accessibility despite the panel's
-`accessibilityHidden` modifier. The panel remains mounted after its first reveal,
-preserving scroll position and native state when reopened. Pinned split-view
-drawers, wire props and drawer events are unchanged; no application migration is
-required.
+An overlay drawer's retained panel is hidden once closed. On iOS the panel uses
+a retained UIKit hosting boundary: closing sets `accessibilityElementsHidden`,
+then hides the native view when the animation completes. SwiftUI opacity and
+`accessibilityHidden` alone can leave native navigation descendants exposed.
+The panel remains mounted after its first reveal, preserving scroll position,
+native state and the inherited SwiftUI environment when reopened. Pinned
+split-view drawers, wire props and drawer events are unchanged; no application
+migration is required.
 
 ## Unreleased: Android button labels in horizontal scrolls
 
