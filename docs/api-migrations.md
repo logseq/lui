@@ -1354,3 +1354,17 @@ Applications should use `Lui_elements.search_field ~on_submit:run_search []` for
 search rather than `text_field`. Keep `on_input` bound to the shared query and
 `on_submit` to the search action. Do not set `submit_on_enter` on either
 single-line kind; that property belongs only to `textarea`.
+
+## Web virtual-list resize measurements
+
+Web virtual lists process TanStack ResizeObserver measurements in an animation
+frame rather than synchronously inside the observer callback. Rendering a
+measured row can resize an intrinsically sized list; deferring that render avoids
+ResizeObserver delivery loops when switching views or changing row dimensions.
+Initial layout, wire properties and event payloads are unchanged. Resize-driven
+visible ranges and virtual windows can arrive on the next animation frame.
+
+Applications should continue to use `virtual_list ~item_extent:320. rows` and
+respond to `on_visible_range` rather than expecting the DOM range to change
+synchronously with a browser resize notification. No API or schema migration is
+required; other hosts are unchanged.
