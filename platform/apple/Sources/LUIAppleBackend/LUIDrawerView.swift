@@ -19,6 +19,35 @@ enum LUIDrawerScrollInteractionPolicy {
         return false
     }
 }
+
+private struct LUIDrawerPanelHost<Content: View>: UIViewControllerRepresentable {
+    let isVisible: Bool
+    let isAccessibilityHidden: Bool
+    let content: Content
+
+    func makeUIViewController(context: Context) -> UIHostingController<AnyView> {
+        let controller = UIHostingController(rootView: rootView(context: context))
+        controller.safeAreaRegions = []
+        controller.view.backgroundColor = .clear
+        updateVisibility(controller)
+        return controller
+    }
+
+    func updateUIViewController(_ controller: UIHostingController<AnyView>, context: Context) {
+        controller.rootView = rootView(context: context)
+        updateVisibility(controller)
+    }
+
+    private func rootView(context: Context) -> AnyView {
+        AnyView(content.environment(\.self, context.environment))
+    }
+
+    private func updateVisibility(_ controller: UIHostingController<AnyView>) {
+        // Native navigation descendants can escape SwiftUI accessibility modifiers.
+        controller.view.accessibilityElementsHidden = isAccessibilityHidden
+        controller.view.isHidden = !isVisible
+    }
+}
 #endif
 
 enum LUIDrawerGeometry {
@@ -270,13 +299,12 @@ struct LUIDrawerView: View {
                 // Retain the panel after its first reveal so closing preserves its state.
                 if (hasRevealedPanel || visibleWidth > 0),
                    let panelID = model.children.dropFirst().first {
-                    LUIAnyNodeView(nodeID: panelID, backend: backend)
+                    retainedPanel(panelID: panelID, isVisible: visibleWidth > 0 || isAnimating)
                         .onAppear { hasRevealedPanel = true }
                         .frame(width: width)
                         .frame(maxHeight: CGFloat.infinity, alignment: Alignment.leading)
                         .background(Color.black.opacity(0.001))
                         .opacity(LUIDrawerInteractionPolicy.sidebarOpacity(progress: progress))
-                        .opacity(visibleWidth > 0 ? 1 : 0)
                         .scaleEffect(hasVerticalBarScene ? 1 : 0.96 + (0.04 * Double(progress)))
                         .offset(x: -(hasVerticalBarScene ? width : 20) * (1.0 - progress))
                         .zIndex(hasVerticalBarScene ? 1 : 0)
@@ -371,6 +399,23 @@ struct LUIDrawerView: View {
                 isEnabled: presented || model.isEnabled
             )
             #endif
+    }
+
+    @ViewBuilder
+    private func retainedPanel(panelID: Int, isVisible: Bool) -> some View {
+        #if os(iOS)
+        LUIDrawerPanelHost(
+            isVisible: isVisible,
+            isAccessibilityHidden: LUIDrawerInteractionPolicy.panelIsAccessibilityHidden(
+                isPresented: presented,
+                isEnabled: model.isEnabled
+            ),
+            content: LUIAnyNodeView(nodeID: panelID, backend: backend)
+        )
+        #else
+        LUIAnyNodeView(nodeID: panelID, backend: backend)
+            .opacity(isVisible ? 1 : 0)
+        #endif
     }
 
     private func updateDrag(translation: CGSize) {
