@@ -240,6 +240,7 @@ let install renderer node ~materialize ~unmount =
         ~estimateSize:estimate ~getItemKey:!key ~scrollToFn:V.element_scroll
         ~observeElementRect:V.observe_element_rect
         ~observeElementOffset:V.observe_element_offset
+        ~useAnimationFrameWithResizeObserver:true
         ~onChange:(fun _ _ -> !render_ref ())
         ~rangeExtractor:(fun range -> range_extractor range)
         ~initialRect:(V.rect ~width:400. ~height)
