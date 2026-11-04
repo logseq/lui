@@ -604,6 +604,10 @@ unchanged. If both handlers are installed each receives one proposal; do not
 apply the same state transition twice. With no detail handler no detail event
 is emitted.
 
+The Web DOM setter now accepts `toggle-detail-enabled` and clears its capability
+marker on removal. This fixes a render failure for typed `~on_toggle_detail`
+subscriptions; existing consumers require no migration or event fallback.
+
 Mixed rendering and accessibility state are currently implemented only on Web
 and MyGo. Those hosts also implement mixed-to-true proposals and
 `ToggleChangedDetail` events.
