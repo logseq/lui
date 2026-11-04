@@ -13,6 +13,37 @@ inventory check is temporarily deferred until that inventory recognizes
 that renderer. The MyGo, Web, Apple, Android and shared ABI regressions remain
 covered separately.
 
+## Unreleased: Compile-time element nesting diagnostics
+
+With `lui.ppx` enabled, statically resolved illegal element nesting now fails
+during compilation with a `LUI nesting:` diagnostic, the parent/child kinds and
+the offending source location. Admission rules are generated from the existing
+runtime protocol; valid constructors, node IDs, events and wire batches do not
+change. Applications without the PPX retain the existing runtime checks.
+
+For example, replace `context_menu [button ~text:"Copy" []]` with
+`context_menu [menu_item ~text:"Copy" []]`. A `tree` needs row containers, so
+replace `tree [text ~value:"Item" []]` with
+`tree [row [text ~value:"Item" []]]`. Menu/toolbar restrictions also apply through
+statically resolved local values, nonrecursive helpers, `List.map`/`concat_map`,
+list concatenation, conditional/match/exception branches and structural wrappers.
+`separator`, `menu` and `submenu` use their actual underlying node contracts.
+
+Structural `reactive`, `if_` and `keyed` callbacks mount without an anchor; when
+one returns another structural primitive, the runtime creates a transparent Box.
+The checker accounts for that Box rather than treating every dynamic wrapper as
+transparent. For example, avoid nesting `if_` inside `reactive` under a
+`context_menu`: choose the `menu_item` branch directly instead. `virtual_rows`
+requires a direct `virtual_list` parent and must be its sole child; use
+`virtual_list [virtual_rows ~source ~key ~cmp ~mount ()]`, not a sibling row or a
+structural wrapper around `virtual_rows`.
+
+This is a bounded source-level check, not a replacement for the type checker or
+runtime validation. Unknown external functions/modules, recursive results,
+runtime signals and expressions beyond the analysis budget can still require
+runtime checks. Lexically shadowed constructor/module names are not assumed to
+be LUI nodes. No type casts or protocol migration are required.
+
 ## Unreleased: Web component defaults and interruptible Accordion motion
 
 Web buttons without `size` now use the same height and padding as `size:default`.
