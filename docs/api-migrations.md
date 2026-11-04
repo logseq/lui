@@ -1,5 +1,15 @@
 # LUI API migration guide
 
+## Unreleased: Apple closed drawer visibility
+
+An overlay drawer's retained panel is fully transparent once closed. Previously
+the panel kept its transition opacity behind the main surface, which could leave
+native navigation descendants exposed to iOS accessibility despite the panel's
+`accessibilityHidden` modifier. The panel remains mounted after its first reveal,
+preserving scroll position and native state when reopened. Pinned split-view
+drawers, wire props and drawer events are unchanged; no application migration is
+required.
+
 ## Unreleased: Android button labels in horizontal scrolls
 
 Android icon/label buttons measure their natural content width before allocating

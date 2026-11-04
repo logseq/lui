@@ -276,6 +276,7 @@ struct LUIDrawerView: View {
                         .frame(maxHeight: CGFloat.infinity, alignment: Alignment.leading)
                         .background(Color.black.opacity(0.001))
                         .opacity(LUIDrawerInteractionPolicy.sidebarOpacity(progress: progress))
+                        .opacity(visibleWidth > 0 ? 1 : 0)
                         .scaleEffect(hasVerticalBarScene ? 1 : 0.96 + (0.04 * Double(progress)))
                         .offset(x: -(hasVerticalBarScene ? width : 20) * (1.0 - progress))
                         .zIndex(hasVerticalBarScene ? 1 : 0)
