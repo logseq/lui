@@ -274,4 +274,8 @@ class mapper =
   end
 
 let () =
-  Driver.register_transformation ~impl:(new mapper)#structure "lui_ppx"
+  Driver.register_transformation
+    ~impl:(fun structure ->
+      Lui_nesting.check structure;
+      (new mapper)#structure structure)
+    "lui_ppx"

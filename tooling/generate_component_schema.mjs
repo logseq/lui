@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { typedViewSchema, typedViewSignature } from './typed_view_schema.mjs';
+import { typedViewFunctions, typedViewSchema, typedViewSignature } from './typed_view_schema.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const defaultManifest = resolve(repository, 'schema/components.json');
@@ -436,8 +436,53 @@ ${extraEntries}
 `;
 }
 
+function renderNestingSchema(schema) {
+  const protocol = readFileSync(resolve(repository, 'src/lui_protocol.ml'), 'utf8');
+  const functions = typedViewFunctions(readFileSync(resolve(repository, 'src/lui_elements.mli'), 'utf8'));
+  const rules = ['horizontal_container', 'tree_row_kind', 'context_menu_leaf_host_kind',
+    'regular_child_container', 'can_contain_children', 'child_kind_supported'].map(name => {
+    const match = protocol.match(new RegExp(`^let ${name}\\b[\\s\\S]*?(?=^let |$(?![\\s\\S]))`, 'm'));
+    if (!match) throw new Error(`missing nesting rule: ${name}`);
+    return match[0].trim();
+  });
+  const constructors = schema.nodeKinds.flatMap(({ wire, lg }) => {
+    const name = wire === 'switch' ? 'switch_' : wire.replace(/-/g, '_');
+    const args = functions.get(name);
+    if (!args) return [];
+    const children = args.slice(0, -1).filter(arg => !/^\??\w+:/.test(arg));
+    const shape = children.length === 1 && children[0].endsWith(' list')
+      ? 'Children_list' : `Child_arguments ${children.length}`;
+    return [`  | "${name}" -> Some (${lg}, ${lg}, ${shape})`];
+  });
+  constructors.push('  | "separator" -> Some (Divider, Divider, Children_list)',
+    '  | "menu" | "submenu" -> Some (MenuTrigger, DropdownMenu, Children_list)');
+  return `(* Generated from schema/components.json, Lui_elements and Lui_protocol. Do not edit by hand. *)
+
+type node_kind =
+${schema.nodeKinds.map(({ lg }) => `  | ${lg}`).join('\n')}
+  | VirtualRows
+
+let name = function
+${schema.nodeKinds.map(({ lg, wire }) => `  | ${lg} -> "${wire}"`).join('\n')}
+  | VirtualRows -> "virtual-rows"
+
+${rules.join('\n\n')}
+
+type children = Children_list | Child_arguments of int
+
+let constructor = function
+${constructors.join('\n')}
+  | _ -> None
+
+let exports = function
+  | ${[...functions.keys()].map(JSON.stringify).join(' | ')} -> true
+  | _ -> false
+`;
+}
+
 function artifacts(schema) {
   return new Map([
+    ['ppx/lui_nesting_schema.ml', renderNestingSchema(schema)],
     ['src/lui_protocol.mli', renderProtocolSignature(schema)],
     ['src/lui_wire_schema.ml', renderOCamlWire(schema)],
     ['src/lui_wire_schema.mli', renderOCamlWireSignature()],

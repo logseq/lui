@@ -60,10 +60,15 @@ type 'property view_contract = {
 }
 `;
 
-export function typedViewSchema(schema, signature, implementation, {extension = false} = {}) {
+export function typedViewFunctions(signature) {
   const source = uncomment(signature).replace(/Lui_elements\.t\b/g, 't');
   const declarations = [...source.matchAll(/^val (\w+)\s*:\s*([\s\S]*?)(?=^(?:val|type|module|exception|include|class|external)\b|$(?![\s\S]))/gm)];
-  const functions = new Map(declarations.map(([, name, body]) => [name, split(body, '->')]));
+  return new Map(declarations.map(([, name, body]) => [name, split(body, '->')]));
+}
+
+export function typedViewSchema(schema, signature, implementation, {extension = false} = {}) {
+  const source = uncomment(signature).replace(/Lui_elements\.t\b/g, 't');
+  const functions = typedViewFunctions(signature);
   const types = new Map([...source.matchAll(/^type (\w+)\s*=\s*(\[[\s\S]*?\])/gm)]
     .map(([, name, body]) => [name, split(body.slice(1, -1), '|')]));
   const converters = new Map([...uncomment(implementation).matchAll(/\blet \w+\s*:\s*(\w+)\s*->\s*string\s*=\s*function\b([\s\S]*?)(?=^let\b|$(?![\s\S]))/gm)]
