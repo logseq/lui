@@ -2317,18 +2317,18 @@ private fun LuiModalSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
                 skipPartiallyExpanded = node.prop("detents")?.stringValue
                     ?.split(",")?.map { it.trim() }?.contains("medium") != true,
             )
-            val imeVisible = WindowInsets.isImeVisible
-            LaunchedEffect(imeVisible, sheetState.currentValue) {
-                if (imeVisible && sheetState.currentValue == SheetValue.PartiallyExpanded) {
-                    sheetState.expand()
-                }
-            }
             ModalBottomSheet(
                 modifier = Modifier.luiChrome(node),
                 onDismissRequest = onDismiss,
                 sheetState = sheetState,
                 containerColor = LocalLuiSemanticColors.current["background"] ?: MaterialTheme.colorScheme.surface,
             ) {
+                val imeVisible = WindowInsets.isImeVisible
+                LaunchedEffect(imeVisible, sheetState.currentValue) {
+                    if (imeVisible && sheetState.currentValue == SheetValue.PartiallyExpanded) {
+                        sheetState.expand()
+                    }
+                }
                 Column(Modifier.fillMaxWidth().heightIn(max = node.prop("height")?.intValue?.dp ?: Dp.Infinity)) {
                     if (node.text().isNotEmpty()) {
                         Text(node.text(), Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
