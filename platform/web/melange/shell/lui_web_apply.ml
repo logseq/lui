@@ -261,30 +261,7 @@ let apply_create renderer node kind =
   if kind = ListContainer then Lui_web_list.install renderer node;
   Lui_web_events.attach_events renderer node kind created
 
-(* The nearest ancestor that forms a popup container, returned as
-   (container_node_id, container_role). Menu items are often nested inside
-   box wrappers (e.g. a cm entry box), so the direct parent kind alone is
-   not enough — walk up to the container node. *)
-let rec popup_container renderer node_id =
-  match Store.node renderer.web_store node_id with
-  | Some current -> (
-      match Store.standard_kind current with
-      | Some ContextMenu -> Some (node_id, `Menu)
-      | Some DropdownMenu ->
-          if Nodes.dropdown_listbox renderer node_id then
-            Some (node_id, `Listbox)
-          else Some (node_id, `Menu)
-      | Some Popover -> (
-          (* a popover is a menu container only when ~role:`menu was
-             passed (RoleValue "menu"); otherwise it is a plain panel *)
-          match Store.property renderer.web_store node_id RoleValue with
-          | Some (StringValue "menu") -> Some (node_id, `Menu)
-          | _ -> None)
-      | _ -> (
-          match current.retained_parent with
-          | Some parent -> popup_container renderer parent
-          | None -> None))
-  | None -> None
+let popup_container = Nodes.popup_container
 
 let insert_menu_item_role renderer _child current parent =
   if Store.menu_item_row current then
