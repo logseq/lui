@@ -1463,22 +1463,18 @@ let attach_context_menu_events_bang = attach_context_menu_events
 
 (* --- mount --- *)
 
-(* A dropdown hanging off a menu row (MenuItem/MenuTrigger) that lives inside
-   another menu opens to the side by default, like the original gallery's
-   explicit {:anchor "right"} submenu declaration. *)
 let nested_submenu renderer current =
   match current.retained_parent with
   | Some trigger ->
       (match Store.node renderer.web_store trigger with
-       | Some trigger_node ->
+       | Some trigger_node when Store.menu_item_row trigger_node ->
            (match trigger_node.retained_parent with
-            | Some container ->
-                (match Store.node renderer.web_store container with
-                 | Some container_node ->
-                     Store.standard_kind_is container_node DropdownMenu
-                 | None -> false)
+            | Some parent ->
+                (match Lui_web_nodes.popup_container renderer parent with
+                 | Some (_, `Menu) -> true
+                 | Some (_, `Listbox) | None -> false)
             | None -> false)
-       | None -> false)
+       | _ -> false)
   | None -> false
 
 let attach_submenu_hover renderer node current trigger =

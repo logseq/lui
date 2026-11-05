@@ -1,5 +1,27 @@
 # LUI API migration guide
 
+## Unreleased: Web submenu placement through layout wrappers
+
+Web dropdowns owned by a `menu-trigger` or `menu-item` now find their semantic
+menu container through layout wrappers before choosing a default side. A
+`context-menu`, non-picker `dropdown-menu`, or ``popover ~role:`menu`` qualifies.
+For example, the following opens the submenu at logical inline-end (right in
+LTR, left in RTL), rather than below its trigger over the following row:
+
+```ocaml
+popover ~role:`menu [column [submenu ~text:"Property type" entries]]
+```
+
+Top-level `menu` and `submenu` calls without a semantic menu ancestor retain
+their below-trigger default. Listbox dropdowns and popovers without typed
+``role:`menu`` stop the lookup; a DOM `role` data attribute is not a substitute.
+Applications that use popovers as menu containers should pass the existing
+typed ``~role:`menu`` only on those containers, not on ordinary dialogs.
+
+Explicit `anchor` values, viewport collision handling, pointer corridors, hover
+and keyboard behavior are unchanged. No constructor, wire, schema, native-host
+or MyGo changes are required.
+
 ## Unreleased: Web nested-layer Escape ownership
 
 Web layers now route Escape from their content through the shared topmost-layer

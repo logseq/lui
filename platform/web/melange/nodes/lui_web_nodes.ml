@@ -589,3 +589,25 @@ let dropdown_listbox renderer node =
   picker_for_dropdown renderer node <> None
 
 let dropdown_listbox_ = dropdown_listbox
+
+(* The nearest ancestor that forms a popup container, returned as
+   (container_node_id, container_role). Menu items can be nested inside
+   layout wrappers rather than directly inside their popup container. *)
+let rec popup_container renderer node_id =
+  match Store.node renderer.web_store node_id with
+  | Some current -> (
+      match Store.standard_kind current with
+      | Some ContextMenu -> Some (node_id, `Menu)
+      | Some DropdownMenu ->
+          if dropdown_listbox renderer node_id then
+            Some (node_id, `Listbox)
+          else Some (node_id, `Menu)
+      | Some Popover -> (
+          match Store.property renderer.web_store node_id RoleValue with
+          | Some (StringValue "menu") -> Some (node_id, `Menu)
+          | _ -> None)
+      | _ -> (
+          match current.retained_parent with
+          | Some parent -> popup_container renderer parent
+          | None -> None))
+  | None -> None
