@@ -31,6 +31,13 @@ class LuiBackend(
         private set
     internal var snapshotEpoch by mutableStateOf(0L)
         private set
+    internal var inspection by mutableStateOf<LuiInspection?>(null)
+
+    /** Enable layout tagging only while an explicit native inspection host is attached. */
+    fun inspect(): LuiInspection {
+        check(inspection == null) { "a native inspection host is already attached" }
+        return LuiInspection(this).also { inspection = it }
+    }
     /** Structural half of a published node: kind, parent link and child
      * order. A batch that only mutates properties leaves this state
      * untouched, so parent scans of `kind`/`children` are not invalidated
@@ -142,6 +149,13 @@ class LuiBackend(
      * thread and posts the batch for apply+publish here). */
     fun applyBatch(batch: LuiPatchBatch): Boolean = try {
         tree.apply(batch)
+        inspection?.changed(batch.ops.mapNotNull {
+            when (it) {
+                is LuiPatchOp.CreateNode -> it.id
+                is LuiPatchOp.CreateExtension -> it.id
+                else -> null
+            }
+        }, tree.lastDropped)
         publish(tree.lastChanged)
         lastError = null
         true
@@ -163,6 +177,10 @@ class LuiBackend(
         replacement.applyInitialSnapshot(batch)
         val observed = observedNodes.keys.toSet()
         tree = replacement
+        inspection?.changed(
+            replacement.nodes.keys.toList() + replacement.extensionNodes.keys,
+            observed + (inspection?.frames?.keys ?: emptySet()),
+        )
         snapshotEpoch++
         publish(
             changed = observed,
