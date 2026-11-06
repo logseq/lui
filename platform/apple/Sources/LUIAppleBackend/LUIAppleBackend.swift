@@ -653,6 +653,61 @@ public final class LUIAppleBackend {
     private var nodeFrames: [Int: CGRect] = [:]
     private var framesReportScheduled = false
 
+#if DEBUG && os(iOS)
+    var debugDriveProbeActive = false
+
+    /// A read-only retained-tree snapshot for the opt-in XCTest probe.
+    /// Frames are SwiftUI global/window logical points, never screenshot pixels.
+    public func debugDriveSnapshot() throws -> Data {
+        var ops: [[String: Any]] = []
+        var identifiers: [String: [String: Any]] = [:]
+        let ids = (Array(tree.nodes.keys) + Array(tree.extensionNodes.keys)).sorted()
+        for id in ids {
+            if let node = tree.nodes[id] {
+                ops.append(["op": "create-node", "id": id, "kind": node.kind.rawValue])
+                for (property, value) in node.properties.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+                    ops.append(["op": "set-prop", "id": id, "property": property.rawValue,
+                                "value": value.debugDriveJSONValue])
+                }
+                let explicit = node.properties[.accessibilityIdentifier]?.stringValue
+                if let effective = explicit ?? node.properties[.accessibilityLabel]?.stringValue {
+                    identifiers[String(id)] = ["identifier": effective, "explicit": explicit != nil]
+                }
+            } else if let node = tree.extensionNodes[id] {
+                ops.append(["op": "create-extension", "id": id,
+                            "identifier": node.identifier, "fingerprint": node.fingerprint])
+                for (property, value) in node.properties.sorted(by: { $0.key < $1.key }) {
+                    ops.append(["op": "set-extension-prop", "id": id, "property": property,
+                                "value": value.debugDriveJSONValue])
+                }
+                let explicit = node.properties["accessibility-identifier"]?.stringValue
+                if let effective = explicit ?? node.properties["accessibility-label"]?.stringValue {
+                    identifiers[String(id)] = ["identifier": effective, "explicit": explicit != nil]
+                }
+            }
+        }
+        for id in ids {
+            let children = tree.nodes[id]?.children ?? tree.extensionNodes[id]?.children ?? []
+            for (index, child) in children.enumerated() {
+                ops.append(["op": "insert-child", "parent": id, "child": child, "index": index])
+            }
+        }
+        let frames: [[Any]] = ids.compactMap { id in
+            guard let rect = nodeFrames[id], !rect.isNull, !rect.isInfinite,
+                  rect.minX.isFinite, rect.minY.isFinite,
+                  rect.width.isFinite, rect.height.isFinite else { return nil }
+            return [id, rect.minX, rect.minY, rect.width, rect.height]
+        }
+        return try JSONSerialization.data(withJSONObject: [
+            "generation": generation, "commitSequence": commitSequence,
+            "committed": pendingCommitTouched.isEmpty && pendingCommitDropped.isEmpty &&
+                !pendingCommitStructural && pendingCommitModalRelevant.isEmpty,
+            "ops": ops, "nodeIDs": ids, "roots": tree.rootIDs.sorted(),
+            "frames": frames, "nativeIdentifiers": identifiers,
+        ], options: [.sortedKeys])
+    }
+#endif
+
     // MARK: - file-picker operations
 
     /// In-flight and completed file-picker requests keyed by node id. Held
