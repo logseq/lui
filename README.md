@@ -126,6 +126,21 @@ Per-platform backend builds and test recipes are documented under each
 `platform/` directory (the Gradle wrapper under `platform/android` for
 Android).
 
+### Native Drive testing
+
+[Drive](https://github.com/logseq/drive) keeps fast semantic/headless tests
+separate from native input. Android has an optional, explicitly launched
+[instrumentation host](platform/android/drive/README.md) for API 30+ debug
+variants. It injects OS MotionEvent/KeyEvent input and uses a deliberately
+selected test IME for Unicode/empty text replacement; it never emits LUI
+semantic events as a fallback.
+
+With the host running and an explicit `adb forward`, use a Drive version
+that supports `drive --tcp 127.0.0.1:49377 --input native scenario.drive`.
+The host, IME, permission and runner must remain outside release artifacts.
+Its compile/protocol/lint checks do not establish real-device input behavior;
+see the host guide for setup, cleanup, geometry and settling limits.
+
 ## Component schema
 
 `schema/components.json` is the single source of truth for node kinds,

@@ -1,5 +1,55 @@
 # LUI API migration guide
 
+## Unreleased: Optional Android native Drive host
+
+Android renderer defaults and existing semantic integrations are unchanged.
+`LuiBackend.inspect()` is a new opt-in, UI-thread-only read-only inspection
+API. Close its `LuiInspection` handle to remove inspection semantics and
+layout observers. Snapshots copy retained nodes and carry host-local
+incarnation guards; native targeting requires attached, visible geometry.
+
+For an API 30+ debuggable test variant, add
+`debugImplementation(project(":drive"))`, register
+`DriveTarget.attach(activity, backend)` after `setContent` behind an explicit
+debug intent flag, and close the handle in `onDestroy`. Declare
+`dev.lui.drive.DriveInstrumentation` only in the debug manifest. Keep the
+optional library, INTERNET permission, runner and test IME out of release
+artifacts. The sample supplies separate debug/release hooks.
+
+```sh
+# The debug app must already be installed; this clears its Activity task.
+adb forward tcp:49377 tcp:49377
+adb shell am instrument -w -e drive true \
+  -e activity your.debug.package/.MainActivity \
+  your.debug.package/dev.lui.drive.DriveInstrumentation
+# In another terminal, with a Drive version supporting loopback TCP:
+drive --tcp 127.0.0.1:49377 --input native scenario.drive
+# After the run:
+adb forward --remove tcp:49377
+```
+
+Native protocol v1 is unchanged: initial hello, full frames, then ops establish
+readiness; fresh ops and full frames precede each correlated result. Wire
+coordinates/deltas are content-viewport dp, converted to screen pixels at OS
+MotionEvent/KeyEvent injection. No action falls back to LUI semantic events.
+
+Text replacement uses a real InputConnection and requires deliberately
+selecting the test-device IME; `type` is not advertised otherwise. The host
+never enables/selects an IME itself. Preserve and restore the original IME,
+or use the explicit `--test-device` sample launcher. Missing selection or
+geometry, stale incarnations, disabled/hidden targets, detectable native
+occlusion and unsupported input fail explicitly. Offscreen targets need
+native scrolling; there is no selector auto-scroll.
+
+Settling is bounded model/layout/draw/accessibility quiet, not application or
+network idle, or proof of every render-thread animation. Accessibility cannot
+prove the behavior of arbitrary invisible custom touch interceptors;
+unmeasured modals/extensions and system UI need separate instrumentation.
+Already running input cannot be rolled back. Compile/protocol/lint checks
+are not device-input evidence. See
+[`platform/android/drive/README.md`](../platform/android/drive/README.md)
+for complete integration, input and cleanup limits.
+
 ## Unreleased: Web submenu placement through layout wrappers
 
 Web dropdowns owned by a `menu-trigger` or `menu-item` now find their semantic
