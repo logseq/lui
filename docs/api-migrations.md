@@ -1,5 +1,20 @@
 # LUI API migration guide
 
+## Unreleased: Android Drive sample safe drawing insets
+
+The optional `:drive-sample` Activity now explicitly enables edge-to-edge and
+wraps `backend.Content()` in `Box(Modifier.safeDrawingPadding())`. Controls
+respect current system-bar, display-cutout and IME insets instead of relying on
+fixed content padding. This changes only the sample's host layout; renderer
+defaults, native protocol v1, measured-coordinate conversion and strict
+occlusion checks are unchanged.
+
+Applications that copied the sample should call `enableEdgeToEdge()` and
+apply Compose safe-drawing insets at their content boundary, or use their
+existing screen-specific inset handling. Do not compensate by shifting Drive
+coordinates or allowing input through SystemUI windows. See
+[`platform/android/drive/README.md`](../platform/android/drive/README.md).
+
 ## Unreleased: DEBUG iOS read-only Drive probe
 
 DEBUG iOS builds add `LUIAppleBackend.debugDriveSnapshot()` and

@@ -69,6 +69,14 @@ drive --tcp 127.0.0.1:49377 --input native scenario.drive
 adb forward --remove tcp:49377
 ```
 
+The sample calls `enableEdgeToEdge()` and wraps `backend.Content()` in
+`Box(Modifier.safeDrawingPadding())`. Embedding Activities must handle their
+own system-bar, display-cutout and IME insets too; fixed content padding is not
+a substitute for native insets. Otherwise an edge-to-edge target can be
+visually covered by SystemUI and correctly fail native hit preflight. Keep
+Drive coordinates based on measured bounds; do not add a device-specific
+offset or bypass the occlusion check.
+
 For text, explicitly enable/select
 `dev.lui.drive.sample/dev.lui.drive.DriveInputMethod` on the test device, saving
 the previous `default_input_method` first and restoring it afterwards. Prefer
