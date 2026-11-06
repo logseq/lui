@@ -1,5 +1,37 @@
 # LUI API migration guide
 
+## Unreleased: DEBUG iOS read-only Drive probe
+
+DEBUG iOS builds add `LUIAppleBackend.debugDriveSnapshot()` and
+`LUIDriveSnapshotProbe.startIfEnabled(backend:window:environment:)`. These APIs
+are absent in Release and on other platforms. Retain the probe after the
+single foreground key window is ready, and call `stop()` during host teardown.
+Wrap host references in `#if DEBUG`:
+
+```swift
+#if DEBUG
+driveProbe = try LUIDriveSnapshotProbe.startIfEnabled(
+    backend: backend, window: window
+)
+#endif
+```
+
+No listener opens unless `LUI_DRIVE_PROBE=1` is explicitly supplied. The probe
+temporarily enables frame collection and restores its settings without
+replacing existing callbacks. It binds only IPv4 loopback (default port 49378)
+and accepts versioned read-only snapshot requests; it has no Drive action or
+semantic event endpoint. This is debug access for trusted local processes,
+not authentication against other local applications.
+
+Native input belongs to the separate Drive XCTest UI-testing target, never
+the app binary. Selector actions require explicit stable native accessibility
+identifiers and do not fall back to labels, coordinates or semantic events.
+Frame coordinates are window-local logical points, not screenshot pixels.
+Existing production event behavior and transport contracts do not change.
+See [`platform/apple/DriveProbe.md`](../platform/apple/DriveProbe.md) for a
+complete host hookup, protocol and lifecycle example. Apple-SDK compilation
+and Simulator/device input verification are separate integration gates.
+
 ## Unreleased: Optional Android native Drive host
 
 Android renderer defaults and existing semantic integrations are unchanged.
