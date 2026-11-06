@@ -228,10 +228,17 @@ jobs:
           packages: platform-tools
       - uses: gradle/actions/setup-gradle@v4
       - name: Install Android compile SDK
-        run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
+        run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0' 'build-tools;37.0.0'
       - name: Android store and actual Compose regressions
         working-directory: platform/android
         run: ./gradlew --no-daemon :lui:testDebugUnitTest
+      - name: Android Drive protocol, sample builds and scoped lint
+        working-directory: platform/android
+        run: >-
+          ./gradlew --no-daemon
+          :drive:testDebugUnitTest
+          :drive-sample:assembleDebug :drive-sample:assembleRelease
+          :drive:lintDebug :drive-sample:lintDebug :lui:lintDebug
 
   c-bridge-stress:
     runs-on: ubuntu-latest
