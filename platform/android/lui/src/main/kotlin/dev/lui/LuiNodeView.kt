@@ -197,6 +197,7 @@ private fun LuiChromeSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
         }
     } else Modifier
     val modifier = retainedVisibility
+        .luiInspection(backend, id)
         .luiChrome(node)
         .luiGestures(backend, node, id) { offset ->
             contextMenuAt = offset
