@@ -42,7 +42,20 @@ class LuiInspection internal constructor(private val backend: LuiBackend) : Auto
     private fun incarnation(id: Long): Long = incarnations.getOrPut(id) { ++nextIncarnation }
 
     /** Clipped bounds in physical screen pixels; wire hosts convert to viewport units. */
-    fun screenFrames(): Map<Long, RectF> = frames.mapValues { RectF(it.value) }
+    fun screenFrames(): Map<Long, RectF> {
+        val nodes = snapshot().associateBy { it.id }
+        val parents = nodes.values.flatMap { node -> node.children.map { it to node.id } }.toMap()
+        val visible = mutableMapOf<Long, Boolean>()
+        fun isVisible(id: Long): Boolean = visible.getOrPut(id) {
+            val node = nodes[id]
+            node != null && node.properties["display"]?.stringValue != "none" &&
+                node.properties["visibility"]?.stringValue != "hidden" &&
+                (node.properties["opacity"]?.numberValue ?: 1.0) > 0.0 &&
+                !(node.kind == "virtual-list" && node.properties["selected"]?.boolValue == false) &&
+                (parents[id]?.let { isVisible(it) } ?: true)
+        }
+        return frames.filterKeys { isVisible(it) }.mapValues { RectF(it.value) }
+    }
 
     override fun close() {
         if (backend.inspection === this) backend.inspection = null

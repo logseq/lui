@@ -120,7 +120,10 @@ class DriveInstrumentation : Instrumentation() {
                 publish(force = false)
                 continue
             }
-            if (byte == -1) return
+            if (byte == -1) {
+                check(pending.size() == 0) { "Drive disconnected with an incomplete action line" }
+                return
+            }
             activityAt = SystemClock.uptimeMillis()
             if (byte == 10) {
                 val line = pending.toString(Charsets.UTF_8.name())
@@ -148,7 +151,8 @@ class DriveInstrumentation : Instrumentation() {
             settle()
             if (action.name == "screenshot") png = screenshot()
         } catch (error: Exception) {
-            failure = error.message ?: error.javaClass.simpleName
+            failure = if (error is java.util.concurrent.TimeoutException) "native action timeout waiting for accessibility idle"
+                else error.message ?: error.javaClass.simpleName
         }
         // A failed action still publishes the authoritative post-input state before its result.
         deadline = SystemClock.uptimeMillis() + 500
@@ -183,8 +187,11 @@ class DriveInstrumentation : Instrumentation() {
                 if (action.name == "type") {
                     check(selectedIme()) { "type requires the explicitly selected Drive test IME" }
                     ui {
-                        val node = target.inspection.snapshot().firstOrNull { it.id == action.id() }
-                        check(node?.properties?.get("read-only")?.boolValue != true) { "target editor is read-only" }
+                        val node = checkNotNull(target.inspection.snapshot().firstOrNull { it.id == action.id() }) { "stale text target" }
+                        check(node.kind in setOf("text-field", "secure-field", "input", "search-field", "textarea", "combobox")) {
+                            "type requires a supported native text editor"
+                        }
+                        check(node.properties["read-only"]?.boolValue != true) { "target editor is read-only" }
                     }
                 }
                 val frame = validate(action.id())
