@@ -1,5 +1,18 @@
 # LUI API migration guide
 
+## Unreleased: MyGo overlay theme foreground
+
+MyGo dialogs, sheets and popovers now initialize their detached panel's text
+color from the current scoped theme, matching their themed backgrounds. Plain
+text and inherited labels no longer fall back to the window's default foreground
+when opened under a nested dark theme. Explicit child foreground properties
+continue to override this default; no schema or wire change is required.
+
+For example, a sheet beneath a column with `theme-mode="dark"` now displays its
+title and unstyled text in the dark theme's foreground without per-label colors.
+Do not add a `foreground` property to the sheet: that property is not supported
+by the sheet kind.
+
 ## Unreleased: Web submenu placement through layout wrappers
 
 Web dropdowns owned by a `menu-trigger` or `menu-item` now find their semantic

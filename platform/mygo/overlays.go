@@ -23,7 +23,7 @@ func (b *Backend) renderOverlays(c *ui.Context, n Node, children func(), emit fu
 		open := true
 		panel := ui.PopoverBase(c, anchor, &open, func(panel ui.Element) {
 			panel.Bind(&b.recordMenuOwner(n, owner, false, false).panel)
-			panel.Column().Padding(12).Gap(8).Radius(c.Theme().Radius).Background(c.Theme().Surface).Border(1, c.Theme().Border)
+			panel.Column().Padding(12).Gap(8).Radius(c.Theme().Radius).Background(c.Theme().Surface).TextColor(c.Theme().Text).Border(1, c.Theme().Border)
 			b.placeWidgetPopup(n, panel, anchor)
 			if handle != nil {
 				at, self := widgetPopupAnchors(n)
@@ -69,7 +69,7 @@ func (b *Backend) renderOverlays(c *ui.Context, n Node, children func(), emit fu
 				ui.Text(c, description)
 			}
 			children()
-		})
+		}).TextColor(c.Theme().Text)
 		if panel.Dismissed() && !w.popupDismissed {
 			w.popupDismissed = true
 			emit(Event{Kind: "dismiss"})
@@ -84,7 +84,7 @@ func (b *Backend) renderOverlays(c *ui.Context, n Node, children func(), emit fu
 		width, height := c.Size()
 		panel := ui.DialogBase(c, &open, func(back, panel ui.Element) {
 			back.Justify(ui.End).AlignItems(ui.Center).Background(ui.RGBA(0, 0, 0, 0.35))
-			panel.Column().Padding(20).Gap(12).Radius(c.Theme().Radius).Background(c.Theme().Surface).Width(min(width, 560))
+			panel.Column().Padding(20).Gap(12).Radius(c.Theme().Radius).Background(c.Theme().Surface).TextColor(c.Theme().Text).Width(min(width, 560))
 			if n.String("sizing") == "page" {
 				panel.Width(width).Height(height)
 			} else if n.String("sizing") != "fitted" {
