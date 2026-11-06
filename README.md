@@ -143,8 +143,9 @@ see the host guide for setup, cleanup, geometry and settling limits.
 
 For iOS, a DEBUG-only, opt-in [read-only snapshot probe](platform/apple/DriveProbe.md)
 connects to Drive's separate XCTest UI-testing runner. The probe does not inject
-input. This integration still needs Apple-SDK compilation and Simulator/device
-validation; adding the sources is not evidence of native input support.
+input. Apple compile checks cover the backend/probe and standalone runner;
+Simulator/device input remains unverified. Build/install the integrating DEBUG
+app and exercise its UI-testing target before relying on native interaction.
 
 ## Component schema
 

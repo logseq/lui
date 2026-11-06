@@ -1,8 +1,9 @@
-# DEBUG iOS Drive snapshot probe (source-only)
+# DEBUG iOS Drive snapshot probe
 
-The new API and probe are source implementation awaiting Xcode compilation and
-Simulator validation. They are excluded by `#if DEBUG && os(iOS)` from Release,
-macOS, and other builds. No app starts a listener automatically.
+The Apple CI compile gate covers this API and probe, but the Drive adapter's
+Simulator/device input is not yet validated. They are excluded by
+`#if DEBUG && os(iOS)` from Release, macOS, and other builds. No app starts a
+listener automatically.
 
 ## Public API
 
