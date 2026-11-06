@@ -3,7 +3,11 @@ package dev.lui.drive.sample
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.Modifier
 import dev.lui.LuiBackend
 import dev.lui.LuiEvent
 import dev.lui.LuiNodeKind
@@ -19,6 +23,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         backend = LuiBackend(onEvent = { event ->
             when (event) {
                 is LuiEvent.Press -> if (event.node == 3L) {
@@ -46,7 +51,11 @@ class MainActivity : ComponentActivity() {
             add(LuiPatchOp.SetProp(6, "text", LuiWireValue.Str("Disabled")))
             add(LuiPatchOp.SetProp(6, "enabled", LuiWireValue.Bool(false)))
         })
-        setContent { MaterialTheme { backend.Content() } }
+        setContent {
+            MaterialTheme {
+                Box(Modifier.safeDrawingPadding()) { backend.Content() }
+            }
+        }
         drive = DriveHook.attach(this, backend)
     }
 
