@@ -21,6 +21,27 @@ func eventRecords(events []Event, kind string, node int64) []map[string]any {
 	return records
 }
 
+func TestEventsCapturedPointerSecondaryRelease(t *testing.T) {
+	var events []Event
+	b := mounted(t, func(e Event) error { events = append(events, e); return nil })
+	apply(t, b, 2, create(3, "row"), prop(3, "width", 140), prop(3, "height", 40),
+		prop(3, "accessibility-label", "Captured pointer"), prop(3, "pointer-enabled", true),
+		prop(3, "pointer-capture", true), insert(2, 3, 0))
+	tester := ui.NewTester(b.View, 360, 240)
+	if err := tester.RightClick("Captured pointer"); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"pointer-down", "pointer-up"} {
+		records := eventRecords(events, kind, 3)
+		if len(records) != 1 || records[0]["button"] != float64(2) {
+			t.Fatalf("captured secondary %s must retain DOM button 2: %#v", kind, events)
+		}
+	}
+	if len(eventRecords(events, "pointer-cancel", 3)) != 0 {
+		t.Fatal("secondary release cancelled a primary gesture", events)
+	}
+}
+
 func TestEventsTimedGesturesAndCancellation(t *testing.T) {
 	var events []Event
 	b := mounted(t, func(e Event) error { events = append(events, e); return nil })
