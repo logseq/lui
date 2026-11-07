@@ -62,6 +62,8 @@ navigationController.pushViewController(controller, animated: true)
 ## Android
 
 The Compose host uses the same maintained OCaml Gallery and native bridge.
+Its Material navigation drawer derives entries from the retained page roots;
+switching pages preserves shared model state rather than rebuilding the app.
 It requires JDK 21, Android SDK 37.0, an NDK, and the matching Android OCaml
 toolchain. For the default ARM64 target, set `LG_ANDROID_OCAML_PREFIX` to the
 toolchain prefix containing `bin/ocamlopt.opt` and `lib/ocaml`.
