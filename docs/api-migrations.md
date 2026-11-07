@@ -1,5 +1,21 @@
 # LUI API migration guide
 
+## Unreleased: Android growing content and Gallery navigation
+
+Android columns apply `grow` only when their vertical extent is bounded.
+Inside a vertical scroll viewport, growing children retain their authored
+height or intrinsic content height instead of collapsing and overlapping
+following controls. Bounded columns still distribute remaining height;
+applications do not need to remove `grow` from scroll-contained textareas.
+Android dialogs also render the existing `description` property above their
+retained body. Neither correction changes the wire format or event ABI.
+
+The native Android component Gallery now derives a Material navigation drawer
+from the retained page roots and renders one selected page at a time. Shared
+OCaml model state remains authoritative across page switches; navigation is
+host-only and introduces no public LUI component. Its mobile E2E runner uses
+the checked-in `platform/android/gradlew` wrapper.
+
 ## Unreleased: desktop input metadata
 
 The pinned MyGo SDK preserves `InputEvent.PhysicalKey` and optional layout

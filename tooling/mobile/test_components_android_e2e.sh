@@ -32,10 +32,8 @@ adb -s "$device" get-state >/dev/null \
 
 if [[ ${LUI_ANDROID_E2E_SKIP_BUILD:-0} != 1 ]]; then
   "$repo_root/tooling/mobile/build_components_android.sh" >/dev/null
-  (
-    cd "$repo_root/examples/components/android"
-    ./gradlew :app:assembleDebug
-  )
+  "$repo_root/platform/android/gradlew" --no-daemon \
+    -p "$repo_root/examples/components/android" :app:assembleDebug
 fi
 [[ -f $apk_path ]] || die "Android Gallery APK is missing: $apk_path"
 

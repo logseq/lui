@@ -296,14 +296,29 @@ private fun RowScope.GrowChildRow(backend: LuiBackend, childId: Long, stretch: B
 
 /** Applies `grow` to a child inside a Column. */
 @Composable
-private fun ColumnScope.GrowChildColumn(backend: LuiBackend, childId: Long) {
+private fun ColumnScope.GrowChildColumn(backend: LuiBackend, childId: Long, boundedHeight: Boolean) {
     val grow = backend.node(childId)?.prop("grow")?.numberValue ?: 0.0
-    if (grow > 0) {
+    if (grow > 0 && boundedHeight) {
         Box(Modifier.weight(grow.toFloat().coerceAtLeast(0.001f)), propagateMinConstraints = true) {
             LuiNodeView(backend, childId)
         }
     } else {
         LuiNodeView(backend, childId)
+    }
+}
+
+@Composable
+private fun LuiColumn(
+    modifier: Modifier = Modifier,
+    verticalArrangement: Arrangement.Vertical = Arrangement.Top,
+    horizontalAlignment: Alignment.Horizontal = Alignment.Start,
+    content: @Composable ColumnScope.(Boolean) -> Unit,
+) {
+    BoxWithConstraints(modifier, propagateMinConstraints = true) {
+        val boundedHeight = constraints.hasBoundedHeight
+        Column(verticalArrangement = verticalArrangement, horizontalAlignment = horizontalAlignment) {
+            content(boundedHeight)
+        }
     }
 }
 
@@ -353,15 +368,15 @@ private fun LuiNodeContent(
         LuiNodeKind.link,
         LuiNodeKind.tree,
         LuiNodeKind.timeline,
-        -> Column(
+        -> LuiColumn(
             modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(
                 gapOf(node).dp,
                 alignment = mainVerticalAlignment(node.propString("main")),
             ),
             horizontalAlignment = crossHorizontalAlignment(node.propString("cross")),
-        ) {
-            children.forEachNode { childId -> GrowChildColumn(backend, childId) }
+        ) { boundedHeight ->
+            children.forEachNode { childId -> GrowChildColumn(backend, childId, boundedHeight) }
         }
 
         LuiNodeKind.list -> {
@@ -389,19 +404,19 @@ private fun LuiNodeContent(
             }
         }
 
-        LuiNodeKind.table -> Column(
+        LuiNodeKind.table -> LuiColumn(
             modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(
                 gapOf(node).dp,
                 alignment = mainVerticalAlignment(node.propString("main")),
             ),
             horizontalAlignment = crossHorizontalAlignment(node.propString("cross")),
-        ) {
+        ) { boundedHeight ->
             children.forEachIndexedNode { index, childId ->
                 CompositionLocalProvider(
                     LocalLuiChildSlot provides LuiChildSlot(index, children.size),
                 ) {
-                    GrowChildColumn(backend, childId)
+                    GrowChildColumn(backend, childId, boundedHeight)
                 }
             }
         }
@@ -451,8 +466,8 @@ private fun LuiNodeContent(
 
         LuiNodeKind.bubble -> LuiBubble(backend, node, modifier, children)
 
-        LuiNodeKind.box -> Column(modifier) {
-            children.forEachNode { childId -> GrowChildColumn(backend, childId) }
+        LuiNodeKind.box -> LuiColumn(modifier) { boundedHeight ->
+            children.forEachNode { childId -> GrowChildColumn(backend, childId, boundedHeight) }
         }
 
         LuiNodeKind.text,
@@ -2330,6 +2345,7 @@ private fun LuiModalSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
                 text = {
                     Column(Modifier.verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        node.propString("description")?.takeIf { it.isNotEmpty() }?.let { Text(it) }
                         body.forEachNode { LuiNodeView(backend, it) }
                     }
                 },
@@ -2352,12 +2368,12 @@ private fun LuiModalSurface(backend: LuiBackend, node: LuiNodeLike, id: Long) {
                         sheetState.expand()
                     }
                 }
-                Column(Modifier.fillMaxWidth().heightIn(max = node.prop("height")?.intValue?.dp ?: Dp.Infinity)) {
+                LuiColumn(Modifier.fillMaxWidth().heightIn(max = node.prop("height")?.intValue?.dp ?: Dp.Infinity)) { boundedHeight ->
                     if (node.text().isNotEmpty()) {
                         Text(node.text(), Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                             style = MaterialTheme.typography.headlineSmall)
                     }
-                    node.children.forEachNode { GrowChildColumn(backend, it) }
+                    node.children.forEachNode { GrowChildColumn(backend, it, boundedHeight) }
                 }
             }
         }
