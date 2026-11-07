@@ -1,5 +1,0 @@
-(library
- (name lui_image)
- (public_name lui.image)
- (modules lui_image)
- (libraries lui_scene imagelib))

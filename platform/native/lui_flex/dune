@@ -1,4 +1,0 @@
-(library
- (name lui_flex)
- (public_name lui.flex)
- (modules lui_flex))

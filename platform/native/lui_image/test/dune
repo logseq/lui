@@ -1,4 +1,0 @@
-(test
- (name lui_image_test)
- (modules lui_image_test)
- (libraries lui_image lui_scene imagelib alcotest))

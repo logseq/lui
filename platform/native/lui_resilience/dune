@@ -1,5 +1,0 @@
-(library
- (name lui_resilience)
- (public_name lui.resilience)
- (modules lui_resilience)
- (libraries unix))

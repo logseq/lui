@@ -1,5 +1,0 @@
-(library
- (name lui_theme)
- (public_name lui.theme)
- (modules lui_theme)
- (libraries lui_scene lui_paint))

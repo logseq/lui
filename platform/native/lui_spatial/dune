@@ -1,5 +1,0 @@
-(library
- (name lui_spatial)
- (public_name lui.spatial)
- (modules lui_spatial)
- (libraries lui_store lui_scene))
