@@ -33,6 +33,27 @@ capability contract rather than assuming former Apple/Android services exist.
 Historical migration entries and archived design notes below describe older
 behavior, not currently supported mobile packages.
 
+## Unreleased: modal surface transitions
+
+`dialog`, `drawer`, and `sheet` now accept `~transition:string`, like
+`popover`. The wire `Transition` property is admitted on these modal kinds;
+`Root` and `Tooltip` remain excluded, and transition values retain the same
+validated CSS shorthand grammar.
+
+Pass the transition to the surface constructor rather than a post-mount
+property bind or a child container:
+
+```ocaml
+dialog ~transition:"opacity 200ms ease-out, transform 200ms ease-out"
+  [text ~value:"Content" []]
+```
+
+Web applies this declaration to the real retained modal surface, preserving
+its opening/closing animation, focus restoration, and exit-paint lifecycle.
+MyGo accepts the shared property but applies state changes immediately;
+CSS animation remains a documented host exception. Applications need no
+backend capability guard. Omitted transitions keep the existing host defaults.
+
 ## Unreleased: MyGo desktop and portable host services
 
 MyGo (`platform/mygo`) is now the default desktop renderer. The former

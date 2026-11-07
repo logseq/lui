@@ -2275,7 +2275,14 @@
       "border-color",
       "border-width",
       "corner-radius",
-      "gap"
+      "gap",
+      "transition"
+    ],
+    "drawer": [
+      "transition"
+    ],
+    "sheet": [
+      "transition"
     ],
     "box": [
       "inert"
