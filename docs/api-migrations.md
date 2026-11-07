@@ -1,5 +1,20 @@
 # LUI API migration guide
 
+## Unreleased: desktop input metadata
+
+The pinned MyGo SDK preserves `InputEvent.PhysicalKey` and optional layout
+`Text` on keydown and keyup. DOM-style adapters can map Shift+1 to
+`code=Digit1` and `keyChar=!`; non-ASCII text is retained as UTF-8.
+The native backend supplies the text; absent metadata
+stays absent, with no synthesized US-keyboard shift table. Text metadata is
+not a text-input commit and must not be inserted a second time. Darwin uses
+`NSEvent.characters`, Linux uses GDK key values, and Windows uses a
+non-mutating keyboard-layout query (Windows 10 version 1607 or newer).
+
+Pointer capture preserves an active primary gesture when another button is
+pressed or released. Non-primary events still reach the capture owner; they
+do not end the primary gesture.
+
 ## Unreleased: retire Apple and Android hosts
 
 Only desktop MyGo and Web/Melange remain supported. `platform/apple` and
