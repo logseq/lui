@@ -1,5 +1,0 @@
-(library
- (name lui_store)
- (public_name lui.store)
- (modules lui_store)
- (libraries lui))

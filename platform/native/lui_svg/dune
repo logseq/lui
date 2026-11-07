@@ -1,5 +1,0 @@
-(library
- (name lui_svg)
- (public_name lui.svg)
- (modules lui_svg)
- (libraries lui_scene))

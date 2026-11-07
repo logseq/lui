@@ -1,4 +1,0 @@
-(library
- (name lui_scene)
- (public_name lui.scene)
- (modules lui_scene))
