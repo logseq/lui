@@ -75,6 +75,30 @@ Historical entries below describing the removed renderer record previous
 releases; they do not promise those APIs remain available. Build and schema
 checks do not establish visual parity or native interaction acceptance.
 
+## MyGo standard dropdown menus
+
+Standard standalone `dropdown-menu` components now present through MyGo's
+native context-menu implementation, using the same `menu-item`, `menu-trigger`,
+disabled/checked state, nested menus and action handlers as `context-menu`.
+Selection dispatches the live item's `press` before one owner `dismiss`;
+cancellation dispatches only `dismiss`. Retired items cannot receive a choice.
+Keep `~on_dismiss` wired to remove the model-owned menu and mount a new menu
+identity for each opening. No wire properties or events change.
+
+```ocaml
+dropdown_menu ~at:(x, y) ~on_dismiss:(fun _ -> close_menu ())
+  [menu_item ~text:label ~on_press:(fun _ -> run_action ()) []]
+```
+
+Custom content and styled items still use the retained in-window menu route.
+Hosts may set `luimygo.Config{RetainedMenus: true}` to use retained menus for
+standard content too. Native shortcut hints remain descriptive labels, not new
+accelerator registrations. Web rendering and its component API are unchanged.
+The MyGo dependency includes the additive build-scoped
+`Element.OpenContextMenuAt(x, y)` hook; do not replace the SDK pin with an older
+version lacking it. Applications should use LUI components, not a second menu
+specification or host-specific action-tag table.
+
 ## Unreleased: Apple minimum scroll viewport reference
 
 Apple hosts may set the optional `EnvironmentValues.luiMinimumScrollViewport`
