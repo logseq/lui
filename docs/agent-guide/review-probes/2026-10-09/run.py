@@ -8,7 +8,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[4]
 HERE = Path(__file__).resolve().parent
-TARGETS = sys.argv[1:] or ["runtime", "web", "android"]
+TARGETS = sys.argv[1:] or ["runtime", "web"]
 
 
 def run(args, cwd=ROOT, env=None):
@@ -30,16 +30,3 @@ with tempfile.TemporaryDirectory(prefix="lui-review-") as scratch:
     if "web" in TARGETS:
         run(["opam", "exec", "--", "dune", "build", "@web"])
         run(["node", str(HERE / "web_review.mjs")], env={**os.environ, "LUI_REVIEW_ROOT": str(ROOT)})
-    if "android" in TARGETS:
-        run(["./gradlew", ":lui:testDebugUnitTest", "--console=plain"], cwd=ROOT / "platform/android")
-        artifacts = [ROOT / "platform/android/lui/build/intermediates/runtime_library_classes_jar/debug/bundleLibRuntimeToJarDebug/classes.jar"]
-        cache = Path.home() / ".gradle/caches/modules-2/files-2.1"
-        for pattern in ["org.jetbrains.kotlin/kotlin-stdlib/*/*/*.jar",
-                        "org.jetbrains.kotlinx/kotlinx-serialization-json-jvm/*/*/*.jar",
-                        "org.jetbrains.kotlinx/kotlinx-serialization-core-jvm/*/*/*.jar"]:
-            artifacts.extend(cache.glob(pattern))
-        if not artifacts[0].exists():
-            raise FileNotFoundError(artifacts[0])
-        classpath = os.pathsep.join(map(str, artifacts))
-        run(["javac", "-cp", classpath, "-d", str(scratch), str(HERE / "LuiAndroidReview.java")])
-        run(["java", "-cp", os.pathsep.join([str(scratch), classpath]), "LuiAndroidReview"])

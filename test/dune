@@ -2,5 +2,4 @@
  (name test_lui)
  (libraries lui lui.ai lui.json_view_parse ocaml-signal alcotest gallery_app drive)
  (deps
-  (source_tree scenarios)
-  ../examples/components/ios-swiftui/Sources/LUIComponentsApp/GalleryExtensions.swift))
+  (source_tree scenarios)))

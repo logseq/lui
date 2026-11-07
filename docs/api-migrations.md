@@ -1,12 +1,45 @@
 # LUI API migration guide
 
+## Unreleased: retire Apple and Android hosts
+
+Only desktop MyGo and Web/Melange remain supported. `platform/apple` and
+`platform/android`, the root `LUIAppleBackend` Swift package, Gradle/JNI
+packaging, SwiftUI/AppKit/Android example hosts and their Drive probes are
+removed, not deprecated. The navigation SwiftUI-only demo is also removed.
+There are no replacement iOS/Android packages or mobile compatibility hosts.
+
+The mobile build/test scripts, Maestro flows, Apple/Android CI jobs and
+`make test-apple` target are removed. Schema generation no longer emits
+`LUIWireSchema.swift` or `LuiWireSchema.kt`; it generates only the shared
+OCaml/PPX artifacts, while `make generate-component-schema` also exports the
+MyGo contract. The canonical `schema/components.json`, shared OCaml runtime,
+Web backend and byte-for-byte `platform/bridge` ABI are unchanged by this
+removal. Legacy profile names in the shared protocol/schema do not imply a
+shipped Apple/Android renderer.
+
+Downstream desktop applications must remove SwiftPM/Gradle host dependencies
+and Apple-specific picker/import code, retain their OCaml model/reducer/view,
+and load the application library through MyGo. For example, replace
+`swift run --package-path examples/components/ios-swiftui LUIComponentsApp` with:
+
+```sh
+library=$(./tooling/build_mygo_components.sh)
+go -C platform/mygo run ./cmd/lui-mygo -library "$library" -title Components
+```
+
+For browser applications, keep the existing Melange/Web build. Mobile-only
+API behavior is no longer claimed by either supported host; use each host's
+capability contract rather than assuming former Apple/Android services exist.
+Historical migration entries and archived design notes below describe older
+behavior, not currently supported mobile packages.
+
 ## Unreleased: MyGo desktop and portable host services
 
 MyGo (`platform/mygo`) is now the default desktop renderer. The former
 `platform/native` OCaml/SDL renderer, its executables, packaging tools,
 renderer-specific plugins and native test jobs are removed, not deprecated.
-There are no compatibility aliases or fallback renderer. Web/Melange and
-the Apple/Android hosts are unchanged by this desktop migration.
+There are no compatibility aliases or fallback renderer. Web/Melange is
+unchanged; Apple/Android were retired separately as described above.
 
 The shared `lui_ocaml_*` C ABI moved byte-for-byte to
 `platform/bridge/lui_ocaml_bridge.c` and
