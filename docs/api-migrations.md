@@ -1,5 +1,37 @@
 # LUI API migration guide
 
+## Unreleased: Apple minimum scroll viewport reference
+
+Apple hosts may set the optional `EnvironmentValues.luiMinimumScrollViewport`
+to a scene-global `CGRect` measured outside navigation keyboard avoidance and
+editor safe-area insets. Windowed `virtual-list` first-section minimum heights
+use the reference's bottom edge minus the scroll view's top edge, rather than
+the already-reduced local viewport. Actual scrolling and visible-range tracking
+are unchanged. With the default `nil`, existing local viewport measurement is
+preserved; no wire-format change is required.
+
+For example, measure a `NavigationStack` background using
+`GeometryReader` with `.ignoresSafeArea(.all, edges: .bottom)`, then pass
+`.environment(\.luiMinimumScrollViewport, measuredFrame)` to the stack.
+The background reports `proxy.frame(in: .global)` without changing keyboard
+avoidance on the interactive content. Update the frame on geometry changes so
+rotation and split-view resizing still change the minimum height normally.
+
+## Unreleased: Apple virtual-list first-section height retention
+
+The legacy windowed `virtual-list` keeps `data-first-section-count` and
+`data-first-section-inset` as a minimum viewport height for its first section.
+The remaining space now belongs to the last real row instead of a synthetic
+lazy-list slot. Scrolling, pinned editing and scroll requests therefore retain
+the same logical row positions while row measurements survive recycling.
+Content taller than the minimum still grows normally; it is never clipped.
+
+No wire or application changes are required. For example, a source with
+`data-first-section-count=2` and `data-first-section-inset=136` still reserves
+at least the unobscured viewport height minus 136 points for its first two
+rows. `data-scroll-index=2` continues to address the third logical row, without
+an application-supplied padding offset. Sparse virtual-list sources are unchanged.
+
 ## Unreleased: Native dialog transitions keep a fixed zoom origin
 
 Retained enter/exit motion no longer re-reads a surface's resolved rect
