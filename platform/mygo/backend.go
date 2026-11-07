@@ -564,6 +564,11 @@ func (b *Backend) applyOp(op Operation, touch func(int64), remember func(int64) 
 	case "detach-subtree":
 		n, err := node(op.ID)
 		if err != nil {
+			// The emitter can queue the same subtree twice in one
+			// batch — the second op is a no-op.
+			if retired[op.ID] {
+				return nil
+			}
 			return err
 		}
 		if n.Parent != 0 {
