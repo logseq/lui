@@ -94,6 +94,8 @@ type Extension struct {
 }
 type Config struct {
 	FileServices FileServices
+	// RetainedMenus keeps standard menus in-window instead of using OS popups.
+	RetainedMenus bool
 	// Dispatch synchronously delivers a model-owned interaction proposal.
 	// Apply accepted or normalized property updates before returning. If the
 	// controlled property is unchanged, the native proposal is rejected.
