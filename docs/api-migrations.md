@@ -1,5 +1,20 @@
 # LUI API migration guide
 
+## Unreleased: Apple virtual-list first-section height retention
+
+The legacy windowed `virtual-list` keeps `data-first-section-count` and
+`data-first-section-inset` as a minimum viewport height for its first section.
+The remaining space now belongs to the last real row instead of a synthetic
+lazy-list slot. Scrolling, pinned editing and scroll requests therefore retain
+the same logical row positions while row measurements survive recycling.
+Content taller than the minimum still grows normally; it is never clipped.
+
+No wire or application changes are required. For example, a source with
+`data-first-section-count=2` and `data-first-section-inset=136` still reserves
+at least the unobscured viewport height minus 136 points for its first two
+rows. `data-scroll-index=2` continues to address the third logical row, without
+an application-supplied padding offset. Sparse virtual-list sources are unchanged.
+
 ## Unreleased: Native dialog transitions keep a fixed zoom origin
 
 Retained enter/exit motion no longer re-reads a surface's resolved rect
