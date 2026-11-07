@@ -1,5 +1,19 @@
 # LUI API migration guide
 
+## Unreleased: Android editable Combobox menu focus
+
+Android suggestion menus anchored beside a `combobox` retain keyboard focus in
+the input while the menu is open, so edits continue to emit text changes and
+filter the shared model-owned options. The native Material popup no longer
+takes input focus from an editable anchor, and the anchor stays mounted when
+its menu appears or disappears. Other dropdown and context menus keep their
+existing focus and dismissal behavior.
+
+Existing `stack [combobox ...; dropdown_menu ...]` integrations need no API or
+wire changes; keep the query and filtered options in the shared model rather
+than manually refocusing or remounting the input after each edit. Apple and Web
+behavior is unchanged.
+
 ## Unreleased: Android growing content and Gallery navigation
 
 Android columns apply `grow` only when their vertical extent is bounded.

@@ -926,21 +926,18 @@ private fun LuiStackLike(
         stackContent
     }
 
-    if (menuId == null) {
+    Box {
         withTooltip()
-    } else {
-        val menu = backend.node(menuId)
-        Box {
-            withTooltip()
-            if (menu != null) {
-                LuiMenuPopup(
-                    expanded = true,
-                    onDismissRequest = { backend.emit(LuiEvent.Dismiss(menuId)) },
-                    backend = backend,
-                    menu = menu,
-                    onSelect = { backend.emit(LuiEvent.Dismiss(menuId)) },
-                )
-            }
+        val menu = menuId?.let(backend::node)
+        if (menuId != null && menu != null) {
+            LuiMenuPopup(
+                expanded = true,
+                onDismissRequest = { backend.emit(LuiEvent.Dismiss(menuId)) },
+                backend = backend,
+                menu = menu,
+                onSelect = { backend.emit(LuiEvent.Dismiss(menuId)) },
+                preserveInputFocus = visible.any { backend.node(it)?.kind == LuiNodeKind.combobox },
+            )
         }
     }
 }
@@ -1408,6 +1405,7 @@ private fun LuiMenuPopup(
     onSelect: () -> Unit,
     anchorPosition: MenuAnchorPosition = menuAnchorPosition(menu),
     offset: DpOffset = DpOffset(0.dp, 0.dp),
+    preserveInputFocus: Boolean = false,
 ) {
     DropdownMenuPopup(
         expanded = expanded,
@@ -1416,7 +1414,8 @@ private fun LuiMenuPopup(
         // Keep native Back/outside handling without making a non-editable menu an IME target.
         properties = PopupProperties(
             flags = WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
-                WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM,
+                WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM or
+                (if (preserveInputFocus) WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE else 0),
         ),
     ) {
         DropdownMenuGroup(
