@@ -1,10 +1,5 @@
 # Component API and MyGo Parity Implementation Plan
 
-> Historical backend note: Apple/SwiftUI/AppKit and Android/Kotlin hosts are
-> removed. Their implementation notes below are historical, not support or
-> build instructions. Current targets are MyGo desktop and Web/Melange; see
-> `docs/api-migrations.md` for the breaking change.
-
 Goal: Make every portable component in the optimized declarative LUI API work through MyGo's built-in backend, with explicit exceptions only for features particularly tied to Web or mobile platforms.
 
 Architecture: LUI owns component semantics, controlled application state, the retained tree and event contracts.

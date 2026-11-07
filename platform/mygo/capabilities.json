@@ -1571,7 +1571,7 @@
       "exception": {
         "scope": "photos, camera on file-picker",
         "reason": "Mobile media capture/library service; desktop returns dismiss rather than opening a different source",
-        "source": "schema/components.json"
+        "source": "platform/apple/Sources/LUIAppleBackend/LUIFilePickerView.swift"
       }
     },
     "completion": {

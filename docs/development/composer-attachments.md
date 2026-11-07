@@ -6,7 +6,8 @@ height is 128pt. `composer_attachment` renders a 120pt square card: images
 fill the preview, while documents show an icon, a single-line name and type.
 An optional `status` overrides the type caption. The close control has a 44pt
 hit target and a smaller circular decoration. Preview and removal controls
-expose the complete filename to accessibility.
+expose the complete filename to accessibility. Apple bounds only the compact
+card labels to XXXL Dynamic Type; the composer input retains full text scaling.
 
 The component owns layout and preview state. The caller owns attachment
 identity, file paths, selection policy, import errors and file lifetime.
@@ -21,12 +22,30 @@ an ordered `files` list and a partial-failure count. Valid siblings survive
 invalid entries; an invalid envelope returns `Error`. Cancellation arrives
 through `Dismiss` and should leave existing attachments unchanged.
 
-Hosts own file lifetime and request acknowledgement. Copy/import every accepted
-file before acknowledging its request token, and reject stale asynchronous
-results after the caller scope or request generation changes.
+The Apple file importer preserves the order supplied by the operating system;
+the Apple photo picker explicitly requests ordered selection. Native URLs keep
+their security scope or temporary-file lease until `completion` acknowledges
+the request token, or the node is dropped. Copy/import every accepted file
+before acknowledgement. Check both the request generation and the caller's
+scope after asynchronous work; release copies belonging to stale results.
 
-The former Apple file/photo picker and gallery import actor are removed with
-the Apple backend. Their security-scoped URL, ordered photo selection and staged
-file cleanup behavior are not portable host guarantees. Shared card/layout
-primitives and `Lui_picked_files` remain; downstream applications must implement
-selection, import policy and file lifetime through supported MyGo or Web APIs.
+## Gallery example
+
+The Combine example enables file and photo import on the Apple host. Its
+native bridge stages the whole selection on an actor before forwarding the
+batch to the OCaml reducer. File copying streams to disk rather than loading
+all bytes into memory. The example keeps at most eight attachments, each at
+most 50 MiB. Duplicate source paths reuse the active staged copy; duplicate
+result paths are skipped without changing existing order. Removing an item
+allows it to be added again at the end. Partial failures and limits produce
+inline feedback. Send clears the synthetic draft rather than persisting it.
+
+The bridge tracks retained nodes and recursive subtree disposal. Revision and
+scope checks prevent stale cleanup tasks from deleting current files. Remove,
+Send and scope disposal release demo-owned files. Abrupt process termination
+cleanup is best effort; the actor never deletes another instance's directory.
+
+Web and Android do not currently implement the same native picker
+contract. Their Gallery import actions are disabled with an explanation;
+host applications can provide their own picker actions and ordered model.
+Shared card/layout primitives and the public result model remain portable.
