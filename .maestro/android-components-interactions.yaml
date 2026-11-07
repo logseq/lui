@@ -52,19 +52,22 @@ appId: dev.lui.components
     centerElement: true
 - tapOn:
     id: "component-row-DropdownMenu"
-- tapOn: "Production"
+- tapOn: "Choose environment"
 - assertVisible: "Development"
 - tapOn: "More environments"
 - assertVisible: "Production region"
 - tapOn: "Staging region"
+- tapOn: "Choose environment"
 - assertVisible:
-    text: "Staging"
-    selected: true
+    containsChild:
+      text: "Staging"
+    checked: true
+- back
 - tapOn: "Open navigation menu"
 - scrollUntilVisible:
     element:
       id: "component-row-Dialog"
-    direction: DOWN
+    direction: UP
     speed: 80
     timeout: 30000
     centerElement: true
@@ -158,7 +161,8 @@ appId: dev.lui.components
 - tapOn:
     id: "component-row-Switch"
 - assertVisible:
-    text: "Background sync"
+    containsChild:
+      text: "Background sync"
     checked: true
 - tapOn: "Open navigation menu"
 - scrollUntilVisible:
@@ -183,7 +187,8 @@ appId: dev.lui.components
     id: "component-row-RadioGroup"
 - tapOn: "Compact"
 - assertVisible:
-    text: "Compact"
+    containsChild:
+      text: "Compact"
     checked: true
 - tapOn: "Open navigation menu"
 - scrollUntilVisible:
