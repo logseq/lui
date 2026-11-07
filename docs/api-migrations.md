@@ -1,5 +1,22 @@
 # LUI API migration guide
 
+## Unreleased: Apple minimum scroll viewport reference
+
+Apple hosts may set the optional `EnvironmentValues.luiMinimumScrollViewport`
+to a scene-global `CGRect` measured outside navigation keyboard avoidance and
+editor safe-area insets. Windowed `virtual-list` first-section minimum heights
+use the reference's bottom edge minus the scroll view's top edge, rather than
+the already-reduced local viewport. Actual scrolling and visible-range tracking
+are unchanged. With the default `nil`, existing local viewport measurement is
+preserved; no wire-format change is required.
+
+For example, measure a `NavigationStack` background using
+`GeometryReader` with `.ignoresSafeArea(.all, edges: .bottom)`, then pass
+`.environment(\.luiMinimumScrollViewport, measuredFrame)` to the stack.
+The background reports `proxy.frame(in: .global)` without changing keyboard
+avoidance on the interactive content. Update the frame on geometry changes so
+rotation and split-view resizing still change the minimum height normally.
+
 ## Unreleased: Apple virtual-list first-section height retention
 
 The legacy windowed `virtual-list` keeps `data-first-section-count` and

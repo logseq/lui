@@ -5,6 +5,10 @@ extension EnvironmentValues {
 }
 
 public extension EnvironmentValues {
+    /// A scene-global viewport measured before ancestor keyboard and editor
+    /// insets. Optional; used only for virtual-list first-section minimum height.
+    @Entry var luiMinimumScrollViewport: CGRect? = nil
+
     /// Set on descendants of a `scroll`/`virtual-list` node (or by apps hosting a
     /// LUISwiftUIRoot inside their own ScrollView) so nested scrollable views can
     /// degrade to static layout instead of collapsing to zero height.

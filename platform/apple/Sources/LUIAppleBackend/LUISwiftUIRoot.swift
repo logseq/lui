@@ -7082,7 +7082,8 @@ private struct LUIVirtualListView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     @State private var appliedScrollKey: String?
-    @State private var unobscuredHeight: CGFloat?
+    @Environment(\.luiMinimumScrollViewport) private var minimumScrollViewport
+    @State private var unobscuredFrame: CGRect?
     @State private var titleTracker = LUIScrollSectionTitleTracker()
     @State private var windowTracker = LUIVirtualWindowTracker()
     @State private var firstSectionHeights: [SlotID: CGFloat] = [:]
@@ -7093,6 +7094,14 @@ private struct LUIVirtualListView: View {
     private struct ContentSpace: Hashable { let nodeID: Int }
     private struct PinnedFrame: Equatable { let id: SlotID; let frame: CGRect }
     private struct PinnedSize: Equatable { let id: SlotID; let height: CGFloat }
+
+    private var unobscuredHeight: CGFloat? { unobscuredFrame?.height }
+
+    private var firstSectionViewportHeight: CGFloat? {
+        guard let frame = unobscuredFrame else { return nil }
+        guard let viewport = minimumScrollViewport else { return frame.height }
+        return max(0, viewport.maxY - max(frame.minY, viewport.minY))
+    }
 
     var body: some View {
         let rows = sectionRows
@@ -7177,8 +7186,8 @@ private struct LUIVirtualListView: View {
                 GeometryReader { _ in
                     // Minimum-height content uses the viewport before keyboard avoidance.
                     Color.clear
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                            unobscuredHeight = height
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                            unobscuredFrame = frame
                         }
                 }
                 .ignoresSafeArea(.keyboard, edges: .bottom)
@@ -7340,13 +7349,13 @@ private struct LUIVirtualListView: View {
             var minimumHeight: CGFloat = 0
             var tracksHeight = false
             if let window, window.firstSectionCount > 0,
-               window.firstSectionCount <= Int((unobscuredHeight ?? 600) / 16) + 1 {
+               window.firstSectionCount <= Int((firstSectionViewportHeight ?? 600) / 16) + 1 {
                 tracksHeight = true
                 let measured = (0..<(window.firstSectionCount - 1)).reduce(CGFloat(0)) { height, index in
                     height + (firstSectionHeights[SlotID(source: id, offset: index)] ?? window.extent)
                 }
                 let gaps = CGFloat(model.property(.gap)?.intValue ?? 0) * CGFloat(window.firstSectionCount - 1)
-                minimumHeight = max(0, (unobscuredHeight ?? 0) - window.firstSectionInset - measured - gaps)
+                minimumHeight = max(0, (firstSectionViewportHeight ?? 0) - window.firstSectionInset - measured - gaps)
             }
             let count = window?.count ?? 1
             let startsSection = titles[id] != nil && titles[id] != inheritedTitle
