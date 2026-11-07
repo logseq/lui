@@ -18,7 +18,7 @@ vtool -set-build-version 7 17.0 "$(xcrun --sdk iphonesimulator --show-sdk-versio
   -replace -output "$build/navigation_simulator.o" "$build/navigation_macos.o"
 prefix=$(opam var prefix --safe)
 xcrun --sdk iphonesimulator clang -target "$triple" -isysroot "$sdk" -I "$prefix/lib/ocaml" \
-  -c platform/native/lui_ocaml_bridge.c -o "$build/bridge.o"
+  -c platform/bridge/lui_ocaml_bridge.c -o "$build/bridge.o"
 LUI_NAVIGATION_LINK_INPUTS="$build/navigation_simulator.o:$build/bridge.o" \
   swift build --disable-keychain --package-path examples/navigation/ios-swiftui \
   --scratch-path "$build/swift" --product NavigationDemo --triple "$triple" --sdk "$sdk"

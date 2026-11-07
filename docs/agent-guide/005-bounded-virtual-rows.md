@@ -107,7 +107,7 @@ Missing exports preserve older-library loading and the eager profile fallback.
 
 1. Write canonical validation, event round-trip and older-library compatibility tests.
 2. Update src/lui_protocol.ml and .mli, src/lui_wire_schema.ml, platform host aliases, src/lui_extension.ml and the applicable Gallery host match.
-3. Add typed window dispatch in src/lui_native_bridge.ml, platform/native/lui_caml_dispatch.h and platform/native/lui_ocaml_bridge.c.
+3. Add typed window dispatch in src/lui_native_bridge.ml, platform/bridge/lui_caml_dispatch.h and platform/bridge/lui_ocaml_bridge.c.
 4. Extend tooling/export_mygo_contract.ml, then regenerate schema/components.json and the maintained MyGo manifest through existing tooling.
 5. Verify schema freshness, event ordinals, integer precision, malformed input and atomic final validation.
 
@@ -171,7 +171,7 @@ Do not update the video, as the user canceled further recording.
 - [x] Write every native-host and startup-compatibility regression before implementation, including real behavioral RED results rather than missing-symbol or rejected-property errors.
 - [x] Add optional capability arguments in src/lui_app.ml and .mli and src/lui_runtime.ml; select bounded generation through the runtime capability in src/lui_dynamic.ml.
 - [x] Extend src/lui_native_bridge.ml and all examples/*/native/*_bridge.ml initializers to preserve semantic host profiles while negotiating bounded-row support.
-- [x] Export the optional version marker from platform/native/lui_ocaml_bridge.c and qualify both old/new host-library combinations.
+- [x] Export the optional version marker from platform/bridge/lui_ocaml_bridge.c and qualify both old/new host-library combinations.
 - [x] Implement atomic sparse metadata validation and internal window events in platform/apple/Sources/LUIAppleBackend and platform/android/lui/src/main, retaining eager literal children.
 - [x] Reuse SwiftUI native scrolling geometry and stable committed-row ownership; preserve the native editor object throughout focus, composition, scrolling and source reorder.
 - [x] Reuse Compose LazyColumn and public pin-container ownership; verify a focused row survives a reorder far outside the nearest-key cache range.

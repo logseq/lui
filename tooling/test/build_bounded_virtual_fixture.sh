@@ -23,7 +23,7 @@ opam exec -- ocamlfind ocamlopt -linkpkg -linkall -package ocaml-signal \
   -I _build/default/src/.lui.objs/byte -I _build/default/src/.lui.objs/native \
   _build/default/src/lui.cmxa "$output_dir/bounded_virtual_bridge.ml" \
   -output-complete-obj -o "$output_dir/bounded_virtual_complete.o"
-opam exec -- ocamlopt -ccopt -fPIC -c platform/native/lui_ocaml_bridge.c \
+opam exec -- ocamlopt -ccopt -fPIC -c platform/bridge/lui_ocaml_bridge.c \
   -o "$output_dir/lui_ocaml_bridge.o"
 case "$(uname -s)" in
   Darwin)

@@ -64,24 +64,12 @@ runs:
       run: |
         if [ "$RUNNER_OS" = "Linux" ]; then
           # The runner image's apt index goes stale between publishes;
-          # depext installs of SDL2 etc. 404 without a refresh.
-          sudo apt-get update -qq || true
+          # refresh it before opam installs system dependencies.
+          sudo apt-get update -qq
         fi
-        # macOS depext aborts on non-interactive brew, and on Windows tsdl
-        # cannot build until the SDL overlay and pkgconf seeding in the
-        # native-tests step has run — those steps complete the switch, so
-        # a top-up failure is tolerated off Linux only.
-        # --confirm-level=unsafe-yes: depext's 'run the system package
-        # manager?' prompt otherwise aborts on missing SDL packages.
-        if [ "$RUNNER_OS" = "Linux" ]; then
-          opam install . --deps-only --with-test -y --locked --confirm-level=unsafe-yes
-          # Second pass unlocked: dependencies added after the lock file was
-          # written are silently skipped by --locked resolution.
-          opam install . --deps-only --with-test -y --confirm-level=unsafe-yes
-        else
-          opam install . --deps-only --with-test -y --locked || true
-          opam install . --deps-only --with-test -y || true
-        fi
+        opam install . --deps-only --with-test -y --locked --confirm-level=unsafe-yes
+        # Top up dependencies introduced after the lock overlay was written.
+        opam install . --deps-only --with-test -y --confirm-level=unsafe-yes
     - name: Preserve the opam executable
       if: steps.environment.outputs.cache-hit != 'true'
       shell: bash

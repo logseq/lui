@@ -1,6 +1,6 @@
 /* JNI bridge between the Kotlin backend and the OCaml LUI runtime.
  *
- * Shares dispatch helpers with platform/native/lui_ocaml_bridge.c
+ * Shares dispatch helpers with platform/bridge/lui_ocaml_bridge.c
  * (lui_caml_dispatch.h). Named values use the "lui_kotlin_" prefix.
  *
  * Lock discipline: after nativeStart the host thread does NOT hold the
@@ -26,7 +26,7 @@
 #include <caml/startup.h>
 #include <caml/threads.h>
 
-#include "../../../../../native/lui_caml_dispatch.h"
+#include "../../../../../bridge/lui_caml_dispatch.h"
 
 static JavaVM *lui_jvm = NULL;
 static jmethodID lui_dispatch_patch = NULL;

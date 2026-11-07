@@ -21,7 +21,7 @@ case "$(uname -s)" in
       -output-complete-obj -o "$output_dir/todos_complete.o"
     ocaml_include=$(opam exec -- ocamlc -where)
     cc -fPIC -shared -o "$output_dir/liblui_todos.so" \
-      platform/native/lui_ocaml_bridge.c "$output_dir/todos_complete.o" \
+      platform/bridge/lui_ocaml_bridge.c "$output_dir/todos_complete.o" \
       -I"$ocaml_include" -lpthread -ldl -lm
     printf '%s\n' "$output_dir/liblui_todos.so"
     ;;

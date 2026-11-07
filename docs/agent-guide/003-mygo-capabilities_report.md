@@ -230,7 +230,7 @@ runtime binds more than the renderer emits, but still lacks payload-bearing
 events needed for full parity. Sources:
 [rendering](../../platform/mygo/render.go),
 [runtime dispatch](../../platform/mygo/runtime.go),
-[shared C bridge](../../platform/native/lui_ocaml_bridge.c), and
+[shared C bridge](../../platform/bridge/lui_ocaml_bridge.c), and
 [protocol](../../src/lui_protocol.ml).
 
 | Events | Work to verify or add |

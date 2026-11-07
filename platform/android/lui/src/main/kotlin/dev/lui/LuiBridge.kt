@@ -17,7 +17,7 @@ internal fun luiVirtualHostCode(host: Int, version: () -> Int): Int {
 
 /**
  * JNI bridge to the OCaml LUI runtime, porting the semantics of
- * `platform/flutter/native/lui_ocaml_bridge.c` for Android.
+ * `platform/bridge/lui_ocaml_bridge.c` for Android.
  *
  * Threading contract (mirrors the C header's lock discipline): after
  * [start], the OCaml runtime lock is NOT held between calls, so all
