@@ -2292,9 +2292,9 @@ let default_chrome ctx store id st kind r rs alpha =
           || List.mem variant [ "primary"; "destructive"; "secondary" ]
        then []
        else [ face zc rad bw1 (col_control_border ctx) ~dashed:false ])
-    (* Button-like kinds paint content through labeled_content_ops. *)
-    @ (if kind = "number-stepper" then control_icon_ops ctx store id r alpha
-       else [])
+    (* Button-like kinds paint content through labeled_content_ops;
+       control icons paint in paint_own after box_ops so a state
+       background (hover-background…) never covers the glyph. *)
   | "text-field" | "secure-field" | "input" | "search-field" | "textarea"
   | "select" | "combobox" ->
     let rad = rad (6. *. s) in
@@ -2305,7 +2305,6 @@ let default_chrome ctx store id st kind r rs alpha =
   | "menu-item" ->
     (if bg_styled || (not st.hovered && not st.focused) then []
      else [ face (col_accent ctx) (rad (6. *. s)) zb zc ~dashed:false ])
-    @ control_icon_ops ctx store id r alpha
   | "list-item" ->
     if bg_styled then []
     else if st.selected then
@@ -2875,7 +2874,12 @@ let paint_own ctx store id st kind r rs alpha =
   let flow = ctx.hooks.text_flow_ops ctx id r fg in
   let own =
     match flow with
-    | Some ops -> box_ops ctx store id rs r alpha @ scale_ops alpha ops
+    | Some ops ->
+        box_ops ctx store id rs r alpha
+        @ (if kind = "number-stepper" then
+             control_icon_ops ctx store id r alpha
+           else [])
+        @ scale_ops alpha ops
     | None -> (match kind with
     | "spacer" -> []
     | "divider" -> divider_ops ctx store id rs r alpha
@@ -2915,8 +2919,12 @@ let paint_own ctx store id st kind r rs alpha =
       @ text_ops ~fg ctx store id r alpha ~placeholder_ok:true
     | "menu-item" ->
       box_ops ctx store id rs r alpha
+      @ control_icon_ops ctx store id r alpha
       @ labeled_content_ops ctx store id r alpha ~fg ~placeholder_ok:false
       @ menu_selection_ops ctx store id r alpha fg
+    | "number-stepper" ->
+      box_ops ctx store id rs r alpha
+      @ control_icon_ops ctx store id r alpha
     | "button" | "toggle-button" | "toggle" | "menu-trigger"
     | "bottom-tab" | "list-item" | "swipe-action" | "file-picker" | "step"
     | "list-section-header" | "list-section-footer" | "tab" | "table-cell" ->

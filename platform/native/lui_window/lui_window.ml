@@ -565,6 +565,7 @@ module Ui = struct
     mutable drag : Lui_drag.state;
     mutable overlay : Lui_overlay.state;
     mutable menu_scope : int;
+    mutable menu_typeahead_deadline : float;
     mutable menu_reveal : int; (* Initial highlight waiting for layout geometry. *)
     mutable menu_picker : int;
     mutable pending_picker : (int * Input.key) option;
@@ -617,7 +618,7 @@ module Ui = struct
       scrollbar_deadlines = Hashtbl.create 8;
       drag = Lui_drag.initial;
       overlay = Lui_overlay.initial;
-      menu_scope = 0; menu_reveal = 0; menu_picker = 0; pending_picker = None;
+      menu_scope = 0; menu_typeahead_deadline = 0.; menu_reveal = 0; menu_picker = 0; pending_picker = None;
       menu_space_commit = false; keyboard_input = true; overlay_edit = None;
       scrolled = Hashtbl.create 8;
       scroll_metrics = Hashtbl.create 8;
@@ -692,6 +693,10 @@ module Ui = struct
     if not (Float.is_finite now_ms) || now_ms < t.scroll_clock_ms then
       invalid_arg "Scrollbar clock must be monotonic";
     t.scroll_clock_ms <- now_ms;
+    if t.menu_typeahead_deadline > 0. && now_ms >= t.menu_typeahead_deadline then begin
+      t.menu_typeahead_deadline <- 0.;
+      if t.menu_scope <> 0 then t.gesture <- Lui_gesture.reset_typeahead t.gesture
+    end;
     if Hashtbl.length t.scrollbar_deadlines > 0 then
     Hashtbl.filter_map_inplace (fun id deadline ->
       if deadline > now_ms then Some deadline
@@ -976,14 +981,19 @@ module Ui = struct
             && Lui_gesture.menu_has_items store id then id else 0
        in
        if scope <> t.menu_scope then begin
-         let previous_picker = t.menu_picker in
+         let previous_scope = t.menu_scope and previous_picker = t.menu_picker in
          t.menu_scope <- scope;
+         t.menu_typeahead_deadline <- 0.;
          t.menu_picker <- Option.value ~default:0 (Lui_query.picker_for_menu store scope);
          t.gesture <-
            if scope = 0 then Lui_gesture.initial
            else if not t.keyboard_input && Lui_overlay.ordinary_row_menu store scope
            then Lui_gesture.menu_state Lui_gesture.initial scope
            else Lui_gesture.menu_open store ~menu:scope;
+         if scope <> 0 && previous_scope <> 0
+            && Lui_query.is_desc store previous_scope scope then
+           t.gesture <- Lui_gesture.menu_hover store t.gesture ~menu:scope
+             [Lui_focus.focused t.focus];
          (match t.pending_picker with
           | Some (picker, Input.Arrow_up) when picker = t.menu_picker
               && not (List.exists (fun id -> bool_prop store id "selected")
@@ -1388,6 +1398,7 @@ module Ui = struct
      | Input.Text_input s when Option.is_some (active_menu t store)
          && kind_name store (focused t) <> "combobox" ->
        on_component_input ();
+       t.menu_typeahead_deadline <- t.scroll_clock_ms +. 500.;
        let g,m = Lui_gesture.menu_text store t.gesture
          ~menu:(Option.get (active_menu t store)) s in
        t.gesture <- g;
@@ -1425,6 +1436,20 @@ module Ui = struct
          t.session <- s';
          run m
        end
+     | Input.Key_down ((Input.Arrow_left | Input.Arrow_right) as key, mods, _)
+       when not (mods.Input.ctrl || mods.Input.meta || mods.Input.alt)
+         && t.menu_picker = 0 && Option.is_some (active_menu t store) ->
+       let overlay =
+         if key = Input.Arrow_right then
+           Lui_overlay.open_owned_menu store t.overlay t.gesture.hl
+         else if t.menu_scope = Lui_overlay.open_menu t.overlay then
+           Lui_overlay.close_submenu store t.overlay
+         else None
+       in
+       Option.iter (fun overlay ->
+         on_component_input ();
+         t.overlay <- overlay;
+         t.dirty <- true) overlay
      | Input.Key_down (key, mods, _repeat)
        when not (mods.Input.ctrl || mods.Input.meta || mods.Input.alt)
          && Option.is_some (active_menu t store)
@@ -1437,13 +1462,24 @@ module Ui = struct
              | _ -> false) ->
        on_component_input ();
        t.menu_space_commit <- key = Input.Space;
-       let g,m = Lui_gesture.menu_key store t.gesture
-         ~menu:(Option.get (active_menu t store))
-         ~rect_of:(visible_rect t store) ~scale:t.scale
-         ~key:(conv_key key) ~mods:(conv_mods mods) in
-       t.gesture <- g;
-       run m;
-       emit_all (sync_menu_focus t store ~kbd:true)
+       let submenu =
+         match key with
+         | Input.Return | Input.Space ->
+             Lui_overlay.open_owned_menu store t.overlay t.gesture.hl
+         | _ -> None
+       in
+       (match submenu with
+        | Some overlay ->
+            t.overlay <- overlay;
+            t.dirty <- true
+        | None ->
+            let g,m = Lui_gesture.menu_key store t.gesture
+              ~menu:(Option.get (active_menu t store))
+              ~rect_of:(visible_rect t store) ~scale:t.scale
+              ~key:(conv_key key) ~mods:(conv_mods mods) in
+            t.gesture <- g;
+            run m;
+            emit_all (sync_menu_focus t store ~kbd:true))
      | Input.Key_down
          ((Input.Arrow_left | Input.Arrow_right | Input.Arrow_up | Input.Arrow_down
           | Input.Home | Input.End | Input.Page_up | Input.Page_down
@@ -1571,6 +1607,17 @@ module Ui = struct
             on_component_input ();
             t.pending_picker <- Some (focused t,key);
             run (Lui_query.primary_press store (focused t))
+          | (Input.Return | Input.Space)
+              when not (prim || mods.Input.alt)
+                && kind_name store (focused t) = "menu-trigger"
+                && Lui_query.chain_enabled store (focused t)
+                && not (Lui_store.inert_in_chain store (focused t)) ->
+              Option.iter (fun overlay ->
+                on_component_input ();
+                t.menu_space_commit <- key = Input.Space;
+                t.overlay <- overlay;
+                t.dirty <- true)
+                (Lui_overlay.open_owned_menu store t.overlay (focused t))
           | _ ->
             let focused_list = kind_name store (focused t) = "list-item"
               && t.gesture.list_scope <> 0
