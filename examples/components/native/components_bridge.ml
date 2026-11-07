@@ -20,7 +20,7 @@ let initialize platform_code host_code =
     raise exn
 
 (* platform/bridge/lui_ocaml_bridge.c looks up "lui_ocaml_*";
-   platform/android/lui's JNI bridge looks up "lui_kotlin_*". *)
+   Legacy callback names remain part of the unchanged shared C ABI. *)
 let () =
   Printexc.record_backtrace true;
   Callback.register "lui_ocaml_init" initialize;

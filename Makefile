@@ -1,4 +1,4 @@
-.PHONY: test test-schema generate-component-schema generate-json-view test-ocaml test-apple test-mygo test-mygo-integration build-web-css
+.PHONY: test test-schema generate-component-schema generate-json-view test-ocaml test-mygo test-mygo-integration build-web-css
 
 test: test-schema test-ocaml
 
@@ -16,10 +16,6 @@ generate-json-view:
 test-ocaml:
 	# Run frame-budget tests without competing Dune jobs.
 	opam exec -- dune build --action-stderr-on-success=must-be-empty @runtest -j 1
-
-test-apple:
-	# AppKit focus and field editors are process-global; .serialized only isolates one suite.
-	swift test --no-parallel
 
 platform/web/node_modules/.package-lock.json: platform/web/package.json platform/web/package-lock.json
 	npm --prefix platform/web ci

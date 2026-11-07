@@ -1,4 +1,0 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <instrumentation android:name="dev.lui.drive.DriveInstrumentation"
-        android:targetPackage="dev.lui.drive.sample" android:label="Explicit LUI Drive test host" />
-</manifest>

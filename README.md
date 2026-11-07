@@ -11,20 +11,15 @@ patches to real UI objects:
 - **Desktop (default)**: the MyGo backend (`platform/mygo`) uses native
   desktop controls and the shared OCaml C ABI, with runnable Todos and
   Components hosts and headless interaction tests.
-- **Apple**: one SwiftUI backend shared by iOS and macOS (`platform/apple`,
-  `LUIAppleBackend` Swift package).
 - **Web**: a Melange companion library (`platform/web/melange`) plus the
   shared stylesheet and icon set (`platform/web/src`).
-- **Android**: a Kotlin backend (`platform/android`, package `dev.lui`)
-  applying patches to native Android views.
 
-Apple uses one JSON object per atomic `patch_batch` at its
-native host boundary; `Lui_wire` encodes the protocol directly. The Web
-backend runs in the same process as the OCaml application and applies typed
-patches to DOM nodes — no JSON bridge, no JavaScript UI framework. MyGo,
-Apple and Android hosts share the `lui_ocaml_*` C ABI in
-`platform/bridge/lui_ocaml_bridge.c`; each host applies wire batches
-incrementally. OCaml owns the application, not a second desktop renderer.
+The Web backend runs in the same process as the OCaml application and applies
+typed patches to DOM nodes — no JSON bridge, no JavaScript UI framework.
+MyGo uses the `lui_ocaml_*` C ABI in `platform/bridge/lui_ocaml_bridge.c`
+and applies wire batches incrementally. OCaml owns the application, not a
+second desktop renderer. Apple/iOS and Android backends have been removed;
+only MyGo desktop and Web/Melange are supported.
 The former SDL-based OCaml renderer has been removed; see the
 [breaking-change migration](docs/api-migrations.md#unreleased-mygo-desktop-and-portable-host-services).
 
@@ -34,9 +29,7 @@ The former SDL-based OCaml renderer has been removed; see the
 src/                  the lui library (protocol, runtime, elements, app)
 examples/todos/       headless todo demo (pure OCaml + ocaml-signal)
 examples/gallery/     headless component-gallery demo
-platform/apple/       SwiftUI backend (SwiftPM package + tests)
 platform/web/         Melange DOM library, stylesheet, icons
-platform/android/     Kotlin Android backend (Gradle, dev.lui package)
 platform/mygo/        MyGo native desktop backend (Go module + host + tests)
 platform/bridge/      shared lui_ocaml_* C ABI and GC stress runner
 platform/services/    portable lui.plugin and lui.plugin_fetch libraries
@@ -130,35 +123,13 @@ opam install . --deps-only --with-test --locked
 dune build @all  # all OCaml application, bridge and portable service targets
 make test        # schema contract tests + dune @runtest
 make test-ocaml  # alcotest suite only
-make test-apple  # SwiftUI backend tests (macOS)
 make test-mygo   # MyGo backend tests with race detection
 make test-mygo-integration # actual OCaml Todos through MyGo
 ```
 
-Per-platform backend builds and test recipes are documented under each
-`platform/` directory (the Gradle wrapper under `platform/android` for
-Android).
-
-### Native Drive testing
-
-[Drive](https://github.com/logseq/drive) keeps fast semantic/headless tests
-separate from native input. Android has an optional, explicitly launched
-[instrumentation host](platform/android/drive/README.md) for API 30+ debug
-variants. It injects OS MotionEvent/KeyEvent input and uses a deliberately
-selected test IME for Unicode/empty text replacement; it never emits LUI
-semantic events as a fallback.
-
-With the host running and an explicit `adb forward`, use a Drive version
-that supports `drive --tcp 127.0.0.1:49377 --input native scenario.drive`.
-The host, IME, permission and runner must remain outside release artifacts.
-Its compile/protocol/lint checks do not establish real-device input behavior;
-see the host guide for setup, cleanup, geometry and settling limits.
-
-For iOS, a DEBUG-only, opt-in [read-only snapshot probe](platform/apple/DriveProbe.md)
-connects to Drive's separate XCTest UI-testing runner. The probe does not inject
-input. Apple compile checks cover the backend/probe and standalone runner;
-Simulator/device input remains unverified. Build/install the integrating DEBUG
-app and exercise its UI-testing target before relying on native interaction.
+Backend build and test recipes are documented under `platform/mygo` and
+`platform/web`. Apple/Android packages, native input probes and mobile test
+runners are no longer shipped.
 
 ## Component schema
 
@@ -171,5 +142,6 @@ make generate-component-schema
 ```
 
 It emits `src/lui_protocol.mli`, `src/lui_wire_schema.ml`,
-`src/lui_wire_schema.mli`, the Swift enum table, and the Dart decoder.
+`src/lui_wire_schema.mli` and `ppx/lui_nesting_schema.ml`. The Make target also
+exports the MyGo contract; Swift/Kotlin tables are no longer generated.
 CI runs `--check`, so generated files must be committed.
