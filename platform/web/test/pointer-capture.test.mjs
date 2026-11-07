@@ -68,6 +68,18 @@ test('Row/Box capture survives DOM apply, opt-out, removal and subscription clea
     element.send('pointerup')
     expect(['PointerDown', 'PointerMove', 'PointerUp'])
 
+    for (const button of [1, 2]) {
+      element.send('pointerdown', {button})
+      element.send('pointerup', {button})
+      expect(['PointerDown', 'PointerUp'])
+
+      element.send('pointerdown')
+      element.send('pointerup', {button})
+      element.send('pointermove')
+      element.send('pointerup')
+      expect(['PointerDown', 'PointerUp', 'PointerMove', 'PointerUp'])
+    }
+
     element.send('pointerdown')
     set('pointer-capture', false)
     element.send('pointermove')

@@ -696,7 +696,7 @@ let rec sync_pointer_events renderer node kind dom_node =
       in
       let pointer_up =
         (fun event ->
-           if not captured then
+           if not captured || (Util.pointer_detail_of event).button <> 0 then
              emit_detail (fun event -> PointerUp (node, Util.pointer_detail_of event)) event
            else if !active = Some (Util.pointer_id event) then begin
              let detail = Util.pointer_detail_of event in
