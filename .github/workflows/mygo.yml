@@ -52,6 +52,9 @@ jobs:
       - name: Go vet
         working-directory: platform/mygo
         run: go vet ./...
+      - name: Build desktop MyGo hosts
+        working-directory: platform/mygo
+        run: go build ./...
 
   ocaml-integration:
     strategy:

@@ -215,7 +215,7 @@ If an upstream fix is necessary, record its issue and exact revision, and keep d
 
 ## Phase 3: Complete protocol, identity and frame-safe event delivery
 
-Files: `platform/mygo/backend.go`, `platform/mygo/wire.go`, `platform/mygo/render.go`, `platform/mygo/runtime.go`, `platform/mygo/schema_generated.go`, `tooling/generate_mygo_schema.py`, `platform/native/lui_ocaml_bridge.c`, `platform/native/lui_caml_dispatch.h` and the corresponding red tests.
+Files: `platform/mygo/backend.go`, `platform/mygo/wire.go`, `platform/mygo/render.go`, `platform/mygo/runtime.go`, `platform/mygo/schema_generated.go`, `tooling/generate_mygo_schema.py`, `platform/bridge/lui_ocaml_bridge.c`, `platform/bridge/lui_caml_dispatch.h` and the corresponding red tests.
 
 1. Implement authoritative per-kind property/value and child validation, including legal `ContextMenu` children beneath otherwise leaf controls.
 2. Preserve atomic rollback for invalid batches without committing state creation, resource disposal or queued events from rejected operations.

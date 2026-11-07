@@ -1,5 +1,80 @@
 # LUI API migration guide
 
+## Unreleased: MyGo desktop and portable host services
+
+MyGo (`platform/mygo`) is now the default desktop renderer. The former
+`platform/native` OCaml/SDL renderer, its executables, packaging tools,
+renderer-specific plugins and native test jobs are removed, not deprecated.
+There are no compatibility aliases or fallback renderer. Web/Melange and
+the Apple/Android hosts are unchanged by this desktop migration.
+
+The shared `lui_ocaml_*` C ABI moved byte-for-byte to
+`platform/bridge/lui_ocaml_bridge.c` and
+`platform/bridge/lui_caml_dispatch.h`. Symbols, event dispatch, ownership,
+capability negotiation and wire batches are unchanged. Update source/header
+dependencies and include paths in downstream build rules; keep application
+bridge callbacks and `examples/*/native` libraries. These directories contain
+shared OCaml applications, not the removed renderer. The GC runner is now
+`opam exec -- sh platform/bridge/stress/run.sh`.
+
+Exactly two former native libraries remain, under `platform/services`:
+
+| Public library | Module | Dependencies and runtime |
+| --- | --- | --- |
+| `lui.plugin` | `Lui_plugin` | OCaml standard library (`Mutex`); unchanged registry API |
+| `lui.plugin_fetch` | `Lui_plugin_fetch` | `yojson` and `lui_plugin`; runtime libcurl on macOS/Linux and libdl on Linux |
+
+Their public names and modules are unchanged; no SDL or renderer dependency
+is required. Fetch keeps its existing unsupported-platform error outside
+macOS/Linux; this move does not add Windows HTTP transport.
+
+Every other public library formerly supplied by `platform/native` is removed:
+
+- Renderer/layout/resources: `lui.backend`, `lui.blit`, `lui.d3d11`,
+  `lui.flex`, `lui.gl`, `lui.gpu`, `lui.host`, `lui.image`, `lui.layout`,
+  `lui.media`, `lui.metal`, `lui.paint`, `lui.retained`, `lui.raster`,
+  `lui.resource`, `lui.resource_loaders`, `lui.scene`, `lui.spatial`,
+  `lui.store`, `lui.svg`, `lui.text`, `lui.text_dwrite`, `lui.text_pango`,
+  `lui.theme`, `lui.vulkan`.
+- Input/platform services: `lui.a11y`, `lui.ax`, `lui.ax_linux`,
+  `lui.ax_windows`, `lui.gamepad`, `lui.ime`, `lui.input`, `lui.resilience`,
+  `lui.shell`, `lui.shell_linux`, `lui.shell_windows`, `lui.updater`,
+  `lui.webapp`, `lui.webview`, `lui.window`, `lui.window_linux`,
+  `lui.window_windows`.
+- Tools/plugins: `lui.cli`, `lui.e2e`, `lui.e2e_json`, `lui.ed25519`,
+  `lui.pkg`, `lui.pkg_linux`, `lui.pkg_webapp`, `lui.pkg_windows`,
+  `lui.plugin_gamepad`, `lui.plugin_glass`, `lui.plugin_sqlite`,
+  `lui.plugin_terminal`, `lui.plugin_updater_ui`, `lui.plugin_websocket`,
+  `lui.plugin_webview`, and the `lui_pkg` executable.
+
+The shared `lui` runtime/element API remains. Keep reducers, signals and views
+in OCaml and pass their existing shared application library to MyGo. For
+example, replace an SDL host linked to `lui.host`/`lui.window` and a build
+dependency on `platform/native/lui_ocaml_bridge.c` with:
+
+```sh
+# The builder links platform/bridge/lui_ocaml_bridge.c.
+library=$(./tooling/build_mygo_todos.sh)
+go -C platform/mygo run ./cmd/lui-mygo -library "$library"
+
+# Components uses the same shared ABI and existing OCaml Gallery.
+components=$(./tooling/build_mygo_components.sh)
+go -C platform/mygo run ./cmd/lui-mygo -library "$components" -title Components
+```
+
+Downstream apps replace renderer-specific Dune libraries with `lui` and only
+the portable services they actually use, then embed a MyGo host as described
+in [the MyGo guide](../platform/mygo/README.md#embed-a-backend). Replace any
+custom `../../../platform/native/lui_ocaml_bridge.c` and adjacent header
+dependencies with `../../../platform/bridge/...` at the same relative depth.
+The old `examples/components/webview-shell` depended on removed `lui.webapp`
+and `lui.webview` and is deleted; use the native MyGo Components host above
+or the existing Web build in a browser, not an SDL WebView wrapper.
+
+Historical entries below describing the removed renderer record previous
+releases; they do not promise those APIs remain available. Build and schema
+checks do not establish visual parity or native interaction acceptance.
+
 ## Unreleased: Apple minimum scroll viewport reference
 
 Apple hosts may set the optional `EnvironmentValues.luiMinimumScrollViewport`

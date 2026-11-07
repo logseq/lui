@@ -19,7 +19,7 @@ let initialize platform_code host_code =
       (Printexc.get_backtrace ());
     raise exn
 
-(* platform/native/lui_ocaml_bridge.c looks up "lui_ocaml_*";
+(* platform/bridge/lui_ocaml_bridge.c looks up "lui_ocaml_*";
    platform/android/lui's JNI bridge looks up "lui_kotlin_*". *)
 let () =
   Printexc.record_backtrace true;

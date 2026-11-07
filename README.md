@@ -8,23 +8,25 @@ LUI is a retained, cross-platform UI runtime written in OCaml and powered by
 state, diffing, and patch generation stay in OCaml; each backend applies those
 patches to real UI objects:
 
+- **Desktop (default)**: the MyGo backend (`platform/mygo`) uses native
+  desktop controls and the shared OCaml C ABI, with runnable Todos and
+  Components hosts and headless interaction tests.
 - **Apple**: one SwiftUI backend shared by iOS and macOS (`platform/apple`,
   `LUIAppleBackend` Swift package).
 - **Web**: a Melange companion library (`platform/web/melange`) plus the
   shared stylesheet and icon set (`platform/web/src`).
-- **MyGo**: a Go native desktop backend (`platform/mygo`) using the shared
-  OCaml C ABI, with a runnable Todos host and headless interaction tests.
 - **Android**: a Kotlin backend (`platform/android`, package `dev.lui`)
   applying patches to native Android views.
 
 Apple uses one JSON object per atomic `patch_batch` at its
 native host boundary; `Lui_wire` encodes the protocol directly. The Web
 backend runs in the same process as the OCaml application and applies typed
-patches to DOM nodes — no JSON bridge, no JavaScript UI framework. The
-native OCaml host (`platform/native`) renders the same retained tree on the
-desktop through the `lui_ocaml_*` C ABI (`platform/native/lui_ocaml_bridge.c`);
-each native host keeps a retained node store that applies wire batches
-incrementally.
+patches to DOM nodes — no JSON bridge, no JavaScript UI framework. MyGo,
+Apple and Android hosts share the `lui_ocaml_*` C ABI in
+`platform/bridge/lui_ocaml_bridge.c`; each host applies wire batches
+incrementally. OCaml owns the application, not a second desktop renderer.
+The former SDL-based OCaml renderer has been removed; see the
+[breaking-change migration](docs/api-migrations.md#unreleased-mygo-desktop-and-portable-host-services).
 
 ## Layout
 
@@ -36,7 +38,8 @@ platform/apple/       SwiftUI backend (SwiftPM package + tests)
 platform/web/         Melange DOM library, stylesheet, icons
 platform/android/     Kotlin Android backend (Gradle, dev.lui package)
 platform/mygo/        MyGo native desktop backend (Go module + host + tests)
-platform/native/      shared lui_ocaml_* C ABI used by native hosts
+platform/bridge/      shared lui_ocaml_* C ABI and GC stress runner
+platform/services/    portable lui.plugin and lui.plugin_fetch libraries
 schema/               canonical component schema (components.json)
 tooling/              schema code generator and tests
 test/                 alcotest suite
@@ -56,12 +59,12 @@ open Lui_elements
 let view context model_source send : t =
   column ~gap:14 ~padding:24
     [ text_field
-        ~text_signal:(map (fun m -> m.draft) model_source)
+        ~text:(reactive (fun m -> m.draft) model_source)
         ~label:"New todo"
         ~on_input:(on_input send Model.ChangeDraft)
         []
     ; button ~text:"Add" ~on_press:(press send Model.AddTodo) []
-    ; text ~value_signal:(map summary_label model_source) []
+    ; text ~value:(reactive summary_label model_source) []
     ]
 ```
 
@@ -70,23 +73,18 @@ A view returns an element `t`; `Lui_app` mounts it against the root context.
 `~on_press`/`~on_submit` props take, and `on_input` unwraps `TextChanged`
 events the same way.
 
-Signals (`ocaml-signal`) drive dynamic props: every value prop `~p` has a
-`~p_signal` twin taking an `'a Signal.signal`. `Lui_elements` re-exports
-`map`, `sample`, `get`, and `>|=` (`src >|= f` for `map f src`) so view code
-stays short.
-
-Reactive structure mirrors lg's `reactive`/`:if`/`:keyed`. When a value
-changes, prefer `~p_signal` — inside `map`/`sample` ordinary `if`/`match`
-all work — since it updates the prop in place: `dyn f src` mounts a
-re-rendering subtree for branches that change the element *structure*
-(different kinds per branch); `if_ ~test el` shows/hides a single branch
-without an else; `keyed ~source ~key ~compare ~mount:(row_fn send)` keeps an
-identity-keyed child collection in sync (insert/remove/move patches).
+Signals (`ocaml-signal`) drive props through `reactive`; enable
+`(preprocess (pps lui_ppx))` in the view's Dune stanza. A prop-position
+`reactive` updates the existing node in place. Use children-position
+`reactive` only when a signal changes the subtree's structure, `if_ ~test`
+for conditional mounting, and `keyed ~source ~key ~cmp ~mount` for
+identity-keyed child collections. Static branching remains ordinary OCaml.
+Do not call the internal `dyn` expansion target directly.
 
 Theming is scoped per subtree: `themed ~tokens ~mode el` wraps any element
 with a JSON token table (`["primary", "#7c3aed"]` overrides the semantic
 `primary` slot) and an optional `` `system`/`` `light`/`` `dark`` mode —
-`~tokens_signal`/`~mode_signal` hot-switch either in place. Backends
+`~tokens:(reactive tokens_s)`/`~mode:(reactive mode_s)` hot-switch either in place. Backends
 resolve semantic color names through the merged token table first, then the
 platform default theme, so an app gets platform-native styling unless it
 opts into overrides (`Lui_app.set_theme`/`set_theme_mode` patch the mounted
@@ -94,6 +92,20 @@ root directly). See the Theming section of
 `docs/agent-guide/001-production-components.md`.
 
 ## Examples
+
+Run the default desktop backend on macOS or Linux (Go 1.27.3+):
+
+```sh
+library=$(./tooling/build_mygo_todos.sh)
+go -C platform/mygo run ./cmd/lui-mygo -library "$library"
+
+components=$(./tooling/build_mygo_components.sh)
+go -C platform/mygo run ./cmd/lui-mygo -library "$components" -title Components
+```
+
+The `examples/*/native` directories build shared OCaml application libraries
+for hosts; they are not the removed renderer. See the
+[MyGo guide](platform/mygo/README.md) for embedding and system requirements.
 
 Both demos mount a real `Lui_app` against a printing backend, so running them
 shows the generated patch batches:
@@ -115,6 +127,7 @@ fields, pickers, lists, overlays, navigation) mirroring the original gallery.
 # --locked makes opam resolve it without a manual `opam pin`
 opam install . --deps-only --with-test --locked
 
+dune build @all  # all OCaml application, bridge and portable service targets
 make test        # schema contract tests + dune @runtest
 make test-ocaml  # alcotest suite only
 make test-apple  # SwiftUI backend tests (macOS)
