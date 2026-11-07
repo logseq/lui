@@ -115,12 +115,9 @@ func (b *Backend) bindEvents(c *ui.Context, n Node, s *controlState, e ui.Elemen
 			}
 			switch input.Kind {
 			case ui.InputPointerDown:
-				if captured && input.Button != 0 {
-					return true
-				}
-				s.captureActive = captured
-				s.lastPointer = event
 				if input.Button == 0 {
+					s.captureActive = captured
+					s.lastPointer = event
 					s.longPressFired = false
 					s.pressedAt = input.Time
 					c.Invalidate()
@@ -129,14 +126,17 @@ func (b *Backend) bindEvents(c *ui.Context, n Node, s *controlState, e ui.Elemen
 					event.Kind = "pointer-down"
 					emit(event)
 				}
-				return captured && input.Button == 0
+				// MyGo delivers a release only when its down was claimed.
+				return captured
 			case ui.InputPointerUp:
-				if captured && !s.captureActive {
-					return false
+				if input.Button == 0 {
+					if captured && !s.captureActive {
+						return false
+					}
+					s.captureActive = false
+					s.lastPointer = event
+					s.pressedAt = time.Time{}
 				}
-				s.captureActive = false
-				s.lastPointer = event
-				s.pressedAt = time.Time{}
 				if pointer {
 					event.Kind = "pointer-up"
 					emit(event)

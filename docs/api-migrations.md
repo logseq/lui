@@ -1546,3 +1546,16 @@ Applications should continue to use `virtual_list ~item_extent:320. rows` and
 respond to `on_visible_range` rather than expecting the DOM range to change
 synchronously with a browser resize notification. No API or schema migration is
 required; other hosts are unchanged.
+
+## Primary pointer capture retains non-primary events
+
+Web and MyGo Row/Box `pointer-capture` no longer filters out non-primary
+`PointerDown`/`PointerUp`. The LUI handler does not start or end its primary drag
+state for those buttons. MyGo keeps translating its secondary button to protocol
+button `2` and its middle button to protocol button `1`. This does not add
+simultaneous-button gesture support to the underlying native SDK.
+
+Applications can keep `~pointer_capture:true` for primary dragging and handle
+`PointerUp (_, detail)` with `detail.button = 1` for middle-click actions. Do not
+assume that a captured control filters out non-primary releases. No property,
+event payload or primary drag/cancellation API changes are required.
