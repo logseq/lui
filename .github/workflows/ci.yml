@@ -230,6 +230,8 @@ jobs:
           :drive:testDebugUnitTest
           :drive-sample:assembleDebug :drive-sample:assembleRelease
           :drive:lintDebug :drive-sample:lintDebug :lui:lintDebug
+      - name: Compile native Android Gallery host
+        run: platform/android/gradlew --no-daemon -p examples/components/android :app:compileDebugKotlin
 
   c-bridge-stress:
     runs-on: ubuntu-latest
