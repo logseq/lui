@@ -1,5 +1,12 @@
 # LUI API migration guide
 
+## Unreleased: Native dialog transitions keep a fixed zoom origin
+
+Retained enter/exit motion no longer re-reads a surface's resolved rect
+each frame while a track is running. The zoom anchor stays where the
+transition started, so dialogs whose layout is still settling no longer
+drift or shake during the fade/zoom. No view or wire changes are required.
+
 ## Unreleased: Android Drive sample safe drawing insets
 
 The optional `:drive-sample` Activity now explicitly enables edge-to-edge and
