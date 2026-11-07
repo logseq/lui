@@ -38,9 +38,20 @@ test('100k logical rows retain only the requested window and preserve full scrol
  const requests=await page.evaluate(()=>window.probe.requests.length);await frames();await frames()
  assert.equal(await page.evaluate(()=>window.probe.requests.length),requests,'settled windows do not feed back indefinitely')
  await root().hover()
- // Firefox bounds a wheel event to roughly one viewport even for a large delta.
- for(let step=0;step<3;step++){await page.mouse.wheel(0,640);await frames()}
- await page.waitForFunction(()=>window.probe.state().last.last===100000)
+ // Firefox clamps a wheel tick to about one viewport. WebKit applies a much
+ // smaller tick and does not reliably coast, so a fixed three-tick burst can
+ // leave the logical tail outside the requested window forever. Keep ticking
+ // until the scroller is actually at the end, then require that window.
+ let atEnd=false
+ for(let step=0;step<40&&!atEnd;step++){
+  await page.mouse.wheel(0,640);await frames()
+  atEnd=await root().evaluate(node=>node.scrollTop>=node.scrollHeight-node.clientHeight-1)
+ }
+ try{await page.waitForFunction(()=>window.probe.state().last.last===100000)}
+ catch(error){
+  const state=await page.evaluate(()=>{const node=document.querySelector('.lui-virtual-list');return{top:node.scrollTop,max:node.scrollHeight-node.clientHeight,last:window.probe.state().last}})
+  assert.fail(`${error.message} ${JSON.stringify(state)}`)
+ }
  await bounded()
 })
 
