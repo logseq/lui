@@ -1,3 +1,7 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
+
 /* Calls lui_ocaml_press_detail while the runtime lock is released.
    The export itself re-acquires the lock, so this primitive must be in a
    blocking section for the whole loop. */

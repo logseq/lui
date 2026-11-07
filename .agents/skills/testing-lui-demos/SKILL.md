@@ -1,6 +1,6 @@
 ---
 name: testing-lui-demos
-description: How to run and test supported LUI Web demos — standalone pages in platform/web/demo and the Melange component gallery — including browser keyboard and focus quirks.
+description: How to run and test LUI demo apps — the standalone web demos in platform/web/demo and the native macOS demo apps under examples/ — including macOS keyboard-shortcut and accessibility quirks.
 ---
 
 # Testing LUI demos
@@ -80,3 +80,108 @@ Notes:
   `update_splits_under` during `Lui_web.mount`) leaves a section
   half-mounted: content swaps but `data-lui-navigation` stays "list" and
   `data-selected` stays "false".
+
+## Native macOS demo app (examples/split)
+
+Build/run: `bash examples/split/macos-appkit/build-app.sh`, then the bundle is
+at `examples/split/macos-appkit/.build/debug/LUISplitDemo.app`. Quit/relaunch
+for a clean state: `osascript -e 'quit app "LUISplitDemo"'` then `open -a <app>`.
+The process/app name is `LUISplitDemo` but the accessibility name is
+`LUI Split` — query it with `computer query target=macos app="LUI Split"`.
+
+Gotchas:
+
+- Tab chips merge their children into one AX element
+  (`accessibilityElement(children: .combine)`), so the per-tab × button is NOT
+  in the accessibility tree — click it by coordinates or press it via the
+  chip's combined element.
+- A blue ring around a pane marks the model's `focused` pane.
+- onKeyPress letter equivalents (e.g. `KeyEquivalent("d")`) don't match
+  Option-modified keys on macOS (∂ again) — ⌘\ works, ⌘⌥D may not.
+- Arrow key events carry an implicit `.function` modifier; handlers that check
+  `press.modifiers == [.command, .option]` (strict equality) never fire for
+  arrows — `.contains` is required.
+- Drag drops land on three distinct targets with different code paths: tab
+  chips (insert-at-index), pane edges (split-drop, outer 25% clamped
+  [48,160]pt — the strip row itself counts as the *top edge* zone, so
+  "drop onto the strip" can split instead of move), and pane body center
+  (append move). Verify each path separately — a pass on one does not
+  prove the others.
+- Beware large-int sentinel values in event payloads: the JSON bridge's
+  OCaml parser only accepts ints < 2^62 (`lui_json.ml` guard), so a
+  `.int(Int.max)` "append" sentinel decodes as a Float and the whole event
+  can silently fail to decode. If a drop emits but nothing happens, check
+  the payload magnitudes.
+- Model focus (border ring) and real SwiftUI key focus (`hasKeyFocus`) can
+  diverge — `navigate` moves the border but keys may still hit the
+  previously-clicked pane. After navigating, verify a subsequent shortcut
+  acts on the navigated-to pane, not the previously focused one.
+- To verify split/insert animations in a recording: record at 60fps (the
+  spring is ~250ms), then extract frames with ffmpeg around the moment —
+  `recording_stop` writes a `*-annotations.json` next to the video whose
+  `edited_time_s` values map annotation/action timestamps into the
+  exported video's timeline.
+- Window positioning via System Events: batching
+  `set {size, position} of window 1 to {...}` fails with -10003; set
+  `position` and `size` in two separate commands.
+- Synthesized drags need real gesture timing: `left_click_drag` can commit
+  edge drops, but chip/strip targets are more reliable with an explicit
+  `left_mouse_down` → several `mouse_move` steps → pause (`wait` ~0.7s,
+  pane highlight/ghost visible) → `left_mouse_up` sequence.
+
+### Exercising new/ordinary element kinds end-to-end
+
+The split demo is the fastest vehicle even for non-split elements: scratch-edit
+`examples/split/model.ml` + `view.ml` (uncommitted) so `view` returns a plain
+`column` of the elements under test, add model fields/actions for any state you
+need to observe (e.g. a press counter rendered via `dyn`/`text` so event
+delivery is proven by an OCaml-rendered value, not just pixels), then rerun
+`build-app.sh` — it rebuilds `liblui_split.dylib` and the bundle. Revert with
+`git checkout` afterwards. `if_ ~test:(model_source >|= ...)` is the way to
+mount/unmount presence-driven kinds (dialog/sheet/file-preview).
+
+QuickLook panels (`file-preview`, `.quickLookPreview`) on macOS: the panel's
+close affordance is small/hover-only; **Escape** reliably closes it and drives
+the Dismiss binding. Clicking the panel title bar does nothing.
+
+### Build gotchas (macos-appkit demos)
+
+- `examples/<demo>/macos-appkit/build-app.sh` runs `opam exec -- dune build` on
+  the AMBIENT opam switch. If the ambient switch lacks LUI's deps (ocaml-signal
+  etc.), prefix the whole script with the right switch:
+      OPAMSWITCH=5.5.0 sh examples/todos/macos-appkit/build-app.sh
+  (`opam exec` honors the OPAMSWITCH env var, so it propagates into the script.)
+- PRE-EXISTING build failure: the demos' `main.swift` `switch event` over
+  `backend.onEvent` is not exhaustive — newer `LUIEvent` cases
+  (`.appear`, `.scrollCompleted`, `.visibleRange`, `.extension`,
+  `.doublePress`) were added after the demos were written, so `swift build`
+  fails with "switch must be exhaustive" on todos/markdown/split even on main.
+  Temporary fix for testing: add `default: break` after the last case in the
+  switch (scroll/visibleRange have no C exports anyway; todos lacks the
+  `lui_ocaml_extension_event` registration). Revert with `git checkout` after.
+
+### Driving text input / multi-byte characters
+
+- The `type` action drops 3/4-byte UTF-8 (CJK, emoji) into macOS text fields —
+  ASCII and 2-byte chars (é) get through. For full-UTF8 coverage use the
+  accessibility `set_text` operation on the `textField` element: it writes the
+  full string through the control's normal value path, which DOES fire the
+  LUI `text-changed` event (verified: the OCaml model updated and rendered the
+  exact string back).
+- `Cmd+V` does NOT work in demos that don't build an Edit menu (e.g. LUITodos
+  has no `makeMenu`) — key-equivalent paste routes through the main menu.
+  Right-clicking the field DOES open a context menu with Paste (slow to
+  appear; screenshot may miss it on first try). `Cmd+A` select-all works.
+- macOS Automatic Termination can silently quit these demo apps when the
+  window isn't frontmost/key (system log shows `AutomaticTermination`
+  entries, no crash report). If a demo vanishes mid-test, relaunch the binary
+  directly from a shell with stderr redirected to a file and re-drive.
+
+### Tool quirks
+
+- `left_mouse_down`/`left_mouse_up` take no coordinate — `mouse_move` to the
+  start point first, then `left_mouse_down`, step the drag, `left_mouse_up`.
+- The todos row buttons (Done/Up/Delete) and split tab controls are custom
+  drawn — they do NOT appear as `button` in the macos AX query (only window
+  chrome does). Aim by coordinates; zoom into the row to compute button x
+  (~14px-tall text buttons, "Delete" is easy to hit by accident).

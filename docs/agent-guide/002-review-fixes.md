@@ -1,10 +1,5 @@
 # Implementation review fixes
 
-> Historical backend note: Apple/SwiftUI/AppKit and Android/Kotlin hosts are
-> removed. Their implementation notes below are historical, not support or
-> build instructions. Current targets are MyGo desktop and Web/Melange; see
-> `docs/api-migrations.md` for the breaking change.
-
 Source review: 001-implementation-review_report.md. All 22 P1/P2 findings are in scope.
 
 Integration target: `/Users/tiensonqin/Codes/projects/logseq`, branch `refactor/lui`.

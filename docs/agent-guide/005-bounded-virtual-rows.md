@@ -1,10 +1,5 @@
 # Bounded Virtual Rows Implementation Plan
 
-> Historical backend note: Apple/SwiftUI/AppKit and Android/Kotlin hosts are
-> removed. Their implementation notes below are historical, not support or
-> build instructions. Current targets are MyGo desktop and Web/Melange; see
-> `docs/api-migrations.md` for the breaking change.
-
 Goal: Keep LUI and host UI nodes proportional to the visible window and active interaction pins while retaining the complete application data source.
 
 Architecture: Add a structural lazy row source inside the existing VirtualList component and reconcile only its requested window through the existing keyed lifecycle.

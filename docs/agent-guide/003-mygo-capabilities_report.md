@@ -1,10 +1,5 @@
 # MyGo capabilities and LUI component parity
 
-> Historical backend note: Apple/SwiftUI/AppKit and Android/Kotlin hosts are
-> removed. Their implementation notes below are historical, not support or
-> build instructions. Current targets are MyGo desktop and Web/Melange; see
-> `docs/api-migrations.md` for the breaking change.
-
 Research date: 2026-10-25. Updated after removal of the `br` component. This is a source and behavior investigation, not a
 claim that the adapter implements the capabilities described below.
 

@@ -1,0 +1,1013 @@
+import Testing
+import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
+@testable import LUIAppleBackend
+
+@MainActor
+@Suite("LUI shared backend parity")
+struct LUIBackendParityTests {
+    @Test("lists use lazy vertical containers on both SwiftUI hosts")
+    func listContainersAreLazy() {
+        #expect(LUIVerticalContainerPolicy.isLazy(kind: LUINodeKind.list))
+        #expect(!LUIVerticalContainerPolicy.isLazy(kind: LUINodeKind.column))
+        #expect(LUIVerticalContainerPolicy.stretchesCrossAxis(nil))
+        #expect(LUIVerticalContainerPolicy.stretchesCrossAxis("stretch"))
+        #expect(!LUIVerticalContainerPolicy.stretchesCrossAxis("start"))
+    }
+
+    @Test("drawer width sizes its panel without constraining the root surface")
+    func drawerWidthOnlySizesPanel() {
+        #expect(LUIExplicitFramePolicy.width(kind: LUINodeKind.drawer, requested: 320) == nil)
+        #expect(LUIExplicitFramePolicy.width(kind: LUINodeKind.card, requested: 320) == 320)
+        #expect(
+            LUIExplicitFramePolicy.width(kind: LUINodeKind.resizable, requested: 320) == nil
+        )
+    }
+
+    @Test("retains viewport-relative layout and appearance lifecycle semantics")
+    func retainsViewportAndAppearanceSemantics() throws {
+        let backend = LUIAppleBackend()
+
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"box"},
+          {"op":"set-prop","id":1,"property":"container-relative-frame","value":"vertical"},
+          {"op":"set-prop","id":1,"property":"appear-enabled","value":true}
+        ]}
+        """)
+
+        #expect(backend.model(id: 1) != nil)
+    }
+
+    @Test("minimum viewport frames stay intrinsic on Android scroll content")
+    func minimumViewportFramesStayIntrinsicOnAndroid() {
+        #expect(LUIContainerRelativeFramePolicy.skipFillsHorizontal("horizontal"))
+        #expect(LUIContainerRelativeFramePolicy.skipFillsVertical("vertical"))
+        #expect(LUIContainerRelativeFramePolicy.skipFillsHorizontal("both"))
+        #expect(LUIContainerRelativeFramePolicy.skipFillsVertical("both"))
+        #expect(!LUIContainerRelativeFramePolicy.skipFillsHorizontal("min-horizontal"))
+        #expect(!LUIContainerRelativeFramePolicy.skipFillsVertical("min-vertical"))
+        #expect(!LUIContainerRelativeFramePolicy.skipFillsHorizontal("min-both"))
+        #expect(!LUIContainerRelativeFramePolicy.skipFillsVertical("min-both"))
+    }
+
+    #if os(macOS)
+    @Test("a vertical container-relative frame fills its scroll viewport")
+    func verticalContainerRelativeFrameFillsViewport() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"scroll"},
+          {"op":"create-node","id":2,"kind":"box"},
+          {"op":"set-prop","id":2,"property":"container-relative-frame","value":"vertical"},
+          {"op":"set-prop","id":2,"property":"width","value":60},
+          {"op":"set-prop","id":2,"property":"background","value":"red"},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """)
+
+        let host = NSHostingView(
+            rootView: LUIAnyNodeView(nodeID: 1, backend: backend)
+        )
+        host.frame = NSRect(x: 0, y: 0, width: 60, height: 100)
+        host.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        let viewportBottom = try #require(bitmap.colorAt(x: 30, y: 90))
+
+        #expect(viewportBottom.redComponent > 0.8)
+        #expect(viewportBottom.redComponent > viewportBottom.blueComponent + 0.5)
+    }
+
+    @Test("a minimum vertical container frame preserves content taller than its viewport")
+    func minimumVerticalContainerFramePreservesTallerContent() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"scroll"},
+          {"op":"create-node","id":2,"kind":"column"},
+          {"op":"set-prop","id":2,"property":"container-relative-frame","value":"min-vertical"},
+          {"op":"create-node","id":3,"kind":"box"},
+          {"op":"set-prop","id":3,"property":"height","value":160},
+          {"op":"set-prop","id":3,"property":"background","value":"red"},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """)
+
+        let host = NSHostingView(
+            rootView: LUIAnyNodeView(nodeID: 1, backend: backend)
+        )
+        host.frame = NSRect(x: 0, y: 0, width: 60, height: 100)
+        host.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+
+        #expect(host.fittingSize.height >= 160)
+    }
+
+    @Test("a Row spacer keeps trailing content at the far edge")
+    func rowSpacerKeepsTrailingContentAtFarEdge() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"row"},
+          {"op":"create-node","id":2,"kind":"box"},
+          {"op":"set-prop","id":2,"property":"width","value":40},
+          {"op":"set-prop","id":2,"property":"height","value":20},
+          {"op":"set-prop","id":2,"property":"background","value":"red"},
+          {"op":"create-node","id":3,"kind":"spacer"},
+          {"op":"create-node","id":4,"kind":"box"},
+          {"op":"set-prop","id":4,"property":"width","value":40},
+          {"op":"set-prop","id":4,"property":"height","value":20},
+          {"op":"set-prop","id":4,"property":"background","value":"blue"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1},
+          {"op":"insert-child","parent":1,"child":4,"index":2}
+        ]}
+        """)
+
+        let host = NSHostingView(
+            rootView: LUIAnyNodeView(nodeID: 1, backend: backend)
+        )
+        host.frame = NSRect(x: 0, y: 0, width: 200, height: 20)
+        host.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        let trailing = try #require(bitmap.colorAt(
+            x: bitmap.pixelsWide * 9 / 10,
+            y: bitmap.pixelsHigh / 2
+        ))
+
+        #expect(trailing.blueComponent > 0.8)
+        #expect(trailing.blueComponent > trailing.redComponent + 0.5)
+    }
+
+    @Test("an appear-enabled node emits once when SwiftUI presents it")
+    func appearEnabledNodeEmitsWhenPresented() throws {
+        let backend = LUIAppleBackend()
+        var events: [String] = []
+        backend.onEvent = { events.append(String(describing: $0)) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"box"},
+          {"op":"set-prop","id":1,"property":"width","value":1},
+          {"op":"set-prop","id":1,"property":"height","value":1},
+          {"op":"set-prop","id":1,"property":"appear-enabled","value":true}
+        ]}
+        """)
+
+        let host = NSHostingView(
+            rootView: LUIAnyNodeView(nodeID: 1, backend: backend)
+        )
+        host.frame = CGRect(x: 0, y: 0, width: 10, height: 10)
+        host.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+
+        #expect(events == ["appear(node: 1)"])
+    }
+
+    @Test("vertical scroll lays out multiple children sequentially")
+    func verticalScrollChildrenDoNotOverlap() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"scroll"},
+          {"op":"create-node","id":2,"kind":"box"},
+          {"op":"create-node","id":3,"kind":"box"},
+          {"op":"set-prop","id":2,"property":"width","value":60},
+          {"op":"set-prop","id":2,"property":"height","value":40},
+          {"op":"set-prop","id":2,"property":"background","value":"red"},
+          {"op":"set-prop","id":3,"property":"width","value":60},
+          {"op":"set-prop","id":3,"property":"height","value":40},
+          {"op":"set-prop","id":3,"property":"background","value":"blue"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        let renderer = ImageRenderer(
+            content: LUIVerticalScrollContent(
+                model: try #require(backend.model(id: 1)),
+                backend: backend
+            )
+                .frame(width: 60, height: 80)
+        )
+        renderer.scale = 1
+        let image = try #require(renderer.cgImage)
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        let firstChild = try #require(bitmap.colorAt(x: 30, y: 20))
+        let secondChild = try #require(bitmap.colorAt(x: 30, y: 60))
+
+        #expect(firstChild.redComponent > 0.8)
+        #expect(firstChild.redComponent > firstChild.blueComponent + 0.5)
+        #expect(secondChild.blueComponent > 0.8)
+        #expect(secondChild.blueComponent > secondChild.redComponent + 0.5)
+    }
+
+    @Test("explicit ListItem padding replaces the native row inset")
+    func explicitListItemPaddingReplacesDefaultInset() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"list-item"},
+          {"op":"create-node","id":2,"kind":"box"},
+          {"op":"set-prop","id":1,"property":"padding","value":0},
+          {"op":"set-prop","id":2,"property":"width","value":40},
+          {"op":"set-prop","id":2,"property":"height","value":40},
+          {"op":"set-prop","id":2,"property":"background","value":"red"},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """)
+
+        let renderer = ImageRenderer(
+            content: LUIAnyNodeView(nodeID: 1, backend: backend)
+        )
+        renderer.scale = 1
+        let image = try #require(renderer.cgImage)
+
+        #expect(image.width <= 56)
+    }
+
+    @Test("an open drawer fades pushed main content and restores its contrast when closed")
+    func openDrawerPushesMainContent() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"drawer"},
+          {"op":"create-node","id":2,"kind":"row"},
+          {"op":"create-node","id":3,"kind":"panel"},
+          {"op":"create-node","id":4,"kind":"panel"},
+          {"op":"create-node","id":5,"kind":"panel"},
+          {"op":"set-prop","id":1,"property":"selected","value":true},
+          {"op":"set-prop","id":1,"property":"width","value":200},
+          {"op":"set-prop","id":2,"property":"gap","value":0},
+          {"op":"set-prop","id":3,"property":"width","value":20},
+          {"op":"set-prop","id":3,"property":"height","value":200},
+          {"op":"set-prop","id":3,"property":"background","value":"green"},
+          {"op":"set-prop","id":3,"property":"border-width","value":0},
+          {"op":"set-prop","id":3,"property":"corner-radius","value":0},
+          {"op":"set-prop","id":4,"property":"width","value":380},
+          {"op":"set-prop","id":4,"property":"height","value":200},
+          {"op":"set-prop","id":4,"property":"background","value":"red"},
+          {"op":"set-prop","id":4,"property":"border-width","value":0},
+          {"op":"set-prop","id":4,"property":"corner-radius","value":0},
+          {"op":"set-prop","id":5,"property":"width","value":200},
+          {"op":"set-prop","id":5,"property":"height","value":200},
+          {"op":"set-prop","id":5,"property":"background","value":"blue"},
+          {"op":"set-prop","id":5,"property":"border-width","value":0},
+          {"op":"set-prop","id":5,"property":"corner-radius","value":0},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":5,"index":1},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"insert-child","parent":2,"child":4,"index":1}
+        ]}
+        """)
+
+        let renderer = ImageRenderer(
+            content: LUIDrawerView(
+                model: try #require(backend.model(id: 1)),
+                backend: backend
+            )
+            // The regular-width path renders a system NavigationSplitView whose
+            // column geometry is not pixel-testable here; the compact overlay
+            // keeps the hand-rolled push layout this assertion pins down.
+            .environment(\.horizontalSizeClass, .compact)
+            .frame(width: 400, height: 200)
+        )
+        renderer.scale = 1
+        let image = try #require(renderer.cgImage)
+        let bitmap = NSBitmapImageRep(cgImage: image)
+
+        let pushedMainLeadingColor = try #require(bitmap.colorAt(x: 205, y: 100))
+        #expect(pushedMainLeadingColor.greenComponent > pushedMainLeadingColor.redComponent + 0.1)
+
+        let fadedMainColor = try #require(bitmap.colorAt(x: 300, y: 100))
+        #expect(fadedMainColor.redComponent > fadedMainColor.greenComponent + 0.2)
+        #expect(fadedMainColor.greenComponent > 0.35)
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":1,"property":"selected","value":false}
+        ]}
+        """)
+        let closedRenderer = ImageRenderer(content: LUIDrawerView(
+            model: try #require(backend.model(id: 1)), backend: backend
+        ).environment(\.horizontalSizeClass, .compact).frame(width: 400, height: 200))
+        closedRenderer.scale = 1
+        let closedBitmap = NSBitmapImageRep(cgImage: try #require(closedRenderer.cgImage))
+        let restoredColor = try #require(closedBitmap.colorAt(x: 300, y: 100))
+        #expect(restoredColor.redComponent > 0.94)
+        #expect(restoredColor.greenComponent + 0.1 < fadedMainColor.greenComponent)
+    }
+
+    @Test("drawer fades foreground while preserving the background in light and dark themes")
+    func drawerPreservesBackgroundWhileFadingContent() throws {
+        let themes: [(ColorScheme, Color, Color)] = [
+            (.light, Color(red: 0.95, green: 0.96, blue: 0.97), .black),
+            (.dark, Color(red: 0, green: 0.18, blue: 0.22), .white),
+        ]
+        for (scheme, background, foreground) in themes {
+            let registry = LUIAppleExtensionRegistry()
+            try registry.register(LUIAppleExtension(
+                identifier: "drawer-contrast-probe", fingerprint: "drawer-contrast-v1"
+            ) { _ in
+                AnyView(background.overlay(alignment: .top) {
+                    foreground.frame(height: 40).padding(.top, 80)
+                }.frame(width: 400, height: 240))
+            })
+            let backend = try LUIAppleBackend(extensionRegistry: registry)
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"drawer"},
+              {"op":"set-prop","id":1,"property":"width","value":200},
+              {"op":"create-extension","id":2,"identifier":"drawer-contrast-probe","fingerprint":"drawer-contrast-v1"},
+              {"op":"create-node","id":3,"kind":"box"},
+              {"op":"insert-child","parent":1,"child":2,"index":0},
+              {"op":"insert-child","parent":1,"child":3,"index":1}
+            ]}
+            """)
+            func render(selected: Bool, generation: Int) throws -> NSBitmapImageRep {
+                try backend.apply(json: """
+                {"generation":\(generation),"ops":[
+                  {"op":"set-prop","id":1,"property":"selected","value":\(selected)}
+                ]}
+                """)
+                let renderer = ImageRenderer(content: LUIDrawerView(
+                    model: try #require(backend.model(id: 1)), backend: backend
+                ).environment(\.horizontalSizeClass, .compact)
+                    .environment(\.colorScheme, scheme)
+                    .luiSemanticColors(["background": background])
+                    .frame(width: 400, height: 240))
+                renderer.scale = 1
+                return NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
+            }
+            let closed = try render(selected: false, generation: 2)
+            let opened = try render(selected: true, generation: 3)
+            let restored = try render(selected: false, generation: 4)
+            let closedBackground = try #require(closed.colorAt(x: 300, y: 180))
+            let openedBackground = try #require(opened.colorAt(x: 300, y: 180))
+            let closedForeground = try #require(closed.colorAt(x: 300, y: 100))
+            let openedForeground = try #require(opened.colorAt(x: 300, y: 100))
+            let restoredForeground = try #require(restored.colorAt(x: 300, y: 100))
+            for component in [\NSColor.redComponent, \NSColor.greenComponent, \NSColor.blueComponent] {
+                #expect(abs(closedBackground[keyPath: component] - openedBackground[keyPath: component]) < 0.01)
+                #expect(abs(closedForeground[keyPath: component] - restoredForeground[keyPath: component]) < 0.01)
+            }
+            let originalContrast = abs(closedForeground.redComponent - closedBackground.redComponent)
+            let fadedContrast = abs(openedForeground.redComponent - openedBackground.redComponent)
+            #expect(fadedContrast > originalContrast * 0.35)
+            #expect(fadedContrast < originalContrast * 0.65)
+        }
+    }
+
+    @Test("compact drawer leaves a wider main preview with a larger curved edge")
+    func compactDrawerMatchesPhoneProportions() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"drawer"},
+          {"op":"set-prop","id":1,"property":"selected","value":true},
+          {"op":"set-prop","id":1,"property":"width","value":360},
+          {"op":"create-node","id":2,"kind":"panel"},
+          {"op":"set-prop","id":2,"property":"width","value":393},
+          {"op":"set-prop","id":2,"property":"height","value":300},
+          {"op":"set-prop","id":2,"property":"background","value":"green"},
+          {"op":"set-prop","id":2,"property":"border-width","value":0},
+          {"op":"set-prop","id":2,"property":"corner-radius","value":0},
+          {"op":"create-node","id":3,"kind":"panel"},
+          {"op":"set-prop","id":3,"property":"width","value":360},
+          {"op":"set-prop","id":3,"property":"height","value":300},
+          {"op":"set-prop","id":3,"property":"background","value":"blue"},
+          {"op":"set-prop","id":3,"property":"border-width","value":0},
+          {"op":"set-prop","id":3,"property":"corner-radius","value":0},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+        let renderer = ImageRenderer(content: LUIDrawerView(
+            model: try #require(backend.model(id: 1)), backend: backend
+        ).environment(\.horizontalSizeClass, .compact).frame(width: 393, height: 300))
+        renderer.scale = 1
+        let bitmap = NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
+        let mainEdge = try #require(bitmap.colorAt(x: 312, y: 150))
+        #expect(mainEdge.greenComponent > 0.55)
+        #expect(mainEdge.greenComponent > mainEdge.blueComponent + 0.15)
+        let roundedEdge = try #require(bitmap.colorAt(x: 321, y: 16))
+        #expect(roundedEdge.blueComponent > 0.65)
+        #expect(roundedEdge.blueComponent > roundedEdge.greenComponent + 0.2)
+    }
+
+    @Test("an open drawer main surface spans the container safe areas")
+    func openDrawerMainSurfaceSpansContainerSafeAreas() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"drawer"},
+          {"op":"create-node","id":2,"kind":"panel"},
+          {"op":"create-node","id":3,"kind":"panel"},
+          {"op":"set-prop","id":1,"property":"selected","value":true},
+          {"op":"set-prop","id":1,"property":"width","value":20},
+          {"op":"set-prop","id":2,"property":"width","value":100},
+          {"op":"set-prop","id":2,"property":"height","value":100},
+          {"op":"set-prop","id":2,"property":"background","value":"red"},
+          {"op":"set-prop","id":2,"property":"border-width","value":0},
+          {"op":"set-prop","id":2,"property":"corner-radius","value":0},
+          {"op":"set-prop","id":3,"property":"width","value":20},
+          {"op":"set-prop","id":3,"property":"height","value":100},
+          {"op":"set-prop","id":3,"property":"background","value":"blue"},
+          {"op":"set-prop","id":3,"property":"border-width","value":0},
+          {"op":"set-prop","id":3,"property":"corner-radius","value":0},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        let drawer = try #require(backend.model(id: 1))
+        let renderer = ImageRenderer(
+            content: ZStack {
+                Color.green
+                LUIDrawerView(
+                    model: drawer,
+                    backend: backend
+                )
+                .safeAreaInset(edge: .top) {
+                    Color.clear.frame(height: 20)
+                }
+                .safeAreaInset(edge: .bottom) {
+                    Color.clear.frame(height: 20)
+                }
+            }
+            .frame(width: 100, height: 100)
+        )
+        renderer.scale = 1
+        let image = try #require(renderer.cgImage)
+        let bitmap = NSBitmapImageRep(cgImage: image)
+
+        for point in [CGPoint(x: 50, y: 10), CGPoint(x: 50, y: 90)] {
+            let color = try #require(bitmap.colorAt(x: Int(point.x), y: Int(point.y)))
+            #expect(color.redComponent > 0.8)
+            #expect(color.greenComponent < 0.3)
+        }
+    }
+
+    @Test("an open drawer supplies a main surface behind transparent content")
+    func openDrawerSuppliesMainSurfaceBehindTransparentContent() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"drawer"},
+          {"op":"create-node","id":2,"kind":"stack"},
+          {"op":"create-node","id":3,"kind":"panel"},
+          {"op":"set-prop","id":1,"property":"selected","value":true},
+          {"op":"set-prop","id":1,"property":"width","value":20},
+          {"op":"set-prop","id":3,"property":"width","value":20},
+          {"op":"set-prop","id":3,"property":"height","value":100},
+          {"op":"set-prop","id":3,"property":"background","value":"blue"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        let drawer = try #require(backend.model(id: 1))
+        let renderer = ImageRenderer(
+            content: ZStack {
+                Color.green
+                LUIDrawerView(model: drawer, backend: backend)
+            }
+            .frame(width: 100, height: 100)
+        )
+        renderer.scale = 1
+        let image = try #require(renderer.cgImage)
+        let bitmap = NSBitmapImageRep(cgImage: image)
+
+        let color = try #require(bitmap.colorAt(x: 50, y: 50))
+        #expect(color.redComponent > 0.25)
+    }
+
+    @Test("a full-screen drawer lets main content own the bottom safe area")
+    func fullScreenDrawerLetsMainContentOwnBottomSafeArea() {
+        #expect(LUIDrawerSafeAreaGeometry.mainPanelBottomInset == 0)
+    }
+
+    @Test("a closed drawer supplies a main surface behind transparent content")
+    func closedDrawerSuppliesMainSurfaceBehindTransparentContent() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"drawer"},
+          {"op":"create-node","id":2,"kind":"stack"},
+          {"op":"create-node","id":3,"kind":"panel"},
+          {"op":"set-prop","id":1,"property":"selected","value":false},
+          {"op":"set-prop","id":1,"property":"width","value":200},
+          {"op":"set-prop","id":3,"property":"width","value":200},
+          {"op":"set-prop","id":3,"property":"height","value":200},
+          {"op":"set-prop","id":3,"property":"background","value":"red"},
+          {"op":"set-prop","id":3,"property":"border-width","value":0},
+          {"op":"set-prop","id":3,"property":"corner-radius","value":0},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        let drawer = try #require(backend.model(id: 1))
+        let renderer = ImageRenderer(
+            content: ZStack {
+                Color.green
+                LUIDrawerView(
+                    model: drawer,
+                    backend: backend
+                )
+                .safeAreaInset(edge: .top) {
+                    Color.clear.frame(height: 20)
+                }
+                .safeAreaInset(edge: .bottom) {
+                    Color.clear.frame(height: 20)
+                }
+            }
+            .frame(width: 400, height: 200)
+        )
+        renderer.scale = 1
+        let image = try #require(renderer.cgImage)
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        for point in [CGPoint(x: 100, y: 10), CGPoint(x: 100, y: 100), CGPoint(x: 100, y: 190)] {
+            let closedMainColor = try #require(
+                bitmap.colorAt(x: Int(point.x), y: Int(point.y))
+            )
+            #expect(closedMainColor.redComponent > 0.25)
+        }
+    }
+
+    @Test("semantic surface colors are supplied without changing the wire protocol")
+    func semanticSurfaceColorsUseEnvironmentOverrides() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"list-item"},
+          {"op":"set-prop","id":1,"property":"text","value":"Graph"},
+          {"op":"set-prop","id":1,"property":"width","value":100},
+          {"op":"set-prop","id":1,"property":"height","value":50},
+          {"op":"set-prop","id":1,"property":"background","value":"surface"},
+          {"op":"set-prop","id":1,"property":"corner-radius","value":0}
+        ]}
+        """)
+
+        let renderer = ImageRenderer(
+            content: ZStack {
+                Color.green
+                LUIAnyNodeView(nodeID: 1, backend: backend)
+                    .luiSemanticColors(["surface": .red])
+            }
+            .frame(width: 100, height: 50)
+        )
+        renderer.scale = 1
+        let image = try #require(renderer.cgImage)
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        let surfaceColor = try #require(bitmap.colorAt(x: 90, y: 25))
+
+        #expect(surfaceColor.redComponent > 0.8)
+        #expect(surfaceColor.greenComponent < 0.3)
+    }
+
+    @Test("modal navigation surfaces use the semantic app background")
+    func modalNavigationSurfacesUseSemanticBackground() throws {
+        #if os(macOS)
+        let renderer = ImageRenderer(
+            content: Rectangle().fill(
+                LUIModalBackgroundPolicy.color(
+                    semanticColors: ["background": .red],
+                    systemBackground: .green
+                )
+            )
+            .frame(width: 20, height: 20)
+        )
+        renderer.scale = 1
+        let image = try #require(renderer.cgImage)
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        let color = try #require(bitmap.colorAt(x: 10, y: 10))
+
+        #expect(color.redComponent > 0.8)
+        #expect(color.greenComponent < 0.3)
+        #endif
+    }
+
+    @Test("drawer main surface covers the full container")
+    func drawerMainSurfaceCoversFullContainer() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"drawer"},
+          {"op":"create-node","id":2,"kind":"stack"},
+          {"op":"create-node","id":3,"kind":"stack"},
+          {"op":"set-prop","id":2,"property":"width","value":20},
+          {"op":"set-prop","id":2,"property":"height","value":20},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+        let drawer = try #require(backend.model(id: 1))
+
+        let renderer = ImageRenderer(
+            content: ZStack {
+                Color.green
+                LUIDrawerView(
+                    model: drawer,
+                    backend: backend
+                )
+                .safeAreaInset(edge: .top) {
+                    Color.clear.frame(height: 20)
+                }
+                .safeAreaInset(edge: .bottom) {
+                    Color.clear.frame(height: 20)
+                }
+            }
+            .frame(width: 100, height: 100)
+        )
+        renderer.scale = 1
+        let image = try #require(renderer.cgImage)
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        let referenceRenderer = ImageRenderer(
+            content: Color.green.frame(width: 100, height: 100)
+        )
+        referenceRenderer.scale = 1
+        let referenceImage = try #require(referenceRenderer.cgImage)
+        let referenceBitmap = NSBitmapImageRep(cgImage: referenceImage)
+        let referenceColor = try #require(referenceBitmap.colorAt(x: 50, y: 50))
+        let topColor = try #require(bitmap.colorAt(x: 50, y: 90))
+        let middleColor = try #require(bitmap.colorAt(x: 50, y: 50))
+        let bottomColor = try #require(bitmap.colorAt(x: 50, y: 10))
+
+        for color in [topColor, middleColor, bottomColor] {
+            let difference = abs(color.redComponent - referenceColor.redComponent)
+                + abs(color.greenComponent - referenceColor.greenComponent)
+                + abs(color.blueComponent - referenceColor.blueComponent)
+            #expect(difference > 0.1)
+        }
+    }
+
+    #endif
+
+    @Test("alerts keep their content height inside flexible columns")
+    func alertsUseIntrinsicContentHeight() {
+        #expect(LUIVerticalContainerPolicy.usesIntrinsicHeight(kind: LUINodeKind.alert))
+        #expect(!LUIVerticalContainerPolicy.usesIntrinsicHeight(kind: LUINodeKind.column))
+    }
+
+    @Test("semantic surfaces pass their foreground color to plain children")
+    func semanticForegroundInheritance() {
+        #expect(LUIThemeColorPolicy.usesDefaultForeground(kind: LUINodeKind.alert))
+        #expect(LUIThemeColorPolicy.usesDefaultForeground(kind: LUINodeKind.card))
+        #expect(!LUIThemeColorPolicy.usesDefaultForeground(kind: LUINodeKind.column))
+        #expect(!LUIThemeColorPolicy.usesDefaultForeground(kind: LUINodeKind.text))
+        #expect(LUIThemeColorPolicy.isAccentForeground("accent"))
+        #expect(!LUIThemeColorPolicy.isAccentForeground("primary"))
+        #expect(LUIThemeColorPolicy.isSecondaryForeground("secondary"))
+        #expect(!LUIThemeColorPolicy.isSecondaryForeground("secondary-foreground"))
+    }
+
+    @Test("retains nodes and patches properties")
+    func retainsNodesAndPatchesProperties() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"root"},
+          {"op":"create-node","id":2,"kind":"row"},
+          {"op":"create-node","id":3,"kind":"text"},
+          {"op":"set-prop","id":2,"property":"gap","value":12},
+          {"op":"set-prop","id":3,"property":"text","value":"Before"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":2,"child":3,"index":0}
+        ]}
+        """)
+
+        let root = try #require(backend.model(id: 1))
+        let row = try #require(backend.model(id: 2))
+        let text = try #require(backend.model(id: 3))
+        #expect(root.children == [2])
+        #expect(row.children == [3])
+        #expect(row.property(LUIProperty.gap) == LUIWireValue.int(12))
+        #expect(text.property(LUIProperty.text) == LUIWireValue.string("Before"))
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"set-prop","id":3,"property":"text","value":"After"}
+        ]}
+        """)
+
+        #expect(backend.model(id: 1) === root)
+        #expect(backend.model(id: 2) === row)
+        #expect(backend.model(id: 3) === text)
+        #expect(text.property(LUIProperty.text) == LUIWireValue.string("After"))
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+    }
+
+    @Test("dispatches text, press, and toggle events")
+    func dispatchesControlEvents() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"text-field"},
+          {"op":"create-node","id":2,"kind":"button"},
+          {"op":"create-node","id":3,"kind":"toggle"},
+          {"op":"set-prop","id":1,"property":"text","value":""},
+          {"op":"set-prop","id":2,"property":"text","value":"Save"},
+          {"op":"set-prop","id":3,"property":"text","value":"Pinned"},
+          {"op":"set-prop","id":3,"property":"checked","value":false}
+        ]}
+        """)
+
+        try backend.performTextChange(node: 1, text: "Draft")
+        try backend.performPress(node: 2)
+        try backend.performToggle(node: 3, checked: true)
+
+        #expect(events == [
+            LUIEvent.textChanged(node: 1, text: "Draft"),
+            LUIEvent.press(node: 2),
+            LUIEvent.toggleChanged(node: 3, checked: true),
+        ])
+    }
+
+    @Test("secure fields retain text input behavior without exposing plain text controls")
+    func secureFieldDispatchesTextEvents() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"secure-field"},
+          {"op":"set-prop","id":1,"property":"text","value":""},
+          {"op":"set-prop","id":1,"property":"placeholder","value":"Password"}
+        ]}
+        """)
+
+        #expect(backend.model(id: 1)?.kind.rawValue == "secure-field")
+        try backend.performTextChange(node: 1, text: "secret")
+        #expect(events == [.textChanged(node: 1, text: "secret")])
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+    }
+
+    @Test("edge-inset requires a valid edge and toggles visibility")
+    func edgeInsetValidatesEdgeAndVisibility() throws {
+        let backend = LUIAppleBackend()
+        #expect(throws: LUIBackendError.self) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"edge-inset"}
+            ]}
+            """)
+        }
+
+        let badEdge = LUIAppleBackend()
+        #expect(throws: LUIBackendError.self) {
+            try badEdge.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"edge-inset"},
+              {"op":"set-prop","id":1,"property":"edge","value":"left"}
+            ]}
+            """)
+        }
+
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"create-node","id":1,"kind":"edge-inset"},
+          {"op":"set-prop","id":1,"property":"edge","value":"top"},
+          {"op":"set-prop","id":1,"property":"visible","value":false},
+          {"op":"set-prop","id":1,"property":"gap","value":4},
+          {"op":"set-prop","id":1,"property":"background","value":"bar"},
+          {"op":"create-node","id":2,"kind":"text"},
+          {"op":"set-prop","id":2,"property":"text","value":"scrolling"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"create-node","id":3,"kind":"row"},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        let model = try #require(backend.model(id: 1))
+        #expect(model.kind == .edgeInset)
+        #expect(model.property(.edge)?.stringValue == "top")
+        #expect(model.property(.visible)?.boolValue == false)
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+    }
+
+    @Test("overlay sizes to its base child and floats aligned overlays")
+    func overlayFloatsAlignedChildren() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"overlay"},
+          {"op":"create-node","id":2,"kind":"list"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"create-node","id":3,"kind":"row"},
+          {"op":"set-prop","id":3,"property":"alignment","value":"top-trailing"},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        #expect(backend.model(id: 1)?.kind == .overlay)
+        #expect(
+            backend.model(id: 3)?.property(.alignment)?.stringValue
+                == "top-trailing"
+        )
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+
+        let badAlignment = LUIAppleBackend()
+        #expect(throws: LUIBackendError.self) {
+            try badAlignment.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"overlay"},
+              {"op":"set-prop","id":1,"property":"alignment","value":"above"}
+            ]}
+            """)
+        }
+    }
+
+    @Test("view-that-fits mounts its candidate children")
+    func viewThatFitsMountsChildren() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"view-that-fits"},
+          {"op":"set-prop","id":1,"property":"orientation","value":"vertical"},
+          {"op":"create-node","id":2,"kind":"text"},
+          {"op":"set-prop","id":2,"property":"text","value":"expanded"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"create-node","id":3,"kind":"text"},
+          {"op":"set-prop","id":3,"property":"text","value":"compact"},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+
+        let model = try #require(backend.model(id: 1))
+        #expect(model.kind == .viewThatFits)
+        #expect(model.children == [2, 3])
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+    }
+}
+
+@MainActor
+@Suite("LUI list suite", .serialized)
+struct LUIListSuiteTests {
+    @Test("grouped list with sections, disclosure rows, and swipe actions builds")
+    func groupedListBuilds() throws {
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"list"},
+          {"op":"set-prop","id":1,"property":"style","value":"inset-grouped"},
+          {"op":"set-prop","id":1,"property":"scroll-target","value":"row-2"},
+          {"op":"set-prop","id":1,"property":"scroll-anchor","value":"center"},
+          {"op":"set-prop","id":1,"property":"scroll-token","value":1},
+          {"op":"set-prop","id":1,"property":"scroll-animated","value":false},
+          {"op":"set-prop","id":1,"property":"track-visible-range","value":true},
+          {"op":"create-node","id":2,"kind":"list-section"},
+          {"op":"set-prop","id":2,"property":"key","value":"s-1"},
+          {"op":"set-prop","id":2,"property":"separator","value":"hidden"},
+          {"op":"create-node","id":3,"kind":"list-section-header"},
+          {"op":"create-node","id":4,"kind":"text"},
+          {"op":"set-prop","id":4,"property":"text","value":"Section one"},
+          {"op":"create-node","id":5,"kind":"list-item"},
+          {"op":"set-prop","id":5,"property":"key","value":"row-1"},
+          {"op":"set-prop","id":5,"property":"expanded","value":true},
+          {"op":"set-prop","id":5,"property":"toggle-enabled","value":true},
+          {"op":"create-node","id":6,"kind":"text"},
+          {"op":"set-prop","id":6,"property":"text","value":"Parent row"},
+          {"op":"create-node","id":7,"kind":"list-item"},
+          {"op":"set-prop","id":7,"property":"key","value":"row-2"},
+          {"op":"create-node","id":8,"kind":"text"},
+          {"op":"set-prop","id":8,"property":"text","value":"Nested row"},
+          {"op":"create-node","id":9,"kind":"swipe-actions"},
+          {"op":"create-node","id":10,"kind":"swipe-action"},
+          {"op":"set-prop","id":10,"property":"text","value":"Delete"},
+          {"op":"set-prop","id":10,"property":"icon","value":"trash"},
+          {"op":"set-prop","id":10,"property":"variant","value":"destructive"},
+          {"op":"set-prop","id":10,"property":"edge","value":"trailing"},
+          {"op":"create-node","id":11,"kind":"swipe-action"},
+          {"op":"set-prop","id":11,"property":"text","value":"Pin"},
+          {"op":"set-prop","id":11,"property":"edge","value":"leading"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"insert-child","parent":2,"child":5,"index":1},
+          {"op":"insert-child","parent":3,"child":4,"index":0},
+          {"op":"insert-child","parent":5,"child":6,"index":0},
+          {"op":"insert-child","parent":5,"child":7,"index":1},
+          {"op":"insert-child","parent":5,"child":9,"index":2},
+          {"op":"insert-child","parent":7,"child":8,"index":0},
+          {"op":"insert-child","parent":9,"child":10,"index":0},
+          {"op":"insert-child","parent":9,"child":11,"index":1}
+        ]}
+        """)
+
+        let list = try #require(backend.model(id: 1))
+        #expect(list.listStyle == "inset-grouped")
+        #expect(list.scrollTarget == "row-2")
+        #expect(list.scrollAnchor == "center")
+        #expect(list.scrollToken == 1)
+        #expect(list.scrollAnimated == false)
+        #expect(list.tracksVisibleRange)
+        #expect(backend.model(id: 2)?.rowKey == "s-1")
+        #expect(backend.model(id: 2)?.separatorVisibility == "hidden")
+        #expect(backend.model(id: 5)?.isExpanded == true)
+        #expect(backend.model(id: 5)?.supportsToggle == true)
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+    }
+
+    @Test("list suite validation rejects malformed structures")
+    func listSuiteValidation() throws {
+        let backend = LUIAppleBackend()
+        // A swipe action needs text or an icon.
+        #expect(throws: (any Error).self) {
+            try backend.apply(json: """
+            {"generation":1,"ops":[
+              {"op":"create-node","id":1,"kind":"list"},
+              {"op":"create-node","id":2,"kind":"list-item"},
+              {"op":"set-prop","id":2,"property":"text","value":"Row"},
+              {"op":"create-node","id":3,"kind":"swipe-actions"},
+              {"op":"create-node","id":4,"kind":"swipe-action"},
+              {"op":"insert-child","parent":1,"child":2,"index":0},
+              {"op":"insert-child","parent":2,"child":3,"index":0},
+              {"op":"insert-child","parent":3,"child":4,"index":0}
+            ]}
+            """)
+        }
+        // A list-section must sit directly under a list.
+        #expect(throws: (any Error).self) {
+            try backend.apply(json: """
+            {"generation":2,"ops":[
+              {"op":"create-node","id":1,"kind":"row"},
+              {"op":"create-node","id":2,"kind":"list-section"},
+              {"op":"insert-child","parent":1,"child":2,"index":0}
+            ]}
+            """)
+        }
+        // swipe-actions belong to a list-item.
+        #expect(throws: (any Error).self) {
+            try backend.apply(json: """
+            {"generation":3,"ops":[
+              {"op":"create-node","id":1,"kind":"list"},
+              {"op":"create-node","id":2,"kind":"swipe-actions"},
+              {"op":"insert-child","parent":1,"child":2,"index":0}
+            ]}
+            """)
+        }
+        // Disclosure rows still need toggle-enabled with expanded.
+        #expect(throws: (any Error).self) {
+            try backend.apply(json: """
+            {"generation":4,"ops":[
+              {"op":"create-node","id":1,"kind":"list"},
+              {"op":"create-node","id":2,"kind":"list-item"},
+              {"op":"set-prop","id":2,"property":"text","value":"Row"},
+              {"op":"set-prop","id":2,"property":"expanded","value":true},
+              {"op":"insert-child","parent":1,"child":2,"index":0}
+            ]}
+            """)
+        }
+        // Unknown style vocab is rejected.
+        #expect(throws: (any Error).self) {
+            try backend.apply(json: """
+            {"generation":5,"ops":[
+              {"op":"create-node","id":1,"kind":"list"},
+              {"op":"set-prop","id":1,"property":"style","value":"cards"}
+            ]}
+            """)
+        }
+    }
+
+    @Test("list suite events emit on the wire")
+    func listSuiteEvents() throws {
+        let backend = LUIAppleBackend()
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"list"},
+          {"op":"create-node","id":2,"kind":"list-item"},
+          {"op":"set-prop","id":2,"property":"text","value":"Row"},
+          {"op":"set-prop","id":2,"property":"expanded","value":false},
+          {"op":"set-prop","id":2,"property":"toggle-enabled","value":true},
+          {"op":"create-node","id":3,"kind":"swipe-actions"},
+          {"op":"create-node","id":4,"kind":"swipe-action"},
+          {"op":"set-prop","id":4,"property":"text","value":"Delete"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"insert-child","parent":3,"child":4,"index":0}
+        ]}
+        """)
+
+        try backend.performPress(node: 4)
+        try backend.performToggle(node: 2, checked: true)
+        backend.performScrollCompleted(node: 1, token: 7, outcome: "succeeded")
+        backend.performVisibleRange(node: 1, first: 0, last: 5)
+        #expect(events == [
+            .press(node: 4),
+            .toggleChanged(node: 2, checked: true),
+            .scrollCompleted(node: 1, token: 7, outcome: "succeeded"),
+            .visibleRange(node: 1, first: 0, last: 5),
+        ])
+        _ = LUISwiftUIRoot(backend: backend, rootID: 1)
+    }
+}
