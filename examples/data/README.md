@@ -16,8 +16,6 @@ OPAMSWITCH=5.5.0 sh examples/data/run.sh
 OPAMSWITCH=5.5.0 sh examples/data/run.sh --check
 OPAMSWITCH=5.5.0 sh examples/data/run.sh examples/data/scenarios.edn --mount-only
 OPAMSWITCH=5.5.0 sh examples/data/run.sh examples/data/extensions.edn --profile web
-OPAMSWITCH=5.5.0 sh examples/data/run.sh examples/data/extensions.edn --profile ios --mount-only
-OPAMSWITCH=5.5.0 sh examples/data/run.sh examples/data/extensions.edn --profile android --mount-only
 OPAMSWITCH=5.5.0 sh examples/data/run.sh examples/data/extensions.edn --profile web --benchmark 250 --mount-only
 ```
 
@@ -27,7 +25,7 @@ interactions. `--profile` selects a declared host profile; it does **not** run t
 host's UI. `--benchmark N` reports in-memory root parse, filesystem module load
 and parse, static validation/compilation, cached graph recompilation and OCaml
 model-update/retained-render timings separately. These are development-machine
-measurements, not browser, iOS, Android or large-list benchmarks.
+measurements, not browser, desktop GUI or large-list benchmarks.
 
 ## Module format
 
@@ -142,8 +140,9 @@ An unsupported OCaml API is rejected, not inferred from permissive wire scalars.
 `Data_contract.create` freezes a model shape, action signatures, the existing
 `Lui_extension.extension_registry`, typed extension contracts and per-profile
 host fingerprint manifests.
-The native example reads literal split fingerprints from actual Web, Apple and
-Android host sources. The Web gallery accent adapter uses the shared OCaml
+The headless example reads literal split fingerprints from the remaining Web
+host source. Apple/Android host sources and their example CLI profiles are removed;
+the shared profile vocabulary remains a core protocol contract. The Web gallery accent adapter uses the shared OCaml
 registry rather than a separate host literal; its registered tweak fingerprint
 is supplied from that registry. Hosts must provide truthful registration data:
 static checks cannot prove that a host actually implements its adapter.

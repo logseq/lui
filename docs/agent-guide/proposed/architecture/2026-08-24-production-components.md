@@ -1,5 +1,10 @@
 # Production cross-platform UI and component showcase
 
+> Historical backend note: Apple/SwiftUI/AppKit and Android/Kotlin hosts are
+> removed. Their implementation notes below are historical, not support or
+> build instructions. Current targets are MyGo desktop and Web/Melange; see
+> `docs/api-migrations.md` for the breaking change.
+
 Status: active design and delivery plan
 
 ## Problem

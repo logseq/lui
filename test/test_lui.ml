@@ -1796,11 +1796,6 @@ let read_file path =
   close_in channel;
   contents
 
-let gallery_source () =
-  read_file
-    (Filename.concat (source_root ())
-       "examples/components/ios-swiftui/Sources/LUIComponentsApp/GalleryExtensions.swift")
-
 let contains source pattern =
   let n = String.length pattern in
   let last = String.length source - n in
@@ -1837,19 +1832,11 @@ let test_fingerprint_format () =
     "lui-tweak-v1|14:gallery-accent|profiles:android/kotlin,ios/swiftui,macos/swiftui,web/web|properties:"
     (Lui_extension.tweak_fingerprint (gallery_schema "gallery-accent"))
 
-let test_host_literals_in_sync () =
-  let registry = Extension_schemas.registry () in
-  match
-    Lui_extension_check.check_registry registry (gallery_source ())
-  with
-  | [] -> ()
-  | mismatches ->
-    Alcotest.failf "extension fingerprint drift:\n%s"
-      (Lui_extension_check.describe_mismatches mismatches)
-
 let test_drift_is_caught () =
   let registry = Extension_schemas.registry () in
-  let source = gallery_source () in
+  let source =
+    "fingerprint: \"lui-extension-v1|9:apple-map|profiles:ios/swiftui,macos/swiftui|standard-children:0|children:16:apple-map-marker|properties:14:latitude-delta:float:required:none,15:longitude-delta:float:required:none,8:latitude:float:required:none,9:longitude:float:required:none|events:\""
+  in
   (* Drop the marker child from apple-map's host literal only. *)
   let drifted =
     match
@@ -3422,15 +3409,10 @@ let test_split_fingerprints () =
     "lui-extension-v1|9:split-tab|profiles:android/kotlin,ios/swiftui,macos/swiftui,web/web|standard-children:1|children:|properties:24:accessibility-identifier:string:optional:none,4:icon:string:optional:none,5:dirty:bool:optional:none,5:title:string:required:none,6:tab-id:string:required:none,8:closable:bool:optional:none|events:"
     (split_fingerprint "split-tab")
 
-(* Every host source that carries lui-extension-v1 literals is checked so
-   drift fails here rather than as a blank screen on that platform. The
-   files are read from the source tree directly; test/dune only tracks the
-   gallery source as a dependency. *)
+(* Check the remaining Web host literals against the shared registry. *)
 let split_host_sources () =
   let root = source_root () in
-  [ "platform/apple/Sources/LUIAppleBackend/LUISplit.swift";
-    "platform/android/lui/src/main/kotlin/dev/lui/LuiSplit.kt";
-    "platform/web/src/lui-split.js" ]
+  [ "platform/web/src/lui-split.js" ]
   |> List.filter_map (fun rel ->
        let path = Filename.concat root rel in
        if Sys.file_exists path then Some (read_file path) else None)
@@ -4172,12 +4154,6 @@ let test_navigation_queued_stale () =
   Alcotest.(check int) "queued owner write invalidates old callback" 0 !callbacks;
   Alcotest.(check bool) "queued replacement wins" true (Lui_app.model (drive_app s) = replacement);
   drive_dispose s
-
-let test_navigation_host_fingerprint () =
-  let source = read_file (Filename.concat (source_root ())
-      "platform/apple/Sources/LUIAppleBackend/LUINavigation.swift") in
-  let mismatches = Lui_extension_check.check_registry (Lui_navigation.registry ()) source in
-  if mismatches <> [] then Alcotest.fail (Lui_extension_check.describe_mismatches mismatches)
 
 let test_navigation_entry_state () =
   let open Lui_navigation in
@@ -5625,7 +5601,6 @@ let () =
       ("navigation", [
         Alcotest.test_case "entry local states and function routes" `Quick test_navigation_entry_state;
         Alcotest.test_case "queued owner write versus stale host event" `Quick test_navigation_queued_stale;
-        Alcotest.test_case "Apple extension fingerprints" `Quick test_navigation_host_fingerprint;
         Alcotest.test_case "typed paths and duplicate identity" `Quick test_navigation_path;
         Alcotest.test_case "root, covered scopes and transition lifetime" `Quick test_navigation_retains;
         Alcotest.test_case "native back and synchronous reentry" `Quick test_navigation_back;
@@ -5805,8 +5780,6 @@ let () =
         [
           Alcotest.test_case "canonical format" `Quick
             test_fingerprint_format;
-          Alcotest.test_case "host literals in sync" `Quick
-            test_host_literals_in_sync;
           Alcotest.test_case "drift is caught" `Quick test_drift_is_caught;
         ] );
       ( "lui_ai",

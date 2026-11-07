@@ -1,5 +1,10 @@
 # LUI implementation review
 
+> Historical backend note: Apple/SwiftUI/AppKit and Android/Kotlin hosts are
+> removed. Their implementation notes below are historical, not support or
+> build instructions. Current targets are MyGo desktop and Web/Melange; see
+> `docs/api-migrations.md` for the breaking change.
+
 Date: 2026-10-09. Reviewed revision: `91aecb52a1cba2faaf23aac1d64a0bd1cb6549e7`.
 
 ## Scope and status
