@@ -18,6 +18,10 @@ func (b *Backend) renderMenus(c *ui.Context, n Node, children func(), emit func(
 		if b.probing {
 			return ui.Element{}, true
 		}
+		parent := b.nodes[n.Parent]
+		if !b.config.RetainedMenus && parent.Kind != "menu-trigger" && parent.Kind != "menu-item" && !b.widgetMenuNeedsRetained(n.ID) {
+			return b.renderNativeDropdown(c, n), true
+		}
 		w := b.widget(n)
 		var panel ui.Element
 		ui.Overlay(c, func() {
@@ -215,6 +219,37 @@ func (b *Backend) renderMenus(c *ui.Context, n Node, children func(), emit func(
 	return ui.Element{}, false
 }
 
+func (b *Backend) renderNativeDropdown(c *ui.Context, n Node) ui.Element {
+	w := b.widget(n)
+	if w.popupDismissed {
+		return ui.Element{}
+	}
+	e := ui.Box(c).Absolute().Size(1, 1).Bind(&b.state(n).handle)
+	if w.nativeItems == nil {
+		w.nativeItems = make(map[int64]uint64)
+		x, y := float32(n.Number("x", 0)), float32(n.Number("y", 0))
+		if anchor := b.menuAnchor(c, n); anchor.Valid() {
+			bounds := anchor.Bounds()
+			x, y = bounds.X, bounds.Y+bounds.H
+			if n.String("anchor") == "above" {
+				y = bounds.Y
+			}
+		}
+		e.OpenContextMenuAt(x, y)
+	}
+	b.recordMenuOwner(n, n, true, false)
+	e.ContextMenu(func(menu *ui.Menu) {
+		b.fillWidgetMenu(menu, n.Children, w.nativeItems)
+	}).OnMenuDismiss(func() {
+		if w.popupDismissed || w.retired {
+			return
+		}
+		w.popupDismissed = true
+		b.queued = append(b.queued, Event{Kind: "dismiss", Node: n.ID, incarnation: b.state(n).identity})
+	})
+	return e
+}
+
 func (b *Backend) menuAnchor(c *ui.Context, n Node) ui.Element {
 	owner := b.menuAnchorNode(n)
 	if owner.ID == 0 {
@@ -326,7 +361,7 @@ func (b *Backend) decorateWidget(c *ui.Context, n Node, e ui.Element) {
 		}
 	}
 	if menuID != 0 || actionsID != 0 {
-		if b.widget(n).contextOpen || b.widgetMenuNeedsRetained(menuID) || b.widgetMenuNeedsRetained(actionsID) {
+		if b.config.RetainedMenus || b.widget(n).contextOpen || b.widgetMenuNeedsRetained(menuID) || b.widgetMenuNeedsRetained(actionsID) {
 			b.decorateRetainedContext(c, n, e, menuID, actionsID)
 			return
 		}
@@ -395,7 +430,11 @@ func (b *Backend) fillWidgetMenu(m *ui.Menu, ids []int64, identities map[int64]u
 			if _, known := identities[id]; !known {
 				identities[id] = identity
 			}
-			item := m.Item(n.String("text")).Disabled(n.Props["enabled"] == false).ImagePNG(b.widgetMenuIcon(n))
+			label := n.String("text")
+			if hint := n.String("shortcut-hint"); hint != "" {
+				label += "   " + hint
+			}
+			item := m.Item(label).Disabled(n.Props["enabled"] == false).ImagePNG(b.widgetMenuIcon(n))
 			if n.Bool("selected") || n.Bool("checked") {
 				item.Checked(true)
 			}
@@ -433,6 +472,11 @@ func (b *Backend) widgetMenuNeedsRetained(id int64) bool {
 	if !ok {
 		return false
 	}
+	switch n.Kind {
+	case "context-menu", "dropdown-menu", "swipe-actions", "divider", "menu-item", "menu-trigger", "swipe-action":
+	default:
+		return true
+	}
 	if n.Kind == "menu-item" || n.Kind == "menu-trigger" || n.Kind == "swipe-action" {
 		for _, child := range n.Children {
 			if b.nodes[child].Kind != "dropdown-menu" {
@@ -441,7 +485,7 @@ func (b *Backend) widgetMenuNeedsRetained(id int64) bool {
 		}
 		for key := range n.Props {
 			switch key {
-			case "text", "enabled", "icon", "selected", "checked", "press-enabled", "appear-enabled", "accessibility-identifier", "edge":
+			case "text", "enabled", "icon", "selected", "checked", "press-enabled", "appear-enabled", "accessibility-identifier", "edge", "shortcut-hint":
 			default:
 				return true
 			}

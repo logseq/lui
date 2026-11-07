@@ -136,7 +136,7 @@ func TestMenusDropdownRetainedItemsAndDismissal(t *testing.T) {
 	var events []Event
 	b := mounted(t, func(e Event) error { events = append(events, e); return nil })
 	apply(t, b, 2, create(3, "dropdown-menu"), prop(3, "x", 30.0), prop(3, "y", 40.0), insert(2, 3, 0),
-		create(4, "menu-item"), prop(4, "text", "Production"), prop(4, "selected", true), prop(4, "press-enabled", true), insert(3, 4, 0),
+		create(4, "menu-item"), prop(4, "text", "Production"), prop(4, "font-size", "20px"), prop(4, "selected", true), prop(4, "press-enabled", true), insert(3, 4, 0),
 		create(5, "menu-item"), prop(5, "text", "Development"), prop(5, "enabled", false), prop(5, "press-enabled", true), insert(3, 5, 1))
 	tt := ui.NewTester(b.View, 500, 300)
 	if !widgetMenuHas(tt, "Production") {
@@ -165,11 +165,56 @@ func TestMenusDropdownRetainedItemsAndDismissal(t *testing.T) {
 	}
 }
 
+func TestMenusNativeDropdownLifecycle(t *testing.T) {
+	for _, outcome := range []string{"choose", "cancel", "replace"} {
+		t.Run(outcome, func(t *testing.T) {
+			var events []Event
+			b := mounted(t, func(e Event) error { events = append(events, e); return nil })
+			apply(t, b, 2,
+				create(3, "dropdown-menu"), prop(3, "x", 30.0), prop(3, "y", 40.0), insert(2, 3, 0),
+				create(4, "menu-trigger"), prop(4, "text", "More actions"), insert(3, 4, 0),
+				create(5, "dropdown-menu"), insert(4, 5, 0),
+				create(6, "menu-item"), prop(6, "text", "Inspect"), prop(6, "press-enabled", true), insert(5, 6, 0),
+				create(7, "menu-item"), prop(7, "text", "Unavailable"), prop(7, "enabled", false), prop(7, "press-enabled", true), insert(3, 7, 1))
+			tt := ui.NewTester(b.View, 500, 300)
+			if len(tt.Menu()) == 0 {
+				t.Fatal("dismissible standard dropdown did not open a native menu")
+			}
+			if err := tt.ChooseMenuItem("Unavailable"); err == nil {
+				t.Fatal("disabled native action was selectable")
+			}
+			if outcome == "replace" {
+				apply(t, b, 3, Operation{Op: "detach-subtree", ID: 6}, create(6, "menu-item"), prop(6, "text", "Inspect"), prop(6, "press-enabled", true), insert(5, 6, 0))
+			}
+			if outcome == "cancel" {
+				tt.CloseMenu()
+			} else if err := tt.ChooseMenuItem("More actions", "Inspect"); err != nil {
+				t.Fatal(err)
+			}
+			tt.Frame()
+			var got []Event
+			for _, event := range events {
+				if event.Kind == "press" || event.Kind == "dismiss" {
+					got = append(got, event)
+				}
+			}
+			want := 1
+			if outcome == "choose" {
+				want = 2
+			}
+			if len(got) != want || got[len(got)-1].Kind != "dismiss" || got[len(got)-1].Node != 3 ||
+				(outcome == "choose" && (got[0].Kind != "press" || got[0].Node != 6)) || len(tt.Menu()) != 0 {
+				t.Fatalf("native dropdown lifecycle %s: %+v (menu=%v)", outcome, got, tt.Menu())
+			}
+		})
+	}
+}
+
 func TestMenusDropdownKeyboardSkipsDisabledItems(t *testing.T) {
 	var events []Event
 	b := mounted(t, func(e Event) error { events = append(events, e); return nil })
 	apply(t, b, 2, create(3, "dropdown-menu"), prop(3, "x", 20.0), prop(3, "y", 20.0), insert(2, 3, 0),
-		create(4, "menu-item"), prop(4, "text", "First action"), prop(4, "press-enabled", true), insert(3, 4, 0),
+		create(4, "menu-item"), prop(4, "text", "First action"), prop(4, "font-size", "20px"), prop(4, "press-enabled", true), insert(3, 4, 0),
 		create(5, "menu-item"), prop(5, "text", "Disabled action"), prop(5, "enabled", false), prop(5, "press-enabled", true), insert(3, 5, 1),
 		create(6, "menu-item"), prop(6, "text", "Last action"), prop(6, "press-enabled", true), insert(3, 6, 2))
 	tt := ui.NewTester(b.View, 500, 300)
