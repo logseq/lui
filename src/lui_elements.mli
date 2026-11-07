@@ -1760,7 +1760,8 @@ val drawer :
   ?selected_signal:bool Signal.signal ->
   ?disabled:bool ->
   ?disabled_signal:bool Signal.signal ->
-  ?label:string -> ?on_toggle:(Lui_protocol.event -> unit) -> t -> t -> t
+  ?label:string -> ?on_toggle:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t -> t -> t
 val status_bar :
   ?key:string ->
   ?gap:int ->
@@ -3465,7 +3466,8 @@ val dialog :
   ?text_signal:string Signal.signal ->
   ?description:string ->
   ?description_signal:string Signal.signal ->
-  ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_dismiss:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t list -> t
 val sheet :
   ?key:string ->
   ?gap:int ->
@@ -3512,7 +3514,8 @@ val sheet :
   ?detents_signal:string Signal.signal ->
   ?sizing:string ->
   ?sizing_signal:string Signal.signal ->
-  ?on_dismiss:(Lui_protocol.event -> unit) -> t list -> t
+  ?on_dismiss:(Lui_protocol.event -> unit) ->
+  ?transition:string -> t list -> t
 val tooltip :
   ?key:string ->
   ?gap:int ->

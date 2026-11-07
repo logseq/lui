@@ -89,9 +89,9 @@ Contract counts and hashes come from the canonical OCaml export in [the manifest
 | `tree` | controls.go | 71 | 7 | 3 | [TestControlsTreeKeyboardProposesExpansionAndMovesFocus](controls_test.go), [TestControlsTreeInlineIconKeepsDisclosureKeyboard](controls_test.go) |
 | `resizable` | layout.go; style.go | 79 | 81 | 3 | [TestLayoutResizableWidthAndRemoval](layout_test.go) |
 | `split` | layout.go; style.go | 88 | 81 | 4 | [TestLayoutSplitFractionPixelModesAndControlledResize](layout_test.go), [TestLayoutSplitResizeAnimationOriginEasingAndRemoval](layout_test.go), [TestLayoutSplitAcknowledgesRejectedAcceptedAndNormalizedProposals](layout_test.go) |
-| `dialog` | overlays.go | 45 | 81 | 4 | [TestOverlaysDialogTrapsAndRestoresFocus](overlays_test.go) |
-| `drawer` | overlays.go | 38 | 81 | 5 | [TestOverlaysDrawerKeepsMainAndControlledLeadingSidebar](overlays_test.go) |
-| `sheet` | overlays.go | 36 | 81 | 4 | [TestOverlaysSheetUsesBottomPresentationAndDetentHeight](overlays_test.go) |
+| `dialog` | overlays.go | 46 | 81 | 4 | [TestOverlaysDialogTrapsAndRestoresFocus](overlays_test.go) |
+| `drawer` | overlays.go | 39 | 81 | 5 | [TestOverlaysDrawerKeepsMainAndControlledLeadingSidebar](overlays_test.go) |
+| `sheet` | overlays.go | 37 | 81 | 4 | [TestOverlaysSheetUsesBottomPresentationAndDetentHeight](overlays_test.go) |
 | `tooltip` | menus.go | 13 | 0 | 3 | [TestMenusTooltipStaticAndAnchoredLifecycle](menus_test.go), [TestMenusTooltipDelayUpdateEscapeAndAnchorRemoval](menus_test.go) |
 | `toast` | menus.go | 21 | 81 | 4 | [TestMenusToastContentUpdateActionsAndDisposal](menus_test.go), [TestMenusToastTimeoutDoesNotRestartOnContentUpdate](menus_test.go), [TestMenusToastPausesForPointerAndDisposesWithoutLateDismiss](menus_test.go) |
 | `toolbar` | composites.go | 14 | 19 | 3 | [TestCompositesToolbarRovingFocusSkipsDisabledAndPreservesInputKeys](composites_test.go), [TestCompositesToolbarBottomPlacement](composites_test.go) |

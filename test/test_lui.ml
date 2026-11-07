@@ -2795,8 +2795,8 @@ let test_visual_appearance_props () =
     (property_value_supported HoverForeground (StringValue "white"));
   Alcotest.(check bool) "hover-border non-blank" true
     (property_value_supported HoverBorder (StringValue "blue-500"));
-  (* ~transition: CSS shorthand string, same admission as the state
-     channels above (incl. the restrictive kbd kind). *)
+  (* Transitions include host-owned modal surfaces; Root and Tooltip
+     keep their existing exclusions. *)
   Alcotest.(check bool) "transition on text" true
     (property_supported Text Transition);
   Alcotest.(check bool) "transition on row" true
@@ -2807,8 +2807,12 @@ let test_visual_appearance_props () =
     (property_supported Root Transition);
   Alcotest.(check bool) "transition rejected on tooltip" false
     (property_supported Tooltip Transition);
-  Alcotest.(check bool) "transition rejected on dialog" false
-    (property_supported Dialog Transition);
+  List.iter
+    (fun kind ->
+      Alcotest.(check bool)
+        ("transition on " ^ Lui_wire_schema.node_kind_name kind) true
+        (property_supported kind Transition))
+    [Dialog; Drawer; Sheet; Popover];
   Alcotest.(check bool) "transition simple" true
     (property_value_supported Transition (StringValue "opacity 0.15s ease"));
   Alcotest.(check bool) "transition with delay" true

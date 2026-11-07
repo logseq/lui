@@ -1309,9 +1309,9 @@ let common_property_supported kind property =
   | Inert -> kind = Box
   | Transition ->
     (* CSS transition shorthand; web-only visual sugar — other hosts
-       apply state changes instantly. Same admission as the state
-       channels above. *)
-    kind <> Root && kind <> Tooltip && not (modal_surface kind)
+       apply state changes instantly. Modal hosts animate their own
+       presentation surface. *)
+    kind <> Root && kind <> Tooltip
   | WidthViewport | HeightViewport | MinWidthViewport | MaxWidthViewport
   | MinHeightViewport | MaxHeightViewport -> kind <> Tooltip
 

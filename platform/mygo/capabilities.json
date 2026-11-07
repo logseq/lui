@@ -557,21 +557,21 @@
       "evidence": [
         "overlays_test.go:TestOverlaysDialogTrapsAndRestoresFocus"
       ],
-      "contractHash": "2789ec3393265c707f18340dffe10bd71d4dfaf6d9e3407490e50af43df82ec2"
+      "contractHash": "cddd10a29d13db75f941433b648470e7b71514de7d610bf0296e811f3f79f077"
     },
     "drawer": {
       "route": "overlays.go",
       "evidence": [
         "overlays_test.go:TestOverlaysDrawerKeepsMainAndControlledLeadingSidebar"
       ],
-      "contractHash": "c986051a335051d2fb7a30cde8995602f1d7197e2db9bcf75d74c0fecb66e650"
+      "contractHash": "3ff8a4de79ec6e45e3d6cf04438745bd4206bb97932059cdd9a4486079cb0902"
     },
     "sheet": {
       "route": "overlays.go",
       "evidence": [
         "overlays_test.go:TestOverlaysSheetUsesBottomPresentationAndDetentHeight"
       ],
-      "contractHash": "e0053ae3a0ec84e60fac7dbca8891eb844c97123d8a04ac9358844bf601dde2a"
+      "contractHash": "d2b7c0df8f192ba2fec2aa3d059b0c33c27dc15f6d737862c0ccf0de08d3255f"
     },
     "tooltip": {
       "route": "menus.go",
