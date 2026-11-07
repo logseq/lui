@@ -369,12 +369,24 @@ let render_tree_snapshot application =
 let restore application saved =
   if !(application.runtime_generation) <> saved.checkpoint_generation then
     invalid_arg "cannot restore a stale runtime checkpoint";
-  let affected = match saved.checkpoint_nodes with
-    | None -> None
+  let affected, orphans =
+    match saved.checkpoint_nodes with
+    | None -> None, []
     | Some nodes ->
       let created = List.init (!(application.next_node_id) - saved.checkpoint_next_node_id)
         (fun index -> saved.checkpoint_next_node_id + index + 1) in
-      Some (nodes @ created) in
+      (* nodes created after the checkpoint may already be materialized
+         in the store; the rollback wipes their runtime entries but the
+         painted copies survive unless detach ops unwind them *)
+      let orphans =
+        List.filter
+          (fun node ->
+            Hashtbl.mem application.mounted_nodes node
+            || Hashtbl.mem application.runtime_extension_nodes node)
+          created
+      in
+      Some (nodes @ created), orphans
+  in
   application.next_node_id := saved.checkpoint_next_node_id;
   application.next_virtual_generation := saved.checkpoint_next_virtual_generation;
   let replace target source =
@@ -430,7 +442,12 @@ let restore application saved =
   application.runtime_handler_count := saved.checkpoint_handler_count;
   application.runtime_dynamic_segment_count :=
     saved.checkpoint_dynamic_segment_count;
-  application.runtime_extension_dirty := saved.checkpoint_extension_dirty
+  application.runtime_extension_dirty := saved.checkpoint_extension_dirty;
+  List.iter
+    (fun node ->
+      application.pending_ops :=
+        Lui_protocol.DetachSubtree node :: !(application.pending_ops))
+    orphans
 
 let canonical_node application node =
   match Hashtbl.find_opt application.runtime_node_aliases node with
@@ -694,6 +711,12 @@ let remember_pending_create application operation =
 let enqueue application operation =
   application.pending_ops := operation :: !(application.pending_ops);
   remember_pending_create application operation
+
+(* Detach whatever the store still holds for [node] — for nodes whose
+   runtime entries were already wiped (scope disposal, restore) while
+   their painted copy survived. *)
+let enqueue_detach application node =
+  enqueue application (detach_subtree_op node)
 
 let rec find_child_index_in children child index =
   match children with
