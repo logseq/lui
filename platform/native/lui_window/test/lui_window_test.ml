@@ -4131,6 +4131,69 @@ let test_select_keyboard_lifecycle () =
     (List.mem (Dismiss 2) (press_actions (escape ())));
   Alcotest.(check int) "parent dismissal also consumes Escape exactly once" 2 !consumed
 
+let test_menu_trigger_keyboard_lifecycle () =
+  let store = store_of [
+    CreateNode (1, Root);
+    CreateNode (2, MenuTrigger); InsertChild (1, 2, 0);
+    SetProp (2, TextValue, StringValue "Options");
+    CreateNode (3, DropdownMenu); InsertChild (2, 3, 0);
+    CreateNode (4, MenuItem); InsertChild (3, 4, 0);
+    SetProp (4, TextValue, StringValue "First");
+  ] in
+  let ui = Ui.create () and rects = Rects.create () in
+  let handle input =
+    ignore (Ui.handle ui store rects input);
+    ignore (Ui.store_changed ui store)
+  in
+  handle (key Input.Tab);
+  Alcotest.(check int) "Tab reaches the menu trigger" 2 (Ui.focused ui);
+  handle (key Input.Return);
+  Alcotest.(check int) "Enter opens the menu" 3 (Ui.open_menu ui);
+  Alcotest.(check int) "Open moves focus to the first item" 4 (Ui.focused ui);
+  handle (key Input.Escape);
+  Alcotest.(check int) "Escape returns focus to the trigger" 2 (Ui.focused ui);
+  handle (key Input.Space);
+  handle (Input.Text_input " ");
+  Alcotest.(check int) "Space opens the menu" 3 (Ui.open_menu ui);
+  Alcotest.(check string) "Opening Space is not a search prefix" "" (Ui.typeahead ui)
+
+let test_submenu_keyboard_and_typeahead () =
+  let store = store_of [
+    CreateNode (1, Root);
+    CreateNode (2, DropdownMenu); InsertChild (1, 2, 0);
+    CreateNode (3, MenuItem); InsertChild (2, 3, 0);
+    SetProp (3, TextValue, StringValue "First");
+    CreateNode (4, MenuTrigger); InsertChild (2, 4, 1);
+    SetProp (4, TextValue, StringValue "Type");
+    CreateNode (5, DropdownMenu); InsertChild (4, 5, 0);
+    CreateNode (6, MenuItem); InsertChild (5, 6, 0);
+    CreateNode (7, MenuItem); InsertChild (2, 7, 2);
+    SetProp (7, TextValue, StringValue "Last");
+  ] in
+  let ui = Ui.create () and rects = Rects.create () in
+  let handle input =
+    ignore (Ui.handle ui store rects input);
+    ignore (Ui.store_changed ui store)
+  in
+  handle (key Input.Home);
+  handle (key Input.Arrow_down);
+  Alcotest.(check int) "Down reaches the submenu trigger" 4 (Ui.focused ui);
+  handle (key Input.Arrow_right);
+  Alcotest.(check int) "Right opens the submenu" 5 (Ui.open_menu ui);
+  Alcotest.(check int) "Submenu focuses its first item" 6 (Ui.focused ui);
+  handle (key Input.Arrow_left);
+  Alcotest.(check int) "Left restores the trigger" 4 (Ui.focused ui);
+  handle (key Input.Return);
+  Alcotest.(check int) "Enter opens the submenu" 5 (Ui.open_menu ui);
+  handle (key Input.Escape);
+  Alcotest.(check int) "Escape restores the trigger" 4 (Ui.focused ui);
+  Ui.tick_scrollbars ui ~now_ms:1.;
+  handle (Input.Text_input "f");
+  Alcotest.(check int) "First prefix finds First" 3 (Ui.focused ui);
+  Ui.tick_scrollbars ui ~now_ms:1201.;
+  handle (Input.Text_input "l");
+  Alcotest.(check int) "Prefix expires between inputs" 7 (Ui.focused ui)
+
 let test_menu_keyboard_scope () =
   let store =
     store_of
@@ -4922,6 +4985,8 @@ let () =
           Alcotest.test_case "intrinsic menu keyboard" `Quick test_assembly_menu_keyboard;
           Alcotest.test_case "menu initial selection" `Quick test_menu_open_selection;
           Alcotest.test_case "select keyboard lifecycle" `Quick test_select_keyboard_lifecycle;
+          Alcotest.test_case "menu trigger keyboard lifecycle" `Quick test_menu_trigger_keyboard_lifecycle;
+          Alcotest.test_case "submenu keyboard and typeahead" `Quick test_submenu_keyboard_and_typeahead;
           Alcotest.test_case "nested menu keyboard scope" `Quick test_menu_keyboard_scope;
           Alcotest.test_case "menu activation text commit" `Quick test_menu_activation_text_commit;
           Alcotest.test_case "scrollbar paint" `Quick

@@ -194,11 +194,16 @@ let list_key store st ~scope ~content_rect ~key ~mods =
   | _ -> (st, [])
 
 (* Menus own their enabled rows, excluding separately presented submenus. *)
+let menu_row store id =
+  match Lui_query.kind_name store id with
+  | "menu-item" | "menu-trigger" -> true
+  | _ -> false
+
 let menu_has_items store menu =
   let rec contains id =
     if id <> menu && Lui_query.presented_overlay store id then false
     else
-      Lui_query.kind_name store id = "menu-item"
+      menu_row store id
       || List.exists contains (Lui_store.child_ids store id)
   in
   contains menu
@@ -211,7 +216,7 @@ let menu_items store menu =
     else
       let acc =
         if
-          Lui_query.kind_name store id = "menu-item"
+          menu_row store id
           && Lui_query.node_enabled store id
         then id :: acc
         else acc
@@ -237,7 +242,7 @@ let menu_hover store st ~menu path =
   match
     List.find_opt
       (fun id ->
-        Lui_query.kind_name store id = "menu-item"
+        menu_row store id
         && Lui_query.node_enabled store id
         && Lui_query.is_desc store id menu)
       path

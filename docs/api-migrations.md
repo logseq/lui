@@ -109,6 +109,30 @@ For example, a sheet beneath a column with `theme-mode="dark"` now displays its
 title and unstyled text in the dark theme's foreground without per-label colors.
 Do not add a `foreground` property to the sheet: that property is not supported
 by the sheet kind.
+## Unreleased: Native icon prop paints above state backgrounds
+
+On the retained Native host, an `icon` prop on `menu-item` and
+`number-stepper` now paints with the node's content — after its
+`background`, `hover-background`, and `pressed-background` fills —
+instead of in the default chrome layer underneath them. A hovered or
+pressed control keeps its glyph visible; previously any declared state
+background covered the icon. No view or wire changes are required.
+
+
+## Unreleased: Native menu keyboard navigation
+
+The retained Native window host opens a focused menu trigger with Return or
+Space. Menu keyboard traversal includes enabled submenu triggers. Right,
+Return, or Space opens the highlighted submenu. Left or Escape closes that
+submenu and returns focus to its trigger. Menu typeahead clears its prefix
+after 500 milliseconds of inactivity.
+
+For example, a menu with a regular item followed by
+`submenu ~text:"Type" entries` now reaches Type with Down and opens it with
+Right. Hosts should keep forwarding native keyboard events and advancing the
+existing window clock. This uses the existing menu constructors and wire
+events.
+
 
 ## Unreleased: Web submenu placement through layout wrappers
 

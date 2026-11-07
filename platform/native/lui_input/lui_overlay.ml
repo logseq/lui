@@ -55,9 +55,11 @@ let trigger_owned store id =
 let menu_panel store id =
   List.find_opt (trigger_owned store) (Lui_store.child_ids store id)
 
-(* Host-owned transient visibility: true for menu panels declared
-   under a [menu-trigger] that are not the open one. *)
-let hidden store st id = trigger_owned store id && id <> st.open_menu
+let menu_hidden store ~open_menu id =
+  trigger_owned store id && id <> open_menu
+  && (open_menu = 0 || not (Lui_query.is_desc store open_menu id))
+
+let hidden store st id = menu_hidden store ~open_menu:st.open_menu id
 
 (* Overlay-layer hosts (the [data-overlay-layer] marker) are
    permanent containers that lift popup children into the floating
@@ -77,7 +79,7 @@ let top_scan store ~open_menu =
   Lui_store.iter_preorder store (fun id ->
     match overlay_class store id with
     | `none -> ()
-    | _ when trigger_owned store id && id <> open_menu -> ()
+    | _ when menu_hidden store ~open_menu id -> ()
     | _ when Lui_store.inert_in_chain store id
              || not (Lui_store.anchor_available store id) -> ()
     | cls -> top := Some (id, cls = `modal, overlay_dismissible store id));
@@ -162,7 +164,7 @@ let sync store st ~focused ~kbd ~keyboard =
       && (not (Lui_store.inert_in_chain store id))
       && Lui_store.anchor_available store id
       && Lui_focus.chain_visible store id
-      && ((not (trigger_owned store id)) || id = st.open_menu)
+      && not (hidden store st id)
     in
     let closed =
       List.filter (fun (id, _) -> not (present id)) st.return_focus
@@ -236,18 +238,45 @@ let sync store st ~focused ~kbd ~keyboard =
     in
     ({ st with top = ov_id; return_focus }, restored @ initial)
 
-(* Press outside the open menu closes it host-side — the owning
-   trigger counts as inside so a second click toggles rather than
-   close-then-reopen. *)
+let rec parent_menu store id =
+  match Lui_store.parent store id with
+  | None -> None
+  | Some parent when
+      menu_panel_kind store parent
+      || (Lui_query.kind_name store parent = "popover"
+          && Lui_store.string_prop store parent "role" = Some "menu") ->
+      Some parent
+  | Some parent when overlay_class store parent = `none -> parent_menu store parent
+  | Some _ -> None
+
+let open_owned_menu store st trigger =
+  match menu_panel store trigger with
+  | Some panel -> Some { st with open_menu = panel }
+  | None -> None
+
+let close_submenu store st =
+  match parent_menu store st.open_menu with
+  | None -> None
+  | Some parent ->
+      let open_menu = if trigger_owned store parent then parent else 0 in
+      Some { st with open_menu }
+
+(* Pressing within an ancestor menu closes only its descendant menus.
+   The owning trigger counts as inside so a second press toggles it. *)
 let close_on_outside_press store st path =
-  if st.open_menu <> 0
-     && not
-          (inside store st.open_menu path
-           || List.exists
-                (fun i -> Lui_store.parent store st.open_menu = Some i)
-                path)
-  then ({ st with open_menu = 0 }, [ `Repaint ])
-  else (st, [])
+  let rec nearest_open id =
+    if id = 0 then 0
+    else if inside store id path
+         || List.exists (fun node -> Lui_store.parent store id = Some node) path
+    then id
+    else
+      match parent_menu store id with
+      | Some parent when trigger_owned store parent -> nearest_open parent
+      | _ -> 0
+  in
+  let open_menu = nearest_open st.open_menu in
+  if open_menu = st.open_menu then (st, [])
+  else ({ st with open_menu }, [ `Repaint ])
 
 (* Overlay press semantics: a press outside the top overlay
    light-dismisses it when its kind admits Dismiss; a modal surface
@@ -265,21 +294,23 @@ let press store st path =
    (the trigger itself may not be pressable); activating a node inside
    the open panel closes it after the press. *)
 let click_menu store st ~path ~pressed =
-  match
-    List.find_opt
-      (fun i -> Lui_query.kind_name store i = "menu-trigger") path
-  with
-  | Some trig -> (
-    match menu_panel store trig with
-    | Some m ->
-      ({ st with open_menu = (if st.open_menu = m then 0 else m) },
-       [ `Repaint ])
-    | None -> (st, []))
-  | None ->
-    if st.open_menu <> 0
-       && Lui_query.is_desc store pressed st.open_menu
-    then ({ st with open_menu = 0 }, [ `Repaint ])
-    else (st, [])
+  let rec trigger_before_panel = function
+    | [] -> None
+    | id :: _ when menu_panel_kind store id -> None
+    | id :: _ when Lui_query.kind_name store id = "menu-trigger" -> Some id
+    | _ :: rest -> trigger_before_panel rest
+  in
+  match trigger_before_panel path with
+  | Some trigger ->
+      (match open_owned_menu store st trigger with
+       | Some opened when opened.open_menu = st.open_menu ->
+           (Option.value (close_submenu store st) ~default:{ st with open_menu = 0 },
+            [ `Repaint ])
+       | Some opened -> (opened, [ `Repaint ])
+       | None -> (st, []))
+  | None when st.open_menu <> 0 && Lui_query.is_desc store pressed st.open_menu ->
+      ({ st with open_menu = 0 }, [ `Repaint ])
+  | None -> (st, [])
 
 (* Escape peels one layer at a time: the open menu, then a
    dismissible overlay; a non-dismissible top overlay eats the key.
@@ -291,7 +322,9 @@ type esc =
   | `Pass ]
 
 let escape store st =
-  if st.open_menu <> 0 then ({ st with open_menu = 0 }, `Closed_menu)
+  if st.open_menu <> 0 then
+    (Option.value (close_submenu store st) ~default:{ st with open_menu = 0 },
+     `Closed_menu)
   else
     match top_scan store ~open_menu:st.open_menu with
     | Some (oid, _, true) -> (st, `Dismissed oid)

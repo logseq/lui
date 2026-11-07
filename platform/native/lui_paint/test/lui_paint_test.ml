@@ -1620,6 +1620,51 @@ let test_menu_item_single_icon () =
     check int "shortcut children preserve the menu icon" 1 (List.length images)
   | _ -> ()
 
+(* The icon prop's glyph is content, not chrome — a state background
+   (hover-background, here painted through box_ops) must not cover it.
+   Regression: it used to paint inside default_chrome, under the hover
+   fill, so every hovered menu icon disappeared. *)
+let test_menu_item_icon_above_state_background () =
+  let t = store () in
+  apply t
+    [ Lui_protocol.CreateNode (1, MenuItem);
+      SetProp (1, InlineIconName, StringValue "settings");
+      SetProp (1, TextValue, StringValue "Settings");
+      SetProp (1, HoverBackground, StringValue "#eeeeee") ];
+  let img = Lui_scene.new_image ~w:4 ~h:4 (Bytes.make 64 '\255') in
+  let h =
+    { (hooks ~layout:(fun _ ->
+          Lui_paint.placement_of_rect (rect 0. 0. 200. 32.)) ())
+      with Lui_paint.image_of = (fun id -> if id = 1 then Some img else None);
+      image_in = (fun id _ -> if id = 1 then Some img else None);
+      state_of = (fun id ->
+        if id = 1 then { Lui_paint.state_neutral with hovered = true }
+        else Lui_paint.state_neutral) }
+  in
+  let ops = (paint_with h t ()).ops in
+  let covers (outer : rect) (inner : rect) =
+    outer.x <= inner.x && outer.y <= inner.y
+    && outer.x +. outer.w >= inner.x +. inner.w
+    && outer.y +. outer.h >= inner.y +. inner.h
+  in
+  let images =
+    List.filter_map
+      (fun (i, op) -> match op with Image img -> Some (i, img) | _ -> None)
+      (List.mapi (fun i op -> (i, op)) ops)
+  in
+  check int "one icon image" 1 (List.length images);
+  match images with
+  | [ (icon_i, icon) ] ->
+    List.iter
+      (fun (i, op) ->
+        match op with
+        | Fill f when covers f.frect icon.irect2 ->
+            check bool "covering fills precede the menu-item icon" true
+              (i < icon_i)
+        | _ -> ())
+      (List.mapi (fun i op -> (i, op)) ops)
+  | _ -> ()
+
 let test_menu_selection_indicator () =
   List.iter
     (fun scale ->
@@ -2103,6 +2148,8 @@ let () =
          test_case "scrollbar" `Quick test_scrollbar;
          test_case "extension" `Quick test_extension;
          test_case "menu item single icon" `Quick test_menu_item_single_icon;
+         test_case "menu item icon above state background" `Quick
+           test_menu_item_icon_above_state_background;
          test_case "menu selection indicator" `Quick test_menu_selection_indicator;
          test_case "menu selection placement" `Quick test_menu_selection_placement;
          test_case "menu measure padding" `Quick test_menu_measure_padding;
