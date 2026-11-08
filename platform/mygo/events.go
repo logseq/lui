@@ -36,6 +36,10 @@ func (b *Backend) interactionBlocked(n Node, e Event) bool {
 	// is inert or disabled. Interactive events use the current retained tree,
 	// including ancestors updated by earlier events in the same frame.
 	switch e.Kind {
+	case "focus-within-changed":
+		if !e.Within {
+			return false
+		}
 	case "appear", "load", "scroll-completed", "visible-range", "scroll-edges", "virtual-window":
 		return false
 	}
@@ -257,6 +261,9 @@ func eventAllowed(n Node, e Event) bool {
 	}
 	if n.Kind == "extension" {
 		return e.Kind == "extension-event" && e.Identifier == n.Identifier
+	}
+	if e.Kind == "focus-within-changed" {
+		return n.Bool("focus-within-enabled") && eventSupported(n.Kind, e.Kind)
 	}
 	if e.Kind == "appear" {
 		return n.Bool("appear-enabled")

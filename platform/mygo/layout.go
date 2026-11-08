@@ -109,7 +109,7 @@ func (b *Backend) renderLayout(c *ui.Context, n Node, s *controlState, appearanc
 					delete(surface.Props, name)
 				}
 			}
-			b.style(c, surface, region)
+			b.style(c, surface, region, ui.Element.FocusWithin)
 		}
 		content := func() {
 			if len(n.Children) > 0 {

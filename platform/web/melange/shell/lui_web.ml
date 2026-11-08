@@ -48,6 +48,7 @@ let create_with_extensions host app_icons registry adapters =
     web_lists = Hashtbl.create 4;
     web_mounted_roots = Hashtbl.create 4;
     web_pointer_cleanups = Hashtbl.create 8;
+    web_focus_within_observers = Hashtbl.create 4;
     web_layers = Lui_web_layers.create ();
     web_modal_return_focus = ref None;
     web_modal_focus_returns = Hashtbl.create 4;

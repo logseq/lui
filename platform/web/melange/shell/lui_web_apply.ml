@@ -71,6 +71,7 @@ let cleanup_node renderer node =
    | None -> ());
   Lui_web_menu.release_context_host_events renderer node;
   Lui_web_events.release_pointer_events renderer node;
+  Lui_web_events.release_focus_within renderer node;
   match Hashtbl.find_opt renderer.web_cleanups node with
   | Some cleanup ->
       cleanup ();
@@ -561,7 +562,11 @@ let apply_set_prop renderer effects node property value =
           if property = PointerEnabled || property = PointerCapture || property = Enabled then
             Lui_web_events.sync_pointer_events renderer node kind
               (Lazy.force current.platform_node);
-          refresh_parent_for_prop renderer effects node property
+          refresh_parent_for_prop renderer effects node property;
+          if property = FocusWithinEnabled then
+            Lui_web_events.sync_focus_within renderer node (Lazy.force current.platform_node);
+          if property = Enabled || property = Inert then
+            Lui_web_events.refresh_focus_within_subtree renderer node
       | None -> invalid_arg "standard property targets extension node")
   | None -> ()
 
@@ -584,7 +589,11 @@ let apply_remove_prop renderer effects node property =
            if property = PointerEnabled || property = PointerCapture || property = Enabled then
              Lui_web_events.sync_pointer_events renderer node kind
                (Lazy.force current.platform_node);
-           refresh_parent_for_prop renderer effects node property
+           refresh_parent_for_prop renderer effects node property;
+           if property = FocusWithinEnabled then
+             Lui_web_events.sync_focus_within renderer node (Lazy.force current.platform_node);
+           if property = Enabled || property = Inert then
+             Lui_web_events.refresh_focus_within_subtree renderer node
        | None -> invalid_arg "standard property targets extension node")
    | None -> ())
 
@@ -1032,6 +1041,8 @@ let apply_dom_batch renderer previous_nodes batch =
       mark_ancestors focus_touched id
     | _ -> ()) batch.ops;
   Hashtbl.iter (fun id () -> climb id) touched;
+  if Hashtbl.length renderer.web_focus_within_observers > 0 then
+    Hashtbl.iter (fun id () -> Lui_web_events.refresh_focus_within renderer id) focus_touched;
   Hashtbl.iter (fun id () ->
     match Store.node renderer.web_store id with
     | Some current when Store.standard_kind_is current VirtualList
@@ -1080,6 +1091,7 @@ let recover_dom renderer =
     end) resources;
   Hashtbl.clear renderer.web_cleanups;
   Hashtbl.clear renderer.web_pointer_cleanups;
+  Hashtbl.clear renderer.web_focus_within_observers;
   Hashtbl.clear renderer.web_context_hosts;
   Hashtbl.clear renderer.web_menu_highlights;
   Hashtbl.clear renderer.web_virtual_lists;

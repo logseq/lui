@@ -148,6 +148,8 @@ let register ~(register_named : 'a. string -> 'a -> unit) prefix bridge =
   register "picked" (fun id payload ->
       dispatch_event bridge (Picked (id, payload)));
   register "double_press" (node (fun id -> DoublePress id));
+  register "focus_within_changed" (fun id within ->
+      dispatch_event bridge (FocusWithinChanged (id, within)));
   register "toggle_changed" (fun id checked ->
       dispatch_event bridge (ToggleChanged (id, checked)));
   register "toggle_changed_detail" (fun id checked modifiers ->
