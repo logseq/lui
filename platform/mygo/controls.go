@@ -9,7 +9,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-func (b *Backend) switchControl(c *ui.Context, n Node, checked *bool) ui.Element {
+func (b *Backend) switchControl(c *ui.Context, n Node, checked *bool, focusWithin func(ui.Element) bool) ui.Element {
 	authored := hasSpacing(n, "padding")
 	for _, name := range []string{"width", "height", "min-width", "max-width", "min-height", "max-height",
 		"width-viewport", "min-width-viewport", "max-width-viewport", "height-viewport", "min-height-viewport", "max-height-viewport",
@@ -37,7 +37,7 @@ func (b *Backend) switchControl(c *ui.Context, n Node, checked *bool) ui.Element
 		active bool
 		prefix string
 	}{
-		{n.Bool("selected"), "selected"}, {e.FocusWithin(), "focus-within"},
+		{n.Bool("selected"), "selected"}, {n.String("focus-within-foreground") != "" && focusWithin(e), "focus-within"},
 		{e.Hovered(), "hover"}, {hasPressedStyle(n) && e.Pressed(), "pressed"},
 	} {
 		if value := n.String(state.prefix + "-foreground"); state.active && value != "" {

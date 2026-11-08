@@ -98,6 +98,7 @@ let events = [
   "pointer-move", PointerMove (0, pointer); "pointer-cancel", PointerCancel (0, pointer);
   "toggle-changed-detail", ToggleChangedDetail (0, false, 0);
   "pointer-enter", PointerEnter 0; "pointer-leave", PointerLeave 0;
+  "focus-within-changed", FocusWithinChanged (0, false);
   "context-menu-press", ContextMenuPress (0, pointer); "load", Load 0;
   "navigate-previous", NavigatePrevious 0; "navigate-next", NavigateNext 0;
   "navigation-key", NavigationKey (0, "ArrowDown", false);

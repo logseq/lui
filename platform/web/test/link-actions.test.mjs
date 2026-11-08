@@ -26,6 +26,7 @@ function fixture(){
   const element={setAttribute(){},addEventListener(name,callback){listeners.set(name,callback)}}
   const renderer={web_store:store,web_event_handler:{contents:event=>{events.push(event);return true}},
     web_context_hosts:Tables.create(undefined,4),web_pointer_cleanups:Tables.create(undefined,4),
+    web_focus_within_observers:Tables.create(undefined,4),
     web_document:{},web_appear_pending:Tables.create(undefined,4),web_appear_seen:Tables.create(undefined,4),
     web_appear_timer:{contents:undefined}}
   let generation=0

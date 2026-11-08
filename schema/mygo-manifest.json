@@ -1,13 +1,13 @@
 {
   "version": 1,
   "sourceHashes": {
-    "schema/components.json": "0e660e5b1c2f7e2f02b6d6655cff72e9ca0e083fd67bb73f78f929ba16d063b9",
-    "src/lui_protocol.ml": "b7a3b65dded1374016db030b793a7525f450918be6d3a36bd9ceaa5c65fe22e3",
-    "src/lui_protocol.mli": "ee29ca26d1d39dae08699aefa525acdaa9c7047ada6804ca72d7761bd3608242",
-    "src/lui_wire_schema.ml": "b7664408ffdcfc03e06bd68fbd62e0a58df567695a1f6acbfd9fecdaa5c7821e",
-    "tooling/export_mygo_contract.ml": "a055e72c226d0825664551aa073f3cf709a55ae648fcbab62b5c42eac23882ba"
+    "schema/components.json": "b89403cbbba99f8559aab6b2392301d87682c090df87b4508825d891759860fd",
+    "src/lui_protocol.ml": "9550ac6d4f88c764758db1ae5909e2915cdae1b455b9e96fd32d417f030eec21",
+    "src/lui_protocol.mli": "30ee5de82811ffff64dae818dd84597689bc1beae413f12ba4da010ca82b9aa6",
+    "src/lui_wire_schema.ml": "2f451922adfe58e144ca29b3f0ad21b9b195bb0ccf269322a6a975baaa527a3c",
+    "tooling/export_mygo_contract.ml": "246ade7e088225ad68d25ce5ebc96a6a850fec3e66e1aa9d9debbd720e04bab1"
   },
-  "generatedGoHash": "16c014884921c72ecc75c13d40009abb9607bc8fee525c3da74273c09661cc4a",
+  "generatedGoHash": "805e4cdaa0d83c19046193ac53ecdbb6464156ec301031f15825f4a73c50a002",
   "kinds": {
     "root": {
       "contractHash": "1cda829a4bd05ddb79ca21f04ed1d7a51dae8bf3d388bb7eecdf8d5e2f3ec1eb",
@@ -17,17 +17,17 @@
       "baseline": {}
     },
     "row": {
-      "contractHash": "8607888dd0b74341aaf93b9a2007d4400d8654129b0a6bca393b82eb27b53b13",
-      "propertyCount": 95,
+      "contractHash": "5b37ca2312b59c73d5ca14e59389ed49a11b1dc3710bdee1409ce9675f9d8c50",
+      "propertyCount": 96,
       "childCount": 81,
-      "eventCount": 11,
+      "eventCount": 12,
       "baseline": {}
     },
     "column": {
-      "contractHash": "d1625463275eac1a39011cec61b6bf07997f116c26977792579c7fdb6f2a1507",
-      "propertyCount": 92,
+      "contractHash": "6f35e51043ab8ae815796b2dd3a147f0a5e01b0fe15b9bab93f588710264f720",
+      "propertyCount": 93,
       "childCount": 81,
-      "eventCount": 8,
+      "eventCount": 9,
       "baseline": {}
     },
     "grid": {
@@ -99,10 +99,10 @@
       "baseline": {}
     },
     "box": {
-      "contractHash": "53c3f165be3a92e51235e68b433156fc4b1594d4ee6845cc2ab1d4dc1a270b64",
-      "propertyCount": 94,
+      "contractHash": "028237d9cea015c951093e45aa35dc7c3493f8a22f27106e43dfc506da741866",
+      "propertyCount": 95,
       "childCount": 81,
-      "eventCount": 11,
+      "eventCount": 12,
       "baseline": {}
     },
     "text": {

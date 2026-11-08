@@ -53,6 +53,19 @@ func (b *Backend) emit(e Event) {
 		return
 	}
 	defer b.reconcileControl(e)
+	if e.Kind == "focus-within-changed" {
+		state := b.states[e.Node]
+		if state == nil || !eventAllowed(n, e) {
+			return
+		}
+		if b.interactionBlocked(n, e) {
+			e.Within = false
+		}
+		if state.focusWithinKnown && state.focusWithinLast == e.Within {
+			return
+		}
+		state.focusWithinKnown, state.focusWithinLast = true, e.Within
+	}
 	if b.interactionBlocked(n, e) {
 		return
 	}
@@ -122,6 +135,13 @@ func (b *Backend) render(c *ui.Context, id int64, appearances *[]Event) {
 	restoreTheme := b.scopeTheme(c, n)
 	defer restoreTheme()
 	s := b.state(n)
+	focusRead, within := false, false
+	focusWithin := func(element ui.Element) bool {
+		if !focusRead {
+			within, focusRead = element.FocusWithin(), true
+		}
+		return within
+	}
 	children := func() {
 		for _, child := range n.Children {
 			b.render(c, child, appearances)
@@ -214,7 +234,7 @@ func (b *Backend) render(c *ui.Context, id int64, appearances *[]Event) {
 				}
 			})
 		case "switch":
-			e = b.switchControl(c, n, &s.checked)
+			e = b.switchControl(c, n, &s.checked, focusWithin)
 			e.OnChange(func() {
 				defer b.reconcileControl(Event{Node: id, Kind: "toggle-changed", incarnation: s.identity})
 				if n.Bool("toggle-enabled") {
@@ -320,10 +340,20 @@ func (b *Backend) render(c *ui.Context, id int64, appearances *[]Event) {
 	if n.String("theme") != "" || n.String("theme-mode") != "" {
 		e.TextColor(c.Theme().Text)
 	}
-	b.style(c, n, e)
+	b.style(c, n, e, focusWithin)
 	if !b.probing && n.Bool("autofocus") && !s.focused {
 		e.Focus()
 		s.focused = true
+	}
+	if !b.probing {
+		if n.Bool("focus-within-enabled") {
+			within := !b.interactionBlocked(n, Event{Kind: "focus-within-changed", Within: true}) && focusWithin(e)
+			if !s.focusWithinKnown || s.focusWithinLast != within {
+				emit(Event{Kind: "focus-within-changed", Within: within})
+			}
+		} else {
+			s.focusWithinKnown = false
+		}
 	}
 	b.bindEvents(c, n, s, e, emit)
 	if text := n.String("tooltip"); text != "" {

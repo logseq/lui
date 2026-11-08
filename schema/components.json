@@ -1851,6 +1851,11 @@
       "lg": "ToggleDetailEnabled",
       "wire": "toggle-detail-enabled",
       "swift": "toggleDetailEnabled"
+    },
+    {
+      "lg": "FocusWithinEnabled",
+      "wire": "focus-within-enabled",
+      "swift": "focusWithinEnabled"
     }
   ],
   "events": [
@@ -2042,6 +2047,13 @@
     {
       "lg": "ToggleChangedDetail",
       "fields": [":int", ":bool", ":int"]
+    },
+    {
+      "lg": "FocusWithinChanged",
+      "fields": [
+        ":int",
+        ":bool"
+      ]
     }
   ],
   "kindProperties": {
@@ -2263,7 +2275,11 @@
       "cross"
     ],
     "row": [
-      "orientation"
+      "orientation",
+      "focus-within-enabled"
+    ],
+    "column": [
+      "focus-within-enabled"
     ],
     "list-item": [
       "display"
@@ -2285,7 +2301,8 @@
       "transition"
     ],
     "box": [
-      "inert"
+      "inert",
+      "focus-within-enabled"
     ],
     "popover": [
       "collision-padding"

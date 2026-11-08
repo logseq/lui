@@ -1849,6 +1849,11 @@ let notify_segment_property application node property value =
           !(segment.dynamic_segment_on_property)) segments
 
 let set_prop application node property value =
+  if property = FocusWithinEnabled then
+    (match application.runtime_backend.backend_profile.profile_host with
+     | WebHost | MyGoHost -> ()
+     | SwiftUIHost | KotlinHost | GenericHost ->
+         invalid_arg "focus-within observation is unsupported by backend profile");
   let node = canonical_node application node in
   let kind = require_standard_node_kind application node in
   if not (property_supported kind property) then

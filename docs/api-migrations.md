@@ -1,5 +1,50 @@
 # LUI API migration guide
 
+## Unreleased: opt-in container focus-within observation (Web and MyGo)
+
+`row`, `column` and `box` accept `?on_focus_within:(bool -> unit)` on
+Web/Melange and MyGo. Installing the callback enables the new boolean
+`focus-within-enabled` property and receives `FocusWithinChanged (node, within)`.
+Without the callback/property, observation is off and existing views are unchanged.
+The callback does not make the container focusable or change keyboard traversal.
+
+After mount/enable settles, the observer publishes one current snapshot, then
+only distinct transitions. True means focus is on the container or inside its
+rendered subtree. Moving between descendants does not emit an exit/reentry pair.
+Web coalesces local `focusin`/`focusout` checks at the microtask boundary, also
+checking after retained child removal. MyGo shares its existing `FocusWithin`
+read with appearance styling and delivers through the committed event queue.
+Neither backend treats a popup/portal outside the subtree as inside merely
+because it is attached to a trigger. Window activation is not a second condition
+on retained focus membership; this is not an application-activation callback.
+
+Disabled/inert ancestors normalize membership to false, including a terminal
+false for a previously focused subtree. Re-enabling observes current membership
+again. The last value is recorded before dispatch, so reducer patches do not
+cause repeated feedback. Same-node reconciliation retains the observation;
+opt-out or node retirement discards it. A new incarnation receives a fresh
+snapshot. Unmount cancels delayed checks without dispatching to a dead node.
+
+SwiftUI, Kotlin and Generic host profiles explicitly reject this property,
+including explicit false; Apple and Android raw-wire hosts reject it too.
+Cross-platform applications must omit the callback on those paths, not expect
+silent no-event support. No Apple/Android focus framework or focusable group is
+introduced. Their existing focus behavior and appearance properties are unchanged.
+Rebuild the shared OCaml application and Web/MyGo host together for the added
+event constructor and native `lui_ocaml_focus_within_changed` bool callback.
+Older native libraries remain usable without this opt-in; attempting to deliver
+the new event to a library without its callback fails explicitly.
+
+For example, replace per-control focus handlers with one row-owned signal:
+
+```ocaml
+row ~on_focus_within:(fun within -> Signal.set toolbar_focused within)
+  [comment_body; reactions; toolbar]
+```
+
+Combine that signal with the existing hover state to drive typed toolbar opacity.
+No new focus-within opacity property or data migration is needed.
+
 ## Unreleased: MyGo links in text flow
 
 Text-content `link` nodes inside a native text flow now use MyGo's inline Link
