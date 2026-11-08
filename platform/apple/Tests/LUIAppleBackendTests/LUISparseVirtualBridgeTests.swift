@@ -53,6 +53,8 @@
       }
       let native = try #require(field(window.contentView!))
       native.selectText(nil)
+      let editor = try #require(native.currentEditor() as? NSTextView)
+      try #require(window.firstResponder === editor)
       while !sparseWirePayloads.contains(where: { $0.0 == 20 && $0.2.contains("\(row)") })
         && ContinuousClock.now < deadline
       {

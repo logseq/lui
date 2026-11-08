@@ -111,8 +111,8 @@ import SwiftUI
         }
         if let responder, responder.isDescendant(of: document) {
           let id: Int?
-          if responder === focusedView {
-            id = focusedRow.flatMap { state?.contains($0) == true ? $0 : nil }
+          if responder === focusedView, let row = focusedRow, state?.contains(row) == true {
+            id = row
           } else {
             let frame = responder.convert(responder.bounds, to: document)
             id = state?.row(at: frame.midY)
