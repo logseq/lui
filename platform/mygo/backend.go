@@ -84,6 +84,8 @@ type Event struct {
 	Shift       bool           `json:"shift,omitempty"`
 	Payload     string         `json:"payload,omitempty"`
 	incarnation uint64
+
+	focusContext *ui.Context
 }
 
 func (e Event) MarshalJSON() ([]byte, error) {

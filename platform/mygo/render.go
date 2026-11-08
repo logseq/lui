@@ -35,9 +35,9 @@ func (b *Backend) state(n Node) *controlState {
 	}
 	return s
 }
-func (b *Backend) emit(e Event) {
+func (b *Backend) emit(e Event) bool {
 	if b.probing || b.closed {
-		return
+		return false
 	}
 	if e.incarnation == 0 {
 		if s := b.states[e.Node]; s != nil {
@@ -46,37 +46,45 @@ func (b *Backend) emit(e Event) {
 	}
 	if b.building {
 		b.queued = append(b.queued, e)
-		return
+		return false
 	}
 	n, ok := b.nodes[e.Node]
 	if !ok || (e.incarnation != 0 && (b.states[e.Node] == nil || b.states[e.Node].identity != e.incarnation)) {
-		return
+		return false
 	}
 	defer b.reconcileControl(e)
 	if e.Kind == "focus-within-changed" {
 		state := b.states[e.Node]
-		if state == nil || !eventAllowed(n, e) {
-			return
+		if state == nil {
+			return false
+		}
+		if e.focusContext != nil {
+			e.Within = !b.interactionBlocked(n, Event{Kind: e.Kind, Within: true}) && state.handle.FocusWithin(e.focusContext)
+			e.focusContext = nil
+		}
+		if !eventAllowed(n, e) {
+			return false
 		}
 		if b.interactionBlocked(n, e) {
 			e.Within = false
 		}
 		if state.focusWithinKnown && state.focusWithinLast == e.Within {
-			return
+			return false
 		}
 		state.focusWithinKnown, state.focusWithinLast = true, e.Within
 	}
 	if b.interactionBlocked(n, e) {
-		return
+		return false
 	}
 	if !eventAllowed(n, e) {
-		return
+		return false
 	}
 	if b.config.Dispatch != nil {
 		if err := b.config.Dispatch(e); err != nil && b.err == nil {
 			b.err = err
 		}
 	}
+	return e.Kind == "focus-within-changed"
 }
 func (b *Backend) View(c *ui.Context) {
 	b.viewGeneration = b.generation
@@ -104,6 +112,7 @@ func (b *Backend) View(c *ui.Context) {
 	c.AfterFrame(func() {
 		pending := append(appearances, b.queued...)
 		b.queued = nil
+		invalidate := false
 		for _, event := range pending {
 			if event.Kind == "appear" {
 				state := b.states[event.Node]
@@ -112,9 +121,14 @@ func (b *Backend) View(c *ui.Context) {
 				}
 				state.appeared = true
 			}
-			b.emit(event)
+			if event.Kind == "focus-within-changed" {
+				invalidate = b.emit(event) || invalidate
+			} else {
+				b.emit(event)
+				invalidate = true
+			}
 		}
-		if len(pending) > 0 {
+		if invalidate {
 			c.Invalidate()
 		}
 		for key, owner := range b.menuOwners {
@@ -347,10 +361,7 @@ func (b *Backend) render(c *ui.Context, id int64, appearances *[]Event) {
 	}
 	if !b.probing {
 		if n.Bool("focus-within-enabled") {
-			within := !b.interactionBlocked(n, Event{Kind: "focus-within-changed", Within: true}) && focusWithin(e)
-			if !s.focusWithinKnown || s.focusWithinLast != within {
-				emit(Event{Kind: "focus-within-changed", Within: within})
-			}
+			b.emit(Event{Kind: "focus-within-changed", Node: id, incarnation: s.identity, focusContext: c})
 		} else {
 			s.focusWithinKnown = false
 		}

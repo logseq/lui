@@ -18,6 +18,12 @@ Neither backend treats a popup/portal outside the subtree as inside merely
 because it is attached to a trigger. Window activation is not a second condition
 on retained focus membership; this is not an application-activation callback.
 
+MyGo rejects `~on_focus_within` on ``box ~display:`contents``: a transparent
+box has no native element to observe. The same restriction applies to raw wire
+nodes with `display="contents"` and `focus-within-enabled=true`. Observe a real
+row, column or non-transparent box instead. Web can observe this combination
+through its retained DOM subtree.
+
 Disabled/inert ancestors normalize membership to false, including a terminal
 false for a previously focused subtree. Re-enabling observes current membership
 again. The last value is recorded before dispatch, so reducer patches do not

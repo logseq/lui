@@ -155,6 +155,23 @@ func TestRemovedLineBreakKind(t *testing.T) {
 	}
 }
 
+func TestFocusWithinRejectsTransparentBox(t *testing.T) {
+	for _, properties := range [][]Operation{
+		{prop(3, "display", "contents"), prop(3, "focus-within-enabled", true)},
+		{prop(3, "focus-within-enabled", true), prop(3, "display", "contents")},
+	} {
+		b := mounted(t, nil)
+		ops := append([]Operation{create(3, "box"), insert(2, 3, 0)}, properties...)
+		err := b.ApplyBatch(Batch{Generation: 2, Ops: ops})
+		if err == nil || !strings.Contains(err.Error(), "focus-within") {
+			t.Fatalf("transparent box with focus observer must be rejected: %v", err)
+		}
+		if _, ok := b.Node(3); ok || b.Generation() != 1 {
+			t.Fatal("rejected batch changed the retained tree")
+		}
+	}
+}
+
 func TestMalformedWire(t *testing.T) {
 	for _, s := range []string{
 		`{}`, `null`, `[]`, `{"generation":1}`, `{"generation":1,"ops":null}`, `{"generation":1.5,"ops":[]}`,

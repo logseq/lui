@@ -1876,6 +1876,15 @@ let set_prop application node property value =
     | Some values -> values
     | None -> Property_map.empty
   in
+  if application.runtime_backend.backend_profile.profile_host = MyGoHost &&
+     kind = Box &&
+     (match property, value with
+      | FocusWithinEnabled, BoolValue true ->
+          Property_map.find_opt DisplayValue current = Some (StringValue "contents")
+      | DisplayValue, StringValue "contents" ->
+          Property_map.find_opt FocusWithinEnabled current = Some (BoolValue true)
+      | _ -> false)
+  then invalid_arg "focus-within observation is unsupported on MyGo box display=contents";
   if Property_map.find_opt property current <> Some value then begin
     notify_segment_property application node property (Some value);
     (* A segment callback may have updated another property on this node. *)
