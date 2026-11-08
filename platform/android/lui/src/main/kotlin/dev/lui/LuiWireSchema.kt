@@ -295,6 +295,7 @@ enum class LuiProperty(val wireName: String) {
     pointerCapture("pointer-capture"),
     indeterminate("indeterminate"),
     toggleDetailEnabled("toggle-detail-enabled"),
+    focusWithinEnabled("focus-within-enabled"),
     shrink("shrink"),
     ;
 
@@ -338,12 +339,13 @@ object LuiSchemaMatrix {
         LuiNodeKind.checkbox to setOf(LuiProperty.gap, LuiProperty.labelOpacity, LuiProperty.indicatorBorderColor, LuiProperty.checkedIndicatorBorderColor),
         LuiNodeKind.radio to setOf(LuiProperty.gap, LuiProperty.labelOpacity),
         LuiNodeKind.grid to setOf(LuiProperty.main, LuiProperty.cross),
-        LuiNodeKind.row to setOf(LuiProperty.orientation, LuiProperty.shrink),
+        LuiNodeKind.row to setOf(LuiProperty.orientation, LuiProperty.focusWithinEnabled, LuiProperty.shrink),
+        LuiNodeKind.column to setOf(LuiProperty.focusWithinEnabled, LuiProperty.shrink),
         LuiNodeKind.listItem to setOf(LuiProperty.display),
         LuiNodeKind.dialog to setOf(LuiProperty.description, LuiProperty.background, LuiProperty.foreground, LuiProperty.borderColor, LuiProperty.borderWidth, LuiProperty.cornerRadius, LuiProperty.gap, LuiProperty.transition),
         LuiNodeKind.drawer to setOf(LuiProperty.transition),
         LuiNodeKind.sheet to setOf(LuiProperty.transition),
-        LuiNodeKind.box to setOf(LuiProperty.inert, LuiProperty.shrink),
+        LuiNodeKind.box to setOf(LuiProperty.inert, LuiProperty.focusWithinEnabled, LuiProperty.shrink),
         LuiNodeKind.popover to setOf(LuiProperty.collisionPadding),
         LuiNodeKind.dropdownMenu to setOf(LuiProperty.collisionPadding),
         LuiNodeKind.tooltip to setOf(LuiProperty.collisionPadding),
@@ -355,6 +357,5 @@ object LuiSchemaMatrix {
         LuiNodeKind.searchField to setOf(LuiProperty.readOnly),
         LuiNodeKind.textarea to setOf(LuiProperty.readOnly),
         LuiNodeKind.combobox to setOf(LuiProperty.readOnly),
-        LuiNodeKind.column to setOf(LuiProperty.shrink),
     )
 }

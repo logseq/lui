@@ -310,6 +310,7 @@ type property =
   | PointerCapture
   | Indeterminate
   | ToggleDetailEnabled
+  | FocusWithinEnabled
   | ShrinkValue
 
 module Property_map =
@@ -373,6 +374,7 @@ type event =
   | PointerMove of int * pointer_detail
   | PointerCancel of int * pointer_detail
   | ToggleChangedDetail of int * bool * int
+  | FocusWithinChanged of int * bool
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =
@@ -409,6 +411,7 @@ let event_node event =
   | LongPress node
   | TextChanged (node, _)
   | Submit node
+  | FocusWithinChanged (node, _)
   | ToggleChanged (node, _)
   | Change node
   | ValueChanged (node, _)
@@ -599,6 +602,7 @@ let event_supported kind event =
     | BottomTab
     | SwipeAction -> true
     | _ -> false)
+  | FocusWithinChanged _ -> List.mem kind [Row; Column; Box]
   | PointerEnter _ | PointerLeave _ -> kind <> Root
   | ContextMenuPress _ -> context_menu_host_kind kind
   | Load _ -> kind = Image
@@ -620,6 +624,7 @@ let event_supported_for_lookup kind lookup event =
     match lookup property with Some (BoolValue true) -> true | _ -> false
   in
   match event with
+  | FocusWithinChanged _ -> enabled FocusWithinEnabled && event_supported kind event
   | (Press _ | PressModifiers _) when kind = Link -> enabled PressEnabled
   | NavigatePrevious _ | NavigateNext _ | NavigationKey _ ->
     enabled NavigateEnabled
@@ -1141,6 +1146,7 @@ let common_property_supported kind property =
   | SubmitEnabled -> event_supported kind (Submit 0)
   | DoublePressEnabled -> kind = ListItem
   | AppearEnabled -> kind <> Root
+  | FocusWithinEnabled -> List.mem kind [Row; Column; Box]
   | PointerEnabled -> kind <> Root
   | ImageIdValue | SourceX | SourceY | SourceWidth | SourceHeight ->
     kind = Avatar || kind = Image
@@ -1677,6 +1683,7 @@ let property_value_supported property value =
   | SubmitEnabled, BoolValue _ -> true
   | DoublePressEnabled, BoolValue _ -> true
   | AppearEnabled, BoolValue _ -> true
+  | FocusWithinEnabled, BoolValue _ -> true
   | PointerEnabled, BoolValue _ -> true
   | ImageIdValue, IntValue value -> value >= 0
   | SurfaceIdValue, IntValue value -> value >= 0

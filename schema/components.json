@@ -1853,6 +1853,11 @@
       "swift": "toggleDetailEnabled"
     },
     {
+      "lg": "FocusWithinEnabled",
+      "wire": "focus-within-enabled",
+      "swift": "focusWithinEnabled"
+    },
+    {
       "lg": "ShrinkValue",
       "wire": "shrink",
       "swift": "shrink"
@@ -2047,6 +2052,13 @@
     {
       "lg": "ToggleChangedDetail",
       "fields": [":int", ":bool", ":int"]
+    },
+    {
+      "lg": "FocusWithinChanged",
+      "fields": [
+        ":int",
+        ":bool"
+      ]
     }
   ],
   "kindProperties": {
@@ -2269,6 +2281,11 @@
     ],
     "row": [
       "orientation",
+      "focus-within-enabled",
+      "shrink"
+    ],
+    "column": [
+      "focus-within-enabled",
       "shrink"
     ],
     "list-item": [
@@ -2292,6 +2309,7 @@
     ],
     "box": [
       "inert",
+      "focus-within-enabled",
       "shrink"
     ],
     "popover": [
@@ -2331,9 +2349,6 @@
     ],
     "combobox": [
       "read-only"
-    ],
-    "column": [
-      "shrink"
     ]
   }
 }

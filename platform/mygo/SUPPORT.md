@@ -21,8 +21,8 @@ Contract counts and hashes come from the canonical OCaml export in [the manifest
 | Kind | Built-in route | Properties | Allowed child kinds | Events | Behavior evidence |
 | --- | --- | --- | --- | --- | --- |
 | `root` | render.go; theme.go | 3 | 86 | 0 | [TestRenderAndEvents](backend_test.go), [TestThemeScopeAndMode](extensions_test.go) |
-| `row` | render.go; style.go | 96 | 81 | 11 | [TestLayoutGeometry](extensions_test.go), [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go) |
-| `column` | render.go; style.go | 93 | 81 | 8 | [TestLayoutGeometry](extensions_test.go), [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go) |
+| `row` | render.go; style.go | 97 | 81 | 12 | [TestLayoutGeometry](extensions_test.go), [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go) |
+| `column` | render.go; style.go | 94 | 81 | 9 | [TestLayoutGeometry](extensions_test.go), [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go) |
 | `grid` | render.go; style.go | 82 | 81 | 3 | [TestLayoutGeometry](extensions_test.go), [TestLayoutGridSpansAndPropertyRemovalChangeGeometry](layout_test.go) |
 | `stack` | layout.go; style.go | 79 | 81 | 3 | [TestLayoutStackUsesLargestIntrinsicChildAndRetainsOrder](layout_test.go), [TestLayoutStyleZOrderChangesPaintAndPressWithoutChangingLayout](style_test.go) |
 | `edge-inset` | layout.go; style.go | 81 | 81 | 3 | [TestLayoutEdgeInsetIncludesEveryPinnedChildAndVisibility](layout_test.go), [TestLayoutEdgeInsetSurfaceBelongsOnlyToPinnedRegion](layout_test.go) |
@@ -32,7 +32,7 @@ Contract counts and hashes come from the canonical OCaml export in [the manifest
 | `card` | render.go; style.go | 89 | 81 | 3 | [TestLayoutStyleViewportFractionsAndContainerFrameRemoval](style_test.go), [TestLayoutStyleShadowOpacityStatesAndRemoval](style_test.go) |
 | `alert` | render.go; style.go | 83 | 81 | 3 | [TestLayoutStyleViewportFractionsAndContainerFrameRemoval](style_test.go), [TestLayoutStyleShadowOpacityStatesAndRemoval](style_test.go) |
 | `bubble` | render.go; style.go | 84 | 81 | 3 | [TestLayoutStyleViewportFractionsAndContainerFrameRemoval](style_test.go), [TestLayoutStyleShadowOpacityStatesAndRemoval](style_test.go) |
-| `box` | render.go; style.go | 95 | 81 | 11 | [TestLayoutStyleViewportFractionsAndContainerFrameRemoval](style_test.go), [TestLayoutStyleShadowOpacityStatesAndRemoval](style_test.go) |
+| `box` | render.go; style.go | 96 | 81 | 12 | [TestLayoutStyleViewportFractionsAndContainerFrameRemoval](style_test.go), [TestLayoutStyleShadowOpacityStatesAndRemoval](style_test.go) |
 | `text` | render.go; style.go | 86 | 86 | 9 | [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go), [TestLayoutSharedTextWrappingAndRemoval](layout_test.go), [TestLayoutStyleLogicalAndUnitlessLineHeightAndDecoration](style_test.go) |
 | `heading` | render.go; style.go | 85 | 81 | 3 | [TestLayoutStyleAccessibleHeadingAndNavigationSemantics](style_test.go) |
 | `paragraph` | render.go; style.go | 85 | 81 | 3 | [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go), [TestLayoutSharedTextWrappingAndRemoval](layout_test.go), [TestLayoutStyleLogicalAndUnitlessLineHeightAndDecoration](style_test.go) |
@@ -112,6 +112,7 @@ Contract counts and hashes come from the canonical OCaml export in [the manifest
 
 | Property | Implementation | Exception | Behavior evidence |
 | --- | --- | --- | --- |
+| `focus-within-enabled` | render.go; events.go | — | [TestEventsFocusWithinTransitions](events_test.go) |
 | `text` | collections.go; composites.go; controls.go; layout.go; menus.go; overlays.go; resources.go | — | [TestCollectionsTableRichCellsRenderRetainedControlsAndReorderIdentity](collections_test.go), [TestCollectionsVirtualListBuildsOnlyViewportAndReportsTrueRange](collections_test.go), [TestCompositesStepperShowsSequenceAndUpdatesActiveStep](composites_test.go), [TestCompositesToolbarRovingFocusSkipsDisabledAndPreservesInputKeys](composites_test.go), [TestControlledEditorsAcknowledgeReducerWithoutLosingCaretOrComposition](controlled_test.go), [TestControlsTabsRovingFocusPreservesModelSelection](controls_test.go), [TestControlsTextInputNormalizationDisabledAndPropertyRemoval](controls_test.go), [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go), [TestLayoutViewThatFitsMeasuresLocalAxisWithoutCandidateEffects](layout_test.go), [TestMenusDropdownRetainedItemsAndDismissal](menus_test.go), [TestMenusTooltipDelayUpdateEscapeAndAnchorRemoval](menus_test.go), [TestOverlaysDialogTrapsAndRestoresFocus](overlays_test.go), [TestOverlaysPopoverResolvesForwardAndBackwardAnchors](overlays_test.go), [TestResourcesDetachCancelsRequestWithoutAnotherView](resources_test.go), [TestResourcesRegisteredImageCropReplacementRemovalAndOwnership](resources_test.go) |
 | `enabled` | style.go; layout.go | — | [TestLayoutStyleViewportFractionsAndContainerFrameRemoval](style_test.go), [TestLayoutStyleShadowOpacityStatesAndRemoval](style_test.go), [TestLayoutStyleInertPreservesPixelsAndBlocksSubtreeInteraction](style_test.go), [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go) |
 | `gap` | style.go; layout.go | — | [TestLayoutStyleViewportFractionsAndContainerFrameRemoval](style_test.go), [TestLayoutStyleShadowOpacityStatesAndRemoval](style_test.go), [TestLayoutStyleInertPreservesPixelsAndBlocksSubtreeInteraction](style_test.go), [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go) |
@@ -316,6 +317,7 @@ All event families round-trip through the real OCaml Components application. Pay
 
 | Event | Route | Behavior evidence |
 | --- | --- | --- |
+| `focus-within-changed` | render.go; events.go; runtime_events.go; runtime.go | [TestEventsFocusWithinTransitions](events_test.go) |
 | `appear` | events.go; runtime_events.go; runtime.go | [TestOCamlComponentsEventRoundTrip](runtime_components_test.go) |
 | `change` | events.go; runtime_events.go; runtime.go | [TestOCamlComponentsEventRoundTrip](runtime_components_test.go) |
 | `context-menu-press` | events.go; runtime_events.go; runtime.go | [TestOCamlComponentsEventRoundTrip](runtime_components_test.go) |

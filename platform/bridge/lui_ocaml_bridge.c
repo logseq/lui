@@ -273,6 +273,15 @@ LUI_EXPORT int32_t lui_ocaml_picked(int64_t node, const char *payload) {
   return lui_ocaml_picked_utf8(node, payload, (int32_t)strlen(payload));
 }
 
+LUI_EXPORT int32_t lui_ocaml_focus_within_changed(int64_t node, int32_t within) {
+  int32_t accepted;
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_node_bool("lui_ocaml_focus_within_changed", node, within,
+                                    deliver);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
 LUI_EXPORT int32_t lui_ocaml_toggle_changed(int64_t node, int32_t checked) {
   int32_t accepted;
   caml_leave_blocking_section();

@@ -145,6 +145,8 @@ enum LUIWireValue: Decodable, Equatable {
 
     func matches(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
         switch property {
+        case .focusWithinEnabled:
+            return false
         case .virtualTotalCount:
             return intValue.map { $0 >= 0 } ?? false
         case .virtualGeneration:
@@ -1088,6 +1090,7 @@ struct LUIRetainedTree {
     }
 
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
+        if property == .focusWithinEnabled { return false }
         if property == .shrink { return false }
         switch property {
         case .virtualTotalCount, .virtualGeneration, .virtualIndices, .virtualScrollIndex:
@@ -1109,6 +1112,7 @@ struct LUIRetainedTree {
         if kind == .root { return property == .theme || property == .themeMode }
         if kind == .contextMenu { return false }
         return switch property {
+        case .focusWithinEnabled: false
         case .virtualTotalCount, .virtualGeneration, .virtualIndices, .virtualScrollIndex: kind == .virtualList
         case .readOnly: isTextEntry(kind)
         case .overscan, .itemExtent: kind == .virtualList

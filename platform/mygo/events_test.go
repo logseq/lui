@@ -183,6 +183,83 @@ func TestEventsCapturedPointerCancel(t *testing.T) {
 	}
 }
 
+func TestEventsFocusWithinInitialAutofocus(t *testing.T) {
+	var received []bool
+	b := mounted(t, func(event Event) error {
+		if event.Kind == "focus-within-changed" {
+			received = append(received, event.Within)
+		}
+		return nil
+	})
+	apply(t, b, 2, create(6, "row"), prop(6, "focus-within-enabled", true), insert(2, 6, 0),
+		create(3, "text-field"), prop(3, "placeholder", "Initial focus"), prop(3, "autofocus", true), insert(6, 3, 0))
+	tester := ui.NewTester(b.View, 360, 240)
+	tester.Frame()
+	tester.Frame()
+	if len(received) != 1 || !received[0] {
+		t.Fatalf("initial snapshot must reflect committed child focus: %v", received)
+	}
+}
+
+func TestEventsFocusWithinTransitions(t *testing.T) {
+	var received []bool
+	var b *Backend
+	generation := int64(1)
+	patch := func(ops ...Operation) {
+		generation++
+		apply(t, b, generation, ops...)
+	}
+	b = mounted(t, func(event Event) error {
+		if event.Kind == "focus-within-changed" {
+			received = append(received, event.Within)
+			if event.Within {
+				patch(prop(6, "background", "#112233"))
+			}
+		}
+		return nil
+	})
+	patch(create(6, "box"), insert(2, 6, 0),
+		create(3, "text-field"), prop(3, "placeholder", "First"), insert(6, 3, 0),
+		create(4, "text-field"), prop(4, "placeholder", "Second"), insert(6, 4, 1),
+		create(5, "text-field"), prop(5, "placeholder", "Outside"), insert(2, 5, 1))
+	if err := b.RequestFocus(5); err != nil {
+		t.Fatal(err)
+	}
+	tester := ui.NewTester(b.View, 360, 240)
+	settle := func() { tester.Frame(); tester.Frame() }
+	settle()
+	if len(received) != 0 {
+		t.Fatal("unsubscribed container emitted focus", received)
+	}
+	patch(prop(6, "focus-within-enabled", true))
+	settle()
+	focus := func(node int64) {
+		if err := b.RequestFocus(node); err != nil {
+			t.Fatal(err)
+		}
+		settle()
+	}
+	focus(3)
+	focus(4)
+	patch(prop(6, "inert", true))
+	settle()
+	patch(prop(6, "inert", false))
+	focus(3)
+	patch(Operation{Op: "detach-subtree", ID: 3})
+	settle()
+	patch(Operation{Op: "detach-subtree", ID: 6})
+	settle()
+	want := []bool{false, true, false, true, false}
+	if len(received) != len(want) {
+		t.Fatalf("initial, distinct and terminal focus snapshots: got %v want %v", received, want)
+	}
+	for i := range want {
+		if received[i] != want[i] {
+			t.Fatalf("focus transitions: got %v want %v", received, want)
+		}
+	}
+}
+
 func TestEventsNavigationSubscriptionAndDisabled(t *testing.T) {
 	var events []Event
 	b := mounted(t, func(e Event) error { events = append(events, e); return nil })

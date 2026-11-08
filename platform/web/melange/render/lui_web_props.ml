@@ -979,6 +979,7 @@ and apply_secondary_property renderer queue_split node kind dom_node
       Util.set_state_attribute dom_node "data-toggle-enabled" enabled
   | ToggleDetailEnabled, BoolValue enabled ->
       Util.set_state_attribute dom_node "data-toggle-detail-enabled" enabled
+  | FocusWithinEnabled, BoolValue _ -> ()
   | PressEnabled, BoolValue enabled ->
       apply_press_enabled kind dom_node enabled
   | PointerEnabled, BoolValue enabled ->
@@ -1263,6 +1264,7 @@ let remove_property renderer queue_split node kind dom_node property =
        | NavigateEnabled | SubmitOnBlur | ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange -> ()
        | ToggleDetailEnabled ->
            W.Element.removeAttribute "data-toggle-detail-enabled" dom_node
+       | FocusWithinEnabled -> ()
        | PointerCapture ->
            W.Element.removeAttribute "data-pointer-capture" dom_node
        | TextValue -> apply_text_value renderer node kind dom_node ""

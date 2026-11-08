@@ -21,7 +21,7 @@ func validateEvent(e Event) error {
 		}
 	}
 	switch e.Kind {
-	case "press", "long-press", "double-press", "submit", "dismiss", "appear", "change", "pointer-enter", "pointer-leave", "load", "navigate-previous", "navigate-next", "toggle-changed", "text-changed", "picked", "scroll-edges":
+	case "press", "long-press", "double-press", "submit", "dismiss", "appear", "change", "pointer-enter", "pointer-leave", "load", "navigate-previous", "navigate-next", "toggle-changed", "text-changed", "picked", "scroll-edges", "focus-within-changed":
 	case "press-modifiers":
 		if e.Modifiers < 0 || e.Modifiers&^15 != 0 {
 			return invalid("unknown modifier bits")

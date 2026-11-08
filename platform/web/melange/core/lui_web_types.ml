@@ -115,6 +115,7 @@ type web_renderer = {
   web_lists : (int, bool -> unit) Hashtbl.t;
   web_mounted_roots : (int, web_node) Hashtbl.t;
   web_pointer_cleanups : (int, bool * (unit -> unit)) Hashtbl.t;
+  web_focus_within_observers : (int, (unit -> unit) * (unit -> unit)) Hashtbl.t;
   web_layers : Lui_web_layers.t;
   web_modal_return_focus : web_node option ref;
   web_modal_focus_returns : (int, web_node) Hashtbl.t;

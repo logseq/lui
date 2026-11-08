@@ -8,7 +8,16 @@ import (
 	"strings"
 )
 
-func (b *Backend) style(c *ui.Context, n Node, e ui.Element) {
+func hasFocusWithinStyle(n Node) bool {
+	for _, property := range []string{"focus-within-background", "focus-within-foreground", "focus-within-border", "focus-within-opacity"} {
+		if _, exists := n.Props[property]; exists {
+			return true
+		}
+	}
+	return false
+}
+
+func (b *Backend) style(c *ui.Context, n Node, e ui.Element, focusWithin func(ui.Element) bool) {
 	pointerPolicy(n, e)
 	if n.Kind == "edge-inset" {
 		n = n.clone()
@@ -199,7 +208,7 @@ func (b *Backend) style(c *ui.Context, n Node, e ui.Element) {
 		if n.Bool("selected") {
 			applyState("selected")
 		}
-		if e.FocusWithin() {
+		if hasFocusWithinStyle(n) && focusWithin(e) {
 			applyState("focus-within")
 		}
 		if e.Hovered() {

@@ -149,6 +149,12 @@ export function typedViewSchema(schema, signature, implementation, {extension = 
         }
         continue;
       }
+      if (!extension && label === 'on_focus_within') {
+        if (type !== '(bool -> unit)' || !['row', 'column', 'box'].includes(wire)) throw new Error(`unknown focus observer: ${wire}`);
+        props.set(properties.get('focus-within-enabled'), {value: 'ViewBool', required: false});
+        events.add('focus-within-changed');
+        continue;
+      }
       if (label.startsWith('on_')) {
         if (!(extension ? /^\(\w+ -> unit\)$/.test(type) : type === '(Lui_protocol.event -> unit)')) throw new Error(`unknown event type: ${wire}.${label}`);
         const event = label.slice(3);
