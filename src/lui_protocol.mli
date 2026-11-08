@@ -308,6 +308,7 @@ type property =
   | PointerCapture
   | Indeterminate
   | ToggleDetailEnabled
+  | ShrinkValue
 
 module Property_map : Map.S with type key = property
 

@@ -288,6 +288,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case pointerCapture = "pointer-capture"
     case indeterminate = "indeterminate"
     case toggleDetailEnabled = "toggle-detail-enabled"
+    case shrink = "shrink"
 }
 
 enum LUISchemaMatrix {
@@ -317,12 +318,12 @@ enum LUISchemaMatrix {
         .checkbox: [.gap, .labelOpacity, .indicatorBorderColor, .checkedIndicatorBorderColor],
         .radio: [.gap, .labelOpacity],
         .grid: [.main, .cross],
-        .row: [.orientation],
+        .row: [.orientation, .shrink],
         .listItem: [.display],
         .dialog: [.description, .background, .foreground, .borderColor, .borderWidth, .cornerRadius, .gap, .transition],
         .drawer: [.transition],
         .sheet: [.transition],
-        .box: [.inert],
+        .box: [.inert, .shrink],
         .popover: [.collisionPadding],
         .dropdownMenu: [.collisionPadding],
         .tooltip: [.collisionPadding],
@@ -334,5 +335,6 @@ enum LUISchemaMatrix {
         .searchField: [.readOnly],
         .textarea: [.readOnly],
         .combobox: [.readOnly],
+        .column: [.shrink],
     ]
 }

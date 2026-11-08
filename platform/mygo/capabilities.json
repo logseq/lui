@@ -30,7 +30,7 @@
         "extensions_test.go:TestLayoutGeometry",
         "layout_test.go:TestLayoutSharedTypographyAndSpacingRestoreInheritedValues"
       ],
-      "contractHash": "8607888dd0b74341aaf93b9a2007d4400d8654129b0a6bca393b82eb27b53b13"
+      "contractHash": "b3c4590cc5c33a3413f78e85e4c27c4f3e60a976a89a8b9d9b8a8d3c56f2a6a9"
     },
     "column": {
       "route": "render.go; style.go",
@@ -38,7 +38,7 @@
         "extensions_test.go:TestLayoutGeometry",
         "layout_test.go:TestLayoutSharedTypographyAndSpacingRestoreInheritedValues"
       ],
-      "contractHash": "d1625463275eac1a39011cec61b6bf07997f116c26977792579c7fdb6f2a1507"
+      "contractHash": "ce1c29d86837e82dd55f36b7b7dd8a6e1642807c51a8059c17e10fd0848b2222"
     },
     "grid": {
       "route": "render.go; style.go",
@@ -117,7 +117,7 @@
         "style_test.go:TestLayoutStyleViewportFractionsAndContainerFrameRemoval",
         "style_test.go:TestLayoutStyleShadowOpacityStatesAndRemoval"
       ],
-      "contractHash": "53c3f165be3a92e51235e68b433156fc4b1594d4ee6845cc2ab1d4dc1a270b64"
+      "contractHash": "5171f2d9830dfa0251db34196a53df327ade6d4428410352b8902eb0c062f185"
     },
     "text": {
       "route": "render.go; style.go",
@@ -2333,6 +2333,12 @@
       "route": "controls.go; events.go",
       "evidence": [
         "controls_test.go:TestControlsCheckboxMixedDetail"
+      ]
+    },
+    "shrink": {
+      "route": "style.go; MyGo Element.Shrink",
+      "evidence": [
+        "style_test.go:TestLayoutStyleViewportFractionsAndContainerFrameRemoval"
       ]
     }
   },

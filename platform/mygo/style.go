@@ -41,7 +41,7 @@ func (b *Backend) style(c *ui.Context, n Node, e ui.Element) {
 		e.Label(label)
 	}
 	numeric := map[string]func(float32) ui.Element{
-		"grow": e.Grow, "width": e.Width, "height": e.Height,
+		"grow": e.Grow, "shrink": e.Shrink, "width": e.Width, "height": e.Height,
 		"min-width": e.MinWidth, "max-width": e.MaxWidth, "min-height": e.MinHeight, "max-height": e.MaxHeight,
 		"opacity": e.Opacity, "border-width": func(v float32) ui.Element { return e.BorderWidth(v) },
 		"corner-radius": func(v float32) ui.Element { return e.Radius(v) },

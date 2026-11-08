@@ -21,8 +21,8 @@ Contract counts and hashes come from the canonical OCaml export in [the manifest
 | Kind | Built-in route | Properties | Allowed child kinds | Events | Behavior evidence |
 | --- | --- | --- | --- | --- | --- |
 | `root` | render.go; theme.go | 3 | 86 | 0 | [TestRenderAndEvents](backend_test.go), [TestThemeScopeAndMode](extensions_test.go) |
-| `row` | render.go; style.go | 95 | 81 | 11 | [TestLayoutGeometry](extensions_test.go), [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go) |
-| `column` | render.go; style.go | 92 | 81 | 8 | [TestLayoutGeometry](extensions_test.go), [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go) |
+| `row` | render.go; style.go | 96 | 81 | 11 | [TestLayoutGeometry](extensions_test.go), [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go) |
+| `column` | render.go; style.go | 93 | 81 | 8 | [TestLayoutGeometry](extensions_test.go), [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go) |
 | `grid` | render.go; style.go | 82 | 81 | 3 | [TestLayoutGeometry](extensions_test.go), [TestLayoutGridSpansAndPropertyRemovalChangeGeometry](layout_test.go) |
 | `stack` | layout.go; style.go | 79 | 81 | 3 | [TestLayoutStackUsesLargestIntrinsicChildAndRetainsOrder](layout_test.go), [TestLayoutStyleZOrderChangesPaintAndPressWithoutChangingLayout](style_test.go) |
 | `edge-inset` | layout.go; style.go | 81 | 81 | 3 | [TestLayoutEdgeInsetIncludesEveryPinnedChildAndVisibility](layout_test.go), [TestLayoutEdgeInsetSurfaceBelongsOnlyToPinnedRegion](layout_test.go) |
@@ -32,7 +32,7 @@ Contract counts and hashes come from the canonical OCaml export in [the manifest
 | `card` | render.go; style.go | 89 | 81 | 3 | [TestLayoutStyleViewportFractionsAndContainerFrameRemoval](style_test.go), [TestLayoutStyleShadowOpacityStatesAndRemoval](style_test.go) |
 | `alert` | render.go; style.go | 83 | 81 | 3 | [TestLayoutStyleViewportFractionsAndContainerFrameRemoval](style_test.go), [TestLayoutStyleShadowOpacityStatesAndRemoval](style_test.go) |
 | `bubble` | render.go; style.go | 84 | 81 | 3 | [TestLayoutStyleViewportFractionsAndContainerFrameRemoval](style_test.go), [TestLayoutStyleShadowOpacityStatesAndRemoval](style_test.go) |
-| `box` | render.go; style.go | 94 | 81 | 11 | [TestLayoutStyleViewportFractionsAndContainerFrameRemoval](style_test.go), [TestLayoutStyleShadowOpacityStatesAndRemoval](style_test.go) |
+| `box` | render.go; style.go | 95 | 81 | 11 | [TestLayoutStyleViewportFractionsAndContainerFrameRemoval](style_test.go), [TestLayoutStyleShadowOpacityStatesAndRemoval](style_test.go) |
 | `text` | render.go; style.go | 86 | 86 | 9 | [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go), [TestLayoutSharedTextWrappingAndRemoval](layout_test.go), [TestLayoutStyleLogicalAndUnitlessLineHeightAndDecoration](style_test.go) |
 | `heading` | render.go; style.go | 85 | 81 | 3 | [TestLayoutStyleAccessibleHeadingAndNavigationSemantics](style_test.go) |
 | `paragraph` | render.go; style.go | 85 | 81 | 3 | [TestLayoutSharedTypographyAndSpacingRestoreInheritedValues](layout_test.go), [TestLayoutSharedTextWrappingAndRemoval](layout_test.go), [TestLayoutStyleLogicalAndUnitlessLineHeightAndDecoration](style_test.go) |
@@ -308,6 +308,7 @@ Contract counts and hashes come from the canonical OCaml export in [the manifest
 | `pointer-capture` | events.go | — | [TestEventsCapturedPointerCancel](events_test.go) |
 | `indeterminate` | controls.go | — | [TestControlsCheckboxMixedDetail](controls_test.go) |
 | `toggle-detail-enabled` | controls.go; events.go | — | [TestControlsCheckboxMixedDetail](controls_test.go) |
+| `shrink` | style.go; MyGo Element.Shrink | — | [TestLayoutStyleViewportFractionsAndContainerFrameRemoval](style_test.go) |
 
 ## Event bridge
 

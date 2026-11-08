@@ -1851,6 +1851,11 @@
       "lg": "ToggleDetailEnabled",
       "wire": "toggle-detail-enabled",
       "swift": "toggleDetailEnabled"
+    },
+    {
+      "lg": "ShrinkValue",
+      "wire": "shrink",
+      "swift": "shrink"
     }
   ],
   "events": [
@@ -2263,7 +2268,8 @@
       "cross"
     ],
     "row": [
-      "orientation"
+      "orientation",
+      "shrink"
     ],
     "list-item": [
       "display"
@@ -2285,7 +2291,8 @@
       "transition"
     ],
     "box": [
-      "inert"
+      "inert",
+      "shrink"
     ],
     "popover": [
       "collision-padding"
@@ -2324,6 +2331,9 @@
     ],
     "combobox": [
       "read-only"
+    ],
+    "column": [
+      "shrink"
     ]
   }
 }
