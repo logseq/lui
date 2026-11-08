@@ -62,16 +62,16 @@ let drop_branch_node application parent node =
          Lui_runtime.remove_child application rp node;
          Lui_runtime.drop_subtree application node
        | _ -> ())
-  else
-    (* the runtime entry is already gone but the store can still hold a
-       painted copy — a detach unwinds it whatever parent recorded it *)
-    Lui_runtime.enqueue_detach application node
 
-(* Runs branch teardown minus the segment bookkeeping — used when the
-   segment was already retired by an outer reconcile, so only the node
-   side still needs cleanup. *)
+(* Retired segments handed ordinary nodes to the replacement tree. Only
+   live nodes hoisted out of the branch remain this scope's to clean up. *)
 let teardown_branch_node application parent node =
-  drop_branch_node application parent node
+  if Lui_runtime.node_live application node then
+    match Lui_runtime.recorded_parent application node with
+    | Some recorded
+      when recorded <> Lui_runtime.canonical_node application parent ->
+      drop_branch_node application parent node
+    | _ -> ()
 
 let teardown_branch application segment parent node =
   Lui_runtime.release_dynamic_segment application segment;
