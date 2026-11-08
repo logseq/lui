@@ -1856,6 +1856,11 @@
       "lg": "FocusWithinEnabled",
       "wire": "focus-within-enabled",
       "swift": "focusWithinEnabled"
+    },
+    {
+      "lg": "ShrinkValue",
+      "wire": "shrink",
+      "swift": "shrink"
     }
   ],
   "events": [
@@ -2276,10 +2281,12 @@
     ],
     "row": [
       "orientation",
-      "focus-within-enabled"
+      "focus-within-enabled",
+      "shrink"
     ],
     "column": [
-      "focus-within-enabled"
+      "focus-within-enabled",
+      "shrink"
     ],
     "list-item": [
       "display"
@@ -2302,7 +2309,8 @@
     ],
     "box": [
       "inert",
-      "focus-within-enabled"
+      "focus-within-enabled",
+      "shrink"
     ],
     "popover": [
       "collision-padding"

@@ -1,13 +1,13 @@
 {
   "version": 1,
   "sourceHashes": {
-    "schema/components.json": "b89403cbbba99f8559aab6b2392301d87682c090df87b4508825d891759860fd",
-    "src/lui_protocol.ml": "9550ac6d4f88c764758db1ae5909e2915cdae1b455b9e96fd32d417f030eec21",
-    "src/lui_protocol.mli": "30ee5de82811ffff64dae818dd84597689bc1beae413f12ba4da010ca82b9aa6",
-    "src/lui_wire_schema.ml": "2f451922adfe58e144ca29b3f0ad21b9b195bb0ccf269322a6a975baaa527a3c",
+    "schema/components.json": "50b63836550156cd7244bf0aabcea04cd4852166d18089155ecc771a2dbd39a6",
+    "src/lui_protocol.ml": "835442f99097604deb8ac4c3c8f7a75e58433e26ce505ebb21204ff09ef24126",
+    "src/lui_protocol.mli": "8e1cd3b5455f64bf13fdcbcff6c27d89a6535ff76b41f2f5439dedda44a883e9",
+    "src/lui_wire_schema.ml": "312a87bfc912194bc6608af7a43b9cadbf53c3ac6985ca7fd247cab4377357e5",
     "tooling/export_mygo_contract.ml": "246ade7e088225ad68d25ce5ebc96a6a850fec3e66e1aa9d9debbd720e04bab1"
   },
-  "generatedGoHash": "805e4cdaa0d83c19046193ac53ecdbb6464156ec301031f15825f4a73c50a002",
+  "generatedGoHash": "107980e57e46a8404d3a4b040a8d9ababa185028ce7125429ea28bb30fd954eb",
   "kinds": {
     "root": {
       "contractHash": "1cda829a4bd05ddb79ca21f04ed1d7a51dae8bf3d388bb7eecdf8d5e2f3ec1eb",
@@ -17,15 +17,15 @@
       "baseline": {}
     },
     "row": {
-      "contractHash": "5b37ca2312b59c73d5ca14e59389ed49a11b1dc3710bdee1409ce9675f9d8c50",
-      "propertyCount": 96,
+      "contractHash": "2b0005ed2f3e54d3678748d9eb0a731c4ad075ae07bddb12fc87d58413bfb99f",
+      "propertyCount": 97,
       "childCount": 81,
       "eventCount": 12,
       "baseline": {}
     },
     "column": {
-      "contractHash": "6f35e51043ab8ae815796b2dd3a147f0a5e01b0fe15b9bab93f588710264f720",
-      "propertyCount": 93,
+      "contractHash": "e1c4ba75a65b5346c3a0231c00d01f0ebaffd12eba823b625f75aa77c36e0bf8",
+      "propertyCount": 94,
       "childCount": 81,
       "eventCount": 9,
       "baseline": {}
@@ -99,8 +99,8 @@
       "baseline": {}
     },
     "box": {
-      "contractHash": "028237d9cea015c951093e45aa35dc7c3493f8a22f27106e43dfc506da741866",
-      "propertyCount": 95,
+      "contractHash": "f5ed3d53bdef46b4bf03eef8188877933fa0c005203581850747ecd1423f2c49",
+      "propertyCount": 96,
       "childCount": 81,
       "eventCount": 12,
       "baseline": {}

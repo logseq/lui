@@ -1713,6 +1713,54 @@ let test_drop_large_subtree_is_one_detach () =
     Alcotest.failf "dropping 4x nodes took %gs after %gs" elapsed_large
       elapsed_small
 
+let test_shrink_contract () =
+  let open Lui_protocol in
+  let shrink = Lui_wire.property_of_name "shrink" in
+  List.iter (fun kind ->
+    Alcotest.(check bool) "shrink is restricted to layout containers"
+      (List.mem kind [Row; Column; Box]) (property_supported kind shrink))
+    Lui_wire_schema.all_node_kinds;
+  List.iter (fun (value, accepted) ->
+    Alcotest.(check bool) "shrink accepts only finite nonnegative floats"
+      accepted (property_value_supported shrink value))
+    [FloatValue 0., true; FloatValue 1.5, true; FloatValue (-1.), false;
+     FloatValue nan, false; FloatValue infinity, false; IntValue 0, false];
+  let mount ?shrink host configure =
+    let backend = { (recording_backend ()) with
+      backend_profile = profile GenericOS host } in
+    Lui_app.create backend () (fun model () -> model)
+      (fun _ _ _ context parent ->
+        let node = Lui_elements.row ?shrink [] context parent in
+        configure context node;
+        node)
+  in
+  List.iter (fun host ->
+    let set = ref (fun () -> ()) and remove = ref (fun () -> ()) in
+    let app = mount host (fun context node ->
+      set := (fun () -> Lui_ui.float_property context node shrink 0.);
+      remove := (fun () ->
+        Lui_runtime.remove_prop context.Lui_ui.ui_application node shrink)) in
+    flush_app app;
+    Alcotest.(check bool) "omitted shrink leaves the host default" false
+      (List.exists (function SetProp (_, p, _) -> p = shrink | _ -> false) (all_ops ()));
+    !set ();
+    flush_app app;
+    Alcotest.(check bool) "supported host receives explicit nonshrink" true
+      (List.exists (function SetProp (_, p, FloatValue 0.) -> p = shrink | _ -> false) (all_ops ()));
+    !remove ();
+    flush_app app;
+    Alcotest.(check bool) "removal restores the host default" true
+      (List.exists (function RemoveProp (_, p) -> p = shrink | _ -> false) (all_ops ()));
+    Alcotest.(check bool) "shrink does not author grow" false
+      (List.exists (function SetProp (_, GrowValue, _) -> true | _ -> false) (all_ops ()));
+    ignore (Lui_app.dispose app))
+    [WebHost; MyGoHost];
+  List.iter (fun host ->
+    Alcotest.check_raises "unsupported host rejects opt-in"
+      (Invalid_argument "shrink is unsupported by backend profile")
+      (fun () -> ignore (mount ~shrink:0. host (fun _ _ -> ()))))
+    [GenericHost; SwiftUIHost; KotlinHost]
+
 let test_float_encoding_rejects_non_finite () =
   let open Lui_protocol in
   Alcotest.check_raises "nan rejected"
@@ -5666,6 +5714,7 @@ let () =
             test_data_attrs_protocol;
           Alcotest.test_case "finite float encoding" `Quick
             test_float_encoding_rejects_non_finite;
+          Alcotest.test_case "shrink contract" `Quick test_shrink_contract;
           Alcotest.test_case "as protocol" `Quick test_as_protocol;
           Alcotest.test_case "data-attrs + as emit" `Quick
             test_data_attrs_and_as_emit;

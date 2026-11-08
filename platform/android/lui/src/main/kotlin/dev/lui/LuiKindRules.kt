@@ -316,6 +316,7 @@ internal object LuiKindRules {
      * op is admissible for the node's kind. */
     fun supports(kind: LuiNodeKind, property: String, value: LuiWireValue): Boolean {
         if (property == "focus-within-enabled") return false
+        if (property == "shrink") return false
         when (property) {
             "virtual-total-count", "virtual-generation", "virtual-indices", "virtual-scroll-index" ->
                 return kind == LuiNodeKind.virtualList && schemaValueSupported(property, value)

@@ -311,6 +311,7 @@ type property =
   | Indeterminate
   | ToggleDetailEnabled
   | FocusWithinEnabled
+  | ShrinkValue
 
 module Property_map =
   Map.Make
@@ -978,6 +979,7 @@ let common_property_supported kind property =
     || horizontal_container kind
   | GrowValue ->
     kind <> Avatar && (not (modal_surface kind)) && kind <> Tooltip
+  | ShrinkValue -> kind = Row || kind = Column || kind = Box
   | GridColumns -> kind = Grid
   | GridColumnSpan -> kind <> Root && not (modal_surface kind) && kind <> Tooltip
   | PaddingValue | PaddingHorizontal | PaddingVertical
@@ -1626,7 +1628,7 @@ let property_value_supported property value =
   | Gap, IntValue value -> value >= 0
   | MainAlignment, StringValue value -> main_alignment_supported value
   | CrossAlignment, StringValue value -> cross_alignment_supported value
-  | GrowValue, FloatValue value -> is_finite value && value >= 0.0
+  | (GrowValue | ShrinkValue), FloatValue value -> is_finite value && value >= 0.0
   | GridColumns, IntValue value -> value >= 0
   | GridColumnSpan, IntValue value -> value > 0
   | PaddingValue, IntValue _ -> true

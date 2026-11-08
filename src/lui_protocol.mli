@@ -309,6 +309,7 @@ type property =
   | Indeterminate
   | ToggleDetailEnabled
   | FocusWithinEnabled
+  | ShrinkValue
 
 module Property_map : Map.S with type key = property
 

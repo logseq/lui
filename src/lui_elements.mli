@@ -325,6 +325,7 @@ val register_resize :
     a web DOM contract for delegated-event readers, CSS attribute
     selectors and e2e locators; native hosts parse-ignore the prop. *)
 val apply_universal :
+  ?shrink:float ->
   Lui_ui.ui_context ->
   int ->
   key:string option ->
@@ -374,6 +375,7 @@ val row :
   ?main:main_alignment ->
   ?cross:cross_alignment ->
   ?grow:float ->
+  ?shrink:float ->
   ?columns:int ->
   ?orientation:orientation ->
   ?orientation_signal:orientation Signal.signal ->
@@ -429,6 +431,7 @@ val column :
   ?main:main_alignment ->
   ?cross:cross_alignment ->
   ?grow:float ->
+  ?shrink:float ->
   ?grow_signal:float Signal.signal ->
   ?columns:int ->
   ?padding:int ->
@@ -904,6 +907,7 @@ val box :
   ?main:main_alignment ->
   ?cross:cross_alignment ->
   ?grow:float ->
+  ?shrink:float ->
   ?columns:int ->
   ?padding:int ->
   ?padding_horizontal:int ->

@@ -300,6 +300,8 @@ enum LUIWireValue: Decodable, Equatable {
         case .grow:
             guard let value = doubleValue else { return false }
             return value.isFinite && value >= 0
+        case .shrink:
+            return false
         case .edge:
             guard let value = stringValue else { return false }
             return Self.edges.contains(value)
@@ -1089,6 +1091,7 @@ struct LUIRetainedTree {
 
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
         if property == .focusWithinEnabled { return false }
+        if property == .shrink { return false }
         switch property {
         case .virtualTotalCount, .virtualGeneration, .virtualIndices, .virtualScrollIndex:
             return kind == .virtualList
@@ -1124,6 +1127,7 @@ struct LUIRetainedTree {
                 kind == .popover || kind == .link ||
                 isHorizontalGroup(kind)
         case .grow: kind != .avatar && kind != .tooltip && !isModalSurface(kind)
+        case .shrink: false
         case .columns: kind == .grid
         case .gridColumnSpan:
             kind != .root && kind != .dialog && kind != .drawer && kind != .sheet

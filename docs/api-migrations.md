@@ -1,5 +1,33 @@
 # LUI API migration guide
 
+## Unreleased: independent flex shrink on Web and MyGo
+
+`row`, `column` and `box` accept `?shrink:float`. The typed `ShrinkValue`
+property uses wire name `shrink` and accepts only finite, nonnegative floats.
+Only these three standard kinds admit it. Web maps it to CSS `flex-shrink`;
+MyGo uses the existing `Element.Shrink` without an SDK or dependency update.
+Generic, SwiftUI and Kotlin profiles reject explicit shrink values; Apple and
+Android also reject direct standard wire patches rather than ignoring them.
+Extensions/raw markup do not gain a shrink property or escape hatch.
+
+Omitting or removing shrink preserves/restores the existing default factor 1.
+Setting or removing it does not change `grow` or flex basis. Existing callers
+need no changes. New callers must use a host supporting this property and a
+LUI version that knows the new wire name; older hosts reject that opt-in.
+
+For a bounded, clipped single-line strip, opt in on each direct pill container:
+
+```ocaml
+row ~flex_wrap:`nowrap
+  [row ~shrink:0. [text ~value:"First" []];
+   row ~shrink:0. [text ~value:"Second" []]]
+```
+
+Use the existing typed overflow property on the strip for clipping. Shrink on
+the strip itself does not disable shrinking its children. Remove unnecessary
+child `grow` props to keep intrinsic sizing; do not substitute `grow:0` for
+`shrink:0`, because MyGo's `Grow` also changes an auto basis to zero percent.
+
 ## Unreleased: opt-in container focus-within observation (Web and MyGo)
 
 `row`, `column` and `box` accept `?on_focus_within:(bool -> unit)` on

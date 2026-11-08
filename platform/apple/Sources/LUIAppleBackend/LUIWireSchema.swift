@@ -289,6 +289,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case indeterminate = "indeterminate"
     case toggleDetailEnabled = "toggle-detail-enabled"
     case focusWithinEnabled = "focus-within-enabled"
+    case shrink = "shrink"
 }
 
 enum LUISchemaMatrix {
@@ -318,13 +319,13 @@ enum LUISchemaMatrix {
         .checkbox: [.gap, .labelOpacity, .indicatorBorderColor, .checkedIndicatorBorderColor],
         .radio: [.gap, .labelOpacity],
         .grid: [.main, .cross],
-        .row: [.orientation, .focusWithinEnabled],
-        .column: [.focusWithinEnabled],
+        .row: [.orientation, .focusWithinEnabled, .shrink],
+        .column: [.focusWithinEnabled, .shrink],
         .listItem: [.display],
         .dialog: [.description, .background, .foreground, .borderColor, .borderWidth, .cornerRadius, .gap, .transition],
         .drawer: [.transition],
         .sheet: [.transition],
-        .box: [.inert, .focusWithinEnabled],
+        .box: [.inert, .focusWithinEnabled, .shrink],
         .popover: [.collisionPadding],
         .dropdownMenu: [.collisionPadding],
         .tooltip: [.collisionPadding],

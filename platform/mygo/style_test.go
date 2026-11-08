@@ -33,6 +33,17 @@ func TestLayoutStyleViewportFractionsAndContainerFrameRemoval(t *testing.T) {
 	r = layoutRect(t, tester, "viewport child")
 	layoutNear(t, "removed frame width", r.W, 40)
 	layoutNear(t, "removed frame height", r.H, 20)
+	apply(t, b, 5, create(5, "row"), prop(5, "width", 100), prop(5, "height", 20), insert(2, 5, 1),
+		create(6, "box"), prop(6, "width", 80), prop(6, "min-width", 0), prop(6, "height", 20), prop(6, "accessibility-label", "shrink child"), insert(5, 6, 0),
+		create(7, "box"), prop(7, "width", 80), prop(7, "min-width", 0), prop(7, "height", 20), insert(5, 7, 1))
+	tester.Frame()
+	layoutNear(t, "omitted shrink retains factor one", layoutRect(t, tester, "shrink child").W, 50)
+	apply(t, b, 6, prop(6, "shrink", 0.0))
+	tester.Frame()
+	layoutNear(t, "zero shrink preserves authored basis", layoutRect(t, tester, "shrink child").W, 80)
+	apply(t, b, 7, Operation{Op: "remove-prop", ID: 6, Property: "shrink"})
+	tester.Frame()
+	layoutNear(t, "removed shrink restores factor one", layoutRect(t, tester, "shrink child").W, 50)
 }
 
 func TestLayoutStyleRelativeAbsoluteOffsetsAndRemoval(t *testing.T) {
@@ -343,7 +354,7 @@ func TestLayoutStyleOklchColorUsesNativeColorConversion(t *testing.T) {
 }
 
 func TestLayoutStyleUserSelectionCursorAndRemoval(t *testing.T) {
-	b := layoutBackend(t, "box", nil, prop(2, "user-select", "text"), prop(2, "cursor", "pointer"), prop(2,"pressed-background","#00ff00"), create(3, "text"), prop(3, "text", "copy words"), prop(3, "font-size", "24px"), insert(2, 3, 0))
+	b := layoutBackend(t, "box", nil, prop(2, "user-select", "text"), prop(2, "cursor", "pointer"), prop(2, "pressed-background", "#00ff00"), create(3, "text"), prop(3, "text", "copy words"), prop(3, "font-size", "24px"), insert(2, 3, 0))
 	tester := ui.NewTester(b.View, 300, 120)
 	r := layoutRect(t, tester, "copy words")
 	tester.Move(r.X+10, r.Y+r.H/2)
