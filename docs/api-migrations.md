@@ -1,5 +1,18 @@
 # LUI API migration guide
 
+## Unreleased: MyGo links in text flow
+
+Text-content `link` nodes inside a native text flow now use MyGo's inline Link
+instead of a block LinkBase. The actual native parent determines the mapping,
+including through `box` nodes with `display=contents` and extension renderers. Existing
+link text, nested text styling and URL activation remain available without
+application changes. For example, `text [link ~text:"Guide" ~url:guide_url []]`
+stays within one paragraph instead of failing native text-child validation.
+
+Links outside text flow retain their existing block/icon layout. Icons and
+arbitrary layout children still belong outside a text flow; native text-child
+validation is unchanged. No API, wire format or SDK pin changes are required.
+
 ## Unreleased: Android editable Combobox menu focus
 
 Android suggestion menus anchored beside a `combobox` retain keyboard focus in

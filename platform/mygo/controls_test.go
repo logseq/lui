@@ -622,3 +622,20 @@ func TestControlsLinkInlineIcon(t *testing.T) {
 	}
 
 }
+
+func TestControlsLinkInTextFlow(t *testing.T) {
+	b := mounted(t, nil)
+	defer b.Close()
+	apply(t, b, 2, create(3, "text"), prop(3, "text", "Read "), insert(2, 3, 0),
+		create(4, "box"), prop(4, "display", "contents"), insert(3, 4, 0),
+		create(5, "link"), prop(5, "text", "guide"), prop(5, "url", "https://example.test"), insert(4, 5, 0),
+		create(6, "text"), prop(6, "text", " details"), insert(5, 6, 0))
+	tt := ui.NewTester(b.View, 500, 300)
+	if !tt.HasText("Read guide details") {
+		t.Fatalf("inline link lost paragraph content: %v", tt.Texts())
+	}
+	widgetClick(t, tt, "guide details")
+	if len(tt.OpenedURLs()) != 1 || tt.OpenedURLs()[0] != "https://example.test" {
+		t.Fatal("inline link lost native URL activation")
+	}
+}
