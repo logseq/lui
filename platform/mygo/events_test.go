@@ -183,6 +183,24 @@ func TestEventsCapturedPointerCancel(t *testing.T) {
 	}
 }
 
+func TestEventsFocusWithinInitialAutofocus(t *testing.T) {
+	var received []bool
+	b := mounted(t, func(event Event) error {
+		if event.Kind == "focus-within-changed" {
+			received = append(received, event.Within)
+		}
+		return nil
+	})
+	apply(t, b, 2, create(6, "row"), prop(6, "focus-within-enabled", true), insert(2, 6, 0),
+		create(3, "text-field"), prop(3, "placeholder", "Initial focus"), prop(3, "autofocus", true), insert(6, 3, 0))
+	tester := ui.NewTester(b.View, 360, 240)
+	tester.Frame()
+	tester.Frame()
+	if len(received) != 1 || !received[0] {
+		t.Fatalf("initial snapshot must reflect committed child focus: %v", received)
+	}
+}
+
 func TestEventsFocusWithinTransitions(t *testing.T) {
 	var received []bool
 	var b *Backend
