@@ -375,6 +375,26 @@ let icon_section : t =
         ]
     ]
 
+(* Timers come from the application clock, so Drive and tests can pause and
+   advance the simulated upload instead of waiting for it. *)
+let upload_button model_source send : t =
+  scoped (fun context ->
+    let upload = ref None in
+    let stop () =
+      Option.iter Lui_clock.cancel !upload;
+      upload := None
+    in
+    let start _event =
+      stop ();
+      ignore (send Model.StartUpload);
+      upload :=
+        Some
+          (Lui_ui.every context 300. (fun () ->
+             ignore (send Model.AdvanceUpload);
+             if Model.progress (get model_source) >= 1.0 then stop ()))
+    in
+    button ~variant:`outline ~text:"Simulate upload" ~on_press:start [])
+
 let progress_section model_source send : t =
   let progress_value = model_source >|= Model.progress in
   section "Progress"
@@ -384,6 +404,7 @@ let progress_section model_source send : t =
     ; button_row
         [ button ~variant:`outline ~text:"Advance progress"
             ~on_press:(press send Model.AdvanceProgress) []
+        ; upload_button model_source send
         ]
     ]
 
