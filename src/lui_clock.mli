@@ -70,6 +70,14 @@ val advance : t -> float -> int
     timer that keeps the clock from settling. *)
 val settle : ?limit:int -> t -> int
 
+(** [set_wakeup clock (Some wakeup)] lets an in-process host skip polling
+    {!next_delay}: [wakeup delay] runs with the new {!next_delay} whenever
+    a timer becomes the earliest one, time moves with timers still pending,
+    or the clock resumes, and once on registration when a timer is pending.
+    A wakeup that finds nothing due is harmless. Never called from inside a
+    timer action or while paused. *)
+val set_wakeup : t -> (float -> unit) option -> unit
+
 val pause : t -> unit
 val resume : t -> unit
 val paused : t -> bool

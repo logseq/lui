@@ -21,6 +21,7 @@ type t = {
   (* host time minus clock time; [None] until the next tick anchors it *)
   mutable host_offset : float option;
   mutable firing : bool;
+  mutable wakeup : (float -> unit) option;
 }
 
 and timer = {
@@ -41,6 +42,7 @@ let create ?(start = 0.) () =
     is_paused = false;
     host_offset = None;
     firing = false;
+    wakeup = None;
   }
 
 let now clock = clock.current
@@ -52,9 +54,33 @@ let enqueue clock timer deadline =
   clock.queue <- Queue.add key timer clock.queue;
   clock.count <- clock.count + 1
 
+let next_deadline clock =
+  match Queue.min_binding_opt clock.queue with
+  | Some ((deadline, _), _) -> Some deadline
+  | None -> None
+
+let next_delay clock =
+  if clock.is_paused then None
+  else
+    Option.map
+      (fun deadline -> Float.max 0. (deadline -. clock.current))
+      (next_deadline clock)
+
+let notify clock =
+  match clock.wakeup, next_delay clock with
+  | Some wakeup, Some delay when not clock.firing -> wakeup delay
+  | _ -> ()
+
+let set_wakeup clock wakeup =
+  clock.wakeup <- wakeup;
+  notify clock
+
 let schedule clock delay interval action =
   let timer = {owner = clock; interval; action; key = (0., 0); live = true} in
   enqueue clock timer (clock.current +. delay);
+  (match Queue.min_binding_opt clock.queue with
+   | Some (key, _) when key = timer.key -> notify clock
+   | _ -> ());
   timer
 
 let after clock delay action =
@@ -83,18 +109,6 @@ let subscription timer = Signal.make_subscription (fun () -> cancel timer)
 
 let pending clock = clock.count
 
-let next_deadline clock =
-  match Queue.min_binding_opt clock.queue with
-  | Some ((deadline, _), _) -> Some deadline
-  | None -> None
-
-let next_delay clock =
-  if clock.is_paused then None
-  else
-    Option.map
-      (fun deadline -> Float.max 0. (deadline -. clock.current))
-      (next_deadline clock)
-
 let fire_through clock target =
   if clock.firing then invalid_arg "Lui_clock: time cannot move inside a timer";
   clock.firing <- true;
@@ -114,6 +128,7 @@ let fire_through clock target =
   | fired ->
     clock.current <- Float.max clock.current target;
     clock.firing <- false;
+    notify clock;
     fired
   | exception failure ->
     clock.firing <- false;
@@ -151,7 +166,8 @@ let pause clock = clock.is_paused <- true
 let resume clock =
   if clock.is_paused then begin
     clock.is_paused <- false;
-    clock.host_offset <- None
+    clock.host_offset <- None;
+    notify clock
   end
 
 let paused clock = clock.is_paused
