@@ -1003,6 +1003,26 @@ public final class LUIAppleBackend {
         try apply(decoded: try Self.decode(json))
     }
 
+    /// Replaces the retained tree with the full-tree batch delivered by
+    /// `lui_ocaml_resync`. That batch carries the runtime's current
+    /// generation, which `apply` would drop as stale, and it recreates ids
+    /// the stale tree still holds. The old tree is cleared and committed
+    /// first, because a commit that both drops and recreates an id builds
+    /// no model for it; recreated nodes get fresh view models.
+    public func applySnapshot(json: String) throws {
+        let snapshot = try Self.decode(json).batch
+        let coalesces = coalescesCommits
+        coalescesCommits = false
+        defer { coalescesCommits = coalesces }
+        withDeferredEventDelivery { flushPendingCommit() }
+        generation = snapshot.generation - 2
+        try apply(decoded: DecodedPatchBatch(batch: LUIPatchBatch(
+            generation: snapshot.generation - 1,
+            ops: tree.rootIDs.sorted().map { .detachSubtree(id: $0) }
+        )))
+        try apply(decoded: DecodedPatchBatch(batch: snapshot))
+    }
+
     public func apply(decoded: DecodedPatchBatch) throws {
         let batch = decoded.batch
         // A received generation is consumed whether or not its ops
