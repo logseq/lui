@@ -11,6 +11,8 @@ typealias PatchCallback = @convention(c) (UnsafePointer<CChar>?) -> Void
     _ first: Int64, _ last: Int64, _ pins: UnsafePointer<Int64>?, _ count: Int32) -> Int32
 @_silgen_name("lui_ocaml_visible_range") func visibleRangeOCaml(_ node: Int64, _ first: Int64, _ last: Int64) -> Int32
 @_silgen_name("lui_ocaml_scroll_completed") func scrollCompletedOCaml(_ node: Int64, _ token: Int64, _ outcome: UnsafePointer<CChar>?) -> Int32
+@_silgen_name("lui_ocaml_clock_tick") func clockTickOCaml(_ now: Double) -> Int32
+@_silgen_name("lui_ocaml_clock_next_delay") func clockNextDelayOCaml() -> Double
 @_silgen_name("lui_ocaml_extension_event") func extensionOCaml(_ node: Int64, _ identifier: UnsafePointer<CChar>, _ name: UnsafePointer<CChar>, _ values: UnsafePointer<CChar>) -> Int32
 @_silgen_name("lui_ocaml_last_error") func lastErrorOCaml(_ receiver: PatchCallback?) -> Int32
 @_silgen_name("lui_ocaml_resync") func resyncOCaml() -> Int32
@@ -25,6 +27,7 @@ let receivePatch: PatchCallback = { source in
 @MainActor @Observable final class NavigationHost {
     let backend: LUIAppleBackend
     let recovery = LUINativeRefusalRecovery(lastError: { lastErrorOCaml($0) }, resync: { resyncOCaml() })
+    let clock: LUIRuntimeClock
     var rootID: Int?
     init() {
         let registry = LUIAppleExtensionRegistry()
@@ -32,7 +35,10 @@ let receivePatch: PatchCallback = { source in
             try LUINavigation.register(in: registry)
             backend = try LUIAppleBackend(extensionRegistry: registry)
         } catch { fatalError("Navigation registry: \(error)") }
-        backend.onEvent = { [recovery] event in
+        clock = LUIRuntimeClock(tick: { clockTickOCaml($0) }, nextDelay: { clockNextDelayOCaml() })
+        clock.recovery = recovery
+        backend.onEvent = { [recovery, clock] event in
+            defer { clock.reschedule() }
             switch event {
             case let .press(node): recovery.check(pressOCaml(Int64(node)))
             case let .virtualWindow(node, generation, first, last, pins):
@@ -66,6 +72,7 @@ let receivePatch: PatchCallback = { source in
         guard startOCaml(receivePatch, 2, virtualRowsVersionOCaml() == 1 ? 258 : 2) == 1 else {
             fatalError("Navigation start: \(recovery.takeFailure().map(String.init(describing:)) ?? "rejected")")
         }
+        clock.reschedule()
     }
     func apply(_ json: String) {
         do {

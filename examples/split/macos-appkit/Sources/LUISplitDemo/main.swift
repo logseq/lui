@@ -85,6 +85,7 @@ private func luiExtensionValuesJSON(_ values: [String: LUIExtensionValue]) -> St
 @MainActor
 private final class NativeSplitRuntime {
     private let handle: UnsafeMutableRawPointer
+    let clock: LUIRuntimeClock
     private let nativeHostCode: Int32
     private let virtualWindowFunction: VirtualWindowFunction?
     private let visibleRangeFunction: VisibleRangeFunction?
@@ -116,6 +117,7 @@ private final class NativeSplitRuntime {
             throw RuntimeError(String(cString: dlerror()))
         }
         self.handle = handle
+        clock = LUIRuntimeClock(library: handle)
         let version = dlsym(handle, "lui_ocaml_virtual_rows_version").map {
             unsafeBitCast($0, to: VirtualRowsVersionFunction.self)()
         } ?? 0
@@ -150,6 +152,7 @@ private final class NativeSplitRuntime {
         contextMenuPressFunction = try Self.load("lui_ocaml_context_menu_press", from: handle)
         extensionEventFunction = try Self.load("lui_ocaml_extension_event", from: handle)
         recovery = LUINativeRefusalRecovery(library: handle)
+        clock.recovery = recovery
     }
 
     func start() throws {
@@ -157,9 +160,11 @@ private final class NativeSplitRuntime {
             let reason = recovery.takeFailure().map { ": \($0)" } ?? ""
             throw RuntimeError("LUI Split initialization failed\(reason)")
         }
+        clock.reschedule()
     }
 
     func stop() {
+        clock.cancel()
         _ = stopFunction()
     }
 
@@ -317,6 +322,7 @@ private final class SplitDemoHost: NSObject, NSApplicationDelegate, NSWindowDele
             self.runtime = runtime
             activeHost = self
             backend.onEvent = { [weak self] event in
+                defer { self?.runtime?.clock.reschedule() }
                 switch event {
                 case let .appear(node):
                     self?.runtime?.appear(node: node)
