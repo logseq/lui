@@ -25,6 +25,7 @@ class Runtime:
         )
         self.nodes = {}
         self.version = None
+        self.last_error = None
         assert self.receive() == 1
 
     def receive(self, snapshot=False):
@@ -39,6 +40,8 @@ class Runtime:
                     self.nodes = {}
                 for op in batch["ops"]:
                     self.apply(op)
+            elif line.startswith("ERROR "):
+                self.last_error = None if line[6:].strip() == "null" else json.loads(line[6:])
             elif line.startswith("RESULT "):
                 return int(line[7:])
 
@@ -155,11 +158,20 @@ def run(fixture):
                     assert runtime.call(command) == 0, command
                 assert runtime.call("resync", snapshot=True) == 1
                 assert len(runtime.nodes) < 150
+                assert runtime.call(f"badext {list_id}") == 0
+                assert runtime.call("lasterror") == 1
+                failure = runtime.last_error
+                assert failure["phase"] == "dispatch" and failure["node"] == list_id, failure
+                assert failure["recovery"] == "resync", failure
+                assert "invalid extension event payload" in failure["message"], failure
+                assert runtime.call("lasterror") == 0 and runtime.last_error is None
+                assert runtime.call("resync", snapshot=True) == 1
+                assert runtime.nodes[list_id]["props"]["virtual-total-count"] == 100000
                 assert runtime.call(f"press {runtime.named('sparse-clear')}") == 1
                 assert runtime.nodes[list_id]["props"]["virtual-total-count"] == 0
                 assert runtime.nodes[list_id]["children"] == []
                 assert len(runtime.nodes) < 30
-                print("PASS: real JNI/OCaml 100000-row load, bounded windows, far pin, reorder identity, stale generation, invalid arrays, resync and clear")
+                print("PASS: real JNI/OCaml 100000-row load, bounded windows, far pin, reorder identity, stale generation, invalid arrays, resync, refusal diagnostics and clear")
             finally:
                 runtime.close()
 
