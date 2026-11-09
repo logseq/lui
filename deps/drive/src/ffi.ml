@@ -19,6 +19,8 @@ external c_poll : t_ext -> int = "drive_target_poll"
 external c_next : t_ext -> string option = "drive_target_next"
 external c_stop : t_ext -> int = "drive_target_stop"
 external c_root : t_ext -> int64 = "drive_target_root"
+external c_last_error : t_ext -> string option = "drive_target_last_error"
+external c_resync : t_ext -> int = "drive_target_resync"
 
 type t = {
   handle : t_ext;
@@ -64,16 +66,47 @@ let poll t =
   ignore (c_poll t.handle);
   drain t
 
-let send t name node a b c iv fv =
-  ignore (c_event t.handle name node a b c iv fv);
-  (* Events are queued to the target's dispatcher thread; give it a brief
-     grace window so an emitted patch usually lands before we continue.
-     Scenario `wait` does the real waiting for slower effects. *)
+(* Events are queued to the target's dispatcher thread; give it a brief
+   grace window so an emitted patch usually lands before we continue.
+   Scenario `wait` does the real waiting for slower effects. *)
+let settle_patches t =
   let deadline = Unix.gettimeofday () +. 0.2 in
   while not (drain t) && Unix.gettimeofday () < deadline do
     Unix.sleepf 0.005
   done;
   ignore (drain t)
+
+let describe_failure json =
+  match Yojson.Safe.from_string json with
+  | `Assoc fields ->
+    let text key =
+      match List.assoc_opt key fields with Some (`String s) -> s | _ -> "?"
+    in
+    let node =
+      match List.assoc_opt "node" fields with
+      | Some (`Int n) -> Printf.sprintf " at node #%d" n
+      | _ -> ""
+    in
+    Printf.sprintf "target refused %s%s: %s" (text "phase") node (text "message")
+  | _ | (exception Yojson.Json_error _) -> "target refused the call: " ^ json
+
+(* OCaml threw during the call and discarded its patches: rebuild the model
+   from a resync snapshot and fail the scenario line loudly. *)
+let check_refusal t accepted =
+  if accepted = 0 then
+    match c_last_error t.handle with
+    | None -> ()
+    | Some json ->
+      ignore (drain t);
+      Model.clear t.tree;
+      ignore (c_resync t.handle);
+      ignore (drain t);
+      failwith (describe_failure json)
+
+let send t name node a b c iv fv =
+  let accepted = c_event t.handle name node a b c iv fv in
+  settle_patches t;
+  check_refusal t accepted
 
 let send_event t = function
   | Press n -> send t "press" (Int64.of_int n) "" "" "" 0 0.0
@@ -107,14 +140,12 @@ let send_event t = function
       | PointerUp _ -> "pointer_up"
       | _ -> "context_menu_press"
     in
-    let deadline = Unix.gettimeofday () +. 0.2 in
-    ignore
-      (c_event_detail t.handle name (Int64.of_int n) d.x d.y d.modifiers
-         d.button d.target_class);
-    while not (drain t) && Unix.gettimeofday () < deadline do
-      Unix.sleepf 0.005
-    done;
-    ignore (drain t)
+    let accepted =
+      c_event_detail t.handle name (Int64.of_int n) d.x d.y d.modifiers
+        d.button d.target_class
+    in
+    settle_patches t;
+    check_refusal t accepted
   | Load _ ->
     (* no lui_ocaml_load export: the event exists for in-process apps *)
     ()
@@ -135,7 +166,10 @@ let open_target ~path ~os ~host =
   let handle = c_open path in
   let t = { handle; tree = Model.create () } in
   if c_start handle (os_code os) (host_code host) = 0 then
-    failwith "drive: lui_ocaml_start failed";
+    failwith
+      (match c_last_error handle with
+       | Some json -> "drive: lui_ocaml_start failed: " ^ describe_failure json
+       | None -> "drive: lui_ocaml_start failed");
   (* The mount patch arrives asynchronously on the target's threads. *)
   let deadline = Unix.gettimeofday () +. 5.0 in
   while Model.node_count t.tree = 0 && Unix.gettimeofday () < deadline do

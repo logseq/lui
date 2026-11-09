@@ -46,6 +46,8 @@ typedef struct {
   int32_t (*slider_changed)(int64_t, double);
   int32_t (*picked)(int64_t, const char *);
   int32_t (*extension)(int64_t, const char *, const char *, const char *);
+  int32_t (*last_error)(patch_cb);
+  int32_t (*resync)(void);
   int32_t (*poll)(void);
   int32_t (*stop)(void);
   int64_t (*root_node)(void);
@@ -166,6 +168,8 @@ CAMLprim value drive_target_open(value pathv) {
   t->toggle_changed = sym(lib, "lui_ocaml_toggle_changed");
   t->slider_changed = sym(lib, "lui_ocaml_slider_changed");
   t->extension = sym(lib, "lui_ocaml_extension_event");
+  t->last_error = dlsym(lib, "lui_ocaml_last_error");
+  t->resync = dlsym(lib, "lui_ocaml_resync");
   /* lui_ocaml_poll is not part of the bridge ABI. Leave the slot NULL
      instead of dlsym'ing a symbol that will never be there. */
   t->poll = NULL;
@@ -292,4 +296,38 @@ CAMLprim value drive_target_root(value tv) {
   drive_target *t = Target_val(tv);
   int64_t n = t->root_node ? t->root_node() : -1;
   CAMLreturn(caml_copy_int64(n));
+}
+
+static char *last_error_copy = NULL;
+
+static void last_error_sink(const char *json) {
+  free(last_error_copy);
+  last_error_copy = json != NULL ? strdup(json) : NULL;
+}
+
+/* The refusal diagnostic of the last call (see lui_ocaml_last_error), or
+   None when there is none or the library predates the export. */
+CAMLprim value drive_target_last_error(value tv) {
+  CAMLparam1(tv);
+  CAMLlocal2(res, s);
+  drive_target *t = Target_val(tv);
+  int found = t->last_error != NULL && t->last_error(last_error_sink) == 1;
+  if (!found || last_error_copy == NULL) {
+    free(last_error_copy);
+    last_error_copy = NULL;
+    CAMLreturn(Val_int(0));
+  }
+  s = caml_copy_string(last_error_copy);
+  free(last_error_copy);
+  last_error_copy = NULL;
+  res = caml_alloc_small(1, 0);
+  Field(res, 0) = s;
+  CAMLreturn(res);
+}
+
+CAMLprim value drive_target_resync(value tv) {
+  CAMLparam1(tv);
+  drive_target *t = Target_val(tv);
+  int ok = t->resync ? t->resync() : 0;
+  CAMLreturn(Val_int(ok));
 }
