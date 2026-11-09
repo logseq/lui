@@ -18,8 +18,11 @@ error output**.
 
 - Diagnose with `lui_ocaml_last_error(receiver)` after any call returns 0: it
   delivers `{"phase","node","message","recovery":"resync"}` for the failure.
-  Then call `lui_ocaml_resync` and apply the snapshot so the host does not keep
-  the half-mounted tree. The bridge also prints the exception to stderr.
+  Then call `lui_ocaml_resync` and apply the snapshot with
+  `LUIAppleBackend.applySnapshot(json:)` (plain `apply` drops it as stale), so
+  the host does not keep the half-mounted tree. `LUINativeRefusalRecovery`
+  does all three; wrap every bridge call in `recovery.check(...)`. The bridge
+  also prints the exception to stderr.
 - Runtime validation errors carry details only when built with detailed
   messages (kind/property/value and parent/child kinds). If you see bare
   `invalid_arg "invalid property value"` / `"unsupported child kind"`, you're

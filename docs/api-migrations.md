@@ -24,23 +24,66 @@ mirror is stale: report the message, then call `lui_ocaml_resync` and apply its
 snapshot rather than keep rendering what mounted before the throw. The bridge
 still prints the exception to stderr.
 
-The wire format, existing exports and return codes are unchanged, so existing
-hosts need no change. Hosts resolve the symbol optionally to stay compatible
-with older libraries. OCaml callers can read the same record with
+The wire format, existing exports and return codes are unchanged. A host that
+does not adopt the export keeps its old behavior. Resolve the symbol
+optionally to stay compatible with older libraries. A `0` without a pending
+diagnostic is argument validation in C, which records no patches and needs no
+resync. OCaml callers can read the same record with
 `Lui_native_bridge.last_failure` and `take_failure`. Bridges registered with
-`Lui_native_bridge.register` gain `<prefix>_last_error` automatically; JNI
-libraries can expose it with `lui_dispatch_last_error("lui_kotlin_last_error", …)`.
+`Lui_native_bridge.register` gain `<prefix>_last_error` automatically, so
+`lui_kotlin_last_error` exists for JNI.
 
-MyGo uses it already: `Runtime.Dispatch` returns a `*luimygo.RuntimeError`
-(`Phase`, `Node`, `Message`) and resyncs before returning. Initialization
-failures wrap the same error.
+Every maintained host now consumes it:
 
-```go
-var failure *luimygo.RuntimeError
-if errors.As(runtime.Dispatch(event), &failure) {
-    log.Printf("LUI %s failed at node %v: %s", failure.Phase, failure.Node, failure.Message)
-}
-```
+- **MyGo**: `Runtime.Dispatch` returns a `*luimygo.RuntimeError` (`Phase`,
+  `Node`, `Message`) and resyncs before returning. Initialization failures
+  wrap the same error.
+
+  ```go
+  var failure *luimygo.RuntimeError
+  if errors.As(runtime.Dispatch(event), &failure) {
+      log.Printf("LUI %s failed at node %v: %s", failure.Phase, failure.Node, failure.Message)
+  }
+  ```
+
+- **Android**: `LuiBridge` logs the failure, requests a snapshot through the
+  existing resync path and notifies the optional `LuiBridge.failureListener` on
+  the main thread with a `LuiRuntimeFailure`. A failed `start` reports its
+  diagnostic the same way. The JNI library exports `nativeLastError()`.
+
+  ```kotlin
+  LuiBridge.failureListener = LuiBridge.FailureListener { failure ->
+      showError("${failure.phase} failed: ${failure.message}")
+  }
+  ```
+
+- **Apple**: `LUIAppleBackend.applySnapshot(json:)` replaces the retained tree
+  with a `lui_ocaml_resync` batch. `apply(json:)` drops that batch as stale
+  because it reuses the current generation. `LUINativeRefusalRecovery` wraps the
+  two exports for hosts that load the C ABI themselves, and the Todos, Split,
+  Markdown, Components and Navigation hosts use it. Hosts that resync outside
+  this helper must use `applySnapshot` as well.
+
+  ```swift
+  let recovery = LUINativeRefusalRecovery(library: handle)  // or closures over @_silgen_name exports
+  recovery.check(pressFunction(Int64(node)))
+
+  func apply(json: String) throws {
+      if recovery.isReceivingSnapshot {
+          try backend.applySnapshot(json: json)
+      } else {
+          try backend.apply(json: json)
+      }
+  }
+  ```
+
+- **Drive**: the FFI driver fails the scenario line with the diagnostic, for
+  example `target refused dispatch at node #1: …`, and rebuilds its model from
+  a resync snapshot. `Drive.Model.clear` empties a model before a snapshot.
+
+- **Web/Melange** runs OCaml in-process and has no C boundary. Exceptions
+  still surface as uncaught JavaScript errors and no patches are dropped, so
+  nothing changes there.
 
 ## Unreleased: independent flex shrink on Web and MyGo
 
