@@ -2,8 +2,10 @@
 open Lui_elements
 
 type row = { id : int; text : string; detail : string }
-type model = { rows : row list; target : string; token : int }
-type action = Load | Clear | Reorder | Shrink | Bottom | Variable | Edit of int * string
+type model = { rows : row list; target : string; token : int; status : string }
+type action =
+  | Load | Clear | Reorder | Shrink | Bottom | Variable | Edit of int * string
+  | Arm | Expire
 
 let rows count = List.init count (fun id ->
   { id; text = "draft-" ^ string_of_int id; detail = "Row-" ^ string_of_int id })
@@ -35,11 +37,16 @@ let update model = function
         else Printf.sprintf "Row-%d\nSecond line\nThird line" row.id }) model.rows }
   | Edit (id, text) -> { model with rows = List.map (fun row ->
       if row.id = id then { row with text } else row) model.rows }
+  | Arm -> { model with status = "armed" }
+  | Expire -> { model with status = "expired" }
 
-let view _context source send =
+let view context source send =
   let control identifier text action =
     button ~accessibility_identifier:identifier ~text
       ~on_press:(fun _ -> ignore (send action)) [] in
+  let arm _ =
+    ignore (send Arm);
+    ignore (Lui_ui.after context 500. (fun () -> ignore (send Expire))) in
   column [
     row [
       control "sparse-load" "Load 100000" Load;
@@ -48,7 +55,10 @@ let view _context source send =
       control "sparse-shrink" "Shrink" Shrink;
       control "sparse-target-bottom" "Bottom" Bottom;
       control "sparse-variable" "Variable" Variable;
+      button ~accessibility_identifier:"clock-arm" ~text:"Arm" ~on_press:arm [];
     ];
+    text ~accessibility_identifier:"clock-status"
+      ~value:(reactive (fun model -> model.status) source) [];
     text ~accessibility_identifier:"sparse-count"
       ~value:(reactive (fun model -> string_of_int (List.length model.rows)) source) [];
     virtual_list ~accessibility_identifier:"sparse-list" ~height:320
@@ -77,7 +87,7 @@ let initialize platform_code host_code =
     (Lui_native_bridge.profile platform_code host_code) in
   let app = Lui_app.create
     ~virtual_rows:(Lui_native_bridge.virtual_rows_supported host_code)
-    backend { rows = []; target = ""; token = 0 } update view in
+    backend { rows = []; target = ""; token = 0; status = "idle" } update view in
   Lui_native_bridge.boot bridge app
 
 let () =
