@@ -31,6 +31,7 @@
     let windowEvent: SparseWindow
     let textEvent: SparseText
     let resync: SparseStop
+    let clock: LUIRuntimeClock
     var errors: [String] = []
     var events: [LUIEvent] = []
     var snapshotBatches: [String]?
@@ -59,6 +60,7 @@
       press = try load("lui_ocaml_press", SparseNode.self)
       textEvent = try load("lui_ocaml_text_changed_utf8", SparseText.self)
       windowEvent = try load("lui_ocaml_virtual_window", SparseWindow.self)
+      clock = LUIRuntimeClock(library: library)
       let version =
         dlsym(library, "lui_ocaml_virtual_rows_version").map {
           unsafeBitCast($0, to: SparseVersion.self)()
@@ -67,6 +69,7 @@
       sparseActive = self
       let result = start(sparseReceive, 1, negotiate && version == 1 ? 258 : 2)
       #expect(result == 1)
+      clock.reschedule()
       try checkErrors()
       let root = try #require(backend.rootIDs.first)
       _ = NSApplication.shared
@@ -108,6 +111,7 @@
 
     func dispatch(_ event: LUIEvent) {
       events.append(event)
+      defer { clock.reschedule() }
       switch event {
       case .virtualWindow(let node, let generation, let first, let last, let pins):
         let ids = pins.map(Int64.init)
@@ -128,6 +132,7 @@
       window.orderOut(nil)
       window.contentView = nil
       backend.onEvent = nil
+      clock.cancel()
       _ = stop()
       sparseActive = nil
       // The process owns the OCaml runtime; unloading its code is unsafe.
@@ -327,6 +332,14 @@
           if case .virtualWindow = $0 { return true }
           return false
         })
+      #expect(h.clock.isAvailable)
+      let status = try h.identified("clock-status")
+      #expect(h.backend.model(id: status)?.property(.text)?.stringValue == "idle")
+      try h.action("clock-arm")
+      #expect(h.backend.model(id: status)?.property(.text)?.stringValue == "armed")
+      try await h.pump(until: "application clock fires the 500 ms timer from a host wakeup") {
+        h.backend.model(id: status)?.property(.text)?.stringValue == "expired"
+      }
       try h.checkErrors()
     }
   }
