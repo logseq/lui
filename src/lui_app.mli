@@ -85,6 +85,17 @@ val set_theme :
 val set_theme_mode : ('a, 'b) reducer_app -> Lui_ui.theme_mode -> unit
 val send : ('a, 'b) reducer_app -> 'b -> bool
 val dispatch_event : ('a, 'b) reducer_app -> Lui_protocol.event -> bool
+
+(** The application clock that {!Lui_ui.after} and {!Lui_ui.every} use. *)
+val clock : ('a, 'b) reducer_app -> Lui_clock.t
+
+(** [tick_clock app ~now] is {!Lui_clock.tick} while [app] is running and
+    [0] afterwards. Like {!dispatch_event}, it does not flush. *)
+val tick_clock : ('a, 'b) reducer_app -> now:float -> int
+
+(** [advance_clock app ms] is {!Lui_clock.advance} while [app] is running
+    and [0] afterwards. It does not flush. *)
+val advance_clock : ('a, 'b) reducer_app -> float -> int
 val require_reload_state :
   ('a, 'b) reducer_app -> ('a, 'b) reloadable_view_state
 val request_reload : ('a, 'b) reducer_app -> int

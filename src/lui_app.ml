@@ -213,6 +213,16 @@ let dispatch_event app event =
     Lui_runtime.dispatch app.app_runtime event
   else false
 
+let clock app = Lui_runtime.clock app.app_runtime
+
+let tick_clock app ~now =
+  if !(app.app_lifecycle_state) = Running then Lui_clock.tick (clock app) ~now
+  else 0
+
+let advance_clock app ms =
+  if !(app.app_lifecycle_state) = Running then Lui_clock.advance (clock app) ms
+  else 0
+
 let require_reload_state app =
   match app.app_reload_state with
   | Some state -> state

@@ -29,6 +29,17 @@ val context_with_state_registry :
   (string, Signal.scope) Hashtbl.t -> (string, bool) Hashtbl.t -> ui_context
 val child_context : ui_context -> string -> ui_context
 val owner_name : ui_context -> string -> string
+
+(** The application clock. Prefer {!after} and {!every} in views. *)
+val clock : ui_context -> Lui_clock.t
+
+(** [after context delay action] is {!Lui_clock.after} on the application
+    clock, cancelled when [context]'s scope is disposed. *)
+val after : ui_context -> float -> (unit -> unit) -> Lui_clock.timer
+
+(** [every context interval action] is {!Lui_clock.every} on the
+    application clock, cancelled when [context]'s scope is disposed. *)
+val every : ui_context -> float -> (unit -> unit) -> Lui_clock.timer
 val node_kind : ui_context -> int -> Lui_protocol.node_kind
 val profile : ui_context -> Lui_protocol.platform_profile
 val platform : ui_context -> Lui_protocol.operating_system

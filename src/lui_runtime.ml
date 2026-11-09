@@ -108,6 +108,7 @@ type application = {
      more pass after the outer commit unwinds. *)
   runtime_flushing : bool ref;
   runtime_flush_dirty : bool ref;
+  runtime_clock : Lui_clock.t;
 }
 
 type runtime_checkpoint = {
@@ -208,7 +209,10 @@ let create_with_extensions ?virtual_rows scheduler backend registry =
     runtime_extension_dirty = ref false;
     runtime_flushing = ref false;
     runtime_flush_dirty = ref false;
+    runtime_clock = Lui_clock.create ();
   }
+
+let clock application = application.runtime_clock
 
 let create ?virtual_rows scheduler backend =
   create_with_extensions ?virtual_rows scheduler backend (Lui_extension.registry ())

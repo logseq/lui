@@ -346,6 +346,48 @@ static int32_t lui_dispatch_last_error(const char *name,
   CAMLreturnT(int32_t, found);
 }
 
+static int32_t lui_dispatch_double(const char *name, double number,
+                                   lui_deliver_fn deliver) {
+  CAMLparam0();
+  CAMLlocal2(number_value, result);
+  int32_t accepted = 0;
+  const value *callback = caml_named_value(name);
+  if (callback != NULL) {
+    number_value = caml_copy_double(number);
+    result = caml_callback_exn(*callback, number_value);
+    accepted = lui_emit_value(result, deliver);
+  }
+  CAMLreturnT(int32_t, accepted);
+}
+
+static int32_t lui_dispatch_bool(const char *name, int flag,
+                                 lui_deliver_fn deliver) {
+  CAMLparam0();
+  CAMLlocal1(result);
+  int32_t accepted = 0;
+  const value *callback = caml_named_value(name);
+  if (callback != NULL) {
+    result = caml_callback_exn(*callback, Val_bool(flag != 0));
+    accepted = lui_emit_value(result, deliver);
+  }
+  CAMLreturnT(int32_t, accepted);
+}
+
+/* Returns [fallback] when the callback is missing or raises. */
+static double lui_dispatch_query_double(const char *name, double fallback) {
+  CAMLparam0();
+  CAMLlocal1(result);
+  double number = fallback;
+  const value *callback = caml_named_value(name);
+  if (callback != NULL) {
+    result = caml_callback_exn(*callback, Val_unit);
+    if (!Is_exception_result(result)) {
+      number = Double_val(result);
+    }
+  }
+  CAMLreturnT(double, number);
+}
+
 static int64_t lui_dispatch_root(const char *name) {
   CAMLparam0();
   CAMLlocal1(result);
