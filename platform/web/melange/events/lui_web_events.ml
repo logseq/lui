@@ -782,7 +782,81 @@ let rec sync_pointer_events renderer node kind dom_node =
 let attach_pointer_events renderer node kind dom_node =
   sync_pointer_events renderer node kind dom_node
 
+external queue_focus_check : (unit -> unit) -> unit = "queueMicrotask"
+external focus_node_connected : Dom.element -> bool = "isConnected" [@@mel.get]
+
+let release_focus_within renderer node =
+  match Hashtbl.find_opt renderer.web_focus_within_observers node with
+  | None -> ()
+  | Some (_, dispose) ->
+      Hashtbl.remove renderer.web_focus_within_observers node;
+      dispose ()
+
+let refresh_focus_within renderer node =
+  Option.iter (fun (refresh, _) -> refresh ())
+    (Hashtbl.find_opt renderer.web_focus_within_observers node)
+
+let refresh_focus_within_subtree renderer node =
+  let rec refresh node =
+    refresh_focus_within renderer node;
+    match Store.node renderer.web_store node with
+    | None -> ()
+    | Some current -> Lui_sequence.iter refresh current.retained_children
+  in
+  if Hashtbl.length renderer.web_focus_within_observers > 0 then refresh node
+
+let sync_focus_within renderer node dom_node =
+  if not (Store.true_property renderer node FocusWithinEnabled) then
+    release_focus_within renderer node
+  else if not (Hashtbl.mem renderer.web_focus_within_observers node) then begin
+    let alive = ref true and pending = ref false and last = ref None in
+    let rec interactive node =
+      match Store.node renderer.web_store node with
+      | None -> false
+      | Some current ->
+          enabled_node renderer node
+          && not (Store.true_property renderer node Inert)
+          && (match current.retained_parent with
+              | None -> true
+              | Some parent -> interactive parent)
+    in
+    let check () =
+      pending := false;
+      if !alive && Store.true_property renderer node FocusWithinEnabled then
+        match Store.node renderer.web_store node with
+        | Some current when Lazy.is_val current.platform_node
+            && Lazy.force current.platform_node == dom_node ->
+            let document = W.Document.unsafeAsHtmlDocument renderer.web_document in
+            let within = focus_node_connected dom_node && interactive node
+              && (match W.HtmlDocument.activeElement document with
+                  | None -> false
+                  | Some focused -> W.Element.contains (W.Element.asNode focused) dom_node)
+            in
+            if !last <> Some within then begin
+              last := Some within;
+              emit renderer (FocusWithinChanged (node, within))
+            end
+        | _ -> ()
+    in
+    let refresh () =
+      if !alive && not !pending then begin
+        pending := true;
+        queue_focus_check check
+      end
+    in
+    let listener _event = refresh () in
+    W.Element.addEventListener "focusin" listener dom_node;
+    W.Element.addEventListener "focusout" listener dom_node;
+    Hashtbl.add renderer.web_focus_within_observers node
+      (refresh, (fun () ->
+        alive := false;
+        W.Element.removeEventListener "focusin" listener dom_node;
+        W.Element.removeEventListener "focusout" listener dom_node));
+    refresh ()
+  end
+
 let attach_events renderer node kind dom_node =
+  sync_focus_within renderer node dom_node;
   (* The context-menu host bundle is only worth wiring when the node
      actually has a ContextMenu child; later inserts re-check via
      apply_dom_op's structural ops. *)

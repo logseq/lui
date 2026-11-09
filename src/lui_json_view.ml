@@ -304,6 +304,7 @@ let ev name (emit : event_sink) props =
          let fields =
            match e with
            | P.ToggleChanged (_, checked) -> [ ("checked", Bool checked) ]
+           | P.FocusWithinChanged (_, within) -> [ ("within", Bool within) ]
            | P.NavigatePrevious _ -> [ ("direction", Str "previous") ]
            | P.NavigateNext _ -> [ ("direction", Str "next") ]
            | P.NavigationKey (_, key, shift) -> [ ("key", Str key); ("shift", Bool shift) ]

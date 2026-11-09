@@ -1902,6 +1902,7 @@ let event_payload = function
   | VirtualWindow (_, generation, first, last, _) ->
     Printf.sprintf "virtual-window:%d:%d:%d" generation first last
   | ExtensionEvent (_, identifier, name, _) -> "extension:" ^ identifier ^ ":" ^ name
+  | FocusWithinChanged (_, within) -> Printf.sprintf "focus-within:%b" within
   | PointerMove _ -> "pointer-move"
   | PointerCancel _ -> "pointer-cancel"
   | ToggleChangedDetail (_, checked, modifiers) ->

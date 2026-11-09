@@ -204,7 +204,7 @@ func (b *Backend) renderMenus(c *ui.Context, n Node, children func(), emit func(
 						}
 						parts := ui.ToastBase(c, toast)
 						parts.Root.Padding(12).Radius(c.Theme().Radius).Background(c.Theme().Surface).Border(1, c.Theme().Border).MinWidth(220)
-						b.style(c, current, parts.Root)
+						b.style(c, current, parts.Root, ui.Element.FocusWithin)
 						parts.Root.Children(func() {
 							for _, child := range current.Children {
 								b.renderWidgetChild(c, child)

@@ -5,6 +5,7 @@ package luimygo
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"maps"
@@ -61,6 +62,7 @@ type Event struct {
 	Node        int64          `json:"node"`
 	Text        string         `json:"text,omitempty"`
 	Checked     bool           `json:"checked,omitempty"`
+	Within      bool           `json:"within,omitempty"`
 	Value       float64        `json:"value,omitempty"`
 	Modifiers   int32          `json:"modifiers,omitempty"`
 	Identifier  string         `json:"identifier,omitempty"`
@@ -82,6 +84,20 @@ type Event struct {
 	Shift       bool           `json:"shift,omitempty"`
 	Payload     string         `json:"payload,omitempty"`
 	incarnation uint64
+
+	focusContext *ui.Context
+}
+
+func (e Event) MarshalJSON() ([]byte, error) {
+	type wireEvent Event
+	var within *bool
+	if e.Kind == "focus-within-changed" {
+		within = &e.Within
+	}
+	return json.Marshal(struct {
+		wireEvent
+		Within *bool `json:"within,omitempty"`
+	}{wireEvent(e), within})
 }
 
 // Renderer builds a custom control, calling children within its container.
@@ -121,6 +137,8 @@ type controlState struct {
 	checked           bool
 	value             float64
 	appeared, focused bool
+	focusWithinKnown  bool
+	focusWithinLast   bool
 	identity          uint64
 	handle            ui.Handle
 	resource          nodeResourceState

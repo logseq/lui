@@ -23,6 +23,7 @@ type nativeFunctions struct {
 	start        func(uintptr, int32, int32) int32
 	stop, resync func() int32
 	text         func(int64, string, int32) int32
+	focusWithin  func(int64, int32) int32
 	toggle       func(int64, int32) int32
 	toggleDetail func(int64, int32, int32) int32
 	value        func(int64, float64) int32
@@ -182,6 +183,9 @@ func (w *runtimeWorker) load(path string) error {
 	if ptr, lookupErr := librarySymbol(handle, "lui_ocaml_virtual_window"); lookupErr == nil {
 		purego.RegisterFunc(&f.virtualWindow, ptr)
 	}
+	if ptr, lookupErr := librarySymbol(handle, "lui_ocaml_focus_within_changed"); lookupErr == nil {
+		purego.RegisterFunc(&f.focusWithin, ptr)
+	}
 	if goruntime.GOOS == "windows" {
 		// Windows requires a pointer-sized callback result. The C void
 		// callback ignores it; CDecl preserves the bridge's calling convention.
@@ -275,6 +279,12 @@ func (r *Runtime) Dispatch(e Event) error {
 			return f.pressEx(e.Node, e.Modifiers)
 		case "text-changed":
 			return f.text(e.Node, e.Text, int32(len(e.Text)))
+		case "focus-within-changed":
+			if f.focusWithin == nil {
+				unknown = true
+				return 0
+			}
+			return f.focusWithin(e.Node, nativeBool(e.Within))
 		case "toggle-changed":
 			checked := int32(0)
 			if e.Checked {

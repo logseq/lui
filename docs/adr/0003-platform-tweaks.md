@@ -1,10 +1,5 @@
 # ADR: Platform tweaks
 
-> Historical backend note: Apple/SwiftUI/AppKit and Android/Kotlin hosts are
-> removed. Their implementation notes below are historical, not support or
-> build instructions. Current targets are MyGo desktop and Web/Melange; see
-> `docs/api-migrations.md` for the breaking change.
-
 Status: accepted
 
 Date: 2026-08-25

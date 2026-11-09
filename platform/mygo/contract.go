@@ -93,6 +93,9 @@ func validateNode(n Node) error {
 			return fmt.Errorf("lui: invalid %s property %q on node %d", n.Kind, name, n.ID)
 		}
 	}
+	if n.Kind == "box" && n.String("display") == "contents" && n.Bool("focus-within-enabled") {
+		return fmt.Errorf("lui: focus-within observation is unsupported on box display=contents (node %d)", n.ID)
+	}
 	if !contract_node_properties_supported(n.Kind, n.Props) {
 		return fmt.Errorf("lui: invalid final properties for %s node %d", n.Kind, n.ID)
 	}

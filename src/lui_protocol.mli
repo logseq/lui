@@ -308,6 +308,8 @@ type property =
   | PointerCapture
   | Indeterminate
   | ToggleDetailEnabled
+  | FocusWithinEnabled
+  | ShrinkValue
 
 module Property_map : Map.S with type key = property
 
@@ -363,6 +365,7 @@ type event =
   | PointerMove of int * pointer_detail
   | PointerCancel of int * pointer_detail
   | ToggleChangedDetail of int * bool * int
+  | FocusWithinChanged of int * bool
   | ExtensionEvent of int * string * string * wire_value String_map.t
 
 type patch_op =

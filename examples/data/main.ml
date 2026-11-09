@@ -133,10 +133,12 @@ let () =
   let mount_only = ref false and selected_profile = ref "generic" and benchmark = ref 0 in
   Arg.parse ["--mount-only", Arg.Set mount_only, "Mount without scripted events";
              "--benchmark", Arg.Set_int benchmark, "Measure cached compilation and model updates";
-             "--profile", Arg.Set_string selected_profile, "generic|web|linux|windows"]
+             "--profile", Arg.Set_string selected_profile, "generic|web|ios|macos|android|linux|windows"]
     (fun path -> entry := path) "main.exe [view.edn] [--mount-only] [--profile platform]";
   let manifest paths = String.concat "\n" (List.map (fun path -> read (Filename.concat root path)) paths) in
   let web = manifest ["platform/web/src/lui-split.js"; "examples/components/web/web_main.ml"] in
+  let apple = manifest ["platform/apple/Sources/LUIAppleBackend/LUISplit.swift"; "examples/components/ios-swiftui/Sources/LUIComponentsApp/GalleryExtensions.swift"] in
+  let android = manifest ["platform/android/lui/src/main/kotlin/dev/lui/LuiSplit.kt"; "examples/components/android/app/src/main/java/dev/lui/components/GalleryExtensions.kt"] in
   let extensions = Extension_schemas.registry () in
   let accent = match Lui_extension.schema extensions "gallery-accent" with
     | Some schema -> Lui_extension.tweak_fingerprint schema
@@ -145,6 +147,9 @@ let () =
   let hosts = [
     C.host (P.generic_profile ()) "";
     C.host ~registered:["gallery-accent", accent] (P.profile P.WebOS P.WebHost) web;
+    C.host (P.profile P.IOS P.SwiftUIHost) apple;
+    C.host (P.profile P.MacOS P.SwiftUIHost) apple;
+    C.host (P.profile P.AndroidOS P.KotlinHost) android;
     C.host (P.profile P.LinuxOS P.GenericHost) "";
     C.host (P.profile P.WindowsOS P.GenericHost) ""
   ] in

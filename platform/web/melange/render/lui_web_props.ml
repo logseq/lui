@@ -811,6 +811,8 @@ let rec apply_property renderer queue_split node kind dom_node property
       set_style dom_node "align-items" (cross_alignment_value alignment)
   | GrowValue, FloatValue grow ->
       set_style dom_node "flex-grow" (Js.Float.toString grow)
+  | ShrinkValue, FloatValue shrink ->
+      set_style dom_node "flex-shrink" (Js.Float.toString shrink)
   | GridColumns, IntValue columns -> apply_grid_columns dom_node columns
   | GridColumnSpan, IntValue span ->
       set_style dom_node "grid-column" ("span " ^ string_of_int span ^ " / span " ^ string_of_int span)
@@ -977,6 +979,7 @@ and apply_secondary_property renderer queue_split node kind dom_node
       Util.set_state_attribute dom_node "data-toggle-enabled" enabled
   | ToggleDetailEnabled, BoolValue enabled ->
       Util.set_state_attribute dom_node "data-toggle-detail-enabled" enabled
+  | FocusWithinEnabled, BoolValue _ -> ()
   | PressEnabled, BoolValue enabled ->
       apply_press_enabled kind dom_node enabled
   | PointerEnabled, BoolValue enabled ->
@@ -1261,6 +1264,7 @@ let remove_property renderer queue_split node kind dom_node property =
        | NavigateEnabled | SubmitOnBlur | ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange -> ()
        | ToggleDetailEnabled ->
            W.Element.removeAttribute "data-toggle-detail-enabled" dom_node
+       | FocusWithinEnabled -> ()
        | PointerCapture ->
            W.Element.removeAttribute "data-pointer-capture" dom_node
        | TextValue -> apply_text_value renderer node kind dom_node ""
@@ -1277,6 +1281,7 @@ let remove_property renderer queue_split node kind dom_node property =
        | MainAlignment -> set_style dom_node "justify-content" ""
        | CrossAlignment -> set_style dom_node "align-items" ""
        | GrowValue -> set_style dom_node "flex-grow" ""
+       | ShrinkValue -> set_style dom_node "flex-shrink" ""
        | GridColumns ->
            set_style dom_node "grid-auto-flow" "";
            set_style dom_node "grid-auto-columns" "";

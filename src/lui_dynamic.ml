@@ -26,11 +26,13 @@ type 'key ui_keyed = {
    runtime already dropped part of the branch (app teardown, reconcile), so
    remove_child/drop_subtree may only touch ids that are still live. The
    segment bookkeeping always unwinds so unregister sees an empty segment. *)
-let teardown_branch application segment parent node =
-  (* A reconcile may have re-homed [node] under a different live parent
-     while this branch's scope still disposes lazily; the node then
-     belongs to the new tree, so only a node still recorded under
-     [parent] (or left parent-less) is this branch's to detach/drop. *)
+(* Node-side cleanup shared by segment teardown and the retired-segment
+   fallback: a host-hoisted node (a dialog/sheet the backend moves under
+   the root or an overlay layer) reports a recorded parent that is an
+   *ancestor* of this branch's parent — unlike a node reconcile re-homed
+   into a sibling subtree, no other owner will drop it, so this scope
+   still has to. *)
+let drop_branch_node application parent node =
   let owned () =
     match Lui_runtime.recorded_parent application node with
     | Some recorded -> recorded = Lui_runtime.canonical_node application parent
@@ -41,9 +43,39 @@ let teardown_branch application segment parent node =
     && Lui_runtime.node_live application node
     && owned ()
   then Lui_runtime.remove_child application parent node;
+  if Lui_runtime.node_live application node then
+    if owned () then
+      Lui_runtime.drop_subtree application node
+    else
+      (let hoisted rp =
+         let rec up depth p =
+           depth < 64
+           &&
+           match Lui_runtime.recorded_parent application p with
+           | Some pp -> if pp = rp then true else up (depth + 1) pp
+           | None -> false
+         in
+         up 0 parent
+       in
+       match Lui_runtime.recorded_parent application node with
+       | Some rp when hoisted rp ->
+         Lui_runtime.remove_child application rp node;
+         Lui_runtime.drop_subtree application node
+       | _ -> ())
+
+(* Retired segments handed ordinary nodes to the replacement tree. Only
+   live nodes hoisted out of the branch remain this scope's to clean up. *)
+let teardown_branch_node application parent node =
+  if Lui_runtime.node_live application node then
+    match Lui_runtime.recorded_parent application node with
+    | Some recorded
+      when recorded <> Lui_runtime.canonical_node application parent ->
+      drop_branch_node application parent node
+    | _ -> ()
+
+let teardown_branch application segment parent node =
   Lui_runtime.release_dynamic_segment application segment;
-  if Lui_runtime.node_live application node && owned () then
-    Lui_runtime.drop_subtree application node
+  drop_branch_node application parent node
 
 let segment_disposer application segment dispose_reactive () =
   Fun.protect dispose_reactive
@@ -166,6 +198,7 @@ let conditional context parent source mount =
   let application = context.Lui_ui.ui_application in
   let segment = Lui_runtime.register_dynamic_segment application parent in
   let node_ref = ref None in
+  let mounted_visible = ref false in
   let branch_name = Lui_ui.owner_name context "conditional-branch" in
   let switch_value =
     Signal.switch context.Lui_ui.ui_scope source
@@ -175,16 +208,35 @@ let conditional context parent source mount =
            Lui_ui.child_context context branch_name
          in
          let branch_scope = branch_context.Lui_ui.ui_scope in
+         let was_mounted = !mounted_visible in
+         mounted_visible := visible;
          (if visible && Lui_runtime.node_live application parent then
-            let node = mount branch_context in
-            node_ref := Some node;
-            Lui_runtime.insert_child application parent node
-              (Lui_runtime.dynamic_segment_insert_index segment 0);
-            Lui_runtime.resize_dynamic_segment application segment 1;
-            Signal.on_unmount branch_scope (fun () ->
-                if !(segment.Lui_runtime.dynamic_segment_active) then
-                  teardown_branch application segment parent node;
-                node_ref := None));
+            (match !node_ref with
+             | Some node ->
+               (* the switch refires its mount callback when the previous
+                  branch scope was disposed externally — mounting again
+                  would leak a duplicate retained node. Rebind teardown of
+                  the live node to this scope so a real close still
+                  removes it. *)
+               Signal.on_unmount branch_scope (fun () ->
+                   if !(segment.Lui_runtime.dynamic_segment_active) then
+                     teardown_branch application segment parent node
+                   else
+                     teardown_branch_node application parent node;
+                   node_ref := None)
+             | None when not was_mounted ->
+               let node = mount branch_context in
+               node_ref := Some node;
+               Lui_runtime.insert_child application parent node
+                 (Lui_runtime.dynamic_segment_insert_index segment 0);
+               Lui_runtime.resize_dynamic_segment application segment 1;
+               Signal.on_unmount branch_scope (fun () ->
+                   if !(segment.Lui_runtime.dynamic_segment_active) then
+                     teardown_branch application segment parent node
+                   else
+                     teardown_branch_node application parent node;
+                   node_ref := None)
+             | None -> ()));
          branch_scope)
   in
   let dispose_callback =

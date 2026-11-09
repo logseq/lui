@@ -325,6 +325,7 @@ val register_resize :
     a web DOM contract for delegated-event readers, CSS attribute
     selectors and e2e locators; native hosts parse-ignore the prop. *)
 val apply_universal :
+  ?shrink:float ->
   Lui_ui.ui_context ->
   int ->
   key:string option ->
@@ -374,6 +375,7 @@ val row :
   ?main:main_alignment ->
   ?cross:cross_alignment ->
   ?grow:float ->
+  ?shrink:float ->
   ?columns:int ->
   ?orientation:orientation ->
   ?orientation_signal:orientation Signal.signal ->
@@ -407,6 +409,7 @@ val row :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_focus_within:(bool -> unit) ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
@@ -428,6 +431,7 @@ val column :
   ?main:main_alignment ->
   ?cross:cross_alignment ->
   ?grow:float ->
+  ?shrink:float ->
   ?grow_signal:float Signal.signal ->
   ?columns:int ->
   ?padding:int ->
@@ -462,6 +466,7 @@ val column :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_focus_within:(bool -> unit) ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
@@ -902,6 +907,7 @@ val box :
   ?main:main_alignment ->
   ?cross:cross_alignment ->
   ?grow:float ->
+  ?shrink:float ->
   ?columns:int ->
   ?padding:int ->
   ?padding_horizontal:int ->
@@ -933,6 +939,7 @@ val box :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
+  ?on_focus_within:(bool -> unit) ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->

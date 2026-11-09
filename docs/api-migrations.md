@@ -22,6 +22,128 @@ let batch =
 (* generation = 1, ops = [DropNode 1] *)
 ```
 
+## Unreleased: independent flex shrink on Web and MyGo
+
+`row`, `column` and `box` accept `?shrink:float`. The typed `ShrinkValue`
+property uses wire name `shrink` and accepts only finite, nonnegative floats.
+Only these three standard kinds admit it. Web maps it to CSS `flex-shrink`;
+MyGo uses the existing `Element.Shrink` without an SDK or dependency update.
+Generic, SwiftUI and Kotlin profiles reject explicit shrink values; Apple and
+Android also reject direct standard wire patches rather than ignoring them.
+Extensions/raw markup do not gain a shrink property or escape hatch.
+
+Omitting or removing shrink preserves/restores the existing default factor 1.
+Setting or removing it does not change `grow` or flex basis. Existing callers
+need no changes. New callers must use a host supporting this property and a
+LUI version that knows the new wire name; older hosts reject that opt-in.
+
+For a bounded, clipped single-line strip, opt in on each direct pill container:
+
+```ocaml
+row ~flex_wrap:`nowrap
+  [row ~shrink:0. [text ~value:"First" []];
+   row ~shrink:0. [text ~value:"Second" []]]
+```
+
+Use the existing typed overflow property on the strip for clipping. Shrink on
+the strip itself does not disable shrinking its children. Remove unnecessary
+child `grow` props to keep intrinsic sizing; do not substitute `grow:0` for
+`shrink:0`, because MyGo's `Grow` also changes an auto basis to zero percent.
+
+## Unreleased: opt-in container focus-within observation (Web and MyGo)
+
+`row`, `column` and `box` accept `?on_focus_within:(bool -> unit)` on
+Web/Melange and MyGo. Installing the callback enables the new boolean
+`focus-within-enabled` property and receives `FocusWithinChanged (node, within)`.
+Without the callback/property, observation is off and existing views are unchanged.
+The callback does not make the container focusable or change keyboard traversal.
+
+After mount/enable settles, the observer publishes one current snapshot, then
+only distinct transitions. True means focus is on the container or inside its
+rendered subtree. Moving between descendants does not emit an exit/reentry pair.
+Web coalesces local `focusin`/`focusout` checks at the microtask boundary, also
+checking after retained child removal. MyGo shares its existing `FocusWithin`
+read with appearance styling and delivers through the committed event queue.
+Neither backend treats a popup/portal outside the subtree as inside merely
+because it is attached to a trigger. Window activation is not a second condition
+on retained focus membership; this is not an application-activation callback.
+
+MyGo rejects `~on_focus_within` on ``box ~display:`contents``: a transparent
+box has no native element to observe. The same restriction applies to raw wire
+nodes with `display="contents"` and `focus-within-enabled=true`. Observe a real
+row, column or non-transparent box instead. Web can observe this combination
+through its retained DOM subtree.
+
+Disabled/inert ancestors normalize membership to false, including a terminal
+false for a previously focused subtree. Re-enabling observes current membership
+again. The last value is recorded before dispatch, so reducer patches do not
+cause repeated feedback. Same-node reconciliation retains the observation;
+opt-out or node retirement discards it. A new incarnation receives a fresh
+snapshot. Unmount cancels delayed checks without dispatching to a dead node.
+
+SwiftUI, Kotlin and Generic host profiles explicitly reject this property,
+including explicit false; Apple and Android raw-wire hosts reject it too.
+Cross-platform applications must omit the callback on those paths, not expect
+silent no-event support. No Apple/Android focus framework or focusable group is
+introduced. Their existing focus behavior and appearance properties are unchanged.
+Rebuild the shared OCaml application and Web/MyGo host together for the added
+event constructor and native `lui_ocaml_focus_within_changed` bool callback.
+Older native libraries remain usable without this opt-in; attempting to deliver
+the new event to a library without its callback fails explicitly.
+
+For example, replace per-control focus handlers with one row-owned signal:
+
+```ocaml
+row ~on_focus_within:(fun within -> Signal.set toolbar_focused within)
+  [comment_body; reactions; toolbar]
+```
+
+Combine that signal with the existing hover state to drive typed toolbar opacity.
+No new focus-within opacity property or data migration is needed.
+
+## Unreleased: MyGo links in text flow
+
+Text-content `link` nodes inside a native text flow now use MyGo's inline Link
+instead of a block LinkBase. The actual native parent determines the mapping,
+including through `box` nodes with `display=contents` and extension renderers. Existing
+link text, nested text styling and URL activation remain available without
+application changes. For example, `text [link ~text:"Guide" ~url:guide_url []]`
+stays within one paragraph instead of failing native text-child validation.
+
+Links outside text flow retain their existing block/icon layout. Icons and
+arbitrary layout children still belong outside a text flow; native text-child
+validation is unchanged. No API, wire format or SDK pin changes are required.
+
+## Unreleased: Android editable Combobox menu focus
+
+Android suggestion menus anchored beside a `combobox` retain keyboard focus in
+the input while the menu is open, so edits continue to emit text changes and
+filter the shared model-owned options. The native Material popup no longer
+takes input focus from an editable anchor, and the anchor stays mounted when
+its menu appears or disappears. Other dropdown and context menus keep their
+existing focus and dismissal behavior.
+
+Existing `stack [combobox ...; dropdown_menu ...]` integrations need no API or
+wire changes; keep the query and filtered options in the shared model rather
+than manually refocusing or remounting the input after each edit. Apple and Web
+behavior is unchanged.
+
+## Unreleased: Android growing content and Gallery navigation
+
+Android columns apply `grow` only when their vertical extent is bounded.
+Inside a vertical scroll viewport, growing children retain their authored
+height or intrinsic content height instead of collapsing and overlapping
+following controls. Bounded columns still distribute remaining height;
+applications do not need to remove `grow` from scroll-contained textareas.
+Android dialogs also render the existing `description` property above their
+retained body. Neither correction changes the wire format or event ABI.
+
+The native Android component Gallery now derives a Material navigation drawer
+from the retained page roots and renders one selected page at a time. Shared
+OCaml model state remains authoritative across page switches; navigation is
+host-only and introduces no public LUI component. Its mobile E2E runner uses
+the checked-in `platform/android/gradlew` wrapper.
+
 ## Unreleased: desktop input metadata
 
 The pinned MyGo SDK preserves `InputEvent.PhysicalKey` and optional layout
@@ -37,38 +159,34 @@ Pointer capture preserves an active primary gesture when another button is
 pressed or released. Non-primary events still reach the capture owner; they
 do not end the primary gesture.
 
-## Unreleased: retire Apple and Android hosts
+## Unreleased: preserve Apple and Android backends
 
-Only desktop MyGo and Web/Melange remain supported. `platform/apple` and
-`platform/android`, the root `LUIAppleBackend` Swift package, Gradle/JNI
-packaging, SwiftUI/AppKit/Android example hosts and their Drive probes are
-removed, not deprecated. The navigation SwiftUI-only demo is also removed.
-There are no replacement iOS/Android packages or mobile compatibility hosts.
+The MyGo migration changes the default desktop renderer, not mobile support.
+Apple/iOS and Android remain maintained backends alongside MyGo desktop and
+Web/Melange. Their backend sources, packages, example hosts, mobile tooling,
+Drive probes and CI jobs are restored after their unintended removal.
 
-The mobile build/test scripts, Maestro flows, Apple/Android CI jobs and
-`make test-apple` target are removed. Schema generation no longer emits
-`LUIWireSchema.swift` or `LuiWireSchema.kt`; it generates only the shared
-OCaml/PPX artifacts, while `make generate-component-schema` also exports the
-MyGo contract. The canonical `schema/components.json`, shared OCaml runtime,
-Web backend and byte-for-byte `platform/bridge` ABI are unchanged by this
-removal. Legacy profile names in the shared protocol/schema do not imply a
-shipped Apple/Android renderer.
+Downstream applications such as `logseq/mobile` and `logseq/logseq_journal`
+must keep their native backend dependencies:
 
-Downstream desktop applications must remove SwiftPM/Gradle host dependencies
-and Apple-specific picker/import code, retain their OCaml model/reducer/view,
-and load the application library through MyGo. For example, replace
-`swift run --package-path examples/components/ios-swiftui LUIComponentsApp` with:
+- SwiftPM consumers retain the `LUIAppleBackend` or `LUIAppleBackendStatic`
+  product from the root package or `platform/apple` package. For example,
+  Journal can continue using `JOURNAL_LUI_PACKAGE_PATH=../lui/platform/apple`.
+- Android consumers retain the `platform/android/lui` Gradle module and its
+  JNI bridge. The optional `platform/android/drive` instrumentation module
+  remains debug-only.
+- Schema generation emits `LUIWireSchema.swift` and `LuiWireSchema.kt` as
+  well as the shared OCaml/PPX artifacts. Regenerate all of them from the
+  current schema, including the modal transition declarations below.
+- Mobile build/test scripts, Maestro flows, Apple/Android CI and
+  `make test-apple` remain supported. See the
+  [component gallery guide](../examples/components/README.md) for commands.
 
-```sh
-library=$(./tooling/build_mygo_components.sh)
-go -C platform/mygo run ./cmd/lui-mygo -library "$library" -title Components
-```
-
-For browser applications, keep the existing Melange/Web build. Mobile-only
-API behavior is no longer claimed by either supported host; use each host's
-capability contract rather than assuming former Apple/Android services exist.
-Historical migration entries and archived design notes below describe older
-behavior, not currently supported mobile packages.
+Restoration does not rename public APIs, change host defaults or event
+semantics, or change wire batches and capability negotiation. Keep existing
+SwiftUI/Kotlin host integrations; do not replace them with MyGo. The separate
+desktop migration still relocates the shared C bridge to `platform/bridge`
+as described below; it does not restore the retired SDL renderer.
 
 ## Unreleased: modal surface transitions
 
@@ -96,8 +214,9 @@ backend capability guard. Omitted transitions keep the existing host defaults.
 MyGo (`platform/mygo`) is now the default desktop renderer. The former
 `platform/native` OCaml/SDL renderer, its executables, packaging tools,
 renderer-specific plugins and native test jobs are removed, not deprecated.
-There are no compatibility aliases or fallback renderer. Web/Melange is
-unchanged; Apple/Android were retired separately as described above.
+There are no compatibility aliases or fallback renderer. Web/Melange and
+the Apple/Android hosts remain supported; mobile backend retirement is not
+part of this desktop migration.
 
 The shared `lui_ocaml_*` C ABI moved byte-for-byte to
 `platform/bridge/lui_ocaml_bridge.c` and
