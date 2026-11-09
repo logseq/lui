@@ -21,6 +21,7 @@ let main host =
        Lui_app.flush app));
   ignore (Lui_app.start app);
   ignore (Lui_app.flush app);
+  Lui_web.drive_clock app;
   Lui_web.mount renderer (Lui_app.root_node app) host;
   let rec tick () =
     set_timeout (fun () ->
