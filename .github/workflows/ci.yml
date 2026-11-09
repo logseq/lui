@@ -98,11 +98,14 @@ jobs:
         with:
           path: platform/web/node_modules
           key: web-deps-${{ runner.os }}-${{ hashFiles('platform/web/package-lock.json') }}
+      - name: Identify Playwright platform
+        id: playwright-platform
+        run: echo "abi=${ImageOS:?}-${RUNNER_ARCH:?}" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('platform/web/package-lock.json') }}
+          key: playwright-${{ steps.playwright-platform.outputs.abi }}-${{ hashFiles('platform/web/package-lock.json') }}
       - name: Install Web dependencies
         run: |
           if [ "${{ steps.web-node-modules.outputs.cache-hit }}" != "true" ]; then
