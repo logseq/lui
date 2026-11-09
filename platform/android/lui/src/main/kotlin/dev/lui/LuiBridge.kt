@@ -8,11 +8,40 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 
 internal fun luiVirtualHostCode(host: Int, version: () -> Int): Int {
     if (host != 4) return host
     val supported = try { version() == 1 } catch (_: UnsatisfiedLinkError) { false }
     return if (supported) host or 0x100 else host
+}
+
+/** A call the OCaml runtime refused, as reported by `lui_ocaml_last_error`. */
+data class LuiRuntimeFailure(
+    val bridge: String,
+    val phase: String,
+    val node: Long?,
+    val message: String,
+) {
+    companion object {
+        fun parse(json: String): LuiRuntimeFailure? = try {
+            val fields = Json.parseToJsonElement(json).jsonObject
+            LuiRuntimeFailure(
+                bridge = fields["bridge"]?.jsonPrimitive?.content.orEmpty(),
+                phase = fields["phase"]?.jsonPrimitive?.content.orEmpty(),
+                node = fields["node"]?.jsonPrimitive?.longOrNull,
+                message = fields["message"]?.jsonPrimitive?.content.orEmpty(),
+            )
+        } catch (_: IllegalArgumentException) {
+            null
+        }
+    }
+
+    override fun toString(): String =
+        "$bridge $phase failed${node?.let { " at node $it" }.orEmpty()}: $message"
 }
 
 /**
@@ -41,6 +70,18 @@ object LuiBridge {
     fun interface PatchSink {
         fun onPatch(batch: LuiPatchBatch, snapshot: Boolean): Boolean
     }
+
+    fun interface FailureListener {
+        fun onFailure(failure: LuiRuntimeFailure)
+    }
+
+    /**
+     * Notified on the main thread when OCaml throws during a call. The
+     * bridge has already discarded that call's patches and requested a
+     * snapshot, so the listener only has to surface the failure.
+     */
+    @Volatile
+    var failureListener: FailureListener? = null
 
     private val ocamlThread = HandlerThread("lui-ocaml").apply { start() }
     private val ocamlHandler = Handler(ocamlThread.looper)
@@ -130,7 +171,9 @@ object LuiBridge {
             System.loadLibrary(libraryName)
             nativeLoaded = true
             val accepted = dispatchOnRuntime(30) {
-                nativeStart(PLATFORM_ANDROID, luiVirtualHostCode(hostCode, ::nativeVirtualRowsVersion)) == 1
+                val result = nativeStart(PLATFORM_ANDROID, luiVirtualHostCode(hostCode, ::nativeVirtualRowsVersion)) == 1
+                if (!result) takeFailure()?.let { report(null, it) }
+                result
             }
             started = accepted
             return accepted
@@ -156,7 +199,38 @@ object LuiBridge {
     private fun dispatch(call: () -> Int) {
         check(started) { "LuiBridge.start() has not been called" }
         val token = session.get()
-        ocamlHandler.post { if (started && session.get() == token) call() }
+        ocamlHandler.post {
+            if (started && session.get() == token && call() != 1) recoverFromRefusal(token)
+        }
+    }
+
+    // OCaml thread only. JNI argument validation also returns 0 but leaves
+    // no diagnostic and no partial patches, so only a reported exception
+    // needs a snapshot.
+    private fun recoverFromRefusal(token: Long) {
+        val failure = takeFailure() ?: return
+        report(token, failure)
+        awaitingSnapshot = true
+        emittingSnapshot = true
+        try {
+            check(nativeResync() == 1) { "LUI runtime snapshot failed" }
+        } finally {
+            emittingSnapshot = false
+        }
+    }
+
+    private fun takeFailure(): LuiRuntimeFailure? {
+        val json = nativeLastError()?.toString(Charsets.UTF_8) ?: return null
+        return LuiRuntimeFailure.parse(json)
+            ?: LuiRuntimeFailure(bridge = "", phase = "unknown", node = null, message = json)
+    }
+
+    // A null token is a failed start, whose session is retired before the
+    // listener runs.
+    private fun report(token: Long?, failure: LuiRuntimeFailure) {
+        android.util.Log.e("LuiBridge", failure.toString())
+        val listener = failureListener ?: return
+        mainHandler.post { if (token == null || session.get() == token) listener.onFailure(failure) }
     }
 
     private fun <T> dispatchBlocking(call: () -> T): T {
@@ -368,6 +442,8 @@ object LuiBridge {
     private external fun nativeStop(): Int
 
     private external fun nativeResync(): Int
+
+    private external fun nativeLastError(): ByteArray?
 
     private external fun nativeRootNode(): Long
 }

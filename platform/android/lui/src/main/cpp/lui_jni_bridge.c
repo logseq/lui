@@ -486,6 +486,37 @@ JNIEXPORT jint JNICALL LUI_JNI_NAME(nativeResync)(JNIEnv *env, jclass clazz) {
   return accepted;
 }
 
+/* Only touched on the runtime thread, inside the lock-holding window. */
+static char *last_error_copy = NULL;
+
+static void capture_last_error(const char *json) {
+  free(last_error_copy);
+  last_error_copy = strdup(json);
+}
+
+/* The diagnostic JSON for the most recent refused call, or null. Reading
+ * it clears it; see lui_ocaml_last_error for the shape. */
+JNIEXPORT jbyteArray JNICALL LUI_JNI_NAME(nativeLastError)(JNIEnv *env,
+                                                           jclass clazz) {
+  jbyteArray value = NULL;
+  int32_t found;
+  (void)clazz;
+  caml_leave_blocking_section();
+  found = lui_dispatch_last_error("lui_kotlin_last_error", capture_last_error);
+  caml_enter_blocking_section();
+  if (found && last_error_copy != NULL) {
+    jsize length = (jsize)strlen(last_error_copy);
+    value = (*env)->NewByteArray(env, length);
+    if (value != NULL) {
+      (*env)->SetByteArrayRegion(env, value, 0, length,
+                                 (const jbyte *)last_error_copy);
+    }
+  }
+  free(last_error_copy);
+  last_error_copy = NULL;
+  return value;
+}
+
 JNIEXPORT jlong JNICALL LUI_JNI_NAME(nativeRootNode)(JNIEnv *env,
                                                      jclass clazz) {
   int64_t node;
