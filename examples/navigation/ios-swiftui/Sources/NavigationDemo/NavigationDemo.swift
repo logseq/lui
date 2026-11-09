@@ -12,6 +12,8 @@ typealias PatchCallback = @convention(c) (UnsafePointer<CChar>?) -> Void
 @_silgen_name("lui_ocaml_visible_range") func visibleRangeOCaml(_ node: Int64, _ first: Int64, _ last: Int64) -> Int32
 @_silgen_name("lui_ocaml_scroll_completed") func scrollCompletedOCaml(_ node: Int64, _ token: Int64, _ outcome: UnsafePointer<CChar>?) -> Int32
 @_silgen_name("lui_ocaml_extension_event") func extensionOCaml(_ node: Int64, _ identifier: UnsafePointer<CChar>, _ name: UnsafePointer<CChar>, _ values: UnsafePointer<CChar>) -> Int32
+@_silgen_name("lui_ocaml_last_error") func lastErrorOCaml(_ receiver: PatchCallback?) -> Int32
+@_silgen_name("lui_ocaml_resync") func resyncOCaml() -> Int32
 
 nonisolated(unsafe) var activeHost: NavigationHost?
 let receivePatch: PatchCallback = { source in
@@ -22,6 +24,7 @@ let receivePatch: PatchCallback = { source in
 
 @MainActor @Observable final class NavigationHost {
     let backend: LUIAppleBackend
+    let recovery = LUINativeRefusalRecovery(lastError: { lastErrorOCaml($0) }, resync: { resyncOCaml() })
     var rootID: Int?
     init() {
         let registry = LUIAppleExtensionRegistry()
@@ -29,17 +32,17 @@ let receivePatch: PatchCallback = { source in
             try LUINavigation.register(in: registry)
             backend = try LUIAppleBackend(extensionRegistry: registry)
         } catch { fatalError("Navigation registry: \(error)") }
-        backend.onEvent = { event in
+        backend.onEvent = { [recovery] event in
             switch event {
-            case let .press(node): _ = pressOCaml(Int64(node))
+            case let .press(node): recovery.check(pressOCaml(Int64(node)))
             case let .virtualWindow(node, generation, first, last, pins):
                 let ids = pins.map(Int64.init)
                 ids.withUnsafeBufferPointer {
-                    _ = virtualWindowOCaml(Int64(node), Int64(generation), Int64(first), Int64(last), $0.baseAddress, Int32($0.count))
+                    recovery.check(virtualWindowOCaml(Int64(node), Int64(generation), Int64(first), Int64(last), $0.baseAddress, Int32($0.count)))
                 }
-            case let .visibleRange(node, first, last): _ = visibleRangeOCaml(Int64(node), Int64(first), Int64(last))
+            case let .visibleRange(node, first, last): recovery.check(visibleRangeOCaml(Int64(node), Int64(first), Int64(last)))
             case let .scrollCompleted(node, token, outcome):
-                outcome.withCString { _ = scrollCompletedOCaml(Int64(node), Int64(token), $0) }
+                outcome.withCString { recovery.check(scrollCompletedOCaml(Int64(node), Int64(token), $0)) }
             case let .extension(node, identifier, name, values):
                 let scalars: [String: Any] = values.mapValues { value in
                     switch value {
@@ -51,7 +54,7 @@ let receivePatch: PatchCallback = { source in
                 }
                 let json = String(decoding: try! JSONSerialization.data(withJSONObject: scalars, options: [.sortedKeys]), as: UTF8.self)
                 identifier.withCString { identifier in name.withCString { name in json.withCString { values in
-                    _ = extensionOCaml(Int64(node), identifier, name, values)
+                    recovery.check(extensionOCaml(Int64(node), identifier, name, values))
                 }}}
             default: break
             }
@@ -60,11 +63,17 @@ let receivePatch: PatchCallback = { source in
     func start() {
         guard rootID == nil else { return }
         activeHost = self
-        precondition(startOCaml(receivePatch, 2, virtualRowsVersionOCaml() == 1 ? 258 : 2) == 1)
+        guard startOCaml(receivePatch, 2, virtualRowsVersionOCaml() == 1 ? 258 : 2) == 1 else {
+            fatalError("Navigation start: \(recovery.takeFailure().map(String.init(describing:)) ?? "rejected")")
+        }
     }
     func apply(_ json: String) {
         do {
-            try backend.apply(json: json)
+            if recovery.isReceivingSnapshot {
+                try backend.applySnapshot(json: json)
+            } else {
+                try backend.apply(json: json)
+            }
             rootID = backend.rootIDs.first
         } catch { fatalError("Navigation patch: \(error)") }
     }

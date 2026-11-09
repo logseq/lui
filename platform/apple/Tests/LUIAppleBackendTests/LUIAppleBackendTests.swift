@@ -90,6 +90,50 @@ struct LUISwiftUIBackendTests {
         #expect(backend.model(id: 3) == nil)
     }
 
+    @Test("runtime failure reports decode with and without a node")
+    func runtimeFailureDecoding() {
+        #expect(LUIRuntimeFailure.decode(
+            #"{"bridge":"Todos","phase":"dispatch","node":42,"message":"handler exploded","recovery":"resync"}"#
+        ) == LUIRuntimeFailure(bridge: "Todos", phase: "dispatch", node: 42, message: "handler exploded"))
+        #expect(LUIRuntimeFailure.decode(
+            #"{"bridge":"Todos","phase":"boot","message":"bad view","recovery":"resync"}"#
+        ) == LUIRuntimeFailure(bridge: "Todos", phase: "boot", node: nil, message: "bad view"))
+        #expect(LUIRuntimeFailure.decode("not json") == nil)
+    }
+
+    @Test("a resync snapshot at the current generation replaces the stale tree")
+    func resyncSnapshotReplacesTree() throws {
+        let backend = LUIAppleBackend()
+        backend.coalescesCommits = true
+        try backend.apply(json: """
+        {"generation":3,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"text"},
+          {"op":"set-prop","id":2,"property":"text","value":"half mounted"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"create-node","id":9,"kind":"text"}
+        ]}
+        """)
+        try backend.applySnapshot(json: """
+        {"generation":3,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"text"},
+          {"op":"set-prop","id":2,"property":"text","value":"authoritative"},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """)
+        #expect(backend.coalescesCommits)
+        #expect(backend.generation == 3)
+        #expect(backend.rootIDs == [1])
+        #expect(backend.model(id: 2)?.text == "authoritative")
+        #expect(backend.model(id: 9) == nil)
+        backend.coalescesCommits = false
+        try backend.apply(json: """
+        {"generation":4,"ops":[{"op":"set-prop","id":2,"property":"text","value":"next"}]}
+        """)
+        #expect(backend.model(id: 2)?.text == "next")
+    }
+
     @Test("scroll titles wait for the heading to pass the viewport top")
     func scrollTitleWaitsForHeading() {
         let tracker = LUIScrollSectionTitleTracker()
