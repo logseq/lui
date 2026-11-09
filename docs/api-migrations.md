@@ -1,5 +1,47 @@
 # LUI API migration guide
 
+## Unreleased: native bridge reports refused calls
+
+When OCaml raises while a native bridge boots, dispatches an event, resyncs or
+disposes, the C entry still returns `0` and delivers no batch. The bridge now
+also records a diagnostic, and the new export returns it:
+
+```c
+int32_t lui_ocaml_last_error(void (*receiver)(const char *json));
+```
+
+It hands `receiver` one JSON object, clears it, and returns `1`; it returns `0`
+when no diagnostic is pending. A later accepted call also clears it.
+
+```json
+{"bridge":"Todos","phase":"dispatch","node":42,
+ "message":"invalid property value ...","recovery":"resync"}
+```
+
+`phase` is `boot`, `dispatch`, `resync` or `dispose`; `node` is present for a
+dispatch. Batches recorded before the exception are discarded, so the host
+mirror is stale: report the message, then call `lui_ocaml_resync` and apply its
+snapshot rather than keep rendering what mounted before the throw. The bridge
+still prints the exception to stderr.
+
+The wire format, existing exports and return codes are unchanged, so existing
+hosts need no change. Hosts resolve the symbol optionally to stay compatible
+with older libraries. OCaml callers can read the same record with
+`Lui_native_bridge.last_failure` and `take_failure`. Bridges registered with
+`Lui_native_bridge.register` gain `<prefix>_last_error` automatically; JNI
+libraries can expose it with `lui_dispatch_last_error("lui_kotlin_last_error", …)`.
+
+MyGo uses it already: `Runtime.Dispatch` returns a `*luimygo.RuntimeError`
+(`Phase`, `Node`, `Message`) and resyncs before returning. Initialization
+failures wrap the same error.
+
+```go
+var failure *luimygo.RuntimeError
+if errors.As(runtime.Dispatch(event), &failure) {
+    log.Printf("LUI %s failed at node %v: %s", failure.Phase, failure.Node, failure.Message)
+}
+```
+
 ## Unreleased: independent flex shrink on Web and MyGo
 
 `row`, `column` and `box` accept `?shrink:float`. The typed `ShrinkValue`

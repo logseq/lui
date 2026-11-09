@@ -1,6 +1,8 @@
 package luimygo
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	goruntime "runtime"
@@ -28,6 +30,7 @@ type nativeFunctions struct {
 	toggleDetail func(int64, int32, int32) int32
 	value        func(int64, float64) int32
 	extension    func(int64, string, int32, string, int32, string, int32) int32
+	lastError    func(uintptr) int32
 	node         map[string]func(int64) int32
 }
 type runtimeWorker struct {
@@ -112,9 +115,10 @@ func OpenRuntime(path string, b *Backend) (*Runtime, error) {
 			host = 5
 		}
 		if w.functions.start(w.callback, platform, host) != 1 {
+			w.pending = nil
+			err = fmt.Errorf("lui: OCaml runtime initialization failed: %w", w.refusal())
 			w.functions.stop()
 			w.pending = nil
-			err = fmt.Errorf("lui: OCaml runtime initialization failed")
 			return
 		}
 		batches = w.pending
@@ -186,6 +190,9 @@ func (w *runtimeWorker) load(path string) error {
 	if ptr, lookupErr := librarySymbol(handle, "lui_ocaml_focus_within_changed"); lookupErr == nil {
 		purego.RegisterFunc(&f.focusWithin, ptr)
 	}
+	if ptr, lookupErr := librarySymbol(handle, "lui_ocaml_last_error"); lookupErr == nil {
+		purego.RegisterFunc(&f.lastError, ptr)
+	}
 	if goruntime.GOOS == "windows" {
 		// Windows requires a pointer-sized callback result. The C void
 		// callback ignores it; CDecl preserves the bridge's calling convention.
@@ -232,13 +239,50 @@ func (r *Runtime) invoke(fn func(nativeFunctions) int32) ([]string, error) {
 			return
 		}
 		w.pending = nil
-		if fn(w.functions) != 1 {
-			err = fmt.Errorf("lui: OCaml rejected the call")
-		}
+		accepted := fn(w.functions)
 		batches = w.pending
 		w.pending = nil
+		if accepted != 1 {
+			err = w.refusal()
+		}
 	})
 	return batches, err
+}
+
+// RuntimeError is an OCaml failure reported through lui_ocaml_last_error.
+// The runtime may have consumed patches the host never received, so the
+// host mirror must be replaced by a Resync snapshot.
+type RuntimeError struct {
+	Bridge   string `json:"bridge"`
+	Phase    string `json:"phase"`
+	Node     *int64 `json:"node,omitempty"`
+	Message  string `json:"message"`
+	Recovery string `json:"recovery"`
+}
+
+func (e *RuntimeError) Error() string {
+	if e.Node != nil {
+		return fmt.Sprintf("lui: OCaml %s failed at node %d: %s", e.Phase, *e.Node, e.Message)
+	}
+	return fmt.Sprintf("lui: OCaml %s failed: %s", e.Phase, e.Message)
+}
+
+// refusal runs on the worker after a call returned 0.
+func (w *runtimeWorker) refusal() error {
+	if w.functions.lastError == nil {
+		return fmt.Errorf("lui: OCaml rejected the call")
+	}
+	found := w.functions.lastError(w.callback)
+	reports := w.pending
+	w.pending = nil
+	if found != 1 || len(reports) != 1 {
+		return fmt.Errorf("lui: OCaml rejected the call")
+	}
+	var failure RuntimeError
+	if decodeErr := json.Unmarshal([]byte(reports[0]), &failure); decodeErr != nil || failure.Message == "" {
+		return fmt.Errorf("lui: OCaml rejected the call: %s", reports[0])
+	}
+	return &failure
 }
 func (r *Runtime) Dispatch(e Event) error {
 	if err := validateEvent(e); err != nil {
@@ -310,6 +354,12 @@ func (r *Runtime) Dispatch(e Event) error {
 		return fmt.Errorf("lui: unsupported runtime event %q", e.Kind)
 	}
 	if err != nil {
+		var failure *RuntimeError
+		if errors.As(err, &failure) && failure.Recovery == "resync" {
+			if recoveryErr := r.Resync(); recoveryErr != nil {
+				return fmt.Errorf("%w; snapshot failed: %v", err, recoveryErr)
+			}
+		}
 		return err
 	}
 	if applyErr := r.receive(batches, false); applyErr != nil {

@@ -326,6 +326,26 @@ static int32_t lui_dispatch_init(const char *name, int32_t platform_code,
   CAMLreturnT(int32_t, accepted);
 }
 
+/* Delivers the diagnostic of the last refused call, unsplit, and clears it.
+   Returns 1 when there was one, 0 otherwise. */
+static int32_t lui_dispatch_last_error(const char *name,
+                                       lui_deliver_fn deliver) {
+  CAMLparam0();
+  CAMLlocal1(result);
+  int32_t found = 0;
+  const value *callback = caml_named_value(name);
+  if (callback != NULL) {
+    result = caml_callback_exn(*callback, Val_unit);
+    if (!Is_exception_result(result) && caml_string_length(result) > 0) {
+      found = 1;
+      if (deliver != NULL) {
+        deliver(String_val(result));
+      }
+    }
+  }
+  CAMLreturnT(int32_t, found);
+}
+
 static int64_t lui_dispatch_root(const char *name) {
   CAMLparam0();
   CAMLlocal1(result);

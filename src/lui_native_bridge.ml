@@ -23,6 +23,7 @@ type bridge = {
   mutable dispose_current : (unit -> bool) option;
   mutable root : (unit -> int) option;
   mutable resync : (unit -> string) option;
+  mutable last_failure : string option;
 }
 
 let create name =
@@ -36,9 +37,50 @@ let create name =
     dispose_current = None;
     root = None;
     resync = None;
+    last_failure = None;
   }
 
 let clear bridge = bridge.session.patches <- []
+
+(* A failed call leaves the host mirror behind the runtime: batches recorded
+   before the exception are never delivered. The diagnostic tells the host
+   what failed so it can report it and request [resync] instead of rendering
+   whatever mounted before the throw. *)
+let failure_json bridge ~phase ?node failure =
+  let message = match failure with
+    | Invalid_argument message | Failure message -> message
+    | failure -> Printexc.to_string failure
+  in
+  let buffer = Buffer.create 160 in
+  Buffer.add_string buffer "{\"bridge\":";
+  Lui_wire.add_quoted buffer bridge.name;
+  Buffer.add_string buffer ",\"phase\":";
+  Lui_wire.add_quoted buffer phase;
+  (match node with
+  | Some node ->
+    Buffer.add_string buffer ",\"node\":";
+    Buffer.add_string buffer (string_of_int node)
+  | None -> ());
+  Buffer.add_string buffer ",\"message\":";
+  Lui_wire.add_quoted buffer message;
+  Buffer.add_string buffer ",\"recovery\":\"resync\"}";
+  Buffer.contents buffer
+
+let guarded bridge ~phase ?node run =
+  bridge.last_failure <- None;
+  match run () with
+  | result -> result
+  | exception failure ->
+    clear bridge;
+    bridge.last_failure <- Some (failure_json bridge ~phase ?node failure);
+    raise failure
+
+let last_failure bridge = bridge.last_failure
+
+let take_failure bridge =
+  let failure = bridge.last_failure in
+  bridge.last_failure <- None;
+  Option.value failure ~default:""
 
 let take bridge =
   let text =
@@ -93,14 +135,15 @@ let attach bridge (app : ('model, 'action) Lui_app.reducer_app) =
 (* Replace a running app. Dispose patches are dropped so the host receives
    only the new app's startup batches. *)
 let boot bridge app =
-  (match bridge.dispose_current with
-  | Some dispose -> ignore (dispose ())
-  | None -> ());
-  clear bridge;
-  attach bridge app;
-  ignore (Lui_app.start app);
-  ignore (Lui_app.flush app);
-  take bridge
+  guarded bridge ~phase:"boot" (fun () ->
+    (match bridge.dispose_current with
+    | Some dispose -> ignore (dispose ())
+    | None -> ());
+    clear bridge;
+    attach bridge app;
+    ignore (Lui_app.start app);
+    ignore (Lui_app.flush app);
+    take bridge)
 
 let require_started bridge =
   match bridge.dispatch, bridge.flush with
@@ -108,23 +151,32 @@ let require_started bridge =
   | _ -> invalid_arg (bridge.name ^ " bridge is not started")
 
 let dispatch_event bridge event =
-  let dispatch, flush = require_started bridge in
-  clear bridge;
-  ignore (dispatch event);
-  ignore (flush ());
-  take bridge
+  guarded bridge ~phase:"dispatch" ~node:(event_node event) (fun () ->
+    let dispatch, flush = require_started bridge in
+    clear bridge;
+    ignore (dispatch event);
+    ignore (flush ());
+    take bridge)
 
-let dispose bridge =
-  clear bridge;
-  (match bridge.dispose_current with
-  | Some dispose -> ignore (dispose ())
-  | None -> ());
+let detach bridge =
   bridge.dispatch <- None;
   bridge.flush <- None;
   bridge.dispose_current <- None;
   bridge.root <- None;
-  bridge.resync <- None;
-  take bridge
+  bridge.resync <- None
+
+let dispose bridge =
+  guarded bridge ~phase:"dispose" (fun () ->
+    clear bridge;
+    (match bridge.dispose_current with
+    | Some dispose -> ignore (dispose ())
+    | None -> ());
+    detach bridge;
+    take bridge)
+
+let resync bridge =
+  guarded bridge ~phase:"resync" (fun () ->
+    match bridge.resync with Some resync -> resync () | None -> "")
 
 let pointer_detail x y modifiers button target_class =
   {x; y; modifiers; button; target_class}
@@ -192,10 +244,11 @@ let register ~(register_named : 'a. string -> 'a -> unit) prefix bridge =
       | Some note -> note name json_values
       | None -> ());
       let values =
-        match Lui_json.parse_values json_values with
-        | values -> values
-        | exception Lui_json.Parse_error message ->
-          invalid_arg ("invalid extension event payload: " ^ message)
+        guarded bridge ~phase:"dispatch" ~node:id (fun () ->
+          match Lui_json.parse_values json_values with
+          | values -> values
+          | exception Lui_json.Parse_error message ->
+            invalid_arg ("invalid extension event payload: " ^ message))
       in
       dispatch_event bridge (ExtensionEvent (id, identifier, name, values)));
   register "dispose" (fun () -> dispose bridge);
@@ -203,5 +256,5 @@ let register ~(register_named : 'a. string -> 'a -> unit) prefix bridge =
       match bridge.root with
       | Some root -> root ()
       | None -> invalid_arg (bridge.name ^ " bridge is not started"));
-  register "resync" (fun () ->
-      match bridge.resync with Some resync -> resync () | None -> "")
+  register "resync" (fun () -> resync bridge);
+  register "last_error" (fun () -> take_failure bridge)
