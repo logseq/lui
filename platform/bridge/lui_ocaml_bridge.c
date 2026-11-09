@@ -391,6 +391,18 @@ LUI_EXPORT int32_t lui_ocaml_resync(void) {
   return accepted;
 }
 
+/* After any call returns 0: hands `receiver` one JSON object
+   {"bridge","phase","node"?,"message","recovery":"resync"} describing the
+   OCaml failure, then clears it. Returns 1 when a diagnostic was delivered.
+   The host mirror is stale after such a failure; call lui_ocaml_resync. */
+LUI_EXPORT int32_t lui_ocaml_last_error(lui_patch_callback receiver) {
+  int32_t found;
+  caml_leave_blocking_section();
+  found = lui_dispatch_last_error("lui_ocaml_last_error", receiver);
+  caml_enter_blocking_section();
+  return found;
+}
+
 LUI_EXPORT int64_t lui_ocaml_root_node(void) {
   int64_t node;
   caml_leave_blocking_section();
