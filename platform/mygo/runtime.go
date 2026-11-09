@@ -7,9 +7,12 @@ import (
 	"path/filepath"
 	goruntime "runtime"
 	"sync"
+	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
+	"github.com/egoist/mygo/ui"
 )
 
 type nativeFunctions struct {
@@ -32,6 +35,11 @@ type nativeFunctions struct {
 	extension    func(int64, string, int32, string, int32, string, int32) int32
 	lastError    func(uintptr) int32
 	node         map[string]func(int64) int32
+
+	clockTick      func(float64) int32
+	clockAdvance   func(float64) int32
+	clockSetPaused func(int32) int32
+	clockNextDelay func() float64
 }
 type runtimeWorker struct {
 	jobs      chan func()
@@ -73,6 +81,18 @@ type Runtime struct {
 	backend *Backend
 	worker  *runtimeWorker
 	closed  bool
+	clock   runtimeClock
+}
+
+// runtimeClock drives the OCaml application clock (Lui_ui.after/every). A
+// wake timer armed for the next deadline only invalidates the window; the
+// next frame ticks the clock on the UI goroutine.
+type runtimeClock struct {
+	epoch    time.Time
+	timer    *time.Timer
+	next     float64
+	due      atomic.Bool
+	services atomic.Pointer[ui.Services]
 }
 
 func OpenRuntime(path string, b *Backend) (*Runtime, error) {
@@ -84,7 +104,7 @@ func OpenRuntime(path string, b *Backend) (*Runtime, error) {
 		return nil, err
 	}
 	w := nativeWorker()
-	r := &Runtime{backend: b, worker: w}
+	r := &Runtime{backend: b, worker: w, clock: runtimeClock{epoch: time.Now(), next: -1}}
 	var batches []string
 	w.run(func() {
 		if w.active != nil {
@@ -129,6 +149,7 @@ func OpenRuntime(path string, b *Backend) (*Runtime, error) {
 		return nil, err
 	}
 	b.config.Dispatch = r.Dispatch
+	b.frame = r.frame
 	b.err = nil
 	if err = r.receive(batches, true); err != nil {
 		_ = r.Close()
@@ -193,6 +214,20 @@ func (w *runtimeWorker) load(path string) error {
 	if ptr, lookupErr := librarySymbol(handle, "lui_ocaml_last_error"); lookupErr == nil {
 		purego.RegisterFunc(&f.lastError, ptr)
 	}
+	// Libraries built before the application clock lack these symbols; their
+	// sessions simply have no timers to drive.
+	clock := map[string]any{"clock_tick": &f.clockTick, "clock_advance": &f.clockAdvance, "clock_set_paused": &f.clockSetPaused, "clock_next_delay": &f.clockNextDelay}
+	clockSymbols := map[string]uintptr{}
+	for suffix := range clock {
+		if ptr, lookupErr := librarySymbol(handle, "lui_ocaml_"+suffix); lookupErr == nil {
+			clockSymbols[suffix] = ptr
+		}
+	}
+	if len(clockSymbols) == len(clock) {
+		for suffix, binding := range clock {
+			purego.RegisterFunc(binding, clockSymbols[suffix])
+		}
+	}
 	if goruntime.GOOS == "windows" {
 		// Windows requires a pointer-sized callback result. The C void
 		// callback ignores it; CDecl preserves the bridge's calling convention.
@@ -245,7 +280,11 @@ func (r *Runtime) invoke(fn func(nativeFunctions) int32) ([]string, error) {
 		if accepted != 1 {
 			err = w.refusal()
 		}
+		if w.functions.clockNextDelay != nil {
+			r.clock.next = w.functions.clockNextDelay()
+		}
 	})
+	r.armClock()
 	return batches, err
 }
 
@@ -283,6 +322,77 @@ func (w *runtimeWorker) refusal() error {
 		return fmt.Errorf("lui: OCaml rejected the call: %s", reports[0])
 	}
 	return &failure
+}
+
+// armClock runs on the UI goroutine after every native call, because any call
+// may schedule, cancel, pause or fire timers.
+func (r *Runtime) armClock() {
+	c := &r.clock
+	if c.timer != nil {
+		c.timer.Stop()
+		c.timer = nil
+	}
+	if r.closed || c.next < 0 {
+		return
+	}
+	c.timer = time.AfterFunc(time.Duration(c.next*float64(time.Millisecond)), func() {
+		c.due.Store(true)
+		if services := c.services.Load(); services != nil {
+			services.Invalidate()
+		}
+	})
+}
+
+// frame runs after each committed frame. It reports whether due timers
+// changed the tree, so the window must draw again.
+func (r *Runtime) frame(services ui.Services) bool {
+	r.clock.services.Store(&services)
+	if !r.clock.due.Swap(false) {
+		return false
+	}
+	now := float64(time.Since(r.clock.epoch)) / float64(time.Millisecond)
+	changed, err := r.clockCall(func(f nativeFunctions) int32 { return f.clockTick(now) })
+	if err != nil && r.backend.err == nil {
+		r.backend.err = err
+	}
+	return changed
+}
+
+func (r *Runtime) clockCall(fn func(nativeFunctions) int32) (bool, error) {
+	if r.worker.functions.clockTick == nil {
+		return false, fmt.Errorf("lui: the OCaml runtime library has no application clock")
+	}
+	batches, err := r.invoke(fn)
+	if err != nil {
+		var failure *RuntimeError
+		if errors.As(err, &failure) && failure.Recovery == "resync" {
+			if recoveryErr := r.Resync(); recoveryErr != nil {
+				return false, fmt.Errorf("%w; snapshot failed: %v", err, recoveryErr)
+			}
+			return true, err
+		}
+		return false, err
+	}
+	if applyErr := r.receive(batches, false); applyErr != nil {
+		if recoveryErr := r.Resync(); recoveryErr != nil {
+			return false, fmt.Errorf("lui: delta rejected (%v), snapshot failed: %w", applyErr, recoveryErr)
+		}
+	}
+	return len(batches) > 0, nil
+}
+
+// AdvanceClock moves the application clock forward by ms simulated
+// milliseconds and fires the timers that fall due, even while paused.
+func (r *Runtime) AdvanceClock(ms float64) error {
+	_, err := r.clockCall(func(f nativeFunctions) int32 { return f.clockAdvance(ms) })
+	return err
+}
+
+// SetClockPaused stops or restarts host time. A paused clock moves only
+// through AdvanceClock, which makes timer-driven UI deterministic in tests.
+func (r *Runtime) SetClockPaused(paused bool) error {
+	_, err := r.clockCall(func(f nativeFunctions) int32 { return f.clockSetPaused(nativeBool(paused)) })
+	return err
 }
 func (r *Runtime) Dispatch(e Event) error {
 	if err := validateEvent(e); err != nil {
@@ -393,6 +503,8 @@ func (r *Runtime) Close() error {
 		}
 		r.closed = true
 	})
+	r.armClock()
+	r.backend.frame = nil
 	if err != nil {
 		return err
 	}

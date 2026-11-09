@@ -128,6 +128,9 @@ func (b *Backend) View(c *ui.Context) {
 				invalidate = true
 			}
 		}
+		if b.frame != nil && b.frame(c.Services()) {
+			invalidate = true
+		}
 		if invalidate {
 			c.Invalidate()
 		}
