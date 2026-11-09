@@ -26,6 +26,7 @@ class Runtime:
         self.nodes = {}
         self.version = None
         self.last_error = None
+        self.delay = None
         assert self.receive() == 1
 
     def receive(self, snapshot=False):
@@ -34,6 +35,8 @@ class Runtime:
             assert line, f"JVM exited unexpectedly: {self.process.poll()}"
             if line.startswith("VERSION "):
                 self.version = int(line[8:])
+            elif line.startswith("DELAY "):
+                self.delay = float(line[6:])
             elif line.startswith("PATCH "):
                 batch = json.loads(line[6:])
                 if snapshot:
@@ -79,6 +82,10 @@ class Runtime:
         self.process.stdin.write(command + "\n")
         self.process.stdin.flush()
         return self.receive(snapshot)
+
+    def next_delay(self):
+        assert self.call("clocknext") == 1
+        return self.delay
 
     def named(self, name):
         return next(node_id for node_id, node in self.nodes.items()
@@ -172,6 +179,28 @@ def run(fixture):
                 assert runtime.nodes[list_id]["children"] == []
                 assert len(runtime.nodes) < 30
                 print("PASS: real JNI/OCaml 100000-row load, bounded windows, far pin, reorder identity, stale generation, invalid arrays, resync, refusal diagnostics and clear")
+                status = runtime.named("clock-status")
+                value = lambda: runtime.nodes[status]["props"]["text"]
+                assert value() == "idle"
+                assert runtime.next_delay() < 0
+                assert runtime.call(f"press {runtime.named('clock-arm')}") == 1
+                assert value() == "armed"
+                assert runtime.next_delay() == 500
+                # The first host tick anchors host time; later ticks move it.
+                assert runtime.call("clocktick 10000") == 1
+                assert runtime.call("clocktick 10499") == 1
+                assert value() == "armed" and runtime.next_delay() == 1
+                assert runtime.call("clocktick 10500") == 1
+                assert value() == "expired" and runtime.next_delay() < 0
+                assert runtime.call(f"press {runtime.named('clock-arm')}") == 1
+                assert runtime.call("clockpause 1") == 1
+                assert runtime.next_delay() < 0
+                assert runtime.call("clocktick 99999") == 1
+                assert value() == "armed"
+                assert runtime.call("clockadvance 500") == 1
+                assert value() == "expired"
+                assert runtime.call("clockpause 0") == 1
+                print("PASS: real JNI/OCaml clock next delay, host ticks, pause and advance")
             finally:
                 runtime.close()
 
