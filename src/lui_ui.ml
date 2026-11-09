@@ -65,6 +65,18 @@ let owner_name context name =
   incr context.ui_next_owner_id;
   name ^ "-" ^ string_of_int index
 
+let clock context = Lui_runtime.clock context.ui_application
+
+let own_timer context timer =
+  ignore (Signal.own context.ui_scope (Lui_clock.subscription timer));
+  timer
+
+let after context delay action =
+  own_timer context (Lui_clock.after (clock context) delay action)
+
+let every context interval action =
+  own_timer context (Lui_clock.every (clock context) interval action)
+
 let node_kind context node =
   Lui_runtime.require_standard_node_kind context.ui_application node
 
