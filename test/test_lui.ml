@@ -5685,6 +5685,7 @@ end
 let () =
   Alcotest.run "lui"
     [
+      ("agent", Test_agent.tests);
       ("virtual row startup", List.map (fun (name, test) ->
         Alcotest.test_case name `Quick test) Virtual_rows_acceptance.startup_compat_tests);
       ("native virtual rows", List.map (fun (name, test) ->
