@@ -1,5 +1,27 @@
 # LUI API migration guide
 
+## Unreleased: wire batches skip unknown nested fields
+
+`Lui_wire.decode_batch` still rejects malformed tokens, unknown operations,
+unknown node kinds, and unknown properties. Extra object fields — on the
+batch or on an operation — are now ignored when their names are not part of
+the operation schema, including nested objects, arrays, and null. Previously
+only extra scalars were skipped, so a newer encoder's object field failed
+the OCaml decoder while MyGo accepted it.
+
+Canonical encoder bytes are unchanged. Required fields stay scalars:
+`"value": {"nested": true}` is still rejected. Duplicate keys are unchanged
+(the first operation field wins; the last `generation` wins). Hosts that
+want the MyGo duplicate-key rule should not emit duplicate keys; the shared
+fixtures use unique keys.
+
+```ocaml
+let batch =
+  Lui_wire.decode_batch
+    {|{"schemaVersion":1,"meta":{"nested":[1]},"generation":1,"ops":[{"op":"drop-node","id":1,"trace":{"ok":true}}]}|}
+(* generation = 1, ops = [DropNode 1] *)
+```
+
 ## Unreleased: controllable application clock
 
 Views schedule time-based work with `Lui_ui.after context ms action` and

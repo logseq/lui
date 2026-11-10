@@ -121,6 +121,10 @@ jobs:
         run: opam exec -- dune build @web
       - name: Web stylesheet and unit checks
         run: npm --prefix platform/web run check
+      - name: Install deterministic screenshot font
+        run: sudo apt-get update -qq && sudo apt-get install -y fonts-liberation
+      - name: Web visual baselines
+        run: node tooling/capture_web_simulator_baselines.mjs
       - name: Browser regressions
         run: |
           tests=()

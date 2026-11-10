@@ -63,4 +63,8 @@ test("the capture runner fixes every browser input that affects screenshots", as
   assert.match(source, /pixelDifferenceRatio/)
   assert.match(source, /maxDifferentPixels/)
   assert.match(source, /LUI_UPDATE_VISUAL_BASELINES/)
+  assert.match(source, /Liberation Sans/)
+  assert.match(source, /font-render-hinting=none/)
+  assert.match(source, /disable-font-subpixel-positioning/)
+  assert.match(source, /open-dialog/)
 })
