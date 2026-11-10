@@ -243,6 +243,23 @@ let test_native_bridge_clock () =
     (Lui_native_bridge.clock_tick bridge 99_000.);
   Alcotest.(check bool) "advance delivers the dismissal" true
     (String.length (Lui_native_bridge.clock_advance bridge 4_000.) > 0);
+  ignore (Lui_clock.after (Lui_app.clock app) 10. (fun () -> failwith "timer boom"));
+  Alcotest.check_raises "a raising timer refuses the clock call"
+    (Failure "timer boom") (fun () ->
+      ignore (Lui_native_bridge.clock_advance bridge 10.));
+  let diagnostic = Lui_native_bridge.take_failure bridge in
+  let contains part =
+    let n = String.length part in
+    let rec at i =
+      i + n <= String.length diagnostic
+      && (String.sub diagnostic i n = part || at (i + 1))
+    in
+    at 0
+  in
+  Alcotest.(check bool) "the diagnostic names the clock phase and message" true
+    (contains "\"phase\":\"clock\"" && contains "timer boom");
+  Alcotest.(check string) "the clock keeps running after a refused tick" ""
+    (Lui_native_bridge.clock_advance bridge 10.);
   ignore (Lui_native_bridge.dispose bridge);
   Alcotest.(check (float 0.)) "no wakeup after dispose" (-1.)
     (Lui_native_bridge.clock_next_delay bridge)
