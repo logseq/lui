@@ -461,11 +461,13 @@ let modal_pointer_end ctx event =
 
 let modal_pointer_cancel ctx event =
   match !(ctx.modal_swipe.swipe_pointer) with
-  | Some active_pointer_id
-    when active_pointer_id = Lui_web_util.pointer_id event ->
+  | Some active_pointer_id ->
+      (* pointercancel always ends the tracked gesture. CDP touchCancel can
+         report a mismatched pointerId under load; requiring an exact match
+         left data-swiping stuck in Compact Sheet regressions. *)
       if event_type event <> "lostpointercapture" then
         ignore (modal_reset_swipe ctx)
-      else begin
+      else if active_pointer_id = Lui_web_util.pointer_id event then begin
         let target = W.EventTarget.unsafeAsElement (W.Event.target event) in
         if
           W.Node.isSameNode
@@ -474,7 +476,7 @@ let modal_pointer_cancel ctx event =
           || not (has_pointer_capture ctx.modal_dom_node active_pointer_id)
         then ignore (modal_reset_swipe ctx)
       end
-  | _ -> ()
+  | None -> ()
 
 let modal_focus_trap_wrap event items focused backwards =
   let index = focused_element_index items focused in

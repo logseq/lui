@@ -860,6 +860,13 @@ test("Compact Sheet arbitrates scroll, direction, distance, and velocity", async
 
     const handleBounds = await handle.boundingBox()
     assert.ok(handleBounds)
+    // CDP touchCancel does not reliably synthesize a matching pointercancel
+    // under CI load. Capture the real pointer id and cancel through Pointer
+    // Events, matching sheet.e2e and the overlay's pointercancel handler.
+    await evaluate(`window.__compactSheetPointerId = null;
+      document.querySelector('.lui-sheet').addEventListener('pointerdown', event => {
+        if (event.pointerType === 'touch') window.__compactSheetPointerId = event.pointerId
+      }, { once: true })`)
     await touchEvent("touchStart", [{
       x: handleBounds.x + handleBounds.width / 2,
       y: handleBounds.y + handleBounds.height / 2,
@@ -870,8 +877,15 @@ test("Compact Sheet arbitrates scroll, direction, distance, and velocity", async
       y: handleBounds.y + handleBounds.height / 2 + 340,
       id: 1,
     }])
-    await touchEvent("touchCancel", [])
+    assert.equal(await state(`document.querySelector('.lui-sheet')?.hasAttribute('data-swiping')`), true)
+    await evaluate(`document.querySelector('.lui-sheet').dispatchEvent(new PointerEvent('pointercancel', {
+      bubbles: true, cancelable: true, isPrimary: true,
+      pointerId: window.__compactSheetPointerId, pointerType: 'touch',
+      clientX: ${Math.round(handleBounds.x + handleBounds.width / 2)},
+      clientY: ${Math.round(handleBounds.y + handleBounds.height / 2 + 340)},
+    }))`)
     assert.equal(await state(`document.querySelector('.lui-sheet')?.hasAttribute('data-swiping')`), false)
+    await touchEvent("touchCancel", [])
     assert.equal(await state(`document.querySelectorAll('.lui-modal-layer[data-open]').length`), 1)
 
     const cancel = sheet.getByRole("button", { name: "Cancel", exact: true })
