@@ -1,6 +1,6 @@
 ---
 name: lui-ios-development
-description: Develop and debug LUI apps on iOS/macOS with the Apple backend — schema vocabulary limits, extension child rules, emit-error diagnosis, dyn remount semantics (reconcile preserves node ids; mount-time emitters still fire), OCaml-5 multi-domain threading hazards, iOS simulator entitlements/keychain, and V.Sheet presentation freezes.
+description: Develop and debug LUI apps on iOS/macOS with the Apple backend, including native forms and input, schema and extension rules, OCaml runtime threading, and simulator behavior.
 ---
 
 # LUI iOS/Apple development
@@ -151,6 +151,25 @@ Testing workaround — render the modal's content inline instead of through the
 sheet, e.g. `V.column [base; Navigation_stack.create ~title ~path:[] content]`,
 which exercises identical reducer logic. **Never merge this patch** — it is
 for sim verification only; sheets work on real devices.
+
+## Form inputs and navigation sheets
+
+- For an iOS edit sheet, use `navigation-form navigation-inline-title`, a
+  `form` column, and a `navigation-actions` toolbar with `cancellation-action`
+  and `confirmation-action` buttons. Keep field labels visible after typing,
+  give controls accessibility labels, and place validation near its field.
+- Standalone LUI inputs already use the shared iOS field surface. A custom
+  SwiftUI field can apply `.luiInputSurface(isFocused:)` once, using its own
+  focus binding. Keep native form rows and multiline editors on their existing
+  surfaces. Set the native keyboard type, content type, and submit action for
+  the value being edited.
+- Scope field colors through `input` and `input-focus`. If an app tint makes
+  sheet actions hard to read, set the buttons' `foreground` to a semantic
+  token with sufficient contrast. See the [API migration guide](../../../docs/api-migrations.md)
+  for token fallbacks and the SwiftUI example.
+- Check the actual form in light and dark appearance with the keyboard open.
+  Type quickly, change focus, and exercise Cancel and Done with valid and
+  invalid input. On iPad, check the sheet after rotating or resizing.
 
 ## Simulator input & testing notes
 
