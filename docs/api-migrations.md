@@ -1,5 +1,24 @@
 # LUI API migration guide
 
+## Unreleased: shared iOS input surface
+
+Standalone iOS text, secure, search, and combo box inputs use a padded field
+with a semantic fill and a visible focus outline. Grouped text controls, native
+form rows, multiline editors, and other backends keep their existing rendering.
+The wire schema, edit events, and focus behavior are unchanged.
+
+The fill resolves `input`, `surface`, then `muted` before the system fallback.
+The focus outline resolves `input-focus`, then `primary` before the system
+accent. Native SwiftUI extensions can use the same surface without changing
+their own keyboard or submission configuration:
+
+```swift
+TextField("Email address", text: $email)
+    .keyboardType(.emailAddress)
+    .focused($focused)
+    .luiInputSurface(isFocused: focused)
+```
+
 ## Unreleased: independent flex shrink on Web and MyGo
 
 `row`, `column` and `box` accept `?shrink:float`. The typed `ShrinkValue`
