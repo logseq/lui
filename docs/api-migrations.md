@@ -1,5 +1,147 @@
 # LUI API migration guide
 
+## Unreleased: one lui-agent protocol on every host
+
+Scripts and coding agents can now drive a running app the same way on MyGo,
+Apple, Android and Web. The shared OCaml runtime answers every request, so
+each host only carries strings.
+
+A request is one flat JSON object with an `op`. The reply is one JSON object
+with `ok`:
+
+```json
+{"op":"press","selector":"prop:accessibility-identifier=save"}
+{"ok":true,"op":"press","node":42}
+```
+
+The protocol has these parts:
+
+- **Ops.** `hello`, `tree`, `dump`, `find`, `prop`, `press`, `long-press`,
+  `double-press`, `submit`, `dismiss`, `appear`, `change`, `type`, `toggle`,
+  `value`, `key` and `ext`. `hello` reports `protocol` (`"lui-agent"`),
+  `version` (`1`), `host`, `generation` and `ops`.
+- **Selectors.** They use the Drive scenario grammar: `id:N`, `kind:name`,
+  `ext:identifier`, `text:needle`, `prop:name=value` and `prop:name=prefix*`,
+  joined with `&`. A bare number is an id and a bare word is a text needle.
+- **Gestures.** `press`, `long-press` and `double-press` go to the nearest
+  ancestor that handles them. Every other action requires the selected node
+  itself to handle the event.
+- **Rejected requests.** A malformed request, unknown op, missing node or
+  unsupported event gets `{"ok":false,"error":...}` and changes nothing.
+- **Refused requests.** If an application handler raises, the call is refused
+  in phase `agent`, the same way a refused native event is. Hosts answer
+  `{"ok":false,"refused":true,"error":...,"diagnostic":{...}}`.
+- **Patches.** An action's patch batches reach the host's normal patch path
+  before the reply.
+
+The new APIs, by layer:
+
+- **OCaml.** `Lui_agent.handle`, `Lui_agent.app_target` and `Lui_agent.target`.
+  `Lui_native_bridge.agent bridge request` answers through a started bridge,
+  and `register` adds `<prefix>_agent` (for example `lui_kotlin_agent`).
+- **C ABI.** Two new exports:
+
+  ```c
+  int32_t lui_ocaml_agent_utf8(const char *request, int32_t length,
+                               void (*reply)(const char *json));
+  int32_t lui_ocaml_agent(const char *request, void (*reply)(const char *json));
+  ```
+
+  Both return `1` when answered, including `{"ok":false}` replies. They return
+  `0` when refused; in that case read `lui_ocaml_last_error` and resync as
+  after any refused call. The batches go to the patch callback given to
+  `lui_ocaml_start`, then `reply` receives the reply object.
+- **MyGo.** `(*Runtime).Agent(request) (string, error)` applies the batches and
+  resyncs after a refusal. `ServeAgent(address, onUI)` and
+  `ServeAgentFromEnv(onUI)` serve one loopback TCP client, one line per
+  request, with lines capped at 1 MiB. `cmd/lui-mygo` listens when
+  `LUI_AGENT_LISTEN=127.0.0.1:PORT` is set.
+
+  ```go
+  server, err := runtime.ServeAgentFromEnv(func(fn func()) {
+      mygo.RunOnMain(func() { fn(); window.Invalidate() })
+  })
+  ```
+
+- **Android.**
+  - `LuiBridge.agent(request): String` blocks until the OCaml thread answers
+    and queues the batches for the sink.
+  - The JNI library exports `nativeAgent`.
+  - `LuiAgentServer.start(port)` serves the same line protocol on loopback.
+  - The Components app starts it only in debug builds launched with
+    `--ei lui-agent-port PORT`. The debug manifest adds `INTERNET`.
+    Reach it with `adb forward tcp:PORT tcp:PORT`.
+
+  ```kotlin
+  val server = LuiAgentServer.start(port = 49380)  // after LuiBridge.start
+  ```
+
+- **Apple.**
+  - `LUINativeAgent(library:recovery:)` (or `init(agent:recovery:)` with an
+    `@_silgen_name` closure) answers requests and recovers refusals.
+  - `LUIAgentServer.startFromEnvironment(answer:)` serves loopback TCP on the
+    main queue when `LUI_AGENT_LISTEN` is set.
+  - `LUINativeRefusalRecovery.recover(_:)` is `check(_:)` returning the
+    failure.
+  - The Todos, Split, Markdown, Components and Navigation hosts start the
+    server in DEBUG builds. On the simulator, pass
+    `SIMCTL_CHILD_LUI_AGENT_LISTEN=127.0.0.1:PORT` to `simctl launch`.
+
+  ```swift
+  let agent = LUINativeAgent(library: handle, recovery: recovery)
+  agentServer = try LUIAgentServer.startFromEnvironment { agent.answer($0) }
+  ```
+
+- **Web.**
+  - `Lui_web_agent.install target` sets `window.__luiAgent`.
+  - When the page URL carries `?lui-agent=ws://127.0.0.1:PORT` (or
+    `ws://localhost:PORT`), it dials that socket and answers each text frame.
+    Other hosts are ignored.
+  - A raising handler is answered as a refusal rather than thrown.
+  - The Components and Chat pages install it.
+
+  ```ocaml
+  Lui_web_agent.install (Lui_agent.app_target ~host:"web" app)
+  ```
+
+### Refusing to drive a stale build
+
+`tooling/lui_agent.mjs` is the client for every host. It accepts
+`--tcp HOST:PORT` or `--ws-listen PORT`, and runs Drive-vocabulary script lines
+(`press`, `type`, `toggle`, `expect`, `wait`, `expect-prop`, `dump`, …),
+reporting every failing line.
+
+The build scripts now write `<artifact>.lui-build.json`. It holds the
+artifact digest and the sha256 of every input file. The scripts that write it
+are:
+
+- the MyGo Todos and Components builds;
+- the Android and iOS Components builds;
+- the Navigation simulator build;
+- the macOS `build-app.sh` scripts;
+- `build_web_release.mjs`.
+
+`--artifact PATH` refuses to drive a build whose receipt is missing, or whose
+artifact or inputs changed. It names the command that rebuilds it and exits
+with code `3`. `--unchecked` skips the check. `node tooling/lui_build_receipt.mjs
+check --artifact PATH` runs the check alone.
+
+```sh
+components=$(./tooling/build_mygo_components.sh)
+LUI_AGENT_LISTEN=127.0.0.1:49380 go -C platform/mygo run ./cmd/lui-mygo -library "$components" &
+node tooling/lui_agent.mjs --tcp 127.0.0.1:49380 --artifact "$components" \
+  'press prop:accessibility-identifier=events-button' 'expect "text:Event: press"'
+```
+
+### Compatibility
+
+Every server is opt-in and listens on loopback only, so apps that do not set
+`LUI_AGENT_LISTEN`, pass the Android extra or call `install` behave as before.
+
+The wire format, events and existing exports are unchanged. Hosts that load
+the library with `dlopen` resolve `lui_ocaml_agent_utf8` optionally; a
+`LUINativeAgent` without it answers every request with an error.
+
 ## Unreleased: native bridge reports refused calls
 
 When OCaml raises while a native bridge boots, dispatches an event, resyncs or
