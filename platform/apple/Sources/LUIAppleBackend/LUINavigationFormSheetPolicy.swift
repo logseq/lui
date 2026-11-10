@@ -88,6 +88,7 @@ struct LUINavigationFormTitleStyle: ViewModifier {
 struct LUINavigationFormActionView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @Environment(\.luiSemanticColors) private var semanticColors
 
     var body: some View {
         let _ = model.revision
@@ -97,7 +98,14 @@ struct LUINavigationFormActionView: View {
     @ViewBuilder
     private var actionButton: some View {
         Button(action: performPress) {
-            actionLabel
+            if let foreground = LUIThemeColorResolver.color(
+                model.property(.foreground)?.stringValue,
+                semanticColors: semanticColors
+            ) {
+                actionLabel.foregroundStyle(foreground.opacity(model.isEnabled ? 1 : 0.5))
+            } else {
+                actionLabel
+            }
         }
         .disabled(!model.isEnabled)
         #if os(macOS)

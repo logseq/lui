@@ -1,5 +1,33 @@
 # LUI API migration guide
 
+## Unreleased: native navigation sheet action foregrounds
+
+Apple navigation sheet toolbar actions honor the button's existing `foreground`
+property. For example, set `button ~style_class:"confirmation-action"
+~foreground:"foreground" ~text:"Done" []` to use the current semantic foreground
+for the title. The native toolbar placement, styling and disabled behavior stay
+in effect. With no resolvable explicit foreground, the system default remains.
+No wire-format or handler changes are required.
+
+## Unreleased: shared iOS input surface
+
+Standalone iOS text, secure, search, and combo box inputs use a padded field
+with a semantic fill and a visible focus outline. Grouped text controls, native
+form rows, multiline editors, and other backends keep their existing rendering.
+The wire schema, edit events, and focus behavior are unchanged.
+
+The fill resolves `input`, `surface`, then `muted` before the system fallback.
+The focus outline resolves `input-focus`, then `primary` before the system
+accent. Native SwiftUI extensions can use the same surface without changing
+their own keyboard or submission configuration:
+
+```swift
+TextField("Email address", text: $email)
+    .keyboardType(.emailAddress)
+    .focused($focused)
+    .luiInputSurface(isFocused: focused)
+```
+
 ## Unreleased: one lui-agent protocol on every host
 
 Scripts and coding agents can now drive a running app the same way on MyGo,

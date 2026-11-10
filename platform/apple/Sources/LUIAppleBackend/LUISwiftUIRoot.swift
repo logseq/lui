@@ -4342,7 +4342,7 @@ private struct LUIComboboxView: View {
         #if os(iOS)
         HStack(spacing: 8) {
             textField
-                .textFieldStyle(.roundedBorder)
+                .luiInputSurface(isFocused: focused)
             Button {
                 try? backend.performPress(node: model.id)
             } label: {
@@ -7649,7 +7649,6 @@ private struct LUITextControlView: View {
     let backend: LUIAppleBackend
     let grouped: Bool
     @Environment(\.luiIsNativeFormRow) private var isNativeFormRow
-    @Environment(\.luiSemanticColors) private var semanticColors
     @State private var draftState: LUITextDraftState
     @FocusState private var focused: Bool
 
@@ -7667,7 +7666,11 @@ private struct LUITextControlView: View {
             } else if model.kind == .searchField || model.kind == .textarea {
                 field
             } else {
+                #if os(iOS)
+                field.luiInputSurface(isFocused: focused)
+                #else
                 field.textFieldStyle(.roundedBorder)
+                #endif
             }
         }
             .modifier(LUIReadOnlyTextControl(readOnly: model.property(.readOnly)?.boolValue == true))
@@ -7711,11 +7714,7 @@ private struct LUITextControlView: View {
         } else if model.kind == .searchField {
             #if os(iOS)
             iosSearchFieldRow
-                .textFieldStyle(.plain)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(semanticColors["surface"] ?? Color(uiColor: .tertiarySystemFill),
-                            in: RoundedRectangle(cornerRadius: 10))
+                .luiInputSurface(isFocused: focused)
             #else
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
