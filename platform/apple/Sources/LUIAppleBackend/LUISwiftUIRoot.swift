@@ -636,10 +636,9 @@ private struct LUIFrameReportModifier: ViewModifier {
     /// SwiftUI gestures already deliver the correct action.
     @Environment(\.luiInHoistedToolbar) private var inHoistedToolbar
 
-    @ViewBuilder
-    func body(content: Content) -> some View {
+    func body(content: Content) -> AnyView {
         if backend.frameReporting.isEnabled && !backend.frameReporting.isSuspended {
-            content
+            return AnyView(content
                 .onGeometryChange(for: CGRect.self) { proxy in
                     proxy.frame(in: .global)
                 } action: { rect in
@@ -650,8 +649,9 @@ private struct LUIFrameReportModifier: ViewModifier {
                 .onDisappear {
                     backend.removeNodeFrame(nodeID)
                 }
+            )
         } else {
-            content
+            return AnyView(content)
         }
     }
 }
