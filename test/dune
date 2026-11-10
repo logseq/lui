@@ -1,6 +1,6 @@
 (test
  (name test_lui)
- (modules test_lui test_lui_ai test_audit test_multi_window)
+ (modules test_lui test_lui_ai test_audit test_multi_window test_clock)
  (libraries lui lui.ai lui.json_view_parse ocaml-signal alcotest gallery_app drive)
  (deps
   (source_tree scenarios)))
