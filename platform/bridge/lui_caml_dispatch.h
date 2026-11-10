@@ -346,6 +346,46 @@ static int32_t lui_dispatch_last_error(const char *name,
   CAMLreturnT(int32_t, found);
 }
 
+/* One lui-agent request. The OCaml reply is "<reply object>" optionally
+   followed by newline-separated patch batches from the request's action.
+   The batches go to [deliver] first, so the host mirror is current when
+   [reply] receives the reply object. Returns 0 when OCaml raised (the call
+   was refused) or memory ran out, 1 otherwise. */
+static int32_t lui_dispatch_agent(const char *name, const char *request,
+                                  int32_t length, lui_deliver_fn reply,
+                                  lui_deliver_fn deliver) {
+  CAMLparam0();
+  CAMLlocal2(request_value, result);
+  int32_t accepted = 0;
+  const value *callback = caml_named_value(name);
+  if (callback != NULL && request != NULL && length >= 0) {
+    request_value = caml_alloc_initialized_string(length, request);
+    result = caml_callback_exn(*callback, request_value);
+    if (Is_exception_result(result)) {
+      char *message = caml_format_exception(Extract_exception(result));
+      fprintf(stderr, "lui bridge: OCaml exception: %s\n", message);
+      caml_stat_free(message);
+    } else {
+      size_t total = caml_string_length(result);
+      const char *newline = memchr(String_val(result), '\n', total);
+      size_t head = newline != NULL ? (size_t)(newline - String_val(result)) : total;
+      char *line = (char *)malloc(head + 1);
+      if (line != NULL) {
+        memcpy(line, String_val(result), head);
+        line[head] = '\0';
+        accepted = newline != NULL
+            ? lui_deliver_batches(String_val(result) + head + 1, deliver)
+            : 1;
+        if (accepted && reply != NULL) {
+          reply(line);
+        }
+        free(line);
+      }
+    }
+  }
+  CAMLreturnT(int32_t, accepted);
+}
+
 static int64_t lui_dispatch_root(const char *name) {
   CAMLparam0();
   CAMLlocal1(result);
