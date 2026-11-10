@@ -20,6 +20,16 @@ app_dir="$build_dir/LUIComponents.app"
 sdk_path=$(xcrun --sdk iphonesimulator --show-sdk-path)
 clang=$(xcrun --sdk iphonesimulator --find clang)
 
+# Records what the artifact was built from, so tooling/lui_agent.mjs refuses
+# to drive it once its sources change. Builds without Node skip the receipt.
+write_receipt() {
+  local tool="$repo_root/tooling/lui_build_receipt.mjs"
+  if command -v node >/dev/null 2>&1 && [[ -f $tool ]]; then
+    node "$tool" write --root "$repo_root" --artifact "$1" --command "$2" "${@:3}" >&2 \
+      || echo "warning: could not write a build receipt for $1" >&2
+  fi
+}
+
 [[ -x $target_prefix/bin/ocamlopt.opt ]] || {
   echo "error: no OCaml toolchain prefix found: $target_prefix" >&2
   echo "set LG_IOS_OCAML_PREFIX to a prefix with bin/ocamlopt.opt + lib/ocaml" >&2
@@ -89,5 +99,9 @@ cp "$package_dir/Info.plist" "$app_dir/Info.plist"
   "$app_dir/Info.plist" "$deployment_target"
 cp "$swift_build_dir/LUIComponentsApp" "$app_dir/LUIComponentsApp"
 codesign --force --sign - --timestamp=none "$app_dir"
+write_receipt "$app_dir" "bash tooling/mobile/build_components_ios_simulator.sh" \
+  --input src --input ppx --input examples/gallery \
+  --input examples/components/native --input examples/components/ios-swiftui \
+  --input platform/apple --input platform/bridge
 
 echo "$app_dir"

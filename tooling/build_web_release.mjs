@@ -3,6 +3,7 @@ import {cp, mkdir, readFile, readdir, rm} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import path from "node:path";
 import {build} from "../platform/web/node_modules/esbuild/lib/main.js";
+import {writeReceipt} from "./lui_build_receipt.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const output = path.join(root, "_build/web-release");
@@ -69,6 +70,16 @@ function sizes(buffer) {
     }).length,
   };
 }
+
+writeReceipt({
+  artifact: output,
+  command: "node tooling/build_web_release.mjs",
+  inputs: [
+    "src", "ppx", "platform/web/melange", "platform/web/src",
+    "examples/gallery", "examples/components/web",
+  ],
+  root,
+});
 
 const app = await readFile(path.join(output, "app.js"));
 const deployFiles = await filesUnder(output);
