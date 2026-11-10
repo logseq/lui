@@ -3,16 +3,47 @@ package dev.lui
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import android.os.SystemClock
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
+import kotlin.math.ceil
 
 internal fun luiVirtualHostCode(host: Int, version: () -> Int): Int {
     if (host != 4) return host
     val supported = try { version() == 1 } catch (_: UnsatisfiedLinkError) { false }
     return if (supported) host or 0x100 else host
+}
+
+/** A call the OCaml runtime refused, as reported by `lui_ocaml_last_error`. */
+data class LuiRuntimeFailure(
+    val bridge: String,
+    val phase: String,
+    val node: Long?,
+    val message: String,
+) {
+    companion object {
+        fun parse(json: String): LuiRuntimeFailure? = try {
+            val fields = Json.parseToJsonElement(json).jsonObject
+            LuiRuntimeFailure(
+                bridge = fields["bridge"]?.jsonPrimitive?.content.orEmpty(),
+                phase = fields["phase"]?.jsonPrimitive?.content.orEmpty(),
+                node = fields["node"]?.jsonPrimitive?.longOrNull,
+                message = fields["message"]?.jsonPrimitive?.content.orEmpty(),
+            )
+        } catch (_: IllegalArgumentException) {
+            null
+        }
+    }
+
+    override fun toString(): String =
+        "$bridge $phase failed${node?.let { " at node $it" }.orEmpty()}: $message"
 }
 
 /**
@@ -42,6 +73,18 @@ object LuiBridge {
         fun onPatch(batch: LuiPatchBatch, snapshot: Boolean): Boolean
     }
 
+    fun interface FailureListener {
+        fun onFailure(failure: LuiRuntimeFailure)
+    }
+
+    /**
+     * Notified on the main thread when OCaml throws during a call. The
+     * bridge has already discarded that call's patches and requested a
+     * snapshot, so the listener only has to surface the failure.
+     */
+    @Volatile
+    var failureListener: FailureListener? = null
+
     private val ocamlThread = HandlerThread("lui-ocaml").apply { start() }
     private val ocamlHandler = Handler(ocamlThread.looper)
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -64,6 +107,7 @@ object LuiBridge {
     private var awaitingSnapshot = false
     // Read and written only by the OCaml handler thread.
     private var emittingSnapshot = false
+    private val clockWake = Any()
 
     /**
      * Called from JNI while the OCaml domain lock is held. Only copies the
@@ -130,7 +174,9 @@ object LuiBridge {
             System.loadLibrary(libraryName)
             nativeLoaded = true
             val accepted = dispatchOnRuntime(30) {
-                nativeStart(PLATFORM_ANDROID, luiVirtualHostCode(hostCode, ::nativeVirtualRowsVersion)) == 1
+                val running = nativeStart(PLATFORM_ANDROID, luiVirtualHostCode(hostCode, ::nativeVirtualRowsVersion)) == 1
+                if (running) scheduleClock(token) else takeFailure()?.let { report(null, it) }
+                running
             }
             started = accepted
             return accepted
@@ -156,7 +202,58 @@ object LuiBridge {
     private fun dispatch(call: () -> Int) {
         check(started) { "LuiBridge.start() has not been called" }
         val token = session.get()
-        ocamlHandler.post { if (started && session.get() == token) call() }
+        ocamlHandler.post {
+            if (started && session.get() == token) {
+                if (call() != 1) recoverFromRefusal(token)
+                scheduleClock(token)
+            }
+        }
+    }
+
+    // OCaml thread only. JNI argument validation also returns 0 but leaves
+    // no diagnostic and no partial patches, so only a reported exception
+    // needs a snapshot.
+    private fun recoverFromRefusal(token: Long) {
+        val failure = takeFailure() ?: return
+        report(token, failure)
+        awaitingSnapshot = true
+        emittingSnapshot = true
+        try {
+            check(nativeResync() == 1) { "LUI runtime snapshot failed" }
+        } finally {
+            emittingSnapshot = false
+        }
+    }
+
+    private fun takeFailure(): LuiRuntimeFailure? {
+        val json = nativeLastError()?.toString(Charsets.UTF_8) ?: return null
+        return LuiRuntimeFailure.parse(json)
+            ?: LuiRuntimeFailure(bridge = "", phase = "unknown", node = null, message = json)
+    }
+
+    // A null token is a failed start, whose session is retired before the
+    // listener runs.
+    private fun report(token: Long?, failure: LuiRuntimeFailure) {
+        android.util.Log.e("LuiBridge", failure.toString())
+        val listener = failureListener ?: return
+        mainHandler.post { if (token == null || session.get() == token) listener.onFailure(failure) }
+    }
+
+    /**
+     * Arms one OCaml-thread wakeup for the application clock's next
+     * deadline. Runs after every call, since any call may schedule, cancel,
+     * pause or fire timers.
+     */
+    private fun scheduleClock(token: Long) {
+        ocamlHandler.removeCallbacksAndMessages(clockWake)
+        val delay = nativeClockNextDelay()
+        if (delay < 0) return
+        ocamlHandler.postAtTime({
+            if (session.get() == token) {
+                if (nativeClockTick(SystemClock.uptimeMillis().toDouble()) != 1) recoverFromRefusal(token)
+                scheduleClock(token)
+            }
+        }, clockWake, SystemClock.uptimeMillis() + ceil(delay).toLong())
     }
 
     private fun <T> dispatchBlocking(call: () -> T): T {
@@ -260,6 +357,12 @@ object LuiBridge {
 
     fun load(node: Long) = dispatch { nativeLoad(node) }
 
+    /** Moves the application clock forward by [ms], firing due timers even while paused. */
+    fun advanceClock(ms: Double) = dispatch { nativeClockAdvance(ms) }
+
+    /** Stops or restarts host time; a paused clock moves only through [advanceClock]. */
+    fun setClockPaused(paused: Boolean) = dispatch { nativeClockSetPaused(if (paused) 1 else 0) }
+
     @Synchronized
     fun stop() {
         val active = started
@@ -267,6 +370,7 @@ object LuiBridge {
         patchSink = null
         awaitingSnapshot = false
         session.incrementAndGet()
+        ocamlHandler.removeCallbacksAndMessages(clockWake)
         if (active && nativeLoaded) ocamlHandler.post { nativeStop() }
     }
 
@@ -369,7 +473,17 @@ object LuiBridge {
 
     private external fun nativeResync(): Int
 
+    private external fun nativeLastError(): ByteArray?
+
     private external fun nativeRootNode(): Long
+
+    private external fun nativeClockTick(nowMs: Double): Int
+
+    private external fun nativeClockAdvance(ms: Double): Int
+
+    private external fun nativeClockSetPaused(paused: Int): Int
+
+    private external fun nativeClockNextDelay(): Double
 }
 
 /**

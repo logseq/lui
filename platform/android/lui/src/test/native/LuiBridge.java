@@ -12,6 +12,17 @@ public final class LuiBridge {
     private static native int nativeVirtualWindow(long node, long generation, long first, long last, long[] pins);
     private static native int nativeResync();
     private static native int nativeStop();
+    private static native int nativeExtensionEvent(long node, byte[] identifier, byte[] name, byte[] jsonValues);
+    private static native byte[] nativeLastError();
+
+    private static native int nativeClockTick(double nowMs);
+    private static native int nativeClockAdvance(double ms);
+    private static native int nativeClockSetPaused(int paused);
+    private static native double nativeClockNextDelay();
+
+    private static byte[] utf8(String text) {
+        return text.getBytes(StandardCharsets.UTF_8);
+    }
 
     private static void dispatchPatch(byte[] bytes) {
         System.out.println("PATCH " + new String(bytes, StandardCharsets.UTF_8));
@@ -38,6 +49,22 @@ public final class LuiBridge {
                 }
                 case "null": result = nativeVirtualWindow(1, 1, 0, 1, null); break;
                 case "resync": result = nativeResync(); break;
+                case "badext":
+                    result = nativeExtensionEvent(Long.parseLong(values[1]), utf8("probe"), utf8("probe"), utf8("{"));
+                    break;
+                case "lasterror": {
+                    byte[] report = nativeLastError();
+                    System.out.println("ERROR " + (report == null ? "null" : new String(report, StandardCharsets.UTF_8)));
+                    result = report == null ? 0 : 1;
+                    break;
+                }
+                case "clocktick": result = nativeClockTick(Double.parseDouble(values[1])); break;
+                case "clockadvance": result = nativeClockAdvance(Double.parseDouble(values[1])); break;
+                case "clockpause": result = nativeClockSetPaused(Integer.parseInt(values[1])); break;
+                case "clocknext":
+                    System.out.println("DELAY " + nativeClockNextDelay());
+                    result = 1;
+                    break;
                 case "stop": System.out.println("RESULT " + nativeStop()); return;
                 default: throw new IllegalArgumentException(line);
             }

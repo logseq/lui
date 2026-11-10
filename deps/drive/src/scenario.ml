@@ -18,6 +18,9 @@
      expect-absent <sel>
      expect-prop <sel> <name> <value>
      sleep <seconds>
+     clock pause|resume|settle  — detach the app clock from host ticks,
+                                  reattach it, or run every pending timer
+     clock advance <duration>   — step app time: 250, 250ms, 1.5s
      dump
      dump-frames                — print reported node frames
 
@@ -95,6 +98,28 @@ let wait_for (d : Session.driver) sel timeout =
     end
   in
   loop ()
+
+let duration_ms token =
+  let number text scale =
+    match float_of_string_opt text with
+    | Some value when Float.is_finite value && value >= 0. -> value *. scale
+    | _ -> raise (Script_error ("bad duration: " ^ token))
+  in
+  let length = String.length token in
+  let ends suffix =
+    let n = String.length suffix in
+    length > n && String.sub token (length - n) n = suffix
+  in
+  if ends "ms" then number (String.sub token 0 (length - 2)) 1.
+  else if ends "s" then number (String.sub token 0 (length - 1)) 1000.
+  else number token 1.
+
+let clock_command = function
+  | [ "pause" ] -> Session.Clock_pause
+  | [ "resume" ] -> Session.Clock_resume
+  | [ "settle" ] -> Session.Clock_settle
+  | [ "advance"; duration ] -> Session.Clock_advance (duration_ms duration)
+  | _ -> raise (Script_error "usage: clock pause|resume|settle|advance <duration>")
 
 (* `tap <sel>` prefers the node's reported frame center, so scripts
    verify real geometry instead of just event routing; without frames
@@ -239,6 +264,10 @@ let run_line ~emit (d : Session.driver) lineno line =
              (Printf.sprintf "prop %s on #%d = %s, want %s" name n.id
                 (Model.string_of_wire_value w) v)
          | None -> fail (Printf.sprintf "no prop %s on #%d" name n.id))
+      | "clock" :: rest -> (
+        match d.Session.clock (clock_command rest) with
+        | Ok () -> []
+        | Error msg -> fail msg)
       | "sleep" :: v :: _ ->
         Unix.sleepf (float_of_string v);
         []

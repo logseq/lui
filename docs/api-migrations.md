@@ -22,6 +22,173 @@ let batch =
 (* generation = 1, ops = [DropNode 1] *)
 ```
 
+## Unreleased: controllable application clock
+
+Views schedule time-based work with `Lui_ui.after context ms action` and
+`Lui_ui.every context ms action`. Both return a `Lui_clock.timer`, run on the
+application's `Lui_clock.t` (`Lui_app.clock app`) and are cancelled when the
+owning view scope is disposed; `Lui_clock.cancel` stops one earlier. Actions run
+on the runtime thread like event handlers, so they may `send` directly:
+
+```ocaml
+let upload_button send : t =
+  scoped (fun context ->
+    let timer = ref None in
+    button ~text:"Simulate upload"
+      ~on_press:(fun _ ->
+        Option.iter Lui_clock.cancel !timer;
+        timer := Some (Lui_ui.every context 300. (fun () ->
+          ignore (send Advance))))
+      [])
+```
+
+Replace host-side `setTimeout`/`DispatchQueue`/`Handler` loops that only feed
+actions back into the model with these timers: they become deterministic under
+Drive and tests. Existing apps need no changes; a clock without timers costs
+nothing and never wakes a host.
+
+Time is in milliseconds (float). Host time only moves forward; the first
+`Lui_clock.tick` anchors the clock without firing anything. `Lui_clock.pause`
+makes host ticks no-ops, `Lui_clock.advance clock ms` moves simulated time and
+fires due timers even while paused, and `Lui_clock.settle` fires every pending
+timer (raising after 10,000 firings to stop runaway `every` loops). Time cannot
+move from inside a timer action (`Invalid_argument`).
+
+Host contract, implemented by every maintained host in this release:
+
+- Native C ABI: new exports `lui_ocaml_clock_tick(double now_ms)`,
+  `lui_ocaml_clock_advance(double ms)`, `lui_ocaml_clock_set_paused(int32_t)`
+  and `double lui_ocaml_clock_next_delay(void)` (negative when nothing is due,
+  paused or not started). After every call into the runtime the host reads
+  `next_delay`, arms one wakeup and calls `clock_tick` with monotonic
+  milliseconds when it fires. Bridges built with `Lui_native_bridge.register`
+  get the OCaml side automatically.
+- MyGo: `OpenRuntime` binds the four symbols when all are present (older
+  libraries keep working without timers), arms a `time.AfterFunc` that only
+  invalidates the window and ticks in the next frame. New
+  `Runtime.AdvanceClock(ms)` and `Runtime.SetClockPaused(bool)`.
+- Android: `LuiBridge` reschedules a `Handler.postAtTime` wakeup on the
+  `lui-ocaml` thread after every dispatch, ticking with
+  `SystemClock.uptimeMillis()`. New JNI exports `nativeClockTick`,
+  `nativeClockAdvance`, `nativeClockSetPaused`, `nativeClockNextDelay` and
+  public `LuiBridge.advanceClock(ms)` / `LuiBridge.setClockPaused(paused)`.
+  Custom JNI libraries must compile the updated `lui_jni_bridge.c`.
+- Apple: new `LUIRuntimeClock` in `LUIAppleBackend`. Create it with
+  `LUIRuntimeClock(library: handle)` for `dlopen` hosts or
+  `LUIRuntimeClock(tick:nextDelay:)` with `@_silgen_name` functions, call
+  `reschedule()` after starting the runtime and after every runtime call
+  (typically `defer { clock.reschedule() }` at the top of `backend.onEvent`),
+  and `cancel()` before `lui_ocaml_stop`:
+
+  ```swift
+  let clock = LUIRuntimeClock(library: handle)
+  backend.onEvent = { event in
+      defer { clock.reschedule() }
+      // existing dispatch
+  }
+  ```
+
+- Web/Melange: call `Lui_web.drive_clock app` once after `Lui_app.start`. It
+  ticks from `performance.now()` with one armed timeout and flushes after each
+  tick, using the new `Lui_clock.set_wakeup` hook.
+- A timer action that raises is a refused call with phase `clock`: every
+  native host routes tick results through its existing refusal recovery
+  (diagnostic plus resync), exactly as for a refused event.
+- In-process apps (tests, custom hosts) call `Lui_app.tick_clock app ~now` or
+  `Lui_app.advance_clock app ms`, then `Lui_app.flush`, or register a
+  `Lui_clock.set_wakeup` callback.
+
+Drive scenarios gain `clock pause`, `clock resume`, `clock advance <duration>`
+(`250`, `250ms`, `1.5s`) and `clock settle`. In-process sessions support all
+four; FFI targets support all but `settle` and report the missing exports for
+libraries built before this release; live websocket targets report the
+command as unsupported.
+
+## Unreleased: native bridge reports refused calls
+
+When OCaml raises while a native bridge boots, dispatches an event, resyncs or
+disposes, the C entry still returns `0` and delivers no batch. The bridge now
+also records a diagnostic, and the new export returns it:
+
+```c
+int32_t lui_ocaml_last_error(void (*receiver)(const char *json));
+```
+
+It hands `receiver` one JSON object, clears it, and returns `1`; it returns `0`
+when no diagnostic is pending. A later accepted call also clears it.
+
+```json
+{"bridge":"Todos","phase":"dispatch","node":42,
+ "message":"invalid property value ...","recovery":"resync"}
+```
+
+`phase` is `boot`, `dispatch`, `resync` or `dispose`; `node` is present for a
+dispatch. Batches recorded before the exception are discarded, so the host
+mirror is stale: report the message, then call `lui_ocaml_resync` and apply its
+snapshot rather than keep rendering what mounted before the throw. The bridge
+still prints the exception to stderr.
+
+The wire format, existing exports and return codes are unchanged. A host that
+does not adopt the export keeps its old behavior. Resolve the symbol
+optionally to stay compatible with older libraries. A `0` without a pending
+diagnostic is argument validation in C, which records no patches and needs no
+resync. OCaml callers can read the same record with
+`Lui_native_bridge.last_failure` and `take_failure`. Bridges registered with
+`Lui_native_bridge.register` gain `<prefix>_last_error` automatically, so
+`lui_kotlin_last_error` exists for JNI.
+
+Every maintained host now consumes it:
+
+- **MyGo**: `Runtime.Dispatch` returns a `*luimygo.RuntimeError` (`Phase`,
+  `Node`, `Message`) and resyncs before returning. Initialization failures
+  wrap the same error.
+
+  ```go
+  var failure *luimygo.RuntimeError
+  if errors.As(runtime.Dispatch(event), &failure) {
+      log.Printf("LUI %s failed at node %v: %s", failure.Phase, failure.Node, failure.Message)
+  }
+  ```
+
+- **Android**: `LuiBridge` logs the failure, requests a snapshot through the
+  existing resync path and notifies the optional `LuiBridge.failureListener` on
+  the main thread with a `LuiRuntimeFailure`. A failed `start` reports its
+  diagnostic the same way. The JNI library exports `nativeLastError()`.
+
+  ```kotlin
+  LuiBridge.failureListener = LuiBridge.FailureListener { failure ->
+      showError("${failure.phase} failed: ${failure.message}")
+  }
+  ```
+
+- **Apple**: `LUIAppleBackend.applySnapshot(json:)` replaces the retained tree
+  with a `lui_ocaml_resync` batch. `apply(json:)` drops that batch as stale
+  because it reuses the current generation. `LUINativeRefusalRecovery` wraps the
+  two exports for hosts that load the C ABI themselves, and the Todos, Split,
+  Markdown, Components and Navigation hosts use it. Hosts that resync outside
+  this helper must use `applySnapshot` as well.
+
+  ```swift
+  let recovery = LUINativeRefusalRecovery(library: handle)  // or closures over @_silgen_name exports
+  recovery.check(pressFunction(Int64(node)))
+
+  func apply(json: String) throws {
+      if recovery.isReceivingSnapshot {
+          try backend.applySnapshot(json: json)
+      } else {
+          try backend.apply(json: json)
+      }
+  }
+  ```
+
+- **Drive**: the FFI driver fails the scenario line with the diagnostic, for
+  example `target refused dispatch at node #1: …`, and rebuilds its model from
+  a resync snapshot. `Drive.Model.clear` empties a model before a snapshot.
+
+- **Web/Melange** runs OCaml in-process and has no C boundary. Exceptions
+  still surface as uncaught JavaScript errors and no patches are dropped, so
+  nothing changes there.
+
 ## Unreleased: independent flex shrink on Web and MyGo
 
 `row`, `column` and `box` accept `?shrink:float`. The typed `ShrinkValue`

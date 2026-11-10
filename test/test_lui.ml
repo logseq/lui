@@ -5486,7 +5486,54 @@ let test_runtime_constructor_capability_is_immutable_and_owned () =
      profile AndroidOS KotlinHost, false, 32;
      generic_profile (), true, 1000]
 
+let test_native_bridge_reports_refused_calls () =
+  let bridge = Lui_native_bridge.create "refusal" in
+  let registered = ref [] in
+  Lui_native_bridge.register ~register_named:(fun name _ -> registered := name :: !registered)
+    "refusal" bridge;
+  Alcotest.(check bool) "last_error is a registered bridge callback" true
+    (List.mem "refusal_last_error" !registered);
+  let host_profile = Lui_native_bridge.profile 1 2 in
+  let app = Lui_app.create (Lui_native_bridge.backend bridge host_profile) 0
+    (fun model () -> model)
+    (fun _context _model _send ->
+       Lui_elements.column
+         [ Lui_elements.button ~text:"Boom"
+             ~on_press:(fun _ -> invalid_arg "handler exploded") [] ]) in
+  Fun.protect ~finally:(fun () -> ignore (Lui_native_bridge.dispose bridge)) (fun () ->
+    ignore (Lui_native_bridge.boot bridge app);
+    Alcotest.(check (option string)) "a clean boot leaves no diagnostic" None
+      (Lui_native_bridge.last_failure bridge);
+    let runtime = Lui_app.runtime app in
+    let button = Hashtbl.fold (fun id kind found ->
+        if kind = Button then Some id else found) runtime.mounted_nodes None
+      |> Option.get in
+    (match Lui_native_bridge.dispatch_event bridge (Press button) with
+     | _ -> Alcotest.fail "a raising handler must refuse the call"
+     | exception Invalid_argument message ->
+       Alcotest.(check string) "the original exception propagates to the C boundary"
+         "handler exploded" message);
+    let expected = Printf.sprintf
+        "{\"bridge\":\"refusal\",\"phase\":\"dispatch\",\"node\":%d,\"message\":\"handler exploded\",\"recovery\":\"resync\"}"
+        button in
+    Alcotest.(check (option string)) "the refusal is described for the host" (Some expected)
+      (Lui_native_bridge.last_failure bridge);
+    Alcotest.(check string) "the host takes the diagnostic once" expected
+      (Lui_native_bridge.take_failure bridge);
+    Alcotest.(check string) "a taken diagnostic is cleared" ""
+      (Lui_native_bridge.take_failure bridge);
+    let snapshot = Lui_wire.decode_batch (Lui_native_bridge.resync bridge) in
+    Alcotest.(check bool) "resync recovers the complete tree after a refusal" true
+      (List.exists (function CreateNode (id, Button) -> id = button | _ -> false) snapshot.ops);
+    (match Lui_native_bridge.dispatch_event bridge (Press button) with
+     | _ -> Alcotest.fail "the handler still raises"
+     | exception Invalid_argument _ -> ());
+    ignore (Lui_native_bridge.dispatch_event bridge (Appear button));
+    Alcotest.(check (option string)) "an accepted call clears a stale diagnostic" None
+      (Lui_native_bridge.last_failure bridge))
+
 let startup_compat_tests = [
+  "native bridge reports refused calls", test_native_bridge_reports_refused_calls;
   "native host capability flag grammar", test_native_capability_flag_grammar;
   "old native host keeps100k rows and extension identity", test_explicit_legacy_native_startup_keeps_complete_eager_tree;
   "all constructors preserve capability through reload", test_constructor_capability_survives_reload_and_extensions;
@@ -5638,6 +5685,8 @@ end
 let () =
   Alcotest.run "lui"
     [
+      ("clock", List.map (fun (name, test) ->
+        Alcotest.test_case name `Quick test) Test_clock.tests);
       ("virtual row startup", List.map (fun (name, test) ->
         Alcotest.test_case name `Quick test) Virtual_rows_acceptance.startup_compat_tests);
       ("native virtual rows", List.map (fun (name, test) ->

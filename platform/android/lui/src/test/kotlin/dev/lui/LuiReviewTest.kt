@@ -22,6 +22,21 @@ class LuiReviewTest {
     ]}"""
 
     @Test
+    fun `runtime failure reports decode with and without a node`() {
+        assertEquals(
+            LuiRuntimeFailure("Todos", "dispatch", 42L, "handler exploded"),
+            LuiRuntimeFailure.parse(
+                """{"bridge":"Todos","phase":"dispatch","node":42,"message":"handler exploded","recovery":"resync"}""",
+            ),
+        )
+        assertEquals(
+            LuiRuntimeFailure("Todos", "boot", null, "bad view"),
+            LuiRuntimeFailure.parse("""{"bridge":"Todos","phase":"boot","message":"bad view","recovery":"resync"}"""),
+        )
+        assertNull(LuiRuntimeFailure.parse("not json"))
+    }
+
+    @Test
     fun `quoted scalar content always remains a string`() {
         for (content in listOf("123", "true", "false", "1.5", "-42", "null")) {
             assertEquals(LuiWireValue.Str(content), LuiWireValue.of(Json.parseToJsonElement("\"$content\"")))

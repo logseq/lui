@@ -165,6 +165,7 @@ type Backend struct {
 	widgetToastsBuilt bool
 	tokens            map[string]any
 	systemTheme       *ui.Theme
+	frame             func(ui.Services) bool
 }
 
 func New(config Config) *Backend {
