@@ -638,17 +638,18 @@ private struct LUIFrameReportModifier: ViewModifier {
 
     func body(content: Content) -> AnyView {
         if backend.frameReporting.isEnabled && !backend.frameReporting.isSuspended {
-            return AnyView(content
-                .onGeometryChange(for: CGRect.self) { proxy in
-                    proxy.frame(in: .global)
-                } action: { rect in
-                    if !inHoistedToolbar {
-                        backend.reportNodeFrame(nodeID, rect)
+            return AnyView(
+                content
+                    .onGeometryChange(for: CGRect.self) { proxy in
+                        proxy.frame(in: .global)
+                    } action: { rect in
+                        if !inHoistedToolbar {
+                            backend.reportNodeFrame(nodeID, rect)
+                        }
                     }
-                }
-                .onDisappear {
-                    backend.removeNodeFrame(nodeID)
-                }
+                    .onDisappear {
+                        backend.removeNodeFrame(nodeID)
+                    }
             )
         } else {
             return AnyView(content)
