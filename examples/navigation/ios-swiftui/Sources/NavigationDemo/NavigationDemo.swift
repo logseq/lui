@@ -14,6 +14,7 @@ typealias PatchCallback = @convention(c) (UnsafePointer<CChar>?) -> Void
 @_silgen_name("lui_ocaml_extension_event") func extensionOCaml(_ node: Int64, _ identifier: UnsafePointer<CChar>, _ name: UnsafePointer<CChar>, _ values: UnsafePointer<CChar>) -> Int32
 @_silgen_name("lui_ocaml_last_error") func lastErrorOCaml(_ receiver: PatchCallback?) -> Int32
 @_silgen_name("lui_ocaml_resync") func resyncOCaml() -> Int32
+@_silgen_name("lui_ocaml_agent_utf8") func agentOCaml(_ request: UnsafePointer<CChar>?, _ length: Int32, _ reply: PatchCallback?) -> Int32
 
 nonisolated(unsafe) var activeHost: NavigationHost?
 let receivePatch: PatchCallback = { source in
@@ -26,6 +27,9 @@ let receivePatch: PatchCallback = { source in
     let backend: LUIAppleBackend
     let recovery = LUINativeRefusalRecovery(lastError: { lastErrorOCaml($0) }, resync: { resyncOCaml() })
     var rootID: Int?
+    #if DEBUG
+    @ObservationIgnored private var agentServer: LUIAgentServer?
+    #endif
     init() {
         let registry = LUIAppleExtensionRegistry()
         do {
@@ -66,6 +70,12 @@ let receivePatch: PatchCallback = { source in
         guard startOCaml(receivePatch, 2, virtualRowsVersionOCaml() == 1 ? 258 : 2) == 1 else {
             fatalError("Navigation start: \(recovery.takeFailure().map(String.init(describing:)) ?? "rejected")")
         }
+        #if DEBUG
+        let agent = LUINativeAgent(agent: { agentOCaml($0, $1, $2) }, recovery: recovery)
+        do {
+            agentServer = try LUIAgentServer.startFromEnvironment { agent.answer($0) }
+        } catch { fatalError("Navigation lui-agent: \(error)") }
+        #endif
     }
     func apply(_ json: String) {
         do {

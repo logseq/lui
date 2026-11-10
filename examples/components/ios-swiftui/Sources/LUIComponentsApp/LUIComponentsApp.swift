@@ -56,6 +56,9 @@ private func luiOCamlLastError(_ receiver: PatchCallback?) -> Int32
 @_silgen_name("lui_ocaml_resync")
 private func luiOCamlResync() -> Int32
 
+@_silgen_name("lui_ocaml_agent_utf8")
+private func luiOCamlAgent(_ request: UnsafePointer<CChar>?, _ length: Int32, _ reply: PatchCallback?) -> Int32
+
 nonisolated(unsafe) private var activeHost: GalleryHost?
 
 nonisolated(unsafe) private let receivePatch: PatchCallback = { source in
@@ -83,6 +86,9 @@ private final class GalleryHost {
     private var composerChildren: [Int: Set<Int>] = [:]
     private var composerParents: [Int: Int] = [:]
     private var composerEpoch = 0
+    #if DEBUG
+    @ObservationIgnored private var agentServer: LUIAgentServer?
+    #endif
 
     init() {
         do {
@@ -138,6 +144,14 @@ private final class GalleryHost {
         guard luiOCamlStart(receivePatch, 2, luiOCamlVirtualRowsVersion() == 1 ? 258 : 2) == 1 else {
             fatalError("LG Gallery initialization failed: \(recovery.takeFailure().map(String.init(describing:)) ?? "rejected")")
         }
+        #if DEBUG
+        let agent = LUINativeAgent(agent: { luiOCamlAgent($0, $1, $2) }, recovery: recovery)
+        do {
+            agentServer = try LUIAgentServer.startFromEnvironment { agent.answer($0) }
+        } catch {
+            fatalError("LG Gallery lui-agent: \(error)")
+        }
+        #endif
         started = true
     }
 
