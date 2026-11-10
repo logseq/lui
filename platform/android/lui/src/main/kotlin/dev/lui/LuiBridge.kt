@@ -9,9 +9,11 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.put
 
 internal fun luiVirtualHostCode(host: Int, version: () -> Int): Int {
     if (host != 4) return host
@@ -207,8 +209,8 @@ object LuiBridge {
     // OCaml thread only. JNI argument validation also returns 0 but leaves
     // no diagnostic and no partial patches, so only a reported exception
     // needs a snapshot.
-    private fun recoverFromRefusal(token: Long) {
-        val failure = takeFailure() ?: return
+    private fun recoverFromRefusal(token: Long): LuiRuntimeFailure? {
+        val failure = takeFailure() ?: return null
         report(token, failure)
         awaitingSnapshot = true
         emittingSnapshot = true
@@ -217,6 +219,7 @@ object LuiBridge {
         } finally {
             emittingSnapshot = false
         }
+        return failure
     }
 
     private fun takeFailure(): LuiRuntimeFailure? {
@@ -344,6 +347,39 @@ object LuiBridge {
         if (active && nativeLoaded) ocamlHandler.post { nativeStop() }
     }
 
+    /**
+     * Answers one lui-agent request (a JSON object such as
+     * `{"op":"press","selector":"text:Save"}`) with the shared OCaml agent's
+     * reply object; see tooling/lui_agent.mjs. An action's patches are queued
+     * for the sink before the reply returns. A request OCaml refuses is
+     * reported and resynced like a refused event and answered with
+     * `{"ok":false,"refused":true,...}`. Blocks the caller until the OCaml
+     * thread answers, so the patches apply only after the caller returns
+     * when it is the main thread.
+     */
+    fun agent(request: String): String = dispatchBlocking {
+        val token = session.get()
+        nativeAgent(utf8(request))?.toString(Charsets.UTF_8)
+            ?: agentRefusal(recoverFromRefusal(token))
+    }
+
+    private fun agentRefusal(failure: LuiRuntimeFailure?): String = buildJsonObject {
+        put("ok", false)
+        if (failure == null) {
+            put("error", "the OCaml runtime rejected the agent request")
+        } else {
+            put("refused", true)
+            put("error", failure.message)
+            put("diagnostic", buildJsonObject {
+                put("bridge", failure.bridge)
+                put("phase", failure.phase)
+                failure.node?.let { put("node", it) }
+                put("message", failure.message)
+                put("recovery", "resync")
+            })
+        }
+    }.toString()
+
     /** Root node id of the running app, or -1 when unavailable. */
     fun rootNode(): Long = dispatchBlocking { nativeRootNode() }
 
@@ -444,6 +480,8 @@ object LuiBridge {
     private external fun nativeResync(): Int
 
     private external fun nativeLastError(): ByteArray?
+
+    private external fun nativeAgent(request: ByteArray): ByteArray?
 
     private external fun nativeRootNode(): Long
 }

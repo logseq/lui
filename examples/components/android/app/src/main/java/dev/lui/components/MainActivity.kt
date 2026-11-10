@@ -62,6 +62,7 @@ class MainActivity : ComponentActivity() {
     )
 
     private var runtimeStarted = false
+    private var agent: AutoCloseable? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,6 +72,7 @@ class MainActivity : ComponentActivity() {
         runtimeStarted = runCatching {
             LuiBridge.start(libraryName = "lui_jni_bridge", backend = backend)
         }.getOrDefault(false)
+        if (runtimeStarted) agent = AgentHook.start(intent)
 
         setContent {
             LuiTheme(dark = isSystemInDarkTheme()) {
@@ -90,6 +92,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        agent?.close()
+        agent = null
         if (runtimeStarted) {
             LuiBridge.stop()
         }

@@ -14,6 +14,7 @@ public final class LuiBridge {
     private static native int nativeStop();
     private static native int nativeExtensionEvent(long node, byte[] identifier, byte[] name, byte[] jsonValues);
     private static native byte[] nativeLastError();
+    private static native byte[] nativeAgent(byte[] request);
 
     private static byte[] utf8(String text) {
         return text.getBytes(StandardCharsets.UTF_8);
@@ -51,6 +52,12 @@ public final class LuiBridge {
                     byte[] report = nativeLastError();
                     System.out.println("ERROR " + (report == null ? "null" : new String(report, StandardCharsets.UTF_8)));
                     result = report == null ? 0 : 1;
+                    break;
+                }
+                case "agent": {
+                    byte[] reply = nativeAgent(utf8(line.substring("agent ".length())));
+                    System.out.println("AGENT " + (reply == null ? "null" : new String(reply, StandardCharsets.UTF_8)));
+                    result = reply == null ? 0 : 1;
                     break;
                 }
                 case "stop": System.out.println("RESULT " + nativeStop()); return;

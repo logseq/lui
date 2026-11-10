@@ -517,6 +517,46 @@ JNIEXPORT jbyteArray JNICALL LUI_JNI_NAME(nativeLastError)(JNIEnv *env,
   return value;
 }
 
+/* Only touched on the runtime thread, inside the lock-holding window. */
+static char *agent_reply_copy = NULL;
+
+static void capture_agent_reply(const char *json) {
+  free(agent_reply_copy);
+  agent_reply_copy = strdup(json);
+}
+
+/* One lui-agent request. Action patches go to the JVM receiver first; the
+ * reply object is returned, or null when the request was refused (read
+ * nativeLastError and resync). */
+JNIEXPORT jbyteArray JNICALL LUI_JNI_NAME(nativeAgent)(JNIEnv *env,
+                                                      jclass clazz,
+                                                      jbyteArray request) {
+  jbyteArray value = NULL;
+  int32_t accepted;
+  int32_t length = 0;
+  char *bytes = copy_jbytes(env, request, &length);
+  (void)clazz;
+  if (bytes == NULL) {
+    return NULL;
+  }
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_agent("lui_kotlin_agent", bytes, length,
+                                capture_agent_reply, dispatch_patch_to_jvm);
+  caml_enter_blocking_section();
+  free(bytes);
+  if (accepted && agent_reply_copy != NULL) {
+    jsize reply_length = (jsize)strlen(agent_reply_copy);
+    value = (*env)->NewByteArray(env, reply_length);
+    if (value != NULL) {
+      (*env)->SetByteArrayRegion(env, value, 0, reply_length,
+                                 (const jbyte *)agent_reply_copy);
+    }
+  }
+  free(agent_reply_copy);
+  agent_reply_copy = NULL;
+  return value;
+}
+
 JNIEXPORT jlong JNICALL LUI_JNI_NAME(nativeRootNode)(JNIEnv *env,
                                                      jclass clazz) {
   int64_t node;
