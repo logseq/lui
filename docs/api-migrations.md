@@ -70,7 +70,7 @@ The new APIs, by layer:
   - `LuiBridge.agent(request): String` blocks until the OCaml thread answers
     and queues the batches for the sink.
   - The JNI library exports `nativeAgent`.
-  - `LuiAgentServer.start(port)` serves the same line protocol on loopback.
+  - `LuiAgentServer.start(port, answer)` serves the same line protocol on loopback. `answer` defaults to `LuiBridge.agent`.
   - The Components app starts it only in debug builds launched with
     `--ei lui-agent-port PORT`. The debug manifest adds `INTERNET`.
     Reach it with `adb forward tcp:PORT tcp:PORT`.

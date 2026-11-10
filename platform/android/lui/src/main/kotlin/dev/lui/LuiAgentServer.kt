@@ -10,12 +10,15 @@ import kotlinx.serialization.json.put
 
 /**
  * Serves lui-agent requests (see tooling/lui_agent.mjs) from one loopback
- * TCP client at a time: each request line goes to [LuiBridge.agent] and each
- * reply is one line. Start it from debug code only, after [LuiBridge.start];
- * the app needs the INTERNET permission, and `adb forward tcp:PORT tcp:PORT`
- * exposes the port to the development machine.
+ * TCP client at a time: each request line goes to `answer` ([LuiBridge.agent]
+ * by default) and each reply is one line. Start it from debug code only, after
+ * [LuiBridge.start]; the app needs the INTERNET permission, and
+ * `adb forward tcp:PORT tcp:PORT` exposes the port to the development machine.
  */
-class LuiAgentServer private constructor(private val socket: ServerSocket) : AutoCloseable {
+class LuiAgentServer private constructor(
+    private val socket: ServerSocket,
+    private val answer: (String) -> String,
+) : AutoCloseable {
     @Volatile
     private var client: Socket? = null
 
@@ -35,7 +38,7 @@ class LuiAgentServer private constructor(private val socket: ServerSocket) : Aut
             }
             client = connection
             try {
-                connection.use(::answer)
+                connection.use(::serveClient)
             } catch (_: IOException) {
             } finally {
                 client = null
@@ -43,7 +46,7 @@ class LuiAgentServer private constructor(private val socket: ServerSocket) : Aut
         }
     }
 
-    private fun answer(connection: Socket) {
+    private fun serveClient(connection: Socket) {
         val reader = connection.getInputStream().bufferedReader(Charsets.UTF_8)
         val writer = connection.getOutputStream().bufferedWriter(Charsets.UTF_8)
         while (true) {
@@ -54,7 +57,7 @@ class LuiAgentServer private constructor(private val socket: ServerSocket) : Aut
             }
             if (line != null && line.isBlank()) continue
             val reply = if (line == null) failure("lui: agent request exceeds 1 MiB") else try {
-                LuiBridge.agent(line)
+                answer(line)
             } catch (error: RuntimeException) {
                 failure(error.message ?: "lui: agent request failed")
             }
@@ -98,7 +101,10 @@ class LuiAgentServer private constructor(private val socket: ServerSocket) : Aut
             }.toString()
 
         /** Listens on the loopback interface only; port 0 picks a free port. */
-        fun start(port: Int = DEFAULT_PORT): LuiAgentServer =
-            LuiAgentServer(ServerSocket(port, 1, InetAddress.getLoopbackAddress()))
+        fun start(
+            port: Int = DEFAULT_PORT,
+            answer: (String) -> String = { LuiBridge.agent(it) },
+        ): LuiAgentServer =
+            LuiAgentServer(ServerSocket(port, 1, InetAddress.getLoopbackAddress()), answer)
     }
 }

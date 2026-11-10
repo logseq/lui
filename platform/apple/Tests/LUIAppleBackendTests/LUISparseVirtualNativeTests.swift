@@ -225,13 +225,15 @@
       let port = try #require(server.port)
       let clear = #"{"op":"press","selector":"prop:accessibility-identifier=sparse-clear"}"#
       let oversized = String(repeating: "x", count: LUIAgentServer.maxLine + 1)
+      let largest = String(repeating: "x", count: LUIAgentServer.maxLine)
       let replies = try await Task.detached {
-        try agentExchange(port: port, requests: [clear, oversized, #"{"op":"hello"}"#])
+        try agentExchange(port: port, requests: [clear, oversized, largest, #"{"op":"hello"}"#])
       }.value
-      #expect(replies.count == 3)
+      #expect(replies.count == 4)
       #expect(replies.first?.hasPrefix(#"{"ok":true,"op":"press""#) == true, "\(replies)")
       #expect(replies.dropFirst().first == #"{"error":"lui: agent request exceeds 1 MiB","ok":false}"#)
-      #expect(replies.last == hello)
+      #expect(replies.dropFirst(2).first?.hasPrefix(#"{"ok":false,"error":"bad request"#) == true, "\(replies)")
+      #expect(replies.last?.hasPrefix(#"{"ok":true,"op":"hello","protocol":"lui-agent""#) == true, "\(replies)")
       try await pump(until: "lui-agent clear applied") {
         list?.property(.virtualTotalCount)?.intValue == 0
       }

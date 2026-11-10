@@ -4,13 +4,16 @@ import java.net.InetAddress
 import java.net.Socket
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LuiAgentServerTest {
     @Test
     fun answersEveryLineAndBoundsRequests() {
-        LuiAgentServer.start(port = 0).use { server ->
+        val answer = { request: String ->
+            if (request == "raise") throw IllegalStateException("handler exploded")
+            """{"ok":true,"echo":${request.length}}"""
+        }
+        LuiAgentServer.start(port = 0, answer = answer).use { server ->
             Socket(InetAddress.getLoopbackAddress(), server.port).use { client ->
                 val output = client.getOutputStream()
                 val replies = client.getInputStream().bufferedReader(Charsets.UTF_8)
@@ -19,14 +22,14 @@ class LuiAgentServerTest {
                     output.flush()
                     return replies.readLine()
                 }
-                val reply = exchange("""{"op":"hello"}""")!!
-                assertTrue(reply, reply.startsWith("""{"ok":false,"error":"""))
-                assertTrue(reply, reply.contains("LuiBridge.start() has not been called"))
+                assertEquals("""{"ok":true,"echo":14}""", exchange("""{"op":"hello"}"""))
                 assertEquals(
                     """{"ok":false,"error":"lui: agent request exceeds 1 MiB"}""",
                     exchange("x".repeat((1 shl 20) + 1)),
                 )
-                assertEquals(reply, exchange("""{"op":"hello"}"""))
+                assertEquals("""{"ok":true,"echo":${1 shl 20}}""", exchange("x".repeat(1 shl 20)))
+                assertEquals("""{"ok":false,"error":"handler exploded"}""", exchange("raise"))
+                assertEquals("""{"ok":true,"echo":14}""", exchange("""{"op":"hello"}"""))
                 client.shutdownOutput()
                 assertNull(replies.readLine())
             }

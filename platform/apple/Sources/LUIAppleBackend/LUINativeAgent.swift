@@ -197,7 +197,7 @@ public final class LUIAgentServer {
         buffer.append(data)
         while let newline = buffer.firstIndex(of: 0x0A) {
             let line = buffer[buffer.startIndex..<newline]
-            let overflowed = discarding
+            let overflowed = discarding || line.count > Self.maxLine
             buffer.removeSubrange(buffer.startIndex...newline)
             discarding = false
             if overflowed {
