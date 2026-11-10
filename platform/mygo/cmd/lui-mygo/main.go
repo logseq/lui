@@ -56,7 +56,20 @@ func run() error {
 	}
 	mygo.App.SetName("LUI MyGo")
 	mygo.App.WhenReady(func() {
-		mygo.NewWindow(mygo.WindowOptions{Title: *title, Width: *width, Height: *height, UseContentSize: true, Content: ui.View(b.View)})
+		window := mygo.NewWindow(mygo.WindowOptions{Title: *title, Width: *width, Height: *height, UseContentSize: true, Content: ui.View(b.View)})
+		// Explicit opt-in: LUI_AGENT_LISTEN=127.0.0.1:PORT serves lui-agent
+		// requests (tooling/lui_agent.mjs) against this window's runtime.
+		server, err := r.ServeAgentFromEnv(func(fn func()) {
+			mygo.RunOnMain(func() {
+				fn()
+				window.Invalidate()
+			})
+		})
+		if err != nil {
+			log.Print(err)
+		} else if server != nil {
+			log.Printf("lui-agent listening on %s", server.Addr())
+		}
 	})
 	mygo.App.OnWindowAllClosed(func() { mygo.App.Quit() })
 	return mygo.App.Run()

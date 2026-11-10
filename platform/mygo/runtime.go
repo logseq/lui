@@ -31,16 +31,20 @@ type nativeFunctions struct {
 	value        func(int64, float64) int32
 	extension    func(int64, string, int32, string, int32, string, int32) int32
 	lastError    func(uintptr) int32
+	agent        func(string, int32, uintptr) int32
 	node         map[string]func(int64) int32
 }
 type runtimeWorker struct {
-	jobs      chan func()
-	path      string
-	library   uintptr
-	callback  uintptr
-	pending   []string
-	active    *Runtime
-	functions nativeFunctions
+	jobs     chan func()
+	path     string
+	library  uintptr
+	callback uintptr
+	pending  []string
+	// replyCallback receives the agent reply object into reply.
+	replyCallback uintptr
+	reply         string
+	active        *Runtime
+	functions     nativeFunctions
 }
 
 var workerOnce sync.Once
@@ -193,20 +197,26 @@ func (w *runtimeWorker) load(path string) error {
 	if ptr, lookupErr := librarySymbol(handle, "lui_ocaml_last_error"); lookupErr == nil {
 		purego.RegisterFunc(&f.lastError, ptr)
 	}
-	if goruntime.GOOS == "windows" {
-		// Windows requires a pointer-sized callback result. The C void
-		// callback ignores it; CDecl preserves the bridge's calling convention.
-		w.callback = purego.NewCallback(func(_ purego.CDecl, ptr unsafe.Pointer) uintptr {
-			w.pending = append(w.pending, cString(ptr))
-			return 0
-		})
-	} else {
-		w.callback = purego.NewCallback(func(ptr unsafe.Pointer) { w.pending = append(w.pending, cString(ptr)) })
+	if ptr, lookupErr := librarySymbol(handle, "lui_ocaml_agent_utf8"); lookupErr == nil {
+		purego.RegisterFunc(&f.agent, ptr)
 	}
+	w.callback = nativeCallback(func(text string) { w.pending = append(w.pending, text) })
+	w.replyCallback = nativeCallback(func(text string) { w.reply = text })
 	w.functions = f
 	w.library = handle
 	w.path = path
 	return nil
+}
+func nativeCallback(receive func(string)) uintptr {
+	if goruntime.GOOS == "windows" {
+		// Windows requires a pointer-sized callback result. The C void
+		// callback ignores it; CDecl preserves the bridge's calling convention.
+		return purego.NewCallback(func(_ purego.CDecl, ptr unsafe.Pointer) uintptr {
+			receive(cString(ptr))
+			return 0
+		})
+	}
+	return purego.NewCallback(func(ptr unsafe.Pointer) { receive(cString(ptr)) })
 }
 func cString(ptr unsafe.Pointer) string {
 	if ptr == nil {
