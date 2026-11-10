@@ -43,3 +43,8 @@ val property : web_renderer -> int -> property -> wire_value option
 val children : web_renderer -> int -> int list
 val node_count : web_renderer -> int
 val batches : web_renderer -> patch_batch list
+
+(** [drive_clock app] ticks [app]'s {!Lui_clock} from [performance.now()]
+    with one browser timeout armed for the next deadline, and flushes after
+    each tick. Call once after [Lui_app.start]. *)
+val drive_clock : ('model, 'action) Lui_app.reducer_app -> unit

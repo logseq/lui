@@ -486,6 +486,127 @@ JNIEXPORT jint JNICALL LUI_JNI_NAME(nativeResync)(JNIEnv *env, jclass clazz) {
   return accepted;
 }
 
+/* Only touched on the runtime thread, inside the lock-holding window. */
+static char *last_error_copy = NULL;
+
+static void capture_last_error(const char *json) {
+  free(last_error_copy);
+  last_error_copy = strdup(json);
+}
+
+/* The diagnostic JSON for the most recent refused call, or null. Reading
+ * it clears it; see lui_ocaml_last_error for the shape. */
+JNIEXPORT jbyteArray JNICALL LUI_JNI_NAME(nativeLastError)(JNIEnv *env,
+                                                           jclass clazz) {
+  jbyteArray value = NULL;
+  int32_t found;
+  (void)clazz;
+  caml_leave_blocking_section();
+  found = lui_dispatch_last_error("lui_kotlin_last_error", capture_last_error);
+  caml_enter_blocking_section();
+  if (found && last_error_copy != NULL) {
+    jsize length = (jsize)strlen(last_error_copy);
+    value = (*env)->NewByteArray(env, length);
+    if (value != NULL) {
+      (*env)->SetByteArrayRegion(env, value, 0, length,
+                                 (const jbyte *)last_error_copy);
+    }
+  }
+  free(last_error_copy);
+  last_error_copy = NULL;
+  return value;
+}
+
+/* Only touched on the runtime thread, inside the lock-holding window. */
+static char *agent_reply_copy = NULL;
+
+static void capture_agent_reply(const char *json) {
+  free(agent_reply_copy);
+  agent_reply_copy = strdup(json);
+}
+
+/* One lui-agent request. Action patches go to the JVM receiver first; the
+ * reply object is returned, or null when the request was refused (read
+ * nativeLastError and resync). */
+JNIEXPORT jbyteArray JNICALL LUI_JNI_NAME(nativeAgent)(JNIEnv *env,
+                                                      jclass clazz,
+                                                      jbyteArray request) {
+  jbyteArray value = NULL;
+  int32_t accepted;
+  int32_t length = 0;
+  char *bytes = copy_jbytes(env, request, &length);
+  (void)clazz;
+  if (bytes == NULL) {
+    return NULL;
+  }
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_agent("lui_kotlin_agent", bytes, length,
+                                capture_agent_reply, dispatch_patch_to_jvm);
+  caml_enter_blocking_section();
+  free(bytes);
+  if (accepted && agent_reply_copy != NULL) {
+    jsize reply_length = (jsize)strlen(agent_reply_copy);
+    value = (*env)->NewByteArray(env, reply_length);
+    if (value != NULL) {
+      (*env)->SetByteArrayRegion(env, value, 0, reply_length,
+                                 (const jbyte *)agent_reply_copy);
+    }
+  }
+  free(agent_reply_copy);
+  agent_reply_copy = NULL;
+  return value;
+}
+
+JNIEXPORT jint JNICALL LUI_JNI_NAME(nativeClockTick)(JNIEnv *env,
+                                                     jclass clazz,
+                                                     jdouble now_ms) {
+  int32_t accepted;
+  (void)env;
+  (void)clazz;
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_double("lui_kotlin_clock_tick", now_ms,
+                                 dispatch_patch_to_jvm);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
+JNIEXPORT jint JNICALL LUI_JNI_NAME(nativeClockAdvance)(JNIEnv *env,
+                                                        jclass clazz,
+                                                        jdouble ms) {
+  int32_t accepted;
+  (void)env;
+  (void)clazz;
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_double("lui_kotlin_clock_advance", ms,
+                                 dispatch_patch_to_jvm);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
+JNIEXPORT jint JNICALL LUI_JNI_NAME(nativeClockSetPaused)(JNIEnv *env,
+                                                          jclass clazz,
+                                                          jint paused) {
+  int32_t accepted;
+  (void)env;
+  (void)clazz;
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_bool("lui_kotlin_clock_set_paused", paused,
+                               dispatch_patch_to_jvm);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
+JNIEXPORT jdouble JNICALL LUI_JNI_NAME(nativeClockNextDelay)(JNIEnv *env,
+                                                             jclass clazz) {
+  double delay;
+  (void)env;
+  (void)clazz;
+  caml_leave_blocking_section();
+  delay = lui_dispatch_query_double("lui_kotlin_clock_next_delay", -1.0);
+  caml_enter_blocking_section();
+  return delay;
+}
+
 JNIEXPORT jlong JNICALL LUI_JNI_NAME(nativeRootNode)(JNIEnv *env,
                                                      jclass clazz) {
   int64_t node;

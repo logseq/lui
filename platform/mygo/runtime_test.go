@@ -1,6 +1,7 @@
 package luimygo
 
 import (
+	"errors"
 	"github.com/egoist/mygo/ui"
 	"os"
 	"os/exec"
@@ -9,6 +10,52 @@ import (
 	"strings"
 	"testing"
 )
+
+// A call OCaml refuses reports its diagnostic through lui_ocaml_last_error
+// instead of a bare rejection, and the session stays recoverable.
+func TestOCamlTodosRefusalIsReported(t *testing.T) {
+	path := os.Getenv("LUI_MYGO_TEST_LIBRARY")
+	if path == "" {
+		t.Skip("run tooling/test_mygo.sh for the OCaml integration test")
+	}
+	b := New(Config{})
+	r, err := OpenRuntime(path, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	root := b.Roots()[0]
+	malformed := "{not json"
+	_, err = r.invoke(func(f nativeFunctions) int32 {
+		return f.extension(root, "probe", 5, "event", 5, malformed, int32(len(malformed)))
+	})
+	var failure *RuntimeError
+	if !errors.As(err, &failure) {
+		t.Fatalf("refusal carried no OCaml diagnostic: %v", err)
+	}
+	if failure.Phase != "dispatch" || failure.Node == nil || *failure.Node != root ||
+		failure.Recovery != "resync" || !strings.Contains(failure.Message, "invalid extension event payload") {
+		t.Fatalf("unexpected diagnostic: %+v", failure)
+	}
+	var stale []string
+	r.worker.run(func() {
+		r.worker.pending = nil
+		if r.worker.functions.lastError(r.worker.callback) != 0 {
+			stale = r.worker.pending
+		}
+		r.worker.pending = nil
+	})
+	if stale != nil {
+		t.Fatalf("diagnostic was delivered twice: %v", stale)
+	}
+	if err := r.Resync(); err != nil {
+		t.Fatal(err)
+	}
+	tester := ui.NewTester(b.View, 800, 600)
+	if !tester.HasText("0 remaining / 0 total") {
+		t.Fatal(tester.Texts())
+	}
+}
 
 func TestRuntimeMissingLibrary(t *testing.T) {
 	if _, err := OpenRuntime("/definitely/missing/lui-library", New(Config{})); err == nil {

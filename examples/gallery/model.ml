@@ -106,6 +106,8 @@ type action =
   | SetFieldValue of string
   | SetChecked of bool
   | AdvanceProgress
+  | StartUpload
+  | AdvanceUpload
   | AdvanceStep
   | SetDensity of string
   | SetVolume of float
@@ -219,6 +221,10 @@ let update model action =
       progress =
         (if model.progress >= 1.0 then 0.0 else model.progress +. 0.1);
     }
+  | StartUpload -> { model with progress = 0.0 }
+  | AdvanceUpload ->
+    let tenths = Float.to_int (Float.round (model.progress *. 10.)) + 1 in
+    { model with progress = Float.of_int (min tenths 10) /. 10. }
   | AdvanceStep ->
     {
       model with

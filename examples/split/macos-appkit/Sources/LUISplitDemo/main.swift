@@ -85,6 +85,7 @@ private func luiExtensionValuesJSON(_ values: [String: LUIExtensionValue]) -> St
 @MainActor
 private final class NativeSplitRuntime {
     private let handle: UnsafeMutableRawPointer
+    let clock: LUIRuntimeClock
     private let nativeHostCode: Int32
     private let virtualWindowFunction: VirtualWindowFunction?
     private let visibleRangeFunction: VisibleRangeFunction?
@@ -109,12 +110,15 @@ private final class NativeSplitRuntime {
     private let pointerLeaveFunction: AppearFunction
     private let contextMenuPressFunction: PointerDetailFunction
     private let extensionEventFunction: ExtensionEventFunction
+    let recovery: LUINativeRefusalRecovery
+    let agent: LUINativeAgent
 
     init(path: String) throws {
         guard let handle = dlopen(path, RTLD_NOW | RTLD_LOCAL) else {
             throw RuntimeError(String(cString: dlerror()))
         }
         self.handle = handle
+        clock = LUIRuntimeClock(library: handle)
         let version = dlsym(handle, "lui_ocaml_virtual_rows_version").map {
             unsafeBitCast($0, to: VirtualRowsVersionFunction.self)()
         } ?? 0
@@ -148,65 +152,71 @@ private final class NativeSplitRuntime {
         pointerLeaveFunction = try Self.load("lui_ocaml_pointer_leave", from: handle)
         contextMenuPressFunction = try Self.load("lui_ocaml_context_menu_press", from: handle)
         extensionEventFunction = try Self.load("lui_ocaml_extension_event", from: handle)
+        recovery = LUINativeRefusalRecovery(library: handle)
+        agent = LUINativeAgent(library: handle, recovery: recovery)
+        clock.recovery = recovery
     }
 
     func start() throws {
         guard startFunction(receivePatch, 1, nativeHostCode) == 1 else {
-            throw RuntimeError("LUI Split initialization failed")
+            let reason = recovery.takeFailure().map { ": \($0)" } ?? ""
+            throw RuntimeError("LUI Split initialization failed\(reason)")
         }
+        clock.reschedule()
     }
 
     func stop() {
+        clock.cancel()
         _ = stopFunction()
     }
 
     func virtualWindow(node: Int, generation: Int, first: Int, last: Int, pins: [Int]) {
         let ids = pins.map(Int64.init)
         ids.withUnsafeBufferPointer {
-            _ = virtualWindowFunction?(Int64(node), Int64(generation), Int64(first), Int64(last), $0.baseAddress, Int32($0.count))
+            recovery.check(virtualWindowFunction?(Int64(node), Int64(generation), Int64(first), Int64(last), $0.baseAddress, Int32($0.count)))
         }
     }
 
     func visibleRange(node: Int, first: Int, last: Int) {
-        _ = visibleRangeFunction?(Int64(node), Int64(first), Int64(last))
+        recovery.check(visibleRangeFunction?(Int64(node), Int64(first), Int64(last)))
     }
 
     func scrollCompleted(node: Int, token: Int, outcome: String) {
-        outcome.withCString { _ = scrollCompletedFunction?(Int64(node), Int64(token), $0) }
+        outcome.withCString { recovery.check(scrollCompletedFunction?(Int64(node), Int64(token), $0)) }
     }
 
-    func appear(node: Int) { _ = appearFunction(Int64(node)) }
+    func appear(node: Int) { recovery.check(appearFunction(Int64(node))) }
 
-    func press(node: Int) { _ = pressFunction(Int64(node)) }
+    func press(node: Int) { recovery.check(pressFunction(Int64(node))) }
 
-    func longPress(node: Int) { _ = longPressFunction(Int64(node)) }
+    func longPress(node: Int) { recovery.check(longPressFunction(Int64(node))) }
 
     func textChanged(node: Int, text: String) {
         text.withCString { source in
-            _ = textChangedFunction(Int64(node), source, Int32(text.utf8.count))
+            recovery.check(textChangedFunction(Int64(node), source, Int32(text.utf8.count)))
         }
     }
 
-    func submit(node: Int) { _ = submitFunction(Int64(node)) }
+    func submit(node: Int) { recovery.check(submitFunction(Int64(node))) }
 
-    func dismiss(node: Int) { _ = dismissFunction(Int64(node)) }
+    func dismiss(node: Int) { recovery.check(dismissFunction(Int64(node))) }
 
     func picked(node: Int, payload: String) {
         payload.withCString { source in
-            _ = pickedFunction(Int64(node), source, Int32(payload.utf8.count))
+            recovery.check(pickedFunction(Int64(node), source, Int32(payload.utf8.count)))
         }
     }
 
-    func doublePress(node: Int) { _ = doublePressFunction(Int64(node)) }
+    func doublePress(node: Int) { recovery.check(doublePressFunction(Int64(node))) }
 
     func toggleChanged(node: Int, checked: Bool) {
-        _ = toggleChangedFunction(Int64(node), checked ? 1 : 0)
+        recovery.check(toggleChangedFunction(Int64(node), checked ? 1 : 0))
     }
 
-    func radioChanged(node: Int) { _ = radioChangedFunction(Int64(node)) }
+    func radioChanged(node: Int) { recovery.check(radioChangedFunction(Int64(node))) }
 
     func sliderChanged(node: Int, value: Double) {
-        _ = sliderChangedFunction(Int64(node), value)
+        recovery.check(sliderChangedFunction(Int64(node), value))
     }
 
     func pointerDetail(
@@ -214,8 +224,8 @@ private final class NativeSplitRuntime {
         x: Double, y: Double, modifiers: Int, button: Int, targetClass: String
     ) {
         targetClass.withCString { source in
-            _ = function(
-                Int64(node), x, y, Int32(modifiers), Int32(button), source)
+            recovery.check(function(
+                Int64(node), x, y, Int32(modifiers), Int32(button), source))
         }
     }
 
@@ -234,9 +244,9 @@ private final class NativeSplitRuntime {
                       modifiers: modifiers, button: button, targetClass: targetClass)
     }
 
-    func pointerEnter(node: Int) { _ = pointerEnterFunction(Int64(node)) }
+    func pointerEnter(node: Int) { recovery.check(pointerEnterFunction(Int64(node))) }
 
-    func pointerLeave(node: Int) { _ = pointerLeaveFunction(Int64(node)) }
+    func pointerLeave(node: Int) { recovery.check(pointerLeaveFunction(Int64(node))) }
 
     func contextMenuPress(node: Int, x: Double, y: Double, modifiers: Int, button: Int, targetClass: String) {
         pointerDetail(contextMenuPressFunction, node: node, x: x, y: y,
@@ -251,8 +261,8 @@ private final class NativeSplitRuntime {
         identifier.withCString { identifierSource in
             name.withCString { nameSource in
                 json.withCString { jsonSource in
-                    _ = extensionEventFunction(
-                        Int64(node), identifierSource, nameSource, jsonSource)
+                    recovery.check(extensionEventFunction(
+                        Int64(node), identifierSource, nameSource, jsonSource))
                 }
             }
         }
@@ -293,6 +303,9 @@ private final class SplitDemoHost: NSObject, NSApplicationDelegate, NSWindowDele
     private let backend: LUIAppleBackend
     private let content = NSView()
     private var runtime: NativeSplitRuntime?
+    #if DEBUG
+    private var agentServer: LUIAgentServer?
+    #endif
     private var window: NSWindow?
     private var hostedRootID: Int?
 
@@ -314,6 +327,7 @@ private final class SplitDemoHost: NSObject, NSApplicationDelegate, NSWindowDele
             self.runtime = runtime
             activeHost = self
             backend.onEvent = { [weak self] event in
+                defer { self?.runtime?.clock.reschedule() }
                 switch event {
                 case let .appear(node):
                     self?.runtime?.appear(node: node)
@@ -371,6 +385,12 @@ private final class SplitDemoHost: NSObject, NSApplicationDelegate, NSWindowDele
             }
             makeWindow()
             try runtime.start()
+            #if DEBUG
+            agentServer = try LUIAgentServer.startFromEnvironment { request in
+                defer { runtime.clock.reschedule() }
+                return runtime.agent.answer(request)
+            }
+            #endif
             window?.makeKeyAndOrderFront(nil)
             if #available(macOS 14.0, *) {
                 NSApplication.shared.activate()
@@ -388,6 +408,10 @@ private final class SplitDemoHost: NSObject, NSApplicationDelegate, NSWindowDele
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        #if DEBUG
+        agentServer?.stop()
+        agentServer = nil
+        #endif
         runtime?.stop()
         runtime = nil
         activeHost = nil
@@ -395,7 +419,11 @@ private final class SplitDemoHost: NSObject, NSApplicationDelegate, NSWindowDele
 
     func apply(json: String) {
         do {
-            try backend.apply(json: json)
+            if runtime?.recovery.isReceivingSnapshot == true {
+                try backend.applySnapshot(json: json)
+            } else {
+                try backend.apply(json: json)
+            }
             refreshRoot()
         } catch {
             present(error: error)

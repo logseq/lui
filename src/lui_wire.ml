@@ -215,8 +215,47 @@ let d_sep_or_end c close =
   | ch when ch = close -> c.d_pos <- c.d_pos + 1; `Done
   | _ -> dfail (Printf.sprintf "expected ',' or %C" close)
 
-(* One op object into a (name, scalar) assoc. Op objects never nest —
-   the only array/object in the format is the batch's own ops list. *)
+(* Unknown fields are skipped wholesale, including objects and arrays a
+   newer encoder may add. Known fields stay scalars. *)
+let rec d_skip_value c =
+  match d_peek c with
+  | '"' -> ignore (d_string c)
+  | 't' -> c.d_pos <- Lui_json.expect c.d_src c.d_pos "true"
+  | 'f' -> c.d_pos <- Lui_json.expect c.d_src c.d_pos "false"
+  | 'n' -> c.d_pos <- Lui_json.expect c.d_src c.d_pos "null"
+  | '-' | '0' .. '9' -> ignore (d_lexeme c)
+  | '{' ->
+    c.d_pos <- c.d_pos + 1;
+    d_skip_members c '}'
+  | '[' ->
+    c.d_pos <- c.d_pos + 1;
+    d_skip_members c ']'
+  | _ -> dfail "unsupported value kind"
+
+and d_skip_members c close =
+  let rec loop () =
+    match d_peek c with
+    | ch when ch = close -> c.d_pos <- c.d_pos + 1
+    | _ ->
+      if close = '}' then begin
+        ignore (d_string c);
+        d_expect_char c ':'
+      end;
+      d_skip_value c;
+      match d_sep_or_end c close with
+      | `More -> loop ()
+      | `Done -> ()
+  in
+  loop ()
+
+let op_scalar_field = function
+  | "op" | "id" | "kind" | "identifier" | "fingerprint" | "property" | "value"
+  | "parent" | "child" | "index" ->
+    true
+  | _ -> false
+
+(* One op object into a (name, scalar) assoc. Known fields are scalars.
+   Unknown fields may be nested JSON and are ignored. *)
 let d_fields c =
   d_expect_char c '{';
   let rec loop acc =
@@ -225,8 +264,13 @@ let d_fields c =
     | '"' ->
       let name = d_string c in
       d_expect_char c ':';
-      let value = d_value c in
-      let acc = (name, value) :: acc in
+      let acc =
+        if op_scalar_field name then (name, d_value c) :: acc
+        else begin
+          d_skip_value c;
+          acc
+        end
+      in
       (match d_sep_or_end c '}' with
       | `More -> loop acc
       | `Done -> List.rev acc)
@@ -373,8 +417,9 @@ let decode_batch source =
           | None -> dfail "generation must be an integer")
         | _ -> dfail "generation must be a number")
       (* Forward compatibility: a newer encoder's extra fields are
-         skipped, like a foreign host's JSON layer would. *)
-      | _, _ -> ignore (d_value c));
+         skipped, including nested objects and arrays, like a foreign
+         host's JSON layer would. *)
+      | _, _ -> d_skip_value c);
       (match d_sep_or_end c '}' with
       | `More -> fields ()
       | `Done -> ())

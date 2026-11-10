@@ -28,6 +28,340 @@ TextField("Email address", text: $email)
     .luiInputSurface(isFocused: focused)
 ```
 
+## Unreleased: one lui-agent protocol on every host
+
+Scripts and coding agents can now drive a running app the same way on MyGo,
+Apple, Android and Web. The shared OCaml runtime answers every request, so
+each host only carries strings.
+
+A request is one flat JSON object with an `op`. The reply is one JSON object
+with `ok`:
+
+```json
+{"op":"press","selector":"prop:accessibility-identifier=save"}
+{"ok":true,"op":"press","node":42}
+```
+
+The protocol has these parts:
+
+- **Ops.** `hello`, `tree`, `dump`, `find`, `prop`, `press`, `long-press`,
+  `double-press`, `submit`, `dismiss`, `appear`, `change`, `type`, `toggle`,
+  `value`, `key` and `ext`. `hello` reports `protocol` (`"lui-agent"`),
+  `version` (`1`), `host`, `generation` and `ops`.
+- **Selectors.** They use the Drive scenario grammar: `id:N`, `kind:name`,
+  `ext:identifier`, `text:needle`, `prop:name=value` and `prop:name=prefix*`,
+  joined with `&`. A bare number is an id and a bare word is a text needle.
+- **Gestures.** `press`, `long-press` and `double-press` go to the nearest
+  ancestor that handles them. Every other action requires the selected node
+  itself to handle the event.
+- **Rejected requests.** A malformed request, unknown op, missing node or
+  unsupported event gets `{"ok":false,"error":...}` and changes nothing.
+- **Refused requests.** If an application handler raises, the call is refused
+  in phase `agent`, the same way a refused native event is. Hosts answer
+  `{"ok":false,"refused":true,"error":...,"diagnostic":{...}}`.
+- **Patches.** An action's patch batches reach the host's normal patch path
+  before the reply.
+- **Clock.** An action may arm or cancel application-clock timers, so every
+  native host re-reads the clock's next delay after each agent request, as it
+  does after an event.
+
+The new APIs, by layer:
+
+- **OCaml.** `Lui_agent.handle`, `Lui_agent.app_target` and `Lui_agent.target`.
+  `Lui_native_bridge.agent bridge request` answers through a started bridge,
+  and `register` adds `<prefix>_agent` (for example `lui_kotlin_agent`).
+- **C ABI.** Two new exports:
+
+  ```c
+  int32_t lui_ocaml_agent_utf8(const char *request, int32_t length,
+                               void (*reply)(const char *json));
+  int32_t lui_ocaml_agent(const char *request, void (*reply)(const char *json));
+  ```
+
+  Both return `1` when answered, including `{"ok":false}` replies. They return
+  `0` when refused; in that case read `lui_ocaml_last_error` and resync as
+  after any refused call. The batches go to the patch callback given to
+  `lui_ocaml_start`, then `reply` receives the reply object.
+- **MyGo.** `(*Runtime).Agent(request) (string, error)` applies the batches and
+  resyncs after a refusal. `ServeAgent(address, onUI)` and
+  `ServeAgentFromEnv(onUI)` serve one loopback TCP client, one line per
+  request, with lines capped at 1 MiB. `cmd/lui-mygo` listens when
+  `LUI_AGENT_LISTEN=127.0.0.1:PORT` is set.
+
+  ```go
+  server, err := runtime.ServeAgentFromEnv(func(fn func()) {
+      mygo.RunOnMain(func() { fn(); window.Invalidate() })
+  })
+  ```
+
+- **Android.**
+  - `LuiBridge.agent(request): String` blocks until the OCaml thread answers
+    and queues the batches for the sink.
+  - The JNI library exports `nativeAgent`.
+  - `LuiAgentServer.start(port, answer)` serves the same line protocol on loopback. `answer` defaults to `LuiBridge.agent`.
+  - The Components app starts it only in debug builds launched with
+    `--ei lui-agent-port PORT`. The debug manifest adds `INTERNET`.
+    Reach it with `adb forward tcp:PORT tcp:PORT`.
+
+  ```kotlin
+  val server = LuiAgentServer.start(port = 49380)  // after LuiBridge.start
+  ```
+
+- **Apple.**
+  - `LUINativeAgent(library:recovery:)` (or `init(agent:recovery:)` with an
+    `@_silgen_name` closure) answers requests and recovers refusals.
+  - `LUIAgentServer.startFromEnvironment(answer:)` serves loopback TCP on the
+    main queue when `LUI_AGENT_LISTEN` is set.
+  - `LUINativeRefusalRecovery.recover(_:)` is `check(_:)` returning the
+    failure.
+  - The Todos, Split, Markdown, Components and Navigation hosts start the
+    server in DEBUG builds. On the simulator, pass
+    `SIMCTL_CHILD_LUI_AGENT_LISTEN=127.0.0.1:PORT` to `simctl launch`.
+
+  ```swift
+  let agent = LUINativeAgent(library: handle, recovery: recovery)
+  agentServer = try LUIAgentServer.startFromEnvironment { agent.answer($0) }
+  ```
+
+- **Web.**
+  - `Lui_web_agent.install target` sets `window.__luiAgent`.
+  - When the page URL carries `?lui-agent=ws://127.0.0.1:PORT` (or
+    `ws://localhost:PORT`), it dials that socket and answers each text frame.
+    Other hosts are ignored.
+  - A raising handler is answered as a refusal rather than thrown.
+  - The Components and Chat pages install it.
+
+  ```ocaml
+  Lui_web_agent.install (Lui_agent.app_target ~host:"web" app)
+  ```
+
+### Refusing to drive a stale build
+
+`tooling/lui_agent.mjs` is the client for every host. It accepts
+`--tcp HOST:PORT` or `--ws-listen PORT`, and runs Drive-vocabulary script lines
+(`press`, `type`, `toggle`, `expect`, `wait`, `expect-prop`, `dump`, …),
+reporting every failing line.
+
+The build scripts now write `<artifact>.lui-build.json`. It holds the
+artifact digest and the sha256 of every input file. The scripts that write it
+are:
+
+- the MyGo Todos and Components builds;
+- the Android and iOS Components builds;
+- the Navigation simulator build;
+- the macOS `build-app.sh` scripts;
+- `build_web_release.mjs`.
+
+`--artifact PATH` refuses to drive a build whose receipt is missing, or whose
+artifact or inputs changed. It names the command that rebuilds it and exits
+with code `3`. `--unchecked` skips the check. `node tooling/lui_build_receipt.mjs
+check --artifact PATH` runs the check alone.
+
+```sh
+components=$(./tooling/build_mygo_components.sh)
+LUI_AGENT_LISTEN=127.0.0.1:49380 go -C platform/mygo run ./cmd/lui-mygo -library "$components" &
+node tooling/lui_agent.mjs --tcp 127.0.0.1:49380 --artifact "$components" \
+  'press prop:accessibility-identifier=events-button' 'expect "text:Event: press"'
+```
+
+### Compatibility
+
+Every server is opt-in and listens on loopback only, so apps that do not set
+`LUI_AGENT_LISTEN`, pass the Android extra or call `install` behave as before.
+
+The wire format, events and existing exports are unchanged. Hosts that load
+the library with `dlopen` resolve `lui_ocaml_agent_utf8` optionally; a
+`LUINativeAgent` without it answers every request with an error.
+
+## Unreleased: wire batches skip unknown nested fields
+
+`Lui_wire.decode_batch` still rejects malformed tokens, unknown operations,
+unknown node kinds, and unknown properties. Extra object fields — on the
+batch or on an operation — are now ignored when their names are not part of
+the operation schema, including nested objects, arrays, and null. Previously
+only extra scalars were skipped, so a newer encoder's object field failed
+the OCaml decoder while MyGo accepted it.
+
+Canonical encoder bytes are unchanged. Required fields stay scalars:
+`"value": {"nested": true}` is still rejected. Duplicate keys are unchanged
+(the first operation field wins; the last `generation` wins). Hosts that
+want the MyGo duplicate-key rule should not emit duplicate keys; the shared
+fixtures use unique keys.
+
+```ocaml
+let batch =
+  Lui_wire.decode_batch
+    {|{"schemaVersion":1,"meta":{"nested":[1]},"generation":1,"ops":[{"op":"drop-node","id":1,"trace":{"ok":true}}]}|}
+(* generation = 1, ops = [DropNode 1] *)
+```
+
+## Unreleased: controllable application clock
+
+Views schedule time-based work with `Lui_ui.after context ms action` and
+`Lui_ui.every context ms action`. Both return a `Lui_clock.timer`, run on the
+application's `Lui_clock.t` (`Lui_app.clock app`) and are cancelled when the
+owning view scope is disposed; `Lui_clock.cancel` stops one earlier. Actions run
+on the runtime thread like event handlers, so they may `send` directly:
+
+```ocaml
+let upload_button send : t =
+  scoped (fun context ->
+    let timer = ref None in
+    button ~text:"Simulate upload"
+      ~on_press:(fun _ ->
+        Option.iter Lui_clock.cancel !timer;
+        timer := Some (Lui_ui.every context 300. (fun () ->
+          ignore (send Advance))))
+      [])
+```
+
+Replace host-side `setTimeout`/`DispatchQueue`/`Handler` loops that only feed
+actions back into the model with these timers: they become deterministic under
+Drive and tests. Existing apps need no changes; a clock without timers costs
+nothing and never wakes a host.
+
+Time is in milliseconds (float). Host time only moves forward; the first
+`Lui_clock.tick` anchors the clock without firing anything. `Lui_clock.pause`
+makes host ticks no-ops, `Lui_clock.advance clock ms` moves simulated time and
+fires due timers even while paused, and `Lui_clock.settle` fires every pending
+timer (raising after 10,000 firings to stop runaway `every` loops). Time cannot
+move from inside a timer action (`Invalid_argument`).
+
+Host contract, implemented by every maintained host in this release:
+
+- Native C ABI: new exports `lui_ocaml_clock_tick(double now_ms)`,
+  `lui_ocaml_clock_advance(double ms)`, `lui_ocaml_clock_set_paused(int32_t)`
+  and `double lui_ocaml_clock_next_delay(void)` (negative when nothing is due,
+  paused or not started). After every call into the runtime the host reads
+  `next_delay`, arms one wakeup and calls `clock_tick` with monotonic
+  milliseconds when it fires. Bridges built with `Lui_native_bridge.register`
+  get the OCaml side automatically.
+- MyGo: `OpenRuntime` binds the four symbols when all are present (older
+  libraries keep working without timers), arms a `time.AfterFunc` that only
+  invalidates the window and ticks in the next frame. New
+  `Runtime.AdvanceClock(ms)` and `Runtime.SetClockPaused(bool)`.
+- Android: `LuiBridge` reschedules a `Handler.postAtTime` wakeup on the
+  `lui-ocaml` thread after every dispatch, ticking with
+  `SystemClock.uptimeMillis()`. New JNI exports `nativeClockTick`,
+  `nativeClockAdvance`, `nativeClockSetPaused`, `nativeClockNextDelay` and
+  public `LuiBridge.advanceClock(ms)` / `LuiBridge.setClockPaused(paused)`.
+  Custom JNI libraries must compile the updated `lui_jni_bridge.c`.
+- Apple: new `LUIRuntimeClock` in `LUIAppleBackend`. Create it with
+  `LUIRuntimeClock(library: handle)` for `dlopen` hosts or
+  `LUIRuntimeClock(tick:nextDelay:)` with `@_silgen_name` functions, call
+  `reschedule()` after starting the runtime and after every runtime call
+  (typically `defer { clock.reschedule() }` at the top of `backend.onEvent`),
+  and `cancel()` before `lui_ocaml_stop`:
+
+  ```swift
+  let clock = LUIRuntimeClock(library: handle)
+  backend.onEvent = { event in
+      defer { clock.reschedule() }
+      // existing dispatch
+  }
+  ```
+
+- Web/Melange: call `Lui_web.drive_clock app` once after `Lui_app.start`. It
+  ticks from `performance.now()` with one armed timeout and flushes after each
+  tick, using the new `Lui_clock.set_wakeup` hook.
+- A timer action that raises is a refused call with phase `clock`: every
+  native host routes tick results through its existing refusal recovery
+  (diagnostic plus resync), exactly as for a refused event.
+- In-process apps (tests, custom hosts) call `Lui_app.tick_clock app ~now` or
+  `Lui_app.advance_clock app ms`, then `Lui_app.flush`, or register a
+  `Lui_clock.set_wakeup` callback.
+
+Drive scenarios gain `clock pause`, `clock resume`, `clock advance <duration>`
+(`250`, `250ms`, `1.5s`) and `clock settle`. In-process sessions support all
+four; FFI targets support all but `settle` and report the missing exports for
+libraries built before this release; live websocket targets report the
+command as unsupported.
+
+## Unreleased: native bridge reports refused calls
+
+When OCaml raises while a native bridge boots, dispatches an event, resyncs or
+disposes, the C entry still returns `0` and delivers no batch. The bridge now
+also records a diagnostic, and the new export returns it:
+
+```c
+int32_t lui_ocaml_last_error(void (*receiver)(const char *json));
+```
+
+It hands `receiver` one JSON object, clears it, and returns `1`; it returns `0`
+when no diagnostic is pending. A later accepted call also clears it.
+
+```json
+{"bridge":"Todos","phase":"dispatch","node":42,
+ "message":"invalid property value ...","recovery":"resync"}
+```
+
+`phase` is `boot`, `dispatch`, `resync` or `dispose`; `node` is present for a
+dispatch. Batches recorded before the exception are discarded, so the host
+mirror is stale: report the message, then call `lui_ocaml_resync` and apply its
+snapshot rather than keep rendering what mounted before the throw. The bridge
+still prints the exception to stderr.
+
+The wire format, existing exports and return codes are unchanged. A host that
+does not adopt the export keeps its old behavior. Resolve the symbol
+optionally to stay compatible with older libraries. A `0` without a pending
+diagnostic is argument validation in C, which records no patches and needs no
+resync. OCaml callers can read the same record with
+`Lui_native_bridge.last_failure` and `take_failure`. Bridges registered with
+`Lui_native_bridge.register` gain `<prefix>_last_error` automatically, so
+`lui_kotlin_last_error` exists for JNI.
+
+Every maintained host now consumes it:
+
+- **MyGo**: `Runtime.Dispatch` returns a `*luimygo.RuntimeError` (`Phase`,
+  `Node`, `Message`) and resyncs before returning. Initialization failures
+  wrap the same error.
+
+  ```go
+  var failure *luimygo.RuntimeError
+  if errors.As(runtime.Dispatch(event), &failure) {
+      log.Printf("LUI %s failed at node %v: %s", failure.Phase, failure.Node, failure.Message)
+  }
+  ```
+
+- **Android**: `LuiBridge` logs the failure, requests a snapshot through the
+  existing resync path and notifies the optional `LuiBridge.failureListener` on
+  the main thread with a `LuiRuntimeFailure`. A failed `start` reports its
+  diagnostic the same way. The JNI library exports `nativeLastError()`.
+
+  ```kotlin
+  LuiBridge.failureListener = LuiBridge.FailureListener { failure ->
+      showError("${failure.phase} failed: ${failure.message}")
+  }
+  ```
+
+- **Apple**: `LUIAppleBackend.applySnapshot(json:)` replaces the retained tree
+  with a `lui_ocaml_resync` batch. `apply(json:)` drops that batch as stale
+  because it reuses the current generation. `LUINativeRefusalRecovery` wraps the
+  two exports for hosts that load the C ABI themselves, and the Todos, Split,
+  Markdown, Components and Navigation hosts use it. Hosts that resync outside
+  this helper must use `applySnapshot` as well.
+
+  ```swift
+  let recovery = LUINativeRefusalRecovery(library: handle)  // or closures over @_silgen_name exports
+  recovery.check(pressFunction(Int64(node)))
+
+  func apply(json: String) throws {
+      if recovery.isReceivingSnapshot {
+          try backend.applySnapshot(json: json)
+      } else {
+          try backend.apply(json: json)
+      }
+  }
+  ```
+
+- **Drive**: the FFI driver fails the scenario line with the diagnostic, for
+  example `target refused dispatch at node #1: …`, and rebuilds its model from
+  a resync snapshot. `Drive.Model.clear` empties a model before a snapshot.
+
+- **Web/Melange** runs OCaml in-process and has no C boundary. Exceptions
+  still surface as uncaught JavaScript errors and no patches are dropped, so
+  nothing changes there.
+
 ## Unreleased: independent flex shrink on Web and MyGo
 
 `row`, `column` and `box` accept `?shrink:float`. The typed `ShrinkValue`

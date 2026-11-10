@@ -10,6 +10,14 @@ open Lui_protocol
    press resolved against host-reported frames — only live attach has
    them; other drivers report an error. [frames] exposes the latest
    reported frames for `dump-frames`. *)
+type clock_command =
+  | Clock_pause
+  | Clock_resume
+  | Clock_advance of float  (* milliseconds *)
+  | Clock_settle
+
+(* [clock] steps the app's Lui_clock. In-process and FFI drivers have no
+   host ticks, so app time moves only through these commands. *)
 type driver = {
   tree : Model.t;
   send_event : event -> unit;
@@ -19,9 +27,12 @@ type driver = {
   (* live attach only: ask the host page to navigate (location.hash).
      In-process drivers have no location; this is a no-op there. *)
   send_nav : string -> unit;
+  clock : clock_command -> (unit, string) result;
 }
 
 let no_frames () = []
+
+let clock_unsupported _ = Error "clock control is not supported by this driver"
 
 let tap_unsupported ~x:_ ~y:_ =
   Error "coordinate tap needs host-reported frames (live attach only)"
@@ -71,6 +82,16 @@ let value_changed s node v = dispatch s (ValueChanged (node, v))
 let extension_event s ~node ~identifier ~name ~fields =
   dispatch s (ExtensionEvent (node, identifier, name, fields))
 
+let clock s command =
+  let clock = Lui_app.clock s.app in
+  (match command with
+   | Clock_pause -> Lui_clock.pause clock
+   | Clock_resume -> Lui_clock.resume clock
+   | Clock_advance ms -> ignore (Lui_app.advance_clock s.app ms : int)
+   | Clock_settle -> ignore (Lui_clock.settle clock : int));
+  poll s;
+  Ok ()
+
 let read_model s = Lui_app.model s.app
 let root_node s = Lui_app.root_node s.app
 
@@ -82,6 +103,7 @@ let driver s =
     tap = tap_unsupported;
     frames = no_frames;
     send_nav = (fun _ -> ());
+    clock = clock s;
   }
 
 let dispose s = ignore (Lui_app.dispose s.app)

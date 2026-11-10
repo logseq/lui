@@ -25,6 +25,9 @@ class Runtime:
         )
         self.nodes = {}
         self.version = None
+        self.last_error = None
+        self.agent_reply = None
+        self.delay = None
         assert self.receive() == 1
 
     def receive(self, snapshot=False):
@@ -33,12 +36,18 @@ class Runtime:
             assert line, f"JVM exited unexpectedly: {self.process.poll()}"
             if line.startswith("VERSION "):
                 self.version = int(line[8:])
+            elif line.startswith("DELAY "):
+                self.delay = float(line[6:])
             elif line.startswith("PATCH "):
                 batch = json.loads(line[6:])
                 if snapshot:
                     self.nodes = {}
                 for op in batch["ops"]:
                     self.apply(op)
+            elif line.startswith("ERROR "):
+                self.last_error = None if line[6:].strip() == "null" else json.loads(line[6:])
+            elif line.startswith("AGENT "):
+                self.agent_reply = None if line[6:].strip() == "null" else json.loads(line[6:])
             elif line.startswith("RESULT "):
                 return int(line[7:])
 
@@ -76,6 +85,10 @@ class Runtime:
         self.process.stdin.write(command + "\n")
         self.process.stdin.flush()
         return self.receive(snapshot)
+
+    def next_delay(self):
+        assert self.call("clocknext") == 1
+        return self.delay
 
     def named(self, name):
         return next(node_id for node_id, node in self.nodes.items()
@@ -155,11 +168,48 @@ def run(fixture):
                     assert runtime.call(command) == 0, command
                 assert runtime.call("resync", snapshot=True) == 1
                 assert len(runtime.nodes) < 150
-                assert runtime.call(f"press {runtime.named('sparse-clear')}") == 1
+                assert runtime.call(f"badext {list_id}") == 0
+                assert runtime.call("lasterror") == 1
+                failure = runtime.last_error
+                assert failure["phase"] == "dispatch" and failure["node"] == list_id, failure
+                assert failure["recovery"] == "resync", failure
+                assert "invalid extension event payload" in failure["message"], failure
+                assert runtime.call("lasterror") == 0 and runtime.last_error is None
+                assert runtime.call("resync", snapshot=True) == 1
+                assert runtime.nodes[list_id]["props"]["virtual-total-count"] == 100000
+                assert runtime.call('agent {"op":"hello"}') == 1
+                assert runtime.agent_reply["protocol"] == "lui-agent", runtime.agent_reply
+                assert runtime.call("agent nope") == 1
+                assert runtime.agent_reply["ok"] is False and "bad request" in runtime.agent_reply["error"]
+                assert runtime.call('agent {"op":"press","selector":"prop:accessibility-identifier=sparse-clear"}') == 1
+                assert runtime.agent_reply == {"ok": True, "op": "press", "node": runtime.named("sparse-clear")}
                 assert runtime.nodes[list_id]["props"]["virtual-total-count"] == 0
                 assert runtime.nodes[list_id]["children"] == []
                 assert len(runtime.nodes) < 30
-                print("PASS: real JNI/OCaml 100000-row load, bounded windows, far pin, reorder identity, stale generation, invalid arrays, resync and clear")
+                print("PASS: real JNI/OCaml 100000-row load, bounded windows, far pin, reorder identity, stale generation, invalid arrays, resync, refusal diagnostics and clear")
+                print("PASS: real JNI/OCaml lui-agent hello, rejected request and a press whose patches precede the reply")
+                status = runtime.named("clock-status")
+                value = lambda: runtime.nodes[status]["props"]["text"]
+                assert value() == "idle"
+                assert runtime.next_delay() < 0
+                assert runtime.call(f"press {runtime.named('clock-arm')}") == 1
+                assert value() == "armed"
+                assert runtime.next_delay() == 500
+                # The first host tick anchors host time; later ticks move it.
+                assert runtime.call("clocktick 10000") == 1
+                assert runtime.call("clocktick 10499") == 1
+                assert value() == "armed" and runtime.next_delay() == 1
+                assert runtime.call("clocktick 10500") == 1
+                assert value() == "expired" and runtime.next_delay() < 0
+                assert runtime.call(f"press {runtime.named('clock-arm')}") == 1
+                assert runtime.call("clockpause 1") == 1
+                assert runtime.next_delay() < 0
+                assert runtime.call("clocktick 99999") == 1
+                assert value() == "armed"
+                assert runtime.call("clockadvance 500") == 1
+                assert value() == "expired"
+                assert runtime.call("clockpause 0") == 1
+                print("PASS: real JNI/OCaml clock next delay, host ticks, pause and advance")
             finally:
                 runtime.close()
 

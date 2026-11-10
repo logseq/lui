@@ -49,6 +49,19 @@ private func luiOCamlVirtualWindow(_ node: Int64, _ generation: Int64, _ first: 
 private func luiOCamlVisibleRange(_ node: Int64, _ first: Int64, _ last: Int64) -> Int32
 @_silgen_name("lui_ocaml_scroll_completed")
 private func luiOCamlScrollCompleted(_ node: Int64, _ token: Int64, _ outcome: UnsafePointer<CChar>?) -> Int32
+@_silgen_name("lui_ocaml_clock_tick")
+private func luiOCamlClockTick(_ now: Double) -> Int32
+@_silgen_name("lui_ocaml_clock_next_delay")
+private func luiOCamlClockNextDelay() -> Double
+
+@_silgen_name("lui_ocaml_last_error")
+private func luiOCamlLastError(_ receiver: PatchCallback?) -> Int32
+
+@_silgen_name("lui_ocaml_resync")
+private func luiOCamlResync() -> Int32
+
+@_silgen_name("lui_ocaml_agent_utf8")
+private func luiOCamlAgent(_ request: UnsafePointer<CChar>?, _ length: Int32, _ reply: PatchCallback?) -> Int32
 
 nonisolated(unsafe) private var activeHost: GalleryHost?
 
@@ -64,6 +77,8 @@ nonisolated(unsafe) private let receivePatch: PatchCallback = { source in
 @MainActor
 private final class GalleryHost {
     let backend: LUIAppleBackend
+    private let recovery = LUINativeRefusalRecovery(
+        lastError: { luiOCamlLastError($0) }, resync: { luiOCamlResync() })
     private(set) var rootID: Int?
     private(set) var sections: [LUIRootSection] = []
     private var started = false
@@ -75,8 +90,13 @@ private final class GalleryHost {
     private var composerChildren: [Int: Set<Int>] = [:]
     private var composerParents: [Int: Int] = [:]
     private var composerEpoch = 0
+    private let clock: LUIRuntimeClock
+    #if DEBUG
+    @ObservationIgnored private var agentServer: LUIAgentServer?
+    #endif
 
     init() {
+        clock = LUIRuntimeClock(tick: { luiOCamlClockTick($0) }, nextDelay: { luiOCamlClockNextDelay() })
         do {
             backend = try LUIAppleBackend(
                 extensionRegistry: galleryExtensionRegistry()
@@ -84,39 +104,41 @@ private final class GalleryHost {
         } catch {
             fatalError("Invalid Gallery extension registry: \(error)")
         }
+        clock.recovery = recovery
         backend.onEvent = { [weak self] event in
             guard let self else { return }
+            defer { self.clock.reschedule() }
             switch event {
-            case let .press(node): _ = luiOCamlPress(Int64(node))
-            case let .longPress(node): _ = luiOCamlLongPress(Int64(node))
+            case let .press(node): self.recovery.check(luiOCamlPress(Int64(node)))
+            case let .longPress(node): self.recovery.check(luiOCamlLongPress(Int64(node)))
             case let .textChanged(node, text):
-                text.withCString { _ = luiOCamlTextChanged(Int64(node), $0) }
-            case let .submit(node): _ = luiOCamlSubmit(Int64(node))
-            case let .dismiss(node): _ = luiOCamlDismiss(Int64(node))
+                text.withCString { self.recovery.check(luiOCamlTextChanged(Int64(node), $0)) }
+            case let .submit(node): self.recovery.check(luiOCamlSubmit(Int64(node)))
+            case let .dismiss(node): self.recovery.check(luiOCamlDismiss(Int64(node)))
             case let .picked(node, payload):
                 if self.composerPickers.contains(node) {
                     Task { await self.importComposerSelection(node: node, payload: payload) }
                 } else {
-                    payload.withCString { _ = luiOCamlPicked(Int64(node), $0) }
+                    payload.withCString { self.recovery.check(luiOCamlPicked(Int64(node), $0)) }
                 }
-            case let .doublePress(node): _ = luiOCamlDoublePress(Int64(node))
+            case let .doublePress(node): self.recovery.check(luiOCamlDoublePress(Int64(node)))
             case let .toggleChanged(node, checked):
-                _ = luiOCamlToggleChanged(Int64(node), checked ? 1 : 0)
-            case let .change(node): _ = luiOCamlRadioChanged(Int64(node))
+                self.recovery.check(luiOCamlToggleChanged(Int64(node), checked ? 1 : 0))
+            case let .change(node): self.recovery.check(luiOCamlRadioChanged(Int64(node)))
             case let .valueChanged(node, value):
-                _ = luiOCamlSliderChanged(Int64(node), value)
-            case let .appear(node): _ = luiOCamlAppear(Int64(node))
+                self.recovery.check(luiOCamlSliderChanged(Int64(node), value))
+            case let .appear(node): self.recovery.check(luiOCamlAppear(Int64(node)))
             case .extension:
                 assertionFailure("Gallery extensions do not declare LG events")
             case let .virtualWindow(node, generation, first, last, pins):
                 let ids = pins.map(Int64.init)
                 ids.withUnsafeBufferPointer {
-                    _ = luiOCamlVirtualWindow(Int64(node), Int64(generation), Int64(first), Int64(last), $0.baseAddress, Int32($0.count))
+                    self.recovery.check(luiOCamlVirtualWindow(Int64(node), Int64(generation), Int64(first), Int64(last), $0.baseAddress, Int32($0.count)))
                 }
             case let .scrollCompleted(node, token, outcome):
-                outcome.withCString { _ = luiOCamlScrollCompleted(Int64(node), Int64(token), $0) }
+                outcome.withCString { self.recovery.check(luiOCamlScrollCompleted(Int64(node), Int64(token), $0)) }
             case let .visibleRange(node, first, last):
-                _ = luiOCamlVisibleRange(Int64(node), Int64(first), Int64(last))
+                self.recovery.check(luiOCamlVisibleRange(Int64(node), Int64(first), Int64(last)))
             case .pressDetail, .pointerDown,
                  .pointerUp, .pointerEnter, .pointerLeave, .contextMenuPress:
                 break
@@ -128,14 +150,35 @@ private final class GalleryHost {
         guard !started else { return }
         activeHost = self
         guard luiOCamlStart(receivePatch, 2, luiOCamlVirtualRowsVersion() == 1 ? 258 : 2) == 1 else {
-            fatalError("LG Gallery initialization failed")
+            fatalError("LG Gallery initialization failed: \(recovery.takeFailure().map(String.init(describing:)) ?? "rejected")")
         }
+        #if DEBUG
+        let agent = LUINativeAgent(agent: { luiOCamlAgent($0, $1, $2) }, recovery: recovery)
+        do {
+            agentServer = try LUIAgentServer.startFromEnvironment { [clock] request in
+                defer { clock.reschedule() }
+                return agent.answer(request)
+            }
+        } catch {
+            fatalError("LG Gallery lui-agent: \(error)")
+        }
+        #endif
         started = true
+        clock.reschedule()
     }
 
     func apply(json: String) {
         do {
-            try backend.apply(json: json)
+            if recovery.isReceivingSnapshot {
+                try backend.applySnapshot(json: json)
+                composerPickers.removeAll()
+                pickerRequests.removeAll()
+                attachmentPaths.removeAll()
+                composerChildren.removeAll()
+                composerParents.removeAll()
+            } else {
+                try backend.apply(json: json)
+            }
             trackComposerPatch(json)
             rootID = backend.rootIDs.first
             sections = rootID.map(backend.rootSections(rootID:)) ?? []
@@ -211,14 +254,16 @@ private final class GalleryHost {
                 finishing: result?.created ?? [])
             return
         }
-        guard let batch = result else { _ = luiOCamlDismiss(Int64(node)); return }
-        batch.payload.withCString { _ = luiOCamlPicked(Int64(node), $0) }
+        defer { clock.reschedule() }
+        guard let batch = result else { self.recovery.check(luiOCamlDismiss(Int64(node))); return }
+        batch.payload.withCString { self.recovery.check(luiOCamlPicked(Int64(node), $0)) }
         await composerImports.retain(Set(attachmentPaths.values), revision: composerPatchRevision,
             finishing: batch.created)
     }
 
     func stop() {
         guard started else { return }
+        clock.cancel()
         _ = luiOCamlStop()
         started = false
         composerEpoch += 1

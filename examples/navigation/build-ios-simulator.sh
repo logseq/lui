@@ -39,4 +39,12 @@ cat > "$app/Info.plist" <<'PLIST'
 </dict></plist>
 PLIST
 codesign --force --sign - "$app"
+# Records what the app was built from, so tooling/lui_agent.mjs refuses to
+# drive it once its sources change. Builds without Node skip the receipt.
+if command -v node >/dev/null 2>&1; then
+  node tooling/lui_build_receipt.mjs write --root "$repo" --artifact "$app" \
+    --command "bash examples/navigation/build-ios-simulator.sh" \
+    --input src --input ppx --input examples/navigation --input platform/apple --input platform/bridge >&2 \
+    || echo "warning: could not write a build receipt for $app" >&2
+fi
 printf '%s\n' "$app"

@@ -391,6 +391,80 @@ LUI_EXPORT int32_t lui_ocaml_resync(void) {
   return accepted;
 }
 
+/* After any call returns 0: hands `receiver` one JSON object
+   {"bridge","phase","node"?,"message","recovery":"resync"} describing the
+   OCaml failure, then clears it. Returns 1 when a diagnostic was delivered.
+   The host mirror is stale after such a failure; call lui_ocaml_resync. */
+LUI_EXPORT int32_t lui_ocaml_last_error(lui_patch_callback receiver) {
+  int32_t found;
+  caml_leave_blocking_section();
+  found = lui_dispatch_last_error("lui_ocaml_last_error", receiver);
+  caml_enter_blocking_section();
+  return found;
+}
+
+/* Application clock. The host owns only the wakeup: after any call, read
+   lui_ocaml_clock_next_delay and, when it is >= 0, call
+   lui_ocaml_clock_tick with its monotonic time in milliseconds once that
+   many milliseconds have passed. Timer patches are delivered like an
+   event's. A driver pauses the clock to make host ticks no-ops and steps it
+   with lui_ocaml_clock_advance. */
+LUI_EXPORT int32_t lui_ocaml_clock_tick(double now_ms) {
+  int32_t accepted;
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_double("lui_ocaml_clock_tick", now_ms, deliver);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
+LUI_EXPORT int32_t lui_ocaml_clock_advance(double ms) {
+  int32_t accepted;
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_double("lui_ocaml_clock_advance", ms, deliver);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
+LUI_EXPORT int32_t lui_ocaml_clock_set_paused(int32_t paused) {
+  int32_t accepted;
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_bool("lui_ocaml_clock_set_paused", paused, deliver);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
+/* Milliseconds until the next lui_ocaml_clock_tick is due; negative when
+   no timer is pending, the clock is paused or the app is not started. */
+LUI_EXPORT double lui_ocaml_clock_next_delay(void) {
+  double delay;
+  caml_leave_blocking_section();
+  delay = lui_dispatch_query_double("lui_ocaml_clock_next_delay", -1.0);
+  caml_enter_blocking_section();
+  return delay;
+}
+
+/* Agent channel: one lui-agent request, a flat JSON object such as
+   {"op":"press","selector":"text:Save"}. Patch batches produced by the
+   request's action go to the patch callback given to lui_ocaml_start, then
+   `reply` receives the reply object. Returns 1 when answered, including
+   {"ok":false,...}, and 0 when the request was refused: read
+   lui_ocaml_last_error and resync as after any refused call. */
+LUI_EXPORT int32_t lui_ocaml_agent_utf8(const char *request, int32_t length,
+                                        lui_patch_callback reply) {
+  int32_t accepted;
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_agent("lui_ocaml_agent", request, length, reply,
+                                deliver);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
+LUI_EXPORT int32_t lui_ocaml_agent(const char *request,
+                                   lui_patch_callback reply) {
+  return lui_ocaml_agent_utf8(
+      request, request != NULL ? (int32_t)strlen(request) : 0, reply);
+}
+
 LUI_EXPORT int64_t lui_ocaml_root_node(void) {
   int64_t node;
   caml_leave_blocking_section();

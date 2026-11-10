@@ -16,9 +16,13 @@ violation mid-emit yields a *partial* op stream and the host renders whatever
 mounted before the throw — typically a blank or half-blank screen with **zero
 error output**.
 
-- Diagnose by printing `caml_format_exception` in the host's emit bridge and
-  checking whether the emitted op count per extension node matches what the
-  Swift view expects.
+- Diagnose with `lui_ocaml_last_error(receiver)` after any call returns 0: it
+  delivers `{"phase","node","message","recovery":"resync"}` for the failure.
+  Then call `lui_ocaml_resync` and apply the snapshot with
+  `LUIAppleBackend.applySnapshot(json:)` (plain `apply` drops it as stale), so
+  the host does not keep the half-mounted tree. `LUINativeRefusalRecovery`
+  does all three; wrap every bridge call in `recovery.check(...)`. The bridge
+  also prints the exception to stderr.
 - Runtime validation errors carry details only when built with detailed
   messages (kind/property/value and parent/child kinds). If you see bare
   `invalid_arg "invalid property value"` / `"unsupported child kind"`, you're

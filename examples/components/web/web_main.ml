@@ -619,6 +619,8 @@ let main host =
        Lui_app.flush app));
   ignore (Lui_app.start app);
   ignore (Lui_app.flush app);
+  Lui_web.drive_clock app;
+  Lui_web_agent.install (Lui_agent.app_target ~host:"web" app);
   let refresh_gallery_layout =
     mount_gallery_shell renderer (Lui_app.root_node app) host
   in

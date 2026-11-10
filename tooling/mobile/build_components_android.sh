@@ -50,6 +50,16 @@ fi
 }
 ndk_bin="$ndk_root/toolchains/llvm/prebuilt/$ndk_host/bin"
 
+# Records what the artifact was built from, so tooling/lui_agent.mjs refuses
+# to drive it once its sources change. Builds without Node skip the receipt.
+write_receipt() {
+  local tool="$repo_root/tooling/lui_build_receipt.mjs"
+  if command -v node >/dev/null 2>&1 && [[ -f $tool ]]; then
+    node "$tool" write --root "$repo_root" --artifact "$1" --command "$2" "${@:3}" >&2 \
+      || echo "warning: could not write a build receipt for $1" >&2
+  fi
+}
+
 mkdir -p "$build_dir" "$(dirname "$jni_library")"
 gallery_object=${LUI_GALLERY_OCAML_OBJECT:-}
 if [[ -z $gallery_object ]]; then
@@ -78,5 +88,9 @@ fi
   -lm -ldl -pthread
 
 "$ndk_bin/llvm-strip" --strip-unneeded "$build_dir/liblui_components.so"
+write_receipt "$build_dir/liblui_components.so" \
+  "bash tooling/mobile/build_components_android.sh" \
+  --input src --input ppx --input examples/gallery \
+  --input examples/components/native --input platform/bridge
 cp "$build_dir/liblui_components.so" "$jni_library"
 echo "$jni_library"

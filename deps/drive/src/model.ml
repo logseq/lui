@@ -58,6 +58,11 @@ type t = {
 }
 
 let create () = { nodes = Hashtbl.create 64; generation = 0 }
+
+(* Before applying a full-tree resync batch. *)
+let clear t =
+  Hashtbl.reset t.nodes;
+  t.generation <- 0
 let node_count t = Hashtbl.length t.nodes
 let generation t = t.generation
 

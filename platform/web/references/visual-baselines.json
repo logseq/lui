@@ -20,14 +20,23 @@
       "device": {
         "formFactor": "phone",
         "orientation": "portrait",
-        "viewport": { "width": 390, "height": 844 },
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
         "scale": 3
       },
       "scope": "simulator",
       "baseline": "baselines/ios-controls-phone.png",
-      "budget": { "pixelDifferenceRatio": 0.002, "maxDifferentPixels": 5000 },
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 5000
+      },
       "dom": {
-        "requiredSelectors": [".lui-button", ".lui-gallery-navigation-back"],
+        "requiredSelectors": [
+          ".lui-button",
+          ".lui-gallery-navigation-back"
+        ],
         "canvasCount": 0
       },
       "assertions": [
@@ -47,14 +56,23 @@
       "device": {
         "formFactor": "phone",
         "orientation": "portrait",
-        "viewport": { "width": 412, "height": 915 },
+        "viewport": {
+          "width": 412,
+          "height": 915
+        },
         "scale": 2.625
       },
       "scope": "simulator",
       "baseline": "baselines/android-controls-phone.png",
-      "budget": { "pixelDifferenceRatio": 0.002, "maxDifferentPixels": 5000 },
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 5000
+      },
       "dom": {
-        "requiredSelectors": [".lui-button", ".lui-gallery-navigation-back"],
+        "requiredSelectors": [
+          ".lui-button",
+          ".lui-gallery-navigation-back"
+        ],
         "canvasCount": 0
       },
       "assertions": [
@@ -74,17 +92,37 @@
       "device": {
         "formFactor": "phone",
         "orientation": "portrait",
-        "viewport": { "width": 390, "height": 844 },
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
         "scale": 3
       },
       "scope": "simulator",
       "baseline": "baselines/ios-switch-phone.png",
-      "budget": { "pixelDifferenceRatio": 0.002, "maxDifferentPixels": 5000 },
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 5000
+      },
       "dom": {
-        "requiredSelectors": [".lui-switch", ".lui-switch-control", ".lui-control-label"],
+        "requiredSelectors": [
+          ".lui-switch",
+          ".lui-switch-control",
+          ".lui-control-label"
+        ],
         "metrics": [
-          { "selector": ".lui-switch-control", "dimension": "width", "value": 51, "tolerance": 0 },
-          { "selector": ".lui-switch-control", "dimension": "height", "value": 31, "tolerance": 0 }
+          {
+            "selector": ".lui-switch-control",
+            "dimension": "width",
+            "value": 51,
+            "tolerance": 0
+          },
+          {
+            "selector": ".lui-switch-control",
+            "dimension": "height",
+            "value": 31,
+            "tolerance": 0
+          }
         ],
         "canvasCount": 0
       },
@@ -105,17 +143,37 @@
       "device": {
         "formFactor": "phone",
         "orientation": "portrait",
-        "viewport": { "width": 412, "height": 915 },
+        "viewport": {
+          "width": 412,
+          "height": 915
+        },
         "scale": 2.625
       },
       "scope": "simulator",
       "baseline": "baselines/android-switch-phone.png",
-      "budget": { "pixelDifferenceRatio": 0.002, "maxDifferentPixels": 5000 },
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 5000
+      },
       "dom": {
-        "requiredSelectors": [".lui-switch", ".lui-switch-control", ".lui-control-label"],
+        "requiredSelectors": [
+          ".lui-switch",
+          ".lui-switch-control",
+          ".lui-control-label"
+        ],
         "metrics": [
-          { "selector": ".lui-switch-control", "dimension": "width", "value": 52, "tolerance": 0 },
-          { "selector": ".lui-switch-control", "dimension": "height", "value": 32, "tolerance": 0 }
+          {
+            "selector": ".lui-switch-control",
+            "dimension": "width",
+            "value": 52,
+            "tolerance": 0
+          },
+          {
+            "selector": ".lui-switch-control",
+            "dimension": "height",
+            "value": 32,
+            "tolerance": 0
+          }
         ],
         "canvasCount": 0
       },
@@ -136,17 +194,36 @@
       "device": {
         "formFactor": "phone",
         "orientation": "portrait",
-        "viewport": { "width": 390, "height": 844 },
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
         "scale": 3
       },
       "scope": "simulator",
       "baseline": "baselines/ios-bottom-tabs-phone.png",
-      "budget": { "pixelDifferenceRatio": 0.002, "maxDifferentPixels": 5000 },
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 5000
+      },
       "dom": {
-        "requiredSelectors": [".lui-bottom-tabs", ".lui-bottom-tabs-bar", "[role=tabpanel]:not([hidden])"],
-        "roleCounts": { "tablist": 1, "tab": 3, "tabpanel": 3 },
+        "requiredSelectors": [
+          ".lui-bottom-tabs",
+          ".lui-bottom-tabs-bar",
+          "[role=tabpanel]:not([hidden])"
+        ],
+        "roleCounts": {
+          "tablist": 1,
+          "tab": 3,
+          "tabpanel": 3
+        },
         "metrics": [
-          { "selector": ".lui-bottom-tabs-bar", "dimension": "height", "value": 64, "tolerance": 0 }
+          {
+            "selector": ".lui-bottom-tabs-bar",
+            "dimension": "height",
+            "value": 64,
+            "tolerance": 0
+          }
         ],
         "canvasCount": 0
       },
@@ -167,17 +244,36 @@
       "device": {
         "formFactor": "phone",
         "orientation": "portrait",
-        "viewport": { "width": 412, "height": 915 },
+        "viewport": {
+          "width": 412,
+          "height": 915
+        },
         "scale": 2.625
       },
       "scope": "simulator",
       "baseline": "baselines/android-bottom-tabs-phone.png",
-      "budget": { "pixelDifferenceRatio": 0.002, "maxDifferentPixels": 5000 },
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 5000
+      },
       "dom": {
-        "requiredSelectors": [".lui-bottom-tabs", ".lui-bottom-tabs-bar", "[role=tabpanel]:not([hidden])"],
-        "roleCounts": { "tablist": 1, "tab": 3, "tabpanel": 3 },
+        "requiredSelectors": [
+          ".lui-bottom-tabs",
+          ".lui-bottom-tabs-bar",
+          "[role=tabpanel]:not([hidden])"
+        ],
+        "roleCounts": {
+          "tablist": 1,
+          "tab": 3,
+          "tabpanel": 3
+        },
         "metrics": [
-          { "selector": ".lui-bottom-tabs-bar", "dimension": "height", "value": 104, "tolerance": 0 }
+          {
+            "selector": ".lui-bottom-tabs-bar",
+            "dimension": "height",
+            "value": 104,
+            "tolerance": 0
+          }
         ],
         "canvasCount": 0
       },
@@ -198,15 +294,26 @@
       "device": {
         "formFactor": "phone",
         "orientation": "portrait",
-        "viewport": { "width": 390, "height": 844 },
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
         "scale": 3
       },
       "scope": "viewport",
       "baseline": "baselines/ios-sheet-phone.png",
-      "budget": { "pixelDifferenceRatio": 0.002, "maxDifferentPixels": 5000 },
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 5000
+      },
       "dom": {
-        "requiredSelectors": [".lui-modal-layer[data-open]", ".lui-sheet[role=dialog]"],
-        "roleCounts": { "dialog": 1 },
+        "requiredSelectors": [
+          ".lui-modal-layer[data-open]",
+          ".lui-sheet[role=dialog]"
+        ],
+        "roleCounts": {
+          "dialog": 1
+        },
         "canvasCount": 0
       },
       "assertions": [
@@ -226,20 +333,1089 @@
       "device": {
         "formFactor": "phone",
         "orientation": "portrait",
-        "viewport": { "width": 412, "height": 915 },
+        "viewport": {
+          "width": 412,
+          "height": 915
+        },
         "scale": 2.625
       },
       "scope": "viewport",
       "baseline": "baselines/android-sheet-phone.png",
-      "budget": { "pixelDifferenceRatio": 0.002, "maxDifferentPixels": 5000 },
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 5000
+      },
       "dom": {
-        "requiredSelectors": [".lui-modal-layer[data-open]", ".lui-sheet[role=dialog]"],
-        "roleCounts": { "dialog": 1 },
+        "requiredSelectors": [
+          ".lui-modal-layer[data-open]",
+          ".lui-sheet[role=dialog]"
+        ],
+        "roleCounts": {
+          "dialog": 1
+        },
         "canvasCount": 0
       },
       "assertions": [
         "The Material sheet owns the modal state and platform corner treatment",
         "The sheet remains inside the simulated Android viewport"
+      ]
+    },
+    {
+      "id": "ios-text-phone",
+      "reference": {
+        "id": "alexpaul-swiftui",
+        "scenario": "control metrics and presentation"
+      },
+      "platform": "ios",
+      "galleryPage": "Text",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/ios-text-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-text"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The text page keeps a single retained label inside the phone safe area",
+        "The iOS phone shell keeps one retained detail page"
+      ]
+    },
+    {
+      "id": "ios-text-field-phone",
+      "reference": {
+        "id": "alexpaul-swiftui",
+        "scenario": "control metrics and presentation"
+      },
+      "platform": "ios",
+      "galleryPage": "TextField",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/ios-text-field-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-text-field"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The text field keeps its label, value, and platform field chrome",
+        "The iOS phone shell keeps one retained detail page"
+      ]
+    },
+    {
+      "id": "ios-checkbox-phone",
+      "reference": {
+        "id": "alexpaul-swiftui",
+        "scenario": "control metrics and presentation"
+      },
+      "platform": "ios",
+      "galleryPage": "Checkbox",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/ios-checkbox-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-checkbox"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The checkbox keeps its indicator and label on one row",
+        "The iOS phone shell keeps one retained detail page"
+      ]
+    },
+    {
+      "id": "ios-slider-phone",
+      "reference": {
+        "id": "alexpaul-swiftui",
+        "scenario": "control metrics and presentation"
+      },
+      "platform": "ios",
+      "galleryPage": "Slider",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/ios-slider-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-slider"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The slider track and label stay within the phone content width",
+        "The iOS phone shell keeps one retained detail page"
+      ]
+    },
+    {
+      "id": "ios-input-phone",
+      "reference": {
+        "id": "alexpaul-swiftui",
+        "scenario": "control metrics and presentation"
+      },
+      "platform": "ios",
+      "galleryPage": "Input",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/ios-input-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-input"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The input keeps its placeholder and platform field metrics",
+        "The iOS phone shell keeps one retained detail page"
+      ]
+    },
+    {
+      "id": "ios-select-phone",
+      "reference": {
+        "id": "alexpaul-swiftui",
+        "scenario": "control metrics and presentation"
+      },
+      "platform": "ios",
+      "galleryPage": "Select",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/ios-select-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-select"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The closed select shows its value without opening a menu",
+        "The iOS phone shell keeps one retained detail page"
+      ]
+    },
+    {
+      "id": "ios-radio-group-phone",
+      "reference": {
+        "id": "alexpaul-swiftui",
+        "scenario": "control metrics and presentation"
+      },
+      "platform": "ios",
+      "galleryPage": "RadioGroup",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/ios-radio-group-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-radio-group"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The radio group keeps both choices and a single selection",
+        "The iOS phone shell keeps one retained detail page"
+      ]
+    },
+    {
+      "id": "ios-progress-phone",
+      "reference": {
+        "id": "alexpaul-swiftui",
+        "scenario": "control metrics and presentation"
+      },
+      "platform": "ios",
+      "galleryPage": "Progress",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/ios-progress-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-progress"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The progress indicator keeps its label and determinate track",
+        "The iOS phone shell keeps one retained detail page"
+      ]
+    },
+    {
+      "id": "ios-icon-phone",
+      "reference": {
+        "id": "alexpaul-swiftui",
+        "scenario": "control metrics and presentation"
+      },
+      "platform": "ios",
+      "galleryPage": "Icon",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/ios-icon-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-icon"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The icon row uses mask images rather than a canvas",
+        "The iOS phone shell keeps one retained detail page"
+      ]
+    },
+    {
+      "id": "ios-accordion-phone",
+      "reference": {
+        "id": "alexpaul-swiftui",
+        "scenario": "control metrics and presentation"
+      },
+      "platform": "ios",
+      "galleryPage": "Accordion",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/ios-accordion-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-accordion"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The accordion summary stays collapsed and retained",
+        "The iOS phone shell keeps one retained detail page"
+      ]
+    },
+    {
+      "id": "ios-toolbar-phone",
+      "reference": {
+        "id": "alexpaul-swiftui",
+        "scenario": "control metrics and presentation"
+      },
+      "platform": "ios",
+      "galleryPage": "Toolbar",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/ios-toolbar-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-toolbar"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The toolbar keeps horizontal and vertical control groups",
+        "The iOS phone shell keeps one retained detail page"
+      ]
+    },
+    {
+      "id": "ios-tabs-phone",
+      "reference": {
+        "id": "apple-fruta",
+        "scenario": "phone smoothie list"
+      },
+      "platform": "ios",
+      "galleryPage": "Tabs",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/ios-tabs-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-tabs"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The tabs keep one visible panel and a stable tab list",
+        "The iOS phone shell keeps one retained detail page"
+      ]
+    },
+    {
+      "id": "ios-list-phone",
+      "reference": {
+        "id": "apple-fruta",
+        "scenario": "phone smoothie list"
+      },
+      "platform": "ios",
+      "galleryPage": "List",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/ios-list-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-list"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The list keeps three retained cards in order",
+        "The iOS phone shell keeps one retained detail page"
+      ]
+    },
+    {
+      "id": "ios-card-phone",
+      "reference": {
+        "id": "apple-fruta",
+        "scenario": "phone smoothie list"
+      },
+      "platform": "ios",
+      "galleryPage": "Card",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/ios-card-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-card"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The card keeps its padding, title, and contained actions",
+        "The iOS phone shell keeps one retained detail page"
+      ]
+    },
+    {
+      "id": "ios-dialog-open-phone",
+      "reference": {
+        "id": "alexpaul-swiftui",
+        "scenario": "control metrics and presentation"
+      },
+      "platform": "ios",
+      "galleryPage": "Dialog",
+      "state": "open-dialog",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scale": 1
+      },
+      "scope": "viewport",
+      "baseline": "baselines/ios-dialog-open-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-modal-layer[data-open]",
+          ".lui-dialog[role=dialog]"
+        ],
+        "roleCounts": {
+          "dialog": 1
+        },
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The open dialog is portaled, modal, and clipped to the simulated phone",
+        "The iOS phone shell keeps one retained detail page"
+      ]
+    },
+    {
+      "id": "android-text-phone",
+      "reference": {
+        "id": "android-compose-samples",
+        "scenario": "adaptive snack catalog"
+      },
+      "platform": "android",
+      "galleryPage": "Text",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 412,
+          "height": 915
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/android-text-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-text"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The text page keeps a single retained label inside the phone safe area",
+        "The Android phone shell keeps system inset spacing"
+      ]
+    },
+    {
+      "id": "android-text-field-phone",
+      "reference": {
+        "id": "android-compose-samples",
+        "scenario": "adaptive snack catalog"
+      },
+      "platform": "android",
+      "galleryPage": "TextField",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 412,
+          "height": 915
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/android-text-field-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-text-field"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The text field keeps its label, value, and platform field chrome",
+        "The Android phone shell keeps system inset spacing"
+      ]
+    },
+    {
+      "id": "android-checkbox-phone",
+      "reference": {
+        "id": "android-compose-samples",
+        "scenario": "adaptive snack catalog"
+      },
+      "platform": "android",
+      "galleryPage": "Checkbox",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 412,
+          "height": 915
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/android-checkbox-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-checkbox"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The checkbox keeps its indicator and label on one row",
+        "The Android phone shell keeps system inset spacing"
+      ]
+    },
+    {
+      "id": "android-slider-phone",
+      "reference": {
+        "id": "android-compose-samples",
+        "scenario": "adaptive snack catalog"
+      },
+      "platform": "android",
+      "galleryPage": "Slider",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 412,
+          "height": 915
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/android-slider-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-slider"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The slider track and label stay within the phone content width",
+        "The Android phone shell keeps system inset spacing"
+      ]
+    },
+    {
+      "id": "android-input-phone",
+      "reference": {
+        "id": "android-compose-samples",
+        "scenario": "adaptive snack catalog"
+      },
+      "platform": "android",
+      "galleryPage": "Input",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 412,
+          "height": 915
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/android-input-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-input"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The input keeps its placeholder and platform field metrics",
+        "The Android phone shell keeps system inset spacing"
+      ]
+    },
+    {
+      "id": "android-select-phone",
+      "reference": {
+        "id": "android-compose-samples",
+        "scenario": "adaptive snack catalog"
+      },
+      "platform": "android",
+      "galleryPage": "Select",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 412,
+          "height": 915
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/android-select-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-select"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The closed select shows its value without opening a menu",
+        "The Android phone shell keeps system inset spacing"
+      ]
+    },
+    {
+      "id": "android-radio-group-phone",
+      "reference": {
+        "id": "android-compose-samples",
+        "scenario": "adaptive snack catalog"
+      },
+      "platform": "android",
+      "galleryPage": "RadioGroup",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 412,
+          "height": 915
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/android-radio-group-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-radio-group"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The radio group keeps both choices and a single selection",
+        "The Android phone shell keeps system inset spacing"
+      ]
+    },
+    {
+      "id": "android-progress-phone",
+      "reference": {
+        "id": "android-compose-samples",
+        "scenario": "adaptive snack catalog"
+      },
+      "platform": "android",
+      "galleryPage": "Progress",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 412,
+          "height": 915
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/android-progress-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-progress"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The progress indicator keeps its label and determinate track",
+        "The Android phone shell keeps system inset spacing"
+      ]
+    },
+    {
+      "id": "android-icon-phone",
+      "reference": {
+        "id": "android-compose-samples",
+        "scenario": "adaptive snack catalog"
+      },
+      "platform": "android",
+      "galleryPage": "Icon",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 412,
+          "height": 915
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/android-icon-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-icon"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The icon row uses mask images rather than a canvas",
+        "The Android phone shell keeps system inset spacing"
+      ]
+    },
+    {
+      "id": "android-accordion-phone",
+      "reference": {
+        "id": "android-compose-samples",
+        "scenario": "adaptive snack catalog"
+      },
+      "platform": "android",
+      "galleryPage": "Accordion",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 412,
+          "height": 915
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/android-accordion-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-accordion"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The accordion summary stays collapsed and retained",
+        "The Android phone shell keeps system inset spacing"
+      ]
+    },
+    {
+      "id": "android-toolbar-phone",
+      "reference": {
+        "id": "android-compose-samples",
+        "scenario": "adaptive snack catalog"
+      },
+      "platform": "android",
+      "galleryPage": "Toolbar",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 412,
+          "height": 915
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/android-toolbar-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-toolbar"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The toolbar keeps horizontal and vertical control groups",
+        "The Android phone shell keeps system inset spacing"
+      ]
+    },
+    {
+      "id": "android-tabs-phone",
+      "reference": {
+        "id": "android-compose-samples",
+        "scenario": "adaptive snack catalog"
+      },
+      "platform": "android",
+      "galleryPage": "Tabs",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 412,
+          "height": 915
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/android-tabs-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-tabs"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The tabs keep one visible panel and a stable tab list",
+        "The Android phone shell keeps system inset spacing"
+      ]
+    },
+    {
+      "id": "android-list-phone",
+      "reference": {
+        "id": "android-compose-samples",
+        "scenario": "adaptive snack catalog"
+      },
+      "platform": "android",
+      "galleryPage": "List",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 412,
+          "height": 915
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/android-list-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-list"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The list keeps three retained cards in order",
+        "The Android phone shell keeps system inset spacing"
+      ]
+    },
+    {
+      "id": "android-card-phone",
+      "reference": {
+        "id": "android-compose-samples",
+        "scenario": "adaptive snack catalog"
+      },
+      "platform": "android",
+      "galleryPage": "Card",
+      "state": "default",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 412,
+          "height": 915
+        },
+        "scale": 1
+      },
+      "scope": "simulator",
+      "baseline": "baselines/android-card-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-card"
+        ],
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The card keeps its padding, title, and contained actions",
+        "The Android phone shell keeps system inset spacing"
+      ]
+    },
+    {
+      "id": "android-dialog-open-phone",
+      "reference": {
+        "id": "android-compose-samples",
+        "scenario": "Material conversation"
+      },
+      "platform": "android",
+      "galleryPage": "Dialog",
+      "state": "open-dialog",
+      "device": {
+        "formFactor": "phone",
+        "orientation": "portrait",
+        "viewport": {
+          "width": 412,
+          "height": 915
+        },
+        "scale": 1
+      },
+      "scope": "viewport",
+      "baseline": "baselines/android-dialog-open-phone.png",
+      "budget": {
+        "pixelDifferenceRatio": 0.002,
+        "maxDifferentPixels": 2000
+      },
+      "dom": {
+        "requiredSelectors": [
+          ".lui-modal-layer[data-open]",
+          ".lui-dialog[role=dialog]"
+        ],
+        "roleCounts": {
+          "dialog": 1
+        },
+        "canvasCount": 0
+      },
+      "assertions": [
+        "The open dialog is portaled, modal, and clipped to the simulated phone",
+        "The Android phone shell keeps system inset spacing"
       ]
     }
   ]

@@ -25,4 +25,13 @@ codesign --force --sign - "$bundle/Contents/Frameworks/libLUIAppleBackend.dylib"
 codesign --force --sign - "$bundle/Contents/Frameworks/liblui_todos.dylib"
 codesign --force --deep --sign - "$bundle"
 
+# Records what the bundle was built from, so tooling/lui_agent.mjs refuses to
+# drive it once its sources change. Builds without Node skip the receipt.
+if command -v node >/dev/null 2>&1 && [ -f "$project_dir/tooling/lui_build_receipt.mjs" ]; then
+  node "$project_dir/tooling/lui_build_receipt.mjs" write --root "$project_dir" \
+    --artifact "$bundle" --command "sh examples/todos/macos-appkit/build-app.sh $configuration" \
+    --input src --input ppx --input examples/todos --input platform/apple --input platform/bridge >&2 \
+    || echo "warning: could not write a build receipt for $bundle" >&2
+fi
+
 echo "$bundle"
