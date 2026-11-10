@@ -17,6 +17,9 @@ updating the commit above; the `dune` file mirrors upstream's
 
 Not yet upstream; carry them forward when refreshing:
 
+- Refused-call diagnostics: optional `last_error` / `resync` target symbols
+  in `drive_target.c`, `Ffi.check_refusal` (drain, `Model.clear`, resync,
+  then fail the scenario line) and `Model.clear`.
 - Application clock control: `Session.clock_command` and the driver's
   `clock` field, the scenario `clock pause|resume|advance <duration>|settle`
   command, `Ffi` clock calls, and the optional `clock_advance` /
