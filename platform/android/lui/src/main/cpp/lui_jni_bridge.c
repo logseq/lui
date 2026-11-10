@@ -557,6 +557,56 @@ JNIEXPORT jbyteArray JNICALL LUI_JNI_NAME(nativeAgent)(JNIEnv *env,
   return value;
 }
 
+JNIEXPORT jint JNICALL LUI_JNI_NAME(nativeClockTick)(JNIEnv *env,
+                                                     jclass clazz,
+                                                     jdouble now_ms) {
+  int32_t accepted;
+  (void)env;
+  (void)clazz;
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_double("lui_kotlin_clock_tick", now_ms,
+                                 dispatch_patch_to_jvm);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
+JNIEXPORT jint JNICALL LUI_JNI_NAME(nativeClockAdvance)(JNIEnv *env,
+                                                        jclass clazz,
+                                                        jdouble ms) {
+  int32_t accepted;
+  (void)env;
+  (void)clazz;
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_double("lui_kotlin_clock_advance", ms,
+                                 dispatch_patch_to_jvm);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
+JNIEXPORT jint JNICALL LUI_JNI_NAME(nativeClockSetPaused)(JNIEnv *env,
+                                                          jclass clazz,
+                                                          jint paused) {
+  int32_t accepted;
+  (void)env;
+  (void)clazz;
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_bool("lui_kotlin_clock_set_paused", paused,
+                               dispatch_patch_to_jvm);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
+JNIEXPORT jdouble JNICALL LUI_JNI_NAME(nativeClockNextDelay)(JNIEnv *env,
+                                                             jclass clazz) {
+  double delay;
+  (void)env;
+  (void)clazz;
+  caml_leave_blocking_section();
+  delay = lui_dispatch_query_double("lui_kotlin_clock_next_delay", -1.0);
+  caml_enter_blocking_section();
+  return delay;
+}
+
 JNIEXPORT jlong JNICALL LUI_JNI_NAME(nativeRootNode)(JNIEnv *env,
                                                      jclass clazz) {
   int64_t node;

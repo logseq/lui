@@ -40,6 +40,7 @@ nonisolated(unsafe) private let receivePatch: PatchCallback = { source in
 @MainActor
 private final class NativeMarkdownRuntime {
     private let handle: UnsafeMutableRawPointer
+    let clock: LUIRuntimeClock
     private let nativeHostCode: Int32
     private let virtualWindowFunction: VirtualWindowFunction?
     private let visibleRangeFunction: VisibleRangeFunction?
@@ -72,6 +73,7 @@ private final class NativeMarkdownRuntime {
             throw RuntimeError(String(cString: dlerror()))
         }
         self.handle = handle
+        clock = LUIRuntimeClock(library: handle)
         let version = dlsym(handle, "lui_ocaml_virtual_rows_version").map {
             unsafeBitCast($0, to: VirtualRowsVersionFunction.self)()
         } ?? 0
@@ -107,6 +109,7 @@ private final class NativeMarkdownRuntime {
         extensionEventFunction = try Self.load("lui_ocaml_extension_event", from: handle)
         recovery = LUINativeRefusalRecovery(library: handle)
         agent = LUINativeAgent(library: handle, recovery: recovery)
+        clock.recovery = recovery
     }
 
     func start() throws {
@@ -114,9 +117,11 @@ private final class NativeMarkdownRuntime {
             let reason = recovery.takeFailure().map { ": \($0)" } ?? ""
             throw RuntimeError("LUI Markdown initialization failed\(reason)")
         }
+        clock.reschedule()
     }
 
     func stop() {
+        clock.cancel()
         _ = stopFunction()
     }
 
@@ -253,6 +258,7 @@ private final class MarkdownHost: NSObject, NSApplicationDelegate, NSWindowDeleg
             self.runtime = runtime
             activeHost = self
             backend.onEvent = { [weak self] event in
+                defer { self?.runtime?.clock.reschedule() }
                 switch event {
                 case let .press(node):
                     self?.runtime?.press(node: node)
@@ -312,7 +318,10 @@ private final class MarkdownHost: NSObject, NSApplicationDelegate, NSWindowDeleg
             makeWindow()
             try runtime.start()
             #if DEBUG
-            agentServer = try LUIAgentServer.startFromEnvironment { runtime.agent.answer($0) }
+            agentServer = try LUIAgentServer.startFromEnvironment { request in
+                defer { runtime.clock.reschedule() }
+                return runtime.agent.answer(request)
+            }
             #endif
             window?.makeKeyAndOrderFront(nil)
             if #available(macOS 14.0, *) {

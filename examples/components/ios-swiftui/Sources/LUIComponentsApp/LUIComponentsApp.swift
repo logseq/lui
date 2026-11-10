@@ -49,6 +49,10 @@ private func luiOCamlVirtualWindow(_ node: Int64, _ generation: Int64, _ first: 
 private func luiOCamlVisibleRange(_ node: Int64, _ first: Int64, _ last: Int64) -> Int32
 @_silgen_name("lui_ocaml_scroll_completed")
 private func luiOCamlScrollCompleted(_ node: Int64, _ token: Int64, _ outcome: UnsafePointer<CChar>?) -> Int32
+@_silgen_name("lui_ocaml_clock_tick")
+private func luiOCamlClockTick(_ now: Double) -> Int32
+@_silgen_name("lui_ocaml_clock_next_delay")
+private func luiOCamlClockNextDelay() -> Double
 
 @_silgen_name("lui_ocaml_last_error")
 private func luiOCamlLastError(_ receiver: PatchCallback?) -> Int32
@@ -86,11 +90,13 @@ private final class GalleryHost {
     private var composerChildren: [Int: Set<Int>] = [:]
     private var composerParents: [Int: Int] = [:]
     private var composerEpoch = 0
+    private let clock: LUIRuntimeClock
     #if DEBUG
     @ObservationIgnored private var agentServer: LUIAgentServer?
     #endif
 
     init() {
+        clock = LUIRuntimeClock(tick: { luiOCamlClockTick($0) }, nextDelay: { luiOCamlClockNextDelay() })
         do {
             backend = try LUIAppleBackend(
                 extensionRegistry: galleryExtensionRegistry()
@@ -98,8 +104,10 @@ private final class GalleryHost {
         } catch {
             fatalError("Invalid Gallery extension registry: \(error)")
         }
+        clock.recovery = recovery
         backend.onEvent = { [weak self] event in
             guard let self else { return }
+            defer { self.clock.reschedule() }
             switch event {
             case let .press(node): self.recovery.check(luiOCamlPress(Int64(node)))
             case let .longPress(node): self.recovery.check(luiOCamlLongPress(Int64(node)))
@@ -147,12 +155,16 @@ private final class GalleryHost {
         #if DEBUG
         let agent = LUINativeAgent(agent: { luiOCamlAgent($0, $1, $2) }, recovery: recovery)
         do {
-            agentServer = try LUIAgentServer.startFromEnvironment { agent.answer($0) }
+            agentServer = try LUIAgentServer.startFromEnvironment { [clock] request in
+                defer { clock.reschedule() }
+                return agent.answer(request)
+            }
         } catch {
             fatalError("LG Gallery lui-agent: \(error)")
         }
         #endif
         started = true
+        clock.reschedule()
     }
 
     func apply(json: String) {
@@ -242,6 +254,7 @@ private final class GalleryHost {
                 finishing: result?.created ?? [])
             return
         }
+        defer { clock.reschedule() }
         guard let batch = result else { self.recovery.check(luiOCamlDismiss(Int64(node))); return }
         batch.payload.withCString { self.recovery.check(luiOCamlPicked(Int64(node), $0)) }
         await composerImports.retain(Set(attachmentPaths.values), revision: composerPatchRevision,
@@ -250,6 +263,7 @@ private final class GalleryHost {
 
     func stop() {
         guard started else { return }
+        clock.cancel()
         _ = luiOCamlStop()
         started = false
         composerEpoch += 1

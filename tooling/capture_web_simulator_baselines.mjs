@@ -61,9 +61,20 @@ async function prepareScenario(page, scenario, origin) {
         animation-delay: 0s !important;
         animation-duration: 0s !important;
         caret-color: transparent !important;
+        font-family: "Liberation Sans", sans-serif !important;
         scroll-behavior: auto !important;
         transition-delay: 0s !important;
         transition-duration: 0s !important;
+      }
+      *::-webkit-scrollbar { display: none !important; }
+      * { scrollbar-width: none !important; }
+      *:focus, *:focus-visible { outline: none !important; box-shadow: none !important; }
+      :root, #app, .lui-popup-portal { --lui-keyboard-height: 0px !important; }
+      .lui-popup-portal[data-lui-keyboard="visible"]::before,
+      .lui-popup-portal[data-lui-keyboard="visible"] .lui-modal-layer::before {
+        content: none !important;
+        display: none !important;
+        height: 0 !important;
       }
       .lui-simulator-toolbar { display: none !important; }
     `,
@@ -72,12 +83,27 @@ async function prepareScenario(page, scenario, origin) {
   if (scenario.state === "open-sheet") {
     await page.getByRole("button", { name: "Open sheet", exact: true }).click()
     await page.locator(".lui-modal-layer[data-open]").waitFor()
+  } else if (scenario.state === "open-dialog") {
+    await page.getByRole("button", { name: "Open dialog", exact: true }).click()
+    await page.locator(".lui-modal-layer[data-open]").waitFor()
   } else {
     assert.equal(scenario.state, "default")
   }
 
-  await page.evaluate(() => document.activeElement?.blur())
-  await page.evaluate(() => document.fonts.ready)
+  // Blur, then let the simulator's focusout timeout retire the keyboard.
+  // A focused field shows a simulated keyboard on a later turn and shifts sheets.
+  await page.waitForFunction(async () => {
+    document.activeElement?.blur()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    return [...document.querySelectorAll("[data-lui-keyboard]")].every(
+      (node) => node.getAttribute("data-lui-keyboard") !== "visible",
+    )
+  })
+  const liberationReady = await page.evaluate(async () => {
+    await document.fonts.ready
+    return document.fonts.check('16px "Liberation Sans"')
+  })
+  assert.equal(liberationReady, true, `${scenario.id} requires the Liberation Sans font`)
   await settle(page)
 }
 
@@ -174,7 +200,15 @@ async function run() {
   server.listen(0, "127.0.0.1")
   await once(server, "listening")
   const origin = `http://127.0.0.1:${server.address().port}`
-  const browser = await chromium.launch({ headless: true })
+  const browser = await chromium.launch({
+    headless: true,
+    args: [
+      "--font-render-hinting=none",
+      "--disable-font-subpixel-positioning",
+      "--disable-lcd-text",
+      "--force-color-profile=srgb",
+    ],
+  })
 
   try {
     if (!updateBaselines) await rm(diffRoot, { recursive: true, force: true })

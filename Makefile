@@ -1,4 +1,10 @@
-.PHONY: test test-schema generate-component-schema generate-json-view test-ocaml test-apple test-mygo test-mygo-integration build-web-css
+.PHONY: test test-schema generate-component-schema generate-json-view test-ocaml test-apple test-mygo test-mygo-integration build-web-css test-web-visual update-web-visual-baselines
+
+test-web-visual:
+	node tooling/capture_web_simulator_baselines.mjs
+
+update-web-visual-baselines:
+	LUI_UPDATE_VISUAL_BASELINES=1 node tooling/capture_web_simulator_baselines.mjs
 
 test: test-schema test-ocaml
 

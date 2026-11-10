@@ -1,0 +1,1 @@
+{"schemaVersion":1,"generation":3,"meta":{"nested":[1,{"x":true,"y":null},"你好"]},"ops":[{"op":"drop-node","id":1,"extra":{"kept":false}},{"op":"set-extension-prop","id":2,"property":"label","value":"你好🌍"},{"op":"set-prop","id":3,"property":"opacity","value":-0.0,"trace":[1,{"a":null}]}]}

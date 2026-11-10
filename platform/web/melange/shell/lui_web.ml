@@ -219,3 +219,5 @@ let property renderer node_id property =
 let children renderer node_id = Store.children renderer.web_store node_id
 let node_count renderer = Store.node_count renderer.web_store
 let batches renderer = Store.batches renderer.web_store
+
+let drive_clock = Lui_web_clock.drive

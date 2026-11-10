@@ -248,4 +248,5 @@ let driver t =
     tap = (fun ~x ~y -> tap t ~x ~y);
     frames = (fun () -> frames_list t);
     send_nav = (fun h -> send_nav t h);
+    clock = Session.clock_unsupported;
   }

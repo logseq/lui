@@ -48,6 +48,8 @@ typedef struct {
   int32_t (*extension)(int64_t, const char *, const char *, const char *);
   int32_t (*last_error)(patch_cb);
   int32_t (*resync)(void);
+  int32_t (*clock_advance)(double);
+  int32_t (*clock_set_paused)(int32_t);
   int32_t (*poll)(void);
   int32_t (*stop)(void);
   int64_t (*root_node)(void);
@@ -170,6 +172,9 @@ CAMLprim value drive_target_open(value pathv) {
   t->extension = sym(lib, "lui_ocaml_extension_event");
   t->last_error = dlsym(lib, "lui_ocaml_last_error");
   t->resync = dlsym(lib, "lui_ocaml_resync");
+  /* Optional: libraries built before the clock ABI lack these. */
+  t->clock_advance = dlsym(lib, "lui_ocaml_clock_advance");
+  t->clock_set_paused = dlsym(lib, "lui_ocaml_clock_set_paused");
   /* lui_ocaml_poll is not part of the bridge ABI. Leave the slot NULL
      instead of dlsym'ing a symbol that will never be there. */
   t->poll = NULL;
@@ -220,6 +225,10 @@ CAMLprim value drive_target_event(value tv, value namev, value nodev,
     ok = t->toggle_changed(node, Int_val(iv));
   else if (!strcmp(name, "slider_changed") && t->slider_changed)
     ok = t->slider_changed(node, Double_val(fv));
+  else if (!strcmp(name, "clock_advance") && t->clock_advance)
+    ok = t->clock_advance(Double_val(fv));
+  else if (!strcmp(name, "clock_set_paused") && t->clock_set_paused)
+    ok = t->clock_set_paused(Int_val(iv));
   else if (!strcmp(name, "extension") && t->extension)
     ok = t->extension(node, String_val(a), String_val(b), String_val(c));
   CAMLreturn(Val_int(ok));

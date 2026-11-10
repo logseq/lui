@@ -33,6 +33,9 @@ The protocol has these parts:
   `{"ok":false,"refused":true,"error":...,"diagnostic":{...}}`.
 - **Patches.** An action's patch batches reach the host's normal patch path
   before the reply.
+- **Clock.** An action may arm or cancel application-clock timers, so every
+  native host re-reads the clock's next delay after each agent request, as it
+  does after an event.
 
 The new APIs, by layer:
 
@@ -141,6 +144,110 @@ Every server is opt-in and listens on loopback only, so apps that do not set
 The wire format, events and existing exports are unchanged. Hosts that load
 the library with `dlopen` resolve `lui_ocaml_agent_utf8` optionally; a
 `LUINativeAgent` without it answers every request with an error.
+
+## Unreleased: wire batches skip unknown nested fields
+
+`Lui_wire.decode_batch` still rejects malformed tokens, unknown operations,
+unknown node kinds, and unknown properties. Extra object fields — on the
+batch or on an operation — are now ignored when their names are not part of
+the operation schema, including nested objects, arrays, and null. Previously
+only extra scalars were skipped, so a newer encoder's object field failed
+the OCaml decoder while MyGo accepted it.
+
+Canonical encoder bytes are unchanged. Required fields stay scalars:
+`"value": {"nested": true}` is still rejected. Duplicate keys are unchanged
+(the first operation field wins; the last `generation` wins). Hosts that
+want the MyGo duplicate-key rule should not emit duplicate keys; the shared
+fixtures use unique keys.
+
+```ocaml
+let batch =
+  Lui_wire.decode_batch
+    {|{"schemaVersion":1,"meta":{"nested":[1]},"generation":1,"ops":[{"op":"drop-node","id":1,"trace":{"ok":true}}]}|}
+(* generation = 1, ops = [DropNode 1] *)
+```
+
+## Unreleased: controllable application clock
+
+Views schedule time-based work with `Lui_ui.after context ms action` and
+`Lui_ui.every context ms action`. Both return a `Lui_clock.timer`, run on the
+application's `Lui_clock.t` (`Lui_app.clock app`) and are cancelled when the
+owning view scope is disposed; `Lui_clock.cancel` stops one earlier. Actions run
+on the runtime thread like event handlers, so they may `send` directly:
+
+```ocaml
+let upload_button send : t =
+  scoped (fun context ->
+    let timer = ref None in
+    button ~text:"Simulate upload"
+      ~on_press:(fun _ ->
+        Option.iter Lui_clock.cancel !timer;
+        timer := Some (Lui_ui.every context 300. (fun () ->
+          ignore (send Advance))))
+      [])
+```
+
+Replace host-side `setTimeout`/`DispatchQueue`/`Handler` loops that only feed
+actions back into the model with these timers: they become deterministic under
+Drive and tests. Existing apps need no changes; a clock without timers costs
+nothing and never wakes a host.
+
+Time is in milliseconds (float). Host time only moves forward; the first
+`Lui_clock.tick` anchors the clock without firing anything. `Lui_clock.pause`
+makes host ticks no-ops, `Lui_clock.advance clock ms` moves simulated time and
+fires due timers even while paused, and `Lui_clock.settle` fires every pending
+timer (raising after 10,000 firings to stop runaway `every` loops). Time cannot
+move from inside a timer action (`Invalid_argument`).
+
+Host contract, implemented by every maintained host in this release:
+
+- Native C ABI: new exports `lui_ocaml_clock_tick(double now_ms)`,
+  `lui_ocaml_clock_advance(double ms)`, `lui_ocaml_clock_set_paused(int32_t)`
+  and `double lui_ocaml_clock_next_delay(void)` (negative when nothing is due,
+  paused or not started). After every call into the runtime the host reads
+  `next_delay`, arms one wakeup and calls `clock_tick` with monotonic
+  milliseconds when it fires. Bridges built with `Lui_native_bridge.register`
+  get the OCaml side automatically.
+- MyGo: `OpenRuntime` binds the four symbols when all are present (older
+  libraries keep working without timers), arms a `time.AfterFunc` that only
+  invalidates the window and ticks in the next frame. New
+  `Runtime.AdvanceClock(ms)` and `Runtime.SetClockPaused(bool)`.
+- Android: `LuiBridge` reschedules a `Handler.postAtTime` wakeup on the
+  `lui-ocaml` thread after every dispatch, ticking with
+  `SystemClock.uptimeMillis()`. New JNI exports `nativeClockTick`,
+  `nativeClockAdvance`, `nativeClockSetPaused`, `nativeClockNextDelay` and
+  public `LuiBridge.advanceClock(ms)` / `LuiBridge.setClockPaused(paused)`.
+  Custom JNI libraries must compile the updated `lui_jni_bridge.c`.
+- Apple: new `LUIRuntimeClock` in `LUIAppleBackend`. Create it with
+  `LUIRuntimeClock(library: handle)` for `dlopen` hosts or
+  `LUIRuntimeClock(tick:nextDelay:)` with `@_silgen_name` functions, call
+  `reschedule()` after starting the runtime and after every runtime call
+  (typically `defer { clock.reschedule() }` at the top of `backend.onEvent`),
+  and `cancel()` before `lui_ocaml_stop`:
+
+  ```swift
+  let clock = LUIRuntimeClock(library: handle)
+  backend.onEvent = { event in
+      defer { clock.reschedule() }
+      // existing dispatch
+  }
+  ```
+
+- Web/Melange: call `Lui_web.drive_clock app` once after `Lui_app.start`. It
+  ticks from `performance.now()` with one armed timeout and flushes after each
+  tick, using the new `Lui_clock.set_wakeup` hook.
+- A timer action that raises is a refused call with phase `clock`: every
+  native host routes tick results through its existing refusal recovery
+  (diagnostic plus resync), exactly as for a refused event.
+- In-process apps (tests, custom hosts) call `Lui_app.tick_clock app ~now` or
+  `Lui_app.advance_clock app ms`, then `Lui_app.flush`, or register a
+  `Lui_clock.set_wakeup` callback.
+
+Drive scenarios gain `clock pause`, `clock resume`, `clock advance <duration>`
+(`250`, `250ms`, `1.5s`) and `clock settle`. In-process sessions support all
+four; FFI targets support all but `settle` and report the missing exports for
+libraries built before this release; live websocket targets report the
+command as unsupported.
 
 ## Unreleased: native bridge reports refused calls
 

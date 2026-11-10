@@ -25,6 +25,7 @@ type bridge = {
   mutable resync : (unit -> string) option;
   mutable agent : Lui_agent.target option;
   mutable last_failure : string option;
+  mutable clock : Lui_clock.t option;
 }
 
 let create name =
@@ -40,6 +41,7 @@ let create name =
     resync = None;
     agent = None;
     last_failure = None;
+    clock = None;
   }
 
 let clear bridge = bridge.session.patches <- []
@@ -129,6 +131,7 @@ let attach bridge (app : ('model, 'action) Lui_app.reducer_app) =
   bridge.flush <- Some (fun () -> Lui_app.flush app);
   bridge.dispose_current <- Some (fun () -> Lui_app.dispose app);
   bridge.root <- Some (fun () -> Lui_app.root_node app);
+  bridge.clock <- Some (Lui_app.clock app);
   bridge.resync <-
     Some
       (fun () ->
@@ -167,6 +170,7 @@ let detach bridge =
   bridge.dispose_current <- None;
   bridge.root <- None;
   bridge.resync <- None;
+  bridge.clock <- None;
   bridge.agent <- None
 
 let dispose bridge =
@@ -181,6 +185,37 @@ let dispose bridge =
 let resync bridge =
   guarded bridge ~phase:"resync" (fun () ->
     match bridge.resync with Some resync -> resync () | None -> "")
+
+let require_clock bridge =
+  match bridge.clock with
+  | Some clock -> clock
+  | None -> invalid_arg (bridge.name ^ " bridge is not started")
+
+let step_clock bridge step =
+  guarded bridge ~phase:"clock" (fun () ->
+    let _, flush = require_started bridge in
+    let clock = require_clock bridge in
+    clear bridge;
+    ignore (step clock : int);
+    ignore (flush ());
+    take bridge)
+
+let clock_tick bridge now = step_clock bridge (Lui_clock.tick ~now)
+
+let clock_advance bridge ms = step_clock bridge (fun clock -> Lui_clock.advance clock ms)
+
+let clock_set_paused bridge paused =
+  guarded bridge ~phase:"clock" (fun () ->
+    let clock = require_clock bridge in
+    if paused then Lui_clock.pause clock else Lui_clock.resume clock;
+    "")
+
+(* Milliseconds until the host should tick again; negative when no wakeup
+   is needed. *)
+let clock_next_delay bridge =
+  match bridge.clock with
+  | Some clock -> Option.value (Lui_clock.next_delay clock) ~default:(-1.)
+  | None -> -1.
 
 (* The reply is the first line; patch batches produced by the request's
    action follow it, one per line, for the host to apply as after a
@@ -278,4 +313,8 @@ let register ~(register_named : 'a. string -> 'a -> unit) prefix bridge =
       | None -> invalid_arg (bridge.name ^ " bridge is not started"));
   register "resync" (fun () -> resync bridge);
   register "last_error" (fun () -> take_failure bridge);
+  register "clock_tick" (fun now -> clock_tick bridge now);
+  register "clock_advance" (fun ms -> clock_advance bridge ms);
+  register "clock_set_paused" (fun paused -> clock_set_paused bridge paused);
+  register "clock_next_delay" (fun () -> clock_next_delay bridge);
   register "agent" (fun request -> agent bridge request)

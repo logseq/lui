@@ -16,6 +16,11 @@ public final class LuiBridge {
     private static native byte[] nativeLastError();
     private static native byte[] nativeAgent(byte[] request);
 
+    private static native int nativeClockTick(double nowMs);
+    private static native int nativeClockAdvance(double ms);
+    private static native int nativeClockSetPaused(int paused);
+    private static native double nativeClockNextDelay();
+
     private static byte[] utf8(String text) {
         return text.getBytes(StandardCharsets.UTF_8);
     }
@@ -60,6 +65,13 @@ public final class LuiBridge {
                     result = reply == null ? 0 : 1;
                     break;
                 }
+                case "clocktick": result = nativeClockTick(Double.parseDouble(values[1])); break;
+                case "clockadvance": result = nativeClockAdvance(Double.parseDouble(values[1])); break;
+                case "clockpause": result = nativeClockSetPaused(Integer.parseInt(values[1])); break;
+                case "clocknext":
+                    System.out.println("DELAY " + nativeClockNextDelay());
+                    result = 1;
+                    break;
                 case "stop": System.out.println("RESULT " + nativeStop()); return;
                 default: throw new IllegalArgumentException(line);
             }

@@ -108,6 +108,22 @@ let send t name node a b c iv fv =
   settle_patches t;
   check_refusal t accepted
 
+let clock_call t name iv fv =
+  let accepted = c_event t.handle name 0L "" "" "" iv fv in
+  settle_patches t;
+  match check_refusal t accepted with
+  | () when accepted = 0 ->
+    Error ("target rejected " ^ name ^ " or does not export lui_ocaml_" ^ name)
+  | () -> Ok ()
+  | exception Failure message -> Error message
+
+let clock t = function
+  | Session.Clock_pause -> clock_call t "clock_set_paused" 1 0.0
+  | Session.Clock_resume -> clock_call t "clock_set_paused" 0 0.0
+  | Session.Clock_advance ms -> clock_call t "clock_advance" 0 ms
+  | Session.Clock_settle ->
+    Error "clock settle needs an in-process session; use clock advance"
+
 let send_event t = function
   | Press n -> send t "press" (Int64.of_int n) "" "" "" 0 0.0
   | LongPress n -> send t "long_press" (Int64.of_int n) "" "" "" 0 0.0
@@ -185,4 +201,5 @@ let driver t =
     tap = Session.tap_unsupported;
     frames = Session.no_frames;
     send_nav = (fun _ -> ());
+    clock = clock t;
   }
