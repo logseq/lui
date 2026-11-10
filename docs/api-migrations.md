@@ -1,5 +1,14 @@
 # LUI API migration guide
 
+## Unreleased: native navigation sheet action foregrounds
+
+Apple navigation sheet toolbar actions honor the button's existing `foreground`
+property. For example, set `button ~style_class:"confirmation-action"
+~foreground:"foreground" ~text:"Done" []` to use the current semantic foreground
+for the title. The native toolbar placement, styling and disabled behavior stay
+in effect. With no resolvable explicit foreground, the system default remains.
+No wire-format or handler changes are required.
+
 ## Unreleased: shared iOS input surface
 
 Standalone iOS text, secure, search, and combo box inputs use a padded field
