@@ -145,10 +145,13 @@ func (s *AgentServer) serve(conn net.Conn) {
 	reader := bufio.NewReaderSize(conn, 64<<10)
 	for {
 		line, err := readAgentLine(reader)
-		if err != nil {
-			if errors.Is(err, errAgentLineTooLong) {
-				_, _ = conn.Write([]byte(agentFailure(err, nil) + "\n"))
+		if errors.Is(err, errAgentLineTooLong) {
+			if _, err := conn.Write([]byte(agentFailure(err, nil) + "\n")); err != nil {
+				return
 			}
+			continue
+		}
+		if err != nil {
 			return
 		}
 		if strings.TrimSpace(line) == "" {
@@ -173,18 +176,26 @@ func (s *AgentServer) serve(conn net.Conn) {
 
 var errAgentLineTooLong = errors.New("lui: agent request exceeds 1 MiB")
 
+// An oversized line is consumed to its end before it is refused, so the
+// client keeps its connection and the next line starts cleanly.
 func readAgentLine(reader *bufio.Reader) (string, error) {
 	var line []byte
+	tooLong := false
 	for {
 		chunk, isPrefix, err := reader.ReadLine()
 		if err != nil {
 			return "", err
 		}
-		line = append(line, chunk...)
-		if len(line) > agentMaxLine {
-			return "", errAgentLineTooLong
+		if !tooLong {
+			line = append(line, chunk...)
+			if len(line) > agentMaxLine {
+				tooLong, line = true, nil
+			}
 		}
 		if !isPrefix {
+			if tooLong {
+				return "", errAgentLineTooLong
+			}
 			return string(line), nil
 		}
 	}

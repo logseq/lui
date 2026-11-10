@@ -32,9 +32,12 @@ func TestAgentFailureShape(t *testing.T) {
 }
 
 func TestAgentLinesAreBounded(t *testing.T) {
-	long := strings.Repeat("x", agentMaxLine+1) + "\n"
-	if _, err := readAgentLine(bufio.NewReaderSize(strings.NewReader(long), 4096)); !errors.Is(err, errAgentLineTooLong) {
+	reader := bufio.NewReaderSize(strings.NewReader(strings.Repeat("x", agentMaxLine+1)+"\n"+`{"op":"tree"}`+"\n"), 4096)
+	if _, err := readAgentLine(reader); !errors.Is(err, errAgentLineTooLong) {
 		t.Fatalf("oversized request: %v", err)
+	}
+	if line, err := readAgentLine(reader); err != nil || line != `{"op":"tree"}` {
+		t.Fatalf("request after an oversized one = %q, %v", line, err)
 	}
 	line, err := readAgentLine(bufio.NewReaderSize(strings.NewReader(`{"op":"hello"}`+"\n"), 16))
 	if err != nil || line != `{"op":"hello"}` {
