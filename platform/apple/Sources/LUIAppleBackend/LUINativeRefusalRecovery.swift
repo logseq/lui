@@ -84,7 +84,12 @@ public final class LUINativeRefusalRecovery {
     /// exported. A refusal without a diagnostic (argument validation)
     /// leaves no partial patches, so only a reported exception resyncs.
     public func check(_ accepted: Int32?) {
-        guard let accepted, accepted != 1, let failure = takeFailure() else { return }
+        _ = recover(accepted)
+    }
+
+    /// `check`, returning the failure it recovered from.
+    public func recover(_ accepted: Int32?) -> LUIRuntimeFailure? {
+        guard let accepted, accepted != 1, let failure = takeFailure() else { return nil }
         FileHandle.standardError.write(Data("LUI: \(failure)\n".utf8))
         isReceivingSnapshot = true
         let resynced = resync?() == 1
@@ -93,5 +98,6 @@ public final class LUINativeRefusalRecovery {
             FileHandle.standardError.write(Data("LUI: resync after refusal failed\n".utf8))
         }
         onFailure?(failure)
+        return failure
     }
 }

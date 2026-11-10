@@ -46,6 +46,19 @@ go -C platform/mygo run ./cmd/lui-mygo -library "$library" \
   -screenshot /tmp/lui-mygo-todos.png -width 800 -height 600
 ```
 
+To drive a running application from a script, set `LUI_AGENT_LISTEN` to a
+loopback address and use the shared lui-agent client. The client refuses a
+library older than its sources:
+
+```sh
+LUI_AGENT_LISTEN=127.0.0.1:49380 go -C platform/mygo run ./cmd/lui-mygo -library "$components" &
+node tooling/lui_agent.mjs --tcp 127.0.0.1:49380 --artifact "$components" \
+  'press prop:accessibility-identifier=events-button' 'expect "text:Event: press"'
+```
+
+Embedders call `Runtime.ServeAgentFromEnv` with a function that runs work on
+the UI goroutine, or `Runtime.Agent` for one request.
+
 ## Embed a backend
 
 ```go

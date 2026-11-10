@@ -23,6 +23,7 @@ type bridge = {
   mutable dispose_current : (unit -> bool) option;
   mutable root : (unit -> int) option;
   mutable resync : (unit -> string) option;
+  mutable agent : Lui_agent.target option;
   mutable last_failure : string option;
   mutable clock : Lui_clock.t option;
 }
@@ -38,6 +39,7 @@ let create name =
     dispose_current = None;
     root = None;
     resync = None;
+    agent = None;
     last_failure = None;
     clock = None;
   }
@@ -133,7 +135,8 @@ let attach bridge (app : ('model, 'action) Lui_app.reducer_app) =
   bridge.resync <-
     Some
       (fun () ->
-        Lui_wire.encode_batch (Lui_runtime.resync_batch (Lui_app.runtime app)))
+        Lui_wire.encode_batch (Lui_runtime.resync_batch (Lui_app.runtime app)));
+  bridge.agent <- Some (Lui_agent.app_target ~host:bridge.name app)
 
 (* Replace a running app. Dispose patches are dropped so the host receives
    only the new app's startup batches. *)
@@ -167,7 +170,8 @@ let detach bridge =
   bridge.dispose_current <- None;
   bridge.root <- None;
   bridge.resync <- None;
-  bridge.clock <- None
+  bridge.clock <- None;
+  bridge.agent <- None
 
 let dispose bridge =
   guarded bridge ~phase:"dispose" (fun () ->
@@ -212,6 +216,22 @@ let clock_next_delay bridge =
   match bridge.clock with
   | Some clock -> Option.value (Lui_clock.next_delay clock) ~default:(-1.)
   | None -> -1.
+
+(* The reply is the first line; patch batches produced by the request's
+   action follow it, one per line, for the host to apply as after a
+   dispatch. *)
+let agent bridge request =
+  guarded bridge ~phase:"agent" (fun () ->
+    let target =
+      match bridge.agent with
+      | Some target -> target
+      | None -> invalid_arg (bridge.name ^ " bridge is not started")
+    in
+    clear bridge;
+    let reply = Lui_agent.handle target request in
+    match take bridge with
+    | "" -> reply
+    | patches -> reply ^ "\n" ^ patches)
 
 let pointer_detail x y modifiers button target_class =
   {x; y; modifiers; button; target_class}
@@ -296,4 +316,5 @@ let register ~(register_named : 'a. string -> 'a -> unit) prefix bridge =
   register "clock_tick" (fun now -> clock_tick bridge now);
   register "clock_advance" (fun ms -> clock_advance bridge ms);
   register "clock_set_paused" (fun paused -> clock_set_paused bridge paused);
-  register "clock_next_delay" (fun () -> clock_next_delay bridge)
+  register "clock_next_delay" (fun () -> clock_next_delay bridge);
+  register "agent" (fun request -> agent bridge request)

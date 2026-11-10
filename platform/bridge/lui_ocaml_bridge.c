@@ -443,6 +443,28 @@ LUI_EXPORT double lui_ocaml_clock_next_delay(void) {
   return delay;
 }
 
+/* Agent channel: one lui-agent request, a flat JSON object such as
+   {"op":"press","selector":"text:Save"}. Patch batches produced by the
+   request's action go to the patch callback given to lui_ocaml_start, then
+   `reply` receives the reply object. Returns 1 when answered, including
+   {"ok":false,...}, and 0 when the request was refused: read
+   lui_ocaml_last_error and resync as after any refused call. */
+LUI_EXPORT int32_t lui_ocaml_agent_utf8(const char *request, int32_t length,
+                                        lui_patch_callback reply) {
+  int32_t accepted;
+  caml_leave_blocking_section();
+  accepted = lui_dispatch_agent("lui_ocaml_agent", request, length, reply,
+                                deliver);
+  caml_enter_blocking_section();
+  return accepted;
+}
+
+LUI_EXPORT int32_t lui_ocaml_agent(const char *request,
+                                   lui_patch_callback reply) {
+  return lui_ocaml_agent_utf8(
+      request, request != NULL ? (int32_t)strlen(request) : 0, reply);
+}
+
 LUI_EXPORT int64_t lui_ocaml_root_node(void) {
   int64_t node;
   caml_leave_blocking_section();

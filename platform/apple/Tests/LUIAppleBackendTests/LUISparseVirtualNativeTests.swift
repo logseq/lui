@@ -210,6 +210,35 @@
       #expect(list?.children.count ?? Int.max < 80)
       #expect(descendants(NSTextField.self).count < 80)
     }
+    func agentRoundTrip() async throws {
+      let agent = LUINativeAgent(library: library, recovery: LUINativeRefusalRecovery(library: library))
+      let hello = agent.answer(#"{"op":"hello"}"#)
+      #expect(hello.contains(#""protocol":"lui-agent""#), "\(hello)")
+      #expect(agent.answer("nope").hasPrefix(#"{"ok":false"#))
+      let loadNode = try identified("sparse-load")
+      let load = agent.answer(#"{"op":"press","selector":"prop:accessibility-identifier=sparse-load"}"#)
+      #expect(load == #"{"ok":true,"op":"press","node":\#(loadNode)}"#, "\(load)")
+      #expect(list?.property(.virtualTotalCount)?.intValue == 100000)
+      let server = try LUIAgentServer { agent.answer($0) }
+      defer { server.stop() }
+      try await pump(until: "lui-agent listener ready") { server.port != nil || server.failure != nil }
+      let port = try #require(server.port)
+      let clear = #"{"op":"press","selector":"prop:accessibility-identifier=sparse-clear"}"#
+      let oversized = String(repeating: "x", count: LUIAgentServer.maxLine + 1)
+      let largest = String(repeating: "x", count: LUIAgentServer.maxLine)
+      let replies = try await Task.detached {
+        try agentExchange(port: port, requests: [clear, oversized, largest, #"{"op":"hello"}"#])
+      }.value
+      #expect(replies.count == 4)
+      #expect(replies.first?.hasPrefix(#"{"ok":true,"op":"press""#) == true, "\(replies)")
+      #expect(replies.dropFirst().first == #"{"error":"lui: agent request exceeds 1 MiB","ok":false}"#)
+      #expect(replies.dropFirst(2).first?.hasPrefix(#"{"ok":false,"error":"bad request"#) == true, "\(replies)")
+      #expect(replies.last?.hasPrefix(#"{"ok":true,"op":"hello","protocol":"lui-agent""#) == true, "\(replies)")
+      try await pump(until: "lui-agent clear applied") {
+        list?.property(.virtualTotalCount)?.intValue == 0
+      }
+    }
+
     func checkpoint(_ label: String) throws {
       let entry: [String: Any] = [
         "phase": label, "nodes": ids.count,
@@ -327,6 +356,7 @@
         try h.checkpoint("cleared-\(cycle)")
         h.bounded()
       }
+      try await h.agentRoundTrip()
       #expect(
         h.events.contains {
           if case .virtualWindow = $0 { return true }
@@ -342,5 +372,42 @@
       }
       try h.checkErrors()
     }
+  }
+
+  // Blocking loopback client for LUIAgentServer; run it off the main actor.
+  private func agentExchange(port: UInt16, requests: [String]) throws -> [String] {
+    let fd = socket(AF_INET, SOCK_STREAM, 0)
+    guard fd >= 0 else { throw POSIXError(.EIO) }
+    defer { close(fd) }
+    var timeout = timeval(tv_sec: 10, tv_usec: 0)
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+    var address = sockaddr_in()
+    address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+    address.sin_family = sa_family_t(AF_INET)
+    address.sin_port = port.bigEndian
+    address.sin_addr.s_addr = inet_addr("127.0.0.1")
+    let connected = withUnsafePointer(to: &address) {
+      $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+        connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+      }
+    }
+    guard connected == 0 else { throw POSIXError(.ECONNREFUSED) }
+    let payload = Array(requests.map { $0 + "\n" }.joined().utf8)
+    var sent = 0
+    while sent < payload.count {
+      let count = payload[sent...].withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+      guard count > 0 else { throw POSIXError(.EPIPE) }
+      sent += count
+    }
+    var received: [UInt8] = []
+    var lines = 0
+    var chunk = [UInt8](repeating: 0, count: 4096)
+    while lines < requests.count {
+      let count = read(fd, &chunk, chunk.count)
+      guard count > 0 else { throw POSIXError(.ECONNRESET) }
+      received += chunk[0..<count]
+      lines += chunk[0..<count].filter { $0 == 0x0A }.count
+    }
+    return String(decoding: received, as: UTF8.self).split(separator: "\n").map(String.init)
   }
 #endif

@@ -14,6 +14,7 @@ public final class LuiBridge {
     private static native int nativeStop();
     private static native int nativeExtensionEvent(long node, byte[] identifier, byte[] name, byte[] jsonValues);
     private static native byte[] nativeLastError();
+    private static native byte[] nativeAgent(byte[] request);
 
     private static native int nativeClockTick(double nowMs);
     private static native int nativeClockAdvance(double ms);
@@ -56,6 +57,12 @@ public final class LuiBridge {
                     byte[] report = nativeLastError();
                     System.out.println("ERROR " + (report == null ? "null" : new String(report, StandardCharsets.UTF_8)));
                     result = report == null ? 0 : 1;
+                    break;
+                }
+                case "agent": {
+                    byte[] reply = nativeAgent(utf8(line.substring("agent ".length())));
+                    System.out.println("AGENT " + (reply == null ? "null" : new String(reply, StandardCharsets.UTF_8)));
+                    result = reply == null ? 0 : 1;
                     break;
                 }
                 case "clocktick": result = nativeClockTick(Double.parseDouble(values[1])); break;

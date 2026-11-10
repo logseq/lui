@@ -66,6 +66,7 @@ private final class NativeTodosRuntime {
     private let contextMenuPressFunction: PointerDetailFunction
     private let extensionEventFunction: ExtensionEventFunction
     let recovery: LUINativeRefusalRecovery
+    let agent: LUINativeAgent
 
     init(path: String) throws {
         guard let handle = dlopen(path, RTLD_NOW | RTLD_LOCAL) else {
@@ -107,6 +108,7 @@ private final class NativeTodosRuntime {
         contextMenuPressFunction = try Self.load("lui_ocaml_context_menu_press", from: handle)
         extensionEventFunction = try Self.load("lui_ocaml_extension_event", from: handle)
         recovery = LUINativeRefusalRecovery(library: handle)
+        agent = LUINativeAgent(library: handle, recovery: recovery)
         clock.recovery = recovery
     }
 
@@ -271,6 +273,9 @@ private final class TodosHost: NSObject, NSApplicationDelegate, NSWindowDelegate
     private let backend = LUIAppleBackend()
     private let content = NSView()
     private var runtime: NativeTodosRuntime?
+    #if DEBUG
+    private var agentServer: LUIAgentServer?
+    #endif
     private var window: NSWindow?
     private var hostedRootID: Int?
 
@@ -339,6 +344,12 @@ private final class TodosHost: NSObject, NSApplicationDelegate, NSWindowDelegate
             }
             makeWindow()
             try runtime.start()
+            #if DEBUG
+            agentServer = try LUIAgentServer.startFromEnvironment { request in
+                defer { runtime.clock.reschedule() }
+                return runtime.agent.answer(request)
+            }
+            #endif
             window?.makeKeyAndOrderFront(nil)
             if #available(macOS 14.0, *) {
                 NSApplication.shared.activate()
@@ -356,6 +367,10 @@ private final class TodosHost: NSObject, NSApplicationDelegate, NSWindowDelegate
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        #if DEBUG
+        agentServer?.stop()
+        agentServer = nil
+        #endif
         runtime?.stop()
         runtime = nil
         activeHost = nil
