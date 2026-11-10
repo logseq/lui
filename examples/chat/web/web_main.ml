@@ -22,6 +22,7 @@ let main host =
   ignore (Lui_app.start app);
   ignore (Lui_app.flush app);
   Lui_web.mount renderer (Lui_app.root_node app) host;
+  Lui_web_agent.install (Lui_agent.app_target ~host:"web" app);
   let rec tick () =
     set_timeout (fun () ->
       ignore (Lui_app.send app Model.Tick);
