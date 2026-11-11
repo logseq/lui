@@ -193,6 +193,34 @@ impl TryFrom<&str> for AnchorAlignmentValue {
     }
 }
 
+/// Canonical typed `orientation` values. Provider matches must be exhaustive.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OrientationValue {
+    Horizontal,
+    Vertical,
+}
+
+impl OrientationValue {
+    pub const ALL: &'static [Self] = &[Self::Horizontal, Self::Vertical];
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Horizontal => "horizontal",
+            Self::Vertical => "vertical",
+        }
+    }
+}
+
+impl TryFrom<&str> for OrientationValue {
+    type Error = String;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "horizontal" => Ok(Self::Horizontal),
+            "vertical" => Ok(Self::Vertical),
+            _ => Err(format!("invalid canonical orientation: {value}")),
+        }
+    }
+}
+
 pub(super) fn property_value_supported(property: &str, value: Scalar<'_>) -> bool {
     match (property, value) {
         ("read-only", Scalar::Bool(_)) => true,
