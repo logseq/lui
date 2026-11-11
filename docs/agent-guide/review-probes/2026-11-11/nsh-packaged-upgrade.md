@@ -2,7 +2,7 @@
 
 This is a local macOS arm64 result for NSH
 `028574b7de9ee25a7c6f60660ef72fcb8790a27e`, Rust 1.97.0 and the LUI
-component/event checkpoint following `ca572bea4da6d3b20a1fa6620885c896b8e5043a`.
+component/event implementation commit `43873f6d`.
 The migration remains incomplete. This result does not establish production
 signing, HTTPS transport, native menu-triggered restart or cross-OS UI parity.
 

@@ -8,10 +8,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: nsh-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   rust-adapter:
     name: Rust adapter (${{ matrix.os }})
@@ -20,6 +16,9 @@ jobs:
       matrix:
         os: [ubuntu-24.04, macos-26, windows-latest]
     runs-on: ${{ matrix.os }}
+    concurrency:
+      group: nsh-adapter-${{ matrix.os }}-${{ github.ref }}
+      cancel-in-progress: true
     timeout-minutes: 45
     env:
       RUSTUP_TOOLCHAIN: 1.97.0
@@ -56,6 +55,9 @@ jobs:
       matrix:
         os: [ubuntu-24.04, macos-26]
     runs-on: ${{ matrix.os }}
+    concurrency:
+      group: nsh-ocaml-${{ matrix.os }}-${{ github.ref }}
+      cancel-in-progress: true
     timeout-minutes: 60
     env:
       RUSTUP_TOOLCHAIN: 1.97.0
@@ -88,6 +90,11 @@ jobs:
       matrix:
         os: [ubuntu-24.04, macos-26]
     runs-on: ${{ matrix.os }}
+    # Finish expensive native delivery qualification while newer component
+    # commits run their inexpensive adapter checks independently.
+    concurrency:
+      group: nsh-package-${{ matrix.os }}-${{ github.ref }}
+      cancel-in-progress: false
     timeout-minutes: 120
     defaults:
       run:
@@ -149,6 +156,9 @@ jobs:
   windows-ocaml-package:
     name: Native Windows OCaml DLL and packaged launch
     runs-on: windows-latest
+    concurrency:
+      group: nsh-package-windows-${{ github.ref }}
+      cancel-in-progress: false
     timeout-minutes: 120
     defaults:
       run:
