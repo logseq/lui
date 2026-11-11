@@ -4530,3 +4530,24 @@ an uncolored layer still fails validation before publication. These require a
 faithful live foreground projection; they are not replaced with black or a
 snapshot of an ancestor color. Name each layer's intended color when migrating
 until that separate capability is available. Preset shadows remain unchanged.
+
+### NSH display-none native accessibility visibility
+
+NSH `display=none` now also projects public native `visibility=hidden` to the
+same host. The pinned native engine removes layout frames for display-none but
+its accessibility adapters use the visibility flag to exclude a whole subtree.
+This closes the gap where a zero-sized control could remain represented to
+assistive technologies. No new public property or general inert behavior is
+introduced.
+
+A normal child with `display=block`, or an explicit pointer opt-in, cannot make
+itself interactive beneath a hidden ancestor. Restoring the parent's display to
+block or removing that display property clears only that parent's local hidden
+projection; an independently hidden child remains hidden. All retained native
+IDs and editable content survive these property updates.
+
+For example, update an existing sidebar's `display` from `none` to `block` to
+reveal its retained controls. Removing the property returns to the node's normal
+layout and inherited visibility. Do not replace the sidebar's child list to
+perform this visibility change. Maintained Apple, Android and Web mappings are
+unchanged.

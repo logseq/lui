@@ -1814,3 +1814,7 @@ mod inherited_foreground_tests;
 #[cfg(test)]
 #[path = "style/pointer_policy_tests.rs"]
 mod pointer_policy_tests;
+
+#[cfg(test)]
+#[path = "style/hidden_display_tests.rs"]
+mod hidden_display_tests;
