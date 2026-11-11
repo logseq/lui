@@ -188,8 +188,13 @@ jobs:
           $library = python tooling/build_nsh_windows.py --application todos
           if ($LASTEXITCODE -ne 0) { throw 'Native OCaml DLL build or export verification failed' }
           "LUI_NSH_TEST_LIBRARY=$library" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: Real OCaml C ABI, input, recovery and repeated teardown
-        run: cargo test --locked --manifest-path platform/nsh/Cargo.toml --test ocaml_todos --test runtime_protocol -- --test-threads=1
+      - name: Build and load the real native OCaml Image fixture DLL
+        run: |
+          $imageLibrary = python platform/nsh/tests/fixtures/build_virtual.py --fixture image
+          if ($LASTEXITCODE -ne 0) { throw 'Native Image fixture DLL build or export verification failed' }
+          "LUI_NSH_IMAGE_LIBRARY=$imageLibrary" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Real OCaml C ABI, Image Load, input, recovery and repeated teardown
+        run: cargo test --locked --manifest-path platform/nsh/Cargo.toml --test ocaml_todos --test runtime_protocol --test ocaml_image -- --test-threads=1
       - name: Build the exact pinned native NSH packaging CLI
         run: |
           $nshRevision = python -c "import tomllib; from pathlib import Path; print(tomllib.loads(Path('platform/nsh/Cargo.toml').read_text())['dependencies']['nsh-core']['rev'])"
@@ -209,6 +214,8 @@ jobs:
           name: nsh-windows-native-qualification
           path: |
             _build/nsh/windows/todos/ocaml-toolchain.json
+            _build/nsh/image-qualification/ocaml-toolchain.json
+            _build/nsh/image-qualification/*.lui-build.json
             _build/nsh-windows-launch/
             _build/nsh-windows-package/**/lui-delivery.json
           if-no-files-found: warn

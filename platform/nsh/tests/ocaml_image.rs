@@ -63,7 +63,12 @@ fn canonical_image_load_reaches_the_existing_ocaml_callback() -> Result<(), Stri
         PathBuf::from(path).to_string_lossy().into_owned()
     } else {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let build = Command::new("python3")
+        let python = if cfg!(target_os = "windows") {
+            "python"
+        } else {
+            "python3"
+        };
+        let build = Command::new(python)
             .args([
                 "platform/nsh/tests/fixtures/build_virtual.py",
                 "--fixture",

@@ -24,8 +24,15 @@ def build_fixture(fixture, *, version=None):
     suffix = f"-{version}" if version else ""
     output = ROOT / f"_build/nsh/{fixture}{suffix}-qualification"
     target = platform.system()
-    if target not in ("Darwin", "Linux"):
-        raise SystemExit("The Windows OCaml qualification fixture needs its native toolchain; it is not verified here")
+    if target not in ("Darwin", "Linux", "Windows"):
+        raise SystemExit("Qualification fixtures require native macOS, Linux or Windows")
+    config = None
+    if target == "Windows":
+        # Import only on Windows so Unix receipts keep their existing inputs.
+        sys.path.insert(0, str(ROOT / "tooling"))
+        import build_nsh_windows as windows
+        # Reject Cygwin/cross targets before invoking Dune or copying a fixture.
+        config = windows.native_config()
     execute(["opam", "exec", "--", "dune", "build", "src/lui.cmxa", "examples/todos/view.pp.ml"], cwd=ROOT, stdout=sys.stderr)
     drivers = sorted((ROOT / "_build/default/.ppx").glob("*/ppx.exe"))
     driver = None
@@ -44,29 +51,37 @@ def build_fixture(fixture, *, version=None):
     else:
         shutil.copy2(source_input, source)
     include = ROOT / "_build/default/src"
-    command = ["opam", "exec", "--", "ocamlfind", "ocamlopt", "-linkpkg", "-linkall",
-               "-package", "ocaml-signal", "-I", include / ".lui.objs/byte", "-I", include,
-               "-ppx", shlex.join([str(driver), "--as-ppx"])]
-    if target == "Linux":
-        command += ["-runtime-variant", "_pic", "-ccopt", "-fPIC"]
-    object_file = output / f"{fixture}_complete.o"
-    command += [include / "lui.cmxa", source, "-output-complete-obj", "-o", object_file]
-    execute(command, cwd=output, stdout=sys.stderr)
-    ocaml_include = subprocess.check_output(["opam", "exec", "--", "ocamlc", "-where"], cwd=ROOT, text=True).strip()
-    library = output / (f"liblui_{fixture}.dylib" if target == "Darwin" else f"liblui_{fixture}.so")
-    command = ["cc", "-fPIC", "-shared", "-o", library,
-               ROOT / "platform/bridge/lui_ocaml_bridge.c", object_file,
-               f"-I{ocaml_include}", "-lpthread"]
-    if target == "Linux":
-        command += ["-ldl", "-lm"]
-    execute(command, cwd=output, stdout=sys.stderr)
+    quote = subprocess.list2cmdline if target == "Windows" else shlex.join
+    compiler_arguments = ["-I", include / ".lui.objs/byte", "-I", include,
+                          "-ppx", quote([str(driver), "--as-ppx"])]
+    if target == "Windows":
+        library = windows.link_native_dll(output / f"lui_{fixture}.dll",
+                                         [include / "lui.cmxa", source], config=config,
+                                         compiler_arguments=compiler_arguments)
+    else:
+        command = ["opam", "exec", "--", "ocamlfind", "ocamlopt", "-linkpkg", "-linkall",
+                   "-package", "ocaml-signal", *compiler_arguments]
+        if target == "Linux":
+            command += ["-runtime-variant", "_pic", "-ccopt", "-fPIC"]
+        object_file = output / f"{fixture}_complete.o"
+        command += [include / "lui.cmxa", source, "-output-complete-obj", "-o", object_file]
+        execute(command, cwd=output, stdout=sys.stderr)
+        ocaml_include = subprocess.check_output(["opam", "exec", "--", "ocamlc", "-where"], cwd=ROOT, text=True).strip()
+        library = output / (f"liblui_{fixture}.dylib" if target == "Darwin" else f"liblui_{fixture}.so")
+        command = ["cc", "-fPIC", "-shared", "-o", library,
+                   ROOT / "platform/bridge/lui_ocaml_bridge.c", object_file,
+                   f"-I{ocaml_include}", "-lpthread"]
+        if target == "Linux":
+            command += ["-ldl", "-lm"]
+        execute(command, cwd=output, stdout=sys.stderr)
     if fixture in ("image", "tabs", "navigation"):
         execute(["node", ROOT / "tooling/lui_build_receipt.mjs", "write",
                  "--root", ROOT, "--artifact", library,
-                 "--command", f"python3 platform/nsh/tests/fixtures/build_virtual.py --fixture {fixture}",
+                 "--command", f"{'python' if target == 'Windows' else 'python3'} platform/nsh/tests/fixtures/build_virtual.py --fixture {fixture}",
                  "--input", "src", "--input", "ppx", "--input", "platform/bridge",
                  "--input", source_input.relative_to(ROOT),
-                 "--input", Path(__file__).resolve().relative_to(ROOT)],
+                 "--input", Path(__file__).resolve().relative_to(ROOT),
+                 *(["--input", "tooling/build_nsh_windows.py"] if target == "Windows" else [])],
                 cwd=ROOT, stdout=sys.stderr)
     return library
 

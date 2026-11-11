@@ -57,27 +57,39 @@ def verify_exports(library):
     return sorted(required)
 
 
-def build(application, output=None):
-    config = native_config()
-    app, bridge, sources = APPLICATIONS[application]
-    archives = ["src/lui.cmxa", app, bridge]
-    execute(["opam", "exec", "--", "dune", "build", *archives])
-    output = (output or ROOT / "_build/nsh/windows" / application).resolve()
+def link_native_dll(library, inputs, *, config=None, compiler_arguments=()):
+    """Link trusted OCaml inputs through the compiler's native DLL toolchain."""
+    config = native_config() if config is None else config
+    library = Path(library).resolve()
+    if library.suffix.lower() != ".dll":
+        raise ValueError("The native Windows linker requires a .dll output")
+    output = library.parent
     output.mkdir(parents=True, exist_ok=True)
     c_object = output / ("lui_ocaml_bridge" + config["ext_obj"])
-    library = output / f"lui_{application}.dll"
     execute(["opam", "exec", "--", "ocamlopt", "-I", ROOT / "platform/bridge",
              "-c", "-o", c_object, ROOT / "platform/bridge/lui_ocaml_bridge.c"], cwd=output)
     # The .dll suffix selects OCaml's configured MainDll/FlexDLL linker. This
     # includes the native runtime and autolink libraries, with matching C ABI.
     execute(["opam", "exec", "--", "ocamlfind", "ocamlopt", "-verbose", "-linkpkg", "-linkall",
-             "-package", "ocaml-signal", *[ROOT / "_build/default" / name for name in archives],
+             "-package", "ocaml-signal", *compiler_arguments, *inputs,
              c_object, "-output-complete-obj", "-o", library], cwd=output)
     exports = verify_exports(library)
     (output / "ocaml-toolchain.json").write_text(json.dumps({
         "compiler": config, "exports": exports,
         "qualification": "native DLL load and exports only; runtime and package tests run separately",
     }, indent=2) + "\n", encoding="utf-8")
+    return library
+
+
+def build(application, output=None):
+    config = native_config()
+    app, bridge, sources = APPLICATIONS[application]
+    archives = ["src/lui.cmxa", app, bridge]
+    execute(["opam", "exec", "--", "dune", "build", *archives])
+    output = (output or ROOT / "_build/nsh/windows" / application).resolve()
+    library = link_native_dll(output / f"lui_{application}.dll",
+                              [ROOT / "_build/default" / name for name in archives],
+                              config=config)
     node = shutil.which("node")
     if node:
         command = [node, ROOT / "tooling/lui_build_receipt.mjs", "write", "--root", ROOT,

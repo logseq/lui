@@ -3277,3 +3277,25 @@ Headless regressions cover all six levels, default restoration, text/name update
 authored style precedence, native identity and user draft retention, and atomic
 rejection of invalid level/label batches. These source tests do not establish
 OS screen-reader announcements or native screenshot typography qualification.
+
+### Native Windows qualification fixture builds
+
+`platform/nsh/tests/fixtures/build_virtual.py` now supports native Windows
+fixture DLLs using the same configured OCaml C compiler and MainDll/FlexDLL
+linker as `tooling/build_nsh_windows.py`. Windows PPX command strings use Windows
+argument quoting, and the Image ABI test uses `python` when it needs to invoke
+the builder itself. The Unix compiler/link flags and macOS/Linux receipt format and input roots
+are unchanged. For example, on the pinned native Windows
+OCaml toolchain:
+
+```powershell
+$imageLibrary = python platform/nsh/tests/fixtures/build_virtual.py --fixture image
+$env:LUI_NSH_IMAGE_LIBRARY = $imageLibrary
+cargo test --locked --manifest-path platform/nsh/Cargo.toml --test ocaml_image
+```
+
+The Windows job now builds that DLL and runs the real OCaml Image Load ABI test.
+Its toolchain record covers native DLL loading/exports; runtime dispatch is
+checked separately by the test. This adds a CI qualification path, not a claim
+that the new Windows fixture has already passed, nor native image pixel/decode
+qualification. The existing macOS/Linux fixture paths remain available.
