@@ -66,6 +66,9 @@ test("script lines use the Drive scenario vocabulary", () => {
   assert.deepEqual(tokens(`type kind:text-field "hello world"`), ["type", "kind:text-field", "hello world"]);
   assert.deepEqual(tokens(`press kind:button&text:"Open dialog"`), ["press", "kind:button&text:Open dialog"]);
   assert.deepEqual(plan(`tap "Save"`).request, {op: "press", selector: "Save"});
+  assert.deepEqual(plan(`native-press "More"`).request, {op: "native-press", selector: "More"});
+  assert.throws(() => plan("native-press"), /usage: native-press/);
+  assert.throws(() => plan("native-press More extra"), /usage: native-press/);
   assert.deepEqual(plan(`type id:4 "a b"`).request, {op: "type", selector: "id:4", text: "a b"});
   assert.deepEqual(plan("toggle kind:checkbox true").request, {op: "toggle", selector: "kind:checkbox", value: true});
   assert.deepEqual(plan(`key "cmd+k"`).request, {op: "key", combo: "cmd+k"});

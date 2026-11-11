@@ -65,6 +65,10 @@ export function plan(line) {
     return {request: {op: command === "tap" ? "press" : command, selector: rest[0]}};
   }
   switch (command) {
+    case "native-press":
+      need(1, "<selector>");
+      if (rest.length !== 1) throw new Error("usage: native-press <selector>");
+      return {request: {op: "native-press", selector: rest[0]}};
     case "hello":
       return {request: {op: "hello"}};
     case "screenshot":

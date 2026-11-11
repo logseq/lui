@@ -4713,3 +4713,27 @@ The direct projection may combine existing sources using the normal
 of reactive children; it does not reinterpret nested view expressions as signal
 pipelines or introduce a separate public signal API. Existing children and
 reactive property syntax are unchanged.
+
+
+### NSH CLI native controller activation
+
+NSH's loopback agent adds the explicit `native-press` operation and advertises it
+in the additive `host_native_ops` hello field. Existing `ops` and `press` remain
+unchanged. For example, `native-press "More"` activates the retained NSH menu
+trigger even if it has no OCaml press handler; `press "More"` still dispatches
+only the canonical OCaml event.
+
+The host delegates selector matching to OCaml `find`, requires exactly one
+match, pins its node incarnation and native reference, measures the current
+center and rechecks identity/admission before calling public
+`ElementRef::press_at`. It reuses the renderer's pointer policy, including
+presented-surface overrides, rejects disabled/unmounted/retired targets, and
+waits for a native commit without a display tick. Success reports the target
+`node`, `incarnation`, `handled` and `activation: "native-controller"`.
+`handled: false` is an explicit result when no native press listener takes it.
+
+This operation supplies only a single Press to the native controller. It is not
+hardware pointer, hit-testing from the application root, hover, PressDown/Up,
+keyboard, focus or IME qualification. It never activates the application or
+changes display power. macOS hello also advertises the existing `screenshot`
+host operation; other hosts keep screenshot explicitly unavailable.

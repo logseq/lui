@@ -1,6 +1,7 @@
 //! NSH desktop renderer for LUI's retained patch protocol.
 pub mod app;
 pub mod application_icons;
+mod native_agent;
 pub mod native_capture;
 
 pub mod application_theme;

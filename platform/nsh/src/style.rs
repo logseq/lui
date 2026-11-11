@@ -891,7 +891,7 @@ fn frame_axes(value: FrameAxesValue) -> [Option<StyleKey>; 2] {
     }
 }
 
-fn pointer_policy(node: &Node) -> Option<nsh_core::PointerEvents> {
+pub(crate) fn pointer_policy(node: &Node) -> Option<nsh_core::PointerEvents> {
     use nsh_core::PointerEvents;
 
     if let Some(enabled) = node.props.get("pointer-enabled").and_then(Value::as_bool) {

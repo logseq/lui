@@ -94,6 +94,18 @@ and 3 is a stale artifact. The CLI reports each failing line and stops on a lost
 connection. Selector details are implemented by the parser and matcher in
 `src/lui_agent.ml`; inspect that source before inventing selector syntax.
 
+NSH hosts additionally advertise `host_native_ops`. Use the explicit command
+`native-press "More"` when that list includes `native-press`: the host resolves
+exactly one target using the existing OCaml selector, pins its retained native
+reference and incarnation, measures its center, then invokes public
+`ElementRef::press_at`. It refuses missing/ambiguous, disabled, pointer-excluded,
+unmounted and retired targets. A response contains `handled` and
+`activation: "native-controller"`. `handled: false` means no native press
+listener took the operation. This is real NSH controller activation, including
+menus without OCaml press handlers; it does not generate hardware pointer,
+PressDown/PressUp, hover, focus or keyboard events. Existing `press` remains an
+OCaml semantic command and never silently falls back to this operation.
+
 Semantic commands act on the OCaml tree. They do not qualify native hit testing,
 keyboard focus, IME, or visible layout. Use screenshots and the appropriate
 native integration tests for those claims.

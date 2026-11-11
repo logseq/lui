@@ -377,6 +377,21 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                         let _ = reply.send(captured);
                         continue;
                     }
+                    let native_press = operation.as_deref() == Some("native-press");
+                    let request = if native_press {
+                        let translated = serde_json::from_str(&request)
+                            .map_err(|error| error.to_string())
+                            .and_then(|request| crate::native_agent::find_request(&request));
+                        match translated {
+                            Ok(request) => request,
+                            Err(error) => {
+                                let _ = reply.send(Err(error));
+                                continue;
+                            }
+                        }
+                    } else {
+                        request
+                    };
                     let mut result = session.agent(request).await;
                     let answer = match &mut result {
                         Ok(reply) => reply
@@ -401,6 +416,15 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                             "agent patches could not be published; inspect the backend diagnostic"
                                 .into(),
                         )
+                    };
+                    let answer = match answer {
+                        Ok(answer) if native_press => {
+                            crate::native_agent::press(&opening, &answer).await
+                        }
+                        Ok(answer) if operation.as_deref() == Some("hello") => {
+                            crate::native_agent::hello(answer)
+                        }
+                        answer => answer,
                     };
                     let _ = reply.send(answer);
                     None
