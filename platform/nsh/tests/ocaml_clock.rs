@@ -11,7 +11,11 @@ use nsh_core::{
 use nsh_engine::{EngineConfig, Root};
 use nsh_testing::Headless;
 use serde_json::{Value, json};
-use std::{path::PathBuf, process::Command, time::Duration};
+use std::{
+    path::PathBuf,
+    process::Command,
+    time::{Duration, Instant},
+};
 
 fn library() -> Result<String, String> {
     if let Some(path) = std::env::var_os("LUI_NSH_CLOCK_LIBRARY") {
@@ -75,6 +79,27 @@ async fn wire_state(session: &Session) -> Result<String, String> {
         .ok_or_else(|| format!("missing clock state: {answer}"))
 }
 
+fn recorded_clock(reply: &Reply) -> Result<f64, String> {
+    reply
+        .batches
+        .iter()
+        .rev()
+        .flat_map(|batch| batch.ops.iter().rev())
+        .find_map(|operation| match operation {
+            Operation::SetProp {
+                property, value, ..
+            } if property == "text" => value
+                .as_str()
+                .filter(|text| text.starts_with("clock-state "))
+                .and_then(|text| text.rsplit_once(" clock="))
+                .map(|(_, value)| value),
+            _ => None,
+        })
+        .ok_or_else(|| "request omitted its observed clock timestamp".to_owned())?
+        .parse::<f64>()
+        .map_err(|error| error.to_string())
+}
+
 async fn runtime_contract(path: String) -> Result<(), String> {
     let (session, initial) = Session::open(&path, 1).await?;
     delay(&initial, None);
@@ -103,14 +128,19 @@ async fn runtime_contract(path: String) -> Result<(), String> {
         wire_state(&session).await?.contains("delayed=1"),
         "continuous ordinary requests starved the pending timer"
     );
-    press(&session, "clock-cancel").await?;
+    let before_idle = recorded_clock(&press(&session, "clock-cancel").await?)?;
+    let idle_started = Instant::now();
     nsh_core::element::timer(Duration::from_millis(250)).await;
-    press(&session, "clock-delayed").await?;
-    nsh_core::element::timer(Duration::from_millis(35)).await;
-    session.tick().await?;
+    let idle_ms = idle_started.elapsed().as_secs_f64() * 1000.0;
+    let armed = press(&session, "clock-delayed").await?;
+    delay(&armed, Some(120));
+    // Observe the timestamp emitted by the scheduling handler itself. A lower
+    // bound stays valid even if the hosted runner stalls past the timer deadline.
+    // The fixture prints milliseconds to three decimal places.
+    let rounding_ms = 0.002;
     assert!(
-        wire_state(&session).await?.contains("delayed=0 nested=0"),
-        "a newly scheduled timer caught up across idle wall time"
+        recorded_clock(&armed)? + rounding_ms >= before_idle + idle_ms,
+        "a new timer was scheduled against stale time after an idle interval"
     );
     press(&session, "clock-cancel").await?;
     session.close().await?;

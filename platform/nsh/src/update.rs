@@ -655,12 +655,14 @@ impl Cache {
         fs::create_dir_all(&parent)
             .map_err(|error| UpdateError::new(ErrorCode::Configuration, error))?;
         let path = parent.join(format!("lui-update-{}-{owner}", std::process::id()));
-        let mut builder = fs::DirBuilder::new();
+        let builder = fs::DirBuilder::new();
         #[cfg(unix)]
-        {
+        let builder = {
             use std::os::unix::fs::DirBuilderExt;
+            let mut builder = builder;
             builder.mode(0o700);
-        }
+            builder
+        };
         builder
             .create(&path)
             .map_err(|error| UpdateError::new(ErrorCode::Configuration, error))?;

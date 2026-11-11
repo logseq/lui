@@ -1,6 +1,8 @@
 use super::*;
 use serde_json::json;
-use std::{io::Cursor, process::Command};
+use std::io::Cursor;
+#[cfg(unix)]
+use std::process::Command;
 
 // Deterministic public test material; never use these keys for distribution.
 const SECRET: &str = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=";
