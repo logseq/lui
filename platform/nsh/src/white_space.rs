@@ -245,6 +245,29 @@ mod tests {
             .find(|node| node.test_id.as_deref() == Some(name.as_str()))
             .unwrap()
     }
+    fn assert_lines(node: &nsh_testing::LayoutNode, count: u32, wrap: bool) {
+        use nsh_core::{ApproxTextEngine, TextEngine};
+
+        let text = &node.text.as_ref().expect("native text layout").text;
+        assert_eq!(text.max_lines, 0, "wrapping must not use a line clamp");
+        let engine = ApproxTextEngine;
+        let measured = engine.measure(
+            &engine.prepare(text),
+            wrap.then_some(node.bounds.size.width),
+        );
+        let mut single = text.as_ref().clone();
+        single.text = "M".to_owned();
+        let line = engine.measure(&engine.prepare(&single), None).height.0;
+        assert!((measured.height.0 / line - count as f32).abs() < 0.001);
+        // Headless uses this public engine. Layout rounds the two absolute
+        // box edges independently, so their difference can vary by one point.
+        assert!(
+            (node.bounds.size.height.0 - measured.height.0).abs() <= 1.0,
+            "native bounds {:?}, measured {:?}",
+            node.bounds,
+            measured
+        );
+    }
     #[test]
     fn native_wrapping_inheritance_preserves_preformatted_labels_and_retained_editing() {
         let mut app = Headless::start(EngineConfig::new(Root::of::<WhitespaceScenario>())).unwrap();
@@ -252,19 +275,13 @@ mod tests {
         let nowrap = geometry(&app, 2);
         let normal = geometry(&app, 3);
         let prewrap = geometry(&app, 4);
-        let pre = geometry(&app, 5);
-        assert!(
-            (nowrap.bounds.size.height.0 - 20.0).abs() < 0.1,
-            "{:?}",
-            nowrap.bounds
-        );
+        let short_prewrap = geometry(&app, 5);
+        assert_lines(&nowrap, 1, false);
+        assert_lines(&normal, 2, true);
+        assert_lines(&short_prewrap, 2, true);
+        assert_lines(&prewrap, 3, true);
         assert!(normal.bounds.size.height.0 > nowrap.bounds.size.height.0);
-        assert!(
-            (pre.bounds.size.height.0 - 40.0).abs() < 0.1,
-            "{:?}",
-            pre.bounds
-        );
-        assert!(prewrap.bounds.size.height.0 > pre.bounds.size.height.0);
+        assert!(prewrap.bounds.size.height.0 > short_prewrap.bounds.size.height.0);
         assert!(app.screen().texts().contains(&"Alpha beta gamma next"));
         assert!(app.screen().texts().contains(&"Alpha  beta gamma\nnext"));
         app.wait_for("text:Head label").unwrap();
