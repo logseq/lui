@@ -406,6 +406,7 @@ impl Renderer {
                     &mut resolved,
                     |_| None,
                 )?;
+                crate::ui::checkbox::validate(node, &theme)?;
                 style::compile(node, &theme, viewport)?;
             }
             let updates = resolved
@@ -907,15 +908,12 @@ impl Renderer {
                     accessibility_label: Prop::bind(move || Some(label().into())),
                     ..Default::default()
                 };
-                ui::checkbox(props, theme)
+                ui::checkbox(props, theme, state)
                     .state_inline_style(style)
                     .on_event(move |event: &nsh_base::CheckboxEvent| {
                         let nsh_base::CheckboxEvent::Change(checked) = event;
                         events.emit(id, incarnation, Event::Toggle(id, *checked));
                     })
-                    .child(text(move || {
-                        SharedString::from(state.get().string("text").to_owned())
-                    }))
                     .child(body)
                     .element_ref(&reference)
                     .key(key.clone())
@@ -1325,6 +1323,7 @@ fn validate_themes(
             (!invalid.contains(&id) && node.incarnation == entry.node.get_untracked().incarnation)
                 .then(|| entry.theme.get_untracked())
         })?;
+        crate::ui::checkbox::validate(node, &theme)?;
         style::compile(transaction.get(id)?, &theme, viewport)?;
     }
     Ok(themes)

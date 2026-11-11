@@ -4011,3 +4011,66 @@ OCaml callbacks through the C ABI while retaining its four mounted fields and
 blur-save assertions. Headless tests additionally check removal of actual
 bindings, modified keys, composition, focus transfer, disabled/live flags,
 keyed editor retention and atomic late-capability refusal.
+
+## NSH Checkbox paints authored indicator and label parts
+
+The Checkbox and Toggle routes now forward `indicator-border-color` to the
+actual native indicator, `checked-indicator-border-color` to its checked and
+indeterminate border, and `label-opacity` to the direct text label. These are
+part styles: they do not replace the component's outer border, dim the check
+mark, change authored body opacity or insert another layout wrapper. Missing
+properties retain the previous desktop theme defaults. Updating/removing them
+or changing the checked/mixed state keeps the same native controller and label.
+Invalid part colors, including unresolved scoped variables, fail the batch or
+theme update before native publication.
+
+These properties are used by Logseq's shared Checkbox recipe and table selection
+chrome (`logseq/refactor/lui` at `29dcb60fdc976dcda1da6ec984057bbf79d88612`,
+`deps/ui/src/shared/ui_components.ml:92`, `views/views_table.ml:319`), and settings
+label opacity at `settings/settings_page.ml:147`. For example, downstream code
+using the public property writer may keep its existing part bindings:
+
+```ocaml
+let indicator_chrome (child : Lui_elements.t) : Lui_elements.t =
+  fun context parent ->
+    let node = child context parent in
+    Lui_ui.string_property context node Lui_protocol.IndicatorBorderColor "border";
+    Lui_ui.string_property context node Lui_protocol.CheckedIndicatorBorderColor "primary";
+    Lui_ui.float_property context node Lui_protocol.LabelOpacity 0.7;
+    node
+
+indicator_chrome
+  (Lui_elements.checkbox ~text:"Use global font"
+     ~on_toggle:(function
+       | Lui_protocol.ToggleChanged (_, checked) -> ignore (send (Set_global checked))
+       | _ -> ()) [])
+```
+
+The native NSH Checkbox still owns activation, keyboard focus, disabled behavior,
+checked/mixed accessibility state and the requested next boolean. Mobile's
+`shared/src/logseq/view_property.ml:228` uses ordinary `on_toggle`; no Journal UI
+Checkbox detail callback was found. Their ordinary boolean path remains intact.
+
+### Shift selection remains an explicit native event gap
+
+`toggle-detail-enabled=true` now fails atomically on NSH Checkbox/Toggle instead
+of admitting a callback with no producer. False remains allowed. Logseq's table
+`on_toggle_detail` at `views/views_table.ml:328` reads Shift from
+`ToggleChangedDetail(_,checked,modifiers)` for range selection; changing that
+caller to ordinary `on_toggle` would lose required behavior and is not a valid
+migration. Keep the requirement open until a real native modifier projection is
+available. No zero modifier is synthesized and no second toggle is replayed.
+
+The public API boundary is concrete in the pinned NSH source:
+`crates/nsh-base/src/checkbox.rs` exposes only `CheckboxEvent::Change(bool)` and
+its root `on_press` decodes `&()`, discarding `PressEvent`. The
+`ComponentElement` contract in `crates/nsh-core/src/element/builder.rs` explicitly
+excludes `Interactive`; its public `on_event` only observes typed events.
+`ElementRef` has no raw press observation API. An indicator Slot cannot observe
+presses on the label, extended hit area or keyboard activation; giving it a
+press listener also takes ownership away from the native Checkbox root.
+Ancestor press routing chooses a press target rather than providing a bubbling
+modifier observer. A keyboard-only modifier snapshot would not recover real
+pointer Shift presses. Therefore this increment changes only native part
+presentation and the explicit validation boundary; it does not claim Shift
+Checkbox selection parity or alter NSH's event API.

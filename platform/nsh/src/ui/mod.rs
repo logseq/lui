@@ -1,8 +1,10 @@
 //! Shared desktop presentation. Explicit LUI node styles override these defaults.
+pub(crate) mod checkbox;
 pub(crate) mod context_menu;
 pub(crate) mod controls;
 mod icons;
 pub(crate) mod menu_item;
+pub(crate) use checkbox::element as checkbox;
 
 use crate::style::ThemeView;
 use nsh_core::{
@@ -70,31 +72,6 @@ pub fn input(theme: Theme) -> Input {
         .bg(move || color(theme, "background"))
         .text_color(move || color(theme, "foreground"))
         .focus(|s| s.border_color(move || color(theme, "ring")))
-        .disabled_style(|s| s.opacity(0.5))
-}
-
-pub fn checkbox(
-    props: nsh_base::CheckboxProps,
-    theme: Theme,
-) -> ComponentElement<nsh_base::Checkbox> {
-    let checked = props.checked;
-    let mixed = props.indeterminate;
-    nsh_base::Checkbox::element(nsh_base::CheckboxProps {
-        indicator_class: Some("size-4 items-center justify-center rounded-sm border border-border checked:bg-primary checked:border-primary indeterminate:bg-primary indeterminate:border-primary".into()).into(),
-        indicator_style: Prop::bind(move || {
-            part(StyleRefinement::default()
-                .border_color(color(theme, "border"))
-                .checked(|s| s.bg(color(theme, "primary")).border_color(color(theme, "primary")))
-                .indeterminate(|s| s.bg(color(theme, "primary")).border_color(color(theme, "primary"))))
-        }),
-        ..props
-    })
-        .fill("indicator", text(move || if mixed.get() { "−" } else if checked.get() { "✓" } else { "" })
-            .text_xs().text_color(move || color(theme, "primary-foreground")))
-        .flex_row()
-        .items_center()
-        .gap_2()
-        .focus_visible(|s| s.border_1().border_color(move || color(theme, "ring")))
         .disabled_style(|s| s.opacity(0.5))
 }
 
