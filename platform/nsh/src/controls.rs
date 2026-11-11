@@ -767,6 +767,9 @@ pub(crate) fn element(
                     theme,
                     ui::menu_item::Appearance {
                         variant: Prop::bind(move || node.get().string("variant").to_owned().into()),
+                        preserve_foreground: Prop::bind(move || {
+                            node.get().props.contains_key("foreground")
+                        }),
                         size: Prop::bind(move || node.get().string("size").to_owned().into()),
                         selection_placement: Prop::bind(move || {
                             node.get().string("selection-placement").to_owned().into()

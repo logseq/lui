@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 pub(crate) struct Appearance {
     pub variant: Prop<SharedString>,
+    pub preserve_foreground: Prop<bool>,
     pub size: Prop<SharedString>,
     pub selection_placement: Prop<SharedString>,
     pub icon: Prop<SharedString>,
@@ -24,6 +25,7 @@ pub(crate) fn element(
 ) -> ComponentElement<nsh_base::MenuItem> {
     let Appearance {
         variant,
+        preserve_foreground,
         size,
         selection_placement,
         icon: glyph,
@@ -78,14 +80,18 @@ pub(crate) fn element(
             _ => style.text_color(color(theme, "foreground")),
         };
         let destructive = variant == "destructive";
+        let authored_foreground = preserve_foreground.get();
         let mut style = style
             .hover(|style| {
-                style
-                    .bg(
-                        color(theme, if destructive { "destructive" } else { "accent" })
-                            .opacity(if destructive { 0.1 } else { 1.0 }),
-                    )
-                    .text_color(color(
+                let style = style.bg(color(
+                    theme,
+                    if destructive { "destructive" } else { "accent" },
+                )
+                .opacity(if destructive { 0.1 } else { 1.0 }));
+                if authored_foreground {
+                    style
+                } else {
+                    style.text_color(color(
                         theme,
                         if destructive {
                             "destructive"
@@ -93,16 +99,24 @@ pub(crate) fn element(
                             "accent-foreground"
                         },
                     ))
+                }
             })
             .checked(|style| {
-                style.bg(color(theme, "accent")).text_color(color(
-                    theme,
-                    if destructive {
-                        "destructive"
-                    } else {
-                        "accent-foreground"
-                    },
-                ))
+                let style = style.bg(color(theme, "accent"));
+                // A default native state color must not beat an authored base
+                // foreground solely because checked/hover is more specific.
+                if authored_foreground {
+                    style
+                } else {
+                    style.text_color(color(
+                        theme,
+                        if destructive {
+                            "destructive"
+                        } else {
+                            "accent-foreground"
+                        },
+                    ))
+                }
             });
         style.style().clone()
     });

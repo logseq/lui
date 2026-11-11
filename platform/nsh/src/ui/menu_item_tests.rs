@@ -247,6 +247,12 @@ fn menu_item_icon_check_hint_size_and_variant_update_without_replacing_children(
     let styled = app.screen().span_style("text:Renamed 中文").unwrap();
     assert_eq!(styled.font_size, px(19.0));
     assert_eq!(styled.color, nsh_core::Color(0x123456ff));
+    app.hover("id:lui-10").unwrap();
+    assert_eq!(
+        app.screen().span_style("text:Renamed 中文").unwrap().color,
+        nsh_core::Color(0x123456ff)
+    );
+    assert_eq!(native(&app, 10).id, item);
 }
 #[test]
 fn menu_item_optional_parts_restore_in_place_after_removal() {
