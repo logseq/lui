@@ -2552,3 +2552,6 @@ mod scroll_tests;
 
 #[cfg(test)]
 mod context_menu_tests;
+
+#[cfg(test)]
+mod contents_tests;
