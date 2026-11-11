@@ -105,15 +105,15 @@ fn one_em_follows_nearest_parent_native_typography_and_live_geometry_without_rem
     app.wait_for("id:lui-3").unwrap();
     let before = geometry(&app, 3);
     let control = geometry(&app, 6).id;
-    assert_eq!(size(&app, "id:lui-3"), 20.0);
-    assert_eq!(size(&app, "id:lui-4"), 20.0);
-    assert_eq!(size(&app, "id:lui-5"), 20.0);
+    assert_eq!(size(&app, "id:lui-3 >> text:MMMM"), 20.0);
+    assert_eq!(size(&app, "id:lui-4 >> text:MMMM"), 20.0);
+    assert_eq!(size(&app, "id:lui-5 >> text:MMMM"), 20.0);
     assert_eq!(size(&app, "id:lui-6 >> text:Command"), 20.0);
     app.press_key("f7").unwrap();
-    assert_eq!(size(&app, "id:lui-3"), 32.0);
+    assert_eq!(size(&app, "id:lui-3 >> text:MMMM"), 32.0);
     assert_eq!(size(&app, "id:lui-6 >> text:Command"), 32.0);
-    assert_eq!(size(&app, "id:lui-4"), 20.0);
-    assert_eq!(size(&app, "id:lui-5"), 20.0);
+    assert_eq!(size(&app, "id:lui-4 >> text:MMMM"), 20.0);
+    assert_eq!(size(&app, "id:lui-5 >> text:MMMM"), 20.0);
     let after = geometry(&app, 3);
     assert_eq!(after.id, before.id);
     assert_eq!(geometry(&app, 6).id, control);
@@ -125,6 +125,6 @@ fn one_em_follows_nearest_parent_native_typography_and_live_geometry_without_rem
     );
     app.press_key("f8").unwrap();
     assert_eq!(geometry(&app, 3).id, before.id);
-    assert_eq!(size(&app, "id:lui-3"), 32.0);
+    assert_eq!(size(&app, "id:lui-3 >> text:MMMM"), 32.0);
     assert!(!app.screen().shows("text:must not publish"));
 }
