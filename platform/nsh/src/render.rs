@@ -131,6 +131,48 @@ impl Renderer {
             toasts: signal(Vec::new()),
         })))
     }
+    /// The current immutable wire node. Host work must keep its incarnation
+    /// and recheck it after awaiting a native result.
+    pub fn node_snapshot(&self, id: u64) -> Option<Arc<Node>> {
+        self.0.borrow().store.nodes.get(&id).cloned()
+    }
+
+    /// The selected application's root, after a patch has been published.
+    pub fn root_id(&self) -> Option<u64> {
+        self.0.borrow().store.root()
+    }
+
+    /// Resolve a native host reference against authored identifiers, including
+    /// application extension properties. Identifiers belong to the application.
+    pub fn find_by_identifier(&self, identifier: &str) -> Option<Arc<Node>> {
+        self.0
+            .borrow()
+            .store
+            .nodes
+            .values()
+            .find(|node| {
+                node.props
+                    .get("accessibility-identifier")
+                    .and_then(Value::as_str)
+                    == Some(identifier)
+                    || node
+                        .extension
+                        .as_ref()
+                        .and_then(|extension| extension.properties.get("accessibility-identifier"))
+                        .and_then(Value::as_str)
+                        == Some(identifier)
+            })
+            .cloned()
+    }
+
+    /// The actual retained native root for this exact incarnation. A replacement
+    /// with the same wire id cannot inherit a stale measurement or command.
+    pub fn native_reference(&self, id: u64, incarnation: u64) -> Option<ElementRef> {
+        let state = self.0.borrow();
+        let entry = state.nodes.get(&id)?;
+        (entry.node.get_untracked().incarnation == incarnation).then_some(entry.reference)
+    }
+
     pub fn apply(&self, patch: Batch) -> Result<(), String> {
         self.publish(patch, false)
     }

@@ -4212,3 +4212,29 @@ Logseq's existing native `app_icon_svgs` custom-only payload assumes its host
 already bundles the complete Tabler table. An NSH application must supply that
 existing application table as well as custom overrides; the generic adapter does
 not import Logseq's asset catalog or create a second icon decoder/cache.
+
+### Application services on the existing desktop pump
+
+Provide `runtime::BridgeConfig` and `app::ApplicationServices::new(handler)` as
+NSH contexts above `Desktop` to select Logseq startup and service dispatch.
+The handler receives copied `PlatformRequest` and the retained `Renderer`, and
+returns `app::ServiceFuture` with actual `PlatformEvent` replies. It runs outside
+the foreign callback. The same desktop task processes mixed native messages in
+callback order; messages caused by service replies follow already captured
+messages. It waits for an explicit runtime wakeup between application events.
+Generic applications preserve their existing clock and publication path.
+
+Native menu/window callbacks can capture `app::ApplicationEvents` from context
+and call `send(event)`. This queues through that same ordered task and reports a
+closed/full queue. Factories that need a read-only editor snapshot capture
+`app::ApplicationRuntime`, then obtain `session()` when making the query. The
+holder is provided before retained regions are constructed and filled before the
+first application patch; adding a new context after opening asynchronously would
+not reliably reach regions that already captured their context.
+
+Host services may read `Renderer::node_snapshot`, `root_id` and
+`find_by_identifier`, and obtain `native_reference(id, incarnation)` for an exact
+retained node. Recheck its incarnation after awaiting measurements before
+returning a node-specific reply; a replacement with the same numeric id must not
+inherit work from the old native node. These are immutable snapshots and native
+capabilities over the existing entries, not another application tree.

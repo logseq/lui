@@ -1,7 +1,9 @@
 //! One Rust root shared by the desktop runner and real-engine tests.
 use crate::{
     render::{Event as ViewEvent, Renderer},
-    runtime::{Event, Reply, Session},
+    runtime::{
+        ApplicationMessage, BridgeConfig, Event, PlatformEvent, PlatformRequest, Reply, Session,
+    },
 };
 use nsh_core::{
     element::{Spawned, timer},
@@ -10,8 +12,11 @@ use nsh_core::{
 use std::{
     cell::{Cell, RefCell},
     collections::{BTreeMap, VecDeque},
+    future::{Future, poll_fn},
     path::PathBuf,
+    pin::{Pin, pin},
     rc::Rc,
+    task::Poll,
     time::Duration,
 };
 use tokio::sync::{mpsc, oneshot};
@@ -28,9 +33,48 @@ pub struct DesktopProps {
     pub agent_listen: Prop<String>,
 }
 
+/// Application-owned host services. The existing ordered desktop pump is the
+/// sole consumer; callbacks never call OCaml or publish patches themselves.
+pub type ServiceFuture = Pin<Box<dyn Future<Output = Result<Vec<PlatformEvent>, String>>>>;
+type ServiceHandler = dyn Fn(PlatformRequest, Renderer) -> ServiceFuture;
+
+/// Supply this context above `Desktop` when selecting an application bridge
+/// that emits platform requests. Generic applications do not allocate a handler.
+#[derive(Clone)]
+pub struct ApplicationServices(Rc<ServiceHandler>);
+impl ApplicationServices {
+    pub fn new(handler: impl Fn(PlatformRequest, Renderer) -> ServiceFuture + 'static) -> Self {
+        Self(Rc::new(handler))
+    }
+}
+
+/// Read-only runtime queries for application factories. This holder is provided
+/// before retained regions capture their context and filled before first publish.
+#[derive(Clone, Default)]
+pub struct ApplicationRuntime(Rc<RefCell<Option<Session>>>);
+impl ApplicationRuntime {
+    pub fn session(&self) -> Option<Session> {
+        self.0.borrow().clone()
+    }
+}
+
+/// Queues application platform events onto the same ordered OCaml pump.
+/// Native menus and window callbacks retain this capability, never the worker.
+#[derive(Clone)]
+pub struct ApplicationEvents(mpsc::Sender<Request>);
+impl ApplicationEvents {
+    pub fn send(&self, event: PlatformEvent) -> Result<(), String> {
+        self.0
+            .try_send(Request::Platform(event))
+            .map_err(|error| format!("application platform event queue: {error}"))
+    }
+}
+
 enum Request {
     Event(GuardedEvent),
+    Platform(PlatformEvent),
     Tick,
+    Pump,
     WindowWake,
     Agent {
         request: String,
@@ -160,6 +204,13 @@ impl Clock {
 #[component]
 pub fn Desktop(props: DesktopProps) -> impl IntoElement {
     let (sender, mut receiver) = mpsc::channel(64);
+    provide_context(ApplicationEvents(sender.clone()));
+    let runtime = ApplicationRuntime::default();
+    provide_context(runtime.clone());
+    let runtime_cleanup = runtime.clone();
+    cleanup(move || {
+        runtime_cleanup.0.borrow_mut().take();
+    });
     let for_events = sender.clone();
     let windows = Windows::default();
     let for_windows = windows.clone();
@@ -207,10 +258,12 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
     let cleanup_clock = clock.clone();
     cleanup(move || cleanup_clock.cancel());
     let opening = renderer.clone();
+    let bridge = use_context::<BridgeConfig>().unwrap_or_default();
+    let services = use_context::<ApplicationServices>();
     let path = library_path(&props.library.get_untracked());
     spawn(async move {
         let result = match path {
-            Ok(path) => Session::open(path, platform_code()).await,
+            Ok(path) => Session::open_with_config(path, platform_code(), bridge).await,
             Err(error) => Err(error),
         };
         let (session, reply) = match result {
@@ -220,16 +273,41 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                 return;
             }
         };
-        publish(&opening, &clock, &sender, &session, Ok(reply)).await;
+        *runtime.0.borrow_mut() = Some(session.clone());
+        publish(
+            &opening,
+            &clock,
+            &sender,
+            &session,
+            services.as_ref(),
+            Ok(reply),
+        )
+        .await;
         // One pump owns response publication. Independent per-event tasks could
         // observe a later ready reply before an earlier suspended task resumes.
         // The engine stays free while this task awaits the OCaml worker.
-        while let Some(request) = receiver.recv().await {
+        loop {
+            let wake = session.woken();
+            let mut wake = pin!(wake);
+            let request = poll_fn(|context| {
+                if let Poll::Ready(request) = receiver.poll_recv(context) {
+                    return Poll::Ready(request);
+                }
+                if wake.as_mut().poll(context).is_ready() {
+                    return Poll::Ready(Some(Request::Pump));
+                }
+                Poll::Pending
+            })
+            .await;
+            let Some(request) = request else { break };
+
             let reply = match request {
                 Request::Event(event) if event.current(&opening) => {
                     Some(session.dispatch(semantic(event.event)).await)
                 }
                 Request::Event(_) => None,
+                Request::Platform(event) => Some(session.platform_event(event).await),
+                Request::Pump => Some(session.pump().await),
                 Request::Tick => {
                     clock.queued.set(false);
                     Some(session.tick().await)
@@ -247,7 +325,15 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                             .ok_or_else(|| "OCaml agent returned no response".to_owned()),
                         Err(error) => Err(error.clone()),
                     };
-                    let published = publish(&opening, &clock, &sender, &session, result).await;
+                    let published = publish(
+                        &opening,
+                        &clock,
+                        &sender,
+                        &session,
+                        services.as_ref(),
+                        result,
+                    )
+                    .await;
                     let answer = if published {
                         answer
                     } else {
@@ -261,13 +347,29 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                 }
             };
             if let Some(reply) = reply {
-                publish(&opening, &clock, &sender, &session, reply).await;
+                publish(
+                    &opening,
+                    &clock,
+                    &sender,
+                    &session,
+                    services.as_ref(),
+                    reply,
+                )
+                .await;
             }
             if let Some(window) = windows.pop()
                 && window.current(&opening)
             {
                 let reply = session.dispatch(semantic(window.event)).await;
-                publish(&opening, &clock, &sender, &session, reply).await;
+                publish(
+                    &opening,
+                    &clock,
+                    &sender,
+                    &session,
+                    services.as_ref(),
+                    reply,
+                )
+                .await;
             }
             windows.wake(&sender);
         }
@@ -280,9 +382,14 @@ async fn publish(
     clock: &Clock,
     sender: &mpsc::Sender<Request>,
     session: &Session,
+    services: Option<&ApplicationServices>,
     reply: Result<Reply, String>,
 ) -> bool {
-    match reply.and_then(|reply| accept(renderer, reply)) {
+    let accepted = match reply {
+        Ok(reply) => accept_ordered(renderer, session, services, reply).await,
+        Err(error) => Err(error),
+    };
+    match accepted {
         Ok(delay) => {
             clock.schedule(delay, sender);
             true
@@ -293,17 +400,67 @@ async fn publish(
             // A local decode/validation failure has not changed the OCaml
             // application. Recover on this same ordered pump before accepting
             // another event, just as the worker recovers a refused C call.
-            match session
-                .resync()
-                .await
-                .and_then(|reply| accept(renderer, reply))
-            {
+            let recovery = match session.resync().await {
+                Ok(reply) => accept_ordered(renderer, session, services, reply).await,
+                Err(error) => Err(error),
+            };
+            match recovery {
                 Ok(delay) => clock.schedule(delay, sender),
                 Err(recovery) => renderer.fail(format!("{error}; resync failed: {recovery}")),
             }
             false
         }
     }
+}
+
+async fn accept_ordered(
+    renderer: &Renderer,
+    session: &Session,
+    services: Option<&ApplicationServices>,
+    reply: Reply,
+) -> Result<Option<Duration>, String> {
+    if reply.messages.is_none() {
+        return accept(renderer, reply);
+    }
+    let mut replies = VecDeque::from([reply]);
+    let mut delay = None;
+    while let Some(mut reply) = replies.pop_front() {
+        for message in reply
+            .messages
+            .take()
+            .ok_or("application reply changed bridge ABI")?
+        {
+            match message {
+                ApplicationMessage::Batch(batch) => renderer.apply(batch)?,
+                ApplicationMessage::Snapshot(batch) => renderer.replace(batch)?,
+                ApplicationMessage::PlatformRequest(request) => {
+                    let handler = services.ok_or_else(|| {
+                        format!(
+                            "application host service is not installed: {}",
+                            request.operation
+                        )
+                    })?;
+                    for event in (handler.0)(request, renderer.clone()).await? {
+                        // Native callbacks produced by this event go behind the
+                        // remaining current messages, as in the OCaml mailbox.
+                        replies.push_back(session.platform_event(event).await?);
+                    }
+                }
+            }
+            if u64::try_from(reply.root)
+                .ok()
+                .is_some_and(|id| renderer.node_snapshot(id).is_some())
+            {
+                renderer.set_root(reply.root)?;
+            }
+        }
+        renderer.set_root(reply.root)?;
+        if let Some(error) = reply.diagnostic {
+            renderer.fail(error);
+        }
+        delay = reply.next_delay;
+    }
+    Ok(delay)
 }
 
 fn accept(renderer: &Renderer, reply: Reply) -> Result<Option<Duration>, String> {
