@@ -25,7 +25,7 @@ pub(super) fn supported(kind: &str) -> bool {
 /// callbacks explicitly until native projections or an editor mode exist.
 pub(super) fn validate(node: &Node) -> Result<(), String> {
     if node.kind == "list-item" {
-        if node.boolean("change-enabled", false) {
+        if node.boolean("change-enabled", false) && node.string("role") != "treeitem" {
             return Err(
                 "NSH list-item change-enabled inline editor mode is not implemented yet".into(),
             );

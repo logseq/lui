@@ -346,6 +346,39 @@ let test_same_batch_drop_poisoned_parent_aborts () =
     (source @ [ DropNode 3 ])
     (elided_ops source 3)
 
+let test_native_tree_item_metadata_callbacks () =
+  let selections = ref 0 and expansions = ref 0 and actions = ref 0 in
+  let app = Lui_app.create (recording_backend ()) () (fun model () -> model)
+      (fun _context _source _send ->
+        Lui_elements.tree ~label:"Native files" [
+          Lui_elements.tree_item ~text:"Folder" ~expanded:false
+            ~on_selection:(fun _ -> incr selections)
+            ~on_expand:(fun _ -> incr expansions)
+            ~on_action:(fun _ -> incr actions)
+            [ Lui_elements.tree_item ~text:"Leaf" [] ];
+        ]) in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let ops = all_ops () in
+  let node = List.find_map (function
+    | Lui_protocol.SetProp (node, Lui_protocol.TextValue, Lui_protocol.StringValue "Folder") -> Some node
+    | _ -> None) ops |> Option.get in
+  Alcotest.(check bool) "metadata uses the existing treeitem role" true
+    (List.exists (function
+      | Lui_protocol.SetProp (id, Lui_protocol.RoleValue, Lui_protocol.StringValue "treeitem") -> id = node
+      | _ -> false) ops);
+  Alcotest.(check bool) "native callbacks do not subscribe to pointer payloads" false
+    (List.exists (function
+      | Lui_protocol.SetProp (_, Lui_protocol.PointerEnabled, Lui_protocol.BoolValue true) -> true
+      | _ -> false) ops);
+  List.iter (fun event ->
+    Alcotest.(check bool) "existing event ordinal reaches its callback" true
+      (Lui_app.dispatch_event app event))
+    [ Lui_protocol.Change node; Lui_protocol.ToggleChanged (node, true); Lui_protocol.Press node ];
+  Alcotest.(check (list int)) "selection, expansion and action stay distinct"
+    [1; 1; 1] [!selections; !expansions; !actions];
+  ignore (Lui_app.dispose app)
+
 let test_protocol_helpers () =
   Alcotest.(check bool) "modal dialog" true
     (Lui_protocol.modal_surface Lui_protocol.Dialog);
@@ -5928,6 +5961,8 @@ let () =
         ] );
       ( "protocol",
         [
+          Alcotest.test_case "native Tree metadata callbacks" `Quick
+            test_native_tree_item_metadata_callbacks;
           Alcotest.test_case "choice label opacity" `Quick test_choice_label_opacity;
           Alcotest.test_case "padding edge prop family" `Quick test_padding_edge_props;
           Alcotest.test_case "margin prop family" `Quick test_margin_props;

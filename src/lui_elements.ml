@@ -2253,6 +2253,49 @@ let list_item ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal
     swipe_actions;
   node
 
+(* Native Tree metadata uses the existing ListItem ordinals, without installing
+   generic pointer subscriptions for selection, expansion or default action. *)
+let tree_item ?key ?text ?text_signal ?label ?icon ?icon_signal
+    ?accessibility_identifier ?accessibility_identifier_signal
+    ?disabled ?disabled_signal ?selected ?selected_signal ?expanded ?expanded_signal
+    ?on_selection ?on_expand ?on_action (children : t list) : t =
+ fun context parent ->
+  let node = Lui_ui.list_item context in
+  Lui_ui.string_property context node RoleValue "treeitem";
+  Option.iter (Lui_ui.key context node) key;
+  Option.iter (Lui_ui.string_property context node KeyValue) key;
+  Option.iter (Lui_ui.string_property context node TextValue) text;
+  Option.iter (Lui_ui.string_property_signal context node TextValue) text_signal;
+  Option.iter (Lui_ui.string_property context node AccessibilityLabel) label;
+  Option.iter (Lui_ui.string_property context node AccessibilityIdentifier) accessibility_identifier;
+  Option.iter (Lui_ui.string_property_signal context node AccessibilityIdentifier) accessibility_identifier_signal;
+  Option.iter (Lui_ui.string_property context node InlineIconName) (Option.map icon_value icon);
+  Option.iter (fun source -> Lui_ui.string_property_signal context node InlineIconName
+    (owned_map context icon_value source)) icon_signal;
+  Option.iter (Lui_ui.disabled context node) disabled;
+  Option.iter (Lui_ui.disabled_signal context node) disabled_signal;
+  Option.iter (Lui_ui.bool_property context node Selected) selected;
+  Option.iter (Lui_ui.bool_property_signal context node Selected) selected_signal;
+  (* The canonical Expanded presence invariant requires ToggleEnabled even for
+     a read-only controlled value with no application callback. *)
+  if Option.is_some expanded || Option.is_some expanded_signal then
+    enable context node ToggleEnabled;
+  Option.iter (Lui_ui.bool_property context node Expanded) expanded;
+  Option.iter (Lui_ui.bool_property_signal context node Expanded) expanded_signal;
+  let register flag event name predicate = function
+    | None -> ()
+    | Some handler ->
+      enable context node flag;
+      require_event_supported context node event name;
+      on_event context node predicate handler
+  in
+  register ChangeEnabled (Change node) "tree selection" is_change on_selection;
+  register ToggleEnabled (ToggleChanged (node, false)) "tree expansion" is_toggle on_expand;
+  register PressEnabled (Press node) "tree action" is_press on_action;
+  attach context parent node;
+  mount_children context node children;
+  node
+
 let list_section ?key ?accessibility_identifier ?separator ?header ?footer
     (children : t list) : t =
  fun context parent ->

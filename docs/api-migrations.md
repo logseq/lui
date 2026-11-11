@@ -3473,3 +3473,112 @@ that Dismiss removes confirmation; it does not refuse native closure. No Toast
 usage was found in `logseq_journal` revision
 `6c030857d0bc417d11394a73282a87416b8006cc`. Apple/iOS, Android and Web keep
 their maintained backend behavior and omitted-duration defaults.
+### NSH native Tree and `tree_item` metadata
+
+The production usage audit at
+[Tree production usage](agent-guide/review-probes/2026-11-12/nsh-tree-production-usage.md)
+found no LUI Tree/TreeItem consumers in the inspected `mobile` or
+`logseq_journal` revisions. Under the requested policy, desktop Tree now follows
+NSH's public Tree semantics. Production Lists, outliners and editor extensions
+are unaffected. Apple, Android and Web implementations remain maintained; this
+section describes the NSH desktop route rather than changing their existing Tree
+interaction policy.
+
+`tree` now supplies nested item metadata to public `nsh_base::Tree`. NSH owns
+hierarchy, cursor/focus, keyboard navigation, typeahead, selection, expansion,
+virtualization and native row lifetime. No separate LUI focus manager, Tree
+controller or source virtualizer is introduced. Give the Tree a finite height,
+or flex space in a sized parent, as NSH's native scroll/viewport contract
+requires. The adapter does not guess a viewport height.
+
+Use the new `tree_item` constructor inside `tree`. It uses existing ListItem and
+role/property/event ordinals; no wire format or C ABI is added:
+
+```ocaml
+tree ~label:"Project files" ~height:320 [
+  tree_item ~key:"documents" ~text:"Documents" ~icon:`folder
+    ~on_selection:select_documents
+    ~on_expand:observe_documents_expansion [
+    tree_item ~key:"report" ~text:"Report" ~icon:`file_text
+      ~on_selection:select_report ~on_action:open_report [];
+  ];
+]
+```
+
+The callbacks deliberately differ from legacy repeated press handling:
+
+| Constructor callback | Existing event | Native meaning |
+| --- | --- | --- |
+| `on_selection` | `Change node` | Selected item changed, including cursor navigation. Re-selecting the native selected leaf does not emit another selection change. |
+| `on_expand` | `ToggleChanged (node, expanded)` | Native expansion/collapse request for an item with children. |
+| `on_action` | `Press node` | Native default action: Return on a leaf or a double press, according to NSH. Ordinary selection is not an Action. |
+
+Space follows NSH's folder-toggle behavior; it is not an extra leaf Press.
+Disabled items are skipped by the native cursor and do not activate. Callback
+routing encodes the LUI id and incarnation in the native item key and checks
+current identity/flags before dispatch. SelectedChange does not fall back to
+Press, and no empty modifier or pointer detail is fabricated from a typed native
+Tree event.
+
+Omitting `selected` and `expanded` leaves those values native-owned. Authoring
+`selected` on any item switches the Tree to native controlled selection: the
+first source-selected item wins, and all authored false values mean none.
+Authoring `expanded` switches to controlled expansion from the source items
+whose value is true. In controlled mode, publish the requested value to accept
+it; otherwise the native state remains at the source value. For example:
+
+```ocaml
+tree ~label:"Controlled files" ~height:320 [
+  tree_item ~text:"Documents"
+    ~expanded:(reactive (fun model -> model.documents_open) source)
+    ~on_expand:request_documents_expansion [
+    tree_item ~text:"Report"
+      ~selected:(reactive (fun model -> model.report_selected) source)
+      ~on_selection:request_report_selection ~on_action:open_report [];
+  ];
+]
+```
+
+Keep the complete nested item hierarchy emitted; native Tree owns collapsed
+visibility. Replace legacy flat `tree_level` hints and externally hidden branch
+rows with nested `tree_item` children. Native depth is derived from this data.
+A metadata node's explicit accessibility label, when supplied, is the native
+item's single label for both display and accessibility; otherwise its text is
+used. Icon and accessibility identifier presentation use shared UI and update
+from the retained source metadata. These metadata nodes are not independent
+arbitrary view bodies or persistent editor hosts. Reordering preserves native
+item keys; virtualization still governs which native rows exist.
+
+The old ``list_item ~role:`treeitem ~on_press/on_input/on_toggle`` convenience
+callbacks subscribe to generic pointer payloads and are not the native Tree
+metadata API. Migrate them to `tree_item ~on_selection/on_expand/on_action`.
+The new callbacks register the existing semantic event handlers without setting
+`pointer-enabled`. A controlled `expanded` value enables the existing canonical
+Toggle capability even without an application callback, retaining the shared
+presence invariant and native read-only controlled behavior.
+
+Actual unsupported metadata is rejected before any batch publishes: arbitrary
+body views such as editors/buttons, virtual-list children, flat `tree-level`,
+row layout/paint properties, appear/pointer/long/double-press/submit handlers and
+non-TreeItem roles. Explicit false callback capabilities retain absence
+semantics. Native Tree does not expose root pointer callbacks either. Use its
+item callbacks and shared presentation; keep rich editable outlines on the
+production List/extension path. Metadata `role="treeitem"` outside a Tree is
+rejected, including when an ancestor moves outside the Tree. Generic ListItem
+Button/Accordion behavior outside Tree is unchanged.
+
+NSH's public `TreeProps.items` takes an owned `Vec<TreeItem>` and has no per-item
+reactive field API. Source metadata publication can therefore perform a linear
+adapter projection. Equality-checked items/selection/expanded projections keep a
+selection/expansion-only change from rebuilding native `Flat` when item data is
+unchanged. Actual label/hierarchy/disabled data changes incur the native whole
+input flatten/index cost; viewport row mounting remains native and bounded. No
+constant-time source-update claim or extra item cache is introduced.
+
+The source regression suite covers native uncontrolled and controlled behavior,
+selected-leaf suppression, Return/Space action semantics, disabled traversal,
+metadata updates/reorder, atomic body rejection, retained surrounding editors,
+and native virtualization with 1,000 metadata items. A core OCaml regression
+checks callback delivery and absence of unintended PointerEnabled. Real native
+Tree application, screen-reader and platform keyboard qualification remain
+separate gates; source-only preparation does not mark them passed.

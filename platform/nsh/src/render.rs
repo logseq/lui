@@ -497,6 +497,18 @@ impl Renderer {
         };
         state.nodes.get(&target).map(|entry| entry.reference)
     }
+    fn tree_source(&self, (id, incarnation): (u64, u64)) -> Option<crate::controls::tree::Source> {
+        let state = self.0.borrow();
+        if state.store.nodes.get(&id)?.incarnation != incarnation {
+            return None;
+        }
+        let entry = state.nodes.get(&id)?;
+        Some(crate::controls::tree::Source {
+            node: entry.node,
+            children: entry.children,
+        })
+    }
+
     fn child_renderer(&self, id: u64, incarnation: u64) -> Option<crate::controls::ChildRenderer> {
         let identities = {
             let state = self.0.borrow();
@@ -662,6 +674,29 @@ impl Renderer {
                     theme,
                     events: Some(native_events.clone()),
                     children: child_renderer.clone(),
+                },
+            );
+        }
+        if node.kind == "tree" {
+            let lookup = self.clone();
+            let dispatch = self.clone();
+            return crate::controls::tree::element(
+                state,
+                children,
+                crate::controls::tree::Callbacks {
+                    lookup: Rc::new(move |identity| lookup.tree_source(identity)),
+                    emit: Rc::new(move |(id, incarnation), event| {
+                        dispatch.emit(id, incarnation, event)
+                    }),
+                },
+                crate::controls::Presentation {
+                    key: key.into(),
+                    test_id: identifier.into(),
+                    style: Rc::new(style),
+                    reference,
+                    theme,
+                    events: Some(native_events),
+                    children: None,
                 },
             );
         }
@@ -935,6 +970,7 @@ fn supported(kind: &str) -> bool {
                 | "scroll"
                 | "virtual-list"
                 | "image"
+                | "tree"
         )
 }
 
@@ -1060,12 +1096,23 @@ fn validate_themes(
     let mut invalid = BTreeSet::new();
     let mut pending = Vec::new();
     let mut candidates = BTreeSet::new();
+    let mut tree_owners = BTreeMap::new();
+    let mut trees = BTreeSet::new();
     for node in transaction.updated() {
         candidates.insert(node.id);
+        let tree = native_tree_owner(transaction, node.id, &mut tree_owners)?;
+        if let Some(tree) = tree {
+            trees.insert(tree);
+        }
+        if node.string("role") == "treeitem" && tree.is_none() {
+            return Err("NSH treeitem metadata must be contained by a native Tree".into());
+        }
         let previous = transaction.previous(node.id);
         if let Some(previous) = previous.filter(|previous| previous.incarnation == node.incarnation)
         {
-            crate::controls::validate_transition(previous, node)?;
+            if tree.is_none() {
+                crate::controls::validate_transition(previous, node)?;
+            }
         }
         if let Some(entry) = entries.get(&node.id)
             && entry.reference.node().is_some()
@@ -1107,8 +1154,19 @@ fn validate_themes(
             candidates.insert(id);
         }
     }
+    for tree in trees {
+        let root = transaction.get(tree)?;
+        crate::controls::tree::validate_root(root)?;
+        crate::controls::tree::validate_source(root, &|id| transaction.get(id))?;
+    }
     let mut themes = BTreeMap::new();
     for id in candidates {
+        let node = transaction.get(id)?;
+        if node.string("role") == "treeitem"
+            && native_tree_owner(transaction, id, &mut tree_owners)?.is_none()
+        {
+            return Err("NSH treeitem metadata must be contained by a native Tree".into());
+        }
         validate_popup_shape(transaction, transaction.get(id)?)?;
         let theme = resolve_theme(id, &|id| transaction.get(id), base, &mut themes, |id| {
             let entry = entries.get(&id)?;
@@ -1119,6 +1177,35 @@ fn validate_themes(
         style::compile(transaction.get(id)?, &theme, viewport)?;
     }
     Ok(themes)
+}
+
+/// Memoize only affected ancestry paths; no store-wide component scan.
+fn native_tree_owner(
+    transaction: &Transaction<'_>,
+    id: u64,
+    cache: &mut BTreeMap<u64, Option<u64>>,
+) -> Result<Option<u64>, String> {
+    let mut pending = Vec::new();
+    let mut next = Some(id);
+    let found = loop {
+        let Some(id) = next else {
+            break None;
+        };
+        if let Some(found) = cache.get(&id) {
+            break *found;
+        }
+        let node = transaction.get(id)?;
+        if node.kind == "tree" {
+            cache.insert(id, Some(id));
+            break Some(id);
+        }
+        pending.push(id);
+        next = node.parent;
+    };
+    for id in pending {
+        cache.insert(id, found);
+    }
+    Ok(found)
 }
 
 /// Ownership depends on adjacency, so structural edits check the final sibling

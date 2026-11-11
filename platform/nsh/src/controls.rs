@@ -13,6 +13,7 @@ mod collections;
 mod navigation;
 mod surfaces;
 pub(crate) mod toasts;
+pub(crate) mod tree;
 
 /// Sparse access to existing retained child signals, without a second tree.
 pub(crate) type ChildIdentity = (u64, u64);

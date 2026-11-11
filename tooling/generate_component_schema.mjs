@@ -454,7 +454,8 @@ function renderNestingSchema(schema) {
       ? 'Children_list' : `Child_arguments ${children.length}`;
     return [`  | "${name}" -> Some (${lg}, ${lg}, ${shape})`];
   });
-  constructors.push('  | "separator" -> Some (Divider, Divider, Children_list)',
+  constructors.push('  | "tree_item" -> Some (ListItem, ListItem, Children_list)',
+    '  | "separator" -> Some (Divider, Divider, Children_list)',
     '  | "menu" | "submenu" -> Some (MenuTrigger, DropdownMenu, Children_list)');
   return `(* Generated from schema/components.json, Lui_elements and Lui_protocol. Do not edit by hand. *)
 

@@ -1576,6 +1576,26 @@ val table_cell :
   ?on_pointer_up:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) ->
   ?transition:string -> t list -> table_cell_el
+(** Item metadata for the desktop native NSH Tree. Children describe nested
+    items, not arbitrary view bodies. Omitting selected/expanded leaves those
+    values native-owned; providing them selects native controlled mode.
+    [on_selection] receives Change, [on_expand] receives ToggleChanged, and
+    [on_action] receives Press for the native default action (Return on a leaf
+    or a double press). These callbacks do not subscribe to pointer details. *)
+val tree_item :
+  ?key:string ->
+  ?text:string -> ?text_signal:string Signal.signal ->
+  ?label:string ->
+  ?icon:icon -> ?icon_signal:icon Signal.signal ->
+  ?accessibility_identifier:string ->
+  ?accessibility_identifier_signal:string Signal.signal ->
+  ?disabled:bool -> ?disabled_signal:bool Signal.signal ->
+  ?selected:bool -> ?selected_signal:bool Signal.signal ->
+  ?expanded:bool -> ?expanded_signal:bool Signal.signal ->
+  ?on_selection:(Lui_protocol.event -> unit) ->
+  ?on_expand:(Lui_protocol.event -> unit) ->
+  ?on_action:(Lui_protocol.event -> unit) -> t list -> t
+
 val tree :
   ?key:string ->
   ?gap:int ->
