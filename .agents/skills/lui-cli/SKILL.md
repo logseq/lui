@@ -31,9 +31,12 @@ Receipts describe the artifact on disk; rebuilding does not restart an existing
 listener. Restart only the task-owned app and verify the endpoint's process
 identity before treating its screenshot as evidence for the new build.
 
-Read the hello response's capabilities. Generic OCaml hosts support semantic
-tree/event commands. The current Logseq NSH bridge provides native screenshots
-with `semantic:false`; it does not provide the generic OCaml agent API.
+Read the hello response's advertised operations. Generic OCaml hosts and the
+updated Logseq NSH bridge support the same semantic tree/event API. Logseq uses
+its real reducer through `Lui_agent.app_target`, with ordered patch publication
+before each reply. An older Logseq library without the optional agent export
+must be rebuilt before using semantic commands. macOS native screenshot capture
+is intercepted by the NSH host independently of the OCaml semantic operations.
 
 ## Capture app content
 

@@ -74,3 +74,13 @@ int32_t lui_ocaml_editor_snapshot_utf8(const char *id, int32_t len, request_fn r
   receive(json, (int32_t)strlen(json));
   return 1;
 }
+int32_t lui_ocaml_agent_utf8(const char *data, int32_t len, patch_fn reply) {
+  const char expected[] = "{\"op\":\"hello\",\"probe\":\"\xE4\xB8\xAD\"}";
+  if (!same_thread() || len != (int32_t)sizeof(expected)-1
+      || memcmp(data, expected, (size_t)len) != 0 || reply == NULL) return 0;
+  patches("[{\"generation\":4,\"ops\":[]}]");
+  const char service[] = "agent-probe\n{\"ordered\":true}";
+  request(service, (int32_t)strlen(service));
+  reply("{\"ok\":true,\"op\":\"hello\",\"host\":\"logseq-native\"}");
+  return 1;
+}

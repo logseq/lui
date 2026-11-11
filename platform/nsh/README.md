@@ -116,7 +116,8 @@ NSH macOS captures its own content view in process without activating the app,
 unlocking the Mac or changing display power. The Logseq runner supports
 `LUI_AGENT_BACKGROUND=1`. The capture excludes other windows, system menus and
 separately composited video/shader surfaces; other OS capture is not implemented.
-Logseq currently advertises `semantic:false`, so its native CLI endpoint exposes
-screenshots rather than the generic OCaml tree commands. Inspect the PNG before
+The updated Logseq bridge also exports the canonical semantic tree/event channel
+through its real OCaml reducer; `hello` lists the supported operations. Older
+libraries without that optional export require rebuilding. Inspect the PNG before
 claiming that the UI mounted successfully. See the
 [LUI CLI skill](../../.agents/skills/lui-cli/SKILL.md) for the full workflow.

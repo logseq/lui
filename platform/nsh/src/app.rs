@@ -289,7 +289,6 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
     cleanup(move || cleanup_clock.cancel());
     let opening = renderer.clone();
     let bridge = use_context::<BridgeConfig>().unwrap_or_default();
-    let native_only_agent = matches!(bridge, BridgeConfig::Logseq { .. });
     let services = use_context::<ApplicationServices>();
     let path = library_path(&props.library.get_untracked());
     spawn(async move {
@@ -373,17 +372,6 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                                 "data":base64::engine::general_purpose::STANDARD.encode(capture.png)}).to_string())
                         });
                         let _ = reply.send(captured);
-                        continue;
-                    }
-                    if native_only_agent && operation.as_deref() == Some("hello") {
-                        let _ = reply.send(Ok(serde_json::json!({"ok":true,"op":"hello",
-                            "protocol":"lui-agent","version":1,"host":"nsh",
-                            "capabilities":if cfg!(target_os="macos") { vec!["screenshot"] } else { vec![] },
-                            "semantic":false}).to_string()));
-                        continue;
-                    }
-                    if native_only_agent {
-                        let _ = reply.send(Err("this Logseq bridge provides native screenshots; semantic lui-agent commands are unavailable".into()));
                         continue;
                     }
                     let mut result = session.agent(request).await;

@@ -68,6 +68,17 @@ async fn exercise(path: String) -> Result<(), String> {
     assert_eq!(snapshot.source, "A中");
     assert_eq!((snapshot.anchor, snapshot.caret), (1, 4));
     assert!(session.editor_snapshot("inactive".into()).await?.is_none());
+    let agent = session
+        .agent(r#"{"op":"hello","probe":"中"}"#.into())
+        .await?;
+    let answer: serde_json::Value =
+        serde_json::from_str(agent.agent.as_deref().ok_or("missing agent reply")?)
+            .map_err(|error| error.to_string())?;
+    assert_eq!(answer["host"], "logseq-native");
+    assert!(
+        matches!(agent.messages.as_deref(), Some([ApplicationMessage::Batch(batch), ApplicationMessage::PlatformRequest(request)])
+            if batch.generation == 4 && request.operation == "agent-probe")
+    );
     assert!(session.tick().await.is_err());
     assert!(session.pause(true).await.is_err());
     assert!(session.advance(1.0).await.is_err());

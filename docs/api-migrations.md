@@ -4310,10 +4310,17 @@ use WindowServer capture, or request Screen Recording permission. They exclude
 system menus, other windows and separately composited video/shader surfaces.
 Other operating systems currently return an explicit unsupported-capture error.
 
-Generic OCaml agents retain their existing semantic commands. Logseq's current
-seven-argument native bridge has no semantic agent export, so its native hello
-explicitly reports `semantic:false` and screenshot capabilities; other commands
-return an unsupported error without resynchronizing or mutating the model.
+Generic OCaml agents retain their existing semantic commands. Logseq's
+seven-argument native bridge now optionally exports the same
+`lui_ocaml_agent_utf8(request, length, reply)` channel. Its implementation uses
+`Lui_agent.app_target` against the real application reducer and drains every
+ordered patch batch under the existing application entry lock before replying.
+For example, `find prop:accessibility-identifier=left-menu` and `press id:42`
+use the canonical LUI selector/event implementation; no native selector engine
+is added. `hello` advertises supported semantic operations. An older library
+without this optional export rejects semantic requests explicitly; it must be
+rebuilt to use them. Semantic actions do not establish native hit testing, focus,
+IME, accessibility or pixel correctness.
 The Logseq runner accepts `LUI_AGENT_BACKGROUND=1` for a background-only AppKit
 launch. Build receipts remain required unless the CLI's existing explicit
 `--unchecked` option is selected. See the repository's
