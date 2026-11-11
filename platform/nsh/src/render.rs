@@ -411,8 +411,20 @@ impl Renderer {
                 }
             }),
         );
+        let application_theme = use_context::<crate::application_theme::ThemeRegistry>();
         effect(move || {
-            let theme = Arc::new(ThemeView::new(tokens(), dark(), reduce_motion()));
+            let base = ThemeView::new(tokens(), dark(), reduce_motion());
+            let effective = match application_theme.as_ref() {
+                Some(registry) => registry.apply(base, dark()),
+                None => Ok(base),
+            };
+            let theme = match effective {
+                Ok(theme) => Arc::new(theme),
+                Err(error) => {
+                    theming.fail(error);
+                    return;
+                }
+            };
             if let Err(error) = theming.refresh_theme(theme.clone()) {
                 theming.fail(error);
             } else {
@@ -422,6 +434,30 @@ impl Renderer {
         view()
             .flex_1()
             .text_color(move || ui::color(inherited_theme, "foreground"))
+            .state_inline_style(move || {
+                let theme = inherited_theme.get();
+                let (family, size) = theme
+                    .typography()
+                    .expect("validated application typography");
+                let mut declarations = Vec::new();
+                if let Some(family) = family {
+                    declarations.push(nsh_core::StyleDecl::Set(
+                        nsh_core::StyleKey::FontFamily,
+                        nsh_core::StyleKey::FontFamily
+                            .parse_value(nsh_core::StyleValue::Str(&family))
+                            .expect("native font family"),
+                    ));
+                }
+                if let Some(size) = size {
+                    declarations.push(nsh_core::StyleDecl::Set(
+                        nsh_core::StyleKey::FontSize,
+                        nsh_core::StyleKey::FontSize
+                            .parse_value(nsh_core::StyleValue::Number(size.0))
+                            .expect("native font size"),
+                    ));
+                }
+                Style::from_decls(declarations)
+            })
             .on_layout(move |bounds: &Bounds<Points>| {
                 if viewport.get_untracked() != bounds.size {
                     viewport.set(bounds.size);
@@ -777,6 +813,7 @@ impl Renderer {
                     },
                     reference,
                     emitter,
+                    theme,
                     schema,
                 },
                 implementation,

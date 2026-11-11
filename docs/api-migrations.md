@@ -4238,3 +4238,31 @@ retained node. Recheck its incarnation after awaiting measurements before
 returning a node-specific reply; a replacement with the same numeric id must not
 inherit work from the old native node. These are immutable snapshots and native
 capabilities over the existing entries, not another application tree.
+
+### NSH computed application themes
+
+Provide `application_theme::ThemeRegistry::new()` above `Desktop`. The existing
+`theme-snapshot` service payload is installed with
+`install_snapshot_json(&payload)`, and `ui-state.data.theme` selects `set_mode`:
+`light`, `dark`, empty or `system`. Snapshots contain a `light`/`dark` mode and a
+map of computed `--custom-property` names to strings. Validation completes before
+replacing that mode; malformed names, values, native role colors, radius or
+application typography leave the previous snapshot intact. Missing snapshots use
+native defaults. This consumes the producer's computed cascade; it adds no CSS
+cascade implementation or polling.
+
+The adapter maps `--lui-role` to its semantic native role, falling back to
+`hsl(var(--role))`, as Logseq's previous desktop host did. Raw `--ls-*`/`--lx-*`
+variables remain available through the existing scoped variable resolver.
+`--lui-radius`/`--radius`, `--lx-font-stack` and positive pixel
+`--lx-root-text-size` supply radius and inherited native typography. Per-node
+LUI theme overlays remain authoritative. Theme changes update retained signals
+and styles without recreating native controls or editor drafts. An explicit
+application mode does not overwrite the operating system's real appearance.
+
+Extension factories can resolve the same retained scope through
+`ExtensionContext::color` and `resolve_text` inside reactive bindings. Standalone
+applications may project the selected theme through `ThemeRegistry::native_tokens`
+and explicitly call NSH `set_tokens` for their whole native surface. Embedding
+applications retain ownership of that surface-wide choice; the generic registry
+does not call `set_tokens` globally or change other embedded renderers.

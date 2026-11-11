@@ -56,8 +56,18 @@ pub struct ExtensionContext {
     pub reference: ElementRef,
     pub emitter: ExtensionEmitter,
     pub(crate) schema: Arc<Schema>,
+    pub(crate) theme: Signal<Arc<crate::style::ThemeView>>,
 }
 impl ExtensionContext {
+    /// Resolve paint using this entry's existing scoped theme signal.
+    pub fn color(&self, expression: &str) -> Result<nsh_core::element::AdaptiveColor, String> {
+        self.theme.get().color(expression)
+    }
+    /// Resolve authored variable expressions without rebuilding a CSS cascade.
+    pub fn resolve_text(&self, expression: &str) -> Result<String, String> {
+        self.theme.get().text(expression)
+    }
+
     /// Omitted properties resolve their canonical schema default without mutating wire state.
     pub fn property(&self, name: &str) -> Option<Value> {
         let node = self.node.get();

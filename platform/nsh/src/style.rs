@@ -121,6 +121,38 @@ impl ThemeView {
         Ok(next)
     }
 
+    pub(crate) fn has_value(&self, name: &str) -> bool {
+        self.values.contains_key(name)
+    }
+    pub(crate) fn typography(&self) -> Result<(Option<String>, Option<Points>), String> {
+        let family = if self.has_value("--lx-font-stack") {
+            let family = self.text("var(--lx-font-stack)")?;
+            if family.trim().is_empty() {
+                return Err("application theme requires a resolved font stack".into());
+            }
+            Some(family)
+        } else {
+            None
+        };
+        let size = if self.has_value("--lx-root-text-size") {
+            let value = self.text("var(--lx-root-text-size)")?;
+            let pixels = value
+                .trim()
+                .strip_suffix("px")
+                .ok_or("application root text size requires pixels")?;
+            let size = pixels
+                .parse::<f32>()
+                .map_err(|_| "invalid application root text size")?;
+            if !size.is_finite() || size <= 0.0 {
+                return Err("application root text size must be positive and finite".into());
+            }
+            Some(px(size))
+        } else {
+            None
+        };
+        Ok((family, size))
+    }
+
     fn appearance(&self, dark: bool) -> bool {
         self.mode.unwrap_or(dark)
     }
@@ -234,7 +266,7 @@ impl ThemeView {
         Ok(result)
     }
 
-    fn text(&self, value: &str) -> Result<String, String> {
+    pub(crate) fn text(&self, value: &str) -> Result<String, String> {
         self.substitute(
             value,
             self.mode.unwrap_or(self.system_dark),
