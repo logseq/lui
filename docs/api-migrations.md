@@ -2884,14 +2884,26 @@ The separate NSH PressDetails proposal is not part of this implementation.
 
 ### BottomTabs and BottomTab
 
-The current route supplies a native tab bar, tab roles, source-owned `selected`
-state, title/icon content and native roving keyboard behavior. Arrow, Home and
-End navigation skips disabled tabs and proposes the same canonical Press as tab
-activation. The application accepts by updating its selected flags; it may
-refuse by retaining them. `enabled` defaults to true and `selected` to false.
-The canonical requirements remain: each BottomTab has a nonempty title, Press
-support and content, and is a direct BottomTabs child. For example, accepting
-activation of tab 30 instead of tab 20 publishes:
+The desktop adapter separates native tab triggers from page content. Titles and
+icons belong to public NSH Tabs/Tab controls in the bottom bar; each canonical
+BottomTab owns a separate page surface containing its original children. Page
+Buttons remain ordinary Buttons and do not register as tabs. This replaces the
+earlier NSH composition that placed every page inside its trigger.
+
+`selected` remains application controlled. The displayed destination is the
+first direct BottomTab with `selected=true`, falling back to the first child
+when none is selected, matching Apple and Web. Multiple selected flags therefore
+show only the first matching destination. The fallback includes a disabled first
+child; `enabled` governs navigation to a tab and does not disable controls inside
+an already displayed page. The native bar uses this same effective selection.
+
+Arrow, Home and End navigation skips disabled tabs and proposes the same
+canonical Press as tab activation. The application accepts by updating its source
+flags, or refuses by retaining them. There is no optimistic source mutation or
+second focus manager. `enabled` defaults to true and `selected` to false. The
+canonical requirements remain: each BottomTab has a nonempty title, Press
+support and content, and is a direct BottomTabs child. Accepting activation of
+tab 30 instead of tab 20, for example, publishes:
 
 ```json
 [
@@ -2900,15 +2912,38 @@ activation of tab 30 instead of tab 20 publishes:
 ]
 ```
 
-**Selected page-content composition is still incomplete.** Canonical BottomTab
-children are currently placed inside each native Tab subtree; this route does
-not place only the selected page in a separate content panel. Native bar
-keyboard/selection qualification therefore does not qualify complete BottomTabs
-page navigation. Applications needing selected page content should keep an
-explicit model-controlled page body with the existing Tabs API until the retained
-BottomTabs content composition is implemented. This limitation must not be
-worked around by treating every mounted tab body as the selected page.
+A page is materialized on its first effective selection, then stays mounted
+while hidden. Switching tabs or reordering retained tab identities preserves its
+native editor identity, draft and scroll state. Each page has its own native
+scroll surface; inactive pages leave layout, hit testing and accessibility.
+Initially registered, supported nested `on_appear` handlers emit on
+hidden-to-visible transitions, including after returning to a previously visited
+page. Refused activation, ordinary body edits and reordering without a visibility change do not emit
+another appearance. An unvisited hidden page has no native body and emits no
+nested appearances. Pending appearances are cancelled if their scope is hidden
+or disposed before delivery.
 
+The canonical BottomTab ID now identifies its page surface, rather than the
+native trigger. Native UI automation that previously pressed `id:lui-<tab_id>`
+should activate `role:tab[<title>]` instead. Both native trigger activation and
+existing canonical callbacks still report the original BottomTab wire ID.
+There are no new wire operations, callback signatures or writable incarnation
+fields. Native typed Tab raw modifier/pointer projection remains the documented
+unresolved gap; no empty payload is synthesized.
+
+In a bounded parent, the desktop composition fills the available area and puts
+the bar below the selected page. **Automatic height inside an unbounded ancestor
+scroll is not implemented.** Apple supplies a nearest-container height there;
+Web has a 420px minimum. NSH does not invent either a 420-point clamp or a global
+viewport height. Give the BottomTabs an explicit bounded height or put it in a
+bounded, growing layout. For example:
+
+```json
+{"op":"set-prop","id":1,"property":"height","value":480}
+```
+
+That limit is a layout requirement of this desktop composition, not a change to
+the canonical size contract or to the maintained Apple/Web backends.
 
 ## NSH portable package assets on Windows
 

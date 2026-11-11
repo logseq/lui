@@ -21,6 +21,8 @@ pub(crate) struct ChildRenderer {
     pub identities: Signal<Vec<ChildIdentity>>,
     pub render: Rc<dyn Fn(ChildIdentity) -> AnyElement>,
     pub lookup: ChildLookup,
+    /// Forwards an actual native child activation with its own identity guard.
+    pub press: Rc<dyn Fn(ChildIdentity)>,
 }
 
 /// The renderer supplies identity and authored presentation before type erasure.
@@ -53,6 +55,16 @@ impl Presentation {
             .into_element()
     }
     fn component<C: Component>(&self, element: ComponentElement<C>) -> AnyElement {
+        let style = self.style.clone();
+        element
+            .key(self.key.clone())
+            .element_ref(&self.reference)
+            .test_id(&self.test_id)
+            .state_inline_style(move || style())
+            .into_element()
+    }
+    /// A page owns layout and appearance; its separate native Tab owns presses.
+    fn passive_host<E: Element>(&self, element: E) -> AnyElement {
         let style = self.style.clone();
         element
             .key(self.key.clone())

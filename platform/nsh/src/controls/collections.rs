@@ -1,5 +1,5 @@
 //! Retained collection parts composed from public NSH semantics.
-use super::{Emit, Presentation, emit_flag, enabled, label};
+use super::{ChildRenderer, Emit, Presentation, emit_flag, enabled, label};
 use crate::{render::Event, store::Node, ui};
 use nsh_core::{AccessibilityState, prelude::*};
 use std::sync::Arc;
@@ -78,6 +78,111 @@ fn partition_children(source: super::ChildRenderer, nested: bool) -> AnyElement 
         move |identity, _| render(identity.get_untracked()),
     )
     .into_element()
+}
+
+/// Apple and Web both prefer the first source-selected tab, falling back to the
+/// first child even if it is disabled. This memo derives presentation only.
+fn bottom_tabs(
+    node: Signal<Arc<Node>>,
+    source: ChildRenderer,
+    presentation: Presentation,
+) -> AnyElement {
+    let selecting = source.clone();
+    let active = computed(move || {
+        let identities = selecting.identities.get();
+        identities
+            .iter()
+            .copied()
+            .find(|identity| {
+                (selecting.lookup)(*identity)
+                    .is_some_and(|node| node.get().boolean("selected", false))
+            })
+            .or_else(|| identities.first().copied())
+    });
+    let rendering = source.clone();
+    let pages = each(
+        source.identities,
+        |identity| *identity,
+        move |identity, _| {
+            let identity = identity.get_untracked();
+            let visible = move || active.get() == Some(identity);
+            crate::events::scope_visibility(visible);
+            // Realize a page only on its first selection. After that it remains
+            // mounted under the same keyed owner, including its native draft state.
+            let visited = signal(visible());
+            effect(move || {
+                if visible() && !visited.get_untracked() {
+                    visited.set(true);
+                }
+            });
+            let render = rendering.render.clone();
+            when(visited, move || {
+                view()
+                    .flex_1()
+                    .min_w_0()
+                    .min_h_0()
+                    .accessibility_elements_hidden(move || !visible())
+                    .style_when(move || !visible(), |style| style.hidden())
+                    .child(render(identity))
+            })
+            .into_element()
+        },
+    );
+    let theme = presentation.theme;
+    let triggers = each(
+        source.identities,
+        |identity| *identity,
+        move |identity, _| {
+            let identity = identity.get_untracked();
+            let Some(tab) = (source.lookup)(identity) else {
+                return view().into_element();
+            };
+            let press = source.press.clone();
+            ui::controls::tab(
+                nsh_base::TabProps {
+                    selected: Prop::bind(move || active.get() == Some(identity)),
+                    disabled: Prop::bind(move || !enabled(tab)),
+                    accessibility_label: Prop::bind(move || {
+                        Some(tab.get().string("title").to_owned().into())
+                    }),
+                    ..Default::default()
+                },
+                theme,
+            )
+            .key(format!("trigger-{}-{}", identity.0, identity.1))
+            .test_id(format!("lui-tab-trigger-{}-{}", identity.0, identity.1))
+            .on_event(move |_: &nsh_base::TabEvent| press(identity))
+            .child(when(
+                move || !tab.get().string("icon").is_empty(),
+                move || {
+                    ui::icon(
+                        move || SharedString::from(tab.get().string("icon").to_owned()),
+                        px(20.0),
+                    )
+                },
+            ))
+            .child(text(move || tab.get().string("title").to_owned()))
+            .into_element()
+        },
+    );
+    presentation.host(
+        view()
+            .flex_col()
+            .flex_1()
+            .min_w_0()
+            .min_h_0()
+            // Pages are outside TabsContext: ordinary controls inside a page must
+            // remain controls, rather than registering as native tab triggers.
+            .child(view().flex_1().min_w_0().min_h_0().child(pages))
+            .child(
+                ui::controls::Tabs::element(ui::controls::TabsProps {
+                    theme: Some(theme).into(),
+                    label: Prop::bind(move || label(node)),
+                    ..Default::default()
+                })
+                .child(triggers),
+            ),
+    )
 }
 
 fn list_item(
@@ -347,40 +452,15 @@ pub(super) fn element(
             presentation.host(view().role(AccessibilityRole::Header).child(children))
         }
         "list-section-footer" => presentation.host(view().child(children)),
-        "bottom-tabs" => presentation.component(
-            ui::controls::Tabs::element(ui::controls::TabsProps {
-                theme: Some(theme).into(),
-                label: Prop::bind(move || label(node)),
-                ..Default::default()
-            })
-            .child(children),
-        ),
-        "bottom-tab" => presentation.component(
-            ui::controls::tab(
-                nsh_base::TabProps {
-                    selected: Prop::bind(move || node.get().boolean("selected", false)),
-                    disabled: Prop::bind(move || !enabled(node)),
-                    accessibility_label: Prop::bind(move || {
-                        Some(node.get().string("title").to_owned().into())
-                    }),
-                    ..Default::default()
-                },
-                theme,
-            )
-            .on_event(move |_: &nsh_base::TabEvent| {
-                emit_flag(node, "press-enabled", &emit, Event::Press(id))
-            })
-            .child(when(
-                move || !node.get().string("icon").is_empty(),
-                move || {
-                    ui::icon(
-                        move || SharedString::from(node.get().string("icon").to_owned()),
-                        px(20.0),
-                    )
-                },
-            ))
-            .child(text(move || node.get().string("title").to_owned()))
-            .child(children),
+        "bottom-tabs" => bottom_tabs(node, presentation.children.clone()?, presentation),
+        "bottom-tab" => presentation.passive_host(
+            scroll()
+                .flex_1()
+                .min_w_0()
+                .min_h_0()
+                .role(AccessibilityRole::Region)
+                .label(move || node.get().string("title").to_owned())
+                .child(children),
         ),
         _ => return None,
     })
@@ -431,6 +511,126 @@ mod tests {
             .on_change(move |text: &str| value.set(text.to_owned()))
             .into_element()
     }
+
+    fn fixture_patch(renderer: &crate::render::Renderer, generation: &Cell<u64>, ops: Value) {
+        let next = generation.get() + 1;
+        renderer
+            .apply(
+                crate::wire::Batch::decode(&json!({"generation":next,"ops":ops}).to_string())
+                    .unwrap(),
+            )
+            .unwrap();
+        generation.set(next);
+    }
+
+    fn tabs_fixture(fixture: Arc<Fixture>) -> AnyElement {
+        let generation = Rc::new(Cell::new(0));
+        let accepted = Rc::new(Cell::new(fixture.kind != "bottom-tabs-refuse"));
+        let seen = fixture.events.clone();
+        let following = accepted.clone();
+        let publishing = generation.clone();
+        let renderer = crate::render::Renderer::new(move |event, renderer| {
+            seen.lock().unwrap().push(event.clone());
+            match event {
+                Event::Press(selected) if following.get() && [10, 20, 30].contains(&selected) => {
+                    let ops = [10,20,30].map(|id| json!({"op":"set-prop","id":id,"property":"selected","value":id==selected}));
+                    fixture_patch(&renderer, &publishing, json!(ops));
+                }
+                Event::Text(id, value) => fixture_patch(
+                    &renderer,
+                    &publishing,
+                    json!([
+                        {"op":"set-prop","id":id,"property":"text","value":value}
+                    ]),
+                ),
+                _ => {}
+            }
+        });
+        let mut ops = vec![
+            json!({"op":"create-node","id":1,"kind":"bottom-tabs"}),
+            json!({"op":"set-prop","id":1,"property":"accessibility-label","value":"Destinations"}),
+            json!({"op":"set-prop","id":1,"property":"width","value":480}),
+            json!({"op":"set-prop","id":1,"property":"height","value":320}),
+        ];
+        for (index, (id, title)) in [(10, "One"), (20, "Two"), (30, "Three")]
+            .into_iter()
+            .enumerate()
+        {
+            ops.extend([
+                json!({"op":"create-node","id":id,"kind":"bottom-tab"}),
+                json!({"op":"set-prop","id":id,"property":"title","value":title}),
+                json!({"op":"set-prop","id":id,"property":"press-enabled","value":true}),
+                json!({"op":"set-prop","id":id,"property":"enabled","value":id!=20}),
+                json!({"op":"insert-child","parent":1,"child":id,"index":index}),
+                json!({"op":"create-node","id":id+1,"kind":"column"}),
+                json!({"op":"set-prop","id":id+1,"property":"appear-enabled","value":true}),
+                json!({"op":"insert-child","parent":id,"child":id+1,"index":0}),
+                json!({"op":"create-node","id":id+2,"kind":"text-field"}),
+                json!({"op":"set-prop","id":id+2,"property":"text","value":format!("draft {title}")}),
+                json!({"op":"set-prop","id":id+2,"property":"accessibility-label","value":format!("Editor {title}")}),
+                json!({"op":"set-prop","id":id+2,"property":"change-enabled","value":true}),
+                json!({"op":"set-prop","id":id+2,"property":"appear-enabled","value":true}),
+                json!({"op":"insert-child","parent":id+1,"child":id+2,"index":0}),
+                json!({"op":"create-node","id":id+3,"kind":"button"}),
+                json!({"op":"set-prop","id":id+3,"property":"text","value":format!("{title} action")}),
+                json!({"op":"set-prop","id":id+3,"property":"press-enabled","value":true}),
+                json!({"op":"set-prop","id":id+3,"property":"appear-enabled","value":true}),
+                json!({"op":"insert-child","parent":id+1,"child":id+3,"index":1}),
+            ]);
+            if id == 10 {
+                ops.extend([
+                    json!({"op":"create-node","id":14,"kind":"box"}),
+                    json!({"op":"set-prop","id":14,"property":"height","value":800}),
+                    json!({"op":"insert-child","parent":11,"child":14,"index":2}),
+                ]);
+            }
+        }
+        fixture_patch(&renderer, &generation, json!(ops));
+        renderer.set_root(1).unwrap();
+        on_key_with(
+            "f5",
+            KeyOptions {
+                when: nsh_core::keymap::When::Always,
+                ..Default::default()
+            },
+            move |_| accepted.set(true),
+        );
+        for (key, ops) in [
+            (
+                "f6",
+                json!([{"op":"move-child","parent":1,"child":30,"index":0}]),
+            ),
+            (
+                "f7",
+                json!([{"op":"set-prop","id":10,"property":"selected","value":false},{"op":"set-prop","id":20,"property":"selected","value":false},{"op":"set-prop","id":30,"property":"selected","value":false}]),
+            ),
+            (
+                "f8",
+                json!([{"op":"set-prop","id":10,"property":"selected","value":true},{"op":"set-prop","id":30,"property":"selected","value":true}]),
+            ),
+            (
+                "f9",
+                json!([{"op":"set-prop","id":10,"property":"selected","value":false},{"op":"set-prop","id":20,"property":"selected","value":false},{"op":"set-prop","id":30,"property":"selected","value":false},{"op":"move-child","parent":1,"child":20,"index":0}]),
+            ),
+            (
+                "f4",
+                json!([{"op":"set-prop","id":13,"property":"text","value":"One renamed"}]),
+            ),
+        ] {
+            let editing = renderer.clone();
+            let publishing = generation.clone();
+            on_key_with(
+                key,
+                KeyOptions {
+                    when: nsh_core::keymap::When::Always,
+                    ..Default::default()
+                },
+                move |_| fixture_patch(&editing, &publishing, ops.clone()),
+            );
+        }
+        renderer.element().into_element()
+    }
+
     #[component]
     fn Collections() -> impl IntoElement {
         let fixture = engine_context::<Fixture>().unwrap();
@@ -536,6 +736,7 @@ mod tests {
             let mut authored = presentation(10);
             authored.children = Some(super::super::ChildRenderer {
                 identities: order,
+                press: Rc::new(|_| {}),
                 lookup: Rc::new(move |identity| match identity {
                     (11, 1) => Some(caption),
                     (12, 1) => Some(nested),
@@ -563,56 +764,8 @@ mod tests {
             });
             return element(parent, view().into_element(), emit, authored).unwrap();
         }
-        if fixture.kind == "bottom-tabs" {
-            let tabs = [
-                node(
-                    2,
-                    "bottom-tab",
-                    json!({"title":"One","selected":true,"press-enabled":true}),
-                ),
-                node(
-                    3,
-                    "bottom-tab",
-                    json!({"title":"Two","enabled":false,"press-enabled":true}),
-                ),
-                node(
-                    4,
-                    "bottom-tab",
-                    json!({"title":"Three","press-enabled":true}),
-                ),
-            ];
-            let emit: Emit = Rc::new(move |event| {
-                fixture.events.lock().unwrap().push(event.clone());
-                if let Event::Press(id) = event {
-                    for tab in tabs {
-                        let mut next = (*tab.get_untracked()).clone();
-                        next.props.insert("selected".into(), json!(id == next.id));
-                        tab.set(Arc::new(next));
-                    }
-                }
-            });
-            return element(
-                node(
-                    1,
-                    "bottom-tabs",
-                    json!({"accessibility-label":"Destinations"}),
-                ),
-                view()
-                    .flex_row()
-                    .children(tabs.into_iter().map(|tab| {
-                        element(
-                            tab,
-                            view().into_element(),
-                            emit.clone(),
-                            presentation(tab.get_untracked().id),
-                        )
-                        .unwrap()
-                    }))
-                    .into_element(),
-                emit.clone(),
-                presentation(1),
-            )
-            .unwrap();
+        if fixture.kind.starts_with("bottom-tabs") {
+            return tabs_fixture(fixture);
         }
         if fixture.kind == "table" {
             let cell = node(3, "table-cell", json!({"text":"Initial"}));
@@ -817,23 +970,40 @@ mod tests {
     #[test]
     fn bottom_tabs_use_native_arrows_skip_disabled_and_follow_canonical_selection() {
         let (mut app, events) = start("bottom-tabs");
-        app.press_key("tab").unwrap();
+        assert_eq!(app.screen().count("role:tab").unwrap(), 3);
+        assert_eq!(app.screen().count("role:button[One action]").unwrap(), 1);
+        app.press("role:tab[One]").unwrap();
+        events.lock().unwrap().clear();
         app.press_key("right").unwrap();
-        assert_eq!(*events.lock().unwrap(), [Event::Press(4)]);
+        assert_eq!(
+            events
+                .lock()
+                .unwrap()
+                .iter()
+                .filter_map(|event| if let Event::Press(id) = event {
+                    Some(*id)
+                } else {
+                    None
+                })
+                .collect::<Vec<_>>(),
+            [30]
+        );
         assert!(
             app.screen()
                 .accessibility_state("role:tab[Three]")
                 .unwrap()
                 .selected
         );
+        assert_eq!(app.screen().count("role:button[One action]").unwrap(), 0);
+        assert_eq!(app.screen().count("role:button[Three action]").unwrap(), 1);
         app.press_key("home").unwrap();
-        assert_eq!(*events.lock().unwrap(), [Event::Press(4), Event::Press(2)]);
         assert!(
             app.screen()
                 .accessibility_state("role:tab[One]")
                 .unwrap()
                 .selected
         );
+        assert_eq!(app.screen().count("role:button[One action]").unwrap(), 1);
     }
     #[test]
     fn static_table_preserves_cell_and_editor_identity_through_a_text_update() {
@@ -995,5 +1165,198 @@ mod tests {
         assert_eq!(identity(&app, "lui-10"), row);
         assert_eq!(identity(&app, "lui-11"), editor);
         assert!(!app.screen().shows("must not publish"));
+    }
+    fn native_id(app: &Headless, id: u64) -> nsh_core::NodeId {
+        let test_id = format!("lui-{id}");
+        app.screen()
+            .layout_nodes()
+            .into_iter()
+            .find(|node| node.test_id.as_deref() == Some(test_id.as_str()))
+            .unwrap()
+            .id
+    }
+    fn appearances(events: &Arc<Mutex<Vec<Event>>>, id: u64) -> usize {
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|event| matches!(event,Event::Appear(node) if *node==id))
+            .count()
+    }
+    #[test]
+    fn bottom_tab_pages_are_lazy_controlled_and_keep_editor_state_through_reorder() {
+        let (mut app, events) = start("bottom-tabs-refuse");
+        assert!(
+            app.screen()
+                .accessibility_state("role:tab[One]")
+                .unwrap()
+                .selected
+        );
+        for id in [11, 12, 13] {
+            assert_eq!(appearances(&events, id), 1);
+        }
+        for id in [21, 22, 23, 31, 32, 33] {
+            assert_eq!(appearances(&events, id), 0);
+        }
+        assert!(
+            !app.screen()
+                .layout_nodes()
+                .iter()
+                .any(|node| node.test_id.as_deref() == Some("lui-32")),
+            "unvisited pages have no native editor"
+        );
+        app.type_text("id:lui-12", " kept").unwrap();
+        let first_id = native_id(&app, 12);
+        let first_value = app
+            .screen()
+            .input_text("id:lui-12")
+            .unwrap()
+            .unwrap()
+            .to_owned();
+        app.press("role:tab[Three]").unwrap();
+        assert!(
+            app.screen()
+                .accessibility_state("role:tab[One]")
+                .unwrap()
+                .selected
+        );
+        assert_eq!(app.screen().count("role:button[Three action]").unwrap(), 0);
+        assert_eq!(
+            appearances(&events, 31),
+            0,
+            "refused activation must not realize or appear its page"
+        );
+        app.press_key("f5").unwrap();
+        app.press("role:tab[Three]").unwrap();
+        app.type_text("id:lui-32", " kept").unwrap();
+        let third_id = native_id(&app, 32);
+        let third_value = app
+            .screen()
+            .input_text("id:lui-32")
+            .unwrap()
+            .unwrap()
+            .to_owned();
+        for id in [31, 32, 33] {
+            assert_eq!(appearances(&events, id), 1);
+        }
+        assert_eq!(
+            app.screen().count("role:tab").unwrap(),
+            3,
+            "page Buttons are not tabs"
+        );
+        app.press_key("f6").unwrap();
+        assert_eq!(native_id(&app, 32), third_id);
+        assert_eq!(
+            appearances(&events, 31),
+            1,
+            "reordering a visible page must not re-appear it"
+        );
+        app.press("role:tab[One]").unwrap();
+        assert_eq!(native_id(&app, 12), first_id);
+        assert_eq!(
+            app.screen().input_text("id:lui-12").unwrap(),
+            Some(first_value.as_str())
+        );
+        for id in [11, 12, 13] {
+            assert_eq!(appearances(&events, id), 2);
+        }
+        app.press("role:tab[Three]").unwrap();
+        assert_eq!(native_id(&app, 32), third_id);
+        assert_eq!(
+            app.screen().input_text("id:lui-32").unwrap(),
+            Some(third_value.as_str())
+        );
+        for id in [31, 32, 33] {
+            assert_eq!(appearances(&events, id), 2);
+        }
+    }
+    #[test]
+    fn bottom_tab_page_buttons_keep_their_own_activation_and_body_edits_do_not_reappear() {
+        let (mut app, events) = start("bottom-tabs");
+        let editor = native_id(&app, 12);
+        events.lock().unwrap().clear();
+        app.press("role:button[One action]").unwrap();
+        assert_eq!(*events.lock().unwrap(), [Event::Press(13)]);
+        app.press_key("f4").unwrap();
+        app.wait_for("One renamed").unwrap();
+        assert_eq!(native_id(&app, 12), editor);
+        assert_eq!(*events.lock().unwrap(), [Event::Press(13)]);
+        assert!(
+            app.screen()
+                .accessibility_state("role:tab[One]")
+                .unwrap()
+                .selected
+        );
+    }
+    #[test]
+    fn bottom_tab_effective_selection_matches_first_selected_and_first_child_defaults() {
+        let (mut app, events) = start("bottom-tabs");
+        app.press("role:tab[Three]").unwrap();
+        app.press_key("f8").unwrap();
+        assert!(
+            app.screen()
+                .accessibility_state("role:tab[One]")
+                .unwrap()
+                .selected
+        );
+        assert!(
+            !app.screen()
+                .accessibility_state("role:tab[Three]")
+                .unwrap()
+                .selected
+        );
+        app.press_key("f7").unwrap();
+        assert!(
+            app.screen()
+                .accessibility_state("role:tab[One]")
+                .unwrap()
+                .selected
+        );
+        app.press_key("f9").unwrap();
+        assert!(
+            app.screen()
+                .accessibility_state("role:tab[Two]")
+                .unwrap()
+                .selected
+        );
+        assert!(
+            app.screen()
+                .accessibility_state("role:tab[Two]")
+                .unwrap()
+                .disabled
+        );
+        assert_eq!(
+            app.screen().count("role:button[Two action]").unwrap(),
+            1,
+            "disabled first destination remains the source fallback page"
+        );
+        assert_eq!(appearances(&events, 21), 1);
+    }
+    #[test]
+    fn bottom_tab_page_keeps_its_own_scroll_position_when_hidden_and_shown() {
+        let (mut app, _) = start("bottom-tabs");
+        let editor_y = |app: &Headless| {
+            app.screen()
+                .layout_nodes()
+                .into_iter()
+                .find(|node| node.test_id.as_deref() == Some("lui-12"))
+                .unwrap()
+                .bounds
+                .origin
+                .y
+        };
+        let before = editor_y(&app);
+        app.scroll("id:lui-10", px(100.0)).unwrap();
+        let scrolled = editor_y(&app);
+        assert!(scrolled < before);
+        app.press("role:tab[Three]").unwrap();
+        app.press("role:tab[One]").unwrap();
+        assert_eq!(editor_y(&app), scrolled);
+        app.scroll("id:lui-10", px(-100.0)).unwrap();
+        assert_eq!(editor_y(&app), before);
+        assert_eq!(
+            app.screen().input_text("id:lui-12").unwrap(),
+            Some("draft One")
+        );
     }
 }

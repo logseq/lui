@@ -426,6 +426,7 @@ impl Renderer {
         };
         let rendering = self.clone();
         let reading = self.clone();
+        let pressing = self.clone();
         Some(crate::controls::ChildRenderer {
             identities,
             render: Rc::new(move |(id, incarnation)| {
@@ -440,6 +441,9 @@ impl Renderer {
                 (state.store.nodes.get(&id)?.incarnation == incarnation)
                     .then(|| state.nodes.get(&id).map(|entry| entry.node))
                     .flatten()
+            }),
+            press: Rc::new(move |(id, incarnation)| {
+                pressing.emit(id, incarnation, Event::Press(id));
             }),
         })
     }
@@ -472,6 +476,7 @@ impl Renderer {
                 | "resizable"
                 | "tree"
                 | "list-item"
+                | "bottom-tabs"
                 | "context-menu"
         )
         .then(|| self.child_renderer(id, incarnation))

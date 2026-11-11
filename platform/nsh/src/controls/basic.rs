@@ -743,6 +743,7 @@ mod tests {
             Rc::new(|_| text("Retained body").test_id("basic-child").into_element());
         let context = ChildRenderer {
             identities,
+            press: Rc::new(|_| {}),
             render: render.clone(),
             lookup: Rc::new(move |identity| (identity == (2, 2)).then_some(child)),
         };
@@ -989,6 +990,7 @@ mod tests {
             });
         let parts = ChildRenderer {
             identities,
+            press: Rc::new(|_| {}),
             render: render.clone(),
             lookup: Rc::new(move |identity| match identity {
                 (2, 2) => Some(editor),
@@ -1151,6 +1153,7 @@ mod tests {
             });
         let children = ChildRenderer {
             identities,
+            press: Rc::new(|_| {}),
             render: render.clone(),
             lookup: Rc::new(|_| None),
         };
