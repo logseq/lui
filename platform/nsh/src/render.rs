@@ -74,6 +74,7 @@ struct Entry {
     theme: Signal<Arc<ThemeView>>,
     popup: Signal<Option<(u64, u64)>>,
     capabilities: Rc<Cell<Option<Capabilities>>>,
+    context_mode: Option<bool>,
 }
 struct State {
     store: Store,
@@ -114,6 +115,14 @@ impl Renderer {
         let id = u64::try_from(id).map_err(|_| "invalid application root")?;
         let (root, signal, toasts, members) = {
             let mut state = self.0.borrow_mut();
+            if state
+                .store
+                .nodes
+                .get(&id)
+                .is_some_and(|node| node.kind == "context-menu")
+            {
+                return Err("NSH context-menu requires an attached native trigger".into());
+            }
             state.store.set_root(id)?;
             (
                 (id, state.store.nodes[&id].incarnation),
@@ -216,6 +225,7 @@ impl Renderer {
                             theme,
                             popup,
                             capabilities: Rc::new(Cell::new(None)),
+                            context_mode: None,
                         },
                     ) {
                         removed.push(entry);
@@ -239,7 +249,7 @@ impl Renderer {
             // popup association. Ordinary value edits do not scan the tree.
             let mut popup_candidates = BTreeSet::new();
             for (signal, node, children) in &updates {
-                if children.is_some() && matches!(node.kind.as_str(), "select" | "combobox") {
+                if children.is_some() {
                     popup_candidates.insert(node.id);
                 }
                 if children.is_some() {
@@ -542,6 +552,88 @@ impl Renderer {
     }
 
     fn node(&self, id: u64) -> AnyElement {
+        let (state, popup, theme, viewport, attached) = {
+            let mut renderer = self.0.borrow_mut();
+            let viewport = renderer.viewport;
+            let entry = renderer.nodes.get_mut(&id).expect("retained node");
+            let node = entry.node.get_untracked();
+            let attached = matches!(node.kind.as_str(), "button" | "list-item")
+                && entry.popup.get_untracked().is_some();
+            entry.context_mode = Some(attached);
+            (entry.node, entry.popup, entry.theme, viewport, attached)
+        };
+        if !attached {
+            return self.node_content(id, None);
+        }
+        let in_tabs = ui::controls::in_tabs();
+        let styles = computed(move || {
+            let node = state.get();
+            let size = if style::uses_viewport(&node) {
+                viewport.get()
+            } else {
+                Size::default()
+            };
+            let compiled =
+                style::compile(&node, &theme.get(), size).expect("validated context trigger style");
+            let mut defaults = if node.kind == "button" {
+                ui::controls::command_size(if in_tabs { "" } else { node.string("size") })
+            } else if node.boolean("press-enabled", false) && !node.props.contains_key("expanded") {
+                // The existing actionable ListItem root uses w_full; keep its
+                // parent-facing default on the native ContextMenu root.
+                view().w_full()
+            } else {
+                view()
+            };
+            let defaults = defaults.style().clone().into();
+            style::context_menu_styles(&node, &compiled, &defaults)
+        });
+        let trigger = self.node_content(id, Some(styles));
+        let theming = self.clone();
+        let disabling = self.clone();
+        let rendering = self.clone();
+        let closing = self.clone();
+        crate::context_menu::wrap(
+            trigger,
+            crate::context_menu::Attachment {
+                primary: state.get_untracked().kind == "button",
+                source: popup,
+                theme: Rc::new(move || {
+                    let scoped = popup.get().and_then(|identity| {
+                        let renderer = theming.0.borrow();
+                        let entry = renderer.nodes.get(&identity.0)?;
+                        (entry.node.get_untracked().incarnation == identity.1)
+                            .then_some(entry.theme)
+                    });
+                    scoped.map_or_else(|| theme.get(), |theme| theme.get())
+                }),
+                disabled: Rc::new(move || {
+                    if !state.get().boolean("enabled", true) {
+                        return true;
+                    }
+                    let current = popup.get().and_then(|identity| {
+                        let renderer = disabling.0.borrow();
+                        let entry = renderer.nodes.get(&identity.0)?;
+                        (entry.node.get_untracked().incarnation == identity.1).then_some(entry.node)
+                    });
+                    current.is_none_or(|node| !node.get().boolean("enabled", true))
+                }),
+                render: Rc::new(move |identity| {
+                    if rendering.is_current(identity.0, identity.1, None) {
+                        rendering.node(identity.0)
+                    } else {
+                        view().into_element()
+                    }
+                }),
+                closed: Rc::new(move |identity| {
+                    closing.emit(identity.0, identity.1, Event::Dismiss(identity.0))
+                }),
+                styles,
+                key: format!("lui-context-{id}-{}", state.get_untracked().incarnation).into(),
+            },
+        )
+    }
+
+    fn node_content(&self, id: u64, context: Option<Memo<style::ContextMenuStyles>>) -> AnyElement {
         let (state, children, reference, theme, viewport, popup) = {
             let renderer = self.0.borrow();
             let entry = &renderer.nodes[&id];
@@ -556,24 +648,25 @@ impl Renderer {
         };
         let node = state.get_untracked();
         let incarnation = node.incarnation;
-        let child_renderer = matches!(
-            node.kind.as_str(),
-            "stack"
-                | "overlay"
-                | "edge-inset"
-                | "view-that-fits"
-                | "alert"
-                | "bubble"
-                | "drawer"
-                | "split"
-                | "resizable"
-                | "tree"
-                | "list-item"
-                | "bottom-tabs"
-                | "breadcrumb"
-                | "stepper"
-                | "context-menu"
-        )
+        let child_renderer = (context.is_some()
+            || matches!(
+                node.kind.as_str(),
+                "stack"
+                    | "overlay"
+                    | "edge-inset"
+                    | "view-that-fits"
+                    | "alert"
+                    | "bubble"
+                    | "drawer"
+                    | "split"
+                    | "resizable"
+                    | "tree"
+                    | "list-item"
+                    | "bottom-tabs"
+                    | "breadcrumb"
+                    | "stepper"
+                    | "context-menu"
+            ))
         .then(|| self.child_renderer(id, incarnation))
         .flatten();
         let installed = self.0.borrow().nodes[&id].capabilities.clone();
@@ -595,6 +688,9 @@ impl Renderer {
             node.string("accessibility-identifier").to_owned()
         };
         let style = move || {
+            if let Some(context) = context {
+                return context.get().trigger;
+            }
             let node = state.get();
             let size = if style::uses_viewport(&node) {
                 viewport.get()
@@ -936,7 +1032,7 @@ impl Renderer {
                 .key(key.clone())
                 .test_id(&identifier)
                 .into_element(),
-            "root" | "row" | "column" | "box" | "panel" | "card" | "spacer" | "dropdown-menu" => {
+            "root" | "row" | "column" | "box" | "panel" | "card" | "spacer" | "dropdown-menu" | "context-menu" => {
                 native_events
                     .attach(view())
                     .state_inline_style(style)
@@ -976,6 +1072,7 @@ fn supported(kind: &str) -> bool {
         || matches!(
             kind,
             "root"
+                | "context-menu"
                 | "file-picker"
                 | "media-surface"
                 | "select"
@@ -1012,7 +1109,13 @@ fn supported(kind: &str) -> bool {
 
 fn picker_popup(node: &Node, store: &Store) -> Option<(u64, u64)> {
     if !matches!(node.kind.as_str(), "select" | "combobox") {
-        return None;
+        let id = node.children.iter().copied().find(|id| {
+            store
+                .nodes
+                .get(id)
+                .is_some_and(|node| node.kind == "context-menu")
+        })?;
+        return Some((id, store.nodes.get(&id)?.incarnation));
     }
     let own = node
         .children
@@ -1068,7 +1171,7 @@ fn displayed_children(node: &Node, store: &Store) -> Vec<u64> {
         .enumerate()
         .filter_map(|(index, id)| {
             let child = store.nodes.get(id)?;
-            if child.kind == "toast" {
+            if matches!(child.kind.as_str(), "toast" | "context-menu") {
                 return None;
             }
             if child.kind == "dropdown-menu" {
@@ -1177,6 +1280,7 @@ fn validate_themes(
         }
         if previous.is_none_or(|old| !Arc::ptr_eq(&old.children, &node.children)) {
             validate_dropdown_owners(transaction, node)?;
+            validate_context_attachment(transaction, entries, node)?;
         }
         let changed = transaction.previous(node.id).is_none_or(|old| {
             old.incarnation != node.incarnation
@@ -1267,6 +1371,17 @@ fn validate_dropdown_owners(transaction: &Transaction<'_>, parent: &Node) -> Res
 }
 
 fn validate_popup_shape(transaction: &Transaction<'_>, node: &Node) -> Result<(), String> {
+    if node.kind == "context-menu"
+        && let Some(parent) = node.parent
+        && !matches!(
+            transaction.get(parent)?.kind.as_str(),
+            "button" | "list-item"
+        )
+    {
+        return Err(
+            "NSH attached context menus currently require a Button or ListItem trigger".into(),
+        );
+    }
     if matches!(node.kind.as_str(), "popover" | "tooltip") {
         if node.kind == "tooltip" && node.string("anchor").is_empty() {
             return Err("NSH unanchored tooltip status semantics are not implemented yet".into());
@@ -1346,6 +1461,38 @@ fn validate_popup_shape(transaction: &Transaction<'_>, node: &Node) -> Result<()
                 "NSH dropdown-menu {property} is not implemented yet"
             ));
         }
+    }
+    Ok(())
+}
+
+fn validate_context_attachment(
+    transaction: &Transaction<'_>,
+    entries: &BTreeMap<u64, Entry>,
+    node: &Node,
+) -> Result<(), String> {
+    let count = node
+        .children
+        .iter()
+        .filter(|id| {
+            transaction
+                .get(**id)
+                .is_ok_and(|child| child.kind == "context-menu")
+        })
+        .count();
+    if count > 1 {
+        return Err("NSH accepts one attached context menu per native trigger".into());
+    }
+    if count > 0 && !matches!(node.kind.as_str(), "button" | "list-item") {
+        return Err(
+            "NSH attached context menus currently require a Button or ListItem trigger".into(),
+        );
+    }
+    if let Some(entry) = entries.get(&node.id)
+        && entry.node.get_untracked().incarnation == node.incarnation
+        && let Some(previous) = entry.context_mode
+        && previous != (count > 0)
+    {
+        return Err("NSH changing a retained trigger's context-menu attachment mode requires remounting the trigger; update menu items or enabled instead".into());
     }
     Ok(())
 }
@@ -2146,3 +2293,6 @@ mod media_tests;
 
 #[cfg(test)]
 mod scroll_tests;
+
+#[cfg(test)]
+mod context_menu_tests;

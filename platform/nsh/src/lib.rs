@@ -1,5 +1,6 @@
 //! NSH desktop renderer for LUI's retained patch protocol.
 pub mod app;
+mod context_menu;
 pub mod contract;
 mod controls;
 mod desktop_updates;

@@ -433,7 +433,12 @@ enum CommandSlot {
     Children,
 }
 
-fn command_content(node: Signal<Arc<Node>>, children: AnyElement, theme: ui::Theme) -> AnyElement {
+fn command_content(
+    node: Signal<Arc<Node>>,
+    children: AnyElement,
+    theme: ui::Theme,
+    displayed: Option<Signal<Vec<ChildIdentity>>>,
+) -> AnyElement {
     let children = Rc::new(RefCell::new(Some(children)));
     view()
         .flex_row()
@@ -442,7 +447,11 @@ fn command_content(node: Signal<Arc<Node>>, children: AnyElement, theme: ui::The
         .gap(move || {
             let current = node.get();
             px(
-                if current.string("text").is_empty() && current.children.is_empty() {
+                if current.string("text").is_empty()
+                    && displayed.map_or(current.children.is_empty(), |children| {
+                        children.get().is_empty()
+                    })
+                {
                     0.0
                 } else {
                     8.0
@@ -458,7 +467,10 @@ fn command_content(node: Signal<Arc<Node>>, children: AnyElement, theme: ui::The
         })
         .state_inline_style(move || {
             let current = node.get();
-            let has_content = !current.string("text").is_empty() || !current.children.is_empty();
+            let has_content = !current.string("text").is_empty()
+                || displayed.map_or(!current.children.is_empty(), |children| {
+                    !children.get().is_empty()
+                });
             Style::from_decls(
                 crate::style::content_layout(&current, &theme.get())
                     .expect("validated command layout")
@@ -523,6 +535,10 @@ pub(crate) fn element(
     presentation: Presentation,
 ) -> Option<AnyElement> {
     let theme = presentation.theme;
+    let displayed = presentation
+        .children
+        .as_ref()
+        .map(|children| children.identities);
     let initial = node.get_untracked();
     if initial.kind == "view-that-fits" {
         return Some(fit::element(node, presentation));
@@ -559,7 +575,7 @@ pub(crate) fn element(
                     .on_event(move |_: &ui::controls::CommandButtonEvent| {
                         emit_flag(node, "press-enabled", &emit, Event::Press(id));
                     })
-                    .child(command_content(node, children, theme)),
+                    .child(command_content(node, children, theme, displayed)),
             )
         }
         "toggle-button" => {
@@ -581,7 +597,7 @@ pub(crate) fn element(
                         emit_flag(node, "toggle-enabled", &emit, Event::Toggle(id, *checked));
                     }
                 })
-                .child(command_content(node, children, theme)),
+                .child(command_content(node, children, theme, displayed)),
             )
         }
         "toggle" => {

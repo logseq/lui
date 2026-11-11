@@ -199,6 +199,10 @@ fn list_item(
     let id = initial.id;
     let theme = presentation.theme;
     let actionable = initial.boolean("press-enabled", false);
+    let displayed = presentation
+        .children
+        .as_ref()
+        .map(|children| children.identities);
     if initial.props.contains_key("expanded") {
         let (content, nested) = match presentation.children.clone() {
             Some(source) => (
@@ -253,7 +257,7 @@ fn list_item(
                             },
                             px(16.0),
                         ))
-                        .child(super::command_content(node, content, theme)),
+                        .child(super::command_content(node, content, theme, displayed)),
                     ),
                 )
                 .child(
@@ -268,7 +272,7 @@ fn list_item(
             ),
         );
     }
-    let body = super::command_content(node, children, theme);
+    let body = super::command_content(node, children, theme, displayed);
     if actionable {
         presentation.component(
             nsh_base::Button::element(nsh_base::ButtonProps {

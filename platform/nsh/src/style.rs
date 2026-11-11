@@ -486,6 +486,85 @@ pub(crate) struct EdgeInsetStyles {
     pub gap: Points,
 }
 
+#[derive(Clone, PartialEq)]
+pub(crate) struct ContextMenuStyles {
+    pub outer: Style,
+    pub trigger: Style,
+}
+
+const CONTEXT_LAYOUT: &[StyleKey] = &[
+    StyleKey::Display,
+    StyleKey::Position,
+    StyleKey::Flex,
+    StyleKey::FlexGrow,
+    StyleKey::FlexShrink,
+    StyleKey::FlexBasis,
+    StyleKey::AlignSelf,
+    StyleKey::Width,
+    StyleKey::Height,
+    StyleKey::MinWidth,
+    StyleKey::MaxWidth,
+    StyleKey::MinHeight,
+    StyleKey::MaxHeight,
+    StyleKey::Margin,
+    StyleKey::MarginHorizontal,
+    StyleKey::MarginVertical,
+    StyleKey::MarginTop,
+    StyleKey::MarginRight,
+    StyleKey::MarginBottom,
+    StyleKey::MarginLeft,
+    StyleKey::Top,
+    StyleKey::Right,
+    StyleKey::Bottom,
+    StyleKey::Left,
+    StyleKey::ZIndex,
+    StyleKey::GridColumn,
+];
+
+/// The native ContextMenu has one outer view. Move only parent-facing layout
+/// there; its retained trigger owns padding, content layout, paint and states.
+pub(crate) fn context_menu_styles(
+    node: &Node,
+    compiled: &Style,
+    defaults: &Style,
+) -> ContextMenuStyles {
+    let external = |declaration: &StyleDecl| matches!(declaration, StyleDecl::Set(key, _) | StyleDecl::Default(key, _) if CONTEXT_LAYOUT.contains(key));
+    let outer = Style::from_decls(
+        defaults
+            .decls()
+            .iter()
+            .chain(compiled.decls())
+            .filter(|declaration| external(declaration))
+            .cloned(),
+    );
+    let mut fill = view().flex_auto();
+    let fill: Style = fill.style().clone().into();
+    let trigger = Style::from_decls(
+        CONTEXT_LAYOUT
+            .iter()
+            .map(|key| StyleDecl::Set(*key, PropertyValue::Default))
+            .chain(
+                compiled
+                    .decls()
+                    .iter()
+                    .filter(|declaration| {
+                        node.string("position") == "static"
+                            && matches!(declaration, StyleDecl::Set(StyleKey::Position, _))
+                    })
+                    .cloned(),
+            )
+            .chain(
+                compiled
+                    .decls()
+                    .iter()
+                    .filter(|declaration| !external(declaration))
+                    .cloned(),
+            ),
+    )
+    .then(&fill);
+    ContextMenuStyles { outer, trigger }
+}
+
 fn pinned_surface_property(name: &str) -> bool {
     name.starts_with("padding")
         || matches!(

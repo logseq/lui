@@ -1,4 +1,5 @@
 //! Shared desktop presentation. Explicit LUI node styles override these defaults.
+pub(crate) mod context_menu;
 pub(crate) mod controls;
 mod icons;
 

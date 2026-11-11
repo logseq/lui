@@ -310,13 +310,7 @@ pub(crate) fn command_appearance<C: Component>(
         .justify_center()
         .gap_2()
         .style_with(move |_| {
-            let s = view();
-            let s = match size.get().as_ref() {
-                "sm" => s.min_h_6().px_2().py_1().text_xs(),
-                "lg" => s.min_h_10().px_4().py_2().text_base(),
-                "icon" => s.w_8().h_8().p_0().text_sm(),
-                _ => s.min_h_8().px_3().py_1().text_sm(),
-            };
+            let s = command_size(size.get().as_ref());
             let variant = variant.get();
             let (background, foreground) = match variant.as_ref() {
                 "primary" => ("primary", "primary-foreground"),
@@ -356,6 +350,18 @@ pub(crate) fn command_appearance<C: Component>(
                 });
             styled.style().clone()
         })
+}
+
+/// Shared native command geometry, also used by an attached context menu's
+/// outer layout participant. Authored declarations override it in both cases.
+pub(crate) fn command_size(size: &str) -> View {
+    let s = view();
+    match size {
+        "sm" => s.min_h_6().px_2().py_1().text_xs(),
+        "lg" => s.min_h_10().px_4().py_2().text_base(),
+        "icon" => s.w_8().h_8().p_0().text_sm(),
+        _ => s.min_h_8().px_3().py_1().text_sm(),
+    }
 }
 
 // These private Rust components carry a retained theme signal. They are not JS

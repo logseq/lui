@@ -3820,3 +3820,42 @@ path/cap/default-fit validation, stale and detached resource completion,
 presentation-only updates, retained host/editor identity, press delivery and
 atomic rejection. Platform compilation, execution and native visual qualification
 must be run by the main session; source preparation alone does not establish them.
+
+### NSH retained ContextMenu attachments
+
+NSH now renders a canonical `context_menu` attached to a Button or ListItem
+through the public NSH Menu/ContextMenu components. Buttons use a primary Menu,
+matching the existing Apple Button convention and the graph/attachment actions
+used by downstream applications. ListItems use native secondary-click,
+Shift+F10/Menu-key and held-touch ContextMenu activation. NSH owns item traversal,
+disabled-item skipping, focus restoration, outside dismissal and Escape. The
+existing `on_dismiss` callback receives the canonical menu node ID when the native
+controller closes. Native desktop context menus do not add Apple's ListItem
+ellipsis button or mobile swipe affordances.
+
+Keep the attachment present for the trigger's lifetime and update its items or
+`disabled` value reactively:
+
+```ocaml
+button ~label:"Add attachment" ~width:32 ~height:44
+  [context_menu
+     [menu_item ~text:"Choose file" ~on_press:(fun _ -> choose_file ()) []]]
+```
+
+One direct ContextMenu child is supported per Button/ListItem. Other direct host
+kinds and standalone root ContextMenus are rejected before publication. Changing
+a previously constructed trigger between attached and unattached modes also
+rejects the complete batch; remount that trigger with a new key to change modes.
+Replacing the attached menu node while retaining attachment mode is supported.
+The canonical child rule is unchanged: ContextMenu accepts MenuItem and Divider;
+DropdownMenu remains the constructor for MenuTrigger/submenu hierarchies.
+
+The native controller's outer view takes the trigger's parent-facing constraints
+(size, flex, margins, position and grid placement); the retained trigger keeps its
+padding, paint, content layout, accessibility identity and public ElementRef.
+Ordinary hosts acquire no wrapper. Authored popup content and scoped theme remain
+retained LUI nodes, and item/property updates do not rebuild the trigger or nearby
+editors. Source regressions compare attached/plain intrinsic, fixed, stretched
+and growing layouts, refs, native activation/dismissal, item updates and atomic
+mode-change rollback. Headless and real native qualification must pass before
+claiming platform validation; source preparation alone is not that evidence.
