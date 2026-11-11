@@ -841,11 +841,11 @@ pub(crate) fn is_contents(node: &Node) -> bool {
 }
 
 // No wildcard: adding a canonical display case must fail this provider's build.
-fn display_value(value: &Value) -> Result<PropertyValue, String> {
+fn display_value(value: &Value) -> Result<(PropertyValue, bool), String> {
     let display = DisplayValue::try_from(value.as_str().ok_or("NSH display requires a string")?)?;
-    let keyword = match display {
-        DisplayValue::None => "none",
-        DisplayValue::Block => "block",
+    let (keyword, hidden) = match display {
+        DisplayValue::None => ("none", true),
+        DisplayValue::Block => ("block", false),
         DisplayValue::Contents => {
             return Err("NSH contents is a structural anchor, not a native display style".into());
         }
@@ -858,6 +858,7 @@ fn display_value(value: &Value) -> Result<PropertyValue, String> {
     };
     StyleKey::Display
         .parse_value(StyleValue::Str(keyword))
+        .map(|value| (value, hidden))
         .map_err(|error| format!("NSH display: {error:?}"))
 }
 
@@ -1000,7 +1001,18 @@ fn compile_parts(
         }
     }
     if let Some(value) = node.props.get("display") {
-        decls.push(StyleDecl::Set(StyleKey::Display, display_value(value)?));
+        let (display, hidden) = display_value(value)?;
+        decls.push(StyleDecl::Set(StyleKey::Display, display));
+        if hidden {
+            // NSH display:none removes layout frames but does not itself hide
+            // the accessibility subtree. Public native visibility does both.
+            // Do not emit visible for ordinary children: a hidden ancestor
+            // must remain authoritative when a descendant has display:block.
+            decls.push(StyleDecl::Set(
+                StyleKey::Visibility,
+                PropertyValue::Bool(true),
+            ));
+        }
     }
     if let Some(value) = node.props.get("font-weight") {
         let weight = value
