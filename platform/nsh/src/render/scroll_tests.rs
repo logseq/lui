@@ -1,0 +1,123 @@
+//! Exercise the actual native axis, retained content and atomic axis changes.
+use super::*;
+use nsh_engine::{EngineConfig, EngineContext, Root};
+use nsh_testing::Headless;
+use serde_json::json;
+
+struct ScrollProbe(bool);
+fn patch(generation: u64, ops: Value) -> Batch {
+    Batch::decode(&json!({"generation":generation,"ops":ops}).to_string()).unwrap()
+}
+
+#[component]
+fn ScrollAxes() -> impl IntoElement {
+    let horizontal = engine_context::<ScrollProbe>().unwrap().0;
+    let renderer = Renderer::new(|_, _| {});
+    let mut ops = json!([
+        {"op":"create-node","id":1,"kind":"column"},
+        {"op":"create-node","id":2,"kind":"scroll"},
+        {"op":"set-prop","id":2,"property":"width","value":200},
+        {"op":"set-prop","id":2,"property":"height","value":100},
+        {"op":"insert-child","parent":1,"child":2,"index":0},
+        {"op":"create-node","id":3,"kind":"column"},
+        {"op":"set-prop","id":3,"property":"width","value":600},
+        {"op":"set-prop","id":3,"property":"height","value":300},
+        {"op":"insert-child","parent":2,"child":3,"index":0},
+        {"op":"create-node","id":4,"kind":"text-field"},
+        {"op":"set-prop","id":4,"property":"width","value":160},
+        {"op":"set-prop","id":4,"property":"text","value":"draft"},
+        {"op":"insert-child","parent":3,"child":4,"index":0}
+    ])
+    .as_array()
+    .unwrap()
+    .clone();
+    if horizontal {
+        ops.push(json!({"op":"set-prop","id":2,"property":"orientation","value":"horizontal"}));
+    }
+    renderer.apply(patch(1, Value::Array(ops))).unwrap();
+    renderer.set_root(1).unwrap();
+    let editing = renderer.clone();
+    on_key_with(
+        "f2",
+        KeyOptions {
+            when: nsh_core::keymap::When::Always,
+            ..Default::default()
+        },
+        move |_| {
+            // Explicit vertical and absence mean the same native axis.
+            let orientation = if horizontal { "horizontal" } else { "vertical" };
+            editing
+                .apply(patch(
+                    2,
+                    json!([
+                        {"op":"set-prop","id":2,"property":"orientation","value":orientation}
+                    ]),
+                ))
+                .unwrap();
+            let before = editing.0.borrow().nodes[&4].node.get_untracked();
+            assert!(editing.apply(patch(3,json!([
+            {"op":"set-prop","id":4,"property":"text","value":"must not publish"},
+            {"op":"set-prop","id":2,"property":"orientation","value":if horizontal {"vertical"} else {"horizontal"}}
+        ]))).unwrap_err().contains("orientation is fixed"));
+            assert_eq!(editing.0.borrow().store.generation, 2);
+            assert!(Arc::ptr_eq(
+                &before,
+                &editing.0.borrow().nodes[&4].node.get_untracked()
+            ));
+        },
+    );
+    renderer.element()
+}
+
+fn layout(app: &Headless, identifier: &str) -> nsh_testing::LayoutNode {
+    app.screen()
+        .layout_nodes()
+        .into_iter()
+        .find(|node| node.test_id.as_deref() == Some(identifier))
+        .unwrap()
+}
+
+#[test]
+fn native_scroll_uses_the_authored_axis_and_keeps_editor_identity_and_draft() {
+    for horizontal in [false, true] {
+        let mut app = Headless::start(EngineConfig {
+            context: EngineContext::default().with(ScrollProbe(horizontal)),
+            ..EngineConfig::new(Root::of::<ScrollAxes>())
+        })
+        .unwrap();
+        app.wait_for("id:lui-4").unwrap();
+        app.type_text("id:lui-4", " retained").unwrap();
+        let text = app
+            .screen()
+            .input_text("id:lui-4")
+            .unwrap()
+            .unwrap()
+            .to_owned();
+        let before = layout(&app, "lui-3");
+        let input = layout(&app, "lui-4").id;
+        app.scroll("id:lui-2", px(100.0)).unwrap();
+        let after = layout(&app, "lui-3");
+        assert_eq!(after.id, before.id);
+        let delta = after.bounds.origin - before.bounds.origin;
+        if horizontal {
+            assert!(
+                delta.x.0.abs() > 10.0,
+                "authored horizontal scroll moved: {delta:?}"
+            );
+            assert_eq!(delta.y, px(0.0));
+        } else {
+            assert!(
+                delta.y.0.abs() > 10.0,
+                "default vertical scroll moved: {delta:?}"
+            );
+            assert_eq!(delta.x, px(0.0));
+        }
+        app.press_key("f2").unwrap();
+        assert_eq!(layout(&app, "lui-4").id, input);
+        assert_eq!(
+            app.screen().input_text("id:lui-4").unwrap(),
+            Some(text.as_str())
+        );
+        assert_eq!(layout(&app, "lui-3").bounds.origin, after.bounds.origin);
+    }
+}

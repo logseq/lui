@@ -99,6 +99,7 @@ RESTRICTIONS = {
     ],
     "input": ["input-type=color/time, submit-on-blur=true and navigate-enabled=true are rejected."],
     **{kind: ["submit-on-blur=true and navigate-enabled=true are rejected."] for kind in ("text-field", "secure-field", "search-field", "textarea")},
+    "scroll": ["Orientation is native horizontal/vertical at mount; changing its effective axis on the same incarnation is rejected atomically."],
     "drawer": ["Requires exactly two canonical children: sidebar first and main content second."],
     "split": [
         "Requires exactly two canonical pane children; sizes and resize events use absolute points.",
@@ -134,13 +135,13 @@ GAPS = {
     "G3": ({"text-field", "secure-field", "input", "search-field", "textarea", "combobox"}, {"input-type", "submit-on-enter", "submit-on-blur", "navigate-enabled"}, "Textarea Enter behavior is forwarded through native SubmitBehavior. Single-line inputs keep native submit/blur defaults; explicit submit-on-blur=true/navigation callbacks and color/time input are rejected. Other input hints require review."),
     "G4": ({"checkbox", "toggle"}, {"label-opacity", "indicator-border-color", "checked-indicator-border-color", "toggle-detail-enabled"}, "Checkbox routes forward checked/indeterminate/disabled/label; authored indicator/detail behavior remains absent."),
     "G5": ({"image"}, {"image", "source-x", "source-y", "source-width", "source-height", "referrer-policy"}, "Image forwards canonical URL, alt/label, fit, eager/default loading and native Load. Resource IDs, crop rectangles and authored referrer policy are explicitly rejected; loading=lazy is a value restriction listed separately, not a missing eager-loading path."),
-    "G7": ({"scroll"}, {"orientation"}, "Scroll route does not set horizontal mode; the native default remains."),
     "G8": ({"list", "virtual-list"}, {"style", "list-style"}, "Container appearance and CSS list markers are not implemented by the Scroll/VirtualList routes."),
     "G9": (None, {"navigate-enabled", "pointer-capture"}, "Canonical navigation-key and pointer-capture behavior remain unimplemented."),
     "G12": (set(ROUTES) - HOST_EVENT_KINDS, {"pointer-enabled", "long-press-enabled", "double-press-enabled"}, "Typed native behavior components do not expose generic root pointer/gesture projection; unit semantic events remain supported separately."),
 }
 
 TESTS = {
+    "scroll": ["native_scroll_uses_the_authored_axis_and_keeps_editor_identity_and_draft"],
     "view-that-fits": ['ordered_choice_waits_for_unknown_predecessors_and_uses_last_as_fallback', 'both_axes_switch_without_remounting_or_losing_independent_drafts', 'keyboard_traversal_excludes_unselected_candidates', 'live_candidate_geometry_order_and_outer_visibility_use_retained_nodes'],    'textarea': ['single_line_inputs_keep_native_submit_and_blur_defaults', 'textarea_live_enter_policy_keeps_the_editor_and_native_line_break_rules', 'submit_flag_changes_are_checked_without_replacing_the_textarea', 'unsupported_input_policies_fail_before_any_text_or_identity_is_published', 'native_composition_survives_an_enter_policy_update_until_its_commit'],
     'tree': ['uncontrolled_native_tree_distinguishes_selection_from_double_press_action', 'controlled_values_refuse_then_accept_native_requests_without_custom_state', 'native_cursor_keys_skip_disabled_rows_and_keep_native_default_action', 'native_keys_survive_metadata_updates_and_reorder_while_outside_editor_is_retained', 'arbitrary_body_views_fail_atomically_and_retry_keeps_generation', 'native_tree_virtualizes_a_thousand_metadata_items', 'legacy_pointer_subscriptions_are_refused_before_other_edits_publish'],
     'toast': ['toast_is_non_flow_metadata_and_retains_arbitrary_native_children_on_update', 'native_timeout_does_not_restart_and_closed_source_incarnation_never_reopens', 'desktop_default_and_zero_persistence_use_native_lifecycle_without_idle_polling', 'native_hover_and_keyboard_focus_pause_timeout_then_resume_remaining_time', 'native_swipe_closes_once_and_source_detach_cancels_late_callbacks_before_reopen', 'native_stack_keeps_existing_identity_and_escape_closes_only_the_newest'],
@@ -308,6 +309,9 @@ def markdown(data):
              "Priority 1: remaining typed-control pointer/modifier delivery, navigation", "and capture; remaining input hints; authored checkbox indicators; image resources/crop;", "menu-item icons. Priority 2: remaining appearance, class translation or explicit", "rejection, list appearance and metadata.", "",
              "## Event, child and default limitations", "",
              "- Native host routes deliver available modifier/pointer payloads; typed behavior", "  components still expose unit events and do not gain a synthetic observer wrapper.", "  The JSON event-path list is not a claim of full per-field parity. Appearance", "  uses the actual existing ref after native materialization, including disabled", "  controls; it is not an OS-visible-frame notification.",
+             "- Scroll forwards a static horizontal axis to native Scroll.horizontal; absent or",
+             "  explicit vertical uses its native default. Axis changes require a new keyed",
+             "  node, while ordinary edits preserve native content/offset/editor identity.",
              "- FilePicker uses native paths and exact request tokens; cancellation emits Dismiss,",
              "  results/errors emit Picked. Busy requests do not queue or replace the dialog.",
              "  Headless service tests and a real OCaml Picked/Dismiss ABI test are mapped;",
@@ -335,7 +339,7 @@ def markdown(data):
              "  the accessible name; Heading still rejects the noncanonical accessibility-label.",
              "  The mapped Headless tests cover level/default/override/identity/rollback behavior,",
              "  not operating-system screen-reader announcements or native screenshot metrics.",
-             "- Ignored menu-item size/variant and scroll orientation properties leave NSH", "  wrapper defaults in control even when an application authors another value.", "  This inventory does not infer canonical absent-property defaults from NSH's", "  defaults. Those need explicit cross-backend behavior tests and migration notes.",
+             "- Ignored menu-item size/variant properties leave NSH", "  wrapper defaults in control even when an application authors another value.", "  This inventory does not infer canonical absent-property defaults from NSH's", "  defaults. Those need explicit cross-backend behavior tests and migration notes.",
              "- Button/toggle command icons use shared Web SVG assets, native retained size/variant", "  bindings and decorative glyph accessibility. Tab appearance, application icon", "  registration and shortcut hints still need qualification or implementation.", "- Native pointer states used by styles are separate from LUI pointer events.", "  Paint::read dynamically handles prefixed background/foreground/border/opacity/", "  shadow properties; the generator excludes these string-search false positives.", "",
              "- Image uses canonical url and live native source/fit/name bindings. Default fit",
              "  is stretch, fit means contain and fill means cover; an accessibility label wins",
@@ -405,7 +409,6 @@ def markdown(data):
              "| G3 | inputs.rs native SubmitBehavior/validation; controls.rs `picker` combobox Input defaults |",
              "| G4 | render.rs CheckboxProps and controls.rs toggle CheckboxProps omit authored indicator/detail props |",
              "| G5 | images.rs `source`/`fit`/`label`/`validate`; render.rs Image on_load; runtime.rs optional Load ABI |",
-             "| G7 | render.rs Scroll branch creates default Scroll without horizontal configuration |",
              "| G8 | controls.rs list branch and virtual_rows.rs VirtualList builder |",
              "| G9/G10 | render.rs Event enum and all native route listeners; app.rs `semantic` |"]
     return "\n".join(rows) + "\n"

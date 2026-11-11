@@ -897,7 +897,11 @@ impl Renderer {
                     .into_element()
             }
             "scroll" => native_events
-                .attach(scroll())
+                .attach(if node.string("orientation") == "horizontal" {
+                    scroll().horizontal()
+                } else {
+                    scroll()
+                })
                 .state_inline_style(style)
                 .child(body)
                 .element_ref(&reference)
@@ -1132,6 +1136,12 @@ fn validate_themes(
             && tree.is_none()
         {
             crate::controls::validate_transition(previous, node)?;
+            if node.kind == "scroll"
+                && (previous.string("orientation") == "horizontal")
+                    != (node.string("orientation") == "horizontal")
+            {
+                return Err("NSH Scroll orientation is fixed while mounted; use a new keyed node to change its axis".into());
+            }
         }
         if let Some(entry) = entries.get(&node.id)
             && entry.reference.node().is_some()
@@ -2119,3 +2129,6 @@ mod file_picker_tests;
 
 #[cfg(test)]
 mod media_tests;
+
+#[cfg(test)]
+mod scroll_tests;

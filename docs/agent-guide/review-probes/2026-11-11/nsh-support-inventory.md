@@ -52,7 +52,7 @@ The JSON output also enumerates canonical events without a renderer transport.
 | `switch` | base Switch | 75/5 | G1, G13, G12 | 3 |
 | `progress` | base Progress | 66/3 | G1, G13, G12 | 1 |
 | `divider` | core view separator | 66/3 | G1, G13 | None mapped |
-| `scroll` | core Scroll | 79/3 | G1, G13, G7 | None mapped |
+| `scroll` | core Scroll | 79/3 | G1, G13 | 1 |
 | `list` | core Scroll + List role | 78/6 | G1, G13, G8 | None mapped |
 | `virtual-list` | core VirtualList + bounded LUI demand adapter | 85/7 | G1, G13, G8 | 3 |
 | `tabs` | themed Tabs | 74/3 | G1, G13, G12 | 1 |
@@ -122,7 +122,6 @@ is not a support guarantee.
 - **G3**: Textarea Enter behavior is forwarded through native SubmitBehavior. Single-line inputs keep native submit/blur defaults; explicit submit-on-blur=true/navigation callbacks and color/time input are rejected. Other input hints require review. Candidate properties: `input-type`, `navigate-enabled`, `submit-on-blur`, `submit-on-enter`.
 - **G4**: Checkbox routes forward checked/indeterminate/disabled/label; authored indicator/detail behavior remains absent. Candidate properties: `checked-indicator-border-color`, `indicator-border-color`, `label-opacity`, `toggle-detail-enabled`.
 - **G5**: Image forwards canonical URL, alt/label, fit, eager/default loading and native Load. Resource IDs, crop rectangles and authored referrer policy are explicitly rejected; loading=lazy is a value restriction listed separately, not a missing eager-loading path. Candidate properties: `image`, `referrer-policy`, `source-height`, `source-width`, `source-x`, `source-y`.
-- **G7**: Scroll route does not set horizontal mode; the native default remains. Candidate properties: `orientation`.
 - **G8**: Container appearance and CSS list markers are not implemented by the Scroll/VirtualList routes. Candidate properties: `list-style`, `style`.
 - **G9**: Canonical navigation-key and pointer-capture behavior remain unimplemented. Candidate properties: `navigate-enabled`, `pointer-capture`.
 - **G12**: Typed native behavior components do not expose generic root pointer/gesture projection; unit semantic events remain supported separately. Candidate properties: `double-press-enabled`, `long-press-enabled`, `pointer-enabled`.
@@ -140,6 +139,9 @@ rejection, list appearance and metadata.
   The JSON event-path list is not a claim of full per-field parity. Appearance
   uses the actual existing ref after native materialization, including disabled
   controls; it is not an OS-visible-frame notification.
+- Scroll forwards a static horizontal axis to native Scroll.horizontal; absent or
+  explicit vertical uses its native default. Axis changes require a new keyed
+  node, while ordinary edits preserve native content/offset/editor identity.
 - FilePicker uses native paths and exact request tokens; cancellation emits Dismiss,
   results/errors emit Picked. Busy requests do not queue or replace the dialog.
   Headless service tests and a real OCaml Picked/Dismiss ABI test are mapped;
@@ -174,7 +176,7 @@ rejection, list appearance and metadata.
   the accessible name; Heading still rejects the noncanonical accessibility-label.
   The mapped Headless tests cover level/default/override/identity/rollback behavior,
   not operating-system screen-reader announcements or native screenshot metrics.
-- Ignored menu-item size/variant and scroll orientation properties leave NSH
+- Ignored menu-item size/variant properties leave NSH
   wrapper defaults in control even when an application authors another value.
   This inventory does not infer canonical absent-property defaults from NSH's
   defaults. Those need explicit cross-backend behavior tests and migration notes.
@@ -253,6 +255,7 @@ validate_popup_shape, controls::validate, virtual_rows::validate and style::comp
 - `secure-field`: submit-on-blur=true and navigate-enabled=true are rejected.
 - `search-field`: submit-on-blur=true and navigate-enabled=true are rejected.
 - `textarea`: submit-on-blur=true and navigate-enabled=true are rejected.
+- `scroll`: Orientation is native horizontal/vertical at mount; changing its effective axis on the same incarnation is rejected atomically.
 - `drawer`: Requires exactly two canonical children: sidebar first and main content second.
 - `split`: Requires exactly two canonical pane children; sizes and resize events use absolute points. Rejects ratio value, custom resize-handle-width, nonzero resize-handle-offset and pointer-enabled=true. Rejects nonzero resize-duration and authored resize-easing/resize-origin; uses the native 9-point handle.
 - `edge-inset`: At most 32,760 children because native grid line indices use signed 16-bit values. Rejects any authored hover-*, pressed-*, focus-*, selected-* or disabled-* pooled state-paint property. Rejects opacity other than 1, nonempty shadow other than none, and any authored transition.
@@ -280,7 +283,7 @@ uses the concrete route bodies, not literal presence alone.
 
 | Source | SHA-256 |
 | --- | --- |
-| `render.rs` | `06f112d55614bd90ee08e15634d2222c64683cd2926f6b748aded0b87dbbe097` |
+| `render.rs` | `3838bfb8a1720d89d4a90dcb6939e3798025b71095a80dfaec3cf05b81162e65` |
 | `controls.rs` | `a2684df99f3ceeed905ea7c9276a13b280823f62671844832587767ad2313dba` |
 | `style.rs` | `dc528c0d08402b398f2a1e255d260136b87df35983d54a88e80a213f067d1b68` |
 | `virtual_rows.rs` | `1630ed15ed6526769c9f3b405623c464296d5c23e4a77099eb60d449ef1ea3de` |
@@ -314,6 +317,5 @@ Concrete route evidence at this generated source checkpoint:
 | G3 | inputs.rs native SubmitBehavior/validation; controls.rs `picker` combobox Input defaults |
 | G4 | render.rs CheckboxProps and controls.rs toggle CheckboxProps omit authored indicator/detail props |
 | G5 | images.rs `source`/`fit`/`label`/`validate`; render.rs Image on_load; runtime.rs optional Load ABI |
-| G7 | render.rs Scroll branch creates default Scroll without horizontal configuration |
 | G8 | controls.rs list branch and virtual_rows.rs VirtualList builder |
 | G9/G10 | render.rs Event enum and all native route listeners; app.rs `semantic` |

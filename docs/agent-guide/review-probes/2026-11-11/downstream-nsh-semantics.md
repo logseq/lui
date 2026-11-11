@@ -1,7 +1,8 @@
 # Downstream requirements and native NSH semantics
 
 Policy clarified by the user on 2026-11-12: preserve actual production usage in
-mobile and Journal; use NSH's native model for components unused by both. This
+mobile and Journal, expanded explicitly to Logseq `refactor/lui` later that day;
+use NSH's native model only after checking all three production targets. This
 is an explicit scope clarification, not permission to infer absence from a
 component name in a single file or silently ignore a used API.
 
@@ -9,6 +10,11 @@ component name in a single file or silently ignore a used API.
 
 - `logseq/mobile`: `82b6da991bc0e6987f652f6f5cd91d1e37f58498`.
 - `logseq/logseq_journal`: `6c030857d0bc417d11394a73282a87416b8006cc`.
+- `logseq/logseq`, branch `refactor/lui`: `29dcb60fdc976dcda1da6ec984057bbf79d88612`.
+  The original table below records the first two snapshots; the third audit is
+  in progress and already establishes required Split ratio callback units,
+  handle geometry/animation, horizontal Scroll, submit-on-blur and Shift-toggle
+  detail behavior. Absence from the first two is insufficient for simplification.
 
 The audit inspected production OCaml sources under mobile shared/src and
 Journal app, plus application-owned Apple/Android/Swift code. Build products,

@@ -164,9 +164,10 @@ compositions may use several NSH primitives where no direct equivalent exists,
 but must retain LUI semantics and reuse NSH interaction infrastructure.
 
 On 2026-11-12 the user clarified the compatibility boundary: inspect production
-usage in both `logseq/mobile` and `logseq/logseq_journal` before reproducing a
+usage in `logseq/mobile`, `logseq/logseq_journal` and Logseq's `refactor/lui` branch
+(the third target was explicitly added on 2026-11-12) before reproducing a
 legacy component or optional behavior. Preserve the APIs and behavior those
-applications actually use. For components or behavior unused by both, adopt
+applications actually use. For components or behavior unused by all three, adopt
 NSH's native component model and defaults, documenting concrete desktop API
 migrations where necessary. Do not build another focus, gesture or lifecycle
 controller merely to preserve an unused legacy convention. Domain objects named

@@ -3742,3 +3742,19 @@ Keep the existing mobile action container at its supported parent location.
 This example changes the desktop affordance only; the application's action
 handler stays the same. The NSH inventory reports these two explicit platform
 exceptions separately from missing required component routes.
+
+## NSH Scroll forwards its authored native axis
+
+`scroll ~orientation:`horizontal` now uses native horizontal Scroll, fixing the
+copied Logseq `views_table.ml` table/header scrolling paths. Omitted orientation
+and explicit `vertical` keep the native vertical default. Pointer/wheel input
+uses the corresponding native axis without a synthetic gesture controller.
+
+The public NSH axis is fixed at construction. Changing the effective axis on an
+existing incarnation fails the entire batch before publication; ordinary edits
+and spelling the existing default explicitly preserve content, offsets and
+editor identity. To change axis, mount the new Scroll under a different key
+(for example `~key:"results-horizontal"` versus `~key:"results-vertical"`).
+Both production horizontal Scroll calls in Logseq `refactor/lui` at
+`29dcb60fdc976dcda1da6ec984057bbf79d88612` author a static axis. This restriction
+does not alter maintained mobile/Web backends or canonical orientation values.
