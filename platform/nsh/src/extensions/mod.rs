@@ -149,3 +149,6 @@ pub(crate) use host::mount;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod style_tests;
