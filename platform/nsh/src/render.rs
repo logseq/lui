@@ -603,7 +603,15 @@ impl Renderer {
             .expect("supported NSH control");
         }
         let result = match node.kind.as_str() {
-            "text" | "heading" | "paragraph" | "label" | "kbd" => native_events
+            "heading" => native_events
+                .attach(crate::headings::element(state))
+                .state_inline_style(style)
+                .selectable(move || state.get().string("user-select") != "none")
+                .element_ref(&reference)
+                .key(key.clone())
+                .test_id(&identifier)
+                .into_element(),
+            "text" | "paragraph" | "label" | "kbd" => native_events
                 .attach(text(move || {
                     SharedString::from(state.get().string("text").to_owned())
                 }))
@@ -1866,3 +1874,6 @@ mod theme_tests {
 
 #[cfg(test)]
 mod image_tests;
+
+#[cfg(test)]
+mod heading_tests;

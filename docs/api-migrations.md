@@ -3242,3 +3242,38 @@ child-row layout, retained editor identity through reorder, live Step state and
 marker precedence, and native pointer/modifier activation. Native visual review
 in both appearances and real application qualification remain separate release
 gates; source-level tests do not establish screenshot or cross-platform results.
+
+### NSH semantic Heading levels
+
+NSH `heading` now uses the existing native Text host with the public Header role
+and reactive accessibility level. An absent `heading-level` defaults to **2**,
+preserving the replaced desktop MyGo default. The canonical OCaml constructor
+writes a level only when authored; there is no shared wire default. Apple uses
+an absent level of 1, while Web forwards an authored level to `aria-level`.
+Applications needing the same level across backends should pass `~level` explicitly.
+
+Levels 1 through 6 use the native NSH theme text presets `3xl`, `2xl`, `xl`,
+`lg`, `base`, `sm`, with bold weight. At the default NSH scale these are
+30/24/20/18/16/14 points, replacing MyGo's ad hoc 28/26/24/22/20/18-point formula.
+These native presets also supply their normal line heights. Explicit canonical
+font size, weight, line height, color and other text styles take precedence. For
+example, to retain the previous level-2 desktop size and bold weight:
+
+```ocaml
+heading ~level:2 ~value:"Section"
+  ~font_size:"26px" ~font_weight:700 []
+```
+
+Updating `heading-level` on a retained node updates both the native level and
+its default typography without replacing the Text host or adjacent editors.
+Removing the property restores level 2; authored font overrides remain in force
+until removed. The native accessible name follows the canonical text, and an
+authored accessibility identifier remains attached to that same host. Heading
+does not gain a separate label property: the existing canonical validator still
+rejects `accessibility-label` on Heading. Its existing composed-text-child
+limitation is unchanged by this semantic increment.
+
+Headless regressions cover all six levels, default restoration, text/name updates,
+authored style precedence, native identity and user draft retention, and atomic
+rejection of invalid level/label batches. These source tests do not establish
+OS screen-reader announcements or native screenshot typography qualification.
