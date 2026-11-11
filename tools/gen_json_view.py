@@ -234,10 +234,12 @@ def main():
         '    let s = sty_of props in\n'
         '    match kind_of_node fields with\n')
 
+    restricted_properties = {'context_menu': 'ContextMenu',
+                             'tooltip': 'Tooltip', 'file_picker': 'FilePicker'}
     for name, kind, args, ret in normal:
         kids = kids_expr(name, ret, parents)
-        validation = ('      require_supported_properties P.ContextMenu props;\n'
-                      if name == 'context_menu' else '')
+        validation = (f'      require_supported_properties P.{restricted_properties[name]} props;\n'
+                      if name in restricted_properties else '')
         out.append(f'    | "{kind}" ->\n{validation}      E.{name}{call_args(args, name)} {kids}\n')
     for name, kind, _, el_type, _ in restricted:
         out.append(

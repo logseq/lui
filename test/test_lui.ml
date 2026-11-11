@@ -3446,6 +3446,48 @@ let test_json_context_menu_contract () =
     Alcotest.(check (list (pair string string))) "dismiss reaches the existing sink"
       ["actions", "dismiss"] !events)
 
+let test_json_tooltip_and_file_picker_contract () =
+  let open Lui_json_view in
+  let sink ~id:_ ~kind:_ ~fields:_ = () in
+  List.iter (fun kind ->
+    List.iter (fun (name, value) ->
+      Alcotest.check_raises "invalid copied surface options fail before mounting"
+        (Invalid_argument ("Unsupported property for " ^ kind ^ ": " ^ name))
+        (fun () -> let _view = render ~on_event:sink
+          (Obj ["kind", Str kind; name, value]) in ()))
+      ["width", Num 256.; "padding", Num 8.; "background", Str "surface";
+       "foreground", Str "foreground"; "style-class", Str "surface";
+       "data-attrs", Str "{}"])
+    ["tooltip"; "file-picker"];
+  Alcotest.check_raises "picker cannot silently drop frame sizing"
+    (Invalid_argument "Unsupported property for file-picker: container-relative-frame")
+    (fun () -> let _view = render ~on_event:sink
+      (Obj ["kind", Str "file-picker"; "container-relative-frame", Str "both"]) in ());
+  let session = drive_mount ~initial:() ~reducer:(fun model () -> model)
+    ~view:(fun _ _ _ -> Lui_elements.column
+      [ render ~on_event:sink
+          (Obj ["kind", Str "tooltip"; "key", Str "tip";
+            "text", Str "Details"; "anchor", Str "below";
+            "container-relative-frame", Str "both";
+            "container-relative-frame-inset", Num 0.;
+            "accessibility-identifier", Str "tip"]);
+        render ~on_event:sink
+          (Obj ["kind", Str "file-picker"; "key", Str "picker";
+            "accessibility-identifier", Str "picker"; "accept", Str ".md";
+            "directory", Bool true; "disabled", Bool false;
+            "children", Arr [Obj ["kind", Str "button"]]]) ]) () in
+  Fun.protect ~finally:(fun () -> drive_dispose session) (fun () ->
+    let tip = drive_node session (Drive.Model.Kind "tooltip") in
+    let picker = drive_node session (Drive.Model.Kind "file-picker") in
+    Alcotest.(check (option string)) "tooltip text remains admitted" (Some "Details")
+      (Drive.Model.string_prop tip "text");
+    Alcotest.(check (option string)) "tooltip frame remains admitted" (Some "both")
+      (Drive.Model.string_prop tip "container-relative-frame");
+    Alcotest.(check (option string)) "picker identity remains admitted" (Some "picker")
+      (Drive.Model.string_prop picker "accessibility-identifier");
+    Alcotest.(check (option string)) "picker filter remains admitted" (Some ".md")
+      (Drive.Model.string_prop picker "accept"))
+
 let test_json_view_anchor_rect () =
   let mount value = drive_mount ~initial:() ~reducer:(fun model () -> model)
     ~view:(fun _ _ _ -> Lui_json_view.render ~on_event:(fun ~id:_ ~kind:_ ~fields:_ -> ())
@@ -6164,6 +6206,7 @@ let () =
           Alcotest.test_case "parse edge cases" `Quick test_json_view_parse;
           Alcotest.test_case "rectangle anchors" `Quick test_json_view_anchor_rect;
           Alcotest.test_case "context menu property contract" `Quick test_json_context_menu_contract;
+          Alcotest.test_case "tooltip and picker property contract" `Quick test_json_tooltip_and_file_picker_contract;
         ] );
       ( "extension fingerprints",
         [

@@ -4737,3 +4737,47 @@ hardware pointer, hit-testing from the application root, hover, PressDown/Up,
 keyboard, focus or IME qualification. It never activates the application or
 changes display power. macOS hello also advertises the existing `screenshot`
 host operation; other hosts keep screenshot explicitly unavailable.
+### Tooltip and FilePicker reject unusable constructor labels at compile time
+
+`tooltip` and `file_picker` no longer expose copied universal optional labels
+whose emitted property the canonical `property_supported` predicate always
+rejects. Removed labels cover gap, main/cross alignment, grow/columns, padding,
+margins, paint and paint signals, border/radius, width/height/min/max dimensions,
+`style_class`, `data_attrs` and its signal form. FilePicker also removes
+`container_relative_frame` and its inset; Tooltip retains both because they are
+canonical properties of Tooltip. This is a typed API correction across hosts,
+not an NSH-only restriction or a relaxation of the wire protocol.
+
+Keyed identity, static/reactive accessibility identifiers, appear and pointer
+enter/leave handlers remain available on both constructors. Tooltip retains its
+text/static signal, frame axes/inset and all existing anchor/delay options.
+FilePicker retains source, request, types, multiple, disabled, completion, accept,
+directory, their existing signal forms, picked/dismiss handlers and children.
+Only always-invalid labels are removed; backend-specific picker source/filter
+restrictions are unchanged. The common implementation passes `None` for removed
+universal helper arguments, rather than accepting public labels and ignoring them.
+
+For example, move a picker's requested visual size onto its existing trigger:
+
+```ocaml
+file_picker ~request:(`Int 1) ~accept:".md" ~on_picked:handle_picked
+  [box ~width:240 ~padding:8 [button ~text:"Choose a document" []]]
+
+tooltip ~key:"details-hint" ~text:"Details" ~anchor:`below
+  ~accessibility_identifier:"details-hint" []
+```
+
+Place Tooltip trigger geometry/paint on its containing control rather than the
+leaf hint. `tooltip ~width:240 []` and `file_picker ~background:"surface" []`
+now fail OCaml type checking instead of mounting and then failing wire validation.
+The generated JSON view also checks these kinds against the existing canonical
+predicate before constructing them, so dynamic callers cannot silently lose the
+removed fields. Generated typed view metadata reflects the narrowed signatures.
+
+The maintained mobile shared and logseq_journal app source audit found no direct
+Tooltip or FilePicker constructor calls. Their button/icon `~tooltip` arguments
+are separate APIs and unchanged. No backend, protocol rule, wire spelling, event
+payload or default changes. PPX-suite positive probes exercise all retained
+constructor argument families and reactive forms; negative probes require type
+errors for every removed label. Runtime JSON regressions cover rejection before
+mounting and preservation of admitted text/frame/identity/filter properties.

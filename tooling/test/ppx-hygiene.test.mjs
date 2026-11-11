@@ -62,6 +62,8 @@ test("PPX nesting diagnostics reject static illegal edges without guessing opaqu
       ["(fun opaque -> context_menu [opaque ()]) (fun () -> menu_item [])"],
       ['context_menu ~key:"menu" ~accessibility_identifier:"actions" ~on_dismiss:(fun _ -> ()) [menu_item []]'],
       ['context_menu ~accessibility_identifier:(reactive string_of_bool source) [menu_item []]'],
+      ['tooltip ~key:"tip" ~container_relative_frame:`both ~container_relative_frame_inset:0 ~accessibility_identifier:(reactive string_of_bool source) ~on_appear:(fun _ -> ()) ~on_pointer_enter:(fun _ -> ()) ~on_pointer_leave:(fun _ -> ()) ~text:(reactive string_of_bool source) ~anchor:`below ~anchor_alignment:`stretch ~anchor_offset:0. ~tooltip_delay:500 []'],
+      ['file_picker ~key:"picker" ~accessibility_identifier:(reactive string_of_bool source) ~on_appear:(fun _ -> ()) ~on_pointer_enter:(fun _ -> ()) ~on_pointer_leave:(fun _ -> ()) ~source:`files ~request:(reactive (fun value -> `Int (if value then 1 else 2)) source) ~types:(reactive (fun _ -> ".md") source) ~multiple:(reactive Fun.id source) ~disabled:(reactive Fun.id source) ~completion:(reactive (fun value -> `String (string_of_bool value)) source) ~on_picked:(fun _ -> ()) ~on_dismiss:(fun _ -> ()) ~accept:(reactive (fun _ -> ".txt") source) ~directory:(reactive Fun.id source) [button []]'],
       ["let child = menu_item [] in context_menu [child]"],
       ["virtual_list [virtual_rows ~source:items ~key:Fun.id ~cmp:compare ~mount:(fun _ -> row []) ()]"],
       ["let module E = Lui_elements in E.context_menu [E.menu_item []]"],
@@ -141,7 +143,27 @@ let probe (source : bool Signal.signal) =
         "-ppx", `${join(dir, "driver")} --as-ppx`,
         "-I", "_build/default/src/.lui.objs/byte", join(dir, "probe.ml")])
     }
+    // These labels previously type-checked but their canonical kind always
+    // rejected the resulting property. Keep every removed label a type error.
+    const invalidSurfaceLabels = [
+      ["gap", "1"], ["main", "`start"], ["cross", "`center"], ["grow", "1."], ["columns", "2"],
+      ...["padding", "padding_horizontal", "padding_vertical", "margin", "margin_horizontal", "margin_vertical",
+        "margin_top", "margin_right", "margin_bottom", "margin_left", "border_width", "corner_radius",
+        "width", "height", "min_width", "max_width", "min_height", "max_height"].map(label => [label, "1"]),
+      ...["background", "foreground", "border_color", "style_class"].map(label => [label, '"surface"']),
+      ["foreground_signal", "text_source"], ["background_signal", "text_source"],
+      ["data_attrs", '[("data-test", "value")]'], ["data_attrs_signal", "attrs_source"],
+    ]
+    const invalidSurfaceCases = ["tooltip", "file_picker"].flatMap(constructor => {
+      const labels = constructor === "file_picker"
+        ? [...invalidSurfaceLabels, ["container_relative_frame", "`both"], ["container_relative_frame_inset", "1"]]
+        : invalidSurfaceLabels
+      return labels.map(([label, value]) => [
+        `${constructor} ~${label}:${value} []`, new RegExp(`cannot be applied with label ~${label}`),
+      ])
+    })
     for (const [expression, expectedType] of [
+      ...invalidSurfaceCases,
       ['context_menu ~width:256 [menu_item []]', /cannot be applied with label ~width/],
       ['context_menu ~style_class:"menu" [menu_item []]', /cannot be applied with label ~style_class/],
       ['context_menu ~disabled:true [menu_item []]', /cannot be applied with label ~disabled/],
@@ -151,7 +173,8 @@ let probe (source : bool Signal.signal) =
       ["scoped_bottom_tab (fun _ -> button [])", /bottom_tab_el/],
       ["radio_group [keyed_radio ~source:(reactive (fun _ -> [1]) source) ~key:Fun.id ~cmp:Int.compare ~mount:(fun _ -> button [])]", /radio_el/],
     ]) {
-      writeFileSync(join(dir, "probe.ml"), `open Lui_elements\nlet invalid (source : bool Signal.signal) = ${expression}\n`)
+      writeFileSync(join(dir, "probe.ml"), `open Lui_elements\nlet invalid (source : bool Signal.signal) (text_source : string Signal.signal)
+    (attrs_source : (string * string) list Signal.signal) = ${expression}\n`)
       const result = run(["ocamlfind", "ocamlc", "-package", "ocaml-signal", "-c",
         "-ppx", `${join(dir, "driver")} --as-ppx`,
         "-I", "_build/default/src/.lui.objs/byte", join(dir, "probe.ml")])

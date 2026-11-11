@@ -3525,43 +3525,17 @@ val sheet :
   ?sizing_signal:string Signal.signal ->
   ?on_dismiss:(Lui_protocol.event -> unit) ->
   ?transition:string -> t list -> t
+
+(** A leaf hint. Its canonical properties do not include general box styling;
+    size and paint the trigger or containing view rather than the hint node.
+    Frame axes, identity, lifecycle/pointer events and anchor options remain
+    available. Unsupported labels are absent so invalid calls fail compilation. *)
 val tooltip :
   ?key:string ->
-  ?gap:int ->
-  ?main:main_alignment ->
-  ?cross:cross_alignment ->
-  ?grow:float ->
-  ?columns:int ->
-  ?padding:int ->
-  ?padding_horizontal:int ->
-  ?padding_vertical:int ->
-  ?margin:int ->
-  ?margin_horizontal:int ->
-  ?margin_vertical:int ->
-  ?margin_top:int ->
-  ?margin_right:int ->
-  ?margin_bottom:int ->
-  ?margin_left:int ->
-  ?background:string ->
-  ?foreground:string ->
-  ?border_color:string ->
-  ?border_width:int ->
-  ?corner_radius:int ->
-  ?width:int ->
-  ?height:int ->
-  ?min_width:int ->
-  ?max_width:int ->
-  ?min_height:int ->
-  ?max_height:int ->
   ?container_relative_frame:frame_axes ->
   ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
-  ?foreground_signal:string Signal.signal ->
-  ?background_signal:string Signal.signal ->
-  ?style_class:string ->
-  ?data_attrs:(string * string) list ->
-  ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
@@ -3629,44 +3603,15 @@ val toast :
     [{request, paths}] (or [{request, paths = [], error}]) without leases.
     Its filters are comma-separated extensions such as [.md,.txt]; camera,
     photo-library, MIME/UTI filters and completion tokens are rejected.
-    Cancellation still fires [~on_dismiss]. See [docs/api-migrations.md]. *)
+    Cancellation still fires [~on_dismiss].
+
+    General layout and paint belong to the containing view or rendered trigger
+    children; those properties have never been admitted on FilePicker by the
+    canonical protocol. See [docs/api-migrations.md]. *)
 val file_picker :
   ?key:string ->
-  ?gap:int ->
-  ?main:main_alignment ->
-  ?cross:cross_alignment ->
-  ?grow:float ->
-  ?columns:int ->
-  ?padding:int ->
-  ?padding_horizontal:int ->
-  ?padding_vertical:int ->
-  ?margin:int ->
-  ?margin_horizontal:int ->
-  ?margin_vertical:int ->
-  ?margin_top:int ->
-  ?margin_right:int ->
-  ?margin_bottom:int ->
-  ?margin_left:int ->
-  ?background:string ->
-  ?foreground:string ->
-  ?border_color:string ->
-  ?border_width:int ->
-  ?corner_radius:int ->
-  ?width:int ->
-  ?height:int ->
-  ?min_width:int ->
-  ?max_width:int ->
-  ?min_height:int ->
-  ?max_height:int ->
-  ?container_relative_frame:frame_axes ->
-  ?container_relative_frame_inset:int ->
   ?accessibility_identifier:string ->
   ?accessibility_identifier_signal:string Signal.signal ->
-  ?foreground_signal:string Signal.signal ->
-  ?background_signal:string Signal.signal ->
-  ?style_class:string ->
-  ?data_attrs:(string * string) list ->
-  ?data_attrs_signal:(string * string) list Signal.signal ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
