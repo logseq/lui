@@ -1327,6 +1327,31 @@ mod tests {
     }
 
     #[test]
+    fn native_font_size_units_are_explicit_and_never_guess_a_parent_metric() {
+        for (text, expected) in [
+            ("18", PropertyValue::OptPoints(Some(px(18.0)))),
+            ("18px", PropertyValue::OptPoints(Some(px(18.0)))),
+            ("1.25rem", PropertyValue::OptPoints(Some(px(20.0)))),
+            ("1em", PropertyValue::OptPoints(None)),
+            ("1.0em", PropertyValue::OptPoints(None)),
+        ] {
+            assert_eq!(
+                FontSize::parse(text).unwrap().native().unwrap(),
+                expected,
+                "{text}"
+            );
+        }
+        for text in [
+            "2em", "0.5em", "12pt", "125%", "NaNpx", "1e100px", "-2px", "huge",
+        ] {
+            assert!(
+                FontSize::parse(text).and_then(FontSize::native).is_err(),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
     fn canonical_font_weights_and_text_units_are_preserved() {
         for weight in [1, 99, 500, 950, 1000] {
             let style = compile_props(

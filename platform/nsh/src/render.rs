@@ -2555,3 +2555,6 @@ mod context_menu_tests;
 
 #[cfg(test)]
 mod contents_tests;
+
+#[cfg(test)]
+mod font_size_tests;
