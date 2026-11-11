@@ -175,6 +175,45 @@ fn profile_child_names_and_transparent_tweak_constraints_fail_closed() {
     );
 }
 
+#[test]
+fn replacing_a_projected_tweak_child_with_the_same_wire_id_is_atomic() {
+    let mut store = registry().store();
+    store
+        .apply(batch(
+            1,
+            json!([
+        {"op":"create-extension","id":1,"identifier":"app-oracle-tint","fingerprint":""},
+        {"op":"set-extension-prop","id":1,"property":"width","value":100.0},
+        {"op":"create-node","id":2,"kind":"text"},
+        {"op":"set-prop","id":2,"property":"text","value":"Original"},
+        {"op":"insert-child","parent":1,"child":2,"index":0}]),
+        ))
+        .unwrap();
+    let before = store.nodes.clone();
+    assert!(
+        store
+            .apply(batch(
+                2,
+                json!([
+        {"op":"drop-node","id":2},{"op":"create-node","id":2,"kind":"text"},
+        {"op":"set-prop","id":2,"property":"text","value":"Replacement"},
+        {"op":"insert-child","parent":1,"child":2,"index":0}])
+            ))
+            .is_err()
+    );
+    assert_eq!(store.generation, 1);
+    for (id, node) in before {
+        assert!(Arc::ptr_eq(&node, &store.nodes[&id]));
+    }
+    store
+        .apply(batch(
+            2,
+            json!([{"op":"set-prop","id":2,"property":"text","value":"Updated in place"}]),
+        ))
+        .unwrap();
+    assert_eq!(store.nodes[&2].string("text"), "Updated in place");
+}
+
 #[derive(Clone)]
 struct Fixture {
     mounts: Arc<AtomicUsize>,

@@ -401,7 +401,12 @@ impl Transaction<'_> {
                     }
                     if contract.schema.kind == ExtensionKind::Tweak
                         && self.previous(node.id).is_some_and(|old| {
-                            old.incarnation == node.incarnation && old.children != node.children
+                            old.incarnation == node.incarnation
+                                && (old.children != node.children
+                                    || node.children.iter().any(|id| {
+                                        self.previous(*id).map(|child| child.incarnation)
+                                            != self.get(*id).ok().map(|child| child.incarnation)
+                                    }))
                         })
                     {
                         return Err(
