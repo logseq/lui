@@ -4112,3 +4112,63 @@ foreign dispatch. A missing event export produces an explicit diagnostic. This
 extension event ABI does not change the generic three-argument application start
 ABI and does not by itself port Logseq's different application/service ABI or
 provide its editor, PDF or platform services.
+
+### Explicit Logseq native bridge configuration and ordered host messages
+
+The default NSH desktop runtime continues to use the standard three-argument
+`lui_ocaml_start` and its host-driven clock. Logseq's native library exports a
+seven-argument function with the same name. Select its ABI explicitly; symbol-name
+probing cannot safely distinguish those function signatures:
+
+```rust
+use lui_nsh::runtime::{BridgeConfig, Session};
+let (session, initial) = Session::open_with_config(
+    library,
+    1, // macOS
+    BridgeConfig::Logseq { payload: r#"{"paintsCaret":false}"#.into() },
+).await?;
+```
+
+`Session::open` remains the generic shorthand. An initialized process cannot
+switch application libraries or startup ABIs. The payload is passed as UTF-8 bytes
+with an explicit length. Logseq currently requires exactly one boolean
+`paintsCaret` capability; its native editor requires `false` when OCaml paints the
+measured caret.
+
+Logseq patch callbacks encode JSON arrays of batches (the generic bridge emits
+one batch object). The driver decodes that actual format without changing wire
+ordinals. Logseq replies use `Reply.messages: Some(Vec<ApplicationMessage>)` in exact native
+callback order. Entries are `Batch`, authoritative `Snapshot`, or
+`PlatformRequest { operation, payload }`. The generic path retains the existing
+`batches`/`snapshot` representation and allocates no Logseq callback state. A
+Logseq caller must process the ordered stream before dispatching another input:
+for example, register an `app-icons` request before applying the subsequent batch
+that references those icons. Do not concatenate requests after all batches.
+
+A request is the existing `operation\npayload` host protocol; the bridge copies
+its length-carrying bytes before the C callback returns. Host services execute
+outside the callback. Send their results as `PlatformEvent { operation, payload }`
+using `session.platform_event(...)`; that worker operation calls the native event
+export followed by `pump`, because Logseq's event export enqueues work without
+returning patches itself. The response retains callback order as well. For
+example, a `measure-node` service produces a `node-rect` event containing the
+existing Logseq JSON response, rather than a new LUI measurement wire format.
+
+The application's existing ordered response loop waits on `session.woken()` and
+calls `session.pump()` on wakeup. Wakeups coalesce and are retained across START;
+no polling timer or second OCaml thread is introduced. Callback state is weakly
+scoped to the active session and detached at close. The C ABI has no user-data
+argument: wakeups after disposal are ignored while no session is active; a late
+wakeup after reopening can only request a drain of the current mailbox.
+
+Logseq owns its timers through `Host`; it has no generic clock-control,
+`last_error`, or focus-within export. `next_delay` is therefore absent, and explicit
+clock-control/focus-within requests return an unsupported-ABI error. They are not
+silently converted to successful no-ops. A refused Logseq operation uses the
+existing authoritative resync path without inventing a diagnostic export.
+
+The dedicated `runtime_logseq` test compiles a real C shared-library ABI fixture
+that checks the seven arguments, foreign-thread wakeup, one worker thread,
+interleaved service/patch order, recovery, embedded NUL/Unicode reply lengths, and
+reopening. It does not qualify OCaml startup or actual Logseq UI/services; those
+remain separate application build and native launch gates.

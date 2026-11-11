@@ -15,6 +15,10 @@ use std::{
 use tokio::sync::{mpsc, oneshot};
 
 pub use crate::events::{PointerDetail, PointerKind};
+mod driver;
+use driver::MessageOrder;
+pub use driver::{BridgeConfig, PlatformEvent, PlatformRequest};
+use driver::{Callbacks, Driver};
 
 const QUEUE_CAPACITY: usize = 64;
 const NSH_HOST_CODE: i32 = 6;
@@ -99,6 +103,16 @@ pub struct Reply {
     pub agent: Option<String>,
     pub next_delay: Option<Duration>,
     pub root: i64,
+    /// Logseq callback order; generic applications use `batches` and `snapshot`.
+    pub messages: Option<Vec<ApplicationMessage>>,
+}
+
+/// One ordered Logseq callback result. Host requests may configure later batches.
+#[derive(Debug)]
+pub enum ApplicationMessage {
+    Batch(Batch),
+    Snapshot(Batch),
+    PlatformRequest(PlatformRequest),
 }
 
 /// The active application. Clones share a lease; its last drop queues disposal.
@@ -108,6 +122,7 @@ pub struct Session(Arc<Lease>);
 struct Lease {
     id: u64,
     sender: mpsc::Sender<Request>,
+    callbacks: Option<Arc<Callbacks>>,
 }
 impl Drop for Lease {
     fn drop(&mut self) {
@@ -123,7 +138,13 @@ impl Drop for Lease {
 }
 
 enum Operation {
-    Open { path: PathBuf, platform: i32 },
+    Open {
+        path: PathBuf,
+        platform: i32,
+        config: BridgeConfig,
+    },
+    Pump,
+    PlatformEvent(PlatformEvent),
     Event(Event),
     Agent(String),
     Resync,
@@ -142,6 +163,15 @@ struct Request {
 impl Session {
     /// Opens one application on the persistent runtime thread.
     pub async fn open(path: impl AsRef<Path>, platform: i32) -> Result<(Self, Reply), String> {
+        Self::open_with_config(path, platform, BridgeConfig::Generic).await
+    }
+
+    /// Opens a library using its explicit startup ABI; symbol names do not detect it.
+    pub async fn open_with_config(
+        path: impl AsRef<Path>,
+        platform: i32,
+        config: BridgeConfig,
+    ) -> Result<(Self, Reply), String> {
         let path = std::fs::canonicalize(path).map_err(|e| format!("OCaml library: {e}"))?;
         let sender = WORKER
             .get_or_init(|| {
@@ -157,8 +187,16 @@ impl Session {
         let session = Self(Arc::new(Lease {
             id: NEXT_SESSION.fetch_add(1, Ordering::Relaxed),
             sender,
+            callbacks: matches!(config, BridgeConfig::Logseq { .. })
+                .then(|| Arc::new(Callbacks::default())),
         }));
-        let reply = session.request(Operation::Open { path, platform }).await?;
+        let reply = session
+            .request(Operation::Open {
+                path,
+                platform,
+                config,
+            })
+            .await?;
         Ok((session, reply))
     }
 
@@ -177,6 +215,23 @@ impl Session {
         receiver
             .await
             .map_err(|_| "OCaml worker did not reply".to_owned())?
+    }
+
+    /// Sleeps until this application explicitly signals work; no idle polling.
+    /// Multiple wakeups coalesce. One ordered app pump must own this wait.
+    pub async fn woken(&self) {
+        match &self.0.callbacks {
+            Some(callbacks) => callbacks.notify.notified().await,
+            None => std::future::pending().await,
+        }
+    }
+    /// Drains Logseq's mailbox on the existing OCaml worker.
+    pub async fn pump(&self) -> Result<Reply, String> {
+        self.request(Operation::Pump).await
+    }
+    /// Delivers a host reply and drains work it enqueued on the same worker.
+    pub async fn platform_event(&self, event: PlatformEvent) -> Result<Reply, String> {
+        self.request(Operation::PlatformEvent(event)).await
     }
 
     /// Delivers one semantic event and returns its patches.
@@ -224,6 +279,7 @@ impl Worker {
             {
                 if let Some(native) = &mut self.native {
                     let _ = native.invoke(&Operation::Close);
+                    Callbacks::clear();
                 }
                 self.active = None;
             }
@@ -234,7 +290,7 @@ impl Worker {
         }
     }
     fn handle(&mut self, request: &Request) -> Result<Reply, String> {
-        if let Operation::Open { path, .. } = &request.operation {
+        if let Operation::Open { path, config, .. } = &request.operation {
             if request.lease.strong_count() == 0 {
                 return Err("application opening was cancelled".into());
             }
@@ -242,18 +298,32 @@ impl Worker {
                 return Err("only one active LUI OCaml session is supported".into());
             }
             match &self.native {
-                Some(native) if native.path != *path => {
+                Some(native) if native.path != *path || !native.driver.matches(config) => {
                     return Err("only one OCaml library may be initialized per process".into());
                 }
-                None => self.native = Some(Native::load(path)?),
+                None => self.native = Some(Native::load(path, config)?),
                 _ => (),
+            }
+            let lease = request
+                .lease
+                .upgrade()
+                .ok_or("application opening was cancelled")?;
+            if let Some(callbacks) = &lease.callbacks {
+                Callbacks::install(callbacks);
+            } else {
+                Callbacks::clear();
             }
             self.active = Some((request.session, request.lease.clone()));
             let native = self.native.as_mut().expect("loaded native runtime");
             let result = native.invoke(&request.operation);
             if result.is_err() {
-                let _ = native.invoke(&Operation::Close);
+                let _ = self
+                    .native
+                    .as_mut()
+                    .expect("loaded native runtime")
+                    .invoke(&Operation::Close);
                 self.active = None;
+                Callbacks::clear();
             }
             return result;
         }
@@ -271,6 +341,7 @@ impl Worker {
             .invoke(&request.operation);
         if matches!(request.operation, Operation::Close) {
             self.active = None;
+            Callbacks::clear();
         }
         result
     }
@@ -290,10 +361,8 @@ type WindowFn = unsafe extern "C" fn(i64, i64, i64, i64, *const i64, i32) -> i32
 type ScrollCompletedFn = unsafe extern "C" fn(i64, i64, *const c_char) -> i32;
 
 struct Exports {
-    start: unsafe extern "C" fn(Callback, i32, i32) -> i32,
     stop: UnitFn,
     resync: UnitFn,
-    last_error: unsafe extern "C" fn(Callback) -> i32,
     root: unsafe extern "C" fn() -> i64,
     press: NodeIntFn,
     long_press: Option<NodeFn>,
@@ -307,7 +376,7 @@ struct Exports {
     navigate_next: Option<NodeFn>,
     toggle: NodeIntFn,
     value: NumberFn,
-    focus_within: NodeIntFn,
+    focus_within: Option<NodeIntFn>,
     appear: NodeFn,
     load: Option<NodeFn>,
     change: NodeFn,
@@ -318,10 +387,6 @@ struct Exports {
     scroll_completed: Option<ScrollCompletedFn>,
     virtual_window: Option<WindowFn>,
     agent: Option<unsafe extern "C" fn(*const c_char, i32, Callback) -> i32>,
-    tick: unsafe extern "C" fn(f64) -> i32,
-    advance: unsafe extern "C" fn(f64) -> i32,
-    pause: unsafe extern "C" fn(i32) -> i32,
-    next_delay: unsafe extern "C" fn() -> f64,
 }
 struct Native {
     path: PathBuf,
@@ -329,11 +394,12 @@ struct Native {
     // including a Rust unwind on the worker; process exit reclaims the mapping.
     _library: ManuallyDrop<Library>,
     exports: Exports,
+    driver: Driver,
     epoch: Instant,
 }
 
 impl Native {
-    fn load(path: &Path) -> Result<Self, String> {
+    fn load(path: &Path, config: &BridgeConfig) -> Result<Self, String> {
         // SAFETY: the user-selected application is trusted native code. All
         // symbols below are the fixed ABI in platform/bridge/lui_ocaml_bridge.c.
         // Loading occurs only on the persistent thread that will invoke them.
@@ -371,10 +437,8 @@ impl Native {
                 };
             }
             let exports = Exports {
-                start: required!("lui_ocaml_start"),
                 stop: required!("lui_ocaml_stop"),
                 resync: required!("lui_ocaml_resync"),
-                last_error: required!("lui_ocaml_last_error"),
                 root: required!("lui_ocaml_root_node"),
                 press: required!("lui_ocaml_press_ex"),
                 long_press: optional!("lui_ocaml_long_press"),
@@ -395,7 +459,7 @@ impl Native {
                 navigate_next: optional!("lui_ocaml_navigate_next"),
                 toggle: required!("lui_ocaml_toggle_changed"),
                 value: required!("lui_ocaml_slider_changed"),
-                focus_within: required!("lui_ocaml_focus_within_changed"),
+                focus_within: optional!("lui_ocaml_focus_within_changed"),
                 appear: required!("lui_ocaml_appear"),
                 load: optional!("lui_ocaml_load"),
                 change: required!("lui_ocaml_radio_changed"),
@@ -406,17 +470,24 @@ impl Native {
                 scroll_completed: optional!("lui_ocaml_scroll_completed"),
                 virtual_window: optional!("lui_ocaml_virtual_window"),
                 agent: optional!("lui_ocaml_agent_utf8"),
-                tick: required!("lui_ocaml_clock_tick"),
-                advance: required!("lui_ocaml_clock_advance"),
-                pause: required!("lui_ocaml_clock_set_paused"),
-                next_delay: required!("lui_ocaml_clock_next_delay"),
             };
+            let driver = Driver::load(&library, config)?;
             Ok(Self {
                 path: path.into(),
                 _library: ManuallyDrop::new(library),
                 exports,
+                driver,
                 epoch: Instant::now(),
             })
+        }
+    }
+
+    fn decode_callback(&self, json: &str) -> Result<Vec<Batch>, String> {
+        match self.driver {
+            Driver::Generic { .. } => Ok(vec![Batch::decode(json)?]),
+            Driver::Logseq { .. } => {
+                serde_json::from_str(json).map_err(|error| format!("Logseq batch array: {error}"))
+            }
         }
     }
 
@@ -428,44 +499,46 @@ impl Native {
         // call, their lengths are checked, and callbacks copy bytes before return.
         // Advance before ordinary requests so rearming their wakeup cannot defer
         // a pending timer, and handlers schedule against current application time.
-        let synchronized =
-            !matches!(
-                operation,
-                Operation::Event(_) | Operation::Agent(_) | Operation::Resync
-            ) || unsafe { (api.tick)(self.epoch.elapsed().as_secs_f64() * 1000.0) != 0 };
+        let synchronized = !matches!(
+            operation,
+            Operation::Event(_) | Operation::Agent(_) | Operation::Resync
+        ) || unsafe {
+            self.driver
+                .synchronize(self.epoch.elapsed().as_secs_f64() * 1000.0)
+                != 0
+        };
         let accepted = unsafe {
             if !synchronized {
                 0
             } else {
                 match operation {
-                    Operation::Open { platform, .. } => {
+                    Operation::Open {
+                        platform, config, ..
+                    } => {
                         self.epoch = Instant::now();
-                        let accepted = (api.start)(capture_patch, *platform, NSH_HOST_CODE);
-                        // Anchor host time now; anchoring only at the first due timer
-                        // would delay that timer by another complete interval.
-                        if accepted != 0 {
-                            (api.tick)(0.0)
-                        } else {
-                            accepted
-                        }
+                        self.driver
+                            .start(config, capture_patch, *platform, NSH_HOST_CODE)?
+                    }
+                    Operation::Pump => self.driver.pump()?,
+                    Operation::PlatformEvent(event) => {
+                        self.driver.platform_event(&event.encode()?)?
                     }
                     Operation::Close => (api.stop)(),
                     Operation::Resync => {
                         // The snapshot includes timers fired by the preceding tick.
                         // Discard their deltas, retaining callback errors and diagnostics.
                         CAPTURE.with(|capture| capture.borrow_mut().patches.clear());
+                        // Synchronization only emits deltas for the generic bridge.
+                        // Logseq has no pre-request host tick to discard.
                         (api.resync)()
                     }
-                    Operation::Tick => (api.tick)(self.epoch.elapsed().as_secs_f64() * 1000.0),
-                    Operation::Advance(ms) => (api.advance)(*ms),
-                    Operation::Pause(paused) => {
-                        let accepted = (api.pause)(i32::from(*paused));
-                        if !paused && accepted != 0 {
-                            (api.tick)(self.epoch.elapsed().as_secs_f64() * 1000.0)
-                        } else {
-                            accepted
-                        }
-                    }
+                    Operation::Tick => self
+                        .driver
+                        .tick(self.epoch.elapsed().as_secs_f64() * 1000.0)?,
+                    Operation::Advance(ms) => self.driver.advance(*ms)?,
+                    Operation::Pause(paused) => self
+                        .driver
+                        .pause(*paused, self.epoch.elapsed().as_secs_f64() * 1000.0)?,
                     Operation::Agent(json) => {
                         let agent = api.agent.ok_or("OCaml library has no agent ABI")?;
                         agent(json.as_ptr().cast(), length(json.len())?, capture_agent)
@@ -555,9 +628,12 @@ impl Native {
                         ),
                         Event::Toggle { node, checked } => (api.toggle)(*node, i32::from(*checked)),
                         Event::Value { node, value } => (api.value)(*node, *value),
-                        Event::FocusWithin { node, within } => {
-                            (api.focus_within)(*node, i32::from(*within))
-                        }
+                        Event::FocusWithin { node, within } => api
+                            .focus_within
+                            .ok_or("OCaml library has no FocusWithin ABI")?(
+                            *node,
+                            i32::from(*within),
+                        ),
                         Event::Appear(node) => (api.appear)(*node),
                         Event::Load(node) => {
                             api.load.ok_or("OCaml library has no Image Load ABI")?(*node)
@@ -610,12 +686,13 @@ impl Native {
             }
         };
         let mut captured = CAPTURE.with(|c| std::mem::take(&mut *c.borrow_mut()));
+        let mut ordered = driver::take_messages().transpose()?;
         let mut snapshot = None;
         if accepted == 0 {
             // SAFETY: same worker/thread and callback lifetime as above. A refused
             // dispatch leaves the mirror stale, even if it already delivered batches.
             unsafe {
-                (api.last_error)(capture_diagnostic);
+                self.driver.diagnostic(capture_diagnostic);
             }
             captured.diagnostic = CAPTURE.with(|c| c.borrow_mut().diagnostic.take());
             if matches!(
@@ -630,34 +707,73 @@ impl Native {
                 return Err("OCaml refused recovery snapshot".into());
             }
             let recovery = CAPTURE.with(|c| std::mem::take(&mut *c.borrow_mut()));
+            let recovery_order = driver::take_messages().transpose()?;
             if let Some(error) = recovery.error {
                 return Err(error);
             }
             if recovery.patches.len() != 1 {
                 return Err("OCaml resync must return one authoritative batch".into());
             }
-            snapshot = Some(Batch::decode(&recovery.patches[0])?);
+            let mut recovered = self.decode_callback(&recovery.patches[0])?;
+            if recovered.len() != 1 {
+                return Err("OCaml resync must encode one authoritative batch".into());
+            }
+            snapshot = recovered.pop();
             captured.patches.clear();
+            if let Some(order) = &mut ordered {
+                order.retain(|item| matches!(item, MessageOrder::Request(_)));
+                order.extend(recovery_order.unwrap_or_default());
+            }
         } else if matches!(operation, Operation::Resync) {
             if captured.patches.len() != 1 {
                 return Err("OCaml resync must return one authoritative batch".into());
             }
-            snapshot = Some(Batch::decode(&captured.patches.remove(0))?);
+            let mut recovered = self.decode_callback(&captured.patches.remove(0))?;
+            if recovered.len() != 1 {
+                return Err("OCaml resync must encode one authoritative batch".into());
+            }
+            snapshot = recovered.pop();
         }
         if let Some(error) = captured.error {
             return Err(error);
         }
-        let batches = captured
+        let batches: Vec<Vec<Batch>> = captured
             .patches
             .iter()
-            .map(|json| Batch::decode(json))
+            .map(|json| self.decode_callback(json))
             .collect::<Result<_, _>>()?;
         // SAFETY: the runtime is started on this thread; queries use the same
         // lock discipline. After close no query is needed.
         let (delay, root) = if matches!(operation, Operation::Close) {
             (-1.0, 0)
         } else {
-            unsafe { ((api.next_delay)(), (api.root)()) }
+            unsafe { (self.driver.delay(), (api.root)()) }
+        };
+        let (batches, snapshot, messages) = if let Some(order) = ordered {
+            let mut batches: Vec<_> = batches.into_iter().map(Some).collect();
+            let mut snapshot = snapshot;
+            let mut messages = Vec::with_capacity(order.len());
+            for message in order {
+                match message {
+                    MessageOrder::Request(request) => {
+                        messages.push(ApplicationMessage::PlatformRequest(request))
+                    }
+                    MessageOrder::Patch(index) => {
+                        if let Some(snapshot) = snapshot.take() {
+                            messages.push(ApplicationMessage::Snapshot(snapshot));
+                        } else {
+                            let batches = batches
+                                .get_mut(index)
+                                .and_then(Option::take)
+                                .ok_or("Logseq patch callback ordering mismatch")?;
+                            messages.extend(batches.into_iter().map(ApplicationMessage::Batch));
+                        }
+                    }
+                }
+            }
+            (Vec::new(), None, Some(messages))
+        } else {
+            (batches.into_iter().flatten().collect(), snapshot, None)
         };
         Ok(Reply {
             batches,
@@ -667,6 +783,7 @@ impl Native {
             next_delay: (delay.is_finite() && delay >= 0.0)
                 .then(|| Duration::from_secs_f64((delay / 1000.0).min(86400.0))),
             root,
+            messages,
         })
     }
 }
@@ -709,7 +826,10 @@ fn capture(pointer: *const c_char, store: impl FnOnce(&mut Capture, String)) {
     }
 }
 extern "C" fn capture_patch(pointer: *const c_char) {
-    capture(pointer, |c, json| c.patches.push(json));
+    capture(pointer, |c, json| {
+        driver::record_patch();
+        c.patches.push(json);
+    });
 }
 extern "C" fn capture_diagnostic(pointer: *const c_char) {
     capture(pointer, |c, json| c.diagnostic = Some(json));
