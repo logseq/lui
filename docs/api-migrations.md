@@ -3137,3 +3137,100 @@ The shared wire schema, Apple, Android and Web implementations are unchanged.
 The added Headless regressions are source-prepared only until the main session
 runs them. They do not establish desktop appearance, screen-reader output or
 cross-platform qualification.
+
+### NSH authored-child navigation, steps and timelines
+
+NSH desktop now composes `breadcrumb`, `pagination`, `stepper` / `step`, and
+`timeline` / `timeline_item` from public native controllers and retained native
+hosts. These routes preserve the existing canonical wire kinds and callbacks;
+Apple, Android and Web routes are unchanged. Route admission does not remove
+existing shared NSH styling or lifecycle limitations documented above.
+
+Breadcrumb and Pagination preserve every authored child. Pagination does not
+infer a page count or create previous/next/page buttons: NSH's data-driven
+Pagination component has a different API, so the adapter uses its public Toolbar
+controller around LUI's existing children instead. The canonical outer Group
+keeps the authored identity, accessibility label, padding and sizing. Its inner
+native Toolbar receives `gap`, `main` and `cross` through the shared layout
+compiler on the actual child row. Defaults remain horizontal with centered cross
+alignment, gap 4 for Breadcrumb and gap 2 for Pagination. Breadcrumb inserts a
+hidden decorative chevron before each child after the first, including an editor
+or a non-button child. Keyed reorders retain each child's own native host.
+
+The desktop keyboard pattern is the native Toolbar pattern: one Tab stop for
+registered commands; Left/Right wrap, Home/End choose the first/last enabled
+command, and moving focus does not activate it. Space/Return activate the focused
+command. Inputs keep their own keyboard stops and editing keys. This differs
+from Apple/Web groups' ordinary button Tab stops and direct-Button eligibility:
+native registered descendant Buttons, Toggles, Links and popup triggers can
+participate. Accessibility exposes the canonical outer Group and its nested
+Toolbar rather than pretending that the controller is an invisible landmark.
+For example, keep destination selection in the application callback:
+
+```ocaml
+pagination ~label:"Document pages" ~gap:8 [
+  button ~text:"Previous" ~on_press:(fun _ -> previous_page ()) [];
+  button ~text:"Next" ~on_press:(fun _ -> next_page ()) [];
+]
+```
+
+Stepper defaults `active` to zero and derives completed/active/pending from each
+current source index. It does not clamp the value: an index beyond the last step
+completes every step, while a negative index leaves every step pending, matching
+the existing Apple/Web comparison. Reordering keyed Steps updates their numbers,
+state and last-connector visibility without replacing retained Step hosts. An
+active Step exposes native accessibility `current = Step`; its name includes
+`(active)`, `(completed)` or `(pending)`. NSH currently has no `ListItem` role or
+public position-in-set/set-size fields, so the container is a native List and
+its named Steps are Groups. It does not claim those extra Web ARIA attributes.
+Steps remain display elements; advancing them is an application action:
+
+```ocaml
+stepper ~label:"Import progress"
+  ~active:(reactive (fun progress -> progress.stage) progress_model) [
+  step ~key:"choose" ~text:"Choose source" [];
+  step ~key:"read" ~text:"Read records" [];
+  step ~key:"finish" ~text:"Finish" [];
+]
+```
+
+Timeline defaults to a vertical List with zero gap. TimelineItem keeps its title,
+optional description/meta, selected state, variant, icon, indicator text and
+connector live on the same native host. Marker precedence is icon, then indicator
+text, then a dot. `connector` defaults to true even on the last item; pass false
+explicitly to end a line. Primary/destructive markers use those semantic theme
+colors, other variants use the muted foreground, and selection uses the shared
+accent. Color feedback honors reduced motion. NSH has no public base
+TimelineItem component. The adapter therefore uses the existing native
+interactive host and `NativeEvents` projection, rather than adding a typed Button
+that discards its pointer/modifier payloads on the pinned NSH API. A press-enabled
+item is a native Button role; a passive item is a Group under the List.
+
+```ocaml
+timeline ~label:"Import history" [
+  timeline_item ~key:"last-import" ~title:"Import finished"
+    ~description:"240 records" ~meta:"Just now" ~icon:`check
+    ~variant:`primary ~connector:false
+    ~on_press:(fun _ -> open_import_report ()) [];
+]
+```
+
+TimelineItem forwards canonical ordinary/modifier activation and the authored
+PressDetail / pointer-down / pointer-up / enter / leave callbacks through the
+existing guarded native event path. Payload coordinates use the native root
+coordinate system and target class is empty. As with other NSH host events,
+Ctrl/Shift/Command map to the existing modifier mask; Alt has no canonical bit.
+NSH's public PressEvent has no mouse-button field, so these press-phase payloads
+use button zero and cannot identify a secondary button. Keyboard activation uses
+the native press path; no pointer coordinates are fabricated by a second
+controller. Author the required callback capability at mount; later enabling a
+listener that was absent still requires a new node incarnation under the shared
+NSH event compatibility rule. Disabling an already installed callback is guarded
+live. These routes do not add drag, move/cancel, context-menu, long/double press or
+additional callbacks beyond each kind's canonical schema.
+
+The navigation regression suite checks actual native roles, focus-only roving,
+child-row layout, retained editor identity through reorder, live Step state and
+marker precedence, and native pointer/modifier activation. Native visual review
+in both appearances and real application qualification remain separate release
+gates; source-level tests do not establish screenshot or cross-platform results.
