@@ -3664,3 +3664,52 @@ Row/Column/Box, `pointer-capture` on Row/Box, `indeterminate` on Checkbox, surfa
 contracts remain unchanged. The existing raw FocusWithinChanged `within` payload
 decoder is preserved; the typed `on_focus_within` optional argument remains
 outside this facade's decoded arguments, as before.
+
+## NSH ViewThatFits keeps ordered alternatives mounted
+
+The NSH desktop backend now accepts `view_that_fits`. It chooses the first
+candidate whose native intrinsic extent fits the available content box along
+`orientation` (horizontal by default). The last candidate is always the fallback
+and receives the available extent on that axis, including when none of its
+predecessors fits. An empty candidate is a real, zero-sized alternative and can
+win before a later nonempty alternative. With no candidates the host is empty.
+
+Candidates use their existing keyed LUI/native identities. Each body is mounted
+once; choosing, resizing, updating its contents or reordering alternatives does
+not construct an extra probe body or reset an editor draft. Native `max-content`
+layout and size-change callbacks measure the direct candidate wrappers. Hidden
+alternatives remain laid out with native `visibility: hidden`, which excludes
+their descendants from pointer interaction, keyboard focus and accessibility.
+The adapter keeps only the current direct candidates' sizes and prunes them once
+when direct candidate membership changes. It never walks their descendant trees
+to estimate layout. A native layout change can require a subsequent reactive commit to
+publish the selected alternative; there is no polling or synchronous layout
+probe loop.
+
+`on_appear` follows selected visibility, including inherited `EdgeInset.visible`.
+An initially hidden candidate does not appear; selecting it emits its appearance
+callback, and selecting it again after a hidden interval emits a new callback.
+The outer `EdgeInset` body remains mounted independently. This preserves Journal's
+`journal_header.feedback_with_visibility`: its model-owned `visible_signal`
+controls the pinned feedback region; it is not a new ViewThatFits visibility
+callback. The maintained Apple and Web implementations are unchanged.
+
+For example, retain a compact alternative before a wider alternative, and use
+an explicit last fallback when neither intrinsic size fits:
+
+```ocaml
+view_that_fits ~width:280 ~orientation:`horizontal
+  [ column ~width:180 [ text ~value:"Compact status" [] ]
+  ; column ~width:260 [ text ~value:"Expanded status" [] ]
+  ; column [ text ~value:"Status" [] ]
+  ]
+```
+
+The order expresses priority: in this example the compact alternative wins even
+though the expanded alternative also fits. For vertical fitting, give the host a
+finite height (or flex space inside a parent with a finite height); an unbounded
+vertical layout naturally offers the first candidate its content height. Width
+and height constraints, padding and paint remain on the actual outer host.
+The measured content box excludes that host's padding. All alternatives remain
+mounted, so keep the authored alternative set small; use native virtual lists
+for growing collections rather than using ViewThatFits as a list virtualizer.

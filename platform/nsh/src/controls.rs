@@ -10,6 +10,7 @@ use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 mod basic;
 mod collections;
+mod fit;
 mod navigation;
 mod surfaces;
 pub(crate) mod toasts;
@@ -354,6 +355,7 @@ pub(crate) fn popup_rectangle(value: &str) -> Result<nsh_core::geometry::Bounds<
 
 pub(crate) fn supported(kind: &str) -> bool {
     kind == "toast"
+        || kind == "view-that-fits"
         || navigation::supported(kind)
         || surfaces::supported(kind)
         || basic::supported(kind)
@@ -522,6 +524,9 @@ pub(crate) fn element(
 ) -> Option<AnyElement> {
     let theme = presentation.theme;
     let initial = node.get_untracked();
+    if initial.kind == "view-that-fits" {
+        return Some(fit::element(node, presentation));
+    }
     if surfaces::supported(&initial.kind) {
         return surfaces::element(node, children, emit, presentation);
     }
