@@ -4488,3 +4488,18 @@ the inner Stack. The parent must still receive a real size from its own layout.
 Synthetic Stack/Overlay layer wrappers also ignore hits on themselves; their
 actual child nodes retain the authored pointer policy and interactive behavior.
 This changes no OCaml API, wire ordinal or maintained mobile backend.
+
+### NSH empty Spacer hit testing
+
+A desktop `Spacer` now takes no pointer by default. Its layout contribution and
+retained native identity remain unchanged. This matters when an empty reactive
+branch uses a Spacer inside a Stack: the spacer can fill the stack's grid cell
+without covering the buttons beneath it. Explicit `pointer-enabled=true` restores
+native hit testing and the supported pointer-enter/leave callbacks; setting it
+back to `false` makes the same retained spacer transparent again. Spacer does not
+gain a press callback.
+
+No application change is required for ordinary `spacer []` placeholders. Code
+that deliberately uses a Spacer as a hover target must explicitly author
+`pointer-enabled=true` through its existing wire/property path. Apple, Android
+and Web behavior is unchanged.
