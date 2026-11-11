@@ -43,7 +43,7 @@ class WindowsBuilderTests(unittest.TestCase):
     def test_fresh_build_produces_every_archive_before_native_link_and_records_exports(self):
         for application in builder.APPLICATIONS:
             with self.subTest(application=application), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
+                root = Path(directory).resolve()
                 commands = []
 
                 def execute(command, **_):
@@ -77,12 +77,12 @@ class WindowsBuilderTests(unittest.TestCase):
     def test_native_link_rejects_non_dll_output_before_running_a_compiler(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(builder, "execute") as execute:
             with self.assertRaisesRegex(ValueError, "requires a .dll"):
-                builder.link_native_dll(Path(directory) / "fixture_complete.o", [], config=CONFIG)
+                builder.link_native_dll(Path(directory).resolve() / "fixture_complete.o", [], config=CONFIG)
             execute.assert_not_called()
 
     def test_native_link_uses_configured_object_suffix_and_keeps_space_paths_atomic(self):
         with tempfile.TemporaryDirectory(prefix="lui native link ") as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             library = root / "application with spaces" / "lui_fixture.dll"
             inputs = [root / "lui library.cmxa", root / "fixture source.ml"]
             commands = []
@@ -172,7 +172,7 @@ class FixtureBuilderTests(unittest.TestCase):
     def test_windows_fixture_links_native_dll_with_quoted_ppx_and_receipt_inputs(self):
         for fixture in ("image", "virtual", "clock", "tabs", "navigation", "upgrade"):
             with self.subTest(fixture=fixture), tempfile.TemporaryDirectory(prefix="lui fixture ") as directory:
-                root = Path(directory)
+                root = Path(directory).resolve()
                 library, driver, commands = self.build_mocked(root, "Windows", fixture,
                                                               "1.0.0" if fixture == "upgrade" else None)
                 self.assertEqual(library.name, f"lui_{fixture}.dll")
@@ -195,7 +195,7 @@ class FixtureBuilderTests(unittest.TestCase):
     def test_unix_fixtures_keep_pic_platform_links_and_posix_ppx_quoting(self):
         for target, suffix in (("Darwin", ".dylib"), ("Linux", ".so")):
             with self.subTest(target=target), tempfile.TemporaryDirectory(prefix="lui fixture ") as directory:
-                root = Path(directory)
+                root = Path(directory).resolve()
                 library, driver, commands = self.build_mocked(root, target)
                 self.assertEqual(library.name, "liblui_image" + suffix)
                 ocaml = next(command for command in commands if "-output-complete-obj" in command)
