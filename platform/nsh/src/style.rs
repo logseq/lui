@@ -1256,10 +1256,14 @@ impl Paint {
                             .map_err(|_| format!("NSH invalid shadow {value:?}"))?
                         {
                             PropertyValue::Shadows(layers) => {
-                            if layers.iter().any(|(_, current)| *current) {
-                                return Err("NSH shadow currentColor requires an inherited foreground adapter".into());
-                            }
+                                // The native flag means an explicitly named color.
+                                if layers.iter().any(|(_, has_color)| !has_color) {
+                                    return Err("NSH shadow currentColor requires an inherited foreground adapter".into());
+                                }
                                 Shadow::Layers(layers.iter().map(|(layer, _)| *layer).collect())
+                            }
+                            PropertyValue::Deferred(..) => {
+                                return Err("NSH shadow currentColor requires an inherited foreground adapter".into());
                             }
                             _ => return Err("NSH shadow parser returned a non-shadow value".into()),
                         }
