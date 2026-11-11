@@ -686,6 +686,7 @@ impl Renderer {
             entry.context_mode = Some(attached);
             (entry.node, entry.popup, entry.theme, viewport, attached)
         };
+        crate::white_space::enter(state);
         if style::is_contents(&state.get_untracked()) {
             let node = state.get_untracked();
             let children = self
@@ -1072,9 +1073,7 @@ impl Renderer {
                 .test_id(&identifier)
                 .into_element(),
             "text" | "paragraph" | "label" | "kbd" => native_events
-                .attach(text(move || {
-                    SharedString::from(state.get().string("text").to_owned())
-                }))
+                .attach(text(move || crate::white_space::text(state)))
                 .state_inline_style(style)
                 .selectable(move || state.get().string("user-select") != "none")
                 .element_ref(&reference)

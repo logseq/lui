@@ -165,7 +165,7 @@ fn bottom_tabs(
                     )
                 },
             ))
-            .child(text(move || tab.get().string("title").to_owned()).truncate())
+            .child(text(move || crate::white_space::property(tab, "title")).truncate())
             .into_element()
         },
     );
@@ -373,10 +373,10 @@ pub(super) fn element(
                             },
                             px(16.0),
                         ))
-                        .child(text(move || node.get().string("text").to_owned()))
+                        .child(text(move || crate::white_space::text(node)))
                     },
                 )
-                .otherwise(move || text(move || node.get().string("text").to_owned())),
+                .otherwise(move || text(move || crate::white_space::text(node))),
             );
             let panel = nsh_base::AccordionPanel::element(nsh_base::AccordionPanelProps {
                 keep_mounted: true.into(),
@@ -451,7 +451,7 @@ pub(super) fn element(
                 .role(AccessibilityRole::Cell)
                 .child(when(
                     move || !node.get().string("text").is_empty(),
-                    move || text(move || node.get().string("text").to_owned()),
+                    move || text(move || crate::white_space::text(node)),
                 ))
                 .child(children),
         ),
@@ -752,7 +752,7 @@ mod tests {
                 }),
                 render: Rc::new(move |identity| match identity {
                     (11, 1) => view()
-                        .child(text(move || caption.get().string("text").to_owned()))
+                        .child(text(move || crate::white_space::text(caption)))
                         .child(
                             nsh_base::input()
                                 .test_id("retained-list-editor")

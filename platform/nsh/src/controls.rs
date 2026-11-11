@@ -41,6 +41,10 @@ pub(crate) struct Presentation {
 }
 impl Presentation {
     fn component_identity<C: Component>(&self, element: ComponentElement<C>) -> AnyElement {
+        let element = match &self.events {
+            Some(events) => events.text_policy(element),
+            None => element,
+        };
         element
             .key(self.key.clone())
             .element_ref(&self.reference)
@@ -59,6 +63,10 @@ impl Presentation {
             .into_element()
     }
     fn component<C: Component>(&self, element: ComponentElement<C>) -> AnyElement {
+        let element = match &self.events {
+            Some(events) => events.text_policy(element),
+            None => element,
+        };
         let style = self.style.clone();
         element
             .key(self.key.clone())
@@ -69,6 +77,10 @@ impl Presentation {
     }
     /// A page owns layout and appearance; its separate native Tab owns presses.
     fn passive_host<E: Element + Interactive>(&self, element: E) -> AnyElement {
+        let element = match &self.events {
+            Some(events) => events.text_policy(element),
+            None => element,
+        };
         let style = self.style.clone();
         element
             .key(self.key.clone())
@@ -268,7 +280,7 @@ pub(crate) fn anchored_popup(
                 .rounded(move || ui::radius(theme))
                 .bg(move || ui::color(theme, "popover"))
                 .text_color(move || ui::color(theme, "popover-foreground"))
-                .child(text(move || node.get().string("text").to_owned())),
+                .child(text(move || crate::white_space::text(node))),
         );
     }
     let inside = Rc::new(std::cell::Cell::new(false));
@@ -408,10 +420,10 @@ pub(crate) fn validate_transition(previous: &Node, next: &Node) -> Result<(), St
 }
 
 fn label(node: Signal<Arc<Node>>) -> SharedString {
-    let node = node.get();
-    let explicit = node.string("accessibility-label");
+    let current = node.get();
+    let explicit = current.string("accessibility-label");
     if explicit.is_empty() {
-        node.string("text").to_owned().into()
+        crate::white_space::text(node)
     } else {
         explicit.to_owned().into()
     }
@@ -509,7 +521,7 @@ fn command_content(
                 .into_element(),
                 CommandSlot::Label => when(
                     move || !node.get().string("text").is_empty(),
-                    move || text(move || node.get().string("text").to_owned()),
+                    move || text(move || crate::white_space::text(node)),
                 )
                 .into_element(),
                 CommandSlot::Children => children
@@ -624,7 +636,7 @@ pub(crate) fn element(
                         let nsh_base::SwitchEvent::Change(checked) = event;
                         emit_flag(node, "toggle-enabled", &emit, Event::Toggle(id, *checked));
                     })
-                    .child(text(move || node.get().string("text").to_owned()))
+                    .child(text(move || crate::white_space::text(node)))
                     .child(children),
             )
         }
@@ -643,7 +655,7 @@ pub(crate) fn element(
                         emit_flag(node, "change-enabled", &emit, Event::Change(id));
                         emit_flag(node, "toggle-enabled", &emit, Event::Toggle(id, *checked));
                     })
-                    .child(text(move || node.get().string("text").to_owned()))
+                    .child(text(move || crate::white_space::text(node)))
                     .child(children),
             )
         }
@@ -774,7 +786,7 @@ pub(crate) fn element(
                             node.get().string("selection-placement").to_owned().into()
                         }),
                         icon: Prop::bind(move || node.get().string("icon").to_owned().into()),
-                        text: Prop::bind(move || node.get().string("text").to_owned().into()),
+                        text: Prop::bind(move || crate::white_space::text(node)),
                         shortcut: Prop::bind(move || {
                             node.get().string("tooltip-keys").to_owned().into()
                         }),
@@ -810,11 +822,13 @@ pub(crate) fn element(
                             .min_w_64()
                             .state_inline_style(move || style())
                             .child(
-                                text(move || node.get().string("text").to_owned())
+                                text(move || crate::white_space::text(node))
                                     .text_lg()
                                     .font_weight(FontWeight::SEMIBOLD),
                             )
-                            .child(text(move || node.get().string("description").to_owned()))
+                            .child(text(move || {
+                                crate::white_space::property(node, "description")
+                            }))
                             .child(children),
                     ),
             )
@@ -850,7 +864,7 @@ pub(crate) fn element(
                     }
                 })
                 .child(
-                    text(move || node.get().string("text").to_owned())
+                    text(move || crate::white_space::text(node))
                         .text_lg()
                         .font_weight(FontWeight::SEMIBOLD),
                 )

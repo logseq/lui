@@ -758,6 +758,7 @@ pub(crate) fn compile(
     theme: &ThemeView,
     viewport: Size<Points>,
 ) -> Result<Style, String> {
+    crate::white_space::validate(node)?;
     if is_contents(node) {
         // A contents anchor has no native box. Layout and paint declarations
         // cannot create padding, margins, dimensions or a background for it.
@@ -775,7 +776,6 @@ pub(crate) fn compile(
                     | "letter-spacing"
                     | "text-alignment"
                     | "text-decoration"
-                    | "white-space"
                     | "user-select"
                     | "cursor"
                     | "hover-foreground"
@@ -1025,9 +1025,6 @@ fn compile_parts(
             "grid-column-span",
             theme,
         )?;
-    }
-    if node.props.contains_key("white-space") {
-        return Err("NSH white-space is not implemented yet".into());
     }
     if let Some(value) = node.props.get("transition") {
         transitions(
@@ -1413,7 +1410,7 @@ mod tests {
         for props in [
             json!({"display":"inline"}),
             json!({"overflow":"auto"}),
-            json!({"white-space":"pre-wrap"}),
+            json!({"white-space":"pre-line"}),
             json!({"inert":true}),
             json!({"background":"missing-color"}),
         ] {

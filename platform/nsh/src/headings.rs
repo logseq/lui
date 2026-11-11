@@ -13,7 +13,7 @@ fn level(node: &Node) -> u32 {
 }
 
 pub(crate) fn element(node: Signal<Arc<Node>>) -> Text {
-    text(move || SharedString::from(node.get().string("text").to_owned()))
+    text(move || crate::white_space::text(node))
         .role(AccessibilityRole::Header)
         .accessibility_level(move || level(&node.get()))
         .style_with(move |style| match level(&node.get()) {

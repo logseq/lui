@@ -198,7 +198,7 @@ fn step(node: Signal<Arc<Node>>, presentation: Presentation) -> AnyElement {
             })
             .child(indicator)
             .child(
-                text(move || node.get().string("text").to_owned())
+                text(move || crate::white_space::text(node))
                     .accessibility_elements_hidden(true)
                     .text_color(move || {
                         ui::color(
@@ -314,12 +314,13 @@ fn timeline_item(node: Signal<Arc<Node>>, presentation: Presentation) -> AnyElem
         .flex_1()
         .gap(px(2.0))
         .child(
-            text(move || node.get().string("title").to_owned()).font_weight(FontWeight::SEMIBOLD),
+            text(move || crate::white_space::property(node, "title"))
+                .font_weight(FontWeight::SEMIBOLD),
         )
         .child(when(
             move || !node.get().string("description").is_empty(),
             move || {
-                text(move || node.get().string("description").to_owned())
+                text(move || crate::white_space::property(node, "description"))
                     .text_color(move || ui::color(theme, "muted-foreground"))
             },
         ))

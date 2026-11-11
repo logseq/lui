@@ -273,7 +273,11 @@ impl NativeEvents {
             }
         });
     }
-    pub(crate) fn attach<E: Element + Interactive>(&self, mut element: E) -> E {
+    pub(crate) fn text_policy<E: Element>(&self, element: E) -> E {
+        crate::white_space::bind(element, self.node)
+    }
+    pub(crate) fn attach<E: Element + Interactive>(&self, element: E) -> E {
+        let mut element = self.text_policy(element);
         let node = self.node.get_untracked();
         self.installed.set(Some(Capabilities::authored(&node)));
         let supports = |event| contract::event_supported(&node.kind, event);

@@ -4348,3 +4348,23 @@ Point/`px` sizes and the existing NSH root `rem` unit retain their behavior. Oth
 can be supplied; they are never approximated from the root size. The internal
 unit parser and native translation use an exhaustive typed representation. No
 common OCaml constructor or wire scalar changes.
+
+### NSH whitespace and wrapping
+
+Standard NSH text and container hosts now translate `white-space` through an
+exhaustive native policy. `nowrap` and `pre` select NSH's inherited NoWrap text
+property; `normal` and `pre-wrap` select native wrapping. This uses public
+whitespace classes, not a synthesized one-line clamp or a replacement container.
+A child's explicit policy overrides its parent, including live changes and
+transparent contents anchors.
+
+Explicit `normal`/`nowrap` collapse CSS spaces, tabs, line feeds, carriage returns
+and form feeds within library-owned display text/labels. Boundary spaces are
+retained for adjacent inline text, and nonbreaking/Unicode spaces are preserved.
+`pre`/`pre-wrap` preserve the source string. Editable model values and custom
+extension payloads are unchanged. With no authored/inherited policy, existing
+native text presentation remains unchanged. For example, ``column
+~white_space:"pre-wrap" [text ~value:"first  line\nsecond line" []]`` preserves both
+spaces and the line break while wrapping natively; `nowrap` renders collapsed
+label text on an unwrapped native line. `pre-line` and `break-spaces` remain
+explicit capability errors; they are not approximated by another mode.

@@ -22,6 +22,7 @@ mod style;
 mod ui;
 pub mod update;
 mod virtual_rows;
+mod white_space;
 pub mod wire;
 
 pub use app::{Desktop, DesktopProps};

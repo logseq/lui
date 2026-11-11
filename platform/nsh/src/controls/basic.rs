@@ -512,16 +512,13 @@ pub(super) fn element(
                 }),
                 ..Default::default()
             })
-            .fill(
-                "fallback",
-                text(move || node.get().string("text").to_owned()),
-            )
+            .fill("fallback", text(move || crate::white_space::text(node)))
             .size_10()
             .rounded_full()
             .overflow_hidden(),
         ),
         "status-bar" => presentation.host(
-            text(move || node.get().string("text").to_owned())
+            text(move || crate::white_space::text(node))
                 .text_xs()
                 .px_3()
                 .py_1()
@@ -595,7 +592,7 @@ pub(super) fn element(
                     .child(when(
                         move || !node.get().string("text").is_empty(),
                         move || {
-                            text(move || node.get().string("text").to_owned())
+                            text(move || crate::white_space::text(node))
                                 .text_sm()
                                 .font_weight(nsh_core::element::FontWeight::SEMIBOLD)
                         },
@@ -624,7 +621,7 @@ pub(super) fn element(
                     .child(when(
                         move || !node.get().string("text").is_empty(),
                         move || {
-                            text(move || node.get().string("text").to_owned())
+                            text(move || crate::white_space::text(node))
                                 .text_xs()
                                 .px_2()
                                 .py_1()
@@ -694,7 +691,15 @@ fn link_content(node: Signal<Arc<Node>>, children: AnyElement) -> AnyElement {
                 .into_element(),
                 CommandSlot::Label => when(
                     move || !link_text(&node.get()).is_empty(),
-                    move || text(move || link_text(&node.get()).to_owned()),
+                    move || {
+                        text(move || {
+                            if node.get().string("text").is_empty() {
+                                crate::white_space::property(node, "url")
+                            } else {
+                                crate::white_space::text(node)
+                            }
+                        })
+                    },
                 )
                 .into_element(),
                 CommandSlot::Children => children
