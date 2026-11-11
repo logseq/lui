@@ -861,6 +861,27 @@ fn display_value(value: &Value) -> Result<PropertyValue, String> {
         .map_err(|error| format!("NSH display: {error:?}"))
 }
 
+fn pointer_policy(node: &Node) -> Option<nsh_core::PointerEvents> {
+    use nsh_core::PointerEvents;
+
+    if let Some(enabled) = node.props.get("pointer-enabled").and_then(Value::as_bool) {
+        return Some(if enabled {
+            PointerEvents::Auto
+        } else {
+            PointerEvents::None
+        });
+    }
+    let carrier = node
+        .string("data-attrs")
+        .split('\x1e')
+        .any(|record| record.split_once('\x1f') == Some(("data-overlay-layer", "true")));
+    let presented = matches!(
+        node.kind.as_str(),
+        "dialog" | "sheet" | "popover" | "dropdown-menu" | "context-menu" | "toast"
+    ) || (node.kind == "drawer" && !node.props.contains_key("selected"));
+    (!carrier && presented).then_some(PointerEvents::Auto)
+}
+
 fn compile_parts(
     node: &Node,
     theme: &ThemeView,
@@ -869,6 +890,11 @@ fn compile_parts(
     z_index(node)?;
     let mut decls = Vec::with_capacity(node.props.len() + 4);
     let mut native = view();
+    // Preserve the desktop cover-layer contract: false inherits through the
+    // subtree, while an explicit true or a presented surface opts back in.
+    if let Some(policy) = pointer_policy(node) {
+        native = native.pointer_events(policy);
+    }
     if node.props.contains_key("theme") || node.props.contains_key("theme-mode") {
         native = native.text_color(theme.color("foreground")?);
         if node.kind == "root" {
