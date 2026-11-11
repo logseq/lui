@@ -6,7 +6,7 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import platform
 import re
 import shutil
@@ -292,6 +292,17 @@ def package_layout(directory, config, target):
     return root, root / executable, root / "lui"
 
 
+def asset_destination(value):
+    # Validate the portable spelling before host Path conversion: Windows Path
+    # otherwise inserts backslashes into valid forward-slash destinations.
+    portable = os.fspath(value)
+    relative = PurePosixPath(portable)
+    if (relative.is_absolute() or PureWindowsPath(portable).drive
+            or "\\" in portable or any(part in ("", ".", "..") for part in portable.split("/"))):
+        raise DeliveryError(f"Asset destination must stay inside package resources: {portable}")
+    return relative
+
+
 def copy_payload(resources, library, dependencies, assets, target):
     resources.mkdir(parents=True, exist_ok=True)
     name = {"macos": "liblui_app.dylib", "linux": "liblui_app.so", "windows": "lui_app.dll"}[target]
@@ -306,10 +317,8 @@ def copy_payload(resources, library, dependencies, assets, target):
         shutil.copy2(dependency, destination)
         copied.append(destination)
     for source, relative in assets:
-        relative = Path(relative)
-        if relative.is_absolute() or PureWindowsPath(str(relative)).drive or not relative.parts or any(part in ("..", ".") for part in relative.parts) or "\\" in str(relative):
-            raise DeliveryError(f"Asset destination must stay inside package resources: {relative}")
-        destination = resources / "assets" / relative
+        relative = asset_destination(relative)
+        destination = resources.joinpath("assets", *relative.parts)
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
     return copied

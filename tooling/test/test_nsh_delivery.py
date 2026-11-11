@@ -4,7 +4,7 @@ import importlib.util
 import json
 import os
 import plistlib
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import struct
 import subprocess
 import sys
@@ -469,10 +469,30 @@ class DeliveryTests(unittest.TestCase):
             directory = Path(temporary)
             library = directory / "lib.so"
             library.write_bytes(b"library")
-            for destination in ("../outside", "/outside", "C:\\outside", "C:outside"):
+            for destination in ("../outside", "/outside", "C:\\outside", "C:outside",
+                                "", ".", "nested/../outside", "nested/./outside",
+                                "nested\\outside", "//server/share/outside"):
                 with self.subTest(destination=destination), self.assertRaises(delivery.DeliveryError):
                     delivery.copy_payload(directory / "resources", library, [], [(library, destination)], "linux")
             self.assertFalse((directory / "outside").exists())
+
+    def test_windows_path_conversion_does_not_reject_portable_icon_assets(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            library = directory / "input.dll"
+            library.write_bytes(b"compiled OCaml fixture")
+            resources = directory / "Application/lui"
+            assets = delivery.shared_icon_assets()
+            self.assertEqual(assets[0][1], "licenses/lui-icons/NOTICE")
+            # Reproduce Windows Path's separator normalization on every OS.
+            with patch.object(delivery, "Path", PureWindowsPath):
+                copied = delivery.copy_payload(resources, library, [], assets, "windows")
+            self.assertEqual(copied, [resources / "lui_app.dll"])
+            self.assertEqual(copied[0].read_bytes(), library.read_bytes())
+            for source, relative in assets:
+                destination = resources.joinpath("assets", *relative.split("/"))
+                self.assertEqual(destination.read_bytes(), source.read_bytes())
+                self.assertEqual(delivery.asset_destination(relative).as_posix(), relative)
 
     def test_authenticode_signs_and_verifies_every_code_file(self):
         args = arguments(Path("library.dll"))
