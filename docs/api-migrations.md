@@ -3079,3 +3079,61 @@ The PPX selects them automatically; applications should keep using `reactive`.
 Upgrade/rebuild `lui_ppx` together with the LUI library: newly expanded typed
 scopes require these helpers. Existing compiled PPX output remains compatible;
 no wire-contract or backend event change is introduced.
+
+
+## NSH controlled Split panes
+
+NSH desktop `split` now composes two retained keyed pane hosts and the public
+native ResizeHandle. It introduces no pointer replay, separate focus manager or
+copy of the LUI source tree. The first canonical child remains the first logical
+pane, including right-to-left layouts; reordering the children retains both
+native editor identities and drafts.
+
+The absent ratio defaults to `0.5`. `value` is the first pane's fraction of the
+available content width; `first-pane-width` is its width in logical pixels.
+These inputs remain mutually exclusive. The default gap is 9 points. An absent
+`resize-handle-width` uses the gap, or 3 points for a zero gap; an explicit zero
+hides and disables pointer, keyboard and accessibility adjustment while preserving
+the panes. `resize-handle-offset` moves the hit-area center toward the second
+logical pane without changing either track. RTL reverses physical drag direction
+and this offset.
+
+`on_resize`/`change-enabled` governs user input. ValueChanged proposals use the
+chosen ratio/pixel units, and geometry remains controlled by the accepted model.
+A handler that refuses an edit leaves the accepted tracks in place; it does not
+create a persistent local preview. Applications accepting an edit must publish
+the accepted value back to the same source property. For example, accepting a
+pixel request of 240 for node 12 publishes:
+
+```json
+{"op":"set-prop","id":12,"property":"first-pane-width","value":240.0}
+```
+
+Unrelated edits preserve the current source geometry. A changed source or parent
+width updates the tracks without emitting another user event. Pixel sources
+retain their pixel width across parent resizing, within the available space.
+User proposals honor both panes' minimum and maximum widths, including the shared
+proportional behavior for infeasible limits. Programmatic closure may reach zero
+below a drag minimum. Pane content clips by default; an explicit child overflow
+choice remains authoritative.
+
+The semantic divider uses NSH's ordinary focus/keymap APIs around the native
+capture band. Left/Right adjust by 5% of the track, Home/End reach the allowed
+bounds, and accessibility increment/decrement uses the same 5% step. Input
+navigation inside a pane does not resize the split. Native ResizeHandle retains
+its own Adjustable role; fully consolidating its accessibility semantics requires
+a public action projection on that component.
+
+This increment explicitly rejects nonzero `resize-duration`, authored
+`resize-easing` and `resize-origin`, and a handle offset outside the native f32
+layout range. Animated track resizing is not implemented: native animated values
+have no public width/left layout binding, and frame LayoutAnimation does not by
+itself establish matching clipping and interruptible divider geometry. Remove
+those resize-animation options for immediate NSH resizing, or retain another
+backend until that path is qualified. Unsupported values reject the entire
+transaction before publication, preserving the accepted tree and retry generation.
+The shared wire schema, Apple, Android and Web implementations are unchanged.
+
+The added Headless regressions are source-prepared only until the main session
+runs them. They do not establish desktop appearance, screen-reader output or
+cross-platform qualification.
