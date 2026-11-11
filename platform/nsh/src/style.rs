@@ -871,6 +871,11 @@ fn pointer_policy(node: &Node) -> Option<nsh_core::PointerEvents> {
             PointerEvents::None
         });
     }
+    // An empty layout spacer must not cover an interactive sibling in a Stack.
+    // Explicit pointer subscriptions above can still opt it into native hits.
+    if node.kind == "spacer" {
+        return Some(PointerEvents::None);
+    }
     let carrier = node
         .string("data-attrs")
         .split('\x1e')
