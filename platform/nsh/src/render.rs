@@ -686,6 +686,32 @@ impl Renderer {
             entry.context_mode = Some(attached);
             (entry.node, entry.popup, entry.theme, viewport, attached)
         };
+        if style::is_contents(&state.get_untracked()) {
+            let node = state.get_untracked();
+            let children = self
+                .child_renderer(id, node.incarnation)
+                .expect("retained contents children");
+            if node.boolean("appear-enabled", false) {
+                let notifying = self.clone();
+                let current = self.clone();
+                let incarnation = node.incarnation;
+                NativeEvents::new(
+                    state,
+                    Rc::new(move |event| notifying.emit(id, incarnation, event)),
+                    self.0.borrow().nodes[&id].capabilities.clone(),
+                    Rc::new(move || current.is_current(id, incarnation, None)),
+                    use_context::<crate::events::VisibilityScope>(),
+                )
+                .appear_contents();
+            }
+            // A nested public region belongs directly to its native parent's
+            // child sequence, preserving keyed owners without a wrapper view.
+            return each(
+                children.identities,
+                |identity| *identity,
+                move |identity, _| (children.render)(identity.get_untracked()),
+            );
+        }
         if !attached {
             return self.node_content(id, None);
         }
@@ -1246,8 +1272,32 @@ fn validate(node: &Node) -> Result<(), String> {
             node.kind
         ));
     }
-    if node.kind == "box" && node.string("display") == "contents" {
-        return Err("NSH box display=contents is not implemented yet".into());
+    if style::is_contents(node) {
+        if !matches!(node.kind.as_str(), "box" | "row" | "column") {
+            return Err("NSH display=contents requires a structural Box, Row or Column".into());
+        }
+        if !node.boolean("enabled", true) || node.boolean("inert", false) {
+            return Err("NSH contents anchors cannot disable a subtree; apply state to a native containing element".into());
+        }
+        for flag in [
+            "press-enabled",
+            "pointer-enabled",
+            "long-press-enabled",
+            "double-press-enabled",
+            "focus-enabled",
+            "blur-enabled",
+            "focus-within-enabled",
+            "autofocus",
+        ] {
+            if node.boolean(flag, false) {
+                return Err(format!(
+                    "NSH contents anchors have no native hit or focus surface for {flag}"
+                ));
+            }
+        }
+        if !node.string("role").is_empty() || !node.string("accessibility-label").is_empty() {
+            return Err("NSH contents anchors have no independent accessibility element".into());
+        }
     }
     crate::images::validate(node)?;
     crate::media::validate(node)?;
@@ -1441,6 +1491,15 @@ fn validate_themes(
         if let Some(previous) = previous.filter(|previous| previous.incarnation == node.incarnation)
             && tree.is_none()
         {
+            if style::is_contents(previous) != style::is_contents(node)
+                && entries
+                    .get(&node.id)
+                    .is_some_and(|entry| entry.context_mode.is_some())
+            {
+                return Err(
+                    "NSH changing display=contents while mounted requires a new keyed node".into(),
+                );
+            }
             crate::controls::validate_transition(previous, node)?;
             if node.kind == "scroll"
                 && (previous.string("orientation") == "horizontal")

@@ -706,8 +706,45 @@ pub(crate) fn compile(
     theme: &ThemeView,
     viewport: Size<Points>,
 ) -> Result<Style, String> {
+    if is_contents(node) {
+        // A contents anchor has no native box. Layout and paint declarations
+        // cannot create padding, margins, dimensions or a background for it.
+        for property in node.props.keys() {
+            if matches!(
+                property.as_str(),
+                "theme"
+                    | "theme-mode"
+                    | "foreground"
+                    | "font-family"
+                    | "font-size"
+                    | "font-weight"
+                    | "font-style"
+                    | "line-height"
+                    | "letter-spacing"
+                    | "text-alignment"
+                    | "text-decoration"
+                    | "white-space"
+                    | "user-select"
+                    | "cursor"
+                    | "hover-foreground"
+                    | "pressed-foreground"
+                    | "focus-foreground"
+                    | "focus-within-foreground"
+                    | "disabled-foreground"
+            ) {
+                return Err(format!(
+                    "NSH contents anchors do not yet project inherited {property}; apply it to a containing native element"
+                ));
+            }
+        }
+        return Ok(Style::default());
+    }
     let (decls, paint) = compile_parts(node, theme, viewport)?;
     Ok(Style::from_decls(decls).then(&paint))
+}
+
+pub(crate) fn is_contents(node: &Node) -> bool {
+    node.extension.is_none() && node.string("display") == "contents"
 }
 
 fn compile_parts(
@@ -1308,7 +1345,6 @@ mod tests {
     #[test]
     fn invalid_backend_values_fail_explicitly() {
         for props in [
-            json!({"display":"contents"}),
             json!({"display":"inline"}),
             json!({"overflow":"auto"}),
             json!({"white-space":"pre-wrap"}),

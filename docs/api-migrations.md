@@ -4318,3 +4318,20 @@ The Logseq runner accepts `LUI_AGENT_BACKGROUND=1` for a background-only AppKit
 launch. Build receipts remain required unless the CLI's existing explicit
 `--unchecked` option is selected. See the repository's
 [lui-cli skill](../.agents/skills/lui-cli/SKILL.md) for the exact workflow.
+
+### NSH structural `display: contents` anchors
+
+NSH now flattens `box`, `row` and `column` nodes with `display="contents"` into
+public retained child regions. For example, `row [box ~display:`contents
+[editor; button]; sibling]` lays out the editor, button and sibling in the row's
+single child sequence. No native Box, extra gap or focus target is introduced;
+logical IDs, parent links, keyed child owners and scoped visibility remain.
+
+Appear callbacks follow the logical mounted incarnation, including empty anchors;
+scoped hidden anchors wait until visible. Pointer/focus callbacks, independent
+accessibility labels/roles and subtree disabled/inert state require a real native
+container and are rejected on contents anchors. Inherited text/theme properties
+on the anchor currently require an enclosing native container and are rejected
+explicitly. Its noninherited box layout and paint do not generate a native box.
+Changing between contents and a native display mode while mounted requires a new
+key; ordinary child edits and reorders preserve the retained children.

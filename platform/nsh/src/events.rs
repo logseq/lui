@@ -201,16 +201,19 @@ impl NativeEvents {
         }
     }
     pub(crate) fn appear(&self, reference: ElementRef) {
+        self.appear_when(move || reference.node().is_some());
+    }
+    pub(crate) fn appear_contents(&self) {
+        self.appear_when(|| true);
+    }
+    fn appear_when(&self, mounted: impl Fn() -> bool + Clone + 'static) {
         if !self.node.get_untracked().boolean("appear-enabled", false) {
             return;
         }
         if self.visibility.is_none() {
             let events = self.clone();
             after_answer(move || {
-                if (events.current)()
-                    && reference.node().is_some()
-                    && events.accepts("appear-enabled", "appear")
-                {
+                if (events.current)() && mounted() && events.accepts("appear-enabled", "appear") {
                     (events.notify)(Event::Appear(events.node.get_untracked().id));
                 }
             });
@@ -237,10 +240,11 @@ impl NativeEvents {
             }
             let events = events.clone();
             let revision = revision.clone();
+            let mounted = mounted.clone();
             after_answer(move || {
                 if revision.get() == next
                     && (events.current)()
-                    && reference.node().is_some()
+                    && mounted()
                     && events
                         .visibility
                         .as_ref()
