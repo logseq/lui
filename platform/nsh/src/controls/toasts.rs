@@ -320,36 +320,38 @@ pub(super) fn element(
     let theme = presentation.theme;
     let dismiss = context.dismiss;
     let body = presentation.component(
-        nsh_base::toast()
-            .transition_status(context.phase)
-            .accessibility_label(move || {
-                Some({
-                    let name = node.get();
-                    let name = name.string("accessibility-label");
-                    if name.is_empty() {
-                        "Notification".into()
-                    } else {
-                        name.to_owned().into()
-                    }
+        nsh_base::Toast::element(nsh_base::ToastProps {
+            transition_status: Prop::bind(move || context.phase.get()),
+            accessibility_label: Prop::bind(move || {
+                let current = node.get();
+                let name = current.string("accessibility-label");
+                Some(if name.is_empty() {
+                    "Notification".into()
+                } else {
+                    name.to_owned().into()
                 })
-            })
-            .on_dismiss_request(move || dismiss())
-            .w_full()
-            .flex_row()
-            .items_center()
-            .gap(px(12.0))
-            .p(px(12.0))
-            .rounded(move || ui::radius(theme))
-            .border_1()
-            .border_color(move || ui::color(theme, "border"))
-            .bg(move || ui::color(theme, "card"))
-            .text_color(move || ui::color(theme, "card-foreground"))
-            .shadow_lg()
-            .transition_all()
-            .duration(200.0)
-            .starting_class("opacity-0 translate-y-4")
-            .ending_class("opacity-0 scale-95")
-            .child(children),
+            }),
+            starting_class: Some("opacity-0 translate-y-4".into()).into(),
+            ending_class: Some("opacity-0 scale-95".into()).into(),
+            ..Default::default()
+        })
+        .on_event(move |event: &nsh_base::ToastEvent| match event {
+            nsh_base::ToastEvent::DismissRequest => dismiss(),
+        })
+        .w_full()
+        .flex_row()
+        .items_center()
+        .gap(px(12.0))
+        .p(px(12.0))
+        .rounded(move || ui::radius(theme))
+        .border_1()
+        .border_color(move || ui::color(theme, "border"))
+        .bg(move || ui::color(theme, "card"))
+        .text_color(move || ui::color(theme, "card-foreground"))
+        .shadow_lg()
+        .transition_all()
+        .duration(200.0)
+        .child(children),
     );
     // Toast's typed props own its swipe. This one observation-only host routes
     // the canonical pointer enter/leave events without a second gesture owner.
