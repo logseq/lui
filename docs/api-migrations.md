@@ -2160,6 +2160,9 @@ should retain selection and copying.
 
 ### Controlled proposals require model acknowledgement
 
+NSH desktop Split uses native wanted sizes and completion notifications instead;
+see [NSH native panel Split](#nsh-native-panel-split) for its explicit exception.
+
 MyGo controls now reconcile after each input callback, including callbacks that
 produce no patch. If an application leaves `text`, `value`, `checked`, `selected`
 or expansion state unchanged, its proposal is rejected and the control restores
@@ -3081,64 +3084,62 @@ scopes require these helpers. Existing compiled PPX output remains compatible;
 no wire-contract or backend event change is introduced.
 
 
-## NSH controlled Split panes
+## NSH native panel Split
 
-NSH desktop `split` now composes two retained keyed pane hosts and the public
-native ResizeHandle. It introduces no pointer replay, separate focus manager or
-copy of the LUI source tree. The first canonical child remains the first logical
-pane, including right-to-left layouts; reordering the children retains both
-native editor identities and drafts.
+NSH desktop `split` now directly composes public ResizablePanelGroup and two
+keyed ResizablePanels. NSH owns panel distribution, min/max constraints,
+transient drag sizes, pointer capture, right-to-left layout and adjustable
+accessibility actions. The adapter no longer carries a second geometry solver,
+semantic divider or arrow-key controller. Both child native editors retain their
+identities during live size updates and keyed reorder.
 
-The absent ratio defaults to `0.5`. `value` is the first pane's fraction of the
-available content width; `first-pane-width` is its width in logical pixels.
-These inputs remain mutually exclusive. The default gap is 9 points. An absent
-`resize-handle-width` uses the gap, or 3 points for a zero gap; an explicit zero
-hides and disables pointer, keyboard and accessibility adjustment while preserving
-the panes. `resize-handle-offset` moves the hit-area center toward the second
-logical pane without changing either track. RTL reverses physical drag direction
-and this offset.
+Without sizing props, the native panels share available space equally. Bind
+`~first_width` / `first-pane-width` to request the first logical panel's absolute
+width in points. Child `min-width` and `max-width` map to native panel bounds;
+an omitted minimum uses NSH's 100-point default. Wanted sizes clamp to those
+bounds and use NSH's proportional behavior when the group is too small. A changed
+source wanted size replaces the native dragged size; parent size or constraint
+updates use NSH layout and emit no user resize notification.
 
-`on_resize`/`change-enabled` governs user input. ValueChanged proposals use the
-chosen ratio/pixel units, and geometry remains controlled by the accepted model.
-A handler that refuses an edit leaves the accepted tracks in place; it does not
-create a persistent local preview. Applications accepting an edit must publish
-the accepted value back to the same source property. For example, accepting a
-pixel request of 240 for node 12 publishes:
+A completed native drag or adjustable action that changes the first panel emits
+one existing `ValueChanged` notification with that logical panel's **absolute
+width in points**, whether
+or not an initial width was provided. This replaces the earlier desktop ratio
+fallback. Native local resizing persists when the application does not echo a
+value; `change-enabled` gates the notification, not pointer interaction. To save
+or restore a width, use the pixel property:
 
-```json
-{"op":"set-prop","id":12,"property":"first-pane-width","value":240.0}
+```ocaml
+split ~first_width:(reactive (fun model -> model.sidebar_width) model_source)
+  ~on_resize:(fun event -> match event with
+    | Lui_protocol.ValueChanged (_, width) -> ignore (send (Set_sidebar_width width))
+    | _ -> ())
+  sidebar editor
 ```
 
-Unrelated edits preserve the current source geometry. A changed source or parent
-width updates the tracks without emitting another user event. Pixel sources
-retain their pixel width across parent resizing, within the available space.
-User proposals honor both panes' minimum and maximum widths, including the shared
-proportional behavior for infeasible limits. Programmatic closure may reach zero
-below a drag minimum. Pane content clips by default; an explicit child overflow
-choice remains authoritative.
+NSH's handles have a centered 9-point hit band and native adjustable
+increment/decrement actions of 10 points. The native desktop component supplies
+no arrow/Home/End resize bindings; the adapter does not add its own controller
+or claim keyboard resizing qualification. Explicit `gap` remains ordinary native
+group spacing; the default no longer reserves a 9-point gap between panels.
 
-The semantic divider uses NSH's ordinary focus/keymap APIs around the native
-capture band. Left/Right adjust by 5% of the track, Home/End reach the allowed
-bounds, and accessibility increment/decrement uses the same 5% step. Input
-navigation inside a pane does not resize the split. Native ResizeHandle retains
-its own Adjustable role; fully consolidating its accessibility semantics requires
-a public action projection on that component.
+Authored ratio `value`, `resize-handle-width`, nonzero `resize-handle-offset`,
+nonzero `resize-duration`, and authored `resize-easing`/`resize-origin` reject the
+whole transaction before publication. Migrate ratio-based desktop views to
+`first_width`, and remove custom capture-band/offset/track-animation options.
+The native public panel API has absolute sizes and a fixed capture band; styling
+its visual indicator cannot implement a different hit-area contract. Wanted
+widths must fit the native point range. The typed native group exposes resize
+completion rather than pointer enter/leave observations; authored pointer handlers
+reject explicitly. Move those handlers to a surrounding LUI `row` or `column`.
 
-This increment explicitly rejects nonzero `resize-duration`, authored
-`resize-easing` and `resize-origin`, and a handle offset outside the native f32
-layout range. Animated track resizing is not implemented: native animated values
-have no public width/left layout binding, and frame LayoutAnimation does not by
-itself establish matching clipping and interruptible divider geometry. Remove
-those resize-animation options for immediate NSH resizing, or retain another
-backend until that path is qualified. Unsupported values reject the entire
-transaction before publication, preserving the accepted tree and retry generation.
-The shared wire schema, Apple, Android and Web implementations are unchanged.
-
-The five added Headless regressions passed in the main session, including
-controlled native drag, source/parent resizing, retained editor focus through
-reorder, RTL and atomic rejection. They do not establish desktop appearance,
-screen-reader output or cross-platform qualification. See the
-[component-batch evidence](agent-guide/review-probes/2026-11-11/nsh-component-batch.md).
+The usage audit found no LUI Split calls in `mobile` revision
+`82b6da991bc0e6987f652f6f5cd91d1e37f58498` or `logseq_journal` revision
+`6c030857d0bc417d11394a73282a87416b8006cc`; matches were string/list helpers.
+This permits using native NSH semantics instead of preserving unused desktop
+controller behavior. Shared wire schemas and Apple/iOS, Android and Web backends
+retain their existing behavior. Earlier controlled-Split measurements describe
+their recorded historical commit; they do not qualify this replacement.
 
 ### NSH authored-child navigation, steps and timelines
 
