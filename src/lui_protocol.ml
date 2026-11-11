@@ -1243,7 +1243,7 @@ let common_property_supported kind property =
     | Link -> true
     | _ -> false)
   | PathValue -> kind = FileImage || kind = FilePreview
-  | UrlValue -> kind = Link || kind = Image
+  | UrlValue -> kind = Link || kind = Image || kind = MediaSurface
   | TargetValue -> kind = Link
   | Opacity ->
     can_contain_children kind || kind = Checkbox || kind = Radio || kind = Icon
@@ -1907,7 +1907,7 @@ let node_property_presence_supported kind ~definite ~possible =
     | Avatar -> [[TextValue]]
     | Image -> [[ImageIdValue; UrlValue]]
     | FileImage | FilePreview -> [[PathValue]]
-    | MediaSurface -> [[SurfaceIdValue]]
+    | MediaSurface -> [[SurfaceIdValue; UrlValue]]
     | EdgeInset -> [[EdgeValue]]
     | Stepper -> [[ActiveIndex]]
     | Step -> [[TextValue]]
@@ -1942,6 +1942,7 @@ let node_property_presence_supported kind ~definite ~possible =
             || require_any [ImageIdValue; UrlValue])
       else true)
   && (if kind = Split then exclusive FirstPaneWidth ProgressValue else true)
+  && (if kind = MediaSurface then exclusive SurfaceIdValue UrlValue else true)
   && (if tree_row_kind kind then
         ((not (definite TreeLevel || definite ChangeEnabled)) || possible RoleValue)
         && ((not (definite Expanded)) || possible ToggleEnabled)
@@ -2049,7 +2050,9 @@ let node_properties_supported kind properties =
   (* no url requirement on Link: apps emit in-app navigation anchors
      without an href (the apple store's validator doesn't require one
      either) *)
-  && (if kind = MediaSurface then Property_map.mem SurfaceIdValue properties
+  && (if kind = MediaSurface then
+        Property_map.mem SurfaceIdValue properties
+        || string_property_nonempty properties UrlValue
       else true)
   && (if kind = EdgeInset then Property_map.mem EdgeValue properties else true)
   && (if kind = Stepper then Property_map.mem ActiveIndex properties else true)

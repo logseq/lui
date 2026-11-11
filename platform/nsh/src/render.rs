@@ -733,6 +733,24 @@ impl Renderer {
                     .test_id(&identifier)
                     .into_element()
             }
+            "media-surface" => {
+                let failing = self.clone();
+                native_events
+                    .attach(crate::media::element(
+                        state,
+                        Rc::new(move |message| {
+                            if failing.is_current(id, incarnation, None) {
+                                failing.fail(message);
+                            }
+                        }),
+                    ))
+                    .label(label)
+                    .state_inline_style(style)
+                    .element_ref(&reference)
+                    .key(key.clone())
+                    .test_id(&identifier)
+                    .into_element()
+            }
             "heading" => native_events
                 .attach(crate::headings::element(state))
                 .state_inline_style(style)
@@ -931,6 +949,7 @@ fn validate(node: &Node) -> Result<(), String> {
         return Err("NSH box display=contents is not implemented yet".into());
     }
     crate::images::validate(node)?;
+    crate::media::validate(node)?;
     crate::inputs::validate(node)?;
     crate::file_picker::validate(node)?;
     crate::virtual_rows::validate(node)?;
@@ -943,6 +962,7 @@ fn supported(kind: &str) -> bool {
             kind,
             "root"
                 | "file-picker"
+                | "media-surface"
                 | "select"
                 | "combobox"
                 | "menu-trigger"
@@ -2097,3 +2117,6 @@ mod input_tests;
 
 #[cfg(test)]
 mod file_picker_tests;
+
+#[cfg(test)]
+mod media_tests;

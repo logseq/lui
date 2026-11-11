@@ -3582,3 +3582,57 @@ and native virtualization with 1,000 metadata items. A core OCaml regression
 checks callback delivery and absence of unintended PointerEnabled. Real native
 Tree application, screen-reader and platform keyboard qualification remain
 separate gates; source-only preparation does not mark them passed.
+
+### NSH MediaSurface native video URLs
+
+`media_surface` gains optional `url` and `url_signal` arguments. The existing
+`UrlValue`/`url` wire property is now admitted for this kind; no wire property or
+event ordinal is added. Supply exactly one source: the existing `surface`
+resource ID or a nonempty URL. Existing Apple resource-ID callers remain valid.
+The NSH route accepts URLs and explicitly rejects foreign surface IDs, including
+zero, rather than interpreting an integer as a URL or displaying an empty host.
+
+A production-source audit found no `media_surface`, raw `Lui_ui` MediaSurface
+constructor, `MediaSurface` variant or `media-surface` wire node in either
+mobile or `logseq_journal` outside dependency/build/test trees. The new unused
+desktop route therefore adopts NSH's public native Video behavior. The adapter
+uses `nsh_core::element::video(bound_url).controls(true)` on the actual retained
+Video host. Changing URL, label or authored styles preserves that host and
+nearby editor identities. There is no custom player, codec, WebView, frame-copy
+loop or separate audio manager.
+
+NSH's defaults apply: playback starts when ready, sound is unmuted at volume 1,
+rate is 1, repeat is off and the image uses native contain sizing. Native
+playback controls are enabled and own play/pause, seeking and other controls the
+platform offers. No new LUI pause/rate/seek event or property matrix is added.
+URI resolution, loading, decoding, audio and source replacement belong to the
+native NSH player. Loading errors use the existing nonfatal backend diagnostic
+(`Native video: ...`); the renderer and other controls keep running. This follows
+the existing diagnostic policy, so an error message remains visible rather than
+being treated as a fatal application failure or silently discarded. Late errors
+from a disposed LUI node are blocked by its incarnation guard and native owner.
+
+For example:
+
+```ocaml
+(* NSH native video with system playback controls. *)
+media_surface ~url:"file:///home/alex/clip.mp4"
+  ~width:640 ~height:360 ~label:"Recorded clip" []
+
+(* URL replacement updates the same native host. *)
+media_surface ~url:(reactive Fun.id video_url)
+  ~width:640 ~height:360 ~label:"Recorded clip" []
+
+(* Existing maintained Apple resource API. *)
+media_surface ~surface:surface_id ~width:640 ~height:360 []
+```
+
+Use the platform-appropriate source; NSH does not import Apple's external
+resource registry. Apple retains its resource route and rejects this NSH URL
+alternative. Web also explicitly rejects a MediaSurface URL while preserving
+its existing resource-ID route, so the shared canonical URL addition cannot be
+silently ignored. Android and the other existing backends retain their resource
+implementations. There are no native library exports or Rust semantic event
+enum additions for this route. The headless tests check the real Video host,
+public native property batches, retention, error dispatch and atomic source
+validation; they do not qualify native decoding, audio output or video pixels.

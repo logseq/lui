@@ -478,6 +478,8 @@ let validate_media_resource current =
          && not (Property_map.mem UrlValue current.retained_properties)
       then invalid_arg "image requires image or url"
   | Some MediaSurface ->
+      if Property_map.mem UrlValue current.retained_properties then
+        invalid_arg "Web media-surface does not support native video URLs";
       if not (Property_map.mem SurfaceIdValue current.retained_properties) then
         invalid_arg "media-surface requires surface"
   | _ -> ()

@@ -21,6 +21,7 @@ test("PPX nesting diagnostics reject static illegal edges without guessing opaqu
     success(["ocamlfind", "ocamlopt", "-package", "ppxlib", "-linkpkg", "-linkall",
       "_build/default/ppx/lui_ppx.cmxa", join(dir, "driver.ml"), "-o", join(dir, "driver")])
     const cases = [
+      ['media_surface ~url:"file:///tmp/clip.mp4" [button []]', "media-surface", "button"],
       ["context_menu [button []]", "context-menu", "button"],
       ["dropdown_menu [column []]", "dropdown-menu", "column"],
       ["toolbar [column []]", "toolbar", "column"],
@@ -115,6 +116,11 @@ let probe (source : bool Signal.signal)
       }
     }
     for (const program of [
+      `open Lui_elements
+let resource = media_surface ~surface:0 []
+let video = media_surface ~url:"file:///tmp/clip.mp4" []
+let live (source : string Signal.signal) =
+  media_surface ~url:(reactive Fun.id source) []`,
       `open Lui_elements
 let radio ~text_signal:_ _ = button []
 let probe (source : bool Signal.signal) =

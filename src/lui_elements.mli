@@ -4156,6 +4156,9 @@ val image :
   ?source_y:float ->
   ?source_width:float -> ?source_height:float -> ?label:string ->
   ?transition:string -> nothing list -> t
+
+(** A retained media host. NSH accepts a native video [url]; the maintained
+    Apple resource route accepts [surface]. Supply exactly one source. *)
 val media_surface :
   ?key:string ->
   ?gap:int ->
@@ -4197,7 +4200,8 @@ val media_surface :
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
   ?surface:int ->
-  ?surface_signal:int Signal.signal -> ?label:string ->
+  ?surface_signal:int Signal.signal ->
+  ?url:string -> ?url_signal:string Signal.signal -> ?label:string ->
   ?transition:string -> nothing list -> t
 
 (** A semantic URL link. An optional [on_press] owns primary activation while

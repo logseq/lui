@@ -8,6 +8,7 @@ mod file_picker;
 mod headings;
 mod images;
 mod inputs;
+mod media;
 pub mod render;
 pub mod runtime;
 pub mod store;
