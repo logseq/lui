@@ -1,6 +1,7 @@
 //! Transactional retained node storage, independent of native windows.
 use crate::{
     contract,
+    extensions::schema::{Contracts, ExtensionKind},
     wire::{Batch, Operation},
 };
 use serde_json::{Map, Value};
@@ -9,6 +10,13 @@ use std::{
     sync::Arc,
 };
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExtensionNode {
+    pub identifier: String,
+    pub fingerprint: String,
+    pub properties: Map<String, Value>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 #[non_exhaustive]
 pub struct Node {
@@ -16,6 +24,7 @@ pub struct Node {
     pub incarnation: u64,
     pub kind: String,
     pub props: Map<String, Value>,
+    pub extension: Option<ExtensionNode>,
     pub children: Arc<Vec<u64>>,
     pub parent: Option<u64>,
 }
@@ -46,6 +55,7 @@ pub struct Store {
     pub generation: u64,
     next_incarnation: u64,
     root: Option<u64>,
+    extensions: Option<Arc<Contracts>>,
 }
 #[derive(Debug, Default)]
 #[non_exhaustive]
@@ -54,6 +64,12 @@ pub struct Changes {
     pub removed: BTreeSet<u64>,
 }
 impl Store {
+    pub(crate) fn with_extensions(contracts: Arc<Contracts>) -> Self {
+        Self {
+            extensions: Some(contracts),
+            ..Self::default()
+        }
+    }
     pub fn root(&self) -> Option<u64> {
         self.root
     }
@@ -154,6 +170,7 @@ impl Store {
         let mut next = Self {
             generation,
             next_incarnation: self.next_incarnation,
+            extensions: self.extensions.clone(),
             ..Self::default()
         };
         let mut changes = next.apply_inspected(snapshot, validate, inspect)?;
@@ -206,42 +223,29 @@ impl Transaction<'_> {
     fn operation(&mut self, op: Operation) -> Result<(), String> {
         match op {
             Operation::CreateNode { id, kind } => {
-                if id == 0
-                    || id > ((1_u64 << 62) - 1)
-                    || self.get(id).is_ok()
-                    || self.created.contains(&id)
-                {
-                    return Err(format!("duplicate or invalid node {id}"));
-                }
                 if !contract::kinds().contains_key(&kind) {
                     return Err(format!("unknown node kind {kind}"));
                 }
-                self.next_incarnation = self
-                    .next_incarnation
-                    .checked_add(1)
-                    .ok_or("node incarnation overflow")?;
                 if kind == "root" {
                     if self.root.is_some_and(|id| self.get(id).is_ok()) {
                         return Err("multiple root nodes".into());
                     }
                     self.root = Some(id);
                 }
-                self.removed.remove(&id);
-                self.created.insert(id);
-                self.touched.insert(
-                    id,
-                    Node {
-                        id,
-                        incarnation: self.next_incarnation,
-                        kind,
-                        props: Map::new(),
-                        children: Arc::default(),
-                        parent: None,
-                    },
-                );
+                self.create(id, kind, None)?;
             }
-            Operation::CreateExtension { identifier, .. } => {
-                return Err(format!("unregistered NSH extension {identifier}"));
+            Operation::CreateExtension {
+                id,
+                identifier,
+                fingerprint,
+            } => {
+                let schema = self.contracts()?.create(&identifier, &fingerprint)?;
+                let identity = ExtensionNode {
+                    identifier: identifier.clone(),
+                    fingerprint: schema.fingerprint.clone(),
+                    properties: Map::new(),
+                };
+                self.create(id, identifier, Some(identity))?;
             }
             Operation::DropNode { id } => {
                 let node = self.get(id)?.clone();
@@ -274,18 +278,59 @@ impl Transaction<'_> {
                 property,
                 value,
             } => {
+                if self.get(id)?.extension.is_some() {
+                    return Err("standard properties cannot target an extension".into());
+                }
                 contract::validate_value(&self.get(id)?.kind, &property, &value)?;
                 self.edit(id)?.props.insert(property, value);
             }
             Operation::RemoveProp { id, property } => {
+                if self.get(id)?.extension.is_some() {
+                    return Err("standard properties cannot target an extension".into());
+                }
                 let kind = &self.get(id)?.kind;
                 if !contract::property_supported(kind, &property) {
                     return Err(format!("{kind} does not support {property}"));
                 }
                 self.edit(id)?.props.remove(&property);
             }
-            Operation::SetExtensionProp { .. } | Operation::RemoveExtensionProp { .. } => {
-                return Err("extension properties require a registered NSH extension".into());
+            Operation::SetExtensionProp {
+                id,
+                property,
+                value,
+            } => {
+                let extension = self
+                    .get(id)?
+                    .extension
+                    .as_ref()
+                    .ok_or("extension property targets a standard node")?;
+                self.contracts()?
+                    .get(&extension.identifier)?
+                    .schema
+                    .validate_property(&property, &value)?;
+                self.edit(id)?
+                    .extension
+                    .as_mut()
+                    .expect("validated extension")
+                    .properties
+                    .insert(property, value);
+            }
+            Operation::RemoveExtensionProp { id, property } => {
+                let extension = self
+                    .get(id)?
+                    .extension
+                    .as_ref()
+                    .ok_or("extension property targets a standard node")?;
+                self.contracts()?
+                    .get(&extension.identifier)?
+                    .schema
+                    .property(&property)?;
+                self.edit(id)?
+                    .extension
+                    .as_mut()
+                    .expect("validated extension")
+                    .properties
+                    .remove(&property);
             }
             Operation::InsertChild {
                 parent,
@@ -330,7 +375,10 @@ impl Transaction<'_> {
             ancestor = self.get(id)?.parent;
         }
         let parent_kind = &self.get(parent)?.kind;
-        if !contract::child_supported(parent_kind, &self.get(child)?.kind) {
+        if self.get(parent)?.extension.is_none()
+            && self.get(child)?.extension.is_none()
+            && !contract::child_supported(parent_kind, &self.get(child)?.kind)
+        {
             return Err(format!("invalid child of {parent_kind}"));
         }
         Arc::make_mut(&mut self.edit(parent)?.children).insert(index, child);
@@ -340,8 +388,153 @@ impl Transaction<'_> {
     fn validate(&self, extra: &impl Fn(&Node) -> Result<(), String>) -> Result<(), String> {
         for (id, node) in &self.touched {
             if !self.removed.contains(id) {
-                contract::validate_node(node)?;
+                if let Some(extension) = &node.extension {
+                    let contract = self.contracts()?.get(&extension.identifier)?;
+                    contract.schema.validate_node(node)?;
+                    if contract.schema.kind == ExtensionKind::Tweak
+                        && node
+                            .children
+                            .first()
+                            .is_some_and(|id| self.get(*id).is_ok_and(|child| child.kind == "root"))
+                    {
+                        return Err("Root cannot be a tweak child".into());
+                    }
+                    if contract.schema.kind == ExtensionKind::Tweak
+                        && self.previous(node.id).is_some_and(|old| {
+                            old.incarnation == node.incarnation && old.children != node.children
+                        })
+                    {
+                        return Err(
+                            "changing a mounted NSH tweak target requires a new keyed tweak node"
+                                .into(),
+                        );
+                    }
+                    if let Some(validate) = &contract.validate {
+                        validate(node)?;
+                    }
+                } else {
+                    contract::validate_node(node)?;
+                }
                 extra(node)?;
+            }
+        }
+        self.validate_extension_edges()?;
+        Ok(())
+    }
+
+    fn contracts(&self) -> Result<&Contracts, String> {
+        self.store
+            .extensions
+            .as_deref()
+            .ok_or_else(|| "no NSH extension registry is configured".into())
+    }
+
+    fn create(
+        &mut self,
+        id: u64,
+        kind: String,
+        extension: Option<ExtensionNode>,
+    ) -> Result<(), String> {
+        if id == 0 || id > ((1_u64 << 62) - 1) || self.get(id).is_ok() || self.created.contains(&id)
+        {
+            return Err(format!("duplicate or invalid node {id}"));
+        }
+        self.next_incarnation = self
+            .next_incarnation
+            .checked_add(1)
+            .ok_or("node incarnation overflow")?;
+        self.removed.remove(&id);
+        self.created.insert(id);
+        self.touched.insert(
+            id,
+            Node {
+                id,
+                incarnation: self.next_incarnation,
+                kind,
+                extension,
+                ..Node::default()
+            },
+        );
+        Ok(())
+    }
+
+    fn is_tweak(&self, node: &Node) -> Result<bool, String> {
+        node.extension.as_ref().map_or(Ok(false), |extension| {
+            Ok(self.contracts()?.get(&extension.identifier)?.schema.kind == ExtensionKind::Tweak)
+        })
+    }
+
+    fn validate_extension_edges(&self) -> Result<(), String> {
+        if self.store.extensions.is_none() {
+            return Ok(());
+        }
+        let mut parents = BTreeSet::new();
+        for node in self.updated() {
+            if self
+                .previous(node.id)
+                .is_none_or(|previous| !Arc::ptr_eq(&previous.children, &node.children))
+            {
+                parents.insert(node.id);
+                let mut current = node;
+                while self.is_tweak(current)? {
+                    let Some(parent) = current.parent else { break };
+                    if !parents.insert(parent) {
+                        break;
+                    }
+                    current = self.get(parent)?;
+                }
+            }
+        }
+        // Memoized only for this transaction; nested tweaks share unwrapping work.
+        let mut effective = BTreeMap::new();
+        for id in parents {
+            let parent = self.get(id)?;
+            if self.is_tweak(parent)? {
+                continue;
+            }
+            for child in parent.children.iter() {
+                let mut path = Vec::new();
+                let mut id = *child;
+                loop {
+                    if let Some(cached) = effective.get(&id) {
+                        id = *cached;
+                        break;
+                    }
+                    let node = self.get(id)?;
+                    if !self.is_tweak(node)? {
+                        break;
+                    }
+                    path.push(id);
+                    id = *node
+                        .children
+                        .first()
+                        .ok_or("platform tweak requires exactly one child")?;
+                }
+                for tweak in path {
+                    effective.insert(tweak, id);
+                }
+                let child = self.get(id)?;
+                let supported = match (&parent.extension, &child.extension) {
+                    (None, None) => contract::child_supported(&parent.kind, &child.kind),
+                    (None, Some(_)) => contract::extension_parent_supported(&parent.kind)?,
+                    (Some(extension), None) => {
+                        child.kind != "root"
+                            && self
+                                .contracts()?
+                                .get(&extension.identifier)?
+                                .schema
+                                .standard_children
+                    }
+                    (Some(extension), Some(child)) => self
+                        .contracts()?
+                        .get(&extension.identifier)?
+                        .schema
+                        .extension_children
+                        .contains(&child.identifier),
+                };
+                if !supported {
+                    return Err(format!("invalid extension child of {}", parent.kind));
+                }
             }
         }
         Ok(())

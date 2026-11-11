@@ -357,3 +357,33 @@ let event_payload_supported schema name values =
             | None -> false)
          values
   | None -> false
+
+(* Export the canonical schema and fingerprint together for native host registration.
+   In particular, Float defaults retain their distinct JSON scalar type. *)
+let schema_json ?(tweak = false) schema =
+  let quote = Lui_wire.quoted in
+  let array encode values = "[" ^ String.concat "," (List.map encode values) ^ "]" in
+  let field name value = quote name ^ ":" ^ value in
+  let object_ fields = "{" ^ String.concat "," fields ^ "}" in
+  let property p = object_ ([
+    field "name" (quote p.extension_property_name);
+    field "kind" (quote (scalar_kind_name p.extension_property_kind));
+    field "required" (string_of_bool p.extension_property_required)]
+    @ match p.extension_property_default with
+      | None -> [] | Some value -> [field "default" (Lui_wire.encode_value value)]) in
+  let event_field f = object_ [
+    field "name" (quote f.extension_event_field_name);
+    field "kind" (quote (scalar_kind_name f.extension_event_field_kind));
+    field "required" (string_of_bool f.extension_event_field_required)] in
+  let event e = object_ [field "name" (quote e.extension_event_name);
+    field "fields" (array event_field e.extension_event_fields)] in
+  object_ [field "identifier" (quote schema.extension_identifier);
+    field "fingerprint" (quote ((if tweak then tweak_fingerprint else fingerprint) schema));
+    field "kind" (quote (if tweak then "tweak" else "component"));
+    field "profiles" (array (fun p -> object_ [
+      field "os" (quote (operating_system_name p.profile_os));
+      field "host" (quote (host_name p.profile_host))]) schema.extension_profiles);
+    field "standardChildren" (string_of_bool schema.extension_standard_children);
+    field "extensionChildren" (array quote schema.extension_child_identifiers);
+    field "properties" (array property schema.extension_properties);
+    field "events" (array event schema.extension_events)]

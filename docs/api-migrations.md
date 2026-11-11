@@ -4074,3 +4074,41 @@ modifier observer. A keyboard-only modifier snapshot would not recover real
 pointer Shift presses. Therefore this increment changes only native part
 presentation and the explicit validation boundary; it does not claim Shift
 Checkbox selection parity or alter NSH's event API.
+
+### NSH application extension registrations
+
+An NSH application can supply immutable trusted Rust factories before mounting
+`Desktop`: export each OCaml schema with `Lui_extension.schema_json`, parse it
+with `lui_nsh::extensions::Schema::from_json`, register the factory with
+`Extensions::builder().register(schema, factory)?`, and call
+`.freeze(Profile { os: "macos".into(), host: "nsh".into() })?`. Supply the result
+with NSH `provide_context` above `Desktop`. Registrations are scoped to that
+application; an unconfigured application still rejects extension nodes.
+
+Factories receive `ExtensionContext`, including the existing retained node
+signal, `property(name)` (explicit value or canonical default), child rendering
+capabilities, native `ElementRef`, and a schema-checked event emitter. Factories
+run once per mounted incarnation. Unknown registrations, nonempty fingerprint
+mismatches, unsupported profiles, undeclared or mistyped properties, missing
+required values and invalid child relationships reject the whole transaction
+before native construction. Extension properties use `set-extension-prop`;
+standard `set-prop` does not apply to extension nodes. Empty fingerprints resolve
+against the frozen schema even on the first create or an authoritative snapshot,
+matching the canonical producer's fingerprint elision. Integers retain signed
+62-bit bounds; JSON `1.0` remains a Float and is distinct from Int `1`.
+
+`register_tweak` projects its typed target directly onto the single retained
+child root using public NSH component composition. It adds no native layout
+View. Property updates retain the target; changing a mounted tweak's content
+identity currently requires a new keyed tweak node and otherwise fails
+atomically. A region as the projection root would add a View in NSH and change
+intrinsic layout, so it is not a transparent substitute.
+
+Extension events use the existing generic C bridge's exact seven-argument
+`lui_ocaml_extension_event_utf8` function, with separate identifier, event-name
+and JSON-value lengths. Declared scalar payloads and incarnation guards apply
+before queueing; the ordered application pump rechecks the incarnation before
+foreign dispatch. A missing event export produces an explicit diagnostic. This
+extension event ABI does not change the generic three-argument application start
+ABI and does not by itself port Logseq's different application/service ABI or
+provide its editor, PDF or platform services.

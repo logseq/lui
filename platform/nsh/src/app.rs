@@ -47,6 +47,9 @@ struct GuardedEvent {
 impl GuardedEvent {
     fn capture(event: ViewEvent, renderer: &Renderer) -> Option<Self> {
         let (node, incarnation, generation) = match &event {
+            ViewEvent::Extension {
+                node, incarnation, ..
+            } => (*node, *incarnation, None),
             ViewEvent::VirtualWindow {
                 node,
                 incarnation,
@@ -160,7 +163,7 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
     let for_events = sender.clone();
     let windows = Windows::default();
     let for_windows = windows.clone();
-    let renderer = Renderer::new(move |event, renderer| {
+    let dispatch = move |event, renderer: Renderer| {
         let Some(event) = GuardedEvent::capture(event, &renderer) else {
             return;
         };
@@ -173,7 +176,12 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
         } else if for_events.try_send(Request::Event(event)).is_err() {
             renderer.fail("The application request queue is full or closed".into());
         }
-    });
+    };
+    let renderer = if let Some(extensions) = use_context::<crate::extensions::Extensions>() {
+        Renderer::with_extensions(extensions, dispatch)
+    } else {
+        Renderer::new(dispatch)
+    };
     let configured_agent = props.agent_listen.get_untracked();
     let agent_address = if configured_agent.is_empty() {
         std::env::var("LUI_AGENT_LISTEN").unwrap_or_default()
@@ -315,6 +323,18 @@ fn accept(renderer: &Renderer, reply: Reply) -> Result<Option<Duration>, String>
 
 fn semantic(event: ViewEvent) -> Event {
     match event {
+        ViewEvent::Extension {
+            node,
+            identifier,
+            name,
+            values,
+            ..
+        } => Event::Extension {
+            node: node as i64,
+            identifier,
+            name,
+            values,
+        },
         ViewEvent::NativePress(node, modifiers) => Event::Press {
             node: node as i64,
             modifiers,

@@ -183,6 +183,29 @@ let baseline kind =
     | Some property -> Property_map.add property (default_value kind property) props
     | None -> failwith ("No valid baseline for " ^ Lui_wire_schema.node_kind_name kind)
 
+let extension_oracle () =
+  let open Lui_extension in
+  let profiles = List.map (fun os -> {profile_os = os; profile_host = NshHost}) [MacOS; LinuxOS; WindowsOS] in
+  let schema = component "app-oracle" profiles true []
+    [property "count" IntScalar true None; property "factor" FloatScalar false (Some (FloatValue 1.));
+     property "title" StringScalar false (Some (StringValue "Default"))]
+    [event "changed" [event_field "count" IntScalar true; event_field "factor" FloatScalar false]] in
+  let tweak = tweak "app-oracle-tint" profiles [property "width" FloatScalar true None] in
+  let props values = List.fold_left (fun result (name, value) -> String_map.add name value result) String_map.empty values in
+  let cases = [["count", IntValue 1]; ["count", FloatValue 1.]; ["count", IntValue min_int];
+    ["count", IntValue max_int]; ["count", IntValue 1; "factor", IntValue 1];
+    ["count", IntValue 1; "factor", FloatValue 1.]; ["count", IntValue 1; "unknown", BoolValue true]; []] in
+  obj ["schema", Yojson.Basic.from_string (schema_json schema);
+    "tweak", Yojson.Basic.from_string (schema_json ~tweak:true tweak);
+    "properties", arr (List.map (fun values -> obj ["values", obj (List.map (fun (name, value) -> name, Yojson.Basic.from_string (Lui_wire.encode_value value)) values);
+      "accepted", `Bool (properties_supported schema (props values))]) cases);
+    "events", arr (List.map (fun values -> obj ["values", obj (List.map (fun (name, value) -> name, Yojson.Basic.from_string (Lui_wire.encode_value value)) values);
+      "accepted", `Bool (event_payload_supported schema "changed" (props values))]) cases);
+    "wire", Yojson.Basic.from_string (Lui_wire.encode_batch {generation = 1; ops = [
+      CreateExtension (2, schema.extension_identifier, fingerprint schema);
+      SetExtensionProp (2, "count", IntValue 7);
+      CreateExtension (3, schema.extension_identifier, ""); SetExtensionProp (3, "count", IntValue 8)]})]
+
 let () =
   let kinds = Lui_wire_schema.all_node_kinds in
   let properties = Lui_wire_schema.all_properties in
@@ -194,7 +217,11 @@ let () =
     "sizing_supported"; "main_alignment_supported"; "cross_alignment_supported"; "alignment_supported"] in
   let output = obj [
     "version", `Int 1;
+    "extensionRules", obj [
+      "standardParents", names (List.filter Lui_extension.standard_container_supported kinds) Lui_wire_schema.node_kind_name;
+      "integerMinimum", `Int min_int; "integerMaximum", `Int max_int];
     "oracle", obj [
+      "extensions", extension_oracle ();
       "values", arr (List.map wire_json probes);
       "properties", obj (List.map (fun property -> Lui_wire_schema.property_name property, verdicts (property_value_supported property)) properties);
       "kindValues", obj (List.map (fun kind -> Lui_wire_schema.node_kind_name kind,

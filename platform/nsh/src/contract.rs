@@ -15,6 +15,14 @@ pub fn kinds() -> &'static Map<String, Value> {
     CONTRACT["kinds"].as_object().expect("kind map")
 }
 
+/// Standard parents admitted by the canonical extension validator.
+pub fn extension_parent_supported(kind: &str) -> Result<bool, String> {
+    let parents = CONTRACT["extensionRules"]["standardParents"]
+        .as_array()
+        .ok_or("canonical extension rules are missing; regenerate the native contract")?;
+    Ok(parents.iter().any(|parent| parent == kind))
+}
+
 pub fn property_supported(kind: &str, property: &str) -> bool {
     kinds().get(kind).is_some_and(|definition| {
         definition["properties"]

@@ -1,6 +1,7 @@
 //! Retained LUI nodes rendered through public NSH elements and bindings.
 use crate::{
     events::{Capabilities, NativeEvents},
+    extensions::{ExtensionChildren, ExtensionContext, ExtensionEmitter, Extensions},
     store::{Node, Store, Transaction},
     style::{self, ThemeView},
     ui, virtual_rows,
@@ -23,6 +24,13 @@ pub use crate::events::{PointerDetail, PointerKind};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
+    Extension {
+        node: u64,
+        incarnation: u64,
+        identifier: String,
+        name: String,
+        values: serde_json::Map<String, Value>,
+    },
     Press(u64),
     NativePress(u64, i32),
     LongPress(u64),
@@ -80,6 +88,7 @@ struct Entry {
 }
 struct State {
     store: Store,
+    extensions: Option<Extensions>,
     nodes: BTreeMap<u64, Entry>,
     root: Signal<Option<(u64, u64)>>,
     owner: Owner,
@@ -94,8 +103,23 @@ struct State {
 pub struct Renderer(Rc<RefCell<State>>);
 impl Renderer {
     pub fn new(dispatch: impl Fn(Event, Renderer) + 'static) -> Self {
+        Self::configured(None, dispatch)
+    }
+    pub fn with_extensions(
+        extensions: Extensions,
+        dispatch: impl Fn(Event, Renderer) + 'static,
+    ) -> Self {
+        Self::configured(Some(extensions), dispatch)
+    }
+    fn configured(
+        extensions: Option<Extensions>,
+        dispatch: impl Fn(Event, Renderer) + 'static,
+    ) -> Self {
         Self(Rc::new(RefCell::new(State {
-            store: Store::default(),
+            store: extensions
+                .as_ref()
+                .map_or_else(Store::default, Extensions::store),
+            extensions,
             nodes: BTreeMap::new(),
             root: signal(None),
             owner: Owner::current(),
@@ -406,8 +430,10 @@ impl Renderer {
                     &mut resolved,
                     |_| None,
                 )?;
-                crate::ui::checkbox::validate(node, &theme)?;
-                style::compile(node, &theme, viewport)?;
+                if node.extension.is_none() {
+                    crate::ui::checkbox::validate(node, &theme)?;
+                    style::compile(node, &theme, viewport)?;
+                }
             }
             let updates = resolved
                 .into_iter()
@@ -655,6 +681,62 @@ impl Renderer {
         };
         let node = state.get_untracked();
         let incarnation = node.incarnation;
+        if let Some(extension) = &node.extension {
+            let (schema, implementation) = {
+                let renderer = self.0.borrow();
+                let registry = renderer.extensions.as_ref().expect("registered extension");
+                (
+                    Arc::new(
+                        registry
+                            .contracts
+                            .get(&extension.identifier)
+                            .expect("validated extension")
+                            .schema
+                            .clone(),
+                    ),
+                    registry.implementation(&extension.identifier).clone(),
+                )
+            };
+            let children = self
+                .child_renderer(id, incarnation)
+                .expect("retained extension children");
+            let weak = Rc::downgrade(&self.0);
+            let event_schema = schema.clone();
+            let identifier = extension.identifier.clone();
+            let emitter = ExtensionEmitter(Rc::new(move |name, values| {
+                event_schema.validate_event(name, &values)?;
+                let renderer = Renderer(weak.upgrade().ok_or("extension renderer was disposed")?);
+                if !renderer.is_current(id, incarnation, None) {
+                    return Err("extension node was disposed or replaced".into());
+                }
+                renderer.maintain(
+                    id,
+                    incarnation,
+                    Event::Extension {
+                        node: id,
+                        incarnation,
+                        identifier: identifier.clone(),
+                        name: name.into(),
+                        values,
+                    },
+                );
+                Ok(())
+            }));
+            return crate::extensions::mount(
+                ExtensionContext {
+                    node: state,
+                    children: ExtensionChildren {
+                        identities: children.identities,
+                        render: children.render,
+                        lookup: children.lookup,
+                    },
+                    reference,
+                    emitter,
+                    schema,
+                },
+                implementation,
+            );
+        }
         let child_renderer = (context.is_some()
             || matches!(
                 node.kind.as_str(),
@@ -1054,6 +1136,9 @@ impl Renderer {
 }
 
 fn validate(node: &Node) -> Result<(), String> {
+    if node.extension.is_some() {
+        return Ok(());
+    }
     if !supported(&node.kind) {
         return Err(format!(
             "NSH component {} is not implemented yet",
@@ -1323,8 +1408,10 @@ fn validate_themes(
             (!invalid.contains(&id) && node.incarnation == entry.node.get_untracked().incarnation)
                 .then(|| entry.theme.get_untracked())
         })?;
-        crate::ui::checkbox::validate(node, &theme)?;
-        style::compile(transaction.get(id)?, &theme, viewport)?;
+        if node.extension.is_none() {
+            crate::ui::checkbox::validate(node, &theme)?;
+            style::compile(node, &theme, viewport)?;
+        }
     }
     Ok(themes)
 }

@@ -12,7 +12,7 @@ from nsh_contract_codegen import compile_validators, scalar_types
 
 ROOT = Path(__file__).resolve().parents[1]
 INPUTS = ["schema/components.json", "src/lui_protocol.ml", "src/lui_protocol.mli",
-          "src/lui_wire_schema.ml", "tooling/export_native_contract.ml",
+          "src/lui_wire_schema.ml", "src/lui_extension.ml", "tooling/export_native_contract.ml",
           "tooling/generate_nsh_contract.py", "tooling/nsh_contract_codegen.py"]
 OUTPUT = ROOT / "platform/nsh/contract.json"
 VALIDATORS = ROOT / "platform/nsh/src/contract_generated.rs"

@@ -24,6 +24,12 @@ static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
 /// A semantic request. IDs retain OCaml's signed integer precision.
 #[derive(Debug, Clone)]
 pub enum Event {
+    Extension {
+        node: i64,
+        identifier: String,
+        name: String,
+        values: serde_json::Map<String, serde_json::Value>,
+    },
     Press {
         node: i64,
         modifiers: i32,
@@ -274,6 +280,8 @@ type Callback = extern "C" fn(*const c_char);
 type UnitFn = unsafe extern "C" fn() -> i32;
 type NodeFn = unsafe extern "C" fn(i64) -> i32;
 type NodeIntFn = unsafe extern "C" fn(i64, i32) -> i32;
+type ExtensionFn =
+    unsafe extern "C" fn(i64, *const c_char, i32, *const c_char, i32, *const c_char, i32) -> i32;
 type TextFn = unsafe extern "C" fn(i64, *const c_char, i32) -> i32;
 type NumberFn = unsafe extern "C" fn(i64, f64) -> i32;
 type PointerFn = unsafe extern "C" fn(i64, f64, f64, i32, i32, *const c_char, i32) -> i32;
@@ -305,6 +313,7 @@ struct Exports {
     change: NodeFn,
     dismiss: NodeFn,
     picked: Option<TextFn>,
+    extension: Option<ExtensionFn>,
     visible_range: RangeFn,
     scroll_completed: Option<ScrollCompletedFn>,
     virtual_window: Option<WindowFn>,
@@ -392,6 +401,7 @@ impl Native {
                 change: required!("lui_ocaml_radio_changed"),
                 dismiss: required!("lui_ocaml_dismiss"),
                 picked: optional!("lui_ocaml_picked_utf8"),
+                extension: optional!("lui_ocaml_extension_event_utf8"),
                 visible_range: required!("lui_ocaml_visible_range"),
                 scroll_completed: optional!("lui_ocaml_scroll_completed"),
                 virtual_window: optional!("lui_ocaml_virtual_window"),
@@ -461,6 +471,37 @@ impl Native {
                         agent(json.as_ptr().cast(), length(json.len())?, capture_agent)
                     }
                     Operation::Event(event) => match event {
+                        Event::Extension {
+                            node,
+                            identifier,
+                            name,
+                            values,
+                        } => {
+                            if !values.values().all(|value| {
+                                [
+                                    crate::extensions::ScalarKind::String,
+                                    crate::extensions::ScalarKind::Bool,
+                                    crate::extensions::ScalarKind::Int,
+                                    crate::extensions::ScalarKind::Float,
+                                ]
+                                .iter()
+                                .any(|kind| kind.accepts(value))
+                            }) {
+                                return Err("extension event contains a noncanonical scalar".into());
+                            }
+                            let json =
+                                serde_json::to_string(values).map_err(|error| error.to_string())?;
+                            api.extension
+                                .ok_or("OCaml library has no extension event ABI")?(
+                                *node,
+                                identifier.as_ptr().cast(),
+                                length(identifier.len())?,
+                                name.as_ptr().cast(),
+                                length(name.len())?,
+                                json.as_ptr().cast(),
+                                length(json.len())?,
+                            )
+                        }
                         Event::Press { node, modifiers } => (api.press)(*node, *modifiers),
                         Event::LongPress(node) => api
                             .long_press
