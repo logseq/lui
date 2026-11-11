@@ -4503,3 +4503,15 @@ No application change is required for ordinary `spacer []` placeholders. Code
 that deliberately uses a Spacer as a hover target must explicitly author
 `pointer-enabled=true` through its existing wire/property path. Apple, Android
 and Web behavior is unchanged.
+
+### Visible NSH backend diagnostics preserve the first rejection
+
+`Renderer::fail` now preserves the first failure and a single latest follow-up
+rather than replacing the cause with later generation or recovery errors.
+Repeated identical diagnostics do not republish native UI, and changed failures
+are also reported on stderr. The `lui-backend-error` test ID remains on the
+message, now in a semantic alert panel pinned above the existing application
+instead of below its full-height content. The mounted app and its retained
+native identities remain in place; rejected patches and snapshots still fail
+atomic validation. Downstream startup gates can use the same test ID and will
+now observe the original cause within the viewport.

@@ -87,6 +87,20 @@ struct Entry {
     capabilities: Rc<Cell<Option<Capabilities>>>,
     context_mode: Option<bool>,
 }
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Failure {
+    first: String,
+    latest: Option<String>,
+}
+impl Failure {
+    fn text(&self) -> String {
+        match &self.latest {
+            Some(latest) => format!("{}\nLatest backend diagnostic: {latest}", self.first),
+            None => self.first.clone(),
+        }
+    }
+}
+
 struct State {
     store: Store,
     extensions: Option<Extensions>,
@@ -94,7 +108,7 @@ struct State {
     root: Signal<Option<(u64, u64)>>,
     owner: Owner,
     dispatch: Rc<dyn Fn(Event, Renderer)>,
-    error: Signal<Option<String>>,
+    error: Signal<Option<Failure>>,
     base_theme: Arc<ThemeView>,
     viewport: Signal<Size<Points>>,
     toast_ids: BTreeSet<u64>,
@@ -455,6 +469,7 @@ impl Renderer {
         });
         view()
             .flex_1()
+            .relative()
             .text_color(move || ui::color(inherited_theme, "foreground"))
             .state_inline_style(move || {
                 let theme = inherited_theme.get();
@@ -499,13 +514,41 @@ impl Renderer {
             }))
             .child(toast_host)
             .child(dynamic(move || {
-                error
-                    .get()
-                    .map(|message| text(message).test_id("lui-backend-error"))
+                error.get().map(|failure| {
+                    view()
+                        .absolute()
+                        .top(px(0.0))
+                        .left(px(0.0))
+                        .right(px(0.0))
+                        .z_index(i32::MAX)
+                        .p_3()
+                        .border_1()
+                        .border_color(move || ui::color(inherited_theme, "destructive"))
+                        .bg(move || ui::color(inherited_theme, "background"))
+                        .text_color(move || ui::color(inherited_theme, "foreground"))
+                        .text_sm()
+                        .role(AccessibilityRole::Alert)
+                        .child(text(failure.text()).test_id("lui-backend-error"))
+                })
             }))
     }
+    /// Preserve the original rejection while exposing the latest recovery context.
     pub fn fail(&self, message: String) {
-        self.0.borrow().error.set(Some(message));
+        let error = self.0.borrow().error;
+        let mut failure = error.get_untracked();
+        if let Some(failure) = &mut failure {
+            if failure.first == message || failure.latest.as_deref() == Some(message.as_str()) {
+                return;
+            }
+            failure.latest = Some(message.clone());
+        } else {
+            failure = Some(Failure {
+                first: message.clone(),
+                latest: None,
+            });
+        }
+        eprintln!("LUI backend: {message}");
+        error.set(failure);
     }
     fn refresh_theme(&self, base: Arc<ThemeView>) -> Result<(), String> {
         let updates = {
@@ -2567,3 +2610,6 @@ mod contents_tests;
 
 #[cfg(test)]
 mod font_size_tests;
+
+#[cfg(test)]
+mod failure_tests;
