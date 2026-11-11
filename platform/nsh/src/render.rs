@@ -1120,6 +1120,7 @@ impl Renderer {
             }
             "heading" => native_events
                 .attach(crate::headings::element(state))
+                .child(body)
                 .state_inline_style(style)
                 .selectable(move || state.get().string("user-select") != "none")
                 .element_ref(&reference)
@@ -1128,6 +1129,7 @@ impl Renderer {
                 .into_element(),
             "text" | "paragraph" | "label" | "kbd" => native_events
                 .attach(text(move || crate::white_space::text(state)))
+                .child(body)
                 .state_inline_style(style)
                 .selectable(move || state.get().string("user-select") != "none")
                 .element_ref(&reference)
