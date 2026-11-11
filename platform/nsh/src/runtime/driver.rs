@@ -133,7 +133,8 @@ extern "C" fn platform_request(data: *const c_char, len: i32) {
                 .push(MessageOrder::Request(request)),
             Err(error) => *scope.error.lock().expect("callback error") = Some(error),
         }
-        scope.notify.notify_one();
+        // Synchronous requests are returned in this worker call's ordered reply.
+        // Only the separate wakeup callback signals deferred OCaml mailbox work.
     });
 }
 

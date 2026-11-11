@@ -44,6 +44,8 @@ impl MountSink for Sink {
                 }
                 MountItem::Insert { parent, child, .. } => {
                     trace.parents.insert(child, parent);
+                    // The mount protocol omits an unchanged default ViewStyle.
+                    trace.styles.entry(child).or_default();
                 }
                 MountItem::Delete { id } => {
                     trace.styles.remove(&id);
@@ -108,10 +110,13 @@ fn PartsProbe() -> impl IntoElement {
         .child(make(node).test_id("parts-checkbox"))
         .child(make(reference).test_id("reference-checkbox"))
         .child(
-            nsh_base::button()
+            nsh_base::Button::element(Default::default())
                 .test_id("check")
                 .child(text("Check"))
-                .on_press(move || {
+                .on_event(move |event: &nsh_base::ButtonEvent| {
+                    if *event != nsh_base::ButtonEvent::Press {
+                        return;
+                    }
                     node.update(|node| {
                         Arc::make_mut(node)
                             .props
@@ -123,10 +128,13 @@ fn PartsProbe() -> impl IntoElement {
                 }),
         )
         .child(
-            nsh_base::button()
+            nsh_base::Button::element(Default::default())
                 .test_id("recolor")
                 .child(text("Recolor"))
-                .on_press(move || {
+                .on_event(move |event: &nsh_base::ButtonEvent| {
+                    if *event != nsh_base::ButtonEvent::Press {
+                        return;
+                    }
                     node.update(|node| {
                         Arc::make_mut(node)
                             .props
@@ -135,10 +143,13 @@ fn PartsProbe() -> impl IntoElement {
                 }),
         )
         .child(
-            nsh_base::button()
+            nsh_base::Button::element(Default::default())
                 .test_id("reset")
                 .child(text("Reset"))
-                .on_press(move || {
+                .on_event(move |event: &nsh_base::ButtonEvent| {
+                    if *event != nsh_base::ButtonEvent::Press {
+                        return;
+                    }
                     node.update(|node| {
                         let node = Arc::make_mut(node);
                         node.props.remove("indicator-border-color");
@@ -333,15 +344,17 @@ type Started = (Headless, Arc<Mutex<Vec<Event>>>, Arc<Mutex<Option<String>>>);
 fn start(kind: &'static str) -> Started {
     let events = Arc::new(Mutex::new(Vec::new()));
     let rejection = Arc::new(Mutex::new(None));
-    let mut app = Headless::start(EngineConfig {
+    let mut config = EngineConfig {
         context: EngineContext::default().with(Fixture {
             kind,
             events: events.clone(),
             rejection: rejection.clone(),
         }),
         ..EngineConfig::new(Root::of::<ControlledProbe>())
-    })
-    .unwrap();
+    };
+    // The test exercises desktop Tab traversal; GenericOS keeps Tab in fields.
+    config.environment.os = nsh_core::platform::Os::MacOs;
+    let mut app = Headless::start(config).unwrap();
     app.wait_for("role:checkbox[Choose rows]").unwrap();
     (app, events, rejection)
 }
@@ -361,6 +374,11 @@ fn checkbox_and_toggle_keep_native_controlled_refusal_mixed_state_and_disabled_b
         app.type_text("id:lui-3", "").unwrap();
         app.press_key("shift+tab").unwrap();
         app.press_key("space").unwrap();
+        assert_eq!(
+            *events.lock().unwrap(),
+            [Event::Toggle(2, true)],
+            "desktop keyboard Space must request one controlled change"
+        );
         app.press("role:checkbox[Choose rows]").unwrap();
         assert_eq!(
             *events.lock().unwrap(),
