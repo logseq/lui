@@ -267,6 +267,8 @@ fn native_hover_and_keyboard_focus_pause_timeout_then_resume_remaining_time() {
         0,
         "focus keeps the stack paused after pointer departure"
     );
+    // The first Tab reaches Undo inside this Toast; the second leaves it.
+    app.press_key("tab").unwrap();
     app.press_key("tab").unwrap();
     app.run_for(Duration::from_millis(1300)).unwrap();
     assert_eq!(dismissals(&fixture), 1);
