@@ -173,6 +173,8 @@ fn StackedSpacers() -> impl IntoElement {
 fn spacer_app(opt_in: bool) -> (Headless, Arc<Mutex<Vec<Event>>>) {
     let events = Arc::new(Mutex::new(Vec::new()));
     let mut config = EngineConfig::new(Root::of::<StackedSpacers>());
+    config.environment.idiom = nsh_core::platform::Idiom::Desktop;
+    config.environment.os = nsh_core::platform::Os::MacOs;
     config.context = EngineContext::default().with(SpacerProbe {
         opt_in,
         events: events.clone(),
