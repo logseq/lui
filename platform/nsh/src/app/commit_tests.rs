@@ -15,7 +15,7 @@ use std::{
 #[component]
 fn CommittedMeasurement() -> impl IntoElement {
     let reference = element_ref();
-    let result = signal("waiting for commit".to_owned());
+    let result = signal(SharedString::from("waiting for commit"));
     spawn(async move {
         wait_for_commit().await.unwrap();
         assert!(
@@ -27,7 +27,7 @@ fn CommittedMeasurement() -> impl IntoElement {
             .await
             .expect("a real native measurement");
         assert_eq!(measured.frame.size, Size::new(px(320.0), px(180.0)));
-        result.set("measured without a display frame".to_owned());
+        result.set("measured without a display frame".into());
     });
     view()
         .w(px(320.0))
