@@ -105,6 +105,32 @@ pub struct Reply {
     pub root: i64,
     /// Logseq callback order; generic applications use `batches` and `snapshot`.
     pub messages: Option<Vec<ApplicationMessage>>,
+    /// Read-only active editor query, populated only for that operation.
+    pub editor_snapshot: Option<EditorSnapshot>,
+}
+
+/// The authoritative native editor display model, including composition.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct EditorSnapshot {
+    pub source: String,
+    /// UTF-8 byte offsets, checked against `source` before returning to callers.
+    pub anchor: usize,
+    pub caret: usize,
+}
+impl EditorSnapshot {
+    fn decode(json: &str) -> Result<Option<Self>, String> {
+        let snapshot: Option<Self> = serde_json::from_str(json)
+            .map_err(|error| format!("OCaml editor snapshot: {error}"))?;
+        if let Some(snapshot) = &snapshot
+            && (!snapshot.source.is_char_boundary(snapshot.anchor)
+                || !snapshot.source.is_char_boundary(snapshot.caret))
+        {
+            return Err(
+                "OCaml editor snapshot offsets must be UTF-8 boundaries within source".into(),
+            );
+        }
+        Ok(snapshot)
+    }
 }
 
 /// One ordered Logseq callback result. Host requests may configure later batches.
@@ -145,6 +171,7 @@ enum Operation {
     },
     Pump,
     PlatformEvent(PlatformEvent),
+    EditorSnapshot(String),
     Event(Event),
     Agent(String),
     Resync,
@@ -232,6 +259,17 @@ impl Session {
     /// Delivers a host reply and drains work it enqueued on the same worker.
     pub async fn platform_event(&self, event: PlatformEvent) -> Result<Reply, String> {
         self.request(Operation::PlatformEvent(event)).await
+    }
+
+    /// Reads OCaml's active editor display model on the same serialized worker.
+    pub async fn editor_snapshot(
+        &self,
+        block_id: String,
+    ) -> Result<Option<EditorSnapshot>, String> {
+        Ok(self
+            .request(Operation::EditorSnapshot(block_id))
+            .await?
+            .editor_snapshot)
     }
 
     /// Delivers one semantic event and returns its patches.
@@ -358,6 +396,8 @@ type NumberFn = unsafe extern "C" fn(i64, f64) -> i32;
 type PointerFn = unsafe extern "C" fn(i64, f64, f64, i32, i32, *const c_char, i32) -> i32;
 type RangeFn = unsafe extern "C" fn(i64, i64, i64) -> i32;
 type WindowFn = unsafe extern "C" fn(i64, i64, i64, i64, *const i64, i32) -> i32;
+type EditorSnapshotFn =
+    unsafe extern "C" fn(*const c_char, i32, extern "C" fn(*const c_char, i32)) -> i32;
 type ScrollCompletedFn = unsafe extern "C" fn(i64, i64, *const c_char) -> i32;
 
 struct Exports {
@@ -386,6 +426,7 @@ struct Exports {
     visible_range: RangeFn,
     scroll_completed: Option<ScrollCompletedFn>,
     virtual_window: Option<WindowFn>,
+    editor_snapshot: Option<EditorSnapshotFn>,
     agent: Option<unsafe extern "C" fn(*const c_char, i32, Callback) -> i32>,
 }
 struct Native {
@@ -469,6 +510,7 @@ impl Native {
                 visible_range: required!("lui_ocaml_visible_range"),
                 scroll_completed: optional!("lui_ocaml_scroll_completed"),
                 virtual_window: optional!("lui_ocaml_virtual_window"),
+                editor_snapshot: optional!("lui_ocaml_editor_snapshot_utf8"),
                 agent: optional!("lui_ocaml_agent_utf8"),
             };
             let driver = Driver::load(&library, config)?;
@@ -522,6 +564,16 @@ impl Native {
                     Operation::Pump => self.driver.pump()?,
                     Operation::PlatformEvent(event) => {
                         self.driver.platform_event(&event.encode()?)?
+                    }
+                    Operation::EditorSnapshot(block_id) => {
+                        let query = api
+                            .editor_snapshot
+                            .ok_or("OCaml library has no editor snapshot ABI")?;
+                        query(
+                            block_id.as_ptr().cast(),
+                            length(block_id.len())?,
+                            capture_editor_snapshot,
+                        )
                     }
                     Operation::Close => (api.stop)(),
                     Operation::Resync => {
@@ -688,6 +740,9 @@ impl Native {
         let mut captured = CAPTURE.with(|c| std::mem::take(&mut *c.borrow_mut()));
         let mut ordered = driver::take_messages().transpose()?;
         let mut snapshot = None;
+        if accepted == 0 && matches!(operation, Operation::EditorSnapshot(_)) {
+            return Err("OCaml editor snapshot query was refused".into());
+        }
         if accepted == 0 {
             // SAFETY: same worker/thread and callback lifetime as above. A refused
             // dispatch leaves the mirror stale, even if it already delivered batches.
@@ -737,6 +792,16 @@ impl Native {
         if let Some(error) = captured.error {
             return Err(error);
         }
+        let editor_snapshot = if matches!(operation, Operation::EditorSnapshot(_)) {
+            EditorSnapshot::decode(
+                captured
+                    .editor_snapshot
+                    .as_deref()
+                    .ok_or("OCaml editor snapshot query returned no payload")?,
+            )?
+        } else {
+            None
+        };
         let batches: Vec<Vec<Batch>> = captured
             .patches
             .iter()
@@ -784,6 +849,7 @@ impl Native {
                 .then(|| Duration::from_secs_f64((delay / 1000.0).min(86400.0))),
             root,
             messages,
+            editor_snapshot,
         })
     }
 }
@@ -797,6 +863,7 @@ struct Capture {
     patches: Vec<String>,
     diagnostic: Option<String>,
     agent: Option<String>,
+    editor_snapshot: Option<String>,
     error: Option<String>,
 }
 thread_local! { static CAPTURE: RefCell<Capture> = RefCell::new(Capture::default()); }
@@ -836,4 +903,46 @@ extern "C" fn capture_diagnostic(pointer: *const c_char) {
 }
 extern "C" fn capture_agent(pointer: *const c_char) {
     capture(pointer, |c, json| c.agent = Some(json));
+}
+
+extern "C" fn capture_editor_snapshot(pointer: *const c_char, len: i32) {
+    let result = std::panic::catch_unwind(|| {
+        CAPTURE.with(|capture| {
+            let mut capture = capture.borrow_mut();
+            if pointer.is_null() || len < 0 {
+                capture.error = Some("invalid OCaml editor snapshot slice".into());
+                return;
+            }
+            // SAFETY: the editor snapshot export borrows this exact byte range
+            // until the synchronous receive callback returns.
+            let bytes = unsafe { std::slice::from_raw_parts(pointer.cast::<u8>(), len as usize) };
+            match std::str::from_utf8(bytes) {
+                Ok(json) => capture.editor_snapshot = Some(json.to_owned()),
+                Err(_) => capture.error = Some("invalid UTF-8 in editor snapshot".into()),
+            }
+        });
+    });
+    if result.is_err() {
+        CAPTURE.with(|capture| {
+            if let Ok(mut capture) = capture.try_borrow_mut() {
+                capture.error =
+                    Some("Rust callback panicked while receiving editor snapshot".into());
+            }
+        });
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::EditorSnapshot;
+    #[test]
+    fn snapshot_offsets_follow_utf8_byte_boundaries() {
+        let snapshot = EditorSnapshot::decode(r#"{"source":"A中","anchor":1,"caret":4}"#)
+            .unwrap()
+            .unwrap();
+        assert_eq!(snapshot.source, "A中");
+        assert!(EditorSnapshot::decode(r#"{"source":"A中","anchor":2,"caret":4}"#).is_err());
+        assert!(EditorSnapshot::decode(r#"{"source":"A中","anchor":1,"caret":5}"#).is_err());
+        assert!(EditorSnapshot::decode("null").unwrap().is_none());
+    }
 }

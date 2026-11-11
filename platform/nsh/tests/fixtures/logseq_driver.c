@@ -66,3 +66,11 @@ int32_t lui_ocaml_toggle_changed(int64_t n, int32_t v) { (void)n; (void)v; retur
 int32_t lui_ocaml_slider_changed(int64_t n, double v) { (void)n; (void)v; return same_thread(); }
 int32_t lui_ocaml_text_changed_utf8(int64_t n, const char *s, int32_t l) { (void)n; (void)s; (void)l; return same_thread(); }
 int32_t lui_ocaml_visible_range(int64_t n, int64_t a, int64_t b) { (void)n; (void)a; (void)b; return same_thread(); }
+int32_t lui_ocaml_editor_snapshot_utf8(const char *id, int32_t len, request_fn receive) {
+  if (!same_thread()) return 0;
+  const char active[] = "block\0id";
+  const char *json = len == (int32_t)sizeof(active)-1 && memcmp(id, active, (size_t)len) == 0
+    ? "{\"source\":\"A\xE4\xB8\xAD\",\"anchor\":1,\"caret\":4}" : "null";
+  receive(json, (int32_t)strlen(json));
+  return 1;
+}

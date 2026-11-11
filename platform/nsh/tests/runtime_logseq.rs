@@ -61,6 +61,13 @@ async fn exercise(path: String) -> Result<(), String> {
     assert!(
         matches!(recovery.messages.as_deref(), Some([ApplicationMessage::Snapshot(batch)]) if batch.generation == 3)
     );
+    let snapshot = session
+        .editor_snapshot("block\0id".into())
+        .await?
+        .ok_or("missing active editor")?;
+    assert_eq!(snapshot.source, "A中");
+    assert_eq!((snapshot.anchor, snapshot.caret), (1, 4));
+    assert!(session.editor_snapshot("inactive".into()).await?.is_none());
     assert!(session.tick().await.is_err());
     assert!(session.pause(true).await.is_err());
     assert!(session.advance(1.0).await.is_err());

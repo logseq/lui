@@ -4179,3 +4179,13 @@ For lifecycle callbacks that may run while a native owner is retiring, use
 reports an undeclared event or malformed payload. `emit` retains its original
 error-on-retired behavior. This lets native Blur cleanup avoid treating normal
 owner disposal as a schema failure.
+
+`Session::editor_snapshot(block_id).await` uses the existing optional
+`lui_ocaml_editor_snapshot_utf8` export on that same worker. It returns `None`
+when no matching editor is active, or `EditorSnapshot { source, anchor, caret }`
+for the authoritative display model including composition. Anchor/caret are
+UTF-8 byte offsets and must lie on source character boundaries; malformed
+snapshots fail explicitly. Block identifiers and JSON replies carry lengths, so
+embedded NUL bytes are preserved. The query has no input dispatch, clock tick,
+secondary editor cache, or second runtime thread. A missing or refused query is
+an error rather than an empty-editor result.
