@@ -477,6 +477,8 @@ impl Renderer {
                 | "tree"
                 | "list-item"
                 | "bottom-tabs"
+                | "breadcrumb"
+                | "stepper"
                 | "context-menu"
         )
         .then(|| self.child_renderer(id, incarnation))

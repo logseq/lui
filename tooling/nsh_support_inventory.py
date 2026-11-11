@@ -10,14 +10,14 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "docs/agent-guide/review-probes/2026-11-11/nsh-support-inventory.md"
-SOURCE_NAMES = ["render.rs", "controls.rs", "style.rs", "virtual_rows.rs", "app.rs", "ui/mod.rs", "ui/controls.rs", "events.rs", "ui/icons.rs", "controls/basic.rs", "controls/collections.rs", "controls/surfaces.rs"]
+SOURCE_NAMES = ["render.rs", "controls.rs", "style.rs", "virtual_rows.rs", "app.rs", "ui/mod.rs", "ui/controls.rs", "events.rs", "ui/icons.rs", "controls/basic.rs", "controls/collections.rs", "controls/surfaces.rs", "controls/navigation.rs", "images.rs"]
 ROUTES = {
     "root": "core view", "row": "core view + flex direction", "column": "core view",
     "box": "core view", "panel": "core view", "card": "core view", "spacer": "core view + grow/shrink",
     "text": "core text", "heading": "core text", "paragraph": "core text", "label": "core text", "kbd": "core text",
     "text-field": "themed base Input", "secure-field": "themed base Input + masked",
     "input": "themed base Input", "search-field": "themed base Input", "textarea": "themed base Input + multiline",
-    "checkbox": "themed base Checkbox", "scroll": "core Scroll", "image": "core Image",
+    "checkbox": "themed base Checkbox", "scroll": "core Scroll", "image": "core Image + canonical URL/fit/name + Load ABI",
     "virtual-list": "core VirtualList + bounded LUI demand adapter",
     "button": "CommandButton -> base Button/Tab", "toggle-button": "base Toggle",
     "toggle": "base Checkbox", "switch": "base Switch", "radio": "base Radio",
@@ -53,8 +53,15 @@ ROUTES.update({
     "list-section": "core semantic group",
     "list-section-header": "core header group",
     "list-section-footer": "core footer group",
-    "bottom-tabs": "shared Tabs + native roving selection",
-    "bottom-tab": "base Tab with model-owned selection",
+    "bottom-tabs": "shared native Tabs triggers + lazy retained keyed pages",
+    "bottom-tab": "retained core Scroll region + separate model-owned base Tab trigger",
+    "breadcrumb": "base Toolbar + retained authored children and keyed separators",
+    "pagination": "base Toolbar + retained authored children",
+    "stepper": "core List + keyed Step position/state context",
+    "step": "semantic core host + live active/completed/pending indicator",
+    "timeline": "core semantic List + retained authored TimelineItem children",
+    "timeline-item": "interactive core host + themed marker/content/connector",
+    "split": "base ResizeHandle + controlled keyed panes and scoped keyboard/AT divider",
 })
 
 HOST_EVENT_KINDS = {
@@ -65,13 +72,19 @@ HOST_EVENT_KINDS = {
     "dialog", "popover", "tooltip", "select", "combobox", "menu-trigger",
     "stack", "overlay", "alert", "bubble", "icon", "status-bar", "table-row",
     "table-cell", "list-section", "list-section-header", "list-section-footer",
-    "drawer", "resizable", "edge-inset",
+    "drawer", "resizable", "edge-inset", "bottom-tabs", "breadcrumb", "pagination",
+    "stepper", "step", "timeline", "timeline-item", "split",
 }
 
 # Concrete validator restrictions are distinct from accepted property gaps and
 # qualifications that still require a native operating-system run.
 RESTRICTIONS = {
     "drawer": ["Requires exactly two canonical children: sidebar first and main content second."],
+    "split": [
+        "Requires exactly two canonical pane children.",
+        "Rejects a resize-handle-offset outside the native f32 layout range.",
+        "Rejects nonzero resize-duration and any authored resize-easing or resize-origin; animated track resizing is not implemented.",
+    ],
     "edge-inset": [
         "At most 32,760 children because native grid line indices use signed 16-bit values.",
         "Rejects any authored hover-*, pressed-*, focus-*, selected-* or disabled-* pooled state-paint property.",
@@ -82,6 +95,12 @@ RESTRICTIONS = {
         "Adding or removing expanded within the same incarnation is rejected; switching flat/disclosure mode requires a new node incarnation.",
     ],
     "avatar": ["Rejects authored image resources until the native image-resource bridge is available."],
+    "image": [
+        "Rejects any authored image resource ID, including zero and IDs supplied alongside a URL; use canonical url.",
+        "Rejects any authored source-x/source-y/source-width/source-height crop rectangle property.",
+        "Rejects loading=lazy; eager/default uses the native loader.",
+        "Rejects any authored referrer-policy; the native transport's default policy remains.",
+    ],
     "link": ["Without an authored press handler, URL navigation requires a valid external system URL; relative destinations are rejected."],
 }
 
@@ -94,7 +113,7 @@ GAPS = {
     "G11": ({"button", "toggle-button"}, {"tooltip-keys"}, "Command shortcut hints are not forwarded; built-in icons, placement, size and variants have native bindings outside tabs."),
     "G3": ({"text-field", "secure-field", "input", "search-field", "textarea", "combobox"}, {"input-type", "submit-on-enter", "submit-on-blur", "navigate-enabled"}, "Input hint/navigation/submit policies are not forwarded; native Input defaults remain."),
     "G4": ({"checkbox", "toggle"}, {"label-opacity", "indicator-border-color", "checked-indicator-border-color", "toggle-detail-enabled"}, "Checkbox routes forward checked/indeterminate/disabled/label; authored indicator/detail behavior remains absent."),
-    "G5": ({"image"}, {"url", "source-x", "source-y", "source-width", "source-height", "image-fit", "alt", "loading", "referrer-policy"}, "Image route reads source only; alternative URL, cropping, fit and image metadata are not forwarded."),
+    "G5": ({"image"}, {"image", "source-x", "source-y", "source-width", "source-height", "referrer-policy"}, "Image forwards canonical URL, alt/label, fit, eager/default loading and native Load. Resource IDs, crop rectangles and authored referrer policy are explicitly rejected; loading=lazy is a value restriction listed separately, not a missing eager-loading path."),
     "G6": ({"heading"}, {"heading-level"}, "Heading uses the same core text route, without heading role/level or level-based presentation."),
     "G7": ({"scroll"}, {"orientation"}, "Scroll route does not set horizontal mode; the native default remains."),
     "G8": ({"list", "virtual-list"}, {"style", "list-style"}, "Container appearance and CSS list markers are not implemented by the Scroll/VirtualList routes."),
@@ -103,6 +122,7 @@ GAPS = {
 }
 
 TESTS = {
+    "image": ["canonical_url_fit_and_accessible_name_preserve_image_defaults", "url_fit_and_atomic_rejections_keep_the_image_and_editor_native_identity", "canonical_image_load_reaches_the_existing_ocaml_callback"],
     "drawer": ["drawer_uses_native_sheet_and_keeps_refused_selected_state"],
     "resizable": ["resizable_native_drag_clamps_and_reconciles_source_without_remounting"],
     "edge-inset": ["edge_inset_measures_all_pinned_children_and_scopes_surface_spacing_to_pins", "edge_inset_preserves_editor_identity_draft_and_focus_when_main_role_changes", "edge_inset_logical_edges_keep_physical_padding_in_rtl", "edge_inset_rejects_unavailable_pooled_paint_atomically", "edge_inset_parts_keep_surface_properties_off_the_main_host", "edge_inset_appear_follows_visibility_without_replacing_native_nodes"],
@@ -119,8 +139,15 @@ TESTS = {
     "table": ["static_table_preserves_cell_and_editor_identity_through_a_text_update"],
     "table-row": ["static_table_preserves_cell_and_editor_identity_through_a_text_update"],
     "table-cell": ["static_table_preserves_cell_and_editor_identity_through_a_text_update"],
-    "bottom-tabs": ["bottom_tabs_use_native_arrows_skip_disabled_and_follow_canonical_selection"],
-    "bottom-tab": ["bottom_tabs_use_native_arrows_skip_disabled_and_follow_canonical_selection"],
+    "bottom-tabs": ["bottom_tabs_use_native_arrows_skip_disabled_and_follow_canonical_selection", "bottom_tab_pages_are_lazy_controlled_and_keep_editor_state_through_reorder", "bottom_tab_page_buttons_keep_their_own_activation_and_body_edits_do_not_reappear", "bottom_tab_effective_selection_matches_first_selected_and_first_child_defaults", "bottom_tab_page_keeps_its_own_scroll_position_when_hidden_and_shown"],
+    "bottom-tab": ["bottom_tabs_use_native_arrows_skip_disabled_and_follow_canonical_selection", "bottom_tab_pages_are_lazy_controlled_and_keep_editor_state_through_reorder", "bottom_tab_page_buttons_keep_their_own_activation_and_body_edits_do_not_reappear", "bottom_tab_effective_selection_matches_first_selected_and_first_child_defaults", "bottom_tab_page_keeps_its_own_scroll_position_when_hidden_and_shown"],
+    "breadcrumb": ["authored_navigation_uses_native_roving_without_activating_on_focus", "navigation_layout_reaches_children_and_reorder_keeps_editor_identity"],
+    "pagination": ["authored_navigation_uses_native_roving_without_activating_on_focus", "navigation_layout_reaches_children_and_reorder_keeps_editor_identity"],
+    "stepper": ["steps_follow_canonical_active_live_values_and_keyed_source_positions"],
+    "step": ["steps_follow_canonical_active_live_values_and_keyed_source_positions"],
+    "timeline": ["timeline_uses_live_content_marker_precedence_and_retains_its_host", "timeline_item_preserves_native_pointer_modifiers_and_keyboard_activation"],
+    "timeline-item": ["timeline_uses_live_content_marker_precedence_and_retains_its_host", "timeline_item_preserves_native_pointer_modifiers_and_keyboard_activation"],
+    "split": ["split_native_drag_is_controlled_and_respects_both_pane_bounds", "split_pixel_sources_resize_independently_and_reorder_keeps_editor_focus_and_draft", "split_rtl_handle_geometry_delta_and_zero_width_input_follow_logical_order", "split_native_divider_keyboard_is_scoped_and_animation_options_reject_atomically", "split_geometry_matches_shared_infeasible_limits_and_programmatic_zero"],
     "checkbox": ["native_checkbox_mixed_state_is_controlled_until_the_model_resolves_it"],
     "switch": ["switch_follows_accepted_press_and_keyboard_values_without_duplicate_events", "refused_switch_requests_keep_native_identity_and_accepted_value", "disabled_switch_takes_no_user_event"],
     "toggle-button": ["toggle_button_exposes_pressed_semantics_and_uses_selected_as_value"],
@@ -156,6 +183,7 @@ EMITTED = {
     "drawer": {"toggle-changed"}, "list-item": {"press", "toggle-changed"},
     "link": {"press"}, "accordion": {"toggle-changed"}, "bottom-tab": {"press"},
     "dialog": {"dismiss"}, "sheet": {"dismiss"}, "popover": {"dismiss"},
+    "image": {"load"}, "split": {"value-changed"},
     "virtual-list": {"visible-range", "scroll-completed", "virtual-window"},
 }
 for _kind in ROUTES:
@@ -245,7 +273,7 @@ def markdown(data):
     for key, (_, properties, description) in GAPS.items():
         rows += [f"- **{key}**: {description} Candidate properties: " + ", ".join(f"`{prop}`" for prop in sorted(properties)) + "."]
     rows += ["- **G10** is retired for current generic host routes: authored activation is now installed with live guards. Radio's true press-enabled value remains explicitly rejected.", "",
-             "Priority 1: remaining typed-control pointer/modifier delivery, navigation", "and capture; input submit policy; authored checkbox indicators; image source/fit;", "menu-item icons. Priority 2: remaining appearance, class translation or explicit", "rejection, semantic heading defaults, list appearance and metadata.", "",
+             "Priority 1: remaining typed-control pointer/modifier delivery, navigation", "and capture; input submit policy; authored checkbox indicators; image resources/crop;", "menu-item icons. Priority 2: remaining appearance, class translation or explicit", "rejection, semantic heading defaults, list appearance and metadata.", "",
              "## Event, child and default limitations", "",
              "- Native host routes deliver available modifier/pointer payloads; typed behavior", "  components still expose unit events and do not gain a synthetic observer wrapper.", "  The JSON event-path list is not a claim of full per-field parity. Appearance", "  uses the actual existing ref after native materialization, including disabled", "  controls; it is not an OS-visible-frame notification.",
              "- Input change/submit and Checkbox toggle callbacks now honor live callback", "  flags and enabled state. Row/Column/Box use one native-ref focus transition", "  owner rather than duplicate direct Input focus handlers.",
@@ -253,6 +281,13 @@ def markdown(data):
              "- Core text routes render the node's text value and discard their canonical", "  children. Container admission therefore does not prove rich/composed text.",
              "- Ignored menu-item size/variant and heading/input-submit/orientation properties leave NSH", "  wrapper defaults in control even when an application authors another value.", "  This inventory does not infer canonical absent-property defaults from NSH's", "  defaults. Those need explicit cross-backend behavior tests and migration notes.",
              "- Button/toggle command icons use shared Web SVG assets, native retained size/variant", "  bindings and decorative glyph accessibility. Tab appearance, application icon", "  registration and shortcut hints still need qualification or implementation.", "- Native pointer states used by styles are separate from LUI pointer events.", "  Paint::read dynamically handles prefixed background/foreground/border/opacity/", "  shadow properties; the generator excludes these string-search false positives.", "",
+             "- Image uses canonical url and live native source/fit/name bindings. Default fit",
+             "  is stretch, fit means contain and fill means cover; an accessibility label wins",
+             "  over alt. Successful native decoding emits Load through the existing C ABI.",
+             "  The mapped headless tests check defaults, retention, stale incarnations and",
+             "  atomic rejection; the real OCaml test dispatches an explicit Load. Neither",
+             "  establishes native decoding, HTTP transport or screenshot/pixel fit accuracy.",
+             "  Native decoding has a separate test_nsh_image_app.py packaged-app qualifier.",
              "- Drawer uses a controlled left Sheet: selected remains application owned;",
              "  Escape/backdrop requests toggle-changed only when enabled and toggle-enabled.",
              "  It introduces no separate dismiss transport. Its retained main editor survives",
@@ -268,6 +303,30 @@ def markdown(data):
              "  returns pinned space while retaining native child identities. The appearance",
              "  visibility test is listed because its declaration exists; this generator",
              "  does not run it or qualify a native visible-frame notification.",
+             "- BottomTabs uses separate native Tab triggers and lazy retained keyed pages.",
+             "  The first source-selected child wins, else the first child even when disabled.",
+             "  Unvisited pages are not materialized; visited hidden pages retain native editor",
+             "  identities, drafts and scroll offsets. Page Buttons remain ordinary Buttons.",
+             "  Scoped Appear follows each visible transition rather than body-only edits.",
+             "  The mapped source tests do not by themselves qualify OS focus, IME or pixels.",
+             "- Breadcrumb/Pagination keep authored children under native Toolbar roving focus;",
+             "  focus movement does not itself activate them. Gap/main/cross reach the child row.",
+             "  Breadcrumb separators follow keyed child positions without remounting editors.",
+             "  These are authored-child adapters, not a flattened native data-owned pagination API.",
+             "- Stepper derives Step state from keyed source positions and required nonnegative active.",
+             "  Earlier/current/later positions are completed/active/pending; out-of-range active",
+             "  values remain representable. Native semantics expose the current step without",
+             "  synthesizing a selection callback. Timeline uses retained native hosts: icon wins",
+             "  over indicator text, then a dot; connector defaults true; selected/variant/title/",
+             "  description/meta remain live. TimelineItem preserves canonical native pointer",
+             "  payloads through NativeEvents instead of substituting a unit-event-only Button.",
+             "- Split is controlled: absent ratio is 0.5, gap is 9 points, and the handle uses",
+             "  the gap (or 3 points at zero gap) unless authored. Explicit handle width zero",
+             "  disables adjustment. Pixel/ratio proposals preserve the source units, both-pane",
+             "  limits and RTL order; rejected proposals do not mutate accepted geometry.",
+             "  Native ResizeHandle owns capture; scoped divider key/AT actions request changes.",
+             "  Native handle and outer divider accessibility are not yet a consolidated part.",
+             "  The mapped tests cover geometry/retention/rejection; not native OS appearance.",
              "- ListItem flat/disclosure composition preserves retained body and nested-row",
              "  identities. Its mapped rejection/rollback tests do not establish inline editing,",
              "  rich typed activation details, long/double press or Return-only submission.", "",
@@ -279,7 +338,7 @@ def markdown(data):
     rows += ["", "These restrictions reject the entire transaction before publication, preserving",
              "accepted state and generation for a corrected retry.", "",
              "## Evidence and freshness", "",
-             "Admission/routes: `platform/nsh/src/render.rs` and `controls.rs`. Presentation:", "`style.rs` and `ui/`. Event delivery: `render.rs`, `app.rs`, and the native C ABI.", "The JSON test references identify actual test declarations, including real OCaml", "Todos/virtual rows and focused NSH control tests. A source reference is not a", "claim that a test covers every property on that kind.", "",
+             "Admission/routes: `platform/nsh/src/render.rs`, `controls.rs` and `controls/*`.", "Presentation:", "`style.rs` and `ui/`. Event delivery: `render.rs`, `app.rs`, and the native C ABI.", "The JSON test references identify actual test declarations, including real OCaml", "Todos/virtual rows and focused NSH control tests. A source reference is not a", "claim that a test covers every property on that kind.", "",
              "Unreferenced-property candidates in JSON are review prompts, not automatically", "verified omissions. Conversely, a literal reference elsewhere does not prove", "that a specific kind forwards that property. The reviewed gap catalog above", "uses the concrete route bodies, not literal presence alone.", "", "| Source | SHA-256 |", "| --- | --- |"]
     rows += [f"| `{name}` | `{digest}` |" for name, digest in data["source_sha256"].items()]
     rows += ["", "Concrete route evidence at this generated source checkpoint:", "",
@@ -290,7 +349,7 @@ def markdown(data):
              "| G12 | events.rs `NativeEvents::attach`; ComponentElement lacks public Interactive root handlers |",
              "| G3 | render.rs basic Input branch; controls.rs `picker` combobox Input branch |",
              "| G4 | render.rs CheckboxProps and controls.rs toggle CheckboxProps omit authored indicator/detail props |",
-             "| G5 | render.rs Image branch reads only `source` |",
+             "| G5 | images.rs `source`/`fit`/`label`/`validate`; render.rs Image on_load; runtime.rs optional Load ABI |",
              "| G6 | render.rs combined text/heading/paragraph/label/kbd branch |",
              "| G7 | render.rs Scroll branch creates default Scroll without horizontal configuration |",
              "| G8 | controls.rs list branch and virtual_rows.rs VirtualList builder |",

@@ -22,9 +22,10 @@ follow the canonical shared Split geometry. Controlled zero closure follows the
 shared API and Web path; the older Swift fraction normalization treats zero as
 its absent-value fallback and is not copied into the NSH implementation.
 
-The five prepared tests cover native drag/refusal, pane bounds, source/parent
+The five passing Headless tests cover native drag/refusal, pane bounds, source/parent
 resizing, reorder identity/focus/draft, RTL handle placement/delta, zero-width
 input suppression, scoped keyboard behavior, atomic animation rejection and the
-shared infeasible-constraint math. No agent Cargo/build/test command was run.
-Light/dark visual checks, actual desktop motion, screen-reader output and the
-main-session test results remain qualification work.
+shared infeasible-constraint math. The main session ran them as part of the full
+126-test adapter/OCaml suite. Light/dark visual checks, actual desktop motion and
+screen-reader output remain qualification work; see the component-batch evidence
+under docs/agent-guide/review-probes/2026-11-11/.

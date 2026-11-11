@@ -11,8 +11,22 @@ pub(super) fn supported(kind: &str) -> bool {
     )
 }
 
-/// Keep layout on the actual authored-child container. The outer semantic
-/// group owns padding, size, identity and pointer listeners; Toolbar owns only
+fn navigation_label(node: Signal<Arc<Node>>) -> SharedString {
+    let node = node.get();
+    let authored = node.string("accessibility-label");
+    if authored.is_empty() {
+        SharedString::from(if node.kind == "breadcrumb" {
+            "Breadcrumb"
+        } else {
+            "Pagination"
+        })
+    } else {
+        SharedString::from(authored.to_owned())
+    }
+}
+
+/// Keep layout on the actual authored-child container. The outer navigation
+/// landmark owns padding, size, identity and pointer listeners; Toolbar owns only
 /// native roving focus and the child row, including its authored gap/main/cross.
 fn horizontal(
     node: Signal<Arc<Node>>,
@@ -42,7 +56,7 @@ fn horizontal(
         _ => children,
     };
     let row = nsh_base::Toolbar::element(nsh_base::ToolbarProps {
-        accessibility_label: Prop::bind(move || Some(label(node))),
+        accessibility_label: Prop::bind(move || Some(navigation_label(node))),
         ..Default::default()
     })
     .flex_1()
@@ -60,8 +74,8 @@ fn horizontal(
         view()
             .flex_row()
             .min_w_0()
-            .role(AccessibilityRole::Group)
-            .label(move || label(node))
+            .role(AccessibilityRole::Navigation)
+            .label(move || navigation_label(node))
             .child(row),
     )
 }
@@ -378,9 +392,9 @@ fn timeline_item(node: Signal<Arc<Node>>, presentation: Presentation) -> AnyElem
             .active(|style| {
                 style.opacity(move || {
                     if node.get().boolean("press-enabled", false) {
-                        0.7
+                        0.7_f32
                     } else {
-                        1.0
+                        1.0_f32
                     }
                 })
             })
@@ -525,7 +539,7 @@ mod tests {
                     "stepper",
                     1,
                     1,
-                    json!({"accessibility-label":"Progress"}),
+                    json!({"accessibility-label":"Progress","active":0}),
                 );
                 for (index, (id, name)) in [(11, "One"), (12, "Two"), (13, "Three")]
                     .into_iter()
@@ -574,6 +588,10 @@ mod tests {
                     "f6",
                     json!([{"op":"move-child","parent":10,"child":13,"index":0}]),
                 ),
+                (
+                    "f8",
+                    json!([{"op":"remove-prop","id":10,"property":"accessibility-label"}]),
+                ),
             ],
             "stepper" => vec![
                 (
@@ -590,7 +608,7 @@ mod tests {
                 ),
                 (
                     "f8",
-                    json!([{"op":"set-prop","id":10,"property":"active","value":-1}]),
+                    json!([{"op":"set-prop","id":10,"property":"active","value":0}]),
                 ),
             ],
             _ => vec![
@@ -609,7 +627,7 @@ mod tests {
                 ),
                 (
                     "f6",
-                    json!([{"op":"set-prop","id":11,"property":"icon","value":""}]),
+                    json!([{"op":"remove-prop","id":11,"property":"icon"}]),
                 ),
                 (
                     "f7",
@@ -658,7 +676,10 @@ mod tests {
     fn authored_navigation_uses_native_roving_without_activating_on_focus() {
         for kind in ["breadcrumb", "pagination"] {
             let (mut app, events) = start(kind);
-            assert_eq!(app.screen().count("role:group[Navigation]").unwrap(), 1);
+            assert_eq!(
+                app.screen().count("role:navigation[Navigation]").unwrap(),
+                1
+            );
             assert_eq!(app.screen().count("role:toolbar[Navigation]").unwrap(), 1);
             assert_eq!(
                 app.screen().count("role:button").unwrap(),
@@ -679,6 +700,24 @@ mod tests {
             assert_eq!(
                 *events.lock().unwrap(),
                 [Event::Press(13), Event::Press(11)]
+            );
+            app.press_key("f8").unwrap();
+            let fallback = if kind == "breadcrumb" {
+                "Breadcrumb"
+            } else {
+                "Pagination"
+            };
+            assert_eq!(
+                app.screen()
+                    .count(&format!("role:navigation[{fallback}]"))
+                    .unwrap(),
+                1
+            );
+            assert_eq!(
+                app.screen()
+                    .count(&format!("role:toolbar[{fallback}]"))
+                    .unwrap(),
+                1
             );
         }
     }
@@ -713,7 +752,7 @@ mod tests {
         }
     }
     #[test]
-    fn steps_follow_default_active_live_values_and_keyed_source_positions() {
+    fn steps_follow_canonical_active_live_values_and_keyed_source_positions() {
         let (mut app, events) = start("stepper");
         assert_eq!(app.screen().count("role:list[Progress]").unwrap(), 1);
         assert_eq!(app.screen().count("role:group[One (active)]").unwrap(), 1);
@@ -756,7 +795,8 @@ mod tests {
             );
         }
         app.press_key("f8").unwrap();
-        for name in ["One", "Two", "Three"] {
+        assert_eq!(app.screen().count("role:group[Three (active)]").unwrap(), 1);
+        for name in ["One", "Two"] {
             assert_eq!(
                 app.screen()
                     .count(&format!("role:group[{name} (pending)]"))

@@ -669,7 +669,7 @@ mod tests {
                         "f3" => {
                             json!([{"op":"set-prop","id":2,"property":if pixels {"first-pane-width"} else {"value"},"value":if pixels {180.0} else {0.25}}])
                         }
-                        "f4" => json!([{"op":"insert-child","parent":2,"child":4,"index":0}]),
+                        "f4" => json!([{"op":"move-child","parent":2,"child":4,"index":0}]),
                         "f5" => json!([{"op":"set-prop","id":2,"property":"width","value":309}]),
                         "f6" => {
                             json!([{"op":"set-prop","id":2,"property":"change-enabled","value":false}])
@@ -787,14 +787,22 @@ mod tests {
         app.press_key("f4").unwrap();
         assert_eq!(split_node(&app, "lui-4").id, second);
         assert_eq!(split_node(&app, "lui-3").id, first);
-        assert_eq!(app.screen().focused(), Some(first));
         assert_eq!(
             app.screen().input_text("id:lui-3").unwrap(),
             Some("First draft")
         );
+        app.press_key("x").unwrap();
+        assert_eq!(
+            app.screen().input_text("id:lui-3").unwrap(),
+            Some("First draftx")
+        );
         assert_eq!(
             split_node(&app, "lui-2-split-pane-4").bounds.size.width,
             px(180.0)
+        );
+        assert_eq!(
+            split_node(&app, "lui-2-split-pane-3").bounds.size.width,
+            px(120.0)
         );
     }
 

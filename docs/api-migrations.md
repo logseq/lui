@@ -3134,9 +3134,11 @@ backend until that path is qualified. Unsupported values reject the entire
 transaction before publication, preserving the accepted tree and retry generation.
 The shared wire schema, Apple, Android and Web implementations are unchanged.
 
-The added Headless regressions are source-prepared only until the main session
-runs them. They do not establish desktop appearance, screen-reader output or
-cross-platform qualification.
+The five added Headless regressions passed in the main session, including
+controlled native drag, source/parent resizing, retained editor focus through
+reorder, RTL and atomic rejection. They do not establish desktop appearance,
+screen-reader output or cross-platform qualification. See the
+[component-batch evidence](agent-guide/review-probes/2026-11-11/nsh-component-batch.md).
 
 ### NSH authored-child navigation, steps and timelines
 
@@ -3149,9 +3151,10 @@ existing shared NSH styling or lifecycle limitations documented above.
 Breadcrumb and Pagination preserve every authored child. Pagination does not
 infer a page count or create previous/next/page buttons: NSH's data-driven
 Pagination component has a different API, so the adapter uses its public Toolbar
-controller around LUI's existing children instead. The canonical outer Group
-keeps the authored identity, accessibility label, padding and sizing. Its inner
-native Toolbar receives `gap`, `main` and `cross` through the shared layout
+controller around LUI's existing children instead. The outer native Navigation
+landmark keeps the authored identity, accessibility label, padding and sizing.
+An omitted or empty label defaults to "Breadcrumb" or "Pagination" respectively.
+Its inner native Toolbar receives `gap`, `main` and `cross` through the shared layout
 compiler on the actual child row. Defaults remain horizontal with centered cross
 alignment, gap 4 for Breadcrumb and gap 2 for Pagination. Breadcrumb inserts a
 hidden decorative chevron before each child after the first, including an editor
@@ -3163,8 +3166,9 @@ command, and moving focus does not activate it. Space/Return activate the focuse
 command. Inputs keep their own keyboard stops and editing keys. This differs
 from Apple/Web groups' ordinary button Tab stops and direct-Button eligibility:
 native registered descendant Buttons, Toggles, Links and popup triggers can
-participate. Accessibility exposes the canonical outer Group and its nested
-Toolbar rather than pretending that the controller is an invisible landmark.
+participate. Accessibility exposes the outer Navigation landmark and its nested
+Toolbar. The landmark and fallback name are intentional desktop accessibility
+defaults; Apple/Web continue to expose their existing group semantics.
 For example, keep destination selection in the application callback:
 
 ```ocaml
@@ -3174,10 +3178,12 @@ pagination ~label:"Document pages" ~gap:8 [
 ]
 ```
 
-Stepper defaults `active` to zero and derives completed/active/pending from each
-current source index. It does not clamp the value: an index beyond the last step
-completes every step, while a negative index leaves every step pending, matching
-the existing Apple/Web comparison. Reordering keyed Steps updates their numbers,
+Stepper derives completed/active/pending from each current source index. The
+canonical final-node validator requires an explicit nonnegative `active` property:
+use `~active:0` for the first step. An omitted or negative value is rejected
+before native publication, even though existing backend rendering code has a
+zero fallback. The adapter does not clamp an admitted value: an index beyond the
+last step completes every step. Reordering keyed Steps updates their numbers,
 state and last-connector visibility without replacing retained Step hosts. An
 active Step exposes native accessibility `current = Step`; its name includes
 `(active)`, `(completed)` or `(pending)`. NSH currently has no `ListItem` role or
@@ -3197,7 +3203,9 @@ stepper ~label:"Import progress"
 Timeline defaults to a vertical List with zero gap. TimelineItem keeps its title,
 optional description/meta, selected state, variant, icon, indicator text and
 connector live on the same native host. Marker precedence is icon, then indicator
-text, then a dot. `connector` defaults to true even on the last item; pass false
+text, then a dot. To clear a wire `icon`, remove that property; an empty icon
+string is invalid. An empty `indicator` string is valid and selects the dot when
+no icon is present. `connector` defaults to true even on the last item; pass false
 explicitly to end a line. Primary/destructive markers use those semantic theme
 colors, other variants use the muted foreground, and selection uses the shared
 accent. Color feedback honors reduced motion. NSH has no public base

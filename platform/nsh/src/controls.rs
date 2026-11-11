@@ -10,6 +10,7 @@ use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 mod basic;
 mod collections;
+mod navigation;
 mod surfaces;
 
 /// Sparse access to existing retained child signals, without a second tree.
@@ -354,7 +355,8 @@ pub(crate) fn popup_rectangle(value: &str) -> Result<nsh_core::geometry::Bounds<
 }
 
 pub(crate) fn supported(kind: &str) -> bool {
-    surfaces::supported(kind)
+    navigation::supported(kind)
+        || surfaces::supported(kind)
         || basic::supported(kind)
         || collections::supported(kind)
         || matches!(
@@ -529,6 +531,9 @@ pub(crate) fn element(
     }
     if collections::supported(&initial.kind) {
         return collections::element(node, children, emit, presentation);
+    }
+    if navigation::supported(&initial.kind) {
+        return navigation::element(node, children, emit, presentation);
     }
     let id = initial.id;
     Some(match initial.kind.as_str() {
