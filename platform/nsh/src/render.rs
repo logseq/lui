@@ -1,5 +1,6 @@
 //! Retained LUI nodes rendered through public NSH elements and bindings.
 use crate::{
+    contract::{self, OrientationValue},
     events::{Capabilities, NativeEvents},
     extensions::{ExtensionChildren, ExtensionContext, ExtensionEmitter, Extensions},
     store::{Node, Store, Transaction},
@@ -9,7 +10,7 @@ use crate::{
 };
 use nsh_core::{
     element::{Style, create_root},
-    geometry::{Bounds, Points, Size},
+    geometry::{Axis, Bounds, Points, Size},
     prelude::*,
 };
 use serde_json::Value;
@@ -1259,11 +1260,15 @@ impl Renderer {
                     .into_element()
             }
             "scroll" => native_events
-                .attach(if node.string("orientation") == "horizontal" {
-                    scroll().horizontal()
-                } else {
-                    scroll()
-                })
+                .attach(
+                    match style::orientation_axis(
+                        contract::orientation(&node, OrientationValue::Vertical)
+                            .expect("validated canonical Scroll orientation"),
+                    ) {
+                        Axis::Horizontal => scroll().horizontal(),
+                        Axis::Vertical => scroll(),
+                    },
+                )
                 .state_inline_style(style)
                 .child(body)
                 .element_ref(&reference)
@@ -1554,8 +1559,8 @@ fn validate_themes(
             }
             crate::controls::validate_transition(previous, node)?;
             if node.kind == "scroll"
-                && (previous.string("orientation") == "horizontal")
-                    != (node.string("orientation") == "horizontal")
+                && contract::orientation(previous, OrientationValue::Vertical)?
+                    != contract::orientation(node, OrientationValue::Vertical)?
             {
                 return Err("NSH Scroll orientation is fixed while mounted; use a new keyed node to change its axis".into());
             }
@@ -1572,11 +1577,9 @@ fn validate_themes(
             );
         }
         if node.kind == "toolbar"
-            && previous.is_some_and(|old| {
-                old.incarnation == node.incarnation
-                    && (old.string("orientation") == "vertical")
-                        != (node.string("orientation") == "vertical")
-            })
+            && let Some(old) = previous.filter(|old| old.incarnation == node.incarnation)
+            && contract::orientation(old, OrientationValue::Horizontal)?
+                != contract::orientation(node, OrientationValue::Horizontal)?
         {
             return Err("NSH changing toolbar orientation requires remounting the toolbar".into());
         }

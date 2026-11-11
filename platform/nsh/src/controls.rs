@@ -1,9 +1,9 @@
 //! LUI control semantics composed from public NSH behavior components.
 use crate::{
-    contract::{AnchorAlignmentValue, AnchorValue},
+    contract::{self, AnchorAlignmentValue, AnchorValue, OrientationValue},
     render::Event,
     store::Node,
-    ui,
+    style, ui,
 };
 use nsh_core::{
     StyleDecl, StyleKey,
@@ -460,6 +460,13 @@ pub(crate) fn validate_transition(previous: &Node, next: &Node) -> Result<(), St
     collections::validate_transition(previous, next)
 }
 
+fn orientation(node: &Node) -> Axis {
+    style::orientation_axis(
+        contract::orientation(node, OrientationValue::Horizontal)
+            .expect("validated canonical orientation"),
+    )
+}
+
 fn label(node: Signal<Arc<Node>>) -> SharedString {
     let current = node.get();
     let explicit = current.string("accessibility-label");
@@ -765,7 +772,7 @@ pub(crate) fn element(
         "tabs" => presentation.component(
             ui::controls::Tabs::element(ui::controls::TabsProps {
                 theme: Some(theme).into(),
-                vertical: Prop::bind(move || node.get().string("orientation") == "vertical"),
+                vertical: Prop::bind(move || orientation(&node.get()) == Axis::Vertical),
                 label: Prop::bind(move || label(node)),
                 gap: Prop::bind(move || px(node.get().number("gap", 0.0) as f32)),
                 ..Default::default()
@@ -790,12 +797,7 @@ pub(crate) fn element(
         ),
         "toolbar" => presentation.component(
             nsh_base::Toolbar::element(nsh_base::ToolbarProps {
-                axis: if initial.string("orientation") == "vertical" {
-                    Axis::Vertical
-                } else {
-                    Axis::Horizontal
-                }
-                .into(),
+                axis: orientation(&initial).into(),
                 accessibility_label: Prop::bind(move || Some(label(node))),
                 ..Default::default()
             })
@@ -928,7 +930,7 @@ pub(crate) fn element(
                 .accessibility_elements_hidden(true)
                 .bg(move || ui::color(theme, "border"))
                 .style_with(move |s| {
-                    if node.get().string("orientation") == "vertical" {
+                    if orientation(&node.get()) == Axis::Vertical {
                         s.w(px(1.0)).h_full()
                     } else {
                         s.h(px(1.0)).w_full()

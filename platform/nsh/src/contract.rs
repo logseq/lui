@@ -8,7 +8,21 @@ mod generated;
 
 pub use generated::{
     AnchorAlignmentValue, AnchorValue, DisplayValue, FrameAxesValue, ImageFitValue,
+    OrientationValue,
 };
+
+/// Preserve each component's default only when the canonical property is absent.
+pub(crate) fn orientation(
+    node: &Node,
+    default: OrientationValue,
+) -> Result<OrientationValue, String> {
+    match node.props.get("orientation") {
+        None => Ok(default),
+        Some(value) => {
+            OrientationValue::try_from(value.as_str().ok_or("NSH orientation requires a string")?)
+        }
+    }
+}
 
 /// Generated metadata contains no validator AST or oracle fixtures.
 pub static CONTRACT: LazyLock<Value> = LazyLock::new(|| {
@@ -554,6 +568,30 @@ fn transition_supported(value: &str) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn canonical_orientation_defaults_only_when_absent() {
+        let mut node = Node::default();
+        for default in OrientationValue::ALL {
+            assert_eq!(orientation(&node, *default).unwrap(), *default);
+            for value in OrientationValue::ALL {
+                node.props
+                    .insert("orientation".into(), json!(value.as_str()));
+                assert_eq!(orientation(&node, *default).unwrap(), *value);
+            }
+            for value in [
+                json!("future-axis"),
+                json!(""),
+                json!(null),
+                json!(true),
+                json!(1),
+            ] {
+                node.props.insert("orientation".into(), value);
+                assert!(orientation(&node, *default).is_err());
+            }
+            node.props.remove("orientation");
+        }
+    }
 
     static ORACLE: LazyLock<Value> = LazyLock::new(|| {
         serde_json::from_str(include_str!("../tests/fixtures/contract_oracle.json"))

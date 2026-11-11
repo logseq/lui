@@ -3745,7 +3745,7 @@ exceptions separately from missing required component routes.
 
 ## NSH Scroll forwards its authored native axis
 
-`scroll ~orientation:`horizontal` now uses native horizontal Scroll, fixing the
+``scroll ~orientation:`horizontal`` now uses native horizontal Scroll, fixing the
 copied Logseq `views_table.ml` table/header scrolling paths. Omitted orientation
 and explicit `vertical` keep the native vertical default. Pointer/wheel input
 uses the corresponding native axis without a synthetic gesture controller.
@@ -4595,5 +4595,24 @@ add an unhandled case to each domain and require Rust E0004. This checks provide
 exhaustiveness; dynamic JSON/theme strings, geometry, source ownership and runtime
 capabilities still require atomic validation and real application qualification.
 Open strings such as font metrics are not relabeled as closed enums. Remaining
-closed-domain providers, including orientation and variants, need the same gradual
-conversion; this change does not claim that every string path is statically checked.
+closed-domain providers, including variants, need the same gradual conversion; this change does not claim that every string path is statically checked.
+
+### Exhaustive NSH orientation lowering
+
+`contract::OrientationValue` now comes from the canonical `orientation` closed
+domain. Native axis and flex-direction lowering exhaustively match the generated
+variants. Scroll, Toolbar, Tabs, Divider and ViewThatFits reuse these mappings;
+row-like layout uses the same typed domain. Adding a canonical orientation now
+fails provider compilation until both native mappings handle it, with an E0004
+regression probe that compiles the actual provider functions.
+
+Defaults remain component-specific: omitted Scroll orientation means vertical;
+omitted row, Toolbar, Tabs, Divider and ViewThatFits orientation means horizontal.
+An authored unknown or wrongly typed value is an error, rather than a default.
+Scroll and Toolbar still reject an axis change on a retained mounted node;
+replacing its key remains the migration for an intended direction change. For
+example, ``scroll ~orientation:`horizontal`` still selects horizontal native Scroll,
+while omitting the argument selects vertical. OCaml constructors, wire spellings,
+events, and maintained Apple/iOS, Android and Web behavior are unchanged. Dynamic
+wire values still require atomic validation; this does not statically verify
+arbitrary theme strings or geometry.

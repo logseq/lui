@@ -1,12 +1,12 @@
 //! Canonical LUI presentation translated through public NSH style APIs.
 use crate::{
-    contract::{DisplayValue, FrameAxesValue},
+    contract::{self, DisplayValue, FrameAxesValue, OrientationValue},
     store::Node,
 };
 use nsh_core::{
     Color, PropertyValue, StyleDecl, StyleKey, StyleValue,
     element::{AdaptiveColor, Style, StyleRefinement, Tokens},
-    geometry::{Points, Size},
+    geometry::{Axis, Points, Size},
     prelude::*,
 };
 use serde_json::Value;
@@ -866,6 +866,20 @@ fn display_value(value: &Value) -> Result<(PropertyValue, bool), String> {
 }
 
 // Native axes are selected by the canonical enum, never spelling fragments.
+pub(crate) fn orientation_axis(value: OrientationValue) -> Axis {
+    match value {
+        OrientationValue::Horizontal => Axis::Horizontal,
+        OrientationValue::Vertical => Axis::Vertical,
+    }
+}
+
+fn orientation_direction(value: OrientationValue) -> &'static str {
+    match value {
+        OrientationValue::Horizontal => "row",
+        OrientationValue::Vertical => "column",
+    }
+}
+
 fn frame_axes(value: FrameAxesValue) -> [Option<StyleKey>; 2] {
     match value {
         FrameAxesValue::Horizontal => [Some(StyleKey::Width), None],
@@ -947,11 +961,8 @@ fn compile_parts(
             )?;
         }
         "row" | "toolbar" | "button-group" | "toggle-group" | "breadcrumb" => {
-            let direction = if node.string("orientation") == "vertical" {
-                "column"
-            } else {
-                "row"
-            };
+            let direction =
+                orientation_direction(contract::orientation(node, OrientationValue::Horizontal)?);
             declaration(
                 &mut decls,
                 StyleKey::FlexDirection,
@@ -1467,6 +1478,57 @@ mod tests {
             height: px(480.0),
         }
     }
+    #[test]
+    fn canonical_orientation_lowers_exact_native_axis_and_row_direction() {
+        for (axis, native, direction) in [
+            (OrientationValue::Horizontal, Axis::Horizontal, "row"),
+            (OrientationValue::Vertical, Axis::Vertical, "column"),
+        ] {
+            assert_eq!(orientation_axis(axis), native);
+            assert_eq!(orientation_direction(axis), direction);
+            for kind in ["row", "toolbar"] {
+                let actual = compile_parts(
+                    &node(kind, json!({"orientation":axis.as_str()})),
+                    &theme(),
+                    viewport(),
+                )
+                .unwrap()
+                .0;
+                assert_eq!(
+                    actual,
+                    vec![StyleDecl::Set(
+                        StyleKey::FlexDirection,
+                        StyleKey::FlexDirection
+                            .parse_value(StyleValue::Str(direction))
+                            .unwrap(),
+                    )]
+                );
+            }
+        }
+        let default = compile_parts(&node("row", json!({})), &theme(), viewport())
+            .unwrap()
+            .0;
+        assert_eq!(
+            default,
+            vec![StyleDecl::Set(
+                StyleKey::FlexDirection,
+                StyleKey::FlexDirection
+                    .parse_value(StyleValue::Str("row"))
+                    .unwrap(),
+            )]
+        );
+        for value in [json!("future-axis"), json!(""), json!(42)] {
+            assert!(
+                compile_parts(
+                    &node("row", json!({"orientation":value})),
+                    &theme(),
+                    viewport()
+                )
+                .is_err()
+            );
+        }
+    }
+
     #[test]
     fn canonical_frame_axes_set_exact_native_percentage_dimensions() {
         for (wire, keys) in [

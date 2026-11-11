@@ -55,7 +55,7 @@ class NSHContractCompilerTest(unittest.TestCase):
 
     def test_closed_domain_generation_requires_complete_canonical_metadata(self):
         valid = {"display": ["none"], "image-fit": ["fit", "fill"],
-                 "container-relative-frame": ["both"], "anchor": ["below"], "anchor-alignment": ["start"]}
+                 "container-relative-frame": ["both"], "anchor": ["below"], "anchor-alignment": ["start"], "orientation": ["horizontal", "vertical"]}
         for name in valid:
             for values in (None, [], ["none", "none"], ["inline_block"], [[]]):
                 domains = {**valid, name: values}
@@ -73,8 +73,9 @@ class NSHContractCompilerTest(unittest.TestCase):
         # Only this rustfmt-formatted top-level function is the provider.
         # Adjacent helpers may depend on the actual store/native types.
         provider = source[start:source.index("\n}\n", start) + 2]
-        frame_start = source.index("fn frame_axes(")
-        provider += source[frame_start:source.index("\n}\n", frame_start) + 2]
+        for function in ("frame_axes", "orientation_axis", "orientation_direction"):
+            start = source.index("fn " + function + "(")
+            provider += source[start:source.index("\n}\n", start) + 2]
         popup_source = (root / "platform/nsh/src/controls.rs").read_text()
         for function in ("lower_anchor", "lower_anchor_alignment"):
             popup_start = popup_source.index("fn " + function + "(")
@@ -96,6 +97,8 @@ enum StyleKey { Display, Width, Height, MinWidth, MinHeight }
 enum Placement { Top, Bottom, Left, Right }
 #[derive(Debug, PartialEq, Eq)]
 enum Align { Start, Center, End }
+#[derive(Debug, PartialEq, Eq)]
+enum Axis { Horizontal, Vertical }
 enum StyleValue<'a> { Str(&'a str) }
 impl StyleKey {
     fn parse_value(self, value: StyleValue<'_>) -> Result<PropertyValue, &'static str> {
@@ -115,6 +118,14 @@ fn main() {
     for value in ImageFitValue::ALL {
         assert_eq!(ImageFitValue::try_from(value.as_str()), Ok(*value));
     }
+    for value in OrientationValue::ALL {
+        assert_eq!(OrientationValue::try_from(value.as_str()), Ok(*value));
+    }
+    assert_eq!(orientation_axis(OrientationValue::Horizontal), Axis::Horizontal);
+    assert_eq!(orientation_axis(OrientationValue::Vertical), Axis::Vertical);
+    assert_eq!(orientation_direction(OrientationValue::Horizontal), "row");
+    assert_eq!(orientation_direction(OrientationValue::Vertical), "column");
+    assert!(OrientationValue::try_from("not-canonical").is_err());
     for value in FrameAxesValue::ALL {
         assert_eq!(FrameAxesValue::try_from(value.as_str()), Ok(*value));
     }
@@ -168,7 +179,7 @@ fn main() {
             positive = compile_probe(domains)
             self.assertEqual(positive.returncode, 0, positive.stderr)
             subprocess.run([str(binary)], check=True)
-            for property_name in ("display", "image-fit", "container-relative-frame", "anchor", "anchor-alignment"):
+            for property_name in ("display", "image-fit", "container-relative-frame", "anchor", "anchor-alignment", "orientation"):
                 with self.subTest(property=property_name):
                     expanded = {**domains, property_name: [*domains[property_name], "future-provider-test"]}
                     negative = compile_probe(expanded)
@@ -185,7 +196,7 @@ fn main() {
             exported = {
                 "version": 1,
                 "closedDomains": {"display": ["none"], "image-fit": ["fit", "fill"],
-                 "container-relative-frame": ["both"], "anchor": ["below"], "anchor-alignment": ["start"]},
+                 "container-relative-frame": ["both"], "anchor": ["below"], "anchor-alignment": ["start"], "orientation": ["horizontal", "vertical"]},
                 "validators": {
                     "is_finite": {"constructor": "true"},
                     "property_value_supported": {

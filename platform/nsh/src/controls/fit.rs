@@ -1,10 +1,10 @@
 //! Ordered retained alternatives measured by the public native layout engine.
-use super::{ChildIdentity, Presentation};
+use super::{ChildIdentity, Presentation, orientation};
 use crate::store::Node;
 use nsh_core::{
     StyleDecl, StyleKey, StyleValue,
     element::Style,
-    geometry::{Bounds, Points, Size},
+    geometry::{Axis, Bounds, Points, Size},
     prelude::*,
 };
 use std::{
@@ -13,7 +13,7 @@ use std::{
 };
 
 fn vertical(node: &Node) -> bool {
-    node.string("orientation") == "vertical"
+    orientation(node) == Axis::Vertical
 }
 
 fn choose(
