@@ -27,6 +27,9 @@ reported build command, then retry. `--unchecked` is an explicit diagnostic
 exception; it prints a warning and must not be presented as fresh-build evidence.
 If connection is refused, check the app log for `lui-agent listening on ...` and
 its actual port before retrying. A startup failure may precede the listener.
+Receipts describe the artifact on disk; rebuilding does not restart an existing
+listener. Restart only the task-owned app and verify the endpoint's process
+identity before treating its screenshot as evidence for the new build.
 
 Read the hello response's capabilities. Generic OCaml hosts support semantic
 tree/event commands. The current Logseq NSH bridge provides native screenshots
@@ -98,6 +101,12 @@ Distinguish process launch, OCaml/model startup, worker/database startup, native
 mount, and usable UI. Inspect the screenshot and current logs before reporting
 that the application is running normally. A loaded graph or journal route can
 coexist with a rejected renderer batch.
+
+For NSH background/locked-screen measurement, use `app::wait_for_commit()` before
+querying an unbound native reference. `next_frame()` waits for a display tick and
+can stall indefinitely under lock. Native measurement supplies its own layout
+commit. A header alone is insufficient startup evidence: require the expected
+page content in the screenshot as well as successful model/worker startup.
 
 Record the actual app/LUI/NSH revisions, command, artifact freshness, screenshot
 path, and remaining qualification gaps. Keep generated images and receipts in

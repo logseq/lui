@@ -297,9 +297,9 @@ uses the concrete route bodies, not literal presence alone.
 | `ui/checkbox.rs` | `a613b40f06905e472a04e5558103c76cc4d18981f587c9be8a3a1946a761512c` |
 | `render.rs` | `9f7a83a79473160735712040fdd6f7c42d2ba2997b089c7361344f9a9984358d` |
 | `controls.rs` | `10757047d3bc3639bed4b9d6553af9327e1dfe46868f0ad914ad42f6f8a5b69d` |
-| `style.rs` | `4a515946e46f84ee43666bf7e9495bfdabf1026ba3057bd7dd2c9701b1c338ff` |
+| `style.rs` | `19fe546fc7b56ad991243a39f984c2d42b6b8bb5760230e224a46d3c126d5fc2` |
 | `virtual_rows.rs` | `1630ed15ed6526769c9f3b405623c464296d5c23e4a77099eb60d449ef1ea3de` |
-| `app.rs` | `3661364e75569e81913525affa491d5670065b9d798757275c8bc300f03f4193` |
+| `app.rs` | `e04d07a0cbe84ab78e00e695a4ef0818556a66531fd061cfffddbd42da665d06` |
 | `ui/mod.rs` | `1d2cfcebfbb8b0cf7b4d38f13795cb86afc3eeacc922b7e56d8da28092735d56` |
 | `ui/controls.rs` | `5bdbbcce9067ed597ae60443878e76d4fc72c7609d7e40af31a3909a2ab515e2` |
 | `events.rs` | `eb9addb27f70d21b0fdaff507f869ad6ebbede6be1e031f1d64b6b4aa86a1d03` |
