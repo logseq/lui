@@ -1,6 +1,81 @@
 // Generated from canonical OCaml validators. Do not edit.
 use super::*;
 
+/// Canonical typed `display` values. Provider matches must be exhaustive.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DisplayValue {
+    Block,
+    Contents,
+    Inline,
+    InlineBlock,
+    InlineFlex,
+    None,
+}
+
+impl DisplayValue {
+    pub const ALL: &'static [Self] = &[
+        Self::Block,
+        Self::Contents,
+        Self::Inline,
+        Self::InlineBlock,
+        Self::InlineFlex,
+        Self::None,
+    ];
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Block => "block",
+            Self::Contents => "contents",
+            Self::Inline => "inline",
+            Self::InlineBlock => "inline-block",
+            Self::InlineFlex => "inline-flex",
+            Self::None => "none",
+        }
+    }
+}
+
+impl TryFrom<&str> for DisplayValue {
+    type Error = String;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "block" => Ok(Self::Block),
+            "contents" => Ok(Self::Contents),
+            "inline" => Ok(Self::Inline),
+            "inline-block" => Ok(Self::InlineBlock),
+            "inline-flex" => Ok(Self::InlineFlex),
+            "none" => Ok(Self::None),
+            _ => Err(format!("invalid canonical display: {value}")),
+        }
+    }
+}
+
+/// Canonical typed `image-fit` values. Provider matches must be exhaustive.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImageFitValue {
+    Fill,
+    Fit,
+}
+
+impl ImageFitValue {
+    pub const ALL: &'static [Self] = &[Self::Fill, Self::Fit];
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Fill => "fill",
+            Self::Fit => "fit",
+        }
+    }
+}
+
+impl TryFrom<&str> for ImageFitValue {
+    type Error = String;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "fill" => Ok(Self::Fill),
+            "fit" => Ok(Self::Fit),
+            _ => Err(format!("invalid canonical image-fit: {value}")),
+        }
+    }
+}
+
 pub(super) fn property_value_supported(property: &str, value: Scalar<'_>) -> bool {
     match (property, value) {
         ("read-only", Scalar::Bool(_)) => true,
