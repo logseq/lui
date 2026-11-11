@@ -985,8 +985,6 @@ impl Renderer {
             move |identity, _| renderer.node(identity.get_untracked().0),
         );
         if matches!(node.kind.as_str(), "popover" | "tooltip") {
-            crate::controls::popup_placement(node)?;
-            crate::controls::popup_alignment(node)?;
             let anchor = self.popup_anchor(&node);
             let events = self.clone();
             return crate::controls::anchored_popup(
@@ -1693,6 +1691,8 @@ fn validate_popup_shape(transaction: &Transaction<'_>, node: &Node) -> Result<()
         );
     }
     if matches!(node.kind.as_str(), "popover" | "tooltip") {
+        crate::controls::popup_placement(node)?;
+        crate::controls::popup_alignment(node)?;
         if node.kind == "tooltip" && node.string("anchor").is_empty() {
             return Err("NSH unanchored tooltip status semantics are not implemented yet".into());
         }

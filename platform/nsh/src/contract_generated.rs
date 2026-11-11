@@ -76,6 +76,123 @@ impl TryFrom<&str> for ImageFitValue {
     }
 }
 
+/// Canonical typed `container-relative-frame` values. Provider matches must be exhaustive.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FrameAxesValue {
+    Both,
+    Horizontal,
+    MinBoth,
+    MinHorizontal,
+    MinVertical,
+    Vertical,
+}
+
+impl FrameAxesValue {
+    pub const ALL: &'static [Self] = &[
+        Self::Both,
+        Self::Horizontal,
+        Self::MinBoth,
+        Self::MinHorizontal,
+        Self::MinVertical,
+        Self::Vertical,
+    ];
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Both => "both",
+            Self::Horizontal => "horizontal",
+            Self::MinBoth => "min-both",
+            Self::MinHorizontal => "min-horizontal",
+            Self::MinVertical => "min-vertical",
+            Self::Vertical => "vertical",
+        }
+    }
+}
+
+impl TryFrom<&str> for FrameAxesValue {
+    type Error = String;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "both" => Ok(Self::Both),
+            "horizontal" => Ok(Self::Horizontal),
+            "min-both" => Ok(Self::MinBoth),
+            "min-horizontal" => Ok(Self::MinHorizontal),
+            "min-vertical" => Ok(Self::MinVertical),
+            "vertical" => Ok(Self::Vertical),
+            _ => Err(format!(
+                "invalid canonical container-relative-frame: {value}"
+            )),
+        }
+    }
+}
+
+/// Canonical typed `anchor` values. Provider matches must be exhaustive.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AnchorValue {
+    Above,
+    Below,
+    Left,
+    Right,
+}
+
+impl AnchorValue {
+    pub const ALL: &'static [Self] = &[Self::Above, Self::Below, Self::Left, Self::Right];
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Above => "above",
+            Self::Below => "below",
+            Self::Left => "left",
+            Self::Right => "right",
+        }
+    }
+}
+
+impl TryFrom<&str> for AnchorValue {
+    type Error = String;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "above" => Ok(Self::Above),
+            "below" => Ok(Self::Below),
+            "left" => Ok(Self::Left),
+            "right" => Ok(Self::Right),
+            _ => Err(format!("invalid canonical anchor: {value}")),
+        }
+    }
+}
+
+/// Canonical typed `anchor-alignment` values. Provider matches must be exhaustive.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AnchorAlignmentValue {
+    Center,
+    End,
+    Start,
+    Stretch,
+}
+
+impl AnchorAlignmentValue {
+    pub const ALL: &'static [Self] = &[Self::Center, Self::End, Self::Start, Self::Stretch];
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Center => "center",
+            Self::End => "end",
+            Self::Start => "start",
+            Self::Stretch => "stretch",
+        }
+    }
+}
+
+impl TryFrom<&str> for AnchorAlignmentValue {
+    type Error = String;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "center" => Ok(Self::Center),
+            "end" => Ok(Self::End),
+            "start" => Ok(Self::Start),
+            "stretch" => Ok(Self::Stretch),
+            _ => Err(format!("invalid canonical anchor-alignment: {value}")),
+        }
+    }
+}
+
 pub(super) fn property_value_supported(property: &str, value: Scalar<'_>) -> bool {
     match (property, value) {
         ("read-only", Scalar::Bool(_)) => true,

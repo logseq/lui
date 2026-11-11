@@ -11762,6 +11762,6 @@
     "src/lui_extension.ml": "6e6ee44f5fb52348bff68309c1745a3f103edf5db7d3ccf794c5bb4e377abebb",
     "tooling/export_native_contract.ml": "7d5c15dfc296435fc1310ce12b51e61eb6ed38dc3c016623d34b609b7327172e",
     "tooling/generate_nsh_contract.py": "6d330917722cb1ba953fa59fcb130dfbbc648c38f00d9a6fddf1e0b413b12d9b",
-    "tooling/nsh_contract_codegen.py": "7ce0494e72b75aa8531a12a7c55469fdca3679f14b7fc9134720f91115bf649c"
+    "tooling/nsh_contract_codegen.py": "71f025285dba1777029d67f3b6d2e1ee6966815ac1f42043b6d47094f82f231b"
   }
 }
