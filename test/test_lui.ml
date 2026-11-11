@@ -372,8 +372,11 @@ let test_native_tree_item_metadata_callbacks () =
       | Lui_protocol.SetProp (_, Lui_protocol.PointerEnabled, Lui_protocol.BoolValue true) -> true
       | _ -> false) ops);
   List.iter (fun event ->
-    Alcotest.(check bool) "existing event ordinal reaches its callback" true
-      (Lui_app.dispatch_event app event))
+    Alcotest.(check bool) "existing event ordinal is accepted" true
+      (Lui_app.dispatch_event app event);
+    (* Native dispatch queues handlers; the mounted scheduler delivers them
+       during flush, as the real bridge and Drive session do. *)
+    flush_app app)
     [ Lui_protocol.Change node; Lui_protocol.ToggleChanged (node, true); Lui_protocol.Press node ];
   Alcotest.(check (list int)) "selection, expansion and action stay distinct"
     [1; 1; 1] [!selections; !expansions; !actions];
@@ -3353,7 +3356,10 @@ let test_json_native_tree_item_alias () =
     (List.exists (function Lui_protocol.CreateNode (id, Lui_protocol.ListItem) -> id = node | _ -> false) ops);
   Alcotest.(check bool) "facade native callbacks never opt into pointer payloads" false
     (List.exists (function Lui_protocol.SetProp (_, Lui_protocol.PointerEnabled, Lui_protocol.BoolValue true) -> true | _ -> false) ops);
-  List.iter (fun event -> ignore (Lui_app.dispatch_event app event))
+  List.iter (fun event ->
+    Alcotest.(check bool) "facade event is accepted" true
+      (Lui_app.dispatch_event app event);
+    flush_app app)
     [Lui_protocol.Change node; Lui_protocol.ToggleChanged (node, true); Lui_protocol.Press node];
   Alcotest.(check (list (pair string string))) "native semantic sink aliases"
     ["report", "change"; "report", "toggle"; "report", "press"]
