@@ -45,12 +45,14 @@ fn registry() -> Extensions {
 fn canonical_ocaml_scalar_defaults_properties_events_and_wire_agree() {
     let schema = schema(false);
     for case in oracle()["properties"].as_array().unwrap() {
-        let mut node = Node::default();
-        node.extension = Some(crate::store::ExtensionNode {
-            identifier: schema.identifier.clone(),
-            fingerprint: schema.fingerprint.clone(),
-            properties: case["values"].as_object().unwrap().clone(),
-        });
+        let node = Node {
+            extension: Some(crate::store::ExtensionNode {
+                identifier: schema.identifier.clone(),
+                fingerprint: schema.fingerprint.clone(),
+                properties: case["values"].as_object().unwrap().clone(),
+            }),
+            ..Node::default()
+        };
         assert_eq!(
             schema.validate_node(&node).is_ok(),
             case["accepted"].as_bool().unwrap(),
@@ -266,23 +268,33 @@ fn NativeExtensions() -> impl IntoElement {
     let emit = saved.clone();
     let remove = renderer.clone();
     let update_generation = generation.clone();
+    let apply_update = Rc::new(move || {
+        let next = update_generation.get() + 1;
+        update
+            .apply(batch(
+                next,
+                json!([
+            {"op":"set-extension-prop","id":1,"property":"title","value":"Updated"},
+            {"op":"set-extension-prop","id":2,"property":"width","value":120.0}]),
+            ))
+            .unwrap();
+        update_generation.set(next);
+    });
+    let shortcut = apply_update.clone();
+    on_key_with(
+        "f7",
+        KeyOptions {
+            when: nsh_core::keymap::When::Always,
+            ..Default::default()
+        },
+        move |_| shortcut(),
+    );
     view()
         .child(renderer.element())
         .child(
             nsh_base::button()
                 .child(text("Update extension"))
-                .on_press(move || {
-                    let next = update_generation.get() + 1;
-                    update
-                        .apply(batch(
-                            next,
-                            json!([
-                {"op":"set-extension-prop","id":1,"property":"title","value":"Updated"},
-                {"op":"set-extension-prop","id":2,"property":"width","value":120.0}]),
-                        ))
-                        .unwrap();
-                    update_generation.set(next);
-                }),
+                .on_press(move || apply_update()),
         )
         .child(
             nsh_base::button()
@@ -354,7 +366,13 @@ fn retained_factory_tweak_root_geometry_draft_and_event_lifetimes() {
         .unwrap();
     assert!((before.bounds.size.width.0 - 180.0).abs() < 0.1);
     app.type_text("Extension editor", "draftx").unwrap();
-    app.press("Update extension").unwrap();
+    let edited = app
+        .screen()
+        .input_text("id:lui-3")
+        .unwrap()
+        .unwrap()
+        .to_owned();
+    app.press_key("f7").unwrap();
     app.wait_for("Updated").unwrap();
     let after = app
         .screen()
@@ -363,6 +381,14 @@ fn retained_factory_tweak_root_geometry_draft_and_event_lifetimes() {
         .find(|node| node.test_id.as_deref() == Some("lui-3"))
         .unwrap();
     assert_eq!(before.id, after.id);
+    assert_eq!(
+        app.screen().input_text("id:lui-3").unwrap(),
+        Some(edited.as_str())
+    );
+    app.press_key("x").unwrap();
+    let continued = app.screen().input_text("id:lui-3").unwrap().unwrap();
+    assert_eq!(continued.replace('x', ""), edited.replace('x', ""));
+    assert_eq!(continued.len(), edited.len() + 1);
     assert!((after.bounds.size.width.0 - 120.0).abs() < 0.1);
     assert_eq!(mounts.load(Ordering::SeqCst), 1);
     app.press("Emit extension").unwrap();
