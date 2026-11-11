@@ -22,3 +22,7 @@ local.properties
 
 # Python generator/test caches
 __pycache__/
+
+# Rust desktop backend build outputs
+/platform/nsh/target/
+/platform/nsh/.nsh/

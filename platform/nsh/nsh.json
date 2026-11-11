@@ -1,0 +1,8 @@
+{
+  "name": "LUI Desktop",
+  "id": "com.logseq.lui.desktop",
+  "version": "0.1.0",
+  "build": 1,
+  "rust": ".",
+  "root": "DesktopApp"
+}

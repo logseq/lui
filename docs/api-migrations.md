@@ -1,5 +1,176 @@
 # LUI API migration guide
 
+## Unreleased: NSH desktop migration (in progress)
+
+The desktop implementation is moving from MyGo to a Rust-only NSH host.
+Apple/iOS, Android and Web remain maintained. The NSH adapter is currently
+experimental: real OCaml Todos input, keyed updates and application restart
+are exercised, including a dedicated bounded-row fixture. Full component
+parity, production bounded-row negotiation and delivery qualification are
+still pending. Unsupported components are rejected before
+their batch is published instead of rendering an empty generic view.
+
+The desktop profile constructor changes from `MyGoHost` to `NshHost`, and its
+serialized host name changes from `"mygo"` to `"nsh"`. Update exhaustive matches
+and extension host registrations:
+
+```ocaml
+(* Before *)
+let desktop = function MyGoHost -> true | _ -> false
+(* After *)
+let desktop = function NshHost -> true | _ -> false
+```
+
+Native host code `6` identifies NSH. MyGo code `5` is not reused and resolves
+to the generic profile in a new library. SwiftUI `2`/`258`, Kotlin `4`/`260`
+and operating-system codes retain their meanings. NSH bounded-row negotiation
+remains disabled until negotiation and required native qualification are
+complete. The experimental renderer accepts eager `virtual-list` children;
+the real OCaml sparse-list fixture explicitly enables bounded rows for its
+1,000/100,000-item qualification. Applications must not assume that using this
+host code alone enables production sparse mounting.
+Ordinary batch operations, event ordinals and the mobile bridge ABI are unchanged.
+
+The renamed native application build commands are:
+
+```sh
+bash tooling/build_nsh_todos.sh
+bash tooling/build_nsh_components.sh
+```
+
+To run an application with the experimental NSH desktop shell:
+
+```sh
+LUI_OCAML_LIBRARY="$(bash tooling/build_nsh_todos.sh)" \
+  cargo run --manifest-path platform/nsh/Cargo.toml
+```
+
+The loader resolves this explicitly selected library, or, in a package,
+`Contents/Resources/lui/liblui_app.dylib` on macOS,
+`lui/lui_app.dll` beside the Windows executable, or `lui/liblui_app.so` beside
+the Linux executable. The initialized OCaml library stays loaded for the
+process lifetime. One process supports one loaded OCaml library and one active
+application session; close/reopen reuses its persistent runtime worker.
+On Windows, private dependent DLLs beside `lui_app.dll` are resolved through
+per-load DLL search flags; the host does not change the process-wide search
+path or working directory.
+
+Input requests are serialized without blocking the NSH engine or platform UI
+thread. The input/clock wake channel is bounded to 64 entries; overflow reports
+an explicit backend error rather than silently discarding an edit. A refused
+OCaml event returns its diagnostic and an authoritative snapshot before later
+requests are published. Snapshot generation may equal or exceed the last
+accepted delta; older snapshots are rejected without changing committed state.
+Ordinary deltas must be sequential. Programmatic value synchronization never
+emits another user edit event.
+
+Missing wire `generation` defaults to zero and missing `ops` to an empty list,
+as in the shared decoder; generation zero still cannot commit a transaction.
+Unknown fields remain forward compatible. NSH rejects duplicate recognized
+batch/operation fields instead of the former Go decoder's last-field rule;
+canonical LUI encoders never emit duplicates. Raw producers must emit, for
+example, `{"generation":3,"ops":[]}` once, rather than repeating `generation`
+inside one object. Both node IDs and committed generations stay within the
+native 64-bit OCaml integer domain (at most `2^62 - 1`), including snapshots; an oversized
+snapshot cannot replace the accepted store.
+
+Queued callbacks retain their original node incarnation and are checked again
+before dispatch. A stale edit after snapshot replacement or node recreation
+does not reach the new node. Internal virtual-window requests keep only the
+latest request per list; they do not consume one queue entry per demanded cell.
+The pump checks source generation before sending them and drains pending
+windows even when the wake channel was full. Public visible-range callbacks
+retain their ordinary event ordering. Local batch-validation failures recover
+through an authoritative snapshot on the same pump before later events run.
+
+An eager virtual list resolves `scroll-target` against the current direct
+children's `key` values. `nearest` alignment uses measured native row and list
+geometry: an already visible row completes successfully without starting an
+animation, while a clipped row scrolls through NSH's native index API. An
+issued animated scroll completes successfully only after the native scroll-end
+event; target materialization alone is insufficient. Each token produces at
+most one completion, and missing targets or user cancellation retain their
+explicit outcomes. For example, moving a keyed row before changing its token
+resolves the new child position instead of a cached index.
+
+The experimental Rust retained store exposes `Node.children` as
+`Arc<Vec<u64>>`. Read it with `.iter()` or `.as_slice()`; submit structural
+changes through patch operations. Property-only updates share the existing
+sequence and do not copy or republish every child identity.
+
+`contract::validate_value` and `contract::validate_node` now enforce the full
+canonical value domains, required properties, cross-property invariants and
+sparse metadata/children relationship. Integer comparisons remain exact above
+`2^53`; integer JSON syntax is normalized to a floating scalar only for
+properties whose canonical type permits floats and not integers. Invalid
+transactions leave the accepted tree and generation unchanged. NSH additionally
+rejects virtual sources above `u32::MAX`, the native list count limit.
+`contract::property_supported` and `event_supported` expose canonical metadata
+queries. `contract::CONTRACT` contains metadata only: development-only validator
+AST, presence trees and oracle data are no longer shipped. Use the validation
+functions instead of inspecting those removed development fields.
+
+The optional desktop agent uses the existing `lui-agent` JSON-line protocol:
+
+```sh
+LUI_AGENT_LISTEN=127.0.0.1:49380 \
+  LUI_OCAML_LIBRARY="$(bash tooling/build_nsh_todos.sh)" \
+  cargo run --manifest-path platform/nsh/Cargo.toml
+```
+
+Rust embedders can set `DesktopProps.agent_listen` instead. An empty value reads
+the environment; when both are empty no listener is started. Only numeric
+loopback addresses are accepted. Requests are limited to 1 MiB per line and
+share the ordered application pump with input and clock work. Patches are
+published before a reply; transport/queue failures return `ok:false` with an
+error. Closing the surface closes its active agent connection.
+
+Desktop delivery commands now use an immutable CLI build receipt and verify
+the actual application/generated-runner dependency graphs:
+
+```sh
+python3 tooling/nsh_delivery.py setup --checkout ../nsh
+python3 tooling/nsh_delivery.py package --library /path/to/liblui_app.dylib \
+  --output _build/nsh-packages
+```
+
+Use `manifest` to sign a whole-application update from completed package
+receipts. Intermediate NSH archives, code-only payloads and stale receipts are
+not eligible. The delivery wrapper rebuilds archives after adding the OCaml
+library, resources and signatures. See [delivery](../platform/nsh/DELIVERY.md)
+for architecture checks, signing/notarization parameters and verification limits.
+
+Rust applications can use `update::Updater::open(config, executable, cache)`,
+then asynchronous `check`, `download` and `install` with opaque `Offer` and
+`Downloaded` values. `progress()` returns a coalesced watch subscription;
+`cancel()` invalidates pending downloads. One persistent worker streams each
+archive through one HTTP client. Updates require authenticated signed metadata,
+HTTPS and matching app/platform/version/size/hash checks; limits are 1 MiB for
+metadata, 4 KiB for signatures and 2 GiB for an archive. Installation rechecks
+the archive and uses NSH's whole-application installer. Restart is owned by the
+embedding app, and cancellation cannot interrupt installation once it begins.
+The standalone runner now uses the additive `DesktopApp` Rust root (and
+`"root": "DesktopApp"` in `nsh.json`). `Desktop` and `DesktopProps` remain
+available for embedding, where the host keeps its application menus.
+`DesktopApp` discovers only the matching installed `nsh-updater.json` asset.
+With no asset it creates no update worker, cache, network request or menu.
+Configured packages gain native check, cancel, download and install/restart
+actions while retaining standard edit/window menu roles. Installation requires
+an explicit confirmation and requests NSH restart only after replacement
+succeeds. Full configured-menu and packaged LUI upgrade qualification is still
+pending; declaring an updater URL alone is not evidence of a working release.
+
+Rust embedders can call `update::Updater::from_installed(executable, cache)` to
+discover the same optional configuration. It returns `Ok(None)` when the asset
+is absent and rejects invalid or mismatching installed configuration.
+`Downloaded` tokens support equality by issuing updater and offer ticket; their
+fields remain private and a foreign/stale token still cannot install.
+
+Native Windows/Linux package execution, compiled LUI upgrade fixtures and
+credentialed distribution signing remain qualification gates. Local ad hoc
+signing and compiled native update fixtures do not establish those results.
+Existing historical MyGo examples below describe the previous implementation.
+
 ## Unreleased: native navigation sheet action foregrounds
 
 Apple navigation sheet toolbar actions honor the button's existing `foreground`
@@ -2240,3 +2411,129 @@ Applications can keep `~pointer_capture:true` for primary dragging and handle
 `PointerUp (_, detail)` with `detail.button = 1` for middle-click actions. Do not
 assume that a captured control filters out non-primary releases. No property,
 event payload or primary drag/cancellation API changes are required.
+
+## NSH scoped themes and canonical presentation
+
+The NSH renderer now translates canonical layout and paint properties through
+one checked style compiler. Previously, kebab-case edge spacing and several text
+properties could be accepted but ignored by the native style-name parser.
+Explicit edges now override axis spacing, which overrides all-edge spacing.
+`main="space_between"` maps to native `space-between`; `font-style="oblique"`
+retains the existing desktop italic equivalent. Font weights retain the canonical
+1–1000 value rather than the NSH string parser's 100–900 clamp. Viewport fractions
+use the actual renderer root's measured size and follow window resizing.
+
+The existing `theme` wire value remains a JSON object encoded as a string: each
+token is a string or a `{ "light": "…", "dark": "…" }` pair. Nested themes merge
+over their ancestors and NSH's semantic token defaults. Bare token names, literal
+CSS colors and `var(--name, fallback)` references are resolved in the effective
+scope; authored data colors remain literal colors. A nested `theme-mode` applies
+only to its subtree. Native control parts receive that same scoped theme, and
+dialog/sheet dimensions apply to the visible panel. These updates preserve the
+native identities of existing children and editors.
+
+For example, keep a foreground bound to its semantic name instead of replacing
+it with a resolved color in application state:
+
+```ocaml
+Lui_elements.themed
+  ~tokens:[ "brand", Lui_ui.Adaptive { light = "#123456"; dark = "#abcdef" } ]
+  (Lui_elements.column ~foreground:"brand"
+     [ Lui_elements.text ~value:"Scoped content" [] ])
+```
+
+Invalid theme/style values reject the entire native patch before publication;
+the committed tree, native identities and generation remain unchanged. Native
+gaps now fail explicitly instead of silently dropping the property: CSS inline
+display modes and `contents`, `white-space`, `overflow="auto"`, nonzero
+`container-relative-frame-inset`, inert subtrees, shadows requiring inherited
+`currentColor`, and parallel transitions with distinct timings are not yet
+implemented. Use maintained explicit `scroll` containers for scrolling. Supported
+parallel transitions share duration, delay and easing; reduced motion sets their
+native duration and delay to zero. Apple, Android and Web behavior is unchanged.
+
+### Retained NSH picker and menu controllers
+
+NSH now renders `select`, `combobox`, `menu-trigger` and their retained
+`dropdown-menu` segments. Select keeps the existing application-owned text and
+`Press` contract; Combobox keeps controlled text, `TextChanged` and `Submit`.
+There is no new options/value wire schema or `Picked` event. A picker may own a
+dropdown child or be followed immediately by its model-owned dropdown sibling.
+Opening, refusing an open request and removing that sibling preserve the
+existing trigger/input native identity. Escape and outside cancellation deliver
+the dropdown's existing `Dismiss` event; the application removes its segment.
+
+`menu-trigger` uses NSH Menu, and nested menu triggers use NSH Submenu, preserving
+native arrow navigation, disabled-item skipping, focus and action dispatch. Use
+one dropdown child per menu trigger. This increment explicitly rejects unowned
+standalone dropdowns, Combobox non-dropdown children, menu-trigger icons, and
+custom dropdown anchor/point/collision placement instead of drawing a generic
+container with incomplete behavior. Keep existing model reducers for picker
+visibility and text; no application event migration is required.
+
+### External NSH popovers and anchored hints
+
+NSH `popover` now places arbitrary retained children through the native core
+overlay API, using an existing node's accessibility identifier, the preceding
+sibling/parent anchor, root coordinates, or a decimal `anchor-rect`. Native
+placement, side flipping and collision margins remain in the engine. Repositioning
+an open popover keeps its input/editor identity and text. Escape and outside
+presses emit the existing `Dismiss`; the model owns removal. Closing returns
+keyboard focus to the anchor when the popup held it, while an outside press
+keeps the newly chosen focus.
+
+Anchored `tooltip` uses the native hint policy: pointer delay, immediate keyboard
+focus visibility and Escape hiding. It takes no pointer events. No new wire
+events or popup state API are introduced. This increment explicitly rejects
+unanchored tooltip status roles, popovers with `role="menu"`, nonzero
+`anchor-alignment-offset`, nondecimal rectangle coordinates, and changing the
+anchor source/target of an existing popup. Remount the popup when changing its
+anchor target; ordinary placement/offset updates retain its children.
+
+## NSH clock progress at request boundaries
+
+The NSH runtime now sends a monotonic host tick before ordinary events, agent
+requests and resynchronization. Previously, repeated input could continually
+rearm an unchanged relative wakeup and postpone a pending timer. A timer created
+after a long idle period could also consume that earlier idle time at its first
+wakeup. Due timer patches now precede the requested action's patches in the same
+ordered reply. A refused tick prevents the action and follows existing
+diagnostic/resynchronization recovery.
+
+An explicit resync advances the wall clock, then returns one authoritative
+snapshot containing any timers fired during that synchronization. Intermediate
+clock deltas are superseded by that snapshot.
+
+Application time still moves only through `Lui_clock.tick` and explicit advances.
+Pausing ignores host ticks; manual `Session::advance` remains deterministic.
+`Session::pause(false)` anchors the resumed host mapping at the current
+application time. The host schedules no wakeup when `next_delay` is absent.
+
+Applications do not need to change timer creation or cancellation. Drivers that
+previously compared sampled application time across ordinary requests should
+pause first when they need a fixed manual clock. For example:
+
+```rust
+session.pause(true).await?;
+session.advance(250.0).await?;
+// Inspect or dispatch agent actions without advancing paused application time.
+session.pause(false).await?;
+```
+
+## NSH retained toolbar orientation and dropdown ownership
+
+NSH fixes a toolbar's keyboard-navigation axis when its native controller is
+created. Updating a retained toolbar between horizontal and vertical therefore
+fails before committing any part of the batch. Omitted orientation and explicit
+`horizontal` are equivalent. To change the axis, deliberately replace toolbar
+node 11 with a new node 12 at the desired orientation; changing only node 11's
+`orientation` fails. In a keyed OCaml composition, make the orientation part of
+the structural item's identity. This remount changes lifetime intentionally,
+so the application owns restoration of any desired focus or local state.
+
+A sibling-owned dropdown must remain immediately after its select/combobox.
+For example, `[select; label; dropdown]` is rejected; place the label before
+the select or after the dropdown, or parent the dropdown directly under the
+select, combobox or menu trigger. Structural insertion/move validates existing
+dropdowns too. Rejection rolls back the entire batch, preserves identities and
+leaves its generation available for a corrected retry.

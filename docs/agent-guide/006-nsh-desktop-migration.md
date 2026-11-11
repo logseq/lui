@@ -1,0 +1,489 @@
+# NSH desktop migration implementation plan
+
+Date: 2026-11-11
+
+Status: implementation in progress on
+`feat/nsh-desktop-backend`
+
+Decision: [ADR 0004](../adr/0004-nsh-desktop-backend.md)
+
+## Objective and completion rule
+
+Replace MyGo with an NSH desktop backend for macOS, Windows and Linux. Preserve
+the existing LUI application API except for the documented desktop host
+migration, keep Apple/iOS, Android and Web maintained, and provide packaging,
+distribution-signing integration and whole-app update support. All required
+tests must pass. Do not mark this plan complete with compile-only evidence,
+partial component support, eager source-row rendering or missing OS results.
+
+Use NSH public Rust APIs at
+`cdfdf75c1509cdb34c6220e6b5bf923452c0cb76`, Rust 1.97 and committed Cargo
+lockfiles. The official `nsh` and `nsh-design-guides` skills are installed from
+this revision. Read their relevant references and the nearest source/tests
+before changing each adapter boundary. Read LUI's reactive skill before
+authoring `Lui_elements` views.
+
+No Dune files may change. Do not suppress compiler warnings or use unsafe type
+casts. Preserve mobile packages, JNI and their tooling. Record every actual
+public/default/event/wire change, with downstream examples, in
+`docs/api-migrations.md`. Do not commit downloads, caches, build products or
+recordings. Serialize Dune invocations and performance measurements.
+
+## Evidence and starting state
+
+- The existing `make test` run completed successfully, including 249 core
+  cases. This is a baseline, not final NSH qualification.
+- An initial Rust adapter passed `cargo check`; it is a feasibility skeleton
+  with known correctness and presentation gaps, not a usable replacement.
+- The worktree already contains MyGo deletions, tool renames and `NshHost`
+  changes. Current Makefile/README/CI integration still needs reconciliation.
+- `platform/nsh/contract.json` currently includes the development oracle and
+  validator AST (about 1.3 MiB). Split test-only export data from shipped
+  validator artifacts.
+- Public virtual-list requested-window/pin integration, the real OCaml bridge,
+  Windows OCaml linking, final packaged resource lookup, distribution signing
+  and update installation have not been demonstrated. Resolve these through
+  the stages below; never report them as completed research proofs.
+
+## Stage 1: prove the integration seams
+
+Complete before broad component implementation.
+
+- [x] Build a minimal Rust-root fixture through public `Root`, engine and
+  platform APIs, without QuickJS. Keep the fixture inside the adapter's
+  existing Cargo structure; no new OCaml/Dune target is needed.
+- [x] Prove an ordered OCaml worker request/response path using the existing
+  C ABI and a real Todos library. Press and edit through `nsh_testing::Headless`
+  and observe OCaml-generated updates. Run each distinct OCaml library in an
+  isolated process.
+- [ ] Prove node identity survives property updates, child insertion and
+  sibling moves; verify the actual editor retains focus/selection.
+- [x] Prove the public `virtual_list` cell position/lifecycle APIs can drive
+  LUI `VirtualWindow` feedback for viewport, overscan and retained distant
+  rows. Verify the same logical extent with bounded mounted LUI and NSH nodes
+  for 1,000 and 100,000 source items.
+- [ ] Exercise focus, composition, text-selection ends, a pressed row and an
+  open row menu through far scrolling and source reorder. Determine which
+  retention information is observable through public APIs, rather than
+  equating visible indices with the complete requested window.
+- [x] Exercise a provisional package on macOS with the OCaml library loaded
+  from its resources, without a checkout-relative path. Verify the pinned
+  CLI and generated runner resolve one NSH revision.
+- [ ] Establish Windows DLL build/loading with the actual OCaml Windows
+  toolchain, and Linux shared-library loading on Linux runners. A POSIX shell
+  stub or a Rust cross-check is insufficient evidence.
+
+Deliver an evidence section at the end of this plan with the exercised
+commands, source revision and results. If a seam fails, reduce the failure to
+a concrete test and revise the ADR before building around it. The user has
+authorized a minimal keyed-list fix in `logseq/nsh`, branch `fork/logseq`;
+verify it and pin its exact commit. Do not add private-field access from the
+adapter, another virtualizer, an eager source fallback or unrelated fork changes.
+Continue independent work on other seams while resolving it.
+
+## Stage 2: canonical wire and transactional store
+
+Primary files: `platform/nsh/src/{wire,store,contract}.rs`,
+`tooling/export_native_contract.ml`, `tooling/generate_nsh_contract.py` and
+adapter tests.
+
+- [ ] Preserve batch fields, all operations, unknown-field compatibility,
+  integer precision, property removal/defaults and existing event ordinals.
+- [x] Add sequential generation checks and an explicit authoritative snapshot
+  path. Test missing, repeated, stale and skipped generations; resync may
+  replace the tree at the current generation.
+- [ ] Complete atomic final validation: canonical value domains, required
+  properties, cross-property invariants, parents/children, cycles, extension
+  fingerprints and sparse virtual metadata. Rejection preserves generation,
+  identity counters, root, retained nodes and native UI.
+- [x] Use touched-node rollback/commit, indexed root access and explicit
+  iterative subtree disposal. Avoid cloning the complete map or walking
+  descendants for ordinary property updates. Account separately for an
+  affected parent's child-vector cost.
+- [x] Generate compact validator tables/functions from the canonical export.
+  Keep the canonical oracle in test data only; do not ship an AST interpreter.
+  Make regeneration deterministic and `--check` compare actual generated
+  contents, including rejection of modified output with unchanged hashes.
+- [ ] Add canonical oracle comparisons, malformed-batch/property cases,
+  transactional failure cases, large integers and randomized operation
+  sequences that check invariants against a simple test model.
+
+Acceptance: canonical value/kind/final-node verdicts agree, rejected batches
+are invisible and sparse edits do not perform full-tree work.
+
+## Stage 3: bridge lifecycle, events and clocks
+
+Primary files: new focused Rust runtime/FFI modules, the shared native bridge
+only where necessary, and `tooling/build_nsh_{todos,components}.sh`.
+
+- [ ] Resolve C functions with typed `libloading` signatures. Keep unsafe code
+  confined to FFI with documented pointer, length, callback and lifetime
+  invariants. Copy callback bytes before returning to C; contain Rust panics
+  at callback boundaries and report failures.
+- [ ] Keep OCaml startup and every later call on one persistent worker. Keep
+  its initialized library resident, allow one active session and make failed
+  startup, repeated start/stop, disposal and process shutdown deterministic.
+- [ ] Use established wakeable channels/futures, ordered replies and session
+  guards. Do not block the NSH engine or platform UI thread. Define queue
+  capacity and overload behavior; preserve edit/command ordering, coalescing
+  only superseded maintenance work.
+- [ ] Implement every admitted event with canonical payloads and modifiers,
+  including focus-within, pointer, navigation, file requests and extensions.
+  Distinguish user events from internal virtual-window maintenance.
+- [ ] Deliver all batches in callback order, publish each validated batch
+  coherently, recover refusals through last-error and authoritative resync,
+  and discard replies from disposed sessions/incarnations.
+- [ ] Drive the OCaml clock from its next deadline. Recheck after start,
+  dispatch, agent calls, resync and pause/resume. Test timers created and
+  cancelled by handlers without a continuously ticking poll loop.
+- [ ] Preserve the opt-in loopback agent protocol and build receipts. Reuse
+  the existing OCaml agent implementation instead of implementing another
+  selector/action engine in Rust.
+- [ ] Test startup signal-stack preservation, callback refusal, worker
+  ordering, stop/restart, missing optional exports and clock quiescence through
+  real OCaml libraries, including Windows and Linux.
+
+Acceptance: real application lifecycle and refusal tests pass; there are no
+idle bridge wakeups when no timer/request is pending.
+
+## Stage 4: retained components and LUI presentation
+
+Primary files: retained renderer, a small `platform/nsh/src/ui/` layer,
+theme/resource modules and a generated support inventory.
+
+- [ ] Inventory all 87 canonical kinds. For every admitted property, event,
+  default and child relationship, name its implementation route and behavior
+  test; distinguish native-platform qualification from headless coverage.
+- [ ] Separate child-structure notification from property bindings. Create
+  owners only for retained behavior and dispose them exactly once. Use stable
+  node/incarnation keys; no identity-only wrapper may change layout.
+- [ ] Implement layout/text and containers, including stack/overlay/insets,
+  fitting, grid spans, inherited typography, rich inline content and property
+  removal. Do not pass kebab-case LUI property names blindly to NSH styles.
+- [ ] Implement buttons, input families, toggles, radios, slider/stepper,
+  select/combobox and tabs with the corresponding NSH semantic behavior.
+  Preserve controlled rejection/normalization, read-only editing, caret,
+  composition, keyboard navigation, disabled state and event counts.
+- [ ] Implement menus, tooltips, dialogs, popovers, drawers/sheets, toasts and
+  navigation compositions on NSH behavior roots; preserve triggers, controlled
+  open state, dismissal ordering, focus return and nested ownership.
+- [ ] Implement remaining collections, tables/trees, resizing/split, media,
+  files, icons and host services. Reuse existing portable LUI services where
+  applicable rather than introducing competing native service implementations.
+- [ ] Implement the application-scoped extension/tweak registries and
+  fingerprint validation. Unknown selected capabilities fail atomically;
+  never fall through to an empty generic view.
+- [ ] Reuse LUI light/dark/system theme tokens, icon assets and density/variant
+  defaults. Style every NSH part and state, including focus-visible and
+  checked/selected/disabled. Explicit authored data colors stay data.
+- [ ] Record the changed Gallery/demo motion inventory before presentation
+  code. Preserve existing LUI transition meaning; use native transitions and
+  reduced-motion behavior without per-frame OCaml round trips. Streaming text
+  and recycled cells do not replay entrance motion.
+- [ ] Test real-engine press, keyboard, edit, focus, dismissal and lifetime
+  behavior. Inspect native screenshots in both appearances, resize/large text,
+  long/CJK content and the skill's full finishing checklist. Complete a
+  keyboard-only flow and a screen-reader flow on an available native target;
+  report other target evidence separately.
+
+Acceptance: no silent component/property fallback, inventory coverage is
+complete and semantic tests demonstrate the behavior rather than only node
+existence. Keep any explicit platform exception narrow and documented.
+
+## Stage 5: bounded virtual rows and scrolling
+
+Build on Stage 1's proven public seam and the existing
+[bounded-row contract](005-bounded-virtual-rows.md).
+
+- [ ] Use logical count plus sparse committed rows and temporary host geometry
+  while requested rows arrive. Do not manufacture LUI row identities for
+  placeholders or emit their appearance events.
+- [ ] Bridge actual demanded cell positions and retained row owners to
+  generation-scoped windows/pins. Coalesce feedback after coherent commits;
+  reissue after snapshots and stationary-viewport pin changes.
+- [ ] Handle source reorder/shrink/empty/removal, stale generations and node
+  incarnations, variable heights, font scale, width changes and reading anchors.
+- [ ] Preserve focused/composing/pressed/selected/popup-owning row identity
+  while distant from the ordinary window. Release retention when the native
+  interaction ends, including cancellation and disposal.
+- [ ] Complete offscreen target jumps and exactly-once scroll-token outcomes,
+  including missing, removed, superseded and cancelled targets.
+- [ ] Preserve literal eager children and older-host/library negotiation.
+  Enable the NSH bounded capability only after the end-to-end tests pass.
+
+Acceptance: real OCaml Gallery load, far jump, edit/activate, return and Clear
+cycles retain bounded row subtrees and preserve full scroll extent on all
+three desktop targets.
+
+## Stage 6: packaging, distribution signing and updates
+
+- [ ] Add a reusable NSH Rust-root application shell and example `nsh.json`,
+  pinned CLI setup, build/run/package commands and build receipts. Package
+  scripts verify the NSH source and target architecture; no development-only
+  absolute paths or mixed revisions may enter the runner.
+- [ ] Put the matching OCaml library and required dependent libraries/assets
+  in the package. Resolve paths relative to installed resources/executable,
+  preserve Unicode/spaces and test launch outside the checkout.
+- [ ] Produce macOS `.app`/update archive, Windows directory/ZIP/Inno installer
+  and Linux directory/tarball on their own OS runners. Verify minimum supported
+  OS/runtime libraries and architecture matching.
+- [ ] Add parameterized macOS Developer ID signing, hardened-runtime settings
+  where needed, notarization/stapling and verification. Sign nested code
+  before the final bundle/archive. Add Windows Authenticode signing and
+  verification for code and installer. Use credentials supplied by release CI;
+  local ad hoc signing is not credentialed distribution evidence.
+- [ ] Integrate `nsh-updater` with one HTTP transport, signed manifests,
+  progress/cancellation and application-owned install/restart actions. Compiled
+  OCaml/Rust changes always travel as one complete application update.
+- [ ] Test signature/hash/size/app-id/version/platform checks, interrupted and
+  corrupt downloads, non-writable installation, refusal to downgrade, install
+  failure and a successful N-to-N+1 restart from packaged fixtures. Verify the
+  documented preservation behavior on failure instead of promising automatic
+  rollback after arbitrary post-launch application failures.
+- [ ] Provide release documentation and scripts with a local test-key path.
+  Production credentialed signing remains a release-environment qualification
+  until actual credentials and results exist; record it as unverified, never
+  mark it passed from a dry run.
+
+Acceptance: runnable packages contain the complete application, signing hooks
+are testable, local signed-fixture updates work, and distribution verification
+is reported with its real evidence/credential limitations.
+
+## Stage 7: remove MyGo integration and migrate callers
+
+- [ ] Complete the MyGo source/dependency/CI removal and rename active tools,
+  generated manifests, Makefile targets, current README commands and demo
+  entrypoints consistently to NSH. Preserve generic native export tooling and
+  old behavioral cases by translating the applicable tests.
+- [ ] Complete `NshHost` / `"nsh"` / host code `6` across canonical generation,
+  runtime profiles, exhaustive matches and native negotiation. Preserve mobile
+  codes and ordinary event ordinals; do not repurpose MyGo code `5`.
+- [ ] Add concrete downstream migration examples for host matches, extension
+  profiles, build/run/package/agent commands, defaults and event semantics.
+  State old/new host-library compatibility explicitly.
+- [ ] Check the complete diff for unintended mobile, Dune, generated-source,
+  dependency-tree and warning-setting changes. Historical MyGo design reports
+  may remain as records; live instructions must not point to deleted tools.
+
+## Stage 8: performance and full regression qualification
+
+Limits below are acceptance targets, not results. Collect release measurements
+on a named, otherwise idle machine; do not run heavy builds concurrently or
+force collection to improve memory samples. Compare the same workload at the
+baseline LUI commit `d6e9551266f73d5b9292d0eb92e82984c301e5db` and final head.
+Use an isolated baseline worktree when needed, without altering the preserved
+user stash.
+
+| Workload | Required observation / gate |
+| --- | --- |
+| One label edit among 1,000 versus 100,000 retained nodes | No root/descendant reconstruction, unrelated node clone or complete-map scan. Adapter touched-node/binding counts stay constant. Record decode, validation, binding, NSH commit/layout and end-to-end timing separately. |
+| Small local batch, up to 100 ordinary property operations | After warmup, target adapter decode/validate/publish p95 <= 2 ms on the named reference machine; compare 1k/100k background trees and investigate >20% median growth beyond measured noise. Exclude actual application/layout cost from this adapter-only claim. |
+| Append, remove, reorder and streaming | Measure affected sibling-vector work and mount items; unchanged sibling identities survive. No O(n²) collection path or quadratic revalidation. Streaming does not remount its transcript. |
+| 100,000 virtual source items | For a fixed viewport/overscan and fixed active pins, mounted LUI nodes/scopes/handlers and NSH cells remain bounded by those row subtrees, independent of total source length. Model/key/height indexes may remain O(n) and must be reported separately. |
+| Focused edit + distant scroll/reorder | Same editor identity/caret/composition and accepted model value; no stale callback edits a recycled row. |
+| Ten load/far-jump/Clear cycles | Return live adapter owners, handlers and mounted row counts to baseline; record RSS/physical footprint and peak allocation. Allocator capacity is not itself proof of a live-object leak. |
+| 30 seconds idle, no app timer | Zero bridge polling/tick calls; record engine wakeups and CPU separately from operating-system display activity. |
+| Native scrolling, popup and input | Record frame time/dropped-frame and event-to-visible latency distributions on each OS. Aim for a 60 Hz frame budget; attribute platform/layout/application outliers rather than claiming bounded adapter work proves frame-rate performance. |
+
+Use NSH trace/headless observations and focused test counters before adding
+caches. Any cache must have one invalidation owner and measurements showing
+why it is needed. Keep diagnostics outside the production hot path by default.
+
+Required test matrix:
+
+| Area | Final checks |
+| --- | --- |
+| NSH contract/store/runtime | `cargo fmt --check`, `cargo check --locked --all-targets`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo test --locked`; canonical oracle, model/failure tests and real-engine UI tests. |
+| Schema/tooling | Component regeneration/freshness, NSH generated-output freshness, `node --test tooling/test/*.mjs`, Python tooling tests and native build-script tests. |
+| OCaml | `opam exec -- dune build @all`, `make test`, explicit `opam exec -- dune runtest -j 1`, repository formatting checks, runtime performance qualifier and bridge GC stress. Serialize all Dune calls. |
+| Apple/iOS | `make test-apple` with nonparallel Swift execution; existing SwiftUI/OCaml, UIKit bounded-row checks and iOS build-for-testing from maintained CI. |
+| Android | Existing store/Compose and Drive tests, JNI/OCaml bounded-row fixture, sample builds/lints and native Gallery compilation from maintained CI. |
+| Web | Existing production build, stylesheet/unit checks, visual baselines, Chromium regressions, Firefox/WebKit ownership/virtual rows and isolated hot reload, as defined by maintained CI. |
+| Native desktop | macOS, Linux and Windows real-window input/IME/accessibility/resource tests, actual OCaml integration and packaged launch/update fixtures. Linux headless tests use an actual display server such as Xvfb. |
+| Delivery | Packaging, dependency/resource checks, test-key manifest verification and update install/restart on each OS; credentialed distribution checks when the release environment supplies keys. |
+
+Run full suites after integration; rerun affected checks after subsequent fixes.
+Do not lower budgets, skip failures, delete applicable tests or update visual
+baselines solely to make checks green. Distinguish native evidence from
+headless evidence and results from unavailable checks. Cross-OS success needs
+actual OS execution, not cfg-gated compilation on macOS.
+
+## Stage 9: final review and evidence
+
+- [ ] Record exact final source/dependency revisions, commands, test totals,
+  OS/architecture, performance distributions, package results and remaining
+  release-environment limitations here or in a linked qualification report.
+- [ ] Verify `docs/api-migrations.md`, current usage documentation and generated
+  support inventory agree with the actual implementation.
+- [ ] Inspect the entire diff and any staged files, including untracked new
+  sources. Confirm no Dune edits, warning suppression, dependency trees,
+  secrets or build outputs.
+- [ ] Mark implementation complete only when every required implementation and
+  test gate passes. Record genuinely unavailable external qualification as
+  outstanding; do not imply all-platform/all-tests success.
+
+## Execution evidence
+
+2026-11-11 planning: official skills installed at the pinned NSH revision;
+architecture, public Rust-root/list APIs, engine ownership and delivery/updater
+source reviewed. Existing core baseline: 249 tests passed. Initial adapter:
+`cargo check` passed with an irrefutable-pattern warning that must be fixed;
+no NSH runtime/native/package/performance qualification has passed yet.
+
+2026-11-11 implementation evidence (uncommitted LUI working tree):
+
+- `make test` passed again, including all 249 core cases and the existing
+  schema and auxiliary OCaml suites. `opam exec -- dune build @all` passed.
+  No Dune file changed.
+- Python native build-script regression: one test passed. NSH generated
+  contract freshness and LUI `cargo fmt --check` passed. Rust Clippy passed
+  with `-D warnings` before the subsequent dependency probe; rerun it after
+  replacing the temporary local override with the immutable fork revision.
+- Real Todos through OCaml/C ABI/NSH passed Chinese input, submit, keyed row
+  reorder/delete, unchanged editor node identity and application reopen.
+  A separate runtime executable passed embedded-NUL/Unicode payloads, agent
+  compatibility, refusal/resync, same-generation snapshots, exclusive session
+  ownership and repeated start/stop. Five transactional store regressions passed.
+- Public virtual-list probes retain 23 live cell demands for both 1,000 and
+  100,000 items and balance owner cleanup on explicit list unmount. The
+  upstream revision failed focused-key reorder at both sizes. The authorized
+  local `logseq/nsh` repair passes both cases and the new multiple-retained-row
+  core regression. NSH core: 1,430 passed; 11 existing ignored benchmarks.
+  Full NSH workspace tests, final fork publication/pin and broader qualification
+  remain pending. The temporary Cargo path override is for this probe only.
+- The macOS native runner compiled and launched. Visual inspection was
+  unavailable because the desktop was locked; no native appearance, IME or
+  accessibility qualification is claimed.
+
+2026-11-11 dependency publication:
+
+- Published the seven-file minimal NSH keyed-list repair to `logseq/nsh`
+  `fork/logseq`, commit `a4c64cb33f739368f113d8eaf3c80cc335ef7253`, with
+  [draft review #1](https://github.com/logseq/nsh/pull/1). The complete staged
+  diff and diff against the fork's main branch were reviewed before pushing.
+- NSH workspace tests passed: 5,258 passed, 0 failed, 63 existing ignored tests
+  and doc examples. Workspace Clippy, strict core Clippy and `xtask compat`
+  passed. See the linked public-list report for commands, trace controls and
+  the unchanged baseline formatting/linker limitations.
+- LUI now pins every NSH crate to that Git commit. The temporary local path
+  override was removed and `cargo check --all-targets` passed against the pin.
+  Rerun final adapter tests after the parallel contract/list implementations.
+- Property-only retained-node updates now share their child sequence, avoiding
+  full child-identity publication. Added 1,000/100,000-child regressions and
+  stale-snapshot rejection coverage; runtime verification is pending the
+  coordinated Rust integration run.
+- Generated-output freshness now compares freshly exported contents, and a
+  modified output with unchanged source hashes was correctly rejected.
+
+2026-11-11 active-cell repair and immutable-pin qualification:
+
+- Published the authorized demand-binding repair as
+  `028574b7de9ee25a7c6f60660ef72fcb8790a27e` on `logseq/nsh` branch
+  `fork/logseq`, in the existing [draft review #1](https://github.com/logseq/nsh/pull/1).
+  It adds `Position::is_requested()` and flushes layout-generated binding
+  patches before ending the virtual-list commit rounds. This lets the adapter
+  release stationary offscreen pins using NSH's existing retention decisions.
+- At that revision, NSH workspace tests passed: 5,259 passed, 0 failed,
+  63 existing ignored tests/examples. Strict workspace all-target Clippy and
+  `xtask compat` passed. Changed Rust files pass formatting; the unchanged
+  baseline formatting and debug-linker limitations remain documented separately.
+- Every LUI NSH dependency now uses that immutable Git revision. With no local
+  override, locked all-target check, strict Clippy and formatting passed.
+  The full Rust adapter suite passed 44 tests, 0 failed and 0 ignored, including
+  the actual OCaml virtual fixture selected by `LUI_NSH_VIRTUAL_LIBRARY`.
+- The real OCaml virtual fixture mounts 23 rows at both 1,000 and 100,000
+  source items, with 85 LUI nodes and 142 NSH nodes. It verifies retained editor
+  identity/focus, reorder, stationary blur release, shrink/removal, token
+  completion and ten additional 100,000-row load/far-jump/Clear cycles. See
+  [the active-demand report](review-probes/2026-11-11/nsh-active-cell-demand.md).
+- Native controls have 42 explicit rendering paths, with 12 focused control
+  tests; this is not a claim of complete semantic support for those kinds.
+  Style/theme integration, remaining kinds/events/services, actual packaged
+  LUI launch/update, native performance and full cross-platform qualification
+  remain outstanding. The migration goal remains active.
+
+2026-11-11 real macOS package qualification:
+
+- The release CLI from NSH `028574b7de9ee25a7c6f60660ef72fcb8790a27e`
+  built successfully. Its version output includes the revision suffix,
+  `nsh 0.5.0 (028574b)`. Delivery accepts that checked format and rejects a
+  different revision or a dirty-build suffix.
+- Rust 1.97's stripped proc-macro library failed macOS 27's Mach-O
+  alignment check. Delivery now sets `CARGO_PROFILE_RELEASE_STRIP=none` for
+  macOS child builds, preserving optimization and warnings. The successful
+  release CLI digest is
+  `10f9ac2c9e5ae6432747b47850b17ac16f0b9696fc1277dedd922ba0afcc72f5`.
+  See [Rust #157750](https://github.com/rust-lang/rust/issues/157750).
+- The real generated runner resolved the pinned NSH sources and preserved
+  every tested registry dependency tuple. Cargo's empty `.cargo-ok` marker
+  is accepted; modified or untracked source files still fail verification.
+  Application Rust sources and `build.rs`, when present, are hashed before
+  building and checked again before release publication.
+- `tooling/nsh_delivery.py package --target macos --arch aarch64` produced
+  `LUI Desktop.app` and an 18 MiB update archive with the matching OCaml Todos
+  library. Nested code and the final bundle passed ad hoc signing verification.
+  The runner digest is
+  `47dc8771b30c50f6c11805fad639e46e17eb1a4b6025a7c1b6092b358ed77fba`;
+  the archive digest is
+  `fc6fa0c6faff2ae05ad1acf39f497d1c3af1bdb007e385c55f9b16a316e8588d`.
+- The real packaged-app qualifier passed from a temporary working directory
+  outside the checkout, with library/runtime/dynamic-loader overrides removed.
+  It received the versioned `Todos` hello, entered a unique draft, pressed Add,
+  observed exactly one matching row and an empty editor, and terminated its
+  owned native process. Evidence is under
+  `_build/nsh-packaged-qualification-028574b7/`; build outputs remain ignored.
+- This establishes the provisional macOS packaging seam, not production
+  signing/notarization, full native input/IME/accessibility, cross-OS delivery
+  or a packaged LUI N-to-N+1 upgrade. Those gates remain open.
+
+2026-11-11 presentation, clock and release-store checkpoint:
+
+- The immutable-pin Rust suite passed 63 tests, 0 failed and 0 ignored, with
+  both real OCaml fixture libraries supplied explicitly. Strict all-target
+  Clippy (`-D warnings`), formatting and diff whitespace checks passed.
+- Scoped theme/style publication preserves native identities and separate child
+  signals, validates inherited changes before commit and uses actual viewport
+  measurements. Native select/combobox/menu keyboard and controlled-value
+  cases, external popover dismissal/focus restoration and native tooltip hints
+  have focused behavior tests. These do not establish complete property parity.
+- A real clock regression reproduced a 120 ms timer remaining unfired under
+  continuous input. The worker now synchronizes host time at request boundaries,
+  preserving ordered timer/event batches and refusal recovery. Pause/manual
+  advance and timer-free idle behavior remain explicit; no polling was added.
+- All 29 Python NSH tooling tests passed together. The combined run caught and
+  fixed a module-name collision that isolated qualifier tests had missed.
+- Three release Store benchmark processes completed 24,000 measured
+  transactions with identity assertions. For 100-property batches, transaction
+  medians were 50–52 microseconds and p95 values 52–60 microseconds; 100k/1k
+  median ratios were 1.016–1.029. See the
+  [complete method and results](review-probes/2026-11-11/nsh-sparse-update-bench.md)
+  for source hashes, sample distributions, overlapping validation stages and
+  the noisy one-property case. This is not binding/layout/frame qualification.
+- The additive `DesktopApp` standalone root now owns optional installed update
+  configuration and native menu actions; `Desktop` remains the embedding root.
+  Configured-menu and actual packaged LUI upgrade flows still need qualification.
+  The Windows native DLL builder and CI steps are implemented, but Windows
+  success requires execution on Windows and has not been claimed locally.
+
+2026-11-11 pre-push review checkpoint:
+
+- Fixed a real due-timer resync failure: the authoritative snapshot supersedes
+  deltas emitted by the preceding clock synchronization. The actual OCaml clock
+  fixture reproduced the failure before the fix and passed afterward.
+- Structural sibling changes now validate retained dropdown ownership before
+  publication, in one adjacency walk per changed parent. Same-incarnation
+  toolbar axis changes reject atomically because native roving navigation fixes
+  its axis at creation. Focused tests retain editor identity and accepted state
+  after rejected transactions, and verify keyboard behavior afterward.
+- The final Rust run passed 66 tests, 0 failed and 0 ignored, including real
+  OCaml clock/Todos/100k-row fixtures. Seven Store cases include wire defaults,
+  unknown fields, explicit duplicate-field rejection and oversized-snapshot
+  rejection. Strict Clippy, formatting, generation freshness and workflow
+  syntax checks passed. `make test` passed; a forced serialized OCaml run also
+  passed all 249 main tests and the auxiliary suites.
+- Independent source review covered worker/FFI lifetimes, request ordering,
+  renderer validation, popup identity, update tickets/cancellation, native boot,
+  package payload/graph verification and signing order. Remaining accepted but
+  unimplemented property/event behavior is recorded in the
+  [87-kind support inventory](review-probes/2026-11-11/nsh-support-inventory.md);
+  this draft does not claim full component parity or completion.

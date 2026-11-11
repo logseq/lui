@@ -1,23 +1,31 @@
 # Component gallery
 
 This showcase renders the same OCaml model, reducer, and component tree
-(`examples/gallery`) on MyGo desktop, Apple and Android hosts. The platform directories
+(`examples/gallery`) on desktop, Apple and Android hosts. The platform directories
 contain only lifecycle, event, and rendering bridge code; interactive state lives in
 the shared OCaml application.
 
-## Desktop (MyGo)
+## Desktop (NSH migration)
 
-MyGo is the default desktop host. Build the shared OCaml application library
-and launch it from the repository root:
+The Rust-only NSH backend replaces MyGo. Build the shared OCaml Gallery library
+from the repository root:
 
 ```sh
-library=$(./tooling/build_mygo_components.sh)
-go -C platform/mygo run ./cmd/lui-mygo -library "$library" -title Components
+bash tooling/build_nsh_components.sh
 ```
 
-See the [MyGo guide](../../platform/mygo/README.md) for Go and system
-dependencies. The former `webview-shell` example was removed with the OCaml
-desktop renderer; Web output still runs in a browser.
+Full NSH Gallery component coverage is still in progress; building the library
+does not qualify every Gallery screen. Use the real Todos application for the
+currently exercised native desktop input path:
+
+```sh
+LUI_OCAML_LIBRARY="$(bash tooling/build_nsh_todos.sh)" \
+  cargo run --manifest-path platform/nsh/Cargo.toml
+```
+
+See the [NSH guide](../../platform/nsh/README.md) and
+[delivery instructions](../../platform/nsh/DELIVERY.md) for dependencies,
+current qualification limits and packaging. Web output still runs in a browser.
 
 ## Apple
 

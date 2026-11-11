@@ -1,0 +1,137 @@
+name: NSH desktop
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nsh-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-adapter:
+    name: Rust adapter (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-26, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      RUSTUP_TOOLCHAIN: 1.97.0
+      CARGO_BUILD_JOBS: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Linux native development libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libclang-dev pkg-config fonts-dejavu-core
+      - name: Allow the Windows bindings compiler stack
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: '"RUST_MIN_STACK=268435456" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append'
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install 1.97.0 --profile minimal --component rustfmt,clippy
+      - name: Rust formatting
+        run: cargo fmt --manifest-path platform/nsh/Cargo.toml --check
+      - name: Strict adapter checks
+        run: cargo clippy --locked --manifest-path platform/nsh/Cargo.toml --all-targets -- -D warnings
+      - name: Contract, controls, transport and updater tests
+        run: cargo test --locked --manifest-path platform/nsh/Cargo.toml --lib
+      - name: Retained store and public list regressions
+        run: cargo test --locked --manifest-path platform/nsh/Cargo.toml --test store_transactions --test public_list_seam
+      - name: Native runner build
+        run: cargo build --locked --manifest-path platform/nsh/Cargo.toml
+
+  ocaml-integration:
+    name: OCaml integration (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-26]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      RUSTUP_TOOLCHAIN: 1.97.0
+      CARGO_BUILD_JOBS: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: ./.github/actions/setup-lui-ocaml
+      - name: Install Linux native development libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libclang-dev pkg-config fonts-dejavu-core
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install 1.97.0 --profile minimal --component rustfmt,clippy
+      - name: Canonical generation freshness
+        run: python3 tooling/generate_nsh_contract.py --check
+      - name: Native tooling and delivery regressions
+        run: python3 -m unittest discover -s tooling/test -p 'test_nsh_*.py'
+      - name: Real OCaml input, recovery, clock and bounded rows
+        run: cargo test --locked --manifest-path platform/nsh/Cargo.toml --test ocaml_todos --test runtime_protocol --test ocaml_virtual --test ocaml_clock
+
+  windows-ocaml-package:
+    name: Native Windows OCaml DLL and packaged launch
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      RUSTUP_TOOLCHAIN: 1.97.0
+      CARGO_BUILD_JOBS: 2
+      RUST_MIN_STACK: 268435456
+      PYTHONUTF8: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: ./.github/actions/setup-lui-ocaml
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install 1.97.0 --profile minimal
+      - name: Windows builder source regressions
+        run: python -m unittest discover -s tooling/test -p 'test_nsh_windows_build.py'
+      - name: Build and load the real native OCaml Todos DLL
+        run: |
+          $library = python tooling/build_nsh_windows.py --application todos
+          if ($LASTEXITCODE -ne 0) { throw 'Native OCaml DLL build or export verification failed' }
+          "LUI_NSH_TEST_LIBRARY=$library" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Real OCaml C ABI, input, recovery and repeated teardown
+        run: cargo test --locked --manifest-path platform/nsh/Cargo.toml --test ocaml_todos --test runtime_protocol -- --test-threads=1
+      - name: Build the exact pinned native NSH packaging CLI
+        run: |
+          $nshRevision = python -c "import tomllib; from pathlib import Path; print(tomllib.loads(Path('platform/nsh/Cargo.toml').read_text())['dependencies']['nsh-core']['rev'])"
+          git clone --filter=blob:none https://github.com/logseq/nsh _build/nsh-source
+          if ($LASTEXITCODE -ne 0) { throw 'NSH source clone failed' }
+          git -C _build/nsh-source checkout --detach $nshRevision
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned NSH source checkout failed' }
+          python tooling/nsh_delivery.py setup --checkout _build/nsh-source
+      - name: Build an unsigned native Windows package
+        run: python tooling/nsh_delivery.py package --target windows --arch x86_64 --library $env:LUI_NSH_TEST_LIBRARY --output _build/nsh-windows-package
+      - name: Launch the complete native package outside the checkout
+        run: python tooling/test_nsh_packaged_app.py _build/nsh-windows-package --logs _build/nsh-windows-launch --timeout 90
+      - name: Preserve Windows toolchain and launch evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nsh-windows-native-qualification
+          path: |
+            _build/nsh/windows/todos/ocaml-toolchain.json
+            _build/nsh-windows-launch/
+            _build/nsh-windows-package/**/lui-delivery.json
+          if-no-files-found: warn

@@ -1,4 +1,6 @@
-.PHONY: test test-schema generate-component-schema generate-json-view test-ocaml test-apple test-mygo test-mygo-integration build-web-css test-web-visual update-web-visual-baselines
+.PHONY: test test-schema generate-component-schema generate-json-view test-ocaml test-apple test-nsh test-nsh-integration build-web-css test-web-visual update-web-visual-baselines
+
+CARGO ?= cargo
 
 test-web-visual:
 	node tooling/capture_web_simulator_baselines.mjs
@@ -14,7 +16,7 @@ test-schema:
 generate-component-schema:
 	node tooling/generate_component_schema.mjs
 	opam exec -- dune build src/lui.cmxa
-	python3 tooling/generate_mygo_schema.py --export
+	python3 tooling/generate_nsh_contract.py
 
 generate-json-view:
 	python3 tools/gen_json_view.py
@@ -33,10 +35,12 @@ platform/web/node_modules/.package-lock.json: platform/web/package.json platform
 build-web-css: platform/web/node_modules/.package-lock.json
 	npm --prefix platform/web run check
 
-test-mygo:
-	python3 tooling/generate_mygo_schema.py --check
-	cd platform/mygo && go test -count=1 -run 'AllocationBudget$$' .
-	cd platform/mygo && go test -race ./...
+test-nsh:
+	python3 tooling/generate_nsh_contract.py --check
+	python3 -m unittest discover -s tooling/test -p 'test_nsh_*.py'
+	$(CARGO) fmt --manifest-path platform/nsh/Cargo.toml --check
+	$(CARGO) clippy --locked --manifest-path platform/nsh/Cargo.toml --all-targets -- -D warnings
+	$(CARGO) test --locked --manifest-path platform/nsh/Cargo.toml
 
-test-mygo-integration:
-	./tooling/test_mygo.sh
+test-nsh-integration:
+	$(CARGO) test --locked --manifest-path platform/nsh/Cargo.toml --test ocaml_todos --test runtime_protocol --test ocaml_virtual --test ocaml_clock --test public_list_seam

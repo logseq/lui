@@ -1,5 +1,5 @@
 (* Encode/decode coverage for the patch wire and the generated schema.
-   Canonical bytes live in test/fixtures/wire and are decoded again by MyGo. *)
+   Canonical bytes live in test/fixtures/wire and are decoded again by NSH. *)
 
 open Lui_protocol
 
@@ -222,7 +222,7 @@ let test_malformed_and_truncated () =
     (Lui_wire.decode_batch {|{"generation":6}|} = { generation = 6; ops = [] });
   (* Encoder output never repeats a key. The decoder keeps the first
      operation field and the last generation, which is this runtime's
-     contract; MyGo's encoding/json layer keeps the last field. *)
+     contract; NSH rejects duplicate recognized batch/operation fields. *)
   Alcotest.(check bool) "duplicate generation keeps the last value" true
     (Lui_wire.decode_batch
        {|{"generation":1,"generation":2,"ops":[{"op":"drop-node","id":1,"id":9}]}|}

@@ -159,7 +159,7 @@ let host_name host =
   | WebHost -> "web"
   | SwiftUIHost -> "swiftui"
   | KotlinHost -> "kotlin"
-  | MyGoHost -> "mygo"
+  | NshHost -> "nsh"
 
 let token value = string_of_int (String.length value) ^ ":" ^ value
 

@@ -106,7 +106,7 @@ type host_kind =
   | WebHost
   | SwiftUIHost
   | KotlinHost
-  | MyGoHost
+  | NshHost
 
 type platform_profile = {
   profile_os : operating_system;

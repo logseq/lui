@@ -4,7 +4,7 @@
 //   node tooling/lui_agent.mjs --tcp 127.0.0.1:49380 --artifact PATH 'press "Save"' dump
 //   node tooling/lui_agent.mjs --ws-listen 49380 --artifact _build/web-release --script flow.agent
 //
-// Native hosts (MyGo, Apple, Android) listen on loopback TCP once opted in;
+// Native hosts (NSH, Apple, Android) listen on loopback TCP once opted in;
 // a Web page dials the --ws-listen socket from ?lui-agent=ws://127.0.0.1:PORT.
 // Both carry the same newline-delimited lui-agent requests and replies,
 // answered by the shared OCaml runtime, so one script drives every host.

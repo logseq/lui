@@ -1754,7 +1754,7 @@ let test_shrink_contract () =
     Alcotest.(check bool) "shrink does not author grow" false
       (List.exists (function SetProp (_, GrowValue, _) -> true | _ -> false) (all_ops ()));
     ignore (Lui_app.dispose app))
-    [WebHost; MyGoHost];
+    [WebHost; NshHost];
   List.iter (fun host ->
     Alcotest.check_raises "unsupported host rejects opt-in"
       (Invalid_argument "shrink is unsupported by backend profile")
@@ -4525,7 +4525,7 @@ let fixture ?(host = WebHost) ?(count = 100_000) ?height
   let batches = ref [] in
   let mounts = ref 0 and disposals = ref 0 and fail_row = ref None in
   let operating_system = match host with
-    | SwiftUIHost | MyGoHost -> MacOS
+    | SwiftUIHost | NshHost -> MacOS
     | KotlinHost -> AndroidOS
     | WebHost | GenericHost -> WebOS in
   let backend = { backend_profile = profile operating_system host;
@@ -4590,7 +4590,7 @@ let test_initial_tree_is_bounded_for_host host () =
       ~finally:(fun () -> dispose fixture)
 
 let test_initial_tree_is_bounded () =
-  List.iter (fun host -> test_initial_tree_is_bounded_for_host host ()) [WebHost; MyGoHost]
+  List.iter (fun host -> test_initial_tree_is_bounded_for_host host ()) [WebHost; NshHost]
 
 let test_unmeasured_bootstrap_is_bounded_for_host host () =
   let fixture = fixture ~host () in
@@ -5288,7 +5288,8 @@ let test_native_capability_flag_grammar () =
       (Lui_native_bridge.virtual_rows_supported code))
     [0, GenericHost, false; 1, WebHost, true;
      2, SwiftUIHost, false; 258, SwiftUIHost, true;
-     4, KotlinHost, false; 260, KotlinHost, true; 5, MyGoHost, true;
+     4, KotlinHost, false; 260, KotlinHost, true;
+     5, GenericHost, false; 6, NshHost, false;
      3, GenericHost, false; 256, GenericHost, false; 257, GenericHost, false;
      261, GenericHost, false; 514, GenericHost, false; -254, GenericHost, false];
   List.iter (fun (os, plain, flagged, host) ->
@@ -5544,7 +5545,7 @@ let startup_compat_tests = [
 
 let with_gallery_virtual_section host run =
   let operating_system = match host with
-    | SwiftUIHost | MyGoHost -> MacOS
+    | SwiftUIHost | NshHost -> MacOS
     | KotlinHost -> AndroidOS
     | WebHost | GenericHost -> WebOS in
   let backend = { backend_profile = profile operating_system host;
@@ -5630,7 +5631,7 @@ let test_gallery_virtual_jump_controls_and_row_actions () =
         Alcotest.(check bool) (text ^ " is disabled after Clear") true
           (prop runtime (button text) "enabled" = Some (BoolValue false)))
         ["Jump to last"; "Back to top"]))
-    [SwiftUIHost; KotlinHost; WebHost; MyGoHost]
+    [SwiftUIHost; KotlinHost; WebHost; NshHost]
 
 let test_gallery_virtual_jump_repeats_and_count_changes () =
   List.iter (fun host -> with_gallery_virtual_section host
@@ -5673,7 +5674,7 @@ let test_gallery_virtual_jump_repeats_and_count_changes () =
           | _ -> false) (direct_rows runtime list));
       Alcotest.(check bool) "count-change requests remain bounded" true
         (Lui_runtime.mounted_count runtime < 200)))
-    [SwiftUIHost; KotlinHost; WebHost; MyGoHost]
+    [SwiftUIHost; KotlinHost; WebHost; NshHost]
 
 let tests = tests @ [
   "Gallery jump controls drive actual source and row actions", test_gallery_virtual_jump_controls_and_row_actions;
