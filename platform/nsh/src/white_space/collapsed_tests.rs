@@ -142,12 +142,12 @@ fn CollapsedText() -> impl IntoElement {
         },
     );
     view().flex_col().child(renderer.element()).child(
-        text("")
+        nsh_core::element::text("")
             .test_id("visibility-control")
             .text_size(px(20.0))
-            .child(text("L"))
-            .child(text("**").invisible())
-            .child(text("R")),
+            .child(nsh_core::element::text("L"))
+            .child(nsh_core::element::text("**").invisible())
+            .child(nsh_core::element::text("R")),
     )
 }
 fn node(app: &Headless, id: &str) -> LayoutNode {
