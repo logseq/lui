@@ -41,6 +41,20 @@ pub enum ServiceResponse {
     Events(Vec<PlatformEvent>),
     AfterCommit(DeferredEvents),
 }
+/// Waits for the owning native commit, without requesting a display frame.
+/// A disposed owner cancels the callback and returns an error. Layout-dependent
+/// work should then use its public ElementRef measurement, which resolves from
+/// the commit carrying that request. Hidden/locked windows need no display tick.
+pub async fn wait_for_commit() -> Result<(), String> {
+    let (send, receive) = oneshot::channel();
+    after_answer(move || {
+        let _ = send.send(());
+    });
+    receive
+        .await
+        .map_err(|_| "native commit owner was disposed".to_owned())
+}
+
 pub type ServiceFuture = Pin<Box<dyn Future<Output = Result<ServiceResponse, String>>>>;
 type ServiceHandler = dyn Fn(PlatformRequest, Renderer) -> ServiceFuture;
 
@@ -528,8 +542,11 @@ async fn accept_ordered(
             let events = events.clone();
             let renderer = renderer.clone();
             spawn(async move {
-                next_frame().await;
-                match future.await {
+                let result = match wait_for_commit().await {
+                    Ok(()) => future.await,
+                    Err(error) => Err(error),
+                };
+                match result {
                     Ok(replies) => {
                         for reply in replies {
                             if let Err(error) = events.send(reply) {

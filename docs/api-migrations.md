@@ -4551,3 +4551,19 @@ reveal its retained controls. Removing the property returns to the node's normal
 layout and inherited visibility. Do not replace the sidebar's child list to
 perform this visibility change. Maintained Apple, Android and Web mappings are
 unchanged.
+
+### NSH host services wait for commits without requesting display frames
+
+Deferred `ServiceResponse::AfterCommit` host operations now synchronize with the
+owning native commit through public `after_answer`, then obtain geometry using
+`ElementRef::measure`. They no longer wait for `next_frame`: macOS deliberately
+stops display-link callbacks while the screen is locked or all application
+windows are covered. This prevented real native content measurements from
+completing even though Headless tests advanced their synthetic display frames.
+
+Native host adapters can use `lui_nsh::app::wait_for_commit().await?` for the same
+one-shot owner-scoped barrier before checking a newly mounted reference. Owner
+disposal cancels the wait with an error; callers still check the target's current
+incarnation. This is a commit boundary, not a promise that a window was displayed.
+No polling, timeout, synthetic frame, window activation or geometry fallback is
+introduced. Generic applications without deferred host work allocate no barrier.
