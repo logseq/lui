@@ -30,12 +30,20 @@ impl ExtensionChildren {
     }
 }
 
-type Emit = Rc<dyn Fn(&str, Map<String, Value>) -> Result<(), String>>;
+type Emit = Rc<dyn Fn(&str, Map<String, Value>) -> Result<bool, String>>;
 /// Declared scalar events only. Disposed/replaced node callbacks cannot emit.
 #[derive(Clone)]
 pub struct ExtensionEmitter(pub(crate) Emit);
 impl ExtensionEmitter {
     pub fn emit(&self, name: &str, values: Map<String, Value>) -> Result<(), String> {
+        if self.try_emit(name, values)? {
+            Ok(())
+        } else {
+            Err("extension node was disposed or replaced".into())
+        }
+    }
+    /// `Ok(false)` is a retired incarnation; malformed payloads remain errors.
+    pub fn try_emit(&self, name: &str, values: Map<String, Value>) -> Result<bool, String> {
         (self.0)(name, values)
     }
 }

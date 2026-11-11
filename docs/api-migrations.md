@@ -4172,3 +4172,10 @@ that checks the seven arguments, foreign-thread wakeup, one worker thread,
 interleaved service/patch order, recovery, embedded NUL/Unicode reply lengths, and
 reopening. It does not qualify OCaml startup or actual Logseq UI/services; those
 remain separate application build and native launch gates.
+
+For lifecycle callbacks that may run while a native owner is retiring, use
+`ExtensionEmitter::try_emit(name, values)`: `Ok(true)` means dispatched,
+`Ok(false)` means the node/renderer incarnation was retired, and `Err` still
+reports an undeclared event or malformed payload. `emit` retains its original
+error-on-retired behavior. This lets native Blur cleanup avoid treating normal
+owner disposal as a schema failure.

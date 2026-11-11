@@ -313,6 +313,14 @@ fn NativeExtensions() -> impl IntoElement {
                         ))
                         .unwrap();
                     assert!(
+                        !saved
+                            .borrow()
+                            .as_ref()
+                            .unwrap()
+                            .try_emit("changed", json!({"count":7}).as_object().unwrap().clone())
+                            .unwrap()
+                    );
+                    assert!(
                         saved
                             .borrow()
                             .as_ref()

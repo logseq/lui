@@ -705,9 +705,12 @@ impl Renderer {
             let identifier = extension.identifier.clone();
             let emitter = ExtensionEmitter(Rc::new(move |name, values| {
                 event_schema.validate_event(name, &values)?;
-                let renderer = Renderer(weak.upgrade().ok_or("extension renderer was disposed")?);
+                let Some(state) = weak.upgrade() else {
+                    return Ok(false);
+                };
+                let renderer = Renderer(state);
                 if !renderer.is_current(id, incarnation, None) {
-                    return Err("extension node was disposed or replaced".into());
+                    return Ok(false);
                 }
                 renderer.maintain(
                     id,
@@ -720,7 +723,7 @@ impl Renderer {
                         values,
                     },
                 );
-                Ok(())
+                Ok(true)
             }));
             return crate::extensions::mount(
                 ExtensionContext {
