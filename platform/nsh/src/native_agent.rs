@@ -242,7 +242,7 @@ mod tests {
                         format!("Native activations:{}", activated.get())
                     })),
             )
-            .child(text(result))
+            .child(text(move || result.get()))
     }
 
     #[test]

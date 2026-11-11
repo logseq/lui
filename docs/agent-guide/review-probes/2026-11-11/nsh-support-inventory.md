@@ -297,9 +297,9 @@ uses the concrete route bodies, not literal presence alone.
 | `ui/checkbox.rs` | `a613b40f06905e472a04e5558103c76cc4d18981f587c9be8a3a1946a761512c` |
 | `render.rs` | `e9afdc4633b2948fd8cbd4cdcd6fe75a2c543d2cd3d8cc4a9df44b0ad396db61` |
 | `controls.rs` | `558729f83a448fe60377a8d9343897f4d92bf0686f8f87a088bdb5e812f02ee0` |
-| `style.rs` | `562f89f12a4e87cb119e8a3bfec41efa6296fb2feea68dbf20f8e92b9339c77a` |
+| `style.rs` | `ac66143c44cbd6c6236b7b7cee86c5c4f7e1728004e9894819c02387fe01be9e` |
 | `virtual_rows.rs` | `1630ed15ed6526769c9f3b405623c464296d5c23e4a77099eb60d449ef1ea3de` |
-| `app.rs` | `56c4c4900029fdcc667aa038133a5a0d450f45b461608b7e2481b417f3221070` |
+| `app.rs` | `f8f4f648e3c0cd82e3d609016a675d4466679f62169e34089ab6cf2a2a2567f9` |
 | `ui/mod.rs` | `1d2cfcebfbb8b0cf7b4d38f13795cb86afc3eeacc922b7e56d8da28092735d56` |
 | `ui/controls.rs` | `5bdbbcce9067ed597ae60443878e76d4fc72c7609d7e40af31a3909a2ab515e2` |
 | `events.rs` | `eb9addb27f70d21b0fdaff507f869ad6ebbede6be1e031f1d64b6b4aa86a1d03` |

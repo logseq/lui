@@ -33,6 +33,10 @@ reactive ~equal:(fun a b -> a.id = b.id) (fun m -> view_of m) model_s
 (* signal of elements / multi-signal tuple *)
 reactive elements_s
 reactive (fun (a, b) -> combined a b) s1 s2
+
+(* Filter unrelated source updates before rebuilding a structural branch.
+   The inner form derives a signal owned by each mounted outer view. *)
+reactive render_menu (reactive menu_inputs model_s)
 ```
 
 ## Structural primitives (only when signal-driven)
@@ -69,6 +73,11 @@ keyed ~source:items_s ~key:(fun it -> it.id) ~cmp:Int.compare
 - Do not dispose a shared caller-owned source when one consumer unmounts.
   Handwritten derivations in lifecycle callbacks must explicitly register
   ownership with the appropriate scope.
+- A direct nested `reactive project source` in another `reactive` source
+  position is an owned projection, not a mounted subtree. Its normal equality
+  can filter unrelated model updates before expensive branch work. Keep source
+  projections bounded to fields the branch actually reads; do not compare full
+  block/reference trees or create manual subscription caches.
 
 ## Comments
 
