@@ -221,6 +221,37 @@ impl TryFrom<&str> for OrientationValue {
     }
 }
 
+/// Canonical typed `input-type` values. Provider matches must be exhaustive.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InputTypeValue {
+    Color,
+    Text,
+    Time,
+}
+
+impl InputTypeValue {
+    pub const ALL: &'static [Self] = &[Self::Color, Self::Text, Self::Time];
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Color => "color",
+            Self::Text => "text",
+            Self::Time => "time",
+        }
+    }
+}
+
+impl TryFrom<&str> for InputTypeValue {
+    type Error = String;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "color" => Ok(Self::Color),
+            "text" => Ok(Self::Text),
+            "time" => Ok(Self::Time),
+            _ => Err(format!("invalid canonical input-type: {value}")),
+        }
+    }
+}
+
 pub(super) fn property_value_supported(property: &str, value: Scalar<'_>) -> bool {
     match (property, value) {
         ("read-only", Scalar::Bool(_)) => true,

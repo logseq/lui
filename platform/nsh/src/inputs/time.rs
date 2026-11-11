@@ -3,7 +3,7 @@ use crate::{render::Event, store::Node, ui};
 use chrono::{NaiveTime, Timelike};
 use nsh_base::{HourCycle, TimeField, TimeFieldEvent, TimeFieldProps, TimeOfDay, TimePrecision};
 use nsh_core::{
-    element::{ComponentElement, StyleRefinement},
+    element::ComponentElement,
     prelude::*,
 };
 use std::{cell::Cell, rc::Rc, sync::Arc};
@@ -118,6 +118,7 @@ pub(crate) fn element(
                 } else {
                     label
                 }
+                .to_owned()
                 .into(),
             )
         }),
@@ -126,13 +127,12 @@ pub(crate) fn element(
         )
         .into(),
         segment_style: Prop::bind(move || {
-            StyleRefinement::default()
-                .focus(|style| {
-                    style
-                        .bg(ui::color(theme, "accent"))
-                        .text_color(ui::color(theme, "accent-foreground"))
-                })
-                .into()
+            let mut style = view().focus(|style| {
+                style
+                    .bg(ui::color(theme, "accent"))
+                    .text_color(ui::color(theme, "accent-foreground"))
+            });
+            style.style().clone().into()
         }),
         ..Default::default()
     })
