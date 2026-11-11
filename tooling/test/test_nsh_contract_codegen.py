@@ -107,8 +107,8 @@ fn main() {
     assert_eq!(fit_value(ImageFitValue::Fill), ResizeMode::Cover);
     assert!(ImageFitValue::try_from("not-canonical").is_err());
     assert!(DisplayValue::try_from("not-canonical").is_err());
-    assert_eq!(display_value(&Value("none".into())).unwrap(), ("none", true));
-    assert_eq!(display_value(&Value("block".into())).unwrap(), ("block", false));
+    assert_eq!(display_value(&Value("none".into())).unwrap(), ("none".to_owned(), true));
+    assert_eq!(display_value(&Value("block".into())).unwrap(), ("block".to_owned(), false));
     for value in ["contents", "inline", "inline-block", "inline-flex"] {
         assert!(display_value(&Value(value.into())).is_err());
     }
