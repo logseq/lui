@@ -4419,7 +4419,7 @@ behavior change.
 ### NSH inherited foreground preserves native ancestor and state colors
 
 NSH now accepts `foreground="inherit"` (and the CSS equivalent `currentColor`)
-for ordinary and state-prefixed foreground paint. It clears the local control
+for ordinary foreground and the canonical `hover-foreground` paint channel. It clears the local control
 color and uses the actual native ancestor's foreground, including later ancestor
 changes. It does not substitute the application theme's foreground or a fixed
 color. For example, a button can inherit its containing column's color while
@@ -4434,9 +4434,9 @@ column ~foreground:"#123456"
 The adapter uses public `text-inherit` utilities at the corresponding native
 state rank. It combines them with whitespace policy in one `app_class` binding;
 these features cannot overwrite each other. A raw inline reset would outrank
-state colors, so this implementation preserves authored hover, pressed, focus,
-focus-within, disabled and selected paint precedence. Selected foreground and
-selected-hover foreground continue to follow the model-owned `selected` value.
+state colors, so this implementation preserves authored hover paint precedence
+and the control's existing native state behavior. This does not add new public
+foreground channels for other control states.
 CSS-variable aliases/fallbacks and scoped appearance are resolved before choosing
 the native inherited or explicit color path.
 

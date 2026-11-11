@@ -1159,30 +1159,12 @@ pub(crate) fn foreground_classes(
             })
             .transpose()
     };
-    let selected = node.boolean("selected", false);
-    let foreground = if selected {
-        read("selected-foreground")?
-    } else {
-        None
-    }
-    .or(read("foreground")?);
-    let hover = if selected {
-        read("selected-hover-foreground")?
-    } else {
-        None
-    }
-    .or(read("hover-foreground")?);
-    let mut classes = Vec::with_capacity(6);
+    // These are the canonical foreground channels. State shadows/backgrounds
+    // have different properties; do not invent extra public color channels.
+    let mut classes = Vec::new();
     for (paint, class) in [
-        (foreground, "text-inherit"),
-        (hover, "hover:text-inherit"),
-        (read("pressed-foreground")?, "active:text-inherit"),
-        (read("focus-foreground")?, "focus-visible:text-inherit"),
-        (
-            read("focus-within-foreground")?,
-            "focus-within:text-inherit",
-        ),
-        (read("disabled-foreground")?, "disabled:text-inherit"),
+        (read("foreground")?, "text-inherit"),
+        (read("hover-foreground")?, "hover:text-inherit"),
     ] {
         if matches!(paint, Some(Foreground::Inherit)) {
             classes.push(class);
@@ -1736,3 +1718,7 @@ mod tests {
         assert_eq!(host.layout.gap.height.into_raw().value(), 0.0);
     }
 }
+
+#[cfg(test)]
+#[path = "style/inherited_foreground_tests.rs"]
+mod inherited_foreground_tests;
