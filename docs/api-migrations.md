@@ -4399,3 +4399,13 @@ match. Missing fit still stretches ordinary Image and contains FileImage;
 authored invalid values fail preflight rather than taking those missing-value
 defaults. New canonical fit variants require an explicit Rust provider decision.
 No image constructor or downstream migration is required.
+
+### Initial NSH application theme preflight
+
+`Renderer::element()` now synchronously seeds its base theme from an already
+installed application `ThemeRegistry` snapshot before returning the native root.
+The first immediately following patch can therefore resolve application variables
+without waiting for the deferred reactive effect. Initial and later refreshes use
+the same resolver, transactional preflight and diagnostic path; rejected refreshes
+retain the last accepted theme. No wire values, defaults or maintained backend
+behavior change.

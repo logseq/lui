@@ -399,6 +399,21 @@ impl Renderer {
         let error = self.0.borrow().error;
         let viewport = self.0.borrow().viewport;
         let theming = self.clone();
+        let application_theme = use_context::<crate::application_theme::ThemeRegistry>();
+        let read_theme = move || {
+            let system_dark = dark();
+            let base = ThemeView::new(tokens(), system_dark, reduce_motion());
+            match application_theme.as_ref() {
+                Some(registry) => registry.apply(base, system_dark),
+                None => Ok(base),
+            }
+            .map(Arc::new)
+        };
+        // Effects run later. The first patch must already see an installed
+        // application snapshot through the same transactional theme preflight.
+        if let Err(error) = read_theme().and_then(|theme| self.refresh_theme(theme)) {
+            self.fail(error);
+        }
         let inherited_theme = signal(self.0.borrow().base_theme.clone());
         let members = self.0.borrow().toasts;
         let toast_lookup = self.clone();
@@ -424,15 +439,9 @@ impl Renderer {
                 }
             }),
         );
-        let application_theme = use_context::<crate::application_theme::ThemeRegistry>();
         effect(move || {
-            let base = ThemeView::new(tokens(), dark(), reduce_motion());
-            let effective = match application_theme.as_ref() {
-                Some(registry) => registry.apply(base, dark()),
-                None => Ok(base),
-            };
-            let theme = match effective {
-                Ok(theme) => Arc::new(theme),
+            let theme = match read_theme() {
+                Ok(theme) => theme,
                 Err(error) => {
                     theming.fail(error);
                     return;

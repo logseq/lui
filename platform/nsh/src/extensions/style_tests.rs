@@ -80,7 +80,8 @@ fn ThemedFixture() -> impl IntoElement {
         })
         .unwrap();
     let renderer = Renderer::with_extensions(registry, |_, _| {});
-    // Install the existing theme effect before the first application patch.
+    // Initialize from the installed snapshot before the first application patch;
+    // the deferred theme effect has not run at this point.
     let content = renderer.element();
     renderer
         .apply(patch(
