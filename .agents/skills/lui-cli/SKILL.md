@@ -58,6 +58,13 @@ change display power, or substitute a desktop capture. For migration tests, use
 an isolated graph/state directory; inspection of an existing user session should
 retain its requested graph.
 
+For a private Logseq native qualification, also use the runner's explicit
+`--startup-preflight <absolute-private-root>` option and the environment setup in
+`deps/ui/nsh/README.md` in the Logseq checkout. It selects empty owner-local
+credentials and private native storage; changing HOME alone does not isolate the
+OS keychain. Build before applying the private HOME environment. The regular
+runner retains native credentials and storage.
+
 ## Semantic inspection and scripts
 
 On a host advertising the semantic API, commands include:
