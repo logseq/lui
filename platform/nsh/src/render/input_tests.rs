@@ -96,7 +96,6 @@ fn InputPolicies() -> impl IntoElement {
             for (property, value) in [
                 ("input-type", json!("color")),
                 ("input-type", json!("time")),
-                ("navigate-enabled", json!(true)),
             ] {
                 assert!(reject.apply(patch(generation+1, json!([
                 {"op":"set-prop","id":2,"property":"text","value":"must not publish"},

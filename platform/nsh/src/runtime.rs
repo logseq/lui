@@ -42,6 +42,8 @@ pub enum Event {
         text: String,
     },
     Submit(i64),
+    NavigatePrevious(i64),
+    NavigateNext(i64),
     Toggle {
         node: i64,
         checked: bool,
@@ -293,6 +295,8 @@ struct Exports {
     pointer: [Option<PointerFn>; 6],
     text: TextFn,
     submit: NodeFn,
+    navigate_previous: Option<NodeFn>,
+    navigate_next: Option<NodeFn>,
     toggle: NodeIntFn,
     value: NumberFn,
     focus_within: NodeIntFn,
@@ -378,6 +382,8 @@ impl Native {
                 ],
                 text: required!("lui_ocaml_text_changed_utf8"),
                 submit: required!("lui_ocaml_submit"),
+                navigate_previous: optional!("lui_ocaml_navigate_previous"),
+                navigate_next: optional!("lui_ocaml_navigate_next"),
                 toggle: required!("lui_ocaml_toggle_changed"),
                 value: required!("lui_ocaml_slider_changed"),
                 focus_within: required!("lui_ocaml_focus_within_changed"),
@@ -496,6 +502,16 @@ impl Native {
                             (api.text)(*node, text.as_ptr().cast(), length(text.len())?)
                         }
                         Event::Submit(node) => (api.submit)(*node),
+                        Event::NavigatePrevious(node) => api
+                            .navigate_previous
+                            .ok_or("OCaml library has no NavigatePrevious ABI")?(
+                            *node
+                        ),
+                        Event::NavigateNext(node) => api
+                            .navigate_next
+                            .ok_or("OCaml library has no NavigateNext ABI")?(
+                            *node
+                        ),
                         Event::Toggle { node, checked } => (api.toggle)(*node, i32::from(*checked)),
                         Event::Value { node, value } => (api.value)(*node, *value),
                         Event::FocusWithin { node, within } => {

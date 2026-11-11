@@ -68,6 +68,8 @@ impl GuardedEvent {
             | ViewEvent::Press(node)
             | ViewEvent::Text(node, _)
             | ViewEvent::Submit(node)
+            | ViewEvent::NavigatePrevious(node)
+            | ViewEvent::NavigateNext(node)
             | ViewEvent::Toggle(node, _)
             | ViewEvent::Value(node, _)
             | ViewEvent::Focus(node)
@@ -335,6 +337,8 @@ fn semantic(event: ViewEvent) -> Event {
             text,
         },
         ViewEvent::Submit(node) => Event::Submit(node as i64),
+        ViewEvent::NavigatePrevious(node) => Event::NavigatePrevious(node as i64),
+        ViewEvent::NavigateNext(node) => Event::NavigateNext(node as i64),
         ViewEvent::Toggle(node, checked) => Event::Toggle {
             node: node as i64,
             checked,

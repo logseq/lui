@@ -28,13 +28,25 @@ test("native Input saves once with committed C ABI text and retained fields", as
   await app.type("label:Primary value", " +blur");
   let primary = draft("Primary value");
   await model("Primary", primary);
+  await app.keyboard.press("up");
+  await app.keyboard.press("down");
+  await app.waitFor("Primary navigation previous=1 next=1");
+  await app.waitFor("Optional navigation previous=0 next=0");
+  check(draft("Primary value") === primary, "Navigation does not mutate the native draft");
   await app.keyboard.press("tab");
   await saved("Primary", 1, primary);
   await app.keyboard.press("q");
   await app.waitFor("text:/^Optional draft .*q/");
+  await app.keyboard.press("up");
+  await app.keyboard.press("down");
+  await app.waitFor("Optional navigation previous=1 next=1");
+  await app.waitFor("Primary navigation previous=1 next=1");
   await app.type("label:Outside value", " +independent");
   const outside = draft("Outside value");
   await model("Outside", outside);
+  await app.keyboard.press("up");
+  await app.waitFor("Optional navigation previous=1 next=1");
+  await app.waitFor("Primary navigation previous=1 next=1");
   await saved("Optional", 0, "none");
 
   await app.type("label:Primary value", " +enter");
@@ -52,13 +64,18 @@ test("native Input saves once with committed C ABI text and retained fields", as
   await app.compose("label:Primary value", "zhong");
   await model("Primary", primary);
   await saved("Primary", 2, primary);
+  await app.keyboard.press("up");
+  await app.waitFor("Primary navigation previous=1 next=1");
   await app.compose("label:Primary value", "");
   await app.type("label:Primary value", "中");
   primary = draft("Primary value");
   check(primary.includes("中"), "Committed Unicode reaches the native editor");
+  await app.keyboard.press("down");
+  await app.waitFor("Primary navigation previous=1 next=2");
   await model("Primary", primary);
   await app.keyboard.press("tab");
   await saved("Primary", 3, primary);
+  await app.waitFor("Primary navigation previous=1 next=2");
 
   await app.type("label:Outside value", "");
   await app.press("role:button[Enable optional blur]");

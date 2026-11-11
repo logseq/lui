@@ -116,7 +116,7 @@ pub(crate) fn picker(
     let trigger = if kind == "combobox" {
         let change = emit.clone();
         presentation.host(
-            crate::inputs::attach(ui::input(theme), node, emit.clone())
+            crate::inputs::attach(ui::input(theme), node, presentation.reference, emit.clone())
                 .value(move || node.get().string("text").to_owned())
                 .placeholder(move || node.get().string("placeholder").to_owned())
                 .readonly(move || node.get().boolean("read-only", false))

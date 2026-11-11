@@ -36,6 +36,8 @@ pub enum Event {
     },
     Text(u64, String),
     Submit(u64),
+    NavigatePrevious(u64),
+    NavigateNext(u64),
     Toggle(u64, bool),
     Value(u64, f64),
     Focus(u64),
@@ -468,6 +470,7 @@ impl Renderer {
                 }
                 Event::Text(..) | Event::Value(..) | Event::Change(_) => Some("change-enabled"),
                 Event::Submit(_) => Some("submit-enabled"),
+                Event::NavigatePrevious(_) | Event::NavigateNext(_) => Some("navigate-enabled"),
                 Event::Toggle(..) => Some("toggle-enabled"),
                 Event::Focus(_) | Event::Blur(_) => Some("focus-within-enabled"),
                 Event::Appear(_) => Some("appear-enabled"),
@@ -875,6 +878,7 @@ impl Renderer {
                     .attach(crate::inputs::attach(
                         ui::input(theme),
                         state,
+                        reference,
                         Rc::new(move |event| submit.emit(id, incarnation, event)),
                     ))
                     .value(move || state.get().string("text").to_owned())

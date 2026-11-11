@@ -3886,8 +3886,8 @@ composition text: a blur while composition is still reported active does not
 submit it; when the native editor commits text and ends composition before
 blurring, the committed text event remains before Submit.
 
-Inputs that omit `submit_on_blur` retain their previous path with no additional
-blur/focus/composition observers or policy state. Authoring the property at
+Inputs that omit both `submit_on_blur` and navigation handlers retain their
+previous path with no additional blur/focus/composition observers or policy state. Authoring the property at
 initial mount, including explicit false, installs the small observer set. Its
 value, `enabled` and `submit-enabled` are checked live; initially authored false
 can subsequently become true on the same native editor, and removing the
@@ -3905,7 +3905,7 @@ property. For OCaml applications with a fixed blur-save policy, pass
 
 No C ABI, wire event ordinal or semantic event payload changes. The existing
 incarnation guard rejects retired callbacks, including the trailing native Blur
-when a Submit handler replaces the source Input. Input navigation and native
+when a Submit handler replaces the source Input. Button calendar NavigationKey and native
 color/time modes remain separate unresolved requirements. The native focused
 regressions cover callback count/order, policy/flag changes, atomic refusal,
 editor retention, composition events and replacement; Headless composition
@@ -3953,3 +3953,61 @@ Source regressions cover live icon/check/hint/size/variant changes, authored
 foreground/font precedence, part removal/restoration, child/editor identity and
 native disabled traversal with controlled selection. Real native appearance
 and keyboard qualification remain separate gates.
+
+## NSH Input forwards focused previous/next navigation
+
+NSH now supports the existing `on_navigate` callback of `input`, `text_field`,
+`secure_field`, `search_field` and `textarea`. An enabled, focused input with
+`navigate-enabled=true` requests `NavigatePrevious` for unmodified Up and
+`NavigateNext` for unmodified Down. The callback keeps its existing canonical
+node identity and does not edit the draft or change focus. This preserves
+Logseq's property picker, view picker and handbook search navigation:
+
+```ocaml
+input ~label:"Search results"
+  ~text:(reactive Fun.id query)
+  ~on_input:(on_input send (fun value -> Search value))
+  ~on_navigate:(function
+    | Lui_protocol.NavigatePrevious _ -> ignore (send Previous)
+    | Lui_protocol.NavigateNext _ -> ignore (send Next)
+    | _ -> ()) []
+```
+
+The adapter observes the actual native Input reference. It adds two public
+native key bindings only while that input has keyboard focus, is enabled, has
+navigation enabled and is not composing. Losing focus, disabling the input or
+navigation, beginning composition or disposing the owner removes those bindings;
+a guard inside a permanent window binding would still consume another input's
+keys, so that approach is not used. Shift/Alt/Control/Command modified arrows
+remain native editing commands. Held plain arrows repeat navigation. A narrow
+boolean memo keeps ordinary draft updates from tearing down and recreating the
+key bindings. No second focus manager or application tree is created.
+
+The native composition listener is shared with the optional blur-submit policy.
+Neither callback overwrites the other's listener, and native editing,
+composition and Enter/blur order remain owned by Input. The Combobox's existing
+Input helper also receives its actual reference; this does not add an
+unsupported canonical Combobox navigation property or change its Menu-owned
+selection behavior.
+
+An absent navigation option allocates no navigation observer/state. Initially
+authored `navigate-enabled=false` can be toggled true later on the retained
+Input. Adding true to a mounted input that originally omitted the property
+requires remounting it; the batch is atomically rejected. An intermediate false
+patch cannot bypass this installed-capability rule. Ordinary OCaml
+`~on_navigate` authors true on initial mount and needs no migration.
+
+No C export or wire ordinal changes: the runtime loads the already existing
+`lui_ocaml_navigate_previous` and `lui_ocaml_navigate_next` functions optionally
+and reports a missing requested export if an older application library lacks
+it. Rust exhaustive matches on `render::Event` or `runtime::Event` must handle
+the added `NavigatePrevious(node)` and `NavigateNext(node)` variants.
+
+This route covers input previous/next requests. The separate full
+`NavigationKey(node,key,shift)` contract used by Logseq's calendar Buttons and
+other navigation hosts remains open; an Input request is not a substitute for
+those key names/modifiers. The native Input fixture now checks the existing
+OCaml callbacks through the C ABI while retaining its four mounted fields and
+blur-save assertions. Headless tests additionally check removal of actual
+bindings, modified keys, composition, focus transfer, disabled/live flags,
+keyed editor retention and atomic late-capability refusal.

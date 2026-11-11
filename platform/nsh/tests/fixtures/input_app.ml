@@ -3,7 +3,7 @@ open Lui_elements
 
 type field = Primary | Optional | Outside | Paragraph
 
-type value = { draft : string; saved : string; saves : int; node : int }
+type value = { draft : string; saved : string; saves : int; node : int; previous_requests : int; next_requests : int }
 type model = {
   primary : value; optional : value; outside : value; paragraph : value;
   optional_blur : bool; disabled : bool; disable_on_edit : bool; mounts : int;
@@ -11,12 +11,13 @@ type model = {
 type action =
   | Edit of field * string
   | Save of field
+  | Navigate of field * bool
   | Mounted of field * int
   | Optional_blur of bool
   | Arm_disable
   | Enable
 
-let value draft = { draft; saved = "none"; saves = 0; node = 0 }
+let value draft = { draft; saved = "none"; saves = 0; node = 0; previous_requests = 0; next_requests = 0 }
 let initial = {
   primary = value "primary seed"; optional = value "optional seed";
   outside = value "outside seed"; paragraph = value "paragraph seed";
@@ -37,6 +38,10 @@ let update model = function
       then { next with disabled = true; disable_on_edit = false } else next
   | Save field ->
       change field (fun value -> { value with saved = value.draft; saves = value.saves + 1 }) model
+  | Navigate (field, previous) ->
+      change field (fun value ->
+        if previous then { value with previous_requests = value.previous_requests + 1 }
+        else { value with next_requests = value.next_requests + 1 }) model
   | Mounted (field, node) ->
       let next = change field (fun value -> { value with node }) model in
       { next with mounts = model.mounts + 1 }
@@ -61,6 +66,11 @@ let view context model_source send =
         Lui_ui.bool_property context node Lui_protocol.SubmitOnBlur enabled;
         ignore (send (Optional_blur enabled))
   in
+  let navigate field = function
+    | Lui_protocol.NavigatePrevious _ -> ignore (send (Navigate (field, true)))
+    | Lui_protocol.NavigateNext _ -> ignore (send (Navigate (field, false)))
+    | _ -> ()
+  in
   let status identifier render =
     text ~accessibility_identifier:identifier ~value:(reactive render model_source) []
   in
@@ -77,13 +87,13 @@ let view context model_source send =
             ~disabled:(reactive (fun model -> model.disabled) model_source)
             ~text:(reactive (fun model -> model.primary.draft) model_source)
             ~on_input:(on_input send (fun text -> Edit (Primary, text)))
-            ~on_submit:(press send (Save Primary)) ~on_appear:(mounted Primary) []
+            ~on_submit:(press send (Save Primary)) ~on_navigate:(navigate Primary) ~on_appear:(mounted Primary) []
         ; text ~value:"Optional: blur saving starts disabled" []
         ; text_field ~key:"optional" ~label:"Optional value" ~submit_on_blur:false
             ~accessibility_identifier:"input-optional"
             ~text:(reactive (fun model -> model.optional.draft) model_source)
             ~on_input:(on_input send (fun text -> Edit (Optional, text)))
-            ~on_submit:(press send (Save Optional)) ~on_appear:(mounted Optional) []
+            ~on_submit:(press send (Save Optional)) ~on_navigate:(navigate Optional) ~on_appear:(mounted Optional) []
         ; text ~value:"Outside: independent draft, ordinary native defaults" []
         ; text_field ~key:"outside" ~label:"Outside value"
             ~accessibility_identifier:"input-outside"
@@ -103,6 +113,8 @@ let view context model_source send =
         ; button ~text:"Arm disable on edit" ~on_press:(press send Arm_disable) []
         ; button ~text:"Enable primary" ~on_press:(press send Enable) []
         ]
+    ; status "input-primary-navigation" (fun model -> Printf.sprintf "Primary navigation previous=%d next=%d" model.primary.previous_requests model.primary.next_requests)
+    ; status "input-optional-navigation" (fun model -> Printf.sprintf "Optional navigation previous=%d next=%d" model.optional.previous_requests model.optional.next_requests)
     ; status "input-policy" (fun model -> if model.optional_blur then "Optional policy on" else "Optional policy off")
     ; status "input-enabled" (fun model -> if model.disabled then "Primary disabled" else "Primary enabled")
     ; status "input-disable-arm" (fun model -> if model.disable_on_edit then "Disable on edit armed" else "Disable on edit idle")

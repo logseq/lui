@@ -83,6 +83,13 @@ impl Capabilities {
         if node.props.contains_key("submit-on-blur") {
             value |= 1 << 4;
         }
+        if matches!(
+            node.kind.as_str(),
+            "input" | "text-field" | "secure-field" | "search-field" | "textarea" | "combobox"
+        ) && node.props.contains_key("navigate-enabled")
+        {
+            value |= 1 << 5;
+        }
         Self(value)
     }
     /// A false later value requires no observer. Remembering actual installed
@@ -91,6 +98,9 @@ impl Capabilities {
         let mut required = Self::authored(node);
         if !node.boolean("submit-on-blur", false) {
             required.0 &= !(1 << 4);
+        }
+        if !node.boolean("navigate-enabled", false) {
+            required.0 &= !(1 << 5);
         }
         required
     }
