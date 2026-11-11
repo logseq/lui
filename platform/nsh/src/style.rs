@@ -525,27 +525,28 @@ const CONTEXT_LAYOUT: &[StyleKey] = &[
 /// there; its retained trigger owns padding, content layout, paint and states.
 pub(crate) fn context_menu_styles(
     node: &Node,
-    compiled: &Style,
+    theme: &ThemeView,
+    viewport: Size<Points>,
     defaults: &Style,
-) -> ContextMenuStyles {
+) -> Result<ContextMenuStyles, String> {
+    // Style::decls intentionally excludes its typed paint/state refinement.
+    // Partition the compiler's declarations before combining that refinement.
+    let (decls, paint) = compile_parts(node, theme, viewport)?;
     let external = |declaration: &StyleDecl| matches!(declaration, StyleDecl::Set(key, _) | StyleDecl::Default(key, _) if CONTEXT_LAYOUT.contains(key));
     let outer = Style::from_decls(
         defaults
             .decls()
             .iter()
-            .chain(compiled.decls())
+            .chain(&decls)
             .filter(|declaration| external(declaration))
             .cloned(),
     );
-    let mut fill = view().flex_auto();
-    let fill: Style = fill.style().clone().into();
     let trigger = Style::from_decls(
         CONTEXT_LAYOUT
             .iter()
             .map(|key| StyleDecl::Set(*key, PropertyValue::Default))
             .chain(
-                compiled
-                    .decls()
+                decls
                     .iter()
                     .filter(|declaration| {
                         node.string("position") == "static"
@@ -554,15 +555,22 @@ pub(crate) fn context_menu_styles(
                     .cloned(),
             )
             .chain(
-                compiled
-                    .decls()
+                decls
                     .iter()
                     .filter(|declaration| !external(declaration))
                     .cloned(),
-            ),
+            )
+            // Typed styles apply as native defaults before inline declarations.
+            // Fill must be an inline declaration after the constraint resets.
+            .chain([StyleDecl::Set(
+                StyleKey::Flex,
+                StyleKey::Flex
+                    .parse_value(StyleValue::Str("auto"))
+                    .expect("native flex-auto value"),
+            )]),
     )
-    .then(&fill);
-    ContextMenuStyles { outer, trigger }
+    .then(&paint);
+    Ok(ContextMenuStyles { outer, trigger })
 }
 
 fn pinned_surface_property(name: &str) -> bool {
@@ -666,6 +674,15 @@ pub(crate) fn compile(
     theme: &ThemeView,
     viewport: Size<Points>,
 ) -> Result<Style, String> {
+    let (decls, paint) = compile_parts(node, theme, viewport)?;
+    Ok(Style::from_decls(decls).then(&paint))
+}
+
+fn compile_parts(
+    node: &Node,
+    theme: &ThemeView,
+    viewport: Size<Points>,
+) -> Result<(Vec<StyleDecl>, Style), String> {
     z_index(node)?;
     let mut decls = Vec::with_capacity(node.props.len() + 4);
     let mut native = view();
@@ -933,7 +950,7 @@ pub(crate) fn compile(
         native = selected.apply(native).hover(|s| selected_hover.apply(s));
     }
     let typed = Style::from(native.style().clone());
-    Ok(Style::from_decls(decls).then(&typed))
+    Ok((decls, typed))
 }
 
 pub(crate) fn uses_viewport(node: &Node) -> bool {

@@ -82,9 +82,12 @@ fn ContextScenario() -> impl IntoElement {
         0 => json!({"size":"icon","variant":"ghost","icon":"x","width":22,"height":24}),
         1 => json!({"text":"Switch graph","grow":1.0,"min-height":44,"text-alignment":"start"}),
         2 => {
-            json!({"text":"Delete local graph","height":22,"padding-vertical":0,"variant":"ghost"})
+            json!({"text":"Delete local graph","height":22,"padding-vertical":0,"variant":"ghost","foreground":"#123456","hover-foreground":"#654321"})
         }
         3 => json!({"grow":1.0,"min-height":44,"padding-horizontal":5,"padding-vertical":2}),
+        5 => json!({"size":"icon","variant":"ghost","icon":"x"}),
+        6 => json!({"size":"sm","text":"Small action"}),
+        7 => json!({"size":"lg","text":"Large action"}),
         _ => json!({"text":"Stretched action","grow":1.0}),
     };
     ops.extend(
@@ -239,14 +242,52 @@ fn closed(app: &mut Headless) {
 
 #[test]
 fn attached_context_layout_matches_plain_size_grow_margins_intrinsics_and_stretch() {
-    for profile in 0..5 {
-        let plain = start(profile, false);
+    for profile in 0..8 {
+        let mut plain = start(profile, false);
         let mut attached = start(profile, true);
         for id in [2, 10, 20, 30] {
             assert_eq!(
                 bounds(&attached.app, id),
                 bounds(&plain.app, id),
                 "profile {profile}, node {id}"
+            );
+        }
+        if profile == 2 {
+            let original = plain
+                .app
+                .screen()
+                .span_style("text:Delete local graph")
+                .unwrap()
+                .color;
+            assert_eq!(
+                attached
+                    .app
+                    .screen()
+                    .span_style("text:Delete local graph")
+                    .unwrap()
+                    .color,
+                original
+            );
+            plain.app.hover("id:lui-10").unwrap();
+            attached.app.hover("id:lui-10").unwrap();
+            let hovered = plain
+                .app
+                .screen()
+                .span_style("text:Delete local graph")
+                .unwrap()
+                .color;
+            assert_ne!(
+                hovered, original,
+                "the authored native hover foreground applies"
+            );
+            assert_eq!(
+                attached
+                    .app
+                    .screen()
+                    .span_style("text:Delete local graph")
+                    .unwrap()
+                    .color,
+                hovered
             );
         }
         if profile == 3 {
@@ -268,7 +309,7 @@ fn attached_context_layout_matches_plain_size_grow_margins_intrinsics_and_stretc
             Some(trigger),
             "the public slot preserves the canonical native ref"
         );
-        if profile == 0 {
+        if matches!(profile, 0 | 5) {
             let svg = nodes
                 .iter()
                 .find(|node| node.kind == ViewKind::Canvas)
@@ -295,7 +336,9 @@ fn native_context_menu_owns_secondary_keyboard_disabled_items_and_repeated_actio
     started.app.right_click("id:lui-10").unwrap();
     started.app.wait_for("role:menuitem[First]").unwrap();
     assert!(started.app.press("role:menuitem[Blocked]").is_err());
-    started.app.press_key("down").unwrap();
+    // Pointer opening keeps the trigger's focus. Hover uses the native
+    // menu's pointer-focus path; keyboard opening below skips the disabled row.
+    started.app.hover("role:menuitem[First]").unwrap();
     started.app.press_key("enter").unwrap();
     closed(&mut started.app);
     started.app.press_key("shift+f10").unwrap();

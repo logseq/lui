@@ -1,7 +1,7 @@
 //! Themed parts for controls whose behavior is supplied by NSH.
 use super::{Theme, color, part, radius};
 use nsh_core::{
-    element::{ComponentElement, StyleRefinement},
+    element::{ComponentElement, Style, StyleRefinement},
     prelude::*,
 };
 
@@ -354,14 +354,57 @@ pub(crate) fn command_appearance<C: Component>(
 
 /// Shared native command geometry, also used by an attached context menu's
 /// outer layout participant. Authored declarations override it in both cases.
+fn command_dimensions(size: &str) -> [Option<f32>; 3] {
+    // min-height, width, height in points; shared by the actual command and
+    // a native attached menu's outer layout participant.
+    match size {
+        "sm" => [Some(24.0), None, None],
+        "lg" => [Some(40.0), None, None],
+        "icon" => [None, Some(32.0), Some(32.0)],
+        _ => [Some(32.0), None, None],
+    }
+}
+
+pub(crate) fn command_layout(size: &str) -> Style {
+    Style::from_decls(
+        [
+            nsh_core::StyleKey::MinHeight,
+            nsh_core::StyleKey::Width,
+            nsh_core::StyleKey::Height,
+        ]
+        .into_iter()
+        .zip(command_dimensions(size))
+        .filter_map(|(key, value)| {
+            value.map(|value| {
+                nsh_core::StyleDecl::Set(
+                    key,
+                    key.parse_value(nsh_core::StyleValue::Number(value))
+                        .expect("native command dimensions in points"),
+                )
+            })
+        }),
+    )
+}
+
 pub(crate) fn command_size(size: &str) -> View {
     let s = view();
-    match size {
-        "sm" => s.min_h_6().px_2().py_1().text_xs(),
-        "lg" => s.min_h_10().px_4().py_2().text_base(),
-        "icon" => s.w_8().h_8().p_0().text_sm(),
-        _ => s.min_h_8().px_3().py_1().text_sm(),
+    let mut s = match size {
+        "sm" => s.px_2().py_1().text_xs(),
+        "lg" => s.px_4().py_2().text_base(),
+        "icon" => s.p_0().text_sm(),
+        _ => s.px_3().py_1().text_sm(),
+    };
+    let [minimum, width, height] = command_dimensions(size);
+    if let Some(value) = minimum {
+        s = s.min_h(px(value));
     }
+    if let Some(value) = width {
+        s = s.w(px(value));
+    }
+    if let Some(value) = height {
+        s = s.h(px(value));
+    }
+    s
 }
 
 // These private Rust components carry a retained theme signal. They are not JS

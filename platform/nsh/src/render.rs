@@ -7,7 +7,7 @@ use crate::{
     wire::Batch,
 };
 use nsh_core::{
-    element::create_root,
+    element::{Style, create_root},
     geometry::{Bounds, Points, Size},
     prelude::*,
 };
@@ -573,19 +573,22 @@ impl Renderer {
             } else {
                 Size::default()
             };
-            let compiled =
-                style::compile(&node, &theme.get(), size).expect("validated context trigger style");
-            let mut defaults = if node.kind == "button" {
-                ui::controls::command_size(if in_tabs { "" } else { node.string("size") })
+            let defaults = if node.kind == "button" {
+                ui::controls::command_layout(if in_tabs { "" } else { node.string("size") })
             } else if node.boolean("press-enabled", false) && !node.props.contains_key("expanded") {
                 // The existing actionable ListItem root uses w_full; keep its
                 // parent-facing default on the native ContextMenu root.
-                view().w_full()
+                Style::from_decls([nsh_core::StyleDecl::Set(
+                    nsh_core::StyleKey::Width,
+                    nsh_core::StyleKey::Width
+                        .parse_value(nsh_core::StyleValue::Str("100%"))
+                        .expect("native full width"),
+                )])
             } else {
-                view()
+                Style::default()
             };
-            let defaults = defaults.style().clone().into();
-            style::context_menu_styles(&node, &compiled, &defaults)
+            style::context_menu_styles(&node, &theme.get(), size, &defaults)
+                .expect("validated context trigger style")
         });
         let trigger = self.node_content(id, Some(styles));
         let theming = self.clone();
