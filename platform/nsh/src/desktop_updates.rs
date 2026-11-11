@@ -8,7 +8,7 @@ use nsh_core::{
 };
 use std::rc::Rc;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Phase {
     Idle,
     Checking,
@@ -277,4 +277,141 @@ fn application_menu(primary: MenuItem, secondary: Option<MenuItem>) -> Vec<MenuI
             ],
         ),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nsh_base::button;
+    use nsh_core::{Command, desktop::DesktopCommand};
+    use nsh_engine::{EngineConfig, Root};
+    use nsh_testing::{DialogAnswer, Headless};
+    use std::time::Duration;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct ActionProps {
+        cancelled: Prop<bool>,
+        verification_error: Prop<bool>,
+    }
+
+    #[component]
+    fn ActionProbe(props: ActionProps) -> impl IntoElement {
+        let (updater, operations) = crate::update::tests::menu_fixture(
+            props.cancelled.get_untracked(),
+            props
+                .verification_error
+                .get_untracked()
+                .then_some(ErrorCode::Verification),
+        );
+        let actions = Rc::new(Actions {
+            updater,
+            phase: signal(Phase::Idle),
+            downloaded: signal(None),
+        });
+        let selected = actions.clone();
+        view()
+            .flex_col()
+            .child(
+                button()
+                    .on_press(move || selected.clone().start())
+                    .child(text("Run update")),
+            )
+            .child(text(move || {
+                format!(
+                    "{:?} cached={} operations={:?}",
+                    actions.phase.get(),
+                    actions.downloaded.get().is_some(),
+                    operations.lock().unwrap()
+                )
+            }))
+    }
+
+    fn start(cancelled: bool, verification_error: bool) -> Headless {
+        let mut app = Headless::start(EngineConfig::new(Root::new::<ActionProbe>(move || {
+            ActionProps {
+                cancelled: Prop::new(cancelled),
+                verification_error: Prop::new(verification_error),
+            }
+        })))
+        .unwrap();
+        app.answer_dialogs_myself();
+        wait_status(&mut app, "Idle cached=false");
+        app
+    }
+
+    fn wait_status(app: &mut Headless, expected: &str) {
+        app.wait_until(expected, Duration::from_secs(3), |screen| {
+            screen.texts().iter().any(|text| text.contains(expected))
+        })
+        .unwrap();
+    }
+
+    fn wait_dialog(app: &mut Headless) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while app.pending_dialog().is_none() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "update dialog missing"
+            );
+            app.wait(Duration::from_millis(10)).unwrap();
+        }
+    }
+
+    fn download(app: &mut Headless) {
+        app.press("text:Run update").unwrap();
+        wait_dialog(app);
+        app.answer_dialog(DialogAnswer::Press("Download".into()))
+            .unwrap();
+        wait_dialog(app);
+    }
+
+    fn restarted(app: &Headless) -> bool {
+        app.screen().commands().iter().any(|(_, command)| {
+            matches!(command, Command::Desktop(command) if matches!(&**command, DesktopCommand::Restart))
+        })
+    }
+
+    #[test]
+    fn later_retains_verified_download_and_success_restarts_only_after_confirmation() {
+        let mut app = start(false, false);
+        download(&mut app);
+        assert!(!restarted(&app));
+        app.answer_dialog(DialogAnswer::Press("Later".into()))
+            .unwrap();
+        wait_status(&mut app, "Idle cached=true");
+        assert!(!restarted(&app));
+        app.press("text:Run update").unwrap();
+        wait_dialog(&mut app);
+        app.answer_dialog(DialogAnswer::Press("Install and Restart".into()))
+            .unwrap();
+        wait_status(&mut app, "Idle cached=false");
+        assert!(restarted(&app));
+        assert!(
+            app.screen()
+                .texts()
+                .iter()
+                .any(|text| { text.contains("operations=[\"check\", \"download\", \"install\"]") })
+        );
+    }
+
+    #[test]
+    fn failed_archive_verification_clears_download_and_never_restarts() {
+        let mut app = start(false, true);
+        download(&mut app);
+        app.answer_dialog(DialogAnswer::Press("Install and Restart".into()))
+            .unwrap();
+        wait_dialog(&mut app);
+        assert!(!restarted(&app));
+        app.answer_dialog(DialogAnswer::Press("OK".into())).unwrap();
+        wait_status(&mut app, "Idle cached=false");
+    }
+
+    #[test]
+    fn cancelled_check_returns_idle_without_an_error_dialog_or_restart() {
+        let mut app = start(true, false);
+        app.press("text:Run update").unwrap();
+        wait_status(&mut app, "Idle cached=false operations=[\"check\"]");
+        assert!(app.pending_dialog().is_none());
+        assert!(!restarted(&app));
+    }
 }

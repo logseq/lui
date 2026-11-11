@@ -15,6 +15,7 @@ theme radius and shadow. Focus outlines do not change layout.
 | State change | Native mechanism | Reduced motion |
 | --- | --- | --- |
 | Button, radio and toggle hover/press | Semantic accent wash, native color transition, instant/fast tokens | Immediate wash |
+| Authored command variant, size and icon changes | Retained native control; color transition uses the existing fast token, icon/geometry bindings update immediately to reflect the accepted model | Immediate color and content |
 | Switch value | Track color and thumb transform transition, fast token | Immediate value |
 | Checkbox/radio glyph | Immediate accepted value; do not animate a model rejection | Immediate value |
 | Slider drag | Native slider tracks the pointer directly; no bridge animation | Same direct tracking |

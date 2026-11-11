@@ -55,6 +55,68 @@ fn signed_offer(
         .map_err(|error| UpdateError::new(ErrorCode::Verification, error))
 }
 
+pub(crate) fn menu_fixture(
+    cancelled_check: bool,
+    install_error: Option<ErrorCode>,
+) -> (Updater, Arc<std::sync::Mutex<Vec<&'static str>>>) {
+    let owner = NEXT_OWNER.fetch_add(1, Ordering::Relaxed);
+    let config = Config::parse(&configuration("1.0.0")).unwrap();
+    let available = signed_offer(
+        &config,
+        "2.0.0",
+        &config.id,
+        &nsh_updater::platform(),
+        b"menu action fixture",
+    )
+    .unwrap()
+    .unwrap();
+    let offer = Offer {
+        owner,
+        ticket: 1,
+        available,
+        can_install: true,
+    };
+    let (progress, receiver) = watch::channel(Progress::Idle);
+    let (commands, requests) = mpsc::sync_channel(8);
+    let observed = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let operations = observed.clone();
+    thread::spawn(move || {
+        let _progress = progress;
+        while let Ok(command) = requests.recv() {
+            match command {
+                super::Command::Check { reply, .. } => {
+                    operations.lock().unwrap().push("check");
+                    let result = if cancelled_check {
+                        Err(UpdateError::new(ErrorCode::Cancelled, "cancelled fixture"))
+                    } else {
+                        Ok(Some(offer.clone()))
+                    };
+                    let _ = reply.send(result);
+                }
+                super::Command::Download { reply, .. } => {
+                    operations.lock().unwrap().push("download");
+                    let _ = reply.send(Ok(Downloaded { owner, ticket: 1 }));
+                }
+                super::Command::Install { reply, .. } => {
+                    operations.lock().unwrap().push("install");
+                    let result = install_error.map_or(Ok(()), |code| {
+                        Err(UpdateError::new(code, "installation fixture"))
+                    });
+                    let _ = reply.send(result);
+                }
+            }
+        }
+    });
+    (
+        Updater(Arc::new(Inner {
+            commands,
+            epoch: Arc::new(AtomicU64::new(0)),
+            progress: receiver,
+        })),
+        observed,
+    )
+}
+
 #[test]
 fn signed_manifests_reject_tampering_wrong_apps_and_stale_versions() {
     let config = Config::parse(&configuration("1.0.0")).unwrap();
@@ -488,4 +550,5 @@ fn native_signed_fixture_replaces_both_halves_and_restarts_at_the_new_version() 
     assert!(worker.ready.is_none());
     assert!(worker.latest.is_none());
     assert!(!cached.exists());
+    super::packaged_tests::qualify_from_environment();
 }

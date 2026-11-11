@@ -18,65 +18,65 @@ The JSON output also enumerates canonical events without a renderer transport.
 | Kind | Current native route or rejection | P/E | Verified property gaps | Focused test sources |
 | --- | --- | --- | --- | --- |
 | `root` | core view | 3/0 | — | None mapped |
-| `row` | core view + flex direction | 97/12 | G1, G9, G10 | 1 |
-| `column` | core view | 94/9 | G1, G9, G10 | None mapped |
-| `grid` | core view + native grid | 82/3 | G1, G9 | None mapped |
+| `row` | core view + flex direction | 97/12 | G1, G9 | 1 |
+| `column` | core view | 94/9 | G1 | 1 |
+| `grid` | core view + native grid | 82/3 | G1 | None mapped |
 | `stack` | Explicitly unsupported | 79/3 | — | None mapped |
 | `edge-inset` | Explicitly unsupported | 81/3 | — | None mapped |
 | `overlay` | Explicitly unsupported | 78/3 | — | None mapped |
 | `view-that-fits` | Explicitly unsupported | 79/3 | — | None mapped |
-| `panel` | core view | 89/3 | G1, G9, G10 | None mapped |
-| `card` | core view | 89/3 | G1, G9, G10 | None mapped |
+| `panel` | core view | 89/3 | G1 | None mapped |
+| `card` | core view | 89/3 | G1 | None mapped |
 | `alert` | Explicitly unsupported | 83/3 | — | None mapped |
 | `bubble` | Explicitly unsupported | 84/3 | — | None mapped |
-| `box` | core view | 96/12 | G1, G9, G10 | None mapped |
-| `text` | core text | 86/9 | G1, G9, G10 | None mapped |
-| `heading` | core text | 85/3 | G1, G6, G9 | None mapped |
-| `paragraph` | core text | 85/3 | G1, G9 | None mapped |
-| `label` | core text | 83/3 | G1, G9 | None mapped |
-| `button` | CommandButton -> base Button/Tab | 98/11 | G1, G2, G9 | 2 |
-| `toggle-button` | base Toggle | 93/6 | G1, G2, G9, G10 | 1 |
-| `toggle` | base Checkbox | 83/5 | G1, G9 | None mapped |
-| `radio-group` | semantic view + base RadioGroup | 70/3 | G1, G9 | 1 |
-| `radio` | base Radio | 89/11 | G1, G9 | 2 |
-| `slider` | base Slider | 82/5 | G1, G9 | 1 |
-| `number-stepper` | base NumberInput | 86/5 | G1, G9 | 1 |
+| `box` | core view | 96/12 | G1, G9 | 3 |
+| `text` | core text | 86/9 | G1 | None mapped |
+| `heading` | core text | 85/3 | G1, G6 | None mapped |
+| `paragraph` | core text | 85/3 | G1 | None mapped |
+| `label` | core text | 83/3 | G1 | None mapped |
+| `button` | CommandButton -> base Button/Tab | 98/11 | G1, G11, G9, G12 | 4 |
+| `toggle-button` | base Toggle | 93/6 | G1, G12, G10 | 1 |
+| `toggle` | base Checkbox | 83/5 | G1, G12 | None mapped |
+| `radio-group` | semantic view + base RadioGroup | 70/3 | G1 | 1 |
+| `radio` | base Radio | 89/11 | G1, G12 | 2 |
+| `slider` | base Slider | 82/5 | G1, G12 | 1 |
+| `number-stepper` | base NumberInput | 86/5 | G1, G12 | 1 |
 | `text-field` | themed base Input | 88/8 | G1, G3, G9 | 1 |
 | `secure-field` | themed base Input + masked | 88/8 | G1, G3, G9 | None mapped |
 | `input` | themed base Input | 89/8 | G1, G3, G9 | None mapped |
 | `search-field` | themed base Input | 88/8 | G1, G3, G9 | None mapped |
 | `textarea` | themed base Input + multiline | 89/8 | G1, G3, G9 | None mapped |
-| `checkbox` | themed base Checkbox | 91/6 | G1, G4, G9 | None mapped |
-| `switch` | base Switch | 75/5 | G1, G9 | 3 |
-| `progress` | base Progress | 66/3 | G1, G9 | 1 |
-| `divider` | core view separator | 66/3 | G1, G9 | None mapped |
-| `scroll` | core Scroll | 79/3 | G1, G7, G9 | None mapped |
-| `list` | core Scroll + List role | 78/6 | G1, G8, G9 | None mapped |
-| `virtual-list` | core VirtualList + bounded LUI demand adapter | 85/7 | G1, G8, G9 | 3 |
-| `tabs` | themed Tabs | 74/3 | G1, G9 | 1 |
+| `checkbox` | themed base Checkbox | 91/6 | G1, G4, G12 | None mapped |
+| `switch` | base Switch | 75/5 | G1, G12 | 3 |
+| `progress` | base Progress | 66/3 | G1, G12 | 1 |
+| `divider` | core view separator | 66/3 | G1 | None mapped |
+| `scroll` | core Scroll | 79/3 | G1, G7 | None mapped |
+| `list` | core Scroll + List role | 78/6 | G1, G8 | None mapped |
+| `virtual-list` | core VirtualList + bounded LUI demand adapter | 85/7 | G1, G8 | 3 |
+| `tabs` | themed Tabs | 74/3 | G1, G12 | 1 |
 | `bottom-tabs` | Explicitly unsupported | 13/3 | — | None mapped |
 | `bottom-tab` | Explicitly unsupported | 8/8 | — | None mapped |
-| `button-group` | base ToolbarGroup | 73/3 | G1, G9 | None mapped |
-| `toggle-group` | base ToggleGroup | 73/3 | G1, G9 | None mapped |
-| `spacer` | core view + grow/shrink | 65/3 | G1, G9 | None mapped |
+| `button-group` | base ToolbarGroup | 73/3 | G1, G12 | None mapped |
+| `toggle-group` | base ToggleGroup | 73/3 | G1, G12 | None mapped |
+| `spacer` | core view + grow/shrink | 65/3 | G1 | None mapped |
 | `spinner` | Explicitly unsupported | 67/3 | — | None mapped |
 | `icon` | Explicitly unsupported | 71/3 | — | None mapped |
-| `select` | base Menu + controlled trigger | 84/10 | G1, G9 | 1 |
-| `combobox` | base Menu + controlled Input | 86/12 | G1, G9 | 1 |
-| `dropdown-menu` | core view inside picker-owned menu | 85/4 | G1, G9 | 2 |
+| `select` | base Menu + controlled trigger | 84/10 | G1 | 3 |
+| `combobox` | base Menu + controlled Input | 86/12 | G1 | 1 |
+| `dropdown-menu` | core view inside picker-owned menu | 85/4 | G1 | 2 |
 | `context-menu` | Explicitly unsupported | 2/4 | — | None mapped |
-| `menu-item` | base MenuItem | 94/9 | G1, G2, G9 | 1 |
-| `menu-trigger` | base Menu/Submenu | 11/3 | G1, G9 | 1 |
+| `menu-item` | base MenuItem | 94/9 | G1, G2, G12 | 1 |
+| `menu-trigger` | base Menu/Submenu | 11/3 | G1 | 1 |
 | `list-item` | Explicitly unsupported | 101/13 | — | None mapped |
 | `avatar` | Explicitly unsupported | 66/3 | — | None mapped |
-| `image` | core Image | 76/4 | G1, G5, G9 | None mapped |
+| `image` | core Image | 76/4 | G1, G5 | None mapped |
 | `media-surface` | Explicitly unsupported | 67/3 | — | None mapped |
 | `stepper` | Explicitly unsupported | 5/3 | — | None mapped |
 | `step` | Explicitly unsupported | 4/3 | — | None mapped |
 | `timeline` | Explicitly unsupported | 6/3 | — | None mapped |
 | `timeline-item` | Explicitly unsupported | 12/8 | — | None mapped |
-| `input-group` | semantic styled view | 8/3 | G1, G9 | None mapped |
-| `input-group-actions` | core row view | 4/3 | G1, G9 | None mapped |
+| `input-group` | semantic styled view | 8/3 | G1 | None mapped |
+| `input-group-actions` | core row view | 4/3 | G1 | None mapped |
 | `breadcrumb` | Explicitly unsupported | 73/3 | — | None mapped |
 | `pagination` | Explicitly unsupported | 73/3 | — | None mapped |
 | `accordion` | Explicitly unsupported | 8/5 | — | None mapped |
@@ -86,12 +86,12 @@ The JSON output also enumerates canonical events without a renderer transport.
 | `tree` | Explicitly unsupported | 71/3 | — | None mapped |
 | `resizable` | Explicitly unsupported | 79/3 | — | None mapped |
 | `split` | Explicitly unsupported | 88/4 | — | None mapped |
-| `dialog` | base Dialog + authored panel | 46/4 | G1, G9 | 2 |
+| `dialog` | base Dialog + authored panel | 46/4 | G1 | 2 |
 | `drawer` | Explicitly unsupported | 39/5 | — | None mapped |
-| `sheet` | base Sheet | 37/4 | G1, G9 | 1 |
-| `tooltip` | core anchored Overlay + hint policy | 13/3 | G1, G9 | 1 |
+| `sheet` | base Sheet | 37/4 | G1, G12 | 1 |
+| `tooltip` | core anchored Overlay + hint policy | 13/3 | G1 | 1 |
 | `toast` | Explicitly unsupported | 21/4 | — | None mapped |
-| `toolbar` | base Toolbar | 14/3 | G1, G9 | 1 |
+| `toolbar` | base Toolbar | 14/3 | G1, G12 | 1 |
 | `status-bar` | Explicitly unsupported | 78/3 | — | None mapped |
 | `list-section` | Explicitly unsupported | 5/3 | — | None mapped |
 | `list-section-header` | Explicitly unsupported | 69/3 | — | None mapped |
@@ -99,11 +99,11 @@ The JSON output also enumerates canonical events without a renderer transport.
 | `swipe-actions` | Explicitly unsupported | 2/3 | — | None mapped |
 | `swipe-action` | Explicitly unsupported | 10/8 | — | None mapped |
 | `file-picker` | Explicitly unsupported | 12/5 | — | None mapped |
-| `kbd` | core text | 52/3 | G1, G9 | None mapped |
+| `kbd` | core text | 52/3 | G1 | None mapped |
 | `link` | Explicitly unsupported | 90/5 | — | None mapped |
 | `file-image` | Explicitly unsupported | 71/8 | — | None mapped |
 | `file-preview` | Explicitly unsupported | 4/4 | — | None mapped |
-| `popover` | core anchored Overlay | 92/4 | G1, G9 | 1 |
+| `popover` | core anchored Overlay | 92/4 | G1 | 1 |
 
 ## Verified gaps and priorities
 
@@ -113,36 +113,47 @@ implemented or explicitly rejected with migration notes; silently accepting
 them is not a support guarantee.
 
 - **G1**: Authored style-class and alignment have no adapter reader; native/style defaults remain. Candidate properties: `alignment`, `style-class`.
-- **G2**: Control routes render text/children with fixed themed wrappers; these authored appearance choices are not forwarded. Candidate properties: `icon`, `icon-placement`, `selection-placement`, `size`, `tooltip-keys`, `variant`.
+- **G2**: Menu-item renders text/children with a fixed themed wrapper; these authored appearance choices are not forwarded. Candidate properties: `icon`, `icon-placement`, `selection-placement`, `size`, `tooltip-keys`, `variant`.
+- **G11**: Command shortcut hints are not forwarded; built-in icons, placement, size and variants have native bindings outside tabs. Candidate properties: `tooltip-keys`.
 - **G3**: Input hint/navigation/submit policies are not forwarded; native Input defaults remain. Candidate properties: `input-type`, `navigate-enabled`, `submit-on-blur`, `submit-on-enter`.
 - **G4**: Checkbox routes pass checked/disabled/label only; mixed state and authored indicator/detail behavior are absent. Candidate properties: `checked-indicator-border-color`, `indeterminate`, `indicator-border-color`, `label-opacity`, `toggle-detail-enabled`.
 - **G5**: Image route reads source only; alternative URL, cropping, fit and image metadata are not forwarded. Candidate properties: `alt`, `image-fit`, `loading`, `referrer-policy`, `source-height`, `source-width`, `source-x`, `source-y`, `url`.
 - **G6**: Heading uses the same core text route, without heading role/level or level-based presentation. Candidate properties: `heading-level`.
 - **G7**: Scroll route does not set horizontal mode; the native default remains. Candidate properties: `orientation`.
 - **G8**: Container appearance and CSS list markers are not implemented by the Scroll/VirtualList routes. Candidate properties: `list-style`, `style`.
-- **G9**: Corresponding generic lifecycle/pointer/gesture/navigation emitters are absent from the renderer event surface. Candidate properties: `appear-enabled`, `double-press-enabled`, `long-press-enabled`, `navigate-enabled`, `pointer-capture`, `pointer-enabled`.
-- **G10**: Generic `press-enabled` outside implemented command/picker routes has no press listener. Radio's true value is already explicitly rejected.
+- **G9**: Canonical navigation-key and pointer-capture behavior remain unimplemented. Candidate properties: `navigate-enabled`, `pointer-capture`.
+- **G12**: Typed native behavior components do not expose generic root pointer/gesture projection; unit semantic events remain supported separately. Candidate properties: `double-press-enabled`, `long-press-enabled`, `pointer-enabled`.
+- **G10** is retired for current generic host routes: authored activation is now installed with live guards. Radio's true press-enabled value remains explicitly rejected.
 
-Priority 1: lifecycle/pointer/generic activation and modifier delivery; input
-submit policy; checkbox mixed state; image source/fit; visible icons for
-icon-only buttons. Priority 2: variants/sizes, class translation or explicit
-rejection, semantic heading defaults, list appearance and remaining metadata.
+Priority 1: remaining typed-control pointer/modifier delivery, navigation
+and capture; input submit policy; checkbox mixed state; image source/fit;
+menu-item icons. Priority 2: remaining appearance, class translation or explicit
+rejection, semantic heading defaults, list appearance and metadata.
 
 ## Event, child and default limitations
 
-- `app::semantic` currently supplies zero press modifiers. A press path listed
-  in JSON does not prove modifier support. Canonical pointer detail, pointer
-  enter/leave, context menu, long/double press, navigation and image load events
-  have no matching renderer transport. `Appear` is declared but never emitted.
-- Basic Input change/submit callbacks and Checkbox toggle callbacks call
-  `Renderer::emit` without checking the authored change/submit/toggle enabled
-  flags. That helper checks general enabled state and focus-within only.
+- Native host routes deliver available modifier/pointer payloads; typed behavior
+  components still expose unit events and do not gain a synthetic observer wrapper.
+  The JSON event-path list is not a claim of full per-field parity. Appearance
+  uses the actual existing ref after native materialization, including disabled
+  controls; it is not an OS-visible-frame notification.
+- Input change/submit and Checkbox toggle callbacks now honor live callback
+  flags and enabled state. Row/Column/Box use one native-ref focus transition
+  owner rather than duplicate direct Input focus handlers.
+- Host listeners are installed from authored initial capabilities. Enabling an
+  initially unauthored press/pointer/gesture capability after mount is explicitly
+  rejected atomically pending a public identity-preserving rebind path. Focus-within
+  flags on the three canonical containers can change live. Unused Text nodes get
+  no press listener, so they do not steal activation from enclosing commands.
 - Core text routes render the node's text value and discard their canonical
   children. Container admission therefore does not prove rich/composed text.
-- Ignored size/variant/heading/input-submit/orientation properties leave NSH
+- Ignored menu-item size/variant and heading/input-submit/orientation properties leave NSH
   wrapper defaults in control even when an application authors another value.
   This inventory does not infer canonical absent-property defaults from NSH's
   defaults. Those need explicit cross-backend behavior tests and migration notes.
+- Button/toggle command icons use shared Web SVG assets, native retained size/variant
+  bindings and decorative glyph accessibility. Tab appearance, application icon
+  registration and shortcut hints still need qualification or implementation.
 - Native pointer states used by styles are separate from LUI pointer events.
   Paint::read dynamically handles prefixed background/foreground/border/opacity/
   shadow properties; the generator excludes these string-search false positives.
@@ -154,7 +165,8 @@ nonzero container-relative-frame-inset; radio press-enabled=true; grid count
 above u16; virtual count above u32; unanchored tooltips; menu-role external
 popovers; nonzero popup alignment offset; invalid/mutated popup anchor source;
 menu-trigger icon and invalid menu shape; same-incarnation toolbar axis changes.
-See render::validate,
+Enabling an initially unauthored host event listener capability after mount also
+requires an explicit remount. See render::validate,
 validate_popup_shape, controls::validate, virtual_rows::validate and style::compile.
 
 ## Evidence and freshness
@@ -172,20 +184,23 @@ uses the concrete route bodies, not literal presence alone.
 
 | Source | SHA-256 |
 | --- | --- |
-| `render.rs` | `e4d816f0b3bb4edfd39b1d57466cd8e6043b4773721a4757f21a443c8438599b` |
-| `controls.rs` | `af4f107b9125bff033efc1c31efeea6faab9d9c4d987827bfb8710ea285e85cf` |
-| `style.rs` | `522c7d18a35287ad30bc5aefc88b94bfb57ecdfa63612f50ed106fce72b49ca1` |
+| `render.rs` | `020028a9f91f1901292cb1e0674b8837d37640452f1ee7d2514d3a15cf7324b6` |
+| `controls.rs` | `e2d3dba4346b10955a409b09afcee90b6344683bd268c41ab8b8cb448c865c4f` |
+| `style.rs` | `7ab1b06322d2251d5d2436fa0203a169634fd615c1ec9a3efb2ac9a2e8c073a5` |
 | `virtual_rows.rs` | `1630ed15ed6526769c9f3b405623c464296d5c23e4a77099eb60d449ef1ea3de` |
-| `app.rs` | `cf3c1885f241437323dcaad01c0b548fbc55e3a9ed7f808aaf326f04064559ae` |
-| `ui/mod.rs` | `67a8b98f551808193e5c4d67846cc533a9ddc25d0cc6daf31d2275dc13aeee2b` |
-| `ui/controls.rs` | `b4fd9f4acdfd33c5d69253e5d1a340b6aced3e9b8b8ba94559c166fc90eedb95` |
+| `app.rs` | `1e93dd0e8db234ed11035d68d1fea1282164eac980c14edce99c0f6311985964` |
+| `ui/mod.rs` | `ecffabc4a1519583e9941245336b8e2c6b1c6d2c53b75c2695edb68153f2668c` |
+| `ui/controls.rs` | `bd48b5eba08846dfd303d516e4fecbe55cb75da47b6b64953f3b2ed46dd49498` |
+| `events.rs` | `67335ebe1504dbebc3ca84f33e78e65a7259f611e75e2d6a81a040a1349d5ed0` |
 
 Concrete route evidence at this generated source checkpoint:
 
 | Gap | Source evidence |
 | --- | --- |
 | G1 | style.rs `compile`, render.rs `node`: authored style is compiled, but neither class nor alignment is read |
-| G2 | controls.rs `element` button/toggle/menu-item branches; ui/controls.rs `CommandButtonProps` |
+| G2 | controls.rs `element` menu-item branch |
+| G11 | controls.rs `command_content`; ui/controls.rs `CommandButtonProps` |
+| G12 | events.rs `NativeEvents::attach`; ComponentElement lacks public Interactive root handlers |
 | G3 | render.rs basic Input branch; controls.rs `picker` combobox Input branch |
 | G4 | render.rs CheckboxProps and controls.rs toggle CheckboxProps omit mixed/indicator props |
 | G5 | render.rs Image branch reads only `source` |

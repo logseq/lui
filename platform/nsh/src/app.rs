@@ -59,7 +59,13 @@ impl GuardedEvent {
             | ViewEvent::ScrollCompleted {
                 node, incarnation, ..
             } => (*node, *incarnation, None),
-            ViewEvent::Press(node)
+            ViewEvent::NativePress(node, _)
+            | ViewEvent::Pointer { node, .. }
+            | ViewEvent::LongPress(node)
+            | ViewEvent::DoublePress(node)
+            | ViewEvent::PointerEnter(node)
+            | ViewEvent::PointerLeave(node)
+            | ViewEvent::Press(node)
             | ViewEvent::Text(node, _)
             | ViewEvent::Submit(node)
             | ViewEvent::Toggle(node, _)
@@ -305,6 +311,19 @@ fn accept(renderer: &Renderer, reply: Reply) -> Result<Option<Duration>, String>
 
 fn semantic(event: ViewEvent) -> Event {
     match event {
+        ViewEvent::NativePress(node, modifiers) => Event::Press {
+            node: node as i64,
+            modifiers,
+        },
+        ViewEvent::LongPress(node) => Event::LongPress(node as i64),
+        ViewEvent::DoublePress(node) => Event::DoublePress(node as i64),
+        ViewEvent::PointerEnter(node) => Event::PointerEnter(node as i64),
+        ViewEvent::PointerLeave(node) => Event::PointerLeave(node as i64),
+        ViewEvent::Pointer { node, kind, detail } => Event::Pointer {
+            node: node as i64,
+            kind,
+            detail,
+        },
         ViewEvent::Press(node) => Event::Press {
             node: node as i64,
             modifiers: 0,

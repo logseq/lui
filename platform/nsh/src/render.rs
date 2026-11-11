@@ -1,5 +1,6 @@
 //! Retained LUI nodes rendered through public NSH elements and bindings.
 use crate::{
+    events::{Capabilities, NativeEvents},
     store::{Node, Store, Transaction},
     style::{self, ThemeView},
     ui, virtual_rows,
@@ -12,15 +13,27 @@ use nsh_core::{
 };
 use serde_json::Value;
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::{BTreeMap, BTreeSet},
     rc::Rc,
     sync::Arc,
 };
 
+pub use crate::events::{PointerDetail, PointerKind};
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     Press(u64),
+    NativePress(u64, i32),
+    LongPress(u64),
+    DoublePress(u64),
+    PointerEnter(u64),
+    PointerLeave(u64),
+    Pointer {
+        node: u64,
+        kind: PointerKind,
+        detail: PointerDetail,
+    },
     Text(u64, String),
     Submit(u64),
     Toggle(u64, bool),
@@ -58,6 +71,7 @@ struct Entry {
     reference: ElementRef,
     theme: Signal<Arc<ThemeView>>,
     popup: Signal<Option<(u64, u64)>>,
+    capabilities: Rc<Cell<Option<Capabilities>>>,
 }
 struct State {
     store: Store,
@@ -161,6 +175,7 @@ impl Renderer {
                             reference,
                             theme,
                             popup,
+                            capabilities: Rc::new(Cell::new(None)),
                         },
                     ) {
                         removed.push(entry);
@@ -345,11 +360,26 @@ impl Renderer {
             let Some(node) = state.store.nodes.get(&id) else {
                 return;
             };
-            if node.incarnation != incarnation || !node.boolean("enabled", true) {
+            if node.incarnation != incarnation {
                 return;
             }
-            if matches!(event, Event::Focus(_) | Event::Blur(_))
-                && !node.boolean("focus-within-enabled", false)
+            let flag = match &event {
+                Event::Press(_) | Event::NativePress(..) => Some("press-enabled"),
+                Event::LongPress(_) => Some("long-press-enabled"),
+                Event::DoublePress(_) => Some("double-press-enabled"),
+                Event::PointerEnter(_) | Event::PointerLeave(_) | Event::Pointer { .. } => {
+                    Some("pointer-enabled")
+                }
+                Event::Text(..) | Event::Value(..) | Event::Change(_) => Some("change-enabled"),
+                Event::Submit(_) => Some("submit-enabled"),
+                Event::Toggle(..) => Some("toggle-enabled"),
+                Event::Focus(_) | Event::Blur(_) => Some("focus-within-enabled"),
+                Event::Appear(_) => Some("appear-enabled"),
+                _ => None,
+            };
+            if (!matches!(event, Event::Appear(_) | Event::Focus(_) | Event::Blur(_))
+                && !node.boolean("enabled", true))
+                || flag.is_some_and(|flag| !node.boolean(flag, false))
             {
                 return;
             }
@@ -394,6 +424,17 @@ impl Renderer {
         };
         let node = state.get_untracked();
         let incarnation = node.incarnation;
+        let installed = self.0.borrow().nodes[&id].capabilities.clone();
+        let notifying = self.clone();
+        let current = self.clone();
+        let native_events = NativeEvents::new(
+            state,
+            Rc::new(move |event| notifying.emit(id, incarnation, event)),
+            installed,
+            Rc::new(move || current.is_current(id, incarnation, None)),
+        );
+        native_events.appear(reference);
+        native_events.focus(reference);
         let key = format!("lui-{id}-{incarnation}");
         let identifier = if node.string("accessibility-identifier").is_empty() {
             format!("lui-{id}")
@@ -438,12 +479,13 @@ impl Renderer {
                     style: Rc::new(style),
                     reference,
                     theme,
+                    events: Some(native_events.clone()),
                 },
             );
         }
         if matches!(node.kind.as_str(), "select" | "combobox" | "menu-trigger") {
             let rendering = self.clone();
-            let events = self.clone();
+            let events = native_events.clone();
             let popup_events = self.clone();
             let submenu = node
                 .parent
@@ -468,7 +510,7 @@ impl Renderer {
                         }
                     }),
                 },
-                Rc::new(move |event| events.emit(id, incarnation, event)),
+                Rc::new(move |event| events.semantic(event)),
                 submenu,
                 crate::controls::Presentation {
                     key: key.into(),
@@ -476,6 +518,7 @@ impl Renderer {
                     style: Rc::new(style),
                     reference,
                     theme,
+                    events: Some(native_events.clone()),
                 },
             );
         }
@@ -491,26 +534,27 @@ impl Renderer {
                     style: Rc::new(style),
                     reference,
                     theme,
+                    events: Some(native_events.clone()),
                 },
             )
             .expect("supported NSH control");
         }
         let result = match node.kind.as_str() {
-            "text" | "heading" | "paragraph" | "label" | "kbd" => {
-                text(move || SharedString::from(state.get().string("text").to_owned()))
-                    .state_inline_style(style)
-                    .selectable(move || state.get().string("user-select") != "none")
-                    .element_ref(&reference)
-                    .key(key.clone())
-                    .test_id(&identifier)
-                    .into_element()
-            }
+            "text" | "heading" | "paragraph" | "label" | "kbd" => native_events
+                .attach(text(move || {
+                    SharedString::from(state.get().string("text").to_owned())
+                }))
+                .state_inline_style(style)
+                .selectable(move || state.get().string("user-select") != "none")
+                .element_ref(&reference)
+                .key(key.clone())
+                .test_id(&identifier)
+                .into_element(),
             "text-field" | "secure-field" | "input" | "search-field" | "textarea" => {
                 let change = self.clone();
                 let submit = self.clone();
-                let focus = self.clone();
-                let blur = self.clone();
-                ui::input(theme)
+                native_events
+                    .attach(ui::input(theme))
                     .value(move || state.get().string("text").to_owned())
                     .placeholder(move || state.get().string("placeholder").to_owned())
                     .masked(node.kind == "secure-field")
@@ -524,8 +568,6 @@ impl Renderer {
                         change.emit(id, incarnation, Event::Text(id, value.into()))
                     })
                     .on_submit(move |_: &str| submit.emit(id, incarnation, Event::Submit(id)))
-                    .on_focus(move || focus.emit(id, incarnation, Event::Focus(id)))
-                    .on_blur(move || blur.emit(id, incarnation, Event::Blur(id)))
                     .element_ref(&reference)
                     .key(key.clone())
                     .test_id(&identifier)
@@ -560,89 +602,97 @@ impl Renderer {
                 let failing = self.clone();
                 let resolving = self.clone();
                 let referring = self.clone();
-                virtual_rows::element(
-                    state,
-                    children,
-                    reference,
-                    virtual_rows::Callbacks {
-                        render: Rc::new(move |(id, incarnation)| {
-                            if rendering.is_current(id, incarnation, None) {
-                                rendering.node(id)
-                            } else {
-                                view().into_element()
-                            }
-                        }),
-                        resolve_target: Rc::new(move |target| {
-                            let state = resolving.0.borrow();
-                            let parent = state.store.nodes.get(&id)?;
-                            if parent.incarnation != incarnation {
-                                return None;
-                            }
-                            parent.children.iter().position(|child| {
-                                state
-                                    .store
-                                    .nodes
-                                    .get(child)
-                                    .is_some_and(|node| node.string("key") == target)
-                            })
-                        }),
-                        row_ref: Rc::new(move |(id, incarnation)| {
-                            let state = referring.0.borrow();
-                            let entry = state.nodes.get(&id)?;
-                            (entry.node.get_untracked().incarnation == incarnation
-                                && entry.reference.node().is_some())
-                            .then_some(entry.reference)
-                        }),
-                        notify: Rc::new(move |feedback| {
-                            let event = match feedback {
-                                virtual_rows::Feedback::Window(window) => Event::VirtualWindow {
-                                    node: id,
-                                    incarnation,
-                                    generation: window.generation,
-                                    first: window.first,
-                                    last: window.last,
-                                    pins: window.pins,
-                                },
-                                virtual_rows::Feedback::Scroll { token, outcome } => {
-                                    Event::ScrollCompleted {
+                native_events
+                    .attach(virtual_rows::element(
+                        state,
+                        children,
+                        reference,
+                        virtual_rows::Callbacks {
+                            render: Rc::new(move |(id, incarnation)| {
+                                if rendering.is_current(id, incarnation, None) {
+                                    rendering.node(id)
+                                } else {
+                                    view().into_element()
+                                }
+                            }),
+                            resolve_target: Rc::new(move |target| {
+                                let state = resolving.0.borrow();
+                                let parent = state.store.nodes.get(&id)?;
+                                if parent.incarnation != incarnation {
+                                    return None;
+                                }
+                                parent.children.iter().position(|child| {
+                                    state
+                                        .store
+                                        .nodes
+                                        .get(child)
+                                        .is_some_and(|node| node.string("key") == target)
+                                })
+                            }),
+                            row_ref: Rc::new(move |(id, incarnation)| {
+                                let state = referring.0.borrow();
+                                let entry = state.nodes.get(&id)?;
+                                (entry.node.get_untracked().incarnation == incarnation
+                                    && entry.reference.node().is_some())
+                                .then_some(entry.reference)
+                            }),
+                            notify: Rc::new(move |feedback| {
+                                let event = match feedback {
+                                    virtual_rows::Feedback::Window(window) => {
+                                        Event::VirtualWindow {
+                                            node: id,
+                                            incarnation,
+                                            generation: window.generation,
+                                            first: window.first,
+                                            last: window.last,
+                                            pins: window.pins,
+                                        }
+                                    }
+                                    virtual_rows::Feedback::Scroll { token, outcome } => {
+                                        Event::ScrollCompleted {
+                                            node: id,
+                                            incarnation,
+                                            token,
+                                            outcome: outcome.into(),
+                                        }
+                                    }
+                                    virtual_rows::Feedback::Visible(range) => Event::VisibleRange {
                                         node: id,
                                         incarnation,
-                                        token,
-                                        outcome: outcome.into(),
-                                    }
-                                }
-                                virtual_rows::Feedback::Visible(range) => Event::VisibleRange {
-                                    node: id,
-                                    incarnation,
-                                    first: range.map_or(0, |(first, _)| first as i64),
-                                    last: range.map_or(-1, |(_, last)| last as i64),
-                                },
-                            };
-                            maintaining.maintain(id, incarnation, event);
-                        }),
-                        failed: Rc::new(move |error| failing.fail(error)),
-                    },
-                )
-                .state_inline_style(style)
-                .key(key.clone())
-                .test_id(&identifier)
-                .into_element()
+                                        first: range.map_or(0, |(first, _)| first as i64),
+                                        last: range.map_or(-1, |(_, last)| last as i64),
+                                    },
+                                };
+                                maintaining.maintain(id, incarnation, event);
+                            }),
+                            failed: Rc::new(move |error| failing.fail(error)),
+                        },
+                    ))
+                    .state_inline_style(style)
+                    .key(key.clone())
+                    .test_id(&identifier)
+                    .into_element()
             }
-            "scroll" => scroll()
+            "scroll" => native_events
+                .attach(scroll())
                 .state_inline_style(style)
                 .child(body)
                 .element_ref(&reference)
                 .key(key.clone())
                 .test_id(&identifier)
                 .into_element(),
-            "image" => image(move || ImageSrc::from(state.get().string("source").to_owned()))
+            "image" => native_events
+                .attach(image(move || {
+                    ImageSrc::from(state.get().string("source").to_owned())
+                }))
                 .state_inline_style(style)
                 .element_ref(&reference)
                 .key(key.clone())
                 .test_id(&identifier)
                 .into_element(),
             "root" | "row" | "column" | "box" | "panel" | "card" | "spacer" | "dropdown-menu" => {
-                view()
+                native_events
+                    .attach(view())
                     .state_inline_style(style)
                     .child(body)
                     .element_ref(&reference)
@@ -805,6 +855,17 @@ fn validate_themes(
     for node in transaction.updated() {
         candidates.insert(node.id);
         let previous = transaction.previous(node.id);
+        if let Some(entry) = entries.get(&node.id)
+            && entry.reference.node().is_some()
+            && entry.node.get_untracked().incarnation == node.incarnation
+            && let Some(installed) = entry.capabilities.get()
+            && !installed.contains(Capabilities::authored(node))
+        {
+            return Err(
+                "NSH enabling an uninstalled native event capability requires remounting the node"
+                    .into(),
+            );
+        }
         if node.kind == "toolbar"
             && previous.is_some_and(|old| {
                 old.incarnation == node.incarnation

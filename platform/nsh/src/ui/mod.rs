@@ -1,5 +1,6 @@
 //! Shared desktop presentation. Explicit LUI node styles override these defaults.
 pub(crate) mod controls;
+mod icons;
 
 use crate::style::ThemeView;
 use nsh_core::{
@@ -19,6 +20,22 @@ pub fn button(props: nsh_base::ButtonProps, theme: Theme) -> ComponentElement<ns
         .active(|s| s.opacity(0.7))
         .focus_visible(|s| s.border_1().border_color(move || color(theme, "ring")))
         .disabled_style(|s| s.opacity(0.5))
+}
+
+/// Decorative icons inherit the surrounding command's semantic foreground.
+pub(crate) fn icon(
+    name: impl IntoReactive<SharedString>,
+    extent: impl IntoReactive<Points>,
+) -> impl IntoElement {
+    let name = name.into_reactive();
+    let name = computed(move || name.get());
+    let extent = extent.into_reactive();
+    let height = extent.clone();
+    svg(move || icons::source(&name.get()))
+        .w(move || extent.get())
+        .h(move || height.get())
+        .flex_shrink_0()
+        .accessibility_elements_hidden(true)
 }
 
 /// Menu supplies activation and keyboard navigation to this public trigger

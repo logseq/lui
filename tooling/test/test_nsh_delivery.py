@@ -46,6 +46,56 @@ def arguments(library):
 
 
 class DeliveryTests(unittest.TestCase):
+    def test_thin_fixture_snapshot_includes_the_local_lui_adapter_and_shared_svg(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            app = root / "platform/nsh"
+            (app / "src").mkdir(parents=True)
+            for name in ("Cargo.toml", "Cargo.lock", "nsh.json", "src/lib.rs", "contract.json"):
+                (app / name).write_text("fixture")
+            icons = root / "platform/web/src/icons"
+            icons.mkdir(parents=True)
+            (icons / "check.svg").write_text("<svg>fixture</svg>")
+            (icons / "NOTICE").write_text("Fixture notice")
+            (icons / "LICENSE-APACHE-2.0").write_text("Fixture license")
+            metadata = {"packages": [{"name": "lui-nsh", "source": None,
+                                       "manifest_path": str(app / "Cargo.toml")}]}
+            with patch.object(delivery, "ROOT", root):
+                snapshot = delivery.lui_source_snapshot(metadata)
+                self.assertIn("src/lib.rs", snapshot)
+                self.assertIn("contract.json", snapshot)
+                self.assertIn("../web/src/icons/check.svg", snapshot)
+                self.assertIn("shared/icon-licenses/NOTICE", snapshot)
+                (app / "src/lib.rs").write_text("changed implementation")
+                self.assertNotEqual(delivery.lui_source_snapshot(metadata), snapshot)
+            self.assertEqual(delivery.lui_source_snapshot({"packages": []}), {})
+
+    def test_standard_app_snapshot_tracks_shared_svg_inputs_without_affecting_custom_apps(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            app = root / "platform/nsh"
+            custom = root / "custom-app"
+            icons = root / "platform/web/src/icons"
+            icons.mkdir(parents=True)
+            icon = icons / "check.svg"
+            icon.write_text("<svg>original</svg>")
+            (icons / "NOTICE").write_text("Fixture notice")
+            (icons / "LICENSE-APACHE-2.0").write_text("Fixture Apache license")
+            (icons / "README.md").write_text("Not a compiled SVG input")
+            for directory in (app, custom):
+                directory.mkdir(parents=True)
+                for name in ("Cargo.toml", "Cargo.lock", "nsh.json"):
+                    (directory / name).write_text("fixture")
+            with patch.object(delivery, "ROOT", root), patch.object(delivery, "DEFAULT_APP", app):
+                snapshot = delivery.input_snapshot(app)
+                self.assertEqual(snapshot["../web/src/icons/check.svg"], delivery.digest(icon))
+                self.assertFalse(any("README" in name for name in snapshot))
+                self.assertFalse(any(name.endswith(".svg") for name in delivery.input_snapshot(custom)))
+                self.assertIn("shared/icon-licenses/NOTICE", snapshot)
+                icon.write_text("<svg>changed</svg>")
+                with self.assertRaisesRegex(delivery.DeliveryError, "sources or manifests changed"):
+                    delivery.require_snapshot(app, snapshot)
+
     def test_cli_version_accepts_checkout_revision_and_rejects_other_builds(self):
         source = {"revision": "028574b7de9ee25a7c6f60660ef72fcb8790a27e"}
         for observed in ("nsh 0.5.0", "nsh 0.5.0 (028574b)",
@@ -101,6 +151,8 @@ class DeliveryTests(unittest.TestCase):
                         self.assertIn(library_name, names)
                         self.assertEqual(read(library_name), library.read_bytes())
                         self.assertEqual(read(f"{root.name}/lui/assets/localized/文档.txt"), asset.read_bytes())
+                        for source, relative in delivery.shared_icon_assets():
+                            self.assertEqual(read(f"{root.name}/lui/assets/{relative}"), source.read_bytes())
                         receipt = json.loads(read(f"{root.name}/lui/{delivery.RECEIPT}"))
                 else:
                     with tarfile.open(archives[0]) as archive:
@@ -109,9 +161,14 @@ class DeliveryTests(unittest.TestCase):
                         self.assertEqual(archive.extractfile(f"{prefix}/{library_name}").read(), library.read_bytes())
                         self.assertEqual(archive.extractfile(f"{prefix}/dependency.bin").read(), dependency.read_bytes())
                         self.assertEqual(archive.extractfile(f"{prefix}/assets/localized/文档.txt").read(), asset.read_bytes())
+                        for source, relative in delivery.shared_icon_assets():
+                            self.assertEqual(archive.extractfile(f"{prefix}/assets/{relative}").read(), source.read_bytes())
                         receipt = json.load(archive.extractfile(f"{prefix}/{delivery.RECEIPT}"))
                 self.assertEqual(receipt["application"]["version"], "1.2.3")
                 self.assertEqual(receipt["ocaml"]["librarySha256"], delivery.digest(library))
+                installed = delivery.installed_code_hashes(root, executable, resources, target, args.dependency)
+                self.assertEqual(installed[executable.relative_to(root).as_posix()], delivery.digest(executable))
+                self.assertEqual(installed[(resources / "dependency.bin").relative_to(root).as_posix()], delivery.digest(resources / "dependency.bin"))
                 self.assertNotIn(str(directory), json.dumps(receipt))
                 if target == "macos":
                     signed = [command[-1] for command in calls if command[0] == "codesign" and "--sign" in command]
@@ -299,6 +356,11 @@ class DeliveryTests(unittest.TestCase):
                     self.assertEqual(result["ocamlArtifactSha256"], expected)
                     self.assertIn("src/lib.rs", result["applicationSourceHashes"])
                     self.assertIn("build.rs", result["applicationSourceHashes"])
+                    published, executable, resources = delivery.package_layout(directory / "relative release", config, "linux")
+                    self.assertEqual(result["installedCodeSha256"], {
+                        executable.relative_to(published).as_posix(): delivery.digest(executable),
+                        "lui/liblui_app.so": delivery.digest(resources / "liblui_app.so"),
+                    })
                     self.assertTrue(list((directory / "relative release").glob("*.tar.gz")))
 
     def test_changed_checkout_during_cli_build_cannot_receive_a_receipt(self):

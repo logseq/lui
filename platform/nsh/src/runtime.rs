@@ -14,6 +14,8 @@ use std::{
 };
 use tokio::sync::{mpsc, oneshot};
 
+pub use crate::events::{PointerDetail, PointerKind};
+
 const QUEUE_CAPACITY: usize = 64;
 const NSH_HOST_CODE: i32 = 6;
 static WORKER: OnceLock<mpsc::Sender<Request>> = OnceLock::new();
@@ -25,6 +27,15 @@ pub enum Event {
     Press {
         node: i64,
         modifiers: i32,
+    },
+    LongPress(i64),
+    DoublePress(i64),
+    PointerEnter(i64),
+    PointerLeave(i64),
+    Pointer {
+        node: i64,
+        kind: PointerKind,
+        detail: PointerDetail,
     },
     Text {
         node: i64,
@@ -258,6 +269,7 @@ type NodeFn = unsafe extern "C" fn(i64) -> i32;
 type NodeIntFn = unsafe extern "C" fn(i64, i32) -> i32;
 type TextFn = unsafe extern "C" fn(i64, *const c_char, i32) -> i32;
 type NumberFn = unsafe extern "C" fn(i64, f64) -> i32;
+type PointerFn = unsafe extern "C" fn(i64, f64, f64, i32, i32, *const c_char, i32) -> i32;
 type RangeFn = unsafe extern "C" fn(i64, i64, i64) -> i32;
 type WindowFn = unsafe extern "C" fn(i64, i64, i64, i64, *const i64, i32) -> i32;
 type ScrollCompletedFn = unsafe extern "C" fn(i64, i64, *const c_char) -> i32;
@@ -269,6 +281,11 @@ struct Exports {
     last_error: unsafe extern "C" fn(Callback) -> i32,
     root: unsafe extern "C" fn() -> i64,
     press: NodeIntFn,
+    long_press: Option<NodeFn>,
+    double_press: Option<NodeFn>,
+    pointer_enter: Option<NodeFn>,
+    pointer_leave: Option<NodeFn>,
+    pointer: [Option<PointerFn>; 6],
     text: TextFn,
     submit: NodeFn,
     toggle: NodeIntFn,
@@ -340,6 +357,18 @@ impl Native {
                 last_error: required!("lui_ocaml_last_error"),
                 root: required!("lui_ocaml_root_node"),
                 press: required!("lui_ocaml_press_ex"),
+                long_press: optional!("lui_ocaml_long_press"),
+                double_press: optional!("lui_ocaml_double_press"),
+                pointer_enter: optional!("lui_ocaml_pointer_enter"),
+                pointer_leave: optional!("lui_ocaml_pointer_leave"),
+                pointer: [
+                    optional!("lui_ocaml_press_detail_utf8"),
+                    optional!("lui_ocaml_pointer_down_utf8"),
+                    optional!("lui_ocaml_pointer_up_utf8"),
+                    optional!("lui_ocaml_pointer_move_utf8"),
+                    optional!("lui_ocaml_pointer_cancel_utf8"),
+                    optional!("lui_ocaml_context_menu_press_utf8"),
+                ],
                 text: required!("lui_ocaml_text_changed_utf8"),
                 submit: required!("lui_ocaml_submit"),
                 toggle: required!("lui_ocaml_toggle_changed"),
@@ -418,6 +447,42 @@ impl Native {
                     }
                     Operation::Event(event) => match event {
                         Event::Press { node, modifiers } => (api.press)(*node, *modifiers),
+                        Event::LongPress(node) => api
+                            .long_press
+                            .ok_or("OCaml library has no long-press ABI")?(
+                            *node
+                        ),
+                        Event::DoublePress(node) => api
+                            .double_press
+                            .ok_or("OCaml library has no double-press ABI")?(
+                            *node
+                        ),
+                        Event::PointerEnter(node) => api
+                            .pointer_enter
+                            .ok_or("OCaml library has no pointer-enter ABI")?(
+                            *node
+                        ),
+                        Event::PointerLeave(node) => api
+                            .pointer_leave
+                            .ok_or("OCaml library has no pointer-leave ABI")?(
+                            *node
+                        ),
+                        Event::Pointer { node, kind, detail } => {
+                            if !detail.x.is_finite() || !detail.y.is_finite() {
+                                return Err("pointer coordinates must be finite".into());
+                            }
+                            let pointer = api.pointer[*kind as usize]
+                                .ok_or("OCaml library has no requested pointer ABI")?;
+                            pointer(
+                                *node,
+                                detail.x,
+                                detail.y,
+                                detail.modifiers,
+                                detail.button,
+                                detail.target_class.as_ptr().cast(),
+                                length(detail.target_class.len())?,
+                            )
+                        }
                         Event::Text { node, text } => {
                             (api.text)(*node, text.as_ptr().cast(), length(text.len())?)
                         }

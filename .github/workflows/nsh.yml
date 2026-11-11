@@ -81,6 +81,71 @@ jobs:
       - name: Real OCaml input, recovery, clock and bounded rows
         run: cargo test --locked --manifest-path platform/nsh/Cargo.toml --test ocaml_todos --test runtime_protocol --test ocaml_virtual --test ocaml_clock
 
+  unix-ocaml-package:
+    name: Native package and whole-app upgrade (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-26]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    env:
+      RUSTUP_TOOLCHAIN: 1.97.0
+      CARGO_BUILD_JOBS: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: ./.github/actions/setup-lui-ocaml
+      - name: Install Linux native development libraries and display server
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libclang-dev pkg-config fonts-dejavu-core xvfb dbus-x11
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install 1.97.0 --profile minimal
+      - name: Build the exact pinned native NSH packaging CLI
+        run: |
+          nsh_revision=$(python3 -c "import tomllib; from pathlib import Path; print(tomllib.loads(Path('platform/nsh/Cargo.toml').read_text())['dependencies']['nsh-core']['rev'])")
+          git clone --filter=blob:none https://github.com/logseq/nsh _build/nsh-source
+          git -C _build/nsh-source checkout --detach "$nsh_revision"
+          python3 tooling/nsh_delivery.py setup --checkout _build/nsh-source
+      - name: Package and launch the complete application outside the checkout
+        run: |
+          library=$(bash tooling/build_nsh_todos.sh)
+          python3 tooling/nsh_delivery.py package --library "$library" --output _build/nsh-native-package
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            xvfb-run -a python3 tooling/test_nsh_packaged_app.py _build/nsh-native-package --logs _build/nsh-native-launch --timeout 90
+          else
+            python3 tooling/test_nsh_packaged_app.py _build/nsh-native-package --logs _build/nsh-native-launch --timeout 90
+          fi
+      - name: Authenticate, install and restart real LUI N1-to-N2 packages
+        run: |
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            xvfb-run -a python3 tooling/qualify_nsh_upgrade.py --work _build/nsh-upgrade-qualification
+          else
+            python3 tooling/qualify_nsh_upgrade.py --work _build/nsh-upgrade-qualification
+          fi
+      - name: Preserve native package and upgrade evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nsh-native-delivery-${{ matrix.os }}
+          path: |
+            _build/nsh-native-launch/
+            _build/nsh-native-package/*-receipt.json
+            _build/nsh-upgrade-qualification/result.json
+            _build/nsh-upgrade-qualification/install-result.json
+            _build/nsh-upgrade-qualification/lui-source-snapshot.json
+            _build/nsh-upgrade-qualification/logs/
+            _build/nsh-upgrade-qualification/package-*/*-receipt.json
+          if-no-files-found: warn
+
   windows-ocaml-package:
     name: Native Windows OCaml DLL and packaged launch
     runs-on: windows-latest

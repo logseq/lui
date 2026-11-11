@@ -15,9 +15,14 @@ def execute(command, **kwargs):
     return subprocess.run([str(part) for part in command], check=True, **kwargs)
 
 
-def build_fixture(fixture):
+def build_fixture(fixture, *, version=None):
+    if fixture == "upgrade" and version not in ("1.0.0", "2.0.0"):
+        raise SystemExit("The upgrade fixture needs --version 1.0.0 or 2.0.0")
+    if fixture != "upgrade" and version is not None:
+        raise SystemExit("Only the upgrade fixture accepts --version")
     source_input = Path(__file__).with_name(f"{fixture}_app.ml")
-    output = ROOT / f"_build/nsh/{fixture}-qualification"
+    suffix = f"-{version}" if version else ""
+    output = ROOT / f"_build/nsh/{fixture}{suffix}-qualification"
     target = platform.system()
     if target not in ("Darwin", "Linux"):
         raise SystemExit("The Windows OCaml qualification fixture needs its native toolchain; it is not verified here")
@@ -34,7 +39,10 @@ def build_fixture(fixture):
         raise SystemExit("No built lui_ppx driver found after building the existing Todos PPX target")
     output.mkdir(parents=True, exist_ok=True)
     source = output / source_input.name
-    shutil.copy2(source_input, source)
+    if version:
+        source.write_text(source_input.read_text(encoding="utf-8").replace("__LUI_UPGRADE_VERSION__", version), encoding="utf-8")
+    else:
+        shutil.copy2(source_input, source)
     include = ROOT / "_build/default/src"
     command = ["opam", "exec", "--", "ocamlfind", "ocamlopt", "-linkpkg", "-linkall",
                "-package", "ocaml-signal", "-I", include / ".lui.objs/byte", "-I", include,
@@ -57,8 +65,10 @@ def build_fixture(fixture):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fixture", choices=("virtual", "clock"), default="virtual")
-    library = build_fixture(parser.parse_args().fixture)
+    parser.add_argument("--fixture", choices=("virtual", "clock", "upgrade"), default="virtual")
+    parser.add_argument("--version", choices=("1.0.0", "2.0.0"))
+    args = parser.parse_args()
+    library = build_fixture(args.fixture, version=args.version)
     print(library)
 
 

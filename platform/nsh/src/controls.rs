@@ -1,11 +1,12 @@
 //! LUI control semantics composed from public NSH behavior components.
 use crate::{render::Event, store::Node, ui};
 use nsh_core::{
+    StyleDecl, StyleKey,
     element::{ComponentElement, Style, StyleRefinement},
     geometry::{Axis, Points},
     prelude::*,
 };
-use std::{rc::Rc, sync::Arc};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 /// The renderer supplies identity and authored presentation before type erasure.
 pub(crate) struct Presentation {
@@ -14,6 +15,7 @@ pub(crate) struct Presentation {
     pub style: Rc<dyn Fn() -> Style>,
     pub reference: ElementRef,
     pub theme: ui::Theme,
+    pub events: Option<crate::events::NativeEvents>,
 }
 impl Presentation {
     fn component_identity<C: Component>(&self, element: ComponentElement<C>) -> AnyElement {
@@ -24,6 +26,10 @@ impl Presentation {
             .into_element()
     }
     fn host_identity<E: Element + Interactive>(&self, element: E) -> AnyElement {
+        let element = match &self.events {
+            Some(events) => events.attach(element),
+            None => element,
+        };
         element
             .key(self.key.clone())
             .element_ref(&self.reference)
@@ -40,6 +46,10 @@ impl Presentation {
             .into_element()
     }
     fn host<E: Element + Interactive>(&self, element: E) -> AnyElement {
+        let element = match &self.events {
+            Some(events) => events.attach(element),
+            None => element,
+        };
         let style = self.style.clone();
         element
             .key(self.key.clone())
@@ -375,6 +385,95 @@ fn emit_flag(node: Signal<Arc<Node>>, flag: &str, emit: &Emit, event: Event) {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum CommandSlot {
+    Icon,
+    Label,
+    Children,
+}
+
+fn command_content(node: Signal<Arc<Node>>, children: AnyElement, theme: ui::Theme) -> AnyElement {
+    let children = Rc::new(RefCell::new(Some(children)));
+    view()
+        .flex_row()
+        .items_center()
+        .justify_center()
+        .gap(move || {
+            let current = node.get();
+            px(
+                if current.string("text").is_empty() && current.children.is_empty() {
+                    0.0
+                } else {
+                    8.0
+                },
+            )
+        })
+        .flex_grow(move || {
+            if node.get().string("main") == "space_between" {
+                1.0_f32
+            } else {
+                0.0_f32
+            }
+        })
+        .state_inline_style(move || {
+            let current = node.get();
+            let has_content = !current.string("text").is_empty() || !current.children.is_empty();
+            Style::from_decls(
+                crate::style::content_layout(&current, &theme.get())
+                    .expect("validated command layout")
+                    .into_iter()
+                    .filter(|declaration| {
+                        has_content || !matches!(declaration, StyleDecl::Set(StyleKey::Gap, _))
+                    }),
+            )
+        })
+        .style_with(move |s| {
+            if node.get().string("icon-placement") == "top" {
+                s.flex_col()
+            } else {
+                s.flex_row()
+            }
+        })
+        .child(each(
+            move || {
+                if node.get().string("icon-placement") == "trailing" {
+                    vec![CommandSlot::Label, CommandSlot::Children, CommandSlot::Icon]
+                } else {
+                    vec![CommandSlot::Icon, CommandSlot::Label, CommandSlot::Children]
+                }
+            },
+            |slot| *slot,
+            move |slot, _| match slot.get_untracked() {
+                CommandSlot::Icon => when(
+                    move || !node.get().string("icon").is_empty(),
+                    move || {
+                        ui::icon(
+                            move || SharedString::from(node.get().string("icon").to_owned()),
+                            move || {
+                                px(match node.get().string("size") {
+                                    "sm" => 14.0,
+                                    "lg" => 20.0,
+                                    _ => 16.0,
+                                })
+                            },
+                        )
+                    },
+                )
+                .into_element(),
+                CommandSlot::Label => when(
+                    move || !node.get().string("text").is_empty(),
+                    move || text(move || node.get().string("text").to_owned()),
+                )
+                .into_element(),
+                CommandSlot::Children => children
+                    .borrow_mut()
+                    .take()
+                    .expect("retained command children slot"),
+            },
+        ))
+        .into_element()
+}
+
 /// Call only for an admitted supported kind; unsupported calls return None.
 pub(crate) fn element(
     node: Signal<Arc<Node>>,
@@ -392,6 +491,8 @@ pub(crate) fn element(
                 selected: Prop::bind(move || node.get().boolean("selected", false)),
                 disabled: Prop::bind(move || !enabled(node)),
                 label: Prop::bind(move || label(node)),
+                variant: Prop::bind(move || node.get().string("variant").to_owned().into()),
+                size: Prop::bind(move || node.get().string("size").to_owned().into()),
                 ..Default::default()
             };
             presentation.component(
@@ -399,8 +500,7 @@ pub(crate) fn element(
                     .on_event(move |_: &ui::controls::CommandButtonEvent| {
                         emit_flag(node, "press-enabled", &emit, Event::Press(id));
                     })
-                    .child(text(move || node.get().string("text").to_owned()))
-                    .child(children),
+                    .child(command_content(node, children, theme)),
             )
         }
         "toggle-button" => {
@@ -411,14 +511,18 @@ pub(crate) fn element(
                 ..Default::default()
             };
             presentation.component(
-                ui::controls::toggle(props, theme)
-                    .on_event(move |event: &nsh_base::ToggleEvent| {
-                        if let nsh_base::ToggleEvent::Change(checked) = event {
-                            emit_flag(node, "toggle-enabled", &emit, Event::Toggle(id, *checked));
-                        }
-                    })
-                    .child(text(move || node.get().string("text").to_owned()))
-                    .child(children),
+                ui::controls::command_appearance(
+                    ui::controls::toggle(props, theme),
+                    theme,
+                    Prop::bind(move || node.get().string("variant").to_owned().into()),
+                    Prop::bind(move || node.get().string("size").to_owned().into()),
+                )
+                .on_event(move |event: &nsh_base::ToggleEvent| {
+                    if let nsh_base::ToggleEvent::Change(checked) = event {
+                        emit_flag(node, "toggle-enabled", &emit, Event::Toggle(id, *checked));
+                    }
+                })
+                .child(command_content(node, children, theme)),
             )
         }
         "toggle" => {
@@ -720,17 +824,20 @@ mod tests {
                 dark(),
                 reduce_motion(),
             ))),
+            events: None,
         }
     }
 
     #[component]
     fn SingleControl() -> impl IntoElement {
         let fixture = engine_context::<Fixture>().unwrap();
+        let authored_child = fixture.kind == "button" && fixture.follow;
         let node = signal(Arc::new(Node {
             id: 1,
             incarnation: 1,
             kind: fixture.kind.clone(),
             props: fixture.props.clone(),
+            children: Arc::new(if authored_child { vec![2] } else { Vec::new() }),
             ..Default::default()
         }));
         let shown = signal(true);
@@ -741,6 +848,16 @@ mod tests {
             }
             let mut next = (*node.get_untracked()).clone();
             match event {
+                Event::Press(_) if next.kind == "button" => {
+                    if next.props.contains_key("gap") {
+                        next.props.insert("gap".into(), json!(20));
+                    }
+                    next.props.insert("icon".into(), json!("check"));
+                    next.props.insert("size".into(), json!("lg"));
+                    next.props.insert("variant".into(), json!("destructive"));
+                    next.props
+                        .insert("icon-placement".into(), json!("trailing"));
+                }
                 Event::Toggle(_, value) => {
                     let property = if next.kind == "toggle-button" {
                         "selected"
@@ -760,7 +877,31 @@ mod tests {
         view()
             .w_64()
             .child(when(shown, move || {
-                element(node, view().into_element(), emit.clone(), presentation(1)).unwrap()
+                let children = if authored_child {
+                    let child = view()
+                        .test_id("authored-command-child")
+                        .child(text("Details"));
+                    if node.get_untracked().props.contains_key("cross") {
+                        child.h(px(80.0)).into_element()
+                    } else {
+                        child.into_element()
+                    }
+                } else {
+                    when(false, view).into_element()
+                };
+                let mut authored = presentation(1);
+                if node.get_untracked().kind == "button" {
+                    let theme = authored.theme;
+                    authored.style = Rc::new(move || {
+                        crate::style::compile(
+                            &node.get(),
+                            &theme.get(),
+                            nsh_core::geometry::Size::default(),
+                        )
+                        .expect("valid authored command style")
+                    });
+                }
+                element(node, children, emit.clone(), authored).unwrap()
             }))
             .child(text(move || format!("model:{:?}", node.get().props)))
     }
@@ -884,6 +1025,247 @@ mod tests {
             Some(nsh_core::Checked::True)
         );
         assert_eq!(*seen.lock().unwrap(), [Event::Toggle(1, true)]);
+    }
+
+    #[test]
+    fn authored_command_icon_size_and_variant_update_without_remounting() {
+        let (mut app, seen) = start(
+            "button",
+            json!({"text":"Save","icon":"plus","size":"sm","variant":"ghost","press-enabled":true}),
+            true,
+        );
+        let control = app
+            .screen()
+            .layout_nodes()
+            .into_iter()
+            .find(|n| n.test_id.as_deref() == Some("control-1"))
+            .unwrap();
+        let icon = app
+            .screen()
+            .layout_nodes()
+            .into_iter()
+            .find(|n| n.kind == nsh_core::ViewKind::Canvas)
+            .unwrap();
+        assert_eq!(icon.bounds.size.width, px(14.0));
+        let child = app
+            .screen()
+            .layout_nodes()
+            .into_iter()
+            .find(|n| n.test_id.as_deref() == Some("authored-command-child"))
+            .unwrap();
+        let before = app
+            .screen()
+            .span_style("id:control-1 >> text:Save")
+            .unwrap()
+            .color;
+        app.press("role:button[Save]").unwrap();
+        let next_control = app
+            .screen()
+            .layout_nodes()
+            .into_iter()
+            .find(|n| n.test_id.as_deref() == Some("control-1"))
+            .unwrap();
+        let next_icon = app
+            .screen()
+            .layout_nodes()
+            .into_iter()
+            .find(|n| n.kind == nsh_core::ViewKind::Canvas)
+            .unwrap();
+        let label = app
+            .screen()
+            .layout_nodes()
+            .into_iter()
+            .find(|n| n.text.as_ref().is_some_and(|t| t.text.text == "Save"))
+            .unwrap();
+        let next_child = app
+            .screen()
+            .layout_nodes()
+            .into_iter()
+            .find(|n| n.test_id.as_deref() == Some("authored-command-child"))
+            .unwrap();
+        assert_eq!(next_control.id, control.id);
+        assert_eq!(next_icon.id, icon.id);
+        assert_eq!(next_child.id, child.id);
+        assert_eq!(next_icon.bounds.size.width, px(20.0));
+        assert!(next_control.bounds.size.height > control.bounds.size.height);
+        assert!(next_icon.bounds.origin.x > label.bounds.origin.x);
+        assert!(next_child.bounds.origin.x > label.bounds.origin.x);
+        assert!(
+            next_icon.bounds.origin.x >= next_child.bounds.origin.x + next_child.bounds.size.width
+        );
+        assert_ne!(
+            app.screen()
+                .span_style("id:control-1 >> text:Save")
+                .unwrap()
+                .color,
+            before
+        );
+        assert_eq!(*seen.lock().unwrap(), [Event::Press(1)]);
+    }
+
+    #[test]
+    fn authored_command_gap_updates_icon_and_child_spacing_without_remounting() {
+        let (mut app, _) = start(
+            "button",
+            json!({"text":"Save","icon":"plus","gap":0,"press-enabled":true}),
+            true,
+        );
+        let layout = |app: &Headless| {
+            let nodes = app.screen().layout_nodes();
+            let icon = nodes
+                .iter()
+                .find(|node| node.kind == nsh_core::ViewKind::Canvas)
+                .unwrap()
+                .clone();
+            let label = nodes
+                .iter()
+                .find(|node| {
+                    node.text
+                        .as_ref()
+                        .is_some_and(|text| text.text.text == "Save")
+                })
+                .unwrap()
+                .clone();
+            let child = nodes
+                .iter()
+                .find(|node| node.test_id.as_deref() == Some("authored-command-child"))
+                .unwrap()
+                .clone();
+            (icon, label, child)
+        };
+        let (icon, label, child) = layout(&app);
+        assert_eq!(
+            label.bounds.origin.x,
+            icon.bounds.origin.x + icon.bounds.size.width
+        );
+        assert_eq!(
+            child.bounds.origin.x,
+            label.bounds.origin.x + label.bounds.size.width
+        );
+        app.press("id:control-1").unwrap();
+        let (next_icon, next_label, next_child) = layout(&app);
+        assert_eq!(
+            (next_icon.id, next_label.id, next_child.id),
+            (icon.id, label.id, child.id)
+        );
+        assert_eq!(
+            next_child.bounds.origin.x - next_label.bounds.origin.x - next_label.bounds.size.width,
+            px(20.0)
+        );
+        assert_eq!(
+            next_icon.bounds.origin.x - next_child.bounds.origin.x - next_child.bounds.size.width,
+            px(20.0)
+        );
+    }
+
+    #[test]
+    fn authored_command_alignment_distributes_slots_and_preserves_reordered_children() {
+        let (mut app, _) = start(
+            "button",
+            json!({"text":"Save","icon":"plus","width":220,"height":120,"main":"space_between","cross":"end","press-enabled":true}),
+            true,
+        );
+        let layout = |app: &Headless| {
+            let nodes = app.screen().layout_nodes();
+            let icon = nodes
+                .iter()
+                .find(|node| node.kind == nsh_core::ViewKind::Canvas)
+                .unwrap()
+                .clone();
+            let label = nodes
+                .iter()
+                .find(|node| {
+                    node.text
+                        .as_ref()
+                        .is_some_and(|text| text.text.text == "Save")
+                })
+                .unwrap()
+                .clone();
+            let child = nodes
+                .iter()
+                .find(|node| node.test_id.as_deref() == Some("authored-command-child"))
+                .unwrap()
+                .clone();
+            (icon, label, child)
+        };
+        let close = |a: Points, b: Points| assert!((a.0 - b.0).abs() < 0.01, "{a:?} != {b:?}");
+        // NSH rounds absolute edges to device pixels. At the headless 1x
+        // scale an odd free pixel belongs to one of the two equal gaps.
+        let balanced = |a: Points, b: Points| assert!((a.0 - b.0).abs() <= 1.0, "{a:?} != {b:?}");
+        let (icon, label, child) = layout(&app);
+        let first_gap = label.bounds.origin.x - icon.bounds.origin.x - icon.bounds.size.width;
+        let second_gap = child.bounds.origin.x - label.bounds.origin.x - label.bounds.size.width;
+        assert!(first_gap > px(8.0));
+        balanced(first_gap, second_gap);
+        let control = app
+            .screen()
+            .layout_nodes()
+            .into_iter()
+            .find(|node| node.test_id.as_deref() == Some("control-1"))
+            .unwrap();
+        close(icon.bounds.origin.x, control.bounds.origin.x + px(12.0));
+        close(
+            child.bounds.origin.x + child.bounds.size.width,
+            control.bounds.origin.x + control.bounds.size.width - px(12.0),
+        );
+        close(
+            icon.bounds.origin.y + icon.bounds.size.height,
+            child.bounds.origin.y + child.bounds.size.height,
+        );
+        close(
+            label.bounds.origin.y + label.bounds.size.height,
+            child.bounds.origin.y + child.bounds.size.height,
+        );
+        app.press("id:control-1").unwrap();
+        let (next_icon, next_label, next_child) = layout(&app);
+        assert_eq!(
+            (next_icon.id, next_label.id, next_child.id),
+            (icon.id, label.id, child.id)
+        );
+        assert!(next_label.bounds.origin.x < next_child.bounds.origin.x);
+        assert!(next_child.bounds.origin.x < next_icon.bounds.origin.x);
+        balanced(
+            next_child.bounds.origin.x - next_label.bounds.origin.x - next_label.bounds.size.width,
+            next_icon.bounds.origin.x - next_child.bounds.origin.x - next_child.bounds.size.width,
+        );
+        close(
+            next_icon.bounds.origin.y + next_icon.bounds.size.height,
+            next_child.bounds.origin.y + next_child.bounds.size.height,
+        );
+    }
+
+    #[test]
+    fn icon_only_command_has_square_geometry_and_named_keyboard_activation() {
+        let (mut app, seen) = start(
+            "button",
+            json!({"icon":"plus","size":"icon","accessibility-label":"Add item","press-enabled":true}),
+            false,
+        );
+        let control = app
+            .screen()
+            .layout_nodes()
+            .into_iter()
+            .find(|n| n.test_id.as_deref() == Some("control-1"))
+            .unwrap();
+        assert_eq!(control.bounds.size.width, px(32.0));
+        assert_eq!(control.bounds.size.height, px(32.0));
+        let icon = app
+            .screen()
+            .layout_nodes()
+            .into_iter()
+            .find(|n| n.kind == nsh_core::ViewKind::Canvas)
+            .unwrap();
+        assert_eq!(
+            icon.bounds.origin.x + icon.bounds.size.width / 2.0,
+            control.bounds.origin.x + control.bounds.size.width / 2.0
+        );
+        assert_eq!(
+            icon.bounds.origin.y + icon.bounds.size.height / 2.0,
+            control.bounds.origin.y + control.bounds.size.height / 2.0
+        );
+        app.press_key("tab").unwrap();
+        app.press_key("enter").unwrap();
+        assert_eq!(*seen.lock().unwrap(), [Event::Press(1)]);
     }
 
     #[test]

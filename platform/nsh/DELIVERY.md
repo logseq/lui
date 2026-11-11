@@ -89,6 +89,11 @@ The installed library paths are:
 | Windows | `<App>/lui/lui_app.dll` |
 
 Dependent libraries sit beside the OCaml library, assets under `lui/assets/`.
+Every LUI package also carries the shared SVG icons' tracked `NOTICE` and Apache
+2.0 license under `lui/assets/licenses/lui-icons/`. Delivery includes those files
+in its input snapshot and copies them before signing and archive creation. The
+standard desktop app's snapshot also includes the shared SVG sources compiled
+into its native icon renderer.
 No development-only library environment override is required. Delivery refuses
 `LUI_OCAML_LIBRARY`, `NSH_RUNTIME` and `NSH_RUNTIME_DIR` overrides while building
 a package. Launch the completed application from outside the checkout during

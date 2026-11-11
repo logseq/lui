@@ -2520,6 +2520,24 @@ session.advance(250.0).await?;
 session.pause(false).await?;
 ```
 
+## NSH delivery receipt source and installed-code evidence
+
+Delivery receipts add `luiSourceHashes` for a local `lui-nsh` path dependency,
+including its Rust sources, manifests, compiled `contract.json` and shared SVG
+inputs. A thin application root no longer hides the adapter sources from the
+receipt. The source map must remain unchanged through package publication.
+
+External receipts add `installedCodeSha256`, keyed by executable and payload
+library paths relative to the completed package root. These hashes describe the
+final bytes after relocation, signing, notarization and stapling. Existing
+`ocamlArtifactSha256` and `ocaml.librarySha256` retain their meaning as original
+build-input digests; they can differ from the installed library after those
+steps. `runnerSha256` remains compatible with the executable's final digest.
+Consumers should accept the additive fields and compare installed library bytes
+against `installedCodeSha256["Contents/Resources/lui/liblui_app.dylib"]` on macOS,
+or `lui/liblui_app.so` / `lui/lui_app.dll` on Linux / Windows. The final archive
+hash still authenticates the complete archive.
+
 ## NSH retained toolbar orientation and dropdown ownership
 
 NSH fixes a toolbar's keyboard-navigation axis when its native controller is
@@ -2537,3 +2555,97 @@ the select or after the dropdown, or parent the dropdown directly under the
 select, combobox or menu trigger. Structural insertion/move validates existing
 dropdowns too. Rejection rolls back the entire batch, preserves identities and
 leaves its generation available for a corrected retry.
+
+## NSH command icons, variants and sizes
+
+Desktop `button` and `toggle-button` now render authored built-in `icon`
+values using the same tracked SVG assets as Web. The glyph inherits the
+command foreground and is decorative in the accessibility tree. An icon-only
+command must provide a meaningful label, for example:
+
+```ocaml
+button ~icon:`plus ~size:`icon ~label:"Add item" ~on_press:add_item []
+```
+
+`icon-placement` defaults to `leading`; `trailing` places the glyph after the
+label and `top` places it above the label. Changing the icon, placement, size
+or variant updates retained bindings rather than replacing the native
+button controller. Application icon registration is not implemented by NSH
+yet; unknown names, including unregistered `app:` names, show Web's missing
+icon glyph rather than silently producing an empty control.
+
+An explicit `gap` overrides shared spacing between the icon, label and
+authored children. `main` and `cross` use the same canonical layout parser as
+the native host. Trailing placement reorders three keyed content slots, so
+the label stays before authored children and their native identities survive
+the move. Icon-only commands remain centered.
+
+Outside a tabs context, `variant` selects the shared `default`/`secondary`,
+`primary`, `outline`, `ghost` or `destructive` appearance. These values were
+previously accepted with a fixed secondary appearance. The desktop size
+scale is `sm` (24-point minimum height), omitted/`default` (32), `lg` (40),
+and `icon` (32-point square); explicit authored layout and paint properties
+still override shared defaults. Hover, pressed, selected, disabled and
+focus treatment remain owned by the native behavior component and shared
+theme. A LUI button under `tabs` still uses native tab behavior and the tab
+appearance; this change does not claim menu-item or tab appearance parity.
+
+## NSH native host event delivery and callback flags
+
+NSH's public native host elements now deliver authored generic activation,
+pointer entry/exit, press detail/down/up, context-menu requests and supported
+pointer move/cancel events. The existing C ABI and OCaml event constructors are
+unchanged. Pointer coordinates use the native surface's points; `target_class`
+is empty because there is no DOM. Available modifier bits retain the existing
+contract: Control=1, Shift=2, Command/Super=4, secondary button=8. Alt has no bit
+in that contract. Mouse move and pointer-origin context-menu payloads retain
+available button information. NSH `PressEvent` has no mouse-button field, so
+press detail/down/up use button 0. Touch move/cancel lacks modifier state and
+uses zero modifiers. These defaults describe unavailable public payload fields,
+not inferred physical input.
+
+A model-owned select/combobox still requests activation through its native
+Menu controller. A native trigger observer supplies that same action's available
+modifiers and pointer detail without requesting activation twice. A pointer-only
+trigger delivers detail without ordinary activation. Native NSH semantic
+components such as Button, Checkbox, Switch and MenuItem expose unit behavior
+events; this change does not claim full pointer/modifier parity for those
+components. A parent observer cannot recover their ordinary press payload by
+bubbling. Their existing semantic behavior remains in place.
+
+`appear-enabled` now emits once when an authored node's native materialization
+has attached its existing element reference, after the native commit answers.
+Property-only edits do not synthesize another appearance. Disabled controls can
+still appear. This is a native-materialization notification, not a guarantee that
+the operating system presented a frame or that a clipped node became visible.
+Row/Column/Box focus-within observers use the same native reference and emit
+one transition when focus enters/leaves their subtree, including a real input
+inside it. Their live focus-within flag can be enabled without changing
+focusability or remounting children.
+
+Input changes/submission and Checkbox toggles now honor the current
+`change-enabled`, `submit-enabled` and `toggle-enabled` flags, as well as general
+`enabled` state. Low-level authors must set those flags when they want callbacks;
+ordinary `Lui_elements` handler registration already sets them. For example, a
+raw `text-field` with `change-enabled=false` sends no foreign change request;
+setting it to true enables the already-installed input callback without
+remounting its editor.
+
+Generic native press/pointer/long/double listener capabilities are installed from
+the authored capabilities at native materialization. A callback always checks
+its current live flags, node incarnation and general enabled state. Disabling
+then restoring an installed capability preserves native identity. Temporarily,
+enabling an initially unauthored host capability after that native root mounted
+is rejected atomically and requires an explicit keyed/model remount. For example,
+adding `press-enabled=true` to an already-mounted passive text node fails, while
+changing its text remains valid at the same generation after the failed batch.
+This prevents installing blanket no-op press listeners that steal clicks from
+enclosing controls. It is an explicit partial-parity limit, not silent support.
+
+Rust embedders matching public `render::Event` or `runtime::Event` exhaustively
+must handle the additive native press/pointer/lifecycle variants. The pointer
+types are re-exported by both modules. New optional C exports are required only
+when those events are requested; an older library without one reports a missing
+ABI error instead of accepting and losing the event. Queued events keep the
+existing incarnation check so retired nodes cannot receive replacement-node
+input.

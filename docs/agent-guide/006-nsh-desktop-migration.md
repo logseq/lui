@@ -487,3 +487,50 @@ no NSH runtime/native/package/performance qualification has passed yet.
   unimplemented property/event behavior is recorded in the
   [87-kind support inventory](review-probes/2026-11-11/nsh-support-inventory.md);
   this draft does not claim full component parity or completion.
+
+2026-11-11 published checkpoint qualification:
+
+- Published commit `1ac27c0da460daeeb20113df23915fe6eaede582` on
+  `feat/nsh-desktop-backend` in [draft review #356](https://github.com/logseq/lui/pull/356).
+  Rebuilt the matching Todos library receipt after the forced Dune test run,
+  then packaged that exact checkpoint under `_build/nsh-packages-1ac27c0d/`.
+- The real outside-checkout packaged-app qualifier passed again with dynamic
+  loader and library overrides removed. It verified the actual Todos hello,
+  unique input, one added row and cleared draft. Result evidence is
+  `_build/nsh-packaged-qualification-1ac27c0d/result.json`. This is local
+  macOS arm64/ad hoc signing evidence, not distribution signing qualification.
+- The initial PR CI passed Linux Rust and OCaml integration, macOS Rust,
+  Web, Android, core OCaml, C bridge stress and portable services on all
+  three desktop OSes. Windows successfully built/loaded the actual OCaml DLL
+  and passed real C ABI/input/recovery/repeated teardown. Its adapter check
+  found two Unix-only warning cases; macOS OCaml integration found a timing
+  assertion that assumed hosted-runner scheduling latency. Both have local
+  fixes awaiting qualified reruns. Windows package launch and the maintained
+  Apple checks were still running at this observation; no aggregate CI pass
+  is claimed.
+
+2026-11-11 component/event and actual-upgrade checkpoint:
+
+- The complete local Rust suite passed 81 tests, 0 failed and 0 ignored;
+  all 35 Python NSH tooling tests passed together. Strict all-target Clippy,
+  formatting, inventory freshness and workflow syntax checks passed.
+- Command icons, variants, sizes and authored gap/main/cross layout now use
+  retained native bindings and keyed content slots. Tests preserve the native
+  controller, glyph and authored child identities through reordering, and check
+  icon-only centering and controlled keyboard activation.
+- Native host callbacks now forward supported lifecycle/pointer/gesture events
+  and modifiers through the existing optional C ABI. Tests cover flags,
+  incarnation rejection, one focus-within owner and controlled picker refusal.
+  Typed behavior components still have documented root-event projection gaps.
+- Actual packaged LUI N1-to-N2 qualification passed with an identical retained
+  80-input LUI source map in both receipts, final installed code hashes,
+  authenticated manifests, tamper/cache-corruption rejection and restarted
+  Rust/OCaml version markers. See the [method, hashes and precise limits](review-probes/2026-11-11/nsh-packaged-upgrade.md).
+- Added native macOS/Linux package launch and source-aware upgrade CI jobs;
+  Linux launches use Xvfb. These new jobs need actual runner results. The prior
+  checkpoint now passes all three OS Rust adapter jobs and both OCaml
+  integration jobs; Windows packaged launch and maintained Apple checks still
+  need their terminal evidence.
+- The 39 missing kind routes are assigned across parallel basic/layout,
+  collection/navigation and surface/service implementations. Admission alone
+  will not be counted as full property/event support. The goal remains active.

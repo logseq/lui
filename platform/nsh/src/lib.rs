@@ -3,6 +3,7 @@ pub mod app;
 pub mod contract;
 mod controls;
 mod desktop_updates;
+mod events;
 pub mod render;
 pub mod runtime;
 pub mod store;

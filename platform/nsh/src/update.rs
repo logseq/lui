@@ -383,11 +383,10 @@ impl Worker {
     }
     fn fetch_small(&self, url: &str, limit: u64, epoch: u64) -> Result<Vec<u8>> {
         check_epoch(&self.epoch, epoch)?;
-        let mut response = self
-            .agent
-            .get(url)
-            .call()
-            .map_err(|error| UpdateError::new(ErrorCode::Transport, error))?;
+        let response = self.agent.get(url).call();
+        check_epoch(&self.epoch, epoch)?;
+        let mut response =
+            response.map_err(|error| UpdateError::new(ErrorCode::Transport, error))?;
         let mut body = response.body_mut().as_reader().take(limit + 1);
         let mut result = Vec::new();
         let mut chunk = [0; 8192];
@@ -429,11 +428,10 @@ impl Worker {
         let (hash, size) = archive_requirements(&offer.available)?;
         let archive = Archive(self.cache.0.join("application.download"));
         let mut file = private_file(&archive.0)?;
-        let mut response = self
-            .agent
-            .get(&offer.available.url)
-            .call()
-            .map_err(|error| UpdateError::new(ErrorCode::Transport, error))?;
+        let response = self.agent.get(&offer.available.url).call();
+        check_epoch(&self.epoch, epoch)?;
+        let mut response =
+            response.map_err(|error| UpdateError::new(ErrorCode::Transport, error))?;
         stream_archive(
             response.body_mut().as_reader(),
             &mut file,
@@ -695,4 +693,8 @@ fn private_file(path: &Path) -> Result<File> {
 
 #[cfg(test)]
 #[path = "update_tests.rs"]
-mod tests;
+pub(crate) mod tests;
+
+#[cfg(all(test, unix))]
+#[path = "update_packaged_tests.rs"]
+mod packaged_tests;

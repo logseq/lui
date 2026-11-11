@@ -237,6 +237,8 @@ pub struct CommandButtonProps {
     pub selected: Prop<bool>,
     pub disabled: Prop<bool>,
     pub label: Prop<SharedString>,
+    pub variant: Prop<SharedString>,
+    pub size: Prop<SharedString>,
     pub children: Prop<Children>,
 }
 
@@ -270,14 +272,19 @@ fn command_button(props: CommandButtonProps, cx: Scope<CommandButtonEvent>) -> i
         .child(props.children)
         .into_element()
     } else {
-        button_motion(
-            nsh_base::ButtonProps {
-                selected: props.selected,
-                disabled: props.disabled,
-                accessibility_label: Prop::bind(move || Some(props.label.get())),
-                ..Default::default()
-            },
+        command_appearance(
+            button_motion(
+                nsh_base::ButtonProps {
+                    selected: props.selected,
+                    disabled: props.disabled,
+                    accessibility_label: Prop::bind(move || Some(props.label.get())),
+                    ..Default::default()
+                },
+                theme,
+            ),
             theme,
+            props.variant,
+            props.size,
         )
         .on_event(move |event: &nsh_base::ButtonEvent| {
             if matches!(event, nsh_base::ButtonEvent::Press) {
@@ -287,6 +294,68 @@ fn command_button(props: CommandButtonProps, cx: Scope<CommandButtonEvent>) -> i
         .child(props.children)
         .into_element()
     }
+}
+
+/// One authored size controls geometry and typography; explicit LUI styles
+/// are applied by the retained renderer after these shared defaults.
+pub(crate) fn command_appearance<C: Component>(
+    element: ComponentElement<C>,
+    theme: Theme,
+    variant: Prop<SharedString>,
+    size: Prop<SharedString>,
+) -> ComponentElement<C> {
+    element
+        .flex_row()
+        .items_center()
+        .justify_center()
+        .gap_2()
+        .style_with(move |_| {
+            let s = view();
+            let s = match size.get().as_ref() {
+                "sm" => s.min_h_6().px_2().py_1().text_xs(),
+                "lg" => s.min_h_10().px_4().py_2().text_base(),
+                "icon" => s.w_8().h_8().p_0().text_sm(),
+                _ => s.min_h_8().px_3().py_1().text_sm(),
+            };
+            let variant = variant.get();
+            let (background, foreground) = match variant.as_ref() {
+                "primary" => ("primary", "primary-foreground"),
+                "destructive" => ("destructive", "primary-foreground"),
+                "ghost" | "outline" => ("background", "foreground"),
+                _ => ("secondary", "secondary-foreground"),
+            };
+            let s = s
+                .bg(if variant == "ghost" || variant == "outline" {
+                    color(theme, background).opacity(0.0)
+                } else {
+                    color(theme, background)
+                })
+                .text_color(color(theme, foreground))
+                .border(px(0.0));
+            let s = if variant == "outline" {
+                s.border_1().border_color(color(theme, "border"))
+            } else {
+                s
+            };
+            let mut styled = s
+                .hover(|s| {
+                    if variant == "primary" || variant == "destructive" {
+                        s.bg(color(theme, background).opacity(0.9))
+                    } else {
+                        s.bg(color(theme, "accent"))
+                            .text_color(color(theme, "accent-foreground"))
+                    }
+                })
+                .selected(|s| {
+                    s.bg(color(theme, "primary"))
+                        .text_color(color(theme, "primary-foreground"))
+                })
+                .aria_pressed(|s| {
+                    s.bg(color(theme, "primary"))
+                        .text_color(color(theme, "primary-foreground"))
+                });
+            styled.style().clone()
+        })
 }
 
 // These private Rust components carry a retained theme signal. They are not JS

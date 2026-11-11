@@ -436,6 +436,27 @@ fn declaration(
     Ok(())
 }
 
+/// Native hosts and their command content share the same layout declarations.
+pub(crate) fn content_layout(node: &Node, theme: &ThemeView) -> Result<Vec<StyleDecl>, String> {
+    let mut decls = Vec::with_capacity(3);
+    for (name, key) in [
+        ("gap", StyleKey::Gap),
+        ("cross", StyleKey::AlignItems),
+        ("main", StyleKey::JustifyContent),
+    ] {
+        if let Some(value) = node.props.get(name) {
+            let alias = Value::from("space-between");
+            let value = if name == "main" && value.as_str() == Some("space_between") {
+                &alias
+            } else {
+                value
+            };
+            declaration(&mut decls, key, value, name, theme)?;
+        }
+    }
+    Ok(decls)
+}
+
 /// Translate only presentation here. Canonical scalar/kind/presence validation
 /// stays generated from OCaml; controls and events keep their own owners.
 pub(crate) fn compile(
@@ -514,8 +535,8 @@ pub(crate) fn compile(
             declaration(&mut decls, key, value, name, theme)?;
         }
     }
+    decls.extend(content_layout(node, theme)?);
     for (name, key) in [
-        ("gap", StyleKey::Gap),
         ("grow", StyleKey::FlexGrow),
         ("shrink", StyleKey::FlexShrink),
         ("width", StyleKey::Width),
@@ -527,7 +548,6 @@ pub(crate) fn compile(
         ("border-width", StyleKey::BorderWidth),
         ("corner-radius", StyleKey::BorderRadius),
         ("opacity", StyleKey::Opacity),
-        ("cross", StyleKey::AlignItems),
         ("text-alignment", StyleKey::TextAlign),
         ("font-family", StyleKey::FontFamily),
         ("letter-spacing", StyleKey::LetterSpacing),
@@ -544,20 +564,6 @@ pub(crate) fn compile(
         if let Some(value) = node.props.get(name) {
             declaration(&mut decls, key, value, name, theme)?;
         }
-    }
-    if let Some(value) = node.props.get("main") {
-        let normalized = if value.as_str() == Some("space_between") {
-            Value::from("space-between")
-        } else {
-            value.clone()
-        };
-        declaration(
-            &mut decls,
-            StyleKey::JustifyContent,
-            &normalized,
-            "main",
-            theme,
-        )?;
     }
     if let Some(value) = node.props.get("display") {
         declaration(&mut decls, StyleKey::Display, value, "display", theme)?;

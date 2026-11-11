@@ -51,12 +51,23 @@ def write_json(path, value):
     Path(path).write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def shared_icon_assets():
+    return [(ROOT / "platform/web/src/icons" / name, f"licenses/lui-icons/{name}")
+            for name in ("NOTICE", "LICENSE-APACHE-2.0")]
+
+
 def input_snapshot(app):
     files = [app / name for name in ("Cargo.toml", "Cargo.lock", "nsh.json")]
     files.extend(sorted((app / "src").rglob("*.rs")))
-    if (app / "build.rs").is_file():
-        files.append(app / "build.rs")
-    return {str(path.relative_to(app)): digest(path) for path in files}
+    for name in ("build.rs", "contract.json"):
+        if (app / name).is_file():
+            files.append(app / name)
+    if app.resolve() == DEFAULT_APP.resolve():
+        files.extend(sorted((ROOT / "platform/web/src/icons").glob("*.svg")))
+    snapshot = {Path(os.path.relpath(path, app)).as_posix(): digest(path) for path in files}
+    snapshot.update({f"shared/icon-licenses/{path.name}": digest(path)
+                     for path, _ in shared_icon_assets()})
+    return snapshot
 
 
 def require_snapshot(app, snapshot):
@@ -136,6 +147,23 @@ def verify_graph(metadata, source):
 def cargo_metadata(cargo, manifest):
     return json.loads(run([cargo, "metadata", "--locked", "--format-version", "1",
                            "--manifest-path", manifest], capture=True))
+
+
+def lui_source_snapshot(metadata):
+    adapters = [Path(package["manifest_path"]).resolve().parent
+                for package in metadata["packages"]
+                if package["name"] == "lui-nsh" and package.get("source") is None]
+    if not adapters:
+        return {}
+    if len(adapters) != 1:
+        raise DeliveryError("Expected exactly one local LUI adapter source")
+    app = adapters[0]
+    snapshot = input_snapshot(app)
+    # A thin fixture root still compiles the path dependency's shared SVGs.
+    icons = app.parent / "web/src/icons"
+    snapshot.update({f"../web/src/icons/{path.name}": digest(path)
+                     for path in sorted(icons.glob("*.svg"))})
+    return snapshot
 
 
 def require_tested_registry(app, runner):
@@ -287,6 +315,12 @@ def copy_payload(resources, library, dependencies, assets, target):
     return copied
 
 
+def installed_code_hashes(root, executable, resources, target, dependencies):
+    library = {"macos": "liblui_app.dylib", "linux": "liblui_app.so", "windows": "lui_app.dll"}[target]
+    paths = [executable, resources / library, *[resources / path.name for path in dependencies]]
+    return {path.relative_to(root).as_posix(): digest(path) for path in paths}
+
+
 def relocate_macos(root, executable, libraries):
     """Keep non-system links inside the complete application before signing."""
     destinations = {path.name: path for path in libraries}
@@ -392,7 +426,8 @@ def finalize(root, executable, resources, config, target, wanted, args, receipt)
     for path in [executable, *code]:
         if not wanted <= architectures(path, target):
             raise DeliveryError(f"{path} does not contain all requested architectures {sorted(wanted)}")
-    libraries = copy_payload(resources, library, args.dependency, args.asset, target)
+    libraries = copy_payload(resources, library, args.dependency,
+                             [*args.asset, *shared_icon_assets()], target)
     if verified_digest is not None and digest(libraries[0]) != verified_digest:
         raise DeliveryError("Copied OCaml library does not match its verified build receipt")
     receipt.update({"application": {key: config[key] for key in ("name", "id", "version", "build")},
@@ -460,6 +495,7 @@ def package(args):
         raise DeliveryError("Unset development runner/library overrides before packaging")
     graph = cargo_metadata(args.cargo, app / "Cargo.toml")
     packages = verify_graph(graph, source)
+    lui_snapshot = lui_source_snapshot(graph)
     generated = app / ".nsh/rust/Cargo.toml"
     generated.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(app / "Cargo.lock", generated.parent / "Cargo.lock")
@@ -480,6 +516,8 @@ def package(args):
         packaged_graph = cargo_metadata(args.cargo, generated)
         verify_graph(packaged_graph, source)
         require_tested_registry(graph, packaged_graph)
+        if lui_source_snapshot(packaged_graph) != lui_snapshot:
+            raise DeliveryError("Local LUI adapter sources changed during packaging; rebuild from stable inputs")
         if digest(generated.parent / "Cargo.lock") != generated_lock:
             raise DeliveryError("Generated runner lock changed during packaging; requalify the application lock before retrying")
         require_snapshot(app, snapshot)
@@ -491,6 +529,7 @@ def package(args):
                 args.entitlements = inherited
         receipt = {"schemaVersion": 1, "nsh": source, "cliSha256": cli_receipt["sha256"],
                    "applicationSourceHashes": snapshot,
+                   "luiSourceHashes": lui_snapshot,
                    "releaseProfile": {"strip": "none"} if platform.system() == "Darwin" else {},
                    "applicationCrates": packages, "runnerCrates": generated_packages,
                    "cargoLockSha256": digest(app / "Cargo.lock"),
@@ -514,10 +553,13 @@ def package(args):
         archives = archive_package(root, staged, config, target, wanted)
         external = dict(receipt, signing=signing, notarized=bool(args.notary_profile),
                         runnerSha256=digest(executable),
+                        installedCodeSha256=installed_code_hashes(root, executable, resources, target, args.dependency),
                         archives={p.name: digest(p) for p in archives})
         if installer:
             external["installer"] = {"name": installer.name, "sha256": digest(installer)}
         require_snapshot(app, snapshot)
+        if lui_source_snapshot(packaged_graph) != lui_snapshot:
+            raise DeliveryError("Local LUI adapter sources changed before publication; rebuild from stable inputs")
         for path in [root, *archives, *([installer] if installer else [])]:
             destination = args.output / path.name
             if destination.exists():
