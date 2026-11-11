@@ -705,3 +705,7 @@ fn library_path(configured: &str) -> Result<PathBuf, String> {
         directory.join("lui/liblui_app.so")
     })
 }
+
+#[cfg(test)]
+#[path = "app/commit_tests.rs"]
+mod commit_tests;
