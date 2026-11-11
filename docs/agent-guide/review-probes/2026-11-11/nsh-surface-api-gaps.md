@@ -6,7 +6,8 @@ This records source inspection against NSH revision
 unchanged between those revisions. The only ContextMenu-file change is an
 ordinary Menu keyboard `for_focus` option; it does not change ContextMenu
 composition. The public builder adds MouseUp observation, with no new
-layout-through attachment or controlled toast reset API. All gaps below remain.
+layout-through attachment. The Toast refusal claim below was corrected after
+checking the former desktop implementation and actual downstream usage.
 These are specific composition requirements, not permission to use private NSH
 APIs or a claim that the merged fork has already completed runtime qualification.
 
@@ -17,7 +18,7 @@ APIs or a claim that the merged fork has already completed runtime qualification
 | Resizable pointer movement | ResizeHandle capture; direct bounded width update | Same direct tracking |
 | Resizable source or constraint update | Immediate accepted geometry | Same immediate geometry |
 | Toast arrival/removal and stack expansion | ToastStack's native measured layout and motion tokens | Native reduced-motion path |
-| Toast swipe | Toast's native pointer tracking and release | Direct tracking; controlled refusal remains an explicit API gap |
+| Toast swipe | Toast's native pointer tracking and release | Native tracking and release; notification dismissal is authoritative |
 
 Headless qualification checks native behavior and geometry. It does not qualify
 light/dark appearance, screen-reader output or real desktop animation.
@@ -47,25 +48,30 @@ before LUI press-detail/modifier callbacks can be claimed.
 
 The adapter does not substitute a generic View for this behavior.
 
-## Toast dismissal refusal
+## Toast dismissal is notification, not a veto
 
-`nsh-base/src/toast/root.rs` animates the toast offscreen before emitting
-`ToastEvent::DismissRequest`. There is no public controlled visibility or reset
-prop. When the application retains the same LUI toast after receiving Dismiss,
-the native translation remains offscreen. Remounting to reset it would discard
-editor/native identity. The maintained Apple implementation resets its drag
-offset after requesting dismissal.
+The earlier claim that LUI requires a refused Toast dismissal to restore its
+native translation was incorrect. The former desktop implementation
+(`git show 1ac27c0d^:platform/mygo/menus.go`, lines 171–187) closes the native
+notification before emitting Dismiss. Its timeout regression explicitly keeps
+the canonical node after expiry and expects the notification to remain closed.
+Apple's drag-offset reset does not establish a cross-platform veto contract.
 
-The required public behavior is a controlled dismissal response, or a public
-reset that restores the retained native toast when the application refuses the
-request. A refusal must preserve the toast and its children, including focus and
-draft. This requirement concerns native swipe dismissal; the adapter can keep
-timeout notification separate from structural visibility.
+NSH can therefore supply Toast, ToastStack and ToastManager directly. Native
+swipe, Escape, timing and exit complete before Dismiss notifies the application
+to remove its model entry. No reset API, second gesture controller or remount
+workaround is required. The old desktop default is 4000 milliseconds; explicit
+zero is persistent. Content updates do not restart the native timeout.
 
-Native ToastStack already supplies stacking, hover/touch expansion, Escape and
-layout motion. Its public placement belongs to the whole stack. Distinct LUI
-toast placements consequently need explicit routing to stacks; moving a toast
-between stacks requires separate identity qualification.
+The public LUI Toast constructor has no per-toast placement option. NSH uses
+one application-level stack at the bottom right, outside ordinary layout flow;
+its public ToastStack owns measurement, expansion and reflow. The global
+alignment hint is an overlay-child hint, not a Toast placement contract.
+
+The implementation uses one owner-scoped deadline wake because the public
+native manager exposes lifecycle phases but no next-deadline query. Wake hints
+schedule advance calls; the native manager owns phase, timeout and removal.
+Empty, paused-present and idle persistent stacks have no lifecycle wake.
 
 ## ResizeHandle accessibility
 

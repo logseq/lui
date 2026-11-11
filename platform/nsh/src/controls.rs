@@ -12,6 +12,7 @@ mod basic;
 mod collections;
 mod navigation;
 mod surfaces;
+pub(crate) mod toasts;
 
 /// Sparse access to existing retained child signals, without a second tree.
 pub(crate) type ChildIdentity = (u64, u64);
@@ -351,7 +352,8 @@ pub(crate) fn popup_rectangle(value: &str) -> Result<nsh_core::geometry::Bounds<
 }
 
 pub(crate) fn supported(kind: &str) -> bool {
-    navigation::supported(kind)
+    kind == "toast"
+        || navigation::supported(kind)
         || surfaces::supported(kind)
         || basic::supported(kind)
         || collections::supported(kind)
@@ -530,6 +532,9 @@ pub(crate) fn element(
     }
     if navigation::supported(&initial.kind) {
         return navigation::element(node, children, emit, presentation);
+    }
+    if initial.kind == "toast" {
+        return Some(toasts::element(node, children, presentation));
     }
     let id = initial.id;
     Some(match initial.kind.as_str() {

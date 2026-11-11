@@ -3429,3 +3429,47 @@ token, and MIME/UTI or wildcard filters such as `image/*` and `public.image`
 before publishing the transaction. Use the native desktop files/folders route
 when that is the intended UI; do not relabel a photo/camera workflow as files
 merely to bypass validation. Apple/iOS, Android and Web API behavior is unchanged.
+
+### NSH native Toast lifecycle and application-level placement
+
+The desktop adapter renders canonical `toast` nodes once in a bottom-right
+application-level native ToastStack. They occupy no slot or gap in their source
+parent's ordinary layout. An attached canonical Toast is an app notification,
+including when its source parent is a retained hidden native page. Desktop
+placement and native stack expansion, swipe and Escape follow NSH behavior;
+there is no new LUI placement, swipe-direction or focus-manager API.
+
+NSH ToastManager owns entering, present and ending phases. The existing desktop
+omitted-duration default remains **4000 ms**; explicit `~duration:0` persists.
+The timeout counts native Present time, after the default 400 ms entry phase;
+close notifies `Dismiss` after the default 200 ms exit phase. Native stack
+hover/touch expansion and keyboard focus within the stack pause the timeout's
+remaining time. Each incarnation captures its duration on first presentation:
+text, label, style and even later duration patches preserve that lifetime.
+The adapter schedules one owner-scoped next-deadline wake, with no interval or
+idle polling for empty, paused-present or persistent-present notifications.
+
+`on_dismiss` is cleanup notification after native dismissal, not an application
+veto. This matches the former MyGo desktop close-before-Dismiss behavior.
+Retaining or editing that closed canonical incarnation does not display it again.
+To reopen, create a new Toast incarnation through ordinary conditional/keyed
+membership. Source detach disposes its presentation and suppresses any later
+close callback; an old timer cannot dismiss a replacement using the same wire id.
+Arbitrary child controls retain their native identities during live content
+updates. Explicit source removal takes effect immediately; native exit retention
+applies when the native Toast closes while its source incarnation remains mounted.
+
+```ocaml
+toast ~duration:2500 ~label:"Saved"
+  ~on_dismiss:(press send Dismiss_confirmation)
+  [text ~value:"Saved" []]
+```
+
+The usage audit found one Toast site in `mobile` at revision
+`82b6da991bc0e6987f652f6f5cd91d1e37f58498`: capture confirmation in
+`shared/src/logseq/view_screens.ml:1052`, with explicit 1500 ms on iOS and
+2500 ms elsewhere. Its `shared/test/logseq/app_test.ml:10499–10502` asserts
+that Dismiss removes confirmation; it does not refuse native closure. No Toast
+usage was found in `logseq_journal` revision
+`6c030857d0bc417d11394a73282a87416b8006cc`. Apple/iOS, Android and Web keep
+their maintained backend behavior and omitted-duration defaults.

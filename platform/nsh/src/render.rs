@@ -84,6 +84,8 @@ struct State {
     error: Signal<Option<String>>,
     base_theme: Arc<ThemeView>,
     viewport: Signal<Size<Points>>,
+    toast_ids: BTreeSet<u64>,
+    toasts: Signal<Vec<crate::controls::toasts::Member>>,
 }
 #[derive(Clone)]
 pub struct Renderer(Rc<RefCell<State>>);
@@ -98,6 +100,8 @@ impl Renderer {
             error: signal(None),
             base_theme: Arc::new(ThemeView::new(tokens(), dark(), reduce_motion())),
             viewport: signal(Size::default()),
+            toast_ids: BTreeSet::new(),
+            toasts: signal(Vec::new()),
         })))
     }
     pub fn apply(&self, patch: Batch) -> Result<(), String> {
@@ -108,17 +112,28 @@ impl Renderer {
     }
     pub fn set_root(&self, id: i64) -> Result<(), String> {
         let id = u64::try_from(id).map_err(|_| "invalid application root")?;
-        let (root, signal) = {
+        let (root, signal, toasts, members) = {
             let mut state = self.0.borrow_mut();
             state.store.set_root(id)?;
-            ((id, state.store.nodes[&id].incarnation), state.root)
+            (
+                (id, state.store.nodes[&id].incarnation),
+                state.root,
+                state.toasts,
+                toast_members(&state),
+            )
         };
-        signal.set(Some(root));
+        batch(|| {
+            signal.set(Some(root));
+            if toasts.get_untracked() != members {
+                toasts.set(members);
+            }
+        });
         Ok(())
     }
     fn publish(&self, patch: Batch, snapshot: bool) -> Result<(), String> {
-        let (updates, theme_updates, popup_updates, removed, root, root_signal) = {
+        let (updates, theme_updates, popup_updates, removed, root, root_signal, toasts) = {
             let mut state = self.0.borrow_mut();
+            let previous_root = state.store.root();
             let viewport = state.viewport.get_untracked();
             let base = state.base_theme.clone();
             let State { store, nodes, .. } = &mut *state;
@@ -133,6 +148,29 @@ impl Renderer {
                 store.apply_inspected(patch, validate, inspect)?
             };
             let themes = themes.into_inner();
+            // Toast is source metadata outside ordinary flow. Only structural
+            // edits update this sparse index; editor/content patches do not
+            // scan the tree or restart the notification's lifecycle.
+            let toast_structure = snapshot
+                || previous_root != state.store.root()
+                || !changes.removed.is_empty()
+                || changes.updated.iter().any(|id| {
+                    let next = &state.store.nodes[id];
+                    state.nodes.get(id).is_none_or(|entry| {
+                        let old = entry.node.get_untracked();
+                        old.parent != next.parent || !Arc::ptr_eq(&old.children, &next.children)
+                    })
+                });
+            for id in &changes.removed {
+                state.toast_ids.remove(id);
+            }
+            for id in &changes.updated {
+                if state.store.nodes[id].kind == "toast" {
+                    state.toast_ids.insert(*id);
+                } else {
+                    state.toast_ids.remove(id);
+                }
+            }
             let mut updates = Vec::new();
             let mut removed = Vec::new();
             for id in changes.updated {
@@ -236,6 +274,7 @@ impl Renderer {
                     .root()
                     .map(|id| (id, state.store.nodes[&id].incarnation)),
                 state.root,
+                toast_structure.then(|| (state.toasts, toast_members(&state))),
             )
         };
         batch(|| {
@@ -252,6 +291,11 @@ impl Renderer {
                 }
             }
             root_signal.set(root);
+            if let Some((signal, members)) = toasts
+                && signal.get_untracked() != members
+            {
+                signal.set(members);
+            }
             for entry in removed {
                 entry.owner.dispose();
             }
@@ -265,6 +309,30 @@ impl Renderer {
         let viewport = self.0.borrow().viewport;
         let theming = self.clone();
         let inherited_theme = signal(self.0.borrow().base_theme.clone());
+        let members = self.0.borrow().toasts;
+        let toast_lookup = self.clone();
+        let toast_render = self.clone();
+        let toast_events = self.clone();
+        let toast_host = crate::controls::toasts::host(
+            members,
+            viewport,
+            Rc::new(move |(id, incarnation)| {
+                let state = toast_lookup.0.borrow();
+                state.nodes.get(&id).and_then(|entry| {
+                    (entry.node.get_untracked().incarnation == incarnation).then_some(entry.node)
+                })
+            }),
+            Rc::new(move |(id, _)| toast_render.node(id)),
+            Rc::new(move |(id, incarnation)| {
+                if members
+                    .get_untracked()
+                    .iter()
+                    .any(|member| member.identity == (id, incarnation) && member.attached)
+                {
+                    toast_events.emit(id, incarnation, Event::Dismiss(id));
+                }
+            }),
+        );
         effect(move || {
             let theme = Arc::new(ThemeView::new(tokens(), dark(), reduce_motion()));
             if let Err(error) = theming.refresh_theme(theme.clone()) {
@@ -281,7 +349,19 @@ impl Renderer {
                     viewport.set(bounds.size);
                 }
             })
-            .child(dynamic(move || root.get().map(|(id, _)| renderer.node(id))))
+            .child(dynamic(move || {
+                root.get().and_then(|(id, _)| {
+                    let toast = renderer
+                        .0
+                        .borrow()
+                        .store
+                        .nodes
+                        .get(&id)
+                        .is_some_and(|node| node.kind == "toast");
+                    (!toast).then(|| renderer.node(id))
+                })
+            }))
+            .child(toast_host)
             .child(dynamic(move || {
                 error
                     .get()
@@ -887,12 +967,38 @@ fn picker_popup(node: &Node, store: &Store) -> Option<(u64, u64)> {
     let id = own.or(sibling)?;
     Some((id, store.nodes.get(&id)?.incarnation))
 }
+fn toast_members(state: &State) -> Vec<crate::controls::toasts::Member> {
+    state
+        .toast_ids
+        .iter()
+        .filter_map(|id| {
+            let node = state.store.nodes.get(id)?;
+            let mut ancestor = Some(*id);
+            let mut attached = false;
+            while let Some(id) = ancestor {
+                if Some(id) == state.store.root() {
+                    attached = true;
+                    break;
+                }
+                ancestor = state.store.nodes.get(&id).and_then(|node| node.parent);
+            }
+            Some(crate::controls::toasts::Member {
+                identity: (*id, node.incarnation),
+                attached,
+            })
+        })
+        .collect()
+}
+
 fn displayed_children(node: &Node, store: &Store) -> Vec<u64> {
     node.children
         .iter()
         .enumerate()
         .filter_map(|(index, id)| {
             let child = store.nodes.get(id)?;
+            if child.kind == "toast" {
+                return None;
+            }
             if child.kind == "dropdown-menu" {
                 if matches!(node.kind.as_str(), "select" | "combobox") {
                     return None;
