@@ -26,7 +26,7 @@ pub fn button(props: nsh_base::ButtonProps, theme: Theme) -> ComponentElement<ns
 pub(crate) fn icon(
     name: impl IntoReactive<SharedString>,
     extent: impl IntoReactive<Points>,
-) -> impl IntoElement {
+) -> nsh_core::element::Svg {
     let name = name.into_reactive();
     let name = computed(move || name.get());
     let extent = extent.into_reactive();

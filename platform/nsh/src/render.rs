@@ -409,6 +409,34 @@ impl Renderer {
         };
         state.nodes.get(&target).map(|entry| entry.reference)
     }
+    fn child_renderer(&self, id: u64, incarnation: u64) -> Option<crate::controls::ChildRenderer> {
+        let identities = {
+            let state = self.0.borrow();
+            if state.store.nodes.get(&id)?.incarnation != incarnation {
+                return None;
+            }
+            state.nodes.get(&id)?.children
+        };
+        let rendering = self.clone();
+        let reading = self.clone();
+        Some(crate::controls::ChildRenderer {
+            identities,
+            render: Rc::new(move |(id, incarnation)| {
+                if rendering.is_current(id, incarnation, None) {
+                    rendering.node(id)
+                } else {
+                    view().into_element()
+                }
+            }),
+            lookup: Rc::new(move |(id, incarnation)| {
+                let state = reading.0.borrow();
+                (state.store.nodes.get(&id)?.incarnation == incarnation)
+                    .then(|| state.nodes.get(&id).map(|entry| entry.node))
+                    .flatten()
+            }),
+        })
+    }
+
     fn node(&self, id: u64) -> AnyElement {
         let (state, children, reference, theme, viewport, popup) = {
             let renderer = self.0.borrow();
@@ -424,6 +452,23 @@ impl Renderer {
         };
         let node = state.get_untracked();
         let incarnation = node.incarnation;
+        let child_renderer = matches!(
+            node.kind.as_str(),
+            "stack"
+                | "overlay"
+                | "edge-inset"
+                | "view-that-fits"
+                | "alert"
+                | "bubble"
+                | "drawer"
+                | "split"
+                | "resizable"
+                | "tree"
+                | "list-item"
+                | "context-menu"
+        )
+        .then(|| self.child_renderer(id, incarnation))
+        .flatten();
         let installed = self.0.borrow().nodes[&id].capabilities.clone();
         let notifying = self.clone();
         let current = self.clone();
@@ -432,6 +477,7 @@ impl Renderer {
             Rc::new(move |event| notifying.emit(id, incarnation, event)),
             installed,
             Rc::new(move || current.is_current(id, incarnation, None)),
+            use_context::<crate::events::VisibilityScope>(),
         );
         native_events.appear(reference);
         native_events.focus(reference);
@@ -480,6 +526,7 @@ impl Renderer {
                     reference,
                     theme,
                     events: Some(native_events.clone()),
+                    children: child_renderer.clone(),
                 },
             );
         }
@@ -519,6 +566,7 @@ impl Renderer {
                     reference,
                     theme,
                     events: Some(native_events.clone()),
+                    children: child_renderer.clone(),
                 },
             );
         }
@@ -535,6 +583,7 @@ impl Renderer {
                     reference,
                     theme,
                     events: Some(native_events.clone()),
+                    children: child_renderer,
                 },
             )
             .expect("supported NSH control");
@@ -577,6 +626,7 @@ impl Renderer {
                 let events = self.clone();
                 let props = nsh_base::CheckboxProps {
                     checked: Prop::bind(move || state.get().boolean("checked", false)),
+                    indeterminate: Prop::bind(move || state.get().boolean("indeterminate", false)),
                     disabled: Prop::bind(move || !state.get().boolean("enabled", true)),
                     accessibility_label: Prop::bind(move || Some(label().into())),
                     ..Default::default()
@@ -855,6 +905,10 @@ fn validate_themes(
     for node in transaction.updated() {
         candidates.insert(node.id);
         let previous = transaction.previous(node.id);
+        if let Some(previous) = previous.filter(|previous| previous.incarnation == node.incarnation)
+        {
+            crate::controls::validate_transition(previous, node)?;
+        }
         if let Some(entry) = entries.get(&node.id)
             && entry.reference.node().is_some()
             && entry.node.get_untracked().incarnation == node.incarnation

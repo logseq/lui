@@ -10,7 +10,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "docs/agent-guide/review-probes/2026-11-11/nsh-support-inventory.md"
-SOURCE_NAMES = ["render.rs", "controls.rs", "style.rs", "virtual_rows.rs", "app.rs", "ui/mod.rs", "ui/controls.rs", "events.rs"]
+SOURCE_NAMES = ["render.rs", "controls.rs", "style.rs", "virtual_rows.rs", "app.rs", "ui/mod.rs", "ui/controls.rs", "events.rs", "ui/icons.rs", "controls/basic.rs", "controls/collections.rs", "controls/surfaces.rs"]
 ROUTES = {
     "root": "core view", "row": "core view + flex direction", "column": "core view",
     "box": "core view", "panel": "core view", "card": "core view", "spacer": "core view + grow/shrink",
@@ -32,22 +32,68 @@ ROUTES = {
     "popover": "core anchored Overlay", "tooltip": "core anchored Overlay + hint policy",
 }
 
+ROUTES.update({
+    "drawer": "base controlled left Sheet + retained main content",
+    "resizable": "base ResizeHandle + bounded retained local width",
+    "edge-inset": "core grid + keyed main/pinned regions + scoped visibility",
+    "list-item": "base Button/Accordion + keyed retained row content",
+    "stack": "core same-cell grid + keyed retained layers",
+    "overlay": "core local overlay + keyed retained layers",
+    "alert": "themed inline alert + retained layers",
+    "bubble": "themed bubble + reaction badge + retained layers",
+    "spinner": "base Progress + native spinning SVG",
+    "icon": "core SVG + base Tooltip",
+    "avatar": "base Avatar with authored fallback",
+    "status-bar": "themed core text",
+    "link": "base Link with App/System navigation ownership",
+    "accordion": "base controlled Accordion/Item/Trigger/Panel",
+    "table": "base Table",
+    "table-row": "public host equivalent of base TableRow + selection",
+    "table-cell": "public host equivalent of base TableCell + authored width",
+    "list-section": "core semantic group",
+    "list-section-header": "core header group",
+    "list-section-footer": "core footer group",
+    "bottom-tabs": "shared Tabs + native roving selection",
+    "bottom-tab": "base Tab with model-owned selection",
+})
+
 HOST_EVENT_KINDS = {
     "root", "row", "column", "box", "panel", "card", "spacer", "dropdown-menu",
     "text", "heading", "paragraph", "label", "kbd", "text-field", "secure-field",
     "input", "search-field", "textarea", "scroll", "virtual-list", "image",
     "radio-group", "input-group", "input-group-actions", "divider", "list", "grid",
     "dialog", "popover", "tooltip", "select", "combobox", "menu-trigger",
+    "stack", "overlay", "alert", "bubble", "icon", "status-bar", "table-row",
+    "table-cell", "list-section", "list-section-header", "list-section-footer",
+    "drawer", "resizable", "edge-inset",
+}
+
+# Concrete validator restrictions are distinct from accepted property gaps and
+# qualifications that still require a native operating-system run.
+RESTRICTIONS = {
+    "drawer": ["Requires exactly two canonical children: sidebar first and main content second."],
+    "edge-inset": [
+        "At most 32,760 children because native grid line indices use signed 16-bit values.",
+        "Rejects any authored hover-*, pressed-*, focus-*, selected-* or disabled-* pooled state-paint property.",
+        "Rejects opacity other than 1, nonempty shadow other than none, and any authored transition.",
+    ],
+    "list-item": [
+        "Rejects change-enabled=true inline editing and true long-press-enabled, double-press-enabled or submit-enabled callbacks.",
+        "Adding or removing expanded within the same incarnation is rejected; switching flat/disclosure mode requires a new node incarnation.",
+    ],
+    "avatar": ["Rejects authored image resources until the native image-resource bridge is available."],
+    "link": ["Without an authored press handler, URL navigation requires a valid external system URL; relative destinations are rejected."],
 }
 
 # These are reviewed omissions, not conclusions inferred from a string search.
 # Filtering by canonical properties avoids asserting a property on the wrong kind.
 GAPS = {
-    "G1": (None, {"style-class", "alignment"}, "Authored style-class and alignment have no adapter reader; native/style defaults remain."),
+    "G1": (None, {"style-class"}, "Authored style-class has no adapter reader; native/style defaults remain."),
+    "G13": (set(ROUTES) - {"overlay"}, {"alignment"}, "Authored layer alignment remains unimplemented outside local Overlay."),
     "G2": ({"menu-item"}, {"icon", "icon-placement", "selection-placement", "size", "variant", "tooltip-keys"}, "Menu-item renders text/children with a fixed themed wrapper; these authored appearance choices are not forwarded."),
     "G11": ({"button", "toggle-button"}, {"tooltip-keys"}, "Command shortcut hints are not forwarded; built-in icons, placement, size and variants have native bindings outside tabs."),
     "G3": ({"text-field", "secure-field", "input", "search-field", "textarea", "combobox"}, {"input-type", "submit-on-enter", "submit-on-blur", "navigate-enabled"}, "Input hint/navigation/submit policies are not forwarded; native Input defaults remain."),
-    "G4": ({"checkbox", "toggle"}, {"indeterminate", "label-opacity", "indicator-border-color", "checked-indicator-border-color", "toggle-detail-enabled"}, "Checkbox routes pass checked/disabled/label only; mixed state and authored indicator/detail behavior are absent."),
+    "G4": ({"checkbox", "toggle"}, {"label-opacity", "indicator-border-color", "checked-indicator-border-color", "toggle-detail-enabled"}, "Checkbox routes forward checked/indeterminate/disabled/label; authored indicator/detail behavior remains absent."),
     "G5": ({"image"}, {"url", "source-x", "source-y", "source-width", "source-height", "image-fit", "alt", "loading", "referrer-policy"}, "Image route reads source only; alternative URL, cropping, fit and image metadata are not forwarded."),
     "G6": ({"heading"}, {"heading-level"}, "Heading uses the same core text route, without heading role/level or level-based presentation."),
     "G7": ({"scroll"}, {"orientation"}, "Scroll route does not set horizontal mode; the native default remains."),
@@ -57,6 +103,25 @@ GAPS = {
 }
 
 TESTS = {
+    "drawer": ["drawer_uses_native_sheet_and_keeps_refused_selected_state"],
+    "resizable": ["resizable_native_drag_clamps_and_reconciles_source_without_remounting"],
+    "edge-inset": ["edge_inset_measures_all_pinned_children_and_scopes_surface_spacing_to_pins", "edge_inset_preserves_editor_identity_draft_and_focus_when_main_role_changes", "edge_inset_logical_edges_keep_physical_padding_in_rtl", "edge_inset_rejects_unavailable_pooled_paint_atomically", "edge_inset_parts_keep_surface_properties_off_the_main_host", "edge_inset_appear_follows_visibility_without_replacing_native_nodes"],
+    "list-item": ["list_disclosure_partitions_body_and_nested_rows_without_replacing_the_editor", "list_row_rejects_unavailable_callback_semantics_and_mode_mutation_explicitly", "changing_native_list_mode_rolls_back_other_edits_and_preserves_retry_generation_and_ids"],
+    "stack": ["layered_editor_keeps_native_identity_draft_and_keyboard_focus_across_reorder"],
+    "overlay": ["local_overlay_preserves_intrinsic_content_and_child_alignment_override", "layered_editor_keeps_native_identity_draft_and_keyboard_focus_across_reorder"],
+    "icon": ["icon_and_indeterminate_spinner_retain_native_identity_when_size_changes"],
+    "spinner": ["icon_and_indeterminate_spinner_retain_native_identity_when_size_changes"],
+    "avatar": ["url_only_link_shows_destination_and_avatar_keeps_verbatim_fallback", "avatar_resource_images_are_rejected_explicitly"],
+    "link": ["native_link_uses_keyboard_activation_and_live_disabled_without_remounting", "relative_link_navigation_requires_an_authored_press_handler"],
+    "alert": ["alert_and_bubble_retain_authored_body_when_title_or_reaction_changes"],
+    "bubble": ["alert_and_bubble_retain_authored_body_when_title_or_reaction_changes"],
+    "accordion": ["disclosure_is_controlled_and_keeps_its_editor_across_keyboard_close_reopen", "disclosure_without_a_toggle_callback_is_static_content"],
+    "table": ["static_table_preserves_cell_and_editor_identity_through_a_text_update"],
+    "table-row": ["static_table_preserves_cell_and_editor_identity_through_a_text_update"],
+    "table-cell": ["static_table_preserves_cell_and_editor_identity_through_a_text_update"],
+    "bottom-tabs": ["bottom_tabs_use_native_arrows_skip_disabled_and_follow_canonical_selection"],
+    "bottom-tab": ["bottom_tabs_use_native_arrows_skip_disabled_and_follow_canonical_selection"],
+    "checkbox": ["native_checkbox_mixed_state_is_controlled_until_the_model_resolves_it"],
     "switch": ["switch_follows_accepted_press_and_keyboard_values_without_duplicate_events", "refused_switch_requests_keep_native_identity_and_accepted_value", "disabled_switch_takes_no_user_event"],
     "toggle-button": ["toggle_button_exposes_pressed_semantics_and_uses_selected_as_value"],
     "radio": ["radio_reports_change_before_toggle_and_cannot_uncheck_itself", "unsupported_activation_contracts_fail_before_mounting"],
@@ -88,6 +153,8 @@ EMITTED = {
     "toggle-button": {"toggle-changed"}, "toggle": {"toggle-changed"}, "checkbox": {"toggle-changed"}, "switch": {"toggle-changed"},
     "radio": {"change", "toggle-changed"}, "slider": {"value-changed"}, "number-stepper": {"value-changed"},
     "select": {"press", "press-modifiers"}, "combobox": {"press", "press-modifiers", "text-changed", "submit"},
+    "drawer": {"toggle-changed"}, "list-item": {"press", "toggle-changed"},
+    "link": {"press"}, "accordion": {"toggle-changed"}, "bottom-tab": {"press"},
     "dialog": {"dismiss"}, "sheet": {"dismiss"}, "popover": {"dismiss"},
     "virtual-list": {"visible-range", "scroll-completed", "virtual-window"},
 }
@@ -108,7 +175,8 @@ def admitted(source):
 def inventory():
     contract = json.loads((ROOT / "platform/nsh/contract.json").read_text())
     sources = {name: (ROOT / "platform/nsh/src" / name).read_text() for name in SOURCE_NAMES}
-    supported = admitted(sources["render.rs"]) | admitted(sources["controls.rs"])
+    supported = set().union(*(admitted(source) for name, source in sources.items()
+                              if name in {"render.rs", "controls.rs"} or name.startswith("controls/")))
     if supported != set(ROUTES):
         raise ValueError(f"Route catalog needs review: {sorted(supported ^ set(ROUTES))}")
     if not supported <= set(contract["kinds"]):
@@ -136,13 +204,14 @@ def inventory():
         gaps = {key: sorted(properties & set(canonical["properties"]))
                 for key, (kinds, properties, _) in GAPS.items()
                 if routed and (kinds is None or kind in kinds) and properties & set(canonical["properties"])}
-        press_gap = routed and "press-enabled" in canonical["properties"] and kind not in HOST_EVENT_KINDS | {"button", "menu-item", "radio"}
+        press_gap = routed and "press-enabled" in canonical["properties"] and kind not in HOST_EVENT_KINDS | {"button", "menu-item", "radio", "link", "bottom-tab", "list-item"}
         if press_gap:
             gaps["G10"] = ["press-enabled"]
         implemented = set(canonical["events"]) & EMITTED.get(kind, set())
         kinds.append({
             "kind": kind, "admitted_route": ROUTES.get(kind), "canonical_properties": canonical["properties"],
             "canonical_events": canonical["events"], "verified_property_gaps": gaps,
+            "enforced_restrictions": RESTRICTIONS.get(kind, []) if routed else [],
             "event_path_candidates": sorted(implemented),
             "events_without_renderer_transport": sorted(set(canonical["events"]) - implemented) if routed else [],
             "property_review_candidates_without_literal_reference": sorted(set(canonical["properties"]) - literal_names) if routed else [],
@@ -155,7 +224,7 @@ def inventory():
 
 def markdown(data):
     rows = ["# NSH source support inventory", "", "Generated by `python3 tooling/nsh_support_inventory.py`; check with `--check`.",
-            "Use `--json` for every canonical property/event, known property gap, conservative", "unreferenced-property candidate, test location and source hash.", "",
+            "Use `--json` for every canonical property/event, known property gap, enforced", "restriction, conservative unreferenced-property candidate, test location and source hash.", "",
             f"The canonical contract contains **{data['canonical_kind_count']} kinds**; **{data['admitted_route_count']} have an admitted native route**.",
             "The remainder are explicitly rejected by `render::validate` before publication.",
             "An admitted route is **partial support**, not a claim that all its canonical", "properties, events, children or defaults are implemented. Source-listed tests", "are not rerun by this generator and do not establish Windows/Linux/macOS parity.", "",
@@ -168,11 +237,15 @@ def markdown(data):
         tests = str(len(node["tests_present_in_source"])) if node["tests_present_in_source"] else "None mapped"
         rows.append(f"| `{node['kind']}` | {route} | {len(node['canonical_properties'])}/{len(node['canonical_events'])} | {gaps} | {tests} |")
     rows += ["", "## Verified gaps and priorities", "",
-             "Canonical validation accepts the listed properties. The current adapter does", "not implement the authored behavior on the indicated routes. These must be", "implemented or explicitly rejected with migration notes; silently accepting", "them is not a support guarantee.", ""]
+             "The canonical contract defines the listed properties. The current adapter does",
+             "not implement the authored behavior on the indicated routes. The restrictions",
+             "below identify known fail-closed values and transitions; remaining gaps need",
+             "implementation or explicit rejection with migration notes. Acceptance alone",
+             "is not a support guarantee.", ""]
     for key, (_, properties, description) in GAPS.items():
         rows += [f"- **{key}**: {description} Candidate properties: " + ", ".join(f"`{prop}`" for prop in sorted(properties)) + "."]
     rows += ["- **G10** is retired for current generic host routes: authored activation is now installed with live guards. Radio's true press-enabled value remains explicitly rejected.", "",
-             "Priority 1: remaining typed-control pointer/modifier delivery, navigation", "and capture; input submit policy; checkbox mixed state; image source/fit;", "menu-item icons. Priority 2: remaining appearance, class translation or explicit", "rejection, semantic heading defaults, list appearance and metadata.", "",
+             "Priority 1: remaining typed-control pointer/modifier delivery, navigation", "and capture; input submit policy; authored checkbox indicators; image source/fit;", "menu-item icons. Priority 2: remaining appearance, class translation or explicit", "rejection, semantic heading defaults, list appearance and metadata.", "",
              "## Event, child and default limitations", "",
              "- Native host routes deliver available modifier/pointer payloads; typed behavior", "  components still expose unit events and do not gain a synthetic observer wrapper.", "  The JSON event-path list is not a claim of full per-field parity. Appearance", "  uses the actual existing ref after native materialization, including disabled", "  controls; it is not an OS-visible-frame notification.",
              "- Input change/submit and Checkbox toggle callbacks now honor live callback", "  flags and enabled state. Row/Column/Box use one native-ref focus transition", "  owner rather than duplicate direct Input focus handlers.",
@@ -180,20 +253,43 @@ def markdown(data):
              "- Core text routes render the node's text value and discard their canonical", "  children. Container admission therefore does not prove rich/composed text.",
              "- Ignored menu-item size/variant and heading/input-submit/orientation properties leave NSH", "  wrapper defaults in control even when an application authors another value.", "  This inventory does not infer canonical absent-property defaults from NSH's", "  defaults. Those need explicit cross-backend behavior tests and migration notes.",
              "- Button/toggle command icons use shared Web SVG assets, native retained size/variant", "  bindings and decorative glyph accessibility. Tab appearance, application icon", "  registration and shortcut hints still need qualification or implementation.", "- Native pointer states used by styles are separate from LUI pointer events.", "  Paint::read dynamically handles prefixed background/foreground/border/opacity/", "  shadow properties; the generator excludes these string-search false positives.", "",
+             "- Drawer uses a controlled left Sheet: selected remains application owned;",
+             "  Escape/backdrop requests toggle-changed only when enabled and toggle-enabled.",
+             "  It introduces no separate dismiss transport. Its retained main editor survives",
+             "  open/close and sidebar replacement in the mapped focused test.",
+             "- Resizable uses native ResizeHandle capture with local bounded width. Authored",
+             "  width changes reset it; unrelated edits preserve the user's width; min/max",
+             "  updates clamp it. There is no resize-value callback in its canonical API.",
+             "  Existing-root accessibility actions use 16-point steps; native keyboard arrows",
+             "  and consolidated handle accessibility semantics are not established by the drag test.",
+             "- EdgeInset preserves the first/main child and reserves measured space for",
+             "  later/pinned children at top/bottom/leading/trailing. Logical edges follow RTL;",
+             "  pooled padding/paint belongs to pinned content, not the main host. visible=false",
+             "  returns pinned space while retaining native child identities. The appearance",
+             "  visibility test is listed because its declaration exists; this generator",
+             "  does not run it or qualify a native visible-frame notification.",
+             "- ListItem flat/disclosure composition preserves retained body and nested-row",
+             "  identities. Its mapped rejection/rollback tests do not establish inline editing,",
+             "  rich typed activation details, long/double press or Return-only submission.", "",
              "## Explicit restrictions already enforced", "",
              "Unsupported kinds; box display=contents; any authored white-space; true inert;", "nonzero container-relative-frame-inset; radio press-enabled=true; grid count", "above u16; virtual count above u32; unanchored tooltips; menu-role external", "popovers; nonzero popup alignment offset; invalid/mutated popup anchor source;", "menu-trigger icon and invalid menu shape; same-incarnation toolbar axis changes.", "Enabling an initially unauthored host event listener capability after mount also", "requires an explicit remount. See render::validate,", "validate_popup_shape, controls::validate, virtual_rows::validate and style::compile.", "",
+             ]
+    for kind, restrictions in RESTRICTIONS.items():
+        rows += [f"- `{kind}`: " + " ".join(restrictions)]
+    rows += ["", "These restrictions reject the entire transaction before publication, preserving",
+             "accepted state and generation for a corrected retry.", "",
              "## Evidence and freshness", "",
              "Admission/routes: `platform/nsh/src/render.rs` and `controls.rs`. Presentation:", "`style.rs` and `ui/`. Event delivery: `render.rs`, `app.rs`, and the native C ABI.", "The JSON test references identify actual test declarations, including real OCaml", "Todos/virtual rows and focused NSH control tests. A source reference is not a", "claim that a test covers every property on that kind.", "",
              "Unreferenced-property candidates in JSON are review prompts, not automatically", "verified omissions. Conversely, a literal reference elsewhere does not prove", "that a specific kind forwards that property. The reviewed gap catalog above", "uses the concrete route bodies, not literal presence alone.", "", "| Source | SHA-256 |", "| --- | --- |"]
     rows += [f"| `{name}` | `{digest}` |" for name, digest in data["source_sha256"].items()]
     rows += ["", "Concrete route evidence at this generated source checkpoint:", "",
              "| Gap | Source evidence |", "| --- | --- |",
-             "| G1 | style.rs `compile`, render.rs `node`: authored style is compiled, but neither class nor alignment is read |",
+             "| G1 | style.rs `compile`, render.rs `node`: authored style is compiled, but authored class has no reader |",
              "| G2 | controls.rs `element` menu-item branch |",
              "| G11 | controls.rs `command_content`; ui/controls.rs `CommandButtonProps` |",
              "| G12 | events.rs `NativeEvents::attach`; ComponentElement lacks public Interactive root handlers |",
              "| G3 | render.rs basic Input branch; controls.rs `picker` combobox Input branch |",
-             "| G4 | render.rs CheckboxProps and controls.rs toggle CheckboxProps omit mixed/indicator props |",
+             "| G4 | render.rs CheckboxProps and controls.rs toggle CheckboxProps omit authored indicator/detail props |",
              "| G5 | render.rs Image branch reads only `source` |",
              "| G6 | render.rs combined text/heading/paragraph/label/kbd branch |",
              "| G7 | render.rs Scroll branch creates default Scroll without horizontal configuration |",

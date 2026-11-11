@@ -1905,7 +1905,7 @@ dependencies = [
 [[package]]
 name = "nsh-base"
 version = "0.5.0"
-source = "git+https://github.com/logseq/nsh?rev=028574b7de9ee25a7c6f60660ef72fcb8790a27e#028574b7de9ee25a7c6f60660ef72fcb8790a27e"
+source = "git+https://github.com/logseq/nsh?rev=d21573c25984e9603bf878ae8bb73c1e23408936#d21573c25984e9603bf878ae8bb73c1e23408936"
 dependencies = [
  "chrono",
  "html5ever",
@@ -1924,7 +1924,7 @@ dependencies = [
 [[package]]
 name = "nsh-core"
 version = "0.5.0"
-source = "git+https://github.com/logseq/nsh?rev=028574b7de9ee25a7c6f60660ef72fcb8790a27e#028574b7de9ee25a7c6f60660ef72fcb8790a27e"
+source = "git+https://github.com/logseq/nsh?rev=d21573c25984e9603bf878ae8bb73c1e23408936#d21573c25984e9603bf878ae8bb73c1e23408936"
 dependencies = [
  "cap-std",
  "crc32fast",
@@ -1965,7 +1965,7 @@ dependencies = [
 [[package]]
 name = "nsh-engine"
 version = "0.5.0"
-source = "git+https://github.com/logseq/nsh?rev=028574b7de9ee25a7c6f60660ef72fcb8790a27e#028574b7de9ee25a7c6f60660ef72fcb8790a27e"
+source = "git+https://github.com/logseq/nsh?rev=d21573c25984e9603bf878ae8bb73c1e23408936#d21573c25984e9603bf878ae8bb73c1e23408936"
 dependencies = [
  "crossbeam-channel",
  "libc",
@@ -1983,7 +1983,7 @@ dependencies = [
 [[package]]
 name = "nsh-macros"
 version = "0.5.0"
-source = "git+https://github.com/logseq/nsh?rev=028574b7de9ee25a7c6f60660ef72fcb8790a27e#028574b7de9ee25a7c6f60660ef72fcb8790a27e"
+source = "git+https://github.com/logseq/nsh?rev=d21573c25984e9603bf878ae8bb73c1e23408936#d21573c25984e9603bf878ae8bb73c1e23408936"
 dependencies = [
  "imagesize 0.15.0",
  "proc-macro2",
@@ -1996,9 +1996,10 @@ dependencies = [
 [[package]]
 name = "nsh-platform-apple"
 version = "0.5.0"
-source = "git+https://github.com/logseq/nsh?rev=028574b7de9ee25a7c6f60660ef72fcb8790a27e#028574b7de9ee25a7c6f60660ef72fcb8790a27e"
+source = "git+https://github.com/logseq/nsh?rev=d21573c25984e9603bf878ae8bb73c1e23408936#d21573c25984e9603bf878ae8bb73c1e23408936"
 dependencies = [
  "block2",
+ "cc",
  "dispatch2",
  "libc",
  "log",
@@ -2014,7 +2015,7 @@ dependencies = [
 [[package]]
 name = "nsh-platform-linux"
 version = "0.5.0"
-source = "git+https://github.com/logseq/nsh?rev=028574b7de9ee25a7c6f60660ef72fcb8790a27e#028574b7de9ee25a7c6f60660ef72fcb8790a27e"
+source = "git+https://github.com/logseq/nsh?rev=d21573c25984e9603bf878ae8bb73c1e23408936#d21573c25984e9603bf878ae8bb73c1e23408936"
 dependencies = [
  "crossbeam-channel",
  "gstreamer",
@@ -2036,7 +2037,7 @@ dependencies = [
 [[package]]
 name = "nsh-platform-macos"
 version = "0.5.0"
-source = "git+https://github.com/logseq/nsh?rev=028574b7de9ee25a7c6f60660ef72fcb8790a27e#028574b7de9ee25a7c6f60660ef72fcb8790a27e"
+source = "git+https://github.com/logseq/nsh?rev=d21573c25984e9603bf878ae8bb73c1e23408936#d21573c25984e9603bf878ae8bb73c1e23408936"
 dependencies = [
  "block2",
  "crossbeam-channel",
@@ -2064,7 +2065,7 @@ dependencies = [
 [[package]]
 name = "nsh-platform-windows"
 version = "0.5.0"
-source = "git+https://github.com/logseq/nsh?rev=028574b7de9ee25a7c6f60660ef72fcb8790a27e#028574b7de9ee25a7c6f60660ef72fcb8790a27e"
+source = "git+https://github.com/logseq/nsh?rev=d21573c25984e9603bf878ae8bb73c1e23408936#d21573c25984e9603bf878ae8bb73c1e23408936"
 dependencies = [
  "crossbeam-channel",
  "image",
@@ -2085,7 +2086,7 @@ dependencies = [
 [[package]]
 name = "nsh-testing"
 version = "0.5.0"
-source = "git+https://github.com/logseq/nsh?rev=028574b7de9ee25a7c6f60660ef72fcb8790a27e#028574b7de9ee25a7c6f60660ef72fcb8790a27e"
+source = "git+https://github.com/logseq/nsh?rev=d21573c25984e9603bf878ae8bb73c1e23408936#d21573c25984e9603bf878ae8bb73c1e23408936"
 dependencies = [
  "crossbeam-channel",
  "log",
@@ -2097,7 +2098,7 @@ dependencies = [
 [[package]]
 name = "nsh-updater"
 version = "0.5.0"
-source = "git+https://github.com/logseq/nsh?rev=028574b7de9ee25a7c6f60660ef72fcb8790a27e#028574b7de9ee25a7c6f60660ef72fcb8790a27e"
+source = "git+https://github.com/logseq/nsh?rev=d21573c25984e9603bf878ae8bb73c1e23408936#d21573c25984e9603bf878ae8bb73c1e23408936"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",

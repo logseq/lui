@@ -16,10 +16,14 @@ distribution-signing integration and whole-app update support. All required
 tests must pass. Do not mark this plan complete with compile-only evidence,
 partial component support, eager source-row rendering or missing OS results.
 
-Use NSH public Rust APIs at
-`cdfdf75c1509cdb34c6220e6b5bf923452c0cb76`, Rust 1.97 and committed Cargo
-lockfiles. The official `nsh` and `nsh-design-guides` skills are installed from
-this revision. Read their relevant references and the nearest source/tests
+Use NSH public Rust APIs pinned to `logseq/nsh` commit
+`d21573c25984e9603bf878ae8bb73c1e23408936`, Rust 1.97 and committed Cargo
+lockfiles. This merges official upstream main
+`de7f3637171b769f18474796fd5159a60b2de726` with the authorized keyed-list
+repairs; see the [synchronization evidence](review-probes/2026-11-11/nsh-main-sync.md).
+The initial research and official `nsh` / `nsh-design-guides` skill installation
+used `cdfdf75c1509cdb34c6220e6b5bf923452c0cb76`. Read their relevant
+references and the nearest source/tests
 before changing each adapter boundary. Read LUI's reactive skill before
 authoring `Lui_elements` views.
 

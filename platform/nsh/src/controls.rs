@@ -8,6 +8,21 @@ use nsh_core::{
 };
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
+mod basic;
+mod collections;
+mod surfaces;
+
+/// Sparse access to existing retained child signals, without a second tree.
+pub(crate) type ChildIdentity = (u64, u64);
+type ChildLookup = Rc<dyn Fn(ChildIdentity) -> Option<Signal<Arc<Node>>>>;
+
+#[derive(Clone)]
+pub(crate) struct ChildRenderer {
+    pub identities: Signal<Vec<ChildIdentity>>,
+    pub render: Rc<dyn Fn(ChildIdentity) -> AnyElement>,
+    pub lookup: ChildLookup,
+}
+
 /// The renderer supplies identity and authored presentation before type erasure.
 pub(crate) struct Presentation {
     pub key: SharedString,
@@ -16,6 +31,7 @@ pub(crate) struct Presentation {
     pub reference: ElementRef,
     pub theme: ui::Theme,
     pub events: Option<crate::events::NativeEvents>,
+    pub children: Option<ChildRenderer>,
 }
 impl Presentation {
     fn component_identity<C: Component>(&self, element: ComponentElement<C>) -> AnyElement {
@@ -326,35 +342,41 @@ pub(crate) fn popup_rectangle(value: &str) -> Result<nsh_core::geometry::Bounds<
 }
 
 pub(crate) fn supported(kind: &str) -> bool {
-    matches!(
-        kind,
-        "button"
-            | "toggle-button"
-            | "toggle"
-            | "switch"
-            | "radio"
-            | "radio-group"
-            | "slider"
-            | "number-stepper"
-            | "progress"
-            | "divider"
-            | "tabs"
-            | "button-group"
-            | "toggle-group"
-            | "toolbar"
-            | "input-group"
-            | "input-group-actions"
-            | "menu-item"
-            | "dialog"
-            | "sheet"
-            | "list"
-            | "grid"
-    )
+    surfaces::supported(kind)
+        || basic::supported(kind)
+        || collections::supported(kind)
+        || matches!(
+            kind,
+            "button"
+                | "toggle-button"
+                | "toggle"
+                | "switch"
+                | "radio"
+                | "radio-group"
+                | "slider"
+                | "number-stepper"
+                | "progress"
+                | "divider"
+                | "tabs"
+                | "button-group"
+                | "toggle-group"
+                | "toolbar"
+                | "input-group"
+                | "input-group-actions"
+                | "menu-item"
+                | "dialog"
+                | "sheet"
+                | "list"
+                | "grid"
+        )
 }
 
 /// Native Radio reports a requested check, not every activation. Do not admit
 /// an activation contract until its complete public path has been qualified.
 pub(crate) fn validate(node: &Node) -> Result<(), String> {
+    surfaces::validate(node)?;
+    collections::validate(node)?;
+    basic::validate(node)?;
     if node.kind == "radio" && node.boolean("press-enabled", false) {
         return Err(
             "NSH radio press-enabled activation is not implemented yet; use on_change".into(),
@@ -364,6 +386,10 @@ pub(crate) fn validate(node: &Node) -> Result<(), String> {
         return Err("NSH grid exceeds u16::MAX columns".into());
     }
     Ok(())
+}
+
+pub(crate) fn validate_transition(previous: &Node, next: &Node) -> Result<(), String> {
+    collections::validate_transition(previous, next)
 }
 
 fn label(node: Signal<Arc<Node>>) -> SharedString {
@@ -483,6 +509,15 @@ pub(crate) fn element(
 ) -> Option<AnyElement> {
     let theme = presentation.theme;
     let initial = node.get_untracked();
+    if surfaces::supported(&initial.kind) {
+        return surfaces::element(node, children, emit, presentation);
+    }
+    if basic::supported(&initial.kind) {
+        return basic::element(node, children, emit, presentation);
+    }
+    if collections::supported(&initial.kind) {
+        return collections::element(node, children, emit, presentation);
+    }
     let id = initial.id;
     Some(match initial.kind.as_str() {
         "button" => {
@@ -528,6 +563,7 @@ pub(crate) fn element(
         "toggle" => {
             let props = nsh_base::CheckboxProps {
                 checked: Prop::bind(move || node.get().boolean("checked", false)),
+                indeterminate: Prop::bind(move || node.get().boolean("indeterminate", false)),
                 disabled: Prop::bind(move || !enabled(node)),
                 accessibility_label: Prop::bind(move || Some(label(node))),
                 ..Default::default()
@@ -579,8 +615,8 @@ pub(crate) fn element(
             )
         }
         "radio-group" => presentation.host(
-            // NSH's RadioGroup has no label prop. A named semantic group
-            // supplies that context without replacing its native roving keys.
+            // Keep the named host for LUI's generic event projection; native
+            // RadioGroup continues to own roving keyboard navigation.
             view()
                 .role(AccessibilityRole::Group)
                 .label(move || label(node))
@@ -656,9 +692,15 @@ pub(crate) fn element(
                 .child(children),
         ),
         "button-group" => presentation.component(
-            nsh_base::ToolbarGroup::element(Default::default())
-                .flex_row()
-                .child(children),
+            nsh_base::ToolbarGroup::element(nsh_base::ToolbarGroupProps {
+                accessibility_label: Prop::bind(move || {
+                    let label = label(node);
+                    (!label.is_empty()).then_some(label)
+                }),
+                ..Default::default()
+            })
+            .flex_row()
+            .child(children),
         ),
         "toolbar" => presentation.component(
             nsh_base::Toolbar::element(nsh_base::ToolbarProps {
@@ -825,6 +867,7 @@ mod tests {
                 reduce_motion(),
             ))),
             events: None,
+            children: None,
         }
     }
 
@@ -832,12 +875,17 @@ mod tests {
     fn SingleControl() -> impl IntoElement {
         let fixture = engine_context::<Fixture>().unwrap();
         let authored_child = fixture.kind == "button" && fixture.follow;
+        let grouped_command = fixture.kind == "button-group";
         let node = signal(Arc::new(Node {
             id: 1,
             incarnation: 1,
             kind: fixture.kind.clone(),
             props: fixture.props.clone(),
-            children: Arc::new(if authored_child { vec![2] } else { Vec::new() }),
+            children: Arc::new(if authored_child || grouped_command {
+                vec![2]
+            } else {
+                Vec::new()
+            }),
             ..Default::default()
         }));
         let shown = signal(true);
@@ -886,6 +934,10 @@ mod tests {
                     } else {
                         child.into_element()
                     }
+                } else if grouped_command {
+                    nsh_base::Button::element(Default::default())
+                        .child(text("Undo"))
+                        .into_element()
                 } else {
                     when(false, view).into_element()
                 };
@@ -1007,6 +1059,16 @@ mod tests {
                 .unwrap()
                 .disabled
         );
+    }
+
+    #[test]
+    fn button_group_passes_its_authored_name_to_the_native_toolbar_group() {
+        let (app, _) = start(
+            "button-group",
+            json!({"accessibility-label":"History"}),
+            false,
+        );
+        assert_eq!(app.screen().count("role:group[History]").unwrap(), 1);
     }
 
     #[test]

@@ -2649,3 +2649,312 @@ when those events are requested; an older library without one reports a missing
 ABI error instead of accepting and losing the event. Queued events keep the
 existing incarnation check so retired nodes cannot receive replacement-node
 input.
+
+
+## NSH native layer-index bounds
+
+NSH now rejects an authored `z-index` before publishing a transaction when it
+falls outside signed 32-bit range or loses integer precision in the native
+numeric style parser. The canonical wire format continues to preserve OCaml
+integers exactly. Use small relative layer indices such as `0`, `1` and `2`;
+replace timestamp-derived or globally allocated layer indices with local order.
+For example, change a `set-prop` patch with `property: "z-index"` and
+`value: 16777217` to `value: 2` when the element only needs to appear above its
+siblings. A rejected batch leaves other properties,
+node identities and its retry generation unchanged.
+
+
+## NSH basic presentation and links
+
+The desktop adapter adds retained stack layers, alert titles and content,
+bubble reaction badges, native indeterminate spinners, built-in icons, avatar
+fallback text, status bars and keyboard-accessible links. Avatar image-resource
+IDs still require an explicit resource bridge and are rejected before commit.
+Standalone icons share Web's missing-glyph fallback for unregistered names.
+
+A link with `press-enabled=true` leaves navigation to its canonical Press
+handler. Without a handler, an absolute external URL opens in the system
+browser or registered application; `_self` and `_blank` both use that desktop
+behavior. Relative paths and fragment-only URLs require an authored handler
+and are rejected otherwise. For example, use
+`link ~url:"/settings" ~text:"Settings" ~on_press:show_settings []` for an
+application route; a plain `link ~url:"https://example.com" ~text:"Website" []`
+opens externally. This does not introduce an embedded browser or claim Apple
+backend navigation behavior changed.
+
+
+## NSH pinned edge layout
+
+`edge-inset` now keeps its first child as the main content and reserves space
+for every following child at `top`, `bottom`, `leading` or `trailing`.
+`leading`/`trailing` follow NSH's native right-to-left setting; explicit left
+and right padding keep their physical sides. Authored padding, background,
+foreground, border and corner radius apply to the pooled pinned region.
+The main content keeps its own surface and fills the remaining space.
+
+For example:
+
+```ocaml
+edge_inset ~edge:`bottom ~padding:8 ~background:"secondary"
+  [document; controls]
+```
+
+This pads and colors `controls`, without padding or coloring `document`.
+Setting `visible=false` hides the pinned children and returns their
+space to the main content. Their native identities survive visibility changes
+and moves between the first/content position and later/pinned positions, so
+editor drafts are retained.
+
+This initial native grid composition rejects pooled `hover-*`, `pressed-*`,
+`focus-*`, `selected-*` and `disabled-*` paint, opacity other than `1`, nonempty
+shadow other than `none`, and authored transitions. These effects need a shared
+native rendering group; applying them to the decoration alone would lose their
+scope. Remove those properties when migrating; use `visible` for complete
+shown/hidden state. Unsupported paint rejects the entire transaction before
+publication, preserving other properties and the generation for a corrected
+retry. The composition accepts at most 32,760 children because native grid line
+indices are signed 16-bit values. The canonical wire contract is unchanged.
+
+
+## Unreleased: NSH Drawer and Resizable surfaces
+
+NSH `drawer` now uses the public native Sheet for its left panel, modal focus,
+Escape/backdrop dismissal and native transitions. The canonical first child is
+its sidebar; the second is the main content and stays mounted in normal flow.
+`selected` remains application controlled. A native close requests
+`Toggle(drawer_id, false)` when `toggle-enabled` is set; retaining `selected=true`
+refuses the request. For example, accepting a close for node 12 publishes:
+
+```json
+{"op":"set-prop","id":12,"property":"selected","value":false}
+```
+
+No separate Dismiss event is introduced. Replacing the sidebar or changing
+open state preserves the retained main editor's native ID and draft. The NSH
+Drawer path requires both canonical children and rejects an incomplete shape
+before committing its batch.
+
+NSH `resizable` now uses the public native ResizeHandle for pointer capture and
+direct bounded width updates. `width` (also written by OCaml `resizable_width`)
+initializes its local width. Unrelated model patches preserve a user's resized
+width; a changed authored width resets it, and changed minimum/maximum bounds
+clamp it. For example, a source width of 140 can be resized locally to 240;
+changing `max-width` to 150 clamps the retained view to 150 without rewriting its
+source width. The ordinary canonical size invariants still apply to the source
+properties.
+
+The existing resizable root exposes increment/decrement accessibility actions
+in 16-point steps. There is no new ValueChanged event or OCaml resize callback;
+`split` is a separate API. Native-handle keyboard arrows and consolidated
+handle accessibility semantics are not claimed by this increment. Headless
+qualification covers real drag/release, bounds, source reconciliation and
+retained editor identity/draft; desktop appearance and screen-reader output
+remain separate qualification work.
+
+
+### EdgeInset appearance while retained
+
+For mounted `on_appear` handlers, initially hidden pinned nodes and their
+nested descendants emit no `Appear`. Each later hidden-to-visible transition
+emits once after the native ref is mounted. Repainting the inset or editing
+unrelated properties does not emit another appearance. The main content stays
+visible when only the pinned region is hidden. Native node identities remain
+stable; stale pending appearances are cancelled when their scope is disposed
+or becomes hidden before delivery. Ordinary nodes outside a scoped layout
+retain the existing one-shot appearance path.
+
+
+## Unreleased: NSH retained collections and tab navigation
+
+These desktop routes reuse public NSH Accordion, Button, Tabs and Tab behavior.
+They add no canonical node kinds, wire operations or callback signatures.
+Unsupported callbacks below are rejected before a transaction is published;
+other edits, retained identities and the generation remain available for a
+corrected retry. A route being admitted does not imply complete visual or
+property parity with the Apple, Android or Web backend.
+
+### Accordion
+
+With `toggle-enabled=true`, `selected` controls one native disclosure: absent or
+false is collapsed, and true is expanded. Press, Space or Return proposes
+`Toggle(accordion_id, next_selected)`; only a subsequent source update accepts
+that proposal. Retaining the previous source value refuses it. For example,
+accepting an open request for node 10 publishes:
+
+```json
+{"op":"set-prop","id":10,"property":"selected","value":true}
+```
+
+Without toggle support, the title is a static heading and the content is shown
+regardless of `selected`, matching the existing Apple static-content path.
+The native panel keeps descendants mounted when closed, preserving editor
+identity and draft. Its reveal uses NSH's native motion and reduced-motion
+setting. Authored root sizing, including `height`, still applies; it is not a
+new scroll container or a content-height measurement API.
+
+### Static Table, TableRow and TableCell
+
+`table` uses NSH's static Table. Row and cell hosts reproduce the complete
+underlying TableRow/TableCell behavior from official main `de7f363`
+(`nsh-base/src/table.rs`): Row is a flex row with the Row role; Cell is a view
+with the Cell role. Neither native part registers shared column measurements.
+The host equivalents additionally preserve canonical row selection state and
+cell pointer payloads. Retained children keep their own controls and identities.
+
+The desktop cell default is equal flexible columns with a zero minimum width.
+This is a desktop adapter default, not NSH DataTable sizing. An explicit `width`
+or `width-viewport` opts that cell out of equal flex; authored presentation is
+then applied. For example, use the same first-column width on each row to obtain
+a fixed first column:
+
+```json
+[
+  {"op":"set-prop","id":21,"property":"width","value":120},
+  {"op":"set-prop","id":31,"property":"width","value":120}
+]
+```
+
+Other cells share the remaining width. This static composition provides no new
+sorting, resizing, automatic header inference, intrinsic cross-row column
+measurement or table virtualization. Use explicit matching column widths when
+migrating layouts that depend on those measurements. `selected` on a row is
+source state, not a new row-selection callback. The legacy cell `size` alias is not mapped by
+this route; use explicit `font-size` when migrating cell typography.
+
+### ListItem and list sections
+
+A flat `list-item` initially authored with `press-enabled=true` uses native
+Button activation. Its Press callback is gated by the current flag and
+`enabled`; selection remains source controlled. A content-only flat row uses a
+passive host so its child controls handle their own input. The existing native
+host rule still applies: enabling a previously uninstalled listener on a mounted
+passive row requires a remount.
+
+The **presence of `expanded` selects disclosure mode**, including when its value
+is false. That mode uses native controlled Accordion behavior. Non-list-item
+children remain in the row body; nested `list-item` children are keyed rows in
+the retained disclosure panel. A native disclosure activation proposes Toggle
+and does not additionally invoke the flat row's Press action. Updating
+`expanded` accepts or refuses the proposal; editing body properties or reordering
+retained children preserves their native identities and drafts. `list-section`
+is a semantic group, its header uses the Header role, and its footer retains its
+content. Row/section `separator` flags and `list-style` marker presentation are
+not implemented by this increment. These parts introduce no implicit list
+virtualization or additional selection store.
+
+Adding or removing `expanded` on an existing incarnation is rejected even when
+there are currently no nested rows. Prefer declaring the future disclosure mode
+before the first publication. This initial batch, for example, starts closed
+and can later receive nested rows without changing modes:
+
+```json
+{"generation":1,"ops":[
+  {"op":"create-node","id":1,"kind":"list"},
+  {"op":"create-node","id":10,"kind":"list-item"},
+  {"op":"set-prop","id":10,"property":"text","value":"Group"},
+  {"op":"set-prop","id":10,"property":"expanded","value":false},
+  {"op":"set-prop","id":10,"property":"toggle-enabled","value":true},
+  {"op":"insert-child","parent":1,"child":10,"index":0}
+]}
+```
+
+Register the Toggle handler with that initial row. Later opens/closes only set
+`expanded` true/false. If an already published flat row must become a disclosure,
+create a replacement row with a fresh wire ID, its disclosure properties and its
+registered handlers, then replace the old row in its parent. A normal property
+patch or `move-child` does not create a new incarnation. Treat the replacement as
+a remount and retain any necessary editor state in application data; the wire
+format has no writable incarnation field.
+
+The current ListItem route explicitly rejects these true flags:
+
+| Flag | Required migration |
+| --- | --- |
+| `change-enabled` | Render a `text-field` child and register input callbacks on that child. The row has no inline editor mode. |
+| `submit-enabled` | Register submission on the child editor; native row activation cannot distinguish a Return-only submission. |
+| `long-press-enabled` | Remove the row callback until native typed long-press projection is implemented. |
+| `double-press-enabled` | Remove the row callback until native typed double-press projection is implemented. |
+
+Moving a flag alone does not move a callback registration: register the handler
+against the child editor's ID and remove the unsupported parent flag. These
+restrictions remain unresolved parity work. Native typed Button/Accordion/Tab
+roots also retain the documented raw pointer/modifier projection gap; their unit
+semantic events must not be interpreted as a complete PressDetail payload.
+The separate NSH PressDetails proposal is not part of this implementation.
+
+### BottomTabs and BottomTab
+
+The current route supplies a native tab bar, tab roles, source-owned `selected`
+state, title/icon content and native roving keyboard behavior. Arrow, Home and
+End navigation skips disabled tabs and proposes the same canonical Press as tab
+activation. The application accepts by updating its selected flags; it may
+refuse by retaining them. `enabled` defaults to true and `selected` to false.
+The canonical requirements remain: each BottomTab has a nonempty title, Press
+support and content, and is a direct BottomTabs child. For example, accepting
+activation of tab 30 instead of tab 20 publishes:
+
+```json
+[
+  {"op":"set-prop","id":20,"property":"selected","value":false},
+  {"op":"set-prop","id":30,"property":"selected","value":true}
+]
+```
+
+**Selected page-content composition is still incomplete.** Canonical BottomTab
+children are currently placed inside each native Tab subtree; this route does
+not place only the selected page in a separate content panel. Native bar
+keyboard/selection qualification therefore does not qualify complete BottomTabs
+page navigation. Applications needing selected page content should keep an
+explicit model-controlled page body with the existing Tabs API until the retained
+BottomTabs content composition is implemented. This limitation must not be
+worked around by treating every mounted tab body as the selected page.
+
+
+## NSH portable package assets on Windows
+
+The delivery wrapper validates package asset destinations in their portable
+forward-slash spelling before converting them to host filesystem paths. A valid
+argument such as `--asset NOTICE=licenses/lui-icons/NOTICE` and the default icon
+license resources no longer fail on Windows merely because Windows Path uses
+backslashes internally. Absolute paths, Windows drive paths, backslash input,
+empty components and `.`/`..` traversal remain rejected before copying.
+
+Applications do not need to change their wire contract or resource paths. Keep
+using relative forward-slash destinations in release scripts. This fixes the
+packaging wrapper; a Windows release still needs its native package and launch
+qualification to complete successfully.
+
+
+## NSH official-main dependency synchronization
+
+The desktop dependency moves from `logseq/nsh` commit
+`028574b7de9ee25a7c6f60660ef72fcb8790a27e` to
+`d21573c25984e9603bf878ae8bb73c1e23408936`. The new immutable commit merges
+`longbridge/nsh` main at `de7f3637171b769f18474796fd5159a60b2de726` and
+preserves the authorized keyed-list repairs. All NSH crates and the lockfile
+must resolve that same revision. Do not replace the revision with a floating
+branch or the `v0.5.0` release tag.
+
+Downstream Rust embedders that override NSH dependencies must update every
+NSH override together, then regenerate their lockfile. Desktop packagers must
+rerun `python3 tooling/nsh_delivery.py setup --checkout ../nsh` with a clean
+checkout at the new commit; the old CLI receipt is intentionally rejected.
+Application schemas, C ABI and wire event ordinals are unchanged by this pin
+update. Previous-pin native package evidence does not qualify the new pin.
+
+## NSH mixed checkboxes and named button groups
+
+Checkbox and Toggle now forward canonical `indeterminate` to the existing
+native Checkbox behavior and indicator. For example, a checkbox with
+`checked=false` and `indeterminate=true` exposes the native mixed state rather
+than appearing unchecked. A user toggle requests the proposed boolean; the
+application retains ownership of both `checked` and `indeterminate`. Refusing
+the request leaves the mixed state and native editor/control identity intact.
+When accepting it, applications should set `checked` to the accepted value
+and clear `indeterminate` explicitly. Ordinary two-state checkbox defaults
+remain unchanged.
+
+ButtonGroup now forwards its authored accessible name to NSH ToolbarGroup.
+For example, `accessibility-label: "History"` names the native group around
+Undo/Redo controls. An absent or empty name preserves the native unnamed
+default. This requires no downstream remount or wire-format change.

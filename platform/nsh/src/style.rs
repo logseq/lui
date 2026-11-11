@@ -2,7 +2,7 @@
 use crate::store::Node;
 use nsh_core::{
     Color, PropertyValue, StyleDecl, StyleKey, StyleValue,
-    element::{AdaptiveColor, Style, Tokens},
+    element::{AdaptiveColor, Style, StyleRefinement, Tokens},
     geometry::{Points, Size},
     prelude::*,
 };
@@ -457,6 +457,129 @@ pub(crate) fn content_layout(node: &Node, theme: &ThemeView) -> Result<Vec<Style
     Ok(decls)
 }
 
+/// NSH stores layer order as i32 after parsing its numeric style through f32.
+pub(crate) fn z_index(node: &Node) -> Result<Option<i32>, String> {
+    node.props
+        .get("z-index")
+        .map(|value| {
+            let integer = value
+                .as_i64()
+                .ok_or("NSH z-index requires an exact integer")?;
+            let index =
+                i32::try_from(integer).map_err(|_| "NSH z-index exceeds the native i32 range")?;
+            if f64::from(index as f32) != f64::from(index) {
+                return Err(
+                    "NSH z-index is not exactly representable by the native style parser".into(),
+                );
+            }
+            Ok(index)
+        })
+        .transpose()
+}
+
+#[derive(Clone, PartialEq)]
+pub(crate) struct EdgeInsetStyles {
+    pub host: Style,
+    pub decoration: Style,
+    pub inherited: Style,
+    pub insets: [Points; 4],
+    pub gap: Points,
+}
+
+fn pinned_surface_property(name: &str) -> bool {
+    name.starts_with("padding")
+        || matches!(
+            name,
+            "background"
+                | "foreground"
+                | "border-color"
+                | "border-width"
+                | "corner-radius"
+                | "opacity"
+                | "shadow"
+        )
+        || ["hover-", "pressed-", "focus-", "selected-", "disabled-"]
+            .iter()
+            .any(|prefix| name.starts_with(prefix))
+}
+
+/// Split an edge inset's authored surface from its outer layout, reusing the
+/// canonical compiler for both parts and its resolved spacing declarations.
+pub(crate) fn edge_inset_styles(
+    node: &Node,
+    theme: &ThemeView,
+    compiled: &Style,
+) -> Result<EdgeInsetStyles, String> {
+    let mut resolved = nsh_core::Style::default();
+    for declaration in compiled.decls() {
+        declaration
+            .apply(&mut resolved)
+            .map_err(|error| format!("NSH edge-inset layout: {error:?}"))?;
+    }
+    // Canonical padding, borders and gap are absolute point integers. Their
+    // resolved NSH layout values therefore contain no percentages or calc().
+    let padding = resolved.layout.padding;
+    let border = resolved.layout.border;
+    let insets = [
+        px(padding.top.into_raw().value() + border.top.into_raw().value()),
+        px(padding.right.into_raw().value() + border.right.into_raw().value()),
+        px(padding.bottom.into_raw().value() + border.bottom.into_raw().value()),
+        px(padding.left.into_raw().value() + border.left.into_raw().value()),
+    ];
+    let gap = px(resolved.layout.gap.height.into_raw().value());
+    let host = Style::from_decls(
+        compiled
+            .decls()
+            .iter()
+            .filter(|declaration| {
+                !matches!(
+                    declaration,
+                    StyleDecl::Set(
+                        StyleKey::Padding
+                            | StyleKey::PaddingHorizontal
+                            | StyleKey::PaddingVertical
+                            | StyleKey::PaddingTop
+                            | StyleKey::PaddingRight
+                            | StyleKey::PaddingBottom
+                            | StyleKey::PaddingLeft
+                            | StyleKey::BorderWidth
+                            | StyleKey::BorderRadius
+                            | StyleKey::Opacity
+                            | StyleKey::Gap
+                            | StyleKey::AlignItems
+                            | StyleKey::JustifyContent,
+                        _
+                    )
+                )
+            })
+            .cloned(),
+    );
+    let host = if node.props.contains_key("theme") || node.props.contains_key("theme-mode") {
+        host.then(&Style::from(
+            StyleRefinement::default().text_color(theme.color("foreground")?),
+        ))
+    } else {
+        host
+    };
+    let mut decoration = node.clone();
+    decoration.kind = "box".into();
+    decoration
+        .props
+        .retain(|name, _| pinned_surface_property(name) && !name.starts_with("padding"));
+    let decoration = compile(&decoration, theme, Size::default())?;
+    let mut inherited = node.clone();
+    inherited.kind = "box".into();
+    inherited.props.retain(|name, _| name == "foreground");
+    let inherited = compile(&inherited, theme, Size::default())?;
+    Ok(EdgeInsetStyles {
+        host,
+        decoration,
+        inherited,
+        insets,
+        gap,
+    })
+}
+
 /// Translate only presentation here. Canonical scalar/kind/presence validation
 /// stays generated from OCaml; controls and events keep their own owners.
 pub(crate) fn compile(
@@ -464,6 +587,7 @@ pub(crate) fn compile(
     theme: &ThemeView,
     viewport: Size<Points>,
 ) -> Result<Style, String> {
+    z_index(node)?;
     let mut decls = Vec::with_capacity(node.props.len() + 4);
     let mut native = view();
     if node.props.contains_key("theme") || node.props.contains_key("theme-mode") {
@@ -1149,5 +1273,108 @@ mod tests {
             .unwrap();
         assert!((target.bounds.size.width.0 - 160.0).abs() < 0.01);
         assert!((target.bounds.size.height.0 - 240.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn layer_indices_require_exact_native_integer_representation() {
+        for index in [
+            i64::from(i32::MIN),
+            -16_777_216,
+            0,
+            16_777_216,
+            16_777_218,
+            2_147_483_520,
+        ] {
+            assert_eq!(
+                z_index(&node("box", json!({"z-index":index}))).unwrap(),
+                Some(i32::try_from(index).unwrap())
+            );
+            compile_props(json!({"z-index":index})).unwrap();
+        }
+        for index in [
+            i64::from(i32::MIN) - 1,
+            -16_777_217,
+            16_777_217,
+            i64::from(i32::MAX),
+            i64::from(i32::MAX) + 1,
+        ] {
+            assert!(
+                compile_props(json!({"z-index":index}))
+                    .unwrap_err()
+                    .contains("z-index")
+            );
+        }
+    }
+
+    #[component]
+    fn LayerIndexTransaction() -> impl IntoElement {
+        use crate::{render::Renderer, wire::Batch};
+        let renderer = Renderer::new(|_, _| {});
+        let patch = |generation, ops| {
+            Batch::decode(&json!({"generation":generation,"ops":ops}).to_string()).unwrap()
+        };
+        renderer
+            .apply(patch(
+                1,
+                json!([
+                    {"op":"create-node","id":1,"kind":"box"},
+                    {"op":"create-node","id":2,"kind":"text"},
+                    {"op":"set-prop","id":2,"property":"text","value":"Before rejected layer"},
+                    {"op":"insert-child","parent":1,"child":2,"index":0}
+                ]),
+            ))
+            .unwrap();
+        renderer.set_root(1).unwrap();
+        assert!(
+            renderer
+                .apply(patch(
+                    2,
+                    json!([
+                        {"op":"set-prop","id":2,"property":"text","value":"Must not publish"},
+                        {"op":"set-prop","id":1,"property":"z-index","value":16777217}
+                    ])
+                ))
+                .unwrap_err()
+                .contains("z-index")
+        );
+        renderer
+            .apply(patch(
+                2,
+                json!([
+                    {"op":"set-prop","id":1,"property":"z-index","value":16777216}
+                ]),
+            ))
+            .unwrap();
+        renderer.element()
+    }
+
+    #[test]
+    fn rejected_layer_order_preserves_other_edits_and_retry_generation() {
+        let mut app =
+            Headless::start(EngineConfig::new(Root::of::<LayerIndexTransaction>())).unwrap();
+        app.wait_for("Before rejected layer").unwrap();
+        assert_eq!(app.screen().count("text:Must not publish").unwrap(), 0);
+    }
+
+    #[test]
+    fn edge_inset_parts_keep_surface_properties_off_the_main_host() {
+        let node = node(
+            "edge-inset",
+            json!({"edge":"top","width":200,"height":160,"gap":5,"padding":4,"padding-horizontal":6,"padding-top":8,"padding-right":12,"border-width":2,"background":"secondary","foreground":"destructive"}),
+        );
+        let theme = theme();
+        let compiled = compile(&node, &theme, viewport()).unwrap();
+        let parts = edge_inset_styles(&node, &theme, &compiled).unwrap();
+        assert_eq!(parts.insets, [px(10.0), px(14.0), px(6.0), px(8.0)]);
+        assert_eq!(parts.gap, px(5.0));
+        assert_eq!(parts.host.background_color(), None);
+        assert!(parts.decoration.background_color().is_some());
+        let mut host = nsh_core::Style::default();
+        for declaration in parts.host.decls() {
+            declaration.apply(&mut host).unwrap();
+        }
+        assert_eq!(host.layout.padding.top.into_raw().value(), 0.0);
+        assert_eq!(host.layout.border.top.into_raw().value(), 0.0);
+        assert_eq!(host.layout.gap.height.into_raw().value(), 0.0);
     }
 }

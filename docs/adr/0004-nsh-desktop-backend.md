@@ -81,11 +81,15 @@ On 2026-11-11 the user authorized a minimal NSH keyed-list fix in the
 Limit dependency changes to key-based retention of cells, active interaction
 pins and measurements, keeping the contiguous-splice fast path. This explicit
 authorization supersedes the app skill's default prohibition on modifying
-NSH for an app. The verified dependency repair is pinned to immutable commit
-`028574b7de9ee25a7c6f60660ef72fcb8790a27e` on `logseq/nsh` (`fork/logseq`,
+NSH for an app. The current dependency is pinned to immutable commit
+`d21573c25984e9603bf878ae8bb73c1e23408936` on `logseq/nsh` (`fork/logseq`,
 [review](https://github.com/logseq/nsh/pull/1)); the
-adapter continues to use public NSH APIs. No floating branch dependency or
-unrelated NSH change is covered by this exception. The
+adapter continues to use public NSH APIs. This revision merges official
+upstream main `de7f3637171b769f18474796fd5159a60b2de726`, as requested,
+while retaining the authorized repairs. See the
+[synchronization evidence](../agent-guide/review-probes/2026-11-11/nsh-main-sync.md).
+No floating branch dependency or unrelated new fork API is covered by this
+exception. The
 [public probe](../agent-guide/review-probes/2026-11-11/nsh-keyed-list-reorder.md)
 reproduces the need at both 1,000 and 100,000 source items.
 

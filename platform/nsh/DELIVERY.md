@@ -11,7 +11,7 @@ Build the CLI from a clean checkout of the same immutable NSH revision as the
 app's `Cargo.toml`. The repository URL and full commit are read from that
 manifest; a branch name, a short SHA or mixed NSH sources are rejected.
 The published migration pin is
-[`028574b7de9ee25a7c6f60660ef72fcb8790a27e`](https://github.com/logseq/nsh/commit/028574b7de9ee25a7c6f60660ef72fcb8790a27e).
+[`d21573c25984e9603bf878ae8bb73c1e23408936`](https://github.com/logseq/nsh/commit/d21573c25984e9603bf878ae8bb73c1e23408936).
 The checkout must be clean at this commit. Read the manifest again when the
 dependency is deliberately upgraded; a previously built CLI receipt then
 requires regeneration.
@@ -364,3 +364,20 @@ The request queue has eight entries. Excess work returns `ErrorCode::Busy`;
 other typed errors distinguish configuration, transport, verification,
 installation, cancellation, stale tokens and stopped workers. Production
 applications should normally allow one update action at a time.
+
+
+## Windows package asset-path regression
+
+The [Windows job for run 43027641283](https://github.com/logseq/lui/actions/runs/43027641283/job/130546277393)
+at LUI source `6c8230495cce1d1048fe69759a632a4762731fde` built the native
+runner, package ZIP and installer, then failed in the delivery wrapper while
+copying `licenses\lui-icons\NOTICE`. The wrapper had converted a valid portable
+asset destination through Windows Path before rejecting backslash input.
+
+Asset destinations are now validated with PurePosixPath before host conversion;
+Windows drive, absolute, backslash and traversal input remains rejected. The
+focused Python suite passes 18 tests, including a WindowsPath-normalization
+regression that copies the actual default NOTICE and Apache license resources.
+This local regression is not a successful native Windows package run. That CI
+packaging result remains failed until a subsequent native job completes the
+wrapper, final archives, receipts and outside-checkout launch qualifier.

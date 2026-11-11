@@ -43,6 +43,7 @@ fn HostEvents() -> impl IntoElement {
                 {"op":"create-node","id":31,"kind":"checkbox"},
                 {"op":"set-prop","id":31,"property":"text","value":"Guarded checkbox"},
                 {"op":"set-prop","id":31,"property":"checked","value":false},
+                {"op":"set-prop","id":31,"property":"indeterminate","value":true},
                 {"op":"insert-child","parent":1,"child":31,"index":1},
                 {"op":"create-node","id":40,"kind":"checkbox"},
                 {"op":"set-prop","id":40,"property":"text","value":"Disabled seen"},
@@ -78,6 +79,28 @@ fn HostEvents() -> impl IntoElement {
             },
         );
     }
+    let resolving_mixed = renderer.clone();
+    let mixed_generation = generation.clone();
+    on_key_with(
+        "f8",
+        KeyOptions {
+            when: nsh_core::keymap::When::Always,
+            ..Default::default()
+        },
+        move |_| {
+            let next = mixed_generation.get() + 1;
+            resolving_mixed
+                .apply(patch(
+                    next,
+                    json!([
+                        {"op":"set-prop","id":31,"property":"checked","value":true},
+                        {"op":"set-prop","id":31,"property":"indeterminate","value":false}
+                    ]),
+                ))
+                .unwrap();
+            mixed_generation.set(next);
+        },
+    );
     let rejected = renderer.clone();
     on_key_with(
         "f4",
@@ -214,6 +237,27 @@ fn live_flags_guard_input_checkbox_and_host_callbacks_without_remounting() {
             .any(|event| matches!(event, Event::Appear(_)))
     );
     assert_eq!(node_id(&app, "lui-10"), before);
+}
+
+#[test]
+fn native_checkbox_mixed_state_is_controlled_until_the_model_resolves_it() {
+    let (mut app, events, _) = start();
+    let before = node_id(&app, "lui-31");
+    let checked = |app: &Headless| {
+        app.screen()
+            .accessibility_state("id:lui-31")
+            .unwrap()
+            .checked
+    };
+    assert_eq!(checked(&app), Some(nsh_core::Checked::Mixed));
+    app.press_key("f5").unwrap();
+    events.lock().unwrap().clear();
+    app.press("Guarded checkbox").unwrap();
+    assert!(events.lock().unwrap().contains(&Event::Toggle(31, true)));
+    assert_eq!(checked(&app), Some(nsh_core::Checked::Mixed));
+    app.press_key("f8").unwrap();
+    assert_eq!(checked(&app), Some(nsh_core::Checked::True));
+    assert_eq!(node_id(&app, "lui-31"), before);
 }
 
 #[test]

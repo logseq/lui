@@ -41,6 +41,27 @@ pub struct PointerDetail {
     pub target_class: String,
 }
 
+/// Layout-owned visibility, inherited through existing reactive owners. The
+/// lifetime guard makes pending callbacks safe after a keyed row is disposed.
+#[derive(Clone)]
+pub(crate) struct VisibilityScope(Rc<dyn Fn() -> bool>);
+impl VisibilityScope {
+    fn visible(&self) -> bool {
+        (self.0)()
+    }
+}
+
+pub(crate) fn scope_visibility(visible: impl Fn() -> bool + 'static) {
+    let parent = use_context::<VisibilityScope>();
+    let active = Rc::new(Cell::new(true));
+    let cleanup_active = active.clone();
+    cleanup(move || cleanup_active.set(false));
+    let shown = computed(move || parent.as_ref().is_none_or(VisibilityScope::visible) && visible());
+    provide_context(VisibilityScope(Rc::new(move || {
+        active.get() && shown.get()
+    })));
+}
+
 #[derive(Clone, Copy, Default)]
 pub(crate) struct Capabilities(u8);
 impl Capabilities {
@@ -95,6 +116,7 @@ pub(crate) struct NativeEvents {
     notify: Rc<dyn Fn(Event)>,
     installed: Rc<Cell<Option<Capabilities>>>,
     current: Rc<dyn Fn() -> bool>,
+    visibility: Option<VisibilityScope>,
     press_snapshot: Rc<Cell<Option<PressEvent>>>,
 }
 impl NativeEvents {
@@ -103,12 +125,14 @@ impl NativeEvents {
         notify: Rc<dyn Fn(Event)>,
         installed: Rc<Cell<Option<Capabilities>>>,
         current: Rc<dyn Fn() -> bool>,
+        visibility: Option<VisibilityScope>,
     ) -> Self {
         Self {
             node,
             notify,
             installed,
             current,
+            visibility,
             press_snapshot: Rc::new(Cell::new(None)),
         }
     }
@@ -158,14 +182,52 @@ impl NativeEvents {
         if !self.node.get_untracked().boolean("appear-enabled", false) {
             return;
         }
+        if self.visibility.is_none() {
+            let events = self.clone();
+            after_answer(move || {
+                if (events.current)()
+                    && reference.node().is_some()
+                    && events.accepts("appear-enabled", "appear")
+                {
+                    (events.notify)(Event::Appear(events.node.get_untracked().id));
+                }
+            });
+            return;
+        }
         let events = self.clone();
-        after_answer(move || {
-            if (events.current)()
-                && reference.node().is_some()
-                && events.accepts("appear-enabled", "appear")
-            {
-                (events.notify)(Event::Appear(events.node.get_untracked().id));
+        let was_visible = Rc::new(Cell::new(false));
+        let revision = Rc::new(Cell::new(0_u64));
+        effect(move || {
+            let visible = events
+                .visibility
+                .as_ref()
+                .is_none_or(VisibilityScope::visible);
+            if was_visible.replace(visible) == visible {
+                return;
             }
+            let next = revision
+                .get()
+                .checked_add(1)
+                .expect("appearance transition counter exhausted");
+            revision.set(next);
+            if !visible {
+                return;
+            }
+            let events = events.clone();
+            let revision = revision.clone();
+            after_answer(move || {
+                if revision.get() == next
+                    && (events.current)()
+                    && reference.node().is_some()
+                    && events
+                        .visibility
+                        .as_ref()
+                        .is_none_or(VisibilityScope::visible)
+                    && events.accepts("appear-enabled", "appear")
+                {
+                    (events.notify)(Event::Appear(events.node.get_untracked().id));
+                }
+            });
         });
     }
     pub(crate) fn focus(&self, reference: ElementRef) {
