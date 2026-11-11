@@ -77,6 +77,31 @@ public/default/event/wire change, with downstream examples, in
 `docs/api-migrations.md`. Do not commit downloads, caches, build products or
 recordings. Serialize Dune invocations and performance measurements.
 
+## Compiler and pre-launch compatibility gates
+
+The user strengthened acceptance on 2026-11-12 after real Logseq startup exposed
+unsupported `display: contents`, `font-size: 1em` and `white-space` values.
+Known provider gaps must be found before opening an application window wherever
+static information permits it. Route counts and isolated constructor tests are
+insufficient compatibility evidence.
+
+- Generate closed provider value domains from the existing canonical typed view
+  schema/contract. Require exhaustive Rust lowering for those domains, so adding
+  an enum case produces a compiler error until its semantics are handled. Do not
+  introduce a parallel capability JSON source or a wildcard that hides new cases.
+- Parse open style grammars into typed internal values with exhaustive lowering.
+  Known static literals should be checked by the compiler/PPX or an explicit
+  compilation-stage capability pass where target information is available.
+  Preserve shared mobile/Web source and avoid claiming a target check is active
+  merely because an unused PPX option exists.
+- Keep checked construction for dynamic values and pure transactional preflight
+  before native publication. This remains necessary even with static checking.
+- Gate the actual Logseq build/launch on a headless startup test using its real
+  OCaml library, registered factories, platform services and DB worker, with an
+  isolated graph/state root. Fail on backend diagnostics and require positive
+  native chrome evidence. The gate runs before producing a fresh launch receipt;
+  it does not qualify native pixels, IME, performance or all conditional views.
+
 ## Evidence and starting state
 
 - The existing `make test` run completed successfully, including 249 core

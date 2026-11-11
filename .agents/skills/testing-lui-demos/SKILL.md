@@ -7,6 +7,11 @@ description: How to run and test LUI demo apps — the standalone web demos in p
 
 ## Driving any host with lui-agent
 
+For native content screenshots and background/locked-screen operation, read the
+[lui-cli skill](../lui-cli/SKILL.md). Generic semantic-agent support and native
+screenshot capability are separate; the actual Logseq NSH bridge currently
+advertises `semantic:false`.
+
 Prefer `tooling/lui_agent.mjs` over pixels or accessibility queries when a test
 only needs to act on and read the OCaml tree. The shared runtime answers, so
 one script drives NSH, Apple, Android and Web alike (see

@@ -313,3 +313,16 @@ against `master`. Graph View is excluded. Database graphs and other graph-backed
 features remain required. Component counts and fixture tests do not establish
 this result. The execution plan records the frozen master comparison revision,
 application startup/service/extension gates and actual UX review requirements.
+
+## Compile-time provider coverage clarification
+
+Real application integration exposed declared LUI style values that the NSH
+provider still refused at runtime. Acceptance now requires earlier coverage:
+closed canonical domains are generated into provider types and lowered with
+exhaustive matches; open style grammars use typed parsed values; known literals
+are checked before launch where target information is available. Dynamic values
+retain transactional validation. An actual Logseq headless startup gate, using
+its real native library and services in isolated state, must precede a fresh
+launch receipt. This supplements static checking and does not substitute for
+native UI/UX qualification. No Dune changes or separate copied capability schema
+are authorized by this clarification.

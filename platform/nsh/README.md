@@ -101,3 +101,22 @@ Headless tests do not qualify native appearance, IME, screen readers,
 performance distributions, signing or update installation. Those require the
 plan's actual OS and package evidence. Do not claim the migration complete
 until those gates pass.
+
+### Background content screenshots
+
+Enable `LUI_AGENT_LISTEN=127.0.0.1:49380` in the integrating application and use
+its build artifact/receipt with the repository CLI:
+
+```sh
+node tooling/lui_agent.mjs --tcp 127.0.0.1:49380 --artifact "$APP_ARTIFACT" \
+  'screenshot _build/nsh/app-content.png'
+```
+
+NSH macOS captures its own content view in process without activating the app,
+unlocking the Mac or changing display power. The Logseq runner supports
+`LUI_AGENT_BACKGROUND=1`. The capture excludes other windows, system menus and
+separately composited video/shader surfaces; other OS capture is not implemented.
+Logseq currently advertises `semantic:false`, so its native CLI endpoint exposes
+screenshots rather than the generic OCaml tree commands. Inspect the PNG before
+claiming that the UI mounted successfully. See the
+[LUI CLI skill](../../.agents/skills/lui-cli/SKILL.md) for the full workflow.

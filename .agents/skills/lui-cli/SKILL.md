@@ -78,8 +78,8 @@ Pass complete command lines as individual quoted arguments, or use
 `--script /path/to/flow.agent`. `--json` emits structured replies. Check the exit
 status: 0 is success, 1 reports scenario failures, 2 is usage/connection failure,
 and 3 is a stale artifact. The CLI reports each failing line and stops on a lost
-connection. Selector details are implemented in `src/lui_agent.ml` and the
-underlying `Lui_drive` API; inspect those before inventing selector syntax.
+connection. Selector details are implemented by the parser and matcher in
+`src/lui_agent.ml`; inspect that source before inventing selector syntax.
 
 Semantic commands act on the OCaml tree. They do not qualify native hit testing,
 keyboard focus, IME, or visible layout. Use screenshots and the appropriate
