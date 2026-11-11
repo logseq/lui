@@ -2,10 +2,7 @@
 use crate::{render::Event, store::Node, ui};
 use chrono::{NaiveTime, Timelike};
 use nsh_base::{HourCycle, TimeField, TimeFieldEvent, TimeFieldProps, TimeOfDay, TimePrecision};
-use nsh_core::{
-    element::ComponentElement,
-    prelude::*,
-};
+use nsh_core::{element::ComponentElement, prelude::*};
 use std::{cell::Cell, rc::Rc, sync::Arc};
 
 type Emit = Rc<dyn Fn(Event)>;

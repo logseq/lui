@@ -45,7 +45,7 @@ The JSON output also enumerates canonical events without a renderer transport.
 | `number-stepper` | base NumberInput | 86/5 | G1, G13, G12 | 1 |
 | `text-field` | themed base Input | 88/8 | G1, G13 | 2 |
 | `secure-field` | themed base Input + masked | 88/8 | G1, G13 | None mapped |
-| `input` | themed base Input | 89/8 | G1, G13, G3 | 7 |
+| `input` | themed base Input or native TimeField | 89/8 | G1, G13, G3 | 7 |
 | `search-field` | themed base Input | 88/8 | G1, G13 | 5 |
 | `textarea` | themed base Input + multiline | 89/8 | G1, G13 | 5 |
 | `checkbox` | themed base Checkbox | 91/6 | G1, G13, G4, G12 | 1 |
@@ -118,7 +118,7 @@ is not a support guarantee.
 - **G1**: Authored style-class has no adapter reader; native/style defaults remain. Candidate properties: `style-class`.
 - **G13**: Authored layer alignment remains unimplemented outside local Overlay. Candidate properties: `alignment`.
 - **G11**: Command shortcut hints are not forwarded; built-in icons, placement, size and variants have native bindings outside tabs. Candidate properties: `tooltip-keys`.
-- **G3**: Textarea Enter behavior is forwarded through native SubmitBehavior. Single-line inputs keep native submit/blur defaults; Authored blur submission uses native focus/composition with Enter deduplication; focused unmodified Up/Down forwards native navigation requests; color/time input remains rejected. Other input hints and full NavigationKey require review. Candidate properties: `input-type`.
+- **G3**: Textarea Enter behavior is forwarded through native SubmitBehavior. Single-line inputs keep native submit/blur defaults; Authored blur submission uses native focus/composition with Enter deduplication; focused unmodified Up/Down forwards native navigation requests; color input remains rejected; valid 24-hour time uses native TimeField, preserving precision, change and submit events without replacing its native input. Empty/invalid times and unavailable editing options fail preflight. Other input hints and full NavigationKey require review. Candidate properties: `input-type`.
 - **G4**: Checkbox routes forward checked/indeterminate/disabled/label; authored indicator/detail behavior remains absent. Candidate properties: `checked-indicator-border-color`, `indicator-border-color`, `label-opacity`, `toggle-detail-enabled`.
 - **G5**: Image forwards canonical URL, alt/label, fit, eager/default loading and native Load. Resource IDs, crop rectangles and authored referrer policy are explicitly rejected; loading=lazy is a value restriction listed separately, not a missing eager-loading path. Candidate properties: `image`, `referrer-policy`, `source-height`, `source-width`, `source-x`, `source-y`.
 - **G8**: Container appearance and CSS list markers are not implemented by the Scroll/VirtualList routes. Candidate properties: `list-style`, `style`.
@@ -252,7 +252,7 @@ validate_popup_shape, controls::validate, virtual_rows::validate and style::comp
 - `file-picker`: Only native files/folders dialogs; photo-library/camera sources and completion leases are rejected. File filters accept extension groups, not MIME or UTI filters; folders use native folder options.
 - `media-surface`: Requires a nonempty URL; foreign surface resource IDs, including zero, are rejected.
 - `tree`: Children are native item metadata, not arbitrary view/editor bodies; unsupported metadata properties and pointer callbacks are rejected. Use tree_item semantic selection/expansion/action callbacks; legacy pointer-enabled rows are rejected.
-- `input`: input-type=color/time is rejected; blur/navigation observers require authored mount-time capability.
+- `input`: input-type=color is rejected; time uses native TimeField for valid HH:MM/HH:MM:SS and rejects unsupported editing options; text blur/navigation observers require authored mount-time capability.
 - `text-field`: Blur/navigation capability must be authored at mount; full NavigationKey is not implemented.
 - `secure-field`: Blur/navigation capability must be authored at mount; full NavigationKey is not implemented.
 - `search-field`: Blur/navigation capability must be authored at mount; full NavigationKey is not implemented.
@@ -295,11 +295,11 @@ uses the concrete route bodies, not literal presence alone.
 | `extensions/schema.rs` | `13e599099f8943fc864ae1f470674a2d39733383ad0cce367f8ccc87b6f7ac33` |
 | `extensions/host.rs` | `bf9d9c3033b5931a8b0b585b9b2c5708f733bf1b336c41c1e51803eb6530ff0a` |
 | `ui/checkbox.rs` | `a613b40f06905e472a04e5558103c76cc4d18981f587c9be8a3a1946a761512c` |
-| `render.rs` | `ed4afa3b8bbc16854673a48479d4b3b7ba5c306ef563469941909fe794125a77` |
+| `render.rs` | `e9afdc4633b2948fd8cbd4cdcd6fe75a2c543d2cd3d8cc4a9df44b0ad396db61` |
 | `controls.rs` | `558729f83a448fe60377a8d9343897f4d92bf0686f8f87a088bdb5e812f02ee0` |
 | `style.rs` | `562f89f12a4e87cb119e8a3bfec41efa6296fb2feea68dbf20f8e92b9339c77a` |
 | `virtual_rows.rs` | `1630ed15ed6526769c9f3b405623c464296d5c23e4a77099eb60d449ef1ea3de` |
-| `app.rs` | `62dfde908bed609d40922dd476453e3de37f123b4c6b3cc8dfd384cb630082a2` |
+| `app.rs` | `56c4c4900029fdcc667aa038133a5a0d450f45b461608b7e2481b417f3221070` |
 | `ui/mod.rs` | `1d2cfcebfbb8b0cf7b4d38f13795cb86afc3eeacc922b7e56d8da28092735d56` |
 | `ui/controls.rs` | `5bdbbcce9067ed597ae60443878e76d4fc72c7609d7e40af31a3909a2ab515e2` |
 | `events.rs` | `eb9addb27f70d21b0fdaff507f869ad6ebbede6be1e031f1d64b6b4aa86a1d03` |
@@ -310,7 +310,7 @@ uses the concrete route bodies, not literal presence alone.
 | `controls/navigation.rs` | `7150705d3bc1c883891390233b6603ebbb88d7bd2e8d5a02b8da56e67c2020ff` |
 | `images.rs` | `0cd8caf3a1736e24381a595eae088031394615ebab4f9e6c0d35ee1d2ba1d6c7` |
 | `headings.rs` | `fe8fcddd03e900d52fd3e253af1cedd3db21a62c0a2c6eabcccc8e450098ff30` |
-| `inputs.rs` | `26a08e5dff96bb9b3e8b94d681cb3c8b78a81424e93b38f081a623c2933a09fb` |
+| `inputs.rs` | `7981230d7334f42160e8959a3483208f6e8823339e1dc50967b7338c7c587df4` |
 | `file_picker.rs` | `958a8e75027262fcb5adbdbc2b27307cd78064170eee376f1e59b6dcc5b742d0` |
 | `media.rs` | `71fd9b780a6a6b5925b3f9c4b42aac9e7b320c64e1c5559e30aab3f0e1e48add` |
 | `controls/toasts.rs` | `2d7d344288cf9989f21278a48fede6b77337da698b0ba2b91c5bff909d103ac0` |

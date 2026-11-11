@@ -361,7 +361,10 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                                 .map(str::to_owned)
                         });
                     if operation.as_deref() == Some("screenshot") {
-                        let captured = crate::native_capture::screenshot().await.and_then(|capture| {
+                        let captured = async {
+                            wait_for_commit().await?;
+                            crate::native_capture::screenshot().await
+                        }.await.and_then(|capture| {
                             use base64::Engine;
                             if capture.png.len() > 16 * 1024 * 1024 {
                                 return Err("native screenshot exceeds 16 MiB".to_owned());

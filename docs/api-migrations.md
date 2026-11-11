@@ -4302,6 +4302,12 @@ use WindowServer capture, or request Screen Recording permission. They exclude
 system menus, other windows and separately composited video/shader surfaces.
 Other operating systems currently return an explicit unsupported-capture error.
 
+Capture now crosses the existing `wait_for_commit` answer boundary before reading
+the AppKit view. This orders it after already published native changes without
+waiting for a physical display tick, including a locked/background window. It
+does not wait for future asynchronous graph work: callers must still check that
+the expected page body is present in the captured image.
+
 Generic OCaml agents retain their existing semantic commands. Logseq's
 seven-argument native bridge now optionally exports the same
 `lui_ocaml_agent_utf8(request, length, reply)` channel. Its implementation uses
