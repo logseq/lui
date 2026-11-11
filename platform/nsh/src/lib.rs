@@ -6,6 +6,7 @@ mod desktop_updates;
 mod events;
 mod headings;
 mod images;
+mod inputs;
 pub mod render;
 pub mod runtime;
 pub mod store;

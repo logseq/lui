@@ -3299,3 +3299,58 @@ Its toolchain record covers native DLL loading/exports; runtime dispatch is
 checked separately by the test. This adds a CI qualification path, not a claim
 that the new Windows fixture has already passed, nor native image pixel/decode
 qualification. The existing macOS/Linux fixture paths remain available.
+
+### NSH native Input submission policies
+
+NSH text controls continue to use the public `nsh_base::Input` alias and its
+native editor. A single-line `text_field`, `secure_field`, `input` or
+`search_field` keeps NSH's default Enter behavior: submit, then blur. The adapter
+does not add a focus restoration command or another keyboard controller.
+Controlled text, native composition, selection and undo stay with that editor.
+
+For `textarea`, absent or false `submit_on_enter` keeps native multiline Return
+behavior: insert a line break. Explicit true now binds native
+`SubmitBehavior::Submit`: ordinary Return reports the existing Submit event and
+keeps focus; Shift+Return and Alt/Option+Return use NSH's native line-break rules.
+Changing or removing this property updates the retained editor's configuration.
+Submit still requires the current `submit-enabled` flag, and stale-incarnation
+callbacks remain suppressed by the existing renderer guard. No canonical wire
+property or C ABI signature changes.
+
+For example, a composer can retain multiline editing or explicitly request
+native Return submission:
+
+```ocaml
+(* Native multiline editor; use the application's Send button to submit. *)
+textarea ~submit_on_enter:false ~on_input:update_draft []
+
+(* Native Return submits; Shift/Option+Return insert a line break. *)
+textarea ~submit_on_enter:true ~on_input:update_draft ~on_submit:send []
+```
+
+This is NSH's native keyboard policy. It does not add the Web backend's custom
+Control/Command+Return path. Apple, Android and Web behavior is unchanged.
+The downstream audit found explicit false in mobile's query textarea and
+`logseq_journal`'s composer, with the journal reducer test checking that emitted
+property. Journal's composer Submit callback is ignored and its Save action is
+separate. Mobile also exposes an explicit Send action. No downstream test or
+documentation requiring a modified-Return shortcut or single-line focus retention
+was found; NSH's own defaults are retained for these optional behaviors.
+
+Previously ignored NSH input policies now fail before publication:
+`navigate-enabled=true`, `submit-on-blur=true`, and `input`'s `input-type=color`
+or `input-type=time`. An unsupported policy rejects its entire transaction;
+text and other nodes in that transaction remain unchanged. False or absent
+navigation/blur-submit flags and absent or `text` input type remain accepted.
+Remove unused flags from desktop views; use a regular text input only when text
+editing is the intended UI. Do not change a color/time input to text merely to
+avoid validation if the application needs a color/time selector.
+
+Color/time remain explicit implementation gaps, rather than text-editor aliases.
+Pinned NSH has `ColorPicker` and `TimeField`, but their controlled values are
+`Hsla` and `TimeOfDay`, their events and child composition differ from canonical
+Input text, and `TimeField` has no drop-in read-only/Submit contract. A future
+route must translate the intended value/default/empty/event semantics and test
+native identity; these components cannot be substituted by renaming a keyboard
+hint. No new custom arrow-key, blur-submit or picker controller is introduced for
+currently unused downstream policies.

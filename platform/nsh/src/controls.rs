@@ -112,9 +112,8 @@ pub(crate) fn picker(
     let kind = node.get_untracked().kind.clone();
     let trigger = if kind == "combobox" {
         let change = emit.clone();
-        let submit = emit.clone();
         presentation.host(
-            ui::input(theme)
+            crate::inputs::attach(ui::input(theme), node, emit.clone())
                 .value(move || node.get().string("text").to_owned())
                 .placeholder(move || node.get().string("placeholder").to_owned())
                 .readonly(move || node.get().boolean("read-only", false))
@@ -127,9 +126,6 @@ pub(crate) fn picker(
                         &change,
                         Event::Text(id, value.into()),
                     )
-                })
-                .on_submit(move |_: &str| {
-                    emit_flag(node, "submit-enabled", &submit, Event::Submit(id))
                 }),
         )
     } else {

@@ -625,7 +625,11 @@ impl Renderer {
                 let change = self.clone();
                 let submit = self.clone();
                 native_events
-                    .attach(ui::input(theme))
+                    .attach(crate::inputs::attach(
+                        ui::input(theme),
+                        state,
+                        Rc::new(move |event| submit.emit(id, incarnation, event)),
+                    ))
                     .value(move || state.get().string("text").to_owned())
                     .placeholder(move || state.get().string("placeholder").to_owned())
                     .masked(node.kind == "secure-field")
@@ -638,7 +642,6 @@ impl Renderer {
                     .on_change(move |value: &str| {
                         change.emit(id, incarnation, Event::Text(id, value.into()))
                     })
-                    .on_submit(move |_: &str| submit.emit(id, incarnation, Event::Submit(id)))
                     .element_ref(&reference)
                     .key(key.clone())
                     .test_id(&identifier)
@@ -798,6 +801,7 @@ fn validate(node: &Node) -> Result<(), String> {
         return Err("NSH box display=contents is not implemented yet".into());
     }
     crate::images::validate(node)?;
+    crate::inputs::validate(node)?;
     crate::virtual_rows::validate(node)?;
     crate::controls::validate(node)
 }
@@ -1877,3 +1881,6 @@ mod image_tests;
 
 #[cfg(test)]
 mod heading_tests;
+
+#[cfg(test)]
+mod input_tests;
