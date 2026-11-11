@@ -4444,3 +4444,31 @@ This adds foreground inheritance only. Background, border and shadow colors
 still require their own supported color semantics; `inherit` is not converted to
 an arbitrary color for those properties. No OCaml wire ordinal or maintained
 mobile backend changes.
+
+### NSH desktop cover-layer pointer policy
+
+NSH now projects an explicitly authored `pointer-enabled` value into native hit
+testing, preserving the previous desktop MyGo policy. `false` makes the node
+and its ordinary descendants transparent to the pointer; an explicit `true` on
+a descendant restores native interaction for that subtree. Omitting the property
+preserves the inherited native policy. Presented dialog, sheet, popover, dropdown,
+context-menu and toast surfaces restore interaction by default; a structural
+carrier marked `data-overlay-layer=true` does not. A drawer without an authored
+`selected` state retains its previous desktop presented-surface default.
+
+For example, the wire operations below keep a permanent overlay carrier from
+covering underlying buttons while allowing its independently interactive content:
+
+```json
+[
+  {"op":"set-prop","id":100,"property":"pointer-enabled","value":false},
+  {"op":"set-prop","id":101,"property":"pointer-enabled","value":true}
+]
+```
+
+Here node `101` is a descendant of node `100`. This does not change keyboard
+focus or the enabled state. Pointer callback subscriptions still follow the same
+flag. Web and Apple retain their existing implementation: Web uses its CSS layer
+policy in addition to pointer subscriptions, and Apple uses its native surface
+hit testing. Do not infer that disabling a pointer subscription on those backends
+is a portable replacement for a hit-transparent native desktop cover.

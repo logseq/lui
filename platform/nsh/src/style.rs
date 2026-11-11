@@ -1748,3 +1748,7 @@ mod tests {
 #[cfg(test)]
 #[path = "style/inherited_foreground_tests.rs"]
 mod inherited_foreground_tests;
+
+#[cfg(test)]
+#[path = "style/pointer_policy_tests.rs"]
+mod pointer_policy_tests;
