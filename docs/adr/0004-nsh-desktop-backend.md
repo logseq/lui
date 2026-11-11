@@ -79,14 +79,19 @@ theme defaults and the translation between those contracts.
 On 2026-11-11 the user authorized a minimal NSH keyed-list fix in the
 [`logseq/nsh`](https://github.com/logseq/nsh) fork, on branch `fork/logseq`.
 Limit dependency changes to key-based retention of cells, active interaction
-pins and measurements, keeping the contiguous-splice fast path. This explicit
+pins, measurements and native editor continuity during keyed sibling moves,
+keeping the contiguous-splice fast path. This explicit
 authorization supersedes the app skill's default prohibition on modifying
 NSH for an app. The current dependency is pinned to immutable commit
-`d21573c25984e9603bf878ae8bb73c1e23408936` on `logseq/nsh` (`fork/logseq`,
+`bfa15d0c843c0d6f5bf3a2a230e8ca56b876b61c` on `logseq/nsh` (`fork/logseq`,
 [review](https://github.com/logseq/nsh/pull/1)); the
 adapter continues to use public NSH APIs. This revision merges official
 upstream main `de7f3637171b769f18474796fd5159a60b2de726`, as requested,
-while retaining the authorized repairs. See the
+while retaining the authorized repairs. It also preserves same-parent AppKit
+and GTK subtrees during native sibling reorders instead of detaching focused
+editors. This changes no public NSH API or controlled-state protocol. See the
+[native focus regression](../agent-guide/review-probes/2026-11-11/nsh-keyed-native-focus.md)
+and the
 [synchronization evidence](../agent-guide/review-probes/2026-11-11/nsh-main-sync.md).
 No floating branch dependency or unrelated new fork API is covered by this
 exception. The
@@ -157,6 +162,33 @@ defaults and child contracts. Map semantic controls to their NSH counterparts;
 for example, a switch uses `Switch`, and a menu uses menu behavior. Shared LUI
 compositions may use several NSH primitives where no direct equivalent exists,
 but must retain LUI semantics and reuse NSH interaction infrastructure.
+
+On 2026-11-12 the user clarified the compatibility boundary: inspect production
+usage in both `logseq/mobile` and `logseq/logseq_journal` before reproducing a
+legacy component or optional behavior. Preserve the APIs and behavior those
+applications actually use. For components or behavior unused by both, adopt
+NSH's native component model and defaults, documenting concrete desktop API
+migrations where necessary. Do not build another focus, gesture or lifecycle
+controller merely to preserve an unused legacy convention. Domain objects named
+Tree or Timeline, backend compatibility tables, tests and generated schemas are
+not evidence that the corresponding LUI UI component is used.
+
+In particular, neither application uses LUI Tree, so the adapter should use the
+native NSH Tree's data, expansion, selection, virtualization and keyboard model.
+The unused legacy authored-row event model is not an acceptance requirement.
+Toast is used by mobile capture confirmation, but its `on_dismiss` is cleanup,
+not a veto. The replaced MyGo desktop already closed a Toast before notifying
+the application and did not reopen an expired retained node. Use native NSH
+Toast/ToastStack/ToastManager; do not introduce refusal recovery or custom swipe
+handling for that inferred requirement. Other used components, including the
+Journal header's ViewThatFits, retain their actual downstream requirements.
+
+The user explicitly excluded SwipeActions and SwipeAction from NSH desktop
+scope on 2026-11-12. Keep their canonical wire kinds and maintained mobile
+implementations; desktop applications should expose the corresponding actions
+as ordinary commands or a ContextMenu. NSH rejects these mobile-only kinds
+explicitly rather than mounting an empty placeholder. This leaves 85 required
+desktop kinds out of the 87-kind shared contract.
 
 Put presentation policy in a small `ui` layer using LUI's existing semantic
 theme tokens, control variants, sizes, icons and appearance inheritance. NSH

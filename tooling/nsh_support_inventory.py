@@ -10,7 +10,11 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "docs/agent-guide/review-probes/2026-11-11/nsh-support-inventory.md"
-SOURCE_NAMES = ["render.rs", "controls.rs", "style.rs", "virtual_rows.rs", "app.rs", "ui/mod.rs", "ui/controls.rs", "events.rs", "ui/icons.rs", "controls/basic.rs", "controls/collections.rs", "controls/surfaces.rs", "controls/navigation.rs", "images.rs", "headings.rs"]
+PLATFORM_EXCEPTIONS = {
+    "swipe-actions": "Mobile action-reveal container; explicitly excluded from NSH desktop scope by the user on 2026-11-12.",
+    "swipe-action": "Mobile action metadata; keep maintained mobile APIs, use desktop commands or ContextMenu on NSH.",
+}
+SOURCE_NAMES = ["render.rs", "controls.rs", "style.rs", "virtual_rows.rs", "app.rs", "ui/mod.rs", "ui/controls.rs", "events.rs", "ui/icons.rs", "controls/basic.rs", "controls/collections.rs", "controls/surfaces.rs", "controls/navigation.rs", "images.rs", "headings.rs", "inputs.rs", "file_picker.rs", "media.rs", "controls/toasts.rs", "controls/tree.rs", "controls/surfaces/native_split.rs", "controls/fit.rs"]
 ROUTES = {
     "root": "core view", "row": "core view + flex direction", "column": "core view",
     "box": "core view", "panel": "core view", "card": "core view", "spacer": "core view + grow/shrink",
@@ -61,7 +65,12 @@ ROUTES.update({
     "step": "semantic core host + live active/completed/pending indicator",
     "timeline": "core semantic List + retained authored TimelineItem children",
     "timeline-item": "interactive core host + themed marker/content/connector",
-    "split": "base ResizeHandle + controlled keyed panes and scoped keyboard/AT divider",
+    "split": "base ResizablePanelGroup + keyed native ResizablePanel sizes and completed resize events",
+    "view-that-fits": "retained native intrinsic layout + ordered fitting and inherited visibility",
+    "file-picker": "native pick_paths/OpenDialog + owner-scoped request task",
+    "media-surface": "core Video + native URL playback and controls",
+    "toast": "base Toast/ToastStack/ToastManager + one owner-scoped deadline",
+    "tree": "base Tree + keyed metadata, native selection/expansion/action and virtualization",
 })
 
 HOST_EVENT_KINDS = {
@@ -73,17 +82,28 @@ HOST_EVENT_KINDS = {
     "stack", "overlay", "alert", "bubble", "icon", "status-bar", "table-row",
     "table-cell", "list-section", "list-section-header", "list-section-footer",
     "drawer", "resizable", "edge-inset", "bottom-tabs", "breadcrumb", "pagination",
-    "stepper", "step", "timeline", "timeline-item", "split",
+    "stepper", "step", "timeline", "timeline-item", "split", "file-picker", "media-surface", "view-that-fits",
 }
 
 # Concrete validator restrictions are distinct from accepted property gaps and
 # qualifications that still require a native operating-system run.
 RESTRICTIONS = {
+    "file-picker": [
+        "Only native files/folders dialogs; photo-library/camera sources and completion leases are rejected.",
+        "File filters accept extension groups, not MIME or UTI filters; folders use native folder options.",
+    ],
+    "media-surface": ["Requires a nonempty URL; foreign surface resource IDs, including zero, are rejected."],
+    "tree": [
+        "Children are native item metadata, not arbitrary view/editor bodies; unsupported metadata properties and pointer callbacks are rejected.",
+        "Use tree_item semantic selection/expansion/action callbacks; legacy pointer-enabled rows are rejected.",
+    ],
+    "input": ["input-type=color/time, submit-on-blur=true and navigate-enabled=true are rejected."],
+    **{kind: ["submit-on-blur=true and navigate-enabled=true are rejected."] for kind in ("text-field", "secure-field", "search-field", "textarea")},
     "drawer": ["Requires exactly two canonical children: sidebar first and main content second."],
     "split": [
-        "Requires exactly two canonical pane children.",
-        "Rejects a resize-handle-offset outside the native f32 layout range.",
-        "Rejects nonzero resize-duration and any authored resize-easing or resize-origin; animated track resizing is not implemented.",
+        "Requires exactly two canonical pane children; sizes and resize events use absolute points.",
+        "Rejects ratio value, custom resize-handle-width, nonzero resize-handle-offset and pointer-enabled=true.",
+        "Rejects nonzero resize-duration and authored resize-easing/resize-origin; uses the native 9-point handle.",
     ],
     "edge-inset": [
         "At most 32,760 children because native grid line indices use signed 16-bit values.",
@@ -111,7 +131,7 @@ GAPS = {
     "G13": (set(ROUTES) - {"overlay"}, {"alignment"}, "Authored layer alignment remains unimplemented outside local Overlay."),
     "G2": ({"menu-item"}, {"icon", "icon-placement", "selection-placement", "size", "variant", "tooltip-keys"}, "Menu-item renders text/children with a fixed themed wrapper; these authored appearance choices are not forwarded."),
     "G11": ({"button", "toggle-button"}, {"tooltip-keys"}, "Command shortcut hints are not forwarded; built-in icons, placement, size and variants have native bindings outside tabs."),
-    "G3": ({"text-field", "secure-field", "input", "search-field", "textarea", "combobox"}, {"input-type", "submit-on-enter", "submit-on-blur", "navigate-enabled"}, "Input hint/navigation/submit policies are not forwarded; native Input defaults remain."),
+    "G3": ({"text-field", "secure-field", "input", "search-field", "textarea", "combobox"}, {"input-type", "submit-on-enter", "submit-on-blur", "navigate-enabled"}, "Textarea Enter behavior is forwarded through native SubmitBehavior. Single-line inputs keep native submit/blur defaults; explicit submit-on-blur=true/navigation callbacks and color/time input are rejected. Other input hints require review."),
     "G4": ({"checkbox", "toggle"}, {"label-opacity", "indicator-border-color", "checked-indicator-border-color", "toggle-detail-enabled"}, "Checkbox routes forward checked/indeterminate/disabled/label; authored indicator/detail behavior remains absent."),
     "G5": ({"image"}, {"image", "source-x", "source-y", "source-width", "source-height", "referrer-policy"}, "Image forwards canonical URL, alt/label, fit, eager/default loading and native Load. Resource IDs, crop rectangles and authored referrer policy are explicitly rejected; loading=lazy is a value restriction listed separately, not a missing eager-loading path."),
     "G7": ({"scroll"}, {"orientation"}, "Scroll route does not set horizontal mode; the native default remains."),
@@ -121,6 +141,11 @@ GAPS = {
 }
 
 TESTS = {
+    "view-that-fits": ['ordered_choice_waits_for_unknown_predecessors_and_uses_last_as_fallback', 'both_axes_switch_without_remounting_or_losing_independent_drafts', 'keyboard_traversal_excludes_unselected_candidates', 'live_candidate_geometry_order_and_outer_visibility_use_retained_nodes'],    'textarea': ['single_line_inputs_keep_native_submit_and_blur_defaults', 'textarea_live_enter_policy_keeps_the_editor_and_native_line_break_rules', 'submit_flag_changes_are_checked_without_replacing_the_textarea', 'unsupported_input_policies_fail_before_any_text_or_identity_is_published', 'native_composition_survives_an_enter_policy_update_until_its_commit'],
+    'tree': ['uncontrolled_native_tree_distinguishes_selection_from_double_press_action', 'controlled_values_refuse_then_accept_native_requests_without_custom_state', 'native_cursor_keys_skip_disabled_rows_and_keep_native_default_action', 'native_keys_survive_metadata_updates_and_reorder_while_outside_editor_is_retained', 'arbitrary_body_views_fail_atomically_and_retry_keeps_generation', 'native_tree_virtualizes_a_thousand_metadata_items', 'legacy_pointer_subscriptions_are_refused_before_other_edits_publish'],
+    'toast': ['toast_is_non_flow_metadata_and_retains_arbitrary_native_children_on_update', 'native_timeout_does_not_restart_and_closed_source_incarnation_never_reopens', 'desktop_default_and_zero_persistence_use_native_lifecycle_without_idle_polling', 'native_hover_and_keyboard_focus_pause_timeout_then_resume_remaining_time', 'native_swipe_closes_once_and_source_detach_cancels_late_callbacks_before_reopen', 'native_stack_keeps_existing_identity_and_escape_closes_only_the_newest'],
+    'media-surface': ['media_url_changes_keep_the_real_video_host_and_controlled_editor', 'foreign_surface_ids_and_empty_urls_fail_atomically', 'a_native_player_error_is_nonfatal_and_keeps_other_controls_working', 'public_native_video_properties_enable_controls_and_reuse_nsh_playback_defaults'],
+    'file-picker': ['file_dialog_results_keep_exact_tokens_paths_and_authored_child_identity', 'native_cancel_is_dismiss_and_folder_dialog_uses_native_folder_options', 'disabled_requests_wait_for_enable_and_old_incarnations_cannot_deliver_answers', 'native_dialog_failure_is_a_result_and_unsupported_options_are_atomic', 'native_picked_paths_and_errors_reach_the_real_ocaml_callback_unchanged'],
     "heading": ["heading_default_and_live_levels_keep_the_actual_text_and_editor_identity", "heading_authored_styles_override_presets_and_invalid_changes_roll_back_atomically"],
     "image": ["canonical_url_fit_and_accessible_name_preserve_image_defaults", "url_fit_and_atomic_rejections_keep_the_image_and_editor_native_identity", "canonical_image_load_reaches_the_existing_ocaml_callback"],
     "drawer": ["drawer_uses_native_sheet_and_keeps_refused_selected_state"],
@@ -147,7 +172,7 @@ TESTS = {
     "step": ["steps_follow_canonical_active_live_values_and_keyed_source_positions"],
     "timeline": ["timeline_uses_live_content_marker_precedence_and_retains_its_host", "timeline_item_preserves_native_pointer_modifiers_and_keyboard_activation"],
     "timeline-item": ["timeline_uses_live_content_marker_precedence_and_retains_its_host", "timeline_item_preserves_native_pointer_modifiers_and_keyboard_activation"],
-    "split": ["split_native_drag_is_controlled_and_respects_both_pane_bounds", "split_pixel_sources_resize_independently_and_reorder_keeps_editor_focus_and_draft", "split_rtl_handle_geometry_delta_and_zero_width_input_follow_logical_order", "split_native_divider_keyboard_is_scoped_and_animation_options_reject_atomically", "split_geometry_matches_shared_infeasible_limits_and_programmatic_zero"],
+    "split": ['native_equal_panels_keep_user_sizes_without_model_echo_and_report_pixels_once', 'native_pixel_source_update_and_keyed_reorder_retain_both_editors_and_focus', 'native_constraints_and_notification_disable_do_not_add_a_second_resize_policy', 'native_rtl_report_selects_the_first_logical_panel_and_legacy_options_reject'],
     "checkbox": ["native_checkbox_mixed_state_is_controlled_until_the_model_resolves_it"],
     "switch": ["switch_follows_accepted_press_and_keyboard_values_without_duplicate_events", "refused_switch_requests_keep_native_identity_and_accepted_value", "disabled_switch_takes_no_user_event"],
     "toggle-button": ["toggle_button_exposes_pressed_semantics_and_uses_selected_as_value"],
@@ -161,7 +186,7 @@ TESTS = {
     "toolbar": ["toolbar_axis_mutation_is_rejected_without_losing_horizontal_keyboard_state"],
     "tabs": ["tabs_convert_lui_buttons_and_use_native_arrow_navigation"],
     "button": ["authored_command_icon_size_and_variant_update_without_remounting", "icon_only_command_has_square_geometry_and_named_keyboard_activation", "real_ocaml_edits_and_keyed_moves_keep_the_editor", "tabs_convert_lui_buttons_and_use_native_arrow_navigation"],
-    "text-field": ["real_ocaml_edits_and_keyed_moves_keep_the_editor"],
+    "text-field": ["real_ocaml_edits_and_keyed_moves_keep_the_editor", "single_line_inputs_keep_native_submit_and_blur_defaults"],
     "row": ["canonical_space_between_places_children_at_opposite_edges"],
     "box": ["native_host_press_preserves_modifiers_pointer_payload_and_appear_without_text_stealing", "live_flags_guard_input_checkbox_and_host_callbacks_without_remounting", "a_container_observes_one_focus_entry_and_exit_from_its_real_input"],
     "column": ["column_detail_only_capability_does_not_emit_an_unsupported_ordinary_press"],
@@ -184,6 +209,7 @@ EMITTED = {
     "link": {"press"}, "accordion": {"toggle-changed"}, "bottom-tab": {"press"},
     "dialog": {"dismiss"}, "sheet": {"dismiss"}, "popover": {"dismiss"},
     "image": {"load"}, "split": {"value-changed"},
+    "file-picker": {"picked", "dismiss"}, "toast": {"dismiss"},
     "virtual-list": {"visible-range", "scroll-completed", "virtual-window"},
 }
 for _kind in ROUTES:
@@ -204,11 +230,13 @@ def inventory():
     contract = json.loads((ROOT / "platform/nsh/contract.json").read_text())
     sources = {name: (ROOT / "platform/nsh/src" / name).read_text() for name in SOURCE_NAMES}
     supported = set().union(*(admitted(source) for name, source in sources.items()
-                              if name in {"render.rs", "controls.rs"} or name.startswith("controls/")))
+                              if "fn supported(kind: &str) -> bool" in source))
     if supported != set(ROUTES):
         raise ValueError(f"Route catalog needs review: {sorted(supported ^ set(ROUTES))}")
     if not supported <= set(contract["kinds"]):
         raise ValueError("A native route is absent from the canonical contract")
+    if not set(PLATFORM_EXCEPTIONS) <= set(contract["kinds"]) or set(PLATFORM_EXCEPTIONS) & supported:
+        raise ValueError("Desktop exceptions must name canonical kinds without admitted routes")
     test_sources = {**{"src/" + path: source for path, source in sources.items()}, **{str(path.relative_to(ROOT / "platform/nsh")): path.read_text()
                                   for path in (ROOT / "platform/nsh/tests").glob("*.rs")}}
     test_sources.update({str(path.relative_to(ROOT / "platform/nsh")): path.read_text()
@@ -237,7 +265,7 @@ def inventory():
             gaps["G10"] = ["press-enabled"]
         implemented = set(canonical["events"]) & EMITTED.get(kind, set())
         kinds.append({
-            "kind": kind, "admitted_route": ROUTES.get(kind), "canonical_properties": canonical["properties"],
+            "kind": kind, "admitted_route": ROUTES.get(kind), "platform_exception": PLATFORM_EXCEPTIONS.get(kind), "canonical_properties": canonical["properties"],
             "canonical_events": canonical["events"], "verified_property_gaps": gaps,
             "enforced_restrictions": RESTRICTIONS.get(kind, []) if routed else [],
             "event_path_candidates": sorted(implemented),
@@ -247,20 +275,24 @@ def inventory():
         })
     return {"scope": "Source inventory, not native OS qualification or proof of complete property support",
             "source_sha256": {name: hashlib.sha256(source.encode()).hexdigest() for name, source in sources.items()},
-            "canonical_kind_count": len(kinds), "admitted_route_count": len(supported), "kinds": kinds}
+            "canonical_kind_count": len(kinds), "admitted_route_count": len(supported),
+            "required_desktop_kind_count": len(kinds) - len(PLATFORM_EXCEPTIONS),
+            "remaining_required_kind_count": len(kinds) - len(PLATFORM_EXCEPTIONS) - len(supported), "kinds": kinds}
 
 
 def markdown(data):
     rows = ["# NSH source support inventory", "", "Generated by `python3 tooling/nsh_support_inventory.py`; check with `--check`.",
             "Use `--json` for every canonical property/event, known property gap, enforced", "restriction, conservative unreferenced-property candidate, test location and source hash.", "",
             f"The canonical contract contains **{data['canonical_kind_count']} kinds**; **{data['admitted_route_count']} have an admitted native route**.",
+            f"The desktop scope requires **{data['required_desktop_kind_count']} kinds**, with **{data['remaining_required_kind_count']} routes still missing**.",
+            "SwipeActions/SwipeAction are explicit mobile-only desktop exceptions; their common wire kinds and maintained mobile implementations remain.",
             "The remainder are explicitly rejected by `render::validate` before publication.",
             "An admitted route is **partial support**, not a claim that all its canonical", "properties, events, children or defaults are implemented. Source-listed tests", "are not rerun by this generator and do not establish Windows/Linux/macOS parity.", "",
             "## All canonical kinds", "", "P/E are canonical property/event counts. Gap IDs are expanded below.",
             "The JSON output also enumerates canonical events without a renderer transport.", "",
             "| Kind | Current native route or rejection | P/E | Verified property gaps | Focused test sources |", "| --- | --- | --- | --- | --- |"]
     for node in data["kinds"]:
-        route = node["admitted_route"] or "Explicitly unsupported"
+        route = node["admitted_route"] or ("Mobile-only desktop exception" if node["platform_exception"] else "Explicitly unsupported")
         gaps = ", ".join(node["verified_property_gaps"]) or "—"
         tests = str(len(node["tests_present_in_source"])) if node["tests_present_in_source"] else "None mapped"
         rows.append(f"| `{node['kind']}` | {route} | {len(node['canonical_properties'])}/{len(node['canonical_events'])} | {gaps} | {tests} |")
@@ -273,9 +305,23 @@ def markdown(data):
     for key, (_, properties, description) in GAPS.items():
         rows += [f"- **{key}**: {description} Candidate properties: " + ", ".join(f"`{prop}`" for prop in sorted(properties)) + "."]
     rows += ["- **G10** is retired for current generic host routes: authored activation is now installed with live guards. Radio's true press-enabled value remains explicitly rejected.", "",
-             "Priority 1: remaining typed-control pointer/modifier delivery, navigation", "and capture; input submit policy; authored checkbox indicators; image resources/crop;", "menu-item icons. Priority 2: remaining appearance, class translation or explicit", "rejection, list appearance and metadata.", "",
+             "Priority 1: remaining typed-control pointer/modifier delivery, navigation", "and capture; remaining input hints; authored checkbox indicators; image resources/crop;", "menu-item icons. Priority 2: remaining appearance, class translation or explicit", "rejection, list appearance and metadata.", "",
              "## Event, child and default limitations", "",
              "- Native host routes deliver available modifier/pointer payloads; typed behavior", "  components still expose unit events and do not gain a synthetic observer wrapper.", "  The JSON event-path list is not a claim of full per-field parity. Appearance", "  uses the actual existing ref after native materialization, including disabled", "  controls; it is not an OS-visible-frame notification.",
+             "- FilePicker uses native paths and exact request tokens; cancellation emits Dismiss,",
+             "  results/errors emit Picked. Busy requests do not queue or replace the dialog.",
+             "  Headless service tests and a real OCaml Picked/Dismiss ABI test are mapped;",
+             "  they do not qualify actual operating-system dialog UX.",
+             "- MediaSurface uses native Video with controls and native playback defaults.",
+             "  URL updates retain the player; playback errors are nonfatal renderer diagnostics.",
+             "  Its tests inspect native properties and identity, not actual media decoding.",
+             "- Tree delegates keyboard, selection, expansion, Action and virtualization to NSH.",
+             "  Metadata projection/flattening is O(n); mounted rows are viewport-bounded.",
+             "  Native SelectedChange/Expand/Collapse/Action target metadata callbacks; these",
+             "  are not Tree-root event transports. No custom Tree focus controller is used.",
+             "- Toast uses native lifecycle: 400ms entrance, then its TTL, then 200ms exit.",
+             "  Hover/focus pause the native manager. Dismiss follows completion; a retained",
+             "  closed incarnation stays closed until replaced. No application close veto exists.",
              "- Input change/submit and Checkbox toggle callbacks now honor live callback", "  flags and enabled state. Row/Column/Box use one native-ref focus transition", "  owner rather than duplicate direct Input focus handlers.",
              "- Host listeners are installed from authored initial capabilities. Enabling an", "  initially unauthored press/pointer/gesture capability after mount is explicitly", "  rejected atomically pending a public identity-preserving rebind path. Focus-within", "  flags on the three canonical containers can change live. Unused Text nodes get", "  no press listener, so they do not steal activation from enclosing commands.",
              "- Core text routes render the node's text value and discard their canonical", "  children. Container admission therefore does not prove rich/composed text.",
@@ -289,7 +335,7 @@ def markdown(data):
              "  the accessible name; Heading still rejects the noncanonical accessibility-label.",
              "  The mapped Headless tests cover level/default/override/identity/rollback behavior,",
              "  not operating-system screen-reader announcements or native screenshot metrics.",
-             "- Ignored menu-item size/variant and input-submit/orientation properties leave NSH", "  wrapper defaults in control even when an application authors another value.", "  This inventory does not infer canonical absent-property defaults from NSH's", "  defaults. Those need explicit cross-backend behavior tests and migration notes.",
+             "- Ignored menu-item size/variant and scroll orientation properties leave NSH", "  wrapper defaults in control even when an application authors another value.", "  This inventory does not infer canonical absent-property defaults from NSH's", "  defaults. Those need explicit cross-backend behavior tests and migration notes.",
              "- Button/toggle command icons use shared Web SVG assets, native retained size/variant", "  bindings and decorative glyph accessibility. Tab appearance, application icon", "  registration and shortcut hints still need qualification or implementation.", "- Native pointer states used by styles are separate from LUI pointer events.", "  Paint::read dynamically handles prefixed background/foreground/border/opacity/", "  shadow properties; the generator excludes these string-search false positives.", "",
              "- Image uses canonical url and live native source/fit/name bindings. Default fit",
              "  is stretch, fit means contain and fill means cover; an accessibility label wins",
@@ -330,13 +376,12 @@ def markdown(data):
              "  over indicator text, then a dot; connector defaults true; selected/variant/title/",
              "  description/meta remain live. TimelineItem preserves canonical native pointer",
              "  payloads through NativeEvents instead of substituting a unit-event-only Button.",
-             "- Split is controlled: absent ratio is 0.5, gap is 9 points, and the handle uses",
-             "  the gap (or 3 points at zero gap) unless authored. Explicit handle width zero",
-             "  disables adjustment. Pixel/ratio proposals preserve the source units, both-pane",
-             "  limits and RTL order; rejected proposals do not mutate accepted geometry.",
-             "  Native ResizeHandle owns capture; scoped divider key/AT actions request changes.",
-             "  Native handle and outer divider accessibility are not yet a consolidated part.",
-             "  The mapped tests cover geometry/retention/rejection; not native OS appearance.",
+             "- Split uses native ResizablePanelGroup and keyed ResizablePanel children.",
+             "  Absent sizes are equal; first-pane-width and pane min/max are absolute points.",
+             "  User drags persist without model echo and report ValueChanged once at completion.",
+             "  The native 9-point adjustable band owns capture and 10-point AT adjustments;",
+             "  no legacy ratio solver, keyboard-arrow controller or close/refusal policy remains.",
+             "  Programmatic sizing and keyed pane/editor retention have mapped source tests.",
              "- ListItem flat/disclosure composition preserves retained body and nested-row",
              "  identities. Its mapped rejection/rollback tests do not establish inline editing,",
              "  rich typed activation details, long/double press or Return-only submission.", "",
@@ -357,7 +402,7 @@ def markdown(data):
              "| G2 | controls.rs `element` menu-item branch |",
              "| G11 | controls.rs `command_content`; ui/controls.rs `CommandButtonProps` |",
              "| G12 | events.rs `NativeEvents::attach`; ComponentElement lacks public Interactive root handlers |",
-             "| G3 | render.rs basic Input branch; controls.rs `picker` combobox Input branch |",
+             "| G3 | inputs.rs native SubmitBehavior/validation; controls.rs `picker` combobox Input defaults |",
              "| G4 | render.rs CheckboxProps and controls.rs toggle CheckboxProps omit authored indicator/detail props |",
              "| G5 | images.rs `source`/`fit`/`label`/`validate`; render.rs Image on_load; runtime.rs optional Load ABI |",
              "| G7 | render.rs Scroll branch creates default Scroll without horizontal configuration |",

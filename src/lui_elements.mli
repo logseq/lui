@@ -3656,7 +3656,13 @@ val toast :
     URLs until [~completion] echoes the request token (or the node is
     dropped). [~types] is a comma-separated list of UTIs; [~source]
     selects files (default), photo library, or camera; [~multiple] allows
-    multi-selection; [~disabled] gates presentation. *)
+    multi-selection; [~disabled] gates presentation.
+
+    NSH desktop uses native file/folder dialogs and returns
+    [{request, paths}] (or [{request, paths = [], error}]) without leases.
+    Its filters are comma-separated extensions such as [.md,.txt]; camera,
+    photo-library, MIME/UTI filters and completion tokens are rejected.
+    Cancellation still fires [~on_dismiss]. See [docs/api-migrations.md]. *)
 val file_picker :
   ?key:string ->
   ?gap:int ->

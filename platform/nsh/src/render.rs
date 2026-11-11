@@ -1129,10 +1129,9 @@ fn validate_themes(
         }
         let previous = transaction.previous(node.id);
         if let Some(previous) = previous.filter(|previous| previous.incarnation == node.incarnation)
+            && tree.is_none()
         {
-            if tree.is_none() {
-                crate::controls::validate_transition(previous, node)?;
-            }
+            crate::controls::validate_transition(previous, node)?;
         }
         if let Some(entry) = entries.get(&node.id)
             && entry.reference.node().is_some()

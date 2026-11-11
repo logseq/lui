@@ -6213,9 +6213,9 @@
     },
     "media-surface": {
       "baseline": {
-        "surface": {
-          "type": "int",
-          "value": 1
+        "url": {
+          "type": "string",
+          "value": "sample"
         }
       },
       "properties": {
@@ -6250,7 +6250,8 @@
         "accessibility-identifier": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0000000",
         "style-class": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0000000",
         "appear-enabled": "000000000000000000000000000000000000000000000000000000000000000000003000000",
-        "surface": "000000000000000000000000000000000000000000000000000000000000000000008fff100",
+        "surface": "000000000000000000000000000000000000000000000000000000000000000000000000000",
+        "url": "efffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0000000",
         "alignment": "00000000000000000c900000000000000000001000000000000000000000008c10000000000",
         "pointer-enabled": "000000000000000000000000000000000000000000000000000000000000000000003000000",
         "data-attrs": "100000000000000100000000100000000000000000000000000000000000400000000000000",

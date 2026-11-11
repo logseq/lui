@@ -489,7 +489,7 @@ pub(super) fn node_properties_supported(kind: &str, properties: &Map<String, Val
             true
         })
         && (if kind == "media-surface" {
-            contains_property("surface", properties)
+            contains_property("surface", properties) || string_property_nonempty(properties, "url")
         } else {
             true
         })
@@ -954,7 +954,13 @@ pub(super) fn presence_supported(kind: &str, properties: &Map<String, Value>) ->
                 }
             }
         }
-        "media-surface" => contains_property("surface", properties),
+        "media-surface" => {
+            if contains_property("surface", properties) {
+                !contains_property("url", properties)
+            } else {
+                contains_property("url", properties)
+            }
+        }
         "stepper" => contains_property("active", properties),
         "step" | "accordion" | "drawer" | "sheet" => contains_property("text", properties),
         "timeline-item" => contains_property("title", properties),

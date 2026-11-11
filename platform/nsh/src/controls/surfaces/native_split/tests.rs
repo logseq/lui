@@ -84,7 +84,7 @@ fn Panels() -> impl IntoElement {
     for key in ["f1", "f2", "f3", "f4"] {
         let renderer = renderer.clone();
         let generation = generation.clone();
-        on_key(key, move || {
+        on_key(key, move |_| {
             let ops = match key {
                 "f1" => {
                     json!([{"op":"set-prop","id":2,"property":"first-pane-width","value":180.0}])

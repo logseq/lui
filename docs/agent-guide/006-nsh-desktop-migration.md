@@ -14,13 +14,18 @@ the existing LUI application API except for the documented desktop host
 migration, keep Apple/iOS, Android and Web maintained, and provide packaging,
 distribution-signing integration and whole-app update support. All required
 tests must pass. Do not mark this plan complete with compile-only evidence,
-partial component support, eager source-row rendering or missing OS results.
+partial required-component support, eager source-row rendering or missing OS results.
+The user explicitly excluded mobile-only SwipeActions/SwipeAction from NSH
+desktop scope on 2026-11-12; preserve their shared contract and mobile backends.
+The required desktop component set therefore contains 85 of the 87 common kinds.
 
 Use NSH public Rust APIs pinned to `logseq/nsh` commit
-`d21573c25984e9603bf878ae8bb73c1e23408936`, Rust 1.97 and committed Cargo
+`bfa15d0c843c0d6f5bf3a2a230e8ca56b876b61c`, Rust 1.97 and committed Cargo
 lockfiles. This merges official upstream main
 `de7f3637171b769f18474796fd5159a60b2de726` with the authorized keyed-list
-repairs; see the [synchronization evidence](review-probes/2026-11-11/nsh-main-sync.md).
+and native editor-focus repairs; see the
+[synchronization evidence](review-probes/2026-11-11/nsh-main-sync.md) and
+[native focus regression](review-probes/2026-11-11/nsh-keyed-native-focus.md).
 The initial research and official `nsh` / `nsh-design-guides` skill installation
 used `cdfdf75c1509cdb34c6220e6b5bf923452c0cb76`. Read their relevant
 references and the nearest source/tests
@@ -568,3 +573,45 @@ no NSH runtime/native/package/performance qualification has passed yet.
 - ViewThatFits is used by the downstream Journal production header and is
   retained. The usage evidence is recorded separately. The migration goal
   remains active; these checks do not close the unchecked acceptance gates.
+
+### Native component and focus follow-up (2026-11-12)
+
+The immutable NSH dependency is now `bfa15d0c843c0d6f5bf3a2a230e8ca56b876b61c`.
+It includes the authorized same-parent AppKit/GTK focus repair and its Linux
+test-only Clippy correction. The actual pinned macOS navigation app passed its
+36.7-second keyboard/editor/native-panel flow; see the
+[native focus evidence](review-probes/2026-11-11/nsh-keyed-native-focus.md).
+
+Tree and Toast now delegate their native interaction/lifecycle to NSH. FilePicker
+uses the native dialog service; MediaSurface uses native Video URLs. Input's
+used multiline Enter policy is forwarded to native SubmitBehavior. Split uses
+native keyed panels instead of the former custom sizing/focus controller.
+ViewThatFits retains and measures ordered alternatives with native layout.
+These decisions follow the
+[actual downstream usage policy](review-probes/2026-11-11/downstream-nsh-semantics.md)
+and the detailed public/default changes in `docs/api-migrations.md`.
+
+At LUI production checkpoint `49f23d4e` with this batch's pinned dependency,
+generated-contract refresh and test-only native-key closure correction, the full
+Rust suite passed 154 tests (138 library and 16 integration), and the core OCaml
+suite passed 251 tests. An additional real OCaml Picked/Dismiss C ABI test passed:
+it preserves Unicode paths, error payloads and request integers above 2^53.
+After `bb0b0863`, four focused ViewThatFits engine tests also passed; those source
+changes still require aggregate and real native fitting qualification. Tooling
+regressions passed 42 tests. The generated source inventory now admits 82 of 87
+kinds, with explicit restrictions and property/event gaps; admission is not full
+OS support. Linux GTK runtime execution, remaining components/host services,
+latest full-platform CI and final package/sign/update gates remain open.
+
+The aggregate suite after `bb0b0863`, including ViewThatFits and the real Picked
+ABI fixture, passed **159 tests** (142 library and 17 integration), with no
+failures or ignored tests. Strict all-target Clippy, format/freshness checks,
+42 Python tooling tests and the repeated 251-case core gate passed. The desktop
+scope now explicitly excludes the two mobile swipe kinds, leaving three missing
+required routes at this checkpoint. Native fitting and the other open platform,
+service and packaging qualifications are still pending.
+
+Aggregate log `/tmp/lui-nsh-fit-aggregate-tests.log` SHA-256
+`14ed4f44931163933640d74624551aaebd2fc11d7d2dcd2067555c529312df5a`;
+strict Clippy log `/tmp/lui-nsh-native-components-clippy.log` SHA-256
+`03a502c358e64646143ff251b22cf0f3eb71fc01fb170dbeb31950fa6b1a50a4`.

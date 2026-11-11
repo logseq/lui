@@ -8223,6 +8223,7 @@
         "style-class",
         "appear-enabled",
         "surface",
+        "url",
         "alignment",
         "pointer-enabled",
         "data-attrs",
@@ -11529,9 +11530,9 @@
   ],
   "sourceHashes": {
     "schema/components.json": "50b63836550156cd7244bf0aabcea04cd4852166d18089155ecc771a2dbd39a6",
-    "src/lui_protocol.ml": "a150663ee5c1d29f55e2c5f99c1f43f600feed8853ae2a5ba88c61c9f051d580",
+    "src/lui_protocol.ml": "bd1775fe2041e1f9f11642e1f353d9f6e32014e41b36d44dee36ca145e8fa266",
     "src/lui_protocol.mli": "74834e3e0002203fa5a520011f016382c3a1f65fe796219748039e1ccba2164d",
-    "src/lui_wire_schema.ml": "312a87bfc912194bc6608af7a43b9cadbf53c3ac6985ca7fd247cab4377357e5",
+    "src/lui_wire_schema.ml": "ca0f0c749f75ac3bf4f0374ebca73febe22c7ed2f03ff8e16e52be0e6f9544f8",
     "tooling/export_native_contract.ml": "59617ad5bed8313ad6782b07341a27d8c1bf86fa9d1deb4a0ff03cf70140a264",
     "tooling/generate_nsh_contract.py": "ff6f6cdaf3f08da51cf240b83e75620b027380ebaaa4c067e7f7b6856726d9bb",
     "tooling/nsh_contract_codegen.py": "18c2a235869fd168f0028b4a521d4e1125dc5570ce60db6813fab80a2ec7319c"

@@ -3713,3 +3713,32 @@ and height constraints, padding and paint remain on the actual outer host.
 The measured content box excludes that host's padding. All alternatives remain
 mounted, so keep the authored alternative set small; use native virtual lists
 for growing collections rather than using ViewThatFits as a list virtualizer.
+
+## NSH desktop excludes mobile swipe action containers
+
+On 2026-11-12 the user explicitly excluded `swipe-actions` and `swipe-action`
+from NSH desktop requirements. Their public constructors, wire ordinals and
+maintained mobile backend behavior remain unchanged. NSH continues to reject
+these kinds atomically; it does not render an inert placeholder or introduce a
+custom desktop gesture controller.
+
+Desktop callers expose these actions through ordinary commands or ContextMenu.
+For example, choose the affordance in the mounted view's host context:
+
+```ocaml
+let remove_actions on_remove context parent =
+  let open Lui_elements in
+  let view =
+    match Lui_ui.host context with
+    | Lui_protocol.NshHost ->
+        row [ button ~text:"Remove" ~on_press:on_remove [] ]
+    | _ ->
+        swipe_actions [ swipe_action ~text:"Remove" ~on_press:on_remove [] ]
+  in
+  view context parent
+```
+
+Keep the existing mobile action container at its supported parent location.
+This example changes the desktop affordance only; the application's action
+handler stays the same. The NSH inventory reports these two explicit platform
+exceptions separately from missing required component routes.

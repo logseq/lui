@@ -1,8 +1,7 @@
-(* Real desktop navigation and controlled Split qualification through the C ABI.
-   Existing LUI controls own hover, focus and color transitions. Split changes
-   deliberately snap (no resize duration): accepted model values must be visible
-   immediately, including with reduced motion. Status text also updates without
-   motion. This bounded fixture adds no overlay, timer or animation controller. *)
+(* Real desktop navigation and native Split qualification through the C ABI.
+   NSH panels own resize input and local sizing. The fixture optionally echoes
+   completed absolute sizes and separately checks programmatic pixel sizing.
+   Status text updates without motion; no overlay or animation controller is added. *)
 open Lui_elements
 
 type model = {
@@ -16,11 +15,10 @@ type model = {
   timeline_updated : bool;
   timeline_selected : int;
   accepts : bool;
-  ratio : float;
   pixels : float;
-  ratio_requests : int;
+  equal_requests : int;
   pixel_requests : int;
-  last_ratio : float;
+  last_equal : float;
   last_pixels : float;
   pane_order : int list;
   reorder_on_edit : bool;
@@ -38,9 +36,8 @@ type action =
   | Update_timeline
   | Select_activity of int
   | Set_accepts of bool
-  | Ratio_request of float
+  | Equal_request of float
   | Pixel_request of float
-  | Set_ratio
   | Set_pixels
   | Arm_reorder
   | Edit of int * string
@@ -51,8 +48,8 @@ let initial = {
   page_requests = 0; page = 1;
   step_order = [1; 2; 3]; active = 0;
   timeline_revision = 0; timeline_updated = false; timeline_selected = 1;
-  accepts = false; ratio = 0.5; pixels = 240.;
-  ratio_requests = 0; pixel_requests = 0; last_ratio = 0.; last_pixels = 0.;
+  accepts = false; pixels = 240.;
+  equal_requests = 0; pixel_requests = 0; last_equal = 0.; last_pixels = 0.;
   pane_order = [1; 2]; reorder_on_edit = false;
   first_draft = "first seed"; second_draft = "second seed";
   first_appears = 0; second_appears = 0;
@@ -78,13 +75,11 @@ let update model = function
   | Select_activity timeline_selected ->
       { model with timeline_revision = model.timeline_revision + 1; timeline_selected }
   | Set_accepts accepts -> { model with accepts }
-  | Ratio_request value ->
-      { model with ratio_requests = model.ratio_requests + 1; last_ratio = value;
-                   ratio = if model.accepts then value else model.ratio }
+  | Equal_request value ->
+      { model with equal_requests = model.equal_requests + 1; last_equal = value }
   | Pixel_request value ->
       { model with pixel_requests = model.pixel_requests + 1; last_pixels = value;
                    pixels = if model.accepts then value else model.pixels }
-  | Set_ratio -> { model with ratio = 0.25 }
   | Set_pixels -> { model with pixels = 180. }
   | Arm_reorder -> { model with reorder_on_edit = true }
   | Edit (1, first_draft) -> finish_edit { model with first_draft }
@@ -142,10 +137,10 @@ let view _context model_source send =
   column ~padding:16 ~gap:8
     [ text ~value:"Navigation and Split qualification" []
     ; status "navigation-split-mode"
-        (fun model -> if model.accepts then "Split mode accepting" else "Split mode refusing")
-    ; status "navigation-ratio-state"
-        (fun model -> Printf.sprintf "Ratio source %.3f requests %d last %.3f"
-          model.ratio model.ratio_requests model.last_ratio)
+        (fun model -> if model.accepts then "Split echo enabled" else "Split echo disabled")
+    ; status "navigation-equal-state"
+        (fun model -> Printf.sprintf "Equal requests %d last %.1f"
+          model.equal_requests model.last_equal)
     ; status "navigation-pixel-state"
         (fun model -> Printf.sprintf "Pixel source %.1f requests %d last %.1f"
           model.pixels model.pixel_requests model.last_pixels)
@@ -156,8 +151,9 @@ let view _context model_source send =
     ; scroll ~height:500 ~width:680 ~accessibility_identifier:"navigation-scroll"
         [ column ~gap:16 ~padding:8
             [ text ~value:"Authored navigation" []
+            ; text_field ~label:"Before breadcrumb" ~text:"Keyboard anchor" []
             ; breadcrumb ~label:"Workspace path"
-                [ button ~text:"Workspace" ~autofocus:true
+                [ button ~text:"Workspace"
                     ~on_press:(press send (Breadcrumb "Workspace")) []
                 ; button ~text:"Archived" ~disabled:true
                     ~on_press:(press send (Breadcrumb "Archived")) []
@@ -166,6 +162,7 @@ let view _context model_source send =
             ; status "navigation-breadcrumb-state"
                 (fun model -> Printf.sprintf "Breadcrumb requests %d last %s"
                   model.breadcrumb_requests model.breadcrumb_last)
+            ; text_field ~label:"Before pagination" ~text:"Keyboard anchor" []
             ; pagination ~label:"Result pages"
                 [ button ~text:"Page one" ~selected:(reactive (fun model -> model.page = 1) model_source)
                     ~on_press:(press send (Page 1)) []
@@ -197,21 +194,18 @@ let view _context model_source send =
             ; reactive
                 ~equal:(fun before after -> before.timeline_revision = after.timeline_revision)
                 (fun model -> activity model send) model_source
-            ; text ~value:"Controlled panes" []
+            ; text ~value:"Native panes" []
             ; row ~gap:8
-                [ control "navigation-accept" "Accept resize" (Set_accepts true)
-                ; control "navigation-refuse" "Refuse resize" (Set_accepts false)
-                ; control "navigation-ratio-quarter" "Set ratio quarter" Set_ratio
+                [ control "navigation-accept" "Echo resize" (Set_accepts true)
+                ; control "navigation-refuse" "Stop resize echo" (Set_accepts false)
                 ]
             ; button ~accessibility_identifier:"navigation-arm-reorder"
                 ~text:(reactive (fun model -> if model.reorder_on_edit then "Reorder armed" else "Reorder on next edit") model_source)
                 ~on_press:(press send Arm_reorder) []
             ; text ~value:"Arm reorder, then edit either draft without leaving that editor." []
-            ; split ~label:"Ratio layout" ~width:609 ~height:112 ~gap:9
-                ~resize_handle_width:9 ~resize_handle_offset:0.
-                ~accessibility_identifier:"navigation-ratio-split"
-                ~value:(reactive (fun model -> model.ratio) model_source)
-                ~on_resize:(value_changed send (fun value -> Ratio_request value))
+            ; split ~label:"Equal layout" ~width:609 ~height:112 ~gap:9
+                ~accessibility_identifier:"navigation-equal-split"
+                ~on_resize:(value_changed send (fun value -> Equal_request value))
                 (keyed ~source:(reactive (fun model -> model.pane_order) model_source)
                    ~key:Fun.id ~cmp:Int.compare ~mount:(pane model_source send))
                 (* One keyed source owns both direct panes. The second static
@@ -221,7 +215,6 @@ let view _context model_source send =
             ; status "navigation-second-model" (fun model -> "Second model " ^ model.second_draft)
             ; control "navigation-pixel-180" "Set first pane 180" Set_pixels
             ; split ~label:"Pixel layout" ~width:609 ~height:80 ~gap:9
-                ~resize_handle_width:9 ~resize_handle_offset:0.
                 ~accessibility_identifier:"navigation-pixel-split"
                 ~first_width:(reactive (fun model -> model.pixels) model_source)
                 ~on_resize:(value_changed send (fun value -> Pixel_request value))

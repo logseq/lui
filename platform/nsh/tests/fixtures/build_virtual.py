@@ -74,7 +74,7 @@ def build_fixture(fixture, *, version=None):
         if target == "Linux":
             command += ["-ldl", "-lm"]
         execute(command, cwd=output, stdout=sys.stderr)
-    if fixture in ("image", "tabs", "navigation"):
+    if fixture in ("image", "tabs", "navigation", "picker"):
         execute(["node", ROOT / "tooling/lui_build_receipt.mjs", "write",
                  "--root", ROOT, "--artifact", library,
                  "--command", f"{'python' if target == 'Windows' else 'python3'} platform/nsh/tests/fixtures/build_virtual.py --fixture {fixture}",
@@ -88,7 +88,7 @@ def build_fixture(fixture, *, version=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fixture", choices=("virtual", "clock", "upgrade", "image", "tabs", "navigation"), default="virtual")
+    parser.add_argument("--fixture", choices=("virtual", "clock", "upgrade", "image", "tabs", "navigation", "picker"), default="virtual")
     parser.add_argument("--version", choices=("1.0.0", "2.0.0"))
     args = parser.parse_args()
     library = build_fixture(args.fixture, version=args.version)
