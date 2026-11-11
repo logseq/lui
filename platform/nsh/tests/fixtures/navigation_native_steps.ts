@@ -86,14 +86,14 @@ export async function qualifyNavigation(app: App) {
   // Selected fill and the clock -> check-circle glyph update require reviewing
   // these real light/dark screenshots; model status alone does not prove pixels.
   await app.setColorScheme("light");
-  await app.screenshot("_build/nsh/navigation-native/activity-light.png");
+  await app.screenshot("_build/nsh/navigation-qualification/activity-light.png");
   await app.setColorScheme("dark");
-  await app.screenshot("_build/nsh/navigation-native/activity-dark.png");
+  await app.screenshot("_build/nsh/navigation-qualification/activity-dark.png");
   await app.scroll("id:navigation-scroll", -10000);
   await app.setColorScheme("light");
-  await app.screenshot("_build/nsh/navigation-native/navigation-light.png");
+  await app.screenshot("_build/nsh/navigation-qualification/navigation-light.png");
   await app.setColorScheme("dark");
-  await app.screenshot("_build/nsh/navigation-native/navigation-dark.png");
+  await app.screenshot("_build/nsh/navigation-qualification/navigation-dark.png");
 
   // Equal panels own their user sizes, even when the model does not echo them.
   const equalState = () => {
@@ -172,7 +172,7 @@ export async function qualifyNavigation(app: App) {
   near(pixels.last, 240, 1, "Native geometry starts from the programmed width");
   await app.scroll("id:navigation-scroll", 10000);
   await app.setColorScheme("light");
-  await app.screenshot("_build/nsh/navigation-native/split-light.png");
+  await app.screenshot("_build/nsh/navigation-qualification/split-light.png");
   await app.setColorScheme("dark");
-  await app.screenshot("_build/nsh/navigation-native/split-dark.png");
+  await app.screenshot("_build/nsh/navigation-qualification/split-dark.png");
 }

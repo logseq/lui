@@ -76,7 +76,7 @@ let view _context model_source send =
     ; status "fit-compact-model" (fun model -> "Compact model " ^ model.compact_draft)
     ; status "fit-after-actions" (fun model -> Printf.sprintf "After actions %d" model.after_actions)
     ; edge_inset ~key:"journal-feedback" ~edge:`top ~height:430 ~gap:0
-        ~background:"bar" ~visible:(reactive (fun model -> model.visible) model_source)
+        ~background:"muted" ~visible:(reactive (fun model -> model.visible) model_source)
         [ column ~padding:8 ~gap:8
             [ text ~value:"Main body stays visible" []
             ; text_field ~label:"Main draft" ~accessibility_identifier:"fit-main-editor"

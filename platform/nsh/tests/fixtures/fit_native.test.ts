@@ -12,9 +12,9 @@ test("retained native fitting, keyboard visibility and Journal feedback", async 
   };
   const snapshot = async (name: string) => {
     await app.setColorScheme("light");
-    await app.screenshot("_build/nsh/fit-native/" + name + "-light.png");
+    await app.screenshot("_build/nsh/fit-qualification/" + name + "-light.png");
     await app.setColorScheme("dark");
-    await app.screenshot("_build/nsh/fit-native/" + name + "-dark.png");
+    await app.screenshot("_build/nsh/fit-qualification/" + name + "-dark.png");
   };
 
   await app.waitFor("ViewThatFits native qualification");
@@ -54,9 +54,9 @@ test("retained native fitting, keyboard visibility and Journal feedback", async 
     mainDraft.replace("z", "") === mainBeforeResize, "Unchanged Main keeps native focus through selection");
   check(app.count("label:Wide feedback draft") === 0, "The wider candidate is hidden after shrinking");
 
-  // Enter the selected candidate through actual Tab traversal. The source-first
-  // wide editor is hidden and must not consume the hardware character.
-  await app.keyboard.press("tab");
+  // AppKit's spatial key-view loop places the pinned feedback above Main.
+  // Traverse backward into it; the hidden wide editor must not consume input.
+  await app.keyboard.press("shift+tab");
   await app.keyboard.press("q");
   await app.waitFor("text:/^Compact model .*q/");
   await app.type("label:Compact feedback draft", " +compact");

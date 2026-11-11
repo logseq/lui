@@ -1032,16 +1032,15 @@ impl Renderer {
                 .key(key.clone())
                 .test_id(&identifier)
                 .into_element(),
-            "root" | "row" | "column" | "box" | "panel" | "card" | "spacer" | "dropdown-menu" | "context-menu" => {
-                native_events
-                    .attach(view())
-                    .state_inline_style(style)
-                    .child(body)
-                    .element_ref(&reference)
-                    .key(key.clone())
-                    .test_id(&identifier)
-                    .into_element()
-            }
+            "root" | "row" | "column" | "box" | "panel" | "card" | "spacer" | "dropdown-menu"
+            | "context-menu" => native_events
+                .attach(view())
+                .state_inline_style(style)
+                .child(body)
+                .element_ref(&reference)
+                .key(key.clone())
+                .test_id(&identifier)
+                .into_element(),
             kind => unreachable!("unvalidated NSH component {kind}"),
         };
         // Identity belongs to the actual layout participant.

@@ -1,7 +1,7 @@
 //! Context-menu parts share the existing scoped popup tokens.
 use crate::style::ThemeView;
 use nsh_core::{
-    element::{ComponentElement, StyleRefinement},
+    element::{ComponentElement, Style, StyleRefinement},
     prelude::*,
 };
 use std::{rc::Rc, sync::Arc};

@@ -66,6 +66,9 @@ fn local_path(path: &str) -> Result<PathBuf, String> {
         return Ok(literal.into());
     }
     if let Ok(url) = url::Url::parse(path) {
+        if url.scheme() != "file" {
+            return Err("NSH FileImage accepts only local file paths or file URLs".into());
+        }
         return url
             .to_file_path()
             .map_err(|_| "NSH FileImage accepts only local file paths or file URLs".into());

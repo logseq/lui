@@ -14,7 +14,7 @@ PLATFORM_EXCEPTIONS = {
     "swipe-actions": "Mobile action-reveal container; explicitly excluded from NSH desktop scope by the user on 2026-11-12.",
     "swipe-action": "Mobile action metadata; keep maintained mobile APIs, use desktop commands or ContextMenu on NSH.",
 }
-SOURCE_NAMES = ["render.rs", "controls.rs", "style.rs", "virtual_rows.rs", "app.rs", "ui/mod.rs", "ui/controls.rs", "events.rs", "ui/icons.rs", "controls/basic.rs", "controls/collections.rs", "controls/surfaces.rs", "controls/navigation.rs", "images.rs", "headings.rs", "inputs.rs", "file_picker.rs", "media.rs", "controls/toasts.rs", "controls/tree.rs", "controls/surfaces/native_split.rs", "controls/fit.rs"]
+SOURCE_NAMES = ["render.rs", "controls.rs", "style.rs", "virtual_rows.rs", "app.rs", "ui/mod.rs", "ui/controls.rs", "events.rs", "ui/icons.rs", "controls/basic.rs", "controls/collections.rs", "controls/surfaces.rs", "controls/navigation.rs", "images.rs", "headings.rs", "inputs.rs", "file_picker.rs", "media.rs", "controls/toasts.rs", "controls/tree.rs", "controls/surfaces/native_split.rs", "controls/fit.rs", "context_menu.rs", "ui/context_menu.rs", "images/file_image.rs", "images/file_image/macos.rs", "images/file_image/linux.rs", "images/file_image/windows.rs"]
 ROUTES = {
     "root": "core view", "row": "core view + flex direction", "column": "core view",
     "box": "core view", "panel": "core view", "card": "core view", "spacer": "core view + grow/shrink",
@@ -67,6 +67,8 @@ ROUTES.update({
     "timeline-item": "interactive core host + themed marker/content/connector",
     "split": "base ResizablePanelGroup + keyed native ResizablePanel sizes and completed resize events",
     "view-that-fits": "retained native intrinsic layout + ordered fitting and inherited visibility",
+    "context-menu": "native Menu for Button primary attachment; native ContextMenu for ListItem secondary attachment",
+    "file-image": "retained core Image + native bounded local thumbnail in existing decode pool",
     "file-picker": "native pick_paths/OpenDialog + owner-scoped request task",
     "media-surface": "core Video + native URL playback and controls",
     "toast": "base Toast/ToastStack/ToastManager + one owner-scoped deadline",
@@ -82,12 +84,14 @@ HOST_EVENT_KINDS = {
     "stack", "overlay", "alert", "bubble", "icon", "status-bar", "table-row",
     "table-cell", "list-section", "list-section-header", "list-section-footer",
     "drawer", "resizable", "edge-inset", "bottom-tabs", "breadcrumb", "pagination",
-    "stepper", "step", "timeline", "timeline-item", "split", "file-picker", "media-surface", "view-that-fits",
+    "stepper", "step", "timeline", "timeline-item", "split", "file-picker", "media-surface", "view-that-fits", "file-image", "context-menu",
 }
 
 # Concrete validator restrictions are distinct from accepted property gaps and
 # qualifications that still require a native operating-system run.
 RESTRICTIONS = {
+    "context-menu": ["Attaches to one retained Button or ListItem; changing attachment mode on the same incarnation requires a new keyed host."],
+    "file-image": ["Local paths or file URLs only; max-pixel-size is 1..4096, default 1024. Encoded input above 64 MiB fails decoding."],
     "file-picker": [
         "Only native files/folders dialogs; photo-library/camera sources and completion leases are rejected.",
         "File filters accept extension groups, not MIME or UTI filters; folders use native folder options.",
@@ -141,6 +145,8 @@ GAPS = {
 }
 
 TESTS = {
+    "context-menu": ['attached_context_layout_matches_plain_size_grow_margins_intrinsics_and_stretch', 'native_context_menu_owns_secondary_keyboard_disabled_items_and_repeated_actions', 'context_menu_item_updates_preserve_native_item_identity_and_the_surrounding_editor', 'context_attachment_changes_roll_back_before_replacing_a_live_trigger_or_editor', 'button_context_attachment_is_a_native_primary_menu_with_keyboard_reopening'],
+    "file-image": ['local_paths_caps_and_file_fit_preserve_the_downstream_contract', 'native_thumbnail_is_bounded_preserves_aspect_and_does_not_upscale', 'unchanged_request_does_not_reload_and_old_path_or_detached_completion_cannot_publish', 'failed_or_pending_replacement_clears_the_previous_file', 'detached_owner_drops_its_pending_completion', 'file_image_live_path_cap_and_fit_keep_native_host_and_reject_atomically'],
     "scroll": ["native_scroll_uses_the_authored_axis_and_keeps_editor_identity_and_draft"],
     "view-that-fits": ['ordered_choice_waits_for_unknown_predecessors_and_uses_last_as_fallback', 'both_axes_switch_without_remounting_or_losing_independent_drafts', 'keyboard_traversal_excludes_unselected_candidates', 'live_candidate_geometry_order_and_outer_visibility_use_retained_nodes'],    'textarea': ['single_line_inputs_keep_native_submit_and_blur_defaults', 'textarea_live_enter_policy_keeps_the_editor_and_native_line_break_rules', 'submit_flag_changes_are_checked_without_replacing_the_textarea', 'unsupported_input_policies_fail_before_any_text_or_identity_is_published', 'native_composition_survives_an_enter_policy_update_until_its_commit'],
     'tree': ['uncontrolled_native_tree_distinguishes_selection_from_double_press_action', 'controlled_values_refuse_then_accept_native_requests_without_custom_state', 'native_cursor_keys_skip_disabled_rows_and_keep_native_default_action', 'native_keys_survive_metadata_updates_and_reorder_while_outside_editor_is_retained', 'arbitrary_body_views_fail_atomically_and_retry_keeps_generation', 'native_tree_virtualizes_a_thousand_metadata_items', 'legacy_pointer_subscriptions_are_refused_before_other_edits_publish'],
@@ -209,7 +215,7 @@ EMITTED = {
     "drawer": {"toggle-changed"}, "list-item": {"press", "toggle-changed"},
     "link": {"press"}, "accordion": {"toggle-changed"}, "bottom-tab": {"press"},
     "dialog": {"dismiss"}, "sheet": {"dismiss"}, "popover": {"dismiss"},
-    "image": {"load"}, "split": {"value-changed"},
+    "image": {"load"}, "context-menu": {"dismiss"}, "split": {"value-changed"},
     "file-picker": {"picked", "dismiss"}, "toast": {"dismiss"},
     "virtual-list": {"visible-range", "scroll-completed", "virtual-window"},
 }

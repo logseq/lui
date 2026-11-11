@@ -1705,6 +1705,7 @@ checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 name = "lui-nsh"
 version = "0.1.0"
 dependencies = [
+ "gdk-pixbuf",
  "libloading",
  "nsh-base",
  "nsh-core",
@@ -1714,10 +1715,17 @@ dependencies = [
  "nsh-platform-windows",
  "nsh-testing",
  "nsh-updater",
+ "objc2",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
+ "objc2-foundation",
+ "objc2-image-io",
  "serde",
  "serde_json",
  "tokio",
  "ureq",
+ "url",
+ "windows",
 ]
 
 [[package]]
