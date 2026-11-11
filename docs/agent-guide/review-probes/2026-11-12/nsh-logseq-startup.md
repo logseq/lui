@@ -3,7 +3,8 @@
 ## Enforced checks
 
 Canonical constructor metadata supplies closed native domains. The NSH display
-and image-fit providers consume generated enums with exhaustive matches. The
+and image-fit providers, frame axes, popup direction and popup alignment consume
+generated enums with exhaustive matches. The
 compiler regression runs the actual provider functions, then adds a canonical
 case and requires Rust E0004. Open CSS strings retain typed parsing and atomic
 preflight; arbitrary dynamic values are not claimed to be statically proven.
@@ -39,7 +40,8 @@ and result publication complete with zero requested frames.
 
 ## Validation and remaining acceptance
 
-- LUI NSH: 225 tests, zero failures or ignored tests; strict all-target Clippy.
+- LUI NSH at `07f59fe8`: 227 tests, zero failures or ignored tests; strict
+  all-target Clippy. Five closed domains reject injected future cases with E0004.
 - NSH tooling: 45 Python tests, including the future-enum compilation proofs.
 - Logseq UI: 5636 checks, zero failures; shared native/Web contracts also pass.
 - Logseq Rust host: 31 library, binary and actual startup tests pass; strict
@@ -51,3 +53,34 @@ It does not complete the migration. The actual `refactor/lui` integration,
 master UX comparison, dark visual review, interactive editor/IME, operating-system
 accessibility, platform performance and packaged signing/update acceptance remain.
 Graph View is excluded; other graph-backed features and assets remain required.
+
+## Canonical CLI and real application packaging
+
+The actual Logseq seven-argument bridge now additionally exports the existing
+optional semantic agent ABI. It forwards through `Lui_agent.app_target` under
+the application entry lock, draining ordered batches before replying. The native
+host uses the same worker and publisher as ordinary events. No second selector
+engine is introduced. A Rust/C fixture verifies UTF-8 request lengths, same-worker
+execution and ordered patch/platform callbacks with the semantic reply.
+
+At LUI `44a3be2c` and Logseq `d5f1887ea3`, the fresh background native process
+answered `hello`, found and pressed the actual left-menu control, then produced
+`_build/nsh/logseq-native/qualified-sidebar-cli.png`. The inspected capture shows
+the Demo sidebar, Journals and the real dated journal body. Neither activation
+nor a display-power operation was used. These actions inspect the semantic tree;
+they do not qualify physical pointer or keyboard input.
+
+The actual macOS `Logseq-NSH-darwin-arm64-2.0.2.zip` was built from the qualified
+host, real OCaml library, DB worker and receipt-owned resources. Relocation and
+ad-hoc bundle signing/verification passed. The archive was extracted outside the
+checkout; the actual App startup gate passed using its packaged library, worker
+and resources. That gate remains Headless: it does not establish native packaged
+window launch, Developer ID distribution, notarization or whole-app updates.
+Five package ownership/freshness/installed-launcher tests and three Windows DLL
+source guard tests passed. No actual Windows application build is claimed.
+
+The native CLI More action exposed another genuine gap: externally anchored menu
+popovers are rejected. The body-only startup gate did not visit that surface.
+The next build gate must exercise real menus as well as the journal body; menu
+support and master parity remain unfinished. Old screenshot and package evidence
+must not be presented as qualification of later source changes.
