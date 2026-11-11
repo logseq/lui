@@ -538,3 +538,33 @@ no NSH runtime/native/package/performance qualification has passed yet.
 - The 39 missing kind routes are assigned across parallel basic/layout,
   collection/navigation and surface/service implementations. Admission alone
   will not be counted as full property/event support. The goal remains active.
+
+2026-11-11 synchronized-main and retained-component checkpoint:
+
+- Published `4bb33bdcc323cbe5cf25f6a649468cccb3d9a163` after synchronizing the
+  authorized NSH fork with upstream main and pinning exact merge `d21573c`.
+  The full local adapter suite passed 126 tests (110 library, 16 integration),
+  strict all-target Clippy, formatting, 36 Python tooling tests, contract and
+  inventory freshness. `make test` passed, including 249 core cases and the
+  full PPX scope/constructor checks. No Dune files were changed.
+- The source inventory admits 77 of 87 kinds after adding Breadcrumb,
+  Pagination, Stepper/Step, Timeline/TimelineItem and controlled Split. Actual
+  Image URL/fit/name/Load and retained BottomTabs pages replace the earlier
+  incomplete routes. Admitted routes still have explicit property/event gaps;
+  ViewThatFits, ContextMenu, MediaSurface, Tree, Toast, SwipeActions/SwipeAction
+  and FilePicker/FileImage/FilePreview remain unimplemented.
+- Real macOS BottomTabs input/keyboard/controlled refusal/reorder/Appear tests
+  passed. Light/dark images were inspected at narrow and desktop widths. Real
+  Image decoding and Todos theme/input checks also passed earlier. Exact tested
+  source/log hashes and limits are in the
+  [component-batch evidence](review-probes/2026-11-11/nsh-component-batch.md).
+  Unicode input is not IME composition or screen-reader qualification.
+- At earlier LUI `21b56f98` with the synchronized pin, macOS Rust, OCaml,
+  packaging and whole-app upgrades passed. Windows Rust and real OCaml DLL
+  integration passed; packaged launch remained pending at the observation.
+  Linux dependency setup failed DNS and two system-package jobs were cancelled;
+  see [terminal CI evidence](review-probes/2026-11-11/ci-linux-dns-21b56f98.md).
+  New-head OS results and production signing remain required.
+- ViewThatFits is used by the downstream Journal production header and is
+  retained. The usage evidence is recorded separately. The migration goal
+  remains active; these checks do not close the unchecked acceptance gates.

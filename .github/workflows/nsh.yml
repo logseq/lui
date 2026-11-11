@@ -77,11 +77,13 @@ jobs:
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install 1.97.0 --profile minimal --component rustfmt,clippy
       - name: Canonical generation freshness
-        run: python3 tooling/generate_nsh_contract.py --check
+        run: |
+          python3 tooling/generate_nsh_contract.py --check
+          python3 tooling/nsh_support_inventory.py --check
       - name: Native tooling and delivery regressions
         run: python3 -m unittest discover -s tooling/test -p 'test_nsh_*.py'
-      - name: Real OCaml input, recovery, clock and bounded rows
-        run: cargo test --locked --manifest-path platform/nsh/Cargo.toml --test ocaml_todos --test runtime_protocol --test ocaml_virtual --test ocaml_clock
+      - name: Real OCaml input, recovery, clock, image Load and bounded rows
+        run: cargo test --locked --manifest-path platform/nsh/Cargo.toml --test ocaml_todos --test runtime_protocol --test ocaml_virtual --test ocaml_clock --test ocaml_image
 
   unix-ocaml-package:
     name: Native package and whole-app upgrade (${{ matrix.os }})
