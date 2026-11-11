@@ -4781,3 +4781,33 @@ payload or default changes. PPX-suite positive probes exercise all retained
 constructor argument families and reactive forms; negative probes require type
 errors for every removed label. Runtime JSON regressions cover rejection before
 mounting and preservation of admitted text/frame/identity/filter properties.
+
+
+### NSH collapsed Text removes glyph advances while retaining logical source
+
+Standard Text presentation under `display=none` now contributes an empty string
+to native attributed text, including when a containing LUI ancestor is collapsed.
+Previously native `visibility:hidden` concealed those glyphs but retained their
+advances, so hidden editor delimiters left space and shifted caret/range geometry.
+The source `text` property, wire node and native Text/span reference remain intact;
+showing the node restores its current source without remounting. A descendant's
+`display=block` cannot escape a collapsed ancestor.
+
+This is a rendering projection in the existing whitespace helper, not an edit to
+Store data or an additional text model. Its existing inherited scope memo now also
+carries the effective display-none bit; unchanged scope values stop propagation,
+and only affected descendant bindings update. No tree scan, native removal,
+polling, independent layout or NSH change is introduced. Editable Input values and
+extension payloads keep their existing source ownership. Native visibility hidden
+continues to reserve glyph space: it is not treated as display-none. Existing
+native hidden state continues to govern accessibility and interaction.
+
+For example, a line containing nested `L`, `[**]`, `R` Text spans draws `LR` when
+the middle span is collapsed, and restores `L[**]R` with the same native identities
+when shown. A nested delimiter collapsed on its own produces `L[]R`; the original
+`**` remains in the logical source throughout. Native text measurement, selection
+ranges and caret positions use the rendered UTF-16 string, while editor run/source
+spans remain logical offsets. Consumers translating byte/source offsets must keep
+using their real run-to-span mapping; this projection does not implement a Logseq
+geometry service or qualify native IME behavior. Maintained Apple/iOS, Android and
+Web backends and the wire protocol are unchanged.

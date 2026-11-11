@@ -1,7 +1,7 @@
 //! Canonical whitespace policy over NSH's inherited native NoWrap text property.
 //! Text normalization is presentation-only; editable values and extension payloads
 //! remain owned by their existing controllers.
-use crate::store::Node;
+use crate::{contract::DisplayValue, store::Node};
 use nsh_core::prelude::*;
 use std::sync::Arc;
 
@@ -55,17 +55,42 @@ fn authored(node: &Node) -> Result<Option<WhiteSpace>, String> {
 pub(crate) fn validate(node: &Node) -> Result<(), String> {
     authored(node).map(|_| ())
 }
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+struct Inherited {
+    whitespace: Option<WhiteSpace>,
+    display_none: bool,
+}
 #[derive(Clone, Copy)]
-struct Scope(Memo<Option<WhiteSpace>>);
+struct Scope(Memo<Inherited>);
+
+fn display_none(node: &Node) -> bool {
+    node.props.get("display").is_some_and(|value| {
+        let display = DisplayValue::try_from(value.as_str().expect("validated display string"))
+            .expect("validated canonical display");
+        match display {
+            DisplayValue::None => true,
+            DisplayValue::Block
+            | DisplayValue::Contents
+            | DisplayValue::Inline
+            | DisplayValue::InlineBlock
+            | DisplayValue::InlineFlex => false,
+        }
+    })
+}
 
 /// The memo only notifies descendants when the effective policy changes; an
 /// unrelated parent property edit does not re-normalize its children's strings.
 pub(crate) fn enter(node: Signal<Arc<Node>>) {
     let parent = use_context::<Scope>();
     let policy = computed(move || {
-        authored(&node.get())
-            .expect("validated whitespace policy")
-            .or_else(|| parent.and_then(|parent| parent.0.get()))
+        let node = node.get();
+        let parent = parent.map_or_else(Inherited::default, |parent| parent.0.get());
+        Inherited {
+            whitespace: authored(&node)
+                .expect("validated whitespace policy")
+                .or(parent.whitespace),
+            display_none: parent.display_none || display_none(&node),
+        }
     });
     provide_context(Scope(policy));
 }
@@ -79,7 +104,7 @@ pub(crate) fn bind<E: Element>(
         let node = node.get();
         let policy = authored(&node)
             .expect("validated whitespace policy")
-            .or_else(|| inherited.and_then(|scope| scope.0.get()));
+            .or_else(|| inherited.and_then(|scope| scope.0.get().whitespace));
         let foreground = theme.and_then(|theme| {
             crate::style::foreground_classes(&node, &theme.get())
                 .expect("atomically validated foreground inheritance")
@@ -99,9 +124,15 @@ pub(crate) fn bind<E: Element>(
 pub(crate) fn property(node: Signal<Arc<Node>>, name: &str) -> SharedString {
     let inherited = use_context::<Scope>();
     let node = node.get();
+    // Native visibility hides glyphs but keeps their advances. CSS display:none
+    // instead contributes no rendered characters, including under a collapsed
+    // ancestor. Keep the source property and native span identity untouched.
+    if display_none(&node) || inherited.is_some_and(|scope| scope.0.get().display_none) {
+        return "".into();
+    }
     let policy = authored(&node)
         .expect("validated whitespace policy")
-        .or_else(|| inherited.and_then(|scope| scope.0.get()));
+        .or_else(|| inherited.and_then(|scope| scope.0.get().whitespace));
     let text = node.string(name);
     match policy {
         Some(policy) => policy.text(text).into(),
@@ -324,3 +355,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod collapsed_tests;
