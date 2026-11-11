@@ -2,6 +2,7 @@
 pub(crate) mod context_menu;
 pub(crate) mod controls;
 mod icons;
+pub(crate) mod menu_item;
 
 use crate::style::ThemeView;
 use nsh_core::{

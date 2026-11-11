@@ -3910,3 +3910,46 @@ color/time modes remain separate unresolved requirements. The native focused
 regressions cover callback count/order, policy/flag changes, atomic refusal,
 editor retention, composition events and replacement; Headless composition
 checks do not qualify an operating-system IME.
+
+### NSH MenuItem presentation parameters
+
+NSH MenuItem now forwards inline icons, selection-marker placement, control size,
+variants and `shortcut_hint`/wire `tooltip-keys` through native MenuItem parts.
+Native MenuItem still owns checked accessibility state, disabled-item traversal,
+activation, focus and closing. `selected`/`checked` remains controlled: selection
+reports the existing Press callback and does not change the source value itself.
+
+```ocaml
+menu_item ~text:"Delete" ~icon:(`app "trash") ~variant:`destructive
+  ~shortcut_hint:"⌘ Backspace" ~on_press:(fun _ -> delete ()) [];
+menu_item ~text:"Enable feature" ~checked_signal:enabled
+  ~selection_placement:`leading ~on_press:(fun _ -> toggle ()) []
+```
+
+The default check position is trailing, matching the existing Web presentation;
+explicit `leading` places it before the icon/content, and `top` places it above
+that content. A present false selection reserves its native check part without
+drawing the mark. Removing selection removes that part from layout; restoring
+it, changing placement or replacing an icon keeps the same retained native
+MenuItem and authored children. Icons use the existing shared SVG lookup and its
+missing-icon fallback. MenuItem has no canonical `icon_placement` parameter;
+icons remain leading, and unsupported raw `icon-placement` is still rejected by
+the common wire contract.
+
+Sizes reuse the desktop command theme: `sm` has a 24pt minimum row and a 14pt
+glyph, default has a 32pt minimum and a 16pt glyph, `lg` has a 40pt minimum and a
+20pt glyph, and `icon` uses a 32pt square with a 16pt glyph. This adopts the
+existing NSH command typography rather than Apple's menu-specific icon scale.
+Authored size, font, foreground, padding and state styles keep precedence over
+these defaults. Destructive actions use the scoped destructive foreground;
+primary/secondary/outline variants reuse their scoped command colors, and
+other/default variants keep ordinary menu styling.
+
+`shortcut_hint` is retained trailing text in the item's native content, with no
+additional shortcut registration or accelerator controller. Clearing and
+restoring the hint updates the same text host. These bindings apply both inside
+native menus and to canonical MenuItems hosted in authored popup content.
+Source regressions cover live icon/check/hint/size/variant changes, authored
+foreground/font precedence, part removal/restoration, child/editor identity and
+native disabled traversal with controlled selection. Real native appearance
+and keyboard qualification remain separate gates.

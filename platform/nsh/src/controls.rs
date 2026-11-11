@@ -502,13 +502,7 @@ fn command_content(
                     move || {
                         ui::icon(
                             move || SharedString::from(node.get().string("icon").to_owned()),
-                            move || {
-                                px(match node.get().string("size") {
-                                    "sm" => 14.0,
-                                    "lg" => 20.0,
-                                    _ => 16.0,
-                                })
-                            },
+                            move || ui::controls::command_icon_extent(node.get().string("size")),
                         )
                     },
                 )
@@ -768,12 +762,32 @@ pub(crate) fn element(
                 ..Default::default()
             };
             presentation.component(
-                ui::controls::menu_item(props, theme)
-                    .on_event(move |_: &nsh_base::MenuItemEvent| {
-                        emit_flag(node, "press-enabled", &emit, Event::Press(id))
-                    })
-                    .child(text(move || node.get().string("text").to_owned()))
-                    .child(children),
+                ui::menu_item::element(
+                    props,
+                    theme,
+                    ui::menu_item::Appearance {
+                        variant: Prop::bind(move || node.get().string("variant").to_owned().into()),
+                        size: Prop::bind(move || node.get().string("size").to_owned().into()),
+                        selection_placement: Prop::bind(move || {
+                            node.get().string("selection-placement").to_owned().into()
+                        }),
+                        icon: Prop::bind(move || node.get().string("icon").to_owned().into()),
+                        text: Prop::bind(move || node.get().string("text").to_owned().into()),
+                        shortcut: Prop::bind(move || {
+                            node.get().string("tooltip-keys").to_owned().into()
+                        }),
+                        content_style: Rc::new(move || {
+                            Style::from_decls(
+                                crate::style::content_layout(&node.get(), &theme.get())
+                                    .expect("validated menu-item content layout"),
+                            )
+                        }),
+                    },
+                    children,
+                )
+                .on_event(move |_: &nsh_base::MenuItemEvent| {
+                    emit_flag(node, "press-enabled", &emit, Event::Press(id))
+                }),
             )
         }
         "dialog" => {

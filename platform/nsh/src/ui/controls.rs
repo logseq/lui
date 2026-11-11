@@ -199,16 +199,6 @@ pub fn tab(props: nsh_base::TabProps, theme: Theme) -> ComponentElement<nsh_base
         .selected(|s| s.text_color(move || color(theme, "primary")))
 }
 
-pub fn menu_item(
-    props: nsh_base::MenuItemProps,
-    theme: Theme,
-) -> ComponentElement<nsh_base::MenuItem> {
-    choice(nsh_base::MenuItem::element(props), theme)
-        .px_3()
-        .py_1()
-        .rounded(move || radius(theme))
-}
-
 pub fn panel(theme: Theme) -> View {
     view()
         .p_4()
@@ -350,6 +340,15 @@ pub(crate) fn command_appearance<C: Component>(
                 });
             styled.style().clone()
         })
+}
+
+/// Shared SVG extent for command and menu-item presentation.
+pub(crate) fn command_icon_extent(size: &str) -> Points {
+    px(match size {
+        "sm" => 14.0,
+        "lg" => 20.0,
+        _ => 16.0,
+    })
 }
 
 /// Shared native command geometry, also used by an attached context menu's
