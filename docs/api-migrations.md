@@ -4515,3 +4515,18 @@ instead of below its full-height content. The mounted app and its retained
 native identities remain in place; rejected patches and snapshots still fail
 atomic validation. Downstream startup gates can use the same test ID and will
 now observe the original cause within the viewport.
+
+### NSH CSS shadows distinguish explicit colors from currentColor
+
+CSS shadow layers that name concrete colors now use the native typed shadow
+path in both base and state paint. For example,
+`~shadow:"0 1px 3px rgba(0, 0, 0, 0.1)"` and
+`~hover_shadow:"0 2px 4px #123456"` retain their native state precedence. The
+adapter previously misinterpreted NSH's `has_color` parser flag as a
+`currentColor` flag, rejecting the explicitly colored layers.
+
+A layer with no color, an explicit `currentColor`, or a mixture that includes
+an uncolored layer still fails validation before publication. These require a
+faithful live foreground projection; they are not replaced with black or a
+snapshot of an ancestor color. Name each layer's intended color when migrating
+until that separate capability is available. Preset shadows remain unchanged.

@@ -1472,6 +1472,47 @@ mod tests {
     }
 
     #[test]
+    fn explicit_css_shadow_layers_keep_native_base_and_hover_ranks() {
+        let base = "0 1px 3px rgba(0, 0, 0, 0.1), inset 0 0 0 1px #123456";
+        let hovered = "0 2px 4px #654321";
+        let layers = |value: &str| {
+            let PropertyValue::Shadows(layers) = StyleKey::BoxShadow
+                .parse_value(StyleValue::Str(value))
+                .unwrap()
+            else {
+                panic!("explicit colors must produce native shadow layers");
+            };
+            assert!(layers.iter().all(|(_, has_color)| *has_color));
+            layers.iter().map(|(layer, _)| *layer).collect::<Vec<_>>()
+        };
+        let source = node("box", json!({"shadow":base,"hover-shadow":hovered}));
+        let (_, native) = compile_parts(&source, &theme(), viewport()).unwrap();
+        let mut expected = view()
+            .shadow(layers(base))
+            .hover(|style| style.shadow(layers(hovered)));
+        assert_eq!(native, Style::from(expected.style().clone()));
+    }
+
+    #[test]
+    fn inherited_css_shadows_remain_explicitly_unsupported() {
+        for property in ["shadow", "hover-shadow"] {
+            for value in [
+                "0 1px 3px",
+                "0 1px 3px currentColor",
+                "0 1px 3px #123456, inset 0 0 0 1px",
+            ] {
+                let mut props = serde_json::Map::new();
+                props.insert(property.into(), json!(value));
+                let error = compile_props(Value::Object(props)).unwrap_err();
+                assert!(
+                    error.contains("currentColor"),
+                    "{property}: {value}: {error}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn native_font_size_units_are_explicit_and_never_guess_a_parent_metric() {
         for (text, expected) in [
             ("18", PropertyValue::OptPoints(Some(px(18.0)))),
