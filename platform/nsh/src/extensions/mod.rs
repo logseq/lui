@@ -6,7 +6,7 @@ pub(crate) mod schema;
 use crate::store::{Node, Store};
 pub use host::{ExtensionChildren, ExtensionContext, ExtensionEmitter, TweakTarget};
 use nsh_core::prelude::*;
-use schema::{Contract, Contracts, NodeValidator};
+use schema::{Contract, Contracts, NodeValidator, ThemedValidator};
 pub use schema::{EventField, EventSchema, ExtensionKind, Profile, Property, ScalarKind, Schema};
 use std::{collections::BTreeMap, rc::Rc, sync::Arc};
 
@@ -16,6 +16,18 @@ type Modifier = Rc<dyn Fn(ExtensionContext, TweakTarget) -> AnyElement>;
 pub(crate) enum Implementation {
     Component(Factory),
     Tweak(Modifier),
+}
+
+/// Read-only scoped token resolution during atomic native-style preflight.
+/// The borrowed resolver cannot outlive the transaction or construct native views.
+pub struct ExtensionStyle<'a>(pub(crate) &'a crate::style::ThemeView);
+impl ExtensionStyle<'_> {
+    pub fn color(&self, expression: &str) -> Result<AdaptiveColor, String> {
+        self.0.color(expression)
+    }
+    pub fn resolve_text(&self, expression: &str) -> Result<String, String> {
+        self.0.text(expression)
+    }
 }
 
 /// Immutable registrations supplied with `provide_context` above `Desktop`.
@@ -80,6 +92,7 @@ impl ExtensionBuilder {
             Contract {
                 schema,
                 validate: None,
+                validate_themed: None,
             },
         );
         Ok(())
@@ -95,6 +108,23 @@ impl ExtensionBuilder {
             .get_mut(identifier)
             .ok_or("validator requires an existing registration")?;
         entry.validate = Some(Arc::new(validate) as NodeValidator);
+        Ok(self)
+    }
+    /// Validates final authored styles against the real inherited theme before publication.
+    /// Called only for affected nodes, and again before a theme refresh is committed.
+    pub fn validate_themed(
+        mut self,
+        identifier: &str,
+        validate: impl for<'a> Fn(&Node, &ExtensionStyle<'a>) -> Result<(), String>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Result<Self, String> {
+        let entry = self
+            .contracts
+            .get_mut(identifier)
+            .ok_or("themed validator requires an existing registration")?;
+        entry.validate_themed = Some(Arc::new(validate) as ThemedValidator);
         Ok(self)
     }
     pub fn freeze(self, profile: Profile) -> Result<Extensions, String> {

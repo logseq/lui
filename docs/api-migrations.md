@@ -4273,3 +4273,13 @@ from the registry host's retained-root ref. `Renderer::native_reference` prefers
 the actual attached factory ref, otherwise the host root; a region cannot
 silently overwrite the editor's native focus/measurement target. Ordinary
 standard components allocate no additional factory reference.
+
+`ExtensionBuilder::validate_themed` adds pure native-style preflight against the
+actual inherited `ExtensionStyle` resolver (`color` and `resolve_text`). The host
+runs it on final affected nodes before committing a patch/snapshot, and before
+publishing a theme refresh. Invalid resolved values preserve the previous native
+tree and styles. Validation callbacks borrow immutable theme data; they must not
+construct native views or mutate the application. Property-only edits validate
+only affected entries, and registrations without themed checks keep the existing
+path. Application adapters should compile authored variable expressions here;
+substituting arbitrary paint placeholders for layout variables is invalid.

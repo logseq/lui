@@ -219,10 +219,15 @@ impl Renderer {
             let previous_root = state.store.root();
             let viewport = state.viewport.get_untracked();
             let base = state.base_theme.clone();
+            let extensions = state
+                .extensions
+                .as_ref()
+                .map(|registry| registry.contracts.clone());
             let State { store, nodes, .. } = &mut *state;
             let themes = RefCell::new(BTreeMap::new());
             let inspect = |transaction: &Transaction<'_>| {
-                *themes.borrow_mut() = validate_themes(transaction, nodes, &base, viewport)?;
+                *themes.borrow_mut() =
+                    validate_themes(transaction, nodes, &base, viewport, extensions.as_deref())?;
                 Ok(())
             };
             let changes = if snapshot {
@@ -516,6 +521,9 @@ impl Renderer {
                     &mut resolved,
                     |_| None,
                 )?;
+                if let Some(extensions) = &state.extensions {
+                    extensions.contracts.validate_themed(node, &theme)?;
+                }
                 if node.extension.is_none() {
                     crate::ui::checkbox::validate(node, &theme)?;
                     style::compile(node, &theme, viewport)?;
@@ -1413,6 +1421,7 @@ fn validate_themes(
     entries: &BTreeMap<u64, Entry>,
     base: &Arc<ThemeView>,
     viewport: Size<Points>,
+    extensions: Option<&crate::extensions::schema::Contracts>,
 ) -> Result<BTreeMap<u64, Arc<ThemeView>>, String> {
     let mut invalid = BTreeSet::new();
     let mut pending = Vec::new();
@@ -1501,6 +1510,9 @@ fn validate_themes(
             (!invalid.contains(&id) && node.incarnation == entry.node.get_untracked().incarnation)
                 .then(|| entry.theme.get_untracked())
         })?;
+        if let Some(extensions) = extensions {
+            extensions.validate_themed(node, &theme)?;
+        }
         if node.extension.is_none() {
             crate::ui::checkbox::validate(node, &theme)?;
             style::compile(node, &theme, viewport)?;

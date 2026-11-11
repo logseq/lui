@@ -239,9 +239,12 @@ fn valid_name(name: &str) -> bool {
 }
 
 pub(crate) type NodeValidator = Arc<dyn Fn(&Node) -> Result<(), String> + Send + Sync>;
+pub(crate) type ThemedValidator =
+    Arc<dyn for<'a> Fn(&Node, &super::ExtensionStyle<'a>) -> Result<(), String> + Send + Sync>;
 pub(crate) struct Contract {
     pub schema: Schema,
     pub validate: Option<NodeValidator>,
+    pub validate_themed: Option<ThemedValidator>,
 }
 pub(crate) struct Contracts {
     pub profile: Profile,
@@ -259,6 +262,18 @@ impl Contracts {
         self.entries
             .get(identifier)
             .ok_or_else(|| format!("unregistered NSH extension {identifier}"))
+    }
+    pub(crate) fn validate_themed(
+        &self,
+        node: &Node,
+        theme: &crate::style::ThemeView,
+    ) -> Result<(), String> {
+        if let Some(extension) = &node.extension
+            && let Some(validate) = &self.get(&extension.identifier)?.validate_themed
+        {
+            validate(node, &super::ExtensionStyle(theme))?;
+        }
+        Ok(())
     }
     pub(crate) fn create(&self, identifier: &str, fingerprint: &str) -> Result<&Schema, String> {
         let schema = &self.get(identifier)?.schema;
