@@ -4392,3 +4392,10 @@ CSS strings are statically safe. Backend-specific PPX literal checks and a
 checked typed metric API require a separately wired build profile; an unused
 PPX option would not qualify as an enforced gate. Dynamic theme/style strings
 continue through existing atomic preflight before native publication.
+
+The same closed-domain compilation also covers `contract::ImageFitValue`.
+`fit` maps to native contain and `fill` maps to native cover through an exhaustive
+match. Missing fit still stretches ordinary Image and contains FileImage;
+authored invalid values fail preflight rather than taking those missing-value
+defaults. New canonical fit variants require an explicit Rust provider decision.
+No image constructor or downstream migration is required.

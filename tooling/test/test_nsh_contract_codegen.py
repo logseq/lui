@@ -54,22 +54,32 @@ class NSHContractCompilerTest(unittest.TestCase):
         self.assertEqual(scalar_types(schema, contract), {"future-range": ["float"]})
 
     def test_closed_domain_generation_requires_complete_canonical_metadata(self):
-        for domains in ({}, {"display": []}, {"display": ["none", "none"]}, {"display": ["inline_block"]}, {"display": [[]]}):
-            with self.subTest(domains=domains), self.assertRaises(ValueError):
-                compile_closed_domains(domains)
+        valid = {"display": ["none"], "image-fit": ["fit", "fill"]}
+        for name in valid:
+            for values in (None, [], ["none", "none"], ["inline_block"], [[]]):
+                domains = {**valid, name: values}
+                if values is None:
+                    del domains[name]
+                with self.subTest(property=name, values=values), self.assertRaises(ValueError):
+                    compile_closed_domains(domains)
 
-    def test_generated_display_roundtrips_and_new_case_breaks_actual_provider_compilation(self):
+    def test_generated_domains_roundtrip_and_new_cases_break_actual_provider_compilation(self):
         root = TOOLING.parent
         metadata = json.loads((root / "platform/nsh/contract.json").read_text())
         domains = metadata["closedDomains"]
         source = (root / "platform/nsh/src/style.rs").read_text()
         start = source.index("fn display_value(")
         provider = source[start:source.index("\nfn compile_parts(", start)]
+        image_source = (root / "platform/nsh/src/images.rs").read_text()
+        image_start = image_source.index("fn fit_value(")
+        provider += image_source[image_start:image_source.index("\npub(crate) fn fit(", image_start)]
         # Compile the actual provider match, with minimal stand-ins for its
         # external parse types. This proves exhaustiveness, not NSH layout.
         standins = r'''
 struct Value(String);
 impl Value { fn as_str(&self) -> Option<&str> { Some(&self.0) } }
+#[derive(Debug, PartialEq)]
+enum ResizeMode { Contain, Cover }
 type PropertyValue = String;
 enum StyleKey { Display }
 enum StyleValue<'a> { Str(&'a str) }
@@ -88,6 +98,12 @@ fn main() {
     for value in DisplayValue::ALL {
         assert_eq!(DisplayValue::try_from(value.as_str()), Ok(*value));
     }
+    for value in ImageFitValue::ALL {
+        assert_eq!(ImageFitValue::try_from(value.as_str()), Ok(*value));
+    }
+    assert_eq!(fit_value(ImageFitValue::Fit), ResizeMode::Contain);
+    assert_eq!(fit_value(ImageFitValue::Fill), ResizeMode::Cover);
+    assert!(ImageFitValue::try_from("not-canonical").is_err());
     assert!(DisplayValue::try_from("not-canonical").is_err());
     assert_eq!(display_value(&Value("none".into())).unwrap(), "none");
     assert_eq!(display_value(&Value("block".into())).unwrap(), "block");
@@ -108,11 +124,13 @@ fn main() {
             positive = compile_probe(domains)
             self.assertEqual(positive.returncode, 0, positive.stderr)
             subprocess.run([str(binary)], check=True)
-            expanded = {**domains, "display": [*domains["display"], "future-provider-test"]}
-            negative = compile_probe(expanded)
-            self.assertNotEqual(negative.returncode, 0, "a new case bypassed provider exhaustiveness")
-            self.assertIn("E0004", negative.stderr)
-            self.assertIn("FutureProviderTest", negative.stderr)
+            for property_name in ("display", "image-fit"):
+                with self.subTest(property=property_name):
+                    expanded = {**domains, property_name: [*domains[property_name], "future-provider-test"]}
+                    negative = compile_probe(expanded)
+                    self.assertNotEqual(negative.returncode, 0, "a new case bypassed provider exhaustiveness")
+                    self.assertIn("E0004", negative.stderr)
+                    self.assertIn("FutureProviderTest", negative.stderr)
 
     def test_freshness_checks_all_artifact_bytes_with_unchanged_source_hashes(self):
         with tempfile.TemporaryDirectory(prefix="lui-contract-freshness-") as directory:
@@ -122,7 +140,7 @@ fn main() {
             outputs = [root / "contract.json", root / "contract_generated.rs", root / "fixtures/oracle.json"]
             exported = {
                 "version": 1,
-                "closedDomains": {"display": ["none"]},
+                "closedDomains": {"display": ["none"], "image-fit": ["fit", "fill"]},
                 "validators": {
                     "is_finite": {"constructor": "true"},
                     "property_value_supported": {

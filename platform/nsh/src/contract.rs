@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 #[path = "contract_generated.rs"]
 mod generated;
 
-pub use generated::DisplayValue;
+pub use generated::{DisplayValue, ImageFitValue};
 
 /// Generated metadata contains no validator AST or oracle fixtures.
 pub static CONTRACT: LazyLock<Value> = LazyLock::new(|| {
