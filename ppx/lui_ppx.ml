@@ -288,10 +288,21 @@ class mapper =
           let body = Fun.protect (fun () -> self#expression body)
             ~finally:(fun () -> bound := previous) in
           { expr with pexp_desc = Pexp_open (opened, body) }
-      | Pexp_fun (label, default, pattern, body) ->
-          let default = Option.map (self#expression) default in
-          let body = with_bound (pattern_names pattern) (fun () -> self#expression body) in
-          { expr with pexp_desc = Pexp_fun (label, default, pattern, body) }
+      | Pexp_function (parameters, constraint_, body) ->
+          let previous = !bound in
+          Fun.protect (fun () ->
+            let parameters = List.map (fun parameter ->
+              (* Defaults see earlier parameters, not their own binding. *)
+              let parameter = super#function_param parameter in
+              (match parameter.pparam_desc with
+              | Pparam_val (_, _, pattern) ->
+                  bound := Bound_names.union !bound (pattern_names pattern)
+              | Pparam_newtype _ -> ());
+              parameter) parameters in
+            let constraint_ = Option.map (self#type_constraint) constraint_ in
+            let body = self#function_body body in
+            { expr with pexp_desc = Pexp_function (parameters, constraint_, body) })
+            ~finally:(fun () -> bound := previous)
       | Pexp_apply (fn, args)
         when is_reactive_ident fn && dyn_supported args ->
           (* bare `reactive` at expression position: dyn over the signal *)

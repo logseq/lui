@@ -87,6 +87,8 @@ test("PPX nesting diagnostics reject static illegal edges without guessing opaqu
       ['column [button ~text:(reactive string_of_bool source) []]'],
       ['let radio ~text_signal:_ _ = button [] in column [radio ~text:(reactive string_of_bool source) []]'],
       ['(fun radio -> column [radio ~text:(reactive string_of_bool source) []]) (fun ~text_signal:_ _ -> button [])'],
+      ['(fun radio ?(child = radio ~text:(reactive string_of_bool source) []) () -> column [child]) (fun ~text_signal:_ _ -> button []) ()'],
+      ['(fun radio -> function () -> column [radio ~text:(reactive string_of_bool source) []]) (fun ~text_signal:_ _ -> button []) ()'],
       ['match (fun ~text_signal:_ _ -> button []) with radio -> column [radio ~text:(reactive string_of_bool source) []]'],
       ['let radio ~text_signal:_ _ = button [] in radio_group [Lui_elements.radio ~checked:(reactive Fun.id source) []]'],
       ['let radio ~text_signal:_ _ = button [] in Lui_elements.(radio_group [radio ~checked:(reactive Fun.id source) []])'],
