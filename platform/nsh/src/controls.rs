@@ -64,7 +64,7 @@ impl Presentation {
             .into_element()
     }
     /// A page owns layout and appearance; its separate native Tab owns presses.
-    fn passive_host<E: Element>(&self, element: E) -> AnyElement {
+    fn passive_host<E: Element + Interactive>(&self, element: E) -> AnyElement {
         let style = self.style.clone();
         element
             .key(self.key.clone())

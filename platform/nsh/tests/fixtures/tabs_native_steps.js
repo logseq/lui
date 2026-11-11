@@ -1,0 +1,50 @@
+// Stdin for NSH's native test driver after loading the real tabs fixture.
+const check = (value, message) => { if (!value) throw new Error(message); };
+await app.waitFor("BottomTabs qualification");
+await app.waitFor("Page appears Home=1 Search=0");
+check(app.count("role:tab") === 3, "Only the three triggers are tabs");
+check(!app.enabled("role:tab[Disabled]"), "The middle destination is disabled");
+check(app.count("role:button[Home action]") === 1, "A page action remains a Button");
+check(app.count("label:Search draft") === 0, "Search is initially unvisited");
+await app.press("role:button[Home action]");
+await app.waitFor("Page actions Home=1 Search=0");
+await app.waitFor("Requests 0 last=0");
+await app.type("label:Home draft", " +native");
+const homeDraft = app.value("label:Home draft");
+check(homeDraft && homeDraft.includes("+native"), "Home received real native text input");
+await app.waitFor("text:Home model " + homeDraft);
+
+// Enter the bar through the actual keyboard path, then skip the disabled tab.
+await app.keyboard.press("tab");
+await app.keyboard.press("tab");
+await app.keyboard.press("right");
+await app.waitFor("Requests 1 last=3");
+check(app.count("label:Home draft") === 1, "Refusal keeps Home visible");
+check(app.count("label:Search draft") === 0, "Refusal does not materialize Search");
+await app.waitFor("Page appears Home=1 Search=0");
+
+await app.press("role:button[Accept]");
+await app.waitFor("Mode accepting");
+await app.press("role:tab[Search]");
+await app.waitFor("label:Search draft");
+await app.waitFor("Page appears Home=1 Search=1");
+await app.type("label:Search draft", " +independent");
+const searchDraft = app.value("label:Search draft");
+check(searchDraft && searchDraft.includes("+independent"), "Search has its own native draft");
+await app.waitFor("text:Search model " + searchDraft);
+await app.press("role:button[Search action]");
+await app.waitFor("Page actions Home=1 Search=1");
+check(app.count("role:tab") === 3, "Visited page actions never become tabs");
+await app.press("role:tab[Home]");
+await app.waitFor("label:Home draft");
+check(app.value("label:Home draft") === homeDraft, "Home draft survives switching");
+await app.waitFor("Page appears Home=2 Search=1");
+await app.press("role:button[Reorder]");
+await app.waitFor("Order Search,Disabled,Home");
+check(app.value("label:Home draft") === homeDraft, "Keyed reorder preserves Home editor state");
+await app.waitFor("Page appears Home=2 Search=1");
+await app.press("role:tab[Search]");
+await app.waitFor("label:Search draft");
+check(app.value("label:Search draft") === searchDraft, "Search draft survives switching and reorder");
+await app.waitFor("Page appears Home=2 Search=2");
+await app.waitFor("Requests 4 last=3");

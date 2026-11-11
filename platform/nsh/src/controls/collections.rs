@@ -150,7 +150,11 @@ fn bottom_tabs(
                 theme,
             )
             .key(format!("trigger-{}-{}", identity.0, identity.1))
-            .test_id(format!("lui-tab-trigger-{}-{}", identity.0, identity.1))
+            .test_id(&format!("lui-tab-trigger-{}-{}", identity.0, identity.1))
+            .flex_1()
+            .min_w_0()
+            .flex_col()
+            .justify_center()
             .on_event(move |_: &nsh_base::TabEvent| press(identity))
             .child(when(
                 move || !tab.get().string("icon").is_empty(),
@@ -161,7 +165,7 @@ fn bottom_tabs(
                     )
                 },
             ))
-            .child(text(move || tab.get().string("title").to_owned()))
+            .child(text(move || tab.get().string("title").to_owned()).truncate())
             .into_element()
         },
     );
@@ -971,8 +975,23 @@ mod tests {
     fn bottom_tabs_use_native_arrows_skip_disabled_and_follow_canonical_selection() {
         let (mut app, events) = start("bottom-tabs");
         assert_eq!(app.screen().count("role:tab").unwrap(), 3);
+        let layout = app.screen().layout_nodes();
+        for id in [10, 20, 30] {
+            let identifier = format!("lui-tab-trigger-{id}-");
+            let tab = layout
+                .iter()
+                .find(|node| {
+                    node.test_id
+                        .as_deref()
+                        .is_some_and(|name| name.starts_with(&identifier))
+                })
+                .unwrap();
+            assert!((tab.bounds.size.width.0 - 160.0).abs() < 0.1);
+        }
         assert_eq!(app.screen().count("role:button[One action]").unwrap(), 1);
-        app.press("role:tab[One]").unwrap();
+        app.type_text("label:Editor One", "").unwrap();
+        app.press_key("tab").unwrap();
+        app.press_key("tab").unwrap();
         events.lock().unwrap().clear();
         app.press_key("right").unwrap();
         assert_eq!(
