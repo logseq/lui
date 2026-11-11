@@ -131,6 +131,7 @@ fn fixture_app(duration: Option<u64>, editor: bool, initial: bool) -> (Headless,
     };
     let mut config = EngineConfig {
         viewport: Size::new(px(800.0), px(500.0)),
+        clock: nsh_core::time::Clock::manual(std::time::SystemTime::UNIX_EPOCH),
         context: EngineContext::default().with(fixture.clone()),
         ..EngineConfig::new(Root::of::<ToastProbe>())
     };
