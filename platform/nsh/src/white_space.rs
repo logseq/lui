@@ -9,7 +9,6 @@ use std::sync::Arc;
 enum WhiteSpace {
     Normal,
     Nowrap,
-    Pre,
     PreWrap,
 }
 impl WhiteSpace {
@@ -17,7 +16,6 @@ impl WhiteSpace {
         match value {
             "normal" => Ok(Self::Normal),
             "nowrap" => Ok(Self::Nowrap),
-            "pre" => Ok(Self::Pre),
             "pre-wrap" => Ok(Self::PreWrap),
             _ => Err(format!(
                 "NSH white-space={value:?} has no faithful native mapping"
@@ -27,12 +25,12 @@ impl WhiteSpace {
     fn class(self) -> &'static str {
         match self {
             Self::Normal | Self::PreWrap => "whitespace-normal",
-            Self::Nowrap | Self::Pre => "whitespace-nowrap",
+            Self::Nowrap => "whitespace-nowrap",
         }
     }
     fn text(self, value: &str) -> String {
         match self {
-            Self::Pre | Self::PreWrap => value.to_owned(),
+            Self::PreWrap => value.to_owned(),
             Self::Normal | Self::Nowrap => {
                 let mut output = String::with_capacity(value.len());
                 let mut space = false;
@@ -115,10 +113,8 @@ mod tests {
         for policy in [WhiteSpace::Normal, WhiteSpace::Nowrap] {
             assert_eq!(policy.text(value), " a b\u{00a0}\u{2003} c ");
         }
-        for policy in [WhiteSpace::Pre, WhiteSpace::PreWrap] {
-            assert_eq!(policy.text(value), value);
-        }
-        for value in ["pre-line", "break-spaces", "inherit", "unknown"] {
+        assert_eq!(WhiteSpace::PreWrap.text(value), value);
+        for value in ["pre", "pre-line", "break-spaces", "inherit", "unknown"] {
             assert!(WhiteSpace::parse(value).is_err(), "{value}");
         }
     }
@@ -144,25 +140,27 @@ mod tests {
             }
         });
         let mut ops = vec![
-            json!({"op":"create-node","id":1,"kind":"column"}),
+            json!({"op":"create-node","id":1,"kind":"alert"}),
             json!({"op":"set-prop","id":1,"property":"width","value":240}),
-            json!({"op":"set-prop","id":1,"property":"cross","value":"start"}),
+            json!({"op":"create-node","id":20,"kind":"column"}),
+            json!({"op":"set-prop","id":20,"property":"cross","value":"start"}),
+            json!({"op":"insert-child","parent":1,"child":20,"index":0}),
             json!({"op":"set-prop","id":1,"property":"font-size","value":"16px"}),
             json!({"op":"set-prop","id":1,"property":"line-height","value":"20px"}),
             json!({"op":"set-prop","id":1,"property":"white-space","value":"nowrap"}),
-            json!({"op":"set-prop","id":1,"property":"gap","value":4}),
+            json!({"op":"set-prop","id":20,"property":"gap","value":4}),
         ];
         for (id, policy) in [
             (2, None),
             (3, Some("normal")),
             (4, Some("pre-wrap")),
-            (5, Some("pre")),
+            (5, Some("pre-wrap")),
         ] {
             ops.extend([
                 json!({"op":"create-node","id":id,"kind":"text"}),
-                json!({"op":"set-prop","id":id,"property":"text","value":"Alpha  beta gamma\nnext"}),
+                json!({"op":"set-prop","id":id,"property":"text","value":if id==5 {"one\nnext"} else {"Alpha  beta gamma\nnext"}}),
                 json!({"op":"set-prop","id":id,"property":"width","value":100}),
-                json!({"op":"insert-child","parent":1,"child":id,"index":id-2}),
+                json!({"op":"insert-child","parent":20,"child":id,"index":id-2}),
             ]);
             if let Some(policy) = policy {
                 ops.push(json!({"op":"set-prop","id":id,"property":"white-space","value":policy}));
@@ -178,13 +176,12 @@ mod tests {
             json!({"op":"set-prop","id":7,"property":"width","value":180}),
             json!({"op":"create-node","id":8,"kind":"textarea"}),
             json!({"op":"set-prop","id":8,"property":"text","value":"edit  me\nnext"}),
-            json!({"op":"set-prop","id":8,"property":"white-space","value":"normal"}),
             json!({"op":"set-prop","id":8,"property":"change-enabled","value":true}),
             json!({"op":"set-prop","id":8,"property":"height","value":60}),
             json!({"op":"set-prop","id":8,"property":"width","value":180}),
-            json!({"op":"insert-child","parent":1,"child":6,"index":4}),
-            json!({"op":"insert-child","parent":1,"child":7,"index":5}),
-            json!({"op":"insert-child","parent":1,"child":8,"index":6}),
+            json!({"op":"insert-child","parent":20,"child":6,"index":4}),
+            json!({"op":"insert-child","parent":20,"child":7,"index":5}),
+            json!({"op":"insert-child","parent":20,"child":8,"index":6}),
         ]);
         renderer.apply(patch(1, Value::Array(ops))).unwrap();
         renderer.set_root(1).unwrap();

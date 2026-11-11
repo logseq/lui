@@ -4351,9 +4351,9 @@ common OCaml constructor or wire scalar changes.
 
 ### NSH whitespace and wrapping
 
-Standard NSH text and container hosts now translate `white-space` through an
-exhaustive native policy. `nowrap` and `pre` select NSH's inherited NoWrap text
-property; `normal` and `pre-wrap` select native wrapping. This uses public
+Canonical text-owning NSH hosts now translate `white-space` through an
+exhaustive native policy. `nowrap` selects NSH's inherited NoWrap text property;
+`normal` and `pre-wrap` select native wrapping. This uses public
 whitespace classes, not a synthesized one-line clamp or a replacement container.
 A child's explicit policy overrides its parent, including live changes and
 transparent contents anchors.
@@ -4361,13 +4361,19 @@ transparent contents anchors.
 Explicit `normal`/`nowrap` collapse CSS spaces, tabs, line feeds, carriage returns
 and form feeds within library-owned display text/labels. Boundary spaces are
 retained for adjacent inline text, and nonbreaking/Unicode spaces are preserved.
-`pre`/`pre-wrap` preserve the source string. Editable model values and custom
+`pre-wrap` preserves the source string. Editable model values and custom
 extension payloads are unchanged. With no authored/inherited policy, existing
-native text presentation remains unchanged. For example, ``column
-~white_space:"pre-wrap" [text ~value:"first  line\nsecond line" []]`` preserves both
+native text presentation remains unchanged. For example, ``text
+~white_space:"pre-wrap" ~value:"first  line\nsecond line" []`` preserves both
 spaces and the line break while wrapping natively; `nowrap` renders collapsed
 label text on an unwrapped native line. `pre-line` and `break-spaces` remain
 explicit capability errors; they are not approximated by another mode.
+
+The canonical whitespace property remains limited to kinds that own inline text;
+ordinary Column, Box and editable Input/Textarea nodes do not acquire a new prop.
+Native containers can carry inherited policy from text-owning parents such as
+Alert/Bubble. `pre` and `break-spaces` are not admitted by the common wire schema;
+no additional spelling is enabled by this adapter.
 
 ### Canonical closed domains in NSH provider compilation
 

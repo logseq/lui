@@ -68,13 +68,13 @@ fn RejectedLayout() -> impl IntoElement {
         Batch::decode(
             r#"{"generation":2,"ops":[
         {"op":"set-prop","id":1,"property":"text","value":"must not appear"},
-        {"op":"create-node","id":2,"kind":"box"},
-        {"op":"set-prop","id":2,"property":"display","value":"contents"}
+        {"op":"create-node","id":2,"kind":"text"},
+        {"op":"set-prop","id":2,"property":"white-space","value":"pre-line"}
     ]}"#,
         )
         .unwrap(),
     );
-    assert!(rejected.is_err());
+    assert!(rejected.unwrap_err().contains("white-space"));
     renderer
         .apply(
             Batch::decode(
