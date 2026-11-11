@@ -2973,3 +2973,40 @@ Applications need no migration for normal appearance-aware text. To retain a
 specific color, set `foreground` on the text or its LUI container; for example,
 use an authored `foreground: "brand"` within the existing theme declaring that
 token, rather than relying on the platform's implicit black default.
+
+### NSH canonical Image URLs and native Load
+
+NSH desktop `image` now reads canonical `url`, including reactive URL updates,
+through the public native Image loader. It retains the Image host and adjacent
+editors when its source or fit changes. Successful native decoding dispatches the
+existing canonical `Load` event through `lui_ocaml_load`; failures do not report
+successful Load. Removed/recreated node incarnations cannot receive an earlier
+host's completion. The exported C ABI is unchanged.
+
+Ordinary images preserve LUI's default stretch when both dimensions are authored;
+`image-fit="fit"` uses contain and `image-fit="fill"` uses cover. Unspecified axes
+use the native image's decoded intrinsic size. An explicit accessibility label
+wins over `alt`; otherwise `alt` names the native image. For example:
+
+```ocaml
+image ~url:"file:///Users/example/Pictures/diagram.png"
+  ~width:240 ~height:120 ~alt:"Architecture diagram"
+  ~on_load:(fun _event -> report_loaded ()) []
+```
+
+This first native URL path explicitly rejects authored `image` resource IDs
+(including zero and IDs supplied alongside a URL), source crop rectangles,
+`loading="lazy"`, and authored `referrer-policy`. These values fail final
+transaction validation before any part of that batch publishes. Use a URL with
+no crop, eager/default loading and the native transport's default policy. Keep
+resource-backed or cropped views on an existing backend until the NSH resource
+bridge and source-rectangle semantics are implemented; an integer resource ID is
+not a native URL or asset name. Apple, Android and Web behavior is unchanged.
+
+`platform/nsh/tests/fixtures/build_virtual.py --fixture image` builds a real
+OCaml Image application without modifying Dune files. After packaging that
+library, `python3 tooling/test_nsh_image_app.py <package> --logs <directory>`
+checks actual native file-URL decoding, Load callbacks, source replacement and
+retained editor state. The separate `ocaml_image` Rust test verifies C dispatch
+with an explicit Load; headless rendering does not decode images. Neither check
+alone claims screenshot/pixel fit accuracy or HTTP transport qualification.

@@ -73,6 +73,7 @@ impl GuardedEvent {
             | ViewEvent::Focus(node)
             | ViewEvent::Blur(node)
             | ViewEvent::Appear(node)
+            | ViewEvent::Load(node)
             | ViewEvent::Change(node)
             | ViewEvent::Dismiss(node) => (*node, renderer.current_incarnation(*node)?, None),
         };
@@ -350,6 +351,7 @@ fn semantic(event: ViewEvent) -> Event {
             within: false,
         },
         ViewEvent::Appear(node) => Event::Appear(node as i64),
+        ViewEvent::Load(node) => Event::Load(node as i64),
         ViewEvent::Change(node) => Event::Change(node as i64),
         ViewEvent::Dismiss(node) => Event::Dismiss(node as i64),
         ViewEvent::VisibleRange {

@@ -7,7 +7,7 @@ use crate::{
     wire::Batch,
 };
 use nsh_core::{
-    element::{ImageSrc, create_root},
+    element::create_root,
     geometry::{Bounds, Points, Size},
     prelude::*,
 };
@@ -41,6 +41,7 @@ pub enum Event {
     Focus(u64),
     Blur(u64),
     Appear(u64),
+    Load(u64),
     Change(u64),
     Dismiss(u64),
     ScrollCompleted {
@@ -381,8 +382,10 @@ impl Renderer {
                 Event::Appear(_) => Some("appear-enabled"),
                 _ => None,
             };
-            if (!matches!(event, Event::Appear(_) | Event::Focus(_) | Event::Blur(_))
-                && !node.boolean("enabled", true))
+            if (!matches!(
+                event,
+                Event::Appear(_) | Event::Load(_) | Event::Focus(_) | Event::Blur(_)
+            ) && !node.boolean("enabled", true))
                 || flag.is_some_and(|flag| !node.boolean(flag, false))
             {
                 return;
@@ -735,15 +738,23 @@ impl Renderer {
                 .key(key.clone())
                 .test_id(&identifier)
                 .into_element(),
-            "image" => native_events
-                .attach(image(move || {
-                    ImageSrc::from(state.get().string("source").to_owned())
-                }))
-                .state_inline_style(style)
-                .element_ref(&reference)
-                .key(key.clone())
-                .test_id(&identifier)
-                .into_element(),
+            "image" => {
+                let loading = self.clone();
+                native_events
+                    .attach(
+                        image(move || crate::images::source(&state.get()))
+                            .object_fit(move || crate::images::fit(&state.get()))
+                            .label(move || crate::images::label(&state.get()))
+                            .on_load(move |_: &Size<nsh_core::geometry::DevicePixels>| {
+                                loading.emit(id, incarnation, Event::Load(id));
+                            }),
+                    )
+                    .state_inline_style(style)
+                    .element_ref(&reference)
+                    .key(key.clone())
+                    .test_id(&identifier)
+                    .into_element()
+            }
             "root" | "row" | "column" | "box" | "panel" | "card" | "spacer" | "dropdown-menu" => {
                 native_events
                     .attach(view())
@@ -771,6 +782,7 @@ fn validate(node: &Node) -> Result<(), String> {
     if node.kind == "box" && node.string("display") == "contents" {
         return Err("NSH box display=contents is not implemented yet".into());
     }
+    crate::images::validate(node)?;
     crate::virtual_rows::validate(node)?;
     crate::controls::validate(node)
 }
@@ -1844,3 +1856,6 @@ mod theme_tests {
         .unwrap();
     }
 }
+
+#[cfg(test)]
+mod image_tests;

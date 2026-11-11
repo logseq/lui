@@ -4,6 +4,7 @@ pub mod contract;
 mod controls;
 mod desktop_updates;
 mod events;
+mod images;
 pub mod render;
 pub mod runtime;
 pub mod store;
