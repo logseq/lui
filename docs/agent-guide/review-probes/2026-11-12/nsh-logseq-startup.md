@@ -42,8 +42,8 @@ and result publication complete with zero requested frames.
 - LUI NSH: 225 tests, zero failures or ignored tests; strict all-target Clippy.
 - NSH tooling: 45 Python tests, including the future-enum compilation proofs.
 - Logseq UI: 5636 checks, zero failures; shared native/Web contracts also pass.
-- Logseq Rust host: library, binary and actual startup targets pass; strict
-  all-target Clippy is required before this checkpoint is considered reviewed.
+- Logseq Rust host: 31 library, binary and actual startup tests pass; strict
+  all-target Clippy also passes.
 - The CLI skill is installed through the versioned repository skill and validates.
 
 This establishes the private Demo startup path and a light native content frame.
