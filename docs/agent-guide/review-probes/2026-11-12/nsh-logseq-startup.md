@@ -3,7 +3,7 @@
 ## Enforced checks
 
 Canonical constructor metadata supplies closed native domains. The NSH display
-and image-fit providers, frame axes, popup direction and popup alignment consume
+and image-fit providers, frame axes, popup direction, popup alignment and orientation consume
 generated enums with exhaustive matches. The
 compiler regression runs the actual provider functions, then adds a canonical
 case and requires Rust E0004. Open CSS strings retain typed parsing and atomic
@@ -40,8 +40,8 @@ and result publication complete with zero requested frames.
 
 ## Validation and remaining acceptance
 
-- LUI NSH at `07f59fe8`: 227 tests, zero failures or ignored tests; strict
-  all-target Clippy. Five closed domains reject injected future cases with E0004.
+- LUI NSH at `8f60110e`: 229 tests, zero failures or ignored tests; strict
+  all-target Clippy. Six closed domains reject injected future cases with E0004.
 - NSH tooling: 45 Python tests, including the future-enum compilation proofs.
 - Logseq UI: 5636 checks, zero failures; shared native/Web contracts also pass.
 - Logseq Rust host: 31 library, binary and actual startup tests pass; strict
