@@ -4368,3 +4368,27 @@ native text presentation remains unchanged. For example, ``column
 spaces and the line break while wrapping natively; `nowrap` renders collapsed
 label text on an unwrapped native line. `pre-line` and `break-spaces` remain
 explicit capability errors; they are not approximated by another mode.
+
+### Canonical closed domains in NSH provider compilation
+
+The native contract exporter now includes `closedDomains` derived from the
+existing generated typed constructor contracts. A property is closed only when
+all constructors exposing it use finite enum values; free strings such as
+`font_size` remain open and are not mislabeled as enums. No shared OCaml
+constructor type, default, wire value or maintained Apple/Android/Web behavior
+changes.
+
+The same generator emits Rust `contract::DisplayValue`, including fallible
+string conversion and exact wire roundtrips. NSH's structural contents predicate
+and display provider consume this type. The provider matches every canonical
+case without a wildcard: adding a case to the canonical typed domain now fails
+its Rust compilation until the provider explicitly implements or rejects it.
+`contents` remains structural; inline layout variants remain explicit native
+errors. The generator checks typed-schema freshness before exporting, and its
+source receipt includes the typed API and generator inputs.
+
+This is compiler coverage for provider enum cases, not a claim that arbitrary
+CSS strings are statically safe. Backend-specific PPX literal checks and a
+checked typed metric API require a separately wired build profile; an unused
+PPX option would not qualify as an enforced gate. Dynamic theme/style strings
+continue through existing atomic preflight before native publication.

@@ -183,6 +183,28 @@ let baseline kind =
     | Some property -> Property_map.add property (default_value kind property) props
     | None -> failwith ("No valid baseline for " ^ Lui_wire_schema.node_kind_name kind)
 
+module Domain_strings = Set.Make (String)
+
+(* Reuse the generated typed constructor contracts. A property is closed only
+   when every constructor exposing it declares an enum, never a free string. *)
+let closed_domains kinds =
+  let domains = Hashtbl.create 32 in
+  List.iter (fun kind ->
+    match Lui_wire_schema.view_contract kind with
+    | None -> ()
+    | Some contract -> List.iter (fun (property, value, _) ->
+        let name = Lui_wire_schema.property_name property in
+        let next = match value, Hashtbl.find_opt domains name with
+          | Lui_wire_schema.ViewEnum values, None -> Some (Domain_strings.of_list values)
+          | Lui_wire_schema.ViewEnum values, Some (Some previous) ->
+              Some (Domain_strings.union previous (Domain_strings.of_list values))
+          | _ -> None in
+        Hashtbl.replace domains name next) contract.view_properties) kinds;
+  Hashtbl.fold (fun name values result -> match values with
+    | None -> result
+    | Some values -> (name, arr (List.map str (Domain_strings.elements values))) :: result)
+    domains [] |> List.sort (fun (a, _) (b, _) -> String.compare a b) |> obj
+
 let extension_oracle () =
   let open Lui_extension in
   let profiles = List.map (fun os -> {profile_os = os; profile_host = NshHost}) [MacOS; LinuxOS; WindowsOS] in
@@ -217,6 +239,7 @@ let () =
     "sizing_supported"; "main_alignment_supported"; "cross_alignment_supported"; "alignment_supported"] in
   let output = obj [
     "version", `Int 1;
+    "closedDomains", closed_domains kinds;
     "extensionRules", obj [
       "standardParents", names (List.filter Lui_extension.standard_container_supported kinds) Lui_wire_schema.node_kind_name;
       "integerMinimum", `Int min_int; "integerMaximum", `Int max_int];

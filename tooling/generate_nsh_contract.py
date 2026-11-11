@@ -12,7 +12,8 @@ from nsh_contract_codegen import compile_validators, scalar_types
 
 ROOT = Path(__file__).resolve().parents[1]
 INPUTS = ["schema/components.json", "src/lui_protocol.ml", "src/lui_protocol.mli",
-          "src/lui_wire_schema.ml", "src/lui_extension.ml", "tooling/export_native_contract.ml",
+          "src/lui_wire_schema.ml", "src/lui_elements.ml", "src/lui_elements.mli",
+          "tooling/typed_view_schema.mjs", "tooling/generate_component_schema.mjs", "src/lui_extension.ml", "tooling/export_native_contract.ml",
           "tooling/generate_nsh_contract.py", "tooling/nsh_contract_codegen.py"]
 OUTPUT = ROOT / "platform/nsh/contract.json"
 VALIDATORS = ROOT / "platform/nsh/src/contract_generated.rs"
@@ -25,6 +26,7 @@ def source_hashes():
 
 
 def export_contract():
+    subprocess.run(["node", "tooling/generate_component_schema.mjs", "--check"], cwd=ROOT, check=True)
     subprocess.run(["opam", "exec", "--", "dune", "build", "src/lui.cmxa"], cwd=ROOT, check=True)
     with tempfile.TemporaryDirectory(prefix="lui-nsh-contract-") as directory:
         temporary = Path(directory)

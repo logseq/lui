@@ -256,10 +256,41 @@ def scalar_types(schema, contract):
     return output
 
 
+def compile_closed_domains(domains):
+    """Compile selected provider enums from the canonical typed constructor export."""
+    selected = {"display": "DisplayValue"}
+    output = []
+    for property_name, name in selected.items():
+        values = domains.get(property_name)
+        if not isinstance(values, list) or not values:
+            raise ValueError("missing or invalid canonical closed domain: " + property_name)
+        if any(not isinstance(value, str) or not re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*", value) for value in values):
+            raise ValueError("unsupported canonical enum spelling: " + property_name)
+        if len(set(values)) != len(values):
+            raise ValueError("duplicate canonical enum values: " + property_name)
+        variants = [(value, "".join(part[0].upper() + part[1:] for part in value.split("-"))) for value in sorted(values)]
+        if len({variant for _, variant in variants}) != len(variants):
+            raise ValueError("colliding canonical enum variants: " + property_name)
+        output.append(f"/// Canonical typed `{property_name}` values. Provider matches must be exhaustive.\n"
+                      f"#[derive(Clone, Copy, Debug, PartialEq, Eq)]\npub enum {name} {{ "
+                      + ", ".join(variant for _, variant in variants) + " }")
+        output.append(f"impl {name} {{\n"
+                      + "pub const ALL: &'static [Self] = &[" + ", ".join("Self::" + variant for _, variant in variants) + "];\n"
+                      + "pub fn as_str(self) -> &'static str { match self { "
+                      + " ".join(f"Self::{variant} => {quote(value)}," for value, variant in variants) + " } }\n}")
+        output.append(f"impl TryFrom<&str> for {name} {{ type Error = String;\n"
+                      + "fn try_from(value: &str) -> Result<Self, Self::Error> { match value { "
+                      + " ".join(f"{quote(value)} => Ok(Self::{variant})," for value, variant in variants)
+                      + f"_ => Err(format!(\"invalid canonical {property_name}: {{value}}\")),"
+                      + " } }\n}")
+    return "\n\n".join(output)
+
+
 def compile_validators(schema, contract):
     compiler = Compiler(schema)
     compiler.functions = set(contract["validators"])
-    output = ["// Generated from canonical OCaml validators. Do not edit.\nuse super::*;"]
+    output = ["// Generated from canonical OCaml validators. Do not edit.\nuse super::*;",
+              compile_closed_domains(contract.get("closedDomains", {}))]
     for name, expression in contract["validators"].items():
         if name == "node_properties_supported":
             env = {"kind": "&str", "properties": "&Map<String, Value>"}

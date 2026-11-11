@@ -6,6 +6,8 @@ use std::sync::LazyLock;
 #[path = "contract_generated.rs"]
 mod generated;
 
+pub use generated::DisplayValue;
+
 /// Generated metadata contains no validator AST or oracle fixtures.
 pub static CONTRACT: LazyLock<Value> = LazyLock::new(|| {
     serde_json::from_str(include_str!("../contract.json")).expect("generated native contract")

@@ -1,5 +1,5 @@
 //! Canonical LUI presentation translated through public NSH style APIs.
-use crate::store::Node;
+use crate::{contract::DisplayValue, store::Node};
 use nsh_core::{
     Color, PropertyValue, StyleDecl, StyleKey, StyleValue,
     element::{AdaptiveColor, Style, StyleRefinement, Tokens},
@@ -796,7 +796,34 @@ pub(crate) fn compile(
 }
 
 pub(crate) fn is_contents(node: &Node) -> bool {
-    node.extension.is_none() && node.string("display") == "contents"
+    node.extension.is_none()
+        && node
+            .props
+            .get("display")
+            .and_then(Value::as_str)
+            .and_then(|value| DisplayValue::try_from(value).ok())
+            == Some(DisplayValue::Contents)
+}
+
+// No wildcard: adding a canonical display case must fail this provider's build.
+fn display_value(value: &Value) -> Result<PropertyValue, String> {
+    let display = DisplayValue::try_from(value.as_str().ok_or("NSH display requires a string")?)?;
+    let keyword = match display {
+        DisplayValue::None => "none",
+        DisplayValue::Block => "block",
+        DisplayValue::Contents => {
+            return Err("NSH contents is a structural anchor, not a native display style".into());
+        }
+        DisplayValue::Inline | DisplayValue::InlineBlock | DisplayValue::InlineFlex => {
+            return Err(format!(
+                "NSH display={} has no native inline layout provider",
+                display.as_str()
+            ));
+        }
+    };
+    StyleKey::Display
+        .parse_value(StyleValue::Str(keyword))
+        .map_err(|error| format!("NSH display: {error:?}"))
 }
 
 fn compile_parts(
@@ -907,7 +934,7 @@ fn compile_parts(
         }
     }
     if let Some(value) = node.props.get("display") {
-        declaration(&mut decls, StyleKey::Display, value, "display", theme)?;
+        decls.push(StyleDecl::Set(StyleKey::Display, display_value(value)?));
     }
     if let Some(value) = node.props.get("font-weight") {
         let weight = value
