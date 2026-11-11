@@ -95,6 +95,19 @@ let dyn_call ~loc ?equal args =
      | None -> [])
     @ List.map (fun a -> (Nolabel, a)) args)
 
+(* A direct nested source is a signal projection, rather than another mounted
+   subtree. Only this unambiguous source position consumes the nested marker. *)
+let derived_source expression =
+  match expression.pexp_desc with
+  | Pexp_apply (fn, (Nolabel, project) :: sources)
+    when is_reactive_ident fn && sources <> []
+      && List.for_all (fun (label, _) -> label = Nolabel) sources ->
+      let loc = expression.pexp_loc in
+      Some (match List.map snd sources with
+        | [source] -> apply ~loc (signal_map loc) [project; source]
+        | sources -> expand ~loc project sources)
+  | _ -> None
+
 (* [dyn_expand loc args] desugars a bare `reactive` call at expression
    position (a mounted child) into [Lui_elements.dyn]; an optional
    [~equal] passes through to the comparator. *)
@@ -109,10 +122,15 @@ let dyn_expand ~loc args =
     | [ (_, e) ] -> Some e
     | _ -> None
   in
-  match rest with
+  let has_derived_source = ref false in
+  let source expression =
+    match derived_source expression with
+    | Some projected -> has_derived_source := true; projected
+    | None -> expression in
+  let expanded = match rest with
   | [ (Nolabel, f); (Nolabel, s) ] ->
       (* reactive f src: dyn over src with the default (=) *)
-      dyn_call ~loc ?equal [ f; s ]
+      dyn_call ~loc ?equal [ f; source s ]
   | [ (Nolabel, s) ] ->
       (* reactive src: the signal itself publishes elements; (==) avoids
          structural equality on mount closures *)
@@ -122,14 +140,14 @@ let dyn_expand ~loc args =
         | None -> B.pexp_ident ~loc { txt = Lident "=="; loc }
       in
       let id = lam ~loc [ pvar ~loc "__x" ] (evar ~loc "__x") in
-      dyn_call ~loc ~equal [ id; s ]
+      dyn_call ~loc ~equal [ id; source s ]
   | (Nolabel, f) :: sources_args
     when List.length sources_args >= 2
          && List.for_all
               (fun ((l : arg_label), _) -> l = Nolabel)
               sources_args ->
       (* reactive f s1 s2 .. sn: dyn over the combined tuple signal *)
-      let sources = List.map snd sources_args in
+      let sources = List.map (fun (_, expression) -> source expression) sources_args in
       let names = List.init (List.length sources) (fun i -> vname (i + 1)) in
       let fn' =
         lam ~loc
@@ -137,7 +155,8 @@ let dyn_expand ~loc args =
           (apply ~loc f (List.map (evar ~loc) names))
       in
       dyn_call ~loc ?equal [ fn'; tuple_signal ~loc 1 sources ]
-  | _ -> assert false
+  | _ -> assert false in
+  expanded, !has_derived_source
 
 (* Bare `reactive` calls this file can desugar; anything else (0 args,
    unexpected labels) is left untouched so the type error points at the
@@ -306,8 +325,8 @@ class mapper =
       | Pexp_apply (fn, args)
         when is_reactive_ident fn && dyn_supported args ->
           (* bare `reactive` at expression position: dyn over the signal *)
-          let expanded = dyn_expand ~loc:expr.pexp_loc args in
-          if List.length (List.filter (fun (label, _) -> label = Nolabel) args) > 2 then
+          let expanded, has_derived_source = dyn_expand ~loc:expr.pexp_loc args in
+          if has_derived_source || List.length (List.filter (fun (label, _) -> label = Nolabel) args) > 2 then
             scoped_expression ~loc:expr.pexp_loc (fun owner ->
               super#expression (owner#expression expanded))
           else super#expression expanded

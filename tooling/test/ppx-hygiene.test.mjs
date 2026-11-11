@@ -31,6 +31,7 @@ test("PPX nesting diagnostics reject static illegal edges without guessing opaqu
       ["input [button []]", "input", "button"],
       ["context_menu [if_ ~test:source (button [])]", "context-menu", "button"],
       ["context_menu [reactive (fun _ -> button []) source]", "context-menu", "button"],
+      ["context_menu [reactive (fun _ -> button []) (reactive not source)]", "context-menu", "button"],
       ["context_menu [keyed ~source:items ~key:Fun.id ~cmp:compare ~mount:(fun _ -> button [])]", "context-menu", "button"],
       ["context_menu [align `center (button [])]", "context-menu", "button"],
       ["context_menu [scoped (fun _ -> button [])]", "context-menu", "button"],
@@ -51,6 +52,9 @@ test("PPX nesting diagnostics reject static illegal edges without guessing opaqu
       ['tree [row [text ~value:"ok" []]; virtual_list []]'],
       ["input [context_menu [menu_item []]]"],
       ["context_menu [reactive (fun _ -> menu_item []) source]"],
+      ['column [reactive (fun shown -> text ~value:(string_of_bool shown) []) (reactive not source)]'],
+      ['column [reactive (fun shown -> text ~value:(string_of_bool shown) []) (reactive (&&) source source)]'],
+      ['column [reactive (fun a b -> text ~value:(string_of_bool (a && b)) []) (reactive not source) source]'],
       ['list [list_section ~header:(text ~value:"Title" []) [list_item []]]'],
       ["let button _ = menu_item [] in context_menu [button []]"],
       ["(fun button -> context_menu [button []]) (fun _ -> menu_item [])"],
@@ -539,5 +543,95 @@ let () =
       "-I", "_build/default/src/.lui.objs/native", "_build/default/src/lui.cmxa",
       join(dir, "virtual_source.ml"), "-o", join(dir, "virtual_source")])
     assert.equal(run([join(dir, "virtual_source")]).trim(), "owned")
+  } finally { rmSync(dir, {recursive: true, force: true}) }
+})
+
+test("nested reactive sources filter unrelated updates and belong to each mount", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lui-derived-source-"))
+  const run = args => {
+    const result = spawnSync("opam", ["exec", "--", ...args], {cwd: root, encoding: "utf8"})
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+    return result.stdout
+  }
+  try {
+    run(["dune", "build", "ppx/lui_ppx.cmxa", "src/lui.cmxa"])
+    writeFileSync(join(dir, "driver.ml"), "let () = Ppxlib.Driver.standalone ()\n")
+    run(["ocamlfind", "ocamlopt", "-package", "ppxlib", "-linkpkg", "-linkall",
+      "_build/default/ppx/lui_ppx.cmxa", join(dir, "driver.ml"), "-o", join(dir, "driver")])
+    writeFileSync(join(dir, "derived.ml"), `
+let sources : string Signal.signal list ref = ref []
+module Actual_elements = Lui_elements
+module Lui_elements = struct
+  include Actual_elements
+  let dyn ?equal build (source : string Signal.signal) =
+    sources := source :: !sources;
+    Actual_elements.dyn ?equal build source
+end
+open Lui_elements
+let () =
+  let conversions = [|0; 0|] and builds = [|0; 0|] in
+  let borrowed = ref None and batches = ref [] in
+  let backend = { Lui_protocol.backend_profile = Lui_protocol.generic_profile ();
+    apply_batch = (fun batch -> batches := batch :: !batches; true) } in
+  let view context shown _send =
+    let values = Signal.state context.Lui_ui.ui_scheduler 0 in
+    borrowed := Some values;
+    let child index =
+      reactive (fun value ->
+        builds.(index) <- builds.(index) + 1;
+        text ~key:(string_of_int index) ~value [])
+        (reactive (fun value ->
+          conversions.(index) <- conversions.(index) + 1;
+          string_of_int (value mod 2)) (Signal.value values)) in
+    column [if_ ~test:(reactive fst shown) (child 0);
+            if_ ~test:(reactive snd shown) (child 1)] in
+  let app = Lui_app.create backend (true, true) (fun _ next -> next) view in
+  ignore (Lui_app.start app); ignore (Lui_app.flush app);
+  let values = Option.get !borrowed in
+  let update value = Signal.set values value; ignore (Lui_app.flush app) in
+  assert (conversions = [|1; 1|]); assert (builds = [|1; 1|]);
+  update 2;
+  assert (conversions = [|2; 2|]); assert (builds = [|1; 1|]);
+  batches := [];
+  update 3;
+  assert (conversions = [|3; 3|]); assert (builds = [|2; 2|]);
+  List.iter (fun (batch : Lui_protocol.patch_batch) ->
+    List.iter (function
+      | Lui_protocol.CreateNode _ | Lui_protocol.DropNode _ ->
+          failwith "projected update replaced a stable child"
+      | _ -> ()) batch.ops) !batches;
+  ignore (Lui_app.send app (false, true)); ignore (Lui_app.flush app);
+  assert (List.length (List.filter Signal.signal_is_disposed !sources) = 1);
+  let first_before = conversions.(0) and second_before = conversions.(1) in
+  update 4;
+  assert (conversions.(0) = first_before);
+  assert (conversions.(1) = second_before + 1);
+  assert (not (Signal.signal_is_disposed (Signal.value values)));
+  for cycle = 1 to 20 do
+    ignore (Lui_app.send app (true, true)); ignore (Lui_app.flush app);
+    let before = Array.copy conversions in
+    update (cycle + 10);
+    assert (conversions.(0) = before.(0) + 1);
+    assert (conversions.(1) = before.(1) + 1);
+    ignore (Lui_app.send app (false, true)); ignore (Lui_app.flush app);
+    let before = Array.copy conversions in
+    update (cycle + 100);
+    assert (conversions.(0) = before.(0));
+    assert (conversions.(1) = before.(1) + 1)
+  done;
+  ignore (Lui_app.dispose app);
+  assert (List.for_all Signal.signal_is_disposed !sources);
+  let before = Array.copy conversions in
+  Signal.set values 999; Signal.stabilize app.Lui_app.app_scheduler;
+  assert (conversions = before);
+  assert (Signal.sample (Signal.value values) = 999);
+  Signal.dispose_signal (Signal.value values);
+  print_endline "owned and filtered"
+`)
+    run(["ocamlfind", "ocamlopt", "-package", "ocaml-signal", "-linkpkg", "-ppx",
+      `${join(dir, "driver")} --as-ppx`, "-I", "_build/default/src/.lui.objs/byte",
+      "-I", "_build/default/src/.lui.objs/native", "_build/default/src/lui.cmxa",
+      join(dir, "derived.ml"), "-o", join(dir, "derived")])
+    assert.equal(run([join(dir, "derived")]).trim(), "owned and filtered")
   } finally { rmSync(dir, {recursive: true, force: true}) }
 })

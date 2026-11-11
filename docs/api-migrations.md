@@ -4683,3 +4683,27 @@ compiler regression adds such a case and requires E0004. Positive native compone
 regressions separately cover encoding/precision, Return/blur counts, live source
 updates and native identity, disabled/blur policy changes, and rollback of invalid
 text or unsupported options. An exhaustive error arm alone does not prove support.
+
+### Reactive children can consume a projected reactive source
+
+The PPX now recognizes a direct nested `reactive` in a reactive child's source
+position as a signal projection, for example:
+
+```ocaml
+reactive (fun page_id -> page_menu page_id)
+  (reactive (fun model -> model.page_id) model_source)
+```
+
+The inner projection belongs to each mounted consumer. Removing that consumer
+releases its derived subscription without disposing the shared model source or
+another consumer's projection. The outer subtree comparator retains its existing
+semantics: the default structural equality skips reconstruction when the
+projected value is equal; an explicit `~equal` still overrides that comparison.
+Project immutable data here, rather than view closures, unless supplying an
+appropriate explicit comparator.
+
+The direct projection may combine existing sources using the normal
+`reactive project source_a source_b` form. This addition covers the direct source
+of reactive children; it does not reinterpret nested view expressions as signal
+pipelines or introduce a separate public signal API. Existing children and
+reactive property syntax are unchanged.
