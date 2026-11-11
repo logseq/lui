@@ -2958,3 +2958,18 @@ ButtonGroup now forwards its authored accessible name to NSH ToolbarGroup.
 For example, `accessibility-label: "History"` names the native group around
 Undo/Redo controls. An absent or empty name preserves the native unnamed
 default. This requires no downstream remount or wire-format change.
+
+
+## NSH default text foreground follows appearance
+
+Plain text now inherits the current semantic `foreground` from the renderer
+surface, including when the application root is a Column rather than Root.
+Previously unstyled text inherited the native black default even against a
+dark background. Appearance changes update the inherited color without
+replacing retained nodes. Explicit node foregrounds and scoped theme colors
+continue to override that default.
+
+Applications need no migration for normal appearance-aware text. To retain a
+specific color, set `foreground` on the text or its LUI container; for example,
+use an authored `foreground: "brand"` within the existing theme declaring that
+token, rather than relying on the platform's implicit black default.

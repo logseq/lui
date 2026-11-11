@@ -214,7 +214,7 @@ uses the concrete route bodies, not literal presence alone.
 
 | Source | SHA-256 |
 | --- | --- |
-| `render.rs` | `3a85522411366fedf50db3880c4e8d1dcced8b5e78c3b721f242bb516e4d6f29` |
+| `render.rs` | `ec86d358b92f6b10e50b4e026c610115e18602bc2bfe5d5dea3968ffb00a81ef` |
 | `controls.rs` | `e98917f96e841b7e21545b1ce95ab92b3510f19865d2ddebc59d5ef7b96af5a9` |
 | `style.rs` | `dc528c0d08402b398f2a1e255d260136b87df35983d54a88e80a213f067d1b68` |
 | `virtual_rows.rs` | `1630ed15ed6526769c9f3b405623c464296d5c23e4a77099eb60d449ef1ea3de` |

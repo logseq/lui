@@ -262,14 +262,18 @@ impl Renderer {
         let error = self.0.borrow().error;
         let viewport = self.0.borrow().viewport;
         let theming = self.clone();
+        let inherited_theme = signal(self.0.borrow().base_theme.clone());
         effect(move || {
-            let theme = ThemeView::new(tokens(), dark(), reduce_motion());
-            if let Err(error) = theming.refresh_theme(Arc::new(theme)) {
+            let theme = Arc::new(ThemeView::new(tokens(), dark(), reduce_motion()));
+            if let Err(error) = theming.refresh_theme(theme.clone()) {
                 theming.fail(error);
+            } else {
+                inherited_theme.set(theme);
             }
         });
         view()
             .flex_1()
+            .text_color(move || ui::color(inherited_theme, "foreground"))
             .on_layout(move |bounds: &Bounds<Points>| {
                 if viewport.get_untracked() != bounds.size {
                     viewport.set(bounds.size);
@@ -1289,6 +1293,7 @@ mod theme_tests {
         let ordinary = renderer.clone();
         let reject = renderer.clone();
         view().flex_1().child(renderer.element())
+            .child(text("Theme reference").text_color(move || nsh_base::theme().foreground))
             .child(nsh_base::button().on_press(move || {
                 let before = change.0.borrow().nodes[&3].node.get_untracked();
                 let sibling = change.0.borrow().nodes[&4].theme.get_untracked();
@@ -1321,6 +1326,51 @@ mod theme_tests {
                     {"op":"set-prop","id":3,"property":"text","value":"After rejection"}
                 ]))).unwrap();
             }).child(text("Reject invalid scope")))
+    }
+
+    #[test]
+    fn default_text_inherits_live_semantic_foreground_without_remounting() {
+        let mut app = Headless::start(EngineConfig::new(Root::of::<ScopedTheme>())).unwrap();
+        app.wait_for("text:Outside").unwrap();
+        let native = app
+            .screen()
+            .layout_nodes()
+            .into_iter()
+            .find(|node| node.test_id.as_deref() == Some("lui-4"))
+            .unwrap()
+            .id;
+        let light = app
+            .screen()
+            .span_style("text:Theme reference")
+            .unwrap()
+            .color;
+        assert_eq!(
+            app.screen().span_style("text:Outside").unwrap().color,
+            light
+        );
+        app.set_environment("dark appearance", |environment| {
+            environment.color_scheme = nsh_core::platform::ColorScheme::Dark;
+        })
+        .unwrap();
+        app.wait_until(
+            "inherited dark text",
+            std::time::Duration::from_secs(1),
+            |screen| {
+                let expected = screen.span_style("text:Theme reference").unwrap().color;
+                expected != light && screen.span_style("text:Outside").unwrap().color == expected
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            app.screen().span_style("text:Inside").unwrap().color,
+            nsh_core::Color::parse("#abcdef").unwrap()
+        );
+        assert!(
+            app.screen()
+                .layout_nodes()
+                .into_iter()
+                .any(|node| node.test_id.as_deref() == Some("lui-4") && node.id == native)
+        );
     }
 
     #[test]
