@@ -904,7 +904,8 @@ impl Renderer {
             installed,
             Rc::new(move || current.is_current(id, incarnation, None)),
             use_context::<crate::events::VisibilityScope>(),
-        );
+        )
+        .with_theme(theme);
         native_events.appear(reference);
         native_events.focus(reference);
         let key = format!("lui-{id}-{incarnation}");

@@ -4415,3 +4415,32 @@ without waiting for the deferred reactive effect. Initial and later refreshes us
 the same resolver, transactional preflight and diagnostic path; rejected refreshes
 retain the last accepted theme. No wire values, defaults or maintained backend
 behavior change.
+
+### NSH inherited foreground preserves native ancestor and state colors
+
+NSH now accepts `foreground="inherit"` (and the CSS equivalent `currentColor`)
+for ordinary and state-prefixed foreground paint. It clears the local control
+color and uses the actual native ancestor's foreground, including later ancestor
+changes. It does not substitute the application theme's foreground or a fixed
+color. For example, a button can inherit its containing column's color while
+keeping an authored hover override:
+
+```ocaml
+column ~foreground:"#123456"
+  [ button ~foreground:"inherit" ~hover_foreground:"#00ff00"
+      ~text:"Open" [] ]
+```
+
+The adapter uses public `text-inherit` utilities at the corresponding native
+state rank. It combines them with whitespace policy in one `app_class` binding;
+these features cannot overwrite each other. A raw inline reset would outrank
+state colors, so this implementation preserves authored hover, pressed, focus,
+focus-within, disabled and selected paint precedence. Selected foreground and
+selected-hover foreground continue to follow the model-owned `selected` value.
+CSS-variable aliases/fallbacks and scoped appearance are resolved before choosing
+the native inherited or explicit color path.
+
+This adds foreground inheritance only. Background, border and shadow colors
+still require their own supported color semantics; `inherit` is not converted to
+an arbitrary color for those properties. No OCaml wire ordinal or maintained
+mobile backend changes.

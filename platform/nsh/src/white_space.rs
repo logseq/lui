@@ -69,13 +69,30 @@ pub(crate) fn enter(node: Signal<Arc<Node>>) {
     });
     provide_context(Scope(policy));
 }
-pub(crate) fn bind<E: Element>(element: E, node: Signal<Arc<Node>>) -> E {
+pub(crate) fn bind<E: Element>(
+    element: E,
+    node: Signal<Arc<Node>>,
+    theme: Option<crate::ui::Theme>,
+) -> E {
     let inherited = use_context::<Scope>();
     element.app_class(move || {
-        let policy = authored(&node.get())
+        let node = node.get();
+        let policy = authored(&node)
             .expect("validated whitespace policy")
             .or_else(|| inherited.and_then(|scope| scope.0.get()));
-        policy.map(|policy| SharedString::from(policy.class()))
+        let foreground = theme.and_then(|theme| {
+            crate::style::foreground_classes(&node, &theme.get())
+                .expect("atomically validated foreground inheritance")
+        });
+        // app_class is a single native binding: combine policy and color
+        // utilities here so either live update cannot overwrite the other.
+        match (policy, foreground) {
+            (Some(policy), Some(foreground)) => {
+                Some(format!("{} {}", policy.class(), foreground).into())
+            }
+            (Some(policy), None) => Some(policy.class().into()),
+            (None, foreground) => foreground,
+        }
     })
 }
 

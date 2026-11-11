@@ -140,6 +140,7 @@ pub(crate) struct NativeEvents {
     current: Rc<dyn Fn() -> bool>,
     visibility: Option<VisibilityScope>,
     press_snapshot: Rc<Cell<Option<PressEvent>>>,
+    theme: Option<crate::ui::Theme>,
 }
 impl NativeEvents {
     pub(crate) fn new(
@@ -156,7 +157,12 @@ impl NativeEvents {
             current,
             visibility,
             press_snapshot: Rc::new(Cell::new(None)),
+            theme: None,
         }
+    }
+    pub(crate) fn with_theme(mut self, theme: crate::ui::Theme) -> Self {
+        self.theme = Some(theme);
+        self
     }
     /// A native Menu owns trigger activation. Its unit event consumes the
     /// native payload observed on that same host, without activating it twice.
@@ -274,7 +280,7 @@ impl NativeEvents {
         });
     }
     pub(crate) fn text_policy<E: Element>(&self, element: E) -> E {
-        crate::white_space::bind(element, self.node)
+        crate::white_space::bind(element, self.node, self.theme)
     }
     pub(crate) fn attach<E: Element + Interactive>(&self, element: E) -> E {
         let mut element = self.text_policy(element);

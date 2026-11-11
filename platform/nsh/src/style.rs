@@ -189,20 +189,55 @@ impl ThemeView {
         dark: bool,
         visiting: &mut BTreeSet<String>,
     ) -> Result<Color, String> {
+        self.foreground_at(expression, dark, visiting)?
+            .ok_or_else(|| "NSH inherited color is valid only for foreground paint".into())
+    }
+
+    fn foreground(&self, expression: &str) -> Result<Foreground, String> {
+        let light = self.foreground_at(expression, self.appearance(false), &mut BTreeSet::new())?;
+        let dark = self.foreground_at(expression, self.appearance(true), &mut BTreeSet::new())?;
+        Ok(match (light, dark) {
+            (None, None) => Foreground::Inherit,
+            (Some(light), Some(dark)) => Foreground::Color(AdaptiveColor::new(light, dark)),
+            // A mixed token follows this scoped theme's actual appearance. The
+            // renderer refreshes ThemeView on appearance changes, so the native
+            // class and explicit color change together; no parent color is read.
+            (light, dark) => match if self.appearance(self.system_dark) {
+                dark
+            } else {
+                light
+            } {
+                Some(color) => Foreground::Color(color.into()),
+                None => Foreground::Inherit,
+            },
+        })
+    }
+
+    fn foreground_at(
+        &self,
+        expression: &str,
+        dark: bool,
+        visiting: &mut BTreeSet<String>,
+    ) -> Result<Option<Color>, String> {
         let expression = self.substitute(expression, dark, visiting)?;
         let name = expression.trim();
+        if name.eq_ignore_ascii_case("inherit") || name.eq_ignore_ascii_case("currentcolor") {
+            return Ok(None);
+        }
         if let Some(value) = self.values.get(name) {
             if !visiting.insert(name.to_owned()) {
                 return Err(format!("NSH cyclic color token {name}"));
             }
-            let result = self.color_at(value.at(dark), dark, visiting);
+            let result = self.foreground_at(value.at(dark), dark, visiting);
             visiting.remove(name);
             return result;
         }
         if let Some(color) = self.base.color(name) {
-            return Ok(if dark { color.dark } else { color.light }.into());
+            return Ok(Some(if dark { color.dark } else { color.light }.into()));
         }
-        Color::parse(name).ok_or_else(|| format!("NSH unresolved color {name:?}"))
+        Color::parse(name)
+            .map(Some)
+            .ok_or_else(|| format!("NSH unresolved color {name:?}"))
     }
 
     fn variable(
@@ -1100,10 +1135,66 @@ pub(crate) fn uses_viewport(node: &Node) -> bool {
     .any(|name| node.props.contains_key(*name))
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Foreground {
+    Inherit,
+    Color(AdaptiveColor),
+}
+
+/// Native class variants clear a component's own color at the same cascade
+/// rank. An inline Color(None) would incorrectly outrank authored hover colors.
+pub(crate) fn foreground_classes(
+    node: &Node,
+    theme: &ThemeView,
+) -> Result<Option<SharedString>, String> {
+    let read = |property: &str| -> Result<Option<Foreground>, String> {
+        node.props
+            .get(property)
+            .map(|value| {
+                theme.foreground(
+                    value
+                        .as_str()
+                        .ok_or("NSH foreground requires a color string")?,
+                )
+            })
+            .transpose()
+    };
+    let selected = node.boolean("selected", false);
+    let foreground = if selected {
+        read("selected-foreground")?
+    } else {
+        None
+    }
+    .or(read("foreground")?);
+    let hover = if selected {
+        read("selected-hover-foreground")?
+    } else {
+        None
+    }
+    .or(read("hover-foreground")?);
+    let mut classes = Vec::with_capacity(6);
+    for (paint, class) in [
+        (foreground, "text-inherit"),
+        (hover, "hover:text-inherit"),
+        (read("pressed-foreground")?, "active:text-inherit"),
+        (read("focus-foreground")?, "focus-visible:text-inherit"),
+        (
+            read("focus-within-foreground")?,
+            "focus-within:text-inherit",
+        ),
+        (read("disabled-foreground")?, "disabled:text-inherit"),
+    ] {
+        if matches!(paint, Some(Foreground::Inherit)) {
+            classes.push(class);
+        }
+    }
+    Ok((!classes.is_empty()).then(|| classes.join(" ").into()))
+}
+
 #[derive(Default)]
 struct Paint {
     background: Option<AdaptiveColor>,
-    foreground: Option<AdaptiveColor>,
+    foreground: Option<Foreground>,
     border: Option<AdaptiveColor>,
     opacity: Option<f32>,
     shadow: Option<Shadow>,
@@ -1165,7 +1256,17 @@ impl Paint {
             .transpose()?;
         Ok(Self {
             background: color("background")?,
-            foreground: color("foreground")?,
+            foreground: node
+                .props
+                .get(&format!("{prefix}foreground"))
+                .map(|value| {
+                    theme.foreground(
+                        value
+                            .as_str()
+                            .ok_or("NSH foreground requires a color string")?,
+                    )
+                })
+                .transpose()?,
             border: color(border_name)?,
             opacity,
             shadow,
@@ -1175,8 +1276,11 @@ impl Paint {
         if let Some(color) = self.background {
             style = style.bg(color);
         }
-        if let Some(color) = self.foreground {
-            style = style.text_color(color);
+        match self.foreground {
+            Some(Foreground::Color(color)) => style = style.text_color(color),
+            // The public host app_class binding projects the native reset,
+            // preserving the same state-variant cascade as concrete paint.
+            Some(Foreground::Inherit) | None => {}
         }
         if let Some(color) = self.border {
             style = style.border_color(color);
