@@ -230,3 +230,28 @@ No production change in this report is claimed implemented. The post-baseline
 Scroll fix reported by root requires its own recorded test evidence. All other
 findings above are open requirements until a reviewed change and appropriate
 qualification establish otherwise.
+
+## Later decisions and integration seams
+
+After this snapshot, the user explicitly allowed both desktop sidebars to adopt
+NSH's native panel behavior. The caller migration may therefore use native
+absolute sizes, handle band and motion defaults, provided it converts the
+persisted application model correctly and preserves the other backend paths.
+This supersedes preserving the old narrow hit bands/offsets for those sidebars;
+it does not authorize changing unrelated used Input, selection or editor APIs.
+
+A subsequent bridge review also found that Logseq's `lui_ocaml_start` has seven
+arguments (patch/wakeup/platform callbacks, platform/host, initial payload),
+whereas the generic LUI bridge loaded by NSH has three. Logseq's bridge also
+lacks some required generic lifecycle/clock/error exports. The current NSH
+loader fails its required-symbol resolution before invoking startup; the
+Logseq library is not an interchangeable generic fixture DLL. A real downstream
+integration must supply the correctly typed startup/service/event ABI and
+runtime scheduling, not call the different signature by casting its symbol.
+Host-code6/profile registration fixes alone do not establish this integration.
+
+The current generic store also rejects CreateExtension. Native editor/PDF/raw
+markup factories, fingerprints, host requests (including `measure-node` /
+`node-rect`), custom SVG registration and app services remain actual porting
+work. The source audit and subsequent successful component fixtures are not a
+claim that the whole Logseq application can yet run on NSH.

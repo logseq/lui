@@ -1,6 +1,6 @@
 //! Application-owned SVG assets. NSH keeps ownership of decoding and drawing caches.
 use crate::contract;
-use nsh_core::prelude::*;
+use nsh_core::{element::ImageSrc, prelude::*};
 use serde_json::Value;
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -104,8 +104,8 @@ mod tests {
     const SQUARE: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M0 0h24v24H0z"/></svg>"#;
     const TRIANGLE: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M0 0l24 24H0z"/></svg>"#;
 
-    #[test]
-    fn table_validation_is_atomic_and_registry_owners_are_independent() {
+    #[component]
+    fn RegistryIsolation() -> impl IntoElement {
         let (first, ()) = create_root(|| {
             let registry = IconRegistry::new();
             assert!(
@@ -142,6 +142,13 @@ mod tests {
             assert_eq!(registry.source("app:sample"), Some(original));
         });
         first.dispose();
+        text("Independent icon registries")
+    }
+
+    #[test]
+    fn table_validation_is_atomic_and_registry_owners_are_independent() {
+        let mut app = Headless::start(EngineConfig::new(Root::of::<RegistryIsolation>())).unwrap();
+        app.wait_for("Independent icon registries").unwrap();
     }
 
     #[component]

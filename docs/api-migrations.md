@@ -4014,7 +4014,7 @@ keyed editor retention and atomic late-capability refusal.
 
 ## NSH Checkbox paints authored indicator and label parts
 
-The Checkbox and Toggle routes now forward `indicator-border-color` to the
+The Checkbox route now forwards `indicator-border-color` to the
 actual native indicator, `checked-indicator-border-color` to its checked and
 indeterminate border, and `label-opacity` to the direct text label. These are
 part styles: they do not replace the component's outer border, dim the check
@@ -4227,10 +4227,10 @@ Generic applications preserve their existing clock and publication path.
 Native menu/window callbacks can capture `app::ApplicationEvents` from context
 and call `send(event)`. This queues through that same ordered task and reports a
 closed/full queue. Factories that need a read-only editor snapshot capture
-`app::ApplicationRuntime`, then obtain `session()` when making the query. The
-holder is provided before retained regions are constructed and filled before the
-first application patch; adding a new context after opening asynchronously would
-not reliably reach regions that already captured their context.
+`app::ApplicationRuntime` and call `editor_snapshot(block_id).await`. This is a
+barrier on the same input queue, so a read cannot overtake earlier emitted edits.
+The capability is provided before retained regions are constructed; adding a
+context after opening asynchronously would not reliably reach those regions.
 
 Host services may read `Renderer::node_snapshot`, `root_id` and
 `find_by_identifier`, and obtain `native_reference(id, incarnation)` for an exact
@@ -4266,3 +4266,10 @@ applications may project the selected theme through `ThemeRegistry::native_token
 and explicitly call NSH `set_tokens` for their whole native surface. Embedding
 applications retain ownership of that surface-wide choice; the generic registry
 does not call `set_tokens` globally or change other embedded renderers.
+
+Extension factories may attach `ExtensionContext.reference` to their actual
+native control, including a control below a keyed region. This ref is separate
+from the registry host's retained-root ref. `Renderer::native_reference` prefers
+the actual attached factory ref, otherwise the host root; a region cannot
+silently overwrite the editor's native focus/measurement target. Ordinary
+standard components allocate no additional factory reference.

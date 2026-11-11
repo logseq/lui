@@ -1720,6 +1720,7 @@ dependencies = [
  "objc2-core-graphics",
  "objc2-foundation",
  "objc2-image-io",
+ "roxmltree 0.21.2",
  "serde",
  "serde_json",
  "tokio",

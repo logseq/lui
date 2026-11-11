@@ -132,8 +132,11 @@ impl Component for RetainedContent {
     }
 }
 
-pub(crate) fn mount(context: ExtensionContext, implementation: Implementation) -> AnyElement {
-    let reference = context.reference;
+pub(crate) fn mount(
+    context: ExtensionContext,
+    implementation: Implementation,
+    reference: ElementRef,
+) -> AnyElement {
     let identity = context.node.get_untracked();
     let key = format!("lui-extension-{}-{}", identity.id, identity.incarnation);
     RetainedContent::element(ContentProps(Some(Rc::new(move || match &implementation {

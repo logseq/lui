@@ -119,3 +119,20 @@ Log `/tmp/lui-nsh-pinned-native-panels-navigation.log` SHA-256:
 `8983941851a97b4980f3e342d17e679986c544358e97bc23bf0d6bf49e2faeb9`.
 The CLI receipt names revision `bfa15d0c843c0d6f5bf3a2a230e8ca56b876b61c`
 and SHA-256 `5f02970c290287c0d469f25905e20d76478bbe74df6a406967e565bca9e4d95f`.
+
+## Linux native result at the exact pin
+
+Linux run [43067839700](https://github.com/logseq/nsh/actions/runs/43067839700)
+completed successfully at `bfa15d0c843c0d6f5bf3a2a230e8ca56b876b61c`.
+The `check` job (130687600266) passed strict Clippy with/without WebKitGTK,
+optional-feature checks, both test configurations, AT-SPI activation/input and
+GTK-window examples. Its logs explicitly report these three GTK regressions as
+passed in both relevant test configurations:
+
+- `mount::tests::same_parent_insert_keeps_a_focused_editor_rooted`
+- `mount::tests::same_parent_insert_keeps_a_focused_descendant_rooted`
+- `mount::tests::cross_parent_insert_still_detaches_from_the_old_parent`
+
+The GPUI gallery job (130687599801) also passed. This closes the fork's pending
+Linux execution noted above. It does not qualify later LUI FileImage/MenuItem
+source, the actual Logseq app, Windows execution or distribution signing.

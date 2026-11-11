@@ -48,13 +48,24 @@ impl ApplicationServices {
     }
 }
 
-/// Read-only runtime queries for application factories. This holder is provided
-/// before retained regions capture their context and filled before first publish.
-#[derive(Clone, Default)]
-pub struct ApplicationRuntime(Rc<RefCell<Option<Session>>>);
+/// Read-only queries are barriers on the application's existing input queue.
+/// Factories capture this context before the runtime opens, then await queries
+/// after earlier emitted edits have reached the authoritative OCaml model.
+#[derive(Clone)]
+pub struct ApplicationRuntime(mpsc::Sender<Request>);
 impl ApplicationRuntime {
-    pub fn session(&self) -> Option<Session> {
-        self.0.borrow().clone()
+    pub async fn editor_snapshot(
+        &self,
+        block_id: String,
+    ) -> Result<Option<crate::runtime::EditorSnapshot>, String> {
+        let (reply, response) = oneshot::channel();
+        self.0
+            .send(Request::EditorSnapshot { block_id, reply })
+            .await
+            .map_err(|_| "application query queue is closed".to_owned())?;
+        response
+            .await
+            .map_err(|_| "application query was disposed".to_owned())?
     }
 }
 
@@ -73,6 +84,10 @@ impl ApplicationEvents {
 enum Request {
     Event(GuardedEvent),
     Platform(PlatformEvent),
+    EditorSnapshot {
+        block_id: String,
+        reply: oneshot::Sender<Result<Option<crate::runtime::EditorSnapshot>, String>>,
+    },
     Tick,
     Pump,
     WindowWake,
@@ -205,12 +220,7 @@ impl Clock {
 pub fn Desktop(props: DesktopProps) -> impl IntoElement {
     let (sender, mut receiver) = mpsc::channel(64);
     provide_context(ApplicationEvents(sender.clone()));
-    let runtime = ApplicationRuntime::default();
-    provide_context(runtime.clone());
-    let runtime_cleanup = runtime.clone();
-    cleanup(move || {
-        runtime_cleanup.0.borrow_mut().take();
-    });
+    provide_context(ApplicationRuntime(sender.clone()));
     let for_events = sender.clone();
     let windows = Windows::default();
     let for_windows = windows.clone();
@@ -273,7 +283,6 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                 return;
             }
         };
-        *runtime.0.borrow_mut() = Some(session.clone());
         publish(
             &opening,
             &clock,
@@ -307,6 +316,12 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                 }
                 Request::Event(_) => None,
                 Request::Platform(event) => Some(session.platform_event(event).await),
+                Request::EditorSnapshot { block_id, reply } => {
+                    if !reply.is_closed() {
+                        let _ = reply.send(session.editor_snapshot(block_id).await);
+                    }
+                    None
+                }
                 Request::Pump => Some(session.pump().await),
                 Request::Tick => {
                     clock.queued.set(false);

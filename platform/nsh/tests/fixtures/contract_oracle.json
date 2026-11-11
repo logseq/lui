@@ -1,4 +1,223 @@
 {
+  "extensions": {
+    "schema": {
+      "identifier": "app-oracle",
+      "fingerprint": "lui-extension-v1|10:app-oracle|profiles:linux/nsh,macos/nsh,windows/nsh|standard-children:1|children:|properties:5:count:int:required:none,5:title:string:optional:some:s7:Default,6:factor:float:optional:some:f1.|events:7:changed[5:count:int:required,6:factor:float:optional]",
+      "kind": "component",
+      "profiles": [
+        {
+          "os": "macos",
+          "host": "nsh"
+        },
+        {
+          "os": "linux",
+          "host": "nsh"
+        },
+        {
+          "os": "windows",
+          "host": "nsh"
+        }
+      ],
+      "standardChildren": true,
+      "extensionChildren": [],
+      "properties": [
+        {
+          "name": "count",
+          "kind": "int",
+          "required": true
+        },
+        {
+          "name": "factor",
+          "kind": "float",
+          "required": false,
+          "default": 1.0
+        },
+        {
+          "name": "title",
+          "kind": "string",
+          "required": false,
+          "default": "Default"
+        }
+      ],
+      "events": [
+        {
+          "name": "changed",
+          "fields": [
+            {
+              "name": "count",
+              "kind": "int",
+              "required": true
+            },
+            {
+              "name": "factor",
+              "kind": "float",
+              "required": false
+            }
+          ]
+        }
+      ]
+    },
+    "tweak": {
+      "identifier": "app-oracle-tint",
+      "fingerprint": "lui-tweak-v1|15:app-oracle-tint|profiles:linux/nsh,macos/nsh,windows/nsh|properties:5:width:float:required:none",
+      "kind": "tweak",
+      "profiles": [
+        {
+          "os": "macos",
+          "host": "nsh"
+        },
+        {
+          "os": "linux",
+          "host": "nsh"
+        },
+        {
+          "os": "windows",
+          "host": "nsh"
+        }
+      ],
+      "standardChildren": true,
+      "extensionChildren": [],
+      "properties": [
+        {
+          "name": "width",
+          "kind": "float",
+          "required": true
+        }
+      ],
+      "events": []
+    },
+    "properties": [
+      {
+        "values": {
+          "count": 1
+        },
+        "accepted": true
+      },
+      {
+        "values": {
+          "count": 1.0
+        },
+        "accepted": false
+      },
+      {
+        "values": {
+          "count": -4611686018427387904
+        },
+        "accepted": true
+      },
+      {
+        "values": {
+          "count": 4611686018427387903
+        },
+        "accepted": true
+      },
+      {
+        "values": {
+          "count": 1,
+          "factor": 1
+        },
+        "accepted": false
+      },
+      {
+        "values": {
+          "count": 1,
+          "factor": 1.0
+        },
+        "accepted": true
+      },
+      {
+        "values": {
+          "count": 1,
+          "unknown": true
+        },
+        "accepted": false
+      },
+      {
+        "values": {},
+        "accepted": false
+      }
+    ],
+    "events": [
+      {
+        "values": {
+          "count": 1
+        },
+        "accepted": true
+      },
+      {
+        "values": {
+          "count": 1.0
+        },
+        "accepted": false
+      },
+      {
+        "values": {
+          "count": -4611686018427387904
+        },
+        "accepted": true
+      },
+      {
+        "values": {
+          "count": 4611686018427387903
+        },
+        "accepted": true
+      },
+      {
+        "values": {
+          "count": 1,
+          "factor": 1
+        },
+        "accepted": false
+      },
+      {
+        "values": {
+          "count": 1,
+          "factor": 1.0
+        },
+        "accepted": true
+      },
+      {
+        "values": {
+          "count": 1,
+          "unknown": true
+        },
+        "accepted": false
+      },
+      {
+        "values": {},
+        "accepted": false
+      }
+    ],
+    "wire": {
+      "generation": 1,
+      "ops": [
+        {
+          "op": "create-extension",
+          "id": 2,
+          "identifier": "app-oracle",
+          "fingerprint": "lui-extension-v1|10:app-oracle|profiles:linux/nsh,macos/nsh,windows/nsh|standard-children:1|children:|properties:5:count:int:required:none,5:title:string:optional:some:s7:Default,6:factor:float:optional:some:f1.|events:7:changed[5:count:int:required,6:factor:float:optional]"
+        },
+        {
+          "op": "set-extension-prop",
+          "id": 2,
+          "property": "count",
+          "value": 7
+        },
+        {
+          "op": "create-extension",
+          "id": 3,
+          "identifier": "app-oracle",
+          "fingerprint": ""
+        },
+        {
+          "op": "set-extension-prop",
+          "id": 3,
+          "property": "count",
+          "value": 8
+        }
+      ]
+    }
+  },
   "values": [
     {
       "type": "string",

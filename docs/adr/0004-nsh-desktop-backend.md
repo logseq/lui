@@ -303,3 +303,13 @@ acceptance includes measured sparse-update scaling and bounded mounted rows;
 the plan defines workloads and limits. No compiler-warning suppression, type
 casts bypassing safety, Dune edits, vendored dependency trees or reduced test
 coverage may be used to meet those gates.
+
+## Final application acceptance clarification
+
+On 2026-11-12 the user made Logseq's actual `refactor/lui` application the final
+acceptance target: completely replace MyGo with NSH, remove the old active
+backend/build/launch/package integration, and perform UX review and remediation
+against `master`. Graph View is excluded. Database graphs and other graph-backed
+features remain required. Component counts and fixture tests do not establish
+this result. The execution plan records the frozen master comparison revision,
+application startup/service/extension gates and actual UX review requirements.

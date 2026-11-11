@@ -20,7 +20,7 @@ The JSON output also enumerates canonical events without a renderer transport.
 | Kind | Current native route or rejection | P/E | Verified property gaps | Focused test sources |
 | --- | --- | --- | --- | --- |
 | `root` | core view | 3/0 | — | None mapped |
-| `row` | core view + flex direction | 97/12 | G1, G13, G9 | 1 |
+| `row` | core view + flex direction | 97/12 | G1, G13, G9, G14 | 1 |
 | `column` | core view | 94/9 | G1, G13 | 1 |
 | `grid` | core view + native grid | 82/3 | G1, G13 | None mapped |
 | `stack` | core same-cell grid + keyed retained layers | 79/3 | G1, G13 | 1 |
@@ -31,7 +31,7 @@ The JSON output also enumerates canonical events without a renderer transport.
 | `card` | core view | 89/3 | G1, G13 | None mapped |
 | `alert` | themed inline alert + retained layers | 83/3 | G1, G13 | 1 |
 | `bubble` | themed bubble + reaction badge + retained layers | 84/3 | G1, G13 | 1 |
-| `box` | core view | 96/12 | G1, G13, G9 | 3 |
+| `box` | core view | 96/12 | G1, G13, G9, G14 | 3 |
 | `text` | core text | 86/9 | G1, G13 | None mapped |
 | `heading` | retained core Text + Header role/live level + native typography presets | 85/3 | G1, G13 | 2 |
 | `paragraph` | core text | 85/3 | G1, G13 | None mapped |
@@ -43,11 +43,11 @@ The JSON output also enumerates canonical events without a renderer transport.
 | `radio` | base Radio | 89/11 | G1, G13, G12 | 2 |
 | `slider` | base Slider | 82/5 | G1, G13, G12 | 1 |
 | `number-stepper` | base NumberInput | 86/5 | G1, G13, G12 | 1 |
-| `text-field` | themed base Input | 88/8 | G1, G13, G3, G9 | 2 |
-| `secure-field` | themed base Input + masked | 88/8 | G1, G13, G3, G9 | None mapped |
-| `input` | themed base Input | 89/8 | G1, G13, G3, G9 | None mapped |
-| `search-field` | themed base Input | 88/8 | G1, G13, G3, G9 | None mapped |
-| `textarea` | themed base Input + multiline | 89/8 | G1, G13, G3, G9 | 5 |
+| `text-field` | themed base Input | 88/8 | G1, G13 | 2 |
+| `secure-field` | themed base Input + masked | 88/8 | G1, G13 | None mapped |
+| `input` | themed base Input | 89/8 | G1, G13, G3 | 7 |
+| `search-field` | themed base Input | 88/8 | G1, G13 | 5 |
+| `textarea` | themed base Input + multiline | 89/8 | G1, G13 | 5 |
 | `checkbox` | themed base Checkbox | 91/6 | G1, G13, G4, G12 | 1 |
 | `switch` | base Switch | 75/5 | G1, G13, G12 | 3 |
 | `progress` | base Progress | 66/3 | G1, G13, G12 | 1 |
@@ -67,7 +67,7 @@ The JSON output also enumerates canonical events without a renderer transport.
 | `combobox` | base Menu + controlled Input | 86/12 | G1, G13 | 1 |
 | `dropdown-menu` | core view inside picker-owned menu | 85/4 | G1, G13 | 2 |
 | `context-menu` | native Menu for Button primary attachment; native ContextMenu for ListItem secondary attachment | 2/4 | G13 | 5 |
-| `menu-item` | base MenuItem | 94/9 | G1, G13, G2, G12 | 1 |
+| `menu-item` | base MenuItem | 94/9 | G1, G13, G12 | 3 |
 | `menu-trigger` | base Menu/Submenu | 11/3 | G1, G13 | 1 |
 | `list-item` | base Button/Accordion + keyed retained row content | 101/13 | G1, G13, G12 | 3 |
 | `avatar` | base Avatar with authored fallback | 66/3 | G1, G13, G12 | 2 |
@@ -117,13 +117,13 @@ is not a support guarantee.
 
 - **G1**: Authored style-class has no adapter reader; native/style defaults remain. Candidate properties: `style-class`.
 - **G13**: Authored layer alignment remains unimplemented outside local Overlay. Candidate properties: `alignment`.
-- **G2**: Menu-item renders text/children with a fixed themed wrapper; these authored appearance choices are not forwarded. Candidate properties: `icon`, `icon-placement`, `selection-placement`, `size`, `tooltip-keys`, `variant`.
 - **G11**: Command shortcut hints are not forwarded; built-in icons, placement, size and variants have native bindings outside tabs. Candidate properties: `tooltip-keys`.
-- **G3**: Textarea Enter behavior is forwarded through native SubmitBehavior. Single-line inputs keep native submit/blur defaults; explicit submit-on-blur=true/navigation callbacks and color/time input are rejected. Other input hints require review. Candidate properties: `input-type`, `navigate-enabled`, `submit-on-blur`, `submit-on-enter`.
+- **G3**: Textarea Enter behavior is forwarded through native SubmitBehavior. Single-line inputs keep native submit/blur defaults; Authored blur submission uses native focus/composition with Enter deduplication; focused unmodified Up/Down forwards native navigation requests; color/time input remains rejected. Other input hints and full NavigationKey require review. Candidate properties: `input-type`.
 - **G4**: Checkbox routes forward checked/indeterminate/disabled/label; authored indicator/detail behavior remains absent. Candidate properties: `checked-indicator-border-color`, `indicator-border-color`, `label-opacity`, `toggle-detail-enabled`.
 - **G5**: Image forwards canonical URL, alt/label, fit, eager/default loading and native Load. Resource IDs, crop rectangles and authored referrer policy are explicitly rejected; loading=lazy is a value restriction listed separately, not a missing eager-loading path. Candidate properties: `image`, `referrer-policy`, `source-height`, `source-width`, `source-x`, `source-y`.
 - **G8**: Container appearance and CSS list markers are not implemented by the Scroll/VirtualList routes. Candidate properties: `list-style`, `style`.
-- **G9**: Canonical navigation-key and pointer-capture behavior remain unimplemented. Candidate properties: `navigate-enabled`, `pointer-capture`.
+- **G9**: Full NavigationKey payload remains unimplemented on generic calendar/container key handlers. Candidate properties: `navigate-enabled`.
+- **G14**: Canonical pointer-capture remains unimplemented. Candidate properties: `pointer-capture`.
 - **G12**: Typed native behavior components do not expose generic root pointer/gesture projection; unit semantic events remain supported separately. Candidate properties: `double-press-enabled`, `long-press-enabled`, `pointer-enabled`.
 - **G10** is retired for current generic host routes: authored activation is now installed with live guards. Radio's true press-enabled value remains explicitly rejected.
 
@@ -176,8 +176,8 @@ rejection, list appearance and metadata.
   the accessible name; Heading still rejects the noncanonical accessibility-label.
   The mapped Headless tests cover level/default/override/identity/rollback behavior,
   not operating-system screen-reader announcements or native screenshot metrics.
-- Ignored menu-item size/variant properties leave NSH
-  wrapper defaults in control even when an application authors another value.
+- MenuItem binds icon/check/shortcut parts, native sizing/selection placement and
+  variant styling. Authored foreground wins over native checked/hover defaults.
   This inventory does not infer canonical absent-property defaults from NSH's
   defaults. Those need explicit cross-backend behavior tests and migration notes.
 - Button/toggle command icons use shared Web SVG assets, native retained size/variant
@@ -252,11 +252,11 @@ validate_popup_shape, controls::validate, virtual_rows::validate and style::comp
 - `file-picker`: Only native files/folders dialogs; photo-library/camera sources and completion leases are rejected. File filters accept extension groups, not MIME or UTI filters; folders use native folder options.
 - `media-surface`: Requires a nonempty URL; foreign surface resource IDs, including zero, are rejected.
 - `tree`: Children are native item metadata, not arbitrary view/editor bodies; unsupported metadata properties and pointer callbacks are rejected. Use tree_item semantic selection/expansion/action callbacks; legacy pointer-enabled rows are rejected.
-- `input`: input-type=color/time, submit-on-blur=true and navigate-enabled=true are rejected.
-- `text-field`: submit-on-blur=true and navigate-enabled=true are rejected.
-- `secure-field`: submit-on-blur=true and navigate-enabled=true are rejected.
-- `search-field`: submit-on-blur=true and navigate-enabled=true are rejected.
-- `textarea`: submit-on-blur=true and navigate-enabled=true are rejected.
+- `input`: input-type=color/time is rejected; blur/navigation observers require authored mount-time capability.
+- `text-field`: Blur/navigation capability must be authored at mount; full NavigationKey is not implemented.
+- `secure-field`: Blur/navigation capability must be authored at mount; full NavigationKey is not implemented.
+- `search-field`: Blur/navigation capability must be authored at mount; full NavigationKey is not implemented.
+- `textarea`: Blur/navigation capability must be authored at mount; full NavigationKey is not implemented.
 - `scroll`: Orientation is native horizontal/vertical at mount; changing its effective axis on the same incarnation is rejected atomically.
 - `drawer`: Requires exactly two canonical children: sidebar first and main content second.
 - `split`: Requires exactly two canonical pane children; sizes and resize events use absolute points. Rejects ratio value, custom resize-handle-width, nonzero resize-handle-offset and pointer-enabled=true. Rejects nonzero resize-duration and authored resize-easing/resize-origin; uses the native 9-point handle.
@@ -285,14 +285,22 @@ uses the concrete route bodies, not literal presence alone.
 
 | Source | SHA-256 |
 | --- | --- |
-| `render.rs` | `985e100f968df47f396791ac0b4dddc9500e9d2da55ca6be7a0a253909429233` |
-| `controls.rs` | `100f538a74266c00e290900921c44501bee88cc9feb293516203e1a086b4fba1` |
-| `style.rs` | `1b090ac373a487d4fa114eee38ba9eb6449b0cee95f6d943a2e5b3c00607ef19` |
+| `application_icons.rs` | `08b05108b92c3f3b95bca631908a93a11b56c73baba38ad485e358298f828142` |
+| `application_theme.rs` | `65305cce169f08b1b7d25106795d2502e4edccd463110b5fd2fb0f75db0bce56` |
+| `runtime.rs` | `1ec8c500239eb0f8a56db1b9129f74d2493a3d839cf2ce2ce4ec1bb4eb5dbd22` |
+| `runtime/driver.rs` | `af4a4763fd9c3ce77a1178f251e35ed7d88db4dc2dae62636b6f94e212b6866e` |
+| `extensions/mod.rs` | `3f6b7bd60e5fb6e28cfbcad01156871a2bf77fd247e8129585bf19a225d81328` |
+| `extensions/schema.rs` | `d6f77b87561a7a77d0d401779bd58467aafa301f6fd454478d739abe8f6ae9c4` |
+| `extensions/host.rs` | `bf9d9c3033b5931a8b0b585b9b2c5708f733bf1b336c41c1e51803eb6530ff0a` |
+| `ui/checkbox.rs` | `a613b40f06905e472a04e5558103c76cc4d18981f587c9be8a3a1946a761512c` |
+| `render.rs` | `a6589592c4c72b43176f4b8e3852bd15455517e1443c80c8eb1534a4d7d7c888` |
+| `controls.rs` | `7842e3fac817ab031681795df6325e858b75d180bf3208c606044fad1f597a0f` |
+| `style.rs` | `806cde1ce6112d5e247a16ed6164208cd0893cbbfcf2ed9b19c8d07b53f059f6` |
 | `virtual_rows.rs` | `1630ed15ed6526769c9f3b405623c464296d5c23e4a77099eb60d449ef1ea3de` |
-| `app.rs` | `7ccc4cebfa5fd4f954b873b08e3c06301a1cb0de17dcd8e323e8643fd179b6cc` |
-| `ui/mod.rs` | `852853e1c2e719456e12356f90d397bb990608de443ff17330d0a589863c503b` |
-| `ui/controls.rs` | `8b869e14088912eb0ea4f6a6eeafdbc9ae87e6c4358559c7c96961403929824b` |
-| `events.rs` | `7d65414dc0274b55a4fd838f08d9745552a7d8f315f4d80859e69ddb5ff05ce2` |
+| `app.rs` | `601125532e3355ebe21d381ae1e905b2c0a9ad0d3a31cacb1332cdbcfa423919` |
+| `ui/mod.rs` | `1d2cfcebfbb8b0cf7b4d38f13795cb86afc3eeacc922b7e56d8da28092735d56` |
+| `ui/controls.rs` | `5bdbbcce9067ed597ae60443878e76d4fc72c7609d7e40af31a3909a2ab515e2` |
+| `events.rs` | `f60c5d3dc177f409e75816149c4ddcabfece71a0de66a737c386de8090f93acf` |
 | `ui/icons.rs` | `ebcaedaa770c035305fca721bac02d0597c3f90c1729cb1100a5fb78be1b8c1e` |
 | `controls/basic.rs` | `0248ca019cb0577d7d8a76edb937e820b941e3d1a388f9b6b912c346c8ffff85` |
 | `controls/collections.rs` | `c3c743fe6de71b35960f71675216a911ba981f407c55e600d9f4420b97f674ea` |
@@ -300,7 +308,7 @@ uses the concrete route bodies, not literal presence alone.
 | `controls/navigation.rs` | `c21da66e709415de4c6e215bf03db32babe1fee96c648404c15eaffebe9201de` |
 | `images.rs` | `a008bd439b8eb481d8e11de528a2e0c3508135aac8ddd222f2c68788fa083e24` |
 | `headings.rs` | `b71525904da0649b922d0a1fe78dabe357c27bee571ed53212ed2172813832ea` |
-| `inputs.rs` | `ff797539062b875a31e9ab51b5e064930be4787a20e727ece26ed2dcf8c8ddfb` |
+| `inputs.rs` | `26a08e5dff96bb9b3e8b94d681cb3c8b78a81424e93b38f081a623c2933a09fb` |
 | `file_picker.rs` | `958a8e75027262fcb5adbdbc2b27307cd78064170eee376f1e59b6dcc5b742d0` |
 | `media.rs` | `71fd9b780a6a6b5925b3f9c4b42aac9e7b320c64e1c5559e30aab3f0e1e48add` |
 | `controls/toasts.rs` | `2d7d344288cf9989f21278a48fede6b77337da698b0ba2b91c5bff909d103ac0` |
@@ -313,13 +321,13 @@ uses the concrete route bodies, not literal presence alone.
 | `images/file_image/macos.rs` | `48545fea7e81829da80150b3c2821aa48ed499c2a2dfe379effe82ef52d9a566` |
 | `images/file_image/linux.rs` | `db8d998a6c41173afafdbd6c62c2a6558d79db2126ab2a6654547b8598d14255` |
 | `images/file_image/windows.rs` | `2ba08cc9943bab780e29a4fab8e61d854d55bd5c96b42a19c96f084bd639803f` |
+| `ui/menu_item.rs` | `f2bea62ce1e2e6a972b9fe794cc8d0e4e4d9f52f119568dd725f66dcb7066edd` |
 
 Concrete route evidence at this generated source checkpoint:
 
 | Gap | Source evidence |
 | --- | --- |
 | G1 | style.rs `compile`, render.rs `node`: authored style is compiled, but authored class has no reader |
-| G2 | controls.rs `element` menu-item branch |
 | G11 | controls.rs `command_content`; ui/controls.rs `CommandButtonProps` |
 | G12 | events.rs `NativeEvents::attach`; ComponentElement lacks public Interactive root handlers |
 | G3 | inputs.rs native SubmitBehavior/validation; controls.rs `picker` combobox Input defaults |

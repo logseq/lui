@@ -216,10 +216,12 @@ fn ordinary_blur_submits_the_committed_draft_once_and_keeps_both_inputs() {
     let outside = identity(&app, "lui-3");
     app.type_text("id:lui-2", " committed").unwrap();
     app.type_text("id:lui-3", "").unwrap();
-    assert_eq!(
-        *events.lock().unwrap(),
-        [Event::Text(2, "draft committed".into()), Event::Submit(2)]
-    );
+    {
+        let observed = events.lock().unwrap();
+        // Native typing reports intermediate edits; the committed final edit
+        // must immediately precede the single blur submission.
+        assert!(observed.ends_with(&[Event::Text(2, "draft committed".into()), Event::Submit(2),]));
+    }
     app.type_text("id:lui-3", "").unwrap();
     assert_eq!(submissions(&events), 1);
     assert_eq!(identity(&app, "lui-2"), native);

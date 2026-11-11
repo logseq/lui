@@ -9,6 +9,45 @@ Decision: [ADR 0004](../adr/0004-nsh-desktop-backend.md)
 
 ## Objective and completion rule
 
+The final acceptance target was explicitly clarified on 2026-11-12: the actual
+`logseq/logseq` `refactor/lui` branch must completely replace its MyGo desktop
+backend with NSH, then undergo a real UX review and fixes against Logseq
+`master`. Graph View rendering/interaction is excluded; database graphs,
+repositories, workers, references and non-Graph-View navigation remain in scope.
+A component fixture or a green LUI library suite does not complete this target.
+
+Priority is the real application's typed startup ABI, worker wakeups, host
+services, registered raw/editor/CodeMirror/PDF components, resources/icons,
+build/launch/package scripts and persisted application behavior. After native
+startup works, remove the old Logseq MyGo implementation and its active build,
+launch and packaging paths. Preserve maintained mobile/Web backends and do not
+modify Dune files. Generic unused component refinements must not displace the
+actual application cutover and UX acceptance work.
+
+The initial integration snapshot is Logseq `refactor/lui`
+`29dcb60fdc976dcda1da6ec984057bbf79d88612`. The UX comparison baseline fetched
+from `origin/master` is `29fd2edd015e12963742b985ce6d2311c074e09b`.
+Record a new explicit comparison revision if this baseline is later refreshed;
+"align with master" means reviewed product behavior/UX parity, not an automatic
+merge of master into the refactor branch.
+
+Final integration gates:
+
+- Build and run actual Logseq through NSH on the supported desktop targets;
+  no MyGo process, runtime library, source dependency or active launch/package
+  script remains on the final `refactor/lui` path.
+- Use an isolated qualification graph to exercise startup, editing/IME,
+  navigation/sidebars, search/commands, properties/tables, menus/shortcuts,
+  dialogs, persistence/sync, assets/PDF, extensions and packaging/update flows.
+  Graph View is the sole explicitly excluded product surface.
+- Review real native screenshots and interactions against the frozen master
+  baseline in light/dark, narrow/wide windows, keyboard and accessibility flows;
+  record findings, fixes and remaining differences with exact revisions.
+- Pass relevant LUI and Logseq tests and all previously required native,
+  performance and delivery gates. Do not mark complete while real application
+  integration or UX differences remain unverified.
+
+
 Replace MyGo with an NSH desktop backend for macOS, Windows and Linux. Preserve
 the existing LUI application API except for the documented desktop host
 migration, keep Apple/iOS, Android and Web maintained, and provide packaging,

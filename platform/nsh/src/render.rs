@@ -81,6 +81,7 @@ struct Entry {
     node: Signal<Arc<Node>>,
     children: Signal<Vec<(u64, u64)>>,
     reference: ElementRef,
+    factory_reference: Option<ElementRef>,
     theme: Signal<Arc<ThemeView>>,
     popup: Signal<Option<(u64, u64)>>,
     capabilities: Rc<Cell<Option<Capabilities>>>,
@@ -170,7 +171,12 @@ impl Renderer {
     pub fn native_reference(&self, id: u64, incarnation: u64) -> Option<ElementRef> {
         let state = self.0.borrow();
         let entry = state.nodes.get(&id)?;
-        (entry.node.get_untracked().incarnation == incarnation).then_some(entry.reference)
+        (entry.node.get_untracked().incarnation == incarnation).then_some(
+            entry
+                .factory_reference
+                .filter(|reference| reference.node().is_some())
+                .unwrap_or(entry.reference),
+        )
     }
 
     pub fn apply(&self, patch: Batch) -> Result<(), String> {
@@ -290,6 +296,8 @@ impl Renderer {
                             node,
                             children,
                             reference,
+                            factory_reference: owner
+                                .run(|| node.get_untracked().extension.is_some().then(element_ref)),
                             theme,
                             popup,
                             capabilities: Rc::new(Cell::new(None)),
@@ -811,12 +819,15 @@ impl Renderer {
                         render: children.render,
                         lookup: children.lookup,
                     },
-                    reference,
+                    reference: self.0.borrow().nodes[&id]
+                        .factory_reference
+                        .expect("extension factory reference"),
                     emitter,
                     theme,
                     schema,
                 },
                 implementation,
+                reference,
             );
         }
         let child_renderer = (context.is_some()

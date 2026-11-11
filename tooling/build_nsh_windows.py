@@ -47,6 +47,9 @@ def verify_exports(library):
     import re
     runtime = (ROOT / "platform/nsh/src/runtime.rs").read_text(encoding="utf-8")
     required = set(re.findall(r'required!\("(lui_ocaml_[a-z0-9_]+)"\)', runtime))
+    driver = (ROOT / "platform/nsh/src/runtime/driver.rs").read_text(encoding="utf-8")
+    generic = driver.split("BridgeConfig::Generic => Self::Generic {", 1)[1].split("},", 1)[0]
+    required.update(re.findall(r'symbol!\("(lui_ocaml_[a-z0-9_]+)"\)', generic))
     required.update(("lui_ocaml_virtual_rows_version", "lui_ocaml_virtual_window",
                      "lui_ocaml_scroll_completed", "lui_ocaml_agent_utf8"))
     if not required:

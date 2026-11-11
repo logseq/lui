@@ -265,15 +265,23 @@ fn ControlledProbe() -> impl IntoElement {
             {"op":"set-prop","id":2,"property":"text","value":"Choose rows"},
             {"op":"set-prop","id":2,"property":"accessibility-label","value":"Choose rows"},
             {"op":"set-prop","id":2,"property":"toggle-enabled","value":true},
-            {"op":"set-prop","id":2,"property":"indicator-border-color","value":"#ff0000"},
-            {"op":"set-prop","id":2,"property":"checked-indicator-border-color","value":"#00ff00"},
-            {"op":"set-prop","id":2,"property":"label-opacity","value":0.4},
             {"op":"insert-child","parent":1,"child":2,"index":0},
             {"op":"create-node","id":3,"kind":"text-field"},
             {"op":"set-prop","id":3,"property":"text","value":"draft"},
             {"op":"insert-child","parent":1,"child":3,"index":1}
         ]),
     );
+    if fixture.kind == "checkbox" {
+        apply(
+            &renderer,
+            &generation,
+            json!([
+                {"op":"set-prop","id":2,"property":"indicator-border-color","value":"#ff0000"},
+                {"op":"set-prop","id":2,"property":"checked-indicator-border-color","value":"#00ff00"},
+                {"op":"set-prop","id":2,"property":"label-opacity","value":0.4}
+            ]),
+        );
+    }
     renderer.set_root(1).unwrap();
     for (key, ops) in [
         (
@@ -282,7 +290,11 @@ fn ControlledProbe() -> impl IntoElement {
         ),
         (
             "f3",
-            json!([{"op":"set-prop","id":2,"property":"indeterminate","value":true}]),
+            if fixture.kind == "checkbox" {
+                json!([{"op":"set-prop","id":2,"property":"indeterminate","value":true}])
+            } else {
+                json!([{"op":"set-prop","id":2,"property":"checked","value":false}])
+            },
         ),
         (
             "f4",
@@ -396,7 +408,7 @@ fn checkbox_and_toggle_keep_native_controlled_refusal_mixed_state_and_disabled_b
         let count = events.lock().unwrap().len();
         app.press_key("f4").unwrap();
         assert!(!app.screen().enabled("role:checkbox[Choose rows]").unwrap());
-        app.press("role:checkbox[Choose rows]").unwrap();
+        assert!(app.press("role:checkbox[Choose rows]").is_err());
         assert_eq!(events.lock().unwrap().len(), count);
         assert_eq!(identity(&app, "lui-2"), before);
     }

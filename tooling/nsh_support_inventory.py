@@ -14,7 +14,7 @@ PLATFORM_EXCEPTIONS = {
     "swipe-actions": "Mobile action-reveal container; explicitly excluded from NSH desktop scope by the user on 2026-11-12.",
     "swipe-action": "Mobile action metadata; keep maintained mobile APIs, use desktop commands or ContextMenu on NSH.",
 }
-SOURCE_NAMES = ["render.rs", "controls.rs", "style.rs", "virtual_rows.rs", "app.rs", "ui/mod.rs", "ui/controls.rs", "events.rs", "ui/icons.rs", "controls/basic.rs", "controls/collections.rs", "controls/surfaces.rs", "controls/navigation.rs", "images.rs", "headings.rs", "inputs.rs", "file_picker.rs", "media.rs", "controls/toasts.rs", "controls/tree.rs", "controls/surfaces/native_split.rs", "controls/fit.rs", "context_menu.rs", "ui/context_menu.rs", "images/file_image.rs", "images/file_image/macos.rs", "images/file_image/linux.rs", "images/file_image/windows.rs"]
+SOURCE_NAMES = ["application_icons.rs", "application_theme.rs", "runtime.rs", "runtime/driver.rs", "extensions/mod.rs", "extensions/schema.rs", "extensions/host.rs", "ui/checkbox.rs", "render.rs", "controls.rs", "style.rs", "virtual_rows.rs", "app.rs", "ui/mod.rs", "ui/controls.rs", "events.rs", "ui/icons.rs", "controls/basic.rs", "controls/collections.rs", "controls/surfaces.rs", "controls/navigation.rs", "images.rs", "headings.rs", "inputs.rs", "file_picker.rs", "media.rs", "controls/toasts.rs", "controls/tree.rs", "controls/surfaces/native_split.rs", "controls/fit.rs", "context_menu.rs", "ui/context_menu.rs", "images/file_image.rs", "images/file_image/macos.rs", "images/file_image/linux.rs", "images/file_image/windows.rs", "ui/menu_item.rs"]
 ROUTES = {
     "root": "core view", "row": "core view + flex direction", "column": "core view",
     "box": "core view", "panel": "core view", "card": "core view", "spacer": "core view + grow/shrink",
@@ -101,8 +101,8 @@ RESTRICTIONS = {
         "Children are native item metadata, not arbitrary view/editor bodies; unsupported metadata properties and pointer callbacks are rejected.",
         "Use tree_item semantic selection/expansion/action callbacks; legacy pointer-enabled rows are rejected.",
     ],
-    "input": ["input-type=color/time, submit-on-blur=true and navigate-enabled=true are rejected."],
-    **{kind: ["submit-on-blur=true and navigate-enabled=true are rejected."] for kind in ("text-field", "secure-field", "search-field", "textarea")},
+    "input": ["input-type=color/time is rejected; blur/navigation observers require authored mount-time capability."],
+    **{kind: ["Blur/navigation capability must be authored at mount; full NavigationKey is not implemented."] for kind in ("text-field", "secure-field", "search-field", "textarea")},
     "scroll": ["Orientation is native horizontal/vertical at mount; changing its effective axis on the same incarnation is rejected atomically."],
     "drawer": ["Requires exactly two canonical children: sidebar first and main content second."],
     "split": [
@@ -134,17 +134,19 @@ RESTRICTIONS = {
 GAPS = {
     "G1": (None, {"style-class"}, "Authored style-class has no adapter reader; native/style defaults remain."),
     "G13": (set(ROUTES) - {"overlay"}, {"alignment"}, "Authored layer alignment remains unimplemented outside local Overlay."),
-    "G2": ({"menu-item"}, {"icon", "icon-placement", "selection-placement", "size", "variant", "tooltip-keys"}, "Menu-item renders text/children with a fixed themed wrapper; these authored appearance choices are not forwarded."),
     "G11": ({"button", "toggle-button"}, {"tooltip-keys"}, "Command shortcut hints are not forwarded; built-in icons, placement, size and variants have native bindings outside tabs."),
-    "G3": ({"text-field", "secure-field", "input", "search-field", "textarea", "combobox"}, {"input-type", "submit-on-enter", "submit-on-blur", "navigate-enabled"}, "Textarea Enter behavior is forwarded through native SubmitBehavior. Single-line inputs keep native submit/blur defaults; explicit submit-on-blur=true/navigation callbacks and color/time input are rejected. Other input hints require review."),
+    "G3": ({"text-field", "secure-field", "input", "search-field", "textarea", "combobox"}, {"input-type"}, "Textarea Enter behavior is forwarded through native SubmitBehavior. Single-line inputs keep native submit/blur defaults; Authored blur submission uses native focus/composition with Enter deduplication; focused unmodified Up/Down forwards native navigation requests; color/time input remains rejected. Other input hints and full NavigationKey require review."),
     "G4": ({"checkbox", "toggle"}, {"label-opacity", "indicator-border-color", "checked-indicator-border-color", "toggle-detail-enabled"}, "Checkbox routes forward checked/indeterminate/disabled/label; authored indicator/detail behavior remains absent."),
     "G5": ({"image"}, {"image", "source-x", "source-y", "source-width", "source-height", "referrer-policy"}, "Image forwards canonical URL, alt/label, fit, eager/default loading and native Load. Resource IDs, crop rectangles and authored referrer policy are explicitly rejected; loading=lazy is a value restriction listed separately, not a missing eager-loading path."),
     "G8": ({"list", "virtual-list"}, {"style", "list-style"}, "Container appearance and CSS list markers are not implemented by the Scroll/VirtualList routes."),
-    "G9": (None, {"navigate-enabled", "pointer-capture"}, "Canonical navigation-key and pointer-capture behavior remain unimplemented."),
+    "G9": ({"button", "row", "box"}, {"navigate-enabled"}, "Full NavigationKey payload remains unimplemented on generic calendar/container key handlers."),
+    "G14": (None, {"pointer-capture"}, "Canonical pointer-capture remains unimplemented."),
     "G12": (set(ROUTES) - HOST_EVENT_KINDS, {"pointer-enabled", "long-press-enabled", "double-press-enabled"}, "Typed native behavior components do not expose generic root pointer/gesture projection; unit semantic events remain supported separately."),
 }
 
 TESTS = {
+    "search-field": ['each_input_kind_projects_only_the_focused_editors_unmodified_arrows', 'initially_false_and_live_disabled_flags_remove_the_actual_bindings', 'composition_removes_navigation_and_shares_the_single_blur_composition_hook', 'focused_reorder_retains_the_editor_and_removal_releases_its_keys', 'absent_false_true_cannot_bypass_installed_capacity_and_remount_restores_navigation'],
+    "input": ['opted_in_single_line_enter_reports_one_submit_before_its_native_blur', 'ordinary_blur_submits_the_committed_draft_once_and_keeps_both_inputs', 'textarea_enter_and_later_blur_are_distinct_requests_without_changing_native_focus', 'initially_false_policy_uses_live_blur_enabled_and_submit_flags_without_remounting', 'absent_then_false_cannot_bypass_installation_and_rejection_preserves_draft_and_generation', 'composition_is_not_submitted_early_and_its_committed_text_precedes_blur_submit', 'submit_handler_replacement_cannot_deliver_the_retired_inputs_following_blur'],
     "context-menu": ['attached_context_layout_matches_plain_size_grow_margins_intrinsics_and_stretch', 'native_context_menu_owns_secondary_keyboard_disabled_items_and_repeated_actions', 'context_menu_item_updates_preserve_native_item_identity_and_the_surrounding_editor', 'context_attachment_changes_roll_back_before_replacing_a_live_trigger_or_editor', 'button_context_attachment_is_a_native_primary_menu_with_keyboard_reopening'],
     "file-image": ['local_paths_caps_and_file_fit_preserve_the_downstream_contract', 'native_thumbnail_is_bounded_preserves_aspect_and_does_not_upscale', 'unchanged_request_does_not_reload_and_old_path_or_detached_completion_cannot_publish', 'failed_or_pending_replacement_clears_the_previous_file', 'detached_owner_drops_its_pending_completion', 'file_image_live_path_cap_and_fit_keep_native_host_and_reject_atomically'],
     "scroll": ["native_scroll_uses_the_authored_axis_and_keeps_editor_identity_and_draft"],
@@ -198,7 +200,7 @@ TESTS = {
     "box": ["native_host_press_preserves_modifiers_pointer_payload_and_appear_without_text_stealing", "live_flags_guard_input_checkbox_and_host_callbacks_without_remounting", "a_container_observes_one_focus_entry_and_exit_from_its_real_input"],
     "column": ["column_detail_only_capability_does_not_emit_an_unsupported_ordinary_press"],
     "virtual-list": ["real_ocaml_sparse_rows_keep_focus_and_bound_both_trees_through_reorder", "native_cell_feedback_releases_distant_focus_without_scrolling_again", "eager_nearest_uses_native_root_geometry_and_reports_each_token_once"],
-    "menu-item": ["native_menu_keyboard_skips_disabled_items_and_dispatches_the_existing_press"],
+    "menu-item": ['menu_item_icon_check_hint_size_and_variant_update_without_replacing_children', 'menu_item_optional_parts_restore_in_place_after_removal', 'decorated_menu_items_keep_native_disabled_traversal_and_controlled_checks'],
     "dropdown-menu": ["native_menu_keyboard_skips_disabled_items_and_dispatches_the_existing_press", "structural_sibling_insertion_revalidates_existing_menu_ownership_atomically"],
     "menu-trigger": ["native_submenu_owns_right_arrow_focus_and_nested_selection"],
     "select": ["model_owned_select_can_refuse_open_then_dismiss_without_replacing_its_trigger", "pointer_only_controlled_picker_delivers_detail_once_without_semantic_activation", "keyboard_context_menu_uses_root_coordinates_without_a_fake_secondary_button"],
@@ -224,7 +226,7 @@ for _kind in ROUTES:
 for _kind in HOST_EVENT_KINDS:
     EMITTED.setdefault(_kind, set()).update({"press", "press-modifiers", "press-detail", "pointer-down", "pointer-up", "pointer-move", "pointer-cancel", "pointer-enter", "pointer-leave", "context-menu-press", "long-press", "double-press", "focus-within-changed"})
 for _kind in ("text-field", "secure-field", "input", "search-field", "textarea"):
-    EMITTED.setdefault(_kind, set()).update({"text-changed", "submit"})
+    EMITTED.setdefault(_kind, set()).update({"text-changed", "submit", "navigate-previous", "navigate-next"})
 
 
 def admitted(source):
@@ -345,7 +347,8 @@ def markdown(data):
              "  the accessible name; Heading still rejects the noncanonical accessibility-label.",
              "  The mapped Headless tests cover level/default/override/identity/rollback behavior,",
              "  not operating-system screen-reader announcements or native screenshot metrics.",
-             "- Ignored menu-item size/variant properties leave NSH", "  wrapper defaults in control even when an application authors another value.", "  This inventory does not infer canonical absent-property defaults from NSH's", "  defaults. Those need explicit cross-backend behavior tests and migration notes.",
+             "- MenuItem binds icon/check/shortcut parts, native sizing/selection placement and",
+             "  variant styling. Authored foreground wins over native checked/hover defaults.", "  This inventory does not infer canonical absent-property defaults from NSH's", "  defaults. Those need explicit cross-backend behavior tests and migration notes.",
              "- Button/toggle command icons use shared Web SVG assets, native retained size/variant", "  bindings and decorative glyph accessibility. Tab appearance, application icon", "  registration and shortcut hints still need qualification or implementation.", "- Native pointer states used by styles are separate from LUI pointer events.", "  Paint::read dynamically handles prefixed background/foreground/border/opacity/", "  shadow properties; the generator excludes these string-search false positives.", "",
              "- Image uses canonical url and live native source/fit/name bindings. Default fit",
              "  is stretch, fit means contain and fill means cover; an accessibility label wins",
@@ -409,7 +412,6 @@ def markdown(data):
     rows += ["", "Concrete route evidence at this generated source checkpoint:", "",
              "| Gap | Source evidence |", "| --- | --- |",
              "| G1 | style.rs `compile`, render.rs `node`: authored style is compiled, but authored class has no reader |",
-             "| G2 | controls.rs `element` menu-item branch |",
              "| G11 | controls.rs `command_content`; ui/controls.rs `CommandButtonProps` |",
              "| G12 | events.rs `NativeEvents::attach`; ComponentElement lacks public Interactive root handlers |",
              "| G3 | inputs.rs native SubmitBehavior/validation; controls.rs `picker` combobox Input defaults |",

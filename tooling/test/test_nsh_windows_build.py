@@ -103,6 +103,19 @@ class WindowsBuilderTests(unittest.TestCase):
             self.assertEqual(evidence["exports"], ["lui_ocaml_load"])
             self.assertIn("runtime and package tests run separately", evidence["qualification"])
 
+    def test_generic_export_verification_keeps_clock_and_start_without_logseq_services(self):
+        class ExportedLibrary:
+            def __getattr__(self, name):
+                return object()
+        with patch.object(builder.ctypes, "CDLL", return_value=ExportedLibrary()):
+            required = builder.verify_exports(Path("generic-application.dll"))
+        self.assertIn("lui_ocaml_start", required)
+        self.assertIn("lui_ocaml_last_error", required)
+        self.assertIn("lui_ocaml_clock_tick", required)
+        self.assertIn("lui_ocaml_clock_next_delay", required)
+        self.assertNotIn("lui_ocaml_pump", required)
+        self.assertNotIn("lui_ocaml_platform_event", required)
+
     def test_export_verification_rejects_a_library_without_the_required_abi(self):
         with patch.object(builder.ctypes, "CDLL", return_value=object()):
             with self.assertRaisesRegex(ValueError, "lui_ocaml_start"):
