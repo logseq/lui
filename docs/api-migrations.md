@@ -4616,3 +4616,27 @@ while omitting the argument selects vertical. OCaml constructors, wire spellings
 events, and maintained Apple/iOS, Android and Web behavior are unchanged. Dynamic
 wire values still require atomic validation; this does not statically verify
 arbitrary theme strings or geometry.
+
+### ContextMenu rejects unsupported constructor options at compile time
+
+`Lui_elements.context_menu` now exposes only `key`,
+`accessibility_identifier` / `accessibility_identifier_signal`, `on_dismiss` and
+its children. Its previously copied layout, appearance, disabled and pointer /
+appear callback options were not admitted by the canonical ContextMenu contract;
+using them failed during mounting. They are now absent from the OCaml signature,
+so both direct and partially applied calls fail compilation. Existing valid
+menu identity, restricted children and dismiss behavior are unchanged on every
+backend. No wire property or mobile backend is removed.
+
+For example, replace the already invalid
+`context_menu ~width:256 ~style_class:"menu" [menu_item ~text:"Copy" []]`
+with `context_menu ~key:"actions" [menu_item ~text:"Copy" []]`. The native menu
+owns its surface presentation; style supported menu items or their trigger as
+needed. This migration does not promise custom menu surface dimensions.
+
+The generated JSON-view dispatcher is regenerated from the narrowed interface.
+Dynamic menu options that name unsupported canonical properties still raise an
+explicit error before mounting, using the shared property predicate, rather than
+being silently discarded by the narrower constructor. Compile regressions reject
+width, style, disabled and unsupported callbacks; valid identity/reactive identity
+and dismiss calls compile, and JSON identity/dismiss behavior is exercised.

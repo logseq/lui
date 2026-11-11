@@ -236,7 +236,9 @@ def main():
 
     for name, kind, args, ret in normal:
         kids = kids_expr(name, ret, parents)
-        out.append(f'    | "{kind}" ->\n      E.{name}{call_args(args, name)} {kids}\n')
+        validation = ('      require_supported_properties P.ContextMenu props;\n'
+                      if name == 'context_menu' else '')
+        out.append(f'    | "{kind}" ->\n{validation}      E.{name}{call_args(args, name)} {kids}\n')
     for name, kind, _, el_type, _ in restricted:
         out.append(
             f'    | "{kind}" ->\n'
@@ -386,6 +388,25 @@ let kind_of_node fields =
 
 let props_of fields =
   List.filter (fun (n, _) -> n <> "kind" && n <> "children") fields
+
+let standard_properties =
+  let names = Hashtbl.create (List.length Lui_wire_schema.all_properties) in
+  List.iter (fun property ->
+    Hashtbl.add names (Lui_wire_schema.property_name property) property)
+    Lui_wire_schema.all_properties;
+  names
+
+(* Dynamic callers retain the canonical rejection instead of dropping options
+   removed from a typed constructor. The key is element identity, not KeyValue. *)
+let require_supported_properties kind props =
+  List.iter (fun (name, _) ->
+    if name <> "key" then
+      let wire = if name = "disabled" then "enabled" else name in
+      match Hashtbl.find_opt standard_properties wire with
+      | Some property when not (P.property_supported kind property) ->
+          invalid_arg ("Unsupported property for " ^ Lui_wire_schema.node_kind_name kind
+            ^ ": " ^ name)
+      | None | Some _ -> ()) props
 
 (* ---------- enum decoders (unknown -> None, never raise) ---------- *)
 

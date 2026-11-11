@@ -42,7 +42,7 @@ test("PPX nesting diagnostics reject static illegal edges without guessing opaqu
       ["Lui_elements.(context_menu [button []])", "context-menu", "button"],
       ["let child = button [] in context_menu [child]", "context-menu", "button"],
       ["let build child = context_menu [child] in build (button [])", "context-menu", "button"],
-      ["let build = context_menu ~disabled:false in build [button []]", "context-menu", "button"],
+      ["let build = context_menu ~key:\"menu\" in build [button []]", "context-menu", "button"],
       ["context_menu [if_ ~test:source (if_ ~test:source (menu_item []))]", "context-menu", "box"],
       ["context_menu [virtual_rows ~source:items ~key:Fun.id ~cmp:compare ~mount:(fun _ -> row []) ()]", "context-menu", "virtual-rows"],
       ["context_menu [menu_item []; divider []]"],
@@ -56,6 +56,8 @@ test("PPX nesting diagnostics reject static illegal edges without guessing opaqu
       ["(fun button -> context_menu [button []]) (fun _ -> menu_item [])"],
       ["let module Other = struct let button _ = menu_item [] end in context_menu [Other.button []]"],
       ["(fun opaque -> context_menu [opaque ()]) (fun () -> menu_item [])"],
+      ['context_menu ~key:"menu" ~accessibility_identifier:"actions" ~on_dismiss:(fun _ -> ()) [menu_item []]'],
+      ['context_menu ~accessibility_identifier:(reactive string_of_bool source) [menu_item []]'],
       ["let child = menu_item [] in context_menu [child]"],
       ["virtual_list [virtual_rows ~source:items ~key:Fun.id ~cmp:compare ~mount:(fun _ -> row []) ()]"],
       ["let module E = Lui_elements in E.context_menu [E.menu_item []]"],
@@ -136,6 +138,11 @@ let probe (source : bool Signal.signal) =
         "-I", "_build/default/src/.lui.objs/byte", join(dir, "probe.ml")])
     }
     for (const [expression, expectedType] of [
+      ['context_menu ~width:256 [menu_item []]', /cannot be applied with label ~width/],
+      ['context_menu ~style_class:"menu" [menu_item []]', /cannot be applied with label ~style_class/],
+      ['context_menu ~disabled:true [menu_item []]', /cannot be applied with label ~disabled/],
+      ['context_menu ~on_appear:(fun _ -> ()) [menu_item []]', /cannot be applied with label ~on_appear/],
+      ['context_menu ~on_pointer_enter:(fun _ -> ()) [menu_item []]', /cannot be applied with label ~on_pointer_enter/],
       ["(scoped_bottom_tab (fun _ -> bottom_tab []) : t)", /bottom_tab_el/],
       ["scoped_bottom_tab (fun _ -> button [])", /bottom_tab_el/],
       ["radio_group [keyed_radio ~source:(reactive (fun _ -> [1]) source) ~key:Fun.id ~cmp:Int.compare ~mount:(fun _ -> button [])]", /radio_el/],

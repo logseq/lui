@@ -3422,6 +3422,30 @@ let test_rich_text_containers () =
       Alcotest.(check int) (kind ^ " nested link remains interactive") 1 !calls))
     ["heading";"paragraph";"label"]
 
+let test_json_context_menu_contract () =
+  let open Lui_json_view in
+  let events = ref [] in
+  let sink ~id ~kind ~fields:_ = events := (id, kind) :: !events in
+  let menu extra = Obj (["kind", Str "context-menu"; "key", Str "actions";
+    "id", Str "actions"; "accessibility-identifier", Str "actions";
+    "children", Arr [Obj ["kind", Str "menu-item"; "text", Str "Copy"]]] @ extra) in
+  List.iter (fun (name, value) ->
+    Alcotest.check_raises "invalid dynamic menu options fail before mounting"
+      (Invalid_argument ("Unsupported property for context-menu: " ^ name))
+      (fun () -> let _view = render ~on_event:sink (menu [name, value]) in ()))
+    ["width", Num 256.; "style-class", Str "menu"; "disabled", Bool true;
+      "appear-enabled", Bool true; "pointer-enabled", Bool true];
+  let session = drive_mount ~initial:() ~reducer:(fun model () -> model)
+    ~view:(fun _ _ _ -> render ~on_event:sink
+      (Obj ["kind", Str "button"; "children", Arr [menu []]])) () in
+  Fun.protect ~finally:(fun () -> drive_dispose session) (fun () ->
+    let node = drive_node session (Drive.Model.Kind "context-menu") in
+    Alcotest.(check (option string)) "menu identity remains supported"
+      (Some "actions") (Drive.Model.string_prop node "accessibility-identifier");
+    drive_send session (Lui_protocol.Dismiss node.Drive.Model.id);
+    Alcotest.(check (list (pair string string))) "dismiss reaches the existing sink"
+      ["actions", "dismiss"] !events)
+
 let test_json_view_anchor_rect () =
   let mount value = drive_mount ~initial:() ~reducer:(fun model () -> model)
     ~view:(fun _ _ _ -> Lui_json_view.render ~on_event:(fun ~id:_ ~kind:_ ~fields:_ -> ())
@@ -6139,6 +6163,7 @@ let () =
           Alcotest.test_case "portable editor and virtual tuning" `Quick test_portable_editor_and_virtual_tuning;
           Alcotest.test_case "parse edge cases" `Quick test_json_view_parse;
           Alcotest.test_case "rectangle anchors" `Quick test_json_view_anchor_rect;
+          Alcotest.test_case "context menu property contract" `Quick test_json_context_menu_contract;
         ] );
       ( "extension fingerprints",
         [

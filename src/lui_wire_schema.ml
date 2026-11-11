@@ -813,8 +813,8 @@ let view_contract = function
   | ContextMenu -> Some {
       view_result = "t";
       view_children = ViewList "t";
-      view_properties = [(KeyValue, ViewString, false); (Gap, ViewInt, false); (MainAlignment, view_main_alignment, false); (CrossAlignment, view_cross_alignment, false); (GrowValue, ViewFloat, false); (GridColumns, ViewInt, false); (PaddingValue, ViewInt, false); (PaddingHorizontal, ViewInt, false); (PaddingVertical, ViewInt, false); (MarginValue, ViewInt, false); (MarginHorizontal, ViewInt, false); (MarginVertical, ViewInt, false); (MarginTop, ViewInt, false); (MarginRight, ViewInt, false); (MarginBottom, ViewInt, false); (MarginLeft, ViewInt, false); (BackgroundValue, ViewString, false); (ForegroundValue, ViewString, false); (BorderColorValue, ViewString, false); (BorderWidth, ViewInt, false); (CornerRadius, ViewInt, false); (WidthValue, ViewInt, false); (HeightValue, ViewInt, false); (MinWidth, ViewInt, false); (MaxWidth, ViewInt, false); (MinHeight, ViewInt, false); (MaxHeight, ViewInt, false); (ContainerRelativeFrameValue, view_frame_axes, false); (ContainerRelativeFrameInset, ViewInt, false); (AccessibilityIdentifier, ViewString, false); (StyleClass, ViewString, false); (DataAttrs, ViewAttributes, false); (Enabled, ViewBool, false); (AlignmentValue, view_alignment, false)];
-      view_events = ["appear"; "pointer-enter"; "pointer-leave"; "dismiss"];
+      view_properties = [(KeyValue, ViewString, false); (AccessibilityIdentifier, ViewString, false); (AlignmentValue, view_alignment, false)];
+      view_events = ["dismiss"];
       view_slots = [];
     }
   | MenuItem -> Some {

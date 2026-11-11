@@ -51,6 +51,25 @@ let kind_of_node fields =
 let props_of fields =
   List.filter (fun (n, _) -> n <> "kind" && n <> "children") fields
 
+let standard_properties =
+  let names = Hashtbl.create (List.length Lui_wire_schema.all_properties) in
+  List.iter (fun property ->
+    Hashtbl.add names (Lui_wire_schema.property_name property) property)
+    Lui_wire_schema.all_properties;
+  names
+
+(* Dynamic callers retain the canonical rejection instead of dropping options
+   removed from a typed constructor. The key is element identity, not KeyValue. *)
+let require_supported_properties kind props =
+  List.iter (fun (name, _) ->
+    if name <> "key" then
+      let wire = if name = "disabled" then "enabled" else name in
+      match Hashtbl.find_opt standard_properties wire with
+      | Some property when not (P.property_supported kind property) ->
+          invalid_arg ("Unsupported property for " ^ Lui_wire_schema.node_kind_name kind
+            ^ ": " ^ name)
+      | None | Some _ -> ()) props
+
 (* ---------- enum decoders (unknown -> None, never raise) ---------- *)
 
 let variant_opt = function
@@ -499,8 +518,9 @@ let rec element ~emit (node : value) : E.t =
       E.dropdown_menu
       ?key:s.s_key ?gap:s.s_gap ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?columns:s.s_columns ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?anchor:(anchor_opt (v_str props "anchor")) ?anchor_alignment:(anchor_align_opt (v_str props "anchor-alignment")) ?anchor_offset:(v_float props "anchor-offset") ?on_dismiss:(ev "dismiss" emit props) ?transition:(v_str props "transition") (List.map (element ~emit) child_nodes)
     | "context-menu" ->
+      require_supported_properties P.ContextMenu props;
       E.context_menu
-      ?key:s.s_key ?gap:s.s_gap ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?columns:s.s_columns ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?min_width:s.s_min_width ?max_width:s.s_max_width ?min_height:s.s_min_height ?max_height:s.s_max_height ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?disabled:(v_bool props "disabled") ?on_dismiss:(ev "dismiss" emit props) (List.map (element ~emit) child_nodes)
+      ?key:s.s_key ?accessibility_identifier:(v_str props "accessibility-identifier") ?on_dismiss:(ev "dismiss" emit props) (List.map (element ~emit) child_nodes)
     | "menu-trigger" ->
       E.menu_trigger
       ?key:s.s_key ?accessibility_identifier:(v_str props "accessibility-identifier") ?foreground:s.s_fg ?style_class:s.s_class ?text:(v_str props "text") ?icon:(icon_prop props "icon") ?label:(v_str props "label") ?disabled:(v_bool props "disabled") (List.map (element ~emit) child_nodes)

@@ -295,11 +295,11 @@ uses the concrete route bodies, not literal presence alone.
 | `extensions/schema.rs` | `13e599099f8943fc864ae1f470674a2d39733383ad0cce367f8ccc87b6f7ac33` |
 | `extensions/host.rs` | `bf9d9c3033b5931a8b0b585b9b2c5708f733bf1b336c41c1e51803eb6530ff0a` |
 | `ui/checkbox.rs` | `a613b40f06905e472a04e5558103c76cc4d18981f587c9be8a3a1946a761512c` |
-| `render.rs` | `9f7a83a79473160735712040fdd6f7c42d2ba2997b089c7361344f9a9984358d` |
-| `controls.rs` | `10757047d3bc3639bed4b9d6553af9327e1dfe46868f0ad914ad42f6f8a5b69d` |
-| `style.rs` | `19fe546fc7b56ad991243a39f984c2d42b6b8bb5760230e224a46d3c126d5fc2` |
+| `render.rs` | `ed4afa3b8bbc16854673a48479d4b3b7ba5c306ef563469941909fe794125a77` |
+| `controls.rs` | `558729f83a448fe60377a8d9343897f4d92bf0686f8f87a088bdb5e812f02ee0` |
+| `style.rs` | `562f89f12a4e87cb119e8a3bfec41efa6296fb2feea68dbf20f8e92b9339c77a` |
 | `virtual_rows.rs` | `1630ed15ed6526769c9f3b405623c464296d5c23e4a77099eb60d449ef1ea3de` |
-| `app.rs` | `e04d07a0cbe84ab78e00e695a4ef0818556a66531fd061cfffddbd42da665d06` |
+| `app.rs` | `62dfde908bed609d40922dd476453e3de37f123b4c6b3cc8dfd384cb630082a2` |
 | `ui/mod.rs` | `1d2cfcebfbb8b0cf7b4d38f13795cb86afc3eeacc922b7e56d8da28092735d56` |
 | `ui/controls.rs` | `5bdbbcce9067ed597ae60443878e76d4fc72c7609d7e40af31a3909a2ab515e2` |
 | `events.rs` | `eb9addb27f70d21b0fdaff507f869ad6ebbede6be1e031f1d64b6b4aa86a1d03` |
@@ -316,7 +316,7 @@ uses the concrete route bodies, not literal presence alone.
 | `controls/toasts.rs` | `2d7d344288cf9989f21278a48fede6b77337da698b0ba2b91c5bff909d103ac0` |
 | `controls/tree.rs` | `86b7924c502ad2a30d63b446a6e2d89fb4dea5f5737e4f96f896f006dd1a40d1` |
 | `controls/surfaces/native_split.rs` | `0ab8cd7fe3f4edee7abeee104a9991a85010291afce94f3bb17db17f4d72231e` |
-| `controls/fit.rs` | `904ce55bd8cdf8ebdba9564c27039a6e805bc577aceba26a6635513c82f9b638` |
+| `controls/fit.rs` | `094328bfa4548a04c8f1749b3039bff62be9fc4619c314fa541bf8d45651d445` |
 | `context_menu.rs` | `9ceff69227beee0aa3e3165a1bf676442c06cd1a2cea7119a59c5ee152072ab0` |
 | `ui/context_menu.rs` | `3b50f4d4f345f3a4b85b5947e63cbda7fc895d21423bd6f4045b19d3e786ff12` |
 | `images/file_image.rs` | `70728cf4881a3c8be5b4ed14f3b850529099d52a359509ed174925003918a96d` |
