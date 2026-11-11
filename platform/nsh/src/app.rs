@@ -75,6 +75,7 @@ impl GuardedEvent {
             | ViewEvent::Appear(node)
             | ViewEvent::Load(node)
             | ViewEvent::Change(node)
+            | ViewEvent::Picked(node, _)
             | ViewEvent::Dismiss(node) => (*node, renderer.current_incarnation(*node)?, None),
         };
         Some(Self {
@@ -354,6 +355,10 @@ fn semantic(event: ViewEvent) -> Event {
         ViewEvent::Load(node) => Event::Load(node as i64),
         ViewEvent::Change(node) => Event::Change(node as i64),
         ViewEvent::Dismiss(node) => Event::Dismiss(node as i64),
+        ViewEvent::Picked(node, payload) => Event::Picked {
+            node: node as i64,
+            payload,
+        },
         ViewEvent::VisibleRange {
             node, first, last, ..
         } => Event::VisibleRange {

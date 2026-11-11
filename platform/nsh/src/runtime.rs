@@ -58,6 +58,10 @@ pub enum Event {
     Load(i64),
     Change(i64),
     Dismiss(i64),
+    Picked {
+        node: i64,
+        payload: String,
+    },
     VisibleRange {
         node: i64,
         first: i64,
@@ -296,6 +300,7 @@ struct Exports {
     load: Option<NodeFn>,
     change: NodeFn,
     dismiss: NodeFn,
+    picked: Option<TextFn>,
     visible_range: RangeFn,
     scroll_completed: Option<ScrollCompletedFn>,
     virtual_window: Option<WindowFn>,
@@ -380,6 +385,7 @@ impl Native {
                 load: optional!("lui_ocaml_load"),
                 change: required!("lui_ocaml_radio_changed"),
                 dismiss: required!("lui_ocaml_dismiss"),
+                picked: optional!("lui_ocaml_picked_utf8"),
                 visible_range: required!("lui_ocaml_visible_range"),
                 scroll_completed: optional!("lui_ocaml_scroll_completed"),
                 virtual_window: optional!("lui_ocaml_virtual_window"),
@@ -501,6 +507,13 @@ impl Native {
                         }
                         Event::Change(node) => (api.change)(*node),
                         Event::Dismiss(node) => (api.dismiss)(*node),
+                        Event::Picked { node, payload } => api
+                            .picked
+                            .ok_or("OCaml library has no FilePicker Picked ABI")?(
+                            *node,
+                            payload.as_ptr().cast(),
+                            length(payload.len())?,
+                        ),
                         Event::VisibleRange { node, first, last } => {
                             (api.visible_range)(*node, *first, *last)
                         }

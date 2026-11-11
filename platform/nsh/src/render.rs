@@ -44,6 +44,7 @@ pub enum Event {
     Load(u64),
     Change(u64),
     Dismiss(u64),
+    Picked(u64, String),
     ScrollCompleted {
         node: u64,
         incarnation: u64,
@@ -603,6 +604,20 @@ impl Renderer {
             .expect("supported NSH control");
         }
         let result = match node.kind.as_str() {
+            "file-picker" => {
+                let events = self.clone();
+                native_events
+                    .attach(crate::file_picker::element(
+                        state,
+                        body.into_element(),
+                        Rc::new(move |event| events.emit(id, incarnation, event)),
+                    ))
+                    .state_inline_style(style)
+                    .element_ref(&reference)
+                    .key(key.clone())
+                    .test_id(&identifier)
+                    .into_element()
+            }
             "heading" => native_events
                 .attach(crate::headings::element(state))
                 .state_inline_style(style)
@@ -802,6 +817,7 @@ fn validate(node: &Node) -> Result<(), String> {
     }
     crate::images::validate(node)?;
     crate::inputs::validate(node)?;
+    crate::file_picker::validate(node)?;
     crate::virtual_rows::validate(node)?;
     crate::controls::validate(node)
 }
@@ -811,6 +827,7 @@ fn supported(kind: &str) -> bool {
         || matches!(
             kind,
             "root"
+                | "file-picker"
                 | "select"
                 | "combobox"
                 | "menu-trigger"
@@ -1884,3 +1901,6 @@ mod heading_tests;
 
 #[cfg(test)]
 mod input_tests;
+
+#[cfg(test)]
+mod file_picker_tests;

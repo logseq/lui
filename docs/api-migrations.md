@@ -3354,3 +3354,78 @@ route must translate the intended value/default/empty/event semantics and test
 native identity; these components cannot be substituted by renaming a keyboard
 hint. No new custom arrow-key, blur-submit or picker controller is introduced for
 currently unused downstream policies.
+
+### NSH native FilePicker paths
+
+The NSH desktop `file_picker` route now uses the public
+`nsh_core::element::pick_paths(OpenDialog)` service. NSH owns the actual system
+open dialog, platform result, asynchronous answer and task lifetime; the adapter
+does not add a file service, executor, polling loop, temporary copies or leases.
+A production-source audit found no canonical `file_picker`, raw
+`Lui_ui.file_picker`, `FilePicker` node or picker-property aliases in either
+`mobile` or `logseq_journal`. Those applications' attachment pickers use separate
+host services, which are unchanged. This previously unsupported desktop route
+therefore adopts NSH's native path semantics rather than Apple's file-retention
+protocol.
+
+A `request` string or integer token explicitly requests one dialog while the
+node is enabled. Without a token, the node retains its authored children and
+opens no dialog. Repeating the last issued token or editing other properties
+does not reopen it. At most one native request is in flight per retained node;
+request changes while it is pending are ignored. Wait for its answer, then issue
+a distinct token to open another dialog. Tokens retain integer precision above
+2^53. Removing the node disposes its native task; the renderer's existing
+incarnation guard rejects late results after an ID is recreated. Disposing an
+awaiting task does not promise that the platform immediately closes a dialog
+already visible: its UI lifecycle remains NSH's.
+
+Defaults are `source=files`, `directory=false` and `multiple=false`. Files and
+folders map directly to `OpenDialog::files()` and `OpenDialog::folders()`;
+`multiple` uses the native multiple-selection option. `accept` and `types`
+optionally supply comma-separated extension groups such as `.md,*.txt`; NSH
+normalizes case and leading dots. When both are supplied they are native filter
+groups offered by the dialog. Folder dialogs ignore file filters, as NSH's
+`OpenDialog` does. Titles, default locations and confirmation labels remain the
+system's defaults; no new canonical properties are invented. Authored node styles
+affect the retained child container, rather than the system dialog.
+
+Success delivers the existing `Picked(node, payload)` event, whose opaque JSON
+payload is now concretely defined for NSH:
+
+```json
+{"request":1,"paths":["/home/alex/notes.md","/home/alex/todo.txt"]}
+```
+
+Paths are the native filesystem paths returned by NSH, including Windows path
+syntax on Windows. No bytes, URLs, MIME guesses, security bookmarks or retained
+file handles are returned. A native dialog error delivers
+`{"request":1,"paths":[],"error":"native error message"}`. A path that cannot be
+represented in UTF-8 is reported as an error instead of changing its file name.
+Native cancellation emits the existing Dismiss event and no Picked event. No
+canonical event ordinal or C ABI changes; Rust's public render/runtime event
+enums gain additive Picked variants. Rust clients with exhaustive matches must
+handle them. The existing `lui_ocaml_picked_utf8` function is loaded optionally,
+so older libraries can still start; using Picked with a library lacking that
+export reports an explicit runtime ABI error.
+
+For example:
+
+```ocaml
+file_picker
+  ~source:`files ~request:(`Int 1)
+  ~accept:".md,.txt" ~multiple:true
+  ~on_picked:(function
+    | Lui_protocol.Picked (_, payload) ->
+        print_endline (Yojson.Safe.pretty_to_string (Yojson.Safe.from_string payload))
+    | _ -> ())
+  ~on_dismiss:(fun _ -> print_endline "File selection cancelled")
+  []
+```
+
+The application consumes or opens those paths using its own native code; a
+second selection uses a different request token. For folders, use
+`~directory:true`. NSH rejects `source=photos`, `source=camera`, any `completion`
+token, and MIME/UTI or wildcard filters such as `image/*` and `public.image`
+before publishing the transaction. Use the native desktop files/folders route
+when that is the intended UI; do not relabel a photo/camera workflow as files
+merely to bypass validation. Apple/iOS, Android and Web API behavior is unchanged.
