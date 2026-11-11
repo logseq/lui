@@ -699,6 +699,58 @@ pub(crate) fn edge_inset_styles(
     })
 }
 
+/// Units accepted by the native typography adapter after theme resolution.
+/// Keeping translation exhaustive prevents a newly parsed unit from silently
+/// falling through to an unrelated native metric.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum FontSize {
+    Points(Points),
+    RootRem(f32),
+    Em(f32),
+}
+impl FontSize {
+    fn parse(value: &str) -> Result<Self, String> {
+        let value = value.trim();
+        let number = |text: &str| {
+            text.trim()
+                .parse::<f32>()
+                .ok()
+                .filter(|number| number.is_finite() && *number >= 0.0)
+                .ok_or_else(|| format!("NSH unsupported font-size={value:?}"))
+        };
+        if let Some(value) = value.strip_suffix("rem") {
+            return Ok(Self::RootRem(number(value)?));
+        }
+        if let Some(value) = value.strip_suffix("em") {
+            return Ok(Self::Em(number(value)?));
+        }
+        Ok(Self::Points(px(number(
+            value.strip_suffix("px").unwrap_or(value),
+        )?)))
+    }
+    fn native(self) -> Result<PropertyValue, String> {
+        let points = match self {
+            Self::Points(points) => points,
+            Self::RootRem(value) => px(value * nsh_core::geometry::REM_SIZE.0),
+            Self::Em(value) => {
+                if value == 1.0 {
+                    // Unset the node's own size so the native text resolver
+                    // inherits its actual parent, including live changes.
+                    return Ok(PropertyValue::OptPoints(None));
+                }
+                return Err(
+                    "NSH font-size em scaling other than 1em requires an inherited parent metric"
+                        .into(),
+                );
+            }
+        };
+        if !points.0.is_finite() {
+            return Err("NSH font-size exceeds the native point range".into());
+        }
+        Ok(PropertyValue::OptPoints(Some(points)))
+    }
+}
+
 /// Translate only presentation here. Canonical scalar/kind/presence validation
 /// stays generated from OCaml; controls and events keep their own owners.
 pub(crate) fn compile(
@@ -877,32 +929,21 @@ fn compile_parts(
         };
         declaration(&mut decls, StyleKey::FontStyle, &value, "font-style", theme)?;
     }
-    for (name, key) in [
-        ("font-size", StyleKey::FontSize),
-        ("line-height", StyleKey::LineHeight),
-    ] {
-        if let Some(value) = node.props.get(name) {
-            let text = theme.text(value.as_str().ok_or("NSH text metrics require a string")?)?;
-            let metric = text.trim();
-            let (metric, factor) = if key == StyleKey::FontSize {
-                if let Some(rem) = metric.strip_suffix("rem") {
-                    (rem, 16.0)
-                } else {
-                    (metric.strip_suffix("px").unwrap_or(metric), 1.0)
-                }
-            } else {
-                (metric, 1.0)
-            };
-            let value = (key == StyleKey::FontSize)
-                .then(|| metric.parse::<f64>().ok())
-                .flatten()
-                .map(|n| n * factor)
-                .filter(|n| n.is_finite())
-                .and_then(serde_json::Number::from_f64)
-                .map(Value::Number)
-                .unwrap_or(Value::String(text));
-            declaration(&mut decls, key, &value, name, theme)?;
-        }
+    if let Some(value) = node.props.get("font-size") {
+        let text = theme.text(value.as_str().ok_or("NSH font-size requires a string")?)?;
+        decls.push(StyleDecl::Set(
+            StyleKey::FontSize,
+            FontSize::parse(&text)?.native()?,
+        ));
+    }
+    if let Some(value) = node.props.get("line-height") {
+        declaration(
+            &mut decls,
+            StyleKey::LineHeight,
+            value,
+            "line-height",
+            theme,
+        )?;
     }
     for (name, key) in [
         ("inset-top", StyleKey::Top),

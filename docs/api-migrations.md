@@ -4335,3 +4335,16 @@ on the anchor currently require an enclosing native container and are rejected
 explicitly. Its noninherited box layout and paint do not generate a native box.
 Changing between contents and a native display mode while mounted requires a new
 key; ordinary child edits and reorders preserve the retained children.
+
+### NSH inherited `font-size: 1em`
+
+Standard NSH elements now accept `font-size="1em"` (also `1.0em`) as native
+inheritance. For example, ``column ~font_size:"24px" [text ~font_size:"1em"
+~value:"Inherited" []]`` uses the parent's 24-point size and follows later parent
+size changes without replacing the child. It does not substitute a fixed 16.
+
+Point/`px` sizes and the existing NSH root `rem` unit retain their behavior. Other
+`em` multipliers remain an explicit capability error until actual parent metrics
+can be supplied; they are never approximated from the root size. The internal
+unit parser and native translation use an exhaustive typed representation. No
+common OCaml constructor or wire scalar changes.
