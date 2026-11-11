@@ -3338,23 +3338,14 @@ separate. Mobile also exposes an explicit Send action. No downstream test or
 documentation requiring a modified-Return shortcut or single-line focus retention
 was found; NSH's own defaults are retained for these optional behaviors.
 
-Previously ignored NSH input policies now fail before publication:
-`navigate-enabled=true`, `submit-on-blur=true`, and `input`'s `input-type=color`
-or `input-type=time`. An unsupported policy rejects its entire transaction;
-text and other nodes in that transaction remain unchanged. False or absent
-navigation/blur-submit flags and absent or `text` input type remain accepted.
-Remove unused flags from desktop views; use a regular text input only when text
-editing is the intended UI. Do not change a color/time input to text merely to
-avoid validation if the application needs a color/time selector.
-
-Color/time remain explicit implementation gaps, rather than text-editor aliases.
-Pinned NSH has `ColorPicker` and `TimeField`, but their controlled values are
-`Hsla` and `TimeOfDay`, their events and child composition differ from canonical
-Input text, and `TimeField` has no drop-in read-only/Submit contract. A future
-route must translate the intended value/default/empty/event semantics and test
-native identity; these components cannot be substituted by renaming a keyboard
-hint. No new custom arrow-key, blur-submit or picker controller is introduced for
-currently unused downstream policies.
+Input policies are validated before publication: unsupported options reject the
+entire transaction, leaving other text and nodes unchanged. Native focused
+navigation and opt-in blur submission are described below. Color input remains
+an explicit gap rather than a text-editor alias. Time input now has the bounded
+native TimeField route documented in "NSH native time inputs" below; its used
+24-hour text and submission semantics do not imply support for every Input option.
+Do not change a color/time input to plain text merely to bypass validation when
+the application needs the semantic picker.
 
 ### NSH native FilePicker paths
 
@@ -3906,7 +3897,8 @@ property. For OCaml applications with a fixed blur-save policy, pass
 No C ABI, wire event ordinal or semantic event payload changes. The existing
 incarnation guard rejects retired callbacks, including the trailing native Blur
 when a Submit handler replaces the source Input. Button calendar NavigationKey and native
-color/time modes remain separate unresolved requirements. The native focused
+color input remains a separate unresolved requirement; native TimeField support
+and its explicit restrictions are documented below. The native focused
 regressions cover callback count/order, policy/flag changes, atomic refusal,
 editor retention, composition events and replacement; Headless composition
 checks do not qualify an operating-system IME.
@@ -4640,3 +4632,45 @@ explicit error before mounting, using the shared property predicate, rather than
 being silently discarded by the narrower constructor. Compile regressions reject
 width, style, disabled and unsupported callbacks; valid identity/reactive identity
 and dismiss calls compile, and JSON identity/dismiss behavior is exercised.
+
+
+### NSH native time inputs
+
+``input ~kind:`time`` now uses the public NSH `TimeField` for segmented native time
+editing. This is the route used by Logseq's date-time property calendar. Source
+`text` must be a valid, nonempty, zero-padded 24-hour `HH:MM` or `HH:MM:SS` value;
+its shape selects minute or second precision, including explicit `:00` seconds.
+Text is parsed/formatted with the same locked Chrono version used by NSH. Empty,
+invalid, fractional-second, leap-second or noncanonical drafts fail atomic
+preflight; they never silently become midnight or an uncontrolled native value.
+
+Native `TimeFieldEvent::Change` emits the existing `TextChanged` text payload at
+the current precision, gated by live `enabled` and `change-enabled`. Source edits
+update the retained field. NSH retains its segment selection, keyboard editing,
+focus and accessibility ownership; the adapter adds no second segment controller,
+parser state or text cache. Label/disabled updates use native props, and the
+existing renderer focus observers retain their canonical semantics.
+
+Single-line Return emits one Submit and dismisses native input focus. Its trailing
+blur does not submit a second time. Ordinary focus loss submits only when the live
+`submit-on-blur` policy is true. The observer is already installed for TimeField's
+Return policy, so changing this flag does not remount the field. Event dispatch
+uses the existing node-incarnation guard; removal/replacement cannot redirect a
+trailing blur into the new Input. This does not qualify an operating-system IME.
+
+Public TimeField does not expose read-only selection, autofocus of its internal
+Input, placeholders, LUI navigation callbacks or generic pointer callbacks. True
+`read-only`, `autofocus`, `navigate-enabled` or `pointer-enabled`, and nonempty
+placeholder text, are explicit atomic errors; false/absent flags remain accepted.
+The used Logseq calendar has valid `HH:MM` source text and blur submission without
+those options. Color inputs remain rejected. Changing a retained Input between
+text and time requires a new keyed node, because its native component is selected
+once. Maintained Apple/iOS, Android and Web behavior is unchanged.
+
+`contract::InputTypeValue` is generated from the canonical closed domain and
+exhaustively lowered to native Text, TimeField or the explicit unsupported Color
+case. A new canonical input type breaks provider compilation until handled; the
+compiler regression adds such a case and requires E0004. Positive native component
+regressions separately cover encoding/precision, Return/blur counts, live source
+updates and native identity, disabled/blur policy changes, and rollback of invalid
+text or unsupported options. An exhaustive error arm alone does not prove support.

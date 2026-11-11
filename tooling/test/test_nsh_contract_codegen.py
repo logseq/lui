@@ -55,7 +55,7 @@ class NSHContractCompilerTest(unittest.TestCase):
 
     def test_closed_domain_generation_requires_complete_canonical_metadata(self):
         valid = {"display": ["none"], "image-fit": ["fit", "fill"],
-                 "container-relative-frame": ["both"], "anchor": ["below"], "anchor-alignment": ["start"], "orientation": ["horizontal", "vertical"]}
+                 "container-relative-frame": ["both"], "anchor": ["below"], "anchor-alignment": ["start"], "orientation": ["horizontal", "vertical"], "input-type": ["color", "text", "time"]}
         for name in valid:
             for values in (None, [], ["none", "none"], ["inline_block"], [[]]):
                 domains = {**valid, name: values}
@@ -80,6 +80,9 @@ class NSHContractCompilerTest(unittest.TestCase):
         for function in ("lower_anchor", "lower_anchor_alignment"):
             popup_start = popup_source.index("fn " + function + "(")
             provider += popup_source[popup_start:popup_source.index("\n}\n", popup_start) + 2]
+        input_source = (root / "platform/nsh/src/inputs.rs").read_text()
+        input_start = input_source.index("fn lower_input_type(")
+        provider += input_source[input_start:input_source.index("\n}\n", input_start) + 2]
         image_source = (root / "platform/nsh/src/images.rs").read_text()
         image_start = image_source.index("fn fit_value(")
         provider += image_source[image_start:image_source.index("\npub(crate) fn fit(", image_start)]
@@ -99,6 +102,8 @@ enum Placement { Top, Bottom, Left, Right }
 enum Align { Start, Center, End }
 #[derive(Debug, PartialEq, Eq)]
 enum Axis { Horizontal, Vertical }
+#[derive(Debug, PartialEq, Eq)]
+enum NativeInputKind { Text, Time }
 enum StyleValue<'a> { Str(&'a str) }
 impl StyleKey {
     fn parse_value(self, value: StyleValue<'_>) -> Result<PropertyValue, &'static str> {
@@ -118,6 +123,13 @@ fn main() {
     for value in ImageFitValue::ALL {
         assert_eq!(ImageFitValue::try_from(value.as_str()), Ok(*value));
     }
+    for value in InputTypeValue::ALL {
+        assert_eq!(InputTypeValue::try_from(value.as_str()), Ok(*value));
+    }
+    assert_eq!(lower_input_type(InputTypeValue::Text), Ok(NativeInputKind::Text));
+    assert_eq!(lower_input_type(InputTypeValue::Time), Ok(NativeInputKind::Time));
+    assert!(lower_input_type(InputTypeValue::Color).unwrap_err().contains("color"));
+    assert!(InputTypeValue::try_from("not-canonical").is_err());
     for value in OrientationValue::ALL {
         assert_eq!(OrientationValue::try_from(value.as_str()), Ok(*value));
     }
@@ -179,7 +191,7 @@ fn main() {
             positive = compile_probe(domains)
             self.assertEqual(positive.returncode, 0, positive.stderr)
             subprocess.run([str(binary)], check=True)
-            for property_name in ("display", "image-fit", "container-relative-frame", "anchor", "anchor-alignment", "orientation"):
+            for property_name in ("display", "image-fit", "container-relative-frame", "anchor", "anchor-alignment", "orientation", "input-type"):
                 with self.subTest(property=property_name):
                     expanded = {**domains, property_name: [*domains[property_name], "future-provider-test"]}
                     negative = compile_probe(expanded)
@@ -196,7 +208,7 @@ fn main() {
             exported = {
                 "version": 1,
                 "closedDomains": {"display": ["none"], "image-fit": ["fit", "fill"],
-                 "container-relative-frame": ["both"], "anchor": ["below"], "anchor-alignment": ["start"], "orientation": ["horizontal", "vertical"]},
+                 "container-relative-frame": ["both"], "anchor": ["below"], "anchor-alignment": ["start"], "orientation": ["horizontal", "vertical"], "input-type": ["color", "text", "time"]},
                 "validators": {
                     "is_finite": {"constructor": "true"},
                     "property_value_supported": {

@@ -1134,6 +1134,21 @@ impl Renderer {
                 .key(key.clone())
                 .test_id(&identifier)
                 .into_element(),
+            "input" if crate::inputs::is_time(&node) => {
+                let events = self.clone();
+                native_events
+                    .text_policy(crate::inputs::time::element(
+                        state,
+                        reference,
+                        Rc::new(move |event| events.emit(id, incarnation, event)),
+                        theme,
+                    ))
+                    .state_inline_style(style)
+                    .element_ref(&reference)
+                    .key(key.clone())
+                    .test_id(&identifier)
+                    .into_element()
+            }
             "text-field" | "secure-field" | "input" | "search-field" | "textarea" => {
                 let change = self.clone();
                 let submit = self.clone();
@@ -1558,6 +1573,7 @@ fn validate_themes(
                 );
             }
             crate::controls::validate_transition(previous, node)?;
+            crate::inputs::validate_transition(previous, node)?;
             if node.kind == "scroll"
                 && contract::orientation(previous, OrientationValue::Vertical)?
                     != contract::orientation(node, OrientationValue::Vertical)?

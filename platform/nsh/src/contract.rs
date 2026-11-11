@@ -7,7 +7,7 @@ use std::sync::LazyLock;
 mod generated;
 
 pub use generated::{
-    AnchorAlignmentValue, AnchorValue, DisplayValue, FrameAxesValue, ImageFitValue,
+    AnchorAlignmentValue, AnchorValue, DisplayValue, FrameAxesValue, ImageFitValue, InputTypeValue,
     OrientationValue,
 };
 

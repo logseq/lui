@@ -1,14 +1,50 @@
 //! Canonical input policies over the retained public native Input.
-use crate::{render::Event, store::Node};
+use crate::{contract::InputTypeValue, render::Event, store::Node};
+
 use nsh_core::{SubmitBehavior, prelude::*};
 use std::{cell::Cell, rc::Rc, sync::Arc};
 
+pub(crate) mod time;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum NativeInputKind {
+    Text,
+    Time,
+}
+
+fn lower_input_type(value: InputTypeValue) -> Result<NativeInputKind, String> {
+    match value {
+        InputTypeValue::Text => Ok(NativeInputKind::Text),
+        InputTypeValue::Time => Ok(NativeInputKind::Time),
+        InputTypeValue::Color => Err("NSH input-type=color is not implemented yet".into()),
+    }
+}
+
+fn input_kind(node: &Node) -> Result<NativeInputKind, String> {
+    let value = match node.props.get("input-type") {
+        None => InputTypeValue::Text,
+        Some(value) => {
+            InputTypeValue::try_from(value.as_str().ok_or("NSH input-type requires a string")?)?
+        }
+    };
+    lower_input_type(value)
+}
+
+pub(crate) fn is_time(node: &Node) -> bool {
+    node.kind == "input"
+        && input_kind(node).expect("atomically validated input type") == NativeInputKind::Time
+}
+
 pub(crate) fn validate(node: &Node) -> Result<(), String> {
-    if node.kind == "input" && matches!(node.string("input-type"), "color" | "time") {
-        return Err(format!(
-            "NSH input-type={} is not implemented yet; use input-type=text for a text editor",
-            node.string("input-type")
-        ));
+    if node.kind == "input" && input_kind(node)? == NativeInputKind::Time {
+        time::validate(node)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_transition(previous: &Node, node: &Node) -> Result<(), String> {
+    if node.kind == "input" && input_kind(previous)? != input_kind(node)? {
+        return Err("NSH changing input-type while mounted requires a new keyed node".into());
     }
     Ok(())
 }
