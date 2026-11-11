@@ -33,16 +33,14 @@ fn time_input_preserves_canonical_text_precision_without_normalizing_invalid_dra
     }
     let mut node = crate::store::Node {
         kind: "input".into(),
-        props: serde_json::from_value(json!({"input-type":"time","text":"09:30"})).unwrap(),
+        props: serde_json::from_value(
+            json!({"input-type":"time","text":"09:30","pointer-enabled":true}),
+        )
+        .unwrap(),
         ..Default::default()
     };
     super::super::validate(&node).unwrap();
-    for flag in [
-        "read-only",
-        "autofocus",
-        "navigate-enabled",
-        "pointer-enabled",
-    ] {
+    for flag in ["read-only", "autofocus", "navigate-enabled"] {
         node.props.insert(flag.into(), json!(false));
         super::super::validate(&node).unwrap();
         node.props.insert(flag.into(), json!(true));
@@ -75,6 +73,7 @@ fn input_ops(text: &str) -> Vec<Value> {
         json!({"op":"set-prop","id":2,"property":"accessibility-label","value":"Time"}),
         json!({"op":"set-prop","id":2,"property":"width","value":200}),
         json!({"op":"set-prop","id":2,"property":"height","value":40}),
+        json!({"op":"set-prop","id":2,"property":"pointer-enabled","value":true}),
         json!({"op":"set-prop","id":2,"property":"change-enabled","value":true}),
         json!({"op":"set-prop","id":2,"property":"submit-enabled","value":true}),
         json!({"op":"set-prop","id":2,"property":"submit-on-blur","value":true}),

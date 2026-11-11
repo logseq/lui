@@ -4659,9 +4659,11 @@ uses the existing node-incarnation guard; removal/replacement cannot redirect a
 trailing blur into the new Input. This does not qualify an operating-system IME.
 
 Public TimeField does not expose read-only selection, autofocus of its internal
-Input, placeholders, LUI navigation callbacks or generic pointer callbacks. True
-`read-only`, `autofocus`, `navigate-enabled` or `pointer-enabled`, and nonempty
-placeholder text, are explicit atomic errors; false/absent flags remain accepted.
+Input, placeholders or LUI navigation callbacks. True `read-only`, `autofocus`
+or `navigate-enabled`, and nonempty placeholder text, are explicit atomic errors;
+false/absent flags remain accepted. `pointer-enabled=true` remains admitted:
+canonical input/submit registration also sets that shared semantic capability,
+so it does not by itself imply an authored pointer controller.
 The used Logseq calendar has valid `HH:MM` source text and blur submission without
 those options. Color inputs remain rejected. Changing a retained Input between
 text and time requires a new keyed node, because its native component is selected
