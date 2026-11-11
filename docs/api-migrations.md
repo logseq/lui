@@ -4189,3 +4189,26 @@ snapshots fail explicitly. Block identifiers and JSON replies carry lengths, so
 embedded NUL bytes are preserved. The query has no input dispatch, clock tick,
 secondary editor cache, or second runtime thread. A missing or refused query is
 an error rather than an empty-editor result.
+
+### NSH application SVG icons
+
+Native application roots can create an `application_icons::IconRegistry`, provide
+it above `Desktop` with NSH `provide_context`, and install the `app-icons` payload
+before publishing the corresponding LUI patches. `replace_json` takes the
+existing flat JSON map of unprefixed application icon slugs to SVG markup. It
+validates every name, scalar value, XML document and SVG root before replacing
+the table. `IconTable::from_json` prepares the same validated replacement without
+requiring a native owner. Invalid messages preserve the previous table.
+
+LUI `app:name` icons read that root's table reactively; updates preserve native
+identity and geometry and reuse NSH's SVG drawing cache. Standard built-in names
+keep their assets and cannot be overridden. An unregistered `app:` name falls
+back to the matching canonical built-in when available, otherwise the existing
+missing-icon asset. Roots have independent registries, and replacing an equal
+table publishes no updates. Tables are limited to 32 MiB and 16384 entries, with
+256 KiB per SVG; NSH retains its existing rendering/resource limits.
+
+Logseq's existing native `app_icon_svgs` custom-only payload assumes its host
+already bundles the complete Tabler table. An NSH application must supply that
+existing application table as well as custom overrides; the generic adapter does
+not import Logseq's asset catalog or create a second icon decoder/cache.

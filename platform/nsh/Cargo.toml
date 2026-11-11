@@ -13,6 +13,7 @@ nsh-updater = { git = "https://github.com/logseq/nsh", rev = "bfa15d0c843c0d6f5b
 ureq = { version = "3.5.1", features = ["platform-verifier"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+roxmltree = "0.21.2"
 libloading = "0.8"
 url = "2"
 tokio = { version = "1", default-features = false, features = ["sync"] }

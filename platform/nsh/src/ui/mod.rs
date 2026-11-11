@@ -32,10 +32,17 @@ pub(crate) fn icon(
     extent: impl IntoReactive<Points>,
 ) -> nsh_core::element::Svg {
     let name = name.into_reactive();
-    let name = computed(move || name.get());
+    let registry = use_context::<crate::application_icons::IconRegistry>();
+    let source = computed(move || {
+        let name = name.get();
+        registry
+            .as_ref()
+            .and_then(|registry| registry.source(&name))
+            .unwrap_or_else(|| icons::source(name.strip_prefix("app:").unwrap_or(&name)))
+    });
     let extent = extent.into_reactive();
     let height = extent.clone();
-    svg(move || icons::source(&name.get()))
+    svg(move || source.get())
         .w(move || extent.get())
         .h(move || height.get())
         .flex_shrink_0()
