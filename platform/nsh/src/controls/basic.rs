@@ -91,7 +91,12 @@ fn layered(children: ChildRenderer) -> View {
         move |identity, _| {
             let identity = identity.get_untracked();
             let node = (lookup)(identity);
+            // Preserve the child's grid-item stretch through this z-index layer.
             view()
+                .grid()
+                .grid_cols(1)
+                .grid_rows(1)
+                .pointer_events(nsh_core::PointerEvents::BoxNone)
                 .inline_style(grid_cell())
                 .z_index(move || {
                     node.map_or(0, |node| {
@@ -426,6 +431,7 @@ fn local_overlay(node: Signal<Arc<Node>>, children: ChildRenderer) -> View {
             let identity = identity.get_untracked();
             let child = lookup(identity);
             view()
+                .pointer_events(nsh_core::PointerEvents::BoxNone)
                 .style_with(move |s| {
                     if index.get() == 0 {
                         return s;
