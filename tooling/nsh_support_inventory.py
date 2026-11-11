@@ -10,11 +10,11 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "docs/agent-guide/review-probes/2026-11-11/nsh-support-inventory.md"
-SOURCE_NAMES = ["render.rs", "controls.rs", "style.rs", "virtual_rows.rs", "app.rs", "ui/mod.rs", "ui/controls.rs", "events.rs", "ui/icons.rs", "controls/basic.rs", "controls/collections.rs", "controls/surfaces.rs", "controls/navigation.rs", "images.rs"]
+SOURCE_NAMES = ["render.rs", "controls.rs", "style.rs", "virtual_rows.rs", "app.rs", "ui/mod.rs", "ui/controls.rs", "events.rs", "ui/icons.rs", "controls/basic.rs", "controls/collections.rs", "controls/surfaces.rs", "controls/navigation.rs", "images.rs", "headings.rs"]
 ROUTES = {
     "root": "core view", "row": "core view + flex direction", "column": "core view",
     "box": "core view", "panel": "core view", "card": "core view", "spacer": "core view + grow/shrink",
-    "text": "core text", "heading": "core text", "paragraph": "core text", "label": "core text", "kbd": "core text",
+    "text": "core text", "heading": "retained core Text + Header role/live level + native typography presets", "paragraph": "core text", "label": "core text", "kbd": "core text",
     "text-field": "themed base Input", "secure-field": "themed base Input + masked",
     "input": "themed base Input", "search-field": "themed base Input", "textarea": "themed base Input + multiline",
     "checkbox": "themed base Checkbox", "scroll": "core Scroll", "image": "core Image + canonical URL/fit/name + Load ABI",
@@ -114,7 +114,6 @@ GAPS = {
     "G3": ({"text-field", "secure-field", "input", "search-field", "textarea", "combobox"}, {"input-type", "submit-on-enter", "submit-on-blur", "navigate-enabled"}, "Input hint/navigation/submit policies are not forwarded; native Input defaults remain."),
     "G4": ({"checkbox", "toggle"}, {"label-opacity", "indicator-border-color", "checked-indicator-border-color", "toggle-detail-enabled"}, "Checkbox routes forward checked/indeterminate/disabled/label; authored indicator/detail behavior remains absent."),
     "G5": ({"image"}, {"image", "source-x", "source-y", "source-width", "source-height", "referrer-policy"}, "Image forwards canonical URL, alt/label, fit, eager/default loading and native Load. Resource IDs, crop rectangles and authored referrer policy are explicitly rejected; loading=lazy is a value restriction listed separately, not a missing eager-loading path."),
-    "G6": ({"heading"}, {"heading-level"}, "Heading uses the same core text route, without heading role/level or level-based presentation."),
     "G7": ({"scroll"}, {"orientation"}, "Scroll route does not set horizontal mode; the native default remains."),
     "G8": ({"list", "virtual-list"}, {"style", "list-style"}, "Container appearance and CSS list markers are not implemented by the Scroll/VirtualList routes."),
     "G9": (None, {"navigate-enabled", "pointer-capture"}, "Canonical navigation-key and pointer-capture behavior remain unimplemented."),
@@ -122,6 +121,7 @@ GAPS = {
 }
 
 TESTS = {
+    "heading": ["heading_default_and_live_levels_keep_the_actual_text_and_editor_identity", "heading_authored_styles_override_presets_and_invalid_changes_roll_back_atomically"],
     "image": ["canonical_url_fit_and_accessible_name_preserve_image_defaults", "url_fit_and_atomic_rejections_keep_the_image_and_editor_native_identity", "canonical_image_load_reaches_the_existing_ocaml_callback"],
     "drawer": ["drawer_uses_native_sheet_and_keeps_refused_selected_state"],
     "resizable": ["resizable_native_drag_clamps_and_reconciles_source_without_remounting"],
@@ -273,13 +273,23 @@ def markdown(data):
     for key, (_, properties, description) in GAPS.items():
         rows += [f"- **{key}**: {description} Candidate properties: " + ", ".join(f"`{prop}`" for prop in sorted(properties)) + "."]
     rows += ["- **G10** is retired for current generic host routes: authored activation is now installed with live guards. Radio's true press-enabled value remains explicitly rejected.", "",
-             "Priority 1: remaining typed-control pointer/modifier delivery, navigation", "and capture; input submit policy; authored checkbox indicators; image resources/crop;", "menu-item icons. Priority 2: remaining appearance, class translation or explicit", "rejection, semantic heading defaults, list appearance and metadata.", "",
+             "Priority 1: remaining typed-control pointer/modifier delivery, navigation", "and capture; input submit policy; authored checkbox indicators; image resources/crop;", "menu-item icons. Priority 2: remaining appearance, class translation or explicit", "rejection, list appearance and metadata.", "",
              "## Event, child and default limitations", "",
              "- Native host routes deliver available modifier/pointer payloads; typed behavior", "  components still expose unit events and do not gain a synthetic observer wrapper.", "  The JSON event-path list is not a claim of full per-field parity. Appearance", "  uses the actual existing ref after native materialization, including disabled", "  controls; it is not an OS-visible-frame notification.",
              "- Input change/submit and Checkbox toggle callbacks now honor live callback", "  flags and enabled state. Row/Column/Box use one native-ref focus transition", "  owner rather than duplicate direct Input focus handlers.",
              "- Host listeners are installed from authored initial capabilities. Enabling an", "  initially unauthored press/pointer/gesture capability after mount is explicitly", "  rejected atomically pending a public identity-preserving rebind path. Focus-within", "  flags on the three canonical containers can change live. Unused Text nodes get", "  no press listener, so they do not steal activation from enclosing commands.",
              "- Core text routes render the node's text value and discard their canonical", "  children. Container admission therefore does not prove rich/composed text.",
-             "- Ignored menu-item size/variant and heading/input-submit/orientation properties leave NSH", "  wrapper defaults in control even when an application authors another value.", "  This inventory does not infer canonical absent-property defaults from NSH's", "  defaults. Those need explicit cross-backend behavior tests and migration notes.",
+             "- Heading uses the same retained native Text host with Header role and live",
+             "  accessibility_level. Its absent level is 2, preserving the replaced desktop",
+             "  default; the canonical constructor writes only authored levels. Apple defaults",
+             "  to 1 and Web forwards authored aria-level, so no common wire default is inferred.",
+             "  Levels 1..6 use native 3xl/2xl/xl/lg/base/sm presets with bold weight; authored",
+             "  typography and color win. At the native default scale these are 30/24/20/18/16/14",
+             "  points, replacing the old desktop 28/26/24/22/20/18-point formula. Text supplies",
+             "  the accessible name; Heading still rejects the noncanonical accessibility-label.",
+             "  The mapped Headless tests cover level/default/override/identity/rollback behavior,",
+             "  not operating-system screen-reader announcements or native screenshot metrics.",
+             "- Ignored menu-item size/variant and input-submit/orientation properties leave NSH", "  wrapper defaults in control even when an application authors another value.", "  This inventory does not infer canonical absent-property defaults from NSH's", "  defaults. Those need explicit cross-backend behavior tests and migration notes.",
              "- Button/toggle command icons use shared Web SVG assets, native retained size/variant", "  bindings and decorative glyph accessibility. Tab appearance, application icon", "  registration and shortcut hints still need qualification or implementation.", "- Native pointer states used by styles are separate from LUI pointer events.", "  Paint::read dynamically handles prefixed background/foreground/border/opacity/", "  shadow properties; the generator excludes these string-search false positives.", "",
              "- Image uses canonical url and live native source/fit/name bindings. Default fit",
              "  is stretch, fit means contain and fill means cover; an accessibility label wins",
@@ -350,7 +360,6 @@ def markdown(data):
              "| G3 | render.rs basic Input branch; controls.rs `picker` combobox Input branch |",
              "| G4 | render.rs CheckboxProps and controls.rs toggle CheckboxProps omit authored indicator/detail props |",
              "| G5 | images.rs `source`/`fit`/`label`/`validate`; render.rs Image on_load; runtime.rs optional Load ABI |",
-             "| G6 | render.rs combined text/heading/paragraph/label/kbd branch |",
              "| G7 | render.rs Scroll branch creates default Scroll without horizontal configuration |",
              "| G8 | controls.rs list branch and virtual_rows.rs VirtualList builder |",
              "| G9/G10 | render.rs Event enum and all native route listeners; app.rs `semantic` |"]
