@@ -152,6 +152,72 @@ fn TimeProbe() -> impl IntoElement {
             },
         );
     }
+    let cycling = renderer.clone();
+    let cycling_generation = generation.clone();
+    on_key_with(
+        "f10",
+        KeyOptions {
+            when: nsh_core::keymap::When::Always,
+            ..Default::default()
+        },
+        move |_| {
+            let next = cycling_generation.get() + 1;
+            cycling
+                .apply(batch(
+                    next,
+                    json!([
+                        {"op":"set-prop","id":2,"property":"text","value":"04:05"}
+                    ]),
+                ))
+                .unwrap();
+            cycling_generation.set(next);
+        },
+    );
+    let cycling = renderer.clone();
+    let cycling_generation = generation.clone();
+    on_key_with(
+        "shift+f2",
+        KeyOptions {
+            when: nsh_core::keymap::When::Always,
+            ..Default::default()
+        },
+        move |_| {
+            let next = cycling_generation.get() + 1;
+            cycling
+                .apply(batch(
+                    next,
+                    json!([
+                        {"op":"set-prop","id":2,"property":"text","value":"06:07:49"}
+                    ]),
+                ))
+                .unwrap();
+            cycling_generation.set(next);
+        },
+    );
+    let rapid = renderer.clone();
+    let rapid_generation = generation.clone();
+    on_key_with(
+        "shift+f3",
+        KeyOptions {
+            when: nsh_core::keymap::When::Always,
+            ..Default::default()
+        },
+        move |_| {
+            // Separate accepted source transactions, before another native commit.
+            for text in ["01:02", "03:04:57", "05:06", "07:08:49"] {
+                let next = rapid_generation.get() + 1;
+                rapid
+                    .apply(batch(
+                        next,
+                        json!([
+                            {"op":"set-prop","id":2,"property":"text","value":text}
+                        ]),
+                    ))
+                    .unwrap();
+                rapid_generation.set(next);
+            }
+        },
+    );
     for (key, property, value) in [
         ("f7", "input-type", json!("text")),
         ("f8", "read-only", json!(true)),
@@ -307,4 +373,30 @@ fn native_time_live_blur_policy_and_disabled_state_keep_the_same_native_field() 
         ]
     );
     assert_eq!(identities(&app), before);
+}
+
+#[test]
+fn native_precision_cycles_and_rapid_source_updates_preserve_seconds_focus_and_identity() {
+    let (mut app, events, _) = start(false);
+    app.wait_for("id:lui-2").unwrap();
+    let before = identities(&app);
+    app.type_text("id:lui-2", "").unwrap();
+    for (key, source, changed) in [
+        ("f2", "18:45:12", "19:45:12"),
+        ("f10", "04:05", "05:05"),
+        ("shift+f2", "06:07:49", "07:07:49"),
+        ("shift+f3", "07:08:49", "08:08:49"),
+    ] {
+        events.lock().unwrap().clear();
+        app.press_key(key).unwrap();
+        assert_eq!(app.screen().input_text("id:lui-2").unwrap(), Some(source));
+        assert!(
+            events.lock().unwrap().is_empty(),
+            "a source update emitted a user edit"
+        );
+        // Do not focus again: a native segment edit proves focus survived.
+        app.press_key("up").unwrap();
+        assert_eq!(*events.lock().unwrap(), [Event::Text(2, changed.into())]);
+        assert_eq!(identities(&app), before);
+    }
 }

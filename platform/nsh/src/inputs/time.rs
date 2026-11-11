@@ -54,6 +54,27 @@ pub(crate) fn element(
     let source_text = computed(move || node.get().string("text").to_owned());
     let source =
         computed(move || value(&source_text.get()).expect("atomically validated 24-hour time"));
+    let initial = source.get_untracked();
+    let delivered_time = signal(initial.0);
+    let acknowledged_precision = Rc::new(Cell::new(initial.1));
+    effect(move || {
+        let next = source.get();
+        if acknowledged_precision.get() == next.1 {
+            delivered_time.set(next.0);
+            return;
+        }
+        let acknowledged_precision = acknowledged_precision.clone();
+        // TimeField's format and value effects are independent. Wait until the
+        // new precision reached the component before sending a value that its
+        // previous precision could truncate. This public boundary preserves the
+        // native input/focus; ordinary same-precision edits remain immediate.
+        after_answer(move || {
+            if source.try_get() == Some(next) {
+                acknowledged_precision.set(next.1);
+                delivered_time.set(next.0);
+            }
+        });
+    });
     let focused = signal(false);
     let skip_blur = Rc::new(Cell::new(false));
     let entering_skip = skip_blur.clone();
@@ -106,7 +127,7 @@ pub(crate) fn element(
     });
     let change = emit;
     nsh_base::TimeField::element(TimeFieldProps {
-        value: Prop::bind(move || Some(source.get().0)),
+        value: Prop::bind(move || Some(delivered_time.get())),
         precision: Prop::bind(move || source.get().1),
         disabled: Prop::bind(move || !node.get().boolean("enabled", true)),
         accessibility_label: Prop::bind(move || {

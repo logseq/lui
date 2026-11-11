@@ -4640,7 +4640,14 @@ and dismiss calls compile, and JSON identity/dismiss behavior is exercised.
 editing. This is the route used by Logseq's date-time property calendar. Source
 `text` must be a valid, nonempty, zero-padded 24-hour `HH:MM` or `HH:MM:SS` value;
 its shape selects minute or second precision, including explicit `:00` seconds.
-Text is parsed/formatted with the same locked Chrono version used by NSH. Empty,
+Text is parsed/formatted with the same locked Chrono version used by NSH.
+When source precision changes, the new format reaches native TimeField first;
+its new time value is delivered at the public owner-scoped `after_answer`
+boundary. The component's independent format/value effects otherwise can truncate
+seconds using the previous precision. Only precision changes use this boundary;
+same-precision values remain immediate. A stale source tuple cannot deliver after
+a newer one, and owner disposal cancels the callback. This retains the same native
+Input and focus without a timer, frame wait, remount or second editing controller. Empty,
 invalid, fractional-second, leap-second or noncanonical drafts fail atomic
 preflight; they never silently become midnight or an uncontrolled native value.
 
