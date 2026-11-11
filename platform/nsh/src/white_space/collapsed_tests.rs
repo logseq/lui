@@ -16,7 +16,7 @@ struct Observed(Arc<Mutex<Vec<Snapshot>>>);
 fn patch(generation: u64, ops: Value) -> Batch {
     Batch::decode(&json!({"generation":generation,"ops":ops}).to_string()).unwrap()
 }
-fn record(renderer: Renderer, observed: Observed) {
+fn record(renderer: Renderer, observed: Arc<Observed>) {
     after_answer(move || {
         let sources = (2..=8)
             .map(|id| renderer.node_snapshot(id).unwrap())
@@ -130,7 +130,17 @@ fn CollapsedText() -> impl IntoElement {
             },
         );
     }
-    record(renderer.clone(), observed);
+    let recording = renderer.clone();
+    on_key_with(
+        "f1",
+        KeyOptions {
+            when: nsh_core::keymap::When::Always,
+            ..Default::default()
+        },
+        move |_| {
+            record(recording.clone(), observed.clone());
+        },
+    );
     view().flex_col().child(renderer.element()).child(
         text("")
             .test_id("visibility-control")
@@ -181,7 +191,10 @@ fn nested_display_none_removes_advances_and_restores_same_native_spans_and_logic
         ..EngineConfig::new(Root::of::<CollapsedText>())
     })
     .unwrap();
-    app.wait_for("id:lui-2").unwrap();
+    // Qualify populated keyed descendants before the initial identity record.
+    app.wait_for("text:L[**]R").unwrap();
+    app.wait_for("id:lui-8").unwrap();
+    app.press_key("f1").unwrap();
     let initial = rendered(&app);
     assert_eq!(initial.0, "L[**]R");
     app.type_text("id:lui-8", " retained").unwrap();
