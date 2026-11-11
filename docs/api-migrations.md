@@ -4472,3 +4472,19 @@ flag. Web and Apple retain their existing implementation: Web uses its CSS layer
 policy in addition to pointer subscriptions, and Apple uses its native surface
 hit testing. Do not infer that disabling a pointer subscription on those backends
 is a portable replacement for a hit-transparent native desktop cover.
+
+### NSH nested Stack fills its assigned grid cell
+
+NSH Stack now passes the full assigned grid-cell size through its retained
+z-index wrapper to the actual child. Previously, a viewport-height Stack could
+contain a second Stack that shrank to its header's intrinsic height, leaving a
+`grow:1` main row with zero available height. Existing explicit child width and
+height remain authoritative. No viewport constants or geometry feedback are
+introduced, and retained child identities survive parent size changes.
+
+For example, `stack [column ~grow:1. ~min_height:0 [header; row ~grow:1.
+~min_height:0 [body]]]` fills an assigned parent height without adding a height to
+the inner Stack. The parent must still receive a real size from its own layout.
+Synthetic Stack/Overlay layer wrappers also ignore hits on themselves; their
+actual child nodes retain the authored pointer policy and interactive behavior.
+This changes no OCaml API, wire ordinal or maintained mobile backend.

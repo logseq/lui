@@ -1501,3 +1501,7 @@ mod tests {
         assert_eq!(id(&app, "lui-3"), pinned);
     }
 }
+
+#[cfg(test)]
+#[path = "basic/stack_layout_tests.rs"]
+mod stack_layout_tests;
