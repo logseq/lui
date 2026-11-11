@@ -18,6 +18,7 @@
 open Ppxlib
 
 module B = Ast_builder.Default
+module Bound_names = Set.Make (String)
 
 let signal_map loc =
   B.pexp_ident ~loc { txt = Ldot (Lident "Signal", "map"); loc }
@@ -163,7 +164,7 @@ let dyn_supported args =
    becoming a nonexistent `~test_signal:` parameter. *)
 let signal_only_labels = [ "test"; "source" ]
 
-let scoped_expression ~loc build =
+let scoped_expression ~loc ?(helper = "scoped") build =
   let context = gen_symbol ~prefix:"__lui_context_" () in
   let scope = B.pexp_field ~loc (evar ~loc context)
     { txt = Ldot (Lident "Lui_ui", "ui_scope"); loc } in
@@ -179,20 +180,118 @@ let scoped_expression ~loc build =
       | _ -> expression
   end in
   let scoped = B.pexp_ident ~loc
-    { txt = Ldot (Lident "Lui_elements", "scoped"); loc } in
+    { txt = Ldot (Lident "Lui_elements", helper); loc } in
   apply ~loc scoped [lam ~loc [pvar ~loc context] (build own_generated)]
 
-let structural_constructor expression = match expression.pexp_desc with
-  | Pexp_ident { txt = Lident ("if_" | "keyed" | "virtual_rows")
-      | Ldot (Lident "Lui_elements", ("if_" | "keyed" | "virtual_rows")); _ } -> true
+let constructor_name expression = match expression.pexp_desc with
+  | Pexp_ident { txt = Lident name | Ldot (Lident "Lui_elements", name); _ } ->
+      Some name
+  | _ -> None
+
+let typed_family = function
+  | "step" | "keyed_step" -> Some "step"
+  | "timeline_item" | "keyed_timeline_item" -> Some "timeline_item"
+  | "bottom_tab" | "keyed_bottom_tab" -> Some "bottom_tab"
+  | "table_row" | "keyed_table_row" -> Some "table_row"
+  | "table_cell" | "keyed_table_cell" -> Some "table_cell"
+  | "radio" | "keyed_radio" -> Some "radio"
+  | "input_group_actions" -> Some "input_group_actions"
+  | "swipe_action" | "keyed_swipe_action" -> Some "swipe_action"
+  | _ -> None
+
+let unshadowed_name bound expression =
+  match expression.pexp_desc with
+  | Pexp_ident { txt = Lident name; _ } when Bound_names.mem name bound -> None
+  | _ -> constructor_name expression
+
+let scope_helper bound expression =
+  match Option.bind (unshadowed_name bound expression) typed_family with
+  | Some family -> "scoped_" ^ family
+  | None -> "scoped"
+
+let structural_constructor bound expression =
+  match unshadowed_name bound expression with
+  | Some ("if_" | "keyed" | "virtual_rows" | "keyed_step"
+      | "keyed_timeline_item" | "keyed_bottom_tab" | "keyed_table_row"
+      | "keyed_table_cell" | "keyed_radio" | "keyed_swipe_action") -> true
   | _ -> false
 
+let without_element_names bound =
+  Bound_names.filter (fun name ->
+    typed_family name = None &&
+    not (List.mem name ["if_"; "keyed"; "virtual_rows"])) bound
+
+(* Local values with DSL names still use the generic scope contract. *)
+let pattern_names pattern =
+  let names = ref Bound_names.empty in
+  let collect = object
+    inherit Ast_traverse.iter as super
+    method! pattern pattern =
+      (match pattern.ppat_desc with
+      | Ppat_var name | Ppat_alias (_, name) ->
+          names := Bound_names.add name.txt !names
+      | _ -> ());
+      super#pattern pattern
+  end in
+  collect#pattern pattern;
+  !names
+
 class mapper =
-  object
+  let bound = ref Bound_names.empty in
+  let with_bound names build =
+    let previous = !bound in
+    bound := Bound_names.union previous names;
+    Fun.protect build ~finally:(fun () -> bound := previous)
+  in
+  object (self)
     inherit Ast_traverse.map as super
+
+    method! structure items =
+      let previous = !bound in
+      Fun.protect (fun () -> List.map (fun item ->
+        match item.pstr_desc with
+        | Pstr_value (recursive, bindings) ->
+            let names = List.fold_left (fun names binding ->
+              Bound_names.union names (pattern_names binding.pvb_pat))
+              Bound_names.empty bindings in
+            let mapped = match recursive with
+              | Recursive -> with_bound names (fun () -> super#structure_item item)
+              | Nonrecursive -> super#structure_item item in
+            bound := Bound_names.union !bound names;
+            mapped
+        | Pstr_open { popen_expr = { pmod_desc = Pmod_ident
+            { txt = Lident "Lui_elements"; _ }; _ }; _ } ->
+            bound := without_element_names !bound;
+            super#structure_item item
+        | _ -> super#structure_item item) items)
+        ~finally:(fun () -> bound := previous)
+
+    method! case case =
+      with_bound (pattern_names case.pc_lhs) (fun () -> super#case case)
 
     method! expression expr =
       match expr.pexp_desc with
+      | Pexp_let (recursive, bindings, body) ->
+          let names = List.fold_left (fun names binding ->
+            Bound_names.union names (pattern_names binding.pvb_pat))
+            Bound_names.empty bindings in
+          let map_bindings () = List.map (super#value_binding) bindings in
+          let bindings = match recursive with
+            | Recursive -> with_bound names map_bindings
+            | Nonrecursive -> map_bindings () in
+          let body = with_bound names (fun () -> self#expression body) in
+          { expr with pexp_desc = Pexp_let (recursive, bindings, body) }
+      | Pexp_open (({ popen_expr = { pmod_desc = Pmod_ident
+          { txt = Lident "Lui_elements"; _ }; _ }; _ } as opened), body) ->
+          let previous = !bound in
+          bound := without_element_names previous;
+          let body = Fun.protect (fun () -> self#expression body)
+            ~finally:(fun () -> bound := previous) in
+          { expr with pexp_desc = Pexp_open (opened, body) }
+      | Pexp_fun (label, default, pattern, body) ->
+          let default = Option.map (self#expression) default in
+          let body = with_bound (pattern_names pattern) (fun () -> self#expression body) in
+          { expr with pexp_desc = Pexp_fun (label, default, pattern, body) }
       | Pexp_apply (fn, args)
         when is_reactive_ident fn && dyn_supported args ->
           (* bare `reactive` at expression position: dyn over the signal *)
@@ -214,7 +313,7 @@ class mapper =
             match List.rev args with
             | (Nolabel, parent) :: (Nolabel, context) :: reversed
               when List.length positional >= 3
-                || (structural_constructor fn && List.length positional = 2) ->
+                || (structural_constructor !bound fn && List.length positional = 2) ->
               List.rev reversed, [Nolabel, context; Nolabel, parent]
             | _ -> args, [] in
           let transform arguments owner =
@@ -239,7 +338,7 @@ class mapper =
                      in
                      let own expression =
                        if not (List.mem name signal_only_labels)
-                          || structural_constructor fn then begin
+                          || structural_constructor !bound fn then begin
                          needs_scope := true;
                          owner#expression expression
                        end else expression in
@@ -265,7 +364,8 @@ class mapper =
           super#expression { expr with pexp_desc = Pexp_apply (fn, args) } in
           let plain = transform args (new Ast_traverse.map) in
           if !needs_scope then
-            let scoped = scoped_expression ~loc:expr.pexp_loc (transform constructor_args) in
+            let scoped = scoped_expression ~loc:expr.pexp_loc
+              ~helper:(scope_helper !bound fn) (transform constructor_args) in
             if mount_args = [] then scoped
             else B.pexp_apply ~loc:expr.pexp_loc scoped
               (List.map (fun (label, argument) -> label, super#expression argument) mount_args)

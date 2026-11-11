@@ -471,7 +471,10 @@ and apply_roots ?(detached = false) fuel scope fn args =
                 Option.fold ~none:[]
                   ~some:(value_roots ~detached fuel)
                   (last values)
-            | Some "scoped", fn :: _ -> function_roots ~detached fuel fn
+            | Some ("scoped" | "scoped_step" | "scoped_timeline_item"
+                | "scoped_bottom_tab" | "scoped_table_row" | "scoped_table_cell"
+                | "scoped_radio" | "scoped_input_group_actions" | "scoped_swipe_action"),
+              fn :: _ -> function_roots ~detached fuel fn
             | Some "if_", values ->
                 dynamic_roots detached fn.pexp_loc
                   (Option.fold ~none:[]

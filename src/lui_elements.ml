@@ -398,6 +398,16 @@ let mount context ?parent element = element context parent
 
 let scoped build : t = fun context parent -> build context context parent
 
+(* PPX scopes preserve the abstract family of restricted child slots. *)
+let scoped_step = scoped
+let scoped_timeline_item = scoped
+let scoped_bottom_tab = scoped
+let scoped_table_row = scoped
+let scoped_table_cell = scoped
+let scoped_radio = scoped
+let scoped_input_group_actions = scoped
+let scoped_swipe_action = scoped
+
 (* Signal conveniences for view code: `map f src`, `sample src`,
    `src >|= f`, `const` — short spellings for the reactive props. *)
 

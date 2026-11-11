@@ -160,6 +160,20 @@ type swipe_action_el
 type nothing = |
 val mount : 'a -> ?parent:'b -> ('a -> 'b option -> 'c) -> 'c
 val scoped : (Lui_ui.ui_context -> t) -> t
+
+(** Typed forms of {!scoped} used by the PPX for reactive properties and
+    keyed sources in restricted child slots. Each preserves its abstract
+    family; none converts a restricted child to {!t}. *)
+val scoped_step : (Lui_ui.ui_context -> step_el) -> step_el
+val scoped_timeline_item : (Lui_ui.ui_context -> timeline_item_el) -> timeline_item_el
+val scoped_bottom_tab : (Lui_ui.ui_context -> bottom_tab_el) -> bottom_tab_el
+val scoped_table_row : (Lui_ui.ui_context -> table_row_el) -> table_row_el
+val scoped_table_cell : (Lui_ui.ui_context -> table_cell_el) -> table_cell_el
+val scoped_radio : (Lui_ui.ui_context -> radio_el) -> radio_el
+val scoped_input_group_actions :
+  (Lui_ui.ui_context -> input_group_actions_el) -> input_group_actions_el
+val scoped_swipe_action : (Lui_ui.ui_context -> swipe_action_el) -> swipe_action_el
+
 val reactive : ('a -> 'b) -> 'a Signal.signal -> 'b Signal.signal
 val map : ('a -> 'b) -> 'a Signal.signal -> 'b Signal.signal
 val sample : 'a Signal.signal -> 'a

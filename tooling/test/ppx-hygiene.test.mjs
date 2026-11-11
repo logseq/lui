@@ -59,6 +59,42 @@ test("PPX nesting diagnostics reject static illegal edges without guessing opaqu
       ["virtual_list [virtual_rows ~source:items ~key:Fun.id ~cmp:compare ~mount:(fun _ -> row []) ()]"],
       ["let module E = Lui_elements in E.context_menu [E.menu_item []]"],
     ]
+    // Reactive prop scopes must retain every restricted abstract child family.
+    const typedFamilies = [
+      ["step", "text", "string_of_bool", "[]", child => `stepper [${child}]`],
+      ["timeline_item", "title", "string_of_bool", "[]", child => `timeline [${child}]`],
+      ["bottom_tab", "selected", "Fun.id", "[]", child => `bottom_tabs [${child}]`],
+      ["table_row", "selected", "Fun.id", "[table_cell []]", child => `table [${child}]`],
+      ["table_cell", "text", "string_of_bool", "[]", child => `table [table_row [${child}]]`],
+      ["radio", "checked", "Fun.id", "[]", child => `radio_group [${child}]`],
+      ["input_group_actions", "background", '(fun value -> if value then "background" else "surface")',
+        "[button []]", child => `input_group ~actions:(${child}) (text_field [])`],
+      ["swipe_action", "text", "string_of_bool", "[]", child => `swipe_actions [${child}]`],
+    ]
+    for (const prefix of ["", "Lui_elements."]) {
+      for (const [family, property, project, children, parent] of typedFamilies) {
+        cases.push([parent(`${prefix}${family} ~${property}:(reactive ${project} source) ${children}`)])
+        if (family !== "input_group_actions") {
+          cases.push([parent(`${prefix}keyed_${family}
+            ~source:(reactive (fun shown -> if shown then [1] else [2]) source)
+            ~key:Fun.id ~cmp:Int.compare
+            ~mount:(fun _item -> ${prefix}${family}
+              ~${property}:(reactive ${project} source) ${children})`)])
+        }
+      }
+    }
+    cases.push(
+      ['column [button ~text:(reactive string_of_bool source) []]'],
+      ['let radio ~text_signal:_ _ = button [] in column [radio ~text:(reactive string_of_bool source) []]'],
+      ['(fun radio -> column [radio ~text:(reactive string_of_bool source) []]) (fun ~text_signal:_ _ -> button [])'],
+      ['match (fun ~text_signal:_ _ -> button []) with radio -> column [radio ~text:(reactive string_of_bool source) []]'],
+      ['let radio ~text_signal:_ _ = button [] in radio_group [Lui_elements.radio ~checked:(reactive Fun.id source) []]'],
+      ['let radio ~text_signal:_ _ = button [] in Lui_elements.(radio_group [radio ~checked:(reactive Fun.id source) []])'],
+      ['bottom_tabs [table_cell ~text:(reactive string_of_bool source) []]', "bottom-tabs", "table-cell"],
+      ['table [bottom_tab ~selected:(reactive Fun.id source) []]', "table", "bottom-tab"],
+      ['radio_group [keyed_radio ~source:(reactive (fun _ -> [1]) source) ~key:Fun.id ~cmp:Int.compare ~mount:(fun _ -> button [])]', "radio-group", "button"],
+      ['context_menu [scoped_bottom_tab (fun _ -> bottom_tab ~selected:(reactive Fun.id source) [])]', "context-menu", "bottom-tab"],
+    )
     for (const [expression, parent, child] of cases) {
       writeFileSync(join(dir, "probe.ml"), `open Lui_elements
 let probe (source : bool Signal.signal)
@@ -76,6 +112,32 @@ let probe (source : bool Signal.signal)
       } else {
         assert.equal(result.status, 0, `${expression}\n${result.stdout}${result.stderr}`)
       }
+    }
+    for (const program of [
+      `open Lui_elements
+let radio ~text_signal:_ _ = button []
+let probe (source : bool Signal.signal) =
+  column [radio ~text:(reactive string_of_bool source) []]`,
+      `let radio ~text_signal:_ _ = Lui_elements.button []
+open Lui_elements
+let probe (source : bool Signal.signal) =
+  radio_group [radio ~checked:(reactive Fun.id source) []]`,
+    ]) {
+      writeFileSync(join(dir, "probe.ml"), program)
+      success(["ocamlfind", "ocamlc", "-package", "ocaml-signal", "-c",
+        "-ppx", `${join(dir, "driver")} --as-ppx`,
+        "-I", "_build/default/src/.lui.objs/byte", join(dir, "probe.ml")])
+    }
+    for (const expression of [
+      "(scoped_bottom_tab (fun _ -> bottom_tab []) : t)",
+      "scoped_bottom_tab (fun _ -> button [])",
+    ]) {
+      writeFileSync(join(dir, "probe.ml"), `open Lui_elements\nlet invalid = ${expression}\n`)
+      const result = run(["ocamlfind", "ocamlc", "-package", "ocaml-signal", "-c",
+        "-ppx", `${join(dir, "driver")} --as-ppx`,
+        "-I", "_build/default/src/.lui.objs/byte", join(dir, "probe.ml")])
+      assert.notEqual(result.status, 0, `abstract child scope was weakened: ${expression}`)
+      assert.match(result.stderr, /bottom_tab_el/, result.stderr)
     }
   } finally { rmSync(dir, {recursive: true, force: true}) }
 })

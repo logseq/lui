@@ -3050,3 +3050,32 @@ checks actual native file-URL decoding, Load callbacks, source replacement and
 retained editor state. The separate `ocaml_image` Rust test verifies C dispatch
 with an explicit Load; headless rendering does not decode images. Neither check
 alone claims screenshot/pixel fit accuracy or HTTP transport qualification.
+
+### Typed reactive property scopes
+
+The PPX now preserves abstract child types when a typed element has derived
+reactive props. For example, this existing view syntax now compiles without
+converting `bottom_tab_el` to generic `t`:
+
+```ocaml
+bottom_tabs
+  [ bottom_tab ~title:"Home"
+      ~selected:(reactive (fun model -> model.active = "home") model_source) []
+  ]
+```
+
+The same fix applies to `step`, `timeline_item`, `table_row`, `table_cell`,
+`radio`, `input_group_actions` and `swipe_action`, using unqualified constructors
+or `Lui_elements.<constructor>`. Their existing `keyed_*` forms also retain the
+correct abstract result and own any source derivation created by
+`~source:(reactive project source)` for that mount. Restricted child lists and
+keyed mount functions remain checked; a button cannot become a radio or tab.
+Generic `scoped` behavior and caller-owned signal lifetimes are unchanged.
+
+This adds typed `scoped_step`, `scoped_timeline_item`, `scoped_bottom_tab`,
+`scoped_table_row`, `scoped_table_cell`, `scoped_radio`,
+`scoped_input_group_actions` and `scoped_swipe_action` helpers to `Lui_elements`.
+The PPX selects them automatically; applications should keep using `reactive`.
+Upgrade/rebuild `lui_ppx` together with the LUI library: newly expanded typed
+scopes require these helpers. Existing compiled PPX output remains compatible;
+no wire-contract or backend event change is introduced.
