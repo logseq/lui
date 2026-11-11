@@ -3758,3 +3758,65 @@ editor identity. To change axis, mount the new Scroll under a different key
 Both production horizontal Scroll calls in Logseq `refactor/lui` at
 `29dcb60fdc976dcda1da6ec984057bbf79d88612` author a static axis. This restriction
 does not alter maintained mobile/Web backends or canonical orientation values.
+
+### NSH bounded local FileImage
+
+NSH desktop `file_image` now uses the retained native Image host for layout,
+fit, accessible name, press/detail/pointer events and appearance. `~path` accepts
+an absolute local path or local `file://` URL; percent escapes in file URLs are
+decoded. Relative paths resolve beneath the current user's native Documents
+location (Foundation on macOS, the Windows known folder, and XDG on Linux).
+The desktop adapter does not apply the Apple sandbox-container relocation
+fallback. Remote URLs and `asset:/` sources reject atomically; use ordinary
+`image ~url` for network or packaged images.
+
+`max_pixel_size` defaults to 1024, matching the maintained Apple/Android FileImage default. The old MyGo desktop
+used an unconstrained natural decode when this prop was absent; NSH deliberately
+uses the bounded default. Author a permitted larger cap when needed.
+The first frame is downsampled by ImageIO, WIC or GdkPixbuf before it is handed to
+NSH as bounded straight RGBA. Its longest side is at most the requested cap,
+independent of screen scale, the frame's dimensions or `fill` cropping. The
+adapter accepts caps from 1 through 4096, checks decoded dimensions and byte
+counts before allocating its RGBA buffer, and rejects larger caps before
+publication. Encoded files over 64 MiB fail the load. These bounds limit the
+adapter's output and input buffers; codec-internal temporary memory and codec
+availability remain platform properties. No claim is made that every codec can
+avoid a full internal source decode.
+
+The default `fit` is containment; the authored `fill` mode maps to native cover. For example,
+the existing composer preview remains:
+
+```ocaml
+file_image ~path ~max_pixel_size:384 ~fit:`fill
+  ~width:128 ~height:128 ~label:"Attachment" []
+```
+
+Only a changed `(path, max_pixel_size)` requests another thumbnail. Fit, label,
+frame and other presentation updates keep both the native image identity and
+its current source. A changed path or cap hides the previous source while the
+replacement loads; failure leaves an empty styled image frame. Owner disposal
+or a newer request prevents old completion from publishing. FileImage adds no
+`load` event to the wire contract. Existing `on_appear` and press handlers retain
+their canonical meaning.
+
+The adapter reuses NSH's decode pool, owner-scoped resource cancellation, native
+Image host and shared native picture cache. It adds neither a worker nor a
+second decoded-image cache. Independent FileImage nodes can each create their
+own bounded thumbnail; caching or deduplication is not claimed at that service
+boundary. Source RGBA and the platform picture coexist while displayed. No NSH
+public API or fork change is required. Other LUI backends are unchanged.
+
+The downstream audit covers `mobile` at
+`82b6da991bc0e6987f652f6f5cd91d1e37f58498` (composer: cap384, fill128×128),
+`logseq_journal` at `6c030857d0bc417d11394a73282a87416b8006cc`
+(media previews: cap1024, fill190×90 or102×102, appear/press), and
+`logseq` refactor/lui at `29dcb60fdc976dcda1da6ec984057bbf79d88612`.
+The last checkout has no production FileImage/FilePreview constructor call;
+its native embedding selector recognizes the kinds and its asset views use
+ordinary Image. Shared `lui_element_combine` also uses cap384/fill120×120.
+
+The added source regressions cover native BMP thumbnail bounds/aspect/no upscale,
+path/cap/default-fit validation, stale and detached resource completion,
+presentation-only updates, retained host/editor identity, press delivery and
+atomic rejection. Platform compilation, execution and native visual qualification
+must be run by the main session; source preparation alone does not establish them.

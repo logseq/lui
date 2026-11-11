@@ -14,16 +14,24 @@ ureq = { version = "3.5.1", features = ["platform-verifier"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 libloading = "0.8"
+url = "2"
 tokio = { version = "1", default-features = false, features = ["sync"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 nsh-platform-macos = { git = "https://github.com/logseq/nsh", rev = "bfa15d0c843c0d6f5bf3a2a230e8ca56b876b61c", default-features = false }
+objc2 = "0.6.5"
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFCGTypes", "CFData", "CFDictionary", "CFNumber", "CFString"] }
+objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "CGBitmapContext", "CGColorSpace", "CGContext", "CGImage"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSArray", "NSString", "NSPathUtilities"] }
+objc2-image-io = { version = "0.3.2", default-features = false, features = ["std", "objc2-core-graphics", "CGImageSource"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 nsh-platform-linux = { git = "https://github.com/logseq/nsh", rev = "bfa15d0c843c0d6f5bf3a2a230e8ca56b876b61c", default-features = false }
+gdk-pixbuf = "0.22.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 nsh-platform-windows = { git = "https://github.com/logseq/nsh", rev = "bfa15d0c843c0d6f5bf3a2a230e8ca56b876b61c", default-features = false }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Imaging", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_UI_Shell"] }
 
 [dev-dependencies]
 nsh-testing = { git = "https://github.com/logseq/nsh", rev = "bfa15d0c843c0d6f5bf3a2a230e8ca56b876b61c", default-features = false }

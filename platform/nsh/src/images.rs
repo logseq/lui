@@ -2,6 +2,10 @@
 use crate::store::Node;
 use nsh_core::{ResizeMode, element::ImageSrc};
 
+mod file_image;
+pub(crate) use file_image::source as file_source;
+pub(crate) use file_image::thumbnail;
+
 pub(crate) fn source(node: &Node) -> ImageSrc {
     ImageSrc::from(node.string("url").to_owned())
 }
@@ -10,6 +14,7 @@ pub(crate) fn fit(node: &Node) -> ResizeMode {
     match node.string("image-fit") {
         "fit" => ResizeMode::Contain,
         "fill" => ResizeMode::Cover,
+        _ if node.kind == "file-image" => ResizeMode::Contain,
         // Ordinary LUI images stretch when both dimensions are authored.
         _ => ResizeMode::Stretch,
     }
@@ -26,6 +31,9 @@ pub(crate) fn label(node: &Node) -> String {
 
 /// These native restrictions supplement the generated canonical validator.
 pub(crate) fn validate(node: &Node) -> Result<(), String> {
+    if node.kind == "file-image" {
+        return file_image::validate(node);
+    }
     if node.kind != "image" {
         return Ok(());
     }

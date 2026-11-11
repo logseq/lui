@@ -925,6 +925,17 @@ impl Renderer {
                     .test_id(&identifier)
                     .into_element()
             }
+            "file-image" => native_events
+                .attach(
+                    image(crate::images::file_source(state))
+                        .object_fit(move || crate::images::fit(&state.get()))
+                        .label(move || crate::images::label(&state.get())),
+                )
+                .state_inline_style(style)
+                .element_ref(&reference)
+                .key(key.clone())
+                .test_id(&identifier)
+                .into_element(),
             "root" | "row" | "column" | "box" | "panel" | "card" | "spacer" | "dropdown-menu" => {
                 native_events
                     .attach(view())
@@ -994,6 +1005,7 @@ fn supported(kind: &str) -> bool {
                 | "scroll"
                 | "virtual-list"
                 | "image"
+                | "file-image"
                 | "tree"
         )
 }
@@ -2115,6 +2127,8 @@ mod theme_tests {
     }
 }
 
+#[cfg(test)]
+mod file_image_tests;
 #[cfg(test)]
 mod image_tests;
 
