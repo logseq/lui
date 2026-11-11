@@ -3511,9 +3511,12 @@ The callbacks deliberately differ from legacy repeated press handling:
 | --- | --- | --- |
 | `on_selection` | `Change node` | Selected item changed, including cursor navigation. Re-selecting the native selected leaf does not emit another selection change. |
 | `on_expand` | `ToggleChanged (node, expanded)` | Native expansion/collapse request for an item with children. |
-| `on_action` | `Press node` | Native default action: Return on a leaf or a double press, according to NSH. Ordinary selection is not an Action. |
+| `on_action` | `Press node` | Native default action: Return on a leaf or a double press on any enabled item, including a folder. Ordinary selection is not an Action. |
 
-Space follows NSH's folder-toggle behavior; it is not an extra leaf Press.
+Two rapid pointer presses can form a native double-click Action even though
+SelectedChange itself is suppressed on an already selected item. For a folder,
+that Action follows its ordinary selection/expansion events. Space follows
+NSH's folder-toggle behavior; it is not an extra leaf Press.
 Disabled items are skipped by the native cursor and do not activate. Callback
 routing encodes the LUI id and incarnation in the native item key and checks
 current identity/flags before dispatch. SelectedChange does not fall back to
@@ -3636,3 +3639,27 @@ implementations. There are no native library exports or Rust semantic event
 enum additions for this route. The headless tests check the real Video host,
 public native property batches, retention, error dispatch and atomic source
 validation; they do not qualify native decoding, audio output or video pixels.
+
+The language-neutral JSON view facade adds `"kind": "tree-item"` as an alias
+for this metadata constructor; the mounted wire kind remains `list-item` with
+`role="treeitem"`. With an `id`, its event sink names are `change` for selection,
+`toggle` for expansion and `press` for native Action. The facade calls
+`tree_item` directly and does not register the generic pointer-enabling legacy
+handlers. For example:
+
+```json
+{"kind":"tree","label":"Files","height":320,"children":[
+  {"kind":"tree-item","id":"report","text":"Report"}
+]}
+```
+
+JSON facade generation skips structural `virtual_rows` and typed `scoped_*`
+ownership helpers; actual node constructors remain generated, including the
+native MediaSurface URL parameters.
+
+Regeneration also restores facade forwarding for already public `shrink` on
+Row/Column/Box, `pointer-capture` on Row/Box, `indeterminate` on Checkbox, surface
+`transition` on Drawer/Dialog/Sheet, and MediaSurface `url`. Their constructor
+contracts remain unchanged. The existing raw FocusWithinChanged `within` payload
+decoder is preserved; the typed `on_focus_within` optional argument remains
+outside this facade's decoded arguments, as before.

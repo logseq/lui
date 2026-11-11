@@ -46,6 +46,7 @@ EVENT_NAME = {
     'on_double_press': 'double-press', 'on_toggle': 'toggle',
     'on_input': 'input', 'on_submit': 'submit', 'on_navigate': 'navigate', 'on_change': 'change',
     'on_dismiss': 'dismiss', 'on_resize': 'resize', 'on_appear': 'appear',
+    'on_selection': 'change', 'on_expand': 'toggle', 'on_action': 'press',
 }
 
 # Element args whose event the node kind can never emit per
@@ -57,7 +58,7 @@ EVENT_NAME = {
 # UNIVERSAL_ARG for a sty-carried universal arg) makes it reachable from
 # the view model; until then the arg is view-model-invisible, as it was
 # when this list was written.
-SKIP_ARGS = {'data_attrs'}
+SKIP_ARGS = {'data_attrs', 'on_focus_within'}  # bool callback has no JSON sink decoder yet
 SKIP_ARG_TYPES = {
     '(string * Lui_ui.theme_token_value) list',  # tokens: theme pairs
     '(string * string) list',  # data_attrs: DOM-attribute pairs
@@ -184,7 +185,9 @@ def main():
     el_to_kind = {}       # el type -> child kind string
 
     for name, body in blocks:
-        if name in SKIP:
+        # Structural list/scoping helpers return views but are not node
+        # constructors and cannot be represented as JSON component kinds.
+        if name in SKIP or name == 'virtual_rows' or name.startswith('scoped_'):
             continue
         args = parse_args(body)
         # tail after the last ?arg = the children/return shape
@@ -637,6 +640,7 @@ let ev name (emit : event_sink) props =
          let fields =
            match e with
            | P.ToggleChanged (_, checked) -> [ ("checked", Bool checked) ]
+           | P.FocusWithinChanged (_, within) -> [ ("within", Bool within) ]
            | P.NavigatePrevious _ -> [ ("direction", Str "previous") ]
            | P.NavigateNext _ -> [ ("direction", Str "next") ]
            | P.NavigationKey (_, key, shift) -> [ ("key", Str key); ("shift", Bool shift) ]

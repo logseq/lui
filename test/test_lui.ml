@@ -3332,6 +3332,36 @@ let test_json_view_render () =
      | _ -> false);
   drive_dispose s
 
+let test_json_native_tree_item_alias () =
+  let open Lui_json_view in
+  let events = ref [] in
+  let value = Obj [
+    "kind", Str "tree";
+    "label", Str "Files";
+    "children", Arr [Obj ["kind", Str "tree-item"; "id", Str "report"; "text", Str "Report"]];
+  ] in
+  let app = Lui_app.create (recording_backend ()) () (fun model () -> model)
+      (fun _context _source _send -> render
+        ~on_event:(fun ~id ~kind ~fields -> events := (id, kind, fields) :: !events) value) in
+  ignore (Lui_app.start app);
+  flush_app app;
+  let ops = all_ops () in
+  let node = List.find_map (function
+    | Lui_protocol.SetProp (node, Lui_protocol.TextValue, Lui_protocol.StringValue "Report") -> Some node
+    | _ -> None) ops |> Option.get in
+  Alcotest.(check bool) "facade alias mounts the existing ListItem wire kind" true
+    (List.exists (function Lui_protocol.CreateNode (id, Lui_protocol.ListItem) -> id = node | _ -> false) ops);
+  Alcotest.(check bool) "facade native callbacks never opt into pointer payloads" false
+    (List.exists (function Lui_protocol.SetProp (_, Lui_protocol.PointerEnabled, Lui_protocol.BoolValue true) -> true | _ -> false) ops);
+  List.iter (fun event -> ignore (Lui_app.dispatch_event app event))
+    [Lui_protocol.Change node; Lui_protocol.ToggleChanged (node, true); Lui_protocol.Press node];
+  Alcotest.(check (list (pair string string))) "native semantic sink aliases"
+    ["report", "change"; "report", "toggle"; "report", "press"]
+    (List.rev_map (fun (id, kind, _fields) -> id, kind) !events);
+  Alcotest.(check bool) "toggle payload retains checked value" true
+    (List.exists (fun (_id, kind, fields) -> kind = "toggle" && fields = ["checked", Bool true]) !events);
+  ignore (Lui_app.dispose app)
+
 let test_json_view_removed_line_break () =
   let session =
     drive_mount ~initial:() ~reducer:(fun model () -> model)
@@ -6094,6 +6124,7 @@ let () =
       ( "json_view",
         [
           Alcotest.test_case "render + events" `Quick test_json_view_render;
+          Alcotest.test_case "native Tree metadata alias" `Quick test_json_native_tree_item_alias;
           Alcotest.test_case "removed line-break component" `Quick
             test_json_view_removed_line_break;
           Alcotest.test_case "Link actions" `Quick test_link_action;

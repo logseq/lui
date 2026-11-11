@@ -505,7 +505,7 @@ mod tests {
         (app, events, rejected)
     }
     #[test]
-    fn uncontrolled_native_tree_owns_expansion_and_selected_leaf_does_not_reactivate() {
+    fn uncontrolled_native_tree_distinguishes_selection_from_double_press_action() {
         let (mut app, events, _) = start(false, 0);
         assert_eq!(app.screen().count("role:tree[Files]").unwrap(), 1);
         assert_eq!(app.screen().count("role:treeitem[Leaf]").unwrap(), 0);
@@ -518,10 +518,12 @@ mod tests {
         app.press("role:treeitem[Leaf]").unwrap();
         events.lock().unwrap().clear();
         app.press("role:treeitem[Leaf]").unwrap();
-        assert!(
-            events.lock().unwrap().is_empty(),
-            "native selected-change is not repeated Press"
+        assert_eq!(
+            *events.lock().unwrap(),
+            [Event::Press(12)],
+            "the second rapid click is native Action, not another SelectedChange"
         );
+        events.lock().unwrap().clear();
         app.press_key("enter").unwrap();
         app.press_key("space").unwrap();
         assert_eq!(
@@ -556,7 +558,8 @@ mod tests {
                 Event::Change(11),
                 Event::Toggle(11, true),
                 Event::Change(11),
-                Event::Toggle(11, true)
+                Event::Toggle(11, true),
+                Event::Press(11),
             ]
         );
     }
