@@ -69,7 +69,9 @@ class NSHContractCompilerTest(unittest.TestCase):
         domains = metadata["closedDomains"]
         source = (root / "platform/nsh/src/style.rs").read_text()
         start = source.index("fn display_value(")
-        provider = source[start:source.index("\nfn compile_parts(", start)]
+        # Only this rustfmt-formatted top-level function is the provider.
+        # Adjacent helpers may depend on the actual store/native types.
+        provider = source[start:source.index("\n}\n", start) + 2]
         image_source = (root / "platform/nsh/src/images.rs").read_text()
         image_start = image_source.index("fn fit_value(")
         provider += image_source[image_start:image_source.index("\npub(crate) fn fit(", image_start)]
@@ -105,8 +107,8 @@ fn main() {
     assert_eq!(fit_value(ImageFitValue::Fill), ResizeMode::Cover);
     assert!(ImageFitValue::try_from("not-canonical").is_err());
     assert!(DisplayValue::try_from("not-canonical").is_err());
-    assert_eq!(display_value(&Value("none".into())).unwrap(), "none");
-    assert_eq!(display_value(&Value("block".into())).unwrap(), "block");
+    assert_eq!(display_value(&Value("none".into())).unwrap(), ("none", true));
+    assert_eq!(display_value(&Value("block".into())).unwrap(), ("block", false));
     for value in ["contents", "inline", "inline-block", "inline-flex"] {
         assert!(display_value(&Value(value.into())).is_err());
     }
