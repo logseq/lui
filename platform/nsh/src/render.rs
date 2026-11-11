@@ -1264,7 +1264,7 @@ fn validate_themes(
             && entry.reference.node().is_some()
             && entry.node.get_untracked().incarnation == node.incarnation
             && let Some(installed) = entry.capabilities.get()
-            && !installed.contains(Capabilities::authored(node))
+            && !installed.contains(Capabilities::required(node))
         {
             return Err(
                 "NSH enabling an uninstalled native event capability requires remounting the node"

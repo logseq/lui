@@ -80,7 +80,19 @@ impl Capabilities {
                 value |= 1 << bit;
             }
         }
+        if node.props.contains_key("submit-on-blur") {
+            value |= 1 << 4;
+        }
         Self(value)
+    }
+    /// A false later value requires no observer. Remembering actual installed
+    /// capacity separately prevents absent -> false -> true from bypassing it.
+    pub(crate) fn required(node: &Node) -> Self {
+        let mut required = Self::authored(node);
+        if !node.boolean("submit-on-blur", false) {
+            required.0 &= !(1 << 4);
+        }
+        required
     }
     pub(crate) fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0

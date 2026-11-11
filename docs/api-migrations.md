@@ -3859,3 +3859,54 @@ editors. Source regressions compare attached/plain intrinsic, fixed, stretched
 and growing layouts, refs, native activation/dismissal, item updates and atomic
 mode-change rollback. Headless and real native qualification must pass before
 claiming platform validation; source preparation alone is not that evidence.
+
+## NSH Input supports explicitly authored blur submission
+
+`text_field`, `secure_field`, `input`, `search_field` and `textarea` now accept
+`submit_on_blur=true` on NSH. Losing native keyboard focus emits the existing
+canonical `Submit` event when both `enabled` and `submit-enabled` still permit
+it. Logseq's property editor, repeat-frequency editor and home-page settings
+use this callback to save their current model draft. Their existing calls can
+remain unchanged:
+
+```ocaml
+text_field ~label:"Property value" ~submit_on_blur:true
+  ~text:(reactive Fun.id draft)
+  ~on_input:(on_input send (fun value -> Edit value))
+  ~on_submit:(press send Save) []
+```
+
+The native Input continues to own editing, composition, focus and Return behavior.
+A single-line Input's default Return reports Submit and then blurs; this remains
+one canonical submission, in the original position after committed text updates.
+The subsequent native Blur is suppressed only for that Return sequence. A
+textarea configured to submit on Return keeps native focus, so a later ordinary
+focus loss is a separate submission. The adapter never commits or synthesizes
+composition text: a blur while composition is still reported active does not
+submit it; when the native editor commits text and ends composition before
+blurring, the committed text event remains before Submit.
+
+Inputs that omit `submit_on_blur` retain their previous path with no additional
+blur/focus/composition observers or policy state. Authoring the property at
+initial mount, including explicit false, installs the small observer set. Its
+value, `enabled` and `submit-enabled` are checked live; initially authored false
+can subsequently become true on the same native editor, and removing the
+property disables blur submission without replacing that editor.
+
+Adding true to an already mounted Input that originally omitted the property
+requires remounting that Input, just as other initially absent native listener
+capabilities do. The batch is rejected atomically before any of its changes are
+published. Setting false after an absent initial value is allowed, but does not
+retroactively install observers; a later true still requires a remount. For a
+wire producer that plans to toggle this policy without replacing its editor,
+create the initial node with `submit-on-blur=false` rather than omitting the
+property. For OCaml applications with a fixed blur-save policy, pass
+`~submit_on_blur:true` on the original constructor as above.
+
+No C ABI, wire event ordinal or semantic event payload changes. The existing
+incarnation guard rejects retired callbacks, including the trailing native Blur
+when a Submit handler replaces the source Input. Input navigation and native
+color/time modes remain separate unresolved requirements. The native focused
+regressions cover callback count/order, policy/flag changes, atomic refusal,
+editor retention, composition events and replacement; Headless composition
+checks do not qualify an operating-system IME.
