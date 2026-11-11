@@ -13,7 +13,7 @@
 // than its sources is refused with exit code 3 and the rebuild command.
 // --unchecked skips the check and says so.
 import {createHash} from "node:crypto";
-import {readFileSync} from "node:fs";
+import {mkdirSync, readFileSync, writeFileSync} from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
@@ -21,6 +21,7 @@ import {checkReceipt, STALE_EXIT} from "./lui_build_receipt.mjs";
 
 export const USAGE_EXIT = 2;
 const MAX_LINE = 1024 * 1024;
+const MAX_REPLY_LINE = 32 * MAX_LINE;
 
 // Drive scenario tokenizer: spaces split, quoted spans stay together.
 export function tokens(line) {
@@ -66,6 +67,9 @@ export function plan(line) {
   switch (command) {
     case "hello":
       return {request: {op: "hello"}};
+    case "screenshot":
+      need(1, "<output.png>");
+      return {screenshot: rest[0]};
     case "tree":
     case "dump":
       return {request: rest[0] ? {op: command, selector: rest[0]} : {op: command}};
@@ -113,15 +117,20 @@ export function plan(line) {
 
 function lineReader(onLine) {
   let buffered = "";
+  let bufferedBytes = 0;
   return (chunk) => {
     buffered += chunk;
+    bufferedBytes += Buffer.byteLength(chunk, "utf8");
     let newline;
     while ((newline = buffered.indexOf("\n")) !== -1) {
       const line = buffered.slice(0, newline);
+      const bytes = Buffer.byteLength(line, "utf8");
+      if (bytes > MAX_REPLY_LINE) throw new Error("reply line exceeds 32 MiB");
       buffered = buffered.slice(newline + 1);
+      bufferedBytes -= bytes + 1;
       if (line.trim()) onLine(line);
     }
-    if (buffered.length > MAX_LINE) throw new Error("reply line exceeds 1 MiB");
+    if (bufferedBytes > MAX_REPLY_LINE) throw new Error("reply line exceeds 32 MiB");
   };
 }
 
@@ -164,7 +173,15 @@ export function connectTcp(address) {
     const socket = net.connect({host, port});
     socket.setEncoding("utf8");
     const agent = session((line) => socket.write(`${line}\n`), () => socket.end());
-    socket.on("data", lineReader((line) => agent.receive(line)));
+    const receive = lineReader((line) => agent.receive(line));
+    socket.on("data", (chunk) => {
+      try {
+        receive(chunk);
+      } catch (error) {
+        agent.fail(error);
+        socket.destroy();
+      }
+    });
     socket.once("connect", () => resolve(agent));
     socket.once("error", (error) => {
       agent.fail(error);
@@ -292,6 +309,28 @@ const shown = (value) => (typeof value === "string" ? value : JSON.stringify(val
 
 export async function step(agent, planned, {print = () => {}} = {}) {
   if (planned.sleep !== undefined) return sleep(planned.sleep * 1000);
+  if (planned.screenshot !== undefined) {
+    const reply = await agent.request({op: "screenshot"});
+    if (!reply.ok) throw new Error(describeFailure(reply));
+    if (reply.format !== "png" || typeof reply.data !== "string" || reply.data.length > 24 * MAX_LINE) {
+      throw new Error("native screenshot is not a bounded PNG response");
+    }
+    const png = Buffer.from(reply.data, "base64");
+    if (png.toString("base64") !== reply.data || png.length < 33
+        || !png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+        || png.readUInt32BE(8) !== 13 || png.toString("ascii", 12, 16) !== "IHDR"
+        || png.readUInt32BE(16) !== reply.width || png.readUInt32BE(20) !== reply.height
+        || !reply.width || !reply.height) {
+      throw new Error("native screenshot has invalid PNG dimensions or encoding");
+    }
+    const output = path.resolve(planned.screenshot);
+    mkdirSync(path.dirname(output), {recursive: true});
+    writeFileSync(output, png);
+    const {data, ...metadata} = reply;
+    const result = {...metadata, path: output};
+    print(result);
+    return result;
+  }
   if (planned.request) {
     const reply = await agent.request(planned.request);
     if (!reply.ok) throw new Error(describeFailure(reply));
@@ -344,6 +383,7 @@ export async function run(agent, lines, {print} = {}) {
 }
 
 function human(reply) {
+  if (reply.op === "screenshot") return `screenshot ${reply.path} (${reply.width}×${reply.height})`;
   if (reply.op === "dump") return reply.text.trimEnd();
   if (reply.op === "find") return reply.nodes.map((node) => `#${node}`).join(" ") || "(no match)";
   if (reply.op === "prop") return `#${reply.node} ${shown(reply.value)}`;

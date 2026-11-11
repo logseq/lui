@@ -35,7 +35,13 @@ pub struct DesktopProps {
 
 /// Application-owned host services. The existing ordered desktop pump is the
 /// sole consumer; callbacks never call OCaml or publish patches themselves.
-pub type ServiceFuture = Pin<Box<dyn Future<Output = Result<Vec<PlatformEvent>, String>>>>;
+pub type DeferredEvents = Pin<Box<dyn Future<Output = Result<Vec<PlatformEvent>, String>>>>;
+/// Host operations that require layout run after the current response is published.
+pub enum ServiceResponse {
+    Events(Vec<PlatformEvent>),
+    AfterCommit(DeferredEvents),
+}
+pub type ServiceFuture = Pin<Box<dyn Future<Output = Result<ServiceResponse, String>>>>;
 type ServiceHandler = dyn Fn(PlatformRequest, Renderer) -> ServiceFuture;
 
 /// Supply this context above `Desktop` when selecting an application bridge
@@ -269,6 +275,7 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
     cleanup(move || cleanup_clock.cancel());
     let opening = renderer.clone();
     let bridge = use_context::<BridgeConfig>().unwrap_or_default();
+    let native_only_agent = matches!(bridge, BridgeConfig::Logseq { .. });
     let services = use_context::<ApplicationServices>();
     let path = library_path(&props.library.get_untracked());
     spawn(async move {
@@ -332,6 +339,39 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                     None
                 }
                 Request::Agent { request, reply } => {
+                    let operation = serde_json::from_str::<serde_json::Value>(&request)
+                        .ok()
+                        .and_then(|request| {
+                            request
+                                .get("op")
+                                .and_then(|op| op.as_str())
+                                .map(str::to_owned)
+                        });
+                    if operation.as_deref() == Some("screenshot") {
+                        let captured = crate::native_capture::screenshot().await.and_then(|capture| {
+                            use base64::Engine;
+                            if capture.png.len() > 16 * 1024 * 1024 {
+                                return Err("native screenshot exceeds 16 MiB".to_owned());
+                            }
+                            Ok(serde_json::json!({"ok":true,"op":"screenshot","format":"png",
+                                "width":capture.width,"height":capture.height,
+                                "capture":"appkit-content",
+                                "data":base64::engine::general_purpose::STANDARD.encode(capture.png)}).to_string())
+                        });
+                        let _ = reply.send(captured);
+                        continue;
+                    }
+                    if native_only_agent && operation.as_deref() == Some("hello") {
+                        let _ = reply.send(Ok(serde_json::json!({"ok":true,"op":"hello",
+                            "protocol":"lui-agent","version":1,"host":"nsh",
+                            "capabilities":if cfg!(target_os="macos") { vec!["screenshot"] } else { vec![] },
+                            "semantic":false}).to_string()));
+                        continue;
+                    }
+                    if native_only_agent {
+                        let _ = reply.send(Err("this Logseq bridge provides native screenshots; semantic lui-agent commands are unavailable".into()));
+                        continue;
+                    }
                     let mut result = session.agent(request).await;
                     let answer = match &mut result {
                         Ok(reply) => reply
@@ -438,6 +478,7 @@ async fn accept_ordered(
         return accept(renderer, reply);
     }
     let mut replies = VecDeque::from([reply]);
+    let mut deferred = Vec::new();
     let mut delay = None;
     while let Some(mut reply) = replies.pop_front() {
         for message in reply
@@ -455,10 +496,15 @@ async fn accept_ordered(
                             request.operation
                         )
                     })?;
-                    for event in (handler.0)(request, renderer.clone()).await? {
-                        // Native callbacks produced by this event go behind the
-                        // remaining current messages, as in the OCaml mailbox.
-                        replies.push_back(session.platform_event(event).await?);
+                    match (handler.0)(request, renderer.clone()).await? {
+                        ServiceResponse::Events(events) => {
+                            for event in events {
+                                // Native callbacks produced by this event go behind
+                                // messages already captured by the OCaml mailbox.
+                                replies.push_back(session.platform_event(event).await?);
+                            }
+                        }
+                        ServiceResponse::AfterCommit(future) => deferred.push(future),
                     }
                 }
             }
@@ -474,6 +520,28 @@ async fn accept_ordered(
             renderer.fail(error);
         }
         delay = reply.next_delay;
+    }
+    if !deferred.is_empty() {
+        let events =
+            use_context::<ApplicationEvents>().ok_or("application event pump is missing")?;
+        for future in deferred {
+            let events = events.clone();
+            let renderer = renderer.clone();
+            spawn(async move {
+                next_frame().await;
+                match future.await {
+                    Ok(replies) => {
+                        for reply in replies {
+                            if let Err(error) = events.send(reply) {
+                                renderer.fail(error);
+                                break;
+                            }
+                        }
+                    }
+                    Err(error) => renderer.fail(error),
+                }
+            });
+        }
     }
     Ok(delay)
 }

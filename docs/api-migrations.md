@@ -4218,7 +4218,8 @@ not import Logseq's asset catalog or create a second icon decoder/cache.
 Provide `runtime::BridgeConfig` and `app::ApplicationServices::new(handler)` as
 NSH contexts above `Desktop` to select Logseq startup and service dispatch.
 The handler receives copied `PlatformRequest` and the retained `Renderer`, and
-returns `app::ServiceFuture` with actual `PlatformEvent` replies. It runs outside
+returns `app::ServiceFuture` with `ServiceResponse::Events` containing actual
+`PlatformEvent` replies. It runs outside
 the foreign callback. The same desktop task processes mixed native messages in
 callback order; messages caused by service replies follow already captured
 messages. It waits for an explicit runtime wakeup between application events.
@@ -4283,3 +4284,37 @@ construct native views or mutate the application. Property-only edits validate
 only affected entries, and registrations without themed checks keep the existing
 path. Application adapters should compile authored variable expressions here;
 substituting arbitrary paint placeholders for layout variables is invalid.
+
+Geometry/focus service requests can arrive before the OCaml batch creating their
+native target. Return `ServiceResponse::AfterCommit(future)` to execute after all
+currently captured responses have been published and the next native frame.
+Awaiting layout inline would block the batch needed to create that layout.
+Deferred futures are owner-scoped; their replies enter `ApplicationEvents` on the
+same input pump. Capture known target incarnations before deferring; unresolved
+creation references may bind once after commit. No task cache or polling is used.
+
+`ApplicationRuntime::editor_snapshot` is intended for factories outside a running
+service handler. Do not await that queue barrier inside `ApplicationServices`:
+the handler itself occupies the queue and would wait for its own completion.
+
+### Native app-content screenshots through the LUI CLI
+
+`tooling/lui_agent.mjs` accepts `screenshot "output.png"`. An opted-in NSH macOS
+host (`LUI_AGENT_LISTEN=127.0.0.1:PORT`) captures its own content view in process
+on AppKit's main queue and returns PNG bytes/dimensions through the existing
+loopback protocol. The CLI validates PNG encoding/IHDR dimensions, writes the
+artifact and prints metadata instead of base64 data. Screenshot replies are
+bounded to 16 MiB of PNG data; the client accepts bounded 32 MiB reply lines.
+Screenshots do not activate applications, change display power, unlock the Mac,
+use WindowServer capture, or request Screen Recording permission. They exclude
+system menus, other windows and separately composited video/shader surfaces.
+Other operating systems currently return an explicit unsupported-capture error.
+
+Generic OCaml agents retain their existing semantic commands. Logseq's current
+seven-argument native bridge has no semantic agent export, so its native hello
+explicitly reports `semantic:false` and screenshot capabilities; other commands
+return an unsupported error without resynchronizing or mutating the model.
+The Logseq runner accepts `LUI_AGENT_BACKGROUND=1` for a background-only AppKit
+launch. Build receipts remain required unless the CLI's existing explicit
+`--unchecked` option is selected. See the repository's
+[lui-cli skill](../.agents/skills/lui-cli/SKILL.md) for the exact workflow.
