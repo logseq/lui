@@ -1,5 +1,10 @@
 //! LUI control semantics composed from public NSH behavior components.
-use crate::{render::Event, store::Node, ui};
+use crate::{
+    contract::{AnchorAlignmentValue, AnchorValue},
+    render::Event,
+    store::Node,
+    ui,
+};
 use nsh_core::{
     StyleDecl, StyleKey,
     element::{ComponentElement, Style, StyleRefinement},
@@ -230,6 +235,44 @@ pub(crate) fn picker(
         .into_element()
 }
 
+// Both native axes must handle every canonical case at compile time.
+fn lower_anchor(value: AnchorValue) -> Placement {
+    match value {
+        AnchorValue::Above => Placement::Top,
+        AnchorValue::Below => Placement::Bottom,
+        AnchorValue::Left => Placement::Left,
+        AnchorValue::Right => Placement::Right,
+    }
+}
+fn lower_anchor_alignment(value: AnchorAlignmentValue) -> (Align, bool) {
+    match value {
+        AnchorAlignmentValue::Start => (Align::Start, false),
+        AnchorAlignmentValue::Center => (Align::Center, false),
+        AnchorAlignmentValue::End => (Align::End, false),
+        AnchorAlignmentValue::Stretch => (Align::Start, true),
+    }
+}
+pub(crate) fn popup_placement(node: &Node) -> Result<Placement, String> {
+    let value = match node.props.get("anchor") {
+        None => AnchorValue::Below,
+        Some(value) => {
+            AnchorValue::try_from(value.as_str().ok_or("NSH anchor requires a string")?)?
+        }
+    };
+    Ok(lower_anchor(value))
+}
+pub(crate) fn popup_alignment(node: &Node) -> Result<(Align, bool), String> {
+    let value = match node.props.get("anchor-alignment") {
+        None => AnchorAlignmentValue::Start,
+        Some(value) => AnchorAlignmentValue::try_from(
+            value
+                .as_str()
+                .ok_or("NSH anchor-alignment requires a string")?,
+        )?,
+    };
+    Ok(lower_anchor_alignment(value))
+}
+
 /// External LUI anchors use the core's native placement and hint policy.
 pub(crate) fn anchored_popup(
     node: Signal<Arc<Node>>,
@@ -242,16 +285,11 @@ pub(crate) fn anchored_popup(
     let theme = presentation.theme;
     let tip = node.get_untracked().kind == "tooltip";
     let mut popup = overlay()
-        .placement(move || match node.get().string("anchor") {
-            "above" => Placement::Top,
-            "left" => Placement::Left,
-            "right" => Placement::Right,
-            _ => Placement::Bottom,
-        })
-        .align(move || match node.get().string("anchor-alignment") {
-            "end" => Align::End,
-            "center" => Align::Center,
-            _ => Align::Start,
+        .placement(move || popup_placement(&node.get()).expect("validated canonical anchor"))
+        .align(move || {
+            popup_alignment(&node.get())
+                .expect("validated canonical anchor alignment")
+                .0
         })
         .offset(move || px(node.get().number("anchor-offset", 0.0) as f32))
         .margin(move || px(node.get().number("collision-padding", 8.0) as f32));
@@ -321,7 +359,10 @@ pub(crate) fn anchored_popup(
             .border_color(move || ui::color(theme, "border"))
             .style_with(move |s| {
                 let n = node.get();
-                let s = if n.string("anchor-alignment") == "stretch" {
+                let s = if popup_alignment(&n)
+                    .expect("validated canonical anchor alignment")
+                    .1
+                {
                     s.min_w(width.get())
                 } else {
                     s
@@ -917,6 +958,27 @@ mod tests {
     use nsh_testing::Headless;
     use serde_json::{Map, Value, json};
     use std::sync::Mutex;
+
+    #[test]
+    fn canonical_popup_axes_preserve_only_missing_defaults_and_explicit_stretch() {
+        let mut node = Node {
+            kind: "popover".into(),
+            ..Default::default()
+        };
+        assert_eq!(popup_placement(&node).unwrap(), Placement::Bottom);
+        assert_eq!(popup_alignment(&node).unwrap(), (Align::Start, false));
+        node.props.insert("anchor".into(), json!("above"));
+        node.props
+            .insert("anchor-alignment".into(), json!("stretch"));
+        assert_eq!(popup_placement(&node).unwrap(), Placement::Top);
+        assert_eq!(popup_alignment(&node).unwrap(), (Align::Start, true));
+        for value in [json!("future-anchor"), json!(""), json!(42)] {
+            node.props.insert("anchor".into(), value.clone());
+            assert!(popup_placement(&node).is_err());
+            node.props.insert("anchor-alignment".into(), value);
+            assert!(popup_alignment(&node).is_err());
+        }
+    }
 
     struct Fixture {
         kind: String,

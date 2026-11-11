@@ -1,5 +1,8 @@
 //! Canonical LUI presentation translated through public NSH style APIs.
-use crate::{contract::DisplayValue, store::Node};
+use crate::{
+    contract::{DisplayValue, FrameAxesValue},
+    store::Node,
+};
 use nsh_core::{
     Color, PropertyValue, StyleDecl, StyleKey, StyleValue,
     element::{AdaptiveColor, Style, StyleRefinement, Tokens},
@@ -862,6 +865,18 @@ fn display_value(value: &Value) -> Result<(PropertyValue, bool), String> {
         .map_err(|error| format!("NSH display: {error:?}"))
 }
 
+// Native axes are selected by the canonical enum, never spelling fragments.
+fn frame_axes(value: FrameAxesValue) -> [Option<StyleKey>; 2] {
+    match value {
+        FrameAxesValue::Horizontal => [Some(StyleKey::Width), None],
+        FrameAxesValue::Vertical => [None, Some(StyleKey::Height)],
+        FrameAxesValue::Both => [Some(StyleKey::Width), Some(StyleKey::Height)],
+        FrameAxesValue::MinHorizontal => [Some(StyleKey::MinWidth), None],
+        FrameAxesValue::MinVertical => [None, Some(StyleKey::MinHeight)],
+        FrameAxesValue::MinBoth => [Some(StyleKey::MinWidth), Some(StyleKey::MinHeight)],
+    }
+}
+
 fn pointer_policy(node: &Node) -> Option<nsh_core::PointerEvents> {
     use nsh_core::PointerEvents;
 
@@ -1085,34 +1100,18 @@ fn compile_parts(
         }
     }
     if let Some(value) = node.props.get("container-relative-frame") {
-        let axes = value
-            .as_str()
-            .ok_or("NSH container-relative-frame requires axes")?;
+        let axes = FrameAxesValue::try_from(
+            value
+                .as_str()
+                .ok_or("NSH container-relative-frame requires axes")?,
+        )?;
         if node.number("container-relative-frame-inset", 0.0) != 0.0 {
             return Err("NSH container-relative-frame-inset is not implemented yet".into());
         }
-        let minimum = axes.starts_with("min-");
-        if axes.ends_with("horizontal") || axes.ends_with("both") {
+        for key in frame_axes(axes).into_iter().flatten() {
             declaration(
                 &mut decls,
-                if minimum {
-                    StyleKey::MinWidth
-                } else {
-                    StyleKey::Width
-                },
-                &Value::from("100%"),
-                "container-relative-frame",
-                theme,
-            )?;
-        }
-        if axes.ends_with("vertical") || axes.ends_with("both") {
-            declaration(
-                &mut decls,
-                if minimum {
-                    StyleKey::MinHeight
-                } else {
-                    StyleKey::Height
-                },
+                key,
                 &Value::from("100%"),
                 "container-relative-frame",
                 theme,
@@ -1467,6 +1466,41 @@ mod tests {
             width: px(640.0),
             height: px(480.0),
         }
+    }
+    #[test]
+    fn canonical_frame_axes_set_exact_native_percentage_dimensions() {
+        for (wire, keys) in [
+            ("horizontal", vec![StyleKey::Width]),
+            ("vertical", vec![StyleKey::Height]),
+            ("both", vec![StyleKey::Width, StyleKey::Height]),
+            ("min-horizontal", vec![StyleKey::MinWidth]),
+            ("min-vertical", vec![StyleKey::MinHeight]),
+            ("min-both", vec![StyleKey::MinWidth, StyleKey::MinHeight]),
+        ] {
+            let source = node("box", json!({"container-relative-frame":wire}));
+            let (actual, _) = compile_parts(&source, &theme(), viewport()).unwrap();
+            let expected = keys
+                .into_iter()
+                .map(|key| StyleDecl::Set(key, key.parse_value(StyleValue::Str("100%")).unwrap()))
+                .collect::<Vec<_>>();
+            assert_eq!(actual, expected, "canonical frame axes {wire}");
+        }
+        for value in [json!("future-axes"), json!(""), json!(42)] {
+            assert!(
+                compile_parts(
+                    &node("box", json!({"container-relative-frame":value})),
+                    &theme(),
+                    viewport()
+                )
+                .is_err()
+            );
+        }
+        assert!(
+            compile_parts(&node("box", json!({})), &theme(), viewport())
+                .unwrap()
+                .0
+                .is_empty()
+        );
     }
     fn compile_props(props: Value) -> Result<Style, String> {
         compile(&node("box", props), &theme(), viewport())

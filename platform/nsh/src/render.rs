@@ -985,6 +985,8 @@ impl Renderer {
             move |identity, _| renderer.node(identity.get_untracked().0),
         );
         if matches!(node.kind.as_str(), "popover" | "tooltip") {
+            crate::controls::popup_placement(node)?;
+            crate::controls::popup_alignment(node)?;
             let anchor = self.popup_anchor(&node);
             let events = self.clone();
             return crate::controls::anchored_popup(

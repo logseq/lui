@@ -54,7 +54,8 @@ class NSHContractCompilerTest(unittest.TestCase):
         self.assertEqual(scalar_types(schema, contract), {"future-range": ["float"]})
 
     def test_closed_domain_generation_requires_complete_canonical_metadata(self):
-        valid = {"display": ["none"], "image-fit": ["fit", "fill"]}
+        valid = {"display": ["none"], "image-fit": ["fit", "fill"],
+                 "container-relative-frame": ["both"], "anchor": ["below"], "anchor-alignment": ["start"]}
         for name in valid:
             for values in (None, [], ["none", "none"], ["inline_block"], [[]]):
                 domains = {**valid, name: values}
@@ -72,6 +73,12 @@ class NSHContractCompilerTest(unittest.TestCase):
         # Only this rustfmt-formatted top-level function is the provider.
         # Adjacent helpers may depend on the actual store/native types.
         provider = source[start:source.index("\n}\n", start) + 2]
+        frame_start = source.index("fn frame_axes(")
+        provider += source[frame_start:source.index("\n}\n", frame_start) + 2]
+        popup_source = (root / "platform/nsh/src/controls.rs").read_text()
+        for function in ("lower_anchor", "lower_anchor_alignment"):
+            popup_start = popup_source.index("fn " + function + "(")
+            provider += popup_source[popup_start:popup_source.index("\n}\n", popup_start) + 2]
         image_source = (root / "platform/nsh/src/images.rs").read_text()
         image_start = image_source.index("fn fit_value(")
         provider += image_source[image_start:image_source.index("\npub(crate) fn fit(", image_start)]
@@ -83,7 +90,12 @@ impl Value { fn as_str(&self) -> Option<&str> { Some(&self.0) } }
 #[derive(Debug, PartialEq)]
 enum ResizeMode { Contain, Cover }
 type PropertyValue = String;
-enum StyleKey { Display }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StyleKey { Display, Width, Height, MinWidth, MinHeight }
+#[derive(Debug, PartialEq, Eq)]
+enum Placement { Top, Bottom, Left, Right }
+#[derive(Debug, PartialEq, Eq)]
+enum Align { Start, Center, End }
 enum StyleValue<'a> { Str(&'a str) }
 impl StyleKey {
     fn parse_value(self, value: StyleValue<'_>) -> Result<PropertyValue, &'static str> {
@@ -103,6 +115,36 @@ fn main() {
     for value in ImageFitValue::ALL {
         assert_eq!(ImageFitValue::try_from(value.as_str()), Ok(*value));
     }
+    for value in FrameAxesValue::ALL {
+        assert_eq!(FrameAxesValue::try_from(value.as_str()), Ok(*value));
+    }
+    for value in AnchorValue::ALL {
+        assert_eq!(AnchorValue::try_from(value.as_str()), Ok(*value));
+    }
+    for value in AnchorAlignmentValue::ALL {
+        assert_eq!(AnchorAlignmentValue::try_from(value.as_str()), Ok(*value));
+    }
+    for (value, expected) in [
+        (FrameAxesValue::Horizontal, [Some(StyleKey::Width), None]),
+        (FrameAxesValue::Vertical, [None, Some(StyleKey::Height)]),
+        (FrameAxesValue::Both, [Some(StyleKey::Width), Some(StyleKey::Height)]),
+        (FrameAxesValue::MinHorizontal, [Some(StyleKey::MinWidth), None]),
+        (FrameAxesValue::MinVertical, [None, Some(StyleKey::MinHeight)]),
+        (FrameAxesValue::MinBoth, [Some(StyleKey::MinWidth), Some(StyleKey::MinHeight)]),
+    ] { assert_eq!(frame_axes(value), expected); }
+    for (value, expected) in [
+        (AnchorValue::Above, Placement::Top), (AnchorValue::Below, Placement::Bottom),
+        (AnchorValue::Left, Placement::Left), (AnchorValue::Right, Placement::Right),
+    ] { assert_eq!(lower_anchor(value), expected); }
+    for (value, expected) in [
+        (AnchorAlignmentValue::Start, (Align::Start, false)),
+        (AnchorAlignmentValue::Center, (Align::Center, false)),
+        (AnchorAlignmentValue::End, (Align::End, false)),
+        (AnchorAlignmentValue::Stretch, (Align::Start, true)),
+    ] { assert_eq!(lower_anchor_alignment(value), expected); }
+    assert!(FrameAxesValue::try_from("not-canonical").is_err());
+    assert!(AnchorValue::try_from("not-canonical").is_err());
+    assert!(AnchorAlignmentValue::try_from("not-canonical").is_err());
     assert_eq!(fit_value(ImageFitValue::Fit), ResizeMode::Contain);
     assert_eq!(fit_value(ImageFitValue::Fill), ResizeMode::Cover);
     assert!(ImageFitValue::try_from("not-canonical").is_err());
@@ -126,7 +168,7 @@ fn main() {
             positive = compile_probe(domains)
             self.assertEqual(positive.returncode, 0, positive.stderr)
             subprocess.run([str(binary)], check=True)
-            for property_name in ("display", "image-fit"):
+            for property_name in ("display", "image-fit", "container-relative-frame", "anchor", "anchor-alignment"):
                 with self.subTest(property=property_name):
                     expanded = {**domains, property_name: [*domains[property_name], "future-provider-test"]}
                     negative = compile_probe(expanded)
@@ -142,7 +184,8 @@ fn main() {
             outputs = [root / "contract.json", root / "contract_generated.rs", root / "fixtures/oracle.json"]
             exported = {
                 "version": 1,
-                "closedDomains": {"display": ["none"], "image-fit": ["fit", "fill"]},
+                "closedDomains": {"display": ["none"], "image-fit": ["fit", "fill"],
+                 "container-relative-frame": ["both"], "anchor": ["below"], "anchor-alignment": ["start"]},
                 "validators": {
                     "is_finite": {"constructor": "true"},
                     "property_value_supported": {

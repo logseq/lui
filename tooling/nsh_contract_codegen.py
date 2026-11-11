@@ -258,7 +258,9 @@ def scalar_types(schema, contract):
 
 def compile_closed_domains(domains):
     """Compile selected provider enums from the canonical typed constructor export."""
-    selected = {"display": "DisplayValue", "image-fit": "ImageFitValue"}
+    selected = {"display": "DisplayValue", "image-fit": "ImageFitValue",
+                "container-relative-frame": "FrameAxesValue", "anchor": "AnchorValue",
+                "anchor-alignment": "AnchorAlignmentValue"}
     output = []
     for property_name, name in selected.items():
         values = domains.get(property_name)

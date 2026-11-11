@@ -4574,3 +4574,26 @@ disposal cancels the wait with an error; callers still check the target's curren
 incarnation. This is a commit boundary, not a promise that a window was displayed.
 No polling, timeout, synthetic frame, window activation or geometry fallback is
 introduced. Generic applications without deferred host work allocate no barrier.
+
+### Exhaustive NSH frame and popup axes
+
+The canonical contract generator now also emits `contract::FrameAxesValue`,
+`AnchorValue` and `AnchorAlignmentValue` from the existing `closedDomains` export.
+Native frame sizing explicitly matches all six canonical axes to the appropriate
+percentage width/height or minimum dimension. Popup placement and alignment also
+use exhaustive typed matches: `stretch` retains its existing start alignment plus
+anchor-width minimum. Missing popup properties still default to below/start;
+authored unknown or wrongly typed values fail atomic preflight rather than taking
+those defaults. Nonzero frame insets and other existing unsupported options remain
+explicit errors. No OCaml constructor, wire spelling or mobile/Web behavior changes.
+
+These values are used by Logseq's native sidebar/content frames and page/editor
+popups. Adding a canonical case now fails provider compilation until native
+lowering explicitly implements or rejects it. Regression probes compile the actual
+provider functions, verify every current semantic mapping and wire roundtrip, then
+add an unhandled case to each domain and require Rust E0004. This checks provider
+exhaustiveness; dynamic JSON/theme strings, geometry, source ownership and runtime
+capabilities still require atomic validation and real application qualification.
+Open strings such as font metrics are not relabeled as closed enums. Remaining
+closed-domain providers, including orientation and variants, need the same gradual
+conversion; this change does not claim that every string path is statically checked.
