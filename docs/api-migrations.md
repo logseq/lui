@@ -2983,6 +2983,11 @@ existing canonical `Load` event through `lui_ocaml_load`; failures do not report
 successful Load. Removed/recreated node incarnations cannot receive an earlier
 host's completion. The exported C ABI is unchanged.
 
+Rust embedders matching `render::Event` or `runtime::Event` exhaustively must
+handle the added `Load` variant. The existing `lui_ocaml_load` export is looked
+up optionally, so an application without Image Load keeps starting with an
+older library; requesting Load without that export reports an ABI error.
+
 Ordinary images preserve LUI's default stretch when both dimensions are authored;
 `image-fit="fit"` uses contain and `image-fit="fill"` uses cover. Unspecified axes
 use the native image's decoded intrinsic size. An explicit accessibility label

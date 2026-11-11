@@ -293,7 +293,7 @@ struct Exports {
     value: NumberFn,
     focus_within: NodeIntFn,
     appear: NodeFn,
-    load: NodeFn,
+    load: Option<NodeFn>,
     change: NodeFn,
     dismiss: NodeFn,
     visible_range: RangeFn,
@@ -377,7 +377,7 @@ impl Native {
                 value: required!("lui_ocaml_slider_changed"),
                 focus_within: required!("lui_ocaml_focus_within_changed"),
                 appear: required!("lui_ocaml_appear"),
-                load: required!("lui_ocaml_load"),
+                load: optional!("lui_ocaml_load"),
                 change: required!("lui_ocaml_radio_changed"),
                 dismiss: required!("lui_ocaml_dismiss"),
                 visible_range: required!("lui_ocaml_visible_range"),
@@ -496,7 +496,9 @@ impl Native {
                             (api.focus_within)(*node, i32::from(*within))
                         }
                         Event::Appear(node) => (api.appear)(*node),
-                        Event::Load(node) => (api.load)(*node),
+                        Event::Load(node) => {
+                            api.load.ok_or("OCaml library has no Image Load ABI")?(*node)
+                        }
                         Event::Change(node) => (api.change)(*node),
                         Event::Dismiss(node) => (api.dismiss)(*node),
                         Event::VisibleRange { node, first, last } => {

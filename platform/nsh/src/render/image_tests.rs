@@ -36,7 +36,7 @@ fn ImageScenario() -> impl IntoElement {
     let reject = renderer.clone();
     let recreate = renderer.clone();
     view().child(renderer.element())
-        .child(nsh_base::button().test_id("change-image").child(text("Change image")).on_press(move || {
+        .child(nsh_base::button().child(text("Change image")).on_press(move || {
             change.apply(patch(2,json!([
                 {"op":"set-prop","id":2,"property":"url","value":"file:///tmp/image-b.png"},
                 {"op":"set-prop","id":2,"property":"image-fit","value":"fit"},
@@ -45,7 +45,7 @@ fn ImageScenario() -> impl IntoElement {
             assert_eq!(crate::images::source(&change.0.borrow().nodes[&2].node.get_untracked()),
                 nsh_core::element::ImageSrc::from("file:///tmp/image-b.png"));
         }))
-        .child(nsh_base::button().test_id("reject-image").child(text("Reject image")).on_press(move || {
+        .child(nsh_base::button().child(text("Reject image")).on_press(move || {
             let image = reject.0.borrow().nodes[&2].node.get_untracked();
             let editor = reject.0.borrow().nodes[&3].node.get_untracked();
             for properties in [
@@ -66,12 +66,14 @@ fn ImageScenario() -> impl IntoElement {
                 {"op":"set-prop","id":2,"property":"image-fit","value":"fill"}
             ]))).unwrap();
         }))
-        .child(nsh_base::button().test_id("recreate-image").child(text("Recreate image")).on_press(move || {
+        .child(nsh_base::button().child(text("Recreate image")).on_press(move || {
             let old = recreate.0.borrow().store.nodes[&2].incarnation;
             recreate.apply(patch(4,json!([
                 {"op":"drop-node","id":2},
                 {"op":"create-node","id":2,"kind":"image"},
                 {"op":"set-prop","id":2,"property":"url","value":"file:///tmp/image-c.png"},
+                {"op":"set-prop","id":2,"property":"width","value":100},
+                {"op":"set-prop","id":2,"property":"height","value":60},
                 {"op":"insert-child","parent":1,"child":2,"index":0}
             ]))).unwrap();
             recreate.emit(2,old,Event::Load(2));
@@ -98,10 +100,10 @@ fn url_fit_and_atomic_rejections_keep_the_image_and_editor_native_identity() {
         .find(|node| node.test_id.as_deref() == Some("lui-3"))
         .unwrap()
         .id;
-    app.press("id:lui-3").unwrap();
-    app.press("id:change-image").unwrap();
+    app.type_text("id:lui-3", " edited").unwrap();
+    app.press("text:Change image").unwrap();
     app.wait_for("label:Updated image").unwrap();
-    app.press("id:reject-image").unwrap();
+    app.press("text:Reject image").unwrap();
     let after = app.screen().layout_nodes();
     assert_eq!(
         after
@@ -121,9 +123,9 @@ fn url_fit_and_atomic_rejections_keep_the_image_and_editor_native_identity() {
     );
     assert_eq!(
         app.screen().input_text("id:lui-3").unwrap(),
-        Some("retained draft")
+        Some("retained draft edited")
     );
-    app.press("id:recreate-image").unwrap();
+    app.press("text:Recreate image").unwrap();
     app.wait_for("id:lui-2").unwrap();
     assert_ne!(
         app.screen()
