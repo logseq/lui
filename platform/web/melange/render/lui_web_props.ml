@@ -1004,7 +1004,7 @@ and apply_secondary_property renderer queue_split node kind dom_node
         (if expanded then "true" else "false") dom_node
   | SubmitEnabled, BoolValue enabled ->
       Util.set_state_attribute dom_node "data-submit-enabled" enabled
-  | NavigateEnabled, BoolValue _ | SubmitOnBlur, BoolValue _ -> ()
+  | NavigateEnabled, BoolValue _ | SubmitOnBlur, BoolValue _ | DismissEnabled, BoolValue _ -> ()
   | DoublePressEnabled, BoolValue enabled ->
       Util.set_state_attribute dom_node "data-double-press-enabled" enabled
   | ImageIdValue, IntValue _image_id ->
@@ -1261,7 +1261,7 @@ let remove_property renderer queue_split node kind dom_node property =
            if Store.treeitem renderer node then
              W.Element.setAttribute "aria-selected" "false" dom_node
            else W.Element.removeAttribute "aria-pressed" dom_node
-       | NavigateEnabled | SubmitOnBlur | ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange -> ()
+       | NavigateEnabled | SubmitOnBlur | DismissEnabled | ScrollTarget | ScrollAnchor | ScrollToken | ScrollAnimated | TrackVisibleRange -> ()
        | ToggleDetailEnabled ->
            W.Element.removeAttribute "data-toggle-detail-enabled" dom_node
        | FocusWithinEnabled -> ()

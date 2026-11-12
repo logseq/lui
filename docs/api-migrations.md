@@ -5638,3 +5638,13 @@ handler removal, disabled input, modified Escape and a different focused field.
 The installed SDK exposes `typeKey:modifierFlags:` for iOS as well as macOS;
 `typeText` is a text insertion API and is not a substitute for this gate. No
 minimum OS version is raised.
+
+### Web text cancellation
+
+Web owns unmodified, nonrepeated Escape locally on an opted-in enabled input
+outside both tracked and event-reported composition. It arms blur suppression
+before emitting `Dismiss`, so an application callback that synchronously hides
+or unfocuses the field cannot also submit it. Fresh focus or user input resets
+that cancellation interval. Modified/repeated/composing Escape, disabled fields
+and absent/removed flags keep their previous key behavior; no document/window
+key binding is added. The input's existing controlled value is unchanged.

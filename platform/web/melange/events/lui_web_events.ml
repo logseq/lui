@@ -65,7 +65,7 @@ let combobox_keydown renderer node event =
            else Press node)
   end
 
-let text_keydown renderer node kind composing event =
+let text_keydown ?(before_dismiss = fun () -> ()) renderer node kind composing event =
   if enabled_node renderer node then begin
     let composing_now = !composing || W.KeyboardEvent.isComposing event in
     let key = W.KeyboardEvent.key event in
@@ -74,6 +74,17 @@ let text_keydown renderer node kind composing event =
     let primary =
       W.KeyboardEvent.metaKey event || W.KeyboardEvent.ctrlKey event
     in
+    let dismiss = key = "Escape" && not composing_now && not shift
+      && not primary && not (W.KeyboardEvent.altKey event)
+      && not (W.KeyboardEvent.repeat event)
+      && Store.true_property renderer node DismissEnabled
+      && Store.event_admitted renderer node (Dismiss node) in
+    if dismiss then begin
+      before_dismiss ();
+      W.KeyboardEvent.preventDefault event;
+      W.KeyboardEvent.stopPropagation event;
+      emit renderer (Dismiss node)
+    end;
     let submit =
       (not composing_now)
       &&
@@ -100,12 +111,25 @@ let text_keydown renderer node kind composing event =
       combobox_keydown renderer node event
   end
 
+let attach_text_blur renderer node composing cancelled dom_node =
+  W.Element.addEventListener "blur"
+    (fun _event ->
+      let suppressed = !cancelled in
+      cancelled := false;
+      if not suppressed && not !composing && enabled_node renderer node
+         && Store.true_property renderer node SubmitOnBlur
+         && Store.event_admitted renderer node (Submit node)
+      then emit renderer (Submit node))
+    dom_node
+
 let attach_text_events renderer node kind dom_node =
   let composing = ref false in
   let committed_composition = ref None in
+  let cancelled = ref false in
   let current_value () =
     W.HtmlInputElement.value (Util.text_control_node dom_node)
   in
+  W.Element.addEventListener "focusin" (fun _ -> cancelled := false) dom_node;
   let emit_value value =
     if enabled_node renderer node && not (Store.true_property renderer node ReadOnly) then begin
       if
@@ -124,6 +148,7 @@ let attach_text_events renderer node kind dom_node =
   W.Element.addEventListener "compositionstart"
     (fun _event ->
        composing := true;
+       cancelled := false;
        W.Element.setAttribute "data-lui-composing" "" dom_node;
        committed_composition := None)
     dom_node;
@@ -138,6 +163,7 @@ let attach_text_events renderer node kind dom_node =
   W.Element.addEventListener "input"
     (fun _event ->
        if not !composing then begin
+         cancelled := false;
          let value = current_value () in
          match !committed_composition with
          | Some committed ->
@@ -147,15 +173,10 @@ let attach_text_events renderer node kind dom_node =
        end)
     dom_node;
   W.Element.addKeyDownEventListener
-    (fun event -> text_keydown renderer node kind composing event)
+    (fun event -> text_keydown ~before_dismiss:(fun () -> cancelled := true)
+       renderer node kind composing event)
     dom_node;
-  W.Element.addEventListener "blur"
-    (fun _event ->
-      if not !composing && enabled_node renderer node
-         && Store.true_property renderer node SubmitOnBlur
-         && Store.event_admitted renderer node (Submit node)
-      then emit renderer (Submit node))
-    dom_node
+  attach_text_blur renderer node composing cancelled dom_node
 
 let attach_toggle_event renderer node _kind dom_node =
   let control = Util.child_element dom_node 0 in

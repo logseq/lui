@@ -46,7 +46,7 @@ function fixture(kindName) {
   const key = (key, modifiers = {}, composing = false) => {
     events.length = 0
     let prevented = false
-    Events.text_keydown(renderer, 1, kind, {contents: composing}, {
+    Events.text_keydown(undefined, renderer, 1, kind, {contents: composing}, {
       key, shiftKey: false, ctrlKey: false, metaKey: false, altKey: false,
       isComposing: false, ...modifiers, preventDefault() {prevented = true},
     })
