@@ -4986,7 +4986,7 @@ invoked only after the user's final installation confirmation. Its result is:
   retain the verified download for another attempt.
 - `Ok(Some(InstallLease::new(abort, relaunch)))`: the application has saved and
   quiesced its writers. Construct the lease under its live application owner.
-  A known installation failure invokes `abort` once while that owner lives.
+  A proven pre-replacement failure invokes `abort` once while that owner lives.
   Success consumes `relaunch` once, without a generic restart fallback.
 
 A preparation future must clean up any reservation it acquires if cancelled
@@ -5024,3 +5024,25 @@ adds no save protocol, daemon authority, event pump, installer bypass or restart
 qualification. Logseq's actual configured installation remains explicitly blocked
 until its application-wide save, daemon compatibility/exclusivity and safe
 relaunch requirements are implemented and qualified.
+
+
+### Uncertain updater installation errors retain quiescence
+
+The installation lease releases application preparation only for errors that
+prove filesystem replacement has not begun: `Verification`, `Stale`, `Cancelled`,
+`Transport` (reading/verifying the local archive) and `Busy` (the worker queue
+rejected dispatch). An `Installation` error does not establish rollback success:
+the pinned NSH installer can report replacement failure after a rollback rename
+also fails. `Stopped` is also ambiguous because a reply can be lost after the
+worker accepted the request. These and unknown error categories therefore do not
+invoke the lease's `abort` or `relaunch` callbacks. The existing error dialog
+reports failure and the application remains quiescent; there is no standalone
+restart fallback. Nonwritable-installation failures conservatively follow the
+same rule because the existing error category does not distinguish that case.
+
+For example, an application lease whose abort resumes editor writes now resumes
+after archive verification failure, but does **not** resume after an installation
+or worker-disconnection error. Applications must keep their preparation gate
+held until an independently established recovery/restart policy resolves the
+uncertain state. This change does not add filesystem recovery authority or prove
+any installed package safe to restart.

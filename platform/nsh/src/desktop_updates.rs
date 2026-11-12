@@ -137,8 +137,9 @@ type Relaunch = Box<dyn FnOnce() -> Result<(), String>>;
 
 /// Owned quiescence lease for one confirmed installation. Before installation
 /// is dispatched, dropping it aborts/resumes only while its owner lives.
-/// A known install failure also aborts; cancellation after dispatch and restart
-/// failure never thaw an application whose installation may have committed.
+/// A proven pre-replacement failure also aborts. Installation errors, lost
+/// worker replies, cancellation after dispatch and restart failure never thaw
+/// an application whose installed files may already have changed.
 pub struct InstallLease {
     owner: Owner,
     abort_on_drop: bool,
@@ -148,8 +149,9 @@ pub struct InstallLease {
 impl InstallLease {
     /// Construct under the application's live preparation owner. Callbacks
     /// must act only on that application/session, never an unrelated daemon.
-    /// `abort` releases preparation on error/cancel; `relaunch` must enforce
-    /// the app's exit/argv/environment/credential policy after installation.
+    /// `abort` releases preparation before dispatch or after a proven
+    /// pre-replacement failure; `relaunch` must enforce the app's
+    /// exit/argv/environment/credential policy after installation.
     pub fn new(
         abort: impl FnOnce() + 'static,
         relaunch: impl FnOnce() -> Result<(), String> + 'static,
@@ -515,7 +517,19 @@ impl Actions {
                 lease.restart()
             }
             Err(error) => {
-                lease.abort();
+                // These categories can only precede NSH's filesystem replacement.
+                // Installation may include a failed rollback; Stopped can mean
+                // a lost reply after execution. Neither proves it is safe to thaw.
+                if matches!(
+                    error.code(),
+                    ErrorCode::Verification
+                        | ErrorCode::Stale
+                        | ErrorCode::Cancelled
+                        | ErrorCode::Transport
+                        | ErrorCode::Busy
+                ) {
+                    lease.abort();
+                }
                 if !self.owner.is_live() {
                     return Ok(());
                 }
@@ -616,6 +630,7 @@ mod tests {
     #[derive(Clone)]
     struct HookFixture {
         preparation: Preparation,
+        install_error: Option<ErrorCode>,
         prepared: Arc<AtomicUsize>,
         aborted: Arc<AtomicUsize>,
         relaunched: Arc<AtomicUsize>,
@@ -624,6 +639,7 @@ mod tests {
         fn new(preparation: Preparation) -> Self {
             Self {
                 preparation,
+                install_error: None,
                 prepared: Arc::default(),
                 aborted: Arc::default(),
                 relaunched: Arc::default(),
@@ -683,14 +699,19 @@ mod tests {
 
     #[component]
     fn ActionProbe(props: ActionProps) -> impl IntoElement {
-        let (updater, operations) = crate::update::tests::menu_fixture(
-            props.cancelled.get_untracked(),
-            props
-                .verification_error
-                .get_untracked()
-                .then_some(ErrorCode::Verification),
-        );
-        let lifecycle: Rc<dyn UpdateLifecycle> = engine_context::<HookFixture>()
+        let hook = engine_context::<HookFixture>();
+        let install_error = hook
+            .as_ref()
+            .and_then(|hook| hook.install_error)
+            .or_else(|| {
+                props
+                    .verification_error
+                    .get_untracked()
+                    .then_some(ErrorCode::Verification)
+            });
+        let (updater, operations) =
+            crate::update::tests::menu_fixture(props.cancelled.get_untracked(), install_error);
+        let lifecycle: Rc<dyn UpdateLifecycle> = hook
             .map(|fixture| Rc::new(TestLifecycle((*fixture).clone())) as Rc<dyn UpdateLifecycle>)
             .unwrap_or_else(|| Rc::new(StandaloneLifecycle));
         let contribution = UpdateActions::new(updater, lifecycle);
@@ -864,7 +885,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_install_releases_live_application_preparation_once() {
+    fn failed_archive_preflight_releases_live_application_preparation_once() {
         let hook = HookFixture::new(Preparation::Ready);
         let mut app = start_with_hook(false, true, Some(hook.clone()));
         confirm_install(&mut app);
@@ -873,6 +894,26 @@ mod tests {
         wait_status(&mut app, "Idle cached=false");
         assert_eq!(hook.counts(), (1, 1, 0));
         assert!(!restarted(&app));
+    }
+
+    #[test]
+    fn uncertain_installation_and_lost_worker_reply_never_thaw_or_restart() {
+        for code in [ErrorCode::Installation, ErrorCode::Stopped] {
+            let hook = HookFixture {
+                install_error: Some(code),
+                ..HookFixture::new(Preparation::Ready)
+            };
+            let mut app = start_with_hook(false, false, Some(hook.clone()));
+            confirm_install(&mut app);
+            wait_dialog(&mut app);
+            app.answer_dialog(DialogAnswer::Press("OK".into())).unwrap();
+            wait_status(&mut app, "Idle cached=true");
+            assert_eq!(hook.counts(), (1, 0, 0), "uncertain failure: {code:?}");
+            assert!(!restarted(&app));
+            assert!(app.screen().texts().iter().any(|text| {
+                text.contains("operations=[\"check\", \"download\", \"install\"]")
+            }));
+        }
     }
 
     #[test]
