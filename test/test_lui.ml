@@ -3488,6 +3488,52 @@ let test_typed_checked_selected_aliases () =
       Alcotest.(check int) "state alias updates retain the constructor's node" identity
         (expect identifier property true)) live)
 
+let test_json_virtual_viewport_contract () =
+  let open Lui_json_view in
+  let sink ~id:_ ~kind:_ ~fields:_ = () in
+  let view props = render ~on_event:sink (Obj (("kind", Str "virtual-list") :: props)) in
+  let mount host props =
+    let batches = ref [] in
+    let backend = { Lui_protocol.backend_profile = Lui_protocol.profile Lui_protocol.GenericOS host;
+      apply_batch = (fun batch -> batches := batch :: !batches; true) } in
+    let app = Lui_app.create backend () (fun model () -> model)
+      (fun _ _ _ -> view props) in
+    Fun.protect ~finally:(fun () -> ignore (Lui_app.dispose app)) (fun () ->
+      flush_app app;
+      List.concat_map (fun (batch : Lui_protocol.patch_batch) -> batch.ops) !batches)
+  in
+  let emitted expected = List.exists (function
+    | Lui_protocol.SetProp (_, Lui_protocol.VirtualViewport, Lui_protocol.StringValue value) -> value = expected
+    | _ -> false) in
+  List.iter (fun host ->
+    let omitted = mount host [] in
+    Alcotest.(check bool) "omission preserves the host's existing viewport default" false
+      (List.exists (function Lui_protocol.SetProp (_, Lui_protocol.VirtualViewport, _) -> true | _ -> false) omitted);
+    List.iter (fun name ->
+      Alcotest.(check bool) "both JSON spellings forward explicit Own" true
+        (emitted "own" (mount host [name, Str "own"]))) ["viewport"; "virtual-viewport"])
+    [Lui_protocol.GenericHost; WebHost; SwiftUIHost; KotlinHost; NshHost];
+  List.iter (fun props ->
+    Alcotest.(check bool) "Parent reaches the actual canonical NSH property" true
+      (emitted "parent" (mount Lui_protocol.NshHost props)))
+    [["viewport", Str "parent"]; ["virtual-viewport", Str "parent"];
+     ["viewport", Str "parent"; "virtual-viewport", Str "parent"]];
+  List.iter (fun host ->
+    List.iter (fun name ->
+      Alcotest.check_raises "JSON Parent retains typed host rejection"
+        (Invalid_argument "parent virtual-list viewport requires the NSH backend")
+        (fun () -> ignore (mount host [name, Str "parent"]))) ["viewport"; "virtual-viewport"])
+    [Lui_protocol.GenericHost; WebHost; SwiftUIHost; KotlinHost];
+  List.iter (fun name ->
+    List.iter (fun value ->
+      Alcotest.check_raises "invalid JSON viewport is never silently discarded"
+        (Invalid_argument "Invalid virtual-list viewport")
+        (fun () -> let _view = view [name, value] in ()))
+      [Str "future"; Bool true; Num 1.; Null]) ["viewport"; "virtual-viewport"];
+  Alcotest.check_raises "conflicting aliases cannot silently change ownership"
+    (Invalid_argument "Conflicting virtual-list viewport aliases")
+    (fun () -> let _view = view ["viewport", Str "own"; "virtual-viewport", Str "parent"] in ())
+
 let test_json_row_column_grid_columns () =
   let open Lui_json_view in
   let sink ~id:_ ~kind:_ ~fields:_ = () in
@@ -6363,6 +6409,7 @@ let () =
           Alcotest.test_case "parse edge cases" `Quick test_json_view_parse;
           Alcotest.test_case "rectangle anchors" `Quick test_json_view_anchor_rect;
           Alcotest.test_case "typed checked/selected aliases" `Quick test_typed_checked_selected_aliases;
+          Alcotest.test_case "typed virtual viewport aliases" `Quick test_json_virtual_viewport_contract;
           Alcotest.test_case "linear and grid column contracts" `Quick test_json_row_column_grid_columns;
           Alcotest.test_case "Textarea-only submit policy" `Quick test_json_submit_on_enter_contract;
           Alcotest.test_case "context menu property contract" `Quick test_json_context_menu_contract;

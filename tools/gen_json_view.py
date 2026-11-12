@@ -137,6 +137,8 @@ def extra_arg(name, typ, element=None):
         return None
     if name == 'anchor_rect':
         return '?anchor_rect:(anchor_rect_prop props)'
+    if name == 'viewport' and typ == 'virtual_viewport':
+        return '?viewport:(virtual_viewport_prop props)'
     if typ == 'string':
         return f'?{name}:(v_str props "{j}")'
     if typ == 'int':
@@ -388,6 +390,20 @@ let anchor_rect_prop props =
        | Some rect -> Some rect
        | None -> invalid_arg "Invalid popover anchor rectangle")
   | Some _ -> invalid_arg "Invalid popover anchor rectangle"
+
+(* Accept the constructor spelling and its canonical wire-property alias.
+   Invalid ownership must never silently become the default viewport. *)
+let virtual_viewport_prop props =
+  let value = match get props "viewport", get props "virtual-viewport" with
+    | None, value | value, None -> value
+    | Some left, Some right when left = right -> Some left
+    | Some _, Some _ -> invalid_arg "Conflicting virtual-list viewport aliases"
+  in
+  match value with
+  | None -> None
+  | Some (Str "own") -> Some `own
+  | Some (Str "parent") -> Some `parent
+  | Some _ -> invalid_arg "Invalid virtual-list viewport"
 
 let kind_of_node fields =
   match List.assoc_opt "kind" fields with Some (Str k) -> k | _ -> ""
