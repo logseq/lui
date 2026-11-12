@@ -11,7 +11,7 @@ Build the CLI from a clean checkout of the same immutable NSH revision as the
 app's `Cargo.toml`. The repository URL and full commit are read from that
 manifest; a branch name, a short SHA or mixed NSH sources are rejected.
 The published migration pin is
-[`bfa15d0c843c0d6f5bf3a2a230e8ca56b876b61c`](https://github.com/logseq/nsh/commit/bfa15d0c843c0d6f5bf3a2a230e8ca56b876b61c).
+[`adc186db7213f3ccd1eacaa836cc721e9779fd14`](https://github.com/logseq/nsh/commit/adc186db7213f3ccd1eacaa836cc721e9779fd14).
 The checkout must be clean at this commit. Read the manifest again when the
 dependency is deliberately upgraded; a previously built CLI receipt then
 requires regeneration.
