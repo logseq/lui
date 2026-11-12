@@ -854,12 +854,12 @@ mod tests {
         assert_eq!(
             observed
                 .iter()
-                .filter(|event| matches!(event, Event::NativePress(11, 7)))
+                .filter(|event| matches!(event, Event::NativePress(11, 23)))
                 .count(),
             1
         );
         for kind in [PointerKind::Down, PointerKind::Up, PointerKind::PressDetail] {
-            assert_eq!(observed.iter().filter(|event| matches!(event, Event::Pointer { node:11, kind:current, detail } if *current == kind && detail.modifiers == 7 && detail.x.is_finite() && detail.y.is_finite() && detail.button == 0 && detail.target_class.is_empty())).count(), 1, "{observed:?}");
+            assert_eq!(observed.iter().filter(|event| matches!(event, Event::Pointer { node:11, kind:current, detail } if *current == kind && detail.modifiers == 23 && detail.x.is_finite() && detail.y.is_finite() && detail.button == 0 && detail.target_class.is_empty())).count(), 1, "{observed:?}");
         }
         events.lock().unwrap().clear();
         app.type_text("id:lui-2", "").unwrap();
