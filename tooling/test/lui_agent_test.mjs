@@ -72,6 +72,13 @@ test("script lines use the Drive scenario vocabulary", () => {
   assert.deepEqual(plan(`native-bounds "kind:dialog"`).request, {op: "native-bounds", selector: "kind:dialog"});
   assert.throws(() => plan("native-bounds"), /usage: native-bounds/);
   assert.throws(() => plan("native-bounds one extra"), /usage: native-bounds/);
+  assert.deepEqual(plan(`native-dialog "id:settings"`).request, {op: "native-dialog", selector: "id:settings"});
+  assert.throws(() => plan("native-dialog"), /usage: native-dialog/);
+  assert.throws(() => plan("native-dialog one extra"), /usage: native-dialog/);
+  assert.deepEqual(plan(`native-dialog-answer fresh "Install and Restart"`).request,
+    {op: "native-dialog-answer", token: "fresh", button: "Install and Restart"});
+  assert.throws(() => plan("native-dialog-answer fresh"), /usage: native-dialog-answer/);
+  assert.throws(() => plan("native-dialog-answer fresh one extra"), /usage: native-dialog-answer/);
   assert.deepEqual(plan(`type id:4 "a b"`).request, {op: "type", selector: "id:4", text: "a b"});
   assert.deepEqual(plan("toggle kind:checkbox true").request, {op: "toggle", selector: "kind:checkbox", value: true});
   assert.deepEqual(plan(`key "cmd+k"`).request, {op: "key", combo: "cmd+k"});

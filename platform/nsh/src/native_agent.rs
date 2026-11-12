@@ -1,10 +1,15 @@
 //! Explicit native-controller activation; selectors remain owned by OCaml.
+mod dialogs;
+pub(crate) use dialogs::Dialogs;
 use crate::{render::Renderer, store::Node, style};
 use nsh_core::{PointerEvents, PressEvent, element::ElementRef, prelude::*};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
 pub(crate) fn find_request(request: &Value) -> Result<String, String> {
+    if request.get("op").and_then(Value::as_str) == Some("native-dialog") {
+        return dialogs::find(request);
+    }
     let operation = if request.get("op").and_then(Value::as_str) == Some("native-bounds") {
         "native-bounds"
     } else {
@@ -175,6 +180,8 @@ pub(crate) fn hello(answer: String) -> Result<String, String> {
         if cfg!(target_os = "macos") {
             operations.push("screenshot");
             operations.push("native-bounds");
+            operations.push("native-dialog");
+            operations.push("native-dialog-answer");
         }
         answer["host_native_ops"] = json!(operations);
     }
@@ -235,6 +242,10 @@ mod tests {
                 .unwrap()
                 .contains(&json!("native-press"))
         );
+        for operation in ["native-dialog", "native-dialog-answer"] {
+            assert_eq!(answer["host_native_ops"].as_array().unwrap().contains(&json!(operation)),
+                cfg!(target_os = "macos"));
+        }
     }
 
     #[test]

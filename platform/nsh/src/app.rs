@@ -105,6 +105,7 @@ fn agent_mutates(operation: Option<&str>) -> bool {
                 | "prop"
                 | "screenshot"
                 | "native-bounds"
+                | "native-dialog"
                 | "gc-stats"
         )
     )
@@ -434,6 +435,7 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
         // One pump owns response publication. Independent per-event tasks could
         // observe a later ready reply before an earlier suspended task resumes.
         // The engine stays free while this task awaits the OCaml worker.
+        let mut native_dialogs = crate::native_agent::Dialogs::default();
         loop {
             let wake = session.woken();
             let mut wake = pin!(wake);
@@ -513,9 +515,17 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                         ));
                         break 'request None;
                     }
+                    if operation.as_deref() == Some("native-dialog-answer") {
+                        let answered = native_dialogs.answer(&opening, &request, admission.as_ref()).await;
+                        let _ = reply.send(accept_agent_reply(
+                            &opening, operation.as_deref(), true, answered,
+                        ));
+                        break 'request None;
+                    }
                     let native_press = operation.as_deref() == Some("native-press");
                     let native_bounds = operation.as_deref() == Some("native-bounds");
-                    let request = if native_press || native_bounds {
+                    let native_dialog = operation.as_deref() == Some("native-dialog");
+                    let request = if native_press || native_bounds || native_dialog {
                         let translated = serde_json::from_str(&request)
                             .map_err(|error| error.to_string())
                             .and_then(|request| crate::native_agent::find_request(&request));
@@ -554,6 +564,9 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                         }
                         Ok(answer) if native_bounds => {
                             crate::native_agent::bounds(&opening, &answer).await
+                        }
+                        Ok(answer) if native_dialog => {
+                            native_dialogs.inspect(&opening, &answer).await
                         }
                         Ok(answer) if operation.as_deref() == Some("hello") => {
                             crate::native_agent::hello(answer)
@@ -912,12 +925,14 @@ mod mutation_tests {
             "prop",
             "screenshot",
             "native-bounds",
+            "native-dialog",
             "gc-stats",
         ] {
             assert!(!agent_mutates(Some(op)), "{op}");
         }
         for op in [
             "native-press",
+            "native-dialog-answer",
             "press",
             "key",
             "ext",

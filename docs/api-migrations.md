@@ -24,6 +24,36 @@ test. For example, retain the one application-owned `updates` value and call
 `updates.check_for_updates(translated_labels)?`; disable its button while
 `!updates.is_configured() || updates.is_busy()`.
 
+## macOS agent can inspect and answer its exact owned native sheet
+
+Opted-in NSH macOS agents now advertise `native-dialog` and
+`native-dialog-answer` in `hello.host_native_ops`. Existing canonical operations
+are unchanged; other platforms do not advertise native-sheet support and reject
+these operations explicitly. This is an agent wire addition, not a LUI view,
+callback, updater policy or mobile-backend change.
+
+For example, `native-dialog
+"prop:accessibility-identifier=settings-check-for-updates"` resolves that exact
+retained anchor's native window. It returns `dialog:null` or a bounded current
+AppKit-sheet description with a fresh `token`, static `texts`, and native button
+`label`/`enabled`/`hidden` values. The owner anchor can be disabled while busy;
+only the actual answer button must be enabled. `native-dialog-answer "TOKEN"
+"Download"` requires the token and exact unique visible label. Each inspection
+invalidates the previous token. A different/retired owner, changed sheet or
+contents, disabled/ambiguous button and duplicate answer are refused. Store no
+token across another inspection or application restart.
+
+One scoped MainThreadBound lease retains the actual window/sheet/views. The
+existing pump and mutation fence remain authoritative; AppKit controller work
+rechecks attachment and contents on main before consuming that lease and calling
+`NSButton.performClick(None)`. `activation:"native-controller",dispatched:true`
+acknowledges native controller invocation, not hardware input or completed
+installation/relaunch. There is no extra port, dev host, JavaScript VM, SDK patch,
+global desktop query or application activation. See
+[native dialog agent](agent-guide/native-dialog-agent.md) for exact limits,
+request examples and the separate real AppKit/installed-application gates.
+
+
 ## Native bounds diagnostics include existing Core Animation transforms
 
 The macOS `native-bounds` diagnostic now maps all four view-bounds corners through

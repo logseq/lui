@@ -44,6 +44,8 @@ fn AgentFailureScenario() -> impl IntoElement {
         "tree",
         "prop",
         "native-bounds",
+        "native-dialog",
+        "native-dialog-answer",
         "native-press",
         "press",
         "gc-stats",
