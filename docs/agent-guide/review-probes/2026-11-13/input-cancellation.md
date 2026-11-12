@@ -88,3 +88,25 @@ observation justified changing production behavior to accommodate the fixture.
 - Run the new revision's Linux/Windows/macOS CI and native interaction gates.
 - Preserve the migration's independent editor/IME, accessibility, performance,
   packaging, signing and actual whole-application update requirements.
+
+## Target capability follow-up
+
+At `51a5fd750c88bf5fa18ec87a5cc0dcfa2a2bb58d`, the target preflight reuses
+the runtime input capability validator. Known TimeField options and Color
+inputs are checked on the complete captured node independently of scoped
+theme-variable deferral. Missing or dynamic time text is not parsed during
+this capability pass; runtime value validation and diagnostic priority remain
+unchanged. No second capability grammar or SDK change is introduced.
+
+- Release Rust library tests: **284 passed**, none failed or skipped;
+  `/tmp/lui-target-preflight-release-tests.log`.
+- Release all-target Clippy with `-D warnings`, Rust formatting, canonical
+  contract freshness and source support inventory checks: **passed**;
+  `/tmp/lui-target-preflight-release-clippy.log`.
+- The actual Logseq target regression run initially passed 28 of 29 tests.
+  Direct TimeField dismissal and the other capability refusals were rejected
+  before launch. The remaining case combined a module alias, dynamic text and
+  `Some` callback forwarding: its typed-tree capture omitted the entire site.
+  This is a downstream extractor defect, not a passing capability check; it
+  must be repaired and the full target suite rerun before claiming that gate.
+  Evidence: `/tmp/logseq-target-capabilities-static-tests.log`.

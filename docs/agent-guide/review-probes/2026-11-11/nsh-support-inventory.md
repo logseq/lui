@@ -310,7 +310,7 @@ uses the concrete route bodies, not literal presence alone.
 | `controls/navigation.rs` | `28e0e4ac35312ba9673f7b97168b6d6890d84bf2e676a59ba6d1764c4ef6a28d` |
 | `images.rs` | `0cd8caf3a1736e24381a595eae088031394615ebab4f9e6c0d35ee1d2ba1d6c7` |
 | `headings.rs` | `fe8fcddd03e900d52fd3e253af1cedd3db21a62c0a2c6eabcccc8e450098ff30` |
-| `inputs.rs` | `465621a5eb8502cd7715f8537ab158e696d45218c70b04a0ad4e92e35894a7d7` |
+| `inputs.rs` | `85ff9d8f596cdb760f639ca813b85c708792505cc1b21d3dd17bbc66606545ac` |
 | `file_picker.rs` | `958a8e75027262fcb5adbdbc2b27307cd78064170eee376f1e59b6dcc5b742d0` |
 | `media.rs` | `71fd9b780a6a6b5925b3f9c4b42aac9e7b320c64e1c5559e30aab3f0e1e48add` |
 | `controls/toasts.rs` | `2d7d344288cf9989f21278a48fede6b77337da698b0ba2b91c5bff909d103ac0` |
