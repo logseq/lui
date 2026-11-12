@@ -88,7 +88,7 @@ def build_fixture(fixture, *, version=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fixture", choices=("virtual", "clock", "upgrade", "image", "tabs", "navigation", "picker", "fit", "input"), default="virtual")
+    parser.add_argument("--fixture", choices=("virtual", "virtual_replacement", "clock", "upgrade", "image", "tabs", "navigation", "picker", "fit", "input"), default="virtual")
     parser.add_argument("--version", choices=("1.0.0", "2.0.0"))
     args = parser.parse_args()
     library = build_fixture(args.fixture, version=args.version)
