@@ -108,7 +108,7 @@ RESTRICTIONS = {
     "split": [
         "Requires exactly two canonical pane children; sizes and resize events use absolute points.",
         "Rejects ratio value, custom resize-handle-width, nonzero resize-handle-offset and pointer-enabled=true.",
-        "Rejects nonzero resize-duration and authored resize-easing/resize-origin; uses the native 9-point handle.",
+        "Authored first-pane-width changes support scoped native resize-duration with standard/linear easing; rejects emphasized/spring easing and resize-origin; native drag stays direct.",
     ],
     "edge-inset": [
         "At most 32,760 children because native grid line indices use signed 16-bit values.",
@@ -180,7 +180,7 @@ TESTS = {
     "step": ["steps_follow_canonical_active_live_values_and_keyed_source_positions"],
     "timeline": ["timeline_uses_live_content_marker_precedence_and_retains_its_host", "timeline_item_preserves_native_pointer_modifiers_and_keyboard_activation"],
     "timeline-item": ["timeline_uses_live_content_marker_precedence_and_retains_its_host", "timeline_item_preserves_native_pointer_modifiers_and_keyboard_activation"],
-    "split": ['native_equal_panels_keep_user_sizes_without_model_echo_and_report_pixels_once', 'native_pixel_source_update_and_keyed_reorder_retain_both_editors_and_focus', 'native_constraints_and_notification_disable_do_not_add_a_second_resize_policy', 'native_rtl_report_selects_the_first_logical_panel_and_legacy_options_reject'],
+    "split": ['native_equal_panels_keep_user_sizes_without_model_echo_and_report_pixels_once', 'native_pixel_source_update_and_keyed_reorder_retain_both_editors_and_focus', 'native_constraints_and_notification_disable_do_not_add_a_second_resize_policy', 'native_rtl_report_selects_the_first_logical_panel_and_legacy_options_reject', 'native_sidebar_width_motion_retains_editors_and_respects_reduced_motion'],
     "checkbox": ["native_checkbox_mixed_state_is_controlled_until_the_model_resolves_it", "native_checkbox_detail_preserves_pointer_modifiers_and_controlled_proposals_once", "native_checkbox_keyboard_detail_and_disabled_input_share_the_native_owner"],
     "switch": ["switch_follows_accepted_press_and_keyboard_values_without_duplicate_events", "refused_switch_requests_keep_native_identity_and_accepted_value", "disabled_switch_takes_no_user_event"],
     "toggle-button": ["toggle_button_exposes_pressed_semantics_and_uses_selected_as_value"],

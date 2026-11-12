@@ -15,6 +15,7 @@ use std::{
 #[derive(Clone)]
 struct Fixture {
     pixels: Option<f64>,
+    motion: bool,
     echo: bool,
     proposals: Arc<Mutex<Vec<f64>>>,
     reorder: Arc<AtomicBool>,
@@ -67,6 +68,12 @@ fn Panels() -> impl IntoElement {
         json!({"op":"set-prop","id":2,"property":"change-enabled","value":true}),
         json!({"op":"insert-child","parent":1,"child":2,"index":0}),
     ];
+    if fixture.motion {
+        ops.extend([
+            json!({"op":"set-prop","id":2,"property":"resize-duration","value":300}),
+            json!({"op":"set-prop","id":2,"property":"resize-easing","value":"standard"}),
+        ]);
+    }
     if let Some(pixels) = fixture.pixels {
         ops.push(json!({"op":"set-prop","id":2,"property":"first-pane-width","value":pixels}));
     }
@@ -81,7 +88,7 @@ fn Panels() -> impl IntoElement {
     }
     renderer.apply(patch(1, json!(ops))).unwrap();
     renderer.set_root(1).unwrap();
-    for key in ["f1", "f2", "f3", "f4"] {
+    for key in ["f1", "f2", "f3", "f4", "f5", "f6"] {
         let renderer = renderer.clone();
         let generation = generation.clone();
         on_key(key, move |_| {
@@ -91,6 +98,14 @@ fn Panels() -> impl IntoElement {
                 }
                 "f2" => json!([{"op":"set-prop","id":2,"property":"change-enabled","value":false}]),
                 "f3" => json!([{"op":"set-prop","id":3,"property":"max-width","value":200}]),
+                "f5" => json!([
+                    {"op":"set-prop","id":3,"property":"min-width","value":0},
+                    {"op":"set-prop","id":2,"property":"first-pane-width","value":0.0}
+                ]),
+                "f6" => json!([
+                    {"op":"set-prop","id":3,"property":"min-width","value":100},
+                    {"op":"set-prop","id":2,"property":"first-pane-width","value":240.0}
+                ]),
                 "f4" => {
                     assert!(renderer.apply(patch(generation.get() + 1, json!([
                         {"op":"set-prop","id":3,"property":"text","value":"must not publish"},
@@ -108,8 +123,17 @@ fn Panels() -> impl IntoElement {
     renderer.element()
 }
 fn app(pixels: Option<f64>, echo: bool, rtl: bool) -> (Headless, Fixture) {
+    app_with_motion(pixels, echo, rtl, false)
+}
+fn app_with_motion(
+    pixels: Option<f64>,
+    echo: bool,
+    rtl: bool,
+    motion: bool,
+) -> (Headless, Fixture) {
     let fixture = Fixture {
         pixels,
+        motion,
         echo,
         proposals: Arc::new(Mutex::new(Vec::new())),
         reorder: Arc::new(AtomicBool::new(false)),
@@ -252,12 +276,76 @@ fn native_rtl_report_selects_the_first_logical_panel_and_legacy_options_reject()
         ("first-pane-width", json!(f64::MAX)),
         ("resize-handle-width", json!(9)),
         ("resize-handle-offset", json!(1.0)),
-        ("resize-duration", json!(120)),
-        ("resize-easing", json!("linear")),
+        ("resize-easing", json!("emphasized")),
+        ("resize-easing", json!("spring")),
         ("resize-origin", json!(0.5)),
     ] {
         node.props.insert(property.into(), value);
         assert!(validate(&node).unwrap_err().contains("NSH split"));
         node.props.clear();
     }
+}
+
+#[test]
+fn native_sidebar_width_motion_retains_editors_and_respects_reduced_motion() {
+    let (mut app, _) = app_with_motion(Some(240.0), true, false, true);
+    let first = layout(&app, "lui-3").id;
+    let second = layout(&app, "lui-4").id;
+    let transitions = Arc::new(Mutex::new(Vec::new()));
+    let observed = transitions.clone();
+    app.observe(move |_, batch| {
+        for item in &batch.items {
+            if let nsh_core::MountItem::LayoutAnimation(animation) = item {
+                if let Some(update) = animation.update {
+                    observed.lock().unwrap().push(update);
+                }
+            }
+        }
+    });
+    app.type_text("id:lui-4", "retained").unwrap();
+    assert!(transitions.lock().unwrap().is_empty());
+    app.press_key("f5").unwrap();
+    assert_eq!(
+        layout(&app, "lui-2-split-pane-3").bounds.size.width,
+        px(0.0)
+    );
+    assert!(layout(&app, "lui-2-split-pane-3").clips);
+    assert!(transitions.lock().unwrap().iter().all(|motion| {
+        motion.duration_ms == 300.0 && motion.curve == LayoutCurve::EaseInEaseOut
+    }));
+    assert!(!transitions.lock().unwrap().is_empty());
+    app.press_key("f6").unwrap();
+    assert_eq!(layout(&app, "lui-3").id, first);
+    assert_eq!(layout(&app, "lui-4").id, second);
+    let before = app
+        .screen()
+        .input_text("id:lui-4")
+        .unwrap()
+        .unwrap()
+        .to_owned();
+    app.press_key("x").unwrap();
+    let after = app.screen().input_text("id:lui-4").unwrap().unwrap();
+    assert_eq!(after.len(), before.len() + 1);
+    assert_eq!(after.replace('x', ""), before);
+    transitions.lock().unwrap().clear();
+    app.drag(HANDLE, Point::new(px(30.0), px(0.0))).unwrap();
+    assert!(transitions.lock().unwrap().is_empty());
+    app.set_environment("reduce motion", |environment| {
+        environment.reduce_motion = true
+    })
+    .unwrap();
+    app.press_key("f5").unwrap();
+    assert_eq!(
+        layout(&app, "lui-2-split-pane-3").bounds.size.width,
+        px(0.0)
+    );
+    assert!(layout(&app, "lui-2-split-pane-3").clips);
+    app.press_key("f6").unwrap();
+    assert_eq!(
+        layout(&app, "lui-2-split-pane-3").bounds.size.width,
+        px(240.0)
+    );
+    assert!(transitions.lock().unwrap().is_empty());
+    assert_eq!(layout(&app, "lui-3").id, first);
+    assert_eq!(layout(&app, "lui-4").id, second);
 }

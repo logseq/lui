@@ -87,7 +87,7 @@ The JSON output also enumerates canonical events without a renderer transport.
 | `table-cell` | public host equivalent of base TableCell + authored width | 84/9 | G1, G13 | 1 |
 | `tree` | base Tree + keyed metadata, native selection/expansion/action and virtualization | 71/3 | G1, G13, G12 | 7 |
 | `resizable` | base ResizeHandle + bounded retained local width | 79/3 | G1, G13 | 1 |
-| `split` | base ResizablePanelGroup + keyed native ResizablePanel sizes and completed resize events | 88/4 | G1, G13 | 4 |
+| `split` | base ResizablePanelGroup + keyed native ResizablePanel sizes and completed resize events | 88/4 | G1, G13 | 5 |
 | `dialog` | base Dialog + authored panel | 46/4 | G1, G13 | 2 |
 | `drawer` | base controlled left Sheet + retained main content | 39/5 | G1, G13 | 1 |
 | `sheet` | base Sheet | 37/4 | G1, G13, G12 | 1 |
@@ -259,7 +259,7 @@ validate_popup_shape, controls::validate, virtual_rows::validate and style::comp
 - `textarea`: Blur/navigation capability must be authored at mount; full NavigationKey is not implemented.
 - `scroll`: Orientation is native horizontal/vertical at mount; changing its effective axis on the same incarnation is rejected atomically.
 - `drawer`: Requires exactly two canonical children: sidebar first and main content second.
-- `split`: Requires exactly two canonical pane children; sizes and resize events use absolute points. Rejects ratio value, custom resize-handle-width, nonzero resize-handle-offset and pointer-enabled=true. Rejects nonzero resize-duration and authored resize-easing/resize-origin; uses the native 9-point handle.
+- `split`: Requires exactly two canonical pane children; sizes and resize events use absolute points. Rejects ratio value, custom resize-handle-width, nonzero resize-handle-offset and pointer-enabled=true. Authored first-pane-width changes support scoped native resize-duration with standard/linear easing; rejects emphasized/spring easing and resize-origin; native drag stays direct.
 - `edge-inset`: At most 32,760 children because native grid line indices use signed 16-bit values. Rejects any authored hover-*, pressed-*, focus-*, selected-* or disabled-* pooled state-paint property. Rejects opacity other than 1, nonempty shadow other than none, and any authored transition.
 - `list-item`: Rejects change-enabled=true inline editing and true long-press-enabled, double-press-enabled or submit-enabled callbacks. Adding or removing expanded within the same incarnation is rejected; switching flat/disclosure mode requires a new node incarnation.
 - `avatar`: Rejects authored image resources until the native image-resource bridge is available.
@@ -315,7 +315,7 @@ uses the concrete route bodies, not literal presence alone.
 | `media.rs` | `71fd9b780a6a6b5925b3f9c4b42aac9e7b320c64e1c5559e30aab3f0e1e48add` |
 | `controls/toasts.rs` | `2d7d344288cf9989f21278a48fede6b77337da698b0ba2b91c5bff909d103ac0` |
 | `controls/tree.rs` | `86b7924c502ad2a30d63b446a6e2d89fb4dea5f5737e4f96f896f006dd1a40d1` |
-| `controls/surfaces/native_split.rs` | `0ab8cd7fe3f4edee7abeee104a9991a85010291afce94f3bb17db17f4d72231e` |
+| `controls/surfaces/native_split.rs` | `27d39cbd1ba1175bd74952669fed3b806527a795ca19a45b75b787e9a3d9fe8f` |
 | `controls/fit.rs` | `094328bfa4548a04c8f1749b3039bff62be9fc4619c314fa541bf8d45651d445` |
 | `context_menu.rs` | `9ceff69227beee0aa3e3165a1bf676442c06cd1a2cea7119a59c5ee152072ab0` |
 | `ui/context_menu.rs` | `3b50f4d4f345f3a4b85b5947e63cbda7fc895d21423bd6f4045b19d3e786ff12` |

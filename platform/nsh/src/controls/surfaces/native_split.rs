@@ -2,7 +2,7 @@
 //! Source sizes are native wanted sizes; completed native resizes notify LUI.
 use super::{Emit, Presentation, emit_flag, enabled, label};
 use crate::{render::Event, store::Node, ui};
-use nsh_core::{element::StyleRefinement, prelude::*};
+use nsh_core::{LayoutCurve, LayoutTransition, element::StyleRefinement, prelude::*};
 use std::sync::Arc;
 
 pub(super) fn validate(node: &Node) -> Result<(), String> {
@@ -28,11 +28,11 @@ pub(super) fn validate(node: &Node) -> Result<(), String> {
             "NSH split uses its native centered handle; remove resize-handle-offset".into(),
         );
     }
-    if node.number("resize-duration", 0.0) != 0.0
-        || node.props.contains_key("resize-easing")
-        || node.props.contains_key("resize-origin")
-    {
-        return Err("NSH split uses native panel resizing without legacy resize-duration/easing/origin options".into());
+    if node.props.contains_key("resize-origin") {
+        return Err("NSH split scoped layout motion has no resize-origin option".into());
+    }
+    if !matches!(node.string("resize-easing"), "" | "standard" | "linear") {
+        return Err("NSH split layout motion supports standard or linear resize-easing".into());
     }
     Ok(())
 }
@@ -49,6 +49,34 @@ pub(super) fn element(
         .clone();
     let theme = presentation.theme;
     let id = node.get_untracked().id;
+    let region = presentation.reference;
+    let source_width = stored(
+        node.get_untracked()
+            .props
+            .get("first-pane-width")
+            .and_then(serde_json::Value::as_f64),
+    );
+    // The panel group remains the only size owner. Request native frame motion
+    // for a changed authored size, never for unrelated patches or native drags.
+    effect(move || {
+        let current = node.get();
+        let width = current
+            .props
+            .get("first-pane-width")
+            .and_then(serde_json::Value::as_f64);
+        if source_width.replace(width) == width {
+            return;
+        }
+        let duration = current.number("resize-duration", 0.0) as f32;
+        if duration > 0.0 && !nsh_core::element::reduce_motion() {
+            let curve = if current.string("resize-easing") == "linear" {
+                LayoutCurve::Linear
+            } else {
+                LayoutCurve::EaseInEaseOut
+            };
+            region.animate_layout(LayoutTransition::new(curve, duration));
+        }
+    });
     let props = nsh_base::ResizablePanelGroupProps {
         disabled: Prop::bind(move || !enabled(node)),
         handle_accessibility_label: Prop::bind(move || {
@@ -107,6 +135,7 @@ pub(super) fn element(
                 }),
                 ..Default::default()
             })
+            .overflow_hidden()
             .on_event(move |event: &nsh_base::ResizablePanelEvent| {
                 let nsh_base::ResizablePanelEvent::Resize(size) = event;
                 if index.get_untracked() == 0 {

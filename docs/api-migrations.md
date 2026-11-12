@@ -5256,3 +5256,28 @@ document-level delegated route controller must explicitly register their Link
 press callback and forward its retained node and modifiers to that controller.
 External URL links without a callback keep native system navigation. Rust users
 of the NSH fork must handle its additive `LinkEvent::PressDetail` enum variant.
+
+## NSH split source-size layout motion
+
+NSH split's existing `first_width`, `resize_duration` and standard easing now use the retained ResizablePanelGroup's scoped native layout animation when the
+authored first width changes. `standard` maps to native ease-in-out and `linear`
+to native linear timing. Omitted/zero duration remains immediate. Native divider
+drags remain direct, and other property updates do not request layout animation.
+NSH reduced motion makes source-size updates immediate.
+
+Both native panels clip their retained children, including at zero width.
+Applications must keep closing content mounted and avoid setting display-none
+at the start of a reveal. Reopening retains editor and scroll owners; the native
+platform owns interruption from its current presentation. No application timer
+or intermediate width updates are required.
+
+Ratio `value`, custom handle options and `resize_origin` remain rejected on NSH.
+`emphasized` and `spring` easing remain rejected because NSH's public layout
+transition does not express the existing LUI curves exactly. Web and the
+maintained mobile backends keep their existing curves and options. Applications
+that formerly omitted motion only for NSH can share the standard reveal token:
+
+```ocaml
+split ~first_width:(reactive width) ~resize_duration:300
+  ~resize_easing:`standard left right
+```
