@@ -304,6 +304,18 @@ fn ControlledProbe() -> impl IntoElement {
             "f5",
             json!([{"op":"move-child","parent":1,"child":3,"index":0},{"op":"set-prop","id":2,"property":"label-opacity","value":0.8},{"op":"set-prop","id":2,"property":"indicator-border-color","value":"#0000ff"}]),
         ),
+        (
+            "f7",
+            json!([{"op":"set-prop","id":2,"property":"toggle-detail-enabled","value":true}]),
+        ),
+        (
+            "f8",
+            json!([{"op":"set-prop","id":2,"property":"toggle-enabled","value":false}]),
+        ),
+        (
+            "f9",
+            json!([{"op":"set-prop","id":2,"property":"toggle-detail-enabled","value":false}]),
+        ),
     ] {
         let renderer = renderer.clone();
         let generation = generation.clone();
@@ -330,18 +342,6 @@ fn ControlledProbe() -> impl IntoElement {
             {"op":"set-prop","id":3,"property":"text","value":"must not publish"},
             {"op":"set-prop","id":2,"property":"indicator-border-color","value":"var(--missing-checkbox-border)"}
         ]))).unwrap_err();
-            assert!(
-                invalid
-                    .apply(batch(
-                        next,
-                        json!([
-                            {"op":"set-prop","id":3,"property":"text","value":"must not publish"},
-                            {"op":"set-prop","id":2,"property":"toggle-detail-enabled","value":true}
-                        ])
-                    ))
-                    .unwrap_err()
-                    .contains("native modifier projection")
-            );
             *error.lock().unwrap() = Some(rejected);
             apply(
                 &invalid,
@@ -433,4 +433,69 @@ fn part_color_validation_is_atomic_and_authored_part_changes_keep_the_editor_and
     );
     assert_eq!(identity(&app, "lui-2"), control);
     assert_eq!(identity(&app, "lui-3"), editor);
+}
+
+#[test]
+fn native_checkbox_detail_preserves_pointer_modifiers_and_controlled_proposals_once() {
+    let (mut app, events, _) = start("checkbox");
+    let before = identity(&app, "lui-2");
+    app.press_key("f7").unwrap();
+    app.hold_keys("ctrl+shift+meta+alt", true).unwrap();
+    app.press("role:checkbox[Choose rows]").unwrap();
+    app.hold_keys("ctrl+shift+meta+alt", false).unwrap();
+    assert_eq!(
+        *events.lock().unwrap(),
+        [Event::Toggle(2, true), Event::ToggleDetail(2, true, 15)]
+    );
+    // The application refused the proposal: a plain press still requests true.
+    app.press("role:checkbox[Choose rows]").unwrap();
+    assert_eq!(
+        &events.lock().unwrap()[2..],
+        [Event::Toggle(2, true), Event::ToggleDetail(2, true, 0)]
+    );
+    app.press_key("f2").unwrap();
+    app.press("role:checkbox[Choose rows]").unwrap();
+    assert_eq!(
+        &events.lock().unwrap()[4..],
+        [Event::Toggle(2, false), Event::ToggleDetail(2, false, 0)]
+    );
+    app.press_key("f3").unwrap();
+    app.press_key("f8").unwrap();
+    app.hold_keys("shift", true).unwrap();
+    app.press("role:checkbox[Choose rows]").unwrap();
+    app.hold_keys("shift", false).unwrap();
+    assert_eq!(
+        &events.lock().unwrap()[6..],
+        [Event::ToggleDetail(2, true, 2)]
+    );
+    app.press_key("f9").unwrap();
+    app.press("role:checkbox[Choose rows]").unwrap();
+    assert_eq!(
+        events.lock().unwrap().len(),
+        7,
+        "unsubscribed detail is silent"
+    );
+    assert_eq!(identity(&app, "lui-2"), before);
+}
+
+#[test]
+fn native_checkbox_keyboard_detail_and_disabled_input_share_the_native_owner() {
+    let (mut app, events, _) = start("checkbox");
+    app.press_key("f7").unwrap();
+    app.type_text("id:lui-3", "").unwrap();
+    app.press_key("shift+tab").unwrap();
+    app.press_key("shift+space").unwrap();
+    assert_eq!(
+        *events.lock().unwrap(),
+        [Event::Toggle(2, true), Event::ToggleDetail(2, true, 2)]
+    );
+    app.press_key("space").unwrap();
+    assert_eq!(
+        &events.lock().unwrap()[2..],
+        [Event::Toggle(2, true), Event::ToggleDetail(2, true, 0)]
+    );
+    app.press_key("f4").unwrap();
+    assert!(app.press("role:checkbox[Choose rows]").is_err());
+    app.press_key("space").unwrap();
+    assert_eq!(events.lock().unwrap().len(), 4);
 }

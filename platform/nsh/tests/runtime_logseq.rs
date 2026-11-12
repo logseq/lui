@@ -79,6 +79,25 @@ async fn exercise(path: String) -> Result<(), String> {
         matches!(agent.messages.as_deref(), Some([ApplicationMessage::Batch(batch), ApplicationMessage::PlatformRequest(request)])
             if batch.generation == 4 && request.operation == "agent-probe")
     );
+    // The existing native bridge must receive the exact checked value and all
+    // four physical modifier bits, on its owning worker.
+    session
+        .dispatch(Event::ToggleDetail {
+            node: 29,
+            checked: true,
+            modifiers: 15,
+        })
+        .await?;
+    assert!(
+        session
+            .dispatch(Event::ToggleDetail {
+                node: 29,
+                checked: true,
+                modifiers: 2
+            })
+            .await
+            .is_err()
+    );
     assert!(session.tick().await.is_err());
     assert!(session.pause(true).await.is_err());
     assert!(session.advance(1.0).await.is_err());

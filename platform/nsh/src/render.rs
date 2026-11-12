@@ -48,6 +48,7 @@ pub enum Event {
     NavigatePrevious(u64),
     NavigateNext(u64),
     Toggle(u64, bool),
+    ToggleDetail(u64, bool, i32),
     Value(u64, f64),
     Focus(u64),
     Blur(u64),
@@ -709,6 +710,7 @@ impl Renderer {
                 Event::Submit(_) => Some("submit-enabled"),
                 Event::NavigatePrevious(_) | Event::NavigateNext(_) => Some("navigate-enabled"),
                 Event::Toggle(..) => Some("toggle-enabled"),
+                Event::ToggleDetail(..) => Some("toggle-detail-enabled"),
                 Event::Focus(_) | Event::Blur(_) => Some("focus-within-enabled"),
                 Event::Appear(_) => Some("appear-enabled"),
                 _ => None,
@@ -1291,8 +1293,8 @@ impl Renderer {
                 ui::checkbox(props, theme, state)
                     .state_inline_style(style)
                     .on_event(move |event: &nsh_base::CheckboxEvent| {
-                        let nsh_base::CheckboxEvent::Change(checked) = event;
-                        events.emit(id, incarnation, Event::Toggle(id, *checked));
+                        let (_, event) = ui::checkbox_event(id, event);
+                        events.emit(id, incarnation, event);
                     })
                     .child(body)
                     .element_ref(&reference)

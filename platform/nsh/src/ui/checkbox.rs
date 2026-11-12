@@ -25,13 +25,34 @@ fn border(node: &Node, theme: &ThemeView, checked: bool) -> Result<AdaptiveColor
 /// so an invalid scoped variable cannot fail after native state publication.
 pub(crate) fn validate(node: &Node, theme: &ThemeView) -> Result<(), String> {
     if matches!(node.kind.as_str(), "checkbox" | "toggle") {
-        if node.boolean("toggle-detail-enabled", false) {
-            return Err("NSH Checkbox toggle-detail-enabled=true requires native modifier projection; ordinary on_toggle remains supported".into());
-        }
         border(node, theme, false)?;
         border(node, theme, true)?;
     }
     Ok(())
+}
+
+/// Project the native Checkbox owner's one proposal into each subscribed LUI
+/// event. The toggle-detail mask has physical Alt in bit 3; pointer-detail
+/// uses that bit for a secondary button and is a different contract.
+pub(crate) fn event(
+    id: u64,
+    event: &nsh_base::CheckboxEvent,
+) -> (&'static str, crate::render::Event) {
+    use crate::render::Event;
+    match event {
+        nsh_base::CheckboxEvent::Change(checked) => ("toggle-enabled", Event::Toggle(id, *checked)),
+        nsh_base::CheckboxEvent::ChangeDetail(detail) => (
+            "toggle-detail-enabled",
+            Event::ToggleDetail(
+                id,
+                detail.checked,
+                i32::from(detail.control)
+                    | (i32::from(detail.shift) << 1)
+                    | (i32::from(detail.platform) << 2)
+                    | (i32::from(detail.alt) << 3),
+            ),
+        ),
+    }
 }
 
 pub(crate) fn element(

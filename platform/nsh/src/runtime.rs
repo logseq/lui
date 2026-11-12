@@ -58,6 +58,11 @@ pub enum Event {
         node: i64,
         checked: bool,
     },
+    ToggleDetail {
+        node: i64,
+        checked: bool,
+        modifiers: i32,
+    },
     Value {
         node: i64,
         value: f64,
@@ -389,6 +394,7 @@ type Callback = extern "C" fn(*const c_char);
 type UnitFn = unsafe extern "C" fn() -> i32;
 type NodeFn = unsafe extern "C" fn(i64) -> i32;
 type NodeIntFn = unsafe extern "C" fn(i64, i32) -> i32;
+type ToggleDetailFn = unsafe extern "C" fn(i64, i32, i32) -> i32;
 type ExtensionFn =
     unsafe extern "C" fn(i64, *const c_char, i32, *const c_char, i32, *const c_char, i32) -> i32;
 type TextFn = unsafe extern "C" fn(i64, *const c_char, i32) -> i32;
@@ -415,6 +421,7 @@ struct Exports {
     navigate_previous: Option<NodeFn>,
     navigate_next: Option<NodeFn>,
     toggle: NodeIntFn,
+    toggle_detail: Option<ToggleDetailFn>,
     value: NumberFn,
     focus_within: Option<NodeIntFn>,
     appear: NodeFn,
@@ -499,6 +506,7 @@ impl Native {
                 navigate_previous: optional!("lui_ocaml_navigate_previous"),
                 navigate_next: optional!("lui_ocaml_navigate_next"),
                 toggle: required!("lui_ocaml_toggle_changed"),
+                toggle_detail: optional!("lui_ocaml_toggle_changed_detail"),
                 value: required!("lui_ocaml_slider_changed"),
                 focus_within: optional!("lui_ocaml_focus_within_changed"),
                 appear: required!("lui_ocaml_appear"),
@@ -679,6 +687,17 @@ impl Native {
                             *node
                         ),
                         Event::Toggle { node, checked } => (api.toggle)(*node, i32::from(*checked)),
+                        Event::ToggleDetail {
+                            node,
+                            checked,
+                            modifiers,
+                        } => api
+                            .toggle_detail
+                            .ok_or("OCaml library has no ToggleChangedDetail ABI")?(
+                            *node,
+                            i32::from(*checked),
+                            *modifiers,
+                        ),
                         Event::Value { node, value } => (api.value)(*node, *value),
                         Event::FocusWithin { node, within } => api
                             .focus_within

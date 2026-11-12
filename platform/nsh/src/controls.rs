@@ -665,8 +665,8 @@ pub(crate) fn element(
             presentation.component(
                 ui::checkbox(props, theme, node)
                     .on_event(move |event: &nsh_base::CheckboxEvent| {
-                        let nsh_base::CheckboxEvent::Change(checked) = event;
-                        emit_flag(node, "toggle-enabled", &emit, Event::Toggle(id, *checked));
+                        let (flag, event) = ui::checkbox_event(id, event);
+                        emit_flag(node, flag, &emit, event);
                     })
                     .child(children),
             )

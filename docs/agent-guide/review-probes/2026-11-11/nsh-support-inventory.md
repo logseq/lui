@@ -48,7 +48,7 @@ The JSON output also enumerates canonical events without a renderer transport.
 | `input` | themed base Input or native TimeField | 89/8 | G1, G13, G3 | 7 |
 | `search-field` | themed base Input | 88/8 | G1, G13 | 5 |
 | `textarea` | themed base Input + multiline | 89/8 | G1, G13 | 5 |
-| `checkbox` | themed base Checkbox | 91/6 | G1, G13, G4, G12 | 1 |
+| `checkbox` | themed base Checkbox | 91/6 | G1, G13, G12 | 3 |
 | `switch` | base Switch | 75/5 | G1, G13, G12 | 3 |
 | `progress` | base Progress | 66/3 | G1, G13, G12 | 1 |
 | `divider` | core view separator | 66/3 | G1, G13 | None mapped |
@@ -119,7 +119,6 @@ is not a support guarantee.
 - **G13**: Authored layer alignment remains unimplemented outside local Overlay. Candidate properties: `alignment`.
 - **G11**: Command shortcut hints are not forwarded; built-in icons, placement, size and variants have native bindings outside tabs. Candidate properties: `tooltip-keys`.
 - **G3**: Textarea Enter behavior is forwarded through native SubmitBehavior. Single-line inputs keep native submit/blur defaults; Authored blur submission uses native focus/composition with Enter deduplication; focused unmodified Up/Down forwards native navigation requests; color input remains rejected; valid 24-hour time uses native TimeField, preserving precision, change and submit events without replacing its native input. Empty/invalid times and unavailable editing options fail preflight. Other input hints and full NavigationKey require review. Candidate properties: `input-type`.
-- **G4**: Checkbox routes forward checked/indeterminate/disabled/label; authored indicator/detail behavior remains absent. Candidate properties: `checked-indicator-border-color`, `indicator-border-color`, `label-opacity`, `toggle-detail-enabled`.
 - **G5**: Image forwards canonical URL, alt/label, fit, eager/default loading and native Load. Resource IDs, crop rectangles and authored referrer policy are explicitly rejected; loading=lazy is a value restriction listed separately, not a missing eager-loading path. Candidate properties: `image`, `referrer-policy`, `source-height`, `source-width`, `source-x`, `source-y`.
 - **G8**: Container appearance and CSS list markers are not implemented by the Scroll/VirtualList routes. Candidate properties: `list-style`, `style`.
 - **G9**: Full NavigationKey payload remains unimplemented on generic calendar/container key handlers. Candidate properties: `navigate-enabled`.
@@ -128,15 +127,16 @@ is not a support guarantee.
 - **G10** is retired for current generic host routes: authored activation is now installed with live guards. Radio's true press-enabled value remains explicitly rejected.
 
 Priority 1: remaining typed-control pointer/modifier delivery, navigation
-and capture; remaining input hints; authored checkbox indicators; image resources/crop;
+and capture; remaining input hints; image resources/crop;
 menu-item icons. Priority 2: remaining appearance, class translation or explicit
 rejection, list appearance and metadata.
 
 ## Event, child and default limitations
 
 - Native host routes deliver available modifier/pointer payloads; typed behavior
-  components still expose unit events and do not gain a synthetic observer wrapper.
-  The JSON event-path list is not a claim of full per-field parity. Appearance
+  components generally expose unit events; Checkbox additionally projects native
+  checked/modifier detail without a synthetic observer wrapper. The JSON event-path
+  list is not a claim of full per-field parity. Appearance
   uses the actual existing ref after native materialization, including disabled
   controls; it is not an OS-visible-frame notification.
 - Scroll forwards a static horizontal axis to native Scroll.horizontal; absent or
@@ -289,18 +289,18 @@ uses the concrete route bodies, not literal presence alone.
 | `white_space.rs` | `33178d9ee60ca72b320d5a9a4c28e6221373af6ccca5c3f2c68dd452ea8ecd21` |
 | `application_icons.rs` | `08b05108b92c3f3b95bca631908a93a11b56c73baba38ad485e358298f828142` |
 | `application_theme.rs` | `65305cce169f08b1b7d25106795d2502e4edccd463110b5fd2fb0f75db0bce56` |
-| `runtime.rs` | `1ec8c500239eb0f8a56db1b9129f74d2493a3d839cf2ce2ce4ec1bb4eb5dbd22` |
+| `runtime.rs` | `47e8d7ac72d744b6912111dcd8cb845a611fa8ea2ad8b8729d87cb61fd0cb9f9` |
 | `runtime/driver.rs` | `af4a4763fd9c3ce77a1178f251e35ed7d88db4dc2dae62636b6f94e212b6866e` |
 | `extensions/mod.rs` | `42e4029b331a10c52d9bc0a416fdf85980cf15fcfdedfaa5325e19d7a2b9d000` |
 | `extensions/schema.rs` | `13e599099f8943fc864ae1f470674a2d39733383ad0cce367f8ccc87b6f7ac33` |
 | `extensions/host.rs` | `bf9d9c3033b5931a8b0b585b9b2c5708f733bf1b336c41c1e51803eb6530ff0a` |
-| `ui/checkbox.rs` | `a613b40f06905e472a04e5558103c76cc4d18981f587c9be8a3a1946a761512c` |
-| `render.rs` | `9655e658ce04399d231f016b0825125fab2b3b0dd8a69fc48de934c20fb0b1e7` |
-| `controls.rs` | `28d8f2e4c1cb3419c88b663be183b8030b1b716237aa8b2ecd395beebe985c9e` |
+| `ui/checkbox.rs` | `bc9f2e79e01ed5452a05372c8269978d8d72a35dbf1eee7f6ead0824e5b4b536` |
+| `render.rs` | `037534071325f3ab14e922a4a62d4fe2976499d9b27f4420045ab4fefffa206e` |
+| `controls.rs` | `53a9f9387f55b25f786e6556c4db3bd113975f1228b486089b7d361e38180850` |
 | `style.rs` | `ac66143c44cbd6c6236b7b7cee86c5c4f7e1728004e9894819c02387fe01be9e` |
 | `virtual_rows.rs` | `dfd69a7308191d33d80523afe0fa0df5b1ca9028cccaa642fa761fbdfd61fb5b` |
-| `app.rs` | `e119c8c762cc32b247b363f95ff99f01beb371bda6c300f6fecf33e6435ea94b` |
-| `ui/mod.rs` | `1d2cfcebfbb8b0cf7b4d38f13795cb86afc3eeacc922b7e56d8da28092735d56` |
+| `app.rs` | `a46e260926f5278e263856f2f2994bbe561c8c45af17b0609c9ecbbf3953194d` |
+| `ui/mod.rs` | `5618167225c683d243f629b5d42d828997eca023f3794c200d92f30de7657171` |
 | `ui/controls.rs` | `5bdbbcce9067ed597ae60443878e76d4fc72c7609d7e40af31a3909a2ab515e2` |
 | `events.rs` | `eb9addb27f70d21b0fdaff507f869ad6ebbede6be1e031f1d64b6b4aa86a1d03` |
 | `ui/icons.rs` | `ebcaedaa770c035305fca721bac02d0597c3f90c1729cb1100a5fb78be1b8c1e` |

@@ -4,7 +4,7 @@ pub(crate) mod context_menu;
 pub(crate) mod controls;
 mod icons;
 pub(crate) mod menu_item;
-pub(crate) use checkbox::element as checkbox;
+pub(crate) use checkbox::{element as checkbox, event as checkbox_event};
 
 use crate::style::ThemeView;
 use nsh_core::{

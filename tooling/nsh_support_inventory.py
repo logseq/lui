@@ -136,7 +136,6 @@ GAPS = {
     "G13": (set(ROUTES) - {"overlay"}, {"alignment"}, "Authored layer alignment remains unimplemented outside local Overlay."),
     "G11": ({"button", "toggle-button"}, {"tooltip-keys"}, "Command shortcut hints are not forwarded; built-in icons, placement, size and variants have native bindings outside tabs."),
     "G3": ({"text-field", "secure-field", "input", "search-field", "textarea", "combobox"}, {"input-type"}, "Textarea Enter behavior is forwarded through native SubmitBehavior. Single-line inputs keep native submit/blur defaults; Authored blur submission uses native focus/composition with Enter deduplication; focused unmodified Up/Down forwards native navigation requests; color input remains rejected; valid 24-hour time uses native TimeField, preserving precision, change and submit events without replacing its native input. Empty/invalid times and unavailable editing options fail preflight. Other input hints and full NavigationKey require review."),
-    "G4": ({"checkbox", "toggle"}, {"label-opacity", "indicator-border-color", "checked-indicator-border-color", "toggle-detail-enabled"}, "Checkbox routes forward checked/indeterminate/disabled/label; authored indicator/detail behavior remains absent."),
     "G5": ({"image"}, {"image", "source-x", "source-y", "source-width", "source-height", "referrer-policy"}, "Image forwards canonical URL, alt/label, fit, eager/default loading and native Load. Resource IDs, crop rectangles and authored referrer policy are explicitly rejected; loading=lazy is a value restriction listed separately, not a missing eager-loading path."),
     "G8": ({"list", "virtual-list"}, {"style", "list-style"}, "Container appearance and CSS list markers are not implemented by the Scroll/VirtualList routes."),
     "G9": ({"button", "row", "box"}, {"navigate-enabled"}, "Full NavigationKey payload remains unimplemented on generic calendar/container key handlers."),
@@ -182,7 +181,7 @@ TESTS = {
     "timeline": ["timeline_uses_live_content_marker_precedence_and_retains_its_host", "timeline_item_preserves_native_pointer_modifiers_and_keyboard_activation"],
     "timeline-item": ["timeline_uses_live_content_marker_precedence_and_retains_its_host", "timeline_item_preserves_native_pointer_modifiers_and_keyboard_activation"],
     "split": ['native_equal_panels_keep_user_sizes_without_model_echo_and_report_pixels_once', 'native_pixel_source_update_and_keyed_reorder_retain_both_editors_and_focus', 'native_constraints_and_notification_disable_do_not_add_a_second_resize_policy', 'native_rtl_report_selects_the_first_logical_panel_and_legacy_options_reject'],
-    "checkbox": ["native_checkbox_mixed_state_is_controlled_until_the_model_resolves_it"],
+    "checkbox": ["native_checkbox_mixed_state_is_controlled_until_the_model_resolves_it", "native_checkbox_detail_preserves_pointer_modifiers_and_controlled_proposals_once", "native_checkbox_keyboard_detail_and_disabled_input_share_the_native_owner"],
     "switch": ["switch_follows_accepted_press_and_keyboard_values_without_duplicate_events", "refused_switch_requests_keep_native_identity_and_accepted_value", "disabled_switch_takes_no_user_event"],
     "toggle-button": ["toggle_button_exposes_pressed_semantics_and_uses_selected_as_value"],
     "radio": ["radio_reports_change_before_toggle_and_cannot_uncheck_itself", "unsupported_activation_contracts_fail_before_mounting"],
@@ -211,7 +210,7 @@ TESTS = {
 
 EMITTED = {
     "button": {"press", "press-modifiers"}, "menu-item": {"press", "press-modifiers"},
-    "toggle-button": {"toggle-changed"}, "toggle": {"toggle-changed"}, "checkbox": {"toggle-changed"}, "switch": {"toggle-changed"},
+    "toggle-button": {"toggle-changed"}, "toggle": {"toggle-changed", "toggle-changed-detail"}, "checkbox": {"toggle-changed", "toggle-changed-detail"}, "switch": {"toggle-changed"},
     "radio": {"change", "toggle-changed"}, "slider": {"value-changed"}, "number-stepper": {"value-changed"},
     "select": {"press", "press-modifiers"}, "combobox": {"press", "press-modifiers", "text-changed", "submit"},
     "drawer": {"toggle-changed"}, "list-item": {"press", "toggle-changed"},
@@ -314,9 +313,9 @@ def markdown(data):
     for key, (_, properties, description) in GAPS.items():
         rows += [f"- **{key}**: {description} Candidate properties: " + ", ".join(f"`{prop}`" for prop in sorted(properties)) + "."]
     rows += ["- **G10** is retired for current generic host routes: authored activation is now installed with live guards. Radio's true press-enabled value remains explicitly rejected.", "",
-             "Priority 1: remaining typed-control pointer/modifier delivery, navigation", "and capture; remaining input hints; authored checkbox indicators; image resources/crop;", "menu-item icons. Priority 2: remaining appearance, class translation or explicit", "rejection, list appearance and metadata.", "",
+             "Priority 1: remaining typed-control pointer/modifier delivery, navigation", "and capture; remaining input hints; image resources/crop;", "menu-item icons. Priority 2: remaining appearance, class translation or explicit", "rejection, list appearance and metadata.", "",
              "## Event, child and default limitations", "",
-             "- Native host routes deliver available modifier/pointer payloads; typed behavior", "  components still expose unit events and do not gain a synthetic observer wrapper.", "  The JSON event-path list is not a claim of full per-field parity. Appearance", "  uses the actual existing ref after native materialization, including disabled", "  controls; it is not an OS-visible-frame notification.",
+             "- Native host routes deliver available modifier/pointer payloads; typed behavior", "  components generally expose unit events; Checkbox additionally projects native", "  checked/modifier detail without a synthetic observer wrapper. The JSON event-path", "  list is not a claim of full per-field parity. Appearance", "  uses the actual existing ref after native materialization, including disabled", "  controls; it is not an OS-visible-frame notification.",
              "- Scroll forwards a static horizontal axis to native Scroll.horizontal; absent or",
              "  explicit vertical uses its native default. Axis changes require a new keyed",
              "  node, while ordinary edits preserve native content/offset/editor identity.",

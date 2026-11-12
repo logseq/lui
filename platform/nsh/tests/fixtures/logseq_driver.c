@@ -63,6 +63,9 @@ NODE(lui_ocaml_radio_changed)
 NODE(lui_ocaml_dismiss)
 int32_t lui_ocaml_press_ex(int64_t n, int32_t m) { (void)n; (void)m; return same_thread(); }
 int32_t lui_ocaml_toggle_changed(int64_t n, int32_t v) { (void)n; (void)v; return same_thread(); }
+int32_t lui_ocaml_toggle_changed_detail(int64_t node, int32_t checked, int32_t modifiers) {
+  return same_thread() && node == 29 && checked == 1 && modifiers == 15;
+}
 int32_t lui_ocaml_slider_changed(int64_t n, double v) { (void)n; (void)v; return same_thread(); }
 int32_t lui_ocaml_text_changed_utf8(int64_t n, const char *s, int32_t l) { (void)n; (void)s; (void)l; return same_thread(); }
 int32_t lui_ocaml_visible_range(int64_t n, int64_t a, int64_t b) { (void)n; (void)a; (void)b; return same_thread(); }

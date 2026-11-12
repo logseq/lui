@@ -195,6 +195,7 @@ impl GuardedEvent {
             | ViewEvent::NavigatePrevious(node)
             | ViewEvent::NavigateNext(node)
             | ViewEvent::Toggle(node, _)
+            | ViewEvent::ToggleDetail(node, _, _)
             | ViewEvent::Value(node, _)
             | ViewEvent::Focus(node)
             | ViewEvent::Blur(node)
@@ -301,6 +302,7 @@ fn renderer_event_mutates(event: &ViewEvent) -> bool {
         | ViewEvent::NavigatePrevious(_)
         | ViewEvent::NavigateNext(_)
         | ViewEvent::Toggle(..)
+        | ViewEvent::ToggleDetail(..)
         | ViewEvent::Value(..)
         | ViewEvent::Focus(_)
         | ViewEvent::Blur(_)
@@ -742,6 +744,11 @@ fn semantic(event: ViewEvent) -> Event {
         ViewEvent::Toggle(node, checked) => Event::Toggle {
             node: node as i64,
             checked,
+        },
+        ViewEvent::ToggleDetail(node, checked, modifiers) => Event::ToggleDetail {
+            node: node as i64,
+            checked,
+            modifiers,
         },
         ViewEvent::Value(node, value) => Event::Value {
             node: node as i64,

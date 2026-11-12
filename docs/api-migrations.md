@@ -4098,29 +4098,42 @@ checked/mixed accessibility state and the requested next boolean. Mobile's
 `shared/src/logseq/view_property.ml:228` uses ordinary `on_toggle`; no Journal UI
 Checkbox detail callback was found. Their ordinary boolean path remains intact.
 
-### Shift selection remains an explicit native event gap
+### NSH Checkbox preserves native activation modifiers
 
-`toggle-detail-enabled=true` now fails atomically on NSH Checkbox/Toggle instead
-of admitting a callback with no producer. False remains allowed. Logseq's table
-`on_toggle_detail` at `views/views_table.ml:328` reads Shift from
-`ToggleChangedDetail(_,checked,modifiers)` for range selection; changing that
-caller to ordinary `on_toggle` would lose required behavior and is not a valid
-migration. Keep the requirement open until a real native modifier projection is
-available. No zero modifier is synthesized and no second toggle is replayed.
+NSH Checkbox/Toggle now accepts `toggle-detail-enabled=true`. The existing LUI
+`on_toggle_detail` callback receives the native Checkbox's requested value and
+modifier mask: Control=1, Shift=2, Command/Super=4, Option/Alt=8. An ordinary
+`on_toggle` callback still receives one boolean proposal per activation. When
+both callbacks are subscribed, each receives that same proposal once; the
+application should apply the change from one callback only.
 
-The public API boundary is concrete in the pinned NSH source:
-`crates/nsh-base/src/checkbox.rs` exposes only `CheckboxEvent::Change(bool)` and
-its root `on_press` decodes `&()`, discarding `PressEvent`. The
-`ComponentElement` contract in `crates/nsh-core/src/element/builder.rs` explicitly
-excludes `Interactive`; its public `on_event` only observes typed events.
-`ElementRef` has no raw press observation API. An indicator Slot cannot observe
-presses on the label, extended hit area or keyboard activation; giving it a
-press listener also takes ownership away from the native Checkbox root.
-Ancestor press routing chooses a press target rather than providing a bubbling
-modifier observer. A keyboard-only modifier snapshot would not recover real
-pointer Shift presses. Therefore this increment changes only native part
-presentation and the explicit validation boundary; it does not claim Shift
-Checkbox selection parity or alter NSH's event API.
+```ocaml
+checkbox ~checked:true
+  ~on_toggle_detail:(function
+    | Lui_protocol.ToggleChangedDetail (_, checked, modifiers) ->
+        select_row ~extend:(modifiers land 2 <> 0) checked
+    | _ -> ())
+  []
+```
+
+The adapter reuses the NSH Checkbox root's press owner and its typed
+`ChangeDetail` event. Pointer modifiers come from the native press. Focused
+Space/Return on macOS and Linux carry the activating keyboard event's modifiers;
+accessibility activation has no physical key event and reports zero. Disabled
+controls remain silent, mixed state still requests checked, and checked state
+remains application controlled. Changing either callback's live subscription
+flag does not remount the control or surrounding editors.
+
+The Rust host loads the existing `lui_ocaml_toggle_changed_detail(node, checked,
+modifiers)` bridge export and dispatches `ToggleChangedDetail` through it. This
+requires a native bridge exporting that symbol when detail is used. Existing
+ordinary-toggle applications do not require it. No LUI constructor or wire
+schema changed, so Logseq table range-selection callers retain their API.
+
+The NSH fork adds `CheckboxEvent::ChangeDetail(CheckboxChangeDetail)` alongside
+`Change(bool)`. Rust exhaustive matches on that dependency enum must handle the
+new variant. Its original boolean handler and TSX `onChange` payload remain
+unchanged. Native OS qualification is recorded separately from source tests.
 
 ### NSH application extension registrations
 
