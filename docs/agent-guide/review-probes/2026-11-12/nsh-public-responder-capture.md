@@ -50,3 +50,38 @@ prototype's move-claim case tests one public policy that preserves a normal
 child tap, without asserting that this policy implements every LUI caller's
 capture contract. Production mapping remains separate until these assertions
 pass and native mouse, cancellation and target semantics have direct evidence.
+
+## Follow-up: actual AppKit held-mouse routing
+
+The private Rust probe in ignored `_build/nsh-native-dnd-proof/` passed all four
+native macOS cases against immutable NSH `adc186d` in 43.0 seconds. It registers
+only its private probe UI set required by the CLI; it changes no shipping API,
+NSH source, application bridge or graph. The public native `app.drag` driver
+sends held `LeftMouseDragged` events through the fixture's own AppKit window.
+This is separate from the Headless Touch observations above.
+
+The passing cases establish:
+
+- A claims after four points of movement while B and C receive actual held-Left
+  mouse movement. C receives current-target MouseUp before A's captured release;
+  the fixture observes exactly one C drop and no source click.
+- Releasing over blank root space cancels instead of accepting a stale C target.
+- Removing A during movement through B clears its scope-owned active state and
+  rejects the subsequent C release, without relying on a dead responder's
+  termination callback.
+- An ordinary source click invokes exactly one action and never grants capture.
+
+Current destination identity comes from public `on_mouse_move`/`on_mouse_up`
+listeners, with local coordinates and modifiers from `MouseEvent`; no current
+hit-test API or geometry cache is needed for this narrow route. Recorded native
+mouse modifiers were all false. Actual held-Alt input, in-drag focus/Escape
+cancellation, Scroll arbitration, autoscroll, stationary-pointer repicking,
+Windows/Linux execution and production editor identity remain unqualified.
+
+This move-threshold proof does **not** implement canonical `pointer_capture`:
+that property owns an admitted primary gesture from Down and suppresses
+automatic activation. Immediate capture, typed Down ownership and interactive
+descendant suppression require their own proof. The production capture mapping
+and native `Block_dnd` implementation remain incomplete. Full native traces are
+retained in ignored `_build/nsh-native-dnd-proof/run.log` and
+`/tmp/lui-native-dnd-proof.log`.
