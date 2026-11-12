@@ -1,5 +1,25 @@
 # LUI API migration guide
 
+## NSH relative font sizes use native text inheritance
+
+The NSH backend now accepts every finite nonnegative `em` font-size ratio,
+including `~font_size:"0.5em"` and `~font_size:"1.5em"`; these previously failed
+at runtime unless the ratio was exactly one. The existing wire field stays
+`font-size`. A node scales its actual NSH parent's resolved font size, including
+native heading/control typography, before its own line height is resolved.
+Nested explicit ratios multiply; descendants without a font size inherit the
+computed points once. Parent updates recompute through NSH's existing retained
+text pipeline.
+
+For example, a `20px` container with a `1.5em` child and `0.5em` grandchild
+resolves to 30pt and 15pt. Updating that container to `32px` yields 48pt and 24pt
+without replacing either node. `1em` retains its existing inherited meaning,
+and point/`px`/`rem` values retain their existing meaning. Apple/iOS, Android and
+Web adapters are unchanged. Downstream applications need the updated pinned
+NSH fork for this additive typed style capability; no LUI call-site migration
+is required. Invalid, nonfinite and negative dynamic ratios are still rejected
+atomically before a batch publishes.
+
 ## Virtual lists can use the surrounding NSH Scroll viewport
 
 `Lui_elements.virtual_list` adds `?viewport:virtual_viewport`, where
@@ -4416,9 +4436,9 @@ inheritance. For example, ``column ~font_size:"24px" [text ~font_size:"1em"
 ~value:"Inherited" []]`` uses the parent's 24-point size and follows later parent
 size changes without replacing the child. It does not substitute a fixed 16.
 
-Point/`px` sizes and the existing NSH root `rem` unit retain their behavior. Other
-`em` multipliers remain an explicit capability error until actual parent metrics
-can be supplied; they are never approximated from the root size. The internal
+Point/`px` sizes and the existing NSH root `rem` unit retain their behavior.
+All finite nonnegative `em` ratios now use the same native inheritance path
+(see "NSH relative font sizes use native text inheritance" above). The internal
 unit parser and native translation use an exhaustive typed representation. No
 common OCaml constructor or wire scalar changes.
 

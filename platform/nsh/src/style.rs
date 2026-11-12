@@ -770,17 +770,7 @@ impl FontSize {
         let points = match self {
             Self::Points(points) => points,
             Self::RootRem(value) => px(value * nsh_core::geometry::REM_SIZE.0),
-            Self::Em(value) => {
-                if value == 1.0 {
-                    // Unset the node's own size so the native text resolver
-                    // inherits its actual parent, including live changes.
-                    return Ok(PropertyValue::OptPoints(None));
-                }
-                return Err(
-                    "NSH font-size em scaling other than 1em requires an inherited parent metric"
-                        .into(),
-                );
-            }
+            Self::Em(value) => return Ok(PropertyValue::FontSizeEm(value.into())),
         };
         if !points.0.is_finite() {
             return Err("NSH font-size exceeds the native point range".into());
@@ -1626,8 +1616,10 @@ mod tests {
             ("18", PropertyValue::OptPoints(Some(px(18.0)))),
             ("18px", PropertyValue::OptPoints(Some(px(18.0)))),
             ("1.25rem", PropertyValue::OptPoints(Some(px(20.0)))),
-            ("1em", PropertyValue::OptPoints(None)),
-            ("1.0em", PropertyValue::OptPoints(None)),
+            ("1em", PropertyValue::FontSizeEm(1.0.into())),
+            ("1.0em", PropertyValue::FontSizeEm(1.0.into())),
+            ("2em", PropertyValue::FontSizeEm(2.0.into())),
+            ("0.5em", PropertyValue::FontSizeEm(0.5.into())),
         ] {
             assert_eq!(
                 FontSize::parse(text).unwrap().native().unwrap(),
@@ -1636,7 +1628,7 @@ mod tests {
             );
         }
         for text in [
-            "2em", "0.5em", "12pt", "125%", "NaNpx", "1e100px", "-2px", "huge",
+            "-0.5em", "NaNem", "1e100em", "12pt", "125%", "NaNpx", "1e100px", "-2px", "huge",
         ] {
             assert!(
                 FontSize::parse(text).and_then(FontSize::native).is_err(),
