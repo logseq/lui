@@ -4,12 +4,13 @@ import test from 'node:test'
 
 const build = process.env.LUI_TEST_BUILD_DIR ?? '_build'
 const modules = new URL(`../../../${build}/default/examples/components/web/lui-components-web/node_modules/`, import.meta.url)
-const [Store, Protocol, Schema, Events, Props] = await Promise.all([
+const [Store, Protocol, Schema, Events, Props, Hashtbl] = await Promise.all([
   import(new URL('lui.web.dom/core/lui_web_store.js', modules)),
   import(new URL('lui/lui_protocol.js', modules)),
   import(new URL('lui/lui_wire_schema.js', modules)),
   import(new URL('lui.web.dom/events/lui_web_events.js', modules)),
   import(new URL('lui.web.dom/render/lui_web_props.js', modules)),
+  import(new URL('melange/hashtbl.js', modules)),
 ])
 const schema = JSON.parse(await readFile(new URL('../../../schema/components.json', import.meta.url)))
 const tag = name => schema.events.findIndex(event => event.lg === name)
@@ -27,7 +28,11 @@ function fixture(kindName) {
   const element = {nodeType: 1, tagName: kindName === 'textarea' ? 'TEXTAREA' : 'INPUT', value: 'draft',
     setAttribute() {}, removeAttribute() {}, addEventListener: (name, handler) => listeners.set(name, handler)}
   let blurDuringDismiss = false
-  const renderer = {web_store: store, web_event_handler: {contents: event => {
+  const renderer = {web_store: store,
+    web_appear_pending: Hashtbl.create(undefined, 4),
+    web_appear_seen: Hashtbl.create(undefined, 4),
+    web_appear_timer: {contents: undefined},
+    web_event_handler: {contents: event => {
     events.push(event)
     if (event.TAG === tag('Dismiss') && blurDuringDismiss) listeners.get('blur')({})
     return true
