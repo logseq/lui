@@ -1,5 +1,16 @@
 # LUI API migration guide
 
+## NSH packaging uses the release feature policy consistently
+
+The immutable SDK/CLI source pin is now
+`adc186db7213f3ccd1eacaa836cc721e9779fd14` on `logseq/nsh`. It preserves the
+existing runtime APIs and fixes the CLI's native package command to use the same
+empty development-feature hack as `nsh build`. Applications needing an optional
+runtime feature must declare it in their own dependencies, as for ordinary builds.
+No LUI constructor, callback or wire payload changes are required. Delivery keeps
+strict generated-manifest and lock comparisons; this pin does not itself establish
+macOS, Windows or Linux package/upgrade qualification.
+
 ## Desktop delivery records and checks generated runner manifests
 
 New delivery receipts add `generatedManifestHashes`, a map from paths relative

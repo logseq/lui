@@ -1,7 +1,10 @@
 # NSH package feature-policy proposal
 
-Status: unpublished source proposal; no new dependency pin, CLI installation,
-package, build or test result is claimed here.
+Status: the minimal CLI correction is published on the authorized `fork/logseq`
+branch as `adc186db7213f3ccd1eacaa836cc721e9779fd14` and selected by LUI's immutable
+NSH dependency pin. The focused regressions, 218 CLI unit tests and strict
+all-target Clippy passed; three unrelated Web/benchmark cases remain intentionally
+ignored. Fresh native package and upgrade qualification is still pending.
 
 ## Observed failures
 
@@ -38,8 +41,7 @@ to satisfy this unintended development feature union would obscure the Rust-only
 shipping boundary. This is not evidence that the standalone CLI executable or
 the intended Rust runner needs an additional JavaScriptCore dependency.
 
-Unpublished proposal `adc186d`, branch `fix/package-feature-policy-proposal`,
-removes only the package-specific unification exception. Public `nsh build`
+Correction `adc186d` removes only the package-specific unification exception. Public `nsh build`
 and `nsh package` then select the same existing empty-hack generation policy.
 Test, run and development-command policy remains unchanged. Regression source
 checks the actual parsed command policy for Rust-root and mixed entries across
@@ -50,8 +52,9 @@ dependency tree or package-lock bypass is added.
 The LUI wrapper independently retains its generated-lock equality check and adds
 manifest equality checks before publishing final archives. Expected lock or
 manifest hashes are never refreshed after the package command. Existing pinned
-CLI receipts remain authoritative; the proposal must be reviewed, tested and
-explicitly admitted before any fork publication or immutable pin update.
+CLI receipts remain authoritative. The published correction was reviewed against
+`2635333`, tested in isolation and added to the authorized fork; no extra public
+API or application-specific SDK behavior was introduced.
 
 ## Required verification
 
