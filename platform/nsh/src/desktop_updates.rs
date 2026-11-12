@@ -218,7 +218,11 @@ struct Actions {
 
 enum State {
     Disabled,
-    Unavailable { owner: Owner, error: String },
+    Unavailable {
+        owner: Owner,
+        error: String,
+        busy: Signal<bool>,
+    },
     Ready(Rc<Actions>),
 }
 
@@ -246,6 +250,7 @@ impl UpdateActions {
                 Self(Rc::new(State::Unavailable {
                     owner: Owner::current(),
                     error,
+                    busy: signal(false),
                 }))
             }
         }
@@ -284,8 +289,11 @@ impl UpdateActions {
     /// Read in the app's existing effect to share its menu's busy state.
     /// This subscribes to the same phase signal; it creates no polling task.
     pub fn is_busy(&self) -> bool {
-        matches!(&*self.0, State::Ready(actions)
-            if actions.owner.is_live() && actions.phase.get() != Phase::Idle)
+        match &*self.0 {
+            State::Ready(actions) => actions.owner.is_live() && actions.phase.get() != Phase::Idle,
+            State::Unavailable { owner, busy, .. } => owner.is_live() && busy.get(),
+            State::Disabled => false,
+        }
     }
     /// Check again from an application control using this same updater owner,
     /// translated dialogs and installation lifecycle. A retained downloaded
@@ -296,8 +304,8 @@ impl UpdateActions {
         labels.validate()?;
         match &*self.0 {
             State::Disabled => Ok(false),
-            State::Unavailable { owner, error } => {
-                Ok(show_unavailable(*owner, error.clone(), labels))
+            State::Unavailable { owner, error, busy } => {
+                Ok(show_unavailable(*owner, *busy, error.clone(), labels))
             }
             State::Ready(actions) => {
                 if !actions.owner.is_live() || actions.phase.get_untracked() != Phase::Idle {
@@ -313,16 +321,19 @@ impl UpdateActions {
     pub fn menu_items(&self, labels: UpdateLabels) -> Vec<MenuItem> {
         match &*self.0 {
             State::Disabled => Vec::new(),
-            State::Unavailable { owner, error } => {
+            State::Unavailable { owner, error, busy } => {
                 if !owner.is_live() {
                     return Vec::new();
                 }
                 let owner = *owner;
                 let error = error.clone();
+                let busy = *busy;
                 vec![
-                    MenuItem::new(labels.menu_unavailable.clone()).on_select(move || {
-                        show_unavailable(owner, error.clone(), labels.clone());
-                    }),
+                    MenuItem::new(labels.menu_unavailable.clone())
+                        .disabled(busy.get())
+                        .on_select(move || {
+                            show_unavailable(owner, busy, error.clone(), labels.clone());
+                        }),
                 ]
             }
             State::Ready(actions) => {
@@ -374,12 +385,18 @@ impl UpdateActions {
     }
 }
 
-fn show_unavailable(owner: Owner, error: String, labels: UpdateLabels) -> bool {
-    if !owner.is_live() {
+fn show_unavailable(owner: Owner, busy: Signal<bool>, error: String, labels: UpdateLabels) -> bool {
+    if !owner.is_live() || busy.get_untracked() {
         return false;
     }
+    busy.set(true);
     owner.run(move || {
-        spawn(async move { show_error(error, &labels).await });
+        spawn(async move {
+            show_error(error, &labels).await;
+            if owner.is_live() {
+                busy.set(false);
+            }
+        });
     });
     true
 }
@@ -926,6 +943,52 @@ mod tests {
             ..UpdateLabels::default()
         };
         assert!(updates.check_for_updates(invalid).is_err());
+    }
+
+    #[component]
+    fn UnavailableCheckProbe() -> impl IntoElement {
+        let updates = UpdateActions(Rc::new(State::Unavailable {
+            owner: Owner::current(),
+            error: "Invalid installed update configuration".into(),
+            busy: signal(false),
+        }));
+        let observed = updates.clone();
+        let decisions = signal(Vec::<bool>::new());
+        view()
+            .child(
+                button()
+                    .on_press(move || {
+                        let first = updates.check_for_updates(UpdateLabels::default()).unwrap();
+                        let repeated = updates.check_for_updates(UpdateLabels::default()).unwrap();
+                        decisions.set(vec![first, repeated]);
+                    })
+                    .child(text("Check unavailable source")),
+            )
+            .child(text(move || {
+                format!(
+                    "error busy={} accepted={:?}",
+                    observed.is_busy(),
+                    decisions.get()
+                )
+            }))
+    }
+    #[test]
+    fn unavailable_checks_share_one_busy_dialog_and_rearm_only_after_it_closes() {
+        let mut app =
+            Headless::start(EngineConfig::new(Root::of::<UnavailableCheckProbe>())).unwrap();
+        app.answer_dialogs_myself();
+        app.wait_for("text:error busy=false accepted=[]").unwrap();
+        for _ in 0..2 {
+            app.press("text:Check unavailable source").unwrap();
+            wait_dialog(&mut app);
+            wait_status(&mut app, "error busy=true accepted=[true, false]");
+            app.answer_dialog(DialogAnswer::Press("OK".into())).unwrap();
+            wait_status(&mut app, "error busy=false accepted=[true, false]");
+            assert!(
+                app.pending_dialog().is_none(),
+                "no repeated error sheet is queued"
+            );
+        }
     }
 
     #[test]

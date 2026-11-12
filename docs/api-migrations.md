@@ -8,6 +8,9 @@ same updater owner and translated dialogs as the native menu, and returns
 `Ok(true)` only when it accepts the action. An unconfigured, busy or retired
 owner returns `Ok(false)` without starting work. Invalid configuration uses the
 existing unavailable-action error dialog; invalid dynamic labels return `Err`.
+An unavailable configuration shares one owner-local busy signal between its
+menu and public action: repeated requests cannot stack error sheets, and the
+action rearms only after that sheet settles while its owner remains live.
 
 This explicit Check action discards a retained downloaded offer and checks
 again, matching the menu's existing secondary Check action. It does not install
