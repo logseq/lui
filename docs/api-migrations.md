@@ -14,7 +14,10 @@ bridge through their nearest existing layer ancestor, or retain ordinary AppKit
 conversion when no layers exist. Diagnostics create no layers, mutate no layout
 or scroll state, and do not activate a window. A cycle, disconnected content root,
 nonfinite transformed point or ancestry exceeding the existing 64-view budget
-returns an error instead of invented geometry. This reports current model-layer
+returns an error instead of invented geometry. Existing backing layers must also
+share a connected, cycle-free ancestry within that budget; an off-window NSView
+tree with disconnected layers cannot produce a trustworthy layer conversion.
+This reports current model-layer
 geometry; it does not claim WindowServer/presentation-animation pixel bounds.
 Consumers can keep their existing visibility/intersection predicates unchanged.
 

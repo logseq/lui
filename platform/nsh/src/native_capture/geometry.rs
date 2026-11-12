@@ -42,6 +42,27 @@ pub(super) fn content_bounds(view: &NSView, content: &NSView) -> Result<[f64; 4]
         .iter()
         .rev()
         .find_map(|view| view.layer().map(|layer| (view, layer)));
+    if let (Some((_, source)), Some((_, target))) = (&first, &last) {
+        let mut current = Some(source.clone());
+        let mut visited = std::collections::HashSet::new();
+        let mut connected = false;
+        while let Some(layer) = current {
+            if !visited.insert(std::ptr::from_ref(&*layer)) {
+                return Err("native bounds layer ancestry contains a cycle".into());
+            }
+            if std::ptr::eq(&*layer, &**target) {
+                connected = true;
+                break;
+            }
+            if visited.len() == ANCESTOR_LIMIT {
+                return Err("native bounds layer ancestry exceeds its conversion budget".into());
+            }
+            current = layer.superlayer();
+        }
+        if !connected {
+            return Err("native bounds backing layers are disconnected".into());
+        }
+    }
     let bounds = view.bounds();
     let (mut min_x, mut min_y, mut max_x, mut max_y) = (
         f64::INFINITY,

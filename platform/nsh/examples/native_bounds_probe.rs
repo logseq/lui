@@ -1,4 +1,4 @@
-//! Explicit AppKit geometry qualification; creates no window or desktop input.
+//! Explicit AppKit geometry qualification; never orders or activates its window.
 #[cfg(target_os = "macos")]
 #[path = "../src/native_capture/geometry.rs"]
 mod geometry;
@@ -7,7 +7,9 @@ mod geometry;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     use nsh_platform_macos::{
         objc2::{MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained},
-        objc2_app_kit::{NSApplication, NSResponder, NSView},
+        objc2_app_kit::{
+            NSApplication, NSBackingStoreType, NSResponder, NSView, NSWindow, NSWindowStyleMask,
+        },
         objc2_foundation::{NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize},
     };
     define_class!(
@@ -24,6 +26,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     fn rect(x: f64, y: f64, width: f64, height: f64) -> NSRect {
         NSRect::new(NSPoint::new(x, y), NSSize::new(width, height))
+    }
+    struct ProbeWindow(Retained<NSWindow>);
+    impl Drop for ProbeWindow {
+        fn drop(&mut self) {
+            self.0.close();
+        }
     }
     fn flipped(main: MainThreadMarker, frame: NSRect) -> Retained<FlippedView> {
         let view = main.alloc::<FlippedView>().set_ivars(());
@@ -89,6 +97,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     root.addSubview(&scroll);
     scroll.addSubview(&row);
     row.addSubview(&child);
+    // SAFETY: a private positive-size borderless AppKit window on its main
+    // thread. It is retained, never ordered/activated, and closes on scope exit.
+    let window = ProbeWindow(unsafe {
+        let window = NSWindow::initWithContentRect_styleMask_backing_defer(
+            main.alloc(),
+            rect(-10_000.0, -10_000.0, 800.0, 600.0),
+            NSWindowStyleMask::Borderless,
+            NSBackingStoreType::Buffered,
+            false,
+        );
+        window.setReleasedWhenClosed(false);
+        window
+    });
+    window.0.setContentView(Some(&root));
+    root.layoutSubtreeIfNeeded();
+    // AppKit can rewrite backing-layer geometry while attaching views. NSH
+    // likewise reapplies its authored anchor/position after native attachment.
+    for view in [&root, &scroll, &row] {
+        let layer = view
+            .layer()
+            .ok_or("attached fixture lost its backing layer")?;
+        layer.setAnchorPoint(NSPoint::new(0.0, 0.0));
+        layer.setPosition(view.frame().origin);
+    }
     eprintln!(
         "{}",
         serde_json::json!({"phase":"attached-before-scroll","views":[
@@ -135,13 +167,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if geometry::content_bounds(&plain_child, &root).is_ok() {
         return Err("detached native hierarchy was accepted".into());
     }
+    let disconnected = flipped(main, rect(0.0, 0.0, 100.0, 100.0));
+    let disconnected_child = flipped(main, rect(3.0, 4.0, 20.0, 20.0));
+    disconnected.addSubview(&disconnected_child);
+    if disconnected_child
+        .layer()
+        .is_none_or(|layer| layer.superlayer().is_some())
+    {
+        return Err("off-window fixture did not expose disconnected backing layers".into());
+    }
+    if geometry::content_bounds(&disconnected_child, &disconnected).is_ok() {
+        return Err("disconnected backing layers produced misleading geometry".into());
+    }
     println!(
         "{}",
         serde_json::json!({"ok":true,"qualification":"AppKit-model-layer-geometry",
         "liveSublayerScroll":live,"committedBoundsOrigin":true,"transformedFlippedAncestor":true,
         "childLayerBacked":child.layer().is_some(),
         "plainFixtureHasLayers":plain.layer().is_some() || plain_child.layer().is_some(),
-        "plainAppKit":true,"outsideContentRejected":true})
+        "plainAppKit":true,"outsideContentRejected":true,"disconnectedLayersRejected":true,
+        "fixtureWindowVisible":window.0.isVisible()})
     );
     Ok(())
 }
