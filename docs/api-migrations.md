@@ -4834,7 +4834,7 @@ and dismiss calls compile, and JSON identity/dismiss behavior is exercised.
 
 ### NSH native time inputs
 
-``input ~kind:`time`` now uses the public NSH `TimeField` for segmented native time
+```input ~kind:`time``` now uses the public NSH `TimeField` for segmented native time
 editing. This is the route used by Logseq's date-time property calendar. Source
 `text` must be a valid, nonempty, zero-padded 24-hour `HH:MM` or `HH:MM:SS` value;
 its shape selects minute or second precision, including explicit `:00` seconds.
@@ -5563,3 +5563,43 @@ discarding previews; for example, keep `row ~on_pointer_move:update_preview
 owned preview state on disposal. No source or wire migration is required.
 Web, Apple/iOS and Android paths are unchanged; full NSH captured-gesture
 qualification remains separate.
+
+## Cancelable text input drafts
+
+`text_field`, `secure_field`, `input`, `search_field` and `textarea` accept
+`~on_dismiss`. This optional callback enables the new boolean wire property
+`dismiss-enabled` and receives the existing `Dismiss node` event. The property
+is appended to the canonical property table; existing event tags are unchanged.
+It defaults to false. Inputs without a handler keep their existing keyboard,
+navigation and blur-submission behavior.
+
+```ocaml
+text_field ~text:draft ~submit_on_blur:true
+  ~on_input:update_draft
+  ~on_submit:save_owned_draft
+  ~on_dismiss:(fun _ -> discard_owned_draft ()) []
+```
+
+Dismissal means the focused input's platform cancellation action, ordinarily
+Escape with a hardware keyboard. It does not change the controlled text or
+implicitly save/reset application state. The application must discard its owned
+draft in the callback. Cancellation is reported before focus loss, and that
+focus interval's subsequent blur does not produce `Submit`. Disabled inputs and
+unfinished composition do not dismiss. Existing `on_navigate` still handles only
+its established navigation keys and does not opt into cancellation.
+
+`dismiss-enabled` is valid only on those five text-entry kinds and is strictly
+boolean. Input `Dismiss` is admitted only while this flag is true and the input
+is enabled, so removed/disabled capabilities reject late events. Overlay and
+picker `Dismiss` behavior remains unchanged. Dynamic wire values retain the
+same kind/value boundary validation as constructor calls.
+
+NSH uses the public native Input cancellation callback, without a global key
+binding. Its key callback exposes the native key string rather than modifier or
+repeat detail; LUI does not synthesize that missing information. NSH's segmented
+``input ~kind:`time`` uses TimeField, which exposes no cancellation callback; an
+authored dismissal capability is rejected by actual-target preflight and dynamic
+validation. Use a text input for a cancelable time draft. On NSH, adding an
+uninstalled dismissal observer to a retained input requires a new keyed node;
+a capability authored false at initial mount can be enabled later. Disabling or
+removing an installed flag takes effect without replacing the native input.

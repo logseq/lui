@@ -1475,6 +1475,42 @@ let test_text_navigation_callbacks () =
      "search-field",(fun f -> Lui_elements.search_field ~on_navigate:f []);
      "textarea",(fun f -> Lui_elements.textarea ~on_navigate:f [])]
 
+let test_input_dismiss_callbacks () =
+  let open Lui_protocol in
+  List.iter (fun (kind,make) ->
+    let received = ref [] in
+    let s = drive_mount ~initial:() ~reducer:(fun model () -> model)
+      ~view:(fun _ _ _ -> make (fun event -> received := event :: !received)) () in
+    let node = drive_node s (Drive.Model.Kind kind) in
+    Alcotest.(check bool) "authored handler enables native dismissal" true
+      (Drive.Model.prop (drive_tree s) node.id "dismiss-enabled" = Some (BoolValue true));
+    drive_send s (Dismiss node.id);
+    Alcotest.(check bool) "typed dismissal handler is retained" true
+      (!received = [Dismiss node.id]);
+    drive_dispose s)
+    ["text-field",(fun f -> Lui_elements.text_field ~on_dismiss:f []);
+     "secure-field",(fun f -> Lui_elements.secure_field ~on_dismiss:f []);
+     "input",(fun f -> Lui_elements.input ~on_dismiss:f []);
+     "search-field",(fun f -> Lui_elements.search_field ~on_dismiss:f []);
+     "textarea",(fun f -> Lui_elements.textarea ~on_dismiss:f [])];
+  List.iter (fun kind ->
+    let enabled = Property_map.singleton DismissEnabled (BoolValue true) in
+    Alcotest.(check bool) "input dismissal defaults off" false
+      (event_supported_for_properties kind Property_map.empty (Dismiss 0));
+    Alcotest.(check bool) "authored input dismissal is admitted" true
+      (event_supported_for_properties kind enabled (Dismiss 0));
+    Alcotest.(check bool) "disabled input dismissal is rejected" false
+      (event_supported_for_properties kind (Property_map.add Enabled (BoolValue false) enabled) (Dismiss 0));
+    Alcotest.(check bool) "removing capability rejects late dismissal" false
+      (event_supported_for_properties kind (Property_map.remove DismissEnabled enabled) (Dismiss 0)))
+    [TextField; SecureField; Input; SearchField; Textarea];
+  Alcotest.(check bool) "dismiss capability is invalid on a button" false
+    (property_supported Button DismissEnabled);
+  Alcotest.(check bool) "dismiss capability is strictly boolean" false
+    (property_value_supported DismissEnabled (StringValue "true"));
+  Alcotest.(check bool) "popover dismissal keeps its existing default" true
+    (event_supported_for_properties Popover Property_map.empty (Dismiss 0))
+
 let test_button_navigation_callback () =
   let received = ref [] in
   let s = drive_mount ~initial:() ~reducer:(fun model () -> model)
@@ -6351,6 +6387,7 @@ let () =
           Alcotest.test_case "text navigation callbacks" `Quick test_text_navigation_callbacks;
           Alcotest.test_case "button navigation callback" `Quick test_button_navigation_callback;
           Alcotest.test_case "input blur callback" `Quick test_input_blur_callback;
+          Alcotest.test_case "input dismissal callbacks" `Quick test_input_dismiss_callbacks;
           Alcotest.test_case "pointer events" `Quick test_pointer_events;
           Alcotest.test_case "pointer dispatch" `Quick test_pointer_dispatch;
           Alcotest.test_case "pixel split echoes" `Quick test_split_pixel_echoes;

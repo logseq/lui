@@ -1866,6 +1866,11 @@
       "lg": "VirtualViewport",
       "wire": "virtual-viewport",
       "swift": "virtualViewport"
+    },
+    {
+      "lg": "DismissEnabled",
+      "wire": "dismiss-enabled",
+      "swift": "dismissEnabled"
     }
   ],
   "events": [
@@ -1964,24 +1969,15 @@
     },
     {
       "lg": "PressDetail",
-      "fields": [
-        ":int",
-        ":pointer_detail"
-      ]
+      "fields": [":int", ":pointer_detail"]
     },
     {
       "lg": "PointerDown",
-      "fields": [
-        ":int",
-        ":pointer_detail"
-      ]
+      "fields": [":int", ":pointer_detail"]
     },
     {
       "lg": "PointerUp",
-      "fields": [
-        ":int",
-        ":pointer_detail"
-      ]
+      "fields": [":int", ":pointer_detail"]
     },
     {
       "lg": "PointerEnter",
@@ -1997,10 +1993,7 @@
     },
     {
       "lg": "ContextMenuPress",
-      "fields": [
-        ":int",
-        ":pointer_detail"
-      ]
+      "fields": [":int", ":pointer_detail"]
     },
     {
       "lg": "Load",

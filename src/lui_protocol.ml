@@ -313,6 +313,7 @@ type property =
   | FocusWithinEnabled
   | ShrinkValue
   | VirtualViewport
+  | DismissEnabled
 
 module Property_map =
   Map.Make
@@ -576,7 +577,8 @@ let event_supported kind event =
     | FilePreview
     | FilePicker
     | ContextMenu
-    | Popover -> true
+    | Popover
+    | TextField | SecureField | Input | SearchField | Textarea -> true
     | _ -> false)
   | DoublePress _ -> kind = ListItem
   | Appear _ -> kind <> Root
@@ -625,6 +627,8 @@ let event_supported_for_lookup kind lookup event =
     match lookup property with Some (BoolValue true) -> true | _ -> false
   in
   match event with
+  | Dismiss _ when List.mem kind [TextField; SecureField; Input; SearchField; Textarea] ->
+    enabled DismissEnabled && lookup Enabled <> Some (BoolValue false)
   | FocusWithinChanged _ -> enabled FocusWithinEnabled && event_supported kind event
   | (Press _ | PressModifiers _) when kind = Link -> enabled PressEnabled
   | NavigatePrevious _ | NavigateNext _ | NavigationKey _ ->
@@ -1117,7 +1121,7 @@ let common_property_supported kind property =
     || kind = Input
     || kind = SearchField
     || kind = Textarea
-  | SubmitOnBlur ->
+  | DismissEnabled | SubmitOnBlur ->
     kind = TextField || kind = SecureField || kind = Input || kind = SearchField || kind = Textarea
   | SubmitOnEnter -> kind = Textarea
   | LongPressEnabled -> kind = Button || kind = ToggleButton || kind = ListItem
@@ -1676,6 +1680,7 @@ let property_value_supported property value =
   | SelectionPlacementValue, StringValue value -> icon_placement_supported value
   | Selected, BoolValue _ -> true
   | Autofocus, BoolValue _ -> true
+  | DismissEnabled, BoolValue _
   | SubmitOnEnter, BoolValue _ | SubmitOnBlur, BoolValue _ -> true
   | LongPressEnabled, BoolValue _ -> true
   | ChangeEnabled, BoolValue _ -> true

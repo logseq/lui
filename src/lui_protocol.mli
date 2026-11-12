@@ -311,6 +311,7 @@ type property =
   | FocusWithinEnabled
   | ShrinkValue
   | VirtualViewport
+  | DismissEnabled
 
 module Property_map : Map.S with type key = property
 

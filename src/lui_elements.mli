@@ -2856,7 +2856,10 @@ val separator :
   ?transition:string -> nothing list -> t
 
 (* Text-entry constructors can opt into Submit on focus loss with
-   [submit_on_blur]. Unfinished composition never submits on blur. *)
+   [submit_on_blur]. Unfinished composition never submits on blur.
+   [on_dismiss] opts into native cancellation (Escape with a hardware keyboard),
+   delivering [Dismiss] before focus loss and suppressing that blur submission.
+   It does not reset the controlled text; the application owns cancellation. *)
 val text_field :
   ?key:string ->
   ?gap:int ->
@@ -2910,6 +2913,7 @@ val text_field :
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
+  ?on_dismiss:(Lui_protocol.event -> unit) ->
   ?on_navigate:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) ->
   ?transition:string -> t list -> t
@@ -2966,6 +2970,7 @@ val secure_field :
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
+  ?on_dismiss:(Lui_protocol.event -> unit) ->
   ?on_navigate:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) ->
   ?transition:string -> t list -> t
@@ -3022,6 +3027,7 @@ val input :
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
+  ?on_dismiss:(Lui_protocol.event -> unit) ->
   ?on_navigate:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) ->
   ?kind:input_kind ->
@@ -3079,6 +3085,7 @@ val search_field :
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
+  ?on_dismiss:(Lui_protocol.event -> unit) ->
   ?on_navigate:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) ->
   ?transition:string -> t list -> t
@@ -3136,6 +3143,7 @@ val textarea :
   ?disabled_signal:bool Signal.signal ->
   ?on_input:(Lui_protocol.event -> unit) ->
   ?on_submit:(Lui_protocol.event -> unit) ->
+  ?on_dismiss:(Lui_protocol.event -> unit) ->
   ?on_navigate:(Lui_protocol.event -> unit) ->
   ?on_context_menu:(Lui_protocol.event -> unit) ->
   ?transition:string -> t list -> t

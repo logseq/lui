@@ -114,7 +114,9 @@ test("PPX nesting diagnostics reject static illegal edges without guessing opaqu
     )
     for (const name of ["text_field", "secure_field", "input", "search_field"]) {
       cases.push([`${name} ~on_submit:(fun _ -> ()) []`])
+      cases.push([`${name} ~on_dismiss:(fun _ -> ()) []`])
     }
+    cases.push(["textarea ~on_dismiss:(fun _ -> ()) []"])
     for (const [expression, parent, child] of cases) {
       writeFileSync(join(dir, "probe.ml"), `open Lui_elements
 let probe (source : bool Signal.signal)
@@ -181,6 +183,8 @@ let probe (source : bool Signal.signal) =
     ])
     for (const [expression, expectedType] of [
       ...invalidSubmitPolicies,
+      ["button ~on_dismiss:(fun _ -> ()) []", /cannot be applied with label ~on_dismiss/],
+      ["text_field ~on_dismiss:true []", /bool/],
       ...invalidSurfaceCases,
       ['row ~columns:2 []', /cannot be applied with label ~columns/],
       ['column ~columns:2 []', /cannot be applied with label ~columns/],
