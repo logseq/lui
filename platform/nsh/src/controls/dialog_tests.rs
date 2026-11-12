@@ -111,7 +111,7 @@ fn text_height(app: &Headless, value: &str) -> f32 {
         .find(|node| {
             node.text
                 .as_ref()
-                .is_some_and(|text| text.text.text.as_ref() == value)
+                .is_some_and(|text| text.text.text.as_str() == value)
         })
         .expect("present dialog label")
         .bounds
