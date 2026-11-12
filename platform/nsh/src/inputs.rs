@@ -57,7 +57,8 @@ pub(crate) fn validate_transition(previous: &Node, node: &Node) -> Result<(), St
     Ok(())
 }
 
-/// Keeps native Input's editing, composition, focus and submission behavior.
+/// Native Input owns editing and composition. Canonical single-line Submit
+/// reports the event while retaining focus; the application may close its field.
 /// A textarea's explicit Enter policy changes only its native configuration.
 pub(crate) fn attach(
     input: Input,
@@ -74,7 +75,7 @@ pub(crate) fn attach(
             }
         })
     } else {
-        input
+        input.submit_behavior(SubmitBehavior::Submit)
     };
     let initial = node.get_untracked();
     let authored_blur = initial.props.contains_key("submit-on-blur");
@@ -166,7 +167,8 @@ pub(crate) fn attach(
         let Some(node) = node.try_get() else { return };
         if let Some(blur) = &blur {
             let mut current = blur.get();
-            // Single-line BlurAndSubmit emits SubmitEditing before Blur.
+            // An unchanged single-line draft must not submit twice when a
+            // later explicit Blur follows Enter. A real edit rearms it.
             // A textarea's later Blur remains a separate request.
             current.suppress_native_blur = node.kind != "textarea";
             blur.set(current);

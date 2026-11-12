@@ -5748,3 +5748,34 @@ value-before-option error priority remain unchanged. The application extractor
 still records callback presence without executing the callback, and its native
 target branch pruning preserves valid Web/mobile alternatives. No public API,
 wire tag, SDK change or additional property grammar is introduced.
+
+
+## NSH single-line Submit retains input focus
+
+NSH now projects canonical `Input`, `TextField`, `SecureField` and `SearchField`
+submission onto the public native `SubmitBehavior::Submit`, which reports the
+callback and keeps focus. Previously the provider's `BlurAndSubmit` default
+removed focus after Enter even when the application retained its field. A
+multi-choice property picker could save the choice and clear its query, but
+lose the next typed character.
+
+```text
+Type al; press Enter to accept Alpha; the callback clears the retained query.
+Immediately type b: the same input now contains b and can search for Beta.
+```
+
+No new constructor option, wire property or application focus workaround is
+required. Applications that intend to close a field on Submit should continue
+to remove or close that field in their callback. Retaining a field keeps its
+editing session. An opted-in `submit_on_blur` still reports an ordinary later
+blur; Enter followed by blur without a new edit remains deduplicated, while a
+genuine edit rearms blur submission. Controlled text patches do not count as
+new user edits.
+
+Textarea Enter/Newline policies and the separate native TimeField are unchanged.
+Web already emits Submit without explicitly blurring; the Apple callback keeps
+its focused binding, and Android retains its existing platform IME action.
+This correction changes only the NSH text-input projection. Native-engine
+regressions cover callback-controlled clearing followed immediately by another
+key, retained native identity, event order and explicit blur policy. Actual
+AppKit many-choice interaction is a separate application qualification.

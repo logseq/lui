@@ -10,6 +10,7 @@ struct Fixture {
     kind: &'static str,
     authored: Option<bool>,
     replace_on_submit: bool,
+    clear_on_submit: bool,
     events: Arc<Mutex<Vec<Event>>>,
     rejection: Arc<Mutex<Option<String>>>,
 }
@@ -44,6 +45,7 @@ fn BlurProbe() -> impl IntoElement {
     let publishing = generation.clone();
     let observed = fixture.events.clone();
     let replace_on_submit = fixture.replace_on_submit;
+    let clear_on_submit = fixture.clear_on_submit;
     let renderer = Renderer::new(move |event, renderer| {
         observed.lock().unwrap().push(event.clone());
         if let Event::Text(id, text) = event {
@@ -58,10 +60,22 @@ fn BlurProbe() -> impl IntoElement {
             let mut ops = vec![json!({"op":"drop-node","id":2})];
             ops.extend(input_ops(kind, Some(true), "replacement"));
             apply(&renderer, &publishing, json!(ops));
+        } else if clear_on_submit && event == Event::Submit(2) {
+            apply(
+                &renderer,
+                &publishing,
+                json!([
+                    {"op":"set-prop","id":2,"property":"text","value":""}
+                ]),
+            );
         }
     });
     let mut ops = vec![json!({"op":"create-node","id":1,"kind":"column"})];
-    ops.extend(input_ops(kind, fixture.authored, "draft"));
+    ops.extend(input_ops(
+        kind,
+        fixture.authored,
+        if clear_on_submit { "" } else { "draft" },
+    ));
     ops.extend([
         json!({"op":"create-node","id":3,"kind":"text-field"}),
         json!({"op":"set-prop","id":3,"property":"text","value":"outside"}),
@@ -147,6 +161,14 @@ fn BlurProbe() -> impl IntoElement {
 
 type Started = (Headless, Arc<Mutex<Vec<Event>>>, Arc<Mutex<Option<String>>>);
 fn start(kind: &'static str, authored: Option<bool>, replace_on_submit: bool) -> Started {
+    start_with_clear(kind, authored, replace_on_submit, false)
+}
+fn start_with_clear(
+    kind: &'static str,
+    authored: Option<bool>,
+    replace_on_submit: bool,
+    clear_on_submit: bool,
+) -> Started {
     let events = Arc::new(Mutex::new(Vec::new()));
     let rejection = Arc::new(Mutex::new(None));
     let mut app = Headless::start(EngineConfig {
@@ -154,6 +176,7 @@ fn start(kind: &'static str, authored: Option<bool>, replace_on_submit: bool) ->
             kind,
             authored,
             replace_on_submit,
+            clear_on_submit,
             events: events.clone(),
             rejection: rejection.clone(),
         }),
@@ -181,7 +204,7 @@ fn submissions(events: &Mutex<Vec<Event>>) -> usize {
 }
 
 #[test]
-fn opted_in_single_line_enter_reports_one_submit_before_its_native_blur() {
+fn opted_in_single_line_enter_reports_once_and_retains_focus_for_the_next_native_key() {
     for kind in ["input", "text-field", "secure-field", "search-field"] {
         let (mut app, events, _) = start(kind, Some(true), false);
         let native = identity(&app, "lui-2");
@@ -195,8 +218,8 @@ fn opted_in_single_line_enter_reports_one_submit_before_its_native_blur() {
         app.press_key("z").unwrap();
         assert_eq!(
             app.screen().input_text("id:lui-2").unwrap(),
-            Some("draftx"),
-            "{kind}: native Enter still blurs"
+            Some("draftxz"),
+            "{kind}: canonical Submit retains native focus"
         );
         assert_eq!(identity(&app, "lui-2"), native);
         app.type_text("id:lui-2", "y").unwrap();
@@ -204,9 +227,59 @@ fn opted_in_single_line_enter_reports_one_submit_before_its_native_blur() {
         assert_eq!(
             submissions(&events),
             2,
-            "{kind}: a new focus interval may submit again"
+            "{kind}: a genuine edit after Enter rearms later blur submission"
         );
     }
+}
+
+#[test]
+fn retained_single_line_submit_can_clear_its_value_and_accept_the_immediate_next_key() {
+    for kind in ["input", "text-field", "secure-field", "search-field"] {
+        for authored in [None, Some(false), Some(true)] {
+            let (mut app, events, _) = start_with_clear(kind, authored, false, true);
+            let native = identity(&app, "lui-2");
+            // Establish the initial editing session only. No focus or type_text
+            // helper may run between Enter and the next native key step.
+            app.type_text("id:lui-2", "").unwrap();
+            app.press_key("a").unwrap();
+            app.press_key("l").unwrap();
+            app.press_key("enter").unwrap();
+            app.press_key("b").unwrap();
+            assert_eq!(
+                app.screen().input_text("id:lui-2").unwrap(),
+                Some("b"),
+                "{kind}/{authored:?}: submitting and clearing must retain focus"
+            );
+            assert_eq!(identity(&app, "lui-2"), native);
+            assert_eq!(
+                *events.lock().unwrap(),
+                [
+                    Event::Text(2, "a".into()),
+                    Event::Text(2, "al".into()),
+                    Event::Submit(2),
+                    Event::Text(2, "b".into())
+                ],
+                "{kind}/{authored:?}: real edit order and controlled clear"
+            );
+            app.type_text("id:lui-3", "").unwrap();
+            assert_eq!(
+                submissions(&events),
+                if authored == Some(true) { 2 } else { 1 },
+                "{kind}/{authored:?}: blur remains an explicit opt-in"
+            );
+        }
+    }
+}
+
+#[test]
+fn unchanged_retained_single_line_submit_is_not_duplicated_by_a_later_blur() {
+    let (mut app, events, _) = start("text-field", Some(true), false);
+    let native = identity(&app, "lui-2");
+    app.type_text("id:lui-2", "x").unwrap();
+    app.press_key("enter").unwrap();
+    app.type_text("id:lui-3", "").unwrap();
+    assert_eq!(submissions(&events), 1);
+    assert_eq!(identity(&app, "lui-2"), native);
 }
 
 #[test]
