@@ -11,7 +11,8 @@ update-web-visual-baselines:
 test: test-schema test-ocaml
 
 test-schema:
-	node --test tooling/test/*.mjs
+	# Several compiler probes share the same Dune build directory.
+	node --test --test-concurrency=1 tooling/test/*.mjs
 
 generate-component-schema:
 	node tooling/generate_component_schema.mjs
