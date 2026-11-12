@@ -1,8 +1,8 @@
 # Parent virtual source-factory replacement regression
 
-Source-only regression based on LUI `b73fc438e44c58209b8729470bb6c9d3e0989dad`.
-No compiler, fixture build, engine, test or performance run was executed while
-preparing this source. No production or SDK behavior is changed here.
+Regression based on LUI `b73fc438e44c58209b8729470bb6c9d3e0989dad`.
+It was prepared without compiler or test execution, then qualified serially at
+`c11ccfbd` as recorded below. No production or SDK behavior is changed here.
 
 The actual Logseq color-case failure retained the same Scroll and VirtualList
 nodes, advanced source generation from 12 to 13, and replaced the demanded end
@@ -19,7 +19,7 @@ button rebuilds that branch with the same 1,000 items/keys and a new row-label
 revision. The normal virtual source allocates its own generation; the fixture
 does not fabricate metadata or viewport feedback.
 
-The existing `ocaml_virtual` integration target drives a native engine Scroll
+The separate `ocaml_virtual_replacement` integration target drives an engine Scroll
 to the end and first proves that current-revision data occupies the viewport.
 It then activates the replacement control, checks retained canonical Scroll/list
 and outside-input IDs, native Scroll identity, increasing source generation,
@@ -55,3 +55,22 @@ provided. A failure is evidence for further source/adapter/SDK isolation, not
 authorization to change source policy, add scroll resets, enlarge a queue or
 modify the pinned SDK. A pass qualifies only this native-engine case; it does
 not replace the actual AppKit picker witness or claim physical input/paint/FPS.
+
+## Executed release qualification
+
+At `c11ccfbd`, the new real OCaml integration passed in 41.84 seconds using the
+published NSH pin. Both source replacements supplied current-revision rows
+inside the live parent viewport without a second scroll or synthetic demand.
+Evidence: `/tmp/lui-parent-source-replacement-release.log`.
+
+The original isolated `ocaml_virtual` target also passed in 6.38 seconds after
+its shared transport extraction:
+`/tmp/lui-original-parent-source-release.log`. Release all-target strict Clippy
+and Rustfmt passed: `/tmp/lui-parent-replacement-release-clippy.log`.
+
+These results establish the Headless native-engine seam, not AppKit parity.
+The actual application's previous color failure occurred with a real macOS
+scroll owner; a separate public-native-driver replacement case remains required
+before closing that platform-specific source-replacement finding. The
+application's paint-only color correction passed its actual AppKit case, but
+does not substitute for this independent replacement case.
