@@ -408,10 +408,7 @@ fn RefusedAgentFeedbackPump() -> impl IntoElement {
     }));
     view()
         .flex_col()
-        .child(Desktop(DesktopProps {
-            library: Prop::new(library),
-            ..Default::default()
-        }))
+        .child(desktop().library(library))
         .child(text(move || format!("Agent refusals: {}", refusals.get())))
 }
 
@@ -442,7 +439,7 @@ fn actual_desktop_pump_drains_native_feedback_after_a_queue_of_agent_refusals() 
     let mut config = EngineConfig::new(Root::of::<RefusedAgentFeedbackPump>());
     config.context =
         EngineContext::default().with(PumpLibrary(library.to_string_lossy().into_owned()));
-    let mut app = Headless::start(config)?;
+    let mut app = Headless::start(config).map_err(|error| error.to_string())?;
     app.wait_for("text:Both native feedback kinds delivered")?;
     app.wait_for("text:Agent refusals: 64")?;
     drop(app);
