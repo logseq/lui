@@ -34,6 +34,21 @@ fn configuration(version: &str) -> Vec<u8> {
     }))
     .unwrap()
 }
+
+#[test]
+fn public_configuration_validation_reuses_signed_whole_application_rules() {
+    validate_configuration(&configuration("1.0.0")).unwrap();
+    for bytes in [
+        br#"{"id":"com.logseq.test","version":"1.0.0","github":"logseq/logseq"}"#.to_vec(),
+        br#"{"id":"com.logseq.test","version":"1.0.0","url":"http://example.test/latest.json","publicKey":"invalid"}"#.to_vec(),
+        serde_json::to_vec(&json!({"id":"com.logseq.test","version":"1.0.0",
+            "url":"https://example.test/latest.json","publicKey":PUBLIC,
+            "packages":{"roots":[PUBLIC]}})).unwrap(),
+        configuration("not-a-version"),
+    ] {
+        assert_eq!(validate_configuration(&bytes).unwrap_err().code(), ErrorCode::Configuration);
+    }
+}
 fn signed_offer(
     config: &Config,
     version: &str,

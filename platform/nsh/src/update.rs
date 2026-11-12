@@ -66,6 +66,19 @@ impl std::error::Error for UpdateError {}
 
 type Result<T> = std::result::Result<T, UpdateError>;
 
+/// Checks signed whole-application configuration without accessing installation,
+/// cache, threads or network. Packagers can validate before signing their bytes.
+pub fn validate_configuration(config: &[u8]) -> Result<()> {
+    checked_configuration(config).map(|_| ())
+}
+
+fn checked_configuration(bytes: &[u8]) -> Result<Config> {
+    let parsed =
+        Config::parse(bytes).map_err(|error| UpdateError::new(ErrorCode::Configuration, error))?;
+    validate_config(&parsed)?;
+    Ok(parsed)
+}
+
 /// The latest update state. Watch subscriptions retain only this value.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[non_exhaustive]
@@ -152,9 +165,7 @@ impl Updater {
     /// The writable cache must be outside the installed application directory.
     /// No worker, polling timer or network request is created for a dev shell.
     pub fn open(config: &[u8], executable: &Path, cache: &Path) -> Result<Self> {
-        let parsed = Config::parse(config)
-            .map_err(|error| UpdateError::new(ErrorCode::Configuration, error))?;
-        validate_config(&parsed)?;
+        let parsed = checked_configuration(config)?;
         let executable = fs::canonicalize(executable)
             .map_err(|error| UpdateError::new(ErrorCode::Configuration, error))?;
         let installation = Installation::of(&executable, &parsed.id, config).ok_or_else(|| {

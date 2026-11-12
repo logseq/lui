@@ -4898,6 +4898,20 @@ not show, activate, restore or create a window, alter capture selection, change
 display power or weaken the visible-window requirement.
 
 
+### Pure signed update configuration validation
+
+Packagers can call `lui_nsh::update::validate_configuration(bytes)` before signing
+an installed application. It uses the same canonical configuration parser and
+signed whole-application policy as `Updater::open`, without installation lookup,
+cache access, worker creation or network requests. Success does not qualify the
+feed, archive, installed root or restart path; those checks still belong to the
+installed updater and release qualification.
+
+For example, validate the exact generated `nsh/assets/nsh-updater.json` bytes,
+then place those unchanged bytes into the package before signing. Invalid or
+unsigned configurations remain errors; this API supplies no default URL or key.
+Existing `Updater::open(config, executable, cache)` calls remain valid.
+
 ### Application-owned update menu contributions
 
 `lui_nsh::desktop_updates::{UpdateActions, UpdateLabels}` lets an embedded
