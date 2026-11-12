@@ -95,7 +95,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "{}",
         serde_json::json!({"ok":true,"qualification":"AppKit-model-layer-geometry",
         "liveSublayerScroll":live,"committedBoundsOrigin":true,"transformedFlippedAncestor":true,
-        "unlayeredChild":true,"plainAppKit":true,"outsideContentRejected":true})
+        "childLayerBacked":child.layer().is_some(),
+        "plainFixtureHasLayers":plain.layer().is_some() || plain_child.layer().is_some(),
+        "plainAppKit":true,"outsideContentRejected":true})
     );
     Ok(())
 }

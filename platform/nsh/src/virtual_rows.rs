@@ -1252,8 +1252,8 @@ mod tests {
             app.wait_until(
                 "distant row occupies the shared viewport",
                 Duration::from_secs(3),
-                |app| {
-                    let nodes = app.screen().layout_nodes();
+                |screen| {
+                    let nodes = screen.layout_nodes();
                     let row = nodes
                         .iter()
                         .find(|node| node.test_id.as_deref() == Some("retained-virtual-row-99999"));
