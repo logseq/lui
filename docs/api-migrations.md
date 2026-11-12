@@ -5673,6 +5673,10 @@ The native input identity and existing renderer incarnation/admission closure
 remain unchanged. Inputs without authored blur/navigation/dismissal policies
 still allocate no additional policy state.
 
+Blur consumes Enter's deduplication state but retains the canceled-draft marker.
+A delayed native Submit arriving after cancellation and blur is still ignored;
+only actual new focus or a real native edit reopens that input's draft interval.
+
 ### Android text cancellation and explicit blur submission
 
 Android owns the same ordinary Escape cancellation in the focused native

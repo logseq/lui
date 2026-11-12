@@ -144,7 +144,13 @@ pub(crate) fn attach(
         input = input
             .on_focus(move || focused.set(BlurState::default()))
             .on_blur(move || {
-                let before = blurred.replace(BlurState::default());
+                let before = blurred.get();
+                // Blur consumes Enter deduplication, but canceled drafts stay
+                // closed to late Submit until new focus or a genuine edit.
+                blurred.set(BlurState {
+                    dismissed: before.dismissed,
+                    ..BlurState::default()
+                });
                 let Some(node) = node.try_get() else { return };
                 if submits_on_blur(&node, before) {
                     blur_emit(Event::Submit(node.id));

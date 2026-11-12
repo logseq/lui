@@ -345,3 +345,40 @@ fn prior_enter_blur_deduplication_does_not_swallow_a_distinct_cancel() {
     assert_eq!(*events.borrow(), [Event::Dismiss(2)]);
     assert!(state.get().dismissed);
 }
+
+#[test]
+fn cancellation_remains_closed_after_blur_until_the_input_gets_fresh_focus() {
+    let (mut app, events) = retained();
+    app.type_text("id:lui-2", "x").unwrap();
+    let id = native_id(&app);
+    cancel_boundary(&mut app, &events);
+    app.type_text("id:lui-3", "").unwrap();
+    // A delayed native Submit is not a new input step: submit(selector) would
+    // explicitly focus the field first and begin a legitimate fresh interval.
+    app.engine().control().dispatch_event(
+        id,
+        nsh_core::EventKind::SubmitEditing,
+        nsh_core::EventPayload::Text {
+            text: "draftx".into(),
+            count: 1,
+        },
+    );
+    // The following ordered application key applies a visible controlled patch,
+    // giving the earlier boundary event a deterministic processing barrier.
+    app.press_key("f2").unwrap();
+    assert_eq!(
+        app.screen().input_text("id:lui-2").unwrap(),
+        Some("authoritative")
+    );
+    assert_eq!(
+        *events.lock().unwrap(),
+        [Event::Text(2, "draftx".into()), Event::Dismiss(2)]
+    );
+    app.type_text("id:lui-2", "").unwrap();
+    app.type_text("id:lui-3", "").unwrap();
+    assert!(
+        events.lock().unwrap().ends_with(&[Event::Submit(2)]),
+        "fresh focus restores ordinary blur submission"
+    );
+    assert_eq!(native_id(&app), id);
+}
