@@ -520,14 +520,7 @@ impl Actions {
                 // These categories can only precede NSH's filesystem replacement.
                 // Installation may include a failed rollback; Stopped can mean
                 // a lost reply after execution. Neither proves it is safe to thaw.
-                if matches!(
-                    error.code(),
-                    ErrorCode::Verification
-                        | ErrorCode::Stale
-                        | ErrorCode::Cancelled
-                        | ErrorCode::Transport
-                        | ErrorCode::Busy
-                ) {
+                if failed_before_replacement(error.code()) {
                     lease.abort();
                 }
                 if !self.owner.is_live() {
@@ -539,6 +532,17 @@ impl Actions {
                 completed::<()>(Err(error)).map(|_| ())
             }
         }
+    }
+}
+
+fn failed_before_replacement(code: ErrorCode) -> bool {
+    match code {
+        ErrorCode::Verification
+        | ErrorCode::Stale
+        | ErrorCode::Cancelled
+        | ErrorCode::Transport
+        | ErrorCode::Busy => true,
+        ErrorCode::Configuration | ErrorCode::Installation | ErrorCode::Stopped => false,
     }
 }
 
