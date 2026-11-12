@@ -138,3 +138,42 @@ need resolved preflight and positive branch coverage. This audit deliberately
 excludes Web-only shell inert/split branches, the shadowed Web Asset_dom image
 calls, host-guarded Ui_parts inline-flex helpers, Graph View and generic unused
 LUI APIs. No source behavior was changed and no builds were run for this audit.
+
+## Follow-up qualification and prevention
+
+The audit above is the historical source inventory at its stated revisions.
+Subsequent work at LUI `50f0101e` and Logseq `b45c670eac` changes its status:
+
+- Seven generated closed domains now drive exhaustive native matches. Compiler
+  regression probes append a future case to each domain and require Rust E0004.
+  This proves that a provider decision is required; an explicit rejection still
+  needs positive application coverage before that feature is considered usable.
+- ContextMenu, Tooltip and FilePicker no longer advertise constructor labels
+  that the canonical protocol rejects for every value. Actual OCaml negative
+  probes require removed labels to fail type checking, and positive probes cover
+  the retained reactive argument families. Dynamic JSON remains validated at its
+  boundary against the same canonical predicate.
+- The time input now delegates to the public native TimeField for its admitted
+  subset. The retained editor text host now includes its children and projects
+  collapsed text to an empty rendered run while preserving logical source and
+  native identity. Native tests cover these behaviors; this does not qualify
+  Logseq's byte-offset to rendered UTF-16 geometry or IME integration.
+- The Appearance producer now uses native alignment and an explicit bounded
+  Scroll. Its build gate opens the actual branch, rather than accepting journal
+  startup as coverage. That gate found another real producer error:
+  `accent_swatch` constructs `--rx-none-09` for the no-color sentinel. At this
+  checkpoint the build fails and does not publish the candidate artifacts.
+  Separating sentinel and palette types is the appropriate source correction;
+  a missing-variable fallback would mask the defect.
+- The PDFKit background harness passed native API checks in
+  `/tmp/logseq-nsh-pdf-qualification-20261112-run2`, with the application inactive
+  and without a display tick. Inspection of `pdf-initial.png` still found blank
+  page pixels after the explicit public layout/draw pass. This is not PDF visual
+  qualification and remains an open delivery issue.
+
+Runtime preflight remains necessary for dynamic values, but it is not the
+preferred first detector for statically invalid public calls. Narrow constructor
+types and exhaustive domain lowering should prevent those calls from compiling;
+resolved theme data and state-dependent branches belong in the existing build
+qualification before publication. This adds neither a second schema nor a
+parallel renderer.
