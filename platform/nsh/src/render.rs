@@ -2046,7 +2046,22 @@ fn validate_context_attachment(
         && let Some(previous) = entry.context_mode
         && previous != (count > 0)
     {
-        return Err("NSH changing a retained trigger's context-menu attachment mode requires remounting the trigger; update menu items or enabled instead".into());
+        let declared_before = entry.node.get_untracked().children.iter().any(|id| {
+            transaction
+                .previous(*id)
+                .is_some_and(|child| child.kind == "context-menu")
+        });
+        return Err(format!(
+            "NSH changing a retained trigger's context-menu attachment mode requires remounting the trigger; update menu items or enabled instead (node={}, kind={}, incarnation={}, previous_attached={}, next_attached={}, previous_declared={}, native_ref_bound={}, previous_popup={:?})",
+            node.id,
+            node.kind,
+            node.incarnation,
+            previous,
+            count > 0,
+            declared_before,
+            entry.reference.node().is_some(),
+            entry.popup.get_untracked(),
+        ));
     }
     Ok(())
 }

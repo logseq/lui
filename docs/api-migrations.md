@@ -5331,3 +5331,14 @@ entry before launching a window. A provider grammar error includes that source
 location and rejects the target build. No independent supported-value list is
 introduced. Unresolved scoped theme variables remain explicitly deferred to
 runtime; this entry does not qualify event routing or arbitrary dynamic values.
+
+
+## Native menu attachment rejection identifies the retained trigger
+
+The existing NSH rejection of changing a retained trigger's menu attachment mode
+now includes bounded structural diagnostics: canonical node ID/kind/incarnation,
+old and requested attachment presence, previous canonical declaration, native ref
+binding state and the previous popup identity. No labels, graph names or menu
+contents are logged. This distinguishes a real mounted mode change from stale
+association or pre-mount lifetime bugs without relaxing the invariant. Matching
+clients should recognize the diagnostic prefix rather than its full text.

@@ -164,11 +164,15 @@ fn ContextScenario() -> impl IntoElement {
             } else {
                 ops.push(json!({"op":"insert-child","parent":10,"child":40,"index":0}));
             }
-            assert!(
-                reject
-                    .apply(patch(generation + 1, Value::Array(ops)))
-                    .is_err()
-            );
+            let error = reject
+                .apply(patch(generation + 1, Value::Array(ops)))
+                .unwrap_err();
+            assert!(error.contains("context-menu attachment mode"));
+            assert!(error.contains("node=10, kind=button"));
+            assert!(error.contains(&format!("previous_attached={attached}")));
+            assert!(error.contains(&format!("next_attached={}", !attached)));
+            assert!(error.contains(&format!("previous_declared={attached}")));
+            assert!(error.contains("native_ref_bound=true"));
             assert_eq!(reject.0.borrow().store.generation, generation);
             assert!(Arc::ptr_eq(
                 &trigger,
