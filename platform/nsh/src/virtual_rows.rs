@@ -14,6 +14,51 @@ use std::{
 
 pub(crate) type RowIdentity = (u64, u64);
 
+#[derive(Clone, Copy, Default)]
+struct ScrollEpochs {
+    ended: u64,
+    dragged: u64,
+}
+
+/// Shared only by a real canonical Scroll and its Parent viewport lists.
+/// The native Scroll controller remains the sole owner of motion and dragging.
+#[derive(Clone, Copy)]
+pub(crate) struct ScrollOwner {
+    identity: RowIdentity,
+    reference: ElementRef,
+    vertical: bool,
+    epochs: Signal<ScrollEpochs>,
+}
+impl ScrollOwner {
+    pub(crate) fn new(identity: RowIdentity, reference: ElementRef, vertical: bool) -> Self {
+        Self {
+            identity,
+            reference,
+            vertical,
+            epochs: signal(ScrollEpochs::default()),
+        }
+    }
+    pub(crate) fn vertical(self) -> bool {
+        self.vertical
+    }
+    pub(crate) fn ended(self) {
+        self.epochs.update(|epochs| {
+            epochs.ended = epochs
+                .ended
+                .checked_add(1)
+                .expect("Scroll end epoch exhausted");
+        });
+    }
+    pub(crate) fn dragged(self) {
+        self.epochs.update(|epochs| {
+            epochs.dragged = epochs
+                .dragged
+                .checked_add(1)
+                .expect("Scroll drag epoch exhausted");
+        });
+    }
+}
+
 fn lower_viewport(value: crate::contract::VirtualViewportValue) -> ListViewport {
     use crate::contract::VirtualViewportValue;
     match value {
@@ -31,6 +76,11 @@ fn viewport(node: &Node) -> Result<ListViewport, String> {
         )?,
     };
     Ok(lower_viewport(value))
+}
+
+pub(crate) fn owns_scroll(node: &Node) -> bool {
+    matches!(node.kind.as_str(), "scroll" | "list")
+        || (node.kind == "virtual-list" && matches!(viewport(node), Ok(ListViewport::Own)))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +103,7 @@ pub(crate) struct Callbacks {
     pub render: Rc<dyn Fn(RowIdentity) -> AnyElement>,
     pub resolve_target: Rc<TargetResolver>,
     pub row_ref: Rc<dyn Fn(RowIdentity) -> Option<ElementRef>>,
+    pub scroll_owner: Rc<dyn Fn() -> Option<ScrollOwner>>,
     pub notify: Rc<dyn Fn(Feedback)>,
     pub failed: Rc<dyn Fn(String)>,
 }
@@ -256,6 +307,8 @@ struct NativeState {
     alive: bool,
     notify: Rc<dyn Fn(Feedback)>,
     reference: ElementRef,
+    scroll_owner: Option<ScrollOwner>,
+    parent_viewport: bool,
     row_ref: Rc<dyn Fn(RowIdentity) -> Option<ElementRef>>,
     handled_token: Option<u64>,
     pending_scroll: Option<PendingScroll>,
@@ -463,9 +516,19 @@ impl NativeRows {
         }
     }
     fn reveal_nearest(&self, reference: ElementRef, request: Scroll, generation: Option<u64>) {
-        let (list, owner) = {
+        let (list, viewport, viewport_identity, owner) = {
             let state = self.0.borrow();
-            (state.reference, state.owner)
+            if state.parent_viewport && state.scroll_owner.is_none() {
+                return;
+            }
+            (
+                state.reference,
+                state
+                    .scroll_owner
+                    .map_or(state.reference, |owner| owner.reference),
+                state.scroll_owner.map(|owner| owner.identity),
+                state.owner,
+            )
         };
         let rows = self.clone();
         owner.run(|| {
@@ -473,7 +536,7 @@ impl NativeRows {
                 // Measure before issuing a command: an already satisfied animated
                 // request has no native animation and therefore no scroll-end.
                 let row = reference.measure();
-                let viewport = list.measure();
+                let viewport = viewport.measure();
                 let row = row.await;
                 let viewport = viewport.await;
                 let anchor = row
@@ -482,7 +545,9 @@ impl NativeRows {
                 let no_op = anchor.is_none();
                 {
                     let mut state = rows.0.borrow_mut();
-                    if !state.alive {
+                    if !state.alive
+                        || state.scroll_owner.map(|owner| owner.identity) != viewport_identity
+                    {
                         return;
                     }
                     let Some(pending) = state.pending_scroll.as_mut().filter(|pending| {
@@ -521,6 +586,38 @@ impl NativeRows {
                 rows.schedule();
             });
         });
+    }
+    fn scroll_ended(&self) {
+        if let Some(pending) = self.0.borrow_mut().pending_scroll.as_mut() {
+            pending.ended = true;
+        }
+        self.schedule();
+    }
+    fn scroll_dragged(&self) {
+        let (pending, notify) = {
+            let mut state = self.0.borrow_mut();
+            (state.pending_scroll.take(), state.notify.clone())
+        };
+        if let Some(pending) = pending {
+            notify(Feedback::Scroll {
+                token: pending.request.token,
+                outcome: "cancelled",
+            });
+        }
+    }
+    fn parent_owner(&self, next: Option<ScrollOwner>) {
+        let mut state = self.0.borrow_mut();
+        if state.scroll_owner.map(|owner| owner.identity) == next.map(|owner| owner.identity) {
+            return;
+        }
+        state.scroll_owner = next;
+        // A pending command now belongs to a different viewport. Retry the
+        // same token there; an old owner's completion must not finish it.
+        if state.pending_scroll.take().is_some() {
+            state.handled_token = None;
+        }
+        drop(state);
+        self.schedule();
     }
     fn materialized(&self, slot: u64, identity: RowIdentity) {
         if let Some(cell) = self.0.borrow_mut().cells.get_mut(&slot)
@@ -708,6 +805,10 @@ pub(crate) fn element(
     callbacks: Callbacks,
 ) -> VirtualList {
     let initial = node.get_untracked();
+    let parent_viewport = matches!(
+        viewport(&initial).expect("validated virtual viewport"),
+        ListViewport::Parent
+    );
     let model = Model::new(&initial, &children.get_untracked()).expect("validated virtual source");
     let keys = signal(model.keys.clone());
     let count = signal(model.metadata.count);
@@ -725,6 +826,8 @@ pub(crate) fn element(
         alive: true,
         notify: callbacks.notify.clone(),
         reference,
+        scroll_owner: None,
+        parent_viewport,
         row_ref: callbacks.row_ref.clone(),
         handled_token: None,
         pending_scroll: None,
@@ -735,6 +838,34 @@ pub(crate) fn element(
         state.alive = false;
         state.cells.clear();
     });
+    if parent_viewport {
+        let parent_rows = rows.clone();
+        let parent_callbacks = callbacks.clone();
+        let previous = RefCell::new(None::<(RowIdentity, ScrollEpochs)>);
+        effect(move || {
+            let owner = (parent_callbacks.scroll_owner)();
+            let epochs = owner.map(|owner| owner.epochs.get());
+            parent_rows.parent_owner(owner);
+            let next = owner
+                .zip(epochs)
+                .map(|(owner, epochs)| (owner.identity, epochs));
+            let old = previous.replace(next);
+            match (old, next) {
+                (Some((old_id, old)), Some((id, next))) if old_id == id => {
+                    // Drag wins when both are coalesced in one reactive turn.
+                    if next.dragged != old.dragged {
+                        parent_rows.scroll_dragged();
+                    } else if next.ended != old.ended {
+                        parent_rows.scroll_ended();
+                    }
+                }
+                (_, None) => (parent_callbacks.failed)(
+                    "NSH Parent virtual-list requires an ancestor Scroll".into(),
+                ),
+                _ => {}
+            }
+        });
+    }
     let updating = rows.clone();
     let previous = RefCell::new(None::<Arc<Node>>);
     let metadata_callbacks = callbacks.clone();
@@ -848,6 +979,9 @@ pub(crate) fn element(
             .unwrap_or(1)
             .clamp(1, u32::MAX as u64) as u32
     });
+    let native_owner = (!parent_viewport)
+        .then(|| (callbacks.scroll_owner)())
+        .flatten();
     let observing = rows.clone();
     let ending = rows.clone();
     let interrupting = rows;
@@ -856,21 +990,19 @@ pub(crate) fn element(
         observing.schedule();
     })
     .on_scroll_end(move |_: &Point<Points>| {
-        if let Some(pending) = ending.0.borrow_mut().pending_scroll.as_mut() {
-            pending.ended = true;
+        if !parent_viewport {
+            ending.scroll_ended();
+            if let Some(owner) = native_owner {
+                owner.ended();
+            }
         }
-        ending.schedule();
     })
     .on_scroll_drag_start(move |_: &Point<Points>| {
-        let (pending, notify) = {
-            let mut state = interrupting.0.borrow_mut();
-            (state.pending_scroll.take(), state.notify.clone())
-        };
-        if let Some(pending) = pending {
-            notify(Feedback::Scroll {
-                token: pending.request.token,
-                outcome: "cancelled",
-            });
+        if !parent_viewport {
+            interrupting.scroll_dragged();
+            if let Some(owner) = native_owner {
+                owner.dragged();
+            }
         }
     })
 }
@@ -974,6 +1106,8 @@ mod tests {
             .props
             .insert("track-visible-range".into(), json!(true));
         let parent_viewport = engine_context::<ParentViewport>().is_some();
+        let parent_reference = element_ref();
+        let parent_owner = ScrollOwner::new((1, 1), parent_reference, true);
         if parent_viewport {
             source
                 .props
@@ -1039,12 +1173,16 @@ mod tests {
                         probe.0.lock().unwrap().window = Some(window);
                     }
                 }),
+                scroll_owner: Rc::new(move || parent_viewport.then_some(parent_owner)),
                 failed: Rc::new(|error| panic!("{error}")),
             },
         )
         .w(px(400.0));
         if parent_viewport {
             scroll()
+                .element_ref(&parent_reference)
+                .on_scroll_end(move |_: &Point<Points>| parent_owner.ended())
+                .on_scroll_drag_start(move |_: &Point<Points>| parent_owner.dragged())
                 .h(px(320.0))
                 .w(px(400.0))
                 .test_id("shared-scroll-viewport")
@@ -1227,6 +1365,7 @@ mod tests {
                             .push((token, outcome.into()));
                     }
                 }),
+                scroll_owner: Rc::new(|| None),
                 failed: Rc::new(|error| panic!("{error}")),
             },
         )

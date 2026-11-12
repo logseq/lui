@@ -82,6 +82,7 @@ struct Entry {
     node: Signal<Arc<Node>>,
     children: Signal<Vec<(u64, u64)>>,
     reference: ElementRef,
+    scroll_owner: Option<virtual_rows::ScrollOwner>,
     factory_reference: Option<ElementRef>,
     native_identifier: Option<String>,
     theme: Signal<Arc<ThemeView>>,
@@ -343,6 +344,23 @@ impl Renderer {
                             node,
                             children,
                             reference,
+                            scroll_owner: owner.run(|| {
+                                let node = node.get_untracked();
+                                virtual_rows::owns_scroll(&node).then(|| {
+                                    virtual_rows::ScrollOwner::new(
+                                        (node.id, node.incarnation),
+                                        reference,
+                                        node.kind != "scroll"
+                                            || style::orientation_axis(
+                                                contract::orientation(
+                                                    &node,
+                                                    OrientationValue::Vertical,
+                                                )
+                                                .expect("validated Scroll orientation"),
+                                            ) == Axis::Vertical,
+                                    )
+                                })
+                            }),
                             factory_reference: owner
                                 .run(|| node.get_untracked().extension.is_some().then(element_ref)),
                             native_identifier: None,
@@ -724,6 +742,44 @@ impl Renderer {
         })
     }
 
+    fn scroll_owner(&self, id: u64, incarnation: u64) -> Option<virtual_rows::ScrollOwner> {
+        let state = self.0.borrow();
+        let entry = state.nodes.get(&id)?;
+        let node = entry.node.get();
+        if node.incarnation != incarnation {
+            return None;
+        }
+        if let Some(owner) = entry.scroll_owner {
+            return Some(owner);
+        }
+        let mut parent = node.parent;
+        while let Some(id) = parent {
+            let entry = state.nodes.get(&id)?;
+            // Read retained ancestor signals so a moved ancestor rebinds every
+            // affected Parent list, without a global registry or tree copy.
+            let node = entry.node.get();
+            if let Some(owner) = entry.scroll_owner {
+                if owner.vertical() {
+                    return Some(owner);
+                }
+            }
+            if matches!(
+                node.kind.as_str(),
+                "dialog"
+                    | "sheet"
+                    | "drawer"
+                    | "popover"
+                    | "tooltip"
+                    | "dropdown-menu"
+                    | "context-menu"
+            ) {
+                return None;
+            }
+            parent = node.parent;
+        }
+        None
+    }
+
     fn child_renderer(&self, id: u64, incarnation: u64) -> Option<crate::controls::ChildRenderer> {
         let identities = {
             let state = self.0.borrow();
@@ -1101,7 +1157,7 @@ impl Renderer {
                 },
             );
         }
-        if crate::controls::supported(&node.kind) {
+        if node.kind != "list" && crate::controls::supported(&node.kind) {
             let events = self.clone();
             return crate::controls::element(
                 state,
@@ -1239,6 +1295,7 @@ impl Renderer {
                 let failing = self.clone();
                 let resolving = self.clone();
                 let referring = self.clone();
+                let scrolling = self.clone();
                 native_events
                     .attach(virtual_rows::element(
                         state,
@@ -1302,6 +1359,7 @@ impl Renderer {
                                 };
                                 maintaining.maintain(id, incarnation, event);
                             }),
+                            scroll_owner: Rc::new(move || scrolling.scroll_owner(id, incarnation)),
                             failed: Rc::new(move |error| failing.fail(error)),
                         },
                     ))
@@ -1310,22 +1368,37 @@ impl Renderer {
                     .test_id(&identifier)
                     .into_element()
             }
-            "scroll" => native_events
-                .attach(
-                    match style::orientation_axis(
-                        contract::orientation(&node, OrientationValue::Vertical)
-                            .expect("validated canonical Scroll orientation"),
-                    ) {
-                        Axis::Horizontal => scroll().horizontal(),
-                        Axis::Vertical => scroll(),
-                    },
-                )
-                .state_inline_style(style)
-                .child(body)
-                .element_ref(&reference)
-                .key(key.clone())
-                .test_id(&identifier)
-                .into_element(),
+            "scroll" | "list" => {
+                let owner = self.0.borrow().nodes[&id]
+                    .scroll_owner
+                    .expect("Scroll owner");
+                let scroll = match style::orientation_axis(
+                    contract::orientation(&node, OrientationValue::Vertical)
+                        .expect("validated canonical Scroll orientation"),
+                ) {
+                    Axis::Horizontal => scroll().horizontal(),
+                    Axis::Vertical => scroll(),
+                };
+                // This is the same public Scroll + List role previously built
+                // by controls::element, with motion feedback shared by children.
+                let scroll = if node.kind == "list" {
+                    scroll.role(AccessibilityRole::List)
+                } else {
+                    scroll
+                };
+                native_events
+                    .attach(
+                        scroll
+                            .on_scroll_end(move |_: &Point<Points>| owner.ended())
+                            .on_scroll_drag_start(move |_: &Point<Points>| owner.dragged()),
+                    )
+                    .state_inline_style(style)
+                    .child(body)
+                    .element_ref(&reference)
+                    .key(key.clone())
+                    .test_id(&identifier)
+                    .into_element()
+            }
             "image" => {
                 let loading = self.clone();
                 native_events
