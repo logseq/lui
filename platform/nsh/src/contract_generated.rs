@@ -1,6 +1,34 @@
 // Generated from canonical OCaml validators. Do not edit.
 use super::*;
 
+/// Canonical typed `virtual-viewport` values. Provider matches must be exhaustive.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VirtualViewportValue {
+    Own,
+    Parent,
+}
+
+impl VirtualViewportValue {
+    pub const ALL: &'static [Self] = &[Self::Own, Self::Parent];
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Own => "own",
+            Self::Parent => "parent",
+        }
+    }
+}
+
+impl TryFrom<&str> for VirtualViewportValue {
+    type Error = String;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "own" => Ok(Self::Own),
+            "parent" => Ok(Self::Parent),
+            _ => Err(format!("invalid canonical virtual-viewport: {value}")),
+        }
+    }
+}
+
 /// Canonical typed `display` values. Provider matches must be exhaustive.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DisplayValue {
@@ -255,6 +283,7 @@ impl TryFrom<&str> for InputTypeValue {
 pub(super) fn property_value_supported(property: &str, value: Scalar<'_>) -> bool {
     match (property, value) {
         ("read-only", Scalar::Bool(_)) => true,
+        ("virtual-viewport", Scalar::String(value)) => (value == "own") || (value == "parent"),
         ("overscan", Scalar::Int(n)) => n >= 0_i64,
         ("item-extent", Scalar::Float(f)) => is_finite(f) && (f > 0.0_f64),
         ("virtual-total-count", Scalar::Int(n)) => n >= 0_i64,

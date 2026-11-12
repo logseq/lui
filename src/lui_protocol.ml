@@ -312,6 +312,7 @@ type property =
   | ToggleDetailEnabled
   | FocusWithinEnabled
   | ShrinkValue
+  | VirtualViewport
 
 module Property_map =
   Map.Make
@@ -959,7 +960,7 @@ let common_property_supported kind property =
   match property with
   | ReadOnly -> List.mem kind [TextField; SecureField; Input; SearchField; Textarea; Combobox]
   | VirtualOverscan | VirtualItemExtent | VirtualTotalCount | VirtualGeneration
-  | VirtualIndices | VirtualScrollIndex -> kind = VirtualList
+  | VirtualIndices | VirtualScrollIndex | VirtualViewport -> kind = VirtualList
   | MainAlignment | CrossAlignment ->
     kind = Row
     || kind = Column
@@ -1326,7 +1327,7 @@ let common_property_supported kind property =
 let property_supported kind property =
   if property = ReadOnly then List.mem kind [TextField; SecureField; Input; SearchField; Textarea; Combobox]
   else if List.mem property [VirtualOverscan; VirtualItemExtent; VirtualTotalCount;
-    VirtualGeneration; VirtualIndices; VirtualScrollIndex] then kind = VirtualList
+    VirtualGeneration; VirtualIndices; VirtualScrollIndex; VirtualViewport] then kind = VirtualList
   else if property = AccessibilityIdentifier then true
   (* Position hint honored on [overlay] children and on [overlay] itself;
      admitted before the restrictive arms so e.g. an aligned [menu_trigger]
@@ -1616,6 +1617,7 @@ let virtual_indices_to_string indices =
 let property_value_supported property value =
   match (property, value) with
   | ReadOnly, BoolValue _ -> true
+  | VirtualViewport, StringValue value -> value = "own" || value = "parent"
   | VirtualOverscan, IntValue n -> n >= 0
   | VirtualItemExtent, FloatValue f -> is_finite f && f > 0.
   | VirtualTotalCount, IntValue n -> n >= 0

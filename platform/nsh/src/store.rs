@@ -419,6 +419,25 @@ impl Transaction<'_> {
                     }
                 } else {
                     contract::validate_node(node)?;
+                    if node.kind == "virtual-list"
+                        && self.previous(node.id).is_some_and(|old| {
+                            old.incarnation == node.incarnation
+                                && old
+                                    .props
+                                    .get("virtual-viewport")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or("own")
+                                    != node
+                                        .props
+                                        .get("virtual-viewport")
+                                        .and_then(Value::as_str)
+                                        .unwrap_or("own")
+                        })
+                    {
+                        return Err(
+                            "changing virtual-list viewport requires a new keyed list node".into(),
+                        );
+                    }
                 }
                 extra(node)?;
             }

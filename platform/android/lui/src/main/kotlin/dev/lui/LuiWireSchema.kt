@@ -297,6 +297,7 @@ enum class LuiProperty(val wireName: String) {
     toggleDetailEnabled("toggle-detail-enabled"),
     focusWithinEnabled("focus-within-enabled"),
     shrink("shrink"),
+    virtualViewport("virtual-viewport"),
     ;
 
     companion object {
@@ -350,7 +351,7 @@ object LuiSchemaMatrix {
         LuiNodeKind.dropdownMenu to setOf(LuiProperty.collisionPadding),
         LuiNodeKind.tooltip to setOf(LuiProperty.collisionPadding),
         LuiNodeKind.switchControl to setOf(LuiProperty.foreground),
-        LuiNodeKind.virtualList to setOf(LuiProperty.overscan, LuiProperty.itemExtent, LuiProperty.virtualTotalCount, LuiProperty.virtualGeneration, LuiProperty.virtualIndices, LuiProperty.virtualScrollIndex),
+        LuiNodeKind.virtualList to setOf(LuiProperty.overscan, LuiProperty.itemExtent, LuiProperty.virtualTotalCount, LuiProperty.virtualGeneration, LuiProperty.virtualIndices, LuiProperty.virtualScrollIndex, LuiProperty.virtualViewport),
         LuiNodeKind.textField to setOf(LuiProperty.readOnly),
         LuiNodeKind.secureField to setOf(LuiProperty.readOnly),
         LuiNodeKind.input to setOf(LuiProperty.readOnly),

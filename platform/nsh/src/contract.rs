@@ -8,7 +8,7 @@ mod generated;
 
 pub use generated::{
     AnchorAlignmentValue, AnchorValue, DisplayValue, FrameAxesValue, ImageFitValue, InputTypeValue,
-    OrientationValue,
+    OrientationValue, VirtualViewportValue,
 };
 
 /// Preserve each component's default only when the canonical property is absent.

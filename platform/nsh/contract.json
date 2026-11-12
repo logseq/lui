@@ -186,6 +186,10 @@
       "outline",
       "primary",
       "secondary"
+    ],
+    "virtual-viewport": [
+      "own",
+      "parent"
     ]
   },
   "extensionRules": {
@@ -820,6 +824,9 @@
     ],
     "shrink": [
       "float"
+    ],
+    "virtual-viewport": [
+      "string"
     ]
   },
   "properties": [
@@ -1020,7 +1027,8 @@
     "indeterminate",
     "toggle-detail-enabled",
     "focus-within-enabled",
-    "shrink"
+    "shrink",
+    "virtual-viewport"
   ],
   "kinds": {
     "root": {
@@ -6321,7 +6329,8 @@
         "virtual-total-count",
         "virtual-generation",
         "virtual-indices",
-        "virtual-scroll-index"
+        "virtual-scroll-index",
+        "virtual-viewport"
       ],
       "children": [
         "row",
@@ -11751,17 +11760,17 @@
     "x-circle"
   ],
   "sourceHashes": {
-    "schema/components.json": "50b63836550156cd7244bf0aabcea04cd4852166d18089155ecc771a2dbd39a6",
-    "src/lui_protocol.ml": "bd1775fe2041e1f9f11642e1f353d9f6e32014e41b36d44dee36ca145e8fa266",
-    "src/lui_protocol.mli": "74834e3e0002203fa5a520011f016382c3a1f65fe796219748039e1ccba2164d",
-    "src/lui_wire_schema.ml": "57f7dfa35b5e3c8759aab46cbc5b790c3fa58542a33b8d99056da5d232c33e81",
-    "src/lui_elements.ml": "724c6d653008a833beef4c82b5d2da21f004f4fb031f677fedb00469c0756753",
-    "src/lui_elements.mli": "6436951a2459ed67d49c73cb5a0554d170cfddb6bccd4d0ef1652867d3455673",
-    "tooling/typed_view_schema.mjs": "b7a0ccbb0a6be44d5c2fb4028af6c512fa4a2aa9e6e815f5db0abf378f1140c7",
+    "schema/components.json": "90d87d573fe8dd1f94cb1ebc1da864ef2f8cb9c582e2e36763e0745d96b4817b",
+    "src/lui_protocol.ml": "5bd0de8ae7bd8ce5538ca129f9aa20a84e3712227997db9f1b16d38527789545",
+    "src/lui_protocol.mli": "46d522d2c040f2d88af04e681f4608d48f218c1655def678ae5263cf2ece525f",
+    "src/lui_wire_schema.ml": "f5e33f65523f0ec4df93323904a94d89d0e45bc721abafddbfc41492c23c4366",
+    "src/lui_elements.ml": "d2b0d302b2186642230dbb54252dc324591a7fd22725081cadaff0e0ecef2211",
+    "src/lui_elements.mli": "792f91bb3ef389d1b6bae38e22618b6ea45b4d6959603ad281afbc67ec9c5d72",
+    "tooling/typed_view_schema.mjs": "b0d2d2446e36d9abbdd3da3340c617b14ffc45f29fc9277cb46042ffe4c0b27b",
     "tooling/generate_component_schema.mjs": "29e2fdbb1c21f1abb35a472b589bb6dc36d57a27a0865e14e3dc6d2bacd44a71",
     "src/lui_extension.ml": "6e6ee44f5fb52348bff68309c1745a3f103edf5db7d3ccf794c5bb4e377abebb",
     "tooling/export_native_contract.ml": "7d5c15dfc296435fc1310ce12b51e61eb6ed38dc3c016623d34b609b7327172e",
     "tooling/generate_nsh_contract.py": "6d330917722cb1ba953fa59fcb130dfbbc648c38f00d9a6fddf1e0b413b12d9b",
-    "tooling/nsh_contract_codegen.py": "ee382a934e3cdfd35792214d6b8df82f4ea437496555bb4bd38ec0e993cb67f4"
+    "tooling/nsh_contract_codegen.py": "9f55c624eb925a917ae731b3eb2d3fa93cbab1266e5d7b9dc1e9191ba6eee1fd"
   }
 }

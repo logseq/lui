@@ -310,6 +310,7 @@ type property =
   | ToggleDetailEnabled
   | FocusWithinEnabled
   | ShrinkValue
+  | VirtualViewport
 
 module Property_map : Map.S with type key = property
 

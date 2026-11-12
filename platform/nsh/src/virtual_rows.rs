@@ -2,7 +2,7 @@
 //! demand to LUI and associates the bounded committed row roots with native keys.
 use crate::store::Node;
 use nsh_core::{
-    element::{Position, ViewableItems, VirtualList, after_answer},
+    element::{ListViewport, Position, ViewableItems, VirtualList, after_answer},
     prelude::*,
 };
 use std::{
@@ -13,6 +13,25 @@ use std::{
 };
 
 pub(crate) type RowIdentity = (u64, u64);
+
+fn lower_viewport(value: crate::contract::VirtualViewportValue) -> ListViewport {
+    use crate::contract::VirtualViewportValue;
+    match value {
+        VirtualViewportValue::Own => ListViewport::Own,
+        VirtualViewportValue::Parent => ListViewport::Parent,
+    }
+}
+
+fn viewport(node: &Node) -> Result<ListViewport, String> {
+    use crate::contract::VirtualViewportValue;
+    let value = match node.props.get("virtual-viewport") {
+        None => VirtualViewportValue::Own,
+        Some(value) => VirtualViewportValue::try_from(
+            value.as_str().ok_or("virtual-viewport requires a string")?,
+        )?,
+    };
+    Ok(lower_viewport(value))
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Window {
@@ -813,6 +832,7 @@ pub(crate) fn element(
             })
         },
     )
+    .viewport(viewport(&initial).expect("validated virtual viewport"))
     .element_ref(&reference)
     .keys(move || Keys {
         values: keys.get(),
@@ -941,6 +961,7 @@ mod tests {
         window: Option<Window>,
     }
     struct NativeContext(Arc<std::sync::Mutex<NativeProbe>>);
+    struct ParentViewport;
     #[component]
     fn NativeFixture() -> impl IntoElement {
         let probe = nsh_core::element::engine_context::<NativeContext>().unwrap();
@@ -952,6 +973,12 @@ mod tests {
         source
             .props
             .insert("track-visible-range".into(), json!(true));
+        let parent_viewport = engine_context::<ParentViewport>().is_some();
+        if parent_viewport {
+            source
+                .props
+                .insert("virtual-viewport".into(), json!("parent"));
+        }
         let source = signal(Arc::new(source));
         let children = signal(committed.iter().map(|(_, id)| (*id, 1)).collect());
         let draft = signal("Row 2".to_owned());
@@ -981,7 +1008,7 @@ mod tests {
             },
             move |_| dismiss_keyboard(),
         );
-        element(
+        let list = element(
             source,
             children,
             element_ref(),
@@ -1015,30 +1042,68 @@ mod tests {
                 failed: Rc::new(|error| panic!("{error}")),
             },
         )
-        .h(px(320.0))
-        .w(px(400.0))
+        .w(px(400.0));
+        if parent_viewport {
+            scroll()
+                .h(px(320.0))
+                .w(px(400.0))
+                .test_id("shared-scroll-viewport")
+                .child(
+                    view()
+                        .flex_col()
+                        .child(text("Shared header").h(px(64.0)))
+                        .child(list),
+                )
+                .into_element()
+        } else {
+            list.h(px(320.0)).into_element()
+        }
     }
     #[test]
     fn native_cell_feedback_releases_distant_focus_without_scrolling_again() -> Result<(), String> {
+        exercise_native_cell_feedback(false)
+    }
+    #[test]
+    fn parent_viewport_reuses_outer_scroll_and_retains_distant_editor_with_bounded_cells()
+    -> Result<(), String> {
+        exercise_native_cell_feedback(true)
+    }
+    fn exercise_native_cell_feedback(parent: bool) -> Result<(), String> {
         use nsh_core::platform::{Idiom, Os};
         use nsh_engine::{EngineConfig, EngineContext, Environment, Root};
         use nsh_testing::Headless;
         use std::time::Duration;
         let probe = Arc::new(std::sync::Mutex::new(NativeProbe::default()));
+        let mut context = EngineContext::default().with(NativeContext(probe.clone()));
+        if parent {
+            context = context.with(ParentViewport);
+        }
         let mut app = Headless::start(EngineConfig {
             environment: Environment {
                 os: Os::Linux,
                 idiom: Idiom::Desktop,
                 ..Default::default()
             },
-            context: EngineContext::default().with(NativeContext(probe.clone())),
+            context,
             ..EngineConfig::new(Root::of::<NativeFixture>())
         })
         .unwrap();
         app.wait_for("label:Row 2")?;
+        if parent {
+            assert!(
+                app.screen().layout_nodes().len() < 200,
+                "parent viewport mounted source-sized native cells"
+            );
+        }
         app.type_text("label:Row 2", "!")?;
         app.press_key("f7")?;
         app.wait_for("label:Row 99999")?;
+        if parent {
+            assert!(
+                app.screen().layout_nodes().len() < 200,
+                "far jump mounted source-sized native cells"
+            );
+        }
         app.wait_until("distant editor retained", Duration::from_secs(3), |_| {
             probe
                 .lock()

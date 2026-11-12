@@ -1861,6 +1861,11 @@
       "lg": "ShrinkValue",
       "wire": "shrink",
       "swift": "shrink"
+    },
+    {
+      "lg": "VirtualViewport",
+      "wire": "virtual-viewport",
+      "swift": "virtualViewport"
     }
   ],
   "events": [
@@ -2330,7 +2335,8 @@
       "virtual-total-count",
       "virtual-generation",
       "virtual-indices",
-      "virtual-scroll-index"
+      "virtual-scroll-index",
+      "virtual-viewport"
     ],
     "text-field": [
       "read-only"

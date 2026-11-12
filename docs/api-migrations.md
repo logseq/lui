@@ -1,5 +1,41 @@
 # LUI API migration guide
 
+## Virtual lists can use the surrounding NSH Scroll viewport
+
+`Lui_elements.virtual_list` adds `?viewport:virtual_viewport`, where
+`virtual_viewport = [ \`own | \`parent ]`. Omission preserves the existing owned
+scroll viewport on every backend. NSH also supports `~viewport:\`parent` through
+the public native `ListViewport::Parent` builder: the list keeps its complete
+logical extent while rendering only rows requested by its surrounding Scroll.
+This lets headers, multiple lists and other content share one scroll owner.
+
+For example, migrate an eager collection inside an existing Scroll to:
+
+```ocaml
+scroll [
+  text ~value:"Journal" [];
+  virtual_list ~viewport:`parent ~item_extent:32. [
+    virtual_rows ~source:rows ~key:(fun row -> row.id) ~cmp:String.compare
+      ~mount:render_row ()
+  ]
+]
+```
+
+The append-only `VirtualViewport` property encodes as `virtual-viewport`, with
+closed string values `own` and `parent`; absence means `own`. Parent ownership
+currently requires NSH. Other host constructors and raw runtime property writes
+reject `parent` explicitly before publishing it; existing Web, Apple/iOS and
+Android callers need no changes. Use a matching updated NSH provider when opting
+in; older providers reject this unknown wire property.
+
+Viewport ownership is fixed for a retained list's lifetime. There is no signal
+argument. Replace the keyed list node to change ownership. NSH rejects changes
+between `own` and `parent`, including removing `parent`, atomically without
+advancing the batch generation or disturbing existing row identities. Adding or
+removing explicit `own` preserves the same default and remains valid. Visible
+range, sparse row demand, active pins and scroll-token outcomes continue through
+their existing ordered feedback paths, even while new user input is fenced.
+
 ## Unreleased: NSH desktop migration (in progress)
 
 The desktop implementation is moving from MyGo to a Rust-only NSH host.

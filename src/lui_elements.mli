@@ -53,6 +53,7 @@ type list_style = [ `plain | `inset | `inset_grouped ]
     passed as [~style]. *)
 type list_marker = [ `none | `disc | `decimal ]
 type scroll_anchor = [ `top | `center | `bottom | `nearest ]
+type virtual_viewport = [ `own | `parent ]
 type separator_visibility = [ `visible | `hidden ]
 
 (** Platform vocabulary re-exported from {!Lui_protocol} so view code can
@@ -1087,8 +1088,13 @@ val list :
    [?track_visible_range]/[?on_visible_range]/[?on_scroll_completed])
    matches {!list} and is implemented on the web backend; native
    backends currently parse-accept these props without scrolling. *)
+
+(** [viewport] defaults to [`own]. [`parent] uses the surrounding Scroll
+    viewport and is currently supported by NSH only. It is fixed for the
+    retained node lifetime; replace the keyed list to change ownership. *)
 val virtual_list :
   ?key:string ->
+  ?viewport:virtual_viewport ->
   ?overscan:int ->
   ?item_extent:float ->
   ?gap:int ->

@@ -39,6 +39,7 @@ type resize_easing = [ `linear | `standard | `emphasized | `spring ]
 type role = [ `treeitem | `navigation | `navigation_heading ]
 type list_style = [ `plain | `inset | `inset_grouped ]
 type scroll_anchor = [ `top | `center | `bottom | `nearest ]
+type virtual_viewport = [ `own | `parent ]
 type separator_visibility = [ `visible | `hidden ]
 
 (* Platform vocabulary re-exported from [Lui_protocol] so view code can
@@ -249,6 +250,10 @@ let list_style_value : list_style -> string = function
   | `plain -> "plain"
   | `inset -> "inset"
   | `inset_grouped -> "inset-grouped"
+
+let virtual_viewport_value : virtual_viewport -> string = function
+  | `own -> "own"
+  | `parent -> "parent"
 
 let scroll_anchor_value : scroll_anchor -> string = function
   | `top -> "top"
@@ -1000,9 +1005,15 @@ let list ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?pad
   mount_children context node children;
   node
 
-let virtual_list ?key ?overscan ?item_extent ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?scroll_target ?scroll_anchor ?scroll_token ?scroll_target_signal ?scroll_token_signal ?scroll_animated ?track_visible_range ?on_scroll_completed ?on_visible_range ?opacity ?opacity_signal ?list_marker ?transition (children : t list) : t =
+let virtual_list ?key ?viewport ?overscan ?item_extent ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?scroll_target ?scroll_anchor ?scroll_token ?scroll_target_signal ?scroll_token_signal ?scroll_animated ?track_visible_range ?on_scroll_completed ?on_visible_range ?opacity ?opacity_signal ?list_marker ?transition (children : t list) : t =
  fun context parent ->
+  (match viewport, Lui_ui.host context with
+   | Some `parent, (GenericHost | WebHost | SwiftUIHost | KotlinHost) ->
+       invalid_arg "parent virtual-list viewport requires the NSH backend"
+   | (None | Some `own), _ | Some `parent, NshHost -> ());
   let node = Lui_ui.virtual_list context in
+  Option.iter (Lui_ui.string_property context node VirtualViewport)
+    (Option.map virtual_viewport_value viewport);
   Option.iter (Lui_ui.int_property context node VirtualOverscan) overscan;
   Option.iter (Lui_ui.float_property context node VirtualItemExtent) item_extent;
   apply_universal context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~margin ~margin_horizontal ~margin_vertical ~margin_top ~margin_right ~margin_bottom ~margin_left ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave ~transition;

@@ -1853,6 +1853,11 @@ let notify_segment_property application node property value =
           !(segment.dynamic_segment_on_property)) segments
 
 let set_prop application node property value =
+  if property = VirtualViewport && value = StringValue "parent" then
+    (match application.runtime_backend.backend_profile.profile_host with
+     | NshHost -> ()
+     | GenericHost | WebHost | SwiftUIHost | KotlinHost ->
+         invalid_arg "parent virtual-list viewport requires the NSH backend");
   if property = FocusWithinEnabled then
     (match application.runtime_backend.backend_profile.profile_host with
      | WebHost | NshHost -> ()

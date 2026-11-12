@@ -290,6 +290,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case toggleDetailEnabled = "toggle-detail-enabled"
     case focusWithinEnabled = "focus-within-enabled"
     case shrink = "shrink"
+    case virtualViewport = "virtual-viewport"
 }
 
 enum LUISchemaMatrix {
@@ -330,7 +331,7 @@ enum LUISchemaMatrix {
         .dropdownMenu: [.collisionPadding],
         .tooltip: [.collisionPadding],
         .switchControl: [.foreground],
-        .virtualList: [.overscan, .itemExtent, .virtualTotalCount, .virtualGeneration, .virtualIndices, .virtualScrollIndex],
+        .virtualList: [.overscan, .itemExtent, .virtualTotalCount, .virtualGeneration, .virtualIndices, .virtualScrollIndex, .virtualViewport],
         .textField: [.readOnly],
         .secureField: [.readOnly],
         .input: [.readOnly],

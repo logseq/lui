@@ -54,7 +54,7 @@ class NSHContractCompilerTest(unittest.TestCase):
         self.assertEqual(scalar_types(schema, contract), {"future-range": ["float"]})
 
     def test_closed_domain_generation_requires_complete_canonical_metadata(self):
-        valid = {"display": ["none"], "image-fit": ["fit", "fill"],
+        valid = {"virtual-viewport": ["own", "parent"], "display": ["none"], "image-fit": ["fit", "fill"],
                  "container-relative-frame": ["both"], "anchor": ["below"], "anchor-alignment": ["start"], "orientation": ["horizontal", "vertical"], "input-type": ["color", "text", "time"]}
         for name in valid:
             for values in (None, [], ["none", "none"], ["inline_block"], [[]]):
@@ -86,6 +86,9 @@ class NSHContractCompilerTest(unittest.TestCase):
         image_source = (root / "platform/nsh/src/images.rs").read_text()
         image_start = image_source.index("fn fit_value(")
         provider += image_source[image_start:image_source.index("\npub(crate) fn fit(", image_start)]
+        virtual_source = (root / "platform/nsh/src/virtual_rows.rs").read_text()
+        start = virtual_source.index("fn lower_viewport(")
+        provider += virtual_source[start:virtual_source.index("\n}\n", start) + 2].replace("crate::contract::VirtualViewportValue", "VirtualViewportValue")
         # Compile the actual provider match, with minimal stand-ins for its
         # external parse types. This proves exhaustiveness, not NSH layout.
         standins = r'''
@@ -104,6 +107,8 @@ enum Align { Start, Center, End }
 enum Axis { Horizontal, Vertical }
 #[derive(Debug, PartialEq, Eq)]
 enum NativeInputKind { Text, Time }
+#[derive(Debug, PartialEq, Eq)]
+enum ListViewport { Own, Parent }
 enum StyleValue<'a> { Str(&'a str) }
 impl StyleKey {
     fn parse_value(self, value: StyleValue<'_>) -> Result<PropertyValue, &'static str> {
@@ -130,6 +135,11 @@ fn main() {
     assert_eq!(lower_input_type(InputTypeValue::Time), Ok(NativeInputKind::Time));
     assert!(lower_input_type(InputTypeValue::Color).unwrap_err().contains("color"));
     assert!(InputTypeValue::try_from("not-canonical").is_err());
+    for value in VirtualViewportValue::ALL {
+        assert_eq!(VirtualViewportValue::try_from(value.as_str()), Ok(*value));
+    }
+    assert_eq!(lower_viewport(VirtualViewportValue::Own), ListViewport::Own);
+    assert_eq!(lower_viewport(VirtualViewportValue::Parent), ListViewport::Parent);
     for value in OrientationValue::ALL {
         assert_eq!(OrientationValue::try_from(value.as_str()), Ok(*value));
     }
@@ -191,7 +201,7 @@ fn main() {
             positive = compile_probe(domains)
             self.assertEqual(positive.returncode, 0, positive.stderr)
             subprocess.run([str(binary)], check=True)
-            for property_name in ("display", "image-fit", "container-relative-frame", "anchor", "anchor-alignment", "orientation", "input-type"):
+            for property_name in ("virtual-viewport", "display", "image-fit", "container-relative-frame", "anchor", "anchor-alignment", "orientation", "input-type"):
                 with self.subTest(property=property_name):
                     expanded = {**domains, property_name: [*domains[property_name], "future-provider-test"]}
                     negative = compile_probe(expanded)
@@ -207,7 +217,7 @@ fn main() {
             outputs = [root / "contract.json", root / "contract_generated.rs", root / "fixtures/oracle.json"]
             exported = {
                 "version": 1,
-                "closedDomains": {"display": ["none"], "image-fit": ["fit", "fill"],
+                "closedDomains": {"virtual-viewport": ["own", "parent"], "display": ["none"], "image-fit": ["fit", "fill"],
                  "container-relative-frame": ["both"], "anchor": ["below"], "anchor-alignment": ["start"], "orientation": ["horizontal", "vertical"], "input-type": ["color", "text", "time"]},
                 "validators": {
                     "is_finite": {"constructor": "true"},

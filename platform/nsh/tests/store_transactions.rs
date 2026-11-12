@@ -267,3 +267,69 @@ fn container_property_edits_share_the_existing_child_sequence() {
         assert_eq!(store.nodes[&1].children[0], 3);
     }
 }
+
+#[test]
+fn virtual_viewport_changes_require_a_new_retained_identity_and_reject_atomically() {
+    let mode = |value: &str| Operation::SetProp {
+        id: 1,
+        property: "virtual-viewport".into(),
+        value: json!(value),
+    };
+    for initial in ["own", "parent"] {
+        let mut store = Store::default();
+        store
+            .apply(batch(1, vec![create(1, "virtual-list"), mode(initial)]))
+            .unwrap();
+        let before = store.nodes[&1].clone();
+        let changed = if initial == "own" { "parent" } else { "own" };
+        assert!(
+            store
+                .apply(batch(2, vec![mode(changed)]))
+                .unwrap_err()
+                .contains("new keyed list")
+        );
+        assert_eq!(store.generation, 1);
+        assert!(Arc::ptr_eq(&before, &store.nodes[&1]));
+        assert!(store.apply(batch(2, vec![mode("unknown")])).is_err());
+        if initial == "parent" {
+            assert!(
+                store
+                    .apply(batch(
+                        2,
+                        vec![Operation::RemoveProp {
+                            id: 1,
+                            property: "virtual-viewport".into(),
+                        }]
+                    ))
+                    .is_err()
+            );
+        }
+        store
+            .apply(batch(
+                2,
+                vec![
+                    Operation::DropNode { id: 1 },
+                    create(1, "virtual-list"),
+                    mode(changed),
+                ],
+            ))
+            .unwrap();
+        assert_ne!(store.nodes[&1].incarnation, before.incarnation);
+        assert_eq!(store.nodes[&1].string("virtual-viewport"), changed);
+    }
+    let mut store = Store::default();
+    store
+        .apply(batch(1, vec![create(1, "virtual-list")]))
+        .unwrap();
+    store.apply(batch(2, vec![mode("own")])).unwrap();
+    store
+        .apply(batch(
+            3,
+            vec![Operation::RemoveProp {
+                id: 1,
+                property: "virtual-viewport".into(),
+            }],
+        ))
+        .unwrap();
+    assert!(!store.nodes[&1].props.contains_key("virtual-viewport"));
+}

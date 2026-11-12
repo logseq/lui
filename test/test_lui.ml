@@ -4851,6 +4851,35 @@ let test_initial_tree_is_bounded_for_host host () =
       Alcotest.(check bool) "initial wire excludes offscreen rows" true (bytes < 32_768))
       ~finally:(fun () -> dispose fixture)
 
+let test_virtual_viewport_contract () =
+  let mount ?viewport host =
+    let batches = ref [] in
+    let backend = { backend_profile = profile GenericOS host;
+      apply_batch = (fun batch -> batches := batch :: !batches; true) } in
+    let app = Lui_app.create backend () (fun model () -> model)
+      (fun _ _ _ -> Lui_elements.virtual_list ?viewport []) in
+    flush_app app;
+    let values = List.concat_map (fun (batch : patch_batch) -> batch.ops) !batches in
+    ignore (Lui_app.dispose app);
+    values
+  in
+  List.iter (fun host ->
+    let ops = mount host in
+    Alcotest.(check bool) "omitted viewport preserves every existing host default" false
+      (List.exists (function SetProp (_, VirtualViewport, _) -> true | _ -> false) ops);
+    ignore (mount ~viewport:`own host))
+    [GenericHost; WebHost; SwiftUIHost; KotlinHost; NshHost];
+  Alcotest.(check bool) "NSH parent viewport has a dedicated canonical property" true
+    (List.exists (function SetProp (_, VirtualViewport, StringValue "parent") -> true
+      | _ -> false) (mount ~viewport:`parent NshHost));
+  List.iter (fun host ->
+    Alcotest.check_raises "unsupported parent viewport fails before mounting"
+      (Invalid_argument "parent virtual-list viewport requires the NSH backend")
+      (fun () -> ignore (mount ~viewport:`parent host)))
+    [GenericHost; WebHost; SwiftUIHost; KotlinHost];
+  Alcotest.(check bool) "unknown viewport strings are rejected" false
+    (property_value_supported VirtualViewport (StringValue "future-viewport"))
+
 let test_initial_tree_is_bounded () =
   List.iter (fun host -> test_initial_tree_is_bounded_for_host host ()) [WebHost; NshHost]
 
@@ -5148,6 +5177,7 @@ let test_comparator_identity_accepts_function_valued_items () =
     ~finally:(fun () -> ignore (Lui_app.dispose app))
 
 let tests = tests @ [
+  "virtual viewport contract is typed and host scoped", test_virtual_viewport_contract;
   "virtual_rows requires exclusive virtual-list ownership", test_virtual_rows_requires_exclusive_virtual_list_parent;
   "offscreen duplicate business keys reject atomically", test_duplicate_business_keys_are_checked_offscreen;
   "malformed ranges reject and valid ranges clamp", test_invalid_window_is_rejected_without_mutation;

@@ -258,7 +258,7 @@ def scalar_types(schema, contract):
 
 def compile_closed_domains(domains):
     """Compile selected provider enums from the canonical typed constructor export."""
-    selected = {"display": "DisplayValue", "image-fit": "ImageFitValue",
+    selected = {"virtual-viewport": "VirtualViewportValue", "display": "DisplayValue", "image-fit": "ImageFitValue",
                 "container-relative-frame": "FrameAxesValue", "anchor": "AnchorValue",
                 "anchor-alignment": "AnchorAlignmentValue", "orientation": "OrientationValue", "input-type": "InputTypeValue"}
     output = []

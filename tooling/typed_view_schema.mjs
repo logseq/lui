@@ -47,6 +47,7 @@ const aliases = {
 const constructorAliases = {
   'menu-item': {checked: ['selected']},
   'toggle-button': {checked: ['selected']},
+  'virtual-list': {viewport: ['virtual-viewport']},
   radio: {selected: ['checked']},
 };
 
