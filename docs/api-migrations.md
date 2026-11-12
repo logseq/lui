@@ -28,6 +28,10 @@ reject `parent` explicitly before publishing it; existing Web, Apple/iOS and
 Android callers need no changes. Use a matching updated NSH provider when opting
 in; older providers reject this unknown wire property.
 
+The generated JSON-view facade accepts either `viewport` or `virtual-viewport`.
+Identical aliases are allowed; conflicting aliases, nonstring values and unknown
+ownership names fail explicitly instead of silently selecting the default.
+
 Viewport ownership is fixed for a retained list's lifetime. There is no signal
 argument. Replace the keyed list node to change ownership. NSH rejects changes
 between `own` and `parent`, including removing `parent`, atomically without
