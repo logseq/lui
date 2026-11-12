@@ -28,7 +28,12 @@ fn text(time: TimeOfDay, precision: TimePrecision) -> String {
 
 pub(super) fn validate(node: &Node) -> Result<(), String> {
     value(node.string("text"))?;
-    for flag in ["read-only", "autofocus", "navigate-enabled"] {
+    for flag in [
+        "read-only",
+        "autofocus",
+        "navigate-enabled",
+        "dismiss-enabled",
+    ] {
         if node.boolean(flag, false) {
             return Err(format!(
                 "NSH TimeField does not expose {flag}; remove it from the time input"

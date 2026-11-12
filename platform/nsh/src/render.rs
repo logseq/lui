@@ -732,6 +732,14 @@ impl Renderer {
                 }
                 Event::Text(..) | Event::Value(..) | Event::Change(_) => Some("change-enabled"),
                 Event::Submit(_) => Some("submit-enabled"),
+                Event::Dismiss(_)
+                    if matches!(
+                        node.kind.as_str(),
+                        "input" | "text-field" | "secure-field" | "search-field" | "textarea"
+                    ) =>
+                {
+                    Some("dismiss-enabled")
+                }
                 Event::NavigatePrevious(_) | Event::NavigateNext(_) => Some("navigate-enabled"),
                 Event::Toggle(..) => Some("toggle-enabled"),
                 Event::ToggleDetail(..) => Some("toggle-detail-enabled"),

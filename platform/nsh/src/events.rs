@@ -108,6 +108,9 @@ impl Capabilities {
         {
             value |= 1 << 5;
         }
+        if node.props.contains_key("dismiss-enabled") {
+            value |= 1 << 6;
+        }
         Self(value)
     }
     /// A false later value requires no observer. Remembering actual installed
@@ -119,6 +122,9 @@ impl Capabilities {
         }
         if !node.boolean("navigate-enabled", false) {
             required.0 &= !(1 << 5);
+        }
+        if !node.boolean("dismiss-enabled", false) {
+            required.0 &= !(1 << 6);
         }
         required
     }

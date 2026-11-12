@@ -40,7 +40,12 @@ fn time_input_preserves_canonical_text_precision_without_normalizing_invalid_dra
         ..Default::default()
     };
     super::super::validate(&node).unwrap();
-    for flag in ["read-only", "autofocus", "navigate-enabled"] {
+    for flag in [
+        "read-only",
+        "autofocus",
+        "navigate-enabled",
+        "dismiss-enabled",
+    ] {
         node.props.insert(flag.into(), json!(false));
         super::super::validate(&node).unwrap();
         node.props.insert(flag.into(), json!(true));
