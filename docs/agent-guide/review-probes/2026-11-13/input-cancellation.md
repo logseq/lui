@@ -110,3 +110,9 @@ unchanged. No second capability grammar or SDK change is introduced.
   This is a downstream extractor defect, not a passing capability check; it
   must be repaired and the full target suite rerun before claiming that gate.
   Evidence: `/tmp/logseq-target-capabilities-static-tests.log`.
+
+The downstream alias repair subsequently passed all 32 actual-target cases,
+including the unchanged originally failing case:
+`/tmp/logseq-target-capabilities-static-tests-release.log`. The result-type path
+now uses the same compiler-identity module alias resolution as the call head;
+the known callback is never executed and unknown text stays deferred.

@@ -285,7 +285,7 @@ uses the concrete route bodies, not literal presence alone.
 
 | Source | SHA-256 |
 | --- | --- |
-| `native_capture.rs` | `2a7d72a3aca3034741b7872ba046a08b5051b88753587c4c41f6b484c9041514` |
+| `native_capture.rs` | `d2ac9e4866703205afdcc3547f9db50ef2fb55d0ccf3165fa7616c2a351ffbbe` |
 | `white_space.rs` | `33178d9ee60ca72b320d5a9a4c28e6221373af6ccca5c3f2c68dd452ea8ecd21` |
 | `application_icons.rs` | `08b05108b92c3f3b95bca631908a93a11b56c73baba38ad485e358298f828142` |
 | `application_theme.rs` | `517687a852cb3bf343bc8b37201ca70d4c61ca6b2e85563c036c9899bb1cfd62` |
@@ -298,7 +298,7 @@ uses the concrete route bodies, not literal presence alone.
 | `render.rs` | `d28fcc2e20a77e81d7a4e69e68e77311f52027a1bf57076ebb800e407416dd60` |
 | `controls.rs` | `99e110e209634bfc26dc2b1e88cca3684aa345c7c381361debe48b73f10d1e04` |
 | `style.rs` | `5cff08310cf431c85d240d6c540f95c7a8d85b07afaf615eefb085288671b7db` |
-| `virtual_rows.rs` | `703b4a372f8453d95ebf154779c2508e088f195f8bb727718945a5364131ae38` |
+| `virtual_rows.rs` | `7d8d95ee762864e81628cacccee8bdabf93609fb1305da5a362c30b8f4a43fc3` |
 | `app.rs` | `f9c207d115410949b0c1fbfee4cc98f310dece3704702e91718ee865f51c0e56` |
 | `ui/mod.rs` | `5618167225c683d243f629b5d42d828997eca023f3794c200d92f30de7657171` |
 | `ui/controls.rs` | `9f601722ffd6efe90b2b4399ba552cd78d95606e772b802f51f9873b9ecacf4f` |
@@ -310,7 +310,7 @@ uses the concrete route bodies, not literal presence alone.
 | `controls/navigation.rs` | `28e0e4ac35312ba9673f7b97168b6d6890d84bf2e676a59ba6d1764c4ef6a28d` |
 | `images.rs` | `0cd8caf3a1736e24381a595eae088031394615ebab4f9e6c0d35ee1d2ba1d6c7` |
 | `headings.rs` | `fe8fcddd03e900d52fd3e253af1cedd3db21a62c0a2c6eabcccc8e450098ff30` |
-| `inputs.rs` | `85ff9d8f596cdb760f639ca813b85c708792505cc1b21d3dd17bbc66606545ac` |
+| `inputs.rs` | `26cf05a1a2199af320b63e1a038a08f4578948b4c001198c970bb10fe548b30a` |
 | `file_picker.rs` | `958a8e75027262fcb5adbdbc2b27307cd78064170eee376f1e59b6dcc5b742d0` |
 | `media.rs` | `71fd9b780a6a6b5925b3f9c4b42aac9e7b320c64e1c5559e30aab3f0e1e48add` |
 | `controls/toasts.rs` | `2d7d344288cf9989f21278a48fede6b77337da698b0ba2b91c5bff909d103ac0` |
