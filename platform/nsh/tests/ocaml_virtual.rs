@@ -1,153 +1,18 @@
 //! Real OCaml sparse rows through the public native ABI, NSH engine and agent.
-use lui_nsh::app::{Desktop, DesktopProps};
-use nsh_core::{
-    element::Prop,
-    geometry::{Points, Size},
-    platform::{Idiom, Os},
-};
-use nsh_engine::{EngineConfig, Environment, Root};
+#[path = "support/ocaml_virtual.rs"]
+mod fixture;
+use fixture::*;
 use nsh_testing::Headless;
 use serde_json::{Value, json};
-use std::{
-    collections::BTreeMap,
-    io::{BufRead, BufReader, Write},
-    net::{SocketAddr, TcpListener, TcpStream},
-    path::PathBuf,
-    process::Command,
-    time::{Duration, Instant},
-};
+use std::{collections::BTreeMap, time::Duration};
 
-// Both cases own the OCaml runtime/desktop fixture until their native app drops.
-static APP_FIXTURES: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-fn fixture_library(fixture_name: &str, prepared_variable: &str) -> Result<String, String> {
-    if let Some(path) = std::env::var_os(prepared_variable) {
-        return Ok(PathBuf::from(path).to_string_lossy().into_owned());
-    }
-    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/build_virtual.py");
-    let result = Command::new("python3")
-        .arg(fixture)
-        .arg("--fixture")
-        .arg(fixture_name)
-        .output()
-        .map_err(|error| error.to_string())?;
-    if !result.status.success() {
-        return Err(format!(
-            "OCaml virtual fixture build failed: {}",
-            String::from_utf8_lossy(&result.stderr)
-        ));
-    }
-    String::from_utf8(result.stdout)
-        .map(|path| path.trim().to_owned())
-        .map_err(|error| error.to_string())
-}
-
-struct Agent(BufReader<TcpStream>);
 impl Agent {
-    fn connect(address: SocketAddr) -> Result<Self, String> {
-        let deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            match TcpStream::connect(address) {
-                Ok(stream) => {
-                    stream
-                        .set_read_timeout(Some(Duration::from_secs(5)))
-                        .map_err(|error| error.to_string())?;
-                    stream
-                        .set_write_timeout(Some(Duration::from_secs(5)))
-                        .map_err(|error| error.to_string())?;
-                    return Ok(Self(BufReader::new(stream)));
-                }
-                Err(error) if Instant::now() >= deadline => return Err(error.to_string()),
-                Err(_) => std::thread::sleep(Duration::from_millis(10)),
-            }
-        }
-    }
-    fn request(&mut self, request: Value) -> Result<Value, String> {
-        let stream = self.0.get_mut();
-        stream
-            .write_all(request.to_string().as_bytes())
-            .and_then(|()| stream.write_all(b"\n"))
-            .map_err(|error| error.to_string())?;
-        let mut response = String::new();
-        if self
-            .0
-            .read_line(&mut response)
-            .map_err(|error| error.to_string())?
-            == 0
-        {
-            return Err("lui-agent closed its connection".into());
-        }
-        let response: Value = serde_json::from_str(&response).map_err(|error| error.to_string())?;
-        if response["ok"] != true {
-            return Err(format!("lui-agent refused {request}: {response}"));
-        }
-        Ok(response)
-    }
     fn press(&mut self, identifier: &str) -> Result<(), String> {
         self.request(
             json!({"op":"press", "selector":format!("prop:accessibility-identifier={identifier}")}),
         )?;
         Ok(())
     }
-    fn tree(&mut self) -> Result<Value, String> {
-        self.request(json!({"op":"tree"}))
-    }
-}
-
-fn start(library: String) -> Result<(Headless, Agent), String> {
-    let reservation = TcpListener::bind("127.0.0.1:0").map_err(|error| error.to_string())?;
-    let address = reservation
-        .local_addr()
-        .map_err(|error| error.to_string())?;
-    drop(reservation);
-    let mut app = Headless::start(EngineConfig {
-        environment: Environment {
-            os: Os::Linux,
-            idiom: Idiom::Desktop,
-            ..Default::default()
-        },
-        viewport: Size::new(Points(1000.0), Points(800.0)),
-        ..EngineConfig::new(Root::new::<Desktop>(move || {
-            let mut props = DesktopProps::default();
-            props.library = Prop::new(library.clone());
-            props.agent_listen = Prop::new(address.to_string());
-            props
-        }))
-    })
-    .map_err(|error| error.to_string())?;
-    app.wait_for("text:Sparse virtual qualification")?;
-    let mut agent = Agent::connect(address)?;
-    let hello = agent.request(json!({"op":"hello"}))?;
-    assert_eq!(hello["protocol"], "lui-agent");
-    Ok((app, agent))
-}
-
-fn nodes(tree: &Value) -> Vec<&Value> {
-    let mut pending: Vec<_> = tree["nodes"].as_array().unwrap().iter().collect();
-    let mut nodes = Vec::new();
-    while let Some(node) = pending.pop() {
-        nodes.push(node);
-        if let Some(children) = node["children"].as_array() {
-            pending.extend(children);
-        }
-    }
-    nodes
-}
-fn identified<'a>(tree: &'a Value, identifier: &str) -> Option<&'a Value> {
-    nodes(tree)
-        .into_iter()
-        .find(|node| node["props"]["accessibility-identifier"] == identifier)
-}
-fn status(tree: &Value) -> &str {
-    identified(tree, "status")
-        .and_then(|node| node["props"]["text"].as_str())
-        .unwrap_or("")
-}
-fn indices(tree: &Value) -> Vec<usize> {
-    identified(tree, "virtual-list")
-        .and_then(|node| node["props"]["virtual-indices"].as_str())
-        .map(|indices| serde_json::from_str(indices).expect("canonical sparse indices"))
-        .unwrap_or_default()
 }
 fn completion(tree: &Value, token: usize) -> Option<(String, usize)> {
     status(tree)
@@ -161,36 +26,6 @@ fn completion(tree: &Value, token: usize) -> Option<(String, usize)> {
             let count = parts.next()?.parse().ok()?;
             (found == token).then_some((outcome, count))
         })
-}
-fn native_id(app: &Headless, identifier: &str) -> Option<nsh_core::NodeId> {
-    app.screen()
-        .layout_nodes()
-        .iter()
-        .find(|node| node.test_id.as_deref() == Some(identifier))
-        .map(|node| node.id)
-}
-fn wait_tree(
-    app: &mut Headless,
-    agent: &mut Agent,
-    description: &str,
-    predicate: impl Fn(&Value) -> bool,
-) -> Result<Value, String> {
-    let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
-        app.wait(Duration::from_millis(16))?;
-        let tree = agent.tree()?;
-        if predicate(&tree) {
-            return Ok(tree);
-        }
-        if Instant::now() >= deadline {
-            return Err(format!(
-                "{description} did not converge: {}; indices={:?}; native={:?}",
-                status(&tree),
-                indices(&tree),
-                app.screen().texts()
-            ));
-        }
-    }
 }
 fn wait_status(app: &mut Headless, agent: &mut Agent, expected: &str) -> Result<Value, String> {
     wait_tree(app, agent, expected, |tree| status(tree).contains(expected))
@@ -213,27 +48,8 @@ fn jump(
     assert_eq!(completion(&settled, *token), Some((outcome.to_owned(), 1)));
     Ok(settled)
 }
-fn bounded(app: &Headless, tree: &Value, count: usize) -> (usize, usize, usize) {
-    let wire = nodes(tree).len();
-    let native = app.screen().layout_nodes().len();
-    let sparse = indices(tree);
-    let list = identified(tree, "virtual-list").expect("mounted virtual list");
-    assert_eq!(list["props"]["virtual-total-count"], count);
-    assert_eq!(list["children"].as_array().unwrap().len(), sparse.len());
-    assert!(
-        sparse.len() <= 64,
-        "source {count}: {} mounted rows",
-        sparse.len()
-    );
-    assert!(wire <= 300, "source {count}: {wire} mounted LUI nodes");
-    assert!(native <= 600, "source {count}: {native} native NSH nodes");
-    assert_eq!(app.screen().count("id:lui-backend-error").unwrap(), 0);
-    (wire, native, sparse.len())
-}
-
 #[test]
 fn real_ocaml_sparse_rows_keep_focus_and_bound_both_trees_through_reorder() -> Result<(), String> {
-    let _fixture = APP_FIXTURES.lock().map_err(|error| error.to_string())?;
     let library = fixture_library("virtual", "LUI_NSH_VIRTUAL_LIBRARY")?;
     let (mut app, mut agent) = start(library.clone())?;
     let baseline = wait_status(&mut app, &mut agent, "count=0 ")?;
@@ -370,116 +186,5 @@ fn real_ocaml_sparse_rows_keep_focus_and_bound_both_trees_through_reorder() -> R
     assert_eq!(nodes(&fresh).len(), baseline_wire);
     assert!(status(&fresh).contains("edited2=\"Row 2\" token=0"));
     assert_eq!(bounded(&reopened, &fresh, 0).2, 0);
-    Ok(())
-}
-
-fn current_factory_visible(screen: &nsh_testing::Screen, revision: i32) -> bool {
-    let prefix = format!("Factory {revision} row ");
-    let nodes = screen.layout_nodes();
-    let Some(viewport) = nodes
-        .iter()
-        .find(|node| node.test_id.as_deref() == Some("replacement-scroll"))
-    else {
-        return false;
-    };
-    !viewport.hidden
-        && nodes.iter().any(|node| {
-            !node.hidden
-                && node
-                    .text
-                    .as_ref()
-                    .is_some_and(|text| text.text.visible_text().starts_with(&prefix))
-                && node.bounds.size.width.0 > 0.0
-                && node.bounds.size.height.0 > 0.0
-                && node.bounds.origin.x.0 >= viewport.bounds.origin.x.0
-                && node.bounds.origin.y.0 >= viewport.bounds.origin.y.0
-                && node.bounds.origin.x.0 + node.bounds.size.width.0
-                    <= viewport.bounds.origin.x.0 + viewport.bounds.size.width.0
-                && node.bounds.origin.y.0 + node.bounds.size.height.0
-                    <= viewport.bounds.origin.y.0 + viewport.bounds.size.height.0
-        })
-}
-
-#[test]
-fn real_ocaml_parent_source_factory_replacement_never_leaves_a_blank_viewport() -> Result<(), String>
-{
-    let _fixture = APP_FIXTURES.lock().map_err(|error| error.to_string())?;
-    let library = fixture_library("virtual_replacement", "LUI_NSH_VIRTUAL_REPLACEMENT_LIBRARY")?;
-    let (mut app, mut agent) = start(library)?;
-    let initial = wait_tree(&mut app, &mut agent, "initial replacement source", |tree| {
-        identified(tree, "virtual-list")
-            .is_some_and(|node| node["props"]["virtual-total-count"] == 1_000)
-    })?;
-    let wire_scroll =
-        identified(&initial, "replacement-scroll").ok_or("missing parent Scroll")?["id"].clone();
-    let wire_list =
-        identified(&initial, "virtual-list").ok_or("missing Parent source")?["id"].clone();
-    app.wait_for("id:replacement-scroll")?;
-    let native_scroll =
-        native_id(&app, "replacement-scroll").ok_or("parent Scroll has no native owner")?;
-    let outside =
-        identified(&initial, "replacement-outside").ok_or("missing outside input")?["id"].clone();
-    app.scroll("id:replacement-scroll", nsh_core::geometry::px(100_000.0))?;
-    let far = wait_tree(&mut app, &mut agent, "far Parent source demand", |tree| {
-        indices(tree).last() == Some(&999)
-    })?;
-    bounded(&app, &far, 1_000);
-    app.wait_for("text:Factory 0 row 999")?;
-    app.wait_until(
-        "initial far factory occupies its actual viewport",
-        Duration::from_secs(5),
-        |screen| current_factory_visible(screen, 0),
-    )?;
-    let mut generation = identified(&far, "virtual-list").unwrap()["props"]["virtual-generation"]
-        .as_u64()
-        .ok_or("missing source generation")?;
-    for revision in 1..=2 {
-        app.press("id:rebuild-factory")?;
-        let replaced = wait_tree(
-            &mut app,
-            &mut agent,
-            "new real source factory revision",
-            |tree| {
-                status(tree) == format!("factory={revision}")
-                    && identified(tree, "virtual-list").is_some_and(|node| {
-                        node["props"]["virtual-generation"]
-                            .as_u64()
-                            .is_some_and(|next| next > generation)
-                    })
-            },
-        )?;
-        assert_eq!(
-            identified(&replaced, "replacement-scroll").unwrap()["id"],
-            wire_scroll
-        );
-        assert_eq!(
-            identified(&replaced, "virtual-list").unwrap()["id"],
-            wire_list
-        );
-        assert_eq!(
-            identified(&replaced, "replacement-outside").unwrap()["id"],
-            outside
-        );
-        assert_eq!(native_id(&app, "replacement-scroll"), Some(native_scroll));
-        // Either a preserved or reset source position is valid here. The real
-        // native viewport must contain current-revision data without another
-        // wheel/scroll command or synthetic VirtualWindow after replacement.
-        app.wait_until(
-            "current factory row inside its actual parent viewport",
-            Duration::from_secs(5),
-            |screen| current_factory_visible(screen, revision),
-        )
-        .map_err(|error| {
-            format!(
-                "{error}; canonical={replaced}; native={:?}",
-                app.screen().texts()
-            )
-        })?;
-        let settled = agent.tree()?;
-        bounded(&app, &settled, 1_000);
-        generation = identified(&settled, "virtual-list").unwrap()["props"]["virtual-generation"]
-            .as_u64()
-            .ok_or("replacement lost source generation")?;
-    }
     Ok(())
 }

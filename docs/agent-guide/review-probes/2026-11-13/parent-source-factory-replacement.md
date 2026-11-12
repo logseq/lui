@@ -30,8 +30,12 @@ policy. Current revision labels exclude stale native rows as a passing witness.
 After each replacement there is no wheel, scroll command, synthetic VirtualWindow
 or manual wake; only the existing native engine pump and read-only agent queries.
 
-The target reuses the existing Desktop/agent/row helpers. Its two OCaml fixture
-cases serialize ownership with one test-only mutex. The private builder adds the
+The target reuses the existing private Desktop/agent/row helpers through
+`tests/support/ocaml_virtual.rs`. The replacement case has its own Cargo-auto
+integration binary, `ocaml_virtual_replacement`, so it never initializes the
+original fixture's different OCaml library in the same OS process. A mutex
+cannot provide that isolation: `runtime.rs` rejects a second initialized library
+and retains OCaml process-global state without dlclose. The private builder adds the
 `virtual_replacement` choice without any Dune changes. A prebuilt library can be
 supplied only with `LUI_NSH_VIRTUAL_REPLACEMENT_LIBRARY`; the older virtual
 fixture's override is kept separate so an unrelated library cannot satisfy the
@@ -41,7 +45,7 @@ For the serial qualification owner:
 
 ```sh
 cargo test --locked --release --manifest-path platform/nsh/Cargo.toml \
-  --test ocaml_virtual \
+  --test ocaml_virtual_replacement \
   real_ocaml_parent_source_factory_replacement_never_leaves_a_blank_viewport \
   -- --exact --nocapture
 ```

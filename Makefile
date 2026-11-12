@@ -45,4 +45,4 @@ test-nsh:
 	$(CARGO) test --locked --manifest-path platform/nsh/Cargo.toml
 
 test-nsh-integration:
-	$(CARGO) test --locked --manifest-path platform/nsh/Cargo.toml --test ocaml_todos --test runtime_protocol --test ocaml_virtual --test ocaml_clock --test ocaml_image --test ocaml_picker --test public_list_seam
+	$(CARGO) test --locked --manifest-path platform/nsh/Cargo.toml --test ocaml_todos --test runtime_protocol --test ocaml_virtual --test ocaml_virtual_replacement --test ocaml_clock --test ocaml_image --test ocaml_picker --test public_list_seam

@@ -83,7 +83,7 @@ jobs:
       - name: Native tooling and delivery regressions
         run: python3 -m unittest discover -s tooling/test -p 'test_nsh_*.py'
       - name: Real OCaml input, recovery, clock, image Load, Picked and bounded rows
-        run: cargo test --locked --manifest-path platform/nsh/Cargo.toml --test ocaml_todos --test runtime_protocol --test ocaml_virtual --test ocaml_clock --test ocaml_image --test ocaml_picker
+        run: cargo test --locked --manifest-path platform/nsh/Cargo.toml --test ocaml_todos --test runtime_protocol --test ocaml_virtual --test ocaml_virtual_replacement --test ocaml_clock --test ocaml_image --test ocaml_picker
 
   unix-ocaml-package:
     name: Native package and whole-app upgrade (${{ matrix.os }})
@@ -198,8 +198,13 @@ jobs:
           $pickerLibrary = python platform/nsh/tests/fixtures/build_virtual.py --fixture picker
           if ($LASTEXITCODE -ne 0) { throw 'Native FilePicker fixture DLL build or export verification failed' }
           "LUI_NSH_PICKER_LIBRARY=$pickerLibrary" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: Real OCaml C ABI, Image Load, Picked, input, recovery and repeated teardown
-        run: cargo test --locked --manifest-path platform/nsh/Cargo.toml --test ocaml_todos --test runtime_protocol --test ocaml_image --test ocaml_picker -- --test-threads=1
+      - name: Build the real Parent source replacement fixture DLL
+        run: |
+          $replacementLibrary = python platform/nsh/tests/fixtures/build_virtual.py --fixture virtual_replacement
+          if ($LASTEXITCODE -ne 0) { throw 'Native Parent source replacement fixture DLL build failed' }
+          "LUI_NSH_VIRTUAL_REPLACEMENT_LIBRARY=$replacementLibrary" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Real OCaml C ABI, Image Load, Picked, input, recovery, Parent replacement and repeated teardown
+        run: cargo test --locked --manifest-path platform/nsh/Cargo.toml --test ocaml_todos --test runtime_protocol --test ocaml_image --test ocaml_picker --test ocaml_virtual_replacement -- --test-threads=1
       - name: Build the exact pinned native NSH packaging CLI
         run: |
           $nshRevision = python -c "import tomllib; from pathlib import Path; print(tomllib.loads(Path('platform/nsh/Cargo.toml').read_text())['dependencies']['nsh-core']['rev'])"
