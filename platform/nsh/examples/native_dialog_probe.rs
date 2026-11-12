@@ -7,7 +7,7 @@ mod dialogs;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     use block2::RcBlock;
     use nsh_platform_macos::{
-        objc2::{MainThreadMarker, MainThreadOnly, rc::Retained},
+        objc2::{MainThreadMarker, rc::Retained},
         objc2_app_kit::{
             NSAccessibility, NSAlert, NSAlertFirstButtonReturn, NSApplication, NSBackingStoreType,
             NSModalResponse, NSModalResponseCancel, NSView, NSWindow, NSWindowStyleMask,

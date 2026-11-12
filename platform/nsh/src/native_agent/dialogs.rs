@@ -243,15 +243,16 @@ mod tests {
 
 #[cfg(test)]
 mod owner_tests {
-    use super::*;
-    use crate::wire::Batch;
+    use super::Owner as DialogOwner;
+    use crate::{app::ApplicationMutations, render::Renderer as LuiRenderer, wire::Batch};
     use nsh_core::prelude::*;
     use nsh_engine::{EngineConfig, Root};
     use nsh_testing::Headless;
+    use serde_json::json;
 
     #[component]
     fn DialogOwnerGuards() -> impl IntoElement {
-        let renderer = Renderer::new(|_, _| {});
+        let renderer = LuiRenderer::new(|_, _| {});
         let patch = |generation, ops| {
             Batch::decode(&json!({"generation":generation,"ops":ops}).to_string()).unwrap()
         };
@@ -267,7 +268,7 @@ mod owner_tests {
         let checking = renderer.clone();
         spawn(async move {
             crate::app::wait_for_commit().await.unwrap();
-            let owner = Owner::capture(&checking, 2).unwrap();
+            let owner = DialogOwner::capture(&checking, 2).unwrap();
             assert!(
                 owner.check(&checking, None).is_ok(),
                 "disabled anchor is not activated"
