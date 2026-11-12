@@ -14,11 +14,15 @@ tools; Linux needs GTK 4.14+/Pango development packages; Windows needs its Rust
 and OCaml native toolchains. Every NSH dependency is pinned to the same source
 revision in `Cargo.toml`, with exact transitive versions in `Cargo.lock`.
 The current pin is `logseq/nsh` commit
-`ea23ae9cd5f56426145ea225f1a220e1eca0d3a2` on `fork/logseq`, containing the
+`adc186db7213f3ccd1eacaa836cc721e9779fd14` on `fork/logseq`, containing the
 minimal keyed-list, active-cell-demand and native same-parent editor-focus
 repairs plus upstream main
 `f60a4791b9b5a26ede288a80792c7b8c542e138d`
 ([review](https://github.com/logseq/nsh/pull/1)).
+It also includes the approved committed-text geometry API, typed activation
+modifiers, inherited relative font sizes and the CLI correction that keeps
+release build/package feature selection consistent. See the
+[package-policy evidence](../../docs/agent-guide/review-probes/2026-11-12/nsh-package-feature-policy-proposal.md).
 
 ```sh
 rustup component add --toolchain 1.97.0 rustfmt clippy

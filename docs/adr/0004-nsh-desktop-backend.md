@@ -83,7 +83,7 @@ pins, measurements and native editor continuity during keyed sibling moves,
 keeping the contiguous-splice fast path. This explicit
 authorization supersedes the app skill's default prohibition on modifying
 NSH for an app. The current dependency is pinned to immutable commit
-`2635333e4cc0d3be8032c97f3a5e08d3685179c6` on `logseq/nsh` (`fork/logseq`,
+`adc186db7213f3ccd1eacaa836cc721e9779fd14` on `logseq/nsh` (`fork/logseq`,
 [review](https://github.com/logseq/nsh/pull/1)); the
 adapter continues to use public NSH APIs. This revision merges official
 upstream main `f60a4791b9b5a26ede288a80792c7b8c542e138d`, as requested,
@@ -99,6 +99,10 @@ inheritance. Their compatibility rules and migration examples are recorded in
 [native focus regression](../agent-guide/review-probes/2026-11-11/nsh-keyed-native-focus.md)
 and the
 [synchronization evidence](../agent-guide/review-probes/2026-11-12/nsh-main-sync.md).
+This pin also corrects the existing CLI release package feature policy without
+adding an application-specific SDK API. Focused CLI tests and strict Clippy
+passed; fresh packages on all three desktop platforms remain required. See the
+[package-policy evidence](../agent-guide/review-probes/2026-11-12/nsh-package-feature-policy-proposal.md).
 No floating branch dependency or unrelated new fork API is covered by these
 authorizations. The
 [public probe](../agent-guide/review-probes/2026-11-11/nsh-keyed-list-reorder.md)

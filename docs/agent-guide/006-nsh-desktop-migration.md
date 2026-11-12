@@ -59,7 +59,7 @@ desktop scope on 2026-11-12; preserve their shared contract and mobile backends.
 The required desktop component set therefore contains 85 of the 87 common kinds.
 
 Use NSH public Rust APIs pinned to `logseq/nsh` commit
-`2635333e4cc0d3be8032c97f3a5e08d3685179c6`, Rust 1.97 and committed Cargo
+`adc186db7213f3ccd1eacaa836cc721e9779fd14`, Rust 1.97 and committed Cargo
 lockfiles. This merges official upstream main
 `f60a4791b9b5a26ede288a80792c7b8c542e138d` with the authorized keyed-list
 and native editor-focus repairs. It also includes the approved read-only
@@ -67,6 +67,10 @@ committed-text geometry API, Checkbox/Link activation modifier events and
 native relative font-size inheritance. See the
 [synchronization evidence](review-probes/2026-11-12/nsh-main-sync.md) and
 [native focus regression](review-probes/2026-11-11/nsh-keyed-native-focus.md).
+The pin also contains the existing CLI's release package feature-policy
+correction. Its CLI regressions pass, while fresh native packages and upgrades
+on all three desktop targets remain acceptance gates. See the
+[package-policy evidence](review-probes/2026-11-12/nsh-package-feature-policy-proposal.md).
 The initial research and official `nsh` / `nsh-design-guides` skill installation
 used `cdfdf75c1509cdb34c6220e6b5bf923452c0cb76`. Read their relevant
 references and the nearest source/tests

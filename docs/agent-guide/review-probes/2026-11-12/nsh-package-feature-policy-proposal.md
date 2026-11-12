@@ -21,8 +21,8 @@ failed its [NSH desktop workflow](https://github.com/logseq/lui/actions/runs/431
   pkg-config while packaging a Rust-root application.
 
 These logs belong to the earlier published NSH pin. The relevant CLI policy and
-workspace-generation sources are unchanged between that pin
-`ea23ae9cd5f56426145ea225f1a220e1eca0d3a2` and the currently selected
+workspace-generation sources were unchanged between that pin
+`ea23ae9cd5f56426145ea225f1a220e1eca0d3a2` and the pre-correction dependency
 `2635333e4cc0d3be8032c97f3a5e08d3685179c6`.
 
 ## Source cause and narrow correction
