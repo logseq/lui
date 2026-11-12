@@ -291,6 +291,7 @@ enum LUIProperty: String, Decodable, Hashable {
     case focusWithinEnabled = "focus-within-enabled"
     case shrink = "shrink"
     case virtualViewport = "virtual-viewport"
+    case dismissEnabled = "dismiss-enabled"
 }
 
 enum LUISchemaMatrix {

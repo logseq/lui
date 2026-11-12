@@ -298,6 +298,7 @@ enum class LuiProperty(val wireName: String) {
     focusWithinEnabled("focus-within-enabled"),
     shrink("shrink"),
     virtualViewport("virtual-viewport"),
+    dismissEnabled("dismiss-enabled"),
     ;
 
     companion object {

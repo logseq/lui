@@ -351,7 +351,9 @@ pub(super) fn property_value_supported(property: &str, value: Scalar<'_>) -> boo
         | ("selection-placement", Scalar::String(value)) => icon_placement_supported(value),
         ("selected", Scalar::Bool(_)) => true,
         ("autofocus", Scalar::Bool(_)) => true,
-        ("submit-on-enter", Scalar::Bool(_)) | ("submit-on-blur", Scalar::Bool(_)) => true,
+        ("dismiss-enabled", Scalar::Bool(_))
+        | ("submit-on-enter", Scalar::Bool(_))
+        | ("submit-on-blur", Scalar::Bool(_)) => true,
         ("long-press-enabled", Scalar::Bool(_)) => true,
         ("change-enabled", Scalar::Bool(_)) => true,
         ("toggle-enabled", Scalar::Bool(_)) => true,

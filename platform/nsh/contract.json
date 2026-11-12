@@ -827,6 +827,9 @@
     ],
     "virtual-viewport": [
       "string"
+    ],
+    "dismiss-enabled": [
+      "bool"
     ]
   },
   "properties": [
@@ -1028,7 +1031,8 @@
     "toggle-detail-enabled",
     "focus-within-enabled",
     "shrink",
-    "virtual-viewport"
+    "virtual-viewport",
+    "dismiss-enabled"
   ],
   "kinds": {
     "root": {
@@ -5080,7 +5084,8 @@
         "navigate-enabled",
         "grid-column-span",
         "submit-on-blur",
-        "read-only"
+        "read-only",
+        "dismiss-enabled"
       ],
       "children": [
         "context-menu"
@@ -5088,6 +5093,7 @@
       "events": [
         "text-changed",
         "submit",
+        "dismiss",
         "appear",
         "pointer-enter",
         "pointer-leave",
@@ -5188,7 +5194,8 @@
         "navigate-enabled",
         "grid-column-span",
         "submit-on-blur",
-        "read-only"
+        "read-only",
+        "dismiss-enabled"
       ],
       "children": [
         "context-menu"
@@ -5196,6 +5203,7 @@
       "events": [
         "text-changed",
         "submit",
+        "dismiss",
         "appear",
         "pointer-enter",
         "pointer-leave",
@@ -5297,7 +5305,8 @@
         "navigate-enabled",
         "grid-column-span",
         "submit-on-blur",
-        "read-only"
+        "read-only",
+        "dismiss-enabled"
       ],
       "children": [
         "context-menu"
@@ -5305,6 +5314,7 @@
       "events": [
         "text-changed",
         "submit",
+        "dismiss",
         "appear",
         "pointer-enter",
         "pointer-leave",
@@ -5405,7 +5415,8 @@
         "navigate-enabled",
         "grid-column-span",
         "submit-on-blur",
-        "read-only"
+        "read-only",
+        "dismiss-enabled"
       ],
       "children": [
         "context-menu"
@@ -5413,6 +5424,7 @@
       "events": [
         "text-changed",
         "submit",
+        "dismiss",
         "appear",
         "pointer-enter",
         "pointer-leave",
@@ -5514,7 +5526,8 @@
         "navigate-enabled",
         "grid-column-span",
         "submit-on-blur",
-        "read-only"
+        "read-only",
+        "dismiss-enabled"
       ],
       "children": [
         "context-menu"
@@ -5522,6 +5535,7 @@
       "events": [
         "text-changed",
         "submit",
+        "dismiss",
         "appear",
         "pointer-enter",
         "pointer-leave",
@@ -11760,12 +11774,12 @@
     "x-circle"
   ],
   "sourceHashes": {
-    "schema/components.json": "90d87d573fe8dd1f94cb1ebc1da864ef2f8cb9c582e2e36763e0745d96b4817b",
-    "src/lui_protocol.ml": "ad27d2da090d7e35dce3e05d02e57e5f4de2ca7ffff608ae3ccd861e3f94d775",
-    "src/lui_protocol.mli": "652f24e173516312ced63542637d56de2a3c5c31329b6c57d2383223ce5bc6a8",
-    "src/lui_wire_schema.ml": "f5e33f65523f0ec4df93323904a94d89d0e45bc721abafddbfc41492c23c4366",
-    "src/lui_elements.ml": "d2b0d302b2186642230dbb54252dc324591a7fd22725081cadaff0e0ecef2211",
-    "src/lui_elements.mli": "792f91bb3ef389d1b6bae38e22618b6ea45b4d6959603ad281afbc67ec9c5d72",
+    "schema/components.json": "faf04ae970a9cf25b9680abb8fb8c69f70ea03a16920092547e31b9d7f9cce87",
+    "src/lui_protocol.ml": "c02ae8d971c7c09018479fb4b3175875e42e7fc703e3fcb6f3c3b1f71c4981ce",
+    "src/lui_protocol.mli": "76764172d00d74f465107c0dbeb4ee89bb2a4d539d8d57c0875eedcfdccfe8c4",
+    "src/lui_wire_schema.ml": "9e010cf276051948d2369304f6af7376f33bd8f22b8bb43092800a3917443c1d",
+    "src/lui_elements.ml": "d55bd8327071d12df7ec87b02899a7e01197cc9a6aa317d493d33477c40896c3",
+    "src/lui_elements.mli": "6b2d62e6627bc5eadb46bea97b4faaa9de63891cbbe05d6aa3720a82d3cdde3d",
     "tooling/typed_view_schema.mjs": "b0d2d2446e36d9abbdd3da3340c617b14ffc45f29fc9277cb46042ffe4c0b27b",
     "tooling/generate_component_schema.mjs": "4b246287c1b078f40de190a3184052a26919f58a020aea6a233da8ecfbf74a79",
     "src/lui_extension.ml": "6e6ee44f5fb52348bff68309c1745a3f103edf5db7d3ccf794c5bb4e377abebb",
