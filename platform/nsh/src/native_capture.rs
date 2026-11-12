@@ -194,7 +194,7 @@ fn bounds_on_main(test_id: &str) -> Result<serde_json::Value, String> {
         objc2_foundation::NSRect,
     };
     const SCAN_LIMIT: usize = 8192;
-    const ANCESTOR_LIMIT: usize = 12;
+    const ANCESTOR_LIMIT: usize = 64;
     fn rect(bounds: NSRect) -> [f64; 4] {
         [
             bounds.origin.x,
@@ -234,7 +234,16 @@ fn bounds_on_main(test_id: &str) -> Result<serde_json::Value, String> {
     let mut ancestors = Vec::new();
     let mut current: Option<Retained<NSView>> = found.clone();
     let mut ancestry_truncated = false;
+    let mut ancestry_cycle_detected = false;
+    let mut visited_ancestors = std::collections::HashSet::new();
     while let Some(view) = current {
+        // Equal geometry is normal for native wrappers; use retained object
+        // identity to distinguish an actual cycle without exposing addresses.
+        if !visited_ancestors.insert(std::ptr::from_ref(&*view)) {
+            ancestry_cycle_detected = true;
+            ancestry_truncated = true;
+            break;
+        }
         // SAFETY: the retained view and its parent are read on AppKit's main thread.
         let parent = unsafe { view.superview() };
         let sibling_index = parent.as_ref().and_then(|parent| {
@@ -271,6 +280,7 @@ fn bounds_on_main(test_id: &str) -> Result<serde_json::Value, String> {
         "contentBounds":bounds,"intersectsViewport":bounds.is_some_and(|bounds|intersects(bounds,viewport)),
         "scannedViews":scanned,"scanLimit":SCAN_LIMIT,"scanTruncated":found.is_none() && scanned==SCAN_LIMIT,
         "ancestors":ancestors,"ancestorLimit":ANCESTOR_LIMIT,"ancestryTruncated":ancestry_truncated,
+        "ancestryCycleDetected":ancestry_cycle_detected,
         "applicationActive":app.isActive(),"applicationHidden":app.isHidden(),
         "windowVisible":window.isVisible(),"windowKey":window.isKeyWindow(),
         "coordinateSpace":"AppKit window content; not Core layout or desktop screen"}),

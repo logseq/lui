@@ -5486,3 +5486,25 @@ Use the existing `~pointer_capture:true` contract when a gesture must complete
 outside its handle; this bugfix does not qualify NSH capture support. The
 separate SDK capture proposal remains under review. Web, Apple/iOS and Android
 producers and their existing native gesture ownership remain unchanged.
+
+## macOS native-bounds inspects up to 64 retained ancestors
+
+The read-only `native-bounds` diagnostic now includes at most 64 native ancestry
+entries rather than 12. Deep component/wrapper trees can therefore include the
+existing AppKit content root without being truncated merely by the old sampling
+budget. The total native view search and each sibling scan remain bounded at
+8192; no application/window layout or visibility behavior changes.
+
+`diagnostics.ancestorLimit` reports the new bound. The additional boolean
+`diagnostics.ancestryCycleDetected` reports repeated native object identity,
+without exposing object addresses. A cycle ends traversal and also sets
+`ancestryTruncated=true`; hitting the depth limit with a parent still does so.
+Equal rectangles alone are not treated as a cycle.
+
+Consumers should continue to require an actual `isContentRoot=true` entry and
+all existing visibility conditions before using ancestry as proof. Neither a
+larger budget nor `ancestryCycleDetected=false` proves the root was reached.
+For example, a diagnostic reader that previously accepted only an untruncated
+root-reaching chain needs no change to its acceptance predicate; it can now
+inspect deeper chains and distinguish a cycle from depth exhaustion. Windows,
+Linux, screenshots and rendering semantics are unchanged.
