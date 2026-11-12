@@ -235,7 +235,8 @@ def main():
         '    match kind_of_node fields with\n')
 
     restricted_properties = {'context_menu': 'ContextMenu',
-                             'tooltip': 'Tooltip', 'file_picker': 'FilePicker'}
+                             'tooltip': 'Tooltip', 'file_picker': 'FilePicker',
+                             'row': 'Row', 'column': 'Column'}
     for name, kind, args, ret in normal:
         kids = kids_expr(name, ret, parents)
         validation = (f'      require_supported_properties P.{restricted_properties[name]} props;\n'

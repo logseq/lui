@@ -4828,3 +4828,11 @@ automatically. Helpers forwarding `?columns` to Row/Column must likewise remove
 that forwarding. Static `grid ~columns:3 cells` and a reactive structural branch
 such as `reactive (fun count -> grid ~columns:count cells) counts` remain valid.
 Grid does not gain a new `columns_signal` property binding in this change.
+
+
+The JSON view builder retains this same canonical distinction: for example,
+`{"kind":"row","columns":3}` now fails immediately with
+`Unsupported property for row: columns` instead of losing the supplied option.
+`{"kind":"grid","columns":3}` remains valid. The JSON spelling is `columns`,
+which resolves to the existing canonical `GridColumns` property; this adds no
+new wire spelling or separate property-acceptance matrix.

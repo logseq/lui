@@ -3422,6 +3422,37 @@ let test_rich_text_containers () =
       Alcotest.(check int) (kind ^ " nested link remains interactive") 1 !calls))
     ["heading";"paragraph";"label"]
 
+let test_json_row_column_grid_columns () =
+  let open Lui_json_view in
+  let sink ~id:_ ~kind:_ ~fields:_ = () in
+  List.iter (fun (kind, canonical) ->
+    Alcotest.(check bool) "canonical contract rejects grid columns on linear layout"
+      false (Lui_protocol.property_supported canonical Lui_protocol.GridColumns);
+    List.iter (fun columns ->
+      Alcotest.check_raises "dynamic linear columns fail before mounting"
+        (Invalid_argument ("Unsupported property for " ^ kind ^ ": columns"))
+        (fun () -> let _view=render ~on_event:sink
+          (Obj ["kind",Str kind;"columns",columns]) in ()))
+      [Num 2.; Str "invalid"; Bool false; Null])
+    ["row",Lui_protocol.Row; "column",Lui_protocol.Column];
+  let session = drive_mount ~initial:() ~reducer:(fun model () -> model)
+    ~view:(fun _ _ _ -> render ~on_event:sink
+      (Obj ["kind",Str "column";"children",Arr
+        [Obj ["kind",Str "row";"gap",Num 4.];
+         Obj ["kind",Str "grid";"columns",Num 3.;"children",Arr
+           [Obj ["kind",Str "text";"value",Str "Grid cell"]]]]])) () in
+  Fun.protect ~finally:(fun () -> drive_dispose session) (fun () ->
+    let grid=drive_node session (Drive.Model.Kind "grid")
+    and row=drive_node session (Drive.Model.Kind "row")
+    and column=drive_node session (Drive.Model.Kind "column") in
+    Alcotest.(check bool) "JSON Grid retains its canonical column count" true
+      (Hashtbl.find_opt grid.Drive.Model.props "columns"=Some (Lui_protocol.IntValue 3));
+    Alcotest.(check bool) "JSON Grid retains its child" true
+      (Drive.Model.exists (drive_tree session) (Drive.Model.Text "Grid cell"));
+    List.iter (fun node ->
+      Alcotest.(check bool) "valid linear layout never emits grid columns" false
+        (Hashtbl.mem node.Drive.Model.props "columns")) [row;column])
+
 let test_json_context_menu_contract () =
   let open Lui_json_view in
   let events = ref [] in
@@ -6205,6 +6236,7 @@ let () =
           Alcotest.test_case "portable editor and virtual tuning" `Quick test_portable_editor_and_virtual_tuning;
           Alcotest.test_case "parse edge cases" `Quick test_json_view_parse;
           Alcotest.test_case "rectangle anchors" `Quick test_json_view_anchor_rect;
+          Alcotest.test_case "linear and grid column contracts" `Quick test_json_row_column_grid_columns;
           Alcotest.test_case "context menu property contract" `Quick test_json_context_menu_contract;
           Alcotest.test_case "tooltip and picker property contract" `Quick test_json_tooltip_and_file_picker_contract;
         ] );
