@@ -362,3 +362,89 @@ fn accepted_native_virtual_window_and_scroll_completion_survive_closed_admission
     app.wait(Duration::from_millis(50)).unwrap();
     assert_eq!(probe.lock().unwrap().completions, [(1, "succeeded".into())]);
 }
+
+#[cfg(unix)]
+#[derive(Clone)]
+struct PumpLibrary(String);
+
+#[cfg(unix)]
+#[component]
+fn RefusedAgentFeedbackPump() -> impl IntoElement {
+    let library = engine_context::<PumpLibrary>().unwrap().0.clone();
+    let refusals = signal(0_usize);
+    provide_context(BridgeConfig::Logseq {
+        payload: "{}".into(),
+    });
+    provide_context(ApplicationMutations::new(|| Err("preparing".into())));
+    provide_context(ApplicationServices::new(move |request, _| {
+        assert_eq!(request.operation, "saturate-before-layout");
+        let runtime = use_context::<ApplicationRuntime>().expect("actual Desktop queue");
+        Box::pin(async move {
+            let mut replies = Vec::new();
+            for _ in 0..64 {
+                let (reply, response) = oneshot::channel();
+                runtime
+                    .0
+                    .try_send(Request::Agent {
+                        request: json!({"op":"native-press","selector":"id:missing"}).to_string(),
+                        reply,
+                    })
+                    .unwrap_or_else(|_| panic!("fixture fills the unchanged bounded input queue"));
+                replies.push(response);
+            }
+            assert_eq!(runtime.0.capacity(), 0);
+            // Keep the actual Desktop pump in its startup service while the
+            // native list commits: neither feedback kind can enqueue a wake.
+            wait_for_commit().await?;
+            assert_eq!(runtime.0.capacity(), 0);
+            spawn(async move {
+                for response in replies {
+                    assert_eq!(response.await.unwrap(), Err("preparing".into()));
+                    refusals.update(|count| *count += 1);
+                }
+            });
+            Ok(ServiceResponse::Events(vec![]))
+        })
+    }));
+    view()
+        .flex_col()
+        .child(Desktop(DesktopProps {
+            library: Prop::new(library),
+            ..Default::default()
+        }))
+        .child(text(move || format!("Agent refusals: {}", refusals.get())))
+}
+
+#[cfg(unix)]
+#[test]
+fn actual_desktop_pump_drains_native_feedback_after_a_queue_of_agent_refusals() -> Result<(), String>
+{
+    use std::{path::PathBuf, process::Command};
+    let directory = std::env::temp_dir().join(format!("lui-feedback-pump-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    let library = directory.join(if cfg!(target_os = "macos") {
+        "feedback.dylib"
+    } else {
+        "feedback.so"
+    });
+    let output = Command::new("cc")
+        .args([
+            "-std=c11", "-Wall", "-Wextra", "-Werror", "-shared", "-fPIC", "-pthread",
+        ])
+        .arg(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/feedback_pump.c"))
+        .arg("-o")
+        .arg(&library)
+        .output()
+        .map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).into_owned());
+    }
+    let mut config = EngineConfig::new(Root::of::<RefusedAgentFeedbackPump>());
+    config.context =
+        EngineContext::default().with(PumpLibrary(library.to_string_lossy().into_owned()));
+    let mut app = Headless::start(config)?;
+    app.wait_for("text:Both native feedback kinds delivered")?;
+    app.wait_for("text:Agent refusals: 64")?;
+    drop(app);
+    std::fs::remove_dir_all(directory).map_err(|error| error.to_string())
+}

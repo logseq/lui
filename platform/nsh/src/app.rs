@@ -470,7 +470,8 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                     windows.waking.set(false);
                     None
                 }
-                Request::Agent { request, reply } => {
+                // Early agent replies still finish the shared feedback epilogue.
+                Request::Agent { request, reply } => 'request: {
                     let operation = serde_json::from_str::<serde_json::Value>(&request)
                         .ok()
                         .and_then(|request| {
@@ -481,14 +482,14 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                         });
                     if let Err(error) = agent_ready(&opening, operation.as_deref()) {
                         let _ = reply.send(Err(error));
-                        continue;
+                        break 'request None;
                     }
                     if agent_mutates(operation.as_deref())
                         && let Some(guard) = admission.as_ref()
                         && let Err(error) = guard.check()
                     {
                         let _ = reply.send(Err(error));
-                        continue;
+                        break 'request None;
                     }
                     if operation.as_deref() == Some("screenshot") {
                         let captured = async {
@@ -510,7 +511,7 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                             true,
                             captured,
                         ));
-                        continue;
+                        break 'request None;
                     }
                     let native_press = operation.as_deref() == Some("native-press");
                     let native_bounds = operation.as_deref() == Some("native-bounds");
@@ -522,7 +523,7 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                             Ok(request) => request,
                             Err(error) => {
                                 let _ = reply.send(Err(error));
-                                continue;
+                                break 'request None;
                             }
                         }
                     } else {

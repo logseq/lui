@@ -5416,3 +5416,17 @@ binding state and the previous popup identity. No labels, graph names or menu
 contents are logged. This distinguishes a real mounted mode change from stale
 association or pre-mount lifetime bugs without relaxing the invariant. Matching
 clients should recognize the diagnostic prefix rather than its full text.
+
+## NSH request completion always advances retained list feedback
+
+The desktop request pump now drains pending native virtual-window and visible-range
+feedback after every consumed request, including refused agent mutations, malformed
+native-selector requests and screenshot replies. Previously those early replies
+could skip maintenance; if the bounded input queue had prevented a feedback wakeup,
+the final queued request could leave a list waiting for unrelated future input.
+
+There is no wire-format or downstream API change. Accepted ordinary requests and
+scroll-token completions retain their FIFO order, and admission refusals remain
+refusals. For example, an agent `native-press` rejected during update preparation
+still returns its refusal while already accepted list-window demand completes; an
+application must not resend the refused press to make the list progress.
