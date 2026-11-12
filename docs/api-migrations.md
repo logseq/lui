@@ -5046,3 +5046,22 @@ or worker-disconnection error. Applications must keep their preparation gate
 held until an independently established recovery/restart policy resolves the
 uncertain state. This change does not add filesystem recovery authority or prove
 any installed package safe to restart.
+
+
+### Empty optional NSH dialog labels no longer reserve layout gaps
+
+An NSH `dialog` now creates its optional title (`text`) and `description` text
+hosts only while their current values are nonempty. Previously, two empty native
+text hosts still participated in the dialog panel's authored `gap`, adding two
+unwanted spaces above child-only dialogs such as Logseq CmdK. No title or
+description value is invented, and the dialog's accessibility bindings remain
+live. Nonempty labels preserve their existing typography and spacing.
+
+For example, `dialog ~gap:16 [search_input]` with no title/description now places
+its authored body at the panel's normal content origin instead of reserving
+32 points for empty headings. Updating `text`/`description` from absent to present
+and back adds/removes only the optional label hosts; authored children retain
+their native identities, drafts and editing focus. Applications that intend an
+empty inset must author padding or an explicit spacer rather than empty labels.
+This native layout correction does not change Logseq CmdK's intentional master
+65vh results region, fixed width policy or blank-query empty-state behavior.

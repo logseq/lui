@@ -864,14 +864,20 @@ pub(crate) fn element(
                         ui::controls::panel(theme)
                             .min_w_64()
                             .state_inline_style(move || style())
-                            .child(
-                                text(move || crate::white_space::text(node))
-                                    .text_lg()
-                                    .font_weight(FontWeight::SEMIBOLD),
-                            )
-                            .child(text(move || {
-                                crate::white_space::property(node, "description")
-                            }))
+                            .child(when(
+                                move || !node.get().string("text").is_empty(),
+                                move || {
+                                    text(move || crate::white_space::text(node))
+                                        .text_lg()
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                },
+                            ))
+                            .child(when(
+                                move || !node.get().string("description").is_empty(),
+                                move || {
+                                    text(move || crate::white_space::property(node, "description"))
+                                },
+                            ))
                             .child(children),
                     ),
             )
@@ -1689,3 +1695,6 @@ mod tests {
         assert!(validate(&node).is_err());
     }
 }
+
+#[cfg(test)]
+mod dialog_tests;
