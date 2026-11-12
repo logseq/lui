@@ -6,6 +6,9 @@
 //! windows and separately composited video/shader surfaces are outside this
 //! content capture; it is not a picture of the desktop compositor's result.
 
+#[cfg(target_os = "macos")]
+mod geometry;
+
 /// A PNG of one application window's content, in backing-store pixels.
 pub struct Capture {
     pub png: Vec<u8>,
@@ -253,7 +256,7 @@ fn bounds_on_main(test_id: &str) -> Result<serde_json::Value, String> {
                 .take(SCAN_LIMIT)
                 .position(|sibling| std::ptr::eq(&*sibling, &*view))
         });
-        let converted = rect(view.convertRect_toView(view.bounds(), Some(&content)));
+        let converted = geometry::content_bounds(&view, &content)?;
         ancestors.push(
             serde_json::json!({"bounds":rect(view.bounds()),"frame":rect(view.frame()),
             "contentBounds":converted,"hidden":view.isHidden(),
@@ -274,7 +277,8 @@ fn bounds_on_main(test_id: &str) -> Result<serde_json::Value, String> {
     }
     let bounds = found
         .as_ref()
-        .map(|view| rect(view.convertRect_toView(view.bounds(), Some(&content))));
+        .map(|view| geometry::content_bounds(view, &content))
+        .transpose()?;
     Ok(
         serde_json::json!({"testId":test_id,"present":found.is_some(),"viewport":viewport,
         "contentBounds":bounds,"intersectsViewport":bounds.is_some_and(|bounds|intersects(bounds,viewport)),

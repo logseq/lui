@@ -1,5 +1,23 @@
 # LUI API migration guide
 
+## Native bounds diagnostics include existing Core Animation transforms
+
+The macOS `native-bounds` diagnostic now maps all four view-bounds corners through
+the existing AppKit/Core Animation layer hierarchy. The same mapper supplies the
+target and ancestor `contentBounds`, so Parent virtual-list cells retain their
+source offset and live sublayer scrolling is applied once. Previously a bare
+NSView rectangle conversion could report a visible end-of-list row tens of
+thousands of points outside its viewport despite correct painted placement.
+
+The coordinate space and response fields are unchanged. Unlayered AppKit views
+bridge through their nearest existing layer ancestor, or retain ordinary AppKit
+conversion when no layers exist. Diagnostics create no layers, mutate no layout
+or scroll state, and do not activate a window. A cycle, disconnected content root,
+nonfinite transformed point or ancestry exceeding the existing 64-view budget
+returns an error instead of invented geometry. This reports current model-layer
+geometry; it does not claim WindowServer/presentation-animation pixel bounds.
+Consumers can keep their existing visibility/intersection predicates unchanged.
+
 ## NSH packaging uses the release feature policy consistently
 
 The immutable SDK/CLI source pin is now
