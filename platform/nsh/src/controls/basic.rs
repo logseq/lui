@@ -662,7 +662,7 @@ pub(super) fn element(
 
 fn link_text(node: &Node) -> &str {
     let text = node.string("text");
-    if text.is_empty() {
+    if text.is_empty() && node.children.is_empty() {
         node.string("url")
     } else {
         text
@@ -881,6 +881,23 @@ mod tests {
         assert_eq!(&events.lock().unwrap()[1..], [Event::NativePress(1, 2)]);
         assert!(app.screen().opened_urls().is_empty());
         assert_eq!(id(&app, "basic-node"), before);
+    }
+
+    #[test]
+    fn authored_link_children_replace_url_fallback_without_losing_activation_or_identity() {
+        let (mut app, events) = start("link", json!({"url":"#", "press-enabled":true}), true);
+        app.wait_for("text:Retained body").unwrap();
+        assert_eq!(app.screen().count("text:#").unwrap(), 0);
+        let link = id(&app, "basic-node");
+        let child = id(&app, "basic-child");
+        app.press("text:Retained body").unwrap();
+        assert_eq!(*events.lock().unwrap(), [Event::NativePress(1, 0)]);
+        app.press_key("f8").unwrap();
+        app.wait_for("text:Updated").unwrap();
+        assert!(app.screen().shows("Retained body"));
+        assert_eq!(app.screen().count("text:#").unwrap(), 0);
+        assert_eq!(id(&app, "basic-node"), link);
+        assert_eq!(id(&app, "basic-child"), child);
     }
 
     #[test]

@@ -1,5 +1,17 @@
 # LUI API migration guide
 
+## NSH Link children suppress the implicit URL label
+
+A Link with authored children and no explicit text now displays only those
+children. The URL is used as a fallback label only when both text and children
+are absent. This preserves URL-only links while avoiding a visible `#` beside
+icon-only internal links, including Logseq outline disclosure controls.
+
+For example, `link ~url:"#" [icon ...]` now renders its icon alone;
+`link ~url:"https://example.org" []` still displays its destination. Explicit
+text remains visible alongside children. Native activation, modifier details and
+retained child identity are unchanged. Other backends are unchanged.
+
 ## NSH agent queries reject retained content after renderer failure
 
 The NSH host now rejects semantic queries and interactions while its existing
