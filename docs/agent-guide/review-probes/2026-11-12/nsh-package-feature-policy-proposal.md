@@ -4,7 +4,9 @@ Status: the minimal CLI correction is published on the authorized `fork/logseq`
 branch as `adc186db7213f3ccd1eacaa836cc721e9779fd14` and selected by LUI's immutable
 NSH dependency pin. The focused regressions, 218 CLI unit tests and strict
 all-target Clippy passed; three unrelated Web/benchmark cases remain intentionally
-ignored. Fresh native package and upgrade qualification is still pending.
+ignored. A fresh macOS package now passes the complete wrapper and strict
+generated-manifest/lock guards. Outside-checkout launch, upgrades and other
+desktop targets remain unqualified at this checkpoint.
 
 ## Observed failures
 
@@ -68,3 +70,43 @@ API or application-specific SDK behavior was introduced.
 - On Linux, confirm the intended Rust runner's resolved features exclude the
   development-only WebView/JavaScriptCore path rather than accepting an extra
   application runtime requirement.
+
+## Fresh macOS package result
+
+On 2026-11-12, the actual delivery wrapper completed successfully with the clean
+`adc186db7213f3ccd1eacaa836cc721e9779fd14` checkout and its rebuilt CLI receipt:
+
+```sh
+python3 tooling/nsh_delivery.py setup --checkout /absolute/nsh
+bash tooling/build_nsh_todos.sh
+python3 tooling/nsh_delivery.py package \
+  --library /absolute/lui/_build/default/examples/todos/native/liblui_todos.dylib \
+  --output _build/nsh-current-package
+codesign --verify --deep --strict --verbose=2 \
+  '_build/nsh-current-package/LUI Desktop.app'
+```
+
+The CLI built the actual arm64 Rust-root macOS runner and the wrapper completed
+without refreshing or bypassing the generated manifest/lock comparisons. Strict
+signature verification passed for the final development ad hoc bundle. Logs are
+local ignored evidence: `/tmp/lui-current-delivery-setup.log`,
+`/tmp/lui-current-todos-build.log`, and `/tmp/lui-current-package.log`.
+The receipt is
+`_build/nsh-current-package/com.logseq.lui.desktop-0.1.0-macos-receipt.json`.
+Runtime inputs match LUI `20fc6fbb`; subsequent commits before completion changed
+documentation only.
+
+| Receipt item | SHA-256 |
+| --- | --- |
+| CLI | `fff1937e1203ca12d363f341c038cb81cbc8991b21705f3061f019eae4b99b66` |
+| Application Cargo lock | `2cf9e430aee832bab3d5686e099015ff82552d550056c7bb9b71951dbeae3fbb` |
+| Generated runner lock | `ca0192480500e2fda4281d0e2c9b5e7b954eaac4504c44a73f9eb4163fabd2a1` |
+| Final native runner | `a67b28b142bea2ae3f88541166e4ec506486b532dbeb7545a3edd4b36e8eb350` |
+| Final tar archive | `b721e3341f0880e54c4437a5639ce5e8a24963b12f20e2c82e080473b0c8bdea` |
+
+This proves the previously failing macOS packaging boundary with the corrected
+CLI. It does not prove launch, UX, production signing/notarization or update
+installation. No package was launched locally because the standalone launcher
+does not expose the actual application's background qualification policy; the
+developer's screen and running Logseq session were left unchanged. Actual
+outside-checkout launch and upgrade remain CI gates, as do Windows/Linux builds.
