@@ -96,6 +96,7 @@ for (const kind of ['text-field', 'secure-field', 'input', 'search-field', 'text
   test(`${kind} arms cancellation before a synchronous application blur`, () => {
     const f = fixture(kind)
     f.set('submit-on-blur', true)
+    if (kind === 'textarea') f.set('submit-on-enter', true)
     f.set('dismiss-enabled', true)
     f.synchronousBlur()
     assert.deepEqual(f.fire('keydown'), dismiss)
