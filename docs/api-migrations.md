@@ -5067,6 +5067,7 @@ This native layout correction does not change Logseq CmdK's intentional master
 65vh results region, fixed width policy or blank-query empty-state behavior.
 
 
+
 ### Read-only native bounds diagnostics
 
 NSH macOS hosts additionally advertise `native-bounds` in `host_native_ops`.
@@ -5087,3 +5088,30 @@ For example, inspect `native-bounds "kind:input"` before capturing a newly opene
 dialog. A semantic node can exist while a native slide is still outside the
 viewport. These diagnostics do not certify painted pixels, finished animation,
 hardware focus or master UX parity; screenshots still require visual review.
+
+### Application-owned mutation admission for NSH Desktop
+
+Embedded apps can provide `app::ApplicationMutations::new(check)` above `Desktop`
+to refuse newly produced renderer input and semantic/native agent mutations
+while the application saves or prepares an update. Construct it inside the live
+application owner; `check` is synchronous and reads current application state.
+The optional context creates no new worker, queue or polling loop. Without it,
+generic Desktop behavior is unchanged.
+
+For example, provide a guard whose closure returns an error while an app-owned
+`preparing` signal is true, then release that signal only after the application's
+correlated abort acknowledgement. Inputs accepted before preparation retain their
+existing FIFO order. Agent operations `hello`, `tree`, `dump`, `find`, `prop`,
+`screenshot` and `native-bounds` remain read-only; mutating requests are refused.
+`native-press` also rechecks admission after its layout answer immediately before
+native controller dispatch, together with retained node/native identity checks.
+A retired guard owner refuses access before calling its predicate.
+
+This is admission for application/model events and explicit native-agent actions,
+not an inherited native `disabled` state. NSH `disabled` applies to its actual
+host, so setting it on a root View would not freeze descendant or portal
+controllers. Application-owned native menus outside the renderer must consult
+the same preparation policy. A real update also requires the OCaml/worker fence,
+completed save/drain, worker compatibility and safe relaunch; this context alone
+does not establish whole-application quiescence or authorize installation.
+

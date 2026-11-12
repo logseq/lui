@@ -99,7 +99,11 @@ async fn press_reference(
     Ok(handled)
 }
 
-pub(crate) async fn press(renderer: &Renderer, answer: &str) -> Result<String, String> {
+pub(crate) async fn press(
+    renderer: &Renderer,
+    answer: &str,
+    admission: Option<&crate::app::ApplicationMutations>,
+) -> Result<String, String> {
     let id = unique_target(answer)?;
     let node = renderer
         .node_snapshot(id)
@@ -109,6 +113,11 @@ pub(crate) async fn press(renderer: &Renderer, answer: &str) -> Result<String, S
         .native_reference(id, incarnation)
         .ok_or("native-press target has no retained reference")?;
     let handled = press_reference(reference, || {
+        // Recheck after the layout/commit answer, immediately before native
+        // controller dispatch: application preparation may begin while awaiting.
+        if let Some(admission) = admission {
+            admission.check()?;
+        }
         if renderer.current_incarnation(id) != Some(incarnation) {
             return Err("native-press target incarnation changed".into());
         }
@@ -245,18 +254,33 @@ mod tests {
 
     #[derive(Clone)]
     struct RetireWhileMeasuring(bool);
+    #[derive(Clone)]
+    struct QuiesceWhileMeasuring;
 
     #[component]
     fn NativeOwnedButton() -> impl IntoElement {
         let reference = element_ref();
         let activated = signal(0_u32);
         let retire = engine_context::<RetireWhileMeasuring>().is_some_and(|mode| mode.0);
+        let quiesce = engine_context::<QuiesceWhileMeasuring>().is_some();
+        let allowed = signal(true);
+        let admission = crate::app::ApplicationMutations::new(move || {
+            if allowed.get_untracked() {
+                Ok(())
+            } else {
+                Err("application preparation is active".into())
+            }
+        });
         let result = signal(String::new());
         spawn(async move {
             crate::app::wait_for_commit().await.unwrap();
             let checks = Cell::new(0);
             let outcome = press_reference(reference, || {
                 checks.set(checks.get() + 1);
+                if quiesce && checks.get() > 1 {
+                    allowed.set(false);
+                }
+                admission.check()?;
                 if retire && checks.get() > 1 {
                     Err("retired during measurement".into())
                 } else {
@@ -302,5 +326,32 @@ mod tests {
         .unwrap();
         app.wait_for("text:retired during measurement").unwrap();
         app.wait_for("text:Native activations:0").unwrap();
+    }
+    #[test]
+    fn preparation_starting_during_native_measurement_prevents_controller_mutation() {
+        let mut app = Headless::start(EngineConfig {
+            context: EngineContext::default().with(QuiesceWhileMeasuring),
+            ..EngineConfig::new(Root::of::<NativeOwnedButton>())
+        })
+        .unwrap();
+        app.wait_for("text:application preparation is active")
+            .unwrap();
+        app.wait_for("text:Native activations:0").unwrap();
+    }
+
+    #[component]
+    fn RetiredMutationOwner() -> impl IntoElement {
+        let (owner, guard) = nsh_core::element::create_root(|| {
+            crate::app::ApplicationMutations::new(|| panic!("retired predicate was called"))
+        });
+        owner.dispose();
+        assert!(guard.check().is_err());
+        text("Retired mutation owner refused")
+    }
+    #[test]
+    fn retired_application_guard_does_not_read_retired_application_state() {
+        let mut app =
+            Headless::start(EngineConfig::new(Root::of::<RetiredMutationOwner>())).unwrap();
+        app.wait_for("text:Retired mutation owner refused").unwrap();
     }
 }

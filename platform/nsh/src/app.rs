@@ -68,6 +68,38 @@ impl ApplicationServices {
     }
 }
 
+/// Optional application-owned admission policy for new user and agent mutations.
+/// Provide above `Desktop`; absent preserves the generic application's behavior.
+/// Checks are synchronous and must not dispatch events or begin asynchronous work.
+#[derive(Clone)]
+pub struct ApplicationMutations {
+    owner: Owner,
+    check: Rc<dyn Fn() -> Result<(), String>>,
+}
+impl ApplicationMutations {
+    /// Captures the current application owner and a live admission predicate.
+    pub fn new(check: impl Fn() -> Result<(), String> + 'static) -> Self {
+        Self {
+            owner: Owner::current(),
+            check: Rc::new(check),
+        }
+    }
+    /// Refuses mutation after its owner retires or while the app is quiescent.
+    pub fn check(&self) -> Result<(), String> {
+        if !self.owner.is_live() {
+            return Err("application mutation owner has retired".into());
+        }
+        (self.check)()
+    }
+}
+
+fn agent_mutates(operation: Option<&str>) -> bool {
+    !matches!(
+        operation,
+        Some("hello" | "tree" | "dump" | "find" | "prop" | "screenshot" | "native-bounds")
+    )
+}
+
 /// Read-only queries are barriers on the application's existing input queue.
 /// Factories capture this context before the runtime opens, then await queries
 /// after earlier emitted edits have reached the authoritative OCaml model.
@@ -241,10 +273,20 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
     let (sender, mut receiver) = mpsc::channel(64);
     provide_context(ApplicationEvents(sender.clone()));
     provide_context(ApplicationRuntime(sender.clone()));
+    let admission = use_context::<ApplicationMutations>();
+    let input_admission = admission.clone();
     let for_events = sender.clone();
     let windows = Windows::default();
     let for_windows = windows.clone();
     let dispatch = move |event, renderer: Renderer| {
+        // Previously accepted events keep their queue order. A preparation
+        // request follows them; only newly produced input is refused here.
+        if input_admission
+            .as_ref()
+            .is_some_and(|guard| guard.check().is_err())
+        {
+            return;
+        }
         let Some(event) = GuardedEvent::capture(event, &renderer) else {
             return;
         };
@@ -360,6 +402,13 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                                 .and_then(|op| op.as_str())
                                 .map(str::to_owned)
                         });
+                    if agent_mutates(operation.as_deref())
+                        && let Some(guard) = admission.as_ref()
+                        && let Err(error) = guard.check()
+                    {
+                        let _ = reply.send(Err(error));
+                        continue;
+                    }
                     if operation.as_deref() == Some("screenshot") {
                         let captured = async {
                             wait_for_commit().await?;
@@ -420,7 +469,7 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                     };
                     let answer = match answer {
                         Ok(answer) if native_press => {
-                            crate::native_agent::press(&opening, &answer).await
+                            crate::native_agent::press(&opening, &answer, admission.as_ref()).await
                         }
                         Ok(answer) if native_bounds => {
                             crate::native_agent::bounds(&opening, &answer).await
@@ -728,3 +777,34 @@ fn library_path(configured: &str) -> Result<PathBuf, String> {
 #[cfg(test)]
 #[path = "app/commit_tests.rs"]
 mod commit_tests;
+
+#[cfg(test)]
+mod mutation_tests {
+    use super::*;
+    #[test]
+    fn quiescence_admits_only_read_only_agent_operations() {
+        for op in [
+            "hello",
+            "tree",
+            "dump",
+            "find",
+            "prop",
+            "screenshot",
+            "native-bounds",
+        ] {
+            assert!(!agent_mutates(Some(op)), "{op}");
+        }
+        for op in [
+            "native-press",
+            "press",
+            "key",
+            "ext",
+            "toggle",
+            "text",
+            "future-mutation",
+        ] {
+            assert!(agent_mutates(Some(op)), "{op}");
+        }
+        assert!(agent_mutates(None));
+    }
+}
