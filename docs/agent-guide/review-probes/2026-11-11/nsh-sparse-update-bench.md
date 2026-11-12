@@ -1,5 +1,34 @@
 # NSH sparse Store update qualification
 
+## Current revision repeat (2026-11-13)
+
+The same release probe passed three fresh runs at LUI
+`58b7d39df9d69305c75f5a88474788ea86085a96`, with locked NSH
+`adc186db7213f3ccd1eacaa836cc721e9779fd14`. Each case retained 200 warmups and
+2,000 samples. Raw local logs are `/tmp/lui-current-sparse-bench-{1,2,3}.log`;
+the preceding build log is `/tmp/lui-current-sparse-bench-build.log`.
+
+The observed reference remains Mac18,5 / Apple M6 / 24 GiB / macOS 27.2.
+No other task-owned compilation or performance probe ran during sampling. The
+developer's retained frontend and worker both reported 0.0% CPU before the run;
+this is not proof that the whole machine was otherwise idle.
+
+For 100 ordinary property operations, the transaction includes final validation
+and Store commit, but excludes renderer publication and engine layout:
+
+| Retained nodes | Run 1 median / p95 / p99 (µs) | Run 2 | Run 3 |
+| --- | --- | --- | --- |
+| 1,000 | 48.916 / 50.666 / 54.708 | 50.750 / 51.167 / 55.875 | 50.500 / 51.083 / 56.042 |
+| 100,000 | 50.208 / 51.250 / 55.667 | 50.583 / 51.291 / 55.542 | 50.250 / 52.208 / 58.916 |
+
+Median growth from 1,000 to 100,000 retained nodes was approximately +2.6%,
+−0.3% and −0.5%. All identity/touched-set assertions passed. The one-operation
+and separate decode/validation samples are preserved in the raw logs; the same
+hot-subset and order/frequency caveats below apply. No OS frame-rate, complete
+decode/validate/publish latency, exclusive binding time, native text shaping or
+Stage 8 completion claim follows from these Store-only results. A separate
+public engine/renderer probe is still required.
+
 ## Status and scope
 
 The executable is `platform/nsh/examples/sparse_update_bench.rs`. Three native
