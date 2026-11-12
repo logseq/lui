@@ -117,7 +117,10 @@ fn HostEvents() -> impl IntoElement {
                     {"op":"set-prop","id":20,"property":"press-enabled","value":true}
                 ]),
             ));
-            assert!(result.unwrap_err().contains("uninstalled native event"));
+            let error = result.unwrap_err();
+            assert!(error.contains("uninstalled native event"));
+            assert!(error.contains("node=20, kind=text"));
+            assert!(error.contains("missing=[\"press-enabled\"]"));
             rejected
                 .apply(patch(
                     next,

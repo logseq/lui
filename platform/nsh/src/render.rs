@@ -1743,10 +1743,13 @@ fn validate_themes(
             && let Some(installed) = entry.capabilities.get()
             && !installed.contains(Capabilities::required(node))
         {
-            return Err(
-                "NSH enabling an uninstalled native event capability requires remounting the node"
-                    .into(),
-            );
+            return Err(format!(
+                "NSH enabling an uninstalled native event capability requires remounting the node (node={}, kind={}, incarnation={}, missing={:?})",
+                node.id,
+                node.kind,
+                node.incarnation,
+                installed.missing(Capabilities::required(node)),
+            ));
         }
         if node.kind == "toolbar"
             && let Some(old) = previous.filter(|old| old.incarnation == node.incarnation)

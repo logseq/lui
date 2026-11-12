@@ -5782,3 +5782,15 @@ This correction changes only the NSH text-input projection. Native-engine
 regressions cover callback-controlled clearing followed immediately by another
 key, retained native identity, event order and explicit blur policy. Actual
 AppKit many-choice interaction is a separate application qualification.
+
+## NSH retained-event rejection diagnostics (2026-11-13)
+
+The existing atomic rejection for enabling an uninstalled native event now
+identifies the node ID, kind, incarnation and missing capability names. The
+message retains its existing prefix; the wire response remains an error string
+and rejected batches still preserve the prior generation and native identity.
+For example, a generic remount-required error now ends with
+`(node=20, kind=text, incarnation=20, missing=["press-enabled"])`.
+No constructor, listener behavior or capability rule changes in this diagnostic
+update. Downstream error displays need no migration; diagnostic consumers should
+avoid depending on an exact full message string.

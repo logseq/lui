@@ -131,6 +131,23 @@ impl Capabilities {
     pub(crate) fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
     }
+    pub(crate) fn missing(self, required: Self) -> Vec<&'static str> {
+        [
+            "press-enabled",
+            "pointer-enabled",
+            "long-press-enabled",
+            "double-press-enabled",
+            "submit-on-blur",
+            "navigate-enabled",
+            "dismiss-enabled",
+        ]
+        .into_iter()
+        .enumerate()
+        .filter_map(|(bit, name)| {
+            (required.0 & (1 << bit) != 0 && self.0 & (1 << bit) == 0).then_some(name)
+        })
+        .collect()
+    }
 }
 
 pub(crate) fn modifiers(keys: Modifiers, secondary: bool) -> i32 {
