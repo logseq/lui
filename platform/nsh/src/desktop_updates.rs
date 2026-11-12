@@ -547,13 +547,15 @@ mod tests {
     }
 
     fn start(cancelled: bool, verification_error: bool) -> Headless {
-        let mut app = Headless::start(EngineConfig::new(Root::new::<ActionProbe>(move || {
-            ActionProps {
-                cancelled: Prop::new(cancelled),
-                verification_error: Prop::new(verification_error),
-            }
-        })))
-        .unwrap();
+        let mut config = EngineConfig::new(Root::new::<ActionProbe>(move || ActionProps {
+            cancelled: Prop::new(cancelled),
+            verification_error: Prop::new(verification_error),
+        }));
+        // NSH intentionally does not install application menus on phones;
+        // this probe qualifies the actual desktop menu shortcut path.
+        config.environment.os = nsh_core::platform::Os::Linux;
+        config.environment.idiom = nsh_core::platform::Idiom::Desktop;
+        let mut app = Headless::start(config).unwrap();
         app.answer_dialogs_myself();
         wait_status(&mut app, "Idle cached=false");
         app
@@ -637,6 +639,13 @@ mod tests {
     #[test]
     fn contribution_uses_the_host_menu_and_existing_update_confirmation() {
         let mut app = start(false, false);
+        assert!(
+            app.screen().commands().iter().any(|(_, command)| {
+                matches!(command, Command::Desktop(command)
+                if matches!(&**command, DesktopCommand::SetMenu(Some(_))))
+            }),
+            "desktop fixture did not install its actual application menu"
+        );
         app.press_key("f8").unwrap();
         wait_dialog(&mut app);
         app.answer_dialog(DialogAnswer::Press("Later".into()))
