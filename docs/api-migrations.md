@@ -5668,3 +5668,26 @@ Submit for a canceled draft is ignored until a real edit or fresh focus occurs.
 The native input identity and existing renderer incarnation/admission closure
 remain unchanged. Inputs without authored blur/navigation/dismissal policies
 still allocate no additional policy state.
+
+### Android text cancellation and explicit blur submission
+
+Android owns the same ordinary Escape cancellation in the focused native
+Material text field, without intercepting modified, repeated or composing keys.
+It retains `TextFieldValue` selection and composition, including selection-only
+native updates that do not emit `TextChanged`. Cancellation arms the field's
+blur guard before application callbacks; a fresh focus interval, real edit or
+composition change clears the guard. Removing `dismiss-enabled` or disabling
+the retained field takes effect without replacing it. Combobox behavior is
+unchanged.
+
+Android now implements an explicitly authored `submit-on-blur=true` on the five
+text-entry kinds; absent or false still does not submit on focus loss. Single
+line inputs with `on_submit` or `submit-on-blur=true` also report native
+Done/Search acceptance. A textarea accepts Enter when `submit-on-enter=true`
+(Shift+Enter keeps its native newline), otherwise Ctrl/Meta+Enter. An accepted
+Enter/IME action and its subsequent blur produce one `Submit`; cancellation
+produces only `Dismiss`. Disabled fields, unfinished composition and removed
+submission flags do not commit. Applications that previously relied on Android
+ignoring an explicit blur flag should remove that flag; use
+`text_field ~submit_on_blur:true ~on_submit:save ~on_dismiss:discard []` for an
+owned draft with explicit save/cancel behavior.

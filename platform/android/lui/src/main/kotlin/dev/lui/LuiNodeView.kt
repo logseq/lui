@@ -12,6 +12,8 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -134,6 +136,12 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -144,6 +152,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
@@ -1282,31 +1292,82 @@ private fun LuiTextControl(
     // stale intermediate echo must not overwrite newer local input. Track
     // the values we emitted and only re-sync on a value we never sent
     // (external clears/sets).
-    var localText by remember(id) { mutableStateOf(node.text()) }
+    var localValue by remember(id) { mutableStateOf(TextFieldValue(node.text())) }
+    val blur = remember(id) { LuiTextBlurLifecycle() }
     val emitted = remember(id) { mutableSetOf(node.text()) }
     val modelText = node.text()
     LaunchedEffect(modelText) {
         if (modelText in emitted) {
             emitted.remove(modelText)
-        } else if (modelText != localText) {
-            localText = modelText
+        } else if (modelText != localValue.text) {
+            localValue = localValue.copy(text = modelText)
             emitted.clear()
         }
     }
 
+    fun live() = backend.nodeKind(id) != null && backend.node(id) === node
+    fun wantsSubmit() = node.prop("submit-enabled")?.boolValue == true ||
+        node.prop("submit-on-blur")?.boolValue == true
+    val submitRequested = wantsSubmit()
+    fun submitWithDefault(defaultAction: () -> Unit) {
+        if (live() && node.isEnabled() && localValue.composition == null) {
+            if (wantsSubmit()) blur.beforeCompletion {
+                defaultAction()
+                if (live() && node.isEnabled() && wantsSubmit()) backend.emit(LuiEvent.Submit(id))
+            } else defaultAction()
+        }
+    }
+    val fieldKeyboardOptions = if (!multiline && submitRequested) {
+        KeyboardOptions(imeAction = if (search) ImeAction.Search else ImeAction.Done)
+    } else KeyboardOptions.Default
+    val fieldKeyboardActions = if (submitRequested) KeyboardActions(
+        onDone = {
+            submitWithDefault { defaultKeyboardAction(ImeAction.Done) }
+        },
+        onSearch = {
+            submitWithDefault { defaultKeyboardAction(ImeAction.Search) }
+        },
+    ) else KeyboardActions.Default
     val fieldModifier = modifier.then(
         if (grouped || borderless || formField || search) Modifier.fillMaxWidth() else Modifier.width(240.dp),
     ).focusRequester(focusRequester)
+        .onFocusChanged { focus ->
+            val retained = live()
+            blur.focusChanged(focus.isFocused, retained && node.isEnabled(),
+                retained && node.prop("submit-on-blur")?.boolValue == true,
+                localValue.composition != null) { backend.emit(LuiEvent.Submit(id)) }
+        }
+        .onPreviewKeyEvent { event ->
+            if (!live()) false
+            else if (luiTextDismissRequested(node, localValue, event)) {
+                blur.beforeCompletion { backend.emit(LuiEvent.Dismiss(id)) }
+                true
+            } else {
+                val native = event.nativeKeyEvent
+                val enter = event.key == Key.Enter || event.key == Key.NumPadEnter
+                val submit = multiline && wantsSubmit() && node.isEnabled() && enter &&
+                    event.type == KeyEventType.KeyDown && native.repeatCount == 0 && localValue.composition == null &&
+                    (if (node.prop("submit-on-enter")?.boolValue == true) !native.isShiftPressed
+                     else native.isCtrlPressed || native.isMetaPressed)
+                if (submit) blur.beforeCompletion { backend.emit(LuiEvent.Submit(id)) }
+                submit
+            }
+        }
     val fieldTextStyle = (if (borderless) MaterialTheme.typography.bodyLarge
         else MaterialTheme.typography.bodyMedium).copy(
         color = luiThemeColor(node.propString("foreground"), foreground = true)
             ?: MaterialTheme.colorScheme.onSurface,
     ).luiInherited()
-    val onValueChange: (String) -> Unit = { value ->
-        if (!readOnly) {
-            localText = value
-            emitted.add(value)
-            backend.emit(LuiEvent.TextChanged(id, value))
+    val onValueChange: (TextFieldValue) -> Unit = { value ->
+        val textChanged = value.text != localValue.text
+        if (!readOnly || !textChanged) {
+            if (value.composition != localValue.composition) blur.edited()
+            localValue = value
+            if (!readOnly && textChanged) {
+                blur.edited()
+                emitted.add(value.text)
+                backend.emit(LuiEvent.TextChanged(id, value.text))
+            }
         }
     }
     val placeholderContent: (@Composable () -> Unit)? =
@@ -1342,7 +1403,7 @@ private fun LuiTextControl(
 
     if (borderless) {
         androidx.compose.material3.TextField(
-            value = localText,
+            value = localValue,
             onValueChange = onValueChange,
             modifier = fieldModifier,
             enabled = enabled,
@@ -1352,10 +1413,12 @@ private fun LuiTextControl(
             placeholder = placeholderContent,
             visualTransformation = transformation,
             textStyle = fieldTextStyle,
+            keyboardOptions = fieldKeyboardOptions,
+            keyboardActions = fieldKeyboardActions,
         )
     } else {
         OutlinedTextField(
-            value = localText,
+            value = localValue,
             onValueChange = onValueChange,
             modifier = fieldModifier,
             enabled = enabled,
@@ -1366,6 +1429,8 @@ private fun LuiTextControl(
             visualTransformation = transformation,
             trailingIcon = trailing,
             textStyle = fieldTextStyle,
+            keyboardOptions = fieldKeyboardOptions,
+            keyboardActions = fieldKeyboardActions,
         )
     }
 }

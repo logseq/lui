@@ -491,6 +491,8 @@ internal object LuiKindRules {
             "autofocus" ->
                 value is LuiWireValue.Bool && (isButtonKind(kind) || isTextControl(kind))
             "submit-on-enter" -> value is LuiWireValue.Bool && kind == LuiNodeKind.textarea
+            "dismiss-enabled", "submit-on-blur" -> value is LuiWireValue.Bool &&
+                isTextControl(kind) && kind != LuiNodeKind.combobox
             "change-enabled" ->
                 value is LuiWireValue.Bool &&
                     (kind == LuiNodeKind.radio || isTextControl(kind) ||
