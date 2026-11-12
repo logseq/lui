@@ -1,5 +1,23 @@
 # LUI API migration guide
 
+## NSH agent queries reject retained content after renderer failure
+
+The NSH host now rejects semantic queries and interactions while its existing
+renderer failure diagnostic is present, including `find`, `tree`, `prop`,
+`native-bounds` and `native-press`. Checks run before dispatch and after reply
+publication, so both an existing failure and a rejection in the current reply
+produce `{ "ok": false, "error": "<original backend failure and recovery context>" }`.
+Retained semantic nodes alone no longer establish successful native startup.
+No new status controller or error cache is introduced.
+
+`hello` and macOS `screenshot` remain available for diagnosis. Their successful
+responses gain an optional `backend_error` string containing that same diagnostic;
+existing handshake fields and PNG data are preserved. For example, a script that
+previously treated `find` returning a Journal node as readiness must stop when
+`ok` is false, then use `hello` and `screenshot` to collect failure evidence.
+A successful diagnostic capture with `backend_error` is not a healthy app result.
+Healthy replies and the Apple/iOS, Android and Web agent paths are unchanged.
+
 ## NSH relative font sizes use native text inheritance
 
 The NSH backend now accepts every finite nonnegative `em` font-size ratio,

@@ -597,6 +597,13 @@ impl Renderer {
                 })
             }))
     }
+    pub(crate) fn failure(&self) -> Option<String> {
+        self.0
+            .borrow()
+            .error
+            .get_untracked()
+            .map(|failure| failure.text())
+    }
     /// Preserve the original rejection while exposing the latest recovery context.
     pub fn fail(&self, message: String) {
         let error = self.0.borrow().error;

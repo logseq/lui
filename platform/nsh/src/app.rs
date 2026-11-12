@@ -459,6 +459,10 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                                 .and_then(|op| op.as_str())
                                 .map(str::to_owned)
                         });
+                    if let Err(error) = agent_ready(&opening, operation.as_deref()) {
+                        let _ = reply.send(Err(error));
+                        continue;
+                    }
                     if agent_mutates(operation.as_deref())
                         && let Some(guard) = admission.as_ref()
                         && let Err(error) = guard.check()
@@ -480,7 +484,12 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                                 "capture":"appkit-content",
                                 "data":base64::engine::general_purpose::STANDARD.encode(capture.png)}).to_string())
                         });
-                        let _ = reply.send(captured);
+                        let _ = reply.send(accept_agent_reply(
+                            &opening,
+                            operation.as_deref(),
+                            true,
+                            captured,
+                        ));
                         continue;
                     }
                     let native_press = operation.as_deref() == Some("native-press");
@@ -516,14 +525,8 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                         result,
                     )
                     .await;
-                    let answer = if published {
-                        answer
-                    } else {
-                        Err(
-                            "agent patches could not be published; inspect the backend diagnostic"
-                                .into(),
-                        )
-                    };
+                    let answer =
+                        accept_agent_reply(&opening, operation.as_deref(), published, answer);
                     let answer = match answer {
                         Ok(answer) if native_press => {
                             crate::native_agent::press(&opening, &answer, admission.as_ref()).await
@@ -605,6 +608,41 @@ async fn publish(
             false
         }
     }
+}
+
+// Diagnostic operations stay available when retained semantic content is stale.
+fn diagnostic_agent_operation(operation: Option<&str>) -> bool {
+    matches!(operation, Some("hello" | "screenshot"))
+}
+
+fn agent_ready(renderer: &Renderer, operation: Option<&str>) -> Result<(), String> {
+    if !diagnostic_agent_operation(operation)
+        && let Some(error) = renderer.failure()
+    {
+        return Err(error);
+    }
+    Ok(())
+}
+
+fn accept_agent_reply(
+    renderer: &Renderer,
+    operation: Option<&str>,
+    published: bool,
+    answer: Result<String, String>,
+) -> Result<String, String> {
+    agent_ready(renderer, operation)?;
+    if diagnostic_agent_operation(operation)
+        && let Some(error) = renderer.failure()
+    {
+        let mut answer: serde_json::Value =
+            serde_json::from_str(&answer?).map_err(|error| error.to_string())?;
+        answer["backend_error"] = serde_json::Value::String(error);
+        return Ok(answer.to_string());
+    }
+    if !published {
+        return Err("agent patches could not be published; inspect the backend diagnostic".into());
+    }
+    answer
 }
 
 async fn accept_ordered(
@@ -875,3 +913,7 @@ mod mutation_tests {
 #[cfg(test)]
 #[path = "app/feedback_tests.rs"]
 mod feedback_tests;
+
+#[cfg(test)]
+#[path = "app/agent_failure_tests.rs"]
+mod agent_failure_tests;
