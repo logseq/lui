@@ -980,7 +980,7 @@ pub(crate) fn element(
             .clamp(1, u32::MAX as u64) as u32
     });
     let native_owner = (!parent_viewport)
-        .then(|| (callbacks.scroll_owner)())
+        .then(|| untracked(|| (callbacks.scroll_owner)()))
         .flatten();
     let observing = rows.clone();
     let ending = rows.clone();
