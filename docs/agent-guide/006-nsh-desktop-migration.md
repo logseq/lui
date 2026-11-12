@@ -153,7 +153,7 @@ Complete before broad component implementation.
 - [x] Exercise a provisional package on macOS with the OCaml library loaded
   from its resources, without a checkout-relative path. Verify the pinned
   CLI and generated runner resolve one NSH revision.
-- [ ] Establish Windows DLL build/loading with the actual OCaml Windows
+- [x] Establish Windows DLL build/loading with the actual OCaml Windows
   toolchain, and Linux shared-library loading on Linux runners. A POSIX shell
   stub or a Rust cross-check is insufficient evidence.
 
@@ -705,3 +705,45 @@ commands, log hashes and qualification limits are recorded in the
 [interaction follow-up](review-probes/2026-11-12/logseq-native-interaction-followup.md).
 Visible menu opening, full editor/clipboard UX and remaining platform/delivery
 gates are still required.
+
+### Cross-platform delivery seam and picker qualification (2026-11-13)
+
+The NSH desktop workflow at exact LUI
+`961107c7c071b04551587b39cc7cdd16f738c07a` completed successfully on every
+job: three OS Rust adapter jobs, both Unix OCaml integration jobs, both Unix
+native package/whole-app upgrade jobs and the Windows real OCaml DLL/packaged
+launch job. Authoritative run:
+[NSH desktop 43292878097](https://github.com/logseq/lui/actions/runs/43292878097).
+This establishes the Stage 1 native DLL/shared-library delivery seam with the
+real native toolchains. The Windows job builds native Todos, Image and FilePicker
+DLLs, exercises the ABI, creates an unsigned native package and launches it
+outside the checkout. It does not prove Windows installed updates or
+distribution signing. The Unix upgrade tests are real complete LUI fixture
+packages, not actual Logseq worker/data migrations.
+
+Published LUI `b73fc438e44c58209b8729470bb6c9d3e0989dad` passed 286 release
+library cases, eight real OCaml/public-list integration cases, 45 Python tooling
+cases and strict all-target release Clippy. Its native submit projection now
+uses existing NSH focus-preserving Submit behavior. The actual AppKit many-choice
+Enter and pointer flows both retain the query input and accept the immediately
+following native key. The AppKit bounds diagnostic now accounts for CALayer
+transforms; a real offscreen native geometry fixture passed. See
+[input and geometry evidence](review-probes/2026-11-13/input-focus-and-painted-bounds.md).
+
+At actual Logseq `d68e2e0abcb4d8def0168908681ec1a6f65e9e80`, the full release
+publisher/startup, 16,427 shared checks, native property/worker/clipboard FFI and
+actual AppKit far-down icon-color change passed. The color edit preserves the
+same Scroll, source generation, sparse window and last cell, whose new color is
+painted inside the native viewport. Later test-only initialization fixes also
+passed the full canonical native 1k/100k/complete-picker target. These are scoped
+application results; actual table/date input, accessibility, IME and all-module
+UX parity remain open.
+
+New LUI `c11ccfbd` source-factory replacement and original reorder integration
+targets passed in separate processes, with bounded rows and current-revision
+text inside the Headless parent viewport. The corresponding AppKit replacement
+case remains required. See
+[source replacement evidence](review-probes/2026-11-13/parent-source-factory-replacement.md).
+Later published revisions require their own terminal OS workflow results.
+Actual Logseq portable PDF, production install/restart/signing and full frozen
+master UX acceptance remain incomplete; the migration goal stays active.
