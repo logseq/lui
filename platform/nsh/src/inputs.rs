@@ -122,6 +122,17 @@ pub(crate) fn attach(
             if key != "Escape" {
                 return;
             }
+            #[cfg(test)]
+            eprintln!(
+                "INPUT_CANCEL_BOUNDARY node_live={} flags={:?} state={:?}",
+                node.try_get().is_some(),
+                node.try_get().map(|node| (
+                    node.id,
+                    node.boolean("enabled", true),
+                    node.boolean("dismiss-enabled", false)
+                )),
+                (dismiss_state.get().dismissed, dismiss_state.get().composing)
+            );
             let Some(node) = node.try_get() else { return };
             request_dismiss(&node, &dismiss_state, &*dismiss_emit);
         });

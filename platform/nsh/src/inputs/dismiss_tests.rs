@@ -232,12 +232,22 @@ fn cancel_boundary(app: &mut nsh_testing::Headless, events: &Arc<std::sync::Mute
         .iter()
         .filter(|event| **event == Event::Dismiss(2))
         .count();
+    eprintln!(
+        "INPUT_CANCEL_TEST native_id={} events={:?} layout={:?}",
+        native_id(app),
+        *events.lock().unwrap(),
+        app.screen()
+            .layout_nodes()
+            .iter()
+            .map(|node| (node.id, node.kind, node.test_id.clone()))
+            .collect::<Vec<_>>()
+    );
     app.engine().control().dispatch_event(
         native_id(app),
         nsh_core::EventKind::KeyPress,
         nsh_core::EventPayload::Map(vec![("key", nsh_core::PayloadValue::Str("Escape".into()))]),
     );
-    app.wait_until(
+    let delivered = app.wait_until(
         "native cancellation callback",
         std::time::Duration::from_secs(2),
         |_| {
@@ -249,8 +259,12 @@ fn cancel_boundary(app: &mut nsh_testing::Headless, events: &Arc<std::sync::Mute
                 .count()
                 == count + 1
         },
-    )
-    .unwrap();
+    );
+    assert!(
+        delivered.is_ok(),
+        "{delivered:?}; actual events={:?}",
+        *events.lock().unwrap()
+    );
 }
 
 #[test]
