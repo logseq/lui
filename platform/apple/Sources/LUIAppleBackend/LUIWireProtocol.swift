@@ -147,6 +147,8 @@ enum LUIWireValue: Decodable, Equatable {
         switch property {
         case .focusWithinEnabled:
             return false
+        case .virtualViewport:
+            return kind == .virtualList && stringValue == "own"
         case .virtualTotalCount:
             return intValue.map { $0 >= 0 } ?? false
         case .virtualGeneration:
@@ -1093,7 +1095,8 @@ struct LUIRetainedTree {
         if property == .focusWithinEnabled { return false }
         if property == .shrink { return false }
         switch property {
-        case .virtualTotalCount, .virtualGeneration, .virtualIndices, .virtualScrollIndex:
+        case .virtualTotalCount, .virtualGeneration, .virtualIndices, .virtualScrollIndex,
+             .virtualViewport:
             return kind == .virtualList
         default: break
         }
@@ -1113,7 +1116,8 @@ struct LUIRetainedTree {
         if kind == .contextMenu { return false }
         return switch property {
         case .focusWithinEnabled: false
-        case .virtualTotalCount, .virtualGeneration, .virtualIndices, .virtualScrollIndex: kind == .virtualList
+        case .virtualTotalCount, .virtualGeneration, .virtualIndices, .virtualScrollIndex,
+             .virtualViewport: kind == .virtualList
         case .readOnly: isTextEntry(kind)
         case .overscan, .itemExtent: kind == .virtualList
         case .theme, .themeMode:
@@ -1573,7 +1577,6 @@ struct LUIRetainedTree {
             if node.kind == .menuTrigger {
                 let text = node.properties[.text]?.stringValue ?? ""
                 let icon = node.properties[.icon]?.stringValue ?? ""
-                let label = node.properties[.accessibilityLabel]?.stringValue ?? ""
                 guard !text.isEmpty || !icon.isEmpty else {
                     throw invalid("menu-trigger requires text or icon")
                 }

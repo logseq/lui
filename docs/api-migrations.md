@@ -28,6 +28,12 @@ reject `parent` explicitly before publishing it; existing Web, Apple/iOS and
 Android callers need no changes. Use a matching updated NSH provider when opting
 in; older providers reject this unknown wire property.
 
+Updated Apple/iOS and Android providers accept explicit `virtual-viewport` value
+`"own"` only on `VirtualList`, preserving their existing scroll owner and retained
+rows. They reject `"parent"`, malformed raw values and viewport properties on
+other kinds atomically. This also applies to raw wire clients: omit the property
+or send `"own"` when targeting these maintained backends.
+
 The generated JSON-view facade accepts either `viewport` or `virtual-viewport`.
 Identical aliases are allowed; conflicting aliases, nonstring values and unknown
 ownership names fail explicitly instead of silently selecting the default.

@@ -318,7 +318,7 @@ internal object LuiKindRules {
         if (property == "focus-within-enabled") return false
         if (property == "shrink") return false
         when (property) {
-            "virtual-total-count", "virtual-generation", "virtual-indices", "virtual-scroll-index" ->
+            "virtual-total-count", "virtual-generation", "virtual-indices", "virtual-scroll-index", "virtual-viewport" ->
                 return kind == LuiNodeKind.virtualList && schemaValueSupported(property, value)
             else -> Unit
         }
@@ -977,6 +977,7 @@ internal object LuiKindRules {
     // `Lui_protocol.property_value_supported`.
     private fun schemaValueSupported(property: String, value: LuiWireValue): Boolean =
         when (property) {
+            "virtual-viewport" -> value.stringValue == "own"
             "virtual-total-count" -> value.intValue?.let { it >= 0 } == true
             "virtual-generation" -> (value as? LuiWireValue.IntValue)?.value?.let { it > 0 && it <= Long.MAX_VALUE / 2 } == true
             "virtual-indices" -> value.stringValue?.let { luiVirtualIndices(it) != null } == true

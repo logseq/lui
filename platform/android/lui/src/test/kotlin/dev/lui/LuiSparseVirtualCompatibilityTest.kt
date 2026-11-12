@@ -23,6 +23,52 @@ class LuiSparseVirtualCompatibilityTest {
         {"op":"set-prop","id":1,"property":"virtual-indices","value":"$indices"}""" +
             (target?.let { """,{"op":"set-prop","id":1,"property":"virtual-scroll-index","value":$it}""" } ?: "")
 
+    @Test fun `explicit owned viewport preserves rows and removal restores the default`() {
+        val tree = tree()
+        tree.apply(LuiPatchBatch.parse("""{"generation":2,"ops":[
+            {"op":"set-prop","id":1,"property":"virtual-viewport","value":"own"}
+        ]}"""))
+        assertEquals("own", tree.node(1)!!.properties["virtual-viewport"]!!.stringValue)
+        assertEquals(listOf(2L, 3L), tree.node(1)!!.children)
+        assertEquals("preserved", tree.node(2)!!.properties["text"]!!.stringValue)
+        tree.apply(LuiPatchBatch.parse("""{"generation":3,"ops":[
+            {"op":"remove-prop","id":1,"property":"virtual-viewport"}
+        ]}"""))
+        assertNull(tree.node(1)!!.properties["virtual-viewport"])
+        assertEquals(listOf(2L, 3L), tree.node(1)!!.children)
+    }
+
+    @Test fun `parent viewport and invalid raw values roll back preceding edits`() {
+        for (value in listOf("\"parent\"", "\"ancestor\"", "\"\"", "\"OWN\"", "1", "true", "null")) {
+            val tree = tree()
+            assertThrows("must reject $value", LuiBackendException::class.java) {
+                tree.apply(LuiPatchBatch.parse("""{"generation":2,"ops":[
+                    {"op":"set-prop","id":2,"property":"text","value":"rejected"},
+                    {"op":"create-node","id":4,"kind":"text"},
+                    {"op":"set-prop","id":1,"property":"virtual-viewport","value":$value}
+                ]}"""))
+            }
+            assertEquals(1, tree.generation)
+            assertEquals("preserved", tree.node(2)!!.properties["text"]!!.stringValue)
+            assertEquals(listOf(2L, 3L), tree.node(1)!!.children)
+            assertNull(tree.node(4))
+            assertNull(tree.node(1)!!.properties["virtual-viewport"])
+        }
+    }
+
+    @Test fun `owned viewport is rejected on non virtual kinds`() {
+        for (kind in listOf("column", "list", "list-item", "text-field")) {
+            val tree = LuiRetainedTree(LuiExtensionRegistry())
+            assertThrows(LuiBackendException::class.java) {
+                tree.apply(LuiPatchBatch.parse("""{"generation":1,"ops":[
+                    {"op":"create-node","id":1,"kind":"$kind"},
+                    {"op":"set-prop","id":1,"property":"virtual-viewport","value":"own"}
+                ]}"""))
+            }
+            assertNull(tree.node(1))
+        }
+    }
+
     @Test fun `sparse extension rows accept metadata before final child edits`() {
         val tree = tree()
         tree.apply(LuiPatchBatch.parse("""{"generation":2,"ops":[${metadata()},

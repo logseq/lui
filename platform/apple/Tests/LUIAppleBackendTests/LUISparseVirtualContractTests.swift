@@ -39,6 +39,58 @@ struct LUISparseVirtualContractTests {
       ], to: b)
     #expect(b.model(id: 1)?.property(.scrollToken)?.intValue == 1)
   }
+  @Test("explicit owned viewport preserves the existing retained list")
+  func ownedViewport() throws {
+    let b = try backend()
+    let list = try #require(b.model(id: 1))
+    let row = try #require(b.model(id: 2))
+    try apply([["op": "set-prop", "id": 1, "property": "virtual-viewport", "value": "own"]], to: b)
+    #expect(b.model(id: 1) === list)
+    #expect(b.model(id: 2) === row)
+    #expect(list.property(.virtualViewport)?.stringValue == "own")
+    #expect(list.children == [2])
+    try apply([["op": "remove-prop", "id": 1, "property": "virtual-viewport"]], to: b,
+      generation: 3)
+    #expect(b.model(id: 1) === list)
+    #expect(list.property(.virtualViewport) == nil)
+  }
+
+  @Test("unsupported parent viewport and malformed raw values reject atomically")
+  func invalidViewport() throws {
+    let values: [Any] = ["parent", "ancestor", "", "OWN", 1, true]
+    for value in values {
+      let b = try backend()
+      let row = try #require(b.model(id: 2))
+      #expect(throws: (any Error).self) {
+        try apply([
+          ["op": "set-prop", "id": 2, "property": "text", "value": "rejected"],
+          ["op": "create-node", "id": 3, "kind": "text"],
+          ["op": "set-prop", "id": 1, "property": "virtual-viewport", "value": value],
+        ], to: b)
+      }
+      #expect(b.model(id: 2) === row)
+      #expect(row.property(.text)?.stringValue == "preserved")
+      #expect(b.model(id: 3) == nil)
+      #expect(b.model(id: 1)?.property(.virtualViewport) == nil)
+      try apply([["op": "set-prop", "id": 1, "property": "virtual-viewport", "value": "own"]],
+        to: b, generation: 3)
+      #expect(b.model(id: 1)?.property(.virtualViewport)?.stringValue == "own")
+    }
+  }
+
+  @Test("owned viewport is restricted to VirtualList")
+  func viewportKindAdmission() throws {
+    for kind in ["column", "list", "list-item", "text-field"] {
+      let b = LUIAppleBackend()
+      #expect(throws: (any Error).self) {
+        try apply([
+          ["op": "create-node", "id": 1, "kind": kind],
+          ["op": "set-prop", "id": 1, "property": "virtual-viewport", "value": "own"],
+        ], to: b, generation: 1)
+      }
+      #expect(b.model(id: 1) == nil)
+    }
+  }
   private func backend() throws -> LUIAppleBackend {
     let backend = LUIAppleBackend()
     try backend.apply(
