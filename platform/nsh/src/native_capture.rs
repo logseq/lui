@@ -104,10 +104,11 @@ fn window_diagnostics(app: &nsh_platform_macos::objc2_app_kit::NSApplication) ->
             let content = window.contentView();
             let bounds = content.as_ref().map(|view| {
                 let bounds = view.bounds();
+                let finite = [bounds.origin.x,bounds.origin.y,bounds.size.width,bounds.size.height]
+                    .iter().all(|value|value.is_finite());
                 serde_json::json!({"x":bounds.origin.x,"y":bounds.origin.y,
                 "width":bounds.size.width,"height":bounds.size.height,
-                "finite":[bounds.origin.x,bounds.origin.y,bounds.size.width,bounds.size.height]
-                    .iter().all(|value|value.is_finite())})
+                "finite":finite})
             });
             serde_json::json!({"index":index,"visible":window.isVisible(),
             "miniaturized":window.isMiniaturized(),"main":window.isMainWindow(),
