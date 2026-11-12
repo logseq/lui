@@ -83,18 +83,24 @@ pins, measurements and native editor continuity during keyed sibling moves,
 keeping the contiguous-splice fast path. This explicit
 authorization supersedes the app skill's default prohibition on modifying
 NSH for an app. The current dependency is pinned to immutable commit
-`ea23ae9cd5f56426145ea225f1a220e1eca0d3a2` on `logseq/nsh` (`fork/logseq`,
+`2635333e4cc0d3be8032c97f3a5e08d3685179c6` on `logseq/nsh` (`fork/logseq`,
 [review](https://github.com/logseq/nsh/pull/1)); the
 adapter continues to use public NSH APIs. This revision merges official
 upstream main `f60a4791b9b5a26ede288a80792c7b8c542e138d`, as requested,
 while retaining the authorized repairs. It also preserves same-parent AppKit
 and GTK subtrees during native sibling reorders instead of detaching focused
-editors. This changes no public NSH API or controlled-state protocol. See the
+editors. Those retention repairs change no public NSH API or controlled-state
+protocol. The user subsequently authorized a minimal read-only committed-text
+geometry API on 2026-11-12 and fixes for the reported native interaction and
+font-size failures. The same immutable revision includes that geometry API,
+additive typed Checkbox/Link modifier events and native relative font-size
+inheritance. Their compatibility rules and migration examples are recorded in
+`docs/api-migrations.md`. See the
 [native focus regression](../agent-guide/review-probes/2026-11-11/nsh-keyed-native-focus.md)
 and the
 [synchronization evidence](../agent-guide/review-probes/2026-11-12/nsh-main-sync.md).
-No floating branch dependency or unrelated new fork API is covered by this
-exception. The
+No floating branch dependency or unrelated new fork API is covered by these
+authorizations. The
 [public probe](../agent-guide/review-probes/2026-11-11/nsh-keyed-list-reorder.md)
 reproduces the need at both 1,000 and 100,000 source items.
 

@@ -81,23 +81,26 @@ async fn exercise(path: String) -> Result<(), String> {
     );
     // The existing native bridge must receive the exact checked value and all
     // four physical modifier bits, on its owning worker.
-    session
+    let accepted = session
         .dispatch(Event::ToggleDetail {
             node: 29,
             checked: true,
             modifiers: 15,
         })
         .await?;
-    assert!(
-        session
-            .dispatch(Event::ToggleDetail {
-                node: 29,
-                checked: true,
-                modifiers: 2
-            })
-            .await
-            .is_err()
-    );
+    assert!(accepted.snapshot.is_none());
+    assert!(matches!(accepted.messages.as_deref(), Some([])));
+    // A refused dispatch recovers through the existing authoritative snapshot
+    // protocol; it is not a transport error when that recovery succeeds.
+    let refused = session
+        .dispatch(Event::ToggleDetail {
+            node: 29,
+            checked: true,
+            modifiers: 2,
+        })
+        .await?;
+    assert!(matches!(refused.messages.as_deref(),
+        Some([ApplicationMessage::Snapshot(batch)]) if batch.generation == 3));
     assert!(session.tick().await.is_err());
     assert!(session.pause(true).await.is_err());
     assert!(session.advance(1.0).await.is_err());

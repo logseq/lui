@@ -567,7 +567,7 @@ pub(super) fn element(
                         node,
                         "press-enabled",
                         &emit,
-                        Event::PressModifiers(id, modifiers),
+                        Event::NativePress(id, modifiers),
                     );
                 }
             })
@@ -857,10 +857,10 @@ mod tests {
         let before = id(&app, "basic-node");
         app.press_key("tab").unwrap();
         app.press_key("enter").unwrap();
-        assert_eq!(*events.lock().unwrap(), [Event::PressModifiers(1, 0)]);
+        assert_eq!(*events.lock().unwrap(), [Event::NativePress(1, 0)]);
         app.press_key("f8").unwrap();
         app.press_key("enter").unwrap();
-        assert_eq!(*events.lock().unwrap(), [Event::PressModifiers(1, 0)]);
+        assert_eq!(*events.lock().unwrap(), [Event::NativePress(1, 0)]);
         assert_eq!(id(&app, "basic-node"), before);
     }
 
@@ -875,10 +875,10 @@ mod tests {
         app.hold_keys("ctrl+shift+meta", true).unwrap();
         app.press("text:Internal page").unwrap();
         app.hold_keys("ctrl+shift+meta", false).unwrap();
-        assert_eq!(*events.lock().unwrap(), [Event::PressModifiers(1, 7)]);
+        assert_eq!(*events.lock().unwrap(), [Event::NativePress(1, 7)]);
         app.press_key("tab").unwrap();
         app.press_key("shift+enter").unwrap();
-        assert_eq!(&events.lock().unwrap()[1..], [Event::PressModifiers(1, 2)]);
+        assert_eq!(&events.lock().unwrap()[1..], [Event::NativePress(1, 2)]);
         assert!(app.screen().opened_urls().is_empty());
         assert_eq!(id(&app, "basic-node"), before);
     }

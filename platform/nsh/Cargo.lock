@@ -1917,7 +1917,7 @@ dependencies = [
 [[package]]
 name = "nsh-base"
 version = "0.5.0"
-source = "git+https://github.com/logseq/nsh?rev=ea23ae9cd5f56426145ea225f1a220e1eca0d3a2#ea23ae9cd5f56426145ea225f1a220e1eca0d3a2"
+source = "git+https://github.com/logseq/nsh?rev=2635333e4cc0d3be8032c97f3a5e08d3685179c6#2635333e4cc0d3be8032c97f3a5e08d3685179c6"
 dependencies = [
  "chrono",
  "html5ever",
@@ -1936,7 +1936,7 @@ dependencies = [
 [[package]]
 name = "nsh-core"
 version = "0.5.0"
-source = "git+https://github.com/logseq/nsh?rev=ea23ae9cd5f56426145ea225f1a220e1eca0d3a2#ea23ae9cd5f56426145ea225f1a220e1eca0d3a2"
+source = "git+https://github.com/logseq/nsh?rev=2635333e4cc0d3be8032c97f3a5e08d3685179c6#2635333e4cc0d3be8032c97f3a5e08d3685179c6"
 dependencies = [
  "cap-std",
  "crc32fast",
@@ -1977,7 +1977,7 @@ dependencies = [
 [[package]]
 name = "nsh-engine"
 version = "0.5.0"
-source = "git+https://github.com/logseq/nsh?rev=ea23ae9cd5f56426145ea225f1a220e1eca0d3a2#ea23ae9cd5f56426145ea225f1a220e1eca0d3a2"
+source = "git+https://github.com/logseq/nsh?rev=2635333e4cc0d3be8032c97f3a5e08d3685179c6#2635333e4cc0d3be8032c97f3a5e08d3685179c6"
 dependencies = [
  "crossbeam-channel",
  "libc",
@@ -1995,7 +1995,7 @@ dependencies = [
 [[package]]
 name = "nsh-macros"
 version = "0.5.0"
-source = "git+https://github.com/logseq/nsh?rev=ea23ae9cd5f56426145ea225f1a220e1eca0d3a2#ea23ae9cd5f56426145ea225f1a220e1eca0d3a2"
+source = "git+https://github.com/logseq/nsh?rev=2635333e4cc0d3be8032c97f3a5e08d3685179c6#2635333e4cc0d3be8032c97f3a5e08d3685179c6"
 dependencies = [
  "imagesize 0.15.0",
  "proc-macro2",
@@ -2008,7 +2008,7 @@ dependencies = [
 [[package]]
 name = "nsh-platform-apple"
 version = "0.5.0"
-source = "git+https://github.com/logseq/nsh?rev=ea23ae9cd5f56426145ea225f1a220e1eca0d3a2#ea23ae9cd5f56426145ea225f1a220e1eca0d3a2"
+source = "git+https://github.com/logseq/nsh?rev=2635333e4cc0d3be8032c97f3a5e08d3685179c6#2635333e4cc0d3be8032c97f3a5e08d3685179c6"
 dependencies = [
  "block2",
  "cc",
@@ -2027,7 +2027,7 @@ dependencies = [
 [[package]]
 name = "nsh-platform-linux"
 version = "0.5.0"
-source = "git+https://github.com/logseq/nsh?rev=ea23ae9cd5f56426145ea225f1a220e1eca0d3a2#ea23ae9cd5f56426145ea225f1a220e1eca0d3a2"
+source = "git+https://github.com/logseq/nsh?rev=2635333e4cc0d3be8032c97f3a5e08d3685179c6#2635333e4cc0d3be8032c97f3a5e08d3685179c6"
 dependencies = [
  "crossbeam-channel",
  "gstreamer",
@@ -2049,7 +2049,7 @@ dependencies = [
 [[package]]
 name = "nsh-platform-macos"
 version = "0.5.0"
-source = "git+https://github.com/logseq/nsh?rev=ea23ae9cd5f56426145ea225f1a220e1eca0d3a2#ea23ae9cd5f56426145ea225f1a220e1eca0d3a2"
+source = "git+https://github.com/logseq/nsh?rev=2635333e4cc0d3be8032c97f3a5e08d3685179c6#2635333e4cc0d3be8032c97f3a5e08d3685179c6"
 dependencies = [
  "block2",
  "crossbeam-channel",
@@ -2077,7 +2077,7 @@ dependencies = [
 [[package]]
 name = "nsh-platform-windows"
 version = "0.5.0"
-source = "git+https://github.com/logseq/nsh?rev=ea23ae9cd5f56426145ea225f1a220e1eca0d3a2#ea23ae9cd5f56426145ea225f1a220e1eca0d3a2"
+source = "git+https://github.com/logseq/nsh?rev=2635333e4cc0d3be8032c97f3a5e08d3685179c6#2635333e4cc0d3be8032c97f3a5e08d3685179c6"
 dependencies = [
  "crossbeam-channel",
  "image",
@@ -2098,7 +2098,7 @@ dependencies = [
 [[package]]
 name = "nsh-testing"
 version = "0.5.0"
-source = "git+https://github.com/logseq/nsh?rev=ea23ae9cd5f56426145ea225f1a220e1eca0d3a2#ea23ae9cd5f56426145ea225f1a220e1eca0d3a2"
+source = "git+https://github.com/logseq/nsh?rev=2635333e4cc0d3be8032c97f3a5e08d3685179c6#2635333e4cc0d3be8032c97f3a5e08d3685179c6"
 dependencies = [
  "crossbeam-channel",
  "log",
@@ -2110,7 +2110,7 @@ dependencies = [
 [[package]]
 name = "nsh-updater"
 version = "0.5.0"
-source = "git+https://github.com/logseq/nsh?rev=ea23ae9cd5f56426145ea225f1a220e1eca0d3a2#ea23ae9cd5f56426145ea225f1a220e1eca0d3a2"
+source = "git+https://github.com/logseq/nsh?rev=2635333e4cc0d3be8032c97f3a5e08d3685179c6#2635333e4cc0d3be8032c97f3a5e08d3685179c6"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",

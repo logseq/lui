@@ -1,6 +1,8 @@
 # Logseq NSH editor geometry capability audit
 
-Status: **unimplemented; source audit only**. No build, runtime or geometry qualification is claimed. No NSH dependency/API changes were made.
+Status: **minimal read-only NSH API implemented and qualified in NSH; Logseq geometry adapter pending**. On 2026-11-12 the user approved a committed-layout query API in the authorized fork and an immutable dependency pin. The implementation is published in `logseq/nsh` commit `2635333e4cc0d3be8032c97f3a5e08d3685179c6` on `fork/logseq`, incorporating source checkpoint `cffa79b`. LUI and the actual Logseq host select that immutable revision. Qualification on macOS passed eight core geometry tests, the real CoreText committed-layout test, the full core library suite (1,470 passed, 12 ignored), and strict Clippy for all targets of `nsh-core`, `nsh-base`, and `nsh-platform-macos`. This does not qualify Logseq caret placement, clicking to edit, selection, or typing: its source-span adapter and actual application checks remain required.
+
+The original audit below records the earlier pinned revision. The implementation was checked against the current fork base `ea23ae9cd5f56426145ea225f1a220e1eca0d3a2`, which retains the same public access gap. `ElementRef::text_geometry` now queues a Rust-only query after the commit's `flush_text`, reading the existing `LaidText` and `TextEngine`. Its answer retains the exact mounted attributed snapshot, content box, ordinary root-view measurement and ancestor scroll scale; caret, range, hit-test and visual lines remain engine-owned. Invalid UTF-16 scalar boundaries, detached or hidden targets and non-finite points return no result. The Logseq adapter still needs to map source runs to that snapshot and discard stale replies before this capability is usable.
 
 Sources inspected on 2026-11-12:
 
@@ -35,7 +37,7 @@ Public `ElementRef::measure` (`element/element_ref.rs:377`) returns whole-view b
 
 ## Smallest proposed extension
 
-Add one opt-in public retained-reference query in NSH, conceptually `ElementRef::text_geometry(request) -> Answer<Option<TextGeometry>>`. Request variants should cover a caret position with affinity, UTF-16 range, content-space hit point, and lines. The core would answer from the existing committed `LaidText` and running text engine, with actual content/root origins and relevant attributed-span identity. Return no data for retired/unlaid-out text. This is a proposal, not an implemented API or authorized dependency edit; it needs core-level correctness tests and platform verification.
+Add one opt-in public retained-reference query in NSH, conceptually `ElementRef::text_geometry(request) -> Answer<Option<TextGeometry>>`. Request variants should cover a caret position with affinity, UTF-16 range, content-space hit point, and lines. The core would answer from the existing committed `LaidText` and running text engine, with actual content/root origins and relevant attributed-span identity. Return no data for retired/unlaid-out text. The user authorized this extension on 2026-11-12. The source implementation above passed the core and macOS checks recorded at the top; actual Logseq integration and Windows/Linux verification remain required.
 
 The Logseq adapter would map that result onto its existing conduit, without a second layout, selector engine, document cache or focus controller:
 

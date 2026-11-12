@@ -297,14 +297,14 @@ uses the concrete route bodies, not literal presence alone.
 | `ui/checkbox.rs` | `bc9f2e79e01ed5452a05372c8269978d8d72a35dbf1eee7f6ead0824e5b4b536` |
 | `render.rs` | `037534071325f3ab14e922a4a62d4fe2976499d9b27f4420045ab4fefffa206e` |
 | `controls.rs` | `53a9f9387f55b25f786e6556c4db3bd113975f1228b486089b7d361e38180850` |
-| `style.rs` | `ac66143c44cbd6c6236b7b7cee86c5c4f7e1728004e9894819c02387fe01be9e` |
+| `style.rs` | `f0e8bd60c5a0932e63d95004fd47332167a1db40b080fc06e0fc9dbc781552a2` |
 | `virtual_rows.rs` | `dfd69a7308191d33d80523afe0fa0df5b1ca9028cccaa642fa761fbdfd61fb5b` |
 | `app.rs` | `a46e260926f5278e263856f2f2994bbe561c8c45af17b0609c9ecbbf3953194d` |
 | `ui/mod.rs` | `5618167225c683d243f629b5d42d828997eca023f3794c200d92f30de7657171` |
 | `ui/controls.rs` | `5bdbbcce9067ed597ae60443878e76d4fc72c7609d7e40af31a3909a2ab515e2` |
 | `events.rs` | `eb9addb27f70d21b0fdaff507f869ad6ebbede6be1e031f1d64b6b4aa86a1d03` |
 | `ui/icons.rs` | `ebcaedaa770c035305fca721bac02d0597c3f90c1729cb1100a5fb78be1b8c1e` |
-| `controls/basic.rs` | `7da837743076f26afa2945e0086d6c65eb0a944029c80e72d199298b2bf62dc1` |
+| `controls/basic.rs` | `5a76d2f9be52afed4b87a0bae7a993fe7d18b74d409ef61f8671f5ab4d7407b3` |
 | `controls/collections.rs` | `a0ccb7e42c149c49b61ca93c3a083874f4eb4e3f535435d311d7a33bd496db49` |
 | `controls/surfaces.rs` | `8854da7462cda85a83d77ee54edbed3d1431d4fc37bf65d3e6ec4a1f927abf46` |
 | `controls/navigation.rs` | `7150705d3bc1c883891390233b6603ebbb88d7bd2e8d5a02b8da56e67c2020ff` |
