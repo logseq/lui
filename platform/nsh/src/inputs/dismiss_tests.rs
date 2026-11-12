@@ -133,9 +133,19 @@ fn RetainedCancellation() -> impl IntoElement {
     let events = fixture.events.clone();
     let generation = Rc::new(Cell::new(1));
     let advancing = generation.clone();
+    let canceled = Cell::new(0);
     let renderer = crate::render::Renderer::new(move |event, renderer| {
         events.lock().unwrap().push(event.clone());
-        if let Event::Text(id, value) = event {
+        let update = match event {
+            Event::Text(id, value) => Some((id, value)),
+            Event::Dismiss(2) => {
+                let count = canceled.get() + 1;
+                canceled.set(count);
+                Some((4, format!("cancel-count:{count}")))
+            }
+            _ => None,
+        };
+        if let Some((id, value)) = update {
             let next = advancing.get() + 1;
             renderer
                 .apply(
@@ -165,7 +175,10 @@ fn RetainedCancellation() -> impl IntoElement {
                     {"op":"insert-child","parent":1,"child":2,"index":0},
                     {"op":"create-node","id":3,"kind":"text-field"},
                     {"op":"set-prop","id":3,"property":"text","value":"outside"},
-                    {"op":"insert-child","parent":1,"child":3,"index":1}
+                    {"op":"insert-child","parent":1,"child":3,"index":1},
+                    {"op":"create-node","id":4,"kind":"text"},
+                    {"op":"set-prop","id":4,"property":"text","value":"cancel-count:0"},
+                    {"op":"insert-child","parent":1,"child":4,"index":2}
                 ]})
                 .to_string(),
             )
@@ -232,34 +245,15 @@ fn cancel_boundary(app: &mut nsh_testing::Headless, events: &Arc<std::sync::Mute
         .iter()
         .filter(|event| **event == Event::Dismiss(2))
         .count();
-    eprintln!(
-        "INPUT_CANCEL_TEST native_id={} events={:?} layout={:?}",
-        native_id(app),
-        *events.lock().unwrap(),
-        app.screen()
-            .layout_nodes()
-            .iter()
-            .map(|node| (node.id, node.kind, node.test_id.clone()))
-            .collect::<Vec<_>>()
-    );
     app.engine().control().dispatch_event(
         native_id(app),
         nsh_core::EventKind::KeyPress,
         nsh_core::EventPayload::Map(vec![("key", nsh_core::PayloadValue::Str("Escape".into()))]),
     );
-    let delivered = app.wait_until(
-        "native cancellation callback",
-        std::time::Duration::from_secs(2),
-        |_| {
-            events
-                .lock()
-                .unwrap()
-                .iter()
-                .filter(|event| **event == Event::Dismiss(2))
-                .count()
-                == count + 1
-        },
-    );
+    // Dismiss intentionally retains the input, so the policy itself emits no
+    // native mutation. A separate visible acknowledgement gives wait_for its
+    // normal platform-publication barrier without changing input focus/value.
+    let delivered = app.wait_for(&format!("text:cancel-count:{}", count + 1));
     assert!(
         delivered.is_ok(),
         "{delivered:?}; actual events={:?}",
