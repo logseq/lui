@@ -41,10 +41,11 @@ pub enum ServiceResponse {
     Events(Vec<PlatformEvent>),
     AfterCommit(DeferredEvents),
 }
-/// Waits for the owning native commit, without requesting a display frame.
-/// A disposed owner cancels the callback and returns an error. Layout-dependent
-/// work should then use its public ElementRef measurement, which resolves from
-/// the commit carrying that request. Hidden/locked windows need no display tick.
+/// Waits for the owning engine answer/commit without requesting a display frame.
+/// A disposed owner cancels the callback and returns an error. Public ElementRef
+/// measurement then observes the Core layout of the commit carrying its request.
+/// This does not acknowledge a platform MountBatch, native animation completion
+/// or painted pixels; an AppKit surface may still defer a batch during motion.
 pub async fn wait_for_commit() -> Result<(), String> {
     let (send, receive) = oneshot::channel();
     after_answer(move || {
@@ -267,6 +268,64 @@ impl Clock {
     }
 }
 
+/// Passive native feedback completes previously accepted render/service work.
+/// Unknown app extension events remain input; their schemas do not declare an
+/// origin that could prove they are completion-only.
+fn renderer_event_mutates(event: &ViewEvent) -> bool {
+    match event {
+        ViewEvent::VirtualWindow { .. }
+        | ViewEvent::VisibleRange { .. }
+        | ViewEvent::ScrollCompleted { .. }
+        | ViewEvent::Load(_)
+        | ViewEvent::Appear(_)
+        | ViewEvent::Picked(..) => false,
+        ViewEvent::Extension { .. }
+        | ViewEvent::Press(_)
+        | ViewEvent::NativePress(..)
+        | ViewEvent::LongPress(_)
+        | ViewEvent::DoublePress(_)
+        | ViewEvent::PointerEnter(_)
+        | ViewEvent::PointerLeave(_)
+        | ViewEvent::Pointer { .. }
+        | ViewEvent::Text(..)
+        | ViewEvent::Submit(_)
+        | ViewEvent::NavigatePrevious(_)
+        | ViewEvent::NavigateNext(_)
+        | ViewEvent::Toggle(..)
+        | ViewEvent::Value(..)
+        | ViewEvent::Focus(_)
+        | ViewEvent::Blur(_)
+        | ViewEvent::Change(_)
+        | ViewEvent::Dismiss(_) => true,
+    }
+}
+
+fn enqueue_renderer_event(
+    event: ViewEvent,
+    renderer: Renderer,
+    admission: Option<&ApplicationMutations>,
+    windows: &Windows,
+    sender: &mpsc::Sender<Request>,
+) {
+    // Previously accepted events keep their queue order. Maintenance/completion
+    // feedback must also finish while new user input is fenced.
+    if renderer_event_mutates(&event) && admission.is_some_and(|guard| guard.check().is_err()) {
+        return;
+    }
+    let Some(event) = GuardedEvent::capture(event, &renderer) else {
+        return;
+    };
+    if !event.current(&renderer) {
+        return;
+    }
+    if matches!(&event.event, ViewEvent::VirtualWindow { .. }) {
+        windows.insert(event);
+        windows.wake(sender);
+    } else if sender.try_send(Request::Event(event)).is_err() {
+        renderer.fail("The application request queue is full or closed".into());
+    }
+}
+
 /// Runs an OCaml LUI application without a JavaScript runtime.
 #[component]
 pub fn Desktop(props: DesktopProps) -> impl IntoElement {
@@ -279,26 +338,13 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
     let windows = Windows::default();
     let for_windows = windows.clone();
     let dispatch = move |event, renderer: Renderer| {
-        // Previously accepted events keep their queue order. A preparation
-        // request follows them; only newly produced input is refused here.
-        if input_admission
-            .as_ref()
-            .is_some_and(|guard| guard.check().is_err())
-        {
-            return;
-        }
-        let Some(event) = GuardedEvent::capture(event, &renderer) else {
-            return;
-        };
-        if !event.current(&renderer) {
-            return;
-        }
-        if matches!(&event.event, ViewEvent::VirtualWindow { .. }) {
-            for_windows.insert(event);
-            for_windows.wake(&for_events);
-        } else if for_events.try_send(Request::Event(event)).is_err() {
-            renderer.fail("The application request queue is full or closed".into());
-        }
+        enqueue_renderer_event(
+            event,
+            renderer,
+            input_admission.as_ref(),
+            &for_windows,
+            &for_events,
+        );
     };
     let renderer = if let Some(extensions) = use_context::<crate::extensions::Extensions>() {
         Renderer::with_extensions(extensions, dispatch)
@@ -808,3 +854,7 @@ mod mutation_tests {
         assert!(agent_mutates(None));
     }
 }
+
+#[cfg(test)]
+#[path = "app/feedback_tests.rs"]
+mod feedback_tests;

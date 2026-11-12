@@ -5129,3 +5129,15 @@ query follows the mounted identifier. Extension factories independently choose
 native identifiers, so this diagnostic explicitly rejects them rather than
 claiming that their native roots correspond to `lui-<node>`. No mutation or
 paint/readiness guarantee is added.
+
+### Update admission preserves accepted native feedback
+
+`ApplicationMutations` fences new user/agent mutations while allowing retained
+virtual-window requests, visible ranges, scroll completions, image loads,
+appearance notifications and file-picker results to finish in their existing
+order. These events keep their incarnation/generation checks and queue bounds;
+no completion is discarded merely because preparation started after its work
+was accepted. Unknown extension events, focus/blur and dismissal remain guarded
+input. Applications with their own OCaml admission fence must preserve the same
+completion paths; for example, an already accepted animated scroll still emits
+its one `on_scroll_completed` result during preparation.
