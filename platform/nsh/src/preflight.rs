@@ -30,6 +30,9 @@ struct Site {
 pub fn validate_styles(encoded: &str) -> Result<String, String> {
     let manifest: Manifest = serde_json::from_str(encoded)
         .map_err(|error| format!("invalid native style manifest: {error}"))?;
+    if manifest.sites.is_empty() {
+        return Err("native style preflight captured no literal presentation sites".into());
+    }
     if manifest.themes.is_empty() {
         return Err("native style preflight requires application theme snapshots".into());
     }
