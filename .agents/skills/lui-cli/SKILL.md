@@ -112,6 +112,27 @@ native integration tests for those claims.
 
 ## Diagnose startup accurately
 
+For an actual macOS Logseq archive, run its repository's packaged native-window
+gate instead of equating the default packaged Headless gate with window launch:
+
+```sh
+python3 deps/ui/nsh/qualify_packaged_startup.py "$ARCHIVE" \
+  --native-background --evidence _build/nsh/packaged-window.json
+```
+
+This optional mode launches the extracted launcher outside the checkout with a
+private graph and credentials, checks native More/Appearance activation, records
+app-content PNGs and stops only its own process group. Inspect those PNGs; the
+gate does not establish pixel parity or hardware input. The ordinary mode stays
+Headless, and native-window mode currently requires macOS.
+
+For a manually retained packaged session, `--artifact "$ARCHIVE"` checks the
+archive receipt; an extracted executable need not have a separate build receipt.
+Also verify that the listening PID and loaded OCaml library belong to that
+extracted bundle. A no-visible-window error now includes bounded own-window and
+application hidden/activation diagnostics. Do not activate the app or relax
+capture's visibility check to turn that failure into a passing screenshot.
+
 Distinguish process launch, OCaml/model startup, worker/database startup, native
 mount, and usable UI. Inspect the screenshot and current logs before reporting
 that the application is running normally. A loaded graph or journal route can
