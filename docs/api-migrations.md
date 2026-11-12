@@ -5318,3 +5318,16 @@ and release direct even when applications persist the emitted width. The next
 independent source-size change still uses the authored reveal timing. The adapter
 remembers only the pending completion for this acknowledgement; ResizablePanel
 continues to own the actual size and drag policy.
+
+
+## Native provider presentation can be checked before application startup
+
+`Lui_nsh::preflight::validate_styles` validates an encoded manifest of statically
+captured nodes with the existing native style compiler and application theme
+resolver. Each site carries `location`, `kind` and encoded `props`; the manifest
+also supplies computed light/dark theme snapshots. For example, a build tool can
+capture `font-size = "16px"` from its actual OCaml constructor, then call this
+entry before launching a window. A provider grammar error includes that source
+location and rejects the target build. No independent supported-value list is
+introduced. Unresolved scoped theme variables remain explicitly deferred to
+runtime; this entry does not qualify event routing or arbitrary dynamic values.

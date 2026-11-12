@@ -128,7 +128,11 @@ impl ThemeSnapshot {
         theme.typography()?;
         Ok(snapshot)
     }
-    fn overlay(&self, theme: ThemeView, mode: Option<bool>) -> Result<ThemeView, String> {
+    pub(crate) fn overlay(
+        &self,
+        theme: ThemeView,
+        mode: Option<bool>,
+    ) -> Result<ThemeView, String> {
         let mut node = Node::default();
         node.props
             .insert("theme".into(), Value::String(self.encoded.clone()));

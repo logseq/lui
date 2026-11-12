@@ -16,6 +16,7 @@ mod headings;
 mod images;
 mod inputs;
 mod media;
+pub mod preflight;
 pub mod render;
 pub mod runtime;
 pub mod store;
