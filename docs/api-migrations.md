@@ -5435,3 +5435,23 @@ The retained `display=contents` transition diagnostic now appends the canonical
 node id, kind and previous/next contents flags. Its existing message prefix is
 unchanged; diagnostic consumers should match that prefix, not the full message.
 The transition remains rejected and does not partially publish its patch batch.
+
+## Pointer and press modifier masks preserve Alt in bit 16
+
+`pointer_detail.modifiers` and `PressModifiers` reserve bit 16 for Alt/Option.
+Ctrl=1, Shift=2, Meta=4 and the secondary-pointer-button bit=8 are unchanged.
+NSH's actual pointer/press emitters and Web's pointer-detail encoder now report
+Alt instead of discarding it. A consumer can check `detail.modifiers land 16 <> 0`;
+for example, Ctrl+Shift+Meta+Alt has mask 23, or 31 with the secondary bit set.
+
+No record layout, event ordinal, JSON field or native C/JNI signature changes.
+The native transports already pass the complete integer mask to OCaml. Swift
+and Android's supplied-mask entry points preserve bit 16 when a caller provides
+it; this does not qualify their gesture implementations as observing physical
+Alt input. Hosts that previously supplied zero continue to do so.
+
+`ToggleChangedDetail` has a separate documented mask: its existing Alt=8 meaning
+is unchanged. Do not reuse its bit 8 as Alt when decoding pointer/press events.
+Existing consumers that inspect individual old bits need no changes; consumers
+that compare a whole mask to an exact number should include Alt only when that
+comparison is intentional. Dynamic pointer validation remains in place.

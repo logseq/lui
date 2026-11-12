@@ -114,6 +114,7 @@ pub(crate) fn modifiers(keys: Modifiers, secondary: bool) -> i32 {
         | (i32::from(keys.shift) << 1)
         | (i32::from(keys.cmd) << 2)
         | (i32::from(secondary) << 3)
+        | (i32::from(keys.alt) << 4)
 }
 fn detail(position: Point<Points>, keys: Modifiers, button: Option<MouseButton>) -> PointerDetail {
     PointerDetail {

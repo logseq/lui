@@ -181,7 +181,7 @@ fn native_host_press_preserves_modifiers_pointer_payload_and_appear_without_text
     assert_eq!(
         observed
             .iter()
-            .filter(|event| matches!(event, Event::NativePress(10, 7)))
+            .filter(|event| matches!(event, Event::NativePress(10, 23)))
             .count(),
         1
     );
@@ -191,7 +191,7 @@ fn native_host_press_preserves_modifiers_pointer_payload_and_appear_without_text
             .any(|event| matches!(event, Event::Press(20) | Event::NativePress(20, _)))
     );
     for kind in [PointerKind::Down, PointerKind::Up, PointerKind::PressDetail] {
-        assert!(observed.iter().any(|event|matches!(event, Event::Pointer {node:10,kind:current,detail} if *current==kind && detail.modifiers==7 && detail.x.is_finite() && detail.y.is_finite() && detail.button==0 && detail.target_class.is_empty())), "missing {kind:?}: {observed:?}");
+        assert!(observed.iter().any(|event|matches!(event, Event::Pointer {node:10,kind:current,detail} if *current==kind && detail.modifiers==23 && detail.x.is_finite() && detail.y.is_finite() && detail.button==0 && detail.target_class.is_empty())), "missing {kind:?}: {observed:?}");
     }
     assert!(observed.contains(&Event::PointerEnter(10)));
     assert!(
@@ -445,4 +445,27 @@ fn column_detail_only_capability_does_not_emit_an_unsupported_ordinary_press() {
             .iter()
             .any(|event| matches!(event, Event::Press(10) | Event::NativePress(10, _)))
     );
+}
+
+#[test]
+fn pointer_alt_bit_does_not_replace_secondary_or_other_modifier_bits() {
+    let all = Modifiers {
+        ctrl: true,
+        shift: true,
+        cmd: true,
+        alt: true,
+    };
+    assert_eq!(modifiers(all, true), 31);
+    assert_eq!(modifiers(all, false), 23);
+    assert_eq!(
+        modifiers(
+            Modifiers {
+                alt: true,
+                ..Default::default()
+            },
+            false
+        ),
+        16
+    );
+    assert_eq!(modifiers(Modifiers::default(), true), 8);
 }

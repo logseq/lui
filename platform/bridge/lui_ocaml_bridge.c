@@ -191,7 +191,7 @@ LUI_EXPORT int32_t lui_ocaml_stop(void) {
 }
 
 /* Press carrying the host's modifier state at tap time. `modifiers` is a
-   bitmask: 1=ctrl, 2=shift, 4=command/meta, 8=secondary (right click). */
+   bitmask: 1=ctrl, 2=shift, 4=command/meta, 8=secondary, 16=alt. */
 LUI_EXPORT int32_t lui_ocaml_press_ex(int64_t node, int32_t modifiers) {
   int32_t accepted;
   const value *callback;
