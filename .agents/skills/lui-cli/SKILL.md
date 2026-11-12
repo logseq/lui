@@ -106,6 +106,22 @@ menus without OCaml press handlers; it does not generate hardware pointer,
 PressDown/PressUp, hover, focus or keyboard events. Existing `press` remains an
 OCaml semantic command and never silently falls back to this operation.
 
+On macOS, hosts advertising `native-bounds` can inspect a uniquely selected
+renderer-owned AppKit view without mutating it:
+
+```text
+native-bounds "kind:dialog"
+native-bounds "kind:input"
+```
+
+Use `--json` to inspect `diagnostics.present`, `contentBounds`, `viewport`,
+`intersectsViewport`, hidden/alpha ancestry and bounded sibling order. A
+semantic node may exist before its native view appears, or while a native
+modal slide is below the viewport. Core `ElementRef.measure` and semantic
+`wait` do not establish AppKit presentation readiness. Do not substitute a
+fixed sleep or activation for native evidence. These diagnostics alone do not
+certify animation completion, painted pixels or hardware focus.
+
 Semantic commands act on the OCaml tree. They do not qualify native hit testing,
 keyboard focus, IME, or visible layout. Use screenshots and the appropriate
 native integration tests for those claims.

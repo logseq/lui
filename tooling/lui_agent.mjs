@@ -66,9 +66,10 @@ export function plan(line) {
   }
   switch (command) {
     case "native-press":
+    case "native-bounds":
       need(1, "<selector>");
-      if (rest.length !== 1) throw new Error("usage: native-press <selector>");
-      return {request: {op: "native-press", selector: rest[0]}};
+      if (rest.length !== 1) throw new Error(`usage: ${command} <selector>`);
+      return {request: {op: command, selector: rest[0]}};
     case "hello":
       return {request: {op: "hello"}};
     case "screenshot":
@@ -388,6 +389,7 @@ export async function run(agent, lines, {print} = {}) {
 
 function human(reply) {
   if (reply.op === "screenshot") return `screenshot ${reply.path} (${reply.width}×${reply.height})`;
+  if (reply.op === "native-bounds") return `#${reply.node} native present=${reply.diagnostics.present} bounds=${JSON.stringify(reply.diagnostics.contentBounds)}`;
   if (reply.op === "dump") return reply.text.trimEnd();
   if (reply.op === "find") return reply.nodes.map((node) => `#${node}`).join(" ") || "(no match)";
   if (reply.op === "prop") return `#${reply.node} ${shown(reply.value)}`;

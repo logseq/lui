@@ -187,7 +187,7 @@ fn content_window(
         .ok_or_else(|| {
             format!(
                 "the application has no visible content window to capture; own-window diagnostics={}",
-                window_diagnostics(&app)
+                window_diagnostics(app)
             )
         })
 }
@@ -247,6 +247,7 @@ fn bounds_on_main(test_id: &str) -> Result<serde_json::Value, String> {
             parent
                 .subviews()
                 .iter()
+                .take(SCAN_LIMIT)
                 .position(|sibling| std::ptr::eq(&*sibling, &*view))
         });
         let converted = rect(view.convertRect_toView(view.bounds(), Some(&content)));
@@ -256,6 +257,7 @@ fn bounds_on_main(test_id: &str) -> Result<serde_json::Value, String> {
             "hiddenByAncestor":view.isHiddenOrHasHiddenAncestor(),"alpha":view.alphaValue(),
             "layerOpacity":view.layer().map(|layer|layer.opacity()),
             "siblingIndex":sibling_index,"siblingCount":parent.as_ref().map(|p|p.subviews().len()),
+            "siblingScanLimit":SCAN_LIMIT,"siblingScanTruncated":parent.as_ref().is_some_and(|p|p.subviews().len()>SCAN_LIMIT),
             "isContentRoot":std::ptr::eq(&*view,&*content)}),
         );
         if std::ptr::eq(&*view, &*content) {

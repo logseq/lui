@@ -5065,3 +5065,25 @@ their native identities, drafts and editing focus. Applications that intend an
 empty inset must author padding or an explicit spacer rather than empty labels.
 This native layout correction does not change Logseq CmdK's intentional master
 65vh results region, fixed width policy or blank-query empty-state behavior.
+
+
+### Read-only native bounds diagnostics
+
+NSH macOS hosts additionally advertise `native-bounds` in `host_native_ops`.
+`native-bounds "kind:dialog"` resolves exactly one node through the existing
+OCaml selector, then reads its renderer-owned AppKit view without pressing,
+activating, laying out or changing it. A retired or replaced node fails; a
+semantic node not yet represented by a native view returns `present: false`.
+Other operating systems report this diagnostic as unsupported.
+
+The response includes node/incarnation and `diagnostics`: actual converted
+window-content bounds, viewport intersection, hidden/alpha ancestry and bounded
+sibling order. Traversal, retained views and each sibling scan are capped at
+8,192; ancestry is capped at 12 and truncation is explicit. It inspects no titles,
+text, other applications or desktop coordinates. Existing semantic `find` and
+Core layout measurement are unchanged.
+
+For example, inspect `native-bounds "kind:input"` before capturing a newly opened
+dialog. A semantic node can exist while a native slide is still outside the
+viewport. These diagnostics do not certify painted pixels, finished animation,
+hardware focus or master UX parity; screenshots still require visual review.

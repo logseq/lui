@@ -378,7 +378,8 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                         continue;
                     }
                     let native_press = operation.as_deref() == Some("native-press");
-                    let request = if native_press {
+                    let native_bounds = operation.as_deref() == Some("native-bounds");
+                    let request = if native_press || native_bounds {
                         let translated = serde_json::from_str(&request)
                             .map_err(|error| error.to_string())
                             .and_then(|request| crate::native_agent::find_request(&request));
@@ -420,6 +421,9 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                     let answer = match answer {
                         Ok(answer) if native_press => {
                             crate::native_agent::press(&opening, &answer).await
+                        }
+                        Ok(answer) if native_bounds => {
+                            crate::native_agent::bounds(&opening, &answer).await
                         }
                         Ok(answer) if operation.as_deref() == Some("hello") => {
                             crate::native_agent::hello(answer)

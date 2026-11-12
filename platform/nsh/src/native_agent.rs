@@ -5,15 +5,24 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 
 pub(crate) fn find_request(request: &Value) -> Result<String, String> {
+    let operation = if request.get("op").and_then(Value::as_str) == Some("native-bounds") {
+        "native-bounds"
+    } else {
+        "native-press"
+    };
     let selector = request
         .get("selector")
         .and_then(Value::as_str)
         .filter(|selector| !selector.is_empty())
-        .ok_or("native-press requires a selector")?;
+        .ok_or_else(|| format!("{operation} requires a selector"))?;
     Ok(json!({"op":"find","selector":selector}).to_string())
 }
 
 fn unique_target(answer: &str) -> Result<u64, String> {
+    unique_target_for(answer, "native-press")
+}
+
+fn unique_target_for(answer: &str, operation: &str) -> Result<u64, String> {
     let answer: Value = serde_json::from_str(answer).map_err(|error| error.to_string())?;
     if answer.get("ok") != Some(&Value::Bool(true)) {
         return Err(answer
@@ -30,8 +39,8 @@ fn unique_target(answer: &str) -> Result<u64, String> {
         [node] => node
             .as_u64()
             .ok_or("canonical find returned an invalid node id".into()),
-        [] => Err("native-press selector matched no nodes".into()),
-        _ => Err("native-press requires exactly one matching node".into()),
+        [] => Err(format!("{operation} selector matched no nodes")),
+        _ => Err(format!("{operation} requires exactly one matching node")),
     }
 }
 
@@ -113,12 +122,28 @@ pub(crate) async fn press(renderer: &Renderer, answer: &str) -> Result<String, S
     )
 }
 
+pub(crate) async fn bounds(renderer: &Renderer, answer: &str) -> Result<String, String> {
+    let id = unique_target_for(answer, "native-bounds")?;
+    let incarnation = renderer
+        .current_incarnation(id)
+        .ok_or("native-bounds target is retired")?;
+    crate::app::wait_for_commit().await?;
+    let diagnostics = crate::native_capture::view_bounds(format!("lui-{id}")).await?;
+    if renderer.current_incarnation(id) != Some(incarnation) {
+        return Err("native-bounds target incarnation changed".into());
+    }
+    Ok(json!({"ok":true,"op":"native-bounds","node":id,
+        "incarnation":incarnation,"diagnostics":diagnostics})
+    .to_string())
+}
+
 pub(crate) fn hello(answer: String) -> Result<String, String> {
     let mut answer: Value = serde_json::from_str(&answer).map_err(|error| error.to_string())?;
     if answer.get("ok") == Some(&Value::Bool(true)) {
         let mut operations = vec!["native-press"];
         if cfg!(target_os = "macos") {
             operations.push("screenshot");
+            operations.push("native-bounds");
         }
         answer["host_native_ops"] = json!(operations);
     }
@@ -147,6 +172,22 @@ mod tests {
             serde_json::from_str::<Value>(&find_request(&json!({"selector":"text:More"})).unwrap())
                 .unwrap(),
             json!({"op":"find","selector":"text:More"})
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(
+                &find_request(&json!({"op":"native-bounds","selector":"kind:dialog"})).unwrap()
+            )
+            .unwrap(),
+            json!({"op":"find","selector":"kind:dialog"})
+        );
+        assert_eq!(
+            unique_target_for(r#"{"ok":true,"nodes":[9]}"#, "native-bounds").unwrap(),
+            9
+        );
+        assert!(
+            unique_target_for(r#"{"ok":true,"nodes":[]}"#, "native-bounds")
+                .unwrap_err()
+                .starts_with("native-bounds")
         );
     }
 
