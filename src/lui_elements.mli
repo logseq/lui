@@ -390,7 +390,6 @@ val row :
   ?cross:cross_alignment ->
   ?grow:float ->
   ?shrink:float ->
-  ?columns:int ->
   ?orientation:orientation ->
   ?orientation_signal:orientation Signal.signal ->
   ?padding:int ->
@@ -447,7 +446,6 @@ val column :
   ?grow:float ->
   ?shrink:float ->
   ?grow_signal:float Signal.signal ->
-  ?columns:int ->
   ?padding:int ->
   ?padding_horizontal:int ->
   ?padding_vertical:int ->

@@ -4811,3 +4811,20 @@ spans remain logical offsets. Consumers translating byte/source offsets must kee
 using their real run-to-span mapping; this projection does not implement a Logseq
 geometry service or qualify native IME behavior. Maintained Apple/iOS, Android and
 Web backends and the wire protocol are unchanged.
+
+
+### Row and Column reject grid-only column counts at compile time
+
+`Lui_elements.row` and `Lui_elements.column` no longer expose `?columns`. The
+canonical `GridColumns` property has always been supported only by Grid, so
+passing it to Row or Column previously compiled and then failed when mounting
+on every backend. This removes an unusable constructor argument; the wire
+property and valid Web, Apple/iOS, Android and NSH grid behavior are unchanged.
+
+For example, replace `row ~columns:3 cells` with `grid ~columns:3 cells` only
+when a three-column grid is the intended layout. If Row/Column is intentional,
+remove the unsupported argument; this migration does not convert layouts
+automatically. Helpers forwarding `?columns` to Row/Column must likewise remove
+that forwarding. Static `grid ~columns:3 cells` and a reactive structural branch
+such as `reactive (fun count -> grid ~columns:count cells) counts` remain valid.
+Grid does not gain a new `columns_signal` property binding in this change.

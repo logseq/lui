@@ -93,6 +93,10 @@ test("PPX nesting diagnostics reject static illegal edges without guessing opaqu
       }
     }
     cases.push(
+      ['grid ~columns:2 [text ~value:"Cell" []]'],
+      ['reactive (fun shown -> grid ~columns:(if shown then 2 else 3) []) source'],
+      ['Lui_elements.grid ~columns:2 []'],
+      ['reactive (fun shown -> Lui_elements.grid ~columns:(if shown then 2 else 3) []) source'],
       ['column [button ~text:(reactive string_of_bool source) []]'],
       ['let radio ~text_signal:_ _ = button [] in column [radio ~text:(reactive string_of_bool source) []]'],
       ['(fun radio -> column [radio ~text:(reactive string_of_bool source) []]) (fun ~text_signal:_ _ -> button [])'],
@@ -164,6 +168,14 @@ let probe (source : bool Signal.signal) =
     })
     for (const [expression, expectedType] of [
       ...invalidSurfaceCases,
+      ['row ~columns:2 []', /cannot be applied with label ~columns/],
+      ['column ~columns:2 []', /cannot be applied with label ~columns/],
+      ['Lui_elements.row ~columns:2 []', /cannot be applied with label ~columns/],
+      ['Lui_elements.column ~columns:2 []', /cannot be applied with label ~columns/],
+      ['let layout = Lui_elements.row in layout ~columns:2 []', /cannot be applied with label ~columns/],
+      ['let layout ?columns children = Lui_elements.column ?columns children in layout []', /cannot be applied with label \?columns/],
+      ['row ~columns:(reactive (fun _ -> 2) source) []', /cannot be applied with label ~columns_signal/],
+      ['column ~columns:(reactive (fun _ -> 2) source) []', /cannot be applied with label ~columns_signal/],
       ['context_menu ~width:256 [menu_item []]', /cannot be applied with label ~width/],
       ['context_menu ~style_class:"menu" [menu_item []]', /cannot be applied with label ~style_class/],
       ['context_menu ~disabled:true [menu_item []]', /cannot be applied with label ~disabled/],
