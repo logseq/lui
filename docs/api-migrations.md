@@ -5281,3 +5281,10 @@ that formerly omitted motion only for NSH can share the standard reveal token:
 split ~first_width:(reactive width) ~resize_duration:300
   ~resize_easing:`standard left right
 ```
+
+A model echo matching the most recent native split resize completion acknowledges
+that native endpoint without requesting layout motion. This keeps pointer drag
+and release direct even when applications persist the emitted width. The next
+independent source-size change still uses the authored reveal timing. The adapter
+remembers only the pending completion for this acknowledgement; ResizablePanel
+continues to own the actual size and drag policy.

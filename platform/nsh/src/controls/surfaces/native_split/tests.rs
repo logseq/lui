@@ -288,64 +288,72 @@ fn native_rtl_report_selects_the_first_logical_panel_and_legacy_options_reject()
 
 #[test]
 fn native_sidebar_width_motion_retains_editors_and_respects_reduced_motion() {
-    let (mut app, _) = app_with_motion(Some(240.0), true, false, true);
-    let first = layout(&app, "lui-3").id;
-    let second = layout(&app, "lui-4").id;
-    let transitions = Arc::new(Mutex::new(Vec::new()));
-    let observed = transitions.clone();
-    app.observe(move |_, batch| {
-        for item in &batch.items {
-            if let nsh_core::MountItem::LayoutAnimation(animation) = item {
-                if let Some(update) = animation.update {
-                    observed.lock().unwrap().push(update);
+    for echo in [false, true] {
+        let (mut app, fixture) = app_with_motion(Some(240.0), echo, false, true);
+        let first = layout(&app, "lui-3").id;
+        let second = layout(&app, "lui-4").id;
+        let transitions = Arc::new(Mutex::new(Vec::new()));
+        let observed = transitions.clone();
+        app.observe(move |_, batch| {
+            for item in &batch.items {
+                if let nsh_core::MountItem::LayoutAnimation(animation) = item {
+                    if let Some(update) = animation.update {
+                        observed.lock().unwrap().push(update);
+                    }
                 }
             }
-        }
-    });
-    app.type_text("id:lui-4", "retained").unwrap();
-    assert!(transitions.lock().unwrap().is_empty());
-    app.press_key("f5").unwrap();
-    assert_eq!(
-        layout(&app, "lui-2-split-pane-3").bounds.size.width,
-        px(0.0)
-    );
-    assert!(layout(&app, "lui-2-split-pane-3").clips);
-    assert!(transitions.lock().unwrap().iter().all(|motion| {
-        motion.duration_ms == 300.0 && motion.curve == LayoutCurve::EaseInEaseOut
-    }));
-    assert!(!transitions.lock().unwrap().is_empty());
-    app.press_key("f6").unwrap();
-    assert_eq!(layout(&app, "lui-3").id, first);
-    assert_eq!(layout(&app, "lui-4").id, second);
-    let before = app
-        .screen()
-        .input_text("id:lui-4")
-        .unwrap()
-        .unwrap()
-        .to_owned();
-    app.press_key("x").unwrap();
-    let after = app.screen().input_text("id:lui-4").unwrap().unwrap();
-    assert_eq!(after.len(), before.len() + 1);
-    assert_eq!(after.replace('x', ""), before);
-    transitions.lock().unwrap().clear();
-    app.drag(HANDLE, Point::new(px(30.0), px(0.0))).unwrap();
-    assert!(transitions.lock().unwrap().is_empty());
-    app.set_environment("reduce motion", |environment| {
-        environment.reduce_motion = true
-    })
-    .unwrap();
-    app.press_key("f5").unwrap();
-    assert_eq!(
-        layout(&app, "lui-2-split-pane-3").bounds.size.width,
-        px(0.0)
-    );
-    assert!(layout(&app, "lui-2-split-pane-3").clips);
-    app.press_key("f6").unwrap();
-    assert_eq!(
-        layout(&app, "lui-2-split-pane-3").bounds.size.width,
-        px(240.0)
-    );
-    assert!(transitions.lock().unwrap().is_empty());
-    assert_eq!(layout(&app, "lui-3").id, first);
-    assert_eq!(layout(&app, "lui-4").id, second);
+        });
+        app.type_text("id:lui-4", "retained").unwrap();
+        assert!(transitions.lock().unwrap().is_empty());
+        app.press_key("f5").unwrap();
+        assert_eq!(
+            layout(&app, "lui-2-split-pane-3").bounds.size.width,
+            px(0.0)
+        );
+        assert!(layout(&app, "lui-2-split-pane-3").clips);
+        assert!(transitions.lock().unwrap().iter().all(|motion| {
+            motion.duration_ms == 300.0 && motion.curve == LayoutCurve::EaseInEaseOut
+        }));
+        assert!(!transitions.lock().unwrap().is_empty());
+        app.press_key("f6").unwrap();
+        assert_eq!(layout(&app, "lui-3").id, first);
+        assert_eq!(layout(&app, "lui-4").id, second);
+        let before = app
+            .screen()
+            .input_text("id:lui-4")
+            .unwrap()
+            .unwrap()
+            .to_owned();
+        app.press_key("x").unwrap();
+        let after = app.screen().input_text("id:lui-4").unwrap().unwrap();
+        assert_eq!(after.len(), before.len() + 1);
+        assert_eq!(after.replace('x', ""), before);
+        transitions.lock().unwrap().clear();
+        app.drag(HANDLE, Point::new(px(30.0), px(0.0))).unwrap();
+        assert_eq!(fixture.proposals.lock().unwrap().len(), 1);
+        assert!(transitions.lock().unwrap().is_empty());
+        // A later application toggle must still animate, with or without an echo.
+        app.press_key("f5").unwrap();
+        app.press_key("f6").unwrap();
+        assert!(!transitions.lock().unwrap().is_empty());
+        transitions.lock().unwrap().clear();
+        app.set_environment("reduce motion", |environment| {
+            environment.reduce_motion = true
+        })
+        .unwrap();
+        app.press_key("f5").unwrap();
+        assert_eq!(
+            layout(&app, "lui-2-split-pane-3").bounds.size.width,
+            px(0.0)
+        );
+        assert!(layout(&app, "lui-2-split-pane-3").clips);
+        app.press_key("f6").unwrap();
+        assert_eq!(
+            layout(&app, "lui-2-split-pane-3").bounds.size.width,
+            px(240.0)
+        );
+        assert!(transitions.lock().unwrap().is_empty());
+        assert_eq!(layout(&app, "lui-3").id, first);
+        assert_eq!(layout(&app, "lui-4").id, second);
+    }
 }

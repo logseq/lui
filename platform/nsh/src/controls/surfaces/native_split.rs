@@ -56,6 +56,8 @@ pub(super) fn element(
             .get("first-pane-width")
             .and_then(serde_json::Value::as_f64),
     );
+    // Only acknowledges a completed native resize; it never chooses a size.
+    let native_completion = stored(None::<f64>);
     // The panel group remains the only size owner. Request native frame motion
     // for a changed authored size, never for unrelated patches or native drags.
     effect(move || {
@@ -65,6 +67,12 @@ pub(super) fn element(
             .get("first-pane-width")
             .and_then(serde_json::Value::as_f64);
         if source_width.replace(width) == width {
+            return;
+        }
+        if native_completion
+            .replace(None)
+            .is_some_and(|size| width == Some(size))
+        {
             return;
         }
         let duration = current.number("resize-duration", 0.0) as f32;
@@ -139,6 +147,9 @@ pub(super) fn element(
             .on_event(move |event: &nsh_base::ResizablePanelEvent| {
                 let nsh_base::ResizablePanelEvent::Resize(size) = event;
                 if index.get_untracked() == 0 {
+                    // A synchronous or deferred model echo confirms the native
+                    // endpoint. Animating that acknowledgement would replay a drag.
+                    native_completion.replace(Some(size.0 as f64));
                     emit_flag(
                         node,
                         "change-enabled",
