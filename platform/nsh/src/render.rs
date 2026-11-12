@@ -778,10 +778,10 @@ impl Renderer {
             // Read retained ancestor signals so a moved ancestor rebinds every
             // affected Parent list, without a global registry or tree copy.
             let node = entry.node.get();
-            if let Some(owner) = entry.scroll_owner {
-                if owner.vertical() {
-                    return Some(owner);
-                }
+            if let Some(owner) = entry.scroll_owner
+                && owner.vertical()
+            {
+                return Some(owner);
             }
             if state.store.root() == Some(node.id) || native_surface_boundary(&node) {
                 return None;
