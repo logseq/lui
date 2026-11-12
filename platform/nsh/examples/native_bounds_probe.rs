@@ -6,7 +6,7 @@ mod geometry;
 #[cfg(target_os = "macos")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     use nsh_platform_macos::{
-        objc2::{MainThreadMarker, define_class, msg_send, rc::Retained},
+        objc2::{MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained},
         objc2_app_kit::{NSApplication, NSResponder, NSView},
         objc2_foundation::{NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize},
     };
