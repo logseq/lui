@@ -14,7 +14,7 @@ use std::{
 
 pub(crate) type RowIdentity = (u64, u64);
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
 struct ScrollEpochs {
     ended: u64,
     dragged: u64,

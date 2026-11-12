@@ -240,6 +240,23 @@ impl Renderer {
             {
                 return Err("NSH context-menu requires an attached native trigger".into());
             }
+            if state.store.root() != Some(id) {
+                let mut pending = vec![id];
+                let mut scroll_owners = ParentScrollValidation::default();
+                while let Some(current) = pending.pop() {
+                    let get = |id| {
+                        state
+                            .store
+                            .nodes
+                            .get(&id)
+                            .map(Arc::as_ref)
+                            .ok_or_else(|| format!("unknown node {id}"))
+                    };
+                    let node = get(current)?;
+                    validate_parent_viewport(node, Some(id), &get, &mut scroll_owners)?;
+                    pending.extend(node.children.iter().copied());
+                }
+            }
             state.store.set_root(id)?;
             (
                 (id, state.store.nodes[&id].incarnation),
@@ -752,6 +769,9 @@ impl Renderer {
         if let Some(owner) = entry.scroll_owner {
             return Some(owner);
         }
+        if state.store.root() == Some(node.id) {
+            return None;
+        }
         let mut parent = node.parent;
         while let Some(id) = parent {
             let entry = state.nodes.get(&id)?;
@@ -763,16 +783,7 @@ impl Renderer {
                     return Some(owner);
                 }
             }
-            if matches!(
-                node.kind.as_str(),
-                "dialog"
-                    | "sheet"
-                    | "drawer"
-                    | "popover"
-                    | "tooltip"
-                    | "dropdown-menu"
-                    | "context-menu"
-            ) {
+            if state.store.root() == Some(node.id) || native_surface_boundary(&node) {
                 return None;
             }
             parent = node.parent;
@@ -1735,8 +1746,15 @@ fn validate_themes(
         crate::controls::tree::validate_source(root, &|id| transaction.get(id))?;
     }
     let mut themes = BTreeMap::new();
+    let mut scroll_owners = ParentScrollValidation::default();
     for id in candidates {
         let node = transaction.get(id)?;
+        validate_parent_viewport(
+            node,
+            transaction.root(),
+            &|id| transaction.get(id),
+            &mut scroll_owners,
+        )?;
         if node.string("role") == "treeitem"
             && native_tree_owner(transaction, id, &mut tree_owners)?.is_none()
         {
@@ -1758,6 +1776,95 @@ fn validate_themes(
         }
     }
     Ok(themes)
+}
+
+fn native_surface_boundary(node: &Node) -> bool {
+    matches!(
+        node.kind.as_str(),
+        "dialog" | "sheet" | "drawer" | "popover" | "tooltip" | "dropdown-menu" | "context-menu"
+    )
+}
+
+#[derive(Clone, Copy)]
+enum ScrollAncestry {
+    Owner,
+    Blocked,
+}
+
+#[derive(Default)]
+struct ParentScrollValidation {
+    ancestry: BTreeMap<u64, ScrollAncestry>,
+    rooted: BTreeMap<u64, bool>,
+}
+
+// Cache only paths inspected in this transaction, so nested Parent lists do not
+// repeatedly walk the same ancestor chain. Orphan nodes may be attached later.
+fn validate_parent_viewport<'a>(
+    node: &Node,
+    root: Option<u64>,
+    get: &impl Fn(u64) -> Result<&'a Node, String>,
+    cache: &mut ParentScrollValidation,
+) -> Result<(), String> {
+    if node.kind != "virtual-list" || node.string("virtual-viewport") != "parent" {
+        return Ok(());
+    }
+    let Some(root) = root else {
+        return Ok(());
+    };
+    let mut path = Vec::new();
+    let mut next = Some(node.id);
+    let rooted = loop {
+        let Some(id) = next else {
+            break false;
+        };
+        if id == root {
+            break true;
+        }
+        if let Some(found) = cache.rooted.get(&id) {
+            break *found;
+        }
+        path.push(id);
+        next = get(id)?.parent;
+    };
+    for id in path {
+        cache.rooted.insert(id, rooted);
+    }
+    if !rooted {
+        return Ok(());
+    }
+    let mut path = Vec::new();
+    let mut next = node.id;
+    let found = loop {
+        if let Some(found) = cache.ancestry.get(&next) {
+            break *found;
+        }
+        let ancestor = get(next)?;
+        path.push(next);
+        if virtual_rows::owns_scroll(ancestor)
+            && (ancestor.kind != "scroll"
+                || contract::orientation(ancestor, OrientationValue::Vertical)?
+                    == OrientationValue::Vertical)
+        {
+            break ScrollAncestry::Owner;
+        }
+        if ancestor.id == root || native_surface_boundary(ancestor) {
+            break ScrollAncestry::Blocked;
+        }
+        match ancestor.parent {
+            Some(parent) => next = parent,
+            None => break ScrollAncestry::Blocked,
+        }
+    };
+    for id in path {
+        cache.ancestry.insert(id, found);
+    }
+    match found {
+        ScrollAncestry::Owner => Ok(()),
+        ScrollAncestry::Blocked => Err(
+            "NSH Parent virtual-list requires a vertical Scroll owner within its native surface"
+                .into(),
+        ),
+    }
 }
 
 /// Memoize only affected ancestry paths; no store-wide component scan.

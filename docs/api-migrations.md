@@ -40,6 +40,15 @@ removing explicit `own` preserves the same default and remains valid. Visible
 range, sparse row demand, active pins and scroll-token outcomes continue through
 their existing ordered feedback paths, even while new user input is fenced.
 
+Parent lists observe end/drag feedback and measure the viewport of their nearest
+compatible native Scroll, canonical List or owned VirtualList. A farther
+ancestor's end cannot finish the token, and user dragging cancels it once. A
+compatible vertical owner must exist inside the selected application's native
+surface; lookup stops at the selected root and modal/popup boundaries. Invalid
+root selection or mounted reparenting fails before publication. Detached
+subtrees may be staged and repaired before attachment. The adapter adds no
+second scroll controller, viewport model or per-row visibility cache.
+
 ## Unreleased: NSH desktop migration (in progress)
 
 The desktop implementation is moving from MyGo to a Rust-only NSH host.

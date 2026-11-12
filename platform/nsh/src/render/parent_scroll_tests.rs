@@ -42,6 +42,7 @@ fn Fixture() -> impl IntoElement {
             renderer.apply(patch(token + 1, json!([
                 {"op":"set-prop","id":5,"property":"scroll-token","value":token},
                 {"op":"set-prop","id":5,"property":"scroll-target","value":if nearest {"row-0"} else {"row-29"}},
+                {"op":"set-prop","id":5,"property":"virtual-scroll-index","value":if nearest {0} else {29}},
                 {"op":"set-prop","id":5,"property":"scroll-anchor","value":if nearest {"nearest"} else {"top"}},
                 {"op":"set-prop","id":5,"property":"scroll-animated","value":!nearest}
             ]))).unwrap();
@@ -74,6 +75,9 @@ fn Fixture() -> impl IntoElement {
         {"op":"insert-child","parent":3,"child":4,"index":0},
         {"op":"create-node","id":5,"kind":"virtual-list"},
         {"op":"set-prop","id":5,"property":"virtual-viewport","value":"parent"},
+        {"op":"set-prop","id":5,"property":"virtual-total-count","value":30},
+        {"op":"set-prop","id":5,"property":"virtual-generation","value":1},
+        {"op":"set-prop","id":5,"property":"virtual-indices","value":serde_json::to_string(&(0..30).collect::<Vec<_>>()).unwrap()},
         {"op":"set-prop","id":5,"property":"item-extent","value":32.0},
         {"op":"set-prop","id":5,"property":"track-visible-range","value":true},
         {"op":"insert-child","parent":3,"child":5,"index":1}
@@ -85,7 +89,6 @@ fn Fixture() -> impl IntoElement {
         let id = index + 100;
         ops.extend([
             json!({"op":"create-node","id":id,"kind":"text-field"}),
-            json!({"op":"set-prop","id":id,"property":"key","value":format!("row-{index}")}),
             json!({"op":"set-prop","id":id,"property":"text","value":format!("Row {index}")}),
             json!({"op":"set-prop","id":id,"property":"height","value":32}),
             json!({"op":"insert-child","parent":5,"child":id,"index":index}),
@@ -95,14 +98,148 @@ fn Fixture() -> impl IntoElement {
     renderer.set_root(1).unwrap();
     renderer.element()
 }
-fn bounds(app: &Headless, id: &str) -> Bounds<Points> {
-    app.screen()
+fn bounds(screen: &nsh_testing::Screen, id: &str) -> Bounds<Points> {
+    screen
         .layout_nodes()
         .into_iter()
         .find(|node| node.test_id.as_deref() == Some(id))
         .unwrap()
         .bounds
 }
+
+#[component]
+fn AtomicParentOwnerValidation() -> impl IntoElement {
+    let renderer = Renderer::new(|_, _| {});
+    renderer
+        .apply(patch(
+            1,
+            json!([
+                {"op":"create-node","id":1,"kind":"column"},
+                {"op":"create-node","id":2,"kind":"scroll"},
+                {"op":"set-prop","id":2,"property":"height","value":80},
+                {"op":"create-node","id":3,"kind":"virtual-list"},
+                {"op":"set-prop","id":3,"property":"virtual-viewport","value":"parent"},
+                {"op":"insert-child","parent":1,"child":2,"index":0},
+                {"op":"insert-child","parent":2,"child":3,"index":0}
+            ]),
+        ))
+        .unwrap();
+    renderer.set_root(1).unwrap();
+    let retained = renderer.0.borrow().store.nodes[&3].clone();
+    let invalid_move = patch(
+        2,
+        json!([
+            {"op":"remove-child","parent":2,"child":3},
+            {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]),
+    );
+    assert!(
+        renderer
+            .apply(invalid_move)
+            .unwrap_err()
+            .contains("vertical Scroll owner")
+    );
+    assert_eq!(renderer.0.borrow().store.generation, 1);
+    assert!(Arc::ptr_eq(&retained, &renderer.0.borrow().store.nodes[&3]));
+    let across_surface = patch(
+        2,
+        json!([
+            {"op":"create-node","id":4,"kind":"dialog"},
+            {"op":"insert-child","parent":2,"child":4,"index":1},
+            {"op":"remove-child","parent":2,"child":3},
+            {"op":"insert-child","parent":4,"child":3,"index":0}
+        ]),
+    );
+    assert!(
+        renderer
+            .apply(across_surface)
+            .unwrap_err()
+            .contains("native surface")
+    );
+    assert_eq!(renderer.0.borrow().store.generation, 1);
+    assert!(!renderer.0.borrow().store.nodes.contains_key(&4));
+    let unrendered_owner = patch(
+        2,
+        json!([
+            {"op":"create-node","id":9,"kind":"scroll"},
+            {"op":"insert-child","parent":9,"child":1,"index":0},
+            {"op":"remove-child","parent":2,"child":3},
+            {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]),
+    );
+    assert!(
+        renderer
+            .apply(unrendered_owner)
+            .unwrap_err()
+            .contains("vertical Scroll owner")
+    );
+    assert_eq!(renderer.0.borrow().store.generation, 1);
+    assert!(!renderer.0.borrow().store.nodes.contains_key(&9));
+    renderer
+        .apply(patch(
+            2,
+            json!([
+                {"op":"create-node","id":4,"kind":"dialog"},
+                {"op":"create-node","id":5,"kind":"virtual-list"},
+                {"op":"set-prop","id":5,"property":"virtual-viewport","value":"parent"},
+                {"op":"insert-child","parent":4,"child":5,"index":0}
+            ]),
+        ))
+        .unwrap();
+    assert!(
+        renderer
+            .apply(patch(
+                3,
+                json!([
+                    {"op":"insert-child","parent":2,"child":4,"index":1}
+                ])
+            ))
+            .unwrap_err()
+            .contains("native surface")
+    );
+    assert_eq!(renderer.0.borrow().store.generation, 2);
+    renderer
+        .apply(patch(
+            3,
+            json!([
+                {"op":"create-node","id":6,"kind":"scroll"},
+                {"op":"remove-child","parent":4,"child":5},
+                {"op":"insert-child","parent":4,"child":6,"index":0},
+                {"op":"insert-child","parent":6,"child":5,"index":0},
+                {"op":"insert-child","parent":2,"child":4,"index":1}
+            ]),
+        ))
+        .unwrap();
+    let invalid_root = Renderer::new(|_, _| {});
+    invalid_root
+        .apply(patch(
+            1,
+            json!([
+                {"op":"create-node","id":1,"kind":"virtual-list"},
+                {"op":"set-prop","id":1,"property":"virtual-viewport","value":"parent"}
+            ]),
+        ))
+        .unwrap();
+    assert!(
+        invalid_root
+            .set_root(1)
+            .unwrap_err()
+            .contains("vertical Scroll owner")
+    );
+    assert_eq!(invalid_root.root_id(), None);
+    view()
+        .child(renderer.element())
+        .child(text("Parent ownership rejected atomically"))
+}
+
+#[test]
+fn parent_owner_shape_rejects_before_publication_or_root_selection() {
+    let mut app =
+        Headless::start(EngineConfig::new(Root::of::<AtomicParentOwnerValidation>())).unwrap();
+    app.wait_for("text:Parent ownership rejected atomically")
+        .unwrap();
+}
+
 #[test]
 fn parent_nearest_reveals_a_partially_clipped_row_against_the_actual_scroll_viewport()
 -> Result<(), String> {
@@ -122,10 +259,11 @@ fn parent_nearest_reveals_a_partially_clipped_row_against_the_actual_scroll_view
             }),
             content_culling: false,
             ..EngineConfig::new(Root::of::<Fixture>())
-        })?;
+        })
+        .map_err(|error| error.to_string())?;
         app.wait_for("id:lui-100")?;
-        let viewport = bounds(&app, "lui-7");
-        let before = bounds(&app, "lui-100");
+        let viewport = bounds(app.screen(), "lui-7");
+        let before = bounds(app.screen(), "lui-100");
         assert!(
             before.origin.y >= viewport.origin.y && before.bottom() > viewport.bottom(),
             "fixture row is partly clipped by the actual {owner}: {before:?} {viewport:?}"

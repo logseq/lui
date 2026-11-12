@@ -193,6 +193,9 @@ pub(crate) struct Transaction<'a> {
     root: Option<u64>,
 }
 impl Transaction<'_> {
+    pub(crate) fn root(&self) -> Option<u64> {
+        self.root
+    }
     pub(crate) fn previous(&self, id: u64) -> Option<&Node> {
         self.store.nodes.get(&id).map(Arc::as_ref)
     }
