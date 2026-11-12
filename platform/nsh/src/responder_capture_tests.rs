@@ -1,7 +1,7 @@
 //! Public NSH responder feasibility probes. These exercise Headless touch
 //! controllers, not a hardware mouse, and do not wire LUI PointerCapture.
 use nsh_core::{
-    MouseButton, MouseEvent, NodeId, PointerType, ScrollEvent, TouchEvent, TouchPhase,
+    MouseButton, MouseEvent, NodeId, PointerType, TouchEvent, TouchPhase,
     element::{ClaimRequest, ResponderEvent, TouchClaim},
     prelude::*,
 };
