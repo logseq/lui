@@ -9,6 +9,16 @@ compiler regression runs the actual provider functions, then adds a canonical
 case and requires Rust E0004. Open CSS strings retain typed parsing and atomic
 preflight; arbitrary dynamic values are not claimed to be statically proven.
 
+Semantic `as_` arguments additionally use six per-constructor tag types, rather
+than accepting the entire raw tag vocabulary. OCaml now rejects invalid calls
+through direct calls, aliases and optional forwarding, without needing the PPX
+to infer their values. The compiler regression tests every canonical kind/tag
+pair both unqualified and qualified (324 cases across six kinds and 27 tags),
+plus 42 alias, forwarding, annotation and reactive cases. Runtime tests compare
+the generated typed domains with the canonical predicate. Raw wire validation
+remains in place. This is a shared API correction; NSH-only restrictions on open
+CSS strings are still not a compile-time guarantee.
+
 The actual Logseq build checks contract freshness, snapshots its scoped source
 inputs, and builds a private candidate executable, OCaml library and resources.
 Before publication, an isolated Headless process loads that real application,
