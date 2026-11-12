@@ -402,6 +402,11 @@ actual OS execution, not cfg-gated compilation on macOS.
 
 ## Execution evidence
 
+The latest actual-application integration checkpoint is recorded in
+[production parent-viewport evidence](review-probes/2026-11-12/logseq-production-parent-checkpoint.md).
+Earlier entries below remain historical, revision-scoped results; unchecked
+acceptance requirements are not closed by this checkpoint.
+
 2026-11-11 planning: official skills installed at the pinned NSH revision;
 architecture, public Rust-root/list APIs, engine ownership and delivery/updater
 source reviewed. Existing core baseline: 249 tests passed. Initial adapter:
