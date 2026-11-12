@@ -89,11 +89,8 @@ type input_kind = [ `text | `color | `time ]
 type popover_role = [ `dialog | `menu ]
 type swipe_edge = [ `leading | `trailing ]
 
-(** [~as_] semantic element-tag overrides on web. Textual kinds admit
-    phrasing-appropriate tags; columns admit [div], [ul], [ol], and rows
-    admit [div], [li]. Layout and child contracts remain unchanged. See
-    {!Lui_protocol.element_tag_supported}; a mismatch fails validation at
-    emit, and native hosts ignore the prop. *)
+(** Full semantic tag vocabulary for raw/wire boundaries. Typed constructors use
+    the per-kind subsets below; native hosts ignore this web-only override. *)
 type element_tag =
   [ `Span
   | `Em
@@ -122,6 +119,15 @@ type element_tag =
   | `Ol
   | `Li
   | `Label ]
+
+(** Content-appropriate semantic tags. Invalid constructor/tag combinations
+    are rejected by OCaml before mounting; the canonical wire guard remains. *)
+type text_tag = [ `Span | `Em | `Strong | `B | `I | `U | `S | `Del | `Mark | `Small | `Code | `Kbd | `Sub | `Sup | `Pre ]
+type heading_tag = [ `H1 | `H2 | `H3 | `H4 | `H5 | `H6 ]
+type paragraph_tag = [ `P | `Span | `Div | `Pre ]
+type label_tag = [ `Label | `Span | `Div ]
+type column_tag = [ `Div | `Ul | `Ol ]
+type row_tag = [ `Div | `Li ]
 
 (** [~source] of {!file_picker}: [`files] presents a document importer,
     [`photos] the photo library, [`camera] live capture (iOS only —
@@ -383,7 +389,7 @@ val apply_universal :
   on_pointer_leave:(Lui_protocol.event -> unit) option ->
   transition:string option -> unit
 val row :
-  ?as_:element_tag ->
+  ?as_:row_tag ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -438,7 +444,7 @@ val row :
   ?flex_wrap:flex_wrap ->
   ?transition:string -> t list -> t
 val column :
-  ?as_:element_tag ->
+  ?as_:column_tag ->
   ?key:string ->
   ?gap:int ->
   ?main:main_alignment ->
@@ -2012,7 +2018,7 @@ val text :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?as_:element_tag ->
+  ?as_:text_tag ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
@@ -2072,7 +2078,7 @@ val heading :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?as_:element_tag ->
+  ?as_:heading_tag ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
@@ -2127,7 +2133,7 @@ val paragraph :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?as_:element_tag ->
+  ?as_:paragraph_tag ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->
@@ -2181,7 +2187,7 @@ val label :
   ?style_class:string ->
   ?data_attrs:(string * string) list ->
   ?data_attrs_signal:(string * string) list Signal.signal ->
-  ?as_:element_tag ->
+  ?as_:label_tag ->
   ?on_appear:(Lui_protocol.event -> unit) ->
   ?on_pointer_enter:(Lui_protocol.event -> unit) ->
   ?on_pointer_leave:(Lui_protocol.event -> unit) ->

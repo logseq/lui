@@ -76,10 +76,7 @@ type input_kind = [ `text | `color | `time ]
 type popover_role = [ `dialog | `menu ]
 type swipe_edge = [ `leading | `trailing ]
 
-(* [~as_] semantic element-tag overrides on web.
-   [Lui_protocol.element_tag_supported] restricts each kind to its
-   content-appropriate subset, so a block tag
-   on [text] fails validation at emit instead of breaking inline layout. *)
+(* Full semantic tag vocabulary retained for raw/wire boundaries. *)
 type element_tag =
   [ `Span
   | `Em
@@ -108,6 +105,13 @@ type element_tag =
   | `Ol
   | `Li
   | `Label ]
+
+type text_tag = [ `Span | `Em | `Strong | `B | `I | `U | `S | `Del | `Mark | `Small | `Code | `Kbd | `Sub | `Sup | `Pre ]
+type heading_tag = [ `H1 | `H2 | `H3 | `H4 | `H5 | `H6 ]
+type paragraph_tag = [ `P | `Span | `Div | `Pre ]
+type label_tag = [ `Label | `Span | `Div ]
+type column_tag = [ `Div | `Ul | `Ol ]
+type row_tag = [ `Div | `Li ]
 
 (** [~source] of [file_picker]: [`files] presents a document importer,
     [`photos] the photo library, [`camera] live capture (iOS only —
@@ -300,7 +304,7 @@ let swipe_edge_value : swipe_edge -> string = function
   | `leading -> "leading"
   | `trailing -> "trailing"
 
-let element_tag_value : element_tag -> string = function
+let text_tag_value : text_tag -> string = function
   | `Span -> "span"
   | `Em -> "em"
   | `Strong -> "strong"
@@ -316,18 +320,34 @@ let element_tag_value : element_tag -> string = function
   | `Sub -> "sub"
   | `Sup -> "sup"
   | `Pre -> "pre"
+
+let heading_tag_value : heading_tag -> string = function
   | `H1 -> "h1"
   | `H2 -> "h2"
   | `H3 -> "h3"
   | `H4 -> "h4"
   | `H5 -> "h5"
   | `H6 -> "h6"
+
+let paragraph_tag_value : paragraph_tag -> string = function
   | `P -> "p"
+  | `Span -> "span"
+  | `Div -> "div"
+  | `Pre -> "pre"
+
+let label_tag_value : label_tag -> string = function
+  | `Label -> "label"
+  | `Span -> "span"
+  | `Div -> "div"
+
+let column_tag_value : column_tag -> string = function
   | `Div -> "div"
   | `Ul -> "ul"
   | `Ol -> "ol"
+
+let row_tag_value : row_tag -> string = function
+  | `Div -> "div"
   | `Li -> "li"
-  | `Label -> "label"
 
 let file_picker_source_value : file_picker_source -> string = function
   | `files -> "files"
@@ -768,7 +788,7 @@ let apply_universal ?shrink context node ~key ~gap ~main ~cross ~grow ~columns ~
 let row ?as_ ?key ?gap ?main ?cross ?grow ?shrink ?orientation ?orientation_signal ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?max_width ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_focus_within ?on_appear ?on_pointer_enter ?on_pointer_leave ?pointer_capture ?on_pointer_down ?on_pointer_move ?on_pointer_up ?on_pointer_cancel ?on_navigation_key ?opacity ?opacity_signal ?display ?flex_wrap ?transition (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.row context in
-  Option.iter (fun tag -> Lui_ui.string_property context node As (element_tag_value tag)) as_;
+  Option.iter (fun tag -> Lui_ui.string_property context node As (row_tag_value tag)) as_;
   apply_universal ?shrink context node ~key ~gap ~main ~cross ~grow ~columns:None ~padding ~padding_horizontal ~padding_vertical ~margin ~margin_horizontal ~margin_vertical ~margin_top ~margin_right ~margin_bottom ~margin_left ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave ~transition;
   Option.iter (Lui_ui.float_property context node Opacity) opacity;
   Option.iter (Lui_ui.float_property_signal context node Opacity) opacity_signal;
@@ -790,7 +810,7 @@ let row ?as_ ?key ?gap ?main ?cross ?grow ?shrink ?orientation ?orientation_sign
 let column ?as_ ?key ?gap ?main ?cross ?grow ?shrink ?grow_signal ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?min_width ?min_width_signal ?max_width ?max_width_signal ?min_height ?max_height ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_focus_within ?on_appear ?on_pointer_enter ?on_pointer_leave ?on_press_detail ?on_pointer_down ?on_pointer_up ?opacity ?opacity_signal ?display ?display_signal ?flex_wrap ?transition (children : t list) : t =
  fun context parent ->
   let node = Lui_ui.column context in
-  Option.iter (fun tag -> Lui_ui.string_property context node As (element_tag_value tag)) as_;
+  Option.iter (fun tag -> Lui_ui.string_property context node As (column_tag_value tag)) as_;
   apply_universal ?shrink context node ~key ~gap ~main ~cross ~grow ~columns:None ~padding ~padding_horizontal ~padding_vertical ~margin ~margin_horizontal ~margin_vertical ~margin_top ~margin_right ~margin_bottom ~margin_left ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave ~transition;
   Option.iter (Lui_ui.float_property_signal context node GrowValue) grow_signal;
   Option.iter (Lui_ui.int_property_signal context node MinWidth) min_width_signal;
@@ -1282,7 +1302,7 @@ let text ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?pad
     ~text_overflow ~overflow;
   Option.iter (Lui_ui.line_clamp context node) line_clamp;
   Option.iter
-    (fun tag -> Lui_ui.string_property context node As (element_tag_value tag))
+    (fun tag -> Lui_ui.string_property context node As (text_tag_value tag))
     as_;
   Option.iter (Lui_ui.string_property context node TextValue) value;
   Option.iter (Lui_ui.string_property_signal context node TextValue) value_signal;
@@ -1306,7 +1326,7 @@ let heading ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?
     ~text_overflow ~overflow;
   Option.iter (Lui_ui.line_clamp context node) line_clamp;
   Option.iter
-    (fun tag -> Lui_ui.string_property context node As (element_tag_value tag))
+    (fun tag -> Lui_ui.string_property context node As (heading_tag_value tag))
     as_;
   Option.iter (Lui_ui.int_property context node HeadingLevel) level;
   Option.iter (Lui_ui.string_property context node TextValue) value;
@@ -1325,7 +1345,7 @@ let paragraph ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal
     ~text_overflow ~overflow;
   Option.iter (Lui_ui.line_clamp context node) line_clamp;
   Option.iter
-    (fun tag -> Lui_ui.string_property context node As (element_tag_value tag))
+    (fun tag -> Lui_ui.string_property context node As (paragraph_tag_value tag))
     as_;
   Option.iter (Lui_ui.string_property context node TextValue) value;
   Option.iter (Lui_ui.string_property_signal context node TextValue) value_signal;
@@ -1343,7 +1363,7 @@ let label ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?pa
     ~text_overflow ~overflow;
   Option.iter (Lui_ui.line_clamp context node) line_clamp;
   Option.iter
-    (fun tag -> Lui_ui.string_property context node As (element_tag_value tag))
+    (fun tag -> Lui_ui.string_property context node As (label_tag_value tag))
     as_;
   Option.iter (Lui_ui.string_property context node TextValue) value;
   Option.iter (Lui_ui.string_property_signal context node TextValue) value_signal;

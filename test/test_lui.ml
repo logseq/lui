@@ -2465,7 +2465,32 @@ let test_as_protocol () =
   Alcotest.(check bool) "kind-less value check" true
     (property_value_supported As (StringValue "kbd"));
   Alcotest.(check bool) "non-string refused" false
-    (property_value_supported_for_kind Text As (IntValue 1))
+    (property_value_supported_for_kind Text As (IntValue 1));
+  (* Generated typed domains must be exactly the canonical per-kind subsets. *)
+  List.iter
+    (fun kind ->
+      match Lui_wire_schema.view_contract kind with
+      | None -> Alcotest.fail "missing typed semantic-tag constructor"
+      | Some contract ->
+          let domain =
+            List.find_map
+              (function
+                | As, Lui_wire_schema.ViewEnum values, _ -> Some values
+                | _ -> None)
+              contract.view_properties
+          in
+          match domain with
+          | None -> Alcotest.fail "missing typed semantic-tag domain"
+          | Some values ->
+              List.iter
+                (fun tag ->
+                  Alcotest.(check bool) (Lui_wire_schema.node_kind_name kind ^ " as=" ^ tag)
+                    (element_tag_supported kind tag) (List.mem tag values))
+                [ "span"; "em"; "strong"; "b"; "i"; "u"; "s"; "del";
+                  "mark"; "small"; "code"; "kbd"; "sub"; "sup"; "pre";
+                  "h1"; "h2"; "h3"; "h4"; "h5"; "h6"; "p"; "div";
+                  "ul"; "ol"; "li"; "label" ])
+    [ Text; Heading; Paragraph; Label; Column; Row ]
 
 let data_attrs_view context _model _send =
   Lui_elements.column

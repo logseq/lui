@@ -4935,3 +4935,32 @@ no worker, cache or network request. Invalid installed configuration contributes
 an explicit unavailable action. The generic `DesktopApp` delegates to the same
 controller and preserves its English labels and menu behavior. Applications may
 provide translated `UpdateLabels` without copying the updater workflow.
+
+### Semantic tag overrides are checked by the OCaml type checker
+
+The `as_` argument now uses a content-appropriate polymorphic variant type for
+each constructor: `text_tag`, `heading_tag`, `paragraph_tag`, `label_tag`,
+`column_tag`, and `row_tag`. The accepted tags match the existing canonical
+`element_tag_supported` predicate; wire values, defaults, child contracts, and
+Web/mobile/native rendering behavior do not change. Generated typed-view
+metadata now exposes the same per-kind domains. Raw wire input retains canonical
+runtime validation, and `element_tag` remains the complete vocabulary.
+
+For example, ``text ~as_:`Div []`` and ``row ~as_:`Ul []`` previously compiled and
+failed when emitted. They now fail compilation. Use a layout constructor for a
+block: ``column ~as_:`Div [text ~as_:`Em ~value:"Content" []]``. Existing valid
+calls such as ``heading ~as_:`H2 []`` and ``row ~as_:`Li []`` are unchanged.
+
+Helpers with an explicit broad annotation must use their constructor's subset:
+
+```ocaml
+(* Before: accepted tags that text could never emit. *)
+let emphasis (tag : element_tag) = text ~as_:tag []
+
+(* After: reject unsupported tags at the helper call site. *)
+let emphasis (tag : text_tag) = text ~as_:tag []
+```
+
+An unannotated `let emphasis ?as_ children = text ?as_ children` infers the
+restricted type automatically. This is a common API correction; it does not
+claim that all Web style values have an NSH layout provider.
