@@ -214,7 +214,7 @@ EMITTED = {
     "radio": {"change", "toggle-changed"}, "slider": {"value-changed"}, "number-stepper": {"value-changed"},
     "select": {"press", "press-modifiers"}, "combobox": {"press", "press-modifiers", "text-changed", "submit"},
     "drawer": {"toggle-changed"}, "list-item": {"press", "toggle-changed"},
-    "link": {"press"}, "accordion": {"toggle-changed"}, "bottom-tab": {"press"},
+    "link": {"press", "press-modifiers"}, "accordion": {"toggle-changed"}, "bottom-tab": {"press"},
     "dialog": {"dismiss"}, "sheet": {"dismiss"}, "popover": {"dismiss"},
     "image": {"load"}, "context-menu": {"dismiss"}, "split": {"value-changed"},
     "file-picker": {"picked", "dismiss"}, "toast": {"dismiss"},

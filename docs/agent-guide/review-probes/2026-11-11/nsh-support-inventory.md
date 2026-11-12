@@ -304,7 +304,7 @@ uses the concrete route bodies, not literal presence alone.
 | `ui/controls.rs` | `5bdbbcce9067ed597ae60443878e76d4fc72c7609d7e40af31a3909a2ab515e2` |
 | `events.rs` | `eb9addb27f70d21b0fdaff507f869ad6ebbede6be1e031f1d64b6b4aa86a1d03` |
 | `ui/icons.rs` | `ebcaedaa770c035305fca721bac02d0597c3f90c1729cb1100a5fb78be1b8c1e` |
-| `controls/basic.rs` | `7e28894f5c4511ff986e83ef63eea566713fc8ec18386798468a3c188007f7e1` |
+| `controls/basic.rs` | `7da837743076f26afa2945e0086d6c65eb0a944029c80e72d199298b2bf62dc1` |
 | `controls/collections.rs` | `a0ccb7e42c149c49b61ca93c3a083874f4eb4e3f535435d311d7a33bd496db49` |
 | `controls/surfaces.rs` | `8854da7462cda85a83d77ee54edbed3d1431d4fc37bf65d3e6ec4a1f927abf46` |
 | `controls/navigation.rs` | `7150705d3bc1c883891390233b6603ebbb88d7bd2e8d5a02b8da56e67c2020ff` |

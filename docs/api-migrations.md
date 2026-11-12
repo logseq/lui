@@ -5238,3 +5238,21 @@ advertise `{"op":"gc-stats"}` alongside their other read-only agent queries;
 unknown operations remain guarded as mutations. This adds no collection,
 compaction, sampler timer or listener. Consumers must treat reported OCaml heap
 capacity as part of process memory rather than adding it to RSS or footprint.
+
+## NSH Link activation preserves navigation modifiers
+
+NSH Links with an authored `on_press` now deliver `PressModifiers` through that
+same callback, including Control=1, Shift=2 and Command/Super=4. Plain activation
+has mask zero. `register_press` already admits both ordinary and modifier
+events, so ordinary callback code continues to work. Match both variants when
+inspecting the raw protocol event. The adapter consumes only native
+`LinkEvent::PressDetail`; subscribing to its ordinary `Press` as well would
+deliver duplicate navigation. Pointer and focused macOS/Linux keyboard modifiers
+come from their actual activation; accessibility activation has no key modifiers.
+
+An internal hash/path still requires an authored callback. LUI does not silently
+open it with the system or suppress invalid navigation. Applications using a
+document-level delegated route controller must explicitly register their Link
+press callback and forward its retained node and modifiers to that controller.
+External URL links without a callback keep native system navigation. Rust users
+of the NSH fork must handle its additive `LinkEvent::PressDetail` enum variant.

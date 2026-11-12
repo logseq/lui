@@ -559,8 +559,16 @@ pub(super) fn element(
                     .outline_color(move || ui::color(theme, "ring"))
             })
             .on_event(move |event: &nsh_base::LinkEvent| {
-                if matches!(event, nsh_base::LinkEvent::Press) {
-                    emit_flag(node, "press-enabled", &emit, Event::Press(id));
+                if let nsh_base::LinkEvent::PressDetail(detail) = event {
+                    let modifiers = i32::from(detail.control)
+                        | (i32::from(detail.shift) << 1)
+                        | (i32::from(detail.platform) << 2);
+                    emit_flag(
+                        node,
+                        "press-enabled",
+                        &emit,
+                        Event::PressModifiers(id, modifiers),
+                    );
                 }
             })
             .child(link_content(node, children)),
@@ -849,10 +857,29 @@ mod tests {
         let before = id(&app, "basic-node");
         app.press_key("tab").unwrap();
         app.press_key("enter").unwrap();
-        assert_eq!(*events.lock().unwrap(), [Event::Press(1)]);
+        assert_eq!(*events.lock().unwrap(), [Event::PressModifiers(1, 0)]);
         app.press_key("f8").unwrap();
         app.press_key("enter").unwrap();
-        assert_eq!(*events.lock().unwrap(), [Event::Press(1)]);
+        assert_eq!(*events.lock().unwrap(), [Event::PressModifiers(1, 0)]);
+        assert_eq!(id(&app, "basic-node"), before);
+    }
+
+    #[test]
+    fn internal_hash_link_uses_one_native_owner_and_preserves_pointer_and_keyboard_shift() {
+        let (mut app, events) = start(
+            "link",
+            json!({"text":"Internal page", "url":"#", "press-enabled":true}),
+            false,
+        );
+        let before = id(&app, "basic-node");
+        app.hold_keys("ctrl+shift+meta", true).unwrap();
+        app.press("text:Internal page").unwrap();
+        app.hold_keys("ctrl+shift+meta", false).unwrap();
+        assert_eq!(*events.lock().unwrap(), [Event::PressModifiers(1, 7)]);
+        app.press_key("tab").unwrap();
+        app.press_key("shift+enter").unwrap();
+        assert_eq!(&events.lock().unwrap()[1..], [Event::PressModifiers(1, 2)]);
+        assert!(app.screen().opened_urls().is_empty());
         assert_eq!(id(&app, "basic-node"), before);
     }
 
