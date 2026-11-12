@@ -480,7 +480,7 @@ fn application_menu(updates: Vec<MenuItem>) -> Vec<MenuItem> {
 mod tests {
     use super::*;
     use nsh_base::button;
-    use nsh_core::{Command, desktop::DesktopCommand};
+    use nsh_core::{Command, desktop::DesktopCommand, element::create_root};
     use nsh_engine::{EngineConfig, Root};
     use nsh_testing::{DialogAnswer, Headless};
     use std::time::Duration;
@@ -664,8 +664,10 @@ mod tests {
 
     #[test]
     fn update_labels_require_complete_text_and_version_placeholders() {
-        let mut labels = UpdateLabels::default();
-        labels.menu_check = "检查更新…".into();
+        let mut labels = UpdateLabels {
+            menu_check: "检查更新…".into(),
+            ..Default::default()
+        };
         assert!(labels.validate().is_ok());
         labels.version_notes = "Missing version and notes".into();
         assert!(labels.validate().is_err());
