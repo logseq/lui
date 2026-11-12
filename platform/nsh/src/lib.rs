@@ -18,6 +18,8 @@ mod inputs;
 mod media;
 pub mod preflight;
 pub mod render;
+#[cfg(test)]
+mod responder_capture_tests;
 pub mod runtime;
 pub mod store;
 mod style;
