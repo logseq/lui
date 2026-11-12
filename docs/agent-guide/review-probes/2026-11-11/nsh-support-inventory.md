@@ -43,11 +43,11 @@ The JSON output also enumerates canonical events without a renderer transport.
 | `radio` | base Radio | 89/11 | G1, G13, G12 | 2 |
 | `slider` | base Slider | 82/5 | G1, G13, G12 | 1 |
 | `number-stepper` | base NumberInput | 86/5 | G1, G13, G12 | 1 |
-| `text-field` | themed base Input | 88/8 | G1, G13 | 2 |
-| `secure-field` | themed base Input + masked | 88/8 | G1, G13 | None mapped |
-| `input` | themed base Input or native TimeField | 89/8 | G1, G13, G3 | 7 |
-| `search-field` | themed base Input | 88/8 | G1, G13 | 5 |
-| `textarea` | themed base Input + multiline | 89/8 | G1, G13 | 5 |
+| `text-field` | themed base Input | 89/9 | G1, G13 | 2 |
+| `secure-field` | themed base Input + masked | 89/9 | G1, G13 | None mapped |
+| `input` | themed base Input or native TimeField | 90/9 | G1, G13, G3 | 7 |
+| `search-field` | themed base Input | 89/9 | G1, G13 | 5 |
+| `textarea` | themed base Input + multiline | 90/9 | G1, G13 | 5 |
 | `checkbox` | themed base Checkbox | 91/6 | G1, G13, G12 | 3 |
 | `switch` | base Switch | 75/5 | G1, G13, G12 | 3 |
 | `progress` | base Progress | 66/3 | G1, G13, G12 | 1 |
@@ -295,14 +295,14 @@ uses the concrete route bodies, not literal presence alone.
 | `extensions/schema.rs` | `13e599099f8943fc864ae1f470674a2d39733383ad0cce367f8ccc87b6f7ac33` |
 | `extensions/host.rs` | `bf9d9c3033b5931a8b0b585b9b2c5708f733bf1b336c41c1e51803eb6530ff0a` |
 | `ui/checkbox.rs` | `bc9f2e79e01ed5452a05372c8269978d8d72a35dbf1eee7f6ead0824e5b4b536` |
-| `render.rs` | `9d136c56b3d0cec9563aa30a1936b0e90d080fea7a17e6792311fc5895a6cab3` |
+| `render.rs` | `d28fcc2e20a77e81d7a4e69e68e77311f52027a1bf57076ebb800e407416dd60` |
 | `controls.rs` | `99e110e209634bfc26dc2b1e88cca3684aa345c7c381361debe48b73f10d1e04` |
 | `style.rs` | `5cff08310cf431c85d240d6c540f95c7a8d85b07afaf615eefb085288671b7db` |
 | `virtual_rows.rs` | `703b4a372f8453d95ebf154779c2508e088f195f8bb727718945a5364131ae38` |
 | `app.rs` | `f9c207d115410949b0c1fbfee4cc98f310dece3704702e91718ee865f51c0e56` |
 | `ui/mod.rs` | `5618167225c683d243f629b5d42d828997eca023f3794c200d92f30de7657171` |
 | `ui/controls.rs` | `9f601722ffd6efe90b2b4399ba552cd78d95606e772b802f51f9873b9ecacf4f` |
-| `events.rs` | `26cc089c96dee48789196b9ee7cf90336532e9d2d6e3bbd907431df42cfd62c3` |
+| `events.rs` | `70059573bca4bc284f4c3f28889b3994ce058dfd6941c70e182e3e9314154b8d` |
 | `ui/icons.rs` | `ebcaedaa770c035305fca721bac02d0597c3f90c1729cb1100a5fb78be1b8c1e` |
 | `controls/basic.rs` | `75cc88ab5f04039ccb9a767b1fec139c3fea7b5b6b7e49c5f76418e490e9a0f7` |
 | `controls/collections.rs` | `a0ccb7e42c149c49b61ca93c3a083874f4eb4e3f535435d311d7a33bd496db49` |
@@ -310,7 +310,7 @@ uses the concrete route bodies, not literal presence alone.
 | `controls/navigation.rs` | `28e0e4ac35312ba9673f7b97168b6d6890d84bf2e676a59ba6d1764c4ef6a28d` |
 | `images.rs` | `0cd8caf3a1736e24381a595eae088031394615ebab4f9e6c0d35ee1d2ba1d6c7` |
 | `headings.rs` | `fe8fcddd03e900d52fd3e253af1cedd3db21a62c0a2c6eabcccc8e450098ff30` |
-| `inputs.rs` | `7981230d7334f42160e8959a3483208f6e8823339e1dc50967b7338c7c587df4` |
+| `inputs.rs` | `4c06df927872eb395246314ec0c47fce7b1e37003d8c17366d6a7f7ad95eeb1b` |
 | `file_picker.rs` | `958a8e75027262fcb5adbdbc2b27307cd78064170eee376f1e59b6dcc5b742d0` |
 | `media.rs` | `71fd9b780a6a6b5925b3f9c4b42aac9e7b320c64e1c5559e30aab3f0e1e48add` |
 | `controls/toasts.rs` | `2d7d344288cf9989f21278a48fede6b77337da698b0ba2b91c5bff909d103ac0` |
