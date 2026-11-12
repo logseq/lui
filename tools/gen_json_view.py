@@ -236,7 +236,9 @@ def main():
 
     restricted_properties = {'context_menu': 'ContextMenu',
                              'tooltip': 'Tooltip', 'file_picker': 'FilePicker',
-                             'row': 'Row', 'column': 'Column'}
+                             'row': 'Row', 'column': 'Column',
+                             'text_field': 'TextField', 'secure_field': 'SecureField',
+                             'input': 'Input', 'search_field': 'SearchField'}
     for name, kind, args, ret in normal:
         kids = kids_expr(name, ret, parents)
         validation = (f'      require_supported_properties P.{restricted_properties[name]} props;\n'

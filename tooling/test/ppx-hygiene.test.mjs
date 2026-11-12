@@ -93,6 +93,9 @@ test("PPX nesting diagnostics reject static illegal edges without guessing opaqu
       }
     }
     cases.push(
+      ['textarea ~submit_on_enter:true []'],
+      ['textarea ~submit_on_enter:false []'],
+      ['reactive (fun enter -> textarea ~submit_on_enter:enter []) source'],
       ['grid ~columns:2 [text ~value:"Cell" []]'],
       ['reactive (fun shown -> grid ~columns:(if shown then 2 else 3) []) source'],
       ['Lui_elements.grid ~columns:2 []'],
@@ -109,6 +112,9 @@ test("PPX nesting diagnostics reject static illegal edges without guessing opaqu
       ['table [bottom_tab ~selected:(reactive Fun.id source) []]', "table", "bottom-tab"],
       ['context_menu [scoped_bottom_tab (fun _ -> bottom_tab ~selected:(reactive Fun.id source) [])]', "context-menu", "bottom-tab"],
     )
+    for (const name of ["text_field", "secure_field", "input", "search_field"]) {
+      cases.push([`${name} ~on_submit:(fun _ -> ()) []`])
+    }
     for (const [expression, parent, child] of cases) {
       writeFileSync(join(dir, "probe.ml"), `open Lui_elements
 let probe (source : bool Signal.signal)
@@ -166,7 +172,15 @@ let probe (source : bool Signal.signal) =
         `${constructor} ~${label}:${value} []`, new RegExp(`cannot be applied with label ~${label}`),
       ])
     })
+    const singleLineInputs = ["text_field", "secure_field", "input", "search_field"]
+    const invalidSubmitPolicies = singleLineInputs.flatMap(name => [
+      [`${name} ~submit_on_enter:true []`, /cannot be applied with label ~submit_on_enter/],
+      [`Lui_elements.${name} ~submit_on_enter:false []`, /cannot be applied with label ~submit_on_enter/],
+      [`let field ?submit_on_enter children = Lui_elements.${name} ?submit_on_enter children in field []`,
+        /cannot be applied with label \?submit_on_enter/],
+    ])
     for (const [expression, expectedType] of [
+      ...invalidSubmitPolicies,
       ...invalidSurfaceCases,
       ['row ~columns:2 []', /cannot be applied with label ~columns/],
       ['column ~columns:2 []', /cannot be applied with label ~columns/],

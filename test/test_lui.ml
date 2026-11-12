@@ -3453,6 +3453,36 @@ let test_json_row_column_grid_columns () =
       Alcotest.(check bool) "valid linear layout never emits grid columns" false
         (Hashtbl.mem node.Drive.Model.props "columns")) [row;column])
 
+let test_json_submit_on_enter_contract () =
+  let open Lui_json_view in
+  let single_line = ["text-field";"secure-field";"input";"search-field"] in
+  List.iter (fun kind ->
+    List.iter (fun policy ->
+      Alcotest.check_raises "single-line JSON policy fails before mounting"
+        (Invalid_argument ("Unsupported property for " ^ kind ^ ": submit-on-enter"))
+        (fun () -> let _view=render
+          ~on_event:(fun ~id:_ ~kind:_ ~fields:_ -> ())
+          (Obj ["kind",Str kind;"submit-on-enter",policy]) in ()))
+      [Bool true;Bool false;Str "invalid";Null]) single_line;
+  List.iter (fun (kind, policy) ->
+    let events = ref [] in
+    let props = ["kind",Str kind;"id",Str "field";"text",Str "Retained input"]
+      @ (match policy with None -> [] | Some policy -> ["submit-on-enter",Bool policy]) in
+    let session = drive_mount ~initial:() ~reducer:(fun model () -> model)
+      ~view:(fun _ _ _ -> render
+        ~on_event:(fun ~id ~kind ~fields:_ -> events := (id,kind)::!events)
+        (Obj props)) () in
+    Fun.protect ~finally:(fun () -> drive_dispose session) (fun () ->
+      let node=drive_node session (Drive.Model.Kind kind) in
+      Alcotest.(check (option bool)) "only Textarea retains the explicit policy" policy
+        (match Hashtbl.find_opt node.Drive.Model.props "submit-on-enter" with
+         | Some (Lui_protocol.BoolValue policy) -> Some policy | _ -> None);
+      Drive.Session.submit session node.Drive.Model.id;
+      Alcotest.(check (list (pair string string))) "existing Submit sink remains wired"
+        ["field","submit"] !events))
+    (List.map (fun kind -> kind,None) single_line
+     @ ["textarea",Some true;"textarea",Some false])
+
 let test_json_context_menu_contract () =
   let open Lui_json_view in
   let events = ref [] in
@@ -6237,6 +6267,7 @@ let () =
           Alcotest.test_case "parse edge cases" `Quick test_json_view_parse;
           Alcotest.test_case "rectangle anchors" `Quick test_json_view_anchor_rect;
           Alcotest.test_case "linear and grid column contracts" `Quick test_json_row_column_grid_columns;
+          Alcotest.test_case "Textarea-only submit policy" `Quick test_json_submit_on_enter_contract;
           Alcotest.test_case "context menu property contract" `Quick test_json_context_menu_contract;
           Alcotest.test_case "tooltip and picker property contract" `Quick test_json_tooltip_and_file_picker_contract;
         ] );

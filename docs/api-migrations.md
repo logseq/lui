@@ -4836,3 +4836,27 @@ The JSON view builder retains this same canonical distinction: for example,
 `{"kind":"grid","columns":3}` remains valid. The JSON spelling is `columns`,
 which resolves to the existing canonical `GridColumns` property; this adds no
 new wire spelling or separate property-acceptance matrix.
+
+
+### Submit-on-enter is a Textarea policy
+
+`text_field`, `secure_field`, `input` and `search_field` no longer accept
+`?submit_on_enter`. That wire property has always been valid only for Textarea;
+explicitly supplying it to a single-line constructor previously compiled and
+failed during mounting. Their existing `?on_submit`, `?submit_on_blur`, controlled
+text and native focus behavior are unchanged. No host validator or event ordinal
+changes in this correction.
+
+For example, replace `text_field ~submit_on_enter:true ~on_submit:save []` with
+`text_field ~on_submit:save []`. Web's existing single-line Enter path, Apple's
+native submit callbacks and NSH's native Input defaults already operate without
+this flag. Supplying `false` was also invalid; removing it does not introduce a
+new single-line suppression policy. Use the platform's supported input contract
+rather than treating that removal as a way to disable submission.
+
+`textarea ~submit_on_enter:false ~on_submit:save []` remains valid, including the
+maintained mobile composer and journal callers. The JSON view builder rejects
+`{"kind":"input","submit-on-enter":false}` through the same canonical predicate,
+and continues to accept the flag on `{"kind":"textarea",...}`. Android's existing
+single-line IME/submit event wiring is a separate qualification gap; this API
+correction makes no new claim about Android keyboard submission behavior.

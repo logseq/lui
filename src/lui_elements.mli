@@ -2891,7 +2891,6 @@ val text_field :
   ?placeholder_signal:string Signal.signal ->
   ?label:string ->
   ?autofocus:bool ->
-  ?submit_on_enter:bool ->
   ?submit_on_blur:bool ->
   ?read_only:bool ->
   ?read_only_signal:bool Signal.signal ->
@@ -2948,7 +2947,6 @@ val secure_field :
   ?placeholder_signal:string Signal.signal ->
   ?label:string ->
   ?autofocus:bool ->
-  ?submit_on_enter:bool ->
   ?submit_on_blur:bool ->
   ?read_only:bool ->
   ?read_only_signal:bool Signal.signal ->
@@ -3005,7 +3003,6 @@ val input :
   ?placeholder_signal:string Signal.signal ->
   ?label:string ->
   ?autofocus:bool ->
-  ?submit_on_enter:bool ->
   ?submit_on_blur:bool ->
   ?read_only:bool ->
   ?read_only_signal:bool Signal.signal ->
@@ -3063,7 +3060,6 @@ val search_field :
   ?placeholder_signal:string Signal.signal ->
   ?label:string ->
   ?autofocus:bool ->
-  ?submit_on_enter:bool ->
   ?submit_on_blur:bool ->
   ?read_only:bool ->
   ?read_only_signal:bool Signal.signal ->
