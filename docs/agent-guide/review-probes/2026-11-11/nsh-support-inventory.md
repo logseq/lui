@@ -286,7 +286,7 @@ uses the concrete route bodies, not literal presence alone.
 | Source | SHA-256 |
 | --- | --- |
 | `native_capture.rs` | `1f54591b1328071467d72087785a4445894503998fdf5d62075a6ce0e9f05f13` |
-| `white_space.rs` | `f4cdc008185b6fea7fcecc81089b6443de1129316ff7192bb8957dfcbcf9efce` |
+| `white_space.rs` | `33178d9ee60ca72b320d5a9a4c28e6221373af6ccca5c3f2c68dd452ea8ecd21` |
 | `application_icons.rs` | `08b05108b92c3f3b95bca631908a93a11b56c73baba38ad485e358298f828142` |
 | `application_theme.rs` | `65305cce169f08b1b7d25106795d2502e4edccd463110b5fd2fb0f75db0bce56` |
 | `runtime.rs` | `1ec8c500239eb0f8a56db1b9129f74d2493a3d839cf2ce2ce4ec1bb4eb5dbd22` |
@@ -295,7 +295,7 @@ uses the concrete route bodies, not literal presence alone.
 | `extensions/schema.rs` | `13e599099f8943fc864ae1f470674a2d39733383ad0cce367f8ccc87b6f7ac33` |
 | `extensions/host.rs` | `bf9d9c3033b5931a8b0b585b9b2c5708f733bf1b336c41c1e51803eb6530ff0a` |
 | `ui/checkbox.rs` | `a613b40f06905e472a04e5558103c76cc4d18981f587c9be8a3a1946a761512c` |
-| `render.rs` | `e9afdc4633b2948fd8cbd4cdcd6fe75a2c543d2cd3d8cc4a9df44b0ad396db61` |
+| `render.rs` | `cca536189c081c9e0e782d3187d1a6db4417753b9f7a101462e89f5089d486cb` |
 | `controls.rs` | `558729f83a448fe60377a8d9343897f4d92bf0686f8f87a088bdb5e812f02ee0` |
 | `style.rs` | `ac66143c44cbd6c6236b7b7cee86c5c4f7e1728004e9894819c02387fe01be9e` |
 | `virtual_rows.rs` | `1630ed15ed6526769c9f3b405623c464296d5c23e4a77099eb60d449ef1ea3de` |
