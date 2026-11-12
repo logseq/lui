@@ -1021,6 +1021,7 @@ mod tests {
         kind: String,
         props: Map<String, Value>,
         follow: bool,
+        parent_height: Option<f32>,
         events: Arc<Mutex<Vec<Event>>>,
     }
 
@@ -1045,6 +1046,7 @@ mod tests {
         let fixture = engine_context::<Fixture>().unwrap();
         let authored_child = fixture.kind == "button" && fixture.follow;
         let grouped_command = fixture.kind == "button-group";
+        let parent_height = fixture.parent_height;
         let node = signal(Arc::new(Node {
             id: 1,
             incarnation: 1,
@@ -1093,6 +1095,9 @@ mod tests {
         });
         view()
             .w_64()
+            .when(parent_height.is_some(), |view| {
+                view.h(px(parent_height.unwrap())).flex_col()
+            })
             .child(when(shown, move || {
                 let children = if authored_child {
                     let child = view()
@@ -1124,16 +1129,28 @@ mod tests {
                 }
                 element(node, children, emit.clone(), authored).unwrap()
             }))
-            .child(text(move || format!("model:{:?}", node.get().props)))
+            .child(when(parent_height.is_none(), move || {
+                text(move || format!("model:{:?}", node.get().props))
+            }))
     }
 
     fn start(kind: &str, properties: Value, follow: bool) -> (Headless, Arc<Mutex<Vec<Event>>>) {
+        start_in_parent(kind, properties, follow, None)
+    }
+
+    fn start_in_parent(
+        kind: &str,
+        properties: Value,
+        follow: bool,
+        parent_height: Option<f32>,
+    ) -> (Headless, Arc<Mutex<Vec<Event>>>) {
         let events = Arc::new(Mutex::new(Vec::new()));
         let mut config = EngineConfig {
             context: EngineContext::default().with(Fixture {
                 kind: kind.into(),
                 props: properties.as_object().unwrap().clone(),
                 follow,
+                parent_height,
                 events: events.clone(),
             }),
             ..EngineConfig::new(Root::of::<SingleControl>())
@@ -1165,6 +1182,24 @@ mod tests {
             assert_eq!(button.bounds.size.width, px(20.0));
             assert_eq!(button.bounds.size.height, px(expected_height));
         }
+    }
+
+    #[test]
+    fn authored_command_height_can_still_shrink_in_a_constrained_parent() {
+        let (app, _) = start_in_parent(
+            "button",
+            json!({
+                "width":20,"height":20,"padding":0
+            }),
+            false,
+            Some(10.0),
+        );
+        let nodes = app.screen().layout_nodes();
+        let button = nodes
+            .iter()
+            .find(|node| node.test_id.as_deref() == Some("control-1"))
+            .unwrap();
+        assert_eq!(button.bounds.size.height, px(10.0));
     }
 
     #[test]
@@ -1739,6 +1774,7 @@ mod tests {
                 kind: kind.into(),
                 props: Map::new(),
                 follow: true,
+                parent_height: None,
                 events: events.clone(),
             }),
             ..EngineConfig::new(Root::of::<GroupedChoices>())

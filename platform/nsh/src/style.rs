@@ -823,7 +823,7 @@ pub(crate) fn compile(
     Ok(Style::from_decls(decls).then(&paint))
 }
 
-/// An authored command frame replaces only the provider's minimum. An explicit
+/// An authored command frame clears only the provider's minimum. An explicit
 /// minimum remains authoritative, and auto/relative heights keep native defaults.
 pub(crate) fn authored_control_minimum(node: &Node, compiled: &Style) -> Style {
     if node.props.contains_key("min-height")
@@ -840,11 +840,11 @@ pub(crate) fn authored_control_minimum(node: &Node, compiled: &Style) -> Style {
         _ => None,
     });
     match height {
-        Some(height) => compiled.clone().with(
+        Some(_) => compiled.clone().with(
             StyleKey::MinHeight,
             StyleKey::MinHeight
-                .parse_value(StyleValue::Number(height))
-                .expect("absolute authored height is a valid minimum"),
+                .parse_value(StyleValue::Number(0.0))
+                .expect("zero is a valid native minimum"),
         ),
         None => compiled.clone(),
     }
@@ -874,6 +874,8 @@ pub(crate) fn switch_styles(
     };
     let mut host_node = node.clone();
     host_node.props.retain(|name, _| !surface(name));
+    // Only typed paint is used from this pass. Keep every layout declaration
+    // from the original viewport-aware compilation, including absolute vh/vw.
     let (_, host_paint) = compile_parts(&host_node, theme, Size::default())?;
     let host = Style::from_decls(
         compiled
@@ -1689,6 +1691,43 @@ mod tests {
                 .is_empty()
         );
     }
+    #[test]
+    fn switch_outer_style_has_no_surface_paint_and_keeps_compiled_viewport_frame() {
+        let source = node(
+            "switch",
+            json!({
+                "width-viewport":0.1,"height-viewport":0.1,"padding":3,
+                "background":"#777777","hover-background":"#888888",
+                "pressed-background":"#999999","border-color":"#444444",
+                "border-width":1,"corner-radius":9,"shadow":"sm",
+                "opacity":0.75,"foreground":"#ffffff"
+            }),
+        );
+        let compiled = compile(&source, &theme(), viewport()).unwrap();
+        let parts = switch_styles(&source, &theme(), &compiled).unwrap();
+        let expected = node(
+            "switch",
+            json!({
+                "width-viewport":0.1,"height-viewport":0.1,
+                "opacity":0.75,"foreground":"#ffffff"
+            }),
+        );
+        let expected_style = compile(&expected, &theme(), viewport()).unwrap();
+        // Style equality includes both declaration patches and typed native
+        // base/state paint. A retained background or hover wash fails here.
+        assert_eq!(
+            parts.host,
+            authored_control_minimum(&expected, &expected_style)
+        );
+        let mut host = nsh_core::Style::default();
+        for declaration in parts.host.decls() {
+            declaration.apply(&mut host).unwrap();
+        }
+        assert_eq!(host.layout.size.width.into_option(), Some(64.0));
+        assert_eq!(host.layout.size.height.into_option(), Some(48.0));
+        assert_eq!(host.layout.min_size.height.into_raw().value(), 0.0);
+    }
+
     #[test]
     fn switch_motion_endpoints_follow_authored_track_insets() {
         for (props, expected_travel) in [
