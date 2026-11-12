@@ -63,3 +63,35 @@ minimal fork repairs, not this runner change. Request scope approval before
 implementation; keep the input/capture proposal separate. Once approved,
 publish only the reviewed minimal repair to `logseq/nsh` `fork/logseq`, pin an
 immutable revision and rerun dependency qualification.
+
+## Additional reproduced SDK correctness issue: final cancel-only overlay
+
+The same immutable SDK has a separate existing-API retirement bug. A public
+Rust overlay with only `on_cancel`, followed by its removal, leaves its Escape
+binding ahead of the underlying application binding. The public mount trace
+contains the application binding `2147483648` and overlay binding `4294967295`
+before removal, but no replacement keymap after removal; the next Escape never
+reaches the application. Local reproduction:
+`/tmp/logseq-native-selection-escape-trace-fixed.log`.
+
+At `crates/nsh-core/src/core/overlay.rs:438`, `sync_overlays` returns early when
+the overlay/watched/hint collections are empty, without accounting for the
+previous `overlay_state.cancel` / `hint_escape` flags. Removing the final
+cancel-only overlay can take this branch before listener synchronization clears
+those flags and dirties the keymap. LUI ToastStack uses such an overlay through
+the existing SDK ToastStack implementation; Sheet has the same potential path.
+The ordinary LUI Popover also installs `on_press_outside`, so its regression is
+qualified separately and must not hide the cancel-only defect.
+
+The proposed generic repair keeps the empty fast path only when no previous
+cancel/hint Escape state needs clearing, then uses the existing listener/keymap
+update path. It adds no app-specific re-registration, polling, public API or
+alternate overlay manager. Required regressions: remove the final cancel-only
+overlay, dismiss the final ToastStack entry, retain topmost-overlay precedence,
+and dispatch the next underlying Escape exactly once. Verify actual OS behavior
+and pin the reviewed immutable fork revision before claiming these providers
+qualified. No SDK edits accompany this report.
+
+Scope approval may cover these minimal existing-API correctness repairs as one
+reviewed category, while additions to public input/geometry APIs remain separate
+decisions. This does not authorize unrelated SDK features or architecture work.
