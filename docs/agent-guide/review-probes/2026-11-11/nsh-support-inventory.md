@@ -305,12 +305,12 @@ uses the concrete route bodies, not literal presence alone.
 | `events.rs` | `70059573bca4bc284f4c3f28889b3994ce058dfd6941c70e182e3e9314154b8d` |
 | `ui/icons.rs` | `ebcaedaa770c035305fca721bac02d0597c3f90c1729cb1100a5fb78be1b8c1e` |
 | `controls/basic.rs` | `75cc88ab5f04039ccb9a767b1fec139c3fea7b5b6b7e49c5f76418e490e9a0f7` |
-| `controls/collections.rs` | `a0ccb7e42c149c49b61ca93c3a083874f4eb4e3f535435d311d7a33bd496db49` |
+| `controls/collections.rs` | `a3eed4930e18572e3eab9c0f25fd4099b5bba3b383056adee6bcff63022772f3` |
 | `controls/surfaces.rs` | `8854da7462cda85a83d77ee54edbed3d1431d4fc37bf65d3e6ec4a1f927abf46` |
 | `controls/navigation.rs` | `28e0e4ac35312ba9673f7b97168b6d6890d84bf2e676a59ba6d1764c4ef6a28d` |
 | `images.rs` | `0cd8caf3a1736e24381a595eae088031394615ebab4f9e6c0d35ee1d2ba1d6c7` |
 | `headings.rs` | `fe8fcddd03e900d52fd3e253af1cedd3db21a62c0a2c6eabcccc8e450098ff30` |
-| `inputs.rs` | `4c06df927872eb395246314ec0c47fce7b1e37003d8c17366d6a7f7ad95eeb1b` |
+| `inputs.rs` | `465621a5eb8502cd7715f8537ab158e696d45218c70b04a0ad4e92e35894a7d7` |
 | `file_picker.rs` | `958a8e75027262fcb5adbdbc2b27307cd78064170eee376f1e59b6dcc5b742d0` |
 | `media.rs` | `71fd9b780a6a6b5925b3f9c4b42aac9e7b320c64e1c5559e30aab3f0e1e48add` |
 | `controls/toasts.rs` | `2d7d344288cf9989f21278a48fede6b77337da698b0ba2b91c5bff909d103ac0` |
