@@ -5603,3 +5603,38 @@ validation. Use a text input for a cancelable time draft. On NSH, adding an
 uninstalled dismissal observer to a retained input requires a new keyed node;
 a capability authored false at initial mount can be enabled later. Disabling or
 removing an installed flag takes effect without replacing the native input.
+
+### Apple text cancellation and explicit blur submission
+
+Apple text controls retain their native editors when `on_dismiss` is added or
+removed. On macOS 14+, an opt-in focused editor intercepts unmodified Escape
+before native cancellation, provided it has no marked text. The local monitor is
+removed on blur, handler removal, disabling and disposal; other editors and key
+combinations retain native handling. On iOS 17+, the scoped SwiftUI key handler
+checks the actual retained `UITextField`/`UITextView`, including the system search
+bar, for first-responder ownership and unfinished composition before dismissal.
+The callback does not clear text or move focus itself.
+
+Apple now implements the already accepted `submit_on_blur:true` property for
+these five text kinds using native editing-end notifications. It remains false
+when absent. For example, an input with `~submit_on_blur:true ~on_submit:save`
+submits when its native editing session ends; an ordinary input without that
+property does not. Explicit Enter submission suppresses a duplicate submission
+on the ensuing blur. New editing or a new focus interval permits another submit.
+An admitted `on_dismiss` suppresses that interval's blur submission, including
+when the callback synchronously removes the input or its container. Removing the
+dismissal handler after cancellation does not undo that suppression. No existing
+overlay or picker dismissal behavior changes.
+
+Qualification must distinguish native probe/event tests from real key delivery.
+The macOS tests exercise the exact native field editor, marked text, monitor
+lifetime and retained identity. iOS probe tests exercise ordinary, multiline and
+system-search native controls; they do not establish that hardware Escape reaches
+SwiftUI's scoped handler in every `.searchable` presentation. The outstanding
+native iOS gate must focus each real control and call the public XCUIAutomation
+`typeKey(XCUIKeyboardKey.escape, modifierFlags: [])` API, then assert one Dismiss,
+no blur Submit, unchanged draft and retained editor. Repeat with marked text,
+handler removal, disabled input, modified Escape and a different focused field.
+The installed SDK exposes `typeKey:modifierFlags:` for iOS as well as macOS;
+`typeText` is a text insertion API and is not a substitute for this gate. No
+minimum OS version is raised.

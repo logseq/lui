@@ -7650,6 +7650,7 @@ private struct LUITextControlView: View {
     let grouped: Bool
     @Environment(\.luiIsNativeFormRow) private var isNativeFormRow
     @State private var draftState: LUITextDraftState
+    @State private var dismissSession = LUIInputDismissSession()
     @FocusState private var focused: Bool
 
     init(model: LUINodeModel, backend: LUIAppleBackend, grouped: Bool = false) {
@@ -7674,9 +7675,10 @@ private struct LUITextControlView: View {
             }
         }
             .modifier(LUIReadOnlyTextControl(readOnly: model.property(.readOnly)?.boolValue == true))
+            .modifier(LUIInputDismissControl(model: model, backend: backend, session: dismissSession))
             .disabled(!model.isEnabled)
             .focused($focused)
-            .onSubmit { try? backend.performSubmit(node: model.id) }
+            .onSubmit { dismissSession.submit() }
             .onAppear { if model.requestsAutofocus { focused = true } }
             // autofocus is an edge-triggered focus request: any transition
             // is a request, so repeated requests refocus even when the flag
@@ -7727,6 +7729,7 @@ private struct LUITextControlView: View {
                 .submitLabel(.search)
                 if !draftState.text.isEmpty && model.property(.readOnly)?.boolValue != true {
                     Button {
+                        dismissSession.textEdited()
                         draftState.edit("")
                         try? backend.performTextChange(node: model.id, text: "")
                     } label: {
@@ -7759,6 +7762,7 @@ private struct LUITextControlView: View {
             .submitLabel(.search)
             if !draftState.text.isEmpty && model.property(.readOnly)?.boolValue != true {
                 Button {
+                    dismissSession.textEdited()
                     draftState.edit("")
                     try? backend.performTextChange(node: model.id, text: "")
                 } label: {
@@ -7776,6 +7780,7 @@ private struct LUITextControlView: View {
             get: { draftState.text },
             set: { next in
                 guard model.property(.readOnly)?.boolValue != true else { return }
+                dismissSession.textEdited()
                 draftState.edit(next)
                 try? backend.performTextChange(node: model.id, text: next)
             }
@@ -7807,6 +7812,7 @@ private struct LUISearchableNodeModifier: ViewModifier {
     let backend: LUIAppleBackend
     @State private var draft: LUITextDraftState
     @State private var presented = false
+    @State private var dismissSession = LUIInputDismissSession()
 
     init(model: LUINodeModel?, backend: LUIAppleBackend) {
         self.model = model
@@ -7823,6 +7829,7 @@ private struct LUISearchableNodeModifier: ViewModifier {
                         get: { draft.text },
                         set: { next in
                             guard model.property(.readOnly)?.boolValue != true else { return }
+                            dismissSession.textEdited()
                             draft.edit(next)
                             try? backend.performTextChange(node: model.id, text: next)
                         }
@@ -7834,8 +7841,10 @@ private struct LUISearchableNodeModifier: ViewModifier {
                 .autocorrectionDisabled()
                 .modifier(LUIReadOnlyTextControl(readOnly: model.property(.readOnly)?.boolValue == true,
                                                nativeSearch: true))
+                .modifier(LUIInputDismissControl(model: model, backend: backend,
+                                                 session: dismissSession, nativeSearch: true))
                 .onSubmit(of: .search) {
-                    try? backend.performSubmit(node: model.id)
+                    dismissSession.submit()
                 }
                 .onChange(of: model.text) { _, next in
                     draft.reconcile(source: next, focused: presented)

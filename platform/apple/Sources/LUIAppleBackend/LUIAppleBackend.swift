@@ -1414,12 +1414,18 @@ public final class LUIAppleBackend {
     }
 
     func performDismiss(node: Int) throws {
-        guard let model = models[node],
-              model.kind == .select || model.kind == .combobox ||
+        guard let model = models[node] else {
+            throw invalid("node \(node) is not dismissible")
+        }
+        if Self.isTextEntry(model.kind) {
+            guard model.isEnabled, model.property(.dismissEnabled)?.boolValue == true else {
+                throw invalid("node \(node) is not enabled for input dismissal")
+            }
+        } else if !(model.kind == .select || model.kind == .combobox ||
                 model.kind == .dropdownMenu || model.kind == .dialog ||
                 model.kind == .sheet || model.kind == .toast ||
                 model.kind == .filePreview ||
-                model.kind == .filePicker else {
+                model.kind == .filePicker) {
             throw invalid("node \(node) is not dismissible")
         }
         emit(.dismiss(node: node))
