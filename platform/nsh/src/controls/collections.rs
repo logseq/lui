@@ -1313,9 +1313,29 @@ mod tests {
     }
     #[test]
     fn bottom_tab_effective_selection_matches_first_selected_and_first_child_defaults() {
+        let selected_page = |app: &mut Headless, selected: &str| {
+            // A keyboard step waits for batch silence, not publication of this
+            // command. Observe the controlled tab state and its actual page.
+            app.wait_until(
+                &format!("only tab {selected} selected with its page visible"),
+                std::time::Duration::from_secs(3),
+                |screen| {
+                    ["One", "Two", "Three"].into_iter().all(|title| {
+                        screen
+                            .accessibility_state(&format!("role:tab[{title}]"))
+                            .is_ok_and(|state| state.selected == (title == selected))
+                    }) && screen.count(&format!("role:button[{selected} action]")) == Ok(1)
+                },
+            )
+            .unwrap();
+        };
         let (mut app, events) = start("bottom-tabs");
         app.press("role:tab[Three]").unwrap();
-        app.press_key("f8").unwrap();
+        selected_page(&mut app, "Three");
+        // Clear source selection while another page is visible, so this proves
+        // fallback publication rather than observing an unchanged selected One.
+        app.press_key("f7").unwrap();
+        selected_page(&mut app, "One");
         assert!(
             app.screen()
                 .accessibility_state("role:tab[One]")
@@ -1328,7 +1348,10 @@ mod tests {
                 .unwrap()
                 .selected
         );
-        app.press_key("f7").unwrap();
+        app.press("role:tab[Three]").unwrap();
+        selected_page(&mut app, "Three");
+        app.press_key("f8").unwrap();
+        selected_page(&mut app, "One");
         assert!(
             app.screen()
                 .accessibility_state("role:tab[One]")
@@ -1336,6 +1359,7 @@ mod tests {
                 .selected
         );
         app.press_key("f9").unwrap();
+        selected_page(&mut app, "Two");
         assert!(
             app.screen()
                 .accessibility_state("role:tab[Two]")
