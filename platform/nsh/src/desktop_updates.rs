@@ -281,6 +281,33 @@ impl UpdateActions {
     pub fn is_configured(&self) -> bool {
         !matches!(&*self.0, State::Disabled)
     }
+    /// Read in the app's existing effect to share its menu's busy state.
+    /// This subscribes to the same phase signal; it creates no polling task.
+    pub fn is_busy(&self) -> bool {
+        matches!(&*self.0, State::Ready(actions)
+            if actions.owner.is_live() && actions.phase.get() != Phase::Idle)
+    }
+    /// Check again from an application control using this same updater owner,
+    /// translated dialogs and installation lifecycle. A retained downloaded
+    /// archive is cleared, as with the menu's explicit Check action.
+    /// Returns false for an unconfigured, busy or retired owner. Configuration
+    /// errors use the existing native error dialog; invalid labels are rejected.
+    pub fn check_for_updates(&self, labels: UpdateLabels) -> Result<bool, String> {
+        labels.validate()?;
+        match &*self.0 {
+            State::Disabled => Ok(false),
+            State::Unavailable { owner, error } => {
+                Ok(show_unavailable(*owner, error.clone(), labels))
+            }
+            State::Ready(actions) => {
+                if !actions.owner.is_live() || actions.phase.get_untracked() != Phase::Idle {
+                    return Ok(false);
+                }
+                *actions.labels.borrow_mut() = labels;
+                Ok(actions.clone().start_check())
+            }
+        }
+    }
     /// Read inside the existing menu owner's effect to track phase changes.
     /// Labels must already pass validate(); no new menu owner or polling starts.
     pub fn menu_items(&self, labels: UpdateLabels) -> Vec<MenuItem> {
@@ -294,14 +321,7 @@ impl UpdateActions {
                 let error = error.clone();
                 vec![
                     MenuItem::new(labels.menu_unavailable.clone()).on_select(move || {
-                        if !owner.is_live() {
-                            return;
-                        }
-                        let error = error.clone();
-                        let labels = labels.clone();
-                        owner.run(move || {
-                            spawn(async move { show_error(error, &labels).await });
-                        });
+                        show_unavailable(owner, error.clone(), labels.clone());
                     }),
                 ]
             }
@@ -345,17 +365,23 @@ impl UpdateActions {
                 } else if phase == Phase::Idle && downloaded {
                     let checking = actions.clone();
                     items.push(MenuItem::new(labels.menu_check).on_select(move || {
-                        if checking.owner.is_live() && checking.phase.get_untracked() == Phase::Idle
-                        {
-                            checking.downloaded.set(None);
-                            checking.clone().start();
-                        }
+                        checking.clone().start_check();
                     }));
                 }
                 items
             }
         }
     }
+}
+
+fn show_unavailable(owner: Owner, error: String, labels: UpdateLabels) -> bool {
+    if !owner.is_live() {
+        return false;
+    }
+    owner.run(move || {
+        spawn(async move { show_error(error, &labels).await });
+    });
+    true
 }
 
 pub(crate) fn mount() {
@@ -387,6 +413,14 @@ fn bootstrap() -> Result<Option<Updater>, String> {
 }
 
 impl Actions {
+    fn start_check(self: Rc<Self>) -> bool {
+        if !self.owner.is_live() || self.phase.get_untracked() != Phase::Idle {
+            return false;
+        }
+        self.downloaded.set(None);
+        self.start();
+        true
+    }
     fn start(self: Rc<Self>) {
         if !self.owner.is_live() || self.phase.get_untracked() != Phase::Idle {
             return;
@@ -741,6 +775,9 @@ mod tests {
         });
         cleanup(|| set_application_menu(None));
         let selected = actions.clone();
+        let check = contribution.clone();
+        let observed = contribution.clone();
+        let checks = signal(Vec::<bool>::new());
         view()
             .flex_col()
             .child(
@@ -748,12 +785,23 @@ mod tests {
                     .on_press(move || selected.clone().start())
                     .child(text("Run update")),
             )
+            .child(
+                button()
+                    .on_press(move || {
+                        let first = check.check_for_updates(UpdateLabels::default()).unwrap();
+                        let repeated = check.check_for_updates(UpdateLabels::default()).unwrap();
+                        checks.set(vec![first, repeated]);
+                    })
+                    .child(text("Public check")),
+            )
             .child(text(move || {
                 format!(
-                    "{:?} cached={} operations={:?}",
+                    "{:?} cached={} operations={:?} busy={} checks={:?}",
                     actions.phase.get(),
                     actions.downloaded.get().is_some(),
-                    operations.lock().unwrap()
+                    operations.lock().unwrap(),
+                    observed.is_busy(),
+                    checks.get()
                 )
             }))
     }
@@ -814,6 +862,70 @@ mod tests {
         app.screen().commands().iter().any(|(_, command)| {
             matches!(command, Command::Desktop(command) if matches!(&**command, DesktopCommand::Restart))
         })
+    }
+
+    #[test]
+    fn public_check_reuses_busy_dialogs_and_rechecks_cached_download_without_preparation() {
+        let hook = HookFixture::new(Preparation::Ready);
+        let mut app = start_with_hook(false, false, Some(hook.clone()));
+        download(&mut app);
+        app.answer_dialog(DialogAnswer::Press("Later".into()))
+            .unwrap();
+        wait_status(&mut app, "Idle cached=true");
+        app.press("text:Public check").unwrap();
+        wait_dialog(&mut app);
+        wait_status(&mut app, "busy=true checks=[true, false]");
+        let dialog = app.pending_dialog().unwrap();
+        assert!(
+            dialog
+                .buttons
+                .iter()
+                .any(|button| button.text == "Download")
+        );
+        assert!(
+            !dialog
+                .buttons
+                .iter()
+                .any(|button| button.text == "Install and Restart")
+        );
+        assert_eq!(hook.counts(), (0, 0, 0));
+        app.answer_dialog(DialogAnswer::Press("Later".into()))
+            .unwrap();
+        wait_status(&mut app, "Idle cached=false");
+        wait_status(
+            &mut app,
+            "operations=[\"check\", \"download\", \"check\"] busy=false",
+        );
+        assert_eq!(hook.counts(), (0, 0, 0));
+        assert!(!restarted(&app));
+    }
+
+    #[component]
+    fn RetiredCheckProbe() -> impl IntoElement {
+        let (updater, operations) = crate::update::tests::menu_fixture(false, None);
+        let (owner, updates) =
+            create_root(|| UpdateActions::new(updater, Rc::new(StandaloneLifecycle)));
+        owner.dispose();
+        assert!(!updates.check_for_updates(UpdateLabels::default()).unwrap());
+        assert!(!updates.is_busy());
+        assert!(operations.lock().unwrap().is_empty());
+        text("Retired public check is inert")
+    }
+    #[test]
+    fn retained_public_check_does_not_restart_a_retired_owner() {
+        let mut app = Headless::start(EngineConfig::new(Root::of::<RetiredCheckProbe>())).unwrap();
+        app.wait_for("text:Retired public check is inert").unwrap();
+    }
+    #[test]
+    fn unconfigured_public_check_is_inert_and_dynamic_labels_remain_validated() {
+        let updates = UpdateActions(Rc::new(State::Disabled));
+        assert!(!updates.check_for_updates(UpdateLabels::default()).unwrap());
+        assert!(!updates.is_busy());
+        let invalid = UpdateLabels {
+            menu_check: String::new(),
+            ..UpdateLabels::default()
+        };
+        assert!(updates.check_for_updates(invalid).is_err());
     }
 
     #[test]

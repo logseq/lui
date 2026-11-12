@@ -1,5 +1,26 @@
 # LUI API migration guide
 
+## Application controls share the existing desktop update check
+
+`UpdateActions::check_for_updates(labels)` is a Rust entry for an application's
+settings button or command. It validates the existing `UpdateLabels`, uses the
+same updater owner and translated dialogs as the native menu, and returns
+`Ok(true)` only when it accepts the action. An unconfigured, busy or retired
+owner returns `Ok(false)` without starting work. Invalid configuration uses the
+existing unavailable-action error dialog; invalid dynamic labels return `Err`.
+
+This explicit Check action discards a retained downloaded offer and checks
+again, matching the menu's existing secondary Check action. It does not install
+the cached offer. The existing `UpdateLifecycle` and `InstallLease` remain the
+only installation/preparation/relaunch policy.
+
+`UpdateActions::is_busy()` reads the existing phase signal. An application's
+normal effect can publish or bind that value to its own button; no polling or
+second updater is created. `is_configured()` remains the existing availability
+test. For example, retain the one application-owned `updates` value and call
+`updates.check_for_updates(translated_labels)?`; disable its button while
+`!updates.is_configured() || updates.is_busy()`.
+
 ## Native bounds diagnostics include existing Core Animation transforms
 
 The macOS `native-bounds` diagnostic now maps all four view-bounds corners through
