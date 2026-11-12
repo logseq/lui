@@ -741,14 +741,41 @@ UX parity remain open.
 
 New LUI `c11ccfbd` source-factory replacement and original reorder integration
 targets passed in separate processes, with bounded rows and current-revision
-text inside the Headless parent viewport. The corresponding AppKit replacement
-case remains required. See
+text inside the Headless parent viewport. The corresponding independent AppKit
+case subsequently passed at `7ad9d6ca`, preserving native identities and visible
+current-revision rows across both replacements without another scroll. See
 [source replacement evidence](review-probes/2026-11-13/parent-source-factory-replacement.md).
 Later published revisions require their own terminal OS workflow results.
 The same eight desktop jobs subsequently passed at the actual Logseq dependency
 pin `b73fc438e44c58209b8729470bb6c9d3e0989dad`:
 [NSH desktop 43299339007](https://github.com/logseq/lui/actions/runs/43299339007).
 Its ordinary CI also passed. The later test-only replacement revision
-`2ea42512` has separate workflows still in progress at this observation.
+`2ea42512020fa850e87128468b64d1c5d9a4de03` subsequently passed all eight
+desktop jobs in [run 43312221090](https://github.com/logseq/lui/actions/runs/43312221090).
+Its ordinary [CI run 43312220933](https://github.com/logseq/lui/actions/runs/43312220933)
+also passed every job, including the maintained Apple, Android and Web checks.
+These results apply to that exact published revision; later native-dialog and
+update-action changes require their own cross-platform qualification.
 Actual Logseq portable PDF, production install/restart/signing and full frozen
 master UX acceptance remain incomplete; the migration goal stays active.
+
+### Native sheet and updater-owner follow-up (2026-11-13)
+
+The same-port macOS native-sheet inspection/answer seam passed its real,
+offscreen AppKit probe, including stale token, replaced sheet, disabled/ambiguous
+button and retired/wrong-owner refusal. The CLI skill now documents that native
+controller boundary and its limits; see
+[native-dialog qualification](native-dialog-agent.md#executed-macos-qualification-2026-11-13).
+
+The updater's existing owner now remains busy until an operational error sheet
+settles. Repeated Settings/public checks cannot queue another check or sheet;
+retirement during the sheet cannot rearm an old owner. The complete local locked
+release suite passed 294 library tests, two public-list tests and eight retained
+store tests, with no failures or ignored tests. Strict all-target release Clippy
+and formatting passed. Evidence:
+`/tmp/lui-update-busy-final-release.log`,
+`/tmp/lui-update-busy-final-clippy.log`, and
+`/tmp/lui-update-busy-final-format.log`.
+The new retirement fixture explicitly signals its own disposal observation;
+owner liveness is not itself a reactive signal. These checks do not replace the
+actual installed Logseq N1-to-N2 upgrade or the later cross-platform CI gate.

@@ -1106,6 +1106,7 @@ mod tests {
         let selected = actions.clone();
         let observed = updates.clone();
         let checks = signal(Vec::<bool>::new());
+        let retired = signal(false);
         cleanup(move || owner.dispose());
         view()
             .child(
@@ -1115,7 +1116,10 @@ mod tests {
             )
             .child(
                 button()
-                    .on_press(move || owner.dispose())
+                    .on_press(move || {
+                        owner.dispose();
+                        retired.set(true);
+                    })
                     .child(text("Retire updater")),
             )
             .child(
@@ -1128,6 +1132,7 @@ mod tests {
                     .child(text("Check retired updater")),
             )
             .child(text(move || {
+                retired.get();
                 let phase = if owner.is_live() {
                     format!("{:?}", actions.phase.get())
                 } else {
@@ -1147,7 +1152,7 @@ mod tests {
         let mut app =
             Headless::start(EngineConfig::new(Root::of::<RetiringErrorPrompt>())).unwrap();
         app.answer_dialogs_myself();
-        app.wait_for("text:phase=Idle busy=false").unwrap();
+        wait_status(&mut app, "phase=Idle busy=false");
         download(&mut app);
         app.answer_dialog(DialogAnswer::Press("Install and Restart".into()))
             .unwrap();
