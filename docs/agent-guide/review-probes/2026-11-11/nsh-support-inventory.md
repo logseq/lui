@@ -54,7 +54,7 @@ The JSON output also enumerates canonical events without a renderer transport.
 | `divider` | core view separator | 66/3 | G1, G13 | None mapped |
 | `scroll` | core Scroll | 79/3 | G1, G13 | 1 |
 | `list` | core Scroll + List role | 78/6 | G1, G13, G8 | None mapped |
-| `virtual-list` | core VirtualList + bounded LUI demand adapter | 85/7 | G1, G13, G8 | 3 |
+| `virtual-list` | core VirtualList + bounded LUI demand adapter | 86/7 | G1, G13, G8 | 3 |
 | `tabs` | themed Tabs | 74/3 | G1, G13, G12 | 1 |
 | `bottom-tabs` | shared native Tabs triggers + lazy retained keyed pages | 13/3 | G1, G13 | 5 |
 | `bottom-tab` | retained core Scroll region + separate model-owned base Tab trigger | 8/8 | G13, G12 | 5 |
@@ -285,7 +285,7 @@ uses the concrete route bodies, not literal presence alone.
 
 | Source | SHA-256 |
 | --- | --- |
-| `native_capture.rs` | `1f54591b1328071467d72087785a4445894503998fdf5d62075a6ce0e9f05f13` |
+| `native_capture.rs` | `7b258b18fd153890af1c8dcbbdcd0ecc9aa8b80d6a8d32f8072f0f73dfbad558` |
 | `white_space.rs` | `33178d9ee60ca72b320d5a9a4c28e6221373af6ccca5c3f2c68dd452ea8ecd21` |
 | `application_icons.rs` | `08b05108b92c3f3b95bca631908a93a11b56c73baba38ad485e358298f828142` |
 | `application_theme.rs` | `65305cce169f08b1b7d25106795d2502e4edccd463110b5fd2fb0f75db0bce56` |
@@ -295,11 +295,11 @@ uses the concrete route bodies, not literal presence alone.
 | `extensions/schema.rs` | `13e599099f8943fc864ae1f470674a2d39733383ad0cce367f8ccc87b6f7ac33` |
 | `extensions/host.rs` | `bf9d9c3033b5931a8b0b585b9b2c5708f733bf1b336c41c1e51803eb6530ff0a` |
 | `ui/checkbox.rs` | `a613b40f06905e472a04e5558103c76cc4d18981f587c9be8a3a1946a761512c` |
-| `render.rs` | `cca536189c081c9e0e782d3187d1a6db4417753b9f7a101462e89f5089d486cb` |
-| `controls.rs` | `558729f83a448fe60377a8d9343897f4d92bf0686f8f87a088bdb5e812f02ee0` |
+| `render.rs` | `9655e658ce04399d231f016b0825125fab2b3b0dd8a69fc48de934c20fb0b1e7` |
+| `controls.rs` | `28d8f2e4c1cb3419c88b663be183b8030b1b716237aa8b2ecd395beebe985c9e` |
 | `style.rs` | `ac66143c44cbd6c6236b7b7cee86c5c4f7e1728004e9894819c02387fe01be9e` |
-| `virtual_rows.rs` | `1630ed15ed6526769c9f3b405623c464296d5c23e4a77099eb60d449ef1ea3de` |
-| `app.rs` | `f8f4f648e3c0cd82e3d609016a675d4466679f62169e34089ab6cf2a2a2567f9` |
+| `virtual_rows.rs` | `dfd69a7308191d33d80523afe0fa0df5b1ca9028cccaa642fa761fbdfd61fb5b` |
+| `app.rs` | `e119c8c762cc32b247b363f95ff99f01beb371bda6c300f6fecf33e6435ea94b` |
 | `ui/mod.rs` | `1d2cfcebfbb8b0cf7b4d38f13795cb86afc3eeacc922b7e56d8da28092735d56` |
 | `ui/controls.rs` | `5bdbbcce9067ed597ae60443878e76d4fc72c7609d7e40af31a3909a2ab515e2` |
 | `events.rs` | `eb9addb27f70d21b0fdaff507f869ad6ebbede6be1e031f1d64b6b4aa86a1d03` |
@@ -322,7 +322,7 @@ uses the concrete route bodies, not literal presence alone.
 | `images/file_image.rs` | `70728cf4881a3c8be5b4ed14f3b850529099d52a359509ed174925003918a96d` |
 | `images/file_image/macos.rs` | `48545fea7e81829da80150b3c2821aa48ed499c2a2dfe379effe82ef52d9a566` |
 | `images/file_image/linux.rs` | `db8d998a6c41173afafdbd6c62c2a6558d79db2126ab2a6654547b8598d14255` |
-| `images/file_image/windows.rs` | `2ba08cc9943bab780e29a4fab8e61d854d55bd5c96b42a19c96f084bd639803f` |
+| `images/file_image/windows.rs` | `d762bff73fad4f5f1b577e3f7f7bd3f3c560258a5660f9dd6c7680d82b2ed289` |
 | `ui/menu_item.rs` | `f2bea62ce1e2e6a972b9fe794cc8d0e4e4d9f52f119568dd725f66dcb7066edd` |
 
 Concrete route evidence at this generated source checkpoint:

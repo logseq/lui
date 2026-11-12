@@ -113,9 +113,13 @@ fn orientation(frame: &IWICBitmapFrameDecode) -> WICBitmapTransformOptions {
         2 => WICBitmapTransformFlipHorizontal,
         3 => WICBitmapTransformRotate180,
         4 => WICBitmapTransformFlipVertical,
-        5 => WICBitmapTransformRotate90 | WICBitmapTransformFlipHorizontal,
+        5 => WICBitmapTransformOptions(
+            WICBitmapTransformRotate90.0 | WICBitmapTransformFlipHorizontal.0,
+        ),
         6 => WICBitmapTransformRotate90,
-        7 => WICBitmapTransformRotate270 | WICBitmapTransformFlipHorizontal,
+        7 => WICBitmapTransformOptions(
+            WICBitmapTransformRotate270.0 | WICBitmapTransformFlipHorizontal.0,
+        ),
         8 => WICBitmapTransformRotate270,
         _ => WICBitmapTransformRotate0,
     }
