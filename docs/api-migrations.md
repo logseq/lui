@@ -5584,7 +5584,7 @@ Dismissal means the focused input's platform cancellation action, ordinarily
 Escape with a hardware keyboard. It does not change the controlled text or
 implicitly save/reset application state. The application must discard its owned
 draft in the callback. Cancellation is reported before focus loss, and that
-focus interval's subsequent blur does not produce `Submit`. Disabled inputs and
+canceled draft's subsequent blur does not produce `Submit`. Disabled inputs and
 unfinished composition do not dismiss. Existing `on_navigate` still handles only
 its established navigation keys and does not opt into cancellation.
 
@@ -5651,3 +5651,20 @@ or unfocuses the field cannot also submit it. Fresh focus or user input resets
 that cancellation interval. Modified/repeated/composing Escape, disabled fields
 and absent/removed flags keep their previous key behavior; no document/window
 key binding is added. The input's existing controlled value is unchanged.
+
+### Retained input edits after cancellation
+
+NSH retains one native change listener for controlled text inputs. A genuine
+native edit clears cancellation and Enter/blur-deduplication state before the
+existing `TextChanged` event reaches the application. Thus an application may
+keep the same input mounted after `Dismiss`, accept new text, and then either
+submit that new draft on blur or cancel it again. New focus also begins a fresh
+interval. Controlled `text` patches and unrelated property updates do not rearm
+an already canceled draft and emit no synthetic input event.
+
+Cancellation now has its own marker rather than sharing Enter's blur-deduplication
+flag. A prior Submit cannot swallow a later native cancellation request; a late
+Submit for a canceled draft is ignored until a real edit or fresh focus occurs.
+The native input identity and existing renderer incarnation/admission closure
+remain unchanged. Inputs without authored blur/navigation/dismissal policies
+still allocate no additional policy state.

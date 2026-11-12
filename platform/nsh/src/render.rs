@@ -1289,7 +1289,6 @@ impl Renderer {
                     .into_element()
             }
             "text-field" | "secure-field" | "input" | "search-field" | "textarea" => {
-                let change = self.clone();
                 let submit = self.clone();
                 native_events
                     .attach(crate::inputs::attach(
@@ -1307,9 +1306,6 @@ impl Renderer {
                     .auto_focus(move || state.get().boolean("autofocus", false))
                     .label(label)
                     .state_inline_style(style)
-                    .on_change(move |value: &str| {
-                        change.emit(id, incarnation, Event::Text(id, value.into()))
-                    })
                     .element_ref(&reference)
                     .key(key.clone())
                     .test_id(&identifier)

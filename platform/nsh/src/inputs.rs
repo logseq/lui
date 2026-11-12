@@ -72,6 +72,25 @@ pub(crate) fn attach(
     let authored_blur = initial.props.contains_key("submit-on-blur");
     let authored_navigation = initial.props.contains_key("navigate-enabled");
     let authored_dismiss = initial.props.contains_key("dismiss-enabled");
+    let blur =
+        (authored_blur || authored_dismiss).then(|| Rc::new(Cell::new(BlurState::default())));
+    let changed_blur = blur.clone();
+    let changed_emit = emit.clone();
+    let input = input.on_change(move |value: &str| {
+        let Some(node) = node.try_get() else { return };
+        if !node.boolean("enabled", true) {
+            return;
+        }
+        if let Some(blur) = &changed_blur {
+            let mut current = blur.get();
+            // A genuine native edit begins a new draft before application
+            // dispatch. Controlled value patches never call this listener.
+            current.suppress_native_blur = false;
+            current.dismissed = false;
+            blur.set(current);
+        }
+        changed_emit(Event::Text(node.id, value.into()));
+    });
     if !authored_blur && !authored_navigation && !authored_dismiss {
         // Ordinary Inputs allocate no additional policy state or observers.
         return input.on_submit(move |_: &str| {
@@ -81,8 +100,6 @@ pub(crate) fn attach(
             }
         });
     }
-    let blur =
-        (authored_blur || authored_dismiss).then(|| Rc::new(Cell::new(BlurState::default())));
     let composing = authored_navigation.then(|| signal(false));
     if let Some(composing) = composing {
         navigation(node, reference, composing, emit.clone());
@@ -125,7 +142,10 @@ pub(crate) fn attach(
     }
     input.on_submit(move |_: &str| {
         if composing.is_some_and(|composing| composing.try_get().unwrap_or(true))
-            || blur.as_ref().is_some_and(|blur| blur.get().composing)
+            || blur.as_ref().is_some_and(|blur| {
+                let state = blur.get();
+                state.composing || state.dismissed
+            })
         {
             return;
         }
@@ -197,6 +217,7 @@ fn submits_on_blur(node: &Node, before: BlurState) -> bool {
         && node.boolean("submit-on-blur", false)
         && !before.composing
         && !before.suppress_native_blur
+        && !before.dismissed
 }
 
 // Shared with policy tests: Headless does not synthesize native input Escape.
@@ -205,13 +226,14 @@ fn request_dismiss(node: &Node, state: &Cell<BlurState>, emit: &dyn Fn(Event)) {
     if !node.boolean("enabled", true)
         || !node.boolean("dismiss-enabled", false)
         || current.composing
-        || current.suppress_native_blur
+        || current.dismissed
     {
         return;
     }
     // Native cancellation precedes Blur. Install suppression before application
     // dispatch, which may retire this input immediately.
     current.suppress_native_blur = true;
+    current.dismissed = true;
     state.set(current);
     emit(Event::Dismiss(node.id));
 }
@@ -219,6 +241,7 @@ fn request_dismiss(node: &Node, state: &Cell<BlurState>, emit: &dyn Fn(Event)) {
 #[derive(Clone, Copy, Default)]
 struct BlurState {
     suppress_native_blur: bool,
+    dismissed: bool,
     composing: bool,
 }
 

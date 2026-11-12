@@ -16,7 +16,7 @@ fn node(kind: &str) -> Node {
 }
 
 #[test]
-fn cancellation_arms_blur_suppression_before_dispatch_and_only_once_per_focus() {
+fn cancellation_arms_blur_suppression_before_dispatch_and_once_per_draft() {
     for kind in [
         "input",
         "text-field",
@@ -121,4 +121,213 @@ fn dismissal_wire_kind_and_scalar_validation_are_atomic() {
         );
         assert_eq!(store.generation, 0);
     }
+}
+
+struct RetainedFixture {
+    events: Arc<std::sync::Mutex<Vec<Event>>>,
+}
+
+#[nsh_core::component]
+fn RetainedCancellation() -> impl IntoElement {
+    let fixture = engine_context::<RetainedFixture>().unwrap();
+    let events = fixture.events.clone();
+    let generation = Rc::new(Cell::new(1));
+    let advancing = generation.clone();
+    let renderer = crate::render::Renderer::new(move |event, renderer| {
+        events.lock().unwrap().push(event.clone());
+        if let Event::Text(id, value) = event {
+            let next = advancing.get() + 1;
+            renderer
+                .apply(
+                    Batch::decode(
+                        &json!({"generation":next,"ops":[
+                            {"op":"set-prop","id":id,"property":"text","value":value}
+                        ]})
+                        .to_string(),
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+            advancing.set(next);
+        }
+    });
+    renderer
+        .apply(
+            Batch::decode(
+                &json!({"generation":1,"ops":[
+                    {"op":"create-node","id":1,"kind":"column"},
+                    {"op":"create-node","id":2,"kind":"text-field"},
+                    {"op":"set-prop","id":2,"property":"text","value":"draft"},
+                    {"op":"set-prop","id":2,"property":"change-enabled","value":true},
+                    {"op":"set-prop","id":2,"property":"submit-enabled","value":true},
+                    {"op":"set-prop","id":2,"property":"submit-on-blur","value":true},
+                    {"op":"set-prop","id":2,"property":"dismiss-enabled","value":true},
+                    {"op":"insert-child","parent":1,"child":2,"index":0},
+                    {"op":"create-node","id":3,"kind":"text-field"},
+                    {"op":"set-prop","id":3,"property":"text","value":"outside"},
+                    {"op":"insert-child","parent":1,"child":3,"index":1}
+                ]})
+                .to_string(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    renderer.set_root(1).unwrap();
+    let patched = renderer.clone();
+    on_key_with(
+        "f2",
+        KeyOptions {
+            when: nsh_core::keymap::When::Always,
+            ..Default::default()
+        },
+        move |_| {
+            let next = generation.get() + 1;
+            patched
+                .apply(
+                    Batch::decode(
+                        &json!({"generation":next,"ops":[
+                            {"op":"set-prop","id":2,"property":"text","value":"authoritative"}
+                        ]})
+                        .to_string(),
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+            generation.set(next);
+        },
+    );
+    renderer.element()
+}
+
+fn retained() -> (nsh_testing::Headless, Arc<std::sync::Mutex<Vec<Event>>>) {
+    use nsh_engine::{EngineConfig, EngineContext, Root};
+    let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mut app = nsh_testing::Headless::start(EngineConfig {
+        context: EngineContext::default().with(RetainedFixture {
+            events: events.clone(),
+        }),
+        ..EngineConfig::new(Root::of::<RetainedCancellation>())
+    })
+    .unwrap();
+    app.wait_for("id:lui-2").unwrap();
+    (app, events)
+}
+
+fn native_id(app: &nsh_testing::Headless) -> nsh_core::NodeId {
+    app.screen()
+        .layout_nodes()
+        .into_iter()
+        .find(|node| node.test_id.as_deref() == Some("lui-2"))
+        .unwrap()
+        .id
+}
+
+// Headless's keyboard driver does not report input Escape. Exercise the actual
+// native KeyPress listener with the public engine boundary, without claiming an
+// OS keyboard or focus transition. User edits and blur below use normal steps.
+fn cancel_boundary(app: &mut nsh_testing::Headless, events: &Arc<std::sync::Mutex<Vec<Event>>>) {
+    let count = events
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|event| **event == Event::Dismiss(2))
+        .count();
+    app.engine().control().dispatch_event(
+        native_id(app),
+        nsh_core::EventKind::KeyPress,
+        nsh_core::EventPayload::Map(vec![("key", nsh_core::PayloadValue::Str("Escape".into()))]),
+    );
+    app.wait_until(
+        "native cancellation callback",
+        std::time::Duration::from_secs(2),
+        |_| {
+            events
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|event| **event == Event::Dismiss(2))
+                .count()
+                == count + 1
+        },
+    )
+    .unwrap();
+}
+
+#[test]
+fn retained_native_edit_after_cancel_rearms_ordinary_blur_without_replacing_input() {
+    let (mut app, events) = retained();
+    app.type_text("id:lui-2", "x").unwrap();
+    let id = native_id(&app);
+    cancel_boundary(&mut app, &events);
+    app.type_text("id:lui-2", "y").unwrap();
+    app.type_text("id:lui-3", "").unwrap();
+    assert_eq!(
+        *events.lock().unwrap(),
+        [
+            Event::Text(2, "draftx".into()),
+            Event::Dismiss(2),
+            Event::Text(2, "draftxy".into()),
+            Event::Submit(2)
+        ]
+    );
+    assert_eq!(native_id(&app), id);
+}
+
+#[test]
+fn retained_native_edit_allows_a_second_cancel_and_late_submit_does_not_save() {
+    let (mut app, events) = retained();
+    app.type_text("id:lui-2", "x").unwrap();
+    cancel_boundary(&mut app, &events);
+    app.type_text("id:lui-2", "y").unwrap();
+    cancel_boundary(&mut app, &events);
+    app.submit("id:lui-2").unwrap();
+    assert_eq!(
+        *events.lock().unwrap(),
+        [
+            Event::Text(2, "draftx".into()),
+            Event::Dismiss(2),
+            Event::Text(2, "draftxy".into()),
+            Event::Dismiss(2)
+        ]
+    );
+}
+
+#[test]
+fn authoritative_controlled_patch_does_not_rearm_a_canceled_native_draft() {
+    let (mut app, events) = retained();
+    app.type_text("id:lui-2", "x").unwrap();
+    let id = native_id(&app);
+    cancel_boundary(&mut app, &events);
+    app.press_key("f2").unwrap();
+    assert_eq!(
+        app.screen().input_text("id:lui-2").unwrap(),
+        Some("authoritative")
+    );
+    app.type_text("id:lui-3", "").unwrap();
+    assert_eq!(
+        *events.lock().unwrap(),
+        [Event::Text(2, "draftx".into()), Event::Dismiss(2)]
+    );
+    assert_eq!(native_id(&app), id);
+    app.type_text("id:lui-2", "z").unwrap();
+    app.type_text("id:lui-3", "").unwrap();
+    assert!(
+        events
+            .lock()
+            .unwrap()
+            .ends_with(&[Event::Text(2, "authoritativez".into()), Event::Submit(2)])
+    );
+}
+
+#[test]
+fn prior_enter_blur_deduplication_does_not_swallow_a_distinct_cancel() {
+    let node = node("input");
+    let state = Cell::new(BlurState {
+        suppress_native_blur: true,
+        ..Default::default()
+    });
+    let events = RefCell::new(Vec::new());
+    request_dismiss(&node, &state, &|event| events.borrow_mut().push(event));
+    assert_eq!(*events.borrow(), [Event::Dismiss(2)]);
+    assert!(state.get().dismissed);
 }
