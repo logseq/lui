@@ -4915,11 +4915,11 @@ Existing `Updater::open(config, executable, cache)` calls remain valid.
 ### Application-owned update menu contributions
 
 `lui_nsh::desktop_updates::{UpdateActions, UpdateLabels}` lets an embedded
-application retain its existing native menu. Construct `UpdateActions::installed()`
+application retain its existing native menu. Construct `UpdateActions::installed(lifecycle)`
 once inside the application owner, then read `menu_items(translated_labels)` in
 that menu owner's existing effect and insert the returned items into its menu.
 Call `UpdateLabels::validate()` before admitting externally translated labels;
-`{version}` and `{notes}` placeholders are required where declared. `new(updater)`
+`{version}` and `{notes}` placeholders are required where declared. `new(updater, lifecycle)`
 also accepts an explicitly selected existing `Updater`, preserving all installed
 root/configuration/signature checks.
 
@@ -4927,7 +4927,8 @@ For example, append `updates.menu_items(labels)` to an application's own About/
 Quit group; do not mount a second `DesktopApp` to obtain update controls. This
 controller never calls `set_application_menu`. Phase changes are reactive, with
 no polling. It reuses the existing download/install confirmations, cancellation,
-verification error handling, retained verified download and restart-on-success.
+verification error handling and retained verified download. Installation and
+relaunch require the application lifecycle described below.
 Owner cleanup cancels/releases its updater, and retired menu callbacks are inert.
 
 Missing installed `nsh/assets/nsh-updater.json` contributes no action and creates
@@ -4964,3 +4965,62 @@ let emphasis (tag : text_tag) = text ~as_:tag []
 An unannotated `let emphasis ?as_ children = text ?as_ children` infers the
 restricted type automatically. This is a common API correction; it does not
 claim that all Web style values have an NSH layout provider.
+
+
+### Update installation requires an application lifecycle
+
+Both public constructors now require an explicit
+`Rc<dyn desktop_updates::UpdateLifecycle>`: migrate `UpdateActions::installed()`
+to `UpdateActions::installed(lifecycle)` and `UpdateActions::new(updater)` to
+`UpdateActions::new(updater, lifecycle)`. Calls omitting this policy fail to
+compile. There is no public default or compatibility constructor that silently
+restarts an embedded application. The generic `DesktopApp` alone supplies its
+private standalone policy and retains its existing installation/restart flow.
+
+`UpdateLifecycle::prepare()` returns an owned `InstallPreparation` future,
+invoked only after the user's final installation confirmation. Its result is:
+
+- `Err(description)`: show the existing translated error dialog; do not install
+  or restart, and retain the verified download.
+- `Ok(None)`: application cancellation, with no error dialog or installation;
+  retain the verified download for another attempt.
+- `Ok(Some(InstallLease::new(abort, relaunch)))`: the application has saved and
+  quiesced its writers. Construct the lease under its live application owner.
+  A known installation failure invokes `abort` once while that owner lives.
+  Success consumes `relaunch` once, without a generic restart fallback.
+
+A preparation future must clean up any reservation it acquires if cancelled
+before returning its lease. A lease dropped before installer dispatch invokes
+its live owner's `abort`; after dispatch, cancellation cannot prove whether the
+installer committed, so it leaves the application quiescent. A retired lease
+owner cannot dispatch installation or relaunch. A committed installation's
+relaunch error is shown through the existing error dialog, clears the consumed
+download and never invokes `abort`. The app must not capture a drop guard that
+implicitly resumes writers when committed callback captures are released.
+
+For an application whose save/shared-worker/relaunch policy is not yet proven,
+use an explicit fail-closed implementation with an application-translated reason:
+
+```rust
+use lui_nsh::desktop_updates::{InstallPreparation, UpdateActions, UpdateLifecycle};
+use std::rc::Rc;
+
+struct InstallationUnavailable(String);
+impl UpdateLifecycle for InstallationUnavailable {
+    fn prepare(&self) -> InstallPreparation {
+        let description = self.0.clone();
+        Box::pin(async move { Err(description) })
+    }
+}
+// Construct inside the application's live owner, using its current translation.
+fn mount_updates(translated_reason: String) -> UpdateActions {
+    UpdateActions::installed(Rc::new(InstallationUnavailable(translated_reason)))
+}
+```
+
+A real lease must preserve the application's credential/isolation mode, validated
+startup arguments and environment, and shared-worker ownership policy. This API
+adds no save protocol, daemon authority, event pump, installer bypass or restart
+qualification. Logseq's actual configured installation remains explicitly blocked
+until its application-wide save, daemon compatibility/exclusivity and safe
+relaunch requirements are implemented and qualified.

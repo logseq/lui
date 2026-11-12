@@ -7,7 +7,7 @@ use nsh_core::{
     prelude::*,
 };
 use serde::Deserialize;
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, future::Future, pin::Pin, rc::Rc};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Phase {
@@ -120,12 +120,98 @@ impl UpdateLabels {
     }
 }
 
+/// Application preparation after the user's final confirmation. None cancels
+/// without installing and retains the verified download for another attempt.
+pub type InstallPreparation = Pin<Box<dyn Future<Output = Result<Option<InstallLease>, String>>>>;
+
+/// Required application policy for saving/quiescing and safely relaunching.
+/// The preparation future must release its own pending reservation if dropped
+/// before it returns a lease. No worker or wire protocol is created here.
+pub trait UpdateLifecycle {
+    /// Save and quiesce application state, or cancel/refuse this installation.
+    fn prepare(&self) -> InstallPreparation;
+}
+
+type AbortInstall = Box<dyn FnOnce()>;
+type Relaunch = Box<dyn FnOnce() -> Result<(), String>>;
+
+/// Owned quiescence lease for one confirmed installation. Before installation
+/// is dispatched, dropping it aborts/resumes only while its owner lives.
+/// A known install failure also aborts; cancellation after dispatch and restart
+/// failure never thaw an application whose installation may have committed.
+pub struct InstallLease {
+    owner: Owner,
+    abort_on_drop: bool,
+    abort: Option<AbortInstall>,
+    relaunch: Option<Relaunch>,
+}
+impl InstallLease {
+    /// Construct under the application's live preparation owner. Callbacks
+    /// must act only on that application/session, never an unrelated daemon.
+    /// `abort` releases preparation on error/cancel; `relaunch` must enforce
+    /// the app's exit/argv/environment/credential policy after installation.
+    pub fn new(
+        abort: impl FnOnce() + 'static,
+        relaunch: impl FnOnce() -> Result<(), String> + 'static,
+    ) -> Self {
+        Self {
+            owner: Owner::current(),
+            abort_on_drop: true,
+            abort: Some(Box::new(abort)),
+            relaunch: Some(Box::new(relaunch)),
+        }
+    }
+    fn dispatched(&mut self) {
+        // An owned UI task can be cancelled while the installer worker is
+        // still running. Its drop cannot prove that resuming writes is safe.
+        self.abort_on_drop = false;
+    }
+    fn abort(&mut self) {
+        if self.owner.is_live()
+            && let Some(abort) = self.abort.take()
+        {
+            abort();
+        }
+    }
+    fn restart(mut self) -> Result<(), String> {
+        if !self.owner.is_live() {
+            return Err("the installed update's application restart owner has retired".into());
+        }
+        self.relaunch.take().expect("one owned relaunch")()
+    }
+}
+impl Drop for InstallLease {
+    fn drop(&mut self) {
+        if self.abort_on_drop {
+            self.abort();
+        }
+    }
+}
+
+// Only the generic standalone root opts into the existing NSH restart policy.
+// Embedded applications must make an explicit, application-owned choice.
+struct StandaloneLifecycle;
+impl UpdateLifecycle for StandaloneLifecycle {
+    fn prepare(&self) -> InstallPreparation {
+        Box::pin(async {
+            Ok(Some(InstallLease::new(
+                || {},
+                || {
+                    restart();
+                    Ok(())
+                },
+            )))
+        })
+    }
+}
+
 struct Actions {
     owner: Owner,
     updater: RefCell<Option<Updater>>,
     phase: Signal<Phase>,
     downloaded: Signal<Option<Downloaded>>,
     labels: RefCell<UpdateLabels>,
+    lifecycle: Rc<dyn UpdateLifecycle>,
 }
 
 enum State {
@@ -143,9 +229,15 @@ impl UpdateActions {
     /// Reads only the actual installed asset. No asset means no worker, cache,
     /// network or menu contribution. Invalid installed configuration contributes
     /// an explicit unavailable action using the same error dialog.
-    pub fn installed() -> Self {
+    /// An application must explicitly provide its save/relaunch policy:
+    ///
+    /// ```compile_fail,E0061
+    /// use lui_nsh::desktop_updates::UpdateActions;
+    /// let updates = UpdateActions::installed();
+    /// ```
+    pub fn installed(lifecycle: Rc<dyn UpdateLifecycle>) -> Self {
         match bootstrap() {
-            Ok(Some(updater)) => Self::new(updater),
+            Ok(Some(updater)) => Self::new(updater, lifecycle),
             Ok(None) => Self(Rc::new(State::Disabled)),
             Err(error) => {
                 eprintln!("desktop updates: {error}");
@@ -158,13 +250,22 @@ impl UpdateActions {
     }
     /// Uses an application-selected updater; its existing installation/root
     /// verification remains enforced by Updater. Clones share the same worker.
-    pub fn new(updater: Updater) -> Self {
+    /// Omitting application lifecycle ownership is a compile error:
+    ///
+    /// ```compile_fail,E0061
+    /// use lui_nsh::{desktop_updates::UpdateActions, update::Updater};
+    /// fn embedded(updater: Updater) {
+    ///     let updates = UpdateActions::new(updater);
+    /// }
+    /// ```
+    pub fn new(updater: Updater, lifecycle: Rc<dyn UpdateLifecycle>) -> Self {
         let actions = Rc::new(Actions {
             owner: Owner::current(),
             updater: RefCell::new(Some(updater)),
             phase: signal(Phase::Idle),
             downloaded: signal(None),
             labels: RefCell::new(UpdateLabels::default()),
+            lifecycle,
         });
         let retiring = actions.clone();
         cleanup(move || {
@@ -256,7 +357,7 @@ impl UpdateActions {
 }
 
 pub(crate) fn mount() {
-    let updates = UpdateActions::installed();
+    let updates = UpdateActions::installed(Rc::new(StandaloneLifecycle));
     if !updates.is_configured() {
         return;
     }
@@ -398,16 +499,23 @@ impl Actions {
             return Ok(());
         }
         self.phase.set(Phase::Installing);
+        let Some(mut lease) = self.lifecycle.prepare().await? else {
+            return Ok(());
+        };
+        if !self.owner.is_live() || !lease.owner.is_live() {
+            return Ok(());
+        }
+        lease.dispatched();
         match updater.install(downloaded).await {
             Ok(()) => {
                 if !self.owner.is_live() {
                     return Ok(());
                 }
                 self.downloaded.set(None);
-                restart();
-                Ok(())
+                lease.restart()
             }
             Err(error) => {
+                lease.abort();
                 if !self.owner.is_live() {
                     return Ok(());
                 }
@@ -487,9 +595,85 @@ mod tests {
     use super::*;
     use nsh_base::button;
     use nsh_core::{Command, desktop::DesktopCommand, element::create_root};
-    use nsh_engine::{EngineConfig, Root};
+    use nsh_engine::{EngineConfig, EngineContext, Root};
     use nsh_testing::{DialogAnswer, Headless};
-    use std::time::Duration;
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+        time::Duration,
+    };
+
+    #[derive(Clone, Copy)]
+    enum Preparation {
+        Ready,
+        Error,
+        Cancel,
+        Retired,
+        RestartError,
+    }
+    #[derive(Clone)]
+    struct HookFixture {
+        preparation: Preparation,
+        prepared: Arc<AtomicUsize>,
+        aborted: Arc<AtomicUsize>,
+        relaunched: Arc<AtomicUsize>,
+    }
+    impl HookFixture {
+        fn new(preparation: Preparation) -> Self {
+            Self {
+                preparation,
+                prepared: Arc::default(),
+                aborted: Arc::default(),
+                relaunched: Arc::default(),
+            }
+        }
+        fn counts(&self) -> (usize, usize, usize) {
+            (
+                self.prepared.load(Ordering::SeqCst),
+                self.aborted.load(Ordering::SeqCst),
+                self.relaunched.load(Ordering::SeqCst),
+            )
+        }
+        fn lease(&self) -> InstallLease {
+            let aborted = self.aborted.clone();
+            let relaunched = self.relaunched.clone();
+            let mode = self.preparation;
+            InstallLease::new(
+                move || {
+                    aborted.fetch_add(1, Ordering::SeqCst);
+                },
+                move || {
+                    relaunched.fetch_add(1, Ordering::SeqCst);
+                    if matches!(mode, Preparation::RestartError) {
+                        Err("application relaunch refused".into())
+                    } else {
+                        Ok(())
+                    }
+                },
+            )
+        }
+    }
+    struct TestLifecycle(HookFixture);
+    impl UpdateLifecycle for TestLifecycle {
+        fn prepare(&self) -> InstallPreparation {
+            let fixture = self.0.clone();
+            Box::pin(async move {
+                fixture.prepared.fetch_add(1, Ordering::SeqCst);
+                match fixture.preparation {
+                    Preparation::Error => Err("application save failed".into()),
+                    Preparation::Cancel => Ok(None),
+                    Preparation::Retired => {
+                        let (owner, lease) = create_root(|| fixture.lease());
+                        owner.dispose();
+                        Ok(Some(lease))
+                    }
+                    _ => Ok(Some(fixture.lease())),
+                }
+            })
+        }
+    }
 
     #[derive(Clone, PartialEq, Props)]
     struct ActionProps {
@@ -506,7 +690,10 @@ mod tests {
                 .get_untracked()
                 .then_some(ErrorCode::Verification),
         );
-        let contribution = UpdateActions::new(updater);
+        let lifecycle: Rc<dyn UpdateLifecycle> = engine_context::<HookFixture>()
+            .map(|fixture| Rc::new(TestLifecycle((*fixture).clone())) as Rc<dyn UpdateLifecycle>)
+            .unwrap_or_else(|| Rc::new(StandaloneLifecycle));
+        let contribution = UpdateActions::new(updater, lifecycle);
         let State::Ready(actions) = &*contribution.0 else {
             unreachable!()
         };
@@ -547,12 +734,23 @@ mod tests {
     }
 
     fn start(cancelled: bool, verification_error: bool) -> Headless {
+        start_with_hook(cancelled, verification_error, None)
+    }
+
+    fn start_with_hook(
+        cancelled: bool,
+        verification_error: bool,
+        hook: Option<HookFixture>,
+    ) -> Headless {
         let mut config = EngineConfig::new(Root::new::<ActionProbe>(move || ActionProps {
             cancelled: Prop::new(cancelled),
             verification_error: Prop::new(verification_error),
         }));
         // NSH intentionally does not install application menus on phones;
         // this probe qualifies the actual desktop menu shortcut path.
+        if let Some(hook) = hook {
+            config.context = EngineContext::default().with(hook);
+        }
         config.environment.os = nsh_core::platform::Os::Linux;
         config.environment.idiom = nsh_core::platform::Idiom::Desktop;
         let mut app = Headless::start(config).unwrap();
@@ -616,6 +814,115 @@ mod tests {
         );
     }
 
+    fn confirm_install(app: &mut Headless) {
+        download(app);
+        app.answer_dialog(DialogAnswer::Press("Install and Restart".into()))
+            .unwrap();
+    }
+
+    fn assert_no_install(app: &Headless) {
+        assert!(
+            app.screen()
+                .texts()
+                .iter()
+                .any(|text| { text.contains("operations=[\"check\", \"download\"]") })
+        );
+        assert!(!restarted(app));
+    }
+
+    #[test]
+    fn save_error_retains_verified_download_without_install_or_restart() {
+        let hook = HookFixture::new(Preparation::Error);
+        let mut app = start_with_hook(false, false, Some(hook.clone()));
+        confirm_install(&mut app);
+        wait_dialog(&mut app);
+        app.answer_dialog(DialogAnswer::Press("OK".into())).unwrap();
+        wait_status(&mut app, "Idle cached=true");
+        assert_no_install(&app);
+        assert_eq!(hook.counts(), (1, 0, 0));
+    }
+
+    #[test]
+    fn preparation_cancel_retains_download_without_error_dialog() {
+        let hook = HookFixture::new(Preparation::Cancel);
+        let mut app = start_with_hook(false, false, Some(hook.clone()));
+        confirm_install(&mut app);
+        wait_status(&mut app, "Idle cached=true");
+        assert_no_install(&app);
+        assert!(app.pending_dialog().is_none());
+        assert_eq!(hook.counts(), (1, 0, 0));
+    }
+
+    #[test]
+    fn retired_preparation_owner_cannot_install_or_restart() {
+        let hook = HookFixture::new(Preparation::Retired);
+        let mut app = start_with_hook(false, false, Some(hook.clone()));
+        confirm_install(&mut app);
+        wait_status(&mut app, "Idle cached=true");
+        assert_no_install(&app);
+        assert_eq!(hook.counts(), (1, 0, 0));
+    }
+
+    #[test]
+    fn failed_install_releases_live_application_preparation_once() {
+        let hook = HookFixture::new(Preparation::Ready);
+        let mut app = start_with_hook(false, true, Some(hook.clone()));
+        confirm_install(&mut app);
+        wait_dialog(&mut app);
+        app.answer_dialog(DialogAnswer::Press("OK".into())).unwrap();
+        wait_status(&mut app, "Idle cached=false");
+        assert_eq!(hook.counts(), (1, 1, 0));
+        assert!(!restarted(&app));
+    }
+
+    #[test]
+    fn installed_application_uses_only_its_own_relaunch_callback() {
+        let hook = HookFixture::new(Preparation::Ready);
+        let mut app = start_with_hook(false, false, Some(hook.clone()));
+        confirm_install(&mut app);
+        wait_status(&mut app, "Idle cached=false");
+        assert_eq!(hook.counts(), (1, 0, 1));
+        assert!(!restarted(&app));
+        assert!(app.pending_dialog().is_none());
+    }
+
+    #[test]
+    fn failed_relaunch_never_thaws_the_committed_application() {
+        let hook = HookFixture::new(Preparation::RestartError);
+        let mut app = start_with_hook(false, false, Some(hook.clone()));
+        confirm_install(&mut app);
+        wait_dialog(&mut app);
+        app.answer_dialog(DialogAnswer::Press("OK".into())).unwrap();
+        wait_status(&mut app, "Idle cached=false");
+        assert_eq!(hook.counts(), (1, 0, 1));
+        assert!(!restarted(&app));
+    }
+
+    #[component]
+    fn LeaseDropProbe() -> impl IntoElement {
+        let hook = HookFixture::new(Preparation::Ready);
+        drop(hook.lease());
+        assert_eq!(hook.counts(), (0, 1, 0));
+        let mut dispatched = hook.lease();
+        dispatched.dispatched();
+        drop(dispatched);
+        assert_eq!(hook.counts(), (0, 1, 0));
+
+        let (owner, mut retired) = create_root(|| hook.lease());
+        retired.dispatched();
+        owner.dispose();
+        assert!(retired.restart().is_err());
+        assert_eq!(hook.counts(), (0, 1, 0));
+        text("Owned install lease checks passed")
+    }
+
+    #[test]
+    fn cancelled_inflight_and_retired_restart_leases_do_not_resume_old_work() {
+        let mut app = Headless::start(EngineConfig::new(Root::of::<LeaseDropProbe>())).unwrap();
+        app.wait_for("text:Owned install lease checks passed")
+            .unwrap();
+    }
+
     #[test]
     fn failed_archive_verification_clears_download_and_never_restarts() {
         let mut app = start(false, true);
@@ -657,7 +964,8 @@ mod tests {
     #[component]
     fn RetiredContribution() -> impl IntoElement {
         let (updater, operations) = crate::update::tests::menu_fixture(false, None);
-        let (owner, updates) = create_root(|| UpdateActions::new(updater));
+        let (owner, updates) =
+            create_root(|| UpdateActions::new(updater, Rc::new(StandaloneLifecycle)));
         let State::Ready(actions) = &*updates.0 else {
             unreachable!()
         };
