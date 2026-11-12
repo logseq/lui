@@ -214,9 +214,10 @@ final class LUIInputDismissProbeView: NSView {
         guard session?.dismissEnabled == true, focusedEditor != nil else { removeMonitor(); return }
         guard monitor == nil else { return }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            MainActor.assumeIsolated {
-                self?.handle(event) == true ? nil : event
+            let handled = MainActor.assumeIsolated {
+                self?.handle(event) == true
             }
+            return handled ? nil : event
         }
     }
 
