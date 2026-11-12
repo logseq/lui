@@ -163,6 +163,7 @@ struct LUIInputDismissTests {
         session.focusBegan()
         session.submit()
         #expect(session.cancel(composing: false))
+        session.submit()
         #expect(!session.cancel(composing: false))
         session.textEdited()
         #expect(session.cancel(composing: false))

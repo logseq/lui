@@ -70,7 +70,7 @@ final class LUIInputDismissSession {
     func textEdited() { suppressBlurSubmit = false; cancellationSent = false }
 
     func submit() {
-        guard let model = currentModel, let backend else { return }
+        guard !cancellationSent, let model = currentModel, let backend else { return }
         suppressBlurSubmit = true
         try? backend.performSubmit(node: model.id)
     }
