@@ -146,7 +146,7 @@ fn absent_live_dialog_headers_reserve_no_gap_and_retain_authored_editor() {
     app.observe(move |_, batch| {
         for item in &batch.items {
             if let nsh_core::MountItem::ViewStyle { id, style } = item {
-                observed.lock().unwrap().insert(*id, *style);
+                observed.lock().unwrap().insert(*id, style.borders.widths);
             }
         }
     });
@@ -154,7 +154,7 @@ fn absent_live_dialog_headers_reserve_no_gap_and_retain_authored_editor() {
     let initial = input(&app);
     let empty_panel = panel(&app);
     let empty_height = empty_panel.bounds.size.height.0;
-    let borders = styles.lock().unwrap()[&empty_panel.id].borders.widths;
+    let borders = styles.lock().unwrap()[&empty_panel.id];
     // Padding is authored as zero. Derive both border insets from the actual
     // native mount style, so a reserved empty header/gap cannot hide in them.
     near(
