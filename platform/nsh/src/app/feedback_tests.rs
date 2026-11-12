@@ -46,6 +46,7 @@ fn AcceptedVirtualFeedback() -> impl IntoElement {
         }
     });
     let (sender, mut receiver) = mpsc::channel(64);
+    let pump_sender = sender.clone();
     let windows = Windows::default();
     let enqueue_windows = windows.clone();
     let renderer = Renderer::new(move |event, renderer| {
@@ -83,6 +84,7 @@ fn AcceptedVirtualFeedback() -> impl IntoElement {
             if let Some(event) = windows.pop() {
                 record(event, &querying, &probe);
             }
+            windows.wake(&pump_sender);
         }
     });
     let scrolling = renderer.clone();
@@ -119,6 +121,191 @@ fn AcceptedVirtualFeedback() -> impl IntoElement {
         move |_| allowed.set(true),
     );
     view().w(px(400.)).h(px(320.)).child(renderer.element())
+}
+
+#[component]
+fn SaturatedVirtualFeedback() -> impl IntoElement {
+    let renderer = Renderer::new(|_, _| {});
+    let mut ops = vec![
+        json!({"op":"create-node","id":1,"kind":"virtual-list"}),
+        json!({"op":"set-prop","id":1,"property":"virtual-generation","value":1}),
+        json!({"op":"set-prop","id":1,"property":"virtual-total-count","value":10_000}),
+        json!({"op":"set-prop","id":1,"property":"virtual-indices","value":"[]"}),
+    ];
+    for node in 100..163 {
+        ops.push(json!({"op":"create-node","id":node,"kind":"button"}));
+    }
+    renderer.apply(batch(1, json!(ops))).unwrap();
+    let incarnation = renderer.current_incarnation(1).unwrap();
+    let (sender, mut receiver) = mpsc::channel(64);
+    let windows = Windows::default();
+    for node in 100..163 {
+        enqueue_renderer_event(
+            ViewEvent::Press(node),
+            renderer.clone(),
+            None,
+            &windows,
+            &sender,
+        );
+    }
+    enqueue_renderer_event(
+        ViewEvent::ScrollCompleted {
+            node: 1,
+            incarnation,
+            token: 77,
+            outcome: "succeeded".into(),
+        },
+        renderer.clone(),
+        None,
+        &windows,
+        &sender,
+    );
+    assert_eq!(receiver.len(), 64);
+    for first in 0..4096 {
+        enqueue_renderer_event(
+            ViewEvent::VirtualWindow {
+                node: 1,
+                incarnation,
+                generation: 1,
+                first,
+                last: first + 10,
+                pins: vec![],
+            },
+            renderer.clone(),
+            None,
+            &windows,
+            &sender,
+        );
+        enqueue_renderer_event(
+            ViewEvent::VisibleRange {
+                node: 1,
+                incarnation,
+                first: first as i64,
+                last: (first + 9) as i64,
+            },
+            renderer.clone(),
+            None,
+            &windows,
+            &sender,
+        );
+    }
+    assert!(renderer.failure().is_none());
+    assert_eq!(receiver.len(), 64);
+    assert_eq!(windows.pending.borrow().len(), 2);
+    assert_eq!(windows.order.borrow().len(), 2);
+    assert!(!windows.waking.get(), "a full queue defers its wakeup");
+    for expected in 100..163 {
+        match receiver.try_recv().unwrap() {
+            Request::Event(GuardedEvent {
+                event: ViewEvent::Press(node),
+                ..
+            }) => assert_eq!(node, expected),
+            _ => panic!("list feedback displaced an ordered input"),
+        }
+    }
+    match receiver.try_recv().unwrap() {
+        Request::Event(GuardedEvent {
+            event: ViewEvent::ScrollCompleted { token: 77, .. },
+            ..
+        }) => {}
+        _ => panic!("list feedback displaced a scroll-token completion"),
+    }
+    for kind in [FeedbackKind::Window, FeedbackKind::VisibleRange] {
+        windows.wake(&sender);
+        assert!(matches!(receiver.try_recv().unwrap(), Request::WindowWake));
+        windows.waking.set(false);
+        let event = windows.pop().unwrap();
+        assert!(event.current(&renderer));
+        match (kind, event.event) {
+            (
+                FeedbackKind::Window,
+                ViewEvent::VirtualWindow {
+                    first: 4095,
+                    last: 4105,
+                    ..
+                },
+            )
+            | (
+                FeedbackKind::VisibleRange,
+                ViewEvent::VisibleRange {
+                    first: 4095,
+                    last: 4104,
+                    ..
+                },
+            ) => {}
+            _ => panic!("list feedback lost its independent latest state"),
+        }
+    }
+    windows.wake(&sender);
+    assert!(receiver.try_recv().is_err());
+
+    // A delayed range and window belong to their original source revision.
+    for event in [
+        ViewEvent::VirtualWindow {
+            node: 1,
+            incarnation,
+            generation: 1,
+            first: 0,
+            last: 10,
+            pins: vec![],
+        },
+        ViewEvent::VisibleRange {
+            node: 1,
+            incarnation,
+            first: 0,
+            last: 9,
+        },
+    ] {
+        enqueue_renderer_event(event, renderer.clone(), None, &windows, &sender);
+    }
+    renderer
+        .apply(batch(
+            2,
+            json!([
+                {"op":"set-prop","id":1,"property":"virtual-generation","value":2}
+            ]),
+        ))
+        .unwrap();
+    while let Some(event) = windows.pop() {
+        assert!(
+            !event.current(&renderer),
+            "retired source feedback must be rejected"
+        );
+    }
+    let retired = GuardedEvent::capture(
+        ViewEvent::VisibleRange {
+            node: 1,
+            incarnation,
+            first: 0,
+            last: 9,
+        },
+        &renderer,
+    )
+    .unwrap();
+    renderer
+        .apply(batch(
+            3,
+            json!([
+                {"op":"drop-node","id":1},
+                {"op":"create-node","id":1,"kind":"virtual-list"},
+                {"op":"set-prop","id":1,"property":"virtual-generation","value":2},
+                {"op":"set-prop","id":1,"property":"virtual-total-count","value":0},
+                {"op":"set-prop","id":1,"property":"virtual-indices","value":"[]"}
+            ]),
+        ))
+        .unwrap();
+    assert!(
+        !retired.current(&renderer),
+        "reused wire ids cannot inherit feedback"
+    );
+    text("saturated list feedback checked").test_id("saturated-feedback-checked")
+}
+
+#[test]
+fn list_feedback_coalesces_without_overflowing_input_or_reusing_retired_sources() {
+    let mut app =
+        Headless::start(EngineConfig::new(Root::of::<SaturatedVirtualFeedback>())).unwrap();
+    app.wait_for("id:saturated-feedback-checked").unwrap();
 }
 
 #[test]

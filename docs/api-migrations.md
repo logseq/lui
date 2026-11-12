@@ -1,5 +1,22 @@
 # LUI API migration guide
 
+## NSH coalesces pending virtual-list range feedback
+
+NSH now keeps the latest pending visible range independently from the latest
+pending virtual-row demand for each list. Fast scrolling no longer fills the
+ordinary input queue with superseded range notifications. A delayed notification
+is discarded when its list incarnation or virtual-source generation retires.
+The wire fields and range boundaries are unchanged, including the empty-range
+representation. Scroll-token completion events and accepted ordinary input keep
+their existing ordered queue; they are not coalesced with range feedback.
+
+Range handlers must treat notifications as current viewport state, rather than
+counting them as scroll steps. For example, replace a counter increment in
+`~on_visible_range` with assignment of the received range to application state.
+Intermediate ranges may be superseded before OCaml consumes them; the final
+pending range and row demand remain independently deliverable even if the user
+queue is full. Apple/iOS, Android and Web delivery behavior is unchanged.
+
 ## NSH Link children suppress the implicit URL label
 
 A Link with authored children and no explicit text now displays only those

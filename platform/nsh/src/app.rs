@@ -179,8 +179,16 @@ impl GuardedEvent {
             } => (*node, *incarnation, Some(*generation)),
             ViewEvent::VisibleRange {
                 node, incarnation, ..
-            }
-            | ViewEvent::ScrollCompleted {
+            } => (
+                *node,
+                *incarnation,
+                renderer
+                    .node_snapshot(*node)?
+                    .props
+                    .get("virtual-generation")
+                    .and_then(serde_json::Value::as_u64),
+            ),
+            ViewEvent::ScrollCompleted {
                 node, incarnation, ..
             } => (*node, *incarnation, None),
             ViewEvent::NativePress(node, _)
@@ -217,19 +225,26 @@ impl GuardedEvent {
     }
 }
 
-/// One latest window per live list. A full user queue cannot lose the wakeup:
-/// the pump drains one pending window after each queued request too.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum FeedbackKind {
+    Window,
+    VisibleRange,
+}
+
+/// One latest window and range per list, independent of the user queue.
+/// The pump also drains feedback after each queued request, so a full queue
+/// cannot lose the wakeup. Scroll-token completions remain ordered requests.
 #[derive(Clone, Default)]
 struct Windows {
-    pending: Rc<RefCell<BTreeMap<u64, GuardedEvent>>>,
-    order: Rc<RefCell<VecDeque<u64>>>,
+    pending: Rc<RefCell<BTreeMap<(u64, FeedbackKind), GuardedEvent>>>,
+    order: Rc<RefCell<VecDeque<(u64, FeedbackKind)>>>,
     waking: Rc<Cell<bool>>,
 }
 impl Windows {
-    fn insert(&self, event: GuardedEvent) {
-        let node = event.node;
-        if self.pending.borrow_mut().insert(node, event).is_none() {
-            self.order.borrow_mut().push_back(node);
+    fn insert(&self, kind: FeedbackKind, event: GuardedEvent) {
+        let key = (event.node, kind);
+        if self.pending.borrow_mut().insert(key, event).is_none() {
+            self.order.borrow_mut().push_back(key);
         }
     }
     fn pop(&self) -> Option<GuardedEvent> {
@@ -329,8 +344,13 @@ fn enqueue_renderer_event(
     if !event.current(&renderer) {
         return;
     }
-    if matches!(&event.event, ViewEvent::VirtualWindow { .. }) {
-        windows.insert(event);
+    let feedback = match &event.event {
+        ViewEvent::VirtualWindow { .. } => Some(FeedbackKind::Window),
+        ViewEvent::VisibleRange { .. } => Some(FeedbackKind::VisibleRange),
+        _ => None,
+    };
+    if let Some(kind) = feedback {
+        windows.insert(kind, event);
         windows.wake(sender);
     } else if sender.try_send(Request::Event(event)).is_err() {
         renderer.fail("The application request queue is full or closed".into());
