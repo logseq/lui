@@ -1712,9 +1712,13 @@ fn validate_themes(
                     .get(&node.id)
                     .is_some_and(|entry| entry.context_mode.is_some())
             {
-                return Err(
-                    "NSH changing display=contents while mounted requires a new keyed node".into(),
-                );
+                return Err(format!(
+                    "NSH changing display=contents while mounted requires a new keyed node (node={}, kind={}, previous-contents={}, next-contents={})",
+                    node.id,
+                    node.kind,
+                    style::is_contents(previous),
+                    style::is_contents(node),
+                ));
             }
             crate::controls::validate_transition(previous, node)?;
             crate::inputs::validate_transition(previous, node)?;

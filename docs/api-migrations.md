@@ -5430,3 +5430,8 @@ scroll-token completions retain their FIFO order, and admission refusals remain
 refusals. For example, an agent `native-press` rejected during update preparation
 still returns its refusal while already accepted list-window demand completes; an
 application must not resend the refused press to make the list progress.
+
+The retained `display=contents` transition diagnostic now appends the canonical
+node id, kind and previous/next contents flags. Its existing message prefix is
+unchanged; diagnostic consumers should match that prefix, not the full message.
+The transition remains rejected and does not partially publish its patch batch.
