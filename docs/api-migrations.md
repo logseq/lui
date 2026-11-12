@@ -5682,7 +5682,10 @@ native updates that do not emit `TextChanged`. Cancellation arms the field's
 blur guard before application callbacks; a fresh focus interval, real edit or
 composition change clears the guard. Removing `dismiss-enabled` or disabling
 the retained field takes effect without replacing it. Combobox behavior is
-unchanged.
+unchanged. A canceled interval consumes duplicate owned Escape without a second
+`Dismiss` and rejects late Enter/IME/blur submissions until genuine editing,
+composition change or fresh focus; controlled `text` patches and callback
+removal do not reset cancellation.
 
 Android now implements an explicitly authored `submit-on-blur=true` on the five
 text-entry kinds; absent or false still does not submit on focus loss. Single

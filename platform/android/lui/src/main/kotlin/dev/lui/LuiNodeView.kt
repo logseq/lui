@@ -1311,7 +1311,7 @@ private fun LuiTextControl(
     val submitRequested = wantsSubmit()
     fun submitWithDefault(defaultAction: () -> Unit) {
         if (live() && node.isEnabled() && localValue.composition == null) {
-            if (wantsSubmit()) blur.beforeCompletion {
+            if (wantsSubmit()) blur.beforeSubmit {
                 defaultAction()
                 if (live() && node.isEnabled() && wantsSubmit()) backend.emit(LuiEvent.Submit(id))
             } else defaultAction()
@@ -1340,7 +1340,7 @@ private fun LuiTextControl(
         .onPreviewKeyEvent { event ->
             if (!live()) false
             else if (luiTextDismissRequested(node, localValue, event)) {
-                blur.beforeCompletion { backend.emit(LuiEvent.Dismiss(id)) }
+                blur.beforeDismiss { backend.emit(LuiEvent.Dismiss(id)) }
                 true
             } else {
                 val native = event.nativeKeyEvent
@@ -1349,7 +1349,7 @@ private fun LuiTextControl(
                     event.type == KeyEventType.KeyDown && native.repeatCount == 0 && localValue.composition == null &&
                     (if (node.prop("submit-on-enter")?.boolValue == true) !native.isShiftPressed
                      else native.isCtrlPressed || native.isMetaPressed)
-                if (submit) blur.beforeCompletion { backend.emit(LuiEvent.Submit(id)) }
+                if (submit) blur.beforeSubmit { backend.emit(LuiEvent.Submit(id)) }
                 submit
             }
         }

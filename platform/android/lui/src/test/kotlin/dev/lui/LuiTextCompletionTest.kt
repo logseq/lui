@@ -47,24 +47,26 @@ class LuiTextCompletionTest {
         focus(false)
         assertTrue(events.isEmpty())
         focus(true)
-        lifecycle.beforeCompletion { events += "dismiss"; focus(false) }
+        lifecycle.beforeDismiss { events += "dismiss"; focus(false) }
+        lifecycle.beforeSubmit { events += "late submit" }
+        lifecycle.beforeDismiss { events += "duplicate dismiss" }
         assertEquals(listOf("dismiss"), events)
         focus(true)
         focus(false)
         assertEquals(listOf("dismiss", "submit"), events)
         events.clear()
         focus(true)
-        lifecycle.beforeCompletion { events += "submit"; focus(false) }
+        lifecycle.beforeSubmit { events += "submit"; focus(false) }
         assertEquals(listOf("submit"), events)
         events.clear()
         focus(true)
-        lifecycle.beforeCompletion { events += "dismiss" }
+        lifecycle.beforeDismiss { events += "dismiss" }
         focus(true)
         focus(false)
         assertEquals("duplicate focused notifications must not retire cancellation", listOf("dismiss"), events)
         events.clear()
         focus(true)
-        lifecycle.beforeCompletion { events += "dismiss" }
+        lifecycle.beforeDismiss { events += "dismiss" }
         lifecycle.edited()
         focus(false)
         assertEquals(listOf("dismiss", "submit"), events)

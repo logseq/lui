@@ -11,10 +11,19 @@ import androidx.compose.ui.text.input.TextFieldValue
 internal class LuiTextBlurLifecycle {
     private var focused = false
     private var suppressBlur = false
+    private var cancelled = false
 
-    fun edited() { suppressBlur = false }
+    fun edited() { suppressBlur = false; cancelled = false }
 
-    fun beforeCompletion(action: () -> Unit) {
+    fun beforeSubmit(action: () -> Unit) {
+        if (cancelled) return
+        suppressBlur = true
+        action()
+    }
+
+    fun beforeDismiss(action: () -> Unit) {
+        if (cancelled) return
+        cancelled = true
         suppressBlur = true
         action()
     }
@@ -24,11 +33,11 @@ internal class LuiTextBlurLifecycle {
         val gained = !focused && next
         val lost = focused && !next
         focused = next
-        if (gained) suppressBlur = false
+        if (gained) edited()
         else if (lost) {
             val suppressed = suppressBlur
             suppressBlur = false
-            if (enabled && submitOnBlur && !composing && !suppressed) submit()
+            if (enabled && submitOnBlur && !composing && !suppressed && !cancelled) submit()
         }
     }
 }
