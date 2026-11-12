@@ -745,5 +745,10 @@ text inside the Headless parent viewport. The corresponding AppKit replacement
 case remains required. See
 [source replacement evidence](review-probes/2026-11-13/parent-source-factory-replacement.md).
 Later published revisions require their own terminal OS workflow results.
+The same eight desktop jobs subsequently passed at the actual Logseq dependency
+pin `b73fc438e44c58209b8729470bb6c9d3e0989dad`:
+[NSH desktop 43299339007](https://github.com/logseq/lui/actions/runs/43299339007).
+Its ordinary CI also passed. The later test-only replacement revision
+`2ea42512` has separate workflows still in progress at this observation.
 Actual Logseq portable PDF, production install/restart/signing and full frozen
 master UX acceptance remain incomplete; the migration goal stays active.
