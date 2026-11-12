@@ -823,6 +823,144 @@ pub(crate) fn compile(
     Ok(Style::from_decls(decls).then(&paint))
 }
 
+/// An authored command frame replaces only the provider's minimum. An explicit
+/// minimum remains authoritative, and auto/relative heights keep native defaults.
+pub(crate) fn authored_control_minimum(node: &Node, compiled: &Style) -> Style {
+    if node.props.contains_key("min-height")
+        || node.props.contains_key("min-height-viewport")
+        || matches!(
+            node.string("container-relative-frame"),
+            "min-vertical" | "min-both"
+        )
+    {
+        return compiled.clone();
+    }
+    let height = compiled.decls().iter().rev().find_map(|decl| match decl {
+        StyleDecl::Set(StyleKey::Height, PropertyValue::Dimension(value)) => value.into_option(),
+        _ => None,
+    });
+    match height {
+        Some(height) => compiled.clone().with(
+            StyleKey::MinHeight,
+            StyleKey::MinHeight
+                .parse_value(StyleValue::Number(height))
+                .expect("absolute authored height is a valid minimum"),
+        ),
+        None => compiled.clone(),
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub(crate) struct SwitchStyles {
+    pub host: Style,
+    pub track: Style,
+    pub thumb: Style,
+    pub travel: Points,
+}
+
+/// Keep parent-facing layout on the retained native Switch. Its public track
+/// owns the authored surface; its public thumb uses that track's inner extent.
+pub(crate) fn switch_styles(
+    node: &Node,
+    theme: &ThemeView,
+    compiled: &Style,
+) -> Result<SwitchStyles, String> {
+    let surface = |name: &str| {
+        pinned_surface_property(name)
+            && name != "opacity"
+            && !name.ends_with("-opacity")
+            && name != "foreground"
+            && !name.ends_with("-foreground")
+    };
+    let mut host_node = node.clone();
+    host_node.props.retain(|name, _| !surface(name));
+    let (_, host_paint) = compile_parts(&host_node, theme, Size::default())?;
+    let host = Style::from_decls(
+        compiled
+            .decls()
+            .iter()
+            .filter(|decl| {
+                !matches!(
+                    decl,
+                    StyleDecl::Set(
+                        StyleKey::Padding
+                            | StyleKey::PaddingHorizontal
+                            | StyleKey::PaddingVertical
+                            | StyleKey::PaddingTop
+                            | StyleKey::PaddingRight
+                            | StyleKey::PaddingBottom
+                            | StyleKey::PaddingLeft
+                            | StyleKey::BorderWidth
+                            | StyleKey::BorderRadius,
+                        _
+                    )
+                )
+            })
+            .cloned(),
+    )
+    .then(&host_paint);
+    let host = authored_control_minimum(node, &host);
+    let mut resolved = nsh_core::Style::default();
+    for declaration in compiled.decls() {
+        declaration
+            .apply(&mut resolved)
+            .map_err(|error| format!("NSH switch layout: {error:?}"))?;
+    }
+    // Parent-relative and auto frames still lay out the root; they do not
+    // redefine the intrinsic track. Absolute frames provide exact part sizes.
+    let width = resolved.layout.size.width.into_option().unwrap_or(36.0);
+    let height = resolved.layout.size.height.into_option().unwrap_or(20.0);
+    let mut track_node = node.clone();
+    track_node.kind = "box".into();
+    track_node.props.retain(|name, _| surface(name));
+    track_node.props.insert("width".into(), Value::from(width));
+    track_node
+        .props
+        .insert("height".into(), Value::from(height));
+    track_node
+        .props
+        .entry("padding".into())
+        .or_insert(Value::from(2));
+    let track = compile(&track_node, theme, Size::default())?;
+    let mut layout = nsh_core::Style::default();
+    for declaration in track.decls() {
+        declaration
+            .apply(&mut layout)
+            .map_err(|error| format!("NSH switch track: {error:?}"))?;
+    }
+    let padding = layout.layout.padding;
+    let border = layout.layout.border;
+    let inset = |padding: f32, border: f32| padding + border;
+    let top = inset(
+        padding.top.into_raw().value(),
+        border.top.into_raw().value(),
+    );
+    let bottom = inset(
+        padding.bottom.into_raw().value(),
+        border.bottom.into_raw().value(),
+    );
+    let left = inset(
+        padding.left.into_raw().value(),
+        border.left.into_raw().value(),
+    );
+    let right = inset(
+        padding.right.into_raw().value(),
+        border.right.into_raw().value(),
+    );
+    let extent = (height - top - bottom).max(0.0);
+    let foreground = match Paint::read(node, "", theme)?.foreground {
+        Some(Foreground::Color(color)) => color,
+        Some(Foreground::Inherit) | None => theme.color("background")?,
+    };
+    let thumb = Style::from(StyleRefinement::default().size(px(extent)).bg(foreground));
+    Ok(SwitchStyles {
+        host,
+        track,
+        thumb,
+        travel: px((width - left - right - extent).max(0.0)),
+    })
+}
+
 pub(crate) fn is_contents(node: &Node) -> bool {
     node.extension.is_none()
         && node
@@ -1554,6 +1692,30 @@ mod tests {
                 .is_empty()
         );
     }
+    #[test]
+    fn switch_motion_endpoints_follow_authored_track_insets() {
+        for (props, expected_travel) in [
+            (json!({}), 16.0),
+            (
+                json!({"width":32,"height":18,"padding":3,"border-width":0}),
+                14.0,
+            ),
+            (
+                json!({"width":44,"height":24,"padding":2,"border-width":1}),
+                20.0,
+            ),
+            (
+                json!({"width":30,"height":20,"padding-left":4,"padding-right":2,"padding-top":3,"padding-bottom":1}),
+                8.0,
+            ),
+        ] {
+            let source = node("switch", props);
+            let compiled = compile(&source, &theme(), viewport()).unwrap();
+            let parts = switch_styles(&source, &theme(), &compiled).unwrap();
+            assert_eq!(parts.travel, px(expected_travel));
+        }
+    }
+
     fn compile_props(props: Value) -> Result<Style, String> {
         compile(&node("box", props), &theme(), viewport())
     }

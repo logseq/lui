@@ -5508,3 +5508,27 @@ For example, a diagnostic reader that previously accepted only an untruncated
 root-reaching chain needs no change to its acceptance predicate; it can now
 inspect deeper chains and distinguish a cycle from depth exhaustion. Windows,
 Linux, screenshots and rendering semantics are unchanged.
+
+
+## NSH compact command and Switch presentation
+
+An absolute authored button height now replaces the NSH provider's implicit
+minimum height when `min-height` is omitted. For example, a button with
+`width=20`, `height=20` and `padding=0` renders a 20pt square instead of being
+clamped to 32pt. Explicit `min-height` still wins. Omitted, `auto` and
+parent-relative heights retain the existing provider minimum; applications
+that require a larger compact button should continue to author `min-height`.
+
+NSH Switch now projects authored background, border, radius and padding onto
+the existing public native track rather than painting a second outer surface.
+An absolute authored frame also sizes that track. Its thumb fills the track's
+inner height, and the checked translation equals the remaining inner width.
+For example, `width=32`, `height=18`, `padding=3` and `border-width=0` produce a
+32×18 track, a 12×12 thumb and 14pt checked travel. The outer native control
+retains placement, opacity, accessibility, focus, disabled behavior and the
+existing controlled `on_toggle` event. It no longer adds a rectangular hover
+wash behind the track. Auto/parent-relative frames retain the intrinsic
+36×20 track; an omitted frame retains the 32pt native minimum touch row.
+No Web, Apple/iOS or Android defaults change, and no downstream API changes
+are required. Existing applications that used Switch background/padding to
+decorate an entire labeled row should put that decoration on a containing row.

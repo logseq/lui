@@ -38,13 +38,18 @@ pub(super) fn choice<C: Component>(
 }
 
 pub fn switch(props: nsh_base::SwitchProps, theme: Theme) -> ComponentElement<nsh_base::Switch> {
-    choice(nsh_base::Switch::element(nsh_base::SwitchProps {
-        track_class: Some("w-9 p-0.5 rounded-full bg-muted transition-colors duration-180 checked:bg-primary motion-reduce:duration-0".into()).into(),
-        thumb_class: Some("size-4 rounded-full bg-background shadow-sm transition-transform duration-180 checked:translate-x-4 motion-reduce:duration-0".into()).into(),
-        track_style: Prop::bind(move || part(StyleRefinement::default().bg(color(theme,"muted")).checked(|s| s.bg(color(theme,"primary"))))),
-        thumb_style: Prop::bind(move || part(StyleRefinement::default().bg(color(theme,"background")))),
-        ..props
-    }), theme)
+    nsh_base::Switch::element(props)
+        .min_h_8()
+        .flex_row()
+        .items_center()
+        .gap_2()
+        .text_sm()
+        .text_color(move || color(theme, "foreground"))
+        .focus_visible(|s| {
+            s.outline(px(2.0))
+                .outline_color(move || color(theme, "ring"))
+        })
+        .disabled_style(|s| s.opacity(0.5))
 }
 
 pub fn radio(props: nsh_base::RadioProps, theme: Theme) -> ComponentElement<nsh_base::Radio> {

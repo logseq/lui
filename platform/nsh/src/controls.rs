@@ -624,8 +624,12 @@ pub(crate) fn element(
                 size: Prop::bind(move || node.get().string("size").to_owned().into()),
                 ..Default::default()
             };
-            presentation.component(
+            let authored = presentation.style.clone();
+            presentation.component_identity(
                 ui::controls::CommandButton::element(props)
+                    .state_inline_style(move || {
+                        style::authored_control_minimum(&node.get(), &authored())
+                    })
                     .on_event(move |_: &ui::controls::CommandButtonEvent| {
                         emit_flag(node, "press-enabled", &emit, Event::Press(id));
                     })
@@ -672,19 +676,44 @@ pub(crate) fn element(
             )
         }
         "switch" => {
+            let authored = presentation.style.clone();
+            let parts = computed(move || {
+                style::switch_styles(&node.get(), &theme.get(), &authored())
+                    .expect("atomically validated switch presentation")
+            });
             let props = nsh_base::SwitchProps {
                 checked: Prop::bind(move || node.get().boolean("checked", false)),
                 disabled: Prop::bind(move || !enabled(node)),
                 accessibility_label: Prop::bind(move || Some(label(node))),
+                track_class: Some("rounded-full transition-colors duration-180 motion-reduce:duration-0".into()).into(),
+                thumb_class: Some("rounded-full shadow-sm transition-transform duration-180 motion-reduce:duration-0".into()).into(),
+                track_style: Prop::bind(move || {
+                    let base = StyleRefinement::default().bg(ui::color(theme, "muted"));
+                    let base = if node.get().props.contains_key("background") {
+                        base
+                    } else {
+                        base.checked(|s| s.bg(ui::color(theme, "primary")))
+                    };
+                    Style::from(base).then(&parts.get().track)
+                }),
+                thumb_style: Prop::bind(move || {
+                    let parts = parts.get();
+                    parts.thumb.then(&Style::from(StyleRefinement::default()
+                        .checked(|s| s.translate_x(parts.travel))))
+                }),
                 ..Default::default()
             };
-            presentation.component(
+            presentation.component_identity(
                 ui::controls::switch(props, theme)
+                    .state_inline_style(move || parts.get().host)
                     .on_event(move |event: &nsh_base::SwitchEvent| {
                         let nsh_base::SwitchEvent::Change(checked) = event;
                         emit_flag(node, "toggle-enabled", &emit, Event::Toggle(id, *checked));
                     })
-                    .child(text(move || crate::white_space::text(node)))
+                    .child(when(
+                        move || !crate::white_space::text(node).is_empty(),
+                        move || text(move || crate::white_space::text(node)),
+                    ))
                     .child(children),
             )
         }
@@ -1082,7 +1111,7 @@ mod tests {
                     when(false, view).into_element()
                 };
                 let mut authored = presentation(1);
-                if node.get_untracked().kind == "button" {
+                if matches!(node.get_untracked().kind.as_str(), "button" | "switch") {
                     let theme = authored.theme;
                     authored.style = Rc::new(move || {
                         crate::style::compile(
@@ -1114,6 +1143,77 @@ mod tests {
         let mut app = Headless::start(config).unwrap();
         app.first_render().unwrap();
         (app, events)
+    }
+
+    #[test]
+    fn authored_compact_commands_replace_only_the_provider_minimum() {
+        for (properties, expected_height) in [
+            (json!({"width":20,"height":20,"padding":0}), 20.0),
+            (
+                json!({"width":20,"height":20,"min-height":28,"padding":0}),
+                28.0,
+            ),
+            (json!({"width":20,"height":"auto","padding":0}), 32.0),
+            (json!({"width":20,"padding":0}), 32.0),
+        ] {
+            let (app, _) = start("button", properties, false);
+            let nodes = app.screen().layout_nodes();
+            let button = nodes
+                .iter()
+                .find(|node| node.test_id.as_deref() == Some("control-1"))
+                .unwrap();
+            assert_eq!(button.bounds.size.width, px(20.0));
+            assert_eq!(button.bounds.size.height, px(expected_height));
+        }
+    }
+
+    #[test]
+    fn compact_native_switch_keeps_track_thumb_and_identity_inside_authored_frame() {
+        let (mut app, seen) = start(
+            "switch",
+            json!({
+                "width":32,"height":18,"padding":3,"border-width":0,"corner-radius":9,
+                "background":"#777777","foreground":"#ffffff",
+                "checked":false,"toggle-enabled":true,"accessibility-label":"Compact"
+            }),
+            true,
+        );
+        let layout = |app: &Headless| {
+            let nodes = app.screen().layout_nodes();
+            let root = nodes
+                .iter()
+                .find(|node| node.test_id.as_deref() == Some("control-1"))
+                .unwrap()
+                .clone();
+            let track = nodes
+                .iter()
+                .find(|node| node.parent == root.id && node.bounds.size.width == px(32.0))
+                .unwrap()
+                .clone();
+            let thumb = nodes
+                .iter()
+                .find(|node| node.parent == track.id)
+                .unwrap()
+                .clone();
+            (root, track, thumb)
+        };
+        let (root, track, thumb) = layout(&app);
+        assert_eq!(root.bounds.size.width, px(32.0));
+        assert_eq!(root.bounds.size.height, px(18.0));
+        assert_eq!(track.bounds, root.bounds);
+        assert_eq!(thumb.bounds.size.width, px(12.0));
+        assert_eq!(thumb.bounds.size.height, px(12.0));
+        assert_eq!(thumb.bounds.origin.x - track.bounds.origin.x, px(3.0));
+        assert_eq!(thumb.bounds.origin.y - track.bounds.origin.y, px(3.0));
+        app.press("role:switch[Compact]").unwrap();
+        let (next_root, next_track, next_thumb) = layout(&app);
+        assert_eq!(
+            (next_root.id, next_track.id, next_thumb.id),
+            (root.id, track.id, thumb.id)
+        );
+        assert_eq!(next_track.bounds, track.bounds);
+        assert_eq!(next_thumb.bounds.size, thumb.bounds.size);
+        assert_eq!(*seen.lock().unwrap(), [Event::Toggle(1, true)]);
     }
 
     #[test]
