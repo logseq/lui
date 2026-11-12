@@ -129,57 +129,48 @@ class LuiTextCompletionRenderTest {
 
     @Test fun `canceled native draft survives model patches and removal until genuine editing or fresh focus`() {
         val events = mutableListOf<LuiEvent>()
-        val checkpoints = mutableListOf<String>()
-        var clearFocus: () -> Unit = {}
-        var inspectFocus: () -> String = { "unmounted" }
-        var phase = "mount"
-        fun note(label: String) {
-            val checkpoint = "$phase: $label ${inspectFocus()}"
-            checkpoints += checkpoint
-            println("text-cancel-proof $checkpoint")
-        }
+        var moveFocus: () -> Unit = {}
         var blurOnDismiss = false
         val backend = LuiBackend(onEvent = {
             events += it
-            note("callback $it")
-            if (blurOnDismiss && it is LuiEvent.Dismiss) {
-                note("before clearFocus")
-                clearFocus()
-                note("after clearFocus")
-            }
+            if (blurOnDismiss && it is LuiEvent.Dismiss) moveFocus()
         })
         assertTrue(backend.applyBatch("""{"generation":1,"ops":[
+            {"op":"create-node","id":10,"kind":"column"},
             {"op":"create-node","id":1,"kind":"text-field"},
+            {"op":"set-prop","id":1,"property":"accessibility-identifier","value":"cancel-primary"},
             {"op":"set-prop","id":1,"property":"text","value":"draft"},
             {"op":"set-prop","id":1,"property":"dismiss-enabled","value":true},
             {"op":"set-prop","id":1,"property":"submit-enabled","value":true},
-            {"op":"set-prop","id":1,"property":"submit-on-blur","value":true}
+            {"op":"set-prop","id":1,"property":"submit-on-blur","value":true},
+            {"op":"create-node","id":2,"kind":"text-field"},
+            {"op":"set-prop","id":2,"property":"accessibility-identifier","value":"cancel-secondary"},
+            {"op":"set-prop","id":2,"property":"text","value":"Secondary"},
+            {"op":"insert-child","parent":10,"child":1,"index":0},
+            {"op":"insert-child","parent":10,"child":2,"index":1}
         ]}"""))
         var checked = false
         val view = ComposeView(paparazzi.context).apply { setContent {
             val native = LocalView.current
-            val manager = LocalFocusManager.current
-            clearFocus = { manager.clearFocus(force = true) }
-            LuiTheme { Box { backend.Content(1) } }
+            LuiTheme { Box { backend.Content(10) } }
             LaunchedEffect(Unit) {
                 suspend fun settle() { repeat(3) { withFrameNanos {} } }
                 fun nodes(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::nodes)
-                fun field(): SemanticsNode {
+                fun field(identifier: String = "cancel-primary"): SemanticsNode {
                     val owner = native.javaClass.methods.first { it.name == "getSemanticsOwner" }.invoke(native) as SemanticsOwner
-                    return nodes(owner.unmergedRootSemanticsNode).first {
+                    val tagged = nodes(owner.unmergedRootSemanticsNode).first {
+                        it.config.getOrNull(SemanticsProperties.TestTag) == identifier
+                    }
+                    return nodes(tagged).first {
                         it.config.getOrNull(SemanticsProperties.EditableText) != null
                     }
                 }
-                inspectFocus = {
-                    "field=${field().config[SemanticsProperties.Focused]}, " +
-                        "native=${native.isFocused}, window=${native.hasWindowFocus()}"
+                moveFocus = {
+                    assertTrue(field("cancel-secondary").config[SemanticsActions.RequestFocus].action!!.invoke())
                 }
                 fun key(code: Int) {
-                    note("before keyDown $code")
                     native.dispatchKeyEvent(controlKey(android.view.KeyEvent.ACTION_DOWN, code))
-                    note("after keyDown $code")
                     native.dispatchKeyEvent(controlKey(android.view.KeyEvent.ACTION_UP, code))
-                    note("after keyUp $code")
                 }
                 settle()
                 assertTrue(field().config[SemanticsActions.RequestFocus].action!!.invoke())
@@ -210,20 +201,30 @@ class LuiTextCompletionRenderTest {
                 assertTrue(field().config[SemanticsActions.SetText].action!!.invoke(AnnotatedString("edited")))
                 settle()
                 assertEquals(listOf(LuiEvent.TextChanged(1, "edited")), events)
-                events.clear(); blurOnDismiss = true; phase = "cancel after native edit"
+                val editorInfo = android.view.inputmethod.EditorInfo()
+                val oldConnection = requireNotNull(native.onCreateInputConnection(editorInfo)) {
+                    "the focused primary field must provide its real native input connection"
+                }
+                assertEquals(android.view.inputmethod.EditorInfo.IME_ACTION_DONE,
+                    editorInfo.imeOptions and android.view.inputmethod.EditorInfo.IME_MASK_ACTION)
+                events.clear(); blurOnDismiss = true
                 key(android.view.KeyEvent.KEYCODE_ESCAPE); settle()
-                note("after settled cancellation")
                 assertEquals("a genuine edit rearms cancellation before its synchronous blur", listOf(LuiEvent.Dismiss(1)), events)
-                assertEquals("cancellation really loses native focus: ${checkpoints.joinToString(" | ")}", false,
+                assertEquals("cancellation transfers native focus away from the primary", false,
                     field().config[SemanticsProperties.Focused])
+                assertEquals("the ordinary secondary input really receives focus", true,
+                    field("cancel-secondary").config[SemanticsProperties.Focused])
                 events.clear()
-                assertTrue(field().config[SemanticsActions.OnImeAction].action!!.invoke())
+                // A retained IME connection may already be closed by native
+                // session retirement. Neither its late callback nor rejection
+                // may save the canceled primary or reacquire its focus.
+                oldConnection.performEditorAction(android.view.inputmethod.EditorInfo.IME_ACTION_DONE)
                 settle()
-                assertTrue("late IME acceptance after canceled blur cannot save: events=$events, " +
-                    "focused=${field().config[SemanticsProperties.Focused]}, " +
-                    "text=${field().config[SemanticsProperties.EditableText].text}", events.isEmpty())
+                assertTrue("late native input-connection acceptance after canceled blur cannot save: $events", events.isEmpty())
+                assertEquals(false, field().config[SemanticsProperties.Focused])
+                assertEquals(true, field("cancel-secondary").config[SemanticsProperties.Focused])
                 assertTrue(field().config[SemanticsActions.RequestFocus].action!!.invoke())
-                settle(); clearFocus(); settle()
+                settle(); moveFocus(); settle()
                 assertEquals("fresh focus starts a new submittable interval", listOf(LuiEvent.Submit(1)), events)
                 checked = true
             }
