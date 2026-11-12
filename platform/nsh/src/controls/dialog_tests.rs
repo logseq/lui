@@ -7,6 +7,10 @@ use nsh_core::prelude::*;
 use nsh_engine::{EngineConfig, Root};
 use nsh_testing::{Headless, LayoutNode};
 use serde_json::{Value, json};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 fn publish(renderer: &Renderer, generation: Signal<u64>, ops: Value) {
     let next = generation.get_untracked() + 1;
@@ -93,16 +97,15 @@ fn input(app: &Headless) -> LayoutNode {
         .find(|node| node.test_id.as_deref() == Some("lui-2"))
         .expect("retained authored input")
 }
-fn panel_height(app: &Headless) -> f32 {
+fn panel(app: &Headless) -> LayoutNode {
     app.screen()
         .layout_nodes()
         .into_iter()
         .find(|node| node.test_id.is_none() && (node.bounds.size.width.0 - 400.).abs() < 0.01)
         .expect("native dialog panel with authored width")
-        .bounds
-        .size
-        .height
-        .0
+}
+fn panel_height(app: &Headless) -> f32 {
+    panel(app).bounds.size.height.0
 }
 fn text_height(app: &Headless, value: &str) -> f32 {
     app.screen()
@@ -138,10 +141,32 @@ fn absent_live_dialog_headers_reserve_no_gap_and_retain_authored_editor() {
     config.environment.idiom = nsh_core::platform::Idiom::Desktop;
     config.environment.reduce_motion = true;
     let mut app = Headless::start(config).unwrap();
+    let styles = Arc::new(Mutex::new(HashMap::new()));
+    let observed = styles.clone();
+    app.observe(move |_, batch| {
+        for item in &batch.items {
+            if let nsh_core::MountItem::ViewStyle { id, style } = item {
+                observed.lock().unwrap().insert(*id, *style);
+            }
+        }
+    });
     app.wait_for("id:lui-2").unwrap();
     let initial = input(&app);
-    let empty_height = panel_height(&app);
-    near(empty_height, initial.bounds.size.height.0);
+    let empty_panel = panel(&app);
+    let empty_height = empty_panel.bounds.size.height.0;
+    let borders = styles.lock().unwrap()[&empty_panel.id].borders.widths;
+    // Padding is authored as zero. Derive both border insets from the actual
+    // native mount style, so a reserved empty header/gap cannot hide in them.
+    near(
+        empty_height,
+        initial.bounds.size.height.0 + borders.top.0 + borders.bottom.0,
+    );
+    let top_inset = initial.bounds.origin.y.0 - empty_panel.bounds.origin.y.0;
+    let bottom_inset = empty_panel.bounds.origin.y.0 + empty_height
+        - initial.bounds.origin.y.0
+        - initial.bounds.size.height.0;
+    assert!((top_inset - borders.top.0).abs() < 0.01);
+    assert!((bottom_inset - borders.bottom.0).abs() < 0.01);
     app.type_text("id:lui-2", " retained").unwrap();
     let draft = app
         .screen()
