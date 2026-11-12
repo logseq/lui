@@ -1186,20 +1186,22 @@ mod tests {
 
     #[test]
     fn authored_command_height_can_still_shrink_in_a_constrained_parent() {
-        let (app, _) = start_in_parent(
-            "button",
-            json!({
-                "width":20,"height":20,"padding":0
-            }),
-            false,
-            Some(10.0),
-        );
-        let nodes = app.screen().layout_nodes();
-        let button = nodes
-            .iter()
-            .find(|node| node.test_id.as_deref() == Some("control-1"))
-            .unwrap();
-        assert_eq!(button.bounds.size.height, px(10.0));
+        for (properties, expected_height) in [
+            (json!({"width":20,"height":20,"padding":0}), 20.0),
+            (json!({"width":20,"height":20,"padding":0,"shrink":1}), 10.0),
+            (
+                json!({"width":20,"height":20,"padding":0,"shrink":1,"min-height":15}),
+                15.0,
+            ),
+        ] {
+            let (app, _) = start_in_parent("button", properties, false, Some(10.0));
+            let nodes = app.screen().layout_nodes();
+            let button = nodes
+                .iter()
+                .find(|node| node.test_id.as_deref() == Some("control-1"))
+                .unwrap();
+            assert_eq!(button.bounds.size.height, px(expected_height));
+        }
     }
 
     #[test]

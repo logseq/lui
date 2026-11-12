@@ -5515,9 +5515,11 @@ Linux, screenshots and rendering semantics are unchanged.
 An absolute authored button height now clears the NSH provider's implicit
 minimum height when `min-height` is omitted. For example, a button with
 `width=20`, `height=20` and `padding=0` renders a 20pt square instead of being
-clamped to 32pt. Its explicit height remains a shrinkable dimension in a
-constrained flex parent; it does not become a new minimum. Explicit `min-height`
-still wins. Omitted, `auto` and
+clamped to 32pt. The height remains a dimension rather than becoming a new
+minimum: with canonical `shrink=1`, it can shrink in a constrained flex parent.
+NSH's existing default `shrink=0` remains unchanged. Explicit `min-height`
+still wins. Attached native context-menu triggers use the same minimum rule
+on their outer layout owner, preserving parity with an unattached button. Omitted, `auto` and
 parent-relative heights retain the existing provider minimum; applications
 that require a larger compact button should continue to author `min-height`.
 

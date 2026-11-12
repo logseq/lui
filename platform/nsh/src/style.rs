@@ -611,6 +611,11 @@ pub(crate) fn context_menu_styles(
             .filter(|declaration| external(declaration))
             .cloned(),
     );
+    let outer = if node.kind == "button" {
+        authored_control_minimum(node, &outer)
+    } else {
+        outer
+    };
     let trigger = Style::from_decls(
         CONTEXT_LAYOUT
             .iter()
