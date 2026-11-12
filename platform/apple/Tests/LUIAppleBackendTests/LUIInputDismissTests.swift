@@ -193,7 +193,9 @@ struct LUIInputDismissTests {
         root.addSubview(group)
         root.addSubview(other)
         window.contentView = root
-        window.makeKeyAndOrderFront(nil)
+        // Exercise the owned field editor without taking the user's key window.
+        window.orderBack(nil)
+        #expect(!window.isKeyWindow)
         defer { probe.disconnect(); window.orderOut(nil); window.contentView = nil }
         #expect(window.makeFirstResponder(field))
         probe.refresh()
