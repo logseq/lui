@@ -979,30 +979,27 @@ pub(crate) fn element(
             .unwrap_or(1)
             .clamp(1, u32::MAX as u64) as u32
     });
-    let native_owner = (!parent_viewport)
-        .then(|| untracked(|| (callbacks.scroll_owner)()))
-        .flatten();
     let observing = rows.clone();
-    let ending = rows.clone();
-    let interrupting = rows;
-    list.on_viewable_items_change(move |event: &ViewableItems| {
+    let list = list.on_viewable_items_change(move |event: &ViewableItems| {
         observing.0.borrow_mut().visible = event.viewable;
         observing.schedule();
-    })
-    .on_scroll_end(move |_: &Point<Points>| {
-        if !parent_viewport {
-            ending.scroll_ended();
-            if let Some(owner) = native_owner {
-                owner.ended();
-            }
+    });
+    if parent_viewport {
+        return list;
+    }
+    let native_owner = untracked(|| (callbacks.scroll_owner)());
+    let ending = rows.clone();
+    let interrupting = rows;
+    list.on_scroll_end(move |_: &Point<Points>| {
+        ending.scroll_ended();
+        if let Some(owner) = native_owner {
+            owner.ended();
         }
     })
     .on_scroll_drag_start(move |_: &Point<Points>| {
-        if !parent_viewport {
-            interrupting.scroll_dragged();
-            if let Some(owner) = native_owner {
-                owner.dragged();
-            }
+        interrupting.scroll_dragged();
+        if let Some(owner) = native_owner {
+            owner.dragged();
         }
     })
 }
