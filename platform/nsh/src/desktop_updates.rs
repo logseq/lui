@@ -462,10 +462,15 @@ impl Actions {
                 if !self.owner.is_live() {
                     return;
                 }
-                self.phase.set(Phase::Idle);
                 if let Err(error) = result {
+                    // An operational error is still this owner's active prompt.
+                    // Do not rearm Check or expose a stale download cancel action.
+                    self.phase.set(Phase::Prompt);
                     let labels = self.labels.borrow().clone();
                     show_error(error, &labels).await;
+                }
+                if self.owner.is_live() {
+                    self.phase.set(Phase::Idle);
                 }
             });
         });
@@ -1040,6 +1045,127 @@ mod tests {
         wait_status(&mut app, "Idle cached=true");
         assert_no_install(&app);
         assert_eq!(hook.counts(), (1, 0, 0));
+    }
+
+    #[test]
+    fn ready_operational_error_keeps_public_check_busy_until_its_sheet_closes() {
+        let hook = HookFixture::new(Preparation::Ready);
+        let mut app = start_with_hook(false, true, Some(hook.clone()));
+        confirm_install(&mut app);
+        wait_dialog(&mut app);
+        wait_status(&mut app, "Prompt cached=false");
+        wait_status(&mut app, "busy=true checks=[]");
+        let dialogs = app.screen().dialogs().len();
+        app.press("text:Public check").unwrap();
+        wait_status(&mut app, "busy=true checks=[false, false]");
+        assert_eq!(
+            app.screen().dialogs().len(),
+            dialogs,
+            "no duplicate error/check sheet is queued"
+        );
+        assert_eq!(hook.counts(), (1, 1, 0));
+        assert!(
+            app.screen()
+                .texts()
+                .iter()
+                .any(|text| { text.contains("operations=[\"check\", \"download\", \"install\"]") })
+        );
+        app.answer_dialog(DialogAnswer::Press("OK".into())).unwrap();
+        wait_status(&mut app, "Idle cached=false");
+        wait_status(&mut app, "busy=false checks=[false, false]");
+        app.press("text:Public check").unwrap();
+        wait_dialog(&mut app);
+        wait_status(&mut app, "busy=true checks=[true, false]");
+        assert!(
+            app.pending_dialog()
+                .unwrap()
+                .buttons
+                .iter()
+                .any(|button| button.text == "Download")
+        );
+        assert!(app.screen().texts().iter().any(|text| {
+            text.contains("operations=[\"check\", \"download\", \"install\", \"check\"]")
+        }));
+        app.answer_dialog(DialogAnswer::Press("Later".into()))
+            .unwrap();
+        wait_status(&mut app, "Idle cached=false");
+        assert_eq!(hook.counts(), (1, 1, 0));
+        assert!(!restarted(&app));
+    }
+
+    #[component]
+    fn RetiringErrorPrompt() -> impl IntoElement {
+        let (updater, operations) =
+            crate::update::tests::menu_fixture(false, Some(ErrorCode::Verification));
+        let (owner, updates) =
+            create_root(|| UpdateActions::new(updater, Rc::new(StandaloneLifecycle)));
+        let State::Ready(actions) = &*updates.0 else {
+            unreachable!()
+        };
+        let actions = actions.clone();
+        let selected = actions.clone();
+        let observed = updates.clone();
+        let checks = signal(Vec::<bool>::new());
+        cleanup(move || owner.dispose());
+        view()
+            .child(
+                button()
+                    .on_press(move || selected.clone().start())
+                    .child(text("Run update")),
+            )
+            .child(
+                button()
+                    .on_press(move || owner.dispose())
+                    .child(text("Retire updater")),
+            )
+            .child(
+                button()
+                    .on_press(move || {
+                        checks.set(vec![
+                            updates.check_for_updates(UpdateLabels::default()).unwrap(),
+                        ]);
+                    })
+                    .child(text("Check retired updater")),
+            )
+            .child(text(move || {
+                let phase = if owner.is_live() {
+                    format!("{:?}", actions.phase.get())
+                } else {
+                    "retired".into()
+                };
+                format!(
+                    "phase={phase} busy={} checks={:?} operations={:?}",
+                    observed.is_busy(),
+                    checks.get(),
+                    operations.lock().unwrap()
+                )
+            }))
+    }
+
+    #[test]
+    fn retiring_a_ready_error_owner_prevents_late_dismissal_from_rearming_it() {
+        let mut app =
+            Headless::start(EngineConfig::new(Root::of::<RetiringErrorPrompt>())).unwrap();
+        app.answer_dialogs_myself();
+        app.wait_for("text:phase=Idle busy=false").unwrap();
+        download(&mut app);
+        app.answer_dialog(DialogAnswer::Press("Install and Restart".into()))
+            .unwrap();
+        wait_dialog(&mut app);
+        wait_status(&mut app, "phase=Prompt busy=true");
+        app.press("text:Retire updater").unwrap();
+        wait_status(&mut app, "phase=retired busy=false");
+        app.answer_dialog(DialogAnswer::Press("OK".into())).unwrap();
+        app.press("text:Check retired updater").unwrap();
+        wait_status(&mut app, "phase=retired busy=false checks=[false]");
+        assert!(app.pending_dialog().is_none());
+        assert!(
+            app.screen()
+                .texts()
+                .iter()
+                .any(|text| { text.contains("operations=[\"check\", \"download\", \"install\"]") })
+        );
+        assert!(!restarted(&app));
     }
 
     #[test]

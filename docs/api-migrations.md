@@ -1,5 +1,23 @@
 # LUI API migration guide
 
+## Desktop updater errors keep their existing owner busy until dismissal
+
+A configured `UpdateActions` owner now remains busy while its check, download,
+preparation, installation or relaunch error dialog is open. Previously its
+phase returned to Idle before awaiting that dialog, so a Settings/public Check
+or menu request could start another check and queue another sheet. The existing
+Prompt phase now covers this operational-error lifetime; stale check/download
+Cancel actions are not exposed while an error awaits acknowledgement.
+
+`is_busy()` remains true and `check_for_updates(labels)` returns `Ok(false)`
+until the error dialog settles. Applications already disabling their Check
+control with `is_busy()` need no migration. Afterwards a live owner returns to
+Idle and accepts a fresh Check; an owner retired during the dialog is never
+read or rearmed. The error text, installation/recovery policy, retained download
+rules, scoped owner and platform dialog remain unchanged. This reuses the one
+existing updater; no timer, state registry, worker or public constructor is added.
+
+
 ## Application controls share the existing desktop update check
 
 `UpdateActions::check_for_updates(labels)` is a Rust entry for an application's
