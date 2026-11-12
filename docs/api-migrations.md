@@ -5608,7 +5608,9 @@ removing an installed flag takes effect without replacing the native input.
 
 Apple text controls retain their native editors when `on_dismiss` is added or
 removed. On macOS 14+, an opt-in focused editor intercepts unmodified Escape
-before native cancellation, provided it has no marked text. The local monitor is
+before native cancellation, provided it has no marked text. Key repeats do not
+dismiss, and repeated cancellation in one unchanged editing interval emits only
+one Dismiss. A new user edit or focus interval allows cancellation again. The local monitor is
 removed on blur, handler removal, disabling and disposal; other editors and key
 combinations retain native handling. On iOS 17+, the scoped SwiftUI key handler
 checks the actual retained `UITextField`/`UITextView`, including the system search
@@ -5621,6 +5623,7 @@ when absent. For example, an input with `~submit_on_blur:true ~on_submit:save`
 submits when its native editing session ends; an ordinary input without that
 property does not. Explicit Enter submission suppresses a duplicate submission
 on the ensuing blur. New editing or a new focus interval permits another submit.
+An editing-end notification that still has marked text does not submit.
 An admitted `on_dismiss` suppresses that interval's blur submission, including
 when the callback synchronously removes the input or its container. Removing the
 dismissal handler after cancellation does not undo that suppression. No existing

@@ -73,6 +73,7 @@ struct LUIInputDismissTests {
             if event == .dismiss(node: 1) { session.focusEnded() }
         }
         #expect(session.cancel(composing: false))
+        #expect(!session.cancel(composing: false))
         #expect(events == [.dismiss(node: 1)])
         session.focusBegan()
         session.focusEnded()
@@ -149,6 +150,26 @@ struct LUIInputDismissTests {
         #expect(events.isEmpty)
     }
 
+    @Test("composing blur does not save and a new edit permits another cancellation")
+    func compositionAndNewEdit() throws {
+        let backend = try input()
+        let session = LUIInputDismissSession()
+        session.configure(model: try #require(backend.model(id: 1)), backend: backend)
+        var events: [LUIEvent] = []
+        backend.onEvent = { events.append($0) }
+        session.focusBegan()
+        session.focusEnded(composing: true)
+        #expect(events.isEmpty)
+        session.focusBegan()
+        session.submit()
+        #expect(session.cancel(composing: false))
+        #expect(!session.cancel(composing: false))
+        session.textEdited()
+        #expect(session.cancel(composing: false))
+        session.focusEnded()
+        #expect(events == [.submit(node: 1), .dismiss(node: 1), .dismiss(node: 1)])
+    }
+
     #if os(macOS)
     @Test("native Escape belongs only to the focused retained editor and ignores marked text")
     func nativeEditorOwnership() throws {
@@ -186,7 +207,13 @@ struct LUIInputDismissTests {
         #expect(!probe.handle(event))
         #expect(events.isEmpty)
         editor.unmarkText()
+        let repeated = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero,
+            modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+            context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}",
+            isARepeat: true, keyCode: 53))
+        #expect(!probe.handle(repeated))
         #expect(probe.handle(event))
+        #expect(!probe.handle(event))
         #expect(events == [.dismiss(node: 1)])
         #expect(window.makeFirstResponder(other))
         #expect(!probe.monitorsEscape)

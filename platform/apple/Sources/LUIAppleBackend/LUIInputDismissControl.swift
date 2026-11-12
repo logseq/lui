@@ -5,6 +5,35 @@ import AppKit
 import UIKit
 #endif
 
+// A probe may climb only through the input's small native wrapper hierarchy.
+// An ambiguous or oversized container is never searched as if it owned a field.
+enum LUIInputEditorSearch<NativeView> {
+    case empty
+    case one(NativeView)
+    case ambiguous
+    case exhausted
+
+    static func find(in root: NativeView, remaining: inout Int,
+                     isEditor: (NativeView) -> Bool,
+                     children: (NativeView) -> [NativeView]) -> Self {
+        var pending = [root]
+        var found: NativeView?
+        while let view = pending.popLast() {
+            guard remaining > 0 else { return .exhausted }
+            remaining -= 1
+            if isEditor(view) {
+                if case .some = found { return .ambiguous }
+                found = view
+            } else {
+                let descendants = children(view)
+                guard descendants.count <= remaining - pending.count else { return .exhausted }
+                pending.append(contentsOf: descendants)
+            }
+        }
+        return found.map(Self.one) ?? .empty
+    }
+}
+
 // State belongs to the retained input, not the surrounding dialog. Cancellation
 // can synchronously remove that dialog and cause a blur before the event returns.
 @MainActor
@@ -12,12 +41,14 @@ final class LUIInputDismissSession {
     private weak var backend: LUIAppleBackend?
     private var model: LUINodeModel?
     private var suppressBlurSubmit = false
+    private var cancellationSent = false
     private var editing = false
     var requestCancel: (() -> Bool)?
 
     func configure(model: LUINodeModel, backend: LUIAppleBackend) {
         if self.model !== model || self.backend !== backend {
             suppressBlurSubmit = false
+            cancellationSent = false
             editing = false
         }
         self.model = model
@@ -35,8 +66,8 @@ final class LUIInputDismissSession {
         dismissEnabled || currentModel?.property(.submitOnBlur)?.boolValue == true
     }
 
-    func focusBegan() { editing = true; suppressBlurSubmit = false }
-    func textEdited() { suppressBlurSubmit = false }
+    func focusBegan() { editing = true; textEdited() }
+    func textEdited() { suppressBlurSubmit = false; cancellationSent = false }
 
     func submit() {
         guard let model = currentModel, let backend else { return }
@@ -46,23 +77,26 @@ final class LUIInputDismissSession {
 
     @discardableResult
     func cancel(composing: Bool) -> Bool {
-        guard !composing, dismissEnabled, let model = currentModel, let backend else { return false }
+        guard !composing, !cancellationSent, dismissEnabled,
+              let model = currentModel, let backend else { return false }
         suppressBlurSubmit = true
+        cancellationSent = true
         do {
             try backend.performDismiss(node: model.id)
             return true
         } catch {
             suppressBlurSubmit = false
+            cancellationSent = false
             return false
         }
     }
 
-    func focusEnded() {
+    func focusEnded(composing: Bool = false) {
         guard editing else { return }
         editing = false
         let suppressed = suppressBlurSubmit
         suppressBlurSubmit = false
-        guard !suppressed, let model = currentModel,
+        guard !composing, !suppressed, let model = currentModel,
               model.property(.submitOnBlur)?.boolValue == true else { return }
         try? backend?.performSubmit(node: model.id)
     }
@@ -122,15 +156,17 @@ final class LUIInputDismissProbeView: NSView {
 
     private func connect() {
         guard window != nil, session?.observesEditing == true else { disconnect(); return }
-        func editors(in view: NSView) -> [NSView] {
-            if view is NSTextField || view is NSTextView { return [view] }
-            return view.subviews.flatMap { editors(in: $0) }
-        }
+        var remaining = 128
         var ancestor = superview
         for _ in 0..<6 {
             guard let current = ancestor else { break }
-            let candidates = editors(in: current)
-            if candidates.count == 1, let target = candidates.first {
+            let result = LUIInputEditorSearch.find(in: current, remaining: &remaining,
+                isEditor: { $0 is NSTextField || $0 is NSTextView }, children: { $0.subviews })
+            switch result {
+            case .ambiguous, .exhausted:
+                disconnect()
+                return
+            case let .one(target):
                 if control !== target {
                     disconnect()
                     control = target
@@ -148,7 +184,9 @@ final class LUIInputDismissProbeView: NSView {
                 }
                 updateMonitor()
                 return
+            case .empty: break
             }
+            if current === window?.contentView { break }
             ancestor = current.superview
         }
         disconnect()
@@ -166,7 +204,10 @@ final class LUIInputDismissProbeView: NSView {
     }
     @objc private func ended(_ notification: Notification) {
         removeMonitor()
-        session?.focusEnded()
+        let editor = notification.userInfo?["NSFieldEditor"] as? NSTextView
+            ?? (control as? NSTextField)?.currentEditor() as? NSTextView
+            ?? control as? NSTextView
+        session?.focusEnded(composing: editor?.hasMarkedText() == true)
     }
 
     private func updateMonitor() {
@@ -181,7 +222,7 @@ final class LUIInputDismissProbeView: NSView {
 
     @discardableResult
     func handle(_ event: NSEvent) -> Bool {
-        guard event.type == .keyDown, event.keyCode == 53, event.window === window,
+        guard event.type == .keyDown, !event.isARepeat, event.keyCode == 53, event.window === window,
               event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
               let editor = focusedEditor else { return false }
         return session?.cancel(composing: editor.hasMarkedText()) == true
@@ -239,15 +280,20 @@ final class LUIInputDismissProbeView: UIView {
                 responder = current.next
             }
         } else {
-            func editors(in view: UIView) -> [UIView] {
-                if view is UITextField || view is UITextView { return [view] }
-                return view.subviews.flatMap { editors(in: $0) }
-            }
+            var remaining = 128
             var ancestor = superview
             for _ in 0..<6 {
                 guard let current = ancestor else { break }
-                let candidates = editors(in: current)
-                if candidates.count == 1, let target = candidates.first { attach(target); return }
+                let result = LUIInputEditorSearch.find(in: current, remaining: &remaining,
+                    isEditor: { $0 is UITextField || $0 is UITextView }, children: { $0.subviews })
+                switch result {
+                case .ambiguous, .exhausted:
+                    disconnect()
+                    return
+                case let .one(target): attach(target); return
+                case .empty: break
+                }
+                if current.next is UIViewController { break }
                 ancestor = current.superview
             }
         }
@@ -273,7 +319,9 @@ final class LUIInputDismissProbeView: UIView {
         return session?.cancel(composing: input.markedTextRange != nil) == true
     }
     @objc private func began(_ notification: Notification) { session?.focusBegan() }
-    @objc private func ended(_ notification: Notification) { session?.focusEnded() }
+    @objc private func ended(_ notification: Notification) {
+        session?.focusEnded(composing: (control as? any UITextInput)?.markedTextRange != nil)
+    }
     func disconnect() {
         NotificationCenter.default.removeObserver(self)
         session?.requestCancel = nil
