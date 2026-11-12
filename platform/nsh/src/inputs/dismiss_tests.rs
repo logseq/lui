@@ -127,7 +127,7 @@ struct RetainedFixture {
     events: Arc<std::sync::Mutex<Vec<Event>>>,
 }
 
-#[nsh_core::component]
+#[component]
 fn RetainedCancellation() -> impl IntoElement {
     let fixture = engine_context::<RetainedFixture>().unwrap();
     let events = fixture.events.clone();
