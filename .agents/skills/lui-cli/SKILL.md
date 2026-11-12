@@ -122,6 +122,31 @@ modal slide is below the viewport. Core `ElementRef.measure` and semantic
 fixed sleep or activation for native evidence. These diagnostics alone do not
 certify animation completion, painted pixels or hardware focus.
 
+On a macOS host advertising `native-dialog` and `native-dialog-answer`, inspect
+an actual native sheet using one exact canonical owner anchor:
+
+```text
+native-dialog "prop:accessibility-identifier=settings-check-for-updates"
+native-dialog-answer "TOKEN_FROM_THAT_INSPECTION" "Download"
+```
+
+Use `--json` to read `dialog:null` or the current token, static texts and native
+button labels/states. The anchor locates its own window and may be disabled
+while busy; the answer button must be uniquely named, enabled and visible.
+Canonical `press` and `native-press` cannot select a button absent from the
+OCaml tree. These sheet operations are currently unavailable on other OSes.
+
+Check the actual prompt before answering the authorized action. Each inspection
+replaces the previous token; restart, changed contents, replaced/retired owners
+and duplicate answers invalidate it. A stale/refused answer requires inspecting
+the current state, not replaying the old token. The same agent port, owner and
+application mutation fence remain in use; no activation is required.
+`activation:"native-controller",dispatched:true` proves controller invocation,
+not hardware input or a completed install. Verify the resulting state or, for
+upgrades, the actual loaded application/worker versions and durable data.
+See `docs/agent-guide/native-dialog-agent.md` in the LUI checkout for the
+qualification commands and platform limits.
+
 Semantic commands act on the OCaml tree. They do not qualify native hit testing,
 keyboard focus, IME, or visible layout. Use screenshots and the appropriate
 native integration tests for those claims.

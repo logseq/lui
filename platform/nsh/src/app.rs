@@ -516,9 +516,14 @@ pub fn Desktop(props: DesktopProps) -> impl IntoElement {
                         break 'request None;
                     }
                     if operation.as_deref() == Some("native-dialog-answer") {
-                        let answered = native_dialogs.answer(&opening, &request, admission.as_ref()).await;
+                        let answered = native_dialogs
+                            .answer(&opening, &request, admission.as_ref())
+                            .await;
                         let _ = reply.send(accept_agent_reply(
-                            &opening, operation.as_deref(), true, answered,
+                            &opening,
+                            operation.as_deref(),
+                            true,
+                            answered,
                         ));
                         break 'request None;
                     }

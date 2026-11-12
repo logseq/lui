@@ -259,6 +259,7 @@ mod owner_tests {
         renderer.apply(patch(1, json!([
             {"op":"create-node","id":1,"kind":"column"},
             {"op":"create-node","id":2,"kind":"button"},
+            {"op":"set-prop","id":2,"property":"text","value":"Update anchor"},
             {"op":"set-prop","id":2,"property":"accessibility-identifier","value":"update-anchor"},
             {"op":"set-prop","id":2,"property":"enabled","value":false},
             {"op":"insert-child","parent":1,"child":2,"index":0}
@@ -293,6 +294,7 @@ mod owner_tests {
             );
             checking.apply(patch(3,json!([
                 {"op":"create-node","id":2,"kind":"button"},
+                {"op":"set-prop","id":2,"property":"text","value":"Update anchor"},
                 {"op":"set-prop","id":2,"property":"accessibility-identifier","value":"update-anchor"},
                 {"op":"insert-child","parent":1,"child":2,"index":0}
             ]))).unwrap();

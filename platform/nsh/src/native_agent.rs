@@ -1,7 +1,7 @@
 //! Explicit native-controller activation; selectors remain owned by OCaml.
 mod dialogs;
-pub(crate) use dialogs::Dialogs;
 use crate::{render::Renderer, store::Node, style};
+pub(crate) use dialogs::Dialogs;
 use nsh_core::{PointerEvents, PressEvent, element::ElementRef, prelude::*};
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -243,8 +243,13 @@ mod tests {
                 .contains(&json!("native-press"))
         );
         for operation in ["native-dialog", "native-dialog-answer"] {
-            assert_eq!(answer["host_native_ops"].as_array().unwrap().contains(&json!(operation)),
-                cfg!(target_os = "macos"));
+            assert_eq!(
+                answer["host_native_ops"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!(operation)),
+                cfg!(target_os = "macos")
+            );
         }
     }
 

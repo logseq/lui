@@ -77,3 +77,27 @@ update → Download → ready update → Install flow, verify N1/worker exit, an
 relaunch and preserved application data. Record the artifact/source identities and actual results;
 do not replace that gate with Headless dialog answers, startup installation switches or fabricated
 installer acknowledgements.
+
+### Executed macOS qualification (2026-11-13)
+
+At `e4ec2f3e` plus the two required Button text properties in the canonical
+owner regression, the complete locked release library suite passed 292 tests,
+with no failures or ignored tests. Strict release all-target Clippy and the
+six CLI client tests passed. The owner fixture uses an ordinary valid Button;
+the required-text contract was not weakened to admit the fixture.
+
+The actual offscreen AppKit probe also passed, reporting normal sheet
+completion and rejection of stale/reused tokens, changed/replaced sheets,
+disabled/ambiguous buttons, retired owners and wrong/ambiguous windows. It
+reported `activation:"native-controller"` and `hardwareInput:false`, as intended.
+This proves the owned native controller seam, not an installed Logseq upgrade,
+physical input, Windows/Linux dialogs or accessibility-client behavior.
+
+Evidence logs and SHA-256 digests:
+
+| Evidence | Log | SHA-256 |
+| --- | --- | --- |
+| Complete release library suite | `/tmp/lui-native-dialog-full-release-final.log` | `8ba4aeeb3eee48b9931fd2568f69977a3aa3e2c0676bb276ae3ba44080870257` |
+| Strict release all-target Clippy | `/tmp/lui-native-dialog-final-clippy.log` | `4c786dd4d2a6a4de193132ce14d8ded4dc66de7c5638fbc761b814edad7dbc36` |
+| CLI client regressions | `/tmp/lui-native-dialog-final-cli.log` | `0f953541d78634ea675cc92abc1ff2ffde9b22e3419f1bcbe8c8614b78637ecd` |
+| Actual AppKit sheet probe | `/tmp/lui-native-dialog-real-appkit-probe.log` | `49622450854606f4c5a98fa46430bf45e9526ef0cc1f683c06c111901027d9c2` |
