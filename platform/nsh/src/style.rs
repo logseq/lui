@@ -917,10 +917,7 @@ pub(crate) fn switch_styles(
     track_node
         .props
         .insert("height".into(), Value::from(height));
-    track_node
-        .props
-        .entry("padding".into())
-        .or_insert(Value::from(2));
+    track_node.props.entry("padding").or_insert(Value::from(2));
     let track = compile(&track_node, theme, Size::default())?;
     let mut layout = nsh_core::Style::default();
     for declaration in track.decls() {
