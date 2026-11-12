@@ -155,7 +155,7 @@ fn submissions(events: &Mutex<Vec<Event>>) -> usize {
 }
 
 #[test]
-fn single_line_inputs_keep_native_submit_and_blur_defaults() {
+fn single_line_inputs_submit_and_keep_the_focused_editor() {
     for kind in ["text-field", "secure-field", "input", "search-field"] {
         let (mut app, events) = start(kind);
         let before = identity(&app);
@@ -177,13 +177,14 @@ fn single_line_inputs_keep_native_submit_and_blur_defaults() {
                 "{kind}: the committed edit precedes submit"
             );
         }
-        // A raw key after Enter must not refocus the field in the test driver.
+        // A raw key continues in the same field, without a test-driver focus call.
         app.press_key("z").unwrap();
         assert_eq!(
             app.screen().input_text("id:lui-2").unwrap(),
-            Some("draftx"),
+            Some("draftxz"),
             "{kind}"
         );
+        assert_eq!(submissions(&events), 1, "{kind}");
         assert_eq!(identity(&app), before, "{kind}");
     }
 }
