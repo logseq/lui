@@ -133,7 +133,11 @@ fn SaturatedVirtualFeedback() -> impl IntoElement {
         json!({"op":"set-prop","id":1,"property":"virtual-indices","value":"[]"}),
     ];
     for node in 100..163 {
-        ops.push(json!({"op":"create-node","id":node,"kind":"button"}));
+        ops.extend([
+            json!({"op":"create-node","id":node,"kind":"button"}),
+            json!({"op":"set-prop","id":node,"property":"text","value":format!("Action {node}")}),
+            json!({"op":"set-prop","id":node,"property":"press-enabled","value":true}),
+        ]);
     }
     renderer.apply(batch(1, json!(ops))).unwrap();
     let incarnation = renderer.current_incarnation(1).unwrap();
