@@ -197,6 +197,21 @@ impl Renderer {
         )
     }
 
+    /// Activates one captured native controller at its committed center.
+    /// The incarnation, enabled/visible state and pointer policy are checked
+    /// before and after measuring. Supply the application's mutation guard
+    /// when input can be fenced. Returns whether a controller handled the press,
+    /// not whether its application action subsequently completed. This neither dispatches
+    /// a second OCaml semantic event nor synthesizes hardware pointer input.
+    pub async fn activate_native(
+        &self,
+        id: u64,
+        incarnation: u64,
+        admission: Option<&crate::app::ApplicationMutations>,
+    ) -> Result<bool, String> {
+        crate::native_agent::activate(self, id, incarnation, admission).await
+    }
+
     /// The identifier assigned when this standard host was actually constructed.
     /// Live property changes do not rewrite an existing host's test ID. Extension
     /// factories choose their own native roots and identifiers independently.

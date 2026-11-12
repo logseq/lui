@@ -1,5 +1,23 @@
 # LUI API migration guide
 
+## NSH retained controllers can be activated by their captured identity
+
+Rust hosts may call `Renderer::activate_native(id, incarnation, admission).await`
+to activate an existing native controller at its measured center. Pass the
+application's `ApplicationMutations` guard when input can be fenced, or `None`
+when the application has no such policy. Capture the ID and incarnation from
+the original node before deferring the call; a replacement with the same wire
+ID is rejected. Disabled, hidden, pointer-excluded, unmounted and unmeasurable
+targets are rejected before native activation. The guard and retained identity
+are rechecked after measurement, immediately before controller dispatch.
+
+The result reports native-controller handling, not completion of a domain action
+or synthesis of hardware pointer input. A valid controller may dismiss itself or
+start update preparation; those later changes do not retroactively reject the
+accepted press. Hosts must not additionally send a semantic Press event for the
+same action. The agent's existing `native-press` operation uses the same helper;
+its reply shape is unchanged. Apple/iOS, Android and Web APIs are unchanged.
+
 ## NSH coalesces pending virtual-list range feedback
 
 NSH now keeps the latest pending visible range independently from the latest

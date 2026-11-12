@@ -50,16 +50,25 @@ fn admitted(id: u64, lookup: impl Fn(u64) -> Option<Arc<Node>>) -> Result<(), St
         return Err("native-press target is disabled".into());
     }
     let mut current = Some(target);
+    let mut pointer_decided = false;
     // Reuse the actual renderer policy, including presented surfaces opting
     // back in. BoxNone permits child controls; this is not a new CSS cascade.
     while let Some(node) = current {
-        match style::pointer_policy(&node) {
-            Some(PointerEvents::None) => {
-                return Err("native-press target excludes pointer input".into());
-            }
-            Some(PointerEvents::Auto | PointerEvents::BoxOnly | PointerEvents::BoxNone) => break,
-            None => current = node.parent.and_then(&lookup),
+        if node.string("display") == "none" {
+            return Err("native-press target is hidden".into());
         }
+        if !pointer_decided {
+            match style::pointer_policy(&node) {
+                Some(PointerEvents::None) => {
+                    return Err("native-press target excludes pointer input".into());
+                }
+                Some(PointerEvents::Auto | PointerEvents::BoxOnly | PointerEvents::BoxNone) => {
+                    pointer_decided = true;
+                }
+                None => {}
+            }
+        }
+        current = node.parent.and_then(&lookup);
     }
     Ok(())
 }
@@ -109,10 +118,27 @@ pub(crate) async fn press(
         .node_snapshot(id)
         .ok_or("native-press target is retired")?;
     let incarnation = node.incarnation;
+    let handled = activate(renderer, id, incarnation, admission).await?;
+    Ok(
+        json!({"ok":true,"op":"native-press","node":id,"incarnation":incarnation,
+        "handled":handled,"activation":"native-controller"})
+        .to_string(),
+    )
+}
+
+pub(crate) async fn activate(
+    renderer: &Renderer,
+    id: u64,
+    incarnation: u64,
+    admission: Option<&crate::app::ApplicationMutations>,
+) -> Result<bool, String> {
+    if let Some(error) = renderer.failure() {
+        return Err(error);
+    }
     let reference = renderer
         .native_reference(id, incarnation)
         .ok_or("native-press target has no retained reference")?;
-    let handled = press_reference(reference, || {
+    press_reference(reference, || {
         // Recheck after the layout/commit answer, immediately before native
         // controller dispatch: application preparation may begin while awaiting.
         if let Some(admission) = admission {
@@ -123,12 +149,7 @@ pub(crate) async fn press(
         }
         admitted(id, |id| renderer.node_snapshot(id))
     })
-    .await?;
-    Ok(
-        json!({"ok":true,"op":"native-press","node":id,"incarnation":incarnation,
-        "handled":handled,"activation":"native-controller"})
-        .to_string(),
-    )
+    .await
 }
 
 pub(crate) async fn bounds(renderer: &Renderer, answer: &str) -> Result<String, String> {
@@ -251,6 +272,17 @@ mod tests {
         button.props.insert("enabled".into(), json!(false));
         nodes.insert(3, Arc::new(button));
         assert!(admitted(3, |id| nodes.get(&id).cloned()).is_err());
+        let mut button = nodes[&3].as_ref().clone();
+        button.props.insert("enabled".into(), json!(true));
+        nodes.insert(3, Arc::new(button));
+        let mut root = nodes[&1].as_ref().clone();
+        root.props.insert("display".into(), json!("none"));
+        nodes.insert(1, Arc::new(root));
+        assert!(admitted(3, |id| nodes.get(&id).cloned()).is_err());
+        let mut root = nodes[&1].as_ref().clone();
+        root.props.remove("display");
+        nodes.insert(1, Arc::new(root));
+        assert!(admitted(3, |id| nodes.get(&id).cloned()).is_ok());
     }
 
     #[derive(Clone)]
