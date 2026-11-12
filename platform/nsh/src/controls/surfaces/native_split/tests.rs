@@ -296,10 +296,10 @@ fn native_sidebar_width_motion_retains_editors_and_respects_reduced_motion() {
         let observed = transitions.clone();
         app.observe(move |_, batch| {
             for item in &batch.items {
-                if let nsh_core::MountItem::LayoutAnimation(animation) = item {
-                    if let Some(update) = animation.update {
-                        observed.lock().unwrap().push(update);
-                    }
+                if let nsh_core::MountItem::LayoutAnimation(animation) = item
+                    && let Some(update) = animation.update
+                {
+                    observed.lock().unwrap().push(update);
                 }
             }
         });

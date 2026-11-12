@@ -691,3 +691,13 @@ Aggregate log `/tmp/lui-nsh-fit-aggregate-tests.log` SHA-256
 `14ed4f44931163933640d74624551aaebd2fc11d7d2dcd2067555c529312df5a`;
 strict Clippy log `/tmp/lui-nsh-native-components-clippy.log` SHA-256
 `03a502c358e64646143ff251b22cf0f3eb71fc01fb170dbeb31950fa6b1a50a4`.
+
+### Actual Logseq interaction checkpoint (2026-11-12)
+
+The actual release Rust suite passed 46 cases, native OCaml admission and
+production 1k/100k/picker virtual-row runners passed, and packaged-native readiness
+fixtures passed seven cases. Strict all-target LUI Clippy passed. Exact source,
+commands, log hashes and qualification limits are recorded in the
+[interaction follow-up](review-probes/2026-11-12/logseq-native-interaction-followup.md).
+Visible menu opening, full editor/clipboard UX and remaining platform/delivery
+gates are still required.
