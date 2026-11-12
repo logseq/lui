@@ -97,7 +97,16 @@ impl ApplicationMutations {
 fn agent_mutates(operation: Option<&str>) -> bool {
     !matches!(
         operation,
-        Some("hello" | "tree" | "dump" | "find" | "prop" | "screenshot" | "native-bounds")
+        Some(
+            "hello"
+                | "tree"
+                | "dump"
+                | "find"
+                | "prop"
+                | "screenshot"
+                | "native-bounds"
+                | "gc-stats"
+        )
     )
 }
 
@@ -837,6 +846,7 @@ mod mutation_tests {
             "prop",
             "screenshot",
             "native-bounds",
+            "gc-stats",
         ] {
             assert!(!agent_mutates(Some(op)), "{op}");
         }

@@ -5196,3 +5196,12 @@ was accepted. Unknown extension events, focus/blur and dismissal remain guarded
 input. Applications with their own OCaml admission fence must preserve the same
 completion paths; for example, an already accepted animated scroll still emits
 its one `on_scroll_completed` result during preparation.
+
+### Read-only native heap diagnostics during update preparation
+
+NSH application admission now permits the existing agent channel's `gc-stats`
+operation while update preparation fences input. Applications may implement and
+advertise `{"op":"gc-stats"}` alongside their other read-only agent queries;
+unknown operations remain guarded as mutations. This adds no collection,
+compaction, sampler timer or listener. Consumers must treat reported OCaml heap
+capacity as part of process memory rather than adding it to RSS or footprint.
