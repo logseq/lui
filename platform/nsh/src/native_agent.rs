@@ -137,7 +137,8 @@ pub(crate) async fn bounds(renderer: &Renderer, answer: &str) -> Result<String, 
         .current_incarnation(id)
         .ok_or("native-bounds target is retired")?;
     crate::app::wait_for_commit().await?;
-    let diagnostics = crate::native_capture::view_bounds(format!("lui-{id}")).await?;
+    let identifier = renderer.native_presentation_identifier(id, incarnation)?;
+    let diagnostics = crate::native_capture::view_bounds(identifier).await?;
     if renderer.current_incarnation(id) != Some(incarnation) {
         return Err("native-bounds target incarnation changed".into());
     }
@@ -353,5 +354,108 @@ mod tests {
         let mut app =
             Headless::start(EngineConfig::new(Root::of::<RetiredMutationOwner>())).unwrap();
         app.wait_for("text:Retired mutation owner refused").unwrap();
+    }
+}
+
+#[cfg(test)]
+mod bounds_identity_tests {
+    use super::*;
+    use crate::{
+        extensions::{Extensions, Profile, Schema},
+        wire::Batch,
+    };
+    use nsh_engine::{EngineConfig, Root};
+    use nsh_testing::Headless;
+
+    fn batch(generation: u64, ops: Value) -> Batch {
+        Batch::decode(&json!({"generation":generation,"ops":ops}).to_string()).unwrap()
+    }
+
+    #[component]
+    fn AuthoredBoundsIdentifiers() -> impl IntoElement {
+        let oracle: Value =
+            serde_json::from_str(include_str!("../tests/fixtures/contract_oracle.json")).unwrap();
+        let schema: Schema =
+            serde_json::from_value(oracle["extensions"]["schema"].clone()).unwrap();
+        let extension = schema.identifier.clone();
+        let registry = Extensions::builder()
+            .register(schema, |context| {
+                view()
+                    .test_id("factory-chosen")
+                    .element_ref(&context.reference)
+                    .into_element()
+            })
+            .unwrap()
+            .freeze(Profile {
+                os: "macos".into(),
+                host: "nsh".into(),
+            })
+            .unwrap();
+        let renderer = Renderer::with_extensions(registry, |_, _| {});
+        renderer.apply(batch(1,json!([
+            {"op":"create-node","id":1,"kind":"column"},
+            {"op":"create-node","id":2,"kind":"button"},
+            {"op":"set-prop","id":2,"property":"accessibility-identifier","value":"authored-control"},
+            {"op":"create-node","id":3,"kind":"text"},
+            {"op":"set-prop","id":3,"property":"text","value":"Default identifier"},
+            {"op":"create-extension","id":4,"identifier":extension,"fingerprint":""},
+            {"op":"set-extension-prop","id":4,"property":"count","value":1},
+            {"op":"insert-child","parent":1,"child":2,"index":0},
+            {"op":"insert-child","parent":1,"child":3,"index":1},
+            {"op":"insert-child","parent":1,"child":4,"index":2}
+        ]))).unwrap();
+        renderer.set_root(1).unwrap();
+        let result = signal(String::new());
+        let checking = renderer.clone();
+        spawn(async move {
+            crate::app::wait_for_commit().await.unwrap();
+            let incarnation = checking.current_incarnation(2).unwrap();
+            assert_eq!(
+                checking
+                    .native_presentation_identifier(2, incarnation)
+                    .unwrap(),
+                "authored-control"
+            );
+            assert_eq!(
+                checking
+                    .native_presentation_identifier(3, checking.current_incarnation(3).unwrap())
+                    .unwrap(),
+                "lui-3"
+            );
+            assert!(
+                checking
+                    .native_presentation_identifier(2, incarnation + 1)
+                    .is_err()
+            );
+            assert!(
+                checking
+                    .native_presentation_identifier(4, checking.current_incarnation(4).unwrap())
+                    .unwrap_err()
+                    .contains("extension factory")
+            );
+            checking.apply(batch(2,json!([
+                {"op":"set-prop","id":2,"property":"accessibility-identifier","value":"later-property"}
+            ]))).unwrap();
+            crate::app::wait_for_commit().await.unwrap();
+            assert_eq!(
+                checking
+                    .native_presentation_identifier(2, incarnation)
+                    .unwrap(),
+                "authored-control"
+            );
+            result.set("Mounted native identifiers verified".to_owned());
+        });
+        view().child(renderer.element()).child(text(result))
+    }
+
+    #[test]
+    fn native_bounds_uses_the_mounted_authored_identifier_and_rejects_unmapped_factories() {
+        let mut app =
+            Headless::start(EngineConfig::new(Root::of::<AuthoredBoundsIdentifiers>())).unwrap();
+        app.wait_for("text:Mounted native identifiers verified")
+            .unwrap();
+        app.wait_for("id:authored-control").unwrap();
+        assert!(!app.screen().shows("id:later-property"));
+        app.wait_for("id:factory-chosen").unwrap();
     }
 }

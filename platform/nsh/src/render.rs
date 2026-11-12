@@ -83,6 +83,7 @@ struct Entry {
     children: Signal<Vec<(u64, u64)>>,
     reference: ElementRef,
     factory_reference: Option<ElementRef>,
+    native_identifier: Option<String>,
     theme: Signal<Arc<ThemeView>>,
     popup: Signal<Option<(u64, u64)>>,
     capabilities: Rc<Cell<Option<Capabilities>>>,
@@ -192,6 +193,32 @@ impl Renderer {
                 .filter(|reference| reference.node().is_some())
                 .unwrap_or(entry.reference),
         )
+    }
+
+    /// The identifier assigned when this standard host was actually constructed.
+    /// Live property changes do not rewrite an existing host's test ID. Extension
+    /// factories choose their own native roots and identifiers independently.
+    pub(crate) fn native_presentation_identifier(
+        &self,
+        id: u64,
+        incarnation: u64,
+    ) -> Result<String, String> {
+        let state = self.0.borrow();
+        let entry = state
+            .nodes
+            .get(&id)
+            .ok_or("native-bounds target is retired")?;
+        let node = entry.node.get_untracked();
+        if node.incarnation != incarnation {
+            return Err("native-bounds target incarnation changed".into());
+        }
+        if node.extension.is_some() {
+            return Err("native-bounds does not infer extension factory identifiers".into());
+        }
+        entry
+            .native_identifier
+            .clone()
+            .ok_or_else(|| "native-bounds target has no constructed standard native host".into())
     }
 
     pub fn apply(&self, patch: Batch) -> Result<(), String> {
@@ -318,6 +345,7 @@ impl Renderer {
                             reference,
                             factory_reference: owner
                                 .run(|| node.get_untracked().extension.is_some().then(element_ref)),
+                            native_identifier: None,
                             theme,
                             popup,
                             capabilities: Rc::new(Cell::new(None)),
@@ -958,6 +986,12 @@ impl Renderer {
         } else {
             node.string("accessibility-identifier").to_owned()
         };
+        self.0
+            .borrow_mut()
+            .nodes
+            .get_mut(&id)
+            .expect("retained node")
+            .native_identifier = Some(identifier.clone());
         let style = move || {
             if let Some(context) = context {
                 return context.get().trigger;

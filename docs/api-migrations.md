@@ -5115,3 +5115,17 @@ the same preparation policy. A real update also requires the OCaml/worker fence,
 completed save/drain, worker compatibility and safe relaunch; this context alone
 does not establish whole-application quiescence or authorize installation.
 
+
+### Native bounds follows mounted presentation identifiers
+
+`native-bounds <selector>` resolves a canonical node first, then inspects its
+mounted standard host's actual identifier, including an authored
+`accessibility_identifier`. For example, `native-bounds
+prop:accessibility-identifier=search-button` now finds that host instead of
+assuming it is named `lui-<node>`. Incarnation checks remain enforced.
+
+A later property update does not rename an existing NSH test identifier; the
+query follows the mounted identifier. Extension factories independently choose
+native identifiers, so this diagnostic explicitly rejects them rather than
+claiming that their native roots correspond to `lui-<node>`. No mutation or
+paint/readiness guarantee is added.

@@ -135,14 +135,8 @@ pub async fn view_bounds(_test_id: String) -> Result<serde_json::Value, String> 
 
 #[cfg(any(test, target_os = "macos"))]
 fn validate_test_id(test_id: &str) -> Result<(), String> {
-    let id = test_id
-        .strip_prefix("lui-")
-        .ok_or("native bounds requires a renderer test ID")?;
-    let parsed = id
-        .parse::<u64>()
-        .map_err(|_| "native bounds requires a renderer test ID")?;
-    if parsed == 0 || parsed.to_string() != id {
-        return Err("native bounds requires a canonical positive renderer test ID".into());
+    if test_id.is_empty() || test_id.len() > 1024 || test_id.chars().any(char::is_control) {
+        return Err("native bounds requires a nonempty bounded native identifier".into());
     }
     Ok(())
 }
@@ -288,20 +282,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn native_bounds_restricts_the_lookup_to_canonical_renderer_ids() {
-        for id in ["lui-1", "lui-337", "lui-18446744073709551615"] {
+    fn native_bounds_accepts_authored_identifiers_and_bounds_diagnostic_input() {
+        for id in ["lui-1", "search-button", "页面编辑器", "app:search"] {
             validate_test_id(id).unwrap();
         }
-        for id in [
-            "",
-            "input",
-            "lui-0",
-            "lui-01",
-            "lui--1",
-            "lui-+1",
-            "lui-18446744073709551616",
-        ] {
-            assert!(validate_test_id(id).is_err(), "{id}");
+        for id in ["", "bad\0id", "bad\nid", &"x".repeat(1025)] {
+            assert!(validate_test_id(id).is_err(), "invalid native identifier");
         }
     }
 
