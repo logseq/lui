@@ -70,7 +70,39 @@ and Rustfmt passed: `/tmp/lui-parent-replacement-release-clippy.log`.
 
 These results establish the Headless native-engine seam, not AppKit parity.
 The actual application's previous color failure occurred with a real macOS
-scroll owner; a separate public-native-driver replacement case remains required
-before closing that platform-specific source-replacement finding. The
-application's paint-only color correction passed its actual AppKit case, but
-does not substitute for this independent replacement case.
+scroll owner; the independent public-native-driver case below now supplies
+additional platform evidence. The application's paint-only color correction
+also passed its separate actual AppKit case. These bounded cases do not imply
+that every source replacement hierarchy has been qualified.
+
+## Executed independent AppKit qualification
+
+The ignored `_build/nsh-native-parent-source-replacement-proof` harness uses the
+same real OCaml fixture with a private public-API Desktop root and the pinned
+NSH native test driver. At LUI `7ad9d6ca`, it passed in 44.0 seconds:
+`/tmp/lui-parent-source-appkit-bounded-gestures.log`. Evidence remains in the
+owned temporary root `lui-parent-source-native.YdzdJD/`, including read-only
+canonical/native observations and successful exact-group cleanup.
+
+Initial demand reached indices 985–999. After two actual replacement-button
+presses, generations advanced 1 → 2 → 3, while canonical/native entry
+incarnations stayed Scroll 6, source 10 and outside input 4. Each state contained
+40 canonical nodes; new-revision rows 993–999 remained fully inside the native
+320-point viewport. The test issues no wheel, scroll, VirtualWindow, focus or
+manual wake after either replacement. The observer uses only the existing
+tree/native-bounds operations against its verified own process group.
+
+The first harness invocation failed before its initial observation because it
+requested a 100,000-point gesture. The native driver emits 20 points per display
+frame, while its transport bounds each command to 30 seconds. The corrected
+setup uses two initial 22,100-point gestures to cover the actual 44,064-point
+source. No command deadline or post-replacement assertion was relaxed. The
+original failure remains `/tmp/lui-parent-source-appkit-native.log`.
+
+This is functional native-driver evidence, not a standalone release performance
+measurement or hardware-input/accessibility proof. The Rust CLI is built in
+release mode, its generated native test host is a development host, and the
+OCaml fixture builder uses its existing default Dune profile. No production
+adapter or SDK patch was necessary for this minimal replacement case. The
+previous application-specific color failure should not be generalized into an
+unproven framework-wide defect.
