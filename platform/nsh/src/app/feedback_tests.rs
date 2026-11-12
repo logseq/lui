@@ -37,6 +37,7 @@ fn record(event: GuardedEvent, renderer: &Renderer, probe: &Arc<Mutex<Probe>>) {
 #[component]
 fn AcceptedVirtualFeedback() -> impl IntoElement {
     let probe = engine_context::<Context>().unwrap().0.clone();
+    let responses = signal(0_u64);
     let allowed = signal(true);
     let admission = ApplicationMutations::new(move || {
         if allowed.get_untracked() {
@@ -85,6 +86,10 @@ fn AcceptedVirtualFeedback() -> impl IntoElement {
                 record(event, &querying, &probe);
             }
             windows.wake(&pump_sender);
+            // Headless waits observe native commits. Recording only in the
+            // mutex can otherwise finish just after the final layout batch,
+            // leaving the successful observation with no batch to wake it.
+            responses.update(|count| *count += 1);
         }
     });
     let scrolling = renderer.clone();
@@ -120,7 +125,11 @@ fn AcceptedVirtualFeedback() -> impl IntoElement {
         },
         move |_| allowed.set(true),
     );
-    view().w(px(400.)).h(px(320.)).child(renderer.element())
+    view()
+        .w(px(400.))
+        .h(px(320.))
+        .child(renderer.element())
+        .child(text(move || format!("Feedback responses: {}", responses.get())).absolute())
 }
 
 #[component]
@@ -325,7 +334,13 @@ fn accepted_native_virtual_window_and_scroll_completion_survive_closed_admission
         Duration::from_secs(3),
         |_| !probe.lock().unwrap().windows.is_empty(),
     )
-    .unwrap();
+    .unwrap_or_else(|error| {
+        let probe = probe.lock().unwrap();
+        panic!(
+            "{error}; recorded windows={:?}, visible={}, completions={:?}",
+            probe.windows, probe.visible, probe.completions
+        );
+    });
     {
         let mut probe = probe.lock().unwrap();
         probe.windows.clear();
