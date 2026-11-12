@@ -24,9 +24,10 @@ const bool = value => ({TAG: 1, _0: value})
 
 function fixture(kindName) {
   const kind = named(Schema.all_node_kinds, Schema.node_kind_name, kindName)
-  const store = Store.create_store(), events = [], listeners = new Map()
+  const store = Store.create_store(), events = [], listeners = new Map(), attributes = new Map()
   const element = {nodeType: 1, tagName: kindName === 'textarea' ? 'TEXTAREA' : 'INPUT', value: 'draft',
-    setAttribute() {}, removeAttribute() {}, addEventListener: (name, handler) => listeners.set(name, handler)}
+    hasAttribute: name => attributes.has(name), setAttribute: (name, value) => attributes.set(name, value),
+    removeAttribute: name => attributes.delete(name), addEventListener: (name, handler) => listeners.set(name, handler)}
   let blurDuringDismiss = false
   const renderer = {web_store: store,
     web_appear_pending: Hashtbl.create(undefined, 4),
@@ -55,7 +56,12 @@ function fixture(kindName) {
       preventDefault() {prevented = true}, stopPropagation() {stopped = true}})
     return {prevented, stopped, events: events.map(event => ({tag: event.TAG, node: event._0}))}
   }
-  return {set, fire, apply, renderer, kind, element,
+  return {set, fire, apply, renderer, kind, element, events,
+    writeText: text => {
+      const prop = property('text'), value = {TAG: 0, _0: text}
+      apply([Protocol.set_prop_op(1, prop, value)])
+      Props.apply_property(renderer, () => {}, 1, kind, element, prop, value)
+    },
     synchronousBlur: () => {blurDuringDismiss = true}, remove: name => {
       const prop = property(name)
       apply([Protocol.remove_prop_op(1, prop)])
@@ -93,6 +99,32 @@ for (const kind of ['text-field', 'secure-field', 'input', 'search-field', 'text
     f.set('dismiss-enabled', true)
     f.synchronousBlur()
     assert.deepEqual(f.fire('keydown'), dismiss)
+    assert.deepEqual(f.fire('keydown', {key: 'Enter'}), {prevented: true, stopped: false, events: []})
+  })
+  test(`${kind} keeps cancellation through duplicate keys and controlled patches until a new draft`, () => {
+    const f = fixture(kind)
+    f.set('submit-on-blur', true)
+    if (kind === 'textarea') f.set('submit-on-enter', true)
+    f.set('dismiss-enabled', true)
+    assert.deepEqual(f.fire('keydown'), dismiss)
+    assert.deepEqual(f.fire('keydown'), {prevented: true, stopped: true, events: []})
+    const suppressedEnter = {prevented: true, stopped: false, events: []}
+    assert.deepEqual(f.fire('keydown', {key: 'Enter'}), suppressedEnter)
+    f.writeText('authoritative')
+    assert.equal(f.element.value, 'authoritative')
+    assert.deepEqual(f.events, [])
+    assert.deepEqual(f.fire('keydown'), {prevented: true, stopped: true, events: []})
+    assert.deepEqual(f.fire('blur'), untouched)
+    assert.deepEqual(f.fire('keydown', {key: 'Enter'}), suppressedEnter)
+    f.remove('dismiss-enabled')
+    assert.deepEqual(f.fire('keydown'), untouched)
+    assert.deepEqual(f.fire('keydown', {key: 'Enter'}), suppressedEnter)
+    f.fire('input')
+    assert.deepEqual(f.fire('keydown', {key: 'Enter'}), {prevented: true, stopped: false, events: submit.events})
+    f.set('dismiss-enabled', true)
+    assert.deepEqual(f.fire('keydown'), dismiss)
+    f.fire('focusin')
+    assert.deepEqual(f.fire('keydown', {key: 'Enter'}), {prevented: true, stopped: false, events: submit.events})
   })
   test(`${kind} preserves composing, modified, repeated, disabled and retired Escape`, () => {
     const f = fixture(kind)

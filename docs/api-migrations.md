@@ -5651,6 +5651,10 @@ or unfocuses the field cannot also submit it. Fresh focus or user input resets
 that cancellation interval. Modified/repeated/composing Escape, disabled fields
 and absent/removed flags keep their previous key behavior; no document/window
 key binding is added. The input's existing controlled value is unchanged.
+An already canceled draft suppresses duplicate `Dismiss` and late Enter/blur
+`Submit` until fresh focus or genuine input/composition begins a new draft.
+Authoritative `text` patches and removing the dismissal flag do not revive a
+canceled draft. A removed flag stops claiming Escape immediately.
 
 ### Retained input edits after cancellation
 

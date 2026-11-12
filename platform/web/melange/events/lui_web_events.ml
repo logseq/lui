@@ -65,7 +65,7 @@ let combobox_keydown renderer node event =
            else Press node)
   end
 
-let text_keydown ?(before_dismiss = fun () -> ()) renderer node kind composing event =
+let text_keydown ?(cancelled = ref false) renderer node kind composing event =
   if enabled_node renderer node then begin
     let composing_now = !composing || W.KeyboardEvent.isComposing event in
     let key = W.KeyboardEvent.key event in
@@ -80,10 +80,12 @@ let text_keydown ?(before_dismiss = fun () -> ()) renderer node kind composing e
       && Store.true_property renderer node DismissEnabled
       && Store.event_admitted renderer node (Dismiss node) in
     if dismiss then begin
-      before_dismiss ();
       W.KeyboardEvent.preventDefault event;
       W.KeyboardEvent.stopPropagation event;
-      emit renderer (Dismiss node)
+      if not !cancelled then begin
+        cancelled := true;
+        emit renderer (Dismiss node)
+      end
     end;
     let submit =
       (not composing_now)
@@ -104,7 +106,7 @@ let text_keydown ?(before_dismiss = fun () -> ()) renderer node kind composing e
     end;
     if submit && kind <> Combobox then begin
       W.KeyboardEvent.preventDefault event;
-      emit renderer (Submit node)
+      if not !cancelled then emit renderer (Submit node)
     end;
     if kind = Combobox && not composing_now && not primary
        && not (W.KeyboardEvent.altKey event) then
@@ -114,9 +116,7 @@ let text_keydown ?(before_dismiss = fun () -> ()) renderer node kind composing e
 let attach_text_blur renderer node composing cancelled dom_node =
   W.Element.addEventListener "blur"
     (fun _event ->
-      let suppressed = !cancelled in
-      cancelled := false;
-      if not suppressed && not !composing && enabled_node renderer node
+      if not !cancelled && not !composing && enabled_node renderer node
          && Store.true_property renderer node SubmitOnBlur
          && Store.event_admitted renderer node (Submit node)
       then emit renderer (Submit node))
@@ -173,7 +173,7 @@ let attach_text_events renderer node kind dom_node =
        end)
     dom_node;
   W.Element.addKeyDownEventListener
-    (fun event -> text_keydown ~before_dismiss:(fun () -> cancelled := true)
+    (fun event -> text_keydown ~cancelled
        renderer node kind composing event)
     dom_node;
   attach_text_blur renderer node composing cancelled dom_node
