@@ -129,11 +129,24 @@ class LuiTextCompletionRenderTest {
 
     @Test fun `canceled native draft survives model patches and removal until genuine editing or fresh focus`() {
         val events = mutableListOf<LuiEvent>()
+        val checkpoints = mutableListOf<String>()
         var clearFocus: () -> Unit = {}
+        var inspectFocus: () -> String = { "unmounted" }
+        var phase = "mount"
+        fun note(label: String) {
+            val checkpoint = "$phase: $label ${inspectFocus()}"
+            checkpoints += checkpoint
+            println("text-cancel-proof $checkpoint")
+        }
         var blurOnDismiss = false
         val backend = LuiBackend(onEvent = {
             events += it
-            if (blurOnDismiss && it is LuiEvent.Dismiss) clearFocus()
+            note("callback $it")
+            if (blurOnDismiss && it is LuiEvent.Dismiss) {
+                note("before clearFocus")
+                clearFocus()
+                note("after clearFocus")
+            }
         })
         assertTrue(backend.applyBatch("""{"generation":1,"ops":[
             {"op":"create-node","id":1,"kind":"text-field"},
@@ -157,9 +170,16 @@ class LuiTextCompletionRenderTest {
                         it.config.getOrNull(SemanticsProperties.EditableText) != null
                     }
                 }
+                inspectFocus = {
+                    "field=${field().config[SemanticsProperties.Focused]}, " +
+                        "native=${native.isFocused}, window=${native.hasWindowFocus()}"
+                }
                 fun key(code: Int) {
+                    note("before keyDown $code")
                     native.dispatchKeyEvent(controlKey(android.view.KeyEvent.ACTION_DOWN, code))
+                    note("after keyDown $code")
                     native.dispatchKeyEvent(controlKey(android.view.KeyEvent.ACTION_UP, code))
+                    note("after keyUp $code")
                 }
                 settle()
                 assertTrue(field().config[SemanticsActions.RequestFocus].action!!.invoke())
@@ -190,10 +210,11 @@ class LuiTextCompletionRenderTest {
                 assertTrue(field().config[SemanticsActions.SetText].action!!.invoke(AnnotatedString("edited")))
                 settle()
                 assertEquals(listOf(LuiEvent.TextChanged(1, "edited")), events)
-                events.clear(); blurOnDismiss = true
+                events.clear(); blurOnDismiss = true; phase = "cancel after native edit"
                 key(android.view.KeyEvent.KEYCODE_ESCAPE); settle()
+                note("after settled cancellation")
                 assertEquals("a genuine edit rearms cancellation before its synchronous blur", listOf(LuiEvent.Dismiss(1)), events)
-                assertEquals("cancellation really loses native focus", false,
+                assertEquals("cancellation really loses native focus: ${checkpoints.joinToString(" | ")}", false,
                     field().config[SemanticsProperties.Focused])
                 events.clear()
                 assertTrue(field().config[SemanticsActions.OnImeAction].action!!.invoke())
