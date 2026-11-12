@@ -1,4 +1,4 @@
-//! Explicit AppKit geometry qualification; never orders or activates its window.
+//! Explicit AppKit geometry qualification; only orders its own offscreen window back.
 #[cfg(target_os = "macos")]
 #[path = "../src/native_capture/geometry.rs"]
 mod geometry;
@@ -98,7 +98,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     scroll.addSubview(&row);
     row.addSubview(&child);
     // SAFETY: a private positive-size borderless AppKit window on its main
-    // thread. It is retained, never ordered/activated, and closes on scope exit.
+    // thread. It is retained, never made key/activated, and closes on scope exit.
     let window = ProbeWindow(unsafe {
         let window = NSWindow::initWithContentRect_styleMask_backing_defer(
             main.alloc(),
@@ -111,7 +111,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         window
     });
     window.0.setContentView(Some(&root));
+    // AppKit defers backing-layer attachment even after setContentView/layout
+    // for a never-ordered window. Realize only this owned offscreen window;
+    // neither activation nor a fabricated layer hierarchy can qualify mapping.
+    window.0.orderBack(None);
     root.layoutSubtreeIfNeeded();
+    window.0.displayIfNeeded();
     // AppKit can rewrite backing-layer geometry while attaching views. NSH
     // likewise reapplies its authored anchor/position after native attachment.
     for view in [&root, &scroll, &row] {
