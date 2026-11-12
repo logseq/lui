@@ -79,6 +79,22 @@ class LuiTextCompletionTest {
         assertTrue(events.isEmpty())
     }
 
+    @Test fun `native composition finish cannot revive a canceled draft but new composition can`() {
+        val lifecycle = LuiTextBlurLifecycle()
+        val events = mutableListOf<String>()
+        fun focus(next: Boolean) = lifecycle.focusChanged(next, true, true, false) { events += "submit" }
+        focus(true)
+        lifecycle.beforeDismiss { events += "dismiss"; focus(false) }
+        lifecycle.compositionChanged(false)
+        lifecycle.beforeSubmit { events += "late submit" }
+        lifecycle.beforeDismiss { events += "duplicate dismiss" }
+        assertEquals(listOf("dismiss"), events)
+        lifecycle.compositionChanged(true)
+        lifecycle.compositionChanged(false)
+        lifecycle.beforeDismiss { events += "new dismiss" }
+        assertEquals(listOf("dismiss", "new dismiss"), events)
+    }
+
     @Test fun `text completion flags validate their bool type and five text kinds transactionally`() {
         for (kind in textKinds) {
             val backend = LuiBackend()

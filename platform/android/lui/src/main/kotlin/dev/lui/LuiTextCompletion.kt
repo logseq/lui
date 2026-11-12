@@ -15,6 +15,11 @@ internal class LuiTextBlurLifecycle {
 
     fun edited() { suppressBlur = false; cancelled = false }
 
+    fun compositionChanged(composing: Boolean) {
+        // Native focus loss may finish composition without beginning a draft.
+        if (composing) edited()
+    }
+
     fun beforeSubmit(action: () -> Unit) {
         if (cancelled) return
         suppressBlur = true

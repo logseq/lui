@@ -1361,7 +1361,9 @@ private fun LuiTextControl(
     val onValueChange: (TextFieldValue) -> Unit = { value ->
         val textChanged = value.text != localValue.text
         if (!readOnly || !textChanged) {
-            if (value.composition != localValue.composition) blur.edited()
+            if (value.composition != localValue.composition) {
+                blur.compositionChanged(value.composition != null)
+            }
             localValue = value
             if (!readOnly && textChanged) {
                 blur.edited()
