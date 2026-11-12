@@ -227,7 +227,12 @@ impl UpdateActions {
                 if matches!(phase, Phase::Checking | Phase::Downloading) {
                     let cancelling = actions.clone();
                     items.push(MenuItem::new(labels.menu_cancel).on_select(move || {
-                        if cancelling.owner.is_live() {
+                        if cancelling.owner.is_live()
+                            && matches!(
+                                cancelling.phase.get_untracked(),
+                                Phase::Checking | Phase::Downloading
+                            )
+                        {
                             cancelling.phase.set(Phase::Cancelling);
                             if let Some(updater) = cancelling.updater.borrow().as_ref() {
                                 updater.cancel();
@@ -237,7 +242,8 @@ impl UpdateActions {
                 } else if phase == Phase::Idle && downloaded {
                     let checking = actions.clone();
                     items.push(MenuItem::new(labels.menu_check).on_select(move || {
-                        if checking.owner.is_live() {
+                        if checking.owner.is_live() && checking.phase.get_untracked() == Phase::Idle
+                        {
                             checking.downloaded.set(None);
                             checking.clone().start();
                         }
