@@ -59,11 +59,11 @@ desktop scope on 2026-11-12; preserve their shared contract and mobile backends.
 The required desktop component set therefore contains 85 of the 87 common kinds.
 
 Use NSH public Rust APIs pinned to `logseq/nsh` commit
-`bfa15d0c843c0d6f5bf3a2a230e8ca56b876b61c`, Rust 1.97 and committed Cargo
+`ea23ae9cd5f56426145ea225f1a220e1eca0d3a2`, Rust 1.97 and committed Cargo
 lockfiles. This merges official upstream main
-`de7f3637171b769f18474796fd5159a60b2de726` with the authorized keyed-list
+`f60a4791b9b5a26ede288a80792c7b8c542e138d` with the authorized keyed-list
 and native editor-focus repairs; see the
-[synchronization evidence](review-probes/2026-11-11/nsh-main-sync.md) and
+[synchronization evidence](review-probes/2026-11-12/nsh-main-sync.md) and
 [native focus regression](review-probes/2026-11-11/nsh-keyed-native-focus.md).
 The initial research and official `nsh` / `nsh-design-guides` skill installation
 used `cdfdf75c1509cdb34c6220e6b5bf923452c0cb76`. Read their relevant
@@ -645,7 +645,7 @@ no NSH runtime/native/package/performance qualification has passed yet.
 
 ### Native component and focus follow-up (2026-11-12)
 
-The immutable NSH dependency is now `bfa15d0c843c0d6f5bf3a2a230e8ca56b876b61c`.
+At this earlier checkpoint, the immutable NSH dependency was `bfa15d0c843c0d6f5bf3a2a230e8ca56b876b61c`.
 It includes the authorized same-parent AppKit/GTK focus repair and its Linux
 test-only Clippy correction. The actual pinned macOS navigation app passed its
 36.7-second keyboard/editor/native-panel flow; see the

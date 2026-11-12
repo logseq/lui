@@ -14,10 +14,10 @@ tools; Linux needs GTK 4.14+/Pango development packages; Windows needs its Rust
 and OCaml native toolchains. Every NSH dependency is pinned to the same source
 revision in `Cargo.toml`, with exact transitive versions in `Cargo.lock`.
 The current pin is `logseq/nsh` commit
-`bfa15d0c843c0d6f5bf3a2a230e8ca56b876b61c` on `fork/logseq`, containing the
+`ea23ae9cd5f56426145ea225f1a220e1eca0d3a2` on `fork/logseq`, containing the
 minimal keyed-list, active-cell-demand and native same-parent editor-focus
 repairs plus upstream main
-`de7f3637171b769f18474796fd5159a60b2de726`
+`f60a4791b9b5a26ede288a80792c7b8c542e138d`
 ([review](https://github.com/logseq/nsh/pull/1)).
 
 ```sh

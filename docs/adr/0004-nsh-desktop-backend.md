@@ -83,16 +83,16 @@ pins, measurements and native editor continuity during keyed sibling moves,
 keeping the contiguous-splice fast path. This explicit
 authorization supersedes the app skill's default prohibition on modifying
 NSH for an app. The current dependency is pinned to immutable commit
-`bfa15d0c843c0d6f5bf3a2a230e8ca56b876b61c` on `logseq/nsh` (`fork/logseq`,
+`ea23ae9cd5f56426145ea225f1a220e1eca0d3a2` on `logseq/nsh` (`fork/logseq`,
 [review](https://github.com/logseq/nsh/pull/1)); the
 adapter continues to use public NSH APIs. This revision merges official
-upstream main `de7f3637171b769f18474796fd5159a60b2de726`, as requested,
+upstream main `f60a4791b9b5a26ede288a80792c7b8c542e138d`, as requested,
 while retaining the authorized repairs. It also preserves same-parent AppKit
 and GTK subtrees during native sibling reorders instead of detaching focused
 editors. This changes no public NSH API or controlled-state protocol. See the
 [native focus regression](../agent-guide/review-probes/2026-11-11/nsh-keyed-native-focus.md)
 and the
-[synchronization evidence](../agent-guide/review-probes/2026-11-11/nsh-main-sync.md).
+[synchronization evidence](../agent-guide/review-probes/2026-11-12/nsh-main-sync.md).
 No floating branch dependency or unrelated new fork API is covered by this
 exception. The
 [public probe](../agent-guide/review-probes/2026-11-11/nsh-keyed-list-reorder.md)
