@@ -1148,6 +1148,7 @@ mod tests {
                     let index = id - 100;
                     nsh_base::input()
                         .h(px(32.0))
+                        .test_id(&format!("retained-virtual-row-{index}"))
                         .label(format!("Row {index}"))
                         .value(move || {
                             if index == 2 {
@@ -1247,6 +1248,33 @@ mod tests {
                 .as_ref()
                 .is_some_and(|window| window.last == 100_000 && window.pins.contains(&102))
         })?;
+        if parent {
+            app.wait_until(
+                "distant row occupies the shared viewport",
+                Duration::from_secs(3),
+                |app| {
+                    let nodes = app.screen().layout_nodes();
+                    let row = nodes
+                        .iter()
+                        .find(|node| node.test_id.as_deref() == Some("retained-virtual-row-99999"));
+                    let viewport = nodes
+                        .iter()
+                        .find(|node| node.test_id.as_deref() == Some("shared-scroll-viewport"));
+                    row.zip(viewport).is_some_and(|(row, viewport)| {
+                        let row = row.bounds;
+                        let viewport = viewport.bounds;
+                        row.size.width.0 > 0.0
+                            && row.size.height.0 > 0.0
+                            && row.origin.x.0 >= viewport.origin.x.0
+                            && row.origin.y.0 >= viewport.origin.y.0
+                            && row.origin.x.0 + row.size.width.0
+                                <= viewport.origin.x.0 + viewport.size.width.0
+                            && row.origin.y.0 + row.size.height.0
+                                <= viewport.origin.y.0 + viewport.size.height.0
+                    })
+                },
+            )?;
+        }
         app.press_key("f6")?;
         let result = app.wait_until(
             "released focus stops pinning row 2",
