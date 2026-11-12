@@ -2743,3 +2743,7 @@ mod font_size_tests;
 
 #[cfg(test)]
 mod failure_tests;
+
+#[cfg(test)]
+#[path = "render/parent_scroll_tests.rs"]
+mod parent_scroll_tests;
