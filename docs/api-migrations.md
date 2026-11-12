@@ -1,5 +1,21 @@
 # LUI API migration guide
 
+## Desktop delivery records and checks generated runner manifests
+
+New delivery receipts add `generatedManifestHashes`, a map from paths relative
+to `.nsh/rust` to the SHA-256 digests of its generated Cargo manifests. Existing
+receipt fields retain their meanings. Receipt readers may ignore this additive
+field; release audits can compare it with the final generated workspace.
+
+Packaging records these manifests after the public CLI build prepared its
+workspace and before invoking the public package command. A package invocation
+that changes any generated manifest or the already qualified generated lock
+fails before release publication. The wrapper does not refresh its expected
+hashes after packaging. For example, changing a generated feature-unification
+manifest now fails even when a metadata query still reports the same package
+versions. Reconcile the CLI's build/package generation policy, then rebuild and
+qualify the candidate rather than bypassing either integrity check.
+
 ## NSH retained controllers can be activated by their captured identity
 
 Rust hosts may call `Renderer::activate_native(id, incarnation, admission).await`

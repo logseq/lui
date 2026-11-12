@@ -282,7 +282,7 @@ class DeliveryTests(unittest.TestCase):
                 delivery.pinned_source(app)
 
     def test_package_uses_absolute_staging_and_rejects_changed_verified_inputs(self):
-        for mutation in (None, "library", "Cargo.lock", "nsh.json", "src/lib.rs", "build.rs", "generated-lock", "registry"):
+        for mutation in (None, "library", "Cargo.lock", "nsh.json", "src/lib.rs", "build.rs", "generated-lock", "generated-manifest", "registry"):
             with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as temporary:
                 directory = Path(temporary)
                 app = directory / "app"
@@ -322,6 +322,8 @@ class DeliveryTests(unittest.TestCase):
                         (generated / "Cargo.toml").write_text("[workspace]\n")
                         (generated / "Cargo.lock").write_text("version=4\n")
                     if len(command) > 1 and command[1] == "package":
+                        self.assertEqual((app / ".nsh/rust/Cargo.toml").read_text(), "[workspace]\n")
+                        self.assertEqual((app / ".nsh/rust/Cargo.lock").read_text(), "version=4\n")
                         staged = Path(command[command.index("-o") + 1])
                         self.assertTrue(staged.is_absolute(), "NSH package runs from another working directory")
                         root, executable, _ = delivery.package_layout(staged, config, "linux")
@@ -331,6 +333,9 @@ class DeliveryTests(unittest.TestCase):
                         elif mutation == "generated-lock":
                             generated_lock = app / ".nsh/rust/Cargo.lock"
                             generated_lock.write_bytes(generated_lock.read_bytes() + b"# updated during packaging")
+                        elif mutation == "generated-manifest":
+                            manifest = app / ".nsh/rust/Cargo.toml"
+                            manifest.write_bytes(manifest.read_bytes() + b"# regenerated with different feature policy")
                         elif mutation:
                             path = app / mutation
                             path.write_bytes(path.read_bytes() + b" ")
@@ -354,6 +359,8 @@ class DeliveryTests(unittest.TestCase):
                     self.assertEqual(len(receipts), 1)
                     result = json.loads(receipts[0].read_text())
                     self.assertEqual(result["ocamlArtifactSha256"], expected)
+                    self.assertEqual(result["generatedManifestHashes"], {
+                        "Cargo.toml": delivery.digest(app / ".nsh/rust/Cargo.toml")})
                     self.assertIn("src/lib.rs", result["applicationSourceHashes"])
                     self.assertIn("build.rs", result["applicationSourceHashes"])
                     published, executable, resources = delivery.package_layout(directory / "relative release", config, "linux")

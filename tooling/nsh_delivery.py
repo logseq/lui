@@ -75,6 +75,11 @@ def require_snapshot(app, snapshot):
         raise DeliveryError("Application sources or manifests changed during packaging; rebuild from stable inputs")
 
 
+def generated_manifests(workspace):
+    return {path.relative_to(workspace).as_posix(): digest(path)
+            for path in sorted(workspace.rglob("Cargo.toml"))}
+
+
 def pinned_source(app):
     manifest = tomllib.loads((Path(app) / "Cargo.toml").read_text(encoding="utf-8"))
     dependencies = list(manifest.get("dependencies", {}).items())
@@ -514,6 +519,7 @@ def package(args):
     generated_packages = verify_graph(generated_graph, source)
     require_tested_registry(graph, generated_graph)
     generated_lock = digest(generated.parent / "Cargo.lock")
+    generated_manifest_hashes = generated_manifests(generated.parent)
     args.output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".lui-package-", dir=args.output) as temporary:
         staged = Path(temporary)
@@ -529,6 +535,8 @@ def package(args):
             raise DeliveryError("Local LUI adapter sources changed during packaging; rebuild from stable inputs")
         if digest(generated.parent / "Cargo.lock") != generated_lock:
             raise DeliveryError("Generated runner lock changed during packaging; requalify the application lock before retrying")
+        if generated_manifests(generated.parent) != generated_manifest_hashes:
+            raise DeliveryError("Generated runner manifests changed during packaging; regenerate and qualify them before building")
         require_snapshot(app, snapshot)
         run([args.node, ROOT / "tooling/lui_build_receipt.mjs", "check", "--artifact", args.library.resolve()])
         root, executable, resources = package_layout(staged, config, target)
@@ -543,6 +551,7 @@ def package(args):
                    "applicationCrates": packages, "runnerCrates": generated_packages,
                    "cargoLockSha256": digest(app / "Cargo.lock"),
                    "generatedLockSha256": digest(generated.parent / "Cargo.lock"),
+                   "generatedManifestHashes": generated_manifest_hashes,
                    "ocamlArtifactSha256": verified_digest,
                    "ocamlSourceHashes": ocaml_receipt["files"]}
         signing = finalize(root, executable, resources, config, target, wanted, args, receipt)
