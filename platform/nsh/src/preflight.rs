@@ -51,16 +51,28 @@ pub fn validate_styles(encoded: &str) -> Result<String, String> {
                 props: site.props.clone(),
                 ..Default::default()
             };
-            if let Err(error) = style::compile(&node, &theme, Size::new(px(1280.), px(800.))) {
-                if error.starts_with("NSH unresolved theme variable --") {
-                    deferred += 1;
-                } else {
-                    failures.push(format!(
-                        "{} [{}]: {}: {error}",
-                        site.location,
-                        wire["mode"].as_str().expect("validated snapshot mode"),
-                        site.kind
-                    ));
+            // An unresolved scoped variable in one field must not hide a
+            // statically invalid grammar in another field on the same node.
+            let candidates =
+                std::iter::once(node.clone()).chain(site.props.iter().map(|(name, value)| Node {
+                    kind: site.kind.clone(),
+                    props: Map::from_iter([(name.clone(), value.clone())]),
+                    ..Default::default()
+                }));
+            for candidate in candidates {
+                if let Err(error) =
+                    style::compile(&candidate, &theme, Size::new(px(1280.), px(800.)))
+                {
+                    if error.starts_with("NSH unresolved theme variable --") {
+                        deferred += 1;
+                    } else {
+                        failures.push(format!(
+                            "{} [{}]: {}: {error}",
+                            site.location,
+                            wire["mode"].as_str().expect("validated snapshot mode"),
+                            site.kind
+                        ));
+                    }
                 }
             }
         }
@@ -95,6 +107,12 @@ mod tests {
         );
         assert!(validate_styles(&manifest(json!({"overflow":"auto"}))).is_err());
         assert!(validate_styles(&manifest(json!({"opacity":0.5,"font-size":"16px"}))).is_ok());
+        assert!(
+            validate_styles(&manifest(
+                json!({"font-size":"var(--local-text-size)","cursor":"invalid-cursor"})
+            ))
+            .is_err()
+        );
         assert!(
             validate_styles(&manifest(json!({"font-size":"var(--local-text-size)"})))
                 .unwrap()
