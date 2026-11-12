@@ -48,6 +48,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ))
         }
     }
+    fn describe(name: &str, view: &NSView, root: &NSView) -> serde_json::Value {
+        fn rect(value: NSRect) -> [f64; 4] {
+            [
+                value.origin.x,
+                value.origin.y,
+                value.size.width,
+                value.size.height,
+            ]
+        }
+        let layer = view.layer().map(|layer| {
+            let parent = layer.superlayer();
+            let transform = layer.transform();
+            let sublayer = layer.sublayerTransform();
+            let origin = view.convertPointToLayer(view.bounds().origin);
+            let in_root = root
+                .layer()
+                .map(|root| layer.convertPoint_toLayer(origin, Some(&root)));
+            serde_json::json!({"bounds":rect(layer.bounds()),
+                "position":[layer.position().x,layer.position().y],
+                "anchor":[layer.anchorPoint().x,layer.anchorPoint().y],
+                "flipped":layer.isGeometryFlipped(),"hasSuperlayer":parent.is_some(),
+                "superlayerBounds":parent.as_ref().map(|layer|rect(layer.bounds())),
+                "transformTranslation":[transform.m41,transform.m42],
+                "sublayerTranslation":[sublayer.m41,sublayer.m42],
+                "localOriginInLayer":[origin.x,origin.y],
+                "localOriginInRootLayer":in_root.map(|point|[point.x,point.y])})
+        });
+        serde_json::json!({"name":name,"frame":rect(view.frame()),"bounds":rect(view.bounds()),
+            "flipped":view.isFlipped(),"inWindow":view.window().is_some(),"layer":layer,
+            "bareContentBounds":rect(view.convertRect_toView(view.bounds(),Some(root))),
+            "mappedContentBounds":geometry::content_bounds(view,root)})
+    }
     let main = MainThreadMarker::new().ok_or("probe must run on AppKit's main thread")?;
     let _application = NSApplication::sharedApplication(main);
     let root = flipped(main, rect(0.0, 0.0, 800.0, 600.0));
@@ -57,10 +89,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     root.addSubview(&scroll);
     scroll.addSubview(&row);
     row.addSubview(&child);
+    eprintln!(
+        "{}",
+        serde_json::json!({"phase":"attached-before-scroll","views":[
+        describe("root",&root,&root),describe("scroll",&scroll,&root),
+        describe("row",&row,&root),describe("child",&child,&root)]})
+    );
     let scroll_layer = scroll.layer().ok_or("scroll has no existing layer")?;
     let mut translation = scroll_layer.sublayerTransform();
     translation.m42 = -30_000.0;
     scroll_layer.setSublayerTransform(translation);
+    eprintln!(
+        "{}",
+        serde_json::json!({"phase":"live-sublayer-scroll","views":[
+        describe("root",&root,&root),describe("scroll",&scroll,&root),
+        describe("row",&row,&root),describe("child",&child,&root)]})
+    );
     let live = geometry::content_bounds(&child, &root)?;
     expect(live, [30.0, 376.0, 36.0, 36.0])?;
     let bare = child.convertRect_toView(child.bounds(), Some(&root));
