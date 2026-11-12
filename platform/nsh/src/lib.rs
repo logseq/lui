@@ -8,7 +8,7 @@ pub mod application_theme;
 mod context_menu;
 pub mod contract;
 mod controls;
-mod desktop_updates;
+pub mod desktop_updates;
 mod events;
 pub mod extensions;
 mod file_picker;

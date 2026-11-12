@@ -4896,3 +4896,28 @@ the preserved prefix instead. No window title, document text or other app is
 inspected. The diagnostic reads existing AppKit state on the main queue and does
 not show, activate, restore or create a window, alter capture selection, change
 display power or weaken the visible-window requirement.
+
+
+### Application-owned update menu contributions
+
+`lui_nsh::desktop_updates::{UpdateActions, UpdateLabels}` lets an embedded
+application retain its existing native menu. Construct `UpdateActions::installed()`
+once inside the application owner, then read `menu_items(translated_labels)` in
+that menu owner's existing effect and insert the returned items into its menu.
+Call `UpdateLabels::validate()` before admitting externally translated labels;
+`{version}` and `{notes}` placeholders are required where declared. `new(updater)`
+also accepts an explicitly selected existing `Updater`, preserving all installed
+root/configuration/signature checks.
+
+For example, append `updates.menu_items(labels)` to an application's own About/
+Quit group; do not mount a second `DesktopApp` to obtain update controls. This
+controller never calls `set_application_menu`. Phase changes are reactive, with
+no polling. It reuses the existing download/install confirmations, cancellation,
+verification error handling, retained verified download and restart-on-success.
+Owner cleanup cancels/releases its updater, and retired menu callbacks are inert.
+
+Missing installed `nsh/assets/nsh-updater.json` contributes no action and creates
+no worker, cache or network request. Invalid installed configuration contributes
+an explicit unavailable action. The generic `DesktopApp` delegates to the same
+controller and preserves its English labels and menu behavior. Applications may
+provide translated `UpdateLabels` without copying the updater workflow.
