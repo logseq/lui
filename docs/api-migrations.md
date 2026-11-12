@@ -4860,3 +4860,21 @@ maintained mobile composer and journal callers. The JSON view builder rejects
 and continues to accept the flag on `{"kind":"textarea",...}`. Android's existing
 single-line IME/submit event wiring is a separate qualification gap; this API
 correction makes no new claim about Android keyboard submission behavior.
+
+
+### Typed view metadata reports existing state aliases accurately
+
+Typed constructor introspection now reports `menu_item ~checked` and
+`toggle_button ~checked` as emitting `selected`, and `radio ~selected` as
+emitting `checked`. MenuItem/ToggleButton `checked_signal` continues to emit
+`selected`, while Radio `checked_signal` continues to emit `checked`.
+These aliases and their precedence already belonged to the constructors; this
+correction changes metadata only, preserving constructor signatures, emitted
+patches, events and maintained backend behavior.
+
+For example, tooling inspecting `Lui_wire_schema.view_contract MenuItem` now
+finds the canonical `Selected` property for checked menu rows, rather than
+incorrectly treating the accepted constructor alias as the unsupported
+`Checked` wire property. A consumer that generates wire patches from constructor
+metadata should use the emitted canonical field; application view calls such as
+`menu_item ~checked:true []` need no migration.

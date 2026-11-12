@@ -3422,6 +3422,47 @@ let test_rich_text_containers () =
       Alcotest.(check int) (kind ^ " nested link remains interactive") 1 !calls))
     ["heading";"paragraph";"label"]
 
+let test_typed_checked_selected_aliases () =
+  let open Lui_protocol in
+  List.iter (fun (kind, emitted, obsolete) ->
+    let properties = match Lui_wire_schema.view_contract kind with
+      | Some contract -> contract.Lui_wire_schema.view_properties
+      | None -> failwith "Missing typed state alias contract" in
+    Alcotest.(check bool) "typed state alias advertises its accepted wire property" true
+      (property_supported kind emitted && List.exists (fun (property, _, _) -> property=emitted) properties);
+    Alcotest.(check bool) "typed state alias does not advertise a different wire property" false
+      (List.exists (fun (property, _, _) -> property=obsolete) properties))
+    [MenuItem,Selected,Checked;ToggleButton,Selected,Checked;Radio,Checked,Selected];
+  let session = drive_mount ~initial:false ~reducer:(fun _ value -> value)
+    ~view:(fun _ source _ -> Lui_elements.column
+      [Lui_elements.button [Lui_elements.context_menu
+        [Lui_elements.menu_item ~accessibility_identifier:"menu-static" ~checked:true [];
+         Lui_elements.menu_item ~accessibility_identifier:"menu-live" ~checked_signal:source []]];
+       Lui_elements.toggle_button ~accessibility_identifier:"toggle-static" ~checked:true [];
+       Lui_elements.toggle_button ~accessibility_identifier:"toggle-live" ~checked_signal:source [];
+       Lui_elements.radio_group
+        [Lui_elements.radio ~accessibility_identifier:"radio-static" ~selected:true [];
+         Lui_elements.radio ~accessibility_identifier:"radio-live" ~checked_signal:source []]]) () in
+  Fun.protect ~finally:(fun () -> drive_dispose session) (fun () ->
+    let named identifier =
+      Hashtbl.fold (fun _ node found ->
+        if Drive.Model.string_prop node "accessibility-identifier"=Some identifier
+        then Some node else found) (drive_tree session).Drive.Model.nodes None |> Option.get in
+    let expect identifier property expected =
+      let node=named identifier in
+      Alcotest.(check bool) "actual constructor emits the advertised state alias" true
+        (Hashtbl.find_opt node.Drive.Model.props property=Some (BoolValue expected));
+      node.Drive.Model.id in
+    List.iter (fun (identifier, property) -> ignore (expect identifier property true))
+      ["menu-static","selected";"toggle-static","selected";"radio-static","checked"];
+    let live = List.map (fun (identifier, property) ->
+      identifier, property, expect identifier property false)
+      ["menu-live","selected";"toggle-live","selected";"radio-live","checked"] in
+    ignore (Lui_app.send session.Drive.Session.app true);Drive.Session.flush session;
+    List.iter (fun (identifier, property, identity) ->
+      Alcotest.(check int) "state alias updates retain the constructor's node" identity
+        (expect identifier property true)) live)
+
 let test_json_row_column_grid_columns () =
   let open Lui_json_view in
   let sink ~id:_ ~kind:_ ~fields:_ = () in
@@ -6266,6 +6307,7 @@ let () =
           Alcotest.test_case "portable editor and virtual tuning" `Quick test_portable_editor_and_virtual_tuning;
           Alcotest.test_case "parse edge cases" `Quick test_json_view_parse;
           Alcotest.test_case "rectangle anchors" `Quick test_json_view_anchor_rect;
+          Alcotest.test_case "typed checked/selected aliases" `Quick test_typed_checked_selected_aliases;
           Alcotest.test_case "linear and grid column contracts" `Quick test_json_row_column_grid_columns;
           Alcotest.test_case "Textarea-only submit policy" `Quick test_json_submit_on_enter_contract;
           Alcotest.test_case "context menu property contract" `Quick test_json_context_menu_contract;

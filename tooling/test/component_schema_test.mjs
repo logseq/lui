@@ -193,3 +193,23 @@ test('schema validation rejects duplicate wire names before generation', () => {
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /duplicate node-kind wire name: duplicate/);
 });
+
+
+test('typed constructor state aliases name their accepted canonical wire property', () => {
+  const generated = readFileSync(join(repository, 'src/lui_wire_schema.ml'), 'utf8');
+  const canonical = JSON.parse(readFileSync(join(repository, 'platform/nsh/contract.json'), 'utf8'));
+  for (const [kind, constructor, accepted, obsolete] of [
+    ['menu-item', 'MenuItem', 'Selected', 'Checked'],
+    ['toggle-button', 'ToggleButton', 'Selected', 'Checked'],
+    ['radio', 'Radio', 'Checked', 'Selected'],
+  ]) {
+    const contract = generated.match(new RegExp(`\\| ${constructor} -> Some \\{([\\s\\S]*?)\n    \\}`))?.[1];
+    assert.ok(contract, `missing typed constructor contract for ${kind}`);
+    const properties = contract.match(/view_properties = \[([\s\S]*?)\];/)?.[1];
+    assert.ok(properties, `missing typed constructor properties for ${kind}`);
+    assert.match(properties, new RegExp(`\\(${accepted}, ViewBool, false\\)`));
+    assert.doesNotMatch(properties, new RegExp(`\\(${obsolete},`));
+    const wire = accepted === 'Selected' ? 'selected' : 'checked';
+    assert.ok(canonical.kinds[kind].properties.includes(wire), `${kind}.${wire} must remain canonical`);
+  }
+});

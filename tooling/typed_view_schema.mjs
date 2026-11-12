@@ -42,6 +42,14 @@ const aliases = {
   level: ['heading-level'],
 };
 
+// These constructor conveniences emit the same underlying state property.
+// Keep this translation separate from canonical property acceptance rules.
+const constructorAliases = {
+  'menu-item': {checked: ['selected']},
+  'toggle-button': {checked: ['selected']},
+  radio: {selected: ['checked']},
+};
+
 export const typedViewSignature = `
 type view_value =
   | ViewString | ViewBool | ViewInt | ViewFloat
@@ -168,7 +176,8 @@ export function typedViewSchema(schema, signature, implementation, {extension = 
         slots.push(`(${quote(wireName(label))}, ${quote(structural[1])}, ${!!structural[2]})`);
         continue;
       }
-      const names = extension ? [wireName(label)] : label === 'value' && type === 'string' ? ['text'] : aliases[label] ?? [wireName(label)];
+      const names = extension ? [wireName(label)] : label === 'value' && type === 'string' ? ['text']
+        : constructorAliases[wire]?.[label] ?? aliases[label] ?? [wireName(label)];
       for (const propName of names) {
         const property = extension ? quote(propName) : properties.get(propName);
         if (!property) throw new Error(`no wire property for typed argument: ${wire}.${label}`);
