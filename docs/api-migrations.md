@@ -5536,3 +5536,30 @@ wash behind the track. Auto/parent-relative frames retain the intrinsic
 No Web, Apple/iOS or Android defaults change, and no downstream API changes
 are required. Existing applications that used Switch background/padding to
 decorate an entire labeled row should put that decoration on a containing row.
+
+## NSH cancels an origin preview when mouse End has no accepted release target
+
+A primary mouse sequence now emits `PointerCancel` at its subscribed retained
+origin when its matching native TouchEnd arrives without an accepted real
+primary MouseUp anywhere in that renderer. This includes a drag released beyond
+the application window or outside eligible release targets. Previously the
+origin could keep a pending preview indefinitely after an outside release.
+This does not synthesize successful `PointerUp`, add pointer capture support,
+change the capture default or require another SDK API.
+
+The cancellation detail is the last authentic admitted primary MouseMove or
+pointer Down sample observed by that element. It is explicitly a cancellation
+sample, not fresh release metadata. If no authentic sample exists, the host does
+not invent zero coordinates/modifiers. A changed secondary release cannot finish
+the pending primary sequence. Native cancellation and duplicate End consume the
+pending record once; a retired element cannot cancel a replacement incarnation.
+
+An accepted current-hit primary Up at destination B is recorded before the
+origin A's later TouchEnd. A therefore sends no late Cancel after B commits.
+This preserves application completion state and follow-up click suppression.
+Applications should handle the already existing `on_pointer_cancel` callback by
+discarding previews; for example, keep `row ~on_pointer_move:update_preview
+~on_pointer_up:commit_preview ~on_pointer_cancel:discard_preview []` and clear
+owned preview state on disposal. No source or wire migration is required.
+Web, Apple/iOS and Android paths are unchanged; full NSH captured-gesture
+qualification remains separate.

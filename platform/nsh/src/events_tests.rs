@@ -504,6 +504,26 @@ fn ReleaseEvents() -> impl IntoElement {
         ))
         .unwrap();
     renderer.set_root(1).unwrap();
+    let retiring = renderer.clone();
+    on_key("f9", move |_| {
+        retiring
+            .apply(patch(
+                2,
+                json!([
+                    {"op":"drop-node","id":10},
+                    {"op":"create-node","id":10,"kind":"box"},
+                    {"op":"set-prop","id":10,"property":"width","value":100},
+                    {"op":"set-prop","id":10,"property":"height","value":80},
+                    {"op":"set-prop","id":10,"property":"press-enabled","value":true},
+                    {"op":"set-prop","id":10,"property":"pointer-enabled","value":true},
+                    {"op":"create-node","id":12,"kind":"text"},
+                    {"op":"set-prop","id":12,"property":"text","value":"Replacement source"},
+                    {"op":"insert-child","parent":10,"child":12,"index":0},
+                    {"op":"insert-child","parent":1,"child":10,"index":0}
+                ]),
+            ))
+            .unwrap();
+    });
     renderer.element()
 }
 fn release_app() -> (Headless, Arc<Mutex<Vec<Event>>>) {
@@ -768,4 +788,153 @@ fn touch_up_requires_its_owned_end_and_never_cancel_deactivation_or_keyboard() {
         released(&events).is_empty(),
         "mouse Touch End cannot duplicate MouseUp"
     );
+}
+
+fn held_mouse_sample(app: &mut Headless, source: nsh_core::NodeId) {
+    use nsh_core::{EventKind, EventPayload, MouseEvent};
+    send_release_input(
+        app,
+        source,
+        EventKind::MouseMove,
+        EventPayload::Mouse(MouseEvent::new(
+            point(px(11.0), px(13.0)),
+            point(px(41.0), px(53.0)),
+            Modifiers {
+                shift: true,
+                alt: true,
+                ..Default::default()
+            },
+            Some(MouseButton::Left),
+        )),
+    );
+}
+fn cancelled(events: &Arc<Mutex<Vec<Event>>>) -> Vec<(u64, PointerDetail)> {
+    events
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|event| {
+            if let Event::Pointer {
+                node,
+                kind: PointerKind::Cancel,
+                detail,
+            } = event
+            {
+                Some((*node, detail.clone()))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn mouse_end_without_current_hit_up_cancels_once_with_authentic_detail() {
+    use nsh_core::{EventKind, EventPayload, PointerType};
+    let (mut app, events) = release_app();
+    let source = node_id(&app, "lui-10");
+    release_touch(&mut app, source, 40, TouchPhase::Start, PointerType::Mouse);
+    held_mouse_sample(&mut app, source);
+    // A press deactivated on leaving its retained origin is not a release.
+    send_release_input(&mut app, source, EventKind::PressUp, EventPayload::None);
+    assert!(cancelled(&events).is_empty());
+    release_touch(&mut app, source, 40, TouchPhase::End, PointerType::Mouse);
+    let cancel = cancelled(&events);
+    assert_eq!(cancel.len(), 1);
+    assert_eq!(
+        (
+            cancel[0].0,
+            cancel[0].1.x,
+            cancel[0].1.y,
+            cancel[0].1.modifiers,
+            cancel[0].1.button
+        ),
+        (10, 41.0, 53.0, 18, 0)
+    );
+    assert!(
+        released(&events).is_empty(),
+        "outside End must not fabricate successful Up"
+    );
+    release_touch(&mut app, source, 40, TouchPhase::End, PointerType::Mouse);
+    assert_eq!(cancelled(&events).len(), 1);
+    events.lock().unwrap().clear();
+    release_touch(&mut app, source, 41, TouchPhase::Start, PointerType::Mouse);
+    release_touch(&mut app, source, 41, TouchPhase::End, PointerType::Mouse);
+    assert!(
+        cancelled(&events).is_empty(),
+        "missing authentic metadata must not become a zero-filled sample"
+    );
+    release_touch(&mut app, source, 42, TouchPhase::Start, PointerType::Mouse);
+    held_mouse_sample(&mut app, source);
+    release_touch(&mut app, source, 42, TouchPhase::Cancel, PointerType::Mouse);
+    release_touch(&mut app, source, 42, TouchPhase::End, PointerType::Mouse);
+    assert_eq!(
+        cancelled(&events).len(),
+        1,
+        "a native Cancel consumes the pending End"
+    );
+}
+
+#[test]
+fn accepted_destination_up_prevents_late_origin_cancel_and_preserves_completion() {
+    use nsh_core::{EventKind, EventPayload, MouseEvent, PointerType};
+    let (mut app, events) = release_app();
+    let source = node_id(&app, "lui-10");
+    let destination = node_id(&app, "lui-20");
+    release_touch(&mut app, source, 50, TouchPhase::Start, PointerType::Mouse);
+    held_mouse_sample(&mut app, source);
+    send_release_input(
+        &mut app,
+        destination,
+        EventKind::MouseUp,
+        EventPayload::Mouse(MouseEvent::released(
+            point(px(7.0), px(9.0)),
+            point(px(107.0), px(9.0)),
+            Modifiers::default(),
+            MouseButton::Left,
+        )),
+    );
+    release_touch(&mut app, source, 50, TouchPhase::End, PointerType::Mouse);
+    assert_eq!(released(&events).len(), 1);
+    assert_eq!(released(&events)[0].0, 20);
+    assert!(
+        cancelled(&events).is_empty(),
+        "a post-commit Cancel would erase application click suppression"
+    );
+    events.lock().unwrap().clear();
+    release_touch(&mut app, source, 51, TouchPhase::Start, PointerType::Mouse);
+    held_mouse_sample(&mut app, source);
+    send_release_input(
+        &mut app,
+        destination,
+        EventKind::MouseUp,
+        EventPayload::Mouse(MouseEvent::released(
+            point(px(7.0), px(9.0)),
+            point(px(107.0), px(9.0)),
+            Modifiers::default(),
+            MouseButton::Right,
+        )),
+    );
+    release_touch(&mut app, source, 51, TouchPhase::End, PointerType::Mouse);
+    assert_eq!(
+        cancelled(&events).len(),
+        1,
+        "secondary Up cannot complete the primary sequence"
+    );
+}
+
+#[test]
+fn outside_mouse_end_cannot_cancel_a_reused_wire_identity() {
+    use nsh_core::PointerType;
+    let (mut app, events) = release_app();
+    let source = node_id(&app, "lui-10");
+    release_touch(&mut app, source, 60, TouchPhase::Start, PointerType::Mouse);
+    held_mouse_sample(&mut app, source);
+    app.press_key("f9").unwrap();
+    app.wait_for("Replacement source").unwrap();
+    assert_ne!(node_id(&app, "lui-10"), source);
+    events.lock().unwrap().clear();
+    release_touch(&mut app, source, 60, TouchPhase::End, PointerType::Mouse);
+    assert!(cancelled(&events).is_empty());
+    assert!(released(&events).is_empty());
 }

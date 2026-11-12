@@ -117,6 +117,7 @@ struct State {
     viewport: Signal<Size<Points>>,
     toast_ids: BTreeSet<u64>,
     toasts: Signal<Vec<crate::controls::toasts::Member>>,
+    mouse_releases: Rc<Cell<u64>>,
 }
 #[derive(Clone)]
 pub struct Renderer(Rc<RefCell<State>>);
@@ -148,6 +149,7 @@ impl Renderer {
             viewport: signal(Size::default()),
             toast_ids: BTreeSet::new(),
             toasts: signal(Vec::new()),
+            mouse_releases: Rc::new(Cell::new(0)),
         })))
     }
     /// The current immutable wire node. Host work must keep its incarnation
@@ -874,6 +876,7 @@ impl Renderer {
                     self.0.borrow().nodes[&id].capabilities.clone(),
                     Rc::new(move || current.is_current(id, incarnation, None)),
                     use_context::<crate::events::VisibilityScope>(),
+                    self.0.borrow().mouse_releases.clone(),
                 )
                 .appear_contents();
             }
@@ -1067,6 +1070,7 @@ impl Renderer {
             installed,
             Rc::new(move || current.is_current(id, incarnation, None)),
             use_context::<crate::events::VisibilityScope>(),
+            self.0.borrow().mouse_releases.clone(),
         )
         .with_theme(theme);
         native_events.appear(reference);

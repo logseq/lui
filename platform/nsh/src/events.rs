@@ -7,7 +7,11 @@ use nsh_core::{
     keymap::Modifiers,
     prelude::*,
 };
-use std::{cell::Cell, rc::Rc, sync::Arc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    sync::Arc,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -68,6 +72,12 @@ struct TouchRelease {
     // TouchEvent has no modifier fields. Preserve the authentic native Down
     // sample; only MouseUp can report fresh release modifiers at this SDK pin.
     modifiers: Option<Modifiers>,
+}
+
+struct MouseRelease {
+    id: u32,
+    epoch: u64,
+    last_detail: Option<PointerDetail>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -160,6 +170,7 @@ pub(crate) struct NativeEvents {
     visibility: Option<VisibilityScope>,
     press_snapshot: Rc<Cell<Option<PressEvent>>>,
     theme: Option<crate::ui::Theme>,
+    mouse_releases: Rc<Cell<u64>>,
 }
 impl NativeEvents {
     pub(crate) fn new(
@@ -168,6 +179,7 @@ impl NativeEvents {
         installed: Rc<Cell<Option<Capabilities>>>,
         current: Rc<dyn Fn() -> bool>,
         visibility: Option<VisibilityScope>,
+        mouse_releases: Rc<Cell<u64>>,
     ) -> Self {
         Self {
             node,
@@ -177,6 +189,7 @@ impl NativeEvents {
             visibility,
             press_snapshot: Rc::new(Cell::new(None)),
             theme: None,
+            mouse_releases,
         }
     }
     pub(crate) fn with_theme(mut self, theme: crate::ui::Theme) -> Self {
@@ -358,6 +371,7 @@ impl NativeEvents {
         }
         if node.boolean("pointer-enabled", false) {
             let touch_release = Rc::new(Cell::new(None::<TouchRelease>));
+            let mouse_release = Rc::new(RefCell::new(None::<MouseRelease>));
             if supports("pointer-enter") {
                 let events = self.clone();
                 element = element.on_mouse_enter(move |_: &nsh_core::MouseEvent| {
@@ -377,7 +391,15 @@ impl NativeEvents {
             if supports("pointer-down") {
                 let events = self.clone();
                 let touch_release = touch_release.clone();
+                let mouse_release = mouse_release.clone();
                 element = element.on_press_down(move |event: &PressEvent| {
+                    if event.clicks > 0
+                        && events.accepts("pointer-enabled", "pointer-down")
+                        && let Some(release) = mouse_release.borrow_mut().as_mut()
+                    {
+                        release.last_detail =
+                            Some(detail(event.page_position, event.modifiers, None));
+                    }
                     if let Some(mut release) = touch_release.get()
                         && release.modifiers.is_none()
                     {
@@ -394,6 +416,13 @@ impl NativeEvents {
                 let events = self.clone();
                 element = element.on_mouse_up(move |event: &nsh_core::MouseEvent| {
                     if let Some(button) = event.button {
+                        if button == MouseButton::Left
+                            && events.accepts("pointer-enabled", "pointer-up")
+                        {
+                            events
+                                .mouse_releases
+                                .set(events.mouse_releases.get().wrapping_add(1));
+                        }
                         events.pointer(
                             PointerKind::Up,
                             detail(event.page_position, event.modifiers, Some(button)),
@@ -414,8 +443,16 @@ impl NativeEvents {
             }
             if supports("pointer-move") {
                 let events = self.clone();
+                let mouse_release = mouse_release.clone();
                 element = element.on_mouse_move(move |event: &nsh_core::MouseEvent| {
-                    events.pointer(PointerKind::Move, move_detail(event))
+                    let sample = move_detail(event);
+                    if event.pressed_button == Some(MouseButton::Left)
+                        && events.accepts("pointer-enabled", "pointer-move")
+                        && let Some(release) = mouse_release.borrow_mut().as_mut()
+                    {
+                        release.last_detail = Some(sample.clone());
+                    }
+                    events.pointer(PointerKind::Move, sample)
                 });
             }
             if supports("pointer-up") || supports("pointer-move") || supports("pointer-cancel") {
@@ -424,6 +461,35 @@ impl NativeEvents {
                     for point in event.points.iter().filter(|point| point.changed) {
                         let non_mouse = point.pointer_type != nsh_core::PointerType::Mouse;
                         match event.phase {
+                            TouchPhase::Start if !non_mouse && mouse_release.borrow().is_none() => {
+                                *mouse_release.borrow_mut() = Some(MouseRelease {
+                                    id: point.id,
+                                    epoch: events.mouse_releases.get(),
+                                    last_detail: None,
+                                });
+                            }
+                            TouchPhase::End if !non_mouse => {
+                                let release = {
+                                    let mut pending = mouse_release.borrow_mut();
+                                    if pending
+                                        .as_ref()
+                                        .is_some_and(|release| release.id == point.id)
+                                    {
+                                        pending.take()
+                                    } else {
+                                        None
+                                    }
+                                };
+                                if let Some(release) = release
+                                    && release.epoch == events.mouse_releases.get()
+                                    && let Some(sample) = release.last_detail
+                                {
+                                    // A current-hit Up anywhere in this renderer precedes the
+                                    // origin TouchEnd. Without one, discard the preview using
+                                    // its last authentic sample; never invent a successful Up.
+                                    events.pointer(PointerKind::Cancel, sample);
+                                }
+                            }
                             TouchPhase::Start if non_mouse && touch_release.get().is_none() => {
                                 touch_release.set(Some(TouchRelease {
                                     id: point.id,
@@ -444,6 +510,13 @@ impl NativeEvents {
                                 }
                             }
                             TouchPhase::Cancel => {
+                                if mouse_release
+                                    .borrow()
+                                    .as_ref()
+                                    .is_some_and(|release| release.id == point.id)
+                                {
+                                    mouse_release.borrow_mut().take();
+                                }
                                 if touch_release
                                     .get()
                                     .is_some_and(|release| release.id == point.id)
