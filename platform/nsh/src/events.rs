@@ -132,6 +132,16 @@ fn detail(position: Point<Points>, keys: Modifiers, button: Option<MouseButton>)
     }
 }
 
+fn move_detail(event: &nsh_core::MouseEvent) -> PointerDetail {
+    let mut value = detail(event.page_position, event.modifiers, event.pressed_button);
+    // Only a move distinguishes hover from a held primary button. Press phases
+    // retain their existing button numbering and payload defaults.
+    if event.pressed_button.is_none() {
+        value.button = -1;
+    }
+    value
+}
+
 #[derive(Clone)]
 pub(crate) struct NativeEvents {
     node: Signal<Arc<Node>>,
@@ -386,10 +396,7 @@ impl NativeEvents {
             if supports("pointer-move") {
                 let events = self.clone();
                 element = element.on_mouse_move(move |event: &nsh_core::MouseEvent| {
-                    events.pointer(
-                        PointerKind::Move,
-                        detail(event.page_position, event.modifiers, event.pressed_button),
-                    )
+                    events.pointer(PointerKind::Move, move_detail(event))
                 });
             }
             if supports("pointer-move") || supports("pointer-cancel") {

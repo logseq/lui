@@ -17,6 +17,18 @@ start update preparation; those later changes do not retroactively reject the
 accepted press. Hosts must not additionally send a semantic Press event for the
 same action. The agent's existing `native-press` operation uses the same helper;
 its reply shape is unchanged. Apple/iOS, Android and Web APIs are unchanged.
+## NSH pointer movement distinguishes hover from a held mouse button
+
+NSH `PointerMove` uses `pointer_detail.button = -1` when the public native
+`MouseEvent.pressed_button` is `None`. Held buttons retain their existing
+numbering: primary 0, middle 1, secondary 2, back 3 and forward 4. Previously
+hover and a held primary button both arrived as 0. Down, Up, PressDetail and
+non-NSH event payloads are unchanged.
+
+For example, a document bridge maps Move button -1 to `buttons = 0` and Move
+button 0 to `buttons = 1`; it must not treat every Move as a primary drag.
+Consumers handling pointer movement should update alongside the NSH host.
+This correction does not implement pointer capture or change gesture ownership.
 
 ## NSH coalesces pending virtual-list range feedback
 

@@ -194,7 +194,52 @@ fn native_host_press_preserves_modifiers_pointer_payload_and_appear_without_text
         assert!(observed.iter().any(|event|matches!(event, Event::Pointer {node:10,kind:current,detail} if *current==kind && detail.modifiers==7 && detail.x.is_finite() && detail.y.is_finite() && detail.button==0 && detail.target_class.is_empty())), "missing {kind:?}: {observed:?}");
     }
     assert!(observed.contains(&Event::PointerEnter(10)));
+    assert!(
+        observed.iter().any(|event| matches!(event,
+        Event::Pointer { node:10,kind:PointerKind::Move,detail } if detail.button == -1)),
+        "native hover must not report a held primary button: {observed:?}"
+    );
     assert_eq!(node_id(&app, "lui-10"), before);
+}
+
+#[test]
+fn mouse_move_preserves_the_public_native_held_button_state() {
+    for (pressed, expected) in [
+        (None, -1),
+        (Some(MouseButton::Left), 0),
+        (Some(MouseButton::Middle), 1),
+        (Some(MouseButton::Right), 2),
+        (Some(MouseButton::Back), 3),
+        (Some(MouseButton::Forward), 4),
+    ] {
+        let event = nsh_core::MouseEvent::new(
+            point(px(3.0), px(5.0)),
+            point(px(31.0), px(47.0)),
+            Modifiers {
+                ctrl: true,
+                shift: true,
+                cmd: true,
+                ..Default::default()
+            },
+            pressed,
+        );
+        let value = move_detail(&event);
+        assert_eq!(value.button, expected);
+        assert_eq!((value.x, value.y), (31.0, 47.0));
+        assert_eq!(
+            value.modifiers,
+            if pressed == Some(MouseButton::Right) {
+                15
+            } else {
+                7
+            }
+        );
+        assert!(value.target_class.is_empty());
+    }
+    assert_eq!(
+        detail(point(px(1.0), px(2.0)), Modifiers::default(), None).button,
+        0
+    );
 }
 
 #[test]
