@@ -40,9 +40,10 @@ pub fn validate_styles(encoded: &str) -> Result<String, String> {
     let mut deferred = 0;
     for wire in &manifest.themes {
         let snapshot = ThemeSnapshot::from_json(&wire.to_string())?;
+        let dark = wire["mode"] == "dark";
         let theme = snapshot.overlay(
-            style::ThemeView::new(Arc::new(Tokens::default()), false, false),
-            None,
+            style::ThemeView::new(Arc::new(Tokens::default()), dark, false),
+            Some(dark),
         )?;
         for site in &manifest.sites {
             let node = Node {
@@ -54,7 +55,12 @@ pub fn validate_styles(encoded: &str) -> Result<String, String> {
                 if error.starts_with("NSH unresolved theme variable --") {
                     deferred += 1;
                 } else {
-                    failures.push(format!("{}: {}: {error}", site.location, site.kind));
+                    failures.push(format!(
+                        "{} [{}]: {}: {error}",
+                        site.location,
+                        wire["mode"].as_str().expect("validated snapshot mode"),
+                        site.kind
+                    ));
                 }
             }
         }
