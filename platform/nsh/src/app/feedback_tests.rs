@@ -93,15 +93,16 @@ fn AcceptedVirtualFeedback() -> impl IntoElement {
             ..Default::default()
         },
         move |_| {
-            // Accept the command, then fence input before its native animation and
-            // deduplicated window/completion feedback run.
+            // Accept the command, then fence input before its native layout and
+            // deduplicated window/completion feedback run. Headless does not
+            // synthesize a platform animation-end event.
             scrolling
                 .apply(batch(
                     2,
                     json!([
                         {"op":"set-prop","id":1,"property":"scroll-target","value":"row-99"},
                         {"op":"set-prop","id":1,"property":"scroll-token","value":1},
-                        {"op":"set-prop","id":1,"property":"scroll-animated","value":true},
+                        {"op":"set-prop","id":1,"property":"scroll-animated","value":false},
                         {"op":"set-prop","id":1,"property":"virtual-scroll-index","value":99}
                     ]),
                 ))

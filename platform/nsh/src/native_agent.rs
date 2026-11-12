@@ -383,6 +383,9 @@ mod bounds_identity_tests {
                 view()
                     .test_id("factory-chosen")
                     .element_ref(&context.reference)
+                    .w(px(120.))
+                    .h(px(24.))
+                    .child(text("Factory root"))
                     .into_element()
             })
             .unwrap()
@@ -395,6 +398,7 @@ mod bounds_identity_tests {
         renderer.apply(batch(1,json!([
             {"op":"create-node","id":1,"kind":"column"},
             {"op":"create-node","id":2,"kind":"button"},
+            {"op":"set-prop","id":2,"property":"text","value":"Authored control"},
             {"op":"set-prop","id":2,"property":"accessibility-identifier","value":"authored-control"},
             {"op":"create-node","id":3,"kind":"text"},
             {"op":"set-prop","id":3,"property":"text","value":"Default identifier"},
@@ -445,7 +449,9 @@ mod bounds_identity_tests {
             );
             result.set("Mounted native identifiers verified".to_owned());
         });
-        view().child(renderer.element()).child(text(result))
+        view()
+            .child(renderer.element())
+            .child(text(move || result.get()))
     }
 
     #[test]
