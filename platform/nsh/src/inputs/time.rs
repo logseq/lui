@@ -28,6 +28,10 @@ fn text(time: TimeOfDay, precision: TimePrecision) -> String {
 
 pub(super) fn validate(node: &Node) -> Result<(), String> {
     value(node.string("text"))?;
+    validate_capabilities(node)
+}
+
+pub(super) fn validate_capabilities(node: &Node) -> Result<(), String> {
     for flag in [
         "read-only",
         "autofocus",

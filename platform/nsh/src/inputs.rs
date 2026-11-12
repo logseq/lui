@@ -42,6 +42,14 @@ pub(crate) fn validate(node: &Node) -> Result<(), String> {
     Ok(())
 }
 
+/// Literal target probes can know options without knowing the live text value.
+pub(crate) fn validate_capabilities(node: &Node) -> Result<(), String> {
+    if node.kind == "input" && input_kind(node)? == NativeInputKind::Time {
+        time::validate_capabilities(node)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_transition(previous: &Node, node: &Node) -> Result<(), String> {
     if node.kind == "input" && input_kind(previous)? != input_kind(node)? {
         return Err("NSH changing input-type while mounted requires a new keyed node".into());

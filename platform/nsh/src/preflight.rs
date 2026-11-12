@@ -51,6 +51,19 @@ pub fn validate_styles(encoded: &str) -> Result<String, String> {
                 props: site.props.clone(),
                 ..Default::default()
             };
+            let failure = |error: &str| {
+                format!(
+                    "{} [{}]: {}: {error}",
+                    site.location,
+                    wire["mode"].as_str().expect("validated snapshot mode"),
+                    site.kind
+                )
+            };
+            // Reuse provider capability rules on the complete captured site.
+            // Its dynamic/omitted text must stay at the runtime value boundary.
+            if let Err(error) = crate::inputs::validate_capabilities(&node) {
+                failures.push(failure(&error));
+            }
             // An unresolved scoped variable in one field must not hide a
             // statically invalid grammar in another field on the same node.
             let candidates =
@@ -66,12 +79,7 @@ pub fn validate_styles(encoded: &str) -> Result<String, String> {
                     if error.starts_with("NSH unresolved theme variable --") {
                         deferred += 1;
                     } else {
-                        failures.push(format!(
-                            "{} [{}]: {}: {error}",
-                            site.location,
-                            wire["mode"].as_str().expect("validated snapshot mode"),
-                            site.kind
-                        ));
+                        failures.push(failure(&error));
                     }
                 }
             }
@@ -117,6 +125,61 @@ mod tests {
             validate_styles(&manifest(json!({"font-size":"var(--local-text-size)"})))
                 .unwrap()
                 .contains("deferred")
+        );
+    }
+
+    #[test]
+    fn time_capabilities_are_checked_without_parsing_unknown_text() {
+        let manifest = |props| {
+            json!({"themes":[{"mode":"light","vars":{}}],
+                "sites":[{"location":"time_view.ml:7:4","kind":"input","props":props}]})
+            .to_string()
+        };
+        assert!(validate_styles(&manifest(json!({"input-type":"time"}))).is_ok());
+        for flag in [
+            "read-only",
+            "autofocus",
+            "navigate-enabled",
+            "dismiss-enabled",
+        ] {
+            let error =
+                validate_styles(&manifest(json!({"input-type":"time",flag:true}))).unwrap_err();
+            assert!(error.contains("time_view.ml:7:4"), "{error}");
+            assert!(
+                error.contains(&format!("NSH TimeField does not expose {flag}")),
+                "{error}"
+            );
+            assert!(validate_styles(&manifest(json!({"input-type":"time",flag:false}))).is_ok());
+            assert!(validate_styles(&manifest(json!({flag:true}))).is_ok());
+        }
+        assert!(
+            validate_styles(&manifest(json!({"input-type":"time","placeholder":"Time"})))
+                .unwrap_err()
+                .contains("TimeField does not expose a placeholder")
+        );
+        assert!(
+            validate_styles(&manifest(
+                json!({"input-type":"time","dismiss-enabled":true,
+                "font-size":"var(--local-size)"})
+            ))
+            .unwrap_err()
+            .contains("TimeField does not expose dismiss-enabled")
+        );
+        assert!(
+            validate_styles(&manifest(json!({"input-type":"color"})))
+                .unwrap_err()
+                .contains("input-type=color is not implemented")
+        );
+        let node = Node {
+            kind: "input".into(),
+            props: serde_json::from_value(json!({"input-type":"time","dismiss-enabled":true}))
+                .unwrap(),
+            ..Default::default()
+        };
+        assert!(
+            crate::inputs::validate(&node)
+                .unwrap_err()
+                .contains("requires nonempty")
         );
     }
 }

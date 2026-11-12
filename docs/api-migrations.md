@@ -5703,3 +5703,30 @@ submission flags do not commit. Applications that previously relied on Android
 ignoring an explicit blur flag should remove that flag; use
 `text_field ~submit_on_blur:true ~on_submit:save ~on_dismiss:discard []` for an
 owned draft with explicit save/cancel behavior.
+
+## NSH input capabilities are checked by native target preflight
+
+The actual compiled target's presentation preflight now also calls the same
+pure input capability checks used by the renderer. A statically authored
+``input ~kind:`time ~on_dismiss:cancel []`` fails before application launch:
+public TimeField has no cancellation callback. Its existing read-only,
+autofocus, navigation and nonempty-placeholder restrictions are checked through
+the same provider policy. Native ``input ~kind:`color`` is likewise rejected by
+the existing input-type lowering. False/absent option flags keep their meaning.
+
+Use an ordinary text field for a cancelable native time draft, or select a valid
+backend-specific implementation:
+
+```ocaml
+if Lui_ui.host context = Lui_protocol.NshHost then
+  Lui_elements.text_field ~text:"12:30" ~on_dismiss:cancel []
+else Lui_elements.input ~kind:`time ~text:"12:30" ~on_dismiss:cancel []
+```
+
+Only captured options are inspected; omitted dynamic text is not replaced by a
+default or parsed as an empty time value. Scoped theme variables cannot hide a
+known unsupported input capability. Runtime value validation and its existing
+value-before-option error priority remain unchanged. The application extractor
+still records callback presence without executing the callback, and its native
+target branch pruning preserves valid Web/mobile alternatives. No public API,
+wire tag, SDK change or additional property grammar is introduced.
