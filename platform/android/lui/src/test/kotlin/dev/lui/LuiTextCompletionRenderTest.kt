@@ -99,7 +99,9 @@ class LuiTextCompletionRenderTest {
                     }
                     clearOnSubmit = false
                     focus(); events.clear()
-                    assertTrue(field().config[SemanticsActions.SetSelection].action!!.invoke(1, 3, false))
+                    // Original-text traversal selects a real range without
+                    // requesting the separate smart-selection toolbar service.
+                    assertTrue(field().config[SemanticsActions.SetSelection].action!!.invoke(1, 3, true))
                     settle()
                     assertTrue("selection-only native updates must not emit TextChanged", events.isEmpty())
                     assertTrue(backend.applyBatch("""{"generation":4,"ops":[
@@ -187,10 +189,14 @@ class LuiTextCompletionRenderTest {
                 events.clear(); blurOnDismiss = true
                 key(android.view.KeyEvent.KEYCODE_ESCAPE); settle()
                 assertEquals("a genuine edit rearms cancellation before its synchronous blur", listOf(LuiEvent.Dismiss(1)), events)
+                assertEquals("cancellation really loses native focus", false,
+                    field().config[SemanticsProperties.Focused])
                 events.clear()
                 assertTrue(field().config[SemanticsActions.OnImeAction].action!!.invoke())
                 settle()
-                assertTrue("late IME acceptance after canceled blur cannot save", events.isEmpty())
+                assertTrue("late IME acceptance after canceled blur cannot save: events=$events, " +
+                    "focused=${field().config[SemanticsProperties.Focused]}, " +
+                    "text=${field().config[SemanticsProperties.EditableText].text}", events.isEmpty())
                 assertTrue(field().config[SemanticsActions.RequestFocus].action!!.invoke())
                 settle(); clearFocus(); settle()
                 assertEquals("fresh focus starts a new submittable interval", listOf(LuiEvent.Submit(1)), events)
