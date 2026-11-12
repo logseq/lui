@@ -4878,3 +4878,21 @@ incorrectly treating the accepted constructor alias as the unsupported
 `Checked` wire property. A consumer that generates wire patches from constructor
 metadata should use the emitted canonical field; application view calls such as
 `menu_item ~checked:true []` need no migration.
+
+
+### NSH screenshot failures include bounded own-window diagnostics
+
+On macOS, the existing `screenshot` operation still requires an already visible
+content window. When none is eligible, its error now preserves the prefix
+`the application has no visible content window to capture` and appends
+`own-window diagnostics=<JSON>`. For example, a running background host with no
+windows reports `windowCount: 0`, its application hidden/active state and numeric
+AppKit activation policy. Hosts with windows include at most eight entries with
+visibility, miniaturization, main/key state and content bounds; `truncated`
+indicates additional windows. Nonfinite bounds are marked by `finite: false`.
+
+Consumers that recognized this failure by exact string equality should match
+the preserved prefix instead. No window title, document text or other app is
+inspected. The diagnostic reads existing AppKit state on the main queue and does
+not show, activate, restore or create a window, alter capture selection, change
+display power or weaken the visible-window requirement.

@@ -54,7 +54,12 @@ fn capture_on_main() -> Result<Capture, String> {
                 .max_by(|(_, a), (_, b)| a.total_cmp(b))
                 .map(|(window, _)| window)
         })
-        .ok_or("the application has no visible content window to capture")?;
+        .ok_or_else(|| {
+            format!(
+                "the application has no visible content window to capture; own-window diagnostics={}",
+                window_diagnostics(&app)
+            )
+        })?;
     let view = window
         .contentView()
         .ok_or("the application window has no content view")?;
@@ -84,6 +89,36 @@ fn capture_on_main() -> Result<Capture, String> {
     .ok_or("AppKit could not encode the content bitmap as PNG")?
     .to_vec();
     Ok(Capture { png, width, height })
+}
+
+/// Reads only this process's existing windows, on the capture's main queue.
+/// Titles, user content, addresses and other applications are never inspected.
+#[cfg(target_os = "macos")]
+fn window_diagnostics(app: &nsh_platform_macos::objc2_app_kit::NSApplication) -> serde_json::Value {
+    let windows = app.windows();
+    let sample: Vec<_> = windows
+        .iter()
+        .take(8)
+        .enumerate()
+        .map(|(index, window)| {
+            let content = window.contentView();
+            let bounds = content.as_ref().map(|view| {
+                let bounds = view.bounds();
+                serde_json::json!({"x":bounds.origin.x,"y":bounds.origin.y,
+                "width":bounds.size.width,"height":bounds.size.height,
+                "finite":[bounds.origin.x,bounds.origin.y,bounds.size.width,bounds.size.height]
+                    .iter().all(|value|value.is_finite())})
+            });
+            serde_json::json!({"index":index,"visible":window.isVisible(),
+            "miniaturized":window.isMiniaturized(),"main":window.isMainWindow(),
+            "key":window.isKeyWindow(),"hasContentView":content.is_some(),"contentBounds":bounds})
+        })
+        .collect();
+    serde_json::json!({"windowCount":windows.len(),"sampleLimit":8,
+        "truncated":windows.len()>8,"windows":sample,
+        "applicationActive":app.isActive(),"applicationHidden":app.isHidden(),
+        "activationPolicy":app.activationPolicy().0,
+        "hasMainWindow":app.mainWindow().is_some(),"hasKeyWindow":app.keyWindow().is_some()})
 }
 
 /// Other native backends require their own app-content capture implementation.
