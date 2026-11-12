@@ -96,6 +96,11 @@ insufficient compatibility evidence.
   merely because an unused PPX option exists.
 - Keep checked construction for dynamic values and pure transactional preflight
   before native publication. This remains necessary even with static checking.
+- Prefer constructor types over a literal-only check when a constraint is a
+  closed domain: the restriction must also survive aliases, optional forwarding
+  and reactive expressions. Add positive and negative compiler probes without
+  weakening warnings. Generated provider exhaustiveness alone does not reject
+  an existing, explicitly unsupported value at the application call site.
 - Gate the actual Logseq build/launch on a headless startup test using its real
   OCaml library, registered factories, platform services and DB worker, with an
   isolated graph/state root. Fail on backend diagnostics and require positive

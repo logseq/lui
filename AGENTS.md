@@ -3,6 +3,7 @@
 - MUST NOT disable compiler warnings
 - MUST NOT use magic methods to cast types (e.g. `Obj.magic`)
 - MUST NOT modify any dune file during development unless explicitly asked
+- Prevent statically knowable API and contract errors with constructor types or compiler/PPX diagnostics. Add compile-failure regression cases for rejected calls; retain boundary validation for dynamic values. Backend-specific checks must run in the actual target build and preserve valid calls on other backends.
 
 See `.agents/skills/` for platform-specific development guides and `docs/agent-guide/` for design specifications.
 - **Supported backends**: NSH is the default desktop backend; Apple/iOS, Android and Web/Melange remain maintained. Desktop migrations must preserve the Apple Swift packages, Android Gradle/JNI backend and mobile build/test tooling used by `logseq/mobile` and `logseq/logseq_journal`. Do not retire mobile backends without explicit approval.
