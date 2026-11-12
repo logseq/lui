@@ -62,6 +62,14 @@ pub(crate) fn scope_visibility(visible: impl Fn() -> bool + 'static) {
     })));
 }
 
+#[derive(Clone, Copy)]
+struct TouchRelease {
+    id: u32,
+    // TouchEvent has no modifier fields. Preserve the authentic native Down
+    // sample; only MouseUp can report fresh release modifiers at this SDK pin.
+    modifiers: Option<Modifiers>,
+}
+
 #[derive(Clone, Copy, Default)]
 pub(crate) struct Capabilities(u8);
 impl Capabilities {
@@ -349,6 +357,7 @@ impl NativeEvents {
             });
         }
         if node.boolean("pointer-enabled", false) {
+            let touch_release = Rc::new(Cell::new(None::<TouchRelease>));
             if supports("pointer-enter") {
                 let events = self.clone();
                 element = element.on_mouse_enter(move |_: &nsh_core::MouseEvent| {
@@ -367,7 +376,14 @@ impl NativeEvents {
             }
             if supports("pointer-down") {
                 let events = self.clone();
+                let touch_release = touch_release.clone();
                 element = element.on_press_down(move |event: &PressEvent| {
+                    if let Some(mut release) = touch_release.get()
+                        && release.modifiers.is_none()
+                    {
+                        release.modifiers = Some(event.modifiers);
+                        touch_release.set(Some(release));
+                    }
                     events.pointer(
                         PointerKind::Down,
                         detail(event.page_position, event.modifiers, None),
@@ -376,11 +392,13 @@ impl NativeEvents {
             }
             if supports("pointer-up") {
                 let events = self.clone();
-                element = element.on_press_up(move |event: &PressEvent| {
-                    events.pointer(
-                        PointerKind::Up,
-                        detail(event.page_position, event.modifiers, None),
-                    )
+                element = element.on_mouse_up(move |event: &nsh_core::MouseEvent| {
+                    if let Some(button) = event.button {
+                        events.pointer(
+                            PointerKind::Up,
+                            detail(event.page_position, event.modifiers, Some(button)),
+                        );
+                    }
                 });
             }
             if supports("context-menu-press") {
@@ -400,19 +418,50 @@ impl NativeEvents {
                     events.pointer(PointerKind::Move, move_detail(event))
                 });
             }
-            if supports("pointer-move") || supports("pointer-cancel") {
+            if supports("pointer-up") || supports("pointer-move") || supports("pointer-cancel") {
                 let events = self.clone();
                 element = element.on_touch(move |event: &nsh_core::TouchEvent| {
-                    let kind = match event.phase {
-                        TouchPhase::Move => PointerKind::Move,
-                        TouchPhase::Cancel => PointerKind::Cancel,
-                        _ => return,
-                    };
                     for point in event.points.iter().filter(|point| point.changed) {
-                        if event.phase == TouchPhase::Cancel
-                            || point.pointer_type != nsh_core::PointerType::Mouse
-                        {
-                            events.pointer(kind, detail(point.page, Modifiers::default(), None));
+                        let non_mouse = point.pointer_type != nsh_core::PointerType::Mouse;
+                        match event.phase {
+                            TouchPhase::Start if non_mouse && touch_release.get().is_none() => {
+                                touch_release.set(Some(TouchRelease {
+                                    id: point.id,
+                                    modifiers: None,
+                                }));
+                            }
+                            TouchPhase::End if non_mouse => {
+                                if let Some(release) = touch_release.get()
+                                    && release.id == point.id
+                                {
+                                    touch_release.set(None);
+                                    if let Some(modifiers) = release.modifiers {
+                                        events.pointer(
+                                            PointerKind::Up,
+                                            detail(point.page, modifiers, None),
+                                        );
+                                    }
+                                }
+                            }
+                            TouchPhase::Cancel => {
+                                if touch_release
+                                    .get()
+                                    .is_some_and(|release| release.id == point.id)
+                                {
+                                    touch_release.set(None);
+                                }
+                                events.pointer(
+                                    PointerKind::Cancel,
+                                    detail(point.page, Modifiers::default(), None),
+                                );
+                            }
+                            TouchPhase::Move if non_mouse => {
+                                events.pointer(
+                                    PointerKind::Move,
+                                    detail(point.page, Modifiers::default(), None),
+                                );
+                            }
+                            _ => {}
                         }
                     }
                 });

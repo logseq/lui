@@ -5455,3 +5455,34 @@ is unchanged. Do not reuse its bit 8 as Alt when decoding pointer/press events.
 Existing consumers that inspect individual old bits need no changes; consumers
 that compare a whole mask to an exact number should include Alt only when that
 comparison is intentional. Dynamic pointer validation remains in place.
+
+## NSH PointerUp reports physical release rather than native press deactivation
+
+NSH mouse `PointerUp` now uses the existing public native `on_mouse_up` event.
+It names the current release listener, includes the released button, and uses
+that release's actual page coordinates and modifiers. Previously it was derived
+from native `on_press_up`, which also fires when a press moves away or cancels,
+uses the press origin, and retains Down-time modifiers. That adapter behavior
+was not an origin-release contract. No new routing property, constructor,
+protocol payload or dependency version is required.
+
+For example, an uncaptured pointer pressed over row A and released over row B
+now reports `PointerUp (b, detail)` to B's subscribed listener and its subscribed
+ancestors, with B's actual release sample. Moving away from A, losing a press or
+activating a control by keyboard does not itself report `PointerUp`. Middle and
+secondary releases keep canonical button `1` and `2`; the secondary mask bit is
+8, and Alt remains 16. Ordinary native Press/PressDetail behavior is unchanged.
+
+Non-mouse input still reports successful release from the matching real
+`TouchEnd`, using its final coordinates and the authentic modifiers retained
+from that touch's native Down. The pinned SDK does not expose fresh release
+modifiers on TouchEvent; these retained modifiers must not be described as a
+fresh release sample. Cancellation, a different finger, duplicate End and mouse
+TouchEnd cannot complete that pending non-mouse release. No unknown modifier
+sample is replaced with zeros.
+
+Existing `~on_pointer_up:handle_release` callers require no source migration.
+Use the existing `~pointer_capture:true` contract when a gesture must complete
+outside its handle; this bugfix does not qualify NSH capture support. The
+separate SDK capture proposal remains under review. Web, Apple/iOS and Android
+producers and their existing native gesture ownership remain unchanged.

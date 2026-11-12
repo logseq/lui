@@ -84,8 +84,11 @@ Touch End: macOS `input.rs:810`, Windows `input.rs:981`, Linux `input.rs:721`.
 Their retained pointer/responder owners already provide gesture identity,
 termination and native platform capture. Reuse these owners.
 
-LUI `platform/nsh/src/events.rs:368` currently derives Down/Up from native
-PressDown/PressUp. `pointer-capture` is accepted by the generated contract but is
+At the proposal baseline, LUI `platform/nsh/src/events.rs:368` derived Down/Up
+from native PressDown/PressUp. The subsequent uncaptured release audit identified
+PressUp-to-PointerUp as an incorrect lowering, not a promised origin-Up default;
+the bounded host bugfix uses existing public MouseUp for actual mouse release
+and matching TouchEnd for successful non-mouse release. `pointer-capture` is accepted by the generated contract but is
 not lowered there. PressUp includes deactivation/cancellation and must not be
 reinterpreted as successful captured release. The existing LUI contract is in
 `docs/api-migrations.md`, “Owned pointer gestures on Row and Box” and “Primary
@@ -181,10 +184,12 @@ inventing or silently substituting it.
 
 ## Canonical LUI lowering after SDK qualification
 
-No new `pointer_up_target` property is proposed here. Default capture remains
-false, and existing uncaptured NSH primary origin/deactivation Up behavior is
-preserved. Web uncaptured Up already follows DOM hit delivery; this draft does
-not silently redefine that backend's default either.
+No new `pointer_up_target` property is needed. Default capture remains false.
+Uncaptured NSH mouse Up should use the current-hit physical MouseUp already
+available in the public SDK, matching Web release semantics. Native press
+deactivation must not masquerade as successful PointerUp. Existing mobile
+gesture producers remain unchanged; their native non-mouse ownership is not a
+promise that desktop mouse Up follows the press origin.
 
 For the existing Row/Box capture API only:
 
@@ -226,14 +231,15 @@ identity/admission at delivery. A queued event from an old incarnation never
 starts, updates or completes a replacement node's drag. SDK native press
 suppression must prevent child activation, not merely filter the LUI callback.
 
-The SDK capture seams do not by themselves settle production block-drop
-release-target routing. The current LUI NSH uncaptured primary Up is origin-based,
-and a captured Up intentionally names its owner, not the destination row. A
-separate explicit LUI destination-release capability still needs review if the
-App requires that event; a prior MouseMove must not be used as proof of the
-current release target. The tested public NSH current-hit MouseUp is the native
-primitive for that later lowering. Do not change existing origin-Up callers or
-claim this proposal completes block drag/drop.
+Production block-drop destination release can use the existing uncaptured
+PointerUp after correcting its NSH lowering to current-hit MouseUp. Actual
+uncaptured App callers do not require origin/deactivation delivery. No additional
+public routing enum or SDK hit-test is needed for that route. App document
+bridges must avoid duplicate ancestor forwarding and explicitly handle release
+outside eligible rows; a prior MouseMove is not proof of the release target.
+Captured Up still names its gesture owner, and the SDK capture seams remain
+separate from this uncaptured bugfix. This proposal does not by itself complete
+block drag/drop.
 
 ## Rejection and compatibility gates
 
@@ -251,8 +257,8 @@ error. Do not report success with an empty or zero-filled payload. When support
 ships, record public SDK source migrations, optional field semantics, actual
 LUI backend qualification, modifier bits and cancellation behavior in
 `docs/api-migrations.md`. A downstream Row/Box using `pointer_capture:true`
-should require no API rewrite on qualified targets; applications using origin
-Up without capture retain their current behavior.
+should require no API rewrite on qualified targets; applications using
+Up without capture receive actual release rather than press deactivation.
 
 ## Required proof before scope can be considered complete
 
@@ -264,7 +270,7 @@ Up without capture retain their current behavior.
 | Windows native | Equivalent held-mouse, child, outside capture, button/modifier and capture-loss tests using its actual platform driver/event route. A macOS pass does not qualify this target. |
 | Linux native | Equivalent actual GTK mouse/capture/gesture route tests, including Scroll takeover and native cancellation; no dependence on macOS event ordering. |
 | Fresh metadata | Hold Alt/Ctrl/Shift/Meta, change modifiers during movement, release inside/outside; compare exact native release sample. Use platform-level fixtures where the public driver cannot interleave keys; do not call passthrough or semantic Touch tests physical modifier proof. |
-| LUI Rust/FFI | One admitted Down, moves, successful Up or Cancel, exact existing pointer mask including Alt16 and secondary8; no Press/PressDetail/child activation from the captured primary; uncaptured origin-Up regression and current-hit destination observations. |
+| LUI Rust/FFI | One admitted Down, moves, successful Up or Cancel, exact existing pointer mask including Alt16 and secondary8; no Press/PressDetail/child activation from the captured primary; uncaptured current-hit release regression, no Up on press deactivation, and destination observations. |
 | LUI actual-target build | Unqualified static capture fails compilation; valid other-backend calls compile; dynamic unsupported properties reject at the boundary. No runtime-only test substitutes for the compile-failure case. |
 | App | Existing shared Block_drag threshold/zone/cancel state and domain drop action receive the native sequence once; current target wins at release; source/editor identity survives preview; removal and outside release do not commit stale targets. Alt single-block reference remains a separately verified action. |
 
