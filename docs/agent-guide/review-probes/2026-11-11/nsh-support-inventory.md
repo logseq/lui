@@ -289,7 +289,7 @@ uses the concrete route bodies, not literal presence alone.
 | `white_space.rs` | `33178d9ee60ca72b320d5a9a4c28e6221373af6ccca5c3f2c68dd452ea8ecd21` |
 | `application_icons.rs` | `08b05108b92c3f3b95bca631908a93a11b56c73baba38ad485e358298f828142` |
 | `application_theme.rs` | `517687a852cb3bf343bc8b37201ca70d4c61ca6b2e85563c036c9899bb1cfd62` |
-| `runtime.rs` | `47e8d7ac72d744b6912111dcd8cb845a611fa8ea2ad8b8729d87cb61fd0cb9f9` |
+| `runtime.rs` | `026110241ffce1c8f2ba181020208f891ea24b3f1c9febcded94580de2a5eb1e` |
 | `runtime/driver.rs` | `af4a4763fd9c3ce77a1178f251e35ed7d88db4dc2dae62636b6f94e212b6866e` |
 | `extensions/mod.rs` | `42e4029b331a10c52d9bc0a416fdf85980cf15fcfdedfaa5325e19d7a2b9d000` |
 | `extensions/schema.rs` | `13e599099f8943fc864ae1f470674a2d39733383ad0cce367f8ccc87b6f7ac33` |
@@ -302,7 +302,7 @@ uses the concrete route bodies, not literal presence alone.
 | `app.rs` | `b01c45598f2e74dc8e058ec26eb3aed84f31839d5542785939d301bd88f29487` |
 | `ui/mod.rs` | `5618167225c683d243f629b5d42d828997eca023f3794c200d92f30de7657171` |
 | `ui/controls.rs` | `9f601722ffd6efe90b2b4399ba552cd78d95606e772b802f51f9873b9ecacf4f` |
-| `events.rs` | `a2ddc355d3a1aad25eaae32de828b16c86a9c560b1508ba3630a30a473ea113e` |
+| `events.rs` | `c39035e91f1528c01dbcf40deefefb6f448a08a27c81e5637cc7f5d0df6d44b6` |
 | `ui/icons.rs` | `ebcaedaa770c035305fca721bac02d0597c3f90c1729cb1100a5fb78be1b8c1e` |
 | `controls/basic.rs` | `4d9a4539da18dc1cad82c83c8fe41263f7aed739966757ce165da5de5e6db78e` |
 | `controls/collections.rs` | `cf504e7b26bba6e8d43607404dd7bfd84f29e71947169c0bd0a5e3a6cbd72e7f` |
