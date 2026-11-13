@@ -1,5 +1,12 @@
 # LUI API migration guide
 
+## Unreleased: Apple inline newline boundary geometry
+
+An inline text run ending with a newline keeps the downstream insertion line
+in `lineRanges`, expressed as a zero-length range at the run's UTF-16 length.
+This applies both at the document end and before a following text run. Hit
+testing that line returns the run's end offset, consistently with `caretRect`.
+
 ## Unreleased: Apple grouped controls host anchored popovers
 
 Named popover targets inside a button group now mount the same presentation

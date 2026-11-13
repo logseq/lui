@@ -19,11 +19,7 @@ public struct LUICommittedTextGeometry {
     public let frame: CGRect
     public var lineRanges: [NSRange] {
         guard sourceRange != nil else { return layout.lines.map(\.range) }
-        return layout.lines.compactMap {
-            let range = NSIntersectionRange($0.range, effectiveRange)
-            return range.length > 0
-                ? NSRange(location: range.location - effectiveRange.location, length: range.length) : nil
-        }
+        return layout.lines.compactMap { localRange(for: $0) }
     }
     let identity: UUID
     let layout: LUITextLayout
@@ -31,6 +27,21 @@ public struct LUICommittedTextGeometry {
     var sourceOrigin: CGPoint = .zero
     private var effectiveRange: NSRange {
         sourceRange ?? NSRange(location: 0, length: layout.storage.length)
+    }
+
+    private func localRange(for line: LUITextLayout.Line) -> NSRange? {
+        let intersection = NSIntersectionRange(line.range, effectiveRange)
+        if intersection.length > 0 {
+            return NSRange(location: intersection.location - effectiveRange.location,
+                           length: intersection.length)
+        }
+        let end = NSMaxRange(effectiveRange)
+        // The downstream insertion line can belong to a later run or be the
+        // document's empty final line. Both carry this run's end caret.
+        if line.range.location == end, line.carets.contains(where: { $0.offset == end }) {
+            return NSRange(location: effectiveRange.length, length: 0)
+        }
+        return nil
     }
 
     /// Returns nil for an invalid offset or a position hidden by truncation.
@@ -60,7 +71,7 @@ public struct LUICommittedTextGeometry {
         guard point.x.isFinite, point.y.isFinite,
               CGRect(origin: .zero, size: frame.size).contains(point),
               let line = layout.lines.filter({
-                  sourceRange == nil || NSIntersectionRange($0.range, effectiveRange).length > 0
+                  sourceRange == nil || localRange(for: $0) != nil
               }).min(by: {
                   abs($0.rect.midY - point.y - sourceOrigin.y) < abs($1.rect.midY - point.y - sourceOrigin.y)
               }) else { return nil }
