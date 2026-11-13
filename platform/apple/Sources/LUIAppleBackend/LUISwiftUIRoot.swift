@@ -732,6 +732,7 @@ private struct LUINodeView: View {
         .modifier(LUIContextMenuModifier(model: model, backend: backend))
         .modifier(LUIRetainedPaneModifier(model: model))
         .modifier(LUIThemeScopeModifier(model: model))
+        .modifier(LUIHostScrollTargetModifier(model: model, backend: backend))
     }
 
     // Each wire node has a stable ID and one concrete control kind. Erase only
@@ -997,17 +998,7 @@ private struct LUINodeView: View {
         case .divider:
             return AnyView(LUISeparatorView(model: model))
         case .scroll:
-            let horizontal = model.property(.orientation)?.stringValue == "horizontal"
-            return AnyView(
-                ScrollView(horizontal ? .horizontal : .vertical) {
-                    ZStack(alignment: .topLeading) {
-                        ForEach(visibleChildren, id: \.self) { childID in
-                            LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
-                        }
-                    }
-                    .environment(\.luiInsideScroll, true)
-                }
-            )
+            return AnyView(LUIHostedScrollView(model: model, backend: backend, children: visibleChildren))
         case .spacer:
             return AnyView(Spacer())
         case .spinner:

@@ -56,6 +56,9 @@ func unregisterIcon(name: String)
 func naturalImageSize(nodeID: Int) -> CGSize?
 func textGeometry(nodeID: Int) -> LUICommittedTextGeometry?
 func isCurrent(_ geometry: LUICommittedTextGeometry) -> Bool
+func setScrollTop(nodeID: Int, top: CGFloat) -> Bool
+func scrollIntoView(nodeID: Int) -> Bool
+func scrollMetrics(nodeID: Int) -> (offset: CGFloat, contentSize: CGSize, viewportSize: CGSize)?
 ```
 
 Register a complete SVG under a canonical `app:slug` name, for example
@@ -84,6 +87,9 @@ retain their existing native editing behavior.
 Uncommitted, hidden and unmounted text returns nil. Retained snapshots remain
 immutable; `isCurrent` rejects stale generations, source/layout changes,
 scrolling, unmounting and node reincarnation.
+Zero-width U+200B empty-block pads commit TextKit's actual line/caret metrics
+during native layout even when drawing is culled; `caretRect(atUTF16Offset: 0)`
+remains available without a synthetic font box.
 
 Enable existing frame reports to retry pending resource/geometry queries:
 
@@ -101,6 +107,36 @@ backend.onFramesReport = { [weak backend] _ in
 Hosts storing UTF-8 byte offsets must translate them through their source run
 spans before calling these native UTF-16 APIs. Search-match previews expose the
 displayed excerpt as `geometry.text`.
+
+The scroll controls bind to mounted native views without replacing the
+ScrollView, its delegates or gestures. `setScrollTop` accepts a retained `scroll`
+node and clamps a top-origin logical-point offset to its content range.
+`scrollIntoView` reveals any mounted standard node in its nearest enclosing
+native scroll viewport; it also returns true when already visible. For a
+`scroll` node itself, this reveals its viewport in an enclosing scroll.
+The methods return false for an unavailable target/viewport; missing IDs,
+non-scroll `setScrollTop` targets and nonfinite offsets are flagged by false.
+No exceptions or deferred commands are produced. `scrollMetrics` returns nil
+for missing, non-scroll and unmounted nodes. Sizes are logical points; UIKit's
+adjusted insets are excluded from the viewport and normalized out of offset.
+Probes mount lazily on the first call, so even an already displayed node may
+initially return false/nil. Retry using `onFramesReport`, guard pending requests
+against node incarnation, and discard requests when their node is replaced.
+
+```swift
+backend.onFramesReport = { [weak backend] _ in
+    guard let backend, let metrics = backend.scrollMetrics(nodeID: scrollID) else { return }
+    if hasPendingScroll && backend.setScrollTop(nodeID: scrollID, top: requestedTop) {
+        hasPendingScroll = false
+    }
+    updateScrollHeight(metrics.contentSize.height)
+}
+```
+
+Vertical retained ScrollView content now fills at least its viewport width;
+horizontal content fills at least the viewport height. Content can still exceed
+that minimum. This fixes centered, growing columns collapsing to intrinsic text
+width and applies consistently on macOS and iOS without changing scrolling axes.
 
 Apple property admission now uses a matrix evaluated from canonical
 `Lui_protocol.property_supported` and checked against the schema, instead of
