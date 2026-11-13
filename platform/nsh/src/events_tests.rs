@@ -364,7 +364,12 @@ fn PointerOnlyPicker() -> impl IntoElement {
     let published = signal(0_u32);
     let observed = probe.events.clone();
     let renderer = Renderer::new(move |event, _| {
-        if let Event::Pointer { kind: PointerKind::PressDetail, detail, .. } = &event {
+        if let Event::Pointer {
+            kind: PointerKind::PressDetail,
+            detail,
+            ..
+        } = &event
+        {
             published.set(detail.clicks);
         }
         observed.lock().unwrap().push(event);
@@ -383,13 +388,23 @@ fn PointerOnlyPicker() -> impl IntoElement {
         ))
         .unwrap();
     renderer.set_root(1).unwrap();
-    view().flex_col().child(renderer.element())
-        .child(text(move || format!("Picker click count {}", published.get())))
+    view()
+        .flex_col()
+        .child(renderer.element())
+        .child(text(move || {
+            format!("Picker click count {}", published.get())
+        }))
 }
-fn pointer_picker_with_semantics(os: nsh_core::platform::Os, semantic: bool) -> (Headless, Arc<Mutex<Vec<Event>>>) {
+fn pointer_picker_with_semantics(
+    os: nsh_core::platform::Os,
+    semantic: bool,
+) -> (Headless, Arc<Mutex<Vec<Event>>>) {
     let events = Arc::new(Mutex::new(Vec::new()));
     let mut config = EngineConfig {
-        context: EngineContext::default().with(PointerPicker { events: events.clone(), semantic }),
+        context: EngineContext::default().with(PointerPicker {
+            events: events.clone(),
+            semantic,
+        }),
         ..EngineConfig::new(Root::of::<PointerOnlyPicker>())
     };
     config.environment.os = os;
@@ -409,9 +424,21 @@ fn semantic_picker_press_retains_the_same_native_snapshot_click_count() {
     app.press("Pointer picker").unwrap();
     app.wait_for("Picker click count 1").unwrap();
     let observed = events.lock().unwrap();
-    assert_eq!(observed.iter().filter(|event| matches!(event, Event::Press(10))).count(), 1);
-    assert_eq!(observed.iter().filter(|event| matches!(event,
-        Event::Pointer { node: 10, kind: PointerKind::PressDetail, detail } if detail.clicks == 1)).count(), 1);
+    assert_eq!(
+        observed
+            .iter()
+            .filter(|event| matches!(event, Event::Press(10)))
+            .count(),
+        1
+    );
+    assert_eq!(
+        observed
+            .iter()
+            .filter(|event| matches!(event,
+        Event::Pointer { node: 10, kind: PointerKind::PressDetail, detail } if detail.clicks == 1))
+            .count(),
+        1
+    );
     drop(observed);
     assert_eq!(node_id(&app, "lui-10"), before);
 }
@@ -978,23 +1005,37 @@ fn CountedPressEvents() -> impl IntoElement {
     let observed = probe.events.clone();
     let published = signal(0_u32);
     let renderer = Renderer::new(move |event, _| {
-        if let Event::Pointer { kind: PointerKind::PressDetail, detail, .. } = &event {
+        if let Event::Pointer {
+            kind: PointerKind::PressDetail,
+            detail,
+            ..
+        } = &event
+        {
             published.set(detail.clicks);
         }
         observed.lock().unwrap().push(event);
     });
-    renderer.apply(patch(1, json!([
-        {"op":"create-node","id":1,"kind":"box"},
-        {"op":"set-prop","id":1,"property":"width","value":220},
-        {"op":"set-prop","id":1,"property":"height","value":60},
-        {"op":"set-prop","id":1,"property":"pointer-enabled","value":true},
-        {"op":"create-node","id":2,"kind":"text"},
-        {"op":"set-prop","id":2,"property":"text","value":"Counted press target"},
-        {"op":"insert-child","parent":1,"child":2,"index":0}
-    ]))).unwrap();
+    renderer
+        .apply(patch(
+            1,
+            json!([
+                {"op":"create-node","id":1,"kind":"box"},
+                {"op":"set-prop","id":1,"property":"width","value":220},
+                {"op":"set-prop","id":1,"property":"height","value":60},
+                {"op":"set-prop","id":1,"property":"pointer-enabled","value":true},
+                {"op":"create-node","id":2,"kind":"text"},
+                {"op":"set-prop","id":2,"property":"text","value":"Counted press target"},
+                {"op":"insert-child","parent":1,"child":2,"index":0}
+            ]),
+        ))
+        .unwrap();
     renderer.set_root(1).unwrap();
-    view().flex_col().child(renderer.element())
-        .child(text(move || format!("Observed click count {}", published.get())))
+    view()
+        .flex_col()
+        .child(renderer.element())
+        .child(text(move || {
+            format!("Observed click count {}", published.get())
+        }))
 }
 
 #[test]
@@ -1002,7 +1043,9 @@ fn actual_native_press_callbacks_keep_the_platform_click_count_on_the_existing_e
     let events = Arc::new(Mutex::new(Vec::new()));
     let config = EngineConfig {
         context: EngineContext::default().with(Probe {
-            column: false, events: events.clone(), rejected: Arc::new(Mutex::new(false)),
+            column: false,
+            events: events.clone(),
+            rejected: Arc::new(Mutex::new(false)),
         }),
         ..EngineConfig::new(Root::of::<CountedPressEvents>())
     };
@@ -1010,20 +1053,28 @@ fn actual_native_press_callbacks_keep_the_platform_click_count_on_the_existing_e
     app.wait_for("Counted press target").unwrap();
     let target = node_id(&app, "lui-1");
     for clicks in [2, 1, 0] {
-        app.engine().control().dispatch_event(target, nsh_core::EventKind::Press,
+        app.engine().control().dispatch_event(
+            target,
+            nsh_core::EventKind::Press,
             nsh_core::EventPayload::Press(PressEvent {
                 position: point(px(5.0), px(8.0)),
                 page_position: point(px(52.0), px(18.0)),
                 clicks,
                 ..Default::default()
-            }));
-        app.wait_for(&format!("Observed click count {clicks}")).unwrap();
+            }),
+        );
+        app.wait_for(&format!("Observed click count {clicks}"))
+            .unwrap();
         let observed = events.lock().unwrap();
         assert!(observed.iter().any(|event| matches!(event,
             Event::Pointer { node: 1, kind: PointerKind::PressDetail, detail }
                 if detail.clicks == clicks && detail.x == 52.0 && detail.y == 18.0)));
-        assert!(observed.iter().all(|event| !matches!(event, Event::DoublePress(_))),
-            "count metadata does not invent another double-press subscription");
+        assert!(
+            observed
+                .iter()
+                .all(|event| !matches!(event, Event::DoublePress(_))),
+            "count metadata does not invent another double-press subscription"
+        );
         drop(observed);
         assert_eq!(node_id(&app, "lui-1"), target);
     }
