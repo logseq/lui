@@ -3671,13 +3671,13 @@ let test_fractional_dimensions () =
         let before=all_ops () in
         Alcotest.check_raises "dynamic point dimensions reject invalid numbers before host publication"
           (Invalid_argument "Point dimension must be finite and nonnegative within the portable layout range: height")
-          (fun () -> ignore (image ~height_points:value []));
+          (fun () -> let _view = image ~height_points:value [] in ());
         Alcotest.(check bool) "invalid point construction emits nothing" true (all_ops ()=before))
         [-0.25;nan;infinity;neg_infinity;1e40];
       let integer=Sys.opaque_identity (Some 63) and points=Sys.opaque_identity (Some 63.25) in
       Alcotest.check_raises "forwarded option aliases retain dynamic mutual exclusion"
         (Invalid_argument "Conflicting integer and point aliases: height")
-        (fun () -> ignore (image ?height:integer ?height_points:points []));
+        (fun () -> let _view = image ?height:integer ?height_points:points [] in ());
       let before=all_ops () in
       let rejected=try
         Lui_runtime.set_prop (Lui_app.runtime app) node MaxHeight (FloatValue 1e40);false
@@ -3688,7 +3688,7 @@ let test_fractional_dimensions () =
       let accordion_height=Sys.opaque_identity (Some 40) in
       Alcotest.check_raises "Accordion's existing integer alias cannot override fractional points"
         (Invalid_argument "Conflicting integer and point aliases: height")
-        (fun () -> ignore (accordion ?accordion_height ?height_points:points []));
+        (fun () -> let _view = accordion ?accordion_height ?height_points:points [] in ());
       ()))
     [profile WebOS WebHost;profile MacOS NshHost;profile IOS SwiftUIHost;
      profile AndroidOS KotlinHost;generic_profile ()];
@@ -3725,21 +3725,41 @@ let test_json_fractional_dimensions () =
      "height",Num 63.,Lui_protocol.IntValue 63;
      "height-points",Num 63.,Lui_protocol.FloatValue 63.];
   List.iter (fun field ->
-    List.iter (fun value ->
-      Alcotest.check_raises "JSON explicitly invalid dimensions fail without rounding or omission"
-        (Invalid_argument ("Dimension must be a finite nonnegative number within the portable layout range: " ^ field))
-        (fun () -> ignore (render ~on_event:sink (Obj ["kind",Str "image";field,value]))))
-      [Num (-0.25);Num nan;Num infinity;Num 1e40;Str "63.25px";Bool false;Null];
+    List.iter (fun authored ->
+      List.iter (fun value ->
+        Alcotest.check_raises "JSON explicitly invalid dimensions fail without rounding or omission"
+          (Invalid_argument ("Dimension must be a finite nonnegative number within the portable layout range: " ^ field))
+          (fun () -> let _view = render ~on_event:sink
+            (Obj ["kind",Str "image";authored,value]) in ()))
+        ([Num (-0.25);Num nan;Num infinity;Num 1e40;Str "63.25px";Bool false]
+          @ (if authored=field then [] else [Null]))) [field;field ^ "-points"];
     Alcotest.check_raises "JSON aliases cannot both author the same property"
       (Invalid_argument ("Conflicting dimension aliases: " ^ field))
-      (fun () -> ignore (render ~on_event:sink
-        (Obj ["kind",Str "image";field,Num 63.;field ^ "-points",Num 63.25]))))
+      (fun () -> let _view = render ~on_event:sink
+        (Obj ["kind",Str "image";field,Num 63.;field ^ "-points",Num 63.25]) in ());
+    List.iter (fun (extra,expected) ->
+      let app=Lui_app.create (recording_backend ()) () (fun model () -> model)
+        (fun _ _ _ -> render ~on_event:sink
+          (Obj (["kind",Str "image";field,Null] @ extra))) in
+      Fun.protect ~finally:(fun () -> ignore (Lui_app.dispose app)) (fun () ->
+        ignore (Lui_app.start app);flush_app app;
+        let property=Lui_wire.property_of_name field in
+        let actual=Lui_protocol.Property_map.find_opt property
+          (Hashtbl.find (Lui_app.runtime app).Lui_runtime.runtime_properties (Lui_app.root_node app)) in
+        Alcotest.(check bool) "legacy canonical JSON null is omitted and does not own a point alias" true
+          (actual=expected)))
+      [[],None;[field ^ "-points",Num 63.25],Some (Lui_protocol.FloatValue 63.25)];
+    List.iter (fun kind ->
+      Alcotest.check_raises "restrictive constructors still reject unsupported canonical null dimensions"
+        (Invalid_argument ("Unsupported property for " ^ kind ^ ": " ^ field))
+        (fun () -> let _view=render ~on_event:sink
+          (Obj ["kind",Str kind;field,Null]) in ())) ["tooltip";"file-picker"])
     ["height";"max-width";"max-height"];
   List.iter (fun floating ->
     Alcotest.check_raises "JSON Accordion's existing integer alias conflicts with point authoring"
       (Invalid_argument "Conflicting integer and point aliases: height")
-      (fun () -> ignore (render ~on_event:sink (Obj
-        ["kind",Str "accordion";"accordion-height",Num 40.;floating,Num 63.25]))))
+      (fun () -> let _view = render ~on_event:sink (Obj
+        ["kind",Str "accordion";"accordion-height",Num 40.;floating,Num 63.25]) in ()))
     ["height";"height-points"];
   let app=Lui_app.create (recording_backend ()) () (fun model () -> model)
     (fun _ _ _ -> render ~on_event:sink (Obj ["kind",Str "accordion";"accordion-height",Num 40.])) in

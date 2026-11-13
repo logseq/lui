@@ -152,6 +152,22 @@ let dimensions (viewport : float Signal.signal) =
 let profiles = Lui_protocol.[profile WebOS WebHost; profile MacOS NshHost;
   profile IOS SwiftUIHost; profile AndroidOS KotlinHost; generic_profile ()]`,
       `open Lui_elements
+let equal = image ~min_height:10 ~height_points:10. ~max_height_points:10. []
+let fractional = image ~height_points:9.5 ~max_height_points:9.5 []
+let exact_integer = image ~height:9007199254740992 ~max_height_points:9007199254740992. []
+let omitted = image ?height_points:None ~min_height:10 []
+let dynamic (height : float) = image ~height_points:height ~min_height:10 []
+let optional ?height_points ?min_height () = image ?height_points ?min_height []
+let forwarded = optional ?height_points:(Some 10.) ?min_height:(Some 10) ()
+let dynamic_signal (source : float Signal.signal) =
+  image ~min_height:10 ~height_points:(reactive Fun.id source) []
+let dynamic_maximum (source : float Signal.signal) =
+  image ~height_points:9.5 ~max_height_points:(reactive Fun.id source) []
+let icon_explicit = icon ~height:9 ~point_size:10 ~max_height_points:9.5 []
+let height = -0.25
+let shadowed_source (source : float Signal.signal) =
+  image ~min_height:10 ~height_points:(reactive (fun height -> height) source) []`,
+      `open Lui_elements
 let radio ~text_signal:_ _ = button []
 let probe (source : bool Signal.signal) =
   column [radio ~text:(reactive string_of_bool source) []]`,
@@ -201,11 +217,26 @@ let probe (source : bool Signal.signal) =
         [`image ~${label}:63 ~${label}_points:63.25 []`, /LUI dimensions: conflicting/],
         [`Lui_elements.image ~${label}_points:(-0.25) []`, /LUI dimensions:.*finite and nonnegative/],
         [`let make = Lui_elements.image in make ~${label}_points:1e999 []`, /LUI dimensions:.*finite and nonnegative/],
-        [`image ~${label}_points:1e40 []`, /LUI dimensions:.*portable layout range/],
+        [`image ~${label}_points:1e40 []`, /LUI dimensions:[\s\S]*portable layout range/],
         [`let make ?${label}_points children = Lui_elements.image ?${label}_points children in make ?${label}_points:(Some (-0.25)) []`, /LUI dimensions:.*finite and nonnegative/],
         [`image ~${label}_points:(reactive (fun _ -> -0.25) source) []`, /LUI dimensions:.*finite and nonnegative/],
         [`image ~${label}:63 ~${label}_points:(reactive Fun.id source) []`, /LUI dimensions: conflicting/],
       ]),
+      ...[
+        'image ~height_points:9.5 ~min_height:10 []',
+        'box ~max_width_points:9.5 ~min_width:10 []',
+        'image ~height_points:11. ~max_height:10 []',
+        'image ~height_points:11. ~max_height_points:10. []',
+        'let minimum = 10 in let height = 9.5 in image ~min_height:minimum ~height_points:height []',
+        'image ?height_points:(Some 9.5) ?min_height:(Some 10) []',
+        'let make = Lui_elements.image in make ~height_points:9.5 ~min_height:10 []',
+        'let module E = Lui_elements in E.image ~height_points:9.5 ~min_height:10 []',
+        'let make ?height_points ?min_height xs = Lui_elements.image ?height_points ?min_height xs in make ?height_points:(Some 9.5) ?min_height:(Some 10) []',
+        'image ~height_points:(reactive (fun _ -> 9.5) source) ~min_height:10 []',
+        'image ~height:9007199254740993 ~max_height_points:9007199254740992. []',
+        'accordion ~height:20 ~accordion_height:40 ~max_height_points:39.5 []',
+        'icon ~point_size:10 ~max_height_points:9.5 []',
+      ].map(expression => [expression, /LUI dimensions:[\s\S]*must not exceed/]),
       ['accordion ~accordion_height:40 ~height_points:63.25 []', /LUI dimensions: conflicting/],
       ['let make ?accordion_height ?height_points xs = Lui_elements.accordion ?accordion_height ?height_points xs in make ?accordion_height:(Some 40) ?height_points:(Some 63.25) []', /LUI dimensions: conflicting/],
       ['accordion ~accordion_height:40 ~height_points:(reactive (fun _ -> 63.25) source) []', /LUI dimensions: conflicting/],

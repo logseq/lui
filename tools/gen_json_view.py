@@ -393,12 +393,15 @@ let v_int p n =
 let v_float p n = match get p n with Some (Num f) -> Some f | _ -> None
 let v_bool p n = match get p n with Some (Bool b) -> Some b | _ -> None
 
-(* These aliases author the same numeric wire field. Never round a fraction
-   or discard an explicitly malformed dimension. Other JSON fields retain
-   their existing decoding and unknown-extension policy. *)
+(* These aliases author the same numeric wire field. Legacy canonical null
+   remains omission; a new point alias must supply a valid numeric value.
+   Other JSON fields retain their decoding and unknown-extension policy. *)
+let canonical_dimension props name =
+  match get props name with Some Null -> None | value -> value
+
 let dimension_prop props name =
   let points_name = name ^ "-points" in
-  match get props name, get props points_name with
+  match canonical_dimension props name, get props points_name with
   | Some _, Some _ -> invalid_arg ("Conflicting dimension aliases: " ^ name)
   | None, None -> None, None
   | canonical, points ->
@@ -416,7 +419,7 @@ let dimension_prop props name =
 let require_dimension_properties supported props =
   List.iter (fun name ->
     if not (List.mem name supported)
-       && (Option.is_some (get props name) || Option.is_some (get props (name ^ "-points")))
+       && (Option.is_some (canonical_dimension props name) || Option.is_some (get props (name ^ "-points")))
     then invalid_arg ("Dimension is unsupported by constructor: " ^ name))
     ["height"; "max-width"; "max-height"]
 

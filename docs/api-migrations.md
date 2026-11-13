@@ -33,8 +33,12 @@ on the same constructor. `icon`'s existing `point_size` and Accordion's
 existing `accordion_height` also own Height and cannot be combined with
 `height_points` or its signal. PPX diagnostics reject known
 conflicts and invalid float literals, including traced aliases, optional
-forwarding and constant reactive projections. Dynamic options and signal
-values retain runtime validation. Omit the integer label when adopting the
+forwarding and constant reactive projections. When a point alias is authored,
+known minimum/fixed/maximum bounds are also checked at the constructor call,
+using exact integer ordering and safe mixed integer/float comparisons. For
+example, `image ~height_points:9.5 ~min_height:10 []` is a compile-time error;
+`image ~height_points:10. ~min_height:10 []` remains valid. Opaque dynamic
+options and signal values retain runtime validation. Omit the integer label when adopting the
 point alias; do not pass both. Updating an already retained node from IntValue
 to FloatValue replaces its same property, preserving node and input identity.
 
@@ -42,13 +46,18 @@ JSON view dimensions now retain fractional numeric values instead of rounding
 them through `v_int`. For these three fields, whole, in-range canonical
 numbers retain IntValue; fractions use FloatValue. Explicit `height-points`,
 `max-width-points` and `max-height-points` always select FloatValue. Canonical
-and point aliases cannot both appear, even with equal values. Accordion's
+and point aliases cannot both supply a value, even with equal values. Accordion's
 `accordion-height` also conflicts with explicit `height-points` or a fractional
 canonical `height`; old integer-only Accordion calls retain their behavior.
-Explicit null,
-strings, booleans, negative and nonfinite values are rejected rather than
-omitted; remove the field to omit a dimension. For example,
-`{"kind":"image","width":92,"height":63.25}` now preserves height 63.25.
+For the three existing canonical fields, JSON `null` retains its previous
+omission behavior and does not own the alias:
+`{"kind":"image","height":null,"height-points":63.25}` is valid.
+A new `*-points` field containing `null`, or either spelling containing a
+string, boolean, negative or nonfinite value, is rejected. Existing restrictive
+constructors still reject unsupported canonical properties even when their
+value is `null`; for example, `{"kind":"tooltip","height":null}` remains
+invalid. `{"kind":"image","width":92,"height":63.25}` now preserves
+height 63.25.
 The unknown extension-key policy and unrelated JSON numeric fields are unchanged.
 
 Generated typed-view metadata uses the additive `ViewNumber` domain only for

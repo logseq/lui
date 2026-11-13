@@ -126,3 +126,38 @@ fixture. It runs the five backend profiles through `Lui_app` and authored
 `reactive` props, without manual signal mapping, direct signal-label plumbing,
 example-app exports or a Dune change. This relocation is source-only; the root
 must rerun the core suite and the PPX fixture before recording a pass.
+
+
+## Static crossbounds and canonical JSON null followup
+
+The existing constructor tracer now diagnoses a known invalid minimum/fixed/
+maximum ordering whenever a new point alias participates. It resolves numeric
+literals, transparent local and constructor aliases, `Some`/optional forwarding
+and constant reactive projections using the same bounded lexical ownership
+analysis. Reactive projection parameters shadow outer bindings, so an outer
+negative or below-minimum variable cannot be misread as a dynamic parameter's
+constant value. Integer comparisons remain exact above float precision; mixed
+comparisons truncate only a finite, representable float. Unknown dynamic
+arguments remain admitted to existing runtime boundary validation. Accordion's
+final integer Height writer and icon's point-size fallback follow the actual
+constructor precedence. Equal bounds and opaque dynamic sources are positive
+compile fixtures; minimum violations, maximum violations and precision-boundary
+violations are negative fixtures in the maintained PPX harness.
+
+The original generated dimension decoder rejected canonical JSON `null` even
+though the pre-alias `v_int` decoder treated it as omission. This followup
+restores omission for exactly `height`, `max-width` and `max-height`, before
+alias ownership checks. Thus canonical null may coexist with a numeric new
+point alias. New `*-points:null` remains invalid, and the existing restrictive
+kind validator still sees the original raw property: tooltip/file-picker
+canonical-null dimensions continue to reject. Constructor, mounted JSON and
+unsupported-kind regressions cover the concrete compatibility cases.
+
+The root's compiler also found warning 5 in six newly added core rejection
+fixtures because an unmounted view is a function. Those fixtures now bind the
+view with the existing `let _view = ... in ()` idiom instead of passing it to
+`ignore`. The portable-range diagnostic assertion accepts compiler line wraps;
+it continues to require the actual PPX rejection. This followup is source-only;
+no compiler, test, native runtime or compiled contract exporter was run here.
+The root must rerun `@runtest`, the PPX hygiene harness and schema/contract checks
+before recording qualification.

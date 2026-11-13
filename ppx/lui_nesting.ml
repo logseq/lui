@@ -248,6 +248,12 @@ let last values = List.fold_left (fun _ value -> Some value) None values
 
 let dimension_labels = ["height"; "max_width"; "max_height"]
 
+let shadow_parameters scope parameters =
+  List.fold_left (fun scope parameter ->
+    match parameter.pparam_desc with
+    | Pparam_val (_, _, pattern) -> bind scope pattern
+    | Pparam_newtype _ -> scope) scope parameters
+
 let rec point_literal fuel = function
   | _ when fuel = 0 -> None
   | Bound (scope, expression) -> (
@@ -260,8 +266,9 @@ let rec point_literal fuel = function
           point_literal (fuel - 1) (Option.value (Names.find_opt name scope.values) ~default:Unknown)
       | Pexp_apply ({pexp_desc=Pexp_ident {txt=Lident ("~-." | "~-" );_};_}, [Nolabel,value]) ->
           Option.map Float.neg (recurse value)
-      | Pexp_apply (fn, (Nolabel, {pexp_desc=Pexp_function (_,_,Pfunction_body body);_}) :: _)
-        when dsl_name scope fn=Some "reactive" -> recurse body
+      | Pexp_apply (fn, (Nolabel, {pexp_desc=Pexp_function (parameters,_,Pfunction_body body);_}) :: _)
+        when dsl_name scope fn=Some "reactive" ->
+          point_literal (fuel - 1) (Bound (shadow_parameters scope parameters, body))
       | _ -> None)
   | Unknown | Nodes _ -> None
 
@@ -277,6 +284,80 @@ let rec argument_present fuel label = function
             (Option.value (Names.find_opt name scope.values) ~default:Unknown)
       | _ -> Option.is_some (point_literal fuel value))
   | Unknown | Nodes _ -> false
+
+type dimension_fact =
+  | Dimension_absent
+  | Dimension_unknown
+  | Dimension_int of int
+  | Dimension_float of float
+
+let rec dimension_fact fuel = function
+  | _ when fuel = 0 -> Dimension_unknown
+  | Bound (scope, expression) -> (
+      let recurse expression = dimension_fact (fuel - 1) (Bound (scope, expression)) in
+      match expression.pexp_desc with
+      | Pexp_constant (Pconst_integer (text, None)) ->
+          Option.fold ~none:Dimension_unknown ~some:(fun value -> Dimension_int value) (int_of_string_opt text)
+      | Pexp_constant (Pconst_float (text, _)) -> (
+          match float_of_string_opt text with
+          | Some value when Float.is_finite value -> Dimension_float value
+          | _ -> Dimension_unknown)
+      | Pexp_construct ({txt=Lident "None";_}, None) -> Dimension_absent
+      | Pexp_construct ({txt=Lident "Some";_}, Some value)
+      | Pexp_constraint (value, _) -> recurse value
+      | Pexp_ident {txt=Lident name;_} ->
+          dimension_fact (fuel - 1) (Option.value (Names.find_opt name scope.values) ~default:Unknown)
+      | Pexp_apply ({pexp_desc=Pexp_ident {txt=Lident ("~-." | "~-");_};_}, [Nolabel,value]) -> (
+          match recurse value with
+          | Dimension_int value when value <> min_int -> Dimension_int (-value)
+          | Dimension_float value -> Dimension_float (-.value)
+          | _ -> Dimension_unknown)
+      | Pexp_apply (fn, (Nolabel, {pexp_desc=Pexp_function (parameters,_,Pfunction_body body);_}) :: _)
+        when dsl_name scope fn=Some "reactive" ->
+          dimension_fact (fuel - 1) (Bound (shadow_parameters scope parameters, body))
+      | _ -> Dimension_unknown)
+  | Unknown | Nodes _ -> Dimension_unknown
+
+let rec compare_dimension_facts left right =
+  match left, right with
+  | Dimension_int left, Dimension_int right -> Some (Int.compare left right)
+  | Dimension_float left, Dimension_float right -> Some (Float.compare left right)
+  | Dimension_int left, Dimension_float right ->
+      Some (if right >= -. (float_of_int min_int) then -1
+        else if right < float_of_int min_int then 1
+        else let whole = int_of_float right in
+          let order = Int.compare left whole in
+          if order <> 0 then order else if right > float_of_int whole then -1 else 0)
+  | Dimension_float _, Dimension_int _ -> Option.map (fun order -> -order) (compare_dimension_facts right left)
+  | _ -> None
+
+let check_point_bounds loc args =
+  let argument name =
+    match List.find_opt (fun (label,_) -> label=Labelled name || label=Optional name) args with
+    | None -> Dimension_absent
+    | Some (_,value) -> dimension_fact 32 value in
+  let has_points = List.exists (fun name -> List.exists (fun suffix ->
+    argument (name ^ suffix) <> Dimension_absent) ["_points";"_points_signal"]) dimension_labels in
+  if has_points then begin
+    let override preferred fallback = match preferred with Dimension_absent -> fallback | _ -> preferred in
+    let field name = override (argument (name ^ "_signal"))
+      (override (argument (name ^ "_points_signal"))
+        (override (argument (name ^ "_points")) (argument name))) in
+    let ordered lower_name lower upper_name upper =
+      match compare_dimension_facts lower upper with
+      | Some order when order > 0 -> Location.raise_errorf ~loc
+          "LUI dimensions: %s must not exceed %s" lower_name upper_name
+      | _ -> () in
+    List.iter (fun axis ->
+      let minimum_name="min_" ^ axis and maximum_name="max_" ^ axis in
+      let minimum=override (field minimum_name) (Dimension_int 0) in
+      let fixed=override (field axis) (argument "point_size") in
+      let fixed=if axis="height" then override (argument "accordion_height") fixed else fixed in
+      let fixed=override fixed minimum and maximum=field maximum_name in
+      ordered minimum_name minimum axis fixed;
+      ordered minimum_name minimum maximum_name maximum;
+      ordered axis fixed maximum_name maximum) ["width";"height"]
+  end
 
 let check_point_aliases loc args =
   let family name = List.exists (fun (label,value) ->
@@ -294,7 +375,8 @@ let check_point_aliases loc args =
            | Some number when not (Float.is_finite number) || number < 0. || number > 3.4028234663852886e38 ->
                Location.raise_errorf ~loc "LUI dimensions: %s_points must be finite and nonnegative within the portable layout range" name
            | _ -> ())
-      | _ -> ()) args) dimension_labels
+      | _ -> ()) args) dimension_labels;
+  check_point_bounds loc args
 
 let check_edge parent (child, loc) =
   let supported =
@@ -454,7 +536,8 @@ and apply_roots ?(detached = false) fuel scope fn args =
                         match candidate with
                         | Optional name when List.exists (fun dimension ->
                             List.mem name [dimension; dimension ^ "_signal";
-                              dimension ^ "_points"; dimension ^ "_points_signal"]) dimension_labels || name="accordion_height" -> value
+                              dimension ^ "_points"; dimension ^ "_points_signal"]) dimension_labels
+                            || List.mem name ["width";"min_width";"min_height";"point_size";"accordion_height"] -> value
                         | Optional _ -> Unknown
                         | _ -> value
                       in
