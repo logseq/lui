@@ -152,7 +152,12 @@ fn CanonicalScrollContent() -> impl IntoElement {
         json!({"op":"insert-child","parent":2,"child":4,"index":1}),
     ];
     if kind == "bottom-tab" {
-        ops.push(json!({"op":"set-prop","id":2,"property":"title","value":"Scroll page"}));
+        ops.retain(|operation| operation["id"] != 2 || operation["op"] != "set-prop");
+        ops.extend([
+            json!({"op":"set-prop","id":1,"property":"accessibility-label","value":"Private scroll pages"}),
+            json!({"op":"set-prop","id":2,"property":"title","value":"Scroll page"}),
+            json!({"op":"set-prop","id":2,"property":"press-enabled","value":true}),
+        ]);
     }
     if fixture.horizontal {
         ops.push(json!({"op":"set-prop","id":2,"property":"orientation","value":"horizontal"}));
