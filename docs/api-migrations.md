@@ -1,5 +1,12 @@
 # LUI API migration guide
 
+## Unreleased: Apple grouped controls host anchored popovers
+
+Named popover targets inside a button group now mount the same presentation
+host and frame reporting as standalone nodes. For example, a Popover with
+`anchor-target: "group-action"` can target that button's accessibility identifier
+inside a `button-group`; group keyboard navigation keeps its existing behavior.
+
 ## Unreleased: Apple sibling paint order and transparent inline wrappers
 
 Row, Column and Box now place flow and absolute children in one sibling paint

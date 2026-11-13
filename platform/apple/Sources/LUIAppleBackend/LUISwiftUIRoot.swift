@@ -6023,10 +6023,10 @@ private struct LUIHorizontalGroupView: View {
     @ViewBuilder
     private func groupChild(_ child: LUINodeModel) -> some View {
         if isEligible(child) {
-            LUINodeView(model: child, backend: backend)
+            LUIAnyNodeView(nodeID: child.id, backend: backend)
                 .focused($focusedChild, equals: child.id)
         } else {
-            LUINodeView(model: child, backend: backend)
+            LUIAnyNodeView(nodeID: child.id, backend: backend)
         }
     }
 
