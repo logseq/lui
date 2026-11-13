@@ -11,6 +11,7 @@ struct LUIHostFocusTests {
     func mountedFocus() async throws {
         _ = NSApplication.shared
         let backend = LUIAppleBackend()
+        backend.coalescesCommits = true
         try backend.apply(json: """
         {"generation":1,"ops":[
           {"op":"create-node","id":1,"kind":"column"},

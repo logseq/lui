@@ -1102,6 +1102,7 @@ public final class LUIAppleBackend {
         )
         let tB = CFAbsoluteTimeGetCurrent()
         withDeferredEventDelivery {
+            for id in effects.dropped { hostFocus.drop(nodeID: id) }
             pendingCommitTouched.formUnion(effects.touched)
             pendingCommitDropped.formUnion(effects.dropped)
             pendingCommitStructural = pendingCommitStructural || effects.structural
@@ -1176,7 +1177,7 @@ public final class LUIAppleBackend {
         CFRunLoopAddTimer(CFRunLoopGetMain(), timer, .commonModes)
     }
 
-    private func flushPendingCommit() {
+    func flushPendingCommit() {
         if let timer = commitFlushTimer {
             CFRunLoopTimerInvalidate(timer)
             commitFlushTimer = nil
@@ -1638,7 +1639,6 @@ public final class LUIAppleBackend {
         var descendantsRefresh = Set<Int>()
         for id in dropped { collectAncestors(of: id, into: &descendantsRefresh) }
         for id in dropped {
-            hostFocus.drop(nodeID: id)
             if hostQueries.textQueries.contains(id) { hostQueries.textQueries.remove(id) }
             if hostQueries.imageQueries.contains(id) { hostQueries.imageQueries.remove(id) }
             hostQueries.scrollQueries.remove(id)
