@@ -222,6 +222,10 @@ struct LUIHostedScrollView: View {
                 }
             }
         }
+        // Accept smaller cross-axis proposals even while the content still
+        // carries the previous viewport minimum. Keep scroll-axis ideal sizing.
+        .frame(minWidth: horizontal ? nil : 0, maxWidth: horizontal ? nil : .infinity,
+               minHeight: horizontal ? 0 : nil, maxHeight: horizontal ? .infinity : nil)
         .onGeometryChange(for: CGSize.self) { $0.size } action: { viewportSize = $0 }
     }
 }

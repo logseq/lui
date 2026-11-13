@@ -1629,10 +1629,14 @@ struct LUISwiftUIBackendTests {
             grow: 0,
             styleClass: "secondary"
         ) == 0)
-        #expect(LUIRowLayoutPolicy.childLayoutPriority(
+        let growingPriority = LUIRowLayoutPolicy.childLayoutPriority(
             grow: 1,
             styleClass: nil
-        ) == 0)
+        )
+        #expect(growingPriority > LUIRowLayoutPolicy.childLayoutPriority(
+            grow: 0, styleClass: nil))
+        #expect(growingPriority < LUIRowLayoutPolicy.childLayoutPriority(
+            grow: 0, styleClass: "single-line"))
         #expect(LUIRowLayoutPolicy.childLayoutPriority(
             grow: nil,
             styleClass: "secondary single-line"

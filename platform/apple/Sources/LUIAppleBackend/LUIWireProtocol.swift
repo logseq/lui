@@ -1354,7 +1354,9 @@ struct LUIRetainedTree {
                     }
                 }
             }
-            if Self.isModalSurface(node.kind) {
+            // Dialog titles are optional in the canonical protocol: custom
+            // content can provide its own heading. Sheets still require text.
+            if node.kind == .sheet {
                 guard !(node.properties[.text]?.stringValue ?? "").isEmpty else {
                     throw invalid("modal surface requires text")
                 }
