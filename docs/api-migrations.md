@@ -1,5 +1,52 @@
 # LUI API migration guide
 
+## Unreleased: Apple typography variables, inline text and absolute stack children
+
+Apple hosts can supply their current theme snapshot with the additive
+`View.luiStyleVariables([String: String])` modifier or the matching
+`EnvironmentValues.luiStyleVariables` key. For example:
+
+```swift
+LUISwiftUIRoot(backend: backend, rootID: rootID)
+    .luiStyleVariables(["--ls-page-title-size": "36px", "--ls-page-text-size": "16px"])
+```
+
+The existing `font-size`, `font-family` and `line-height` properties now resolve
+`var(...)` chains and nested fallbacks against this environment. For example,
+`font-size: var(--ls-page-title-size, 32px)` uses the supplied 36-point title
+size, or 32 points when the variable is missing. Custom property names are
+case-sensitive. Missing or cyclic references use the referring fallback;
+otherwise that typography facet leaves the inherited value unchanged. Literal
+typography keeps its existing parsing and inheritance. Supported length units
+are unchanged; this does not add CSS calculations or a stylesheet engine.
+Updating the environment re-resolves references, including in committed
+TextKit rendering. Raw retained properties stay unchanged, and the variable
+environment is carried into sheet and custom-dialog presentation.
+
+Nested `text` children now draw as inline runs in a shared native TextKit
+layout instead of disappearing when the parent has no own `text` value. Each
+run inherits typography and can override it with its own typed properties.
+Wrapping and insertion positions come from the same layout that draws the
+whole line. `textGeometry(nodeID:)` also works for those child runs and zero-width
+U+200B pads: returned ranges and offsets are local to that child's UTF-16 text,
+and its frame encloses its laid-out fragments in window-content coordinates.
+Frame reporting includes these inline descendants. Snapshots still expire on
+patches, layout changes, scrolling and unmounting; queried leaf text keeps its
+existing API and presentation. For example, hosts can query each child of
+`text [text "Hello"; text "\u{200B}"]` without inventing caret metrics or
+turning inline runs into separate horizontal stacks.
+
+Apple `stack`, `panel` and `card` children with `position: absolute` now honor
+their numeric `inset`, `inset-top`, `inset-right`, `inset-bottom` and `inset-left`
+properties. For example, a 32-by-32 help button with `inset-right: 32` and
+`inset-bottom: 45` stays that distance from its containing stack's right and
+bottom edges as it resizes. Left/right remain physical edges in RTL layouts.
+Opposing insets stretch an automatic dimension; explicit width/height keep
+their existing constraints. Positioned children do not contribute to intrinsic
+stack size; finite parent proposals define the containing block. Stacks without
+absolute children keep their existing layout. Other positioning modes retain
+their existing fallback behavior; hosts do not need to rewrite this wire data.
+
 ## Unreleased: Apple growing layout, collapsed splits and custom dialogs
 
 Growing children in Apple rows now receive remaining width before flexible
