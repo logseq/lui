@@ -491,6 +491,60 @@ let () =
       join(dir, "ownership.ml"), "-o", join(dir, "ownership")])
     assert.equal(run([join(dir, "ownership")]).trim(), "owned")
 
+    writeFileSync(join(dir, "fractional.ml"), `
+open Lui_elements
+module P = Lui_protocol
+let check name condition = if not condition then failwith name
+let property app node key = P.Property_map.find_opt key
+  (Hashtbl.find (Lui_app.runtime app).Lui_runtime.runtime_properties node)
+let () =
+  List.iter (fun backend_profile ->
+    let batches = ref [] in
+    let backend : P.backend = { backend_profile;
+      apply_batch = (fun batch -> batches := batch :: !batches; true) } in
+    let view _ source _ = image ~width:92 ~height_points:(reactive Fun.id source)
+      ~max_height_points:200.5 [] in
+    let app = Lui_app.create backend 63.25 (fun _ value -> value) view in
+    Fun.protect ~finally:(fun () -> ignore (Lui_app.dispose app)) (fun () ->
+      ignore (Lui_app.start app); ignore (Lui_app.flush app);
+      let node = Lui_app.root_node app in
+      check "reactive point initial value" (property app node P.HeightValue = Some (P.FloatValue 63.25));
+      batches := [];
+      ignore (Lui_app.send app 64.125); ignore (Lui_app.flush app);
+      check "reactive points retain identity" (Lui_app.root_node app = node
+        && property app node P.HeightValue = Some (P.FloatValue 64.125));
+      check "reactive point update never remounts" (not (List.exists
+        (fun batch -> List.exists (function P.DropNode _ | P.CreateNode _ -> true | _ -> false)
+          batch.P.ops) !batches));
+      let accordion_height = Sys.opaque_identity (Some 40) in
+      let conflict = try
+        ignore (Lui_app.create backend 63.25 (fun _ value -> value)
+          (fun _ source _ -> accordion ?accordion_height ~height_points:(reactive Fun.id source) []));
+        false
+        with Invalid_argument message -> message = "Conflicting integer and point aliases: height" in
+      check "Accordion integer alias cannot race a reactive point owner" conflict;
+      List.iter (fun invalid ->
+        let before = !batches and pending = ref None in
+        let rejected, unpublished = Fun.protect ~finally:(fun () ->
+          Option.iter (fun app -> ignore (Lui_app.dispose app)) !pending) (fun () ->
+          let rejected = try
+            let app = Lui_app.create backend invalid (fun _ value -> value) view in
+            pending := Some app; ignore (Lui_app.start app); ignore (Lui_app.flush app); false
+            with Invalid_argument _ -> true in
+          rejected, !batches = before) in
+        check "dynamic initial point source must be validated" rejected;
+        check "invalid initial point source must not reach host" unpublished)
+        [-0.25; nan; infinity; 1e40]))
+    P.[profile WebOS WebHost; profile MacOS NshHost; profile IOS SwiftUIHost;
+       profile AndroidOS KotlinHost; generic_profile ()];
+  print_endline "fractional"
+`)
+    run(["ocamlfind", "ocamlopt", "-package", "ocaml-signal", "-linkpkg", "-ppx",
+      `${join(dir, "driver")} --as-ppx`, "-I", "_build/default/src/.lui.objs/byte",
+      "-I", "_build/default/src/.lui.objs/native", "_build/default/src/lui.cmxa",
+      join(dir, "fractional.ml"), "-o", join(dir, "fractional")])
+    assert.equal(run([join(dir, "fractional")]).trim(), "fractional")
+
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
 

@@ -113,3 +113,16 @@ native node ID before the final assertions. This waits for committed layout;
 it adds no sleep, retry loop or relaxed expectation. These followup tests are
 authored source only. No compiler, test or runtime was run in either source
 worktree, and no contract hashes or oracle verdicts were fabricated.
+
+## Reactive test placement correction
+
+The root's first compile reported that `test/test_lui.ml` is not preprocessed
+by the LUI PPX. Its reactive syntax therefore produced a signal where a float
+was expected. The followup keeps that target's constructor/wire/identity checks
+static, using ordinary runtime property updates for retained wire changes.
+The real reactive update, Accordion signal conflict and invalid initial signal
+cases move to an executable program in the existing PPX-enabled hygiene
+fixture. It runs the five backend profiles through `Lui_app` and authored
+`reactive` props, without manual signal mapping, direct signal-label plumbing,
+example-app exports or a Dune change. This relocation is source-only; the root
+must rerun the core suite and the PPX fixture before recording a pass.

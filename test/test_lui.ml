@@ -3641,9 +3641,9 @@ let test_fractional_dimensions () =
   let open Lui_protocol in
   List.iter (fun backend_profile ->
     let backend = {(recording_backend ()) with backend_profile} in
-    let app = Lui_app.create backend 63.25 (fun _ value -> value)
-      (fun _ height _ -> image ~width:92
-        ~height_points:(reactive Fun.id height)
+    let app = Lui_app.create backend () (fun model () -> model)
+      (fun _ _ _ -> image ~width:92
+        ~height_points:63.25
         ~max_width_points:127.75 ~max_height_points:200.5 []) in
     Fun.protect ~finally:(fun () -> ignore (Lui_app.dispose app)) (fun () ->
       ignore (Lui_app.start app);flush_app app;
@@ -3655,8 +3655,8 @@ let test_fractional_dimensions () =
          && property MaxWidth=Some (FloatValue 127.75)
          && property MaxHeight=Some (FloatValue 200.5));
       batches:=[];
-      ignore (Lui_app.send app 64.125);flush_app app;
-      Alcotest.(check bool) "reactive fractional dimensions retain their node" true
+      Lui_runtime.set_prop (Lui_app.runtime app) node HeightValue (FloatValue 64.125);flush_app app;
+      Alcotest.(check bool) "dynamic fractional wire dimensions retain their node" true
         (Lui_app.root_node app=node && property HeightValue=Some (FloatValue 64.125));
       let changed=all_ops () in
       Alcotest.(check bool) "fractional updates never remove and re-add the property or node" false
@@ -3689,23 +3689,7 @@ let test_fractional_dimensions () =
       Alcotest.check_raises "Accordion's existing integer alias cannot override fractional points"
         (Invalid_argument "Conflicting integer and point aliases: height")
         (fun () -> ignore (accordion ?accordion_height ?height_points:points []));
-      Alcotest.check_raises "Accordion's integer alias cannot race a borrowed point signal"
-        (Invalid_argument "Conflicting integer and point aliases: height")
-        (fun () -> ignore (Lui_app.create backend 63.25 (fun _ value -> value)
-          (fun _ source _ -> accordion ?accordion_height ~height_points:(reactive Fun.id source) [])));
-      List.iter (fun invalid ->
-        let before=all_ops () and pending=ref None in
-        let rejected,unpublished=Fun.protect ~finally:(fun () ->
-          Option.iter (fun app -> ignore (Lui_app.dispose app)) !pending) (fun () ->
-          let rejected=try
-            let app=Lui_app.create backend invalid (fun _ value -> value)
-              (fun _ source _ -> image ~height_points:(reactive Fun.id source) []) in
-            pending:=Some app;ignore (Lui_app.start app);flush_app app;false
-          with Invalid_argument _ -> true in
-          rejected,all_ops ()=before) in
-        Alcotest.(check bool) "dynamic signal dimensions are validated on every actual profile" true rejected;
-        Alcotest.(check bool) "invalid initial point signals never publish to their host" true unpublished)
-        [-0.25;nan;infinity;1e40]))
+      ()))
     [profile WebOS WebHost;profile MacOS NshHost;profile IOS SwiftUIHost;
      profile AndroidOS KotlinHost;generic_profile ()];
   List.iter (fun property ->
