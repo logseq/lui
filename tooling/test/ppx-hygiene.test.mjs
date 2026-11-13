@@ -148,7 +148,7 @@ let dimensions (viewport : float Signal.signal) =
   let thumbnail = image ~width:92 ~height_points:63.25 [] in
   column ~max_width_points:127.75
     ~max_height_points:(reactive (fun height -> max 0. (height -. 320.)) viewport)
-    [thumbnail; image ~height:63 []]
+    [thumbnail; image ~height:63 []; accordion ~accordion_height:40 []]
 let profiles = Lui_protocol.[profile WebOS WebHost; profile MacOS NshHost;
   profile IOS SwiftUIHost; profile AndroidOS KotlinHost; generic_profile ()]`,
       `open Lui_elements
@@ -201,10 +201,14 @@ let probe (source : bool Signal.signal) =
         [`image ~${label}:63 ~${label}_points:63.25 []`, /LUI dimensions: conflicting/],
         [`Lui_elements.image ~${label}_points:(-0.25) []`, /LUI dimensions:.*finite and nonnegative/],
         [`let make = Lui_elements.image in make ~${label}_points:1e999 []`, /LUI dimensions:.*finite and nonnegative/],
+        [`image ~${label}_points:1e40 []`, /LUI dimensions:.*portable layout range/],
         [`let make ?${label}_points children = Lui_elements.image ?${label}_points children in make ?${label}_points:(Some (-0.25)) []`, /LUI dimensions:.*finite and nonnegative/],
         [`image ~${label}_points:(reactive (fun _ -> -0.25) source) []`, /LUI dimensions:.*finite and nonnegative/],
         [`image ~${label}:63 ~${label}_points:(reactive Fun.id source) []`, /LUI dimensions: conflicting/],
       ]),
+      ['accordion ~accordion_height:40 ~height_points:63.25 []', /LUI dimensions: conflicting/],
+      ['let make ?accordion_height ?height_points xs = Lui_elements.accordion ?accordion_height ?height_points xs in make ?accordion_height:(Some 40) ?height_points:(Some 63.25) []', /LUI dimensions: conflicting/],
+      ['accordion ~accordion_height:40 ~height_points:(reactive (fun _ -> 63.25) source) []', /LUI dimensions: conflicting/],
       ['tooltip ~height_points:63.25 []', /cannot be applied with label ~height_points/],
       ['file_picker ~max_height_points:63.25 []', /cannot be applied with label ~max_height_points/],
       ['Lui_elements.list_item ~gap:4 []', /cannot be applied with label ~gap/],

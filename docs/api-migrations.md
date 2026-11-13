@@ -19,14 +19,19 @@ Web uses CSS pixels, Apple uses points, Android uses dp and NSH uses native
 layout points, following the same convention as the existing integer labels.
 The authored fraction is retained until the platform's normal layout or pixel
 conversion. It is never rounded to an integer in OCaml or replaced with an
-image's intrinsic ratio. NSH and Android reject floats outside their finite
-float32 layout range before OCaml host emission; that platform restriction
-does not restrict the other backend profiles. Integer-only bound comparisons
-keep their existing exact ordering, including integers above float precision.
+image's intrinsic ratio. All backend profiles use the same portable float32 finite maximum,
+`3.4028234663852886e38`, for these three new FloatValue fields and point aliases.
+Larger finite values fail constructor/JSON/canonical admission before host
+emission; known literal point calls also fail PPX checking. These FloatValue
+field calls were invalid before the point aliases were introduced. This limit
+does not change any existing integer call or unrelated float property domain.
+Integer-only bound comparisons keep their existing exact ordering, including
+integers above float precision.
 
 An integer label or integer signal cannot compete with its point alias/signal
-on the same constructor. `icon`'s existing `point_size` also owns Height and
-cannot be combined with `height_points`. PPX diagnostics reject known
+on the same constructor. `icon`'s existing `point_size` and Accordion's
+existing `accordion_height` also own Height and cannot be combined with
+`height_points` or its signal. PPX diagnostics reject known
 conflicts and invalid float literals, including traced aliases, optional
 forwarding and constant reactive projections. Dynamic options and signal
 values retain runtime validation. Omit the integer label when adopting the
@@ -37,7 +42,10 @@ JSON view dimensions now retain fractional numeric values instead of rounding
 them through `v_int`. For these three fields, whole, in-range canonical
 numbers retain IntValue; fractions use FloatValue. Explicit `height-points`,
 `max-width-points` and `max-height-points` always select FloatValue. Canonical
-and point aliases cannot both appear, even with equal values. Explicit null,
+and point aliases cannot both appear, even with equal values. Accordion's
+`accordion-height` also conflicts with explicit `height-points` or a fractional
+canonical `height`; old integer-only Accordion calls retain their behavior.
+Explicit null,
 strings, booleans, negative and nonfinite values are rejected rather than
 omitted; remove the field to omit a dimension. For example,
 `{"kind":"image","width":92,"height":63.25}` now preserves height 63.25.

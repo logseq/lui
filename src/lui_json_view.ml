@@ -49,12 +49,12 @@ let dimension_prop props name =
       let value = match canonical, points with Some value, _ | _, Some value -> value
         | None, None -> assert false in
       (match value with
-       | Num value when P.is_finite value && value >= 0. ->
+       | Num value when P.property_value_supported P.HeightValue (P.FloatValue value) ->
            if not explicit_points && Float.floor value = value
               && value < -. (float_of_int min_int)
            then Some (int_of_float value), None
            else None, Some value
-       | _ -> invalid_arg ("Dimension must be a finite nonnegative number: " ^ name))
+       | _ -> invalid_arg ("Dimension must be a finite nonnegative number within the portable layout range: " ^ name))
 
 let require_dimension_properties supported props =
   List.iter (fun name ->
@@ -678,6 +678,8 @@ let rec element ~emit (node : value) : E.t =
       ?key:s.s_key ?gap:s.s_gap ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?columns:s.s_columns ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?height_points:s.s_height_points ?min_width:s.s_min_width ?max_width:s.s_max_width ?max_width_points:s.s_max_width_points ?min_height:s.s_min_height ?max_height:s.s_max_height ?max_height_points:s.s_max_height_points ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?orientation:(orientation_opt (v_str props "orientation")) ?label:(v_str props "label") ?toolbar_gap:(v_int props "toolbar-gap") ?toolbar_class:(v_str props "toolbar-class") ?placement:(v_str props "placement") (List.map (element ~emit) child_nodes)
     | "accordion" ->
       require_dimension_properties ["height"; "max-width"; "max-height"] props;
+      if Option.is_some s.s_height_points && Option.is_some (get props "accordion-height") then
+        invalid_arg "Conflicting integer and point aliases: height";
       E.accordion
       ?key:s.s_key ?gap:s.s_gap ?main:s.s_main ?cross:s.s_cross ?grow:s.s_grow ?columns:s.s_columns ?padding:s.s_pad ?padding_horizontal:s.s_pad_h ?padding_vertical:s.s_pad_v ?margin:s.s_margin ?margin_horizontal:s.s_margin_h ?margin_vertical:s.s_margin_v ?margin_top:s.s_margin_top ?margin_right:s.s_margin_right ?margin_bottom:s.s_margin_bottom ?margin_left:s.s_margin_left ?background:s.s_bg ?foreground:s.s_fg ?border_color:s.s_border_color ?border_width:s.s_border_width ?corner_radius:s.s_radius ?width:s.s_width ?height:s.s_height ?height_points:s.s_height_points ?min_width:s.s_min_width ?max_width:s.s_max_width ?max_width_points:s.s_max_width_points ?min_height:s.s_min_height ?max_height:s.s_max_height ?max_height_points:s.s_max_height_points ?container_relative_frame:(frame_axes_opt (v_str props "container-relative-frame")) ?container_relative_frame_inset:(v_int props "container-relative-frame-inset") ?accessibility_identifier:(v_str props "accessibility-identifier") ?style_class:s.s_class ?on_appear:(ev "appear" emit props) ?text:(v_str props "text") ?selected:(v_bool props "selected") ?accordion_height:(v_int props "accordion-height") ?on_toggle:(ev "toggle" emit props) (List.map (element ~emit) child_nodes)
     | "menu-item" ->

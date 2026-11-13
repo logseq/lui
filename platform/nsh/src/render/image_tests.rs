@@ -49,6 +49,10 @@ fn fractional_image_geometry_is_exact_and_updates_without_native_remount() {
     assert_eq!(before.bounds.size.width, px(92.0));
     assert_eq!(before.bounds.size.height, px(63.25));
     app.press("Update fractional geometry").unwrap();
+    app.wait_until("retained fractional image layout", std::time::Duration::from_secs(2), |screen| {
+        screen.layout_nodes().into_iter().any(|node| node.test_id.as_deref() == Some("lui-2")
+            && node.id == before.id && node.bounds.size.height == px(64.125))
+    }).unwrap();
     let after = app.screen().layout_nodes().into_iter()
         .find(|node| node.test_id.as_deref() == Some("lui-2")).unwrap();
     assert_eq!(after.id, before.id);

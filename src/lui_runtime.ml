@@ -1853,11 +1853,6 @@ let notify_segment_property application node property value =
           !(segment.dynamic_segment_on_property)) segments
 
 let set_prop application node property value =
-  (match application.runtime_backend.backend_profile.profile_host, property, value with
-   | (NshHost | KotlinHost), (HeightValue | MaxWidth | MaxHeight), FloatValue points
-     when points > 3.4028234663852886e38 ->
-       invalid_arg "Point dimension exceeds backend layout range"
-   | _ -> ());
   if property = VirtualViewport && value = StringValue "parent" then
     (match application.runtime_backend.backend_profile.profile_host with
      | NshHost -> ()

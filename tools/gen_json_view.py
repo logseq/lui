@@ -252,6 +252,9 @@ def main():
                       if name in restricted_properties else '')
         dimensions = '; '.join('\"' + label.replace('_', '-') + '\"' for label, _ in args if label in ('height', 'max_width', 'max_height'))
         validation += f'      require_dimension_properties [{dimensions}] props;\n'
+        if name == 'accordion':
+            validation += ('      if Option.is_some s.s_height_points && Option.is_some (get props "accordion-height") then\n'
+                           '        invalid_arg "Conflicting integer and point aliases: height";\n')
         out.append(f'    | "{kind}" ->\n{validation}      E.{name}{call_args(args, name)} {kids}\n')
     for name, kind, _, el_type, _ in restricted:
         out.append(
@@ -403,12 +406,12 @@ let dimension_prop props name =
       let value = match canonical, points with Some value, _ | _, Some value -> value
         | None, None -> assert false in
       (match value with
-       | Num value when P.is_finite value && value >= 0. ->
+       | Num value when P.property_value_supported P.HeightValue (P.FloatValue value) ->
            if not explicit_points && Float.floor value = value
               && value < -. (float_of_int min_int)
            then Some (int_of_float value), None
            else None, Some value
-       | _ -> invalid_arg ("Dimension must be a finite nonnegative number: " ^ name))
+       | _ -> invalid_arg ("Dimension must be a finite nonnegative number within the portable layout range: " ^ name))
 
 let require_dimension_properties supported props =
   List.iter (fun name ->

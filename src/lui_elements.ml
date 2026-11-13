@@ -747,8 +747,8 @@ let validate_point_alias name integer points points_signal =
   if integer && (Option.is_some points || Option.is_some points_signal) then
     invalid_arg ("Conflicting integer and point aliases: " ^ name);
   Option.iter (fun value ->
-    if not (Lui_protocol.is_finite value) || value < 0. then
-      invalid_arg ("Point dimension must be finite and nonnegative: " ^ name)) points
+    if not (Lui_protocol.property_value_supported HeightValue (FloatValue value)) then
+      invalid_arg ("Point dimension must be finite and nonnegative within the portable layout range: " ^ name)) points
 
 let apply_universal ?height_points ?height_points_signal ?max_width_points ?max_width_points_signal ?max_height_points ?max_height_points_signal ?shrink context node ~key ~gap ~main ~cross ~grow ~columns ~padding ~padding_horizontal ~padding_vertical ~margin ~margin_horizontal ~margin_vertical ~margin_top ~margin_right ~margin_bottom ~margin_left ~background ~foreground ~border_color ~border_width ~corner_radius ~width ~height ~min_width ~max_width ~min_height ~max_height ~container_relative_frame ~container_relative_frame_inset ~accessibility_identifier ~accessibility_identifier_signal ~foreground_signal ~background_signal ~style_class ~data_attrs ~data_attrs_signal ~on_appear ~on_pointer_enter ~on_pointer_leave ~transition =
   validate_point_alias "height" (Option.is_some height) height_points height_points_signal;
@@ -2324,7 +2324,7 @@ let toolbar ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?
   node
 
 let accordion ?key ?gap ?main ?cross ?grow ?columns ?padding ?padding_horizontal ?padding_vertical ?margin ?margin_horizontal ?margin_vertical ?margin_top ?margin_right ?margin_bottom ?margin_left ?background ?foreground ?border_color ?border_width ?corner_radius ?width ?height ?height_points ?height_points_signal ?min_width ?max_width ?max_width_points ?max_width_points_signal ?min_height ?max_height ?max_height_points ?max_height_points_signal ?container_relative_frame ?container_relative_frame_inset ?accessibility_identifier ?accessibility_identifier_signal ?foreground_signal ?background_signal ?style_class ?data_attrs ?data_attrs_signal ?on_appear ?on_pointer_enter ?on_pointer_leave ?text ?text_signal ?selected ?selected_signal ?accordion_height ?on_toggle ?on_context_menu (children : t list) : t =
-  validate_point_alias "height" (Option.is_some height) height_points height_points_signal;
+  validate_point_alias "height" (Option.is_some height || Option.is_some accordion_height) height_points height_points_signal;
   validate_point_alias "max-width" (Option.is_some max_width) max_width_points max_width_points_signal;
   validate_point_alias "max-height" (Option.is_some max_height) max_height_points max_height_points_signal;
  fun context parent ->

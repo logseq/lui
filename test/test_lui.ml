@@ -3670,24 +3670,29 @@ let test_fractional_dimensions () =
       List.iter (fun value ->
         let before=all_ops () in
         Alcotest.check_raises "dynamic point dimensions reject invalid numbers before host publication"
-          (Invalid_argument "Point dimension must be finite and nonnegative: height")
+          (Invalid_argument "Point dimension must be finite and nonnegative within the portable layout range: height")
           (fun () -> ignore (image ~height_points:value []));
         Alcotest.(check bool) "invalid point construction emits nothing" true (all_ops ()=before))
-        [-0.25;nan;infinity;neg_infinity];
+        [-0.25;nan;infinity;neg_infinity;1e40];
       let integer=Sys.opaque_identity (Some 63) and points=Sys.opaque_identity (Some 63.25) in
       Alcotest.check_raises "forwarded option aliases retain dynamic mutual exclusion"
         (Invalid_argument "Conflicting integer and point aliases: height")
         (fun () -> ignore (image ?height:integer ?height_points:points []));
-      (match backend_profile.profile_host with
-       | NshHost | KotlinHost ->
-           Alcotest.check_raises "float layout range is checked before native host emission"
-             (Invalid_argument "Point dimension exceeds backend layout range")
-             (fun () -> Lui_runtime.set_prop (Lui_app.runtime app) node MaxHeight (FloatValue Float.max_float))
-       | WebHost | SwiftUIHost | GenericHost ->
-           Lui_runtime.set_prop (Lui_app.runtime app) node MaxHeight (FloatValue Float.max_float);
-           flush_app app;
-           Alcotest.(check bool) "native float32 range does not restrict other backends" true
-             (property MaxHeight=Some (FloatValue Float.max_float)));
+      let before=all_ops () in
+      let rejected=try
+        Lui_runtime.set_prop (Lui_app.runtime app) node MaxHeight (FloatValue 1e40);false
+        with Invalid_argument _ -> true in
+      Alcotest.(check bool) "point wire values use the same portable cap on every profile" true rejected;
+      Alcotest.(check bool) "portable range rejection preserves the prior property and host output" true
+        (property MaxHeight=Some (FloatValue 200.5) && all_ops ()=before);
+      let accordion_height=Sys.opaque_identity (Some 40) in
+      Alcotest.check_raises "Accordion's existing integer alias cannot override fractional points"
+        (Invalid_argument "Conflicting integer and point aliases: height")
+        (fun () -> ignore (accordion ?accordion_height ?height_points:points []));
+      Alcotest.check_raises "Accordion's integer alias cannot race a borrowed point signal"
+        (Invalid_argument "Conflicting integer and point aliases: height")
+        (fun () -> ignore (Lui_app.create backend 63.25 (fun _ value -> value)
+          (fun _ source _ -> accordion ?accordion_height ~height_points:(reactive Fun.id source) [])));
       List.iter (fun invalid ->
         let before=all_ops () and pending=ref None in
         let rejected,unpublished=Fun.protect ~finally:(fun () ->
@@ -3700,9 +3705,16 @@ let test_fractional_dimensions () =
           rejected,all_ops ()=before) in
         Alcotest.(check bool) "dynamic signal dimensions are validated on every actual profile" true rejected;
         Alcotest.(check bool) "invalid initial point signals never publish to their host" true unpublished)
-        [-0.25;nan;infinity]))
+        [-0.25;nan;infinity;1e40]))
     [profile WebOS WebHost;profile MacOS NshHost;profile IOS SwiftUIHost;
      profile AndroidOS KotlinHost;generic_profile ()];
+  List.iter (fun property ->
+    Alcotest.(check bool) "portable point cap rejects new float fields without restricting old integer fields" true
+      (not (property_value_supported property (FloatValue 1e40))
+       && property_value_supported property (FloatValue 3.4028234663852886e38)
+       && property_value_supported property (IntValue max_int))) [HeightValue;MaxWidth;MaxHeight];
+  Alcotest.(check bool) "unrelated float property domains remain unchanged" true
+    (property_value_supported GrowValue (FloatValue 1e40));
   let bounded fixed maximum = surface_size_supported
     (Property_map.empty |> Property_map.add HeightValue fixed |> Property_map.add MaxHeight maximum) in
   Alcotest.(check bool) "mixed integer/float bounds admit a valid fraction" true
@@ -3731,14 +3743,27 @@ let test_json_fractional_dimensions () =
   List.iter (fun field ->
     List.iter (fun value ->
       Alcotest.check_raises "JSON explicitly invalid dimensions fail without rounding or omission"
-        (Invalid_argument ("Dimension must be a finite nonnegative number: " ^ field))
+        (Invalid_argument ("Dimension must be a finite nonnegative number within the portable layout range: " ^ field))
         (fun () -> ignore (render ~on_event:sink (Obj ["kind",Str "image";field,value]))))
-      [Num (-0.25);Num nan;Num infinity;Str "63.25px";Bool false;Null];
+      [Num (-0.25);Num nan;Num infinity;Num 1e40;Str "63.25px";Bool false;Null];
     Alcotest.check_raises "JSON aliases cannot both author the same property"
       (Invalid_argument ("Conflicting dimension aliases: " ^ field))
       (fun () -> ignore (render ~on_event:sink
         (Obj ["kind",Str "image";field,Num 63.;field ^ "-points",Num 63.25]))))
-    ["height";"max-width";"max-height"]
+    ["height";"max-width";"max-height"];
+  List.iter (fun floating ->
+    Alcotest.check_raises "JSON Accordion's existing integer alias conflicts with point authoring"
+      (Invalid_argument "Conflicting integer and point aliases: height")
+      (fun () -> ignore (render ~on_event:sink (Obj
+        ["kind",Str "accordion";"accordion-height",Num 40.;floating,Num 63.25]))))
+    ["height";"height-points"];
+  let app=Lui_app.create (recording_backend ()) () (fun model () -> model)
+    (fun _ _ _ -> render ~on_event:sink (Obj ["kind",Str "accordion";"accordion-height",Num 40.])) in
+  Fun.protect ~finally:(fun () -> ignore (Lui_app.dispose app)) (fun () ->
+    ignore (Lui_app.start app);flush_app app;
+    Alcotest.(check bool) "the existing JSON Accordion integer alias remains valid" true
+      (List.exists (function Lui_protocol.SetProp (_,Lui_protocol.HeightValue,Lui_protocol.IntValue 40) -> true | _ -> false)
+        (all_ops ())))
 
 let test_json_list_item_gap_contract () =
   let open Lui_json_view in

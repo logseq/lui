@@ -189,7 +189,7 @@ enum LUIWireValue: Decodable, Equatable {
             return value >= 0
         case .height, .maxWidth, .maxHeight:
             guard let value = dimensionValue else { return false }
-            return value.isFinite && value >= 0
+            return value.isFinite && value >= 0 && value <= 3.4028234663852886e38
         case .resizeEasing:
             guard let value = stringValue else { return false }
             return ["linear", "standard", "emphasized", "spring"].contains(value)

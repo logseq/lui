@@ -285,14 +285,14 @@ let check_point_aliases loc args =
         argument_present 32 label value
     | _ -> false) args in
   List.iter (fun name ->
-    if (family name || (name="height" && family "point_size")) && family (name ^ "_points") then
+    if (family name || (name="height" && (family "point_size" || family "accordion_height"))) && family (name ^ "_points") then
       Location.raise_errorf ~loc "LUI dimensions: conflicting integer and point aliases for %s" name;
     List.iter (fun (label,value) ->
       match label with
       | Labelled found | Optional found when found=name ^ "_points" ->
           (match point_literal 32 value with
-           | Some number when not (Float.is_finite number) || number < 0. ->
-               Location.raise_errorf ~loc "LUI dimensions: %s_points must be finite and nonnegative" name
+           | Some number when not (Float.is_finite number) || number < 0. || number > 3.4028234663852886e38 ->
+               Location.raise_errorf ~loc "LUI dimensions: %s_points must be finite and nonnegative within the portable layout range" name
            | _ -> ())
       | _ -> ()) args) dimension_labels
 
@@ -454,7 +454,7 @@ and apply_roots ?(detached = false) fuel scope fn args =
                         match candidate with
                         | Optional name when List.exists (fun dimension ->
                             List.mem name [dimension; dimension ^ "_signal";
-                              dimension ^ "_points"; dimension ^ "_points_signal"]) dimension_labels -> value
+                              dimension ^ "_points"; dimension ^ "_points_signal"]) dimension_labels || name="accordion_height" -> value
                         | Optional _ -> Unknown
                         | _ -> value
                       in
