@@ -36,6 +36,7 @@ def export_contract():
         subprocess.run(["opam", "exec", "--", "ocamlfind", "ocamlopt", "-linkpkg",
                         "-package", "compiler-libs.common,yojson,ocaml-signal", "-I",
                         str(ROOT / "_build/default/src/.lui.objs/byte"), "-I",
+                        str(ROOT / "_build/default/src/.lui.objs/native"), "-I",
                         str(ROOT / "_build/default/src"), str(ROOT / "_build/default/src/lui.cmxa"),
                         str(source), "-o", str(binary)], cwd=ROOT, check=True)
         return json.loads(subprocess.check_output([str(binary), str(ROOT / "src/lui_protocol.ml")], cwd=ROOT))

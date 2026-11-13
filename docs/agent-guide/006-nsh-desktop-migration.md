@@ -789,3 +789,30 @@ DLL/package launch. Its ordinary
 also completed successfully. These terminal results qualify that exact published
 revision, not the later passive-layout and intrinsic Scroll content changes.
 They do not establish actual Logseq installed upgrades or full master UX parity.
+
+### Intrinsic Scroll document qualification (2026-11-13)
+
+At `24a4c494ee926a89a2999508481e2cff9607a9df`, the complete locked release
+library suite passed 307 tests. The 17 separate integration tests also passed:
+real OCaml input/recovery/clock/image/picker, 1k/100k sparse-row reorder,
+parent source-factory replacement, public List identity and retained store
+transactions. Formatting and strict all-target release Clippy passed. Evidence:
+`/tmp/lui-intrinsic-owner-final-release.log`,
+`/tmp/lui-intrinsic-owner-integrations.log`,
+`/tmp/lui-intrinsic-owner-clippy.log`, and
+`/tmp/lui-intrinsic-owner-format.log`.
+
+The viewport now retains its native controller while an intrinsic document
+preserves overflow after passive flex shrinking. Regression cases cover both
+Scroll axes, one-cell direct-child layout, transparent contents auto-placement,
+natural document height, valid List alignment, BottomTab flow and retained
+editor drafts/identities. The BottomTab fixture supplies a bounded parent;
+an unconstrained flex-growing root correctly fills the larger engine viewport.
+This is library/integration evidence, not actual AppKit wheel or Logseq pixel
+parity. Those real application checks remain required before delivery.
+
+The contract exporter also now includes the existing native object directory
+when invoking `ocamlopt`, resolving missing-CMX warnings without changing warning
+settings or Dune files. Regeneration and the subsequent freshness check produced
+no diagnostics, and all 45 native tooling tests passed. Only the generator's
+input digest changes in the exported contract; validator behavior is unchanged.
