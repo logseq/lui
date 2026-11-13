@@ -28,6 +28,14 @@ does not change any existing integer call or unrelated float property domain.
 Integer-only bound comparisons keep their existing exact ordering, including
 integers above float precision.
 
+NSH now decodes JSON floating numbers with exact float64 round-trip semantics,
+matching the existing OCaml wire encoder. For example, the valid upper bound
+`3.4028234663852886e38` remains that value instead of being parsed one float64
+step above the admitted range. The adjacent larger decimal
+`3.402823466385289e38` remains invalid. This corrects native numeric decoding;
+it does not widen a validation range or change integer parsing. No caller-side
+rounding or tolerance is needed.
+
 An integer label or integer signal cannot compete with its point alias/signal
 on the same constructor. `icon`'s existing `point_size` and Accordion's
 existing `accordion_height` also own Height and cannot be combined with
