@@ -255,16 +255,22 @@ fn dimension_compare(left: Scalar<'_>, right: Scalar<'_>) -> std::cmp::Ordering 
     use std::cmp::Ordering;
     match (left, right) {
         (Scalar::Int(left), Scalar::Int(right)) => left.cmp(&right),
-        (Scalar::Float(left), Scalar::Float(right)) => left.partial_cmp(&right).expect("finite dimensions"),
+        (Scalar::Float(left), Scalar::Float(right)) => {
+            left.partial_cmp(&right).expect("finite dimensions")
+        }
         (Scalar::Int(left), Scalar::Float(right)) => {
-            if right >= 9_223_372_036_854_775_808.0 { return Ordering::Less; }
+            if right >= 9_223_372_036_854_775_808.0 {
+                return Ordering::Less;
+            }
             let whole = right as i64;
             match left.cmp(&whole) {
                 Ordering::Equal if right > whole as f64 => Ordering::Less,
                 order => order,
             }
         }
-        (left @ Scalar::Float(_), right @ Scalar::Int(_)) => dimension_compare(right, left).reverse(),
+        (left @ Scalar::Float(_), right @ Scalar::Int(_)) => {
+            dimension_compare(right, left).reverse()
+        }
         _ => unreachable!("validated numeric dimensions"),
     }
 }
@@ -279,8 +285,10 @@ fn surface_size_supported(properties: &Map<String, Value>) -> bool {
         !dimension_compare(fixed, minimum).is_lt()
             && match lookup(&format!("max-{axis}"), properties) {
                 None => true,
-                Some(maximum @ (Scalar::Int(_) | Scalar::Float(_))) =>
-                    !dimension_compare(minimum, maximum).is_gt() && !dimension_compare(fixed, maximum).is_gt(),
+                Some(maximum @ (Scalar::Int(_) | Scalar::Float(_))) => {
+                    !dimension_compare(minimum, maximum).is_gt()
+                        && !dimension_compare(fixed, maximum).is_gt()
+                }
                 Some(_) => false,
             }
     })

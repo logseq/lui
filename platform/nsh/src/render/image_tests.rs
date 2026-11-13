@@ -12,51 +12,102 @@ fn patch(generation: u64, ops: Value) -> Batch {
 #[component]
 fn FractionalImageScenario() -> impl IntoElement {
     let renderer = Renderer::new(|_, _| {});
-    renderer.apply(patch(1, json!([
-        {"op":"create-node","id":1,"kind":"column"},
-        {"op":"create-node","id":2,"kind":"image"},
-        {"op":"set-prop","id":2,"property":"url","value":"file:///tmp/fractional.png"},
-        {"op":"set-prop","id":2,"property":"width","value":92},
-        {"op":"set-prop","id":2,"property":"height","value":63.25},
-        {"op":"set-prop","id":2,"property":"max-width","value":127.75},
-        {"op":"set-prop","id":2,"property":"max-height","value":200.5},
-        {"op":"insert-child","parent":1,"child":2,"index":0}
-    ]))).unwrap();
+    renderer
+        .apply(patch(
+            1,
+            json!([
+                {"op":"create-node","id":1,"kind":"column"},
+                {"op":"create-node","id":2,"kind":"image"},
+                {"op":"set-prop","id":2,"property":"url","value":"file:///tmp/fractional.png"},
+                {"op":"set-prop","id":2,"property":"width","value":92},
+                {"op":"set-prop","id":2,"property":"height","value":63.25},
+                {"op":"set-prop","id":2,"property":"max-width","value":127.75},
+                {"op":"set-prop","id":2,"property":"max-height","value":200.5},
+                {"op":"insert-child","parent":1,"child":2,"index":0}
+            ]),
+        ))
+        .unwrap();
     renderer.set_root(1).unwrap();
     let change = renderer.clone();
-    view().child(renderer.element()).child(nsh_base::button()
-        .child(text("Update fractional geometry")).on_press(move || {
-            let node = change.0.borrow().store.nodes[&2].incarnation;
-            assert!(change.apply(patch(2, json!([
-                {"op":"set-prop","id":2,"property":"max-height","value":63}
-            ]))).is_err());
-            assert_eq!(change.0.borrow().store.generation, 1);
-            change.apply(patch(2, json!([
-                {"op":"set-prop","id":2,"property":"height","value":64.125},
-                {"op":"set-prop","id":2,"property":"max-width","value":128.125},
-                {"op":"set-prop","id":2,"property":"max-height","value":201.25}
-            ]))).unwrap();
-            assert_eq!(change.0.borrow().store.nodes[&2].incarnation, node);
-        }))
+    view().child(renderer.element()).child(
+        nsh_base::button()
+            .child(text("Update fractional geometry"))
+            .on_press(move || {
+                let node = change.0.borrow().store.nodes[&2].incarnation;
+                assert!(
+                    change
+                        .apply(patch(
+                            2,
+                            json!([
+                                {"op":"set-prop","id":2,"property":"max-height","value":63}
+                            ])
+                        ))
+                        .is_err()
+                );
+                assert_eq!(change.0.borrow().store.generation, 1);
+                change
+                    .apply(patch(
+                        2,
+                        json!([
+                            {"op":"set-prop","id":2,"property":"height","value":64.125},
+                            {"op":"set-prop","id":2,"property":"max-width","value":128.125},
+                            {"op":"set-prop","id":2,"property":"max-height","value":201.25}
+                        ]),
+                    ))
+                    .unwrap();
+                assert_eq!(change.0.borrow().store.nodes[&2].incarnation, node);
+            }),
+    )
+}
+
+fn assert_fractional_image_geometry(pixel_ratio: f32, initial_height: f32, updated_height: f32) {
+    let mut config = EngineConfig::new(Root::of::<FractionalImageScenario>());
+    config.environment.pixel_ratio = pixel_ratio;
+    let mut app = Headless::start(config).unwrap();
+    app.wait_for("id:lui-2").unwrap();
+    let before = app
+        .screen()
+        .layout_nodes()
+        .into_iter()
+        .find(|node| node.test_id.as_deref() == Some("lui-2"))
+        .unwrap();
+    assert_eq!(before.bounds.size.width, px(92.0));
+    assert_eq!(before.bounds.size.height, px(initial_height));
+    app.press("Update fractional geometry").unwrap();
+    app.wait_until(
+        "retained fractional image layout",
+        std::time::Duration::from_secs(2),
+        |screen| {
+            screen.layout_nodes().into_iter().any(|node| {
+                node.test_id.as_deref() == Some("lui-2")
+                    && node.id == before.id
+                    && node.bounds.size.height == px(updated_height)
+            })
+        },
+    )
+    .unwrap();
+    let after = app
+        .screen()
+        .layout_nodes()
+        .into_iter()
+        .find(|node| node.test_id.as_deref() == Some("lui-2"))
+        .unwrap();
+    assert_eq!(after.id, before.id);
+    assert_eq!(after.bounds.size.height, px(updated_height));
 }
 
 #[test]
 fn fractional_image_geometry_is_exact_and_updates_without_native_remount() {
-    let mut app = Headless::start(EngineConfig::new(Root::of::<FractionalImageScenario>())).unwrap();
-    app.wait_for("id:lui-2").unwrap();
-    let before = app.screen().layout_nodes().into_iter()
-        .find(|node| node.test_id.as_deref() == Some("lui-2")).unwrap();
-    assert_eq!(before.bounds.size.width, px(92.0));
-    assert_eq!(before.bounds.size.height, px(63.25));
-    app.press("Update fractional geometry").unwrap();
-    app.wait_until("retained fractional image layout", std::time::Duration::from_secs(2), |screen| {
-        screen.layout_nodes().into_iter().any(|node| node.test_id.as_deref() == Some("lui-2")
-            && node.id == before.id && node.bounds.size.height == px(64.125))
-    }).unwrap();
-    let after = app.screen().layout_nodes().into_iter()
-        .find(|node| node.test_id.as_deref() == Some("lui-2")).unwrap();
-    assert_eq!(after.id, before.id);
-    assert_eq!(after.bounds.size.height, px(64.125));
+    // Both authored fractions land exactly on this device pixel grid. NSH
+    // rounds committed native frames to that grid, not to integer points.
+    assert_fractional_image_geometry(8.0, 63.25, 64.125);
+}
+
+#[test]
+fn fractional_image_geometry_rounds_only_at_the_device_pixel_boundary() {
+    for (ratio, initial, updated) in [(1.0, 63.0, 64.0), (2.0, 63.5, 64.0), (4.0, 63.25, 64.25)] {
+        assert_fractional_image_geometry(ratio, initial, updated);
+    }
 }
 
 #[component]
