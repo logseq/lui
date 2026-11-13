@@ -24,7 +24,10 @@ struct LUIQueryableText<Content: View>: View {
 
     var body: some View {
         if backend.hostQueries.textQueries.contains(model.id)
-            || model.children.contains(where: { backend.model(id: $0)?.kind == .text }) {
+            || model.children.contains(where: {
+                guard let child = backend.model(id: $0) else { return false }
+                return child.kind == .text || child.property(.display)?.stringValue == "contents"
+            }) {
             LUICommittedTextContent(model: model, backend: backend)
         } else {
             content()
@@ -250,14 +253,19 @@ struct LUICommittedTextContent: View {
             let color = LUIThemeColorResolver.color(node.property(.foreground)?.stringValue,
                                                    semanticColors: semanticColors) ?? foreground
             let start = result.length
-            result.append(attributedText(for: node, typography: typography, foreground: color))
+            if node.kind == .text || node === model {
+                result.append(attributedText(for: node, typography: typography, foreground: color))
+            }
             for id in node.children {
-                if let child = backend.model(id: id), child.kind == .text {
+                if let child = backend.model(id: id),
+                   child.kind == .text || child.property(.display)?.stringValue == "contents" {
                     append(child, typography: typography, foreground: color)
                 }
             }
-            runs.append(LUIInlineTextRun(model: node, range: NSRange(location: start, length: result.length - start),
-                                         sourceText: node.text))
+            if node.kind == .text || node === model {
+                runs.append(LUIInlineTextRun(model: node, range: NSRange(location: start, length: result.length - start),
+                                             sourceText: node.text))
+            }
         }
         append(model, typography: typography, foreground: foreground)
         return (result, runs)

@@ -84,5 +84,50 @@ struct LUIHostFocusTests {
         #expect(backend.focusedNodeID == 2)
         #expect((window.firstResponder as? NSTextView)?.string == "fresh identity")
     }
+
+    @Test("Buttons and menu items consume one focus request and report the owner")
+    func genericControlFocus() async throws {
+        _ = NSApplication.shared
+        let backend = LUIAppleBackend()
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"create-node","id":2,"kind":"button"},
+          {"op":"set-prop","id":2,"property":"text","value":"Apply"},
+          {"op":"create-node","id":3,"kind":"menu-item"},
+          {"op":"set-prop","id":3,"property":"text","value":"Item"},
+          {"op":"insert-child","parent":1,"child":2,"index":0},
+          {"op":"insert-child","parent":1,"child":3,"index":1}
+        ]}
+        """)
+        #expect(backend.requestFocus(nodeID: 2))
+        let host = NSHostingView(rootView: LUISwiftUIRoot(backend: backend, rootID: 1))
+        host.sizingOptions = []
+        let window = NSWindow(contentRect: CGRect(x: -10_000, y: 0, width: 220, height: 180),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = host
+        window.makeKeyAndOrderFront(nil)
+        defer { window.orderOut(nil); window.contentView = nil }
+        func settle() async throws {
+            for _ in 0..<25 {
+                host.layoutSubtreeIfNeeded()
+                window.display()
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+        try await settle()
+        #expect(backend.focusedNodeID == 2)
+        #expect(backend.requestFocus(nodeID: 3))
+        try await settle()
+        #expect(backend.focusedNodeID == 3)
+        try backend.apply(json: """
+        {"generation":2,"ops":[
+          {"op":"remove-child","parent":1,"child":3},
+          {"op":"drop-node","id":3}
+        ]}
+        """)
+        #expect(backend.focusedNodeID == nil)
+        #expect(!backend.requestFocus(nodeID: 3))
+    }
 }
 #endif

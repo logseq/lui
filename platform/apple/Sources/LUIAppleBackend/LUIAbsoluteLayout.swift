@@ -83,3 +83,63 @@ struct LUIPositionedStackLayout: Layout {
         }
     }
 }
+
+/// Native stack layout owns flow measurement and placement. Positioned siblings
+/// share its paint scope, but are excluded from every native flow calculation.
+struct LUIPositionedFlowLayout<Flow: Layout>: Layout {
+    var flow: Flow
+    static var layoutProperties: LayoutProperties { Flow.layoutProperties }
+    let direction: LayoutDirection
+    var padding: EdgeInsets = EdgeInsets()
+    var fillsSurfaceWidth = false
+    var fillsSurfaceHeight = false
+    var minimumWidth: CGFloat = 0
+    var minimumHeight: CGFloat = 0
+
+    struct Cache {
+        var flow: Flow.Cache
+    }
+
+    private func flowSubviews(_ subviews: Subviews) -> Subviews {
+        subviews[subviews.indices.filter { subviews[$0][LUIAbsoluteInsetsKey.self] == nil }]
+    }
+
+    func makeCache(subviews: Subviews) -> Cache {
+        Cache(flow: flow.makeCache(subviews: flowSubviews(subviews)))
+    }
+
+    func updateCache(_ cache: inout Cache, subviews: Subviews) {
+        flow.updateCache(&cache.flow, subviews: flowSubviews(subviews))
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
+        let children = flowSubviews(subviews)
+        let size = flow.sizeThatFits(proposal: proposal, subviews: children, cache: &cache.flow)
+        guard children.count != subviews.count else { return size }
+        // The outer native surface frames supply the constrained proposal.
+        // Accept it on constrained axes so absolute offsets use that surface,
+        // rather than the smaller ideal extent of its flow children.
+        return CGSize(
+            width: max(minimumWidth, fillsSurfaceWidth ? finite(proposal.width) ?? size.width : size.width),
+            height: max(minimumHeight, fillsSurfaceHeight ? finite(proposal.height) ?? size.height : size.height)
+        )
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) {
+        flow.placeSubviews(in: bounds, proposal: proposal, subviews: flowSubviews(subviews), cache: &cache.flow)
+        // Padding belongs to the containing block, not to its positioned
+        // children's offsets. It remains a native surface modifier outside us.
+        let leading = direction == .rightToLeft ? padding.trailing : padding.leading
+        let containing = CGRect(x: bounds.minX - leading, y: bounds.minY - padding.top,
+            width: bounds.width + padding.leading + padding.trailing,
+            height: bounds.height + padding.top + padding.bottom)
+        let positioned = subviews[subviews.indices.filter { subviews[$0][LUIAbsoluteInsetsKey.self] != nil }]
+        var empty: () = ()
+        LUIPositionedStackLayout(direction: direction).placeSubviews(
+            in: containing, proposal: ProposedViewSize(containing.size), subviews: positioned, cache: &empty)
+    }
+
+    private func finite(_ value: CGFloat?) -> CGFloat? {
+        value.flatMap { $0.isFinite ? max(0, $0) : nil }
+    }
+}
