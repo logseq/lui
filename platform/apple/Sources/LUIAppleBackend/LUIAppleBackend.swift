@@ -128,6 +128,7 @@ struct LUINodeDerived: Equatable {
     /// `enabled` prop (absent = true).
     var isEnabled: Bool
     var themeScope: LUIThemeScopeContribution
+    var absoluteInsets: LUIAbsoluteInsets? = nil
 
     init() {
         styleClass = nil
@@ -148,6 +149,7 @@ struct LUINodeDerived: Equatable {
         alignment = properties[.alignment]?.stringValue
         hasAnchor = properties[.anchor] != nil
         isEnabled = properties[.enabled]?.boolValue ?? true
+        absoluteInsets = LUIAbsoluteInsets(properties: properties)
         themeScope = LUIThemeScopeContribution(
             tokens: LUIThemeTokenDecoder.tokens(properties[.theme]?.stringValue),
             scheme: LUIThemeTokenDecoder.colorScheme(
@@ -775,6 +777,9 @@ public final class LUIAppleBackend {
         if frameCollectionSuspended { return }
         if nodeFrames[nodeID] == rect { return }
         nodeFrames[nodeID] = rect
+        if let view = hostQueries.textViews[nodeID]?.value, view.model?.id == nodeID {
+            view.reportInlineFrames()
+        }
         scheduleFramesReport()
     }
 

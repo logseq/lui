@@ -23,12 +23,19 @@ struct LUIQueryableText<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        if backend.hostQueries.textQueries.contains(model.id) {
+        if backend.hostQueries.textQueries.contains(model.id)
+            || model.children.contains(where: { backend.model(id: $0)?.kind == .text }) {
             LUICommittedTextContent(model: model, backend: backend)
         } else {
             content()
         }
     }
+}
+
+struct LUIInlineTextRun {
+    let model: LUINodeModel
+    let range: NSRange
+    let sourceText: String
 }
 
 /// Read-only TextKit drawing keeps the rendered glyphs and host geometry on
@@ -46,6 +53,7 @@ final class LUICommittedTextNativeView: LUIPlatformTextView {
     private var layoutIdentity = UUID()
     private var drawnSize = CGSize.zero
     private var sourceText = ""
+    private var runs: [Int: LUIInlineTextRun] = [:]
 
     init() {
         super.init(frame: .zero)
@@ -62,7 +70,15 @@ final class LUICommittedTextNativeView: LUIPlatformTextView {
     required init?(coder: NSCoder) { nil }
 
     func configure(model: LUINodeModel, backend: LUIAppleBackend,
-                   text: NSAttributedString, lineLimit: Int?) {
+                   text: NSAttributedString, lineLimit: Int?, runs: [LUIInlineTextRun] = []) {
+        let updated = Dictionary(uniqueKeysWithValues: runs.map { ($0.model.id, $0) })
+        for id in self.runs.keys where updated[id] == nil {
+            if backend.hostQueries.textViews[id]?.value === self {
+                backend.hostQueries.textViews[id] = nil
+                if id != model.id { backend.removeNodeFrame(id) }
+            }
+        }
+        self.runs = updated
         if self.model !== model {
             backend.hostQueries.nextIncarnation &+= 1
             incarnation = backend.hostQueries.nextIncarnation
@@ -70,6 +86,7 @@ final class LUICommittedTextNativeView: LUIPlatformTextView {
         self.backend = backend
         self.model = model
         backend.hostQueries.textViews[model.id] = .init(value: self)
+        for id in updated.keys { backend.hostQueries.textViews[id] = .init(value: self) }
         sourceText = model.text
         renderGeneration = backend.generation
         if !attributedText.isEqual(to: text) || self.lineLimit != lineLimit {
@@ -114,7 +131,31 @@ final class LUICommittedTextNativeView: LUIPlatformTextView {
     private func commit(_ layout: LUITextLayout) {
         drawnLayout = layout
         drawnSize = bounds.size
+        reportInlineFrames()
         backend?.scheduleFramesReport()
+    }
+
+    func contains(model: LUINodeModel) -> Bool {
+        self.model === model || runs[model.id]?.model === model
+    }
+
+    func reportInlineFrames() {
+        guard let backend, backend.frameReportingEnabled else { return }
+        for id in runs.keys where id != model?.id {
+            if let geometry = committedGeometry(nodeID: id) {
+                backend.reportNodeFrame(id, geometry.frame)
+            }
+        }
+    }
+
+    func unregister() {
+        guard let backend else { return }
+        for id in Array(runs.keys) + (model.map { [$0.id] } ?? []) {
+            if backend.hostQueries.textViews[id]?.value === self {
+                backend.hostQueries.textViews[id] = nil
+                if id != model?.id { backend.removeNodeFrame(id) }
+            }
+        }
     }
 
     private func commitZeroWidthLayout() {
@@ -132,12 +173,20 @@ final class LUICommittedTextNativeView: LUIPlatformTextView {
         commit(layout)
     }
 
-    func committedGeometry() -> LUICommittedTextGeometry? {
+    func committedGeometry(nodeID: Int? = nil) -> LUICommittedTextGeometry? {
         guard let backend, let model, let layout = drawnLayout,
               layout === textLayout, drawnSize == bounds.size,
               backend.model(id: model.id) === model,
               renderGeneration == backend.generation, sourceText == model.text,
               let frame = windowFrame() else { return nil }
+        if let nodeID, nodeID != model.id {
+            guard let run = runs[nodeID], backend.model(id: nodeID) === run.model,
+                  run.sourceText == run.model.text, let rect = layout.bounds(for: run.range) else { return nil }
+            return LUICommittedTextGeometry(nodeID: nodeID, generation: Int64(renderGeneration),
+                incarnation: incarnation, text: layout.storage.attributedSubstring(from: run.range).string,
+                frame: rect.offsetBy(dx: frame.minX, dy: frame.minY), identity: layoutIdentity, layout: layout,
+                sourceRange: run.range, sourceOrigin: rect.origin)
+        }
         return LUICommittedTextGeometry(nodeID: model.id, generation: Int64(renderGeneration),
             incarnation: incarnation, text: layout.storage.string, frame: frame,
             identity: layoutIdentity, layout: layout)
@@ -179,19 +228,47 @@ struct LUICommittedTextContent: View {
     @Environment(\.luiTextForeground) private var foreground
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.layoutDirection) private var direction
+    @Environment(\.luiStyleVariables) private var styleVariables
+    @Environment(\.luiSemanticColors) private var semanticColors
 
     var body: some View {
         let _ = model.revision
+        let document = inlineDocument
         LUICommittedTextRepresentable(model: model, backend: backend,
-            text: attributedText, lineLimit: LUITextLinePolicy.lineLimit(styleClass: model.derived.styleClass))
+            text: document.text, lineLimit: LUITextLinePolicy.lineLimit(styleClass: model.derived.styleClass),
+            runs: document.runs)
     }
 
-    private var attributedText: NSAttributedString {
+    private var inlineDocument: (text: NSAttributedString, runs: [LUIInlineTextRun]) {
+        let result = NSMutableAttributedString(string: "")
+        var runs: [LUIInlineTextRun] = []
+        func append(_ node: LUINodeModel, typography inherited: LUITypographySpec, foreground: Color) {
+            guard node.property(.display)?.stringValue != "none" else { return }
+            let typography = node === model ? inherited : inherited.merged(
+                with: node.derived.themeScope.typography.resolving(variables: styleVariables))
+            let color = LUIThemeColorResolver.color(node.property(.foreground)?.stringValue,
+                                                   semanticColors: semanticColors) ?? foreground
+            let start = result.length
+            result.append(attributedText(for: node, typography: typography, foreground: color))
+            for id in node.children {
+                if let child = backend.model(id: id), child.kind == .text {
+                    append(child, typography: typography, foreground: color)
+                }
+            }
+            runs.append(LUIInlineTextRun(model: node, range: NSRange(location: start, length: result.length - start),
+                                         sourceText: node.text))
+        }
+        append(model, typography: typography, foreground: foreground)
+        return (result, runs)
+    }
+
+    private func attributedText(for model: LUINodeModel, typography: LUITypographySpec,
+                                foreground: Color) -> NSAttributedString {
         let classes = model.derived.styleClassTokens
         let highlighted = classes.contains("search-match")
             ? LUITextHighlight.preview(model.text, query: highlightQuery) : AttributedString(model.text)
         let text = String(highlighted.characters)
-        let font = resolvedFont
+        let font = resolvedFont(for: model, typography: typography)
         let paragraph = NSMutableParagraphStyle()
         paragraph.baseWritingDirection = direction == .rightToLeft ? .rightToLeft : .leftToRight
         paragraph.alignment = switch model.property(.textAlignment)?.stringValue {
@@ -215,7 +292,7 @@ struct LUICommittedTextContent: View {
         return result
     }
 
-    private var resolvedFont: LUITextFont {
+    private func resolvedFont(for model: LUINodeModel, typography: LUITypographySpec) -> LUITextFont {
         let classes = model.derived.styleClassTokens
         var style: LUITextFont.TextStyle = .body
         if model.kind == .heading {
@@ -300,10 +377,12 @@ private struct LUICommittedTextRepresentable: NSViewRepresentable {
     let backend: LUIAppleBackend
     let text: NSAttributedString
     let lineLimit: Int?
+    let runs: [LUIInlineTextRun]
     func makeNSView(context: Context) -> LUICommittedTextNativeView { LUICommittedTextNativeView() }
     func updateNSView(_ view: LUICommittedTextNativeView, context: Context) {
-        view.configure(model: model, backend: backend, text: text, lineLimit: lineLimit)
+        view.configure(model: model, backend: backend, text: text, lineLimit: lineLimit, runs: runs)
     }
+    static func dismantleNSView(_ view: LUICommittedTextNativeView, coordinator: ()) { view.unregister() }
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: LUICommittedTextNativeView, context: Context) -> CGSize? {
         nsView.measure(width: proposal.width)
     }
@@ -314,10 +393,12 @@ private struct LUICommittedTextRepresentable: UIViewRepresentable {
     let backend: LUIAppleBackend
     let text: NSAttributedString
     let lineLimit: Int?
+    let runs: [LUIInlineTextRun]
     func makeUIView(context: Context) -> LUICommittedTextNativeView { LUICommittedTextNativeView() }
     func updateUIView(_ view: LUICommittedTextNativeView, context: Context) {
-        view.configure(model: model, backend: backend, text: text, lineLimit: lineLimit)
+        view.configure(model: model, backend: backend, text: text, lineLimit: lineLimit, runs: runs)
     }
+    static func dismantleUIView(_ view: LUICommittedTextNativeView, coordinator: ()) { view.unregister() }
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: LUICommittedTextNativeView, context: Context) -> CGSize? {
         uiView.measure(width: proposal.width)
     }

@@ -17,31 +17,41 @@ public struct LUICommittedTextGeometry {
     public let incarnation: UInt64
     public let text: String
     public let frame: CGRect
-    public var lineRanges: [NSRange] { layout.lines.map(\.range) }
+    public var lineRanges: [NSRange] {
+        guard sourceRange != nil else { return layout.lines.map(\.range) }
+        return layout.lines.compactMap {
+            let range = NSIntersectionRange($0.range, effectiveRange)
+            return range.length > 0
+                ? NSRange(location: range.location - effectiveRange.location, length: range.length) : nil
+        }
+    }
     let identity: UUID
     let layout: LUITextLayout
+    var sourceRange: NSRange? = nil
+    var sourceOrigin: CGPoint = .zero
+    private var effectiveRange: NSRange {
+        sourceRange ?? NSRange(location: 0, length: layout.storage.length)
+    }
 
     /// Returns nil for an invalid offset or a position hidden by truncation.
     public func caretRect(atUTF16Offset offset: Int) -> CGRect? {
-        layout.caretRect(at: offset)
+        guard offset >= 0, offset <= effectiveRange.length else { return nil }
+        return layout.caretRect(at: effectiveRange.location + offset)?
+            .offsetBy(dx: -sourceOrigin.x, dy: -sourceOrigin.y)
     }
 
     /// Returns visual fragments, including discontiguous bidirectional runs.
     /// Invalid or out-of-bounds ranges return an empty array.
     public func selectionRects(in range: NSRange) -> [CGRect] {
         guard range.location >= 0, range.length > 0,
-              range.location <= layout.storage.length,
-              range.length <= layout.storage.length - range.location else { return [] }
-        let glyphs = layout.manager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
-        var result: [CGRect] = []
-        layout.manager.enumerateEnclosingRects(
-            forGlyphRange: glyphs, withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0),
-            in: layout.container
-        ) { rect, _ in
-            let clipped = rect.intersection(CGRect(origin: .zero, size: frame.size))
-            if !clipped.isNull && clipped.width > 0 { result.append(clipped) }
+              range.location <= effectiveRange.length,
+              range.length <= effectiveRange.length - range.location else { return [] }
+        return layout.selectionRects(in: NSRange(location: effectiveRange.location + range.location,
+                                                length: range.length)).compactMap {
+            let rect = $0.offsetBy(dx: -sourceOrigin.x, dy: -sourceOrigin.y)
+                .intersection(CGRect(origin: .zero, size: frame.size))
+            return !rect.isNull && rect.width > 0 ? rect : nil
         }
-        return result
     }
 
     /// Hit-tests a local point against native insertion positions. Points
@@ -49,10 +59,16 @@ public struct LUICommittedTextGeometry {
     public func offset(at point: CGPoint) -> Int? {
         guard point.x.isFinite, point.y.isFinite,
               CGRect(origin: .zero, size: frame.size).contains(point),
-              let line = layout.lines.min(by: {
-                  abs($0.rect.midY - point.y) < abs($1.rect.midY - point.y)
+              let line = layout.lines.filter({
+                  sourceRange == nil || NSIntersectionRange($0.range, effectiveRange).length > 0
+              }).min(by: {
+                  abs($0.rect.midY - point.y - sourceOrigin.y) < abs($1.rect.midY - point.y - sourceOrigin.y)
               }) else { return nil }
-        return line.carets.min(by: { abs($0.x - point.x) < abs($1.x - point.x) })?.offset
+        return line.carets.filter {
+            $0.offset >= effectiveRange.location && $0.offset <= NSMaxRange(effectiveRange)
+        }.min(by: {
+            abs($0.x - point.x - sourceOrigin.x) < abs($1.x - point.x - sourceOrigin.x)
+        }).map { $0.offset - effectiveRange.location }
     }
 }
 
@@ -121,6 +137,31 @@ final class LUITextLayout {
         }
         return nil
     }
+
+    func selectionRects(in range: NSRange) -> [CGRect] {
+        guard range.length > 0 else { return [] }
+        let glyphs = manager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+        var result: [CGRect] = []
+        manager.enumerateEnclosingRects(
+            forGlyphRange: glyphs, withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0),
+            in: container
+        ) { rect, _ in result.append(rect) }
+        return result
+    }
+
+    /// Include insertion positions so whitespace and zero-width runs keep a
+    /// real line height and the same origin as the glyph layout they belong to.
+    func bounds(for range: NSRange) -> CGRect? {
+        var bounds = CGRect.null
+        for rect in selectionRects(in: range) { bounds = bounds.union(rect) }
+        for offset in [range.location, NSMaxRange(range)] {
+            if var caret = caretRect(at: offset) {
+                caret.size.width = 0
+                bounds = bounds.union(caret)
+            }
+        }
+        return bounds.isNull ? nil : bounds
+    }
 }
 
 @Observable @MainActor
@@ -141,9 +182,10 @@ final class LUIHostQueries {
         let size: CGSize
     }
     func invalidateText() {
+        var invalidated: Set<ObjectIdentifier> = []
         for (id, weakView) in textViews {
             guard let view = weakView.value else { textViews[id] = nil; continue }
-            view.invalidateCommit()
+            if invalidated.insert(ObjectIdentifier(view)).inserted { view.invalidateCommit() }
         }
     }
 }
@@ -161,9 +203,9 @@ extension LUIAppleBackend {
             scheduleFramesReport()
         }
         guard let view = hostQueries.textViews[nodeID]?.value,
-              view.model === model,
+              view.contains(model: model),
               view.renderGeneration == generation else { return nil }
-        return view.committedGeometry()
+        return view.committedGeometry(nodeID: nodeID)
     }
 
     /// Snapshots expire on patch application, source/style/layout changes,

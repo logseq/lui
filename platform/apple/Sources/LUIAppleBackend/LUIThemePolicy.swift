@@ -38,6 +38,7 @@ struct LUITypographySpec: Equatable {
     var letterSpacing: CGFloat?
     var underline: Bool?
     var strikethrough: Bool?
+    private var references: [LUIProperty: String] = [:]
 
     init() {}
 
@@ -45,7 +46,7 @@ struct LUITypographySpec: Equatable {
         fontSize == nil && fontWeight == nil && italic == nil &&
             fontFamily == nil && lineHeight == nil &&
             lineHeightFactor == nil && letterSpacing == nil &&
-            underline == nil && strikethrough == nil
+            underline == nil && strikethrough == nil && references.isEmpty
     }
 
     func merged(with own: LUITypographySpec) -> LUITypographySpec {
@@ -184,6 +185,13 @@ extension LUITypographySpec {
     /// commit into `LUINodeModel.derived`.
     init(properties: [LUIProperty: LUIWireValue]) {
         self.init()
+        var properties = properties
+        for key in [LUIProperty.fontSize, .fontFamily, .lineHeight] {
+            if let raw = properties[key]?.stringValue, raw.contains("var(") {
+                references[key] = raw
+                properties.removeValue(forKey: key)
+            }
+        }
         if let raw = properties[.fontSize]?.stringValue {
             fontSize = Self.points(raw)
         }
@@ -204,6 +212,16 @@ extension LUITypographySpec {
             underline = tokens.contains("underline")
             strikethrough = tokens.contains("line-through")
         }
+    }
+
+    /// Resolve only deferred values; literal typography remains commit-decoded.
+    func resolving(variables: [String: String]) -> LUITypographySpec {
+        guard !references.isEmpty else { return self }
+        let resolver = LUIStyleVariableResolver(variables: variables)
+        let properties = references.compactMapValues { resolver.resolve($0).map(LUIWireValue.string) }
+        var result = merged(with: LUITypographySpec(properties: properties))
+        result.references = [:]
+        return result
     }
 }
 
@@ -243,10 +261,15 @@ extension View {
     /// Sheets present in a separate window, so the scoped theme environment
     /// does not reach them; re-apply the ambient colors and effective scheme
     /// captured at the presentation site.
-    func luiSheetScope(semanticColors: [String: Color], colorScheme: ColorScheme)
+    func luiSheetScope(
+        semanticColors: [String: Color],
+        colorScheme: ColorScheme,
+        styleVariables: [String: String] = [:]
+    )
         -> some View
     {
         environment(\.luiSemanticColors, semanticColors)
+            .environment(\.luiStyleVariables, styleVariables)
             .preferredColorScheme(colorScheme)
     }
 }
@@ -481,6 +504,7 @@ struct LUIThemeScopeModifier: ViewModifier {
     let model: LUINodeModel
     @Environment(\.luiSemanticColors) private var inheritedColors
     @Environment(\.luiTypography) private var inheritedTypography
+    @Environment(\.luiStyleVariables) private var styleVariables
     @Environment(\.colorScheme) private var systemScheme
 
     @ViewBuilder
@@ -511,7 +535,7 @@ struct LUIThemeScopeModifier: ViewModifier {
             )
             .environment(
                 \.luiTypography,
-                inheritedTypography.merged(with: scope.typography)
+                inheritedTypography.merged(with: scope.typography.resolving(variables: styleVariables))
             )
             .preferredColorScheme(scope.scheme)
     }

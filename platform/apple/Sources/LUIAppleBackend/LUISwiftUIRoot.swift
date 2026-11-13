@@ -144,6 +144,7 @@ public struct LUISwiftUIRoot: View {
     private let backend: LUIAppleBackend
     private let rootID: Int
     @Environment(\.luiSemanticColors) private var semanticColors
+    @Environment(\.luiStyleVariables) private var styleVariables
     @Environment(\.colorScheme) private var colorScheme
 
     public init(backend: LUIAppleBackend, rootID: Int) {
@@ -164,7 +165,8 @@ public struct LUISwiftUIRoot: View {
         LUIAnyNodeView(nodeID: rootID, backend: backend).equatable()
             .sheet(item: sheetBinding, onDismiss: didDismissSheet) { presentation in
                 LUIModalSurfaceContent(model: presentation.model, backend: backend)
-                    .luiSheetScope(semanticColors: semanticColors, colorScheme: colorScheme)
+                    .luiSheetScope(semanticColors: semanticColors, colorScheme: colorScheme,
+                                   styleVariables: styleVariables)
             }
             .luiFilePreview(filePreviewBinding)
             .modifier(LUIDialogPresentationModifier(anchorID: rootID, backend: backend))
@@ -222,13 +224,15 @@ public struct LUIModalHostModifier: ViewModifier {
     }
 
     @Environment(\.luiSemanticColors) private var semanticColors
+    @Environment(\.luiStyleVariables) private var styleVariables
     @Environment(\.colorScheme) private var colorScheme
 
     public func body(content: Content) -> some View {
         content
             .sheet(item: sheetBinding, onDismiss: didDismissSheet) { presentation in
                 LUIModalSurfaceContent(model: presentation.model, backend: backend)
-                    .luiSheetScope(semanticColors: semanticColors, colorScheme: colorScheme)
+                    .luiSheetScope(semanticColors: semanticColors, colorScheme: colorScheme,
+                                   styleVariables: styleVariables)
             }
             .luiFilePreview(filePreviewBinding)
             .modifier(LUIDialogPresentationModifier(anchorID: rootID, backend: backend))
@@ -275,6 +279,7 @@ private struct LUIDialogPresentationModifier: ViewModifier {
     let anchorID: Int
     let backend: LUIAppleBackend
     @Environment(\.luiSemanticColors) private var semanticColors
+    @Environment(\.luiStyleVariables) private var styleVariables
     @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
@@ -310,7 +315,8 @@ private struct LUIDialogPresentationModifier: ViewModifier {
             .sheet(isPresented: customSurfaceBinding) {
                 if let presentation = dialogPresentation {
                     LUIDialogCustomSurface(presentation: presentation, backend: backend)
-                        .luiSheetScope(semanticColors: semanticColors, colorScheme: colorScheme)
+                        .luiSheetScope(semanticColors: semanticColors, colorScheme: colorScheme,
+                                       styleVariables: styleVariables)
                 }
             }
     }
@@ -2028,6 +2034,7 @@ private struct LUITableCellView: View {
 private struct LUIStackView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
+    @Environment(\.layoutDirection) private var layoutDirection
 
     @ViewBuilder
     var body: some View {
@@ -2072,9 +2079,20 @@ private struct LUIStackView: View {
     }
 
     private func stackChildren(excluding excludedIDs: [Int]) -> some View {
-        ZStack {
-            ForEach(model.children.filter { !excludedIDs.contains($0) }, id: \.self) { childID in
+        let childIDs = model.children.filter { !excludedIDs.contains($0) }
+        let hasPositionedChildren = childIDs.contains {
+            model.childData.layout[$0]?.derived.absoluteInsets != nil
+        }
+        // AnyLayout preserves control identity as positioned children appear.
+        let layout = hasPositionedChildren
+            ? AnyLayout(LUIPositionedStackLayout(direction: layoutDirection))
+            : AnyLayout(ZStackLayout())
+        return layout {
+            ForEach(childIDs, id: \.self) { childID in
+                let insets = model.childData.layout[childID]?.derived.absoluteInsets
                 LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                    .environment(\.luiPositionedChildID, insets == nil ? nil : childID)
+                    .layoutValue(key: LUIAbsoluteInsetsKey.self, value: insets)
             }
         }
     }
@@ -2843,6 +2861,7 @@ private struct LUIModalSurfaceContent: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
     @Environment(\.luiSemanticColors) private var semanticColors
+    @Environment(\.luiStyleVariables) private var styleVariables
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -2863,7 +2882,8 @@ private struct LUIModalSurfaceContent: View {
             LUIModalSurfaceContent(model: presentation.model, backend: backend)
                 .luiSheetScope(
                     semanticColors: effectiveSemanticColors,
-                    colorScheme: effectiveColorScheme
+                    colorScheme: effectiveColorScheme,
+                    styleVariables: styleVariables
                 )
         }
     }
@@ -8130,22 +8150,28 @@ enum LUIPlainContainerSurfacePolicy {
 // empty overlays, zero-radius shadows and several unconstrained frame layers.
 private struct LUIPlainContainerSurfaceModifier: ViewModifier {
     let model: LUINodeModel
+    @Environment(\.luiPositionedChildID) private var positionedChildID
 
     @ViewBuilder func body(content: Content) -> some View {
         let padding = model.property(.padding)?.intValue ?? 0
         let horizontal = model.property(.paddingHorizontal)?.intValue ?? padding
         let vertical = model.property(.paddingVertical)?.intValue ?? padding
+        let insets = positionedChildID == model.id ? model.derived.absoluteInsets : nil
+        let fillsWidth = LUIIntrinsicSurfacePolicy.fillsWidth(kind: model.kind, grow: model.derived.grow)
+            || insets?.stretchesWidth == true
+        let fillsHeight = insets?.stretchesHeight == true
         let padded = content.padding(EdgeInsets(
             top: CGFloat(model.property(.paddingTop)?.intValue ?? vertical),
             leading: CGFloat(model.property(.paddingLeft)?.intValue ?? horizontal),
             bottom: CGFloat(model.property(.paddingBottom)?.intValue ?? vertical),
             trailing: CGFloat(model.property(.paddingRight)?.intValue ?? horizontal)))
         if model.surfaceWidth != nil || model.surfaceHeight != nil {
-            padded.frame(maxWidth: LUIIntrinsicSurfacePolicy.fillsWidth(kind: model.kind, grow: model.derived.grow) ? .infinity : nil,
+            padded.frame(maxWidth: fillsWidth ? .infinity : nil, maxHeight: fillsHeight ? .infinity : nil,
                          alignment: .leading)
                 .frame(width: model.surfaceWidth.map(CGFloat.init), height: model.surfaceHeight.map(CGFloat.init))
-        } else if LUIIntrinsicSurfacePolicy.fillsWidth(kind: model.kind, grow: model.derived.grow) {
-            padded.frame(maxWidth: .infinity, alignment: .leading)
+        } else if fillsWidth || fillsHeight {
+            padded.frame(maxWidth: fillsWidth ? .infinity : nil, maxHeight: fillsHeight ? .infinity : nil,
+                         alignment: .leading)
         } else { padded }
     }
 }
@@ -8156,6 +8182,7 @@ private struct LUISurfaceModifier: ViewModifier {
     @Environment(\.luiSemanticColors) private var semanticColors
     @Environment(\.luiInHoistedToolbar) private var inHoistedToolbar
     @Environment(\.luiInFusedCapsule) private var inFusedCapsule
+    @Environment(\.luiPositionedChildID) private var positionedChildID
 
     /// The inner label of a hoisted icon-only button is floored to the 44pt
     /// bar-item target (see `LUIButtonView.hitTargetFloor`); this keeps the
@@ -8181,6 +8208,7 @@ private struct LUISurfaceModifier: ViewModifier {
     }
 
     private func decorated(content: Content) -> some View {
+        let absoluteInsets = positionedChildID == model.id ? model.derived.absoluteInsets : nil
         let isSurface = model.kind == .panel || model.kind == .card ||
             model.kind == .resizable || model.kind == .alert || model.kind == .bubble
         let isTabs = model.kind == .tabs &&
@@ -8236,7 +8264,8 @@ private struct LUISurfaceModifier: ViewModifier {
                 maxWidth: LUIIntrinsicSurfacePolicy.fillsWidth(
                     kind: model.kind,
                     grow: model.derived.grow
-                ) ? .infinity : nil,
+                ) || absoluteInsets?.stretchesWidth == true ? .infinity : nil,
+                maxHeight: absoluteInsets?.stretchesHeight == true ? .infinity : nil,
                 alignment: .leading
             )
             .frame(

@@ -50,6 +50,77 @@ struct LUIHostQueryTests {
         #expect(backend.naturalImageSize(nodeID: 999) == nil)
     }
 
+    @Test("Nested text runs share wrapping and keep per-run committed caret geometry")
+    func nestedTextGeometry() async throws {
+        #if os(macOS)
+        _ = NSApplication.shared
+        #endif
+        let backend = LUIAppleBackend()
+        backend.frameReportingEnabled = true
+        var frames: [Int: CGRect] = [:]
+        backend.onFramesReport = { frames = $0 }
+        try backend.apply(json: """
+        {"generation":1,"ops":[
+          {"op":"create-node","id":1,"kind":"column"},
+          {"op":"set-prop","id":1,"property":"font-size","value":"var(--editor-size, 14px)"},
+          {"op":"create-node","id":2,"kind":"text"},
+          {"op":"create-node","id":3,"kind":"text"},
+          {"op":"set-prop","id":3,"property":"text","value":"Apple smoke hello 世界 and a long line that wraps onto another line"},
+          {"op":"create-node","id":4,"kind":"text"},
+          {"op":"set-prop","id":4,"property":"text","value":"\u{200B}"},
+          {"op":"insert-child","parent":2,"child":3,"index":0},
+          {"op":"insert-child","parent":2,"child":4,"index":1},
+          {"op":"insert-child","parent":1,"child":2,"index":0}
+        ]}
+        """)
+        _ = backend.textGeometry(nodeID: 3)
+        _ = backend.textGeometry(nodeID: 4)
+        let root = LUISwiftUIRoot(backend: backend, rootID: 1)
+            .luiStyleVariables(["--editor-size": "20px"])
+        #if os(macOS)
+        let hosting = NSHostingView(rootView: root)
+        hosting.sizingOptions = []
+        let window = NSWindow(contentRect: CGRect(x: -10_000, y: 0, width: 220, height: 240),
+            styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = hosting
+        window.orderFrontRegardless()
+        defer { window.orderOut(nil); window.contentView = nil }
+        func layout() { hosting.layoutSubtreeIfNeeded(); window.display() }
+        #else
+        let hosting = UIHostingController(rootView: root)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 220, height: 240))
+        window.rootViewController = hosting
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        func layout() { window.layoutIfNeeded(); hosting.view.layoutIfNeeded() }
+        #endif
+        for _ in 0..<60 where backend.textGeometry(nodeID: 4) == nil {
+            layout()
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let run = try #require(backend.textGeometry(nodeID: 3))
+        let pad = try #require(backend.textGeometry(nodeID: 4))
+        #expect(run.text == backend.model(id: 3)?.text)
+        #expect(run.lineRanges.count > 1)
+        let caret = try #require(run.caretRect(atUTF16Offset: run.text.utf16.count))
+        let padCaret = try #require(pad.caretRect(atUTF16Offset: 0))
+        #expect(caret.height >= 20)
+        #expect(abs(run.frame.minX + caret.minX - pad.frame.minX - padCaret.minX) < 1)
+        #expect(abs(run.frame.minY + caret.minY - pad.frame.minY - padCaret.minY) < 1)
+        #expect(!run.selectionRects(in: NSRange(location: 6, length: 5)).isEmpty)
+        #expect(backend.isCurrent(run) && backend.isCurrent(pad))
+        #expect(frames[3] == run.frame && frames[4] == pad.frame)
+        try backend.apply(json: """
+        {"generation":2,"ops":[{"op":"set-prop","id":3,"property":"text","value":"Updated 世界"}]}
+        """)
+        #expect(!backend.isCurrent(run))
+        for _ in 0..<60 where backend.textGeometry(nodeID: 3) == nil {
+            layout()
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(backend.textGeometry(nodeID: 3)?.text == "Updated 世界")
+    }
+
     @Test("Host scroll commands bind to mounted native viewports and expire with node identity")
     func mountedScrolling() async throws {
         #if os(macOS)
