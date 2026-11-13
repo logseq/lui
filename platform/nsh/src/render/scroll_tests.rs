@@ -294,7 +294,12 @@ fn list_and_bottom_tab_content_remain_sequential_not_same_cell() {
             px(400.0),
             "{kind} keeps normal sequential flow"
         );
-        app.scroll("id:lui-2", px(100.0)).unwrap();
+        if let Err(error) = app.scroll("id:lui-2", px(100.0)) {
+            panic!(
+                "{kind} actual scroll failed: {error}; native layout: {:?}",
+                app.screen().layout_nodes()
+            );
+        }
         assert_eq!(
             layout(&app, "lui-3").bounds.origin.y,
             first.bounds.origin.y - px(100.0)
