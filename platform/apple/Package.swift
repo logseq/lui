@@ -9,10 +9,13 @@ let package = Package(
         .library(name: "LUIAppleBackend", type: .dynamic, targets: ["LUIAppleBackend"]),
         .library(name: "LUIAppleBackendStatic", type: .static, targets: ["LUIAppleBackend"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/swhitty/SwiftDraw.git", exact: "0.24.0"),
+    ],
     targets: [
         .target(
             name: "LUIAppleBackend",
-            dependencies: []
+            dependencies: [.product(name: "SwiftDraw", package: "SwiftDraw")]
         ),
         .testTarget(
             name: "LUIAppleBackendTests",

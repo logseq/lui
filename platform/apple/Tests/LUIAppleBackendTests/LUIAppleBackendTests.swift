@@ -213,11 +213,6 @@ struct LUISwiftUIBackendTests {
         #expect(!LUIWireValue.string("pre").matches(.whiteSpace, on: .text))
     }
 
-    @Test("viewport anchors fail explicitly until retained positioning is available")
-    func unsupportedViewportAnchor() {
-        #expect(!LUIWireValue.string("0 0 40 20").matches(.anchorRect, on: .popover))
-    }
-
     @Test("popover alignment offsets retain finite signed values and require an anchor")
     func popoverAlignmentOffsets() throws {
         for value in [Double.nan, Double.infinity, -Double.infinity] {
@@ -1081,7 +1076,7 @@ struct LUISwiftUIBackendTests {
         #expect(throws: LUIBackendError.invalidBatch("unsupported property value")) {
             try backend.apply(json: """
             {"generation":2,"ops":[
-              {"op":"set-prop","id":1,"property":"resize-handle-width","value":0}
+              {"op":"set-prop","id":1,"property":"resize-handle-width","value":-1}
             ]}
             """)
         }

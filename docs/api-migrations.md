@@ -46,6 +46,83 @@ SwiftUI/Kotlin/Generic profiles continue to reject those opt-ins. Run
 `make generate-component-schema` to regenerate the remaining shared, Apple and
 Android schema artifacts; no desktop Go contract is generated.
 
+## Unreleased: Apple desktop host resources, committed text and schema admission
+
+`LUIAppleBackend` adds these main-actor APIs on macOS 14 and iOS 17:
+
+```swift
+func registerIcon(name: String, svg: Data) throws
+func unregisterIcon(name: String)
+func naturalImageSize(nodeID: Int) -> CGSize?
+func textGeometry(nodeID: Int) -> LUICommittedTextGeometry?
+func isCurrent(_ geometry: LUICommittedTextGeometry) -> Bool
+```
+
+Register a complete SVG under a canonical `app:slug` name, for example
+`try backend.registerIcon(name: "app:graph", svg: Data(contentsOf: iconURL))`.
+Registration replaces the previous icon and invalidates mounted uses; a failed
+validation leaves the previous registration intact. Unregistering an unknown
+name is harmless. SVG data must describe a finite positive intrinsic size and
+fit within 1 MiB. Both Swift packages pin SwiftDraw 0.24.0. Existing initial
+icon sources and the public `LUIAppleIconSource` enum are unchanged.
+
+`naturalImageSize` returns decoded source pixel dimensions before layout
+scaling, thumbnail downsampling or source cropping, or nil until decoding
+completes. It supports image, avatar and file-image nodes. Registered images
+keep precedence over URL images. Changing the source or reusing a node ID
+cannot return an earlier source's dimensions.
+
+`LUICommittedTextGeometry` contains `nodeID: Int`, `generation: Int64`,
+`incarnation: UInt64`, `text: String`, `frame: CGRect`, and
+`lineRanges: [NSRange]`. The frame uses window-content, top-left-origin logical
+points. `caretRect(atUTF16Offset:)`, `selectionRects(in:)` and `offset(at:)`
+use text-local logical points and UTF-16 offsets. Display text, headings,
+paragraphs and labels opt into native TextKit drawing when first queried, then
+expose that same committed layout. Existing hosts that do not use this API keep
+their original SwiftUI Text rendering on iPhone, iPad and Mac; editable controls
+retain their existing native editing behavior.
+Uncommitted, hidden and unmounted text returns nil. Retained snapshots remain
+immutable; `isCurrent` rejects stale generations, source/layout changes,
+scrolling, unmounting and node reincarnation.
+
+Enable existing frame reports to retry pending resource/geometry queries:
+
+```swift
+backend.frameReportingEnabled = true
+backend.onFramesReport = { [weak backend] _ in
+    guard let backend, let geometry = backend.textGeometry(nodeID: blockID),
+          backend.isCurrent(geometry) else { return }
+    let caret = geometry.caretRect(atUTF16Offset: utf16Offset)
+    // Add geometry.frame.origin to translate caret into window coordinates.
+    _ = caret
+}
+```
+
+Hosts storing UTF-8 byte offsets must translate them through their source run
+spans before calling these native UTF-16 APIs. Search-match previews expose the
+displayed excerpt as `geometry.text`.
+
+Apple property admission now uses a matrix evaluated from canonical
+`Lui_protocol.property_supported` and checked against the schema, instead of
+limiting admission to rendered features. Schema-valid but unimplemented visual
+hints are retained and may be ignored by rendering; they do not reject an
+otherwise valid batch. Malformed values and graph invariants still fail
+atomically. This admits, among others, button gap, icon opacity, shrink,
+focus-within-enabled, zero-width resize handles and viewport anchor rectangles.
+After changing canonical admission, run
+`python3 tooling/generate_apple_admission.py --export`, followed by
+`node tooling/generate_component_schema.mjs`; `--check` detects stale exports.
+
+Split accepts exactly one sizing mode: `value` is a fraction, while
+`first-pane-width` is an absolute logical-point width (including zero).
+For example, replace a rejected `first-pane-width: 246` batch directly without
+adding a synthetic `value`; do not send both properties. Absolute width stays
+fixed as its container resizes, honors pane minimum widths, and emits
+`value-changed` in logical points. Fractional mode emits fractions. Resize
+origin uses the selected mode's units. The macOS fractional path without custom
+handle properties continues to use `NavigationSplitView`; custom handles and
+absolute sizing use the existing manual split path.
+
 ## Unreleased: native navigation sheet action foregrounds
 
 Apple navigation sheet toolbar actions honor the button's existing `foreground`

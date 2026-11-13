@@ -72,6 +72,18 @@ enum LUIFileImageLoader {
 
     private static let cache = Cache()
 
+    static func naturalSize(path: String) async -> CGSize? {
+        await Task.detached(priority: .userInitiated) {
+            guard let url = LUIFilePath.url(path),
+                  let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                  let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+                  let width = properties[kCGImagePropertyPixelWidth] as? NSNumber,
+                  let height = properties[kCGImagePropertyPixelHeight] as? NSNumber,
+                  width.doubleValue > 0, height.doubleValue > 0 else { return nil }
+            return CGSize(width: width.doubleValue, height: height.doubleValue)
+        }.value
+    }
+
     static func thumbnail(path: String, maxPixelSize: Int) async -> CGImage? {
         guard let url = LUIFilePath.url(path) else { return nil }
         let key = "\(maxPixelSize)|\(path)"
