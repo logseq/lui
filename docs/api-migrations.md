@@ -11,6 +11,11 @@ An anchored submenu child is presentation content, not menu label content. A
 menu-item with its own text and only a positioned Popover child now keeps its
 text label. Hidden children likewise do not replace the fallback label.
 
+`available-height` bounds a native Popover's scrollable viewport. Overflowing
+controls remain reachable by scrolling; short content keeps its ideal height.
+The content stays mounted when its height crosses that limit, preserving drafts
+and native control identity. Omit the property for an unconstrained ideal size.
+
 ## Unreleased: Apple sibling paint order and transparent inline wrappers
 
 Row, Column and Box now place flow and absolute children in one sibling paint
