@@ -68,6 +68,14 @@ int32_t lui_ocaml_toggle_changed_detail(int64_t node, int32_t checked, int32_t m
 }
 int32_t lui_ocaml_slider_changed(int64_t n, double v) { (void)n; (void)v; return same_thread(); }
 int32_t lui_ocaml_text_changed_utf8(int64_t n, const char *s, int32_t l) { (void)n; (void)s; (void)l; return same_thread(); }
+int32_t lui_ocaml_press_detail_clicks_utf8(int64_t n, double x, double y,
+    int32_t modifiers, int32_t button, const char *target, int32_t len, int32_t clicks) {
+  const char expected[] = "A\0\xE4\xB8\xAD";
+  return same_thread() && n == 31 && x == 12.5 && y == -6.25
+    && modifiers == 5 && button == 0 && clicks == 2
+    && len == (int32_t)sizeof(expected)-1 && target != NULL
+    && memcmp(target, expected, (size_t)len) == 0;
+}
 int32_t lui_ocaml_visible_range(int64_t n, int64_t a, int64_t b) { (void)n; (void)a; (void)b; return same_thread(); }
 int32_t lui_ocaml_editor_snapshot_utf8(const char *id, int32_t len, request_fn receive) {
   if (!same_thread()) return 0;

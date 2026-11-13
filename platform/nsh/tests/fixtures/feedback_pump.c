@@ -75,3 +75,8 @@ int32_t lui_ocaml_slider_changed(int64_t n, double v) { (void)n; (void)v; return
 int32_t lui_ocaml_text_changed_utf8(int64_t n, const char *s, int32_t l) {
   (void)n; (void)s; (void)l; return same_thread();
 }
+int32_t lui_ocaml_press_detail_clicks_utf8(int64_t n, double x, double y,
+    int32_t modifiers, int32_t button, const char *target, int32_t len, int32_t clicks) {
+  (void)n; (void)x; (void)y; (void)modifiers; (void)button; (void)target;
+  return same_thread() && len >= 0 && clicks >= 0 && clicks <= 0x3fffffff;
+}

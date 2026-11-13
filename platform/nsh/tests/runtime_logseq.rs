@@ -1,6 +1,7 @@
 //! ABI-only native library qualification, separate from actual OCaml/Logseq gates.
 #![cfg(unix)]
 use lui_nsh::runtime::{ApplicationMessage, BridgeConfig, Event, PlatformEvent, Session};
+use lui_nsh::runtime::{PointerDetail, PointerKind};
 use nsh_core::prelude::*;
 use nsh_engine::{EngineConfig, Root};
 use nsh_testing::Headless;
@@ -90,6 +91,24 @@ async fn exercise(path: String) -> Result<(), String> {
         .await?;
     assert!(accepted.snapshot.is_none());
     assert!(matches!(accepted.messages.as_deref(), Some([])));
+    // The counted ABI preserves all eight arguments, including embedded NUL
+    // and Unicode in the length-delimited target class, on the owning worker.
+    let counted = session
+        .dispatch(Event::Pointer {
+            node: 31,
+            kind: PointerKind::PressDetail,
+            detail: PointerDetail {
+                x: 12.5,
+                y: -6.25,
+                modifiers: 5,
+                button: 0,
+                target_class: "A\0中".into(),
+                clicks: 2,
+            },
+        })
+        .await?;
+    assert!(counted.snapshot.is_none());
+    assert!(matches!(counted.messages.as_deref(), Some([])));
     // A refused dispatch recovers through the existing authoritative snapshot
     // protocol; it is not a transport error when that recovery succeeds.
     let refused = session
