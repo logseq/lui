@@ -1,5 +1,36 @@
 # LUI API migration guide
 
+## Unreleased: Apple semantic color variable fallbacks
+
+Color props now resolve nested `var(--name, fallback)` references against the
+inherited `luiSemanticColors` dictionary. Registering either `--ls-primary-text-color`
+or `var(--ls-primary-text-color)` satisfies the fallback in
+`var(--ls-caret-color, var(--ls-primary-text-color))`; hosts do not need to add
+each complete expression to the dictionary. Exact expression overrides retain
+precedence, followed by the named variable and then its fallback. Fallbacks may
+use existing semantic names or supported hex colors. A missing variable without
+a usable fallback remains unresolved, preserving the property's existing default.
+
+## Unreleased: Apple absolute children in flow containers
+
+Row and Column children with `position: absolute` are now excluded from normal
+flow sizing, grow detection and gap distribution. Their typed edge insets use
+the sized parent surface as the containing block, including opposing-inset
+stretching. Adding or removing an overlay preserves the normal children's
+control identities. For example, ``column [text "Draft"; column ~position:`absolute
+~inset:0. [caret]]`` keeps the text's intrinsic height instead of stacking the
+caret overlay below it. Backgrounds, rounded clipping and committed text
+rendering remain unchanged.
+
+An omitted Row/Column `gap` now means zero, matching the canonical flow default.
+Applications relying on SwiftUI's previous implicit spacing should set an
+explicit value, for example `column ~gap:8 children`.
+
+Wire `opacity` applies to the complete node surface, including its background,
+border and absolute children. An opacity-zero caret keeps its geometry but
+does not paint its background; applications should continue emitting their
+normal opacity updates for blinking.
+
 ## Unreleased: Apple retained popover presentation and menu child content
 
 Apple popovers with `anchor-target`, `anchor-rect`, or `at` now use native

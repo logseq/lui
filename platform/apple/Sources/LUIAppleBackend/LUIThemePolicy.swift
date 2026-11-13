@@ -333,8 +333,15 @@ enum LUIThemeColorPolicy {
 
 enum LUIThemeColorResolver {
     static func color(_ name: String?, semanticColors: [String: Color]) -> Color? {
-        if let name, let semanticColor = semanticColors[name.lowercased()] {
+        if let name, let semanticColor = registeredColor(name, in: semanticColors) {
             return semanticColor
+        }
+        if let name, name.contains("var(") {
+            let resolver = LUIStyleVariableResolver(lookup: { variable in
+                registeredColor(variable, in: semanticColors) == nil ? nil : variable
+            })
+            guard let resolved = resolver.resolve(name) else { return nil }
+            return color(resolved, semanticColors: semanticColors)
         }
         if LUIThemeColorPolicy.isMutedForeground(name) {
             return .secondary
@@ -371,6 +378,11 @@ enum LUIThemeColorResolver {
         case "green": .green
         default: nil
         }
+    }
+
+    private static func registeredColor(_ name: String, in colors: [String: Color]) -> Color? {
+        let key = name.lowercased()
+        return colors[key] ?? (key.hasPrefix("--") ? colors["var(\(key))"] : nil)
     }
 
     static var systemBackground: Color {

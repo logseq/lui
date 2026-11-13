@@ -6298,6 +6298,10 @@ private struct LUIRowView: View {
     let backend: LUIAppleBackend
     @Environment(\.layoutDirection) private var layoutDirection
 
+    private var flowChildren: [Int] {
+        model.children.filter { model.childData.layout[$0]?.derived.absoluteInsets == nil }
+    }
+
     var body: some View {
         // Cross-axis stretch makes children accept any offered height, which
         // also makes the row greedy in a VStack. Keep it at its ideal height
@@ -6320,7 +6324,7 @@ private struct LUIRowView: View {
                 gap: gap, main: model.property(.main)?.stringValue ?? "start",
                 cross: cross, rightToLeft: layoutDirection == .rightToLeft
             ) {
-                ForEach(model.children, id: \.self) { childID in
+                ForEach(flowChildren, id: \.self) { childID in
                     let child = model.childData.layout[childID]
                     LUIAnyNodeView(nodeID: childID, backend: backend)
                         .equatable()
@@ -6340,12 +6344,13 @@ private struct LUIRowView: View {
     }
 
     private var nonWrappingRowContent: some View {
-        HStack(alignment: alignment, spacing: spacing) {
+        let childIDs = flowChildren
+        return HStack(alignment: alignment, spacing: spacing) {
             if (model.property(.main)?.stringValue == "center" ||
                 model.property(.main)?.stringValue == "end") && !hasGrowingChild {
                 Spacer(minLength: 0)
             }
-            ForEach(Array(model.children.enumerated()), id: \.element) { index, childID in
+            ForEach(Array(childIDs.enumerated()), id: \.element) { index, childID in
                 let child = model.childData.layout[childID]
                 if child?.kind == .spacer {
                     Spacer(minLength: 0)
@@ -6363,7 +6368,7 @@ private struct LUIRowView: View {
                         ))
                 }
                 if model.property(.main)?.stringValue == "space_between" &&
-                    index < model.children.count - 1 {
+                    index < childIDs.count - 1 {
                     Spacer(minLength: gap)
                 }
             }
@@ -6377,7 +6382,7 @@ private struct LUIRowView: View {
     }
 
     private var hasGrowingChild: Bool {
-        model.children.contains { childID in
+        flowChildren.contains { childID in
             let child = model.childData.layout[childID]
             return LUIRowLayoutPolicy.isFlexibleChild(
                 kind: child?.kind,
@@ -6394,7 +6399,7 @@ private struct LUIRowView: View {
         if model.property(.main)?.stringValue == "space_between" {
             return 0
         }
-        return model.property(.gap)?.intValue.map { CGFloat($0) }
+        return gap
     }
     private var alignment: VerticalAlignment {
         switch cross {
@@ -6419,6 +6424,10 @@ private struct LUIColumnView: View {
     let model: LUINodeModel
     let backend: LUIAppleBackend
 
+    private var flowChildren: [Int] {
+        model.children.filter { model.childData.layout[$0]?.derived.absoluteInsets == nil }
+    }
+
     var body: some View {
         VStack(alignment: alignment, spacing: spacing) {
             columnChildren
@@ -6436,11 +6445,12 @@ private struct LUIColumnView: View {
 
     @ViewBuilder
     private var columnChildren: some View {
+        let childIDs = flowChildren
         if (model.property(.main)?.stringValue == "center" ||
             model.property(.main)?.stringValue == "end") && !hasGrowingChild {
             Spacer(minLength: 0)
         }
-        ForEach(Array(model.children.enumerated()), id: \.element) { index, childID in
+        ForEach(Array(childIDs.enumerated()), id: \.element) { index, childID in
             let child = model.childData.layout[childID]
             LUIAnyNodeView(nodeID: childID, backend: backend)
                 .equatable()
@@ -6455,7 +6465,7 @@ private struct LUIColumnView: View {
                     (child?.grow ?? 0) > 0 ? 1 : 0
                 )
             if model.property(.main)?.stringValue == "space_between" &&
-                index < model.children.count - 1 {
+                index < childIDs.count - 1 {
                 Spacer(minLength: gap)
             }
         }
@@ -6468,7 +6478,7 @@ private struct LUIColumnView: View {
     }
 
     private var hasGrowingChild: Bool {
-        model.children.contains { childID in
+        flowChildren.contains { childID in
             let child = model.childData.layout[childID]
             return LUIRowLayoutPolicy.isFlexibleChild(
                 kind: child?.kind,
@@ -6485,7 +6495,7 @@ private struct LUIColumnView: View {
         if model.property(.main)?.stringValue == "space_between" {
             return 0
         }
-        return model.property(.gap)?.intValue.map { CGFloat($0) }
+        return gap
     }
     private var alignment: HorizontalAlignment {
         switch cross {
@@ -6501,6 +6511,35 @@ private struct LUIColumnView: View {
         case "end": .topTrailing
         default: .topLeading
         }
+    }
+}
+
+/// Positioned flow children use the sized surface as their containing block.
+/// SwiftUI overlays do not participate in the Row/Column's intrinsic extent.
+private struct LUIAbsoluteFlowChildrenModifier: ViewModifier {
+    let model: LUINodeModel
+    let backend: LUIAppleBackend
+    @Environment(\.layoutDirection) private var layoutDirection
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if model.kind == .row || model.kind == .column {
+            content.overlay {
+                let children = model.children.filter {
+                    model.childData.layout[$0]?.derived.absoluteInsets != nil
+                }
+                if !children.isEmpty {
+                    LUIPositionedStackLayout(direction: layoutDirection) {
+                        ForEach(children, id: \.self) { childID in
+                            let insets = model.childData.layout[childID]?.derived.absoluteInsets
+                            LUIAnyNodeView(nodeID: childID, backend: backend).equatable()
+                                .environment(\.luiPositionedChildID, childID)
+                                .layoutValue(key: LUIAbsoluteInsetsKey.self, value: insets)
+                        }
+                    }
+                }
+            }
+        } else { content }
     }
 }
 
@@ -8230,6 +8269,7 @@ private struct LUISurfaceModifier: ViewModifier {
     @ViewBuilder func body(content: Content) -> some View {
         if LUIPlainContainerSurfacePolicy.applies(kind: model.kind, properties: model.properties, styleClass: model.derived.styleClass) {
             content.modifier(LUIPlainContainerSurfaceModifier(model: model))
+                .modifier(LUIAbsoluteFlowChildrenModifier(model: model, backend: backend))
         } else {
             decorated(content: content)
         }
@@ -8285,7 +8325,6 @@ private struct LUISurfaceModifier: ViewModifier {
 
         return content
             .padding(insets)
-            .opacity(model.property(.opacity)?.doubleValue ?? 1)
             .modifier(LUITooltipModifier(
                 text: model.property(.tooltip)?.stringValue))
             .frame(
@@ -8333,6 +8372,7 @@ private struct LUISurfaceModifier: ViewModifier {
                     inset: CGFloat(model.containerRelativeFrameInset)
                 )
             )
+            .modifier(LUIAbsoluteFlowChildrenModifier(model: model, backend: backend))
             .modifier(
                 LUIOptionalForegroundModifier(
                     usesSecondaryStyle:
@@ -8374,6 +8414,7 @@ private struct LUISurfaceModifier: ViewModifier {
                 isEnabled: model.isEnabled,
                 hasExplicitBackground: backgroundName != nil
             ))
+            .opacity(model.property(.opacity)?.doubleValue ?? 1)
             .modifier(LUIOptionalClipModifier(
                 cornerRadius: radius,
                 clipsContent: clipsContent && !clipsInsideGlass
