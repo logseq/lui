@@ -779,3 +779,13 @@ and formatting passed. Evidence:
 The new retirement fixture explicitly signals its own disposal observation;
 owner liveness is not itself a reactive signal. These checks do not replace the
 actual installed Logseq N1-to-N2 upgrade or the later cross-platform CI gate.
+
+Published revision `fb9146338f93c5fab0892f699e9a3bc9e176d193` subsequently
+passed all eight desktop jobs in
+[NSH run 43329069368](https://github.com/logseq/lui/actions/runs/43329069368),
+including macOS/Linux complete fixture package upgrades and Windows native OCaml
+DLL/package launch. Its ordinary
+[CI run 43329069310](https://github.com/logseq/lui/actions/runs/43329069310)
+also completed successfully. These terminal results qualify that exact published
+revision, not the later passive-layout and intrinsic Scroll content changes.
+They do not establish actual Logseq installed upgrades or full master UX parity.
