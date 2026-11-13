@@ -56,14 +56,13 @@ struct LUIFractionalGeometryTests {
     func fractionalImageFrame() throws {
         let backend = try fixture()
         let content = LUIAnyNodeView(nodeID: 1, backend: backend).fixedSize()
-        #if os(macOS)
-        let host = NSHostingView(rootView: content)
-        let measured = host.fittingSize
-        #elseif os(iOS)
-        let host = UIHostingController(rootView: content)
-        let measured = host.sizeThatFits(in: CGSize(width: 390, height: 844))
-        #endif
         #if os(macOS) || os(iOS)
+        // Measure SwiftUI's logical layout before the native hosting view
+        // rounds its enclosing intrinsic size to device pixels.
+        let renderer = ImageRenderer(content: content)
+        var renderedSize: CGSize?
+        renderer.render { size, _ in renderedSize = size }
+        let measured = try #require(renderedSize)
         #expect(abs(measured.width - 92) < 0.01)
         #expect(abs(measured.height - 63.25) < 0.01)
         #endif
