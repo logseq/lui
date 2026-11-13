@@ -2855,6 +2855,7 @@ mod theme_tests {
             ops.extend([
                 json!({"op":"create-node","id":3,"kind":"column"}),
                 json!({"op":"set-prop","id":3,"property":"height","value":400}),
+                json!({"op":"set-prop","id":3,"property":"accessibility-identifier","value":"passive-scroll-content"}),
                 json!({"op":"insert-child","parent":2,"child":3,"index":0}),
             ]);
         }
@@ -2948,7 +2949,19 @@ mod theme_tests {
     }
     #[test]
     fn canonical_scroll_omitted_shrink_bounds_its_native_viewport() {
-        assert_passive_default("scroll");
+        let mut app = passive_shrink_app("scroll");
+        wait_passive_height(&mut app, 0, 100.0);
+        app.wait_until(
+            "the bounded Scroll preserves its full canonical document height",
+            std::time::Duration::from_secs(2),
+            |screen| {
+                screen.layout_nodes().iter().any(|node| {
+                    node.test_id.as_deref() == Some("passive-scroll-content")
+                        && node.bounds.size.height == px(400.0)
+                })
+            },
+        )
+        .unwrap();
     }
 
     #[test]
