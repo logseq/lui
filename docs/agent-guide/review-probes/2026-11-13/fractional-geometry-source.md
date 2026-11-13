@@ -161,3 +161,54 @@ it continues to require the actual PPX rejection. This followup is source-only;
 no compiler, test, native runtime or compiled contract exporter was run here.
 The root must rerun `@runtest`, the PPX hygiene harness and schema/contract checks
 before recording qualification.
+
+## Local qualification of the integrated candidate
+
+The integrated implementation is `6d80dc6d`, based on the qualified desktop
+runtime `12c5ef7f`. NSH remains pinned to
+`adc186db7213f3ccd1eacaa836cc721e9779fd14`; this candidate changes no SDK source.
+The following local results are separate from downstream App acceptance and
+cross-platform CI:
+
+- `@runtest -j1` with strict successful-action stderr passed, including all
+  263 cases in the main suite. The revised static constructor, dynamic JSON,
+  retained wire update and canonical null cases executed.
+- All 44 tooling tests passed, including executable reactive fixtures,
+  compile-failure cases, constructor/schema checks and exhaustive nesting
+  properties. Normal compiler-driven contract generation and both generated
+  contract/schema checks passed; no oracle verdicts were edited by hand.
+- `make test-nsh` passed: 45 Python checks, strict all-target Clippy, all
+  315 Rust library cases, every native OCaml integration target and compile-fail
+  documentation tests. The sparse virtual/replacement fixtures ran as part of
+  this command. These are regression checks, not downstream performance claims.
+- The Web target built and all nine image-sizing tests passed. Android's
+  `LuiEditorVirtualTuningTest` ran four tests with no failures or skips.
+- Three focused Swift fractional geometry tests passed. The generic iOS
+  Simulator `build-for-testing` succeeded for its maintained package/test
+  targets; this is compilation evidence, not simulator execution.
+
+The initial checks exposed and corrected real fixture/compiler problems rather
+than suppressing them. The core test target does not enable LUI PPX, so reactive
+checks moved to its existing executable PPX harness. Swift's ambiguous numeric
+initializer references became explicit conversions. SwiftUI logical frame size
+is measured with ImageRenderer before native hosting intrinsic pixel rounding.
+NSH's public engine rounds committed frames to the device pixel grid; native
+tests now verify the exact 1x/2x/4x outputs and exact fractional retention at 8x,
+with the same native node retained throughout.
+
+Complete Rust oracle tests also exposed default serde_json floating parsing
+moving the float32 maximum one float64 step above the admitted range. The JSON
+fixture itself was already exact. The candidate enables the library's existing
+`float_roundtrip` feature, matching the production OCaml encoder, and tests
+both the exact maximum and its immediately larger decimal. No validation range
+was widened, exporter serializer added or dependency version changed.
+
+Logs are `/tmp/lui-fractional-runtest-bounds.log`,
+`/tmp/lui-fractional-tooling-full.log`, `/tmp/lui-fractional-nsh-complete.log`,
+`/tmp/lui-fractional-web-build.log`, `/tmp/lui-fractional-web-image.log`,
+`/tmp/lui-fractional-android.log`, `/tmp/lui-fractional-swift-layout.log` and
+`/tmp/lui-fractional-ios-build.log`. Earlier failed logs remain separate.
+Full Apple regression execution, actual Linux/Windows CI, downstream App
+fractional layout/resize UX and packaging remain required before claiming the
+complete migration qualified. This candidate has not replaced the installed
+App or advanced its pinned runtime.
