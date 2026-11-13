@@ -1106,6 +1106,23 @@ fn compile_parts(
         _ => {}
     }
 
+    // Canonical passive layout follows the maintained Web default, not the
+    // SDK's React Native shrink=0 default. Controls and their internal parts
+    // keep their provider policy; authored values still win below.
+    if matches!(
+        node.kind.as_str(),
+        "row" | "column" | "box" | "overlay" | "text" | "scroll"
+    ) && !node.props.contains_key("shrink")
+    {
+        declaration(
+            &mut decls,
+            StyleKey::FlexShrink,
+            &Value::from(1),
+            "passive layout shrink",
+            theme,
+        )?;
+    }
+
     // Apply shorthands first, then axes, then explicit edges, independently of
     // the JSON map's sort order. Canonical spacing is in points.
     for (name, key) in [
@@ -1626,15 +1643,19 @@ mod tests {
                 )
                 .unwrap()
                 .0;
-                assert_eq!(
-                    actual,
-                    vec![StyleDecl::Set(
-                        StyleKey::FlexDirection,
-                        StyleKey::FlexDirection
-                            .parse_value(StyleValue::Str(direction))
-                            .unwrap(),
-                    )]
-                );
+                let mut expected = vec![StyleDecl::Set(
+                    StyleKey::FlexDirection,
+                    StyleKey::FlexDirection
+                        .parse_value(StyleValue::Str(direction))
+                        .unwrap(),
+                )];
+                if kind == "row" {
+                    expected.push(StyleDecl::Set(
+                        StyleKey::FlexShrink,
+                        StyleKey::FlexShrink.number_value(1.0).unwrap(),
+                    ));
+                }
+                assert_eq!(actual, expected);
             }
         }
         let default = compile_parts(&node("row", json!({})), &theme(), viewport())
@@ -1642,12 +1663,18 @@ mod tests {
             .0;
         assert_eq!(
             default,
-            vec![StyleDecl::Set(
-                StyleKey::FlexDirection,
-                StyleKey::FlexDirection
-                    .parse_value(StyleValue::Str("row"))
-                    .unwrap(),
-            )]
+            vec![
+                StyleDecl::Set(
+                    StyleKey::FlexDirection,
+                    StyleKey::FlexDirection
+                        .parse_value(StyleValue::Str("row"))
+                        .unwrap(),
+                ),
+                StyleDecl::Set(
+                    StyleKey::FlexShrink,
+                    StyleKey::FlexShrink.number_value(1.0).unwrap(),
+                ),
+            ]
         );
         for value in [json!("future-axis"), json!(""), json!(42)] {
             assert!(

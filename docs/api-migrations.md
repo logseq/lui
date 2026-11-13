@@ -1,5 +1,34 @@
 # LUI API migration guide
 
+## NSH passive layout preserves the canonical shrink default
+
+NSH now projects the omitted flex-shrink factor as `1` for the canonical
+`row`, `column`, `box`, `overlay`, `text` and `scroll` owners. This matches
+the maintained Web behavior and the existing default documented for the first
+three constructors. The previous adapter leaked the SDK default `0` into these
+passive layout nodes, so an intrinsic 992pt Scroll could remain 992pt tall inside
+a 674pt Popover and receive no usable scrolling range.
+
+The correction belongs to those existing canonical native owners. It adds no
+wrapper, viewport-height guess, Scroll constructor parameter or wire field.
+`display=contents` still has no native layout box. Semantic controls and SDK
+internal layout parts retain their own defaults; this is not a global SDK style
+change. Web, Apple/iOS, Android and Generic behavior is unchanged.
+
+Existing `row`, `column` and `box` calls with explicit `~shrink:0.` still opt out;
+explicit `~shrink:1.` and removal both select the canonical factor `1` without
+changing grow, basis or native identity. A desktop caller depending on the prior
+accidental zero factor for one of those three containers should author
+`~shrink:0.`. The other three kinds do not gain an explicit shrink API.
+
+For example, Logseq keeps its existing `Ui_components.scroll_body menu` inside
+the retained, height-capped Popover. The actual Scroll can now shrink to that
+parent viewport while its menu content keeps its full extent, without adding
+`max_height` or changing menu callbacks. Fixed-parent renderer regressions cover
+all six kinds, legal explicit overrides/removal and native owner retention.
+Application popup wheel/activation and retained code history remain separate
+real native qualification gates.
+
 ## Desktop updater errors keep their existing owner busy until dismissal
 
 A configured `UpdateActions` owner now remains busy while its check, download,
@@ -5610,7 +5639,8 @@ minimum height when `min-height` is omitted. For example, a button with
 `width=20`, `height=20` and `padding=0` renders a 20pt square instead of being
 clamped to 32pt. The height remains a dimension rather than becoming a new
 minimum: with canonical `shrink=1`, it can shrink in a constrained flex parent.
-NSH's existing default `shrink=0` remains unchanged. Explicit `min-height`
+Semantic command controls keep their provider's default `shrink=0`; the later
+passive-layout correction above applies only to its six named canonical kinds. Explicit `min-height`
 still wins. Attached native context-menu triggers use the same minimum rule
 on their outer layout owner, preserving parity with an unattached button. Omitted, `auto` and
 parent-relative heights retain the existing provider minimum; applications
