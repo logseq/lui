@@ -146,7 +146,7 @@ enum LUIWireValue: Decodable, Equatable {
     func matches(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
         switch property {
         case .focusWithinEnabled:
-            return false
+            return boolValue != nil
         case .virtualTotalCount:
             return intValue.map { $0 >= 0 } ?? false
         case .virtualGeneration:
@@ -168,7 +168,7 @@ enum LUIWireValue: Decodable, Equatable {
             return boolValue != nil
         case .resizeHandleWidth:
             guard let value = intValue else { return false }
-            return value > 0
+            return value >= 0
         case .itemExtent:
             guard let value = doubleValue ?? intValue.map(Double.init) else { return false }
             return value.isFinite && value > 0
@@ -177,14 +177,16 @@ enum LUIWireValue: Decodable, Equatable {
             return value.isFinite && value >= 0
         case .progressValue:
             return doubleValue != nil
-        case .overscan, .resizeDuration, .image, .surface, .active, .columns,
+        case .gap, .overscan, .resizeDuration, .image, .surface, .active, .columns,
              .paddingHorizontal, .paddingVertical,
              .paddingTop, .paddingRight, .paddingBottom, .paddingLeft,
              .borderWidth, .cornerRadius,
-             .width, .height, .minWidth, .maxWidth, .minHeight, .maxHeight,
+             .minWidth, .maxWidth, .minHeight, .maxHeight,
              .containerRelativeFrameInset, .scrollToken:
             guard let value = intValue else { return false }
             return value >= 0
+        case .width, .height:
+            return intValue.map { $0 >= 0 } ?? (stringValue == "auto")
         case .resizeEasing:
             guard let value = stringValue else { return false }
             return ["linear", "standard", "emphasized", "spring"].contains(value)
@@ -238,8 +240,11 @@ enum LUIWireValue: Decodable, Equatable {
             guard let value = stringValue else { return false }
             return ["above", "below", "left", "right"].contains(value)
         case .anchorRect:
-            // This backend has no retained viewport positioning yet.
-            return false
+            guard let value = stringValue else { return false }
+            let tokens = value.split(separator: " ", omittingEmptySubsequences: false)
+            let parts = tokens.compactMap { Double($0.replacingOccurrences(of: "_", with: "")) }
+            return tokens.count == 4 && parts.count == 4 && parts.allSatisfy(\.isFinite)
+                && parts[2] >= 0 && parts[3] >= 0
         case .anchorTarget:
             guard let value = stringValue else { return false }
             return !value.trimmingCharacters(in: .whitespaces).isEmpty
@@ -268,7 +273,7 @@ enum LUIWireValue: Decodable, Equatable {
             return ["plain", "inset", "inset-grouped"].contains(value)
         case .scrollAnchor:
             guard let value = stringValue else { return false }
-            return ["top", "center", "bottom"].contains(value)
+            return ["top", "center", "bottom", "nearest"].contains(value)
         case .role:
             guard let value = stringValue else { return false }
             return value == "treeitem" || value == "navigation" ||
@@ -297,11 +302,9 @@ enum LUIWireValue: Decodable, Equatable {
         case .cross:
             guard let value = stringValue else { return false }
             return Self.crossAlignments.contains(value)
-        case .grow:
+        case .grow, .shrink:
             guard let value = doubleValue else { return false }
             return value.isFinite && value >= 0
-        case .shrink:
-            return false
         case .edge:
             guard let value = stringValue else { return false }
             return Self.edges.contains(value)
@@ -310,7 +313,7 @@ enum LUIWireValue: Decodable, Equatable {
         case .alignment:
             guard let value = stringValue else { return false }
             return Self.overlayAlignments.contains(value)
-        case .gap, .padding,
+        case .padding,
              .margin, .marginHorizontal, .marginVertical,
              .marginTop, .marginRight, .marginBottom, .marginLeft:
             return intValue != nil
@@ -339,7 +342,7 @@ enum LUIWireValue: Decodable, Equatable {
             return stringValue != nil
         case .inputType:
             guard let value = stringValue else { return false }
-            return value == "text" || value == "color"
+            return value == "text" || value == "color" || value == "time"
         case .pickerDirectory:
             return boolValue != nil
         case .fontSize, .lineHeight, .shadow, .hoverBackground, .pressedBackground,
@@ -377,7 +380,7 @@ enum LUIWireValue: Decodable, Equatable {
             return intValue != nil
         case .whiteSpace:
             guard let value = stringValue else { return false }
-            return value == "normal" || value == "nowrap" || value == "pre-wrap"
+            return ["normal", "nowrap", "pre-wrap", "pre-line"].contains(value)
         case .textOverflow:
             guard let value = stringValue else { return false }
             return value == "clip" || value == "ellipsis"
@@ -1090,280 +1093,7 @@ struct LUIRetainedTree {
     }
 
     private static func supports(_ property: LUIProperty, on kind: LUINodeKind) -> Bool {
-        if property == .focusWithinEnabled { return false }
-        if property == .shrink { return false }
-        switch property {
-        case .virtualTotalCount, .virtualGeneration, .virtualIndices, .virtualScrollIndex:
-            return kind == .virtualList
-        default: break
-        }
-        if property == .accessibilityIdentifier { return true }
-        // Position hint honored on overlay children and the overlay itself;
-        // admitted before the restrictive matrix so e.g. an aligned
-        // menu-trigger child still carries it. Inert elsewhere.
-        if property == .alignment { return kind != .root }
-        // Restrictive per-kind allow-lists and additive extras come from
-        // schema/components.json via LUISchemaMatrix; kinds absent from the
-        // restrictive table fall back to the shared structural rules below.
-        if let matrix = LUISchemaMatrix.restrictive[kind] {
-            return matrix.contains(property)
-        }
-        if LUISchemaMatrix.extra[kind]?.contains(property) == true { return true }
-        if kind == .root { return property == .theme || property == .themeMode }
-        if kind == .contextMenu { return false }
-        return switch property {
-        case .focusWithinEnabled: false
-        case .virtualTotalCount, .virtualGeneration, .virtualIndices, .virtualScrollIndex: kind == .virtualList
-        case .readOnly: isTextEntry(kind)
-        case .overscan, .itemExtent: kind == .virtualList
-        case .theme, .themeMode:
-            // Mirrors OCaml common_property_supported: theme props are
-            // admitted on every non-restrictive container kind.
-            canContainChildren(kind)
-        case .main, .cross:
-            kind == .row || kind == .column || kind == .list || kind == .virtualList ||
-                kind == .card || kind == .panel || kind == .box ||
-                kind == .button || kind == .menuItem || kind == .listItem ||
-                kind == .popover || kind == .link ||
-                isHorizontalGroup(kind)
-        case .grow: kind != .avatar && kind != .tooltip && !isModalSurface(kind)
-        case .shrink: false
-        case .columns: kind == .grid
-        case .gridColumnSpan:
-            kind != .root && kind != .dialog && kind != .drawer && kind != .sheet
-                && kind != .tooltip
-        case .padding, .paddingHorizontal, .paddingVertical,
-             .paddingTop, .paddingRight, .paddingBottom, .paddingLeft,
-             .margin, .marginHorizontal, .marginVertical,
-             .marginTop, .marginRight, .marginBottom, .marginLeft:
-            kind != .avatar && kind != .tooltip
-        case .width, .height: kind != .tooltip
-        case .styleClass, .dataAttrs:
-            kind != .tooltip
-        case .asTag:
-            kind == .text || kind == .heading || kind == .paragraph ||
-                kind == .label
-        case .background, .borderColor, .borderWidth, .cornerRadius:
-            kind != .tooltip && !isModalSurface(kind)
-        case .minWidth, .maxWidth, .minHeight, .maxHeight:
-            kind == .dialog || (!isModalSurface(kind) && kind != .tooltip)
-        case .containerRelativeFrame, .containerRelativeFrameInset:
-            kind != .root && !isModalSurface(kind)
-        case .foreground:
-            kind == .row || kind == .column || kind == .grid || kind == .box ||
-                kind == .panel || kind == .card || kind == .stack ||
-                kind == .scroll || kind == .avatar ||
-                kind == .edgeInset || kind == .overlay ||
-                kind == .viewThatFits ||
-                kind == .text || kind == .heading || kind == .paragraph ||
-                kind == .label || kind == .button || kind == .toggleButton ||
-                isTextEntry(kind) || kind == .checkbox || kind == .toggle ||
-                kind == .radio || kind == .slider || kind == .numberStepper ||
-                kind == .spinner || kind == .icon
-                || kind == .select || kind == .combobox || kind == .dropdownMenu
-                || kind == .menuItem || kind == .popover || kind == .listItem
-                || kind == .tableCell || kind == .resizable || kind == .split ||
-                kind == .alert || kind == .bubble || kind == .statusBar ||
-                kind == .link || kind == .fileImage
-        case .text:
-            kind == .text || kind == .heading || kind == .paragraph || kind == .label ||
-                kind == .button || kind == .toggleButton || isTextEntry(kind) ||
-                kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio ||
-                kind == .select || kind == .menuItem || kind == .listItem || kind == .avatar ||
-                kind == .tooltip ||
-                kind == .tableCell ||
-                kind == .alert || kind == .bubble || kind == .statusBar ||
-                isModalSurface(kind) || kind == .drawer || kind == .numberStepper ||
-                kind == .link
-        case .enabled:
-            kind == .button || kind == .toggleButton || isTextEntry(kind) ||
-                kind == .checkbox || kind == .switchControl || kind == .toggle ||
-                kind == .radio || kind == .slider || kind == .numberStepper ||
-                kind == .select ||
-                kind == .combobox || kind == .menuItem || kind == .listItem ||
-                kind == .drawer || kind == .link
-        case .gap:
-            kind == .row || kind == .column || kind == .grid || kind == .list ||
-                kind == .virtualList || kind == .scroll || kind == .card ||
-                kind == .panel || kind == .box ||
-                kind == .dropdownMenu || kind == .popover ||
-                isHorizontalGroup(kind) || kind == .split
-                || kind == .tableRow || kind == .tree || kind == .edgeInset
-        case .placeholder:
-            isTextEntry(kind) || kind == .select
-        case .accessibilityIdentifier:
-            true
-        case .accessibilityLabel:
-            kind == .button || kind == .toggleButton || isTextEntry(kind) || kind == .checkbox ||
-                kind == .switchControl || kind == .toggle ||
-                kind == .radioGroup || kind == .tabs ||
-                kind == .buttonGroup || kind == .toggleGroup ||
-                kind == .breadcrumb || kind == .pagination ||
-                kind == .radio || kind == .slider || kind == .select ||
-                kind == .avatar || kind == .image ||
-                kind == .mediaSurface || kind == .tree ||
-                kind == .resizable || kind == .split || kind == .drawer ||
-                kind == .alert || kind == .bubble ||
-                kind == .listItem || kind == .numberStepper ||
-                kind == .link || kind == .fileImage ||
-                isTreeRow(kind)
-        case .headingLevel: kind == .heading
-        case .pointerCapture: kind == .row || kind == .box
-        case .indeterminate, .toggleDetailEnabled: kind == .checkbox
-        case .checked:
-            kind == .checkbox || kind == .switchControl || kind == .toggle || kind == .radio
-        case .progressValue:
-            kind == .progress || kind == .slider || kind == .numberStepper ||
-                kind == .split
-        case .firstPaneWidth: false
-        case .resizeDuration, .resizeEasing, .resizeOrigin, .resizeHandleWidth, .resizeHandleOffset: kind == .split
-        case .orientation:
-            kind == .divider || kind == .tabs || kind == .scroll ||
-                kind == .viewThatFits
-        case .placement: kind == .toolbar
-        case .size:
-            kind == .button || kind == .toggleButton || kind == .spinner ||
-                kind == .icon || kind == .text || kind == .tableCell ||
-                kind == .menuItem
-        case .name: kind == .icon
-        case .variant:
-            kind == .button || kind == .toggleButton || kind == .menuItem ||
-                kind == .alert || kind == .bubble
-        case .iconPlacement:
-            kind == .button || kind == .toggleButton || kind == .listItem ||
-                kind == .link
-        case .selectionPlacement:
-            kind == .menuItem
-        case .longPressEnabled:
-            kind == .button || kind == .toggleButton || kind == .listItem
-        case .icon:
-            kind == .button || kind == .toggleButton || kind == .menuItem ||
-                kind == .listItem || kind == .link
-        case .selected:
-            kind == .button || kind == .toggleButton || kind == .menuItem ||
-                kind == .listItem || kind == .tableRow || kind == .drawer ||
-                kind == .virtualList || isTreeRow(kind)
-        case .autofocus:
-            kind == .button || kind == .toggleButton || isTextEntry(kind)
-        case .submitOnEnter: kind == .textarea
-        case .submitOnBlur:
-            kind == .textField || kind == .secureField || kind == .input
-                || kind == .searchField || kind == .textarea
-        case .changeEnabled:
-            kind == .radio || isTextEntry(kind) || kind == .slider ||
-                kind == .numberStepper || kind == .split || isTreeRow(kind)
-        case .toggleEnabled:
-            kind == .toggleButton || kind == .checkbox || kind == .switchControl ||
-                kind == .toggle || kind == .radio || kind == .accordion ||
-                kind == .drawer || isTreeRow(kind)
-        case .pressEnabled:
-            kind == .button || kind == .toggleButton || kind == .text ||
-                kind == .row || kind == .column || kind == .box ||
-                kind == .radio || kind == .select ||
-                kind == .combobox || kind == .menuItem || kind == .listItem
-                || kind == .tableCell || kind == .bottomTab ||
-                kind == .fileImage || isTreeRow(kind)
-        case .navigateEnabled:
-            kind == .button || kind == .textField || kind == .secureField || kind == .input
-                || kind == .searchField || kind == .textarea
-        case .submitEnabled: isTextEntry(kind) || kind == .listItem
-        case .doublePressEnabled: kind == .listItem
-        case .appearEnabled, .pointerEnabled: kind != .root
-        case .image:
-            kind == .avatar || kind == .image
-        case .surface:
-            kind == .mediaSurface
-        case .sourceX, .sourceY, .sourceWidth, .sourceHeight:
-            kind == .avatar || kind == .image
-        case .anchorRect: false
-        case .anchorTarget, .anchorAlignmentOffset:
-            kind == .popover
-        case .anchor, .anchorAlignment, .anchorOffset:
-            kind == .dropdownMenu || kind == .tooltip || kind == .popover
-        case .popupX, .popupY: kind == .popover || kind == .dropdownMenu
-        case .availableHeight: kind == .popover
-        case .collisionPadding: kind == .popover || kind == .dropdownMenu || kind == .tooltip
-        case .lineClamp: kind == .text || kind == .heading || kind == .paragraph || kind == .label
-        case .tooltipDelay: kind == .tooltip
-        case .duration: false
-        case .textAlignment:
-            kind == .text || kind == .heading || kind == .paragraph ||
-                kind == .button || kind == .toggleButton ||
-                kind == .tableCell || kind == .bubble || kind == .statusBar
-        case .role: isTreeRow(kind) || kind == .listItem || kind == .popover
-        case .treeLevel, .expanded: isTreeRow(kind)
-        case .key, .separator: kind == .listItem || kind == .listSection
-        case .style: kind == .list
-        case .scrollTarget, .scrollAnchor, .scrollToken,
-             .scrollAnimated, .trackVisibleRange:
-            kind == .list || kind == .virtualList
-        case .edge: kind == .swipeAction || kind == .edgeInset
-        case .minValue, .maxValue, .stepValue: kind == .numberStepper
-        case .detents, .sizing: kind == .sheet
-        case .path: kind == .fileImage || kind == .filePreview
-        case .url: kind == .link || kind == .image
-        case .target: kind == .link
-        case .opacity: canContainChildren(kind)
-        case .labelOpacity: kind == .checkbox || kind == .radio
-        case .display, .flexWrap: kind == .box || kind == .column || kind == .row
-        case .listStyle:
-            kind == .list || kind == .virtualList || kind == .listItem
-        case .tooltip, .tooltipKeys:
-            kind == .button || kind == .icon || kind == .menuItem
-        case .inputType: kind == .input
-        case .alt, .loading, .referrerPolicy: kind == .image
-        case .maxPixelSize, .imageFit: kind == .fileImage
-        case .active, .title, .description, .meta, .indicator, .connector: false
-        case .request, .types, .multiple, .source, .completion,
-             .pickerAccept, .pickerDirectory: false
-        case .visible: kind == .edgeInset
-        // `.alignment` is admitted ahead of the restrictive matrix above.
-        case .alignment: kind != .root
-        // Typography carries a foreground — same kinds as `.foreground`
-        // minus purely graphical kinds whose `size` prop governs metrics.
-        case .fontSize, .fontWeight, .fontStyle, .lineHeight, .letterSpacing,
-             .userSelect, .fontFamily, .textDecoration:
-            kind == .row || kind == .column || kind == .grid || kind == .box ||
-                kind == .panel || kind == .card || kind == .stack ||
-                kind == .scroll || kind == .avatar ||
-                kind == .edgeInset || kind == .overlay ||
-                kind == .viewThatFits ||
-                kind == .text || kind == .heading || kind == .paragraph ||
-                kind == .label || kind == .button || kind == .toggleButton ||
-                isTextEntry(kind) || kind == .checkbox || kind == .toggle ||
-                kind == .radio || kind == .slider || kind == .numberStepper ||
-                kind == .select || kind == .combobox || kind == .dropdownMenu ||
-                kind == .menuItem || kind == .listItem ||
-                kind == .tableCell || kind == .resizable || kind == .split ||
-                kind == .alert || kind == .bubble || kind == .statusBar ||
-                kind == .link
-        case .whiteSpace, .textOverflow:
-            kind == .text || kind == .heading || kind == .paragraph ||
-                kind == .label || kind == .button || kind == .toggleButton ||
-                kind == .menuItem || kind == .listItem ||
-                kind == .tableCell || kind == .alert || kind == .bubble ||
-                kind == .statusBar || kind == .link
-        case .overflow:
-            canContainChildren(kind) && kind != .scroll && kind != .list &&
-                kind != .virtualList && kind != .tooltip
-        case .position, .inset, .insetTop, .insetRight, .insetBottom, .insetLeft,
-             .zIndex:
-            kind != .root && kind != .tooltip && !isModalSurface(kind)
-        case .cursor: kind != .root
-        case .shadow: kind != .tooltip && !isModalSurface(kind)
-        case .indicatorBorderColor, .checkedIndicatorBorderColor: kind == .checkbox
-        case .inert: kind == .box
-        case .hoverBackground, .hoverOpacity, .hoverShadow,
-             .hoverForeground, .hoverBorder,
-             .pressedBackground, .pressedOpacity, .pressedShadow,
-             .focusShadow, .focusWithinBackground, .focusWithinBorder,
-             .selectedBackground, .selectedShadow,
-             .selectedHoverShadow, .disabledOpacity, .transition:
-            kind != .root && kind != .tooltip && !isModalSurface(kind)
-        case .widthViewport, .heightViewport, .minWidthViewport, .maxWidthViewport,
-             .minHeightViewport, .maxHeightViewport:
-            kind != .tooltip
-        }
+        LUISchemaMatrix.admitted[kind]?.contains(property) == true
     }
 
     private static func isTextEntry(_ kind: LUINodeKind) -> Bool {
@@ -1540,9 +1270,10 @@ struct LUIRetainedTree {
                 guard node.children.count == 2 else {
                     throw invalid("split requires exactly two children")
                 }
-                guard case let .double(value)? = node.properties[.progressValue],
-                      value.isFinite else {
-                    throw invalid("split requires a finite fractional value")
+                let fraction = node.properties[.progressValue]?.doubleValue
+                let width = node.properties[.firstPaneWidth]?.doubleValue
+                guard (fraction != nil) != (width != nil) else {
+                    throw invalid("split requires exactly one of value or first-pane-width")
                 }
                 let duration = node.properties[.resizeDuration]?.intValue ?? 0
                 if node.properties[.resizeEasing] != nil || node.properties[.resizeOrigin] != nil {
@@ -1881,7 +1612,7 @@ extension LUIWireValue {
     func normalized(for property: LUIProperty) -> LUIWireValue {
         guard case .int(let value) = self else { return self }
         switch property {
-        case .itemExtent, .grow, .anchorOffset, .anchorAlignmentOffset,
+        case .itemExtent, .grow, .shrink, .anchorOffset, .anchorAlignmentOffset,
             .sourceX, .sourceY, .sourceWidth, .sourceHeight, .progressValue,
             .minValue, .maxValue, .stepValue, .firstPaneWidth,
             .resizeOrigin, .resizeHandleOffset, .opacity, .labelOpacity,

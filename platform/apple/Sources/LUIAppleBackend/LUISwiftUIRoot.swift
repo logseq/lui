@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SwiftUI
+import SwiftDraw
 #if os(macOS)
 import AppKit
 #else
@@ -804,35 +805,33 @@ private struct LUINodeView: View {
             return AnyView(LUITextView(model: model, backend: backend))
         case .heading:
             return AnyView(
-                Text(verbatim: model.text)
-                    .luiTypography(typography)
-                    .multilineTextAlignment(textAlignment)
-                    .font(
-                        typography.font(
-                            base: LUIHeadingTypography.isBold(level: headingLevel)
-                                ? headingFont.weight(.bold) : headingFont
-                        )
-                    )
-                    .luiTypographyMetrics(typography, baseSize: headingSize)
+                LUIQueryableText(model: model, backend: backend) {
+                    Text(verbatim: model.text)
+                        .luiTypography(typography)
+                        .multilineTextAlignment(textAlignment)
+                        .font(typography.font(base: LUIHeadingTypography.isBold(level: headingLevel)
+                            ? headingFont.weight(.bold) : headingFont))
+                        .luiTypographyMetrics(typography, baseSize: headingSize)
+                }
                     .accessibilityAddTraits(.isHeader)
                     .modifier(LUIScrollHeadingModifier(title: model.text,
                         enabled: model.derived.styleClassTokens.contains("scroll-section-title")))
             )
         case .paragraph:
-            return AnyView(
+            return AnyView(LUIQueryableText(model: model, backend: backend) {
                 Text(verbatim: model.text)
                     .luiTypography(typography)
                     .multilineTextAlignment(textAlignment)
                     .font(typography.font(base: .body))
                     .luiTypographyMetrics(typography, baseSize: 17)
-            )
+            })
         case .label:
-            return AnyView(
+            return AnyView(LUIQueryableText(model: model, backend: backend) {
                 Text(verbatim: model.text)
                     .luiTypography(typography)
                     .font(typography.font(base: .body))
                     .luiTypographyMetrics(typography, baseSize: 17)
-            )
+            })
         case .button:
             if dialogButtonsExtracted || drawerToggleSuppressed { return AnyView(EmptyView()) }
             return AnyView(LUIButtonView(model: model, backend: backend))
@@ -3784,15 +3783,11 @@ private struct LUIImageView: View {
     @ViewBuilder
     var body: some View {
         if let image = model.imageDisplayImage(in: backend) {
-            Image(decorative: image, scale: 1)
-                .resizable()
-        } else if let url = URL(string: model.property(.url)?.stringValue ?? "") {
-            AsyncImage(url: url) { image in
-                image.resizable()
-            } placeholder: {
-                Color.clear
-            }
-            .accessibilityLabel(model.property(.alt)?.stringValue ?? "")
+            Image(decorative: image, scale: 1).resizable()
+        } else if let source = model.property(.url)?.stringValue, !source.isEmpty,
+           let url = URL(string: source) {
+            LUILoadedImageView(model: model, backend: backend, url: url)
+                .accessibilityLabel(model.property(.alt)?.stringValue ?? "")
         } else {
             Color.clear
         }
@@ -3888,15 +3883,24 @@ private struct LUIFileImageView: View {
     var body: some View {
         content
             .task(id: "\(maxPixelSize)|\(path)") {
+                let source = "file:\(maxPixelSize)|\(path)"
                 if let decoded = await LUIFileImageLoader.thumbnail(
                     path: path,
                     maxPixelSize: maxPixelSize
-                ) {
+                ), !Task.isCancelled, backend.imageSourceKey(model) == source {
                     image = decoded
                     failed = false
+                    if let size = await LUIFileImageLoader.naturalSize(path: path), !Task.isCancelled {
+                        backend.reportLoadedImage(model: model, source: source, size: size)
+                    }
                 } else {
                     image = nil
                     failed = true
+                }
+            }
+            .onDisappear {
+                if backend.hostQueries.images[model.id]?.model === model {
+                    backend.hostQueries.images[model.id] = nil
                 }
             }
     }
@@ -6058,7 +6062,7 @@ private struct LUISelectedButtonModifier: ViewModifier {
 }
 
 private struct LUIIconImage: View {
-    let source: LUIAppleIconSource
+    let source: LUIResolvedIconSource
     let bundle: Bundle?
     var size: CGFloat = 16
 
@@ -6076,6 +6080,10 @@ private struct LUIIconImage: View {
         case let .fontGlyph(family, scalar):
             Text(String(Character(Unicode.Scalar(scalar) ?? Unicode.Scalar(UInt32(0xFFFD))!)))
                 .font(.custom(family, size: size))
+        case let .svg(data):
+            if let svg = SVG(data: data) {
+                SVGView(svg: svg).scaledToFit()
+            }
         }
     }
 }
@@ -6154,7 +6162,11 @@ private struct LUITextView: View {
             styleClass: model.derived.styleClass))
     }
 
-    private var textContent: Text {
+    private var textContent: some View {
+        LUIQueryableText(model: model, backend: backend) { swiftUIText }
+    }
+
+    private var swiftUIText: Text {
         let classes = model.derived.styleClassTokens
         if classes.contains("search-match") {
             return Text(LUITextHighlight.preview(model.text, query: highlightQuery))
@@ -8397,9 +8409,9 @@ private struct LUIOptionalForegroundModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if usesSecondaryStyle {
-            content.foregroundStyle(.secondary)
+            content.foregroundStyle(.secondary).environment(\.luiTextForeground, .secondary)
         } else if let foreground {
-            content.foregroundStyle(foreground)
+            content.foregroundStyle(foreground).environment(\.luiTextForeground, foreground)
         } else {
             content
         }
@@ -8407,6 +8419,23 @@ private struct LUIOptionalForegroundModifier: ViewModifier {
 }
 
 enum LUISplitGeometry {
+    static func firstPaneWidth(
+        value: Double, absolute: Bool, available: Double,
+        firstMinimum: Double, secondMinimum: Double
+    ) -> Double {
+        guard available > 0, available.isFinite else { return 0 }
+        if !absolute {
+            return available * effectiveFraction(value: value, available: available,
+                firstMinimum: firstMinimum, secondMinimum: secondMinimum)
+        }
+        let low = max(firstMinimum, 0)
+        let high = max(available - max(secondMinimum, 0), 0)
+        if low > high {
+            return available * low / max(low + max(secondMinimum, 0), 1)
+        }
+        return min(max(value.isFinite ? value : 0, low), high)
+    }
+
     static func effectiveFraction(
         value: Double,
         available: Double,
@@ -8468,6 +8497,7 @@ private struct LUISplitView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.luiInsideScroll) private var insideScroll
     @State private var fractionState: LUISplitFractionState
+    @State private var absoluteWidth: Double?
     @State private var dragStartFraction: Double?
     @State private var columnVisibility: NavigationSplitViewVisibility
     @State private var navSplitEligible: Bool
@@ -8487,6 +8517,7 @@ private struct LUISplitView: View {
     init(model: LUINodeModel, backend: LUIAppleBackend) {
         self.model = model
         self.backend = backend
+        _absoluteWidth = State(initialValue: model.splitFirstPaneWidth.map { model.splitResizeOrigin ?? $0 })
         let initialFraction = model.splitResizeOrigin ?? model.splitFraction
         _fractionState = State(
             initialValue: LUISplitFractionState(sourceFraction: initialFraction)
@@ -8503,6 +8534,10 @@ private struct LUISplitView: View {
     var body: some View {
         splitContent
             .onAppear { reconcile(sourceFraction: model.splitFraction) }
+            .onAppear { withAnimation(splitAnimation) { absoluteWidth = model.splitFirstPaneWidth } }
+            .onChange(of: model.splitFirstPaneWidth) { _, value in
+                withAnimation(splitAnimation) { absoluteWidth = value }
+            }
             .onChange(of: model.splitFraction) { _, value in
                 reconcile(sourceFraction: value)
             }
@@ -8540,7 +8575,7 @@ private struct LUISplitView: View {
     private var splitContent: some View {
         // NavigationSplitView owns a ScrollView; nested inside scrolling
         // content it fails to lay out, so the manual layout renders instead.
-        if insideScroll || model.property(.resizeHandleWidth) != nil
+        if insideScroll || model.splitFirstPaneWidth != nil || model.property(.resizeHandleWidth) != nil
             || model.property(.resizeHandleOffset) != nil {
             manualSplit
         } else if navSplitEligible {
@@ -8753,13 +8788,14 @@ private struct LUISplitView: View {
             let secondID = model.children.dropFirst().first
             let firstModel = firstID.flatMap(backend.model(id:))
             let secondModel = secondID.flatMap(backend.model(id:))
-            let fraction = LUISplitGeometry.effectiveFraction(
-                value: fractionState.fraction,
+            let firstWidth = CGFloat(LUISplitGeometry.firstPaneWidth(
+                value: absoluteWidth ?? fractionState.fraction,
+                absolute: model.splitFirstPaneWidth != nil,
                 available: Double(available),
                 firstMinimum: Double(firstModel?.surfaceMinWidth ?? 0),
                 secondMinimum: Double(secondModel?.surfaceMinWidth ?? 0)
-            )
-            let firstWidth = available * CGFloat(fraction)
+            ))
+            let fraction = Double(firstWidth / max(available, 1))
             let secondWidth = available - firstWidth
 
             ZStack(alignment: .leading) {
@@ -8884,7 +8920,7 @@ private struct LUISplitView: View {
         secondMinimum: Int
     ) -> KeyPress.Result {
         updateFraction(
-            fractionState.fraction + delta,
+            (absoluteWidth.map { $0 / Double(max(available, 1)) } ?? fractionState.fraction) + delta,
             available: available,
             firstMinimum: firstMinimum,
             secondMinimum: secondMinimum
@@ -8898,17 +8934,20 @@ private struct LUISplitView: View {
         firstMinimum: Int,
         secondMinimum: Int
     ) {
-        let effective = LUISplitGeometry.effectiveFraction(
-            value: value,
+        let width = LUISplitGeometry.firstPaneWidth(
+            value: model.splitFirstPaneWidth != nil ? value * Double(available) : value,
+            absolute: model.splitFirstPaneWidth != nil,
             available: Double(available),
             firstMinimum: Double(firstMinimum),
             secondMinimum: Double(secondMinimum)
         )
+        let effective = width / Double(max(available, 1))
         fractionState.applyUserFraction(effective)
+        if model.splitFirstPaneWidth != nil { absoluteWidth = width }
         #if os(macOS)
         appliedWidth = available * CGFloat(effective)
         #endif
-        try? backend.performValueChange(node: model.id, value: effective)
+        try? backend.performValueChange(node: model.id, value: model.splitFirstPaneWidth != nil ? width : effective)
     }
 }
 

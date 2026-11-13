@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { typedViewFunctions, typedViewSchema, typedViewSignature } from './typed_view_schema.mjs';
@@ -332,6 +333,13 @@ val extension_view_contract : string -> string view_contract option
 }
 
 function renderSwift(schema) {
+  const admission = JSON.parse(readFileSync(resolve(repository, 'schema/apple-property-admission.json'), 'utf8'));
+  for (const [path, expected] of Object.entries(admission.sourceHashes)) {
+    const source = readFileSync(resolve(repository, path), 'utf8').replaceAll('\r\n', '\n');
+    if (createHash('sha256').update(source).digest('hex') !== expected) {
+      fail('Apple admission is stale; run python3 tooling/generate_apple_admission.py --export');
+    }
+  }
   const nodeKinds = schema.nodeKinds
     .map(({ swift, wire }) => `    case ${swift} = "${wire}"`)
     .join('\n');
@@ -348,6 +356,9 @@ function renderSwift(schema) {
     .map(([kindWire, propWires]) =>
       `        .${kindSwift.get(kindWire)}: [${propWires.map((w) => `.${propSwift.get(w)}`).join(', ')}],`)
     .join('\n');
+  const admissionEntries = Object.entries(admission.kinds)
+    .map(([kind, props]) => `        .${kindSwift.get(kind)}: [${props.map(p => `.${propSwift.get(p)}`).join(', ')}],`)
+    .join('\n');
   return `${generatedHeader('//')}import Foundation
 
 enum LUINodeKind: String, Decodable, Equatable {
@@ -359,6 +370,11 @@ ${properties}
 }
 
 enum LUISchemaMatrix {
+    // Evaluated from Lui_protocol.property_supported, independent of rendering.
+    static let admitted: [LUINodeKind: Set<LUIProperty>] = [
+${admissionEntries}
+    ]
+
     static let restrictive: [LUINodeKind: Set<LUIProperty>] = [
 ${matrixEntries}
     ]

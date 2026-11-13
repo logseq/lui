@@ -86,6 +86,21 @@ public enum LUIAppleIconSource: Equatable, Sendable {
     case fontGlyph(family: String, scalar: UInt32)
 }
 
+enum LUIResolvedIconSource: Equatable {
+    case systemName(String)
+    case assetName(String)
+    case fontGlyph(family: String, scalar: UInt32)
+    case svg(Data)
+
+    init(_ source: LUIAppleIconSource) {
+        switch source {
+        case let .systemName(name): self = .systemName(name)
+        case let .assetName(name): self = .assetName(name)
+        case let .fontGlyph(family, scalar): self = .fontGlyph(family: family, scalar: scalar)
+        }
+    }
+}
+
 public struct LUIRootSection: Identifiable, Hashable, Sendable {
     public let id: Int
     public let title: String
@@ -386,6 +401,7 @@ final class LUINodeModel: Identifiable {
         return step > 0 ? step : 1.0
     }
     var splitFraction: Double { properties[.progressValue]?.doubleValue ?? 0.0 }
+    var splitFirstPaneWidth: Double? { properties[.firstPaneWidth]?.doubleValue }
     var splitGap: Int { properties[.gap]?.intValue ?? 9 }
     var splitResizeDuration: Int { properties[.resizeDuration]?.intValue ?? 0 }
     var splitResizeEasing: String { properties[.resizeEasing]?.stringValue ?? "standard" }
@@ -610,6 +626,7 @@ final class LUIFrameReporting {
 
 @MainActor
 public final class LUIAppleBackend {
+    let hostQueries = LUIHostQueries()
     public private(set) var generation = 0
     /// Number of observable model commits, for diagnostics.
     public private(set) var commitSequence = 0
@@ -774,7 +791,7 @@ public final class LUIAppleBackend {
         onFramesReport?(nodeFrames)
     }
 
-    private func scheduleFramesReport() {
+    func scheduleFramesReport() {
         guard !framesReportScheduled else { return }
         framesReportScheduled = true
         // CFRunLoop delivery, not DispatchQueue.main.async — GCD main-queue
@@ -803,7 +820,8 @@ public final class LUIAppleBackend {
     private var interactionLockedDrawers: Set<Int> = []
     private var images: [Int: CGImage] = [:]
     private var mediaSurfaces: [Int: CGImage] = [:]
-    private let appIcons: [String: LUIAppleIconSource]
+    private var appIcons: [String: LUIAppleIconSource]
+    private var appSVGIcons: [String: Data] = [:]
     let appIconBundle: Bundle?
     private let extensionRegistry: LUIAppleExtensionRegistry
     let tooltipSession = LUITooltipSession()
@@ -830,12 +848,41 @@ public final class LUIAppleBackend {
         self.extensionRegistry = extensionRegistry
     }
 
-    func iconSource(for name: String) -> LUIAppleIconSource {
+    func iconSource(for name: String) -> LUIResolvedIconSource {
+        _ = hostQueries.iconRevision
         if name.hasPrefix("app:") {
-            return appIcons[String(name.dropFirst(4))]
+            let slug = String(name.dropFirst(4))
+            if let svg = appSVGIcons[slug] { return .svg(svg) }
+            return appIcons[slug].map(LUIResolvedIconSource.init)
                 ?? .systemName("questionmark.square.dashed")
         }
         return .systemName(LUINodeModel.systemIconName(for: name))
+    }
+
+    /// Register or replace a complete SVG under a canonical `app:slug` name.
+    /// Invalid documents leave the previous registration intact.
+    public func registerIcon(name: String, svg: Data) throws {
+        try LUISVGIcon.validate(name: name, data: svg)
+        let slug = String(name.dropFirst(4))
+        appSVGIcons[slug] = svg
+        appIcons[slug] = nil
+        invalidateIcons()
+    }
+
+    public func unregisterIcon(name: String) {
+        guard name.hasPrefix("app:") else { return }
+        let slug = String(name.dropFirst(4))
+        let removedSVG = appSVGIcons.removeValue(forKey: slug)
+        let removedIcon = appIcons.removeValue(forKey: slug)
+        guard removedSVG != nil || removedIcon != nil else { return }
+        invalidateIcons()
+    }
+
+    private func invalidateIcons() {
+        // Every icon source reader, including menu/navigation labels,
+        // observes this registry version without walking the retained tree.
+        hostQueries.iconRevision &+= 1
+        scheduleFramesReport()
     }
 
     public var rootIDs: [Int] {
@@ -1408,6 +1455,8 @@ public final class LUIAppleBackend {
                 node: node,
                 value: min(max(value, model.stepperRange.lowerBound), model.stepperRange.upperBound)
             ))
+        } else if model.kind == .split, model.splitFirstPaneWidth != nil {
+            emit(.valueChanged(node: node, value: max(value, 0)))
         } else {
             emit(.valueChanged(node: node, value: min(max(value, 0.0), 1.0)))
         }
@@ -1577,6 +1626,10 @@ public final class LUIAppleBackend {
         var descendantsRefresh = Set<Int>()
         for id in dropped { collectAncestors(of: id, into: &descendantsRefresh) }
         for id in dropped {
+            if hostQueries.textQueries.contains(id) { hostQueries.textQueries.remove(id) }
+            if hostQueries.imageQueries.contains(id) { hostQueries.imageQueries.remove(id) }
+            hostQueries.textViews[id] = nil
+            hostQueries.images[id] = nil
             if models[id] != nil || extensionModels[id] != nil {
                 membershipChanges.insert(id)
             }
@@ -1688,6 +1741,7 @@ public final class LUIAppleBackend {
         for (model, changes) in nodeChanges.values { model.publish(changes) }
         for (model, changes) in extensionChanges.values { model.publish(changes) }
         for id in membershipChanges { lookupObservation.publish(id: id) }
+        hostQueries.invalidateText()
         if perf {
             FileHandle.standardError.write(
                 "PERF commit-split drop=\(Int(tDrop*1000))ms nodeApply=\(Int(tNodeApply*1000))ms extApply=\(Int(tExtApply*1000))ms childData=\(Int(tChildData*1000))ms\n"
