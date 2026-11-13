@@ -3922,7 +3922,7 @@ private struct LUIFileImageView: View {
                 .resizable()
                 .aspectRatio(contentMode: model.property(.imageFit)?.stringValue == "fill" ? .fill : .fit)
                 .frame(width: model.surfaceWidth.map(CGFloat.init),
-                       height: model.surfaceHeightPoints.map(CGFloat.init))
+                       height: model.surfaceHeightPoints.map { CGFloat($0) })
                 .clipped()
         } else if failed {
             LUIIconImage(
@@ -4453,7 +4453,7 @@ private struct LUIDropdownMenuView: View {
         .padding(LUIDropdownMenuLayoutPolicy.contentPadding)
         .frame(
             minWidth: model.surfaceMinWidth.map(CGFloat.init),
-            maxWidth: model.surfaceMaxWidthPoints.map(CGFloat.init) ?? (isStretch ? .infinity : nil),
+            maxWidth: model.surfaceMaxWidthPoints.map { CGFloat($0) } ?? (isStretch ? .infinity : nil),
             alignment: .leading
         )
 #if os(macOS)
@@ -4638,7 +4638,7 @@ private struct LUIMenuTriggerView: View {
             #if os(iOS)
             .frame(
                 width: sizingCell?.surfaceWidth.map(CGFloat.init),
-                height: sizingCell?.surfaceHeightPoints.map(CGFloat.init),
+                height: sizingCell?.surfaceHeightPoints.map { CGFloat($0) },
                 alignment: labelAlignment
             )
             .frame(
@@ -4647,13 +4647,13 @@ private struct LUIMenuTriggerView: View {
                     minimum: sizingCell?.surfaceMinWidth,
                     maximum: sizingCell?.surfaceMaxWidthPoints
                 ),
-                maxWidth: sizingCell?.surfaceMaxWidthPoints.map(CGFloat.init),
+                maxWidth: sizingCell?.surfaceMaxWidthPoints.map { CGFloat($0) },
                 minHeight: minimumExtent(
                     fixed: sizingCell?.surfaceHeightPoints,
                     minimum: sizingCell?.surfaceMinHeight,
                     maximum: sizingCell?.surfaceMaxHeightPoints
                 ),
-                maxHeight: sizingCell?.surfaceMaxHeightPoints.map(CGFloat.init),
+                maxHeight: sizingCell?.surfaceMaxHeightPoints.map { CGFloat($0) },
                 alignment: labelAlignment
             )
             #endif
@@ -5407,13 +5407,13 @@ private struct LUIButtonView: View {
                         minimum: model.surfaceMinWidth,
                         maximum: model.surfaceMaxWidthPoints
                     ),
-                    maxWidth: model.surfaceMaxWidthPoints.map(CGFloat.init),
+                    maxWidth: model.surfaceMaxWidthPoints.map { CGFloat($0) },
                     minHeight: minimumControlExtent(
                         fixed: model.surfaceHeightPoints,
                         minimum: model.surfaceMinHeight,
                         maximum: model.surfaceMaxHeightPoints
                     ),
-                    maxHeight: model.surfaceMaxHeightPoints.map(CGFloat.init)
+                    maxHeight: model.surfaceMaxHeightPoints.map { CGFloat($0) }
                 )
                 .contentShape(Rectangle())
                 .modifier(LUIOptionalClipModifier(
@@ -5649,8 +5649,8 @@ private struct LUIButtonView: View {
     private var iconExtent: CGFloat {
         let visualExtent: CGFloat = usesDefaultTouchCell && isIconOnly && model.buttonSize == "default"
             ? 20 : LUIButtonVisualPolicy.iconExtent(buttonSize: model.buttonSize)
-        let maximumWidth = usesDefaultTouchCell ? model.surfaceMaxWidthPoints.map(CGFloat.init) : nil
-        let maximumHeight = usesDefaultTouchCell ? model.surfaceMaxHeightPoints.map(CGFloat.init) : nil
+        let maximumWidth = usesDefaultTouchCell ? model.surfaceMaxWidthPoints.map { CGFloat($0) } : nil
+        let maximumHeight = usesDefaultTouchCell ? model.surfaceMaxHeightPoints.map { CGFloat($0) } : nil
         return min(
             visualExtent,
             buttonWidth ?? .greatestFiniteMagnitude,
@@ -5669,7 +5669,7 @@ private struct LUIButtonView: View {
     }
 
     private var buttonHeight: CGFloat? {
-        let height = model.surfaceHeightPoints.map(CGFloat.init)
+        let height = model.surfaceHeightPoints.map { CGFloat($0) }
         return hitTargetFloor(height)
     }
 
@@ -8145,7 +8145,7 @@ private struct LUIPlainContainerSurfaceModifier: ViewModifier {
         if model.surfaceWidth != nil || model.surfaceHeightPoints != nil {
             padded.frame(maxWidth: LUIIntrinsicSurfacePolicy.fillsWidth(kind: model.kind, grow: model.derived.grow) ? .infinity : nil,
                          alignment: .leading)
-                .frame(width: model.surfaceWidth.map(CGFloat.init), height: model.surfaceHeightPoints.map(CGFloat.init))
+                .frame(width: model.surfaceWidth.map(CGFloat.init), height: model.surfaceHeightPoints.map { CGFloat($0) })
         } else if LUIIntrinsicSurfacePolicy.fillsWidth(kind: model.kind, grow: model.derived.grow) {
             padded.frame(maxWidth: .infinity, alignment: .leading)
         } else { padded }
@@ -8258,7 +8258,7 @@ private struct LUISurfaceModifier: ViewModifier {
                     kind: model.kind,
                     requested: floored(model.surfaceWidth)
                 ).map(CGFloat.init),
-                height: flooredPoints(model.surfaceHeightPoints).map(CGFloat.init)
+                height: flooredPoints(model.surfaceHeightPoints).map { CGFloat($0) }
             )
             .modifier(LUIBodyLineControlModifier(
                 enabled: model.derived.styleClassTokens.contains("body-line"),
@@ -8267,9 +8267,9 @@ private struct LUISurfaceModifier: ViewModifier {
             ))
             .frame(
                 minWidth: model.kind == .resizable ? nil : model.surfaceMinWidth.map(CGFloat.init),
-                maxWidth: model.kind == .resizable ? nil : model.surfaceMaxWidthPoints.map(CGFloat.init),
+                maxWidth: model.kind == .resizable ? nil : model.surfaceMaxWidthPoints.map { CGFloat($0) },
                 minHeight: model.surfaceMinHeight.map(CGFloat.init),
-                maxHeight: model.surfaceMaxHeightPoints.map(CGFloat.init),
+                maxHeight: model.surfaceMaxHeightPoints.map { CGFloat($0) },
                 alignment: LUISurfaceFramePolicy.usesTopLeadingAlignment(kind: model.kind)
                     ? .topLeading
                     : .center
@@ -8308,7 +8308,7 @@ private struct LUISurfaceModifier: ViewModifier {
                 shape: shape,
                 isPill: model.kind != .avatar && LUIGlassShapePolicy.isPill(
                     cornerRadius: radius,
-                    height: flooredPoints(model.surfaceHeightPoints).map(CGFloat.init)
+                    height: flooredPoints(model.surfaceHeightPoints).map { CGFloat($0) }
                 ),
                 clipsContent: clipsContent && clipsInsideGlass,
                 clipRadius: radius
