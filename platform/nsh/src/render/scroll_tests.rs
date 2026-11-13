@@ -186,8 +186,8 @@ fn content_app(kind: &'static str, horizontal: bool, natural: bool, padding: i64
     })
     .unwrap();
     app.first_render().unwrap();
-    app.wait_until(
-        "canonical scroll content retains its full document",
+    let ready = app.wait_until(
+        &format!("{kind} canonical content retains its full document"),
         std::time::Duration::from_secs(2),
         |screen| {
             screen.layout_nodes().iter().any(|node| {
@@ -195,8 +195,13 @@ fn content_app(kind: &'static str, horizontal: bool, natural: bool, padding: i64
                     && node.bounds.size.height == px(if natural { 440.0 } else { 400.0 })
             })
         },
-    )
-    .unwrap();
+    );
+    if let Err(error) = ready {
+        panic!(
+            "{kind}: {error}; actual native layout: {:?}",
+            app.screen().layout_nodes()
+        );
+    }
     app
 }
 
