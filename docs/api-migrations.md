@@ -1,5 +1,30 @@
 # LUI API migration guide
 
+## NSH scroll viewports keep intrinsic content separate
+
+The existing native Scroll retains its canonical identity, reference, native
+axis and viewport styling. Its content now has a separate intrinsic layout
+owner so flex shrinking the viewport does not also shrink the document to the
+same height and erase its scrolling range. This completes the passive layout
+default correction below without changing canonical child shrink values.
+
+Canonical Scroll children share one auto-sized grid cell, matching Web's
+`.lui-scroll > * { grid-area: 1 / 1 }`. Two direct children of heights 400 and
+250 overlap and contribute their maximum extent rather than stacking to 650.
+A natural-height Column containing two fixed 220pt rows retains all 440pt.
+The internal grid uses auto tracks, not fractional Stack tracks. Its own
+nonshrinking document owner and retained child cell owners supply this layout;
+they do not replace the original Scroll controller or canonical child owners.
+
+List and BottomTab content retain sequential flow through the same separation
+of viewport and intrinsic document. They do not gain Scroll's same-cell layout.
+Authored gap/alignment is applied to the document layout; padding and border
+stay on the original viewport exactly once. Horizontal scrolling still uses
+the existing public native horizontal Scroll. SDK-internal Editor scrolling is
+unchanged. No constructor, wire, backend policy or application migration is
+required; Scroll/List/BottomTab position and existing input drafts remain owned
+by their retained native instances.
+
 ## NSH passive layout preserves the canonical shrink default
 
 NSH now projects the omitted flex-shrink factor as `1` for the canonical

@@ -1429,6 +1429,18 @@ impl Renderer {
                 } else {
                     scroll
                 };
+                let content = if node.kind == "scroll" {
+                    crate::controls::scroll_content(
+                        state,
+                        theme,
+                        self.child_renderer(id, incarnation)
+                            .expect("retained Scroll children"),
+                    )
+                    .into_element()
+                } else {
+                    crate::controls::scroll_flow_content(state, theme, body.into_element())
+                        .into_element()
+                };
                 native_events
                     .attach(
                         scroll
@@ -1436,7 +1448,7 @@ impl Renderer {
                             .on_scroll_drag_start(move |_: &Point<Points>| owner.dragged()),
                     )
                     .state_inline_style(style)
-                    .child(body)
+                    .child(content)
                     .element_ref(&reference)
                     .key(key.clone())
                     .test_id(&identifier)

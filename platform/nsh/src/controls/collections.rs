@@ -468,7 +468,11 @@ pub(super) fn element(
                 .min_h_0()
                 .role(AccessibilityRole::Region)
                 .label(move || node.get().string("title").to_owned())
-                .child(children),
+                .child(super::scroll_flow_content(
+                    node,
+                    presentation.theme,
+                    children,
+                )),
         ),
         _ => return None,
     })

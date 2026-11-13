@@ -82,6 +82,79 @@ fn grid_cell() -> Style {
     }))
 }
 
+/// A Scroll's document is intrinsic; its canonical children share one grid
+/// cell like Web's `.lui-scroll > *`. Auto tracks keep natural document size.
+pub(crate) fn scroll_content(
+    node: Signal<Arc<Node>>,
+    theme: ui::Theme,
+    children: ChildRenderer,
+) -> View {
+    let render = children.render;
+    let lookup = children.lookup;
+    view()
+        .grid()
+        .flex_none()
+        .min_w(relative(1.0))
+        .min_h(relative(1.0))
+        .state_inline_style(move || {
+            Style::from_decls(
+                crate::style::content_layout(&node.get(), &theme.get())
+                    .expect("validated Scroll content layout"),
+            )
+        })
+        .child(each(
+            children.identities,
+            |identity| *identity,
+            move |identity, _| {
+                let identity = identity.get_untracked();
+                let child = lookup(identity);
+                view()
+                    .grid()
+                    .inline_style(grid_cell())
+                    .pointer_events(nsh_core::PointerEvents::BoxNone)
+                    .z_index(move || {
+                        child.map_or(0, |child| {
+                            crate::style::z_index(&child.get())
+                                .expect("validated Scroll child z-index")
+                                .unwrap_or(0)
+                        })
+                    })
+                    .child(render(identity))
+            },
+        ))
+}
+
+/// List and page bodies retain sequential flow, unlike canonical Scroll cells.
+/// Padding stays on the original scroll viewport and is never duplicated here.
+pub(crate) fn scroll_flow_content(
+    node: Signal<Arc<Node>>,
+    theme: ui::Theme,
+    children: AnyElement,
+) -> View {
+    view()
+        .flex_none()
+        .min_w(relative(1.0))
+        .min_h(relative(1.0))
+        .style_with(move |style| {
+            match crate::contract::orientation(
+                &node.get(),
+                crate::contract::OrientationValue::Vertical,
+            )
+            .expect("validated scroll content axis")
+            {
+                crate::contract::OrientationValue::Horizontal => style.flex_row(),
+                crate::contract::OrientationValue::Vertical => style.flex_col(),
+            }
+        })
+        .state_inline_style(move || {
+            Style::from_decls(
+                crate::style::content_layout(&node.get(), &theme.get())
+                    .expect("validated sequential scroll content layout"),
+            )
+        })
+        .child(children)
+}
+
 fn layered(children: ChildRenderer) -> View {
     let render = children.render;
     let lookup = children.lookup;

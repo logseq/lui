@@ -14,6 +14,7 @@ use nsh_core::{
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 mod basic;
+pub(crate) use basic::{scroll_content, scroll_flow_content};
 mod collections;
 mod fit;
 mod navigation;
@@ -949,7 +950,11 @@ pub(crate) fn element(
                 .child(children),
             )
         }
-        "list" => presentation.host(scroll().role(AccessibilityRole::List).child(children)),
+        "list" => presentation.host(
+            scroll()
+                .role(AccessibilityRole::List)
+                .child(scroll_flow_content(node, presentation.theme, children)),
+        ),
         "grid" => presentation.host(
             view()
                 .grid()
