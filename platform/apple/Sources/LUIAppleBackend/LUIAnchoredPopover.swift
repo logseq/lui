@@ -124,15 +124,14 @@ struct LUIAnchoredPopoverModifier: ViewModifier {
                 guard backend.anchoredPopovers.presentation(at: nodeID)?.id == item.id else { return }
                 contentMeasurement = ContentMeasurement(presentationID: item.id, size: size)
             }
-        if let height = item.model.property(.availableHeight)?.doubleValue.map({ CGFloat($0) }) {
-            // One mounted content tree preserves native controls and drafts
-            // as its ideal height crosses the viewport limit.
-            ScrollView(.vertical) { content }
-                .fixedSize(horizontal: true, vertical: false)
-                .frame(height: min(contentSize(for: item)?.height ?? height, height))
-        } else {
-            content
-        }
+        let limit = item.model.property(.availableHeight)?.doubleValue.map { CGFloat($0) }
+        let idealHeight = contentSize(for: item)?.height
+        let height = limit.map { min(idealHeight ?? $0, $0) } ?? idealHeight
+        // Keep the same scroll/content tree when a height cap is added,
+        // changed or removed, preserving native controls and their drafts.
+        ScrollView(.vertical) { content }
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(height: height)
     }
 
     private func contentSize(for item: LUIAnchoredPopoverPresentation) -> CGSize? {

@@ -43,7 +43,11 @@ text label. Hidden children likewise do not replace the fallback label.
 `available-height` bounds a native Popover's scrollable viewport. Overflowing
 controls remain reachable by scrolling; short content keeps its ideal height.
 The content stays mounted when its height crosses that limit, preserving drafts
-and native control identity. Omit the property for an unconstrained ideal size.
+and native control identity. Adding or removing the property also retains the
+same native scroll and input controls. For example, updating a cap from 220 to
+700, removing it, then restoring 220 does not clear an unbound input draft.
+Native scrolling still clamps its offset when the viewport grows past the
+content. Omit the property for an unconstrained ideal size.
 
 ## Unreleased: Apple sibling paint order and transparent inline wrappers
 
