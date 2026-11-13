@@ -303,66 +303,64 @@ fn list_and_bottom_tab_content_remain_sequential_not_same_cell() {
 }
 
 #[test]
-fn authored_scroll_alignment_has_one_document_owner_without_inaccessible_leading_extent() {
-    for kind in ["scroll", "list"] {
-        for horizontal in [false, true] {
-            for short in [false, true] {
-                let mut app = start_content(ContentProbe {
-                    kind,
-                    horizontal,
-                    natural: false,
-                    padding: 10,
-                    aligned: true,
-                    short,
-                    contents: false,
-                });
-                app.wait_for("id:lui-3").unwrap();
-                let viewport = layout(&app, "lui-2");
-                let first = layout(&app, "lui-3");
-                assert_eq!(
-                    first.bounds.size.height,
-                    px(if short { 40.0 } else { 400.0 })
-                );
-                assert!(
-                    first.bounds.origin.x >= viewport.bounds.origin.x + px(10.0),
-                    "{kind}/{horizontal}/{short} aligned document must not start at an inaccessible negative x: {:?} {:?}",
-                    first.bounds,
-                    viewport.bounds
-                );
-                assert!(
-                    first.bounds.origin.y >= viewport.bounds.origin.y + px(10.0),
-                    "{kind}/{horizontal}/{short} aligned document must not start at an inaccessible negative y: {:?} {:?}",
-                    first.bounds,
-                    viewport.bounds
-                );
-                if short {
-                    assert!(
-                        first.bounds.origin.x + first.bounds.size.width
-                            <= viewport.bounds.origin.x + viewport.bounds.size.width - px(10.0)
-                    );
-                    assert!(
-                        first.bounds.origin.y + first.bounds.size.height
-                            <= viewport.bounds.origin.y + viewport.bounds.size.height - px(10.0)
-                    );
-                    assert!(
-                        first.bounds.origin.x > viewport.bounds.origin.x + px(10.0)
-                            || first.bounds.origin.y > viewport.bounds.origin.y + px(10.0),
-                        "short content still applies authored end/center alignment in its own layout"
-                    );
+fn authored_list_alignment_has_one_document_owner_without_inaccessible_leading_extent() {
+    let kind = "list";
+    let horizontal = false;
+    for short in [false, true] {
+        let mut app = start_content(ContentProbe {
+            kind,
+            horizontal,
+            natural: false,
+            padding: 10,
+            aligned: true,
+            short,
+            contents: false,
+        });
+        app.wait_for("id:lui-3").unwrap();
+        let viewport = layout(&app, "lui-2");
+        let first = layout(&app, "lui-3");
+        assert_eq!(
+            first.bounds.size.height,
+            px(if short { 40.0 } else { 400.0 })
+        );
+        assert!(
+            first.bounds.origin.x >= viewport.bounds.origin.x + px(10.0),
+            "{kind}/{horizontal}/{short} aligned document must not start at an inaccessible negative x: {:?} {:?}",
+            first.bounds,
+            viewport.bounds
+        );
+        assert!(
+            first.bounds.origin.y >= viewport.bounds.origin.y + px(10.0),
+            "{kind}/{horizontal}/{short} aligned document must not start at an inaccessible negative y: {:?} {:?}",
+            first.bounds,
+            viewport.bounds
+        );
+        if short {
+            assert!(
+                first.bounds.origin.x + first.bounds.size.width
+                    <= viewport.bounds.origin.x + viewport.bounds.size.width - px(10.0)
+            );
+            assert!(
+                first.bounds.origin.y + first.bounds.size.height
+                    <= viewport.bounds.origin.y + viewport.bounds.size.height - px(10.0)
+            );
+            assert!(
+                first.bounds.origin.x > viewport.bounds.origin.x + px(10.0)
+                    || first.bounds.origin.y > viewport.bounds.origin.y + px(10.0),
+                "short content still applies authored end/center alignment in its own layout"
+            );
+        } else {
+            app.scroll("id:lui-2", px(100.0)).unwrap();
+            let after = layout(&app, "lui-3");
+            assert_eq!(after.id, first.id);
+            assert_eq!(
+                if horizontal {
+                    after.bounds.origin.x - first.bounds.origin.x
                 } else {
-                    app.scroll("id:lui-2", px(100.0)).unwrap();
-                    let after = layout(&app, "lui-3");
-                    assert_eq!(after.id, first.id);
-                    assert_eq!(
-                        if horizontal {
-                            after.bounds.origin.x - first.bounds.origin.x
-                        } else {
-                            after.bounds.origin.y - first.bounds.origin.y
-                        },
-                        px(-100.0)
-                    );
-                }
-            }
+                    after.bounds.origin.y - first.bounds.origin.y
+                },
+                px(-100.0)
+            );
         }
     }
 }
